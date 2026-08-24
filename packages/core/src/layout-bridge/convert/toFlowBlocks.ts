@@ -34,6 +34,7 @@ import type {
   TabStop,
   FloatingTablePosition,
 } from "../../layout-engine/types";
+import { setHyperlinkInstanceIndex } from "../../layout-engine/measure/hyperlinkInstance";
 import { setTextBoxGroupId } from "../../layout-engine/textBoxGroup";
 import { setParagraphFrame } from "../../layout-engine/paragraphFrame";
 import { DEFAULT_TEXTBOX_MARGINS, DEFAULT_TEXTBOX_WIDTH } from "../../layout-engine/types";
@@ -560,6 +561,9 @@ function extractRunFormatting(marks: readonly Mark[], theme?: Theme | null): Run
         if (attrs.tooltip !== undefined) {
           link.tooltip = attrs.tooltip;
         }
+        if (attrs._docxHyperlinkIndex !== undefined) {
+          setHyperlinkInstanceIndex(link, attrs._docxHyperlinkIndex);
+        }
         formatting.hyperlink = link;
         break;
       }
@@ -1009,7 +1013,7 @@ function stripTocHyperlinkStyle(formatting: RunFormatting): void {
   if (!formatting.hyperlink) {
     return;
   }
-  formatting.hyperlink = { ...formatting.hyperlink, noDefaultStyle: true };
+  formatting.hyperlink.noDefaultStyle = true;
   delete formatting.color;
   delete formatting.underline;
 }

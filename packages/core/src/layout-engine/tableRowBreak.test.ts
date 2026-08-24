@@ -1079,14 +1079,14 @@ function tableFragments(block: TableBlock, measure: TableMeasure): TableFragment
 }
 
 describe("left-aligned table placement", () => {
-  test("aligns an unindented first-cell text edge with the content edge", () => {
+  test("aligns an unindented first-cell text edge using default cell padding", () => {
     const { block, measure } = tallTable(1);
-    block.rows[0]!.cells[0]!.padding.left = 7;
+    delete block.rows[0]!.cells[0]!.padding;
 
     const fragment = tableFragments(block, measure).at(0);
 
     expect(fragment?.x).toBe(OPTIONS.margins.left - 7);
-    expect((fragment?.x ?? 0) + block.rows[0]!.cells[0]!.padding.left).toBe(OPTIONS.margins.left);
+    expect((fragment?.x ?? 0) + 7).toBe(OPTIONS.margins.left);
   });
 
   test("applies an authored w:tblInd to the table border", () => {
@@ -1102,11 +1102,59 @@ describe("left-aligned table placement", () => {
   test("aligns an authored zero-indent table border with the content edge", () => {
     const { block, measure } = tallTable(1);
     block.indent = 0;
-    block.rows[0]!.cells[0]!.padding.left = 7;
+    delete block.rows[0]!.cells[0]!.padding;
 
     const fragment = tableFragments(block, measure).at(0);
 
     expect(fragment?.x).toBe(OPTIONS.margins.left);
+  });
+});
+
+describe("RTL table placement", () => {
+  test("applies an authored indent from the right leading edge", () => {
+    const { block, measure } = tallTable(1);
+    block.bidi = true;
+    block.indent = 10;
+
+    const fragment = tableFragments(block, measure).at(0);
+    const contentRight = OPTIONS.pageSize.w - OPTIONS.margins.right;
+
+    expect(fragment?.x).toBe(contentRight - measure.totalWidth - 10);
+  });
+
+  test("keeps a negative authored indent distinct from an absent indent", () => {
+    const { block, measure } = tallTable(1);
+    block.bidi = true;
+    block.indent = -10;
+    block.rows[0]!.cells[0]!.padding.right = 7;
+
+    const fragment = tableFragments(block, measure).at(0);
+    const contentRight = OPTIONS.pageSize.w - OPTIONS.margins.right;
+
+    expect(fragment?.x).toBe(contentRight - measure.totalWidth + 10);
+  });
+
+  test("aligns an unindented logical first-cell text edge using default cell padding", () => {
+    const { block, measure } = tallTable(1);
+    block.bidi = true;
+    delete block.rows[0]!.cells[0]!.padding;
+
+    const fragment = tableFragments(block, measure).at(0);
+    const contentRight = OPTIONS.pageSize.w - OPTIONS.margins.right;
+
+    expect((fragment?.x ?? 0) + measure.totalWidth - 7).toBe(contentRight);
+  });
+
+  test("aligns an authored zero-indent table border with the right content edge", () => {
+    const { block, measure } = tallTable(1);
+    block.bidi = true;
+    block.indent = 0;
+    delete block.rows[0]!.cells[0]!.padding;
+
+    const fragment = tableFragments(block, measure).at(0);
+    const contentRight = OPTIONS.pageSize.w - OPTIONS.margins.right;
+
+    expect((fragment?.x ?? 0) + measure.totalWidth).toBe(contentRight);
   });
 });
 

@@ -15,6 +15,7 @@ import {
   resolveListMarkerFont,
 } from "../layout-engine/measure/listMarkerWidth";
 import { DEFAULT_FONT_SIZE, DOCX_SCRIPT_FONT_SCALE } from "../layout-engine/measure/measureHelpers";
+import { getHyperlinkInstanceIndex } from "../layout-engine/measure/hyperlinkInstance";
 import {
   FONT_KERNING_MODE,
   countCompressibleSpaces,
@@ -43,7 +44,10 @@ import type {
 import { calculateTabWidth } from "../prosemirror/utils/tabCalculator";
 import type { TabContext, TabStop as TabCalcStop } from "../prosemirror/utils/tabCalculator";
 import { getAuthorColorIdx, AUTHOR_COLORS } from "../utils/authorColors";
-import { isRtlParagraph } from "../utils/paragraphBaseDirection";
+import {
+  resolvePhysicalParagraphInlineLayout,
+  type PhysicalParagraphInlineLayout,
+} from "../utils/paragraphInlineLayout";
 import {
   hasComplexScriptFormatting,
   resolveComplexScriptFormatting,
@@ -122,6 +126,11 @@ function isTextRun(run: Run): run is TextRun {
 }
 
 function hyperlinksMatch(left: HyperlinkInfo, right: HyperlinkInfo): boolean {
+  const leftInstanceIndex = getHyperlinkInstanceIndex(left);
+  const rightInstanceIndex = getHyperlinkInstanceIndex(right);
+  if (leftInstanceIndex !== undefined || rightInstanceIndex !== undefined) {
+    return leftInstanceIndex === rightInstanceIndex;
+  }
   return (
     left.href === right.href &&
     left.tooltip === right.tooltip &&
@@ -1586,6 +1595,8 @@ type RenderLineOptions = {
   firstLineIndentPx?: number;
   /** Paragraph base direction for logical first-line indentation. */
   isRtl?: boolean;
+  /** Explicit alignment after resolving authored bidi physical sides. */
+  explicitAlignment?: PhysicalParagraphInlineLayout["explicitAlignment"];
   /** Full paragraph content-box width before physical indents. */
   contentWidthPx?: number;
   /** Line-specific floating image margins (calculated per-line based on Y overlap) */
@@ -2050,7 +2061,8 @@ export function renderLine(
     // Only an EXPLICIT right alignment suppresses display-math centering; a
     // right default synthesized from RTL base direction must not (the equation
     // still centres in an RTL paragraph). (#723)
-    block.attrs?.alignment !== "right"
+    (options?.explicitAlignment ??
+      resolvePhysicalParagraphInlineLayout(block).explicitAlignment) !== "right"
   ) {
     lineEl.style.textAlign = "center";
   }
@@ -2657,7 +2669,8 @@ export function renderParagraphFragment(
 
   // Get the lines for this fragment
   const lines = measure.lines.slice(fragment.fromLine, fragment.toLine);
-  const alignment = block.attrs?.alignment;
+  const inlineLayout = resolvePhysicalParagraphInlineLayout(block);
+  const { alignment, indentLeft, indentRight, isRtl } = inlineLayout;
 
   // Apply paragraph-level styles
   if (block.attrs?.styleId) {
@@ -2672,7 +2685,6 @@ export function renderParagraphFragment(
   // `dir`-marked spans (each an isolate), so without a base `dir` on the
   // fragment the runs stay in logical LTR order and reversed Hebrew/Arabic
   // reads backwards. eigenpal #723 (#719).
-  const isRtl = isRtlParagraph(block);
   if (isRtl) {
     fragmentEl.dir = "rtl";
   }
@@ -2680,54 +2692,23 @@ export function renderParagraphFragment(
   // Apply text alignment at paragraph level
   // For justify: use text-align: left and apply word-spacing per line
   // For RTL paragraphs, default alignment is right
-  if (alignment) {
-    if (alignment === "center") {
-      fragmentEl.style.textAlign = "center";
-    } else if (alignment === "right") {
-      fragmentEl.style.textAlign = "right";
-    } else if (alignment === "left") {
-      fragmentEl.style.textAlign = "left";
-    } else {
-      // 'justify' uses text-align: left (or right for RTL)
-      // Justify is implemented via word-spacing on individual lines
-      fragmentEl.style.textAlign = isRtl ? "right" : "left";
-    }
-  } else if (isRtl) {
-    // No explicit alignment on RTL paragraph — default to right
-    fragmentEl.style.textAlign = "right";
+  // Justify is implemented via word-spacing on individual lines; the
+  // fragment retains the paragraph's physical base-side alignment.
+  let fragmentAlignment = alignment;
+  if (alignment === "justify") {
+    fragmentAlignment = isRtl ? "right" : "left";
   }
+  fragmentEl.style.textAlign = fragmentAlignment;
 
   // An RTL paragraph with no explicit alignment defaults to right; pass that
   // through to per-line rendering so flex-promoted lines (image-only,
   // image+text, right-tab anchors) align to the start side too, not just the
   // fragment text-align. (#723)
-  const effectiveAlignment = alignment ?? (isRtl ? "right" : undefined);
+  const effectiveAlignment = alignment;
 
   // Track indentation for line-level application
   // Indentation is applied per-line, not at fragment level
   const indent = block.attrs?.indent;
-  let indentLeft = 0;
-  let indentRight = 0;
-
-  if (indent) {
-    // Track indent values for line-level application
-    // For RTL paragraphs, swap left/right indentation
-    if (isRtl) {
-      if (indent.left !== undefined) {
-        indentRight = indent.left;
-      }
-      if (indent.right !== undefined) {
-        indentLeft = indent.right;
-      }
-    } else {
-      if (indent.left !== undefined) {
-        indentLeft = indent.left;
-      }
-      if (indent.right !== undefined) {
-        indentRight = indent.right;
-      }
-    }
-  }
 
   // Note: Line spacing is applied per-line div (renderLine sets lineEl.style.height
   // and lineEl.style.lineHeight), not at fragment level. Fragment-level line-height
@@ -2907,6 +2888,9 @@ export function renderParagraphFragment(
       tabLeftIndentPx: indent?.left ?? 0,
       firstLineIndentPx: isFirstLine ? firstLineIndentPx : 0,
       isRtl,
+      ...(inlineLayout.explicitAlignment === undefined
+        ? {}
+        : { explicitAlignment: inlineLayout.explicitAlignment }),
       contentWidthPx: fragment.width,
       context,
       floatingMargins: {

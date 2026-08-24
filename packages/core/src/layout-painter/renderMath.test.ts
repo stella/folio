@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import type { MathRun } from "../layout-engine/types";
+import type { MathRun, ParagraphAttrs } from "../layout-engine/types";
 import { renderLine } from "./renderParagraph";
 
 // Render-side tests for OMML math runs (`feat/folio-omml-math-render`).
@@ -271,11 +271,11 @@ function mathRun(overrides: Partial<MathRun>): MathRun {
   };
 }
 
-function renderMathRunOnce(run: MathRun): FakeElement {
+function renderMathRunOnce(run: MathRun, attrs: ParagraphAttrs = {}): FakeElement {
   const block = {
     kind: "paragraph",
     runs: [run],
-    attrs: {},
+    attrs,
     styleId: undefined,
   } as unknown as Parameters<typeof renderLine>[0];
 
@@ -330,6 +330,30 @@ describe("painter — OMML math run", () => {
     expect(host).not.toBeNull();
     expect(host?.dataset["display"]).toBe("block");
     expect(host?.innerHTML).toContain('display="block"');
+  });
+
+  test("centres display math when bidi right resolves to physical left", () => {
+    const line = renderMathRunOnce(mathRun({ display: "block" }), {
+      alignment: "right",
+      bidi: true,
+    });
+
+    expect(line.style.textAlign).toBe("center");
+  });
+
+  test("preserves explicit physical-right display math alignment under bidi", () => {
+    const line = renderMathRunOnce(mathRun({ display: "block" }), {
+      alignment: "left",
+      bidi: true,
+    });
+
+    expect(line.style.textAlign).toBe("");
+  });
+
+  test("centres display math in RTL with no explicit alignment", () => {
+    const line = renderMathRunOnce(mathRun({ display: "block", plainText: "س" }), { bidi: true });
+
+    expect(line.style.textAlign).toBe("center");
   });
 
   test("falls back to italic plain-text span when OMML XML is malformed", () => {

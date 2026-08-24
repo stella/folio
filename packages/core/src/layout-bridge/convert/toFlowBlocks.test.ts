@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
+import { getHyperlinkInstanceIndex } from "../../layout-engine/measure/hyperlinkInstance";
 import { getTextBoxGroupId } from "../../layout-engine/textBoxGroup";
+import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import { schema } from "../../prosemirror/schema";
+import type { Document } from "../../types/document";
 import { AUTO_PARAGRAPH_SPACING_PX } from "../../utils/units";
 import { toFlowBlocks } from "./toFlowBlocks";
 
@@ -1251,6 +1254,192 @@ describe("toFlowBlocks TOC hyperlink style strip", () => {
     expect(firstRunHyperlinkStripped("toc3")).toBe(true);
     expect(firstRunHyperlinkStripped("TOCHeading")).toBe(false);
     expect(firstRunHyperlinkStripped("Normal")).toBe(false);
+  });
+});
+
+describe("toFlowBlocks hyperlink identity", () => {
+  const getHyperlinkIndexes = (document: Document): (number | undefined)[] => {
+    const paragraphs = toFlowBlocks(toProseDoc(document)).filter(
+      (block) => block.kind === "paragraph",
+    );
+    return paragraphs.flatMap((paragraph) =>
+      paragraph.runs.flatMap((run) =>
+        run.hyperlink ? [getHyperlinkInstanceIndex(run.hyperlink)] : [],
+      ),
+    );
+  };
+
+  test("keeps adjacent same-target imported hyperlinks distinct", () => {
+    const href = "https://example.test";
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              formatting: { bidi: true },
+              content: [
+                {
+                  type: "hyperlink",
+                  href,
+                  children: [{ type: "run", content: [{ type: "text", text: href }] }],
+                },
+                {
+                  type: "hyperlink",
+                  href,
+                  children: [{ type: "run", content: [{ type: "text", text: "رابط" }] }],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const paragraph = toFlowBlocks(toProseDoc(document)).at(0);
+    if (paragraph?.kind !== "paragraph") {
+      throw new Error("Expected paragraph block");
+    }
+    const hyperlinks = paragraph.runs.flatMap((run) => (run.hyperlink ? [run.hyperlink] : []));
+
+    expect(hyperlinks.map(getHyperlinkInstanceIndex)).toEqual([0, 1]);
+    expect(JSON.stringify(paragraph)).not.toContain("HyperlinkIndex");
+  });
+
+  test("keeps one imported hyperlink grouped across formatting splits", () => {
+    const href = "https://example.test";
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "hyperlink",
+                  href,
+                  children: [
+                    { type: "run", content: [{ type: "text", text: "https://example." }] },
+                    {
+                      type: "run",
+                      formatting: { bold: true },
+                      content: [{ type: "text", text: "test" }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    expect(getHyperlinkIndexes(document)).toEqual([0, 0]);
+  });
+
+  test("allocates distinct identities through nested inline SDTs", () => {
+    const href = "https://example.test";
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "hyperlink",
+                  href,
+                  children: [{ type: "run", content: [{ type: "text", text: href }] }],
+                },
+                {
+                  type: "inlineSdt",
+                  properties: { sdtType: "richText" },
+                  content: [
+                    {
+                      type: "hyperlink",
+                      href,
+                      children: [{ type: "run", content: [{ type: "text", text: "رابط" }] }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    expect(getHyperlinkIndexes(document)).toEqual([0, 1]);
+  });
+
+  test("allocates distinct identities through tracked changes", () => {
+    const href = "https://example.test";
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "hyperlink",
+                  href,
+                  children: [{ type: "run", content: [{ type: "text", text: href }] }],
+                },
+                {
+                  type: "insertion",
+                  info: { id: 1, author: "Reviewer" },
+                  content: [
+                    {
+                      type: "hyperlink",
+                      href,
+                      children: [{ type: "run", content: [{ type: "text", text: "رابط" }] }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    expect(getHyperlinkIndexes(document)).toEqual([0, 1]);
+  });
+
+  test("keeps identities distinct when run-in paragraphs merge", () => {
+    const href = "https://example.test";
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              formatting: { runInWithNext: true },
+              content: [
+                {
+                  type: "hyperlink",
+                  href,
+                  children: [{ type: "run", content: [{ type: "text", text: href }] }],
+                },
+              ],
+            },
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "hyperlink",
+                  href,
+                  children: [{ type: "run", content: [{ type: "text", text: "رابط" }] }],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    expect(getHyperlinkIndexes(document)).toEqual([0, 1]);
   });
 });
 

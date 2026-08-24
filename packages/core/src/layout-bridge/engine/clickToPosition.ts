@@ -25,6 +25,10 @@ import type {
   TabRun,
 } from "../../layout-engine/types";
 import { inlineImageBoundingBox } from "../../utils/rotationBoundingBox";
+import {
+  resolvePhysicalParagraphInlineLayout,
+  type PhysicalParagraphInlineLayout,
+} from "../../utils/paragraphInlineLayout";
 import type { FragmentHit, TableCellHit } from "./hitTest";
 
 // =============================================================================
@@ -254,12 +258,21 @@ function findLineAtY(
  * @param availableWidth - Available width for alignment calculations.
  * @returns Character offset and PM position.
  */
-function findCharacterInLine(
-  block: ParagraphBlock,
-  line: MeasuredLine,
-  x: number,
-  availableWidth: number,
-): { charOffset: number; pmPosition: number } {
+type FindCharacterInLineOptions = {
+  block: ParagraphBlock;
+  line: MeasuredLine;
+  x: number;
+  availableWidth: number;
+  alignment: PhysicalParagraphInlineLayout["alignment"];
+};
+
+function findCharacterInLine({
+  block,
+  line,
+  x,
+  availableWidth,
+  alignment,
+}: FindCharacterInLineOptions): { charOffset: number; pmPosition: number } {
   const { pmStart, pmEnd } = computeLinePmRange(block, line);
 
   if (pmStart === undefined || pmEnd === undefined) {
@@ -267,7 +280,6 @@ function findCharacterInLine(
   }
 
   // Calculate alignment offset
-  const alignment = block.attrs?.alignment ?? "left";
   let alignmentOffset = 0;
 
   if (alignment === "center") {
@@ -439,21 +451,21 @@ export function clickToPositionInParagraph(fragmentHit: FragmentHit): PositionRe
   }
 
   // Calculate available width (accounting for indentation)
-  const indent = paragraphBlock.attrs?.indent;
-  const indentLeft = indent?.left ?? 0;
-  const indentRight = indent?.right ?? 0;
+  const { alignment, indentLeft, indentRight } =
+    resolvePhysicalParagraphInlineLayout(paragraphBlock);
   const availableWidth = Math.max(0, fragment.width - indentLeft - indentRight);
 
   // Adjust X for left indent
   const adjustedX = localX - indentLeft;
 
   // Find character at X position
-  const { charOffset, pmPosition } = findCharacterInLine(
-    paragraphBlock,
+  const { charOffset, pmPosition } = findCharacterInLine({
+    block: paragraphBlock,
     line,
-    adjustedX,
+    x: adjustedX,
     availableWidth,
-  );
+    alignment,
+  });
 
   return {
     pmPosition,
@@ -469,7 +481,7 @@ export function clickToPositionInParagraph(fragmentHit: FragmentHit): PositionRe
  * @returns PM position, or null if mapping fails.
  */
 export function clickToPositionInTableCell(tableCellHit: TableCellHit): number | null {
-  const { cellBlock, cellMeasure, cellLocalX, cellLocalY } = tableCellHit;
+  const { cellBlock, cellMeasure, cellLocalX, cellLocalY, cellContentWidth } = tableCellHit;
 
   if (!cellBlock || !cellMeasure) {
     return null;
@@ -482,7 +494,7 @@ export function clickToPositionInTableCell(tableCellHit: TableCellHit): number |
       blockId: cellBlock.id,
       x: 0,
       y: 0,
-      width: getMaxLineWidth(cellMeasure.lines, 100),
+      width: cellContentWidth,
       fromLine: 0,
       toLine: cellMeasure.lines.length,
       height: cellMeasure.totalHeight,
@@ -631,14 +643,6 @@ export function positionToX(
   return null;
 }
 
-const getMaxLineWidth = (lines: readonly { width: number }[], fallback: number): number => {
-  let maxWidth = fallback;
-  for (const line of lines) {
-    maxWidth = Math.max(maxWidth, line.width);
-  }
-  return maxWidth;
-};
-
 /**
  * Get the bounding rect for a PM position (for caret rendering).
  */
@@ -657,10 +661,7 @@ export function getPositionRect(
   }
 
   // Calculate alignment offset
-  const alignment = block.attrs?.alignment ?? "left";
-  const indent = block.attrs?.indent;
-  const indentLeft = indent?.left ?? 0;
-  const indentRight = indent?.right ?? 0;
+  const { alignment, indentLeft, indentRight } = resolvePhysicalParagraphInlineLayout(block);
   const availableWidth = Math.max(0, fragmentWidth - indentLeft - indentRight);
 
   const line = measure.lines[result.lineIndex];

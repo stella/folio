@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type { TableBlock, TableFragment, TableMeasure } from "../layout-engine/types";
-import { renderTableFragment, TABLE_CLASS_NAMES } from "./renderTable";
+import { renderNestedTable, renderTableFragment, TABLE_CLASS_NAMES } from "./renderTable";
 import type { RenderContext } from "./renderUtils";
 
 // Minimal DOM stand-in (mirrors renderTableFragment.test.ts) so the painter can
@@ -239,5 +239,68 @@ describe("renderTableFragment RTL column order (w:bidiVisual)", () => {
       (child) => child.className === TABLE_CLASS_NAMES.resizeHandle,
     );
     expect(internal?.dataset["bidi"]).toBe("true");
+  });
+});
+
+describe("renderNestedTable RTL placement", () => {
+  test("anchors an authored indent from the right leading edge", () => {
+    const { block, measure } = buildTwoColumnTable(true);
+    block.indent = 10;
+
+    const tableEl = renderNestedTable(
+      block,
+      measure,
+      renderContext,
+      fakeDocument,
+    ) as unknown as FakeElement;
+
+    expect(tableEl.style["marginLeft"]).toBe("auto");
+    expect(tableEl.style["marginRight"]).toBe("10px");
+  });
+
+  test("distinguishes absent indentation from an authored zero", () => {
+    const absent = buildTwoColumnTable(true);
+    const absentEl = renderNestedTable(
+      absent.block,
+      absent.measure,
+      renderContext,
+      fakeDocument,
+    ) as unknown as FakeElement;
+
+    const zero = buildTwoColumnTable(true);
+    zero.block.indent = 0;
+    const zeroEl = renderNestedTable(
+      zero.block,
+      zero.measure,
+      renderContext,
+      fakeDocument,
+    ) as unknown as FakeElement;
+
+    expect(absentEl.style["marginRight"]).toBe("-7px");
+    expect(zeroEl.style["marginRight"]).toBe("0px");
+  });
+});
+
+describe("renderNestedTable LTR placement", () => {
+  test("distinguishes absent indentation from an authored zero with default padding", () => {
+    const absent = buildTwoColumnTable(false);
+    const absentEl = renderNestedTable(
+      absent.block,
+      absent.measure,
+      renderContext,
+      fakeDocument,
+    ) as unknown as FakeElement;
+
+    const zero = buildTwoColumnTable(false);
+    zero.block.indent = 0;
+    const zeroEl = renderNestedTable(
+      zero.block,
+      zero.measure,
+      renderContext,
+      fakeDocument,
+    ) as unknown as FakeElement;
+
+    expect(absentEl.style["marginLeft"]).toBe("-7px");
+    expect(zeroEl.style["marginLeft"]).toBe("0px");
   });
 });

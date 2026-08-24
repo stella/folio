@@ -16,6 +16,7 @@ import type {
   ParagraphMeasure,
   TextRun,
 } from "../layout-engine/types";
+import { setHyperlinkInstanceIndex } from "../layout-engine/measure/hyperlinkInstance";
 import { renderParagraphFragment } from "./renderParagraph";
 
 function createFakeStyle(): Record<string, string> {
@@ -170,6 +171,23 @@ describe("Issue #719 — RTL base direction detection", () => {
     expect(line?.style["textIndent"]).toBe("-48px");
   });
 
+  test("mirrors explicit bidi justification onto the physical page", () => {
+    expect(render([text("13")], { alignment: "right", bidi: true }).style.textAlign).toBe("left");
+    expect(render([text("13")], { alignment: "left", bidi: true }).style.textAlign).toBe("right");
+  });
+
+  test("does not mirror explicit alignment or indents for inferred RTL", () => {
+    const paragraph = render([text("مرحبا", true)], {
+      alignment: "right",
+      indent: { left: 96, right: 24 },
+    }) as unknown as FakeElement;
+    const line = paragraph.children.at(0);
+
+    expect(paragraph.style["textAlign"]).toBe("right");
+    expect(line?.style["paddingLeft"]).toBe("96px");
+    expect(line?.style["paddingRight"]).toBe("24px");
+  });
+
   test("explicit w:bidi=false wins over rtl runs (stays LTR)", () => {
     // `<w:bidi w:val="0"/>` is an explicit LTR override; first-strong detection
     // must not re-enable RTL for a Hebrew run inside it.
@@ -265,6 +283,23 @@ describe("Issue #719 — RTL base direction detection", () => {
     ) as unknown as FakeElement;
 
     expect(findAllByTag(paragraph, "a").map((anchor) => anchor.dir)).toEqual(["ltr", "ltr"]);
+  });
+
+  test("does not merge adjacent same-target hyperlink instances", () => {
+    const href = "https://example.test";
+    const urlHyperlink = { href };
+    const labelHyperlink = { href };
+    setHyperlinkInstanceIndex(urlHyperlink, 0);
+    setHyperlinkInstanceIndex(labelHyperlink, 1);
+    const paragraph = render(
+      [
+        { kind: "text", text: href, hyperlink: urlHyperlink },
+        { kind: "text", text: "رابط", hyperlink: labelHyperlink },
+      ],
+      { bidi: true },
+    ) as unknown as FakeElement;
+
+    expect(findAllByTag(paragraph, "a").map((anchor) => anchor.dir)).toEqual(["ltr", ""]);
   });
 
   test("does not force a link label or Arabic link text left-to-right", () => {

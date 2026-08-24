@@ -7,7 +7,12 @@
 
 import { getHeaderRowsHeight } from "../../layout-engine/index";
 import { measuredLineRangeHeight } from "../../layout-engine/lineFlow";
-import { getTableRowLeadingWidth } from "../../layout-engine/types";
+import { getTableCellContentWidth } from "../../layout-engine/measure/tableCellFloating";
+import {
+  buildTableCellGrid,
+  buildTableCellPlacements,
+} from "../../layout-engine/measure/tableCellGrid";
+import { resolveTableCellPadding } from "../../layout-engine/types";
 import type {
   Layout,
   Page,
@@ -87,6 +92,8 @@ export type TableCellHit = {
   cellMeasure?: ParagraphMeasure;
   /** X position relative to cell content area. */
   cellLocalX: number;
+  /** Width of the cell content area after physical padding. */
+  cellContentWidth: number;
   /** Y position relative to cell content area. */
   cellLocalY: number;
 };
@@ -435,30 +442,47 @@ export function hitTestTableCell(
       continue;
     }
 
-    // Find column at localX
-    let colX = getTableRowLeadingWidth(row, tableMeasure.columnWidths);
     let colIndex = -1;
+    let cellLeft = 0;
 
     if (rowMeasure.cells.length === 0 || row.cells.length === 0) {
       continue;
     }
 
-    for (let c = 0; c < rowMeasure.cells.length; c++) {
-      // SAFETY: c is bounded by rowMeasure.cells.length
-      const cellMeasure = rowMeasure.cells[c]!;
-      if (localX >= colX && localX < colX + cellMeasure.width) {
-        colIndex = c;
-        break;
-      }
-      colX += cellMeasure.width;
-    }
-
-    // If no column found, use last column
-    if (colIndex === -1) {
-      colIndex = rowMeasure.cells.length - 1;
-      if (colIndex < 0) {
+    const cellGrid = buildTableCellGrid(tableBlock.rows, tableMeasure.columnWidths.length);
+    const cellPlacements = buildTableCellPlacements({
+      grid: cellGrid,
+      columnWidths: tableMeasure.columnWidths,
+      bidi: tableBlock.bidi === true,
+    });
+    let nearestDistance = Infinity;
+    for (let c = 0; c < row.cells.length; c++) {
+      const cell = row.cells[c];
+      if (!cell) {
         continue;
       }
+      const placement = cellPlacements.get(cell);
+      if (!placement) {
+        continue;
+      }
+      if (localX >= placement.left && localX < placement.left + placement.width) {
+        colIndex = c;
+        cellLeft = placement.left;
+        break;
+      }
+      const distance = Math.min(
+        Math.abs(localX - placement.left),
+        Math.abs(localX - placement.left - placement.width),
+      );
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        colIndex = c;
+        cellLeft = placement.left;
+      }
+    }
+
+    if (colIndex === -1) {
+      continue;
     }
 
     const cellMeasure = rowMeasure.cells[colIndex];
@@ -484,12 +508,6 @@ export function hitTestTableCell(
       }
     }
 
-    // Find the cumulative column X for the found column
-    let colLeft = 0;
-    for (let c = 0; c < colIndex; c++) {
-      colLeft += rowMeasure.cells[c]?.width ?? 0;
-    }
-
     // Get first paragraph in cell
     let cellBlock: ParagraphBlock | undefined;
     let cellBlockMeasure: ParagraphMeasure | undefined;
@@ -504,8 +522,12 @@ export function hitTestTableCell(
       }
     }
 
-    // Calculate position within cell (rough - doesn't account for padding)
-    const cellLocalX = localX - colLeft;
+    // `cellLeft` is the physical cell start, including any grid-before width.
+    // Expose content-relative geometry so click mapping uses the same box as
+    // measurement and painting.
+    const { left: padLeft } = resolveTableCellPadding(cell);
+    const cellLocalX = localX - cellLeft - padLeft;
+    const cellContentWidth = getTableCellContentWidth(cell, cellMeasure);
     const clipOffset = isClickOnHeader ? 0 : (tableFragment.topClip ?? 0);
     const cellLocalY = localY - rowTop + clipOffset;
 
@@ -519,6 +541,7 @@ export function hitTestTableCell(
       ...(cellBlock !== undefined ? { cellBlock } : {}),
       ...(cellBlockMeasure !== undefined ? { cellMeasure: cellBlockMeasure } : {}),
       cellLocalX: Math.max(0, cellLocalX),
+      cellContentWidth,
       cellLocalY: Math.max(0, cellLocalY),
     };
   }

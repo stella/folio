@@ -33,6 +33,7 @@ import {
 import { buildTableRowBreakInfo, getRowContinuationSkip, snapRowBreak } from "./tableRowBreak";
 import { bandFragmentX, bandTopContentY, isPageFrameRelativeAnchor } from "./textBoxFlow";
 import { resolveFloatingTableX } from "./measure/floatingTablePosition";
+import { resolveTableInlinePlacement } from "./measure/tableInlinePlacement";
 import { floatingTextBoxReservesBand } from "./types";
 import type {
   FlowBlock,
@@ -985,21 +986,15 @@ function layoutTable(
   // X position from justification / indent, recomputed per fragment because the
   // active column can change across section breaks.
   const computeTableX = (columnIndex: number): number => {
-    let x = paginator.getColumnX(columnIndex);
-    if (block.justification === "center") {
-      x += (paginator.columnWidth - measure.totalWidth) / 2;
-    } else if (block.justification === "right") {
-      x = x + paginator.columnWidth - measure.totalWidth;
-    } else if (block.indent !== undefined) {
-      // An authored w:tblInd offsets the table border from the content margin.
-      // Keep the absent-value path separate because Word's inherited default
-      // aligns the first-cell text edge instead.
-      x += block.indent;
-    } else {
-      const leadingCellMargin = block.rows.at(0)?.cells.at(0)?.padding?.left ?? 0;
-      x -= leadingCellMargin;
+    const x = paginator.getColumnX(columnIndex);
+    const placement = resolveTableInlinePlacement(block);
+    if (placement.alignment === "center") {
+      return x + (paginator.columnWidth - measure.totalWidth) / 2;
     }
-    return x;
+    if (placement.alignment === "right") {
+      return x + paginator.columnWidth - measure.totalWidth - placement.offset;
+    }
+    return x + placement.offset;
   };
 
   const getCurrentRowCapacity = (state = paginator.getCurrentState()): number =>

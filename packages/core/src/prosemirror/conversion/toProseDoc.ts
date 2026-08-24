@@ -116,6 +116,14 @@ const createTextBoxGroupIdFactory = (): (() => string) => {
   return () => `${salt}:${index++}`;
 };
 
+type HyperlinkInstanceIndexAllocator = () => number;
+
+/** Keep imported hyperlink identity unique across every nested conversion scope. */
+const createHyperlinkInstanceIndexAllocator = (): HyperlinkInstanceIndexAllocator => {
+  let index = 0;
+  return () => index++;
+};
+
 /**
  * Convert a Document to a ProseMirror document
  *
@@ -134,6 +142,8 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
   const styleResolver = createStyleEngine(options?.styles ?? document.package.styles);
   const theme = options?.theme ?? document.package.theme ?? null;
   const nextTextBoxGroupId = createTextBoxGroupIdFactory();
+  const nextHyperlinkInstanceIndex = createHyperlinkInstanceIndexAllocator();
+  const conversionContext = { theme, nextTextBoxGroupId, nextHyperlinkInstanceIndex };
 
   const convertBodyBlocks = (blocks: BlockContent[]): PMNode[] => {
     const out: PMNode[] = [];
@@ -145,7 +155,7 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
         }
         const converted = convertParagraphWithTextBoxes(block, styleResolver, {
           textBoxGroupId: nextTextBoxGroupId(),
-          context: { theme, nextTextBoxGroupId },
+          context: conversionContext,
         });
         const firstConverted = converted.at(0);
         if (
@@ -178,7 +188,7 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
           out.push(schema.node("pageBreak"));
         }
       } else if (block.type === "table") {
-        out.push(convertTable(block, styleResolver, { theme, nextTextBoxGroupId }));
+        out.push(convertTable(block, styleResolver, conversionContext));
       } else {
         out.push(convertBlockSdt(block, convertBodyBlocks));
       }
@@ -261,6 +271,7 @@ function convertBlockSdt(
 function convertParagraph(
   paragraph: Paragraph,
   styleResolver: StyleEngine | null,
+  nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator,
   activeCommentIds?: Set<number>,
   extraRunFormatting?: TextFormatting,
   tableParagraphOverlay?: TableCellParagraphSpacingOverlay,
@@ -272,7 +283,6 @@ function convertParagraph(
   let inlineOffset = 0;
   let bookmarksArr: { id: number; name: string }[] | undefined;
   let emptyHyperlinks: NonNullable<ParagraphAttrs["_emptyHyperlinks"]> | undefined;
-  let hyperlinkIndex = 0;
 
   // Track active comment ranges for this paragraph
   const commentIds = activeCommentIds ?? new Set<number>();
@@ -364,6 +374,7 @@ function convertParagraph(
       convertTrackedChange(
         change,
         markType,
+        nextHyperlinkInstanceIndex,
         getInheritedRunFormatting,
         styleResolver,
         moveKind,
@@ -389,8 +400,7 @@ function convertParagraph(
         ),
       );
     } else if (content.type === "hyperlink") {
-      const currentHyperlinkIndex = hyperlinkIndex;
-      hyperlinkIndex += 1;
+      const currentHyperlinkIndex = nextHyperlinkInstanceIndex();
       const linkNodes = convertHyperlink(content, {
         getInheritedRunFormatting,
         styleResolver,
@@ -413,7 +423,13 @@ function convertParagraph(
       emitInlineNode(convertField(content, getInheritedRunFormatting, styleResolver));
     } else if (content.type === "inlineSdt") {
       emitInlineNode(
-        convertInlineSdt(content, getInheritedRunFormatting, styleResolver, textBoxAnchors),
+        convertInlineSdt(
+          content,
+          nextHyperlinkInstanceIndex,
+          getInheritedRunFormatting,
+          styleResolver,
+          textBoxAnchors,
+        ),
       );
     } else if (content.type === "insertion" || content.type === "moveTo") {
       emitTrackedChange(content, "insertion", content.type === "moveTo" ? "moveTo" : null);
@@ -507,13 +523,13 @@ function anchorPointComment(nodes: PMNode[], commentId: number): void {
 function convertTrackedChange(
   change: Insertion | Deletion | MoveFrom | MoveTo,
   markType: "insertion" | "deletion",
+  nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator,
   getInheritedRunFormatting: RunFormattingResolver,
   styleResolver?: StyleEngine | null,
   moveKind: "moveFrom" | "moveTo" | null = null,
   textBoxAnchors?: ReadonlyMap<Shape, string>,
 ): PMNode[] {
   const nodes: PMNode[] = [];
-  let hyperlinkIndex = 0;
   for (const item of change.content) {
     if (item.type === "run") {
       nodes.push(
@@ -525,8 +541,7 @@ function convertTrackedChange(
         ),
       );
     } else {
-      const currentHyperlinkIndex = hyperlinkIndex;
-      hyperlinkIndex += 1;
+      const currentHyperlinkIndex = nextHyperlinkInstanceIndex();
       nodes.push(
         ...convertHyperlink(item, {
           getInheritedRunFormatting,
@@ -1397,6 +1412,7 @@ function paragraphContentHasMeaningfulContent(content: Paragraph["content"][numb
 type TableConversionContext = {
   theme: Theme | null | undefined;
   nextTextBoxGroupId: () => string;
+  nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator;
 };
 
 function convertTable(
@@ -2041,10 +2057,11 @@ export function standaloneTableCellToProseMirror(
   nodeType: "tableCell" | "tableHeader",
 ): PMNode {
   const nextTextBoxGroupId = createTextBoxGroupIdFactory();
+  const nextHyperlinkInstanceIndex = createHyperlinkInstanceIndexAllocator();
   return convertTableCell({
     cell,
     styleResolver: null,
-    context: { theme: null, nextTextBoxGroupId },
+    context: { theme: null, nextTextBoxGroupId, nextHyperlinkInstanceIndex },
     isHeader: nodeType === "tableHeader",
     gridWidthPercent: undefined,
     conditionalStyle: undefined,
@@ -2135,13 +2152,13 @@ function convertMathEquation(math: MathEquation): PMNode | null {
  */
 function convertInlineSdt(
   sdt: InlineSdt,
+  nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator,
   getInheritedRunFormatting: RunFormattingResolver,
   styleResolver?: StyleEngine | null,
   textBoxAnchors?: ReadonlyMap<Shape, string>,
 ): PMNode | null {
   const props = sdt.properties;
   const inlineNodes: PMNode[] = [];
-  let hyperlinkIndex = 0;
 
   for (const content of sdt.content) {
     if (content.type === "run") {
@@ -2153,8 +2170,7 @@ function convertInlineSdt(
       );
       inlineNodes.push(...runNodes);
     } else if (content.type === "hyperlink") {
-      const currentHyperlinkIndex = hyperlinkIndex;
-      hyperlinkIndex += 1;
+      const currentHyperlinkIndex = nextHyperlinkInstanceIndex();
       const linkNodes = convertHyperlink(content, {
         getInheritedRunFormatting,
         styleResolver,
@@ -2170,6 +2186,7 @@ function convertInlineSdt(
     } else if (content.type === "inlineSdt") {
       const nestedSdt = convertInlineSdt(
         content,
+        nextHyperlinkInstanceIndex,
         getInheritedRunFormatting,
         styleResolver,
         textBoxAnchors,
@@ -2182,6 +2199,7 @@ function convertInlineSdt(
         ...convertTrackedChange(
           content,
           "insertion",
+          nextHyperlinkInstanceIndex,
           getInheritedRunFormatting,
           styleResolver,
           null,
@@ -2193,6 +2211,7 @@ function convertInlineSdt(
         ...convertTrackedChange(
           content,
           "deletion",
+          nextHyperlinkInstanceIndex,
           getInheritedRunFormatting,
           styleResolver,
           null,
@@ -2204,6 +2223,7 @@ function convertInlineSdt(
         ...convertTrackedChange(
           content,
           "insertion",
+          nextHyperlinkInstanceIndex,
           getInheritedRunFormatting,
           styleResolver,
           "moveTo",
@@ -2215,6 +2235,7 @@ function convertInlineSdt(
         ...convertTrackedChange(
           content,
           "deletion",
+          nextHyperlinkInstanceIndex,
           getInheritedRunFormatting,
           styleResolver,
           "moveFrom",
@@ -3050,6 +3071,7 @@ function convertParagraphWithTextBoxes(
   const pmParagraph = convertParagraph(
     block,
     styleResolver,
+    context.nextHyperlinkInstanceIndex,
     undefined,
     extraRunFormatting,
     tableParagraphOverlay,
@@ -3489,6 +3511,8 @@ export function headerFooterToProseDoc(
   const styleResolver = options?.styles ? createStyleEngine(options.styles) : null;
   const theme = options?.theme ?? null;
   const nextTextBoxGroupId = createTextBoxGroupIdFactory();
+  const nextHyperlinkInstanceIndex = createHyperlinkInstanceIndexAllocator();
+  const conversionContext = { theme, nextTextBoxGroupId, nextHyperlinkInstanceIndex };
 
   const convertBlocks = (blocks: BlockContent[]): PMNode[] => {
     const out: PMNode[] = [];
@@ -3497,11 +3521,11 @@ export function headerFooterToProseDoc(
         out.push(
           ...convertParagraphWithTextBoxes(block, styleResolver, {
             textBoxGroupId: nextTextBoxGroupId(),
-            context: { theme, nextTextBoxGroupId },
+            context: conversionContext,
           }),
         );
       } else if (block.type === "table") {
-        out.push(convertTable(block, styleResolver, { theme, nextTextBoxGroupId }));
+        out.push(convertTable(block, styleResolver, conversionContext));
       } else {
         out.push(convertBlockSdt(block, convertBlocks));
       }

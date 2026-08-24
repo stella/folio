@@ -6,6 +6,21 @@ export type TableCellGrid = {
   sourceColumnsByCell: ReadonlyMap<TableCell, number>;
 };
 
+export type TableCellPlacement = {
+  sourceColumn: number;
+  columnSpan: number;
+  left: number;
+  width: number;
+};
+
+export type TableCellPlacements = ReadonlyMap<TableCell, TableCellPlacement>;
+
+type BuildTableCellPlacementsOptions = {
+  grid: TableCellGrid;
+  columnWidths: readonly number[];
+  bidi: boolean;
+};
+
 export const buildTableCellGrid = (
   rows: readonly TableRow[],
   columnCount: number,
@@ -20,10 +35,11 @@ export const buildTableCellGrid = (
       continue;
     }
 
-    let columnIndex = firstAvailableColumn(occupiedColumnsByRow.get(rowIndex), row.gridBefore ?? 0);
+    const gridBefore = Math.max(0, Math.min(columnCount, Math.trunc(row.gridBefore ?? 0)));
+    let columnIndex = firstAvailableColumn(occupiedColumnsByRow.get(rowIndex), gridBefore);
     for (const cell of row.cells) {
-      const columnSpan = cell.colSpan ?? 1;
-      const rowSpan = cell.rowSpan ?? 1;
+      const columnSpan = Math.max(1, Math.trunc(cell.colSpan ?? 1));
+      const rowSpan = Math.max(1, Math.trunc(cell.rowSpan ?? 1));
       sourceColumnsByCell.set(cell, columnIndex);
 
       const rowEnd = Math.min(rows.length, rowIndex + rowSpan);
@@ -36,14 +52,10 @@ export const buildTableCellGrid = (
       }
 
       if (rowSpan > 1) {
-        for (
-          let spannedRowIndex = rowIndex + 1;
-          spannedRowIndex < rowIndex + rowSpan;
-          spannedRowIndex++
-        ) {
+        for (let spannedRowIndex = rowIndex + 1; spannedRowIndex < rowEnd; spannedRowIndex++) {
           const occupied = getOrCreateOccupiedRow(occupiedColumnsByRow, spannedRowIndex);
-          for (let columnOffset = 0; columnOffset < columnSpan; columnOffset++) {
-            occupied.add(columnIndex + columnOffset);
+          for (let gridColumnIndex = columnIndex; gridColumnIndex < columnEnd; gridColumnIndex++) {
+            occupied.add(gridColumnIndex);
           }
         }
       }
@@ -72,6 +84,39 @@ export const getSourceCellAt = (
 
 export const getSourceCellColumn = (grid: TableCellGrid, cell: TableCell): number | undefined =>
   grid.sourceColumnsByCell.get(cell);
+
+/** Resolve all source cells to canonical logical columns and physical boxes. */
+export const buildTableCellPlacements = ({
+  grid,
+  columnWidths,
+  bidi,
+}: BuildTableCellPlacementsOptions): TableCellPlacements => {
+  const columnOffsets = [0];
+  for (const columnWidth of columnWidths) {
+    columnOffsets.push((columnOffsets.at(-1) ?? 0) + columnWidth);
+  }
+  const tableWidth = columnOffsets.at(-1) ?? 0;
+  const placements = new Map<TableCell, TableCellPlacement>();
+
+  for (const [cell, sourceColumn] of grid.sourceColumnsByCell) {
+    if (sourceColumn < 0 || sourceColumn >= columnWidths.length) {
+      continue;
+    }
+    const declaredColumnSpan = Math.max(1, Math.trunc(cell.colSpan ?? 1));
+    const columnSpan = Math.min(declaredColumnSpan, columnWidths.length - sourceColumn);
+    const logicalLeft = columnOffsets.at(sourceColumn) ?? 0;
+    const logicalRight = columnOffsets.at(sourceColumn + columnSpan) ?? logicalLeft;
+    const width = logicalRight - logicalLeft;
+    placements.set(cell, {
+      sourceColumn,
+      columnSpan,
+      left: bidi ? tableWidth - logicalRight : logicalLeft,
+      width,
+    });
+  }
+
+  return placements;
+};
 
 export const getTableCellVerticalBorderHeight = (
   grid: TableCellGrid,

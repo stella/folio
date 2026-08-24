@@ -34,12 +34,19 @@ import type {
   TextBoxFragment,
 } from "../layout-engine/types";
 import {
-  getTableRowLeadingWidth,
   isFloatingImageRun,
   isFloatingTextBoxBlock,
   resolveTableCellPadding,
   tableColumnsArePinned,
 } from "../layout-engine/types";
+import {
+  buildTableCellGrid,
+  buildTableCellPlacements,
+  getSourceCellAt,
+  type TableCellGrid,
+  type TableCellPlacements,
+} from "../layout-engine/measure/tableCellGrid";
+import { resolveTableInlinePlacement } from "../layout-engine/measure/tableInlinePlacement";
 import { emuToPixels } from "../utils/units";
 import { applySanitizedImageSrc } from "../utils/sanitizeImageSrc";
 import { resolveAnchoredImagePosition, type PageGeometry } from "./anchoredImagePosition";
@@ -399,13 +406,15 @@ export function renderNestedTable(
   tableEl.style.width = `${measure.totalWidth}px`;
   tableEl.style.display = "block";
 
-  if (block.justification === "center") {
+  const placement = resolveTableInlinePlacement(block);
+  if (placement.alignment === "center") {
     tableEl.style.marginLeft = "auto";
     tableEl.style.marginRight = "auto";
-  } else if (block.justification === "right") {
+  } else if (placement.alignment === "right") {
     tableEl.style.marginLeft = "auto";
-  } else if (block.indent) {
-    tableEl.style.marginLeft = `${block.indent}px`;
+    tableEl.style.marginRight = `${placement.offset}px`;
+  } else {
+    tableEl.style.marginLeft = `${placement.offset}px`;
   }
 
   // Store metadata
@@ -427,12 +436,14 @@ export function renderNestedTable(
   }
   rowYPositions.push(yPos);
 
-  // Track spanning cells across rows
-  const spanningCells = new Map<string, SpanningCell>();
-
   // Render all rows
   const columnsPinned = tableColumnsArePinned(block);
-  const cellGrid = buildTableCellGrid(block, measure.columnWidths.length);
+  const cellGrid = buildTableCellGrid(block.rows, measure.columnWidths.length);
+  const cellPlacements = buildTableCellPlacements({
+    grid: cellGrid,
+    columnWidths: measure.columnWidths,
+    bidi: block.bidi === true,
+  });
   let y = 0;
   for (let rowIndex = 0; rowIndex < block.rows.length; rowIndex++) {
     const row = block.rows[rowIndex];
@@ -455,11 +466,11 @@ export function renderNestedTable(
       totalRows: block.rows.length,
       context,
       doc,
-      spanningCells,
       rowYPositions,
       bidi: block.bidi === true,
       columnsPinned,
       cellGrid,
+      cellPlacements,
     });
     tableEl.append(rowEl);
     y += rowMeasure.height;
@@ -560,6 +571,7 @@ type RenderTableCellOptions = {
   cell: TableCell;
   cellMeasure: TableCellMeasure;
   x: number;
+  width: number;
   rowHeight: number;
   borderFlags: {
     drawTop: boolean;
@@ -578,6 +590,7 @@ function renderTableCell({
   cell,
   cellMeasure,
   x,
+  width,
   rowHeight,
   borderFlags,
   columnsPinned,
@@ -593,7 +606,7 @@ function renderTableCell({
   cellEl.style.position = "absolute";
   cellEl.style.left = `${x}px`;
   cellEl.style.top = "0";
-  cellEl.style.width = `${cellMeasure.width}px`;
+  cellEl.style.width = `${width}px`;
   cellEl.style.height = `${rowHeight}px`;
   cellEl.style.overflow = "hidden";
   cellEl.style.boxSizing = "border-box";
@@ -708,7 +721,7 @@ function renderTableCell({
   const topLeftToBottomRight = renderCellDiagonalBorder({
     border: cell.borders?.topLeftToBottomRight,
     direction: "top-left-to-bottom-right",
-    cellWidth: cellMeasure.width,
+    cellWidth: width,
     cellHeight: rowHeight,
     doc,
   });
@@ -718,7 +731,7 @@ function renderTableCell({
   const topRightToBottomLeft = renderCellDiagonalBorder({
     border: cell.borders?.topRightToBottomLeft,
     direction: "top-right-to-bottom-left",
-    cellWidth: cellMeasure.width,
+    cellWidth: width,
     cellHeight: rowHeight,
     doc,
   });
@@ -748,54 +761,6 @@ function renderTableCell({
   return cellEl;
 }
 
-/**
- * Track cells that span multiple rows
- */
-type SpanningCell = {
-  cell: TableCell;
-  cellMeasure: TableCellMeasure;
-  columnIndex: number;
-  startRow: number;
-  rowSpan: number;
-  colSpan: number;
-  x: number;
-  totalHeight: number;
-};
-
-type TableCellGrid = Map<string, TableCell>;
-
-const tableCellGridKey = (rowIndex: number, columnIndex: number): string =>
-  `${rowIndex}:${columnIndex}`;
-
-function buildTableCellGrid(block: TableBlock, columnCount: number): TableCellGrid {
-  const grid: TableCellGrid = new Map();
-
-  for (let rowIndex = 0; rowIndex < block.rows.length; rowIndex++) {
-    const row = block.rows[rowIndex];
-    if (!row) {
-      continue;
-    }
-    let columnIndex = 0;
-    for (const cell of row.cells) {
-      while (grid.has(tableCellGridKey(rowIndex, columnIndex))) {
-        columnIndex += 1;
-      }
-      const colSpan = cell.colSpan ?? 1;
-      const rowSpan = cell.rowSpan ?? 1;
-      const rowEnd = Math.min(block.rows.length, rowIndex + rowSpan);
-      const columnEnd = Math.min(columnCount, columnIndex + colSpan);
-      for (let gridRow = rowIndex; gridRow < rowEnd; gridRow++) {
-        for (let gridColumn = columnIndex; gridColumn < columnEnd; gridColumn++) {
-          grid.set(tableCellGridKey(gridRow, gridColumn), cell);
-        }
-      }
-      columnIndex += colSpan;
-    }
-  }
-
-  return grid;
-}
-
 const hasVisibleBorder = (border: { width?: number; style?: string } | undefined): boolean =>
   border !== undefined && border.style !== "none" && border.style !== "nil";
 
@@ -811,12 +776,12 @@ type RenderTableRowOptions = {
   totalRows: number;
   context: RenderContext;
   doc: Document;
-  spanningCells?: Map<string, SpanningCell>;
   rowYPositions?: number[];
   isFirstRowInFragment?: boolean;
   bidi?: boolean;
   columnsPinned?: boolean;
-  cellGrid?: TableCellGrid;
+  cellGrid: TableCellGrid;
+  cellPlacements: TableCellPlacements;
   contentClip?: CellContentClip;
   pageContentPosition?: PageContentPosition;
 };
@@ -830,22 +795,17 @@ function renderTableRow({
   totalRows,
   context,
   doc,
-  spanningCells,
   rowYPositions,
   isFirstRowInFragment,
   bidi = false,
   columnsPinned = false,
   cellGrid,
+  cellPlacements,
   contentClip,
   pageContentPosition,
 }: RenderTableRowOptions): HTMLElement {
   const rowEl = doc.createElement("div");
   rowEl.className = TABLE_CLASS_NAMES.row;
-
-  // RTL tables (w:bidiVisual) mirror columns: logical column 0 paints on the
-  // right. Geometry-only — cell content and saved DOCX are unchanged
-  // (eigenpal/docx-editor#940).
-  const tableWidth = bidi ? columnWidths.reduce((sum, columnWidth) => sum + columnWidth, 0) : 0;
 
   // Positioning
   rowEl.style.position = "absolute";
@@ -857,32 +817,6 @@ function renderTableRow({
   // Data attributes
   rowEl.dataset["rowIndex"] = String(rowIndex);
 
-  // Build set of columns occupied by spanning cells from previous rows
-  const occupiedColumns = new Set<number>();
-  if (spanningCells) {
-    for (const [, spanCell] of spanningCells) {
-      // Check if this spanning cell covers the current row
-      if (spanCell.startRow < rowIndex && spanCell.startRow + spanCell.rowSpan > rowIndex) {
-        for (let c = 0; c < spanCell.colSpan; c++) {
-          occupiedColumns.add(spanCell.columnIndex + c);
-        }
-      }
-    }
-  }
-
-  // Render cells
-  // Track actual column index separately from cell index
-  // because cells with colSpan > 1 span multiple columns
-  const gridBefore = row.gridBefore ?? 0;
-  let x = getTableRowLeadingWidth(row, columnWidths);
-  let columnIndex = gridBefore;
-
-  // Skip columns occupied by spanning cells
-  while (occupiedColumns.has(columnIndex)) {
-    x += columnWidths[columnIndex] ?? 0;
-    columnIndex++;
-  }
-
   for (let cellIndex = 0; cellIndex < row.cells.length; cellIndex++) {
     const cell = row.cells[cellIndex];
     const cellMeasure = rowMeasure.cells[cellIndex];
@@ -891,7 +825,11 @@ function renderTableRow({
       continue;
     }
 
-    const colSpan = cell.colSpan ?? 1;
+    const placement = cellPlacements.get(cell);
+    if (!placement) {
+      continue;
+    }
+    const { sourceColumn: columnIndex, columnSpan: colSpan, left: cellLeft, width } = placement;
     const rowSpan = cell.rowSpan ?? 1;
 
     // Calculate cell height - for spanning cells, use total height of spanned rows
@@ -907,12 +845,6 @@ function renderTableRow({
       }
     }
 
-    let cellWidth = 0;
-    for (let c = 0; c < colSpan && columnIndex + c < columnWidths.length; c++) {
-      cellWidth += columnWidths[columnIndex + c] ?? 0;
-    }
-    const cellLeft = bidi ? tableWidth - x - cellWidth : x;
-
     const isFirstRow = rowIndex === 0 || isFirstRowInFragment === true;
     const isLastRow = rowIndex + rowSpan >= totalRows;
     // Outer-border sides are visual: in RTL the logical last column is the
@@ -921,9 +853,9 @@ function renderTableRow({
     const atLogicalEnd = columnIndex + colSpan >= columnWidths.length;
     const isFirstCol = bidi ? atLogicalEnd : atLogicalStart;
     const isLastCol = bidi ? atLogicalStart : atLogicalEnd;
-    const aboveCell = cellGrid?.get(tableCellGridKey(rowIndex - 1, columnIndex));
+    const aboveCell = getSourceCellAt(cellGrid, rowIndex - 1, columnIndex);
     const leftNeighborColumn = bidi ? columnIndex + colSpan : columnIndex - 1;
-    const leftCell = cellGrid?.get(tableCellGridKey(rowIndex, leftNeighborColumn));
+    const leftCell = getSourceCellAt(cellGrid, rowIndex, leftNeighborColumn);
     const drawTop = isFirstRow || !hasVisibleBorder(aboveCell?.borders?.bottom);
     const drawLeft = isFirstCol || !hasVisibleBorder(leftCell?.borders?.right);
 
@@ -931,6 +863,7 @@ function renderTableRow({
       cell,
       cellMeasure,
       x: cellLeft,
+      width,
       rowHeight: cellHeight,
       borderFlags: { drawTop, isLastRow, drawLeft, isLastCol },
       columnsPinned,
@@ -956,33 +889,6 @@ function renderTableRow({
     }
 
     rowEl.append(cellEl);
-
-    // Track this cell as spanning if it spans multiple rows
-    if (rowSpan > 1 && spanningCells) {
-      const key = `${rowIndex}-${columnIndex}`;
-      spanningCells.set(key, {
-        cell,
-        cellMeasure,
-        columnIndex,
-        startRow: rowIndex,
-        rowSpan,
-        colSpan,
-        x: cellLeft,
-        totalHeight: cellHeight,
-      });
-    }
-
-    // Advance the logical running offset by the columns this cell spans
-    x += cellWidth;
-
-    // Advance column index by colSpan
-    columnIndex += colSpan;
-
-    // Skip columns occupied by spanning cells
-    while (occupiedColumns.has(columnIndex)) {
-      x += columnWidths[columnIndex] ?? 0;
-      columnIndex++;
-    }
   }
 
   return rowEl;
@@ -1076,10 +982,13 @@ export function renderTableFragment(
   }
   rowYPositions.push(yPos); // Add final position for height calculation
 
-  // Track spanning cells across rows
-  const spanningCells = new Map<string, SpanningCell>();
   const columnsPinned = tableColumnsArePinned(block);
-  const cellGrid = buildTableCellGrid(block, measure.columnWidths.length);
+  const cellGrid = buildTableCellGrid(block.rows, measure.columnWidths.length);
+  const cellPlacements = buildTableCellPlacements({
+    grid: cellGrid,
+    columnWidths: measure.columnWidths,
+    bidi: block.bidi === true,
+  });
 
   // Render repeated header rows for continuation fragments. For a mid-content
   // row break (eigenpal #698), keep repeated headers pinned to the fragment top
@@ -1107,12 +1016,12 @@ export function renderTableFragment(
         totalRows: block.rows.length,
         context,
         doc,
-        spanningCells,
         rowYPositions,
         isFirstRowInFragment: hdrIdx === 0,
         bidi: block.bidi === true,
         columnsPinned,
         cellGrid,
+        cellPlacements,
         ...(tablePageContentPosition
           ? {
               pageContentPosition: {
@@ -1182,12 +1091,12 @@ export function renderTableFragment(
       totalRows: block.rows.length,
       context,
       doc,
-      spanningCells,
       rowYPositions,
       isFirstRowInFragment,
       bidi: block.bidi === true,
       columnsPinned,
       cellGrid,
+      cellPlacements,
       ...(contentClip ? { contentClip } : {}),
       ...(tablePageContentPosition
         ? {
