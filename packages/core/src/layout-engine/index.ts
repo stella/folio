@@ -1087,6 +1087,24 @@ function layoutTable(
     const splittableRow = rows[currentRowIndex]!; // SAFETY: currentRowIndex < rows.length
     if (canSplitRow(currentRowIndex)) {
       let consumed = 0;
+      const renderedBreakHints = tableRowHasTrackedChanges(block, currentRowIndex)
+        ? []
+        : (breakInfo.renderedBreakHints[currentRowIndex] ?? []);
+      let renderedBreakHintIndex = 0;
+      const discardPassedRenderedBreakHints = (): void => {
+        while ((renderedBreakHints[renderedBreakHintIndex]?.offset ?? Infinity) <= consumed) {
+          renderedBreakHintIndex += 1;
+        }
+      };
+      const advanceAfterNaturalFlowBreak = (previousPageNumber: number): void => {
+        discardPassedRenderedBreakHints();
+        if (
+          paginator.getCurrentState().page.number > previousPageNumber &&
+          renderedBreakHintIndex < renderedBreakHints.length
+        ) {
+          renderedBreakHintIndex += 1;
+        }
+      };
       while (consumed < splittableRow.height) {
         const sliceState = paginator.getCurrentState();
         const repeatHeaderRows = shouldRepeatHeaderRows(currentRowIndex, consumed, sliceState);
@@ -1096,13 +1114,16 @@ function layoutTable(
           headerOverhead -
           (consumed === 0 ? sliceState.trailingSpacing : 0);
         let slice = snapRowBreak(breakInfo, currentRowIndex, consumed, sliceAvail);
+        let forceRenderedPageBreak = false;
         if (slice <= 0) {
           const isFreshPage =
             sliceState.cursorY === sliceState.topMargin && sliceState.page.fragments.length === 0;
           if (!isFreshPage) {
             // Not even one line fits in the space left; continue in the next
             // column, or on a fresh page when this is the last column.
+            const previousPageNumber = sliceState.page.number;
             paginator.forceColumnBreak();
+            advanceAfterNaturalFlowBreak(previousPageNumber);
             continue;
           }
           // Fresh page and a single line still exceeds the page height: place
@@ -1110,6 +1131,18 @@ function layoutTable(
           const from = consumed;
           const next = breakInfo.breakOffsets[currentRowIndex]?.find((o) => o > from);
           slice = (next ?? splittableRow.height) - consumed;
+        }
+        discardPassedRenderedBreakHints();
+        const renderedBreakHint = renderedBreakHints[renderedBreakHintIndex];
+        if (
+          renderedBreakHint &&
+          renderedBreakHint.offset <= consumed + slice &&
+          sliceAvail - (renderedBreakHint.offset - consumed) <=
+            renderedBreakHint.lineAdvance * RENDERED_BREAK_REFLOW_TOLERANCE_LINES
+        ) {
+          slice = renderedBreakHint.offset - consumed;
+          renderedBreakHintIndex += 1;
+          forceRenderedPageBreak = true;
         }
         const sliceBottom = consumed + slice;
         const continuationSkip =
@@ -1143,7 +1176,13 @@ function layoutTable(
         sliceFragment.x = computeTableX(sliceResult.state.columnIndex);
         consumed = nextConsumed;
         if (consumed < splittableRow.height) {
-          paginator.forceColumnBreak();
+          if (forceRenderedPageBreak) {
+            paginator.forcePageBreak();
+          } else {
+            const previousPageNumber = paginator.getCurrentState().page.number;
+            paginator.forceColumnBreak();
+            advanceAfterNaturalFlowBreak(previousPageNumber);
+          }
         }
       }
       currentRowIndex += 1;

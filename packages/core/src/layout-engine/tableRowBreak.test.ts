@@ -85,6 +85,35 @@ function paraMeasure(n: number): ParagraphMeasure {
   return paraMeasureWithLineHeight(n, LINE);
 }
 
+function markMeasuredLineWithRenderedBreak(measure: TableMeasure, lineIndex: number): void {
+  const paragraph = measure.rows.at(0)?.cells.at(0)?.blocks.at(0);
+  if (paragraph?.kind !== "paragraph") {
+    throw new Error("test table must start with a measured paragraph");
+  }
+  const line = paragraph.lines.at(lineIndex);
+  if (!line) {
+    throw new Error("test paragraph must contain the marked line");
+  }
+  line.renderedPageBreakBefore = true;
+}
+
+function markInternalTableParagraphBreak(
+  block: TableBlock,
+  measure: TableMeasure,
+  lineIndex: number,
+): void {
+  const paragraph = block.rows.at(0)?.cells.at(0)?.blocks.at(0);
+  if (paragraph?.kind !== "paragraph") {
+    throw new Error("test table must start with a paragraph");
+  }
+  paragraph.runs = [
+    { kind: "text", text: "before" },
+    { kind: "renderedPageBreak" },
+    { kind: "text", text: "after" },
+  ];
+  markMeasuredLineWithRenderedBreak(measure, lineIndex);
+}
+
 /** A single-cell, single-paragraph table whose one row is `n` lines tall. */
 function tallTable(n: number): { block: TableBlock; measure: TableMeasure } {
   const height = n * LINE;
@@ -307,6 +336,83 @@ describe("buildTableRowBreakInfo / snapRowBreak", () => {
     const info = buildTableRowBreakInfo(block, measure);
     expect(info.rowTops).toEqual([0, 3 * LINE]);
     expect(info.breakOffsets[0]).toEqual([LINE, 2 * LINE, 3 * LINE]);
+  });
+
+  test("records a rendered break at the marked line top", () => {
+    const { block, measure } = tallTable(3);
+    markMeasuredLineWithRenderedBreak(measure, 1);
+
+    const info = buildTableRowBreakInfo(block, measure);
+
+    expect(info.renderedBreakHints[0]).toEqual([{ offset: LINE, lineAdvance: LINE }]);
+  });
+
+  test("shifts rendered break hints with vertical cell alignment", () => {
+    const { block, measure } = tallTable(2);
+    block.rows[0]!.cells[0]!.verticalAlign = "bottom";
+    measure.rows[0]!.height = 4 * LINE;
+    measure.totalHeight = 4 * LINE;
+    markMeasuredLineWithRenderedBreak(measure, 1);
+
+    const info = buildTableRowBreakInfo(block, measure);
+
+    expect(info.renderedBreakHints[0]).toEqual([{ offset: 3 * LINE, lineAdvance: LINE }]);
+  });
+
+  test("retains a one-cell rendered break that is safe for its sibling", () => {
+    const { block, measure } = tallTable(3);
+    markMeasuredLineWithRenderedBreak(measure, 1);
+    block.rows[0]!.cells.push({
+      id: "c1",
+      padding: { top: 0, right: 0, bottom: 0, left: 0 },
+      blocks: [
+        {
+          kind: "paragraph",
+          id: "p1",
+          runs: [{ kind: "text", text: "sibling" }],
+        },
+      ],
+    });
+    block.columnWidths = [110, 110];
+    measure.rows[0]!.cells.push({
+      blocks: [paraMeasure(3)],
+      width: 110,
+      height: 3 * LINE,
+    });
+    measure.rows[0]!.cells[0]!.width = 110;
+    measure.columnWidths = [110, 110];
+
+    const info = buildTableRowBreakInfo(block, measure);
+
+    expect(info.renderedBreakHints[0]).toEqual([{ offset: LINE, lineAdvance: LINE }]);
+  });
+
+  test("rejects a rendered break that intersects a sibling glyph range", () => {
+    const { block, measure } = tallTable(3);
+    markMeasuredLineWithRenderedBreak(measure, 1);
+    block.rows[0]!.cells.push({
+      id: "c1",
+      padding: { top: 0, right: 0, bottom: 0, left: 0 },
+      blocks: [
+        {
+          kind: "paragraph",
+          id: "p1",
+          runs: [{ kind: "text", text: "sibling" }],
+        },
+      ],
+    });
+    block.columnWidths = [110, 110];
+    measure.rows[0]!.cells.push({
+      blocks: [paraMeasureWithLineHeight(2, 30)],
+      width: 110,
+      height: 3 * LINE,
+    });
+    measure.rows[0]!.cells[0]!.width = 110;
+    measure.columnWidths = [110, 110];
+
+    const info = buildTableRowBreakInfo(block, measure);
+
+    expect(info.renderedBreakHints[0]).toEqual([]);
   });
 
   test("seats break offsets on painted line boundaries despite paragraph space-before", () => {
@@ -1259,6 +1365,132 @@ describe("oversized table row splits across pages (#570)", () => {
 
     expect(layout.pages).toHaveLength(1);
     expect(fragment).toMatchObject({ y: OPTIONS.margins.top + 20, height: 3 * LINE });
+  });
+
+  test("snaps a safe internal rendered boundary near the page edge", () => {
+    const spacer: FlowBlock = {
+      kind: "paragraph",
+      id: "spacer",
+      runs: [{ kind: "text", text: "spacer" }],
+    };
+    const spacerMeasure = paraMeasureWithLineHeight(1, 45);
+    const { block, measure } = tallTable(5);
+    markInternalTableParagraphBreak(block, measure, 2);
+
+    const layout = layoutDocument([spacer, block], [spacerMeasure, measure], OPTIONS);
+    const fragments = layout.pages
+      .flatMap((page) => page.fragments)
+      .filter((fragment): fragment is TableFragment => fragment.kind === "table");
+
+    expect(fragments.map(({ topClip, bottomClip }) => [topClip, bottomClip])).toEqual([
+      [undefined, 2 * LINE],
+      [2 * LINE, undefined],
+    ]);
+    expect(layout.pages[1]?.fragments.at(0)).toMatchObject({ kind: "table" });
+  });
+
+  test("keeps an early internal rendered boundary advisory", () => {
+    const { block, measure } = tallTable(10);
+    markInternalTableParagraphBreak(block, measure, 1);
+
+    const fragments = tableFragments(block, measure);
+
+    expect(fragments.at(0)?.bottomClip).toBe(6 * LINE);
+  });
+
+  test("ignores an internal rendered boundary when the row has tracked content", () => {
+    const spacer: FlowBlock = {
+      kind: "paragraph",
+      id: "spacer",
+      runs: [{ kind: "text", text: "spacer" }],
+    };
+    const spacerMeasure = paraMeasureWithLineHeight(1, 45);
+    const { block, measure } = tallTable(5);
+    markInternalTableParagraphBreak(block, measure, 2);
+    const paragraph = block.rows.at(0)?.cells.at(0)?.blocks.at(0);
+    const textRun = paragraph?.kind === "paragraph" ? paragraph.runs.at(0) : undefined;
+    if (textRun?.kind !== "text") {
+      throw new Error("test table must start with a text run");
+    }
+    textRun.isInsertion = true;
+
+    const layout = layoutDocument([spacer, block], [spacerMeasure, measure], OPTIONS);
+    const firstTableFragment = layout.pages[0]?.fragments.find(
+      (fragment): fragment is TableFragment => fragment.kind === "table",
+    );
+
+    expect(firstTableFragment?.bottomClip).toBe(3 * LINE);
+  });
+
+  test("consumes a cached boundary after natural reflow already opens a page", () => {
+    const spacer: FlowBlock = {
+      kind: "paragraph",
+      id: "spacer",
+      runs: [{ kind: "text", text: "spacer" }],
+    };
+    const spacerMeasure = paraMeasureWithLineHeight(1, 70);
+    const { block, measure } = tallTable(10);
+    markInternalTableParagraphBreak(block, measure, 5);
+
+    const layout = layoutDocument([spacer, block], [spacerMeasure, measure], OPTIONS);
+    const fragments = layout.pages
+      .flatMap((page) => page.fragments)
+      .filter((fragment): fragment is TableFragment => fragment.kind === "table");
+
+    expect(fragments.map(({ bottomClip }) => bottomClip)).toEqual([2 * LINE, 8 * LINE, undefined]);
+  });
+
+  test("applies ordered internal rendered boundaries without gaps or overlaps", () => {
+    const spacer: FlowBlock = {
+      kind: "paragraph",
+      id: "spacer",
+      runs: [{ kind: "text", text: "spacer" }],
+    };
+    const spacerMeasure = paraMeasureWithLineHeight(1, 20);
+    const { block, measure } = tallTable(16);
+    markInternalTableParagraphBreak(block, measure, 4);
+    markMeasuredLineWithRenderedBreak(measure, 10);
+
+    const layout = layoutDocument([spacer, block], [spacerMeasure, measure], OPTIONS);
+    const fragments = layout.pages
+      .flatMap((page) => page.fragments)
+      .filter((fragment): fragment is TableFragment => fragment.kind === "table");
+    const bands = fragments.map(({ topClip, bottomClip }) => [
+      topClip ?? 0,
+      bottomClip ?? 16 * LINE,
+    ]);
+
+    expect(bands).toEqual([
+      [0, 4 * LINE],
+      [4 * LINE, 10 * LINE],
+      [10 * LINE, 16 * LINE],
+    ]);
+  });
+
+  test("uses a new page, not the next column, for an internal rendered boundary", () => {
+    const spacer: FlowBlock = {
+      kind: "paragraph",
+      id: "spacer",
+      runs: [{ kind: "text", text: "spacer" }],
+    };
+    const spacerMeasure = paraMeasureWithLineHeight(1, 45);
+    const { block, measure } = tallTable(5);
+    markInternalTableParagraphBreak(block, measure, 2);
+
+    const layout = layoutDocument([spacer, block], [spacerMeasure, measure], {
+      ...OPTIONS,
+      columns: { count: 2, gap: 20 },
+    });
+    const firstPageTables =
+      layout.pages[0]?.fragments.filter(
+        (fragment): fragment is TableFragment => fragment.kind === "table",
+      ) ?? [];
+    const secondPageTable = layout.pages[1]?.fragments.find(
+      (fragment): fragment is TableFragment => fragment.kind === "table",
+    );
+
+    expect(firstPageTables).toHaveLength(1);
+    expect(secondPageTable?.x).toBe(OPTIONS.margins.left);
   });
 
   test("does not promote one cell's cached boundary to the whole row", () => {

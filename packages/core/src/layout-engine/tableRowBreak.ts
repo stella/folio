@@ -14,6 +14,7 @@
  */
 
 import { measureParagraph } from "./measure";
+import { measuredLineAdvance } from "./lineFlow";
 import {
   buildTableCellFloatingZones,
   getTableCellContentWidth,
@@ -34,8 +35,14 @@ type UnsafeBreakRange = {
   bottom: number;
 };
 
+type RenderedRowBreakHint = {
+  offset: number;
+  lineAdvance: number;
+};
+
 type CellBreakGeometry = {
   bottoms: number[];
+  renderedBreakHints: RenderedRowBreakHint[];
   unsafeRanges: UnsafeBreakRange[];
   suppressibleLeadingRanges: UnsafeBreakRange[];
 };
@@ -67,6 +74,10 @@ function shiftCellGeometry(geometry: CellBreakGeometry, offset: number): CellBre
   }
   return {
     bottoms: geometry.bottoms.map((bottom) => bottom + offset),
+    renderedBreakHints: geometry.renderedBreakHints.map((hint) => ({
+      offset: hint.offset + offset,
+      lineAdvance: hint.lineAdvance,
+    })),
     unsafeRanges: geometry.unsafeRanges.map((range) => ({
       top: range.top + offset,
       bottom: range.bottom + offset,
@@ -86,6 +97,7 @@ function cellBreakGeometry(
   // Mirror the painter's shared cell-flow placement so clean row breaks stay
   // aligned with both glyph boundaries and inter-paragraph whitespace.
   const bottoms: number[] = [];
+  const renderedBreakHints: RenderedRowBreakHint[] = [];
   const unsafeRanges: UnsafeBreakRange[] = [];
   const suppressibleLeadingRanges: UnsafeBreakRange[] = [];
   const cellBlocks = cell?.blocks;
@@ -124,6 +136,9 @@ function cellBreakGeometry(
       for (const line of blockMeasure.lines) {
         y += line.floatSkipBefore ?? 0;
         const top = y;
+        if (line.renderedPageBreakBefore === true) {
+          renderedBreakHints.push({ offset: top, lineAdvance: measuredLineAdvance(line) });
+        }
         y += line.lineHeight;
         unsafeRanges.push({ top, bottom: y });
         bottoms.push(y);
@@ -147,8 +162,21 @@ function cellBreakGeometry(
       }
     }
   }
-  return { bottoms, unsafeRanges, suppressibleLeadingRanges };
+  return { bottoms, renderedBreakHints, unsafeRanges, suppressibleLeadingRanges };
 }
+
+const mergeRenderedBreakHints = (hints: RenderedRowBreakHint[]): RenderedRowBreakHint[] => {
+  const merged: RenderedRowBreakHint[] = [];
+  for (const hint of hints.sort((a, b) => a.offset - b.offset)) {
+    const previous = merged.at(-1);
+    if (previous && Math.abs(previous.offset - hint.offset) <= BREAK_OFFSET_EPSILON) {
+      previous.lineAdvance = Math.max(previous.lineAdvance, hint.lineAdvance);
+      continue;
+    }
+    merged.push({ ...hint });
+  }
+  return merged;
+};
 
 const continuationSkipForCell = (
   geometry: CellBreakGeometry,
@@ -194,6 +222,8 @@ export type TableRowBreakInfo = {
    * final boundary.
    */
   breakOffsets: number[][];
+  /** Safe cached page boundaries within each row, relative to the row top. */
+  renderedBreakHints: RenderedRowBreakHint[][];
   /** Suppressible leading paragraph whitespace after each matching break offset. */
   continuationSkips: number[][];
 };
@@ -213,6 +243,7 @@ export function buildTableRowBreakInfo(
   rowTops.push(acc);
 
   const breakOffsets: number[][] = [];
+  const renderedBreakHints: RenderedRowBreakHint[][] = [];
   const continuationSkips: number[][] = [];
   for (let r = 0; r < rowCount; r++) {
     const rowHeight = measure.rows[r]?.height ?? 0;
@@ -247,12 +278,26 @@ export function buildTableRowBreakInfo(
     );
     const sortedOffsets = safeOffsets.sort((a, b) => a - b);
     breakOffsets.push(sortedOffsets);
+    renderedBreakHints.push(
+      mergeRenderedBreakHints(
+        cellGeometries
+          .flatMap((geometry) => geometry.renderedBreakHints)
+          .filter(
+            ({ offset }) =>
+              offset > BREAK_OFFSET_EPSILON &&
+              offset < rowHeight - BREAK_OFFSET_EPSILON &&
+              cellGeometries.every((geometry) =>
+                geometry.unsafeRanges.every((range) => !isInsideRange(offset, range)),
+              ),
+          ),
+      ),
+    );
     continuationSkips.push(
       sortedOffsets.map((offset) => continuationSkipAfter(cellGeometries, offset)),
     );
   }
 
-  return { rowTops, breakOffsets, continuationSkips };
+  return { rowTops, breakOffsets, renderedBreakHints, continuationSkips };
 }
 
 /** Leading empty-paragraph whitespace to consume when a row resumes after `offset`. */
