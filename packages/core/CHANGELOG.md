@@ -1,5 +1,11 @@
 # @stll/folio-core
 
+## 0.25.4
+
+### Patch Changes
+
+- [#621](https://github.com/stella/folio/pull/621) [`d990d30`](https://github.com/stella/folio/commit/d990d30399f35518ef74bde05754f0168e8207c5) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep paragraph measurement caching and RTL list geometry deterministic.
+
 ## 0.25.3
 
 ### Patch Changes
