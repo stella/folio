@@ -53,8 +53,7 @@ import { parseNumbering } from "./numberingParser";
 import { parseRelationships, RELATIONSHIP_TYPES, resolveRelativePath } from "./relsParser";
 import {
   appendNumberingDefs,
-  buildParagraphOffsetIndex,
-  buildPatchedNoteXml,
+  buildPatchedNotePartXml,
   buildPatchedNumberingXml,
   collectAddedNumberingDefs,
   collectChangedNumberingDefs,
@@ -761,6 +760,8 @@ export type RepackOptions = {
   updateModifiedDate?: boolean;
   /** Custom modifier name for lastModifiedBy */
   modifiedBy?: string;
+  /** Changed note paragraphs that must be serialized even without source paraIds. */
+  changedNoteParaIds?: ReadonlySet<string>;
 };
 
 const generateDocxZip = (zip: JSZip, compressionLevel: number): Promise<ArrayBuffer> =>
@@ -822,6 +823,7 @@ type FinishRepackOptions = {
   compressionLevel: number;
   updateModifiedDate: boolean;
   modifiedBy?: string;
+  changedNoteParaIds?: ReadonlySet<string>;
 };
 
 const finishRepack = async ({
@@ -833,6 +835,7 @@ const finishRepack = async ({
   compressionLevel,
   updateModifiedDate,
   modifiedBy,
+  changedNoteParaIds,
 }: FinishRepackOptions): Promise<ArrayBuffer> => {
   await materializeNewHeaderFooterParts(document, outputZip, compressionLevel);
 
@@ -857,7 +860,7 @@ const finishRepack = async ({
 
   serializeHeadersFootersToZip(document, outputZip, compressionLevel);
 
-  await serializeNotesToZip(document, originalZip, outputZip, compressionLevel);
+  await serializeNotesToZip(document, originalZip, outputZip, compressionLevel, changedNoteParaIds);
 
   await serializeNumberingIntoZip(document, originalZip, outputZip, compressionLevel);
   await serializeAddedStylesIntoZip(document, originalZip, outputZip, compressionLevel);
@@ -896,7 +899,12 @@ export async function repackDocx(doc: Document, options: RepackOptions = {}): Pr
     );
   }
 
-  const { compressionLevel = 6, updateModifiedDate = true, modifiedBy } = options;
+  const {
+    compressionLevel = 6,
+    updateModifiedDate = true,
+    modifiedBy,
+    changedNoteParaIds,
+  } = options;
   const exportDocument = withoutOrphanCommentRanges(doc);
 
   // Load the original ZIP
@@ -918,6 +926,7 @@ export async function repackDocx(doc: Document, options: RepackOptions = {}): Pr
     compressionLevel,
     updateModifiedDate,
     ...(modifiedBy !== undefined ? { modifiedBy } : {}),
+    ...(changedNoteParaIds !== undefined ? { changedNoteParaIds } : {}),
   });
 }
 
@@ -1834,6 +1843,7 @@ async function serializeNotesToZip(
   originalZip: JSZip,
   newZip: JSZip,
   compressionLevel: number,
+  changedNoteParaIds?: ReadonlySet<string>,
 ): Promise<void> {
   const footnotes = doc.package.footnotes ?? [];
   if (footnotes.length > 0) {
@@ -1841,7 +1851,10 @@ async function serializeNotesToZip(
       await patchNotePartIntoZip(
         "word/footnotes.xml",
         serializeFootnotes(footnotes),
+        serializeNewFootnotesPart(footnotes),
         (xml) => serializeFootnotes(parseFootnotes(xml).getNormalFootnotes()),
+        "footnote",
+        changedNoteParaIds,
         originalZip,
         newZip,
         compressionLevel,
@@ -1863,7 +1876,10 @@ async function serializeNotesToZip(
       await patchNotePartIntoZip(
         "word/endnotes.xml",
         serializeEndnotes(endnotes),
+        serializeNewEndnotesPart(endnotes),
         (xml) => serializeEndnotes(parseEndnotes(xml).getNormalEndnotes()),
+        "endnote",
+        changedNoteParaIds,
         originalZip,
         newZip,
         compressionLevel,
@@ -2073,7 +2089,10 @@ async function serializeAddedStylesIntoZip(
 async function patchNotePartIntoZip(
   conventionalLowerPath: string,
   currentXml: string,
+  replacementXml: string,
   baselineFrom: (originalXml: string) => string,
+  elementName: "footnote" | "endnote",
+  changedNoteParaIds: ReadonlySet<string> | undefined,
   originalZip: JSZip,
   newZip: JSZip,
   compressionLevel: number,
@@ -2083,54 +2102,37 @@ async function patchNotePartIntoZip(
     return;
   }
   const originalXml = await file.async("text");
-  const changedIds = collectChangedNoteParaIds(baselineFrom(originalXml), currentXml);
-  if (changedIds.size === 0) {
+  const baselineXml = baselineFrom(originalXml);
+  const patched = buildPatchedNotePartXml({
+    originalXml,
+    baselineXml,
+    serializedXml: currentXml,
+    replacementXml,
+    elementName,
+    ...(changedNoteParaIds !== undefined ? { changedParaIds: changedNoteParaIds } : {}),
+  });
+  const currentParaIds = collectParaIds(currentXml);
+  const baselineParaIds = collectParaIds(baselineXml);
+  const hasDirtyParagraph =
+    changedNoteParaIds !== undefined &&
+    [...changedNoteParaIds].some(
+      (paraId) => currentParaIds.has(paraId) || baselineParaIds.has(paraId),
+    );
+  if (patched === null || (hasDirtyParagraph && patched === originalXml)) {
+    if (hasDirtyParagraph) {
+      throw new DocxPackageFidelityError(
+        `Cannot serialize changed ${elementName} paragraphs into ${file.name}`,
+      );
+    }
     return;
   }
-  // Splice the edited paragraphs into the ORIGINAL bytes (not the baseline), so
-  // unedited notes keep their verbatim markup.
-  const patched = buildPatchedNoteXml(originalXml, currentXml, changedIds);
-  if (patched === null) {
+  if (patched === originalXml) {
     return;
   }
   newZip.file(file.name, patched, {
     compression: "DEFLATE",
     compressionOptions: { level: compressionLevel },
   });
-}
-
-/**
- * The note paragraphs whose current serialization differs from the baseline
- * (re-parsed original) serialization — i.e. the ones actually edited. A
- * paragraph is only considered when its `paraId` resolves uniquely in both,
- * so it can be spliced safely.
- *
- * Builds one {@link buildParagraphOffsetIndex} per side (a single linear scan
- * each) instead of calling `extractParagraphXml` per candidate id, which
- * re-scanned the whole XML per id — O(note count * XML size) for a document
- * with many footnotes/endnotes. The index turns each lookup below into O(1).
- */
-function collectChangedNoteParaIds(baselineXml: string, currentXml: string): Set<string> {
-  const changed = new Set<string>();
-  const baselineIds = collectParaIds(baselineXml);
-  const baselineOffsets = buildParagraphOffsetIndex(baselineXml);
-  const currentOffsets = buildParagraphOffsetIndex(currentXml);
-  for (const [id, count] of collectParaIds(currentXml)) {
-    if (count !== 1 || baselineIds.get(id) !== 1) {
-      continue;
-    }
-    const beforeRange = baselineOffsets.get(id);
-    const afterRange = currentOffsets.get(id);
-    if (!beforeRange || !afterRange) {
-      continue;
-    }
-    const before = baselineXml.slice(beforeRange.start, beforeRange.end);
-    const after = currentXml.slice(afterRange.start, afterRange.end);
-    if (before !== after) {
-      changed.add(id);
-    }
-  }
-  return changed;
 }
 
 /** `word/Footnotes.xml` -> `word/_rels/Footnotes.xml.rels` (casing preserved). */

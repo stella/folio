@@ -1640,6 +1640,61 @@ describe("headless docx review round-trip", () => {
     );
   });
 
+  test.each([
+    {
+      story: { type: "header", relationshipId: HEADER_RELATIONSHIP_ID } as const,
+      part: "word/header1.xml",
+      originalText: "Header text",
+      paraId: "A1000001",
+    },
+    {
+      story: { type: "footer", relationshipId: FOOTER_RELATIONSHIP_ID } as const,
+      part: "word/footer1.xml",
+      originalText: "Footer text",
+      paraId: "A1000002",
+    },
+  ])(
+    "persists insertion, deletion, and move resolution in a paraId-less $story.type",
+    async ({ story, part, originalText, paraId }) => {
+      const zip = await JSZip.loadAsync(await makeHeaderFooterBaseline());
+      const file = zip.file(part);
+      if (!file) {
+        throw new Error(`fixture missing ${part}`);
+      }
+      const reviewedRuns =
+        '<w:r><w:t xml:space="preserve">Kept </w:t></w:r>' +
+        '<w:ins w:id="41" w:author="Reviewer"><w:r><w:t xml:space="preserve">INSERTED </w:t></w:r></w:ins>' +
+        '<w:del w:id="42" w:author="Reviewer"><w:r><w:delText xml:space="preserve">DELETED </w:delText></w:r></w:del>' +
+        '<w:moveFrom w:id="43" w:author="Reviewer"><w:r><w:t xml:space="preserve">MOVED FROM </w:t></w:r></w:moveFrom>' +
+        '<w:moveTo w:id="44" w:author="Reviewer"><w:r><w:t>MOVED TO</w:t></w:r></w:moveTo>';
+      zip.file(
+        part,
+        (await file.async("text"))
+          .replace(` w14:paraId="${paraId}"`, "")
+          .replace(`<w:r><w:t>${originalText}</w:t></w:r>`, reviewedRuns),
+      );
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await zip.generateAsync({ type: "arraybuffer" }),
+      );
+
+      expect(reviewer.readReviewedStory({ story, view: "final" })?.text).toEndWith(
+        "Kept INSERTED MOVED TO",
+      );
+      expect(reviewer.resolveReviewedStory({ story, view: "final" })).toBe(true);
+
+      const saved = await reviewer.toBuffer();
+      const xml = await partText(saved, part);
+      expect(xml).toContain("Kept INSERTED MOVED TO");
+      expect(xml).not.toContain("DELETED");
+      expect(xml).not.toContain("MOVED FROM");
+      expect(xml).not.toMatch(/<w:(?:ins|del|moveFrom|moveTo)\b/u);
+
+      const reopened = await FolioDocxReviewer.fromBuffer(saved);
+      expect(reopened.readReviewedStory({ story, view: "current-markup" })?.changes).toEqual([]);
+      expect(reopened.readStory(story)?.text).toBe("Kept INSERTED MOVED TO");
+    },
+  );
+
   test("rejects a missing editable story before applying operations", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(await makeHeaderFooterBaseline());
     const story = { type: "header", relationshipId: "missing" } as const;
@@ -2519,6 +2574,33 @@ describe("headless docx review annotated read surface", () => {
     expect(reviewer.getContentAsText()).toContain("Intro paragraph.");
   });
 
+  test("persists a resolved final main story and reopens with no revisions", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(await makeParaIdBaseline(readFixture()), {
+      author: "Reviewer",
+    });
+    const target = findBlock(reviewer.snapshot().blocks, "Heading");
+    reviewer.applyOperations([
+      {
+        id: "final-main-replace",
+        type: "replaceInBlock",
+        blockId: target.id,
+        find: "Heading",
+        replace: "Intro",
+      },
+    ]);
+
+    expect(reviewer.resolveReviewedStory({ view: "final" })).toBe(true);
+    const saved = await reviewer.toBuffer();
+    const documentXml = await partText(saved, "word/document.xml");
+    expect(documentXml).toContain("Intro paragraph.");
+    expect(documentXml).not.toContain("Heading paragraph.");
+    expect(documentXml).not.toMatch(/<w:(?:ins|del|moveFrom|moveTo)\b/u);
+
+    const reopened = await FolioDocxReviewer.fromBuffer(saved);
+    expect(reopened.readReviewedStory({ view: "current-markup" })?.changes).toEqual([]);
+    expect(reopened.getContentAsText()).toContain("Intro paragraph.");
+  });
+
   test("rejects an unsupported reviewed view at the public boundary", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(await makeParaIdBaseline(readFixture()));
     expect(() =>
@@ -2621,13 +2703,13 @@ const readRichNotesFixture = async (): Promise<ArrayBuffer> => {
           <w:r><w:fldChar w:fldCharType="end"/></w:r>
           <w:sdt><w:sdtPr/><w:sdtContent><w:r><w:t>SDT.</w:t></w:r></w:sdtContent></w:sdt>
         </w:p>
-        <w:tbl><w:tr><w:tc><w:p><w:r><w:t>TABLE CELL</w:t></w:r></w:p></w:tc></w:tr></w:tbl>
+        <w:tbl><w:tr><w:tc><w:p w:rsidR="F00D0002"><w:r><w:t>TABLE CELL</w:t></w:r></w:p></w:tc></w:tr></w:tbl>
       </w:footnote>`,
     ),
   );
   zip.file(
     "word/endnotes.xml",
-    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:endnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:endnote w:id="3"><w:p w14:paraId="B2000002"><w:r><w:t xml:space="preserve">Endnote </w:t></w:r><w:ins w:id="5" w:author="Reviewer"><w:r><w:t>INSERTED</w:t></w:r></w:ins><w:del w:id="6" w:author="Reviewer"><w:r><w:delText>DELETED</w:delText></w:r></w:del></w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>ENDNOTE CELL</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:endnote></w:endnotes>',
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:endnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:endnote w:id="3"><w:p w14:paraId="B2000002"><w:r><w:t xml:space="preserve">Endnote </w:t></w:r><w:ins w:id="5" w:author="Reviewer"><w:r><w:t>INSERTED</w:t></w:r></w:ins><w:del w:id="6" w:author="Reviewer"><w:r><w:delText>DELETED</w:delText></w:r></w:del><w:moveFrom w:id="7" w:author="Reviewer"><w:r><w:t xml:space="preserve"> MOVED FROM </w:t></w:r></w:moveFrom><w:moveTo w:id="8" w:author="Reviewer"><w:r><w:t xml:space="preserve"> MOVED TO </w:t></w:r></w:moveTo></w:p><w:tbl><w:tr><w:tc><w:p w:rsidR="E00D0003"><w:r><w:t>ENDNOTE CELL</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:endnote></w:endnotes>',
   );
   return zip.generateAsync({ type: "arraybuffer" });
 };
@@ -2641,9 +2723,130 @@ describe("headless docx review notes read surface", () => {
 
     expect(footnote?.text).toBe("See INSERTED MOVED TO LINK SIMPLE COMPLEX SDT. TABLE CELL");
     expect(reviewer.readStory({ type: "endnote", noteId: 3 })?.text).toBe(
-      "Endnote INSERTED ENDNOTE CELL",
+      "Endnote INSERTED MOVED TO ENDNOTE CELL",
     );
   });
+
+  test.each([
+    {
+      story: { type: "footnote", noteId: 2 } as const,
+      part: "word/footnotes.xml",
+      removedParaId: "B2000001",
+      idProfile: "without paragraph ids",
+      expectedText: "See INSERTED MOVED TO LINK SDT.TABLE CELL",
+      preservedParagraph: '<w:p w:rsidR="F00D0002"><w:r><w:t>TABLE CELL</w:t></w:r></w:p>',
+    },
+    {
+      story: { type: "endnote", noteId: 3 } as const,
+      part: "word/endnotes.xml",
+      removedParaId: "B2000002",
+      idProfile: "without paragraph ids",
+      expectedText: "Endnote INSERTED MOVED TO ENDNOTE CELL",
+      preservedParagraph: '<w:p w:rsidR="E00D0003"><w:r><w:t>ENDNOTE CELL</w:t></w:r></w:p>',
+    },
+    {
+      story: { type: "footnote", noteId: 2 } as const,
+      part: "word/footnotes.xml",
+      removedParaId: null,
+      idProfile: "with paragraph ids",
+      expectedText: "See INSERTED MOVED TO LINK SDT.TABLE CELL",
+      preservedParagraph: '<w:p w:rsidR="F00D0002"><w:r><w:t>TABLE CELL</w:t></w:r></w:p>',
+    },
+    {
+      story: { type: "endnote", noteId: 3 } as const,
+      part: "word/endnotes.xml",
+      removedParaId: null,
+      idProfile: "with paragraph ids",
+      expectedText: "Endnote INSERTED MOVED TO ENDNOTE CELL",
+      preservedParagraph: '<w:p w:rsidR="E00D0003"><w:r><w:t>ENDNOTE CELL</w:t></w:r></w:p>',
+    },
+  ])(
+    "persists a resolved final $story.type $idProfile",
+    async ({ story, part, removedParaId, expectedText, preservedParagraph }) => {
+      const zip = await JSZip.loadAsync(await readRichNotesFixture());
+      const notesFile = zip.file(part);
+      if (!notesFile) {
+        throw new Error(`fixture missing ${part}`);
+      }
+      const notesXml = await notesFile.async("text");
+      zip.file(
+        part,
+        removedParaId === null ? notesXml : notesXml.replace(` w14:paraId="${removedParaId}"`, ""),
+      );
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await zip.generateAsync({ type: "arraybuffer" }),
+      );
+
+      expect(reviewer.resolveReviewedStory({ story, view: "final" })).toBe(true);
+      expect(reviewer.readReviewedStory({ story, view: "current-markup" })?.changes).toEqual([]);
+
+      const saved = await reviewer.toBuffer();
+      const savedNotesXml = await partText(saved, part);
+      expect(savedNotesXml).toContain("INSERTED");
+      expect(savedNotesXml).not.toContain("DELETED");
+      expect(savedNotesXml).not.toContain("MOVED FROM");
+      expect(savedNotesXml).not.toContain("<w:ins ");
+      expect(savedNotesXml).not.toContain("<w:del ");
+      expect(savedNotesXml).not.toContain("<w:moveFrom ");
+      expect(savedNotesXml).not.toContain("<w:moveTo ");
+      expect(savedNotesXml).toContain(preservedParagraph);
+
+      const reopened = await FolioDocxReviewer.fromBuffer(saved);
+      expect(reopened.readReviewedStory({ story, view: "current-markup" })?.changes).toEqual([]);
+      expect(reopened.readStory(story)?.text).toBe(expectedText);
+    },
+  );
+
+  test.each([
+    {
+      story: { type: "footnote", noteId: 2 } as const,
+      part: "word/footnotes.xml",
+      element: "footnote",
+      article: "a",
+    },
+    {
+      story: { type: "endnote", noteId: 3 } as const,
+      part: "word/endnotes.xml",
+      element: "endnote",
+      article: "an",
+    },
+  ])(
+    "persists a resolved paragraph-break deletion in $article $story.type",
+    async ({ story, part, element }) => {
+      const zip = await JSZip.loadAsync(await readNotesFixture());
+      const notesFile = zip.file(part);
+      if (!notesFile) {
+        throw new Error(`fixture missing ${part}`);
+      }
+      const notesXml = await notesFile.async("text");
+      zip.file(
+        part,
+        notesXml.replace(
+          new RegExp(`<w:${element} w:id="${story.noteId}">.*?</w:${element}>`, "u"),
+          `<w:${element} w:id="${story.noteId}"><w:p><w:pPr><w:rPr><w:del w:id="50" w:author="Reviewer"/></w:rPr></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t>First</w:t></w:r></w:p><w:p><w:r><w:rPr><w:i/></w:rPr><w:t>Second</w:t></w:r></w:p></w:${element}>`,
+        ),
+      );
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await zip.generateAsync({ type: "arraybuffer" }),
+      );
+
+      expect(reviewer.resolveReviewedStory({ story, view: "final" })).toBe(true);
+      const saved = await reviewer.toBuffer();
+      const reopened = await FolioDocxReviewer.fromBuffer(saved);
+      const reviewed = reopened.readReviewedStory({ story, view: "current-markup" });
+      expect(reviewed?.changes).toEqual([]);
+      expect(reopened.readStory(story)?.text).toBe("FirstSecond");
+      expect(reviewed?.snapshot.blocks).toEqual([
+        expect.objectContaining({
+          text: "FirstSecond",
+          previewRuns: [
+            expect.objectContaining({ text: "First", bold: true }),
+            expect.objectContaining({ text: "Second", italic: true }),
+          ],
+        }),
+      ]);
+    },
+  );
 
   test("edits a footnote through story-scoped document operations", async () => {
     const baseline = await readNotesFixture();

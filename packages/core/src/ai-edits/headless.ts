@@ -272,6 +272,16 @@ export class FolioDocumentStoryNotFoundError extends TaggedError(
   story: FolioEditableDocumentStoryHandle;
 }> {}
 
+class FolioResolvedStorySerializationError extends TaggedError(
+  "FolioResolvedStorySerializationError",
+)<{
+  message: string;
+  story: FolioEditableDocumentStoryHandle;
+  expectedText: string;
+  actualText: string | null;
+  remainingChangeCount: number | null;
+}> {}
+
 export type FolioApplyDocumentOperationsToStoryOptions = FolioApplyDocumentOperationsOptions & {
   story: FolioEditableDocumentStoryHandle;
   batch: FolioDocumentOperationBatch;
@@ -295,6 +305,12 @@ type FolioSecondaryStoryState = {
   state: EditorState;
 };
 
+type FolioResolvedStoryExpectation = {
+  story: FolioEditableDocumentStoryHandle;
+  text: string;
+  blocks: FolioAIBlock[];
+};
+
 type ApplyDocumentOperationsInternalOptions = {
   story: FolioEditableDocumentStoryHandle;
   batch: FolioDocumentOperationBatch;
@@ -313,6 +329,9 @@ const secondaryStoryKey = (story: FolioSecondaryStoryHandle): string =>
   story.type === "header" || story.type === "footer"
     ? headerFooterStoryKey(story)
     : noteStoryKey(story);
+
+const editableStoryKey = (story: FolioEditableDocumentStoryHandle): string =>
+  story.type === "main" ? "main" : secondaryStoryKey(story);
 
 export const isFolioReviewedView = (value: unknown): value is FolioReviewedView =>
   FOLIO_REVIEWED_VIEWS.some((view) => view === value);
@@ -473,6 +492,7 @@ export class FolioDocxReviewer {
   private readonly originalBuffer: ArrayBuffer;
   private state: EditorState;
   private readonly secondaryStoryStates = new Map<string, FolioSecondaryStoryState>();
+  private readonly resolvedStoryExpectations = new Map<string, FolioResolvedStoryExpectation>();
   private readonly createdComments: Comment[] = [];
   private readonly documentOperationUndoEntries: FolioDocumentOperationUndoEntry[] = [];
   /**
@@ -605,7 +625,13 @@ export class FolioDocxReviewer {
     if (!sourceState) {
       return false;
     }
-    this.setEditableStoryState(story, resolveReviewedState(sourceState, view));
+    const resolvedState = resolveReviewedState(sourceState, view);
+    this.setEditableStoryState(story, resolvedState);
+    this.resolvedStoryExpectations.set(editableStoryKey(story), {
+      story,
+      text: formatStoryStateForLLM(resolvedState, false),
+      blocks: createFolioAIEditSnapshot(resolvedState.doc).blocks,
+    });
     return true;
   }
 
@@ -1073,9 +1099,56 @@ export class FolioDocxReviewer {
     const document = this.toDocument();
     const selective = await this.trySelectiveSave(document);
     if (selective) {
+      await this.assertResolvedStoriesSerialized(selective);
       return selective;
     }
-    return repackDocx({ ...document, originalBuffer: this.originalBuffer });
+    const buffer = await repackDocx(
+      { ...document, originalBuffer: this.originalBuffer },
+      { changedNoteParaIds: this.getChangedNoteParaIds() },
+    );
+    await this.assertResolvedStoriesSerialized(buffer);
+    return buffer;
+  }
+
+  private async assertResolvedStoriesSerialized(buffer: ArrayBuffer): Promise<void> {
+    if (this.resolvedStoryExpectations.size === 0) {
+      return;
+    }
+    const reopened = await FolioDocxReviewer.fromBuffer(buffer);
+    for (const { story, text, blocks } of this.resolvedStoryExpectations.values()) {
+      const serialized = reopened.readReviewedStory({ story, view: "current-markup" });
+      const serializedState = reopened.getEditableStoryState(story);
+      if (
+        serialized &&
+        serializedState &&
+        serialized.changes.length === 0 &&
+        serialized.text === text &&
+        JSON.stringify(createFolioAIEditSnapshot(serializedState.doc).blocks) ===
+          JSON.stringify(blocks)
+      ) {
+        continue;
+      }
+      throw new FolioResolvedStorySerializationError({
+        message: "Resolved document story did not persist to the serialized DOCX.",
+        story,
+        expectedText: text,
+        actualText: serialized?.text ?? null,
+        remainingChangeCount: serialized?.changes.length ?? null,
+      });
+    }
+  }
+
+  private getChangedNoteParaIds(): Set<string> {
+    const changed = new Set<string>();
+    for (const entry of this.secondaryStoryStates.values()) {
+      if (entry.handle.type !== "footnote" && entry.handle.type !== "endnote") {
+        continue;
+      }
+      for (const paraId of getChangedParagraphIds(entry.state)) {
+        changed.add(paraId);
+      }
+    }
+    return changed;
   }
 
   /**
@@ -1160,6 +1233,7 @@ export class FolioDocxReviewer {
   }
 
   private setEditableStoryState(story: FolioEditableDocumentStoryHandle, state: EditorState): void {
+    this.resolvedStoryExpectations.delete(editableStoryKey(story));
     if (story.type === "main") {
       this.state = state;
       return;
@@ -1302,6 +1376,7 @@ export class FolioDocxReviewer {
    * resulting state for {@link toBuffer}.
    */
   private runCommand(command: Command): boolean {
+    this.resolvedStoryExpectations.delete("main");
     const view = {
       state: this.state,
       dispatch: (transaction: Transaction) => {

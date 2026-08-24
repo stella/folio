@@ -518,6 +518,199 @@ function extractElementByIdAttr(
   return offsets ? xml.slice(offsets.start, offsets.end) : null;
 }
 
+type NoteElementName = "footnote" | "endnote";
+
+const noteElementSyntax = {
+  footnote: {
+    openLiteral: "<w:footnote",
+    closeTag: "</w:footnote>",
+    idAttr: "w:id",
+  },
+  endnote: {
+    openLiteral: "<w:endnote",
+    closeTag: "</w:endnote>",
+    idAttr: "w:id",
+  },
+} as const satisfies Record<
+  NoteElementName,
+  { openLiteral: string; closeTag: string; idAttr: string }
+>;
+
+const paragraphRanges = (xml: string): ParagraphOffsets[] => {
+  const ranges: ParagraphOffsets[] = [];
+  let pos = 0;
+  while (pos < xml.length) {
+    const start = xml.indexOf("<w:p", pos);
+    if (start === -1) {
+      break;
+    }
+    if (!isXmlNameBoundary(xml[start + "<w:p".length])) {
+      pos = start + 1;
+      continue;
+    }
+    const range = scanElementRange(xml, start, "<w:p", "</w:p>");
+    if (!range) {
+      break;
+    }
+    ranges.push(range);
+    pos = range.end;
+  }
+  return ranges;
+};
+
+const collectChangedParagraphIds = (baselineXml: string, currentXml: string): Set<string> => {
+  const changed = new Set<string>();
+  const baselineIds = collectParaIds(baselineXml);
+  const baselineOffsets = buildParagraphOffsetIndex(baselineXml);
+  const currentOffsets = buildParagraphOffsetIndex(currentXml);
+  for (const [id, count] of collectParaIds(currentXml)) {
+    if (count !== 1 || baselineIds.get(id) !== 1) {
+      continue;
+    }
+    const before = baselineOffsets.get(id);
+    const after = currentOffsets.get(id);
+    if (
+      before &&
+      after &&
+      baselineXml.slice(before.start, before.end) !== currentXml.slice(after.start, after.end)
+    ) {
+      changed.add(id);
+    }
+  }
+  return changed;
+};
+
+const replaceRanges = (
+  xml: string,
+  replacements: readonly { start: number; end: number; newXml: string }[],
+): string => {
+  let result = xml;
+  for (const { start, end, newXml } of [...replacements].toSorted((a, b) => b.start - a.start)) {
+    result = result.slice(0, start) + newXml + result.slice(end);
+  }
+  return result;
+};
+
+type BuildPatchedNotePartXmlOptions = {
+  originalXml: string;
+  baselineXml: string;
+  serializedXml: string;
+  replacementXml: string;
+  elementName: NoteElementName;
+  changedParaIds?: ReadonlySet<string>;
+};
+
+/**
+ * Patch an existing note part from its model serialization.
+ *
+ * Dirty paragraph ids locate their owning note in the model serialization;
+ * `(note w:id, paragraph ordinal)` then locates the corresponding source XML
+ * even when the producer omitted paragraph ids. Equal-shape edits replace only
+ * dirty paragraphs. A tracked paragraph-break resolution can change that
+ * shape, so it replaces the one affected note. Separator notes, unrelated
+ * notes, and unaffected equal-shape paragraphs remain byte-exact.
+ * `replacementXml` also supplies synthesized automatic note-reference marks,
+ * which the parsed model intentionally omits.
+ */
+export function buildPatchedNotePartXml({
+  originalXml,
+  baselineXml,
+  serializedXml,
+  replacementXml,
+  elementName,
+  changedParaIds,
+}: BuildPatchedNotePartXmlOptions): string | null {
+  if (!changedParaIds) {
+    return buildPatchedNoteXml(
+      originalXml,
+      serializedXml,
+      collectChangedParagraphIds(baselineXml, serializedXml),
+    );
+  }
+
+  const { openLiteral, closeTag, idAttr } = noteElementSyntax[elementName];
+  const currentIds = collectElementIds(serializedXml, openLiteral, idAttr);
+  const ordinalReplacements: { start: number; end: number; newXml: string }[] = [];
+  const serializedParaIds = collectParaIds(serializedXml);
+  const baselineParaIds = collectParaIds(baselineXml);
+  const unroutedChangedParaIds = new Set(
+    [...changedParaIds].filter(
+      (paraId) => serializedParaIds.has(paraId) || baselineParaIds.has(paraId),
+    ),
+  );
+
+  for (const [id, count] of currentIds) {
+    if (count !== 1) {
+      return null;
+    }
+    const currentNote = extractElementByIdAttr(serializedXml, openLiteral, closeTag, idAttr, id);
+    const originalOffsets = findElementByIdAttr(originalXml, openLiteral, closeTag, idAttr, id);
+    const replacementNote = extractElementByIdAttr(
+      replacementXml,
+      openLiteral,
+      closeTag,
+      idAttr,
+      id,
+    );
+    if (!currentNote || !originalOffsets || !replacementNote) {
+      return null;
+    }
+    const originalNote = originalXml.slice(originalOffsets.start, originalOffsets.end);
+    const currentParagraphs = paragraphRanges(currentNote);
+    const originalParagraphs = paragraphRanges(originalNote);
+    const replacementParagraphs = paragraphRanges(replacementNote);
+    const noteChangedParaIds = [...collectParaIds(currentNote).keys()].filter((paraId) =>
+      unroutedChangedParaIds.has(paraId),
+    );
+    if (noteChangedParaIds.length === 0) {
+      continue;
+    }
+    if (
+      currentParagraphs.length !== originalParagraphs.length ||
+      currentParagraphs.length !== replacementParagraphs.length
+    ) {
+      for (const paraId of noteChangedParaIds) {
+        unroutedChangedParaIds.delete(paraId);
+      }
+      ordinalReplacements.push({
+        start: originalOffsets.start,
+        end: originalOffsets.end,
+        newXml: replacementNote,
+      });
+      continue;
+    }
+
+    for (let index = 0; index < currentParagraphs.length; index++) {
+      const currentRange = currentParagraphs[index];
+      const originalRange = originalParagraphs[index];
+      const replacementRange = replacementParagraphs[index];
+      if (!currentRange || !originalRange || !replacementRange) {
+        return null;
+      }
+      const currentParagraph = currentNote.slice(currentRange.start, currentRange.end);
+      const routedIds = [...collectParaIds(currentParagraph).keys()].filter((paraId) =>
+        unroutedChangedParaIds.has(paraId),
+      );
+      if (routedIds.length === 0) {
+        continue;
+      }
+      for (const paraId of routedIds) {
+        unroutedChangedParaIds.delete(paraId);
+      }
+      ordinalReplacements.push({
+        start: originalOffsets.start + originalRange.start,
+        end: originalOffsets.start + originalRange.end,
+        newXml: replacementNote.slice(replacementRange.start, replacementRange.end),
+      });
+    }
+  }
+
+  if (unroutedChangedParaIds.size > 0) {
+    return null;
+  }
+  return replaceRanges(originalXml, ordinalReplacements);
+}
+
 /**
  * The full range of the first `<openLiteral …>…</closeTag>` element, or null.
  * Used to locate an unkeyed sub-element (a level's `mc:AlternateContent`).
