@@ -14,7 +14,7 @@ const numberingXml = `<w:numbering xmlns:w="http://schemas.openxmlformats.org/wo
       <w:rPr>
         <w:rFonts w:ascii="Arial" w:cs="Traditional Arabic"/>
         <w:b/><w:bCs w:val="0"/><w:i w:val="0"/><w:iCs/>
-        <w:sz w:val="20"/><w:szCs w:val="32"/><w:cs w:val="0"/>
+        <w:sz w:val="20"/><w:szCs w:val="32"/><w:rtl w:val="0"/><w:cs w:val="0"/>
       </w:rPr>
     </w:lvl>
   </w:abstractNum>
@@ -64,6 +64,7 @@ describe("complex-script list-marker pipeline", () => {
       italicCs: true,
       fontSize: 20,
       fontSizeCs: 32,
+      rtl: false,
       cs: false,
     });
 
@@ -93,6 +94,7 @@ describe("complex-script list-marker pipeline", () => {
       complexScriptBold: false,
       italic: false,
       complexScriptItalic: true,
+      rtl: false,
       forceComplexScript: false,
     });
   });

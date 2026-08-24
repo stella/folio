@@ -809,6 +809,9 @@ function textFormattingToRunFormatting(
   if (defaultTextFormatting.italicCs !== undefined) {
     result.complexScriptItalic = defaultTextFormatting.italicCs;
   }
+  if (defaultTextFormatting.rtl !== undefined) {
+    result.rtl = defaultTextFormatting.rtl;
+  }
   if (defaultTextFormatting.cs !== undefined) {
     result.forceComplexScript = defaultTextFormatting.cs;
   }

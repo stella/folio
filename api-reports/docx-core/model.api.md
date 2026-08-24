@@ -523,7 +523,7 @@ export type ListLevel = {
 };
 
 // @public
-export type ListMarkerFormatting = Pick<TextFormatting, "fontFamily" | "fontSize" | "fontSizeCs" | "bold" | "boldCs" | "italic" | "italicCs" | "cs">;
+export type ListMarkerFormatting = Pick<TextFormatting, "fontFamily" | "fontSize" | "fontSizeCs" | "bold" | "boldCs" | "italic" | "italicCs" | "rtl" | "cs">;
 
 // @public
 export type ListRendering = {

@@ -354,7 +354,7 @@ export function hashParagraphBlock(block: ParagraphBlock): string {
     if (attrs.listMarker !== undefined) {
       const marker = attrs.listMarkerFormatting;
       parts.push(
-        `marker:${attrs.listMarker}|${attrs.listMarkerHidden}|${attrs.listMarkerAlignment}|${attrs.listMarkerSuffix}|${marker?.fontFamily}|${marker?.eastAsiaFontFamily}|${marker?.complexScriptFontFamily}|${marker?.fontSize}|${marker?.complexScriptFontSize}|${marker?.bold}|${marker?.complexScriptBold}|${marker?.italic}|${marker?.complexScriptItalic}|${marker?.forceComplexScript}`,
+        `marker:${attrs.listMarker}|${attrs.listMarkerHidden}|${attrs.listMarkerAlignment}|${attrs.listMarkerSuffix}|${marker?.fontFamily}|${marker?.eastAsiaFontFamily}|${marker?.complexScriptFontFamily}|${marker?.fontSize}|${marker?.complexScriptFontSize}|${marker?.bold}|${marker?.complexScriptBold}|${marker?.italic}|${marker?.complexScriptItalic}|${marker?.rtl}|${marker?.forceComplexScript}`,
       );
     }
     parts.push(...lineBreakPolicyCacheParts(attrs));

@@ -103,6 +103,30 @@ describe("initial layout font loading", () => {
     expect(faces).toContain("Caladea|italic|700");
   });
 
+  test("loads the complex-script face with its independent emphasis", () => {
+    const pmDoc = schema.node("doc", null, [
+      schema.node(
+        "paragraph",
+        {
+          listMarker: "ا.",
+          listMarkerFormatting: {
+            fontFamily: { ascii: "Cambria", cs: "Noto Sans Arabic" },
+            bold: true,
+            boldCs: false,
+            italic: false,
+            italicCs: true,
+          },
+        },
+        [schema.text("بند")],
+      ),
+    ]);
+
+    const faces = collectInitialLayoutFontFaces(null, pmDoc).map(fontFaceKey);
+
+    expect(faces).toContain("Cambria|normal|700");
+    expect(faces).toContain("Noto Sans Arabic|italic|400");
+  });
+
   test("reports fonts loaded when the document font set is unavailable (SSR/headless)", () => {
     // Under the bun runner `document` is undefined, so getDocumentFontSet()
     // returns null and the gate must resolve to "loaded" rather than block the

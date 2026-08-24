@@ -46,6 +46,7 @@ export function resolveListMarkerFont(block: ParagraphBlock): {
   fontSize: number;
   bold?: boolean;
   italic?: boolean;
+  rtl?: boolean;
 } {
   const attrs = block.attrs;
   const firstTextRun = block.runs.find((r): r is TextRun => r.kind === "text");
@@ -65,6 +66,7 @@ export function resolveListMarkerFont(block: ParagraphBlock): {
       DEFAULT_FONT_SIZE,
     ...(bold !== undefined ? { bold } : {}),
     ...(italic !== undefined ? { italic } : {}),
+    ...(markerFormatting?.rtl !== undefined ? { rtl: markerFormatting.rtl } : {}),
   };
   const marker = attrs?.listMarker ?? "";
   if (

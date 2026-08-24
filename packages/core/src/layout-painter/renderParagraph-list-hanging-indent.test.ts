@@ -203,6 +203,19 @@ describe("Issue #729 — list hanging indent exceeding left indent", () => {
     expect(marker?.style.fontStyle).toBe("italic");
   });
 
+  test.each([
+    [true, "rtl"],
+    [false, "ltr"],
+  ] as const)("marker rtl=%s sets dir=%s", (rtl, expectedDirection) => {
+    const { marker } = renderListItem({
+      indent: { left: 48, hanging: 24 },
+      marker: "ا.",
+      markerFormatting: { rtl },
+    });
+
+    expect(marker?.dir).toBe(expectedDirection);
+  });
+
   test("right-aligned marker paints before its anchor without moving body text", () => {
     const { marker } = renderListItem({
       indent: { left: 48, hanging: 24 },

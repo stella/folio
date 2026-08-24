@@ -3028,6 +3028,9 @@ function renderListMarker(
   if (formatting.italic !== undefined) {
     span.style.fontStyle = formatting.italic ? "italic" : "normal";
   }
+  if (formatting.rtl !== undefined) {
+    span.dir = formatting.rtl ? "rtl" : "ltr";
+  }
 
   // `text-align-last` inherits, so a justified paragraph would distribute the
   // marker's internal whitespace across its minWidth box — pushing folded

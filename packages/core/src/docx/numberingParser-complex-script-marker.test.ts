@@ -16,14 +16,14 @@ const numberingXml = `<w:numbering ${W}>
         <w:b/><w:bCs w:val="0"/>
         <w:i w:val="0"/><w:iCs/>
         <w:sz w:val="20"/><w:szCs w:val="32"/>
-        <w:cs w:val="0"/>
+        <w:rtl w:val="0"/><w:cs w:val="0"/>
       </w:rPr>
     </w:lvl>
     <w:lvl w:ilvl="1">
       <w:start w:val="1"/>
       <w:numFmt w:val="arabicAbjad"/>
       <w:lvlText w:val="%2)"/>
-      <w:rPr><w:rFonts w:cs="Arabic Typesetting"/><w:cs/></w:rPr>
+      <w:rPr><w:rFonts w:cs="Arabic Typesetting"/><w:rtl/><w:cs/></w:rPr>
     </w:lvl>
   </w:abstractNum>
   <w:num w:numId="3"><w:abstractNumId w:val="7"/></w:num>
@@ -37,6 +37,7 @@ const expectedLevelZeroFormatting = {
   italicCs: true,
   fontSize: 20,
   fontSizeCs: 32,
+  rtl: false,
   cs: false,
 };
 
@@ -50,6 +51,7 @@ describe("numbering-level complex-script marker formatting", () => {
     );
     expect(computeListRendering({ numId: 3, ilvl: 1 }, numbering)?.markerFormatting).toEqual({
       fontFamily: { cs: "Arabic Typesetting" },
+      rtl: true,
       cs: true,
     });
   });
@@ -61,6 +63,8 @@ describe("numbering-level complex-script marker formatting", () => {
     expect(serialized).toContain('<w:bCs w:val="0"/>');
     expect(serialized).toContain("<w:iCs/>");
     expect(serialized).toContain('<w:szCs w:val="32"/>');
+    expect(serialized).toContain('<w:rtl w:val="0"/>');
+    expect(serialized).toContain("<w:rtl/>");
     expect(serialized).toContain('<w:cs w:val="0"/>');
     expect(serialized).toContain("<w:cs/>");
 
@@ -68,6 +72,7 @@ describe("numbering-level complex-script marker formatting", () => {
     expect(reparsed.getLevel(3, 0)?.rPr).toMatchObject(expectedLevelZeroFormatting);
     expect(reparsed.getLevel(3, 1)?.rPr).toMatchObject({
       fontFamily: { cs: "Arabic Typesetting" },
+      rtl: true,
       cs: true,
     });
   });

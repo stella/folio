@@ -721,6 +721,7 @@ export const markerFormattingFromLevel = (
     ...(formatting.boldCs !== undefined ? { boldCs: formatting.boldCs } : {}),
     ...(formatting.italic !== undefined ? { italic: formatting.italic } : {}),
     ...(formatting.italicCs !== undefined ? { italicCs: formatting.italicCs } : {}),
+    ...(formatting.rtl !== undefined ? { rtl: formatting.rtl } : {}),
     ...(formatting.cs !== undefined ? { cs: formatting.cs } : {}),
   };
   return Object.keys(markerFormatting).length > 0 ? markerFormatting : undefined;

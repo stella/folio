@@ -119,10 +119,16 @@ function addTextFormattingFontFaces(
   faces: Map<string, LayoutFontFace>,
   formatting: TextFormatting | undefined,
 ): void {
+  const standardDescriptor = layoutDescriptorFromFormatting(formatting);
+  const complexScriptDescriptor = layoutDescriptorFromEmphasis(
+    formatting?.boldCs ?? formatting?.bold,
+    formatting?.italicCs ?? formatting?.italic,
+  );
   addLayoutFontFamilyFace(
     faces,
     formatting?.fontFamily,
-    layoutDescriptorFromFormatting(formatting),
+    standardDescriptor,
+    complexScriptDescriptor,
   );
 }
 
@@ -177,9 +183,16 @@ function readFontFamilyMarkAttrs(marks: readonly Mark[]): unknown {
 function layoutDescriptorFromFormatting(
   formatting: Pick<TextFormatting, "bold" | "italic"> | undefined,
 ): Omit<LayoutFontFace, "family"> {
+  return layoutDescriptorFromEmphasis(formatting?.bold, formatting?.italic);
+}
+
+function layoutDescriptorFromEmphasis(
+  bold: boolean | undefined,
+  italic: boolean | undefined,
+): Omit<LayoutFontFace, "family"> {
   return {
-    style: formatting?.italic ? "italic" : "normal",
-    weight: formatting?.bold ? 700 : 400,
+    style: italic ? "italic" : "normal",
+    weight: bold ? 700 : 400,
   };
 }
 
@@ -209,6 +222,7 @@ function addLayoutFontFamilyFace(
   faces: Map<string, LayoutFontFace>,
   value: unknown,
   descriptor: Omit<LayoutFontFace, "family">,
+  complexScriptDescriptor = descriptor,
 ): void {
   if (typeof value === "string") {
     addLayoutFontFamilyNameFace(faces, value, descriptor);
@@ -232,7 +246,7 @@ function addLayoutFontFamilyFace(
   };
   addLayoutFontFamilyFace(faces, fontFamily.ascii, descriptor);
   addLayoutFontFamilyFace(faces, fontFamily.hAnsi, descriptor);
-  addLayoutFontFamilyFace(faces, fontFamily.cs, descriptor);
+  addLayoutFontFamilyFace(faces, fontFamily.cs, complexScriptDescriptor);
   addLayoutFontFamilyFace(faces, fontFamily.eastAsia, descriptor);
 }
 

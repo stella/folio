@@ -157,7 +157,15 @@ export type NumberingInstance = {
 /** Typography from numbering-level `w:rPr` that applies to the marker glyphs. */
 export type ListMarkerFormatting = Pick<
   TextFormatting,
-  "fontFamily" | "fontSize" | "fontSizeCs" | "bold" | "boldCs" | "italic" | "italicCs" | "cs"
+  | "fontFamily"
+  | "fontSize"
+  | "fontSizeCs"
+  | "bold"
+  | "boldCs"
+  | "italic"
+  | "italicCs"
+  | "rtl"
+  | "cs"
 >;
 
 /**
