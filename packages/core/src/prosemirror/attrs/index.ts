@@ -627,9 +627,10 @@ export const readImageAttrs = (node: PMNode): ReadProseMirrorAttrsResult<ImageAt
     issues,
     Object.values(DRAWING_RAW_XML_MODES),
   );
+  const rawXml = attrs["_docxRawXml"];
   if (
     attrs["_docxRawXmlMode"] === DRAWING_RAW_XML_MODES.PRESERVE_ONLY &&
-    typeof attrs["_docxRawXml"] !== "string"
+    (typeof rawXml !== "string" || rawXml.trim().length === 0)
   ) {
     issues.push({
       path: "image.attrs._docxRawXml",
