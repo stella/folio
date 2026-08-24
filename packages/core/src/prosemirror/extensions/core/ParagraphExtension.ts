@@ -23,6 +23,7 @@ import type {
 } from "../../../types/document";
 import { paragraphToStyle } from "../../../utils/formatToStyle";
 import { collectHeadings } from "../../../utils/headingCollector";
+import { tableOfContentsStyleLevel } from "../../../utils/tableOfContentsStyle";
 import { expectParagraphAttrs } from "../../attrs";
 import { autospacingMatchesBase } from "../../autospacingBase";
 import { directionIsRtl } from "../../paragraphDirection";
@@ -355,6 +356,7 @@ const paragraphNodeSpec: NodeSpec = {
     listAbstractNumId: { default: null },
     listStartOverride: { default: null },
     styleId: { default: null },
+    _tableOfContentsLevel: { default: null },
     borders: { default: null },
     shading: { default: null },
     tabs: { default: null },
@@ -397,6 +399,7 @@ const paragraphNodeSpec: NodeSpec = {
         const paraId = element.dataset["paraId"];
         const alignment = element.dataset["alignment"] as ParagraphAlignment | undefined;
         const styleId = element.dataset["styleId"];
+        const tableOfContentsLevel = Number(element.dataset["tableOfContentsLevel"]);
         const sectionBreakType = element.dataset["sectionBreak"] as
           | NonNullable<ParagraphAttrs["sectionBreakType"]>
           | undefined;
@@ -404,6 +407,9 @@ const paragraphNodeSpec: NodeSpec = {
           ...(paraId ? { paraId } : {}),
           ...(alignment ? { alignment } : {}),
           ...(styleId ? { styleId } : {}),
+          ...(Number.isSafeInteger(tableOfContentsLevel) && tableOfContentsLevel > 0
+            ? { _tableOfContentsLevel: tableOfContentsLevel }
+            : {}),
           ...(sectionBreakType ? { sectionBreakType } : {}),
         };
 
@@ -462,6 +468,10 @@ const paragraphNodeSpec: NodeSpec = {
 
     if (attrs.styleId) {
       domAttrs["data-style-id"] = attrs.styleId;
+    }
+
+    if (typeof attrs._tableOfContentsLevel === "number") {
+      domAttrs["data-table-of-contents-level"] = String(attrs._tableOfContentsLevel);
     }
 
     if (attrs.listMarker) {
@@ -575,6 +585,8 @@ function setParagraphAttrsCmd(attrs: Record<string, unknown>): Command {
 export type ResolvedStyleAttrs = {
   paragraphFormatting?: ParagraphFormatting;
   runFormatting?: TextFormatting;
+  /** Canonical OOXML style name, used when the document-local style id is localized. */
+  styleName?: string;
   /**
    * Numbering definitions from the document package. When the applied style
    * carries a `w:numPr`, these resolve the numbering level into the list
@@ -737,6 +749,7 @@ function makeApplyStyle(schema: Schema) {
           const newAttrs: Record<string, unknown> = {
             ...node.attrs,
             styleId,
+            _tableOfContentsLevel: tableOfContentsStyleLevel({ styleId }) ?? null,
           };
 
           if (resolvedAttrs) {
@@ -748,7 +761,13 @@ function makeApplyStyle(schema: Schema) {
             // both paths produce identical paragraph attrs — and the resulting
             // `defaultTextFormatting` lets EmptyParagraphFormatExtension keep
             // typed text styled after the style picker steals focus.
-            Object.assign(newAttrs, paragraphAttrsFromResolvedStyle(resolvedAttrs));
+            Object.assign(
+              newAttrs,
+              paragraphAttrsFromResolvedStyle(resolvedAttrs, {
+                styleId,
+                ...(resolvedAttrs.styleName ? { styleName: resolvedAttrs.styleName } : {}),
+              }),
+            );
             // A style with `w:numPr` attaches its numbering (numPr + marker
             // attrs). A style without numbering leaves existing list attrs
             // untouched — direct numbering survives a style switch in Word.
@@ -869,7 +888,7 @@ export const ParagraphExtension = createNodeExtension({
           }),
         applyStyle: (styleId: string, resolvedAttrs?: ResolvedStyleAttrs) =>
           applyStyleFn(styleId, resolvedAttrs),
-        clearStyle: () => setParagraphAttr("styleId", null),
+        clearStyle: () => setParagraphAttrsCmd({ styleId: null, _tableOfContentsLevel: null }),
         insertSectionBreak: (breakType: "nextPage" | "continuous" | "oddPage" | "evenPage") =>
           setParagraphAttr("sectionBreakType", breakType),
         removeSectionBreak: () => setParagraphAttr("sectionBreakType", null),

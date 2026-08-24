@@ -21,6 +21,52 @@ const paragraphDomAttrs = (attrs: Record<string, unknown>): Record<string, strin
 };
 
 describe("ParagraphExtension", () => {
+  test("carries an imported TOC level through editor DOM", () => {
+    expect(paragraphDomAttrs({ _tableOfContentsLevel: 2 })).toMatchObject({
+      "data-table-of-contents-level": "2",
+    });
+    expect(paragraphDomAttrs({})).not.toHaveProperty("data-table-of-contents-level");
+  });
+
+  test("recomputes the TOC role when paragraph styles change", () => {
+    const hyperlink = schema.marks["hyperlink"]?.create({ href: "#generic-section" });
+    if (!hyperlink) {
+      throw new Error("Expected hyperlink mark");
+    }
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", { styleId: "LocalizedTocEntry", _tableOfContentsLevel: 1 }, [
+        schema.text("Generic entry", [hyperlink]),
+      ]),
+    ]);
+    let state = EditorState.create({
+      doc,
+      schema,
+      selection: TextSelection.create(doc, 1),
+    });
+    const applyStyle = singletonManager.getCommand("applyStyle");
+    const clearStyle = singletonManager.getCommand("clearStyle");
+    if (!applyStyle || !clearStyle) {
+      throw new Error("Missing paragraph style commands");
+    }
+
+    applyStyle("LocalizedBody", { styleName: "Body Text" })(state, (tr: Transaction) => {
+      state = state.apply(tr);
+    });
+    expect(state.doc.firstChild?.attrs["_tableOfContentsLevel"]).toBeNull();
+    const bodyRun = toFlowBlocks(state.doc).at(0)?.runs.at(0);
+    expect(bodyRun?.hyperlink?.noDefaultStyle).toBeUndefined();
+
+    applyStyle("LocalizedTocEntry", { styleName: "toc 1" })(state, (tr: Transaction) => {
+      state = state.apply(tr);
+    });
+    expect(state.doc.firstChild?.attrs["_tableOfContentsLevel"]).toBe(1);
+
+    clearStyle()(state, (tr: Transaction) => {
+      state = state.apply(tr);
+    });
+    expect(state.doc.firstChild?.attrs["_tableOfContentsLevel"]).toBeNull();
+  });
+
   test("preserves explicit list paragraph left indent", () => {
     const attrs = paragraphDomAttrs({
       indentLeft: 1440,

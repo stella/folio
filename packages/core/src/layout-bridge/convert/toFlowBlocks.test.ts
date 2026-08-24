@@ -1150,6 +1150,72 @@ describe("toFlowBlocks TOC hyperlink style strip", () => {
     expect(run.underline).toBeUndefined();
   });
 
+  test("recognizes a localized TOC style id from its canonical style name", () => {
+    const document: Document = {
+      package: {
+        styles: {
+          styles: [
+            {
+              styleId: "LocalizedBody",
+              type: "paragraph",
+              default: true,
+            },
+            {
+              styleId: "LocalizedTocEntry",
+              type: "paragraph",
+              name: "toc 1",
+              basedOn: "LocalizedBody",
+            },
+            {
+              styleId: "LocalizedLink",
+              type: "character",
+              name: "Hyperlink",
+              rPr: {
+                color: { rgb: "654321" },
+                underline: { style: "single" },
+              },
+            },
+          ],
+        },
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              formatting: { styleId: "LocalizedTocEntry" },
+              content: [
+                {
+                  type: "hyperlink",
+                  anchor: "generic-section",
+                  children: [
+                    {
+                      type: "run",
+                      formatting: { styleId: "LocalizedLink" },
+                      content: [{ type: "text", text: "Generic entry" }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const blocks = toFlowBlocks(toProseDoc(document, { styles: document.package.styles }));
+    const paragraph = blocks.at(0);
+    if (paragraph?.kind !== "paragraph") {
+      throw new Error("Expected paragraph block");
+    }
+    const run = paragraph.runs.at(0);
+    if (run?.kind !== "text") {
+      throw new Error("Expected text run");
+    }
+
+    expect(run.hyperlink?.noDefaultStyle).toBe(true);
+    expect(run.color).toBeUndefined();
+    expect(run.underline).toBeUndefined();
+  });
+
   // The page-number end of a TOC entry is a PAGEREF field inside the
   // hyperlink — the strip must reach field runs too, not just text runs.
   test("strips resolved color/underline on a field run inside a TOC paragraph", () => {
@@ -1194,8 +1260,7 @@ describe("toFlowBlocks TOC hyperlink style strip", () => {
   });
 
   // Non-TOC paragraphs must NOT be stripped — Word still renders normal-body
-  // hyperlinks with the Hyperlink character style (blue + underline). The
-  // strip is keyed to styleId /^TOC\d*$/i; everything else passes through.
+  // hyperlinks with the Hyperlink character style (blue + underline).
   test("does not strip hyperlinks in non-TOC paragraphs", () => {
     const linkMark = schema.marks["hyperlink"]?.create({
       href: "https://example.com",
@@ -1227,7 +1292,7 @@ describe("toFlowBlocks TOC hyperlink style strip", () => {
 
   // TOC, TOC1..TOC9 should all match. TOCHeading (Word's TOC title) is its
   // own styleId and is NOT a TOC entry — no strip.
-  test("TOC styleId regex matches TOC and TOC1..N but not TOCHeading", () => {
+  test("recognizes standard TOC style ids but not TOCHeading", () => {
     const linkMark = schema.marks["hyperlink"]?.create({ href: "#x" });
     if (!linkMark) {
       throw new Error("Expected hyperlink mark");

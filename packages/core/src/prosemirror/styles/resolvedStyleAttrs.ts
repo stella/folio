@@ -10,9 +10,15 @@
  */
 
 import { computeListRendering, type NumberingMap } from "../../docx/numberingParser";
+import { tableOfContentsStyleLevel } from "../../utils/tableOfContentsStyle";
 import { setAutospacingBaseValue } from "../autospacingBase";
 import type { ParagraphAttrs } from "../schema/nodes";
 import type { ResolvedParagraphStyle } from "./styleResolver";
+
+type ResolvedStyleIdentity = {
+  styleId: string;
+  styleName?: string;
+};
 
 /**
  * The paragraph attrs a style definition controls. Applying a style resets
@@ -22,6 +28,7 @@ import type { ResolvedParagraphStyle } from "./styleResolver";
  */
 export function paragraphAttrsFromResolvedStyle(
   resolved: ResolvedParagraphStyle,
+  identity: ResolvedStyleIdentity,
 ): Record<string, unknown> {
   const ppr = resolved.paragraphFormatting;
   const runFormatting = resolved.runFormatting;
@@ -53,6 +60,7 @@ export function paragraphAttrsFromResolvedStyle(
     // and the formatting typed text inherits (see EmptyParagraphFormatExtension).
     defaultTextFormatting: hasRunFormatting ? runFormatting : null,
     _autospacingBase: autospacingBaseFromResolvedParagraphFormatting(ppr),
+    _tableOfContentsLevel: tableOfContentsStyleLevel(identity) ?? null,
   };
 }
 

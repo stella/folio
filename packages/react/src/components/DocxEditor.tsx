@@ -2197,6 +2197,10 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
               if (resolved.runFormatting) {
                 styleAttrs.runFormatting = resolved.runFormatting;
               }
+              const styleName = styleResolver.getStyle(action.value)?.name;
+              if (styleName) {
+                styleAttrs.styleName = styleName;
+              }
               styleAttrs.numbering = currentDoc?.package.numbering
                 ? getCachedNumberingMap(currentDoc.package.numbering)
                 : null;

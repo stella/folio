@@ -89,6 +89,7 @@ import { resolveColor, resolveHighlightToCss } from "../../utils/colorResolver";
 import { resolveThemeFont } from "../../utils/fontResolver";
 import { resolveShadingFill } from "../../utils/formatToStyle";
 import { decodeOoxmlSymbolCharacter } from "../../utils/ooxmlSymbol";
+import { tableOfContentsStyleLevel } from "../../utils/tableOfContentsStyle";
 import {
   AUTO_PARAGRAPH_SPACING_PX,
   pointsToPixels,
@@ -994,13 +995,6 @@ function buildImageRun(
 }
 
 /**
- * Paragraph styleId pattern used by Word for TOC entries (TOC, TOC1, TOC2, …).
- * Hyperlinks inside these paragraphs must render in the paragraph's own colour,
- * not the Hyperlink character style — see {@link stripTocHyperlinkStyle}.
- */
-const TOC_STYLE_ID = /^TOC\d*$/iu;
-
-/**
  * In TOC paragraphs, strip the resolved Hyperlink character-style colour and
  * underline so the painter's link fallback doesn't fire. The PM doc keeps the
  * original marks so copy/paste out of a TOC still carries the Hyperlink
@@ -1029,7 +1023,8 @@ function paragraphToRuns(node: PMNode, startPos: number, _options: ToFlowBlocksO
   const paraDefaults = paragraphRunDefaults(pmAttrs, theme);
   const paragraphStyleId = pmAttrs.styleId;
   const inTocParagraph =
-    typeof paragraphStyleId === "string" && TOC_STYLE_ID.test(paragraphStyleId);
+    pmAttrs._tableOfContentsLevel !== undefined ||
+    tableOfContentsStyleLevel({ styleId: paragraphStyleId }) !== undefined;
   let leadingRenderedPageBreakPending = pmAttrs.renderedPageBreakBefore === true;
 
   // Single dispatcher for one inline PM child. Recurses on `sdt` so nested

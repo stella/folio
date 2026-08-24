@@ -325,6 +325,7 @@ export type ParagraphAttrs = {
     listAbstractNumId?: number;
     listStartOverride?: number;
     styleId?: string;
+    _tableOfContentsLevel?: number;
     borders?: {
         top?: import__stll_docx_core_model.BorderSpec;
         bottom?: import__stll_docx_core_model.BorderSpec;

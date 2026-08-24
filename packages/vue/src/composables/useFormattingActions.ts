@@ -68,6 +68,8 @@ export function useFormattingActions(opts: UseFormattingActionsOptions) {
       };
       if (resolved.paragraphFormatting) attrs.paragraphFormatting = resolved.paragraphFormatting;
       if (resolved.runFormatting) attrs.runFormatting = resolved.runFormatting;
+      const styleName = resolver.getStyle(styleId)?.name;
+      if (styleName) attrs.styleName = styleName;
       applyStyle(styleId, attrs)(view.state, (tr) => view.dispatch(tr));
     } else {
       applyStyle(styleId)(view.state, (tr) => view.dispatch(tr));

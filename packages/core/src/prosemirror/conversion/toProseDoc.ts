@@ -54,6 +54,7 @@ import {
 } from "../../utils/paragraphFormattingMerge";
 import { resolveColorValueToHex } from "../../docx/drawingUtils";
 import { mergeTextFormatting } from "../../utils/textFormattingMerge";
+import { tableOfContentsStyleLevel } from "../../utils/tableOfContentsStyle";
 import { emuToPixels } from "../../utils/units";
 import { setAutospacingBaseValue } from "../autospacingBase";
 import { buildRunFormattingOverrideAttrs } from "../extensions/marks/RunFormattingOverrideExtension";
@@ -95,11 +96,6 @@ type RunFormattingResolver = (
   formatting: TextFormatting | undefined,
   fieldType?: string,
 ) => TextFormatting | undefined;
-
-const TOC_STYLE_ID = /^TOC\d*$/iu;
-
-const isTocStyleId = (styleId: string | undefined): boolean =>
-  styleId !== undefined && TOC_STYLE_ID.test(styleId);
 
 /**
  * Build a `nextTextBoxGroupId()` generator salted with a random per-load
@@ -279,7 +275,7 @@ function convertParagraph(
   textBoxAnchors?: ReadonlyMap<Shape, string>,
 ): PMNode {
   const attrs = paragraphFormattingToAttrs(paragraph, styleResolver, tableParagraphOverlay);
-  const isTocParagraph = isTocStyleId(paragraph.formatting?.styleId);
+  const isTocParagraph = attrs._tableOfContentsLevel !== undefined;
   const inlineNodes: PMNode[] = [];
   let inlineOffset = 0;
   let bookmarksArr: { id: number; name: string }[] | undefined;
@@ -598,6 +594,11 @@ function paragraphFormattingToAttrs(
 ): ParagraphAttrs {
   const formatting = paragraph.formatting;
   const styleId = formatting?.styleId;
+  const styleName = styleId ? styleResolver?.getStyle(styleId)?.name : undefined;
+  const tableOfContentsLevel = tableOfContentsStyleLevel({
+    styleId,
+    ...(styleName ? { styleName } : {}),
+  });
 
   // Start with base attrs — only include defined values
   const attrs: ParagraphAttrs = {};
@@ -610,6 +611,9 @@ function paragraphFormattingToAttrs(
   }
   if (styleId) {
     attrs.styleId = styleId;
+  }
+  if (tableOfContentsLevel !== undefined) {
+    attrs._tableOfContentsLevel = tableOfContentsLevel;
   }
   if (formatting?.numPr) {
     attrs.numPr = formatting.numPr;
@@ -802,7 +806,7 @@ function paragraphFormattingToAttrs(
     set(
       "defaultTextFormatting",
       resolveParagraphDefaultTextFormatting(styleId, formatting, styleResolver, {
-        includeParagraphMarkRunProperties: !isTocStyleId(styleId),
+        includeParagraphMarkRunProperties: tableOfContentsLevel === undefined,
       }),
     );
 

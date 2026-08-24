@@ -159,6 +159,8 @@ export type ParagraphAttrs = {
 
   // Style reference
   styleId?: string;
+  /** Imported built-in TOC entry level, resolved from the canonical style name. */
+  _tableOfContentsLevel?: number;
 
   // Borders
   borders?: {

@@ -258,6 +258,7 @@ export const readParagraphAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Par
     PARAGRAPH_ALIGNMENT_VALUES,
   );
   optionalString(attrs, "styleId", "paragraph.attrs.styleId", issues);
+  optionalNumber(attrs, "_tableOfContentsLevel", "paragraph.attrs._tableOfContentsLevel", issues);
   optionalBoolean(attrs, "kinsoku", "paragraph.attrs.kinsoku", issues);
   optionalBoolean(attrs, "overflowPunctuation", "paragraph.attrs.overflowPunctuation", issues);
   optionalBoolean(attrs, "suppressAutoHyphens", "paragraph.attrs.suppressAutoHyphens", issues);

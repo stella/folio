@@ -96,6 +96,7 @@ const clearIndentOnBackspace: Command = (state, dispatch) => {
 const INHERITED_PARA_ATTRS = [
   "defaultTextFormatting",
   "styleId",
+  "_tableOfContentsLevel",
   "lineSpacing",
   "lineSpacingRule",
   "snapToGrid",
@@ -128,6 +129,7 @@ function applyNextParagraphStyle(
   }
 
   const resolved = resolver.resolveParagraphStyle(nextStyleId);
+  const styleName = resolver.getStyle(nextStyleId)?.name;
   const { $from } = tr.selection;
   // `paragraphAttrsFromResolvedStyle` already projects the next style's
   // borders (or null), which both clears the source paragraph's leftover
@@ -135,7 +137,10 @@ function applyNextParagraphStyle(
   tr.setNodeMarkup($from.before(), undefined, {
     ...newPara.attrs,
     styleId: nextStyleId,
-    ...paragraphAttrsFromResolvedStyle(resolved),
+    ...paragraphAttrsFromResolvedStyle(resolved, {
+      styleId: nextStyleId,
+      ...(styleName ? { styleName } : {}),
+    }),
   });
 
   // setStoredMarks MUST come after setNodeMarkup — every step clears it.
