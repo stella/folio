@@ -250,7 +250,12 @@ export type DrawingContent = {
     type: "drawing";
     image: Image_2;
     rawXml?: string;
-    rawXmlMode?: DrawingRawXmlMode;
+    rawXmlMode?: never;
+} | {
+    type: "drawing";
+    image: Image_2;
+    rawXml: string;
+    rawXmlMode: typeof DRAWING_RAW_XML_MODES.PRESERVE_ONLY;
 };
 
 // @public

@@ -318,6 +318,24 @@ describe("ProseMirror attr readers", () => {
     );
   });
 
+  test("rejects preservation-only image attrs without replayable XML", () => {
+    const node = schema.nodes.image.create({
+      src: "",
+      _docxRawXmlMode: "preserveOnly",
+    });
+
+    const result = readImageAttrs(node);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      throw new Error("Expected preservation-only image attrs to be rejected");
+    }
+    expect(result.issues).toContainEqual({
+      path: "image.attrs._docxRawXml",
+      message: "Preservation-only drawings require raw XML.",
+    });
+  });
+
   test("clears image attrs with explicit undefined patches", () => {
     const node = schema.nodes.image.create({
       src: "media/image.png",

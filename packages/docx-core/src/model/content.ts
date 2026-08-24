@@ -143,16 +143,25 @@ export const DRAWING_RAW_XML_MODES = {
 /** Raw XML handling mode for a drawing. */
 export type DrawingRawXmlMode = (typeof DRAWING_RAW_XML_MODES)[keyof typeof DRAWING_RAW_XML_MODES];
 
-/** Drawing/image reference. */
-export type DrawingContent = {
-  type: "drawing";
-  /** Image data */
-  image: Image;
-  /** Original OOXML for package-preserving round-trips of unsupported drawing markup. */
-  rawXml?: string;
-  /** Explicitly classifies raw XML that has no editable projected representation. */
-  rawXmlMode?: DrawingRawXmlMode;
-};
+/** Drawing/image reference with replayable XML required for preservation-only content. */
+export type DrawingContent =
+  | {
+      type: "drawing";
+      /** Image data */
+      image: Image;
+      /** Original OOXML for package-preserving round-trips of unsupported drawing markup. */
+      rawXml?: string;
+      rawXmlMode?: never;
+    }
+  | {
+      type: "drawing";
+      /** Image data */
+      image: Image;
+      /** Original OOXML required to replay a drawing without an editable projection. */
+      rawXml: string;
+      /** Explicitly classifies raw XML that has no editable projected representation. */
+      rawXmlMode: typeof DRAWING_RAW_XML_MODES.PRESERVE_ONLY;
+    };
 
 /**
  * Shape reference

@@ -627,6 +627,15 @@ export const readImageAttrs = (node: PMNode): ReadProseMirrorAttrsResult<ImageAt
     issues,
     Object.values(DRAWING_RAW_XML_MODES),
   );
+  if (
+    attrs["_docxRawXmlMode"] === DRAWING_RAW_XML_MODES.PRESERVE_ONLY &&
+    typeof attrs["_docxRawXml"] !== "string"
+  ) {
+    issues.push({
+      path: "image.attrs._docxRawXml",
+      message: "Preservation-only drawings require raw XML.",
+    });
+  }
   optionalBoolean(attrs, "_docxObjectPreview", "image.attrs._docxObjectPreview", issues);
 
   return attrsResult(attrs, issues);

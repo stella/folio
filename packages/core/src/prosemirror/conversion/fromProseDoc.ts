@@ -10,6 +10,8 @@
  * - Handle marks -> TextFormatting conversion
  */
 
+import { panic } from "better-result";
+import { DRAWING_RAW_XML_MODES } from "@stll/docx-core/model";
 import type { Node as PMNode, Mark } from "prosemirror-model";
 import { Fragment } from "prosemirror-model";
 
@@ -2279,16 +2281,21 @@ function createImageRun(node: PMNode): Run {
     image.crop = crop;
   }
 
-  const drawingContent: DrawingContent = {
-    type: "drawing",
-    image,
-  };
-  if (attrs._docxRawXml) {
-    drawingContent.rawXml = attrs._docxRawXml;
-  }
-  if (attrs._docxRawXmlMode) {
-    drawingContent.rawXmlMode = attrs._docxRawXmlMode;
-  }
+  const drawingContent: DrawingContent =
+    attrs._docxRawXmlMode === DRAWING_RAW_XML_MODES.PRESERVE_ONLY
+      ? {
+          type: "drawing",
+          image,
+          rawXml:
+            attrs._docxRawXml ??
+            panic("Preservation-only ProseMirror image attrs must include raw XML."),
+          rawXmlMode: DRAWING_RAW_XML_MODES.PRESERVE_ONLY,
+        }
+      : {
+          type: "drawing",
+          image,
+          ...(attrs._docxRawXml ? { rawXml: attrs._docxRawXml } : {}),
+        };
 
   return {
     type: "run",
