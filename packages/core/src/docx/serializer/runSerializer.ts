@@ -961,6 +961,16 @@ function serializeShapeTextBody(
     .join("");
 }
 
+function serializeGeometryAdjustments(shape: ShapeContent["shape"]): string {
+  if (!shape.geometryAdjustments || shape.geometryAdjustments.length === 0) {
+    return "<a:avLst/>";
+  }
+  const adjustments = shape.geometryAdjustments
+    .map(({ name, formula }) => `<a:gd name="${escapeXml(name)}" fmla="${escapeXml(formula)}"/>`)
+    .join("");
+  return `<a:avLst>${adjustments}</a:avLst>`;
+}
+
 /**
  * Serialize shape content to full DrawingML XML (wps:wsp inside w:drawing)
  */
@@ -993,7 +1003,7 @@ function serializeShapeContent(content: ShapeContent): string {
     '<a:off x="0" y="0"/>',
     `<a:ext cx="${intAttr(cx)}" cy="${intAttr(cy)}"/>`,
     "</a:xfrm>",
-    `<a:prstGeom prst="${shape.shapeType === "textBox" ? "rect" : shape.shapeType}"><a:avLst/></a:prstGeom>`,
+    `<a:prstGeom prst="${shape.shapeType === "textBox" ? "rect" : shape.shapeType}">${serializeGeometryAdjustments(shape)}</a:prstGeom>`,
     serializeFill(shape.fill),
     serializeOutline(shape.outline),
     "</wps:spPr>",

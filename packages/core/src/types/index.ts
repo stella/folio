@@ -76,6 +76,7 @@ export type {
 
   // Shapes & Text Boxes
   ShapeType,
+  ShapeGeometryAdjustment,
   ShapeFill,
   ShapeOutline,
   ShapeTextBody,

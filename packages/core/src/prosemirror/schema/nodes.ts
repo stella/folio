@@ -493,6 +493,8 @@ export type BlockSdtAttrs = {
 export type ShapeAttrs = {
   /** Shape type preset */
   shapeType?: string;
+  /** Preset geometry adjustments serialized as JSON. */
+  geometryAdjustments?: string;
   /** Unique identifier */
   shapeId?: string;
   /** Width in pixels */

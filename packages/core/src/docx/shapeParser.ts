@@ -32,7 +32,9 @@ import { narrowEnum, ShapeTypeSchema } from "./parserEnums";
 import {
   findAllDeep,
   findChildByLocalName,
+  findChildren,
   getAttribute,
+  getChildElements,
   parseNumericAttribute,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
@@ -124,11 +126,46 @@ function hasUnsupportedGeometry(spPr: XmlElement | null): boolean {
     return findChildByLocalName(spPr, "custGeom") !== null;
   }
   const avLst = findChildByLocalName(prstGeom, "avLst");
-  if (avLst?.elements?.some((child) => child.type === "element")) {
+  const prst = getAttribute(prstGeom, null, "prst");
+  if (narrowEnum(prst, ShapeTypeSchema) === undefined) {
     return true;
   }
-  const prst = getAttribute(prstGeom, null, "prst");
-  return narrowEnum(prst, ShapeTypeSchema) === undefined;
+  const adjustmentChildren = avLst ? getChildElements(avLst) : [];
+  if (adjustmentChildren.length === 0) {
+    return false;
+  }
+  const adjustments = findChildren(avLst, "a", "gd");
+  const adjustmentNames = new Set(
+    adjustments.map((adjustment) => getAttribute(adjustment, null, "name")),
+  );
+  return !(
+    prst === "rightBrace" &&
+    adjustments.length === 2 &&
+    adjustmentChildren.length === adjustments.length &&
+    adjustmentNames.size === 2 &&
+    adjustmentNames.has("adj1") &&
+    adjustmentNames.has("adj2") &&
+    adjustments.every((adjustment) =>
+      /^val\s+-?\d+$/u.test(getAttribute(adjustment, null, "fmla") ?? ""),
+    )
+  );
+}
+
+function parseGeometryAdjustments(spPr: XmlElement | null): Shape["geometryAdjustments"] {
+  const prstGeom = spPr ? findChildByLocalName(spPr, "prstGeom") : null;
+  const avLst = prstGeom ? findChildByLocalName(prstGeom, "avLst") : null;
+  if (!avLst) {
+    return undefined;
+  }
+  const adjustments: NonNullable<Shape["geometryAdjustments"]> = [];
+  for (const adjustment of findChildren(avLst, "a", "gd")) {
+    const name = getAttribute(adjustment, null, "name");
+    const formula = getAttribute(adjustment, null, "fmla");
+    if (name !== null && formula !== null) {
+      adjustments.push({ name, formula });
+    }
+  }
+  return adjustments.length === 0 ? undefined : adjustments;
 }
 
 function hasUnsupportedRgbColorModifiers(spPr: XmlElement | null): boolean {
@@ -192,6 +229,10 @@ export function parseShape(node: XmlElement): Shape {
     shapeType,
     size,
   };
+  const geometryAdjustments = parseGeometryAdjustments(spPr);
+  if (geometryAdjustments !== undefined) {
+    shape.geometryAdjustments = geometryAdjustments;
+  }
   if (id !== undefined) {
     shape.id = id;
   }

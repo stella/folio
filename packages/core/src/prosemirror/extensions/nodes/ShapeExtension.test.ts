@@ -4,6 +4,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  buildRightBracePaths,
   buildShapePolygonPoints,
   parseGradientStops,
   sanitizeColor,
@@ -12,6 +13,28 @@ import {
   sanitizeTransform,
   strokeDashArrayForOutlineStyle,
 } from "./ShapeExtension";
+
+describe("ShapeExtension.buildRightBracePaths", () => {
+  test("maps the authored adjustments to the preset's exact arc sequence", () => {
+    const authored = [
+      { name: "adj1", formula: "val 12500" },
+      { name: "adj2", formula: "val 62500" },
+    ];
+    expect(buildRightBracePaths(100, 80, authored)).toEqual({
+      fill: "M 0 0 A 50 10 0 0 1 50 10 L 50 40 A 50 10 0 0 0 100 50 A 50 10 0 0 0 50 60 L 50 70 A 50 10 0 0 1 0 80 Z",
+      outline:
+        "M 0 0 A 50 10 0 0 1 50 10 L 50 40 A 50 10 0 0 0 100 50 A 50 10 0 0 0 50 60 L 50 70 A 50 10 0 0 1 0 80",
+    });
+  });
+
+  test("clamps thickness using the cusp-dependent DrawingML bound", () => {
+    const oversized = [
+      { name: "adj1", formula: "val 90000" },
+      { name: "adj2", formula: "val 62500" },
+    ];
+    expect(buildRightBracePaths(100, 80, oversized).outline).toContain("L 50 35");
+  });
+});
 
 describe("ShapeExtension.sanitizeColor", () => {
   test("accepts six-digit hex colors", () => {

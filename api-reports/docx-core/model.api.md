@@ -940,6 +940,7 @@ export type ShadingProperties = {
 export type Shape = {
     type: "shape";
     shapeType: ShapeType;
+    geometryAdjustments?: ShapeGeometryAdjustment[];
     id?: string;
     name?: string;
     size: ImageSize;
@@ -971,6 +972,12 @@ export type ShapeFill = {
             color: ColorValue;
         }[];
     };
+};
+
+// @public
+export type ShapeGeometryAdjustment = {
+    name: string;
+    formula: string;
 };
 
 // @public

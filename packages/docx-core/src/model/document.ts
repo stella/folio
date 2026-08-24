@@ -102,6 +102,7 @@ export type {
   ImageCrop,
   Image,
   ShapeType,
+  ShapeGeometryAdjustment,
   ShapeFill,
   ShapeOutline,
   ShapeTextBody,

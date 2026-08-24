@@ -3030,6 +3030,10 @@ function convertShape(shape: Shape): PMNode {
 
   return schema.node("shape", {
     shapeType: shapeAttrs.shapeType ?? "rect",
+    geometryAdjustments:
+      shape.geometryAdjustments === undefined
+        ? undefined
+        : JSON.stringify(shape.geometryAdjustments),
     shapeId: shape.id,
     width: widthPx,
     height: heightPx,

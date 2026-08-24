@@ -737,6 +737,7 @@ export const readShapeAttrs = (node: PMNode): ReadProseMirrorAttrsResult<ShapeAt
   expectNodeType(node, "shape", issues);
 
   optionalString(attrs, "shapeType", "shape.attrs.shapeType", issues);
+  optionalString(attrs, "geometryAdjustments", "shape.attrs.geometryAdjustments", issues);
   optionalString(attrs, "shapeId", "shape.attrs.shapeId", issues);
   optionalNumber(attrs, "width", "shape.attrs.width", issues);
   optionalNumber(attrs, "height", "shape.attrs.height", issues);

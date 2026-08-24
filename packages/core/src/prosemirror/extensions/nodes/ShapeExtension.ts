@@ -7,6 +7,8 @@
 
 import { expectShapeAttrs } from "../../attrs";
 import type { ImagePositionAttrs, ShapeAttrs as SchemaShapeAttrs } from "../../schema/nodes";
+import { parseShapeGeometryAdjustments } from "../../shapeGeometryAdjustments";
+import type { ShapeGeometryAdjustment } from "../../../types/document";
 import { createNodeExtension } from "../create";
 
 export type ShapeAttrs = SchemaShapeAttrs;
@@ -176,6 +178,65 @@ function fmt(n: number): string {
   return Number.isInteger(n) ? String(n) : Number(n.toFixed(3)).toString();
 }
 
+const RIGHT_BRACE_DEFAULT_THICKNESS = 8_333;
+const RIGHT_BRACE_DEFAULT_CUSP = 50_000;
+const GEOMETRY_PERCENT_SCALE = 100_000;
+
+const geometryAdjustment = (
+  adjustments: readonly ShapeGeometryAdjustment[],
+  name: string,
+  fallback: number,
+): number => {
+  const authored = adjustments.find((adjustment) => adjustment.name === name);
+  if (!authored) {
+    return fallback;
+  }
+  const match = /^val\s+(-?\d+)$/u.exec(authored.formula);
+  if (!match) {
+    return fallback;
+  }
+  return Number(match.at(1));
+};
+
+type RightBracePaths = {
+  fill: string;
+  outline: string;
+};
+
+export function buildRightBracePaths(
+  w: number,
+  h: number,
+  adjustments: readonly ShapeGeometryAdjustment[],
+): RightBracePaths {
+  const shortSide = Math.min(w, h);
+  const cuspAdjustment = Math.min(
+    GEOMETRY_PERCENT_SCALE,
+    Math.max(0, geometryAdjustment(adjustments, "adj2", RIGHT_BRACE_DEFAULT_CUSP)),
+  );
+  const nearestEdge = Math.min(cuspAdjustment, GEOMETRY_PERCENT_SCALE - cuspAdjustment);
+  const maxThickness = ((nearestEdge / 2) * h) / shortSide;
+  const thicknessAdjustment = Math.min(
+    maxThickness,
+    Math.max(0, geometryAdjustment(adjustments, "adj1", RIGHT_BRACE_DEFAULT_THICKNESS)),
+  );
+  const radius = (shortSide * thicknessAdjustment) / GEOMETRY_PERCENT_SCALE;
+  const halfWidth = w / 2;
+  const cusp = (h * cuspAdjustment) / GEOMETRY_PERCENT_SCALE;
+  const upperStemEnd = cusp - radius;
+  const lowerStemStart = cusp + radius;
+  const bottomCurveStart = h - radius;
+  const commands = [
+    "M 0 0",
+    `A ${fmt(halfWidth)} ${fmt(radius)} 0 0 1 ${fmt(halfWidth)} ${fmt(radius)}`,
+    `L ${fmt(halfWidth)} ${fmt(upperStemEnd)}`,
+    `A ${fmt(halfWidth)} ${fmt(radius)} 0 0 0 ${fmt(w)} ${fmt(cusp)}`,
+    `A ${fmt(halfWidth)} ${fmt(radius)} 0 0 0 ${fmt(halfWidth)} ${fmt(lowerStemStart)}`,
+    `L ${fmt(halfWidth)} ${fmt(bottomCurveStart)}`,
+    `A ${fmt(halfWidth)} ${fmt(radius)} 0 0 1 0 ${fmt(h)}`,
+  ].join(" ");
+  return { fill: `${commands} Z`, outline: commands };
+}
+
 /**
  * Build the `points` string for a polygon-based shape preset.
  *
@@ -272,7 +333,12 @@ export function buildShapePolygonPoints(type: string, w: number, h: number): str
  * displays. The original `<a:prstGeom prst>` value round-trips through the
  * model regardless of what the renderer chooses to draw.
  */
-function createShapeElement(type: string, w: number, h: number): SVGElement {
+function createShapeElement(
+  type: string,
+  w: number,
+  h: number,
+  adjustments: readonly ShapeGeometryAdjustment[],
+): SVGElement {
   switch (type) {
     case "ellipse":
     case "oval": {
@@ -300,6 +366,19 @@ function createShapeElement(type: string, w: number, h: number): SVGElement {
       setNum(el, "x2", w);
       setNum(el, "y2", h / 2);
       return el;
+    }
+    case "rightBrace": {
+      const paths = buildRightBracePaths(w, h, adjustments);
+      const group = document.createElementNS(SVG_NS, "g");
+      const fill = document.createElementNS(SVG_NS, "path");
+      fill.setAttribute("d", paths.fill);
+      fill.setAttribute("stroke", "none");
+      group.append(fill);
+      const outline = document.createElementNS(SVG_NS, "path");
+      outline.setAttribute("d", paths.outline);
+      outline.setAttribute("fill", "none");
+      group.append(outline);
+      return group;
     }
     default: {
       const points = buildShapePolygonPoints(type, w, h);
@@ -405,6 +484,7 @@ export const ShapeExtension = createNodeExtension({
     atom: true,
     attrs: {
       shapeType: { default: "rect" },
+      geometryAdjustments: { default: null },
       shapeId: { default: null },
       width: { default: 100 },
       height: { default: 80 },
@@ -449,6 +529,7 @@ export const ShapeExtension = createNodeExtension({
           const outlineTailEnd = parseShapeLineEnd(d["outlineTailEnd"]);
           return {
             shapeType: d["shapeType"] || "rect",
+            ...(d["geometryAdjustments"] ? { geometryAdjustments: d["geometryAdjustments"] } : {}),
             ...(d["shapeId"] ? { shapeId: d["shapeId"] } : {}),
             ...(d["width"] ? { width: Number(d["width"]) } : {}),
             ...(d["height"] ? { height: Number(d["height"]) } : {}),
@@ -520,6 +601,9 @@ export const ShapeExtension = createNodeExtension({
         class: "docx-shape",
         "data-shape-type": attrs.shapeType || "rect",
       };
+      if (attrs.geometryAdjustments) {
+        domAttrs["data-geometry-adjustments"] = attrs.geometryAdjustments;
+      }
 
       // Data attributes for round-trip
       if (attrs.shapeId) {
@@ -696,7 +780,8 @@ export const ShapeExtension = createNodeExtension({
         svg.append(defs);
       }
 
-      const shapeEl = createShapeElement(attrs.shapeType || "rect", w, h);
+      const geometryAdjustments = parseShapeGeometryAdjustments(attrs.geometryAdjustments) ?? [];
+      const shapeEl = createShapeElement(attrs.shapeType || "rect", w, h, geometryAdjustments);
       const strokeDasharray = strokeDashArrayForOutlineStyle(attrs.outlineStyle);
       if (strokeDasharray) {
         shapeEl.setAttribute("stroke-dasharray", strokeDasharray);

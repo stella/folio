@@ -89,6 +89,30 @@ describe("shape parse → serialize round-trip", () => {
     expect(xml).toContain('cy="457200"');
   });
 
+  test("preserves supported preset geometry adjustments", () => {
+    const source = shapeDrawingXml({ prst: "rightBrace" }).replace(
+      "<a:avLst/>",
+      '<a:avLst><a:gd name="adj1" fmla="val 12500"/><a:gd name="adj2" fmla="val 62500"/></a:avLst>',
+    );
+    const root = parseXmlDocument(source);
+    const shape = root ? parseShapeFromDrawing(root) : null;
+    expect(shape?.geometryAdjustments).toEqual([
+      { name: "adj1", formula: "val 12500" },
+      { name: "adj2", formula: "val 62500" },
+    ]);
+    if (!shape) {
+      return;
+    }
+
+    const xml = serializeRun({
+      type: "run",
+      content: [{ type: "shape", shape }],
+    });
+    expect(xml).toContain(
+      '<a:prstGeom prst="rightBrace"><a:avLst><a:gd name="adj1" fmla="val 12500"/><a:gd name="adj2" fmla="val 62500"/></a:avLst></a:prstGeom>',
+    );
+  });
+
   test("preserves solid fill colour through round-trip", () => {
     const root = parseXmlDocument(
       shapeDrawingXml({

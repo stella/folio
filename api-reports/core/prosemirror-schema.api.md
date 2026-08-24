@@ -327,6 +327,7 @@ export type SdtAttrs = {
 // @public
 export type ShapeAttrs = {
     shapeType?: string;
+    geometryAdjustments?: string;
     shapeId?: string;
     width?: number;
     height?: number;

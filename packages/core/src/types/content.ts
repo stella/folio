@@ -66,6 +66,7 @@ export type {
   ShapeOutline,
   ShapeTextBody,
   ShapeType,
+  ShapeGeometryAdjustment,
   SimpleField,
   SdtProperties,
   SdtType,

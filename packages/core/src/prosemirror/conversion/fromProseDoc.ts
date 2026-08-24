@@ -16,6 +16,7 @@ import type { Node as PMNode, Mark } from "prosemirror-model";
 import { Fragment } from "prosemirror-model";
 
 import { numPrEqual } from "../../docx/numberingParser";
+import { parseShapeGeometryAdjustments } from "../shapeGeometryAdjustments";
 import { narrowEnum, ShapeOutlineStyleSchema } from "../../docx/parserEnums";
 import type {
   ImageWrap,
@@ -2319,6 +2320,10 @@ function createShapeRun(node: PMNode): Run {
   };
   if (attrs.shapeId) {
     shape.id = attrs.shapeId;
+  }
+  const geometryAdjustments = parseShapeGeometryAdjustments(attrs.geometryAdjustments);
+  if (geometryAdjustments !== undefined) {
+    shape.geometryAdjustments = geometryAdjustments;
   }
   const shapeTransform = parseTransformAttr(attrs.transform);
   if (shapeTransform) {

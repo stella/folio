@@ -5,7 +5,7 @@ import { EditorState } from "prosemirror-state";
 
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import type { Document, DrawingContent } from "../types/document";
+import type { Document, DrawingContent, ShapeContent } from "../types/document";
 import { inspectDocxCompatibility } from "./compatibility";
 import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
@@ -13,8 +13,14 @@ import { repackDocx } from "./rezip";
 
 const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
-const createAdjustedShapeDocx = async (): Promise<ArrayBuffer> => {
+const createAdjustedShapeDocx = async (
+  preset: "rightBrace" | "roundRect",
+): Promise<ArrayBuffer> => {
   const zip = new JSZip();
+  const adjustments =
+    preset === "rightBrace"
+      ? '<a:gd name="adj1" fmla="val 12500"/><a:gd name="adj2" fmla="val 62500"/>'
+      : '<a:gd name="adj" fmla="val 25000"/>';
   zip.file(
     "[Content_Types].xml",
     `${XML_DECLARATION}
@@ -51,7 +57,7 @@ const createAdjustedShapeDocx = async (): Promise<ArrayBuffer> => {
         <wp:docPr id="1" name="Adjusted shape"/>
         <a:graphic><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">
           <wps:wsp><wps:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="457200"/></a:xfrm>
-            <a:prstGeom prst="bracePair"><a:avLst><a:gd name="adj" fmla="val 25000"/></a:avLst></a:prstGeom>
+            <a:prstGeom prst="${preset}"><a:avLst>${adjustments}</a:avLst></a:prstGeom>
             <a:noFill/><a:ln><a:solidFill><a:srgbClr val="666666"/></a:solidFill></a:ln>
           </wps:spPr></wps:wsp>
         </a:graphicData></a:graphic>
@@ -84,6 +90,18 @@ const firstRawDrawing = (document: Document): DrawingContent | undefined => {
       (content): content is DrawingContent =>
         content.type === "drawing" && content.rawXml !== undefined,
     );
+};
+
+const firstShape = (document: Document): ShapeContent | undefined => {
+  const paragraph = document.package.document.content.at(0);
+  if (paragraph?.type !== "paragraph") {
+    return undefined;
+  }
+
+  return paragraph.content
+    .filter((item) => item.type === "run")
+    .flatMap((run) => run.content)
+    .find((content): content is ShapeContent => content.type === "shape");
 };
 
 type CreateDocumentOptions = {
@@ -176,7 +194,7 @@ describe("DOCX compatibility inspection", () => {
   });
 
   test("allows text edits while preserving an unmodeled drawing verbatim", async () => {
-    const source = await createAdjustedShapeDocx();
+    const source = await createAdjustedShapeDocx("roundRect");
     const parsed = await parseDocx(source, { detectVariables: false, preloadFonts: false });
     const originalDrawing = firstRawDrawing(parsed);
 
@@ -212,6 +230,33 @@ describe("DOCX compatibility inspection", () => {
 
     expect(toProseDoc(reopened).textContent).toContain("Updated text");
     expect(reopenedDrawing?.rawXml).toBe(originalDrawing?.rawXml);
+    expect(inspectDocxCompatibility(reopened).canSafelyEdit).toBe(true);
+  });
+
+  test("treats a supported adjusted right brace as editable shape content", async () => {
+    const source = await createAdjustedShapeDocx("rightBrace");
+    const parsed = await parseDocx(source, { detectVariables: false, preloadFonts: false });
+    const expectedAdjustments = [
+      { name: "adj1", formula: "val 12500" },
+      { name: "adj2", formula: "val 62500" },
+    ];
+
+    expect(firstShape(parsed)?.shape).toMatchObject({
+      shapeType: "rightBrace",
+      geometryAdjustments: expectedAdjustments,
+    });
+    expect(firstRawDrawing(parsed)).toBeUndefined();
+    expect(inspectDocxCompatibility(parsed).canSafelyEdit).toBe(true);
+
+    const pmRoundTripped = fromProseDoc(toProseDoc(parsed), parsed);
+    expect(firstShape(pmRoundTripped)?.shape.geometryAdjustments).toEqual(expectedAdjustments);
+
+    const saved = await repackDocx(pmRoundTripped, { updateModifiedDate: false });
+    const reopened = await parseDocx(saved, { detectVariables: false, preloadFonts: false });
+    expect(firstShape(reopened)?.shape).toMatchObject({
+      shapeType: "rightBrace",
+      geometryAdjustments: expectedAdjustments,
+    });
     expect(inspectDocxCompatibility(reopened).canSafelyEdit).toBe(true);
   });
 

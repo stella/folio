@@ -125,15 +125,40 @@ describe("parseShapeFromDrawing — preset geometry", () => {
     expect(root ? shouldPreserveRawShapeDrawing(root) : false).toBe(true);
   });
 
-  test("preset geometry adjustments are preserved as raw drawings", () => {
+  test("supported preset geometry adjustments remain editable", () => {
     const root = parseXmlDocument(
       drawingWith(`<wps:spPr>
         <a:xfrm>
           <a:off x="0" y="0"/>
           <a:ext cx="914400" cy="457200"/>
         </a:xfrm>
-        <a:prstGeom prst="roundRect">
-          <a:avLst><a:gd name="adj" fmla="val 25000"/></a:avLst>
+        <a:prstGeom prst="rightBrace">
+          <a:avLst>
+            <a:gd name="adj1" fmla="val 12500"/>
+            <a:gd name="adj2" fmla="val 62500"/>
+          </a:avLst>
+        </a:prstGeom>
+      </wps:spPr>`),
+    );
+    expect(root ? parseShapeFromDrawing(root) : null).toMatchObject({
+      shapeType: "rightBrace",
+      geometryAdjustments: [
+        { name: "adj1", formula: "val 12500" },
+        { name: "adj2", formula: "val 62500" },
+      ],
+    });
+    expect(root ? shouldPreserveRawShapeDrawing(root) : false).toBe(false);
+  });
+
+  test("unsupported adjustment formulas remain preservation-only", () => {
+    const root = parseXmlDocument(
+      drawingWith(`<wps:spPr>
+        <a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="457200"/></a:xfrm>
+        <a:prstGeom prst="rightBrace">
+          <a:avLst>
+            <a:gd name="adj1" fmla="*/ 1 2 3"/>
+            <a:gd name="adj2" fmla="val 62500"/>
+          </a:avLst>
         </a:prstGeom>
       </wps:spPr>`),
     );

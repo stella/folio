@@ -711,6 +711,12 @@ export type ShapeType =
   | "swooshArrow"
   | "textBox";
 
+/** Authored adjustment formula for a preset DrawingML geometry. */
+export type ShapeGeometryAdjustment = {
+  name: string;
+  formula: string;
+};
+
 /**
  * Shape fill type
  */
@@ -812,6 +818,8 @@ export type Shape = {
   type: "shape";
   /** Shape type preset */
   shapeType: ShapeType;
+  /** Authored preset-geometry adjustments, in document order. */
+  geometryAdjustments?: ShapeGeometryAdjustment[];
   /** Unique ID */
   id?: string;
   /** Name */
