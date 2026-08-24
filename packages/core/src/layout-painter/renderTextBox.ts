@@ -61,7 +61,7 @@ export function renderTextBoxFragment(
   containerEl.style.position = "absolute";
   containerEl.style.width = `${fragment.width}px`;
   containerEl.style.height = `${fragment.height}px`;
-  containerEl.style.overflow = "hidden";
+  containerEl.style.overflow = block.textWrap === "none" ? "visible" : "hidden";
   containerEl.style.boxSizing = "border-box";
 
   // Fill color

@@ -652,16 +652,6 @@ export function runLayoutPipeline<THfPMs>(
     let footnoteContentMap = new Map<number, FootnoteContent>();
 
     // Common layout options for all passes
-    // SAFETY: `sectionStart` may be `"nextColumn"`, which the layout engine's
-    // `bodyBreakType` does not model; the adapter narrows it away and passes the
-    // value through unchanged at runtime. Preserved verbatim from the adapter.
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-    const bodyBreakType = finalSectionProperties?.sectionStart as
-      | "continuous"
-      | "nextPage"
-      | "evenPage"
-      | "oddPage"
-      | undefined;
     const buildLayoutOpts = (): Parameters<typeof layoutDocument>[2] => {
       const nextLayoutOpts: Parameters<typeof layoutDocument>[2] = {
         pageSize,
@@ -685,9 +675,6 @@ export function runLayoutPipeline<THfPMs>(
       }
       if (columns !== undefined) {
         nextLayoutOpts.columns = columns;
-      }
-      if (bodyBreakType !== undefined) {
-        nextLayoutOpts.bodyBreakType = bodyBreakType;
       }
       if (sectionHeaderFooterRefs !== undefined) {
         nextLayoutOpts.sectionHeaderFooterRefs = sectionHeaderFooterRefs;

@@ -43,7 +43,7 @@ import type {
 import { calculateTabWidth } from "../prosemirror/utils/tabCalculator";
 import type { TabContext, TabStop as TabCalcStop } from "../prosemirror/utils/tabCalculator";
 import { getAuthorColorIdx, AUTHOR_COLORS } from "../utils/authorColors";
-import { detectBaseDirection } from "../utils/baseDirection";
+import { isRtlParagraph } from "../utils/paragraphBaseDirection";
 import {
   hasComplexScriptFormatting,
   resolveComplexScriptFormatting,
@@ -1580,8 +1580,14 @@ type RenderLineOptions = {
   context?: RenderContext;
   /** Left indent in pixels */
   leftIndentPx?: number;
+  /** Authored OOXML left indent used by logical tab-stop calculations. */
+  tabLeftIndentPx?: number;
   /** First line indent in pixels (positive) or hanging indent (negative) */
   firstLineIndentPx?: number;
+  /** Paragraph base direction for logical first-line indentation. */
+  isRtl?: boolean;
+  /** Full paragraph content-box width before physical indents. */
+  contentWidthPx?: number;
   /** Line-specific floating image margins (calculated per-line based on Y overlap) */
   floatingMargins?: { leftMargin: number; rightMargin: number };
   /** Track inline image runs already rendered in this paragraph fragment to prevent duplicates */
@@ -2221,7 +2227,8 @@ export function renderLine(
     // The leftIndent serves two purposes in the tab calculator:
     // 1. For hanging indent paragraphs, it adds an implicit tab stop at the left margin
     // 2. Default tab stops are generated at regular intervals from the left margin
-    const leftIndentTwips = options?.leftIndentPx ? Math.round(options.leftIndentPx * 15) : 0;
+    const tabLeftIndentPx = options?.tabLeftIndentPx ?? options?.leftIndentPx ?? 0;
+    const leftIndentTwips = Math.round(tabLeftIndentPx * 15);
 
     tabContext = {
       ...(explicitStops !== undefined ? { explicitStops } : {}),
@@ -2237,6 +2244,8 @@ export function renderLine(
   // We need to track where on that coordinate system our text is
   let currentX: number;
   const leftIndentPx = options?.leftIndentPx ?? 0;
+  const tabLeftIndentPx = options?.tabLeftIndentPx ?? leftIndentPx;
+  const floatingLeftOffsetPx = options?.floatingMargins?.leftMargin ?? 0;
 
   if (options?.isFirstLine) {
     // First line position depends on first-line indent or hanging indent:
@@ -2248,10 +2257,10 @@ export function renderLine(
     // measureParagraph.ts contentX comment).
     const firstLineIndentPx = options.firstLineIndentPx ?? 0;
     const markerInlineWidth = getListMarkerInlineWidth(block);
-    currentX = leftIndentPx + firstLineIndentPx + markerInlineWidth;
+    currentX = tabLeftIndentPx + firstLineIndentPx + markerInlineWidth + floatingLeftOffsetPx;
   } else {
     // Non-first lines start at the left indent position
-    currentX = leftIndentPx;
+    currentX = tabLeftIndentPx + floatingLeftOffsetPx;
   }
 
   // Render each run
@@ -2304,6 +2313,7 @@ export function renderLine(
       }
       const useRightAnchor =
         lineRightEdgeX !== undefined &&
+        options?.isRtl !== true &&
         tabResult.alignment === "end" &&
         !hasFollowingTab &&
         currentX + tabResult.width + followingWidthForCheck >=
@@ -2344,19 +2354,20 @@ export function renderLine(
         tabEl.style.width = "auto";
         lineEl.append(tabEl);
 
-        // Re-apply the first-line indent as margin-left on the first flex
-        // child now that we know what it is (the tab itself when no prior
+        // Re-apply the first-line indent on the first child now that we know
+        // what it is (the tab itself when no prior
         // runs rendered, or the earlier text/image otherwise). Done AFTER
         // append so we don't no-op on tab-first lines (firstElementChild
         // would be null pre-append). Both negative (hanging) and positive
         // (firstLine) offsets are honoured.
+        const firstFlexChild = lineEl.firstElementChild ?? undefined;
         if (
           options?.isFirstLine &&
           options.firstLineIndentPx !== undefined &&
           options.firstLineIndentPx !== 0 &&
-          lineEl.firstElementChild instanceof HTMLElement
+          isStyleableHTMLElement(firstFlexChild)
         ) {
-          lineEl.firstElementChild.style.marginLeft = `${options.firstLineIndentPx}px`;
+          firstFlexChild.style.marginLeft = `${options.firstLineIndentPx}px`;
         }
 
         // Render the remaining runs into the line at their natural width.
@@ -2396,11 +2407,22 @@ export function renderLine(
       // the content area (Word TOC styles author stops a hair beyond the
       // margin); without this, the painted tab spills into the right margin.
       let tabWidth = tabResult.width;
+      const activeContentRightEdge =
+        options?.contentWidthPx === undefined
+          ? undefined
+          : options.contentWidthPx - (options.floatingMargins?.rightMargin ?? 0);
+      const preservesLogicalRtlEndStop =
+        options?.isRtl === true &&
+        tabResult.alignment === "end" &&
+        activeContentRightEdge !== undefined &&
+        currentX + tabWidth + followingWidthForCheck <=
+          activeContentRightEdge + RIGHT_EDGE_EPSILON_PX;
       const landsOnLeftIndent =
         tabResult.alignment === "start" &&
-        leftIndentPx > 0 &&
-        Math.abs(currentX + tabWidth - leftIndentPx) <= RIGHT_EDGE_EPSILON_PX;
+        tabLeftIndentPx > 0 &&
+        Math.abs(currentX + tabWidth - tabLeftIndentPx) <= RIGHT_EDGE_EPSILON_PX;
       if (
+        !preservesLogicalRtlEndStop &&
         !landsOnLeftIndent &&
         lineRightEdgeX !== undefined &&
         canClampTabToRightEdge(
@@ -2586,34 +2608,6 @@ function bordersFormGroup(a?: ParagraphBorders, b?: ParagraphBorders): boolean {
 }
 
 /**
- * Decide whether a paragraph without an explicit `w:bidi` flag should still be
- * laid out right-to-left. Only paragraphs that carry at least one `w:rtl` run
- * are candidates; among those the base direction follows the first strong
- * directional character (the `dir="auto"` rule), so Hebrew/Arabic-led lines
- * order RTL while an English- (or CJK-/Devanagari-/…) led line stays LTR.
- * eigenpal #723 (#719).
- */
-function paragraphBaseIsRtl(block: ParagraphBlock): boolean {
-  // Text runs plus field runs (a field result like a cross-reference renders as
-  // text, so it can be the paragraph's first strong character).
-  const runs = block.runs.filter((r) => isTextRun(r) || isFieldRun(r));
-  if (!runs.some((r) => r.rtl)) {
-    return false;
-  }
-  const text = runs
-    .map((r) => {
-      if (isTextRun(r)) {
-        return r.text;
-      }
-      return isFieldRun(r) ? (r.fallback ?? "") : "";
-    })
-    .join("");
-  // First strong directional character decides; nothing strong (null) => honor
-  // w:rtl, "rtl" => RTL; only an explicit "ltr" first char stays LTR.
-  return detectBaseDirection(text) !== "ltr";
-}
-
-/**
  * Render a paragraph fragment
  *
  * @param fragment - The fragment to render
@@ -2678,7 +2672,7 @@ export function renderParagraphFragment(
   // `dir`-marked spans (each an isolate), so without a base `dir` on the
   // fragment the runs stay in logical LTR order and reversed Hebrew/Arabic
   // reads backwards. eigenpal #723 (#719).
-  const isRtl = block.attrs?.bidi ?? paragraphBaseIsRtl(block);
+  const isRtl = isRtlParagraph(block);
   if (isRtl) {
     fragmentEl.dir = "rtl";
   }
@@ -2910,7 +2904,10 @@ export function renderParagraphFragment(
       paragraphEndsWithLineBreak,
       ...(block.attrs?.tabs !== undefined ? { tabStops: block.attrs.tabs } : {}),
       leftIndentPx: indentLeft,
+      tabLeftIndentPx: indent?.left ?? 0,
       firstLineIndentPx: isFirstLine ? firstLineIndentPx : 0,
+      isRtl,
+      contentWidthPx: fragment.width,
       context,
       floatingMargins: {
         leftMargin: lineLeftOffset,
@@ -2966,27 +2963,18 @@ export function renderParagraphFragment(
     const hasFirstLine = indent?.firstLine && indent.firstLine > 0;
 
     if (isFirstLine) {
-      // First line handling
-      if (indentLeft !== 0 && hasHanging) {
-        // Hanging indent: first line starts at (indentLeft - hanging)
-        lineEl.style.paddingLeft = `${Math.max(indentLeft, 0)}px`;
-        if (!isFlexLine) {
-          lineEl.style.textIndent = `-${indent.hanging ?? 0}px`;
-        }
-      } else if (indentLeft !== 0 && hasFirstLine) {
-        // First line indent: first line starts at (indentLeft + firstLine)
-        lineEl.style.paddingLeft = `${Math.max(indentLeft, 0)}px`;
-        if (!isFlexLine) {
-          lineEl.style.textIndent = `${indent.firstLine ?? 0}px`;
-        }
-      } else if (indentLeft > 0) {
-        // Just left indent, no special first line treatment
+      if (indentLeft > 0) {
         lineEl.style.paddingLeft = `${indentLeft}px`;
+      }
+      // CSS text-indent follows the inline start edge, so it applies at the
+      // right for an RTL line. Keep it independent of physical left padding:
+      // asymmetric RTL indents can have no left padding while still carrying
+      // a logical hanging indent at the right edge.
+      if (hasHanging && !isFlexLine) {
+        lineEl.style.textIndent = `-${indent.hanging ?? 0}px`;
       } else if (hasFirstLine && !isFlexLine) {
-        // No left indent, but has first line indent.
         lineEl.style.textIndent = `${indent.firstLine ?? 0}px`;
       }
-      // No hanging without left indent (handled by firstLineOffset in measurement)
     } else if (indentLeft > 0) {
       // Body lines (not first line)
       lineEl.style.paddingLeft = `${indentLeft}px`;

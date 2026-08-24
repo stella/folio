@@ -475,15 +475,11 @@ export function layoutDocument(
         break;
 
       case "sectionBreak": {
-        // A concrete following section with no authored type uses the format
-        // default. Only the final body retains the current type as a fallback
-        // when direct engine callers cannot supply its section properties.
+        // A section-break block carries the transition authored at that
+        // boundary. Looking ahead shifts every transition by one section,
+        // which moves odd/even filler pages to the wrong boundary.
         const nextSectionConfig = sectionConfigs[sectionIdx + 1] ?? initialConfig;
-        let nextType =
-          options.bodyBreakType ?? sectionBreakTypes[sectionIdx] ?? DEFAULT_SECTION_BREAK_TYPE;
-        if (sectionIdx + 1 < sectionBreakTypes.length) {
-          nextType = sectionBreakTypes[sectionIdx + 1] ?? DEFAULT_SECTION_BREAK_TYPE;
-        }
+        const nextType = sectionBreakTypes[sectionIdx] ?? DEFAULT_SECTION_BREAK_TYPE;
         handleSectionBreak(
           block as SectionBreakBlock,
           paginator,

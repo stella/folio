@@ -31,7 +31,9 @@ import type {
   Run,
   TextContent,
   Theme,
+  NumberFormat,
 } from "../types/document";
+import { formatOoxmlCounter } from "./ooxmlCounterFormatter";
 import { FieldTypeSchema, narrowEnum } from "./parserEnums";
 import { parseRun } from "./runParser";
 import type { StyleMap } from "./styleParser";
@@ -545,7 +547,7 @@ export function isTocField(field: Field): boolean {
 export function computePageNumber(
   pageNumber: number,
   instruction?: ParsedFieldInstruction,
-  sectionFormat?: string,
+  sectionFormat?: NumberFormat,
 ): string {
   const format = instruction ? getFormatSwitch(instruction) : undefined;
   if (!format || format.toUpperCase() === "MERGEFORMAT") {
@@ -563,20 +565,8 @@ export function computePageNumber(
   }
 }
 
-function formatSectionPageNumber(pageNumber: number, format: string | undefined): string {
-  switch (format) {
-    case "upperRoman":
-      return toRoman(pageNumber);
-    case "lowerRoman":
-      return toRoman(pageNumber).toLowerCase();
-    case "upperLetter":
-      return toLetter(pageNumber);
-    case "lowerLetter":
-      return toLetter(pageNumber).toLowerCase();
-    default:
-      return String(pageNumber);
-  }
-}
+const formatSectionPageNumber = (pageNumber: number, format: NumberFormat | undefined): string =>
+  formatOoxmlCounter(pageNumber, format);
 
 /**
  * Convert number to uppercase Roman numerals

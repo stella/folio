@@ -34,7 +34,12 @@ import type {
 import { normalizeRevisionId } from "@stll/docx-core/model";
 import { parseHeaderReference, parseFooterReference } from "./headerFooterRefParser";
 import { parseFootnoteProperties, parseEndnoteProperties } from "./notePropertiesParser";
-import { BorderStyleSchema, ThemeColorSlotSchema, narrowEnum } from "./parserEnums";
+import {
+  BorderStyleSchema,
+  NumberFormatSchema,
+  ThemeColorSlotSchema,
+  narrowEnum,
+} from "./parserEnums";
 import {
   findChild,
   findChildren,
@@ -592,7 +597,7 @@ export function parseSectionProperties(sectPr: XmlElement | null): SectionProper
   if (pgNumType) {
     const pageNumbering: NonNullable<SectionProperties["pageNumbering"]> = {};
 
-    const format = getAttribute(pgNumType, "w", "fmt");
+    const format = narrowEnum(getAttribute(pgNumType, "w", "fmt"), NumberFormatSchema);
     if (format) {
       pageNumbering.format = format;
     }

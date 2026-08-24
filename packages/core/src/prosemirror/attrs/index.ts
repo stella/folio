@@ -103,6 +103,10 @@ const TEXT_BOX_AUTO_FIT_VALUES = [
   "shape",
 ] as const satisfies readonly NonNullable<TextBoxAttrs["autoFit"]>[];
 
+const TEXT_BOX_TEXT_WRAP_VALUES = ["square", "none"] as const satisfies readonly NonNullable<
+  TextBoxAttrs["textWrap"]
+>[];
+
 const FIELD_KINDS = ["simple", "complex"] as const satisfies readonly FieldAttrs["fieldKind"][];
 
 const MATH_DISPLAYS = ["inline", "block"] as const satisfies readonly NonNullable<
@@ -769,6 +773,7 @@ export const readTextBoxAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TextB
   optionalNumber(attrs, "width", "textBox.attrs.width", issues);
   optionalNumber(attrs, "height", "textBox.attrs.height", issues);
   optionalOneOf(attrs, "autoFit", "textBox.attrs.autoFit", issues, TEXT_BOX_AUTO_FIT_VALUES);
+  optionalOneOf(attrs, "textWrap", "textBox.attrs.textWrap", issues, TEXT_BOX_TEXT_WRAP_VALUES);
   optionalString(attrs, "textBoxId", "textBox.attrs.textBoxId", issues);
   optionalString(attrs, "fillColor", "textBox.attrs.fillColor", issues);
   optionalNumber(attrs, "outlineWidth", "textBox.attrs.outlineWidth", issues);

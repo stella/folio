@@ -7,6 +7,7 @@
 import { ImagePosition } from '@stll/docx-core/model';
 import { ImageWrap } from '@stll/docx-core/model';
 import * as import__stll_docx_core_model from '@stll/docx-core/model';
+import { NumberFormat } from '@stll/docx-core/model';
 import { SdtProperties } from '@stll/docx-core/model';
 import { SdtType } from '@stll/docx-core/model';
 import { ShapeTextBody } from '@stll/docx-core/model';
@@ -441,7 +442,6 @@ export type LayoutOptions = {
     mirrorMargins?: boolean;
     footnoteReservedHeights?: Map<number, number>;
     footnoteHeightById?: Map<number, number>;
-    bodyBreakType?: "continuous" | "nextPage" | "evenPage" | "oddPage";
     sectionHeaderFooterRefs?: PageHeaderFooterRefs[];
 };
 
@@ -497,7 +497,7 @@ export type MeasuredLine = {
 export type Page = {
     number: number;
     logicalNumber: number;
-    logicalNumberFormat?: string;
+    logicalNumberFormat?: NumberFormat;
     fragments: Fragment[];
     margins: PageMargins;
     authoredMargins?: PageMargins;
@@ -841,11 +841,11 @@ export type SectionLayoutConfig = {
 // @public
 export type SectionPageNumbering = {
     type: "continue";
-    format?: string;
+    format?: NumberFormat;
 } | {
     type: "restart";
     start: number;
-    format?: string;
+    format?: NumberFormat;
 };
 
 // @public
@@ -991,6 +991,7 @@ export type TextBoxBlock = {
     width: number;
     height?: number;
     autoFit?: ShapeTextBody["autoFit"];
+    textWrap?: ShapeTextBody["textWrap"];
     fillColor?: string;
     outlineWidth?: number;
     outlineColor?: string;

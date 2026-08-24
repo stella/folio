@@ -8,6 +8,7 @@
 import type {
   ImagePosition,
   ImageWrap,
+  NumberFormat,
   ShapeTextBody,
   SdtProperties,
   SdtType,
@@ -783,8 +784,8 @@ export type SectionBreakBlock = {
 
 /** Normalized section page-number policy. An omitted OOXML start continues numbering. */
 export type SectionPageNumbering =
-  | { type: "continue"; format?: string }
-  | { type: "restart"; start: number; format?: string };
+  | { type: "continue"; format?: NumberFormat }
+  | { type: "restart"; start: number; format?: NumberFormat };
 
 export type PageHeaderFooterRefs = {
   titlePg?: boolean;
@@ -835,6 +836,8 @@ export type TextBoxBlock = {
   height?: number;
   /** Text fitting behavior */
   autoFit?: ShapeTextBody["autoFit"];
+  /** Horizontal text wrapping inside the box */
+  textWrap?: ShapeTextBody["textWrap"];
   /** Fill/background color */
   fillColor?: string;
   /** Border width in pixels */
@@ -1196,7 +1199,7 @@ export type Page = {
   /** Authored page number shown by PAGE fields. */
   logicalNumber: number;
   /** OOXML number format for this page's section. */
-  logicalNumberFormat?: string;
+  logicalNumberFormat?: NumberFormat;
   /** Fragments positioned on this page. */
   fragments: Fragment[];
   /** Page margins. */
@@ -1350,8 +1353,6 @@ export type LayoutOptions = {
    * page.
    */
   footnoteHeightById?: Map<number, number>;
-  /** Section break type for the body-level (final) section (for section transition logic). */
-  bodyBreakType?: "continuous" | "nextPage" | "evenPage" | "oddPage";
   /** Header/footer references for each document section, by section index. */
   sectionHeaderFooterRefs?: PageHeaderFooterRefs[];
 };

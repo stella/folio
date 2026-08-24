@@ -872,7 +872,7 @@ describe("runLayoutPipeline", () => {
     });
   });
 
-  test("uses the final section start mode for an implicit paragraph boundary", () => {
+  test("does not apply the final section start mode to an earlier implicit boundary", () => {
     const state = makeImplicitSectionBoundaryState();
     const continuous = runLayoutPipeline(
       makeDeps(createLayoutSession(), {
@@ -889,7 +889,7 @@ describe("runLayoutPipeline", () => {
       state,
     );
 
-    expect(continuous.layout?.pages).toHaveLength(1);
+    expect(continuous.layout?.pages).toHaveLength(2);
     expect(nextPage.layout?.pages).toHaveLength(2);
   });
 

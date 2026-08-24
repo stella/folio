@@ -281,7 +281,7 @@ describe("parseDocumentBody text box enrichment", () => {
       <w:r><w:t>Before </w:t></w:r>
       <w:r><w:t>merged</w:t>${textBoxDrawingXml(
         "Inside text box",
-        "<wps:bodyPr><a:spAutoFit/></wps:bodyPr>",
+        '<wps:bodyPr wrap="none"><a:spAutoFit/></wps:bodyPr>',
       )}</w:r>
       <w:bookmarkStart w:id="1" w:name="afterTextbox"/>
       <w:bookmarkEnd w:id="1"/>
@@ -316,6 +316,7 @@ describe("parseDocumentBody text box enrichment", () => {
     expect(shapeContent.shape.shapeType).toBe("textBox");
     expect(shapeContent.shape.textBody?.content.at(0)?.type).toBe("paragraph");
     expect(shapeContent.shape.textBody?.autoFit).toBe("shape");
+    expect(shapeContent.shape.textBody?.textWrap).toBe("none");
 
     const bookmarkStartIndex = paragraph.content.findIndex(
       (content) => content.type === "bookmarkStart",

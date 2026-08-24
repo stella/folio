@@ -48,8 +48,14 @@ export const reconcileBreakBeforeBlock = ({
   renderedBreakNeedsSnap,
 }: ReconcileBeforeBlockOptions): BreakDecision => {
   if (hasExplicitPageBreak) {
+    const followsSameSectionBoundary =
+      state.type === "pageAdvance" &&
+      state.reason === "authoredBoundary" &&
+      state.boundary === "sectionBreak" &&
+      previousBlock?.kind === "sectionBreak" &&
+      previousBlock.type !== "continuous";
     return {
-      forcePageBreak: true,
+      forcePageBreak: !followsSameSectionBoundary,
       suppressSpaceBefore: false,
       state: INITIAL_RENDERED_BREAK_STATE,
     };

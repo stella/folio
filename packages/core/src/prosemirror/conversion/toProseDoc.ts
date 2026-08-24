@@ -3290,6 +3290,9 @@ function textBoxFromShape(shape: Shape, textBody: ShapeTextBody): TextBox {
   if (textBody.autoFit) {
     textBox.autoFit = textBody.autoFit;
   }
+  if (textBody.textWrap) {
+    textBox.textWrap = textBody.textWrap;
+  }
   return textBox;
 }
 
@@ -3433,6 +3436,7 @@ function convertTextBox(
       width: widthPx,
       height: heightPx,
       autoFit: textBox.autoFit,
+      textWrap: textBox.textWrap,
       textBoxId: textBox.id,
       fillColor,
       outlineWidth,

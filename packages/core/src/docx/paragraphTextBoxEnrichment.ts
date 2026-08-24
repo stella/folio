@@ -311,6 +311,7 @@ const enrichTextBoxRuns = ({
         textBody: {
           content: textBox.content,
           ...(textBox.autoFit !== undefined ? { autoFit: textBox.autoFit } : {}),
+          ...(textBox.textWrap !== undefined ? { textWrap: textBox.textWrap } : {}),
           ...(textBox.margins !== undefined ? { margins: textBox.margins } : {}),
         },
       };

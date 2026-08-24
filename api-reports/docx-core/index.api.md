@@ -257,7 +257,7 @@ export type SectionProperties = {
         restart?: LineNumberRestart;
     };
     pageNumbering?: {
-        format?: string;
+        format?: NumberFormat;
         start?: number;
         chapterStyle?: number;
         chapterSeparator?: string;

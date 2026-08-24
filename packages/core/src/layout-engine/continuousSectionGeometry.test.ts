@@ -135,7 +135,6 @@ describe("continuous section break geometry", () => {
       pageSize: { w: 800, h: 1000 },
       margins: { top: 50, right: 50, bottom: 50, left: 50 },
       finalColumns: { count: 2, gap: 20, widths: [200, 300], gaps: [100] },
-      bodyBreakType: "continuous",
     });
 
     expect(result.pages).toHaveLength(1);
@@ -146,7 +145,7 @@ describe("continuous section break geometry", () => {
     expect(secondColumnFragment?.width).toBe(300);
   });
 
-  test("an omitted next section type defaults to a new page", () => {
+  test("an omitted transition defaults to a new page at its own boundary", () => {
     const first = paragraph("first", 100);
     const firstBreak: SectionBreakBlock = {
       kind: "sectionBreak",
@@ -177,15 +176,31 @@ describe("continuous section break geometry", () => {
     const result = layoutDocument(blocks, measures, {
       pageSize: { w: 800, h: 1000 },
       margins: { top: 50, right: 50, bottom: 50, left: 50 },
-      bodyBreakType: "continuous",
     });
 
     expect(result.pages).toHaveLength(2);
-    expect(result.pages[0]?.fragments.map((fragment) => fragment.blockId)).toEqual(["first"]);
-    expect(result.pages[1]?.fragments.map((fragment) => fragment.blockId)).toEqual([
+    expect(result.pages[0]?.fragments.map((fragment) => fragment.blockId)).toEqual([
+      "first",
       "second",
-      "third",
     ]);
+    expect(result.pages[1]?.fragments.map((fragment) => fragment.blockId)).toEqual(["third"]);
+  });
+
+  test("does not apply final section config to a preceding omitted transition", () => {
+    const first = paragraph("first", 100);
+    const second = paragraph("second", 100);
+    const result = layoutDocument(
+      [first.block, { kind: "sectionBreak", id: "break" }, second.block],
+      [first.measure, { kind: "sectionBreak" }, second.measure],
+      {
+        pageSize: { w: 800, h: 1000 },
+        margins: { top: 50, right: 50, bottom: 50, left: 50 },
+      },
+    );
+
+    expect(result.pages).toHaveLength(2);
+    expect(result.pages[0]?.fragments.map(({ blockId }) => blockId)).toEqual(["first"]);
+    expect(result.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual(["second"]);
   });
 
   test("content after a continuous column section resumes below its tallest column", () => {

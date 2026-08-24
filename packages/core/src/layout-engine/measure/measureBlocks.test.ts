@@ -129,6 +129,62 @@ describe("text box fitting", () => {
     }, fakeMeasure);
   });
 
+  test("shape fitting expands no-wrap text horizontally without soft line breaks", () => {
+    withFakeTextMeasure(() => {
+      const measure = measureBlock(
+        {
+          kind: "textBox",
+          id: "rtl-classification",
+          width: 40,
+          height: 20,
+          autoFit: "shape",
+          textWrap: "none",
+          margins: { top: 0, right: 20, bottom: 0, left: 0 },
+          content: [para("inner", "عنوان عربي")],
+        },
+        500,
+      );
+
+      expect(measure.kind).toBe("textBox");
+      if (measure.kind !== "textBox") {
+        return;
+      }
+      expect(measure.width).toBe(70);
+      const paragraph = measure.innerMeasures.at(0);
+      expect(paragraph?.kind).toBe("paragraph");
+      if (paragraph?.kind === "paragraph") {
+        expect(paragraph.lines).toHaveLength(1);
+      }
+    }, fakeMeasure);
+  });
+
+  test("shape fitting includes paragraph indents in the no-wrap width", () => {
+    withFakeTextMeasure(() => {
+      const measure = measureBlock(
+        {
+          kind: "textBox",
+          id: "indented-no-wrap",
+          width: 40,
+          autoFit: "shape",
+          textWrap: "none",
+          margins: { top: 0, right: 0, bottom: 0, left: 0 },
+          content: [
+            {
+              ...para("inner", "abcdefghij"),
+              attrs: { indent: { left: 100, right: 50 } },
+            },
+          ],
+        },
+        500,
+      );
+
+      expect(measure.kind).toBe("textBox");
+      if (measure.kind === "textBox") {
+        expect(measure.width).toBe(200);
+      }
+    }, fakeMeasure);
+  });
+
   test.each([undefined, "none", "normal"] as const)(
     "keeps the authored height for the %s fitting mode",
     (autoFit) => {

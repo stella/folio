@@ -26,6 +26,7 @@ function textBoxAttrsFromImport(args: {
   distLEmu?: number;
   distREmu?: number;
   autoFit?: "none" | "normal" | "shape";
+  textWrap?: "square" | "none";
 }): TextBoxAttrs {
   const document: Document = {
     package: {
@@ -68,6 +69,7 @@ function textBoxAttrsFromImport(args: {
                       },
                       textBody: {
                         ...(args.autoFit !== undefined ? { autoFit: args.autoFit } : {}),
+                        ...(args.textWrap !== undefined ? { textWrap: args.textWrap } : {}),
                         content: [
                           {
                             type: "paragraph",
@@ -103,9 +105,14 @@ function textBoxAttrsFromImport(args: {
 
 describe("toProseDoc propagates text-box wrap attributes", () => {
   test("preserves the text fitting mode", () => {
-    const attrs = textBoxAttrsFromImport({ wrapType: "inline", autoFit: "shape" });
+    const attrs = textBoxAttrsFromImport({
+      wrapType: "inline",
+      autoFit: "shape",
+      textWrap: "none",
+    });
 
     expect(attrs["autoFit"]).toBe("shape");
+    expect(attrs["textWrap"]).toBe("none");
   });
 
   test("wrap='square' + wrapText='right' becomes a left-floating wrap", () => {

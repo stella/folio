@@ -867,7 +867,7 @@ export type SectionProperties = {
         restart?: LineNumberRestart;
     };
     pageNumbering?: {
-        format?: string;
+        format?: NumberFormat;
         start?: number;
         chapterStyle?: number;
         chapterSeparator?: string;
@@ -986,6 +986,7 @@ export type ShapeTextBody = {
     anchor?: "top" | "middle" | "bottom" | "distributed" | "justified";
     anchorCenter?: boolean;
     autoFit?: "none" | "normal" | "shape";
+    textWrap?: "square" | "none";
     margins?: {
         top?: number;
         bottom?: number;
@@ -1248,6 +1249,7 @@ export type TextBox = {
     outline?: ShapeOutline;
     content: (Paragraph | Table)[];
     autoFit?: ShapeTextBody["autoFit"];
+    textWrap?: ShapeTextBody["textWrap"];
     margins?: {
         top?: number;
         bottom?: number;

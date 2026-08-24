@@ -469,6 +469,58 @@ describe("rendered break reconciliation", () => {
 
     expect(decision.forcePageBreak).toBe(false);
   });
+
+  test("pageBreakBefore does not create an empty page after an authored boundary", () => {
+    const block = paragraph(2, { pageBreakBefore: true });
+    const decision = reconcileBreakBeforeBlock({
+      state: {
+        type: "pageAdvance",
+        reason: "authoredBoundary",
+        boundary: "sectionBreak",
+      },
+      block,
+      previousBlock: { kind: "sectionBreak", id: "section", type: "nextPage" },
+      page: page([]),
+      blocksById: new Map(),
+      hasExplicitPageBreak: true,
+      renderedBreakNeedsSnap: false,
+    });
+
+    expect(decision.forcePageBreak).toBe(false);
+  });
+
+  test("pageBreakBefore still advances a page with visible body content", () => {
+    const previous = paragraph(1, {}, [{ kind: "text", text: "Previous" }]);
+    const decision = reconcileBreakBeforeBlock({
+      state: INITIAL_RENDERED_BREAK_STATE,
+      block: paragraph(2, { pageBreakBefore: true }),
+      previousBlock: previous,
+      page: page([paragraphFragment(1)]),
+      blocksById: new Map([["1", previous]]),
+      hasExplicitPageBreak: true,
+      renderedBreakNeedsSnap: false,
+    });
+
+    expect(decision.forcePageBreak).toBe(true);
+  });
+
+  test("pageBreakBefore preserves a distinct preceding hard-break boundary", () => {
+    const decision = reconcileBreakBeforeBlock({
+      state: {
+        type: "pageAdvance",
+        reason: "authoredBoundary",
+        boundary: "hardBreak",
+      },
+      block: paragraph(2, { pageBreakBefore: true }),
+      previousBlock: { kind: "pageBreak", id: "hard-break" },
+      page: page([]),
+      blocksById: new Map(),
+      hasExplicitPageBreak: true,
+      renderedBreakNeedsSnap: false,
+    });
+
+    expect(decision.forcePageBreak).toBe(true);
+  });
 });
 
 describe("rendered break state transitions", () => {

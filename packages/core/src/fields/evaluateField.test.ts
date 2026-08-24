@@ -38,6 +38,13 @@ describe("evaluateField page-number family", () => {
     expect(evalInstr("PAGE \\* ROMAN", ctx)).toBe("XIII");
   });
 
+  test("PAGE uses the complete OOXML section-number format contract", () => {
+    const ctx = baseContext({ pageNumber: 3, pageNumberFormat: "arabicAbjad" });
+
+    expect(evalInstr("PAGE", ctx)).toBe("\u200cج");
+    expect(evalInstr("PAGE \\* MERGEFORMAT", ctx)).toBe("\u200cج");
+  });
+
   test("locked fields preserve their cached fallback", () => {
     const ctx = baseContext();
     expect(

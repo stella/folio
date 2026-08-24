@@ -13,6 +13,7 @@ import {
   isCjkFont,
 } from "../../utils/fontResolver";
 import { inlineImageBoundingBox } from "../../utils/rotationBoundingBox";
+import { isRtlParagraph } from "../../utils/paragraphBaseDirection";
 import { hasCjk, hasComplexScript } from "../../utils/scriptSegments";
 import { measuredLineAdvance } from "../lineFlow";
 import type {
@@ -1138,6 +1139,7 @@ export function measureParagraph(
 ): ParagraphMeasure {
   const runs = block.runs;
   const attrs = block.attrs;
+  const isRtl = isRtlParagraph(block);
   const spacing = attrs?.spacing;
   const isJustifiedParagraph = attrs?.alignment === "justify";
   const justificationProfile: JustificationProfile = {
@@ -1636,6 +1638,12 @@ export function measureParagraph(
         decimalPrefixWidth,
       });
       let tabWidth = tabResult.width;
+      const authoredEndpoint = contentX + tabWidth + followingWidth;
+      const activeContentRightEdge = maxWidth - currentLine.rightOffset;
+      const preservesLogicalRtlEndStop =
+        isRtl &&
+        tabResult.alignment === "end" &&
+        authoredEndpoint <= activeContentRightEdge + WIDTH_TOLERANCE;
       const landsOnLeftIndent =
         tabResult.alignment === "start" &&
         indentLeft > 0 &&
@@ -1647,6 +1655,7 @@ export function measureParagraph(
         currentLine.availableWidth +
         currentLine.leftOffset;
       if (
+        !preservesLogicalRtlEndStop &&
         !landsOnLeftIndent &&
         !hasFollowingTabOnLine(runs, runIndex) &&
         canClampTabToRightEdge(
@@ -1660,6 +1669,19 @@ export function measureParagraph(
         contentX + tabWidth + followingWidth > lineRightEdgeX + WIDTH_TOLERANCE
       ) {
         tabWidth = Math.max(1, lineRightEdgeX - contentX - followingWidth);
+      }
+
+      // OOXML tab positions remain logical in bidi paragraphs. The browser's
+      // `dir="rtl"` mirrors this endpoint, so an authored end stop may extend
+      // past the paragraph's physical right-indent edge and still land inside
+      // the page at the corresponding left-side position. Preserve enough
+      // line budget for the tab and its trailing content instead of wrapping
+      // a valid RTL TOC entry at that physical edge.
+      if (preservesLogicalRtlEndStop) {
+        currentLine.availableWidth = Math.max(
+          currentLine.availableWidth,
+          currentLine.width + tabWidth + followingWidth,
+        );
       }
 
       if (currentLine.width + tabWidth > currentLine.availableWidth + WIDTH_TOLERANCE) {

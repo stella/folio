@@ -1004,6 +1004,9 @@ function serializeShapeContent(content: ShapeContent): string {
   if (shape.textBody) {
     const tb = shape.textBody;
     const bpAttrs: string[] = ['rot="0"', 'vert="horz"'];
+    if (tb.textWrap) {
+      bpAttrs.push(`wrap="${tb.textWrap}"`);
+    }
     if (tb.anchor) {
       bpAttrs.push(`anchor="${tb.anchor === "middle" ? "ctr" : tb.anchor}"`);
     }

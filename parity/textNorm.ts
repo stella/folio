@@ -1,13 +1,27 @@
+import { detectBaseDirection } from "../packages/core/src/utils/baseDirection";
+
 /**
  * Text normalisation shared by every extractor and the comparator. Both sides
  * of the diff must normalise identically or alignment falls apart.
  */
 
+const RTL_LEADER_LINE_PATTERN = /^(?<page>[\p{Decimal_Number}]+)\s+…\s+(?<title>.+)$/u;
+
+const normalizeRtlLeaderOrder = (text: string): string => {
+  const match = text.match(RTL_LEADER_LINE_PATTERN);
+  const page = match?.groups?.["page"];
+  const title = match?.groups?.["title"];
+  if (!page || !title || detectBaseDirection(title) !== "rtl") {
+    return text;
+  }
+  return `${title} … ${page}`;
+};
+
 /** NFC-normalise, fold known PDF glyph aliases, drop soft hyphens and
  * zero-width characters, fold all whitespace (incl. NBSP variants and tabs)
  * to single spaces, trim. */
-export const normalizeLineText = (text: string): string =>
-  text
+export const normalizeLineText = (text: string): string => {
+  const normalized = text
     .normalize("NFC")
     // Some CJK PDF font maps expose an ordinary ideograph as the equivalent
     // CJK or Kangxi radical (for example 乙 as U+2F04). The visual glyph and
@@ -17,8 +31,11 @@ export const normalizeLineText = (text: string): string =>
     .replace(/\uf0b7/gu, "•")
     .replace(/\uf0e3/gu, "ã")
     .replace(/\s*\.{3,}\s*/gu, " … ")
+    .replace(/(?:\s*…\s*){2,}/gu, " … ")
     .replace(/\s+/gu, " ")
     .trim();
+  return normalizeRtlLeaderOrder(normalized);
+};
 
 /** Levenshtein-based similarity in [0, 1]; 1 means identical. */
 export const textSimilarity = (a: string, b: string): number => {

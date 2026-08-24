@@ -1693,7 +1693,6 @@ describe("Section Breaks", () => {
       blocks,
       measures,
       makeLayoutOptions({
-        bodyBreakType: type,
         finalPageNumbering: { type: "restart", start: 13 },
       }),
     );
@@ -1751,6 +1750,35 @@ describe("Section Breaks", () => {
     expect(layout.pages.length).toBe(4);
     expect(layout.pages[2].fragments).toEqual([]);
     expect(layout.pages[3].fragments.some((f) => f.blockId === 2)).toBe(true);
+  });
+
+  test("applies each section transition at its own boundary", () => {
+    const blocks: FlowBlock[] = [
+      makeParagraphBlock("first", "First", 1),
+      { kind: "sectionBreak", id: "first-break" },
+      makeParagraphBlock("second", "Second", 1),
+      { kind: "pageBreak", id: "inside-second" },
+      makeParagraphBlock("second-tail", "Second tail", 1),
+      { kind: "sectionBreak", id: "second-break", type: "oddPage" },
+      makeParagraphBlock("third", "Third", 1),
+    ];
+    const paragraphMeasure = makeParagraphMeasure([makeLine(0, 0, 0, 5, 50, 24)]);
+    const measures: Measure[] = [
+      paragraphMeasure,
+      { kind: "sectionBreak" },
+      paragraphMeasure,
+      { kind: "pageBreak" },
+      paragraphMeasure,
+      { kind: "sectionBreak" },
+      paragraphMeasure,
+    ];
+
+    const layout = layoutDocument(blocks, measures, makeLayoutOptions());
+
+    expect(layout.pages).toHaveLength(5);
+    expect(layout.pages[1]?.fragments.some(({ blockId }) => blockId === "second")).toBe(true);
+    expect(layout.pages[3]?.fragments).toEqual([]);
+    expect(layout.pages[4]?.fragments.some(({ blockId }) => blockId === "third")).toBe(true);
   });
 });
 

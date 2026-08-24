@@ -487,6 +487,7 @@ export type TextBoxAttrs = {
     width?: number;
     height?: number;
     autoFit?: import__stll_docx_core_model.ShapeTextBody["autoFit"];
+    textWrap?: import__stll_docx_core_model.ShapeTextBody["textWrap"];
     textBoxId?: string;
     fillColor?: string;
     outlineWidth?: number;

@@ -825,8 +825,35 @@ export function measureTextBoxBlock(
     if (block.kind === "table") {
       return measureTableBlock(block, innerWidth, fieldValues);
     }
-    return measureParagraph(block, innerWidth, fieldValues ? { fieldValues } : undefined);
+    const measureWidth = tb.textWrap === "none" ? NO_WRAP_MEASURE_WIDTH : innerWidth;
+    return measureParagraph(block, measureWidth, fieldValues ? { fieldValues } : undefined);
   });
+  let naturalContentWidth = 0;
+  for (let index = 0; index < innerMeasures.length; index++) {
+    const measure = innerMeasures[index]!;
+    if (measure.kind === "table") {
+      naturalContentWidth = Math.max(naturalContentWidth, measure.totalWidth);
+      continue;
+    }
+    const block = tb.content[index];
+    if (!block || block.kind !== "paragraph") {
+      continue;
+    }
+    const indent = block.attrs?.indent;
+    const left = indent?.left ?? 0;
+    const right = indent?.right ?? 0;
+    for (let lineIndex = 0; lineIndex < measure.lines.length; lineIndex++) {
+      const line = measure.lines[lineIndex]!;
+      const firstLineOffset =
+        lineIndex === 0 ? (indent?.firstLine ?? 0) - (indent?.hanging ?? 0) : 0;
+      const start = left + firstLineOffset;
+      const end = start + line.width + right;
+      naturalContentWidth = Math.max(naturalContentWidth, Math.max(0, end) - Math.min(0, start));
+    }
+  }
+  const fittedWidth = naturalContentWidth + margins.left + margins.right;
+  const totalWidth =
+    tb.autoFit === "shape" && tb.textWrap === "none" ? Math.max(tb.width, fittedWidth) : tb.width;
   const contentHeight = layoutTextBoxContent(tb.content, innerMeasures).totalHeight;
   const contentBoxHeight = contentHeight + margins.top + margins.bottom;
   const totalHeight =
@@ -835,7 +862,7 @@ export function measureTextBoxBlock(
       : (tb.height ?? contentBoxHeight);
   return {
     kind: "textBox",
-    width: tb.width,
+    width: totalWidth,
     height: totalHeight,
     innerMeasures,
   };

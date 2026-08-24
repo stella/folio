@@ -310,6 +310,189 @@ describe("renderLine right-tab flex anchor", () => {
     expect(trailing.length).toBeGreaterThanOrEqual(1);
   });
 
+  test("keeps an RTL TOC end tab logical instead of flex-anchoring it physically", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "rtl-toc",
+      attrs: { bidi: true },
+      runs: [{ kind: "text", text: "عنوان عربي" }, { kind: "tab" }, { kind: "text", text: "1" }],
+    };
+    const line: MeasuredLine = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 2,
+      toChar: 1,
+      width: 600,
+      ascent: 12,
+      descent: 3,
+      lineHeight: 15,
+    };
+
+    const lineEl = renderLine(block, line, "right", fakeDocument, {
+      availableWidth: 528,
+      isLastLine: true,
+      isFirstLine: true,
+      paragraphEndsWithLineBreak: false,
+      tabStops: [{ val: "end", pos: 9000, leader: "dot" }],
+      leftIndentPx: 48,
+      firstLineIndentPx: -48,
+      isRtl: true,
+      contentWidthPx: 624,
+      lineRightEdgePx: 576,
+    }) as unknown as FakeElement;
+
+    expect(lineEl.dataset["flexLine"]).toBeUndefined();
+    expect(lineEl.style["display"]).toBeUndefined();
+    expect(findTabEl(lineEl)?.style["width"]).toBe("523px");
+  });
+
+  test("uses the authored tab origin when RTL swaps asymmetric physical indents", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "rtl-toc-level-2",
+      attrs: { bidi: true },
+      runs: [{ kind: "text", text: "عنوان عربي" }, { kind: "tab" }, { kind: "text", text: "1" }],
+    };
+    const line: MeasuredLine = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 2,
+      toChar: 1,
+      width: 552,
+      ascent: 12,
+      descent: 3,
+      lineHeight: 15,
+    };
+
+    const lineEl = renderLine(block, line, "right", fakeDocument, {
+      availableWidth: 528,
+      isLastLine: true,
+      isFirstLine: true,
+      paragraphEndsWithLineBreak: false,
+      tabStops: [{ val: "end", pos: 9000, leader: "dot" }],
+      // Physical left is zero after RTL swaps w:left=1440 to the right edge.
+      leftIndentPx: 0,
+      // Tab stops still use the authored logical w:left coordinate.
+      tabLeftIndentPx: 96,
+      firstLineIndentPx: -48,
+      isRtl: true,
+      contentWidthPx: 624,
+      lineRightEdgePx: 528,
+    }) as unknown as FakeElement;
+
+    expect(lineEl.dataset["flexLine"]).toBeUndefined();
+    expect(findTabEl(lineEl)?.style["width"]).toBe("475px");
+  });
+
+  test("bounds an RTL end tab authored beyond the content box", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "rtl-toc-out-of-bounds",
+      attrs: { bidi: true },
+      runs: [{ kind: "text", text: "عنوان عربي" }, { kind: "tab" }, { kind: "text", text: "1" }],
+    };
+    const line: MeasuredLine = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 2,
+      toChar: 1,
+      width: 600,
+      ascent: 12,
+      descent: 3,
+      lineHeight: 15,
+    };
+
+    const lineEl = renderLine(block, line, "right", fakeDocument, {
+      availableWidth: 528,
+      isLastLine: true,
+      isFirstLine: true,
+      paragraphEndsWithLineBreak: false,
+      tabStops: [{ val: "end", pos: 100_000_000, leader: "dot" }],
+      leftIndentPx: 48,
+      firstLineIndentPx: -48,
+      isRtl: true,
+      contentWidthPx: 624,
+      lineRightEdgePx: 576,
+    }) as unknown as FakeElement;
+
+    expect(lineEl.dataset["flexLine"]).toBeUndefined();
+    expect(Number.parseFloat(findTabEl(lineEl)?.style["width"] ?? "Infinity")).toBeLessThan(624);
+  });
+
+  test("bounds an RTL end tab at a right-side floating exclusion", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "rtl-toc-right-float",
+      attrs: { bidi: true },
+      runs: [{ kind: "text", text: "عنوان عربي" }, { kind: "tab" }, { kind: "text", text: "1" }],
+    };
+    const line: MeasuredLine = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 2,
+      toChar: 1,
+      width: 276,
+      ascent: 12,
+      descent: 3,
+      lineHeight: 15,
+      rightOffset: 300,
+    };
+
+    const lineEl = renderLine(block, line, "right", fakeDocument, {
+      availableWidth: 228,
+      isLastLine: true,
+      isFirstLine: true,
+      paragraphEndsWithLineBreak: false,
+      tabStops: [{ val: "end", pos: 9000, leader: "dot" }],
+      leftIndentPx: 48,
+      firstLineIndentPx: -48,
+      isRtl: true,
+      contentWidthPx: 624,
+      floatingMargins: { leftMargin: 0, rightMargin: 300 },
+      lineRightEdgePx: 276,
+    }) as unknown as FakeElement;
+
+    expect(lineEl.dataset["flexLine"]).toBeUndefined();
+    expect(findTabEl(lineEl)?.style["width"]).toBe("199px");
+  });
+
+  test("includes a left-side floating exclusion in the RTL tab coordinate", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "rtl-toc-left-float",
+      attrs: { bidi: true },
+      runs: [{ kind: "text", text: "عنوان عربي" }, { kind: "tab" }, { kind: "text", text: "1" }],
+    };
+    const line: MeasuredLine = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 2,
+      toChar: 1,
+      width: 300,
+      ascent: 12,
+      descent: 3,
+      lineHeight: 15,
+      leftOffset: 300,
+    };
+
+    const lineEl = renderLine(block, line, "right", fakeDocument, {
+      availableWidth: 228,
+      isLastLine: true,
+      isFirstLine: true,
+      paragraphEndsWithLineBreak: false,
+      tabStops: [{ val: "end", pos: 9000, leader: "dot" }],
+      leftIndentPx: 48,
+      firstLineIndentPx: -48,
+      isRtl: true,
+      contentWidthPx: 624,
+      floatingMargins: { leftMargin: 300, rightMargin: 0 },
+      lineRightEdgePx: 576,
+    }) as unknown as FakeElement;
+
+    expect(lineEl.dataset["flexLine"]).toBeUndefined();
+    expect(findTabEl(lineEl)?.style["width"]).toBe("223px");
+  });
+
   test("does NOT promote to flex when the right-aligned tab is not the last on the line", () => {
     // Two end-aligned tabs on one line — the first tab must NOT fire the
     // anchor (it has a following tab), so its trailing content lays out

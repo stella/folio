@@ -220,6 +220,151 @@ describe("measureParagraph — right/center tab stops (eigenpal #576)", () => {
     });
   });
 
+  test("preserves the logical endpoint of an RTL TOC end tab", () => {
+    withFakeTextMeasure(
+      () => {
+        const measure = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "rtl-toc-end-tab",
+            runs: [
+              { kind: "text", text: "عنوان عربي", fontSize: 11 },
+              { kind: "tab" },
+              { kind: "text", text: "1", fontSize: 11 },
+            ],
+            attrs: {
+              bidi: true,
+              alignment: "justify",
+              indent: { left: 48, right: 48, hanging: 48 },
+              tabs: [{ val: "end", pos: 9000, leader: "dot" }],
+            },
+          },
+          624,
+        );
+
+        expect(measure.lines).toHaveLength(1);
+        expect(measure.lines[0]?.width).toBe(600);
+      },
+      { charWidth: () => 5 },
+    );
+  });
+
+  test("uses the same inferred RTL direction for measurement and painting", () => {
+    withFakeTextMeasure(
+      () => {
+        const measure = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "inferred-rtl-end-tab",
+            runs: [
+              { kind: "text", text: "عنوان عربي", fontSize: 11, rtl: true },
+              { kind: "tab" },
+              { kind: "text", text: "1", fontSize: 11, rtl: true },
+            ],
+            attrs: {
+              indent: { left: 48, right: 48, hanging: 48 },
+              tabs: [{ val: "end", pos: 9000, leader: "dot" }],
+            },
+          },
+          624,
+        );
+
+        expect(measure.lines).toHaveLength(1);
+        expect(measure.lines[0]?.width).toBe(600);
+      },
+      { charWidth: () => 5 },
+    );
+  });
+
+  test("does not expand an RTL line to a tab stop beyond the content box", () => {
+    withFakeTextMeasure(
+      () => {
+        const measure = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "bounded-rtl-end-tab",
+            runs: [
+              { kind: "text", text: "عنوان عربي", fontSize: 11 },
+              { kind: "tab" },
+              { kind: "text", text: "1", fontSize: 11 },
+            ],
+            attrs: {
+              bidi: true,
+              indent: { left: 48, right: 48, hanging: 48 },
+              tabs: [{ val: "end", pos: 100_000_000, leader: "dot" }],
+            },
+          },
+          624,
+        );
+
+        expect(measure.lines.every(({ width }) => width <= 624)).toBe(true);
+      },
+      { charWidth: () => 5 },
+    );
+  });
+
+  test("does not expand an RTL end tab through a right-side float", () => {
+    withFakeTextMeasure(
+      () => {
+        const measure = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "rtl-end-tab-right-float",
+            runs: [
+              { kind: "text", text: "عنوان عربي", fontSize: 11 },
+              { kind: "tab" },
+              { kind: "text", text: "1", fontSize: 11 },
+            ],
+            attrs: {
+              bidi: true,
+              indent: { left: 48, right: 48, hanging: 48 },
+              tabs: [{ val: "end", pos: 9000, leader: "dot" }],
+            },
+          },
+          624,
+          {
+            floatingZones: [{ leftMargin: 0, rightMargin: 300, topY: 0, bottomY: 100 }],
+          },
+        );
+
+        expect(measure.lines).toHaveLength(1);
+        expect(measure.lines[0]).toMatchObject({ width: 276, rightOffset: 300 });
+      },
+      { charWidth: () => 5 },
+    );
+  });
+
+  test("includes a left-side float in the RTL tab coordinate", () => {
+    withFakeTextMeasure(
+      () => {
+        const measure = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "rtl-end-tab-left-float",
+            runs: [
+              { kind: "text", text: "عنوان عربي", fontSize: 11 },
+              { kind: "tab" },
+              { kind: "text", text: "1", fontSize: 11 },
+            ],
+            attrs: {
+              bidi: true,
+              indent: { left: 48, right: 48, hanging: 48 },
+              tabs: [{ val: "end", pos: 9000, leader: "dot" }],
+            },
+          },
+          624,
+          {
+            floatingZones: [{ leftMargin: 300, rightMargin: 0, topY: 0, bottomY: 100 }],
+          },
+        );
+
+        expect(measure.lines).toHaveLength(1);
+        expect(measure.lines[0]).toMatchObject({ width: 300, leftOffset: 300 });
+      },
+      { charWidth: () => 5 },
+    );
+  });
+
   test("right tab reserves rotated inline image bbox width in following width", () => {
     withFakeTextMeasure(() => {
       const block = {

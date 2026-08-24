@@ -831,6 +831,19 @@ export const extractSinglePage = (page: Page, domIndex: number): Promise<RawPage
             return rect.width > 0 && rect.height > 0 ? rect : null;
           }
 
+          // Leader tabs paint a deliberately overlong dot/hyphen string in an
+          // overflow-clipped child. A Range reports that child's unpainted
+          // thousands-of-pixels width, so use the clipping tab box as its ink
+          // extent. This keeps parity geometry aligned with the screenshot and
+          // the PDF extractor while retaining the leader text for comparison.
+          if (
+            segmentEl.classList.contains("layout-run-tab") &&
+            segmentEl.querySelector(":scope > span")?.textContent
+          ) {
+            const rect = segmentEl.getBoundingClientRect();
+            return rect.width > 0 && rect.height > 0 ? rect : null;
+          }
+
           const walker = document.createTreeWalker(segmentEl, NodeFilter.SHOW_TEXT);
           let firstNode: Text | null = null;
           let firstOffset = 0;

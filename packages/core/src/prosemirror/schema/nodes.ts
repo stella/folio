@@ -566,6 +566,8 @@ export type TextBoxAttrs = {
   height?: number;
   /** Text fitting behavior */
   autoFit?: ShapeTextBody["autoFit"];
+  /** Horizontal text wrapping inside the box */
+  textWrap?: ShapeTextBody["textWrap"];
   /** Unique identifier */
   textBoxId?: string;
   /** Fill color as CSS color */

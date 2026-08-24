@@ -2625,6 +2625,9 @@ function convertTextBoxNode(
   if (attrs.autoFit !== undefined) {
     textBox.autoFit = attrs.autoFit;
   }
+  if (attrs.textWrap !== undefined) {
+    textBox.textWrap = attrs.textWrap;
+  }
   if (attrs.fillColor !== undefined) {
     textBox.fillColor = attrs.fillColor;
   }

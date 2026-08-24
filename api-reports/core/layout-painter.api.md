@@ -7,6 +7,7 @@
 import { ImagePosition } from '@stll/docx-core/model';
 import { ImageWrap } from '@stll/docx-core/model';
 import * as import__stll_docx_core_model from '@stll/docx-core/model';
+import { NumberFormat } from '@stll/docx-core/model';
 import { SdtProperties } from '@stll/docx-core/model';
 import { SdtType } from '@stll/docx-core/model';
 import { ShapeTextBody } from '@stll/docx-core/model';
@@ -123,7 +124,7 @@ export type PainterOptions = {
 // @public
 export type RenderContext = {
     pageNumber: number;
-    pageNumberFormat?: string;
+    pageNumberFormat?: import__stll_docx_core_model.NumberFormat;
     totalPages: number;
     section: "body" | "header" | "footer";
     bookmarkPages?: ReadonlyMap<string, number>;

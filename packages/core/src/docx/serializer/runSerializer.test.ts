@@ -300,6 +300,7 @@ describe("text box fitting serialization", () => {
             size: { width: 914_400, height: 457_200 },
             textBody: {
               autoFit,
+              textWrap: "none",
               content: [{ type: "paragraph", content: [] }],
             },
           },
@@ -309,6 +310,7 @@ describe("text box fitting serialization", () => {
 
     const xml = serializeRun(run);
     expect(xml).toContain(expected);
+    expect(xml).toContain('wrap="none"');
     expect(xml).not.toContain(absentA);
     expect(xml).not.toContain(absentB);
   });

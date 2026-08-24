@@ -1,3 +1,5 @@
+import type { NumberFormat } from "../types/document";
+
 /**
  * Resolution context for evaluating dynamic DOCX fields against a laid-out
  * document. Built once per layout pass (see the field-resolution pass) and
@@ -9,7 +11,7 @@ export type FieldContext = {
   /** 1-indexed page the field is on (PAGE). */
   pageNumber: number;
   /** OOXML section-level format used when PAGE has no explicit format switch. */
-  pageNumberFormat?: string;
+  pageNumberFormat?: NumberFormat;
   /** Total pages in the document (NUMPAGES). */
   totalPages: number;
   /** Pages in the field's current section (SECTIONPAGES); omit until the

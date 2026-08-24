@@ -1,6 +1,7 @@
 import { computePageNumber, getFormatSwitch, parseFieldInstruction } from "../docx/fieldParser";
 import type { ParsedFieldInstruction } from "../docx/fieldParser";
 import type { BlockId, FieldRun, FlowBlock, Page } from "../layout-engine/types";
+import type { NumberFormat } from "../types/document";
 import { evaluateField } from "./evaluateField";
 import type { FieldContext } from "./fieldContext";
 
@@ -20,7 +21,7 @@ export type HeaderFooterFieldInputs = Pick<
   "bookmarkPages" | "bookmarkText" | "seqValues" | "sectionPageCounts"
 >;
 
-type BlockLocation = { page: number; pageFormat?: string; sectionIndex: number };
+type BlockLocation = { page: number; pageFormat?: NumberFormat; sectionIndex: number };
 type FieldAnchor =
   | { type: "block"; blockId: BlockId; run: FieldRun }
   | { type: "tableRow"; blockId: BlockId; rowIndex: number; run: FieldRun };

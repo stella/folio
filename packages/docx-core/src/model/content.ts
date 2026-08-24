@@ -775,6 +775,8 @@ export type ShapeTextBody = {
   anchorCenter?: boolean;
   /** Auto fit */
   autoFit?: "none" | "normal" | "shape";
+  /** Horizontal text wrapping inside the shape */
+  textWrap?: "square" | "none";
   /** Text margins */
   margins?: {
     top?: number;
@@ -836,6 +838,8 @@ export type TextBox = {
   content: (Paragraph | Table)[];
   /** Text fitting behavior */
   autoFit?: ShapeTextBody["autoFit"];
+  /** Horizontal text wrapping inside the box */
+  textWrap?: ShapeTextBody["textWrap"];
   /** Internal margins */
   margins?: {
     top?: number;
@@ -1725,7 +1729,7 @@ export type SectionProperties = {
   // Page numbers
   /** Page numbering settings */
   pageNumbering?: {
-    format?: string;
+    format?: NumberFormat;
     start?: number;
     chapterStyle?: number;
     chapterSeparator?: string;

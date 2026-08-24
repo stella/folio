@@ -4,6 +4,7 @@
  */
 
 import type { ImageRun } from "../layout-engine/types";
+import type { NumberFormat } from "../types/document";
 
 // `isFloatingImageRun` and `isTextWrappingFloatingImageRun` are pure
 // predicates over `ImageRun` and now live in `layout-engine/types` so the
@@ -47,7 +48,7 @@ export type RenderContext = {
   /** Current page number (1-indexed) */
   pageNumber: number;
   /** OOXML section-level format for the current logical page number. */
-  pageNumberFormat?: string;
+  pageNumberFormat?: NumberFormat;
   /** Total number of pages */
   totalPages: number;
   /** Which section is being rendered */

@@ -19,6 +19,8 @@ export type TextBoxAttrs = {
   height?: number;
   /** Text fitting behavior */
   autoFit?: ShapeTextBody["autoFit"];
+  /** Horizontal text wrapping inside the box */
+  textWrap?: ShapeTextBody["textWrap"];
   /** Unique identifier */
   textBoxId?: string;
   /** Fill color as CSS color */
@@ -100,6 +102,13 @@ function parseTextBoxAutoFit(raw: string | undefined): TextBoxAttrs["autoFit"] {
   return undefined;
 }
 
+function parseTextBoxTextWrap(raw: string | undefined): TextBoxAttrs["textWrap"] {
+  if (raw === "none" || raw === "square") {
+    return raw;
+  }
+  return undefined;
+}
+
 export const TextBoxExtension = createNodeExtension({
   name: "textBox",
   schemaNodeName: "textBox",
@@ -112,6 +121,7 @@ export const TextBoxExtension = createNodeExtension({
       width: { default: 200 },
       height: { default: null },
       autoFit: { default: null },
+      textWrap: { default: null },
       textBoxId: { default: null },
       fillColor: { default: null },
       outlineWidth: { default: null },
@@ -149,10 +159,12 @@ export const TextBoxExtension = createNodeExtension({
           const position = parseTextBoxPosition(d["position"]);
           const wrapType = parseTextBoxWrapType(d["wrapType"]);
           const autoFit = parseTextBoxAutoFit(d["autoFit"]);
+          const textWrap = parseTextBoxTextWrap(d["textWrap"]);
           return {
             ...(d["width"] ? { width: Number(d["width"]) } : {}),
             ...(d["height"] ? { height: Number(d["height"]) } : {}),
             ...(autoFit ? { autoFit } : {}),
+            ...(textWrap ? { textWrap } : {}),
             ...(d["textboxId"] ? { textBoxId: d["textboxId"] } : {}),
             ...(d["fillColor"] ? { fillColor: d["fillColor"] } : {}),
             ...(d["outlineWidth"] ? { outlineWidth: Number(d["outlineWidth"]) } : {}),
@@ -207,6 +219,9 @@ export const TextBoxExtension = createNodeExtension({
       }
       if (attrs.autoFit) {
         domAttrs["data-auto-fit"] = attrs.autoFit;
+      }
+      if (attrs.textWrap) {
+        domAttrs["data-text-wrap"] = attrs.textWrap;
       }
       if (attrs.textBoxId) {
         domAttrs["data-textbox-id"] = attrs.textBoxId;

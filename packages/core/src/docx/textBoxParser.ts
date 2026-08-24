@@ -76,6 +76,7 @@ const DEFAULT_MARGIN_EMU = 91_440;
 function parseBodyProperties(bodyPr: XmlElement | null): {
   margins?: TextBox["margins"];
   autoFit?: ShapeTextBody["autoFit"];
+  textWrap?: ShapeTextBody["textWrap"];
 } {
   if (!bodyPr) {
     return {};
@@ -84,7 +85,13 @@ function parseBodyProperties(bodyPr: XmlElement | null): {
   const result: {
     margins?: TextBox["margins"];
     autoFit?: ShapeTextBody["autoFit"];
+    textWrap?: ShapeTextBody["textWrap"];
   } = {};
+
+  const textWrap = getAttribute(bodyPr, null, "wrap");
+  if (textWrap === "none" || textWrap === "square") {
+    result.textWrap = textWrap;
+  }
 
   if (findChildByLocalName(bodyPr, "spAutoFit")) {
     result.autoFit = "shape";
@@ -344,6 +351,9 @@ export function parseTextBox(drawingEl: XmlElement): TextBox | null {
   if (bodyProps.autoFit) {
     textBox.autoFit = bodyProps.autoFit;
   }
+  if (bodyProps.textWrap) {
+    textBox.textWrap = bodyProps.textWrap;
+  }
 
   // Parse position for anchored text boxes
   if (isAnchor) {
@@ -434,6 +444,9 @@ export function parseTextBoxFromShape(
   }
   if (bodyProps.autoFit) {
     textBox.autoFit = bodyProps.autoFit;
+  }
+  if (bodyProps.textWrap) {
+    textBox.textWrap = bodyProps.textWrap;
   }
   if (position) {
     textBox.position = position;
