@@ -1,5 +1,11 @@
 # @stll/folio-core
 
+## 0.25.3
+
+### Patch Changes
+
+- [#619](https://github.com/stella/folio/pull/619) [`f176831`](https://github.com/stella/folio/commit/f176831c7be0a92a45b8937960c5b2d4bb21c254) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Match Word's RTL table, paragraph, and mixed-link geometry.
+
 ## 0.25.2
 
 ### Patch Changes
