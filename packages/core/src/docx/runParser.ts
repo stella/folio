@@ -41,7 +41,7 @@ import type {
   MediaFile,
   ShapeContent,
 } from "../types/document";
-import { normalizeRevisionId } from "@stll/docx-core/model";
+import { DRAWING_RAW_XML_MODES, normalizeRevisionId } from "@stll/docx-core/model";
 import { parseGroupDrawing } from "./groupDrawingParser";
 import { parseImage } from "./imageParser";
 import {
@@ -899,6 +899,7 @@ function parseDrawingContent(
         wrap: { type: "inline" },
       },
       rawXml: elementToXml(element),
+      rawXmlMode: DRAWING_RAW_XML_MODES.PRESERVE_ONLY,
     };
   }
 

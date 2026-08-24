@@ -41,6 +41,7 @@ import type {
   InlineSdt,
   Insertion,
   Deletion,
+  DrawingContent,
   MoveFrom,
   MoveTo,
   MathEquation,
@@ -2379,7 +2380,16 @@ function convertRunContent(
       ];
 
     case "drawing":
-      return [withHyperlinkBoundaryMarks(convertImage(content.image, content.rawXml), marks)];
+      return [
+        withHyperlinkBoundaryMarks(
+          convertImage({
+            image: content.image,
+            rawXml: content.rawXml,
+            rawXmlMode: content.rawXmlMode,
+          }),
+          marks,
+        ),
+      ];
 
     case "shape": {
       // Shapes with text body are handled as text boxes at block level
@@ -2463,7 +2473,13 @@ function withHyperlinkBoundaryMarks(node: PMNode, marks: ReturnType<typeof schem
 type PartialImagePosition = Partial<NonNullable<Image["position"]>>;
 type PartialImageSize = Partial<Image["size"]>;
 
-function convertImage(image: Image, rawXml?: string): PMNode {
+type ConvertImageOptions = {
+  image: Image;
+  rawXml: DrawingContent["rawXml"];
+  rawXmlMode: DrawingContent["rawXmlMode"];
+};
+
+function convertImage({ image, rawXml, rawXmlMode }: ConvertImageOptions): PMNode {
   // Convert EMU to pixels for proper sizing
   const imageData: { size?: PartialImageSize } = image;
   const imageSize = imageData.size;
@@ -2654,6 +2670,7 @@ function convertImage(image: Image, rawXml?: string): PMNode {
     hlinkHref: image.hlinkHref,
     hlinkRId: image.hlinkRId,
     _docxRawXml: rawXml,
+    _docxRawXmlMode: rawXmlMode,
     _docxObjectPreview:
       rawXml !== undefined && /<(?:[A-Za-z_][\w.-]*:)?object(?:\s|>)/u.test(rawXml),
   });

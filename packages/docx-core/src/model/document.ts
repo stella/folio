@@ -64,7 +64,12 @@ export type {
 } from "./lists";
 
 // Content Model — shared values
-export { isOoxmlSymbolCharacter, MAX_REVISION_ID, normalizeRevisionId } from "./content";
+export {
+  DRAWING_RAW_XML_MODES,
+  isOoxmlSymbolCharacter,
+  MAX_REVISION_ID,
+  normalizeRevisionId,
+} from "./content";
 
 export type {
   TextContent,
@@ -78,6 +83,7 @@ export type {
   SoftHyphenContent,
   NoBreakHyphenContent,
   DrawingContent,
+  DrawingRawXmlMode,
   ShapeContent,
   RunContent,
   Run,

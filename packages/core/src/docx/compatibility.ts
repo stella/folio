@@ -1,4 +1,4 @@
-import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
+import { DOCX_CONFORMANCE_CLASSES, DRAWING_RAW_XML_MODES } from "@stll/docx-core/model";
 
 import {
   type BlockContent,
@@ -249,7 +249,14 @@ function inspectHyperlink(
 
 function inspectRun(run: Run, context: InspectionLocationContext & { record: RecordIssue }): void {
   for (const [contentIndex, content] of run.content.entries()) {
-    if (content.type === "drawing" && content.rawXml) {
+    // Preservation-only placeholders carry no editable projection. All other
+    // raw drawings stay blocked because their projected image attributes can
+    // diverge from the authoritative XML replayed during serialization.
+    if (
+      content.type === "drawing" &&
+      content.rawXml &&
+      content.rawXmlMode !== DRAWING_RAW_XML_MODES.PRESERVE_ONLY
+    ) {
       context.record({
         ...(context.blockId === undefined ? {} : { blockId: context.blockId }),
         part: context.part,

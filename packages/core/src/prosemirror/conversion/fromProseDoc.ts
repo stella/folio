@@ -2286,6 +2286,9 @@ function createImageRun(node: PMNode): Run {
   if (attrs._docxRawXml) {
     drawingContent.rawXml = attrs._docxRawXml;
   }
+  if (attrs._docxRawXmlMode) {
+    drawingContent.rawXmlMode = attrs._docxRawXmlMode;
+  }
 
   return {
     type: "run",

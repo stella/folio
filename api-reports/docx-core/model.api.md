@@ -241,11 +241,20 @@ export type DocxPackage = {
 };
 
 // @public
+export const DRAWING_RAW_XML_MODES: {
+    readonly PRESERVE_ONLY: "preserveOnly";
+};
+
+// @public
 export type DrawingContent = {
     type: "drawing";
     image: Image_2;
     rawXml?: string;
+    rawXmlMode?: DrawingRawXmlMode;
 };
+
+// @public
+export type DrawingRawXmlMode = (typeof DRAWING_RAW_XML_MODES)[keyof typeof DRAWING_RAW_XML_MODES];
 
 // @public
 export type EmphasisMark = "none" | "dot" | "comma" | "circle" | "underDot";

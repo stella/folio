@@ -49,6 +49,7 @@ export type {
   SoftHyphenContent,
   NoBreakHyphenContent,
   DrawingContent,
+  DrawingRawXmlMode,
   ShapeContent,
   RunContent,
   Run,

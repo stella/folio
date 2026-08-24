@@ -13,6 +13,7 @@ import type {
   ParagraphMarkChange,
   ParagraphPropertyChange,
   PositionalTab,
+  DrawingRawXmlMode,
   FieldType,
   Hyperlink,
   LineSpacingRule,
@@ -378,6 +379,8 @@ export type ImageAttrs = {
   hlinkRId?: string;
   /** Original OOXML for opaque/unsupported DOCX drawings. */
   _docxRawXml?: string;
+  /** Raw XML preserved without an editable image projection. */
+  _docxRawXmlMode?: DrawingRawXmlMode;
   /** Embedded-object previews use their authored box as the exact line height. */
   _docxObjectPreview?: boolean;
 };

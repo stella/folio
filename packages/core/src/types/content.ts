@@ -13,6 +13,7 @@ export type {
   Deletion,
   DocumentBody,
   DrawingContent,
+  DrawingRawXmlMode,
   Endnote,
   EndnotePosition,
   EndnoteProperties,

@@ -231,6 +231,7 @@ export type ImageAttrs = {
     hlinkHref?: string;
     hlinkRId?: string;
     _docxRawXml?: string;
+    _docxRawXmlMode?: import__stll_docx_core_model.DrawingRawXmlMode;
     _docxObjectPreview?: boolean;
 };
 

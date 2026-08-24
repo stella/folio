@@ -35,7 +35,7 @@ import {
   UNDERLINE_STYLE_VALUES,
 } from "../../types/documentEnumValues";
 import type { ParagraphFormatting } from "../../types/document";
-import { isOoxmlSymbolCharacter } from "@stll/docx-core/model";
+import { DRAWING_RAW_XML_MODES, isOoxmlSymbolCharacter } from "@stll/docx-core/model";
 import { isParagraphDirection } from "../paragraphDirection";
 import type {
   BlockSdtAttrs,
@@ -620,6 +620,13 @@ export const readImageAttrs = (node: PMNode): ReadProseMirrorAttrsResult<ImageAt
   optionalString(attrs, "hlinkHref", "image.attrs.hlinkHref", issues);
   optionalString(attrs, "hlinkRId", "image.attrs.hlinkRId", issues);
   optionalString(attrs, "_docxRawXml", "image.attrs._docxRawXml", issues);
+  optionalOneOf(
+    attrs,
+    "_docxRawXmlMode",
+    "image.attrs._docxRawXmlMode",
+    issues,
+    Object.values(DRAWING_RAW_XML_MODES),
+  );
   optionalBoolean(attrs, "_docxObjectPreview", "image.attrs._docxObjectPreview", issues);
 
   return attrsResult(attrs, issues);

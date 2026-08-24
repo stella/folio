@@ -135,15 +135,23 @@ export type RenderedPageBreakContent = {
   type: "renderedPageBreak";
 };
 
-/**
- * Drawing/image reference
- */
+/** Raw XML handling modes for drawings that Folio cannot model completely. */
+export const DRAWING_RAW_XML_MODES = {
+  PRESERVE_ONLY: "preserveOnly",
+} as const;
+
+/** Raw XML handling mode for a drawing. */
+export type DrawingRawXmlMode = (typeof DRAWING_RAW_XML_MODES)[keyof typeof DRAWING_RAW_XML_MODES];
+
+/** Drawing/image reference. */
 export type DrawingContent = {
   type: "drawing";
   /** Image data */
   image: Image;
   /** Original OOXML for package-preserving round-trips of unsupported drawing markup. */
   rawXml?: string;
+  /** Explicitly classifies raw XML that has no editable projected representation. */
+  rawXmlMode?: DrawingRawXmlMode;
 };
 
 /**

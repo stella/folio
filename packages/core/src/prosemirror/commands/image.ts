@@ -190,7 +190,10 @@ export const constrainImageSize = (
 
 const imageNodeAt = (view: EditorView, pos: number) => {
   const node = view.state.doc.nodeAt(pos);
-  return node && node.type.name === "image" ? node : null;
+  if (!node || node.type.name !== "image") {
+    return null;
+  }
+  return expectImageAttrs(node)._docxRawXmlMode ? null : node;
 };
 
 /** Change the wrap mode of the image at `pos`. Returns whether it applied. */
