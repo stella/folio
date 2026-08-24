@@ -37,6 +37,7 @@ import {
   getTableRowLeadingWidth,
   isFloatingImageRun,
   isFloatingTextBoxBlock,
+  resolveTableCellPadding,
   tableColumnsArePinned,
 } from "../layout-engine/types";
 import { emuToPixels } from "../utils/units";
@@ -597,10 +598,12 @@ function renderTableCell({
   cellEl.style.overflow = "hidden";
   cellEl.style.boxSizing = "border-box";
   // Use per-cell padding from DOCX margins, default to Word's visual rendering
-  const padTop = cell.padding?.top ?? 1;
-  const padRight = cell.padding?.right ?? 7;
-  const padBottom = cell.padding?.bottom ?? 1;
-  const padLeft = cell.padding?.left ?? 7;
+  const {
+    top: padTop,
+    right: padRight,
+    bottom: padBottom,
+    left: padLeft,
+  } = resolveTableCellPadding(cell);
   cellEl.style.padding = `${padTop}px ${padRight}px ${padBottom}px ${padLeft}px`;
 
   // Apply borders - use cell borders if available, otherwise no border

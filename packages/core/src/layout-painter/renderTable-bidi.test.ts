@@ -172,6 +172,13 @@ function render(bidi: boolean): FakeElement[] {
 }
 
 describe("renderTableFragment RTL column order (w:bidiVisual)", () => {
+  test("uses the measured zero vertical margin when OOXML omits cell padding", () => {
+    const cells = render(true);
+
+    expect(cellByColumn(cells, "0").style["padding"]).toBe("0px 7px 0px 7px");
+    expect(cellByColumn(cells, "1").style["padding"]).toBe("0px 7px 0px 7px");
+  });
+
   test("LTR paints logical column 0 on the left", () => {
     const cells = render(false);
     expect(cellByColumn(cells, "0").style["left"]).toBe("0px");

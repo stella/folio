@@ -636,6 +636,25 @@ export type TableCell = {
   noWrap?: boolean;
 };
 
+type TableCellPadding = NonNullable<TableCell["padding"]>;
+
+const DEFAULT_TABLE_CELL_PADDING = {
+  top: 0,
+  right: 7,
+  bottom: 0,
+  left: 7,
+} as const satisfies TableCellPadding;
+
+/** Resolve authored cell margins against the TableNormal defaults. */
+export const resolveTableCellPadding = (
+  cell: Pick<TableCell, "padding"> | undefined,
+): TableCellPadding => ({
+  top: cell?.padding?.top ?? DEFAULT_TABLE_CELL_PADDING.top,
+  right: cell?.padding?.right ?? DEFAULT_TABLE_CELL_PADDING.right,
+  bottom: cell?.padding?.bottom ?? DEFAULT_TABLE_CELL_PADDING.bottom,
+  left: cell?.padding?.left ?? DEFAULT_TABLE_CELL_PADDING.left,
+});
+
 /**
  * A table row containing cells.
  */
@@ -1424,6 +1443,8 @@ export type HeaderFooterContent = {
    */
   marginPushTop?: number;
   marginPushBottom?: number;
+  /** Page-coordinate lower edge of a header wrap band overlapping the body top. */
+  bodyTopClearance?: number;
   /**
    * Relationship id (`rId`) of the source HF part. Emitted as `data-rid`
    * on the painted `.layout-page-header` / `.layout-page-footer` so the

@@ -667,6 +667,30 @@ describe("runLayoutPipeline", () => {
     expect(outcome.layout?.pages.at(0)?.fragments.at(0)?.y).toBe(MARGINS.top);
   });
 
+  test("moves body content below a page-top header wrap band", () => {
+    const state = makeState();
+    const outcome = runLayoutPipeline(
+      makeDeps(createLayoutSession(), {
+        headerContent: { type: "header", hdrFtrType: "default", content: [] },
+        renderHfFromContentOrPm: (hf, _rId, _hfPMs, _contentWidth, metrics) =>
+          hf && metrics.section === "header"
+            ? {
+                blocks: [],
+                measures: [],
+                height: 0,
+                marginPushTop: 0,
+                marginPushBottom: 0,
+                bodyTopClearance: 160,
+              }
+            : undefined,
+      }),
+      state,
+    );
+
+    expect(outcome.layout?.pages.at(0)?.margins.top).toBe(160);
+    expect(outcome.layout?.pages.at(0)?.fragments.at(0)?.y).toBe(160);
+  });
+
   test("uses authored margins for a blank even-page header and footer", () => {
     const content = { type: "header", hdrFtrType: "default", content: [] } as const;
     const outcome = runLayoutPipeline(

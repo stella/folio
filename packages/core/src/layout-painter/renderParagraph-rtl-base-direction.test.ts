@@ -122,6 +122,19 @@ function render(runs: (TextRun | FieldRun)[], attrs?: ParagraphAttrs): HTMLEleme
   );
 }
 
+function findByTag(element: FakeElement, tagName: string): FakeElement | undefined {
+  if (element.tagName === tagName) {
+    return element;
+  }
+  for (const child of element.children) {
+    const match = findByTag(child, tagName);
+    if (match) {
+      return match;
+    }
+  }
+  return undefined;
+}
+
 const text = (value: string, rtl?: boolean): TextRun => ({
   kind: "text",
   text: value,
@@ -204,5 +217,37 @@ describe("Issue #719 — RTL base direction detection", () => {
     // must not trigger RTL. A run led by them whose first *letter* is Latin is
     // LTR.
     expect(render([text("١٢٣ Hello", true)]).dir).toBe("");
+  });
+
+  test("isolates a displayed URL left-to-right inside an RTL paragraph", () => {
+    const paragraph = render(
+      [
+        {
+          kind: "text",
+          text: "https://www.jobaccess.gov.au/find-a-provider",
+          hyperlink: { href: "https://www.jobaccess.gov.au/find-a-provider" },
+        },
+      ],
+      { bidi: true },
+    ) as unknown as FakeElement;
+
+    expect(findByTag(paragraph, "a")?.dir).toBe("ltr");
+  });
+
+  test("does not force a link label or Arabic link text left-to-right", () => {
+    const renderLink = (value: string): FakeElement =>
+      render(
+        [
+          {
+            kind: "text",
+            text: value,
+            hyperlink: { href: "https://example.com" },
+          },
+        ],
+        { bidi: true },
+      ) as unknown as FakeElement;
+
+    expect(findByTag(renderLink("معلومات إضافية"), "a")?.dir).toBe("");
+    expect(findByTag(renderLink("Job Access"), "a")?.dir).toBe("");
   });
 });

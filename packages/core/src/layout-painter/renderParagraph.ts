@@ -575,6 +575,9 @@ function renderTextRun(run: TextRun, doc: Document): HTMLElement {
   if (run.hyperlink) {
     const anchor = doc.createElement("a");
     anchor.href = run.hyperlink.href;
+    if (/^(?:https?:\/\/|www\.)\S+$/iu.test(paintedText.trim())) {
+      anchor.dir = "ltr";
+    }
     // Internal bookmark links (starting with #) should scroll within the document
     // External links should open in a new tab
     if (!run.hyperlink.href.startsWith("#")) {

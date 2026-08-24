@@ -430,7 +430,7 @@ describe("buildTableRowBreakInfo / snapRowBreak", () => {
     expect(info.breakOffsets[0]).toEqual([35, 85, 100]);
   });
 
-  test("uses rendered default top padding for implicit cell offsets", () => {
+  test("shares TableNormal's zero top margin with measurement and paint", () => {
     const block: TableBlock = {
       kind: "table",
       id: "t",
@@ -474,7 +474,7 @@ describe("buildTableRowBreakInfo / snapRowBreak", () => {
 
     const info = buildTableRowBreakInfo(block, measure);
 
-    expect(info.breakOffsets[0]).toEqual([21, 41, 42]);
+    expect(info.breakOffsets[0]).toEqual([20, 40, 42]);
   });
 
   test("keeps only row break offsets that are safe for every cell", () => {

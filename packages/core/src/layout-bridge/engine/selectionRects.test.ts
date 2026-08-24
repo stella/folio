@@ -524,7 +524,7 @@ describe("selection rect geometry", () => {
 
     expect(rects).toHaveLength(1);
     expect(rects[0]?.x).toBe(7);
-    expect(rects[0]?.y).toBe(1);
+    expect(rects[0]?.y).toBe(0);
   });
 
   test("selection rect clipping accounts for cell top padding", () => {

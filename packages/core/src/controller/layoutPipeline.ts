@@ -178,11 +178,12 @@ function bodyMarginsClearHeaderFooter({
     ? (authoredMargins.footer ?? 0) + (preparedFooter.marginPushBottom ?? preparedFooter.height)
     : authoredMargins.bottom;
   const top = Math.max(authoredMargins.top, headerBottom);
+  const clearedTop = Math.max(top, preparedHeader?.bodyTopClearance ?? 0);
   const bottom = Math.max(authoredMargins.bottom, footerClearance);
-  if (top === authoredMargins.top && bottom === authoredMargins.bottom) {
+  if (clearedTop === authoredMargins.top && bottom === authoredMargins.bottom) {
     return authoredMargins;
   }
-  return { ...authoredMargins, top, bottom };
+  return { ...authoredMargins, top: clearedTop, bottom };
 }
 
 type SectionHeaderFooterClearanceOptions = {

@@ -6,6 +6,7 @@ import { schema } from "../../prosemirror/schema";
 import type { HeaderFooter } from "../../types/document";
 import type { HeaderFooterMetrics } from "./headerFooterLayout";
 import {
+  calculateHeaderFooterBodyTopClearance,
   calculateHeaderFooterMarginPushBounds,
   calculateHeaderFooterVisualBounds,
   convertHeaderFooterPmDocToContent,
@@ -484,6 +485,80 @@ describe("calculateHeaderFooterMarginPushBounds", () => {
     );
 
     expect(bounds).toEqual({ top: 0, bottom: 12 });
+  });
+});
+
+describe("calculateHeaderFooterBodyTopClearance", () => {
+  test("reserves a page-top wrapTopAndBottom anchor even when it paints behind text", () => {
+    const blocks: FlowBlock[] = [
+      {
+        kind: "paragraph",
+        id: "header-anchor",
+        runs: [
+          {
+            kind: "image",
+            src: "logo.png",
+            width: 220,
+            height: 160,
+            wrapType: "topAndBottom",
+            position: {
+              horizontal: { relativeTo: "page", align: "left" },
+              vertical: { relativeTo: "page", align: "top" },
+            },
+          },
+        ],
+      },
+    ];
+
+    expect(calculateHeaderFooterBodyTopClearance(blocks, 0, metrics)).toBe(160);
+  });
+
+  test("does not turn ordinary behindDoc artwork into body clearance", () => {
+    const blocks: FlowBlock[] = [
+      {
+        kind: "paragraph",
+        id: "letterhead",
+        runs: [
+          {
+            kind: "image",
+            src: "letterhead.png",
+            width: 600,
+            height: 800,
+            wrapType: "behind",
+            position: {
+              horizontal: { relativeTo: "page", align: "left" },
+              vertical: { relativeTo: "page", align: "top" },
+            },
+          },
+        ],
+      },
+    ];
+
+    expect(calculateHeaderFooterBodyTopClearance(blocks, 0, metrics)).toBeUndefined();
+  });
+
+  test("does not flatten a mid-page wrap band into the top margin", () => {
+    const blocks: FlowBlock[] = [
+      {
+        kind: "paragraph",
+        id: "mid-page-anchor",
+        runs: [
+          {
+            kind: "image",
+            src: "banner.png",
+            width: 300,
+            height: 100,
+            wrapType: "topAndBottom",
+            position: {
+              horizontal: { relativeTo: "page", align: "left" },
+              vertical: { relativeTo: "page", posOffset: 2_857_500 },
+            },
+          },
+        ],
+      },
+    ];
+
+    expect(calculateHeaderFooterBodyTopClearance(blocks, 0, metrics)).toBeUndefined();
   });
 });
 

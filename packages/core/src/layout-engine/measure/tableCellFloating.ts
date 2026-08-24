@@ -1,7 +1,12 @@
 import { emuToPixels } from "../../utils/units";
 import { createTableCellFlowState, placeTableCellBlock } from "./tableCellFlow";
-import type { ImageRun, TableCell, TableCellMeasure } from "../types";
-import { isFloatingImageRun } from "../types";
+import {
+  isFloatingImageRun,
+  resolveTableCellPadding,
+  type ImageRun,
+  type TableCell,
+  type TableCellMeasure,
+} from "../types";
 import { clampFloatingWrapMargins } from "./clampFloatingWrapMargins";
 import type { FloatingImageZone } from "./floatingZones";
 
@@ -86,8 +91,7 @@ export function getTableCellContentWidth(
   cell: TableCell | undefined,
   cellMeasure: TableCellMeasure,
 ): number {
-  const padLeft = cell?.padding?.left ?? 7;
-  const padRight = cell?.padding?.right ?? 7;
+  const { left: padLeft, right: padRight } = resolveTableCellPadding(cell);
   return Math.max(0, cellMeasure.width - padLeft - padRight);
 }
 

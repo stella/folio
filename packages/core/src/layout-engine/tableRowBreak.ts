@@ -21,7 +21,13 @@ import {
 } from "./measure/tableCellFloating";
 import { createTableCellFlowState, placeTableCellBlock } from "./measure/tableCellFlow";
 import { isEmptyParagraph } from "./paragraphSpacing";
-import type { TableBlock, TableCell, TableCellMeasure, TableMeasure } from "./types";
+import {
+  resolveTableCellPadding,
+  type TableBlock,
+  type TableCell,
+  type TableCellMeasure,
+  type TableMeasure,
+} from "./types";
 
 type UnsafeBreakRange = {
   top: number;
@@ -35,8 +41,6 @@ type CellBreakGeometry = {
 };
 
 const BREAK_OFFSET_EPSILON = 0.01;
-
-const DEFAULT_TABLE_CELL_PADDING_TOP = 1;
 
 function isInsideRange(offset: number, range: UnsafeBreakRange): boolean {
   return offset > range.top && offset < range.bottom;
@@ -86,7 +90,7 @@ function cellBreakGeometry(
   const suppressibleLeadingRanges: UnsafeBreakRange[] = [];
   const cellBlocks = cell?.blocks;
   const blockMeasures = measure.blocks;
-  const padTop = cell?.padding?.top ?? DEFAULT_TABLE_CELL_PADDING_TOP;
+  const { top: padTop } = resolveTableCellPadding(cell);
   const contentWidth = getTableCellContentWidth(cell, measure);
   const floatingImages =
     cell !== undefined ? getTableCellFloatingImages(cell, measure, contentWidth) : [];

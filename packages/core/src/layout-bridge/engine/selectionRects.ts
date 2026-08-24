@@ -10,7 +10,7 @@
 
 import { getHeaderRowsHeight } from "../../layout-engine/index";
 import { measuredLineContentOffset } from "../../layout-engine/lineFlow";
-import { getTableRowLeadingWidth } from "../../layout-engine/types";
+import { getTableRowLeadingWidth, resolveTableCellPadding } from "../../layout-engine/types";
 import { measureParagraph } from "../../layout-engine/measure";
 import { buildRunFontStyle } from "../../layout-engine/measure/measureHelpers";
 import { measureRun } from "../../layout-engine/measure/measureProvider";
@@ -83,9 +83,6 @@ export type CaretPosition = {
   pageIndex: number;
 };
 
-const DEFAULT_TABLE_CELL_PADDING_LEFT = 7;
-const DEFAULT_TABLE_CELL_PADDING_TOP = 1;
-
 // =============================================================================
 // HELPER FUNCTIONS
 // =============================================================================
@@ -120,7 +117,7 @@ function getCellContentOffsetY(
   cellMeasure: TableCellMeasure,
   rowHeight: number,
 ): number {
-  const padTop = cell.padding?.top ?? DEFAULT_TABLE_CELL_PADDING_TOP;
+  const { top: padTop } = resolveTableCellPadding(cell);
   const spareHeight = Math.max(0, rowHeight - cellMeasure.height);
   if (cell.verticalAlign === "bottom") {
     return padTop + spareHeight;
@@ -132,7 +129,7 @@ function getCellContentOffsetY(
 }
 
 function getCellContentOffsetX(cell: TableCell): number {
-  return cell.padding?.left ?? DEFAULT_TABLE_CELL_PADDING_LEFT;
+  return resolveTableCellPadding(cell).left;
 }
 
 function getMeasuredBlockHeight(measure: Measure | undefined): number {

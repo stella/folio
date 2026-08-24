@@ -641,6 +641,53 @@ export function calculateHeaderFooterMarginPushBounds(
   return { top, bottom };
 }
 
+/**
+ * Find the lower page edge of header `wrapTopAndBottom` artwork that overlaps
+ * the authored body start. Unlike ordinary anchored artwork, this wrap mode
+ * reserves a full-width horizontal band even when the drawing paints behind
+ * text. Bands wholly below the body start need page-local flow support and are
+ * intentionally not flattened into a top margin here.
+ */
+export function calculateHeaderFooterBodyTopClearance(
+  blocks: FlowBlock[],
+  flowHeight: number,
+  metrics: HeaderFooterMetrics,
+): number | undefined {
+  if (metrics.section !== "header") {
+    return undefined;
+  }
+
+  const flowTop = metrics.margins.header ?? 48;
+  let clearance = 0;
+  for (const block of blocks) {
+    if (block.kind !== "paragraph") {
+      continue;
+    }
+    for (const run of block.runs) {
+      if (
+        run.kind !== "image" ||
+        run.wrapType !== "topAndBottom" ||
+        (run.position?.vertical?.relativeTo !== "page" &&
+          run.position?.vertical?.relativeTo !== "margin")
+      ) {
+        continue;
+      }
+      const pageTop =
+        flowTop + resolveHeaderFooterVisualTop(run, 0, flowHeight, metrics) - (run.distTop ?? 0);
+      if (pageTop > metrics.margins.top) {
+        continue;
+      }
+      const pageBottom = Math.min(
+        metrics.pageSize.h,
+        pageTop + (run.distTop ?? 0) + run.height + (run.distBottom ?? 0),
+      );
+      clearance = Math.max(clearance, pageBottom);
+    }
+  }
+
+  return clearance > 0 ? clearance : undefined;
+}
+
 // =============================================================================
 // 4. HeaderFooter -> HeaderFooterContent (the public entry point)
 // =============================================================================
@@ -795,6 +842,7 @@ function finalizeHeaderFooterContent(
     flowHeight,
     metrics,
   );
+  const bodyTopClearance = calculateHeaderFooterBodyTopClearance(blocks, flowHeight, metrics);
 
   return {
     blocks,
@@ -804,6 +852,7 @@ function finalizeHeaderFooterContent(
     visualBottom,
     marginPushTop,
     marginPushBottom,
+    ...(bodyTopClearance !== undefined ? { bodyTopClearance } : {}),
     textSig: computeHeaderFooterTextSig(blocks),
     ...(options.rId ? { rId: options.rId } : {}),
   };

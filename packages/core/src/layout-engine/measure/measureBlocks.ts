@@ -11,6 +11,7 @@ import {
   DEFAULT_TEXTBOX_MARGINS,
   floatingTextBoxReservesBand,
   floatingTextBoxWrapsText,
+  resolveTableCellPadding,
   tableColumnsArePinned,
 } from "../types";
 import type {
@@ -124,9 +125,6 @@ export function measureTableBlock(
   contentWidth: number,
   fieldValues?: ReadonlyMap<number, string>,
 ): TableMeasure {
-  const DEFAULT_CELL_PADDING_X = 7; // Word default: 108 twips ≈ 7px
-  const DEFAULT_CELL_PADDING_Y = 0; // OOXML/TableNormal default: top=0, bottom=0
-
   // columnWidths are already in pixels (converted in toFlowBlocks)
   let columnWidths = tableBlock.columnWidths ?? [];
   const explicitWidthPx = resolveTableWidthPx(tableBlock.width, tableBlock.widthType, contentWidth);
@@ -185,8 +183,7 @@ export function measureTableBlock(
         }
         columnIndex = getFirstAvailableColumn(cellGrid, rowIdx, columnIndex + colSpan);
 
-        const padLeft = cell.padding?.left ?? DEFAULT_CELL_PADDING_X;
-        const padRight = cell.padding?.right ?? DEFAULT_CELL_PADDING_X;
+        const { left: padLeft, right: padRight } = resolveTableCellPadding(cell);
         const cellContentWidth = Math.max(1, cellWidth - padLeft - padRight);
         // `w:noWrap` (§17.4.30): in an auto-width table Word honors it by
         // widening the column, so measure against an effectively unbounded
@@ -251,8 +248,7 @@ export function measureTableBlock(
         placeTableCellBlock(flowState, sourceBlock, blockMeasure);
       }
       cell.height = finishTableCellFlow(flowState);
-      const padTop = sourceCell?.padding?.top ?? DEFAULT_CELL_PADDING_Y;
-      const padBottom = sourceCell?.padding?.bottom ?? DEFAULT_CELL_PADDING_Y;
+      const { top: padTop, bottom: padBottom } = resolveTableCellPadding(sourceCell);
       cell.height += padTop + padBottom;
       if ((sourceCell?.rowSpan ?? 1) > 1) {
         continue;
