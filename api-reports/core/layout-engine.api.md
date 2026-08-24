@@ -451,6 +451,9 @@ export type LineBreakRun = {
     pmEnd?: number;
 };
 
+// @public (undocumented)
+export type ListMarkerFormatting = Pick<RunFormatting, "fontFamily" | "eastAsiaFontFamily" | "complexScriptFontFamily" | "fontSize" | "complexScriptFontSize" | "bold" | "complexScriptBold" | "italic" | "complexScriptItalic" | "forceComplexScript">;
+
 // @public
 export type ListNumPr = {
     numId?: number;
@@ -636,10 +639,8 @@ export type ParagraphAttrs = {
     listMarker?: string;
     listIsBullet?: boolean;
     listMarkerHidden?: boolean;
-    listMarkerFontFamily?: string;
-    listMarkerFontSize?: number;
+    listMarkerFormatting?: ListMarkerFormatting;
     listParagraphMarkFontSize?: number;
-    listMarkerBold?: boolean;
     listMarkerAlignment?: "left" | "center" | "right";
     listMarkerSuffix?: "tab" | "space" | "nothing";
     listMarkerRevision?: {

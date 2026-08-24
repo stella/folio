@@ -523,6 +523,9 @@ export type ListLevel = {
 };
 
 // @public
+export type ListMarkerFormatting = Pick<TextFormatting, "fontFamily" | "fontSize" | "fontSizeCs" | "bold" | "boldCs" | "italic" | "italicCs" | "cs">;
+
+// @public
 export type ListRendering = {
     marker: string;
     level: number;
@@ -531,9 +534,7 @@ export type ListRendering = {
     isLegal?: boolean;
     numFmt?: NumberFormat;
     markerHidden?: boolean;
-    markerFontFamily?: string;
-    markerFontSize?: number;
-    markerBold?: boolean;
+    markerFormatting?: ListMarkerFormatting;
     markerAlignment?: "left" | "center" | "right";
     markerAllCaps?: boolean;
     markerSuffix?: LevelSuffix;

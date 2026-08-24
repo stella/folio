@@ -313,9 +313,7 @@ export type ParagraphAttrs = {
     listIsLegal?: boolean;
     listMarker?: string;
     listMarkerHidden?: boolean;
-    listMarkerFontFamily?: string;
-    listMarkerFontSize?: number;
-    listMarkerBold?: boolean;
+    listMarkerFormatting?: import__stll_docx_core_model.ListMarkerFormatting;
     listMarkerAlignment?: "left" | "center" | "right";
     listMarkerSuffix?: "tab" | "space" | "nothing";
     listMarkerAllCaps?: boolean;
