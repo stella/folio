@@ -1,5 +1,17 @@
 # @stll/folio-core
 
+## 0.25.0
+
+### Minor Changes
+
+- [#612](https://github.com/stella/folio/pull/612) [`75d34d2`](https://github.com/stella/folio/commit/75d34d291bd31e40f3c3c35fdbeb3c93529c0653) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Improve Arabic DOCX parity for no-wrap text boxes, boundary-owned section pagination, RTL tabs, and page-number formats.
+
+### Patch Changes
+
+- [#609](https://github.com/stella/folio/pull/609) [`21ef02a`](https://github.com/stella/folio/commit/21ef02a8454e0aa49aeeb11f2be4dd5cb51d18e2) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Align Arabic header wrap bands, RTL table cells, and displayed URLs with Word layout.
+- Updated dependencies [[`75d34d2`](https://github.com/stella/folio/commit/75d34d291bd31e40f3c3c35fdbeb3c93529c0653)]:
+  - @stll/docx-core@0.17.0
+
 ## 0.24.0
 
 ### Minor Changes

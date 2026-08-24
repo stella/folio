@@ -1,5 +1,11 @@
 # @stll/docx-core
 
+## 0.17.0
+
+### Minor Changes
+
+- [#612](https://github.com/stella/folio/pull/612) [`75d34d2`](https://github.com/stella/folio/commit/75d34d291bd31e40f3c3c35fdbeb3c93529c0653) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Improve Arabic DOCX parity for no-wrap text boxes, boundary-owned section pagination, RTL tabs, and page-number formats.
+
 ## 0.16.0
 
 ### Minor Changes
