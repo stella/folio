@@ -3,6 +3,12 @@ import JSZip from "jszip";
 import { EditorState } from "prosemirror-state";
 
 import { createDocx } from "../docx/rezip";
+import {
+  getAttributeByNamespaceUri,
+  getChildElements,
+  getLocalName,
+  parseXmlDocument,
+} from "../docx/xmlParser";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { acceptAIEditRevision, rejectAIEditRevision } from "../prosemirror/commands/comments";
@@ -12,11 +18,18 @@ import {
   FOLIO_RESOLVED_REVIEWED_VIEWS,
   type FolioEditableDocumentStoryHandle,
   FolioDocxReviewer,
+  type FolioReviewComment,
+  type FolioReviewCommentReply,
 } from "./headless";
 import { FOLIO_REVIEW_CHANGE_KINDS, getTrackedChangesFromDoc } from "./read";
 
 const AUTHOR = "Reviewer";
 const DATE = "2026-08-16T10:00:00Z";
+const WORDPROCESSINGML_NAMESPACES = [
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+  "http://purl.oclc.org/ooxml/wordprocessingml/main",
+] as const;
+const WORDPROCESSINGML_NAMESPACE_SET = new Set<string>(WORDPROCESSINGML_NAMESPACES);
 
 const REVISION = {
   insertion: 1,
@@ -345,6 +358,14 @@ const REVIEW_STORY_HANDLES = {
 
 const REVIEW_STORIES = Object.values(REVIEW_STORY_HANDLES);
 
+const REVIEW_STORY_PART_PATHS = {
+  main: "word/document.xml",
+  header: "word/header1.xml",
+  footer: "word/footer1.xml",
+  footnote: "word/footnotes.xml",
+  endnote: "word/endnotes.xml",
+} as const satisfies Record<FolioEditableDocumentStoryHandle["type"], string>;
+
 const makeRevisionMatrixDocument = () => {
   const document = revisionDocument();
   document.package.headers = new Map([
@@ -396,20 +417,44 @@ const makeRevisionMatrixDocx = async (paragraphIds: "with" | "without"): Promise
 
 const storyKey = (story: FolioEditableDocumentStoryHandle): string => JSON.stringify(story);
 
+const REVIEW_COMMENT_FIELD_CENSUS = {
+  id: "id",
+  author: "author",
+  date: "date",
+  text: "text",
+  anchoredText: "anchoredText",
+  blockId: "blockId",
+  replies: "replies",
+  done: "done",
+} as const satisfies Record<keyof FolioReviewComment, keyof FolioReviewComment>;
+
+const REVIEW_COMMENT_REPLY_FIELD_CENSUS = {
+  id: "id",
+  author: "author",
+  date: "date",
+  text: "text",
+} as const satisfies Record<keyof FolioReviewCommentReply, keyof FolioReviewCommentReply>;
+
 const commentProjection = (reviewer: FolioDocxReviewer) =>
-  reviewer.getComments().map(({ id, author, text, anchoredText, blockId, replies, done }) => ({
-    id,
-    author,
-    text,
-    anchoredText,
-    blockId,
-    replies: replies.map(({ id: replyId, author: replyAuthor, text: replyText }) => ({
-      id: replyId,
-      author: replyAuthor,
-      text: replyText,
-    })),
-    done,
-  }));
+  reviewer
+    .getComments()
+    .map(({ id, author, date, text, anchoredText, blockId, replies, done }) => ({
+      id,
+      author,
+      date,
+      text,
+      anchoredText,
+      blockId,
+      replies: replies.map(
+        ({ id: replyId, author: replyAuthor, date: replyDate, text: replyText }) => ({
+          id: replyId,
+          author: replyAuthor,
+          date: replyDate,
+          text: replyText,
+        }),
+      ),
+      done,
+    }));
 
 const storyProjection = (reviewer: FolioDocxReviewer, story: FolioEditableDocumentStoryHandle) => {
   const reviewed = reviewer.readReviewedStory({ story, view: "current-markup" });
@@ -434,9 +479,83 @@ const partBytes = async (buffer: ArrayBuffer, path: string): Promise<Uint8Array>
   return file.async("uint8array");
 };
 
+const assertCommentAnchorsInStoryPart = async (
+  buffer: ArrayBuffer,
+  story: FolioEditableDocumentStoryHandle,
+  commentIds: readonly number[],
+): Promise<void> => {
+  const xml = new TextDecoder().decode(
+    await partBytes(buffer, REVIEW_STORY_PART_PATHS[story.type]),
+  );
+  for (const commentId of commentIds) {
+    for (const localName of ["commentRangeStart", "commentRangeEnd"] as const) {
+      const ids = commentAnchorIds(xml, localName);
+      expect(ids).toContain(String(commentId));
+    }
+  }
+};
+
+const commentAnchorIds = (
+  xml: string,
+  localName: "commentRangeStart" | "commentRangeEnd",
+): string[] => {
+  const root = parseXmlDocument(xml);
+  if (!root) {
+    throw new Error("revision matrix could not parse a story part");
+  }
+  const ids: string[] = [];
+  const pending = [root];
+  while (pending.length > 0) {
+    const element = pending.pop();
+    if (!element) {
+      continue;
+    }
+    if (
+      element.namespaceUri !== undefined &&
+      WORDPROCESSINGML_NAMESPACE_SET.has(element.namespaceUri) &&
+      getLocalName(element.name) === localName
+    ) {
+      const id = getAttributeByNamespaceUri(element, WORDPROCESSINGML_NAMESPACE_SET, "id");
+      if (id !== null) {
+        ids.push(id);
+      }
+    }
+    pending.push(...getChildElements(element));
+  }
+  return ids;
+};
+
+const PARAGRAPH_ID_STATES = ["with", "without"] as const;
+const COMMENT_ROOT_COUNTS = [1, 2] as const;
+const COMMENT_REPLY_STATES = ["without-reply", "with-reply"] as const;
+const COMMENT_RESOLUTION_STATES = ["open", "resolved"] as const;
+const REVIEW_COMMENT_SCENARIOS = [
+  {
+    name: "none",
+    rootCount: 0,
+    replyState: "without-reply",
+    resolutionState: "open",
+  } as const,
+  ...COMMENT_ROOT_COUNTS.flatMap((rootCount) =>
+    COMMENT_REPLY_STATES.flatMap((replyState) =>
+      COMMENT_RESOLUTION_STATES.map((resolutionState) => ({
+        name: `${rootCount === 1 ? "single" : "overlapping"}-${replyState}-${resolutionState}`,
+        rootCount,
+        replyState,
+        resolutionState,
+      })),
+    ),
+  ),
+];
+
 const MATRIX_CASES = FOLIO_RESOLVED_REVIEWED_VIEWS.flatMap((view) =>
-  (["with", "without"] as const).flatMap((paragraphIds) =>
-    (["none", "thread"] as const).map((comments) => ({ view, paragraphIds, comments })),
+  PARAGRAPH_ID_STATES.flatMap((paragraphIds) =>
+    REVIEW_COMMENT_SCENARIOS.map((commentScenario) => ({
+      view,
+      paragraphIds,
+      comments: commentScenario.name,
+      commentScenario,
+    })),
   ),
 );
 
@@ -499,34 +618,96 @@ describe("body revision enumeration", () => {
 });
 
 describe("resolved story serialization structural matrix", () => {
+  test.each(WORDPROCESSINGML_NAMESPACES)(
+    "recognizes comment anchors in the %s namespace independent of prefix",
+    (namespace) => {
+      const xml = `<alt:document xmlns:alt="${namespace}"><alt:commentRangeStart alt:id="42"/><alt:commentRangeEnd alt:id="42"/></alt:document>`;
+      for (const localName of ["commentRangeStart", "commentRangeEnd"] as const) {
+        expect(commentAnchorIds(xml, localName)).toContain("42");
+      }
+    },
+  );
+
+  test("enumerates the declared Cartesian product exactly once", () => {
+    const keys = MATRIX_CASES.map(({ view, paragraphIds, comments }) =>
+      JSON.stringify({ view, paragraphIds, comments }),
+    );
+    expect(MATRIX_CASES).toHaveLength(
+      FOLIO_RESOLVED_REVIEWED_VIEWS.length *
+        PARAGRAPH_ID_STATES.length *
+        REVIEW_COMMENT_SCENARIOS.length,
+    );
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(Object.values(REVIEW_COMMENT_FIELD_CENSUS)).toHaveLength(8);
+    expect(Object.values(REVIEW_COMMENT_REPLY_FIELD_CENSUS)).toHaveLength(4);
+  });
+
   test.each(MATRIX_CASES)(
     "preserves every revision kind in $view view, $paragraphIds paragraph ids, comments: $comments",
-    async ({ view, paragraphIds, comments }) => {
+    async ({ view, paragraphIds, commentScenario }) => {
       const baseline = await makeRevisionMatrixDocx(paragraphIds);
       const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: AUTHOR });
 
-      if (comments === "thread") {
-        const target = reviewer.snapshot().blocks.find(({ text }) => text.includes("Stable <&>"));
-        if (!target) {
-          throw new Error("revision matrix is missing the stable comment target");
+      const commentIdsByStory = new Map<string, readonly number[]>();
+
+      if (commentScenario.rootCount > 0) {
+        for (const story of REVIEW_STORIES) {
+          const commentIds: number[] = [];
+          const parentIds: number[] = [];
+          for (let rootIndex = 0; rootIndex < commentScenario.rootCount; rootIndex += 1) {
+            const snapshot = reviewer.snapshotStory(story);
+            const target = snapshot?.blocks.find(({ text }) => text.includes("Stable <&>"));
+            if (!snapshot || !target) {
+              throw new Error(
+                `revision matrix is missing the comment target in ${storyKey(story)}`,
+              );
+            }
+            const previousIds = new Set(reviewer.getComments().map(({ id }) => id));
+            const result = reviewer.applyDocumentOperationsToStory({
+              story,
+              snapshot,
+              batch: {
+                version: 1,
+                mode: "direct",
+                operations: [
+                  {
+                    id: `matrix-comment-${story.type}-${rootIndex}`,
+                    type: "commentOnBlock",
+                    blockId: target.id,
+                    comment: { text: `Parent ${story.type} ${rootIndex} <&> 日本語` },
+                  },
+                ],
+              },
+            });
+            expect(result.status).toBe("committed");
+            const parent = reviewer.getComments().find(({ id }) => !previousIds.has(id));
+            if (!parent) {
+              throw new Error(`revision matrix did not create a comment in ${storyKey(story)}`);
+            }
+            parentIds.push(parent.id);
+            commentIds.push(parent.id);
+          }
+          if (commentScenario.replyState === "with-reply") {
+            const parentId = parentIds.at(0);
+            const reply =
+              parentId === undefined
+                ? null
+                : reviewer.replyTo(parentId, {
+                    author: "Second reviewer",
+                    text: `Reply ${story.type} <&> العربية`,
+                  });
+            if (!reply) {
+              throw new Error(`revision matrix did not create a reply in ${storyKey(story)}`);
+            }
+            commentIds.push(reply.id);
+          }
+          if (commentScenario.resolutionState === "resolved") {
+            for (const parentId of parentIds) {
+              expect(reviewer.resolveComment(String(parentId))).toBe(true);
+            }
+          }
+          commentIdsByStory.set(storyKey(story), commentIds);
         }
-        const result = reviewer.applyOperations([
-          {
-            id: "matrix-comment",
-            type: "commentOnBlock",
-            blockId: target.id,
-            comment: { text: "Parent <&> 日本語" },
-          },
-        ]);
-        expect(result.applied).toHaveLength(1);
-        const parent = reviewer.getComments().at(0);
-        if (!parent) {
-          throw new Error("revision matrix did not create the parent comment");
-        }
-        expect(
-          reviewer.replyTo(parent, { author: "Second reviewer", text: "Reply <&> العربية" }),
-        ).not.toBeNull();
-        expect(reviewer.resolveComment(String(parent.id))).toBe(true);
       }
 
       const expectedByStory = new Map<string, ReturnType<typeof storyProjection>>();
@@ -546,6 +727,13 @@ describe("resolved story serialization structural matrix", () => {
 
       const saved = await reviewer.toBuffer();
       expect(await partBytes(saved, PRESERVATION_SENTINEL_PART)).toEqual(PRESERVATION_SENTINEL);
+      for (const story of REVIEW_STORIES) {
+        await assertCommentAnchorsInStoryPart(
+          saved,
+          story,
+          commentIdsByStory.get(storyKey(story)) ?? [],
+        );
+      }
       const reopened = await FolioDocxReviewer.fromBuffer(saved);
       for (const story of REVIEW_STORIES) {
         const actual = storyProjection(reopened, story);
@@ -562,6 +750,13 @@ describe("resolved story serialization structural matrix", () => {
         PRESERVATION_SENTINEL,
       );
       const reopenedAgain = await FolioDocxReviewer.fromBuffer(savedAgain);
+      for (const story of REVIEW_STORIES) {
+        await assertCommentAnchorsInStoryPart(
+          savedAgain,
+          story,
+          commentIdsByStory.get(storyKey(story)) ?? [],
+        );
+      }
       for (const story of REVIEW_STORIES) {
         expect(storyProjection(reopenedAgain, story)).toEqual(expectedByStory.get(storyKey(story)));
       }

@@ -99,8 +99,8 @@ let undoHandleCursor = Date.now();
  * headless `commentOnBlock` / `comment` op serialises the same `comments.xml`
  * shape the editor produces.
  */
-const createReviewerComment = (text: string, author: string): Comment => ({
-  id: commentIdCursor++,
+const createReviewerComment = (id: number, text: string, author: string): Comment => ({
+  id,
   author,
   date: new Date().toISOString(),
   content: [
@@ -494,6 +494,7 @@ export class FolioDocxReviewer {
   private readonly secondaryStoryStates = new Map<string, FolioSecondaryStoryState>();
   private readonly resolvedStoryExpectations = new Map<string, FolioResolvedStoryExpectation>();
   private readonly createdComments: Comment[] = [];
+  private readonly usedCommentIds: Set<number>;
   private readonly documentOperationUndoEntries: FolioDocumentOperationUndoEntry[] = [];
   /**
    * Resolved-state overrides recorded by {@link resolveComment}, keyed by
@@ -515,6 +516,9 @@ export class FolioDocxReviewer {
     this.originalBuffer = args.originalBuffer;
     this.state = args.state;
     this.author = args.author;
+    this.usedCommentIds = new Set(
+      (args.baseDocument.package.document.comments ?? []).map(({ id }) => id),
+    );
   }
 
   /** Parse a `.docx` buffer into a reviewer. */
@@ -711,7 +715,7 @@ export class FolioDocxReviewer {
       story: story.type === "main" ? "main" : story,
       author: this.author,
       createCommentId: (text) => {
-        const comment = createReviewerComment(text, this.author);
+        const comment = createReviewerComment(this.nextCommentId(), text, this.author);
         this.createdComments.push(comment);
         return comment.id;
       },
@@ -1011,6 +1015,7 @@ export class FolioDocxReviewer {
       return null;
     }
     this.createdComments.push(reply);
+    this.usedCommentIds.add(reply.id);
     return { id: reply.id, author: reply.author, date: reply.date ?? null, text: input.text };
   }
 
@@ -1368,6 +1373,16 @@ export class FolioDocxReviewer {
       anchors.set(anchor.commentId, { text: anchor.quote, blockId: anchor.blockId });
     }
     return anchors;
+  }
+
+  /** Allocate outside every parsed or newly-created comment and reply id. */
+  private nextCommentId(): number {
+    while (this.usedCommentIds.has(commentIdCursor)) {
+      commentIdCursor += 1;
+    }
+    const id = commentIdCursor++;
+    this.usedCommentIds.add(id);
+    return id;
   }
 
   /**
