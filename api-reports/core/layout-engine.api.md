@@ -259,6 +259,7 @@ export type HeaderFooterContent = {
     visualBottom?: number;
     marginPushTop?: number;
     marginPushBottom?: number;
+    bodyTopClearance?: number;
     rId?: string;
     textSig?: string;
 };
@@ -721,6 +722,9 @@ export type RenderedPageBreakRun = RunFormatting & {
 
 // @public (undocumented)
 export const resolveSectionHeaderFooterRefs: (documentModel: import__stll_docx_core_model.Document | null | undefined) => PageHeaderFooterRefs[] | undefined;
+
+// @public
+export const resolveTableCellPadding: (cell: Pick<TableCell, "padding"> | undefined) => TableCellPadding;
 
 // @public
 export type Run = TextRun | TabRun | ImageRun | LineBreakRun | RenderedPageBreakRun | FieldRun | MathRun;
