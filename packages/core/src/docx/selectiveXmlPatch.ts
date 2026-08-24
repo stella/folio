@@ -596,11 +596,12 @@ const findNoteElement = (
 type WordPrefixMapping = {
   source: NoteElementSyntax;
   target: NoteElementSyntax;
+  sourceXmlnsDeclarations: Record<string, string>;
 };
 
 const rewriteWordprocessingPrefixes = (
   xml: string,
-  { source, target }: WordPrefixMapping,
+  { source, target, sourceXmlnsDeclarations }: WordPrefixMapping,
 ): string => {
   let rewritten = "";
   let quote: '"' | "'" | null = null;
@@ -641,7 +642,7 @@ const rewriteWordprocessingPrefixes = (
     }
     rewritten += character;
   }
-  return rewritten;
+  return withXmlnsDeclarations(rewritten, sourceXmlnsDeclarations);
 };
 
 const paragraphRanges = (xml: string, wordPrefix: string): ParagraphOffsets[] => {
@@ -734,15 +735,13 @@ export function buildPatchedNotePartXml({
   const currentElements = collectNoteElementSyntax(serializedXml, elementName);
   const originalElements = collectNoteElementSyntax(originalXml, elementName);
   const replacementElements = collectNoteElementSyntax(replacementXml, elementName);
+  const replacementXmlnsDeclarations = collectXmlnsFromOpeningTag(replacementXml);
   const ordinalReplacements: { start: number; end: number; newXml: string }[] = [];
   const serializedParaIds = collectParaIds(serializedXml);
-  const baselineParaIds = collectParaIds(baselineXml);
   const effectiveChangedParaIds =
     changedParaIds ?? collectChangedNoteParaIds(baselineXml, serializedXml);
   const unroutedChangedParaIds = new Set(
-    [...effectiveChangedParaIds].filter(
-      (paraId) => serializedParaIds.has(paraId) || baselineParaIds.has(paraId),
-    ),
+    [...effectiveChangedParaIds].filter((paraId) => serializedParaIds.has(paraId)),
   );
 
   for (const [id, currentSyntaxEntries] of currentElements) {
@@ -790,6 +789,7 @@ export function buildPatchedNotePartXml({
         newXml: rewriteWordprocessingPrefixes(replacementNote, {
           source: replacementSyntax,
           target: originalSyntax,
+          sourceXmlnsDeclarations: replacementXmlnsDeclarations,
         }),
       });
       continue;
@@ -817,7 +817,11 @@ export function buildPatchedNotePartXml({
         end: originalOffsets.start + originalRange.end,
         newXml: rewriteWordprocessingPrefixes(
           replacementNote.slice(replacementRange.start, replacementRange.end),
-          { source: replacementSyntax, target: originalSyntax },
+          {
+            source: replacementSyntax,
+            target: originalSyntax,
+            sourceXmlnsDeclarations: replacementXmlnsDeclarations,
+          },
         ),
       });
     }

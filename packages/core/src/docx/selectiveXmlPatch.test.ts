@@ -10,6 +10,7 @@ import {
   buildParagraphOffsetIndex,
   validatePatchSafety,
   buildPatchedDocumentXml,
+  buildPatchedNotePartXml,
   countParagraphElements,
 } from "./selectiveXmlPatch";
 
@@ -363,5 +364,35 @@ describe("buildPatchedDocumentXml", () => {
     const origAfterBBB = SIMPLE_DOC.slice(SIMPLE_DOC.indexOf('<w:p w14:paraId="CCC333"'));
     const resultAfterBBB = result.slice(result.indexOf('<w:p w14:paraId="CCC333"'));
     expect(resultAfterBBB).toBe(origAfterBBB);
+  });
+});
+
+describe("buildPatchedNotePartXml", () => {
+  test("binds every serializer namespace when patching an alternate-prefix source", () => {
+    const wordNamespace = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    const word2010Namespace = "http://schemas.microsoft.com/office/word/2010/wordml";
+    const word2012Namespace = "http://schemas.microsoft.com/office/word/2012/wordml";
+    const compatibilityNamespace = "http://schemas.openxmlformats.org/markup-compatibility/2006";
+    const originalXml = `<alt:footnotes xmlns:alt="${wordNamespace}" xmlns:p14="${word2010Namespace}" xmlns:p15="${word2012Namespace}" xmlns:compat="${compatibilityNamespace}"><alt:footnote alt:id="1"><alt:p p14:paraId="P1000001"><alt:r><alt:t>Old</alt:t></alt:r></alt:p></alt:footnote></alt:footnotes>`;
+    const baselineXml = `<w:footnotes xmlns:w="${wordNamespace}" xmlns:w14="${word2010Namespace}"><w:footnote w:id="1"><w:p w14:paraId="P1000001"><w:r><w:t>Old</w:t></w:r></w:p></w:footnote></w:footnotes>`;
+    const serializedXml = `<w:footnotes xmlns:w="${wordNamespace}" xmlns:w14="${word2010Namespace}"><w:footnote w:id="1"><w:p w14:paraId="P1000001"><w:r><w:t>New</w:t></w:r></w:p></w:footnote></w:footnotes>`;
+    const replacementXml = `<w:footnotes xmlns:w="${wordNamespace}" xmlns:w14="${word2010Namespace}" xmlns:w15="${word2012Namespace}" xmlns:mc="${compatibilityNamespace}"><w:footnote w:id="1"><w:p w14:paraId="P1000001"><mc:AlternateContent><mc:Choice Requires="w15"><w:r w15:collapsed="1"><w:t>New</w:t></w:r></mc:Choice></mc:AlternateContent></w:p></w:footnote></w:footnotes>`;
+
+    const patched = buildPatchedNotePartXml({
+      originalXml,
+      baselineXml,
+      serializedXml,
+      replacementXml,
+      elementName: "footnote",
+      changedParaIds: new Set(["P1000001"]),
+    });
+
+    expect(patched).not.toBeNull();
+    expect(patched).toContain("<alt:p");
+    expect(patched).toContain(`xmlns:w14="${word2010Namespace}"`);
+    expect(patched).toContain(`xmlns:w15="${word2012Namespace}"`);
+    expect(patched).toContain(`xmlns:mc="${compatibilityNamespace}"`);
+    expect(patched).toContain('<mc:Choice Requires="w15">');
+    expect(patched).toContain('<alt:r w15:collapsed="1">');
   });
 });

@@ -1667,12 +1667,12 @@ describe("headless docx review round-trip", () => {
         '<w:del w:id="42" w:author="Reviewer"><w:r><w:delText xml:space="preserve">DELETED </w:delText></w:r></w:del>' +
         '<w:moveFrom w:id="43" w:author="Reviewer"><w:r><w:t xml:space="preserve">MOVED FROM </w:t></w:r></w:moveFrom>' +
         '<w:moveTo w:id="44" w:author="Reviewer"><w:r><w:t>MOVED TO</w:t></w:r></w:moveTo>';
-      zip.file(
-        part,
-        (await file.async("text"))
-          .replace(` w14:paraId="${paraId}"`, "")
-          .replace(`<w:r><w:t>${originalText}</w:t></w:r>`, reviewedRuns),
-      );
+      const rewrittenPart = (await file.async("text"))
+        .replace(` w14:paraId="${paraId}"`, "")
+        .replace(`<w:r><w:t>${originalText}</w:t></w:r>`, reviewedRuns);
+      expect(rewrittenPart).not.toContain(`w14:paraId="${paraId}"`);
+      expect(rewrittenPart).not.toContain(`<w:r><w:t>${originalText}</w:t></w:r>`);
+      zip.file(part, rewrittenPart);
       const reviewer = await FolioDocxReviewer.fromBuffer(
         await zip.generateAsync({ type: "arraybuffer" }),
       );
@@ -2769,10 +2769,12 @@ describe("headless docx review notes read surface", () => {
         throw new Error(`fixture missing ${part}`);
       }
       const notesXml = await notesFile.async("text");
-      zip.file(
-        part,
-        removedParaId === null ? notesXml : notesXml.replace(` w14:paraId="${removedParaId}"`, ""),
-      );
+      const rewrittenNotesXml =
+        removedParaId === null ? notesXml : notesXml.replace(` w14:paraId="${removedParaId}"`, "");
+      if (removedParaId !== null) {
+        expect(rewrittenNotesXml).not.toContain(`w14:paraId="${removedParaId}"`);
+      }
+      zip.file(part, rewrittenNotesXml);
       const reviewer = await FolioDocxReviewer.fromBuffer(
         await zip.generateAsync({ type: "arraybuffer" }),
       );

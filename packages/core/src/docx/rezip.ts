@@ -861,7 +861,13 @@ const finishRepack = async ({
 
   serializeHeadersFootersToZip(document, outputZip, compressionLevel);
 
-  await serializeNotesToZip(document, originalZip, outputZip, compressionLevel, changedNoteParaIds);
+  await serializeNotesToZip({
+    doc: document,
+    originalZip,
+    newZip: outputZip,
+    compressionLevel,
+    changedNoteParaIds,
+  });
 
   await serializeNumberingIntoZip(document, originalZip, outputZip, compressionLevel);
   await serializeAddedStylesIntoZip(document, originalZip, outputZip, compressionLevel);
@@ -1012,13 +1018,13 @@ export async function repackDocxFromRaw(
 
   // Splice edited footnote/endnote bodies back into their parts (separators and
   // unedited notes stay byte-exact).
-  await serializeNotesToZip(
-    exportDocument,
-    rawContent.originalZip,
+  await serializeNotesToZip({
+    doc: exportDocument,
+    originalZip: rawContent.originalZip,
     newZip,
     compressionLevel,
     changedNoteParaIds,
-  );
+  });
 
   // Splice edited numbering definitions back into word/numbering.xml (untouched
   // definitions and the parts the model omits stay byte-exact).
@@ -1850,27 +1856,35 @@ function serializeHeadersFootersToZip(doc: Document, zip: JSZip, compressionLeve
  * matches its baseline and is left verbatim (mark intact); only a genuine body
  * edit differs and is spliced.
  */
-async function serializeNotesToZip(
-  doc: Document,
-  originalZip: JSZip,
-  newZip: JSZip,
-  compressionLevel: number,
-  changedNoteParaIds?: ReadonlySet<string>,
-): Promise<void> {
+type SerializeNotesToZipOptions = {
+  doc: Document;
+  originalZip: JSZip;
+  newZip: JSZip;
+  compressionLevel: number;
+  changedNoteParaIds: ReadonlySet<string> | undefined;
+};
+
+async function serializeNotesToZip({
+  doc,
+  originalZip,
+  newZip,
+  compressionLevel,
+  changedNoteParaIds,
+}: SerializeNotesToZipOptions): Promise<void> {
   const footnotes = doc.package.footnotes ?? [];
   if (footnotes.length > 0) {
     if (findNotePartEntry(originalZip, "word/footnotes.xml")) {
-      await patchNotePartIntoZip(
-        "word/footnotes.xml",
-        serializeFootnotes(footnotes),
-        serializeNewFootnotesPart(footnotes),
-        (xml) => serializeFootnotes(parseFootnotes(xml).getNormalFootnotes()),
-        "footnote",
+      await patchNotePartIntoZip({
+        conventionalLowerPath: "word/footnotes.xml",
+        currentXml: serializeFootnotes(footnotes),
+        replacementXml: serializeNewFootnotesPart(footnotes),
+        baselineFrom: (xml) => serializeFootnotes(parseFootnotes(xml).getNormalFootnotes()),
+        elementName: "footnote",
         changedNoteParaIds,
         originalZip,
         newZip,
         compressionLevel,
-      );
+      });
     } else {
       await materializeNewNotePart({
         contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml",
@@ -1885,17 +1899,17 @@ async function serializeNotesToZip(
   const endnotes = doc.package.endnotes ?? [];
   if (endnotes.length > 0) {
     if (findNotePartEntry(originalZip, "word/endnotes.xml")) {
-      await patchNotePartIntoZip(
-        "word/endnotes.xml",
-        serializeEndnotes(endnotes),
-        serializeNewEndnotesPart(endnotes),
-        (xml) => serializeEndnotes(parseEndnotes(xml).getNormalEndnotes()),
-        "endnote",
+      await patchNotePartIntoZip({
+        conventionalLowerPath: "word/endnotes.xml",
+        currentXml: serializeEndnotes(endnotes),
+        replacementXml: serializeNewEndnotesPart(endnotes),
+        baselineFrom: (xml) => serializeEndnotes(parseEndnotes(xml).getNormalEndnotes()),
+        elementName: "endnote",
         changedNoteParaIds,
         originalZip,
         newZip,
         compressionLevel,
-      );
+      });
     } else {
       await materializeNewNotePart({
         contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.endnotes+xml",
@@ -2098,17 +2112,29 @@ async function serializeAddedStylesIntoZip(
   });
 }
 
-async function patchNotePartIntoZip(
-  conventionalLowerPath: string,
-  currentXml: string,
-  replacementXml: string,
-  baselineFrom: (originalXml: string) => string,
-  elementName: "footnote" | "endnote",
-  changedNoteParaIds: ReadonlySet<string> | undefined,
-  originalZip: JSZip,
-  newZip: JSZip,
-  compressionLevel: number,
-): Promise<void> {
+type PatchNotePartIntoZipOptions = {
+  conventionalLowerPath: string;
+  currentXml: string;
+  replacementXml: string;
+  baselineFrom: (originalXml: string) => string;
+  elementName: "footnote" | "endnote";
+  changedNoteParaIds: ReadonlySet<string> | undefined;
+  originalZip: JSZip;
+  newZip: JSZip;
+  compressionLevel: number;
+};
+
+async function patchNotePartIntoZip({
+  conventionalLowerPath,
+  currentXml,
+  replacementXml,
+  baselineFrom,
+  elementName,
+  changedNoteParaIds,
+  originalZip,
+  newZip,
+  compressionLevel,
+}: PatchNotePartIntoZipOptions): Promise<void> {
   const file = findNotePartEntry(originalZip, conventionalLowerPath);
   if (!file) {
     return;
@@ -2126,9 +2152,8 @@ async function patchNotePartIntoZip(
     changedParaIds: effectiveChangedNoteParaIds,
   });
   const currentParaIds = collectParaIds(currentXml);
-  const baselineParaIds = collectParaIds(baselineXml);
-  const hasDirtyParagraph = [...effectiveChangedNoteParaIds].some(
-    (paraId) => currentParaIds.has(paraId) || baselineParaIds.has(paraId),
+  const hasDirtyParagraph = [...effectiveChangedNoteParaIds].some((paraId) =>
+    currentParaIds.has(paraId),
   );
   if (patched === null || (hasDirtyParagraph && patched === originalXml)) {
     if (hasDirtyParagraph) {
