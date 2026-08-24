@@ -30,6 +30,32 @@ export type FolioReviewChangeKind =
   | "cellMerged"
   | FolioNodeRevisionKind;
 
+/**
+ * Runtime census of every tracked-change discriminator the reviewer exposes.
+ *
+ * The total Record is intentional: adding a new FolioReviewChangeKind without
+ * adding it here is a compile-time error. Cross-product persistence tests use
+ * this census, so a newly modeled revision cannot silently miss the resolver
+ * and serialization matrix.
+ */
+export const FOLIO_REVIEW_CHANGE_KINDS = Object.freeze({
+  insertion: "insertion",
+  deletion: "deletion",
+  formatting: "formatting",
+  rowInserted: "rowInserted",
+  rowDeleted: "rowDeleted",
+  cellInserted: "cellInserted",
+  cellDeleted: "cellDeleted",
+  cellMerged: "cellMerged",
+  paragraphMarkInserted: "paragraphMarkInserted",
+  paragraphMarkDeleted: "paragraphMarkDeleted",
+  paragraphPropertiesChanged: "paragraphPropertiesChanged",
+  sectionPropertiesChanged: "sectionPropertiesChanged",
+  tablePropertiesChanged: "tablePropertiesChanged",
+  rowPropertiesChanged: "rowPropertiesChanged",
+  cellPropertiesChanged: "cellPropertiesChanged",
+} as const satisfies Record<FolioReviewChangeKind, FolioReviewChangeKind>);
+
 /** A tracked change discovered in the document body. */
 export type FolioReviewChange = {
   /**

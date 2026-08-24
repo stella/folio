@@ -2,4 +2,4 @@
 "@stll/folio-core": patch
 ---
 
-Keep Final-view persistence validation stable when a resolved story contains comment anchors.
+Keep resolved-view persistence stable with anchored and threaded comments across every document story.

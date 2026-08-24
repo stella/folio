@@ -459,20 +459,28 @@ const resolveParagraphStyleFontFamily = (
 
 /**
  * Apply comment marks to PM nodes within a comment range.
- * Only the first active comment ID is used (comments don't overlap visually).
  */
 function applyCommentMarks(nodes: PMNode[], commentIds: Set<number>): PMNode[] {
   if (commentIds.size === 0) {
     return nodes;
   }
-  const commentId = [...commentIds][0]; // Use first active comment
-  const commentMark = schema.marks["comment"]!.create({ commentId });
+  const commentMarkType = schema.marks["comment"];
+  if (!commentMarkType) {
+    return nodes;
+  }
+  const commentMarks = [...commentIds]
+    .toSorted((left, right) => left - right)
+    .map((commentId) => commentMarkType.create({ commentId }));
 
   return nodes.map((node) => {
-    if (node.isText || (node.isInline && node.type.allowsMarkType(commentMark.type))) {
-      return node.mark(commentMark.addToSet(node.marks));
+    if (!node.isText && (!node.isInline || !node.type.allowsMarkType(commentMarkType))) {
+      return node;
     }
-    return node;
+    let marks = node.marks;
+    for (const commentMark of commentMarks) {
+      marks = commentMark.addToSet(marks);
+    }
+    return node.mark(marks);
   });
 }
 

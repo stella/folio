@@ -12,6 +12,10 @@ export const CommentExtension = createMarkExtension({
   name: "comment",
   schemaMarkName: "comment",
   markSpec: {
+    // Word permits nested/overlapping comment ranges, including the identical
+    // anchors it emits for a thread root and each reply. Keep multiple comment
+    // marks on one inline node so parsing one range cannot evict another.
+    excludes: "",
     attrs: {
       /** Comment ID (matches Comment.id) */
       commentId: { default: 0 },
