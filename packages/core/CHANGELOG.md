@@ -1,5 +1,16 @@
 # @stll/folio-core
 
+## 0.24.0
+
+### Minor Changes
+
+- [#607](https://github.com/stella/folio/pull/607) [`069ba36`](https://github.com/stella/folio/commit/069ba36ac26a686d1b5cbbc2ee69c940cdb238f0) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve independent complex-script typography on list markers.
+
+### Patch Changes
+
+- Updated dependencies [[`069ba36`](https://github.com/stella/folio/commit/069ba36ac26a686d1b5cbbc2ee69c940cdb238f0)]:
+  - @stll/docx-core@0.16.0
+
 ## 0.23.1
 
 ### Patch Changes
