@@ -14,9 +14,14 @@
  * the first line's available width.
  */
 import type { ParagraphBlock, TextRun } from "../types";
+import {
+  hasComplexScriptFormatting,
+  resolveComplexScriptFormatting,
+} from "./complexScriptFormatting";
 import { ptToPx } from "./measureHelpers";
 import { measureTextWidth } from "./measureProvider";
 import type { FontStyle } from "./measureTypes";
+import { hasCjk, hasComplexScript } from "../../utils/scriptSegments";
 
 const DEFAULT_FONT_FAMILY = "Calibri";
 const DEFAULT_FONT_SIZE = 11;
@@ -32,7 +37,7 @@ const TWIPS_TO_PX = 96 / 1440;
 
 /**
  * Marker font resolution per ECMA-376 §17.9.6:
- *  1. explicit numbering-level rPr (`attrs.listMarkerFont*`),
+ *  1. explicit numbering-level rPr (`attrs.listMarkerFormatting`),
  *  2. first body text run's font,
  *  3. paragraph defaults, then document defaults.
  */
@@ -40,21 +45,39 @@ export function resolveListMarkerFont(block: ParagraphBlock): {
   fontFamily: string;
   fontSize: number;
   bold?: boolean;
+  italic?: boolean;
 } {
   const attrs = block.attrs;
   const firstTextRun = block.runs.find((r): r is TextRun => r.kind === "text");
-  const fontFamily =
-    attrs?.listMarkerFontFamily ??
-    firstTextRun?.fontFamily ??
-    attrs?.defaultFontFamily ??
-    DEFAULT_FONT_FAMILY;
-  const fontSize =
-    attrs?.listMarkerFontSize ??
-    firstTextRun?.fontSize ??
-    attrs?.defaultFontSize ??
-    DEFAULT_FONT_SIZE;
-  const bold = attrs?.listMarkerBold ?? firstTextRun?.bold;
-  return { fontFamily, fontSize, ...(bold !== undefined ? { bold } : {}) };
+  const markerFormatting = attrs?.listMarkerFormatting;
+  const bold = markerFormatting?.bold ?? firstTextRun?.bold;
+  const italic = markerFormatting?.italic ?? firstTextRun?.italic;
+  const base = {
+    fontFamily:
+      markerFormatting?.fontFamily ??
+      firstTextRun?.fontFamily ??
+      attrs?.defaultFontFamily ??
+      DEFAULT_FONT_FAMILY,
+    fontSize:
+      markerFormatting?.fontSize ??
+      firstTextRun?.fontSize ??
+      attrs?.defaultFontSize ??
+      DEFAULT_FONT_SIZE,
+    ...(bold !== undefined ? { bold } : {}),
+    ...(italic !== undefined ? { italic } : {}),
+  };
+  const marker = attrs?.listMarker ?? "";
+  if (
+    markerFormatting &&
+    hasComplexScriptFormatting(markerFormatting) &&
+    (markerFormatting.forceComplexScript || hasComplexScript(marker))
+  ) {
+    return { ...base, ...resolveComplexScriptFormatting(markerFormatting) };
+  }
+  if (markerFormatting?.eastAsiaFontFamily && hasCjk(marker)) {
+    return { ...base, fontFamily: markerFormatting.eastAsiaFontFamily };
+  }
+  return base;
 }
 
 /**
@@ -81,8 +104,7 @@ export function getListMarkerInlineWidth(block: ParagraphBlock): number {
     return 0;
   }
 
-  const { fontFamily, fontSize, bold } = resolveListMarkerFont(block);
-  const style: FontStyle = { fontFamily, fontSize, ...(bold !== undefined ? { bold } : {}) };
+  const style: FontStyle = resolveListMarkerFont(block);
   const naturalWidth = measureTextWidth(attrs.listMarker, style);
   const markerEndOffset = getMarkerEndOffset(naturalWidth, attrs.listMarkerAlignment);
 
@@ -146,7 +168,7 @@ export function getListMarkerInlineWidth(block: ParagraphBlock): number {
   if (bodyStart === undefined) {
     // No tab grid available: fall back to a half-em visual gap so the
     // marker doesn't butt up against the body text.
-    return naturalWidth + ptToPx(fontSize) * 0.5;
+    return naturalWidth + ptToPx(style.fontSize ?? DEFAULT_FONT_SIZE) * 0.5;
   }
   return bodyStart - markerStartPx;
 }
@@ -158,12 +180,7 @@ export function getListMarkerVisualOffset(block: ParagraphBlock): number {
     return 0;
   }
 
-  const { fontFamily, fontSize, bold } = resolveListMarkerFont(block);
-  const naturalWidth = measureTextWidth(attrs.listMarker, {
-    fontFamily,
-    fontSize,
-    ...(bold !== undefined ? { bold } : {}),
-  });
+  const naturalWidth = measureTextWidth(attrs.listMarker, resolveListMarkerFont(block));
   if (attrs.listMarkerAlignment === "right") {
     return -naturalWidth;
   }

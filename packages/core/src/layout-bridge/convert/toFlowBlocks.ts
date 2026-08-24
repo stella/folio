@@ -758,8 +758,10 @@ function applyRunFormattingOverrides(
   }
 }
 
-function paragraphRunDefaults(pmAttrs: PMParagraphAttrs, theme?: Theme | null): RunFormatting {
-  const defaultTextFormatting = pmAttrs.defaultTextFormatting as TextFormatting | undefined;
+function textFormattingToRunFormatting(
+  defaultTextFormatting: TextFormatting | undefined,
+  theme?: Theme | null,
+): RunFormatting {
   if (!defaultTextFormatting) {
     return {};
   }
@@ -869,6 +871,10 @@ function paragraphRunDefaults(pmAttrs: PMParagraphAttrs, theme?: Theme | null): 
     result.emphasisMark = defaultTextFormatting.emphasisMark;
   }
   return result;
+}
+
+function paragraphRunDefaults(pmAttrs: PMParagraphAttrs, theme?: Theme | null): RunFormatting {
+  return textFormattingToRunFormatting(pmAttrs.defaultTextFormatting, theme);
 }
 
 /**
@@ -1321,19 +1327,9 @@ function toPreviousListAttrs(previousFormatting: ListPropertyFormatting): PMPara
     attrs.listMarkerHidden = listMarkerHidden;
   }
 
-  const listMarkerFontFamily = previousFormatting.listMarkerFontFamily;
-  if (listMarkerFontFamily !== undefined) {
-    attrs.listMarkerFontFamily = listMarkerFontFamily;
-  }
-
-  const listMarkerFontSize = previousFormatting.listMarkerFontSize;
-  if (listMarkerFontSize !== undefined) {
-    attrs.listMarkerFontSize = listMarkerFontSize;
-  }
-
-  const listMarkerBold = previousFormatting.listMarkerBold;
-  if (listMarkerBold !== undefined) {
-    attrs.listMarkerBold = listMarkerBold;
+  const listMarkerFormatting = previousFormatting.listMarkerFormatting;
+  if (listMarkerFormatting !== undefined) {
+    attrs.listMarkerFormatting = listMarkerFormatting;
   }
 
   const listMarkerAlignment = previousFormatting.listMarkerAlignment;
@@ -1390,6 +1386,7 @@ function applyDeletedListMarkerAttrs(
   listCounters: Map<number, number[]> | undefined,
   listAbstractCounters: Map<number, number[]> | undefined,
   listSeenNumIds: Set<string> | undefined,
+  theme: Theme | null | undefined,
 ): void {
   const previousListAttrs = toPreviousListAttrs(change.previousFormatting);
   const marker = resolveDeletedListMarker(
@@ -1410,14 +1407,11 @@ function applyDeletedListMarkerAttrs(
   if (previousListAttrs.listMarkerHidden !== undefined) {
     attrs.listMarkerHidden = previousListAttrs.listMarkerHidden;
   }
-  if (previousListAttrs.listMarkerFontFamily) {
-    attrs.listMarkerFontFamily = previousListAttrs.listMarkerFontFamily;
-  }
-  if (previousListAttrs.listMarkerFontSize) {
-    attrs.listMarkerFontSize = previousListAttrs.listMarkerFontSize;
-  }
-  if (previousListAttrs.listMarkerBold !== undefined) {
-    attrs.listMarkerBold = previousListAttrs.listMarkerBold;
+  if (previousListAttrs.listMarkerFormatting) {
+    attrs.listMarkerFormatting = textFormattingToRunFormatting(
+      previousListAttrs.listMarkerFormatting,
+      theme,
+    );
   }
   if (previousListAttrs.listMarkerAlignment) {
     attrs.listMarkerAlignment = previousListAttrs.listMarkerAlignment;
@@ -1811,14 +1805,8 @@ function convertParagraphAttrs(
   if (pmAttrs.listMarkerHidden) {
     attrs.listMarkerHidden = true;
   }
-  if (pmAttrs.listMarkerFontFamily) {
-    attrs.listMarkerFontFamily = pmAttrs.listMarkerFontFamily;
-  }
-  if (pmAttrs.listMarkerFontSize) {
-    attrs.listMarkerFontSize = pmAttrs.listMarkerFontSize;
-  }
-  if (pmAttrs.listMarkerBold !== null && pmAttrs.listMarkerBold !== undefined) {
-    attrs.listMarkerBold = pmAttrs.listMarkerBold;
+  if (pmAttrs.listMarkerFormatting) {
+    attrs.listMarkerFormatting = textFormattingToRunFormatting(pmAttrs.listMarkerFormatting, theme);
   }
   if (pmAttrs.listMarkerAlignment) {
     attrs.listMarkerAlignment = pmAttrs.listMarkerAlignment;
@@ -1841,6 +1829,7 @@ function convertParagraphAttrs(
         originalListCounters,
         originalListAbstractCounters,
         originalListSeenNumIds,
+        theme,
       );
     }
   }

@@ -280,9 +280,12 @@ export const readParagraphAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Par
   optionalBoolean(attrs, "listIsLegal", "paragraph.attrs.listIsLegal", issues);
   optionalString(attrs, "listMarker", "paragraph.attrs.listMarker", issues);
   optionalBoolean(attrs, "listMarkerHidden", "paragraph.attrs.listMarkerHidden", issues);
-  optionalString(attrs, "listMarkerFontFamily", "paragraph.attrs.listMarkerFontFamily", issues);
-  optionalNumber(attrs, "listMarkerFontSize", "paragraph.attrs.listMarkerFontSize", issues);
-  optionalBoolean(attrs, "listMarkerBold", "paragraph.attrs.listMarkerBold", issues);
+  optionalTextFormatting(
+    attrs,
+    "listMarkerFormatting",
+    "paragraph.attrs.listMarkerFormatting",
+    issues,
+  );
   optionalOneOf(attrs, "listMarkerAlignment", "paragraph.attrs.listMarkerAlignment", issues, [
     "left",
     "center",
@@ -2242,7 +2245,6 @@ const validateParagraphFormatting = (
     "listIsBullet",
     "listIsLegal",
     "listMarkerHidden",
-    "listMarkerBold",
     "listMarkerAllCaps",
   ] as const) {
     optionalBoolean(value, key, `${path}.${key}`, issues);
@@ -2251,7 +2253,6 @@ const validateParagraphFormatting = (
     optionalNumber(value, key, `${path}.${key}`, issues);
   }
   for (const key of [
-    "listMarkerFontSize",
     "listImplicitChildLevelAdvances",
     "listMarkerSecondSlotOffsetTwips",
     "listAbstractNumId",
@@ -2269,7 +2270,7 @@ const validateParagraphFormatting = (
   optionalString(value, "styleId", `${path}.styleId`, issues);
   optionalOneOf(value, "listNumFmt", `${path}.listNumFmt`, issues, NUMBER_FORMAT_VALUES);
   optionalString(value, "listMarker", `${path}.listMarker`, issues);
-  optionalString(value, "listMarkerFontFamily", `${path}.listMarkerFontFamily`, issues);
+  optionalTextFormatting(value, "listMarkerFormatting", `${path}.listMarkerFormatting`, issues);
   optionalOneOf(value, "listMarkerAlignment", `${path}.listMarkerAlignment`, issues, [
     "left",
     "center",

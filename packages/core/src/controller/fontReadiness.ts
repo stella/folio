@@ -12,7 +12,7 @@
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
 
-import { expectFontFamilyMarkAttrs } from "../prosemirror/attrs";
+import { expectFontFamilyMarkAttrs, expectParagraphAttrs } from "../prosemirror/attrs";
 import { parseFontFamilyList, resolveFontFamily } from "../utils/fontResolver";
 import type { Document, TextFormatting } from "../types/document";
 
@@ -137,12 +137,8 @@ function collectProseMirrorFontFaces(
     addTextFormattingFontFaces(faces, paragraphDefaults);
   }
 
-  if (node.attrs["listMarkerFontFamily"]) {
-    addLayoutFontFamilyFace(
-      faces,
-      node.attrs["listMarkerFontFamily"],
-      REGULAR_LAYOUT_FONT_DESCRIPTOR,
-    );
+  if (node.type.name === "paragraph") {
+    addTextFormattingFontFaces(faces, expectParagraphAttrs(node).listMarkerFormatting);
   }
 
   if (node.isText) {

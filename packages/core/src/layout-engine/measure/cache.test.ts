@@ -1,9 +1,11 @@
 import { expect, test } from "bun:test";
 
+import type { ParagraphBlock } from "../types";
 import {
   clearTextWidthCache,
   getCachedTextWidth,
   getTextCacheSize,
+  hashParagraphBlock,
   setCachedTextWidth,
   setTextCacheSize,
 } from "./cache";
@@ -28,4 +30,23 @@ test("text width cache retains frequently reused entries when it evicts", () => 
     setTextCacheSize(20_000);
     clearTextWidthCache();
   }
+});
+
+test("paragraph cache keys include complex-script list marker formatting", () => {
+  const paragraphWithMarkerSize = (complexScriptFontSize: number): ParagraphBlock => ({
+    kind: "paragraph",
+    id: "list-item",
+    runs: [{ kind: "text", text: "بند" }],
+    attrs: {
+      listMarker: "ا.",
+      listMarkerFormatting: {
+        complexScriptFontFamily: "Traditional Arabic",
+        complexScriptFontSize,
+      },
+    },
+  });
+
+  expect(hashParagraphBlock(paragraphWithMarkerSize(12))).not.toBe(
+    hashParagraphBlock(paragraphWithMarkerSize(18)),
+  );
 });

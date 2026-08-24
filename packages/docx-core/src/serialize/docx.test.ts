@@ -51,6 +51,56 @@ const readDocumentXml = async (buf: ArrayBuffer): Promise<string> => {
   return xml;
 };
 
+const readNumberingXml = async (buf: ArrayBuffer): Promise<string> => {
+  const zip = await JSZip.loadAsync(buf);
+  const xml = await zip.file("word/numbering.xml")?.async("string");
+  if (xml === undefined) {
+    throw new Error("word/numbering.xml missing from serialized docx");
+  }
+  return xml;
+};
+
+test("numbering markers serialize independent complex-script typography", async () => {
+  const document: Document = {
+    package: {
+      document: { content: [] },
+      numbering: {
+        abstractNums: [
+          {
+            abstractNumId: 1,
+            levels: [
+              {
+                ilvl: 0,
+                numFmt: "arabicAlpha",
+                lvlText: "%1.",
+                rPr: {
+                  fontFamily: { ascii: "Arial", cs: "Traditional Arabic" },
+                  fontSize: 20,
+                  fontSizeCs: 32,
+                  bold: true,
+                  boldCs: false,
+                  italic: false,
+                  italicCs: true,
+                  cs: false,
+                },
+              },
+            ],
+          },
+        ],
+        nums: [{ numId: 1, abstractNumId: 1 }],
+      },
+    },
+  };
+
+  const xml = await readNumberingXml(await serializeDocumentToDocx(document));
+  expect(xml).toContain('w:cs="Traditional Arabic"');
+  expect(xml).toContain('<w:bCs w:val="0"/>');
+  expect(xml).toContain('<w:i w:val="0"/>');
+  expect(xml).toContain("<w:iCs/>");
+  expect(xml).toContain('<w:szCs w:val="32"/>');
+  expect(xml).toContain('<w:cs w:val="0"/>');
+});
+
 describe("DOCX border serialization escapes attribute values", () => {
   test("a style value cannot inject extra XML attributes", async () => {
     const xml = await readDocumentXml(

@@ -20,9 +20,11 @@ import type {
   NumberFormat,
   ParagraphFormatting,
   TextFormatting,
+  ListMarkerFormatting,
 } from "../types/document";
 import { formatOoxmlCounter } from "./ooxmlCounterFormatter";
-import { FontHintSchema, LevelSuffixSchema, ThemeColorSlotSchema, narrowEnum } from "./parserEnums";
+import { LevelSuffixSchema, narrowEnum } from "./parserEnums";
+import { parseRunProperties } from "./runParser";
 import {
   parseXmlDocument,
   findChild,
@@ -527,7 +529,10 @@ function parseListLevel(element: XmlElement): ListLevel | null {
 
   // Parse run properties (w:rPr)
   if (rPrEl) {
-    level.rPr = parseLevelRunProps(rPrEl);
+    const runProperties = parseRunProperties(rPrEl, null);
+    if (runProperties) {
+      level.rPr = runProperties;
+    }
   }
 
   return level;
@@ -702,111 +707,24 @@ function parseTabLeader(
   }
 }
 
-/**
- * Parse run properties for a list level (subset of full rPr)
- * Main concern: fonts for bullet characters
- */
-function parseLevelRunProps(rPr: XmlElement): TextFormatting {
-  const formatting: TextFormatting = {};
-
-  let rFontsEl: XmlElement | undefined;
-  let szEl: XmlElement | undefined;
-  let colorEl: XmlElement | undefined;
-  let bEl: XmlElement | undefined;
-  let iEl: XmlElement | undefined;
-  let vanishEl: XmlElement | undefined;
-
-  for (const child of rPr.elements ?? []) {
-    if (child.type !== "element") {
-      continue;
-    }
-
-    switch (child.name) {
-      case "w:rFonts":
-        rFontsEl ??= child;
-        break;
-      case "w:sz":
-        szEl ??= child;
-        break;
-      case "w:color":
-        colorEl ??= child;
-        break;
-      case "w:b":
-        bEl ??= child;
-        break;
-      case "w:i":
-        iEl ??= child;
-        break;
-      case "w:vanish":
-        vanishEl ??= child;
-        break;
-      default:
-        break;
-    }
+export const markerFormattingFromLevel = (
+  formatting: TextFormatting | undefined,
+): ListMarkerFormatting | undefined => {
+  if (!formatting) {
+    return undefined;
   }
-
-  // Parse fonts (w:rFonts) - important for bullet characters
-  if (rFontsEl) {
-    const ascii = getAttribute(rFontsEl, "w", "ascii");
-    const hAnsi = getAttribute(rFontsEl, "w", "hAnsi");
-    const eastAsia = getAttribute(rFontsEl, "w", "eastAsia");
-    const cs = getAttribute(rFontsEl, "w", "cs");
-    const hint = narrowEnum(getAttribute(rFontsEl, "w", "hint"), FontHintSchema);
-    formatting.fontFamily = {
-      ...(ascii != null ? { ascii } : {}),
-      ...(hAnsi != null ? { hAnsi } : {}),
-      ...(eastAsia != null ? { eastAsia } : {}),
-      ...(cs != null ? { cs } : {}),
-      ...(hint !== undefined ? { hint } : {}),
-    };
-  }
-
-  // Parse font size (w:sz)
-  if (szEl) {
-    const size = parseNumericAttribute(szEl, "w", "val");
-    if (size !== undefined) {
-      formatting.fontSize = size; // In half-points
-    }
-  }
-
-  // Parse color (w:color)
-  if (colorEl) {
-    const val = getAttribute(colorEl, "w", "val");
-    const themeColor = getAttribute(colorEl, "w", "themeColor");
-
-    const validatedThemeColor = narrowEnum(themeColor, ThemeColorSlotSchema);
-    if (val === "auto") {
-      formatting.color = { auto: true };
-    } else if (validatedThemeColor) {
-      const themeTint = getAttribute(colorEl, "w", "themeTint");
-      const themeShade = getAttribute(colorEl, "w", "themeShade");
-      formatting.color = {
-        themeColor: validatedThemeColor,
-        ...(themeTint != null ? { themeTint } : {}),
-        ...(themeShade != null ? { themeShade } : {}),
-      };
-    } else if (val) {
-      formatting.color = { rgb: val };
-    }
-  }
-
-  // Parse bold (w:b)
-  if (bEl) {
-    formatting.bold = parseBooleanElement(bEl);
-  }
-
-  // Parse italic (w:i)
-  if (iEl) {
-    formatting.italic = parseBooleanElement(iEl);
-  }
-
-  // Parse vanish / hidden (w:vanish) — hides the list indicator
-  if (vanishEl) {
-    formatting.hidden = parseBooleanElement(vanishEl);
-  }
-
-  return formatting;
-}
+  const markerFormatting: ListMarkerFormatting = {
+    ...(formatting.fontFamily !== undefined ? { fontFamily: formatting.fontFamily } : {}),
+    ...(formatting.fontSize !== undefined ? { fontSize: formatting.fontSize } : {}),
+    ...(formatting.fontSizeCs !== undefined ? { fontSizeCs: formatting.fontSizeCs } : {}),
+    ...(formatting.bold !== undefined ? { bold: formatting.bold } : {}),
+    ...(formatting.boldCs !== undefined ? { boldCs: formatting.boldCs } : {}),
+    ...(formatting.italic !== undefined ? { italic: formatting.italic } : {}),
+    ...(formatting.italicCs !== undefined ? { italicCs: formatting.italicCs } : {}),
+    ...(formatting.cs !== undefined ? { cs: formatting.cs } : {}),
+  };
+  return Object.keys(markerFormatting).length > 0 ? markerFormatting : undefined;
+};
 
 /**
  * Per-definitions cache for `createNumberingMap`. Style application rebuilds
@@ -963,16 +881,9 @@ export function computeListRendering(
   if (level.rPr?.hidden) {
     rendering.markerHidden = true;
   }
-  const markerFont = level.rPr?.fontFamily?.ascii || level.rPr?.fontFamily?.hAnsi;
-  if (markerFont) {
-    rendering.markerFontFamily = markerFont;
-  }
-  // w:sz is in half-points; convert to points for downstream use
-  if (level.rPr?.fontSize) {
-    rendering.markerFontSize = level.rPr.fontSize / 2;
-  }
-  if (level.rPr?.bold !== undefined) {
-    rendering.markerBold = level.rPr.bold;
+  const markerFormatting = markerFormattingFromLevel(level.rPr);
+  if (markerFormatting) {
+    rendering.markerFormatting = markerFormatting;
   }
   if (level.rPr?.allCaps) {
     rendering.markerAllCaps = true;

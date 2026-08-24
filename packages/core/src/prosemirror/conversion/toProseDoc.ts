@@ -609,14 +609,8 @@ function paragraphFormattingToAttrs(
   if (paragraph.listRendering?.markerHidden) {
     attrs.listMarkerHidden = paragraph.listRendering.markerHidden;
   }
-  if (paragraph.listRendering?.markerFontFamily) {
-    attrs.listMarkerFontFamily = paragraph.listRendering.markerFontFamily;
-  }
-  if (paragraph.listRendering?.markerFontSize) {
-    attrs.listMarkerFontSize = paragraph.listRendering.markerFontSize;
-  }
-  if (paragraph.listRendering?.markerBold !== undefined) {
-    attrs.listMarkerBold = paragraph.listRendering.markerBold;
+  if (paragraph.listRendering?.markerFormatting) {
+    attrs.listMarkerFormatting = paragraph.listRendering.markerFormatting;
   }
   if (paragraph.listRendering?.markerAlignment) {
     attrs.listMarkerAlignment = paragraph.listRendering.markerAlignment;

@@ -10,7 +10,10 @@
 import { describe, expect, test } from "bun:test";
 
 import { clearTextWidthCache } from "../layout-engine/measure/cache";
-import { resetCanvasContext } from "../layout-engine/measure/measureContainer";
+import {
+  installCanvasMeasureProvider,
+  resetCanvasContext,
+} from "../layout-engine/measure/measureContainer";
 import type { ParagraphBlock, ParagraphFragment, ParagraphMeasure } from "../layout-engine/types";
 import { renderParagraphFragment } from "./renderParagraph";
 
@@ -80,11 +83,19 @@ const fakeDocument = {
   },
 } as unknown as Document;
 
-function renderListItem(
-  indent: { left: number; hanging: number },
-  listMarkerAlignment?: "left" | "center" | "right",
-  listMarkerBold?: boolean,
-): {
+type RenderListItemOptions = {
+  indent: { left: number; hanging: number };
+  marker?: string;
+  markerFormatting?: NonNullable<ParagraphBlock["attrs"]>["listMarkerFormatting"];
+  markerAlignment?: "left" | "center" | "right";
+};
+
+function renderListItem({
+  indent,
+  marker = "1.",
+  markerFormatting,
+  markerAlignment,
+}: RenderListItemOptions): {
   line: HTMLElement;
   marker: HTMLElement | undefined;
 } {
@@ -92,7 +103,12 @@ function renderListItem(
     kind: "paragraph",
     id: "p1",
     runs: [{ kind: "text", text: "TEST1" }],
-    attrs: { listMarker: "1.", indent, listMarkerAlignment, listMarkerBold },
+    attrs: {
+      listMarker: marker,
+      indent,
+      listMarkerAlignment: markerAlignment,
+      ...(markerFormatting !== undefined ? { listMarkerFormatting: markerFormatting } : {}),
+    },
   };
   const measure: ParagraphMeasure = {
     kind: "paragraph",
@@ -128,6 +144,7 @@ function renderListItem(
   });
   clearTextWidthCache();
   resetCanvasContext();
+  installCanvasMeasureProvider();
   try {
     const fragmentEl = renderParagraphFragment(
       fragment,
@@ -137,8 +154,8 @@ function renderListItem(
       { document: fakeDocument },
     );
     const line = fragmentEl.children[0] as HTMLElement;
-    const marker = line.children[0] as HTMLElement | undefined;
-    return { line, marker };
+    const markerElement = line.children[0] as HTMLElement | undefined;
+    return { line, marker: markerElement };
   } finally {
     clearTextWidthCache();
     resetCanvasContext();
@@ -151,15 +168,46 @@ function renderListItem(
 
 describe("Issue #729 — list hanging indent exceeding left indent", () => {
   test("marker bold state reaches the painted element", () => {
-    const bold = renderListItem({ left: 48, hanging: 24 }, undefined, true).marker;
-    const regular = renderListItem({ left: 48, hanging: 24 }, undefined, false).marker;
+    const bold = renderListItem({
+      indent: { left: 48, hanging: 24 },
+      markerFormatting: { bold: true },
+    }).marker;
+    const regular = renderListItem({
+      indent: { left: 48, hanging: 24 },
+      markerFormatting: { bold: false },
+    }).marker;
 
     expect(bold?.style.fontWeight).toBe("700");
     expect(regular?.style.fontWeight).toBe("normal");
   });
 
+  test("Arabic markers paint with independent CS typography and negative overrides", () => {
+    const { marker } = renderListItem({
+      indent: { left: 48, hanging: 24 },
+      marker: "ا.",
+      markerFormatting: {
+        fontFamily: "Arial",
+        complexScriptFontFamily: "Traditional Arabic",
+        fontSize: 10,
+        complexScriptFontSize: 16,
+        bold: true,
+        complexScriptBold: false,
+        italic: false,
+        complexScriptItalic: true,
+      },
+    });
+
+    expect(marker?.style.fontFamily).toContain("Traditional Arabic");
+    expect(marker?.style.fontSize).toBe(`${(16 * 96) / 72}px`);
+    expect(marker?.style.fontWeight).toBe("normal");
+    expect(marker?.style.fontStyle).toBe("italic");
+  });
+
   test("right-aligned marker paints before its anchor without moving body text", () => {
-    const { marker } = renderListItem({ left: 48, hanging: 24 }, "right");
+    const { marker } = renderListItem({
+      indent: { left: 48, hanging: 24 },
+      markerAlignment: "right",
+    });
 
     expect(marker?.style.width).toBe("24px");
     expect(Number.parseFloat(marker?.style.transform?.slice(11) ?? "")).toBeCloseTo(-14, 1);
@@ -167,7 +215,7 @@ describe("Issue #729 — list hanging indent exceeding left indent", () => {
 
   test("hanging > left: marker hangs into the margin via negative margin-left", () => {
     // 15px left, 38px hanging — marker should start at 15 - 38 = -23px.
-    const { line, marker } = renderListItem({ left: 15, hanging: 38 });
+    const { line, marker } = renderListItem({ indent: { left: 15, hanging: 38 } });
     expect(marker?.className).toContain("layout-list-marker");
     expect(Number.parseFloat(marker?.style.marginLeft ?? "")).toBeCloseTo(-23, 1);
     // padding clamps to 0 (can't be negative); text-indent stays 0.
@@ -177,14 +225,14 @@ describe("Issue #729 — list hanging indent exceeding left indent", () => {
 
   test("hanging <= left: existing path unchanged (padding, no marker margin)", () => {
     // 48px left, 24px hanging — marker starts at 48 - 24 = 24px via padding.
-    const { line, marker } = renderListItem({ left: 48, hanging: 24 });
+    const { line, marker } = renderListItem({ indent: { left: 48, hanging: 24 } });
     expect(marker?.style.marginLeft).toBeFalsy();
     expect(line.style.paddingLeft).toBe("24px");
     expect(line.style.textIndent).toBe("0");
   });
 
   test("left == 0 with hanging: marker hangs left and body stays at the content edge", () => {
-    const { line, marker } = renderListItem({ left: 0, hanging: 24 });
+    const { line, marker } = renderListItem({ indent: { left: 0, hanging: 24 } });
     expect(marker?.style.marginLeft).toBe("-24px");
     expect(line.style.paddingLeft).toBe("0px");
   });
@@ -203,7 +251,7 @@ describe("negative left indent with hanging (w:ind w:left<0 w:hanging)", () => {
     // and the body at left = -9px. The line element already carries
     // margin-left = min(left, 0) = -9px, so the marker only needs the
     // remaining -18px on its own margin-left.
-    const { line, marker } = renderListItem({ left: -9, hanging: 18 });
+    const { line, marker } = renderListItem({ indent: { left: -9, hanging: 18 } });
     expect(marker?.className).toContain("layout-list-marker");
     expect(Number.parseFloat(marker?.style.marginLeft ?? "")).toBeCloseTo(-18, 1);
     // padding clamps to 0 (markerStart is negative); the -9px negative left
@@ -267,6 +315,7 @@ function renderMultiLineListItem(indent: { left: number; hanging: number }): {
   });
   clearTextWidthCache();
   resetCanvasContext();
+  installCanvasMeasureProvider();
   try {
     const fragmentEl = renderParagraphFragment(
       fragment,

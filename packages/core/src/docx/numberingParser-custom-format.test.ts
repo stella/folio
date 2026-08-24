@@ -138,6 +138,8 @@ test("computeListRendering preserves explicit marker bold states", () => {
 </w:numbering>`;
   const numbering = parseNumbering(xml);
 
-  expect(computeListRendering({ numId: 4, ilvl: 0 }, numbering)?.markerBold).toBe(true);
-  expect(computeListRendering({ numId: 4, ilvl: 1 }, numbering)?.markerBold).toBe(false);
+  expect(computeListRendering({ numId: 4, ilvl: 0 }, numbering)?.markerFormatting?.bold).toBe(true);
+  expect(computeListRendering({ numId: 4, ilvl: 1 }, numbering)?.markerFormatting?.bold).toBe(
+    false,
+  );
 });

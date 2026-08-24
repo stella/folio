@@ -23,6 +23,7 @@ import type {
   TabStop,
   TextFormatting,
   NumberFormat,
+  ListMarkerFormatting,
   TableBorders,
   TableCellBorders,
   TableFormatting,
@@ -122,12 +123,8 @@ export type ParagraphAttrs = {
   listMarker?: string;
   /** Whether the list marker is hidden (w:vanish on numbering level rPr) */
   listMarkerHidden?: boolean;
-  /** Marker font family from numbering level rPr */
-  listMarkerFontFamily?: string;
-  /** Marker font size from numbering level rPr, in points */
-  listMarkerFontSize?: number;
-  /** Marker bold state from numbering level rPr */
-  listMarkerBold?: boolean;
+  /** Canonical numbering-level marker typography, in OOXML units. */
+  listMarkerFormatting?: ListMarkerFormatting;
   /** Horizontal alignment of the marker around the paragraph's list anchor. */
   listMarkerAlignment?: "left" | "center" | "right";
   /**
@@ -289,9 +286,7 @@ export type ParagraphPropertyChangeAttrs = Omit<
         | "listNumFmt"
         | "listMarker"
         | "listMarkerHidden"
-        | "listMarkerFontFamily"
-        | "listMarkerFontSize"
-        | "listMarkerBold"
+        | "listMarkerFormatting"
         | "listMarkerAlignment"
         | "listMarkerSuffix"
         | "listLevelNumFmts"

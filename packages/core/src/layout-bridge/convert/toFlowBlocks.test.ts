@@ -215,13 +215,17 @@ describe("toFlowBlocks paragraph formatting", () => {
       schema.node("doc", null, [
         schema.node(
           "paragraph",
-          { numPr: { numId: 1, ilvl: 0 }, listMarker: "%1.", listMarkerBold: false },
+          {
+            numPr: { numId: 1, ilvl: 0 },
+            listMarker: "%1.",
+            listMarkerFormatting: { bold: false },
+          },
           [schema.text("List item")],
         ),
       ]),
     ).at(0);
 
-    expect(paragraph?.attrs?.listMarkerBold).toBe(false);
+    expect(paragraph?.attrs?.listMarkerFormatting?.bold).toBe(false);
   });
 
   test("preserves native frame wrap spacing on the positioned container", () => {
@@ -1598,6 +1602,12 @@ describe("toFlowBlocks list numbering", () => {
                 listIsBullet: false,
                 listNumFmt: "decimal",
                 listMarker: "%1.",
+                listMarkerFormatting: {
+                  fontFamily: {
+                    cs: "Traditional Arabic",
+                    csTheme: "majorBidi",
+                  },
+                },
               },
             },
           ],
@@ -1606,9 +1616,14 @@ describe("toFlowBlocks list numbering", () => {
       ),
     ]);
 
-    const blocks = toFlowBlocks(doc);
+    const blocks = toFlowBlocks(doc, {
+      theme: { fontScheme: { majorFont: { cs: "Sakkal Majalla" } } },
+    });
 
     expect(blocks.at(0)?.attrs?.listMarker).toBe("1.");
+    expect(blocks.at(0)?.attrs?.listMarkerFormatting?.complexScriptFontFamily).toBe(
+      "Sakkal Majalla",
+    );
     expect(blocks.at(0)?.attrs?.listMarkerRevision).toEqual({
       kind: "del",
       author: "Reviewer",

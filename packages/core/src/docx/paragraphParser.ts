@@ -45,6 +45,7 @@ import {
 } from "./bookmarkParser";
 import { parseFieldType } from "./fieldParser";
 import { parseHyperlink as parseHyperlinkFromModule } from "./hyperlinkParser";
+import { markerFormattingFromLevel } from "./numberingParser";
 import type { NumberingMap } from "./numberingParser";
 import {
   BorderStyleSchema,
@@ -1871,16 +1872,9 @@ export function parseParagraph(
         if (level.rPr?.hidden) {
           listRendering.markerHidden = true;
         }
-        const markerFont = level.rPr?.fontFamily?.ascii || level.rPr?.fontFamily?.hAnsi;
-        if (markerFont) {
-          listRendering.markerFontFamily = markerFont;
-        }
-        // w:sz is in half-points; convert to points for downstream use
-        if (level.rPr?.fontSize) {
-          listRendering.markerFontSize = level.rPr.fontSize / 2;
-        }
-        if (level.rPr?.bold !== undefined) {
-          listRendering.markerBold = level.rPr.bold;
+        const markerFormatting = markerFormattingFromLevel(level.rPr);
+        if (markerFormatting) {
+          listRendering.markerFormatting = markerFormatting;
         }
         if (level.rPr?.allCaps) {
           listRendering.markerAllCaps = true;

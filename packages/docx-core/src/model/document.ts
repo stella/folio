@@ -58,6 +58,7 @@ export type {
   ListLevel,
   AbstractNumbering,
   NumberingInstance,
+  ListMarkerFormatting,
   ListRendering,
   NumberingDefinitions,
 } from "./lists";

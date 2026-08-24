@@ -6,6 +6,7 @@ import {
   DEFAULT_TAB_STOP_TWIPS,
   getListMarkerInlineWidth,
   getListMarkerVisualOffset,
+  resolveListMarkerFont,
 } from "./listMarkerWidth";
 
 const DEFAULT_TAB_STOP_PX = (DEFAULT_TAB_STOP_TWIPS / 1440) * 96;
@@ -67,14 +68,14 @@ describe("getListMarkerInlineWidth", () => {
         const regular = getListMarkerInlineWidth(
           listBlock({
             listMarker: "1.",
-            listMarkerBold: false,
+            listMarkerFormatting: { bold: false },
             listMarkerSuffix: "nothing",
           }),
         );
         const bold = getListMarkerInlineWidth(
           listBlock({
             listMarker: "1.",
-            listMarkerBold: true,
+            listMarkerFormatting: { bold: true },
             listMarkerSuffix: "nothing",
           }),
         );
@@ -119,14 +120,14 @@ describe("getListMarkerInlineWidth", () => {
           listBlock({
             listMarker: "1.",
             listMarkerAlignment: "right",
-            listMarkerBold: false,
+            listMarkerFormatting: { bold: false },
           }),
         );
         const bold = getListMarkerVisualOffset(
           listBlock({
             listMarker: "1.",
             listMarkerAlignment: "right",
-            listMarkerBold: true,
+            listMarkerFormatting: { bold: true },
           }),
         );
 
@@ -299,5 +300,49 @@ describe("getListMarkerInlineWidth", () => {
       // Next default-grid stop past 44 is 48. marker = 48 - 24 = 24.
       expect(width).toBeCloseTo(DEFAULT_TAB_STOP_PX - 24, 5);
     }, fakeMeasure);
+  });
+});
+
+describe("resolveListMarkerFont", () => {
+  test("selects independent CS typography for an Arabic marker", () => {
+    const block = listBlock({
+      listMarker: "ا.",
+      listMarkerFormatting: {
+        fontFamily: "Arial",
+        complexScriptFontFamily: "Traditional Arabic",
+        fontSize: 10,
+        complexScriptFontSize: 16,
+        bold: true,
+        complexScriptBold: false,
+        italic: false,
+        complexScriptItalic: true,
+        forceComplexScript: false,
+      },
+    });
+
+    expect(resolveListMarkerFont(block)).toEqual({
+      fontFamily: "Traditional Arabic",
+      fontSize: 16,
+      bold: false,
+      italic: true,
+    });
+  });
+
+  test("force-CS selects the complex slot for a Latin marker", () => {
+    const block = listBlock({
+      listMarker: "A.",
+      listMarkerFormatting: {
+        fontFamily: "Arial",
+        complexScriptFontFamily: "Arabic Typesetting",
+        fontSize: 10,
+        complexScriptFontSize: 15,
+        forceComplexScript: true,
+      },
+    });
+
+    expect(resolveListMarkerFont(block)).toMatchObject({
+      fontFamily: "Arabic Typesetting",
+      fontSize: 15,
+    });
   });
 });

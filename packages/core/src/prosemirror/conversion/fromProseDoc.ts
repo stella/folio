@@ -882,14 +882,8 @@ function listRenderingFromAttrs(attrs: ParagraphAttrs): Paragraph["listRendering
     ...(attrs.listMarkerHidden != null && {
       markerHidden: attrs.listMarkerHidden,
     }),
-    ...(attrs.listMarkerFontFamily != null && {
-      markerFontFamily: attrs.listMarkerFontFamily,
-    }),
-    ...(attrs.listMarkerFontSize != null && {
-      markerFontSize: attrs.listMarkerFontSize,
-    }),
-    ...(attrs.listMarkerBold != null && {
-      markerBold: attrs.listMarkerBold,
+    ...(attrs.listMarkerFormatting != null && {
+      markerFormatting: attrs.listMarkerFormatting,
     }),
     ...(attrs.listMarkerAlignment != null && {
       markerAlignment: attrs.listMarkerAlignment,

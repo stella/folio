@@ -12,6 +12,7 @@ import type { FieldContext } from "../fields/fieldContext";
 import {
   getListMarkerInlineWidth,
   getListMarkerVisualOffset,
+  resolveListMarkerFont,
 } from "../layout-engine/measure/listMarkerWidth";
 import { DEFAULT_FONT_SIZE, DOCX_SCRIPT_FONT_SCALE } from "../layout-engine/measure/measureHelpers";
 import {
@@ -2960,36 +2961,12 @@ export function renderParagraphFragment(
       // 1. Numbering level rPr (explicit marker font)
       // 2. First text run's font (paragraph content)
       // 3. Paragraph default font (from style)
-      let firstTextRun: TextRun | undefined;
-      if (
-        !block.attrs.listMarkerFontFamily ||
-        !block.attrs.listMarkerFontSize ||
-        block.attrs.listMarkerBold === undefined
-      ) {
-        for (let ri = line.fromRun; ri <= line.toRun; ri++) {
-          const r = block.runs[ri];
-          if (r && r.kind === "text") {
-            firstTextRun = r;
-            break;
-          }
-        }
-      }
-      const markerFontFamily =
-        block.attrs.listMarkerFontFamily ??
-        firstTextRun?.fontFamily ??
-        block.attrs.defaultFontFamily;
-      const markerFontSize =
-        block.attrs.listMarkerFontSize ?? firstTextRun?.fontSize ?? block.attrs.defaultFontSize;
-      const markerBold = block.attrs.listMarkerBold ?? firstTextRun?.bold;
-
       const marker = renderListMarker(
         block.attrs.listMarker,
         getListMarkerInlineWidth(block),
         getListMarkerVisualOffset(block),
         doc,
-        markerFontFamily,
-        markerFontSize,
-        markerBold,
+        resolveListMarkerFont(block),
         block.attrs.listMarkerRevision,
         block.attrs.listMarkerSecondSlotOffsetTwips,
       );
@@ -3030,9 +3007,7 @@ function renderListMarker(
   inlineWidth: number,
   visualOffset: number,
   doc: Document,
-  fontFamily?: string,
-  fontSize?: number,
-  bold?: boolean,
+  formatting: ReturnType<typeof resolveListMarkerFont>,
   revision?: ParagraphAttrs["listMarkerRevision"],
   secondSlotOffsetTwips?: number,
 ): HTMLElement {
@@ -3042,15 +3017,16 @@ function renderListMarker(
 
   // Per ECMA-376 §17.9.6, marker formatting comes from level rPr, then
   // paragraph defaults, then document defaults.
-  if (fontFamily) {
-    span.style.fontFamily = resolveFontFamily(fontFamily).cssFallback;
-  }
-  if (fontSize) {
+  span.style.fontFamily = resolveFontFamily(formatting.fontFamily).cssFallback;
+  if (formatting.fontSize) {
     // 1pt = 96/72 px
-    span.style.fontSize = `${(fontSize * 96) / 72}px`;
+    span.style.fontSize = `${(formatting.fontSize * 96) / 72}px`;
   }
-  if (bold !== undefined) {
-    span.style.fontWeight = bold ? DOCX_BOLD_FONT_WEIGHT : "normal";
+  if (formatting.bold !== undefined) {
+    span.style.fontWeight = formatting.bold ? DOCX_BOLD_FONT_WEIGHT : "normal";
+  }
+  if (formatting.italic !== undefined) {
+    span.style.fontStyle = formatting.italic ? "italic" : "normal";
   }
 
   // `text-align-last` inherits, so a justified paragraph would distribute the

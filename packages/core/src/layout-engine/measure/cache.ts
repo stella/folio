@@ -351,6 +351,12 @@ export function hashParagraphBlock(block: ParagraphBlock): string {
     if (attrs.justificationCompatibility) {
       parts.push(`justify-compat:${attrs.justificationCompatibility.type}`);
     }
+    if (attrs.listMarker !== undefined) {
+      const marker = attrs.listMarkerFormatting;
+      parts.push(
+        `marker:${attrs.listMarker}|${attrs.listMarkerHidden}|${attrs.listMarkerAlignment}|${attrs.listMarkerSuffix}|${marker?.fontFamily}|${marker?.eastAsiaFontFamily}|${marker?.complexScriptFontFamily}|${marker?.fontSize}|${marker?.complexScriptFontSize}|${marker?.bold}|${marker?.complexScriptBold}|${marker?.italic}|${marker?.complexScriptItalic}|${marker?.forceComplexScript}`,
+      );
+    }
     parts.push(...lineBreakPolicyCacheParts(attrs));
     const borders = attrs.borders;
     if (borders) {

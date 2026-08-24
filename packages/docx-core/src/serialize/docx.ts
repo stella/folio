@@ -297,11 +297,25 @@ const serializeRunProperties = (formatting: TextFormatting | undefined): string 
   if (formatting.styleId) {
     parts.push(`<w:rStyle w:val="${escapeXml(formatting.styleId)}"/>`);
   }
-  if (formatting.bold) {
+  if (formatting.bold === true) {
     parts.push("<w:b/>");
+  } else if (formatting.bold === false) {
+    parts.push('<w:b w:val="0"/>');
   }
-  if (formatting.italic) {
+  if (formatting.boldCs === true) {
+    parts.push("<w:bCs/>");
+  } else if (formatting.boldCs === false) {
+    parts.push('<w:bCs w:val="0"/>');
+  }
+  if (formatting.italic === true) {
     parts.push("<w:i/>");
+  } else if (formatting.italic === false) {
+    parts.push('<w:i w:val="0"/>');
+  }
+  if (formatting.italicCs === true) {
+    parts.push("<w:iCs/>");
+  } else if (formatting.italicCs === false) {
+    parts.push('<w:iCs w:val="0"/>');
   }
   if (formatting.allCaps) {
     parts.push("<w:caps/>");
@@ -315,6 +329,9 @@ const serializeRunProperties = (formatting: TextFormatting | undefined): string 
   if (formatting.fontSize !== undefined) {
     parts.push(`<w:sz w:val="${formatting.fontSize}"/>`);
   }
+  if (formatting.fontSizeCs !== undefined) {
+    parts.push(`<w:szCs w:val="${formatting.fontSizeCs}"/>`);
+  }
   if (formatting.fontFamily) {
     parts.push(
       `<w:rFonts${attr("w:ascii", formatting.fontFamily.ascii)}${attr(
@@ -322,6 +339,11 @@ const serializeRunProperties = (formatting: TextFormatting | undefined): string 
         formatting.fontFamily.hAnsi,
       )}${attr("w:cs", formatting.fontFamily.cs)}/>`,
     );
+  }
+  if (formatting.cs === true) {
+    parts.push("<w:cs/>");
+  } else if (formatting.cs === false) {
+    parts.push('<w:cs w:val="0"/>');
   }
   return parts.length > 0 ? `<w:rPr>${parts.join("")}</w:rPr>` : "";
 };

@@ -146,6 +146,20 @@ export type RunFormatting = {
   suggestionId?: string;
 };
 
+export type ListMarkerFormatting = Pick<
+  RunFormatting,
+  | "fontFamily"
+  | "eastAsiaFontFamily"
+  | "complexScriptFontFamily"
+  | "fontSize"
+  | "complexScriptFontSize"
+  | "bold"
+  | "complexScriptBold"
+  | "italic"
+  | "complexScriptItalic"
+  | "forceComplexScript"
+>;
+
 /**
  * Hyperlink information for a run.
  */
@@ -501,15 +515,14 @@ export type ParagraphAttrs = {
   listMarker?: string; // Pre-computed marker text (e.g., "1.", "•", "a)")
   listIsBullet?: boolean;
   listMarkerHidden?: boolean; // w:vanish on numbering level rPr
-  listMarkerFontFamily?: string; // from numbering level rPr (w:rFonts)
-  listMarkerFontSize?: number; // from numbering level rPr, in points
+  /** Canonical numbering-level marker typography, resolved for layout. */
+  listMarkerFormatting?: ListMarkerFormatting;
   /**
    * Effective paragraph-mark size used only to measure a visible list
    * paragraph's final line. Word lets the inherited complex-script size raise
    * that line box without enlarging the marker or Western text glyphs.
    */
   listParagraphMarkFontSize?: number;
-  listMarkerBold?: boolean; // from numbering level rPr (w:b)
   /** Horizontal alignment of the marker around the paragraph's list anchor. */
   listMarkerAlignment?: "left" | "center" | "right";
   /**
