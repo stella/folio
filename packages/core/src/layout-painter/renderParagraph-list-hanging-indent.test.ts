@@ -86,6 +86,8 @@ const fakeDocument = {
 type RenderListItemOptions = {
   indent: { left: number; hanging: number };
   bidi?: boolean;
+  text?: string;
+  rtl?: boolean;
   marker?: string;
   markerFormatting?: NonNullable<ParagraphBlock["attrs"]>["listMarkerFormatting"];
   markerAlignment?: "left" | "center" | "right";
@@ -95,6 +97,8 @@ type RenderListItemOptions = {
 function renderListItem({
   indent,
   bidi,
+  text = "TEST1",
+  rtl,
   marker = "1.",
   markerFormatting,
   markerAlignment,
@@ -106,7 +110,7 @@ function renderListItem({
   const block: ParagraphBlock = {
     kind: "paragraph",
     id: "p1",
-    runs: [{ kind: "text", text: "TEST1" }],
+    runs: [{ kind: "text", text, ...(rtl === undefined ? {} : { rtl }) }],
     attrs: {
       listMarker: marker,
       indent,
@@ -125,7 +129,7 @@ function renderListItem({
         fromRun: 0,
         fromChar: 0,
         toRun: 0,
-        toChar: 5,
+        toChar: text.length,
         width: 40,
         ascent: 10,
         descent: 3,
@@ -268,6 +272,19 @@ describe("Issue #729 — list hanging indent exceeding left indent", () => {
     expect(line.style.paddingRight).toBe("0px");
     expect(marker?.style.textAlign).toBe("right");
     expect(marker?.style.marginRight).toBeFalsy();
+  });
+
+  test("inferred RTL reserves the marker slot from the physical right edge", () => {
+    const { line, marker } = renderListItem({
+      indent: { left: 24, hanging: 24 },
+      text: "عنوان عربي",
+      rtl: true,
+      marker: "(أ)",
+    });
+
+    expect(line.style.paddingRight).toBe("0px");
+    expect(marker?.style.textAlign).toBe("right");
+    expect(marker?.style.marginRight).toBe("-24px");
   });
 
   test.each([

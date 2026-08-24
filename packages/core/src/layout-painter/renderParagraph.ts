@@ -2997,7 +2997,7 @@ export function renderParagraphFragment(
       // min-width and breaking tab-stop alignment).
       const hanging = indent?.hanging ?? 0;
       const firstLine = indent?.firstLine ?? 0;
-      const markerPhysicalStart = block.attrs.bidi === true ? "right" : "left";
+      const markerPhysicalStart = isRtl ? "right" : "left";
       const markerIndent = markerPhysicalStart === "right" ? indentRight : indentLeft;
       const markerStart = hanging > 0 ? markerIndent - hanging : markerIndent + firstLine;
       const logicalMarkerVisualOffset = getListMarkerVisualOffset(block);

@@ -617,7 +617,7 @@ const normalizeAttributionText = (text: string): string =>
     .normalize("NFKC")
     .replace(/\u06cc/gu, "\u064a")
     .replace(/\u06be/gu, "\u0647")
-    .replace(/[()[\]]/gu, "")
+    .replace(/[()[\]]/gu, " ")
     .replace(/\s+/gu, " ")
     .trim();
 
@@ -639,7 +639,7 @@ const buildParagraphCandidates = (paragraphs: ParagraphFeatures[]): ParagraphCan
   });
 
 const shareFeatureSet = (candidates: ParagraphCandidate[]): boolean => {
-  const first = candidates[0];
+  const first = candidates.at(0);
   return (
     first !== undefined && candidates.every(({ featureKey }) => featureKey === first.featureKey)
   );
@@ -673,7 +673,7 @@ const findMatchingParagraph = (
       return score >= SIMILARITY_THRESHOLD ? [{ candidate, score }] : [];
     })
     .toSorted((a, b) => b.score - a.score);
-  const best = fuzzyMatches[0];
+  const best = fuzzyMatches.at(0);
   if (!best) return undefined;
 
   const competingMatches = fuzzyMatches.filter(

@@ -299,6 +299,18 @@ describe("attributeDivergences", () => {
     expect(attributed.attributed[0]?.features).toEqual(["rtl"]);
   });
 
+  test("preserves token boundaries when canonicalizing brackets", () => {
+    const doc: DocFeatures = {
+      paragraphs: [paragraph("foo(bar)", ["table"]), paragraph("foobar", ["rtl"])],
+      docFeatures: ["headers"],
+    };
+    const result = baseResult([{ kind: "missing-line", page: 1, text: "foobar" }]);
+
+    const attributed = attributeDivergences(result, doc);
+
+    expect(attributed.attributed[0]?.features).toEqual(["rtl"]);
+  });
+
   test("rejects duplicate substring matches with different feature sets", () => {
     const doc: DocFeatures = {
       paragraphs: [
