@@ -366,12 +366,17 @@ export function findChildByNamespaceUri(
   return null;
 }
 
-/** Get an attribute whose prefix resolves to one of the accepted namespace URIs. */
-export function getAttributeByNamespaceUri(
+export type XmlAttributeMatch = {
+  name: string;
+  value: string;
+};
+
+/** Find an attribute whose prefix resolves to one of the accepted namespace URIs. */
+export function findAttributeByNamespaceUri(
   element: XmlElement | null | undefined,
   namespaceUris: ReadonlySet<string>,
   localName: string,
-): string | null {
+): XmlAttributeMatch | null {
   if (!element?.attributes) {
     return null;
   }
@@ -385,11 +390,20 @@ export function getAttributeByNamespaceUri(
       prefix !== null &&
       namespaceUris.has(resolveNamespaceUri(element.namespaceScope, prefix) ?? "")
     ) {
-      return String(value);
+      return { name, value: String(value) };
     }
   }
 
   return null;
+}
+
+/** Get an attribute whose prefix resolves to one of the accepted namespace URIs. */
+export function getAttributeByNamespaceUri(
+  element: XmlElement | null | undefined,
+  namespaceUris: ReadonlySet<string>,
+  localName: string,
+): string | null {
+  return findAttributeByNamespaceUri(element, namespaceUris, localName)?.value ?? null;
 }
 
 function hasLocalName(name: string | undefined, localName: string): boolean {

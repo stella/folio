@@ -18,8 +18,9 @@ import JSZip from "jszip";
 import type { Endnote, Footnote } from "../types/document";
 import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
-import { createDocx, repackDocx } from "./rezip";
+import { createDocx, repackDocx, repackDocxFromRaw } from "./rezip";
 import { attemptSelectiveSave } from "./selectiveSave";
+import { unzipDocx } from "./unzip";
 import { createEmptyDocument } from "../utils/createDocument";
 
 const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
@@ -372,6 +373,36 @@ describe("footnote / endnote body write path (full repack)", () => {
     expect(savedEndnotesXml).toContain(ENDNOTE_SEPARATORS);
     expect(savedEndnotesXml).toContain(editedText);
     expect(savedEndnotesXml).not.toContain(ORIGINAL_ENDNOTE_TEXT);
+  });
+
+  test("raw repack persists an edited paraId-less footnote", async () => {
+    const sourceZip = await JSZip.loadAsync(await createNotesFixture());
+    sourceZip.file(
+      "word/footnotes.xml",
+      footnotesXml.replace(` w14:paraId="${FOOTNOTE_PARA_ID}"`, ""),
+    );
+    const source = await sourceZip.generateAsync({ type: "arraybuffer" });
+    const doc = await parseDocx(source, { preloadFonts: false });
+    const footnote = doc.package.footnotes?.[0];
+    if (!footnote) {
+      throw new Error("expected a parsed footnote");
+    }
+    const paragraph = footnote.content.at(0);
+    if (paragraph?.type !== "paragraph") {
+      throw new Error("expected a footnote paragraph");
+    }
+    const generatedParaId = "F2000001";
+    paragraph.paraId = generatedParaId;
+    const editedText = "Edited paraId-less footnote via raw repack";
+    setFirstNoteText(footnote, editedText);
+
+    const result = await repackDocxFromRaw(doc, await unzipDocx(source), {
+      changedNoteParaIds: new Set([generatedParaId]),
+    });
+    const reparsed = await parseDocx(result, { preloadFonts: false });
+
+    expect(noteBodyText(reparsed.package.footnotes?.[0])).toBe(editedText);
+    expect(await readPart(result, "word/footnotes.xml")).toContain(FOOTNOTE_SEPARATORS);
   });
 
   test("a repack with no note edit leaves both note parts byte-exact", async () => {

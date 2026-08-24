@@ -2801,6 +2801,62 @@ describe("headless docx review notes read surface", () => {
     {
       story: { type: "footnote", noteId: 2 } as const,
       part: "word/footnotes.xml",
+      prefix: "altw",
+      namespace: "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+      expectedText: "See INSERTED MOVED TO LINK SDT.TABLE CELL",
+    },
+    {
+      story: { type: "endnote", noteId: 3 } as const,
+      part: "word/endnotes.xml",
+      prefix: "strict",
+      namespace: "http://purl.oclc.org/ooxml/wordprocessingml/main",
+      expectedText: "Endnote INSERTED MOVED TO ENDNOTE CELL",
+    },
+  ])(
+    "persists a resolved $story.type using the $prefix WordprocessingML prefix",
+    async ({ story, part, prefix, namespace, expectedText }) => {
+      const zip = await JSZip.loadAsync(await readRichNotesFixture());
+      const notesFile = zip.file(part);
+      if (!notesFile) {
+        throw new Error(`fixture missing ${part}`);
+      }
+      const notesXml = (await notesFile.async("text"))
+        .replace(
+          'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"',
+          `xmlns:${prefix}="${namespace}"`,
+        )
+        .replaceAll("<w:", `<${prefix}:`)
+        .replaceAll("</w:", `</${prefix}:`)
+        .replaceAll(" w:", ` ${prefix}:`);
+      zip.file(part, notesXml);
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await zip.generateAsync({ type: "arraybuffer" }),
+      );
+
+      expect(reviewer.resolveReviewedStory({ story, view: "final" })).toBe(true);
+      const saved = await reviewer.toBuffer();
+      const savedNotesXml = await partText(saved, part);
+      expect(savedNotesXml).toContain(`xmlns:${prefix}="${namespace}"`);
+      expect(savedNotesXml).toContain(`<${prefix}:${story.type}`);
+      for (const change of ["ins", "del", "moveFrom", "moveTo"]) {
+        const elementStart = `<${prefix}:${change}`;
+        expect(
+          savedNotesXml.includes(`${elementStart} `) ||
+            savedNotesXml.includes(`${elementStart}>`) ||
+            savedNotesXml.includes(`${elementStart}/`),
+        ).toBe(false);
+      }
+
+      const reopened = await FolioDocxReviewer.fromBuffer(saved);
+      expect(reopened.readReviewedStory({ story, view: "current-markup" })?.changes).toEqual([]);
+      expect(reopened.readStory(story)?.text).toBe(expectedText);
+    },
+  );
+
+  test.each([
+    {
+      story: { type: "footnote", noteId: 2 } as const,
+      part: "word/footnotes.xml",
       element: "footnote",
       article: "a",
     },
@@ -2819,13 +2875,15 @@ describe("headless docx review notes read surface", () => {
         throw new Error(`fixture missing ${part}`);
       }
       const notesXml = await notesFile.async("text");
-      zip.file(
-        part,
-        notesXml.replace(
-          new RegExp(`<w:${element} w:id="${story.noteId}">.*?</w:${element}>`, "u"),
-          `<w:${element} w:id="${story.noteId}"><w:p><w:pPr><w:rPr><w:del w:id="50" w:author="Reviewer"/></w:rPr></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t>First</w:t></w:r></w:p><w:p><w:r><w:rPr><w:i/></w:rPr><w:t>Second</w:t></w:r></w:p></w:${element}>`,
-        ),
-      );
+      const noteOpen = `<w:${element} w:id="${story.noteId}">`;
+      const noteClose = `</w:${element}>`;
+      const noteStart = notesXml.indexOf(noteOpen);
+      const noteEnd = notesXml.indexOf(noteClose, noteStart) + noteClose.length;
+      if (noteStart < 0 || noteEnd < noteClose.length) {
+        throw new Error(`fixture missing ${element} ${story.noteId}`);
+      }
+      const replacement = `<w:${element} w:id="${story.noteId}"><w:p><w:pPr><w:rPr><w:del w:id="50" w:author="Reviewer"/></w:rPr></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t>First</w:t></w:r></w:p><w:p><w:r><w:rPr><w:i/></w:rPr><w:t>Second</w:t></w:r></w:p></w:${element}>`;
+      zip.file(part, notesXml.slice(0, noteStart) + replacement + notesXml.slice(noteEnd));
       const reviewer = await FolioDocxReviewer.fromBuffer(
         await zip.generateAsync({ type: "arraybuffer" }),
       );

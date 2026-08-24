@@ -56,6 +56,7 @@ import {
   buildPatchedNotePartXml,
   buildPatchedNumberingXml,
   collectAddedNumberingDefs,
+  collectChangedNoteParaIds,
   collectChangedNumberingDefs,
   collectParaIds,
 } from "./selectiveXmlPatch";
@@ -943,7 +944,12 @@ export async function repackDocxFromRaw(
   rawContent: RawDocxContent,
   options: RepackOptions = {},
 ): Promise<ArrayBuffer> {
-  const { compressionLevel = 6, updateModifiedDate = true, modifiedBy } = options;
+  const {
+    compressionLevel = 6,
+    updateModifiedDate = true,
+    modifiedBy,
+    changedNoteParaIds,
+  } = options;
   const exportDocument = withoutOrphanCommentRanges(doc);
 
   // Create a new ZIP with all original files
@@ -1006,7 +1012,13 @@ export async function repackDocxFromRaw(
 
   // Splice edited footnote/endnote bodies back into their parts (separators and
   // unedited notes stay byte-exact).
-  await serializeNotesToZip(exportDocument, rawContent.originalZip, newZip, compressionLevel);
+  await serializeNotesToZip(
+    exportDocument,
+    rawContent.originalZip,
+    newZip,
+    compressionLevel,
+    changedNoteParaIds,
+  );
 
   // Splice edited numbering definitions back into word/numbering.xml (untouched
   // definitions and the parts the model omits stay byte-exact).
@@ -2103,21 +2115,21 @@ async function patchNotePartIntoZip(
   }
   const originalXml = await file.async("text");
   const baselineXml = baselineFrom(originalXml);
+  const effectiveChangedNoteParaIds =
+    changedNoteParaIds ?? collectChangedNoteParaIds(baselineXml, currentXml);
   const patched = buildPatchedNotePartXml({
     originalXml,
     baselineXml,
     serializedXml: currentXml,
     replacementXml,
     elementName,
-    ...(changedNoteParaIds !== undefined ? { changedParaIds: changedNoteParaIds } : {}),
+    changedParaIds: effectiveChangedNoteParaIds,
   });
   const currentParaIds = collectParaIds(currentXml);
   const baselineParaIds = collectParaIds(baselineXml);
-  const hasDirtyParagraph =
-    changedNoteParaIds !== undefined &&
-    [...changedNoteParaIds].some(
-      (paraId) => currentParaIds.has(paraId) || baselineParaIds.has(paraId),
-    );
+  const hasDirtyParagraph = [...effectiveChangedNoteParaIds].some(
+    (paraId) => currentParaIds.has(paraId) || baselineParaIds.has(paraId),
+  );
   if (patched === null || (hasDirtyParagraph && patched === originalXml)) {
     if (hasDirtyParagraph) {
       throw new DocxPackageFidelityError(

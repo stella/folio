@@ -6,6 +6,16 @@
  * with proper tag depth counting (not regex) to handle nested elements.
  */
 
+import {
+  findAttributeByNamespaceUri,
+  getChildElements,
+  getLocalName,
+  getNamespacePrefix,
+  getNamespaceUri,
+  parseXmlDocument,
+  WORDPROCESSINGML_NAMESPACE_URIS,
+} from "./xmlParser";
+
 /**
  * Whether `char` ends an element's tag name in XML — a whitespace separator
  * (space, tab, CR, or LF, all valid before attributes per XML 1.0 §3.1), the
@@ -520,35 +530,136 @@ function extractElementByIdAttr(
 
 type NoteElementName = "footnote" | "endnote";
 
-const noteElementSyntax = {
-  footnote: {
-    openLiteral: "<w:footnote",
-    closeTag: "</w:footnote>",
-    idAttr: "w:id",
-  },
-  endnote: {
-    openLiteral: "<w:endnote",
-    closeTag: "</w:endnote>",
-    idAttr: "w:id",
-  },
-} as const satisfies Record<
-  NoteElementName,
-  { openLiteral: string; closeTag: string; idAttr: string }
->;
+type NoteElementSyntax = {
+  elementName: string;
+  idAttributeName: string;
+  elementPrefix: string;
+  attributePrefix: string;
+};
 
-const paragraphRanges = (xml: string): ParagraphOffsets[] => {
+const qualifiedName = (prefix: string, localName: string): string =>
+  prefix.length === 0 ? localName : `${prefix}:${localName}`;
+
+const collectNoteElementSyntax = (
+  xml: string,
+  elementName: NoteElementName,
+): Map<string, NoteElementSyntax[]> => {
+  const byId = new Map<string, NoteElementSyntax[]>();
+  const root = parseXmlDocument(xml);
+  for (const element of getChildElements(root)) {
+    if (
+      getLocalName(element.name) !== elementName ||
+      !WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? "")
+    ) {
+      continue;
+    }
+    const idAttribute = findAttributeByNamespaceUri(element, WORDPROCESSINGML_NAMESPACE_URIS, "id");
+    if (!element.name || !idAttribute) {
+      continue;
+    }
+    const syntax = {
+      elementName: element.name,
+      idAttributeName: idAttribute.name,
+      elementPrefix: getNamespacePrefix(element.name) ?? "",
+      attributePrefix: getNamespacePrefix(idAttribute.name) ?? "",
+    };
+    const entries = byId.get(idAttribute.value);
+    if (entries) {
+      entries.push(syntax);
+    } else {
+      byId.set(idAttribute.value, [syntax]);
+    }
+  }
+  return byId;
+};
+
+const syntaxLiteral = (syntax: NoteElementSyntax) => ({
+  openLiteral: `<${syntax.elementName}`,
+  closeTag: `</${syntax.elementName}>`,
+  idAttr: syntax.idAttributeName,
+});
+
+const extractNoteElement = (xml: string, syntax: NoteElementSyntax, id: string): string | null => {
+  const { openLiteral, closeTag, idAttr } = syntaxLiteral(syntax);
+  return extractElementByIdAttr(xml, openLiteral, closeTag, idAttr, id);
+};
+
+const findNoteElement = (
+  xml: string,
+  syntax: NoteElementSyntax,
+  id: string,
+): ParagraphOffsets | null => {
+  const { openLiteral, closeTag, idAttr } = syntaxLiteral(syntax);
+  return findElementByIdAttr(xml, openLiteral, closeTag, idAttr, id);
+};
+
+type WordPrefixMapping = {
+  source: NoteElementSyntax;
+  target: NoteElementSyntax;
+};
+
+const rewriteWordprocessingPrefixes = (
+  xml: string,
+  { source, target }: WordPrefixMapping,
+): string => {
+  let rewritten = "";
+  let quote: '"' | "'" | null = null;
+  let insideTag = false;
+  for (let index = 0; index < xml.length; index++) {
+    const character = xml[index];
+    if (!insideTag) {
+      rewritten += character;
+      insideTag = character === "<";
+      continue;
+    }
+    if (quote) {
+      rewritten += character;
+      if (character === quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+      rewritten += character;
+      continue;
+    }
+    if (character === ">") {
+      insideTag = false;
+      rewritten += character;
+      continue;
+    }
+
+    const previous = xml[index - 1];
+    const isElementName = previous === "<" || (previous === "/" && xml[index - 2] === "<");
+    const sourcePrefix = isElementName ? source.elementPrefix : source.attributePrefix;
+    if (sourcePrefix.length > 0 && xml.startsWith(`${sourcePrefix}:`, index)) {
+      const targetPrefix = isElementName ? target.elementPrefix : target.attributePrefix;
+      rewritten += targetPrefix.length === 0 ? "" : `${targetPrefix}:`;
+      index += sourcePrefix.length;
+      continue;
+    }
+    rewritten += character;
+  }
+  return rewritten;
+};
+
+const paragraphRanges = (xml: string, wordPrefix: string): ParagraphOffsets[] => {
   const ranges: ParagraphOffsets[] = [];
+  const paragraphName = qualifiedName(wordPrefix, "p");
+  const openLiteral = `<${paragraphName}`;
+  const closeTag = `</${paragraphName}>`;
   let pos = 0;
   while (pos < xml.length) {
-    const start = xml.indexOf("<w:p", pos);
+    const start = xml.indexOf(openLiteral, pos);
     if (start === -1) {
       break;
     }
-    if (!isXmlNameBoundary(xml[start + "<w:p".length])) {
+    if (!isXmlNameBoundary(xml[start + openLiteral.length])) {
       pos = start + 1;
       continue;
     }
-    const range = scanElementRange(xml, start, "<w:p", "</w:p>");
+    const range = scanElementRange(xml, start, openLiteral, closeTag);
     if (!range) {
       break;
     }
@@ -558,7 +669,7 @@ const paragraphRanges = (xml: string): ParagraphOffsets[] => {
   return ranges;
 };
 
-const collectChangedParagraphIds = (baselineXml: string, currentXml: string): Set<string> => {
+export const collectChangedNoteParaIds = (baselineXml: string, currentXml: string): Set<string> => {
   const changed = new Set<string>();
   const baselineIds = collectParaIds(baselineXml);
   const baselineOffsets = buildParagraphOffsetIndex(baselineXml);
@@ -620,45 +731,46 @@ export function buildPatchedNotePartXml({
   elementName,
   changedParaIds,
 }: BuildPatchedNotePartXmlOptions): string | null {
-  if (!changedParaIds) {
-    return buildPatchedNoteXml(
-      originalXml,
-      serializedXml,
-      collectChangedParagraphIds(baselineXml, serializedXml),
-    );
-  }
-
-  const { openLiteral, closeTag, idAttr } = noteElementSyntax[elementName];
-  const currentIds = collectElementIds(serializedXml, openLiteral, idAttr);
+  const currentElements = collectNoteElementSyntax(serializedXml, elementName);
+  const originalElements = collectNoteElementSyntax(originalXml, elementName);
+  const replacementElements = collectNoteElementSyntax(replacementXml, elementName);
   const ordinalReplacements: { start: number; end: number; newXml: string }[] = [];
   const serializedParaIds = collectParaIds(serializedXml);
   const baselineParaIds = collectParaIds(baselineXml);
+  const effectiveChangedParaIds =
+    changedParaIds ?? collectChangedNoteParaIds(baselineXml, serializedXml);
   const unroutedChangedParaIds = new Set(
-    [...changedParaIds].filter(
+    [...effectiveChangedParaIds].filter(
       (paraId) => serializedParaIds.has(paraId) || baselineParaIds.has(paraId),
     ),
   );
 
-  for (const [id, count] of currentIds) {
-    if (count !== 1) {
+  for (const [id, currentSyntaxEntries] of currentElements) {
+    const originalSyntaxEntries = originalElements.get(id);
+    const replacementSyntaxEntries = replacementElements.get(id);
+    if (
+      currentSyntaxEntries.length !== 1 ||
+      originalSyntaxEntries?.length !== 1 ||
+      replacementSyntaxEntries?.length !== 1
+    ) {
       return null;
     }
-    const currentNote = extractElementByIdAttr(serializedXml, openLiteral, closeTag, idAttr, id);
-    const originalOffsets = findElementByIdAttr(originalXml, openLiteral, closeTag, idAttr, id);
-    const replacementNote = extractElementByIdAttr(
-      replacementXml,
-      openLiteral,
-      closeTag,
-      idAttr,
-      id,
-    );
+    const currentSyntax = currentSyntaxEntries[0];
+    const originalSyntax = originalSyntaxEntries[0];
+    const replacementSyntax = replacementSyntaxEntries[0];
+    if (!currentSyntax || !originalSyntax || !replacementSyntax) {
+      return null;
+    }
+    const currentNote = extractNoteElement(serializedXml, currentSyntax, id);
+    const originalOffsets = findNoteElement(originalXml, originalSyntax, id);
+    const replacementNote = extractNoteElement(replacementXml, replacementSyntax, id);
     if (!currentNote || !originalOffsets || !replacementNote) {
       return null;
     }
     const originalNote = originalXml.slice(originalOffsets.start, originalOffsets.end);
-    const currentParagraphs = paragraphRanges(currentNote);
-    const originalParagraphs = paragraphRanges(originalNote);
-    const replacementParagraphs = paragraphRanges(replacementNote);
+    const currentParagraphs = paragraphRanges(currentNote, currentSyntax.elementPrefix);
+    const originalParagraphs = paragraphRanges(originalNote, originalSyntax.elementPrefix);
+    const replacementParagraphs = paragraphRanges(replacementNote, replacementSyntax.elementPrefix);
     const noteChangedParaIds = [...collectParaIds(currentNote).keys()].filter((paraId) =>
       unroutedChangedParaIds.has(paraId),
     );
@@ -675,7 +787,10 @@ export function buildPatchedNotePartXml({
       ordinalReplacements.push({
         start: originalOffsets.start,
         end: originalOffsets.end,
-        newXml: replacementNote,
+        newXml: rewriteWordprocessingPrefixes(replacementNote, {
+          source: replacementSyntax,
+          target: originalSyntax,
+        }),
       });
       continue;
     }
@@ -700,7 +815,10 @@ export function buildPatchedNotePartXml({
       ordinalReplacements.push({
         start: originalOffsets.start + originalRange.start,
         end: originalOffsets.start + originalRange.end,
-        newXml: replacementNote.slice(replacementRange.start, replacementRange.end),
+        newXml: rewriteWordprocessingPrefixes(
+          replacementNote.slice(replacementRange.start, replacementRange.end),
+          { source: replacementSyntax, target: originalSyntax },
+        ),
       });
     }
   }
