@@ -106,10 +106,11 @@ jobs:
       contents: write # Create immutable package tags and GitHub releases.
       id-token: write # npm trusted publishing; build scripts ran without this permission.
     # The repository owner publishes this versioned shared contract.
-    uses: stella/.github/.github/workflows/npm-independent-release.yml@2b8697f04b39187c934afc04f7b04ad1a18bd827 # package latest-pointer policy
+    uses: stella/.github/.github/workflows/npm-independent-release.yml@68f07b8d089564fcbd9383824ddc8af31ff8d4ba # configurable latest-pointer policy
     with:
       artifact-pattern: npm-tarball-*
       artifact-run-id: ${{ inputs.artifact-run-id }}
+      github-latest-policy: newest-published-stable
       source-ref: ${{ inputs.source-ref || github.sha }}
       package-files: |
         packages/docx-core/package.json
