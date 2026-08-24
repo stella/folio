@@ -1,5 +1,15 @@
 # @stll/folio-core
 
+## 0.25.2
+
+### Patch Changes
+
+- [#611](https://github.com/stella/folio/pull/611) [`8400773`](https://github.com/stella/folio/commit/8400773cd915e20a2c9ee9ab9c3ed4049a483e10) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Persist resolved review views across every editable Word document story.
+
+- [#617](https://github.com/stella/folio/pull/617) [`28da27c`](https://github.com/stella/folio/commit/28da27c1131375dcea56aed28155ff141267f864) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep resolved-view persistence stable with anchored and threaded comments across every document story.
+
+- [#618](https://github.com/stella/folio/pull/618) [`610f7f9`](https://github.com/stella/folio/commit/610f7f920b1e324de65ef25148050adb461388aa) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep comment and reply IDs unique across story-scoped operations, with exhaustive resolved-view persistence coverage for comments in every editable story.
+
 ## 0.25.1
 
 ### Patch Changes
