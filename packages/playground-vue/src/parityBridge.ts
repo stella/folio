@@ -54,6 +54,12 @@ export type FolioParityBridge = {
   countCommentAnchors: () => number;
   /** Block count of the AI-edit snapshot over the live doc (0 with no live view). */
   aiSnapshotBlockCount: () => number;
+  /** Painted geometry exposed through the public ref contract. */
+  readBlockGeometry: () => {
+    rects: { blockId: string; page: number; top: number; height: number }[];
+    missingIsNull: boolean;
+    hasScrollRoot: boolean;
+  };
   /** Reveal the first stable snapshot block and report target/current pages. */
   navigateToFirstBlock: () => { shown: boolean; targetPage: number; currentPage: number };
   /** Plain text of the current live editor selection. */
@@ -282,6 +288,25 @@ export function buildParityBridge(
     countCommentAnchors: () =>
       document.querySelectorAll(".paged-editor__pages [data-comment-id]").length,
     aiSnapshotBlockCount: () => getRef()?.createAIEditSnapshot()?.blocks.length ?? 0,
+    readBlockGeometry: () => {
+      const ref = getRef();
+      const snapshot = ref?.createAIEditSnapshot();
+      if (!ref || !snapshot) {
+        return { rects: [], missingIsNull: true, hasScrollRoot: false };
+      }
+      const blockIds = snapshot.blocks.map(({ id }) => id);
+      const rects = ref.getBlockRects(blockIds);
+      return {
+        rects: blockIds.flatMap((blockId) => {
+          const rect = rects.get(blockId);
+          return rect
+            ? [{ blockId: rect.blockId, page: rect.page, top: rect.top, height: rect.height }]
+            : [];
+        }),
+        missingIsNull: ref.getBlockRect("missing-block-id") === null,
+        hasScrollRoot: ref.getScrollRoot() !== null,
+      };
+    },
     navigateToFirstBlock: () => {
       const ref = getRef();
       const snapshot = ref?.createAIEditSnapshot();

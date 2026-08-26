@@ -35,6 +35,11 @@ type FolioParityBridge = {
   commentFirstWord: () => boolean;
   countCommentAnchors: () => number;
   aiSnapshotBlockCount: () => number;
+  readBlockGeometry: () => {
+    rects: { blockId: string; page: number; top: number; height: number }[];
+    missingIsNull: boolean;
+    hasScrollRoot: boolean;
+  };
   navigateToFirstBlock: () => { shown: boolean; targetPage: number; currentPage: number };
   getSelectedText: () => string;
   applyAndUndoDocumentOperation: () => boolean;

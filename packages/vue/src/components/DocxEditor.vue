@@ -1443,6 +1443,7 @@ const { exposed } = useDocxEditorRefApi({
   layout,
   pagesRef,
   pagesViewportRef,
+  scrollRootRef: editorScrollRef,
   zoom,
   scrollVisiblePositionIntoView,
   setPassageHighlight: (range) => {

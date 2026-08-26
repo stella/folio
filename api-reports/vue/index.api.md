@@ -35,6 +35,7 @@ import { AutocompleteSuggestionStatus } from '@stll/folio-core/prosemirror/plugi
 import { AutocompleteTriggerCheck } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
 import { AutocompleteTriggerOptions } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
 import { AutocompleteTriggerSkipReason } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
+import { BlockRect } from '@stll/folio-core/paged-layout/blockGeometry';
 import { buildPositionalText } from '@stll/folio-core/ai-suggestions/text-positions';
 import { clearAutocompleteSuggestion } from '@stll/folio-core/prosemirror/plugins/autocompleteSuggestion';
 import { clearTemplateSlashMenu } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
@@ -254,6 +255,8 @@ export { AutocompleteTriggerCheck }
 export { AutocompleteTriggerOptions }
 
 export { AutocompleteTriggerSkipReason }
+
+export { BlockRect }
 
 export { buildPositionalText }
 
@@ -493,6 +496,10 @@ export type DocxEditorRef = {
     getSelectionText: () => string;
     getPageText: (page: number) => string | null;
     getTargetPage: (target: FolioDocumentNavigationTarget, snapshot?: FolioAIEditSnapshot) => number | null;
+    getBlockRect: (blockId: string) => BlockRect | null;
+    getBlockRects: (blockIds: readonly string[]) => ReadonlyMap<string, BlockRect>;
+    getScrollRoot: () => HTMLElement | null;
+    onLayoutChange: (listener: () => void) => () => void;
     getContentControls: (filter?: ContentControlFilter) => {
         properties: SdtProperties;
         path: number[];

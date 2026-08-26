@@ -3288,6 +3288,10 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         }
         return pagedEditorRef.current?.getPageNumberForPmPos(range.from) ?? null;
       },
+      getBlockRect: (blockId) => pagedEditorRef.current?.getBlockRect(blockId) ?? null,
+      getBlockRects: (blockIds) => pagedEditorRef.current?.getBlockRects(blockIds) ?? new Map(),
+      getScrollRoot: () => pagedEditorRef.current?.getScrollRoot() ?? null,
+      onLayoutChange: (listener) => pagedEditorRef.current?.onLayoutChange(listener) ?? (() => {}),
       getContentControls: (filter = {}) => {
         const view = pagedEditorRef.current?.getView();
         if (!view) {

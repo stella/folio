@@ -46,6 +46,7 @@ import type {
 import type { Comment } from "@stll/folio-core/types/content";
 import type { DocxInput } from "@stll/folio-core/utils/docxInput";
 import type { ScrollToParaIdOptions } from "@stll/folio-core/paged-layout/paragraphFlash";
+import type { BlockRect } from "@stll/folio-core/paged-layout/blockGeometry";
 // `EditorMode` is owned by core's `EditorModeManager`.
 import type { EditorMode } from "@stll/folio-core/managers/EditorModeManager";
 // Re-exported so chrome SFCs (e.g. EditingModeDropdown.vue) can import the mode
@@ -547,6 +548,14 @@ export type DocxEditorRef = {
     target: FolioDocumentNavigationTarget,
     snapshot?: FolioAIEditSnapshot,
   ) => number | null;
+  /** Painted geometry for one block, relative to this editor's scroll root. */
+  getBlockRect: (blockId: string) => BlockRect | null;
+  /** Painted geometry for many blocks in one layout read; missing ids are omitted. */
+  getBlockRects: (blockIds: readonly string[]) => ReadonlyMap<string, BlockRect>;
+  /** The element that scrolls this editor's painted pages. */
+  getScrollRoot: () => HTMLElement | null;
+  /** Subscribe after a layout pass changes the painted pages. */
+  onLayoutChange: (listener: () => void) => () => void;
 
   // -------------------------------------------------------------------------
   // Block-level content controls (w:sdt)

@@ -39,6 +39,7 @@ import type { HiddenHeaderFooterPMsRef } from "../components/HiddenHeaderFooterP
 import { NoteStoryEditor } from "../components/NoteStoryEditor";
 import type { NoteStoryEditorRef } from "../components/NoteStoryEditor";
 import type { AISuggestion } from "@stll/folio-core/ai-suggestions/types";
+import { createFolioAIEditSnapshot } from "@stll/folio-core/ai-edits/snapshot";
 import { createFolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import { createFolioEditorEmitter } from "@stll/folio-core/controller/folioEditorEvents";
@@ -130,6 +131,11 @@ import type {
   FootnoteRenderItem,
 } from "@stll/folio-core/layout-painter/renderPage";
 import type { DirtyRange } from "@stll/folio-core/paged-layout/incrementalMeasure";
+import {
+  onPaintedLayoutChange,
+  readBlockRects,
+  type BlockRect,
+} from "@stll/folio-core/paged-layout/blockGeometry";
 // Selection sync
 import { LayoutSelectionGate } from "@stll/folio-core/paged-layout/LayoutSelectionGate";
 import {
@@ -439,6 +445,14 @@ export type PagedEditorRef = {
    *  or null if no layout is available yet. Works for unrendered pages too via
    *  the page shell map. */
   getPageNumberForPmPos: (pmPos: number) => number | null;
+  /** Painted geometry for one AI-snapshot block. */
+  getBlockRect: (blockId: string) => BlockRect | null;
+  /** Painted geometry for many AI-snapshot blocks in one layout read. */
+  getBlockRects: (blockIds: readonly string[]) => ReadonlyMap<string, BlockRect>;
+  /** The scroll root that owns the painted pages. */
+  getScrollRoot: () => HTMLElement | null;
+  /** Subscribe to changes in the set or contents of painted pages. */
+  onLayoutChange: (listener: () => void) => () => void;
 };
 
 type PendingHiddenEditorSelection =
@@ -6015,11 +6029,47 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           }
           return bestNumber;
         },
+        getBlockRect(blockId) {
+          const state = folioEditor.getState();
+          const pagesContainer = pagesContainerRef.current;
+          const scrollRoot = getScrollContainer();
+          if (!state || !pagesContainer || !scrollRoot) {
+            return null;
+          }
+          return (
+            readBlockRects({
+              blockIds: [blockId],
+              snapshot: createFolioAIEditSnapshot(state.doc),
+              pagesContainer,
+              scrollRoot,
+            }).get(blockId) ?? null
+          );
+        },
+        getBlockRects(blockIds) {
+          const state = folioEditor.getState();
+          const pagesContainer = pagesContainerRef.current;
+          const scrollRoot = getScrollContainer();
+          if (!state || !pagesContainer || !scrollRoot) {
+            return new Map();
+          }
+          return readBlockRects({
+            blockIds,
+            snapshot: createFolioAIEditSnapshot(state.doc),
+            pagesContainer,
+            scrollRoot,
+          });
+        },
+        getScrollRoot: getScrollContainer,
+        onLayoutChange(listener) {
+          const pagesContainer = pagesContainerRef.current;
+          return pagesContainer ? onPaintedLayoutChange(pagesContainer, listener) : () => {};
+        },
       }),
       [
         ensureHiddenEditorView,
         folioEditor,
         getActiveEditorStory,
+        getScrollContainer,
         refreshBodyImeCaretAnchor,
         scrollToPageImpl,
         scrollToParaIdImpl,

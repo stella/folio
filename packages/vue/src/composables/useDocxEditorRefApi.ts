@@ -51,6 +51,11 @@ import {
   flashParagraphElements,
 } from "@stll/folio-core/paged-layout/paragraphFlash";
 import type { ScrollToParaIdOptions } from "@stll/folio-core/paged-layout/paragraphFlash";
+import {
+  onPaintedLayoutChange,
+  readBlockRects,
+  type BlockRect,
+} from "@stll/folio-core/paged-layout/blockGeometry";
 import { getSelectedText } from "@stll/folio-core/prosemirror";
 import {
   acceptAIEditRevision,
@@ -122,6 +127,8 @@ export type UseDocxEditorRefApiOptions = {
   pagesRef: Ref<HTMLElement | null>;
   /** Scrolling viewport wrapping the pages container. */
   pagesViewportRef: Ref<HTMLElement | null>;
+  /** Scroll root wrapping the full painted editor area. */
+  scrollRootRef: Ref<HTMLElement | null>;
   /** Current zoom factor (1 = 100%). */
   zoom: Ref<number>;
   /**
@@ -250,6 +257,30 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
     }
   }
 
+  function getBlockRects(blockIds: readonly string[]): ReadonlyMap<string, BlockRect> {
+    const view = opts.editorView.value;
+    const pagesContainer = opts.pagesRef.value;
+    const scrollRoot = opts.scrollRootRef.value;
+    if (!view || !pagesContainer || !scrollRoot) {
+      return new Map();
+    }
+    return readBlockRects({
+      blockIds,
+      snapshot: createFolioAIEditSnapshot(view.state.doc),
+      pagesContainer,
+      scrollRoot,
+    });
+  }
+
+  function getBlockRect(blockId: string): BlockRect | null {
+    return getBlockRects([blockId]).get(blockId) ?? null;
+  }
+
+  function onLayoutChange(listener: () => void): () => void {
+    const pagesContainer = opts.pagesRef.value;
+    return pagesContainer ? onPaintedLayoutChange(pagesContainer, listener) : () => {};
+  }
+
   function getEditorRef(): PagedEditorRef {
     pagedEditorRef ??= {
       getEditor: () => opts.editor,
@@ -286,6 +317,10 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
         const pageIndex = findPageIndexContainingPmPos(currentLayout, pmPos);
         return pageIndex == null ? null : pageIndex + 1;
       },
+      getBlockRect,
+      getBlockRects,
+      getScrollRoot: () => opts.scrollRootRef.value,
+      onLayoutChange,
     };
     return pagedEditorRef;
   }
@@ -675,6 +710,10 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       const pageIndex = findPageIndexContainingPmPos(currentLayout, range.from);
       return pageIndex == null ? null : pageIndex + 1;
     },
+    getBlockRect,
+    getBlockRects,
+    getScrollRoot: () => opts.scrollRootRef.value,
+    onLayoutChange,
     getContentControls: (filter = {}) => {
       const view = opts.editorView.value;
       if (!view) {

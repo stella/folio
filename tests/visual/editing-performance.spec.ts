@@ -211,6 +211,52 @@ test("virtualized long documents render later pages on scroll", async ({ page })
   await expect(targetPage.locator(".layout-page-content")).toHaveCount(1);
 });
 
+test("block geometry becomes available when a virtual page is painted", async ({ page }) => {
+  await page.goto(`/?paragraphs=${PARAGRAPH_COUNT}`);
+  await page.waitForSelector('[data-testid="folio-editor"]');
+  await page.waitForFunction(() => document.querySelectorAll(".layout-page").length >= 20);
+  await page.evaluate(() => {
+    globalThis.__folioPlayground?.getEditorRef()?.ensureEditorView({ focus: false });
+  });
+  await page.waitForFunction(
+    () => globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView() !== null,
+  );
+
+  const target = await page.evaluate(() => {
+    const ref = globalThis.__folioPlayground?.getEditorRef();
+    const snapshot = ref?.createAIEditSnapshot();
+    const block = snapshot?.blocks.find(({ id }) =>
+      ref
+        ? ref.getTargetPage({ type: "block", story: "main", blockId: id }, snapshot) === 21
+        : false,
+    );
+    return block ? { blockId: block.id, rect: ref?.getBlockRect(block.id) ?? null } : null;
+  });
+  expect(target).not.toBeNull();
+  expect(target?.rect).toBeNull();
+
+  const layoutChanged = page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        const unsubscribe = globalThis.__folioPlayground?.getEditorRef()?.onLayoutChange(() => {
+          unsubscribe?.();
+          resolve();
+        });
+      }),
+  );
+  const targetPage = page.locator('.layout-page[data-page-index="20"]');
+  await targetPage.scrollIntoViewIfNeeded();
+  await layoutChanged;
+  await expect(targetPage.locator(".layout-page-content")).toHaveCount(1);
+
+  const paintedRect = await page.evaluate((blockId) => {
+    return globalThis.__folioPlayground?.getEditorRef()?.getBlockRect(blockId) ?? null;
+  }, target?.blockId ?? "");
+  expect(paintedRect?.blockId).toBe(target?.blockId);
+  expect(paintedRect?.page).toBe(21);
+  expect(paintedRect?.height).toBeGreaterThan(0);
+});
+
 async function installLayoutMeasurement(browserPage: Page): Promise<void> {
   await browserPage.addInitScript(() => {
     const makeLayoutPhaseCounters = (): Record<LayoutPhase, CounterBucket> => ({

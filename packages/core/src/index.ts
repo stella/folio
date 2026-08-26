@@ -50,6 +50,7 @@ export {
   type DeriveBlockIdInput,
   type FolioBlockId,
 } from "./types/block-id";
+export type { BlockRect } from "./paged-layout/blockGeometry";
 
 // AI suggestion primitives — types, conflict resolution, apply, and the
 // prosemirror decoration plugin. The bar/panel UI itself lives in apps/web;

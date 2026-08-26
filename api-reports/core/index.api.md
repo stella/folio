@@ -225,6 +225,16 @@ export type AutocompleteTriggerOptions = {
 export type AutocompleteTriggerSkipReason = "selection-non-empty" | "midword" | "deadzone" | "empty-doc";
 
 // @public
+export type BlockRect = {
+    blockId: string;
+    page: number;
+    top: number;
+    left: number;
+    width: number;
+    height: number;
+};
+
+// @public
 export function buildEmbeddedFontFamilyMap(faces: readonly EmbeddedFont[]): Map<string, string>;
 
 // @public

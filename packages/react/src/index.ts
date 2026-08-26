@@ -14,6 +14,7 @@ export type {
   HighlightPassageResult,
 } from "./components/DocxEditor.props";
 export type { ScrollToParaIdOptions } from "@stll/folio-core/paged-layout/paragraphFlash";
+export type { BlockRect } from "@stll/folio-core/paged-layout/blockGeometry";
 export type { EditorMode } from "./components/hooks/useEditorMode";
 export type {
   FolioSuggestion,

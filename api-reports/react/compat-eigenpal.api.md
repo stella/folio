@@ -5,6 +5,7 @@
 ```ts
 
 import { AnonymizationMatch } from '@stll/folio-core/prosemirror/plugins/anonymizationDecorations';
+import { BlockRect } from '@stll/folio-core/paged-layout/blockGeometry';
 import { Checkbox } from '@base-ui/react/checkbox';
 import { Comment as Comment_2 } from '@stll/folio-core/types/content';
 import { ComponentProps } from 'react';
@@ -163,6 +164,10 @@ export type DocxEditorRef = {
     getSelectionText: () => string;
     getPageText: (page: number) => string | null;
     getTargetPage: (target: FolioDocumentNavigationTarget, snapshot?: FolioAIEditSnapshot) => number | null;
+    getBlockRect: (blockId: string) => BlockRect | null;
+    getBlockRects: (blockIds: readonly string[]) => ReadonlyMap<string, BlockRect>;
+    getScrollRoot: () => HTMLElement | null;
+    onLayoutChange: (listener: () => void) => () => void;
     getContentControls: (filter?: ContentControlFilter) => {
         properties: SdtProperties;
         path: number[];

@@ -32,3 +32,28 @@ forEachAdapter("getEditorRef(): dispatch + getPageNumberForPmPos", async (adapte
   );
   expect(pageNumber).toBeGreaterThanOrEqual(1);
 });
+
+forEachAdapter(
+  "block geometry is snapshot-aligned and scroll-root relative",
+  async (adapter, { page }) => {
+    await openEditor(page, adapter);
+    await ensureLiveView(page);
+
+    const geometry = await page.evaluate(() => window.__folioParity?.readBlockGeometry());
+    expect(geometry).toBeDefined();
+    expect(geometry?.missingIsNull).toBe(true);
+    expect(geometry?.hasScrollRoot).toBe(true);
+    expect(geometry?.rects.length).toBeGreaterThan(1);
+
+    const rects = geometry?.rects ?? [];
+    for (let index = 1; index < rects.length; index += 1) {
+      const previous = rects[index - 1];
+      const current = rects[index];
+      if (!previous || !current || previous.page !== current.page) {
+        continue;
+      }
+      expect(current.top).toBeGreaterThan(previous.top);
+      expect(current.height).toBeGreaterThan(0);
+    }
+  },
+);
