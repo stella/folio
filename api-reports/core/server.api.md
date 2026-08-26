@@ -91,6 +91,7 @@ export function createBilingualDocument(source: import__stll_docx_core_model.Doc
 export type CreateBilingualDocumentOptions = {
     targetStyleSuffix: string;
     borders?: BilingualBorders;
+    editableParagraphIds: ReadonlySet<string>;
 };
 
 // @public (undocumented)
@@ -101,7 +102,10 @@ export type CreateBilingualDocumentResult = {
 };
 
 // @public
-export function createBilingualDocx(input: ArrayBuffer | Uint8Array, options: CreateBilingualDocumentOptions): Promise<CreateBilingualDocxResult>;
+export function createBilingualDocx(input: ArrayBuffer | Uint8Array, options: CreateBilingualDocxOptions): Promise<CreateBilingualDocxResult>;
+
+// @public (undocumented)
+export type CreateBilingualDocxOptions = Omit<CreateBilingualDocumentOptions, "editableParagraphIds">;
 
 // @public (undocumented)
 export type CreateBilingualDocxResult = {
@@ -1483,7 +1487,7 @@ export type ParseOptions = {
 };
 
 // @public
-export function readBilingualDocument(document: import__stll_docx_core_model.Document): BilingualRow[];
+export function readBilingualDocument(document: import__stll_docx_core_model.Document, editableParagraphIds: ReadonlySet<string>): BilingualRow[];
 
 // @public
 export function readBilingualDocx(input: ArrayBuffer | Uint8Array): Promise<BilingualRow[]>;

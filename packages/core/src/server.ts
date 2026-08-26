@@ -213,6 +213,7 @@ export {
 export {
   createBilingualDocx,
   readBilingualDocx,
+  type CreateBilingualDocxOptions,
   type CreateBilingualDocxResult,
 } from "./docx/server/createBilingualDocx";
 export { DocxArchiveError, type DocxArchiveOptions } from "./docx/server/boundedArchive";

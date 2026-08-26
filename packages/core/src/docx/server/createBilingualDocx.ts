@@ -1,3 +1,5 @@
+import { FolioDocxReviewer } from "../../ai-edits/headless";
+import { toArrayBuffer } from "../../utils/docxInput";
 import { ensureParaIds } from "../ensureParaIds";
 import { parseDocx } from "../parser";
 import { createDocx } from "../rezip";
@@ -7,6 +9,11 @@ import {
   createBilingualDocument,
   readBilingualDocument,
 } from "./createBilingualDocument";
+
+export type CreateBilingualDocxOptions = Omit<
+  CreateBilingualDocumentOptions,
+  "editableParagraphIds"
+>;
 
 export type CreateBilingualDocxResult = {
   buffer: ArrayBuffer;
@@ -23,17 +30,29 @@ export type CreateBilingualDocxResult = {
  */
 export async function createBilingualDocx(
   input: ArrayBuffer | Uint8Array,
-  options: CreateBilingualDocumentOptions,
+  options: CreateBilingualDocxOptions,
 ): Promise<CreateBilingualDocxResult> {
   const stamped = await ensureParaIds(input);
-  const source = await parseDocx(stamped.docx, { preloadFonts: false });
-  const { document, rows, warnings } = createBilingualDocument(source, options);
+  const stampedBuffer = await toArrayBuffer(stamped.docx);
+  const editableParagraphIds = new Set(
+    (await FolioDocxReviewer.fromBuffer(stampedBuffer)).snapshot().blocks.map(({ id }) => id),
+  );
+  const source = await parseDocx(stampedBuffer, { preloadFonts: false });
+  const { document, warnings } = createBilingualDocument(source, {
+    ...options,
+    editableParagraphIds,
+  });
   const buffer = await createDocx(document);
+  const rows = await readBilingualDocx(buffer);
   return { buffer, rows, warnings };
 }
 
 /** Bytes-in form of {@link readBilingualDocument}. */
 export async function readBilingualDocx(input: ArrayBuffer | Uint8Array): Promise<BilingualRow[]> {
-  const document = await parseDocx(input, { preloadFonts: false });
-  return readBilingualDocument(document);
+  const buffer = await toArrayBuffer(input);
+  const document = await parseDocx(buffer, { preloadFonts: false });
+  const editableParagraphIds = new Set(
+    (await FolioDocxReviewer.fromBuffer(buffer)).snapshot().blocks.map(({ id }) => id),
+  );
+  return readBilingualDocument(document, editableParagraphIds);
 }

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
+import { FolioDocxReviewer } from "../../ai-edits/headless";
 import { createStellaStyleDocumentPreset } from "../../style-sets/stellaStyle";
 import type {
   BlockContent,
@@ -11,6 +12,7 @@ import type {
   TableCell,
 } from "../../types/document";
 import { createEmptyDocument } from "../../utils/createDocument";
+import { ensureParaIds } from "../ensureParaIds";
 import { parseDocx } from "../parser";
 import { createDocx } from "../rezip";
 import {
@@ -78,8 +80,20 @@ const buildSource = async (): Promise<Document> => {
     paragraph("This Agreement lasts one year.", "ClauseParagraph1"),
   ];
   doc.package.document.content = [...firstSection, sectionBreak, ...secondSection];
-  return parseDocx(await createDocx(doc), { preloadFonts: false });
+  const stamped = await ensureParaIds(await createDocx(doc));
+  return parseDocx(stamped.docx, { preloadFonts: false });
 };
+
+const bilingualDocumentOptions = async (
+  source: Document,
+): Promise<Parameters<typeof createBilingualDocument>[1]> => ({
+  targetStyleSuffix: SUFFIX,
+  editableParagraphIds: new Set(
+    (await FolioDocxReviewer.fromBuffer(source.originalBuffer ?? (await createDocx(source))))
+      .snapshot()
+      .blocks.map(({ id }) => id),
+  ),
+});
 
 const findStyle = (doc: Document, styleId: string): Style | undefined =>
   doc.package.styles?.styles.find((style) => style.styleId === styleId);
@@ -148,7 +162,10 @@ const abstractNumIdOf = (doc: Document, numId: number): number | undefined =>
 describe("createBilingualDocument", () => {
   test("lays every non-empty block out as a two-column row, one table per section", async () => {
     const source = await buildSource();
-    const { document, rows } = createBilingualDocument(source, { targetStyleSuffix: SUFFIX });
+    const { document, rows } = createBilingualDocument(
+      source,
+      await bilingualDocumentOptions(source),
+    );
 
     const content = document.package.document.content;
     expect(content.map((block) => block.type)).toEqual(["table", "paragraph", "table"]);
@@ -170,7 +187,7 @@ describe("createBilingualDocument", () => {
 
   test("keeps the left column identical to the source blocks", async () => {
     const source = await buildSource();
-    const { document } = createBilingualDocument(source, { targetStyleSuffix: SUFFIX });
+    const { document } = createBilingualDocument(source, await bilingualDocumentOptions(source));
 
     const sourceParagraphs = source.package.document.content.flatMap((block): Paragraph[] =>
       block.type === "paragraph" && !block.sectionProperties && block.content.length > 0
@@ -182,7 +199,10 @@ describe("createBilingualDocument", () => {
 
   test("keeps a source table once, in a row spanning both columns", async () => {
     const source = await buildSource();
-    const { document, rows } = createBilingualDocument(source, { targetStyleSuffix: SUFFIX });
+    const { document, rows } = createBilingualDocument(
+      source,
+      await bilingualDocumentOptions(source),
+    );
 
     const allRows = bodyTables(document).flatMap((table) => table.rows);
     const spanningRows = allRows.filter((row) => row.cells.length === 1);
@@ -210,7 +230,7 @@ describe("createBilingualDocument", () => {
 
   test("right column never shares a numbering instance or abstract with the left", async () => {
     const source = await buildSource();
-    const { document } = createBilingualDocument(source, { targetStyleSuffix: SUFFIX });
+    const { document } = createBilingualDocument(source, await bilingualDocumentOptions(source));
     const { left, right } = columnParagraphs(document);
     expect(right).toHaveLength(left.length);
 
@@ -247,7 +267,7 @@ describe("createBilingualDocument", () => {
 
   test("clones numbered paragraph styles with the suffix and rewrites only their numPr", async () => {
     const source = await buildSource();
-    const { document } = createBilingualDocument(source, { targetStyleSuffix: SUFFIX });
+    const { document } = createBilingualDocument(source, await bilingualDocumentOptions(source));
 
     const original = findStyle(source, "ClauseParagraph1");
     const clone = findStyle(document, `ClauseParagraph1-${SUFFIX}`);
@@ -280,8 +300,9 @@ describe("createBilingualDocument", () => {
 
   test("mints stable, unique right-column paraIds and reports them as row handles", async () => {
     const source = await buildSource();
-    const first = createBilingualDocument(source, { targetStyleSuffix: SUFFIX });
-    const second = createBilingualDocument(source, { targetStyleSuffix: SUFFIX });
+    const options = await bilingualDocumentOptions(source);
+    const first = createBilingualDocument(source, options);
+    const second = createBilingualDocument(source, options);
 
     const handles = first.rows.map((row) => row.rowId);
     expect(new Set(handles).size).toBe(handles.length);
@@ -302,15 +323,16 @@ describe("createBilingualDocument", () => {
 
   test("rejects a style suffix that cannot form a style id", async () => {
     const source = await buildSource();
-    expect(() => createBilingualDocument(source, { targetStyleSuffix: "en US" })).toThrow(
-      InvalidBilingualDocumentOptionsError,
-    );
+    const options = await bilingualDocumentOptions(source);
+    expect(() =>
+      createBilingualDocument(source, { ...options, targetStyleSuffix: "en US" }),
+    ).toThrow(InvalidBilingualDocumentOptionsError);
   });
 
   test("does not mutate the source document", async () => {
     const source = await buildSource();
     const snapshot = JSON.stringify({ ...source, originalBuffer: undefined });
-    createBilingualDocument(source, { targetStyleSuffix: SUFFIX });
+    createBilingualDocument(source, await bilingualDocumentOptions(source));
     expect(JSON.stringify({ ...source, originalBuffer: undefined })).toBe(snapshot);
   });
 });
@@ -376,6 +398,111 @@ describe("createBilingualDocx", () => {
     expect(await readBilingualDocx(source.originalBuffer!)).toEqual([]);
   });
 
+  test("keeps structural-only paragraphs out of the editable row manifest", async () => {
+    const source = createEmptyDocument({ preset: createStellaStyleDocumentPreset() });
+    const columnBreak: Paragraph = {
+      type: "paragraph",
+      content: [{ type: "run", content: [{ type: "break", breakType: "column" }] }],
+    };
+    source.package.document.content = [
+      paragraph("Before break", "Normal"),
+      columnBreak,
+      paragraph("After break", "Normal"),
+    ];
+
+    const { buffer } = await createBilingualDocx(await createDocx(source), {
+      targetStyleSuffix: SUFFIX,
+    });
+    const rows = await readBilingualDocx(buffer);
+    const editableIds = new Set(
+      (await FolioDocxReviewer.fromBuffer(buffer)).snapshot().blocks.map(({ id }) => id),
+    );
+
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      if (row.kind === "table") {
+        continue;
+      }
+      expect(row.sourceParaId).toBeDefined();
+      if (row.sourceParaId !== undefined) {
+        expect(editableIds.has(row.sourceParaId)).toBe(true);
+      }
+      expect(editableIds.has(row.targetParaId)).toBe(true);
+    }
+
+    const reparsed = await parseDocx(buffer, { preloadFonts: false });
+    expect(reparsed.package.document.content).toHaveLength(3);
+    expect(reparsed.package.document.content.at(1)).toMatchObject(columnBreak);
+  });
+
+  test("keeps field-only paragraphs out of the editable row manifest", async () => {
+    const source = createEmptyDocument({ preset: createStellaStyleDocumentPreset() });
+    const fieldOnly: Paragraph = {
+      type: "paragraph",
+      content: [
+        {
+          type: "complexField",
+          instruction: 'TOC \\o "1-3"',
+          fieldType: "TOC",
+          fieldCode: [],
+          fieldResult: [
+            {
+              type: "run",
+              content: [{ type: "text", text: "Update this field in Word" }],
+            },
+          ],
+        },
+      ],
+    };
+    source.package.document.content = [
+      paragraph("Before field", "Normal"),
+      fieldOnly,
+      paragraph("After field", "Normal"),
+    ];
+
+    const { buffer, rows } = await createBilingualDocx(await createDocx(source), {
+      targetStyleSuffix: SUFFIX,
+    });
+
+    expect(rows).toHaveLength(2);
+    const reparsed = await parseDocx(buffer, { preloadFonts: false });
+    expect(reparsed.package.document.content).toHaveLength(3);
+    expect(reparsed.package.document.content.at(1)).toMatchObject({
+      type: "paragraph",
+      content: [
+        {
+          type: "complexField",
+          instruction: 'TOC \\o "1-3"',
+          fieldResult: [
+            {
+              type: "run",
+              content: [{ type: "text", text: "Update this field in Word" }],
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  test("refuses a manifest whose handles are absent from the canonical edit snapshot", async () => {
+    const source = createEmptyDocument({ preset: createStellaStyleDocumentPreset() });
+    source.package.document.content = [paragraph("Hidden translation row")];
+    const valid = await createBilingualDocx(await createDocx(source), {
+      targetStyleSuffix: SUFFIX,
+    });
+    const malformed = await parseDocx(valid.buffer, { preloadFonts: false });
+    const table = bodyTables(malformed).at(0);
+    const row = table?.rows.at(0);
+    if (!row) {
+      throw new Error("bilingual fixture lost its translation row");
+    }
+    row.formatting = { ...row.formatting, hidden: true };
+
+    await expect(readBilingualDocx(await createDocx(malformed))).rejects.toThrow(
+      "Bilingual manifest contains handles absent from the Folio AI-edit snapshot.",
+    );
+  });
+
   test("materializes a styles part when the source package has none", async () => {
     const source = await buildSource();
     // Strip word/styles.xml and its relationship: legal OOXML, and the path
@@ -418,17 +545,15 @@ describe("createBilingualDocx", () => {
             ) {
               return block;
             }
-            const restyled: Paragraph = {
-              type: "paragraph",
-              content: block.content,
+            const restyled: Paragraph = Object.assign({}, block, {
               formatting: { styleId: "Clause" },
-            };
+            });
             return restyled;
           }),
         },
       },
     };
-    const { document } = createBilingualDocument(styled, { targetStyleSuffix: SUFFIX });
+    const { document } = createBilingualDocument(styled, await bilingualDocumentOptions(styled));
     expect(findStyle(document, `Clause-${SUFFIX}`)).toBeDefined();
 
     const reparsed = await parseDocx(await createDocx(document), { preloadFonts: false });

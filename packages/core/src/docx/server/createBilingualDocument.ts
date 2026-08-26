@@ -13,6 +13,8 @@
  * and the break paragraph stays between the tables. A source table (parties,
  * signature block) is kept once, in a row spanning both columns: it is signed
  * and read once, and its labels are translated inline rather than duplicated.
+ * Structural-only paragraphs are also kept once between tables; they have no
+ * independently editable text for a translation row to address.
  */
 
 import { TaggedError } from "better-result";
@@ -80,6 +82,11 @@ export type CreateBilingualDocumentOptions = {
   targetStyleSuffix: string;
   /** Table borders; legal practice is usually `"none"`. Default `"none"`. */
   borders?: BilingualBorders;
+  /**
+   * Paragraph handles exposed by Folio's canonical AI-edit snapshot for the
+   * source DOCX. Only these paragraphs may become translation rows.
+   */
+  editableParagraphIds: ReadonlySet<string>;
 };
 
 export type CreateBilingualDocumentResult = {
@@ -97,10 +104,15 @@ export class InvalidBilingualDocumentOptionsError extends TaggedError(
   message: string;
   option: "targetStyleSuffix";
 }> {}
+class UneditableBilingualManifestError extends TaggedError("UneditableBilingualManifestError")<{
+  message: string;
+  missingHandleCount: number;
+}> {}
 const FULL_WIDTH_PCT = 5000;
 const HALF_WIDTH_PCT = 2500;
 const A4_TEXT_WIDTH_TWIPS = 9072;
 const ROW_ID_NAMESPACE = "folio-bilingual";
+const BILINGUAL_TABLE_STYLE_ID = "FolioBilingualTranslation";
 
 const GRID_BORDER = { style: "single", size: 4, space: 0 } as const;
 
@@ -184,15 +196,25 @@ export function createBilingualDocument(
       if (isEmptyParagraph(block)) {
         continue;
       }
+      if (block.paraId === undefined || !options.editableParagraphIds.has(block.paraId)) {
+        flushSection();
+        content.push(block);
+        continue;
+      }
       const { copy, ref } = copyParagraph(block);
       rows.push({ kind: classifyParagraph(block, styleById), rowId: ref.targetParaId, ...ref });
       sectionRows.push(buildRow(block, copy));
       continue;
     }
-    const paragraphs = collectTableParagraphs(block).map((paragraph) => ({
-      paraId: paragraph.paraId,
-      sourceText: getParagraphText(paragraph),
-    }));
+    const paragraphs = collectTableParagraphs(block)
+      .filter(
+        (paragraph): paragraph is Paragraph & { paraId: string } =>
+          paragraph.paraId !== undefined && options.editableParagraphIds.has(paragraph.paraId),
+      )
+      .map((paragraph) => ({
+        paraId: paragraph.paraId,
+        sourceText: getParagraphText(paragraph),
+      }));
     rows.push({
       kind: "table",
       rowId: paragraphs.at(0)?.paraId ?? tableRowHandle(rows.length),
@@ -247,10 +269,13 @@ const isEmptyParagraph = (paragraph: Paragraph): boolean => {
   if (getParagraphText(paragraph).trim().length > 0) {
     return false;
   }
-  // Anything that is not a plain text run (drawings, fields, footnote refs,
-  // content controls) keeps the paragraph as a row.
+  // Anything that is not a visible plain-text run (drawings, fields, breaks,
+  // hidden text, content controls) must be preserved rather than discarded.
   return paragraph.content.every(
-    (item) => item.type === "run" && item.content.every((part) => part.type === "text"),
+    (item) =>
+      item.type === "run" &&
+      item.formatting?.hidden !== true &&
+      item.content.every((part) => part.type === "text"),
   );
 };
 
@@ -616,6 +641,7 @@ const buildTable = (rows: Table["rows"], borders: BilingualBorders, textWidth: n
   type: "table",
   formatting: {
     width: { value: FULL_WIDTH_PCT, type: "pct" },
+    styleId: BILINGUAL_TABLE_STYLE_ID,
     layout: "fixed",
     borders: TABLE_BORDERS[borders],
     look: { firstRow: false, firstColumn: false, noHBand: true, noVBand: true },
@@ -706,16 +732,20 @@ const createParaIdMinter = (taken: Set<string>): ParaIdMinter => {
 
 /**
  * Re-derive the row manifest from a document produced by
- * {@link createBilingualDocument}. Detection is structural: a top-level table
- * whose rows are all either a left | right pair of single-paragraph cells or
- * one cell spanning both columns. Rows are returned in document order; the
- * right paragraph's `paraId` is the row handle, as at creation.
+ * {@link createBilingualDocument}. A dedicated table-style discriminator keeps
+ * ordinary two-column source tables from being mistaken for bilingual output;
+ * the expected row structure is validated as a second check. Rows are returned
+ * in document order; the right paragraph's `paraId` is the row handle.
  */
-export function readBilingualDocument(document: Document): BilingualRow[] {
+export function readBilingualDocument(
+  document: Document,
+  editableParagraphIds: ReadonlySet<string>,
+): BilingualRow[] {
   const styleById = new Map(
     (document.package.styles?.styles ?? []).map((style) => [style.styleId, style]),
   );
   const rows: BilingualRow[] = [];
+  let missingHandleCount = 0;
   for (const block of flattenBlocks(document.package.document.content)) {
     if (block.type !== "table" || !isBilingualTable(block)) {
       continue;
@@ -729,6 +759,10 @@ export function readBilingualDocument(document: Document): BilingualRow[] {
         const paragraphs = left.content
           .filter((item): item is Table => item.type === "table")
           .flatMap(collectTableParagraphs)
+          .filter(
+            (paragraph): paragraph is Paragraph & { paraId: string } =>
+              paragraph.paraId !== undefined && editableParagraphIds.has(paragraph.paraId),
+          )
           .map((paragraph) => ({
             paraId: paragraph.paraId,
             sourceText: getParagraphText(paragraph),
@@ -742,7 +776,22 @@ export function readBilingualDocument(document: Document): BilingualRow[] {
       }
       const source = left.content.at(0);
       const target = right.content.at(0);
-      if (source?.type !== "paragraph" || target?.type !== "paragraph" || !target.paraId) {
+      if (source?.type !== "paragraph" || target?.type !== "paragraph") {
+        continue;
+      }
+      if (target.paraId === undefined) {
+        missingHandleCount += 1;
+        continue;
+      }
+      const sourceMissing = source.paraId === undefined || !editableParagraphIds.has(source.paraId);
+      const targetMissing = !editableParagraphIds.has(target.paraId);
+      if (sourceMissing) {
+        missingHandleCount += 1;
+      }
+      if (targetMissing) {
+        missingHandleCount += 1;
+      }
+      if (sourceMissing || targetMissing) {
         continue;
       }
       rows.push({
@@ -754,10 +803,19 @@ export function readBilingualDocument(document: Document): BilingualRow[] {
       });
     }
   }
+  if (missingHandleCount > 0) {
+    throw new UneditableBilingualManifestError({
+      message: "Bilingual manifest contains handles absent from the Folio AI-edit snapshot.",
+      missingHandleCount,
+    });
+  }
   return rows;
 }
 
 const isBilingualTable = (table: Table): boolean => {
+  if (table.formatting?.styleId !== BILINGUAL_TABLE_STYLE_ID) {
+    return false;
+  }
   let pairs = 0;
   for (const row of table.rows) {
     const cells = row.cells;
