@@ -292,11 +292,11 @@ export async function unzipDocx(
   };
 
   let totalUncompressedBytes = 0;
-  const extractionTasks: Promise<ExtractedEntry | null>[] = [];
+  const extractionTasks: (() => Promise<ExtractedEntry | null>)[] = [];
 
   // Validate the complete package before decompressing accepted entries. The
-  // extraction promises are awaited together so independent ZIP parts do not
-  // pay JSZip's scheduling overhead one at a time.
+  // extraction tasks are started only after validation completes so an early
+  // security rejection cannot leave unobserved decompression promises running.
   for (const [path, file] of entries) {
     if (!isSafeDocxPath(path)) {
       throw new DocxSecurityError("DOCX file contains an unsafe entry path");
@@ -322,7 +322,7 @@ export async function unzipDocx(
       if (options.extractAllXml === false && !shouldExtractXmlPart(lowerPath)) {
         continue;
       }
-      extractionTasks.push(
+      extractionTasks.push(() =>
         file.async("text").then((xmlContent) => {
           assertExtractedSize(path, xmlContent.length, limits.maxXmlBytes);
           return { type: "xml", path, lowerPath, content: xmlContent };
@@ -340,7 +340,7 @@ export async function unzipDocx(
         );
         continue;
       }
-      extractionTasks.push(
+      extractionTasks.push(() =>
         file.async("arraybuffer").then((binaryContent) => {
           if (binaryContent.byteLength > limits.maxMediaBytes) {
             content.warnings.push(
@@ -360,7 +360,7 @@ export async function unzipDocx(
       if (isEntryTooLarge(declaredSize, limits.maxFontBytes)) {
         continue;
       }
-      extractionTasks.push(
+      extractionTasks.push(() =>
         file.async("arraybuffer").then((binaryContent) => {
           if (binaryContent.byteLength > limits.maxFontBytes) {
             return null;
@@ -371,7 +371,7 @@ export async function unzipDocx(
     }
   }
 
-  for (const extracted of await Promise.all(extractionTasks)) {
+  for (const extracted of await Promise.all(extractionTasks.map((extract) => extract()))) {
     if (!extracted) {
       continue;
     }
