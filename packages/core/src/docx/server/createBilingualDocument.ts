@@ -215,6 +215,11 @@ export function createBilingualDocument(
         paraId: paragraph.paraId,
         sourceText: getParagraphText(paragraph),
       }));
+    if (paragraphs.length === 0) {
+      flushSection();
+      content.push(block);
+      continue;
+    }
     rows.push({
       kind: "table",
       rowId: paragraphs.at(0)?.paraId ?? tableRowHandle(rows.length),

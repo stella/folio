@@ -484,6 +484,40 @@ describe("createBilingualDocx", () => {
     });
   });
 
+  test("keeps a structural-only source table out of the editable row manifest", async () => {
+    const source = createEmptyDocument({ preset: createStellaStyleDocumentPreset() });
+    const structuralTable: Table = {
+      type: "table",
+      rows: [
+        {
+          type: "tableRow",
+          cells: [
+            cell([
+              {
+                type: "paragraph",
+                content: [{ type: "run", content: [{ type: "break", breakType: "column" }] }],
+              },
+            ]),
+          ],
+        },
+      ],
+    };
+    source.package.document.content = [
+      paragraph("Before table"),
+      structuralTable,
+      paragraph("After table"),
+    ];
+
+    const { buffer, rows } = await createBilingualDocx(await createDocx(source), {
+      targetStyleSuffix: SUFFIX,
+    });
+
+    expect(rows).toHaveLength(2);
+    const reparsed = await parseDocx(buffer, { preloadFonts: false });
+    expect(reparsed.package.document.content).toHaveLength(3);
+    expect(reparsed.package.document.content.at(1)).toMatchObject(structuralTable);
+  });
+
   test("refuses a manifest whose handles are absent from the canonical edit snapshot", async () => {
     const source = createEmptyDocument({ preset: createStellaStyleDocumentPreset() });
     source.package.document.content = [paragraph("Hidden translation row")];
