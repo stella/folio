@@ -22,6 +22,10 @@ import { parseDocx } from "./docx/parser";
 import { createDocx } from "./docx/rezip";
 import { repackDocx } from "./docx/rezip";
 import { generateRedlineDocx, InvalidGenerateRedlineDocxOptionsError } from "./redline";
+import {
+  GenerateRedlineDocxOperationLimitError,
+  MAX_GENERATED_REDLINE_OPERATIONS,
+} from "./redlineOperationLimit";
 import type { HeaderFooter, Paragraph } from "./types/document";
 import { createEmptyDocument } from "./utils/createDocument";
 
@@ -31,6 +35,22 @@ type ParagraphSpec = {
   text: string;
   paraId?: string;
   formatting?: InlineFormattingSpec;
+};
+
+const buildInsertedParagraphs = (count: number): ParagraphSpec[] =>
+  Array.from({ length: count }, (_, index) => ({ text: `Inserted paragraph ${index}` }));
+
+const expectOperationLimitError = async (promise: Promise<unknown>) => {
+  const error = await promise.then(
+    () => null,
+    (reason) => reason,
+  );
+
+  expect(error).toBeInstanceOf(GenerateRedlineDocxOperationLimitError);
+  expect(error).toMatchObject({
+    _tag: "GenerateRedlineDocxOperationLimitError",
+    message: "The document comparison exceeds the generated operation limit.",
+  });
 };
 
 const CORE_PROPERTIES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="urn:properties" xmlns:dc="urn:descriptive" xmlns:dcterms="urn:terms"><dc:title>Private title</dc:title><dc:creator>Private creator</dc:creator><cp:lastModifiedBy>Private modifier</cp:lastModifiedBy><cp:revision>7</cp:revision><dcterms:created>2026-07-01T10:30:00Z</dcterms:created><dcterms:modified>2026-07-02T11:45:00Z</dcterms:modified></cp:coreProperties>`;
@@ -391,8 +411,29 @@ describe("generateRedlineDocx", () => {
     expect(rejecting.snapshot().blocks.at(0)?.previewRuns).toEqual(baseFormatting);
   });
 
+  test("allows exactly the generated operation limit for ordinary block operations", async () => {
+    const [base, revised] = await Promise.all([
+      buildDocxBuffer([]),
+      buildDocxBuffer(buildInsertedParagraphs(MAX_GENERATED_REDLINE_OPERATIONS)),
+    ]);
+
+    const result = await generateRedlineDocx(base, revised);
+
+    expect(result.applied).toHaveLength(MAX_GENERATED_REDLINE_OPERATIONS);
+    expect(result.skipped).toEqual([]);
+  }, 60_000);
+
+  test("rejects the first ordinary block operation beyond the limit", async () => {
+    const [base, revised] = await Promise.all([
+      buildDocxBuffer([]),
+      buildDocxBuffer(buildInsertedParagraphs(MAX_GENERATED_REDLINE_OPERATIONS + 1)),
+    ]);
+
+    await expectOperationLimitError(generateRedlineDocx(base, revised));
+  }, 60_000);
+
   test("bounds generated operations for highly fragmented formatting changes", async () => {
-    const runCount = 10_001;
+    const runCount = MAX_GENERATED_REDLINE_OPERATIONS + 1;
     const base = await buildFormattedRunDocxBuffer([{ text: "a".repeat(runCount) }], "00000001");
     const revised = await buildFormattedRunDocxBuffer(
       Array.from({ length: runCount }, (_, index) => ({
@@ -402,9 +443,7 @@ describe("generateRedlineDocx", () => {
       "00000001",
     );
 
-    await expect(generateRedlineDocx(base, revised)).rejects.toThrow(
-      "The document comparison exceeds the generated operation limit.",
-    );
+    await expectOperationLimitError(generateRedlineDocx(base, revised));
   });
 
   test("a relocated block redlines as delete + insert and still satisfies both invariants", async () => {

@@ -36,6 +36,10 @@ import {
   type FolioDocumentPrivacyOptions,
   type FolioDocumentPrivacyReport,
 } from "./docx/metadataPrivacy";
+import {
+  GenerateRedlineDocxOperationLimitError,
+  MAX_GENERATED_REDLINE_OPERATIONS,
+} from "./redlineOperationLimit";
 import { alignFolioBlocks, type FolioAlignedBlockEvent } from "./version-comparison";
 
 /** Options for {@link generateRedlineDocx}. */
@@ -58,12 +62,6 @@ export class InvalidGenerateRedlineDocxOptionsError extends TaggedError(
   option: "baseView" | "revisedView";
   receivedValue: unknown;
 }> {}
-
-class GenerateRedlineDocxOperationLimitError extends TaggedError(
-  "GenerateRedlineDocxOperationLimitError",
-)<{
-  message: string;
-}>() {}
 
 /** A document story that could not be paired across the two input packages. */
 export type GenerateRedlineUnprocessedStory = {
@@ -115,8 +113,6 @@ type RedlineFormattingSegment = {
   endOffset: number;
   formatting: FolioAIInlineFormatting;
 };
-
-const MAX_GENERATED_REDLINE_OPERATIONS = 10_000;
 
 const changedSupportedFormatting = (
   base: FolioAIBlockPreviewRun,
