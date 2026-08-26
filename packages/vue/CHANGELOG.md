@@ -1,5 +1,16 @@
 # @stll/folio-vue
 
+## 0.13.0
+
+### Minor Changes
+
+- [#634](https://github.com/stella/folio/pull/634) [`8bd6ea8`](https://github.com/stella/folio/commit/8bd6ea8c31b66e30143b8f28a050032c09ebeff1) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Expose instance-scoped painted block geometry and layout-change subscriptions.
+
+### Patch Changes
+
+- Updated dependencies [[`8bd6ea8`](https://github.com/stella/folio/commit/8bd6ea8c31b66e30143b8f28a050032c09ebeff1)]:
+  - @stll/folio-core@0.27.0
+
 ## 0.12.7
 
 ### Patch Changes
