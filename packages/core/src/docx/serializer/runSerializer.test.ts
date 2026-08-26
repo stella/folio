@@ -141,6 +141,28 @@ describe("runSerializer vertical alignment", () => {
   });
 });
 
+describe("runSerializer relationship ids", () => {
+  test("escapes image relationship ids", () => {
+    const xml = serializeRun({
+      type: "run",
+      content: [
+        {
+          type: "drawing",
+          image: {
+            type: "image",
+            rId: 'rId1"/><w:t>injected</w:t><a:blip r:embed="rId2',
+            size: { width: 1, height: 1 },
+            wrap: { type: "inline" },
+          },
+        },
+      ],
+    });
+
+    expect(xml).not.toContain("<w:t>injected</w:t>");
+    expect(xml).toContain('r:embed="rId1&quot;/&gt;&lt;w:t&gt;injected');
+  });
+});
+
 describe("runSerializer emphasis marks", () => {
   test.each(EMPHASIS_MARK_VALUES)("serializes the explicit %s value", (emphasisMark) => {
     const xml = serializeRun({

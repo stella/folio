@@ -29,6 +29,19 @@ describe("parseSectionProperties", () => {
 });
 
 describe("serializeSectionProperties", () => {
+  test("escapes every relationship id attribute", () => {
+    const injectedRelationshipId =
+      'rId1"/><w:r><w:t>injected</w:t></w:r><w:printerSettings r:id="rId2';
+    const xml = serializeSectionProperties({
+      headerReferences: [{ type: "default", rId: injectedRelationshipId }],
+      footerReferences: [{ type: "default", rId: injectedRelationshipId }],
+      printerSettingsRelationshipId: injectedRelationshipId,
+    });
+
+    expect(xml).not.toContain("<w:t>injected</w:t>");
+    expect(xml.match(/r:id="rId1&quot;/gu)).toHaveLength(3);
+  });
+
   test("keeps titlePg before bidi in sectPr order", () => {
     const xml = serializeSectionProperties({
       titlePg: true,

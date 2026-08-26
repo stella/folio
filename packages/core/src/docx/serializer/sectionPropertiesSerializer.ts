@@ -12,10 +12,10 @@ import { serializeBorder } from "./borderSerializer";
 import { escapeXml, intAttr } from "./xmlUtils";
 
 const serializeHeaderReference = (ref: HeaderReference): string =>
-  `<w:headerReference w:type="${ref.type}" r:id="${ref.rId}"/>`;
+  `<w:headerReference w:type="${ref.type}" r:id="${escapeXml(ref.rId)}"/>`;
 
 const serializeFooterReference = (ref: FooterReference): string =>
-  `<w:footerReference w:type="${ref.type}" r:id="${ref.rId}"/>`;
+  `<w:footerReference w:type="${ref.type}" r:id="${escapeXml(ref.rId)}"/>`;
 
 function serializeFootnoteProperties(props: FootnoteProperties | undefined): string {
   if (!props) {
@@ -399,7 +399,7 @@ export function serializeSectionProperties(props: SectionProperties | undefined)
     }
   }
   if (props.printerSettingsRelationshipId) {
-    parts.push(`<w:printerSettings r:id="${props.printerSettingsRelationshipId}"/>`);
+    parts.push(`<w:printerSettings r:id="${escapeXml(props.printerSettingsRelationshipId)}"/>`);
   }
   for (const change of props.propertyChanges ?? []) {
     parts.push(serializeSectionPropertyChange(change));

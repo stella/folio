@@ -101,9 +101,9 @@ describe("serializeComments", () => {
 
     const xml = serializeComments([comment]);
 
-    expect(xml).not.toContain('<w:t>injected</w:t>');
+    expect(xml).not.toContain("<w:t>injected</w:t>");
     expect(xml).toContain('r:id="rId1&quot;/&gt;&lt;w:r&gt;&lt;w:t&gt;injected');
-    expect(xml).toContain('<w:t>linked</w:t>');
+    expect(xml).toContain("<w:t>linked</w:t>");
   });
 
   test("round-trips supported paragraph and run formatting in comment content", () => {

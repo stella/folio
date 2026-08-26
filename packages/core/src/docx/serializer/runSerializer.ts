@@ -779,7 +779,7 @@ function serializeWrap(wrap: ImageWrap): string {
 function serializePicGraphic(image: Image, sharedId: string): string {
   const cx = image.size.width;
   const cy = image.size.height;
-  const rId = image.rId || "rId1";
+  const rId = escapeXml(image.rId || "rId1");
   const id = sharedId;
   const name = image.filename || `image${id}`;
 
