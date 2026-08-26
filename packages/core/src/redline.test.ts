@@ -391,6 +391,22 @@ describe("generateRedlineDocx", () => {
     expect(rejecting.snapshot().blocks.at(0)?.previewRuns).toEqual(baseFormatting);
   });
 
+  test("bounds generated operations for highly fragmented formatting changes", async () => {
+    const runCount = 10_001;
+    const base = await buildFormattedRunDocxBuffer([{ text: "a".repeat(runCount) }], "00000001");
+    const revised = await buildFormattedRunDocxBuffer(
+      Array.from({ length: runCount }, (_, index) => ({
+        text: "a",
+        formatting: index % 2 === 0 ? { bold: true } : { italic: true },
+      })),
+      "00000001",
+    );
+
+    await expect(generateRedlineDocx(base, revised)).rejects.toThrow(
+      "The document comparison exceeds the generated operation limit.",
+    );
+  });
+
   test("a relocated block redlines as delete + insert and still satisfies both invariants", async () => {
     const base = await buildDocxBuffer([
       { text: "Governing law shall be Czech law.", paraId: "00000001" },

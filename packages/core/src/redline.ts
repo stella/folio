@@ -59,6 +59,12 @@ export class InvalidGenerateRedlineDocxOptionsError extends TaggedError(
   receivedValue: unknown;
 }> {}
 
+class GenerateRedlineDocxOperationLimitError extends TaggedError(
+  "GenerateRedlineDocxOperationLimitError",
+)<{
+  message: string;
+}>() {}
+
 /** A document story that could not be paired across the two input packages. */
 export type GenerateRedlineUnprocessedStory = {
   /** Story in the base package, or `null` when it exists only in the revision. */
@@ -109,6 +115,8 @@ type RedlineFormattingSegment = {
   endOffset: number;
   formatting: FolioAIInlineFormatting;
 };
+
+const MAX_GENERATED_REDLINE_OPERATIONS = 10_000;
 
 const changedSupportedFormatting = (
   base: FolioAIBlockPreviewRun,
@@ -186,6 +194,11 @@ const formattingSegments = (
       ) {
         previous.endOffset += length;
       } else {
+        if (segments.length >= MAX_GENERATED_REDLINE_OPERATIONS) {
+          throw new GenerateRedlineDocxOperationLimitError({
+            message: "The document comparison exceeds the generated operation limit.",
+          });
+        }
         segments.push({
           startOffset: textOffset,
           endOffset: textOffset + length,
@@ -371,7 +384,14 @@ export const generateRedlineDocx = async (
   const skipped: FolioAIEditSkippedOperation[] = [];
   const unprocessedStories: GenerateRedlineUnprocessedStory[] = [];
   let operationSequence = 0;
-  const nextOperationId = () => `redline-${++operationSequence}`;
+  const nextOperationId = () => {
+    if (operationSequence >= MAX_GENERATED_REDLINE_OPERATIONS) {
+      throw new GenerateRedlineDocxOperationLimitError({
+        message: "The document comparison exceeds the generated operation limit.",
+      });
+    }
+    return `redline-${++operationSequence}`;
+  };
 
   for (const pair of pairFolioDocumentStories(baseStories, revisedStories)) {
     if (!pair.baseStory) {
