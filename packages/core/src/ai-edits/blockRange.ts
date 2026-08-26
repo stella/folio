@@ -193,7 +193,7 @@ const matchPassage = (haystack: string, needleSource: string): PassageMatch | nu
  * `createFolioAIEditSnapshot` share, so it indexes the snapshot's
  * ordered `blocks` directly.
  */
-const resolveSequentialBlockAnchor = (
+export const resolveSequentialBlockAnchor = (
   blockId: string,
   snapshot: FolioAIEditSnapshot,
 ): FolioAIBlockAnchor | undefined => {

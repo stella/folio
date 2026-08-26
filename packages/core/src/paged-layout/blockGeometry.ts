@@ -1,3 +1,4 @@
+import { resolveSequentialBlockAnchor } from "../ai-edits/blockRange";
 import type { FolioAIEditSnapshot } from "../ai-edits/types";
 import { findPageShellForPmPos, PAINTER_PAINTED_EVENT } from "../layout-painter/renderPage";
 
@@ -42,7 +43,11 @@ const requestedBlocks = (
   const uniqueIds = new Set(blockIds);
   const requested: RequestedBlock[] = [];
   for (const blockId of uniqueIds) {
-    const anchor = snapshot.anchors[blockId];
+    // Same resolution as `resolveFolioAIBlockRange`: an own-property anchor,
+    // else a positional `seq-NNNN` id minted for a paraId-less paragraph.
+    const anchor = Object.hasOwn(snapshot.anchors, blockId)
+      ? snapshot.anchors[blockId]
+      : resolveSequentialBlockAnchor(blockId, snapshot);
     if (anchor) {
       requested.push({ blockId, pmStart: anchor.from });
     }

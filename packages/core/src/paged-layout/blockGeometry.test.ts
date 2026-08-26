@@ -160,6 +160,32 @@ describe("block geometry", () => {
     expect(second.rectReads).toBe(1);
   });
 
+  test("resolves a positional seq id the way scrollToBlock does", () => {
+    // A paraId-less paragraph is cited by the server as `seq-NNNN`, while the
+    // live snapshot keys the same block by the hex paraId the editor minted.
+    const first = block(10, { top: 140, left: 90, width: 300, height: 20 });
+    const second = block(20, { top: 180, left: 90, width: 320, height: 24 });
+    const pages = new FakeElement(domRect({ top: 0, left: 0, width: 0, height: 0 }));
+    pages.append(page(1, [first, second]));
+    const scrollRoot = new FakeElement(domRect({ top: 0, left: 0, width: 700, height: 500 }));
+
+    const rects = readBlockRects({
+      blockIds: ["seq-0002", "seq-0009"],
+      snapshot: snapshot(["1a2b3c4d", 10], ["5e6f7a8b", 20]),
+      pagesContainer: htmlElement(pages),
+      scrollRoot: htmlElement(scrollRoot),
+    });
+
+    expect(rects.get("seq-0002")).toMatchObject({
+      blockId: "seq-0002",
+      page: 1,
+      top: 180,
+      width: 320,
+      height: 24,
+    });
+    expect(rects.has("seq-0009")).toBe(false);
+  });
+
   test("never reads a matching block from another editor instance", () => {
     const blockA = block(10, { top: 120, left: 20, width: 100, height: 10 });
     const blockB = block(10, { top: 420, left: 20, width: 200, height: 30 });
