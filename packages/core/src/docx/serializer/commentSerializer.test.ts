@@ -84,6 +84,28 @@ describe("serializeComments", () => {
     expect(xml).toContain("&quot;");
   });
 
+  test("escapes hyperlink relationship ids in comment content", () => {
+    const comment = makeComment(1);
+    comment.content[0]!.content = [
+      {
+        type: "hyperlink",
+        rId: 'rId1"/><w:r><w:t>injected</w:t></w:r><w:hyperlink r:id="rId2',
+        children: [
+          {
+            type: "run",
+            content: [{ type: "text", text: "linked" }],
+          },
+        ],
+      },
+    ];
+
+    const xml = serializeComments([comment]);
+
+    expect(xml).not.toContain('<w:t>injected</w:t>');
+    expect(xml).toContain('r:id="rId1&quot;/&gt;&lt;w:r&gt;&lt;w:t&gt;injected');
+    expect(xml).toContain('<w:t>linked</w:t>');
+  });
+
   test("round-trips supported paragraph and run formatting in comment content", () => {
     const comment = makeComment(1);
     const paragraph = comment.content[0]!;

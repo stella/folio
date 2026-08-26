@@ -580,7 +580,7 @@ function serializeHyperlink(hyperlink: Hyperlink): string {
   const attrs: string[] = [];
 
   if (hyperlink.rId) {
-    attrs.push(`r:id="${hyperlink.rId}"`);
+    attrs.push(`r:id="${escapeXml(hyperlink.rId)}"`);
   }
 
   if (hyperlink.anchor) {
