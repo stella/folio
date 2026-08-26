@@ -1,5 +1,19 @@
 # @stll/folio-core
 
+## 0.26.0
+
+### Minor Changes
+
+- [#632](https://github.com/stella/folio/pull/632) [`e1993d1`](https://github.com/stella/folio/commit/e1993d196734e1e1b69bc07759ec114a14a036b8) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Derive bilingual translation manifests from the canonical AI-edit snapshot, preserving structural-only paragraphs while rejecting unaddressable row handles.
+
+### Patch Changes
+
+- [#628](https://github.com/stella/folio/pull/628) [`693c320`](https://github.com/stella/folio/commit/693c32009623bd3e8aa98cbdb0e813b8cca55a64) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Bound generated redline operations for fragmented formatting changes.
+
+- [#630](https://github.com/stella/folio/pull/630) [`99d201f`](https://github.com/stella/folio/commit/99d201fc90341c13f090c7206b56613b52055f99) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Defer DOCX ZIP entry extraction until archive validation completes.
+
+- [#629](https://github.com/stella/folio/pull/629) [`2bfc5c6`](https://github.com/stella/folio/commit/2bfc5c6cc8fde32b346b7a0f003527bc9d507631) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Escape relationship IDs when serializing OOXML attributes.
+
 ## 0.25.5
 
 ### Patch Changes
