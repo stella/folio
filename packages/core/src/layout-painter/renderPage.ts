@@ -3233,6 +3233,7 @@ export function renderPages(
       const nearThreshold = viewportHeight * 3;
       const nearIndices = new Set<number>();
 
+      let depopulated = false;
       for (const [el, data] of liveDataMap) {
         if (!data.rendered) {
           continue;
@@ -3256,7 +3257,11 @@ export function renderPages(
         }
         if (!keepRendered && nearIndices.size > 0) {
           depopulatePageShell(el, liveDataMap);
+          depopulated = true;
         }
+      }
+      if (depopulated) {
+        emitPainterPainted(container);
       }
     },
     {
