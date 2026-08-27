@@ -1092,10 +1092,10 @@ const MAX_XMLNS_DECLARATIONS_PER_ELEMENT = 64;
 const MAX_XMLNS_VALUE_LENGTH = 512;
 
 /**
- * Sanity cap on the accumulated declaration set carried down one ancestor
- * chain. The per-element count and per-value length bound a single element;
- * this bounds what the chain hands to a captured `w:pict` subtree, since every
- * ancestor contributes and the merged set is replayed on each capture.
+ * Sanity cap on an accumulated declaration set. Applied both when collecting one
+ * element's declarations and when merging down the ancestor chain, so every set
+ * this module produces or returns is bounded and a captured `w:pict` subtree
+ * replays at most this much regardless of how the chain was built.
  */
 const MAX_XMLNS_DECLARATION_CHARS = 8192;
 
@@ -1123,6 +1123,7 @@ export function collectXmlnsDeclarations(element: XmlElement): Record<string, st
     return out;
   }
   let declarationCount = 0;
+  let declarationChars = 0;
   for (const key in attrs) {
     if (declarationCount >= MAX_XMLNS_DECLARATIONS_PER_ELEMENT) {
       break;
@@ -1138,8 +1139,12 @@ export function collectXmlnsDeclarations(element: XmlElement): Record<string, st
     if (declaration.length > MAX_XMLNS_VALUE_LENGTH) {
       continue;
     }
+    if (declarationChars + key.length + declaration.length > MAX_XMLNS_DECLARATION_CHARS) {
+      break;
+    }
     out[key] = declaration;
     declarationCount += 1;
+    declarationChars += key.length + declaration.length;
   }
   return out;
 }

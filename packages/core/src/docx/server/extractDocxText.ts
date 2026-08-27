@@ -282,7 +282,7 @@ const MAX_TABLE_COLUMNS = 256;
 /** Bound the mutual recursion between a cell and the tables nested inside it. */
 const MAX_NESTED_TABLE_DEPTH = 8;
 
-/** Rows read from one `w:tbl`. The column cap alone leaves row count unbounded. */
+/** Rows collected from one `w:tbl`. The column cap alone leaves row count unbounded. */
 const MAX_TABLE_ROWS = 8192;
 
 /**
@@ -299,11 +299,20 @@ const MAX_EXTRACTED_CHARS = 8_000_000;
  * The walk stops at `w:tbl` and `w:p` so a nested table's rows and cells never
  * leak into the grid of the table that contains them.
  */
-const collectTableParts = (parent: XmlElement, localName: "tr" | "tc"): XmlElement[] => {
+const collectTableParts = (
+  parent: XmlElement,
+  localName: "tr" | "tc",
+  limit: number,
+): XmlElement[] => {
   const parts: XmlElement[] = [];
 
   const walk = (node: XmlElement) => {
     for (const child of childElements(node)) {
+      // Bound the collection itself: a caller that drops the tail afterwards
+      // has already paid for the whole array, and every table walk shares this.
+      if (parts.length >= limit) {
+        return;
+      }
       const childName = wordElementName(child);
       if (childName === localName) {
         parts.push(child);
@@ -347,8 +356,8 @@ const readCellSourceParagraphs = (
         if (depth >= MAX_NESTED_TABLE_DEPTH) {
           continue;
         }
-        for (const row of collectTableParts(child, "tr")) {
-          for (const nestedCell of collectTableParts(row, "tc")) {
+        for (const row of collectTableParts(child, "tr", MAX_TABLE_ROWS)) {
+          for (const nestedCell of collectTableParts(row, "tc", MAX_TABLE_COLUMNS)) {
             for (const paragraph of readCellSourceParagraphs(nestedCell, depth + 1)) {
               paragraphs.push(paragraph);
             }
@@ -396,8 +405,8 @@ const readCellRenderedLines = (cell: XmlElement, depth: number): string[] => {
 const flattenNestedTable = (table: XmlElement, depth: number): string[] => {
   const lines: string[] = [];
 
-  for (const row of collectTableParts(table, "tr")) {
-    const cells = collectTableParts(row, "tc").map((cell) =>
+  for (const row of collectTableParts(table, "tr", MAX_TABLE_ROWS)) {
+    const cells = collectTableParts(row, "tc", MAX_TABLE_COLUMNS).map((cell) =>
       readCellRenderedLines(cell, depth).join("\n"),
     );
     if (cells.some((text) => text.length > 0)) {
@@ -486,7 +495,7 @@ const readTableGrid = (table: XmlElement): TableGrid => {
   let columnCount = 0;
   let firstRowIsHeader = false;
 
-  for (const [rowIndex, row] of collectTableParts(table, "tr").entries()) {
+  for (const [rowIndex, row] of collectTableParts(table, "tr", MAX_TABLE_ROWS).entries()) {
     if (rowIndex === 0) {
       firstRowIsHeader = declaresHeaderRow(row);
     }
@@ -495,7 +504,7 @@ const readTableGrid = (table: XmlElement): TableGrid => {
     for (let index = 0; index < gridBefore; index += 1) {
       columns.push(emptyTableCell());
     }
-    for (const cell of collectTableParts(row, "tc")) {
+    for (const cell of collectTableParts(row, "tc", MAX_TABLE_COLUMNS)) {
       if (columns.length >= MAX_TABLE_COLUMNS) {
         break;
       }
@@ -519,9 +528,6 @@ const readTableGrid = (table: XmlElement): TableGrid => {
       columnCount = columns.length;
     }
     rows.push(columns);
-    if (rows.length >= MAX_TABLE_ROWS) {
-      break;
-    }
   }
 
   return { rows, columnCount, firstRowIsHeader };

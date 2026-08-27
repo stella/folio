@@ -65,7 +65,7 @@ const LINE_OPTIONS = {
   lineRightEdgePx: 600,
 };
 
-const renderAnchor = (href: string): FakeElement => {
+const renderRun = (href: string): { anchors: FakeElement[]; text: string } => {
   const run: TextRun = { kind: "text", text: "link", hyperlink: { href } };
   const block: ParagraphBlock = { kind: "paragraph", id: "p", runs: [run] };
   const line: MeasuredLine = {
@@ -96,7 +96,21 @@ const renderAnchor = (href: string): FakeElement => {
     }
   };
   walk(lineEl);
-  const anchor = anchors.at(0);
+  const texts: string[] = [];
+  const collectText = (element: FakeElement) => {
+    if (element.textContent) {
+      texts.push(element.textContent);
+    }
+    for (const child of element.children) {
+      collectText(child);
+    }
+  };
+  collectText(lineEl);
+  return { anchors, text: texts.join("") };
+};
+
+const renderAnchor = (href: string): FakeElement => {
+  const anchor = renderRun(href).anchors.at(0);
   if (!anchor) {
     throw new Error("expected an anchor element");
   }
@@ -119,9 +133,14 @@ describe("run hyperlink targets", () => {
     expect(anchor.target).toBe("");
   });
 
-  test("drops a target outside the navigable protocols", () => {
+  test("renders no anchor at all for a target outside the navigable protocols", () => {
+    // An empty `href` still resolves to the current document, so the run must
+    // carry no anchor rather than an anchor with a blank target.
     for (const href of ["javascript:void 0", "data:text/html,<p>x</p>", "ftp://example.com/f"]) {
-      expect(renderAnchor(href).href).toBe("");
+      const rendered = renderRun(href);
+
+      expect(rendered.anchors).toHaveLength(0);
+      expect(rendered.text).toContain("link");
     }
   });
 });

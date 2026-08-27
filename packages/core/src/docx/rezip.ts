@@ -83,11 +83,13 @@ import { isPreservableDocxEntry } from "./unzip";
 import type { RawDocxContent } from "./unzip";
 import {
   findChild,
+  getAttribute,
   getChildElements,
   getLocalName,
   getNamespaceUri,
   matchesName,
   parseXml,
+  parseXmlDocument,
   WORDPROCESSINGML_NAMESPACE_URIS,
   type XmlElement,
 } from "./xmlParser";
@@ -1119,24 +1121,92 @@ export function removeCommentsExtendedRelationship(relsXml: string): string {
 const SETTINGS_PART = "word/settings.xml";
 const SETTINGS_RELS_PART = "word/_rels/settings.xml.rels";
 
-// The element carries no children and may use any prefix bound to the
-// WordprocessingML namespace, so the local name is matched prefix-agnostically.
-// Applied only to `word/settings.xml`, where `attachedTemplate` is unambiguous.
+const ATTACHED_TEMPLATE_LOCAL_NAME = "attachedTemplate";
+
+// Candidate spans in the raw payload. Which of them are actually removed is
+// decided from the parsed tree, not from the prefix these patterns capture.
 const ATTACHED_TEMPLATE_ELEMENT =
-  /<(?:[\w.-]+:)?attachedTemplate\b[^>]*?(?:\/>|>\s*<\/(?:[\w.-]+:)?attachedTemplate>)/giu;
+  /<(?<prefix>[\w.-]+:)?attachedTemplate\b[^>]*?(?:\/>|>\s*<\/(?:[\w.-]+:)?attachedTemplate>)/giu;
 
-const EXTERNAL_TARGET_MODE = /TargetMode\s*=\s*(?<quote>["'])External\k<quote>/iu;
+const RELATIONSHIP_ELEMENT = /<Relationship\b[^>]*?(?:\/>|>\s*<\/Relationship>)/giu;
 
-/** Drop `w:attachedTemplate` from a `word/settings.xml` payload. */
-export function removeAttachedTemplateElement(settingsXml: string): string {
-  return settingsXml.replace(ATTACHED_TEMPLATE_ELEMENT, "");
+// `Id` is spelled exactly that way in the package relationships schema.
+const RELATIONSHIP_ID_ATTRIBUTE = /\bId\s*=\s*(?<quote>["'])(?<value>[^"']*)\k<quote>/u;
+
+/** Result of filtering the settings part; `undefined` means "leave as it is". */
+type SettingsWithoutAttachedTemplate = {
+  settingsXml: string | undefined;
+  relsXml: string | undefined;
+};
+
+/**
+ * Drop `w:attachedTemplate` from a `word/settings.xml` payload together with the
+ * relationships it resolves through.
+ *
+ * The elements are located in the parsed tree by namespace URI plus local name,
+ * so both the Transitional and the Strict WordprocessingML namespace are
+ * covered and a same-named element from a foreign namespace is left alone. Only
+ * the relationship ids those elements reference are removed from the `.rels`
+ * part: the settings part may also carry mail-merge and transform
+ * relationships, and their `r:id` values must keep resolving.
+ *
+ * The removal itself is a byte splice, so everything else in both parts
+ * round-trips exactly as authored.
+ */
+export function withoutAttachedTemplate(
+  settingsXml: string,
+  relsXml: string | undefined,
+): SettingsWithoutAttachedTemplate {
+  const root = parseXmlDocument(settingsXml);
+  if (!root) {
+    return { settingsXml: undefined, relsXml: undefined };
+  }
+
+  // Prefixes (empty string for the default namespace) that actually bind to
+  // WordprocessingML on an `attachedTemplate` element in this part.
+  const prefixes = new Set<string>();
+  const referencedRIds = new Set<string>();
+  for (const element of getChildElements(root)) {
+    if (
+      getLocalName(element.name) !== ATTACHED_TEMPLATE_LOCAL_NAME ||
+      !WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? "")
+    ) {
+      continue;
+    }
+    const name = element.name ?? "";
+    const separatorIndex = name.indexOf(":");
+    prefixes.add(separatorIndex === -1 ? "" : name.slice(0, separatorIndex));
+    const rId = getAttribute(element, "r", "id");
+    if (rId) {
+      referencedRIds.add(rId);
+    }
+  }
+
+  if (prefixes.size === 0) {
+    return { settingsXml: undefined, relsXml: undefined };
+  }
+
+  const filteredSettings = settingsXml.replace(
+    ATTACHED_TEMPLATE_ELEMENT,
+    (match, prefix: string | undefined) => (prefixes.has(prefix?.slice(0, -1) ?? "") ? "" : match),
+  );
+
+  return {
+    settingsXml: filteredSettings === settingsXml ? undefined : filteredSettings,
+    relsXml: relsXml === undefined ? undefined : withoutRelationships(relsXml, referencedRIds),
+  };
 }
 
-/** Drop every `TargetMode="External"` entry from a `.rels` payload. */
-export function removeExternalRelationships(relsXml: string): string {
-  return relsXml.replace(/<Relationship\b[^>]*?(?:\/>|>\s*<\/Relationship>)/giu, (relationship) =>
-    EXTERNAL_TARGET_MODE.test(relationship) ? "" : relationship,
-  );
+/** Drop the named relationships from a `.rels` payload; `undefined` when unchanged. */
+function withoutRelationships(relsXml: string, ids: ReadonlySet<string>): string | undefined {
+  if (ids.size === 0) {
+    return undefined;
+  }
+  const filtered = relsXml.replace(RELATIONSHIP_ELEMENT, (relationship) => {
+    const id = RELATIONSHIP_ID_ATTRIBUTE.exec(relationship)?.groups?.["value"];
+    return id !== undefined && ids.has(id) ? "" : relationship;
+  });
+  return filtered === relsXml ? undefined : filtered;
 }
 
 /**
@@ -1144,32 +1214,27 @@ export function removeExternalRelationships(relsXml: string): string {
  * package byte for byte. `w:attachedTemplate` resolves through a relationship
  * whose target sits outside the package (`TargetMode="External"`); the document
  * model has no field for it, so a preserved copy would carry a reference folio
- * can neither read nor rewrite. Both sides are filtered on save: the element in
- * `word/settings.xml` and every external relationship in its `.rels` part.
- * Hyperlink and external-image relationships live in other `.rels` parts and
- * are untouched.
+ * can neither read nor rewrite. Both sides are filtered on save.
  */
 async function dropAttachedTemplateReference(zip: JSZip, compressionLevel: number): Promise<void> {
   const settingsFile = zip.file(SETTINGS_PART);
-  if (settingsFile) {
-    const settingsXml = await settingsFile.async("text");
-    const filtered = removeAttachedTemplateElement(settingsXml);
-    if (filtered !== settingsXml) {
-      zip.file(SETTINGS_PART, filtered, {
-        compression: "DEFLATE",
-        compressionOptions: { level: compressionLevel },
-      });
-    }
-  }
-
-  const relsFile = zip.file(SETTINGS_RELS_PART);
-  if (!relsFile) {
+  if (!settingsFile) {
     return;
   }
-  const relsXml = await relsFile.async("text");
-  const filteredRels = removeExternalRelationships(relsXml);
-  if (filteredRels !== relsXml) {
-    zip.file(SETTINGS_RELS_PART, filteredRels, {
+  const relsFile = zip.file(SETTINGS_RELS_PART);
+  const filtered = withoutAttachedTemplate(
+    await settingsFile.async("text"),
+    await relsFile?.async("text"),
+  );
+
+  if (filtered.settingsXml !== undefined) {
+    zip.file(SETTINGS_PART, filtered.settingsXml, {
+      compression: "DEFLATE",
+      compressionOptions: { level: compressionLevel },
+    });
+  }
+  if (filtered.relsXml !== undefined) {
+    zip.file(SETTINGS_RELS_PART, filtered.relsXml, {
       compression: "DEFLATE",
       compressionOptions: { level: compressionLevel },
     });

@@ -377,7 +377,7 @@ export async function unzipDocx(
       continue;
     }
     if (extracted.type === "xml") {
-      assignXmlContent(content, extracted);
+      assignXmlContent(content, extracted, limits);
       continue;
     }
     if (extracted.type === "media") {
@@ -400,9 +400,16 @@ const PREFLIGHT_XML_PARTS = new Set(["word/document.xml", "word/styles.xml", "wo
 function assignXmlContent(
   content: RawDocxContent,
   { path, lowerPath, content: xmlContent }: Extract<ExtractedEntry, { type: "xml" }>,
+  limits: DocxUnzipLimits,
 ): void {
   if (PREFLIGHT_XML_PARTS.has(lowerPath)) {
-    assertXmlResourceLimits(xmlContent);
+    // `maxXmlBytes` is the caller-configurable ceiling the entry-size checks
+    // above already honour; the preflight shares it rather than re-imposing the
+    // default.
+    assertXmlResourceLimits(xmlContent, {
+      ...FOLIO_XML_RESOURCE_LIMITS,
+      maxBytes: limits.maxXmlBytes,
+    });
   }
 
   content.allXml.set(path, xmlContent);

@@ -638,16 +638,13 @@ function renderTextRun(
   applyPmPositions(span, run.pmStart, run.pmEnd);
   const paintedText = toPaintedText(run.text);
 
+  const isBookmarkTarget = run.hyperlink?.href.startsWith("#") === true;
+  const hyperlinkHref = resolveHyperlinkHref(run.hyperlink?.href, isBookmarkTarget);
+
   // Handle hyperlinks
-  if (run.hyperlink) {
+  if (run.hyperlink && hyperlinkHref !== undefined) {
     const anchor = doc.createElement("a");
-    // Internal bookmark links (starting with #) scroll within the document and
-    // stay verbatim; every other target is narrowed to the protocols the
-    // painter navigates to, matching the image hyperlink path.
-    const isBookmarkTarget = run.hyperlink.href.startsWith("#");
-    anchor.href = isBookmarkTarget
-      ? run.hyperlink.href
-      : (sanitizeExternalUrl(run.hyperlink.href) ?? "");
+    anchor.href = hyperlinkHref;
     if (hyperlinkDirection || DISPLAYED_URL_PATTERN.test(paintedText.trim())) {
       anchor.dir = LEFT_TO_RIGHT_DIRECTION;
     }
@@ -686,6 +683,23 @@ function renderTextRun(
   applyWhitespaceUnderline(span, run);
 
   return span;
+}
+
+/**
+ * Bookmark targets (`#name`) scroll within the document and stay verbatim;
+ * every other target is narrowed to the protocols the painter navigates to,
+ * matching the image hyperlink path. `undefined` means the run gets no anchor:
+ * an empty `href` resolves to the current document, so a rejected target would
+ * otherwise stay navigable.
+ */
+function resolveHyperlinkHref(
+  href: string | undefined,
+  isBookmarkTarget: boolean,
+): string | undefined {
+  if (href === undefined) {
+    return undefined;
+  }
+  return isBookmarkTarget ? href : sanitizeExternalUrl(href);
 }
 
 function isNoteReferenceRun(run: TextRun | TabRun): boolean {

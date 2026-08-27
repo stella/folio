@@ -32,8 +32,7 @@ import {
   COMMENTS_EXTENDED_PART_LOWER,
   addCommentsExtendedOverride,
   addCommentsExtendedRelationship,
-  removeAttachedTemplateElement,
-  removeExternalRelationships,
+  withoutAttachedTemplate,
 } from "./rezip";
 import { DEFAULT_SELECTIVE_SAVE_MAX_BYTES } from "./selectiveSaveFlags";
 import {
@@ -369,27 +368,26 @@ export type SelectiveSaveOptions = {
  */
 /**
  * Queue the filtered `word/settings.xml` and `word/_rels/settings.xml.rels`
- * when the source package carries an attached-template reference. Mirrors
- * `dropAttachedTemplateReference` on the full-repack path.
+ * when the source package carries an attached-template reference. Shares
+ * `withoutAttachedTemplate` with the full-repack path so both saves emit the
+ * same package for the same source.
  */
 const queueSettingsUpdates = async (zip: JSZip, updates: Map<string, string>): Promise<void> => {
   const settingsFile = zip.file("word/settings.xml");
-  if (settingsFile) {
-    const settingsXml = await settingsFile.async("text");
-    const filtered = removeAttachedTemplateElement(settingsXml);
-    if (filtered !== settingsXml) {
-      updates.set("word/settings.xml", filtered);
-    }
-  }
-
-  const relsFile = zip.file("word/_rels/settings.xml.rels");
-  if (!relsFile) {
+  if (!settingsFile) {
     return;
   }
-  const relsXml = await relsFile.async("text");
-  const filteredRels = removeExternalRelationships(relsXml);
-  if (filteredRels !== relsXml) {
-    updates.set("word/_rels/settings.xml.rels", filteredRels);
+  const relsFile = zip.file("word/_rels/settings.xml.rels");
+  const filtered = withoutAttachedTemplate(
+    await settingsFile.async("text"),
+    await relsFile?.async("text"),
+  );
+
+  if (filtered.settingsXml !== undefined) {
+    updates.set("word/settings.xml", filtered.settingsXml);
+  }
+  if (filtered.relsXml !== undefined) {
+    updates.set("word/_rels/settings.xml.rels", filtered.relsXml);
   }
 };
 

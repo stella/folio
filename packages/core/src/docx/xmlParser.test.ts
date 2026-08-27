@@ -126,6 +126,26 @@ describe("collectXmlnsDeclarations", () => {
 
     expect(collectXmlnsDeclarations(element)).toEqual({ "xmlns:a": "urn:example:a" });
   });
+
+  test("stops once the collected set reaches the chain budget", () => {
+    // The merge step compares the accumulated set against the same budget, so
+    // bounding the collected set here keeps every set this module hands out
+    // within it — including the root set a capture inherits unchanged.
+    const attributes: Record<string, string> = {};
+    for (let i = 0; i < 60; i++) {
+      attributes[`xmlns:ns${String(i)}`] = `urn:${"y".repeat(400)}:${String(i)}`;
+    }
+    const element: XmlElement = { type: "element", name: "w:pict", attributes };
+
+    const collected = collectXmlnsDeclarations(element);
+    const chars = Object.entries(collected).reduce(
+      (total, [name, value]) => total + name.length + value.length,
+      0,
+    );
+
+    expect(chars).toBeLessThanOrEqual(8192);
+    expect(Object.keys(collected).length).toBeGreaterThan(0);
+  });
 });
 
 describe("mergeXmlnsDeclarations", () => {
