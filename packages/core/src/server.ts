@@ -199,6 +199,15 @@ export {
 } from "./docx/server/extractDocxText";
 export { docxToMarkdown } from "./docx/server/docxToMarkdown";
 export {
+  FOLIO_YJS_DOCX_MATERIALIZATION_ERROR_CODES,
+  FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME,
+  FOLIO_YJS_UPDATE_MAX_BYTES,
+  FolioYjsDocxMaterializationError,
+  materializeYjsDocx,
+  type FolioYjsDocxMaterializationErrorCode,
+  type MaterializeYjsDocxOptions,
+} from "./docx/server/materializeYjsDocx";
+export {
   createBilingualDocument,
   InvalidBilingualDocumentOptionsError,
   readBilingualDocument,

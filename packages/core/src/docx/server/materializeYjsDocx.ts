@@ -1,0 +1,90 @@
+import { TaggedError } from "better-result";
+import { initProseMirrorDoc } from "y-prosemirror";
+import * as Y from "yjs";
+
+import { fromProseDoc } from "../../prosemirror/conversion/fromProseDoc";
+import { schema } from "../../prosemirror/schema";
+import { parseDocx } from "../parser";
+import { repackDocx } from "../rezip";
+
+export const FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME = "prosemirror";
+export const FOLIO_YJS_UPDATE_MAX_BYTES = 10 * 1024 * 1024;
+
+export const FOLIO_YJS_DOCX_MATERIALIZATION_ERROR_CODES = [
+  "empty_update",
+  "invalid_update",
+  "missing_document",
+  "update_too_large",
+] as const;
+
+export type FolioYjsDocxMaterializationErrorCode =
+  (typeof FOLIO_YJS_DOCX_MATERIALIZATION_ERROR_CODES)[number];
+
+export class FolioYjsDocxMaterializationError extends TaggedError(
+  "FolioYjsDocxMaterializationError",
+)<{
+  code: FolioYjsDocxMaterializationErrorCode;
+  message: string;
+  cause?: unknown;
+}> {}
+
+export type MaterializeYjsDocxOptions = {
+  /** Original DOCX whose package parts and non-body stories must be preserved. */
+  sourceDocx: ArrayBuffer | Uint8Array;
+  /** Complete Yjs state update containing Folio's ProseMirror fragment. */
+  yjsUpdate: Uint8Array;
+};
+
+const readProseMirrorDocument = (yjsUpdate: Uint8Array) => {
+  if (yjsUpdate.byteLength === 0) {
+    throw new FolioYjsDocxMaterializationError({
+      code: "empty_update",
+      message: "Cannot materialize DOCX from an empty Yjs update.",
+    });
+  }
+  if (yjsUpdate.byteLength > FOLIO_YJS_UPDATE_MAX_BYTES) {
+    throw new FolioYjsDocxMaterializationError({
+      code: "update_too_large",
+      message: "Yjs update exceeds the DOCX materialization limit.",
+    });
+  }
+
+  const ydoc = new Y.Doc();
+  try {
+    Y.applyUpdate(ydoc, yjsUpdate);
+    const fragment = ydoc.getXmlFragment(FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME);
+    if (fragment.length === 0) {
+      throw new FolioYjsDocxMaterializationError({
+        code: "missing_document",
+        message: "Yjs update does not contain a Folio document.",
+      });
+    }
+
+    return initProseMirrorDoc(fragment, schema).doc;
+  } catch (error) {
+    if (error instanceof FolioYjsDocxMaterializationError) {
+      throw error;
+    }
+    throw new FolioYjsDocxMaterializationError({
+      code: "invalid_update",
+      message: "Yjs update is not a valid Folio collaboration snapshot.",
+      cause: error,
+    });
+  } finally {
+    ydoc.destroy();
+  }
+};
+
+/**
+ * Materialize a complete Folio Yjs state update into a DOCX while preserving
+ * package parts from the source document. This is the server-side equivalent
+ * of the browser editor's full save path for the main document story.
+ */
+export const materializeYjsDocx = async ({
+  sourceDocx,
+  yjsUpdate,
+}: MaterializeYjsDocxOptions): Promise<ArrayBuffer> => {
+  const baseDocument = await parseDocx(sourceDocx, { preloadFonts: false });
+  const proseMirrorDocument = readProseMirrorDocument(yjsUpdate);
+  return await repackDocx(fromProseDoc(proseMirrorDocument, baseDocument));
+};
