@@ -7,9 +7,13 @@ import { schema } from "../../prosemirror/schema";
 import { parseDocx } from "../parser";
 import { repackDocx } from "../rezip";
 
+/** Yjs fragment that stores Folio's canonical ProseMirror document. */
 export const FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME = "prosemirror";
+
+/** Maximum accepted size of a complete Yjs collaboration state update. */
 export const FOLIO_YJS_UPDATE_MAX_BYTES = 10 * 1024 * 1024;
 
+/** Stable failure codes returned by server-side Yjs-to-DOCX materialization. */
 export const FOLIO_YJS_DOCX_MATERIALIZATION_ERROR_CODES = [
   "empty_update",
   "invalid_update",
@@ -17,9 +21,11 @@ export const FOLIO_YJS_DOCX_MATERIALIZATION_ERROR_CODES = [
   "update_too_large",
 ] as const;
 
+/** Failure code for a rejected Yjs-to-DOCX materialization request. */
 export type FolioYjsDocxMaterializationErrorCode =
   (typeof FOLIO_YJS_DOCX_MATERIALIZATION_ERROR_CODES)[number];
 
+/** Typed failure raised when a collaboration snapshot cannot be materialized. */
 export class FolioYjsDocxMaterializationError extends TaggedError(
   "FolioYjsDocxMaterializationError",
 )<{
@@ -28,6 +34,7 @@ export class FolioYjsDocxMaterializationError extends TaggedError(
   cause?: unknown;
 }> {}
 
+/** Inputs for materializing a complete Yjs state update into a DOCX package. */
 export type MaterializeYjsDocxOptions = {
   /** Original DOCX whose package parts and non-body stories must be preserved. */
   sourceDocx: ArrayBuffer | Uint8Array;

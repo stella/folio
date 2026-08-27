@@ -418,6 +418,15 @@ export const FOLIO_VERSION_COMPARISON_PRIVACY_TRANSFORMS: readonly ["remove-attr
 // @public
 export const FOLIO_VERSION_COMPARISON_SCOPES: readonly ["text", "formatting", "metadata"];
 
+// @public
+export const FOLIO_YJS_DOCX_MATERIALIZATION_ERROR_CODES: readonly ["empty_update", "invalid_update", "missing_document", "update_too_large"];
+
+// @public
+export const FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME = "prosemirror";
+
+// @public
+export const FOLIO_YJS_UPDATE_MAX_BYTES: number;
+
 // @public (undocumented)
 export type FolioAIBlock = {
     id: string;
@@ -1305,6 +1314,16 @@ export type FolioVersionDiffSummaryCounts = {
 };
 
 // @public
+export class FolioYjsDocxMaterializationError extends FolioYjsDocxMaterializationError_base<{
+    code: FolioYjsDocxMaterializationErrorCode;
+    message: string;
+    cause?: unknown;
+}> {}
+
+// @public
+export type FolioYjsDocxMaterializationErrorCode = (typeof FOLIO_YJS_DOCX_MATERIALIZATION_ERROR_CODES)[number];
+
+// @public
 export const generateRedlineDocx: (base: ArrayBuffer, revised: ArrayBuffer, options?: GenerateRedlineDocxOptions) => Promise<GenerateRedlineDocxResult>;
 
 // @public
@@ -1455,6 +1474,15 @@ export const isSequentialFolioBlockId: (id: string) => boolean;
 
 // @public (undocumented)
 export const isSupportedFolioDocumentOperationVersion: (value: unknown) => value is typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
+
+// @public
+export const materializeYjsDocx: (input: MaterializeYjsDocxOptions) => Promise<ArrayBuffer>;
+
+// @public
+export type MaterializeYjsDocxOptions = {
+    sourceDocx: ArrayBuffer | Uint8Array;
+    yjsUpdate: Uint8Array;
+};
 
 // @public (undocumented)
 export const normalizeFolioAIBlockText: (text: string) => string;
