@@ -874,6 +874,8 @@ const finishRepack = async ({
 
   await serializeCommentsToZip(document, outputZip, compressionLevel);
 
+  await dropAttachedTemplateReference(outputZip, compressionLevel);
+
   if (updateModifiedDate && originalCorePropertiesXml) {
     const updatedCoreProperties = updateCoreProperties(originalCorePropertiesXml, {
       updateModifiedDate,
@@ -1039,6 +1041,8 @@ export async function repackDocxFromRaw(
   // Serialize comments
   await serializeCommentsToZip(exportDocument, newZip, compressionLevel);
 
+  await dropAttachedTemplateReference(newZip, compressionLevel);
+
   // Optionally update core properties
   if (updateModifiedDate && rawContent.corePropsXml) {
     const updatedCoreProps = updateCoreProperties(rawContent.corePropsXml, {
@@ -1106,6 +1110,70 @@ export function addCommentsExtendedRelationship(relsXml: string): string {
 
 export function removeCommentsExtendedRelationship(relsXml: string): string {
   return relsXml.replace(/<Relationship\b[^>]*commentsExtended\.xml[^>]*\/>/giu, "");
+}
+
+// ============================================================================
+// SETTINGS PART: ATTACHED TEMPLATE REFERENCE
+// ============================================================================
+
+const SETTINGS_PART = "word/settings.xml";
+const SETTINGS_RELS_PART = "word/_rels/settings.xml.rels";
+
+// The element carries no children and may use any prefix bound to the
+// WordprocessingML namespace, so the local name is matched prefix-agnostically.
+// Applied only to `word/settings.xml`, where `attachedTemplate` is unambiguous.
+const ATTACHED_TEMPLATE_ELEMENT =
+  /<(?:[\w.-]+:)?attachedTemplate\b[^>]*?(?:\/>|>\s*<\/(?:[\w.-]+:)?attachedTemplate>)/giu;
+
+const EXTERNAL_TARGET_MODE = /TargetMode\s*=\s*(?<quote>["'])External\k<quote>/iu;
+
+/** Drop `w:attachedTemplate` from a `word/settings.xml` payload. */
+export function removeAttachedTemplateElement(settingsXml: string): string {
+  return settingsXml.replace(ATTACHED_TEMPLATE_ELEMENT, "");
+}
+
+/** Drop every `TargetMode="External"` entry from a `.rels` payload. */
+export function removeExternalRelationships(relsXml: string): string {
+  return relsXml.replace(/<Relationship\b[^>]*?(?:\/>|>\s*<\/Relationship>)/giu, (relationship) =>
+    EXTERNAL_TARGET_MODE.test(relationship) ? "" : relationship,
+  );
+}
+
+/**
+ * The settings part and its relationships are otherwise copied from the source
+ * package byte for byte. `w:attachedTemplate` resolves through a relationship
+ * whose target sits outside the package (`TargetMode="External"`); the document
+ * model has no field for it, so a preserved copy would carry a reference folio
+ * can neither read nor rewrite. Both sides are filtered on save: the element in
+ * `word/settings.xml` and every external relationship in its `.rels` part.
+ * Hyperlink and external-image relationships live in other `.rels` parts and
+ * are untouched.
+ */
+async function dropAttachedTemplateReference(zip: JSZip, compressionLevel: number): Promise<void> {
+  const settingsFile = zip.file(SETTINGS_PART);
+  if (settingsFile) {
+    const settingsXml = await settingsFile.async("text");
+    const filtered = removeAttachedTemplateElement(settingsXml);
+    if (filtered !== settingsXml) {
+      zip.file(SETTINGS_PART, filtered, {
+        compression: "DEFLATE",
+        compressionOptions: { level: compressionLevel },
+      });
+    }
+  }
+
+  const relsFile = zip.file(SETTINGS_RELS_PART);
+  if (!relsFile) {
+    return;
+  }
+  const relsXml = await relsFile.async("text");
+  const filteredRels = removeExternalRelationships(relsXml);
+  if (filteredRels !== relsXml) {
+    zip.file(SETTINGS_RELS_PART, filteredRels, {
+      compression: "DEFLATE",
+      compressionOptions: { level: compressionLevel },
+    });
+  }
 }
 
 /**

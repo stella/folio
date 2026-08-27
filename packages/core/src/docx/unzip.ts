@@ -28,7 +28,7 @@ import JSZip from "jszip";
 
 import { openDocxBuffer } from "./encryption/openEncryptedDocx";
 import { DOCX_CONTAINER_TYPES, detectDocxContainerType } from "./encryption/containerFormat";
-import { FOLIO_XML_RESOURCE_LIMITS } from "./xmlResourceLimits";
+import { assertXmlResourceLimits, FOLIO_XML_RESOURCE_LIMITS } from "./xmlResourceLimits";
 
 export class DocxSecurityError extends Error {
   constructor(message: string) {
@@ -390,10 +390,21 @@ export async function unzipDocx(
   return content;
 }
 
+/**
+ * Parts that every consumer expands into an object tree. Preflighting them once
+ * here puts the bound on the unzip, so `parseDocx`, the selective save and the
+ * repack path all share it instead of each entry point carrying its own.
+ */
+const PREFLIGHT_XML_PARTS = new Set(["word/document.xml", "word/styles.xml", "word/numbering.xml"]);
+
 function assignXmlContent(
   content: RawDocxContent,
   { path, lowerPath, content: xmlContent }: Extract<ExtractedEntry, { type: "xml" }>,
 ): void {
+  if (PREFLIGHT_XML_PARTS.has(lowerPath)) {
+    assertXmlResourceLimits(xmlContent);
+  }
+
   content.allXml.set(path, xmlContent);
 
   if (lowerPath === "word/document.xml") {

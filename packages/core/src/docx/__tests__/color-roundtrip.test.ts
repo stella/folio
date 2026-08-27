@@ -267,3 +267,38 @@ describe("Combined formatting round-trip", () => {
     expect(serialized).toContain('w:color="FF0000"');
   });
 });
+
+// ============================================================================
+// Shading values that are not colours
+// ============================================================================
+
+describe("Shading colour narrowing", () => {
+  // `w:shd/@w:color` and `@w:fill` are ST_HexColor. The pasted-DOM path already
+  // rejected anything else before storing it; the DOCX path stored it verbatim,
+  // and both feed the same rendered style declaration.
+  test("a fill that is not hex digits is dropped", () => {
+    const { formatting, serialized } = roundTrip(
+      '<w:shd w:val="clear" w:fill="red;background-image:url(https://example.com/a)"/>',
+    );
+
+    expect(formatting?.shading?.fill).toBeUndefined();
+    expect(serialized).not.toContain("background-image");
+  });
+
+  test("a pattern colour that is not hex digits is dropped", () => {
+    const { formatting } = roundTrip(
+      '<w:shd w:val="pct25" w:color="not a colour" w:fill="FFFFFF"/>',
+    );
+
+    expect(formatting?.shading?.color).toBeUndefined();
+    expect(formatting?.shading?.fill?.rgb).toBe("FFFFFF");
+  });
+
+  test("auto keeps its meaning", () => {
+    const { formatting } = roundTrip('<w:shd w:val="clear" w:color="auto" w:fill="auto"/>');
+
+    expect(formatting?.shading?.color).toBeUndefined();
+    expect(formatting?.shading?.fill).toBeUndefined();
+    expect(formatting?.shading?.pattern).toBe("clear");
+  });
+});

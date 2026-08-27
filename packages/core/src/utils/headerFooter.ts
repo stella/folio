@@ -321,33 +321,18 @@ export const createEmptyHeaderFooter = (
   const existingRefs = sectionProps[refKey] ?? [];
   const newRef = { type: hdrFtrType, rId };
 
-  const usedTargets = new Set<string>();
-  for (const relationship of pkg.relationships?.values() ?? []) {
-    if (relationship.target) {
-      usedTargets.add(relationship.target);
-    }
-  }
-  let targetNumber = 1;
-  while (usedTargets.has(`${position}${targetNumber}.xml`)) {
-    targetNumber++;
-  }
-  const relationshipType =
-    position === "header"
-      ? "http://schemas.openxmlformats.org/officeDocument/2006/relationships/header"
-      : "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer";
-  const relationships = new Map(pkg.relationships);
-  relationships.set(rId, {
-    id: rId,
-    type: relationshipType,
-    target: `${position}${targetNumber}.xml`,
-  });
-
+  // The new part is left unmaterialized on purpose: no relationship entry.
+  // `materializeNewHeaderFooterParts` keys off "in the header/footer map,
+  // absent from the relationship map" to pick the part filename, write
+  // `word/_rels/document.xml.rels` and add the `[Content_Types].xml`
+  // override on save. A relationship minted here satisfies that predicate
+  // early, so the save writes none of them and the reference resolves to
+  // nothing.
   return {
     ...document,
     package: {
       ...pkg,
       [mapKey]: newMap,
-      relationships,
       document: {
         ...pkg.document,
         finalSectionProperties: {

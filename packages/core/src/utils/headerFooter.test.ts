@@ -144,14 +144,12 @@ describe("createEmptyHeaderFooter", () => {
     expect(next?.package.document.finalSectionProperties?.headerReferences).toEqual([
       { type: "default", rId },
     ]);
-    expect(next?.package.relationships?.get(rId)).toEqual({
-      id: rId,
-      type: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/header",
-      target: "header1.xml",
-    });
+    // The relationship is minted by the save path, which owns the part
+    // filename, the `.rels` entry and the content-type override together.
+    expect(next?.package.relationships?.has(rId) ?? false).toBe(false);
   });
 
-  test("allocates collision-free relationship ids and part targets", () => {
+  test("allocates collision-free relationship ids", () => {
     const body: DocumentBody = {
       content: [paragraph],
       finalSectionProperties: { marginTop: 1440 },
@@ -176,9 +174,8 @@ describe("createEmptyHeaderFooter", () => {
     const next = createEmptyHeaderFooter(document, "header", false);
 
     expect(next?.package.headers?.has("rId_new_header_default_2")).toBe(true);
-    expect(next?.package.relationships?.get("rId_new_header_default_2")?.target).toBe(
-      "header2.xml",
-    );
+    expect(next?.package.relationships?.has("rId_new_header_default_2")).toBe(false);
+    expect(next?.package.relationships?.get("rIdExisting")?.target).toBe("header1.xml");
   });
 });
 

@@ -206,7 +206,7 @@ function serializePageNumbering(props: SectionProperties): string {
     attrs.push(`w:chapStyle="${intAttr(pageNumbering.chapterStyle)}"`);
   }
   if (pageNumbering.chapterSeparator) {
-    attrs.push(`w:chapSep="${pageNumbering.chapterSeparator}"`);
+    attrs.push(`w:chapSep="${escapeXml(pageNumbering.chapterSeparator)}"`);
   }
 
   return attrs.length > 0 ? `<w:pgNumType ${attrs.join(" ")}/>` : "";
@@ -268,16 +268,22 @@ function serializeBackground(props: SectionProperties): string {
   if (background.color?.auto) {
     attrs.push('w:color="auto"');
   } else if (background.color?.rgb) {
-    attrs.push(`w:color="${background.color.rgb}"`);
+    attrs.push(`w:color="${escapeXml(background.color.rgb)}"`);
   }
   if (background.themeColor ?? background.color?.themeColor) {
-    attrs.push(`w:themeColor="${background.themeColor ?? background.color?.themeColor}"`);
+    attrs.push(
+      `w:themeColor="${escapeXml(background.themeColor ?? background.color?.themeColor ?? "")}"`,
+    );
   }
   if (background.themeTint ?? background.color?.themeTint) {
-    attrs.push(`w:themeTint="${background.themeTint ?? background.color?.themeTint}"`);
+    attrs.push(
+      `w:themeTint="${escapeXml(background.themeTint ?? background.color?.themeTint ?? "")}"`,
+    );
   }
   if (background.themeShade ?? background.color?.themeShade) {
-    attrs.push(`w:themeShade="${background.themeShade ?? background.color?.themeShade}"`);
+    attrs.push(
+      `w:themeShade="${escapeXml(background.themeShade ?? background.color?.themeShade ?? "")}"`,
+    );
   }
 
   return attrs.length > 0 ? `<w:background ${attrs.join(" ")}/>` : "";

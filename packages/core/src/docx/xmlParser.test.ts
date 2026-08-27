@@ -4,6 +4,7 @@ import {
   cloneWithXmlnsDeclarations,
   collectXmlnsDeclarations,
   elementToXml,
+  mergeXmlnsDeclarations,
   NAMESPACES,
   parseOnOffValue,
   parseXmlDocument,
@@ -111,5 +112,49 @@ describe("collectXmlnsDeclarations", () => {
     const element: XmlElement = { type: "element", name: "w:pict", attributes };
 
     expect(Object.keys(collectXmlnsDeclarations(element))).toHaveLength(64);
+  });
+
+  test("drops a declaration whose value is longer than a namespace URI", () => {
+    const element: XmlElement = {
+      type: "element",
+      name: "w:pict",
+      attributes: {
+        "xmlns:a": "urn:example:a",
+        "xmlns:b": `urn:${"x".repeat(600)}`,
+      },
+    };
+
+    expect(collectXmlnsDeclarations(element)).toEqual({ "xmlns:a": "urn:example:a" });
+  });
+});
+
+describe("mergeXmlnsDeclarations", () => {
+  test("merges own declarations over the inherited set", () => {
+    const element: XmlElement = {
+      type: "element",
+      name: "w:p",
+      attributes: { "xmlns:w": "urn:w:new", "xmlns:v": "urn:v" },
+    };
+
+    expect(mergeXmlnsDeclarations({ "xmlns:w": "urn:w:old" }, element)).toEqual({
+      "xmlns:w": "urn:w:new",
+      "xmlns:v": "urn:v",
+    });
+  });
+
+  test("keeps the inherited set when merging would exceed the chain budget", () => {
+    // Each ancestor contributes to the set a captured subtree replays, so the
+    // accumulated size is bounded as well as the per-element count.
+    const inherited: Record<string, string> = {};
+    for (let i = 0; i < 40; i++) {
+      inherited[`xmlns:in${String(i)}`] = `urn:${"y".repeat(200)}:${String(i)}`;
+    }
+    const attributes: Record<string, string> = {};
+    for (let i = 0; i < 40; i++) {
+      attributes[`xmlns:own${String(i)}`] = `urn:${"z".repeat(200)}:${String(i)}`;
+    }
+    const element: XmlElement = { type: "element", name: "w:p", attributes };
+
+    expect(mergeXmlnsDeclarations(inherited, element)).toBe(inherited);
   });
 });

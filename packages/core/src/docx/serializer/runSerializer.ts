@@ -209,19 +209,19 @@ export function serializeTextFormatting(formatting: TextFormatting | undefined):
       fontAttrs.push(`w:hint="${escapeXml(formatting.fontFamily.hint)}"`);
     }
     if (formatting.fontFamily.asciiTheme) {
-      fontAttrs.push(`w:asciiTheme="${formatting.fontFamily.asciiTheme}"`);
+      fontAttrs.push(`w:asciiTheme="${escapeXml(formatting.fontFamily.asciiTheme)}"`);
     }
     if (formatting.fontFamily.hAnsiTheme) {
-      fontAttrs.push(`w:hAnsiTheme="${formatting.fontFamily.hAnsiTheme}"`);
+      fontAttrs.push(`w:hAnsiTheme="${escapeXml(formatting.fontFamily.hAnsiTheme)}"`);
     }
     if (formatting.fontFamily.eastAsiaTheme) {
-      fontAttrs.push(`w:eastAsiaTheme="${formatting.fontFamily.eastAsiaTheme}"`);
+      fontAttrs.push(`w:eastAsiaTheme="${escapeXml(formatting.fontFamily.eastAsiaTheme)}"`);
     }
     if (formatting.fontFamily.csTheme) {
       // OOXML spells this attribute all-lowercase (`w:cstheme`), unlike its
       // camelCase siblings above; the parser reads `w:cstheme`, so emitting
       // `w:csTheme` would silently drop the CS theme font on round-trip.
-      fontAttrs.push(`w:cstheme="${formatting.fontFamily.csTheme}"`);
+      fontAttrs.push(`w:cstheme="${escapeXml(formatting.fontFamily.csTheme)}"`);
     }
     if (fontAttrs.length > 0) {
       parts.push(`<w:rFonts ${fontAttrs.join(" ")}/>`);

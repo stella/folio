@@ -34,6 +34,26 @@ describe("parseDocx — header with EMF media", () => {
     expect(getHeaderFooterVerbatimXml(header!)).toContain("<w:object");
   });
 
+  test("media outside the relationship graph is stored without conversion", async () => {
+    // Conversion is driven by references, not by what the ZIP happens to hold:
+    // a `word/media/` entry no relationship points at is kept byte for byte so
+    // the round-trip is unchanged, but nothing decodes or re-encodes it.
+    const zip = await JSZip.loadAsync(load(FIXTURE));
+    const referencedBytes = await zip.file("word/media/image1.emf")!.async("uint8array");
+    zip.file("word/media/orphan.emf", referencedBytes);
+    const seeded = await zip.generateAsync({ type: "arraybuffer" });
+
+    const doc = await parseDocx(seeded, { preloadFonts: false });
+
+    const referenced = doc.package.media?.get("word/media/image1.emf");
+    expect(referenced?.dataUrl?.startsWith("data:image/png")).toBe(true);
+
+    const orphan = doc.package.media?.get("word/media/orphan.emf");
+    expect(orphan).toBeDefined();
+    expect(orphan!.data.byteLength).toBe(referencedBytes.byteLength);
+    expect(orphan!.dataUrl?.startsWith("data:image/x-emf")).toBe(true);
+  });
+
   test("mediaResolver hook can override the display URL", async () => {
     const seen: string[] = [];
     const doc = await parseDocx(load(FIXTURE), {

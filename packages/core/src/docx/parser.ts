@@ -35,7 +35,11 @@ import type {
 import { toArrayBuffer } from "../utils/docxInput";
 import type { DocxInput } from "../utils/docxInput";
 import { loadFontsWithMapping } from "../utils/fontLoader";
-import { convertTiffToPngDataUrl, isTiffMimeType } from "../utils/tiffConverter";
+import {
+  convertTiffToPngDataUrl,
+  isTiffMimeType,
+  MAX_PACKAGE_TIFF_PIXELS,
+} from "../utils/tiffConverter";
 import { parseComments } from "./commentParser";
 import { normalizeCommentReferences } from "./commentReferenceNormalization";
 import { detectDocxConformanceClass } from "./conformance";
@@ -477,16 +481,48 @@ function copyBytesToArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return buffer;
 }
 
+/**
+ * Media paths reachable from the package relationship graph: the document's own
+ * relationships plus every `.rels` part the unzip kept. Entries outside it are
+ * still stored so a round-trip keeps their bytes, but nothing decodes them.
+ */
+function collectReferencedMediaPaths(raw: RawDocxContent, rels: RelationshipMap): Set<string> {
+  const referenced = new Set<string>();
+
+  const addTargets = (map: RelationshipMap, relsPath: string): void => {
+    for (const relationship of map.values()) {
+      if (!relationship.target || relationship.targetMode === "External") {
+        continue;
+      }
+      const partPath = resolveRelativePath(relsPath, relationship.target);
+      referenced.add(partPath.toLowerCase());
+      referenced.add(partPath.replace(/^word\//u, "").toLowerCase());
+    }
+  };
+
+  addTargets(rels, DOCUMENT_RELATIONSHIPS_PATH);
+  for (const [path, xml] of raw.allXml.entries()) {
+    if (path.toLowerCase().endsWith(".rels")) {
+      addTargets(parseRelationships(xml), path);
+    }
+  }
+
+  return referenced;
+}
+
 async function buildMediaMap(
   raw: RawDocxContent,
-  _rels: RelationshipMap,
+  rels: RelationshipMap,
 ): Promise<Map<string, MediaFile>> {
   const media = new Map<string, MediaFile>();
+  const referenced = collectReferencedMediaPaths(raw, rels);
+  let remainingTiffPixels = MAX_PACKAGE_TIFF_PIXELS;
 
   // Process each media file
   for (const [path, data] of raw.media.entries()) {
     const filename = path.split("/").pop() || path;
     const mimeType = getMediaMimeType(path);
+    const isReferenced = referenced.has(path.toLowerCase());
 
     // TIFF: browsers don't render TIFF in <img>, so decode + re-encode as
     // PNG eagerly. The mimeType, data, and filename extension are all
@@ -495,10 +531,11 @@ async function buildMediaMap(
     // dimensions exceed the safety cap), fall through to lazy attachment
     // with the original TIFF data — the round-trip survives even if the
     // in-browser preview is broken.
-    if (isTiffMimeType(mimeType)) {
+    if (isReferenced && isTiffMimeType(mimeType) && remainingTiffPixels > 0) {
       // oxlint-disable-next-line no-await-in-loop -- TIFF decode uses a shared Canvas; conversions must stay serialized to avoid contention
-      const converted = await convertTiffToPngDataUrl(data);
+      const converted = await convertTiffToPngDataUrl(data, remainingTiffPixels);
       if (converted) {
+        remainingTiffPixels -= converted.pixels;
         const mediaFile: MediaFile = {
           path,
           filename: filename.replace(/\.tiff?$/iu, ".png"),
@@ -515,7 +552,8 @@ async function buildMediaMap(
       }
     }
 
-    const raster = isMetafileMimeType(mimeType) ? extractMetafileRaster(data) : null;
+    const raster =
+      isReferenced && isMetafileMimeType(mimeType) ? extractMetafileRaster(data) : null;
     if (raster) {
       const mediaFile: MediaFile = {
         path,

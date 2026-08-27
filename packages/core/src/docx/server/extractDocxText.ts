@@ -282,6 +282,17 @@ const MAX_TABLE_COLUMNS = 256;
 /** Bound the mutual recursion between a cell and the tables nested inside it. */
 const MAX_NESTED_TABLE_DEPTH = 8;
 
+/** Rows read from one `w:tbl`. The column cap alone leaves row count unbounded. */
+const MAX_TABLE_ROWS = 8192;
+
+/**
+ * Characters one extraction emits, shared by the body and every header/footer
+ * part. Element count is bounded at unzip, but a bounded element count still
+ * renders an unbounded number of table rows once `w:gridSpan` padding and the
+ * GFM scaffolding are counted, so the emitted side carries its own ceiling.
+ */
+const MAX_EXTRACTED_CHARS = 8_000_000;
+
 /**
  * Collect a table's `w:tr`, or a row's `w:tc`, seeing through the wrappers Word
  * puts around them (`w:sdt` / `w:sdtContent` content controls, `w:customXml`).
@@ -508,6 +519,9 @@ const readTableGrid = (table: XmlElement): TableGrid => {
       columnCount = columns.length;
     }
     rows.push(columns);
+    if (rows.length >= MAX_TABLE_ROWS) {
+      break;
+    }
   }
 
   return { rows, columnCount, firstRowIsHeader };
@@ -579,11 +593,17 @@ const renderTableRows = (table: XmlElement, tableIndex: number): RenderedTableRo
 // Container walk
 // ---------------------------------------------------------------------------
 
+/** Mutable remainder of {@link MAX_EXTRACTED_CHARS}, shared across parts. */
+type CharBudget = { remaining: number };
+
+const createCharBudget = (): CharBudget => ({ remaining: MAX_EXTRACTED_CHARS });
+
 type ExtractContainerOptions = {
   container: XmlElement;
   source: DocxParagraphSource;
   startIndex: number;
   startTableIndex: number;
+  budget: CharBudget;
 };
 
 type ExtractContainerResult = {
@@ -598,6 +618,7 @@ const extractContainer = ({
   source,
   startIndex,
   startTableIndex,
+  budget,
 }: ExtractContainerOptions): ExtractContainerResult => {
   const paragraphs: ExtractedDocxParagraph[] = [];
   let charCount = 0;
@@ -614,6 +635,7 @@ const extractContainer = ({
 
     paragraphs.push(entry);
     charCount += text.length;
+    budget.remaining -= text.length;
   };
 
   const pushTableRow = ({ text, position }: RenderedTableRow) => {
@@ -624,6 +646,7 @@ const extractContainer = ({
       tableRow: position,
     });
     charCount += text.length;
+    budget.remaining -= text.length;
   };
 
   /**
@@ -634,6 +657,9 @@ const extractContainer = ({
    */
   const walkBlocks = (node: XmlElement) => {
     for (const child of childElements(node)) {
+      if (budget.remaining <= 0) {
+        return;
+      }
       const childName = wordElementName(child);
       if (childName === "tbl") {
         for (const row of renderTableRows(child, startTableIndex + tableCount)) {
@@ -661,6 +687,7 @@ type ExtractPartsOptions = {
   startTableIndex: number;
   /** Part paths to read, in extraction order — see {@link resolveReferencedHeaderFooterParts}. */
   paths: readonly string[];
+  budget: CharBudget;
 };
 
 const extractParts = async ({
@@ -670,6 +697,7 @@ const extractParts = async ({
   startIndex,
   startTableIndex,
   paths,
+  budget,
 }: ExtractPartsOptions): Promise<ExtractContainerResult> => {
   const paragraphs: ExtractedDocxParagraph[] = [];
   let charCount = 0;
@@ -692,6 +720,7 @@ const extractParts = async ({
       source,
       startIndex: nextIndex,
       startTableIndex: startTableIndex + tableCount,
+      budget,
     });
     for (const paragraph of result.paragraphs) {
       paragraphs.push(paragraph);
@@ -794,6 +823,7 @@ export const extractDocxText = async (
   }
 
   const referencedParts = await resolveReferencedHeaderFooterParts(archive, root);
+  const budget = createCharBudget();
 
   const headers = await extractParts({
     archive,
@@ -802,12 +832,14 @@ export const extractDocxText = async (
     startIndex: 0,
     startTableIndex: 0,
     paths: referencedParts.headers,
+    budget,
   });
   const bodyResult = extractContainer({
     container: body,
     source: "body",
     startIndex: headers.paragraphs.length,
     startTableIndex: headers.tableCount,
+    budget,
   });
   const footers = await extractParts({
     archive,
@@ -816,6 +848,7 @@ export const extractDocxText = async (
     startIndex: headers.paragraphs.length + bodyResult.paragraphs.length,
     startTableIndex: headers.tableCount + bodyResult.tableCount,
     paths: referencedParts.footers,
+    budget,
   });
 
   return {

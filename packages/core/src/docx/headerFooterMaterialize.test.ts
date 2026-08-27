@@ -27,6 +27,7 @@ import {
   validateDocx,
 } from "./rezip";
 import { attemptSelectiveSave } from "./selectiveSave";
+import { createEmptyHeaderFooter } from "../utils/headerFooter";
 import { unzipDocx } from "./unzip";
 
 const headerWithInlineImage = (rId: string): HeaderFooter => ({
@@ -262,5 +263,42 @@ describe("header/footer part materialization on save", () => {
     ).join("\n");
     expect(allHeaderXml).toContain("HEADER-ONE");
     expect(allHeaderXml).toContain("HEADER-TWO");
+  });
+
+  test("materializes a header added through createEmptyHeaderFooter", async () => {
+    // The editor's add-header flow enters through `createEmptyHeaderFooter`,
+    // which leaves the new part unmaterialized. Anything that mints the
+    // relationship earlier makes `hasUnmaterializedHeaderFooter` false, and the
+    // save then writes neither the `.rels` entry nor the content-type override
+    // while `w:headerReference` still names the rId.
+    const base = await createEmptyDocx();
+    const doc = await parseDocx(base, { preloadFonts: false });
+    doc.package.document.finalSectionProperties = {
+      ...doc.package.document.finalSectionProperties,
+      marginTop: 1440,
+    };
+
+    const withHeader = createEmptyHeaderFooter(doc, "header", false);
+    expect(withHeader).not.toBeNull();
+    expect(hasUnmaterializedHeaderFooter(withHeader!)).toBe(true);
+
+    const rId = [...(withHeader!.package.headers?.keys() ?? [])][0]!;
+    const out = await repackDocx(withHeader!, { updateModifiedDate: false });
+    expect((await validateDocx(out)).valid).toBe(true);
+
+    const zip = await JSZip.loadAsync(out);
+    const headerPath = Object.keys(zip.files).find((p) => /^word\/header\d+\.xml$/u.test(p));
+    expect(headerPath).toBeDefined();
+
+    const documentXml = await zip.file("word/document.xml")!.async("text");
+    expect(documentXml).toContain(`r:id="${rId}"`);
+
+    const rels = await zip.file("word/_rels/document.xml.rels")!.async("text");
+    expect(rels).toContain(`Id="${rId}"`);
+    expect(rels).toContain(`Target="${headerPath!.replace(/^word\//u, "")}"`);
+
+    expect(await zip.file("[Content_Types].xml")!.async("text")).toContain(
+      `PartName="/${headerPath}"`,
+    );
   });
 });

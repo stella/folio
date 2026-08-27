@@ -32,6 +32,8 @@ import {
   COMMENTS_EXTENDED_PART_LOWER,
   addCommentsExtendedOverride,
   addCommentsExtendedRelationship,
+  removeAttachedTemplateElement,
+  removeExternalRelationships,
 } from "./rezip";
 import { DEFAULT_SELECTIVE_SAVE_MAX_BYTES } from "./selectiveSaveFlags";
 import {
@@ -365,6 +367,32 @@ export type SelectiveSaveOptions = {
  * Returns the saved ArrayBuffer, or null if selective save is not possible
  * (caller should fall back to full repack).
  */
+/**
+ * Queue the filtered `word/settings.xml` and `word/_rels/settings.xml.rels`
+ * when the source package carries an attached-template reference. Mirrors
+ * `dropAttachedTemplateReference` on the full-repack path.
+ */
+const queueSettingsUpdates = async (zip: JSZip, updates: Map<string, string>): Promise<void> => {
+  const settingsFile = zip.file("word/settings.xml");
+  if (settingsFile) {
+    const settingsXml = await settingsFile.async("text");
+    const filtered = removeAttachedTemplateElement(settingsXml);
+    if (filtered !== settingsXml) {
+      updates.set("word/settings.xml", filtered);
+    }
+  }
+
+  const relsFile = zip.file("word/_rels/settings.xml.rels");
+  if (!relsFile) {
+    return;
+  }
+  const relsXml = await relsFile.async("text");
+  const filteredRels = removeExternalRelationships(relsXml);
+  if (filteredRels !== relsXml) {
+    updates.set("word/_rels/settings.xml.rels", filteredRels);
+  }
+};
+
 export async function attemptSelectiveSave(
   doc: Document,
   originalBuffer: ArrayBuffer,
@@ -562,6 +590,10 @@ export async function attemptSelectiveSave(
     for (const [path, xml] of headerFooterUpdates) {
       updates.set(path, xml);
     }
+
+    // Same settings filtering the full-repack path applies, so both saves emit
+    // the same package for a source carrying an attached-template reference.
+    await queueSettingsUpdates(zip, updates);
 
     // Update modification date in docProps/core.xml
     const corePropsFile = zip.file("docProps/core.xml");

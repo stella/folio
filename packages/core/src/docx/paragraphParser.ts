@@ -64,6 +64,7 @@ import { consolidateParagraphContent } from "./runConsolidator";
 import { parseRun, parseRunProperties } from "./runParser";
 import { parseSdtProperties } from "./sdtProperties";
 import { parseSectionProperties } from "./sectionParser";
+import { isValidHexColor } from "../utils/colorResolver";
 import type { StyleMap } from "./styleParser";
 import {
   findChild,
@@ -165,13 +166,16 @@ function parseShadingProperties(shd: XmlElement | null): ShadingProperties | und
 
   const props: ShadingProperties = {};
 
+  // `w:color` and `w:fill` are ST_HexColor: `auto` or hex digits. Both values
+  // are resolved straight into a rendered style declaration, so a value that is
+  // not a colour is dropped here rather than carried through the model.
   const color = getAttribute(shd, "w", "color");
-  if (color && color !== "auto") {
+  if (color && color !== "auto" && isValidHexColor(color)) {
     props.color = { rgb: color };
   }
 
   const fill = getAttribute(shd, "w", "fill");
-  if (fill && fill !== "auto") {
+  if (fill && fill !== "auto" && isValidHexColor(fill)) {
     props.fill = { rgb: fill };
   }
 

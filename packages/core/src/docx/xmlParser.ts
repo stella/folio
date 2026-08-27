@@ -1085,6 +1085,29 @@ export function findAllDeep(
 const MAX_XMLNS_DECLARATIONS_PER_ELEMENT = 64;
 
 /**
+ * Sanity cap on one declaration's value. Namespace URIs are short; a longer
+ * binding is dropped rather than replayed onto every captured subtree that
+ * inherits from the declaring element.
+ */
+const MAX_XMLNS_VALUE_LENGTH = 512;
+
+/**
+ * Sanity cap on the accumulated declaration set carried down one ancestor
+ * chain. The per-element count and per-value length bound a single element;
+ * this bounds what the chain hands to a captured `w:pict` subtree, since every
+ * ancestor contributes and the merged set is replayed on each capture.
+ */
+const MAX_XMLNS_DECLARATION_CHARS = 8192;
+
+const xmlnsDeclarationChars = (declarations: Record<string, string>): number => {
+  let chars = 0;
+  for (const [name, value] of Object.entries(declarations)) {
+    chars += name.length + value.length;
+  }
+  return chars;
+};
+
+/**
  * Collect every `xmlns` / `xmlns:*` declaration from an element's attributes.
  *
  * The serializer's hard-coded root namespaces only cover canonical prefixes
@@ -1105,10 +1128,18 @@ export function collectXmlnsDeclarations(element: XmlElement): Record<string, st
       break;
     }
     const value = attrs[key];
-    if ((key === "xmlns" || key.startsWith("xmlns:")) && value !== undefined) {
-      out[key] = String(value);
-      declarationCount += 1;
+    if (key !== "xmlns" && !key.startsWith("xmlns:")) {
+      continue;
     }
+    if (value === undefined) {
+      continue;
+    }
+    const declaration = String(value);
+    if (declaration.length > MAX_XMLNS_VALUE_LENGTH) {
+      continue;
+    }
+    out[key] = declaration;
+    declarationCount += 1;
   }
   return out;
 }
@@ -1127,7 +1158,8 @@ export function mergeXmlnsDeclarations(
 ): Record<string, string> {
   const own = collectXmlnsDeclarations(element);
   for (const _key in own) {
-    return { ...inherited, ...own };
+    const merged = { ...inherited, ...own };
+    return xmlnsDeclarationChars(merged) > MAX_XMLNS_DECLARATION_CHARS ? inherited : merged;
   }
   return inherited;
 }

@@ -64,6 +64,7 @@ import { isTextBoxDrawing } from "./textBoxParser";
 import { parseVmlImageContent } from "./vmlImageParser";
 import { resolveThemeFontRef } from "./themeParser";
 import { requiresXmlSpacePreserve } from "./textWhitespace";
+import { isValidHexColor } from "../utils/colorResolver";
 import {
   cloneWithXmlnsDeclarations,
   findAllDeep,
@@ -134,13 +135,16 @@ function parseShadingProperties(shd: XmlElement | null): ShadingProperties | und
 
   const props: ShadingProperties = {};
 
+  // `w:color` and `w:fill` are ST_HexColor: `auto` or hex digits. Both values
+  // are resolved straight into a rendered style declaration, so a value that is
+  // not a colour is dropped here rather than carried through the model.
   const color = getAttribute(shd, "w", "color");
-  if (color && color !== "auto") {
+  if (color && color !== "auto" && isValidHexColor(color)) {
     props.color = { rgb: color };
   }
 
   const fill = getAttribute(shd, "w", "fill");
-  if (fill && fill !== "auto") {
+  if (fill && fill !== "auto" && isValidHexColor(fill)) {
     props.fill = { rgb: fill };
   }
 
@@ -508,7 +512,7 @@ export function parseRunProperties(
       }
     }
 
-    const hAnsiTheme = getAttribute(rFonts, "w", "hAnsiTheme");
+    const hAnsiTheme = narrowEnum(getAttribute(rFonts, "w", "hAnsiTheme"), FontThemeSchema);
     if (hAnsiTheme) {
       fontFamily.hAnsiTheme = hAnsiTheme;
       if (theme && !fontFamily.hAnsi) {
@@ -519,7 +523,7 @@ export function parseRunProperties(
       }
     }
 
-    const eastAsiaTheme = getAttribute(rFonts, "w", "eastAsiaTheme");
+    const eastAsiaTheme = narrowEnum(getAttribute(rFonts, "w", "eastAsiaTheme"), FontThemeSchema);
     if (eastAsiaTheme) {
       fontFamily.eastAsiaTheme = eastAsiaTheme;
       if (theme && !fontFamily.eastAsia) {
@@ -530,7 +534,7 @@ export function parseRunProperties(
       }
     }
 
-    const csTheme = getAttribute(rFonts, "w", "cstheme");
+    const csTheme = narrowEnum(getAttribute(rFonts, "w", "cstheme"), FontThemeSchema);
     if (csTheme) {
       fontFamily.csTheme = csTheme;
       if (theme && !fontFamily.cs) {

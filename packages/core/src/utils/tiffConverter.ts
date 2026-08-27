@@ -17,6 +17,14 @@
  */
 const MAX_TIFF_PIXELS = 64_000_000;
 
+/**
+ * Budget shared by every TIFF in one package. The per-image cap bounds a single
+ * decode; without a running total a package of many large TIFFs still adds up.
+ * Callers pass what is left of the budget and subtract the pixels each
+ * conversion reports.
+ */
+export const MAX_PACKAGE_TIFF_PIXELS = 256_000_000;
+
 export function isTiffMimeType(mimeType: string): boolean {
   const lower = mimeType.toLowerCase();
   return lower === "image/tiff" || lower === "image/tif";
@@ -25,10 +33,13 @@ export function isTiffMimeType(mimeType: string): boolean {
 export type ConvertedTiff = {
   dataUrl: string;
   data: ArrayBuffer;
+  /** Pixels decoded, so callers can draw down a package-wide budget. */
+  pixels: number;
 };
 
 export async function convertTiffToPngDataUrl(
   tiffData: ArrayBuffer,
+  maxPixels: number = MAX_TIFF_PIXELS,
 ): Promise<ConvertedTiff | null> {
   // Bail out before any decode if Canvas isn't available — without it we
   // can't produce a PNG anyway, and TIFF decoding + RGBA conversion would
@@ -55,7 +66,7 @@ export async function convertTiffToPngDataUrl(
     if (!declaredWidth || !declaredHeight) {
       return null;
     }
-    if (declaredWidth * declaredHeight > MAX_TIFF_PIXELS) {
+    if (declaredWidth * declaredHeight > Math.min(maxPixels, MAX_TIFF_PIXELS)) {
       return null;
     }
 
@@ -91,7 +102,7 @@ export async function convertTiffToPngDataUrl(
     if (!data) {
       return null;
     }
-    return { dataUrl, data };
+    return { dataUrl, data, pixels: width * height };
   } catch {
     return null;
   }
