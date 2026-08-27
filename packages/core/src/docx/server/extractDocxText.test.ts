@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
 import { RELATIONSHIP_TYPES } from "../relsParser";
+import { DocxArchiveError } from "./boundedArchive";
 import { extractDocxText } from "./extractDocxText";
 
 const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
@@ -542,6 +543,21 @@ describe("extractDocxText", () => {
       [{ paragraphs: [{ text: "only" }] }, { paragraphs: [] }, { paragraphs: [] }],
       [{ paragraphs: [] }, { paragraphs: [] }, { paragraphs: [] }],
     ]);
+  });
+
+  test("rejects tables that exceed the row extraction budget", async () => {
+    const wideRow = row(cell(paragraph("wide"), `<w:gridSpan w:val="256"/>`));
+    const bytes = await makeDocx({ body: table(wideRow + row("").repeat(10_000)) });
+
+    await expect(extractDocxText(bytes)).rejects.toBeInstanceOf(DocxArchiveError);
+  });
+
+  test("rejects tables that exceed the retained character budget", async () => {
+    const bytes = await makeDocx({
+      body: table(row(cell(paragraph("x".repeat(8 * 1024 * 1024 + 1))))),
+    });
+
+    await expect(extractDocxText(bytes)).rejects.toBeInstanceOf(DocxArchiveError);
   });
 
   test("emits nothing for a table that has no cell at all", async () => {
