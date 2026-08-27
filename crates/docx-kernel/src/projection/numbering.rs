@@ -49,6 +49,7 @@ struct NumberingInstance {
 pub(super) struct NumberingCatalog {
     abstracts: HashMap<u32, AbstractNumbering>,
     instances: HashMap<u32, NumberingInstance>,
+    style_links: HashMap<String, Option<u32>>,
 }
 
 impl NumberingCatalog {
@@ -106,15 +107,12 @@ impl NumberingCatalog {
             let Some(style_link) = current.num_style_link.as_deref() else {
                 return Err(StructuralFactUnknownReason::UnsupportedNumbering);
             };
-            let mut candidates = self.abstracts.iter().filter_map(|(id, candidate)| {
-                (candidate.style_link.as_deref() == Some(style_link)).then_some(*id)
-            });
-            current_id = candidates
-                .next()
+            current_id = self
+                .style_links
+                .get(style_link)
+                .copied()
+                .flatten()
                 .ok_or(StructuralFactUnknownReason::UnsupportedNumbering)?;
-            if candidates.next().is_some() {
-                return Err(StructuralFactUnknownReason::UnsupportedNumbering);
-            }
         }
         Err(StructuralFactUnknownReason::UnsupportedNumbering)
     }
@@ -452,6 +450,13 @@ impl NumberingParser {
                     .current_abstract
                     .take()
                     .ok_or(ProjectionError::InvalidNumberingXml)?;
+                if let Some(style_link) = current.value.style_link.as_ref() {
+                    self.catalog
+                        .style_links
+                        .entry(style_link.clone())
+                        .and_modify(|id| *id = None)
+                        .or_insert(Some(current.id));
+                }
                 if self
                     .catalog
                     .abstracts
@@ -663,5 +668,17 @@ mod tests {
         let cyclic_catalog =
             parse_numbering(cyclic.as_bytes(), 4).expect("bounded cycle should parse");
         assert!(cyclic_catalog.indentation(3, 0).is_err());
+
+        let ambiguous_link = format!(
+            r#"<w:numbering xmlns:w="{W}">
+              <w:abstractNum w:abstractNumId="1"><w:styleLink w:val="A"/><w:lvl w:ilvl="0"/></w:abstractNum>
+              <w:abstractNum w:abstractNumId="2"><w:styleLink w:val="A"/><w:lvl w:ilvl="0"/></w:abstractNum>
+              <w:abstractNum w:abstractNumId="3"><w:numStyleLink w:val="A"/></w:abstractNum>
+              <w:num w:numId="4"><w:abstractNumId w:val="3"/></w:num>
+            </w:numbering>"#
+        );
+        let ambiguous_catalog =
+            parse_numbering(ambiguous_link.as_bytes(), 6).expect("ambiguous link should parse");
+        assert!(ambiguous_catalog.indentation(4, 0).is_err());
     }
 }
