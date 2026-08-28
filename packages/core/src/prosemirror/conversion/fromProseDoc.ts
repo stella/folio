@@ -3255,12 +3255,15 @@ function tableCellAttrsToFormatting(attrs: TableCellAttrs): TableCellFormatting 
       delete result.vMerge;
     }
     const cellWidth = attrs.width;
-    // Width: keep null absent while preserving explicit width=0 values.
-    if (cellWidth !== undefined) {
+    // A merge clears an unsafe preferred width with the schema's null value;
+    // do not resurrect `_originalFormatting.width` from the first source cell.
+    if (typeof cellWidth === "number") {
       result.width = {
         value: cellWidth,
         type: attrs.widthType ?? "dxa",
       };
+    } else {
+      delete result.width;
     }
     if (attrs.verticalAlign !== (orig.verticalAlign ?? undefined)) {
       if (attrs.verticalAlign) {
@@ -3294,7 +3297,7 @@ function tableCellAttrsToFormatting(attrs: TableCellAttrs): TableCellFormatting 
   const hasFormatting =
     attrs.colspan > 1 ||
     attrs.rowspan > 1 ||
-    cellWidth !== undefined ||
+    typeof cellWidth === "number" ||
     attrs.verticalAlign ||
     backgroundChanged ||
     attrs.borders ||
@@ -3312,7 +3315,7 @@ function tableCellAttrsToFormatting(attrs: TableCellAttrs): TableCellFormatting 
   if (attrs.rowspan > 1) {
     f.vMerge = "restart";
   }
-  if (cellWidth !== undefined) {
+  if (typeof cellWidth === "number") {
     f.width = {
       value: cellWidth,
       type: attrs.widthType ?? "dxa",

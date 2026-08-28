@@ -343,6 +343,18 @@
   color: oklch(from var(--doc-run-color) clamp(0, 1.22 - 0.95 * l, 1) calc(c * 0.6) h) !important;
 }
 
+/* An authored run background is a local color surface: the painter chooses
+ * its foreground from direct/theme text color or automatic contrast. This
+ * rule must follow both broad dark-canvas rules above so their !important
+ * inversion cannot repaint black-on-yellow as white-on-yellow. */
+.dark
+  .layout-page
+  [style*="--doc-run-background-text-color"].docx-run-background-text:not(.docx-insertion):not(
+    .docx-deletion
+  ) {
+  color: var(--doc-run-background-text-color) !important;
+}
+
 /* Tracked-change spans color from --tc-color (author colour), not
  * --doc-run-color, so invert that channel instead — otherwise the broad rule
  * above would repaint the red insertions/deletions as inverted body grey.

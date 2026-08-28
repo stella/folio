@@ -6,7 +6,10 @@
  * cloned per language, so both columns count independently (1. / 1. instead of
  * 1. / 2.) and stay live in Word. Right-column paragraphs receive fresh
  * `paraId`s so callers can address each row later (for example to replace the
- * placeholder copy with a translation by block id).
+ * placeholder copy with a translation by block id). Horizontal paragraph
+ * geometry is projected into the half-width cells: full-page indents and tab
+ * stops otherwise place signature fields outside their column and let prose
+ * overlap the translation.
  *
  * Section breaks cannot live inside a table cell, so the body is split at
  * paragraphs carrying `sectionProperties`: each section becomes its own table
@@ -113,6 +116,8 @@ const HALF_WIDTH_PCT = 2500;
 const A4_TEXT_WIDTH_TWIPS = 9072;
 const ROW_ID_NAMESPACE = "folio-bilingual";
 const BILINGUAL_TABLE_STYLE_ID = "FolioBilingualTranslation";
+const MIN_COLUMN_TEXT_WIDTH_TWIPS = 720;
+const MIN_TAB_TRAILING_WIDTH_TWIPS = 360;
 
 const GRID_BORDER = { style: "single", size: 4, space: 0 } as const;
 
@@ -203,7 +208,7 @@ export function createBilingualDocument(
       }
       const { copy, ref } = copyParagraph(block);
       rows.push({ kind: classifyParagraph(block, styleById), rowId: ref.targetParaId, ...ref });
-      sectionRows.push(buildRow(block, copy));
+      sectionRows.push(buildRow(block, copy, styleById, textWidth));
       continue;
     }
     const paragraphs = collectTableParagraphs(block)
@@ -612,11 +617,116 @@ const collectTableParagraphs = (table: Table): Paragraph[] => {
 // Output table
 // ----------------------------------------------------------------------------
 
-const buildRow = (left: Paragraph, right: Paragraph): Table["rows"][number] => ({
-  type: "tableRow",
-  formatting: { cantSplit: true },
-  cells: [buildCell(left), buildCell(right)],
-});
+const buildRow = (
+  left: Paragraph,
+  right: Paragraph,
+  styleById: Map<string, Style>,
+  textWidth: number,
+): Table["rows"][number] => {
+  const columnWidth = Math.floor(textWidth / 2);
+  const geometry = resolveHorizontalParagraphGeometry(left, styleById);
+  return {
+    type: "tableRow",
+    formatting: { cantSplit: true },
+    cells: [
+      buildCell(projectParagraphIntoColumn(left, geometry, textWidth, columnWidth)),
+      buildCell(projectParagraphIntoColumn(right, geometry, textWidth, columnWidth)),
+    ],
+  };
+};
+
+type HorizontalParagraphGeometry = Pick<
+  ParagraphFormatting,
+  "indentLeft" | "indentRight" | "indentFirstLine" | "hangingIndent" | "tabs"
+>;
+
+const HORIZONTAL_PARAGRAPH_KEYS = [
+  "indentLeft",
+  "indentRight",
+  "indentFirstLine",
+  "hangingIndent",
+  "tabs",
+] as const satisfies readonly (keyof HorizontalParagraphGeometry)[];
+
+/** Resolve only the paragraph properties whose coordinates change when a
+ * full-width paragraph is placed in a half-width cell. Direct pPr wins over
+ * the basedOn style chain, matching Word's paragraph-style cascade. */
+const resolveHorizontalParagraphGeometry = (
+  paragraph: Paragraph,
+  styleById: Map<string, Style>,
+): HorizontalParagraphGeometry => {
+  const chain: Style[] = [];
+  const seen = new Set<string>();
+  let style = paragraph.formatting?.styleId
+    ? styleById.get(paragraph.formatting.styleId)
+    : undefined;
+  while (style && !seen.has(style.styleId)) {
+    seen.add(style.styleId);
+    chain.push(style);
+    style = style.basedOn ? styleById.get(style.basedOn) : undefined;
+  }
+
+  const geometry: HorizontalParagraphGeometry = {};
+  for (const current of chain.toReversed()) {
+    assignHorizontalParagraphGeometry(geometry, current.pPr);
+  }
+  assignHorizontalParagraphGeometry(geometry, paragraph.formatting);
+  return geometry;
+};
+
+const assignHorizontalParagraphGeometry = (
+  target: HorizontalParagraphGeometry,
+  source: ParagraphFormatting | undefined,
+): void => {
+  for (const key of HORIZONTAL_PARAGRAPH_KEYS) {
+    const value = source?.[key];
+    if (value !== undefined) {
+      Object.assign(target, { [key]: value });
+    }
+  }
+};
+
+const projectParagraphIntoColumn = (
+  paragraph: Paragraph,
+  geometry: HorizontalParagraphGeometry,
+  sourceWidth: number,
+  columnWidth: number,
+): Paragraph => {
+  const scale = columnWidth / sourceWidth;
+  const maxSideIndent = Math.max(0, columnWidth - MIN_COLUMN_TEXT_WIDTH_TWIPS);
+  let indentLeft = projectSideIndent(geometry.indentLeft, scale, maxSideIndent);
+  let indentRight = projectSideIndent(geometry.indentRight, scale, maxSideIndent);
+  const excess = indentLeft + indentRight - maxSideIndent;
+  if (excess > 0) {
+    const total = indentLeft + indentRight;
+    indentLeft = Math.round((indentLeft / total) * maxSideIndent);
+    indentRight = maxSideIndent - indentLeft;
+  }
+
+  const formatting: ParagraphFormatting = {
+    ...paragraph.formatting,
+    ...(geometry.indentLeft !== undefined && { indentLeft }),
+    ...(geometry.indentRight !== undefined && { indentRight }),
+    ...(geometry.indentFirstLine !== undefined && {
+      indentFirstLine: Math.round(geometry.indentFirstLine * scale),
+    }),
+    ...(geometry.hangingIndent !== undefined && { hangingIndent: geometry.hangingIndent }),
+    ...(geometry.tabs !== undefined && {
+      tabs: geometry.tabs.map((tab) => ({
+        ...tab,
+        position: Math.min(
+          Math.max(0, Math.round(tab.position * scale)),
+          Math.max(0, columnWidth - MIN_TAB_TRAILING_WIDTH_TWIPS),
+        ),
+      })),
+    }),
+  };
+
+  return { ...paragraph, formatting };
+};
+
+const projectSideIndent = (value: number | undefined, scale: number, maximum: number): number =>
+  Math.min(Math.max(0, Math.round((value ?? 0) * scale)), maximum);
 
 const buildCell = (paragraph: Paragraph): TableCell => ({
   type: "tableCell",

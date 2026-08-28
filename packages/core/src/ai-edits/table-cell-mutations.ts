@@ -47,6 +47,7 @@ export const mergeTableRectangle = ({
   const tableStart = tablePosition + 1;
   const seen = new Set<number>();
   const cells: { position: number; cell: PMNode }[] = [];
+  const topRowCells: PMNode[] = [];
   let appendedContent = Fragment.empty;
   for (let row = rectangle.top; row < rectangle.bottom; row++) {
     for (let column = rectangle.left; column < rectangle.right; column++) {
@@ -60,6 +61,9 @@ export const mergeTableRectangle = ({
       }
       seen.add(cellPosition);
       cells.push({ position: cellPosition, cell });
+      if (row === rectangle.top) {
+        topRowCells.push(cell);
+      }
       if (cells.length > 1 && !isEmptyTableCell(cell)) {
         appendedContent = appendedContent.append(cell.content);
       }
@@ -89,10 +93,8 @@ export const mergeTableRectangle = ({
     return null;
   }
   const mergedColspan = rectangle.right - rectangle.left;
-  const nextColwidth = Array.isArray(colwidth) ? [...colwidth] : null;
-  while (nextColwidth && nextColwidth.length < mergedColspan) {
-    nextColwidth.push(0);
-  }
+  const nextColwidth = mergeTopRowColwidths(topRowCells, mergedColspan);
+  const preferredWidth = mergeTopRowPreferredWidths(topRowCells);
   const mapFrom = tr.mapping.maps.length;
   for (const { position: cellPosition, cell } of cells.slice(1)) {
     const position = tr.mapping.slice(mapFrom).map(tableStart + cellPosition);
@@ -104,6 +106,8 @@ export const mergeTableRectangle = ({
     colspan: mergedColspan,
     rowspan: rectangle.bottom - rectangle.top,
     colwidth: nextColwidth,
+    width: preferredWidth.type === "value" ? preferredWidth.width : null,
+    widthType: preferredWidth.type === "value" ? preferredWidth.widthType : null,
   });
   if (appendedContent.size > 0) {
     const contentEnd = absoluteMergedPosition + 1 + merged.cell.content.size;
@@ -111,6 +115,55 @@ export const mergeTableRectangle = ({
     tr = tr.replaceWith(contentStart, contentEnd, appendedContent);
   }
   return tr;
+};
+
+const mergeTopRowColwidths = (cells: PMNode[], mergedColspan: number): number[] | null => {
+  const widths: number[] = [];
+  for (const cell of cells) {
+    const colspan: unknown = cell.attrs["colspan"];
+    const colwidth: unknown = cell.attrs["colwidth"];
+    if (
+      typeof colspan !== "number" ||
+      !Number.isInteger(colspan) ||
+      colspan < 1 ||
+      !Array.isArray(colwidth) ||
+      colwidth.length !== colspan ||
+      !colwidth.every((width) => typeof width === "number" && width > 0)
+    ) {
+      return null;
+    }
+    widths.push(...colwidth);
+  }
+  return widths.length === mergedColspan ? widths : null;
+};
+
+type MergedPreferredWidth =
+  | { type: "value"; width: number; widthType: "dxa" | "pct" }
+  | { type: "absent" };
+
+/** A horizontal merge owns the whole top-row span. Sum compatible explicit
+ * preferred widths; retaining only the first cell's width makes a 50%+50%
+ * bilingual row serialize as a 50%-wide spanning cell. Mixed/implicit units
+ * cannot be composed safely, so clear the preference and let the table grid
+ * define the merged width. */
+const mergeTopRowPreferredWidths = (cells: PMNode[]): MergedPreferredWidth => {
+  let width = 0;
+  let widthType: "dxa" | "pct" | undefined;
+  for (const cell of cells) {
+    const candidateWidth: unknown = cell.attrs["width"];
+    const candidateType: unknown = cell.attrs["widthType"];
+    if (
+      typeof candidateWidth !== "number" ||
+      !Number.isFinite(candidateWidth) ||
+      (candidateType !== "dxa" && candidateType !== "pct") ||
+      (widthType !== undefined && candidateType !== widthType)
+    ) {
+      return { type: "absent" };
+    }
+    width += candidateWidth;
+    widthType = candidateType;
+  }
+  return widthType === undefined ? { type: "absent" } : { type: "value", width, widthType };
 };
 
 export const mergeTrackedVerticalTableCells = ({

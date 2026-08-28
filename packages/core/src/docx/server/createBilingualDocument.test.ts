@@ -13,6 +13,7 @@ import type {
 } from "../../types/document";
 import { createEmptyDocument } from "../../utils/createDocument";
 import { ensureParaIds } from "../ensureParaIds";
+import { getParagraphText } from "../paragraphParser";
 import { parseDocx } from "../parser";
 import { createDocx } from "../rezip";
 import {
@@ -185,7 +186,7 @@ describe("createBilingualDocument", () => {
     expect(content[1]?.type === "paragraph" && content[1].sectionProperties).toBeTruthy();
   });
 
-  test("keeps the left column identical to the source blocks", async () => {
+  test("keeps the left column content and identities from the source blocks", async () => {
     const source = await buildSource();
     const { document } = createBilingualDocument(source, await bilingualDocumentOptions(source));
 
@@ -194,7 +195,53 @@ describe("createBilingualDocument", () => {
         ? [block]
         : [],
     );
-    expect(columnParagraphs(document).left).toEqual(sourceParagraphs);
+    expect(
+      columnParagraphs(document).left.map(({ formatting: _formatting, ...content }) => content),
+    ).toEqual(sourceParagraphs.map(({ formatting: _formatting, ...content }) => content));
+  });
+
+  test("projects direct and inherited full-page geometry into each column", async () => {
+    const source = createEmptyDocument({ preset: createStellaStyleDocumentPreset() });
+    source.package.styles?.styles.push({
+      styleId: "FormLine",
+      type: "paragraph",
+      name: "Form Line",
+      pPr: {
+        indentLeft: 5040,
+        indentRight: -360,
+        tabs: [
+          { position: 4320, alignment: "left" },
+          { position: 9648, alignment: "left" },
+        ],
+      },
+    });
+    source.package.document.content = [
+      {
+        ...paragraph("Signature field", "FormLine"),
+        formatting: {
+          styleId: "FormLine",
+          indentFirstLine: 540,
+        },
+      },
+    ];
+    const stamped = await ensureParaIds(await createDocx(source));
+    const parsed = await parseDocx(stamped.docx, { preloadFonts: false });
+    const { document } = createBilingualDocument(parsed, await bilingualDocumentOptions(parsed));
+    const { left, right } = columnParagraphs(document);
+
+    for (const projected of [left.at(0), right.at(0)]) {
+      expect(projected?.formatting).toMatchObject({
+        indentLeft: 2520,
+        indentRight: 0,
+        indentFirstLine: 270,
+        tabs: [
+          { position: 2160, alignment: "left" },
+          { position: 4153, alignment: "left" },
+        ],
+      });
+    }
+    expect(getParagraphText(left.at(0)!)).toBe("Signature field");
+    expect(getParagraphText(right.at(0)!)).toBe("Signature field");
   });
 
   test("keeps a source table once, in a row spanning both columns", async () => {

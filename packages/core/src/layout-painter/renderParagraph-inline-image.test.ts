@@ -473,6 +473,8 @@ describe("renderLine text styling", () => {
 
     expect(textEl?.style.backgroundColor).toBe(TEST_HIGHLIGHT_COLOR);
     expect(textEl?.style.color).toBe("#000000");
+    expect(textEl?.className).toContain("docx-run-background-text");
+    expect(textEl?.style.getPropertyValue("--doc-run-background-text-color")).toBe("#000000");
   });
 
   test("keeps automatic text readable on dark DOCX highlights", () => {
@@ -503,6 +505,7 @@ describe("renderLine text styling", () => {
 
     expect(textEl?.style.backgroundColor).toBe(TEST_DARK_HIGHLIGHT_COLOR);
     expect(textEl?.style.color).toBe("#FFFFFF");
+    expect(textEl?.style.getPropertyValue("--doc-run-background-text-color")).toBe("#FFFFFF");
   });
 
   test("keeps inherited default-black text readable on dark DOCX highlights", () => {
@@ -568,6 +571,7 @@ describe("renderLine text styling", () => {
     expect(textEl?.style.backgroundColor).toBe(TEST_DARK_HIGHLIGHT_COLOR);
     expect(textEl?.style.color).toBe("#FFFFFF");
     expect(anchorEl?.style.color).toBe("#FFFFFF");
+    expect(anchorEl?.style.getPropertyValue("--doc-run-background-text-color")).toBe("#FFFFFF");
   });
 
   test("keeps inherited default-black hyperlink text readable on dark DOCX highlights", () => {
@@ -603,6 +607,7 @@ describe("renderLine text styling", () => {
     expect(textEl?.style.backgroundColor).toBe(TEST_DARK_HIGHLIGHT_COLOR);
     expect(textEl?.style.color).toBe("#FFFFFF");
     expect(anchorEl?.style.color).toBe("#FFFFFF");
+    expect(anchorEl?.style.getPropertyValue("--doc-run-background-text-color")).toBe("#FFFFFF");
   });
 
   test("preserves direct black hyperlink text without DOCX highlights", () => {
@@ -765,6 +770,43 @@ describe("renderLine text styling", () => {
 
     expect(textEl?.style.backgroundColor).toBe(TEST_HIGHLIGHT_COLOR);
     expect(textEl?.style.color).toBe(TEST_EXPLICIT_TEXT_COLOR);
+    expect(textEl?.style.getPropertyValue("--doc-run-background-text-color")).toBe(
+      TEST_EXPLICIT_TEXT_COLOR,
+    );
+  });
+
+  test("preserves resolved theme text colors on DOCX highlights", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "p1",
+      runs: [
+        {
+          kind: "text",
+          text: "Highlighted text",
+          color: TEST_EXPLICIT_TEXT_COLOR,
+          textColorSource: "paragraphDefault",
+          highlight: TEST_HIGHLIGHT_COLOR,
+        },
+      ],
+    };
+    const line: MeasuredLine = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 0,
+      toChar: 16,
+      width: 112,
+      ascent: 10,
+      descent: 2,
+      lineHeight: 12,
+    };
+
+    const lineEl = renderLine(block, line, undefined, fakeDocument);
+    const textEl = lineEl.children[0] as HTMLElement | undefined;
+
+    expect(textEl?.style.color).toBe(TEST_EXPLICIT_TEXT_COLOR);
+    expect(textEl?.style.getPropertyValue("--doc-run-background-text-color")).toBe(
+      TEST_EXPLICIT_TEXT_COLOR,
+    );
   });
 
   test("exposes explicit run color as --doc-run-color for dark-mode inversion", () => {
@@ -822,6 +864,7 @@ describe("renderLine text styling", () => {
 
     expect(textEl?.style.backgroundColor).toBe(TEST_DARK_HIGHLIGHT_COLOR);
     expect(textEl?.style.color).toBe("#000000");
+    expect(textEl?.style.getPropertyValue("--doc-run-background-text-color")).toBe("#000000");
   });
 
   test("preserves tracked-change author colors on DOCX highlights", () => {
