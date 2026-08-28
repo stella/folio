@@ -740,15 +740,22 @@ function removeUnderlineTextDecoration(element: HTMLElement): void {
   element.style.textDecorationLine = textDecorationLines.join(" ");
 }
 
+function applyContinuousUnderline(
+  element: HTMLElement,
+  underline: NonNullable<TextRun["underline"]>,
+): void {
+  removeUnderlineTextDecoration(element);
+  const color = typeof underline === "object" && underline.color ? underline.color : "currentColor";
+  // Paint inside the inline box. A bottom border grows the box by one pixel;
+  // fixed line boxes then let the following line paint over that border.
+  element.style.boxShadow = `inset 0 -1px 0 ${color}`;
+}
+
 function applyWhitespaceUnderline(element: HTMLElement, run: TextRun): void {
   if (!run.underline || run.text.trim().length > 0) {
     return;
   }
-  removeUnderlineTextDecoration(element);
-  element.style.borderBottom = "1px solid currentColor";
-  if (typeof run.underline === "object" && run.underline.color) {
-    element.style.borderBottomColor = run.underline.color;
-  }
+  applyContinuousUnderline(element, run.underline);
 }
 
 /**
@@ -826,11 +833,7 @@ function applyTabUnderline(element: HTMLElement, run: TabRun): void {
   if (!run.underline) {
     return;
   }
-  removeUnderlineTextDecoration(element);
-  element.style.borderBottom = "1px solid currentColor";
-  if (typeof run.underline === "object" && run.underline.color) {
-    element.style.borderBottomColor = run.underline.color;
-  }
+  applyContinuousUnderline(element, run.underline);
 }
 
 /**

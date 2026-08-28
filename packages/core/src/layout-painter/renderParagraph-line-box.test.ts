@@ -496,7 +496,7 @@ describe("renderLine box model", () => {
     expect(text?.style["fontSize"]).toBeUndefined();
   });
 
-  test("renders underlined tabs as a continuous rule without a text underline mark", () => {
+  test("paints underlined tabs inside the line box without a text underline mark", () => {
     const block: ParagraphBlock = {
       kind: "paragraph",
       id: "signature-line",
@@ -526,7 +526,8 @@ describe("renderLine box model", () => {
 
     const tabEl = findTabEl(lineEl);
     expect(tabEl).toBeDefined();
-    expect(tabEl?.style["borderBottom"]).toBe("1px solid currentColor");
+    expect(tabEl?.style["boxShadow"]).toBe("inset 0 -1px 0 currentColor");
+    expect(tabEl?.style["borderBottom"]).toBeUndefined();
     expect(tabEl?.style["textDecorationLine"]).toBe("");
   });
 
@@ -687,7 +688,8 @@ describe("renderLine box model", () => {
     }) as unknown as FakeElement;
     const space = lineEl.children.at(0);
 
-    expect(space?.style["borderBottom"]).toBe("1px solid currentColor");
+    expect(space?.style["boxShadow"]).toBe("inset 0 -1px 0 currentColor");
+    expect(space?.style["borderBottom"]).toBeUndefined();
     expect(space?.style["textDecorationLine"]).toBe("");
   });
 });
