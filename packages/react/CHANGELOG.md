@@ -1,5 +1,13 @@
 # @stll/folio-react
 
+## 0.16.1
+
+### Patch Changes
+
+- [#641](https://github.com/stella/folio/pull/641) [`9050b4c`](https://github.com/stella/folio/commit/9050b4c688d5fbbf262d934b041ccce5c00463fe) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep bilingual columns and merged-cell widths valid, preserve signature-field rules, and maintain highlighted text contrast on dark document canvases.
+- Updated dependencies [[`9050b4c`](https://github.com/stella/folio/commit/9050b4c688d5fbbf262d934b041ccce5c00463fe), [`cefef0a`](https://github.com/stella/folio/commit/cefef0a812d873138ee34026a6095b36b7d4dfc1)]:
+  - @stll/folio-core@0.27.1
+
 ## 0.16.0
 
 ### Minor Changes

@@ -1,5 +1,19 @@
 # @stll/folio-core
 
+## 0.27.1
+
+### Patch Changes
+
+- [#641](https://github.com/stella/folio/pull/641) [`9050b4c`](https://github.com/stella/folio/commit/9050b4c688d5fbbf262d934b041ccce5c00463fe) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep bilingual columns and merged-cell widths valid, preserve signature-field rules, and maintain highlighted text contrast on dark document canvases.
+
+- [#638](https://github.com/stella/folio/pull/638) [`cefef0a`](https://github.com/stella/folio/commit/cefef0a812d873138ee34026a6095b36b7d4dfc1) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Escape theme-font, page-background and chapter-separator attributes on save;
+  narrow theme-font references and `w:shd` colours at parse; drop the attached
+  template reference from saved packages; convert only referenced media, with a
+  package-wide decode budget; preflight XML resource limits at unzip and bound
+  extracted text; bound `xmlns` declaration values; narrow run hyperlink targets
+  in the painter; let the save path materialize a header/footer added through
+  `createEmptyHeaderFooter`.
+
 ## 0.27.0
 
 ### Minor Changes
