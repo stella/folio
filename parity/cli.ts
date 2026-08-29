@@ -22,6 +22,7 @@
 import { mkdir, stat } from "node:fs/promises";
 import path from "node:path";
 
+import { TaggedError } from "better-result";
 import { DEFAULT_CORPUS_DIRS } from "./config";
 import {
   attributeDivergences,
@@ -58,11 +59,19 @@ const TOP_CLUSTER_LIMIT = 10;
 const PERFECT_SCORE = 1;
 const DEFAULT_REFERENCE_RENDERER: ReferenceRendererId = "libreoffice";
 const SHA256_PATTERN = /^[a-f\d]{64}$/;
+const SOURCE_SHA256_METADATA_KEY = "sha256";
 
-const requireSourceSha256 = (geometry: DocGeom): string => {
-  const sha256 = geometry.meta["sha256"];
+class ReferenceMetadataError extends TaggedError("ReferenceMetadataError")<{
+  message: string;
+}> {}
+
+/** Read the content hash used to namespace reference-renderer artifacts. */
+const requireSourceSha256 = (geometry: DocGeom) => {
+  const sha256 = geometry.meta[SOURCE_SHA256_METADATA_KEY];
   if (sha256 === undefined || !SHA256_PATTERN.test(sha256)) {
-    throw new Error("Reference renderer did not expose a valid source hash");
+    throw new ReferenceMetadataError({
+      message: "Reference renderer did not expose a valid source hash",
+    });
   }
   return sha256;
 };
@@ -418,14 +427,16 @@ const printHumanSummary = (report: CorpusReport, failures: DocFailure[]): void =
   }
 };
 
-const isFullyClean = (report: CorpusReport, failures: DocFailure[]): boolean =>
+/** Return whether a report is clean, including every available raster check. */
+export const isFullyClean = (report: CorpusReport, failures: DocFailure[]): boolean =>
   failures.length === 0 &&
   report.results.every(
     (result) =>
       result.score === PERFECT_SCORE &&
       result.divergences.length === 0 &&
-      (result.rasterComparison?.status !== "compared" ||
-        result.rasterComparison.score === PERFECT_SCORE),
+      (result.rasterComparison === undefined ||
+        (result.rasterComparison.status === "compared" &&
+          result.rasterComparison.score === PERFECT_SCORE)),
   );
 
 const writeJsonReport = async (report: CorpusReport, outputPath: string): Promise<string> => {

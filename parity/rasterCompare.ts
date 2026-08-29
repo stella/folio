@@ -7,6 +7,7 @@
 import { mkdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
+import { TaggedError } from "better-result";
 import pixelmatch from "pixelmatch";
 import { PNG } from "pngjs";
 
@@ -22,12 +23,13 @@ const MAX_DIFF_PNG_BYTES = 64 * 1024 * 1024;
 const MAX_TOTAL_DIFF_BYTES = 256 * 1024 * 1024;
 const PIXELMATCH_THRESHOLD = 0.1;
 
-export class RasterComparisonError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "RasterComparisonError";
-  }
-}
+/** Signals invalid or resource-exceeding raster comparison input. */
+export class RasterComparisonError extends TaggedError("RasterComparisonError")<{
+  message: string;
+}> {}
+
+const rasterError = (message: string): RasterComparisonError =>
+  new RasterComparisonError({ message });
 
 type ComparePageRastersOptions = {
   referencePagePngs: string[];
@@ -46,13 +48,13 @@ type PngDimensions = { width: number; height: number };
 
 const readPngDimensions = (bytes: Buffer, filePath: string): PngDimensions => {
   if (bytes.length < 24 || !bytes.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) {
-    throw new RasterComparisonError(`Invalid PNG generated for parity comparison: ${filePath}`);
+    throw rasterError(`Invalid PNG generated for parity comparison: ${filePath}`);
   }
 
   const width = bytes.readUInt32BE(16);
   const height = bytes.readUInt32BE(20);
   if (width === 0 || height === 0 || width * height > MAX_RASTER_PIXELS) {
-    throw new RasterComparisonError(
+    throw rasterError(
       `Parity PNG dimensions exceed the ${MAX_RASTER_PIXELS.toLocaleString("en")} pixel limit: ${width}x${height} (${filePath})`,
     );
   }
@@ -62,20 +64,20 @@ const readPngDimensions = (bytes: Buffer, filePath: string): PngDimensions => {
 const decodePng = async (filePath: string): Promise<DecodedPng> => {
   const file = await stat(filePath);
   if (!file.isFile() || file.size > MAX_PNG_BYTES) {
-    throw new RasterComparisonError(
+    throw rasterError(
       `Parity PNG exceeds the ${MAX_PNG_BYTES.toLocaleString("en")} byte input limit: ${filePath}`,
     );
   }
   const bytes = await readFile(filePath);
   if (bytes.byteLength > MAX_PNG_BYTES) {
-    throw new RasterComparisonError(
+    throw rasterError(
       `Parity PNG exceeds the ${MAX_PNG_BYTES.toLocaleString("en")} byte input limit: ${filePath}`,
     );
   }
   const expected = readPngDimensions(bytes, filePath);
   const decoded = PNG.sync.read(bytes);
   if (decoded.width !== expected.width || decoded.height !== expected.height) {
-    throw new RasterComparisonError(`PNG dimensions changed while decoding: ${filePath}`);
+    throw rasterError(`PNG dimensions changed while decoding: ${filePath}`);
   }
   return { ...decoded, sourceBytes: bytes.byteLength };
 };
@@ -87,7 +89,7 @@ const writeDiffPng = async (
 ): Promise<number> => {
   const bytes = PNG.sync.write(diff);
   if (bytes.byteLength > MAX_DIFF_PNG_BYTES || bytes.byteLength > remainingBytes) {
-    throw new RasterComparisonError(`Raster diff output exceeds its byte budget: ${filePath}`);
+    throw rasterError(`Raster diff output exceeds its byte budget: ${filePath}`);
   }
   await Bun.write(filePath, bytes);
   return bytes.byteLength;
@@ -291,7 +293,7 @@ export const comparePageRasters = async ({
 }: ComparePageRastersOptions): Promise<ComparePageRastersResult> => {
   const pageCount = Math.max(referencePagePngs.length, folioPagePngs.length);
   if (pageCount > MAX_RASTER_PAGES) {
-    throw new RasterComparisonError(
+    throw rasterError(
       `Raster comparison exceeds the ${MAX_RASTER_PAGES.toLocaleString("en")} page limit`,
     );
   }
@@ -322,7 +324,7 @@ export const comparePageRasters = async ({
       totalRasterPixels +=
         Math.max(reference.width, folio.width) * Math.max(reference.height, folio.height);
       if (totalInputBytes > MAX_TOTAL_PNG_BYTES || totalRasterPixels > MAX_TOTAL_RASTER_PIXELS) {
-        throw new RasterComparisonError("Raster comparison exceeds its aggregate input budget");
+        throw rasterError("Raster comparison exceeds its aggregate input budget");
       }
       // oxlint-disable-next-line no-await-in-loop -- diff artifacts are emitted in deterministic page order
       result = await comparePresentPage({
@@ -335,14 +337,14 @@ export const comparePageRasters = async ({
     } else {
       const presentPath = referencePath ?? folioPath;
       if (presentPath === undefined) {
-        throw new RasterComparisonError(`No raster exists for page ${page}`);
+        throw rasterError(`No raster exists for page ${page}`);
       }
       // oxlint-disable-next-line no-await-in-loop -- bound page rasters are decoded and released sequentially
       const present = await decodePng(presentPath);
       totalInputBytes += present.sourceBytes;
       totalRasterPixels += present.width * present.height;
       if (totalInputBytes > MAX_TOTAL_PNG_BYTES || totalRasterPixels > MAX_TOTAL_RASTER_PIXELS) {
-        throw new RasterComparisonError("Raster comparison exceeds its aggregate input budget");
+        throw rasterError("Raster comparison exceeds its aggregate input budget");
       }
       // oxlint-disable-next-line no-await-in-loop -- diff artifacts are emitted in deterministic page order
       result = await compareMissingPage({
