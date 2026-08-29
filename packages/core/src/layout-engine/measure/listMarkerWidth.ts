@@ -90,7 +90,9 @@ export function resolveListMarkerFont(block: ParagraphBlock): {
  *  - hanging indent — body wraps at `indentLeft`, marker sits at
  *    `indentLeft - hanging`. Width is `hanging` so the marker fills the slot.
  *  - `w:suff` (§17.9.25): `nothing` → natural width, `space` → natural +
- *    one space glyph, `tab` (default) → grow to the next tab stop.
+ *    one space glyph, `tab` (default) → grow to the next tab stop. A hanging
+ *    indent remains the minimum footprint so body text cannot enter the
+ *    marker slot.
  *  - `w:tabs` on the paragraph: non-`clear`/non-`bar` stops past the marker.
  *    `bar` (§17.3.1.37) is a vertical line and doesn't advance the cursor.
  *  - default tab grid: stops at multiples of `DEFAULT_TAB_STOP_TWIPS`,
@@ -112,11 +114,12 @@ export function getListMarkerInlineWidth(block: ParagraphBlock): number {
 
   // §17.9.25 — `w:suff` controls what follows the marker before body text.
   const suffix = attrs.listMarkerSuffix ?? "tab";
+  const hanging = attrs.indent?.hanging ?? 0;
   if (suffix === "nothing") {
-    return markerEndOffset;
+    return Math.max(hanging, markerEndOffset);
   }
   if (suffix === "space") {
-    return markerEndOffset + measureTextWidth(" ", style);
+    return Math.max(hanging, markerEndOffset + measureTextWidth(" ", style));
   }
 
   // Default suffix is `tab`. Body text aligns at the next stop past
@@ -126,7 +129,6 @@ export function getListMarkerInlineWidth(block: ParagraphBlock): number {
   const indent = attrs.indent;
   const indentLeft = indent?.left ?? 0;
   const firstLine = indent?.firstLine ?? 0;
-  const hanging = indent?.hanging ?? 0;
   const markerStartPx = hanging > 0 ? indentLeft - hanging : indentLeft + firstLine;
   const minBodyStart = markerStartPx + markerEndOffset;
 

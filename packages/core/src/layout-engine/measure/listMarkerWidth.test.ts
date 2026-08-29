@@ -100,6 +100,43 @@ describe("getListMarkerInlineWidth", () => {
     }, fakeMeasure);
   });
 
+  test.each(["nothing", "space"] as const)(
+    'w:suff="%s" keeps a short marker body at the hanging-indent anchor',
+    (listMarkerSuffix) => {
+      withFakeTextMeasure(() => {
+        const width = getListMarkerInlineWidth(
+          listBlock({
+            listMarker: "1.",
+            listMarkerSuffix,
+            indent: { left: 60, hanging: 36 },
+          }),
+        );
+
+        expect(width).toBe(36);
+      }, fakeMeasure);
+    },
+  );
+
+  test.each([
+    ["nothing", "1234", 40],
+    ["space", "1234", 50],
+  ] as const)(
+    'w:suff="%s" lets content-bearing marker width exceed the hanging indent',
+    (listMarkerSuffix, listMarker, expectedWidth) => {
+      withFakeTextMeasure(() => {
+        const width = getListMarkerInlineWidth(
+          listBlock({
+            listMarker,
+            listMarkerSuffix,
+            indent: { left: 60, hanging: 36 },
+          }),
+        );
+
+        expect(width).toBe(expectedWidth);
+      }, fakeMeasure);
+    },
+  );
+
   test("right-aligned marker ends at its anchor without consuming body width", () => {
     withFakeTextMeasure(() => {
       const block = listBlock({
