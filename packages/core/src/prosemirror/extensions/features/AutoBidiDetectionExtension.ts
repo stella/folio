@@ -48,26 +48,27 @@ type BidiUpdate = {
 };
 
 // First-strong detection needs the paragraph's directional text in document
-// order. `node.textContent` skips inline field atoms (MERGEFIELD/REF results
-// keep their rendered text in attrs, not child text), which would mis-detect a
-// field-led paragraph. Walk descendants so text nested in inline content
-// controls (SDT) and hyperlinks is included, and fold in field display text.
+// order. Walk descendants so text nested in structured fields, inline content
+// controls (SDT), and hyperlinks is included. Ordinary field leaves expose
+// their display through `leafText`; structured field text comes from children.
 const paragraphDirectionalText = (node: PMNode): string => {
   let text = "";
   node.descendants((child) => {
+    const deleted = child.marks.some((mark) => mark.type.name === "deletion");
+    if (deleted) {
+      return false;
+    }
     if (child.isText) {
       // Deleted and moved-away text both carry the `deletion` mark; it is not
       // live content, so it must not drive base-direction detection.
-      const deleted = child.marks.some((mark) => mark.type.name === "deletion");
-      if (!deleted) {
-        text += child.text ?? "";
-      }
-    } else if (child.type.name === "field") {
-      const display = child.attrs["displayText"];
-      if (typeof display === "string") {
-        text += display;
-      }
+      text += child.text ?? "";
+      return false;
     }
+    if (child.isLeaf && child.textContent) {
+      text += child.textContent;
+      return false;
+    }
+    return true;
   });
   return text;
 };

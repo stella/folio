@@ -18,6 +18,8 @@ export type TextChunk = {
   text: string;
   /** PM doc position where this chunk's first char lives. */
   start: number;
+  /** PM position after this chunk; differs from text length for atomic fields. */
+  end?: number;
 };
 
 /**
@@ -35,7 +37,14 @@ export const collectBlockChunks = (doc: PMNode): TextChunk[][] => {
           // pos is the textblock's PM position; +1 accounts for the
           // textblock's opening token, +offset is the position of
           // this text node inside the textblock.
-          chunks.push({ text: child.text, start: pos + 1 + offset });
+          const start = pos + 1 + offset;
+          chunks.push({ text: child.text, start, end: start + child.text.length });
+          return false;
+        }
+        if (child.isLeaf && child.textContent) {
+          const start = pos + 1 + offset;
+          chunks.push({ text: child.textContent, start, end: start + child.nodeSize });
+          return false;
         }
         return true;
       });
@@ -50,17 +59,32 @@ export const collectBlockChunks = (doc: PMNode): TextChunk[][] => {
 };
 
 /** Map a joined-string offset back to its PM doc position. */
-export const offsetToDocPos = (chunks: TextChunk[], offset: number): number => {
+export const offsetToDocPos = (
+  chunks: TextChunk[],
+  offset: number,
+  bias: "start" | "end" = "start",
+): number => {
   let consumed = 0;
   for (const chunk of chunks) {
     if (offset <= consumed + chunk.text.length) {
-      return chunk.start + (offset - consumed);
+      const localOffset = offset - consumed;
+      const end = chunk.end ?? chunk.start + chunk.text.length;
+      if (end - chunk.start === chunk.text.length) {
+        return chunk.start + localOffset;
+      }
+      if (localOffset === 0) {
+        return chunk.start;
+      }
+      if (localOffset === chunk.text.length || bias === "end") {
+        return end;
+      }
+      return chunk.start;
     }
     consumed += chunk.text.length;
   }
   // Past the end: clamp to the final chunk's last position.
   const last = chunks.at(-1);
-  return last ? last.start + last.text.length : 0;
+  return last ? (last.end ?? last.start + last.text.length) : 0;
 };
 
 /** Join a block's chunks into the single string callers scan. */

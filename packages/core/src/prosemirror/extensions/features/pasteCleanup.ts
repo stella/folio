@@ -18,7 +18,10 @@
  * audience).
  */
 
+import { Fragment, Slice, type Node as PMNode } from "prosemirror-model";
+
 import { stripXmlDeclarations } from "../../../utils/stripXmlDeclarations";
+import { readBookmarkBoundaryAttrs } from "../../bookmarkBoundaryAttrs";
 
 /**
  * Remove every HTML comment, including downlevel conditional comments
@@ -165,13 +168,8 @@ const NOISE_TAG = new RegExp(`<\\/?(?:font|meta|link)${TAG_TAIL}>`, "gi");
 const EMPTY_SPAN = new RegExp(`<span(?:\\s${TAG_TAIL})?><\\/span>`, "gi");
 const MAX_EMPTY_SPAN_PASSES = 5;
 
-// ProseMirror's own clipboard serializer wraps a copied slice's top element
-// with `data-pm-slice="<openStart> <openEnd> <context>"` (see
-// prosemirror-view's `serializeForClipboard`). Its presence is the only
-// signal available at this string-transform layer that the incoming HTML
-// came from a ProseMirror editor's own copy rather than an arbitrary
-// external DOM (another app, a browser page, a hand-crafted paste).
-const PM_SLICE_MARKER = /\bdata-pm-slice\s*=/i;
+const INTERNAL_CLIPBOARD_ATTR_PATTERN =
+  /\s+data-docx-internal-clipboard(?:="([^"]*)"|='([^']*)'|=([^\s>]+))?/gi;
 
 // `data-docx-textbox-anchor` is an internal reconstruction marker
 // (`TextBoxAnchorExtension`) that `fromProseDoc` uses to relocate a
@@ -183,18 +181,50 @@ const PM_SLICE_MARKER = /\bdata-pm-slice\s*=/i;
 // hyperlink). Strip the attribute so a matching span parses as an inert,
 // zero-width `<span>` instead of a `textBoxAnchor` node.
 const TEXTBOX_ANCHOR_ATTR = /\s+data-docx-textbox-anchor(?:="[^"]*"|='[^']*')?/gi;
+// Bookmark boundaries use the same internal reconstruction pattern. Their
+// complete attribute family must either survive together in an internal slice
+// or be removed together before external HTML reaches the schema parser.
+const BOOKMARK_BOUNDARY_ATTR =
+  /\s+data-docx-bookmark-(?:boundary|id|name|col-first|col-last)(?:="[^"]*"|='[^']*'|=[^\s>]+)?/gi;
+const STRUCTURED_FIELD_ATTR = /\s+data-field-structured(?:="[^"]*"|='[^']*'|=[^\s>]+)?/gi;
 
 /**
- * Remove the `data-docx-textbox-anchor` marker from HTML that did not come
- * from a ProseMirror clipboard slice (see {@link PM_SLICE_MARKER}). Internal
- * copy/paste of a real text box carries the marker HTML unmodified so it
- * keeps working; anything else has the marker stripped defensively.
+ * Treat reconstruction attributes as internal only when the HTML carries the
+ * unguessable capability created with this editor schema. `data-pm-slice`
+ * cannot establish trust because arbitrary external HTML can forge it.
  */
-function stripForeignTextBoxAnchors(html: string, originalHtml: string): string {
-  if (PM_SLICE_MARKER.test(originalHtml)) {
+function hasInternalClipboardCapability(html: string, token: string | undefined): boolean {
+  if (!token) {
+    return false;
+  }
+  INTERNAL_CLIPBOARD_ATTR_PATTERN.lastIndex = 0;
+  for (const match of html.matchAll(INTERNAL_CLIPBOARD_ATTR_PATTERN)) {
+    if ((match[1] ?? match[2] ?? match[3]) === token) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function stripForeignTextBoxAnchors(html: string, internal: boolean): string {
+  if (internal) {
     return html;
   }
   return html.replace(TEXTBOX_ANCHOR_ATTR, "");
+}
+
+function stripForeignBookmarkBoundaries(html: string, internal: boolean): string {
+  if (internal) {
+    return html;
+  }
+  return html.replace(BOOKMARK_BOUNDARY_ATTR, "");
+}
+
+function stripForeignStructuredFields(html: string, internal: boolean): string {
+  if (internal) {
+    return html;
+  }
+  return html.replace(STRUCTURED_FIELD_ATTR, "");
 }
 
 /**
@@ -203,10 +233,18 @@ function stripForeignTextBoxAnchors(html: string, originalHtml: string): string 
  * spacer runs never collapse two words together). Repeated a bounded number of
  * times to unwrap nested empties (`<span><span></span></span>`).
  */
-function stripEmptySpans(html: string): string {
+function stripEmptySpans(html: string, preserveInternalAtoms: boolean): string {
   let current = html;
   for (let pass = 0; pass < MAX_EMPTY_SPAN_PASSES; pass++) {
-    const next = current.replace(EMPTY_SPAN, "");
+    const next = current.replace(EMPTY_SPAN, (span) => {
+      if (
+        preserveInternalAtoms &&
+        /\bdata-docx-(?:bookmark-boundary|textbox-anchor)\s*=/i.test(span)
+      ) {
+        return span;
+      }
+      return "";
+    });
     if (next === current) {
       break;
     }
@@ -218,27 +256,98 @@ function stripEmptySpans(html: string): string {
 /**
  * Strip Office/web producer cruft from a raw clipboard HTML string.
  *
- * Best-effort and non-throwing: any unexpected failure returns the original
- * markup so a paste degrades to the browser default rather than losing content.
+ * Best-effort and non-throwing: any unexpected failure returns empty markup so
+ * reconstruction capabilities and other untrusted attributes fail closed.
  * `<style>` blocks are intentionally left in place for the downstream style
  * inliner, which resolves class-based CSS before the schema parser runs.
  */
-export function cleanPastedHtml(html: string): string {
+type CleanPastedHtmlOptions = {
+  internalClipboardToken?: string;
+};
+
+export function cleanPastedHtml(html: string, options: CleanPastedHtmlOptions = {}): string {
   if (!html) {
     return html;
   }
 
   try {
+    const internal = hasInternalClipboardCapability(html, options.internalClipboardToken);
     let cleaned = stripHtmlComments(html);
     cleaned = stripXmlDeclarations(cleaned);
     cleaned = cleaned.replace(NAMESPACED_TAG, "");
     cleaned = cleaned.replace(STRAY_XML_TAG, "");
     cleaned = cleaned.replace(NOISE_TAG, "");
     cleaned = stripMsoStyles(cleaned);
-    cleaned = stripEmptySpans(cleaned);
-    cleaned = stripForeignTextBoxAnchors(cleaned, html);
+    cleaned = stripEmptySpans(cleaned, internal);
+    cleaned = stripForeignTextBoxAnchors(cleaned, internal);
+    cleaned = stripForeignBookmarkBoundaries(cleaned, internal);
+    cleaned = stripForeignStructuredFields(cleaned, internal);
+    cleaned = cleaned.replace(INTERNAL_CLIPBOARD_ATTR_PATTERN, "");
     return cleaned.trim();
   } catch {
-    return html;
+    return "";
   }
+}
+
+type BoundaryCounts = {
+  starts: number;
+  ends: number;
+  firstStart?: number;
+  firstEnd?: number;
+};
+
+/** Remove incomplete or duplicate bookmark pairs at copied slice edges. */
+export function removeUnpairedBookmarkBoundaries(slice: Slice): Slice {
+  const counts = new Map<number, BoundaryCounts>();
+  let boundaryIndex = 0;
+  slice.content.descendants((node) => {
+    if (node.type.name !== "bookmarkBoundary") {
+      return true;
+    }
+    const result = readBookmarkBoundaryAttrs(node);
+    if (!result.ok) {
+      return false;
+    }
+    const attrs = result.value;
+    const count = counts.get(attrs.id) ?? { starts: 0, ends: 0 };
+    if (attrs.type === "start") {
+      count.starts += 1;
+      count.firstStart ??= boundaryIndex;
+    } else {
+      count.ends += 1;
+      count.firstEnd ??= boundaryIndex;
+    }
+    boundaryIndex += 1;
+    counts.set(attrs.id, count);
+    return false;
+  });
+  const pairedIds = new Set(
+    [...counts].flatMap(([id, count]) =>
+      count.starts === 1 &&
+      count.ends === 1 &&
+      count.firstStart !== undefined &&
+      count.firstEnd !== undefined &&
+      count.firstStart < count.firstEnd
+        ? [id]
+        : [],
+    ),
+  );
+
+  const filterFragment = (fragment: Fragment): Fragment => {
+    const children: PMNode[] = [];
+    // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Fragment.forEach
+    fragment.forEach((node) => {
+      if (node.type.name === "bookmarkBoundary") {
+        const result = readBookmarkBoundaryAttrs(node);
+        if (result.ok && pairedIds.has(result.value.id)) {
+          children.push(node);
+        }
+        return;
+      }
+      children.push(node.childCount === 0 ? node : node.copy(filterFragment(node.content)));
+    });
+    return Fragment.fromArray(children);
+  };
+
+  return new Slice(filterFragment(slice.content), slice.openStart, slice.openEnd);
 }

@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { Fragment, Slice } from "prosemirror-model";
 
-import { cleanPastedHtml } from "./pasteCleanup";
+import { schema } from "../../schema";
+import { cleanPastedHtml, removeUnpairedBookmarkBoundaries } from "./pasteCleanup";
 
 describe("cleanPastedHtml — Office cruft removal", () => {
   test("strips mso-* declarations but keeps real CSS", () => {
@@ -180,6 +182,12 @@ describe("cleanPastedHtml — safety and robustness", () => {
     expect(performance.now() - start).toBeLessThan(2000);
     expect(out).toBe("");
   });
+
+  test("fails closed when an unexpected sanitizer input throws", () => {
+    const malformedInput = {} as unknown as string;
+
+    expect(cleanPastedHtml(malformedInput, { internalClipboardToken: "test-capability" })).toBe("");
+  });
 });
 
 describe("cleanPastedHtml — text-box anchor hijack via paste", () => {
@@ -199,10 +207,32 @@ describe("cleanPastedHtml — text-box anchor hijack via paste", () => {
     // prosemirror-view's clipboard wrapper, which stamps `data-pm-slice` on
     // the outer element. That must not be treated as external DOM.
     const html =
-      '<div data-pm-slice="0 0 []"><p><span data-docx-textbox-anchor="0:0">​</span>Real box</p></div>';
-    const out = cleanPastedHtml(html);
+      '<div data-pm-slice="0 0 []"><p><span data-docx-textbox-anchor="0:0" data-docx-internal-clipboard="test-capability">​</span>Real box</p></div>';
+    const out = cleanPastedHtml(html, { internalClipboardToken: "test-capability" });
     expect(out).toContain("data-docx-textbox-anchor");
+    expect(out).not.toContain("data-docx-internal-clipboard");
     expect(out).toContain("Real box");
+  });
+
+  test("preserves an empty text-box anchor only with the internal clipboard capability", () => {
+    const html =
+      '<div data-pm-slice="0 0 []"><span data-docx-textbox-anchor="0:0" data-docx-internal-clipboard="test-capability"></span></div>';
+
+    const internal = cleanPastedHtml(html, { internalClipboardToken: "test-capability" });
+    const external = cleanPastedHtml(html);
+
+    expect(internal).toContain('data-docx-textbox-anchor="0:0"');
+    expect(internal).not.toContain("data-docx-internal-clipboard");
+    expect(external).not.toContain("data-docx-textbox-anchor");
+  });
+
+  test("does not trust a forged ProseMirror slice marker", () => {
+    const html =
+      '<div data-pm-slice="0 0 []"><span data-docx-textbox-anchor="0:0">forged</span></div>';
+
+    expect(cleanPastedHtml(html, { internalClipboardToken: "test-capability" })).not.toContain(
+      "data-docx-textbox-anchor",
+    );
   });
 
   test("strips a single- or double-quoted anchor attribute value", () => {
@@ -212,5 +242,150 @@ describe("cleanPastedHtml — text-box anchor hijack via paste", () => {
     expect(cleanPastedHtml('<span data-docx-textbox-anchor="0:0">x</span>')).not.toContain(
       "data-docx-textbox-anchor",
     );
+  });
+});
+
+describe("cleanPastedHtml — bookmark boundaries", () => {
+  test("keeps a structured hyperlink field only with its wrapper capability", () => {
+    const html =
+      '<span class="docx-field" data-field-kind="simple" data-field-structured="true" data-docx-internal-clipboard="test-capability"><a href="https://example.test">Clause</a></span>';
+
+    const internal = cleanPastedHtml(html, { internalClipboardToken: "test-capability" });
+    const external = cleanPastedHtml(html);
+
+    expect(internal).toContain('data-field-structured="true"');
+    expect(internal).not.toContain("data-docx-internal-clipboard");
+    expect(external).not.toContain("data-field-structured");
+    expect(external).toContain("Clause");
+  });
+
+  test("preserves structured-field boundaries only for the internal clipboard capability", () => {
+    const html =
+      '<span class="docx-field" data-field-type="REF" data-field-kind="simple" data-field-structured="true"><a href="https://example.test"><span data-docx-bookmark-boundary="start" data-docx-bookmark-id="12" data-docx-bookmark-name="clause" data-docx-internal-clipboard="test-capability"></span>Clause<span data-docx-bookmark-boundary="end" data-docx-bookmark-id="12" data-docx-internal-clipboard="test-capability"></span></a></span>';
+
+    const internal = cleanPastedHtml(html, { internalClipboardToken: "test-capability" });
+    const external = cleanPastedHtml(html);
+
+    expect(internal.match(/data-docx-bookmark-boundary=/g)).toHaveLength(2);
+    expect(internal).toContain('data-field-structured="true"');
+    expect(internal).not.toContain("data-docx-internal-clipboard");
+    expect(external).not.toContain("data-docx-bookmark-");
+    expect(external).not.toContain("data-field-structured");
+    expect(external).toContain("Clause");
+  });
+
+  test("keeps an internal boundary atom and its reconstruction attributes", () => {
+    const html =
+      '<div data-pm-slice="0 0 []"><p><span data-docx-bookmark-boundary="start" data-docx-bookmark-id="12" data-docx-bookmark-name="clause" data-docx-bookmark-col-first="2" data-docx-bookmark-col-last="4" data-docx-internal-clipboard="test-capability"></span>Clause</p></div>';
+
+    const out = cleanPastedHtml(html, { internalClipboardToken: "test-capability" });
+
+    expect(out).toContain('data-docx-bookmark-boundary="start"');
+    expect(out).toContain('data-docx-bookmark-id="12"');
+    expect(out).toContain('data-docx-bookmark-name="clause"');
+    expect(out).toContain('data-docx-bookmark-col-first="2"');
+    expect(out).toContain('data-docx-bookmark-col-last="4"');
+    expect(out).not.toContain("data-docx-internal-clipboard");
+  });
+
+  test("strips reconstruction attributes from external HTML", () => {
+    const html =
+      '<p><span data-docx-bookmark-boundary="start" data-docx-bookmark-id="12" data-docx-bookmark-name="clause" data-docx-bookmark-col-first="2" data-docx-bookmark-col-last="4">marker</span>Clause</p>';
+
+    const out = cleanPastedHtml(html);
+
+    expect(out).not.toContain("data-docx-bookmark-");
+    expect(out).toContain("marker");
+    expect(out).toContain("Clause");
+  });
+
+  test("strips unquoted reconstruction attributes from external HTML", () => {
+    const out = cleanPastedHtml(
+      "<span data-docx-bookmark-boundary=start data-docx-bookmark-id=12>marker</span>",
+    );
+
+    expect(out).not.toContain("data-docx-bookmark-");
+    expect(out).toContain("marker");
+  });
+
+  test("strips a boundary from HTML with a forged ProseMirror slice marker", () => {
+    const html =
+      '<div data-pm-slice="0 0 []"><span data-docx-bookmark-boundary="start" data-docx-bookmark-id="12" data-docx-bookmark-name="clause">marker</span></div>';
+
+    const out = cleanPastedHtml(html, { internalClipboardToken: "test-capability" });
+
+    expect(out).not.toContain("data-docx-bookmark-");
+    expect(out).toContain("marker");
+  });
+});
+
+describe("removeUnpairedBookmarkBoundaries", () => {
+  const boundaryTypes = (slice: Slice): string[] => {
+    const types: string[] = [];
+    slice.content.descendants((node) => {
+      if (node.type.name === "bookmarkBoundary") {
+        types.push(`${node.attrs["type"]}:${node.attrs["id"]}`);
+      }
+      return true;
+    });
+    return types;
+  };
+
+  test.each(["start", "end"] as const)("drops a slice with only a bookmark %s", (type) => {
+    const attrs = type === "start" ? { type, id: 1, name: "one" } : { type, id: 1 };
+    const slice = new Slice(
+      Fragment.from(
+        schema.node("paragraph", null, [
+          schema.node("bookmarkBoundary", attrs),
+          schema.text("kept"),
+        ]),
+      ),
+      0,
+      0,
+    );
+
+    const filtered = removeUnpairedBookmarkBoundaries(slice);
+
+    expect(boundaryTypes(filtered)).toEqual([]);
+    expect(filtered.content.textBetween(0, filtered.content.size)).toBe("kept");
+  });
+
+  test("keeps complete crossing bookmark pairs in source order", () => {
+    const slice = new Slice(
+      Fragment.from(
+        schema.node("paragraph", null, [
+          schema.node("bookmarkBoundary", { type: "start", id: 1, name: "one" }),
+          schema.node("bookmarkBoundary", { type: "start", id: 2, name: "two" }),
+          schema.text("kept"),
+          schema.node("bookmarkBoundary", { type: "end", id: 1 }),
+          schema.node("bookmarkBoundary", { type: "end", id: 2 }),
+        ]),
+      ),
+      0,
+      0,
+    );
+
+    expect(boundaryTypes(removeUnpairedBookmarkBoundaries(slice))).toEqual([
+      "start:1",
+      "start:2",
+      "end:1",
+      "end:2",
+    ]);
+  });
+
+  test("drops a reversed end-before-start pair", () => {
+    const slice = new Slice(
+      Fragment.from(
+        schema.node("paragraph", null, [
+          schema.node("bookmarkBoundary", { type: "end", id: 1 }),
+          schema.text("kept"),
+          schema.node("bookmarkBoundary", { type: "start", id: 1, name: "one" }),
+        ]),
+      ),
+      0,
+      0,
+    );
+
+    expect(boundaryTypes(removeUnpairedBookmarkBoundaries(slice))).toEqual([]);
   });
 });

@@ -9,10 +9,14 @@
 import { expectTextBoxAnchorAttrs } from "../../textBoxAnchorAttrs";
 import { createNodeExtension } from "../create";
 
-export const TextBoxAnchorExtension = createNodeExtension({
+type TextBoxAnchorOptions = {
+  getInternalClipboardToken?: () => string;
+};
+
+export const TextBoxAnchorExtension = createNodeExtension<TextBoxAnchorOptions>({
   name: "textBoxAnchor",
   schemaNodeName: "textBoxAnchor",
-  nodeSpec: {
+  nodeSpec: (options) => ({
     inline: true,
     group: "inline",
     marks: "_",
@@ -43,8 +47,11 @@ export const TextBoxAnchorExtension = createNodeExtension({
           contenteditable: "false",
           style:
             "display: inline-block; width: 0; height: 0; overflow: hidden; pointer-events: none;",
+          ...(options.getInternalClipboardToken
+            ? { "data-docx-internal-clipboard": options.getInternalClipboardToken() }
+            : {}),
         },
       ];
     },
-  },
+  }),
 });

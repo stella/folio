@@ -69,6 +69,7 @@ import {
   type OutlineStyleCssAlias,
 } from "../../types/documentEnumValues";
 import { pixelsToEmu } from "../../utils/units";
+import { expectBookmarkBoundaryAttrs } from "../bookmarkBoundaryAttrs";
 import {
   expectCharacterSpacingMarkAttrs,
   expectCharacterStyleMarkAttrs,
@@ -118,6 +119,7 @@ import type {
   TextBoxAttrs,
 } from "../schema/nodes";
 import { assertValidProseMirrorDocument } from "../validation";
+import { resolveNumberedRefFields } from "../numberedRefFields";
 import { expectTextBoxAnchorAttrs } from "../textBoxAnchorAttrs";
 import { runShadingAttrsToShading } from "./runShadingMark";
 import { decodeSdtListItems, sdtPropertiesFromAttrs, sdtPropertiesMatchAttrs } from "./sdtAttrs";
@@ -424,12 +426,48 @@ function stripSuggestedProvenance(doc: PMNode): PMNode {
  * Extract block content (paragraphs, tables, block SDTs) from a ProseMirror
  * document.
  */
-function extractBlocks(inputDoc: PMNode): BlockContent[] {
+type RefResolutionMode = "resolve" | "inherit";
+
+function materializeNumberedRefValues(doc: PMNode): PMNode {
+  const results = resolveNumberedRefFields(doc);
+  if (results.size === 0) {
+    return doc;
+  }
+  const visit = (node: PMNode): PMNode => {
+    if (node.type.name === "field" || node.type.name === "structuredField") {
+      const displayText = results.get(node);
+      if (displayText !== undefined) {
+        return node.type.create({ ...node.attrs, displayText }, node.content, node.marks);
+      }
+      return node;
+    }
+    if (node.childCount === 0) {
+      return node;
+    }
+    const children: PMNode[] = [];
+    let changed = false;
+    // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
+    node.forEach((child) => {
+      const mappedChild = visit(child);
+      children.push(mappedChild);
+      changed ||= mappedChild !== child;
+    });
+    return changed ? node.copy(Fragment.fromArray(children)) : node;
+  };
+  return visit(doc);
+}
+
+function extractBlocks(
+  inputDoc: PMNode,
+  refResolution: RefResolutionMode = "resolve",
+): BlockContent[] {
   // CLASS GUARD: every serialization path (export, copy, header/footer
   // conversion, previews) funnels through `extractBlocks`. Stripping suggested
   // provenance here — with no opt-out — makes it structurally impossible for an
   // AI-proposed edit to reach OOXML output before a human accepts it.
-  const pmDoc = stripSuggestedProvenance(inputDoc);
+  const strippedDoc = stripSuggestedProvenance(inputDoc);
+  const pmDoc =
+    refResolution === "resolve" ? materializeNumberedRefValues(strippedDoc) : strippedDoc;
   const blocks: BlockContent[] = [];
   const textBoxAnchorMarkers = new Map<string, Run>();
   const documentCounts = buildDocumentTrackedChangeCounts(pmDoc);
@@ -567,7 +605,7 @@ function convertPMBlockSdt(node: PMNode): BlockSdt {
   // Recursively materialize children. PM `blockSdt` content is `block+`, so a
   // mini-doc node is a convenient way to reuse extractBlocks.
   const innerDoc = node.type.schema.node("doc", null, node.content);
-  const extracted = extractBlocks(innerDoc);
+  const extracted = extractBlocks(innerDoc, "inherit");
 
   // `toProseDoc` inserts a synthetic filler paragraph into any blockSdt
   // whose source had an empty `<w:sdtContent/>` and stamps the
@@ -803,6 +841,8 @@ function editTextBoxAnchorInContent(
     let nestedContent: ParagraphContent[] | undefined;
     if (item?.type === "hyperlink") {
       nestedContent = item.children;
+    } else if (item?.type === "simpleField") {
+      nestedContent = item.content;
     } else if (
       item?.type === "inlineSdt" ||
       item?.type === "insertion" ||
@@ -1351,6 +1391,28 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
  * Coalesces consecutive text with the same marks into single Runs
  * for efficient DOCX representation.
  */
+type TrackedRunWrapper = Extract<
+  ParagraphContent,
+  { type: "insertion" | "deletion" | "moveFrom" | "moveTo" }
+>;
+
+function createTrackedRunWrapper(
+  type: TrackedRunWrapper["type"],
+  info: TrackedChangeInfo,
+  child: Run | Hyperlink,
+): TrackedRunWrapper {
+  if (type === "insertion") {
+    return { type, info, content: [child] };
+  }
+  if (type === "deletion") {
+    return { type, info, content: [child] };
+  }
+  if (type === "moveFrom") {
+    return { type, info, content: [child] };
+  }
+  return { type, info, content: [child] };
+}
+
 function extractParagraphContent(
   paragraph: PMNode,
   // Parameter retained for signature compatibility with the call sites
@@ -1378,6 +1440,13 @@ function extractParagraphContent(
   let currentMarksKey: string | null = null;
   let currentHyperlink: Hyperlink | null = null;
   let currentHyperlinkKey: string | null = null;
+  let currentTrackedChange:
+    | {
+        key: string;
+        hyperlink: Hyperlink;
+        hyperlinkKey: string;
+      }
+    | undefined;
   const openedComments = new Set<number>();
 
   // A single comment id must round-trip to a single contiguous comment range.
@@ -1433,6 +1502,7 @@ function extractParagraphContent(
     }
 
     flushCurrentInline();
+    currentTrackedChange = undefined;
 
     // Stable id ordering keeps shared-boundary emission deterministic.
     for (const commentId of toClose.toSorted((a, b) => a - b)) {
@@ -1453,6 +1523,7 @@ function extractParagraphContent(
       }
       nextEmptyHyperlink += 1;
       flushCurrentInline();
+      currentTrackedChange = undefined;
       content.push(createEmptyHyperlink(item.attrs));
     }
   };
@@ -1469,8 +1540,12 @@ function extractParagraphContent(
     const noteRefMark = node.marks.find((m) => m.type.name === "footnoteRef");
     const insertionMark = node.marks.find((m) => m.type.name === "insertion");
     const deletionMark = node.marks.find((m) => m.type.name === "deletion");
+    if (!insertionMark && !deletionMark) {
+      currentTrackedChange = undefined;
+    }
     if (node.type.name === "textBoxAnchor") {
       flushCurrentInline();
+      currentTrackedChange = undefined;
       if (!textBoxAnchorMarkers) {
         return;
       }
@@ -1523,14 +1598,6 @@ function extractParagraphContent(
       const otherMarks = node.marks.filter(
         (m) => m.type.name !== "insertion" && m.type.name !== "deletion",
       );
-      const run = createTrackedChangeRun({ inheritedFormatting, marks: otherMarks, node });
-      if (!run) {
-        return;
-      }
-      const trackedContent: Run | Hyperlink = linkMark
-        ? { ...createHyperlink(linkMark), children: [run] }
-        : run;
-
       const info: TrackedChangeInfo = {
         id: changeAttrs.revisionId,
         author: changeAttrs.author || "Unknown",
@@ -1549,16 +1616,46 @@ function extractParagraphContent(
       // typically don't), and unrelated `w:ins w:id="5"` /
       // `w:del w:id="5"` from different reviewers would coincidentally
       // fuse into a phantom move pair.
+      let type: TrackedRunWrapper["type"];
       if (insertionMark) {
-        if (changeAttrs.moveKind === "moveTo") {
-          content.push({ type: "moveTo", info, content: [trackedContent] });
-        } else {
-          content.push({ type: "insertion", info, content: [trackedContent] });
-        }
-      } else if (changeAttrs.moveKind === "moveFrom") {
-        content.push({ type: "moveFrom", info, content: [trackedContent] });
+        type = changeAttrs.moveKind === "moveTo" ? "moveTo" : "insertion";
       } else {
-        content.push({ type: "deletion", info, content: [trackedContent] });
+        type = changeAttrs.moveKind === "moveFrom" ? "moveFrom" : "deletion";
+      }
+      const trackedChangeKey = `${type}:${JSON.stringify(info)}`;
+      if (linkMark) {
+        const linkKey = getLinkKey(linkMark);
+        if (
+          !currentTrackedChange ||
+          currentTrackedChange.key !== trackedChangeKey ||
+          currentTrackedChange.hyperlinkKey !== linkKey
+        ) {
+          const hyperlink = createHyperlink(linkMark);
+          const wrapper = createTrackedRunWrapper(type, info, hyperlink);
+          content.push(wrapper);
+          currentTrackedChange = { key: trackedChangeKey, hyperlink, hyperlinkKey: linkKey };
+        }
+
+        if (node.type.name === "bookmarkBoundary") {
+          addNodeToHyperlink({
+            hyperlink: currentTrackedChange.hyperlink,
+            inheritedFormatting,
+            node,
+          });
+          return;
+        }
+
+        const run = createTrackedChangeRun({ inheritedFormatting, marks: otherMarks, node });
+        if (run) {
+          currentTrackedChange.hyperlink.children.push(run);
+        }
+        return;
+      }
+
+      currentTrackedChange = undefined;
+      const run = createTrackedChangeRun({ inheritedFormatting, marks: otherMarks, node });
+      if (run) {
+        content.push(createTrackedRunWrapper(type, info, run));
       }
       return;
     }
@@ -1595,7 +1692,21 @@ function extractParagraphContent(
     }
 
     // Handle node types
-    if (node.isText) {
+    if (node.type.name === "bookmarkBoundary") {
+      flushCurrentInline();
+      const attrs = expectBookmarkBoundaryAttrs(node);
+      if (attrs.type === "start") {
+        content.push({
+          type: "bookmarkStart",
+          id: attrs.id,
+          name: attrs.name,
+          ...(attrs.colFirst !== undefined ? { colFirst: attrs.colFirst } : {}),
+          ...(attrs.colLast !== undefined ? { colLast: attrs.colLast } : {}),
+        });
+      } else {
+        content.push({ type: "bookmarkEnd", id: attrs.id });
+      }
+    } else if (node.isText) {
       const marksKey = getMarksKey(node.marks);
 
       if (currentRun && currentMarksKey === marksKey) {
@@ -1635,10 +1746,15 @@ function extractParagraphContent(
     } else if (node.type.name === "renderedPageBreak") {
       flushCurrentInline();
       content.push(createRenderedPageBreakRun());
-    } else if (node.type.name === "field") {
+    } else if (node.type.name === "field" || node.type.name === "structuredField") {
       // Field ends current run and emits a field content item
       flushCurrentInline();
-      content.push(createFieldFromNode(node, node.marks));
+      content.push(
+        createFieldFromNode(node, {
+          marks: node.marks,
+          textBoxAnchorMarkers,
+        }),
+      );
     } else if (node.type.name === "sdt") {
       // SDT ends current run and emits an InlineSdt content item
       flushCurrentInline();
@@ -1874,6 +1990,21 @@ function addNodeToHyperlink({
   inheritedFormatting,
   node,
 }: AddNodeToHyperlinkOptions): void {
+  if (node.type.name === "bookmarkBoundary") {
+    const attrs = expectBookmarkBoundaryAttrs(node);
+    if (attrs.type === "start") {
+      hyperlink.children.push({
+        type: "bookmarkStart",
+        id: attrs.id,
+        name: attrs.name,
+        ...(attrs.colFirst !== undefined ? { colFirst: attrs.colFirst } : {}),
+        ...(attrs.colLast !== undefined ? { colLast: attrs.colLast } : {}),
+      });
+    } else {
+      hyperlink.children.push({ type: "bookmarkEnd", id: attrs.id });
+    }
+    return;
+  }
   const noteRefMark = node.marks.find((m) => m.type.name === "footnoteRef");
   if (noteRefMark) {
     hyperlink.children.push(createNoteReferenceRun(noteRefMark, node.marks));
@@ -2082,13 +2213,20 @@ function createTabRun(node: PMNode, marks?: readonly Mark[]): Run {
 /**
  * Create a SimpleField or ComplexField from a PM field node
  */
-function createFieldFromNode(node: PMNode, marks?: readonly Mark[]): SimpleField | ComplexField {
-  const attrs = expectFieldAttrs(node);
+type CreateFieldFromNodeOptions = {
+  marks?: readonly Mark[];
+  textBoxAnchorMarkers?: Map<string, Run> | undefined;
+};
 
+function createFieldFromNode(
+  node: PMNode,
+  { marks, textBoxAnchorMarkers }: CreateFieldFromNodeOptions,
+): SimpleField | ComplexField {
+  const attrs = expectFieldAttrs(node);
   const formatting = marks && marks.length > 0 ? marksToTextFormatting(marks) : undefined;
 
   // Provide fallback display text for dynamic fields so <w:t> is never empty
-  let displayText = attrs.displayText || "";
+  let displayText = attrs.displayText ?? "";
   if (!displayText) {
     switch (attrs.fieldType) {
       case "PAGE":
@@ -2108,6 +2246,18 @@ function createFieldFromNode(node: PMNode, marks?: readonly Mark[]): SimpleField
     content: [{ type: "text" as const, text: displayText }],
     ...(formatting && Object.keys(formatting).length > 0 ? { formatting } : {}),
   };
+  const extractedContent = extractParagraphContent(
+    node,
+    undefined,
+    undefined,
+    textBoxAnchorMarkers,
+  ).filter(
+    (content): content is Run | Hyperlink => content.type === "run" || content.type === "hyperlink",
+  );
+  const fieldContent =
+    extractedContent.length > 0
+      ? synchronizeFieldDisplayText(extractedContent, displayText, displayRun)
+      : [];
 
   if (attrs.fieldKind === "complex") {
     const complex: ComplexField = {
@@ -2115,7 +2265,10 @@ function createFieldFromNode(node: PMNode, marks?: readonly Mark[]): SimpleField
       instruction: attrs.instruction,
       fieldType: attrs.fieldType,
       fieldCode: [],
-      fieldResult: [displayRun],
+      fieldResult:
+        fieldContent.length > 0
+          ? fieldContent.filter((content): content is Run => content.type === "run")
+          : [displayRun],
     };
     if (attrs.fldLock) {
       complex.fldLock = true;
@@ -2130,7 +2283,7 @@ function createFieldFromNode(node: PMNode, marks?: readonly Mark[]): SimpleField
     type: "simpleField",
     instruction: attrs.instruction,
     fieldType: attrs.fieldType,
-    content: [displayRun],
+    content: fieldContent.length > 0 ? fieldContent : [displayRun],
   };
   if (attrs.fldLock) {
     simple.fldLock = true;
@@ -2140,6 +2293,60 @@ function createFieldFromNode(node: PMNode, marks?: readonly Mark[]): SimpleField
   }
   return simple;
 }
+
+const synchronizeFieldDisplayText = (
+  content: (Run | Hyperlink)[],
+  displayText: string,
+  fallbackRun: Run,
+): (Run | Hyperlink)[] => {
+  let currentText = "";
+  const visitRuns = (visit: (run: Run) => void): void => {
+    for (const child of content) {
+      if (child.type === "run") {
+        visit(child);
+        continue;
+      }
+      for (const hyperlinkChild of child.children) {
+        if (hyperlinkChild.type === "run") {
+          visit(hyperlinkChild);
+        }
+      }
+    }
+  };
+  visitRuns((run) => {
+    for (const runContent of run.content) {
+      if (runContent.type === "text") {
+        currentText += runContent.text;
+      }
+    }
+  });
+  if (currentText === displayText) {
+    return content;
+  }
+
+  let replacedText = false;
+  visitRuns((run) => {
+    for (const runContent of run.content) {
+      if (runContent.type !== "text") {
+        continue;
+      }
+      runContent.text = replacedText ? "" : displayText;
+      replacedText = true;
+    }
+  });
+  if (replacedText) {
+    return content;
+  }
+
+  const hyperlink = content.find((child) => child.type === "hyperlink");
+  if (!hyperlink) {
+    content.push(fallbackRun);
+    return content;
+  }
+  const firstEnd = hyperlink.children.findIndex((child) => child.type === "bookmarkEnd");
+  hyperlink.children.splice(firstEnd < 0 ? hyperlink.children.length : firstEnd, 0, fallbackRun);
+  return content;
+};
 
 /**
  * Create a MathEquation from a PM math node

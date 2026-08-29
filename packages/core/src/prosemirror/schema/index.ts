@@ -16,6 +16,7 @@ export type {
   HardBreakAttrs,
   TabAttrs,
   SymbolAttrs,
+  BookmarkBoundaryAttrs,
   ParagraphAttrs,
   ParagraphPropertyChangeAttrs,
   FieldAttrs,

@@ -70,6 +70,7 @@ import type {
   TextBoxAttrs,
 } from "../schema/nodes";
 import { assertValidProseMirrorDocument } from "../validation";
+import { stampNumberedRefFieldBaselines } from "../numberedRefFields";
 import {
   resolveEffectiveTableCellFormatting,
   type TableCellMarginsAttrs,
@@ -128,6 +129,123 @@ const createHyperlinkInstanceIndexAllocator = (): HyperlinkInstanceIndexAllocato
   return () => index++;
 };
 
+type BookmarkBoundaryCount = {
+  starts: number;
+  ends: number;
+  firstStart?: number;
+  firstEnd?: number;
+};
+
+/**
+ * Find bookmark pairs across every editable inline wrapper in a document story.
+ * Each endpoint is converted at its own structural position, so a range may
+ * start outside a hyperlink and end inside it (or the inverse).
+ */
+const collectPairedBookmarkIds = (blocks: readonly BlockContent[]): ReadonlySet<number> => {
+  const counts = new Map<number, BookmarkBoundaryCount>();
+  let position = 0;
+  const countBoundary = (id: number, type: "start" | "end"): void => {
+    const count = counts.get(id) ?? { starts: 0, ends: 0 };
+    if (type === "start") {
+      count.starts += 1;
+      count.firstStart ??= position;
+    } else {
+      count.ends += 1;
+      count.firstEnd ??= position;
+    }
+    position += 1;
+    counts.set(id, count);
+  };
+
+  const visitRun = (run: Run): void => {
+    for (const content of run.content) {
+      if (content.type === "shape" && content.shape.textBody) {
+        visitBlocks(content.shape.textBody.content);
+      }
+    }
+  };
+
+  const visitHyperlink = (hyperlink: Hyperlink): void => {
+    for (const child of hyperlink.children) {
+      if (child.type === "bookmarkStart") {
+        countBoundary(child.id, "start");
+      } else if (child.type === "bookmarkEnd") {
+        countBoundary(child.id, "end");
+      } else {
+        visitRun(child);
+      }
+    }
+  };
+
+  const visitParagraphContent = (content: Paragraph["content"][number]): void => {
+    if (content.type === "bookmarkStart") {
+      countBoundary(content.id, "start");
+    } else if (content.type === "bookmarkEnd") {
+      countBoundary(content.id, "end");
+    } else if (content.type === "run") {
+      visitRun(content);
+    } else if (content.type === "hyperlink") {
+      visitHyperlink(content);
+    } else if (content.type === "simpleField") {
+      for (const child of content.content) {
+        if (child.type === "hyperlink") {
+          visitHyperlink(child);
+        } else {
+          visitRun(child);
+        }
+      }
+    } else if (content.type === "complexField") {
+      for (const run of [...(content.fieldCode ?? []), ...content.fieldResult]) {
+        visitRun(run);
+      }
+    } else if (content.type === "inlineSdt") {
+      for (const child of content.content) {
+        visitParagraphContent(child);
+      }
+    } else if (
+      content.type === "insertion" ||
+      content.type === "deletion" ||
+      content.type === "moveFrom" ||
+      content.type === "moveTo"
+    ) {
+      for (const child of content.content) {
+        visitParagraphContent(child);
+      }
+    }
+  };
+
+  const visitBlocks = (nestedBlocks: readonly BlockContent[]): void => {
+    for (const block of nestedBlocks) {
+      if (block.type === "paragraph") {
+        for (const content of block.content) {
+          visitParagraphContent(content);
+        }
+      } else if (block.type === "table") {
+        for (const row of block.rows) {
+          for (const cell of row.cells) {
+            visitBlocks(cell.content);
+          }
+        }
+      } else {
+        visitBlocks(block.content);
+      }
+    }
+  };
+
+  visitBlocks(blocks);
+  return new Set(
+    [...counts].flatMap(([id, count]) =>
+      count.starts === 1 &&
+      count.ends === 1 &&
+      count.firstStart !== undefined &&
+      count.firstEnd !== undefined &&
+      count.firstStart < count.firstEnd
+        ? [id]
+        : [],
+    ),
+  );
+};
+
 /**
  * Convert a Document to a ProseMirror document
  *
@@ -147,7 +265,13 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
   const theme = options?.theme ?? document.package.theme ?? null;
   const nextTextBoxGroupId = createTextBoxGroupIdFactory();
   const nextHyperlinkInstanceIndex = createHyperlinkInstanceIndexAllocator();
-  const conversionContext = { theme, nextTextBoxGroupId, nextHyperlinkInstanceIndex };
+  const pairedBookmarkIds = collectPairedBookmarkIds(paragraphs);
+  const conversionContext = {
+    theme,
+    nextTextBoxGroupId,
+    nextHyperlinkInstanceIndex,
+    pairedBookmarkIds,
+  };
 
   const convertBodyBlocks = (blocks: BlockContent[]): PMNode[] => {
     const out: PMNode[] = [];
@@ -214,7 +338,7 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
     nodes.push(schema.node("paragraph", {}, []));
   }
 
-  const pmDoc = schema.node("doc", null, nodes);
+  const pmDoc = stampNumberedRefFieldBaselines(schema.node("doc", null, nodes));
   assertValidProseMirrorDocument(
     pmDoc,
     "Document conversion produced an invalid ProseMirror document",
@@ -276,6 +400,7 @@ function convertParagraph(
   paragraph: Paragraph,
   styleResolver: StyleEngine | null,
   nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator,
+  pairedBookmarkIds: ReadonlySet<number>,
   activeCommentIds?: Set<number>,
   extraRunFormatting?: TextFormatting,
   tableParagraphOverlay?: TableCellParagraphSpacingOverlay,
@@ -468,7 +593,14 @@ function convertParagraph(
       }
       emitInlineNodes(linkNodes);
     } else if (content.type === "simpleField" || content.type === "complexField") {
-      emitInlineNode(convertField(content, getInheritedRunFormatting, styleResolver));
+      emitInlineNode(
+        convertField(content, {
+          getInheritedRunFormatting,
+          styleResolver,
+          nextHyperlinkInstanceIndex,
+          textBoxAnchors,
+        }),
+      );
     } else if (content.type === "inlineSdt") {
       emitInlineNode(
         convertInlineSdt(
@@ -485,9 +617,21 @@ function convertParagraph(
       emitTrackedChange(content, "deletion", content.type === "moveFrom" ? "moveFrom" : null);
     } else if (content.type === "mathEquation") {
       emitInlineNode(convertMathEquation(content));
-    }
-    // Collect bookmarkStart entries for round-trip
-    if (content.type === "bookmarkStart") {
+    } else if (content.type === "bookmarkStart" && pairedBookmarkIds.has(content.id)) {
+      emitInlineNode(
+        schema.node("bookmarkBoundary", {
+          type: "start",
+          id: content.id,
+          name: content.name,
+          colFirst: content.colFirst,
+          colLast: content.colLast,
+        }),
+      );
+    } else if (content.type === "bookmarkEnd" && pairedBookmarkIds.has(content.id)) {
+      emitInlineNode(schema.node("bookmarkBoundary", { type: "end", id: content.id }));
+    } else if (content.type === "bookmarkStart") {
+      // Legacy structural placement records only the start on a paragraph and
+      // uses the paragraph attr to preserve its existing save behavior.
       if (!bookmarksArr) {
         bookmarksArr = [];
       }
@@ -628,6 +772,7 @@ function canCarryTrackedRunMark(node: PMNode, markType: MarkType): boolean {
         node.type.name === "hardBreak" ||
         node.type.name === "tab" ||
         node.type.name === "symbol" ||
+        node.type.name === "bookmarkBoundary" ||
         node.type.name === "textBoxAnchor"))
   );
 }
@@ -1533,6 +1678,7 @@ type TableConversionContext = {
   theme: Theme | null | undefined;
   nextTextBoxGroupId: () => string;
   nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator;
+  pairedBookmarkIds: ReadonlySet<number>;
 };
 
 function convertTable(
@@ -2181,7 +2327,12 @@ export function standaloneTableCellToProseMirror(
   return convertTableCell({
     cell,
     styleResolver: null,
-    context: { theme: null, nextTextBoxGroupId, nextHyperlinkInstanceIndex },
+    context: {
+      theme: null,
+      nextTextBoxGroupId,
+      nextHyperlinkInstanceIndex,
+      pairedBookmarkIds: collectPairedBookmarkIds(cell.content),
+    },
     isHeader: nodeType === "tableHeader",
     gridWidthPercent: undefined,
     conditionalStyle: undefined,
@@ -2200,26 +2351,77 @@ export function standaloneTableCellToProseMirror(
  * Accepts a run formatting resolver so fields inherit paragraph-level
  * formatting the same way regular text runs do.
  */
+type ConvertFieldOptions = {
+  getInheritedRunFormatting: RunFormattingResolver;
+  styleResolver: StyleEngine | null | undefined;
+  nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator;
+  textBoxAnchors: ReadonlyMap<Shape, string> | undefined;
+};
+
 function convertField(
   field: SimpleField | ComplexField,
-  getInheritedRunFormatting: RunFormattingResolver,
-  styleResolver?: StyleEngine | null,
+  {
+    getInheritedRunFormatting,
+    styleResolver,
+    nextHyperlinkInstanceIndex,
+    textBoxAnchors,
+  }: ConvertFieldOptions,
 ): PMNode | null {
   // Extract display text and formatting from field content/result
   let displayText = "";
   let fieldFormatting: TextFormatting | undefined;
-  const runs = field.type === "simpleField" ? field.content : field.fieldResult;
-  for (const r of runs) {
-    if (r.type === "run") {
-      for (const c of r.content) {
-        if (c.type === "text") {
-          displayText += c.text;
+  const inlineNodes: PMNode[] = [];
+  const hasStructuredSourceContent =
+    field.type === "simpleField" && field.content.some((content) => content.type === "hyperlink");
+  const appendRun = (run: Run): void => {
+    for (const content of run.content) {
+      if (content.type === "text") {
+        displayText += content.text;
+      }
+    }
+    // Use formatting from the first run that has it.
+    fieldFormatting ??= run.formatting;
+    if (!hasStructuredSourceContent) {
+      return;
+    }
+    inlineNodes.push(
+      ...convertRun(
+        run,
+        getInheritedRunFormatting(run.formatting, field.fieldType),
+        styleResolver,
+        textBoxAnchors,
+      ),
+    );
+  };
+  if (field.type === "simpleField") {
+    for (const content of field.content) {
+      if (content.type === "run") {
+        appendRun(content);
+        continue;
+      }
+      for (const child of content.children) {
+        if (child.type === "run") {
+          for (const runContent of child.content) {
+            if (runContent.type === "text") {
+              displayText += runContent.text;
+            }
+          }
+          fieldFormatting ??= child.formatting;
         }
       }
-      // Use formatting from the first run that has it
-      if (!fieldFormatting && r.formatting) {
-        fieldFormatting = r.formatting;
-      }
+      inlineNodes.push(
+        ...convertHyperlink(content, {
+          getInheritedRunFormatting: (formatting) =>
+            getInheritedRunFormatting(formatting, field.fieldType),
+          styleResolver,
+          hyperlinkIndex: nextHyperlinkInstanceIndex(),
+          textBoxAnchors,
+        }),
+      );
+    }
+  } else {
+    for (const run of field.fieldResult) {
+      appendRun(run);
     }
   }
 
@@ -2241,8 +2443,13 @@ function convertField(
   const inheritedFormatting = getInheritedRunFormatting(fieldFormatting, field.fieldType);
   const { marks } = buildRunMarks(fieldFormatting, inheritedFormatting, styleResolver);
 
+  const hasConvertedHyperlinkContent = inlineNodes.some((node) =>
+    node.marks.some((mark) => mark.type.name === "hyperlink"),
+  );
+
+  const createStructuredField = hasStructuredSourceContent && hasConvertedHyperlinkContent;
   return schema.node(
-    "field",
+    createStructuredField ? "structuredField" : "field",
     {
       fieldType: field.fieldType,
       instruction: field.instruction,
@@ -2251,7 +2458,7 @@ function convertField(
       fldLock: field.fldLock ?? false,
       dirty: field.dirty ?? false,
     },
-    undefined,
+    createStructuredField ? inlineNodes : undefined,
     marks,
   );
 }
@@ -2299,7 +2506,12 @@ function convertInlineSdt(
       });
       inlineNodes.push(...linkNodes);
     } else if (content.type === "simpleField" || content.type === "complexField") {
-      const fieldNode = convertField(content, getInheritedRunFormatting, styleResolver);
+      const fieldNode = convertField(content, {
+        getInheritedRunFormatting,
+        styleResolver,
+        nextHyperlinkInstanceIndex,
+        textBoxAnchors,
+      });
       if (fieldNode) {
         inlineNodes.push(fieldNode);
       }
@@ -2921,6 +3133,29 @@ function convertHyperlink(
   });
 
   for (const child of hyperlink.children) {
+    if (child.type === "bookmarkStart") {
+      nodes.push(
+        schema.node(
+          "bookmarkBoundary",
+          {
+            type: "start",
+            id: child.id,
+            name: child.name,
+            colFirst: child.colFirst,
+            colLast: child.colLast,
+          },
+          undefined,
+          [linkMark],
+        ),
+      );
+      continue;
+    }
+    if (child.type === "bookmarkEnd") {
+      nodes.push(
+        schema.node("bookmarkBoundary", { type: "end", id: child.id }, undefined, [linkMark]),
+      );
+      continue;
+    }
     if (child.type === "run") {
       // Merge style formatting with run's inline formatting
       const inheritedFormatting = getInheritedRunFormatting(child.formatting);
@@ -3310,6 +3545,7 @@ function convertParagraphWithTextBoxes(
     block,
     styleResolver,
     context.nextHyperlinkInstanceIndex,
+    context.pairedBookmarkIds,
     undefined,
     extraRunFormatting,
     tableParagraphOverlay,
@@ -3750,7 +3986,13 @@ export function headerFooterToProseDoc(
   const theme = options?.theme ?? null;
   const nextTextBoxGroupId = createTextBoxGroupIdFactory();
   const nextHyperlinkInstanceIndex = createHyperlinkInstanceIndexAllocator();
-  const conversionContext = { theme, nextTextBoxGroupId, nextHyperlinkInstanceIndex };
+  const pairedBookmarkIds = collectPairedBookmarkIds(content);
+  const conversionContext = {
+    theme,
+    nextTextBoxGroupId,
+    nextHyperlinkInstanceIndex,
+    pairedBookmarkIds,
+  };
 
   const convertBlocks = (blocks: BlockContent[]): PMNode[] => {
     const out: PMNode[] = [];
@@ -3783,7 +4025,7 @@ export function headerFooterToProseDoc(
     nodes.push(schema.node("paragraph", {}, []));
   }
 
-  const pmDoc = schema.node("doc", null, nodes);
+  const pmDoc = stampNumberedRefFieldBaselines(schema.node("doc", null, nodes));
   assertValidProseMirrorDocument(
     pmDoc,
     "Header/footer conversion produced an invalid ProseMirror document",

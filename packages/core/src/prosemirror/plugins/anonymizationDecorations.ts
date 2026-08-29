@@ -127,7 +127,7 @@ const buildMatches = (doc: PMNode, terms: readonly AnonymizationTerm[]): Anonymi
       let match: RegExpExecArray | null = regex.exec(joined);
       while (match !== null) {
         const from = offsetToDocPos(chunks, match.index);
-        const to = offsetToDocPos(chunks, match.index + match[0].length);
+        const to = offsetToDocPos(chunks, match.index + match[0].length, "end");
         matches.push({
           from,
           to,

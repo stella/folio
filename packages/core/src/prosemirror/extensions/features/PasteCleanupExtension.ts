@@ -19,17 +19,25 @@ import { pasteWithoutFormatting } from "../../commands/pastePlainText";
 import { createExtension } from "../create";
 import type { ExtensionRuntime } from "../types";
 import { Priority } from "../types";
-import { cleanPastedHtml } from "./pasteCleanup";
+import { cleanPastedHtml, removeUnpairedBookmarkBoundaries } from "./pasteCleanup";
 
-export const PasteCleanupExtension = createExtension({
+type PasteCleanupOptions = {
+  getInternalClipboardToken?: () => string;
+};
+
+export const PasteCleanupExtension = createExtension<PasteCleanupOptions>({
   name: "pasteCleanup",
   priority: Priority.Highest,
-  onSchemaReady(): ExtensionRuntime {
+  onSchemaReady(_context, options): ExtensionRuntime {
     const plugin = new Plugin({
       props: {
         transformPastedHTML(html: string): string {
-          return cleanPastedHtml(html);
+          const internalClipboardToken = options.getInternalClipboardToken?.();
+          return cleanPastedHtml(html, {
+            ...(internalClipboardToken ? { internalClipboardToken } : {}),
+          });
         },
+        transformPasted: removeUnpairedBookmarkBoundaries,
       },
     });
 

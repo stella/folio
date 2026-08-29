@@ -16,6 +16,7 @@ import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 
 import type { ParagraphDirection } from "../../paragraphDirection";
+import { schema as docxSchema } from "../../schema";
 import {
   AutoBidiDetectionExtension,
   ensureBaseDirectionInState,
@@ -35,6 +36,15 @@ const schema = new Schema({
       group: "inline",
       inline: true,
       atom: true,
+      attrs: { displayText: { default: "" } },
+      leafText: (node) => node.attrs["displayText"],
+      toDOM: () => ["span"],
+    },
+    structuredField: {
+      group: "inline",
+      inline: true,
+      atom: true,
+      content: "text*",
       attrs: { displayText: { default: "" } },
       toDOM: () => ["span", 0],
     },
@@ -141,6 +151,34 @@ describe("ensureBaseDirectionInState (initial load)", () => {
   test("detects RTL from an inline field's display text", () => {
     const state = ensureBaseDirectionInState(stateOf(fieldLedPara("عربي", "")));
     expect(dirs(state)).toEqual(["auto"]);
+  });
+
+  test("uses an empty PAGE field fallback before later directional text", () => {
+    const page = docxSchema.node("field", {
+      fieldType: "PAGE",
+      instruction: " PAGE ",
+      displayText: "",
+      fieldKind: "complex",
+    });
+    const paragraph = docxSchema.node("paragraph", null, [page, docxSchema.text(" عربي")]);
+    const docxRuntime = AutoBidiDetectionExtension().onSchemaReady({ schema: docxSchema });
+    const state = EditorState.create({
+      doc: docxSchema.node("doc", null, [paragraph]),
+      plugins: docxRuntime.plugins ?? [],
+    });
+
+    expect(dirs(ensureBaseDirectionInState(state))).toEqual(["none"]);
+  });
+
+  test("uses structured field children once instead of prepending cached display text", () => {
+    const structured = schema.node(
+      "structuredField",
+      { displayText: "عربي" },
+      schema.text("Agreement"),
+    );
+    const paragraph = schema.node("paragraph", { direction: null }, [structured]);
+
+    expect(dirs(ensureBaseDirectionInState(stateOf(paragraph)))).toEqual(["none"]);
   });
 
   test("detects RTL from text inside an inline content control (SDT)", () => {

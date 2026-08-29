@@ -61,6 +61,19 @@ export type SymbolAttrs = {
   char: string;
 };
 
+export type BookmarkBoundaryAttrs =
+  | {
+      type: "start";
+      id: number;
+      name: string;
+      colFirst?: number;
+      colLast?: number;
+    }
+  | {
+      type: "end";
+      id: number;
+    };
+
 /**
  * Paragraph node attributes - maps to ParagraphFormatting
  */
@@ -397,6 +410,8 @@ export type FieldAttrs = {
   instruction: string;
   /** Current/cached display text */
   displayText: string;
+  /** Imported cache that proved numbered REF resolution for this field. */
+  _numberedRefBaseline?: string;
   /** Whether the field came from w:fldSimple or a complex fldChar range */
   fieldKind: "simple" | "complex";
   /** Field is locked */

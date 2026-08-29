@@ -65,6 +65,23 @@ describe("scanDirectives", () => {
     expect(blockKinds).toEqual(["if", "endif"]);
   });
 
+  test("whole-paragraph directive fields use the atomic node endpoint", () => {
+    const field = schema.node("field", {
+      fieldType: "UNKNOWN",
+      instruction: " QUOTE ",
+      displayText: "{{#if hasSpouse}}",
+      fieldKind: "simple",
+    });
+    const doc = schema.node("doc", null, [schema.node("paragraph", null, [field])]);
+
+    const [range] = scanDirectives(doc);
+
+    expect(range?.block).toBe(true);
+    expect(range?.from).toBe(1);
+    expect(range?.to).toBe(1 + field.nodeSize);
+    expect(doc.textBetween(range?.from ?? 0, range?.to ?? 0)).toBe("{{#if hasSpouse}}");
+  });
+
   test("emits mid-line each markers as inline (block:false) ranges", () => {
     const doc = docOf("Items: {{#each items}}{{items.name}}{{/each}} end.");
     const tokens = scanDirectives(doc).map((r) => `${r.kind}:${r.expr}:${String(r.block)}`);

@@ -1,6 +1,7 @@
 import type { Mark, Node as PMNode } from "prosemirror-model";
 
 import type { ProseMirrorAttrIssue, ReadProseMirrorAttrsResult } from "./attrs";
+import { readBookmarkBoundaryAttrs } from "./bookmarkBoundaryAttrs";
 import {
   readCharacterSpacingMarkAttrs,
   readCharacterStyleMarkAttrs,
@@ -71,11 +72,100 @@ export const validateProseMirrorDocument = (doc: PMNode): ValidateProseMirrorDoc
   }
 
   validateNode(doc, "doc", issues);
+  validateBookmarkBoundaryStructure(doc, issues);
 
   return {
     valid: issues.length === 0,
     issues,
   };
+};
+
+type OpenBookmarkBoundary = {
+  id: number;
+  path: string;
+};
+
+const validateBookmarkBoundaryStructure = (
+  doc: PMNode,
+  issues: ProseMirrorDocumentValidationIssue[],
+): void => {
+  // Bookmark boundaries pair by id, not by stack order. Word permits ranges
+  // to overlap (start A, start B, end A, end B), so crossing pairs are valid.
+  const open = new Map<number, OpenBookmarkBoundary>();
+  const startedIds = new Set<number>();
+
+  const registerStart = (id: number, path: string): void => {
+    if (startedIds.has(id)) {
+      issues.push({ path, message: `Bookmark id ${id} has more than one start boundary.` });
+      return;
+    }
+    startedIds.add(id);
+    open.set(id, { id, path });
+  };
+
+  const registerEnd = (id: number, path: string): void => {
+    const start = open.get(id);
+    if (!start) {
+      issues.push({ path, message: `Bookmark id ${id} has no open start boundary.` });
+      return;
+    }
+    open.delete(id);
+  };
+
+  const visit = (node: PMNode, path: string): void => {
+    const paragraphAttrs = node.type.name === "paragraph" ? readParagraphAttrs(node) : null;
+    if (paragraphAttrs?.ok) {
+      for (const [index, bookmark] of (paragraphAttrs.value.bookmarks ?? []).entries()) {
+        registerStart(bookmark.id, `${path}.paragraph.attrs.bookmarks[${index}]`);
+      }
+    }
+
+    if (node.type.name === "bookmarkBoundary") {
+      const result = readBookmarkBoundaryAttrs(node);
+      if (result.ok) {
+        const attrs = result.value;
+        const hasHyperlink = node.marks.some((mark) => mark.type.name === "hyperlink");
+        const trackedChanges = node.marks.filter(
+          (mark) => mark.type.name === "insertion" || mark.type.name === "deletion",
+        );
+        if (trackedChanges.length > 1) {
+          issues.push({
+            path,
+            message: "Bookmark boundaries cannot carry multiple tracked-change parents.",
+          });
+        } else if (trackedChanges.length === 1 && !hasHyperlink) {
+          issues.push({
+            path,
+            message:
+              "Bookmark boundaries inside tracked changes require a hyperlink serialization parent.",
+          });
+        }
+        if (attrs.type === "start") {
+          registerStart(attrs.id, path);
+        } else {
+          registerEnd(attrs.id, path);
+        }
+      }
+    }
+
+    // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
+    node.forEach((child, _offset, index) => {
+      visit(child, `${path}.content[${index}]`);
+    });
+    if (paragraphAttrs?.ok) {
+      for (const [index, bookmark] of (paragraphAttrs.value.bookmarks ?? []).entries()) {
+        registerEnd(bookmark.id, `${path}.paragraph.attrs.bookmarks[${index}]`);
+      }
+    }
+  };
+
+  visit(doc, "doc");
+  for (const boundary of open.values()) {
+    issues.push({
+      path: boundary.path,
+      message: `Bookmark id ${boundary.id} has no matching end boundary.`,
+    });
+  }
 };
 
 export const assertValidProseMirrorDocument = (doc: PMNode, context: string): void => {
@@ -134,6 +224,10 @@ const validateNodeAttrs = (
     case "renderedPageBreak":
       return;
 
+    case "bookmarkBoundary":
+      appendAttrIssues(path, readBookmarkBoundaryAttrs(node), issues);
+      return;
+
     case "tab":
       appendAttrIssues(path, readTabAttrs(node), issues);
       return;
@@ -169,6 +263,46 @@ const validateNodeAttrs = (
 
     case "field":
       appendAttrIssues(path, readFieldAttrs(node), issues);
+      if (node.childCount > 0) {
+        issues.push({
+          path: `${path}.content`,
+          message: "Ordinary fields cannot contain structured result children.",
+        });
+      }
+      return;
+
+    case "structuredField":
+      {
+        const fieldAttrs = readFieldAttrs(node);
+        appendAttrIssues(path, fieldAttrs, issues);
+        if (fieldAttrs.ok) {
+          const hasStructuredHyperlink = node.content.content.some((child) =>
+            child.marks.some((mark) => mark.type.name === "hyperlink"),
+          );
+          if (fieldAttrs.value.fieldKind === "complex") {
+            issues.push({
+              path: `${path}.content`,
+              message: "Complex fields cannot contain structured result children.",
+            });
+          } else if (!hasStructuredHyperlink) {
+            issues.push({
+              path: `${path}.content`,
+              message: "Structured simple fields require hyperlink content.",
+            });
+          }
+          // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
+          node.forEach((child, _offset, index) => {
+            const childPath = `${path}.content[${index}]`;
+            const hasHyperlink = child.marks.some((mark) => mark.type.name === "hyperlink");
+            if (child.type.name === "bookmarkBoundary" && !hasHyperlink) {
+              issues.push({
+                path: childPath,
+                message: "Bookmark boundaries inside fields require a hyperlink parent.",
+              });
+            }
+          });
+        }
+      }
       return;
 
     case "math":

@@ -35,6 +35,18 @@ export type BlockSdtAttrs = {
 };
 
 // @public (undocumented)
+export type BookmarkBoundaryAttrs = {
+    type: "start";
+    id: number;
+    name: string;
+    colFirst?: number;
+    colLast?: number;
+} | {
+    type: "end";
+    id: number;
+};
+
+// @public (undocumented)
 export type CharacterSpacingAttrs = {
     spacing?: number;
     position?: number;
@@ -72,6 +84,7 @@ export type FieldAttrs = {
     fieldType: import__stll_docx_core_model.FieldType;
     instruction: string;
     displayText: string;
+    _numberedRefBaseline?: string;
     fieldKind: "simple" | "complex";
     fldLock?: boolean;
     dirty?: boolean;

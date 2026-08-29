@@ -134,7 +134,7 @@ export const scanDirectives = (doc: PMNode): DirectiveRange[] => {
       const last = chunks.at(-1);
       ranges.push({
         from: chunks[0]?.start ?? 0,
-        to: last ? last.start + last.text.length : 0,
+        to: last ? (last.end ?? last.start + last.text.length) : 0,
         kind: sole.meta.kind,
         expr: directiveExpr(sole.meta),
         block: true,
@@ -151,7 +151,7 @@ export const scanDirectives = (doc: PMNode): DirectiveRange[] => {
       const clauseVersion = marker.meta.kind === "clause" ? marker.meta.version : undefined;
       ranges.push({
         from: offsetToDocPos(chunks, marker.start),
-        to: offsetToDocPos(chunks, marker.end),
+        to: offsetToDocPos(chunks, marker.end, "end"),
         kind: marker.meta.kind,
         expr: directiveExpr(marker.meta),
         block: false,

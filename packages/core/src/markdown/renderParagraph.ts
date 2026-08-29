@@ -6,7 +6,7 @@
  * PR #595.
  */
 
-import { resolveListTemplate } from "../layout-bridge/convert/toFlowBlocks";
+import { resolveListTemplate } from "../prosemirror/listMarker";
 import type { DocxPackage, ListRendering, Paragraph } from "../types/document";
 import { isHeadingStyle, parseHeadingLevel } from "./headings";
 import { renderParagraphInline } from "./renderRuns";
@@ -105,5 +105,10 @@ function resolveTemplateMarker(ctx: RenderContext, list: ListRendering): string 
   }
   ctx.listCounters.set(list.numId, counters);
   const levelFormats = list.levelNumFmts ?? (list.numFmt ? [list.numFmt] : undefined);
-  return resolveListTemplate(list.marker, counters, levelFormats, list.isLegal).trim();
+  return resolveListTemplate({
+    template: list.marker,
+    counters,
+    levelFormats,
+    forceDecimal: list.isLegal,
+  }).trim();
 }

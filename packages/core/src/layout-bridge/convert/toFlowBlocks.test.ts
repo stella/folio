@@ -1901,6 +1901,38 @@ describe("toFlowBlocks list numbering", () => {
     });
   });
 
+  test("styles a resolved removed-numbering marker as a tracked deletion", () => {
+    const doc = schema.node("doc", null, [
+      schema.node(
+        "paragraph",
+        {
+          _propertyChanges: [
+            {
+              type: "paragraphPropertyChange",
+              info: { id: 14, author: "Reviewer", date: "2026-01-03" },
+              previousFormatting: {
+                numPr: { numId: 2, ilvl: 0 },
+                listIsBullet: false,
+                listNumFmt: "decimal",
+              },
+            },
+          ],
+        },
+        [schema.text("Removed list item")],
+      ),
+    ]);
+
+    const block = toFlowBlocks(doc).at(0);
+
+    expect(block?.attrs?.listMarker).toBe("1.");
+    expect(block?.attrs?.listMarkerRevision).toEqual({
+      kind: "del",
+      author: "Reviewer",
+      date: "2026-01-03",
+      revisionId: 14,
+    });
+  });
+
   test("removed-numbering deletion numbers off the original stream", () => {
     // An inserted list item (numId 6) advances the final stream to (1). The
     // next item shares that numId but had its numbering removed; in the

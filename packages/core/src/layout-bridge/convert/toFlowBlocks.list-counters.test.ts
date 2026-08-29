@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
+import {
+  advanceListMarker,
+  cloneListCounterState,
+  createListCounterState,
+} from "../../prosemirror/listMarker";
 import type { Document, Paragraph } from "../../types/document";
 import { toFlowBlocks } from "./toFlowBlocks";
 
@@ -56,6 +61,17 @@ function markersOf(blocks: ReturnType<typeof toFlowBlocks>): string[] {
 }
 
 describe("toFlowBlocks counter sharing by abstractNumId", () => {
+  test("rejects levels outside the OOXML 0..8 boundary before growing counter state", () => {
+    for (const ilvl of [-1, 9, 1_000_000, Number.POSITIVE_INFINITY]) {
+      const state = createListCounterState();
+
+      expect(advanceListMarker({ numPr: { numId: 1, ilvl }, listMarker: "%1." }, state)).toBeNull();
+      expect(state.counters.size).toBe(0);
+      expect(state.abstractCounters.size).toBe(0);
+      expect(state.seenLevels.size).toBe(0);
+    }
+  });
+
   test("top-level numIds with the same abstractNum keep independent counters", () => {
     const doc = documentWith([
       listParagraph({ numId: 1, abstractNumId: 4, text: "a" }),
@@ -64,6 +80,21 @@ describe("toFlowBlocks counter sharing by abstractNumId", () => {
     ]);
 
     expect(markersOf(toFlowBlocks(toProseDoc(doc), {}))).toEqual(["(1)", "(1)", "(2)"]);
+  });
+
+  test("numId zero templates reuse the most recently advanced interleaved list", () => {
+    const state = createListCounterState();
+
+    expect(advanceListMarker({ numPr: { numId: 1, ilvl: 0 } }, state)).toBe("1.");
+    expect(advanceListMarker({ numPr: { numId: 2, ilvl: 0 } }, state)).toBe("1.");
+    expect(advanceListMarker({ numPr: { numId: 1, ilvl: 0 } }, state)).toBe("2.");
+    const cloned = cloneListCounterState(state);
+    expect(
+      advanceListMarker(
+        { numPr: { numId: 0, ilvl: 0 }, listMarker: "(%1)", listIsBullet: false },
+        cloned,
+      ),
+    ).toBe("(2)");
   });
 
   test("startOverride resets only the concrete numId on first encounter", () => {

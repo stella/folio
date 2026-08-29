@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { resolveListTemplate } from "../layout-bridge/convert/toFlowBlocks";
+import { resolveListTemplate } from "../prosemirror/listMarker";
 import { computeListRendering, formatNumber, parseNumbering } from "./numberingParser";
 
 const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
@@ -37,9 +37,19 @@ describe("custom numFmt inside mc:AlternateContent (#765)", () => {
   });
 
   test("renders zero-padded markers through the lvlText template", () => {
-    expect(resolveListTemplate("[%1]", [1], ["decimalZero4"])).toBe("[0001]");
-    expect(resolveListTemplate("[%1]", [12], ["decimalZero4"])).toBe("[0012]");
-    expect(resolveListTemplate("[%1]", [12_345], ["decimalZero4"])).toBe("[12345]");
+    expect(
+      resolveListTemplate({ template: "[%1]", counters: [1], levelFormats: ["decimalZero4"] }),
+    ).toBe("[0001]");
+    expect(
+      resolveListTemplate({ template: "[%1]", counters: [12], levelFormats: ["decimalZero4"] }),
+    ).toBe("[0012]");
+    expect(
+      resolveListTemplate({
+        template: "[%1]",
+        counters: [12_345],
+        levelFormats: ["decimalZero4"],
+      }),
+    ).toBe("[12345]");
   });
 
   test("uses the mc:Fallback when the Choice format is not implemented", () => {

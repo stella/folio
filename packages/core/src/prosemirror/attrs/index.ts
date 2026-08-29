@@ -653,11 +653,12 @@ export const expectImageAttrs = (node: PMNode): ImageAttrs =>
 export const readFieldAttrs = (node: PMNode): ReadProseMirrorAttrsResult<FieldAttrs> => {
   const attrs = attrsRecord(node.attrs);
   const issues: ProseMirrorAttrIssue[] = [];
-  expectNodeType(node, "field", issues);
+  expectNodeTypeOneOf(node, ["field", "structuredField"], issues);
 
   requiredOneOf(attrs, "fieldType", "field.attrs.fieldType", issues, FIELD_TYPE_VALUES);
   requiredString(attrs, "instruction", "field.attrs.instruction", issues);
   requiredString(attrs, "displayText", "field.attrs.displayText", issues);
+  optionalString(attrs, "_numberedRefBaseline", "field.attrs._numberedRefBaseline", issues);
   requiredOneOf(attrs, "fieldKind", "field.attrs.fieldKind", issues, FIELD_KINDS);
   optionalBoolean(attrs, "fldLock", "field.attrs.fldLock", issues);
   optionalBoolean(attrs, "dirty", "field.attrs.dirty", issues);

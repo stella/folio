@@ -19,6 +19,320 @@ import { fromProseDoc, proseDocToBlocks } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
 
 describe("fromProseDoc", () => {
+  test("round-trips naked bookmark boundaries through a JSON-cloned editor model", () => {
+    const paragraph = {
+      type: "paragraph",
+      formatting: { spaceAfter: 160 },
+      content: [
+        { type: "bookmarkStart", id: 17, name: "clause", colFirst: 2, colLast: 4 },
+        { type: "run", content: [{ type: "text", text: "Clause" }] },
+        { type: "bookmarkEnd", id: 17 },
+      ],
+    } as const satisfies Paragraph;
+    const document: Document = {
+      package: { document: { content: [paragraph] } },
+    };
+
+    const pmDoc = toProseDoc(document);
+    const cloned = pmDoc.type.schema.nodeFromJSON(pmDoc.toJSON());
+    const roundTripped = fromProseDoc(cloned);
+
+    expect(roundTripped.package.document.content).toEqual([paragraph]);
+  });
+
+  test.each([
+    {
+      name: "starts outside and ends inside a hyperlink",
+      content: [
+        { type: "bookmarkStart", id: 18, name: "crossing-link", colFirst: 1, colLast: 3 },
+        {
+          type: "hyperlink",
+          href: "https://example.com/terms",
+          rId: "rId18",
+          tooltip: "Terms",
+          children: [
+            { type: "run", content: [{ type: "text", text: "Terms" }] },
+            { type: "bookmarkEnd", id: 18 },
+          ],
+        },
+      ],
+    },
+    {
+      name: "starts inside and ends outside a hyperlink",
+      content: [
+        {
+          type: "hyperlink",
+          href: "https://example.com/terms",
+          rId: "rId19",
+          tooltip: "Terms",
+          children: [
+            { type: "bookmarkStart", id: 19, name: "crossing-link" },
+            { type: "run", content: [{ type: "text", text: "Terms" }] },
+          ],
+        },
+        { type: "bookmarkEnd", id: 19 },
+      ],
+    },
+  ] as const)("round-trips a bookmark that $name", ({ content }) => {
+    const paragraph = {
+      type: "paragraph",
+      formatting: { spaceAfter: 160 },
+      content,
+    } as const satisfies Paragraph;
+    const document: Document = {
+      package: { document: { content: [paragraph] } },
+    };
+
+    const pmDoc = toProseDoc(document);
+    const cloned = pmDoc.type.schema.nodeFromJSON(JSON.parse(JSON.stringify(pmDoc.toJSON())));
+    const roundTripped = fromProseDoc(cloned);
+
+    expect(roundTripped.package.document.content).toEqual([paragraph]);
+  });
+
+  test.each([
+    {
+      name: "ends in a simple-field hyperlink",
+      content: [
+        { type: "bookmarkStart", id: 20, name: "field-link" },
+        {
+          type: "simpleField",
+          instruction: " REF field-link \\h ",
+          fieldType: "REF",
+          content: [
+            {
+              type: "hyperlink",
+              href: "https://example.com/field",
+              rId: "rId20",
+              children: [
+                { type: "run", content: [{ type: "text", text: "Field value" }] },
+                { type: "bookmarkEnd", id: 20 },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    {
+      name: "starts and ends in a simple-field hyperlink",
+      content: [
+        {
+          type: "simpleField",
+          instruction: " REF field-link \\h ",
+          fieldType: "REF",
+          content: [
+            {
+              type: "hyperlink",
+              anchor: "field-link",
+              tooltip: "Field target",
+              children: [
+                { type: "bookmarkStart", id: 21, name: "field-link" },
+                { type: "run", content: [{ type: "text", text: "Field value" }] },
+                { type: "bookmarkEnd", id: 21 },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ] as const)("round-trips a bookmark that $name", ({ content }) => {
+    const paragraph = {
+      type: "paragraph",
+      formatting: { spaceAfter: 160 },
+      content,
+    } as const satisfies Paragraph;
+    const document: Document = {
+      package: { document: { content: [paragraph] } },
+    };
+
+    const pmDoc = toProseDoc(document);
+    const field =
+      content.at(0)?.type === "simpleField"
+        ? pmDoc.firstChild?.firstChild
+        : pmDoc.firstChild?.lastChild;
+    expect(field?.type.name).toBe("structuredField");
+    expect(field?.childCount).toBeGreaterThan(0);
+    expect(field?.attrs["_docxSimpleFieldContent"]).toBeUndefined();
+    const cloned = pmDoc.type.schema.nodeFromJSON(JSON.parse(JSON.stringify(pmDoc.toJSON())));
+    const roundTripped = fromProseDoc(cloned);
+
+    expect(roundTripped.package.document.content).toEqual([paragraph]);
+  });
+
+  test("round-trips a complex field result without structural payload", () => {
+    const paragraph = {
+      type: "paragraph",
+      formatting: { spaceAfter: 160 },
+      content: [
+        {
+          type: "complexField",
+          instruction: " PAGE ",
+          fieldType: "PAGE",
+          fieldCode: [],
+          fieldResult: [{ type: "run", content: [{ type: "text", text: "7" }] }],
+        },
+      ],
+    } as const satisfies Paragraph;
+    const document: Document = {
+      package: { document: { content: [paragraph] } },
+    };
+
+    const pmDoc = toProseDoc(document);
+    const field = pmDoc.firstChild?.firstChild;
+    expect(field?.type.name).toBe("field");
+    expect(field?.childCount).toBe(0);
+    const cloned = pmDoc.type.schema.nodeFromJSON(JSON.parse(JSON.stringify(pmDoc.toJSON())));
+
+    expect(fromProseDoc(cloned).package.document.content).toEqual([paragraph]);
+  });
+
+  test("uses a leaf field when an empty hyperlink leaves no converted link content", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "simpleField",
+                  instruction: " REF target ",
+                  fieldType: "REF",
+                  content: [
+                    { type: "run", content: [{ type: "text", text: "Target" }] },
+                    { type: "hyperlink", href: "https://example.test", children: [] },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const field = toProseDoc(document).firstChild?.firstChild;
+
+    expect(field?.type.name).toBe("field");
+    expect(field?.childCount).toBe(0);
+    expect(field?.textContent).toBe("Target");
+  });
+
+  test("does not classify a bookmark end that precedes its start as an inline pair", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                { type: "bookmarkEnd", id: 29 },
+                { type: "run", content: [{ type: "text", text: "Target" }] },
+                { type: "bookmarkStart", id: 29, name: "reversed" },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const paragraph = toProseDoc(document).firstChild;
+
+    expect(paragraph?.childCount).toBe(1);
+    expect(paragraph?.firstChild?.type.name).toBe("text");
+    expect(paragraph ? expectParagraphAttrs(paragraph).bookmarks : undefined).toEqual([
+      { id: 29, name: "reversed" },
+    ]);
+  });
+
+  test("round-trips a text-box anchor inside a structured field hyperlink", () => {
+    const hyperlink = schema.mark("hyperlink", {
+      href: "https://example.test/box",
+      _docxHyperlinkIndex: 1,
+    });
+    const structuredField = schema.node(
+      "structuredField",
+      {
+        fieldType: "REF",
+        instruction: " REF box-link \\h ",
+        displayText: "Box",
+        fieldKind: "simple",
+      },
+      [
+        schema.text("Box", [hyperlink]),
+        schema.node("textBoxAnchor", { anchorId: "field-box" }, null, [hyperlink]),
+      ],
+    );
+    const pmDoc = schema.node("doc", null, [
+      schema.node("paragraph", null, [structuredField]),
+      schema.node("textBox", { _docxPlacement: "inlineWithPrevious", _docxAnchorId: "field-box" }, [
+        schema.node("paragraph", null, [schema.text("Inside")]),
+      ]),
+    ]);
+    const cloned = pmDoc.type.schema.nodeFromJSON(JSON.parse(JSON.stringify(pmDoc.toJSON())));
+    const roundTripped = fromProseDoc(cloned);
+    const paragraph = roundTripped.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") {
+      throw new Error("Expected paragraph");
+    }
+    const field = paragraph.content.at(0);
+    if (field?.type !== "simpleField") {
+      throw new Error("Expected simple field");
+    }
+    expect(field.content.every((content) => content.type === "hyperlink")).toBe(true);
+    expect(inlineContentOrder(field.content)).toEqual(["Box", "textBox"]);
+  });
+
+  test.each([
+    {
+      name: "ordinary-field child",
+      nodeType: "field",
+      fieldKind: "simple",
+      message: "Ordinary fields cannot contain structured result children.",
+    },
+    {
+      name: "plain structured simple-field child",
+      nodeType: "structuredField",
+      fieldKind: "simple",
+      message: "Structured simple fields require hyperlink content.",
+    },
+    {
+      name: "structured complex-field child",
+      nodeType: "structuredField",
+      fieldKind: "complex",
+      message: "Complex fields cannot contain structured result children.",
+    },
+  ] as const)(
+    "fails closed before saving a JSON-cloned $name",
+    ({ nodeType, fieldKind, message }) => {
+      const field = schema.nodes[nodeType]?.create(
+        {
+          fieldType: "REF",
+          instruction: " REF target ",
+          displayText: "Target",
+          fieldKind,
+        },
+        schema.text("Target"),
+      );
+      if (!field) {
+        throw new Error(`Missing ${nodeType} schema node`);
+      }
+      const pmDoc = schema.node("doc", null, [schema.node("paragraph", null, [field])]);
+      const cloned = pmDoc.type.schema.nodeFromJSON(JSON.parse(JSON.stringify(pmDoc.toJSON())));
+
+      expect(() => fromProseDoc(cloned)).toThrow(message);
+    },
+  );
+
+  test("fails closed before serializing an unpaired bookmark boundary", () => {
+    const pmDoc = schema.node("doc", null, [
+      schema.node("paragraph", null, [
+        schema.node("bookmarkBoundary", { type: "start", id: 99, name: "unpaired" }),
+      ]),
+    ]);
+
+    expect(() => fromProseDoc(pmDoc)).toThrow("Bookmark id 99 has no matching end boundary.");
+  });
+
   test("round-trips table row structural revision markers through the editor model", () => {
     const document: Document = {
       package: {
@@ -1138,6 +1452,68 @@ describe("fromProseDoc", () => {
     expect(run.content.at(0)?.type).toBe("drawing");
   });
 
+  test.each(["insertion", "deletion", "moveFrom", "moveTo"] as const)(
+    "preserves a bookmarked hyperlink as one %s wrapper",
+    (type) => {
+      const info = {
+        id: 91,
+        author: "Reviewer",
+        date: "2026-08-29T10:15:00Z",
+        initials: "RV",
+      } satisfies TrackedChangeInfo;
+      const hyperlink = {
+        type: "hyperlink",
+        href: "https://example.com/terms",
+        rId: "rId91",
+        tooltip: "Defined term",
+        children: [
+          {
+            type: "bookmarkStart",
+            id: 91,
+            name: "defined-term",
+            colFirst: 2,
+            colLast: 4,
+          },
+          { type: "run", content: [{ type: "text", text: "Agreement" }] },
+          { type: "bookmarkEnd", id: 91 },
+        ],
+      } satisfies TrackedRunChange["content"][number];
+      const trackedChange = trackedRunWrapper(type, info, hyperlink);
+      const document: Document = {
+        package: {
+          document: {
+            content: [{ type: "paragraph", content: [trackedChange] }],
+          },
+        },
+      };
+
+      const pmDoc = toProseDoc(document);
+      const boundaries: PMNode[] = [];
+      pmDoc.descendants((node) => {
+        if (node.type.name === "bookmarkBoundary") {
+          boundaries.push(node);
+        }
+      });
+      expect(boundaries).toHaveLength(2);
+      expect(
+        boundaries.every((node) =>
+          node.marks.some(
+            (mark) =>
+              mark.type.name ===
+              (type === "deletion" || type === "moveFrom" ? "deletion" : "insertion"),
+          ),
+        ),
+      ).toBe(true);
+
+      const roundTripped = fromProseDoc(pmDoc, document);
+      const paragraph = roundTripped.package.document.content.at(0);
+      if (paragraph?.type !== "paragraph") {
+        throw new Error("Expected round-tripped paragraph");
+      }
+      expect(paragraph.content).toEqual([trackedChange]);
+    },
+  );
+
   test("preserves drawing content in vMerge continuation cells", () => {
     const rawXml = "<w:drawing><wp:anchor/></w:drawing>";
     const document: Document = {
@@ -2017,7 +2393,7 @@ describe("fromProseDoc", () => {
         author: "Reviewer",
         date: "2026-07-15T12:00:00Z",
       } satisfies TrackedChangeInfo;
-      paragraph.content = [trackedTextBoxWrapper(type, info, run)];
+      paragraph.content = [trackedRunWrapper(type, info, run)];
 
       const pmDoc = toProseDoc(document);
       const textBoxNode = pmDoc.firstChild;
@@ -2227,7 +2603,7 @@ describe("fromProseDoc", () => {
         {
           type: "inlineSdt",
           properties: { sdtType: "richText", alias: "Tracked shape" },
-          content: [trackedTextBoxWrapper(type, info, textBoxRun)],
+          content: [trackedRunWrapper(type, info, textBoxRun)],
         },
       ];
 
@@ -2367,7 +2743,7 @@ describe("fromProseDoc", () => {
     expect(firstShapeType(block)).toBe("textBox");
   });
 
-  test("keeps a wrapper paragraph when text-box-only content carries boundary attrs", () => {
+  test("keeps a wrapper paragraph when text-box-only content carries bookmark boundaries", () => {
     const document = documentWithTextBoxParagraph({ includeText: false });
     const sourceBlock = document.package.document.content.at(0);
 
@@ -2389,7 +2765,12 @@ describe("fromProseDoc", () => {
     expect(pmDoc.child(0).type.name).toBe("paragraph");
     expect(pmDoc.child(1).type.name).toBe("textBox");
     const attrs = expectParagraphAttrs(pmDoc.child(0));
-    expect(attrs.bookmarks).toEqual([{ id: 7, name: "box-boundary" }]);
+    expect(
+      Array.from(
+        { length: pmDoc.child(0).childCount },
+        (_, index) => pmDoc.child(0).child(index).type.name,
+      ),
+    ).toEqual(["bookmarkBoundary", "textBoxAnchor", "bookmarkBoundary"]);
     expect(attrs._emptyHyperlinks).toHaveLength(1);
 
     expect(block?.type).toBe("paragraph");
@@ -2937,21 +3318,21 @@ function documentWithTextBoxParagraph({
   };
 }
 
-function trackedTextBoxWrapper(
+function trackedRunWrapper(
   type: TrackedRunChange["type"],
   info: TrackedChangeInfo,
-  run: Run,
+  content: TrackedRunChange["content"][number],
 ): TrackedRunChange {
   if (type === "insertion") {
-    return { type, info, content: [run] };
+    return { type, info, content: [content] };
   }
   if (type === "deletion") {
-    return { type, info, content: [run] };
+    return { type, info, content: [content] };
   }
   if (type === "moveFrom") {
-    return { type, info, content: [run] };
+    return { type, info, content: [content] };
   }
-  return { type, info, content: [run] };
+  return { type, info, content: [content] };
 }
 
 function cellWithText(text: string): TableCell {

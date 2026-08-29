@@ -68,7 +68,8 @@ import {
 } from "./marks/TrackedChangeExtensions";
 import { UnderlineExtension } from "./marks/UnderlineExtension";
 import { BlockSdtExtension } from "./nodes/BlockSdtExtension";
-import { FieldExtension } from "./nodes/FieldExtension";
+import { BookmarkBoundaryExtension } from "./nodes/BookmarkBoundaryExtension";
+import { FieldExtension, StructuredFieldExtension } from "./nodes/FieldExtension";
 // Nodes
 import { HardBreakExtension } from "./nodes/HardBreakExtension";
 import { HorizontalRuleExtension } from "./nodes/HorizontalRuleExtension";
@@ -103,6 +104,11 @@ export function createStarterKit(options: StarterKitOptions = {}): AnyExtension[
   const disabled = options.disable ? new Set(options.disable) : new Set<string>();
 
   const extensions: AnyExtension[] = [];
+  let internalClipboardToken: string | undefined;
+  const getInternalClipboardToken = (): string => {
+    internalClipboardToken ??= globalThis.crypto.randomUUID();
+    return internalClipboardToken;
+  };
 
   function add(name: string, ext: AnyExtension): void {
     if (!disabled.has(name)) {
@@ -161,12 +167,13 @@ export function createStarterKit(options: StarterKitOptions = {}): AnyExtension[
   add("runPropertyChange", RunPropertyChangeExtension());
 
   // Nodes
+  add("bookmarkBoundary", BookmarkBoundaryExtension({ getInternalClipboardToken }));
   add("hardBreak", HardBreakExtension());
   add("tab", TabExtension());
   add("symbol", SymbolExtension());
   add("image", ImageExtension());
   add("textBox", TextBoxExtension());
-  add("textBoxAnchor", TextBoxAnchorExtension());
+  add("textBoxAnchor", TextBoxAnchorExtension({ getInternalClipboardToken }));
   add("shape", ShapeExtension());
   add("imageDrag", ImageDragExtension());
   add("imagePaste", ImagePasteExtension());
@@ -176,6 +183,7 @@ export function createStarterKit(options: StarterKitOptions = {}): AnyExtension[
   add("pageBreak", PageBreakExtension());
   add("renderedPageBreak", RenderedPageBreakExtension());
   add("field", FieldExtension());
+  add("field", StructuredFieldExtension({ getInternalClipboardToken }));
   add("sdt", SdtExtension());
   add("blockSdt", BlockSdtExtension());
   add("math", MathExtension());
@@ -186,7 +194,7 @@ export function createStarterKit(options: StarterKitOptions = {}): AnyExtension[
   }
 
   // Features
-  add("pasteCleanup", PasteCleanupExtension());
+  add("pasteCleanup", PasteCleanupExtension({ getInternalClipboardToken }));
   add("pasteStyleInliner", PasteStyleInlinerExtension());
   add("list", ListExtension());
   add("baseKeymap", BaseKeymapExtension());

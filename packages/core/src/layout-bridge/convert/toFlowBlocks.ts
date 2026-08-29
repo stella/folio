@@ -9,7 +9,6 @@ import type { Node as PMNode, Mark } from "prosemirror-model";
 
 import { convertBulletToUnicode } from "../../docx/bulletMarkers";
 import { resolveDocumentGridLinePitch } from "../../docx/documentGrid";
-import { formatOoxmlCounter } from "../../docx/ooxmlCounterFormatter";
 import type {
   FlowBlock,
   ParagraphBlock,
@@ -80,13 +79,15 @@ import type {
   ParagraphAttrs as PMParagraphAttrs,
 } from "../../prosemirror/schema/nodes";
 import { assertValidProseMirrorDocument } from "../../prosemirror/validation";
-import type {
-  ColorValue,
-  Theme,
-  SectionProperties,
-  NumberFormat,
-  TextFormatting,
-} from "../../types/document";
+import {
+  advanceListMarker,
+  advanceVisibleListMarker,
+  cloneListCounterState,
+  type ListCounterState,
+  type ListCounterStreams,
+} from "../../prosemirror/listMarker";
+import { resolveNumberedRefFields } from "../../prosemirror/numberedRefFields";
+import type { ColorValue, Theme, SectionProperties, TextFormatting } from "../../types/document";
 import { resolveColor, resolveHighlightToCss } from "../../utils/colorResolver";
 import { resolveThemeFont } from "../../utils/fontResolver";
 import { resolveShadingFill } from "../../utils/formatToStyle";
@@ -99,6 +100,8 @@ import {
   halfPointsToPoints,
 } from "../../utils/units";
 import { groupParagraphFrames } from "./paragraphFrames";
+
+export { formatCounter, resolveListTemplate } from "../../prosemirror/listMarker";
 
 /**
  * Options for the conversion.
@@ -150,6 +153,11 @@ export type ToFlowBlocksOptions = {
   automaticHyphenation?: NonNullable<ParagraphAttrs["automaticHyphenation"]>;
   /** Line pitch for the final body section, whose properties live outside the PM body. */
   finalSectionDocumentGridLinePitchTwips?: number;
+};
+
+type FlowConversionOptions = ToFlowBlocksOptions & {
+  listCounterStreams: ListCounterStreams;
+  numberedRefResults?: ReadonlyMap<PMNode, string>;
 };
 
 const DEFAULT_FONT = "Calibri";
@@ -208,57 +216,6 @@ function nextBlockId(): string {
   return `block-${++blockIdCounter}`;
 }
 
-function formatNumberedMarker(counters: number[], level: number): string {
-  const parts: number[] = [];
-  for (let i = 0; i <= level; i += 1) {
-    const value = counters[i] ?? 0;
-    if (!Number.isFinite(value) || value <= 0) {
-      break;
-    }
-    parts.push(value);
-  }
-  if (parts.length === 0) {
-    return "1.";
-  }
-  return `${parts.join(".")}.`;
-}
-
-export function formatCounter(value: number, format: NumberFormat | undefined): string {
-  return formatOoxmlCounter(value, format);
-}
-
-export function resolveListTemplate(
-  template: string,
-  counters: number[],
-  levelFormats: NumberFormat[] | undefined,
-  forceDecimal = false,
-): string {
-  return template.replace(/%(?<digit>\d)(?<punct>[.):\]])?/gu, (...args) => {
-    const { digit, punct = "" } = args.at(-1) as {
-      digit: string;
-      punct?: string;
-    };
-    const index = Number.parseInt(digit, 10) - 1;
-    if (index < 0) {
-      return "";
-    }
-    const counter = counters[index];
-    if (counter === undefined || Number.isNaN(counter)) {
-      return "";
-    }
-    const formatted = formatCounter(counter, forceDecimal ? "decimal" : levelFormats?.[index]);
-    return formatted ? `${formatted}${punct}` : "";
-  });
-}
-
-function getLastListCounters(listCounters: Map<number, number[]>): number[] | undefined {
-  let lastCounters: number[] | undefined;
-  for (const counters of listCounters.values()) {
-    lastCounters = counters;
-  }
-  return lastCounters;
-}
-
 function applyMarkerAllCaps(marker: string | null, allCaps: boolean | undefined): string | null {
   if (marker === null || !allCaps) {
     return marker;
@@ -266,102 +223,8 @@ function applyMarkerAllCaps(marker: string | null, allCaps: boolean | undefined)
   return marker.toLocaleUpperCase();
 }
 
-function computeListMarker(
-  pmAttrs: PMParagraphAttrs,
-  listCounters: Map<number, number[]>,
-  abstractCounters: Map<number, number[]>,
-  seenNumIds: Set<string>,
-): string | null {
-  const numId = pmAttrs.numPr?.numId;
-  if (numId === undefined || numId === 0) {
-    if (pmAttrs.listMarker?.includes("%") && !pmAttrs.listIsBullet) {
-      const counters = getLastListCounters(listCounters);
-      if (counters) {
-        return resolveListTemplate(
-          pmAttrs.listMarker,
-          counters,
-          pmAttrs.listLevelNumFmts,
-          pmAttrs.listIsLegal,
-        );
-      }
-    }
-    return null;
-  }
-
-  if (pmAttrs.listIsBullet) {
-    return convertBulletToUnicode(pmAttrs.listMarker || "");
-  }
-
-  const level = pmAttrs.numPr?.ilvl ?? 0;
-  const counters =
-    listCounters.get(numId) ?? (Array.from({ length: 9 }, () => Number.NaN) as number[]);
-  const abstractNumId = pmAttrs.listAbstractNumId;
-  if (level > 0) {
-    const latestAbstractCounters =
-      abstractNumId === undefined ? undefined : abstractCounters.get(abstractNumId);
-    if (counters.slice(0, level).every((counter) => !Number.isFinite(counter))) {
-      for (let i = 0; i < level; i += 1) {
-        const latestCounter = latestAbstractCounters?.[i];
-        counters[i] =
-          latestCounter !== undefined && Number.isFinite(latestCounter)
-            ? latestCounter
-            : (pmAttrs.listLevelStarts?.[i] ?? 1);
-      }
-    }
-  }
-
-  const seenKey = `${numId}:${level}`;
-  if (!seenNumIds.has(seenKey)) {
-    seenNumIds.add(seenKey);
-    if (pmAttrs.listStartOverride != null) {
-      counters[level] = pmAttrs.listStartOverride - 1;
-    }
-  }
-  // Returning to a parent level clears every deeper counter. A later child at
-  // a level seen earlier must therefore restart from its authored start; the
-  // lifetime `seenNumIds` set cannot stand in for live counter state.
-  if (!Number.isFinite(counters[level])) {
-    counters[level] = (pmAttrs.listLevelStarts?.[level] ?? 1) - 1;
-  }
-
-  counters[level] = (counters[level] ?? 0) + 1;
-  for (let i = level + 1; i < counters.length; i += 1) {
-    counters[i] = Number.NaN;
-  }
-  // Word's default LISTNUM field advances the counter at one ilvl deeper
-  // than the host paragraph. Carrying the consumed advances forward here
-  // means a later sibling at that depth (e.g. an OutNum3 "(b)" following an
-  // OutNum2 "(a)") picks up the next letter instead of restarting at "(a)".
-  const childAdvances = pmAttrs.listImplicitChildLevelAdvances ?? 0;
-  if (childAdvances > 0 && level + 1 < counters.length) {
-    const childCounter = counters[level + 1];
-    counters[level + 1] =
-      (childCounter === undefined || !Number.isFinite(childCounter) ? 0 : childCounter) +
-      childAdvances;
-  }
-  listCounters.set(numId, counters);
-  if (abstractNumId !== undefined) {
-    abstractCounters.set(abstractNumId, [...counters]);
-  }
-
-  const levelFormats =
-    pmAttrs.listLevelNumFmts ?? (pmAttrs.listNumFmt ? [pmAttrs.listNumFmt] : undefined);
-  if (pmAttrs.listMarker && pmAttrs.listMarker.includes("%")) {
-    return resolveListTemplate(pmAttrs.listMarker, counters, levelFormats, pmAttrs.listIsLegal);
-  }
-  if (pmAttrs.listMarker) {
-    return pmAttrs.listMarker;
-  }
-  // OOXML allows a list level to set lvlText="" with numFmt="none" to attach
-  // numbering metadata (counters, indents) without painting a marker — Word
-  // glossary/definition styles use this. An empty listMarker means the level
-  // explicitly opts out; synthesising a decimal counter here would forge a
-  // marker the source never authored.
-  const levelFormat = levelFormats?.[level] ?? pmAttrs.listNumFmt;
-  if (levelFormat === "none" || pmAttrs.listMarker === "") {
-    return null;
-  }
-  return formatNumberedMarker(counters, level);
+function computeListMarker(pmAttrs: PMParagraphAttrs, state: ListCounterState): string | null {
+  return advanceListMarker(pmAttrs, state);
 }
 
 /**
@@ -1092,7 +955,7 @@ function stripTocHyperlinkStyle(formatting: RunFormatting): void {
 /**
  * Convert a paragraph node to runs.
  */
-function paragraphToRuns(node: PMNode, startPos: number, _options: ToFlowBlocksOptions): Run[] {
+function paragraphToRuns(node: PMNode, startPos: number, _options: FlowConversionOptions): Run[] {
   const runs: Run[] = [];
   const offset = startPos + 1; // +1 for opening tag
   const theme = _options.theme;
@@ -1111,6 +974,9 @@ function paragraphToRuns(node: PMNode, startPos: number, _options: ToFlowBlocksO
   // tab/image and silently dropped fields, math, and nested SDTs even
   // when the parser preserved them (see eigenpal #482).
   function pushRunsForChild(child: PMNode, childPos: number): void {
+    if (child.type.name === "bookmarkBoundary") {
+      return;
+    }
     if (child.type.name === "renderedPageBreak") {
       if (leadingRenderedPageBreakPending) {
         leadingRenderedPageBreakPending = false;
@@ -1211,7 +1077,7 @@ function paragraphToRuns(node: PMNode, startPos: number, _options: ToFlowBlocksO
       runs.push(run);
       return;
     }
-    if (child.type.name === "field") {
+    if (child.type.name === "field" || child.type.name === "structuredField") {
       // Marks on the field node (bold/italic/underline applied to the
       // field result inside `<w:fldChar separate>...</w:fldChar end>`)
       // must propagate to the run formatting, otherwise complex REF
@@ -1248,7 +1114,7 @@ function paragraphToRuns(node: PMNode, startPos: number, _options: ToFlowBlocksO
         kind: "field",
         fieldType: mappedType,
         instruction: attrs.instruction,
-        fallback: attrs.displayText || "",
+        fallback: _options.numberedRefResults?.get(child) ?? attrs.displayText ?? "",
         ...(attrs.fldLock ? { fldLock: true } : {}),
         pmStart: childPos,
         pmEnd: childPos + child.nodeSize,
@@ -1434,21 +1300,14 @@ function toPreviousListAttrs(previousFormatting: ListPropertyFormatting): PMPara
 
 function resolveDeletedListMarker(
   previousListAttrs: PMParagraphAttrs,
-  listCounters: Map<number, number[]> | undefined,
-  listAbstractCounters: Map<number, number[]> | undefined,
-  listSeenNumIds: Set<string> | undefined,
+  listCounterState: ListCounterState | undefined,
 ): string | null {
-  if (listCounters && previousListAttrs.numPr) {
+  if (listCounterState && previousListAttrs.numPr) {
     // Advance the original counter stream in place (no clone): a
     // removed-numbering deletion occupied a number in the pre-revision
     // document, so it must progress the counter exactly like a deleted list
     // item — otherwise a following deletion on the same numId reuses it.
-    const marker = computeListMarker(
-      previousListAttrs,
-      listCounters,
-      listAbstractCounters ?? new Map<number, number[]>(),
-      listSeenNumIds ?? new Set<string>(),
-    );
+    const marker = computeListMarker(previousListAttrs, listCounterState);
     if (marker) {
       return marker;
     }
@@ -1470,18 +1329,11 @@ function resolveDeletedListMarker(
 function applyDeletedListMarkerAttrs(
   attrs: ParagraphAttrs,
   change: ListPropertyChange & { previousFormatting: ListPropertyFormatting },
-  listCounters: Map<number, number[]> | undefined,
-  listAbstractCounters: Map<number, number[]> | undefined,
-  listSeenNumIds: Set<string> | undefined,
+  listCounterState: ListCounterState | undefined,
   theme: Theme | null | undefined,
 ): void {
   const previousListAttrs = toPreviousListAttrs(change.previousFormatting);
-  const marker = resolveDeletedListMarker(
-    previousListAttrs,
-    listCounters,
-    listAbstractCounters,
-    listSeenNumIds,
-  );
+  const marker = resolveDeletedListMarker(previousListAttrs, listCounterState);
   if (!marker) {
     return;
   }
@@ -1508,16 +1360,15 @@ function applyDeletedListMarkerAttrs(
   }
 }
 
+type ConvertParagraphAttrsOptions = {
+  theme: Theme | null | undefined;
+  listCounterStreams: ListCounterStreams;
+  defaultTabStopTwips: number | undefined;
+};
+
 function convertParagraphAttrs(
   pmAttrs: PMParagraphAttrs,
-  theme?: Theme | null,
-  listCounters?: Map<number, number[]>,
-  listAbstractCounters?: Map<number, number[]>,
-  listSeenNumIds?: Set<string>,
-  defaultTabStopTwips?: number,
-  originalListCounters?: Map<number, number[]>,
-  originalListAbstractCounters?: Map<number, number[]>,
-  originalListSeenNumIds?: Set<string>,
+  { theme, listCounterStreams, defaultTabStopTwips }: ConvertParagraphAttrsOptions,
 ): ParagraphAttrs {
   const attrs: ParagraphAttrs = {};
 
@@ -1827,58 +1678,8 @@ function convertParagraphAttrs(
       }
     }
   }
-  // Tracked-deletion list items number off a separate "original" stream so the
-  // inserted list (a, b) and the deleted list (a, b, c) restart independently
-  // instead of running one shared counter (a, b, c, d, e). Insertions and normal
-  // items use the final stream; normal items also advance the original stream so
-  // a later deleted sibling continues from the surviving count (Word parity).
-  const useOriginalStream =
-    attrs.listMarkerRevision?.kind === "del" && originalListCounters !== undefined;
-  const streamCounters = useOriginalStream ? originalListCounters : listCounters;
-  const streamAbstractCounters = useOriginalStream
-    ? originalListAbstractCounters
-    : listAbstractCounters;
-  const streamSeenNumIds = useOriginalStream ? originalListSeenNumIds : listSeenNumIds;
-  const resolvedMarker = applyMarkerAllCaps(
-    streamCounters
-      ? computeListMarker(
-          pmAttrs,
-          streamCounters,
-          streamAbstractCounters ?? new Map(),
-          streamSeenNumIds ?? new Set(),
-        )
-      : null,
-    pmAttrs.listMarkerAllCaps,
-  );
-  const numberedNumId = pmAttrs.numPr?.numId;
-  if (
-    attrs.listMarkerRevision === undefined &&
-    !pmAttrs.listIsBullet &&
-    originalListCounters !== undefined &&
-    numberedNumId !== undefined &&
-    numberedNumId !== 0
-  ) {
-    computeListMarker(
-      pmAttrs,
-      originalListCounters,
-      originalListAbstractCounters ?? new Map(),
-      originalListSeenNumIds ?? new Set(),
-    );
-  } else if (changedNumberingChange !== undefined && originalListCounters !== undefined) {
-    // Changed numbering is shown as an insertion of the new numId, but in the
-    // pre-revision document the paragraph sat under its PREVIOUS numId. Advance
-    // that original stream so a later deletion on the old numId continues from
-    // the right count instead of reusing this item's number.
-    const previousListAttrs = toPreviousListAttrs(changedNumberingChange.previousFormatting);
-    if (previousListAttrs.numPr && !previousListAttrs.listIsBullet) {
-      computeListMarker(
-        previousListAttrs,
-        originalListCounters,
-        originalListAbstractCounters ?? new Map(),
-        originalListSeenNumIds ?? new Set(),
-      );
-    }
-  }
+  const visibleMarker = advanceVisibleListMarker(pmAttrs, listCounterStreams);
+  const resolvedMarker = applyMarkerAllCaps(visibleMarker.marker, pmAttrs.listMarkerAllCaps);
   if (resolvedMarker !== null) {
     attrs.listMarker = resolvedMarker;
   } else if (pmAttrs.listMarker) {
@@ -1910,14 +1711,11 @@ function convertParagraphAttrs(
       // Number removed-numbering deletions off the original stream too (like
       // deleted list items): the struck-through marker must reflect the
       // pre-revision number, not the final counter that insertions advanced.
-      applyDeletedListMarkerAttrs(
-        attrs,
-        numberingRemovedChange,
-        originalListCounters,
-        originalListAbstractCounters,
-        originalListSeenNumIds,
-        theme,
-      );
+      applyDeletedListMarkerAttrs(attrs, numberingRemovedChange, undefined, theme);
+      if (resolvedMarker !== null) {
+        attrs.listMarker = resolvedMarker;
+        attrs.listMarkerRevision = toListMarkerRevision("del", numberingRemovedChange.info);
+      }
     }
   }
   if (defaultTabStopTwips !== undefined) {
@@ -1990,21 +1788,15 @@ function hasOnlyVisuallyEmptyTextRuns(runs: Run[]): boolean {
 function convertParagraph(
   node: PMNode,
   startPos: number,
-  options: ToFlowBlocksOptions,
+  options: FlowConversionOptions,
 ): ParagraphBlock {
   const pmAttrs = expectParagraphAttrs(node);
   const runs = paragraphToRuns(node, startPos, options);
-  const attrs = convertParagraphAttrs(
-    pmAttrs,
-    options.theme,
-    options.listCounters,
-    options.listAbstractCounters,
-    options.listSeenNumIds,
-    options.defaultTabStopTwips,
-    options.originalListCounters,
-    options.originalListAbstractCounters,
-    options.originalListSeenNumIds,
-  );
+  const attrs = convertParagraphAttrs(pmAttrs, {
+    theme: options.theme,
+    listCounterStreams: options.listCounterStreams,
+    defaultTabStopTwips: options.defaultTabStopTwips,
+  });
   if (options.lineBreakRules) {
     attrs.lineBreakRules = options.lineBreakRules;
   }
@@ -2292,7 +2084,7 @@ function extractCellBorders(
 function convertTableCell(
   node: PMNode,
   startPos: number,
-  options: ToFlowBlocksOptions,
+  options: FlowConversionOptions,
   tableCellMargins?: {
     top?: number;
     bottom?: number;
@@ -2397,7 +2189,7 @@ function convertTableCell(
 function convertTableRow(
   node: PMNode,
   startPos: number,
-  options: ToFlowBlocksOptions,
+  options: FlowConversionOptions,
   tableCellMargins?: {
     top?: number;
     bottom?: number;
@@ -2448,7 +2240,7 @@ function convertTableRow(
 /**
  * Convert a table node to a TableBlock.
  */
-function convertTable(node: PMNode, startPos: number, options: ToFlowBlocksOptions): TableBlock {
+function convertTable(node: PMNode, startPos: number, options: FlowConversionOptions): TableBlock {
   const rows: TableRow[] = [];
   let offset = startPos + 1; // +1 for opening tag
   const attrs = expectTableAttrs(node);
@@ -2669,7 +2461,7 @@ function convertImage(node: PMNode, startPos: number, pageContentHeight?: number
 function convertTextBoxNode(
   node: PMNode,
   startPos: number,
-  opts: ToFlowBlocksOptions,
+  opts: FlowConversionOptions,
 ): TextBoxBlock {
   const attrs = expectTextBoxAttrs(node);
   const contentBlocks: (ParagraphBlock | TableBlock)[] = [];
@@ -2757,6 +2549,14 @@ function convertTextBoxNode(
   return textBox;
 }
 
+function getLastMapKey<K, V>(map: ReadonlyMap<K, V>): K | undefined {
+  let lastKey: K | undefined;
+  for (const key of map.keys()) {
+    lastKey = key;
+  }
+  return lastKey;
+}
+
 /**
  * Convert a ProseMirror document to FlowBlock array.
  *
@@ -2768,17 +2568,43 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
 
   resetBlockIdCounter();
 
-  const opts: ToFlowBlocksOptions = {
+  const listCounters = options.listCounters ?? new Map<number, number[]>();
+  const originalListCounters = options.originalListCounters ?? new Map<number, number[]>();
+  const lastAdvancedNumId = getLastMapKey(listCounters);
+  const lastAdvancedOriginalNumId = getLastMapKey(originalListCounters);
+  const listCounterState: ListCounterState = {
+    counters: listCounters,
+    abstractCounters: options.listAbstractCounters ?? new Map<number, number[]>(),
+    seenLevels: options.listSeenNumIds ?? new Set<string>(),
+    ...(lastAdvancedNumId !== undefined ? { lastAdvancedNumId } : {}),
+  };
+  const originalListCounterState: ListCounterState = {
+    counters: originalListCounters,
+    abstractCounters: options.originalListAbstractCounters ?? new Map<number, number[]>(),
+    seenLevels: options.originalListSeenNumIds ?? new Set<string>(),
+    ...(lastAdvancedOriginalNumId !== undefined
+      ? { lastAdvancedNumId: lastAdvancedOriginalNumId }
+      : {}),
+  };
+
+  const opts: FlowConversionOptions = {
     ...options,
     defaultFont: options.defaultFont ?? DEFAULT_FONT,
     defaultSize: options.defaultSize ?? DEFAULT_SIZE,
-    listCounters: options.listCounters ?? new Map<number, number[]>(),
-    listAbstractCounters: options.listAbstractCounters ?? new Map<number, number[]>(),
-    listSeenNumIds: options.listSeenNumIds ?? new Set<string>(),
-    originalListCounters: options.originalListCounters ?? new Map<number, number[]>(),
-    originalListAbstractCounters:
-      options.originalListAbstractCounters ?? new Map<number, number[]>(),
-    originalListSeenNumIds: options.originalListSeenNumIds ?? new Set<string>(),
+    listCounters: listCounterState.counters,
+    listAbstractCounters: listCounterState.abstractCounters,
+    listSeenNumIds: listCounterState.seenLevels,
+    originalListCounters: originalListCounterState.counters,
+    originalListAbstractCounters: originalListCounterState.abstractCounters,
+    originalListSeenNumIds: originalListCounterState.seenLevels,
+    listCounterStreams: {
+      final: listCounterState,
+      original: originalListCounterState,
+    },
+    numberedRefResults: resolveNumberedRefFields(doc, {
+      listCounterState: cloneListCounterState(listCounterState),
+      originalListCounterState: cloneListCounterState(originalListCounterState),
+    }),
   };
 
   const blocks: FlowBlock[] = [];

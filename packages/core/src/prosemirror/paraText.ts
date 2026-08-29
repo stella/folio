@@ -19,9 +19,15 @@ import type { Node as PMNode } from "prosemirror-model";
 export function getVanillaNodeText(node: PMNode): string {
   const parts: string[] = [];
   node.descendants((child) => {
-    if (!child.isText || !child.text) return true;
     if (child.marks.some((m) => m.type.name === "insertion")) return false;
-    parts.push(child.text);
+    if (child.isText && child.text) {
+      parts.push(child.text);
+      return false;
+    }
+    if (child.isLeaf && child.textContent) {
+      parts.push(child.textContent);
+      return false;
+    }
     return true;
   });
   return parts.join("");
@@ -32,14 +38,28 @@ export function getVanillaTextBetween(doc: PMNode, from: number, to: number): st
   if (from >= to) return "";
   const parts: string[] = [];
   doc.nodesBetween(from, to, (child, pos) => {
-    if (!child.isText || !child.text) return;
-    if (child.marks.some((m) => m.type.name === "insertion")) return;
-    const start = Math.max(from, pos);
-    const end = Math.min(to, pos + child.text.length);
-    if (start < end) parts.push(child.text.slice(start - pos, end - pos));
+    if (child.marks.some((m) => m.type.name === "insertion")) return false;
+    if (child.isText && child.text) {
+      const start = Math.max(from, pos);
+      const end = Math.min(to, pos + child.text.length);
+      if (start < end) parts.push(child.text.slice(start - pos, end - pos));
+      return false;
+    }
+    if (child.isLeaf && child.textContent) {
+      parts.push(child.textContent);
+      return false;
+    }
+    return true;
   });
   return parts.join("");
 }
+
+type TextPosition = {
+  text: string;
+  pos: number;
+  pmLength: number;
+  atomic: boolean;
+};
 
 /**
  * Find `searchText` within a PM paragraph range and return its position.
@@ -63,13 +83,21 @@ export function findTextInPmParagraph(
   if (!searchText) return null;
 
   let fullText = "";
-  const textPositions: { pos: number; len: number }[] = [];
+  const textPositions: TextPosition[] = [];
 
   doc.nodesBetween(paragraphFrom, paragraphTo, (node, pos) => {
-    if (!node.isText || !node.text) return;
-    if (node.marks.some((m) => m.type.name === "insertion")) return;
-    textPositions.push({ pos, len: node.text.length });
-    fullText += node.text;
+    if (node.marks.some((m) => m.type.name === "insertion")) return false;
+    if (node.isText && node.text) {
+      textPositions.push({ text: node.text, pos, pmLength: node.text.length, atomic: false });
+      fullText += node.text;
+      return false;
+    }
+    if (node.isLeaf && node.textContent) {
+      textPositions.push({ text: node.textContent, pos, pmLength: node.nodeSize, atomic: true });
+      fullText += node.textContent;
+      return false;
+    }
+    return true;
   });
 
   const firstMatch = fullText.indexOf(searchText);
@@ -78,18 +106,34 @@ export function findTextInPmParagraph(
   const secondMatch = fullText.indexOf(searchText, firstMatch + 1);
   if (secondMatch !== -1) return null;
 
+  const matchEnd = firstMatch + searchText.length;
+  let segmentStart = 0;
+  for (const position of textPositions) {
+    const segmentEnd = segmentStart + position.text.length;
+    if (
+      position.atomic &&
+      ((segmentStart < firstMatch && firstMatch < segmentEnd) ||
+        (segmentStart < matchEnd && matchEnd < segmentEnd))
+    ) {
+      return null;
+    }
+    segmentStart = segmentEnd;
+  }
+
   // Map string offset back to PM position.
   let charOffset = 0;
   let fromPos = paragraphFrom;
   let toPos = paragraphFrom;
 
   for (const tp of textPositions) {
-    const segEnd = charOffset + tp.len;
+    const segEnd = charOffset + tp.text.length;
     if (charOffset <= firstMatch && firstMatch < segEnd) {
-      fromPos = tp.pos + (firstMatch - charOffset);
+      const localOffset = firstMatch - charOffset;
+      fromPos = tp.atomic ? tp.pos : tp.pos + localOffset;
     }
     if (charOffset <= firstMatch + searchText.length && firstMatch + searchText.length <= segEnd) {
-      toPos = tp.pos + (firstMatch + searchText.length - charOffset);
+      const localOffset = firstMatch + searchText.length - charOffset;
+      toPos = tp.atomic ? tp.pos + tp.pmLength : tp.pos + localOffset;
       break;
     }
     charOffset = segEnd;
