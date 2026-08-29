@@ -59,18 +59,16 @@ describe("materializeYjsDocx", () => {
     const yjsUpdate = Y.encodeStateAsUpdate(ydoc);
     ydoc.destroy();
 
-    expect(materializeYjsDocx({ sourceDocx, yjsUpdate })).rejects.toMatchObject({
+    await expect(materializeYjsDocx({ sourceDocx, yjsUpdate })).rejects.toMatchObject({
       _tag: "FolioYjsDocxMaterializationError",
       code: "missing_document",
     } satisfies Partial<FolioYjsDocxMaterializationError>);
   });
 
-  test("rejects an update above the materialization limit", async () => {
-    const sourceDocx = await createDocx(createEmptyDocument());
-
-    expect(
+  test("rejects an oversized update before parsing the source DOCX", async () => {
+    await expect(
       materializeYjsDocx({
-        sourceDocx,
+        sourceDocx: new Uint8Array([1, 2, 3]),
         yjsUpdate: new Uint8Array(FOLIO_YJS_UPDATE_MAX_BYTES + 1),
       }),
     ).rejects.toMatchObject({
