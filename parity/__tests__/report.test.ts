@@ -81,6 +81,23 @@ describe("writeHtmlReport", () => {
       divergences: [],
       attributed: [],
       docFeatures: [],
+      rasterComparison: {
+        status: "compared",
+        score: 1,
+        diffPixels: 0,
+        totalPixels: 1,
+        pages: [
+          {
+            status: "match",
+            page: 1,
+            widthPx: 1,
+            heightPx: 1,
+            diffPixels: 0,
+            totalPixels: 1,
+            similarity: 1,
+          },
+        ],
+      },
     };
 
     const resultB: FeatureAttributedResult = {
@@ -166,6 +183,7 @@ describe("writeHtmlReport", () => {
         {
           referencePagePngs: [wordPngA],
           folioPagePngs: [folioPngA],
+          rasterDiffPagePngs: [wordPngA],
           referenceGeom: makeGeom("libreoffice", docAFile),
           folioGeom: makeGeom("folio", docAFile),
         },
@@ -175,6 +193,7 @@ describe("writeHtmlReport", () => {
         {
           referencePagePngs: [wordPngB],
           folioPagePngs: [folioPngB],
+          rasterDiffPagePngs: [wordPngB],
           referenceGeom: makeGeom("libreoffice", docBFile),
           folioGeom: makeGeom("folio", docBFile),
         },
@@ -217,7 +236,7 @@ describe("writeHtmlReport", () => {
     if (!docBHref) throw new Error("expected doc B link");
 
     const detailBHtml = await readFile(path.join(REPORT_DIR, docBHref), "utf8");
-    expect(detailBHtml).toContain("score unscored (raw diagnostic 50.0%)");
+    expect(detailBHtml).toContain("geometry unscored (raw diagnostic 50.0%)");
     expect(detailBHtml).toContain(
       "Geometry is unscored because the reference and Folio fonts differ (2/12 comparable lines share a family).",
     );
@@ -242,6 +261,8 @@ describe("writeHtmlReport", () => {
       path.join(REPORT_DIR, "assets", "sample-one", "reference-1.png"),
     );
     expect(copiedReferenceA.equals(ONE_PIXEL_PNG)).toBe(true);
+    const copiedDiffA = await readFile(path.join(REPORT_DIR, "assets", "sample-one", "diff-1.png"));
+    expect(copiedDiffA.equals(ONE_PIXEL_PNG)).toBe(true);
   });
 
   test("de-duplicates slugs that sanitize to the same basename", async () => {

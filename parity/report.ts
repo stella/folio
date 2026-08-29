@@ -24,12 +24,14 @@ import type {
   FeatureAttributedResult,
   LineBox,
   PageGeom,
+  RasterPageComparison,
 } from "./types";
 import { isGeometryScoreReliable } from "./types";
 
 export type DocAssets = {
   referencePagePngs: string[];
   folioPagePngs: string[];
+  rasterDiffPagePngs: string[];
   referenceGeom: DocGeom;
   folioGeom: DocGeom;
 };
@@ -59,6 +61,7 @@ const DIVERGENCE_KIND_ORDER: DivergenceKind[] = [
 type CopiedPageAssets = {
   referencePngs: (string | null)[];
   folioPngs: (string | null)[];
+  rasterDiffPngs: (string | null)[];
 };
 
 export const writeHtmlReport = async (
@@ -78,7 +81,7 @@ export const writeHtmlReport = async (
     const docAssets = assets.get(result.file);
     const copied = docAssets
       ? await copyDocAssets(slug, docAssets)
-      : { referencePngs: [], folioPngs: [] };
+      : { referencePngs: [], folioPngs: [], rasterDiffPngs: [] };
 
     const html = renderDocPage({
       result,
@@ -143,8 +146,11 @@ const copyDocAssets = async (slug: string, docAssets: DocAssets): Promise<Copied
   const folioPngs = await Promise.all(
     docAssets.folioPagePngs.map((src, i) => copyOne(src, `folio-${i + 1}.png`)),
   );
+  const rasterDiffPngs = await Promise.all(
+    docAssets.rasterDiffPagePngs.map((src, i) => copyOne(src, `diff-${i + 1}.png`)),
+  );
 
-  return { referencePngs, folioPngs };
+  return { referencePngs, folioPngs, rasterDiffPngs };
 };
 
 // --- shared helpers ---
@@ -180,6 +186,12 @@ const scoreSummary = (result: FeatureAttributedResult): string => {
     return rawScore;
   }
   return `unscored (raw diagnostic ${rawScore})`;
+};
+
+const rasterScoreSummary = (result: FeatureAttributedResult): string => {
+  const comparison = result.rasterComparison;
+  if (comparison === undefined || comparison.status === "empty") return "—";
+  return `${(comparison.score * 100).toFixed(1)}%`;
 };
 
 const fontReliabilityMessage = (result: FeatureAttributedResult): string | undefined => {
@@ -271,15 +283,15 @@ const renderIndex = (report: CorpusReport, slugs: Map<string, string>): string =
 <header>
 <h1>DOCX rendering interoperability report</h1>
 <p>Folio compared with ${escapeHtml(report.reference.displayName)} ${escapeHtml(referenceVersion)} &middot; generated ${escapeHtml(report.generatedAt)} &middot; ${docCount} document${docCount === 1 ? "" : "s"}</p>
-<p class="method-note">The external renderer is a comparison reference, not a specification oracle. Agreement is interoperability evidence; OOXML conformance is assessed separately against the standard and structural validators.</p>
+<p class="method-note">The external renderer is a comparison reference, not a specification oracle. Agreement is interoperability evidence; OOXML conformance is assessed separately against the standard and structural validators. Raster similarity is a direct, unaligned pixel diagnostic and remains sensitive to font and antialiasing differences.</p>
 </header>
 <main>
 <section>
 <h2>Documents</h2>
 <table>
-<thead><tr><th>Document</th><th>Score</th><th>Pages (reference / folio)</th><th>Lines matched</th><th>Median Y offset (pt)</th><th>Divergences</th></tr></thead>
+<thead><tr><th>Document</th><th>Geometry</th><th>Raster</th><th>Pages (reference / folio)</th><th>Lines matched</th><th>Median Y offset (pt)</th><th>Divergences</th></tr></thead>
 <tbody>
-${rows.length > 0 ? rows : `<tr><td colspan="6">No documents.</td></tr>`}
+${rows.length > 0 ? rows : `<tr><td colspan="7">No documents.</td></tr>`}
 </tbody>
 </table>
 </section>
@@ -310,6 +322,7 @@ const renderIndexRow = (result: FeatureAttributedResult, slugs: Map<string, stri
   return `<tr>
 <td><a href="doc-${escapeHtml(slug)}.html">${escapeHtml(name)}</a></td>
 <td>${score}</td>
+<td>${rasterScoreSummary(result)}</td>
 <td>${result.referencePages} / ${result.folioPages}</td>
 <td>${result.matchedLines} / ${result.totalReferenceLines}</td>
 <td>${result.medianYOffsetPt.toFixed(2)}</td>
@@ -352,15 +365,28 @@ const renderDocPage = ({
 }: RenderDocPageOptions): string => {
   const name = path.basename(result.file);
   const pageCount = docAssets
-    ? Math.max(docAssets.referenceGeom.pages.length, docAssets.folioGeom.pages.length)
+    ? Math.max(
+        docAssets.referenceGeom.pages.length,
+        docAssets.folioGeom.pages.length,
+        result.rasterComparison?.pages.length ?? 0,
+      )
     : 0;
 
   const pagePairs = Array.from({ length: pageCount }, (_, pageIndex) =>
-    renderPagePair({ pageIndex, docAssets, copied, referenceDisplayName }),
+    renderPagePair({
+      pageIndex,
+      docAssets,
+      copied,
+      referenceDisplayName,
+      rasterPage: result.rasterComparison?.pages[pageIndex],
+    }),
   ).join("\n");
 
   const banner =
-    result.divergences.length === 0 && isGeometryScoreReliable(result.fontEnvironment)
+    result.divergences.length === 0 &&
+    isGeometryScoreReliable(result.fontEnvironment) &&
+    result.rasterComparison?.status === "compared" &&
+    result.rasterComparison.score === 1
       ? `<div class="banner-good">Full parity: no divergences detected.</div>`
       : "";
   const reliabilityMessage = fontReliabilityMessage(result);
@@ -379,7 +405,7 @@ const renderDocPage = ({
 <header>
 <p><a href="index.html">&larr; back to summary</a></p>
 <h1>${escapeHtml(name)}</h1>
-<p>Folio compared with ${escapeHtml(referenceDisplayName)} &middot; score ${escapeHtml(scoreSummary(result))} &middot; ${result.matchedLines}/${result.totalReferenceLines} lines matched &middot; median Y offset ${result.medianYOffsetPt.toFixed(2)}pt</p>
+<p>Folio compared with ${escapeHtml(referenceDisplayName)} &middot; geometry ${escapeHtml(scoreSummary(result))} &middot; raster ${escapeHtml(rasterScoreSummary(result))} &middot; ${result.matchedLines}/${result.totalReferenceLines} lines matched &middot; median Y offset ${result.medianYOffsetPt.toFixed(2)}pt</p>
 </header>
 <main>
 ${reliabilityBanner}
@@ -411,6 +437,7 @@ type RenderPagePairOptions = {
   docAssets: DocAssets | undefined;
   copied: CopiedPageAssets;
   referenceDisplayName: string;
+  rasterPage: RasterPageComparison | undefined;
 };
 
 const renderPagePair = ({
@@ -418,11 +445,13 @@ const renderPagePair = ({
   docAssets,
   copied,
   referenceDisplayName,
+  rasterPage,
 }: RenderPagePairOptions): string => {
   const referencePage = docAssets?.referenceGeom.pages[pageIndex];
   const folioPage = docAssets?.folioGeom.pages[pageIndex];
   const referenceImg = copied.referencePngs[pageIndex] ?? null;
   const folioImg = copied.folioPngs[pageIndex] ?? null;
+  const rasterDiffImg = copied.rasterDiffPngs[pageIndex] ?? null;
 
   const referencePanel = renderPanel({
     side: "reference",
@@ -440,8 +469,55 @@ const renderPagePair = ({
     imgPath: folioImg,
     label: `folio — page ${pageIndex + 1}`,
   });
+  const rasterPanel = renderRasterPanel({
+    pageIndex,
+    imgPath: rasterDiffImg,
+    rasterPage,
+  });
 
-  return `<div class="page-pair">${referencePanel}${folioPanel}</div>`;
+  return `<div class="page-pair">${referencePanel}${folioPanel}${rasterPanel}</div>`;
+};
+
+type RenderRasterPanelOptions = {
+  pageIndex: number;
+  imgPath: string | null;
+  rasterPage: RasterPageComparison | undefined;
+};
+
+const rasterPageSummary = (page: RasterPageComparison): string => {
+  switch (page.status) {
+    case "match":
+      return "identical pixels";
+    case "difference":
+      return `${(page.similarity * 100).toFixed(1)}% similar · ${page.diffPixels.toLocaleString("en")} pixels differ`;
+    case "dimension-mismatch":
+      return `${(page.similarity * 100).toFixed(1)}% similar · ${page.referenceWidthPx}×${page.referenceHeightPx} vs ${page.folioWidthPx}×${page.folioHeightPx}px`;
+    case "missing-reference":
+      return "reference page missing";
+    case "missing-folio":
+      return "Folio page missing";
+    default: {
+      const exhaustive: never = page;
+      return exhaustive;
+    }
+  }
+};
+
+const renderRasterPanel = ({
+  pageIndex,
+  imgPath,
+  rasterPage,
+}: RenderRasterPanelOptions): string => {
+  const label = `pixel diff — page ${pageIndex + 1}`;
+  const summary = rasterPage ? rasterPageSummary(rasterPage) : "comparison unavailable";
+  const image = imgPath
+    ? `<img src="${escapeHtml(imgPath)}" alt="${escapeHtml(label)}" />`
+    : `<div class="placeholder">diff unavailable</div>`;
+  return `<div class="page-panel diff-panel">
+<h3>${escapeHtml(label)}</h3>
+<p class="raster-summary">${escapeHtml(summary)}</p>
+<div class="page-image-wrap">${image}</div>
+</div>`;
 };
 
 /** Parameters for rendering one reference/folio page panel. */
@@ -576,6 +652,7 @@ a:hover { text-decoration: underline; }
 .page-panel { flex: 1 1 0; min-width: 0; background: #fff; border: 1px solid #d0d7de; border-radius: 6px; padding: 12px; }
 .page-panel h3 { margin: 0 0 8px; font-size: 0.95rem; }
 .toggle { display: block; font-size: 0.8rem; margin-bottom: 8px; color: #57606a; }
+.raster-summary { min-height: 1rem; margin: 0 0 8px; color: #57606a; font-size: 0.8rem; line-height: 1.25; }
 .page-image-wrap { position: relative; width: 100%; background: #eaeef2; line-height: 0; }
 .page-image-wrap img { display: block; width: 100%; height: auto; }
 .page-image-wrap svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }

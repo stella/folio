@@ -113,11 +113,22 @@ where the caller owns the server and knows it reflects the current worktree.
 3. **Comparison** (`compare.ts`): lines are sequence-aligned by text, exposing
    pagination shifts, line-break differences, and missing or extra content.
    Matched lines are then compared geometrically.
-4. **Feature attribution and clustering** (`features.ts`): each divergence is
+4. **Raster comparison** (`rasterCompare.ts`): corresponding reference and
+   Folio page PNGs are compared directly. This catches borders, fills, images,
+   shapes, glyph paint, and other differences outside the text-line model. The
+   JSON records a pixel-weighted similarity score and per-page dimensions; the
+   HTML report adds a highlighted diff panel beside each page pair.
+5. **Feature attribution and clustering** (`features.ts`): each divergence is
    associated with the active OOXML features. Cross-corpus clusters expose a
    likely shared cause instead of presenting dozens of isolated diffs.
-5. **Report** (`report.ts`): per-document scores, cluster rankings, and
-   side-by-side reference/Folio renderings with line-box overlays.
+6. **Report** (`report.ts`): per-document geometry and raster scores, cluster
+   rankings, and side-by-side reference/Folio/diff renderings with line-box
+   overlays.
+
+Raster similarity is an unaligned diagnostic, not a conformance score. It is
+intentionally sensitive to page size, font substitution, glyph rasterization,
+and antialiasing. Read it alongside font preflight and geometry divergences;
+use the diff image to decide whether a mismatch is structural or environmental.
 
 Font preflight compares the family embedded in the reference PDF with
 Chromium's resolved CSS family. A requested font may be substituted without

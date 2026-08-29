@@ -133,6 +133,44 @@ export type FontEnvironmentAssessment = {
   matchingLines: number;
 };
 
+type RasterPageShared = {
+  page: number;
+  diffPixels: number;
+  totalPixels: number;
+  /** Direct pixel similarity without image alignment, from 0..1. */
+  similarity: number;
+};
+
+export type RasterPageComparison =
+  | (RasterPageShared & {
+      status: "match" | "difference";
+      widthPx: number;
+      heightPx: number;
+    })
+  | (RasterPageShared & {
+      status: "dimension-mismatch";
+      referenceWidthPx: number;
+      referenceHeightPx: number;
+      folioWidthPx: number;
+      folioHeightPx: number;
+    })
+  | (RasterPageShared & {
+      status: "missing-reference" | "missing-folio";
+      widthPx: number;
+      heightPx: number;
+    });
+
+export type RasterComparison =
+  | { status: "empty"; pages: [] }
+  | {
+      status: "compared";
+      /** Pixel-weighted direct similarity across every page, from 0..1. */
+      score: number;
+      diffPixels: number;
+      totalPixels: number;
+      pages: RasterPageComparison[];
+    };
+
 /** Whether renderer geometry can support a headline parity score. Raw
  * geometry remains available for diagnosis even when font metrics differ. */
 export const isGeometryScoreReliable = (
@@ -148,6 +186,8 @@ export type FeatureAttributedResult = ParityResult & {
   docFeatures: string[];
   /** Actual reference/Chromium font comparison for this run. */
   fontEnvironment?: FontEnvironmentAssessment;
+  /** Whole-page visual comparison, including non-text painted content. */
+  rasterComparison?: RasterComparison;
 };
 
 /** A cross-corpus cluster: one feature co-occurring with one divergence kind. */
