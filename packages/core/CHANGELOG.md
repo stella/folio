@@ -1,5 +1,17 @@
 # @stll/folio-core
 
+## 0.28.0
+
+### Minor Changes
+
+- [#640](https://github.com/stella/folio/pull/640) [`73abf32`](https://github.com/stella/folio/commit/73abf32cb8c8738c52bf43a9293ccb167f9d0f76) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add server-side materialization of Folio Yjs snapshots into fidelity-preserving DOCX files.
+
+### Patch Changes
+
+- [#636](https://github.com/stella/folio/pull/636) [`33ab462`](https://github.com/stella/folio/commit/33ab462adf09196d1bef813cae924f262de16852) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Bound extracted DOCX table markdown to prevent resource exhaustion from padded rows.
+- Updated dependencies [[`4582ad7`](https://github.com/stella/folio/commit/4582ad7671c31e757bbee0ae4d829186dd2be1bc)]:
+  - @stll/docx-core@0.17.2
+
 ## 0.27.1
 
 ### Patch Changes

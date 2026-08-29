@@ -1,5 +1,11 @@
 # @stll/docx-core
 
+## 0.17.2
+
+### Patch Changes
+
+- [#637](https://github.com/stella/folio/pull/637) [`4582ad7`](https://github.com/stella/folio/commit/4582ad7671c31e757bbee0ae4d829186dd2be1bc) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Index DOCX numbering style links for bounded projection lookup.
+
 ## 0.17.1
 
 ### Patch Changes
