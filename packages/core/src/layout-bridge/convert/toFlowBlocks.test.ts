@@ -1691,7 +1691,7 @@ describe("toFlowBlocks table cell formatting", () => {
     );
   });
 
-  test("suppresses a terminal run of empty body paragraphs after a final table", () => {
+  test("suppresses only the final empty body paragraph after a final table", () => {
     const doc = schema.node("doc", null, [
       schema.node("table", null, [
         schema.node("tableRow", null, [
@@ -1715,7 +1715,22 @@ describe("toFlowBlocks table cell formatting", () => {
         .map((block) =>
           block.kind === "paragraph" ? block.attrs?.suppressEmptyParagraphHeight : undefined,
         ),
-    ).toEqual([true, true]);
+    ).toEqual([undefined, true]);
+  });
+
+  test("suppresses a sole terminal empty body paragraph after a final table", () => {
+    const blocks = toFlowBlocks(
+      schema.node("doc", null, [
+        schema.node("table", null, [
+          schema.node("tableRow", null, [
+            schema.node("tableCell", null, [schema.node("paragraph")]),
+          ]),
+        ]),
+        schema.node("paragraph"),
+      ]),
+    );
+
+    expect(blocks.at(-1)?.attrs?.suppressEmptyParagraphHeight).toBe(true);
   });
 
   test("keeps terminal empty paragraph height when the preceding block is prose", () => {
