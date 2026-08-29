@@ -1,5 +1,11 @@
 # @stll/folio-react
 
+## 0.16.3
+
+### Patch Changes
+
+- [#643](https://github.com/stella/folio/pull/643) [`d4044a2`](https://github.com/stella/folio/commit/d4044a2e1a780f0b4e998a038d1554b115f3947c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Prevent remote collaborator cursor geometry updates from causing render loops.
+
 ## 0.16.2
 
 ### Patch Changes
