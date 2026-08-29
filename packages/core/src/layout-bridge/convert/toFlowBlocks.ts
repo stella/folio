@@ -41,6 +41,7 @@ import { DEFAULT_TEXTBOX_MARGINS, DEFAULT_TEXTBOX_WIDTH } from "../../layout-eng
 import { getColumns } from "../sectionColumns";
 import {
   expectBlockSdtAttrs,
+  expectCharacterStyleMarkAttrs,
   expectCharacterSpacingMarkAttrs,
   expectCommentMarkAttrs,
   expectEmphasisMarkAttrs,
@@ -70,6 +71,7 @@ import {
 import { autospacingMatchesBase } from "../../prosemirror/autospacingBase";
 import { runShadingAttrsToShading } from "../../prosemirror/conversion/runShadingMark";
 import { directionToBidi } from "../../prosemirror/paragraphDirection";
+import { cascadeStyleTextFormatting } from "../../prosemirror/styles/styleToggleCascade";
 import { getPageNumbering } from "../../paged-layout/sectionGeometry";
 import type { RunFormattingOverrideAttrs } from "../../prosemirror/schema/marks";
 import type {
@@ -712,39 +714,114 @@ function mergeRunFormatting(paraDefaults: RunFormatting, formatting: RunFormatti
   return merged;
 }
 
+type ApplyCharacterStyleToggleFormattingOptions = {
+  formatting: RunFormatting;
+  marks: readonly Mark[];
+  paraDefaults: RunFormatting;
+};
+
+/** Restore character-style toggle values that plain visual marks cannot represent. */
+function applyCharacterStyleToggleFormatting({
+  formatting,
+  marks,
+  paraDefaults,
+}: ApplyCharacterStyleToggleFormattingOptions): void {
+  const characterStyleMark = marks.find((mark) => mark.type.name === "characterStyle");
+  if (!characterStyleMark) {
+    return;
+  }
+  const styleRPr = expectCharacterStyleMarkAttrs(characterStyleMark)._styleRPr;
+  if (!styleRPr) {
+    return;
+  }
+
+  const effectiveStyleFormatting = cascadeStyleTextFormatting([
+    {
+      formatting: {
+        bold: paraDefaults.bold ?? false,
+        boldCs: paraDefaults.complexScriptBold ?? false,
+        italic: paraDefaults.italic ?? false,
+        italicCs: paraDefaults.complexScriptItalic ?? false,
+      },
+      type: "direct",
+    },
+    { formatting: styleRPr, type: "style" },
+  ]).formatting;
+
+  if (styleRPr.bold !== undefined && formatting.bold === undefined) {
+    formatting.bold = effectiveStyleFormatting?.bold ?? false;
+  }
+  if (styleRPr.boldCs !== undefined && formatting.complexScriptBold === undefined) {
+    formatting.complexScriptBold = effectiveStyleFormatting?.boldCs ?? false;
+  }
+  if (styleRPr.italic !== undefined && formatting.italic === undefined) {
+    formatting.italic = effectiveStyleFormatting?.italic ?? false;
+  }
+  if (styleRPr.italicCs !== undefined && formatting.complexScriptItalic === undefined) {
+    formatting.complexScriptItalic = effectiveStyleFormatting?.italicCs ?? false;
+  }
+  if (styleRPr.allCaps === true && formatting.allCaps === undefined) {
+    formatting.allCaps = false;
+  }
+  if (styleRPr.emboss === true && formatting.emboss === undefined) {
+    formatting.emboss = false;
+  }
+  if (styleRPr.imprint === true && formatting.imprint === undefined) {
+    formatting.imprint = false;
+  }
+  if (styleRPr.outline === true && formatting.textOutline === undefined) {
+    formatting.textOutline = false;
+  }
+  if (styleRPr.shadow === true && formatting.textShadow === undefined) {
+    formatting.textShadow = false;
+  }
+  if (styleRPr.smallCaps === true && formatting.smallCaps === undefined) {
+    formatting.smallCaps = false;
+  }
+  if (styleRPr.strike === true && formatting.strike === undefined) {
+    formatting.strike = false;
+  }
+  if (styleRPr.hidden === true && formatting.hidden === undefined) {
+    formatting.hidden = false;
+  }
+}
+
 function applyRunFormattingOverrides(
   formatting: RunFormatting,
   attrs: RunFormattingOverrideAttrs,
 ): void {
-  if (attrs.bold === false) {
-    formatting.bold = false;
+  if (attrs.bold !== undefined) {
+    formatting.bold = attrs.bold;
   }
-  if (attrs.italic === false) {
-    formatting.italic = false;
+  if (attrs.italic !== undefined) {
+    formatting.italic = attrs.italic;
   }
   if (attrs.underline === "none") {
     formatting.underline = false;
   }
-  if (attrs.strike === false) {
-    formatting.strike = false;
+  if (attrs.strike !== undefined) {
+    formatting.strike = attrs.strike;
   }
-  if (attrs.allCaps === false) {
-    formatting.allCaps = false;
+  if (attrs.allCaps !== undefined) {
+    formatting.allCaps = attrs.allCaps;
   }
-  if (attrs.smallCaps === false) {
-    formatting.smallCaps = false;
+  if (attrs.smallCaps !== undefined) {
+    formatting.smallCaps = attrs.smallCaps;
   }
-  if (attrs.emboss === false) {
-    formatting.emboss = false;
+  if (attrs.hidden !== undefined) {
+    formatting.hidden = attrs.hidden;
   }
-  if (attrs.imprint === false) {
-    formatting.imprint = false;
+  if (attrs.emboss !== undefined) {
+    formatting.emboss = attrs.emboss;
   }
-  if (attrs.shadow === false) {
-    formatting.textShadow = false;
+  if (attrs.imprint !== undefined) {
+    formatting.imprint = attrs.imprint;
   }
-  if (attrs.outline === false) {
-    formatting.textOutline = false;
+  if (attrs.shadow !== undefined) {
+    formatting.textShadow = attrs.shadow;
+  }
+  if (attrs.outline !== undefined) {
+    formatting.textOutline = attrs.outline;
   }
   if (attrs.rtl === false) {
     formatting.rtl = false;
@@ -1051,6 +1128,7 @@ function paragraphToRuns(node: PMNode, startPos: number, _options: ToFlowBlocksO
     }
     if (child.isText && child.text) {
       const formatting = extractRunFormatting(child.marks, theme);
+      applyCharacterStyleToggleFormatting({ formatting, marks: child.marks, paraDefaults });
       if (inTocParagraph) {
         stripTocHyperlinkStyle(formatting);
       }
@@ -1071,6 +1149,7 @@ function paragraphToRuns(node: PMNode, startPos: number, _options: ToFlowBlocksO
         return;
       }
       const formatting = extractRunFormatting(child.marks, theme);
+      applyCharacterStyleToggleFormatting({ formatting, marks: child.marks, paraDefaults });
       if (inTocParagraph) {
         stripTocHyperlinkStyle(formatting);
       }
@@ -1094,6 +1173,7 @@ function paragraphToRuns(node: PMNode, startPos: number, _options: ToFlowBlocksO
     }
     if (child.type.name === "tab") {
       const formatting = extractRunFormatting(child.marks, theme);
+      applyCharacterStyleToggleFormatting({ formatting, marks: child.marks, paraDefaults });
       const run: TabRun = {
         kind: "tab",
         ...mergeRunFormatting(paraDefaults, formatting),
@@ -1152,6 +1232,11 @@ function paragraphToRuns(node: PMNode, startPos: number, _options: ToFlowBlocksO
         mappedType = "TIME";
       }
       const extractedFieldFormatting = extractRunFormatting(child.marks, theme);
+      applyCharacterStyleToggleFormatting({
+        formatting: extractedFieldFormatting,
+        marks: child.marks,
+        paraDefaults,
+      });
       if (inTocParagraph) {
         stripTocHyperlinkStyle(extractedFieldFormatting);
       }

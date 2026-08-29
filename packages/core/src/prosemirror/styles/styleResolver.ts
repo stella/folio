@@ -24,7 +24,7 @@ import type {
   TextFormatting,
 } from "../../types/document";
 import { mergeParagraphFormatting } from "../../utils/paragraphFormattingMerge";
-import { mergeTextFormatting } from "../../utils/textFormattingMerge";
+import { cascadeStyleTextFormatting } from "./styleToggleCascade";
 
 /**
  * Resolved style properties ready for rendering
@@ -189,10 +189,6 @@ export class StyleResolver {
     if (this.docDefaults?.pPr) {
       result.paragraphFormatting = { ...this.docDefaults.pPr };
     }
-    if (this.docDefaults?.rPr) {
-      result.runFormatting = { ...this.docDefaults.rPr };
-    }
-
     // Layer 2: enclosing table style's paragraph spacing (cell paragraphs
     // only — undefined for everything else, a no-op here).
     if (tableParagraphOverlay) {
@@ -202,26 +198,23 @@ export class StyleResolver {
       }
     }
 
-    // Layer 3: the paragraph's own style chain (Normal when styleId is absent)
-    if (!styleId) {
-      if (this.defaultParagraphStyle) {
-        this.mergeStyleIntoResult(result, this.defaultParagraphStyle);
+    // Layer 3: the paragraph's own style chain (Normal when absent or unknown).
+    const style = styleId
+      ? (this.stylesById.get(styleId) ?? this.defaultParagraphStyle)
+      : this.defaultParagraphStyle;
+    if (style?.pPr) {
+      const merged = mergeParagraphFormatting(result.paragraphFormatting, style.pPr);
+      if (merged) {
+        result.paragraphFormatting = merged;
       }
-      return result;
     }
-
-    // Get the requested style (already has basedOn chain resolved by styleParser)
-    const style = this.stylesById.get(styleId);
-    if (!style) {
-      // Style not found, fall back to Normal
-      if (this.defaultParagraphStyle) {
-        this.mergeStyleIntoResult(result, this.defaultParagraphStyle);
-      }
-      return result;
+    const runFormatting = cascadeStyleTextFormatting([
+      { formatting: this.docDefaults?.rPr, type: "defaults" },
+      { formatting: style?.rPr, type: "style" },
+    ]).formatting;
+    if (runFormatting) {
+      result.runFormatting = runFormatting;
     }
-
-    // Merge style properties into result
-    this.mergeStyleIntoResult(result, style);
 
     return result;
   }
@@ -280,27 +273,13 @@ export class StyleResolver {
    * @returns Resolved text formatting
    */
   resolveRunStyle(styleId: string | undefined | null): TextFormatting | undefined {
-    // Start with document defaults
-    let result: TextFormatting = {};
-    if (this.docDefaults?.rPr) {
-      result = { ...this.docDefaults.rPr };
-    }
+    const style = styleId ? this.stylesById.get(styleId) : this.defaultCharacterStyle;
+    const result = cascadeStyleTextFormatting([
+      { formatting: this.docDefaults?.rPr, type: "defaults" },
+      { formatting: style?.rPr, type: "style" },
+    ]).formatting;
 
-    const defaultCharacterRpr = this.defaultCharacterStyle?.rPr;
-    if (defaultCharacterRpr) {
-      result = mergeTextFormatting(result, defaultCharacterRpr) ?? {};
-    }
-
-    // Get the requested style
-    const style = styleId ? this.stylesById.get(styleId) : undefined;
-    if (!style?.rPr) {
-      return Object.keys(result).length > 0 ? result : undefined;
-    }
-
-    // Merge style's run properties
-    const merged = mergeTextFormatting(result, style.rPr);
-
-    return merged && Object.keys(merged).length > 0 ? merged : undefined;
+    return result && Object.keys(result).length > 0 ? result : undefined;
   }
 
   /**
@@ -375,21 +354,6 @@ export class StyleResolver {
       return this.stylesById.get("Normal") ?? (this.docDefaults ? undefined : BUILTIN_NORMAL_STYLE);
     }
     return undefined;
-  }
-
-  private mergeStyleIntoResult(result: ResolvedParagraphStyle, style: Style): void {
-    if (style.pPr) {
-      const merged = mergeParagraphFormatting(result.paragraphFormatting, style.pPr);
-      if (merged !== undefined) {
-        result.paragraphFormatting = merged;
-      }
-    }
-    if (style.rPr) {
-      const merged = mergeTextFormatting(result.runFormatting, style.rPr);
-      if (merged !== undefined) {
-        result.runFormatting = merged;
-      }
-    }
   }
 }
 

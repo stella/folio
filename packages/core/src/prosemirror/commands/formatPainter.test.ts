@@ -103,6 +103,25 @@ describe("captureFormatMarks", () => {
     expect(override?.attrs["bold"]).toBe(false);
     expect(override?.attrs["rtl"]).toBeNull();
   });
+
+  test("resolves paragraph defaults through an inline content control", () => {
+    const characterStyle = mark("characterStyle", {
+      styleId: "ComplexToggle",
+      _styleRPr: { boldCs: true },
+    });
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [
+        schema.node("paragraph", { defaultTextFormatting: { boldCs: true } }, [
+          schema.node("sdt", { sdtType: "richText" }, [schema.text("source", [characterStyle])]),
+        ]),
+      ]),
+    });
+
+    const captured = captureFormatMarks(select(state, 2, 8));
+
+    expect(findMark(captured, "runFormattingOverride")?.attrs["boldCs"]).toBe(false);
+  });
 });
 
 describe("applyFormatMarks", () => {

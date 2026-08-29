@@ -81,6 +81,25 @@ describe("style default ST_OnOff values", () => {
   });
 });
 
+describe("style run toggle parsing", () => {
+  test("the final occurrence within one run-properties level wins", () => {
+    const styles = parseStyles(
+      `<w:styles ${STYLES_NS}>
+        <w:style w:type="character" w:styleId="OffLast">
+          <w:rPr><w:b/><w:b w:val="0"/></w:rPr>
+        </w:style>
+        <w:style w:type="character" w:styleId="OnLast">
+          <w:rPr><w:b w:val="false"/><w:b/></w:rPr>
+        </w:style>
+      </w:styles>`,
+      null,
+    );
+
+    expect(styles.get("OffLast")?.rPr?.bold).toBe(false);
+    expect(styles.get("OnLast")?.rPr?.bold).toBe(true);
+  });
+});
+
 describe("style tab leader normalization", () => {
   test("normalizes the default leader to a save/reopen fixed point", () => {
     const parsed = parseStyleDefinitions(

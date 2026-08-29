@@ -9,8 +9,10 @@
  * logic is here so it can be unit-tested without a DOM.
  */
 
-import type { Mark } from "prosemirror-model";
+import type { Mark, ResolvedPos } from "prosemirror-model";
 import type { Command, EditorState } from "prosemirror-state";
+
+import { expectCharacterStyleMarkAttrs, expectParagraphAttrs } from "../attrs";
 
 /**
  * Character-formatting marks the painter copies. Structural marks — comments,
@@ -89,6 +91,71 @@ function sanitizeOverrideMark(mark: Mark): Mark | null {
   return mark.type.create(kept);
 }
 
+const PAINTABLE_STYLE_TOGGLE_MARKS = [
+  ["allCaps", "allCaps"],
+  ["bold", "bold"],
+  ["emboss", "emboss"],
+  ["imprint", "imprint"],
+  ["italic", "italic"],
+  ["outline", "textOutline"],
+  ["shadow", "textShadow"],
+  ["smallCaps", "smallCaps"],
+  ["strike", "strike"],
+] as const;
+
+const PAINTABLE_COMPLEX_SCRIPT_TOGGLES = ["boldCs", "italicCs"] as const;
+
+/** Materialize a copied style cancellation as direct formatting on its new target. */
+type MaterializeStyleToggleNegativesOptions = {
+  inheritedFormatting: ReturnType<typeof expectParagraphAttrs>["defaultTextFormatting"];
+  marks: readonly Mark[];
+};
+
+function materializeStyleToggleNegatives({
+  inheritedFormatting,
+  marks,
+}: MaterializeStyleToggleNegativesOptions): Mark[] {
+  const characterStyle = marks.find((mark) => mark.type.name === "characterStyle");
+  if (!characterStyle) {
+    return [...marks];
+  }
+  const styleRPr = expectCharacterStyleMarkAttrs(characterStyle)._styleRPr;
+  if (!styleRPr) {
+    return [...marks];
+  }
+
+  const negativeAttrs: Record<string, false> = {};
+  for (const [key, markName] of PAINTABLE_STYLE_TOGGLE_MARKS) {
+    if (styleRPr[key] === true && !marks.some((mark) => mark.type.name === markName)) {
+      negativeAttrs[key] = false;
+    }
+  }
+  for (const key of PAINTABLE_COMPLEX_SCRIPT_TOGGLES) {
+    if (styleRPr[key] === undefined) {
+      continue;
+    }
+    const inheritedValue = inheritedFormatting?.[key] ?? false;
+    const effectiveValue = styleRPr[key] === true ? !inheritedValue : false;
+    if (!effectiveValue) {
+      negativeAttrs[key] = false;
+    }
+  }
+  if (Object.keys(negativeAttrs).length === 0) {
+    return [...marks];
+  }
+
+  const existingOverride = marks.find((mark) => mark.type.name === "runFormattingOverride");
+  const overrideType =
+    existingOverride?.type ?? characterStyle.type.schema.marks["runFormattingOverride"];
+  if (!overrideType) {
+    return [...marks];
+  }
+  const override = overrideType.create({ ...negativeAttrs, ...existingOverride?.attrs });
+  return existingOverride
+    ? marks.map((mark) => (mark === existingOverride ? override : mark))
+    : [...marks, override];
+}
+
 /**
  * Marks of the first text node inside [from, to). A word processor's format
  * brush copies from the start of the source selection, so a mixed selection
@@ -109,6 +176,18 @@ function firstTextMarks(state: EditorState, from: number, to: number): readonly 
   });
 
   return marks ?? [];
+}
+
+function paragraphDefaultTextFormatting(
+  position: ResolvedPos,
+): ReturnType<typeof expectParagraphAttrs>["defaultTextFormatting"] {
+  for (let depth = position.depth; depth >= 0; depth -= 1) {
+    const ancestor = position.node(depth);
+    if (ancestor.type.name === "paragraph") {
+      return expectParagraphAttrs(ancestor).defaultTextFormatting;
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -135,7 +214,8 @@ export function captureFormatMarks(state: EditorState): Mark[] {
     }
     captured.push(mark);
   }
-  return captured;
+  const inheritedFormatting = paragraphDefaultTextFormatting($from);
+  return materializeStyleToggleNegatives({ inheritedFormatting, marks: captured });
 }
 
 /**

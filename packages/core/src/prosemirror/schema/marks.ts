@@ -158,7 +158,6 @@ export type RunFormattingOverrideAttrs = {
     | "bold"
     | "italic"
     | "strike"
-    | "doubleStrike"
     | "allCaps"
     | "smallCaps"
     | "hidden"
@@ -166,9 +165,10 @@ export type RunFormattingOverrideAttrs = {
     | "imprint"
     | "shadow"
     | "outline"
-    | "rtl"
-  >]?: false;
+  >]?: boolean;
 } & {
+  doubleStrike?: false;
+  rtl?: false;
   /** Independent complex-script weight (`w:bCs`). */
   boldCs?: boolean;
   /** Force complex-script formatting for the full run (`w:cs`). */

@@ -101,6 +101,33 @@ describe("complex-script formatting pipeline", () => {
     });
   });
 
+  test("keeps combined ordinary and complex-script negatives through a JSON clone", () => {
+    const document = documentWithRun("Aع", {
+      bold: false,
+      boldCs: false,
+      italic: false,
+      italicCs: false,
+    });
+    const proseDoc = toProseDoc(document);
+    const clonedProseDoc = schema.nodeFromJSON(proseDoc.toJSON());
+
+    expect(firstDocumentRunFormatting(fromProseDoc(clonedProseDoc))).toEqual({
+      bold: false,
+      boldCs: false,
+      italic: false,
+      italicCs: false,
+    });
+
+    const paragraph = toFlowBlocks(clonedProseDoc, {}).find((block) => block.kind === "paragraph");
+    const run = paragraph?.runs.find((candidate) => candidate.kind === "text");
+    expect(run).toMatchObject({
+      bold: false,
+      complexScriptBold: false,
+      complexScriptItalic: false,
+      italic: false,
+    });
+  });
+
   test("force-CS selects complex-script formatting even for Latin text", () => {
     const formatting = parseFormatting(
       '<w:rFonts w:ascii="Arial" w:cs="Traditional Arabic"/>' +

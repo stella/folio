@@ -106,6 +106,7 @@ import {
 import { autospacingMatchesBase, hasAutospacingBaseSide } from "../autospacingBase";
 import { directionToBidi } from "../paragraphDirection";
 import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
+import { cascadeStyleTextFormatting } from "../styles/styleToggleCascade";
 import { applyRunFormattingOverrideAttrs } from "../extensions/marks/RunFormattingOverrideExtension";
 import type {
   ParagraphAttrs,
@@ -1362,6 +1363,10 @@ function extractParagraphContent(
   skipLeadingRenderedPageBreak = false,
 ): ParagraphContent[] {
   const content: ParagraphContent[] = [];
+  const inheritedFormatting =
+    paragraph.type.name === "paragraph"
+      ? (expectParagraphAttrs(paragraph).defaultTextFormatting ?? undefined)
+      : undefined;
   const sortedEmptyHyperlinks = (emptyHyperlinks ?? [])
     .map((attrs, order) => ({ attrs, order }))
     .toSorted((left, right) => left.attrs.offset - right.attrs.offset || left.order - right.order);
@@ -1518,7 +1523,7 @@ function extractParagraphContent(
       const otherMarks = node.marks.filter(
         (m) => m.type.name !== "insertion" && m.type.name !== "deletion",
       );
-      const run = createTrackedChangeRun(node, otherMarks);
+      const run = createTrackedChangeRun({ inheritedFormatting, marks: otherMarks, node });
       if (!run) {
         return;
       }
@@ -1580,7 +1585,7 @@ function extractParagraphContent(
         currentHyperlink = createHyperlink(linkMark);
         currentHyperlinkKey = linkKey;
       }
-      addNodeToHyperlink(currentHyperlink, node);
+      addNodeToHyperlink({ hyperlink: currentHyperlink, inheritedFormatting, node });
       return;
     }
 
@@ -1601,7 +1606,11 @@ function extractParagraphContent(
         if (currentRun) {
           content.push(currentRun);
         }
-        currentRun = createRunFromText(node.text || "", node.marks);
+        currentRun = createRunFromText({
+          inheritedFormatting,
+          marks: node.marks,
+          text: node.text || "",
+        });
         currentMarksKey = marksKey;
       }
     } else if (node.type.name === "symbol") {
@@ -1686,13 +1695,26 @@ function extractParagraphContent(
   return content;
 }
 
-function createTrackedChangeRun(node: PMNode, marks: readonly Mark[]): Run | null {
+type RunFormattingContext = {
+  inheritedFormatting: TextFormatting | undefined;
+};
+
+type CreateTrackedChangeRunOptions = RunFormattingContext & {
+  marks: readonly Mark[];
+  node: PMNode;
+};
+
+function createTrackedChangeRun({
+  inheritedFormatting,
+  marks,
+  node,
+}: CreateTrackedChangeRunOptions): Run | null {
   const noteRefMark = marks.find((mark) => mark.type.name === "footnoteRef");
   if (noteRefMark) {
     return createNoteReferenceRun(noteRefMark, marks);
   }
   if (node.isText) {
-    const formatting = marksToTextFormatting(marks);
+    const formatting = marksToTextFormatting(marks, { inheritedFormatting });
     const run: Run = {
       type: "run",
       content: node.text ? [{ type: "text", text: node.text }] : [],
@@ -1842,7 +1864,16 @@ function createHyperlink(linkMark: Mark): Hyperlink {
 /**
  * Add a node to a hyperlink
  */
-function addNodeToHyperlink(hyperlink: Hyperlink, node: PMNode): void {
+type AddNodeToHyperlinkOptions = RunFormattingContext & {
+  hyperlink: Hyperlink;
+  node: PMNode;
+};
+
+function addNodeToHyperlink({
+  hyperlink,
+  inheritedFormatting,
+  node,
+}: AddNodeToHyperlinkOptions): void {
   const noteRefMark = node.marks.find((m) => m.type.name === "footnoteRef");
   if (noteRefMark) {
     hyperlink.children.push(createNoteReferenceRun(noteRefMark, node.marks));
@@ -1851,7 +1882,7 @@ function addNodeToHyperlink(hyperlink: Hyperlink, node: PMNode): void {
 
   const nonLinkMarks = node.marks.filter((m) => m.type.name !== "hyperlink");
   if (node.isText && node.text) {
-    const run = createRunFromText(node.text, nonLinkMarks);
+    const run = createRunFromText({ inheritedFormatting, marks: nonLinkMarks, text: node.text });
     hyperlink.children.push(run);
     return;
   }
@@ -1925,8 +1956,13 @@ function createNoteReferenceRun(noteRefMark: Mark, marks: readonly Mark[]): Run 
 /**
  * Create a Run from text and marks
  */
-function createRunFromText(text: string, marks: readonly Mark[]): Run {
-  const formatting = getRunFormattingFromMarks(marks);
+type CreateRunFromTextOptions = RunFormattingContext & {
+  marks: readonly Mark[];
+  text: string;
+};
+
+function createRunFromText({ inheritedFormatting, marks, text }: CreateRunFromTextOptions): Run {
+  const formatting = getRunFormattingFromMarks(marks, { inheritedFormatting });
   const textContent: TextContent = {
     type: "text",
     text,
@@ -1964,12 +2000,15 @@ function restoreRunPropertyChanges(run: Run, marks: readonly Mark[]): void {
   run.propertyChanges = [...changes];
 }
 
-function getRunFormattingFromMarks(marks: readonly Mark[] | undefined): TextFormatting | undefined {
+function getRunFormattingFromMarks(
+  marks: readonly Mark[] | undefined,
+  options?: MarksToTextFormattingOptions,
+): TextFormatting | undefined {
   if (!marks || marks.length === 0) {
     return undefined;
   }
 
-  const formatting = marksToTextFormatting(marks);
+  const formatting = marksToTextFormatting(marks, options);
   return Object.keys(formatting).length > 0 ? formatting : undefined;
 }
 
@@ -2435,8 +2474,16 @@ function createShapeRun(node: PMNode): Run {
 /**
  * Convert ProseMirror marks to TextFormatting
  */
-export function marksToTextFormatting(marks: readonly Mark[]): TextFormatting {
+type MarksToTextFormattingOptions = {
+  inheritedFormatting: TextFormatting | undefined;
+};
+
+export function marksToTextFormatting(
+  marks: readonly Mark[],
+  options?: MarksToTextFormattingOptions,
+): TextFormatting {
   const formatting: TextFormatting = {};
+  let directOverrideFormatting: TextFormatting | undefined;
   let characterStyleRPr: TextFormatting | undefined;
   let runFormattingOverrideMark: Mark | undefined;
 
@@ -2644,14 +2691,19 @@ export function marksToTextFormatting(marks: readonly Mark[]): TextFormatting {
   // independent CS and explicit-negative values after ordinary marks so a
   // bold/font-size mark cannot overwrite their more specific OOXML values.
   if (runFormattingOverrideMark) {
-    applyRunFormattingOverrideAttrs(
-      formatting,
-      expectRunFormattingOverrideMarkAttrs(runFormattingOverrideMark),
-    );
+    const overrideAttrs = expectRunFormattingOverrideMarkAttrs(runFormattingOverrideMark);
+    applyRunFormattingOverrideAttrs(formatting, overrideAttrs);
+    directOverrideFormatting = {};
+    applyRunFormattingOverrideAttrs(directOverrideFormatting, overrideAttrs);
   }
 
   if (characterStyleRPr) {
-    return subtractCharacterStyleFormatting(formatting, characterStyleRPr);
+    return subtractCharacterStyleFormatting({
+      directOverrideFormatting,
+      formatting,
+      inheritedFormatting: options?.inheritedFormatting,
+      styleRPr: characterStyleRPr,
+    });
   }
 
   return formatting;
@@ -2685,24 +2737,35 @@ const NEGATABLE_STYLE_KEYS: readonly [keyof TextFormatting, keyof TextFormatting
  * (the `w:rStyle` reference re-imposes them on load), so a styled run
  * serializes back to a style reference instead of baked direct formatting.
  *
- * `styleRPr` is the load-time snapshot from the characterStyle mark, captured
- * in the same normal form this module produces from marks, so value equality
- * is a faithful "came from the style and is unchanged" check. Values that
- * differ (user edits, direct overrides from the source document) stay as
- * direct formatting, which wins over the style per the OOXML cascade.
+ * `styleRPr` is the load-time snapshot from the characterStyle mark. Resolve it
+ * against the paragraph defaults before comparing with visual marks, so pure
+ * inherited values are not baked into the run. Values that differ (user edits,
+ * direct overrides from the source document) stay as direct formatting, which
+ * wins over the style per the OOXML cascade.
  *
- * When the user *removes* a boolean property the style supplied (e.g. toggling
- * off bold on text whose `w:rStyle` is bold), that key is no longer present in
- * `formatting`, so the subtraction loop above never sees it. Without a counter,
- * the run keeps the style reference and Word re-applies the removed formatting
- * on load. The second pass emits an explicit negative override (`false`) for
- * each negatable boolean the style set to `true` but the run no longer carries.
+ * When a character style is the only source of a negatable property, removing
+ * its visual mark emits an explicit negative override. Authored direct negatives
+ * already ride the runFormattingOverride mark, so this distinction survives
+ * JSON/Yjs clones.
  */
-function subtractCharacterStyleFormatting(
-  formatting: TextFormatting,
-  styleRPr: TextFormatting,
-): TextFormatting {
+type SubtractCharacterStyleFormattingOptions = {
+  directOverrideFormatting: TextFormatting | undefined;
+  formatting: TextFormatting;
+  inheritedFormatting: TextFormatting | undefined;
+  styleRPr: TextFormatting;
+};
+
+function subtractCharacterStyleFormatting({
+  directOverrideFormatting,
+  formatting,
+  inheritedFormatting,
+  styleRPr,
+}: SubtractCharacterStyleFormattingOptions): TextFormatting {
   const result: TextFormatting = {};
+  const effectiveStyleFormatting = cascadeStyleTextFormatting([
+    { formatting: inheritedFormatting, type: "direct" },
+    { formatting: styleRPr, type: "style" },
+  ]).formatting;
 
   // SAFETY: Object.keys over a TextFormatting yields its own keys.
   for (const key of Object.keys(formatting) as (keyof TextFormatting)[]) {
@@ -2710,7 +2773,18 @@ function subtractCharacterStyleFormatting(
     if (value === undefined) {
       continue;
     }
-    const styleValue = key === "styleId" ? undefined : styleRPr[key];
+    if (directOverrideFormatting?.[key] !== undefined) {
+      // SAFETY: dynamic property copy between identical TextFormatting keys.
+      (result as Record<string, unknown>)[key] = value;
+      continue;
+    }
+    const styleValue = key === "styleId" ? undefined : effectiveStyleFormatting?.[key];
+    if ((key === "boldCs" || key === "italicCs") && styleValue === false && value === true) {
+      // Ordinary bold/italic marks also set their CS mirrors. When the character
+      // style cascade leaves that CS toggle off, the mirrored `true` is only a
+      // visual-mark artifact, not authored direct formatting.
+      continue;
+    }
     // Both values come out of marksToTextFormatting, so equal values have
     // identical key insertion order and stringify identically.
     if (styleValue !== undefined && JSON.stringify(value) === JSON.stringify(styleValue)) {
@@ -2721,7 +2795,7 @@ function subtractCharacterStyleFormatting(
   }
 
   for (const [key, csKey] of NEGATABLE_STYLE_KEYS) {
-    if (styleRPr[key] !== true || formatting[key] !== undefined) {
+    if (effectiveStyleFormatting?.[key] !== true || formatting[key] !== undefined) {
       continue;
     }
     // SAFETY: dynamic property copy between known boolean TextFormatting keys.

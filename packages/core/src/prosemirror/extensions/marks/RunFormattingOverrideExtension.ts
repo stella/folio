@@ -1,9 +1,9 @@
 /**
  * Run formatting override mark.
  *
- * OOXML can explicitly turn inherited boolean/defaultable run properties off
- * (for example <w:b w:val="0"/>). Plain PM marks cannot distinguish "inherit"
- * from "explicitly off", so this mark carries those negative overrides.
+ * OOXML can explicitly set inherited boolean/defaultable run properties. Plain
+ * PM marks cannot distinguish inherited visuals from authored direct values, so
+ * this mark carries those direct toggle overrides.
  */
 
 import type { Mark } from "prosemirror-model";
@@ -22,49 +22,49 @@ export function buildRunFormattingOverrideAttrs(
 
   const attrs: RunFormattingOverrideAttrs = {};
 
-  if (formatting.bold === false) {
-    attrs.bold = false;
+  if (formatting.bold !== undefined) {
+    attrs.bold = formatting.bold;
   }
-  if (formatting.italic === false) {
-    attrs.italic = false;
+  if (formatting.italic !== undefined) {
+    attrs.italic = formatting.italic;
   }
   if (formatting.underline?.style === "none") {
     attrs.underline = "none";
   }
-  if (formatting.strike === false) {
-    attrs.strike = false;
+  if (formatting.strike !== undefined) {
+    attrs.strike = formatting.strike;
   }
   if (formatting.doubleStrike === false) {
     attrs.doubleStrike = false;
   }
-  if (formatting.allCaps === false) {
-    attrs.allCaps = false;
+  if (formatting.allCaps !== undefined) {
+    attrs.allCaps = formatting.allCaps;
   }
-  if (formatting.smallCaps === false) {
-    attrs.smallCaps = false;
+  if (formatting.smallCaps !== undefined) {
+    attrs.smallCaps = formatting.smallCaps;
   }
-  if (formatting.hidden === false) {
-    attrs.hidden = false;
+  if (formatting.hidden !== undefined) {
+    attrs.hidden = formatting.hidden;
   }
-  if (formatting.emboss === false) {
-    attrs.emboss = false;
+  if (formatting.emboss !== undefined) {
+    attrs.emboss = formatting.emboss;
   }
-  if (formatting.imprint === false) {
-    attrs.imprint = false;
+  if (formatting.imprint !== undefined) {
+    attrs.imprint = formatting.imprint;
   }
-  if (formatting.shadow === false) {
-    attrs.shadow = false;
+  if (formatting.shadow !== undefined) {
+    attrs.shadow = formatting.shadow;
   }
-  if (formatting.outline === false) {
-    attrs.outline = false;
+  if (formatting.outline !== undefined) {
+    attrs.outline = formatting.outline;
   }
   if (formatting.rtl === false) {
     attrs.rtl = false;
   }
-  if (formatting.boldCs !== undefined && formatting.boldCs !== formatting.bold) {
+  if (formatting.boldCs !== undefined) {
     attrs.boldCs = formatting.boldCs;
   }
-  if (formatting.italicCs !== undefined && formatting.italicCs !== formatting.italic) {
+  if (formatting.italicCs !== undefined) {
     attrs.italicCs = formatting.italicCs;
   }
   if (formatting.fontSizeCs !== undefined && formatting.fontSizeCs !== formatting.fontSize) {
@@ -81,41 +81,41 @@ export function applyRunFormattingOverrideAttrs(
   formatting: TextFormatting,
   attrs: RunFormattingOverrideAttrs,
 ): void {
-  if (attrs.bold === false) {
-    formatting.bold = false;
+  if (attrs.bold !== undefined) {
+    formatting.bold = attrs.bold;
   }
-  if (attrs.italic === false) {
-    formatting.italic = false;
+  if (attrs.italic !== undefined) {
+    formatting.italic = attrs.italic;
   }
   if (attrs.underline === "none") {
     formatting.underline = { style: "none" };
   }
-  if (attrs.strike === false) {
-    formatting.strike = false;
+  if (attrs.strike !== undefined) {
+    formatting.strike = attrs.strike;
   }
   if (attrs.doubleStrike === false) {
     formatting.doubleStrike = false;
   }
-  if (attrs.allCaps === false) {
-    formatting.allCaps = false;
+  if (attrs.allCaps !== undefined) {
+    formatting.allCaps = attrs.allCaps;
   }
-  if (attrs.smallCaps === false) {
-    formatting.smallCaps = false;
+  if (attrs.smallCaps !== undefined) {
+    formatting.smallCaps = attrs.smallCaps;
   }
-  if (attrs.hidden === false) {
-    formatting.hidden = false;
+  if (attrs.hidden !== undefined) {
+    formatting.hidden = attrs.hidden;
   }
-  if (attrs.emboss === false) {
-    formatting.emboss = false;
+  if (attrs.emboss !== undefined) {
+    formatting.emboss = attrs.emboss;
   }
-  if (attrs.imprint === false) {
-    formatting.imprint = false;
+  if (attrs.imprint !== undefined) {
+    formatting.imprint = attrs.imprint;
   }
-  if (attrs.shadow === false) {
-    formatting.shadow = false;
+  if (attrs.shadow !== undefined) {
+    formatting.shadow = attrs.shadow;
   }
-  if (attrs.outline === false) {
-    formatting.outline = false;
+  if (attrs.outline !== undefined) {
+    formatting.outline = attrs.outline;
   }
   if (attrs.rtl === false) {
     formatting.rtl = false;

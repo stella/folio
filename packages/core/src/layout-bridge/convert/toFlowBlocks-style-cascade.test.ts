@@ -7,7 +7,9 @@ import type {
   TextRun,
 } from "../../layout-engine/types";
 import { layoutDocument } from "../../layout-engine";
+import { parseStyleDefinitions } from "../../docx/styleParser";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
+import { schema } from "../../prosemirror/schema";
 import type { Document, Paragraph, StyleDefinitions, Table } from "../../types/document";
 import { toFlowBlocks } from "./toFlowBlocks";
 
@@ -253,6 +255,205 @@ describe("toFlowBlocks style cascade", () => {
     expect(run.allCaps).toBe(false);
   });
 
+  test("matching paragraph and character style toggles cancel", () => {
+    const styles: StyleDefinitions = {
+      styles: [
+        {
+          styleId: "EmphasizedParagraph",
+          type: "paragraph",
+          name: "Emphasized Paragraph",
+          rPr: {
+            bold: true,
+            boldCs: true,
+            italic: true,
+            italicCs: true,
+            allCaps: true,
+            emboss: true,
+            hidden: true,
+            imprint: true,
+            outline: true,
+            shadow: true,
+            smallCaps: true,
+            strike: true,
+          },
+        },
+        {
+          styleId: "EmphasizedRun",
+          type: "character",
+          name: "Emphasized Run",
+          rPr: {
+            bold: true,
+            boldCs: true,
+            italic: true,
+            italicCs: true,
+            allCaps: true,
+            emboss: true,
+            hidden: true,
+            imprint: true,
+            outline: true,
+            shadow: true,
+            smallCaps: true,
+            strike: true,
+          },
+        },
+      ],
+    };
+    const paragraph: Paragraph = {
+      type: "paragraph",
+      formatting: { styleId: "EmphasizedParagraph" },
+      content: [
+        {
+          type: "run",
+          formatting: { styleId: "EmphasizedRun" },
+          content: [{ type: "text", text: "regular" }],
+        },
+      ],
+    };
+
+    const proseDoc = toProseDoc(makeDoc(paragraph, styles), { styles });
+    const clonedProseDoc = schema.nodeFromJSON(proseDoc.toJSON());
+    const blocks = toFlowBlocks(clonedProseDoc, {});
+
+    expect(firstRun(blocks)).toMatchObject({
+      bold: false,
+      complexScriptBold: false,
+      italic: false,
+      complexScriptItalic: false,
+      allCaps: false,
+      emboss: false,
+      hidden: false,
+      imprint: false,
+      textOutline: false,
+      textShadow: false,
+      smallCaps: false,
+      strike: false,
+    });
+  });
+
+  test.each([
+    ["inherited off, character off", false, false, false],
+    ["inherited off, character on", false, true, true],
+    ["inherited on, character off", true, false, true],
+    ["inherited on, character on", true, true, false],
+  ] as const)(
+    "complex-script style toggles resolve %s after a JSON clone",
+    (_label, inherited, character, expected) => {
+      const styles: StyleDefinitions = {
+        styles: [
+          {
+            styleId: "ParagraphEmphasis",
+            type: "paragraph",
+            name: "Paragraph Emphasis",
+            rPr: { boldCs: inherited, italicCs: inherited },
+          },
+          {
+            styleId: "CharacterEmphasis",
+            type: "character",
+            name: "Character Emphasis",
+            rPr: { bold: true, boldCs: character, italic: true, italicCs: character },
+          },
+        ],
+      };
+      const paragraph: Paragraph = {
+        type: "paragraph",
+        formatting: { styleId: "ParagraphEmphasis" },
+        content: [
+          {
+            type: "run",
+            formatting: { styleId: "CharacterEmphasis" },
+            content: [{ type: "text", text: "toggle matrix" }],
+          },
+        ],
+      };
+
+      const proseDoc = toProseDoc(makeDoc(paragraph, styles), { styles });
+      const clonedProseDoc = schema.nodeFromJSON(proseDoc.toJSON());
+      const run = firstRun(toFlowBlocks(clonedProseDoc, {}));
+
+      expect(run).toMatchObject({
+        bold: true,
+        complexScriptBold: expected,
+        complexScriptItalic: expected,
+        italic: true,
+      });
+    },
+  );
+
+  test("a based-on chain contributes one style-level toggle value", () => {
+    const styles = parseStyleDefinitions(
+      `<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:style w:type="paragraph" w:styleId="Base">
+          <w:rPr><w:b/></w:rPr>
+        </w:style>
+        <w:style w:type="paragraph" w:styleId="Derived">
+          <w:basedOn w:val="Base"/>
+          <w:rPr><w:b/></w:rPr>
+        </w:style>
+      </w:styles>`,
+      null,
+    );
+    const paragraph: Paragraph = {
+      type: "paragraph",
+      formatting: { styleId: "Derived" },
+      content: [{ type: "run", content: [{ type: "text", text: "bold" }] }],
+    };
+
+    const blocks = toFlowBlocks(toProseDoc(makeDoc(paragraph, styles), { styles }), {});
+
+    expect(firstRun(blocks).bold).toBe(true);
+  });
+
+  test("false child toggles preserve inherited true values from parsed styles", () => {
+    const toggleElements = [
+      "b",
+      "bCs",
+      "i",
+      "iCs",
+      "caps",
+      "emboss",
+      "imprint",
+      "outline",
+      "shadow",
+      "smallCaps",
+      "strike",
+      "vanish",
+    ];
+    const styles = parseStyleDefinitions(
+      `<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:style w:type="paragraph" w:styleId="Base">
+          <w:rPr>${toggleElements.map((name) => `<w:${name}/>`).join("")}</w:rPr>
+        </w:style>
+        <w:style w:type="paragraph" w:styleId="Derived">
+          <w:basedOn w:val="Base"/>
+          <w:rPr>${toggleElements.map((name) => `<w:${name} w:val="0"/>`).join("")}</w:rPr>
+        </w:style>
+      </w:styles>`,
+      null,
+    );
+    const paragraph: Paragraph = {
+      type: "paragraph",
+      formatting: { styleId: "Derived" },
+      content: [{ type: "run", content: [{ type: "text", text: "inherited" }] }],
+    };
+
+    const run = firstRun(toFlowBlocks(toProseDoc(makeDoc(paragraph, styles), { styles }), {}));
+
+    expect(run).toMatchObject({
+      bold: true,
+      complexScriptBold: true,
+      italic: true,
+      complexScriptItalic: true,
+      allCaps: true,
+      emboss: true,
+      hidden: true,
+      imprint: true,
+      textOutline: true,
+      textShadow: true,
+      smallCaps: true,
+      strike: true,
+    });
+  });
+
   test("paragraph-mark booleans do not replace inherited paragraph-style booleans", () => {
     const styles: StyleDefinitions = {
       styles: [
@@ -319,6 +520,35 @@ describe("toFlowBlocks style cascade", () => {
     const blocks = toFlowBlocks(toProseDoc(makeDoc(paragraph, styles), { styles }), {});
 
     expect(firstRun(blocks).fontFamily).toBe("Cambria");
+  });
+
+  test("the default character style toggles above a paragraph-style off", () => {
+    const styles: StyleDefinitions = {
+      styles: [
+        {
+          styleId: "PlainParagraph",
+          type: "paragraph",
+          default: true,
+          name: "Plain Paragraph",
+          rPr: { bold: false },
+        },
+        {
+          styleId: "DefaultRun",
+          type: "character",
+          default: true,
+          name: "Default Run",
+          rPr: { bold: true },
+        },
+      ],
+    };
+    const paragraph: Paragraph = {
+      type: "paragraph",
+      content: [{ type: "run", content: [{ type: "text", text: "bold" }] }],
+    };
+
+    const blocks = toFlowBlocks(toProseDoc(makeDoc(paragraph, styles), { styles }), {});
+
+    expect(firstRun(blocks).bold).toBe(true);
   });
 
   test("table conditionals without rPr do not override paragraph run defaults", () => {
@@ -392,6 +622,58 @@ describe("toFlowBlocks style cascade", () => {
     );
 
     expect(firstTableRun(blocks).fontFamily).toBe("Arial");
+  });
+
+  test("paragraph style toggles apply above an explicit table-style off", () => {
+    const styles: StyleDefinitions = {
+      styles: [
+        {
+          styleId: "TableText",
+          type: "paragraph",
+          name: "Table Text",
+          rPr: { bold: true },
+        },
+        {
+          styleId: "PlainTable",
+          type: "table",
+          name: "Plain Table",
+          rPr: { bold: false },
+        },
+      ],
+    };
+    const table: Table = {
+      type: "table",
+      formatting: { styleId: "PlainTable" },
+      rows: [
+        {
+          type: "tableRow",
+          cells: [
+            {
+              type: "tableCell",
+              content: [
+                {
+                  type: "paragraph",
+                  formatting: { styleId: "TableText" },
+                  content: [
+                    {
+                      type: "run",
+                      content: [{ type: "text", text: "bold" }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const blocks = toFlowBlocks(
+      toProseDoc({ package: { document: { content: [table] }, styles } }, { styles }),
+      {},
+    );
+
+    expect(firstTableRun(blocks).bold).toBe(true);
   });
 
   test("default table style supplies cell margins without authoring its zero indent", () => {

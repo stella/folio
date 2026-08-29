@@ -186,11 +186,10 @@ const HARD_BREAK_TYPES = ["column"] as const satisfies readonly NonNullable<
   HardBreakAttrs["breakType"]
 >[];
 
-const RUN_FORMATTING_OVERRIDE_FALSE_KEYS = [
+const RUN_FORMATTING_OVERRIDE_BOOLEAN_KEYS = [
   "bold",
   "italic",
   "strike",
-  "doubleStrike",
   "allCaps",
   "smallCaps",
   "hidden",
@@ -198,6 +197,11 @@ const RUN_FORMATTING_OVERRIDE_FALSE_KEYS = [
   "imprint",
   "shadow",
   "outline",
+] as const satisfies readonly (keyof RunFormattingOverrideAttrs)[];
+
+const RUN_FORMATTING_OVERRIDE_FALSE_KEYS = [
+  "doubleStrike",
+  "rtl",
 ] as const satisfies readonly (keyof RunFormattingOverrideAttrs)[];
 
 const SECTION_ORIENTATIONS = ["portrait", "landscape"] as const;
@@ -1147,6 +1151,9 @@ export const readRunFormattingOverrideMarkAttrs = (
   const issues: ProseMirrorAttrIssue[] = [];
   expectMarkType(mark, "runFormattingOverride", issues);
 
+  for (const key of RUN_FORMATTING_OVERRIDE_BOOLEAN_KEYS) {
+    optionalBoolean(attrs, key, `runFormattingOverride.attrs.${key}`, issues);
+  }
   for (const key of RUN_FORMATTING_OVERRIDE_FALSE_KEYS) {
     optionalFalse(attrs, key, `runFormattingOverride.attrs.${key}`, issues);
   }

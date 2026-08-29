@@ -37,7 +37,7 @@ import type {
   TableMeasurement,
 } from "../types/document";
 import { mergeParagraphFormatting } from "../utils/paragraphFormattingMerge";
-import { mergeTextFormatting } from "../utils/textFormattingMerge";
+import { mergeStyleTextFormatting } from "../utils/textFormattingMerge";
 import { isValidHexColor } from "../utils/colorResolver";
 import {
   BorderStyleSchema,
@@ -85,6 +85,9 @@ export type ParsedStylesPackage = {
   styles: StyleMap;
 };
 
+const findLastRunToggle = (rPr: XmlElement, localName: string): XmlElement | null =>
+  findChildren(rPr, "w", localName).at(-1) ?? null;
+
 /**
  * Parse text formatting properties (w:rPr)
  */
@@ -99,23 +102,23 @@ function parseRunProperties(
   const formatting: TextFormatting = {};
 
   // Bold
-  const b = findChild(rPr, "w", "b");
+  const b = findLastRunToggle(rPr, "b");
   if (b) {
     formatting.bold = parseBooleanElement(b);
   }
 
-  const bCs = findChild(rPr, "w", "bCs");
+  const bCs = findLastRunToggle(rPr, "bCs");
   if (bCs) {
     formatting.boldCs = parseBooleanElement(bCs);
   }
 
   // Italic
-  const i = findChild(rPr, "w", "i");
+  const i = findLastRunToggle(rPr, "i");
   if (i) {
     formatting.italic = parseBooleanElement(i);
   }
 
-  const iCs = findChild(rPr, "w", "iCs");
+  const iCs = findLastRunToggle(rPr, "iCs");
   if (iCs) {
     formatting.italicCs = parseBooleanElement(iCs);
   }
@@ -140,7 +143,7 @@ function parseRunProperties(
   }
 
   // Strikethrough
-  const strike = findChild(rPr, "w", "strike");
+  const strike = findLastRunToggle(rPr, "strike");
   if (strike) {
     formatting.strike = parseBooleanElement(strike);
   }
@@ -160,18 +163,18 @@ function parseRunProperties(
   }
 
   // Capitalization
-  const smallCaps = findChild(rPr, "w", "smallCaps");
+  const smallCaps = findLastRunToggle(rPr, "smallCaps");
   if (smallCaps) {
     formatting.smallCaps = parseBooleanElement(smallCaps);
   }
 
-  const caps = findChild(rPr, "w", "caps");
+  const caps = findLastRunToggle(rPr, "caps");
   if (caps) {
     formatting.allCaps = parseBooleanElement(caps);
   }
 
   // Hidden
-  const vanish = findChild(rPr, "w", "vanish");
+  const vanish = findLastRunToggle(rPr, "vanish");
   if (vanish) {
     formatting.hidden = parseBooleanElement(vanish);
   }
@@ -363,22 +366,22 @@ function parseRunProperties(
   }
 
   // Other effects
-  const emboss = findChild(rPr, "w", "emboss");
+  const emboss = findLastRunToggle(rPr, "emboss");
   if (emboss) {
     formatting.emboss = parseBooleanElement(emboss);
   }
 
-  const imprint = findChild(rPr, "w", "imprint");
+  const imprint = findLastRunToggle(rPr, "imprint");
   if (imprint) {
     formatting.imprint = parseBooleanElement(imprint);
   }
 
-  const outline = findChild(rPr, "w", "outline");
+  const outline = findLastRunToggle(rPr, "outline");
   if (outline) {
     formatting.outline = parseBooleanElement(outline);
   }
 
-  const shadow = findChild(rPr, "w", "shadow");
+  const shadow = findLastRunToggle(rPr, "shadow");
   if (shadow) {
     formatting.shadow = parseBooleanElement(shadow);
   }
@@ -1637,7 +1640,7 @@ function resolveStyleInheritance(
     resolved.pPr = mergedPPr;
   }
 
-  const mergedRPr = mergeTextFormatting(resolvedParent.rPr, style.rPr);
+  const mergedRPr = mergeStyleTextFormatting(resolvedParent.rPr, style.rPr);
   if (mergedRPr) {
     resolved.rPr = mergedRPr;
   }
