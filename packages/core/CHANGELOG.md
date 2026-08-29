@@ -1,5 +1,15 @@
 # @stll/folio-core
 
+## 0.29.0
+
+### Minor Changes
+
+- [#653](https://github.com/stella/folio/pull/653) [`9576702`](https://github.com/stella/folio/commit/957670247c26c04591c83430651717ba4df30417) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Resolve numbered REF fields from live bookmark and list state, and refresh safe cached results on save.
+
+### Patch Changes
+
+- [#645](https://github.com/stella/folio/pull/645) [`6d31019`](https://github.com/stella/folio/commit/6d310198e0197c276f93f5eab552ee8198ab3d80) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Reuse equivalent paragraph measurements and preserve authored terminal blank-page spacing.
+
 ## 0.28.1
 
 ### Patch Changes
