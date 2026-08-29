@@ -228,6 +228,18 @@ describe("font metrics cache", () => {
         attrs: { documentGridLinePitch: 24, snapToGrid: false },
       }),
     );
+    expect(hashParagraphBlock({ ...paragraph, attrs: { documentGridLinePitch: 24 } })).toBe(
+      hashParagraphBlock({
+        ...paragraph,
+        attrs: { documentGridLinePitch: 24, snapToGrid: true },
+      }),
+    );
+    expect(hashParagraphBlock({ ...paragraph, attrs: { alignment: "left" } })).toBe(
+      hashParagraphBlock({
+        ...paragraph,
+        attrs: { alignment: "left", snapToGrid: false },
+      }),
+    );
   });
 });
 

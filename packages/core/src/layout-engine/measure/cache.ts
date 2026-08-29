@@ -5,7 +5,7 @@
  * Improves performance by avoiding repeated measurements of identical content.
  */
 
-import type { ImageRun, ParagraphBlock, ParagraphMeasure, Run } from "../types";
+import type { ImageRun, ParagraphAttrs, ParagraphBlock, ParagraphMeasure, Run } from "../types";
 import { getLineBreakProviderGeneration } from "./lineBreakProvider";
 import { clearFontResolvedCache } from "./measureHelpers";
 
@@ -362,11 +362,21 @@ const runMeasureCacheInput = (run: Run) => {
   }
 };
 
-/** Serialize the complete paragraph measurement contract into a cache key. */
+const paragraphAttrsMeasureCacheInput = (attrs: ParagraphAttrs | undefined) => {
+  if (attrs === undefined) return undefined;
+
+  const { snapToGrid, ...measurementAttrs } = attrs;
+  if (measurementAttrs.documentGridLinePitch === undefined) {
+    return measurementAttrs;
+  }
+  return { ...measurementAttrs, snapToGrid: snapToGrid !== false };
+};
+
+/** Serialize the complete, semantically normalized paragraph measurement contract into a cache key. */
 export function hashParagraphBlock(block: ParagraphBlock): string {
   return JSON.stringify({
     lineBreakProviderGeneration: getLineBreakProviderGeneration(),
-    attrs: block.attrs,
+    attrs: paragraphAttrsMeasureCacheInput(block.attrs),
     runs: block.runs.map(runMeasureCacheInput),
   });
 }
