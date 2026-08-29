@@ -1,5 +1,17 @@
 # @stll/folio-core
 
+## 0.28.1
+
+### Patch Changes
+
+- [#648](https://github.com/stella/folio/pull/648) [`24d886a`](https://github.com/stella/folio/commit/24d886a32ee913830a3304b4dcf56e0c5f63c8af) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep earlier columns above footnote areas discovered during later-column layout.
+
+- [#647](https://github.com/stella/folio/pull/647) [`865a8e4`](https://github.com/stella/folio/commit/865a8e4716392ed289c30c31601b785d7ceb4b72) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Advance continuous-section page restarts across shared-page content.
+
+- [#650](https://github.com/stella/folio/pull/650) [`7ab1100`](https://github.com/stella/folio/commit/7ab1100aa103ee71f44fc298343f49fa7a115d5b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Apply level-aware OOXML style toggle inheritance while keeping direct run formatting explicit.
+
+- [#646](https://github.com/stella/folio/pull/646) [`dba65db`](https://github.com/stella/folio/commit/dba65db5a6deaab14e54ee09d85500f6aec3e1bc) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep short list markers from pulling text into a hanging indent.
+
 ## 0.28.0
 
 ### Minor Changes
