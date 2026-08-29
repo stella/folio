@@ -30,8 +30,12 @@ import type { MaybeRefOrGetter, Ref } from "vue";
 import type { EditorState, Plugin, Transaction } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
-import { createFolioEditor } from "@stll/folio-core/controller/folioEditor";
-import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
+import {
+  createFolioEditor,
+  FOLIO_DOCX_SERIALIZATION_MODE,
+  type FolioEditor,
+  type FolioEditorDocumentIO,
+} from "@stll/folio-core/controller/folioEditor";
 import { createFolioEditorEmitter } from "@stll/folio-core/controller/folioEditorEvents";
 import { loadCollaborationModules } from "@stll/folio-core/controller/collaborationModules";
 import { createHeaderFooterEditorManager } from "@stll/folio-core/controller/headerFooterEditorManager";
@@ -919,10 +923,21 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
 
   // ---- Headless controller handle -----------------------------------------
 
+  const documentIO = {
+    getDocx: async (serializationOptions) => {
+      const blob = await save({
+        selective: serializationOptions?.mode !== FOLIO_DOCX_SERIALIZATION_MODE.full,
+      });
+      return blob?.arrayBuffer() ?? null;
+    },
+    loadDocument,
+    loadDocx: loadBuffer,
+  } satisfies FolioEditorDocumentIO;
   const editor: FolioEditor = createFolioEditor({
     getEditorApi: () => manager.api,
     getLayout: () => layout.value,
     runLayout: (state, runOptions) => runLayoutPipeline(state, runOptions),
+    getDocumentIO: () => documentIO,
     emitter,
   });
 

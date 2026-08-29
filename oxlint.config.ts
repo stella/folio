@@ -180,9 +180,25 @@ export default library({
       // react-dom, and @stll/ui (type-only imports included) anywhere under
       // core/, so adapters can all sit on one shared core. See the matching
       // test at `src/core/__tests__/react-free-core.test.ts`.
-      files: ["packages/core/src/**/*.{ts,tsx}"],
+      files: [
+        "packages/core/src/**/*.{ts,tsx}",
+        "test/__fixtures__/packages/core/src/**/*.{ts,tsx}",
+      ],
       rules: {
+        "folio-layer-boundaries/controller-and-engine-seams": "error",
         "folio-layer-boundaries/no-react-in-core": "error",
+      },
+    },
+    {
+      // The browser projection surface is a thin boundary around the canonical
+      // bounded Rust/WASM kernel. Prevent a TypeScript OOXML/archive fallback
+      // or a second generated-kernel entry point from appearing silently.
+      files: [
+        "packages/docx-core/src/**/*.{ts,tsx}",
+        "test/__fixtures__/packages/docx-core/src/**/*.{ts,tsx}",
+      ],
+      rules: {
+        "folio-layer-boundaries/rust-projection-boundary": "error",
       },
     },
     {

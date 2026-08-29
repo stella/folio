@@ -8,7 +8,7 @@
  * Ported from eigenpal/docx-editor `layout-painter/imageLayout.ts`.
  */
 
-import type { WrapType } from "../docx/wrapTypes";
+import type { WrapType } from "../types/wrap";
 import type { FlowBlock, Measure } from "../layout-engine/types";
 import type { ImageAttrs } from "../prosemirror/schema/nodes";
 import { pixelsToEmu } from "../utils/units";

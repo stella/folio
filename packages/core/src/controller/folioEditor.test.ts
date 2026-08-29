@@ -4,7 +4,7 @@ import type { EditorView } from "prosemirror-view";
 
 import type { Layout } from "../layout-engine/types";
 import type { Document } from "../types/document";
-import { createFolioEditor } from "./folioEditor";
+import { createFolioEditor, type FolioEditorDocumentIO } from "./folioEditor";
 import { createFolioEditorEmitter } from "./folioEditorEvents";
 import type { HiddenEditorApi } from "./hiddenEditorApi";
 import type { LayoutRunOptions } from "./layoutScheduler";
@@ -19,9 +19,30 @@ const sentinelDocument = { sentinel: "document" } as unknown as Document;
 const sentinelLayout = { sentinel: "layout" } as unknown as Layout;
 const sentinelTr = { sentinel: "tr" } as unknown as Transaction;
 const sentinelCommand = { sentinel: "command" } as unknown as Command;
+const sentinelDocx = new Uint8Array([1, 2, 3]);
+const sentinelBuffer = sentinelDocx.buffer;
 /* oxlint-enable typescript/no-unsafe-type-assertion */
 
 type Call = { method: string; args: unknown[] };
+
+const createFakeDocumentIO = (): { documentIO: FolioEditorDocumentIO; calls: Call[] } => {
+  const calls: Call[] = [];
+  return {
+    calls,
+    documentIO: {
+      getDocx: async (options) => {
+        calls.push({ method: "getDocx", args: [options] });
+        return sentinelBuffer;
+      },
+      loadDocument: (document) => {
+        calls.push({ method: "loadDocument", args: [document] });
+      },
+      loadDocx: async (input) => {
+        calls.push({ method: "loadDocx", args: [input] });
+      },
+    },
+  };
+};
 
 const createFakeApi = (): { api: HiddenEditorApi; calls: Call[] } => {
   const calls: Call[] = [];
@@ -91,6 +112,7 @@ describe("createFolioEditor", () => {
       getEditorApi: () => api,
       getLayout: () => sentinelLayout,
       runLayout,
+      getDocumentIO: () => createFakeDocumentIO().documentIO,
       emitter: createFolioEditorEmitter(),
     });
 
@@ -132,6 +154,7 @@ describe("createFolioEditor", () => {
       getEditorApi: () => current,
       getLayout: () => null,
       runLayout,
+      getDocumentIO: () => createFakeDocumentIO().documentIO,
       emitter: createFolioEditorEmitter(),
     });
 
@@ -148,6 +171,7 @@ describe("createFolioEditor", () => {
       getEditorApi: () => null,
       getLayout: () => null,
       runLayout,
+      getDocumentIO: () => createFakeDocumentIO().documentIO,
       emitter: createFolioEditorEmitter(),
     });
 
@@ -169,6 +193,7 @@ describe("createFolioEditor", () => {
       getEditorApi: () => null,
       getLayout: () => null,
       runLayout,
+      getDocumentIO: () => createFakeDocumentIO().documentIO,
       emitter: createFolioEditorEmitter(),
     });
 
@@ -191,6 +216,7 @@ describe("createFolioEditor", () => {
       getEditorApi: () => api,
       getLayout: () => sentinelLayout,
       runLayout,
+      getDocumentIO: () => createFakeDocumentIO().documentIO,
       emitter: createFolioEditorEmitter(),
     });
 
@@ -206,6 +232,7 @@ describe("createFolioEditor", () => {
       getEditorApi: () => null,
       getLayout: () => null,
       runLayout,
+      getDocumentIO: () => createFakeDocumentIO().documentIO,
       emitter: createFolioEditorEmitter(),
     });
 
@@ -220,6 +247,7 @@ describe("createFolioEditor", () => {
       getEditorApi: () => null,
       getLayout: () => sentinelLayout,
       runLayout,
+      getDocumentIO: () => createFakeDocumentIO().documentIO,
       emitter: createFolioEditorEmitter(),
     });
 
@@ -233,6 +261,7 @@ describe("createFolioEditor", () => {
       getEditorApi: () => null,
       getLayout: () => null,
       runLayout,
+      getDocumentIO: () => createFakeDocumentIO().documentIO,
       emitter,
     });
 
@@ -247,5 +276,40 @@ describe("createFolioEditor", () => {
     unsubscribe();
     emitter.emit("docChange", sentinelDocument);
     expect(seen).toEqual([sentinelDocument]);
+  });
+
+  test("document I/O delegates through the controller without requiring a mounted view", async () => {
+    const { calls, documentIO } = createFakeDocumentIO();
+    const editor = createFolioEditor({
+      getEditorApi: () => null,
+      getLayout: () => null,
+      runLayout: () => undefined,
+      getDocumentIO: () => documentIO,
+      emitter: createFolioEditorEmitter(),
+    });
+
+    editor.loadDocument(sentinelDocument);
+    await editor.loadDocx(sentinelDocx);
+    expect(await editor.getDocx({ mode: "full" })).toBe(sentinelBuffer);
+
+    expect(calls).toEqual([
+      { method: "loadDocument", args: [sentinelDocument] },
+      { method: "loadDocx", args: [sentinelDocx] },
+      { method: "getDocx", args: [{ mode: "full" }] },
+    ]);
+  });
+
+  test("keeps existing controller construction valid when document I/O is unused", () => {
+    const editor = createFolioEditor({
+      getEditorApi: () => null,
+      getLayout: () => null,
+      runLayout: () => undefined,
+      emitter: createFolioEditorEmitter(),
+    });
+
+    expect(editor.getState()).toBeNull();
+    expect(() => editor.loadDocument(sentinelDocument)).toThrow(
+      "FolioEditor document I/O requires a getDocumentIO dependency",
+    );
   });
 });

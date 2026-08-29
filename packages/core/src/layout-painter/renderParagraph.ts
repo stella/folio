@@ -41,8 +41,8 @@ import type {
   ParagraphAttrs,
   HyperlinkInfo,
 } from "../layout-engine/types";
-import { calculateTabWidth } from "../prosemirror/utils/tabCalculator";
-import type { TabContext, TabStop as TabCalcStop } from "../prosemirror/utils/tabCalculator";
+import { calculateTabWidth } from "../layout-engine/measure/tabCalculator";
+import type { TabContext, TabStop as TabCalcStop } from "../layout-engine/measure/tabCalculator";
 import { getAuthorColorIdx, AUTHOR_COLORS } from "../utils/authorColors";
 import {
   resolvePhysicalParagraphInlineLayout,

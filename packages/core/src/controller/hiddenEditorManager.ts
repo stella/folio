@@ -36,6 +36,7 @@ import {
 import { createDocumentStylesPlugin } from "../prosemirror/plugins/documentStyles";
 import { schema } from "../prosemirror/schema";
 import type { Document, StyleDefinitions } from "../types/document";
+import type { RemoteSelection } from "../types/remote-selection";
 import { createHiddenEditorApi, type HiddenEditorApi } from "./hiddenEditorApi";
 
 // Initial-load normalization. `appendTransaction` does not fire for the seed
@@ -69,13 +70,7 @@ export type HiddenProseMirrorCollaboration = {
   yXmlFragment: XmlFragment;
 };
 
-export type HiddenProseMirrorRemoteSelection = {
-  anchor: number;
-  clientId: number;
-  color: string;
-  head: number;
-  name: string;
-};
+export type HiddenProseMirrorRemoteSelection = RemoteSelection;
 
 type YSyncState = {
   binding: {

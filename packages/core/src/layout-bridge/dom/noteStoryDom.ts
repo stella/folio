@@ -1,6 +1,6 @@
 /** Shared painted-DOM identity resolver for editable note stories. */
 
-import type { NoteStoryKey } from "../../controller/noteEditorManager";
+import type { NoteStoryKey } from "../../types/editor-story";
 
 type NoteTarget = {
   dataset: DOMStringMap;

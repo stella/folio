@@ -5,8 +5,8 @@
  * Converts runs into measured lines with typography metrics.
  */
 
-import { calculateTabWidth, pixelsToTwips } from "../../prosemirror/utils/tabCalculator";
-import type { TabContext } from "../../prosemirror/utils/tabCalculator";
+import { calculateTabWidth, pixelsToTwips } from "./tabCalculator";
+import type { TabContext } from "./tabCalculator";
 import {
   CJK_FALLBACK_FONT_FAMILY,
   DEFAULT_SINGLE_LINE_RATIO,

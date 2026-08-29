@@ -4,9 +4,12 @@
 // framework adapters and desktop/headless hosts drive. Kept in `core/` with no
 // React or `paged-editor/*` dependency so it stays portable across hosts.
 
+import { panic } from "better-result";
 import type { EditorState } from "prosemirror-state";
 
 import type { Layout } from "../layout-engine/types";
+import type { Document } from "../types/document";
+import type { DocxInput } from "../utils/docxInput";
 import type { FolioEditorEmitter } from "./folioEditorEvents";
 import type { HiddenEditorApi } from "./hiddenEditorApi";
 import type { LayoutRunOptions } from "./layoutScheduler";
@@ -17,66 +20,107 @@ export type FolioEditorDeps = {
   getEditorApi: () => HiddenEditorApi | null;
   getLayout: () => Layout | null;
   runLayout: (state: EditorState, options: LayoutRunOptions) => void;
+  /** Required only when the document I/O methods are used. */
+  getDocumentIO?: () => FolioEditorDocumentIO;
   emitter: FolioEditorEmitter;
+};
+
+export const FOLIO_DOCX_SERIALIZATION_MODE = Object.freeze({
+  full: "full",
+  preferSelective: "prefer-selective",
+} as const);
+
+export type FolioDocxSerializationMode =
+  (typeof FOLIO_DOCX_SERIALIZATION_MODE)[keyof typeof FOLIO_DOCX_SERIALIZATION_MODE];
+
+export type FolioGetDocxOptions = {
+  mode?: FolioDocxSerializationMode;
+};
+
+/**
+ * Document lifecycle operations supplied by a host integration.
+ *
+ * The controller owns the stable contract while each adapter supplies its
+ * current persistence implementation. This lets document I/O migrate without
+ * coupling core to React, Vue, or host callbacks.
+ */
+export type FolioEditorDocumentIO = {
+  getDocx: (options?: FolioGetDocxOptions) => Promise<ArrayBuffer | null>;
+  loadDocument: (document: Document) => void;
+  loadDocx: (input: DocxInput) => Promise<void>;
 };
 
 // The headless controller surface (Seam 6). The HiddenEditorApi methods plus
 // layout access and event subscription.
 export type FolioEditor = HiddenEditorApi & {
+  getDocx: FolioEditorDocumentIO["getDocx"];
+  loadDocument: FolioEditorDocumentIO["loadDocument"];
+  loadDocx: FolioEditorDocumentIO["loadDocx"];
   getLayout: () => Layout | null;
   /** Re-run layout for the current editor state (no-op if there is no view). */
   relayout: () => void;
   on: FolioEditorEmitter["on"];
 };
 
-export const createFolioEditor = (deps: FolioEditorDeps): FolioEditor => ({
-  ensureView: () => deps.getEditorApi()?.ensureView(),
+export const createFolioEditor = (deps: FolioEditorDeps): FolioEditor => {
+  const getDocumentIO = () =>
+    deps.getDocumentIO?.() ?? panic("FolioEditor document I/O requires a getDocumentIO dependency");
 
-  isViewRequested: () => deps.getEditorApi()?.isViewRequested() ?? false,
+  return {
+    getDocx: (options) => getDocumentIO().getDocx(options),
 
-  getState: () => deps.getEditorApi()?.getState() ?? null,
+    loadDocument: (document) => getDocumentIO().loadDocument(document),
 
-  getView: () => deps.getEditorApi()?.getView() ?? null,
+    loadDocx: (input) => getDocumentIO().loadDocx(input),
 
-  getDocument: () => deps.getEditorApi()?.getDocument() ?? null,
+    ensureView: () => deps.getEditorApi()?.ensureView(),
 
-  focus: () => deps.getEditorApi()?.focus(),
+    isViewRequested: () => deps.getEditorApi()?.isViewRequested() ?? false,
 
-  blur: () => deps.getEditorApi()?.blur(),
+    getState: () => deps.getEditorApi()?.getState() ?? null,
 
-  isFocused: () => deps.getEditorApi()?.isFocused() ?? false,
+    getView: () => deps.getEditorApi()?.getView() ?? null,
 
-  dispatch: (tr) => deps.getEditorApi()?.dispatch(tr),
+    getDocument: () => deps.getEditorApi()?.getDocument() ?? null,
 
-  executeCommand: (command) => deps.getEditorApi()?.executeCommand(command) ?? false,
+    focus: () => deps.getEditorApi()?.focus(),
 
-  undo: () => deps.getEditorApi()?.undo() ?? false,
+    blur: () => deps.getEditorApi()?.blur(),
 
-  redo: () => deps.getEditorApi()?.redo() ?? false,
+    isFocused: () => deps.getEditorApi()?.isFocused() ?? false,
 
-  canUndo: () => deps.getEditorApi()?.canUndo() ?? false,
+    dispatch: (tr) => deps.getEditorApi()?.dispatch(tr),
 
-  canRedo: () => deps.getEditorApi()?.canRedo() ?? false,
+    executeCommand: (command) => deps.getEditorApi()?.executeCommand(command) ?? false,
 
-  setSelection: (anchor, head) => deps.getEditorApi()?.setSelection(anchor, head),
+    undo: () => deps.getEditorApi()?.undo() ?? false,
 
-  setNodeSelection: (pos) => deps.getEditorApi()?.setNodeSelection(pos),
+    redo: () => deps.getEditorApi()?.redo() ?? false,
 
-  setCellSelection: (anchorCellPos, headCellPos) =>
-    deps.getEditorApi()?.setCellSelection(anchorCellPos, headCellPos),
+    canUndo: () => deps.getEditorApi()?.canUndo() ?? false,
 
-  scrollToSelection: () => deps.getEditorApi()?.scrollToSelection(),
+    canRedo: () => deps.getEditorApi()?.canRedo() ?? false,
 
-  getLayout: () => deps.getLayout(),
+    setSelection: (anchor, head) => deps.getEditorApi()?.setSelection(anchor, head),
 
-  relayout: () => {
-    const state = deps.getEditorApi()?.getState();
-    if (state) {
-      deps.runLayout(state, { reason: "manual" });
-    }
-  },
+    setNodeSelection: (pos) => deps.getEditorApi()?.setNodeSelection(pos),
 
-  // Wrap rather than tear off the method, so the contract holds for any emitter
-  // implementation (e.g. a class-based one whose `on` relies on `this`).
-  on: (event, listener) => deps.emitter.on(event, listener),
-});
+    setCellSelection: (anchorCellPos, headCellPos) =>
+      deps.getEditorApi()?.setCellSelection(anchorCellPos, headCellPos),
+
+    scrollToSelection: () => deps.getEditorApi()?.scrollToSelection(),
+
+    getLayout: () => deps.getLayout(),
+
+    relayout: () => {
+      const state = deps.getEditorApi()?.getState();
+      if (state) {
+        deps.runLayout(state, { reason: "manual" });
+      }
+    },
+
+    // Wrap rather than tear off the method, so the contract holds for any emitter
+    // implementation (e.g. a class-based one whose `on` relies on `this`).
+    on: (event, listener) => deps.emitter.on(event, listener),
+  };
+};

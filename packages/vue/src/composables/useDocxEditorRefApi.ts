@@ -43,7 +43,10 @@ import {
   type FolioDocumentOperationUndoHandle,
   type FolioDocumentOperationUndoResult,
 } from "@stll/folio-core/ai-edits";
-import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
+import {
+  FOLIO_DOCX_SERIALIZATION_MODE,
+  type FolioEditor,
+} from "@stll/folio-core/controller/folioEditor";
 import type { Layout } from "@stll/folio-core/layout-engine";
 import { findPageIndexContainingPmPos } from "@stll/folio-core/layout-engine";
 import {
@@ -77,7 +80,6 @@ import {
 import { setContentControlContentBlocksTr } from "@stll/folio-core/prosemirror/commands/contentControlsBlockFill";
 import type { Document } from "@stll/folio-core/types/document";
 import type { Comment } from "@stll/folio-core/types/content";
-import type { DocxInput } from "@stll/folio-core/utils/docxInput";
 
 import type { DocxEditorRef } from "../components/DocxEditor/types";
 import type { PagedEditorRef } from "../components/DocxEditor/pagedEditorRef";
@@ -166,10 +168,6 @@ export type UseDocxEditorRefApiOptions = {
   closeNoteStory: () => void;
   getHeaderFooterView: (rId: string) => EditorView | null;
   setZoom: (zoom: number) => void;
-  /** useDocxEditor.save returns a Blob; the ref surface exposes an ArrayBuffer. */
-  save: (options?: { selective?: boolean }) => Promise<Blob | null>;
-  loadDocument: (doc: Document) => void;
-  loadDocumentBuffer: (buffer: DocxInput) => Promise<void>;
   /** Optional host hook for print. */
   onPrint?: (() => void) | undefined;
   /** Optional host hook fired with the serialized `.docx` bytes after `save()`. */
@@ -186,11 +184,15 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
   }
 
   async function save(options?: { selective?: boolean }): Promise<ArrayBuffer | null> {
-    const blob = await opts.save(options);
-    if (!blob) {
+    const buffer = await opts.editor.getDocx({
+      mode:
+        options?.selective === false
+          ? FOLIO_DOCX_SERIALIZATION_MODE.full
+          : FOLIO_DOCX_SERIALIZATION_MODE.preferSelective,
+    });
+    if (!buffer) {
       return null;
     }
-    const buffer = await blob.arrayBuffer();
     // Save succeeded: clear the comment-list dirty flag (useDocxEditor already
     // cleared the doc-dirty flag when it produced the bytes). Mirrors React's
     // handleSave resetting commentsDirtyRef.
@@ -387,8 +389,8 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
     scrollToParaId,
     openPrintPreview: () => print(),
     print,
-    loadDocument: opts.loadDocument,
-    loadDocumentBuffer: opts.loadDocumentBuffer,
+    loadDocument: (document) => opts.editor.loadDocument(document),
+    loadDocumentBuffer: (buffer) => opts.editor.loadDocx(buffer),
     // The fork's controller ensureView() takes no focus argument yet; the
     // { focus } option is accepted for React parity but ignored (PORT-BLOCKED).
     ensureEditorView: () => opts.editor.ensureView(),

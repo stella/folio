@@ -113,6 +113,12 @@ interface FolioEditor {
 Framework adapters only instantiate this, forward lifecycle/events, and render
 chrome. The editor _surface_ (pages) is painted imperatively by `render-dom`.
 
+Document loading and serialization now cross this seam through injected
+`FolioEditorDocumentIO` operations. The adapters keep host callbacks and file
+picker behavior, while `FolioEditor.loadDocx`, `loadDocument`, and `getDocx`
+provide one framework-neutral route. Mount/destroy ownership and the remaining
+high-level command snapshots migrate as later vertical slices.
+
 The controller owns every editable story, not only the main body. Header and
 footer relationship ids are persistent story identities: the shared
 `HeaderFooterEditorManager` owns one ProseMirror view per id, while
@@ -154,6 +160,17 @@ react / vue  ->  controller
 `engine` depends only on `model` + the `MeasureProvider` interface. Adapters
 depend only on the `controller` API. The 91 reach-ins collapse to
 `adapter → FolioEditor`.
+
+The dependency direction is enforced in two layers: repository lint rejects
+controller imports from upstream core modules and runtime imports from the
+layout engine, while architecture tests exercise the negative cases. Shared
+story, selection, wrap, and tab-measurement contracts therefore live in pure
+model or engine modules instead of downstream controller or ProseMirror code.
+
+The portable DOCX projection has a separate executable boundary: its TypeScript
+entry point may initialize the generated Rust/WASM kernel and translate errors,
+but may not import an XML/archive fallback. Other TypeScript modules may not
+import the generated kernel directly.
 
 ## The measurement crux
 

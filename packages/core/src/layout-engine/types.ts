@@ -16,7 +16,7 @@ import type {
   TableWidthType,
 } from "@stll/docx-core/model";
 
-import { isFloatingWrapType, isWrapNone } from "../docx/wrapTypes";
+import { isFloatingWrapType, isWrapNone } from "../types/wrap";
 import type { OutlineStyleAttr } from "../types/documentEnumValues";
 
 /**

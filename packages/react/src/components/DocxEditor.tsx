@@ -52,6 +52,10 @@ import {
   type FolioDocumentOperationUndoResult,
 } from "@stll/folio-core/ai-edits";
 import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
+import {
+  FOLIO_DOCX_SERIALIZATION_MODE,
+  type FolioGetDocxOptions,
+} from "@stll/folio-core/controller/folioEditor";
 import type { NoteStoryKey } from "@stll/folio-core/controller/noteEditorManager";
 import { normalizeBaseDirection } from "@stll/folio-core/docx/normalizeBaseDirection";
 import { getCachedNumberingMap } from "@stll/folio-core/docx/numberingParser";
@@ -2737,9 +2741,8 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     [getActiveEditorView],
   );
 
-  // Handle save
-  const handleSave = useCallback(
-    async (options?: { selective?: boolean }): Promise<ArrayBuffer | null> => {
+  const serializeCurrentDocx = useCallback(
+    async (options?: FolioGetDocxOptions): Promise<ArrayBuffer | null> => {
       let tripwireResult: Parameters<NonNullable<typeof onSelectiveSaveTripwire>>[0] | null = null;
       let savedBuffer: ArrayBuffer | null = null;
 
@@ -2757,7 +2760,8 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         // The tripwire observes the selective path independently from the
         // user-visible save mode. Only `useSelectiveForSave` is allowed to
         // choose the returned bytes.
-        const useSelectiveForSave = flags.selectiveSave && options?.selective !== false;
+        const useSelectiveForSave =
+          flags.selectiveSave && options?.mode !== FOLIO_DOCX_SERIALIZATION_MODE.full;
         const shouldAttemptSelective = useSelectiveForSave || flags.selectiveSaveTripwire;
         const view = pagedEditorRef.current?.getView();
         const baselineBuffer = originalBufferRef.current;
@@ -2810,9 +2814,6 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
           originalBufferRef.current = buffer;
           view.dispatch(clearTrackedChanges(view.state));
         }
-        commentsDirtyRef.current = false;
-
-        onSave?.(buffer);
         savedBuffer = buffer;
       } catch (error) {
         onError?.(error instanceof Error ? error : new Error("Failed to save document"));
@@ -2824,15 +2825,40 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       }
       return savedBuffer;
     },
-    [
-      buildCurrentDocument,
-      onSave,
-      onError,
-      originalBufferRef,
-      featureFlags,
-      onSelectiveSaveTripwire,
-      commentsDirtyRef,
-    ],
+    [buildCurrentDocument, onError, originalBufferRef, featureFlags, onSelectiveSaveTripwire],
+  );
+
+  // Host-facing save keeps callback and dirty-state policy outside the
+  // framework-neutral controller's side-effect-free serialization method.
+  const handleSave = useCallback(
+    async (options?: { selective?: boolean }): Promise<ArrayBuffer | null> => {
+      const editor = pagedEditorRef.current?.getEditor();
+      const serializationOptions = {
+        mode:
+          options?.selective === false
+            ? FOLIO_DOCX_SERIALIZATION_MODE.full
+            : FOLIO_DOCX_SERIALIZATION_MODE.preferSelective,
+      } as const satisfies FolioGetDocxOptions;
+      const buffer = editor
+        ? await editor.getDocx(serializationOptions)
+        : await serializeCurrentDocx(serializationOptions);
+      if (!buffer) {
+        return null;
+      }
+      commentsDirtyRef.current = false;
+      onSave?.(buffer);
+      return buffer;
+    },
+    [commentsDirtyRef, onSave, serializeCurrentDocx],
+  );
+
+  const documentIO = useMemo(
+    () => ({
+      getDocx: serializeCurrentDocx,
+      loadDocument: loadParsedDocument,
+      loadDocx: loadBuffer,
+    }),
+    [loadBuffer, loadParsedDocument, serializeCurrentDocx],
   );
 
   // Handle error from editor
@@ -2877,8 +2903,16 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         pagedEditorRef.current?.scrollToParaId(paraId, options) ?? false,
       openPrintPreview: handleDirectPrint,
       print: handleDirectPrint,
-      loadDocument: loadParsedDocument,
-      loadDocumentBuffer: loadBuffer,
+      loadDocument: (document) => {
+        const editor = pagedEditorRef.current?.getEditor();
+        if (editor) {
+          editor.loadDocument(document);
+          return;
+        }
+        loadParsedDocument(document);
+      },
+      loadDocumentBuffer: (buffer) =>
+        pagedEditorRef.current?.getEditor().loadDocx(buffer) ?? loadBuffer(buffer),
       ensureEditorView: (options?: { focus?: boolean }) => {
         pagedEditorRef.current?.ensureView(options);
       },
@@ -4331,6 +4365,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                       <PagedEditor
                         ref={pagedEditorRef}
                         document={history.state}
+                        documentIO={documentIO}
                         documentIdentity={loadedDocumentIdentity}
                         {...(fonts !== undefined ? { fonts } : {})}
                         theme={history.state.package.theme || theme || null}

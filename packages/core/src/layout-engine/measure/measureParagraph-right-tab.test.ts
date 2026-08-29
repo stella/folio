@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { calculateTabWidth } from "../../prosemirror/utils/tabCalculator";
-import type { TabContext } from "../../prosemirror/utils/tabCalculator";
+import { calculateTabWidth } from "./tabCalculator";
+import type { TabContext } from "./tabCalculator";
 import { withFakeTextMeasure } from "./__tests__/fakeTextMeasure";
 import { measureParagraph } from "./measureParagraph";
 

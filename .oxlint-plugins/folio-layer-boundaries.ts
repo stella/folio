@@ -132,7 +132,11 @@ type RuleContext = {
       | "engineToPainter"
       | "engineToBridge"
       | "reactInCore"
-      | "modelImpureData";
+      | "modelImpureData"
+      | "controllerImportedUpstream"
+      | "engineImportsRuntime"
+      | "projectionBoundaryImport"
+      | "generatedKernelImport";
   }) => void;
 };
 
@@ -358,6 +362,150 @@ const checkModelPurity = (context: RuleContext, importNode: AstNode): void => {
   }
 };
 
+// ---------------------------------------------------------------------------
+// Controller composition-root and pure-engine seams.
+// ---------------------------------------------------------------------------
+
+const CONTROLLER_SEGMENT = "/packages/core/src/controller/";
+const ENGINE_SEGMENT = "/packages/core/src/layout-engine/";
+const FORBIDDEN_ENGINE_DIRS = [
+  "controller",
+  "docx",
+  "layout-bridge",
+  "layout-painter",
+  "managers",
+  "paged-layout",
+  "prosemirror",
+  "render-dom",
+];
+const CORE_PACKAGE_PREFIX = "@stll/folio-core/";
+
+const normalizedWithLeadingSlash = (value: string): string => {
+  const normalized = value.replaceAll("\\", "/");
+  return normalized.startsWith("/") ? normalized : `/${normalized}`;
+};
+
+const isInsideSegment = (filePath: string, segment: string): boolean =>
+  normalizedWithLeadingSlash(filePath).includes(segment);
+
+const targetTopLevelCoreDirectory = (resolved: string): string | null => {
+  const normalized = normalizedWithLeadingSlash(resolved);
+  const marker = "/packages/core/src/";
+  const markerIndex = normalized.indexOf(marker);
+  if (markerIndex === -1) {
+    return null;
+  }
+  return (
+    normalized
+      .slice(markerIndex + marker.length)
+      .split("/")
+      .at(0) ?? null
+  );
+};
+
+const resolveCoreImportTarget = (importerPath: string, specifier: string): string | null => {
+  if (specifier.startsWith(".")) {
+    return resolveCoreTarget(importerPath, specifier);
+  }
+  if (specifier.startsWith(CORE_PACKAGE_PREFIX)) {
+    return `packages/core/src/${specifier.slice(CORE_PACKAGE_PREFIX.length)}`;
+  }
+  return null;
+};
+
+const checkControllerAndEngineSeams = (context: RuleContext, importNode: AstNode): void => {
+  const specifier = importSpecifierOf(importNode);
+  const importerPath = filenameOf(context);
+  if (specifier === null || importerPath === "") {
+    return;
+  }
+
+  const importerInController = isInsideSegment(importerPath, CONTROLLER_SEGMENT);
+  const resolved = resolveCoreImportTarget(importerPath, specifier);
+  const targetDirectory = resolved === null ? null : targetTopLevelCoreDirectory(resolved);
+  if (!importerInController && targetDirectory === "controller") {
+    context.report({ node: importNode, messageId: "controllerImportedUpstream" });
+    return;
+  }
+
+  if (!isInsideSegment(importerPath, ENGINE_SEGMENT)) {
+    return;
+  }
+  if (specifier.startsWith("prosemirror-")) {
+    context.report({ node: importNode, messageId: "engineImportsRuntime" });
+    return;
+  }
+  if (targetDirectory !== null && FORBIDDEN_ENGINE_DIRS.includes(targetDirectory)) {
+    context.report({ node: importNode, messageId: "engineImportsRuntime" });
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Portable Rust/WASM projection boundary.
+// ---------------------------------------------------------------------------
+
+const DOCX_CORE_SOURCE_SEGMENT = "/packages/docx-core/src/";
+const DOCX_PROJECTION_SUFFIX = "/packages/docx-core/src/projection.ts";
+const ALLOWED_PROJECTION_IMPORTS = new Set(["better-result", "./generated/docx_kernel.js"]);
+
+const isUrlConstruction = (node: AstNode): boolean => {
+  if (node.type !== "NewExpression") {
+    return false;
+  }
+  const callee = node.callee;
+  return isAstNode(callee) && callee.type === "Identifier" && callee.name === "URL";
+};
+
+const generatedKernelAssetOf = (node: AstNode): string | null => {
+  if (!isUrlConstruction(node)) {
+    return null;
+  }
+  const args = node.arguments;
+  if (!Array.isArray(args)) {
+    return null;
+  }
+  const firstArg = args.at(0);
+  if (!isAstNode(firstArg)) {
+    return null;
+  }
+  return typeof firstArg.value === "string" ? firstArg.value : null;
+};
+
+const checkProjectionBoundary = (context: RuleContext, node: AstNode): void => {
+  const specifier = importSpecifierOf(node);
+  const generatedAsset = generatedKernelAssetOf(node);
+  const opaqueBoundaryReference =
+    (isUrlConstruction(node) && generatedAsset === null) ||
+    (node.type === "ImportExpression" && specifier === null);
+  const importerPath = filenameOf(context);
+  if (
+    (specifier === null && generatedAsset === null && !opaqueBoundaryReference) ||
+    importerPath === ""
+  ) {
+    return;
+  }
+  const normalizedImporter = normalizedWithLeadingSlash(importerPath);
+  if (!normalizedImporter.includes(DOCX_CORE_SOURCE_SEGMENT)) {
+    return;
+  }
+  if (/\.(?:spec|test)\.[cm]?[jt]sx?$/.test(normalizedImporter)) {
+    return;
+  }
+  if (normalizedImporter.endsWith(DOCX_PROJECTION_SUFFIX)) {
+    if (specifier !== null && !ALLOWED_PROJECTION_IMPORTS.has(specifier)) {
+      context.report({ node, messageId: "projectionBoundaryImport" });
+    }
+    return;
+  }
+  if (
+    specifier?.includes("generated/docx_kernel") === true ||
+    generatedAsset?.includes("generated/docx_kernel") === true ||
+    opaqueBoundaryReference
+  ) {
+    context.report({ node, messageId: "generatedKernelImport" });
+  }
+};
+
 export default {
   meta: { name: "folio-layer-boundaries" },
   rules: {
@@ -458,6 +606,55 @@ export default {
           ImportExpression: handle,
           ExportNamedDeclaration: handle,
           ExportAllDeclaration: handle,
+        };
+      },
+    },
+    "controller-and-engine-seams": {
+      meta: {
+        type: "problem",
+        messages: {
+          controllerImportedUpstream:
+            "The controller is Folio's composition root. Move shared data to packages/core/src/types instead of importing a controller implementation upstream.",
+          engineImportsRuntime:
+            "The layout engine must depend on pure model and measurement seams, not DOCX, ProseMirror, controller, render, or paged-layout runtime modules.",
+        },
+      },
+      create(context: RuleContext) {
+        const handle = (node: unknown) => {
+          if (isAstNode(node)) {
+            checkControllerAndEngineSeams(context, node);
+          }
+        };
+        return {
+          ImportDeclaration: handle,
+          ImportExpression: handle,
+          ExportNamedDeclaration: handle,
+          ExportAllDeclaration: handle,
+        };
+      },
+    },
+    "rust-projection-boundary": {
+      meta: {
+        type: "problem",
+        messages: {
+          projectionBoundaryImport:
+            "The TypeScript projection boundary may only initialize the generated Rust/WASM kernel and translate boundary errors; do not add an OOXML/archive fallback here.",
+          generatedKernelImport:
+            "Import the generated DOCX kernel only through packages/docx-core/src/projection.ts.",
+        },
+      },
+      create(context: RuleContext) {
+        const handle = (node: unknown) => {
+          if (isAstNode(node)) {
+            checkProjectionBoundary(context, node);
+          }
+        };
+        return {
+          ImportDeclaration: handle,
+          ImportExpression: handle,
+          ExportNamedDeclaration: handle,
+          ExportAllDeclaration: handle,
+          NewExpression: handle,
         };
       },
     },

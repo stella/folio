@@ -23,13 +23,10 @@ import type {
   StyleDefinitions,
   Theme,
 } from "../types/document";
+import type { NoteStoryKey } from "../types/editor-story";
 
-export type NoteStoryKind = "footnote" | "endnote";
-
-export type NoteStoryKey = {
-  kind: NoteStoryKind;
-  noteId: number;
-};
+export type { NoteStoryKey } from "../types/editor-story";
+export type NoteStoryKind = NoteStoryKey["kind"];
 
 export type NoteEditorTransaction = NoteStoryKey & {
   docChanged: boolean;

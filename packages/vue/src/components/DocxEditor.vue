@@ -714,7 +714,6 @@ const {
   syncCoordinator,
   loadBuffer,
   loadDocument,
-  save,
   getDocument,
   setDocument,
   getHeaderFooterView,
@@ -1470,9 +1469,6 @@ const { exposed } = useDocxEditorRefApi({
   closeNoteStory,
   getHeaderFooterView,
   setZoom,
-  save,
-  loadDocument,
-  loadDocumentBuffer: loadBuffer,
   onPrint: props.onPrint,
   onSave: props.onSave,
 });

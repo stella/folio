@@ -41,7 +41,7 @@ import type { NoteStoryEditorRef } from "../components/NoteStoryEditor";
 import type { AISuggestion } from "@stll/folio-core/ai-suggestions/types";
 import { createFolioAIEditSnapshot } from "@stll/folio-core/ai-edits/snapshot";
 import { createFolioEditor } from "@stll/folio-core/controller/folioEditor";
-import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
+import type { FolioEditor, FolioEditorDocumentIO } from "@stll/folio-core/controller/folioEditor";
 import { createFolioEditorEmitter } from "@stll/folio-core/controller/folioEditorEvents";
 import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
 import { suggestionModeKey } from "@stll/folio-core/prosemirror/plugins/suggestionMode";
@@ -241,6 +241,8 @@ import { useVisualLineNavigation } from "./useVisualLineNavigation";
 export type PagedEditorProps = {
   /** The document to edit. */
   document: Document | null;
+  /** Adapter-owned document I/O exposed through the shared controller. */
+  documentIO: FolioEditorDocumentIO;
   /**
    * Identity of the loaded document (same across internal edits, distinct per
    * load), used to distinguish a genuine external load from an edited document
@@ -1448,6 +1450,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
   function PagedEditor(props, ref) {
     const {
       document,
+      documentIO,
       documentIdentity,
       fonts: hostFonts,
       styles,
@@ -2077,12 +2080,15 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     const runLayoutPipelineRef = useRef(runLayoutPipeline);
     runLayoutPipelineRef.current = runLayoutPipeline;
 
+    const documentIORef = useRef(documentIO);
+    documentIORef.current = documentIO;
     const folioEditorRef = useRef<FolioEditor | null>(null);
     if (!folioEditorRef.current) {
       folioEditorRef.current = createFolioEditor({
         getEditorApi: () => hiddenPMRef.current,
         getLayout: () => layoutRef.current,
         runLayout: (state, options) => runLayoutPipelineRef.current(state, options),
+        getDocumentIO: () => documentIORef.current,
         emitter: folioEmitterRef.current,
       });
     }

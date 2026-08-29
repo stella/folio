@@ -1,4 +1,4 @@
-import type { HiddenProseMirrorRemoteSelection } from "../controller/hiddenEditorManager";
+import type { RemoteSelection } from "../types/remote-selection";
 import { createRenderedDomContext } from "./RenderedDomContext";
 import type { RenderedDomContext, RenderedDomPoint, RenderedDomRect } from "./RenderedDomContext";
 
@@ -9,7 +9,7 @@ const OWNED_OVERLAY_SELECTOR = `.${CARET_CLASS}, .${LABEL_CLASS}, .${RANGE_CLASS
 
 export type SyncRemoteSelectionOverlayOptions = {
   pagesContainer: HTMLElement;
-  selections: readonly HiddenProseMirrorRemoteSelection[];
+  selections: readonly RemoteSelection[];
   zoom: number;
   zIndex?: number;
   renderedDomContext?: RenderedDomContext;
@@ -18,12 +18,12 @@ export type SyncRemoteSelectionOverlayOptions = {
 export type RemoteSelectionOverlayGeometry = {
   caret: RenderedDomPoint | null;
   rects: RenderedDomRect[];
-  selection: HiddenProseMirrorRemoteSelection;
+  selection: RemoteSelection;
 };
 
 export const resolveRemoteSelectionOverlayGeometry = (
   renderedDomContext: RenderedDomContext,
-  selections: readonly HiddenProseMirrorRemoteSelection[],
+  selections: readonly RemoteSelection[],
 ): RemoteSelectionOverlayGeometry[] =>
   selections.map((selection) => ({
     caret: renderedDomContext.getCoordinatesForPosition(selection.head),
