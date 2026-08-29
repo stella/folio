@@ -693,7 +693,8 @@ export function runLayoutPipeline<THfPMs>(
       // Build footnote content and measure heights up front. The
       // per-fn height table feeds into the layout engine so each
       // body line carrying an fn ref reserves space for that fn
-      // on its host page in a single pass — no convergence loop.
+      // on its host page during placement. The engine retries only when
+      // a later column grows the shared footnote band past earlier content.
       footnoteContentMap = buildFootnoteContentMap(
         documentFootnotes,
         footnoteRefs,

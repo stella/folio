@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { layoutDocument } from "./index";
+import { FOOTNOTE_SEPARATOR_HEIGHT } from "./types";
 import type {
   FlowBlock,
   LayoutOptions,
@@ -13,11 +14,9 @@ import type {
   TableMeasure,
 } from "./types";
 
-// Single-pass footnote layout: each body line carrying a footnote ref
-// reserves space for that fn's content on the same page. Replaces the
-// earlier static-reservation + iterative-convergence loop, which
-// produced either body-overflow into the footer or large gaps above
-// the fn area on documents with multiple long footnotes per page.
+// Each body line carrying a footnote ref reserves space for that fn's
+// content on the same page. Multi-column pages retry with the observed
+// shared reservation when a later column invalidates earlier placement.
 
 const MARGINS: PageMargins = { top: 0, right: 0, bottom: 0, left: 0 };
 
@@ -228,6 +227,78 @@ describe("footnote line-level reservation", () => {
     // Page 2 carries the fn for the moved line.
     const p2Fn = layout.pages[1]!.footnoteReservedHeight ?? 0;
     expect(p2Fn).toBeGreaterThanOrEqual(40);
+  });
+
+  test("keeps every column above a footnote area discovered in a later column", () => {
+    const { block: firstColumn, measure: firstColumnMeasure } = makePara(
+      0,
+      [textRun(1, "first column")],
+      13,
+      10,
+    );
+    const { block: reference, measure: referenceMeasure } = makePara(
+      1,
+      [textRun(20, "1", 7)],
+      1,
+      10,
+    );
+
+    const layout = layoutDocument(
+      [firstColumn, reference],
+      [firstColumnMeasure, referenceMeasure],
+      {
+        pageSize: { w: 600, h: 100 },
+        margins: MARGINS,
+        pageGap: 0,
+        columns: { count: 2, gap: 20 },
+        footnoteHeightById: new Map([[7, 10]]),
+      },
+    );
+
+    const page = layout.pages[0]!;
+    const bodyBottom = page.size.h - page.margins.bottom - (page.footnoteReservedHeight ?? 0);
+    expect(page.footnoteIds).toEqual([7]);
+    expect(page.footnoteReservedHeight).toBe(10 + FOOTNOTE_SEPARATOR_HEIGHT);
+    for (const fragment of page.fragments) {
+      expect(fragment.y + fragment.height).toBeLessThanOrEqual(bodyBottom);
+    }
+  });
+
+  test("drops a retry floor when its footnote moves to a later page", () => {
+    const { block: body, measure: bodyMeasure } = makePara(0, [textRun(1, "body")], 15, 10);
+    const { block: reference, measure: referenceMeasure } = makePara(
+      1,
+      [textRun(20, "1", 7)],
+      1,
+      10,
+    );
+
+    const layout = layoutDocument([body, reference], [bodyMeasure, referenceMeasure], {
+      pageSize: { w: 600, h: 100 },
+      margins: MARGINS,
+      pageGap: 0,
+      columns: { count: 2, gap: 20 },
+      footnoteHeightById: new Map([[7, 10]]),
+    });
+
+    expect(layout.pages[0]!.footnoteIds ?? []).toEqual([]);
+    expect(layout.pages[0]!.footnoteReservedHeight).toBeUndefined();
+    expect(layout.pages[1]!.footnoteIds).toEqual([7]);
+  });
+
+  test("returns a stable layout for a footnote taller than the page", () => {
+    const { block, measure } = makePara(0, [textRun(1, "1", 99)], 1, 10);
+
+    const layout = layoutDocument([block], [measure], {
+      pageSize: { w: 600, h: 100 },
+      margins: MARGINS,
+      pageGap: 0,
+      columns: { count: 2, gap: 20 },
+      footnoteHeightById: new Map([[99, 200]]),
+    });
+
+    expect(layout.pages[0]!.footnoteIds).toEqual([99]);
+    expect(layout.pages[0]!.footnoteReservedHeight).toBeGreaterThanOrEqual(200);
   });
 
   test("ignored when footnoteHeightById is not provided", () => {

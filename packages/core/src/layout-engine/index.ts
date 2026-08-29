@@ -7,6 +7,7 @@
 import { panic } from "better-result";
 
 import { emuToPixels } from "../utils/units";
+import { reflowFootnoteColumns } from "./footnoteColumnReflow";
 import {
   computeKeepNextChains,
   calculateChainHeight,
@@ -15,6 +16,7 @@ import {
 } from "./keep-together";
 import { measuredLineAdvance } from "./lineFlow";
 import { FOOTNOTE_SEPARATOR_HEIGHT, createPaginator } from "./paginator";
+import type { PageState } from "./paginator";
 import { getParagraphFragmentPmRange } from "./paragraphFragmentRange";
 import {
   collapseParagraphSpacing,
@@ -273,13 +275,34 @@ export function applyContextualSpacing(blocks: FlowBlock[]): void {
 /**
  * Layout a document: convert blocks + measures into pages with positioned fragments.
  *
- * Algorithm:
- * 1. Walk blocks in order with their corresponding measures
- * 2. For each block, create appropriate fragment(s)
- * 3. Use paginator to manage page/column state
- * 4. Handle page breaks, section breaks, and keepNext chains
+ * A reference discovered after the first column has already been placed can shrink the
+ * shared body band below earlier-column fragments. Retry those documents with the observed
+ * reservations as page floors so every column participates in the same footnote geometry.
  */
 export function layoutDocument(
+  blocks: FlowBlock[],
+  measures: Measure[],
+  options: LayoutOptions,
+): Layout {
+  const layout = layoutDocumentPass(blocks, measures, options);
+  if (!options.footnoteHeightById) {
+    return layout;
+  }
+
+  return reflowFootnoteColumns({
+    initialLayout: layout,
+    ...(options.footnoteReservedHeights
+      ? { initialReserveFloors: options.footnoteReservedHeights }
+      : {}),
+    runLayout: (reserveFloors) =>
+      layoutDocumentPass(blocks, measures, {
+        ...options,
+        footnoteReservedHeights: reserveFloors,
+      }),
+  });
+}
+
+function layoutDocumentPass(
   blocks: FlowBlock[],
   measures: Measure[],
   options: LayoutOptions,
@@ -580,15 +603,19 @@ function getLineFootnoteRefs(
   return { ids, height };
 }
 
+function projectedFootnoteReserveGrowth(state: PageState, additionalDemandHeight: number): number {
+  const projectedDemand = state.footnoteDemandHeight + additionalDemandHeight;
+  return Math.max(state.footnoteHeightFloor, projectedDemand) - state.footnoteHeight;
+}
+
 /**
  * Layout a paragraph block onto pages.
  *
  * When `footnoteHeightById` is provided, each line carrying a footnote
  * ref additionally reserves space on its host page for the fn's
- * content. Pagination decisions look at the line's effective height
- * (`lineHeight + lineFnHeight`) so a line cannot land on a page that
- * lacks room for both — preventing footnote overflow without the
- * static-reservation iteration loop.
+ * content. Pagination decisions include only the reservation growth
+ * beyond any retry floor, so a line cannot land on a page that lacks
+ * room for both body and note content.
  */
 type LayoutParagraphOptions = {
   block: ParagraphBlock;
@@ -677,7 +704,9 @@ function layoutParagraph({
         firstLine.toRun,
         footnoteHeightById,
       );
-      const firstLineHeight = measuredLineAdvance(firstLine) + firstLineRefs.height;
+      const firstLineHeight =
+        measuredLineAdvance(firstLine) +
+        projectedFootnoteReserveGrowth(state, firstLineRefs.height);
       const collapsedLead = collapseParagraphSpacing({
         before: spaceBefore,
         after: state.trailingSpacing,
@@ -732,8 +761,8 @@ function layoutParagraph({
       }
       const lineRefs = getLineFootnoteRefs(block, line.fromRun, line.toRun, footnoteHeightById);
       const totalWithLine = linesHeight + lineAdvance;
-      const withSpacing =
-        totalWithLine + firstFragmentSpaceBefore + linesFnHeight + lineRefs.height;
+      const footnoteGrowth = projectedFootnoteReserveGrowth(state, linesFnHeight + lineRefs.height);
+      const withSpacing = totalWithLine + firstFragmentSpaceBefore + footnoteGrowth;
 
       if (withSpacing <= availableHeight || fittingLines === 0) {
         linesHeight = totalWithLine;
@@ -816,18 +845,23 @@ function layoutParagraph({
     //    would force an unnecessary page advance and split the
     //    paragraph between pages even though the line + fn still fit.
     //
-    // 2. After the first `ensureFits`, re-read the page state. If we
-    //    landed on a *fresh* page (`footnoteHeight === 0`), the next
-    //    `addFootnoteHeight` call *will* reserve a separator — so we
-    //    need to verify the line + fn + separator all still fit on
-    //    that page. Otherwise the post-commit `addFootnoteHeight`
-    //    drops contentBottom past the just-committed line.
+    // 2. After the first `ensureFits`, re-read the page state. If it has
+    //    no dynamic footnote demand, the next `addFootnoteHeight` call
+    //    includes a separator. Verify that remaining growth still fits;
+    //    a retry floor may already cover some or all of it.
     if (linesFnHeight > 0) {
-      paginator.ensureFits(effectiveSpaceBefore + linesHeight + linesFnHeight);
+      const stateBefore = paginator.getCurrentState();
+      paginator.ensureFits(
+        effectiveSpaceBefore +
+          linesHeight +
+          projectedFootnoteReserveGrowth(stateBefore, linesFnHeight),
+      );
       const stateAfter = paginator.getCurrentState();
-      if (stateAfter.footnoteHeight === 0) {
+      if (stateAfter.footnoteDemandHeight === 0) {
         paginator.ensureFits(
-          effectiveSpaceBefore + linesHeight + linesFnHeight + FOOTNOTE_SEPARATOR_HEIGHT,
+          effectiveSpaceBefore +
+            linesHeight +
+            projectedFootnoteReserveGrowth(stateAfter, linesFnHeight + FOOTNOTE_SEPARATOR_HEIGHT),
         );
       }
     }
@@ -1223,17 +1257,16 @@ function layoutTable(
         fragmentFootnoteIds.push(id);
         rowFootnoteHeight += footnoteHeightById?.get(id) ?? 0;
       }
+      const candidateFootnoteHeight = fragmentFootnoteHeight + rowFootnoteHeight;
       const separatorHeight =
-        pageFootnoteIds.size === 0 && fragmentFootnoteHeight + rowFootnoteHeight > 0
+        state.footnoteDemandHeight === 0 && candidateFootnoteHeight > 0
           ? FOOTNOTE_SEPARATOR_HEIGHT
           : 0;
-      const totalWithRow =
-        rowsHeight +
-        rowHeight +
-        normalHeaderOverhead +
-        fragmentFootnoteHeight +
-        rowFootnoteHeight +
-        separatorHeight;
+      const footnoteGrowth = projectedFootnoteReserveGrowth(
+        state,
+        candidateFootnoteHeight + separatorHeight,
+      );
+      const totalWithRow = rowsHeight + rowHeight + normalHeaderOverhead + footnoteGrowth;
 
       if (totalWithRow <= availableHeight) {
         rowsHeight += rowHeight;
@@ -1588,6 +1621,7 @@ function layoutTextBox(
       y: state.topMargin + bandTop,
       width: measure.width,
       height: measure.height,
+      isPositioned: true,
       ...(block.pmStart !== undefined ? { pmStart: block.pmStart } : {}),
       ...(block.pmEnd !== undefined ? { pmEnd: block.pmEnd } : {}),
     };
@@ -1627,6 +1661,7 @@ function layoutTextBox(
       y,
       width: measure.width,
       height: measure.height,
+      isPositioned: true,
       ...(block.pmStart !== undefined ? { pmStart: block.pmStart } : {}),
       ...(block.pmEnd !== undefined ? { pmEnd: block.pmEnd } : {}),
     };

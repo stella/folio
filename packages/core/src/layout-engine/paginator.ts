@@ -49,6 +49,10 @@ export type PageState = {
   rawContentBottom: number;
   /** Total height reserved for footnotes on this page (grows as refs are placed). */
   footnoteHeight: number;
+  /** Static reservation supplied by a layout retry. */
+  footnoteHeightFloor: number;
+  /** Footnote demand discovered while placing reference-bearing content. */
+  footnoteDemandHeight: number;
   /** Accumulated trailing spacing (space after previous block). */
   trailingSpacing: number;
 };
@@ -256,12 +260,11 @@ export function createPaginator(options: PaginatorOptions) {
     const contentBottom = pageSize.h - pageMargins.bottom;
 
     // Reduce content bottom by footnote reserved height for this page.
-    // Used as a static reservation only when the layout engine isn't
-    // tracking footnote demand dynamically per line. The dynamic path
-    // (see `addFootnoteHeight`) starts at zero and grows as fn-ref-
-    // carrying lines are placed.
-    const footnoteHeight = options.footnoteReservedHeights?.get(pageNumber) ?? 0;
-    const pageContentBottom = contentBottom - footnoteHeight;
+    // A multi-column retry may supply a static floor so earlier columns
+    // begin inside the shared footnote band. Dynamic demand still starts
+    // at zero and grows as reference-bearing lines are placed.
+    const footnoteHeightFloor = options.footnoteReservedHeights?.get(pageNumber) ?? 0;
+    const pageContentBottom = contentBottom - footnoteHeightFloor;
 
     const page: Page = {
       number: pageNumber,
@@ -272,7 +275,7 @@ export function createPaginator(options: PaginatorOptions) {
       fragments: [],
       margins: pageMargins,
       size: { ...pageSize },
-      ...(footnoteHeight > 0 ? { footnoteReservedHeight: footnoteHeight } : {}),
+      ...(footnoteHeightFloor > 0 ? { footnoteReservedHeight: footnoteHeightFloor } : {}),
       // Set initial columns; may be overwritten by updateColumns() for continuous section breaks
       ...(columns.count > 1 ? { columns: { ...columns } } : {}),
     };
@@ -285,7 +288,9 @@ export function createPaginator(options: PaginatorOptions) {
       topMargin,
       contentBottom: pageContentBottom,
       rawContentBottom: contentBottom,
-      footnoteHeight,
+      footnoteHeight: footnoteHeightFloor,
+      footnoteHeightFloor,
+      footnoteDemandHeight: 0,
       trailingSpacing: 0,
     };
 
@@ -445,8 +450,9 @@ export function createPaginator(options: PaginatorOptions) {
       return;
     }
     const state = getCurrentState();
-    const separatorOverhead = state.footnoteHeight === 0 ? FOOTNOTE_SEPARATOR_HEIGHT : 0;
-    state.footnoteHeight += additionalHeight + separatorOverhead;
+    const separatorOverhead = state.footnoteDemandHeight === 0 ? FOOTNOTE_SEPARATOR_HEIGHT : 0;
+    state.footnoteDemandHeight += additionalHeight + separatorOverhead;
+    state.footnoteHeight = Math.max(state.footnoteHeightFloor, state.footnoteDemandHeight);
     state.contentBottom = state.rawContentBottom - state.footnoteHeight;
     state.page.footnoteReservedHeight = state.footnoteHeight;
     // Record which fn IDs landed on *this* page. Driven by the
@@ -501,12 +507,12 @@ export function createPaginator(options: PaginatorOptions) {
     const pageMargins = getPageMargins(current.page.number, current.page.logicalNumber);
     const topMargin = pageMargins.top;
     const rawContentBottom = pageSize.h - pageMargins.bottom;
-    const footnoteHeight = options.footnoteReservedHeights?.get(current.page.number) ?? 0;
+    const footnoteHeightFloor = options.footnoteReservedHeights?.get(current.page.number) ?? 0;
 
     current.page.size = { ...pageSize };
     current.page.margins = pageMargins;
-    if (footnoteHeight > 0) {
-      current.page.footnoteReservedHeight = footnoteHeight;
+    if (footnoteHeightFloor > 0) {
+      current.page.footnoteReservedHeight = footnoteHeightFloor;
     } else {
       delete current.page.footnoteReservedHeight;
     }
@@ -520,8 +526,10 @@ export function createPaginator(options: PaginatorOptions) {
     current.cursorY = topMargin;
     current.columnIndex = 0;
     current.rawContentBottom = rawContentBottom;
-    current.footnoteHeight = footnoteHeight;
-    current.contentBottom = rawContentBottom - footnoteHeight;
+    current.footnoteHeight = footnoteHeightFloor;
+    current.footnoteHeightFloor = footnoteHeightFloor;
+    current.footnoteDemandHeight = 0;
+    current.contentBottom = rawContentBottom - footnoteHeightFloor;
     current.trailingSpacing = 0;
     columnRegionTop = topMargin;
 

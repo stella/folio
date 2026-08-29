@@ -1165,6 +1165,8 @@ export type TextBoxFragment = FragmentBase & {
   kind: "textBox";
   /** Height of the text box. */
   height: number;
+  /** True if this text box is positioned outside normal body flow. */
+  isPositioned?: true;
 };
 
 /**
@@ -1339,18 +1341,21 @@ export type LayoutOptions = {
   evenAndOddHeaders?: boolean;
   /** Swap left/right margins on even physical pages. */
   mirrorMargins?: boolean;
-  /** Per-page footnote reserved heights (pageNumber → height in pixels). */
+  /**
+   * Per-page footnote reserved heights (pageNumber → height in pixels).
+   * When `footnoteHeightById` is also supplied, a value is a retry floor only
+   * while that page has assigned footnote IDs; without the dynamic height map,
+   * the value remains a static reservation.
+   */
   footnoteReservedHeights?: Map<number, number>;
   /**
    * Footnote content heights keyed by internal footnote id (the OOXML
    * `<w:footnoteReference w:id>`). When provided, the layout engine
    * tracks footnote demand per body line: each line carrying a fn ref
    * grows its page's reservation by that fn's height before the next
-   * line is fitted. This single-pass approach avoids the static-
-   * reservation + iterative-convergence loop that produced oscillation
-   * (and either body-overflow into the footer or large empty gaps
-   * above the fn area) on documents with multiple long footnotes per
-   * page.
+   * line is fitted. Multi-column pages may retry with the observed
+   * reservation as a shared floor when a later column invalidates
+   * earlier-column placement.
    */
   footnoteHeightById?: Map<number, number>;
   /** Header/footer references for each document section, by section index. */

@@ -104,6 +104,7 @@ describe("topAndBottom band text box layout", () => {
 
     // relativeTo=page, offset 0 → the very top of the page (y=0, in the margin).
     expect(box?.y).toBe(0);
+    expect(box?.isPositioned).toBe(true);
     // Flow not advanced by the banner: the paragraph still starts at the top
     // (the measure pass, not layout, reserves the band that pushes text down).
     expect(paragraph?.y).toBe(MARGINS.top);
@@ -182,6 +183,7 @@ describe("topAndBottom band text box layout", () => {
 
     // In-flow box at the top, paragraph pushed below it by the box height.
     expect(box?.y).toBe(MARGINS.top);
+    expect(box?.isPositioned).toBeUndefined();
     expect(paragraph?.y).toBe(MARGINS.top + BOX_HEIGHT);
   });
 
@@ -195,6 +197,7 @@ describe("topAndBottom band text box layout", () => {
     const paragraph = frags.find((fragment) => fragment.kind === "paragraph");
 
     expect(box?.y).toBe(MARGINS.top + 96);
+    expect(box?.isPositioned).toBe(true);
     expect(paragraph?.y).toBe(MARGINS.top);
   });
 
