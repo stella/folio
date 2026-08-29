@@ -139,6 +139,10 @@ import {
 // Selection sync
 import { LayoutSelectionGate } from "@stll/folio-core/paged-layout/LayoutSelectionGate";
 import {
+  retainRemoteSelectionGeometry,
+  type RemoteSelectionGeometry,
+} from "./remoteSelectionGeometry";
+import {
   collectRunFontsAtPmPositions,
   type DirectiveGutterGeometry,
   measureDirectiveGutter,
@@ -1107,10 +1111,7 @@ const RemoteSelectionOverlay = ({
   remoteSelection,
   zoom,
 }: RemoteSelectionOverlayProps) => {
-  const [geometry, setGeometry] = useState<{
-    caretPosition: CaretPosition | null;
-    selectionRects: SelectionRect[];
-  } | null>(null);
+  const [geometry, setGeometry] = useState<RemoteSelectionGeometry | null>(null);
 
   useEffect(() => {
     if (!pagesContainer) {
@@ -1151,10 +1152,12 @@ const RemoteSelectionOverlay = ({
             }
           : null;
 
-        setGeometry({
-          caretPosition,
-          selectionRects: nextSelectionRects,
-        });
+        setGeometry((previous) =>
+          retainRemoteSelectionGeometry(previous, {
+            caretPosition,
+            selectionRects: nextSelectionRects,
+          }),
+        );
         return undefined;
       },
       () => {
