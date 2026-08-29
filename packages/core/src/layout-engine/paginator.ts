@@ -410,14 +410,36 @@ export function createPaginator(options: PaginatorOptions) {
     fragment.x = x;
     fragment.y = y;
 
-    // Add to page
-    state.page.fragments.push(fragment);
+    commitFragment(state, fragment);
 
     // Update cursor
     state.cursorY = y + height;
     state.trailingSpacing = spaceAfter;
 
     return { state, x, y };
+  }
+
+  function commitFragment(state: PageState, fragment: Fragment): void {
+    // A continuous section can begin after content already placed on a page
+    // owned by the outgoing section. That shared page keeps its owner and
+    // displayed number, but its incoming content consumes the authored restart
+    // for page-number arithmetic. The next page therefore advances past the
+    // restart while remaining the incoming section's first owned page.
+    if (sectionStartPending && state.page.sectionIndex !== currentSectionIndex) {
+      if (currentPageNumbering.type === "restart") {
+        nextLogicalPageNumber = currentPageNumbering.start + 1;
+      }
+      sectionStartPending = false;
+    }
+
+    const fragments = state.page.fragments;
+    fragments.push(fragment);
+  }
+
+  function addUnflowedFragment(fragment: Fragment): PageState {
+    const state = getCurrentState();
+    commitFragment(state, fragment);
+    return state;
   }
 
   /**
@@ -667,6 +689,8 @@ export function createPaginator(options: PaginatorOptions) {
     ensureFits,
     /** Add a fragment to current page. */
     addFragment,
+    /** Add an already-positioned fragment without advancing normal flow. */
+    addUnflowedFragment,
     /** Reserve additional footnote area on the current page. */
     addFootnoteHeight,
     /** Force a page break. */

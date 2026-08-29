@@ -1462,8 +1462,7 @@ function layoutFloatingTable(
     ...(block.sdtGroups ? { sdtGroups: block.sdtGroups } : {}),
   };
 
-  // Add directly without advancing cursor
-  state.page.fragments.push(fragment);
+  paginator.addUnflowedFragment(fragment);
 }
 
 /**
@@ -1530,8 +1529,7 @@ function layoutAnchoredImage(
     zIndex: anchor.behindDoc ? -1 : 1,
   };
 
-  // Add directly to page without affecting cursor
-  state.page.fragments.push(fragment);
+  paginator.addUnflowedFragment(fragment);
 }
 
 type LayoutTextBoxOptions = {
@@ -1591,7 +1589,7 @@ function layoutTextBox(
       ...(block.pmStart !== undefined ? { pmStart: block.pmStart } : {}),
       ...(block.pmEnd !== undefined ? { pmEnd: block.pmEnd } : {}),
     };
-    state.page.fragments.push(fragment);
+    paginator.addUnflowedFragment(fragment);
     return;
   }
 
@@ -1630,7 +1628,7 @@ function layoutTextBox(
       ...(block.pmStart !== undefined ? { pmStart: block.pmStart } : {}),
       ...(block.pmEnd !== undefined ? { pmEnd: block.pmEnd } : {}),
     };
-    state.page.fragments.push(fragment);
+    paginator.addUnflowedFragment(fragment);
     return;
   }
 

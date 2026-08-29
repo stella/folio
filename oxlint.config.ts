@@ -65,6 +65,7 @@ export default library({
   jsPlugins: [
     "./.oxlint-plugins/folio-layer-boundaries.ts",
     "./.oxlint-plugins/folio-asset-urls.ts",
+    "./.oxlint-plugins/folio-fragment-ownership.ts",
     "./.oxlint-plugins/no-untranslated-jsx-literal.ts",
   ],
   ignorePatterns: [
@@ -113,6 +114,18 @@ export default library({
         "typescript/no-unsafe-argument": "off",
         "typescript/strict-boolean-expressions": "off",
         "typescript/no-redundant-type-constituents": "off",
+      },
+    },
+    {
+      // The paginator owns page-fragment commits because insertion may consume
+      // a pending section transition. The fixtures verify this custom rule;
+      // repo-wide lint ignores their deliberate violation.
+      files: [
+        "packages/core/src/layout-engine/**/*.{ts,tsx}",
+        "test/__fixtures__/fragment-ownership.*.ts",
+      ],
+      rules: {
+        "folio-fragment-ownership/no-direct-page-fragment-push": "error",
       },
     },
     {

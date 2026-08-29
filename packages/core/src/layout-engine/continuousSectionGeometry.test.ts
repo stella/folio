@@ -445,4 +445,38 @@ describe("continuous section break geometry", () => {
       result.pages[1]?.fragments.some((f) => f.kind === "paragraph" && f.blockId === "c"),
     ).toBe(true);
   });
+
+  test("advances a restart past incoming content retained on the shared page", () => {
+    const first = paragraph("outgoing", 700);
+    const sectionBreak: SectionBreakBlock = {
+      kind: "sectionBreak",
+      id: "sb",
+      type: "continuous",
+      pageSize: { w: 800, h: 1000 },
+      margins: { top: 50, right: 50, bottom: 50, left: 50 },
+    };
+    const shared = paragraph("shared-incoming", 150);
+    const next = paragraph("next-incoming", 700);
+
+    const result = layoutDocument(
+      [first.block, sectionBreak, shared.block, next.block],
+      [first.measure, { kind: "sectionBreak" }, shared.measure, next.measure] as never,
+      {
+        pageSize: { w: 800, h: 1000 },
+        margins: { top: 50, right: 50, bottom: 50, left: 50 },
+        finalPageSize: { w: 800, h: 1000 },
+        finalMargins: { top: 50, right: 50, bottom: 50, left: 50 },
+        finalPageNumbering: { type: "restart", start: 2 },
+      },
+    );
+
+    expect(result.pages.map(({ logicalNumber }) => logicalNumber)).toEqual([1, 3]);
+    expect(result.pages[0]).toMatchObject({ sectionIndex: 0, sectionPageNumber: 1 });
+    expect(result.pages[1]).toMatchObject({ sectionIndex: 1, sectionPageNumber: 1 });
+    expect(
+      result.pages[0]?.fragments.some(
+        (fragment) => fragment.kind === "paragraph" && fragment.blockId === "shared-incoming",
+      ),
+    ).toBe(true);
+  });
 });

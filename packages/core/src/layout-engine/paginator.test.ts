@@ -1,9 +1,21 @@
 import { describe, expect, test } from "bun:test";
 
 import { createPaginator } from "./paginator";
+import type { ParagraphFragment } from "./types";
 
 const SIZE = { w: 800, h: 1000 };
 const MARGINS = { top: 50, right: 50, bottom: 50, left: 50 };
+
+const paragraphFragment = (blockId: string): ParagraphFragment => ({
+  kind: "paragraph",
+  blockId,
+  x: 0,
+  y: 0,
+  width: 100,
+  height: 20,
+  fromLine: 0,
+  toLine: 1,
+});
 
 describe("paginator mirrored margins", () => {
   test("swaps left and right margins on even physical pages", () => {
@@ -97,6 +109,65 @@ describe("paginator logical page numbers", () => {
       restarted.sectionPageNumber,
     ]).toEqual([1, 2, 1, 1]);
   });
+
+  test("consumes a section restart on its first shared-page fragment", () => {
+    const paginator = createPaginator({ pageSize: SIZE, margins: MARGINS });
+    paginator.addFragment(paragraphFragment("outgoing"), 20);
+
+    paginator.startSection(1, { type: "restart", start: 2 });
+    paginator.addFragment(paragraphFragment("incoming"), 20);
+    const shared = paginator.pages[0];
+    const following = paginator.forcePageBreak().page;
+
+    expect(shared?.fragments.map(({ blockId }) => blockId)).toEqual(["outgoing", "incoming"]);
+    expect(shared).toMatchObject({ logicalNumber: 1, sectionIndex: 0, sectionPageNumber: 1 });
+    expect(following).toMatchObject({ logicalNumber: 3, sectionIndex: 1, sectionPageNumber: 1 });
+  });
+
+  test("consumes a section restart on its first unflowed shared-page fragment", () => {
+    const paginator = createPaginator({ pageSize: SIZE, margins: MARGINS });
+    paginator.addFragment(paragraphFragment("outgoing"), 20);
+
+    paginator.startSection(1, { type: "restart", start: 2 });
+    paginator.addUnflowedFragment({
+      kind: "image",
+      blockId: "anchored-incoming",
+      x: 100,
+      y: 100,
+      width: 20,
+      height: 20,
+      isAnchored: true,
+    });
+    const following = paginator.forcePageBreak().page;
+
+    expect(paginator.pages[0]).toMatchObject({ logicalNumber: 1, sectionIndex: 0 });
+    expect(following).toMatchObject({ logicalNumber: 3, sectionIndex: 1, sectionPageNumber: 1 });
+  });
+
+  test("defers a restart when the first section fragment advances to a fresh page", () => {
+    const paginator = createPaginator({ pageSize: SIZE, margins: MARGINS });
+    paginator.addFragment(paragraphFragment("outgoing"), 900);
+
+    paginator.startSection(1, { type: "restart", start: 2 });
+    paginator.addFragment(paragraphFragment("incoming"), 20);
+
+    expect(paginator.pages).toHaveLength(2);
+    expect(paginator.pages[0]).toMatchObject({ logicalNumber: 1, sectionIndex: 0 });
+    expect(paginator.pages[1]).toMatchObject({ logicalNumber: 2, sectionIndex: 1 });
+  });
+
+  test("defers a restart when the first section fragment follows a forced break", () => {
+    const paginator = createPaginator({ pageSize: SIZE, margins: MARGINS });
+    paginator.addFragment(paragraphFragment("outgoing"), 20);
+
+    paginator.startSection(1, { type: "restart", start: 2 });
+    paginator.forcePageBreak();
+    paginator.addFragment(paragraphFragment("incoming"), 20);
+
+    expect(paginator.pages.map(({ logicalNumber }) => logicalNumber)).toEqual([1, 2]);
+    expect(paginator.pages[0]?.sectionIndex).toBe(0);
+    expect(paginator.pages[1]).toMatchObject({ sectionIndex: 1, sectionPageNumber: 1 });
+  });
 });
 
 describe("paginator forcePageBreak", () => {
@@ -120,7 +191,7 @@ describe("paginator forcePageBreak", () => {
     const paginator = createPaginator({ pageSize: SIZE, margins: MARGINS });
     const state = paginator.getCurrentState();
     state.cursorY += 100;
-    state.page.fragments.push({ kind: "paragraph" } as never);
+    paginator.addUnflowedFragment(paragraphFragment("content"));
 
     paginator.forcePageBreak();
     paginator.forcePageBreak();
@@ -169,7 +240,7 @@ describe("paginator forcePageBreak", () => {
   test("retargetCurrentBlankPage leaves nonblank pages unchanged", () => {
     const paginator = createPaginator({ pageSize: SIZE, margins: MARGINS });
     const state = paginator.getCurrentState();
-    state.page.fragments.push({ kind: "paragraph" } as never);
+    paginator.addUnflowedFragment(paragraphFragment("content"));
 
     const nextSize = { w: 600, h: 700 };
     paginator.updatePageLayout(nextSize, MARGINS);

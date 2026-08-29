@@ -123,6 +123,7 @@ export function createPaginator(options: PaginatorOptions): {
         x: number;
         y: number;
     };
+    addUnflowedFragment: (fragment: Fragment) => PageState;
     addFootnoteHeight: (additionalHeight: number, footnoteIds?: number[]) => void;
     forcePageBreak: (breakOptions?: ForcePageBreakOptions) => PageState;
     retargetCurrentBlankPage: () => boolean;
