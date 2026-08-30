@@ -123,6 +123,11 @@ export const placeTableCellBlock = (
   ) {
     return { top, contentTop: top, contentHeight: 0, leadingSpacing: 0 };
   }
+  // Floating text boxes paint outside the cell's block flow. Keeping this a
+  // no-op matches the painter and preserves the boundary for visible content.
+  if (block.kind === "textBox" && isFloatingTextBoxBlock(block)) {
+    return { top, contentTop: top, contentHeight: 0, leadingSpacing: 0 };
+  }
   if (block.kind !== "paragraph" || measure.kind !== "paragraph") {
     const leadingSpacing = trailingSpacingValue(state.trailingSpacing);
     const contentTop = top + leadingSpacing;

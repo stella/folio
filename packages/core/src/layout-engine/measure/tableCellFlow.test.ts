@@ -7,6 +7,8 @@ import type {
   ParagraphMeasure,
   TableCell,
   TableCellMeasure,
+  TextBoxBlock,
+  TextBoxMeasure,
 } from "../types";
 import {
   createTableCellFlowState,
@@ -57,6 +59,22 @@ const suppressedMeasure: ParagraphMeasure = {
     },
   ],
   totalHeight: 0,
+};
+
+const textBox = (displayMode: "block" | "float"): TextBoxBlock => ({
+  kind: "textBox",
+  id: `box-${displayMode}`,
+  width: 20,
+  height: 20,
+  content: [],
+  displayMode,
+});
+
+const textBoxMeasure: TextBoxMeasure = {
+  kind: "textBox",
+  width: 20,
+  height: 20,
+  innerMeasures: [],
 };
 
 describe("table cell block flow", () => {
@@ -223,6 +241,32 @@ describe("table cell block flow", () => {
 
     expect(placement.leadingSpacing).toBe(14);
     expect(finishTableCellFlow(state)).toBe(34);
+  });
+
+  test("keeps a floating text box outside cell flow and preserves the leading boundary", () => {
+    const state = createTableCellFlowState();
+    const automatic = paragraph("body", "body", { before: 14 });
+    automatic.attrs = { ...automatic.attrs, automaticSpacing: { before: true } };
+
+    const floatingPlacement = placeTableCellBlock(state, textBox("float"), textBoxMeasure);
+    const paragraphPlacement = placeTableCellBlock(state, automatic, measure(10, 14));
+
+    expect(floatingPlacement.contentHeight).toBe(0);
+    expect(paragraphPlacement.leadingSpacing).toBe(0);
+    expect(finishTableCellFlow(state)).toBe(10);
+  });
+
+  test("an in-flow text box consumes the cell boundary", () => {
+    const state = createTableCellFlowState();
+    const automatic = paragraph("body", "body", { before: 14 });
+    automatic.attrs = { ...automatic.attrs, automaticSpacing: { before: true } };
+
+    const boxPlacement = placeTableCellBlock(state, textBox("block"), textBoxMeasure);
+    const paragraphPlacement = placeTableCellBlock(state, automatic, measure(10, 14));
+
+    expect(boxPlacement.contentHeight).toBe(20);
+    expect(paragraphPlacement.leadingSpacing).toBe(14);
+    expect(finishTableCellFlow(state)).toBe(44);
   });
 
   test("keeps a suppressed empty paragraph at zero height", () => {
