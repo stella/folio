@@ -474,6 +474,8 @@ type BandPageGeometry = {
   marginBottom: number | number[];
   /** Absolute page X of each block's active column origin. */
   contentLeft?: number | number[];
+  /** Physical page Y of the active body content origin. */
+  contentTop?: number | number[];
   /** Authored flow-column index occupied by each block. */
   columnIndex?: number | number[];
   /** Authored flow-column count for each block's section. */
@@ -507,6 +509,7 @@ function extractFloatingZones(
   const marginRightInput = pageGeometry?.marginRight ?? 0;
   const marginBottomInput = pageGeometry?.marginBottom ?? 0;
   const contentLeftInput = pageGeometry?.contentLeft ?? marginLeftInput;
+  const contentTopInput = pageGeometry?.contentTop ?? marginTop;
   const defaultPageWidth = Array.isArray(pageWidthInput)
     ? (pageWidthInput[0] ?? defaultContentWidth)
     : pageWidthInput;
@@ -525,6 +528,9 @@ function extractFloatingZones(
   const defaultContentLeft = Array.isArray(contentLeftInput)
     ? (contentLeftInput[0] ?? defaultMarginLeft)
     : contentLeftInput;
+  const defaultContentTop = Array.isArray(contentTopInput)
+    ? (contentTopInput[0] ?? defaultMarginTop)
+    : contentTopInput;
 
   for (let blockIndex = 0; blockIndex < blocks.length; blockIndex++) {
     const block = blocks[blockIndex]!; // SAFETY: blockIndex < blocks.length
@@ -650,7 +656,7 @@ function extractFloatingZones(
 
     const blockPageWidth = perBlockNumberValue(pageWidthInput, blockIndex, defaultPageWidth);
     const blockPageHeight = perBlockNumberValue(pageHeightInput, blockIndex, defaultPageHeight);
-    const blockMarginTop = perBlockNumberValue(marginTop, blockIndex, defaultMarginTop);
+    const blockContentTop = perBlockNumberValue(contentTopInput, blockIndex, defaultContentTop);
     const blockMarginLeft = perBlockNumberValue(marginLeftInput, blockIndex, defaultMarginLeft);
     const blockMarginRight = perBlockNumberValue(marginRightInput, blockIndex, defaultMarginRight);
     const blockMarginBottom = perBlockNumberValue(
@@ -687,7 +693,7 @@ function extractFloatingZones(
         floating,
         tableHeight,
         pageHeight: blockPageHeight,
-        marginTop: blockMarginTop,
+        marginTop: blockContentTop,
         marginBottom: blockMarginBottom,
         distTop,
         distBottom,
@@ -1146,7 +1152,10 @@ export function measureBlocks(
   const defaultContentLeft = Array.isArray(contentLeftInput)
     ? (contentLeftInput[0] ?? 0)
     : contentLeftInput;
-  const defaultBlockMarginTop = Array.isArray(marginTop) ? (marginTop[0] ?? 0) : marginTop;
+  const contentTopInput = pageGeometry?.contentTop ?? marginTop;
+  const defaultContentTop = Array.isArray(contentTopInput)
+    ? (contentTopInput[0] ?? 0)
+    : contentTopInput;
   const columnIndexInput = pageGeometry?.columnIndex ?? 0;
   const columnCountInput = pageGeometry?.columnCount ?? 1;
 
@@ -1157,7 +1166,7 @@ export function measureBlocks(
       ? (contentWidth[blockIndex] ?? defaultWidth)
       : contentWidth;
     const blockContentLeft = perBlockNumberValue(contentLeftInput, blockIndex, defaultContentLeft);
-    const blockMarginTop = perBlockNumberValue(marginTop, blockIndex, defaultBlockMarginTop);
+    const blockContentTop = perBlockNumberValue(contentTopInput, blockIndex, defaultContentTop);
     const blockColumnIndex = perBlockNumberValue(columnIndexInput, blockIndex, 0);
     const blockColumnCount = perBlockNumberValue(columnCountInput, blockIndex, 1);
 
@@ -1195,7 +1204,7 @@ export function measureBlocks(
     if (anchorIndices.has(blockIndex)) {
       activeZones = zonesByAnchor.get(blockIndex) ?? [];
       activeTablePageRects = (tableRectsByAnchor.get(blockIndex) ?? []).map((template) =>
-        activateFloatingTablePageRect(template, blockMarginTop + pageRelativeY),
+        activateFloatingTablePageRect(template, blockContentTop + pageRelativeY),
       );
       // Floating-image anchors open a fresh local frame (cumulativeY → 0). A
       // page/margin-pinned band instead reserves against the page, so it
@@ -1215,7 +1224,7 @@ export function measureBlocks(
       projectFloatingTablePageRect({
         rect,
         contentLeft: blockContentLeft,
-        contentTop: blockMarginTop,
+        contentTop: blockContentTop,
         contentWidth: blockWidth,
       }),
     );

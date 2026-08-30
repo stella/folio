@@ -636,6 +636,7 @@ export function runLayoutPipeline<THfPMs>(
         marginRight: blockMeasureInputs.marginRights,
         marginBottom: blockMeasureInputs.marginBottoms,
         contentLeft: blockMeasureInputs.contentLefts,
+        contentTop: blockMeasureInputs.contentTops,
         columnIndex: blockMeasureInputs.columnIndices,
         columnCount: blockMeasureInputs.columnCounts,
       });
@@ -836,6 +837,7 @@ export function runLayoutPipeline<THfPMs>(
             marginRight: blockMeasureInputs.marginRights,
             marginBottom: blockMeasureInputs.marginBottoms,
             contentLeft: blockMeasureInputs.contentLefts,
+            contentTop: blockMeasureInputs.contentTops,
             columnIndex: blockMeasureInputs.columnIndices,
             columnCount: blockMeasureInputs.columnCounts,
           },

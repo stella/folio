@@ -553,6 +553,40 @@ describe("measureBlocks", () => {
     }, fakeMeasure);
   });
 
+  test("projects a margin table from the outgoing physical top across a continuous margin change", () => {
+    withFakeTextMeasure(() => {
+      const table = centeredMarginFloatingTable("outgoing-margin-float");
+      table.floating = {
+        horzAnchor: "margin",
+        vertAnchor: "margin",
+        tblpXSpec: "center",
+        tblpY: 0,
+      };
+      const blocks: FlowBlock[] = [
+        table,
+        { kind: "sectionBreak", id: "margin-change", type: "continuous" },
+        para("shared-page-body", "body"),
+      ];
+      const measures = measureBlocks(blocks, 600, [40, 40, 200], {
+        pageWidth: 800,
+        pageHeight: 1_000,
+        marginLeft: 40,
+        marginRight: 160,
+        marginBottom: 40,
+        contentLeft: 40,
+        contentTop: [40, 40, 40],
+        columnIndex: 0,
+        columnCount: 1,
+      });
+      const bodyMeasure = measures.at(2);
+      if (bodyMeasure?.kind !== "paragraph") {
+        throw new Error("Expected paragraph measure");
+      }
+
+      expect(bodyMeasure.lines.at(0)?.leftOffset).toBe(412);
+    }, fakeMeasure);
+  });
+
   test("starts a continuous section below the tallest explicit column with an active float", () => {
     withFakeTextMeasure(() => {
       const blocks: FlowBlock[] = [

@@ -60,6 +60,7 @@ describe("section block measurement inputs", () => {
     });
 
     expect(inputs.marginTops).toEqual([64, 64, BODY_CONFIG.margins.top]);
+    expect(inputs.contentTops).toEqual([64, 64, BODY_CONFIG.margins.top]);
     expect(inputs.pageWidths).toEqual([600, 600, BODY_CONFIG.pageSize.w]);
     expect(inputs.marginLefts).toEqual([50, 50, BODY_CONFIG.margins.left]);
     expect(inputs.marginRights).toEqual([50, 50, BODY_CONFIG.margins.right]);
@@ -111,5 +112,34 @@ describe("section block measurement inputs", () => {
 
     expect(inputs.widths).toEqual([180, 180, 260, 260, 220, 220, 180]);
     expect(inputs.contentLefts).toEqual([100, 100, 310, 310, 640, 640, 100]);
+  });
+
+  test("keeps the outgoing physical content top until a shared continuous page advances", () => {
+    const nextSection = {
+      ...BODY_CONFIG,
+      margins: { ...BODY_CONFIG.margins, top: 200 },
+    } satisfies SectionLayoutConfig;
+    const blocks: FlowBlock[] = [
+      paragraph("outgoing"),
+      {
+        kind: "sectionBreak",
+        id: "continuous",
+        type: "continuous",
+        pageSize: BODY_CONFIG.pageSize,
+        margins: { ...BODY_CONFIG.margins, top: 64 },
+      },
+      paragraph("shared-page"),
+      { kind: "pageBreak", id: "new-page" },
+      paragraph("new-page-body"),
+    ];
+
+    const inputs = computePerBlockMeasureInputs({
+      blocks,
+      bodyConfig: BODY_CONFIG,
+      finalConfig: nextSection,
+    });
+
+    expect(inputs.marginTops).toEqual([64, 64, 200, 200, 200]);
+    expect(inputs.contentTops).toEqual([64, 64, 64, 64, 200]);
   });
 });
