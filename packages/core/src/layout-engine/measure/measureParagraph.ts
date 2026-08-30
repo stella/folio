@@ -720,6 +720,30 @@ function resolveFinalLineJustifyFitStrategy(
   return resolveJustifyFitStrategy(block, false, profile);
 }
 
+type ResolveCandidateJustifyFitStrategyOptions = {
+  isFirstLine: boolean;
+  isFinalCandidate: boolean;
+  firstLineStrategy: JustifyFitStrategy;
+  continuationStrategy: JustifyFitStrategy;
+  finalLineStrategy: JustifyFitStrategy;
+};
+
+function resolveCandidateJustifyFitStrategy({
+  isFirstLine,
+  isFinalCandidate,
+  firstLineStrategy,
+  continuationStrategy,
+  finalLineStrategy,
+}: ResolveCandidateJustifyFitStrategyOptions): JustifyFitStrategy {
+  if (isFirstLine) {
+    return firstLineStrategy;
+  }
+  if (isFinalCandidate) {
+    return finalLineStrategy;
+  }
+  return continuationStrategy;
+}
+
 function isFinalTextCandidate(block: ParagraphBlock, runIndex: number, nextBreak: number): boolean {
   const currentRun = block.runs[runIndex];
   if (!currentRun || !isTextRun(currentRun) || nextBreak !== currentRun.text.length) {
@@ -2025,11 +2049,13 @@ export function measureParagraph(
         );
         const isFirstLine = lines.length === 0;
         const regularSpaceWidth = compressibleSpaceWidth(measuredWord, style);
-        const justifyFitStrategy = isFirstLine
-          ? firstLineJustifyFitStrategy
-          : isFinalTextCandidate(block, runIndex, nextBreak)
-            ? finalLineJustifyFitStrategy
-            : continuationJustifyFitStrategy;
+        const justifyFitStrategy = resolveCandidateJustifyFitStrategy({
+          isFirstLine,
+          isFinalCandidate: isFinalTextCandidate(block, runIndex, nextBreak),
+          firstLineStrategy: firstLineJustifyFitStrategy,
+          continuationStrategy: continuationJustifyFitStrategy,
+          finalLineStrategy: finalLineJustifyFitStrategy,
+        });
         const widthTolerance = isJustifiedParagraph
           ? justifyFitTolerance(currentLine, justifyFitStrategy, regularSpaceWidth)
           : WIDTH_TOLERANCE;

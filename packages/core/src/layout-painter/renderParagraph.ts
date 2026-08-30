@@ -751,7 +751,7 @@ function renderTextRun(run: TextRun, doc: Document, options?: RenderTextRunOptio
       host: anchor,
       text: paintedText,
       doc,
-      contractedWordSpacing,
+      ...(contractedWordSpacing !== undefined ? { contractedWordSpacing } : {}),
     });
     // TOC entries opt out of the Hyperlink character style — Word renders
     // them in the paragraph's own colour, no underline. The bridge sets
@@ -783,7 +783,7 @@ function renderTextRun(run: TextRun, doc: Document, options?: RenderTextRunOptio
       host: span,
       text: paintedText,
       doc,
-      contractedWordSpacing,
+      ...(contractedWordSpacing !== undefined ? { contractedWordSpacing } : {}),
     });
   }
   applyWhitespaceUnderline(span, run);
@@ -1303,7 +1303,7 @@ function renderFieldRun(
   };
   if (resolvedRun.forceComplexScript && hasComplexScriptFormatting(resolvedRun)) {
     return renderTextRun(applyComplexScriptFormatting(resolvedRun, resolvedRun), doc, {
-      visualSpaceContractionPx,
+      ...(visualSpaceContractionPx !== undefined ? { visualSpaceContractionPx } : {}),
     });
   }
 
@@ -1341,7 +1341,7 @@ function renderFieldRun(
       );
       wrapper.append(
         renderTextRun(segmentRun, doc, {
-          visualSpaceContractionPx,
+          ...(visualSpaceContractionPx !== undefined ? { visualSpaceContractionPx } : {}),
           ancestorHorizontalScaleFactor: horizontalScaleFactor,
         }),
       );
@@ -1349,7 +1349,9 @@ function renderFieldRun(
     return wrapper;
   }
 
-  return renderTextRun(resolvedRun, doc, { visualSpaceContractionPx });
+  return renderTextRun(resolvedRun, doc, {
+    ...(visualSpaceContractionPx !== undefined ? { visualSpaceContractionPx } : {}),
+  });
 }
 
 /**
@@ -2204,7 +2206,10 @@ export function renderLine(
       run.hyperlink && options?.leftToRightDisplayedUrlHyperlinks?.has(run.hyperlink)
         ? LEFT_TO_RIGHT_DIRECTION
         : undefined;
-    const runEl = renderTextRun(run, doc, { hyperlinkDirection, visualSpaceContractionPx });
+    const runEl = renderTextRun(run, doc, {
+      ...(hyperlinkDirection !== undefined ? { hyperlinkDirection } : {}),
+      ...(visualSpaceContractionPx !== undefined ? { visualSpaceContractionPx } : {}),
+    });
     if (collapsedLeadingSpaceRuns.has(run)) {
       runEl.dataset["collapsedLeadingSpaces"] = "true";
     }
@@ -2589,7 +2594,7 @@ export function renderLine(
             lineEl.append(
               renderFieldRun(next, doc, {
                 context: options.context,
-                visualSpaceContractionPx,
+                ...(visualSpaceContractionPx !== undefined ? { visualSpaceContractionPx } : {}),
               }),
             );
           } else if (isImageRun(next)) {
@@ -2703,7 +2708,7 @@ export function renderLine(
       // Render field run with context for PAGE/NUMPAGES substitution
       const runEl = renderFieldRun(run, doc, {
         context: options.context,
-        visualSpaceContractionPx,
+        ...(visualSpaceContractionPx !== undefined ? { visualSpaceContractionPx } : {}),
       });
       lineEl.append(runEl);
       if (!measureText) {
