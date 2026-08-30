@@ -126,6 +126,7 @@ export function createPaginator(options: PaginatorOptions): {
     addUnflowedFragment: (fragment: Fragment) => PageState;
     addFootnoteHeight: (additionalHeight: number, footnoteIds?: number[]) => void;
     forcePageBreak: (breakOptions?: ForcePageBreakOptions) => PageState;
+    coalescePageBreak: () => PageState;
     retargetCurrentBlankPage: () => boolean;
     forceColumnBreak: () => PageState;
     getColumnX: (columnIndex: number) => number;
@@ -134,7 +135,7 @@ export function createPaginator(options: PaginatorOptions): {
         w: number;
         h: number;
     }, newMargins?: PageMargins, applyImmediately?: boolean) => void;
-    startSection: (sectionIndex: number, pageNumbering?: SectionPageNumbering) => void;
+    startSection: (sectionIndex: number, pageNumbering?: SectionPageNumbering, placement?: SectionStartPlacement) => void;
 };
 
 // @public
