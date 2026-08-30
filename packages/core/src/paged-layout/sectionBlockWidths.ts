@@ -1,5 +1,6 @@
 import { collectSectionConfigs } from "../layout-engine";
 import type { SectionLayoutConfig } from "../layout-engine";
+import { hasPageBreakBefore } from "../layout-engine/keep-together";
 import { calculateColumnLefts, calculateColumnWidths } from "../layout-engine/paginator";
 import { normalizeSectionBreakType } from "../layout-engine/section-breaks";
 import type { ColumnLayout, FlowBlock } from "../layout-engine/types";
@@ -36,6 +37,23 @@ type PerBlockMeasureInputs = {
 };
 
 type PhysicalPageGeometry = Pick<SectionLayoutConfig, "pageSize" | "margins">;
+
+type PreBlockPageTransition =
+  | { type: "none" }
+  | { type: "physicalPage"; geometry: PhysicalPageGeometry };
+
+function resolvePreBlockPageTransition(
+  block: FlowBlock,
+  config: SectionLayoutConfig,
+): PreBlockPageTransition {
+  if (!hasPageBreakBefore(block)) {
+    return { type: "none" };
+  }
+  return {
+    type: "physicalPage",
+    geometry: { pageSize: config.pageSize, margins: config.margins },
+  };
+}
 
 const SINGLE_COLUMN_LAYOUT: ColumnLayout = { count: 1, gap: 0 };
 
@@ -102,6 +120,20 @@ export function computePerBlockMeasureInputs({
 
   for (let i = 0; i < blocks.length; i++) {
     const config = sectionConfigs[sectionIdx] ?? finalConfig;
+    const block = blocks[i]!; // SAFETY: i < blocks.length
+    const preBlockTransition = resolvePreBlockPageTransition(block, config);
+    switch (preBlockTransition.type) {
+      case "physicalPage":
+        physicalPageGeometry = preBlockTransition.geometry;
+        hasPhysicalPageContent = false;
+        columnGeometryDirty = true;
+        columnIndex = 0;
+        break;
+      case "none":
+        break;
+      default:
+        preBlockTransition satisfies never;
+    }
     if (measuredSectionIdx !== sectionIdx || columnGeometryDirty) {
       activeColumns = config.columns ?? SINGLE_COLUMN_LAYOUT;
       activeColumnWidths = calculateColumnWidths(
@@ -136,7 +168,7 @@ export function computePerBlockMeasureInputs({
     physicalMarginBottoms.push(physicalPageGeometry.margins.bottom);
 
     if (sectionIdx < breakIndices.length && i === breakIndices[sectionIdx]) {
-      const sectionBreak = blocks[i];
+      const sectionBreak = block;
       const nextConfig = sectionConfigs[sectionIdx + 1] ?? finalConfig;
       const sharesPhysicalPage =
         sectionBreak?.kind === "sectionBreak" &&
@@ -154,12 +186,12 @@ export function computePerBlockMeasureInputs({
       columnGeometryDirty = true;
       sectionIdx++;
       columnIndex = 0;
-    } else if (blocks[i]?.kind === "pageBreak") {
+    } else if (block.kind === "pageBreak") {
       physicalPageGeometry = { pageSize: config.pageSize, margins: config.margins };
       hasPhysicalPageContent = false;
       columnGeometryDirty = true;
       columnIndex = 0;
-    } else if (blocks[i]?.kind === "columnBreak") {
+    } else if (block.kind === "columnBreak") {
       if (columnIndex + 1 >= activeColumns.count) {
         physicalPageGeometry = { pageSize: config.pageSize, margins: config.margins };
         hasPhysicalPageContent = false;

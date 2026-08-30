@@ -134,6 +134,7 @@ describe("section block measurement inputs", () => {
       { kind: "pageBreak", id: "page-break" },
       paragraph("next-page"),
     ];
+
     const inputs = computePerBlockMeasureInputs({
       blocks,
       bodyConfig: BODY_CONFIG,
@@ -145,6 +146,30 @@ describe("section block measurement inputs", () => {
 
     expect(inputs.widths).toEqual([180, 180, 260, 260, 220, 220, 180]);
     expect(inputs.contentLefts).toEqual([100, 100, 310, 310, 640, 640, 100]);
+  });
+
+  test("resets an authored column before a pageBreakBefore paragraph", () => {
+    const pageBreakParagraph = paragraph("new-page-first-column");
+    pageBreakParagraph.attrs = { pageBreakBefore: true };
+    const blocks: FlowBlock[] = [
+      paragraph("first-column"),
+      { kind: "columnBreak", id: "column-break" },
+      paragraph("second-column"),
+      pageBreakParagraph,
+    ];
+
+    const inputs = computePerBlockMeasureInputs({
+      blocks,
+      bodyConfig: BODY_CONFIG,
+      finalConfig: {
+        ...BODY_CONFIG,
+        columns: { count: 2, gap: 20 },
+      },
+    });
+
+    expect(inputs.columnIndices).toEqual([0, 0, 1, 0]);
+    expect(inputs.contentLefts).toEqual([100, 100, 510, 100]);
+    expect(inputs.widths).toEqual([390, 390, 390, 390]);
   });
 
   test("keeps the complete outgoing physical geometry until a shared continuous page advances", () => {
@@ -253,6 +278,92 @@ describe("section block measurement inputs", () => {
       expect(tableFragment?.x).toBe(240);
       expect(bodyMeasure.lines.at(0)?.leftOffset).toBe(
         (tableFragment?.x ?? 0) + tableMeasure.totalWidth + 12 - (inputs.contentLefts.at(3) ?? 0),
+      );
+    }, fakeMeasure);
+  });
+
+  test("adopts pending geometry and clears stale zones before pageBreakBefore content", () => {
+    withFakeTextMeasure(() => {
+      const outgoingConfig = {
+        pageSize: { w: 800, h: 1_000 },
+        margins: { top: 40, right: 160, bottom: 40, left: 40 },
+        pageNumbering: { type: "continue" },
+      } as const;
+      const incomingConfig = {
+        pageSize: { w: 800, h: 1_000 },
+        margins: { top: 200, right: 100, bottom: 180, left: 200 },
+        pageNumbering: { type: "continue" },
+      } as const;
+      const outgoingTable = centeredMarginFloatingTable("outgoing-margin-float");
+      const incomingTable = centeredMarginFloatingTable("incoming-margin-float");
+      const pageBreakParagraph = paragraph("page-break-before");
+      pageBreakParagraph.attrs = { pageBreakBefore: true };
+      const blocks: FlowBlock[] = [
+        outgoingTable,
+        paragraph("outgoing-body"),
+        {
+          kind: "sectionBreak",
+          id: "continuous-margin-change",
+          type: "continuous",
+          pageSize: outgoingConfig.pageSize,
+          margins: outgoingConfig.margins,
+        },
+        pageBreakParagraph,
+        incomingTable,
+        paragraph("incoming-body"),
+      ];
+      const inputs = computePerBlockMeasureInputs({
+        blocks,
+        bodyConfig: outgoingConfig,
+        finalConfig: incomingConfig,
+      });
+      const measures = measureBlocks(blocks, inputs.widths, inputs.marginTops, {
+        pageWidth: inputs.pageWidths,
+        pageHeight: inputs.pageHeights,
+        marginLeft: inputs.marginLefts,
+        marginRight: inputs.marginRights,
+        marginBottom: inputs.marginBottoms,
+        contentLeft: inputs.contentLefts,
+        physicalPage: {
+          pageWidth: inputs.physicalPageGeometry.pageWidths,
+          pageHeight: inputs.physicalPageGeometry.pageHeights,
+          marginTop: inputs.physicalPageGeometry.marginTops,
+          marginLeft: inputs.physicalPageGeometry.marginLefts,
+          marginRight: inputs.physicalPageGeometry.marginRights,
+          marginBottom: inputs.physicalPageGeometry.marginBottoms,
+        },
+        columnIndex: inputs.columnIndices,
+        columnCount: inputs.columnCounts,
+      });
+      const layout = layoutDocument(blocks, measures, {
+        pageSize: outgoingConfig.pageSize,
+        margins: outgoingConfig.margins,
+        finalPageSize: incomingConfig.pageSize,
+        finalMargins: incomingConfig.margins,
+      });
+      const pageBreakMeasure = measures.at(3);
+      const tableMeasure = measures.at(4);
+      const bodyMeasure = measures.at(5);
+      const tableFragment = layout.pages
+        .flatMap((page) => page.fragments)
+        .find((fragment) => fragment.kind === "table" && fragment.blockId === incomingTable.id);
+      if (
+        pageBreakMeasure?.kind !== "paragraph" ||
+        tableMeasure?.kind !== "table" ||
+        bodyMeasure?.kind !== "paragraph"
+      ) {
+        throw new Error("Expected paragraph and table measures");
+      }
+
+      expect(inputs.physicalPageGeometry.marginLefts).toEqual([40, 40, 40, 200, 200, 200]);
+      expect(inputs.physicalPageGeometry.marginRights).toEqual([160, 160, 160, 100, 100, 100]);
+      expect(inputs.widths).toEqual([600, 600, 600, 500, 500, 500]);
+      expect(inputs.contentLefts).toEqual([40, 40, 40, 200, 200, 200]);
+      expect(pageBreakMeasure.lines.at(0)?.leftOffset).toBeUndefined();
+      expect(pageBreakMeasure.lines.at(0)?.rightOffset).toBeUndefined();
+      expect(tableFragment?.x).toBe(350);
+      expect(bodyMeasure.lines.at(0)?.leftOffset).toBe(
+        (tableFragment?.x ?? 0) + tableMeasure.totalWidth + 12 - (inputs.contentLefts.at(5) ?? 0),
       );
     }, fakeMeasure);
   });

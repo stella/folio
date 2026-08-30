@@ -1,4 +1,5 @@
 import { recordMeasureBlock, recordMeasureBlockError } from "../layoutInstrumentation";
+import { hasPageBreakBefore } from "../keep-together";
 import { isParagraphFrameTextBox } from "../paragraphFrame";
 import { normalizeSectionBreakType } from "../section-breaks";
 import {
@@ -1222,14 +1223,14 @@ export function measureBlocks(
     const blockColumnIndex = perBlockNumberValue(columnIndexInput, blockIndex, 0);
     const blockColumnCount = perBlockNumberValue(columnCountInput, blockIndex, 1);
 
-    // A hard page/section break starts a fresh page. Any active zone — including
+    // A hard page/section break or pageBreakBefore starts a fresh page. Any active zone — including
     // a page-pinned topAndBottom band — belongs to the page it was anchored on,
     // so drop the active zones and restart both cursors at the new page top. A
     // band anchor on the new page re-establishes its own zone below; without
     // this, the first block after the break would be measured against a stale
     // band (a phantom float-skip) while layout paints no band there, opening a
     // gap. eigenpal #694.
-    if (block.kind === "pageBreak" || isNextPageSectionBreak(block)) {
+    if (block.kind === "pageBreak" || isNextPageSectionBreak(block) || hasPageBreakBefore(block)) {
       activeZones = [];
       activeTablePageRects = [];
       cumulativeY = 0;
