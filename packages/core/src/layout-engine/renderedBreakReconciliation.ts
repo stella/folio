@@ -60,7 +60,12 @@ export const reconcileBreakBeforeBlock = ({
       forcePageBreak: !sectionBoundaryAlreadyOpenedPage,
       suppressSpaceBefore: false,
       state: sectionBoundaryAlreadyOpenedPage
-        ? { ...state, nextHardBreak: "advance" }
+        ? {
+            type: "pageAdvance",
+            reason: "authoredBoundary",
+            boundary: "sectionBreak",
+            nextHardBreak: "advance",
+          }
         : INITIAL_RENDERED_BREAK_STATE,
     };
   }
@@ -135,7 +140,17 @@ export const reconcileAfterBlock = ({
   if (isStructuralBreak(block)) {
     if (pageNumberAfter <= pageNumberBefore) {
       if (state.type === "pageAdvance" && state.reason === "authoredBoundary") {
-        if (block.kind !== "sectionBreak" || state.boundary === "sectionBreak") {
+        if (block.kind !== "sectionBreak") {
+          return state.boundary === "sectionBreak"
+            ? {
+                type: "pageAdvance",
+                reason: "authoredBoundary",
+                boundary: "sectionBreak",
+                nextHardBreak: "advance",
+              }
+            : state;
+        }
+        if (state.boundary === "sectionBreak") {
           return state;
         }
         return {

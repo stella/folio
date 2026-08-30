@@ -294,6 +294,38 @@ describe("continuous section break geometry", () => {
     expect(result.pages[2]?.fragments.map(({ blockId }) => blockId)).toEqual(["body"]);
   });
 
+  test("a column break consumes section-break coalescence before a hard break", () => {
+    const cover = paragraph("cover", 100);
+    const body = paragraph("body", 100);
+    const result = layoutDocument(
+      [
+        cover.block,
+        { kind: "sectionBreak", id: "cover-end" },
+        { kind: "columnBreak", id: "column-break" },
+        { kind: "pageBreak", id: "page-break" },
+        body.block,
+      ],
+      [
+        cover.measure,
+        { kind: "sectionBreak" },
+        { kind: "columnBreak" },
+        { kind: "pageBreak" },
+        body.measure,
+      ],
+      {
+        pageSize: { w: 800, h: 1000 },
+        margins: { top: 50, right: 50, bottom: 50, left: 50 },
+        finalColumns: { count: 2, gap: 20 },
+      },
+    );
+
+    expect(result.pages).toHaveLength(3);
+    expect(result.pages[1]?.fragments).toHaveLength(0);
+    expect(result.pages[2]?.fragments.map(({ blockId, x }) => ({ blockId, x }))).toEqual([
+      { blockId: "body", x: 50 },
+    ]);
+  });
+
   test("visible empty-paragraph decoration consumes section-break coalescence", () => {
     const cover = paragraph("cover", 100);
     const decorated = emptyParagraph({ id: "decorated", attrs: { shading: "#FFFF00" } });
