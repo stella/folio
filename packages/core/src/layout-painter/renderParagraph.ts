@@ -1320,6 +1320,7 @@ function renderFieldRun(
     // horizontalScale lives on the wrapper (inline-block so the reserved width
     // the render loop sets via reserveScaledAdvance applies, scaleX so the
     // segments scale uniformly); the segments drop it to avoid double-scaling.
+    const horizontalScaleFactor = getHorizontalScaleFactor(resolvedRun.horizontalScale);
     applyHorizontalScaleTransform(wrapper, resolvedRun.horizontalScale);
     // The pm range lives on the wrapper; segments carry none (the field is one
     // atomic unit), so drop pmStart/pmEnd (and the wrapper-applied scale) before
