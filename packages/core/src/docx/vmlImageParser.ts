@@ -74,29 +74,9 @@ const SAFE_VML_COLORS = new Set([
   "aqua",
 ]);
 const VML_POSITION_ABSOLUTE = "absolute";
-const IMAGE_WRAP_INLINE = "inline" satisfies Image["wrap"]["type"];
-const IMAGE_WRAP_BEHIND = "behind" satisfies Image["wrap"]["type"];
-const IMAGE_WRAP_IN_FRONT = "inFront" satisfies Image["wrap"]["type"];
-const VML_HORIZONTAL_RELATIVE_TO = new Map<string, ImagePosition["horizontal"]["relativeTo"]>([
-  ["char", "character"],
-  ["text", "column"],
-  ["margin", "margin"],
-  ["page", "page"],
-  ["left-margin-area", "leftMargin"],
-  ["right-margin-area", "rightMargin"],
-  ["inner-margin-area", "insideMargin"],
-  ["outer-margin-area", "outsideMargin"],
-]);
-const VML_VERTICAL_RELATIVE_TO = new Map<string, ImagePosition["vertical"]["relativeTo"]>([
-  ["line", "line"],
-  ["text", "paragraph"],
-  ["margin", "margin"],
-  ["page", "page"],
-  ["top-margin-area", "topMargin"],
-  ["bottom-margin-area", "bottomMargin"],
-  ["inner-margin-area", "insideMargin"],
-  ["outer-margin-area", "outsideMargin"],
-]);
+const IMAGE_WRAP_INLINE = "inline";
+const IMAGE_WRAP_BEHIND = "behind";
+const IMAGE_WRAP_IN_FRONT = "inFront";
 
 /**
  * Convert a CSS length (pt/in/px/cm/mm/pc, default px) to pixels. Units are
@@ -207,11 +187,51 @@ const pixelsToSafeEmu = (pixels: number): number | undefined => {
 
 const horizontalRelativeTo = (
   value: string | undefined,
-): ImagePosition["horizontal"]["relativeTo"] =>
-  VML_HORIZONTAL_RELATIVE_TO.get(value?.toLowerCase() ?? "") ?? "character";
+): ImagePosition["horizontal"]["relativeTo"] => {
+  switch (value?.toLowerCase()) {
+    case "char":
+      return "character";
+    case "text":
+      return "column";
+    case "margin":
+      return "margin";
+    case "page":
+      return "page";
+    case "left-margin-area":
+      return "leftMargin";
+    case "right-margin-area":
+      return "rightMargin";
+    case "inner-margin-area":
+      return "insideMargin";
+    case "outer-margin-area":
+      return "outsideMargin";
+    default:
+      return "character";
+  }
+};
 
-const verticalRelativeTo = (value: string | undefined): ImagePosition["vertical"]["relativeTo"] =>
-  VML_VERTICAL_RELATIVE_TO.get(value?.toLowerCase() ?? "") ?? "paragraph";
+const verticalRelativeTo = (value: string | undefined): ImagePosition["vertical"]["relativeTo"] => {
+  switch (value?.toLowerCase()) {
+    case "line":
+      return "line";
+    case "text":
+      return "paragraph";
+    case "margin":
+      return "margin";
+    case "page":
+      return "page";
+    case "top-margin-area":
+      return "topMargin";
+    case "bottom-margin-area":
+      return "bottomMargin";
+    case "inner-margin-area":
+      return "insideMargin";
+    case "outer-margin-area":
+      return "outsideMargin";
+    default:
+      return "paragraph";
+  }
+};
 
 const vmlImageLayout = (
   style: Record<string, string>,
