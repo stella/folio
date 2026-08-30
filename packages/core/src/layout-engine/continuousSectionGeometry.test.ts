@@ -42,6 +42,44 @@ function paragraph(
   };
 }
 
+type EmptyParagraphOptions = {
+  id: string;
+  attrs?: ParagraphBlock["attrs"];
+  lineHeight?: number;
+};
+
+function emptyParagraph({ id, attrs = {}, lineHeight = 20 }: EmptyParagraphOptions): {
+  block: ParagraphBlock;
+  measure: ParagraphMeasure;
+} {
+  return {
+    block: {
+      kind: "paragraph",
+      id,
+      pmStart: 0,
+      pmEnd: 0,
+      runs: [],
+      attrs,
+    },
+    measure: {
+      kind: "paragraph",
+      lines: [
+        {
+          fromRun: 0,
+          fromChar: 0,
+          toRun: 0,
+          toChar: 0,
+          width: 0,
+          ascent: 0,
+          descent: 0,
+          lineHeight,
+        },
+      ],
+      totalHeight: lineHeight,
+    },
+  };
+}
+
 describe("continuous section break geometry", () => {
   test("balances a short paragraph-only multi-column section", () => {
     const intro = paragraph("intro", 100);
@@ -184,6 +222,106 @@ describe("continuous section break geometry", () => {
       "second",
     ]);
     expect(result.pages[1]?.fragments.map((fragment) => fragment.blockId)).toEqual(["third"]);
+  });
+
+  test("a hard break reuses the blank page opened by a preceding section boundary", () => {
+    const cover = paragraph("cover", 100);
+    const spacer = emptyParagraph({ id: "spacer" });
+    const carrier = emptyParagraph({
+      id: "carrier",
+      attrs: { suppressEmptyParagraphHeight: true },
+      lineHeight: 0,
+    });
+    const body = paragraph("body", 100);
+    body.block.attrs = { renderedPageBreakBefore: true };
+    const blocks: FlowBlock[] = [
+      cover.block,
+      { kind: "sectionBreak", id: "cover-end" },
+      { kind: "sectionBreak", id: "continuous-marker", type: "continuous" },
+      spacer.block,
+      { kind: "pageBreak", id: "redundant-page-break" },
+      carrier.block,
+      body.block,
+    ];
+    const measures = [
+      cover.measure,
+      { kind: "sectionBreak" },
+      { kind: "sectionBreak" },
+      spacer.measure,
+      { kind: "pageBreak" },
+      carrier.measure,
+      body.measure,
+    ] satisfies Measure[];
+
+    const result = layoutDocument(blocks, measures, {
+      pageSize: { w: 800, h: 1000 },
+      margins: { top: 50, right: 50, bottom: 50, left: 50 },
+    });
+
+    expect(result.pages).toHaveLength(2);
+    expect(result.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual([
+      "spacer",
+      "carrier",
+      "body",
+    ]);
+  });
+
+  test("a hard-break page is not coalesced through a continuous section", () => {
+    const first = paragraph("first", 100);
+    const body = paragraph("body", 100);
+    const result = layoutDocument(
+      [
+        first.block,
+        { kind: "pageBreak", id: "first-hard-break" },
+        { kind: "sectionBreak", id: "continuous-marker", type: "continuous" },
+        { kind: "pageBreak", id: "second-hard-break" },
+        body.block,
+      ],
+      [
+        first.measure,
+        { kind: "pageBreak" },
+        { kind: "sectionBreak" },
+        { kind: "pageBreak" },
+        body.measure,
+      ],
+      {
+        pageSize: { w: 800, h: 1000 },
+        margins: { top: 50, right: 50, bottom: 50, left: 50 },
+      },
+    );
+
+    expect(result.pages).toHaveLength(3);
+    expect(result.pages[2]?.fragments.map(({ blockId }) => blockId)).toEqual(["body"]);
+  });
+
+  test("visible empty-paragraph decoration consumes section-break coalescence", () => {
+    const cover = paragraph("cover", 100);
+    const decorated = emptyParagraph({ id: "decorated", attrs: { shading: "#FFFF00" } });
+    const body = paragraph("body", 100);
+    const result = layoutDocument(
+      [
+        cover.block,
+        { kind: "sectionBreak", id: "cover-end" },
+        decorated.block,
+        { kind: "pageBreak", id: "hard-break" },
+        body.block,
+      ],
+      [
+        cover.measure,
+        { kind: "sectionBreak" },
+        decorated.measure,
+        { kind: "pageBreak" },
+        body.measure,
+      ],
+      {
+        pageSize: { w: 800, h: 1000 },
+        margins: { top: 50, right: 50, bottom: 50, left: 50 },
+      },
+    );
+
+    expect(result.pages).toHaveLength(3);
+    expect(result.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual(["decorated"]);
+    expect(result.pages[2]?.fragments.map(({ blockId }) => blockId)).toEqual(["body"]);
   });
 
   test("does not apply final section config to a preceding omitted transition", () => {

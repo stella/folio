@@ -346,6 +346,7 @@ describe("rendered break reconciliation", () => {
       type: "pageAdvance",
       reason: "authoredBoundary",
       boundary: "sectionBreak",
+      nextHardBreak: "advance",
     });
     expect(decision.suppressSpaceBefore).toBe(false);
   });
@@ -477,6 +478,7 @@ describe("rendered break reconciliation", () => {
         type: "pageAdvance",
         reason: "authoredBoundary",
         boundary: "sectionBreak",
+        nextHardBreak: "coalesce",
       },
       block,
       previousBlock: { kind: "sectionBreak", id: "section", type: "nextPage" },
@@ -487,6 +489,41 @@ describe("rendered break reconciliation", () => {
     });
 
     expect(decision.forcePageBreak).toBe(false);
+  });
+
+  test("a hard page break reuses a page already opened by a carried section boundary", () => {
+    const empty = paragraph(2, {}, []);
+    const firstDecision = reconcileBreakBeforeBlock({
+      state: {
+        type: "pageAdvance",
+        reason: "authoredBoundary",
+        boundary: "sectionBreak",
+        nextHardBreak: "coalesce",
+      },
+      block: { kind: "pageBreak", id: "hard-break" },
+      previousBlock: empty,
+      page: page([paragraphFragment(2)]),
+      blocksById: new Map([["2", empty]]),
+      hasExplicitPageBreak: true,
+      renderedBreakNeedsSnap: false,
+    });
+
+    expect(firstDecision).toMatchObject({
+      forcePageBreak: false,
+      state: { boundary: "sectionBreak", nextHardBreak: "advance" },
+    });
+
+    const secondDecision = reconcileBreakBeforeBlock({
+      state: firstDecision.state,
+      block: { kind: "pageBreak", id: "second-hard-break" },
+      previousBlock: { kind: "pageBreak", id: "hard-break" },
+      page: page([paragraphFragment(2)]),
+      blocksById: new Map([["2", empty]]),
+      hasExplicitPageBreak: true,
+      renderedBreakNeedsSnap: false,
+    });
+
+    expect(secondDecision.forcePageBreak).toBe(true);
   });
 
   test("pageBreakBefore still advances a page with visible body content", () => {

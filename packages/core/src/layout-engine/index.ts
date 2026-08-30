@@ -423,7 +423,7 @@ function layoutDocumentPass(
         (firstLineAdvance > 0 &&
           paginator.getAvailableHeight() <=
             firstLineAdvance * RENDERED_BREAK_REFLOW_TOLERANCE_LINES));
-    const hasExplicitPageBreak = hasPageBreakBefore(block);
+    const hasExplicitPageBreak = block.kind === "pageBreak" || hasPageBreakBefore(block);
     const breakDecision = reconcileBreakBeforeBlock({
       state: renderedBreakState,
       block,
@@ -433,7 +433,7 @@ function layoutDocumentPass(
       hasExplicitPageBreak,
       renderedBreakNeedsSnap,
     });
-    if (breakDecision.forcePageBreak) {
+    if (breakDecision.forcePageBreak && block.kind !== "pageBreak") {
       paginator.forcePageBreak();
     }
     renderedBreakState = breakDecision.state;
@@ -491,7 +491,9 @@ function layoutDocumentPass(
         break;
 
       case "pageBreak":
-        paginator.forcePageBreak();
+        if (breakDecision.forcePageBreak) {
+          paginator.forcePageBreak();
+        }
         break;
 
       case "columnBreak":

@@ -4,10 +4,12 @@ import type { FlowBlock, Page, ParagraphBlock } from "./types";
 export type RenderedBreakState =
   | { type: "noPageAdvance" }
   | { type: "pageAdvance"; reason: "ordinary" | "reflowBoundary" }
+  | { type: "pageAdvance"; reason: "authoredBoundary"; boundary: "hardBreak" }
   | {
       type: "pageAdvance";
       reason: "authoredBoundary";
-      boundary: "hardBreak" | "sectionBreak";
+      boundary: "sectionBreak";
+      nextHardBreak: "coalesce" | "advance";
     };
 
 export const INITIAL_RENDERED_BREAK_STATE: RenderedBreakState = {
@@ -48,16 +50,18 @@ export const reconcileBreakBeforeBlock = ({
   renderedBreakNeedsSnap,
 }: ReconcileBeforeBlockOptions): BreakDecision => {
   if (hasExplicitPageBreak) {
-    const followsSameSectionBoundary =
+    const sectionBoundaryAlreadyOpenedPage =
       state.type === "pageAdvance" &&
       state.reason === "authoredBoundary" &&
       state.boundary === "sectionBreak" &&
-      previousBlock?.kind === "sectionBreak" &&
-      previousBlock.type !== "continuous";
+      state.nextHardBreak === "coalesce" &&
+      !pageHasVisibleBodyContent(page, blocksById);
     return {
-      forcePageBreak: !followsSameSectionBoundary,
+      forcePageBreak: !sectionBoundaryAlreadyOpenedPage,
       suppressSpaceBefore: false,
-      state: INITIAL_RENDERED_BREAK_STATE,
+      state: sectionBoundaryAlreadyOpenedPage
+        ? { ...state, nextHardBreak: "advance" }
+        : INITIAL_RENDERED_BREAK_STATE,
     };
   }
   if (block.kind !== "paragraph" || block.attrs?.renderedPageBreakBefore !== true) {
@@ -131,15 +135,27 @@ export const reconcileAfterBlock = ({
   if (isStructuralBreak(block)) {
     if (pageNumberAfter <= pageNumberBefore) {
       if (state.type === "pageAdvance" && state.reason === "authoredBoundary") {
-        return block.kind === "sectionBreak" ? { ...state, boundary: "sectionBreak" } : state;
+        if (block.kind !== "sectionBreak" || state.boundary === "sectionBreak") {
+          return state;
+        }
+        return {
+          type: "pageAdvance",
+          reason: "authoredBoundary",
+          boundary: "sectionBreak",
+          nextHardBreak: "advance",
+        };
       }
       return INITIAL_RENDERED_BREAK_STATE;
     }
-    return {
-      type: "pageAdvance",
-      reason: "authoredBoundary",
-      boundary: block.kind === "sectionBreak" ? "sectionBreak" : "hardBreak",
-    };
+    if (block.kind === "sectionBreak") {
+      return {
+        type: "pageAdvance",
+        reason: "authoredBoundary",
+        boundary: "sectionBreak",
+        nextHardBreak: "coalesce",
+      };
+    }
+    return { type: "pageAdvance", reason: "authoredBoundary", boundary: "hardBreak" };
   }
   if (block.kind === "paragraph" && isPaginationEmptyParagraph(block)) {
     return state;
