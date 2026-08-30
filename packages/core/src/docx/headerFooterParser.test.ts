@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
-import type { HeaderFooter, Paragraph } from "../types/document";
+import { toFlowBlocks } from "../layout-bridge/convert/toFlowBlocks";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import type { Document, HeaderFooter, Paragraph } from "../types/document";
 import { parseFooter, parseHeader } from "./headerFooterParser";
 
 const NAMESPACES = [
@@ -161,5 +163,93 @@ describe("header/footer text boxes", () => {
       fill: { type: "none" },
       textBody: { margins: { left: 0, top: 0, right: 0, bottom: 0 } },
     });
+  });
+
+  test("applies authored and default values in sparse VML text-box insets", () => {
+    const footer = parseFooter(`
+      <w:ftr ${NAMESPACES}>
+        <w:p><w:r><w:pict>
+          <v:shape id="sparse-inset" style="position:absolute;width:216pt;height:18pt" filled="f" stroked="f">
+            <v:textbox inset="20pt,0,,0">
+              <w:txbxContent><w:p><w:r><w:t>Sparse inset</w:t></w:r></w:p></w:txbxContent>
+            </v:textbox>
+          </v:shape>
+        </w:pict></w:r></w:p>
+        <w:p><w:r><w:t>Adjacent footer</w:t></w:r></w:p>
+      </w:ftr>`);
+
+    const paragraph = footer.content.at(0);
+    const run = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+    const shapeContent = run?.type === "run" ? run.content.at(0) : undefined;
+    if (shapeContent?.type !== "shape") {
+      throw new Error("Expected sparse-inset text box");
+    }
+    expect(shapeContent.shape.textBody?.margins).toEqual({
+      left: 254_000,
+      top: 0,
+      right: 91_440,
+      bottom: 0,
+    });
+
+    const document: Document = { package: { document: { content: footer.content } } };
+    const blocks = toFlowBlocks(toProseDoc(document));
+    const textBox = blocks.at(0);
+    if (textBox?.kind !== "textBox") {
+      throw new Error("Expected sparse-inset text box flow block");
+    }
+    expect(textBox.margins).toEqual({
+      left: 27,
+      top: 0,
+      right: 10,
+      bottom: 0,
+    });
+    expect(blocks.at(1)?.kind).toBe("paragraph");
+  });
+
+  test("uses standard VML text-box insets when the attribute is absent", () => {
+    const footer = parseFooter(`
+      <w:ftr ${NAMESPACES}>
+        <w:p><w:r><w:pict>
+          <v:shape style="width:216pt;height:18pt">
+            <v:textbox>
+              <w:txbxContent><w:p><w:r><w:t>Default inset</w:t></w:r></w:p></w:txbxContent>
+            </v:textbox>
+          </v:shape>
+        </w:pict></w:r></w:p>
+      </w:ftr>`);
+
+    const paragraph = footer.content.at(0);
+    const run = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+    const shapeContent = run?.type === "run" ? run.content.at(0) : undefined;
+    if (shapeContent?.type !== "shape") {
+      throw new Error("Expected default-inset text box");
+    }
+    expect(shapeContent.shape.textBody?.margins).toEqual({
+      left: 91_440,
+      top: 45_720,
+      right: 91_440,
+      bottom: 45_720,
+    });
+  });
+
+  test("rejects VML text-box inset values beyond the four-field bound", () => {
+    const footer = parseFooter(`
+      <w:ftr ${NAMESPACES}>
+        <w:p><w:r><w:pict>
+          <v:shape style="width:216pt;height:18pt">
+            <v:textbox inset="1pt 2pt 3pt 4pt 5pt">
+              <w:txbxContent><w:p><w:r><w:t>Bounded inset</w:t></w:r></w:p></w:txbxContent>
+            </v:textbox>
+          </v:shape>
+        </w:pict></w:r></w:p>
+      </w:ftr>`);
+
+    const paragraph = footer.content.at(0);
+    const run = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+    const shapeContent = run?.type === "run" ? run.content.at(0) : undefined;
+    if (shapeContent?.type !== "shape") {
+      throw new Error("Expected bounded-inset text box");
+    }
+    expect(shapeContent.shape.textBody?.margins).toBeUndefined();
   });
 });

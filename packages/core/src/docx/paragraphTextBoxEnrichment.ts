@@ -50,6 +50,8 @@ const VML_VERTICAL_RELATIVES = new Set<ImagePosition["vertical"]["relativeTo"]>(
   "topMargin",
   "bottomMargin",
 ]);
+const VML_TEXTBOX_INSET_DEFAULTS = ["0.1in", "0.05in", "0.1in", "0.05in"] as const;
+const MAX_VML_TEXTBOX_INSET_TOKEN_CHARACTERS = 64;
 
 const parseVmlStyle = (value: string | null): Record<string, string> => {
   const declarations: Record<string, string> = {};
@@ -113,20 +115,62 @@ const verticalRelativeTo = (value: string | undefined): ImagePosition["vertical"
   return "paragraph";
 };
 
+const parseVmlInsetFields = (rawInset: string): Array<string | undefined> | undefined => {
+  const fields: Array<string | undefined> = [];
+  let offset = 0;
+  let segmentHasField = false;
+
+  while (offset <= rawInset.length) {
+    while (/\s/u.test(rawInset.charAt(offset))) {
+      offset += 1;
+    }
+    if (offset >= rawInset.length) {
+      if (!segmentHasField) {
+        fields.push(undefined);
+      }
+      return fields.length <= VML_TEXTBOX_INSET_DEFAULTS.length ? fields : undefined;
+    }
+    if (rawInset.charAt(offset) === ",") {
+      if (!segmentHasField) {
+        fields.push(undefined);
+      }
+      if (fields.length > VML_TEXTBOX_INSET_DEFAULTS.length) {
+        return undefined;
+      }
+      segmentHasField = false;
+      offset += 1;
+      continue;
+    }
+
+    const tokenStart = offset;
+    while (offset < rawInset.length && !/[,\s]/u.test(rawInset.charAt(offset))) {
+      offset += 1;
+      if (offset - tokenStart > MAX_VML_TEXTBOX_INSET_TOKEN_CHARACTERS) {
+        return undefined;
+      }
+    }
+    fields.push(rawInset.slice(tokenStart, offset));
+    if (fields.length > VML_TEXTBOX_INSET_DEFAULTS.length) {
+      return undefined;
+    }
+    segmentHasField = true;
+  }
+
+  return undefined;
+};
+
 const parseVmlInsets = (
   textBoxEl: XmlElement,
 ): { left: number; top: number; right: number; bottom: number } | undefined => {
-  const [left, top, right, bottom, extra] =
-    getAttribute(textBoxEl, null, "inset")
-      ?.split(",")
-      .map((value) => vmlLengthToPixels(value)) ?? [];
-  if (
-    extra !== undefined ||
-    left === undefined ||
-    top === undefined ||
-    right === undefined ||
-    bottom === undefined
-  ) {
+  const rawInset = getAttribute(textBoxEl, null, "inset") ?? "";
+  const fields = parseVmlInsetFields(rawInset);
+  if (!fields) {
+    return undefined;
+  }
+  const [left, top, right, bottom] = VML_TEXTBOX_INSET_DEFAULTS.map((fallback, index) =>
+    vmlLengthToPixels(fields.at(index) ?? fallback),
+  );
+  if (left === undefined || top === undefined || right === undefined || bottom === undefined) {
     return undefined;
   }
   return {
