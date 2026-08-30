@@ -69,6 +69,9 @@ export const PIXELS_PER_INCH = 96;
 /** Ignore sub-twip round trips when the cursor already occupies a tab stop. */
 const TAB_POSITION_EPSILON_TWIPS = 0.01;
 
+/** Positions closer than this are treated as the same tab stop. */
+const TAB_STOP_MATCH_TOLERANCE_TWIPS = 20;
+
 /**
  * Convert twips to pixels
  * @param twips - Value in twips (1/1440 inch)
@@ -105,7 +108,8 @@ export function computeTabStops(context: TabContext): TabStop[] {
     leftIndent = 0,
   } = context;
   const tabInterval =
-    Number.isFinite(defaultTabInterval) && defaultTabInterval > 0
+    Number.isFinite(defaultTabInterval) &&
+    defaultTabInterval >= TAB_STOP_MATCH_TOLERANCE_TWIPS
       ? defaultTabInterval
       : DEFAULT_TAB_INTERVAL_TWIPS;
 
@@ -134,7 +138,9 @@ export function computeTabStops(context: TabContext): TabStop[] {
   // For hanging indent paragraphs (where leftIndent > 0 and no explicit stops before it),
   // add the leftIndent position as an implicit tab stop.
   // This is standard Word behavior: tabs jump to the left margin for alignment.
-  const hasLeftIndentClear = clearPositions.some((p) => Math.abs(p - leftIndent) < 20);
+  const hasLeftIndentClear = clearPositions.some(
+    (p) => Math.abs(p - leftIndent) < TAB_STOP_MATCH_TOLERANCE_TWIPS,
+  );
   const addsImplicitLeftIndent =
     leftIndent > 0 &&
     !hasLeftIndentClear &&
@@ -162,7 +168,7 @@ export function computeTabStops(context: TabContext): TabStop[] {
     // Skip if there's already an explicit stop (including bar) at this position
     let hasExplicitStop = false;
     for (const stop of stops) {
-      if (Math.abs(stop.pos - pos) < 20) {
+      if (Math.abs(stop.pos - pos) < TAB_STOP_MATCH_TOLERANCE_TWIPS) {
         hasExplicitStop = true;
         break;
       }
@@ -170,13 +176,15 @@ export function computeTabStops(context: TabContext): TabStop[] {
     // Skip if there's a clear stop at this position
     let hasClearStop = false;
     for (const clearPos of clearPositions) {
-      if (Math.abs(clearPos - pos) < 20) {
+      if (Math.abs(clearPos - pos) < TAB_STOP_MATCH_TOLERANCE_TWIPS) {
         hasClearStop = true;
         break;
       }
     }
     // Skip if at leftIndent only when the implicit stop was added above.
-    const isAtLeftIndent = addsImplicitLeftIndent && Math.abs(pos - leftIndent) < 20;
+    const isAtLeftIndent =
+      addsImplicitLeftIndent &&
+      Math.abs(pos - leftIndent) < TAB_STOP_MATCH_TOLERANCE_TWIPS;
 
     if (!hasExplicitStop && !hasClearStop && !isAtLeftIndent) {
       stops.push({

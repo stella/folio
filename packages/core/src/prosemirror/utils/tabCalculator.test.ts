@@ -58,6 +58,9 @@ describe("computeTabStops", () => {
     for (const defaultTabInterval of [
       0,
       -720,
+      Number.MIN_VALUE,
+      0.01,
+      19.999,
       Number.NaN,
       Number.POSITIVE_INFINITY,
       Number.NEGATIVE_INFINITY,
