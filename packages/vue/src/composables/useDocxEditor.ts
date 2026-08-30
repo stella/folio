@@ -35,6 +35,7 @@ import {
   FOLIO_DOCX_SERIALIZATION_MODE,
   type FolioEditor,
   type FolioEditorDocumentIO,
+  type FolioGetDocxOptions,
 } from "@stll/folio-core/controller/folioEditor";
 import { createFolioEditorEmitter } from "@stll/folio-core/controller/folioEditorEvents";
 import { loadCollaborationModules } from "@stll/folio-core/controller/collaborationModules";
@@ -414,10 +415,11 @@ export type UseDocxEditorReturn = {
   /** True once the hidden view is mounted and a document is loaded. */
   isReady: Ref<boolean>;
   /**
-   * True when the live PM state has doc edits not yet serialized by `save()`.
-   * Set on every doc-changing transaction, cleared on a successful save and on
-   * document load/swap. Backs the ref API's `hasPendingChanges` (OR-ed with the
-   * comment-list dirty flag).
+   * True when the live PM state has doc edits not yet committed by `save()`.
+   * Set on every doc-changing transaction, cleared on a successful host-facing
+   * save and on document load/swap. Controller serialization through
+   * `editor.getDocx()` does not clear it. Backs the ref API's
+   * `hasPendingChanges` (OR-ed with the comment-list dirty flag).
    */
   isDirty: Ref<boolean>;
   /** Last parse error message, or null if the most recent load succeeded. */
@@ -512,13 +514,14 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   const measures = shallowRef<Measure[]>([]);
   const isReady = ref(false);
   const parseError = ref<string | null>(null);
-  // "Live PM state has edits not yet serialized" flag, the Vue analogue of the
-  // signals React derives from the ParagraphChangeTracker in `hasPendingChanges`.
-  // Set on every doc-changing transaction (the same signal that drives the
-  // debounced writeback/`onChange`) and cleared on a successful `save()` and on
-  // document load/swap. Vue keeps the change tracker uncleared across saves (it
-  // is the selective-save baseline; see the featureFlags parity note), so this
-  // flag — not the tracker — is what surfaces pending edits to the ref API.
+  // "Live PM state has edits not yet committed by a host-facing save" flag, the
+  // Vue analogue of the signals React derives from the ParagraphChangeTracker
+  // in `hasPendingChanges`. Set on every doc-changing transaction (the same
+  // signal that drives the debounced writeback/`onChange`) and cleared on a
+  // successful `save()` and on document load/swap. Controller serialization
+  // alone leaves it intact. Vue keeps the change tracker uncleared across saves
+  // (it is the selective-save baseline; see the featureFlags parity note), so
+  // this flag — not the tracker — is what surfaces pending edits to the ref API.
   const isDirty = ref(false);
 
   // ---- Long-lived controller singletons -----------------------------------
@@ -925,10 +928,8 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
 
   const documentIO = {
     getDocx: async (serializationOptions) => {
-      const blob = await save({
-        selective: serializationOptions?.mode !== FOLIO_DOCX_SERIALIZATION_MODE.full,
-      });
-      return blob?.arrayBuffer() ?? null;
+      const result = await serializeCurrentDocx(serializationOptions);
+      return result?.buffer ?? null;
     },
     loadDocument,
     loadDocx: loadBuffer,
@@ -1101,7 +1102,14 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
 
   // ---- Public API ---------------------------------------------------------
 
-  async function save(saveOptions?: { selective?: boolean }): Promise<Blob | null> {
+  type SerializedDocxResult = {
+    buffer: ArrayBuffer;
+    document: Document;
+  };
+
+  async function serializeCurrentDocx(
+    serializationOptions?: FolioGetDocxOptions,
+  ): Promise<SerializedDocxResult | null> {
     const view = editorView.value;
     const currentDocument = docModel.value;
     if (!view || !currentDocument) {
@@ -1125,7 +1133,8 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
 
     // The tripwire observes the selective path independently of the user-visible
     // save mode. Only `useSelectiveForSave` is allowed to pick the returned bytes.
-    const useSelectiveForSave = flags.selectiveSave && saveOptions?.selective !== false;
+    const useSelectiveForSave =
+      flags.selectiveSave && serializationOptions?.mode !== FOLIO_DOCX_SERIALIZATION_MODE.full;
     const shouldAttemptSelective = useSelectiveForSave || flags.selectiveSaveTripwire;
 
     const { repackDocx, createDocx } = await import("@stll/folio-core/docx/rezip");
@@ -1168,18 +1177,31 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
       }
     }
 
-    // The bytes are produced: the live doc state is now serialized, so no doc
-    // edits are pending. Mirrors React's handleSave clearing the change tracker.
-    // (The tracker itself is intentionally left uncleared — it is the
-    // selective-save baseline; see the featureFlags parity note.) The comment-
-    // list dirty flag lives in useCommentManagement and is cleared by the ref
-    // API's save wrapper, the single public save entry point.
-    docModel.value = updatedDoc;
+    return { buffer, document: updatedDoc };
+  }
+
+  async function save(saveOptions?: { selective?: boolean }): Promise<Blob | null> {
+    const result = await serializeCurrentDocx({
+      mode:
+        saveOptions?.selective === false
+          ? FOLIO_DOCX_SERIALIZATION_MODE.full
+          : FOLIO_DOCX_SERIALIZATION_MODE.preferSelective,
+    });
+    if (!result) {
+      return null;
+    }
+
+    // Host-facing save policy lives outside the controller's serialization
+    // method. Commit the exact document snapshot that produced these bytes,
+    // refresh the story managers, and clear the document dirty signal only
+    // after serialization succeeds. The ref API owns comment-dirty reset and
+    // the host's onSave callback.
+    docModel.value = result.document;
     headerFooterManager.sync();
     noteEditorManager.sync();
     isDirty.value = false;
 
-    return new Blob([buffer], {
+    return new Blob([result.buffer], {
       type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     });
   }

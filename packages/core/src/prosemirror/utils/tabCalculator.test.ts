@@ -52,6 +52,20 @@ describe("computeTabStops", () => {
     expect(stops[1].pos).toBe(2880);
   });
 
+  it("falls back to the default interval when the configured interval is invalid", () => {
+    const defaultStops = computeTabStops({});
+
+    for (const defaultTabInterval of [
+      0,
+      -720,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+    ]) {
+      expect(computeTabStops({ defaultTabInterval })).toEqual(defaultStops);
+    }
+  });
+
   it("includes explicit stops", () => {
     const stops = computeTabStops({
       explicitStops: [

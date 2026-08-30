@@ -104,6 +104,10 @@ export function computeTabStops(context: TabContext): TabStop[] {
     defaultTabInterval = DEFAULT_TAB_INTERVAL_TWIPS,
     leftIndent = 0,
   } = context;
+  const tabInterval =
+    Number.isFinite(defaultTabInterval) && defaultTabInterval > 0
+      ? defaultTabInterval
+      : DEFAULT_TAB_INTERVAL_TWIPS;
 
   // Clear stops suppress matching inherited/default positions but are not
   // themselves destinations. Bar stops draw a vertical rule without advancing
@@ -149,11 +153,11 @@ export function computeTabStops(context: TabContext): TabStop[] {
   // Start at the grid line at or before the rightmost explicit stop / indent;
   // the loop advances to the next grid position.
   const searchStart = Math.max(maxExplicit, leftIndent);
-  let pos = Math.floor(searchStart / defaultTabInterval) * defaultTabInterval;
+  let pos = Math.floor(searchStart / tabInterval) * tabInterval;
   const limitPos = leftIndent + 14_400; // 14400 twips = 10 inches
 
   while (pos < limitPos) {
-    pos += defaultTabInterval;
+    pos += tabInterval;
 
     // Skip if there's already an explicit stop (including bar) at this position
     let hasExplicitStop = false;

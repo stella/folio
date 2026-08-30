@@ -43,10 +43,7 @@ import {
   type FolioDocumentOperationUndoHandle,
   type FolioDocumentOperationUndoResult,
 } from "@stll/folio-core/ai-edits";
-import {
-  FOLIO_DOCX_SERIALIZATION_MODE,
-  type FolioEditor,
-} from "@stll/folio-core/controller/folioEditor";
+import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type { Layout } from "@stll/folio-core/layout-engine";
 import { findPageIndexContainingPmPos } from "@stll/folio-core/layout-engine";
 import {
@@ -107,8 +104,9 @@ export type UseDocxEditorRefApiOptions = {
   /** Off-screen ProseMirror EditorView, or null before mount. */
   editorView: Ref<EditorView | null>;
   /**
-   * Doc-dirty flag from useDocxEditor: live PM edits not yet serialized. Backs
-   * the doc side of `hasPendingChanges` (React's ParagraphChangeTracker signals).
+   * Doc-dirty flag from useDocxEditor: live PM edits not yet committed by a
+   * host-facing save. Backs the doc side of `hasPendingChanges` (React's
+   * ParagraphChangeTracker signals).
    */
   isDirty: Readonly<Ref<boolean>>;
   /**
@@ -168,10 +166,32 @@ export type UseDocxEditorRefApiOptions = {
   closeNoteStory: () => void;
   getHeaderFooterView: (rId: string) => EditorView | null;
   setZoom: (zoom: number) => void;
+  /** Serialize and commit a host-facing save through useDocxEditor. */
+  saveDocument: (options?: { selective?: boolean }) => Promise<Blob | null>;
   /** Optional host hook for print. */
   onPrint?: (() => void) | undefined;
   /** Optional host hook fired with the serialized `.docx` bytes after `save()`. */
   onSave?: ((buffer: ArrayBuffer) => void) | undefined;
+};
+
+type SaveDocumentForHostOptions = {
+  clearCommentsDirty: () => void;
+  onSave: ((buffer: ArrayBuffer) => void) | undefined;
+  saveDocument: (options?: { selective?: boolean }) => Promise<Blob | null>;
+};
+
+export const saveDocumentForHost = async (
+  host: SaveDocumentForHostOptions,
+  options?: { selective?: boolean },
+): Promise<ArrayBuffer | null> => {
+  const blob = await host.saveDocument(options);
+  if (!blob) {
+    return null;
+  }
+  const buffer = await blob.arrayBuffer();
+  host.clearCommentsDirty();
+  host.onSave?.(buffer);
+  return buffer;
 };
 
 export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
@@ -183,23 +203,15 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
     window.print();
   }
 
-  async function save(options?: { selective?: boolean }): Promise<ArrayBuffer | null> {
-    const buffer = await opts.editor.getDocx({
-      mode:
-        options?.selective === false
-          ? FOLIO_DOCX_SERIALIZATION_MODE.full
-          : FOLIO_DOCX_SERIALIZATION_MODE.preferSelective,
-    });
-    if (!buffer) {
-      return null;
-    }
-    // Save succeeded: clear the comment-list dirty flag (useDocxEditor already
-    // cleared the doc-dirty flag when it produced the bytes). Mirrors React's
-    // handleSave resetting commentsDirtyRef.
-    opts.clearCommentsDirty();
-    // Mirror React's handleSave: notify the host with the serialized bytes.
-    opts.onSave?.(buffer);
-    return buffer;
+  function save(options?: { selective?: boolean }): Promise<ArrayBuffer | null> {
+    return saveDocumentForHost(
+      {
+        clearCommentsDirty: opts.clearCommentsDirty,
+        onSave: opts.onSave,
+        saveDocument: opts.saveDocument,
+      },
+      options,
+    );
   }
 
   function scrollToParaId(paraId: string, options?: ScrollToParaIdOptions): boolean {

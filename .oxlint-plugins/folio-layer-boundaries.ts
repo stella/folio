@@ -146,12 +146,23 @@ const isAstNode = (value: unknown): value is AstNode =>
   "type" in value &&
   typeof (value as { type: unknown }).type === "string";
 
-// Pull the import specifier (the string literal after `from`) from an
-// ImportDeclaration / ExportNamedDeclaration / ExportAllDeclaration /
-// ImportExpression node. Returns null when the node has no `source`
-// (e.g. `export const x = 1`).
+// Pull a static module specifier from an import/export expression or CommonJS
+// `require()` call. Returns null when no string-literal specifier is present.
 const importSpecifierOf = (node: AstNode): string | null => {
-  const source = node.source;
+  let source = node.source;
+  if (node.type === "CallExpression") {
+    const callee = node.callee;
+    const args = node.arguments;
+    if (
+      !isAstNode(callee) ||
+      callee.type !== "Identifier" ||
+      callee.name !== "require" ||
+      !Array.isArray(args)
+    ) {
+      return null;
+    }
+    source = args.at(0);
+  }
   if (!isAstNode(source)) {
     return null;
   }
@@ -626,6 +637,7 @@ export default {
           }
         };
         return {
+          CallExpression: handle,
           ImportDeclaration: handle,
           ImportExpression: handle,
           ExportNamedDeclaration: handle,
@@ -650,6 +662,7 @@ export default {
           }
         };
         return {
+          CallExpression: handle,
           ImportDeclaration: handle,
           ImportExpression: handle,
           ExportNamedDeclaration: handle,

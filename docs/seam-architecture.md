@@ -102,8 +102,9 @@ stay identical across supported environments.
 ```ts
 interface FolioEditor {
   mount(container: HTMLElement): void;
-  loadDocx(bytes: Uint8Array): Promise<void>;
-  getDocx(): Promise<Uint8Array>;
+  loadDocument(document: Document): void;
+  loadDocx(input: ArrayBuffer | Uint8Array | Blob | File): Promise<void>;
+  getDocx(options?: { mode?: "full" | "prefer-selective" }): Promise<ArrayBuffer | null>;
   commands: { applyStyle(...): void; insertTable(...): void; /* ... */ };
   on(evt: "selectionChange" | "docChange" | "layoutComplete", cb: () => void): () => void;
   destroy(): void;

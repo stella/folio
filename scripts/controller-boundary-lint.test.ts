@@ -15,8 +15,24 @@ const lintPath = (relativePath: string, marker: string): number => {
     { cwd: REPOSITORY_ROOT },
   );
   const output = `${result.stdout.toString()}${result.stderr.toString()}`;
-  return output.split(marker).length - 1;
+  const violationCount = output.split(marker).length - 1;
+  const hasViolations = violationCount > 0;
+  const lintFailed = result.exitCode !== 0;
+  if (hasViolations !== lintFailed) {
+    throw new Error(
+      `oxlint exited with ${result.exitCode} for ${violationCount} ${marker} violations:\n${output}`,
+    );
+  }
+  return violationCount;
 };
+
+describe("boundary lint fixture runner", () => {
+  test("surfaces lint invocation failures", () => {
+    expect(() =>
+      lintPath("test/__fixtures__/missing-boundary-fixture.ts", CONTROLLER_RULE_MARKER),
+    ).toThrow("oxlint exited with 1 for 0");
+  });
+});
 
 describe("controller and engine boundary lint", () => {
   test("rejects a runtime dependency from the pure layout engine", () => {
@@ -37,6 +53,15 @@ describe("controller and engine boundary lint", () => {
     ).toBe(1);
   });
 
+  test("rejects a CommonJS runtime dependency from the pure layout engine", () => {
+    expect(
+      lintPath(
+        "test/__fixtures__/packages/core/src/layout-engine/runtime-require.invalid.ts",
+        CONTROLLER_RULE_MARKER,
+      ),
+    ).toBe(1);
+  });
+
   test("rejects a controller implementation imported upstream", () => {
     expect(
       lintPath(
@@ -46,10 +71,28 @@ describe("controller and engine boundary lint", () => {
     ).toBe(1);
   });
 
+  test("rejects a CommonJS controller dependency imported upstream", () => {
+    expect(
+      lintPath(
+        "test/__fixtures__/packages/core/src/render-dom/controller-require.invalid.ts",
+        CONTROLLER_RULE_MARKER,
+      ),
+    ).toBe(1);
+  });
+
   test("accepts a pure model dependency from the layout engine", () => {
     expect(
       lintPath(
         "test/__fixtures__/packages/core/src/layout-engine/model-import.valid.ts",
+        CONTROLLER_RULE_MARKER,
+      ),
+    ).toBe(0);
+  });
+
+  test("accepts a CommonJS pure model dependency from the layout engine", () => {
+    expect(
+      lintPath(
+        "test/__fixtures__/packages/core/src/layout-engine/model-require.valid.ts",
         CONTROLLER_RULE_MARKER,
       ),
     ).toBe(0);
@@ -66,6 +109,15 @@ describe("Rust projection boundary lint", () => {
   test("rejects a second generated-kernel entry point", () => {
     expect(
       lintPath("test/__fixtures__/packages/docx-core/src/alternate.ts", PROJECTION_RULE_MARKER),
+    ).toBe(1);
+  });
+
+  test("rejects a CommonJS generated-kernel entry point", () => {
+    expect(
+      lintPath(
+        "test/__fixtures__/packages/docx-core/src/alternate-require.invalid.ts",
+        PROJECTION_RULE_MARKER,
+      ),
     ).toBe(1);
   });
 
@@ -98,6 +150,15 @@ describe("Rust projection boundary lint", () => {
 
   test("accepts the canonical projection boundary", () => {
     expect(lintPath("packages/docx-core/src/projection.ts", PROJECTION_RULE_MARKER)).toBe(0);
+  });
+
+  test("accepts allow-listed CommonJS imports at the canonical projection boundary", () => {
+    expect(
+      lintPath(
+        "test/__fixtures__/projection-require-valid/packages/docx-core/src/projection.ts",
+        PROJECTION_RULE_MARKER,
+      ),
+    ).toBe(0);
   });
 
   test("accepts a projection test that loads the generated fixture", () => {
