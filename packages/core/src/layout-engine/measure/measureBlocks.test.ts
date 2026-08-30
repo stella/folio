@@ -15,7 +15,7 @@ const para = (id: string, text: string): ParagraphBlock => ({
   runs: [{ kind: "text", text }],
 });
 
-const centeredMarginFloatingTable = (id: string): TableBlock => ({
+const centeredMarginFloatingTable = (id: string, cellText = "cell"): TableBlock => ({
   kind: "table",
   id,
   columnWidths: [200],
@@ -23,7 +23,7 @@ const centeredMarginFloatingTable = (id: string): TableBlock => ({
   rows: [
     {
       id: `${id}-row`,
-      cells: [{ id: `${id}-cell`, blocks: [para(`${id}-content`, "cell")] }],
+      cells: [{ id: `${id}-cell`, blocks: [para(`${id}-content`, cellText)] }],
     },
   ],
 });
@@ -428,6 +428,43 @@ describe("measureBlocks", () => {
       }
 
       expect(bodyMeasure.lines.at(0)?.leftOffset).toBe(62);
+    }, fakeMeasure);
+  });
+
+  test("starts a continuous section below the tallest explicit column with an active float", () => {
+    withFakeTextMeasure(() => {
+      const blocks: FlowBlock[] = [
+        centeredMarginFloatingTable("column-region-float", "x".repeat(120)),
+        para("tall-first-column", "x".repeat(500)),
+        { kind: "columnBreak", id: "unequal-column-break" },
+        para("short-second-column", "body"),
+        { kind: "sectionBreak", id: "continuous-after-columns", type: "continuous" },
+        para("continuous-body", "body"),
+      ];
+      const measures = measureBlocks(blocks, [350, 350, 350, 350, 350, 800], 0, {
+        pageWidth: 1_000,
+        pageHeight: 1_000,
+        marginLeft: 100,
+        marginRight: 100,
+        marginBottom: 40,
+        contentLeft: [100, 100, 100, 550, 550, 100],
+        columnIndex: [0, 0, 0, 1, 1, 0],
+        columnCount: [2, 2, 2, 2, 2, 1],
+      });
+      const firstColumn = measures.at(1);
+      const secondColumn = measures.at(3);
+      const continuousBody = measures.at(5);
+      if (
+        firstColumn?.kind !== "paragraph" ||
+        secondColumn?.kind !== "paragraph" ||
+        continuousBody?.kind !== "paragraph"
+      ) {
+        throw new Error("Expected paragraph measures");
+      }
+
+      expect(firstColumn.totalHeight).toBeGreaterThan(secondColumn.totalHeight);
+      expect(continuousBody.lines.at(0)?.leftOffset).toBeUndefined();
+      expect(continuousBody.lines.at(0)?.rightOffset).toBeUndefined();
     }, fakeMeasure);
   });
 

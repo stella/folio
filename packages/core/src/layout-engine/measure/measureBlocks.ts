@@ -956,6 +956,10 @@ function isNextPageSectionBreak(block: FlowBlock): boolean {
   return block.kind === "sectionBreak" && block.type !== undefined && block.type !== "continuous";
 }
 
+function isContinuousSectionBreak(block: FlowBlock): boolean {
+  return block.kind === "sectionBreak" && (block.type === undefined || block.type === "continuous");
+}
+
 /**
  * Measure all blocks with floating image support.
  *
@@ -1050,6 +1054,7 @@ export function measureBlocks(
   //    anchored earlier on the same page. eigenpal #694.
   let cumulativeY = 0;
   let pageRelativeY = 0;
+  let columnRegionMaxBottom = 0;
   let activeZones: FloatingImageZone[] = [];
   let activeTablePageRects: FloatingTablePageRectWithAnchor[] = [];
   const contentLeftInput = pageGeometry?.contentLeft ?? pageGeometry?.marginLeft ?? 0;
@@ -1081,6 +1086,7 @@ export function measureBlocks(
       activeTablePageRects = [];
       cumulativeY = 0;
       pageRelativeY = 0;
+      columnRegionMaxBottom = 0;
     } else if (block.kind === "columnBreak") {
       // A new column starts again at the page's body top. Page-positioned
       // exclusions remain active, but their vertical comparisons use the new
@@ -1088,6 +1094,9 @@ export function measureBlocks(
       if (blockColumnIndex + 1 >= blockColumnCount) {
         activeZones = [];
         activeTablePageRects = [];
+        columnRegionMaxBottom = 0;
+      } else {
+        columnRegionMaxBottom = Math.max(columnRegionMaxBottom, pageRelativeY);
       }
       cumulativeY = 0;
       pageRelativeY = 0;
@@ -1162,6 +1171,13 @@ export function measureBlocks(
       if ("totalHeight" in measure && !(block.kind === "table" && (block as TableBlock).floating)) {
         cumulativeY += measure.totalHeight;
         pageRelativeY += measure.totalHeight;
+      }
+
+      if (isContinuousSectionBreak(block)) {
+        const nextSectionY = Math.max(pageRelativeY, columnRegionMaxBottom);
+        cumulativeY = nextSectionY;
+        pageRelativeY = nextSectionY;
+        columnRegionMaxBottom = 0;
       }
 
       return measure;
