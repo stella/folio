@@ -15,20 +15,60 @@ export type TableCellBlockPlacement = {
   leadingSpacing: number;
 };
 
+const TABLE_CELL_FLOW_POSITION = {
+  start: "start",
+  interior: "interior",
+} as const;
+type TableCellFlowPosition =
+  (typeof TABLE_CELL_FLOW_POSITION)[keyof typeof TABLE_CELL_FLOW_POSITION];
+
+const TABLE_CELL_TRAILING_SPACING_TYPE = {
+  none: "none",
+  authored: "authored",
+  automatic: "automatic",
+} as const;
+
+type TableCellTrailingSpacing =
+  | { type: typeof TABLE_CELL_TRAILING_SPACING_TYPE.none }
+  | { type: typeof TABLE_CELL_TRAILING_SPACING_TYPE.authored; value: number }
+  | { type: typeof TABLE_CELL_TRAILING_SPACING_TYPE.automatic; value: number };
+
 export type TableCellFlowState = {
   height: number;
+  position: TableCellFlowPosition;
   previousParagraphWasEmpty: boolean;
-  trailingSpacing: number;
+  trailingSpacing: TableCellTrailingSpacing;
 };
 
 export const createTableCellFlowState = (): TableCellFlowState => ({
   height: 0,
+  position: TABLE_CELL_FLOW_POSITION.start,
   previousParagraphWasEmpty: false,
-  trailingSpacing: 0,
+  trailingSpacing: { type: TABLE_CELL_TRAILING_SPACING_TYPE.none },
 });
 
-export const finishTableCellFlow = (state: TableCellFlowState): number =>
-  state.height + state.trailingSpacing;
+const trailingSpacingValue = (spacing: TableCellTrailingSpacing): number => {
+  switch (spacing.type) {
+    case TABLE_CELL_TRAILING_SPACING_TYPE.none:
+      return 0;
+    case TABLE_CELL_TRAILING_SPACING_TYPE.authored:
+    case TABLE_CELL_TRAILING_SPACING_TYPE.automatic:
+      return spacing.value;
+    default: {
+      const unhandled: never = spacing;
+      return unhandled;
+    }
+  }
+};
+
+export const finishTableCellFlow = (state: TableCellFlowState): number => {
+  // Automatic HTML paragraph spacing is suppressed at a table-cell boundary;
+  // authored spacing remains part of the cell box.
+  if (state.trailingSpacing.type === TABLE_CELL_TRAILING_SPACING_TYPE.automatic) {
+    return state.height;
+  }
+  return state.height + trailingSpacingValue(state.trailingSpacing);
+};
 
 const isSuppressedParagraphMeasure = (measure: ParagraphMeasure): boolean =>
   measure.totalHeight === 0 && measure.lines.every(({ lineHeight }) => lineHeight === 0);
@@ -84,23 +124,35 @@ export const placeTableCellBlock = (
     return { top, contentTop: top, contentHeight: 0, leadingSpacing: 0 };
   }
   if (block.kind !== "paragraph" || measure.kind !== "paragraph") {
-    const leadingSpacing = state.trailingSpacing;
+    const leadingSpacing = trailingSpacingValue(state.trailingSpacing);
     const contentTop = top + leadingSpacing;
     state.height = contentTop + contentHeight;
+    state.position = TABLE_CELL_FLOW_POSITION.interior;
     state.previousParagraphWasEmpty = false;
-    state.trailingSpacing = 0;
+    state.trailingSpacing = { type: TABLE_CELL_TRAILING_SPACING_TYPE.none };
     return { top, contentTop, contentHeight, leadingSpacing };
   }
 
   const spacing = paragraphSpacing(block, measure);
   const empty = isEmptyParagraph(block);
+  // Apply the same boundary rule to the first visible paragraph in the cell.
+  const before =
+    state.position === TABLE_CELL_FLOW_POSITION.start &&
+    block.attrs?.automaticSpacing?.before === true
+      ? 0
+      : spacing.before;
+  const trailingSpacing = trailingSpacingValue(state.trailingSpacing);
   const leadingSpacing =
     empty && state.previousParagraphWasEmpty
-      ? spacing.before + state.trailingSpacing
-      : collapseParagraphSpacing({ before: spacing.before, after: state.trailingSpacing });
+      ? before + trailingSpacing
+      : collapseParagraphSpacing({ before, after: trailingSpacing });
   const contentTop = top + leadingSpacing;
   state.height = contentTop + contentHeight;
+  state.position = TABLE_CELL_FLOW_POSITION.interior;
   state.previousParagraphWasEmpty = empty;
-  state.trailingSpacing = spacing.after;
+  state.trailingSpacing =
+    block.attrs?.automaticSpacing?.after === true
+      ? { type: TABLE_CELL_TRAILING_SPACING_TYPE.automatic, value: spacing.after }
+      : { type: TABLE_CELL_TRAILING_SPACING_TYPE.authored, value: spacing.after };
   return { top, contentTop, contentHeight, leadingSpacing };
 };

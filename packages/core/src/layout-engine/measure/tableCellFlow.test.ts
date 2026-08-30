@@ -197,6 +197,34 @@ describe("table cell block flow", () => {
     expect(finishTableCellFlow(state)).toBe(18);
   });
 
+  test("suppresses automatic paragraph spacing at table-cell boundaries", () => {
+    const state = createTableCellFlowState();
+    const block = paragraph("body", "body", { before: 14, after: 14 });
+    block.attrs = {
+      ...block.attrs,
+      automaticSpacing: { before: true, after: true },
+    };
+
+    const placement = placeTableCellBlock(state, block, measure(10, 28));
+
+    expect(placement.leadingSpacing).toBe(0);
+    expect(finishTableCellFlow(state)).toBe(10);
+  });
+
+  test("preserves automatic paragraph spacing inside a table cell", () => {
+    const state = createTableCellFlowState();
+    const first = paragraph("first", "first", { after: 14 });
+    first.attrs = { ...first.attrs, automaticSpacing: { after: true } };
+    const second = paragraph("second", "second", { before: 14 });
+    second.attrs = { ...second.attrs, automaticSpacing: { before: true } };
+
+    placeTableCellBlock(state, first, measure(10, 14));
+    const placement = placeTableCellBlock(state, second, measure(10, 14));
+
+    expect(placement.leadingSpacing).toBe(14);
+    expect(finishTableCellFlow(state)).toBe(34);
+  });
+
   test("keeps a suppressed empty paragraph at zero height", () => {
     const state = createTableCellFlowState();
     const block = paragraph("marker", "", { before: 8, after: 8 });
