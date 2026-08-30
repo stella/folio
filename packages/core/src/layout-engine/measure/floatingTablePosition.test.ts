@@ -4,6 +4,7 @@ import { resolveFloatingTableX } from "./floatingTablePosition";
 
 const CONTENT = 624;
 const TABLE = 333;
+const OVERWIDE_TABLE = 700;
 
 describe("resolveFloatingTableX", () => {
   test('tblpXSpec supersedes tblpX (§17.4.57: "that value is ignored")', () => {
@@ -30,5 +31,27 @@ describe("resolveFloatingTableX", () => {
     expect(resolveFloatingTableX({}, "center", TABLE, CONTENT)).toBe((CONTENT - TABLE) / 2);
     expect(resolveFloatingTableX({}, "right", TABLE, CONTENT)).toBe(CONTENT - TABLE);
     expect(resolveFloatingTableX({}, undefined, TABLE, CONTENT)).toBe(0);
+  });
+
+  test.each([
+    ["center", (CONTENT - OVERWIDE_TABLE) / 2],
+    ["right", CONTENT - OVERWIDE_TABLE],
+    ["outside", CONTENT - OVERWIDE_TABLE],
+  ] as const)(
+    "preserves the signed offset for an over-wide tblpXSpec=%s table",
+    (spec, expected) => {
+      expect(resolveFloatingTableX({ tblpXSpec: spec }, undefined, OVERWIDE_TABLE, CONTENT)).toBe(
+        expected,
+      );
+    },
+  );
+
+  test("preserves signed over-wide offsets from w:jc fallback", () => {
+    expect(resolveFloatingTableX({}, "center", OVERWIDE_TABLE, CONTENT)).toBe(
+      (CONTENT - OVERWIDE_TABLE) / 2,
+    );
+    expect(resolveFloatingTableX({}, "right", OVERWIDE_TABLE, CONTENT)).toBe(
+      CONTENT - OVERWIDE_TABLE,
+    );
   });
 });

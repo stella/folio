@@ -1477,16 +1477,12 @@ function layoutFloatingTable(
     y = fitState.cursorY;
   }
 
-  // Alignment keywords stay inside their selected anchor frame. A numeric
-  // offset may deliberately move a margin-anchored table into the page margin,
-  // so clamp that resolved position only against the physical page.
-  const usesNumericOffset = floating?.tblpX !== undefined && floating.tblpXSpec === undefined;
-  const pageAnchored = floating?.horzAnchor === "page";
-  const clampToPage = pageAnchored || usesNumericOffset;
-  const minX = clampToPage ? 0 : margins.left;
-  const maxX = clampToPage ? page.size.w - tableWidth : margins.left + contentWidth - tableWidth;
+  // Alignment resolves within the selected anchor frame and may produce a
+  // signed offset when the table is wider than that frame. Preserve that
+  // overhang while keeping the final rectangle within the physical page.
+  const maxX = Math.max(0, page.size.w - tableWidth);
   if (Number.isFinite(maxX)) {
-    x = Math.max(minX, Math.min(x, maxX));
+    x = Math.max(0, Math.min(x, maxX));
   }
 
   const fragment: TableFragment = {

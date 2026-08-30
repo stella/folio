@@ -1193,6 +1193,27 @@ describe("floating table placement", () => {
     expect(fragment?.x).toBe(OPTIONS.margins.left);
   });
 
+  test("centers an over-wide margin-relative table across the body margins", () => {
+    const { block, measure } = tallTable(1);
+    block.floating = { horzAnchor: "margin", tblpXSpec: "center" };
+    measure.totalWidth = 240;
+
+    const fragment = tableFragments(block, measure).at(0);
+    const contentWidth = OPTIONS.pageSize.w - OPTIONS.margins.left - OPTIONS.margins.right;
+
+    expect(fragment?.x).toBe(OPTIONS.margins.left + (contentWidth - measure.totalWidth) / 2);
+  });
+
+  test("pins a table wider than the physical page to its left edge", () => {
+    const { block, measure } = tallTable(1);
+    block.floating = { horzAnchor: "margin", tblpXSpec: "center" };
+    measure.totalWidth = OPTIONS.pageSize.w + 20;
+
+    const fragment = tableFragments(block, measure).at(0);
+
+    expect(fragment?.x).toBe(0);
+  });
+
   test("clamps a numeric margin-relative offset against the physical page", () => {
     const { block, measure } = tallTable(1);
     block.floating = { horzAnchor: "margin", tblpX: -80 };
