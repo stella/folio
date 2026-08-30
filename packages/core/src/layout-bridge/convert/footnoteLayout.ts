@@ -624,7 +624,7 @@ function createFootnoteNumberRun(displayNumber: number, paragraph: ParagraphBloc
     (run) => run.kind === "text" || run.kind === "tab" || run.kind === "field",
   );
   const suffix = resolveFootnoteNumberSuffix(paragraph.runs);
-  const text = `${displayNumber}${suffix === "space" ? " " : ""}`;
+  const text = `${displayNumber}${suffix === FOOTNOTE_NUMBER_SUFFIX.SEPARATED ? " " : ""}`;
   const numberRun: TextRun = {
     kind: "text",
     text,
@@ -645,7 +645,12 @@ function createFootnoteNumberRun(displayNumber: number, paragraph: ParagraphBloc
   return numberRun;
 }
 
-type FootnoteNumberSuffix = "none" | "space";
+const FOOTNOTE_NUMBER_SUFFIX = {
+  ATTACHED: "none",
+  SEPARATED: "space",
+} as const;
+
+type FootnoteNumberSuffix = (typeof FOOTNOTE_NUMBER_SUFFIX)[keyof typeof FOOTNOTE_NUMBER_SUFFIX];
 
 // Closing/final punctuation belongs to the reconstructed marker. Sentence
 // terminals and common international comma/colon/semicolon forms can also be
@@ -657,9 +662,9 @@ const LEADING_WHITESPACE_PATTERN = /^\s/u;
 
 function resolveTextFootnoteNumberSuffix(text: string): FootnoteNumberSuffix {
   if (LEADING_WHITESPACE_PATTERN.test(text) || ATTACHED_FOOTNOTE_SUFFIX_PATTERN.test(text)) {
-    return "none";
+    return FOOTNOTE_NUMBER_SUFFIX.ATTACHED;
   }
-  return "space";
+  return FOOTNOTE_NUMBER_SUFFIX.SEPARATED;
 }
 
 function resolveRunFootnoteNumberSuffix(run: Run): FootnoteNumberSuffix | undefined {
@@ -668,13 +673,13 @@ function resolveRunFootnoteNumberSuffix(run: Run): FootnoteNumberSuffix | undefi
       return run.text.length === 0 ? undefined : resolveTextFootnoteNumberSuffix(run.text);
     case "tab":
     case "lineBreak":
-      return "none";
+      return FOOTNOTE_NUMBER_SUFFIX.ATTACHED;
     case "field":
       return resolveTextFootnoteNumberSuffix(run.fallback || "1");
     case "image":
-      return isFloatingImageRun(run) ? undefined : "space";
+      return isFloatingImageRun(run) ? undefined : FOOTNOTE_NUMBER_SUFFIX.SEPARATED;
     case "math":
-      return "space";
+      return FOOTNOTE_NUMBER_SUFFIX.SEPARATED;
     case "renderedPageBreak":
       return undefined;
     default: {
@@ -691,7 +696,7 @@ function resolveFootnoteNumberSuffix(runs: Run[]): FootnoteNumberSuffix {
       return suffix;
     }
   }
-  return "space";
+  return FOOTNOTE_NUMBER_SUFFIX.SEPARATED;
 }
 
 function applyFootnoteBlockPresentation(block: FlowBlock): FlowBlock {

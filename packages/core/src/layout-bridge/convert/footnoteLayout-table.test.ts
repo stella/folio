@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { panic } from "better-result";
 
 import {
   fixedCharWidth,
@@ -16,7 +17,7 @@ function presentedFootnoteParagraph(runs: Run[]): ParagraphBlock {
     8,
   ).at(0);
   if (paragraph?.kind !== "paragraph") {
-    throw new Error("Expected a paragraph block");
+    panic("Expected a paragraph block");
   }
   return paragraph;
 }
@@ -386,7 +387,7 @@ describe("footnote layout", () => {
     const paragraph = applyFootnotePresentation(blocks, 8).at(0);
     expect(paragraph?.kind).toBe("paragraph");
     if (paragraph?.kind !== "paragraph") {
-      throw new Error("Expected a paragraph block");
+      panic("Expected a paragraph block");
     }
 
     expect(paragraph.runs.at(0)).toMatchObject({
