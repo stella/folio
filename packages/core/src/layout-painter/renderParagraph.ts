@@ -10,6 +10,10 @@ import { parseXmlDocument } from "../docx/xmlParser";
 import { evaluateFieldInstruction } from "../fields/evaluateField";
 import type { FieldContext } from "../fields/fieldContext";
 import {
+  JUSTIFIED_LIST_FINAL_LINE_MAX_SHRINK_RATIO,
+  supportsJustifiedListFinalLineContraction,
+} from "../layout-engine/justifiedLineFit";
+import {
   getListMarkerInlineWidth,
   getListMarkerVisualOffset,
   resolveListMarkerFont,
@@ -2240,37 +2244,45 @@ export function renderLine(
   const isJustify = alignment === "justify";
 
   if (isJustify && options) {
-    // Justify all lines except the last line (unless it ends with line break)
+    const firstLineIndentPx = options.isFirstLine ? (options.firstLineIndentPx ?? 0) : 0;
+    const firstLinePositiveIndentPx = Math.max(0, firstLineIndentPx);
+    const firstLineHangingPx = Math.max(0, -firstLineIndentPx);
+    const hasVisibleListMarker =
+      options.isFirstLine && block.attrs?.listMarker && !block.attrs.listMarkerHidden;
+    // A list marker consumes the hanging slot inline. When the marker starts
+    // before the content edge, its negative margin cancels the part of that
+    // slot outside the paragraph; only the portion between the content edge
+    // and the body start can expand the line box. Letting the full hanging
+    // value expand a zero-left list pushed justified text past the right
+    // margin by exactly one hanging slot.
+    const firstLineHangingExpansionPx = hasVisibleListMarker
+      ? Math.min(firstLineHangingPx, Math.max(0, options.leftIndentPx ?? 0))
+      : firstLineHangingPx;
+    // Keep the explicit word-spacing budget identical to the measurer's
+    // first-line width. The line box itself stays at the full paragraph
+    // width because CSS text-indent consumes the positive first-line region.
+    // Counting that region again here lets tab-bearing justified lines
+    // distribute it as extra word spacing, shifting their right edge past
+    // the paragraph margin by exactly the first-line indent.
+    const justifyCapacityPx =
+      options.availableWidth - firstLinePositiveIndentPx + firstLineHangingExpansionPx;
+    const overfullPx = line.width - justifyCapacityPx;
+    const shrinkableSpaces = countShrinkableSpaces(
+      runsForLine.filter((run) => !isTextRun(run) || !isCollapsedLineEdgeSpaceRun(run)),
+      options.context,
+    );
+    // Underfull final lines remain ragged, while a final line that the
+    // measurer admitted through bounded contraction must paint inside the
+    // same right edge as every other line.
     const shouldJustify = !options.isLastLine || options.paragraphEndsWithLineBreak;
+    const shouldCompressFinalLine =
+      options.isLastLine &&
+      supportsJustifiedListFinalLineContraction(block) &&
+      overfullPx > RIGHT_EDGE_EPSILON_PX &&
+      overfullPx <= justifyCapacityPx * JUSTIFIED_LIST_FINAL_LINE_MAX_SHRINK_RATIO &&
+      shrinkableSpaces > 0;
 
-    if (shouldJustify) {
-      const firstLineIndentPx = options.isFirstLine ? (options.firstLineIndentPx ?? 0) : 0;
-      const firstLinePositiveIndentPx = Math.max(0, firstLineIndentPx);
-      const firstLineHangingPx = Math.max(0, -firstLineIndentPx);
-      const hasVisibleListMarker =
-        options.isFirstLine && block.attrs?.listMarker && !block.attrs.listMarkerHidden;
-      // A list marker consumes the hanging slot inline. When the marker starts
-      // before the content edge, its negative margin cancels the part of that
-      // slot outside the paragraph; only the portion between the content edge
-      // and the body start can expand the line box. Letting the full hanging
-      // value expand a zero-left list pushed justified text past the right
-      // margin by exactly one hanging slot.
-      const firstLineHangingExpansionPx = hasVisibleListMarker
-        ? Math.min(firstLineHangingPx, Math.max(0, options.leftIndentPx ?? 0))
-        : firstLineHangingPx;
-      // Keep the explicit word-spacing budget identical to the measurer's
-      // first-line width. The line box itself stays at the full paragraph
-      // width because CSS text-indent consumes the positive first-line region.
-      // Counting that region again here lets tab-bearing justified lines
-      // distribute it as extra word spacing, shifting their right edge past
-      // the paragraph margin by exactly the first-line indent.
-      const justifyCapacityPx =
-        options.availableWidth - firstLinePositiveIndentPx + firstLineHangingExpansionPx;
-      const overfullPx = line.width - justifyCapacityPx;
-      const shrinkableSpaces = countShrinkableSpaces(
-        runsForLine.filter((run) => !isTextRun(run) || !isCollapsedLineEdgeSpaceRun(run)),
-        options.context,
-      );
+    if (shouldJustify || shouldCompressFinalLine) {
       if (overfullPx > RIGHT_EDGE_EPSILON_PX && shrinkableSpaces > 0) {
         lineEl.style.textAlign = "left";
         lineEl.style.textAlignLast = "auto";

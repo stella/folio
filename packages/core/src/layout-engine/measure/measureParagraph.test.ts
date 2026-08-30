@@ -1552,7 +1552,7 @@ describe("measureParagraph justified shrink tolerance", () => {
               indent: { left: 36, hanging: 36 },
             },
           },
-          136,
+          138.5,
         );
         const overflowingMeasure = measureParagraph(
           {
@@ -1569,7 +1569,7 @@ describe("measureParagraph justified shrink tolerance", () => {
               indent: { left: 36, hanging: 36 },
             },
           },
-          135.8,
+          138.2,
         );
 
         expect(fittingMeasure.lines).toHaveLength(2);
@@ -1578,10 +1578,57 @@ describe("measureParagraph justified shrink tolerance", () => {
       {
         charWidth: (char) => {
           if (char === "b") return 5.3;
-          if (char === " ") return 0.55;
+          if (char === " ") return 0.9;
           return 8;
         },
       },
+    );
+  });
+
+  test("allows wider bounded contraction only for the paragraph-tail token", () => {
+    const prefix = "a ".repeat(50);
+
+    withFakeTextMeasure(
+      () => {
+        const finalTokenMeasure = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "justified-list-final-token-contraction",
+            runs: [
+              { kind: "text", text: "first line" },
+              { kind: "lineBreak" },
+              { kind: "text", text: `${prefix}bbb` },
+            ],
+            attrs: {
+              alignment: "justify",
+              listMarker: "1.",
+              indent: { left: 36, hanging: 18 },
+            },
+          },
+          136,
+        );
+        const intermediateTokenMeasure = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "justified-list-intermediate-token-contraction",
+            runs: [
+              { kind: "text", text: "first line" },
+              { kind: "lineBreak" },
+              { kind: "text", text: `${prefix}bbb c` },
+            ],
+            attrs: {
+              alignment: "justify",
+              listMarker: "1.",
+              indent: { left: 36, hanging: 18 },
+            },
+          },
+          136,
+        );
+
+        expect(finalTokenMeasure.lines).toHaveLength(2);
+        expect(intermediateTokenMeasure.lines).toHaveLength(3);
+      },
+      { charWidth: (char) => (char === "b" ? 0.8 : 1) },
     );
   });
 
@@ -1761,13 +1808,30 @@ describe("measureParagraph justified shrink tolerance", () => {
     );
   });
 
-  test("keeps inset list continuation lines on the conservative tolerance", () => {
+  test("bases inset list continuation fitting on compressible spaces", () => {
     withFakeTextMeasure(
       () => {
-        const measure = measureParagraph(
+        const spaceRichMeasure = measureParagraph(
           {
             kind: "paragraph",
-            id: "justified-inset-list-continuation",
+            id: "justified-inset-list-space-budget",
+            runs: [
+              { kind: "text", text: "first line" },
+              { kind: "lineBreak" },
+              { kind: "text", text: `${"a ".repeat(10)}${"a".repeat(60)}bbb` },
+            ],
+            attrs: {
+              alignment: "justify",
+              listMarker: "1.",
+              indent: { left: 36, hanging: 18 },
+            },
+          },
+          136,
+        );
+        const spacePoorMeasure = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "justified-inset-list-small-space-budget",
             runs: [
               { kind: "text", text: "first line" },
               { kind: "lineBreak" },
@@ -1782,7 +1846,8 @@ describe("measureParagraph justified shrink tolerance", () => {
           136,
         );
 
-        expect(measure.lines).toHaveLength(3);
+        expect(spaceRichMeasure.lines).toHaveLength(2);
+        expect(spacePoorMeasure.lines).toHaveLength(3);
       },
       {
         charWidth: fractionalWidth,

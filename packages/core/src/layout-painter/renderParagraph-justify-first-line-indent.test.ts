@@ -188,6 +188,42 @@ describe("Issue #868 — justify first line to full content width on indented pa
     expect(lineEl.style.wordSpacing).toBe("-5px");
   });
 
+  test("compresses an overfull final justified line without expanding an underfull one", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "p-final-line-contraction",
+      runs: [{ kind: "text", text: "alpha beta gamma" }],
+      attrs: { alignment: "justify", listMarker: "1." },
+    };
+    const line = (width: number): MeasuredLine => ({
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 0,
+      toChar: 16,
+      width,
+      ascent: 10,
+      descent: 3,
+      lineHeight: 14,
+    });
+    const options = {
+      availableWidth: 100,
+      isLastLine: true,
+      isFirstLine: false,
+      paragraphEndsWithLineBreak: false,
+    };
+
+    const overfull = renderLine(block, line(102), "justify", fakeDocument, options);
+    const beyondContractionLimit = renderLine(block, line(103), "justify", fakeDocument, options);
+    const underfull = renderLine(block, line(90), "justify", fakeDocument, options);
+
+    expect(overfull.style.width).toBe("100px");
+    expect(overfull.style.wordSpacing).toBe("-1px");
+    expect(beyondContractionLimit.style.width).toBeUndefined();
+    expect(beyondContractionLimit.style.wordSpacing).toBeUndefined();
+    expect(underfull.style.width).toBeUndefined();
+    expect(underfull.style.wordSpacing).toBeUndefined();
+  });
+
   test("counts resolved field text when compressing an overfull line", () => {
     const block: ParagraphBlock = {
       kind: "paragraph",

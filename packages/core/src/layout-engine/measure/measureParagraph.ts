@@ -17,6 +17,10 @@ import { isRtlParagraph } from "../../utils/paragraphBaseDirection";
 import { hasCjk, hasComplexScript } from "../../utils/scriptSegments";
 import { getHorizontalScaleFactor } from "../../utils/horizontalScale";
 import { measuredLineAdvance } from "../lineFlow";
+import {
+  JUSTIFIED_LIST_FINAL_LINE_MAX_SHRINK_RATIO,
+  supportsJustifiedListFinalLineContraction,
+} from "../justifiedLineFit";
 import type {
   ParagraphBlock,
   ParagraphMeasure,
@@ -77,10 +81,8 @@ const JUSTIFY_SHRINK_TOLERANCE_RATIO = 0.016;
 const JUSTIFY_SPACE_CONTRACTION_RATIO = 0.075;
 const JUSTIFY_LIST_MARKER_SPACE_CONTRACTION_RATIO = 0.195;
 const JUSTIFY_DEEP_HANGING_LIST_MARKER_SHRINK_TOLERANCE_RATIO = 0.022;
-// Full-hanging continuations allow stronger space contraction with bounded total shrink.
+// List continuations allow stronger space contraction with bounded total shrink.
 const JUSTIFY_LIST_CONTINUATION_SPACE_CONTRACTION_RATIO = 0.32;
-const JUSTIFY_LIST_CONTINUATION_MAX_SHRINK_TOLERANCE_RATIO = 0.015;
-const JUSTIFY_INSET_LIST_SHRINK_TOLERANCE_RATIO = 0.015;
 const JUSTIFY_LITERAL_TAB_CONTINUATION_SHRINK_TOLERANCE_RATIO = 0.017;
 const JUSTIFY_HANGING_TAB_SHRINK_TOLERANCE_RATIO = 0.021;
 const DEFAULT_LIST_HANGING_INDENT_PX = 24;
@@ -674,14 +676,10 @@ function resolveJustifyFitStrategy(
             ratio: JUSTIFY_DEEP_HANGING_LIST_MARKER_SHRINK_TOLERANCE_RATIO,
           };
     }
-    const left = block.attrs.indent?.left ?? 0;
-    if (hanging > 0 && left > hanging) {
-      return { type: "width", ratio: JUSTIFY_INSET_LIST_SHRINK_TOLERANCE_RATIO };
-    }
     return {
       type: "space",
       ratio: JUSTIFY_LIST_CONTINUATION_SPACE_CONTRACTION_RATIO,
-      maxWidthRatio: JUSTIFY_LIST_CONTINUATION_MAX_SHRINK_TOLERANCE_RATIO,
+      maxWidthRatio: JUSTIFY_SHRINK_TOLERANCE_RATIO,
     };
   }
 
@@ -705,6 +703,38 @@ function resolveJustifyFitStrategy(
     return { type: "width", ratio: JUSTIFY_SHRINK_TOLERANCE_RATIO };
   }
   return { type: "space", ratio: JUSTIFY_SPACE_CONTRACTION_RATIO };
+}
+
+function resolveFinalLineJustifyFitStrategy(
+  block: ParagraphBlock,
+  profile: JustificationProfile,
+): JustifyFitStrategy {
+  if (supportsJustifiedListFinalLineContraction(block)) {
+    return {
+      type: "space",
+      ratio: JUSTIFY_LIST_CONTINUATION_SPACE_CONTRACTION_RATIO,
+      maxWidthRatio: JUSTIFIED_LIST_FINAL_LINE_MAX_SHRINK_RATIO,
+    };
+  }
+  return resolveJustifyFitStrategy(block, false, profile);
+}
+
+function isFinalTextCandidate(block: ParagraphBlock, runIndex: number, nextBreak: number): boolean {
+  const currentRun = block.runs[runIndex];
+  if (!currentRun || !isTextRun(currentRun) || nextBreak !== currentRun.text.length) {
+    return false;
+  }
+  for (let index = runIndex + 1; index < block.runs.length; index += 1) {
+    const run = block.runs[index];
+    if (run?.kind === "renderedPageBreak") {
+      continue;
+    }
+    if (run && isTextRun(run) && run.text.length === 0) {
+      continue;
+    }
+    return false;
+  }
+  return true;
 }
 
 function compressibleSpaceWidth(text: string, style: FontStyle): number {
@@ -1161,6 +1191,10 @@ export function measureParagraph(
   const continuationJustifyFitStrategy = resolveJustifyFitStrategy(
     block,
     false,
+    justificationProfile,
+  );
+  const finalLineJustifyFitStrategy = resolveFinalLineJustifyFitStrategy(
+    block,
     justificationProfile,
   );
 
@@ -1931,12 +1965,13 @@ export function measureParagraph(
         );
         const isFirstLine = lines.length === 0;
         const regularSpaceWidth = compressibleSpaceWidth(measuredWord, style);
+        const justifyFitStrategy = isFirstLine
+          ? firstLineJustifyFitStrategy
+          : isFinalTextCandidate(block, runIndex, nextBreak)
+            ? finalLineJustifyFitStrategy
+            : continuationJustifyFitStrategy;
         const widthTolerance = isJustifiedParagraph
-          ? justifyFitTolerance(
-              currentLine,
-              isFirstLine ? firstLineJustifyFitStrategy : continuationJustifyFitStrategy,
-              regularSpaceWidth,
-            )
+          ? justifyFitTolerance(currentLine, justifyFitStrategy, regularSpaceWidth)
           : WIDTH_TOLERANCE;
 
         const automaticHyphenation = effectiveLineBreakPolicy.automaticHyphenation;
