@@ -50,7 +50,7 @@ describe("rendered break reconciliation", () => {
     });
 
     expect(decision).toEqual({
-      forcePageBreak: true,
+      pageAdvance: "physical",
       suppressSpaceBefore: false,
       state: INITIAL_RENDERED_BREAK_STATE,
     });
@@ -69,7 +69,7 @@ describe("rendered break reconciliation", () => {
       renderedBreakNeedsSnap: true,
     });
 
-    expect(decision.forcePageBreak).toBe(true);
+    expect(decision.pageAdvance).toBe("physical");
     expect(decision.suppressSpaceBefore).toBe(true);
     expect(decision.state).toEqual(INITIAL_RENDERED_BREAK_STATE);
   });
@@ -86,7 +86,7 @@ describe("rendered break reconciliation", () => {
       renderedBreakNeedsSnap: false,
     });
 
-    expect(decision.forcePageBreak).toBe(false);
+    expect(decision.pageAdvance).toBe("none");
     expect(decision.suppressSpaceBefore).toBe(false);
     expect(decision.state).toEqual(INITIAL_RENDERED_BREAK_STATE);
   });
@@ -103,7 +103,7 @@ describe("rendered break reconciliation", () => {
       renderedBreakNeedsSnap: false,
     });
 
-    expect(decision.forcePageBreak).toBe(true);
+    expect(decision.pageAdvance).toBe("physical");
     expect(decision.state).toEqual(INITIAL_RENDERED_BREAK_STATE);
   });
 
@@ -122,7 +122,7 @@ describe("rendered break reconciliation", () => {
       renderedBreakNeedsSnap: false,
     });
 
-    expect(decision.forcePageBreak).toBe(true);
+    expect(decision.pageAdvance).toBe("physical");
     expect(decision.suppressSpaceBefore).toBe(true);
   });
 
@@ -138,7 +138,7 @@ describe("rendered break reconciliation", () => {
       renderedBreakNeedsSnap: false,
     });
 
-    expect(decision.forcePageBreak).toBe(true);
+    expect(decision.pageAdvance).toBe("physical");
     expect(decision.suppressSpaceBefore).toBe(true);
     expect(decision.state).toEqual(INITIAL_RENDERED_BREAK_STATE);
   });
@@ -155,7 +155,7 @@ describe("rendered break reconciliation", () => {
       renderedBreakNeedsSnap: true,
     });
 
-    expect(decision.forcePageBreak).toBe(false);
+    expect(decision.pageAdvance).toBe("none");
     expect(decision.suppressSpaceBefore).toBe(true);
   });
 
@@ -176,7 +176,7 @@ describe("rendered break reconciliation", () => {
       renderedBreakNeedsSnap: false,
     });
 
-    expect(decision.forcePageBreak).toBe(false);
+    expect(decision.pageAdvance).toBe("none");
     expect(decision.suppressSpaceBefore).toBe(false);
   });
 
@@ -196,7 +196,7 @@ describe("rendered break reconciliation", () => {
       renderedBreakNeedsSnap: false,
     });
 
-    expect(decision.forcePageBreak).toBe(false);
+    expect(decision.pageAdvance).toBe("none");
     expect(decision.suppressSpaceBefore).toBe(true);
   });
 
@@ -216,7 +216,7 @@ describe("rendered break reconciliation", () => {
       renderedBreakNeedsSnap: true,
     });
 
-    expect(decision.forcePageBreak).toBe(true);
+    expect(decision.pageAdvance).toBe("physical");
     expect(decision.suppressSpaceBefore).toBe(false);
   });
 
@@ -236,7 +236,7 @@ describe("rendered break reconciliation", () => {
       renderedBreakNeedsSnap: false,
     });
 
-    expect(decision.forcePageBreak).toBe(false);
+    expect(decision.pageAdvance).toBe("none");
     expect(decision.suppressSpaceBefore).toBe(false);
   });
 
@@ -269,7 +269,7 @@ describe("rendered break reconciliation", () => {
       renderedBreakNeedsSnap: false,
     });
 
-    expect(decision.forcePageBreak).toBe(false);
+    expect(decision.pageAdvance).toBe("none");
     expect(decision.suppressSpaceBefore).toBe(true);
     expect(decision.state).toEqual(INITIAL_RENDERED_BREAK_STATE);
   });
@@ -406,7 +406,7 @@ describe("rendered break reconciliation", () => {
       renderedBreakNeedsSnap: true,
     });
 
-    expect(decision.forcePageBreak).toBe(false);
+    expect(decision.pageAdvance).toBe("none");
     expect(decision.state).toEqual(INITIAL_RENDERED_BREAK_STATE);
   });
 
@@ -426,7 +426,7 @@ describe("rendered break reconciliation", () => {
       renderedBreakNeedsSnap: true,
     });
 
-    expect(decision.forcePageBreak).toBe(false);
+    expect(decision.pageAdvance).toBe("none");
   });
 
   test("different tab layouts leave a cached marker authoritative", () => {
@@ -453,7 +453,7 @@ describe("rendered break reconciliation", () => {
       renderedBreakNeedsSnap: true,
     });
 
-    expect(decision.forcePageBreak).toBe(true);
+    expect(decision.pageAdvance).toBe("physical");
   });
 
   test("pages containing only empty paragraphs do not force another break", () => {
@@ -468,7 +468,7 @@ describe("rendered break reconciliation", () => {
       renderedBreakNeedsSnap: true,
     });
 
-    expect(decision.forcePageBreak).toBe(false);
+    expect(decision.pageAdvance).toBe("none");
   });
 
   test("pageBreakBefore does not create an empty page after an authored boundary", () => {
@@ -488,7 +488,7 @@ describe("rendered break reconciliation", () => {
       renderedBreakNeedsSnap: false,
     });
 
-    expect(decision.forcePageBreak).toBe(false);
+    expect(decision.pageAdvance).toBe("coalesced");
   });
 
   test("a hard page break reuses a page already opened by a carried section boundary", () => {
@@ -509,7 +509,7 @@ describe("rendered break reconciliation", () => {
     });
 
     expect(firstDecision).toMatchObject({
-      forcePageBreak: false,
+      pageAdvance: "coalesced",
       state: { boundary: "sectionBreak", nextHardBreak: "advance" },
     });
 
@@ -523,7 +523,7 @@ describe("rendered break reconciliation", () => {
       renderedBreakNeedsSnap: false,
     });
 
-    expect(secondDecision.forcePageBreak).toBe(true);
+    expect(secondDecision.pageAdvance).toBe("physical");
   });
 
   test("pageBreakBefore still advances a page with visible body content", () => {
@@ -538,7 +538,7 @@ describe("rendered break reconciliation", () => {
       renderedBreakNeedsSnap: false,
     });
 
-    expect(decision.forcePageBreak).toBe(true);
+    expect(decision.pageAdvance).toBe("physical");
   });
 
   test("pageBreakBefore preserves a distinct preceding hard-break boundary", () => {
@@ -556,7 +556,7 @@ describe("rendered break reconciliation", () => {
       renderedBreakNeedsSnap: false,
     });
 
-    expect(decision.forcePageBreak).toBe(true);
+    expect(decision.pageAdvance).toBe("physical");
   });
 });
 

@@ -433,7 +433,7 @@ function layoutDocumentPass(
       hasExplicitPageBreak,
       renderedBreakNeedsSnap,
     });
-    if (breakDecision.forcePageBreak && block.kind !== "pageBreak") {
+    if (breakDecision.pageAdvance === "physical" && block.kind !== "pageBreak") {
       paginator.forcePageBreak();
     }
     renderedBreakState = breakDecision.state;
@@ -491,8 +491,10 @@ function layoutDocumentPass(
         break;
 
       case "pageBreak":
-        if (breakDecision.forcePageBreak) {
+        if (breakDecision.pageAdvance === "physical") {
           paginator.forcePageBreak();
+        } else if (breakDecision.pageAdvance === "coalesced") {
+          paginator.coalescePageBreak();
         }
         break;
 
@@ -1770,7 +1772,11 @@ function handleSectionBreak(
         (Math.round(nextSize.w) !== Math.round(currentPage.size.w) ||
           Math.round(nextSize.h) !== Math.round(currentPage.size.h));
       if (nextSectionIndex !== undefined) {
-        paginator.startSection(nextSectionIndex, nextSectionConfig.pageNumbering);
+        paginator.startSection(
+          nextSectionIndex,
+          nextSectionConfig.pageNumbering,
+          pageSizeChanges ? "nextPage" : "continuous",
+        );
       }
       if (pageSizeChanges) {
         // Promote to a page break, but reuse an already blank current page as

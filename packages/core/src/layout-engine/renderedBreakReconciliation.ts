@@ -27,7 +27,7 @@ type ReconcileBeforeBlockOptions = {
 };
 
 type BreakDecision = {
-  forcePageBreak: boolean;
+  pageAdvance: "coalesced" | "none" | "physical";
   suppressSpaceBefore: boolean;
   state: RenderedBreakState;
 };
@@ -57,7 +57,7 @@ export const reconcileBreakBeforeBlock = ({
       state.nextHardBreak === "coalesce" &&
       !pageHasVisibleBodyContent(page, blocksById);
     return {
-      forcePageBreak: !sectionBoundaryAlreadyOpenedPage,
+      pageAdvance: sectionBoundaryAlreadyOpenedPage ? "coalesced" : "physical",
       suppressSpaceBefore: false,
       state: sectionBoundaryAlreadyOpenedPage
         ? {
@@ -70,7 +70,7 @@ export const reconcileBreakBeforeBlock = ({
     };
   }
   if (block.kind !== "paragraph" || block.attrs?.renderedPageBreakBefore !== true) {
-    return { forcePageBreak: false, suppressSpaceBefore: false, state };
+    return { pageAdvance: "none", suppressSpaceBefore: false, state };
   }
 
   const markerAlreadySatisfied =
@@ -107,7 +107,7 @@ export const reconcileBreakBeforeBlock = ({
     followsPageBreakingSection;
 
   return {
-    forcePageBreak,
+    pageAdvance: forcePageBreak ? "physical" : "none",
     // The boundary consumes inherited/default leading spacing. Preserve only
     // spacing authored directly on the first paragraph of a section.
     suppressSpaceBefore: markerAccountsForBoundary && !preserveSectionLeadingSpacing,

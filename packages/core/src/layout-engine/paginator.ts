@@ -92,6 +92,10 @@ type ForcePageBreakOptions = {
   coalesceBlankPage?: boolean;
 };
 
+type SectionStartPlacement = "continuous" | "nextPage";
+
+type SectionStartState = { type: "pending"; placement: SectionStartPlacement } | { type: "placed" };
+
 /** Calculate active column widths, preferring authored unequal widths. */
 function calculateColumnWidths(
   pageWidth: number,
@@ -146,7 +150,7 @@ export function createPaginator(options: PaginatorOptions) {
   let currentPageNumbering: SectionPageNumbering = options.pageNumbering ?? { type: "continue" };
   let nextLogicalPageNumber =
     currentPageNumbering.type === "restart" ? currentPageNumbering.start : 1;
-  let sectionStartPending = true;
+  let sectionStart: SectionStartState = { type: "pending", placement: "nextPage" };
 
   const pages: Page[] = [];
   const states: PageState[] = [];
@@ -247,7 +251,7 @@ export function createPaginator(options: PaginatorOptions) {
     const pageNumber = pages.length + 1;
     const logicalNumber = nextLogicalPageNumber;
     nextLogicalPageNumber += 1;
-    sectionStartPending = false;
+    sectionStart = { type: "placed" };
     currentSectionPageNumber += 1;
     // Page 1 of the document may use first-page margins (extended top to
     // clear an overflowing first-page header on a titlePg section) while
@@ -424,18 +428,28 @@ export function createPaginator(options: PaginatorOptions) {
     return { state, x, y };
   }
 
-  function commitFragment(state: PageState, fragment: Fragment): void {
+  function consumeSharedSectionPage(state: PageState): void {
+    if (
+      sectionStart.type !== "pending" ||
+      sectionStart.placement !== "continuous" ||
+      state.page.sectionIndex === currentSectionIndex
+    ) {
+      return;
+    }
+
     // A continuous section can begin after content already placed on a page
     // owned by the outgoing section. That shared page keeps its owner and
-    // displayed number, but its incoming content consumes the authored restart
-    // for page-number arithmetic. The next page therefore advances past the
-    // restart while remaining the incoming section's first owned page.
-    if (sectionStartPending && state.page.sectionIndex !== currentSectionIndex) {
-      if (currentPageNumbering.type === "restart") {
-        nextLogicalPageNumber = currentPageNumbering.start + 1;
-      }
-      sectionStartPending = false;
+    // displayed number, but it consumes the incoming section's first-page
+    // slot and any authored page-number restart.
+    if (currentPageNumbering.type === "restart") {
+      nextLogicalPageNumber = currentPageNumbering.start + 1;
     }
+    currentSectionPageNumber = 1;
+    sectionStart = { type: "placed" };
+  }
+
+  function commitFragment(state: PageState, fragment: Fragment): void {
+    consumeSharedSectionPage(state);
 
     const fragments = state.page.fragments;
     fragments.push(fragment);
@@ -498,6 +512,9 @@ export function createPaginator(options: PaginatorOptions) {
    */
   function forcePageBreak(breakOptions: ForcePageBreakOptions = {}): PageState {
     const current = states.at(-1);
+    if (current?.page.fragments.length) {
+      consumeSharedSectionPage(current);
+    }
     if (
       breakOptions.coalesceBlankPage &&
       current &&
@@ -513,6 +530,44 @@ export function createPaginator(options: PaginatorOptions) {
       }
     }
     return createNewPage();
+  }
+
+  function coalescePageBreak(): PageState {
+    const state = getCurrentState();
+    consumeSharedSectionPage(state);
+
+    // A section boundary may already have opened the physical page that an
+    // adjacent hard break targets. Reusing that sheet removes only the blank
+    // page: the hard break still advances the section and authored PAGE
+    // ordinals that select first/default furniture and field values.
+    const previousMargins = state.page.margins;
+    const logicalNumber = nextLogicalPageNumber;
+    nextLogicalPageNumber += 1;
+    currentSectionPageNumber += 1;
+    state.page.logicalNumber = logicalNumber;
+    if (currentPageNumbering.format === undefined) {
+      delete state.page.logicalNumberFormat;
+    } else {
+      state.page.logicalNumberFormat = currentPageNumbering.format;
+    }
+    applySectionMetadata(state.page);
+
+    const pageMargins = getPageMargins(state.page.number, logicalNumber);
+    const xDelta = pageMargins.left - previousMargins.left;
+    const yDelta = pageMargins.top - previousMargins.top;
+    for (const fragment of state.page.fragments) {
+      fragment.x += xDelta;
+      fragment.y += yDelta;
+    }
+    state.page.margins = pageMargins;
+    state.topMargin = pageMargins.top;
+    state.cursorY += yDelta;
+    state.rawContentBottom = pageSize.h - pageMargins.bottom;
+    state.contentBottom = state.rawContentBottom - state.footnoteHeight;
+    columnRegionTop += yDelta;
+    columnRegionMaxBottom += yDelta;
+
+    return state;
   }
 
   function retargetCurrentBlankPage(): boolean {
@@ -633,11 +688,12 @@ export function createPaginator(options: PaginatorOptions) {
   function startSection(
     sectionIndex: number,
     pageNumbering: SectionPageNumbering = { type: "continue" },
+    placement: SectionStartPlacement = "nextPage",
   ): void {
     currentSectionIndex = sectionIndex;
     currentSectionPageNumber = 0;
     currentPageNumbering = pageNumbering;
-    sectionStartPending = true;
+    sectionStart = { type: "pending", placement };
     if (pageNumbering.type === "restart") {
       nextLogicalPageNumber = pageNumbering.start;
     }
@@ -645,11 +701,11 @@ export function createPaginator(options: PaginatorOptions) {
 
   function retargetSectionMetadata(page: Page): void {
     currentSectionPageNumber = 1;
-    if (sectionStartPending && currentPageNumbering.type === "restart") {
+    if (sectionStart.type === "pending" && currentPageNumbering.type === "restart") {
       page.logicalNumber = currentPageNumbering.start;
       nextLogicalPageNumber = currentPageNumbering.start + 1;
     }
-    sectionStartPending = false;
+    sectionStart = { type: "placed" };
     if (currentPageNumbering.format === undefined) {
       delete page.logicalNumberFormat;
     } else {
@@ -703,6 +759,8 @@ export function createPaginator(options: PaginatorOptions) {
     addFootnoteHeight,
     /** Force a page break. */
     forcePageBreak,
+    /** Reuse the current sheet while advancing authored page ordinals. */
+    coalescePageBreak,
     /** Reuse an already blank current page for the active section/layout. */
     retargetCurrentBlankPage,
     /** Force a column break. */

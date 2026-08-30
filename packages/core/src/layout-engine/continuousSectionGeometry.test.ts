@@ -256,6 +256,12 @@ describe("continuous section break geometry", () => {
     const result = layoutDocument(blocks, measures, {
       pageSize: { w: 800, h: 1000 },
       margins: { top: 50, right: 50, bottom: 50, left: 50 },
+      finalPageNumbering: { type: "restart", start: 0 },
+      sectionHeaderFooterRefs: [
+        { footerDefault: "cover-footer" },
+        { titlePg: true, footerDefault: "middle-footer" },
+        { titlePg: true, footerDefault: "body-footer" },
+      ],
     });
 
     expect(result.pages).toHaveLength(2);
@@ -264,6 +270,12 @@ describe("continuous section break geometry", () => {
       "carrier",
       "body",
     ]);
+    expect(result.pages[1]).toMatchObject({
+      logicalNumber: 1,
+      sectionIndex: 2,
+      sectionPageNumber: 2,
+      headerFooterRefs: { titlePg: true, footerDefault: "body-footer" },
+    });
   });
 
   test("a hard-break page is not coalesced through a continuous section", () => {
@@ -610,7 +622,7 @@ describe("continuous section break geometry", () => {
     expect(result.pages).toHaveLength(2);
     expect(result.pages[0]?.sectionIndex).toBe(0);
     expect(result.pages[1]?.sectionIndex).toBe(1);
-    expect(result.pages[1]?.sectionPageNumber).toBe(1);
+    expect(result.pages[1]?.sectionPageNumber).toBe(2);
     expect(
       result.pages[1]?.fragments.some((f) => f.kind === "paragraph" && f.blockId === "c"),
     ).toBe(true);
@@ -642,11 +654,55 @@ describe("continuous section break geometry", () => {
 
     expect(result.pages.map(({ logicalNumber }) => logicalNumber)).toEqual([1, 3]);
     expect(result.pages[0]).toMatchObject({ sectionIndex: 0, sectionPageNumber: 1 });
-    expect(result.pages[1]).toMatchObject({ sectionIndex: 1, sectionPageNumber: 1 });
+    expect(result.pages[1]).toMatchObject({ sectionIndex: 1, sectionPageNumber: 2 });
     expect(
       result.pages[0]?.fragments.some(
         (fragment) => fragment.kind === "paragraph" && fragment.blockId === "shared-incoming",
       ),
     ).toBe(true);
+  });
+
+  test("consumes the first-page slot before an explicit break in a continuous section", () => {
+    const outgoing = paragraph("outgoing", 100);
+    const sectionBreak: SectionBreakBlock = {
+      kind: "sectionBreak",
+      id: "section",
+      type: "continuous",
+      pageSize: { w: 800, h: 1000 },
+      margins: { top: 50, right: 50, bottom: 50, left: 50 },
+    };
+    const pageBreak: FlowBlock = { kind: "pageBreak", id: "page" };
+    const incoming = paragraph("incoming", 100);
+
+    const result = layoutDocument(
+      [outgoing.block, sectionBreak, pageBreak, incoming.block],
+      [
+        outgoing.measure,
+        { kind: "sectionBreak" },
+        { kind: "pageBreak" },
+        incoming.measure,
+      ] as never,
+      {
+        pageSize: { w: 800, h: 1000 },
+        margins: { top: 50, right: 50, bottom: 50, left: 50 },
+        finalPageSize: { w: 800, h: 1000 },
+        finalMargins: { top: 50, right: 50, bottom: 50, left: 50 },
+        sectionHeaderFooterRefs: [
+          { footerDefault: "outgoing-footer" },
+          { titlePg: true, footerFirst: "first-footer", footerDefault: "default-footer" },
+        ],
+      },
+    );
+
+    expect(result.pages).toHaveLength(2);
+    expect(result.pages[1]).toMatchObject({
+      sectionIndex: 1,
+      sectionPageNumber: 2,
+      headerFooterRefs: {
+        titlePg: true,
+        footerFirst: "first-footer",
+        footerDefault: "default-footer",
+      },
+    });
   });
 });
