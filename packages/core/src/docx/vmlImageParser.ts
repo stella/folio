@@ -73,25 +73,29 @@ const SAFE_VML_COLORS = new Set([
   "teal",
   "aqua",
 ]);
-const VML_HORIZONTAL_RELATIVES = new Set<ImagePosition["horizontal"]["relativeTo"]>([
-  "character",
-  "column",
-  "insideMargin",
-  "leftMargin",
-  "margin",
-  "outsideMargin",
-  "page",
-  "rightMargin",
+const VML_POSITION_ABSOLUTE = "absolute";
+const IMAGE_WRAP_INLINE = "inline" satisfies Image["wrap"]["type"];
+const IMAGE_WRAP_BEHIND = "behind" satisfies Image["wrap"]["type"];
+const IMAGE_WRAP_IN_FRONT = "inFront" satisfies Image["wrap"]["type"];
+const VML_HORIZONTAL_RELATIVE_TO = new Map<string, ImagePosition["horizontal"]["relativeTo"]>([
+  ["char", "character"],
+  ["text", "column"],
+  ["margin", "margin"],
+  ["page", "page"],
+  ["left-margin-area", "leftMargin"],
+  ["right-margin-area", "rightMargin"],
+  ["inner-margin-area", "insideMargin"],
+  ["outer-margin-area", "outsideMargin"],
 ]);
-const VML_VERTICAL_RELATIVES = new Set<ImagePosition["vertical"]["relativeTo"]>([
-  "insideMargin",
-  "line",
-  "margin",
-  "outsideMargin",
-  "page",
-  "paragraph",
-  "topMargin",
-  "bottomMargin",
+const VML_VERTICAL_RELATIVE_TO = new Map<string, ImagePosition["vertical"]["relativeTo"]>([
+  ["line", "line"],
+  ["text", "paragraph"],
+  ["margin", "margin"],
+  ["page", "page"],
+  ["top-margin-area", "topMargin"],
+  ["bottom-margin-area", "bottomMargin"],
+  ["inner-margin-area", "insideMargin"],
+  ["outer-margin-area", "outsideMargin"],
 ]);
 
 /**
@@ -203,36 +207,26 @@ const pixelsToSafeEmu = (pixels: number): number | undefined => {
 
 const horizontalRelativeTo = (
   value: string | undefined,
-): ImagePosition["horizontal"]["relativeTo"] => {
-  for (const relative of VML_HORIZONTAL_RELATIVES) {
-    if (relative.toLowerCase() === value?.toLowerCase()) {
-      return relative;
-    }
-  }
-  return "character";
-};
+): ImagePosition["horizontal"]["relativeTo"] =>
+  VML_HORIZONTAL_RELATIVE_TO.get(value?.toLowerCase() ?? "") ?? "character";
 
-const verticalRelativeTo = (value: string | undefined): ImagePosition["vertical"]["relativeTo"] => {
-  for (const relative of VML_VERTICAL_RELATIVES) {
-    if (relative.toLowerCase() === value?.toLowerCase()) {
-      return relative;
-    }
-  }
-  return "paragraph";
-};
+const verticalRelativeTo = (value: string | undefined): ImagePosition["vertical"]["relativeTo"] =>
+  VML_VERTICAL_RELATIVE_TO.get(value?.toLowerCase() ?? "") ?? "paragraph";
 
 const vmlImageLayout = (
   style: Record<string, string>,
 ): Pick<Image, "wrap"> & { position?: ImagePosition } => {
-  if (style["position"]?.toLowerCase() !== "absolute") {
-    return { wrap: { type: "inline" } };
+  if (style["position"]?.toLowerCase() !== VML_POSITION_ABSOLUTE) {
+    return { wrap: { type: IMAGE_WRAP_INLINE } };
   }
 
   const leftPx = cssLengthToPx(style["margin-left"] ?? style["left"]) ?? 0;
   const topPx = cssLengthToPx(style["margin-top"] ?? style["top"]) ?? 0;
   const zIndex = finiteNumber(style["z-index"]);
   return {
-    wrap: { type: zIndex !== undefined && zIndex < 0 ? "behind" : "inFront" },
+    wrap: {
+      type: zIndex !== undefined && zIndex < 0 ? IMAGE_WRAP_BEHIND : IMAGE_WRAP_IN_FRONT,
+    },
     position: {
       horizontal: {
         relativeTo: horizontalRelativeTo(style["mso-position-horizontal-relative"]),

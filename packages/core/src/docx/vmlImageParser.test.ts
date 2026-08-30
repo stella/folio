@@ -231,10 +231,10 @@ describe("VML w:pict inline images", () => {
     });
   });
 
-  test("places negative-z absolute VML images behind text", async () => {
+  test("maps text-relative negative-z VML images behind text", async () => {
     const doc = await parseDocx(
       await pictDocx({
-        runXml: `<w:pict><v:shape type="#_x0000_t75" style="position:absolute;left:12pt;top:6pt;width:2in;height:1in;z-index:-1;mso-position-horizontal-relative:margin;mso-position-vertical-relative:line"><v:imagedata r:id="rIdImg"/></v:shape></w:pict>`,
+        runXml: `<w:pict><v:shape type="#_x0000_t75" style="position:absolute;left:12pt;top:6pt;width:2in;height:1in;z-index:-1;mso-position-horizontal-relative:text;mso-position-vertical-relative:text"><v:imagedata r:id="rIdImg"/></v:shape></w:pict>`,
       }),
       { preloadFonts: false },
     );
@@ -242,8 +242,22 @@ describe("VML w:pict inline images", () => {
     const drawing = firstDrawing(doc.package.document.content.at(0));
     expect(drawing?.image.wrap.type).toBe("behind");
     expect(drawing?.image.position).toEqual({
-      horizontal: { relativeTo: "margin", posOffset: 152_400 },
-      vertical: { relativeTo: "line", posOffset: 76_200 },
+      horizontal: { relativeTo: "column", posOffset: 152_400 },
+      vertical: { relativeTo: "paragraph", posOffset: 76_200 },
+    });
+  });
+
+  test("maps VML margin-area anchors to the internal coordinate spaces", async () => {
+    const doc = await parseDocx(
+      await pictDocx({
+        runXml: `<w:pict><v:shape type="#_x0000_t75" style="position:absolute;width:2in;height:1in;mso-position-horizontal-relative:left-margin-area;mso-position-vertical-relative:top-margin-area"><v:imagedata r:id="rIdImg"/></v:shape></w:pict>`,
+      }),
+      { preloadFonts: false },
+    );
+
+    expect(firstDrawing(doc.package.document.content.at(0))?.image.position).toEqual({
+      horizontal: { relativeTo: "leftMargin", posOffset: 0 },
+      vertical: { relativeTo: "topMargin", posOffset: 0 },
     });
   });
 
