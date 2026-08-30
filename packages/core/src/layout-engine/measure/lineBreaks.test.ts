@@ -60,6 +60,43 @@ describe("findWordBreaks", () => {
     expect(findWordBreaks("text a text", { locale: "cs-CZ" })).toEqual([5, 7]);
   });
 
+  test("allows a spaced percentage to wrap in non-East-Asian text", () => {
+    expect(findWordBreaks("10 %. Pro", { locale: "cs-CZ" })).toEqual([3, 6]);
+    expect(findWordBreaks("10 %. Next", { locale: "en-US" })).toEqual([3, 6]);
+    expect(findWordBreaks("10\u00A0%", { locale: "cs-CZ" })).toEqual([]);
+    expect(findWordBreaks("10 %", { locale: "ja-JP" })).toEqual([]);
+    expect(findWordBreaks("10 %", { locale: "yue-HK" })).toEqual([]);
+    expect(findWordBreaks("10 %", { locale: "cmn-Hans-CN" })).toEqual([]);
+    expect(findWordBreaks("10 %", { locale: "mnp-Hans-CN" })).toEqual([]);
+    expect(findWordBreaks("10 %", { locale: "cmn" })).toEqual([]);
+    expect(findWordBreaks("10 %", { locale: "cmn-CN" })).toEqual([]);
+    expect(findWordBreaks("10 %", { locale: "en-x-hans" })).toEqual([3]);
+    expect(findWordBreaks("税率 10 %")).not.toContain(6);
+    expect(findWordBreaks("10 %", { locale: "cs-CZ", kinsoku: true })).toEqual([]);
+    expect(
+      findWordBreaks("10 %", {
+        locale: "cs-CZ",
+        noLineBreaksBefore: new Set(["%"]),
+      }),
+    ).toEqual([]);
+    expect(
+      findWordBreaks("10 %", {
+        locale: "cs-CZ",
+        kinsoku: false,
+        noLineBreaksBefore: new Set(["%"]),
+      }),
+    ).toEqual([3]);
+    expect(findWordBreaks("10\u2007%", { locale: "cs-CZ" })).toEqual([]);
+    expect(findWordBreaks("10\u202F%", { locale: "cs-CZ" })).toEqual([]);
+  });
+
+  test("looks through consecutive spaces when applying kinsoku", () => {
+    expect(findWordBreaks("10  %", { locale: "ja-JP" })).toEqual([]);
+    expect(findWordBreaks("10   %", { kinsoku: true })).toEqual([]);
+    expect(findWordBreaks("10 ％", { locale: "ja-JP" })).toEqual([]);
+    expect(findWordBreaks(`${" ".repeat(20_000)}%`, { locale: "ja-JP" })).toEqual([]);
+  });
+
   test("does not break at glue-class spaces", () => {
     expect(findWordBreaks("one\u00A0two")).toEqual([]);
     expect(findWordBreaks("one\u2007two")).toEqual([]);

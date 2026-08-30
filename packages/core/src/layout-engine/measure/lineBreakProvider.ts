@@ -46,12 +46,14 @@ export type LineBreakProvider = {
 };
 
 const SEGMENTER_CACHE_LIMIT = 16;
+const LINE_BREAK_LOCALE_CACHE_LIMIT = 16;
 const DEFAULT_SEGMENTER_KEY = "";
 const SOFT_HYPHEN = "\u00AD";
 export const MAX_HYPHENATION_WORD_LENGTH = 256;
 
 const wordSegmenters = new Map<string, Intl.Segmenter>();
 const graphemeSegmenters = new Map<string, Intl.Segmenter>();
+const eastAsianLineBreakLocales = new Map<string, boolean>();
 
 const segmenterLocale = (locale?: string): string | undefined => {
   const language = locale?.trim().replaceAll("_", "-").split("-").at(0);
@@ -65,7 +67,8 @@ const CJK_SCRIPT = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Scri
 // Japanese, Korean, or Yi (treated as Simplified Chinese). Applying the
 // East-Asian punctuation set to Latin runs lets ordinary commas and periods
 // exceed a margin, changing otherwise unrelated line and page breaks.
-const WORD_HANGING_PUNCTUATION_LANGUAGES = new Set(["ii", "ja", "ko", "zh"]);
+const WORD_HANGING_PUNCTUATION_LANGUAGES = new Set(["cmn", "ii", "ja", "ko", "zh"]);
+const EAST_ASIAN_LINE_BREAK_SCRIPTS = new Set(["Hans", "Hant", "Jpan", "Kore", "Yiii"]);
 const SIMPLE_BREAK_TEXT =
   /^[\p{Script=Latin}\p{Script=Cyrillic}\p{Script=Greek}\p{Number}\p{Punctuation}\p{White_Space}]*$/u;
 const BREAK_AFTER_CHARACTER = new Set([
@@ -115,6 +118,7 @@ const DEFAULT_PROHIBITED_LINE_START = new Set([
   "：",
   "；",
   "！",
+  "％",
   "？",
   "…",
   "’",
@@ -222,9 +226,58 @@ const isLegacyEthiopicBreakCharacter = (
   return codePoint !== undefined && codePoint >= 0x1361 && codePoint <= 0x1368;
 };
 
-const allowsBreak = (text: string, index: number, policy?: LineBreakPolicy): boolean => {
+const localeUsesEastAsianLineBreaking = (locale?: string): boolean | undefined => {
+  const language = segmenterLocale(locale);
+  if (language === undefined) {
+    return undefined;
+  }
+  const normalized = locale?.trim().replaceAll("_", "-").toLowerCase() ?? language;
+  const cached = eastAsianLineBreakLocales.get(normalized);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const subtags = normalized.split("-");
+  const extensionIndex = subtags.findIndex((part, index) => index > 0 && part.length === 1);
+  const explicitScript = subtags
+    .slice(1, extensionIndex === -1 ? undefined : extensionIndex)
+    .find((part) => /^[a-z]{4}$/u.test(part));
+  const script = explicitScript
+    ? `${explicitScript[0]?.toUpperCase()}${explicitScript.slice(1)}`
+    : new Intl.Locale(language).maximize().script;
+  const result =
+    WORD_HANGING_PUNCTUATION_LANGUAGES.has(language) ||
+    (script !== undefined && EAST_ASIAN_LINE_BREAK_SCRIPTS.has(script));
+  if (eastAsianLineBreakLocales.size >= LINE_BREAK_LOCALE_CACHE_LIMIT) {
+    const oldestKey = eastAsianLineBreakLocales.keys().next().value;
+    if (typeof oldestKey === "string") {
+      eastAsianLineBreakLocales.delete(oldestKey);
+    }
+  }
+  eastAsianLineBreakLocales.set(normalized, result);
+  return result;
+};
+
+const usesEastAsianLineBreaking = (text: string, locale?: string): boolean =>
+  localeUsesEastAsianLineBreaking(locale) ?? CJK_SCRIPT.test(text);
+
+const allowsBreak = (
+  text: string,
+  index: number,
+  policy: LineBreakPolicy | undefined,
+  usesEastAsianRules: boolean,
+  nextLineStart?: string,
+): boolean => {
   const previous = previousCodePoint(text, index);
-  const next = firstCodePoint(text, index);
+  const next = nextLineStart ?? firstCodePoint(text, index);
+  const permitsSpacedPercentage =
+    previous === " " &&
+    next === "%" &&
+    policy?.kinsoku !== true &&
+    policy?.noLineBreaksBefore === undefined &&
+    !usesEastAsianRules;
+  if (permitsSpacedPercentage) {
+    return !isProhibitedLineEnd(previous, policy);
+  }
   return !isProhibitedLineEnd(previous, policy) && !isProhibitedLineStart(next, policy);
 };
 
@@ -232,12 +285,14 @@ const pushBreak = (
   breaks: number[],
   text: string,
   index: number,
-  policy?: LineBreakPolicy,
+  policy: LineBreakPolicy | undefined,
+  usesEastAsianRules: boolean,
+  nextLineStart?: string,
 ): void => {
   if (index <= 0 || index > text.length || breaks.at(-1) === index) {
     return;
   }
-  if (allowsBreak(text, index, policy)) {
+  if (allowsBreak(text, index, policy, usesEastAsianRules, nextLineStart)) {
     breaks.push(index);
   }
 };
@@ -298,6 +353,9 @@ const findSimpleBreaks = (text: string, policy?: LineBreakPolicy): number[] | un
   }
 
   const breaks: number[] = [];
+  const usesEastAsianRules = usesEastAsianLineBreaking(text, policy?.locale);
+  let whitespaceRunEnd = 0;
+  let nextVisibleAfterWhitespace: string | undefined;
   for (let index = 0; index < text.length; index += 1) {
     const codePoint = text.charCodeAt(index);
     if (codePoint >= 0xd800 && codePoint <= 0xdfff) {
@@ -309,12 +367,24 @@ const findSimpleBreaks = (text: string, policy?: LineBreakPolicy): number[] | un
     // SAFETY: index is bounded by text.length, and surrogate code units have
     // already fallen back to the complete Unicode provider above.
     const character = text[index]!;
-    if (
-      (isSimpleWhitespace(character, codePoint) && !NONBREAKING_SPACES.has(character)) ||
+    const isBreakableWhitespace =
+      isSimpleWhitespace(character, codePoint) && !NONBREAKING_SPACES.has(character);
+    if (isBreakableWhitespace) {
+      if (index >= whitespaceRunEnd) {
+        whitespaceRunEnd = index + 1;
+        let next = firstCodePoint(text, whitespaceRunEnd);
+        while (next !== undefined && /\s/u.test(next) && !NONBREAKING_SPACES.has(next)) {
+          whitespaceRunEnd += next.length;
+          next = firstCodePoint(text, whitespaceRunEnd);
+        }
+        nextVisibleAfterWhitespace = next;
+      }
+      pushBreak(breaks, text, index + 1, policy, usesEastAsianRules, nextVisibleAfterWhitespace);
+    } else if (
       BREAK_AFTER_CHARACTER.has(character) ||
       isLegacyEthiopicBreakCharacter(character, policy)
     ) {
-      pushBreak(breaks, text, index + 1, policy);
+      pushBreak(breaks, text, index + 1, policy, usesEastAsianRules);
     }
   }
 
@@ -332,16 +402,28 @@ const findUnicodeBreaks = (text: string, policy?: LineBreakPolicy): number[] => 
   }
 
   const breaks: number[] = [];
+  const usesEastAsianRules = usesEastAsianLineBreaking(text, policy?.locale);
   const graphemeBreaks = findUnicodeGraphemeBreaks(text, policy);
+  let whitespaceRunEnd = 0;
+  let nextVisibleAfterWhitespace: string | undefined;
   for (const index of graphemeBreaks) {
     const previous = previousCodePoint(text, index);
-    if (
+    if (previous !== undefined && /\s/u.test(previous) && !NONBREAKING_SPACES.has(previous)) {
+      if (index > whitespaceRunEnd) {
+        whitespaceRunEnd = index;
+        let next = firstCodePoint(text, whitespaceRunEnd);
+        while (next !== undefined && /\s/u.test(next) && !NONBREAKING_SPACES.has(next)) {
+          whitespaceRunEnd += next.length;
+          next = firstCodePoint(text, whitespaceRunEnd);
+        }
+        nextVisibleAfterWhitespace = next;
+      }
+      pushBreak(breaks, text, index, policy, usesEastAsianRules, nextVisibleAfterWhitespace);
+    } else if (
       previous !== undefined &&
-      ((/\s/u.test(previous) && !NONBREAKING_SPACES.has(previous)) ||
-        BREAK_AFTER_CHARACTER.has(previous) ||
-        isLegacyEthiopicBreakCharacter(previous, policy))
+      (BREAK_AFTER_CHARACTER.has(previous) || isLegacyEthiopicBreakCharacter(previous, policy))
     ) {
-      pushBreak(breaks, text, index, policy);
+      pushBreak(breaks, text, index, policy, usesEastAsianRules);
     }
   }
 
@@ -356,7 +438,7 @@ const findUnicodeBreaks = (text: string, policy?: LineBreakPolicy): number[] => 
       nextSegment?.isWordLike === true &&
       DICTIONARY_BREAK_SCRIPT.test(segment.segment + nextSegment.segment)
     ) {
-      pushBreak(breaks, text, end, policy);
+      pushBreak(breaks, text, end, policy, usesEastAsianRules);
     }
   }
 
@@ -364,7 +446,7 @@ const findUnicodeBreaks = (text: string, policy?: LineBreakPolicy): number[] => 
     for (const index of graphemeBreaks) {
       const previous = previousCodePoint(text, index);
       if (isCjkLineBreakParticipant(previous, policy)) {
-        pushBreak(breaks, text, index, policy);
+        pushBreak(breaks, text, index, policy, usesEastAsianRules);
       }
     }
   }
