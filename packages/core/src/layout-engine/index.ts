@@ -1453,6 +1453,8 @@ function layoutFloatingTable(
       marginWidth: contentWidth,
       pageWidth: page.size.w,
       marginLeft: margins.left,
+      textFrameWidth: paginator.columnWidth,
+      textFrameLeft: paginator.getColumnX(state.columnIndex),
     });
   }
 

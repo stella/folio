@@ -584,6 +584,7 @@ function extractFloatingZones(
     const blockMarginLeft = perBlockNumberValue(marginLeftInput, blockIndex, defaultMarginLeft);
     const blockMarginRight = perBlockNumberValue(marginRightInput, blockIndex, defaultMarginRight);
     const blockContentWidth = perBlockNumberValue(contentWidth, blockIndex, defaultContentWidth);
+    const blockContentLeft = perBlockNumberValue(contentLeftInput, blockIndex, defaultContentLeft);
     const tableMeasure = measureTableBlock(tableBlock, blockContentWidth);
     const tableWidth = tableMeasure.totalWidth;
     const tableHeight = tableMeasure.totalHeight;
@@ -600,6 +601,8 @@ function extractFloatingZones(
       marginWidth: blockPageWidth - blockMarginLeft - blockMarginRight,
       pageWidth: blockPageWidth,
       marginLeft: blockMarginLeft,
+      textFrameWidth: blockContentWidth,
+      textFrameLeft: blockContentLeft,
     });
 
     const topY = floating.tblpY ?? 0;
@@ -616,7 +619,7 @@ function extractFloatingZones(
       continue;
     }
 
-    const contentX = pageX - perBlockNumberValue(contentLeftInput, blockIndex, defaultContentLeft);
+    const contentX = pageX - blockContentLeft;
     zones.push({
       leftMargin:
         contentX < blockContentWidth / 2

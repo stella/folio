@@ -291,6 +291,34 @@ describe("measureBlocks", () => {
     }, fakeMeasure);
   });
 
+  test("wraps from a text-anchored floating table in the active column frame", () => {
+    withFakeTextMeasure(() => {
+      const table = centeredMarginFloatingTable("text-frame-float");
+      table.floating = { horzAnchor: "text", tblpX: 10 };
+      const blocks: FlowBlock[] = [
+        { kind: "columnBreak", id: "second-column" },
+        table,
+        para("body", "body"),
+      ];
+      const measures = measureBlocks(blocks, 350, 0, {
+        pageWidth: 1_000,
+        pageHeight: 1_000,
+        marginLeft: 100,
+        marginRight: 100,
+        marginBottom: 40,
+        contentLeft: [100, 550, 550],
+        columnIndex: [0, 1, 1],
+        columnCount: 2,
+      });
+      const bodyMeasure = measures.at(2);
+      if (bodyMeasure?.kind !== "paragraph") {
+        throw new Error("Expected paragraph measure");
+      }
+
+      expect(bodyMeasure.lines.at(0)?.leftOffset).toBe(222);
+    }, fakeMeasure);
+  });
+
   test("reprojects one margin-anchored floating table across an explicit column break", () => {
     withFakeTextMeasure(() => {
       const blocks: FlowBlock[] = [

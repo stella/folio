@@ -2,4 +2,4 @@
 "@stll/folio-core": patch
 ---
 
-Preserve centered floating-table alignment when the table is wider than its anchor frame.
+Preserve over-wide floating-table alignment, resolve page and text anchor frames with physical-page clamping, project wrap exclusions per column, and default omitted section breaks to next-page transitions.

@@ -1175,6 +1175,25 @@ describe("RTL table placement", () => {
 });
 
 describe("floating table placement", () => {
+  test("positions a text-anchored table from the active column", () => {
+    const { block, measure } = tallTable(1);
+    block.floating = { horzAnchor: "text", tblpXSpec: "center" };
+    block.columnWidths = [60];
+    measure.columnWidths = [60];
+    measure.totalWidth = 60;
+
+    const layout = layoutDocument(
+      [{ kind: "columnBreak", id: "second-column" }, block],
+      [{ kind: "columnBreak" }, measure],
+      { ...OPTIONS, columns: { count: 2, gap: 20 } },
+    );
+    const fragment = layout.pages
+      .flatMap((page) => page.fragments)
+      .find((candidate): candidate is TableFragment => candidate.kind === "table");
+
+    expect(fragment?.x).toBe(180);
+  });
+
   test("allows a numeric margin-relative offset to enter the page margin", () => {
     const { block, measure } = tallTable(1);
     block.floating = { horzAnchor: "margin", tblpX: -20 };

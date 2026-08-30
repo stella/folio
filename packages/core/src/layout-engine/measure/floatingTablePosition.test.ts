@@ -70,6 +70,8 @@ describe("resolveFloatingTablePageX", () => {
         marginWidth: 600,
         pageWidth: 800,
         marginLeft: 40,
+        textFrameWidth: 600,
+        textFrameLeft: 40,
       }),
     ).toBe(expected);
   });
@@ -83,7 +85,36 @@ describe("resolveFloatingTablePageX", () => {
         marginWidth: 600,
         pageWidth: 800,
         marginLeft: 40,
+        textFrameWidth: 600,
+        textFrameLeft: 40,
       }),
     ).toBe(600);
+  });
+
+  test("resolves a text-anchored offset from the active column frame", () => {
+    expect(
+      resolveFloatingTablePageX({
+        anchor: { horzAnchor: "text", tblpX: 10 },
+        justification: undefined,
+        tableWidth: 200,
+        marginWidth: 800,
+        pageWidth: 1_000,
+        marginLeft: 100,
+        textFrameWidth: 350,
+        textFrameLeft: 550,
+      }),
+    ).toBe(560);
+    expect(
+      resolveFloatingTablePageX({
+        anchor: { horzAnchor: "text", tblpXSpec: "center" },
+        justification: undefined,
+        tableWidth: 200,
+        marginWidth: 800,
+        pageWidth: 1_000,
+        marginLeft: 100,
+        textFrameWidth: 350,
+        textFrameLeft: 550,
+      }),
+    ).toBe(625);
   });
 });

@@ -21,6 +21,8 @@ type FloatingTablePageXOptions = {
   marginWidth: number;
   pageWidth: number;
   marginLeft: number;
+  textFrameWidth: number;
+  textFrameLeft: number;
 };
 
 /**
@@ -65,10 +67,26 @@ export function resolveFloatingTablePageX({
   marginWidth,
   pageWidth,
   marginLeft,
+  textFrameWidth,
+  textFrameLeft,
 }: FloatingTablePageXOptions): number {
-  const pageAnchored = anchor.horzAnchor === "page";
-  const frameWidth = pageAnchored ? pageWidth : marginWidth;
-  const frameLeft = pageAnchored ? 0 : marginLeft;
+  let frameWidth = marginWidth;
+  let frameLeft = marginLeft;
+  switch (anchor.horzAnchor) {
+    case "page":
+      frameWidth = pageWidth;
+      frameLeft = 0;
+      break;
+    case "text":
+      frameWidth = textFrameWidth;
+      frameLeft = textFrameLeft;
+      break;
+    case "margin":
+    case undefined:
+      break;
+    default:
+      anchor.horzAnchor satisfies never;
+  }
   const resolvedX =
     frameLeft + resolveFloatingTableX(anchor, justification, tableWidth, frameWidth);
   const maxX = Math.max(0, pageWidth - tableWidth);
