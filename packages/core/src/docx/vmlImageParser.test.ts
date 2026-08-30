@@ -215,6 +215,38 @@ describe("VML w:pict inline images", () => {
     expect(drawing?.image.title).toBe("logo");
   });
 
+  test("preserves absolute VML image anchors without adding them to text flow", async () => {
+    const doc = await parseDocx(
+      await pictDocx({
+        runXml: `<w:pict><v:shape id="Footer logo" type="#_x0000_t75" style="position:absolute;margin-left:514.95pt;margin-top:774.95pt;width:44.5pt;height:45.6pt;z-index:251658240;mso-position-horizontal-relative:page;mso-position-vertical-relative:page"><v:imagedata r:id="rIdImg" o:title="logo"/></v:shape></w:pict>`,
+      }),
+      { preloadFonts: false },
+    );
+
+    const drawing = firstDrawing(doc.package.document.content.at(0));
+    expect(drawing?.image.wrap.type).toBe("inFront");
+    expect(drawing?.image.position).toEqual({
+      horizontal: { relativeTo: "page", posOffset: 6_539_865 },
+      vertical: { relativeTo: "page", posOffset: 9_841_865 },
+    });
+  });
+
+  test("places negative-z absolute VML images behind text", async () => {
+    const doc = await parseDocx(
+      await pictDocx({
+        runXml: `<w:pict><v:shape type="#_x0000_t75" style="position:absolute;left:12pt;top:6pt;width:2in;height:1in;z-index:-1;mso-position-horizontal-relative:margin;mso-position-vertical-relative:line"><v:imagedata r:id="rIdImg"/></v:shape></w:pict>`,
+      }),
+      { preloadFonts: false },
+    );
+
+    const drawing = firstDrawing(doc.package.document.content.at(0));
+    expect(drawing?.image.wrap.type).toBe("behind");
+    expect(drawing?.image.position).toEqual({
+      horizontal: { relativeTo: "margin", posOffset: 152_400 },
+      vertical: { relativeTo: "line", posOffset: 76_200 },
+    });
+  });
+
   test("preserves the original VML verbatim on save (no DrawingML conversion)", async () => {
     const original = await pictDocx({ runXml: PICT_WITH_IMAGE });
     const doc = await parseDocx(original, { preloadFonts: false });
@@ -481,6 +513,20 @@ describe("VML w:pict inline images", () => {
     // to `1.2`; the valid height still parses.
     expect(drawing?.image.size.width).toBe(0);
     expect(drawing?.image.size.height).toBe(914_400);
+  });
+
+  test("rejects VML lengths too large for finite layout coordinates", async () => {
+    const hugeLength = "9".repeat(400);
+    const doc = await parseDocx(
+      await pictDocx({
+        runXml: `<w:pict><v:shape style="position:absolute;margin-left:${hugeLength}pt;width:${hugeLength}pt;height:1in"><v:imagedata r:id="rIdImg"/></v:shape></w:pict>`,
+      }),
+      { preloadFonts: false },
+    );
+
+    const drawing = firstDrawing(doc.package.document.content.at(0));
+    expect(drawing?.image.size).toEqual({ width: 0, height: 914_400 });
+    expect(drawing?.image.position?.horizontal.posOffset).toBe(0);
   });
 
   test("resolves the relationship id from o:relid when r:id is absent", async () => {

@@ -28,7 +28,13 @@
  * Ported from eigenpal/docx-editor `vmlImageParser.ts`.
  */
 
-import type { DrawingContent, Image, MediaFile, RelationshipMap } from "../types/document";
+import type {
+  DrawingContent,
+  Image,
+  ImagePosition,
+  MediaFile,
+  RelationshipMap,
+} from "../types/document";
 import { sanitizeImageSrc } from "../utils/sanitizeImageSrc";
 import { pixelsToEmu } from "../utils/units";
 import { resolveImageData } from "./imageParser";
@@ -67,6 +73,26 @@ const SAFE_VML_COLORS = new Set([
   "teal",
   "aqua",
 ]);
+const VML_HORIZONTAL_RELATIVES = new Set<ImagePosition["horizontal"]["relativeTo"]>([
+  "character",
+  "column",
+  "insideMargin",
+  "leftMargin",
+  "margin",
+  "outsideMargin",
+  "page",
+  "rightMargin",
+]);
+const VML_VERTICAL_RELATIVES = new Set<ImagePosition["vertical"]["relativeTo"]>([
+  "insideMargin",
+  "line",
+  "margin",
+  "outsideMargin",
+  "page",
+  "paragraph",
+  "topMargin",
+  "bottomMargin",
+]);
 
 /**
  * Convert a CSS length (pt/in/px/cm/mm/pc, default px) to pixels. Units are
@@ -86,7 +112,7 @@ function cssLengthToPx(raw: string | undefined): number | undefined {
     return undefined;
   }
   const value = Number.parseFloat(amountText);
-  if (Number.isNaN(value)) {
+  if (!Number.isFinite(value)) {
     return undefined;
   }
   switch (match?.groups?.["unit"]?.toLowerCase()) {
@@ -169,6 +195,53 @@ const safeColor = (raw: string | null, fallback: string): string => {
 
 const validPreviewDimension = (value: number | undefined): value is number =>
   value !== undefined && value > 0 && value <= MAX_VML_PREVIEW_DIMENSION_PX;
+
+const horizontalRelativeTo = (
+  value: string | undefined,
+): ImagePosition["horizontal"]["relativeTo"] => {
+  for (const relative of VML_HORIZONTAL_RELATIVES) {
+    if (relative.toLowerCase() === value?.toLowerCase()) {
+      return relative;
+    }
+  }
+  return "character";
+};
+
+const verticalRelativeTo = (
+  value: string | undefined,
+): ImagePosition["vertical"]["relativeTo"] => {
+  for (const relative of VML_VERTICAL_RELATIVES) {
+    if (relative.toLowerCase() === value?.toLowerCase()) {
+      return relative;
+    }
+  }
+  return "paragraph";
+};
+
+const vmlImageLayout = (
+  style: Record<string, string>,
+): Pick<Image, "wrap"> & { position?: ImagePosition } => {
+  if (style["position"]?.toLowerCase() !== "absolute") {
+    return { wrap: { type: "inline" } };
+  }
+
+  const leftPx = cssLengthToPx(style["margin-left"] ?? style["left"]) ?? 0;
+  const topPx = cssLengthToPx(style["margin-top"] ?? style["top"]) ?? 0;
+  const zIndex = finiteNumber(style["z-index"]);
+  return {
+    wrap: { type: zIndex !== undefined && zIndex < 0 ? "behind" : "inFront" },
+    position: {
+      horizontal: {
+        relativeTo: horizontalRelativeTo(style["mso-position-horizontal-relative"]),
+        posOffset: pixelsToEmu(leftPx),
+      },
+      vertical: {
+        relativeTo: verticalRelativeTo(style["mso-position-vertical-relative"]),
+        posOffset: pixelsToEmu(topPx),
+      },
+    },
+  };
+};
 
 const svgDataUrl = (svg: string): string | undefined =>
   svg.length <= MAX_VML_SVG_CHARACTERS
@@ -386,9 +459,9 @@ export function parseVmlImageContent(
       continue;
     }
 
-    // VML pictures in a run are inline-flow. Absolute-positioned VML is treated
-    // as inline here too: rendering the picture in flow is far better than
-    // dropping it, and the original XML round-trips verbatim via rawXml.
+    // Static VML pictures participate in the run's inline flow. Absolute VML
+    // pictures are page artwork: preserve their authored anchor so they paint
+    // at the correct location without contributing to paragraph height.
     const image: Image = {
       type: "image",
       rId,
@@ -396,7 +469,7 @@ export function parseVmlImageContent(
         width: widthPx != null ? pixelsToEmu(widthPx) : 0,
         height: heightPx != null ? pixelsToEmu(heightPx) : 0,
       },
-      wrap: { type: "inline" },
+      ...vmlImageLayout(shapeStyle),
     };
     const safeSrc = sanitizeImageSrc(src);
     if (safeSrc) {
