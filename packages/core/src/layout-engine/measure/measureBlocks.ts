@@ -342,19 +342,28 @@ type FloatingZoneWithAnchor = {
   isMarginRelative?: boolean;
 } & FloatingImageZone;
 
-type FloatingTablePageRectWithAnchor = {
+type FloatingTableVerticalPosition =
+  | { type: "anchorRelative"; topOffset: number; bottomOffset: number }
+  | { type: "pageRelative"; pageTop: number; pageBottom: number };
+
+type FloatingTablePageRectTemplateWithAnchor = {
   anchorBlockIndex: number;
   /** Horizontal exclusion bounds in physical-page coordinates. */
   pageLeft: number;
   pageRight: number;
-  /** Vertical bounds remain local to the table's flow-column anchor. */
-  topY: number;
-  bottomY: number;
+  vertical: FloatingTableVerticalPosition;
+};
+
+type FloatingTablePageRect = {
+  pageLeft: number;
+  pageRight: number;
+  pageTop: number;
+  pageBottom: number;
 };
 
 type ExtractedFloatingZone =
   | { type: "contentZone"; zone: FloatingZoneWithAnchor }
-  | { type: "tablePageRect"; rect: FloatingTablePageRectWithAnchor };
+  | { type: "tablePageRect"; rect: FloatingTablePageRectTemplateWithAnchor };
 
 function perBlockNumberValue(
   value: number | number[],
@@ -365,6 +374,65 @@ function perBlockNumberValue(
     return value[blockIndex] ?? fallback;
   }
   return value;
+}
+
+type ResolveFloatingTableVerticalPositionOptions = {
+  floating: NonNullable<TableBlock["floating"]>;
+  tableHeight: number;
+  pageHeight: number;
+  marginTop: number;
+  marginBottom: number;
+  distTop: number;
+  distBottom: number;
+};
+
+function resolveFloatingTableVerticalPosition({
+  floating,
+  tableHeight,
+  pageHeight,
+  marginTop,
+  marginBottom,
+  distTop,
+  distBottom,
+}: ResolveFloatingTableVerticalPositionOptions): FloatingTableVerticalPosition {
+  let offset: number | undefined = floating.tblpY;
+  if (offset === undefined) {
+    const contentHeight = Math.max(0, pageHeight - marginTop - marginBottom);
+    switch (floating.tblpYSpec) {
+      case "top":
+        offset = 0;
+        break;
+      case "center":
+        offset = (contentHeight - tableHeight) / 2;
+        break;
+      case "bottom":
+        offset = contentHeight - tableHeight;
+        break;
+      case "inside":
+      case "outside":
+      case "inline":
+      case undefined:
+        break;
+      default:
+        floating.tblpYSpec satisfies never;
+    }
+  }
+
+  if (offset === undefined || floating.vertAnchor === "text") {
+    const anchorOffset = offset ?? 0;
+    return {
+      type: "anchorRelative",
+      topOffset: anchorOffset - distTop,
+      bottomOffset: anchorOffset + tableHeight + distBottom,
+    };
+  }
+
+  const frameTop = floating.vertAnchor === "page" ? 0 : marginTop;
+  return {
+    type: "pageRelative",
+    pageTop: frameTop + offset - distTop,
+    pageBottom: frameTop + offset + tableHeight + distBottom,
+  };
 }
 
 type TextBoxWrapSideOptions = {
@@ -419,7 +487,7 @@ function extractFloatingZones(
   pageGeometry?: BandPageGeometry,
 ): ExtractedFloatingZone[] {
   const zones: FloatingZoneWithAnchor[] = [];
-  const tablePageRects: FloatingTablePageRectWithAnchor[] = [];
+  const tablePageRects: FloatingTablePageRectTemplateWithAnchor[] = [];
   const defaultContentWidth = Array.isArray(contentWidth) ? (contentWidth[0] ?? 0) : contentWidth;
   const textBoxGroupAnchors = new Map<string, number>();
   const paragraphFrameGroupSizes = new Map<string, number>();
@@ -581,8 +649,15 @@ function extractFloatingZones(
     }
 
     const blockPageWidth = perBlockNumberValue(pageWidthInput, blockIndex, defaultPageWidth);
+    const blockPageHeight = perBlockNumberValue(pageHeightInput, blockIndex, defaultPageHeight);
+    const blockMarginTop = perBlockNumberValue(marginTop, blockIndex, defaultMarginTop);
     const blockMarginLeft = perBlockNumberValue(marginLeftInput, blockIndex, defaultMarginLeft);
     const blockMarginRight = perBlockNumberValue(marginRightInput, blockIndex, defaultMarginRight);
+    const blockMarginBottom = perBlockNumberValue(
+      marginBottomInput,
+      blockIndex,
+      defaultMarginBottom,
+    );
     const blockContentWidth = perBlockNumberValue(contentWidth, blockIndex, defaultContentWidth);
     const blockContentLeft = perBlockNumberValue(contentLeftInput, blockIndex, defaultContentLeft);
     const tableMeasure = measureTableBlock(tableBlock, blockContentWidth);
@@ -605,32 +680,18 @@ function extractFloatingZones(
       textFrameLeft: blockContentLeft,
     });
 
-    const topY = floating.tblpY ?? 0;
-    const bottomY = topY + tableHeight;
-
-    if (floating.horzAnchor !== "text") {
-      tablePageRects.push({
-        pageLeft: pageX - distLeft,
-        pageRight: pageX + tableWidth + distRight,
-        topY: topY - distTop,
-        bottomY: bottomY + distBottom,
-        anchorBlockIndex: blockIndex,
-      });
-      continue;
-    }
-
-    const contentX = pageX - blockContentLeft;
-    zones.push({
-      leftMargin:
-        contentX < blockContentWidth / 2
-          ? Math.max(0, Math.min(contentX + tableWidth + distRight, blockContentWidth))
-          : 0,
-      rightMargin:
-        contentX >= blockContentWidth / 2
-          ? Math.max(0, Math.min(blockContentWidth - contentX + distLeft, blockContentWidth))
-          : 0,
-      topY: topY - distTop,
-      bottomY: bottomY + distBottom,
+    tablePageRects.push({
+      pageLeft: pageX - distLeft,
+      pageRight: pageX + tableWidth + distRight,
+      vertical: resolveFloatingTableVerticalPosition({
+        floating,
+        tableHeight,
+        pageHeight: blockPageHeight,
+        marginTop: blockMarginTop,
+        marginBottom: blockMarginBottom,
+        distTop,
+        distBottom,
+      }),
       anchorBlockIndex: blockIndex,
     });
   }
@@ -776,37 +837,66 @@ function extractFloatingZones(
 }
 
 type ProjectFloatingTablePageRectOptions = {
-  rect: FloatingTablePageRectWithAnchor;
+  rect: FloatingTablePageRect;
   contentLeft: number;
+  contentTop: number;
   contentWidth: number;
 };
 
 function projectFloatingTablePageRect({
   rect,
   contentLeft,
+  contentTop,
   contentWidth,
 }: ProjectFloatingTablePageRectOptions): FloatingImageZone {
   const rectLeft = rect.pageLeft - contentLeft;
   const rectRight = rect.pageRight - contentLeft;
+  const topY = rect.pageTop - contentTop;
+  const bottomY = rect.pageBottom - contentTop;
   if (rectRight <= 0 || rectLeft >= contentWidth) {
-    return { leftMargin: 0, rightMargin: 0, topY: rect.topY, bottomY: rect.bottomY };
+    return { leftMargin: 0, rightMargin: 0, topY, bottomY };
   }
 
   if (rectLeft < contentWidth / 2) {
     return {
       leftMargin: Math.max(0, Math.min(rectRight, contentWidth)),
       rightMargin: 0,
-      topY: rect.topY,
-      bottomY: rect.bottomY,
+      topY,
+      bottomY,
     };
   }
 
   return {
     leftMargin: 0,
     rightMargin: Math.max(0, Math.min(contentWidth - rectLeft, contentWidth)),
-    topY: rect.topY,
-    bottomY: rect.bottomY,
+    topY,
+    bottomY,
   };
+}
+
+function activateFloatingTablePageRect(
+  template: FloatingTablePageRectTemplateWithAnchor,
+  anchorPageY: number,
+): FloatingTablePageRect {
+  switch (template.vertical.type) {
+    case "anchorRelative":
+      return {
+        pageLeft: template.pageLeft,
+        pageRight: template.pageRight,
+        pageTop: anchorPageY + template.vertical.topOffset,
+        pageBottom: anchorPageY + template.vertical.bottomOffset,
+      };
+    case "pageRelative":
+      return {
+        pageLeft: template.pageLeft,
+        pageRight: template.pageRight,
+        pageTop: template.vertical.pageTop,
+        pageBottom: template.vertical.pageBottom,
+      };
+    default:
+      template.vertical satisfies never;
+      return template.vertical;
+  }
 }
 
 /**
@@ -974,7 +1064,7 @@ export function measureBlocks(
   // Pre-extract floating image exclusion zones with anchor block indices
   const extractedZones = extractFloatingZones(blocks, contentWidth, marginTop, pageGeometry);
   const floatingZonesWithAnchors: FloatingZoneWithAnchor[] = [];
-  const tablePageRects: FloatingTablePageRectWithAnchor[] = [];
+  const tablePageRects: FloatingTablePageRectTemplateWithAnchor[] = [];
   for (const extracted of extractedZones) {
     switch (extracted.type) {
       case "contentZone":
@@ -1032,7 +1122,7 @@ export function measureBlocks(
     zonesByAnchor.set(z.anchorBlockIndex, existing);
   }
 
-  const tableRectsByAnchor = new Map<number, FloatingTablePageRectWithAnchor[]>();
+  const tableRectsByAnchor = new Map<number, FloatingTablePageRectTemplateWithAnchor[]>();
   for (const rect of tablePageRects) {
     const existing = tableRectsByAnchor.get(rect.anchorBlockIndex) ?? [];
     existing.push(rect);
@@ -1042,21 +1132,21 @@ export function measureBlocks(
   const anchorIndices = new Set([...zonesByAnchor.keys(), ...tableRectsByAnchor.keys()]);
 
   // Two running Y cursors for floating-zone overlap:
-  //  - cumulativeY resets to 0 at each floating-image/table anchor, giving that
-  //    object a local frame for its side-wrap zone.
-  //  - pageRelativeY is the real page cursor; it resets only at hard page breaks
-  //    (never at a float anchor), so a page-pinned topAndBottom band always
-  //    measures from a true page-relative position even when a float was
-  //    anchored earlier on the same page. eigenpal #694.
+  //  - cumulativeY resets to 0 at content-local floating-image anchors.
+  //    Floating-table page rects instead retain the page cursor.
+  //  - pageRelativeY is the current column's page-relative body cursor. It
+  //    resets at page/column boundaries, never at a float anchor, so fixed-page
+  //    zones and anchor-relative table rects share one vertical frame.
   let cumulativeY = 0;
   let pageRelativeY = 0;
   let columnRegionMaxBottom = 0;
   let activeZones: FloatingImageZone[] = [];
-  let activeTablePageRects: FloatingTablePageRectWithAnchor[] = [];
+  let activeTablePageRects: FloatingTablePageRect[] = [];
   const contentLeftInput = pageGeometry?.contentLeft ?? pageGeometry?.marginLeft ?? 0;
   const defaultContentLeft = Array.isArray(contentLeftInput)
     ? (contentLeftInput[0] ?? 0)
     : contentLeftInput;
+  const defaultBlockMarginTop = Array.isArray(marginTop) ? (marginTop[0] ?? 0) : marginTop;
   const columnIndexInput = pageGeometry?.columnIndex ?? 0;
   const columnCountInput = pageGeometry?.columnCount ?? 1;
 
@@ -1067,6 +1157,7 @@ export function measureBlocks(
       ? (contentWidth[blockIndex] ?? defaultWidth)
       : contentWidth;
     const blockContentLeft = perBlockNumberValue(contentLeftInput, blockIndex, defaultContentLeft);
+    const blockMarginTop = perBlockNumberValue(marginTop, blockIndex, defaultBlockMarginTop);
     const blockColumnIndex = perBlockNumberValue(columnIndexInput, blockIndex, 0);
     const blockColumnCount = perBlockNumberValue(columnCountInput, blockIndex, 1);
 
@@ -1103,7 +1194,9 @@ export function measureBlocks(
     // after a Y reset since their topY/bottomY are in the old coordinate system).
     if (anchorIndices.has(blockIndex)) {
       activeZones = zonesByAnchor.get(blockIndex) ?? [];
-      activeTablePageRects = tableRectsByAnchor.get(blockIndex) ?? [];
+      activeTablePageRects = (tableRectsByAnchor.get(blockIndex) ?? []).map((template) =>
+        activateFloatingTablePageRect(template, blockMarginTop + pageRelativeY),
+      );
       // Floating-image anchors open a fresh local frame (cumulativeY → 0). A
       // page/margin-pinned band instead reserves against the page, so it
       // measures from pageRelativeY — the real page cursor, which a prior float
@@ -1115,13 +1208,14 @@ export function measureBlocks(
         activeTablePageRects.length === 0 &&
         activeZones.length > 0 &&
         activeZones.every((z) => z.fullWidthBlock);
-      cumulativeY = bandOnlyAnchor ? pageRelativeY : 0;
+      cumulativeY = bandOnlyAnchor || activeTablePageRects.length > 0 ? pageRelativeY : 0;
     }
 
     const projectedTableZones = activeTablePageRects.map((rect) =>
       projectFloatingTablePageRect({
         rect,
         contentLeft: blockContentLeft,
+        contentTop: blockMarginTop,
         contentWidth: blockWidth,
       }),
     );

@@ -319,6 +319,100 @@ describe("measureBlocks", () => {
     }, fakeMeasure);
   });
 
+  test("does not carry a column-local text-anchor reduction into the next column", () => {
+    withFakeTextMeasure(() => {
+      const table = centeredMarginFloatingTable("first-column-text-float");
+      table.floating = { horzAnchor: "text", tblpX: 10 };
+      const blocks: FlowBlock[] = [
+        table,
+        para("first-body", "body"),
+        { kind: "columnBreak", id: "second-column" },
+        para("second-body", "body"),
+      ];
+      const measures = measureBlocks(blocks, 350, 0, {
+        pageWidth: 1_000,
+        pageHeight: 1_000,
+        marginLeft: 100,
+        marginRight: 100,
+        marginBottom: 40,
+        contentLeft: [100, 100, 100, 550],
+        columnIndex: [0, 0, 0, 1],
+        columnCount: 2,
+      });
+      const firstBody = measures.at(1);
+      const secondBody = measures.at(3);
+      if (firstBody?.kind !== "paragraph" || secondBody?.kind !== "paragraph") {
+        throw new Error("Expected paragraph measures");
+      }
+
+      expect(firstBody.lines.at(0)?.leftOffset).toBe(222);
+      expect(secondBody.lines.at(0)?.leftOffset).toBeUndefined();
+      expect(secondBody.lines.at(0)?.rightOffset).toBeUndefined();
+    }, fakeMeasure);
+  });
+
+  test("keeps a text-relative table Y offset tied to its anchor cursor", () => {
+    withFakeTextMeasure(() => {
+      const table = centeredMarginFloatingTable("text-vertical-float");
+      table.floating = {
+        horzAnchor: "text",
+        vertAnchor: "text",
+        tblpX: 10,
+        tblpY: 10,
+      };
+      const measures = measureBlocks(
+        [para("long-prefix", "x".repeat(500)), table, para("body", "body")],
+        350,
+        0,
+        {
+          pageWidth: 1_000,
+          pageHeight: 1_000,
+          marginLeft: 100,
+          marginRight: 100,
+          marginBottom: 40,
+          contentLeft: 100,
+          columnIndex: 0,
+          columnCount: 1,
+        },
+      );
+      const bodyMeasure = measures.at(2);
+      if (bodyMeasure?.kind !== "paragraph") {
+        throw new Error("Expected paragraph measure");
+      }
+
+      expect(bodyMeasure.lines.at(0)?.leftOffset).toBe(222);
+    }, fakeMeasure);
+  });
+
+  test("projects an over-wide text-anchored table into the next column", () => {
+    withFakeTextMeasure(() => {
+      const table = centeredMarginFloatingTable("over-wide-text-float");
+      table.columnWidths = [500];
+      table.floating = { horzAnchor: "text", tblpX: 10 };
+      const blocks: FlowBlock[] = [
+        table,
+        { kind: "columnBreak", id: "second-column" },
+        para("second-body", "body"),
+      ];
+      const measures = measureBlocks(blocks, 350, 0, {
+        pageWidth: 1_000,
+        pageHeight: 1_000,
+        marginLeft: 100,
+        marginRight: 100,
+        marginBottom: 40,
+        contentLeft: [100, 100, 550],
+        columnIndex: [0, 0, 1],
+        columnCount: 2,
+      });
+      const secondBody = measures.at(2);
+      if (secondBody?.kind !== "paragraph") {
+        throw new Error("Expected paragraph measure");
+      }
+
+      expect(secondBody.lines.at(0)?.leftOffset).toBe(72);
+    }, fakeMeasure);
+  });
+
   test("reprojects one margin-anchored floating table across an explicit column break", () => {
     withFakeTextMeasure(() => {
       const blocks: FlowBlock[] = [
