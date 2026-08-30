@@ -1,5 +1,15 @@
 # @stll/folio-core
 
+## 0.31.0
+
+### Minor Changes
+
+- [#678](https://github.com/stella/folio/pull/678) [`8ad72ba`](https://github.com/stella/folio/commit/8ad72baa96ddabe1a106c7a2d9a4a08928fdd215) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add an opt-in stacked layout for bilingual source tables while preserving the inline layout as the default.
+
+### Patch Changes
+
+- [#676](https://github.com/stella/folio/pull/676) [`c87d755`](https://github.com/stella/folio/commit/c87d7556d88d71e8831041955404dfe774a2837f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep numbered-list markers visible when projecting paragraphs into bilingual columns.
+
 ## 0.30.0
 
 ### Minor Changes
