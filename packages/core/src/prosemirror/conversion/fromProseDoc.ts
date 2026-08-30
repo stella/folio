@@ -16,6 +16,7 @@ import type { Node as PMNode, Mark } from "prosemirror-model";
 import { Fragment } from "prosemirror-model";
 
 import { numPrEqual } from "../../docx/numberingParser";
+import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import { parseShapeGeometryAdjustments } from "../shapeGeometryAdjustments";
 import { narrowEnum, ShapeOutlineStyleSchema } from "../../docx/parserEnums";
 import type {
@@ -2835,8 +2836,9 @@ export function marksToTextFormatting(
         if (attrs.position !== undefined) {
           formatting.position = attrs.position;
         }
-        if (attrs.scale !== undefined) {
-          formatting.scale = attrs.scale;
+        const horizontalScale = normalizeHorizontalScalePercent(attrs.scale);
+        if (horizontalScale !== undefined) {
+          formatting.scale = horizontalScale;
         }
         if (attrs.kerning !== undefined) {
           formatting.kerning = attrs.kerning;

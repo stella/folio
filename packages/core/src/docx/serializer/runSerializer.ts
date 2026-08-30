@@ -42,6 +42,7 @@ import type {
 import { requiresXmlSpacePreserve } from "../textWhitespace";
 import { HIGHLIGHT_COLOR_VALUES } from "../../types/documentEnumValues";
 import { isValidHexColor } from "../../utils/colorResolver";
+import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import { THEME_COLOR_TO_DRAWING_SCHEME } from "../drawingUtils";
 // oxlint-disable-next-line import/no-cycle -- OOXML model is mutually recursive: shape textboxes hold paragraphs, paragraphs hold runs
 import { serializeParagraph } from "./paragraphSerializer";
@@ -344,8 +345,9 @@ export function serializeTextFormatting(formatting: TextFormatting | undefined):
   }
 
   // Scale (w:w)
-  if (formatting.scale !== undefined) {
-    parts.push(`<w:w w:val="${intAttr(formatting.scale)}"/>`);
+  const horizontalScale = normalizeHorizontalScalePercent(formatting.scale);
+  if (horizontalScale !== undefined) {
+    parts.push(`<w:w w:val="${intAttr(horizontalScale)}"/>`);
   }
 
   // Kerning

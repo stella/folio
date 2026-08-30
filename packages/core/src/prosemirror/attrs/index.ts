@@ -35,6 +35,7 @@ import {
   UNDERLINE_STYLE_VALUES,
 } from "../../types/documentEnumValues";
 import type { ParagraphFormatting } from "../../types/document";
+import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import { DRAWING_RAW_XML_MODES, isOoxmlSymbolCharacter } from "@stll/docx-core/model";
 import { isParagraphDirection } from "../paragraphDirection";
 import type {
@@ -1002,7 +1003,17 @@ export const readCharacterSpacingMarkAttrs = (
   optionalNumber(attrs, "scale", "characterSpacing.attrs.scale", issues);
   optionalNumber(attrs, "kerning", "characterSpacing.attrs.kerning", issues);
 
-  return attrsResult(attrs, issues);
+  const result = attrsResult<CharacterSpacingAttrs>(attrs, issues);
+  if (!result.ok) {
+    return result;
+  }
+  const { scale, ...rest } = result.value;
+  const horizontalScale = normalizeHorizontalScalePercent(scale);
+  result.value = {
+    ...rest,
+    ...(horizontalScale !== undefined ? { scale: horizontalScale } : {}),
+  };
+  return result;
 };
 
 export const expectCharacterSpacingMarkAttrs = (mark: Mark): CharacterSpacingAttrs =>

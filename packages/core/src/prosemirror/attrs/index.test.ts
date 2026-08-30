@@ -5,6 +5,7 @@ import {
   expectParagraphAttrs,
   readHardBreakAttrs,
   readCommentMarkAttrs,
+  readCharacterSpacingMarkAttrs,
   readFontSizeMarkAttrs,
   readHighlightMarkAttrs,
   readHyperlinkMarkAttrs,
@@ -34,6 +35,29 @@ const issueMessages = (result: ReturnType<typeof readParagraphAttrs>) => {
 };
 
 describe("ProseMirror attr readers", () => {
+  test.each([-50, 601, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+    "normalizes out-of-range character scale %p",
+    (scale) => {
+      const mark = schema.marks.characterSpacing.create({ scale });
+      const result = readCharacterSpacingMarkAttrs(mark);
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.scale).toBeUndefined();
+      }
+    },
+  );
+
+  test("preserves zero-width character scale", () => {
+    const mark = schema.marks.characterSpacing.create({ scale: 0 });
+    const result = readCharacterSpacingMarkAttrs(mark);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.scale).toBe(0);
+    }
+  });
+
   test("accepts valid paragraph attrs with preservation payloads", () => {
     const node = schema.nodes.paragraph.create({
       paraId: "para-1",

@@ -38,6 +38,7 @@ import { setHyperlinkInstanceIndex } from "../../layout-engine/measure/hyperlink
 import { setTextBoxGroupId } from "../../layout-engine/textBoxGroup";
 import { setParagraphFrame } from "../../layout-engine/paragraphFrame";
 import { DEFAULT_TEXTBOX_MARGINS, DEFAULT_TEXTBOX_WIDTH } from "../../layout-engine/types";
+import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import { getColumns } from "../sectionColumns";
 import {
   expectBlockSdtAttrs,
@@ -373,8 +374,9 @@ function extractRunFormatting(
         if (attrs.position !== undefined && attrs.position !== 0) {
           formatting.positionPx = halfPointsToPixels(attrs.position);
         }
-        if (attrs.scale !== undefined && attrs.scale !== 100) {
-          formatting.horizontalScale = attrs.scale;
+        const horizontalScale = normalizeHorizontalScalePercent(attrs.scale);
+        if (horizontalScale !== undefined && horizontalScale !== 100) {
+          formatting.horizontalScale = horizontalScale;
         }
         if (attrs.kerning !== undefined && attrs.kerning > 0) {
           formatting.kerningMinPt = halfPointsToPoints(attrs.kerning);
@@ -845,8 +847,9 @@ function textFormattingToRunFormatting(
   if (defaultTextFormatting.position !== undefined && defaultTextFormatting.position !== 0) {
     result.positionPx = halfPointsToPixels(defaultTextFormatting.position);
   }
-  if (defaultTextFormatting.scale !== undefined && defaultTextFormatting.scale !== 100) {
-    result.horizontalScale = defaultTextFormatting.scale;
+  const horizontalScale = normalizeHorizontalScalePercent(defaultTextFormatting.scale);
+  if (horizontalScale !== undefined && horizontalScale !== 100) {
+    result.horizontalScale = horizontalScale;
   }
   if (defaultTextFormatting.kerning !== undefined && defaultTextFormatting.kerning > 0) {
     result.kerningMinPt = halfPointsToPoints(defaultTextFormatting.kerning);

@@ -51,6 +51,48 @@ describe("text measurement cache", () => {
     }, fakeMeasure);
   });
 
+  test("enforces the OOXML horizontal scale range in measurement", () => {
+    withFakeTextMeasure((getMeasureCount) => {
+      const text = "invalid scale";
+      const normalWidth = measureTextWidth(text, {
+        fontFamily: "Arial",
+        fontSize: 11,
+      });
+
+      expect(
+        measureTextWidth(text, {
+          fontFamily: "Arial",
+          fontSize: 11,
+          horizontalScale: 0,
+        }),
+      ).toBe(0);
+      expect(
+        measureTextWidth(text, {
+          fontFamily: "Arial",
+          fontSize: 11,
+          horizontalScale: 600,
+        }),
+      ).toBe(normalWidth * 6);
+
+      for (const horizontalScale of [
+        -50,
+        601,
+        Number.NaN,
+        Number.POSITIVE_INFINITY,
+        Number.NEGATIVE_INFINITY,
+      ]) {
+        expect(
+          measureTextWidth(text, {
+            fontFamily: "Arial",
+            fontSize: 11,
+            horizontalScale,
+          }),
+        ).toBe(normalWidth);
+      }
+      expect(getMeasureCount()).toBe(3);
+    }, fakeMeasure);
+  });
+
   test("keeps enabled kerning in the text width cache key", () => {
     withFakeTextMeasure((getMeasureCount) => {
       const text = "AVAV";

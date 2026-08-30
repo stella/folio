@@ -65,6 +65,7 @@ import { parseVmlImageContent } from "./vmlImageParser";
 import { resolveThemeFontRef } from "./themeParser";
 import { requiresXmlSpacePreserve } from "./textWhitespace";
 import { isValidHexColor } from "../utils/colorResolver";
+import { normalizeHorizontalScalePercent } from "../utils/horizontalScale";
 import {
   cloneWithXmlnsDeclarations,
   findAllDeep,
@@ -583,7 +584,7 @@ export function parseRunProperties(
   // Horizontal text scale percentage (w:w)
   const w = propertyChildren.w;
   if (w) {
-    const val = parseNumericAttribute(w, "w", "val");
+    const val = normalizeHorizontalScalePercent(parseNumericAttribute(w, "w", "val"));
     if (val !== undefined) {
       formatting.scale = val;
     }

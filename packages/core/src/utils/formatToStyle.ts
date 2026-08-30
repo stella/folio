@@ -24,6 +24,7 @@ import type {
 } from "../types/document";
 import { resolveColor, resolveHighlightToCss, resolveShadingColor } from "./colorResolver";
 import { resolveFontFamily, resolveThemeFont } from "./fontResolver";
+import { getHorizontalScaleFactor, normalizeHorizontalScalePercent } from "./horizontalScale";
 import {
   AUTO_PARAGRAPH_SPACING_PX,
   halfPointsToPixels,
@@ -224,9 +225,10 @@ export function textToStyle(
   }
 
   // Horizontal scale (w:w) - stretch/compress text
-  if (formatting.scale !== undefined && formatting.scale !== 100) {
+  const horizontalScale = normalizeHorizontalScalePercent(formatting.scale);
+  if (horizontalScale !== undefined && horizontalScale !== 100) {
     // CSS doesn't have direct text scale, use transform
-    style.transform = `scaleX(${formatting.scale / 100})`;
+    style.transform = `scaleX(${getHorizontalScaleFactor(horizontalScale)})`;
     style.display = "inline-block";
   }
 

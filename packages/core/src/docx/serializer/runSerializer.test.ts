@@ -393,6 +393,29 @@ describe("run formatting integer attributes (issue #417)", () => {
     expect(xml).toContain('<w:kern w:val="18"/>');
     expect(xml).toContain('<w:position w:val="-6"/>');
   });
+
+  test.each([-50, 601, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+    "omits malformed horizontal scale %p",
+    (scale) => {
+      const xml = serializeRun({
+        type: "run",
+        content: [{ type: "text", text: "x" }],
+        formatting: { scale },
+      });
+
+      expect(xml).not.toContain("<w:w ");
+    },
+  );
+
+  test.each([0, 600])("preserves boundary horizontal scale %p", (scale) => {
+    const xml = serializeRun({
+      type: "run",
+      content: [{ type: "text", text: "x" }],
+      formatting: { scale },
+    });
+
+    expect(xml).toContain(`<w:w w:val="${scale}"/>`);
+  });
 });
 
 describe("break clear serialization", () => {

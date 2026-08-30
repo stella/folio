@@ -56,6 +56,7 @@ import { resolveColorValueToHex } from "../../docx/drawingUtils";
 import { mergeTextFormatting } from "../../utils/textFormattingMerge";
 import { tableOfContentsStyleLevel } from "../../utils/tableOfContentsStyle";
 import { emuToPixels } from "../../utils/units";
+import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import { setAutospacingBaseValue } from "../autospacingBase";
 import { buildRunFormattingOverrideAttrs } from "../extensions/marks/RunFormattingOverrideExtension";
 import { directionFromBidi } from "../paragraphDirection";
@@ -3312,7 +3313,7 @@ export function textFormattingToMarks(
   // Character spacing (spacing, position, scale, kerning)
   const spacing = typeof formatting.spacing === "number" ? formatting.spacing : null;
   const position = typeof formatting.position === "number" ? formatting.position : null;
-  const scale = typeof formatting.scale === "number" ? formatting.scale : null;
+  const scale = normalizeHorizontalScalePercent(formatting.scale) ?? null;
   const kerning = typeof formatting.kerning === "number" ? formatting.kerning : null;
   if (spacing !== null || position !== null || scale !== null || kerning !== null) {
     marks.push(

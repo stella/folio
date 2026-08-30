@@ -26,6 +26,7 @@ import {
   segmentByScript,
   type ScriptClass,
 } from "../../utils/scriptSegments";
+import { getHorizontalScaleFactor } from "../../utils/horizontalScale";
 import {
   getCachedFontMetrics,
   getCachedTextWidth,
@@ -222,7 +223,7 @@ function canvasMeasureTextWidth(text: string, sourceStyle: FontStyle): number {
   const ctx = getCanvasContext();
   const font = buildFontString(style);
   const letterSpacing = style.letterSpacing ?? 0;
-  const horizontalScale = getHorizontalScaleFactor(style);
+  const horizontalScale = getHorizontalScaleFactor(style.horizontalScale);
   const fontKerning = getFontKerningMode(style);
   const fontCacheKey = style.kerning
     ? `${font}|kerning:normal|scale:${horizontalScale}`
@@ -360,7 +361,7 @@ function scriptStyle(style: FontStyle, script: ScriptClass): FontStyle {
 
 function measureMixedScriptWidth(measuredText: string, style: FontStyle): number {
   const letterSpacing = style.letterSpacing ?? 0;
-  const horizontalScale = getHorizontalScaleFactor(style);
+  const horizontalScale = getHorizontalScaleFactor(style.horizontalScale);
 
   let glyphWidth = 0;
   for (const segment of segmentByScript(measuredText)) {
@@ -483,7 +484,7 @@ function canvasMeasureRun(text: string, sourceStyle: FontStyle): RunMeasurement 
       : undefined;
 
   const letterSpacing = style.letterSpacing ?? 0;
-  const scale = getHorizontalScaleFactor(style);
+  const scale = getHorizontalScaleFactor(style.horizontalScale);
   const charWidths: number[] = [];
   let totalWidth = 0;
 
@@ -551,8 +552,4 @@ function applyTextTransform(text: string, style: FontStyle): string {
     return text.toLocaleUpperCase();
   }
   return text;
-}
-
-function getHorizontalScaleFactor(style: FontStyle): number {
-  return (style.horizontalScale ?? 100) / 100;
 }

@@ -15,6 +15,7 @@ import { measureParagraph } from "../../layout-engine/measure";
 import { buildRunFontStyle } from "../../layout-engine/measure/measureHelpers";
 import { measureRun } from "../../layout-engine/measure/measureProvider";
 import type { FontStyle } from "../../layout-engine/measure/measureTypes";
+import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import {
   buildTableCellGrid,
   buildTableCellPlacements,
@@ -101,13 +102,14 @@ function runToFontStyle(run: TextRun | TabRun): FontStyle {
 }
 
 function mathRunToFontStyle(run: MathRun): FontStyle {
+  const horizontalScale = normalizeHorizontalScalePercent(run.horizontalScale);
   return {
     fontFamily: run.fontFamily ?? "Cambria Math",
     fontSize: run.fontSize ?? 11,
     ...(run.bold !== undefined ? { bold: run.bold } : {}),
     ...(run.italic !== undefined ? { italic: run.italic } : {}),
     ...(run.letterSpacing !== undefined ? { letterSpacing: run.letterSpacing } : {}),
-    ...(run.horizontalScale !== undefined ? { horizontalScale: run.horizontalScale } : {}),
+    ...(horizontalScale !== undefined ? { horizontalScale } : {}),
   };
 }
 

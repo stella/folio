@@ -15,6 +15,7 @@ import {
 import { inlineImageBoundingBox } from "../../utils/rotationBoundingBox";
 import { isRtlParagraph } from "../../utils/paragraphBaseDirection";
 import { hasCjk, hasComplexScript } from "../../utils/scriptSegments";
+import { getHorizontalScaleFactor } from "../../utils/horizontalScale";
 import { measuredLineAdvance } from "../lineFlow";
 import type {
   ParagraphBlock,
@@ -781,7 +782,7 @@ function measureWordWithTrailingWhitespace(
   const trailingWhitespaceWidth = measureTextWidth(trailingWhitespace, style);
   const boundarySpacing =
     measuredWord.length > 0
-      ? (style.letterSpacing ?? 0) * ((style.horizontalScale ?? 100) / 100)
+      ? (style.letterSpacing ?? 0) * getHorizontalScaleFactor(style.horizontalScale)
       : 0;
   return {
     measuredWord,

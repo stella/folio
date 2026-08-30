@@ -51,6 +51,7 @@ import type {
 import type { BorderSpec, Theme, Watermark } from "../types/document";
 import { resolveFontFamily } from "../utils/fontResolver";
 import { borderToStyle } from "../utils/formatToStyle";
+import { normalizeHorizontalScalePercent } from "../utils/horizontalScale";
 import { applySanitizedImageSrc } from "../utils/sanitizeImageSrc";
 import { eighthsToPixels, pointsToPixels } from "../utils/units";
 import {
@@ -2756,8 +2757,9 @@ function runContentKey(run: Run): string {
   if (run.positionPx !== undefined) {
     parts.push(`pp:${run.positionPx}`);
   }
-  if (run.horizontalScale !== undefined && run.horizontalScale !== 100) {
-    parts.push(`hs:${run.horizontalScale}`);
+  const horizontalScale = normalizeHorizontalScalePercent(run.horizontalScale);
+  if (horizontalScale !== undefined && horizontalScale !== 100) {
+    parts.push(`hs:${horizontalScale}`);
   }
   if (run.imprint) {
     parts.push("imp");

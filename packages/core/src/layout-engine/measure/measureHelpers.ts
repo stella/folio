@@ -10,6 +10,7 @@
 
 import { resolveFontFamily } from "../../utils/fontResolver";
 import { DOCX_BOLD_FONT_WEIGHT } from "../../utils/fontWeights";
+import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import type { RunFormatting } from "../types";
 import type { FontStyle } from "./measureTypes";
 import { FONT_KERNING_MODE, getRunFontKerningMode } from "./textMeasurementPolicy";
@@ -40,6 +41,7 @@ export function buildRunFontStyle(
   const baseFontSize = run.fontSize ?? fallbackFontSize;
   const fontSize =
     run.superscript || run.subscript ? baseFontSize * DOCX_SCRIPT_FONT_SCALE : baseFontSize;
+  const horizontalScale = normalizeHorizontalScalePercent(run.horizontalScale);
   return {
     fontFamily: run.fontFamily ?? fallbackFontFamily,
     ...(run.alternateFontFamily !== undefined
@@ -69,7 +71,7 @@ export function buildRunFontStyle(
     ...(run.letterSpacing !== undefined ? { letterSpacing: run.letterSpacing } : {}),
     ...(run.allCaps ? { textTransform: "uppercase" as const } : {}),
     ...(run.smallCaps ? { fontVariant: "small-caps" as const } : {}),
-    ...(run.horizontalScale !== undefined ? { horizontalScale: run.horizontalScale } : {}),
+    ...(horizontalScale !== undefined ? { horizontalScale } : {}),
     kerning: getRunFontKerningMode(run, fallbackFontSize) === FONT_KERNING_MODE.enabled,
   };
 }
