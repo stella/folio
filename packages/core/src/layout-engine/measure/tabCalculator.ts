@@ -108,8 +108,7 @@ export function computeTabStops(context: TabContext): TabStop[] {
     leftIndent = 0,
   } = context;
   const tabInterval =
-    Number.isFinite(defaultTabInterval) &&
-    defaultTabInterval >= TAB_STOP_MATCH_TOLERANCE_TWIPS
+    Number.isFinite(defaultTabInterval) && defaultTabInterval >= TAB_STOP_MATCH_TOLERANCE_TWIPS
       ? defaultTabInterval
       : DEFAULT_TAB_INTERVAL_TWIPS;
 
@@ -183,8 +182,7 @@ export function computeTabStops(context: TabContext): TabStop[] {
     }
     // Skip if at leftIndent only when the implicit stop was added above.
     const isAtLeftIndent =
-      addsImplicitLeftIndent &&
-      Math.abs(pos - leftIndent) < TAB_STOP_MATCH_TOLERANCE_TWIPS;
+      addsImplicitLeftIndent && Math.abs(pos - leftIndent) < TAB_STOP_MATCH_TOLERANCE_TWIPS;
 
     if (!hasExplicitStop && !hasClearStop && !isAtLeftIndent) {
       stops.push({
