@@ -389,6 +389,8 @@ type BandPageGeometry = {
   marginLeft?: number | number[];
   marginRight?: number | number[];
   marginBottom: number | number[];
+  /** Absolute page X of each block's active column origin. */
+  contentLeft?: number | number[];
 };
 
 function extractFloatingZones(
@@ -416,6 +418,7 @@ function extractFloatingZones(
   const marginLeftInput = pageGeometry?.marginLeft ?? 0;
   const marginRightInput = pageGeometry?.marginRight ?? 0;
   const marginBottomInput = pageGeometry?.marginBottom ?? 0;
+  const contentLeftInput = pageGeometry?.contentLeft ?? marginLeftInput;
   const defaultPageWidth = Array.isArray(pageWidthInput)
     ? (pageWidthInput[0] ?? defaultContentWidth)
     : pageWidthInput;
@@ -431,6 +434,9 @@ function extractFloatingZones(
   const defaultMarginBottom = Array.isArray(marginBottomInput)
     ? (marginBottomInput[0] ?? 0)
     : marginBottomInput;
+  const defaultContentLeft = Array.isArray(contentLeftInput)
+    ? (contentLeftInput[0] ?? defaultMarginLeft)
+    : contentLeftInput;
 
   for (let blockIndex = 0; blockIndex < blocks.length; blockIndex++) {
     const block = blocks[blockIndex]!; // SAFETY: blockIndex < blocks.length
@@ -557,6 +563,8 @@ function extractFloatingZones(
     const blockContentWidth = perBlockNumberValue(contentWidth, blockIndex, defaultContentWidth);
     const blockPageWidth = perBlockNumberValue(pageWidthInput, blockIndex, defaultPageWidth);
     const blockMarginLeft = perBlockNumberValue(marginLeftInput, blockIndex, defaultMarginLeft);
+    const blockMarginRight = perBlockNumberValue(marginRightInput, blockIndex, defaultMarginRight);
+    const blockContentLeft = perBlockNumberValue(contentLeftInput, blockIndex, defaultContentLeft);
     const tableMeasure = measureTableBlock(tableBlock, blockContentWidth);
     const tableWidth = tableMeasure.totalWidth;
     const tableHeight = tableMeasure.totalHeight;
@@ -573,16 +581,19 @@ function extractFloatingZones(
       anchor: floating,
       justification: tableBlock.justification,
       tableWidth,
-      contentWidth: blockContentWidth,
+      marginWidth: blockPageWidth - blockMarginLeft - blockMarginRight,
       pageWidth: blockPageWidth,
       marginLeft: blockMarginLeft,
     });
-    const contentX = pageX - blockMarginLeft;
+    const contentX = pageX - blockContentLeft;
 
     if (contentX < blockContentWidth / 2) {
-      leftMargin = contentX + tableWidth + distRight;
+      leftMargin = Math.max(0, Math.min(contentX + tableWidth + distRight, blockContentWidth));
     } else {
-      rightMargin = blockContentWidth - contentX + distLeft;
+      rightMargin = Math.max(
+        0,
+        Math.min(blockContentWidth - contentX + distLeft, blockContentWidth),
+      );
     }
 
     const topY = floating.tblpY ?? 0;

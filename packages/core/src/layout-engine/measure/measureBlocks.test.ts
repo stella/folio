@@ -278,6 +278,113 @@ describe("measureBlocks", () => {
     }, fakeMeasure);
   });
 
+  test("translates margin-anchored floating-table wrapping into each active column", () => {
+    withFakeTextMeasure(() => {
+      const floatingTable = (id: string): TableBlock => ({
+        kind: "table",
+        id,
+        columnWidths: [200],
+        floating: { horzAnchor: "margin", tblpXSpec: "center" },
+        rows: [
+          {
+            id: `${id}-row`,
+            cells: [{ id: `${id}-cell`, blocks: [para(`${id}-content`, "cell")] }],
+          },
+        ],
+      });
+      const blocks: FlowBlock[] = [
+        floatingTable("first-float"),
+        para("first-body", "body"),
+        { kind: "columnBreak", id: "column-break" },
+        floatingTable("second-float"),
+        para("second-body", "body"),
+      ];
+      const measures = measureBlocks(blocks, [350, 350, 350, 350, 350], 0, {
+        pageWidth: 1_000,
+        pageHeight: 1_000,
+        marginLeft: 100,
+        marginRight: 100,
+        marginBottom: 40,
+        contentLeft: [100, 100, 100, 550, 550],
+      });
+      const firstBody = measures.at(1);
+      const secondBody = measures.at(4);
+      if (firstBody?.kind !== "paragraph" || secondBody?.kind !== "paragraph") {
+        throw new Error("Expected paragraph measures");
+      }
+
+      expect(firstBody.lines.at(0)?.rightOffset).toBe(62);
+      expect(secondBody.lines.at(0)?.leftOffset).toBe(62);
+    }, fakeMeasure);
+  });
+
+  test("does not widen lines for a floating table wholly outside the active column", () => {
+    withFakeTextMeasure(() => {
+      const table: TableBlock = {
+        kind: "table",
+        id: "outside-column",
+        columnWidths: [200],
+        floating: { horzAnchor: "margin", tblpXSpec: "left" },
+        rows: [
+          {
+            id: "row",
+            cells: [{ id: "cell", blocks: [para("cell", "cell")] }],
+          },
+        ],
+      };
+      const body = para("body", "x".repeat(100));
+      const measures = measureBlocks([table, body], [350, 350], 0, {
+        pageWidth: 1_000,
+        pageHeight: 1_000,
+        marginLeft: 100,
+        marginRight: 100,
+        marginBottom: 40,
+        contentLeft: [550, 550],
+      });
+      const bodyMeasure = measures.at(1);
+      if (bodyMeasure?.kind !== "paragraph") {
+        throw new Error("Expected paragraph measure");
+      }
+
+      expect(bodyMeasure.lines).toHaveLength(2);
+      expect(bodyMeasure.lines.at(0)?.leftOffset).toBeUndefined();
+      expect(bodyMeasure.lines.at(0)?.rightOffset).toBeUndefined();
+    }, fakeMeasure);
+  });
+
+  test("clears below a floating table that covers the active column", () => {
+    withFakeTextMeasure(() => {
+      const table: TableBlock = {
+        kind: "table",
+        id: "full-column-cover",
+        columnWidths: [400],
+        floating: { horzAnchor: "margin", tblpXSpec: "left" },
+        rows: [
+          {
+            id: "row",
+            cells: [{ id: "cell", blocks: [para("cell", "cell")] }],
+          },
+        ],
+      };
+      const measures = measureBlocks([table, para("body", "body")], [350, 350], 0, {
+        pageWidth: 1_000,
+        pageHeight: 1_000,
+        marginLeft: 100,
+        marginRight: 100,
+        marginBottom: 40,
+        contentLeft: [100, 100],
+      });
+      const tableMeasure = measures.at(0);
+      const bodyMeasure = measures.at(1);
+      if (tableMeasure?.kind !== "table" || bodyMeasure?.kind !== "paragraph") {
+        throw new Error("Expected table and paragraph measures");
+      }
+
+      expect(bodyMeasure.lines.at(0)?.floatSkipBefore).toBe(tableMeasure.totalHeight);
+      expect(bodyMeasure.lines.at(0)?.leftOffset).toBeUndefined();
+    }, fakeMeasure);
+  });
+
   test("keeps paragraph-anchored bands from one textbox group active together", () => {
     withFakeTextMeasure(() => {
       const firstBand: TextBoxBlock = {

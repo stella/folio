@@ -63,6 +63,7 @@ describe("section block measurement inputs", () => {
     expect(inputs.pageWidths).toEqual([600, 600, BODY_CONFIG.pageSize.w]);
     expect(inputs.marginLefts).toEqual([50, 50, BODY_CONFIG.margins.left]);
     expect(inputs.marginRights).toEqual([50, 50, BODY_CONFIG.margins.right]);
+    expect(inputs.contentLefts).toEqual([50, 50, BODY_CONFIG.margins.left]);
   });
 
   test("uses the authored width after a forced break in unequal columns", () => {
@@ -72,7 +73,7 @@ describe("section block measurement inputs", () => {
       paragraph("second-column"),
     ];
 
-    const widths = computePerBlockWidths({
+    const inputs = computePerBlockMeasureInputs({
       blocks,
       bodyConfig: BODY_CONFIG,
       finalConfig: {
@@ -81,6 +82,30 @@ describe("section block measurement inputs", () => {
       },
     });
 
-    expect(widths).toEqual([200, 200, 300]);
+    expect(inputs.widths).toEqual([200, 200, 300]);
+    expect(inputs.contentLefts).toEqual([100, 100, 400]);
+  });
+
+  test("tracks active origins across unequal columns and a page reset", () => {
+    const blocks: FlowBlock[] = [
+      paragraph("first"),
+      { kind: "columnBreak", id: "first-break" },
+      paragraph("second"),
+      { kind: "columnBreak", id: "second-break" },
+      paragraph("third"),
+      { kind: "pageBreak", id: "page-break" },
+      paragraph("next-page"),
+    ];
+    const inputs = computePerBlockMeasureInputs({
+      blocks,
+      bodyConfig: BODY_CONFIG,
+      finalConfig: {
+        ...BODY_CONFIG,
+        columns: { count: 3, gap: 0, widths: [180, 260, 220], gaps: [30, 70] },
+      },
+    });
+
+    expect(inputs.widths).toEqual([180, 180, 260, 260, 220, 220, 180]);
+    expect(inputs.contentLefts).toEqual([100, 100, 310, 310, 640, 640, 100]);
   });
 });

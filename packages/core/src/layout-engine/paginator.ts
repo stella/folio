@@ -108,7 +108,7 @@ type StartSectionOptions = {
 };
 
 /** Calculate active column widths, preferring authored unequal widths. */
-function calculateColumnWidths(
+export function calculateColumnWidths(
   pageWidth: number,
   leftMargin: number,
   rightMargin: number,
@@ -128,6 +128,42 @@ function calculateColumnWidths(
 
 const gapAfterColumn = (columns: ColumnLayout, columnIndex: number): number =>
   columns.gaps?.[columnIndex] ?? columns.gap;
+
+/** Resolve every column's absolute page X in one pass. */
+export function calculateColumnLefts(
+  leftMargin: number,
+  columnWidths: readonly number[],
+  columns: ColumnLayout,
+): number[] {
+  const lefts: number[] = [];
+  let x = leftMargin;
+  for (let index = 0; index < columnWidths.length; index++) {
+    lefts.push(x);
+    x += (columnWidths[index] ?? 0) + gapAfterColumn(columns, index);
+  }
+  return lefts;
+}
+
+type ResolveColumnLeftOptions = {
+  leftMargin: number;
+  columnWidths: readonly number[];
+  columns: ColumnLayout;
+  columnIndex: number;
+};
+
+/** Resolve an active column's absolute page X from the shared width/gap model. */
+export function resolveColumnLeft({
+  leftMargin,
+  columnWidths,
+  columns,
+  columnIndex,
+}: ResolveColumnLeftOptions): number {
+  let x = leftMargin;
+  for (let index = 0; index < columnIndex; index++) {
+    x += (columnWidths[index] ?? columnWidths[0] ?? 0) + gapAfterColumn(columns, index);
+  }
+  return x;
+}
 
 function arePageSizesEqual(
   left: { w: number; h: number },
@@ -244,11 +280,12 @@ export function createPaginator(options: PaginatorOptions) {
   function getColumnX(columnIndex: number): number {
     const activeLeftMargin =
       states.at(-1)?.page.margins.left ?? getPageMargins(1, nextLogicalPageNumber).left;
-    let x = activeLeftMargin;
-    for (let index = 0; index < columnIndex; index++) {
-      x += (columnWidths[index] ?? columnWidths[0] ?? 0) + gapAfterColumn(columns, index);
-    }
-    return x;
+    return resolveColumnLeft({
+      leftMargin: activeLeftMargin,
+      columnWidths,
+      columns,
+      columnIndex,
+    });
   }
 
   /**

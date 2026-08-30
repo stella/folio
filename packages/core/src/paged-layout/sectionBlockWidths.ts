@@ -1,5 +1,6 @@
 import { collectSectionConfigs } from "../layout-engine";
 import type { SectionLayoutConfig } from "../layout-engine";
+import { calculateColumnLefts, calculateColumnWidths } from "../layout-engine/paginator";
 import type { ColumnLayout, FlowBlock } from "../layout-engine/types";
 
 type ComputePerBlockMeasureInput = {
@@ -19,6 +20,8 @@ type PerBlockMeasureInputs = {
   marginLefts: number[];
   marginRights: number[];
   marginBottoms: number[];
+  /** Absolute page X of the active column's content origin. */
+  contentLefts: number[];
 };
 
 const SINGLE_COLUMN_LAYOUT: ColumnLayout = { count: 1, gap: 0 };
@@ -48,21 +51,6 @@ export function computePerBlockMeasureInputs({
   bodyConfig,
   finalConfig,
 }: ComputePerBlockMeasureInput): PerBlockMeasureInputs {
-  function colWidth(cw: number, cols: ColumnLayout, columnIndex: number): number {
-    if (cols.count <= 1) {
-      return cw;
-    }
-    const authoredWidth = cols.widths?.[columnIndex];
-    if (authoredWidth !== undefined) {
-      return authoredWidth;
-    }
-    return Math.floor((cw - (cols.count - 1) * cols.gap) / cols.count);
-  }
-
-  function contentWidth(config: SectionLayoutConfig): number {
-    return config.pageSize.w - config.margins.left - config.margins.right;
-  }
-
   const { configs: sectionConfigs, breakIndices } = collectSectionConfigs(
     blocks,
     bodyConfig,
@@ -71,6 +59,10 @@ export function computePerBlockMeasureInputs({
 
   let sectionIdx = 0;
   let columnIndex = 0;
+  let measuredSectionIdx = -1;
+  let activeColumns = SINGLE_COLUMN_LAYOUT;
+  let activeColumnWidths: number[] = [];
+  let activeContentLefts: number[] = [];
   const widths: number[] = [];
   const marginTops: number[] = [];
   const pageHeights: number[] = [];
@@ -78,11 +70,27 @@ export function computePerBlockMeasureInputs({
   const marginLefts: number[] = [];
   const marginRights: number[] = [];
   const marginBottoms: number[] = [];
+  const contentLefts: number[] = [];
 
   for (let i = 0; i < blocks.length; i++) {
     const config = sectionConfigs[sectionIdx] ?? finalConfig;
-    const columns = config.columns ?? SINGLE_COLUMN_LAYOUT;
-    widths.push(colWidth(contentWidth(config), columns, columnIndex));
+    if (measuredSectionIdx !== sectionIdx) {
+      activeColumns = config.columns ?? SINGLE_COLUMN_LAYOUT;
+      activeColumnWidths = calculateColumnWidths(
+        config.pageSize.w,
+        config.margins.left,
+        config.margins.right,
+        activeColumns,
+      );
+      activeContentLefts = calculateColumnLefts(
+        config.margins.left,
+        activeColumnWidths,
+        activeColumns,
+      );
+      measuredSectionIdx = sectionIdx;
+    }
+    widths.push(activeColumnWidths[columnIndex] ?? activeColumnWidths[0] ?? 0);
+    contentLefts.push(activeContentLefts[columnIndex] ?? config.margins.left);
     marginTops.push(config.margins.top);
     pageHeights.push(config.pageSize.h);
     pageWidths.push(config.pageSize.w);
@@ -96,7 +104,7 @@ export function computePerBlockMeasureInputs({
     } else if (blocks[i]?.kind === "pageBreak") {
       columnIndex = 0;
     } else if (blocks[i]?.kind === "columnBreak") {
-      columnIndex = (columnIndex + 1) % columns.count;
+      columnIndex = (columnIndex + 1) % activeColumns.count;
     }
   }
 
@@ -108,5 +116,6 @@ export function computePerBlockMeasureInputs({
     marginLefts,
     marginRights,
     marginBottoms,
+    contentLefts,
   };
 }

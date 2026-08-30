@@ -1450,7 +1450,7 @@ function layoutFloatingTable(
       anchor: floating,
       justification: block.justification,
       tableWidth,
-      contentWidth,
+      marginWidth: contentWidth,
       pageWidth: page.size.w,
       marginLeft: margins.left,
     });
