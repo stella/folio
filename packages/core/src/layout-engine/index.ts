@@ -433,8 +433,12 @@ function layoutDocumentPass(
       hasExplicitPageBreak,
       renderedBreakNeedsSnap,
     });
-    if (breakDecision.pageAdvance === "physical" && block.kind !== "pageBreak") {
-      paginator.forcePageBreak();
+    if (block.kind !== "pageBreak") {
+      if (breakDecision.pageAdvance === "physical") {
+        paginator.forcePageBreak();
+      } else if (breakDecision.pageAdvance === "coalesced") {
+        paginator.coalescePageBreak();
+      }
     }
     renderedBreakState = breakDecision.state;
 

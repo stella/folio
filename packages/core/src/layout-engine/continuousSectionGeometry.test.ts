@@ -278,6 +278,35 @@ describe("continuous section break geometry", () => {
     });
   });
 
+  test("pageBreakBefore advances ordinals on a page opened by a section boundary", () => {
+    const cover = paragraph("cover", 100);
+    const body = paragraph("body", 100);
+    body.block.attrs = { pageBreakBefore: true };
+
+    const result = layoutDocument(
+      [cover.block, { kind: "sectionBreak", id: "cover-end" }, body.block],
+      [cover.measure, { kind: "sectionBreak" }, body.measure],
+      {
+        pageSize: { w: 800, h: 1000 },
+        margins: { top: 50, right: 50, bottom: 50, left: 50 },
+        finalPageNumbering: { type: "restart", start: 9 },
+        sectionHeaderFooterRefs: [
+          { footerDefault: "cover-footer" },
+          { titlePg: true, footerDefault: "body-footer" },
+        ],
+      },
+    );
+
+    expect(result.pages).toHaveLength(2);
+    expect(result.pages[1]).toMatchObject({
+      logicalNumber: 10,
+      sectionIndex: 1,
+      sectionPageNumber: 2,
+      headerFooterRefs: { titlePg: true, footerDefault: "body-footer" },
+    });
+    expect(result.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual(["body"]);
+  });
+
   test("a hard-break page is not coalesced through a continuous section", () => {
     const first = paragraph("first", 100);
     const body = paragraph("body", 100);
