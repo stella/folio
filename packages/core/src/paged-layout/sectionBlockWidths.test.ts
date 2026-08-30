@@ -1,7 +1,13 @@
 import { describe, expect, test } from "bun:test";
 
 import type { SectionLayoutConfig } from "../layout-engine";
-import type { FlowBlock, ParagraphBlock } from "../layout-engine/types";
+import { layoutDocument } from "../layout-engine";
+import {
+  fixedCharWidth,
+  withFakeTextMeasure,
+} from "../layout-engine/measure/__tests__/fakeTextMeasure";
+import { measureBlocks } from "../layout-engine/measure/measureBlocks";
+import type { FlowBlock, ParagraphBlock, TableBlock } from "../layout-engine/types";
 import { computePerBlockMeasureInputs, computePerBlockWidths } from "./sectionBlockWidths";
 
 const BODY_CONFIG = {
@@ -10,12 +16,39 @@ const BODY_CONFIG = {
   pageNumbering: { type: "continue" },
 } satisfies SectionLayoutConfig;
 
+const fakeMeasure = { charWidth: fixedCharWidth(5) };
+
 function paragraph(id: string): ParagraphBlock {
   return {
     kind: "paragraph",
     id,
     runs: [{ kind: "text", text: id }],
     attrs: {},
+  };
+}
+
+function centeredMarginFloatingTable(id: string): TableBlock {
+  return {
+    kind: "table",
+    id,
+    columnWidths: [200],
+    floating: {
+      horzAnchor: "margin",
+      vertAnchor: "text",
+      tblpXSpec: "center",
+      tblpY: 0,
+    },
+    rows: [
+      {
+        id: `${id}-row`,
+        cells: [
+          {
+            id: `${id}-cell`,
+            blocks: [paragraph(`${id}-content`)],
+          },
+        ],
+      },
+    ],
   };
 }
 
@@ -60,7 +93,7 @@ describe("section block measurement inputs", () => {
     });
 
     expect(inputs.marginTops).toEqual([64, 64, BODY_CONFIG.margins.top]);
-    expect(inputs.contentTops).toEqual([64, 64, BODY_CONFIG.margins.top]);
+    expect(inputs.physicalPageGeometry.marginTops).toEqual([64, 64, BODY_CONFIG.margins.top]);
     expect(inputs.pageWidths).toEqual([600, 600, BODY_CONFIG.pageSize.w]);
     expect(inputs.marginLefts).toEqual([50, 50, BODY_CONFIG.margins.left]);
     expect(inputs.marginRights).toEqual([50, 50, BODY_CONFIG.margins.right]);
@@ -114,10 +147,11 @@ describe("section block measurement inputs", () => {
     expect(inputs.contentLefts).toEqual([100, 100, 310, 310, 640, 640, 100]);
   });
 
-  test("keeps the outgoing physical content top until a shared continuous page advances", () => {
+  test("keeps the complete outgoing physical geometry until a shared continuous page advances", () => {
     const nextSection = {
       ...BODY_CONFIG,
-      margins: { ...BODY_CONFIG.margins, top: 200 },
+      margins: { top: 200, right: 140, bottom: 180, left: 160 },
+      columns: { count: 2, gap: 20 },
     } satisfies SectionLayoutConfig;
     const blocks: FlowBlock[] = [
       paragraph("outgoing"),
@@ -140,6 +174,86 @@ describe("section block measurement inputs", () => {
     });
 
     expect(inputs.marginTops).toEqual([64, 64, 200, 200, 200]);
-    expect(inputs.contentTops).toEqual([64, 64, 64, 64, 200]);
+    expect(inputs.physicalPageGeometry).toEqual({
+      pageHeights: [1200, 1200, 1200, 1200, 1200],
+      pageWidths: [1000, 1000, 1000, 1000, 1000],
+      marginTops: [64, 64, 64, 64, 200],
+      marginLefts: [100, 100, 100, 100, 160],
+      marginRights: [100, 100, 100, 100, 140],
+      marginBottoms: [50, 50, 50, 50, 180],
+    });
+    expect(inputs.widths).toEqual([800, 800, 390, 390, 340]);
+    expect(inputs.contentLefts).toEqual([100, 100, 100, 100, 160]);
+    expect(inputs.columnCounts).toEqual([1, 1, 2, 2, 2]);
+  });
+
+  test("aligns a new margin table's measured exclusion with its retained-page fragment", () => {
+    withFakeTextMeasure(() => {
+      const outgoingConfig = {
+        pageSize: { w: 800, h: 1_000 },
+        margins: { top: 40, right: 160, bottom: 40, left: 40 },
+        pageNumbering: { type: "continue" },
+      } as const;
+      const incomingConfig = {
+        pageSize: { w: 800, h: 1_000 },
+        margins: { top: 200, right: 100, bottom: 180, left: 200 },
+        pageNumbering: { type: "continue" },
+      } as const;
+      const table = centeredMarginFloatingTable("incoming-margin-float");
+      const blocks: FlowBlock[] = [
+        paragraph("outgoing-body"),
+        {
+          kind: "sectionBreak",
+          id: "continuous-margin-change",
+          type: "continuous",
+          pageSize: outgoingConfig.pageSize,
+          margins: outgoingConfig.margins,
+        },
+        table,
+        paragraph("incoming-body"),
+      ];
+      const inputs = computePerBlockMeasureInputs({
+        blocks,
+        bodyConfig: outgoingConfig,
+        finalConfig: incomingConfig,
+      });
+      const measures = measureBlocks(blocks, inputs.widths, inputs.marginTops, {
+        pageWidth: inputs.pageWidths,
+        pageHeight: inputs.pageHeights,
+        marginLeft: inputs.marginLefts,
+        marginRight: inputs.marginRights,
+        marginBottom: inputs.marginBottoms,
+        contentLeft: inputs.contentLefts,
+        physicalPage: {
+          pageWidth: inputs.physicalPageGeometry.pageWidths,
+          pageHeight: inputs.physicalPageGeometry.pageHeights,
+          marginTop: inputs.physicalPageGeometry.marginTops,
+          marginLeft: inputs.physicalPageGeometry.marginLefts,
+          marginRight: inputs.physicalPageGeometry.marginRights,
+          marginBottom: inputs.physicalPageGeometry.marginBottoms,
+        },
+        columnIndex: inputs.columnIndices,
+        columnCount: inputs.columnCounts,
+      });
+      const layout = layoutDocument(blocks, measures, {
+        pageSize: outgoingConfig.pageSize,
+        margins: outgoingConfig.margins,
+        finalPageSize: incomingConfig.pageSize,
+        finalMargins: incomingConfig.margins,
+      });
+      const bodyMeasure = measures.at(3);
+      const tableMeasure = measures.at(2);
+      const tableFragment = layout.pages
+        .flatMap((page) => page.fragments)
+        .find((fragment) => fragment.kind === "table" && fragment.blockId === table.id);
+      if (bodyMeasure?.kind !== "paragraph" || tableMeasure?.kind !== "table") {
+        throw new Error("Expected paragraph and table measures");
+      }
+
+      expect(tableFragment?.x).toBe(240);
+      expect(bodyMeasure.lines.at(0)?.leftOffset).toBe(
+        (tableFragment?.x ?? 0) + tableMeasure.totalWidth + 12 - (inputs.contentLefts.at(3) ?? 0),
+      );
+    }, fakeMeasure);
   });
 });

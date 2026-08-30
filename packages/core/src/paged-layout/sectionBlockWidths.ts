@@ -10,14 +10,19 @@ type ComputePerBlockMeasureInput = {
   finalConfig: SectionLayoutConfig;
 };
 
+type PerBlockPhysicalPageGeometry = {
+  pageHeights: number[];
+  pageWidths: number[];
+  marginTops: number[];
+  marginLefts: number[];
+  marginRights: number[];
+  marginBottoms: number[];
+};
+
 type PerBlockMeasureInputs = {
   widths: number[];
+  /** Authored section top, retained for section-relative text-box semantics. */
   marginTops: number[];
-  /** Physical page content origin, which can differ after a continuous section. */
-  contentTops: number[];
-  // Page geometry per block, used to resolve page/margin-pinned topAndBottom
-  // bands (`bandTopContentY`) in the measure pass. Sections can vary page size
-  // and margins, so these are per-block like `widths`/`marginTops`.
   pageHeights: number[];
   pageWidths: number[];
   marginLefts: number[];
@@ -27,7 +32,10 @@ type PerBlockMeasureInputs = {
   contentLefts: number[];
   columnIndices: number[];
   columnCounts: number[];
+  physicalPageGeometry: PerBlockPhysicalPageGeometry;
 };
+
+type PhysicalPageGeometry = Pick<SectionLayoutConfig, "pageSize" | "margins">;
 
 const SINGLE_COLUMN_LAYOUT: ColumnLayout = { count: 1, gap: 0 };
 
@@ -68,50 +76,64 @@ export function computePerBlockMeasureInputs({
   let activeColumns = SINGLE_COLUMN_LAYOUT;
   let activeColumnWidths: number[] = [];
   let activeContentLefts: number[] = [];
+  let columnGeometryDirty = true;
   const widths: number[] = [];
   const marginTops: number[] = [];
-  const contentTops: number[] = [];
+  const physicalMarginTops: number[] = [];
   const pageHeights: number[] = [];
   const pageWidths: number[] = [];
   const marginLefts: number[] = [];
   const marginRights: number[] = [];
   const marginBottoms: number[] = [];
+  const physicalPageHeights: number[] = [];
+  const physicalPageWidths: number[] = [];
+  const physicalMarginLefts: number[] = [];
+  const physicalMarginRights: number[] = [];
+  const physicalMarginBottoms: number[] = [];
   const contentLefts: number[] = [];
   const columnIndices: number[] = [];
   const columnCounts: number[] = [];
   const initialConfig = sectionConfigs[0] ?? finalConfig;
-  let physicalContentTop = initialConfig.margins.top;
-  let physicalPageSize = initialConfig.pageSize;
+  let physicalPageGeometry: PhysicalPageGeometry = {
+    pageSize: initialConfig.pageSize,
+    margins: initialConfig.margins,
+  };
   let hasPhysicalPageContent = false;
 
   for (let i = 0; i < blocks.length; i++) {
     const config = sectionConfigs[sectionIdx] ?? finalConfig;
-    if (measuredSectionIdx !== sectionIdx) {
+    if (measuredSectionIdx !== sectionIdx || columnGeometryDirty) {
       activeColumns = config.columns ?? SINGLE_COLUMN_LAYOUT;
       activeColumnWidths = calculateColumnWidths(
-        config.pageSize.w,
-        config.margins.left,
-        config.margins.right,
+        physicalPageGeometry.pageSize.w,
+        physicalPageGeometry.margins.left,
+        physicalPageGeometry.margins.right,
         activeColumns,
       );
       activeContentLefts = calculateColumnLefts(
-        config.margins.left,
+        physicalPageGeometry.margins.left,
         activeColumnWidths,
         activeColumns,
       );
       measuredSectionIdx = sectionIdx;
+      columnGeometryDirty = false;
     }
     widths.push(activeColumnWidths[columnIndex] ?? activeColumnWidths[0] ?? 0);
-    contentLefts.push(activeContentLefts[columnIndex] ?? config.margins.left);
+    contentLefts.push(activeContentLefts[columnIndex] ?? physicalPageGeometry.margins.left);
     columnIndices.push(columnIndex);
     columnCounts.push(activeColumns.count);
     marginTops.push(config.margins.top);
-    contentTops.push(physicalContentTop);
+    physicalMarginTops.push(physicalPageGeometry.margins.top);
     pageHeights.push(config.pageSize.h);
     pageWidths.push(config.pageSize.w);
     marginLefts.push(config.margins.left);
     marginRights.push(config.margins.right);
     marginBottoms.push(config.margins.bottom);
+    physicalPageHeights.push(physicalPageGeometry.pageSize.h);
+    physicalPageWidths.push(physicalPageGeometry.pageSize.w);
+    physicalMarginLefts.push(physicalPageGeometry.margins.left);
+    physicalMarginRights.push(physicalPageGeometry.margins.right);
+    physicalMarginBottoms.push(physicalPageGeometry.margins.bottom);
 
     if (sectionIdx < breakIndices.length && i === breakIndices[sectionIdx]) {
       const sectionBreak = blocks[i];
@@ -120,25 +142,28 @@ export function computePerBlockMeasureInputs({
         sectionBreak?.kind === "sectionBreak" &&
         normalizeSectionBreakType(sectionBreak.type) === "continuous" &&
         hasPhysicalPageContent &&
-        Math.round(nextConfig.pageSize.w) === Math.round(physicalPageSize.w) &&
-        Math.round(nextConfig.pageSize.h) === Math.round(physicalPageSize.h);
+        Math.round(nextConfig.pageSize.w) === Math.round(physicalPageGeometry.pageSize.w) &&
+        Math.round(nextConfig.pageSize.h) === Math.round(physicalPageGeometry.pageSize.h);
       if (!sharesPhysicalPage) {
-        physicalContentTop = nextConfig.margins.top;
-        physicalPageSize = nextConfig.pageSize;
+        physicalPageGeometry = {
+          pageSize: nextConfig.pageSize,
+          margins: nextConfig.margins,
+        };
         hasPhysicalPageContent = false;
       }
+      columnGeometryDirty = true;
       sectionIdx++;
       columnIndex = 0;
     } else if (blocks[i]?.kind === "pageBreak") {
-      physicalContentTop = config.margins.top;
-      physicalPageSize = config.pageSize;
+      physicalPageGeometry = { pageSize: config.pageSize, margins: config.margins };
       hasPhysicalPageContent = false;
+      columnGeometryDirty = true;
       columnIndex = 0;
     } else if (blocks[i]?.kind === "columnBreak") {
       if (columnIndex + 1 >= activeColumns.count) {
-        physicalContentTop = config.margins.top;
-        physicalPageSize = config.pageSize;
+        physicalPageGeometry = { pageSize: config.pageSize, margins: config.margins };
         hasPhysicalPageContent = false;
+        columnGeometryDirty = true;
       }
       columnIndex = (columnIndex + 1) % activeColumns.count;
     } else {
@@ -149,7 +174,6 @@ export function computePerBlockMeasureInputs({
   return {
     widths,
     marginTops,
-    contentTops,
     pageHeights,
     pageWidths,
     marginLefts,
@@ -158,5 +182,13 @@ export function computePerBlockMeasureInputs({
     contentLefts,
     columnIndices,
     columnCounts,
+    physicalPageGeometry: {
+      pageHeights: physicalPageHeights,
+      pageWidths: physicalPageWidths,
+      marginTops: physicalMarginTops,
+      marginLefts: physicalMarginLefts,
+      marginRights: physicalMarginRights,
+      marginBottoms: physicalMarginBottoms,
+    },
   };
 }

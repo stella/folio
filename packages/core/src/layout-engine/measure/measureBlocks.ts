@@ -466,6 +466,15 @@ function textBoxWrapSide({
 // Page geometry the band extraction needs to resolve page/margin-pinned
 // topAndBottom anchors (bottom-strip frames, centered/bottom align). Per-block
 // because sections can vary page size and margins. eigenpal #694.
+type PhysicalBandPageGeometry = {
+  pageWidth: number | number[];
+  pageHeight: number | number[];
+  marginTop: number | number[];
+  marginLeft: number | number[];
+  marginRight: number | number[];
+  marginBottom: number | number[];
+};
+
 type BandPageGeometry = {
   pageWidth?: number | number[];
   pageHeight: number | number[];
@@ -474,8 +483,7 @@ type BandPageGeometry = {
   marginBottom: number | number[];
   /** Absolute page X of each block's active column origin. */
   contentLeft?: number | number[];
-  /** Physical page Y of the active body content origin. */
-  contentTop?: number | number[];
+  physicalPage?: PhysicalBandPageGeometry;
   /** Authored flow-column index occupied by each block. */
   columnIndex?: number | number[];
   /** Authored flow-column count for each block's section. */
@@ -509,7 +517,12 @@ function extractFloatingZones(
   const marginRightInput = pageGeometry?.marginRight ?? 0;
   const marginBottomInput = pageGeometry?.marginBottom ?? 0;
   const contentLeftInput = pageGeometry?.contentLeft ?? marginLeftInput;
-  const contentTopInput = pageGeometry?.contentTop ?? marginTop;
+  const physicalPageWidthInput = pageGeometry?.physicalPage?.pageWidth ?? pageWidthInput;
+  const physicalPageHeightInput = pageGeometry?.physicalPage?.pageHeight ?? pageHeightInput;
+  const physicalMarginTopInput = pageGeometry?.physicalPage?.marginTop ?? marginTop;
+  const physicalMarginLeftInput = pageGeometry?.physicalPage?.marginLeft ?? marginLeftInput;
+  const physicalMarginRightInput = pageGeometry?.physicalPage?.marginRight ?? marginRightInput;
+  const physicalMarginBottomInput = pageGeometry?.physicalPage?.marginBottom ?? marginBottomInput;
   const defaultPageWidth = Array.isArray(pageWidthInput)
     ? (pageWidthInput[0] ?? defaultContentWidth)
     : pageWidthInput;
@@ -528,9 +541,24 @@ function extractFloatingZones(
   const defaultContentLeft = Array.isArray(contentLeftInput)
     ? (contentLeftInput[0] ?? defaultMarginLeft)
     : contentLeftInput;
-  const defaultContentTop = Array.isArray(contentTopInput)
-    ? (contentTopInput[0] ?? defaultMarginTop)
-    : contentTopInput;
+  const defaultPhysicalPageWidth = Array.isArray(physicalPageWidthInput)
+    ? (physicalPageWidthInput[0] ?? defaultPageWidth)
+    : physicalPageWidthInput;
+  const defaultPhysicalPageHeight = Array.isArray(physicalPageHeightInput)
+    ? (physicalPageHeightInput[0] ?? defaultPageHeight)
+    : physicalPageHeightInput;
+  const defaultPhysicalMarginTop = Array.isArray(physicalMarginTopInput)
+    ? (physicalMarginTopInput[0] ?? defaultMarginTop)
+    : physicalMarginTopInput;
+  const defaultPhysicalMarginLeft = Array.isArray(physicalMarginLeftInput)
+    ? (physicalMarginLeftInput[0] ?? defaultMarginLeft)
+    : physicalMarginLeftInput;
+  const defaultPhysicalMarginRight = Array.isArray(physicalMarginRightInput)
+    ? (physicalMarginRightInput[0] ?? defaultMarginRight)
+    : physicalMarginRightInput;
+  const defaultPhysicalMarginBottom = Array.isArray(physicalMarginBottomInput)
+    ? (physicalMarginBottomInput[0] ?? defaultMarginBottom)
+    : physicalMarginBottomInput;
 
   for (let blockIndex = 0; blockIndex < blocks.length; blockIndex++) {
     const block = blocks[blockIndex]!; // SAFETY: blockIndex < blocks.length
@@ -654,15 +682,35 @@ function extractFloatingZones(
       continue;
     }
 
-    const blockPageWidth = perBlockNumberValue(pageWidthInput, blockIndex, defaultPageWidth);
-    const blockPageHeight = perBlockNumberValue(pageHeightInput, blockIndex, defaultPageHeight);
-    const blockContentTop = perBlockNumberValue(contentTopInput, blockIndex, defaultContentTop);
-    const blockMarginLeft = perBlockNumberValue(marginLeftInput, blockIndex, defaultMarginLeft);
-    const blockMarginRight = perBlockNumberValue(marginRightInput, blockIndex, defaultMarginRight);
-    const blockMarginBottom = perBlockNumberValue(
-      marginBottomInput,
+    const blockPageWidth = perBlockNumberValue(
+      physicalPageWidthInput,
       blockIndex,
-      defaultMarginBottom,
+      defaultPhysicalPageWidth,
+    );
+    const blockPageHeight = perBlockNumberValue(
+      physicalPageHeightInput,
+      blockIndex,
+      defaultPhysicalPageHeight,
+    );
+    const blockContentTop = perBlockNumberValue(
+      physicalMarginTopInput,
+      blockIndex,
+      defaultPhysicalMarginTop,
+    );
+    const blockMarginLeft = perBlockNumberValue(
+      physicalMarginLeftInput,
+      blockIndex,
+      defaultPhysicalMarginLeft,
+    );
+    const blockMarginRight = perBlockNumberValue(
+      physicalMarginRightInput,
+      blockIndex,
+      defaultPhysicalMarginRight,
+    );
+    const blockMarginBottom = perBlockNumberValue(
+      physicalMarginBottomInput,
+      blockIndex,
+      defaultPhysicalMarginBottom,
     );
     const blockContentWidth = perBlockNumberValue(contentWidth, blockIndex, defaultContentWidth);
     const blockContentLeft = perBlockNumberValue(contentLeftInput, blockIndex, defaultContentLeft);
@@ -1152,10 +1200,10 @@ export function measureBlocks(
   const defaultContentLeft = Array.isArray(contentLeftInput)
     ? (contentLeftInput[0] ?? 0)
     : contentLeftInput;
-  const contentTopInput = pageGeometry?.contentTop ?? marginTop;
-  const defaultContentTop = Array.isArray(contentTopInput)
-    ? (contentTopInput[0] ?? 0)
-    : contentTopInput;
+  const physicalMarginTopInput = pageGeometry?.physicalPage?.marginTop ?? marginTop;
+  const defaultPhysicalMarginTop = Array.isArray(physicalMarginTopInput)
+    ? (physicalMarginTopInput[0] ?? 0)
+    : physicalMarginTopInput;
   const columnIndexInput = pageGeometry?.columnIndex ?? 0;
   const columnCountInput = pageGeometry?.columnCount ?? 1;
 
@@ -1166,7 +1214,11 @@ export function measureBlocks(
       ? (contentWidth[blockIndex] ?? defaultWidth)
       : contentWidth;
     const blockContentLeft = perBlockNumberValue(contentLeftInput, blockIndex, defaultContentLeft);
-    const blockContentTop = perBlockNumberValue(contentTopInput, blockIndex, defaultContentTop);
+    const blockContentTop = perBlockNumberValue(
+      physicalMarginTopInput,
+      blockIndex,
+      defaultPhysicalMarginTop,
+    );
     const blockColumnIndex = perBlockNumberValue(columnIndexInput, blockIndex, 0);
     const blockColumnCount = perBlockNumberValue(columnCountInput, blockIndex, 1);
 

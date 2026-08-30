@@ -574,7 +574,14 @@ describe("measureBlocks", () => {
         marginRight: 160,
         marginBottom: 40,
         contentLeft: 40,
-        contentTop: [40, 40, 40],
+        physicalPage: {
+          pageWidth: 800,
+          pageHeight: 1_000,
+          marginTop: [40, 40, 40],
+          marginLeft: 40,
+          marginRight: 160,
+          marginBottom: 40,
+        },
         columnIndex: 0,
         columnCount: 1,
       });
