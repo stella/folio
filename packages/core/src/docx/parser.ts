@@ -75,6 +75,10 @@ import { DocxEncryptionError } from "./encryption/errors";
 import { unzipDocx, getMediaMimeType, mediaToDataUrl } from "./unzip";
 import type { DocxUnzipOptions, RawDocxContent } from "./unzip";
 
+const EMF_MIME_TYPE = "image/x-emf";
+const SVG_MIME_TYPE = "image/svg+xml";
+const MAX_PACKAGE_EMF_PREVIEW_BYTES = 8 * 1024 * 1024;
+
 // ============================================================================
 // PROGRESS CALLBACK
 // ============================================================================
@@ -518,6 +522,7 @@ async function buildMediaMap(
   const media = new Map<string, MediaFile>();
   const referenced = collectReferencedMediaPaths(raw, rels);
   let remainingTiffPixels = MAX_PACKAGE_TIFF_PIXELS;
+  let remainingEmfPreviewBytes = MAX_PACKAGE_EMF_PREVIEW_BYTES;
 
   // Process each media file
   for (const [path, data] of raw.media.entries()) {
@@ -571,22 +576,30 @@ async function buildMediaMap(
       continue;
     }
 
-    const emfSvg = isReferenced && mimeType === "image/x-emf" ? renderEmfSvg(data) : null;
+    const emfSvg =
+      isReferenced && mimeType === EMF_MIME_TYPE && remainingEmfPreviewBytes > 0
+        ? renderEmfSvg(data)
+        : null;
     if (emfSvg) {
       const svgBytes = new TextEncoder().encode(emfSvg);
-      const mediaFile: MediaFile = {
-        path,
-        filename,
-        mimeType,
-        data,
-        dataUrl: mediaToDataUrl(copyBytesToArrayBuffer(svgBytes), "image/svg+xml"),
-      };
-      media.set(path, mediaFile);
-      const normalizedPath = path.replace(/^word\//u, "");
-      if (normalizedPath !== path) {
-        media.set(normalizedPath, mediaFile);
+      if (svgBytes.byteLength <= remainingEmfPreviewBytes) {
+        remainingEmfPreviewBytes -= svgBytes.byteLength;
+        const mediaFile: MediaFile = {
+          path,
+          filename,
+          mimeType,
+          data,
+          dataUrl: mediaToDataUrl(copyBytesToArrayBuffer(svgBytes), SVG_MIME_TYPE),
+        };
+        media.set(path, mediaFile);
+        const normalizedPath = path.replace(/^word\//u, "");
+        if (normalizedPath !== path) {
+          media.set(normalizedPath, mediaFile);
+        }
+        continue;
       }
-      continue;
+      // Do not repeatedly render previews that cannot fit the retained package budget.
+      remainingEmfPreviewBytes = 0;
     }
 
     const mediaFile: MediaFile = {

@@ -48,6 +48,11 @@ type Brush = { type: "brush"; fill: string | null };
 type Pen = { type: "pen"; stroke: null };
 type GraphicsObject = Brush | Pen;
 
+type PathState =
+  | { type: "idle" }
+  | { type: "building"; commands: string[] }
+  | { type: "completed"; commands: string[] };
+
 type DeviceState = {
   mapMode: typeof MAP_MODE_TEXT | typeof MAP_MODE_ANISOTROPIC;
   windowOrigin: { x: number; y: number };
@@ -224,9 +229,7 @@ export function renderEmfSvg(data: ArrayBuffer | Uint8Array): string | null {
   let offset = headerSize;
   let recordCount = 1;
   let pointCount = 0;
-  let buildingPath = false;
-  let completedPath: string[] | null = null;
-  let path: string[] = [];
+  let pathState: PathState = { type: "idle" };
   const renderedPaths: string[] = [];
   let sawEof = false;
 
@@ -370,16 +373,38 @@ export function renderEmfSvg(data: ArrayBuffer | Uint8Array): string | null {
         if (size !== 12 || handle === undefined) {
           return null;
         }
+        const object = objects.get(handle);
+        if (object === state.brush) {
+          state.brush = null;
+        } else if (object === state.pen) {
+          state.pen = null;
+        }
+        for (const savedState of stack) {
+          if (object === savedState.brush) {
+            savedState.brush = null;
+          } else if (object === savedState.pen) {
+            savedState.pen = null;
+          }
+        }
         objects.delete(handle);
         break;
       }
-      case EMR.beginPath:
-        if (size !== 8 || buildingPath || completedPath) {
+      case EMR.beginPath: {
+        if (size !== 8) {
           return null;
         }
-        buildingPath = true;
-        path = [];
+        switch (pathState.type) {
+          case "idle":
+            pathState = { type: "building", commands: [] };
+            break;
+          case "building":
+          case "completed":
+            return null;
+          default:
+            pathState satisfies never;
+        }
         break;
+      }
       case EMR.moveToEx: {
         const x = int32(view, offset + 8, end);
         const y = int32(view, offset + 12, end);
@@ -387,18 +412,35 @@ export function renderEmfSvg(data: ArrayBuffer | Uint8Array): string | null {
           return null;
         }
         state.currentPoint = { x, y };
-        if (buildingPath) {
-          const mapped = mappedPoint(state, bounds, x, y);
-          if (!mapped) {
-            return null;
+        switch (pathState.type) {
+          case "idle":
+          case "completed":
+            break;
+          case "building": {
+            const mapped = mappedPoint(state, bounds, x, y);
+            if (!mapped) {
+              return null;
+            }
+            pathState.commands.push(pathPoint("M", mapped));
+            break;
           }
-          path.push(pathPoint("M", mapped));
+          default:
+            pathState satisfies never;
         }
         break;
       }
       case EMR.polyBezierTo16: {
-        if (!buildingPath) {
-          return null;
+        let commands: string[];
+        switch (pathState.type) {
+          case "building":
+            commands = pathState.commands;
+            break;
+          case "idle":
+          case "completed":
+            return null;
+          default:
+            pathState satisfies never;
+            return null;
         }
         const count = uint32(view, offset + 24, end);
         if (
@@ -411,12 +453,12 @@ export function renderEmfSvg(data: ArrayBuffer | Uint8Array): string | null {
           return null;
         }
         pointCount += count;
-        if (path.length === 0) {
+        if (commands.length === 0) {
           const mapped = mappedPoint(state, bounds, state.currentPoint.x, state.currentPoint.y);
           if (!mapped) {
             return null;
           }
-          path.push(pathPoint("M", mapped));
+          commands.push(pathPoint("M", mapped));
         }
         for (let index = 0; index < count; index += 3) {
           const points: { x: number; y: number }[] = [];
@@ -438,7 +480,7 @@ export function renderEmfSvg(data: ArrayBuffer | Uint8Array): string | null {
           if (!first || !second || !third) {
             return null;
           }
-          path.push(
+          commands.push(
             `C${numberText(first.x)} ${numberText(first.y)} ${numberText(second.x)} ${numberText(second.y)} ${numberText(third.x)} ${numberText(third.y)}`,
           );
         }
@@ -489,40 +531,77 @@ export function renderEmfSvg(data: ArrayBuffer | Uint8Array): string | null {
         if (consumedPoints !== totalPoints) {
           return null;
         }
-        if (buildingPath) {
-          path.push(...polygonPath);
-        } else {
-          if (!state.brush?.fill) {
+        switch (pathState.type) {
+          case "building":
+            pathState.commands.push(...polygonPath);
+            break;
+          case "idle":
+            if (!state.brush?.fill) {
+              return null;
+            }
+            renderedPaths.push(
+              `<path d="${polygonPath.join(" ")}" fill="${state.brush.fill}" fill-rule="${state.fillRule}"/>`,
+            );
+            break;
+          case "completed":
             return null;
-          }
-          renderedPaths.push(
-            `<path d="${polygonPath.join(" ")}" fill="${state.brush.fill}" fill-rule="${state.fillRule}"/>`,
-          );
+          default:
+            pathState satisfies never;
         }
         break;
       }
-      case EMR.closeFigure:
-        if (size !== 8 || !buildingPath) {
+      case EMR.closeFigure: {
+        if (size !== 8) {
           return null;
         }
-        path.push("Z");
+        switch (pathState.type) {
+          case "building":
+            pathState.commands.push("Z");
+            break;
+          case "idle":
+          case "completed":
+            return null;
+          default:
+            pathState satisfies never;
+        }
         break;
-      case EMR.endPath:
-        if (size !== 8 || !buildingPath || path.length === 0) {
+      }
+      case EMR.endPath: {
+        if (size !== 8) {
           return null;
         }
-        buildingPath = false;
-        completedPath = path;
-        path = [];
+        switch (pathState.type) {
+          case "building":
+            if (pathState.commands.length === 0) {
+              return null;
+            }
+            pathState = { type: "completed", commands: pathState.commands };
+            break;
+          case "idle":
+          case "completed":
+            return null;
+          default:
+            pathState satisfies never;
+        }
         break;
+      }
       case EMR.fillPath: {
-        if (size !== 24 || buildingPath || !completedPath || !state.brush?.fill) {
+        if (size !== 24 || !state.brush?.fill) {
           return null;
         }
-        renderedPaths.push(
-          `<path d="${completedPath.join(" ")}" fill="${state.brush.fill}" fill-rule="${state.fillRule}"/>`,
-        );
-        completedPath = null;
+        switch (pathState.type) {
+          case "completed":
+            renderedPaths.push(
+              `<path d="${pathState.commands.join(" ")}" fill="${state.brush.fill}" fill-rule="${state.fillRule}"/>`,
+            );
+            pathState = { type: "idle" };
+            break;
+          case "idle":
+          case "building":
+            return null;
+          default:
+            pathState satisfies never;
+        }
         break;
       }
       default:
@@ -539,11 +618,18 @@ export function renderEmfSvg(data: ArrayBuffer | Uint8Array): string | null {
     !sawEof ||
     offset !== bytes.byteLength ||
     recordCount !== declaredRecords ||
-    buildingPath ||
-    completedPath ||
     renderedPaths.length === 0
   ) {
     return null;
+  }
+  switch (pathState.type) {
+    case "idle":
+      break;
+    case "building":
+    case "completed":
+      return null;
+    default:
+      pathState satisfies never;
   }
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${numberText(width)} ${numberText(height)}">${renderedPaths.join("")}</svg>`;
   return svg.length <= MAX_EMF_SVG_CHARACTERS ? svg : null;

@@ -59,8 +59,10 @@ type VectorEmfOptions = {
   viewportOrigin?: { x: number; y: number };
   extraRecord?: Uint8Array;
   brushHandle?: number;
+  deleteBrushBeforePolygon?: boolean;
   mapMode?: 1 | 8;
   includeMoveTo?: boolean;
+  polygonPointCount?: number;
 };
 
 const vectorEmf = ({
@@ -69,9 +71,22 @@ const vectorEmf = ({
   viewportOrigin = { x: 0, y: 0 },
   extraRecord,
   brushHandle = 1,
+  deleteBrushBeforePolygon = false,
   mapMode = 8,
   includeMoveTo = true,
+  polygonPointCount = 3,
 }: VectorEmfOptions = {}): Uint8Array => {
+  const polygon =
+    polygonPointCount === 3
+      ? [
+          { x: 500, y: 500 },
+          { x: 700, y: 500 },
+          { x: 600, y: 700 },
+        ]
+      : Array.from({ length: polygonPointCount }, (_, index) => ({
+          x: -32_000 + (index % 64_000),
+          y: -31_000 + ((index * 17) % 62_000),
+        }));
   const records = [
     uint32Record(17, mapMode),
     pointRecord(10, windowOrigin.x, windowOrigin.y),
@@ -101,17 +116,12 @@ const vectorEmf = ({
     record(61, 8),
     record(60, 8),
     record(62, 24),
+    ...(deleteBrushBeforePolygon ? [uint32Record(40, 1)] : []),
     uint32Record(19, 2),
-    polyPolygon16([
-      [
-        { x: 500, y: 500 },
-        { x: 700, y: 500 },
-        { x: 600, y: 700 },
-      ],
-    ]),
+    polyPolygon16([polygon]),
     ...(extraRecord ? [extraRecord] : []),
     uint32Record(34, 0xffff_ffff),
-    uint32Record(40, 1),
+    ...(!deleteBrushBeforePolygon ? [uint32Record(40, 1)] : []),
     uint32Record(40, 2),
     record(14, 20),
   ];
@@ -200,6 +210,10 @@ describe("renderEmfSvg", () => {
     expect(svg).toContain('d="M0 0 C20 10 20 20 10 20 Z"');
   });
 
+  test("does not reuse a selected brush after its object is deleted", () => {
+    expect(renderEmfSvg(vectorEmf({ deleteBrushBeforePolygon: true }))).toBeNull();
+  });
+
   test("rejects point counts that exceed their record payload", () => {
     const bytes = vectorEmf();
     const view = new DataView(bytes.buffer);
@@ -234,5 +248,44 @@ describe("vector-only EMF package previews", () => {
     const outputZip = await JSZip.loadAsync(output);
     const roundTripped = await outputZip.file("word/media/image1.emf")?.async("uint8array");
     expect(roundTripped).toEqual(emf);
+  });
+
+  test("bounds generated previews across the complete package", async () => {
+    const zip = await JSZip.loadAsync(readFileSync(FIXTURE));
+    const emf = vectorEmf({
+      polygonPointCount: 19_990,
+      windowExtent: { x: 1, y: 1 },
+    });
+    const relationshipPath = "word/_rels/document.xml.rels";
+    const relationships = await zip.file(relationshipPath)?.async("string");
+    if (!relationships) {
+      throw new Error("Fixture is missing document relationships");
+    }
+    const mediaCount = 24;
+    const addedRelationships = Array.from(
+      { length: mediaCount },
+      (_, index) =>
+        `<Relationship Id="rEmfBudget${index}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/budget-${index}.emf"/>`,
+    ).join("");
+    zip.file(
+      relationshipPath,
+      relationships.replace("</Relationships>", `${addedRelationships}</Relationships>`),
+    );
+    for (let index = 0; index < mediaCount; index += 1) {
+      zip.file(`word/media/budget-${index}.emf`, emf);
+    }
+
+    const input = await zip.generateAsync({ type: "arraybuffer" });
+    const document = await parseDocx(input, { preloadFonts: false });
+    const previews = Array.from({ length: mediaCount }, (_, index) =>
+      document.package.media?.get(`word/media/budget-${index}.emf`),
+    );
+    const generatedCount = previews.filter((media) =>
+      media?.dataUrl?.startsWith("data:image/svg+xml"),
+    ).length;
+
+    expect(generatedCount).toBeGreaterThan(0);
+    expect(generatedCount).toBeLessThan(mediaCount);
+    expect(previews.at(-1)?.dataUrl).toStartWith("data:image/x-emf");
   });
 });
