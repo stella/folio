@@ -1,5 +1,13 @@
 # @stll/folio-core
 
+## 0.31.1
+
+### Patch Changes
+
+- [#679](https://github.com/stella/folio/pull/679) [`1fc03d2`](https://github.com/stella/folio/commit/1fc03d26df70e8d86fb6232b705e8be924943ee3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Size paragraph frames without an authored width to their content before resolving anchored alignment.
+
+- [#681](https://github.com/stella/folio/pull/681) [`c11046d`](https://github.com/stella/folio/commit/c11046deece87684545045f99be24c4b550749d2) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Align collapsed borders between minimum-height table rows across page continuations.
+
 ## 0.31.0
 
 ### Minor Changes
