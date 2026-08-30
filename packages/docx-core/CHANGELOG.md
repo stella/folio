@@ -1,5 +1,11 @@
 # @stll/docx-core
 
+## 0.17.3
+
+### Patch Changes
+
+- [#667](https://github.com/stella/folio/pull/667) [`a7c9d18`](https://github.com/stella/folio/commit/a7c9d185cd1593e6f34aaf4203f14452ed868d7c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve DrawingML vertical alignment and supported legacy text-box anchors through layout and save.
+
 ## 0.17.2
 
 ### Patch Changes
