@@ -1,0 +1,23 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@stll/docx-core": ["packages/docx-core/src/index.ts"],
+      "@stll/docx-core/model": ["packages/docx-core/src/model/document.ts"],
+      "@stll/docx-core/projection": ["packages/docx-core/src/projection.ts"],
+      "@stll/docx-core/*": ["packages/docx-core/src/*"],
+      "@stll/folio-agents": ["packages/agents/src/index.ts"],
+      "@stll/folio-agents/*": ["packages/agents/src/*"],
+      "@stll/folio-core": ["packages/core/src/index.ts"],
+      "@stll/folio-core/*": ["packages/core/src/*"],
+      "@stll/folio-nuxt": ["packages/nuxt/src/module.ts"],
+      "@stll/folio-nuxt/*": ["packages/nuxt/src/*"],
+      "@stll/folio-react": ["packages/react/src/index.ts"],
+      "@stll/folio-react/*": ["packages/react/src/*"],
+      "@stll/folio-vue": ["packages/vue/src/index.ts"],
+      "@stll/folio-vue/*": ["packages/vue/src/*"]
+    }
+  },
+  "include": ["packages"]
+}

@@ -112,6 +112,9 @@ jobs:
       - name: Lint
         run: bun run lint
 
+      - name: Workspace dependency boundaries
+        run: bun run check:dependencies
+
       - name: Format check
         run: bun run format:check
 

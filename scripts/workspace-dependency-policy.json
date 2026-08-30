@@ -1,0 +1,10 @@
+{
+  "agents": ["core"],
+  "core": ["docx-core"],
+  "docx-core": [],
+  "nuxt": ["vue"],
+  "playground": ["core", "react"],
+  "playground-vue": ["vue"],
+  "react": ["core"],
+  "vue": ["core"]
+}

@@ -13,6 +13,7 @@
     "format": "oxfmt ."
   },
   "dependencies": {
+    "@stll/folio-core": "workspace:*",
     "@stll/folio-react": "workspace:*",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
