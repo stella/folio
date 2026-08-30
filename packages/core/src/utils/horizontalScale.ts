@@ -11,6 +11,7 @@ export function normalizeHorizontalScalePercent(
     horizontalScale === null ||
     horizontalScale === undefined ||
     !Number.isFinite(horizontalScale) ||
+    !Number.isInteger(horizontalScale) ||
     horizontalScale < 0 ||
     horizontalScale > 600
   ) {

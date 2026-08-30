@@ -7,13 +7,18 @@ import {
 } from "./horizontalScale";
 
 describe("horizontal text scale normalization", () => {
-  test.each([-50, 601, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
-    "defaults malformed scale %p to 100%%",
-    (scale) => {
-      expect(normalizeHorizontalScalePercent(scale)).toBeUndefined();
-      expect(getHorizontalScaleFactor(scale)).toBe(1);
-    },
-  );
+  test.each([
+    -50,
+    12.5,
+    99.99,
+    601,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+  ])("defaults malformed scale %p to 100%%", (scale) => {
+    expect(normalizeHorizontalScalePercent(scale)).toBeUndefined();
+    expect(getHorizontalScaleFactor(scale)).toBe(1);
+  });
 
   test.each([
     [0, 0],

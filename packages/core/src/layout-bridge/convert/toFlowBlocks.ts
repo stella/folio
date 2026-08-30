@@ -375,7 +375,7 @@ function extractRunFormatting(
           formatting.positionPx = halfPointsToPixels(attrs.position);
         }
         const horizontalScale = normalizeHorizontalScalePercent(attrs.scale);
-        if (horizontalScale !== undefined && horizontalScale !== 100) {
+        if (horizontalScale !== undefined) {
           formatting.horizontalScale = horizontalScale;
         }
         if (attrs.kerning !== undefined && attrs.kerning > 0) {
@@ -610,6 +610,9 @@ function mergeRunFormatting(paraDefaults: RunFormatting, formatting: RunFormatti
   }
   if (merged.letterSpacing === 0) {
     delete merged.letterSpacing;
+  }
+  if (formatting.horizontalScale === 100 && paraDefaults.horizontalScale === undefined) {
+    delete merged.horizontalScale;
   }
   return merged;
 }

@@ -304,6 +304,19 @@ function getRaisedRunFontSize(run: TextRun | TabRun): string {
   return `${DOCX_SCRIPT_FONT_SCALE}em`;
 }
 
+function applyHorizontalScaleTransform(
+  element: HTMLElement,
+  horizontalScale: number | undefined,
+): void {
+  const horizontalScaleFactor = getHorizontalScaleFactor(horizontalScale);
+  if (horizontalScaleFactor === 1) {
+    return;
+  }
+  element.style.display = "inline-block";
+  element.style.transform = `scaleX(${horizontalScaleFactor})`;
+  element.style.transformOrigin = "left center";
+}
+
 /**
  * Apply text run styles to an element
  */
@@ -360,12 +373,7 @@ function applyRunStyles(element: HTMLElement, run: TextRun | TabRun): void {
   if (run.positionPx) {
     element.style.verticalAlign = `${run.positionPx}px`;
   }
-  const horizontalScaleFactor = getHorizontalScaleFactor(run.horizontalScale);
-  if (horizontalScaleFactor !== 1) {
-    element.style.display = "inline-block";
-    element.style.transform = `scaleX(${horizontalScaleFactor})`;
-    element.style.transformOrigin = "left center";
-  }
+  applyHorizontalScaleTransform(element, run.horizontalScale);
   element.style.fontKerning = getRunFontKerningMode(run, DEFAULT_FONT_SIZE);
   if (run.emboss) {
     element.style.textShadow = "1px 1px 1px rgba(255,255,255,0.5), -1px -1px 1px rgba(0,0,0,0.3)";
@@ -1237,12 +1245,7 @@ function renderFieldRun(run: FieldRun, doc: Document, context: RenderContext): H
     // horizontalScale lives on the wrapper (inline-block so the reserved width
     // the render loop sets via reserveScaledAdvance applies, scaleX so the
     // segments scale uniformly); the segments drop it to avoid double-scaling.
-    const horizontalScaleFactor = getHorizontalScaleFactor(resolvedRun.horizontalScale);
-    if (horizontalScaleFactor !== 1) {
-      wrapper.style.display = "inline-block";
-      wrapper.style.transform = `scaleX(${horizontalScaleFactor})`;
-      wrapper.style.transformOrigin = "left center";
-    }
+    applyHorizontalScaleTransform(wrapper, resolvedRun.horizontalScale);
     // The pm range lives on the wrapper; segments carry none (the field is one
     // atomic unit), so drop pmStart/pmEnd (and the wrapper-applied scale) before
     // spreading into each segment.
@@ -1310,6 +1313,7 @@ function renderMathRun(run: MathRun, doc: Document): HTMLElement {
 
   // Cambria Math fallback chain for browsers that don't ship a math font.
   host.style.fontFamily = '"Cambria Math", "Latin Modern Math", "STIX Two Math", serif';
+  applyHorizontalScaleTransform(host, run.horizontalScale);
 
   try {
     // safe-html: mathml is built by ommlToMathml(), which escapes every text token via escapeXml() and emits only a fixed MathML tag vocabulary
@@ -1345,6 +1349,7 @@ function renderMathFallback(
   }
   span.style.fontStyle = "italic";
   span.style.fontFamily = '"Cambria Math", "Latin Modern Math", "STIX Two Math", serif';
+  applyHorizontalScaleTransform(span, run.horizontalScale);
   span.textContent = fallbackText;
   applyPmPositions(span, run.pmStart, run.pmEnd);
   return span;

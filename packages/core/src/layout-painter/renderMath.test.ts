@@ -384,6 +384,24 @@ describe("painter — OMML math run", () => {
     expect(fallback?.textContent).toBe("empty");
   });
 
+  test("scales MathML and fallback paint to the measured zero-width advance", () => {
+    const mathLine = renderMathRunOnce(mathRun({ horizontalScale: 0 }));
+    const mathHost = findElement(mathLine, (el) => el.className.includes("docx-math-inline"));
+    const fallbackLine = renderMathRunOnce(
+      mathRun({ ommlXml: "<not-actually-omml>", horizontalScale: 0 }),
+    );
+    const fallbackHost = findElement(fallbackLine, (el) =>
+      el.className.includes("docx-math-fallback"),
+    );
+
+    for (const host of [mathHost, fallbackHost]) {
+      expect(host?.style.display).toBe("inline-block");
+      expect(host?.style.transform).toBe("scaleX(0)");
+      expect(host?.style.transformOrigin).toBe("left center");
+      expect(host?.style.width).toBe("0px");
+    }
+  });
+
   test("sets alttext on the <math> root for screen readers", () => {
     const line = renderMathRunOnce(
       mathRun({

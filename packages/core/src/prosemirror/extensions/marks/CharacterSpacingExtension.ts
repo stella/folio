@@ -66,10 +66,12 @@ export const CharacterSpacingExtension = createMarkExtension({
         dataAttrs["data-position"] = String(position);
       }
 
-      if (scale !== undefined && scale !== 100) {
-        styles.push(`transform: scaleX(${getHorizontalScaleFactor(scale)})`);
-        styles.push("display: inline-block");
+      if (scale !== undefined) {
         dataAttrs["data-scale"] = String(scale);
+        if (scale !== 100) {
+          styles.push(`transform: scaleX(${getHorizontalScaleFactor(scale)})`);
+          styles.push("display: inline-block");
+        }
       }
 
       if (kerning !== undefined) {

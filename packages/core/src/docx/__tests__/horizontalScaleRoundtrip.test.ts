@@ -26,7 +26,7 @@ describe("horizontal text scale round-trip", () => {
   ])("preserves schema-valid scale %s", (value, expected) => {
     const formatting = parseScale(value);
 
-    expect(formatting.scale).toBe(expected);
+    expect(formatting?.scale).toBe(expected);
     expect(serializeTextFormatting(formatting)).toContain(`<w:w w:val="${expected}"/>`);
   });
 

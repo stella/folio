@@ -44,6 +44,7 @@ const fakeDocument = {
   createElement(tagName: string): FakeElement {
     return new FakeElement(tagName);
   },
+  // SAFETY: renderSingleRun uses only Document.createElement.
 } as unknown as Document;
 
 const renderSingleRun = (run: Run): FakeElement => {
