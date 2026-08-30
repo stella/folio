@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { getHorizontalScaleFactor, normalizeHorizontalScalePercent } from "./horizontalScale";
+import {
+  getHorizontalScaleFactor,
+  normalizeHorizontalScalePercent,
+  parseHorizontalScalePercent,
+} from "./horizontalScale";
 
 describe("horizontal text scale normalization", () => {
   test.each([-50, 601, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
@@ -21,4 +25,23 @@ describe("horizontal text scale normalization", () => {
     expect(normalizeHorizontalScalePercent(scale)).toBe(scale);
     expect(getHorizontalScaleFactor(scale)).toBe(factor);
   });
+
+  test.each([
+    ["0", 0],
+    ["0%", 0],
+    ["600", 600],
+    ["600%", 600],
+    ["000600%", 600],
+    [" \t50%\r\n", 50],
+    [" +100 ", 100],
+  ])("parses strict lexical scale %p", (scale, expected) => {
+    expect(parseHorizontalScalePercent(scale)).toBe(expected);
+  });
+
+  test.each(["", "   ", "0garbage", "1e2", "600oops", "0x10", "50 %", "+50%", "-1", "601", "601%"])(
+    "rejects malformed lexical scale %p",
+    (scale) => {
+      expect(parseHorizontalScalePercent(scale)).toBeUndefined();
+    },
+  );
 });

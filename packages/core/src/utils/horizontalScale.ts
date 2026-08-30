@@ -19,6 +19,29 @@ export function normalizeHorizontalScalePercent(
   return horizontalScale;
 }
 
+/**
+ * Parse the lexical forms accepted by OOXML `ST_TextScale`.
+ *
+ * Decimal values use the XML Schema integer grammar; percent values use the
+ * unsigned decimal grammar defined by `ST_TextScalePercent`. Surrounding
+ * whitespace is ignored, but an empty value or partial numeric prefix is not.
+ */
+export function parseHorizontalScalePercent(
+  horizontalScale: string | null | undefined,
+): number | undefined {
+  if (horizontalScale === null || horizontalScale === undefined) {
+    return undefined;
+  }
+
+  const lexicalValue = horizontalScale.trim();
+  if (!/^(?:[+-]?\d+|\d+%)$/u.test(lexicalValue)) {
+    return undefined;
+  }
+
+  const numericValue = lexicalValue.endsWith("%") ? lexicalValue.slice(0, -1) : lexicalValue;
+  return normalizeHorizontalScalePercent(Number(numericValue));
+}
+
 export function getHorizontalScaleFactor(horizontalScale: number | null | undefined): number {
   return (normalizeHorizontalScalePercent(horizontalScale) ?? 100) / 100;
 }

@@ -100,6 +100,32 @@ describe("style run toggle parsing", () => {
   });
 });
 
+describe("style horizontal text scale parsing", () => {
+  const parseStyleScale = (value: string) =>
+    parseStyles(
+      `<w:styles ${STYLES_NS}>
+        <w:style w:type="character" w:styleId="Scaled">
+          <w:rPr><w:w w:val="${value}"/></w:rPr>
+        </w:style>
+      </w:styles>`,
+      null,
+    ).get("Scaled")?.rPr?.scale;
+
+  test.each([
+    [" 0% ", 0],
+    ["600%", 600],
+  ])("preserves strict scale %s", (value, expected) => {
+    expect(parseStyleScale(value)).toBe(expected);
+  });
+
+  test.each(["", "   ", "0garbage", "1e2", "600oops", "0x10", "601%"])(
+    "drops malformed scale %p",
+    (value) => {
+      expect(parseStyleScale(value)).toBeUndefined();
+    },
+  );
+});
+
 describe("style tab leader normalization", () => {
   test("normalizes the default leader to a save/reopen fixed point", () => {
     const parsed = parseStyleDefinitions(

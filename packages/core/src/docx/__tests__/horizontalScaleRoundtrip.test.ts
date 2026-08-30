@@ -22,6 +22,7 @@ describe("horizontal text scale round-trip", () => {
     ["50%", 50],
     ["600", 600],
     ["600%", 600],
+    [" 50% ", 50],
   ])("preserves schema-valid scale %s", (value, expected) => {
     const formatting = parseScale(value);
 
@@ -29,13 +30,22 @@ describe("horizontal text scale round-trip", () => {
     expect(serializeTextFormatting(formatting)).toContain(`<w:w w:val="${expected}"/>`);
   });
 
-  test.each(["-1", "601", "Infinity", "not-a-scale"])(
-    "drops malformed scale %s at parse and serialization boundaries",
-    (value) => {
-      const formatting = parseScale(value);
+  test.each([
+    "",
+    "   ",
+    "-1",
+    "601",
+    "601%",
+    "0garbage",
+    "1e2",
+    "600oops",
+    "0x10",
+    "Infinity",
+    "not-a-scale",
+  ])("drops malformed scale %s at parse and serialization boundaries", (value) => {
+    const formatting = parseScale(value);
 
-      expect(formatting?.scale).toBeUndefined();
-      expect(serializeTextFormatting(formatting)).not.toContain("<w:w ");
-    },
-  );
+    expect(formatting?.scale).toBeUndefined();
+    expect(serializeTextFormatting(formatting)).not.toContain("<w:w ");
+  });
 });

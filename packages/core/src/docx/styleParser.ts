@@ -39,7 +39,7 @@ import type {
 import { mergeParagraphFormatting } from "../utils/paragraphFormattingMerge";
 import { mergeStyleTextFormatting } from "../utils/textFormattingMerge";
 import { isValidHexColor } from "../utils/colorResolver";
-import { normalizeHorizontalScalePercent } from "../utils/horizontalScale";
+import { parseHorizontalScalePercent } from "../utils/horizontalScale";
 import {
   BorderStyleSchema,
   ConditionalStyleTypeSchema,
@@ -333,7 +333,7 @@ function parseRunProperties(
   // Scale (horizontal text scale percentage)
   const w = findChild(rPr, "w", "w");
   if (w) {
-    const val = normalizeHorizontalScalePercent(parseNumericAttribute(w, "w", "val"));
+    const val = parseHorizontalScalePercent(getAttribute(w, "w", "val"));
     if (val !== undefined) {
       formatting.scale = val;
     }

@@ -11,6 +11,7 @@ import { twipsToPixels, formatPx } from "../../../utils/units";
 import {
   getHorizontalScaleFactor,
   normalizeHorizontalScalePercent,
+  parseHorizontalScalePercent,
 } from "../../../utils/horizontalScale";
 import { expectCharacterSpacingMarkAttrs } from "../../attrs";
 import { createMarkExtension } from "../create";
@@ -35,9 +36,7 @@ export const CharacterSpacingExtension = createMarkExtension({
         getAttrs: (dom) => ({
           spacing: dom.dataset["spacing"] ? Number(dom.dataset["spacing"]) : null,
           position: dom.dataset["position"] ? Number(dom.dataset["position"]) : null,
-          scale: normalizeHorizontalScalePercent(
-            dom.dataset["scale"] ? Number(dom.dataset["scale"]) : null,
-          ),
+          scale: parseHorizontalScalePercent(dom.dataset["scale"]),
           kerning: dom.dataset["kerning"] ? Number(dom.dataset["kerning"]) : null,
         }),
       },
