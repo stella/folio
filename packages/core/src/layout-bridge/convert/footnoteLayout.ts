@@ -19,6 +19,7 @@ import type {
   TextRun,
   FootnoteContent,
 } from "../../layout-engine/types";
+import { isFloatingImageRun } from "../../layout-engine/types";
 import {
   DEFAULT_TEXTBOX_MARGINS as TEXTBOX_MARGINS,
   FOOTNOTE_ENTRY_MARGIN_BOTTOM,
@@ -619,12 +620,11 @@ export function applyFootnotePresentation(blocks: FlowBlock[], displayNumber: nu
 }
 
 function createFootnoteNumberRun(displayNumber: number, paragraph: ParagraphBlock): TextRun {
-  const firstTextRun = paragraph.runs.find((run) => run.kind === "text");
   const firstFormattedRun = paragraph.runs.find(
     (run) => run.kind === "text" || run.kind === "tab" || run.kind === "field",
   );
-  const hasAuthoredSeparator = /^[\s\p{P}]/u.test(firstTextRun?.text ?? "");
-  const text = hasAuthoredSeparator ? `${displayNumber}` : `${displayNumber} `;
+  const suffix = resolveFootnoteNumberSuffix(paragraph.runs);
+  const text = `${displayNumber}${suffix === "space" ? " " : ""}`;
   const numberRun: TextRun = {
     kind: "text",
     text,
@@ -643,6 +643,55 @@ function createFootnoteNumberRun(displayNumber: number, paragraph: ParagraphBloc
     numberRun.alternateFontFamily = alternateFontFamily;
   }
   return numberRun;
+}
+
+type FootnoteNumberSuffix = "none" | "space";
+
+// Closing/final punctuation belongs to the reconstructed marker. Sentence
+// terminals and common international comma/colon/semicolon forms can also be
+// authored label suffixes. Opening punctuation/quotes, dashes, and connectors
+// deliberately stay outside this set because they commonly begin ordinary prose.
+const ATTACHED_FOOTNOTE_SUFFIX_PATTERN =
+  /^(?:[\p{Pe}\p{Pf}\p{Sentence_Terminal}]|[,;:\u060c\u061b\u3001\uff0c\uff1a\uff1b])/u;
+const LEADING_WHITESPACE_PATTERN = /^\s/u;
+
+function resolveTextFootnoteNumberSuffix(text: string): FootnoteNumberSuffix {
+  if (LEADING_WHITESPACE_PATTERN.test(text) || ATTACHED_FOOTNOTE_SUFFIX_PATTERN.test(text)) {
+    return "none";
+  }
+  return "space";
+}
+
+function resolveRunFootnoteNumberSuffix(run: Run): FootnoteNumberSuffix | undefined {
+  switch (run.kind) {
+    case "text":
+      return run.text.length === 0 ? undefined : resolveTextFootnoteNumberSuffix(run.text);
+    case "tab":
+    case "lineBreak":
+      return "none";
+    case "field":
+      return resolveTextFootnoteNumberSuffix(run.fallback || "1");
+    case "image":
+      return isFloatingImageRun(run) ? undefined : "space";
+    case "math":
+      return "space";
+    case "renderedPageBreak":
+      return undefined;
+    default: {
+      const exhaustiveRun: never = run;
+      return exhaustiveRun;
+    }
+  }
+}
+
+function resolveFootnoteNumberSuffix(runs: Run[]): FootnoteNumberSuffix {
+  for (const run of runs) {
+    const suffix = resolveRunFootnoteNumberSuffix(run);
+    if (suffix !== undefined) {
+      return suffix;
+    }
+  }
+  return "space";
 }
 
 function applyFootnoteBlockPresentation(block: FlowBlock): FlowBlock {

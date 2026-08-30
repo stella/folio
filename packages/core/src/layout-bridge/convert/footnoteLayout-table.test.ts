@@ -4,11 +4,49 @@ import {
   fixedCharWidth,
   withFakeTextMeasure,
 } from "../../layout-engine/measure/__tests__/fakeTextMeasure";
-import type { FlowBlock } from "../../layout-engine/types";
+import type { FlowBlock, ParagraphBlock, Run } from "../../layout-engine/types";
 import type { Footnote } from "../../types/document";
 import { applyFootnotePresentation, convertFootnoteToContent } from "./footnoteLayout";
 
 const fakeMeasure = { charWidth: fixedCharWidth(5) };
+
+function presentedFootnoteParagraph(runs: Run[]): ParagraphBlock {
+  const paragraph = applyFootnotePresentation(
+    [{ kind: "paragraph", id: "footnote-text", runs }],
+    8,
+  ).at(0);
+  if (paragraph?.kind !== "paragraph") {
+    throw new Error("Expected a paragraph block");
+  }
+  return paragraph;
+}
+
+function visibleRunSequence(runs: Run[]): string {
+  return runs
+    .map((run) => {
+      switch (run.kind) {
+        case "text":
+          return run.text;
+        case "tab":
+          return "\t";
+        case "image":
+          return "\ufffc";
+        case "lineBreak":
+          return "\n";
+        case "renderedPageBreak":
+          return "";
+        case "field":
+          return run.fallback || "1";
+        case "math":
+          return run.plainText;
+        default: {
+          const exhaustiveRun: never = run;
+          return exhaustiveRun;
+        }
+      }
+    })
+    .join("");
+}
 
 const footnoteWithTable: Footnote = {
   type: "footnote",
@@ -358,6 +396,7 @@ describe("footnote layout", () => {
       fontSize: 10,
       superscript: true,
     });
+    expect(visibleRunSequence(paragraph.runs)).toBe("8 Insert the name of the legal entity.");
   });
 
   test("adds one separator space when footnote text has no leading space", () => {
@@ -389,39 +428,120 @@ describe("footnote layout", () => {
       fontSize: 10,
       superscript: true,
     });
+    expect(visibleRunSequence(paragraph.runs)).toBe("8 Footnote text");
   });
 
-  test.each([") Footnote text", "）脚注テキスト"])(
-    "does not insert a space before authored punctuation: %s",
-    (text) => {
-      const blocks: FlowBlock[] = [
-        {
-          kind: "paragraph",
-          id: "footnote-text",
-          runs: [
-            {
-              kind: "text",
-              text,
-              fontFamily: "Times New Roman",
-              fontSize: 10,
-            },
-          ],
-        },
-      ];
+  test.each([
+    ") Footnote text",
+    "）脚注テキスト",
+    ". Footnote text",
+    "。脚注テキスト",
+    ": Label",
+    "：ラベル",
+  ])("does not insert a space before authored punctuation: %s", (text) => {
+    const blocks: FlowBlock[] = [
+      {
+        kind: "paragraph",
+        id: "footnote-text",
+        runs: [
+          {
+            kind: "text",
+            text,
+            fontFamily: "Times New Roman",
+            fontSize: 10,
+          },
+        ],
+      },
+    ];
 
-      const paragraph = applyFootnotePresentation(blocks, 8).at(0);
-      expect(paragraph?.kind).toBe("paragraph");
-      if (paragraph?.kind !== "paragraph") {
-        throw new Error("Expected a paragraph block");
-      }
+    const paragraph = applyFootnotePresentation(blocks, 8).at(0);
+    expect(paragraph?.kind).toBe("paragraph");
+    if (paragraph?.kind !== "paragraph") {
+      throw new Error("Expected a paragraph block");
+    }
 
-      expect(paragraph.runs.at(0)).toMatchObject({
-        kind: "text",
-        text: "8",
-        fontFamily: "Times New Roman",
-        fontSize: 10,
-        superscript: true,
-      });
+    expect(paragraph.runs.at(0)).toMatchObject({
+      kind: "text",
+      text: "8",
+      fontFamily: "Times New Roman",
+      fontSize: 10,
+      superscript: true,
+    });
+    expect(visibleRunSequence(paragraph.runs)).toBe(`8${text}`);
+  });
+
+  test.each([
+    "(See clause 4)",
+    "（条項4参照）",
+    "“Quoted authority”",
+    "— explanatory text",
+    "_connector",
+  ])("keeps a separator before opening or non-attaching punctuation: %s", (text) => {
+    const paragraph = presentedFootnoteParagraph([{ kind: "text", text }]);
+
+    expect(visibleRunSequence(paragraph.runs)).toBe(`8 ${text}`);
+  });
+
+  test.each([
+    {
+      name: "empty run before closing suffix",
+      runs: [
+        { kind: "text", text: "" },
+        { kind: "text", text: ") Footnote text" },
+      ],
+      expected: "8) Footnote text",
+    },
+    {
+      name: "split authored whitespace",
+      runs: [
+        { kind: "text", text: "" },
+        { kind: "text", text: " " },
+        { kind: "text", text: "Footnote text" },
+      ],
+      expected: "8 Footnote text",
+    },
+  ] satisfies { name: string; runs: Run[]; expected: string }[])(
+    "resolves adjacency from the first visible text across $name",
+    ({ runs, expected }) => {
+      const paragraph = presentedFootnoteParagraph(runs);
+
+      expect(visibleRunSequence(paragraph.runs)).toBe(expected);
+    },
+  );
+
+  test.each([
+    {
+      name: "tab separator",
+      runs: [{ kind: "tab" }, { kind: "text", text: "Footnote text" }],
+      expected: "8\tFootnote text",
+    },
+    {
+      name: "field closing suffix",
+      runs: [
+        { kind: "field", fieldType: "OTHER", fallback: ")" },
+        { kind: "text", text: " Footnote text" },
+      ],
+      expected: "8) Footnote text",
+    },
+    {
+      name: "ordinary field text",
+      runs: [{ kind: "field", fieldType: "OTHER", fallback: "Authority" }],
+      expected: "8 Authority",
+    },
+    {
+      name: "inline image",
+      runs: [
+        { kind: "image", src: "data:image/png;base64,", width: 10, height: 10 },
+        { kind: "text", text: "Caption" },
+      ],
+      expected: "8 \ufffcCaption",
+    },
+  ] satisfies { name: string; runs: Run[]; expected: string }[])(
+    "uses the first paint-bearing non-text run for $name",
+    ({ runs, expected }) => {
+      const paragraph = presentedFootnoteParagraph(runs);
+
+      expect(visibleRunSequence(paragraph.runs)).toBe(expected);
     },
   );
 
