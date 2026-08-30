@@ -391,6 +391,40 @@ describe("footnote layout", () => {
     });
   });
 
+  test.each([") Footnote text", "）脚注テキスト"])(
+    "does not insert a space before authored punctuation: %s",
+    (text) => {
+      const blocks: FlowBlock[] = [
+        {
+          kind: "paragraph",
+          id: "footnote-text",
+          runs: [
+            {
+              kind: "text",
+              text,
+              fontFamily: "Times New Roman",
+              fontSize: 10,
+            },
+          ],
+        },
+      ];
+
+      const paragraph = applyFootnotePresentation(blocks, 8).at(0);
+      expect(paragraph?.kind).toBe("paragraph");
+      if (paragraph?.kind !== "paragraph") {
+        throw new Error("Expected a paragraph block");
+      }
+
+      expect(paragraph.runs.at(0)).toMatchObject({
+        kind: "text",
+        text: "8",
+        fontFamily: "Times New Roman",
+        fontSize: 10,
+        superscript: true,
+      });
+    },
+  );
+
   test("keeps the footnote number alternate paired with its primary source", () => {
     const blocks: FlowBlock[] = [
       {

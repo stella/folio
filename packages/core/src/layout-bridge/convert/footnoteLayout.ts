@@ -623,7 +623,8 @@ function createFootnoteNumberRun(displayNumber: number, paragraph: ParagraphBloc
   const firstFormattedRun = paragraph.runs.find(
     (run) => run.kind === "text" || run.kind === "tab" || run.kind === "field",
   );
-  const text = firstTextRun?.text.match(/^\s/u) ? `${displayNumber}` : `${displayNumber} `;
+  const hasAuthoredSeparator = /^[\s\p{P}]/u.test(firstTextRun?.text ?? "");
+  const text = hasAuthoredSeparator ? `${displayNumber}` : `${displayNumber} `;
   const numberRun: TextRun = {
     kind: "text",
     text,
