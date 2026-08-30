@@ -646,11 +646,23 @@ describe("measureParagraph cross-run line breaking", () => {
           horizontalScale: 150,
         };
         const fontStyle = buildRunFontStyle(run, "Calibri", 11);
-        const expectedWidth =
-          measureTextWidth("ab ", fontStyle) + measureTextWidth("cd", fontStyle);
+        const expectedWidth = measureTextWidth(run.text, fontStyle);
         const measured = measureParagraph(paragraph([run]), 1000);
 
         expect(measured.lines[0]?.width).toBe(expectedWidth);
+      },
+      { charWidth: fixedCharWidth(5) },
+    );
+  });
+
+  test("keeps negatively spaced words together when their full run fits", () => {
+    withFakeTextMeasure(
+      () => {
+        const run = { kind: "text" as const, text: "aa bb", letterSpacing: -2 };
+        const measured = measureParagraph(paragraph([run]), 18);
+
+        expect(measured.lines).toHaveLength(1);
+        expect(measured.lines[0]?.width).toBe(17);
       },
       { charWidth: fixedCharWidth(5) },
     );

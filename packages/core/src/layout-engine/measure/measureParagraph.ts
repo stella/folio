@@ -2041,6 +2041,16 @@ export function measureParagraph(
           word,
           style,
         );
+        // Word-break tokens are measured separately, but CSS/Word character
+        // spacing also applies between the last character of one token and
+        // the first character of the next token in the same run.
+        let leadingLetterSpacing =
+          (currentLine.fromRun !== currentLine.toRun ||
+            currentLine.fromChar !== currentLine.toChar) &&
+          currentLine.toRun === runIndex &&
+          currentLine.toChar === charIndex
+            ? (style.letterSpacing ?? 0) * ((style.horizontalScale ?? 100) / 100)
+            : 0;
         const hangingPunctuationWidth = trailingHangingPunctuationWidth(
           measuredWord,
           style,
@@ -2091,10 +2101,12 @@ export function measureParagraph(
 
         const overflowsCurrentLine =
           wordWidth > 0 &&
-          currentLine.width + wordWidth > currentLine.availableWidth + widthTolerance;
+          currentLine.width + leadingLetterSpacing + wordWidth >
+            currentLine.availableWidth + widthTolerance;
         if (mayHyphenateLine && overflowsCurrentLine && activeHyphenationWord) {
           const consumed = charIndex - activeHyphenationWord.start;
-          const spaceLeft = currentLine.availableWidth - currentLine.width + widthTolerance;
+          const spaceLeft =
+            currentLine.availableWidth - currentLine.width - leadingLetterSpacing + widthTolerance;
           const hyphenWidth = measureTextWidth("-", style);
           let fittingBreak: number | undefined;
           for (const breakOffset of activeHyphenationWord.breaks) {
@@ -2109,7 +2121,8 @@ export function measureParagraph(
           if (fittingBreak !== undefined) {
             const absoluteBreak = activeHyphenationWord.start + fittingBreak;
             const prefix = text.slice(charIndex, absoluteBreak);
-            currentLine.width += measureTextWidth(prefix, style) + hyphenWidth;
+            currentLine.width +=
+              leadingLetterSpacing + measureTextWidth(prefix, style) + hyphenWidth;
             currentLine.trailingWhitespaceWidth = 0;
             currentLine.toRun = runIndex;
             currentLine.toChar = absoluteBreak;
@@ -2123,9 +2136,11 @@ export function measureParagraph(
 
         if (
           crossRunWord &&
-          currentLine.width + crossRunWord.width > currentLine.availableWidth + widthTolerance
+          currentLine.width + leadingLetterSpacing + crossRunWord.width >
+            currentLine.availableWidth + widthTolerance
         ) {
-          const spaceLeft = currentLine.availableWidth - currentLine.width + widthTolerance;
+          const spaceLeft =
+            currentLine.availableWidth - currentLine.width - leadingLetterSpacing + widthTolerance;
           let fittingPrefix: CrossRunPrefix | undefined;
           for (let breakIndex = crossRunWord.breaks.length - 1; breakIndex >= 0; breakIndex -= 1) {
             const breakOffset = crossRunWord.breaks[breakIndex];
@@ -2151,7 +2166,9 @@ export function measureParagraph(
               );
             }
             currentLine.width +=
-              fittingPrefix.width + measureTextWidth("-", fittingPrefix.hyphenStyle);
+              leadingLetterSpacing +
+              fittingPrefix.width +
+              measureTextWidth("-", fittingPrefix.hyphenStyle);
             currentLine.trailingWhitespaceWidth = 0;
             currentLine.toRun = fittingPrefix.endRunIndex;
             currentLine.toChar = fittingPrefix.endChar;
@@ -2181,9 +2198,14 @@ export function measureParagraph(
           // as possible. This prevents wasting a full line when a small run
           // (like "{" at 10pt) precedes a long word (like a variable at 5.5pt).
           let chunkStart = 0;
+          let chunkLeadingLetterSpacing = leadingLetterSpacing;
 
           while (chunkStart < measuredWord.length) {
-            const spaceLeft = currentLine.availableWidth - currentLine.width + WIDTH_TOLERANCE;
+            const spaceLeft =
+              currentLine.availableWidth -
+              currentLine.width -
+              chunkLeadingLetterSpacing +
+              WIDTH_TOLERANCE;
             const remaining = measuredWord.slice(chunkStart);
             let bestEnd = findMaxFittingLength(
               remaining,
@@ -2198,6 +2220,7 @@ export function measureParagraph(
             // even if that grapheme itself is wider than the line.
             if (bestEnd === 0) {
               startNewLine(runIndex, charIndex + chunkStart);
+              chunkLeadingLetterSpacing = 0;
               updateMaxFont(lineHeightStyle);
               continue;
             }
@@ -2206,7 +2229,8 @@ export function measureParagraph(
             const chunk = measuredWord.slice(chunkStart, chunkEnd);
             const chunkWidth = measureTextWidth(chunk, style);
 
-            currentLine.width += chunkWidth;
+            currentLine.width += chunkLeadingLetterSpacing + chunkWidth;
+            chunkLeadingLetterSpacing = 0;
             currentLine.trailingWhitespaceWidth =
               chunkWidth - measureTextWidth(trimTrailingSpacesAndTabs(chunk), style);
             currentLine.regularSpaceWidth += compressibleSpaceWidth(chunk, style);
@@ -2252,7 +2276,8 @@ export function measureParagraph(
               line: currentLine,
               isFirstLine,
               isFinalCandidate: isFinalTextCandidate(block, runIndex, nextBreak),
-              candidateWidth: currentLine.width + wordWidth + glueWidth - hangingAllowance,
+              candidateWidth:
+                currentLine.width + leadingLetterSpacing + wordWidth + glueWidth - hangingAllowance,
               candidateSpaceWidth: regularSpaceWidth,
               fallbackTolerancePx: widthTolerance,
               continuationStrategy: continuationJustifyFitStrategy,
@@ -2266,11 +2291,12 @@ export function measureParagraph(
         if (
           wordWidth > 0 &&
           currentLine.width > 0 &&
-          currentLine.width + wordWidth + glueWidth >
+          currentLine.width + leadingLetterSpacing + wordWidth + glueWidth >
             currentLine.availableWidth + finalWrapTolerance + hangingAllowance
         ) {
           // Word doesn't fit, start new line
           startNewLine(runIndex, charIndex);
+          leadingLetterSpacing = 0;
           // Re-apply font metrics to the new line (startNewLine resets maxFontSize)
           updateMaxFont(lineHeightStyle);
         }
@@ -2280,7 +2306,7 @@ export function measureParagraph(
         }
 
         // Add word to current line
-        currentLine.width += fullWordWidth;
+        currentLine.width += leadingLetterSpacing + fullWordWidth;
         const wordTrailingWhitespaceWidth = fullWordWidth - wordWidth;
         // `findWordBreaks` yields each ASCII space separately, so consecutive
         // trailing segments must accumulate until visible content follows.
