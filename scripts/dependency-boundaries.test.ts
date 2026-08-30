@@ -22,6 +22,18 @@ const WORKSPACE_NAMES = {
 
 type Workspace = keyof typeof WORKSPACE_NAMES;
 
+type WorkspaceDependency = {
+  version?: string;
+  workspace: Workspace;
+};
+
+type AddWorkspaceParams = {
+  dependencies?: readonly WorkspaceDependency[];
+  devDependencies?: readonly WorkspaceDependency[];
+  fixtureRoot: string;
+  workspace: Workspace;
+};
+
 type CruiseResult = {
   exitCode: number;
   output: string;
@@ -74,19 +86,27 @@ const createFixture = (): string => {
   return fixtureRoot;
 };
 
-const addWorkspace = (
-  fixtureRoot: string,
-  workspace: Workspace,
-  dependencies: readonly Workspace[] = [],
-): void => {
+const serializeDependencies = (dependencies: readonly WorkspaceDependency[]) =>
+  Object.fromEntries(
+    dependencies.map(({ version = "workspace:*", workspace }) => [
+      WORKSPACE_NAMES[workspace],
+      version,
+    ]),
+  );
+
+const addWorkspace = ({
+  dependencies = [],
+  devDependencies = [],
+  fixtureRoot,
+  workspace,
+}: AddWorkspaceParams): void => {
   const workspacePath = path.join(fixtureRoot, "packages", workspace);
   mkdirSync(path.join(workspacePath, "src"), { recursive: true });
   writeFileSync(
     path.join(workspacePath, "package.json"),
     JSON.stringify({
-      dependencies: Object.fromEntries(
-        dependencies.map((dependency) => [WORKSPACE_NAMES[dependency], "workspace:*"]),
-      ),
+      dependencies: serializeDependencies(dependencies),
+      devDependencies: serializeDependencies(devDependencies),
       exports: "./src/index.ts",
       main: "./src/index.ts",
       name: WORKSPACE_NAMES[workspace],
@@ -143,9 +163,13 @@ const checkManifests = (fixtureRoot: string): CruiseResult => {
 describe("workspace dependency boundaries", () => {
   test("accepts an allowed declared package edge", () => {
     const fixtureRoot = createFixture();
-    addWorkspace(fixtureRoot, "docx-core");
-    addWorkspace(fixtureRoot, "core", ["docx-core"]);
-    addWorkspace(fixtureRoot, "agents", ["core"]);
+    addWorkspace({ fixtureRoot, workspace: "docx-core" });
+    addWorkspace({
+      dependencies: [{ workspace: "docx-core" }],
+      fixtureRoot,
+      workspace: "core",
+    });
+    addWorkspace({ dependencies: [{ workspace: "core" }], fixtureRoot, workspace: "agents" });
     writeSource(fixtureRoot, "docx-core", "index.ts", "export const model = 1;\n");
     writeSource(
       fixtureRoot,
@@ -163,9 +187,17 @@ describe("workspace dependency boundaries", () => {
 
   test("rejects forbidden, undeclared, relative, require, and dynamic package edges", () => {
     const fixtureRoot = createFixture();
-    addWorkspace(fixtureRoot, "agents");
-    addWorkspace(fixtureRoot, "core", ["docx-core"]);
-    addWorkspace(fixtureRoot, "docx-core", ["core"]);
+    addWorkspace({ fixtureRoot, workspace: "agents" });
+    addWorkspace({
+      dependencies: [{ workspace: "docx-core" }],
+      fixtureRoot,
+      workspace: "core",
+    });
+    addWorkspace({
+      dependencies: [{ workspace: "core" }],
+      fixtureRoot,
+      workspace: "docx-core",
+    });
     writeSource(fixtureRoot, "docx-core", "index.ts", "export const model = 1;\n");
     writeSource(
       fixtureRoot,
@@ -207,5 +239,24 @@ describe("workspace dependency boundaries", () => {
     expect(cruiseResult.output).toContain("required.cjs");
     expect(cruiseResult.output).toContain("dynamic.mjs");
     expect(cruiseResult.output.match(/docx-core-workspace-dependencies/gu)).toHaveLength(2);
+  });
+
+  test("rejects a non-workspace version hidden by a duplicate declaration", () => {
+    const fixtureRoot = createFixture();
+    addWorkspace({ fixtureRoot, workspace: "docx-core" });
+    addWorkspace({
+      dependencies: [{ version: "0.0.0", workspace: "docx-core" }],
+      devDependencies: [{ workspace: "docx-core" }],
+      fixtureRoot,
+      workspace: "core",
+    });
+    addWorkspace({ dependencies: [{ workspace: "core" }], fixtureRoot, workspace: "agents" });
+
+    const result = checkManifests(fixtureRoot);
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.output).toContain(
+      "packages/core dependency @stll/docx-core must use the workspace protocol",
+    );
   });
 });

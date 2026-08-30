@@ -17,7 +17,7 @@ const WORKSPACE_PROTOCOL = "workspace:";
 type WorkspaceManifest = {
   directory: string;
   name: string;
-  workspaceDependencies: Map<string, string>;
+  workspaceDependencies: ReadonlyArray<readonly [name: string, version: string]>;
 };
 
 type WorkspacePolicy = Map<string, Set<string>>;
@@ -49,10 +49,8 @@ const readWorkspaceManifests = (): WorkspaceManifest[] => {
   return rawManifests.map(({ directory, manifest, name }) => ({
     directory,
     name,
-    workspaceDependencies: new Map(
-      readManifestDependencyEntries(manifest).filter(([dependency]) =>
-        workspaceNames.has(dependency),
-      ),
+    workspaceDependencies: readManifestDependencyEntries(manifest).filter(([dependency]) =>
+      workspaceNames.has(dependency),
     ),
   }));
 };
@@ -129,7 +127,7 @@ export const validateWorkspaceManifestPolicy = (
 
   for (const { directory, workspaceDependencies } of manifests) {
     const declaredTargets = new Set(
-      [...workspaceDependencies.keys()].flatMap((name) => {
+      workspaceDependencies.flatMap(([name]) => {
         const target = packageToDirectory.get(name);
         return target === undefined ? [] : [target];
       }),
