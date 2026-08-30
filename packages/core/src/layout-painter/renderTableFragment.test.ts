@@ -219,6 +219,64 @@ describe("renderTableFragment clipped header continuations", () => {
   });
 });
 
+describe("renderTableFragment continuation row boundaries", () => {
+  test("rounds independently painted borders without changing continuation row geometry", () => {
+    const contentRowHeights = [10.2, 7.7, 5.4];
+    const rowHeights = [20, ...contentRowHeights];
+    const block: TableBlock = {
+      kind: "table",
+      id: "tbl",
+      columnWidths: [100],
+      rows: rowHeights.map((_, index) => ({
+        id: `row-${index}`,
+        height: [20, 10, 7, 5][index],
+        heightRule: "atLeast",
+        cells: [
+          {
+            id: `cell-${index}`,
+            blocks: [],
+            borders: { bottom: { width: 0.5, style: "solid" } },
+          },
+        ],
+      })),
+    };
+    const measure: TableMeasure = {
+      kind: "table",
+      columnWidths: [100],
+      totalWidth: 100,
+      totalHeight: 43.3,
+      rows: rowHeights.map((height) => ({
+        height,
+        cells: [{ blocks: [], width: 100, height: 0 }],
+      })),
+    };
+    const fragment: TableFragment = {
+      kind: "table",
+      blockId: "tbl",
+      x: 0,
+      y: 0.25,
+      width: 100,
+      height: 23.3,
+      fromRow: 1,
+      toRow: 4,
+      continuesFromPrev: true,
+    };
+
+    const table = renderTableFragment(fragment, block, measure, renderContext, {
+      document: fakeDocument,
+    }) as unknown as FakeElement;
+    const rows = findRows(table);
+
+    expect(rows.map((row) => row.style["top"])).toEqual(["0px", "10.2px", "17.9px"]);
+    expect(rows.map((row) => row.style["height"])).toEqual(["10.2px", "7.7px", "5.4px"]);
+    const bottomBorders = findByClass(table, "layout-table-cell-bottom-border");
+    expect(bottomBorders.map((border) => border.style["height"])).toEqual(["10.75px", "8.55px"]);
+    const finalTop = Number.parseFloat(rows.at(-1)?.style["top"] ?? "0");
+    const finalHeight = Number.parseFloat(rows.at(-1)?.style["height"] ?? "0");
+    expect(finalTop + finalHeight).toBeCloseTo(fragment.height, 10);
+  });
+});
+
 describe("renderTableFragment split-row cell content", () => {
   test("clips ordinary cell content to each intersecting row slice", () => {
     const block: TableBlock = {

@@ -59,6 +59,7 @@ import { applyImageVisualAttrs, hasImageCrop, hasImageVisualAttrs } from "./rend
 import { renderParagraphFragment } from "./renderParagraph";
 import { renderTextBoxFragment } from "./renderTextBox";
 import type { RenderContext } from "./renderUtils";
+import { ownedRowBottomBorderOffsets } from "./tableRowPaintGeometry";
 
 /**
  * CSS class names for table elements
@@ -75,6 +76,7 @@ export const TABLE_CLASS_NAMES = {
 };
 
 const CELL_DIAGONAL_BORDER_CLASS = "layout-table-cell-diagonal-border";
+const CELL_BOTTOM_BORDER_CLASS = "layout-table-cell-bottom-border";
 
 /**
  * Options for rendering a table fragment
@@ -591,6 +593,7 @@ type RenderTableCellOptions = {
   rowHeight: number;
   borderFlags: {
     drawTop: boolean;
+    drawBottom: boolean;
     isLastRow: boolean;
     drawLeft: boolean;
     isLastCol: boolean;
@@ -648,7 +651,9 @@ function renderTableCell({
       applyBorder(cellEl, "top", cell.borders.top);
     }
     applyBorder(cellEl, "right", cell.borders.right);
-    applyBorder(cellEl, "bottom", cell.borders.bottom);
+    if (borderFlags.drawBottom) {
+      applyBorder(cellEl, "bottom", cell.borders.bottom);
+    }
     if (borderFlags.drawLeft) {
       applyBorder(cellEl, "left", cell.borders.left);
     }
@@ -780,6 +785,60 @@ function renderTableCell({
 const hasVisibleBorder = (border: { width?: number; style?: string } | undefined): boolean =>
   border !== undefined && border.style !== "none" && border.style !== "nil";
 
+const isMinimumHeightRow = (row: TableBlock["rows"][number] | undefined): boolean =>
+  row?.height !== undefined && row.heightRule !== "exact";
+
+const rowHasVerticalMerge = (row: TableBlock["rows"][number] | undefined): boolean =>
+  row?.cells.some((cell) => (cell.rowSpan ?? 1) > 1) === true;
+
+const continuationRowBottomBorderOffsets = (
+  fragment: TableFragment,
+  block: TableBlock,
+  measure: TableMeasure,
+  cellGrid: TableCellGrid,
+): number[] => {
+  const rowHeights = measure.rows
+    .slice(fragment.fromRow, fragment.toRow)
+    .map(({ height }) => height);
+  const fragmentHasVerticalMerge = block.rows
+    .slice(fragment.fromRow, fragment.toRow)
+    .some(
+      (row, fragmentRowIndex) =>
+        rowHasVerticalMerge(row) ||
+        (cellGrid.occupiedColumnsByRow.get(fragment.fromRow + fragmentRowIndex)?.size ?? 0) > 0,
+    );
+  if (
+    fragment.continuesFromPrev !== true ||
+    fragment.headerRowCount ||
+    fragment.topClip !== undefined ||
+    fragment.bottomClip !== undefined ||
+    fragmentHasVerticalMerge
+  ) {
+    return rowHeights.map(() => 0);
+  }
+
+  const snapAfterRow = rowHeights.slice(0, -1).map((_, fragmentRowIndex) => {
+    const rowIndex = fragment.fromRow + fragmentRowIndex;
+    const row = block.rows[rowIndex];
+    const nextRow = block.rows[rowIndex + 1];
+    return (
+      isMinimumHeightRow(row) &&
+      isMinimumHeightRow(nextRow) &&
+      !rowHasVerticalMerge(row) &&
+      !rowHasVerticalMerge(nextRow) &&
+      row?.cells.some((cell) => hasVisibleBorder(cell.borders?.bottom)) === true
+    );
+  });
+  if (!snapAfterRow.some(Boolean)) {
+    return rowHeights.map(() => 0);
+  }
+  return ownedRowBottomBorderOffsets({
+    origin: fragment.y,
+    rowHeights,
+    snapAfterRow,
+  });
+};
+
 /**
  * Render a table row with rowSpan support
  */
@@ -801,6 +860,7 @@ type RenderTableRowOptions = {
   contentClip?: CellContentClip;
   pageContentPosition?: PageContentPosition;
   inlineOffset?: number;
+  bottomBorderOffset?: number;
 };
 
 function renderTableRow({
@@ -821,6 +881,7 @@ function renderTableRow({
   contentClip,
   pageContentPosition,
   inlineOffset = 0,
+  bottomBorderOffset = 0,
 }: RenderTableRowOptions): HTMLElement {
   const rowEl = doc.createElement("div");
   rowEl.className = TABLE_CLASS_NAMES.row;
@@ -877,13 +938,21 @@ function renderTableRow({
     const drawTop = isFirstRow || !hasVisibleBorder(aboveCell?.borders?.bottom);
     const drawLeft = isFirstCol || !hasVisibleBorder(leftCell?.borders?.right);
 
+    const paintBottomBorderSeparately =
+      bottomBorderOffset > 0 && hasVisibleBorder(cell.borders?.bottom);
     const cellEl = renderTableCell({
       cell,
       cellMeasure,
       x: cellLeft,
       width,
       rowHeight: cellHeight,
-      borderFlags: { drawTop, isLastRow, drawLeft, isLastCol },
+      borderFlags: {
+        drawTop,
+        drawBottom: !paintBottomBorderSeparately,
+        isLastRow,
+        drawLeft,
+        isLastCol,
+      },
       columnsPinned,
       context,
       doc,
@@ -907,6 +976,20 @@ function renderTableRow({
     }
 
     rowEl.append(cellEl);
+    if (paintBottomBorderSeparately) {
+      const bottomBorderEl = doc.createElement("div");
+      bottomBorderEl.className = CELL_BOTTOM_BORDER_CLASS;
+      bottomBorderEl.style.position = "absolute";
+      bottomBorderEl.style.left = `${cellLeft}px`;
+      bottomBorderEl.style.top = "0";
+      bottomBorderEl.style.width = `${width}px`;
+      bottomBorderEl.style.height = `${cellHeight + bottomBorderOffset}px`;
+      bottomBorderEl.style.boxSizing = "border-box";
+      bottomBorderEl.style.pointerEvents = "none";
+      bottomBorderEl.style.zIndex = "1";
+      applyBorder(bottomBorderEl, "bottom", cell.borders?.bottom);
+      rowEl.append(bottomBorderEl);
+    }
   }
 
   return rowEl;
@@ -1007,6 +1090,12 @@ export function renderTableFragment(
     columnWidths: measure.columnWidths,
     bidi: block.bidi === true,
   });
+  const contentRowBottomBorderOffsets = continuationRowBottomBorderOffsets(
+    fragment,
+    block,
+    measure,
+    cellGrid,
+  );
 
   // Render repeated header rows for continuation fragments. For a mid-content
   // row break (eigenpal #698), keep repeated headers pinned to the fragment top
@@ -1115,6 +1204,7 @@ export function renderTableFragment(
       columnsPinned,
       cellGrid,
       cellPlacements,
+      bottomBorderOffset: contentRowBottomBorderOffsets[rowIndex - fragment.fromRow] ?? 0,
       ...(contentClip ? { contentClip } : {}),
       ...(tablePageContentPosition
         ? {
