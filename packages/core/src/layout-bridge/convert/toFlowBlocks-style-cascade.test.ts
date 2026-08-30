@@ -765,7 +765,7 @@ describe("toFlowBlocks style cascade", () => {
         ],
       },
     },
-  ])("keeps $name zero table indentation authored", ({ formatting, styles }) => {
+  ])("positions $name zero table indentation at the cell text edge", ({ formatting, styles }) => {
     const table: Table = {
       type: "table",
       formatting,
@@ -793,7 +793,10 @@ describe("toFlowBlocks style cascade", () => {
     expect(tableBlock?.kind).toBe("table");
     if (tableBlock?.kind === "table") {
       expect(tableBlock.indent).toBe(0);
-      expect(firstTableX(tableBlock)).toBe(40);
+      const tableX = firstTableX(tableBlock);
+      const leadingCellPadding = tableBlock.rows.at(0)?.cells.at(0)?.padding?.left ?? 0;
+      expect(tableX).toBeDefined();
+      expect((tableX ?? 0) + leadingCellPadding).toBe(40);
     }
   });
 
