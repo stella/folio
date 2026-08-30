@@ -515,7 +515,7 @@ describe("VML w:pict inline images", () => {
     const drawing = firstDrawing(doc.package.document.content.at(0));
     const svg = decodeURIComponent(drawing?.image.src?.split(",").at(1) ?? "");
     expect(svg).toContain('d="M 0 0 L 10 0"');
-    expect(svg).toContain('fill="none" stroke="black"');
+    expect(svg).toContain('fill="none" fill-rule="evenodd" stroke="black"');
     expect(svg).not.toContain(" Z");
   });
 
@@ -532,28 +532,75 @@ describe("VML w:pict inline images", () => {
     const drawing = firstDrawing(doc.package.document.content.at(0));
     const svg = decodeURIComponent(drawing?.image.src?.split(",").at(1) ?? "");
     expect(svg).toContain('d="M 0 0 L 10 0 M 2 2 L 2 8"');
+    expect(svg).toContain('fill-rule="evenodd"');
+  });
+
+  test("accepts space-delimited path coordinates", async () => {
+    const doc = await parseDocx(
+      await pictDocx({
+        runXml: `<w:pict><v:group style="width:10pt;height:10pt" coordsize="10,10"><v:shape style="left:0;top:0;width:10;height:10" coordsize="10,10" path="m 0 0 l 10 0 10 10 e" stroked="f"/></v:group></w:pict>`,
+        imageRel: false,
+        media: false,
+      }),
+      { preloadFonts: false },
+    );
+
+    const drawing = firstDrawing(doc.package.document.content.at(0));
+    const svg = decodeURIComponent(drawing?.image.src?.split(",").at(1) ?? "");
+    expect(svg).toContain('d="M 0 0 L 10 0 L 10 10"');
+  });
+
+  test("superimposes independently ended path sets", async () => {
+    const doc = await parseDocx(
+      await pictDocx({
+        runXml: `<w:pict><v:group style="width:10pt;height:10pt" coordsize="10,10"><v:shape style="left:0;top:0;width:10;height:10" coordsize="10,10" path="m0,0l10,0,10,10em2,2l8,2,8,8e" stroked="f"/></v:group></w:pict>`,
+        imageRel: false,
+        media: false,
+      }),
+      { preloadFonts: false },
+    );
+
+    const drawing = firstDrawing(doc.package.document.content.at(0));
+    const svg = decodeURIComponent(drawing?.image.src?.split(",").at(1) ?? "");
+    expect(svg.match(/<path\b/gu)).toHaveLength(2);
+    expect(svg.indexOf('d="M 0 0 L 10 0 L 10 10"')).toBeLessThan(
+      svg.indexOf('d="M 2 2 L 8 2 L 8 8"'),
+    );
   });
 
   test("bounds retained generated previews across a package model", () => {
     const first = {
       type: "image",
       filename: "vml-shape-preview.svg",
-      src: "123456",
+      mimeType: "image/svg+xml",
+      rId: "",
+      src: "data:image/svg+xml;charset=utf-8,123456",
     };
     const second = {
       type: "image",
       filename: "vml-shape-preview.svg",
-      src: "123456",
+      mimeType: "image/svg+xml",
+      rId: "",
+      src: "data:image/svg+xml;charset=utf-8,123456",
+    };
+    const relationshipBacked = {
+      type: "image",
+      filename: "vml-shape-preview.svg",
+      mimeType: "image/svg+xml",
+      rId: "rId1",
+      src: "relationship-backed",
     };
     const model = {
       first: { image: first, rawXml: '<w:pict id="first"/>' },
       second: { image: second, rawXml: '<w:pict id="second"/>' },
+      third: { image: relationshipBacked },
     };
 
-    enforcePackageVmlPreviewBudget(model, 10);
+    enforcePackageVmlPreviewBudget(model, first.src.length);
 
-    expect(first.src).toBe("123456");
+    expect(first.src).toBe("data:image/svg+xml;charset=utf-8,123456");
     expect(second.src).toBeUndefined();
+    expect(relationshipBacked.src).toBe("relationship-backed");
     expect(model.second.rawXml).toBe('<w:pict id="second"/>');
   });
 
@@ -580,7 +627,7 @@ describe("VML w:pict inline images", () => {
       "l0,0e",
       "m0,0c1,1e",
       "m0,0l1000001,0e",
-      "m0,0l1,1em2,2e",
+      "m0,0l1,1el2,2e",
     ];
     for (const path of paths) {
       const doc = await parseDocx(

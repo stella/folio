@@ -14,6 +14,9 @@ const MAX_VML_PREVIEW_COORDINATE = 1_000_000;
 const MAX_VML_PREVIEW_DIMENSION_PX = 20_000;
 const MAX_VML_SVG_CHARACTERS = 1_000_000;
 const MAX_PACKAGE_VML_PREVIEW_CHARACTERS = 8 * 1024 * 1024;
+const VML_PREVIEW_DATA_URL_PREFIX = "data:image/svg+xml;charset=utf-8,";
+const VML_PREVIEW_FILENAME = "vml-shape-preview.svg";
+const VML_PREVIEW_MIME_TYPE = "image/svg+xml";
 const SAFE_VML_COLORS = new Set([
   "black",
   "white",
@@ -70,18 +73,25 @@ type CoordinateViewport = CoordinatePair & {
 };
 
 type PathState =
-  | { type: "idle" }
+  | { type: "between-sets"; pathSets: string[] }
   | {
       type: "building";
       x: number;
       y: number;
       commands: string[];
       hasLine: boolean;
-    }
-  | { type: "ended-empty" }
-  | { type: "ended-painted"; commands: string[] };
+      pathSets: string[];
+    };
 
-type PathResult = { type: "painted"; pathData: string } | { type: "empty" } | { type: "invalid" };
+type PathResult = { type: "painted"; pathSets: string[] } | { type: "empty" } | { type: "invalid" };
+
+type PathNumberCursor = {
+  afterComma: boolean;
+  offset: number;
+  raw: string;
+};
+
+type PathNumberResult = { type: "value"; value: number } | { type: "end" } | { type: "invalid" };
 
 type ShapePaint = { type: "painted"; fill: string; stroke: string } | { type: "empty" };
 
@@ -174,7 +184,7 @@ export const isValidVmlPreviewDimension = (value: number | undefined): value is 
 /** Encode a generated, already-sanitized SVG without exceeding its output cap. */
 export const vmlSvgDataUrl = (svg: string): string | undefined =>
   svg.length <= MAX_VML_SVG_CHARACTERS
-    ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+    ? `${VML_PREVIEW_DATA_URL_PREFIX}${encodeURIComponent(svg)}`
     : undefined;
 
 const validCoordinate = (value: number | undefined): value is number =>
@@ -292,20 +302,60 @@ const consumePathPoint = (budget: PreviewBudget): boolean => {
   return true;
 };
 
-const parsePathCoordinate = (raw: string): number | undefined => {
-  const trimmed = raw.trim();
-  const value = trimmed === "" ? 0 : parseVmlNumber(trimmed);
-  return validCoordinate(value) ? value : undefined;
+const skipPathWhitespace = (cursor: PathNumberCursor): void => {
+  while (/\s/u.test(cursor.raw.charAt(cursor.offset))) {
+    cursor.offset += 1;
+  }
 };
 
-const parseMovePair = (raw: string, budget: PreviewBudget): CoordinatePair | undefined => {
-  const separator = raw.indexOf(",");
-  if (separator < 0 || raw.indexOf(",", separator + 1) >= 0) {
-    return undefined;
+const nextPathNumber = (cursor: PathNumberCursor): PathNumberResult => {
+  skipPathWhitespace(cursor);
+  if (cursor.offset >= cursor.raw.length) {
+    if (!cursor.afterComma) {
+      return { type: "end" };
+    }
+    cursor.afterComma = false;
+    return { type: "value", value: 0 };
   }
-  const x = parsePathCoordinate(raw.slice(0, separator));
-  const y = parsePathCoordinate(raw.slice(separator + 1));
-  return x !== undefined && y !== undefined && consumePathPoint(budget) ? { x, y } : undefined;
+
+  if (cursor.raw.charAt(cursor.offset) === ",") {
+    cursor.offset += 1;
+    cursor.afterComma = true;
+    return { type: "value", value: 0 };
+  }
+
+  cursor.afterComma = false;
+  const start = cursor.offset;
+  while (cursor.offset < cursor.raw.length && !/[,\s]/u.test(cursor.raw.charAt(cursor.offset))) {
+    cursor.offset += 1;
+  }
+  const value = parseVmlNumber(cursor.raw.slice(start, cursor.offset));
+  if (!validCoordinate(value)) {
+    return INVALID_RESULT;
+  }
+
+  skipPathWhitespace(cursor);
+  if (cursor.raw.charAt(cursor.offset) === ",") {
+    cursor.offset += 1;
+    cursor.afterComma = true;
+  }
+  return { type: "value", value };
+};
+
+const pathNumberCursor = (raw: string): PathNumberCursor => ({
+  afterComma: false,
+  offset: 0,
+  raw,
+});
+
+const parseMovePair = (raw: string, budget: PreviewBudget): CoordinatePair | undefined => {
+  const cursor = pathNumberCursor(raw);
+  const x = nextPathNumber(cursor);
+  const y = nextPathNumber(cursor);
+  const end = nextPathNumber(cursor);
+  return x.type === "value" && y.type === "value" && end.type === "end" && consumePathPoint(budget)
+    ? { x: x.value, y: y.value }
+    : undefined;
 };
 
 type AppendLinePairsOptions = {
@@ -325,38 +375,31 @@ const appendLinePairs = ({
   startX,
   startY,
 }: AppendLinePairsOptions): CoordinatePair | undefined => {
-  let fieldStart = 0;
-  let pendingX: number | undefined;
+  const cursor = pathNumberCursor(raw);
   let x = startX;
   let y = startY;
   let pairCount = 0;
-  for (let offset = 0; offset <= raw.length; offset += 1) {
-    if (offset < raw.length && raw.charAt(offset) !== ",") {
-      continue;
+  while (true) {
+    const nextX = nextPathNumber(cursor);
+    if (nextX.type === "end") {
+      return pairCount > 0 ? { x, y } : undefined;
     }
-    const value = parsePathCoordinate(raw.slice(fieldStart, offset));
-    if (value === undefined) {
+    const nextY = nextPathNumber(cursor);
+    if (nextX.type !== "value" || nextY.type !== "value") {
       return undefined;
     }
-    if (pendingX === undefined) {
-      pendingX = value;
-    } else {
-      x = relative ? x + pendingX : pendingX;
-      y = relative ? y + value : value;
-      if (
-        !validCoordinate(x) ||
-        !validCoordinate(y) ||
-        !consumePathPoint(budget) ||
-        !appendPathCommand(commands, `L ${x} ${y}`, budget)
-      ) {
-        return undefined;
-      }
-      pendingX = undefined;
-      pairCount += 1;
+    x = relative ? x + nextX.value : nextX.value;
+    y = relative ? y + nextY.value : nextY.value;
+    if (
+      !validCoordinate(x) ||
+      !validCoordinate(y) ||
+      !consumePathPoint(budget) ||
+      !appendPathCommand(commands, `L ${x} ${y}`, budget)
+    ) {
+      return undefined;
     }
-    fieldStart = offset + 1;
+    pairCount += 1;
   }
-  return pendingX === undefined && pairCount > 0 ? { x, y } : undefined;
 };
 
 const appendPathCommand = (commands: string[], command: string, budget: PreviewBudget): boolean => {
@@ -367,11 +410,31 @@ const appendPathCommand = (commands: string[], command: string, budget: PreviewB
   return true;
 };
 
+const startPathSubpath = (
+  state: PathState,
+  point: CoordinatePair,
+  budget: PreviewBudget,
+): PathState | undefined => {
+  const commands = state.type === "building" ? state.commands : [];
+  const hasLine = state.type === "building" && state.hasLine;
+  if (!appendPathCommand(commands, `M ${point.x} ${point.y}`, budget)) {
+    return undefined;
+  }
+  return {
+    type: "building",
+    x: point.x,
+    y: point.y,
+    commands,
+    hasLine,
+    pathSets: state.pathSets,
+  };
+};
+
 const renderVmlPath = (raw: string, budget: PreviewBudget): PathResult => {
   if (raw.length > MAX_VML_SVG_CHARACTERS) {
     return INVALID_RESULT;
   }
-  let state: PathState = { type: "idle" };
+  let state: PathState = { type: "between-sets", pathSets: [] };
   let offset = 0;
   while (offset < raw.length) {
     while (/\s/u.test(raw.charAt(offset))) {
@@ -390,28 +453,17 @@ const renderVmlPath = (raw: string, budget: PreviewBudget): PathResult => {
       offset += 1;
     }
     const rawArguments = raw.slice(argumentStart, offset).trim();
-    if (state.type === "ended-empty" || state.type === "ended-painted") {
-      return INVALID_RESULT;
-    }
-
     switch (command) {
       case "m": {
         const point = parseMovePair(rawArguments, budget);
         if (!point) {
           return INVALID_RESULT;
         }
-        const commands = state.type === "building" ? state.commands : [];
-        const hasLine = state.type === "building" && state.hasLine;
-        if (!appendPathCommand(commands, `M ${point.x} ${point.y}`, budget)) {
+        const nextState = startPathSubpath(state, point, budget);
+        if (!nextState) {
           return INVALID_RESULT;
         }
-        state = {
-          type: "building",
-          x: point.x,
-          y: point.y,
-          commands,
-          hasLine,
-        };
+        state = nextState;
         break;
       }
       case "l":
@@ -436,6 +488,7 @@ const renderVmlPath = (raw: string, budget: PreviewBudget): PathResult => {
           y: endPoint.y,
           commands: state.commands,
           hasLine: true,
+          pathSets: state.pathSets,
         };
         break;
       }
@@ -443,9 +496,10 @@ const renderVmlPath = (raw: string, budget: PreviewBudget): PathResult => {
         if (rawArguments || state.type !== "building") {
           return INVALID_RESULT;
         }
-        state = state.hasLine
-          ? { type: "ended-painted", commands: state.commands }
-          : { type: "ended-empty" };
+        if (state.hasLine) {
+          state.pathSets.push(state.commands.join(" "));
+        }
+        state = { type: "between-sets", pathSets: state.pathSets };
         break;
       }
       default:
@@ -454,11 +508,10 @@ const renderVmlPath = (raw: string, budget: PreviewBudget): PathResult => {
   }
 
   switch (state.type) {
-    case "ended-painted":
-      return { type: "painted", pathData: state.commands.join(" ") };
-    case "ended-empty":
-      return EMPTY_RESULT;
-    case "idle":
+    case "between-sets":
+      return state.pathSets.length > 0
+        ? { type: "painted", pathSets: state.pathSets }
+        : EMPTY_RESULT;
     case "building":
       return INVALID_RESULT;
     default:
@@ -529,11 +582,15 @@ const pathShapeFragment = (shape: XmlElement, budget: PreviewBudget): PreviewFra
   if (path.type !== "painted") {
     return path;
   }
-  const svg = `<path transform="${transform}" d="${path.pathData}" fill="${paint.fill}" stroke="${paint.stroke}"/>`;
-  const wrapperCharacters = svg.length - path.pathData.length;
-  return consumeSvgCharacters(budget, wrapperCharacters)
-    ? { type: "painted", svg }
-    : INVALID_RESULT;
+  const fragments: string[] = [];
+  for (const pathData of path.pathSets) {
+    const svg = `<path transform="${transform}" d="${pathData}" fill="${paint.fill}" fill-rule="evenodd" stroke="${paint.stroke}"/>`;
+    if (!consumeSvgCharacters(budget, svg.length - pathData.length)) {
+      return INVALID_RESULT;
+    }
+    fragments.push(svg);
+  }
+  return { type: "painted", svg: fragments.join("") };
 };
 
 const renderGroupChildren = (
@@ -697,10 +754,15 @@ export const enforcePackageVmlPreviewBudget = (
     if (
       "type" in value &&
       value.type === "image" &&
+      "rId" in value &&
+      value.rId === "" &&
+      "mimeType" in value &&
+      value.mimeType === VML_PREVIEW_MIME_TYPE &&
       "filename" in value &&
-      value.filename === "vml-shape-preview.svg" &&
+      value.filename === VML_PREVIEW_FILENAME &&
       "src" in value &&
-      typeof value.src === "string"
+      typeof value.src === "string" &&
+      value.src.startsWith(VML_PREVIEW_DATA_URL_PREFIX)
     ) {
       if (value.src.length <= remainingCharacters) {
         remainingCharacters -= value.src.length;
