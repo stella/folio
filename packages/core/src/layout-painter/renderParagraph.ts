@@ -646,7 +646,8 @@ function applyPmPositions(element: HTMLElement, pmStart?: number, pmEnd?: number
  */
 type RenderTextRunOptions = {
   hyperlinkDirection?: typeof LEFT_TO_RIGHT_DIRECTION;
-  contractedWordSpacing?: string;
+  visualSpaceContractionPx?: number;
+  ancestorHorizontalScaleFactor?: number;
 };
 
 const NON_COMPRESSIBLE_WHITESPACE_PATTERN = /([^\S ]+)/gu;
@@ -717,6 +718,16 @@ function renderTextRun(run: TextRun, doc: Document, options?: RenderTextRunOptio
   applyRunStyles(span, run);
   applyPmPositions(span, run.pmStart, run.pmEnd);
   const paintedText = toPaintedText(run.text);
+  const visualSpaceContractionPx = options?.visualSpaceContractionPx;
+  const effectiveHorizontalScaleFactor =
+    getHorizontalScaleFactor(run.horizontalScale) * (options?.ancestorHorizontalScaleFactor ?? 1);
+  // CSS transforms scale word-spacing with the glyphs. Convert the visual
+  // per-space plan back into the pre-transform length so every counted space
+  // contributes exactly the contraction admitted by measurement.
+  const contractedWordSpacing =
+    visualSpaceContractionPx === undefined || effectiveHorizontalScaleFactor === 0
+      ? undefined
+      : `${-visualSpaceContractionPx / effectiveHorizontalScaleFactor}px`;
 
   const isBookmarkTarget = run.hyperlink?.href.startsWith("#") === true;
   const hyperlinkHref = resolveHyperlinkHref(run.hyperlink?.href, isBookmarkTarget);
@@ -740,7 +751,7 @@ function renderTextRun(run: TextRun, doc: Document, options?: RenderTextRunOptio
       host: anchor,
       text: paintedText,
       doc,
-      contractedWordSpacing: options?.contractedWordSpacing,
+      contractedWordSpacing,
     });
     // TOC entries opt out of the Hyperlink character style — Word renders
     // them in the paragraph's own colour, no underline. The bridge sets
@@ -772,7 +783,7 @@ function renderTextRun(run: TextRun, doc: Document, options?: RenderTextRunOptio
       host: span,
       text: paintedText,
       doc,
-      contractedWordSpacing: options?.contractedWordSpacing,
+      contractedWordSpacing,
     });
   }
   applyWhitespaceUnderline(span, run);
@@ -1269,13 +1280,13 @@ function resolveFieldText(run: FieldRun, context: RenderContext | undefined): st
 
 type RenderFieldRunOptions = {
   context: RenderContext;
-  contractedWordSpacing?: string;
+  visualSpaceContractionPx?: number;
 };
 
 function renderFieldRun(
   run: FieldRun,
   doc: Document,
-  { context, contractedWordSpacing }: RenderFieldRunOptions,
+  { context, visualSpaceContractionPx }: RenderFieldRunOptions,
 ): HTMLElement {
   const text = resolveFieldText(run, context);
 
@@ -1292,7 +1303,7 @@ function renderFieldRun(
   };
   if (resolvedRun.forceComplexScript && hasComplexScriptFormatting(resolvedRun)) {
     return renderTextRun(applyComplexScriptFormatting(resolvedRun, resolvedRun), doc, {
-      contractedWordSpacing,
+      visualSpaceContractionPx,
     });
   }
 
@@ -1327,12 +1338,17 @@ function renderFieldRun(
         },
         segment.script,
       );
-      wrapper.append(renderTextRun(segmentRun, doc, { contractedWordSpacing }));
+      wrapper.append(
+        renderTextRun(segmentRun, doc, {
+          visualSpaceContractionPx,
+          ancestorHorizontalScaleFactor: horizontalScaleFactor,
+        }),
+      );
     }
     return wrapper;
   }
 
-  return renderTextRun(resolvedRun, doc, { contractedWordSpacing });
+  return renderTextRun(resolvedRun, doc, { visualSpaceContractionPx });
 }
 
 /**
@@ -1761,8 +1777,14 @@ function countShrinkableSpaces(runs: Run[], context: RenderContext | undefined):
   let count = 0;
   for (const run of runs) {
     if (isTextRun(run)) {
+      if (getHorizontalScaleFactor(run.horizontalScale) === 0) {
+        continue;
+      }
       count += countCompressibleSpaces(run.text ?? "");
     } else if (isFieldRun(run)) {
+      if (getHorizontalScaleFactor(run.horizontalScale) === 0) {
+        continue;
+      }
       count += countCompressibleSpaces(resolveFieldText(run, context));
     }
   }
@@ -2175,13 +2197,13 @@ export function renderLine(
     }
     return withCursiveJoiners(runEl, run, cursiveJoinerPlan, applyJoinerRunStyles, doc);
   };
-  let contractedWordSpacing: string | undefined;
+  let visualSpaceContractionPx: number | undefined;
   const renderLineTextRun = (run: TextRun): HTMLElement => {
     const hyperlinkDirection =
       run.hyperlink && options?.leftToRightDisplayedUrlHyperlinks?.has(run.hyperlink)
         ? LEFT_TO_RIGHT_DIRECTION
         : undefined;
-    const runEl = renderTextRun(run, doc, { hyperlinkDirection, contractedWordSpacing });
+    const runEl = renderTextRun(run, doc, { hyperlinkDirection, visualSpaceContractionPx });
     if (collapsedLeadingSpaceRuns.has(run)) {
       runEl.dataset["collapsedLeadingSpaces"] = "true";
     }
@@ -2352,7 +2374,7 @@ export function renderLine(
       if (contractionPx > RIGHT_EDGE_EPSILON_PX && shrinkableSpaces > 0) {
         lineEl.style.textAlign = "left";
         lineEl.style.textAlignLast = "auto";
-        contractedWordSpacing = `${-contractionPx / shrinkableSpaces}px`;
+        visualSpaceContractionPx = contractionPx / shrinkableSpaces;
         // Keep non-text hosts (MathML, images, tabs) neutral. Text and field
         // segments opt into this contraction only where they contain counted
         // ASCII spaces.
@@ -2564,7 +2586,10 @@ export function renderLine(
             lineEl.append(...withJoiners(renderLineTextRun(next), next));
           } else if (isFieldRun(next) && options?.context) {
             lineEl.append(
-              renderFieldRun(next, doc, { context: options.context, contractedWordSpacing }),
+              renderFieldRun(next, doc, {
+                context: options.context,
+                visualSpaceContractionPx,
+              }),
             );
           } else if (isImageRun(next)) {
             // Floating images render in dedicated layers — skip here so we
@@ -2677,7 +2702,7 @@ export function renderLine(
       // Render field run with context for PAGE/NUMPAGES substitution
       const runEl = renderFieldRun(run, doc, {
         context: options.context,
-        contractedWordSpacing,
+        visualSpaceContractionPx,
       });
       lineEl.append(runEl);
       if (!measureText) {
