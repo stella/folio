@@ -741,7 +741,7 @@ describe("toFlowBlocks style cascade", () => {
       expect(tableBlock.indent).toBeUndefined();
       expect(tableBlock.rows[0]?.cells[0]?.padding?.left).toBeCloseTo(9.6, 1);
       expect(tableBlock.rows[0]?.cells[0]?.padding?.right).toBeCloseTo(19.2, 1);
-      expect(firstTableX(tableBlock)).toBeCloseTo(30.4, 1);
+      expect(firstTableX(tableBlock)).toBeCloseTo(40, 1);
     }
   });
 
@@ -765,7 +765,7 @@ describe("toFlowBlocks style cascade", () => {
         ],
       },
     },
-  ])("positions $name zero table indentation at the cell text edge", ({ formatting, styles }) => {
+  ])("positions $name zero table indentation at the table edge", ({ formatting, styles }) => {
     const table: Table = {
       type: "table",
       formatting,
@@ -794,9 +794,7 @@ describe("toFlowBlocks style cascade", () => {
     if (tableBlock?.kind === "table") {
       expect(tableBlock.indent).toBe(0);
       const tableX = firstTableX(tableBlock);
-      const leadingCellPadding = tableBlock.rows.at(0)?.cells.at(0)?.padding?.left ?? 0;
-      expect(tableX).toBeDefined();
-      expect((tableX ?? 0) + leadingCellPadding).toBe(40);
+      expect(tableX).toBe(40);
     }
   });
 

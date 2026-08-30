@@ -1079,47 +1079,43 @@ function tableFragments(block: TableBlock, measure: TableMeasure): TableFragment
 }
 
 describe("left-aligned table placement", () => {
-  test("aligns an unindented first-cell text edge using default cell padding", () => {
+  test("aligns an unindented table edge with the content edge", () => {
     const { block, measure } = tallTable(1);
     delete block.rows[0]!.cells[0]!.padding;
 
     const fragment = tableFragments(block, measure).at(0);
 
-    expect(fragment?.x).toBe(OPTIONS.margins.left - 7);
-    expect((fragment?.x ?? 0) + 7).toBe(OPTIONS.margins.left);
+    expect(fragment?.x).toBe(OPTIONS.margins.left);
   });
 
-  test("applies an authored w:tblInd to the first-cell text edge", () => {
+  test("applies an authored w:tblInd to the table edge", () => {
     const { block, measure } = tallTable(1);
     block.indent = 10;
     block.rows[0]!.cells[0]!.padding.left = 7;
 
     const fragment = tableFragments(block, measure).at(0);
 
-    expect(fragment?.x).toBe(OPTIONS.margins.left + 3);
-    expect((fragment?.x ?? 0) + 7).toBe(OPTIONS.margins.left + 10);
+    expect(fragment?.x).toBe(OPTIONS.margins.left + 10);
   });
 
-  test("aligns an authored zero-indent first-cell text edge with the content edge", () => {
+  test("aligns an authored zero-indent table edge with the content edge", () => {
     const { block, measure } = tallTable(1);
     block.indent = 0;
     delete block.rows[0]!.cells[0]!.padding;
 
     const fragment = tableFragments(block, measure).at(0);
 
-    expect(fragment?.x).toBe(OPTIONS.margins.left - 7);
-    expect((fragment?.x ?? 0) + 7).toBe(OPTIONS.margins.left);
+    expect(fragment?.x).toBe(OPTIONS.margins.left);
   });
 
-  test("allows a negative authored indent to move the first-cell text into the margin", () => {
+  test("allows a negative authored indent to move the table into the margin", () => {
     const { block, measure } = tallTable(1);
     block.indent = -10;
     block.rows[0]!.cells[0]!.padding.left = 7;
 
     const fragment = tableFragments(block, measure).at(0);
 
-    expect(fragment?.x).toBe(OPTIONS.margins.left - 17);
-    expect((fragment?.x ?? 0) + 7).toBe(OPTIONS.margins.left - 10);
+    expect(fragment?.x).toBe(OPTIONS.margins.left - 10);
   });
 });
 
@@ -1133,8 +1129,7 @@ describe("RTL table placement", () => {
     const fragment = tableFragments(block, measure).at(0);
     const contentRight = OPTIONS.pageSize.w - OPTIONS.margins.right;
 
-    expect(fragment?.x).toBe(contentRight - measure.totalWidth - 3);
-    expect((fragment?.x ?? 0) + measure.totalWidth - 7).toBe(contentRight - 10);
+    expect(fragment?.x).toBe(contentRight - measure.totalWidth - 10);
   });
 
   test("keeps a negative authored indent distinct from an absent indent", () => {
@@ -1146,11 +1141,10 @@ describe("RTL table placement", () => {
     const fragment = tableFragments(block, measure).at(0);
     const contentRight = OPTIONS.pageSize.w - OPTIONS.margins.right;
 
-    expect(fragment?.x).toBe(contentRight - measure.totalWidth + 17);
-    expect((fragment?.x ?? 0) + measure.totalWidth - 7).toBe(contentRight + 10);
+    expect(fragment?.x).toBe(contentRight - measure.totalWidth + 10);
   });
 
-  test("aligns an unindented logical first-cell text edge using default cell padding", () => {
+  test("aligns an unindented logical table edge with the content edge", () => {
     const { block, measure } = tallTable(1);
     block.bidi = true;
     delete block.rows[0]!.cells[0]!.padding;
@@ -1158,10 +1152,10 @@ describe("RTL table placement", () => {
     const fragment = tableFragments(block, measure).at(0);
     const contentRight = OPTIONS.pageSize.w - OPTIONS.margins.right;
 
-    expect((fragment?.x ?? 0) + measure.totalWidth - 7).toBe(contentRight);
+    expect((fragment?.x ?? 0) + measure.totalWidth).toBe(contentRight);
   });
 
-  test("aligns an authored zero-indent first-cell text edge with the right content edge", () => {
+  test("aligns an authored zero-indent table edge with the right content edge", () => {
     const { block, measure } = tallTable(1);
     block.bidi = true;
     block.indent = 0;
@@ -1170,7 +1164,7 @@ describe("RTL table placement", () => {
     const fragment = tableFragments(block, measure).at(0);
     const contentRight = OPTIONS.pageSize.w - OPTIONS.margins.right;
 
-    expect((fragment?.x ?? 0) + measure.totalWidth - 7).toBe(contentRight);
+    expect((fragment?.x ?? 0) + measure.totalWidth).toBe(contentRight);
   });
 });
 

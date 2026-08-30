@@ -1,4 +1,4 @@
-import { resolveTableCellPadding, type TableBlock } from "../types";
+import type { TableBlock } from "../types";
 
 type TableInlinePlacement =
   | { alignment: "center" }
@@ -6,7 +6,7 @@ type TableInlinePlacement =
 
 /** Resolve an inline table's horizontal anchor without losing RTL leading-edge semantics. */
 export const resolveTableInlinePlacement = (
-  table: Pick<TableBlock, "bidi" | "indent" | "justification" | "rows">,
+  table: Pick<TableBlock, "bidi" | "indent" | "justification">,
 ): TableInlinePlacement => {
   if (table.justification === "center") {
     return { alignment: "center" };
@@ -15,18 +15,10 @@ export const resolveTableInlinePlacement = (
     return { alignment: "right", offset: 0 };
   }
 
-  const firstCell = table.rows.at(0)?.cells.at(0);
-  const firstCellPadding = firstCell ? resolveTableCellPadding(firstCell) : undefined;
-  // w:tblInd positions the leading cell's text edge, so move the table border
-  // back by that cell's leading margin for both authored and default indents.
+  // w:tblInd adds space before the table's leading edge. Cell margins affect
+  // content inside that edge and therefore must not move the table itself.
   if (table.justification === "left" || table.bidi !== true) {
-    return {
-      alignment: "left",
-      offset: (table.indent ?? 0) - (firstCellPadding?.left ?? 0),
-    };
+    return { alignment: "left", offset: table.indent ?? 0 };
   }
-  return {
-    alignment: "right",
-    offset: (table.indent ?? 0) - (firstCellPadding?.right ?? 0),
-  };
+  return { alignment: "right", offset: table.indent ?? 0 };
 };

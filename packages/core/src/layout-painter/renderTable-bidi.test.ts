@@ -255,10 +255,10 @@ describe("renderNestedTable RTL placement", () => {
     ) as unknown as FakeElement;
 
     expect(tableEl.style["marginLeft"]).toBe("auto");
-    expect(tableEl.style["marginRight"]).toBe("3px");
+    expect(tableEl.style["marginRight"]).toBe("10px");
   });
 
-  test("aligns absent and authored-zero indentation to the same text edge", () => {
+  test("aligns absent and authored-zero indentation to the same table edge", () => {
     const absent = buildTwoColumnTable(true);
     const absentEl = renderNestedTable(
       absent.block,
@@ -276,11 +276,11 @@ describe("renderNestedTable RTL placement", () => {
       fakeDocument,
     ) as unknown as FakeElement;
 
-    expect(absentEl.style["marginRight"]).toBe("-7px");
-    expect(zeroEl.style["marginRight"]).toBe("-7px");
+    expect(absentEl.style["marginRight"]).toBe("0px");
+    expect(zeroEl.style["marginRight"]).toBe("0px");
   });
 
-  test("subtracts non-default leading cell padding from an authored indent", () => {
+  test("keeps non-default leading cell padding independent of an authored indent", () => {
     const { block, measure } = buildTwoColumnTable(true);
     block.indent = 10;
     block.rows[0]!.cells[0]!.padding = { top: 0, right: 12, bottom: 0, left: 7 };
@@ -292,12 +292,12 @@ describe("renderNestedTable RTL placement", () => {
       fakeDocument,
     ) as unknown as FakeElement;
 
-    expect(tableEl.style["marginRight"]).toBe("-2px");
+    expect(tableEl.style["marginRight"]).toBe("10px");
   });
 });
 
 describe("renderNestedTable LTR placement", () => {
-  test("aligns absent and authored-zero indentation to the same text edge", () => {
+  test("aligns absent and authored-zero indentation to the same table edge", () => {
     const absent = buildTwoColumnTable(false);
     const absentEl = renderNestedTable(
       absent.block,
@@ -315,11 +315,11 @@ describe("renderNestedTable LTR placement", () => {
       fakeDocument,
     ) as unknown as FakeElement;
 
-    expect(absentEl.style["marginLeft"]).toBe("-7px");
-    expect(zeroEl.style["marginLeft"]).toBe("-7px");
+    expect(absentEl.style["marginLeft"]).toBe("0px");
+    expect(zeroEl.style["marginLeft"]).toBe("0px");
   });
 
-  test("subtracts non-default leading cell padding from an authored indent", () => {
+  test("keeps non-default leading cell padding independent of an authored indent", () => {
     const { block, measure } = buildTwoColumnTable(false);
     block.indent = 10;
     block.rows[0]!.cells[0]!.padding = { top: 0, right: 7, bottom: 0, left: 12 };
@@ -331,6 +331,6 @@ describe("renderNestedTable LTR placement", () => {
       fakeDocument,
     ) as unknown as FakeElement;
 
-    expect(tableEl.style["marginLeft"]).toBe("-2px");
+    expect(tableEl.style["marginLeft"]).toBe("10px");
   });
 });
