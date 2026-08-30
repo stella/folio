@@ -202,6 +202,10 @@ describe("createBilingualDocument", () => {
 
   test("projects direct and inherited full-page geometry into each column", async () => {
     const source = createEmptyDocument({ preset: createStellaStyleDocumentPreset() });
+    const bulletNumId = findStyle(source, "ListParagraph")?.pPr?.numPr?.numId;
+    if (bulletNumId === undefined) {
+      throw new Error("preset lost its bullet numbering");
+    }
     source.package.styles?.styles.push({
       styleId: "FormLine",
       type: "paragraph",
@@ -224,7 +228,7 @@ describe("createBilingualDocument", () => {
         },
       },
       {
-        ...paragraph("Numbered clause"),
+        ...paragraph("Numbered clause", undefined, { numId: bulletNumId, ilvl: 0 }),
         formatting: {
           indentFirstLine: -360,
           hangingIndent: true,
@@ -261,6 +265,7 @@ describe("createBilingualDocument", () => {
       });
     }
     for (const projected of [left.at(2), right.at(2)]) {
+      expect(projected).toBeDefined();
       const indentLeft = projected?.formatting?.indentLeft ?? 0;
       const indentFirstLine = projected?.formatting?.indentFirstLine ?? 0;
       expect(indentLeft + indentFirstLine).toBe(0);
