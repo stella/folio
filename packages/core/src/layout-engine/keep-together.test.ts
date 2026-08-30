@@ -16,6 +16,13 @@ const emptyParagraph = (id: string): ParagraphBlock => ({
   runs: [],
 });
 
+const authoredEmptyParagraph = (id: string): ParagraphBlock => ({
+  kind: "paragraph",
+  id,
+  runs: [],
+  attrs: { hasDirectParagraphFormatting: true },
+});
+
 const table = (id: string): FlowBlock => ({
   kind: "table",
   id,
@@ -149,6 +156,38 @@ describe("computeKeepNextChains", () => {
     });
   });
 
+  test("stops keepNext at an authored empty spacer", () => {
+    const blocks: FlowBlock[] = [
+      paragraph("heading", true),
+      authoredEmptyParagraph("answer space"),
+      paragraph("next heading", true),
+      paragraph("body"),
+    ];
+
+    expect(computeKeepNextChains(blocks)).toEqual(
+      new Map([
+        [
+          0,
+          {
+            startIndex: 0,
+            endIndex: 0,
+            memberIndices: [0],
+            anchorIndex: 1,
+          },
+        ],
+        [
+          2,
+          {
+            startIndex: 2,
+            endIndex: 2,
+            memberIndices: [2],
+            anchorIndex: 3,
+          },
+        ],
+      ]),
+    );
+  });
+
   test("carries a trailing table separator to the next content paragraph", () => {
     const blocks: FlowBlock[] = [table("table"), emptyParagraph("separator"), paragraph("body")];
 
@@ -158,6 +197,16 @@ describe("computeKeepNextChains", () => {
       memberIndices: [1],
       anchorIndex: 2,
     });
+  });
+
+  test("does not treat an authored blank after a table as a structural separator", () => {
+    const blocks: FlowBlock[] = [
+      table("table"),
+      authoredEmptyParagraph("answer space"),
+      paragraph("body"),
+    ];
+
+    expect(computeKeepNextChains(blocks)).toEqual(new Map());
   });
 
   test("does not implicitly keep an ordinary empty paragraph with the next paragraph", () => {

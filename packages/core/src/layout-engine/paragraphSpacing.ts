@@ -29,6 +29,13 @@ export function isEmptyParagraph(block: ParagraphBlock): boolean {
   return run?.kind === "text" && run.text === "";
 }
 
+/** Whether a visually empty paragraph carries authored formatting semantics. */
+export const isAuthoredEmptyParagraph = (block: ParagraphBlock): boolean =>
+  isEmptyParagraph(block) &&
+  (block.attrs?.styleId !== undefined ||
+    block.attrs?.hasDirectParagraphFormatting === true ||
+    block.attrs?.hasDirectParagraphMarkFormatting === true);
+
 /**
  * Resolve leading paragraph spacing after applying the empty-paragraph
  * inherited-spacing collapse rule.
@@ -49,7 +56,7 @@ export const resolveEffectiveParagraphSpacing = (
 ): EffectiveParagraphSpacing => {
   const before = block.attrs?.spacing?.before ?? 0;
   const after = block.attrs?.spacing?.after ?? 0;
-  if (!isEmptyParagraph(block) || preservesInheritedEmptySpacing(block)) {
+  if (!isEmptyParagraph(block) || isAuthoredEmptyParagraph(block)) {
     return { before, after };
   }
   return {
@@ -79,13 +86,6 @@ export const resolveEffectiveParagraphSpacingTree = (blocks: FlowBlock[]): FlowB
 
 export const paragraphsShareStyle = (previous: ParagraphBlock, current: ParagraphBlock): boolean =>
   previous.attrs?.styleId === current.attrs?.styleId;
-
-const preservesInheritedEmptySpacing = (block: ParagraphBlock): boolean =>
-  Boolean(
-    block.attrs?.styleId ||
-    block.attrs?.hasDirectParagraphFormatting ||
-    block.attrs?.hasDirectParagraphMarkFormatting,
-  );
 
 const resolveBlockSpacing = (blocks: readonly FlowBlock[], index: number): FlowBlock => {
   const block = blocks[index]!; // SAFETY: called from blocks.map with the same index.

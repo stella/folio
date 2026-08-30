@@ -5,7 +5,11 @@
  * (keep all lines together) properties that affect pagination.
  */
 
-import { collapseParagraphSpacing } from "./paragraphSpacing";
+import {
+  collapseParagraphSpacing,
+  isAuthoredEmptyParagraph,
+  isEmptyParagraph,
+} from "./paragraphSpacing";
 import type { FlowBlock, ParagraphBlock, Measure } from "./types";
 
 /**
@@ -24,22 +28,27 @@ export type KeepNextChain = {
   anchorIndex: number;
 };
 
-function isVisuallyEmptyParagraph(block: ParagraphBlock): boolean {
-  if (block.runs.length === 0) {
-    return true;
-  }
-  if (block.runs.length !== 1) {
+/**
+ * Whether an empty paragraph is only a structural separator through which a
+ * keep-with-next chain may pass. An explicitly styled or directly formatted
+ * blank is authored layout content: it anchors the preceding keepNext rather
+ * than implicitly linking that heading to later content.
+ */
+function isKeepNextPassThroughParagraph(block: ParagraphBlock): boolean {
+  if (!isEmptyParagraph(block)) {
     return false;
   }
-  const run = block.runs.at(0);
-  return run?.kind === "text" && run.text === "";
+  if (block.attrs?.suppressEmptyParagraphHeight === true) {
+    return true;
+  }
+  return !isAuthoredEmptyParagraph(block);
 }
 
 function startsTrailingTableSeparatorChain(blocks: FlowBlock[], index: number): boolean {
   const block = blocks[index];
   if (
     block?.kind !== "paragraph" ||
-    !isVisuallyEmptyParagraph(block) ||
+    !isKeepNextPassThroughParagraph(block) ||
     blocks[index - 1]?.kind !== "table"
   ) {
     return false;
@@ -50,7 +59,7 @@ function startsTrailingTableSeparatorChain(blocks: FlowBlock[], index: number): 
     if (nextBlock?.kind !== "paragraph") {
       return false;
     }
-    if (!isVisuallyEmptyParagraph(nextBlock)) {
+    if (!isKeepNextPassThroughParagraph(nextBlock)) {
       return true;
     }
   }
@@ -115,7 +124,7 @@ export function computeKeepNextChains(blocks: FlowBlock[]): Map<number, KeepNext
       }
 
       const nextPara = nextBlock;
-      if (nextPara.attrs?.keepNext || isVisuallyEmptyParagraph(nextPara)) {
+      if (nextPara.attrs?.keepNext || isKeepNextPassThroughParagraph(nextPara)) {
         // Word carries keepNext across structural empty paragraphs. Treat
         // them as pass-through members so a blank separator cannot strand a
         // heading at the bottom of the preceding page.
@@ -185,7 +194,7 @@ export function calculateChainHeight(
   let trailingSpacing = firstBlock.attrs?.spacing?.after ?? 0;
   const startsWithTrailingTableSeparator =
     blocks[firstMemberIndex - 1]?.kind === "table" &&
-    isVisuallyEmptyParagraph(firstBlock) &&
+    isEmptyParagraph(firstBlock) &&
     !firstBlock.attrs?.keepNext;
 
   const successorIndices = [...chain.memberIndices.slice(1)];
