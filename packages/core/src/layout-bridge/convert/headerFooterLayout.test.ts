@@ -720,6 +720,37 @@ describe("header/footer layout conversion", () => {
     expect(smaller?.textSig).not.toBe(larger?.textSig);
   });
 
+  test("alternate fonts invalidate same-height header/footer content", () => {
+    const header: HeaderFooter = {
+      type: "header",
+      hdrFtrType: "default",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "run",
+              formatting: { fontFamily: { ascii: "Brand Face" } },
+              content: [{ type: "text", text: "Header" }],
+            },
+          ],
+        },
+      ],
+    };
+
+    const calibri = convertHeaderFooterToContent(header, 600, metrics, {
+      fontAlternates: new Map([["brand face", "Calibri"]]),
+      measureBlocks,
+    });
+    const cambria = convertHeaderFooterToContent(header, 600, metrics, {
+      fontAlternates: new Map([["brand face", "Cambria"]]),
+      measureBlocks,
+    });
+
+    expect(calibri?.height).toBe(cambria?.height);
+    expect(calibri?.textSig).not.toBe(cambria?.textSig);
+  });
+
   test("normalizes inherited spacing inside table-cell paragraphs", () => {
     const [normalized] = normalizeHeaderFooterMeasureBlocks([
       table([
