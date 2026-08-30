@@ -300,9 +300,45 @@ describe("createBilingualDocument", () => {
     const tableParaIds = originalTable!.rows.flatMap((row) =>
       row.cells.flatMap((c) => cellParagraphs(c).map((p) => p.paraId)),
     );
-    expect(tableRow?.kind === "table" && tableRow.paragraphs.map((p) => p.paraId)).toEqual(
-      tableParaIds,
+    expect(
+      tableRow?.kind === "table" &&
+        tableRow.layout === "inline" &&
+        tableRow.paragraphs.map((p) => p.paraId),
+    ).toEqual(tableParaIds);
+  });
+
+  test("stacks an independently addressable target table below the source table", async () => {
+    const source = await buildSource();
+    const { document, rows } = createBilingualDocument(source, {
+      ...(await bilingualDocumentOptions(source)),
+      tableLayout: "stacked",
+    });
+
+    const spanningRow = bodyTables(document)
+      .flatMap((table) => table.rows)
+      .find((row) => row.cells.length === 1);
+    const nestedTables = spanningRow?.cells
+      .at(0)
+      ?.content.filter((item): item is Table => item.type === "table");
+    expect(nestedTables).toHaveLength(2);
+
+    const originalTable = source.package.document.content.find(
+      (block): block is Table => block.type === "table",
     );
+    expect(nestedTables?.at(0)).toEqual(originalTable);
+    expect(nestedTables?.at(1)).not.toBe(originalTable);
+
+    const tableRow = rows.find((row) => row.kind === "table");
+    expect(tableRow?.kind === "table" && tableRow.layout).toBe("stacked");
+    if (tableRow?.kind !== "table" || tableRow.layout !== "stacked") {
+      throw new Error("stacked table fixture lost its manifest row");
+    }
+    expect(tableRow.paragraphs.map((ref) => ref.sourceText)).toEqual(["Cell A1", "Cell B1"]);
+    expect(tableRow.paragraphs.every(({ sourceParaId }) => sourceParaId !== undefined)).toBe(true);
+    expect(
+      tableRow.paragraphs.every(({ sourceParaId, targetParaId }) => sourceParaId !== targetParaId),
+    ).toBe(true);
+    expect(tableRow.rowId).toBe(tableRow.paragraphs.at(0)?.targetParaId);
   });
 
   test("right column never shares a numbering instance or abstract with the left", async () => {
@@ -475,6 +511,56 @@ describe("createBilingualDocx", () => {
     expect(await readBilingualDocx(source.originalBuffer!)).toEqual([]);
   });
 
+  test("reads the same stacked-table manifest back from the saved document", async () => {
+    const source = await buildSource();
+    const { buffer, rows } = await createBilingualDocx(source.originalBuffer!, {
+      targetStyleSuffix: SUFFIX,
+      tableLayout: "stacked",
+    });
+
+    expect(await readBilingualDocx(buffer)).toEqual(rows);
+    const tableRow = rows.find((row) => row.kind === "table");
+    expect(tableRow?.kind === "table" && tableRow.layout).toBe("stacked");
+  });
+
+  test("reads a stacked manifest from a document containing only a table", async () => {
+    const source = createEmptyDocument({ preset: createStellaStyleDocumentPreset() });
+    source.package.document.content = [sourceTable()];
+
+    const { buffer, rows } = await createBilingualDocx(await createDocx(source), {
+      targetStyleSuffix: SUFFIX,
+      tableLayout: "stacked",
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows.at(0)).toMatchObject({ kind: "table", layout: "stacked" });
+    expect(await readBilingualDocx(buffer)).toEqual(rows);
+  });
+
+  test("refuses a stacked manifest whose table structures diverge", async () => {
+    const source = createEmptyDocument({ preset: createStellaStyleDocumentPreset() });
+    source.package.document.content = [sourceTable()];
+    const valid = await createBilingualDocx(await createDocx(source), {
+      targetStyleSuffix: SUFFIX,
+      tableLayout: "stacked",
+    });
+    const malformed = await parseDocx(valid.buffer, { preloadFonts: false });
+    const wrapper = bodyTables(malformed).at(0);
+    const nestedTables = wrapper?.rows
+      .at(0)
+      ?.cells.at(0)
+      ?.content.filter((item): item is Table => item.type === "table");
+    const targetCell = nestedTables?.at(1)?.rows.at(0)?.cells.at(0);
+    if (!targetCell) {
+      throw new Error("stacked table fixture lost its target cell");
+    }
+    targetCell.content.push(paragraph("Unexpected target row"));
+
+    await expect(readBilingualDocx(await createDocx(malformed))).rejects.toThrow(
+      "Bilingual manifest structure or handles do not match the Folio AI-edit snapshot.",
+    );
+  });
+
   test("keeps structural-only paragraphs out of the editable row manifest", async () => {
     const source = createEmptyDocument({ preset: createStellaStyleDocumentPreset() });
     const columnBreak: Paragraph = {
@@ -610,7 +696,7 @@ describe("createBilingualDocx", () => {
     row.formatting = { ...row.formatting, hidden: true };
 
     await expect(readBilingualDocx(await createDocx(malformed))).rejects.toThrow(
-      "Bilingual manifest contains handles absent from the Folio AI-edit snapshot.",
+      "Bilingual manifest structure or handles do not match the Folio AI-edit snapshot.",
     );
   });
 

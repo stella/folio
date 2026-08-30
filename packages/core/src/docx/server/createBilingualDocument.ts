@@ -13,9 +13,9 @@
  *
  * Section breaks cannot live inside a table cell, so the body is split at
  * paragraphs carrying `sectionProperties`: each section becomes its own table
- * and the break paragraph stays between the tables. A source table (parties,
- * signature block) is kept once, in a row spanning both columns: it is signed
- * and read once, and its labels are translated inline rather than duplicated.
+ * and the break paragraph stays between the tables. Source tables (parties,
+ * signature blocks) can either span both columns for inline translation or be
+ * followed by a full-width target copy, depending on `tableLayout`.
  * Structural-only paragraphs are also kept once between tables; they have no
  * independently editable text for a translation row to address.
  */
@@ -61,12 +61,21 @@ export type BilingualRow =
     } & BilingualParagraphRef)
   | {
       kind: "table";
+      layout: "inline";
       rowId: string;
       /**
        * Every paragraph inside the table, in document order. The table is not
        * copied, so these are the paragraphs to translate in place.
        */
       paragraphs: BilingualTableParagraphRef[];
+    }
+  | {
+      kind: "table";
+      layout: "stacked";
+      /** Equals the first target paragraph id. */
+      rowId: string;
+      /** Source/target paragraph pairs in table document order. */
+      paragraphs: BilingualParagraphRef[];
     };
 
 export type BilingualTableParagraphRef = {
@@ -75,6 +84,9 @@ export type BilingualTableParagraphRef = {
 };
 
 export type BilingualBorders = "none" | "grid";
+
+export const BILINGUAL_TABLE_LAYOUTS = ["inline", "stacked"] as const;
+export type BilingualTableLayout = (typeof BILINGUAL_TABLE_LAYOUTS)[number];
 
 export type CreateBilingualDocumentOptions = {
   /**
@@ -85,6 +97,13 @@ export type CreateBilingualDocumentOptions = {
   targetStyleSuffix: string;
   /** Table borders; legal practice is usually `"none"`. Default `"none"`. */
   borders?: BilingualBorders;
+  /**
+   * Layout for source tables. `"inline"` keeps one full-width table whose
+   * paragraphs are translated in place. `"stacked"` keeps the source table
+   * and adds an independently addressable target copy below it. Default
+   * `"inline"`.
+   */
+  tableLayout?: BilingualTableLayout;
   /**
    * Paragraph handles exposed by Folio's canonical AI-edit snapshot for the
    * source DOCX. Only these paragraphs may become translation rows.
@@ -100,12 +119,13 @@ export type CreateBilingualDocumentResult = {
 };
 
 const STYLE_SUFFIX_PATTERN = /^[A-Za-z0-9-]+$/u;
+const DEFAULT_TABLE_LAYOUT = BILINGUAL_TABLE_LAYOUTS[0];
 
 export class InvalidBilingualDocumentOptionsError extends TaggedError(
   "InvalidBilingualDocumentOptionsError",
 )<{
   message: string;
-  option: "targetStyleSuffix";
+  option: "tableLayout" | "targetStyleSuffix";
 }> {}
 class UneditableBilingualManifestError extends TaggedError("UneditableBilingualManifestError")<{
   message: string;
@@ -140,6 +160,9 @@ const TABLE_BORDERS: Record<BilingualBorders, TableBorders> = {
   },
 };
 
+const isBilingualTableLayout = (value: unknown): value is BilingualTableLayout =>
+  typeof value === "string" && BILINGUAL_TABLE_LAYOUTS.some((layout) => layout === value);
+
 export function createBilingualDocument(
   source: Document,
   options: CreateBilingualDocumentOptions,
@@ -150,7 +173,14 @@ export function createBilingualDocument(
       option: "targetStyleSuffix",
     });
   }
+  if (options.tableLayout !== undefined && !isBilingualTableLayout(options.tableLayout)) {
+    throw new InvalidBilingualDocumentOptionsError({
+      message: `tableLayout must be one of ${BILINGUAL_TABLE_LAYOUTS.join(", ")}; received ${JSON.stringify(options.tableLayout)}`,
+      option: "tableLayout",
+    });
+  }
   const borders = options.borders ?? "none";
+  const tableLayout = options.tableLayout ?? DEFAULT_TABLE_LAYOUT;
   const warnings: string[] = [];
 
   const styles = source.package.styles;
@@ -225,12 +255,35 @@ export function createBilingualDocument(
       content.push(block);
       continue;
     }
-    rows.push({
-      kind: "table",
-      rowId: paragraphs.at(0)?.paraId ?? tableRowHandle(rows.length),
-      paragraphs,
-    });
-    sectionRows.push(buildSpanningRow(block));
+    if (tableLayout === "inline") {
+      rows.push({
+        kind: "table",
+        layout: "inline",
+        rowId: paragraphs.at(0)?.paraId ?? tableRowHandle(rows.length),
+        paragraphs,
+      });
+      sectionRows.push(buildInlineTableRow(block));
+      continue;
+    }
+
+    if (tableLayout === "stacked") {
+      const target = cloneTableForTarget({
+        table: block,
+        editableParagraphIds: options.editableParagraphIds,
+        paraIds,
+        styleCloner,
+        cloner,
+      });
+      rows.push({
+        kind: "table",
+        layout: "stacked",
+        rowId: target.paragraphs.at(0)?.targetParaId ?? tableRowHandle(rows.length),
+        paragraphs: target.paragraphs,
+      });
+      sectionRows.push(buildStackedTableRow({ source: block, target: target.table }));
+      continue;
+    }
+    tableLayout satisfies never;
   }
   flushSection();
 
@@ -613,6 +666,55 @@ const collectTableParagraphs = (table: Table): Paragraph[] => {
   return out;
 };
 
+type CloneTableForTargetOptions = {
+  table: Table;
+  editableParagraphIds: ReadonlySet<string>;
+  paraIds: ParaIdMinter;
+  styleCloner: StyleCloner;
+  cloner: NumberingCloner;
+};
+
+type CloneTableForTargetResult = {
+  table: Table;
+  paragraphs: BilingualParagraphRef[];
+};
+
+const cloneTableForTarget = ({
+  table,
+  editableParagraphIds,
+  paraIds,
+  styleCloner,
+  cloner,
+}: CloneTableForTargetOptions): CloneTableForTargetResult => {
+  const paragraphs: BilingualParagraphRef[] = [];
+  const cloneTable = (source: Table): Table => ({
+    ...structuredClone(source),
+    rows: source.rows.map((row) => ({
+      ...structuredClone(row),
+      cells: row.cells.map((cell) => ({
+        ...structuredClone(cell),
+        content: cell.content.map((item) => {
+          if (item.type === "table") {
+            return cloneTable(item);
+          }
+          const targetParaId = paraIds.mint(item.paraId);
+          const copy = cloneParagraphForTarget(item, targetParaId, styleCloner, cloner);
+          if (item.paraId !== undefined && editableParagraphIds.has(item.paraId)) {
+            paragraphs.push({
+              sourceParaId: item.paraId,
+              targetParaId,
+              sourceText: getParagraphText(item),
+            });
+          }
+          return copy;
+        }),
+      })),
+    })),
+  });
+
+  return { table: cloneTable(table), paragraphs };
+};
+
 // ----------------------------------------------------------------------------
 // Output table
 // ----------------------------------------------------------------------------
@@ -740,7 +842,7 @@ const buildCell = (paragraph: Paragraph): TableCell => ({
 });
 
 /** A source table kept once, across both columns. */
-const buildSpanningRow = (table: Table): Table["rows"][number] => ({
+const buildInlineTableRow = (table: Table): Table["rows"][number] => ({
   type: "tableRow",
   formatting: { cantSplit: true },
   cells: [
@@ -753,6 +855,33 @@ const buildSpanningRow = (table: Table): Table["rows"][number] => ({
       },
       // A cell must end with a paragraph; a bare nested table is invalid OOXML.
       content: [table, { type: "paragraph", content: [] }],
+    },
+  ],
+});
+
+/** Full-width source and target tables, stacked without narrowing either one. */
+type BuildStackedTableRowOptions = { source: Table; target: Table };
+
+const buildStackedTableRow = ({
+  source,
+  target,
+}: BuildStackedTableRowOptions): Table["rows"][number] => ({
+  type: "tableRow",
+  formatting: { cantSplit: false },
+  cells: [
+    {
+      type: "tableCell",
+      formatting: {
+        width: { value: FULL_WIDTH_PCT, type: "pct" },
+        gridSpan: 2,
+        verticalAlign: "top",
+      },
+      content: [
+        source,
+        { type: "paragraph", content: [] },
+        target,
+        { type: "paragraph", content: [] },
+      ],
     },
   ],
 });
@@ -855,7 +984,7 @@ const createParaIdMinter = (taken: Set<string>): ParaIdMinter => {
  * {@link createBilingualDocument}. A dedicated table-style discriminator keeps
  * ordinary two-column source tables from being mistaken for bilingual output;
  * the expected row structure is validated as a second check. Rows are returned
- * in document order; the right paragraph's `paraId` is the row handle.
+ * in document order.
  */
 export function readBilingualDocument(
   document: Document,
@@ -876,9 +1005,54 @@ export function readBilingualDocument(
         continue;
       }
       if (!right) {
-        const paragraphs = left.content
-          .filter((item): item is Table => item.type === "table")
-          .flatMap(collectTableParagraphs)
+        const nestedTables = left.content.filter((item): item is Table => item.type === "table");
+        const sourceTable = nestedTables.at(0);
+        if (!sourceTable) {
+          continue;
+        }
+        if (nestedTables.length === 2) {
+          const targetTable = nestedTables.at(1);
+          if (!targetTable) {
+            continue;
+          }
+          const sourceParagraphs = collectTableParagraphs(sourceTable);
+          const targetParagraphs = collectTableParagraphs(targetTable);
+          if (sourceParagraphs.length !== targetParagraphs.length) {
+            missingHandleCount += 1;
+            continue;
+          }
+          const paragraphs: BilingualParagraphRef[] = [];
+          for (const [index, source] of sourceParagraphs.entries()) {
+            if (source.paraId === undefined || !editableParagraphIds.has(source.paraId)) {
+              continue;
+            }
+            const target = targetParagraphs.at(index);
+            if (
+              target?.paraId === undefined ||
+              target.paraId === source.paraId ||
+              !editableParagraphIds.has(target.paraId)
+            ) {
+              missingHandleCount += 1;
+              continue;
+            }
+            paragraphs.push({
+              sourceParaId: source.paraId,
+              targetParaId: target.paraId,
+              sourceText: getParagraphText(source),
+            });
+          }
+          rows.push({
+            kind: "table",
+            layout: "stacked",
+            rowId: paragraphs.at(0)?.targetParaId ?? tableRowHandle(rows.length),
+            paragraphs,
+          });
+          continue;
+        }
+        if (nestedTables.length !== 1) {
+          continue;
+        }
+        const paragraphs = collectTableParagraphs(sourceTable)
           .filter(
             (paragraph): paragraph is Paragraph & { paraId: string } =>
               paragraph.paraId !== undefined && editableParagraphIds.has(paragraph.paraId),
@@ -889,6 +1063,7 @@ export function readBilingualDocument(
           }));
         rows.push({
           kind: "table",
+          layout: "inline",
           rowId: paragraphs.at(0)?.paraId ?? tableRowHandle(rows.length),
           paragraphs,
         });
@@ -925,7 +1100,7 @@ export function readBilingualDocument(
   }
   if (missingHandleCount > 0) {
     throw new UneditableBilingualManifestError({
-      message: "Bilingual manifest contains handles absent from the Folio AI-edit snapshot.",
+      message: "Bilingual manifest structure or handles do not match the Folio AI-edit snapshot.",
       missingHandleCount,
     });
   }
@@ -936,7 +1111,6 @@ const isBilingualTable = (table: Table): boolean => {
   if (table.formatting?.styleId !== BILINGUAL_TABLE_STYLE_ID) {
     return false;
   }
-  let pairs = 0;
   for (const row of table.rows) {
     const cells = row.cells;
     if (cells.length === 2) {
@@ -946,7 +1120,6 @@ const isBilingualTable = (table: Table): boolean => {
       if (!singleParagraphCells) {
         return false;
       }
-      pairs += 1;
       continue;
     }
     if (cells.length === 1 && cells[0]?.formatting?.gridSpan === 2) {
@@ -954,7 +1127,7 @@ const isBilingualTable = (table: Table): boolean => {
     }
     return false;
   }
-  return pairs > 0;
+  return table.rows.length > 0;
 };
 
 const isParagraphWithId = (value: object): value is { type: "paragraph"; paraId: string } =>

@@ -208,6 +208,7 @@ export {
   type MaterializeYjsDocxOptions,
 } from "./docx/server/materializeYjsDocx";
 export {
+  BILINGUAL_TABLE_LAYOUTS,
   createBilingualDocument,
   InvalidBilingualDocumentOptionsError,
   readBilingualDocument,
@@ -216,6 +217,7 @@ export {
   type BilingualRow,
   type BilingualRowKind,
   type BilingualTableParagraphRef,
+  type BilingualTableLayout,
   type CreateBilingualDocumentOptions,
   type CreateBilingualDocumentResult,
 } from "./docx/server/createBilingualDocument";

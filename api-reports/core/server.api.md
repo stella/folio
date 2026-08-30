@@ -50,6 +50,9 @@ export const applyFolioVersionDiffPrivacy: (diff: FolioVersionDiff, options: Fol
 export const assertSupportedFolioDocumentOperationVersion: (value: unknown) => typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
 
 // @public (undocumented)
+export const BILINGUAL_TABLE_LAYOUTS: readonly ["inline", "stacked"];
+
+// @public (undocumented)
 export type BilingualBorders = "none" | "grid";
 
 // @public
@@ -65,12 +68,21 @@ export type BilingualRow = ({
     rowId: string;
 } & BilingualParagraphRef) | {
     kind: "table";
+    layout: "inline";
     rowId: string;
     paragraphs: BilingualTableParagraphRef[];
+} | {
+    kind: "table";
+    layout: "stacked";
+    rowId: string;
+    paragraphs: BilingualParagraphRef[];
 };
 
 // @public (undocumented)
 export type BilingualRowKind = "paragraph" | "heading" | "listItem";
+
+// @public (undocumented)
+export type BilingualTableLayout = (typeof BILINGUAL_TABLE_LAYOUTS)[number];
 
 // @public (undocumented)
 export type BilingualTableParagraphRef = {
@@ -91,6 +103,7 @@ export function createBilingualDocument(source: import__stll_docx_core_model.Doc
 export type CreateBilingualDocumentOptions = {
     targetStyleSuffix: string;
     borders?: BilingualBorders;
+    tableLayout?: BilingualTableLayout;
     editableParagraphIds: ReadonlySet<string>;
 };
 
@@ -1399,7 +1412,7 @@ export type InspectDocxPackageOptions = {
 // @public (undocumented)
 export class InvalidBilingualDocumentOptionsError extends InvalidBilingualDocumentOptionsError_base<{
     message: string;
-    option: "targetStyleSuffix";
+    option: "tableLayout" | "targetStyleSuffix";
 }> {}
 
 // @public (undocumented)
