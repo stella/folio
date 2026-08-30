@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import type { ParagraphBlock, Run } from "../types";
+import type { ParagraphAttrs, ParagraphBlock, Run } from "../types";
 import {
   smallCapsAwareCharWidth,
   withFakeTextMeasure,
@@ -1660,6 +1660,92 @@ describe("measureParagraph justified shrink tolerance", () => {
         expect(measure.lines.at(-1)?.justificationShrinkBudgetPx).toBeUndefined();
       },
       { charWidth: (char) => (char === "b" ? 1.2 : 1) },
+    );
+  });
+
+  test("does not expose a shrink budget when a sparse unbreakable tail needs only rounding", () => {
+    withFakeTextMeasure(
+      () => {
+        const measure = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "justified-list-rounded-final-tail",
+            runs: [
+              { kind: "text", text: "first line" },
+              { kind: "lineBreak" },
+              { kind: "text", text: `${"a".repeat(96)} bbb` },
+            ],
+            attrs: {
+              alignment: "justify",
+              listMarker: "1.",
+              indent: { left: 36, hanging: 18 },
+            },
+          },
+          136,
+        );
+
+        expect(measure.lines).toHaveLength(2);
+        expect(measure.lines.at(-1)?.justificationShrinkBudgetPx).toBeUndefined();
+      },
+      { charWidth: (char) => (char === "b" ? 1.1 : 1) },
+    );
+  });
+
+  test("does not expose a final-text budget for single-line lists or opaque final runs", () => {
+    withFakeTextMeasure(
+      () => {
+        const attrs = {
+          alignment: "justify",
+          listMarker: "1.",
+          indent: { left: 36, hanging: 18 },
+        } as const satisfies ParagraphAttrs;
+        const singleLine = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "justified-single-line-list-no-final-budget",
+            runs: [{ kind: "text", text: "alpha beta" }],
+            attrs,
+          },
+          300,
+        );
+        const fieldTail = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "justified-list-field-tail-no-final-budget",
+            runs: [
+              { kind: "text", text: "first line" },
+              { kind: "lineBreak" },
+              { kind: "field", fieldType: "OTHER", fallback: "alpha beta" },
+            ],
+            attrs,
+          },
+          300,
+        );
+        const mathTail = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "justified-list-math-tail-no-final-budget",
+            runs: [
+              { kind: "text", text: "first line" },
+              { kind: "lineBreak" },
+              { kind: "text", text: "alpha beta " },
+              {
+                kind: "math",
+                display: "inline",
+                ommlXml: "<m:oMath><m:r><m:t>x</m:t></m:r></m:oMath>",
+                plainText: "x",
+              },
+            ],
+            attrs,
+          },
+          300,
+        );
+
+        expect(singleLine.lines.at(-1)?.justificationShrinkBudgetPx).toBeUndefined();
+        expect(fieldTail.lines.at(-1)?.justificationShrinkBudgetPx).toBeUndefined();
+        expect(mathTail.lines.at(-1)?.justificationShrinkBudgetPx).toBeUndefined();
+      },
+      { charWidth: fixedCharWidth(1) },
     );
   });
 

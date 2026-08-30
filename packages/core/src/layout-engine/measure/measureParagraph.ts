@@ -152,6 +152,8 @@ type LineState = {
   trailingWhitespaceWidth: number;
   /** Spaces the layout may compress while justifying this line. */
   regularSpaceWidth: number;
+  /** Paint budget set only when final-text contraction admits a candidate. */
+  justificationShrinkBudgetPx?: number;
   maxFontSize: number;
   maxFontMetrics: FontMetrics | null;
   /** Maximum inline image height in pixels (already in px, not points) */
@@ -735,6 +737,62 @@ function isFinalTextCandidate(block: ParagraphBlock, runIndex: number, nextBreak
     return false;
   }
   return true;
+}
+
+type TextCandidateFit =
+  | { type: "ordinary"; tolerancePx: number }
+  | { type: "final-contraction-rejected"; tolerancePx: number }
+  | {
+      type: "final-contraction-admitted";
+      tolerancePx: number;
+      shrinkBudgetPx: number;
+    };
+
+type ResolveTextCandidateFitOptions = {
+  block: ParagraphBlock;
+  line: LineState;
+  isFirstLine: boolean;
+  isFinalCandidate: boolean;
+  candidateWidth: number;
+  candidateSpaceWidth: number;
+  fallbackTolerancePx: number;
+  continuationStrategy: JustifyFitStrategy;
+  finalStrategy: JustifyFitStrategy;
+};
+
+function resolveTextCandidateFit({
+  block,
+  line,
+  isFirstLine,
+  isFinalCandidate,
+  candidateWidth,
+  candidateSpaceWidth,
+  fallbackTolerancePx,
+  continuationStrategy,
+  finalStrategy,
+}: ResolveTextCandidateFitOptions): TextCandidateFit {
+  if (isFirstLine || !isFinalCandidate || !supportsJustifiedListFinalLineContraction(block)) {
+    return { type: "ordinary", tolerancePx: fallbackTolerancePx };
+  }
+
+  const ordinaryTolerancePx = justifyFitTolerance(line, continuationStrategy, candidateSpaceWidth);
+  if (candidateWidth <= line.availableWidth + ordinaryTolerancePx) {
+    return { type: "ordinary", tolerancePx: ordinaryTolerancePx };
+  }
+
+  const finalTolerancePx = justifyFitTolerance(line, finalStrategy, candidateSpaceWidth);
+  if (candidateWidth > line.availableWidth + finalTolerancePx) {
+    return { type: "final-contraction-rejected", tolerancePx: finalTolerancePx };
+  }
+
+  return {
+    type: "final-contraction-admitted",
+    tolerancePx: finalTolerancePx,
+    shrinkBudgetPx: calculateJustifiedListFinalLineShrinkBudget({
+      availableWidth: line.availableWidth,
+      compressibleSpaceWidth: line.regularSpaceWidth + candidateSpaceWidth,
+    }),
+  };
 }
 
 function compressibleSpaceWidth(text: string, style: FontStyle): number {
@@ -1492,15 +1550,8 @@ export function measureParagraph(
   /**
    * Finalize and push the current line to the lines array
    */
-  const finalizeLine = (isParagraphEnd: boolean = false): void => {
+  const finalizeLine = (): void => {
     const finalTypography = calculateLineTypography(currentLine);
-    const justificationShrinkBudgetPx =
-      isParagraphEnd && supportsJustifiedListFinalLineContraction(block)
-        ? calculateJustifiedListFinalLineShrinkBudget({
-            availableWidth: currentLine.availableWidth,
-            compressibleSpaceWidth: currentLine.regularSpaceWidth,
-          })
-        : 0;
 
     const line: MeasuredLine = {
       fromRun: currentLine.fromRun,
@@ -1509,7 +1560,9 @@ export function measureParagraph(
       toChar: currentLine.toChar,
       width: Math.max(0, currentLine.width - currentLine.trailingWhitespaceWidth),
       ...finalTypography,
-      ...(justificationShrinkBudgetPx > 0 ? { justificationShrinkBudgetPx } : {}),
+      ...(currentLine.justificationShrinkBudgetPx !== undefined
+        ? { justificationShrinkBudgetPx: currentLine.justificationShrinkBudgetPx }
+        : {}),
       ...(currentLine.discretionaryHyphen
         ? { discretionaryHyphen: currentLine.discretionaryHyphen }
         : {}),
@@ -2168,6 +2221,20 @@ export function measureParagraph(
             ? rawGlueWidth
             : 0;
         const hangingAllowance = glueWidth === 0 ? hangingPunctuationWidth : 0;
+        const candidateFit = isJustifiedParagraph
+          ? resolveTextCandidateFit({
+              block,
+              line: currentLine,
+              isFirstLine,
+              isFinalCandidate: isFinalTextCandidate(block, runIndex, nextBreak),
+              candidateWidth: currentLine.width + wordWidth + glueWidth - hangingAllowance,
+              candidateSpaceWidth: regularSpaceWidth,
+              fallbackTolerancePx: widthTolerance,
+              continuationStrategy: continuationJustifyFitStrategy,
+              finalStrategy: finalLineJustifyFitStrategy,
+            })
+          : undefined;
+        const finalWrapTolerance = candidateFit?.tolerancePx ?? widthTolerance;
         // Let collapsible whitespace remain at the previous line's tail until
         // visible content decides whether to wrap. Starting a line from an
         // overflowed space creates whitespace-only soft-wrap lines.
@@ -2175,12 +2242,16 @@ export function measureParagraph(
           wordWidth > 0 &&
           currentLine.width > 0 &&
           currentLine.width + wordWidth + glueWidth >
-            currentLine.availableWidth + widthTolerance + hangingAllowance
+            currentLine.availableWidth + finalWrapTolerance + hangingAllowance
         ) {
           // Word doesn't fit, start new line
           startNewLine(runIndex, charIndex);
           // Re-apply font metrics to the new line (startNewLine resets maxFontSize)
           updateMaxFont(lineHeightStyle);
+        }
+
+        if (candidateFit?.type === "final-contraction-admitted") {
+          currentLine.justificationShrinkBudgetPx = candidateFit.shrinkBudgetPx;
         }
 
         // Add word to current line
@@ -2217,7 +2288,7 @@ export function measureParagraph(
   }
 
   // Finalize the last line
-  finalizeLine(true);
+  finalizeLine();
 
   // Calculate total height — include floatSkipBefore from lines bumped past
   // floats so containers stay sized correctly.

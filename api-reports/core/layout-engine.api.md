@@ -486,6 +486,7 @@ export type MeasuredLine = {
     ascent: number;
     descent: number;
     lineHeight: number;
+    justificationShrinkBudgetPx?: number;
     leftOffset?: number;
     rightOffset?: number;
     floatSkipBefore?: number;
