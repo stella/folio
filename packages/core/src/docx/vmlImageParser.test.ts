@@ -516,7 +516,8 @@ describe("VML w:pict inline images", () => {
   });
 
   test("rejects VML lengths too large for finite layout coordinates", async () => {
-    const hugeLength = "9".repeat(400);
+    const hugeLength = "9".repeat(308);
+    expect(Number.isFinite(Number.parseFloat(hugeLength))).toBe(true);
     const doc = await parseDocx(
       await pictDocx({
         runXml: `<w:pict><v:shape style="position:absolute;margin-left:${hugeLength}pt;width:${hugeLength}pt;height:1in"><v:imagedata r:id="rIdImg"/></v:shape></w:pict>`,

@@ -196,6 +196,11 @@ const safeColor = (raw: string | null, fallback: string): string => {
 const validPreviewDimension = (value: number | undefined): value is number =>
   value !== undefined && value > 0 && value <= MAX_VML_PREVIEW_DIMENSION_PX;
 
+const pixelsToSafeEmu = (pixels: number): number | undefined => {
+  const emu = pixelsToEmu(pixels);
+  return Number.isSafeInteger(emu) ? emu : undefined;
+};
+
 const horizontalRelativeTo = (
   value: string | undefined,
 ): ImagePosition["horizontal"]["relativeTo"] => {
@@ -207,9 +212,7 @@ const horizontalRelativeTo = (
   return "character";
 };
 
-const verticalRelativeTo = (
-  value: string | undefined,
-): ImagePosition["vertical"]["relativeTo"] => {
+const verticalRelativeTo = (value: string | undefined): ImagePosition["vertical"]["relativeTo"] => {
   for (const relative of VML_VERTICAL_RELATIVES) {
     if (relative.toLowerCase() === value?.toLowerCase()) {
       return relative;
@@ -233,11 +236,11 @@ const vmlImageLayout = (
     position: {
       horizontal: {
         relativeTo: horizontalRelativeTo(style["mso-position-horizontal-relative"]),
-        posOffset: pixelsToEmu(leftPx),
+        posOffset: pixelsToSafeEmu(leftPx) ?? 0,
       },
       vertical: {
         relativeTo: verticalRelativeTo(style["mso-position-vertical-relative"]),
-        posOffset: pixelsToEmu(topPx),
+        posOffset: pixelsToSafeEmu(topPx) ?? 0,
       },
     },
   };
@@ -288,11 +291,11 @@ const previewImage = (
     position: {
       horizontal: {
         relativeTo: horizontalRelative ? "page" : "character",
-        posOffset: pixelsToEmu(leftPx),
+        posOffset: pixelsToSafeEmu(leftPx) ?? 0,
       },
       vertical: {
         relativeTo: verticalRelative ? "page" : "paragraph",
-        posOffset: pixelsToEmu(topPx),
+        posOffset: pixelsToSafeEmu(topPx) ?? 0,
       },
     },
   };
@@ -466,8 +469,8 @@ export function parseVmlImageContent(
       type: "image",
       rId,
       size: {
-        width: widthPx != null ? pixelsToEmu(widthPx) : 0,
-        height: heightPx != null ? pixelsToEmu(heightPx) : 0,
+        width: widthPx != null ? (pixelsToSafeEmu(widthPx) ?? 0) : 0,
+        height: heightPx != null ? (pixelsToSafeEmu(heightPx) ?? 0) : 0,
       },
       ...vmlImageLayout(shapeStyle),
     };
