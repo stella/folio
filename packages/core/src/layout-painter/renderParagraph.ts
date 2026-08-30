@@ -617,16 +617,28 @@ function applyRunStyles(element: HTMLElement, run: TextRun | TabRun): void {
   }
 }
 
-function reserveScaledAdvance(
-  element: HTMLElement,
-  unscaledWidth: number,
-  horizontalScale: number | undefined,
-): void {
+type ReserveScaledAdvanceOptions = {
+  element: HTMLElement;
+  unscaledWidth: number;
+  horizontalScale?: number;
+  visualSpaceContractionPx?: number;
+};
+
+function reserveScaledAdvance({
+  element,
+  unscaledWidth,
+  horizontalScale,
+  visualSpaceContractionPx,
+}: ReserveScaledAdvanceOptions): number {
   const horizontalScaleFactor = getHorizontalScaleFactor(horizontalScale);
-  if (horizontalScaleFactor === 1) {
-    return;
+  const visualAdvance = Math.max(
+    0,
+    unscaledWidth * horizontalScaleFactor - (visualSpaceContractionPx ?? 0),
+  );
+  if (horizontalScaleFactor !== 1) {
+    element.style.width = `${visualAdvance}px`;
   }
-  element.style.width = `${unscaledWidth * horizontalScaleFactor}px`;
+  return visualAdvance;
 }
 
 /**
@@ -1794,6 +1806,23 @@ function countShrinkableSpaces(runs: Run[], context: RenderContext | undefined):
   return count;
 }
 
+type RunVisualSpaceContractionOptions = {
+  text: string;
+  horizontalScale?: number;
+  visualSpaceContractionPx?: number;
+};
+
+function runVisualSpaceContraction({
+  text,
+  horizontalScale,
+  visualSpaceContractionPx,
+}: RunVisualSpaceContractionOptions): number {
+  if (visualSpaceContractionPx === undefined || getHorizontalScaleFactor(horizontalScale) === 0) {
+    return 0;
+  }
+  return countCompressibleSpaces(text) * visualSpaceContractionPx;
+}
+
 /**
  * Build the shared measurement style from a paintable text run.
  */
@@ -2676,8 +2705,17 @@ export function renderLine(
         fontFamily,
         runMeasureStyle(run),
       );
-      reserveScaledAdvance(runEl, measuredWidth, run.horizontalScale);
-      currentX += measuredWidth * getHorizontalScaleFactor(run.horizontalScale);
+      const runContractionPx = runVisualSpaceContraction({
+        text: run.text,
+        ...(run.horizontalScale !== undefined ? { horizontalScale: run.horizontalScale } : {}),
+        ...(visualSpaceContractionPx !== undefined ? { visualSpaceContractionPx } : {}),
+      });
+      currentX += reserveScaledAdvance({
+        element: runEl,
+        unscaledWidth: measuredWidth,
+        ...(run.horizontalScale !== undefined ? { horizontalScale: run.horizontalScale } : {}),
+        ...(runContractionPx > 0 ? { visualSpaceContractionPx: runContractionPx } : {}),
+      });
     } else if (isImageRun(run)) {
       // Skip floating images - they're rendered separately at page level.
       // Exception: inside table cells, floating images must render in-flow
@@ -2725,8 +2763,17 @@ export function renderLine(
         fontFamily,
         runMeasureStyle(run),
       );
-      reserveScaledAdvance(runEl, measuredWidth, run.horizontalScale);
-      currentX += measuredWidth * getHorizontalScaleFactor(run.horizontalScale);
+      const runContractionPx = runVisualSpaceContraction({
+        text: fieldText,
+        ...(run.horizontalScale !== undefined ? { horizontalScale: run.horizontalScale } : {}),
+        ...(visualSpaceContractionPx !== undefined ? { visualSpaceContractionPx } : {}),
+      });
+      currentX += reserveScaledAdvance({
+        element: runEl,
+        unscaledWidth: measuredWidth,
+        ...(run.horizontalScale !== undefined ? { horizontalScale: run.horizontalScale } : {}),
+        ...(runContractionPx > 0 ? { visualSpaceContractionPx: runContractionPx } : {}),
+      });
     } else if (isMathRun(run)) {
       const runEl = renderMathRun(run, doc);
       lineEl.append(runEl);
@@ -2739,8 +2786,11 @@ export function renderLine(
         run.fontFamily ?? "Cambria Math",
         runMeasureStyle(run),
       );
-      reserveScaledAdvance(runEl, measuredWidth, run.horizontalScale);
-      currentX += measuredWidth * getHorizontalScaleFactor(run.horizontalScale);
+      currentX += reserveScaledAdvance({
+        element: runEl,
+        unscaledWidth: measuredWidth,
+        ...(run.horizontalScale !== undefined ? { horizontalScale: run.horizontalScale } : {}),
+      });
     } else {
       // Fallback for unknown run types
       const runEl = renderRun(run, doc, options?.context);

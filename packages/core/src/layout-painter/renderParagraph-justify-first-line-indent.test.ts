@@ -388,6 +388,7 @@ describe("Issue #868 — justify first line to full content width on indented pa
     const latinSegment = fieldWrapper?.children.at(1);
 
     expect(fieldWrapper?.style.transform).toBe("scaleX(1.5)");
+    expect(fieldWrapper?.style.width).toBe("122px");
     expect(latinSegment?.style.wordSpacing).toBe("-1.3333333333333333px");
     expect(paintedVisualSpaceContraction(lineEl)).toBeCloseTo(4);
   });
@@ -427,7 +428,48 @@ describe("Issue #868 — justify first line to full content width on indented pa
       "-1.3333333333333333px",
       "-2px",
     ]);
+    expect(lineEl.children.map((child) => child.style.width)).toEqual([
+      "8.5px",
+      "29.5px",
+      undefined,
+    ]);
     expect(paintedVisualSpaceContraction(lineEl)).toBeCloseTo(6);
+  });
+
+  test("uses contracted scaled-run advance when resolving a following tab", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "p-final-line-scaled-tab-advance",
+      runs: [
+        { kind: "text", text: "a b", horizontalScale: 50 },
+        { kind: "tab" },
+        { kind: "text", text: "c d" },
+      ],
+      attrs: { alignment: "justify", listMarker: "1." },
+    };
+    const line: MeasuredLine = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 2,
+      toChar: 3,
+      width: 104,
+      ascent: 10,
+      descent: 3,
+      lineHeight: 14,
+      justificationPaint: { type: "space-contraction", contractionPx: 4 },
+    };
+
+    const lineEl = renderLine(block, line, "justify", fakeDocument, {
+      availableWidth: 100,
+      isLastLine: true,
+      isFirstLine: false,
+      paragraphEndsWithLineBreak: false,
+    }) as unknown as FakeElement;
+    const scaledRun = lineEl.children.at(0);
+    const tab = lineEl.children.find((child) => child.className.includes("layout-run-tab"));
+
+    expect(scaledRun?.style.width).toBe("8.5px");
+    expect(tab?.style.width).toBe("39.5px");
   });
 
   test("excludes zero-scale spaces from final-list contraction", () => {

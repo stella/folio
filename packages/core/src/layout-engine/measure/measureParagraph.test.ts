@@ -1635,6 +1635,42 @@ describe("measureParagraph justified shrink tolerance", () => {
     );
   });
 
+  test("keeps an admitted plan on the final line before an ignorable cached boundary suffix", () => {
+    const prefix = "a ".repeat(50);
+
+    withFakeTextMeasure(
+      () => {
+        const measure = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "justified-list-final-token-cached-boundary",
+            runs: [
+              { kind: "text", text: "first line" },
+              { kind: "lineBreak" },
+              { kind: "text", text: `${prefix}bbb` },
+              { kind: "renderedPageBreak" },
+              { kind: "text", text: "" },
+            ],
+            attrs: {
+              alignment: "justify",
+              listMarker: "1.",
+              indent: { left: 36, hanging: 18 },
+            },
+          },
+          136,
+        );
+
+        expect(measure.lines).toHaveLength(2);
+        const plannedLineIndex = measure.lines.findIndex(
+          (line) => line.justificationPaint?.type === "space-contraction",
+        );
+        expect(plannedLineIndex).toBe(measure.lines.length - 1);
+        expect(measure.lines.at(-1)?.justificationPaint?.contractionPx).toBeCloseTo(2.4);
+      },
+      { charWidth: (char) => (char === "b" ? 0.8 : 1) },
+    );
+  });
+
   test("separates CJK hanging punctuation from admitted final-list space contraction", () => {
     const finalText = `${"a ".repeat(50)}bb。`;
 

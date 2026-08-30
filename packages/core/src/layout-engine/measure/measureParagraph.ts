@@ -744,6 +744,9 @@ function resolveCandidateJustifyFitStrategy({
   return continuationStrategy;
 }
 
+const isIgnorableFinalTailRun = (run: Run): boolean =>
+  run.kind === "renderedPageBreak" || (isTextRun(run) && run.text.length === 0);
+
 function isFinalTextCandidate(block: ParagraphBlock, runIndex: number, nextBreak: number): boolean {
   const currentRun = block.runs[runIndex];
   if (!currentRun || !isTextRun(currentRun) || nextBreak !== currentRun.text.length) {
@@ -751,10 +754,7 @@ function isFinalTextCandidate(block: ParagraphBlock, runIndex: number, nextBreak
   }
   for (let index = runIndex + 1; index < block.runs.length; index += 1) {
     const run = block.runs[index];
-    if (run?.kind === "renderedPageBreak") {
-      continue;
-    }
-    if (run && isTextRun(run) && run.text.length === 0) {
+    if (run && isIgnorableFinalTailRun(run)) {
       continue;
     }
     return false;
@@ -1698,7 +1698,7 @@ export function measureParagraph(
     if (run.kind === "renderedPageBreak") {
       const hasFollowingContent = runs
         .slice(runIndex + 1)
-        .some((followingRun) => followingRun.kind !== "renderedPageBreak");
+        .some((followingRun) => !isIgnorableFinalTailRun(followingRun));
       if (!hasFollowingContent) {
         currentLine.toRun = runIndex;
         currentLine.toChar = 0;
