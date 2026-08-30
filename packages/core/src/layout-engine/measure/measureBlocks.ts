@@ -1,5 +1,6 @@
 import { recordMeasureBlock, recordMeasureBlockError } from "../layoutInstrumentation";
 import { isParagraphFrameTextBox } from "../paragraphFrame";
+import { normalizeSectionBreakType } from "../section-breaks";
 import {
   createTableCellFlowState,
   finishTableCellFlow,
@@ -944,20 +945,12 @@ export function measureTextBoxBlock(
   };
 }
 
-/**
- * `true` for a section break that explicitly starts a new page
- * (`nextPage`/`evenPage`/`oddPage`). An absent type follows
- * `scheduleSectionBreak` and stays continuous, so measurement must retain any
- * active exclusion zones across it. Used by `measureBlocks` to reset the
- * running Y for a page-pinned band that lands right after the break.
- * eigenpal #694.
- */
 function isNextPageSectionBreak(block: FlowBlock): boolean {
-  return block.kind === "sectionBreak" && block.type !== undefined && block.type !== "continuous";
+  return block.kind === "sectionBreak" && normalizeSectionBreakType(block.type) !== "continuous";
 }
 
 function isContinuousSectionBreak(block: FlowBlock): boolean {
-  return block.kind === "sectionBreak" && (block.type === undefined || block.type === "continuous");
+  return block.kind === "sectionBreak" && normalizeSectionBreakType(block.type) === "continuous";
 }
 
 /**

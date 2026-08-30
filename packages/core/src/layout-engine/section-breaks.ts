@@ -61,6 +61,14 @@ export type BreakDecision = {
  */
 const DEFAULT_COLUMNS: ColumnLayout = { count: 1, gap: 0 };
 
+export const DEFAULT_SECTION_BREAK_TYPE = "nextPage" satisfies NonNullable<
+  SectionBreakBlock["type"]
+>;
+
+export function normalizeSectionBreakType(type: SectionBreakBlock["type"]) {
+  return type ?? DEFAULT_SECTION_BREAK_TYPE;
+}
+
 /**
  * Create initial section state from default options.
  */
@@ -124,7 +132,7 @@ export function scheduleSectionBreak(
   const next = { ...state };
 
   // Extract section break properties
-  const sectionType = block.type ?? "continuous";
+  const sectionType = normalizeSectionBreakType(block.type);
   const sectionMargins = block.margins;
   const sectionPageSize = block.pageSize;
   const sectionOrientation = block.orientation;

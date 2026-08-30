@@ -33,6 +33,7 @@ import {
   reconcileBreakBeforeBlock,
   recordReflowBoundary,
 } from "./renderedBreakReconciliation";
+import { normalizeSectionBreakType } from "./section-breaks";
 import { buildTableRowBreakInfo, getRowContinuationSkip, snapRowBreak } from "./tableRowBreak";
 import { bandFragmentX, bandTopContentY, isPageFrameRelativeAnchor } from "./textBoxFlow";
 import { resolveFloatingTablePageX } from "./measure/floatingTablePosition";
@@ -71,7 +72,6 @@ export type SectionLayoutConfig = {
 };
 
 const DEFAULT_COLUMNS: ColumnLayout = { count: 1, gap: 0 };
-const DEFAULT_SECTION_BREAK_TYPE = "nextPage";
 const CONTINUE_PAGE_NUMBERING: SectionPageNumbering = { type: "continue" };
 
 export function collectSectionConfigs(
@@ -512,7 +512,7 @@ function layoutDocumentPass(
         // boundary. Looking ahead shifts every transition by one section,
         // which moves odd/even filler pages to the wrong boundary.
         const nextSectionConfig = sectionConfigs[sectionIdx + 1] ?? initialConfig;
-        const nextType = sectionBreakTypes[sectionIdx] ?? DEFAULT_SECTION_BREAK_TYPE;
+        const nextType = normalizeSectionBreakType(sectionBreakTypes[sectionIdx]);
         handleSectionBreak(
           block as SectionBreakBlock,
           paginator,

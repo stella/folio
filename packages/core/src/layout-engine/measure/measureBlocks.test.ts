@@ -759,7 +759,7 @@ describe("measureBlocks", () => {
     }, fakeMeasure);
   });
 
-  test("keeps an active band across an unspecified continuous section break", () => {
+  test("drops an active band at a section break whose omitted type defaults to nextPage", () => {
     withFakeTextMeasure(() => {
       const band: TextBoxBlock = {
         kind: "textBox",
@@ -783,7 +783,7 @@ describe("measureBlocks", () => {
         throw new Error("Expected paragraph after section break");
       }
 
-      expect(afterMeasure.lines.at(0)?.floatSkipBefore).toBeGreaterThan(0);
+      expect(afterMeasure.lines.at(0)?.floatSkipBefore).toBeUndefined();
     }, fakeMeasure);
   });
 
