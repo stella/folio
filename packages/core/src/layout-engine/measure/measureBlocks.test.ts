@@ -5,7 +5,12 @@ import { markParagraphFrameTextBox } from "../paragraphFrame";
 import { setTextBoxGroupId } from "../textBoxGroup";
 import { pixelsToEmu } from "../../utils/units";
 import { fixedCharWidth, withFakeTextMeasure } from "./__tests__/fakeTextMeasure";
-import { measureBlock, measureBlocks, measureTableBlock } from "./measureBlocks";
+import {
+  measureBlock,
+  measureBlocks,
+  measureTableBlock,
+  measureTextBoxBlock,
+} from "./measureBlocks";
 
 const fakeMeasure = { charWidth: fixedCharWidth(5) };
 
@@ -836,6 +841,29 @@ describe("measureBlocks", () => {
       }
 
       expect(bodyMeasure.lines.at(0)?.floatSkipBefore).toBeUndefined();
+    }, fakeMeasure);
+  });
+
+  test("fits an omitted-width paragraph frame to its longest unwrapped line", () => {
+    withFakeTextMeasure(() => {
+      const frame: TextBoxBlock = {
+        kind: "textBox",
+        id: "intrinsic-frame",
+        width: 0,
+        widthMode: "intrinsic",
+        autoFit: "shape",
+        textWrap: "none",
+        margins: { top: 0, right: 0, bottom: 0, left: 0 },
+        content: [para("short", "short"), para("long", "longest line")],
+        displayMode: "float",
+        wrapType: "square",
+        position: { horizontal: { relativeTo: "margin", align: "right" } },
+      };
+      markParagraphFrameTextBox(frame);
+
+      const measure = measureTextBoxBlock(frame);
+
+      expect(measure.width).toBe(60);
     }, fakeMeasure);
   });
 

@@ -845,6 +845,8 @@ export type TextBoxBlock = {
   id: BlockId;
   /** Width in pixels */
   width: number;
+  /** Whether width is authored or derived from the live rendered content. */
+  widthMode?: "intrinsic";
   /** Height in pixels (may be auto-calculated) */
   height?: number;
   /** Text fitting behavior */

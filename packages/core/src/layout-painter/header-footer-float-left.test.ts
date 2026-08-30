@@ -7,7 +7,11 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { resolveHeaderFooterFloatLeft, type HeaderFooterLayoutInfo } from "./renderPage";
+import {
+  resolveHeaderFooterFloatLeft,
+  resolveHeaderFooterIntrinsicFrameHorizontalPosition,
+  type HeaderFooterLayoutInfo,
+} from "./renderPage";
 
 const layout: HeaderFooterLayoutInfo = {
   flowTop: 50,
@@ -41,6 +45,30 @@ describe("resolveHeaderFooterFloatLeft", () => {
     // (contentWidth 400 - 200) / 2 = 100
     expect(resolveHeaderFooterFloatLeft(200, { align: "center" }, layout)).toBe("100px");
   });
+
+  test.each([
+    ["left", "0"],
+    ["center", "175px"],
+    ["right", "350px"],
+  ] as const)("%s relative to the margin box uses the intrinsic frame width", (align, left) => {
+    expect(resolveHeaderFooterFloatLeft(50, { relativeTo: "margin", align }, layout)).toBe(left);
+  });
+
+  test.each([
+    ["margin", "left", { left: "0" }],
+    ["margin", "center", { left: "200px", transform: "translateX(-50%)" }],
+    ["margin", "right", { left: "400px", transform: "translateX(-100%)" }],
+    ["page", "left", { left: "-100px" }],
+    ["page", "center", { left: "206px", transform: "translateX(-50%)" }],
+    ["page", "right", { left: "512px", transform: "translateX(-100%)" }],
+  ] as const)(
+    "%s-relative intrinsic frame at %s anchors its dynamic content edge",
+    (relativeTo, align, expected) => {
+      expect(
+        resolveHeaderFooterIntrinsicFrameHorizontalPosition({ relativeTo, align }, layout),
+      ).toEqual(expected);
+    },
+  );
 
   test("inside aliases left, outside aliases right (single-sided rendering)", () => {
     // inside → left relative to page: -flowLeft = -100

@@ -652,6 +652,31 @@ describe("toFlowBlocks paragraph formatting", () => {
     ]);
   });
 
+  test("keeps an omitted paragraph-frame width intrinsic", () => {
+    const doc = schema.node("doc", null, [
+      schema.node(
+        "paragraph",
+        {
+          _originalFormatting: {
+            frame: { hAnchor: "margin", xAlign: "right", wrap: "around" },
+          },
+        },
+        [schema.text("frame")],
+      ),
+    ]);
+
+    const framed = toFlowBlocks(doc).at(0);
+
+    expect(framed).toMatchObject({
+      kind: "textBox",
+      width: 0,
+      widthMode: "intrinsic",
+      autoFit: "shape",
+      textWrap: "none",
+      position: { horizontal: { relativeTo: "margin", align: "right" } },
+    });
+  });
+
   test("keeps page-anchored frames in one wrap set across an empty anchor paragraph", () => {
     const frame = {
       width: 1440,

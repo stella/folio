@@ -1002,6 +1002,7 @@ export type TextBoxBlock = {
     kind: "textBox";
     id: BlockId;
     width: number;
+    widthMode?: "intrinsic";
     height?: number;
     autoFit?: ShapeTextBody["autoFit"];
     textWrap?: ShapeTextBody["textWrap"];

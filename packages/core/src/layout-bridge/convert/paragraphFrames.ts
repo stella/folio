@@ -103,10 +103,11 @@ function toFrameTextBox(
 ): TextBoxBlock {
   const first = content.at(0);
   const last = content.at(-1);
+  const hasAuthoredWidth = frame.width !== undefined;
   const textBox: TextBoxBlock = {
     kind: "textBox",
     id: nextBlockId(),
-    width: frame.width ?? 200,
+    width: frame.width ?? 0,
     margins: { top: 0, right: 0, bottom: 0, left: 0 },
     content,
     displayMode: "float",
@@ -119,6 +120,11 @@ function toFrameTextBox(
     ...(first?.pmStart !== undefined ? { pmStart: first.pmStart } : {}),
     ...(last?.pmEnd !== undefined ? { pmEnd: last.pmEnd } : {}),
   };
+  if (!hasAuthoredWidth) {
+    textBox.widthMode = "intrinsic";
+    textBox.autoFit = "shape";
+    textBox.textWrap = "none";
+  }
   if (frame.height !== undefined) {
     textBox.height = frame.height;
   }

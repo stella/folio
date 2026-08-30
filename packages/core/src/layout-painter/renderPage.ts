@@ -583,6 +583,49 @@ function getPositionAlignment(
   return position?.align ?? position?.alignment;
 }
 
+type HeaderFooterHorizontalAnchorPoint = {
+  left: number;
+  alignment: "left" | "center" | "right";
+};
+
+type HeaderFooterHorizontalPosition = {
+  relativeTo?: string;
+  posOffset?: number;
+  align?: string;
+  alignment?: string;
+};
+
+function resolveHeaderFooterHorizontalAnchorPoint(
+  h: HeaderFooterHorizontalPosition | undefined,
+  layout: HeaderFooterLayoutInfo,
+): HeaderFooterHorizontalAnchorPoint {
+  if (!h) {
+    return { left: 0, alignment: "left" };
+  }
+
+  if (h.posOffset !== undefined) {
+    const pageOffset = h.relativeTo === "page" ? -layout.flowLeft : 0;
+    return { left: emuToPixels(h.posOffset) + pageOffset, alignment: "left" };
+  }
+
+  let align = getPositionAlignment(h);
+  if (align === "inside") {
+    align = "left";
+  } else if (align === "outside") {
+    align = "right";
+  }
+  const alignment = align === "center" || align === "right" ? align : "left";
+  const frameWidth = h.relativeTo === "page" ? layout.pageWidth : layout.contentWidth;
+  const frameLeft = h.relativeTo === "page" ? -layout.flowLeft : 0;
+  if (alignment === "center") {
+    return { left: frameLeft + frameWidth / 2, alignment };
+  }
+  if (alignment === "right") {
+    return { left: frameLeft + frameWidth, alignment };
+  }
+  return { left: frameLeft, alignment };
+}
+
 function resolveHeaderFooterFloatTop(
   floatImg: {
     height: number;
@@ -702,58 +745,32 @@ function resolveHeaderFooterFloatingTablePosition(
  */
 export function resolveHeaderFooterFloatLeft(
   width: number,
-  h:
-    | {
-        relativeTo?: string;
-        posOffset?: number;
-        align?: string;
-        alignment?: string;
-      }
-    | undefined,
+  h: HeaderFooterHorizontalPosition | undefined,
   layout: HeaderFooterLayoutInfo,
 ): string {
-  if (!h) {
-    return "0";
+  const anchor = resolveHeaderFooterHorizontalAnchorPoint(h, layout);
+  let widthFactor = 0;
+  if (anchor.alignment === "right") {
+    widthFactor = 1;
+  } else if (anchor.alignment === "center") {
+    widthFactor = 0.5;
   }
+  const left = anchor.left - width * widthFactor;
+  return left === 0 ? "0" : `${left}px`;
+}
 
-  // Single-sided rendering: OOXML `inside`/`outside` alias `left`/`right`
-  // (matching resolveAnchoredImagePosition / the floating-table resolver).
-  let align = getPositionAlignment(h);
-  if (align === "inside") {
-    align = "left";
-  } else if (align === "outside") {
-    align = "right";
+export function resolveHeaderFooterIntrinsicFrameHorizontalPosition(
+  h: HeaderFooterHorizontalPosition | undefined,
+  layout: HeaderFooterLayoutInfo,
+): { left: string; transform?: string } {
+  const anchor = resolveHeaderFooterHorizontalAnchorPoint(h, layout);
+  if (anchor.alignment === "center") {
+    return { left: `${anchor.left}px`, transform: "translateX(-50%)" };
   }
-
-  if (h.relativeTo === "page") {
-    if (h.posOffset !== undefined) {
-      return `${emuToPixels(h.posOffset) - layout.flowLeft}px`;
-    }
-    if (align === "right") {
-      return `${layout.pageWidth - width - layout.flowLeft}px`;
-    }
-    if (align === "center") {
-      return `${(layout.pageWidth - width) / 2 - layout.flowLeft}px`;
-    }
-    if (align === "left") {
-      return `${-layout.flowLeft}px`;
-    }
+  if (anchor.alignment === "right") {
+    return { left: `${anchor.left}px`, transform: "translateX(-100%)" };
   }
-
-  // `relativeTo: margin` falls through here intentionally: the header/footer
-  // content width IS the margin box, so the content-relative branch is already
-  // margin-correct.
-  if (h.posOffset !== undefined) {
-    return `${emuToPixels(h.posOffset)}px`;
-  }
-  if (align === "right") {
-    return `${layout.contentWidth - width}px`;
-  }
-  if (align === "center") {
-    return `${(layout.contentWidth - width) / 2}px`;
-  }
-
-  return "0";
+  return { left: anchor.left === 0 ? "0" : `${anchor.left}px` };
 }
 
 function applyHeaderFooterFloatHorizontalPosition(
@@ -1222,6 +1239,15 @@ function renderHeaderFooterContent(
         block.position?.horizontal,
         layout,
       );
+      if (block.widthMode === "intrinsic") {
+        const horizontalPosition = resolveHeaderFooterIntrinsicFrameHorizontalPosition(
+          block.position?.horizontal,
+          layout,
+        );
+        fragEl.style.width = "max-content";
+        fragEl.style.left = horizontalPosition.left;
+        fragEl.style.transform = horizontalPosition.transform ?? "";
+      }
       if (block.wrapType === "behind") {
         fragEl.style.zIndex = "-1";
       }
