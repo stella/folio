@@ -135,7 +135,7 @@ export function createPaginator(options: PaginatorOptions): {
         w: number;
         h: number;
     }, newMargins?: PageMargins, applyImmediately?: boolean) => void;
-    startSection: (sectionIndex: number, pageNumbering?: SectionPageNumbering, placement?: SectionStartPlacement) => void;
+    startSection: (input: StartSectionOptions) => void;
 };
 
 // @public

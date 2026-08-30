@@ -15,7 +15,7 @@ import {
   hasPageBreakBefore,
 } from "./keep-together";
 import { measuredLineAdvance } from "./lineFlow";
-import { FOOTNOTE_SEPARATOR_HEIGHT, createPaginator } from "./paginator";
+import { FOOTNOTE_SEPARATOR_HEIGHT, SECTION_START_PLACEMENT, createPaginator } from "./paginator";
 import type { PageState } from "./paginator";
 import { getParagraphFragmentPmRange } from "./paragraphFragmentRange";
 import {
@@ -28,6 +28,7 @@ import {
 } from "./paragraphSpacing";
 import {
   INITIAL_RENDERED_BREAK_STATE,
+  PAGE_ADVANCE,
   reconcileAfterBlock,
   reconcileBreakBeforeBlock,
   recordReflowBoundary,
@@ -434,9 +435,9 @@ function layoutDocumentPass(
       renderedBreakNeedsSnap,
     });
     if (block.kind !== "pageBreak") {
-      if (breakDecision.pageAdvance === "physical") {
+      if (breakDecision.pageAdvance === PAGE_ADVANCE.PHYSICAL) {
         paginator.forcePageBreak();
-      } else if (breakDecision.pageAdvance === "coalesced") {
+      } else if (breakDecision.pageAdvance === PAGE_ADVANCE.COALESCED) {
         paginator.coalescePageBreak();
       }
     }
@@ -495,9 +496,9 @@ function layoutDocumentPass(
         break;
 
       case "pageBreak":
-        if (breakDecision.pageAdvance === "physical") {
+        if (breakDecision.pageAdvance === PAGE_ADVANCE.PHYSICAL) {
           paginator.forcePageBreak();
-        } else if (breakDecision.pageAdvance === "coalesced") {
+        } else if (breakDecision.pageAdvance === PAGE_ADVANCE.COALESCED) {
           paginator.coalescePageBreak();
         }
         break;
@@ -1723,7 +1724,10 @@ function handleSectionBreak(
     case "nextPage":
       paginator.updatePageLayout(nextSectionConfig.pageSize, nextSectionConfig.margins);
       if (nextSectionIndex !== undefined) {
-        paginator.startSection(nextSectionIndex, nextSectionConfig.pageNumbering);
+        paginator.startSection({
+          sectionIndex: nextSectionIndex,
+          pageNumbering: nextSectionConfig.pageNumbering,
+        });
       }
       paginator.forcePageBreak({ coalesceBlankPage: true });
       break;
@@ -1735,7 +1739,10 @@ function handleSectionBreak(
       }
       paginator.updatePageLayout(nextSectionConfig.pageSize, nextSectionConfig.margins);
       if (nextSectionIndex !== undefined) {
-        paginator.startSection(nextSectionIndex, nextSectionConfig.pageNumbering);
+        paginator.startSection({
+          sectionIndex: nextSectionIndex,
+          pageNumbering: nextSectionConfig.pageNumbering,
+        });
       }
       if (!paginator.retargetCurrentBlankPage()) {
         panic("Even-page section target must be blank");
@@ -1750,7 +1757,10 @@ function handleSectionBreak(
       }
       paginator.updatePageLayout(nextSectionConfig.pageSize, nextSectionConfig.margins);
       if (nextSectionIndex !== undefined) {
-        paginator.startSection(nextSectionIndex, nextSectionConfig.pageNumbering);
+        paginator.startSection({
+          sectionIndex: nextSectionIndex,
+          pageNumbering: nextSectionConfig.pageNumbering,
+        });
       }
       if (!paginator.retargetCurrentBlankPage()) {
         panic("Odd-page section target must be blank");
@@ -1776,11 +1786,13 @@ function handleSectionBreak(
         (Math.round(nextSize.w) !== Math.round(currentPage.size.w) ||
           Math.round(nextSize.h) !== Math.round(currentPage.size.h));
       if (nextSectionIndex !== undefined) {
-        paginator.startSection(
-          nextSectionIndex,
-          nextSectionConfig.pageNumbering,
-          pageSizeChanges ? "nextPage" : "continuous",
-        );
+        paginator.startSection({
+          sectionIndex: nextSectionIndex,
+          pageNumbering: nextSectionConfig.pageNumbering,
+          placement: pageSizeChanges
+            ? SECTION_START_PLACEMENT.NEXT_PAGE
+            : SECTION_START_PLACEMENT.CONTINUOUS,
+        });
       }
       if (pageSizeChanges) {
         // Promote to a page break, but reuse an already blank current page as

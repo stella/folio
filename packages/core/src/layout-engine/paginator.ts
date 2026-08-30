@@ -92,9 +92,20 @@ type ForcePageBreakOptions = {
   coalesceBlankPage?: boolean;
 };
 
-type SectionStartPlacement = "continuous" | "nextPage";
+export const SECTION_START_PLACEMENT = {
+  CONTINUOUS: "continuous",
+  NEXT_PAGE: "nextPage",
+} as const;
+
+type SectionStartPlacement = (typeof SECTION_START_PLACEMENT)[keyof typeof SECTION_START_PLACEMENT];
 
 type SectionStartState = { type: "pending"; placement: SectionStartPlacement } | { type: "placed" };
+
+type StartSectionOptions = {
+  sectionIndex: number;
+  pageNumbering?: SectionPageNumbering;
+  placement?: SectionStartPlacement;
+};
 
 /** Calculate active column widths, preferring authored unequal widths. */
 function calculateColumnWidths(
@@ -685,11 +696,11 @@ export function createPaginator(options: PaginatorOptions) {
     pendingMargins = undefined;
   }
 
-  function startSection(
-    sectionIndex: number,
-    pageNumbering: SectionPageNumbering = { type: "continue" },
-    placement: SectionStartPlacement = "nextPage",
-  ): void {
+  function startSection({
+    sectionIndex,
+    pageNumbering = { type: "continue" },
+    placement = SECTION_START_PLACEMENT.NEXT_PAGE,
+  }: StartSectionOptions): void {
     currentSectionIndex = sectionIndex;
     currentSectionPageNumber = 0;
     currentPageNumbering = pageNumbering;

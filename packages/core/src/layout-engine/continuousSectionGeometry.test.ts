@@ -710,7 +710,7 @@ describe("continuous section break geometry", () => {
         { kind: "sectionBreak" },
         { kind: "pageBreak" },
         incoming.measure,
-      ] as never,
+      ] satisfies Measure[],
       {
         pageSize: { w: 800, h: 1000 },
         margins: { top: 50, right: 50, bottom: 50, left: 50 },

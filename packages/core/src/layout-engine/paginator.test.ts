@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { createPaginator } from "./paginator";
+import { SECTION_START_PLACEMENT, createPaginator } from "./paginator";
 import type { ParagraphFragment } from "./types";
 
 const SIZE = { w: 800, h: 1000 };
@@ -70,7 +70,7 @@ describe("paginator even-page margins", () => {
       sectionEvenPageMargins: [undefined, evenMargins],
     });
     paginator.forcePageBreak();
-    paginator.startSection(1, { type: "restart", start: 2 });
+    paginator.startSection({ sectionIndex: 1, pageNumbering: { type: "restart", start: 2 } });
 
     const page = paginator.forcePageBreak({ coalesceBlankPage: true }).page;
 
@@ -90,9 +90,9 @@ describe("paginator logical page numbers", () => {
 
     const first = paginator.getCurrentState().page;
     const second = paginator.forcePageBreak().page;
-    paginator.startSection(1, { type: "continue" });
+    paginator.startSection({ sectionIndex: 1, pageNumbering: { type: "continue" } });
     const continued = paginator.forcePageBreak().page;
-    paginator.startSection(2, { type: "restart", start: 4 });
+    paginator.startSection({ sectionIndex: 2, pageNumbering: { type: "restart", start: 4 } });
     const restarted = paginator.forcePageBreak().page;
 
     expect([first.number, second.number, continued.number, restarted.number]).toEqual([1, 2, 3, 4]);
@@ -114,7 +114,11 @@ describe("paginator logical page numbers", () => {
     const paginator = createPaginator({ pageSize: SIZE, margins: MARGINS });
     paginator.addFragment(paragraphFragment("outgoing"), 20);
 
-    paginator.startSection(1, { type: "restart", start: 2 }, "continuous");
+    paginator.startSection({
+      sectionIndex: 1,
+      pageNumbering: { type: "restart", start: 2 },
+      placement: SECTION_START_PLACEMENT.CONTINUOUS,
+    });
     paginator.addFragment(paragraphFragment("incoming"), 20);
     const shared = paginator.pages[0];
     const following = paginator.forcePageBreak().page;
@@ -128,7 +132,11 @@ describe("paginator logical page numbers", () => {
     const paginator = createPaginator({ pageSize: SIZE, margins: MARGINS });
     paginator.addFragment(paragraphFragment("outgoing"), 20);
 
-    paginator.startSection(1, { type: "restart", start: 2 }, "continuous");
+    paginator.startSection({
+      sectionIndex: 1,
+      pageNumbering: { type: "restart", start: 2 },
+      placement: SECTION_START_PLACEMENT.CONTINUOUS,
+    });
     paginator.addUnflowedFragment({
       kind: "image",
       blockId: "anchored-incoming",
@@ -148,7 +156,11 @@ describe("paginator logical page numbers", () => {
     const paginator = createPaginator({ pageSize: SIZE, margins: MARGINS });
     paginator.addFragment(paragraphFragment("outgoing"), 900);
 
-    paginator.startSection(1, { type: "restart", start: 2 }, "continuous");
+    paginator.startSection({
+      sectionIndex: 1,
+      pageNumbering: { type: "restart", start: 2 },
+      placement: SECTION_START_PLACEMENT.CONTINUOUS,
+    });
     paginator.addFragment(paragraphFragment("incoming"), 20);
 
     expect(paginator.pages).toHaveLength(2);
@@ -160,7 +172,7 @@ describe("paginator logical page numbers", () => {
     const paginator = createPaginator({ pageSize: SIZE, margins: MARGINS });
     paginator.addFragment(paragraphFragment("outgoing"), 20);
 
-    paginator.startSection(1, { type: "restart", start: 2 });
+    paginator.startSection({ sectionIndex: 1, pageNumbering: { type: "restart", start: 2 } });
     paginator.forcePageBreak();
     paginator.addFragment(paragraphFragment("incoming"), 20);
 
@@ -173,7 +185,11 @@ describe("paginator logical page numbers", () => {
     const paginator = createPaginator({ pageSize: SIZE, margins: MARGINS });
     paginator.addFragment(paragraphFragment("outgoing"), 20);
 
-    paginator.startSection(1, { type: "restart", start: 2 }, "continuous");
+    paginator.startSection({
+      sectionIndex: 1,
+      pageNumbering: { type: "restart", start: 2 },
+      placement: SECTION_START_PLACEMENT.CONTINUOUS,
+    });
     const following = paginator.forcePageBreak().page;
 
     expect(paginator.pages.map(({ logicalNumber }) => logicalNumber)).toEqual([1, 3]);
@@ -183,7 +199,7 @@ describe("paginator logical page numbers", () => {
   test("advances authored ordinals when a hard break reuses the current sheet", () => {
     const paginator = createPaginator({ pageSize: SIZE, margins: MARGINS });
     paginator.addFragment(paragraphFragment("outgoing"), 20);
-    paginator.startSection(1, { type: "restart", start: 0 });
+    paginator.startSection({ sectionIndex: 1, pageNumbering: { type: "restart", start: 0 } });
     paginator.forcePageBreak();
 
     const reused = paginator.coalescePageBreak().page;
@@ -245,7 +261,7 @@ describe("paginator forcePageBreak", () => {
     const nextSize = { w: 600, h: 700 };
     const nextMargins = { top: 30, right: 40, bottom: 50, left: 60 };
     paginator.updatePageLayout(nextSize, nextMargins);
-    paginator.startSection(1);
+    paginator.startSection({ sectionIndex: 1 });
 
     expect(paginator.retargetCurrentBlankPage()).toBe(true);
     expect(paginator.pages.length).toBe(1);
@@ -267,7 +283,7 @@ describe("paginator forcePageBreak", () => {
 
     const nextSize = { w: 600, h: 700 };
     paginator.updatePageLayout(nextSize, MARGINS);
-    paginator.startSection(1);
+    paginator.startSection({ sectionIndex: 1 });
 
     expect(paginator.retargetCurrentBlankPage()).toBe(false);
     expect(state.page.size).toEqual(SIZE);
