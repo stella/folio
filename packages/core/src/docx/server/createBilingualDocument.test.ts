@@ -223,6 +223,18 @@ describe("createBilingualDocument", () => {
           indentFirstLine: 540,
         },
       },
+      {
+        ...paragraph("Numbered clause"),
+        formatting: {
+          indentFirstLine: -360,
+          hangingIndent: true,
+          tabs: [{ position: 360, alignment: "left" }],
+        },
+      },
+      {
+        ...paragraph("Extreme hanging clause"),
+        formatting: { indentFirstLine: -20_000, hangingIndent: true },
+      },
     ];
     const stamped = await ensureParaIds(await createDocx(source));
     const parsed = await parseDocx(stamped.docx, { preloadFonts: false });
@@ -239,6 +251,19 @@ describe("createBilingualDocument", () => {
           { position: 4153, alignment: "left" },
         ],
       });
+    }
+    for (const projected of [left.at(1), right.at(1)]) {
+      expect(projected?.formatting).toMatchObject({
+        indentLeft: 180,
+        indentFirstLine: -180,
+        hangingIndent: true,
+        tabs: [{ position: 180, alignment: "left" }],
+      });
+    }
+    for (const projected of [left.at(2), right.at(2)]) {
+      const indentLeft = projected?.formatting?.indentLeft ?? 0;
+      const indentFirstLine = projected?.formatting?.indentFirstLine ?? 0;
+      expect(indentLeft + indentFirstLine).toBe(0);
     }
     expect(getParagraphText(left.at(0)!)).toBe("Signature field");
     expect(getParagraphText(right.at(0)!)).toBe("Signature field");

@@ -696,20 +696,25 @@ const projectParagraphIntoColumn = (
   const maxSideIndent = Math.max(0, columnWidth - MIN_COLUMN_TEXT_WIDTH_TWIPS);
   let indentLeft = projectSideIndent(geometry.indentLeft, scale, maxSideIndent);
   let indentRight = projectSideIndent(geometry.indentRight, scale, maxSideIndent);
-  const excess = indentLeft + indentRight - maxSideIndent;
-  if (excess > 0) {
-    const total = indentLeft + indentRight;
-    indentLeft = Math.round((indentLeft / total) * maxSideIndent);
+  const indentFirstLine =
+    geometry.indentFirstLine === undefined
+      ? undefined
+      : Math.max(-maxSideIndent, Math.round(geometry.indentFirstLine * scale));
+  const minimumLeftIndent = Math.min(maxSideIndent, Math.max(0, -(indentFirstLine ?? 0)));
+  indentLeft = Math.max(indentLeft, minimumLeftIndent);
+  const flexibleLeft = indentLeft - minimumLeftIndent;
+  const flexibleTotal = flexibleLeft + indentRight;
+  const flexibleMaximum = maxSideIndent - minimumLeftIndent;
+  if (flexibleTotal > flexibleMaximum) {
+    indentLeft = minimumLeftIndent + Math.round((flexibleLeft / flexibleTotal) * flexibleMaximum);
     indentRight = maxSideIndent - indentLeft;
   }
 
   const formatting: ParagraphFormatting = {
     ...paragraph.formatting,
-    ...(geometry.indentLeft !== undefined && { indentLeft }),
+    ...((geometry.indentLeft !== undefined || minimumLeftIndent > 0) && { indentLeft }),
     ...(geometry.indentRight !== undefined && { indentRight }),
-    ...(geometry.indentFirstLine !== undefined && {
-      indentFirstLine: Math.round(geometry.indentFirstLine * scale),
-    }),
+    ...(indentFirstLine !== undefined && { indentFirstLine }),
     ...(geometry.hangingIndent !== undefined && { hangingIndent: geometry.hangingIndent }),
     ...(geometry.tabs !== undefined && {
       tabs: geometry.tabs.map((tab) => ({
