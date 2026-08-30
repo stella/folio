@@ -561,6 +561,47 @@ describe("createBilingualDocx", () => {
     );
   });
 
+  test("refuses a stacked manifest whose spanning row has no nested table", async () => {
+    const source = createEmptyDocument({ preset: createStellaStyleDocumentPreset() });
+    source.package.document.content = [sourceTable()];
+    const valid = await createBilingualDocx(await createDocx(source), {
+      targetStyleSuffix: SUFFIX,
+      tableLayout: "stacked",
+    });
+    const malformed = await parseDocx(valid.buffer, { preloadFonts: false });
+    const spanningCell = bodyTables(malformed).at(0)?.rows.at(0)?.cells.at(0);
+    if (!spanningCell) {
+      throw new Error("stacked table fixture lost its spanning cell");
+    }
+    spanningCell.content = spanningCell.content.filter((item) => item.type !== "table");
+
+    await expect(readBilingualDocx(await createDocx(malformed))).rejects.toThrow(
+      "Bilingual manifest structure or handles do not match the Folio AI-edit snapshot.",
+    );
+  });
+
+  test("refuses a stacked manifest whose spanning row has three nested tables", async () => {
+    const source = createEmptyDocument({ preset: createStellaStyleDocumentPreset() });
+    source.package.document.content = [sourceTable()];
+    const valid = await createBilingualDocx(await createDocx(source), {
+      targetStyleSuffix: SUFFIX,
+      tableLayout: "stacked",
+    });
+    const malformed = await parseDocx(valid.buffer, { preloadFonts: false });
+    const spanningCell = bodyTables(malformed).at(0)?.rows.at(0)?.cells.at(0);
+    const sourceNestedTable = spanningCell?.content.find(
+      (item): item is Table => item.type === "table",
+    );
+    if (!spanningCell || !sourceNestedTable) {
+      throw new Error("stacked table fixture lost its source table");
+    }
+    spanningCell.content.push(structuredClone(sourceNestedTable));
+
+    await expect(readBilingualDocx(await createDocx(malformed))).rejects.toThrow(
+      "Bilingual manifest structure or handles do not match the Folio AI-edit snapshot.",
+    );
+  });
+
   test("keeps structural-only paragraphs out of the editable row manifest", async () => {
     const source = createEmptyDocument({ preset: createStellaStyleDocumentPreset() });
     const columnBreak: Paragraph = {

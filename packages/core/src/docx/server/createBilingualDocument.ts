@@ -1008,6 +1008,7 @@ export function readBilingualDocument(
         const nestedTables = left.content.filter((item): item is Table => item.type === "table");
         const sourceTable = nestedTables.at(0);
         if (!sourceTable) {
+          missingHandleCount += 1;
           continue;
         }
         if (nestedTables.length === 2) {
@@ -1050,6 +1051,7 @@ export function readBilingualDocument(
           continue;
         }
         if (nestedTables.length !== 1) {
+          missingHandleCount += 1;
           continue;
         }
         const paragraphs = collectTableParagraphs(sourceTable)
