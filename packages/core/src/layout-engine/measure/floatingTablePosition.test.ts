@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { resolveFloatingTableX } from "./floatingTablePosition";
+import { resolveFloatingTablePageX, resolveFloatingTableX } from "./floatingTablePosition";
 
 const CONTENT = 624;
 const TABLE = 333;
@@ -53,5 +53,37 @@ describe("resolveFloatingTableX", () => {
     expect(resolveFloatingTableX({}, "right", OVERWIDE_TABLE, CONTENT)).toBe(
       CONTENT - OVERWIDE_TABLE,
     );
+  });
+});
+
+describe("resolveFloatingTablePageX", () => {
+  test.each([
+    ["center", 300],
+    ["right", 600],
+    ["outside", 600],
+  ] as const)("resolves page-anchored tblpXSpec=%s against the page width", (spec, expected) => {
+    expect(
+      resolveFloatingTablePageX({
+        anchor: { horzAnchor: "page", tblpXSpec: spec },
+        justification: undefined,
+        tableWidth: 200,
+        contentWidth: 600,
+        pageWidth: 800,
+        marginLeft: 40,
+      }),
+    ).toBe(expected);
+  });
+
+  test("clamps the final rectangle to the physical page", () => {
+    expect(
+      resolveFloatingTablePageX({
+        anchor: { horzAnchor: "page", tblpX: 760 },
+        justification: undefined,
+        tableWidth: 200,
+        contentWidth: 600,
+        pageWidth: 800,
+        marginLeft: 40,
+      }),
+    ).toBe(600);
   });
 });

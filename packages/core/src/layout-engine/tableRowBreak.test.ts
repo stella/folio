@@ -1231,6 +1231,19 @@ describe("floating table placement", () => {
 
     expect(fragment?.x).toBe(80);
   });
+
+  test.each([
+    ["center", 40],
+    ["right", 80],
+    ["outside", 80],
+  ] as const)("resolves page-anchored tblpXSpec=%s against the page frame", (spec, expected) => {
+    const { block, measure } = tallTable(1);
+    block.floating = { horzAnchor: "page", tblpXSpec: spec };
+
+    const fragment = tableFragments(block, measure).at(0);
+
+    expect(fragment?.x).toBe(expected);
+  });
 });
 
 describe("oversized table row splits across pages (#570)", () => {

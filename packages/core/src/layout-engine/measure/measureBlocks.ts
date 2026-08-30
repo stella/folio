@@ -30,7 +30,7 @@ import type {
 import { getCachedParagraphMeasure, setCachedParagraphMeasure } from "./cache";
 import { findClearLineY, measureParagraph, MIN_WRAP_SEGMENT_WIDTH } from "./measureParagraph";
 import type { FloatingImageZone } from "./measureParagraph";
-import { resolveFloatingTableX } from "./floatingTablePosition";
+import { resolveFloatingTablePageX } from "./floatingTablePosition";
 import {
   buildTableCellGrid,
   getFirstAvailableColumn,
@@ -554,7 +554,10 @@ function extractFloatingZones(
       continue;
     }
 
-    const tableMeasure = measureTableBlock(tableBlock, defaultContentWidth);
+    const blockContentWidth = perBlockNumberValue(contentWidth, blockIndex, defaultContentWidth);
+    const blockPageWidth = perBlockNumberValue(pageWidthInput, blockIndex, defaultPageWidth);
+    const blockMarginLeft = perBlockNumberValue(marginLeftInput, blockIndex, defaultMarginLeft);
+    const tableMeasure = measureTableBlock(tableBlock, blockContentWidth);
     const tableWidth = tableMeasure.totalWidth;
     const tableHeight = tableMeasure.totalHeight;
 
@@ -566,18 +569,20 @@ function extractFloatingZones(
     let leftMargin = 0;
     let rightMargin = 0;
 
-    // Determine horizontal position relative to content area
-    const x = resolveFloatingTableX(
-      floating,
-      tableBlock.justification,
+    const pageX = resolveFloatingTablePageX({
+      anchor: floating,
+      justification: tableBlock.justification,
       tableWidth,
-      defaultContentWidth,
-    );
+      contentWidth: blockContentWidth,
+      pageWidth: blockPageWidth,
+      marginLeft: blockMarginLeft,
+    });
+    const contentX = pageX - blockMarginLeft;
 
-    if (x < defaultContentWidth / 2) {
-      leftMargin = x + tableWidth + distRight;
+    if (contentX < blockContentWidth / 2) {
+      leftMargin = contentX + tableWidth + distRight;
     } else {
-      rightMargin = defaultContentWidth - x + distLeft;
+      rightMargin = blockContentWidth - contentX + distLeft;
     }
 
     const topY = floating.tblpY ?? 0;

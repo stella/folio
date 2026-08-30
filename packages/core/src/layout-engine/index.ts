@@ -35,7 +35,7 @@ import {
 } from "./renderedBreakReconciliation";
 import { buildTableRowBreakInfo, getRowContinuationSkip, snapRowBreak } from "./tableRowBreak";
 import { bandFragmentX, bandTopContentY, isPageFrameRelativeAnchor } from "./textBoxFlow";
-import { resolveFloatingTableX } from "./measure/floatingTablePosition";
+import { resolveFloatingTablePageX } from "./measure/floatingTablePosition";
 import { resolveTableInlinePlacement } from "./measure/tableInlinePlacement";
 import { floatingTextBoxReservesBand } from "./types";
 import type {
@@ -1432,12 +1432,8 @@ function layoutFloatingTable(
   const contentHeight = page.size.h - margins.top - margins.bottom;
 
   // Default anchor base (content area)
-  let baseX = margins.left;
   let baseY = margins.top;
 
-  if (floating?.horzAnchor === "page") {
-    baseX = 0;
-  }
   if (floating?.vertAnchor === "page") {
     baseY = 0;
   } else if (floating?.vertAnchor === "text") {
@@ -1450,7 +1446,14 @@ function layoutFloatingTable(
   // Determine X position
   let x = paginator.getColumnX(state.columnIndex);
   if (floating) {
-    x = baseX + resolveFloatingTableX(floating, block.justification, tableWidth, contentWidth);
+    x = resolveFloatingTablePageX({
+      anchor: floating,
+      justification: block.justification,
+      tableWidth,
+      contentWidth,
+      pageWidth: page.size.w,
+      marginLeft: margins.left,
+    });
   }
 
   // Determine Y position
@@ -1475,14 +1478,6 @@ function layoutFloatingTable(
   if (!usedExplicitY) {
     const fitState = paginator.ensureFits(tableHeight);
     y = fitState.cursorY;
-  }
-
-  // Alignment resolves within the selected anchor frame and may produce a
-  // signed offset when the table is wider than that frame. Preserve that
-  // overhang while keeping the final rectangle within the physical page.
-  const maxX = Math.max(0, page.size.w - tableWidth);
-  if (Number.isFinite(maxX)) {
-    x = Math.max(0, Math.min(x, maxX));
   }
 
   const fragment: TableFragment = {

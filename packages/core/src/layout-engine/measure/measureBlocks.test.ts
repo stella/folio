@@ -218,6 +218,66 @@ describe("measureBlocks", () => {
     }, fakeMeasure);
   });
 
+  test("wraps from a page-centered floating table translated into content coordinates", () => {
+    withFakeTextMeasure(() => {
+      const table: TableBlock = {
+        kind: "table",
+        id: "page-centered-table",
+        columnWidths: [200],
+        floating: { horzAnchor: "page", tblpXSpec: "center" },
+        rows: [
+          {
+            id: "row",
+            cells: [{ id: "cell", blocks: [para("cell", "cell")] }],
+          },
+        ],
+      };
+      const measures = measureBlocks([table, para("body", "body")], 600, 0, {
+        pageWidth: 800,
+        pageHeight: 1_000,
+        marginLeft: 40,
+        marginRight: 160,
+        marginBottom: 40,
+      });
+      const bodyMeasure = measures.at(1);
+      if (bodyMeasure?.kind !== "paragraph") {
+        throw new Error("Expected paragraph measure");
+      }
+
+      expect(bodyMeasure.lines.at(0)?.leftOffset).toBe(472);
+    }, fakeMeasure);
+  });
+
+  test("wraps from the physically clamped position of a page-anchored floating table", () => {
+    withFakeTextMeasure(() => {
+      const table: TableBlock = {
+        kind: "table",
+        id: "page-clamped-table",
+        columnWidths: [200],
+        floating: { horzAnchor: "page", tblpX: 760 },
+        rows: [
+          {
+            id: "row",
+            cells: [{ id: "cell", blocks: [para("cell", "cell")] }],
+          },
+        ],
+      };
+      const measures = measureBlocks([table, para("body", "body")], 600, 0, {
+        pageWidth: 800,
+        pageHeight: 1_000,
+        marginLeft: 40,
+        marginRight: 160,
+        marginBottom: 40,
+      });
+      const bodyMeasure = measures.at(1);
+      if (bodyMeasure?.kind !== "paragraph") {
+        throw new Error("Expected paragraph measure");
+      }
+
+      expect(bodyMeasure.lines.at(0)?.rightOffset).toBe(52);
+    }, fakeMeasure);
+  });
+
   test("keeps paragraph-anchored bands from one textbox group active together", () => {
     withFakeTextMeasure(() => {
       const firstBand: TextBoxBlock = {
