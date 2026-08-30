@@ -60,9 +60,11 @@ type VectorEmfOptions = {
   extraRecord?: Uint8Array;
   brushHandle?: number;
   deleteBrushBeforePolygon?: boolean;
+  duplicateBrushHandle?: boolean;
   mapMode?: 1 | 8;
   includeMoveTo?: boolean;
   polygonPointCount?: number;
+  polygonBeforeFillPath?: boolean;
 };
 
 const vectorEmf = ({
@@ -72,9 +74,11 @@ const vectorEmf = ({
   extraRecord,
   brushHandle = 1,
   deleteBrushBeforePolygon = false,
+  duplicateBrushHandle = false,
   mapMode = 8,
   includeMoveTo = true,
   polygonPointCount = 3,
+  polygonBeforeFillPath = false,
 }: VectorEmfOptions = {}): Uint8Array => {
   const polygon =
     polygonPointCount === 3
@@ -100,6 +104,15 @@ const vectorEmf = ({
       view.setUint32(12, 0, true);
       view.setUint32(16, 0x0033_2211, true);
     }),
+    ...(duplicateBrushHandle
+      ? [
+          record(39, 24, (view) => {
+            view.setUint32(8, 1, true);
+            view.setUint32(12, 0, true);
+            view.setUint32(16, 0x0066_5544, true);
+          }),
+        ]
+      : []),
     uint32Record(37, brushHandle),
     record(95, 52, (view) => {
       view.setUint32(8, 2, true);
@@ -115,6 +128,7 @@ const vectorEmf = ({
     ]),
     record(61, 8),
     record(60, 8),
+    ...(polygonBeforeFillPath ? [polyPolygon16([polygon])] : []),
     record(62, 24),
     ...(deleteBrushBeforePolygon ? [uint32Record(40, 1)] : []),
     uint32Record(19, 2),
@@ -212,6 +226,17 @@ describe("renderEmfSvg", () => {
 
   test("does not reuse a selected brush after its object is deleted", () => {
     expect(renderEmfSvg(vectorEmf({ deleteBrushBeforePolygon: true }))).toBeNull();
+  });
+
+  test("preserves a completed path while rendering standalone geometry", () => {
+    const svg = renderEmfSvg(vectorEmf({ polygonBeforeFillPath: true }));
+
+    expect(svg).toContain('d="M10 10 C20 10 20 20 10 20 Z"');
+    expect(svg?.match(/<path /gu)).toHaveLength(3);
+  });
+
+  test("rejects object handles that are recreated before deletion", () => {
+    expect(renderEmfSvg(vectorEmf({ duplicateBrushHandle: true }))).toBeNull();
   });
 
   test("rejects point counts that exceed their record payload", () => {

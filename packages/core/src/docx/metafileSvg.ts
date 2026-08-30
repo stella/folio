@@ -329,7 +329,14 @@ export function renderEmfSvg(data: ArrayBuffer | Uint8Array): string | null {
         const handle = uint32(view, offset + 8, end);
         const style = uint32(view, offset + 12, end);
         const color = uint32(view, offset + 16, end);
-        if (size !== 24 || handle === undefined || style === undefined || color === undefined) {
+        if (
+          size !== 24 ||
+          handle === undefined ||
+          handle >= STOCK_OBJECT_FLAG ||
+          objects.has(handle) ||
+          style === undefined ||
+          color === undefined
+        ) {
           return null;
         }
         if (style !== 0 && style !== 1) {
@@ -350,6 +357,8 @@ export function renderEmfSvg(data: ArrayBuffer | Uint8Array): string | null {
         if (
           size !== 52 ||
           handle === undefined ||
+          handle >= STOCK_OBJECT_FLAG ||
+          objects.has(handle) ||
           style === undefined ||
           bmiBytes !== 0 ||
           bitmapBytes !== 0 ||
@@ -536,6 +545,7 @@ export function renderEmfSvg(data: ArrayBuffer | Uint8Array): string | null {
             pathState.commands.push(...polygonPath);
             break;
           case "idle":
+          case "completed":
             if (!state.brush?.fill) {
               return null;
             }
@@ -543,8 +553,6 @@ export function renderEmfSvg(data: ArrayBuffer | Uint8Array): string | null {
               `<path d="${polygonPath.join(" ")}" fill="${state.brush.fill}" fill-rule="${state.fillRule}"/>`,
             );
             break;
-          case "completed":
-            return null;
           default:
             pathState satisfies never;
         }
