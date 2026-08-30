@@ -22,6 +22,8 @@ type PerBlockMeasureInputs = {
   marginBottoms: number[];
   /** Absolute page X of the active column's content origin. */
   contentLefts: number[];
+  columnIndices: number[];
+  columnCounts: number[];
 };
 
 const SINGLE_COLUMN_LAYOUT: ColumnLayout = { count: 1, gap: 0 };
@@ -71,6 +73,8 @@ export function computePerBlockMeasureInputs({
   const marginRights: number[] = [];
   const marginBottoms: number[] = [];
   const contentLefts: number[] = [];
+  const columnIndices: number[] = [];
+  const columnCounts: number[] = [];
 
   for (let i = 0; i < blocks.length; i++) {
     const config = sectionConfigs[sectionIdx] ?? finalConfig;
@@ -91,6 +95,8 @@ export function computePerBlockMeasureInputs({
     }
     widths.push(activeColumnWidths[columnIndex] ?? activeColumnWidths[0] ?? 0);
     contentLefts.push(activeContentLefts[columnIndex] ?? config.margins.left);
+    columnIndices.push(columnIndex);
+    columnCounts.push(activeColumns.count);
     marginTops.push(config.margins.top);
     pageHeights.push(config.pageSize.h);
     pageWidths.push(config.pageSize.w);
@@ -117,5 +123,7 @@ export function computePerBlockMeasureInputs({
     marginRights,
     marginBottoms,
     contentLefts,
+    columnIndices,
+    columnCounts,
   };
 }

@@ -636,6 +636,8 @@ export function runLayoutPipeline<THfPMs>(
         marginRight: blockMeasureInputs.marginRights,
         marginBottom: blockMeasureInputs.marginBottoms,
         contentLeft: blockMeasureInputs.contentLefts,
+        columnIndex: blockMeasureInputs.columnIndices,
+        columnCount: blockMeasureInputs.columnCounts,
       });
     // Match the historical post-measure suppression timing while keeping the
     // authored flow tree immutable. Layout, painting, and cached artifacts all
@@ -834,6 +836,8 @@ export function runLayoutPipeline<THfPMs>(
             marginRight: blockMeasureInputs.marginRights,
             marginBottom: blockMeasureInputs.marginBottoms,
             contentLeft: blockMeasureInputs.contentLefts,
+            columnIndex: blockMeasureInputs.columnIndices,
+            columnCount: blockMeasureInputs.columnCounts,
           },
           values,
         );

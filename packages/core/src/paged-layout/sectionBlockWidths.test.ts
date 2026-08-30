@@ -64,6 +64,8 @@ describe("section block measurement inputs", () => {
     expect(inputs.marginLefts).toEqual([50, 50, BODY_CONFIG.margins.left]);
     expect(inputs.marginRights).toEqual([50, 50, BODY_CONFIG.margins.right]);
     expect(inputs.contentLefts).toEqual([50, 50, BODY_CONFIG.margins.left]);
+    expect(inputs.columnIndices).toEqual([0, 0, 0]);
+    expect(inputs.columnCounts).toEqual([1, 1, 1]);
   });
 
   test("uses the authored width after a forced break in unequal columns", () => {
@@ -84,6 +86,8 @@ describe("section block measurement inputs", () => {
 
     expect(inputs.widths).toEqual([200, 200, 300]);
     expect(inputs.contentLefts).toEqual([100, 100, 400]);
+    expect(inputs.columnIndices).toEqual([0, 0, 1]);
+    expect(inputs.columnCounts).toEqual([2, 2, 2]);
   });
 
   test("tracks active origins across unequal columns and a page reset", () => {
