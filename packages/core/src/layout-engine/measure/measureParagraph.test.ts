@@ -1626,9 +1626,40 @@ describe("measureParagraph justified shrink tolerance", () => {
         );
 
         expect(finalTokenMeasure.lines).toHaveLength(2);
+        expect(finalTokenMeasure.lines.at(-1)?.justificationShrinkBudgetPx).toBeCloseTo(2.5);
         expect(intermediateTokenMeasure.lines).toHaveLength(3);
+        expect(intermediateTokenMeasure.lines.at(1)?.justificationShrinkBudgetPx).toBeUndefined();
       },
       { charWidth: (char) => (char === "b" ? 0.8 : 1) },
+    );
+  });
+
+  test("wraps an unbreakable paragraph tail beyond its sparse ASCII-space budget", () => {
+    withFakeTextMeasure(
+      () => {
+        const measure = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "justified-list-sparse-final-tail",
+            runs: [
+              { kind: "text", text: "first line" },
+              { kind: "lineBreak" },
+              { kind: "text", text: `${"a".repeat(96)} bbb` },
+            ],
+            attrs: {
+              alignment: "justify",
+              listMarker: "1.",
+              indent: { left: 36, hanging: 18 },
+            },
+          },
+          136,
+        );
+
+        expect(measure.lines).toHaveLength(3);
+        expect(measure.lines.at(1)?.toChar).toBe(97);
+        expect(measure.lines.at(-1)?.justificationShrinkBudgetPx).toBeUndefined();
+      },
+      { charWidth: (char) => (char === "b" ? 1.2 : 1) },
     );
   });
 

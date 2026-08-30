@@ -10,10 +10,6 @@ import { parseXmlDocument } from "../docx/xmlParser";
 import { evaluateFieldInstruction } from "../fields/evaluateField";
 import type { FieldContext } from "../fields/fieldContext";
 import {
-  JUSTIFIED_LIST_FINAL_LINE_MAX_SHRINK_RATIO,
-  supportsJustifiedListFinalLineContraction,
-} from "../layout-engine/justifiedLineFit";
-import {
   getListMarkerInlineWidth,
   getListMarkerVisualOffset,
   resolveListMarkerFont,
@@ -648,11 +644,49 @@ function applyPmPositions(element: HTMLElement, pmStart?: number, pmEnd?: number
 /**
  * Render a text run
  */
-function renderTextRun(
-  run: TextRun,
-  doc: Document,
-  hyperlinkDirection?: typeof LEFT_TO_RIGHT_DIRECTION,
-): HTMLElement {
+type RenderTextRunOptions = {
+  hyperlinkDirection?: typeof LEFT_TO_RIGHT_DIRECTION;
+  contractedWordSpacing?: string;
+};
+
+const NON_COMPRESSIBLE_WHITESPACE_PATTERN = /([^\S ]+)/gu;
+const HAS_NON_COMPRESSIBLE_WHITESPACE_PATTERN = /[^\S ]/u;
+
+type AppendPaintedTextOptions = {
+  host: HTMLElement;
+  text: string;
+  doc: Document;
+  contractedWordSpacing?: string;
+};
+
+function appendPaintedText({
+  host,
+  text,
+  doc,
+  contractedWordSpacing,
+}: AppendPaintedTextOptions): void {
+  if (!contractedWordSpacing || !HAS_NON_COMPRESSIBLE_WHITESPACE_PATTERN.test(text)) {
+    host.textContent = text;
+    return;
+  }
+
+  // CSS word-spacing also reaches fixed separators in some engines. Keep the
+  // host neutral, then opt only segments containing ordinary ASCII spaces
+  // into the contraction measured for this line.
+  host.style.wordSpacing = "0";
+  for (const segment of text.split(NON_COMPRESSIBLE_WHITESPACE_PATTERN)) {
+    if (segment.length === 0) {
+      continue;
+    }
+    const segmentEl = doc.createElement("span");
+    segmentEl.textContent = segment;
+    segmentEl.style.wordSpacing =
+      countCompressibleSpaces(segment) > 0 ? contractedWordSpacing : "0";
+    host.append(segmentEl);
+  }
+}
+
+function renderTextRun(run: TextRun, doc: Document, options?: RenderTextRunOptions): HTMLElement {
   const span = doc.createElement("span");
   span.className = `${PARAGRAPH_CLASS_NAMES.run} ${PARAGRAPH_CLASS_NAMES.text}`;
 
@@ -685,7 +719,7 @@ function renderTextRun(
   if (run.hyperlink && hyperlinkHref !== undefined) {
     const anchor = doc.createElement("a");
     anchor.href = hyperlinkHref;
-    if (hyperlinkDirection || DISPLAYED_URL_PATTERN.test(paintedText.trim())) {
+    if (options?.hyperlinkDirection || DISPLAYED_URL_PATTERN.test(paintedText.trim())) {
       anchor.dir = LEFT_TO_RIGHT_DIRECTION;
     }
     // External links should open in a new tab
@@ -696,7 +730,12 @@ function renderTextRun(
     if (run.hyperlink.tooltip) {
       anchor.title = run.hyperlink.tooltip;
     }
-    anchor.textContent = paintedText;
+    appendPaintedText({
+      host: anchor,
+      text: paintedText,
+      doc,
+      contractedWordSpacing: options?.contractedWordSpacing,
+    });
     // TOC entries opt out of the Hyperlink character style — Word renders
     // them in the paragraph's own colour, no underline. The bridge sets
     // `noDefaultStyle: true` and strips resolved colour/underline; here we
@@ -723,8 +762,12 @@ function renderTextRun(
     }
     span.append(anchor);
   } else {
-    // Set text content
-    span.textContent = paintedText;
+    appendPaintedText({
+      host: span,
+      text: paintedText,
+      doc,
+      contractedWordSpacing: options?.contractedWordSpacing,
+    });
   }
   applyWhitespaceUnderline(span, run);
 
@@ -1218,7 +1261,16 @@ function resolveFieldText(run: FieldRun, context: RenderContext | undefined): st
   });
 }
 
-function renderFieldRun(run: FieldRun, doc: Document, context: RenderContext): HTMLElement {
+type RenderFieldRunOptions = {
+  context: RenderContext;
+  contractedWordSpacing?: string;
+};
+
+function renderFieldRun(
+  run: FieldRun,
+  doc: Document,
+  { context, contractedWordSpacing }: RenderFieldRunOptions,
+): HTMLElement {
   const text = resolveFieldText(run, context);
 
   // Spread the whole FieldRun so every RunFormatting field carries through —
@@ -1233,7 +1285,9 @@ function renderFieldRun(run: FieldRun, doc: Document, context: RenderContext): H
     text,
   };
   if (resolvedRun.forceComplexScript && hasComplexScriptFormatting(resolvedRun)) {
-    return renderTextRun(applyComplexScriptFormatting(resolvedRun, resolvedRun), doc);
+    return renderTextRun(applyComplexScriptFormatting(resolvedRun, resolvedRun), doc, {
+      contractedWordSpacing,
+    });
   }
 
   // A CJK field result is generated text inside one atomic pm range, so the
@@ -1267,12 +1321,12 @@ function renderFieldRun(run: FieldRun, doc: Document, context: RenderContext): H
         },
         segment.script,
       );
-      wrapper.append(renderTextRun(segmentRun, doc));
+      wrapper.append(renderTextRun(segmentRun, doc, { contractedWordSpacing }));
     }
     return wrapper;
   }
 
-  return renderTextRun(resolvedRun, doc);
+  return renderTextRun(resolvedRun, doc, { contractedWordSpacing });
 }
 
 /**
@@ -1378,7 +1432,7 @@ function renderRun(run: Run, doc: Document, context?: RenderContext): HTMLElemen
     return renderLineBreakRun(run, doc);
   }
   if (isFieldRun(run) && context) {
-    return renderFieldRun(run, doc, context);
+    return renderFieldRun(run, doc, { context });
   }
   if (isMathRun(run)) {
     return renderMathRun(run, doc);
@@ -2115,12 +2169,13 @@ export function renderLine(
     }
     return withCursiveJoiners(runEl, run, cursiveJoinerPlan, applyJoinerRunStyles, doc);
   };
+  let contractedWordSpacing: string | undefined;
   const renderLineTextRun = (run: TextRun): HTMLElement => {
     const hyperlinkDirection =
       run.hyperlink && options?.leftToRightDisplayedUrlHyperlinks?.has(run.hyperlink)
         ? LEFT_TO_RIGHT_DIRECTION
         : undefined;
-    const runEl = renderTextRun(run, doc, hyperlinkDirection);
+    const runEl = renderTextRun(run, doc, { hyperlinkDirection, contractedWordSpacing });
     if (collapsedLeadingSpaceRuns.has(run)) {
       runEl.dataset["collapsedLeadingSpaces"] = "true";
     }
@@ -2277,16 +2332,17 @@ export function renderLine(
     const shouldJustify = !options.isLastLine || options.paragraphEndsWithLineBreak;
     const shouldCompressFinalLine =
       options.isLastLine &&
-      supportsJustifiedListFinalLineContraction(block) &&
+      line.justificationShrinkBudgetPx !== undefined &&
       overfullPx > RIGHT_EDGE_EPSILON_PX &&
-      overfullPx <= justifyCapacityPx * JUSTIFIED_LIST_FINAL_LINE_MAX_SHRINK_RATIO &&
+      overfullPx <= line.justificationShrinkBudgetPx &&
       shrinkableSpaces > 0;
 
     if (shouldJustify || shouldCompressFinalLine) {
       if (overfullPx > RIGHT_EDGE_EPSILON_PX && shrinkableSpaces > 0) {
         lineEl.style.textAlign = "left";
         lineEl.style.textAlignLast = "auto";
-        lineEl.style.wordSpacing = `${-overfullPx / shrinkableSpaces}px`;
+        contractedWordSpacing = `${-overfullPx / shrinkableSpaces}px`;
+        lineEl.style.wordSpacing = contractedWordSpacing;
       } else if (hasTabRuns && shrinkableSpaces > 0 && -overfullPx > RIGHT_EDGE_EPSILON_PX) {
         // CSS justification does not expand preserved spaces reliably when a
         // line also contains an inline tab span. The layout engine has already
@@ -2493,7 +2549,9 @@ export function renderLine(
           if (isTextRun(next)) {
             lineEl.append(...withJoiners(renderLineTextRun(next), next));
           } else if (isFieldRun(next) && options?.context) {
-            lineEl.append(renderFieldRun(next, doc, options.context));
+            lineEl.append(
+              renderFieldRun(next, doc, { context: options.context, contractedWordSpacing }),
+            );
           } else if (isImageRun(next)) {
             // Floating images render in dedicated layers — skip here so we
             // don't double-render. Inline images render via getInlineImageRunKey
@@ -2603,7 +2661,10 @@ export function renderLine(
       lineEl.append(runEl);
     } else if (isFieldRun(run) && options?.context) {
       // Render field run with context for PAGE/NUMPAGES substitution
-      const runEl = renderFieldRun(run, doc, options.context);
+      const runEl = renderFieldRun(run, doc, {
+        context: options.context,
+        contractedWordSpacing,
+      });
       lineEl.append(runEl);
       if (!measureText) {
         continue;

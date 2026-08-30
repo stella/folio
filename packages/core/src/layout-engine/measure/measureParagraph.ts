@@ -18,7 +18,9 @@ import { hasCjk, hasComplexScript } from "../../utils/scriptSegments";
 import { getHorizontalScaleFactor } from "../../utils/horizontalScale";
 import { measuredLineAdvance } from "../lineFlow";
 import {
+  calculateJustifiedListFinalLineShrinkBudget,
   JUSTIFIED_LIST_FINAL_LINE_MAX_SHRINK_RATIO,
+  JUSTIFIED_LIST_SPACE_CONTRACTION_RATIO,
   supportsJustifiedListFinalLineContraction,
 } from "../justifiedLineFit";
 import type {
@@ -81,8 +83,6 @@ const JUSTIFY_SHRINK_TOLERANCE_RATIO = 0.016;
 const JUSTIFY_SPACE_CONTRACTION_RATIO = 0.075;
 const JUSTIFY_LIST_MARKER_SPACE_CONTRACTION_RATIO = 0.195;
 const JUSTIFY_DEEP_HANGING_LIST_MARKER_SHRINK_TOLERANCE_RATIO = 0.022;
-// List continuations allow stronger space contraction with bounded total shrink.
-const JUSTIFY_LIST_CONTINUATION_SPACE_CONTRACTION_RATIO = 0.32;
 const JUSTIFY_LITERAL_TAB_CONTINUATION_SHRINK_TOLERANCE_RATIO = 0.017;
 const JUSTIFY_HANGING_TAB_SHRINK_TOLERANCE_RATIO = 0.021;
 const DEFAULT_LIST_HANGING_INDENT_PX = 24;
@@ -678,7 +678,7 @@ function resolveJustifyFitStrategy(
     }
     return {
       type: "space",
-      ratio: JUSTIFY_LIST_CONTINUATION_SPACE_CONTRACTION_RATIO,
+      ratio: JUSTIFIED_LIST_SPACE_CONTRACTION_RATIO,
       maxWidthRatio: JUSTIFY_SHRINK_TOLERANCE_RATIO,
     };
   }
@@ -712,7 +712,7 @@ function resolveFinalLineJustifyFitStrategy(
   if (supportsJustifiedListFinalLineContraction(block)) {
     return {
       type: "space",
-      ratio: JUSTIFY_LIST_CONTINUATION_SPACE_CONTRACTION_RATIO,
+      ratio: JUSTIFIED_LIST_SPACE_CONTRACTION_RATIO,
       maxWidthRatio: JUSTIFIED_LIST_FINAL_LINE_MAX_SHRINK_RATIO,
     };
   }
@@ -1492,8 +1492,15 @@ export function measureParagraph(
   /**
    * Finalize and push the current line to the lines array
    */
-  const finalizeLine = (): void => {
+  const finalizeLine = (isParagraphEnd: boolean = false): void => {
     const finalTypography = calculateLineTypography(currentLine);
+    const justificationShrinkBudgetPx =
+      isParagraphEnd && supportsJustifiedListFinalLineContraction(block)
+        ? calculateJustifiedListFinalLineShrinkBudget({
+            availableWidth: currentLine.availableWidth,
+            compressibleSpaceWidth: currentLine.regularSpaceWidth,
+          })
+        : 0;
 
     const line: MeasuredLine = {
       fromRun: currentLine.fromRun,
@@ -1502,6 +1509,7 @@ export function measureParagraph(
       toChar: currentLine.toChar,
       width: Math.max(0, currentLine.width - currentLine.trailingWhitespaceWidth),
       ...finalTypography,
+      ...(justificationShrinkBudgetPx > 0 ? { justificationShrinkBudgetPx } : {}),
       ...(currentLine.discretionaryHyphen
         ? { discretionaryHyphen: currentLine.discretionaryHyphen }
         : {}),
@@ -2209,7 +2217,7 @@ export function measureParagraph(
   }
 
   // Finalize the last line
-  finalizeLine();
+  finalizeLine(true);
 
   // Calculate total height — include floatSkipBefore from lines bumped past
   // floats so containers stay sized correctly.

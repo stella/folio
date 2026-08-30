@@ -41,6 +41,7 @@ class FakeElement {
   className = "";
   dataset: Record<string, string> = {};
   innerHTML = "";
+  textContent = "";
   dir = "";
   style: Record<string, string> = createFakeStyle();
   children: FakeElement[] = [];
@@ -204,6 +205,7 @@ describe("Issue #868 — justify first line to full content width on indented pa
       ascent: 10,
       descent: 3,
       lineHeight: 14,
+      justificationShrinkBudgetPx: 2,
     });
     const options = {
       availableWidth: 100,
@@ -222,6 +224,39 @@ describe("Issue #868 — justify first line to full content width on indented pa
     expect(beyondContractionLimit.style.wordSpacing).toBeUndefined();
     expect(underfull.style.width).toBeUndefined();
     expect(underfull.style.wordSpacing).toBeUndefined();
+  });
+
+  test("contracts only measured ASCII spaces when the final line also contains NBSP", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "p-final-line-fixed-space",
+      runs: [{ kind: "text", text: "alpha beta\u00a0gamma" }],
+      attrs: { alignment: "justify", listMarker: "1." },
+    };
+    const line: MeasuredLine = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 0,
+      toChar: 16,
+      width: 102,
+      ascent: 10,
+      descent: 3,
+      lineHeight: 14,
+      justificationShrinkBudgetPx: 2,
+    };
+
+    const lineEl = renderLine(block, line, "justify", fakeDocument, {
+      availableWidth: 100,
+      isLastLine: true,
+      isFirstLine: false,
+      paragraphEndsWithLineBreak: false,
+    });
+
+    expect(lineEl.style.wordSpacing).toBe("-2px");
+    const paintedRun = (lineEl as unknown as FakeElement).children.at(0);
+    expect(paintedRun?.children.at(0)?.style.wordSpacing).toBe("-2px");
+    expect(paintedRun?.children.at(1)?.textContent).toBe("\u00a0");
+    expect(paintedRun?.children.at(1)?.style.wordSpacing).toBe("0");
   });
 
   test("counts resolved field text when compressing an overfull line", () => {
