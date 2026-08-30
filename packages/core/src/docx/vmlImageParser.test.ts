@@ -471,6 +471,130 @@ describe("VML w:pict inline images", () => {
     expect(svg).toContain("<rect");
   });
 
+  test("renders nested freeform paths in their authored local coordinate spaces", async () => {
+    const doc = await parseDocx(
+      await pictDocx({
+        runXml: `<w:pict><v:group style="position:absolute;margin-left:10pt;margin-top:20pt;width:100pt;height:100pt;z-index:1;mso-position-horizontal-relative:page;mso-position-vertical-relative:page" coordorigin="0,0" coordsize="100,100"><v:group style="left:10;top:20;width:40;height:20" coordorigin="100,200" coordsize="200,100"><v:shape style="left:100;top:200;width:200;height:100" coordsize="10,10" path="m5,l10,,10,10r-10,e" fillcolor="#e60000" stroked="f"/><v:shape style="left:150;top:225;width:50;height:50" coordsize="10,10" path="m0,0l10,0,10,10,0,10e" stroked="f"/></v:group><v:rect style="left:0;top:0;width:100;height:100" filled="f" stroked="f"/></v:group></w:pict>`,
+        imageRel: false,
+        media: false,
+      }),
+      { preloadFonts: false },
+    );
+
+    const drawing = firstDrawing(doc.package.document.content.at(0));
+    expect(drawing?.image.size).toEqual({ width: 1_270_000, height: 1_270_000 });
+    expect(drawing?.image.wrap.type).toBe("inFront");
+    expect(drawing?.image.position).toEqual({
+      horizontal: { relativeTo: "page", posOffset: 127_000 },
+      vertical: { relativeTo: "page", posOffset: 254_000 },
+    });
+    const svg = decodeURIComponent(drawing?.image.src?.split(",").at(1) ?? "");
+    expect(svg).toContain('viewBox="0 0 100 100"');
+    expect(svg).toContain('transform="matrix(0.2 0 0 0.2 -10 -20)"');
+    expect(svg).toContain('transform="matrix(20 0 0 10 100 200)"');
+    expect(svg).toContain('d="M 5 0 L 10 0 L 10 10 L 0 10"');
+    const redPath = svg.indexOf('fill="#e60000"');
+    const whitePath = svg.indexOf('fill="white"');
+    expect(redPath).toBeGreaterThan(-1);
+    expect(whitePath).toBeGreaterThan(redPath);
+    expect(svg).not.toContain("<rect");
+    expect(drawing?.rawXml).toContain('path="m5,l10,,10,10r-10,e"');
+  });
+
+  test("treats the VML end command as distinct from closing a stroked path", async () => {
+    const doc = await parseDocx(
+      await pictDocx({
+        runXml: `<w:pict><v:group style="width:10pt;height:10pt" coordsize="10,10"><v:shape style="left:0;top:0;width:10;height:10" coordsize="10,10" path="m0,0l10,0e" filled="f"/></v:group></w:pict>`,
+        imageRel: false,
+        media: false,
+      }),
+      { preloadFonts: false },
+    );
+
+    const drawing = firstDrawing(doc.package.document.content.at(0));
+    const svg = decodeURIComponent(drawing?.image.src?.split(",").at(1) ?? "");
+    expect(svg).toContain('d="M 0 0 L 10 0"');
+    expect(svg).toContain('fill="none" stroke="black"');
+    expect(svg).not.toContain(" Z");
+  });
+
+  test("skips non-painting and text-box descendants without hiding valid siblings", async () => {
+    const doc = await parseDocx(
+      await pictDocx({
+        runXml: `<w:pict><v:group style="width:10pt;height:10pt" coordsize="10,10"><v:shape><v:textbox><w:txbxContent><w:p><w:r><w:t>Owned elsewhere</w:t></w:r></w:p></w:txbxContent></v:textbox></v:shape><v:shape style="left:0;top:0;width:10;height:10" path="m0,0l10,0,10,10e" filled="f" stroked="f"/><v:shape style="left:0;top:0;width:10;height:10" coordsize="10,10" path="m0,0l10,0,10,10e" fillcolor="red" stroked="f"/></v:group></w:pict>`,
+        imageRel: false,
+        media: false,
+      }),
+      { preloadFonts: false },
+    );
+
+    const drawing = firstDrawing(doc.package.document.content.at(0));
+    const svg = decodeURIComponent(drawing?.image.src?.split(",").at(1) ?? "");
+    expect(svg.match(/<path\b/gu)).toHaveLength(1);
+    expect(svg).not.toContain("Owned elsewhere");
+  });
+
+  test("fails closed for malformed or unsupported freeform path commands", async () => {
+    const paths = [
+      "m0,0l1e",
+      "m0,0l1,2,e",
+      "l0,0e",
+      "m0,0c1,1e",
+      "m0,0l1000001,0e",
+      "m0,0l1,1em2,2e",
+    ];
+    for (const path of paths) {
+      const doc = await parseDocx(
+        await pictDocx({
+          runXml: `<w:pict><v:group style="width:10pt;height:10pt" coordsize="10,10"><v:shape style="left:0;top:0;width:10;height:10" coordsize="10,10" path="${path}"/></v:group></w:pict>`,
+          imageRel: false,
+          media: false,
+        }),
+        { preloadFonts: false },
+      );
+
+      expect(firstDrawing(doc.package.document.content.at(0))).toBeUndefined();
+    }
+  });
+
+  test("enforces preview limits across nested VML groups", async () => {
+    let nested = `<v:shape style="left:0;top:0;width:1;height:1" coordsize="1,1" path="m0,0l1,1e"/>`;
+    for (let depth = 0; depth < 17; depth += 1) {
+      nested = `<v:group style="left:0;top:0;width:1;height:1" coordsize="1,1">${nested}</v:group>`;
+    }
+    const depthDoc = await parseDocx(
+      await pictDocx({
+        runXml: `<w:pict><v:group style="width:10pt;height:10pt" coordsize="1,1">${nested}</v:group></w:pict>`,
+        imageRel: false,
+        media: false,
+      }),
+      { preloadFonts: false },
+    );
+    expect(firstDrawing(depthDoc.package.document.content.at(0))).toBeUndefined();
+
+    const rectangles = `<v:rect style="left:0;top:0;width:1;height:1"/>`.repeat(256);
+    const elementDoc = await parseDocx(
+      await pictDocx({
+        runXml: `<w:pict><v:group style="width:10pt;height:10pt" coordsize="1,1"><v:group style="left:0;top:0;width:1;height:1" coordsize="1,1">${rectangles}</v:group></v:group></w:pict>`,
+        imageRel: false,
+        media: false,
+      }),
+      { preloadFonts: false },
+    );
+    expect(firstDrawing(elementDoc.package.document.content.at(0))).toBeUndefined();
+
+    const pathPoints = Array.from({ length: 20_000 }, () => "1,1").join(",");
+    const pathDoc = await parseDocx(
+      await pictDocx({
+        runXml: `<w:pict><v:group style="width:10pt;height:10pt" coordsize="1,1"><v:shape style="left:0;top:0;width:1;height:1" coordsize="1,1" path="m0,0l${pathPoints}e"/></v:group></w:pict>`,
+        imageRel: false,
+        media: false,
+      }),
+      { preloadFonts: false },
+    );
+    expect(firstDrawing(pathDoc.package.document.content.at(0))).toBeUndefined();
+  });
+
   test("skips solid-shape previews with unsafe dimensions", async () => {
     const doc = await parseDocx(
       await pictDocx({

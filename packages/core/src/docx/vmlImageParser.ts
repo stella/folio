@@ -44,141 +44,26 @@ import {
   elementToXml,
   findAllDeep,
   findChild,
-  findDeep,
   getChildElements,
   getAttribute,
   getLocalName,
   type XmlElement,
 } from "./xmlParser";
+import {
+  isValidVmlPreviewDimension,
+  parseVmlNumber,
+  parseVmlStyle,
+  renderStandaloneVmlPreview,
+  renderVmlGroupPreview,
+  vmlCssLengthToPx,
+  vmlSvgDataUrl,
+  type VmlPreviewResult,
+} from "./vmlPreview";
 
-const MAX_VML_PREVIEW_SHAPES = 256;
-const MAX_VML_PREVIEW_DIMENSION_PX = 20_000;
-const MAX_VML_SVG_CHARACTERS = 1_000_000;
-const SAFE_VML_COLORS = new Set([
-  "black",
-  "white",
-  "red",
-  "green",
-  "blue",
-  "yellow",
-  "gray",
-  "grey",
-  "silver",
-  "maroon",
-  "purple",
-  "fuchsia",
-  "lime",
-  "olive",
-  "navy",
-  "teal",
-  "aqua",
-]);
 const VML_POSITION_ABSOLUTE = "absolute";
 const IMAGE_WRAP_INLINE = "inline";
 const IMAGE_WRAP_BEHIND = "behind";
 const IMAGE_WRAP_IN_FRONT = "inFront";
-
-/**
- * Convert a CSS length (pt/in/px/cm/mm/pc, default px) to pixels. Units are
- * matched case-insensitively (`2IN`, `2Pt` are valid VML). The numeric part
- * must be a single well-formed decimal, so malformed input like `1.2.3` is
- * rejected rather than truncated to `1.2`.
- */
-function cssLengthToPx(raw: string | undefined): number | undefined {
-  if (!raw) {
-    return undefined;
-  }
-  const match = /^(?<amount>-?(?:\d+(?:\.\d+)?|\.\d+))\s*(?<unit>pt|in|px|cm|mm|pc)?$/iu.exec(
-    raw.trim(),
-  );
-  const amountText = match?.groups?.["amount"];
-  if (amountText === undefined) {
-    return undefined;
-  }
-  const value = Number.parseFloat(amountText);
-  if (!Number.isFinite(value)) {
-    return undefined;
-  }
-  switch (match?.groups?.["unit"]?.toLowerCase()) {
-    case "pt":
-      return (value / 72) * 96;
-    case "in":
-      return value * 96;
-    case "cm":
-      return (value / 2.54) * 96;
-    case "mm":
-      return (value / 25.4) * 96;
-    case "pc":
-      return (value / 6) * 96;
-    case "px":
-    case undefined:
-      return value;
-    default:
-      return undefined;
-  }
-}
-
-const PROTOTYPE_POLLUTION_KEYS = new Set(["__proto__", "constructor", "prototype"]);
-
-/** Read a `style="k1:v1;k2:v2"` attribute into a lowercased key/value record. */
-function parseStyleAttr(style: string | null): Record<string, string> {
-  // Null prototype: the style string is attacker-controlled when the DOCX is
-  // untrusted, so the record must not inherit from (or shadow) Object.prototype.
-  const out: Record<string, string> = Object.create(null);
-  if (!style) {
-    return out;
-  }
-  for (const decl of style.split(";")) {
-    const colon = decl.indexOf(":");
-    if (colon < 0) {
-      continue;
-    }
-    const key = decl.slice(0, colon).trim().toLowerCase();
-    const value = decl.slice(colon + 1).trim();
-    // Skip keys that would pollute Object.prototype — the style string is
-    // attacker-controlled when the DOCX is untrusted.
-    if (!key || PROTOTYPE_POLLUTION_KEYS.has(key)) {
-      continue;
-    }
-    out[key] = value;
-  }
-  return out;
-}
-
-const finiteNumber = (raw: string | null | undefined): number | undefined => {
-  if (!raw || !/^-?(?:\d+(?:\.\d+)?|\.\d+)$/u.test(raw.trim())) {
-    return undefined;
-  }
-  const value = Number.parseFloat(raw);
-  return Number.isFinite(value) ? value : undefined;
-};
-
-const coordinatePair = (raw: string | null): { first: number; second: number } | undefined => {
-  const [firstRaw, secondRaw, extra] = raw?.split(",").map((part) => part.trim()) ?? [];
-  if (extra !== undefined) {
-    return undefined;
-  }
-  const first = finiteNumber(firstRaw);
-  const second = finiteNumber(secondRaw);
-  return first === undefined || second === undefined ? undefined : { first, second };
-};
-
-const safeColor = (raw: string | null, fallback: string): string => {
-  const normalized = raw?.trim().toLowerCase();
-  if (!normalized) {
-    return fallback;
-  }
-  if (SAFE_VML_COLORS.has(normalized)) {
-    return normalized;
-  }
-  if (/^#[0-9a-f]{3}(?:[0-9a-f]{3})?$/u.test(normalized)) {
-    return normalized;
-  }
-  return /^[0-9a-f]{6}$/u.test(normalized) ? `#${normalized}` : fallback;
-};
-
-const validPreviewDimension = (value: number | undefined): value is number =>
-  value !== undefined && value > 0 && value <= MAX_VML_PREVIEW_DIMENSION_PX;
 
 const pixelsToSafeEmu = (pixels: number): number | undefined => {
   const emu = pixelsToEmu(pixels);
@@ -240,9 +125,9 @@ const vmlImageLayout = (
     return { wrap: { type: IMAGE_WRAP_INLINE } };
   }
 
-  const leftPx = cssLengthToPx(style["margin-left"] ?? style["left"]) ?? 0;
-  const topPx = cssLengthToPx(style["margin-top"] ?? style["top"]) ?? 0;
-  const zIndex = finiteNumber(style["z-index"]);
+  const leftPx = vmlCssLengthToPx(style["margin-left"] ?? style["left"]) ?? 0;
+  const topPx = vmlCssLengthToPx(style["margin-top"] ?? style["top"]) ?? 0;
+  const zIndex = parseVmlNumber(style["z-index"]);
   return {
     wrap: {
       type: zIndex !== undefined && zIndex < 0 ? IMAGE_WRAP_BEHIND : IMAGE_WRAP_IN_FRONT,
@@ -260,23 +145,6 @@ const vmlImageLayout = (
   };
 };
 
-const svgDataUrl = (svg: string): string | undefined =>
-  svg.length <= MAX_VML_SVG_CHARACTERS
-    ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
-    : undefined;
-
-const vmlShapeSvg = (shape: XmlElement, width: number, height: number, x = 0, y = 0): string => {
-  const fill = safeColor(getAttribute(shape, null, "fillcolor"), "white");
-  const stroked = getAttribute(shape, null, "stroked")?.toLowerCase() !== "f";
-  const stroke = stroked ? safeColor(getAttribute(shape, null, "strokecolor"), "black") : "none";
-  const localName = getLocalName(shape.name ?? "");
-  if (localName === "oval") {
-    return `<ellipse cx="${x + width / 2}" cy="${y + height / 2}" rx="${width / 2}" ry="${height / 2}" fill="${fill}" stroke="${stroke}"/>`;
-  }
-  const radius = localName === "roundrect" ? Math.min(width, height) * 0.1 : 0;
-  return `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="${radius}" fill="${fill}" stroke="${stroke}"/>`;
-};
-
 const previewImage = (
   pictElement: XmlElement,
   svg: string,
@@ -285,15 +153,15 @@ const previewImage = (
   style: Record<string, string>,
   rootXmlns: Record<string, string>,
 ): DrawingContent | null => {
-  const src = svgDataUrl(svg);
+  const src = vmlSvgDataUrl(svg);
   if (!src) {
     return null;
   }
-  const leftPx = cssLengthToPx(style["margin-left"] ?? style["left"]) ?? 0;
-  const topPx = cssLengthToPx(style["margin-top"] ?? style["top"]) ?? 0;
+  const leftPx = vmlCssLengthToPx(style["margin-left"] ?? style["left"]) ?? 0;
+  const topPx = vmlCssLengthToPx(style["margin-top"] ?? style["top"]) ?? 0;
   const horizontalRelative = style["mso-position-horizontal-relative"] === "page";
   const verticalRelative = style["mso-position-vertical-relative"] === "page";
-  const zIndex = finiteNumber(style["z-index"]);
+  const zIndex = parseVmlNumber(style["z-index"]);
   const image: Image = {
     type: "image",
     rId: "",
@@ -320,85 +188,27 @@ const previewImage = (
   };
 };
 
-const parseStandaloneShapePreview = (
+const previewDrawing = (
   pictElement: XmlElement,
-  shape: XmlElement,
+  preview: VmlPreviewResult,
   rootXmlns: Record<string, string>,
 ): DrawingContent | null => {
-  // A VML text box is an editable document shape, not a preview image. Its
-  // content is owned by paragraphTextBoxEnrichment; rendering it here as a
-  // synthetic SVG would materialize the same OOXML object twice.
-  if (findDeep(shape, "v", "textbox")) {
-    return null;
+  switch (preview.type) {
+    case "rendered":
+      return previewImage(
+        pictElement,
+        preview.svg,
+        preview.widthPx,
+        preview.heightPx,
+        preview.style,
+        rootXmlns,
+      );
+    case "empty":
+    case "invalid":
+      return null;
+    default:
+      return preview satisfies never;
   }
-  const style = parseStyleAttr(getAttribute(shape, null, "style"));
-  const widthPx = cssLengthToPx(style["width"]);
-  const heightPx = cssLengthToPx(style["height"]);
-  if (!validPreviewDimension(widthPx) || !validPreviewDimension(heightPx)) {
-    return null;
-  }
-  const content = vmlShapeSvg(shape, widthPx, heightPx);
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${widthPx} ${heightPx}" width="${widthPx}" height="${heightPx}">${content}</svg>`;
-  return previewImage(pictElement, svg, widthPx, heightPx, style, rootXmlns);
-};
-
-const parseGroupPreview = (
-  pictElement: XmlElement,
-  group: XmlElement,
-  rootXmlns: Record<string, string>,
-): DrawingContent | null => {
-  const style = parseStyleAttr(getAttribute(group, null, "style"));
-  const widthPx = cssLengthToPx(style["width"]);
-  const heightPx = cssLengthToPx(style["height"]);
-  if (!validPreviewDimension(widthPx) || !validPreviewDimension(heightPx)) {
-    return null;
-  }
-  const origin = coordinatePair(getAttribute(group, null, "coordorigin")) ?? {
-    first: 0,
-    second: 0,
-  };
-  const size = coordinatePair(getAttribute(group, null, "coordsize")) ?? {
-    first: widthPx,
-    second: heightPx,
-  };
-  if (size.first <= 0 || size.second <= 0) {
-    return null;
-  }
-  const content = getChildElements(group)
-    .slice(0, MAX_VML_PREVIEW_SHAPES)
-    .map((child) => {
-      const localName = getLocalName(child.name ?? "");
-      if (findDeep(child, "v", "textbox")) {
-        return "";
-      }
-      if (localName === "line") {
-        const from = coordinatePair(getAttribute(child, null, "from"));
-        const to = coordinatePair(getAttribute(child, null, "to"));
-        if (!from || !to) {
-          return "";
-        }
-        const stroke = safeColor(getAttribute(child, null, "strokecolor"), "black");
-        return `<line x1="${from.first}" y1="${from.second}" x2="${to.first}" y2="${to.second}" stroke="${stroke}"/>`;
-      }
-      if (localName !== "rect" && localName !== "roundrect" && localName !== "oval") {
-        return "";
-      }
-      const childStyle = parseStyleAttr(getAttribute(child, null, "style"));
-      const x = finiteNumber(childStyle["left"]);
-      const y = finiteNumber(childStyle["top"]);
-      const width = finiteNumber(childStyle["width"]);
-      const height = finiteNumber(childStyle["height"]);
-      if (x === undefined || y === undefined || width === undefined || height === undefined) {
-        return "";
-      }
-      return vmlShapeSvg(child, width, height, x, y);
-    })
-    .join("");
-  if (!content) {
-    return null;
-  }
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${origin.first} ${origin.second} ${size.first} ${size.second}" width="${widthPx}" height="${heightPx}">${content}</svg>`;
-  return previewImage(pictElement, svg, widthPx, heightPx, style, rootXmlns);
 };
 
 /**
@@ -464,14 +274,14 @@ export function parseVmlImageContent(
       media ?? undefined,
     );
 
-    const shapeStyle = parseStyleAttr(getAttribute(shape, null, "style"));
-    const widthPx = cssLengthToPx(shapeStyle["width"]);
-    const heightPx = cssLengthToPx(shapeStyle["height"]);
+    const shapeStyle = parseVmlStyle(getAttribute(shape, null, "style"));
+    const widthPx = vmlCssLengthToPx(shapeStyle["width"]);
+    const heightPx = vmlCssLengthToPx(shapeStyle["height"]);
     const isEmbeddedObject = getLocalName(pictElement.name ?? "") === "object";
     if (
       isEmbeddedObject &&
-      ((widthPx !== undefined && !validPreviewDimension(widthPx)) ||
-        (heightPx !== undefined && !validPreviewDimension(heightPx)))
+      ((widthPx !== undefined && !isValidVmlPreviewDimension(widthPx)) ||
+        (heightPx !== undefined && !isValidVmlPreviewDimension(heightPx)))
     ) {
       continue;
     }
@@ -516,14 +326,14 @@ export function parseVmlImageContent(
   for (const child of getChildElements(pictElement)) {
     const localName = getLocalName(child.name ?? "");
     if (localName === "group") {
-      const preview = parseGroupPreview(pictElement, child, rootXmlns);
+      const preview = previewDrawing(pictElement, renderVmlGroupPreview(child), rootXmlns);
       if (preview) {
         return preview;
       }
       continue;
     }
     if (localName === "rect" || localName === "roundrect" || localName === "oval") {
-      const preview = parseStandaloneShapePreview(pictElement, child, rootXmlns);
+      const preview = previewDrawing(pictElement, renderStandaloneVmlPreview(child), rootXmlns);
       if (preview) {
         return preview;
       }
