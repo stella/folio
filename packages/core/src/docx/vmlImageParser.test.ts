@@ -17,6 +17,7 @@ import type { DrawingContent, Paragraph, Run, Table } from "../types/document";
 import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import { repackDocx, validateDocx } from "./rezip";
+import { enforcePackageVmlPreviewBudget } from "./vmlPreview";
 
 const XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 const ONE_PIXEL_PNG_BASE64 =
@@ -516,6 +517,44 @@ describe("VML w:pict inline images", () => {
     expect(svg).toContain('d="M 0 0 L 10 0"');
     expect(svg).toContain('fill="none" stroke="black"');
     expect(svg).not.toContain(" Z");
+  });
+
+  test("renders multiple subpaths before the VML end command", async () => {
+    const doc = await parseDocx(
+      await pictDocx({
+        runXml: `<w:pict><v:group style="width:10pt;height:10pt" coordsize="10,10"><v:shape style="left:0;top:0;width:10;height:10" coordsize="10,10" path="m0,0l10,0m2,2l2,8e" stroked="f"/></v:group></w:pict>`,
+        imageRel: false,
+        media: false,
+      }),
+      { preloadFonts: false },
+    );
+
+    const drawing = firstDrawing(doc.package.document.content.at(0));
+    const svg = decodeURIComponent(drawing?.image.src?.split(",").at(1) ?? "");
+    expect(svg).toContain('d="M 0 0 L 10 0 M 2 2 L 2 8"');
+  });
+
+  test("bounds retained generated previews across a package model", () => {
+    const first = {
+      type: "image",
+      filename: "vml-shape-preview.svg",
+      src: "123456",
+    };
+    const second = {
+      type: "image",
+      filename: "vml-shape-preview.svg",
+      src: "123456",
+    };
+    const model = {
+      first: { image: first, rawXml: '<w:pict id="first"/>' },
+      second: { image: second, rawXml: '<w:pict id="second"/>' },
+    };
+
+    enforcePackageVmlPreviewBudget(model, 10);
+
+    expect(first.src).toBe("123456");
+    expect(second.src).toBeUndefined();
+    expect(model.second.rawXml).toBe('<w:pict id="second"/>');
   });
 
   test("skips non-painting and text-box descendants without hiding valid siblings", async () => {

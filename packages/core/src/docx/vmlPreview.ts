@@ -13,6 +13,7 @@ const MAX_VML_PREVIEW_PATH_POINTS = 20_000;
 const MAX_VML_PREVIEW_COORDINATE = 1_000_000;
 const MAX_VML_PREVIEW_DIMENSION_PX = 20_000;
 const MAX_VML_SVG_CHARACTERS = 1_000_000;
+const MAX_PACKAGE_VML_PREVIEW_CHARACTERS = 8 * 1024 * 1024;
 const SAFE_VML_COLORS = new Set([
   "black",
   "white",
@@ -71,12 +72,12 @@ type CoordinateViewport = CoordinatePair & {
 type PathState =
   | { type: "idle" }
   | {
-      type: "positioned";
+      type: "building";
       x: number;
       y: number;
       commands: string[];
+      hasLine: boolean;
     }
-  | { type: "drawing"; x: number; y: number; commands: string[] }
   | { type: "ended-empty" }
   | { type: "ended-painted"; commands: string[] };
 
@@ -291,23 +292,71 @@ const consumePathPoint = (budget: PreviewBudget): boolean => {
   return true;
 };
 
-const pathArgumentPairs = (raw: string): CoordinatePair[] | undefined => {
-  const parts = raw.split(",").map((part) => part.trim());
-  if (parts.length === 0 || parts.length % 2 !== 0) {
+const parsePathCoordinate = (raw: string): number | undefined => {
+  const trimmed = raw.trim();
+  const value = trimmed === "" ? 0 : parseVmlNumber(trimmed);
+  return validCoordinate(value) ? value : undefined;
+};
+
+const parseMovePair = (raw: string, budget: PreviewBudget): CoordinatePair | undefined => {
+  const separator = raw.indexOf(",");
+  if (separator < 0 || raw.indexOf(",", separator + 1) >= 0) {
     return undefined;
   }
-  const pairs: CoordinatePair[] = [];
-  for (let index = 0; index < parts.length; index += 2) {
-    const xRaw = parts.at(index);
-    const yRaw = parts.at(index + 1);
-    const x = xRaw === "" ? 0 : parseVmlNumber(xRaw);
-    const y = yRaw === "" ? 0 : parseVmlNumber(yRaw);
-    if (!validCoordinate(x) || !validCoordinate(y)) {
+  const x = parsePathCoordinate(raw.slice(0, separator));
+  const y = parsePathCoordinate(raw.slice(separator + 1));
+  return x !== undefined && y !== undefined && consumePathPoint(budget) ? { x, y } : undefined;
+};
+
+type AppendLinePairsOptions = {
+  budget: PreviewBudget;
+  commands: string[];
+  relative: boolean;
+  raw: string;
+  startX: number;
+  startY: number;
+};
+
+const appendLinePairs = ({
+  raw,
+  budget,
+  commands,
+  relative,
+  startX,
+  startY,
+}: AppendLinePairsOptions): CoordinatePair | undefined => {
+  let fieldStart = 0;
+  let pendingX: number | undefined;
+  let x = startX;
+  let y = startY;
+  let pairCount = 0;
+  for (let offset = 0; offset <= raw.length; offset += 1) {
+    if (offset < raw.length && raw.charAt(offset) !== ",") {
+      continue;
+    }
+    const value = parsePathCoordinate(raw.slice(fieldStart, offset));
+    if (value === undefined) {
       return undefined;
     }
-    pairs.push({ x, y });
+    if (pendingX === undefined) {
+      pendingX = value;
+    } else {
+      x = relative ? x + pendingX : pendingX;
+      y = relative ? y + value : value;
+      if (
+        !validCoordinate(x) ||
+        !validCoordinate(y) ||
+        !consumePathPoint(budget) ||
+        !appendPathCommand(commands, `L ${x} ${y}`, budget)
+      ) {
+        return undefined;
+      }
+      pendingX = undefined;
+      pairCount += 1;
+    }
+    fieldStart = offset + 1;
   }
-  return pairs;
+  return pendingX === undefined && pairCount > 0 ? { x, y } : undefined;
 };
 
 const appendPathCommand = (commands: string[], command: string, budget: PreviewBudget): boolean => {
@@ -347,60 +396,56 @@ const renderVmlPath = (raw: string, budget: PreviewBudget): PathResult => {
 
     switch (command) {
       case "m": {
-        const pairs = pathArgumentPairs(rawArguments);
-        const point = pairs?.at(0);
-        if (state.type !== "idle" || pairs?.length !== 1 || !point || !consumePathPoint(budget)) {
+        const point = parseMovePair(rawArguments, budget);
+        if (!point) {
           return INVALID_RESULT;
         }
-        const commands: string[] = [];
+        const commands = state.type === "building" ? state.commands : [];
+        const hasLine = state.type === "building" && state.hasLine;
         if (!appendPathCommand(commands, `M ${point.x} ${point.y}`, budget)) {
           return INVALID_RESULT;
         }
         state = {
-          type: "positioned",
+          type: "building",
           x: point.x,
           y: point.y,
           commands,
+          hasLine,
         };
         break;
       }
       case "l":
       case "r": {
-        if (state.type !== "positioned" && state.type !== "drawing") {
+        if (state.type !== "building") {
           return INVALID_RESULT;
         }
-        const pairs = pathArgumentPairs(rawArguments);
-        if (!pairs) {
+        const endPoint = appendLinePairs({
+          raw: rawArguments,
+          budget,
+          commands: state.commands,
+          relative: command === "r",
+          startX: state.x,
+          startY: state.y,
+        });
+        if (!endPoint) {
           return INVALID_RESULT;
-        }
-        let x: number = state.x;
-        let y: number = state.y;
-        for (const point of pairs) {
-          x = command === "r" ? x + point.x : point.x;
-          y = command === "r" ? y + point.y : point.y;
-          if (!validCoordinate(x) || !validCoordinate(y) || !consumePathPoint(budget)) {
-            return INVALID_RESULT;
-          }
-          if (!appendPathCommand(state.commands, `L ${x} ${y}`, budget)) {
-            return INVALID_RESULT;
-          }
         }
         state = {
-          type: "drawing",
-          x,
-          y,
+          type: "building",
+          x: endPoint.x,
+          y: endPoint.y,
           commands: state.commands,
+          hasLine: true,
         };
         break;
       }
       case "e": {
-        if (rawArguments || state.type === "idle") {
+        if (rawArguments || state.type !== "building") {
           return INVALID_RESULT;
         }
-        state =
-          state.type === "positioned"
-            ? { type: "ended-empty" }
-            : { type: "ended-painted", commands: state.commands };
+        state = state.hasLine
+          ? { type: "ended-painted", commands: state.commands }
+          : { type: "ended-empty" };
         break;
       }
       default:
@@ -414,8 +459,7 @@ const renderVmlPath = (raw: string, budget: PreviewBudget): PathResult => {
     case "ended-empty":
       return EMPTY_RESULT;
     case "idle":
-    case "positioned":
-    case "drawing":
+    case "building":
       return INVALID_RESULT;
     default:
       return state satisfies never;
@@ -620,4 +664,55 @@ export const renderVmlGroupPreview = (group: XmlElement): VmlPreviewResult => {
     return INVALID_RESULT;
   }
   return { type: "rendered", svg, widthPx, heightPx, style };
+};
+
+/** Bound retained synthetic VML previews while preserving their raw replay nodes. */
+export const enforcePackageVmlPreviewBudget = (
+  root: unknown,
+  maxCharacters = MAX_PACKAGE_VML_PREVIEW_CHARACTERS,
+): void => {
+  let remainingCharacters = Math.max(0, maxCharacters);
+  const visited = new WeakSet<object>();
+
+  const visit = (value: unknown): void => {
+    if (value === null || typeof value !== "object" || visited.has(value)) {
+      return;
+    }
+    visited.add(value);
+    if (value instanceof ArrayBuffer || ArrayBuffer.isView(value)) {
+      return;
+    }
+    if (value instanceof Map) {
+      for (const child of value.values()) {
+        visit(child);
+      }
+      return;
+    }
+    if (Array.isArray(value)) {
+      for (const child of value) {
+        visit(child);
+      }
+      return;
+    }
+    if (
+      "type" in value &&
+      value.type === "image" &&
+      "filename" in value &&
+      value.filename === "vml-shape-preview.svg" &&
+      "src" in value &&
+      typeof value.src === "string"
+    ) {
+      if (value.src.length <= remainingCharacters) {
+        remainingCharacters -= value.src.length;
+      } else {
+        remainingCharacters = 0;
+        delete value.src;
+      }
+    }
+    for (const child of Object.values(value)) {
+      visit(child);
+    }
+  };
+
+  visit(root);
 };

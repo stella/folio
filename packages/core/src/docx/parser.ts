@@ -60,6 +60,7 @@ import {
 } from "./modelValidation";
 import { extractMetafileRaster, isMetafileMimeType } from "./metafileRaster";
 import { renderEmfSvg } from "./metafileSvg";
+import { enforcePackageVmlPreviewBudget } from "./vmlPreview";
 import { parseNumbering } from "./numberingParser";
 import { parseFontTable } from "./fontTableParser";
 import type { NumberingMap } from "./numberingParser";
@@ -438,6 +439,7 @@ export async function parseDocx(input: DocxInput, options: ParseOptions = {}): P
       ...(templateVariables !== undefined ? { templateVariables } : {}),
       ...(requiredFonts.length > 0 ? { requiredFonts } : {}),
     };
+    enforcePackageVmlPreviewBudget(document.package);
 
     const validation = validateFolioDocumentModel(document);
     const parsedCompleteModel = parseHeadersFooters && parseNotes;
