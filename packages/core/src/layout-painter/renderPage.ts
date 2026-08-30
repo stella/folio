@@ -2708,8 +2708,14 @@ function runContentKey(run: Run): string {
   if (run.fontFamily) {
     parts.push(`ff:${run.fontFamily}`);
   }
+  if (run.alternateFontFamily) {
+    parts.push(`ff-alt:${run.alternateFontFamily}`);
+  }
   if (run.complexScriptFontFamily) {
     parts.push(`cs:${run.complexScriptFontFamily}`);
+  }
+  if (run.complexScriptAlternateFontFamily) {
+    parts.push(`cs-alt:${run.complexScriptAlternateFontFamily}`);
   }
   if (run.complexScriptFontSize !== undefined) {
     parts.push(`cs-size:${run.complexScriptFontSize}`);
@@ -2725,6 +2731,9 @@ function runContentKey(run: Run): string {
   }
   if (run.eastAsiaFontFamily) {
     parts.push(`ea:${run.eastAsiaFontFamily}`);
+  }
+  if (run.eastAsiaAlternateFontFamily) {
+    parts.push(`ea-alt:${run.eastAsiaAlternateFontFamily}`);
   }
   if (run.fontSize !== undefined) {
     parts.push(`fs:${run.fontSize}`);

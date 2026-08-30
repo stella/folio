@@ -78,6 +78,29 @@ describe("initial layout font loading", () => {
     expect(faces).toContain("Lato|normal|400");
   });
 
+  test("waits for a document font's alternate face and its resolved stack", () => {
+    const document = createEmptyDocument({ initialText: "Hello" });
+    document.package.fontTable = {
+      fonts: [{ name: "Brand Sans", altName: "Calibri" }],
+    };
+    const fontFamily = schema.marks["fontFamily"]?.create({
+      ascii: "Brand Sans",
+      hAnsi: "Brand Sans",
+    });
+    if (!fontFamily) {
+      throw new Error("Expected fontFamily mark in schema");
+    }
+    const pmDoc = schema.node("doc", null, [
+      schema.node("paragraph", null, [schema.text("Brand text", [fontFamily])]),
+    ]);
+
+    const families = collectInitialLayoutFontFamilies(document, pmDoc);
+
+    expect(families).toContain("Brand Sans");
+    expect(families).toContain("Calibri");
+    expect(families).toContain("Carlito");
+  });
+
   test("combines inherited text formatting with explicit marks", () => {
     const bold = schema.marks["bold"]?.create();
     if (!bold) {

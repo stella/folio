@@ -44,6 +44,7 @@ export type MeasureBlocksFn = (blocks: FlowBlock[], contentWidth: number) => Mea
 export type ConvertFootnoteOptions = {
   styles?: StyleDefinitions | null;
   theme?: Theme | null;
+  fontAlternates?: ToFlowBlocksOptions["fontAlternates"];
   measureBlocks?: MeasureBlocksFn;
   /** Document-wide `w:defaultTabStop` in twips — forwarded to toFlowBlocks. */
   defaultTabStopTwips?: number;
@@ -338,6 +339,9 @@ export function convertFootnoteToContent(
   if (options.theme !== undefined) {
     flowOptions.theme = options.theme;
   }
+  if (options.fontAlternates !== undefined) {
+    flowOptions.fontAlternates = options.fontAlternates;
+  }
   if (options.defaultTabStopTwips !== undefined) {
     flowOptions.defaultTabStopTwips = options.defaultTabStopTwips;
   }
@@ -629,6 +633,13 @@ function createFootnoteNumberRun(displayNumber: number, paragraph: ParagraphBloc
   const fontFamily = firstFormattedRun?.fontFamily ?? paragraph.attrs?.defaultFontFamily;
   if (fontFamily) {
     numberRun.fontFamily = fontFamily;
+  }
+  const alternateFontFamily =
+    firstFormattedRun?.fontFamily !== undefined
+      ? firstFormattedRun.alternateFontFamily
+      : paragraph.attrs?.defaultAlternateFontFamily;
+  if (alternateFontFamily) {
+    numberRun.alternateFontFamily = alternateFontFamily;
   }
   return numberRun;
 }

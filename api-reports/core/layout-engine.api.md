@@ -455,7 +455,7 @@ export type LineBreakRun = {
 };
 
 // @public (undocumented)
-export type ListMarkerFormatting = Pick<RunFormatting, "fontFamily" | "eastAsiaFontFamily" | "complexScriptFontFamily" | "fontSize" | "complexScriptFontSize" | "bold" | "complexScriptBold" | "italic" | "complexScriptItalic" | "rtl" | "forceComplexScript">;
+export type ListMarkerFormatting = Pick<RunFormatting, "fontFamily" | "alternateFontFamily" | "eastAsiaFontFamily" | "eastAsiaAlternateFontFamily" | "complexScriptFontFamily" | "complexScriptAlternateFontFamily" | "fontSize" | "complexScriptFontSize" | "bold" | "complexScriptBold" | "italic" | "complexScriptItalic" | "rtl" | "forceComplexScript">;
 
 // @public
 export type ListNumPr = {
@@ -657,6 +657,7 @@ export type ParagraphAttrs = {
     listMarkerSecondSlotOffsetTwips?: number;
     defaultFontSize?: number;
     defaultFontFamily?: string;
+    defaultAlternateFontFamily?: string;
     defaultTabStopTwips?: number;
 };
 
@@ -747,8 +748,11 @@ export type RunFormatting = {
     highlight?: string;
     shading?: string;
     fontFamily?: string;
+    alternateFontFamily?: string;
     eastAsiaFontFamily?: string;
+    eastAsiaAlternateFontFamily?: string;
     complexScriptFontFamily?: string;
+    complexScriptAlternateFontFamily?: string;
     complexScriptFontSize?: number;
     complexScriptBold?: boolean;
     complexScriptItalic?: boolean;

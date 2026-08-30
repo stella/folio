@@ -9,6 +9,7 @@ import type { Node as PMNode, Mark } from "prosemirror-model";
 
 import { convertBulletToUnicode } from "../../docx/bulletMarkers";
 import { resolveDocumentGridLinePitch } from "../../docx/documentGrid";
+import { getFontAlternate, type FontAlternates } from "../../fonts/fontAlternates";
 import type {
   FlowBlock,
   ParagraphBlock,
@@ -113,6 +114,8 @@ export type ToFlowBlocksOptions = {
   defaultSize?: number;
   /** Theme for resolving theme colors. */
   theme?: Theme | null;
+  /** Document-scoped OOXML primary-font to `w:altName` lookup. */
+  fontAlternates?: FontAlternates;
   /** Page content height in pixels (pageHeight - marginTop - marginBottom). Images taller than this are scaled down to fit. */
   pageContentHeight?: number;
   /** Shared list counters for nested containers. */
@@ -237,7 +240,11 @@ export function resetBlockIdCounter(): void {
 /**
  * Extract run formatting from ProseMirror marks.
  */
-function extractRunFormatting(marks: readonly Mark[], theme?: Theme | null): RunFormatting {
+function extractRunFormatting(
+  marks: readonly Mark[],
+  theme?: Theme | null,
+  fontAlternates?: FontAlternates,
+): RunFormatting {
   const formatting: RunFormatting = {};
   let hasNoteRef = false;
 
@@ -323,14 +330,26 @@ function extractRunFormatting(marks: readonly Mark[], theme?: Theme | null): Run
         const font = resolveWesternThemeFont(attrs, theme);
         if (font) {
           formatting.fontFamily = font;
+          const alternate = getFontAlternate(font, fontAlternates);
+          if (alternate) {
+            formatting.alternateFontFamily = alternate;
+          }
         }
         const eastAsiaFont = resolveEastAsiaThemeFont(attrs, theme);
         if (eastAsiaFont) {
           formatting.eastAsiaFontFamily = eastAsiaFont;
+          const alternate = getFontAlternate(eastAsiaFont, fontAlternates);
+          if (alternate) {
+            formatting.eastAsiaAlternateFontFamily = alternate;
+          }
         }
         const complexScriptFont = resolveComplexScriptThemeFont(attrs, theme);
         if (complexScriptFont) {
           formatting.complexScriptFontFamily = complexScriptFont;
+          const alternate = getFontAlternate(complexScriptFont, fontAlternates);
+          if (alternate) {
+            formatting.complexScriptAlternateFontFamily = alternate;
+          }
         }
         break;
       }
@@ -571,6 +590,21 @@ function mergeRunFormatting(paraDefaults: RunFormatting, formatting: RunFormatti
     ...paraDefaults,
     ...markDefaultBlackTextColorSource(formatting, paraDefaults),
   };
+  if (formatting.fontFamily !== undefined && formatting.alternateFontFamily === undefined) {
+    delete merged.alternateFontFamily;
+  }
+  if (
+    formatting.eastAsiaFontFamily !== undefined &&
+    formatting.eastAsiaAlternateFontFamily === undefined
+  ) {
+    delete merged.eastAsiaAlternateFontFamily;
+  }
+  if (
+    formatting.complexScriptFontFamily !== undefined &&
+    formatting.complexScriptAlternateFontFamily === undefined
+  ) {
+    delete merged.complexScriptAlternateFontFamily;
+  }
   if (merged.letterSpacing === 0) {
     delete merged.letterSpacing;
   }
@@ -706,6 +740,7 @@ function applyRunFormattingOverrides(
 function textFormattingToRunFormatting(
   defaultTextFormatting: TextFormatting | undefined,
   theme?: Theme | null,
+  fontAlternates?: FontAlternates,
 ): RunFormatting {
   if (!defaultTextFormatting) {
     return {};
@@ -717,6 +752,10 @@ function textFormattingToRunFormatting(
     : undefined;
   if (fontFamily) {
     result.fontFamily = fontFamily;
+    const alternate = getFontAlternate(fontFamily, fontAlternates);
+    if (alternate) {
+      result.alternateFontFamily = alternate;
+    }
   }
   // East-Asian font inherited from the paragraph style / docDefaults, so CJK
   // runs without a direct `w:eastAsia` still get per-character EA selection. A
@@ -726,12 +765,20 @@ function textFormattingToRunFormatting(
     : undefined;
   if (eastAsiaFontFamily) {
     result.eastAsiaFontFamily = eastAsiaFontFamily;
+    const alternate = getFontAlternate(eastAsiaFontFamily, fontAlternates);
+    if (alternate) {
+      result.eastAsiaAlternateFontFamily = alternate;
+    }
   }
   const complexScriptFontFamily = defaultTextFormatting.fontFamily
     ? resolveComplexScriptThemeFont(defaultTextFormatting.fontFamily, theme)
     : undefined;
   if (complexScriptFontFamily) {
     result.complexScriptFontFamily = complexScriptFontFamily;
+    const alternate = getFontAlternate(complexScriptFontFamily, fontAlternates);
+    if (alternate) {
+      result.complexScriptAlternateFontFamily = alternate;
+    }
   }
   if (defaultTextFormatting.language) {
     result.language = { ...defaultTextFormatting.language };
@@ -821,8 +868,12 @@ function textFormattingToRunFormatting(
   return result;
 }
 
-function paragraphRunDefaults(pmAttrs: PMParagraphAttrs, theme?: Theme | null): RunFormatting {
-  return textFormattingToRunFormatting(pmAttrs.defaultTextFormatting, theme);
+function paragraphRunDefaults(
+  pmAttrs: PMParagraphAttrs,
+  theme?: Theme | null,
+  fontAlternates?: FontAlternates,
+): RunFormatting {
+  return textFormattingToRunFormatting(pmAttrs.defaultTextFormatting, theme, fontAlternates);
 }
 
 /**
@@ -959,8 +1010,9 @@ function paragraphToRuns(node: PMNode, startPos: number, _options: FlowConversio
   const runs: Run[] = [];
   const offset = startPos + 1; // +1 for opening tag
   const theme = _options.theme;
+  const fontAlternates = _options.fontAlternates;
   const pmAttrs = expectParagraphAttrs(node);
-  const paraDefaults = paragraphRunDefaults(pmAttrs, theme);
+  const paraDefaults = paragraphRunDefaults(pmAttrs, theme, fontAlternates);
   const paragraphStyleId = pmAttrs.styleId;
   const inTocParagraph =
     pmAttrs._tableOfContentsLevel !== undefined ||
@@ -993,7 +1045,7 @@ function paragraphToRuns(node: PMNode, startPos: number, _options: FlowConversio
       leadingRenderedPageBreakPending = false;
     }
     if (child.isText && child.text) {
-      const formatting = extractRunFormatting(child.marks, theme);
+      const formatting = extractRunFormatting(child.marks, theme, fontAlternates);
       applyCharacterStyleToggleFormatting({ formatting, marks: child.marks, paraDefaults });
       if (inTocParagraph) {
         stripTocHyperlinkStyle(formatting);
@@ -1014,16 +1066,20 @@ function paragraphToRuns(node: PMNode, startPos: number, _options: FlowConversio
       if (text === null) {
         return;
       }
-      const formatting = extractRunFormatting(child.marks, theme);
+      const formatting = extractRunFormatting(child.marks, theme, fontAlternates);
       applyCharacterStyleToggleFormatting({ formatting, marks: child.marks, paraDefaults });
       if (inTocParagraph) {
         stripTocHyperlinkStyle(formatting);
+      }
+      const alternateFontFamily = getFontAlternate(attrs.font, fontAlternates);
+      formatting.fontFamily = attrs.font;
+      if (alternateFontFamily) {
+        formatting.alternateFontFamily = alternateFontFamily;
       }
       runs.push({
         kind: "text",
         text,
         ...mergeRunFormatting(paraDefaults, formatting),
-        fontFamily: attrs.font,
         pmStart: childPos,
         pmEnd: childPos + child.nodeSize,
       });
@@ -1038,7 +1094,7 @@ function paragraphToRuns(node: PMNode, startPos: number, _options: FlowConversio
       return;
     }
     if (child.type.name === "tab") {
-      const formatting = extractRunFormatting(child.marks, theme);
+      const formatting = extractRunFormatting(child.marks, theme, fontAlternates);
       applyCharacterStyleToggleFormatting({ formatting, marks: child.marks, paraDefaults });
       const run: TabRun = {
         kind: "tab",
@@ -1066,7 +1122,7 @@ function paragraphToRuns(node: PMNode, startPos: number, _options: FlowConversio
       // Lift tracked-change marks off the image node so an inserted/deleted
       // picture paints in the revision colour and resolves with the rest of
       // the change. eigenpal #641.
-      const trackedFmt = extractRunFormatting(child.marks, theme);
+      const trackedFmt = extractRunFormatting(child.marks, theme, fontAlternates);
       const run = buildImageRun(
         attrs,
         constrained,
@@ -1097,7 +1153,7 @@ function paragraphToRuns(node: PMNode, startPos: number, _options: FlowConversio
       } else if (ft === "TIME") {
         mappedType = "TIME";
       }
-      const extractedFieldFormatting = extractRunFormatting(child.marks, theme);
+      const extractedFieldFormatting = extractRunFormatting(child.marks, theme, fontAlternates);
       applyCharacterStyleToggleFormatting({
         formatting: extractedFieldFormatting,
         marks: child.marks,
@@ -1331,6 +1387,7 @@ function applyDeletedListMarkerAttrs(
   change: ListPropertyChange & { previousFormatting: ListPropertyFormatting },
   listCounterState: ListCounterState | undefined,
   theme: Theme | null | undefined,
+  fontAlternates: FontAlternates | undefined,
 ): void {
   const previousListAttrs = toPreviousListAttrs(change.previousFormatting);
   const marker = resolveDeletedListMarker(previousListAttrs, listCounterState);
@@ -1350,6 +1407,7 @@ function applyDeletedListMarkerAttrs(
     attrs.listMarkerFormatting = textFormattingToRunFormatting(
       previousListAttrs.listMarkerFormatting,
       theme,
+      fontAlternates,
     );
   }
   if (previousListAttrs.listMarkerAlignment) {
@@ -1362,13 +1420,14 @@ function applyDeletedListMarkerAttrs(
 
 type ConvertParagraphAttrsOptions = {
   theme: Theme | null | undefined;
+  fontAlternates: FontAlternates | undefined;
   listCounterStreams: ListCounterStreams;
   defaultTabStopTwips: number | undefined;
 };
 
 function convertParagraphAttrs(
   pmAttrs: PMParagraphAttrs,
-  { theme, listCounterStreams, defaultTabStopTwips }: ConvertParagraphAttrsOptions,
+  { theme, fontAlternates, listCounterStreams, defaultTabStopTwips }: ConvertParagraphAttrsOptions,
 ): ParagraphAttrs {
   const attrs: ParagraphAttrs = {};
 
@@ -1694,7 +1753,11 @@ function convertParagraphAttrs(
     attrs.listMarkerHidden = true;
   }
   if (pmAttrs.listMarkerFormatting) {
-    attrs.listMarkerFormatting = textFormattingToRunFormatting(pmAttrs.listMarkerFormatting, theme);
+    attrs.listMarkerFormatting = textFormattingToRunFormatting(
+      pmAttrs.listMarkerFormatting,
+      theme,
+      fontAlternates,
+    );
   }
   if (pmAttrs.listMarkerAlignment) {
     attrs.listMarkerAlignment = pmAttrs.listMarkerAlignment;
@@ -1711,7 +1774,7 @@ function convertParagraphAttrs(
       // Number removed-numbering deletions off the original stream too (like
       // deleted list items): the struck-through marker must reflect the
       // pre-revision number, not the final counter that insertions advanced.
-      applyDeletedListMarkerAttrs(attrs, numberingRemovedChange, undefined, theme);
+      applyDeletedListMarkerAttrs(attrs, numberingRemovedChange, undefined, theme, fontAlternates);
       if (resolvedMarker !== null) {
         attrs.listMarker = resolvedMarker;
         attrs.listMarkerRevision = toListMarkerRevision("del", numberingRemovedChange.info);
@@ -1740,6 +1803,10 @@ function convertParagraphAttrs(
       const resolvedFamily = resolveWesternThemeFont(dtf.fontFamily, theme);
       if (resolvedFamily) {
         attrs.defaultFontFamily = resolvedFamily;
+        const alternate = getFontAlternate(resolvedFamily, fontAlternates);
+        if (alternate) {
+          attrs.defaultAlternateFontFamily = alternate;
+        }
       }
     }
   }
@@ -1794,6 +1861,7 @@ function convertParagraph(
   const runs = paragraphToRuns(node, startPos, options);
   const attrs = convertParagraphAttrs(pmAttrs, {
     theme: options.theme,
+    fontAlternates: options.fontAlternates,
     listCounterStreams: options.listCounterStreams,
     defaultTabStopTwips: options.defaultTabStopTwips,
   });
@@ -1831,6 +1899,10 @@ function convertParagraph(
       : undefined;
     if (paragraphMarkFontFamily) {
       attrs.defaultFontFamily = paragraphMarkFontFamily;
+      const alternate = getFontAlternate(paragraphMarkFontFamily, options.fontAlternates);
+      if (alternate) {
+        attrs.defaultAlternateFontFamily = alternate;
+      }
     }
   }
   if (runs.length === 0 && defaultTextFormatting?.hidden === true) {
@@ -2853,6 +2925,9 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
                   : {}),
                 ...(sourceAttrs?.defaultFontFamily !== undefined
                   ? { defaultFontFamily: sourceAttrs.defaultFontFamily }
+                  : {}),
+                ...(sourceAttrs?.defaultAlternateFontFamily !== undefined
+                  ? { defaultAlternateFontFamily: sourceAttrs.defaultAlternateFontFamily }
                   : {}),
               };
               const carrier: ParagraphBlock = {

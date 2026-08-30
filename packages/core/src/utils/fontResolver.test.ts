@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { getResolvedData } from "../layout-engine/measure/measureHelpers";
+import { buildFontString, getResolvedData } from "../layout-engine/measure/measureHelpers";
 import {
   CJK_FALLBACK_FONT_FAMILY,
   getGoogleFontEquivalent,
@@ -59,6 +59,71 @@ describe("fontResolver — Aptos falls back to bundled Lato", () => {
     expect(resolved.googleFont).toBe("Lato");
     expect(resolved.cssFallback).toContain("Lato");
     expect(resolved.hasGoogleEquivalent).toBe(true);
+  });
+});
+
+describe("fontResolver — alternate families", () => {
+  test("tries an alternate immediately after a mapped primary", () => {
+    const resolved = resolveFontFamily("Calibri", "Times New Roman");
+    const families = parseFontFamilyList(resolved.cssFallback);
+
+    expect(families.slice(0, 2)).toEqual(["Calibri", "Times New Roman"]);
+    expect(resolved.singleLineRatio).toBeCloseTo(1.2207, 4);
+  });
+
+  test("uses alternate metrics when the primary is unknown", () => {
+    const resolved = resolveFontFamily("Unknown Brand Face", "Cambria");
+
+    expect(parseFontFamilyList(resolved.cssFallback).slice(0, 2)).toEqual([
+      "Unknown Brand Face",
+      "Cambria",
+    ]);
+    expect(resolved.singleLineRatio).toBeCloseTo(1.1724, 4);
+    expect(resolved.googleFont).toBe("Caladea");
+  });
+
+  test("treats a comma-containing alternate as one font name", () => {
+    const families = parseFontFamilyList(
+      resolveFontFamily("Unknown Brand Face", "Name A, Name B").cssFallback,
+    );
+
+    expect(families.slice(0, 2)).toEqual(["Unknown Brand Face", "Name A, Name B"]);
+  });
+
+  test("keeps an embedded primary ahead of its alternate", () => {
+    try {
+      setEmbeddedFontFamilyMap(new Map([["Brand Face", "folio-embedded-doc1-brand"]]));
+
+      const families = parseFontFamilyList(resolveFontFamily("Brand Face", "Calibri").cssFallback);
+
+      expect(families.slice(0, 2)).toEqual(["folio-embedded-doc1-brand", "Calibri"]);
+      expect(families).not.toContain("Brand Face");
+    } finally {
+      setEmbeddedFontFamilyMap(null);
+    }
+  });
+
+  test("includes the alternate in the measurement font string", () => {
+    const font = buildFontString({
+      fontFamily: "Unknown Brand Face",
+      alternateFontFamily: "Times New Roman",
+      fontSize: 10,
+    });
+
+    expect(parseFontFamilyList(font.slice(font.indexOf("px ") + 3))).toEqual(
+      expect.arrayContaining(["Unknown Brand Face", "Times New Roman"]),
+    );
+  });
+
+  test("keeps resolved metric cache entries distinct by alternate", () => {
+    const withoutAlternate = getResolvedData("Unknown Cache Face");
+    const withArial = getResolvedData("Unknown Cache Face", "Arial");
+    const withCambria = getResolvedData("Unknown Cache Face", "Cambria");
+
+    expect(withoutAlternate.singleLineRatio).toBeCloseTo(1.15, 4);
+    expect(withArial.singleLineRatio).toBeCloseTo(1.1499, 4);
+    expect(withCambria.singleLineRatio).toBeCloseTo(1.1724, 4);
+    expect(withArial.cssFallback).not.toBe(withCambria.cssFallback);
   });
 });
 

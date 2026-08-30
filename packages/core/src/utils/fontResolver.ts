@@ -762,7 +762,7 @@ export const setEmbeddedFontFamilyMap = (map: ReadonlyMap<string, string> | null
   embeddedFontFamilyMap = map;
 };
 
-export function resolveFontFamily(docxFontName: string): ResolvedFont {
+export function resolveFontFamily(docxFontName: string, alternateFontName?: string): ResolvedFont {
   const normalizedName = docxFontName.trim().toLowerCase();
   const scopedFamily = embeddedFontFamilyMap?.get(docxFontName) ?? null;
 
@@ -784,28 +784,87 @@ export function resolveFontFamily(docxFontName: string): ResolvedFont {
     const primaryStack = scopedFamily
       ? [scopedFamily, ...fallbackStack.filter((f) => f.toLowerCase() !== normalizedName)]
       : fallbackStack;
+    if (
+      alternateFontName === undefined ||
+      alternateFontName.trim().length === 0 ||
+      alternateFontName.trim().toLowerCase() === normalizedName
+    ) {
+      return {
+        googleFont: googleFontsEnabled ? mapping.googleFont : null,
+        cssFallback: withArabicFallback(primaryStack.map(quoteFontName).join(", ")),
+        originalFont: docxFontName,
+        hasGoogleEquivalent: googleFontsEnabled,
+        singleLineRatio: mapping.singleLineRatio,
+      };
+    }
+
+    const alternate = resolveFontFamily(alternateFontName);
+    const category = mapping.category;
+    const concreteStack = dedupeFontFamilies([
+      scopedFamily ?? docxFontName,
+      ...parseFontFamilyList(alternate.cssFallback),
+      ...primaryStack,
+    ]).filter((family) => !isCssGenericFontFamily(family));
+    const cssFallback = withArabicFallback(
+      [...concreteStack, category].map(quoteFontName).join(", "),
+    );
+
     return {
       googleFont: googleFontsEnabled ? mapping.googleFont : null,
-      cssFallback: withArabicFallback(primaryStack.map(quoteFontName).join(", ")),
+      cssFallback,
       originalFont: docxFontName,
       hasGoogleEquivalent: googleFontsEnabled,
       singleLineRatio: mapping.singleLineRatio,
     };
   }
 
-  // No mapping - detect category and create fallback
+  const alternateName = alternateFontName?.trim();
+  if (alternateName && alternateName.toLowerCase() !== normalizedName) {
+    const alternate = resolveFontFamily(alternateName);
+    const category = detectFontCategory(docxFontName);
+    const concreteStack = dedupeFontFamilies([
+      scopedFamily ?? docxFontName,
+      ...parseFontFamilyList(alternate.cssFallback),
+    ]).filter((family) => !isCssGenericFontFamily(family));
+
+    return {
+      googleFont: googleFontsEnabled ? alternate.googleFont : null,
+      cssFallback: withArabicFallback([...concreteStack, category].map(quoteFontName).join(", ")),
+      originalFont: docxFontName,
+      hasGoogleEquivalent: googleFontsEnabled && alternate.hasGoogleEquivalent,
+      singleLineRatio: alternate.singleLineRatio,
+    };
+  }
+
   const category = detectFontCategory(docxFontName);
   const defaultFallback = DEFAULT_FALLBACKS[category];
-  const primaryName = scopedFamily ?? docxFontName;
-
   return {
     googleFont: null,
-    cssFallback: withArabicFallback(`${quoteFontName(primaryName)}, ${defaultFallback}`),
+    cssFallback: withArabicFallback(
+      `${quoteFontName(scopedFamily ?? docxFontName)}, ${defaultFallback}`,
+    ),
     originalFont: docxFontName,
     hasGoogleEquivalent: false,
     singleLineRatio: DEFAULT_SINGLE_LINE_RATIO,
   };
 }
+
+const isCssGenericFontFamily = (family: string): boolean =>
+  /^(?:sans-serif|serif|monospace|cursive|fantasy|system-ui)$/u.test(family.trim().toLowerCase());
+
+const dedupeFontFamilies = (families: string[]): string[] => {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const family of families) {
+    const normalized = family.trim().toLowerCase();
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    result.push(family.trim());
+  }
+  return result;
+};
 
 const CSS_NEWLINE_ESCAPES: Record<string, string> = {
   "\n": "\\a ",

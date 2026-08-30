@@ -148,6 +148,72 @@ describe("toFlowBlocks run-level OOXML marks", () => {
     expect(fallbackRun.complexScriptFontFamily).toBe("Noto Naskh Arabic");
   });
 
+  test("carries document-scoped alternate names for every authored font slot", () => {
+    const doc = buildSingleRunDoc("text مكتب 日本", "fontFamily", {
+      ascii: "Brand Sans",
+      hAnsi: "Brand Sans",
+      eastAsia: "Brand CJK",
+      cs: "Brand Complex",
+    });
+
+    const run = firstRun(
+      toFlowBlocks(doc, {
+        fontAlternates: new Map([
+          ["brand sans", "Calibri"],
+          ["brand cjk", "MS Mincho"],
+          ["brand complex", "Arial"],
+        ]),
+      }),
+    );
+
+    expect(run.fontFamily).toBe("Brand Sans");
+    expect(run.alternateFontFamily).toBe("Calibri");
+    expect(run.eastAsiaFontFamily).toBe("Brand CJK");
+    expect(run.eastAsiaAlternateFontFamily).toBe("MS Mincho");
+    expect(run.complexScriptFontFamily).toBe("Brand Complex");
+    expect(run.complexScriptAlternateFontFamily).toBe("Arial");
+  });
+
+  test("carries an alternate name through paragraph-default formatting", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", { defaultTextFormatting: { fontFamily: { ascii: "Brand Sans" } } }, [
+        schema.text("Default text"),
+      ]),
+    ]);
+
+    const run = firstRun(
+      toFlowBlocks(doc, {
+        fontAlternates: new Map([["brand sans", "Calibri"]]),
+      }),
+    );
+
+    expect(run.fontFamily).toBe("Brand Sans");
+    expect(run.alternateFontFamily).toBe("Calibri");
+  });
+
+  test("does not retain a paragraph alternate when a direct font replaces its primary", () => {
+    const mark = schema.marks.fontFamily?.create({ ascii: "Direct Face" });
+    if (!mark) {
+      throw new Error("fontFamily mark is unavailable");
+    }
+    const doc = schema.node("doc", null, [
+      schema.node(
+        "paragraph",
+        { defaultTextFormatting: { fontFamily: { ascii: "Default Face" } } },
+        [schema.text("Direct text", [mark])],
+      ),
+    ]);
+
+    const run = firstRun(
+      toFlowBlocks(doc, {
+        fontAlternates: new Map([["default face", "Calibri"]]),
+      }),
+    );
+
+    expect(run.fontFamily).toBe("Direct Face");
+    expect(run.alternateFontFamily).toBeUndefined();
+  });
+
   test("propagates caps and text effect marks to run formatting", () => {
     for (const markName of [
       "allCaps",

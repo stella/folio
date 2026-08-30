@@ -11,6 +11,7 @@ import {
 import type { HeaderFooterFieldInputs } from "../fields/resolveFieldValues";
 import { buildSectionPageCounts } from "../fields/sectionPageCounts";
 import { buildSeqValues } from "../fields/seqValues";
+import { buildFontAlternates } from "../fonts/fontAlternates";
 import {
   FOOTNOTE_ENTRY_MARGIN_BOTTOM,
   buildFootnoteContentMap,
@@ -342,8 +343,10 @@ export function runLayoutPipeline<THfPMs>(
     // Step 1: Convert PM doc to flow blocks
     let phaseStartedAt = performance.now();
     const pageContentHeight = pageSize.h - margins.top - margins.bottom;
+    const fontAlternates = buildFontAlternates(document?.package.fontTable);
     const flowOpts: ToFlowBlocksOptions = {
       pageContentHeight,
+      fontAlternates,
     };
     if (_theme !== undefined) {
       flowOpts.theme = _theme;
@@ -468,6 +471,7 @@ export function runLayoutPipeline<THfPMs>(
       return {
         ...(styles ? { styles } : {}),
         ...(_theme !== undefined ? { theme: _theme } : {}),
+        fontAlternates,
         measureBlocks: hfMeasureBlocks,
         ...(defaultTabStop !== undefined ? { defaultTabStopTwips: defaultTabStop } : {}),
         ...(flowOpts.lineBreakRules ? { lineBreakRules: flowOpts.lineBreakRules } : {}),
@@ -707,6 +711,7 @@ export function runLayoutPipeline<THfPMs>(
           if (_theme !== undefined) {
             footnoteOptions.theme = _theme;
           }
+          footnoteOptions.fontAlternates = fontAlternates;
           if (defaultTabStop !== undefined) {
             footnoteOptions.defaultTabStopTwips = defaultTabStop;
           }

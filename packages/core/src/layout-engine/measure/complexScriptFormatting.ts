@@ -1,5 +1,6 @@
 type ComplexScriptFormattingSource = {
   complexScriptFontFamily?: string;
+  complexScriptAlternateFontFamily?: string;
   complexScriptFontSize?: number;
   complexScriptBold?: boolean;
   complexScriptItalic?: boolean;
@@ -7,6 +8,7 @@ type ComplexScriptFormattingSource = {
 
 export type ResolvedComplexScriptFormatting = {
   fontFamily?: string;
+  alternateFontFamily?: string;
   fontSize?: number;
   bold?: boolean;
   italic?: boolean;
@@ -19,13 +21,31 @@ export const resolveComplexScriptFormatting = (
   ...(source.complexScriptFontFamily !== undefined
     ? { fontFamily: source.complexScriptFontFamily }
     : {}),
+  ...(source.complexScriptAlternateFontFamily !== undefined
+    ? { alternateFontFamily: source.complexScriptAlternateFontFamily }
+    : {}),
   ...(source.complexScriptFontSize !== undefined ? { fontSize: source.complexScriptFontSize } : {}),
   ...(source.complexScriptBold !== undefined ? { bold: source.complexScriptBold } : {}),
   ...(source.complexScriptItalic !== undefined ? { italic: source.complexScriptItalic } : {}),
 });
 
+export const applyComplexScriptFormatting = <T extends { alternateFontFamily?: string }>(
+  base: T,
+  source: ComplexScriptFormattingSource,
+) => {
+  const result = { ...base, ...resolveComplexScriptFormatting(source) };
+  if (
+    source.complexScriptFontFamily !== undefined &&
+    source.complexScriptAlternateFontFamily === undefined
+  ) {
+    delete result.alternateFontFamily;
+  }
+  return result;
+};
+
 export const hasComplexScriptFormatting = (source: ComplexScriptFormattingSource): boolean =>
   source.complexScriptFontFamily !== undefined ||
+  source.complexScriptAlternateFontFamily !== undefined ||
   source.complexScriptFontSize !== undefined ||
   source.complexScriptBold !== undefined ||
   source.complexScriptItalic !== undefined;

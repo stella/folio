@@ -695,6 +695,7 @@ export function calculateHeaderFooterBodyTopClearance(
 export type ConvertHeaderFooterOptions = {
   styles?: StyleDefinitions | null;
   theme?: Theme | null;
+  fontAlternates?: ToFlowBlocksOptions["fontAlternates"];
   measureBlocks: MeasureBlocksFn;
   /** Document-wide `w:defaultTabStop` in twips — forwarded to toFlowBlocks. */
   defaultTabStopTwips?: number;
@@ -745,6 +746,9 @@ export function convertHeaderFooterToContent(
   if (options.theme !== undefined) {
     flowOptions.theme = options.theme;
   }
+  if (options.fontAlternates !== undefined) {
+    flowOptions.fontAlternates = options.fontAlternates;
+  }
   if (options.defaultTabStopTwips !== undefined) {
     flowOptions.defaultTabStopTwips = options.defaultTabStopTwips;
   }
@@ -788,6 +792,9 @@ export function convertHeaderFooterPmDocToContent(
   const flowOptions: ToFlowBlocksOptions = {};
   if (options.theme !== undefined) {
     flowOptions.theme = options.theme;
+  }
+  if (options.fontAlternates !== undefined) {
+    flowOptions.fontAlternates = options.fontAlternates;
   }
   if (options.defaultTabStopTwips !== undefined) {
     flowOptions.defaultTabStopTwips = options.defaultTabStopTwips;

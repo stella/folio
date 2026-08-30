@@ -40,8 +40,8 @@ import {
 } from "./floatingZones";
 import { getListMarkerInlineWidth } from "./listMarkerWidth";
 import {
+  applyComplexScriptFormatting,
   hasComplexScriptFormatting,
-  resolveComplexScriptFormatting,
 } from "./complexScriptFormatting";
 import { buildRunFontStyle, ptToPx, twipsToPx } from "./measureHelpers";
 import { getFontMetrics, measureRun, measureTextWidth } from "./measureProvider";
@@ -210,7 +210,12 @@ function cjkLineHeightStyle(run: TextRun, baseStyle: FontStyle): FontStyle {
   }
   const eastAsia = baseStyle.eastAsiaFontFamily;
   if (eastAsia !== undefined && isCjkFont(eastAsia)) {
-    return { ...baseStyle, fontFamily: eastAsia };
+    const result = { ...baseStyle, fontFamily: eastAsia };
+    delete result.alternateFontFamily;
+    if (baseStyle.eastAsiaAlternateFontFamily !== undefined) {
+      result.alternateFontFamily = baseStyle.eastAsiaAlternateFontFamily;
+    }
+    return result;
   }
   if (isCjkFont(baseStyle.fontFamily ?? DEFAULT_FONT_FAMILY)) {
     return baseStyle;
@@ -226,7 +231,7 @@ function complexScriptLineHeightStyle(run: TextRun, baseStyle: FontStyle): FontS
   ) {
     return baseStyle;
   }
-  const complexStyle = { ...baseStyle, ...resolveComplexScriptFormatting(run) };
+  const complexStyle = applyComplexScriptFormatting(baseStyle, run);
   return (complexStyle.fontSize ?? DEFAULT_FONT_SIZE) >= (baseStyle.fontSize ?? DEFAULT_FONT_SIZE)
     ? complexStyle
     : baseStyle;
@@ -316,6 +321,9 @@ function calculateEmptyParagraphMetrics(
   const metrics = getFontMetrics({
     fontSize,
     fontFamily: fontFamily ?? DEFAULT_FONT_FAMILY,
+    ...(attrs?.defaultAlternateFontFamily !== undefined
+      ? { alternateFontFamily: attrs.defaultAlternateFontFamily }
+      : {}),
   });
   const result = calculateTypographyMetrics(fontSize, spacing, metrics);
 
@@ -1372,6 +1380,9 @@ export function measureParagraph(
       getFontMetrics({
         fontSize: paragraphFontSize,
         fontFamily: paragraphFontFamily,
+        ...(attrs?.defaultAlternateFontFamily !== undefined
+          ? { alternateFontFamily: attrs.defaultAlternateFontFamily }
+          : {}),
       });
     const typography = calculateTypographyMetrics(fontSize, spacing, metrics);
 
@@ -2155,6 +2166,9 @@ export function measureParagraph(
     updateMaxFont({
       fontSize: listParagraphMarkFontSize,
       ...(fontFamily === undefined ? {} : { fontFamily }),
+      ...(currentLine.maxFontMetrics === null && attrs?.defaultAlternateFontFamily !== undefined
+        ? { alternateFontFamily: attrs.defaultAlternateFontFamily }
+        : {}),
     });
   }
 

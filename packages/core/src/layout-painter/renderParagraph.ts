@@ -49,6 +49,7 @@ import {
   type PhysicalParagraphInlineLayout,
 } from "../utils/paragraphInlineLayout";
 import {
+  applyComplexScriptFormatting,
   hasComplexScriptFormatting,
   resolveComplexScriptFormatting,
 } from "../layout-engine/measure/complexScriptFormatting";
@@ -310,7 +311,10 @@ function applyRunStyles(element: HTMLElement, run: TextRun | TabRun): void {
   if (run.fontFamily) {
     // Use the font resolver for category-appropriate fallback stacks,
     // matching the same stacks used in measureContainer.ts
-    element.style.fontFamily = resolveFontFamily(run.fontFamily).cssFallback;
+    element.style.fontFamily = resolveFontFamily(
+      run.fontFamily,
+      run.alternateFontFamily,
+    ).cssFallback;
   }
   if (run.fontSize) {
     // fontSize is in points - convert to pixels to match Canvas measurement
@@ -1214,7 +1218,7 @@ function renderFieldRun(run: FieldRun, doc: Document, context: RenderContext): H
     text,
   };
   if (resolvedRun.forceComplexScript && hasComplexScriptFormatting(resolvedRun)) {
-    return renderTextRun({ ...resolvedRun, ...resolveComplexScriptFormatting(resolvedRun) }, doc);
+    return renderTextRun(applyComplexScriptFormatting(resolvedRun, resolvedRun), doc);
   }
 
   // A CJK field result is generated text inside one atomic pm range, so the
@@ -1245,11 +1249,13 @@ function renderFieldRun(run: FieldRun, doc: Document, context: RenderContext): H
       ...segmentBase
     } = resolvedRun;
     for (const segment of segmentByScript(text)) {
-      const segmentRun: TextRun = {
-        ...segmentBase,
-        text: segment.text,
-        ...scriptFormattingOverride(resolvedRun, segment.script),
-      };
+      const segmentRun = formatTextRunForScript(
+        {
+          ...segmentBase,
+          text: segment.text,
+        },
+        segment.script,
+      );
       wrapper.append(renderTextRun(segmentRun, doc));
     }
     return wrapper;
@@ -1437,17 +1443,19 @@ export function sliceRunsForLine(block: ParagraphBlock, line: MeasuredLine): Run
  * The font a script segment paints with, mirroring the measurer's
  * `scriptFontFamily`. Returning undefined leaves the run's own `fontFamily`.
  */
-const scriptFormattingOverride = (
-  run: TextRun,
-  script: ScriptClass,
-): ReturnType<typeof resolveComplexScriptFormatting> => {
+const formatTextRunForScript = (run: TextRun, script: ScriptClass): TextRun => {
   if (run.forceComplexScript || script === SCRIPT_CLASS.complex) {
-    return resolveComplexScriptFormatting(run);
+    return applyComplexScriptFormatting(run, run);
   }
   if (script === SCRIPT_CLASS.eastAsia && run.eastAsiaFontFamily !== undefined) {
-    return { fontFamily: run.eastAsiaFontFamily };
+    const result = { ...run, fontFamily: run.eastAsiaFontFamily };
+    delete result.alternateFontFamily;
+    if (run.eastAsiaAlternateFontFamily !== undefined) {
+      result.alternateFontFamily = run.eastAsiaAlternateFontFamily;
+    }
+    return result;
   }
-  return {};
+  return run;
 };
 
 /**
@@ -1476,7 +1484,7 @@ export function splitTextRunsByEastAsia(runs: Run[]): Run[] {
 
   for (const run of runs) {
     if (isTextRun(run) && run.forceComplexScript && hasComplexScriptFormatting(run)) {
-      result.push({ ...run, ...resolveComplexScriptFormatting(run) });
+      result.push(applyComplexScriptFormatting(run, run));
       continue;
     }
     if (!isTextRun(run) || !needsPerScriptSpans(run)) {
@@ -1486,17 +1494,21 @@ export function splitTextRunsByEastAsia(runs: Run[]): Run[] {
 
     let offset = 0;
     for (const segment of segmentByScript(run.text)) {
-      result.push({
-        ...run,
-        text: segment.text,
-        ...scriptFormattingOverride(run, segment.script),
-        ...(run.pmStart !== undefined
-          ? {
-              pmStart: run.pmStart + offset,
-              pmEnd: run.pmStart + offset + segment.text.length,
-            }
-          : {}),
-      });
+      result.push(
+        formatTextRunForScript(
+          {
+            ...run,
+            text: segment.text,
+            ...(run.pmStart !== undefined
+              ? {
+                  pmStart: run.pmStart + offset,
+                  pmEnd: run.pmStart + offset + segment.text.length,
+                }
+              : {}),
+          },
+          segment.script,
+        ),
+      );
       offset += segment.text.length;
     }
   }
@@ -1693,9 +1705,18 @@ function runMeasureStyle(run: TextRun | FieldRun | MathRun): TextMeasureStyle {
     ...(run.italic !== undefined ? { italic: run.italic } : {}),
     ...(run.letterSpacing !== undefined ? { letterSpacing: run.letterSpacing } : {}),
     ...(run.smallCaps !== undefined ? { smallCaps: run.smallCaps } : {}),
+    ...(run.alternateFontFamily !== undefined
+      ? { alternateFontFamily: run.alternateFontFamily }
+      : {}),
     ...(run.eastAsiaFontFamily !== undefined ? { eastAsiaFontFamily: run.eastAsiaFontFamily } : {}),
+    ...(run.eastAsiaAlternateFontFamily !== undefined
+      ? { eastAsiaAlternateFontFamily: run.eastAsiaAlternateFontFamily }
+      : {}),
     ...(run.complexScriptFontFamily !== undefined
       ? { complexScriptFontFamily: run.complexScriptFontFamily }
+      : {}),
+    ...(run.complexScriptAlternateFontFamily !== undefined
+      ? { complexScriptAlternateFontFamily: run.complexScriptAlternateFontFamily }
       : {}),
     ...(run.complexScriptFontSize !== undefined
       ? { complexScriptFontSize: run.complexScriptFontSize }
@@ -1895,11 +1916,14 @@ type TextMeasureStyle = {
   italic?: boolean;
   letterSpacing?: number;
   smallCaps?: boolean;
+  alternateFontFamily?: string;
   /** EA font for CJK code points; segments the measured text by script when set
    * (and the run has no letter spacing), mirroring measureContainer. */
   eastAsiaFontFamily?: string;
+  eastAsiaAlternateFontFamily?: string;
   /** Complex-script font for Arabic/Hebrew/Indic code points; same contract. */
   complexScriptFontFamily?: string;
+  complexScriptAlternateFontFamily?: string;
   complexScriptFontSize?: number;
   complexScriptBold?: boolean;
   complexScriptItalic?: boolean;
@@ -1937,6 +1961,7 @@ function createTextMeasurer(
       size: number,
       bold: boolean | undefined,
       italic: boolean | undefined,
+      alternateFamily?: string,
     ): string => {
       const fontPrefixParts: string[] = [];
       if (italic) {
@@ -1949,15 +1974,22 @@ function createTextMeasurer(
         fontPrefixParts.push(DOCX_BOLD_FONT_WEIGHT);
       }
       fontPrefixParts.push(`${(size * 96) / 72}px`);
-      return `${fontPrefixParts.join(" ")} ${resolveFontFamily(family).cssFallback}`;
+      return `${fontPrefixParts.join(" ")} ${resolveFontFamily(family, alternateFamily).cssFallback}`;
     };
-    const baseFont = fontString(fontFamily, fontSize, style.bold, style.italic);
+    const baseFont = fontString(
+      fontFamily,
+      fontSize,
+      style.bold,
+      style.italic,
+      style.alternateFontFamily,
+    );
     const complex = resolveComplexScriptFormatting(style);
     const complexFont = fontString(
       complex.fontFamily ?? fontFamily,
       complex.fontSize ?? fontSize,
       complex.bold ?? style.bold,
       complex.italic ?? style.italic,
+      complex.alternateFontFamily ?? style.alternateFontFamily,
     );
 
     if (style.forceComplexScript) {
@@ -1977,7 +2009,13 @@ function createTextMeasurer(
       let segmentedWidth = 0;
       for (const segment of segmentByScript(text)) {
         if (segment.script === SCRIPT_CLASS.eastAsia && style.eastAsiaFontFamily) {
-          ctx.font = fontString(style.eastAsiaFontFamily, fontSize, style.bold, style.italic);
+          ctx.font = fontString(
+            style.eastAsiaFontFamily,
+            fontSize,
+            style.bold,
+            style.italic,
+            style.eastAsiaAlternateFontFamily,
+          );
         } else if (segment.script === SCRIPT_CLASS.complex) {
           ctx.font = complexFont;
         } else {
@@ -3141,7 +3179,10 @@ function renderListMarker({
 
   // Per ECMA-376 §17.9.6, marker formatting comes from level rPr, then
   // paragraph defaults, then document defaults.
-  span.style.fontFamily = resolveFontFamily(formatting.fontFamily).cssFallback;
+  span.style.fontFamily = resolveFontFamily(
+    formatting.fontFamily,
+    formatting.alternateFontFamily,
+  ).cssFallback;
   if (formatting.fontSize) {
     // 1pt = 96/72 px
     span.style.fontSize = `${(formatting.fontSize * 96) / 72}px`;

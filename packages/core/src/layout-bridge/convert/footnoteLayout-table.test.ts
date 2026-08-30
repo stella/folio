@@ -390,4 +390,27 @@ describe("footnote layout", () => {
       superscript: true,
     });
   });
+
+  test("keeps the footnote number alternate paired with its primary source", () => {
+    const blocks: FlowBlock[] = [
+      {
+        kind: "paragraph",
+        id: "footnote-text",
+        runs: [{ kind: "text", text: "Footnote text", fontFamily: "Direct Face" }],
+        attrs: {
+          defaultFontFamily: "Default Face",
+          defaultAlternateFontFamily: "Default Alternate",
+        },
+      },
+    ];
+
+    const paragraph = applyFootnotePresentation(blocks, 8).at(0);
+    expect(paragraph?.kind).toBe("paragraph");
+    if (paragraph?.kind !== "paragraph") {
+      throw new Error("Expected a paragraph block");
+    }
+
+    expect(paragraph.runs.at(0)).toMatchObject({ fontFamily: "Direct Face" });
+    expect(paragraph.runs.at(0)?.alternateFontFamily).toBeUndefined();
+  });
 });

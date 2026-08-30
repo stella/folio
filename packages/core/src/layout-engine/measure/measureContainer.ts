@@ -34,8 +34,8 @@ import {
   setCachedTextWidth,
 } from "./cache";
 import {
+  applyComplexScriptFormatting,
   hasComplexScriptFormatting,
-  resolveComplexScriptFormatting,
 } from "./complexScriptFormatting";
 import {
   buildFontString,
@@ -121,8 +121,12 @@ function canvasGetFontMetrics(style: FontStyle): FontMetrics {
   const bold = style.bold ?? false;
   const italic = style.italic ?? false;
   const fontVariant = style.fontVariant;
+  const alternateFontFamily = style.alternateFontFamily;
+  const fontCacheFamily = alternateFontFamily
+    ? `${fontFamily}\u0000${alternateFontFamily}`
+    : fontFamily;
 
-  const cached = getCachedFontMetrics(fontFamily, fontSize, bold, italic, fontVariant);
+  const cached = getCachedFontMetrics(fontCacheFamily, fontSize, bold, italic, fontVariant);
   if (cached !== undefined) {
     return {
       fontSize,
@@ -173,7 +177,7 @@ function canvasGetFontMetrics(style: FontStyle): FontMetrics {
   lineHeight = Math.max(lineHeight, ascent + descent);
 
   // Look up OS/2 single-line ratio for OOXML line spacing
-  const singleLineRatio = getResolvedData(fontFamily).singleLineRatio;
+  const singleLineRatio = getResolvedData(fontFamily, alternateFontFamily).singleLineRatio;
 
   const result = {
     fontSize, // Keep in points for reference
@@ -183,7 +187,7 @@ function canvasGetFontMetrics(style: FontStyle): FontMetrics {
     fontFamily,
     singleLineRatio,
   };
-  setCachedFontMetrics(fontFamily, fontSize, bold, italic, result, fontVariant);
+  setCachedFontMetrics(fontCacheFamily, fontSize, bold, italic, result, fontVariant);
   return result;
 }
 
@@ -199,7 +203,7 @@ function canvasMeasureTextWidth(text: string, sourceStyle: FontStyle): number {
     return 0;
   }
   const style = sourceStyle.forceComplexScript
-    ? { ...sourceStyle, ...resolveComplexScriptFormatting(sourceStyle) }
+    ? applyComplexScriptFormatting(sourceStyle, sourceStyle)
     : sourceStyle;
   const measuredText = applyTextTransform(text, style);
 
@@ -296,6 +300,9 @@ function glyphAdvanceStyle(style: FontStyle): FontStyle {
   if (style.fontFamily !== undefined) {
     result.fontFamily = style.fontFamily;
   }
+  if (style.alternateFontFamily !== undefined) {
+    result.alternateFontFamily = style.alternateFontFamily;
+  }
   if (style.fontSize !== undefined) {
     result.fontSize = style.fontSize;
   }
@@ -338,13 +345,15 @@ function scriptStyle(style: FontStyle, script: ScriptClass): FontStyle {
     if (style.eastAsiaFontFamily === undefined) {
       return style;
     }
-    return {
-      ...style,
-      fontFamily: style.eastAsiaFontFamily,
-    };
+    const result = { ...style, fontFamily: style.eastAsiaFontFamily };
+    delete result.alternateFontFamily;
+    if (style.eastAsiaAlternateFontFamily !== undefined) {
+      result.alternateFontFamily = style.eastAsiaAlternateFontFamily;
+    }
+    return result;
   }
   if (script === SCRIPT_CLASS.complex) {
-    return { ...style, ...resolveComplexScriptFormatting(style) };
+    return applyComplexScriptFormatting(style, style);
   }
   return style;
 }
@@ -438,7 +447,7 @@ function canvasMeasureText(text: string, style: FontStyle): TextMeasurement {
  */
 function canvasMeasureRun(text: string, sourceStyle: FontStyle): RunMeasurement {
   const style = sourceStyle.forceComplexScript
-    ? { ...sourceStyle, ...resolveComplexScriptFormatting(sourceStyle) }
+    ? applyComplexScriptFormatting(sourceStyle, sourceStyle)
     : sourceStyle;
   const metrics = canvasGetFontMetrics(style);
 
@@ -460,7 +469,13 @@ function canvasMeasureRun(text: string, sourceStyle: FontStyle): RunMeasurement 
   // common path keeps a single `ctx.font` assignment.
   const eastAsiaFont =
     style.eastAsiaFontFamily !== undefined && !style.letterSpacing
-      ? buildFontString({ ...style, fontFamily: style.eastAsiaFontFamily })
+      ? buildFontString({
+          ...style,
+          fontFamily: style.eastAsiaFontFamily,
+          ...(style.eastAsiaAlternateFontFamily !== undefined
+            ? { alternateFontFamily: style.eastAsiaAlternateFontFamily }
+            : {}),
+        })
       : undefined;
   const complexScriptFont =
     hasComplexScriptFormatting(style) && !style.letterSpacing

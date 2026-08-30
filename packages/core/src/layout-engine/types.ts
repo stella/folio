@@ -52,6 +52,8 @@ export type RunFormatting = {
    */
   shading?: string;
   fontFamily?: string;
+  /** OOXML `w:altName` fallback for `fontFamily`, used only when the primary face is absent. */
+  alternateFontFamily?: string;
   /**
    * Resolved East-Asian font (`w:eastAsia` / `eastAsiaTheme`). CJK code points
    * in this run measure and paint with this font; non-CJK keeps `fontFamily`
@@ -60,6 +62,8 @@ export type RunFormatting = {
    * to `fontFamily`.
    */
   eastAsiaFontFamily?: string;
+  /** OOXML alternate-name fallback for `eastAsiaFontFamily`. */
+  eastAsiaAlternateFontFamily?: string;
   /**
    * Resolved complex-script font (`w:cs` / `cstheme`). Arabic, Hebrew, Indic
    * and South-East Asian code points in this run measure and paint with this
@@ -69,6 +73,8 @@ export type RunFormatting = {
    * does NOT do and is why this slot has to reach layout at all.
    */
   complexScriptFontFamily?: string;
+  /** OOXML alternate-name fallback for `complexScriptFontFamily`. */
+  complexScriptAlternateFontFamily?: string;
   /** Independent complex-script size (`w:szCs`), in points. */
   complexScriptFontSize?: number;
   /** Independent complex-script weight (`w:bCs`). */
@@ -150,8 +156,11 @@ export type RunFormatting = {
 export type ListMarkerFormatting = Pick<
   RunFormatting,
   | "fontFamily"
+  | "alternateFontFamily"
   | "eastAsiaFontFamily"
+  | "eastAsiaAlternateFontFamily"
   | "complexScriptFontFamily"
+  | "complexScriptAlternateFontFamily"
   | "fontSize"
   | "complexScriptFontSize"
   | "bold"
@@ -556,6 +565,8 @@ export type ParagraphAttrs = {
   // Default font for empty paragraphs (from style's rPr / pPr/rPr)
   defaultFontSize?: number; // in points
   defaultFontFamily?: string;
+  /** OOXML alternate-name fallback for `defaultFontFamily`. */
+  defaultAlternateFontFamily?: string;
   /**
    * Document-wide `w:defaultTabStop` (§17.6.13) in twips. Read by the list
    * marker tab-stop math so long markers align body text at the document's

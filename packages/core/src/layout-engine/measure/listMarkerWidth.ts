@@ -15,8 +15,8 @@
  */
 import type { ParagraphBlock, TextRun } from "../types";
 import {
+  applyComplexScriptFormatting,
   hasComplexScriptFormatting,
-  resolveComplexScriptFormatting,
 } from "./complexScriptFormatting";
 import { ptToPx } from "./measureHelpers";
 import { measureTextWidth } from "./measureProvider";
@@ -43,6 +43,7 @@ const TWIPS_TO_PX = 96 / 1440;
  */
 export function resolveListMarkerFont(block: ParagraphBlock): {
   fontFamily: string;
+  alternateFontFamily?: string;
   fontSize: number;
   bold?: boolean;
   italic?: boolean;
@@ -53,12 +54,19 @@ export function resolveListMarkerFont(block: ParagraphBlock): {
   const markerFormatting = attrs?.listMarkerFormatting;
   const bold = markerFormatting?.bold ?? firstTextRun?.bold;
   const italic = markerFormatting?.italic ?? firstTextRun?.italic;
+  let fontFamily = attrs?.defaultFontFamily ?? DEFAULT_FONT_FAMILY;
+  let alternateFontFamily = attrs?.defaultAlternateFontFamily;
+  if (firstTextRun?.fontFamily !== undefined) {
+    fontFamily = firstTextRun.fontFamily;
+    alternateFontFamily = firstTextRun.alternateFontFamily;
+  }
+  if (markerFormatting?.fontFamily !== undefined) {
+    fontFamily = markerFormatting.fontFamily;
+    alternateFontFamily = markerFormatting.alternateFontFamily;
+  }
   const base = {
-    fontFamily:
-      markerFormatting?.fontFamily ??
-      firstTextRun?.fontFamily ??
-      attrs?.defaultFontFamily ??
-      DEFAULT_FONT_FAMILY,
+    fontFamily,
+    ...(alternateFontFamily !== undefined ? { alternateFontFamily } : {}),
     fontSize:
       markerFormatting?.fontSize ??
       firstTextRun?.fontSize ??
@@ -74,10 +82,15 @@ export function resolveListMarkerFont(block: ParagraphBlock): {
     hasComplexScriptFormatting(markerFormatting) &&
     (markerFormatting.forceComplexScript || hasComplexScript(marker))
   ) {
-    return { ...base, ...resolveComplexScriptFormatting(markerFormatting) };
+    return applyComplexScriptFormatting(base, markerFormatting);
   }
   if (markerFormatting?.eastAsiaFontFamily && hasCjk(marker)) {
-    return { ...base, fontFamily: markerFormatting.eastAsiaFontFamily };
+    const result = { ...base, fontFamily: markerFormatting.eastAsiaFontFamily };
+    delete result.alternateFontFamily;
+    if (markerFormatting.eastAsiaAlternateFontFamily !== undefined) {
+      result.alternateFontFamily = markerFormatting.eastAsiaAlternateFontFamily;
+    }
+    return result;
   }
   return base;
 }

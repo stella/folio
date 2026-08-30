@@ -42,9 +42,18 @@ export function buildRunFontStyle(
     run.superscript || run.subscript ? baseFontSize * DOCX_SCRIPT_FONT_SCALE : baseFontSize;
   return {
     fontFamily: run.fontFamily ?? fallbackFontFamily,
+    ...(run.alternateFontFamily !== undefined
+      ? { alternateFontFamily: run.alternateFontFamily }
+      : {}),
     ...(run.eastAsiaFontFamily !== undefined ? { eastAsiaFontFamily: run.eastAsiaFontFamily } : {}),
+    ...(run.eastAsiaAlternateFontFamily !== undefined
+      ? { eastAsiaAlternateFontFamily: run.eastAsiaAlternateFontFamily }
+      : {}),
     ...(run.complexScriptFontFamily !== undefined
       ? { complexScriptFontFamily: run.complexScriptFontFamily }
+      : {}),
+    ...(run.complexScriptAlternateFontFamily !== undefined
+      ? { complexScriptAlternateFontFamily: run.complexScriptAlternateFontFamily }
       : {}),
     ...(run.complexScriptFontSize !== undefined
       ? { complexScriptFontSize: run.complexScriptFontSize }
@@ -77,15 +86,19 @@ const fontResolvedCache = new Map<string, ResolvedFontCache>();
 /**
  * Get the resolved font data for a font family, with caching.
  */
-export function getResolvedData(fontFamily: string): ResolvedFontCache {
-  let cached = fontResolvedCache.get(fontFamily);
+export function getResolvedData(
+  fontFamily: string,
+  alternateFontFamily?: string,
+): ResolvedFontCache {
+  const cacheKey = `${fontFamily}\u0000${alternateFontFamily ?? ""}`;
+  let cached = fontResolvedCache.get(cacheKey);
   if (cached === undefined) {
-    const resolved = resolveFontFamily(fontFamily);
+    const resolved = resolveFontFamily(fontFamily, alternateFontFamily);
     cached = {
       cssFallback: resolved.cssFallback,
       singleLineRatio: resolved.singleLineRatio,
     };
-    fontResolvedCache.set(fontFamily, cached);
+    fontResolvedCache.set(cacheKey, cached);
   }
   return cached;
 }
@@ -93,8 +106,8 @@ export function getResolvedData(fontFamily: string): ResolvedFontCache {
 /**
  * Get the CSS fallback string for a font family, with caching.
  */
-function getResolvedFallback(fontFamily: string): string {
-  return getResolvedData(fontFamily).cssFallback;
+function getResolvedFallback(fontFamily: string, alternateFontFamily?: string): string {
+  return getResolvedData(fontFamily, alternateFontFamily).cssFallback;
 }
 
 /**
@@ -143,7 +156,7 @@ export function buildFontString(style: FontStyle): string {
 
   // Use the font resolver for category-appropriate fallback stacks
   const fontFamily = style.fontFamily ?? DEFAULT_FONT_FAMILY;
-  parts.push(getResolvedFallback(fontFamily));
+  parts.push(getResolvedFallback(fontFamily, style.alternateFontFamily));
 
   return parts.join(" ");
 }

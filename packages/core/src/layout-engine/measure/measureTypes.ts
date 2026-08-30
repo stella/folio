@@ -12,6 +12,7 @@
  */
 export type FontStyle = {
   fontFamily?: string;
+  alternateFontFamily?: string;
   /**
    * East-Asian font for CJK code points. When set, `measureTextWidth` /
    * `measureRun` measure CJK code points with this font and the rest with
@@ -19,11 +20,13 @@ export type FontStyle = {
    * and click positioning stay in sync.
    */
   eastAsiaFontFamily?: string;
+  eastAsiaAlternateFontFamily?: string;
   /**
    * Complex-script font for Arabic, Hebrew, Indic and South-East Asian code
    * points. Same contract as `eastAsiaFontFamily`, over a different slot.
    */
   complexScriptFontFamily?: string;
+  complexScriptAlternateFontFamily?: string;
   complexScriptFontSize?: number;
   complexScriptBold?: boolean;
   complexScriptItalic?: boolean;

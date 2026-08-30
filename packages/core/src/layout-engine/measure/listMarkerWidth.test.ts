@@ -382,4 +382,23 @@ describe("resolveListMarkerFont", () => {
       fontSize: 15,
     });
   });
+
+  test("keeps an alternate paired with the source that selected the primary", () => {
+    const block = listBlock({
+      listMarker: "1.",
+      defaultAlternateFontFamily: "Default Alternate",
+      listMarkerFormatting: { fontFamily: "Marker Face" },
+    });
+    block.runs = [
+      {
+        kind: "text",
+        text: "body",
+        fontFamily: "Body Face",
+        alternateFontFamily: "Body Alternate",
+      },
+    ];
+
+    expect(resolveListMarkerFont(block)).toMatchObject({ fontFamily: "Marker Face" });
+    expect(resolveListMarkerFont(block).alternateFontFamily).toBeUndefined();
+  });
 });

@@ -95,8 +95,11 @@ export type FontMetrics = {
 // @public
 export type FontStyle = {
     fontFamily?: string;
+    alternateFontFamily?: string;
     eastAsiaFontFamily?: string;
+    eastAsiaAlternateFontFamily?: string;
     complexScriptFontFamily?: string;
+    complexScriptAlternateFontFamily?: string;
     complexScriptFontSize?: number;
     complexScriptBold?: boolean;
     complexScriptItalic?: boolean;
