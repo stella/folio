@@ -1626,11 +1626,49 @@ describe("measureParagraph justified shrink tolerance", () => {
         );
 
         expect(finalTokenMeasure.lines).toHaveLength(2);
-        expect(finalTokenMeasure.lines.at(-1)?.justificationShrinkBudgetPx).toBeCloseTo(2.5);
+        expect(finalTokenMeasure.lines.at(-1)?.justificationPaint?.type).toBe("space-contraction");
+        expect(finalTokenMeasure.lines.at(-1)?.justificationPaint?.contractionPx).toBeCloseTo(2.4);
         expect(intermediateTokenMeasure.lines).toHaveLength(3);
-        expect(intermediateTokenMeasure.lines.at(1)?.justificationShrinkBudgetPx).toBeUndefined();
+        expect(intermediateTokenMeasure.lines.at(1)?.justificationPaint).toBeUndefined();
       },
       { charWidth: (char) => (char === "b" ? 0.8 : 1) },
+    );
+  });
+
+  test("separates CJK hanging punctuation from admitted final-list space contraction", () => {
+    const finalText = `${"a ".repeat(50)}bb。`;
+
+    withFakeTextMeasure(
+      () => {
+        const paragraph = (overflowPunctuation: boolean): ParagraphBlock => ({
+          kind: "paragraph",
+          id: `justified-list-cjk-hanging-${String(overflowPunctuation)}`,
+          runs: [
+            { kind: "text", text: "first line" },
+            { kind: "lineBreak" },
+            { kind: "text", text: finalText, language: { eastAsia: "zh-CN" } },
+          ],
+          attrs: {
+            alignment: "justify",
+            listMarker: "1.",
+            indent: { left: 36, hanging: 18 },
+            overflowPunctuation,
+          },
+        });
+
+        const hanging = measureParagraph(paragraph(true), 136);
+        const contained = measureParagraph(paragraph(false), 136);
+
+        expect(hanging.lines).toHaveLength(2);
+        expect(hanging.lines.at(-1)?.width).toBe(103);
+        expect(hanging.lines.at(-1)?.justificationPaint).toEqual({
+          type: "space-contraction",
+          contractionPx: 2,
+        });
+        expect(contained.lines).toHaveLength(3);
+        expect(contained.lines.at(-1)?.justificationPaint).toBeUndefined();
+      },
+      { charWidth: fixedCharWidth(1) },
     );
   });
 
@@ -1657,13 +1695,13 @@ describe("measureParagraph justified shrink tolerance", () => {
 
         expect(measure.lines).toHaveLength(3);
         expect(measure.lines.at(1)?.toChar).toBe(97);
-        expect(measure.lines.at(-1)?.justificationShrinkBudgetPx).toBeUndefined();
+        expect(measure.lines.at(-1)?.justificationPaint).toBeUndefined();
       },
       { charWidth: (char) => (char === "b" ? 1.2 : 1) },
     );
   });
 
-  test("does not expose a shrink budget when a sparse unbreakable tail needs only rounding", () => {
+  test("does not expose a contraction paint plan when a sparse tail needs only rounding", () => {
     withFakeTextMeasure(
       () => {
         const measure = measureParagraph(
@@ -1685,13 +1723,13 @@ describe("measureParagraph justified shrink tolerance", () => {
         );
 
         expect(measure.lines).toHaveLength(2);
-        expect(measure.lines.at(-1)?.justificationShrinkBudgetPx).toBeUndefined();
+        expect(measure.lines.at(-1)?.justificationPaint).toBeUndefined();
       },
       { charWidth: (char) => (char === "b" ? 1.1 : 1) },
     );
   });
 
-  test("does not expose a final-text budget for single-line lists or opaque final runs", () => {
+  test("does not expose a final-text paint plan for single-line lists or opaque final runs", () => {
     withFakeTextMeasure(
       () => {
         const attrs = {
@@ -1741,9 +1779,9 @@ describe("measureParagraph justified shrink tolerance", () => {
           300,
         );
 
-        expect(singleLine.lines.at(-1)?.justificationShrinkBudgetPx).toBeUndefined();
-        expect(fieldTail.lines.at(-1)?.justificationShrinkBudgetPx).toBeUndefined();
-        expect(mathTail.lines.at(-1)?.justificationShrinkBudgetPx).toBeUndefined();
+        expect(singleLine.lines.at(-1)?.justificationPaint).toBeUndefined();
+        expect(fieldTail.lines.at(-1)?.justificationPaint).toBeUndefined();
+        expect(mathTail.lines.at(-1)?.justificationPaint).toBeUndefined();
       },
       { charWidth: fixedCharWidth(1) },
     );

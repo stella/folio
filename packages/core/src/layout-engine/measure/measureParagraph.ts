@@ -18,7 +18,6 @@ import { hasCjk, hasComplexScript } from "../../utils/scriptSegments";
 import { getHorizontalScaleFactor } from "../../utils/horizontalScale";
 import { measuredLineAdvance } from "../lineFlow";
 import {
-  calculateJustifiedListFinalLineShrinkBudget,
   JUSTIFIED_LIST_FINAL_LINE_MAX_SHRINK_RATIO,
   JUSTIFIED_LIST_SPACE_CONTRACTION_RATIO,
   supportsJustifiedListFinalLineContraction,
@@ -152,8 +151,8 @@ type LineState = {
   trailingWhitespaceWidth: number;
   /** Spaces the layout may compress while justifying this line. */
   regularSpaceWidth: number;
-  /** Paint budget set only when final-text contraction admits a candidate. */
-  justificationShrinkBudgetPx?: number;
+  /** Paint plan set only when final-text contraction admits a candidate. */
+  justificationPaint?: NonNullable<MeasuredLine["justificationPaint"]>;
   maxFontSize: number;
   maxFontMetrics: FontMetrics | null;
   /** Maximum inline image height in pixels (already in px, not points) */
@@ -745,7 +744,7 @@ type TextCandidateFit =
   | {
       type: "final-contraction-admitted";
       tolerancePx: number;
-      shrinkBudgetPx: number;
+      paint: NonNullable<MeasuredLine["justificationPaint"]>;
     };
 
 type ResolveTextCandidateFitOptions = {
@@ -788,10 +787,10 @@ function resolveTextCandidateFit({
   return {
     type: "final-contraction-admitted",
     tolerancePx: finalTolerancePx,
-    shrinkBudgetPx: calculateJustifiedListFinalLineShrinkBudget({
-      availableWidth: line.availableWidth,
-      compressibleSpaceWidth: line.regularSpaceWidth + candidateSpaceWidth,
-    }),
+    paint: {
+      type: "space-contraction",
+      contractionPx: candidateWidth - line.availableWidth,
+    },
   };
 }
 
@@ -1560,8 +1559,8 @@ export function measureParagraph(
       toChar: currentLine.toChar,
       width: Math.max(0, currentLine.width - currentLine.trailingWhitespaceWidth),
       ...finalTypography,
-      ...(currentLine.justificationShrinkBudgetPx !== undefined
-        ? { justificationShrinkBudgetPx: currentLine.justificationShrinkBudgetPx }
+      ...(currentLine.justificationPaint !== undefined
+        ? { justificationPaint: currentLine.justificationPaint }
         : {}),
       ...(currentLine.discretionaryHyphen
         ? { discretionaryHyphen: currentLine.discretionaryHyphen }
@@ -2251,7 +2250,7 @@ export function measureParagraph(
         }
 
         if (candidateFit?.type === "final-contraction-admitted") {
-          currentLine.justificationShrinkBudgetPx = candidateFit.shrinkBudgetPx;
+          currentLine.justificationPaint = candidateFit.paint;
         }
 
         // Add word to current line

@@ -963,8 +963,8 @@ export type MeasuredLine = {
   descent: number;
   /** Total line height in pixels. */
   lineHeight: number;
-  /** Maximum measured ASCII-space contraction admitted for this final line. */
-  justificationShrinkBudgetPx?: number;
+  /** Paint adjustment admitted by measurement for this line. */
+  justificationPaint?: { type: "space-contraction"; contractionPx: number };
   /** Left offset from floating images (pixels from content left edge). */
   leftOffset?: number;
   /** Right offset from floating images (pixels from content right edge). */

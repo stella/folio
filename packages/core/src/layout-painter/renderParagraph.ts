@@ -665,8 +665,14 @@ function appendPaintedText({
   doc,
   contractedWordSpacing,
 }: AppendPaintedTextOptions): void {
-  if (!contractedWordSpacing || !HAS_NON_COMPRESSIBLE_WHITESPACE_PATTERN.test(text)) {
+  if (!contractedWordSpacing) {
     host.textContent = text;
+    return;
+  }
+
+  if (!HAS_NON_COMPRESSIBLE_WHITESPACE_PATTERN.test(text)) {
+    host.textContent = text;
+    host.style.wordSpacing = countCompressibleSpaces(text) > 0 ? contractedWordSpacing : "0";
     return;
   }
 
@@ -2326,23 +2332,31 @@ export function renderLine(
       runsForLine.filter((run) => !isTextRun(run) || !isCollapsedLineEdgeSpaceRun(run)),
       options.context,
     );
-    // Underfull final lines remain ragged, while a final line that the
-    // measurer admitted through bounded contraction must paint inside the
-    // same right edge as every other line.
+    // Underfull final lines remain ragged. A measured final-line paint plan
+    // contracts ordinary spaces only; any separately admitted hanging glyph
+    // remains outside the content edge.
     const shouldJustify = !options.isLastLine || options.paragraphEndsWithLineBreak;
+    const finalContractionPx =
+      line.justificationPaint?.type === "space-contraction"
+        ? line.justificationPaint.contractionPx
+        : undefined;
     const shouldCompressFinalLine =
       options.isLastLine &&
-      line.justificationShrinkBudgetPx !== undefined &&
+      finalContractionPx !== undefined &&
+      finalContractionPx > RIGHT_EDGE_EPSILON_PX &&
       overfullPx > RIGHT_EDGE_EPSILON_PX &&
-      overfullPx <= line.justificationShrinkBudgetPx &&
       shrinkableSpaces > 0;
 
     if (shouldJustify || shouldCompressFinalLine) {
-      if (overfullPx > RIGHT_EDGE_EPSILON_PX && shrinkableSpaces > 0) {
+      const contractionPx = shouldCompressFinalLine ? finalContractionPx : overfullPx;
+      if (contractionPx > RIGHT_EDGE_EPSILON_PX && shrinkableSpaces > 0) {
         lineEl.style.textAlign = "left";
         lineEl.style.textAlignLast = "auto";
-        contractedWordSpacing = `${-overfullPx / shrinkableSpaces}px`;
-        lineEl.style.wordSpacing = contractedWordSpacing;
+        contractedWordSpacing = `${-contractionPx / shrinkableSpaces}px`;
+        // Keep non-text hosts (MathML, images, tabs) neutral. Text and field
+        // segments opt into this contraction only where they contain counted
+        // ASCII spaces.
+        lineEl.style.wordSpacing = "0";
       } else if (hasTabRuns && shrinkableSpaces > 0 && -overfullPx > RIGHT_EDGE_EPSILON_PX) {
         // CSS justification does not expand preserved spaces reliably when a
         // line also contains an inline tab span. The layout engine has already
