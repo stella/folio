@@ -492,6 +492,15 @@ describe("ProseMirror attr readers", () => {
     }
   });
 
+  test("accepts the legacy center text-box alignment", () => {
+    const result = readTextBoxAttrs(schema.nodes.textBox.create({ verticalAlign: "center" }));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.verticalAlign).toBe("center");
+    }
+  });
+
   test("rejects malformed text-box anchor attrs", () => {
     const anchor = schema.nodes.textBoxAnchor.create({ anchorId: 7 });
     const result = readTextBoxAnchorAttrs(anchor);

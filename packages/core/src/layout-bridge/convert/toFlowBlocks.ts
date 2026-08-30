@@ -89,6 +89,7 @@ import {
 } from "../../prosemirror/listMarker";
 import { resolveNumberedRefFields } from "../../prosemirror/numberedRefFields";
 import type { ColorValue, Theme, SectionProperties, TextFormatting } from "../../types/document";
+import { normalizeShapeTextAnchor } from "../../types/documentEnumValues";
 import { resolveColor, resolveHighlightToCss } from "../../utils/colorResolver";
 import { resolveThemeFont } from "../../utils/fontResolver";
 import { resolveShadingFill } from "../../utils/formatToStyle";
@@ -2565,6 +2566,10 @@ function convertTextBoxNode(
     pmStart: startPos,
     pmEnd: startPos + node.nodeSize,
   };
+  const verticalAlign = normalizeShapeTextAnchor(attrs.verticalAlign);
+  if (verticalAlign !== undefined) {
+    textBox.verticalAlign = verticalAlign;
+  }
   if (attrs.height !== undefined) {
     textBox.height = attrs.height;
   }

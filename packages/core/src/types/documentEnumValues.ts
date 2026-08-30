@@ -14,6 +14,7 @@ import type {
   SdtType,
   ShadingProperties,
   ShapeOutline,
+  ShapeTextBody,
   ShapeType,
   Style,
   StyleType,
@@ -29,6 +30,26 @@ import type {
   UnderlineStyle,
   KnownBorderStyle,
 } from "./document";
+
+export const SHAPE_TEXT_ANCHOR_VALUES = [
+  "top",
+  "middle",
+  "bottom",
+  "distributed",
+  "justified",
+] as const satisfies readonly NonNullable<ShapeTextBody["anchor"]>[];
+
+export const normalizeShapeTextAnchor = (value: unknown): ShapeTextBody["anchor"] | undefined => {
+  if (value === "center") {
+    return "middle";
+  }
+  for (const anchor of SHAPE_TEXT_ANCHOR_VALUES) {
+    if (value === anchor) {
+      return anchor;
+    }
+  }
+  return undefined;
+};
 
 export const THEME_COLOR_SLOT_VALUES = [
   "dk1",

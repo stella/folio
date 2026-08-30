@@ -91,6 +91,85 @@ describe("textBoxModule", () => {
     expect(el.dataset["blockId"]).toBe("tb1");
   });
 
+  test.each([
+    ["middle", "center"],
+    ["bottom", "flex-end"],
+  ] as const)("renders %s-aligned text box content", (verticalAlign, justifyContent) => {
+    const fragment: TextBoxFragment = {
+      kind: "textBox",
+      blockId: `tb-${verticalAlign}`,
+      x: 0,
+      y: 0,
+      width: 200,
+      height: 100,
+    };
+    const block: TextBoxBlock = {
+      kind: "textBox",
+      id: `tb-${verticalAlign}`,
+      width: 200,
+      height: 100,
+      verticalAlign,
+      content: [],
+    };
+    const measure: TextBoxMeasure = {
+      kind: "textBox",
+      width: 200,
+      height: 100,
+      innerMeasures: [],
+    };
+
+    const el = textBoxModule.render({
+      fragment,
+      block,
+      measure,
+      context: ctx,
+      doc: fakeDocument,
+    }) as unknown as FakeElement;
+
+    expect(el.style["display"]).toBe("flex");
+    expect(el.style["flexDirection"]).toBe("column");
+    expect(el.style["justifyContent"]).toBe(justifyContent);
+  });
+
+  test.each(["distributed", "justified"] as const)(
+    "does not approximate %s line alignment with block flex spacing",
+    (verticalAlign) => {
+      const fragment: TextBoxFragment = {
+        kind: "textBox",
+        blockId: `tb-${verticalAlign}`,
+        x: 0,
+        y: 0,
+        width: 200,
+        height: 100,
+      };
+      const block: TextBoxBlock = {
+        kind: "textBox",
+        id: `tb-${verticalAlign}`,
+        width: 200,
+        height: 100,
+        verticalAlign,
+        content: [],
+      };
+      const measure: TextBoxMeasure = {
+        kind: "textBox",
+        width: 200,
+        height: 100,
+        innerMeasures: [],
+      };
+
+      const el = textBoxModule.render({
+        fragment,
+        block,
+        measure,
+        context: ctx,
+        doc: fakeDocument,
+      }) as unknown as FakeElement;
+
+      expect(el.style["display"]).toBeUndefined();
+      expect(el.style["justifyContent"]).toBeUndefined();
+    },
+  );
+
   test("renders nested tables in text box content", () => {
     const fragment: TextBoxFragment = {
       kind: "textBox",

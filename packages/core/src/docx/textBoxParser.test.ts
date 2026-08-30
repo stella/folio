@@ -44,6 +44,22 @@ describe("text box body properties", () => {
 
     expect(parseTextBox(drawing)?.autoFit).toBeUndefined();
   });
+
+  test.each([
+    ["t", "top"],
+    ["ctr", "middle"],
+    ["b", "bottom"],
+    ["dist", "distributed"],
+    ["just", "justified"],
+  ] as const)("maps the %s anchor token to %s", (token, expected) => {
+    const drawing = parseXmlDocument(drawingWithBodyProperties(`<wps:bodyPr anchor="${token}"/>`));
+    expect(drawing).not.toBeNull();
+    if (!drawing) {
+      return;
+    }
+
+    expect(parseTextBox(drawing)?.verticalAlign).toBe(expected);
+  });
 });
 
 describe("text box plain text", () => {

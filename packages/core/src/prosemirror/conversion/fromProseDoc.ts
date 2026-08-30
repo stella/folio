@@ -65,6 +65,7 @@ import type {
   CellMargins,
 } from "../../types/document";
 import {
+  normalizeShapeTextAnchor,
   OUTLINE_STYLE_CSS_ALIASES,
   type OutlineStyleCssAlias,
 } from "../../types/documentEnumValues";
@@ -3630,6 +3631,7 @@ function tableCellAttrsToFormatting(attrs: TableCellAttrs): TableCellFormatting 
  */
 function convertPMTextBox(node: PMNode): Paragraph {
   const attrs = expectTextBoxAttrs(node);
+  const verticalAlign = normalizeShapeTextAnchor(attrs.verticalAlign);
 
   // Extract child paragraphs from the text box content
   const childBlocks: (Paragraph | Table)[] = [];
@@ -3654,6 +3656,7 @@ function convertPMTextBox(node: PMNode): Paragraph {
       content: childBlocks.length > 0 ? childBlocks : [{ type: "paragraph", content: [] }],
       ...(attrs.autoFit !== undefined ? { autoFit: attrs.autoFit } : {}),
       ...(attrs.textWrap !== undefined ? { textWrap: attrs.textWrap } : {}),
+      ...(verticalAlign !== undefined ? { anchor: verticalAlign } : {}),
       margins: (() => {
         const m: {
           top?: number;

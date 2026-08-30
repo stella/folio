@@ -13,7 +13,7 @@ const NAMESPACES = [
   'xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"',
 ].join(" ");
 
-const textBoxDrawingXml = (text: string): string => `
+const textBoxDrawingXml = (text: string, anchor?: string): string => `
   <w:drawing>
     <wp:anchor distT="45720" distB="45720" distL="114300" distR="114300"
       simplePos="0" relativeHeight="251695104" behindDoc="0" locked="0"
@@ -39,15 +39,15 @@ const textBoxDrawingXml = (text: string): string => `
                 <w:p><w:r><w:t>${text}</w:t></w:r></w:p>
               </w:txbxContent>
             </wps:txbx>
-            <wps:bodyPr/>
+            <wps:bodyPr${anchor ? ` anchor="${anchor}"` : ""}/>
           </wps:wsp>
         </a:graphicData>
       </a:graphic>
     </wp:anchor>
   </w:drawing>`;
 
-const textBoxRunXml = (text: string, alternateContent: boolean): string => {
-  const drawing = textBoxDrawingXml(text);
+const textBoxRunXml = (text: string, alternateContent: boolean, anchor?: string): string => {
+  const drawing = textBoxDrawingXml(text, anchor);
 
   if (!alternateContent) {
     return `<w:r>${drawing}</w:r>`;
@@ -66,9 +66,10 @@ const headerFooterXml = (
   rootName: "hdr" | "ftr",
   text: string,
   alternateContent: boolean,
+  anchor?: string,
 ): string => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
   <w:${rootName} ${NAMESPACES}>
-    <w:p>${textBoxRunXml(text, alternateContent)}</w:p>
+    <w:p>${textBoxRunXml(text, alternateContent, anchor)}</w:p>
   </w:${rootName}>`;
 
 const getShapeTexts = (headerFooter: HeaderFooter): string[] => {
@@ -126,6 +127,23 @@ describe("header/footer text boxes", () => {
     expect(getShapeTexts(header)).toEqual(["Bare Header Box"]);
   });
 
+  test("carries DrawingML text-box anchors through the layout pipeline", () => {
+    const header = parseHeader(headerFooterXml("hdr", "Bottom Header Box", false, "b"));
+    const paragraph = header.content.at(0);
+    const run = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+    const shapeContent = run?.type === "run" ? run.content.at(0) : undefined;
+    if (shapeContent?.type !== "shape") {
+      throw new Error("Expected anchored DrawingML text box");
+    }
+    expect(shapeContent.shape.textBody?.anchor).toBe("bottom");
+
+    const document: Document = { package: { document: { content: header.content } } };
+    expect(toFlowBlocks(toProseDoc(document)).at(0)).toMatchObject({
+      kind: "textBox",
+      verticalAlign: "bottom",
+    });
+  });
+
   test("parses AlternateContent-wrapped text boxes in footers", () => {
     const footer = parseFooter(headerFooterXml("ftr", "Footer Box", true));
 
@@ -170,7 +188,7 @@ describe("header/footer text boxes", () => {
       <w:ftr ${NAMESPACES}>
         <w:p><w:r><w:pict>
           <v:shape id="sparse-inset" style="position:absolute;width:216pt;height:18pt" filled="f" stroked="f">
-            <v:textbox inset="20pt,0,,0">
+            <v:textbox inset="20pt,0,,0" style="v-text-anchor:bottom">
               <w:txbxContent><w:p><w:r><w:t>Sparse inset</w:t></w:r></w:p></w:txbxContent>
             </v:textbox>
           </v:shape>
@@ -190,6 +208,7 @@ describe("header/footer text boxes", () => {
       right: 91_440,
       bottom: 0,
     });
+    expect(shapeContent.shape.textBody?.anchor).toBe("bottom");
 
     const document: Document = { package: { document: { content: footer.content } } };
     const blocks = toFlowBlocks(toProseDoc(document));
@@ -203,6 +222,7 @@ describe("header/footer text boxes", () => {
       right: 10,
       bottom: 0,
     });
+    expect(textBox.verticalAlign).toBe("bottom");
     expect(blocks.at(1)?.kind).toBe("paragraph");
   });
 
@@ -251,5 +271,21 @@ describe("header/footer text boxes", () => {
       throw new Error("Expected bounded-inset text box");
     }
     expect(shapeContent.shape.textBody?.margins).toBeUndefined();
+  });
+
+  test("rejects VML style attributes beyond the parser bound", () => {
+    const oversizedStyle = `width:216pt;height:18pt;${"x".repeat(16_385)}`;
+    const footer = parseFooter(`
+      <w:ftr ${NAMESPACES}>
+        <w:p><w:r><w:pict>
+          <v:shape style="${oversizedStyle}">
+            <v:textbox style="v-text-anchor:bottom">
+              <w:txbxContent><w:p><w:r><w:t>Oversized style</w:t></w:r></w:p></w:txbxContent>
+            </v:textbox>
+          </v:shape>
+        </w:pict></w:r></w:p>
+      </w:ftr>`);
+
+    expect(getShapeTexts(footer)).toEqual([]);
   });
 });

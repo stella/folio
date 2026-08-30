@@ -3797,6 +3797,9 @@ function textBoxFromShape(shape: Shape, textBody: ShapeTextBody): TextBox {
   if (textBody.textWrap) {
     textBox.textWrap = textBody.textWrap;
   }
+  if (textBody.anchor) {
+    textBox.verticalAlign = textBody.anchor;
+  }
   return textBox;
 }
 
@@ -3941,6 +3944,7 @@ function convertTextBox(
       height: heightPx,
       autoFit: textBox.autoFit,
       textWrap: textBox.textWrap,
+      verticalAlign: textBox.verticalAlign,
       textBoxId: textBox.id,
       fillColor,
       outlineWidth,

@@ -2038,9 +2038,17 @@ describe("fromProseDoc", () => {
 
   test("converts textBox nodes back to DOCX text box shapes", () => {
     const pmDoc = schema.node("doc", null, [
-      schema.node("textBox", { width: 120, height: 60, autoFit: "shape", textWrap: "none" }, [
-        schema.node("paragraph", null, [schema.text("Inside")]),
-      ]),
+      schema.node(
+        "textBox",
+        {
+          width: 120,
+          height: 60,
+          autoFit: "shape",
+          textWrap: "none",
+          verticalAlign: "center",
+        },
+        [schema.node("paragraph", null, [schema.text("Inside")])],
+      ),
     ]);
 
     const document = fromProseDoc(pmDoc);
@@ -2062,6 +2070,7 @@ describe("fromProseDoc", () => {
     expect(firstRunContent.shape.textBody?.content).toHaveLength(1);
     expect(firstRunContent.shape.textBody?.autoFit).toBe("shape");
     expect(firstRunContent.shape.textBody?.textWrap).toBe("none");
+    expect(firstRunContent.shape.textBody?.anchor).toBe("middle");
   });
 
   test("converts tables inside text boxes back to shape content", () => {

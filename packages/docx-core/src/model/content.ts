@@ -865,6 +865,8 @@ export type TextBox = {
   autoFit?: ShapeTextBody["autoFit"];
   /** Horizontal text wrapping inside the box */
   textWrap?: ShapeTextBody["textWrap"];
+  /** Vertical text alignment inside the box */
+  verticalAlign?: ShapeTextBody["anchor"];
   /** Internal margins */
   margins?: {
     top?: number;

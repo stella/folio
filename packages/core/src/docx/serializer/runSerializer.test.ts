@@ -338,6 +338,36 @@ describe("text box fitting serialization", () => {
   });
 });
 
+describe("text box vertical alignment serialization", () => {
+  test.each([
+    ["top", "t"],
+    ["middle", "ctr"],
+    ["bottom", "b"],
+    ["distributed", "dist"],
+    ["justified", "just"],
+  ] as const)("serializes %s as the %s anchor token", (anchor, token) => {
+    const run: Run = {
+      type: "run",
+      content: [
+        {
+          type: "shape",
+          shape: {
+            type: "shape",
+            shapeType: "textBox",
+            size: { width: 914_400, height: 457_200 },
+            textBody: {
+              anchor,
+              content: [{ type: "paragraph", content: [] }],
+            },
+          },
+        },
+      ],
+    };
+
+    expect(serializeRun(run)).toContain(`anchor="${token}"`);
+  });
+});
+
 describe("run formatting integer attributes (issue #417)", () => {
   test("font size, character spacing, scale, kern, position render as integers", () => {
     const run: Run = {

@@ -304,6 +304,19 @@ describe("toFlowBlocks paragraph formatting", () => {
     });
   });
 
+  test("normalizes legacy center text-box alignment", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("textBox", { width: 240, verticalAlign: "center" }, [
+        schema.node("paragraph", null, [schema.text("Centered")]),
+      ]),
+    ]);
+
+    expect(toFlowBlocks(doc).at(0)).toMatchObject({
+      kind: "textBox",
+      verticalAlign: "middle",
+    });
+  });
+
   test("keeps drop-cap frames in normal paragraph flow", () => {
     const blocks = toFlowBlocks(
       schema.node("doc", null, [

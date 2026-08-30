@@ -7,7 +7,11 @@
  */
 
 import type { ImageWrap, ShapeTextBody } from "../../../types/document";
-import { IMAGE_WRAP_TYPE_VALUES, type OutlineStyleAttr } from "../../../types/documentEnumValues";
+import {
+  IMAGE_WRAP_TYPE_VALUES,
+  normalizeShapeTextAnchor,
+  type OutlineStyleAttr,
+} from "../../../types/documentEnumValues";
 import { expectTextBoxAttrs } from "../../attrs";
 import type { ImagePositionAttrs, TextBoxAttrs as SchemaTextBoxAttrs } from "../../schema/nodes";
 import { createNodeExtension } from "../create";
@@ -109,6 +113,10 @@ function parseTextBoxTextWrap(raw: string | undefined): TextBoxAttrs["textWrap"]
   return undefined;
 }
 
+function parseTextBoxVerticalAlign(raw: string | undefined): TextBoxAttrs["verticalAlign"] {
+  return normalizeShapeTextAnchor(raw);
+}
+
 export const TextBoxExtension = createNodeExtension({
   name: "textBox",
   schemaNodeName: "textBox",
@@ -160,6 +168,7 @@ export const TextBoxExtension = createNodeExtension({
           const wrapType = parseTextBoxWrapType(d["wrapType"]);
           const autoFit = parseTextBoxAutoFit(d["autoFit"]);
           const textWrap = parseTextBoxTextWrap(d["textWrap"]);
+          const verticalAlign = parseTextBoxVerticalAlign(d["verticalAlign"]);
           return {
             ...(d["width"] ? { width: Number(d["width"]) } : {}),
             ...(d["height"] ? { height: Number(d["height"]) } : {}),
@@ -178,7 +187,7 @@ export const TextBoxExtension = createNodeExtension({
             ...(d["marginBottom"] ? { marginBottom: Number(d["marginBottom"]) } : {}),
             ...(d["marginLeft"] ? { marginLeft: Number(d["marginLeft"]) } : {}),
             ...(d["marginRight"] ? { marginRight: Number(d["marginRight"]) } : {}),
-            ...(d["verticalAlign"] ? { verticalAlign: d["verticalAlign"] } : {}),
+            ...(verticalAlign ? { verticalAlign } : {}),
             ...(d["displayMode"]
               ? {
                   displayMode: d["displayMode"] as NonNullable<TextBoxAttrs["displayMode"]>,
@@ -316,6 +325,8 @@ export const TextBoxExtension = createNodeExtension({
       styles.push(`padding: ${mt}px ${mr}px ${mb}px ${ml}px`);
 
       // Vertical alignment
+      // Distributed and justified anchors require line-level placement. Keep
+      // their natural flow here so editing does not invent block-level gaps.
       if (attrs.verticalAlign === "middle" || attrs.verticalAlign === "center") {
         styles.push("display: flex");
         styles.push("flex-direction: column");

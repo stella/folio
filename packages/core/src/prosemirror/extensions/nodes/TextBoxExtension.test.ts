@@ -24,4 +24,19 @@ describe("TextBoxExtension toDOM border", () => {
   test("draws the default editor border when no outline is set", () => {
     expect(styleOf({})).toContain("border: 1px solid");
   });
+
+  test("centers middle-aligned content", () => {
+    expect(styleOf({ verticalAlign: "middle" })).toContain("justify-content: center");
+  });
+
+  test("bottom-aligns content", () => {
+    expect(styleOf({ verticalAlign: "bottom" })).toContain("justify-content: flex-end");
+  });
+
+  test.each(["distributed", "justified"])(
+    "does not approximate %s line alignment with block flex spacing",
+    (verticalAlign) => {
+      expect(styleOf({ verticalAlign })).not.toContain("justify-content:");
+    },
+  );
 });

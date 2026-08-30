@@ -1000,6 +1000,7 @@ export type TextBoxBlock = {
     height?: number;
     autoFit?: ShapeTextBody["autoFit"];
     textWrap?: ShapeTextBody["textWrap"];
+    verticalAlign?: ShapeTextBody["anchor"];
     fillColor?: string;
     outlineWidth?: number;
     outlineColor?: string;

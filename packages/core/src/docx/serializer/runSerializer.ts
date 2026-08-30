@@ -33,6 +33,7 @@ import type {
   Image,
   ShapeFill,
   ShapeOutline,
+  ShapeTextBody,
   ImagePosition,
   ImageWrap,
   BlockContent,
@@ -961,6 +962,23 @@ function serializeShapeTextBody(
     .join("");
 }
 
+const serializeTextBodyAnchor = (anchor: NonNullable<ShapeTextBody["anchor"]>): string => {
+  switch (anchor) {
+    case "top":
+      return "t";
+    case "middle":
+      return "ctr";
+    case "bottom":
+      return "b";
+    case "distributed":
+      return "dist";
+    case "justified":
+      return "just";
+    default:
+      return anchor satisfies never;
+  }
+};
+
 function serializeGeometryAdjustments(shape: ShapeContent["shape"]): string {
   if (!shape.geometryAdjustments || shape.geometryAdjustments.length === 0) {
     return "<a:avLst/>";
@@ -1018,7 +1036,7 @@ function serializeShapeContent(content: ShapeContent): string {
       bpAttrs.push(`wrap="${tb.textWrap}"`);
     }
     if (tb.anchor) {
-      bpAttrs.push(`anchor="${tb.anchor === "middle" ? "ctr" : tb.anchor}"`);
+      bpAttrs.push(`anchor="${serializeTextBodyAnchor(tb.anchor)}"`);
     }
     if (tb.anchorCenter) {
       bpAttrs.push('anchorCtr="1"');

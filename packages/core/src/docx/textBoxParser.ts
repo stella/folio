@@ -65,6 +65,23 @@ import type { XmlElement } from "./xmlParser";
 /** Default text box margins in EMUs (0.1 inch) */
 const DEFAULT_MARGIN_EMU = 91_440;
 
+const parseTextBoxVerticalAlign = (value: string | null): ShapeTextBody["anchor"] | undefined => {
+  switch (value) {
+    case "t":
+      return "top";
+    case "ctr":
+      return "middle";
+    case "b":
+      return "bottom";
+    case "dist":
+      return "distributed";
+    case "just":
+      return "justified";
+    default:
+      return undefined;
+  }
+};
+
 // ============================================================================
 // BODY PROPERTIES PARSING
 // ============================================================================
@@ -77,6 +94,7 @@ function parseBodyProperties(bodyPr: XmlElement | null): {
   margins?: TextBox["margins"];
   autoFit?: ShapeTextBody["autoFit"];
   textWrap?: ShapeTextBody["textWrap"];
+  verticalAlign?: ShapeTextBody["anchor"];
 } {
   if (!bodyPr) {
     return {};
@@ -86,6 +104,7 @@ function parseBodyProperties(bodyPr: XmlElement | null): {
     margins?: TextBox["margins"];
     autoFit?: ShapeTextBody["autoFit"];
     textWrap?: ShapeTextBody["textWrap"];
+    verticalAlign?: ShapeTextBody["anchor"];
   } = {};
 
   const textWrap = getAttribute(bodyPr, null, "wrap");
@@ -99,6 +118,11 @@ function parseBodyProperties(bodyPr: XmlElement | null): {
     result.autoFit = "normal";
   } else if (findChildByLocalName(bodyPr, "noAutofit")) {
     result.autoFit = "none";
+  }
+
+  const verticalAlign = parseTextBoxVerticalAlign(getAttribute(bodyPr, null, "anchor"));
+  if (verticalAlign) {
+    result.verticalAlign = verticalAlign;
   }
 
   // Margins (insets) in EMUs
@@ -354,6 +378,9 @@ export function parseTextBox(drawingEl: XmlElement): TextBox | null {
   if (bodyProps.textWrap) {
     textBox.textWrap = bodyProps.textWrap;
   }
+  if (bodyProps.verticalAlign) {
+    textBox.verticalAlign = bodyProps.verticalAlign;
+  }
 
   // Parse position for anchored text boxes
   if (isAnchor) {
@@ -447,6 +474,9 @@ export function parseTextBoxFromShape(
   }
   if (bodyProps.textWrap) {
     textBox.textWrap = bodyProps.textWrap;
+  }
+  if (bodyProps.verticalAlign) {
+    textBox.verticalAlign = bodyProps.verticalAlign;
   }
   if (position) {
     textBox.position = position;

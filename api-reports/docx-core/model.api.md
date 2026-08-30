@@ -1271,6 +1271,7 @@ export type TextBox = {
     content: (Paragraph | Table)[];
     autoFit?: ShapeTextBody["autoFit"];
     textWrap?: ShapeTextBody["textWrap"];
+    verticalAlign?: ShapeTextBody["anchor"];
     margins?: {
         top?: number;
         bottom?: number;

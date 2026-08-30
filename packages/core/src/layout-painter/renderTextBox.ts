@@ -79,6 +79,14 @@ export function renderTextBoxFragment(
   // Internal padding
   const margins = block.margins ?? DEFAULT_TEXTBOX_MARGINS;
   containerEl.style.padding = `${margins.top}px ${margins.right}px ${margins.bottom}px ${margins.left}px`;
+  // Distributed and justified anchors need line-level placement, including
+  // wrapped lines and multi-paragraph content. Preserve them for round trips,
+  // but do not approximate them with block-level flex spacing.
+  if (block.verticalAlign === "middle" || block.verticalAlign === "bottom") {
+    containerEl.style.display = "flex";
+    containerEl.style.flexDirection = "column";
+    containerEl.style.justifyContent = block.verticalAlign === "middle" ? "center" : "flex-end";
+  }
 
   // Store metadata
   containerEl.dataset["blockId"] = String(fragment.blockId);

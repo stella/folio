@@ -849,6 +849,8 @@ export type TextBoxBlock = {
   autoFit?: ShapeTextBody["autoFit"];
   /** Horizontal text wrapping inside the box */
   textWrap?: ShapeTextBody["textWrap"];
+  /** Vertical text alignment inside the box */
+  verticalAlign?: ShapeTextBody["anchor"];
   /** Fill/background color */
   fillColor?: string;
   /** Border width in pixels */

@@ -8,6 +8,7 @@ import type {
   Run,
   Shape,
   ShapeContent,
+  ShapeTextBody,
   Theme,
   TrackedRunChange,
 } from "../types/document";
@@ -52,10 +53,14 @@ const VML_VERTICAL_RELATIVES = new Set<ImagePosition["vertical"]["relativeTo"]>(
 ]);
 const VML_TEXTBOX_INSET_DEFAULTS = ["0.1in", "0.05in", "0.1in", "0.05in"] as const;
 const MAX_VML_TEXTBOX_INSET_TOKEN_CHARACTERS = 64;
+const MAX_VML_STYLE_CHARACTERS = 16_384;
 
 const parseVmlStyle = (value: string | null): Record<string, string> => {
   const declarations: Record<string, string> = {};
-  for (const declaration of value?.split(";") ?? []) {
+  if (!value || value.length > MAX_VML_STYLE_CHARACTERS) {
+    return declarations;
+  }
+  for (const declaration of value.split(";")) {
     const separator = declaration.indexOf(":");
     if (separator < 0) {
       continue;
@@ -183,6 +188,19 @@ const parseVmlInsets = (
 
 const parseVmlFill = (shapeEl: XmlElement): Shape["fill"] =>
   getAttribute(shapeEl, null, "filled")?.toLowerCase() === "f" ? { type: "none" } : undefined;
+
+const parseVmlTextAnchor = (value: string | undefined): ShapeTextBody["anchor"] | undefined => {
+  switch (value?.toLowerCase()) {
+    case "top":
+      return "top";
+    case "middle":
+      return "middle";
+    case "bottom":
+      return "bottom";
+    default:
+      return undefined;
+  }
+};
 
 const vmlWrapType = (positioned: boolean, zIndex: number): NonNullable<Shape["wrap"]>["type"] => {
   if (!positioned) {
@@ -356,6 +374,7 @@ const enrichTextBoxRuns = ({
           content: textBox.content,
           ...(textBox.autoFit !== undefined ? { autoFit: textBox.autoFit } : {}),
           ...(textBox.textWrap !== undefined ? { textWrap: textBox.textWrap } : {}),
+          ...(textBox.verticalAlign !== undefined ? { anchor: textBox.verticalAlign } : {}),
           ...(textBox.margins !== undefined ? { margins: textBox.margins } : {}),
         },
       };
@@ -490,6 +509,7 @@ const parseVmlTextBoxShape = (
   }
 
   const style = parseVmlStyle(getAttribute(shapeEl, null, "style"));
+  const textBoxStyle = parseVmlStyle(getAttribute(textBoxEl, null, "style"));
   const width = vmlLengthToPixels(style["width"]);
   const height = vmlLengthToPixels(style["height"]);
   if (width === undefined || height === undefined || width <= 0 || height <= 0) {
@@ -501,6 +521,7 @@ const parseVmlTextBoxShape = (
   const positioned = style["position"]?.toLowerCase() === "absolute";
   const zIndex = Number.parseInt(style["z-index"] ?? "", 10);
   const margins = parseVmlInsets(textBoxEl);
+  const anchor = parseVmlTextAnchor(textBoxStyle["v-text-anchor"]);
   const fill = parseVmlFill(shapeEl);
   const shape: Shape = {
     type: "shape",
@@ -520,6 +541,7 @@ const parseVmlTextBoxShape = (
         media,
       ),
       ...(margins === undefined ? {} : { margins }),
+      ...(anchor === undefined ? {} : { anchor }),
     },
   };
   const id = getAttribute(shapeEl, null, "id");
