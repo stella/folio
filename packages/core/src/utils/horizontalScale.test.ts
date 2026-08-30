@@ -4,6 +4,7 @@ import {
   getHorizontalScaleFactor,
   normalizeHorizontalScalePercent,
   parseHorizontalScalePercent,
+  roundHorizontalScalePercentForSerialization,
 } from "./horizontalScale";
 
 describe("horizontal text scale normalization", () => {
@@ -49,4 +50,12 @@ describe("horizontal text scale normalization", () => {
       expect(parseHorizontalScalePercent(scale)).toBeUndefined();
     },
   );
+
+  test("quantizes only in-range finite serialization values", () => {
+    expect(roundHorizontalScalePercentForSerialization(99.99999)).toBe(100);
+    expect(roundHorizontalScalePercentForSerialization(12.5)).toBe(13);
+    expect(roundHorizontalScalePercentForSerialization(-0.1)).toBeUndefined();
+    expect(roundHorizontalScalePercentForSerialization(600.1)).toBeUndefined();
+    expect(roundHorizontalScalePercentForSerialization(Number.NaN)).toBeUndefined();
+  });
 });

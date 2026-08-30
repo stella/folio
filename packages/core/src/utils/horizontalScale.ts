@@ -46,3 +46,26 @@ export function parseHorizontalScalePercent(
 export function getHorizontalScaleFactor(horizontalScale: number | null | undefined): number {
   return (normalizeHorizontalScalePercent(horizontalScale) ?? 100) / 100;
 }
+
+/**
+ * Quantize an in-range model value for OOXML's integer-only representation.
+ *
+ * Imported documents use strict integer normalization. Serialization also
+ * tolerates finite floating-point residue produced by editing calculations,
+ * preserving the existing integer-attribute contract without emitting an
+ * invalid fractional value.
+ */
+export function roundHorizontalScalePercentForSerialization(
+  horizontalScale: number | null | undefined,
+): number | undefined {
+  if (
+    horizontalScale === null ||
+    horizontalScale === undefined ||
+    !Number.isFinite(horizontalScale) ||
+    horizontalScale < 0 ||
+    horizontalScale > 600
+  ) {
+    return undefined;
+  }
+  return Math.round(horizontalScale);
+}
