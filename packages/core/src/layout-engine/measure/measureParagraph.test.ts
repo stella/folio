@@ -668,6 +668,48 @@ describe("measureParagraph cross-run line breaking", () => {
     );
   });
 
+  test.each([
+    { letterSpacing: 2, expectedWidth: 12 },
+    { letterSpacing: -2, expectedWidth: 8 },
+  ])(
+    "removes consecutive trailing-space advances at $letterSpacing px character spacing",
+    ({ letterSpacing, expectedWidth }) => {
+      withFakeTextMeasure(
+        () => {
+          const measured = measureParagraph(
+            paragraph([{ kind: "text", text: "aa  ", letterSpacing }]),
+            1000,
+          );
+
+          expect(measured.lines).toHaveLength(1);
+          expect(measured.lines[0]?.width).toBe(expectedWidth);
+        },
+        { charWidth: fixedCharWidth(5) },
+      );
+    },
+  );
+
+  test.each([
+    { letterSpacing: 2, expectedWidth: 12 },
+    { letterSpacing: -2, expectedWidth: 8 },
+  ])(
+    "removes consecutive trailing-space advances before a wrap at $letterSpacing px character spacing",
+    ({ letterSpacing, expectedWidth }) => {
+      withFakeTextMeasure(
+        () => {
+          const measured = measureParagraph(
+            paragraph([{ kind: "text", text: "aa  bb", letterSpacing }]),
+            18,
+          );
+
+          expect(measured.lines).toHaveLength(2);
+          expect(measured.lines.map((line) => line.width)).toEqual([expectedWidth, expectedWidth]);
+        },
+        { charWidth: fixedCharWidth(5) },
+      );
+    },
+  );
+
   test("keeps exact full-string measurement for kerning and literal tabs", () => {
     withFakeTextMeasure(
       () => {

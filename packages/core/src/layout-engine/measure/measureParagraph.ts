@@ -2312,7 +2312,9 @@ export function measureParagraph(
         // trailing segments must accumulate until visible content follows.
         currentLine.trailingWhitespaceWidth =
           wordWidth === 0
-            ? currentLine.trailingWhitespaceWidth + wordTrailingWhitespaceWidth
+            ? currentLine.trailingWhitespaceWidth +
+              leadingLetterSpacing +
+              wordTrailingWhitespaceWidth
             : wordTrailingWhitespaceWidth;
         currentLine.regularSpaceWidth += compressibleSpaceWidth(word, style);
         currentLine.toRun = runIndex;
