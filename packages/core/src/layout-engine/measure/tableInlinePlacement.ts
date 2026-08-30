@@ -7,18 +7,47 @@ type TableInlinePlacement =
 /** Resolve an inline table's horizontal anchor without losing RTL leading-edge semantics. */
 export const resolveTableInlinePlacement = (
   table: Pick<TableBlock, "bidi" | "indent" | "justification">,
+  rowJustification?: TableBlock["justification"],
 ): TableInlinePlacement => {
-  if (table.justification === "center") {
+  const logicalJustification = rowJustification ?? table.justification ?? "left";
+  if (logicalJustification === "center") {
     return { alignment: "center" };
-  }
-  if (table.justification === "right") {
-    return { alignment: "right", offset: 0 };
   }
 
   // w:tblInd adds space before the table's leading edge. Cell margins affect
   // content inside that edge and therefore must not move the table itself.
-  if (table.justification === "left" || table.bidi !== true) {
-    return { alignment: "left", offset: table.indent ?? 0 };
+  // OOXML justification is logical: bidiVisual mirrors left/right only after
+  // deciding whether the leading-edge indent applies.
+  const offset = logicalJustification === "left" ? (table.indent ?? 0) : 0;
+  if (table.bidi !== true) {
+    return { alignment: logicalJustification, offset };
   }
-  return { alignment: "right", offset: table.indent ?? 0 };
+  return {
+    alignment: logicalJustification === "left" ? "right" : "left",
+    offset,
+  };
+};
+
+type ResolveTableInlineOffsetOptions = {
+  table: Pick<TableBlock, "bidi" | "indent" | "justification">;
+  rowJustification?: TableBlock["justification"];
+  frameWidth: number;
+  tableWidth: number;
+};
+
+/** Resolve a table's physical inline offset within its current content frame. */
+export const resolveTableInlineOffset = ({
+  table,
+  rowJustification,
+  frameWidth,
+  tableWidth,
+}: ResolveTableInlineOffsetOptions): number => {
+  const placement = resolveTableInlinePlacement(table, rowJustification);
+  if (placement.alignment === "center") {
+    return (frameWidth - tableWidth) / 2;
+  }
+  if (placement.alignment === "right") {
+    return frameWidth - tableWidth - placement.offset;
+  }
+  return placement.offset;
 };

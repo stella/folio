@@ -46,7 +46,10 @@ import {
   type TableCellGrid,
   type TableCellPlacements,
 } from "../layout-engine/measure/tableCellGrid";
-import { resolveTableInlinePlacement } from "../layout-engine/measure/tableInlinePlacement";
+import {
+  resolveTableInlineOffset,
+  resolveTableInlinePlacement,
+} from "../layout-engine/measure/tableInlinePlacement";
 import { emuToPixels } from "../utils/units";
 import { applySanitizedImageSrc } from "../utils/sanitizeImageSrc";
 import { resolveAnchoredImagePosition, type PageGeometry } from "./anchoredImagePosition";
@@ -265,7 +268,7 @@ function renderCellContent({
       const tableBlock = block as TableBlock;
       const tableMeasure = measure as TableMeasure;
 
-      const nestedTableEl = renderNestedTable(tableBlock, tableMeasure, context, doc);
+      const nestedTableEl = renderNestedTable(tableBlock, tableMeasure, context, doc, contentWidth);
       nestedTableEl.style.position = "relative";
       const placement = placeTableCellBlock(flowState, tableBlock, tableMeasure);
       if (placement.leadingSpacing > 0) {
@@ -397,6 +400,7 @@ export function renderNestedTable(
   measure: TableMeasure,
   context: RenderContext,
   doc: Document,
+  frameWidth = context.contentWidth ?? measure.totalWidth,
 ): HTMLElement {
   const tableEl = doc.createElement("div");
   tableEl.className = `${TABLE_CLASS_NAMES.table} layout-nested-table`;
@@ -407,6 +411,11 @@ export function renderNestedTable(
   tableEl.style.display = "block";
 
   const placement = resolveTableInlinePlacement(block);
+  const tableInlineOffset = resolveTableInlineOffset({
+    table: block,
+    frameWidth,
+    tableWidth: measure.totalWidth,
+  });
   if (placement.alignment === "center") {
     tableEl.style.marginLeft = "auto";
     tableEl.style.marginRight = "auto";
@@ -471,6 +480,13 @@ export function renderNestedTable(
       columnsPinned,
       cellGrid,
       cellPlacements,
+      inlineOffset:
+        resolveTableInlineOffset({
+          table: block,
+          rowJustification: row.justification,
+          frameWidth,
+          tableWidth: measure.totalWidth,
+        }) - tableInlineOffset,
     });
     tableEl.append(rowEl);
     y += rowMeasure.height;
@@ -784,6 +800,7 @@ type RenderTableRowOptions = {
   cellPlacements: TableCellPlacements;
   contentClip?: CellContentClip;
   pageContentPosition?: PageContentPosition;
+  inlineOffset?: number;
 };
 
 function renderTableRow({
@@ -803,13 +820,14 @@ function renderTableRow({
   cellPlacements,
   contentClip,
   pageContentPosition,
+  inlineOffset = 0,
 }: RenderTableRowOptions): HTMLElement {
   const rowEl = doc.createElement("div");
   rowEl.className = TABLE_CLASS_NAMES.row;
 
   // Positioning
   rowEl.style.position = "absolute";
-  rowEl.style.left = "0";
+  rowEl.style.left = `${inlineOffset}px`;
   rowEl.style.top = `${y}px`;
   rowEl.style.width = "100%";
   rowEl.style.height = `${rowMeasure.height}px`;
@@ -874,7 +892,7 @@ function renderTableRow({
         ? {
             pageContentPosition: {
               geometry: pageContentPosition.geometry,
-              x: pageContentPosition.x + cellLeft,
+              x: pageContentPosition.x + inlineOffset + cellLeft,
               y: pageContentPosition.y,
             },
           }

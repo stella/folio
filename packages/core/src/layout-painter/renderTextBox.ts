@@ -39,6 +39,7 @@ export type RenderTextBoxFragmentOptions = {
     measure: TableMeasure,
     context: RenderContext,
     document: Document,
+    frameWidth?: number,
   ) => HTMLElement;
 };
 
@@ -113,7 +114,7 @@ export function renderTextBoxFragment(
       if (!options.renderTable) {
         panic("renderTextBoxFragment: a nested table renderer is required for table content");
       }
-      const tableEl = options.renderTable(contentBlock, contentMeasure, context, doc);
+      const tableEl = options.renderTable(contentBlock, contentMeasure, context, doc, innerWidth);
       tableEl.style.marginTop = `${placement.leadingSpacing}px`;
       containerEl.append(tableEl);
       continue;

@@ -970,6 +970,7 @@ export type TableRow = {
     gridAfter?: number;
     height?: number;
     heightRule?: "auto" | "atLeast" | "exact";
+    justification?: "left" | "center" | "right";
     isHeader?: boolean;
     cantSplit?: boolean;
     hidden?: boolean;

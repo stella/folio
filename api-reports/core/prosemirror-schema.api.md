@@ -414,6 +414,7 @@ export type TableAttrs = {
     look?: import__stll_docx_core_model.TableLook;
     borders?: import__stll_docx_core_model.TableBorders;
     _resolvedIndent?: NonNullable<import__stll_docx_core_model.TableFormatting["indent"]>;
+    _resolvedJustification?: NonNullable<import__stll_docx_core_model.TableFormatting["justification"]>;
     _resolvedBidi?: boolean;
     _originalFormatting?: import__stll_docx_core_model.TableFormatting;
     tblPrChange?: import__stll_docx_core_model.TablePropertyChange[];
@@ -473,6 +474,7 @@ export type TableRowAttrs = {
     heightRule?: NonNullable<import__stll_docx_core_model.TableRowFormatting["heightRule"]>;
     isHeader?: boolean;
     hidden?: boolean;
+    _resolvedJustification?: NonNullable<import__stll_docx_core_model.TableRowFormatting["justification"]>;
     _originalFormatting?: import__stll_docx_core_model.TableRowFormatting;
     trPrChange?: import__stll_docx_core_model.TableRowPropertyChange[];
 } & ({

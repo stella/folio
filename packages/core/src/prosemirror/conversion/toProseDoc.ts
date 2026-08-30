@@ -32,6 +32,7 @@ import type {
   StyleDefinitions,
   Table,
   TableRow,
+  TableRowFormatting,
   TableCell,
   TableCellFormatting,
   TableBorders,
@@ -1708,12 +1709,15 @@ function convertTable(
   const resolvedTableBorders =
     table.formatting?.borders ?? tableStyle?.tblPr?.borders ?? fallbackTableStyle?.tblPr?.borders;
   const fallbackTableIndent = fallbackTableStyle?.tblPr?.indent;
-  // TableNormal's zero is Word's unindented default: keep it absent so layout
-  // aligns first-cell text with the margin. Direct and explicit-style zero remain authored.
+  // TableNormal's zero is Word's unindented default: keep it absent so a save
+  // does not turn an inherited default into direct formatting. Direct and
+  // explicit-style zero remain authored.
   const resolvedTableIndent =
     table.formatting?.indent ??
     tableStyle?.tblPr?.indent ??
     (fallbackTableIndent?.value === 0 ? undefined : fallbackTableIndent);
+  const resolvedTableJustification =
+    tableStyle?.tblPr?.justification ?? fallbackTableStyle?.tblPr?.justification;
   const resolvedTableBidi =
     table.formatting?.bidi ?? tableStyle?.tblPr?.bidi ?? fallbackTableStyle?.tblPr?.bidi;
 
@@ -1770,6 +1774,9 @@ function convertTable(
   }
   if (resolvedTableIndent) {
     attrs._resolvedIndent = resolvedTableIndent;
+  }
+  if (resolvedTableJustification) {
+    attrs._resolvedJustification = resolvedTableJustification;
   }
   if (resolvedTableBidi !== undefined) {
     attrs._resolvedBidi = resolvedTableBidi;
@@ -1853,6 +1860,8 @@ function convertTable(
     if (bandingEnabledH && !isFirstRowStyled && !isLastRow) {
       dataRowIndex++;
     }
+    const resolvedRowJustification =
+      tableStyle?.trPr?.justification ?? fallbackTableStyle?.trPr?.justification;
 
     return convertTableRow(
       row,
@@ -1871,6 +1880,7 @@ function convertTable(
       totalColumns,
       rowSpanMap,
       cellMarginsAttr,
+      resolvedRowJustification,
     );
   });
 
@@ -1924,6 +1934,7 @@ function convertTableRow(
   totalColumns?: number,
   rowSpanMap?: Map<string, RowSpanInfo>,
   defaultCellMargins?: TableCellMarginsAttrs,
+  resolvedJustification?: NonNullable<TableRowFormatting["justification"]>,
 ): PMNode {
   const attrsWithoutStructuralChange: Omit<TableRowAttrs, "trIns" | "trDel"> = {
     // isHeader controls header row REPETITION on page breaks.
@@ -1939,6 +1950,9 @@ function convertTableRow(
   }
   if (row.formatting?.hidden) {
     attrsWithoutStructuralChange.hidden = true;
+  }
+  if (resolvedJustification) {
+    attrsWithoutStructuralChange._resolvedJustification = resolvedJustification;
   }
   if (row.formatting) {
     attrsWithoutStructuralChange._originalFormatting = row.formatting;

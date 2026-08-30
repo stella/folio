@@ -678,6 +678,8 @@ export type TableAttrs = {
   borders?: TableBorders;
   /** Effective table indent after style resolution. PM-only; never serialized. */
   _resolvedIndent?: NonNullable<TableFormatting["indent"]>;
+  /** Style-derived table justification fallback. PM-only; never serialized. */
+  _resolvedJustification?: NonNullable<TableFormatting["justification"]>;
   /** Effective table direction after style resolution. PM-only; never serialized. */
   _resolvedBidi?: boolean;
   /** Original table formatting from DOCX for lossless round-trip serialization */
@@ -704,6 +706,8 @@ export type TableRowAttrs = {
   isHeader?: boolean;
   /** Whether the row is hidden (`w:hidden`) */
   hidden?: boolean;
+  /** Style-derived row justification fallback. PM-only; never serialized. */
+  _resolvedJustification?: NonNullable<TableRowFormatting["justification"]>;
   /** Original row formatting from DOCX for lossless round-trip serialization */
   _originalFormatting?: TableRowFormatting;
   /** Tracked row property changes (w:trPrChange) for round-trip + accept/reject */

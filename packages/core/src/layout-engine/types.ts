@@ -677,6 +677,8 @@ export type TableRow = {
   gridAfter?: number;
   height?: number;
   heightRule?: "auto" | "atLeast" | "exact";
+  /** Effective row-level table justification after OOXML precedence. */
+  justification?: "left" | "center" | "right";
   isHeader?: boolean;
   /** `w:cantSplit`: keep this row in one flow region. */
   cantSplit?: boolean;

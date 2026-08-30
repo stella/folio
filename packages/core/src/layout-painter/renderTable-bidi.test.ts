@@ -243,6 +243,36 @@ describe("renderTableFragment RTL column order (w:bidiVisual)", () => {
 });
 
 describe("renderNestedTable RTL placement", () => {
+  test.each([
+    {
+      justification: "left" as const,
+      marginLeft: "auto",
+      marginRight: "10px",
+    },
+    {
+      justification: "right" as const,
+      marginLeft: "0px",
+      marginRight: undefined,
+    },
+  ])(
+    "mirrors explicit $justification justification onto the physical edge",
+    ({ justification, marginLeft, marginRight }) => {
+      const { block, measure } = buildTwoColumnTable(true);
+      block.indent = 10;
+      block.justification = justification;
+
+      const tableEl = renderNestedTable(
+        block,
+        measure,
+        renderContext,
+        fakeDocument,
+      ) as unknown as FakeElement;
+
+      expect(tableEl.style["marginLeft"]).toBe(marginLeft);
+      expect(tableEl.style["marginRight"]).toBe(marginRight);
+    },
+  );
+
   test("anchors an authored indent from the right leading edge", () => {
     const { block, measure } = buildTwoColumnTable(true);
     block.indent = 10;
@@ -333,4 +363,38 @@ describe("renderNestedTable LTR placement", () => {
 
     expect(tableEl.style["marginLeft"]).toBe("10px");
   });
+});
+
+describe("renderNestedTable row justification", () => {
+  test.each([
+    { bidi: false, firstLeft: "0px", secondLeft: "140px" },
+    { bidi: true, firstLeft: "0px", secondLeft: "-140px" },
+  ])(
+    "positions overridden rows within the same $bidi bidi table",
+    ({ bidi, firstLeft, secondLeft }) => {
+      const { block, measure } = buildTwoColumnTable(bidi);
+      block.indent = 10;
+      block.rows[0]!.justification = "left";
+      const secondRow = structuredClone(block.rows[0]!);
+      secondRow.id = "row-2";
+      secondRow.justification = "right";
+      block.rows.push(secondRow);
+      measure.rows.push(structuredClone(measure.rows[0]!));
+      measure.totalHeight *= 2;
+
+      const tableEl = renderNestedTable(
+        block,
+        measure,
+        renderContext,
+        fakeDocument,
+        400,
+      ) as unknown as FakeElement;
+      const rows = tableEl.children.filter((child) =>
+        child.className.split(" ").includes(TABLE_CLASS_NAMES.row),
+      );
+
+      expect(rows[0]?.style["left"]).toBe(firstLeft);
+      expect(rows[1]?.style["left"]).toBe(secondLeft);
+    },
+  );
 });

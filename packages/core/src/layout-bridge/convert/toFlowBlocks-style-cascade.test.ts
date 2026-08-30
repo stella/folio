@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { panic } from "better-result";
 
 import type {
   ParagraphBlock,
@@ -8,6 +9,7 @@ import type {
 } from "../../layout-engine/types";
 import { layoutDocument } from "../../layout-engine";
 import { parseStyleDefinitions } from "../../docx/styleParser";
+import { fromProseDoc } from "../../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import { schema } from "../../prosemirror/schema";
 import type { Document, Paragraph, StyleDefinitions, Table } from "../../types/document";
@@ -795,6 +797,180 @@ describe("toFlowBlocks style cascade", () => {
       expect(tableBlock.indent).toBe(0);
       const tableX = firstTableX(tableBlock);
       expect(tableX).toBe(40);
+    }
+  });
+
+  test("resolves table justification with direct, explicit-style, and default-style precedence", () => {
+    const styles: StyleDefinitions = {
+      styles: [
+        {
+          styleId: "DefaultTable",
+          type: "table",
+          default: true,
+          name: "Default Table",
+          tblPr: {
+            justification: "right",
+            indent: { value: 300, type: "dxa" },
+          },
+        },
+        {
+          styleId: "CenteredTable",
+          type: "table",
+          name: "Centered Table",
+          tblPr: {
+            justification: "center",
+            indent: { value: 600, type: "dxa" },
+          },
+        },
+      ],
+    };
+    const cases: { formatting?: Table["formatting"]; expectedX: number }[] = [
+      { expectedX: 160 },
+      { formatting: { styleId: "CenteredTable" }, expectedX: 100 },
+      {
+        formatting: { styleId: "CenteredTable", justification: "left" },
+        expectedX: 80,
+      },
+    ];
+
+    for (const { formatting, expectedX } of cases) {
+      const table: Table = {
+        type: "table",
+        ...(formatting ? { formatting } : {}),
+        rows: [
+          {
+            type: "tableRow",
+            cells: [
+              {
+                type: "tableCell",
+                content: [{ type: "paragraph", content: [] }],
+              },
+            ],
+          },
+        ],
+      };
+      const document: Document = {
+        package: { document: { content: [table] }, styles },
+      };
+      const pmDoc = toProseDoc(document, { styles });
+      const tableBlock = toFlowBlocks(pmDoc, {}).at(0);
+
+      expect(tableBlock?.kind).toBe("table");
+      if (tableBlock?.kind === "table") {
+        expect(firstTableX(tableBlock)).toBe(expectedX);
+      }
+      expect(fromProseDoc(pmDoc, document).package.document.content[0]?.formatting).toEqual(
+        formatting,
+      );
+    }
+
+    const styledTable: Table = {
+      type: "table",
+      formatting: { styleId: "CenteredTable" },
+      rows: [
+        {
+          type: "tableRow",
+          cells: [
+            {
+              type: "tableCell",
+              content: [{ type: "paragraph", content: [] }],
+            },
+          ],
+        },
+      ],
+    };
+    const styledDocument: Document = {
+      package: { document: { content: [styledTable] }, styles },
+    };
+    const styledPmDoc = toProseDoc(styledDocument, { styles });
+    const styledNode = styledPmDoc.firstChild;
+    if (!styledNode) {
+      panic("Expected a converted table");
+    }
+    const editedNode = styledNode.type.create(
+      { ...styledNode.attrs, justification: "right" },
+      styledNode.content,
+    );
+    const editedPmDoc = styledPmDoc.type.create(styledPmDoc.attrs, [editedNode]);
+    const editedBlock = toFlowBlocks(editedPmDoc, {}).at(0);
+
+    expect(editedBlock?.kind).toBe("table");
+    if (editedBlock?.kind === "table") {
+      expect(firstTableX(editedBlock)).toBe(160);
+    }
+    const savedEditedTable = fromProseDoc(editedPmDoc, styledDocument).package.document.content[0];
+    expect(savedEditedTable?.type).toBe("table");
+    if (savedEditedTable?.type === "table") {
+      expect(savedEditedTable.formatting).toEqual({
+        styleId: "CenteredTable",
+        justification: "right",
+      });
+    }
+  });
+
+  test("resolves row justification above the table while preserving row provenance", () => {
+    const styles: StyleDefinitions = {
+      styles: [
+        {
+          styleId: "RowAlignedTable",
+          type: "table",
+          name: "Row Aligned Table",
+          tblPr: {
+            justification: "left",
+            indent: { value: 600, type: "dxa" },
+          },
+          trPr: { justification: "right" },
+        },
+      ],
+    };
+    const table: Table = {
+      type: "table",
+      formatting: { styleId: "RowAlignedTable" },
+      rows: [
+        {
+          type: "tableRow",
+          cells: [
+            {
+              type: "tableCell",
+              content: [{ type: "paragraph", content: [] }],
+            },
+          ],
+        },
+        {
+          type: "tableRow",
+          formatting: { justification: "left" },
+          cells: [
+            {
+              type: "tableCell",
+              content: [{ type: "paragraph", content: [] }],
+            },
+          ],
+        },
+      ],
+    };
+    const document: Document = {
+      package: { document: { content: [table] }, styles },
+    };
+    const pmDoc = toProseDoc(document, { styles });
+    const tableBlock = toFlowBlocks(pmDoc, {}).at(0);
+
+    expect(tableBlock?.kind).toBe("table");
+    if (tableBlock?.kind === "table") {
+      expect(tableBlock.rows.map((row) => row.justification)).toEqual(["right", "left"]);
+    }
+    const tableNode = pmDoc.firstChild;
+    expect(tableNode?.child(0).attrs["_resolvedJustification"]).toBe("right");
+    expect(tableNode?.child(0).attrs["_originalFormatting"]).toBeNull();
+    expect(tableNode?.child(1).attrs["_resolvedJustification"]).toBe("right");
+    expect(tableNode?.child(1).attrs["_originalFormatting"]).toEqual({ justification: "left" });
+
+    const savedTable = fromProseDoc(pmDoc, document).package.document.content[0];
+    expect(savedTable?.type).toBe("table");
+    if (savedTable?.type === "table") {
+      expect(savedTable.rows.map((row) => row.formatting)).toEqual([
+        undefined,
+        { justification: "left" },
+      ]);
     }
   });
 

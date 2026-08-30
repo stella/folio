@@ -1120,6 +1120,21 @@ describe("left-aligned table placement", () => {
 });
 
 describe("RTL table placement", () => {
+  test.each([
+    { justification: "left" as const, expectedX: 30 },
+    { justification: "right" as const, expectedX: 40 },
+  ])(
+    "mirrors explicit $justification justification before applying indentation",
+    ({ justification, expectedX }) => {
+      const { block, measure } = tallTable(1);
+      block.bidi = true;
+      block.indent = 10;
+      block.justification = justification;
+
+      expect(tableFragments(block, measure).at(0)?.x).toBe(expectedX);
+    },
+  );
+
   test("applies an authored indent from the right leading edge", () => {
     const { block, measure } = tallTable(1);
     block.bidi = true;
@@ -1165,6 +1180,29 @@ describe("RTL table placement", () => {
     const contentRight = OPTIONS.pageSize.w - OPTIONS.margins.right;
 
     expect((fragment?.x ?? 0) + measure.totalWidth).toBe(contentRight);
+  });
+
+  test("uses each row's effective justification when deciding whether tblInd applies", () => {
+    const { block, measure } = tallTable(1);
+    const secondRow = structuredClone(block.rows[0]!);
+    secondRow.id = "r1";
+    secondRow.justification = "right";
+    block.rows[0]!.justification = "left";
+    block.rows.push(secondRow);
+    block.indent = 10;
+    measure.rows.push(structuredClone(measure.rows[0]!));
+    measure.totalHeight *= 2;
+
+    expect(
+      tableFragments(block, measure).map(({ fromRow, toRow, x }) => ({ fromRow, toRow, x })),
+    ).toEqual([
+      { fromRow: 0, toRow: 1, x: OPTIONS.margins.left + 10 },
+      {
+        fromRow: 1,
+        toRow: 2,
+        x: OPTIONS.pageSize.w - OPTIONS.margins.right - measure.totalWidth,
+      },
+    ]);
   });
 });
 

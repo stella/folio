@@ -2313,6 +2313,11 @@ function convertTableRow(
   if (attrs.hidden) {
     row.hidden = attrs.hidden;
   }
+  const effectiveJustification =
+    attrs._originalFormatting?.justification ?? attrs._resolvedJustification;
+  if (effectiveJustification) {
+    row.justification = effectiveJustification;
+  }
   return row;
 }
 
@@ -2351,8 +2356,9 @@ function convertTable(node: PMNode, startPos: number, options: FlowConversionOpt
     }
   }
 
-  // Extract justification
-  const justification = attrs.justification;
+  // Keep authored justification separate in ProseMirror so style-derived
+  // placement never becomes direct formatting on save.
+  const justification = attrs.justification ?? attrs._resolvedJustification;
 
   // Extract table indent + RTL column order from _originalFormatting
   // (w:tblInd, w:bidiVisual). bidiVisual is import-only — folio has no UI to

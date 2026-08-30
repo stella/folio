@@ -492,6 +492,13 @@ export const readTableAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TableAt
     "insideH",
     "insideV",
   ]);
+  optionalOneOf(
+    attrs,
+    "_resolvedJustification",
+    "table.attrs._resolvedJustification",
+    issues,
+    TABLE_JUSTIFICATION_VALUES,
+  );
   optionalBoolean(attrs, "_resolvedBidi", "table.attrs._resolvedBidi", issues);
   optionalRecord(attrs, "_originalFormatting", "table.attrs._originalFormatting", issues);
 
@@ -516,6 +523,13 @@ export const readTableRowAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Tabl
   );
   optionalBoolean(attrs, "isHeader", "tableRow.attrs.isHeader", issues);
   optionalBoolean(attrs, "hidden", "tableRow.attrs.hidden", issues);
+  optionalOneOf(
+    attrs,
+    "_resolvedJustification",
+    "tableRow.attrs._resolvedJustification",
+    issues,
+    TABLE_JUSTIFICATION_VALUES,
+  );
   optionalRecord(attrs, "_originalFormatting", "tableRow.attrs._originalFormatting", issues);
   optionalTableRowRevision(attrs, "trIns", issues);
   optionalTableRowRevision(attrs, "trDel", issues);

@@ -37,7 +37,7 @@ import { normalizeSectionBreakType } from "./section-breaks";
 import { buildTableRowBreakInfo, getRowContinuationSkip, snapRowBreak } from "./tableRowBreak";
 import { bandFragmentX, bandTopContentY, isPageFrameRelativeAnchor } from "./textBoxFlow";
 import { resolveFloatingTablePageX } from "./measure/floatingTablePosition";
-import { resolveTableInlinePlacement } from "./measure/tableInlinePlacement";
+import { resolveTableInlineOffset } from "./measure/tableInlinePlacement";
 import { floatingTextBoxReservesBand } from "./types";
 import type {
   FlowBlock,
@@ -1028,16 +1028,23 @@ function layoutTable(
   const verticallyMergedRows = getVerticallyMergedRows(block);
   // X position from justification / indent, recomputed per fragment because the
   // active column can change across section breaks.
-  const computeTableX = (columnIndex: number): number => {
+  const computeTableX = ({
+    columnIndex,
+    rowIndex,
+  }: {
+    columnIndex: number;
+    rowIndex: number;
+  }): number => {
     const x = paginator.getColumnX(columnIndex);
-    const placement = resolveTableInlinePlacement(block);
-    if (placement.alignment === "center") {
-      return x + (paginator.columnWidth - measure.totalWidth) / 2;
-    }
-    if (placement.alignment === "right") {
-      return x + paginator.columnWidth - measure.totalWidth - placement.offset;
-    }
-    return x + placement.offset;
+    return (
+      x +
+      resolveTableInlineOffset({
+        table: block,
+        rowJustification: block.rows[rowIndex]?.justification,
+        frameWidth: paginator.columnWidth,
+        tableWidth: measure.totalWidth,
+      })
+    );
   };
 
   const getCurrentRowCapacity = (state = paginator.getCurrentState()): number =>
@@ -1052,8 +1059,7 @@ function layoutTable(
       previous?.kind === "table" &&
       previous.blockId === block.id &&
       previous.toRow === rowIndex &&
-      previous.y + previous.height === state.cursorY &&
-      previous.x === computeTableX(state.columnIndex)
+      previous.y + previous.height === state.cursorY
     );
   };
 
@@ -1194,7 +1200,10 @@ function layoutTable(
         const sliceFragment: TableFragment = {
           kind: "table",
           blockId: block.id,
-          x: computeTableX(sliceState.columnIndex),
+          x: computeTableX({
+            columnIndex: sliceState.columnIndex,
+            rowIndex: currentRowIndex,
+          }),
           y: 0,
           width: measure.totalWidth,
           height: fragmentHeight,
@@ -1211,7 +1220,10 @@ function layoutTable(
         };
         const sliceResult = paginator.addFragment(sliceFragment, fragmentHeight, 0, 0);
         sliceFragment.y = sliceResult.y;
-        sliceFragment.x = computeTableX(sliceResult.state.columnIndex);
+        sliceFragment.x = computeTableX({
+          columnIndex: sliceResult.state.columnIndex,
+          rowIndex: currentRowIndex,
+        });
         consumed = nextConsumed;
         if (consumed < splittableRow.height) {
           if (forceRenderedPageBreak) {
@@ -1253,8 +1265,18 @@ function layoutTable(
     const fragmentFootnoteIds: number[] = [];
     let fragmentFootnoteHeight = 0;
     let retryOnNextFlowRegion = false;
+    const fragmentX = computeTableX({
+      columnIndex: state.columnIndex,
+      rowIndex: currentRowIndex,
+    });
 
     for (let j = currentRowIndex; j < rows.length; j++) {
+      if (
+        j > currentRowIndex &&
+        computeTableX({ columnIndex: state.columnIndex, rowIndex: j }) !== fragmentX
+      ) {
+        break;
+      }
       const rowHeight = rows[j]!.height; // SAFETY: j < rows.length
       const currentRowFootnoteIds = rowFootnoteIds[j] ?? [];
       const fragmentFootnoteCountBeforeRow = fragmentFootnoteIds.length;
@@ -1311,7 +1333,7 @@ function layoutTable(
     const isLastFragment = currentRowIndex + fittingRows >= rows.length;
 
     // Calculate x position based on table justification and indent
-    const desiredX = computeTableX(state.columnIndex);
+    const desiredX = fragmentX;
 
     const fragment: TableFragment = {
       kind: "table",
