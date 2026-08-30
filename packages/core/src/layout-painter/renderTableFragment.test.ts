@@ -869,25 +869,27 @@ describe("renderTableFragment floating cell content", () => {
       toRow: 1,
     };
 
-    const tableEl = renderTableFragment(fragment, block, measure, renderContext, {
-      document: fakeDocument,
-    }) as unknown as FakeElement;
-    const cell = findByClass(tableEl, TABLE_CLASS_NAMES.cell).at(0);
-    const content = findByClass(tableEl, TABLE_CLASS_NAMES.cellContent).at(0);
-    const imageLayer = findByClass(tableEl, "layout-cell-floating-images-layer").at(0);
-    const textBoxLayer = findByClass(tableEl, "layout-cell-floating-text-boxes-layer").at(0);
-    const textBox = findByClass(tableEl, "layout-textbox").at(1);
+    withFakeTextMeasure(() => {
+      const tableEl = renderTableFragment(fragment, block, measure, renderContext, {
+        document: fakeDocument,
+      }) as unknown as FakeElement;
+      const cell = findByClass(tableEl, TABLE_CLASS_NAMES.cell).at(0);
+      const content = findByClass(tableEl, TABLE_CLASS_NAMES.cellContent).at(0);
+      const imageLayer = findByClass(tableEl, "layout-cell-floating-images-layer").at(0);
+      const textBoxLayer = findByClass(tableEl, "layout-cell-floating-text-boxes-layer").at(0);
+      const textBox = findByClass(tableEl, "layout-textbox").at(1);
 
-    expect(tableEl.style["overflow"]).toBe("visible");
-    expect(cell?.style["overflow"]).toBe("visible");
-    expect(content?.style["overflow"]).toBe("hidden");
-    expect(imageLayer?.style["left"]).toBe("4px");
-    expect(imageLayer?.style["top"]).toBe("2px");
-    expect(imageLayer?.style["overflow"]).toBe("visible");
-    expect(textBoxLayer?.style["left"]).toBe("4px");
-    expect(textBoxLayer?.style["top"]).toBe("2px");
-    expect(textBox?.style["left"]).toBe("20px");
-    expect(Number.parseFloat(textBox?.style["top"] ?? "0")).toBeGreaterThan(50);
+      expect(tableEl.style["overflow"]).toBe("visible");
+      expect(cell?.style["overflow"]).toBe("visible");
+      expect(content?.style["overflow"]).toBe("hidden");
+      expect(imageLayer?.style["left"]).toBe("4px");
+      expect(imageLayer?.style["top"]).toBe("2px");
+      expect(imageLayer?.style["overflow"]).toBe("visible");
+      expect(textBoxLayer?.style["left"]).toBe("4px");
+      expect(textBoxLayer?.style["top"]).toBe("2px");
+      expect(textBox?.style["left"]).toBe("20px");
+      expect(Number.parseFloat(textBox?.style["top"] ?? "0")).toBeGreaterThan(50);
+    });
   });
 });
 
