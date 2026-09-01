@@ -1,6 +1,19 @@
 import { TaggedError } from "better-result";
 import JSZip from "jszip";
 
+declare module "jszip" {
+  // oxlint-disable-next-line typescript/consistent-type-definitions -- declaration merging requires an interface
+  interface JSZipObject {
+    /**
+     * Chunked read of the entry content, missing from the published typings.
+     * `nodeStream` is this stream wrapped in a Node.js `Readable`, which
+     * browsers and web workers cannot provide; the stream itself is
+     * platform-neutral.
+     */
+    internalStream(type: "uint8array"): JSZip.JSZipStreamHelper<Uint8Array>;
+  }
+}
+
 export const DOCX_MAX_ENTRY_BYTES = 128 * 1024 * 1024;
 export const DOCX_MAX_TOTAL_BYTES = 256 * 1024 * 1024;
 export const DOCX_MAX_ENTRIES = 4096;
@@ -43,52 +56,69 @@ export type DocxArchive = {
   readEntryUint8: (path: string, options?: DocxArchiveReadOptions) => Promise<Uint8Array | null>;
 };
 
+const concatChunks = (chunks: readonly Uint8Array[]): Uint8Array => {
+  let totalBytes = 0;
+  for (const chunk of chunks) {
+    totalBytes += chunk.length;
+  }
+  const merged = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return merged;
+};
+
 type CollectStreamOptions = {
-  stream: NodeJS.ReadableStream;
+  stream: JSZip.JSZipStreamHelper<Uint8Array>;
   maxEntryBytes: number;
   remainingBytes: number;
   maxTotalBytes: number;
   path: string;
 };
 
+/**
+ * Accumulate an entry chunk by chunk, checking both caps before each chunk is
+ * retained. Pausing the stream abandons a decompression bomb mid-inflate, so
+ * the caps bound memory instead of merely reporting the overrun afterwards.
+ */
 const collectStream = async ({
   stream,
   maxEntryBytes,
   remainingBytes,
   maxTotalBytes,
   path,
-}: CollectStreamOptions): Promise<Buffer> =>
-  await new Promise<Buffer>((resolve, reject) => {
-    const chunks: Buffer[] = [];
+}: CollectStreamOptions): Promise<Uint8Array> =>
+  await new Promise<Uint8Array>((resolve, reject) => {
+    const chunks: Uint8Array[] = [];
     let entryBytes = 0;
 
     const fail = (reason: "entry-too-large" | "total-too-large", message: string) => {
-      const destroy: unknown = Reflect.get(stream, "destroy");
-      if (typeof destroy === "function") {
-        Reflect.apply(destroy, stream, []);
-      }
+      stream.pause();
       reject(new DocxArchiveError({ message, reason }));
     };
 
-    stream.on("data", (chunk: Buffer | string) => {
-      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-      entryBytes += bytes.length;
+    stream
+      .on("data", (chunk) => {
+        entryBytes += chunk.length;
 
-      if (entryBytes > maxEntryBytes) {
-        fail("entry-too-large", `DOCX entry "${path}" exceeded the ${maxEntryBytes}-byte limit`);
-        return;
-      }
-      if (entryBytes > remainingBytes) {
-        fail(
-          "total-too-large",
-          `DOCX archive exceeded the ${maxTotalBytes}-byte cumulative limit while reading "${path}"`,
-        );
-        return;
-      }
-      chunks.push(bytes);
-    });
-    stream.on("end", () => resolve(Buffer.concat(chunks)));
-    stream.on("error", reject);
+        if (entryBytes > maxEntryBytes) {
+          fail("entry-too-large", `DOCX entry "${path}" exceeded the ${maxEntryBytes}-byte limit`);
+          return;
+        }
+        if (entryBytes > remainingBytes) {
+          fail(
+            "total-too-large",
+            `DOCX archive exceeded the ${maxTotalBytes}-byte cumulative limit while reading "${path}"`,
+          );
+          return;
+        }
+        chunks.push(chunk);
+      })
+      .on("end", () => resolve(concatChunks(chunks)))
+      .on("error", reject)
+      .resume();
   });
 
 const getDeclaredUncompressedBytes = (entry: JSZip.JSZipObject): number | null => {
@@ -200,26 +230,26 @@ export const loadDocxArchive = async (
   const readEntry = async (
     path: string,
     readOptions: DocxArchiveReadOptions = {},
-  ): Promise<Buffer | null> => {
+  ): Promise<Uint8Array | null> => {
     const requestedMaxBytes = resolveByteLimit({
       value: readOptions.maxBytes,
       fallback: maxEntryBytes,
       name: "DOCX entry read byte limit",
     });
-    const work = async (): Promise<Buffer | null> => {
+    const work = async (): Promise<Uint8Array | null> => {
       const entry = zip.file(path);
       if (!entry) {
         return null;
       }
-      const buffer = await collectStream({
-        stream: entry.nodeStream("nodebuffer"),
+      const content = await collectStream({
+        stream: entry.internalStream("uint8array"),
         maxEntryBytes: Math.min(requestedMaxBytes, maxEntryBytes),
         remainingBytes: maxTotalBytes - totalBytesRead,
         maxTotalBytes,
         path,
       });
-      totalBytesRead += buffer.length;
-      return buffer;
+      totalBytesRead += content.length;
+      return content;
     };
 
     const next = readChain.then(work, work);
@@ -240,12 +270,14 @@ export const loadDocxArchive = async (
       })),
     ),
     async readEntryString(path) {
-      const buffer = await readEntry(path);
-      return buffer === null ? null : buffer.toString("utf-8");
+      const content = await readEntry(path);
+      // `ignoreBOM` keeps a leading U+FEFF in the string: OOXML parts written
+      // by Word carry a UTF-8 BOM, and callers that splice a part and write it
+      // back must not silently drop it.
+      return content === null
+        ? null
+        : new TextDecoder("utf-8", { ignoreBOM: true }).decode(content);
     },
-    async readEntryUint8(path, readOptions) {
-      const buffer = await readEntry(path, readOptions);
-      return buffer === null ? null : new Uint8Array(buffer);
-    },
+    readEntryUint8: readEntry,
   };
 };

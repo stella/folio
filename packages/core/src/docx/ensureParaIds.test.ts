@@ -69,6 +69,23 @@ const collectTextIds = (xml: string): string[] =>
 const PARA = (text: string, attrs = ""): string =>
   `<w:p${attrs}><w:r><w:t>${text}</w:t></w:r></w:p>`;
 
+/** JSZip reports this capability at runtime; the published typings omit it. */
+const NODE_STREAM_SUPPORT = "nodestream";
+
+/**
+ * Run `work` with JSZip reporting the capabilities of a browser or web worker,
+ * where `readable-stream` is absent and `nodeStream` throws.
+ */
+const withoutNodeStreamSupport = async <T>(work: () => Promise<T>): Promise<T> => {
+  const supported: unknown = Reflect.get(JSZip.support, NODE_STREAM_SUPPORT);
+  Reflect.set(JSZip.support, NODE_STREAM_SUPPORT, false);
+  try {
+    return await work();
+  } finally {
+    Reflect.set(JSZip.support, NODE_STREAM_SUPPORT, supported);
+  }
+};
+
 describe("ensureParaIds", () => {
   test("backfills paraId + textId on every paragraph, including table cells", async () => {
     const input = await buildDocx({
@@ -387,6 +404,20 @@ describe("ensureParaIds", () => {
     const input = await zip.generateAsync({ type: "uint8array" });
 
     await expect(ensureParaIds(input)).rejects.toThrow(EnsureParaIdsError);
+  });
+
+  test("normalizes a package on a platform without Node streams", async () => {
+    // `@stll/folio-core/server` is DOM-free, not Node-only: browsers and web
+    // workers have no `readable-stream`, so no read path may reach
+    // `JSZipObject.nodeStream`.
+    const input = await buildDocx({
+      "word/document.xml": documentXml(`${PARA("First")}${PARA("Second")}`),
+    });
+
+    const result = await withoutNodeStreamSupport(async () => await ensureParaIds(input));
+
+    expect(result.assigned).toBe(2);
+    expect(collectIds(await getPart(result.docx, "word/document.xml"))).toHaveLength(2);
   });
 
   test("wraps malformed ZIP input in EnsureParaIdsError", async () => {
