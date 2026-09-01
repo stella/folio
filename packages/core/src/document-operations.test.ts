@@ -60,8 +60,39 @@ describe("document operation contract", () => {
         splitTableCell: ["direct", "tracked-changes"],
       },
       preconditions: ["blockTextHash"],
+      batchPreconditions: ["documentVersion"],
       stories: ["main", "header", "footer", "footnote", "endnote"],
     });
+  });
+
+  test("preserves a batch-level document version precondition", () => {
+    const batch = parseFolioDocumentOperationBatch({
+      version: 1,
+      operations: [{ id: "1", type: "deleteBlock", blockId: "a" }],
+      precondition: { documentVersion: "entity-version-42" },
+    });
+    expect(batch.precondition).toEqual({ documentVersion: "entity-version-42" });
+    expect(Object.isFrozen(batch.precondition)).toBe(true);
+    for (const [invalid, path, reason] of [
+      [{ documentVersion: "" }, "$.precondition.documentVersion", "expected a non-empty string"],
+      [{ documentVersion: 7 }, "$.precondition.documentVersion", "expected a string"],
+      [{ versionId: "x" }, "$.precondition.versionId", "unexpected property"],
+      ["v1", "$.precondition", "expected an object when provided"],
+    ] as const) {
+      expect(() =>
+        parseFolioDocumentOperationBatch({
+          version: 1,
+          operations: [{ id: "1", type: "deleteBlock", blockId: "a" }],
+          precondition: invalid,
+        }),
+      ).toThrow(
+        expect.objectContaining({
+          _tag: "InvalidFolioDocumentOperationBatchError",
+          path,
+          reason,
+        }),
+      );
+    }
   });
 
   test("reports mode support for each operation type", () => {

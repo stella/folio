@@ -114,30 +114,99 @@ returns `[]`, comment entries fall back to `blockId: null` / `quote: ""`, and
 `read_page` / `read_selection` report an unsupported-capability error — see
 `src/bridges/editor-ref.ts` for the exact fallback per method.
 
+### Configuring `suggest_changes`
+
+`suggest_changes` is a projection of the document-operation contract that a
+host configures per surface instead of re-deriving. Pass the same options to
+`getFolioToolDefinitions` (they shape the JSON Schema the model sees) and to
+`executeFolioToolCall` (they drive the parser), so the two cannot drift:
+
+```ts
+import {
+  describeSuggestChangesCapabilities,
+  executeFolioToolCall,
+  getFolioToolDefinitions,
+  type FolioSuggestChangesOptions,
+} from "@stll/folio-agents";
+
+const suggestChanges: FolioSuggestChangesOptions = {
+  // Any subset of the contract types, e.g. a text-only surface:
+  operationTypes: ["replaceInBlock", "replaceBlock", "deleteBlock"],
+  // Force `severity` and `area` on every operation for a review queue:
+  reviewMeta: "required",
+  // Per-call cap, 1 to 200 (default 50):
+  maxOperations: 200,
+  // Pin the batch to a host document version the model must echo back:
+  documentVersion: { current: entityVersionId },
+};
+
+const tools = getFolioToolDefinitions({ suggestChanges });
+const result = executeFolioToolCall("suggest_changes", args, bridge, { suggestChanges });
+// `describeSuggestChangesCapabilities({ ...suggestChanges })` returns the same
+// capability text the tool description carries, for reuse in a system prompt.
+```
+
+Defaults: every contract type except `commentOnBlock` (use `add_comment`) and
+`insertSignatureTable` (direct-only, so never a tracked change); review
+metadata optional; 50 operations per call; no version pin. The schema
+advertises only the properties the allowed types accept, derived from
+`FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE` in `@stll/folio-core`.
+
+The parser is a front door over the contract parser, not a second parser. It
+decodes leniently first (a `kind` key read as `type`, an operation supplied as
+a JSON string, a property that does not apply to the operation type) and
+reports every such step in the result's `normalizations`, then enforces the
+caps and the options above, mints ids that stay unique across calls
+(`op-<nonce>-<n>`), wraps plain-string `comment`s, and hands the batch to
+`parseFolioDocumentOperationBatch`.
+
+With `documentVersion` set, the batch carries `precondition.documentVersion`
+and the executor compares it to the bridge's `getDocumentVersion()` before
+anything is applied: a mismatch skips every operation with
+`documentVersionMismatch`, and a bridge without `getDocumentVersion` refuses
+version-pinned batches instead of guessing.
+
 ### Host-managed review queue
 
 A host with its own review-queue UX (its own place to store proposed edits
-pending approval, distinct from folio's tracked-changes redlines) can validate
-a model's `suggest_changes` / `add_comment` tool-call arguments with the same
-canonical rules `executeFolioToolCall` uses, without applying them through a
-bridge at all:
+pending approval, distinct from folio's tracked-changes redlines) implements
+`FolioAgentBridge` with an `applyDocumentOperations` that enqueues instead of
+applying and reports the operations as `queued`. The executor then returns
+the same envelope the model gets everywhere else, receipts and skip prose
+included, and the host keeps the automatic `precondition` stamping and the
+document-version check:
 
 ```ts
-import { parseSuggestChangesInput } from "@stll/folio-agents";
+import { getFolioDocumentOperationReceipts } from "@stll/folio-core/server";
+import type { FolioAgentBridge } from "@stll/folio-agents";
 
-const parsed = parseSuggestChangesInput(toolInput);
-if (!parsed.ok) {
-  // Feed `parsed.error` back to the model as the tool result, same as
-  // executeFolioToolCall would.
-} else {
-  // `parsed.operations` is FolioAIEditOperation[] — route it into your own
-  // review queue instead of bridge.applyDocumentOperations(...).
-  reviewQueue.enqueue(parsed.operations);
-}
+const queueBridge: FolioAgentBridge = {
+  snapshot: () => lastSnapshotShownToTheModel,
+  getDocumentVersion: () => currentEntityVersionId,
+  applyDocumentOperations: (batch) => {
+    const queued = batch.operations.map(({ id }) => ({ id }));
+    reviewQueue.enqueue(batch.operations);
+    return {
+      version: batch.version,
+      status: "queued",
+      applied: [],
+      queued,
+      skipped: [],
+      issues: [],
+      receipts: getFolioDocumentOperationReceipts(batch.operations, queued),
+      undoHandle: null,
+    };
+  },
+  getComments: () => [],
+  getChanges: () => [],
+  replyToComment: () => false,
+  resolveComment: () => false,
+};
 ```
 
-`parseAddCommentInput` is the equivalent for `add_comment`, returning
-`{ ok: true; operation }` on success.
+A surface with no editable document at the moment reports every operation as
+skipped with `documentNotEditable` instead. `parseSuggestChangesInput` and
+`parseAddCommentInput` remain exported for a host that only needs validation.
 
 ## Summarizing changes
 

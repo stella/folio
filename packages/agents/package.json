@@ -45,6 +45,7 @@
     "test": "bun test src"
   },
   "dependencies": {
-    "@stll/folio-core": "workspace:^"
+    "@stll/folio-core": "workspace:^",
+    "better-result": "3.0.1"
   }
 }

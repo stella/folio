@@ -16,10 +16,12 @@ import { FolioCommentAnchor } from '@stll/folio-core/ai-edits';
 import { FolioCompareDocxVersionsOptions } from '@stll/folio-core/server';
 import { FolioDocumentNavigationTarget } from '@stll/folio-core/server';
 import { FolioDocumentOperationBatch } from '@stll/folio-core/server';
+import { FolioDocumentOperationBatchPrecondition } from '@stll/folio-core/server';
 import { FolioDocumentOperationIssue } from '@stll/folio-core/server';
 import { FolioDocumentOperationMode } from '@stll/folio-core/server';
 import { FolioDocumentOperationReceipt } from '@stll/folio-core/server';
 import { FolioDocumentOperationResult } from '@stll/folio-core/server';
+import { FolioDocumentOperationType } from '@stll/folio-core/server';
 import { FolioDocumentOperationUndoHandle } from '@stll/folio-core/server';
 import { FolioDocumentOperationUndoResult } from '@stll/folio-core/server';
 import { FolioDocumentOutlineEntry } from '@stll/folio-core/server';
@@ -33,6 +35,7 @@ import { FolioVersionDiff } from '@stll/folio-core/server';
 import { FolioVersionDiffSegment } from '@stll/folio-core/server';
 import { GenerateRedlineDocxOptions } from '@stll/folio-core/server';
 import { GenerateRedlineDocxResult } from '@stll/folio-core/server';
+import { TaggedErrorClass } from 'better-result';
 
 // @public
 export type AnthropicToolDefinition = {
@@ -64,11 +67,17 @@ export type CreateReviewerBridgeOptions = {
     mode?: FolioAIEditApplyMode;
 };
 
-// @public (undocumented)
-export function executeFolioToolCall<TName extends FolioAgentToolName>(name: TName, args: FolioAgentToolInputByName[TName], bridge: FolioAgentBridge): FolioToolCallResultFor<TName>;
+// @public
+export const DEFAULT_SUGGEST_CHANGES_OPERATION_TYPES: readonly FolioDocumentOperationType[];
 
 // @public
-export const executeFolioToolCallUntyped: (name: string, args: unknown, bridge: FolioAgentBridge) => FolioToolCallResult;
+export const describeSuggestChangesCapabilities: (options?: FolioSuggestChangesOptions) => string;
+
+// @public (undocumented)
+export function executeFolioToolCall<TName extends FolioAgentToolName>(name: TName, args: FolioAgentToolInputByName[TName], bridge: FolioAgentBridge, options?: FolioAgentExecuteOptions): FolioToolCallResultFor<TName>;
+
+// @public
+export const executeFolioToolCallUntyped: (name: string, args: unknown, bridge: FolioAgentBridge, options?: FolioAgentExecuteOptions) => FolioToolCallResult;
 
 // @public
 export const FOLIO_AGENT_TOOL_NAMES: {
@@ -105,12 +114,16 @@ export type FolioAgentApplyOperationsSummary = {
     applied: {
         id: string;
     }[];
+    queued: {
+        id: string;
+    }[];
     skipped: {
         id: string;
         reason: string;
     }[];
     issues: FolioDocumentOperationIssue[];
     receipts: FolioDocumentOperationReceipt[];
+    normalizations: FolioAgentInputNormalization[];
 };
 
 // @public
@@ -130,6 +143,7 @@ export type FolioAgentBridge = {
     documentOperationMode?: FolioDocumentOperationMode;
     applyDocumentOperations(batch: FolioDocumentOperationBatch): FolioDocumentOperationResult;
     undoDocumentOperations?(undoHandle: FolioDocumentOperationUndoHandle): FolioDocumentOperationUndoResult;
+    getDocumentVersion?(): string;
     getComments(): FolioAgentComment[];
     getChanges(): FolioAgentChange[];
     listStories?(): FolioDocumentStory[];
@@ -214,10 +228,21 @@ export type FolioAgentEditorRefLike = {
 };
 
 // @public
+export type FolioAgentExecuteOptions = {
+    suggestChanges?: FolioSuggestChangesOptions;
+};
+
+// @public
 export type FolioAgentGenerateRedlineDocxOptions = GenerateRedlineDocxOptions;
 
 // @public
 export type FolioAgentGenerateRedlineDocxResult = GenerateRedlineDocxResult;
+
+// @public
+export type FolioAgentInputNormalization = {
+    path: string;
+    message: string;
+};
 
 // @public (undocumented)
 export type FolioAgentOutlineEntry = FolioDocumentOutlineEntry & {
@@ -281,6 +306,11 @@ export type FolioAgentToolDefinition = {
 export type FolioAgentToolName = (typeof FOLIO_AGENT_TOOL_NAMES)[keyof typeof FOLIO_AGENT_TOOL_NAMES];
 
 // @public
+export type FolioAgentToolOptions = {
+    suggestChanges?: FolioSuggestChangesOptions;
+};
+
+// @public
 export type FolioAgentVersionDiff = FolioVersionDiff;
 
 // @public
@@ -288,6 +318,22 @@ export type FolioAgentVersionDiffSegment = FolioVersionDiffSegment;
 
 // @public
 export const folioDocumentOperationBatchSchema: FolioDocumentOperationBatchSchema;
+
+// @public
+export type FolioSuggestChangesDocumentVersionOption = {
+    current: string;
+};
+
+// @public (undocumented)
+export type FolioSuggestChangesOptions = {
+    operationTypes?: readonly FolioDocumentOperationType[];
+    reviewMeta?: FolioSuggestChangesReviewMetaPolicy;
+    maxOperations?: number;
+    documentVersion?: FolioSuggestChangesDocumentVersionOption;
+};
+
+// @public
+export type FolioSuggestChangesReviewMetaPolicy = "optional" | "required";
 
 // @public
 export type FolioToolCallResult<TResult = unknown> = {
@@ -305,7 +351,13 @@ export const formatVersionDiffForLLM: (diff: FolioAgentVersionDiff) => string;
 export const generateRedlineDocx: (base: ArrayBuffer, revised: ArrayBuffer, options?: FolioAgentGenerateRedlineDocxOptions) => Promise<FolioAgentGenerateRedlineDocxResult>;
 
 // @public
-export const getFolioToolDefinitions: () => FolioAgentToolDefinition[];
+export const getFolioToolDefinitions: (options?: FolioAgentToolOptions) => FolioAgentToolDefinition[];
+
+// @public
+export class InvalidFolioSuggestChangesOptionsError extends InvalidFolioSuggestChangesOptionsError_base<{
+    message: string;
+    option: keyof FolioSuggestChangesOptions;
+}> {}
 
 // @public
 export type OpenAIToolDefinition = {
@@ -330,12 +382,14 @@ export type ParseAddCommentResult = {
 };
 
 // @public
-export const parseSuggestChangesInput: (args: unknown) => ParseSuggestChangesResult;
+export const parseSuggestChangesInput: (args: unknown, options?: FolioSuggestChangesOptions) => ParseSuggestChangesResult;
 
 // @public
 export type ParseSuggestChangesResult = {
     ok: true;
     operations: FolioAIEditOperation[];
+    precondition?: FolioDocumentOperationBatchPrecondition;
+    normalizations: FolioAgentInputNormalization[];
 } | {
     ok: false;
     error: string;

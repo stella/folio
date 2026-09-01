@@ -24,11 +24,13 @@ comment pending human review — nothing is silently finalized.
 
 ## Integration recipe
 
-1. `getFolioToolDefinitions()` returns `FolioAgentToolDefinition[]` — plain
-   `{ name, description, inputSchema }` objects with a conservative JSON
+1. `getFolioToolDefinitions(options?)` returns `FolioAgentToolDefinition[]` —
+   plain `{ name, description, inputSchema }` objects with a conservative JSON
    Schema subset (`type: "object"`, `properties`, `required`, `enum`,
    `additionalProperties: false`, plain arrays — safe for providers that
-   reject uncommon keywords, e.g. Gemini's OpenAPI-3.0 subset).
+   reject uncommon keywords, e.g. Gemini's OpenAPI-3.0 subset). Pass
+   `{ suggestChanges }` options to shape `suggest_changes` for the surface
+   (see below) and pass the same object to `executeFolioToolCall`.
 2. Register them with your framework:
    - TanStack AI: pass `inputSchema` directly as `toolDefinition({ inputSchema })` — no wrapper needed.
    - Raw Anthropic/OpenAI SDKs: `toAnthropicTools(defs)` / `toOpenAITools(defs)`.
@@ -73,20 +75,48 @@ unsupported rather than throwing — this is how the headless reviewer bridge
 signals `read_page` / `read_selection` / `scroll_to_block` as unsupported too,
 since a headless document has no live page/selection/scroll surface at all.
 
+## Configuring `suggest_changes`
+
+`suggest_changes` is configured per host surface, never re-derived. Pass one
+`FolioSuggestChangesOptions` object to both `getFolioToolDefinitions({
+suggestChanges })` and `executeFolioToolCall(name, args, bridge, {
+suggestChanges })`:
+
+- `operationTypes`: any subset of the contract's operation types (default:
+  everything except `commentOnBlock`, covered by `add_comment`, and
+  `insertSignatureTable`, which is direct-only). The schema advertises only
+  the properties those types accept.
+- `reviewMeta: "required"`: every operation must carry `severity` and `area`
+  (a review queue that sorts and groups needs them). Default `"optional"`.
+- `maxOperations`: 1 to 200 per call, default 50.
+- `documentVersion: { current }`: the model must echo the token; the executor
+  compares it to `bridge.getDocumentVersion()` and skips the whole batch with
+  `documentVersionMismatch` when the document moved on.
+
+`describeSuggestChangesCapabilities(options)` returns the capability text the
+tool description carries; paste it into a system prompt instead of
+hand-writing a "what this tool can do" paragraph that drifts.
+
+The parser decodes leniently (a `kind` key, an operation given as a JSON
+string, a property that does not apply to the type) and reports each step in
+the result's `normalizations`; it then enforces the caps, mints ids unique
+across calls, and delegates every per-operation rule to
+`parseFolioDocumentOperationBatch` in `@stll/folio-core`.
+
 ## Host-managed review queue
 
 A host that already has its own review-queue UX — its own place to store a
 model's proposed edits pending approval, separate from folio's
-tracked-changes redlines — can skip `executeFolioToolCall` for
-`suggest_changes` / `add_comment` and instead validate the model's tool-call
-arguments directly with `parseSuggestChangesInput` / `parseAddCommentInput`.
-These are the exact same validation rules `executeFolioToolCall` runs
-(argument shape, the 50-operation cap, the 100,000-character text caps),
-factored out so both the host's path and folio's own executor agree on what a
-valid `suggest_changes` / `add_comment` call looks like. On success they
-return the parsed `FolioAIEditOperation`(s) to route into the host's own
-queue; on failure they return the same plain-language `error` string meant to
-go straight back to the model.
+tracked-changes redlines — writes a `FolioAgentBridge` whose
+`applyDocumentOperations` enqueues the batch and returns `status: "queued"`
+with the operations listed in `queued` (build `receipts` with
+`getFolioDocumentOperationReceipts` from `@stll/folio-core/server`). The
+executor then produces the standard envelope for the model (`queued`,
+`skipped` with plain-language reasons, `receipts`, `normalizations`) and keeps
+the automatic `precondition` stamping and the document-version check. A
+surface with nothing editable reports every operation as skipped with
+`documentNotEditable`. `parseSuggestChangesInput` / `parseAddCommentInput`
+stay exported for validation-only paths.
 
 ## Ground rules for the model
 
@@ -105,14 +135,18 @@ go straight back to the model.
 - `suggest_changes` defaults to tracked-changes mode on both shipped bridges
   — it proposes redlines for a human to accept or reject, never edits the
   visible text directly.
-- The tool surface here is fixed: seven edit operation kinds
-  (`replaceInBlock`, `replaceRange`, `commentOnRange`, `insertAfterBlock`,
-  `insertBeforeBlock`, `replaceBlock`, `deleteBlock`) plus
-  comment/reply/resolve. There is no
-  `insertSignatureTable`-style structural op, and none should be invented —
-  compose the seven primitives, or extend `@stll/folio-core`'s ai-edits engine
-  itself if a document needs a structural operation this package doesn't
-  expose.
+- The operation kinds a surface accepts are exactly the ones in its
+  `suggest_changes` schema's `type` enum (by default `replaceInBlock`,
+  `replaceRange`, `commentOnRange`, `formatRange`, `insertAfterBlock`,
+  `insertBeforeBlock`, `replaceBlock`, `deleteBlock`, `insertTableRow`,
+  `deleteTableRow`, `insertTableColumn`, `deleteTableColumn`,
+  `mergeTableCells`, `splitTableCell`) plus comment/reply/resolve. Do not
+  invent an operation kind or a directive marker; if a document needs a
+  structural operation the contract lacks, extend `@stll/folio-core`'s
+  ai-edits engine and the contract, then the schema follows.
+- A `queued` list in a `suggest_changes` result means the host parked those
+  operations in its own review queue; treat it like `applied` for the purpose
+  of "the edit has been proposed", never as a failure.
 - **Untrusted documents:** `read_document`, `read_comments`, `read_changes`,
   and `find_text` return document content verbatim, so a `.docx` from an
   untrusted party can inject prompt instructions straight into the model's

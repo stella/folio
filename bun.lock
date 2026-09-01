@@ -50,6 +50,7 @@
       "version": "0.9.8",
       "dependencies": {
         "@stll/folio-core": "workspace:^",
+        "better-result": "3.0.1",
       },
     },
     "packages/core": {

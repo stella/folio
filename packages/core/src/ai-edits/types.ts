@@ -316,7 +316,19 @@ export type FolioAIEditSkipReason =
    * replace, or replaceBlock's `text` matches the live block.
    * Filtered out so the reviewer doesn't see "X → X" cards.
    */
-  | "noopOperation";
+  | "noopOperation"
+  /**
+   * The batch carried a `precondition.documentVersion` that no longer
+   * matches the document the surface holds; every operation in the batch
+   * is skipped. Re-read the document and regenerate the edits.
+   */
+  | "documentVersionMismatch"
+  /**
+   * The surface holds no editable document right now (no editor mounted,
+   * no entity to attach suggestions to); the operation was neither applied
+   * nor queued.
+   */
+  | "documentNotEditable";
 
 export type FolioAIEditAppliedOperation = {
   id: string;

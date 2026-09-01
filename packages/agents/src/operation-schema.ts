@@ -117,6 +117,8 @@ const commentJsonSchema = {
 /**
  * Properties every operation variant accepts: the required `id` plus the
  * optional review metadata (`severity`, `area`) and `precondition` guard.
+ * `suggestionId` joins them on every variant except `commentOnRange`
+ * (comments are not tracked changes, so there is nothing to group).
  */
 const operationMetaProperties = {
   id: {
@@ -137,6 +139,15 @@ const operationMetaProperties = {
   precondition: FOLIO_PRECONDITION_JSON_SCHEMA,
 } as const;
 
+const suggestionIdProperty = {
+  suggestionId: {
+    type: "string",
+    description:
+      'Optional host-side grouping key: in "suggested" mode every mark this operation produces ' +
+      "carries it so the whole suggestion is accepted or rejected as one unit.",
+  },
+} as const;
+
 const blockIdProperty = {
   type: "string",
   description: "Id of the target block, from a prior document read.",
@@ -144,7 +155,7 @@ const blockIdProperty = {
 
 /**
  * JSON Schema (draft-07 compatible) for ONE document operation: the full
- * thirteen-variant union accepted by `parseFolioDocumentOperationBatch` in
+ * union accepted by `parseFolioDocumentOperationBatch` in
  * `@stll/folio-core`, one `oneOf` variant per entry in
  * `FOLIO_DOCUMENT_OPERATION_TYPES`. Intended for LLM tool definitions and
  * other consumers that need the contract's wire shape without re-declaring
@@ -161,6 +172,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
       description: "Replace an exact text match inside one block.",
       properties: {
         ...operationMetaProperties,
+        ...suggestionIdProperty,
         type: { type: "string", enum: ["replaceInBlock"] },
         blockId: blockIdProperty,
         find: { type: "string", description: "The exact text to find within the block." },
@@ -175,6 +187,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
       description: "Replace the text covered by a range handle.",
       properties: {
         ...operationMetaProperties,
+        ...suggestionIdProperty,
         type: { type: "string", enum: ["replaceRange"] },
         range: FOLIO_TEXT_RANGE_JSON_SCHEMA,
         replace: { type: "string", description: "The replacement text." },
@@ -201,6 +214,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
         "Apply inline formatting to the text covered by a range handle in direct or tracked mode.",
       properties: {
         ...operationMetaProperties,
+        ...suggestionIdProperty,
         type: { type: "string", enum: ["formatRange"] },
         range: FOLIO_TEXT_RANGE_JSON_SCHEMA,
         formatting: {
@@ -223,6 +237,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
       description: "Insert a new paragraph after the anchor block.",
       properties: {
         ...operationMetaProperties,
+        ...suggestionIdProperty,
         type: { type: "string", enum: ["insertAfterBlock"] },
         blockId: blockIdProperty,
         text: { type: "string", description: "The paragraph text to insert." },
@@ -248,6 +263,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
       description: "Insert a new paragraph before the anchor block.",
       properties: {
         ...operationMetaProperties,
+        ...suggestionIdProperty,
         type: { type: "string", enum: ["insertBeforeBlock"] },
         blockId: blockIdProperty,
         text: { type: "string", description: "The paragraph text to insert." },
@@ -273,6 +289,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
       description: "Replace one block's entire text.",
       properties: {
         ...operationMetaProperties,
+        ...suggestionIdProperty,
         type: { type: "string", enum: ["replaceBlock"] },
         blockId: blockIdProperty,
         text: { type: "string", description: "The new block text." },
@@ -294,6 +311,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
       description: "Delete one block.",
       properties: {
         ...operationMetaProperties,
+        ...suggestionIdProperty,
         type: { type: "string", enum: ["deleteBlock"] },
         blockId: blockIdProperty,
         comment: commentJsonSchema,
@@ -306,6 +324,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
       description: "Attach a comment to one block, optionally quoting text within it.",
       properties: {
         ...operationMetaProperties,
+        ...suggestionIdProperty,
         type: { type: "string", enum: ["commentOnBlock"] },
         blockId: blockIdProperty,
         quote: {
@@ -324,6 +343,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
         "is not representable as a tracked change).",
       properties: {
         ...operationMetaProperties,
+        ...suggestionIdProperty,
         type: { type: "string", enum: ["insertSignatureTable"] },
         blockId: blockIdProperty,
         position: {
@@ -355,6 +375,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
       description: "Insert a row next to the row containing the anchor block.",
       properties: {
         ...operationMetaProperties,
+        ...suggestionIdProperty,
         type: { type: "string", enum: ["insertTableRow"] },
         blockId: blockIdProperty,
         position: {
@@ -376,6 +397,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
       description: "Delete the row containing the anchor block.",
       properties: {
         ...operationMetaProperties,
+        ...suggestionIdProperty,
         type: { type: "string", enum: ["deleteTableRow"] },
         blockId: blockIdProperty,
       },
@@ -387,6 +409,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
       description: "Insert a column next to the column containing the anchor block.",
       properties: {
         ...operationMetaProperties,
+        ...suggestionIdProperty,
         type: { type: "string", enum: ["insertTableColumn"] },
         blockId: blockIdProperty,
         position: {
@@ -409,6 +432,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
       description: "Delete the column containing the anchor block.",
       properties: {
         ...operationMetaProperties,
+        ...suggestionIdProperty,
         type: { type: "string", enum: ["deleteTableColumn"] },
         blockId: blockIdProperty,
       },
@@ -421,6 +445,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
         "Merge a region targeted by an opposite-cell anchor or a downward row count. Tracked mode supports vertical-only regions with empty continuation cells.",
       properties: {
         ...operationMetaProperties,
+        ...suggestionIdProperty,
         type: { type: "string", enum: ["mergeTableCells"] },
         blockId: blockIdProperty,
         endBlockId: {
@@ -444,6 +469,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
         "Split one spanned table cell into individual cells. Tracked mode supports vertical-only spans.",
       properties: {
         ...operationMetaProperties,
+        ...suggestionIdProperty,
         type: { type: "string", enum: ["splitTableCell"] },
         blockId: blockIdProperty,
       },
@@ -492,6 +518,22 @@ export const FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA: FolioJsonSchema = {
     dryRun: {
       type: "boolean",
       description: "Preview the batch without mutating the document.",
+    },
+    precondition: {
+      type: "object",
+      description:
+        "Batch-level guard: the host document version this batch was authored against. A surface " +
+        "that knows its document version skips the whole batch (reason `documentVersionMismatch`) " +
+        "when the token differs.",
+      properties: {
+        documentVersion: {
+          type: "string",
+          minLength: 1,
+          description: "Opaque host version token (an entity version id, a checkpoint).",
+        },
+      },
+      required: ["documentVersion"],
+      additionalProperties: false,
     },
   },
   required: ["version", "operations"],

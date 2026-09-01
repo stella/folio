@@ -1,5 +1,5 @@
 import {
-  FOLIO_DOCUMENT_OPERATION_TYPES,
+  FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE,
   type FolioDocumentOperationType,
 } from "@stll/folio-core/server";
 
@@ -11,130 +11,322 @@ import {
   FOLIO_TEXT_RANGE_JSON_SCHEMA,
 } from "./codecs";
 import { FOLIO_PRECONDITION_JSON_SCHEMA } from "./operation-schema";
+import {
+  DEFAULT_SUGGEST_CHANGES_OPERATION_TYPES,
+  resolveSuggestChangesOptions,
+  type FolioSuggestChangesOptions,
+  type ResolvedFolioSuggestChangesOptions,
+} from "./suggest-changes-options";
 import { defineFolioAgentToolDefinition } from "./tool-contract";
 import type { FolioAgentToolInputByName, FolioAgentToolOutputByName } from "./tool-contract";
 import { FOLIO_AGENT_TOOL_NAMES } from "./types";
 import type {
+  FolioAgentJsonObjectSchema,
   FolioAgentToolDefinition,
   FolioAgentToolName,
   FolioAgentTypedToolDefinition,
 } from "./types";
 
 /**
- * `suggest_changes` deliberately narrows the full document-operation contract
- * (see `FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA` in `operation-schema.ts`):
- * - excluded types: `insertSignatureTable` (direct-only) and `commentOnBlock`
- *   (covered by the dedicated `add_comment` tool);
- * - `id` is optional here (auto-generated `op-1`, `op-2`, … by `parse.ts`)
- *   where the contract requires it;
- * - `comment` is a plain string here; `parse.ts` wraps it into the contract's
- *   `{ text }` object;
- * - the review metadata (`severity`, `area`) and the insert/replace
- *   formatting knobs (`inheritFormatting`, `pageBreakBefore`,
- *   `preserveFormatting`, `styleId`, `parties`, `quote`, except `formatting`)
- *   are not exposed to the model. `precondition` IS exposed (see
- *   `FOLIO_PRECONDITION_JSON_SCHEMA`) so the model can guard an edit against
- *   staleness introduced between an earlier read and this call.
+ * `suggest_changes` is a host-configurable projection of the document-operation
+ * contract (see `FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA` in `operation-schema.ts`):
+ * the allowed operation types, the review-metadata policy, the per-call cap,
+ * and an optional document-version pin all come from
+ * {@link FolioSuggestChangesOptions}. The schema is derived from the resolved
+ * options and from core's per-type key map, so the properties it advertises
+ * are exactly the ones the contract parser accepts for the allowed types.
+ * Two model-facing conveniences differ from the contract on the wire:
+ * `id` is optional (the parser mints unique ids) and `comment` may be a plain
+ * string (the parser wraps it into `{ text }`). `suggestionId` is host-side
+ * grouping state and is never exposed to the model.
  */
-const SUGGEST_CHANGES_EXCLUDED_OPERATION_TYPES: ReadonlySet<FolioDocumentOperationType> = new Set([
-  "commentOnBlock",
-  "insertSignatureTable",
-]);
+export const SUGGEST_CHANGES_OPERATION_TYPES = DEFAULT_SUGGEST_CHANGES_OPERATION_TYPES;
+
+/** One-line meaning of each contract operation type, for schemas and prompts. */
+const OPERATION_TYPE_SUMMARIES = {
+  replaceInBlock: "replace an exact text match inside one block (`find` -> `replace`)",
+  replaceRange: "replace the text covered by a `range` copied from find_text",
+  commentOnRange: "attach a comment to a `range` copied from find_text",
+  formatRange: "toggle bold, italic, or underline on a `range` copied from find_text",
+  insertAfterBlock: "insert a new paragraph after a block",
+  insertBeforeBlock: "insert a new paragraph before a block",
+  replaceBlock: "replace one block's entire text",
+  deleteBlock: "delete one block",
+  commentOnBlock: "attach a comment to one block, optionally quoting text within it",
+  insertSignatureTable: "insert a side-by-side signature table for the given `parties`",
+  insertTableRow: "insert a table row next to the row containing a cell block",
+  deleteTableRow: "delete the table row containing a cell block",
+  insertTableColumn: "insert a table column next to the column containing a cell block",
+  deleteTableColumn: "delete the table column containing a cell block",
+  mergeTableCells:
+    "merge table cells from a cell block to `endBlockId`, or `rowCount` rows downward",
+  splitTableCell: "split a previously merged table cell",
+} as const satisfies Record<FolioDocumentOperationType, string>;
 
 /**
- * The contract operation types `suggest_changes` exposes to the model,
- * derived from the shared contract constant minus the exclusions above.
- * Exported (module-level only, not from the package index) so
- * `parse.test.ts` can assert this enum stays in lockstep with what
- * `parseSuggestChangesInput` actually accepts.
+ * Model-facing schema for every operation property the contract knows,
+ * keyed by wire name. A `suggest_changes` schema includes a property only
+ * when at least one allowed operation type accepts it (per
+ * `FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE`), so a three-type host surface
+ * advertises three types' worth of fields.
  */
-export const SUGGEST_CHANGES_OPERATION_TYPES: readonly FolioDocumentOperationType[] =
-  FOLIO_DOCUMENT_OPERATION_TYPES.filter(
-    (type) => !SUGGEST_CHANGES_EXCLUDED_OPERATION_TYPES.has(type),
-  );
-
-const suggestChangesOperationSchema = {
-  type: "object",
-  properties: {
-    id: {
-      type: "string",
-      description:
-        "Optional caller-supplied operation id, echoed back in `applied`/`skipped`. Auto-generated (op-1, op-2, …) when omitted.",
-    },
-    type: {
-      type: "string",
-      enum: SUGGEST_CHANGES_OPERATION_TYPES,
-      description: "The kind of edit to make.",
-    },
-    blockId: {
-      type: "string",
-      description: "The block to edit, from `read_document` or `find_text`.",
-    },
-    endBlockId: {
-      type: "string",
-      minLength: 1,
-      description: "For cell merging, a block in the opposite corner cell.",
-    },
-    rowCount: {
-      type: "integer",
-      minimum: 2,
-      description: "For vertical cell merging, the number of grid rows to merge downward.",
-    },
-    range: {
-      ...FOLIO_TEXT_RANGE_JSON_SCHEMA,
-      description:
-        "Required for `replaceRange`, `commentOnRange`, and `formatRange`: copy the range object returned by `find_text`.",
-    },
-    find: {
-      type: "string",
-      description:
-        "Required for `replaceInBlock`: the exact text to find within the block, up to 100,000 characters.",
-    },
-    replace: {
-      type: "string",
-      description:
-        "Required for `replaceInBlock` and `replaceRange`: replacement text, up to 100,000 characters.",
-    },
-    text: {
-      type: "string",
-      description:
-        "Required for `insertAfterBlock` / `insertBeforeBlock` / `replaceBlock`: the text to insert or replace the block with, up to 100,000 characters.",
-    },
-    position: {
-      type: "string",
-      enum: ["after", "before"],
-      description:
-        "For row or column insertion, place the new structure after the anchor or before it.",
-    },
-    cellTexts: {
-      type: "array",
-      description:
-        "For row or column insertion, initial text for new physical cells in source order, up to 100,000 characters per cell.",
-      maxItems: 256,
-      items: { type: "string" },
-    },
-    formatting: {
+const OPERATION_PROPERTY_SCHEMAS = {
+  id: {
+    type: "string",
+    description:
+      "Optional caller-supplied operation id, echoed back in `applied` / `queued` / `skipped`. Generated when omitted.",
+  },
+  blockId: {
+    type: "string",
+    description: "The block to edit, from `read_document` or `find_text`.",
+  },
+  severity: {
+    type: "string",
+    enum: ["low", "medium", "high"],
+    description: "Review severity of this edit, used to sort a review queue.",
+  },
+  area: {
+    type: "string",
+    description: 'Short review area label (e.g. "Payment terms"), used to group a review queue.',
+  },
+  precondition: FOLIO_PRECONDITION_JSON_SCHEMA,
+  endBlockId: {
+    type: "string",
+    minLength: 1,
+    description: "For cell merging, a block in the opposite corner cell.",
+  },
+  rowCount: {
+    type: "integer",
+    minimum: 2,
+    description: "For vertical cell merging, the number of grid rows to merge downward.",
+  },
+  range: {
+    ...FOLIO_TEXT_RANGE_JSON_SCHEMA,
+    description:
+      "Required for `replaceRange`, `commentOnRange`, and `formatRange`: copy the range object returned by `find_text`.",
+  },
+  find: {
+    type: "string",
+    description:
+      "Required for `replaceInBlock`: the exact text to find within the block, up to 100,000 characters.",
+  },
+  replace: {
+    type: "string",
+    description:
+      "Required for `replaceInBlock` and `replaceRange`: replacement text, up to 100,000 characters.",
+  },
+  text: {
+    type: "string",
+    description:
+      "Required for `insertAfterBlock` / `insertBeforeBlock` / `replaceBlock`: the text to insert or replace the block with, up to 100,000 characters.",
+  },
+  quote: {
+    type: "string",
+    description:
+      "For `commentOnBlock`: optional exact text within the block the comment is about, up to 100,000 characters.",
+  },
+  styleId: {
+    type: "string",
+    description:
+      "For inserts and `replaceBlock`: paragraph style id to apply (e.g. a clause-heading style from the document).",
+  },
+  pageBreakBefore: {
+    type: "boolean",
+    description: "For inserts: start the inserted paragraph on a new page.",
+  },
+  inheritFormatting: {
+    type: "boolean",
+    description: "For inserts: inherit the anchor block's formatting for the inserted paragraph.",
+  },
+  preserveFormatting: {
+    type: "boolean",
+    description:
+      "For `replaceBlock`: keep the block's existing formatting for the replacement text.",
+  },
+  position: {
+    type: "string",
+    enum: ["after", "before"],
+    description:
+      "For row, column, or signature-table insertion, place the new structure after the anchor (default) or before it.",
+  },
+  parties: {
+    type: "array",
+    description: "For `insertSignatureTable`: the signing parties, one table cell per party.",
+    items: {
       type: "object",
-      description:
-        "Required for `formatRange`: set one or more inline properties to enable or disable.",
       properties: {
-        bold: { type: "boolean" },
-        italic: { type: "boolean" },
-        underline: { type: "boolean" },
+        name: { type: "string", description: "Party name (rendered bold)." },
+        signatory: { type: "string", description: "Name of the person signing." },
+        title: { type: "string", description: "Signatory title (rendered in italics)." },
       },
-      minProperties: 1,
+      required: ["name"],
       additionalProperties: false,
     },
-    comment: {
-      type: "string",
-      description:
-        "Optional comment explaining this edit, attached to the affected text, up to 100,000 characters.",
-    },
-    precondition: FOLIO_PRECONDITION_JSON_SCHEMA,
   },
-  required: ["type"],
-  additionalProperties: false,
+  cellTexts: {
+    type: "array",
+    description:
+      "For row or column insertion, initial text for new physical cells in source order, up to 100,000 characters per cell.",
+    maxItems: 256,
+    items: { type: "string" },
+  },
+  formatting: {
+    type: "object",
+    description:
+      "Required for `formatRange`: set one or more inline properties to enable or disable.",
+    properties: {
+      bold: { type: "boolean" },
+      italic: { type: "boolean" },
+      underline: { type: "boolean" },
+    },
+    minProperties: 1,
+    additionalProperties: false,
+  },
+  comment: {
+    type: "string",
+    description:
+      "Optional comment explaining this edit, attached to the affected text, up to 100,000 characters. Required for comment operations.",
+  },
 } as const;
+
+/** Wire keys the model never sees (`type` is emitted separately with its enum). */
+const HIDDEN_OPERATION_KEYS: ReadonlySet<string> = new Set(["suggestionId", "type"]);
+
+const operationPropertyKeys = (types: readonly FolioDocumentOperationType[]): Set<string> => {
+  const keys = new Set<string>();
+  for (const type of types) {
+    for (const key of FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE[type]) {
+      if (!HIDDEN_OPERATION_KEYS.has(key)) {
+        keys.add(key);
+      }
+    }
+  }
+  return keys;
+};
+
+const summarizeOperationTypes = (types: readonly FolioDocumentOperationType[]): string =>
+  types.map((type) => `${type} (${OPERATION_TYPE_SUMMARIES[type]})`).join("; ");
+
+const buildSuggestChangesOperationSchema = (
+  resolved: ResolvedFolioSuggestChangesOptions,
+): FolioAgentJsonObjectSchema => {
+  const keys = operationPropertyKeys(resolved.operationTypes);
+  const properties: Record<string, unknown> = {
+    type: {
+      type: "string",
+      enum: resolved.operationTypes,
+      description: `The kind of edit: ${summarizeOperationTypes(resolved.operationTypes)}.`,
+    },
+  };
+  for (const [key, schema] of Object.entries(OPERATION_PROPERTY_SCHEMAS)) {
+    if (keys.has(key)) {
+      properties[key] = schema;
+    }
+  }
+  return {
+    type: "object",
+    properties,
+    required: resolved.reviewMeta === "required" ? ["type", "severity", "area"] : ["type"],
+    additionalProperties: false,
+  };
+};
+
+const hasAnyType = (
+  resolved: ResolvedFolioSuggestChangesOptions,
+  types: readonly FolioDocumentOperationType[],
+): boolean => types.some((type) => resolved.operationTypes.includes(type));
+
+/**
+ * Plain-language capability statement for a configured `suggest_changes`
+ * surface: the allowed operations, the structural knobs they unlock, the
+ * limits, and the review-metadata and document-version requirements. Used
+ * inside the tool description and exported so a host can paste the same
+ * text into its system prompt instead of hand-maintaining a copy that drifts.
+ */
+export const describeSuggestChangesCapabilities = (options?: FolioSuggestChangesOptions): string =>
+  describeResolvedCapabilities(resolveSuggestChangesOptions(options));
+
+const describeResolvedCapabilities = (resolved: ResolvedFolioSuggestChangesOptions): string => {
+  const lines = [`Supported operations: ${summarizeOperationTypes(resolved.operationTypes)}.`];
+  const styleIdTargets = [
+    ...(hasAnyType(resolved, ["insertAfterBlock", "insertBeforeBlock"]) ? ["an insert"] : []),
+    ...(hasAnyType(resolved, ["replaceBlock"]) ? ["replaceBlock"] : []),
+  ];
+  if (styleIdTargets.length > 0) {
+    const pageBreak = hasAnyType(resolved, ["insertAfterBlock", "insertBeforeBlock"])
+      ? "set `pageBreakBefore: true` on an insert to start it on a new page; "
+      : "";
+    lines.push(
+      `Structural edits: ${pageBreak}set \`styleId\` on ${styleIdTargets.join(" or ")} to apply a paragraph style such as a clause heading. Never emit directive markers or markdown syntax as paragraph text.`,
+    );
+  }
+  if (hasAnyType(resolved, ["insertSignatureTable"])) {
+    lines.push(
+      "Signature blocks: use insertSignatureTable with `parties`; never draw one out of paragraphs.",
+    );
+  }
+  if (!hasAnyType(resolved, ["formatRange"])) {
+    lines.push(
+      "This surface cannot change run formatting (fonts, bold/italic/underline, size, colour, alignment, spacing, list style); do not promise formatting changes.",
+    );
+  }
+  lines.push(
+    `Limits: at most ${resolved.maxOperations} operations per call (batch larger edits across calls); each text field at most 100,000 characters.`,
+  );
+  lines.push(
+    resolved.reviewMeta === "required"
+      ? "Every operation must set `severity` (low, medium, or high) and a short `area` label; the review queue sorts and groups by them."
+      : "Set `severity` and `area` on operations when the edit is part of a structured review.",
+  );
+  if (resolved.documentVersion !== null) {
+    lines.push(
+      "Pass `documentVersion` exactly as given in this tool's schema; the batch is skipped as a whole when the document has moved on since.",
+    );
+  }
+  return lines.join("\n");
+};
+
+const SUGGEST_CHANGES_BASE_DESCRIPTION =
+  "Propose one or more edits as tracked changes for a human to accept or reject — nothing is applied " +
+  "directly to the visible text. Each operation needs a blockId from `read_document` or `find_text`; if the " +
+  "document changed since that read, re-read it and retry with fresh ids (a skip reason will say so). Pass " +
+  "the `blockTextHash` from that read as `precondition.blockTextHash` to guard against the document " +
+  "changing between the read and this call.";
+
+const buildSuggestChangesToolDefinition = (
+  resolved: ResolvedFolioSuggestChangesOptions,
+): FolioAgentTypedToolDefinition<
+  typeof FOLIO_AGENT_TOOL_NAMES.suggestChanges,
+  FolioAgentToolInputByName[typeof FOLIO_AGENT_TOOL_NAMES.suggestChanges],
+  FolioAgentToolOutputByName[typeof FOLIO_AGENT_TOOL_NAMES.suggestChanges]
+> =>
+  defineFolioAgentToolDefinition({
+    name: FOLIO_AGENT_TOOL_NAMES.suggestChanges,
+    description: `${SUGGEST_CHANGES_BASE_DESCRIPTION}\n${describeResolvedCapabilities(resolved)}`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        ...(resolved.documentVersion !== null && {
+          documentVersion: {
+            type: "string",
+            enum: [resolved.documentVersion.current],
+            description:
+              "The current document version shown here. Copy it exactly; the batch is skipped if the document changes before it applies.",
+          },
+        }),
+        operations: {
+          type: "array",
+          description: `The edits to propose, applied in order. At most ${resolved.maxOperations} per call.`,
+          minItems: 1,
+          maxItems: resolved.maxOperations,
+          items: buildSuggestChangesOperationSchema(resolved),
+        },
+      },
+      required:
+        resolved.documentVersion !== null ? ["documentVersion", "operations"] : ["operations"],
+      additionalProperties: false,
+    },
+  });
 
 type FolioAgentToolRegistry = {
   [Name in FolioAgentToolName]: FolioAgentTypedToolDefinition<
@@ -332,29 +524,9 @@ export const FOLIO_AGENT_TOOL_REGISTRY = {
       additionalProperties: false,
     },
   }),
-  [FOLIO_AGENT_TOOL_NAMES.suggestChanges]: defineFolioAgentToolDefinition({
-    name: FOLIO_AGENT_TOOL_NAMES.suggestChanges,
-    description:
-      "Propose one or more edits as tracked changes for a human to accept or reject — nothing is applied " +
-      "directly to the visible text. Each operation needs a blockId from `read_document` or `find_text`; if the " +
-      "document changed since that read, re-read it and retry with fresh ids (a skip reason will say so). Pass " +
-      "the `blockTextHash` from that read as `precondition.blockTextHash` to guard against the document " +
-      "changing between the read and this call. At " +
-      "most 50 operations per call — batch larger edits across multiple calls. Each `find` / `replace` / " +
-      "`text` / `comment` string is capped at 100,000 characters.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        operations: {
-          type: "array",
-          description: "The edits to propose, applied in order. At most 50 per call.",
-          items: suggestChangesOperationSchema,
-        },
-      },
-      required: ["operations"],
-      additionalProperties: false,
-    },
-  }),
+  [FOLIO_AGENT_TOOL_NAMES.suggestChanges]: buildSuggestChangesToolDefinition(
+    resolveSuggestChangesOptions(),
+  ),
   [FOLIO_AGENT_TOOL_NAMES.replyComment]: defineFolioAgentToolDefinition({
     name: FOLIO_AGENT_TOOL_NAMES.replyComment,
     description:
@@ -449,5 +621,28 @@ export const FOLIO_AGENT_TOOL_REGISTRY = {
 
 export const FOLIO_AGENT_TOOLS = definitionsFromRegistry(FOLIO_AGENT_TOOL_REGISTRY);
 
-/** The tool definitions this package exposes. Same array as {@link FOLIO_AGENT_TOOLS}, as a function for symmetry with the other providers. */
-export const getFolioToolDefinitions = (): FolioAgentToolDefinition[] => FOLIO_AGENT_TOOLS;
+/** Per-host configuration of the tool surface; every tool but `suggest_changes` is fixed. */
+export type FolioAgentToolOptions = {
+  suggestChanges?: FolioSuggestChangesOptions;
+};
+
+/**
+ * The tool definitions this package exposes. Without options this is
+ * {@link FOLIO_AGENT_TOOLS}; with `suggestChanges` options the
+ * `suggest_changes` definition is rebuilt for that surface. Pass the same
+ * options to `executeFolioToolCall` so the parser enforces what the schema
+ * advertises.
+ */
+export const getFolioToolDefinitions = (
+  options: FolioAgentToolOptions = {},
+): FolioAgentToolDefinition[] => {
+  if (options.suggestChanges === undefined) {
+    return FOLIO_AGENT_TOOLS;
+  }
+  const suggestChanges = buildSuggestChangesToolDefinition(
+    resolveSuggestChangesOptions(options.suggestChanges),
+  );
+  return FOLIO_AGENT_TOOLS.map((definition) =>
+    definition.name === FOLIO_AGENT_TOOL_NAMES.suggestChanges ? suggestChanges : definition,
+  );
+};

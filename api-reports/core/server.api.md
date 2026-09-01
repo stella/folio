@@ -334,8 +334,31 @@ export const FOLIO_DOCUMENT_METADATA_PROPERTIES: readonly ["title", "subject", "
 // @public (undocumented)
 export const FOLIO_DOCUMENT_OPERATION_BATCH_MODES: readonly ["best-effort", "atomic"];
 
+// @public
+export const FOLIO_DOCUMENT_OPERATION_BATCH_PRECONDITIONS: readonly ["documentVersion"];
+
 // @public (undocumented)
 export const FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION: 1;
+
+// @public
+export const FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE: Readonly<{
+    readonly replaceInBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "find", "replace", "comment"];
+    readonly replaceRange: readonly ["id", "type", "range", "severity", "area", "precondition", "suggestionId", "replace", "comment"];
+    readonly commentOnRange: readonly ["id", "type", "range", "severity", "area", "precondition", "comment"];
+    readonly formatRange: readonly ["id", "type", "range", "severity", "area", "precondition", "suggestionId", "formatting"];
+    readonly insertAfterBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "text", "inheritFormatting", "pageBreakBefore", "styleId", "comment"];
+    readonly insertBeforeBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "text", "inheritFormatting", "pageBreakBefore", "styleId", "comment"];
+    readonly replaceBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "text", "preserveFormatting", "styleId", "comment"];
+    readonly deleteBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "comment"];
+    readonly commentOnBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "quote", "comment"];
+    readonly insertSignatureTable: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "position", "parties", "comment"];
+    readonly insertTableRow: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "position", "cellTexts"];
+    readonly deleteTableRow: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId"];
+    readonly insertTableColumn: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "position", "cellTexts"];
+    readonly deleteTableColumn: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId"];
+    readonly mergeTableCells: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "endBlockId", "rowCount"];
+    readonly splitTableCell: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId"];
+}>;
 
 // @public (undocumented)
 export const FOLIO_DOCUMENT_OPERATION_MODES: readonly ["direct", "tracked-changes", "suggested"];
@@ -759,6 +782,12 @@ export type FolioDocumentOperationBatch = {
     readonly mode?: FolioDocumentOperationMode;
     readonly atomic?: boolean;
     readonly dryRun?: boolean;
+    readonly precondition?: FolioDocumentOperationBatchPrecondition;
+};
+
+// @public
+export type FolioDocumentOperationBatchPrecondition = {
+    readonly documentVersion: string;
 };
 
 // @public (undocumented)
@@ -770,6 +799,7 @@ export type FolioDocumentOperationCapabilities = {
     readonly batchModes: typeof FOLIO_DOCUMENT_OPERATION_BATCH_MODES;
     readonly dryRun: true;
     readonly preconditions: typeof FOLIO_DOCUMENT_OPERATION_PRECONDITIONS;
+    readonly batchPreconditions: typeof FOLIO_DOCUMENT_OPERATION_BATCH_PRECONDITIONS;
     readonly stories: typeof FOLIO_DOCUMENT_OPERATION_STORIES;
 };
 
@@ -790,6 +820,11 @@ export type FolioDocumentOperationMode = FolioAIEditApplyMode;
 export type FolioDocumentOperationPrecondition = FolioAIEditPrecondition;
 
 // @public
+export type FolioDocumentOperationQueuedOperation = {
+    id: string;
+};
+
+// @public
 export type FolioDocumentOperationReceipt = {
     operationId: string;
     operationIndex: number;
@@ -797,7 +832,7 @@ export type FolioDocumentOperationReceipt = {
 };
 
 // @public (undocumented)
-export type FolioDocumentOperationRecovery = "refreshDocument" | "narrowMatch" | "changeMode" | "changeTarget" | "removeOperation" | "inspectBatch";
+export type FolioDocumentOperationRecovery = "refreshDocument" | "narrowMatch" | "changeMode" | "changeTarget" | "removeOperation" | "inspectBatch" | "retryLater";
 
 // @public (undocumented)
 export type FolioDocumentOperationResult = {
@@ -805,13 +840,14 @@ export type FolioDocumentOperationResult = {
     status: FolioDocumentOperationStatus;
     applied: FolioAIEditAppliedOperation[];
     skipped: FolioAIEditSkippedOperation[];
+    queued?: FolioDocumentOperationQueuedOperation[];
     issues: FolioDocumentOperationIssue[];
     receipts: FolioDocumentOperationReceipt[];
     undoHandle: FolioDocumentOperationUndoHandle | null;
 };
 
-// @public (undocumented)
-export type FolioDocumentOperationStatus = "committed" | "previewed" | "rejected";
+// @public
+export type FolioDocumentOperationStatus = "committed" | "previewed" | "rejected" | "queued";
 
 // @public (undocumented)
 export type FolioDocumentOperationStory = "main" | {

@@ -44,6 +44,15 @@ export type FolioAgentBridge = {
   undoDocumentOperations?(
     undoHandle: FolioDocumentOperationUndoHandle,
   ): FolioDocumentOperationUndoResult;
+  /**
+   * The host's opaque version token for the document this bridge holds (an
+   * entity version id, a collaboration checkpoint). When a `suggest_changes`
+   * batch carries `precondition.documentVersion`, the executor compares it
+   * to this value before applying and skips the whole batch with
+   * `documentVersionMismatch` on a difference. Omit on a surface without a
+   * version notion; such a surface then refuses version-pinned batches.
+   */
+  getDocumentVersion?(): string;
   /** The comment threads present in the document. */
   getComments(): FolioAgentComment[];
   /** The pending tracked changes (insertions/deletions) present in the document. */

@@ -22,6 +22,9 @@ import {
 } from "./parse";
 import { SUGGEST_CHANGES_OPERATION_TYPES } from "./tools";
 
+/** Ids the parser mints for unnamed operations: a per-call nonce plus the 1-based index. */
+const MINTED_FIRST_ID = expect.stringMatching(/^op-[0-9a-f]{8}-1$/);
+
 describe("parseAddCommentInput", () => {
   test("valid input builds a commentOnBlock operation", () => {
     const result = parseAddCommentInput({ blockId: "b1", text: "Please clarify." });
@@ -143,7 +146,7 @@ describe("parseSuggestChangesInput", () => {
       throw new Error("expected ok:true");
     }
     expect(result.operations).toEqual([
-      { id: "op-1", type: "commentOnRange", range, comment: { text: "Review this" } },
+      { id: MINTED_FIRST_ID, type: "commentOnRange", range, comment: { text: "Review this" } },
     ]);
   });
 
@@ -164,7 +167,7 @@ describe("parseSuggestChangesInput", () => {
       throw new Error("expected ok:true");
     }
     expect(result.operations).toEqual([
-      { id: "op-1", type: "replaceRange", range, replace: "done" },
+      { id: MINTED_FIRST_ID, type: "replaceRange", range, replace: "done" },
     ]);
   });
 
@@ -177,7 +180,13 @@ describe("parseSuggestChangesInput", () => {
       throw new Error("expected ok:true");
     }
     expect(result.operations).toEqual([
-      { id: "op-1", type: "replaceInBlock", blockId: "b1", find: "Heading", replace: "Intro" },
+      {
+        id: MINTED_FIRST_ID,
+        type: "replaceInBlock",
+        blockId: "b1",
+        find: "Heading",
+        replace: "Intro",
+      },
     ]);
   });
 
@@ -243,9 +252,10 @@ describe("parseSuggestChangesInput", () => {
     });
     expect(result).toEqual({
       ok: true,
+      normalizations: [],
       operations: [
         {
-          id: "op-1",
+          id: MINTED_FIRST_ID,
           type: "insertTableRow",
           blockId: "cell-1",
           position: "before",
@@ -268,9 +278,10 @@ describe("parseSuggestChangesInput", () => {
     });
     expect(result).toEqual({
       ok: true,
+      normalizations: [],
       operations: [
         {
-          id: "op-1",
+          id: MINTED_FIRST_ID,
           type: "insertTableColumn",
           blockId: "cell-1",
           position: "before",
@@ -286,7 +297,8 @@ describe("parseSuggestChangesInput", () => {
     });
     expect(result).toEqual({
       ok: true,
-      operations: [{ id: "op-1", type: "deleteTableColumn", blockId: "cell-1" }],
+      normalizations: [],
+      operations: [{ id: MINTED_FIRST_ID, type: "deleteTableColumn", blockId: "cell-1" }],
     });
   });
 
@@ -330,7 +342,8 @@ describe("parseSuggestChangesInput", () => {
     });
     expect(result).toEqual({
       ok: true,
-      operations: [{ id: "op-1", type: "deleteTableRow", blockId: "cell-1" }],
+      normalizations: [],
+      operations: [{ id: MINTED_FIRST_ID, type: "deleteTableRow", blockId: "cell-1" }],
     });
   });
 
@@ -525,9 +538,10 @@ describe("parseSuggestChangesInput", () => {
       }),
     ).toEqual({
       ok: true,
+      normalizations: [],
       operations: [
         {
-          id: "op-1",
+          id: MINTED_FIRST_ID,
           type: "mergeTableCells",
           blockId: "b1",
           rowCount: 3,

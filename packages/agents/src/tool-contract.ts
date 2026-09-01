@@ -58,6 +58,8 @@ export type FolioAgentToolInputByName = {
   };
   [FOLIO_AGENT_TOOL_NAMES.suggestChanges]: {
     operations: unknown[];
+    /** Present when the tool was defined with a `documentVersion` option. */
+    documentVersion?: string;
   };
   [FOLIO_AGENT_TOOL_NAMES.replyComment]: {
     commentId: string;

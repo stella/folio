@@ -204,11 +204,26 @@ export type FolioAgentChange = {
 /** Filter for {@link FOLIO_AGENT_TOOL_NAMES.readComments}. */
 export type FolioAgentCommentFilter = "all" | "open" | "resolved";
 
+/**
+ * One lenient-decoding step the parser took on a tool call's arguments
+ * (a `kind` key read as `type`, an operation supplied as a JSON string, a
+ * stray property dropped). Reported back to the model so sloppy calls
+ * still succeed without the normalisation going unnoticed.
+ */
+export type FolioAgentInputNormalization = {
+  /** Where in the arguments, e.g. `operations[2].kind`. */
+  path: string;
+  message: string;
+};
+
 /** Result of {@link FOLIO_AGENT_TOOL_NAMES.addComment} / `suggest_changes`. */
 export type FolioAgentApplyOperationsSummary = {
   version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
   applied: { id: string }[];
+  /** Operations a host review-queue bridge accepted for later human review instead of applying. */
+  queued: { id: string }[];
   skipped: { id: string; reason: string }[];
   issues: FolioDocumentOperationIssue[];
   receipts: FolioDocumentOperationReceipt[];
+  normalizations: FolioAgentInputNormalization[];
 };

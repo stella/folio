@@ -655,7 +655,19 @@ export type FolioAIEditSkipReason = "missingBlock" | "changedBlock" | "ambiguous
 * replace, or replaceBlock's `text` matches the live block.
 * Filtered out so the reviewer doesn't see "X → X" cards.
 */
-"noopOperation";
+"noopOperation" |
+/**
+* The batch carried a `precondition.documentVersion` that no longer
+* matches the document the surface holds; every operation in the batch
+* is skipped. Re-read the document and regenerate the edits.
+*/
+"documentVersionMismatch" |
+/**
+* The surface holds no editable document right now (no editor mounted,
+* no entity to attach suggestions to); the operation was neither applied
+* nor queued.
+*/
+"documentNotEditable";
 
 // @public (undocumented)
 export type FolioAIEditSnapshot = {
@@ -734,6 +746,7 @@ export type FolioDocumentOperationBatch = {
     readonly mode?: FolioDocumentOperationMode;
     readonly atomic?: boolean;
     readonly dryRun?: boolean;
+    readonly precondition?: FolioDocumentOperationBatchPrecondition;
 };
 
 // @public (undocumented)
@@ -745,6 +758,7 @@ export type FolioDocumentOperationCapabilities = {
     readonly batchModes: typeof FOLIO_DOCUMENT_OPERATION_BATCH_MODES;
     readonly dryRun: true;
     readonly preconditions: typeof FOLIO_DOCUMENT_OPERATION_PRECONDITIONS;
+    readonly batchPreconditions: typeof FOLIO_DOCUMENT_OPERATION_BATCH_PRECONDITIONS;
     readonly stories: typeof FOLIO_DOCUMENT_OPERATION_STORIES;
 };
 
@@ -772,7 +786,7 @@ export type FolioDocumentOperationReceipt = {
 };
 
 // @public (undocumented)
-export type FolioDocumentOperationRecovery = "refreshDocument" | "narrowMatch" | "changeMode" | "changeTarget" | "removeOperation" | "inspectBatch";
+export type FolioDocumentOperationRecovery = "refreshDocument" | "narrowMatch" | "changeMode" | "changeTarget" | "removeOperation" | "inspectBatch" | "retryLater";
 
 // @public (undocumented)
 export type FolioDocumentOperationResult = {
@@ -780,13 +794,14 @@ export type FolioDocumentOperationResult = {
     status: FolioDocumentOperationStatus;
     applied: FolioAIEditAppliedOperation[];
     skipped: FolioAIEditSkippedOperation[];
+    queued?: FolioDocumentOperationQueuedOperation[];
     issues: FolioDocumentOperationIssue[];
     receipts: FolioDocumentOperationReceipt[];
     undoHandle: FolioDocumentOperationUndoHandle | null;
 };
 
-// @public (undocumented)
-export type FolioDocumentOperationStatus = "committed" | "previewed" | "rejected";
+// @public
+export type FolioDocumentOperationStatus = "committed" | "previewed" | "rejected" | "queued";
 
 // @public (undocumented)
 export type FolioDocumentOperationStory = "main" | {

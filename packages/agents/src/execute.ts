@@ -1,6 +1,7 @@
 import {
   createFolioAITextRangeHandle,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+  getFolioDocumentOperationIssues,
   getFolioDocumentOutline,
   hashFolioAIBlockText,
   normalizeFolioAIBlockText,
@@ -8,6 +9,7 @@ import {
   type FolioAIBlock,
   type FolioAITextRangeHandle,
   type FolioDocumentOperation,
+  type FolioDocumentOperationBatchPrecondition,
   type FolioDocumentStoryHandle,
 } from "@stll/folio-core/server";
 
@@ -26,18 +28,29 @@ import {
   prepareFolioAgentDocumentOperationBatch,
   parseSuggestChangesInput,
 } from "./parse";
+import type { FolioSuggestChangesOptions } from "./suggest-changes-options";
 import type { FolioAgentToolInputByName, FolioToolCallResultFor } from "./tool-contract";
 import { FOLIO_AGENT_TOOL_NAMES } from "./types";
 import type {
   FolioAgentApplyOperationsSummary,
   FolioAgentCommentFilter,
   FolioAgentFindTextResult,
+  FolioAgentInputNormalization,
   FolioAgentStoryFindTextResult,
   FolioAgentStoryTextMatch,
   FolioAgentToolName,
   FolioAgentTextMatch,
   FolioToolCallResult,
 } from "./types";
+
+/**
+ * Per-surface execution options. Pass the same `suggestChanges` options the
+ * tool definitions were built with (`getFolioToolDefinitions`), so the
+ * parser enforces exactly what the schema advertised to the model.
+ */
+export type FolioAgentExecuteOptions = {
+  suggestChanges?: FolioSuggestChangesOptions;
+};
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -81,13 +94,14 @@ export const executeFolioToolCallUntyped = (
   name: string,
   args: unknown,
   bridge: FolioAgentBridge,
+  options: FolioAgentExecuteOptions = {},
 ): FolioToolCallResult => {
   if (!VALID_TOOL_NAMES.includes(name)) {
     return fail(`Unknown tool "${name}". Valid tools: ${VALID_TOOL_NAMES.join(", ")}.`);
   }
 
   try {
-    return dispatch(name, args, bridge);
+    return dispatch(name, args, bridge, options);
   } catch (error) {
     return fail(error instanceof Error ? error.message : String(error));
   }
@@ -97,20 +111,27 @@ export function executeFolioToolCall<TName extends FolioAgentToolName>(
   name: TName,
   args: FolioAgentToolInputByName[TName],
   bridge: FolioAgentBridge,
+  options?: FolioAgentExecuteOptions,
 ): FolioToolCallResultFor<TName>;
 export function executeFolioToolCall(
   name: string,
   args: unknown,
   bridge: FolioAgentBridge,
+  options: FolioAgentExecuteOptions = {},
 ): FolioToolCallResult {
-  return executeFolioToolCallUntyped(name, args, bridge);
+  return executeFolioToolCallUntyped(name, args, bridge, options);
 }
 
-const dispatch = (name: string, args: unknown, bridge: FolioAgentBridge): FolioToolCallResult => {
+const dispatch = (
+  name: string,
+  args: unknown,
+  bridge: FolioAgentBridge,
+  options: FolioAgentExecuteOptions,
+): FolioToolCallResult => {
   if (!isFolioAgentToolName(name)) {
     return fail(`Unknown tool "${name}".`);
   }
-  return TOOL_HANDLERS[name](args, bridge);
+  return TOOL_HANDLERS[name](args, bridge, options);
 };
 
 const readDocument = (
@@ -518,25 +539,58 @@ const explainSkipReason = (reason: string): string => {
   if (reason === "noopOperation") {
     return "this operation would not change the document (the text already matches what you asked for).";
   }
+  if (reason === "documentVersionMismatch") {
+    return "the document changed after these edits were proposed; re-read it and regenerate the edits against the current version.";
+  }
+  if (reason === "documentNotEditable") {
+    return "the document is not open for editing right now; nothing was applied or queued. Ask the user to open it for editing, then retry.";
+  }
   return reason;
 };
 
-const summarizeApplyResult = (result: {
+type ApplyResultLike = {
   version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
   applied: { id: string }[];
+  queued?: { id: string }[];
   skipped: { id: string; reason: string }[];
   issues?: FolioAgentApplyOperationsSummary["issues"];
   receipts?: FolioAgentApplyOperationsSummary["receipts"];
-}): FolioAgentApplyOperationsSummary => ({
+};
+
+const summarizeApplyResult = (
+  result: ApplyResultLike,
+  normalizations: readonly FolioAgentInputNormalization[],
+): FolioAgentApplyOperationsSummary => ({
   version: result.version,
   applied: result.applied.map((entry) => ({ id: entry.id })),
+  queued: (result.queued ?? []).map((entry) => ({ id: entry.id })),
   skipped: result.skipped.map((entry) => ({
     id: entry.id,
     reason: explainSkipReason(entry.reason),
   })),
   issues: result.issues ?? [],
   receipts: result.receipts ?? [],
+  normalizations: [...normalizations],
 });
+
+/** Every operation skipped for one batch-wide reason, before anything reached the bridge. */
+const rejectBatch = (
+  operations: readonly FolioDocumentOperation[],
+  reason: "documentVersionMismatch",
+  normalizations: readonly FolioAgentInputNormalization[],
+): FolioAgentApplyOperationsSummary => {
+  const skipped = operations.map(({ id }) => ({ id, reason }));
+  return summarizeApplyResult(
+    {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      applied: [],
+      skipped,
+      issues: getFolioDocumentOperationIssues(operations, skipped),
+      receipts: [],
+    },
+    normalizations,
+  );
+};
 
 /**
  * Attach a `precondition.blockTextHash` guard to every operation before
@@ -555,9 +609,15 @@ const summarizeApplyResult = (result: {
  * live document — but it still guards a later operation in the SAME batch
  * against an earlier operation in that batch touching the same block.
  */
+type ApplyOperationsOptions = {
+  operations: readonly FolioDocumentOperation[];
+  precondition?: FolioDocumentOperationBatchPrecondition;
+  normalizations?: readonly FolioAgentInputNormalization[];
+};
+
 const applyOperations = (
   bridge: FolioAgentBridge,
-  operations: FolioDocumentOperation[],
+  { operations, precondition, normalizations = [] }: ApplyOperationsOptions,
 ): FolioAgentApplyOperationsSummary => {
   const snapshot = bridge.snapshot();
   const guardedOperations: FolioDocumentOperation[] = [];
@@ -585,8 +645,10 @@ const applyOperations = (
         ...(bridge.documentOperationMode !== undefined && {
           mode: bridge.documentOperationMode,
         }),
+        ...(precondition !== undefined && { precondition }),
       }),
     ),
+    normalizations,
   );
 };
 
@@ -598,18 +660,42 @@ const addComment = (
   if (!parsed.ok) {
     return fail(parsed.error);
   }
-  return ok(applyOperations(bridge, [parsed.operation]));
+  return ok(applyOperations(bridge, { operations: [parsed.operation] }));
 };
 
+/**
+ * A version-pinned batch is compared against the bridge's document version
+ * BEFORE any operation is applied or queued: an approval that runs after
+ * the document moved on skips as a whole instead of landing half of its
+ * edits on a document the model never saw. A surface without a version
+ * notion cannot honour the pin and refuses rather than guessing.
+ */
 const suggestChanges = (
   args: unknown,
   bridge: FolioAgentBridge,
+  options: FolioAgentExecuteOptions,
 ): FolioToolCallResultFor<typeof FOLIO_AGENT_TOOL_NAMES.suggestChanges> => {
-  const parsed = parseSuggestChangesInput(args);
+  const parsed = parseSuggestChangesInput(args, options.suggestChanges);
   if (!parsed.ok) {
     return fail(parsed.error);
   }
-  return ok(applyOperations(bridge, parsed.operations));
+  if (parsed.precondition !== undefined) {
+    if (!bridge.getDocumentVersion) {
+      return fail(
+        "This editor surface cannot verify `documentVersion`; it has no document version to compare against.",
+      );
+    }
+    if (bridge.getDocumentVersion() !== parsed.precondition.documentVersion) {
+      return ok(rejectBatch(parsed.operations, "documentVersionMismatch", parsed.normalizations));
+    }
+  }
+  return ok(
+    applyOperations(bridge, {
+      operations: parsed.operations,
+      ...(parsed.precondition !== undefined && { precondition: parsed.precondition }),
+      normalizations: parsed.normalizations,
+    }),
+  );
 };
 
 const replyComment = (
@@ -757,6 +843,7 @@ type FolioAgentToolHandlers = {
   [Name in FolioAgentToolName]: (
     args: unknown,
     bridge: FolioAgentBridge,
+    options: FolioAgentExecuteOptions,
   ) => FolioToolCallResultFor<Name>;
 };
 

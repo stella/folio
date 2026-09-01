@@ -53,6 +53,17 @@ export const FOLIO_DOCUMENT_OPERATION_STORIES = Object.freeze([
   "endnote",
 ] as const);
 export const FOLIO_DOCUMENT_OPERATION_PRECONDITIONS = Object.freeze(["blockTextHash"] as const);
+/**
+ * Batch-level preconditions. `documentVersion` is an opaque host token (an
+ * entity version id, a collaboration checkpoint) pinning the document the
+ * batch was authored against; whoever knows the live version (an agent
+ * bridge, a host applying the batch itself) compares it and skips the whole
+ * batch with `documentVersionMismatch` when it differs. The core apply path
+ * preserves the token but has no version to compare it to.
+ */
+export const FOLIO_DOCUMENT_OPERATION_BATCH_PRECONDITIONS = Object.freeze([
+  "documentVersion",
+] as const);
 export const FOLIO_DOCUMENT_OPERATION_BATCH_MODES = Object.freeze([
   "best-effort",
   "atomic",
@@ -109,6 +120,7 @@ export type FolioDocumentOperationCapabilities = {
   readonly batchModes: typeof FOLIO_DOCUMENT_OPERATION_BATCH_MODES;
   readonly dryRun: true;
   readonly preconditions: typeof FOLIO_DOCUMENT_OPERATION_PRECONDITIONS;
+  readonly batchPreconditions: typeof FOLIO_DOCUMENT_OPERATION_BATCH_PRECONDITIONS;
   readonly stories: typeof FOLIO_DOCUMENT_OPERATION_STORIES;
 };
 
@@ -120,6 +132,7 @@ const DOCUMENT_OPERATION_CAPABILITIES = Object.freeze({
   batchModes: FOLIO_DOCUMENT_OPERATION_BATCH_MODES,
   dryRun: true,
   preconditions: FOLIO_DOCUMENT_OPERATION_PRECONDITIONS,
+  batchPreconditions: FOLIO_DOCUMENT_OPERATION_BATCH_PRECONDITIONS,
   stories: FOLIO_DOCUMENT_OPERATION_STORIES,
 } as const satisfies FolioDocumentOperationCapabilities);
 
@@ -178,12 +191,18 @@ export const assertSupportedFolioDocumentOperationVersion = (
   });
 };
 
+/** Batch-level guard; see {@link FOLIO_DOCUMENT_OPERATION_BATCH_PRECONDITIONS}. */
+export type FolioDocumentOperationBatchPrecondition = {
+  readonly documentVersion: string;
+};
+
 export type FolioDocumentOperationBatch = {
   readonly version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
   readonly operations: readonly FolioDocumentOperation[];
   readonly mode?: FolioDocumentOperationMode;
   readonly atomic?: boolean;
   readonly dryRun?: boolean;
+  readonly precondition?: FolioDocumentOperationBatchPrecondition;
 };
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
@@ -429,6 +448,50 @@ const COMMON_OPERATION_KEYS = [
   "suggestionId",
 ] as const;
 
+const RANGE_OPERATION_KEYS = ["id", "type", "range", "severity", "area", "precondition"] as const;
+
+/**
+ * Every property each operation type accepts on the wire; the parser
+ * rejects any other key. Exported so a lenient front door (an LLM tool
+ * decoder) can strip stray keys with the same knowledge instead of
+ * guessing, and so tool schemas can be derived from the contract.
+ */
+export const FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE = Object.freeze({
+  replaceInBlock: [...COMMON_OPERATION_KEYS, "find", "replace", "comment"],
+  replaceRange: [...RANGE_OPERATION_KEYS, "suggestionId", "replace", "comment"],
+  commentOnRange: [...RANGE_OPERATION_KEYS, "comment"],
+  formatRange: [...RANGE_OPERATION_KEYS, "suggestionId", "formatting"],
+  insertAfterBlock: [
+    ...COMMON_OPERATION_KEYS,
+    "text",
+    "inheritFormatting",
+    "pageBreakBefore",
+    "styleId",
+    "comment",
+  ],
+  insertBeforeBlock: [
+    ...COMMON_OPERATION_KEYS,
+    "text",
+    "inheritFormatting",
+    "pageBreakBefore",
+    "styleId",
+    "comment",
+  ],
+  replaceBlock: [...COMMON_OPERATION_KEYS, "text", "preserveFormatting", "styleId", "comment"],
+  deleteBlock: [...COMMON_OPERATION_KEYS, "comment"],
+  commentOnBlock: [...COMMON_OPERATION_KEYS, "quote", "comment"],
+  insertSignatureTable: [...COMMON_OPERATION_KEYS, "position", "parties", "comment"],
+  insertTableRow: [...COMMON_OPERATION_KEYS, "position", "cellTexts"],
+  deleteTableRow: COMMON_OPERATION_KEYS,
+  insertTableColumn: [...COMMON_OPERATION_KEYS, "position", "cellTexts"],
+  deleteTableColumn: COMMON_OPERATION_KEYS,
+  mergeTableCells: [...COMMON_OPERATION_KEYS, "endBlockId", "rowCount"],
+  splitTableCell: COMMON_OPERATION_KEYS,
+} as const satisfies Readonly<Record<FolioDocumentOperationType, readonly string[]>>);
+
+const isFolioDocumentOperationType = (value: string): value is FolioDocumentOperationType =>
+  Object.hasOwn(FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE, value);
+
 const parseSignatureParties = (
   value: Record<string, unknown>,
   path: string,
@@ -466,6 +529,10 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
 
   const id = readString(value, "id", path);
   const type = readString(value, "type", path);
+  if (!isFolioDocumentOperationType(type)) {
+    return invalidBatch(`${path}.type`, `unsupported operation type "${type}"`);
+  }
+  assertAllowedKeys(value, path, FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE[type]);
   const reviewMeta = readReviewMeta(value, path);
   const precondition = readOptionalPrecondition(value, path);
   const suggestionId = readOptionalString(value, "suggestionId", path);
@@ -477,17 +544,6 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
   };
 
   if (type === "replaceRange") {
-    assertAllowedKeys(value, path, [
-      "id",
-      "type",
-      "range",
-      "replace",
-      "comment",
-      "severity",
-      "area",
-      "precondition",
-      "suggestionId",
-    ]);
     return {
       ...operationMeta,
       id,
@@ -499,15 +555,6 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
   }
 
   if (type === "commentOnRange") {
-    assertAllowedKeys(value, path, [
-      "id",
-      "type",
-      "range",
-      "comment",
-      "severity",
-      "area",
-      "precondition",
-    ]);
     if (comment === undefined) {
       return invalidBatch(`${path}.comment`, "expected an object");
     }
@@ -515,16 +562,6 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
   }
 
   if (type === "formatRange") {
-    assertAllowedKeys(value, path, [
-      "id",
-      "type",
-      "range",
-      "formatting",
-      "severity",
-      "area",
-      "precondition",
-      "suggestionId",
-    ]);
     return {
       ...operationMeta,
       id,
@@ -537,7 +574,6 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
   const blockId = readString(value, "blockId", path);
 
   if (type === "replaceInBlock") {
-    assertAllowedKeys(value, path, [...COMMON_OPERATION_KEYS, "find", "replace", "comment"]);
     return {
       ...operationMeta,
       id,
@@ -550,14 +586,6 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
   }
 
   if (type === "insertAfterBlock" || type === "insertBeforeBlock") {
-    assertAllowedKeys(value, path, [
-      ...COMMON_OPERATION_KEYS,
-      "text",
-      "inheritFormatting",
-      "pageBreakBefore",
-      "styleId",
-      "comment",
-    ]);
     const inheritFormatting = readOptionalBoolean(value, "inheritFormatting", path);
     const pageBreakBefore = readOptionalBoolean(value, "pageBreakBefore", path);
     const styleId = readOptionalString(value, "styleId", path);
@@ -575,13 +603,6 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
   }
 
   if (type === "replaceBlock") {
-    assertAllowedKeys(value, path, [
-      ...COMMON_OPERATION_KEYS,
-      "text",
-      "preserveFormatting",
-      "styleId",
-      "comment",
-    ]);
     const preserveFormatting = readOptionalBoolean(value, "preserveFormatting", path);
     const styleId = readOptionalString(value, "styleId", path);
     return {
@@ -597,12 +618,10 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
   }
 
   if (type === "deleteBlock") {
-    assertAllowedKeys(value, path, [...COMMON_OPERATION_KEYS, "comment"]);
     return { ...operationMeta, id, type, blockId, ...(comment !== undefined && { comment }) };
   }
 
   if (type === "commentOnBlock") {
-    assertAllowedKeys(value, path, [...COMMON_OPERATION_KEYS, "quote", "comment"]);
     if (comment === undefined) {
       return invalidBatch(`${path}.comment`, "expected an object");
     }
@@ -618,7 +637,6 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
   }
 
   if (type === "insertSignatureTable") {
-    assertAllowedKeys(value, path, [...COMMON_OPERATION_KEYS, "position", "parties", "comment"]);
     const position = value["position"];
     if (position !== undefined && position !== "after" && position !== "before") {
       return invalidBatch(`${path}.position`, 'expected "after" or "before" when provided');
@@ -635,7 +653,6 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
   }
 
   if (type === "insertTableRow") {
-    assertAllowedKeys(value, path, [...COMMON_OPERATION_KEYS, "position", "cellTexts"]);
     const position = value["position"];
     if (position !== undefined && position !== "after" && position !== "before") {
       return invalidBatch(`${path}.position`, 'expected "after" or "before" when provided');
@@ -652,12 +669,10 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
   }
 
   if (type === "deleteTableRow") {
-    assertAllowedKeys(value, path, COMMON_OPERATION_KEYS);
     return { ...operationMeta, id, type, blockId };
   }
 
   if (type === "insertTableColumn") {
-    assertAllowedKeys(value, path, [...COMMON_OPERATION_KEYS, "position", "cellTexts"]);
     const position = value["position"];
     if (position !== undefined && position !== "after" && position !== "before") {
       return invalidBatch(`${path}.position`, 'expected "after" or "before" when provided');
@@ -674,12 +689,10 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
   }
 
   if (type === "deleteTableColumn") {
-    assertAllowedKeys(value, path, COMMON_OPERATION_KEYS);
     return { ...operationMeta, id, type, blockId };
   }
 
   if (type === "mergeTableCells") {
-    assertAllowedKeys(value, path, [...COMMON_OPERATION_KEYS, "endBlockId", "rowCount"]);
     const endBlockId = readOptionalString(value, "endBlockId", path);
     const rawRowCount = value["rowCount"];
     if ((endBlockId === undefined) === (rawRowCount === undefined)) {
@@ -698,12 +711,26 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
     return { ...operationMeta, id, type, blockId, rowCount };
   }
 
-  if (type === "splitTableCell") {
-    assertAllowedKeys(value, path, COMMON_OPERATION_KEYS);
-    return { ...operationMeta, id, type, blockId };
-  }
+  // splitTableCell: the type guard above admits nothing else.
+  return { ...operationMeta, id, type, blockId };
+};
 
-  return invalidBatch(`${path}.type`, `unsupported operation type "${type}"`);
+const readOptionalBatchPrecondition = (
+  value: Record<string, unknown>,
+): FolioDocumentOperationBatchPrecondition | undefined => {
+  const candidate = value["precondition"];
+  if (candidate === undefined) {
+    return undefined;
+  }
+  if (!isPlainObject(candidate)) {
+    return invalidBatch("$.precondition", "expected an object when provided");
+  }
+  assertAllowedKeys(candidate, "$.precondition", FOLIO_DOCUMENT_OPERATION_BATCH_PRECONDITIONS);
+  const documentVersion = readString(candidate, "documentVersion", "$.precondition");
+  if (documentVersion.length === 0) {
+    return invalidBatch("$.precondition.documentVersion", "expected a non-empty string");
+  }
+  return { documentVersion };
 };
 
 export const parseFolioDocumentOperationBatch = (value: unknown): FolioDocumentOperationBatch => {
@@ -713,7 +740,14 @@ export const parseFolioDocumentOperationBatch = (value: unknown): FolioDocumentO
   if (!isPlainObject(value)) {
     return invalidBatch("$", "expected an object");
   }
-  assertAllowedKeys(value, "$", ["version", "operations", "mode", "atomic", "dryRun"]);
+  assertAllowedKeys(value, "$", [
+    "version",
+    "operations",
+    "mode",
+    "atomic",
+    "dryRun",
+    "precondition",
+  ]);
   const version = assertSupportedFolioDocumentOperationVersion(value["version"]);
   const operations = value["operations"];
   if (!Array.isArray(operations)) {
@@ -733,6 +767,7 @@ export const parseFolioDocumentOperationBatch = (value: unknown): FolioDocumentO
   }
   const atomic = readOptionalBoolean(value, "atomic", "$");
   const dryRun = readOptionalBoolean(value, "dryRun", "$");
+  const precondition = readOptionalBatchPrecondition(value);
   const parsedOperations = operations.map(parseDocumentOperation);
   const operationIds = new Set<string>();
   for (const [index, operation] of parsedOperations.entries()) {
@@ -747,13 +782,18 @@ export const parseFolioDocumentOperationBatch = (value: unknown): FolioDocumentO
     ...(mode !== undefined && { mode }),
     ...(atomic !== undefined && { atomic }),
     ...(dryRun !== undefined && { dryRun }),
+    ...(precondition !== undefined && { precondition }),
   } satisfies FolioDocumentOperationBatch;
   freezeParsedValue(parsedBatch);
   parsedFolioDocumentOperationBatches.add(parsedBatch);
   return parsedBatch;
 };
 
-export type FolioDocumentOperationStatus = "committed" | "previewed" | "rejected";
+/**
+ * `queued` is reported by a surface that routes the batch into a host-owned
+ * review queue instead of applying it; the core apply path never produces it.
+ */
+export type FolioDocumentOperationStatus = "committed" | "previewed" | "rejected" | "queued";
 
 export type FolioDocumentOperationRecovery =
   | "refreshDocument"
@@ -761,7 +801,8 @@ export type FolioDocumentOperationRecovery =
   | "changeMode"
   | "changeTarget"
   | "removeOperation"
-  | "inspectBatch";
+  | "inspectBatch"
+  | "retryLater";
 
 export type FolioDocumentOperationIssue = {
   operationId: string;
@@ -861,11 +902,18 @@ export type FolioDocumentOperationUndoResult =
       reason: FolioDocumentOperationUndoFailureReason;
     };
 
+/** One operation a host surface accepted into its own review queue rather than applying. */
+export type FolioDocumentOperationQueuedOperation = {
+  id: string;
+};
+
 export type FolioDocumentOperationResult = {
   version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
   status: FolioDocumentOperationStatus;
   applied: FolioAIEditAppliedOperation[];
   skipped: FolioAIEditSkippedOperation[];
+  /** Operations parked in a host review queue (`status: "queued"` surfaces only). */
+  queued?: FolioDocumentOperationQueuedOperation[];
   issues: FolioDocumentOperationIssue[];
   /** Successful effects in input-operation order; skipped operations are omitted. */
   receipts: FolioDocumentOperationReceipt[];
@@ -885,6 +933,8 @@ const recoveryByReason = {
   staleRange: "refreshDocument",
   emptyOperation: "removeOperation",
   noopOperation: "removeOperation",
+  documentVersionMismatch: "refreshDocument",
+  documentNotEditable: "retryLater",
 } as const satisfies Record<FolioAIEditSkippedOperation["reason"], FolioDocumentOperationRecovery>;
 
 export const getFolioDocumentOperationIssues = (

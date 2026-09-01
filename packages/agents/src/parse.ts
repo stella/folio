@@ -1,29 +1,36 @@
 /**
  * Validation-only parsers for `suggest_changes` / `add_comment` tool-call
  * arguments — the canonical rules `execute.ts` runs before handing operations
- * to a {@link FolioAgentBridge}, factored out so a host with its own
- * review-queue UX (its own "propose an edit" path instead of
- * `executeFolioToolCall`) can validate a model's tool-call arguments with the
- * exact same rules, then route the resulting `FolioAIEditOperation`(s)
- * through that path instead of applying them immediately.
+ * to a {@link FolioAgentBridge}, factored out so a host can validate a
+ * model's tool-call arguments with the exact same rules (a host review queue
+ * should prefer a queue bridge, see the README, but the parsers stay pure).
  *
- * `execute.ts` delegates to these two functions rather than duplicating the
- * rules, so there is exactly one place these caps and error messages live.
+ * `parseSuggestChangesInput` is a front door over the contract parser in
+ * `@stll/folio-core`, not a second parser: it decodes leniently (reporting
+ * every normalisation), enforces the agent-layer caps and the host's
+ * {@link FolioSuggestChangesOptions}, mints ids, wraps `comment` strings, and
+ * then delegates every per-operation rule to `parseFolioDocumentOperationBatch`.
  */
 
-import type {
-  FolioAIComment,
-  FolioAIEditOperation,
-  FolioAITextRangeHandle,
-  FolioDocumentOperationBatch,
-  FolioDocumentOperationMode,
-} from "@stll/folio-core/server";
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+  FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE,
+  InvalidFolioDocumentOperationBatchError,
   parseFolioDocumentOperationBatch,
+  type FolioAIComment,
+  type FolioAIEditOperation,
+  type FolioDocumentOperationBatch,
+  type FolioDocumentOperationBatchPrecondition,
+  type FolioDocumentOperationMode,
+  type FolioDocumentOperationType,
 } from "@stll/folio-core/server";
 
-import { decodeMainStoryTextRangeHandle } from "./codecs";
+import {
+  resolveSuggestChangesOptions,
+  type FolioSuggestChangesOptions,
+  type ResolvedFolioSuggestChangesOptions,
+} from "./suggest-changes-options";
+import type { FolioAgentInputNormalization } from "./types";
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -38,22 +45,23 @@ const isNonEmptyString = (value: unknown): value is string =>
  * the tracked-changes engine, in one shot. `execute.ts` reuses
  * {@link MAX_OPERATION_TEXT_LENGTH} for `reply_comment`'s text cap too, so
  * the limit stays a single number shared across every text-bearing tool.
+ * The per-call operation count is a host option
+ * (`FolioSuggestChangesOptions.maxOperations`), defaulting to
+ * {@link DEFAULT_MAX_OPERATIONS_PER_CALL}.
  */
-export const MAX_OPERATIONS_PER_CALL = 50;
 export const MAX_OPERATION_TEXT_LENGTH = 100_000;
 const MAX_TABLE_INSERTION_CELL_TEXTS = 256;
 
 /**
  * Aggregate cap on the SUM of every text-bearing field's length across one
  * `suggest_changes` call. Each field alone is bounded by
- * {@link MAX_OPERATION_TEXT_LENGTH} and each call by
- * {@link MAX_OPERATIONS_PER_CALL} operations, but an operation can carry
- * several capped fields (e.g. `comment` plus `text`), and a table-insertion
- * operation can carry up to {@link MAX_TABLE_INSERTION_CELL_TEXTS} capped
- * cell texts — so a maximally-shaped batch could still push roughly
- * 50 * 256 * 100,000 ~= 1.28B characters into the tracked-changes engine in
- * one call even though every per-field cap was respected. This budget bounds
- * the running total instead.
+ * {@link MAX_OPERATION_TEXT_LENGTH} and each call by the operation cap, but
+ * an operation can carry several capped fields (e.g. `comment` plus `text`),
+ * and a table-insertion operation can carry up to
+ * {@link MAX_TABLE_INSERTION_CELL_TEXTS} capped cell texts — so a
+ * maximally-shaped batch could still push an unbounded total into the
+ * tracked-changes engine in one call even though every per-field cap was
+ * respected. This budget bounds the running total instead.
  */
 export const MAX_TOTAL_OPERATION_TEXT_LENGTH = 2_000_000;
 
@@ -69,15 +77,10 @@ const explainAggregateTextTooLong = (index: number): string =>
 const NORMALIZED_TEXT_HASH_PATTERN = /^h[0-9a-z]+$/;
 
 /**
- * Parse an optional `precondition: { blockTextHash }` field, present on
- * `add_comment` / `suggest_changes` operation arguments when the caller
- * echoes a `blockTextHash` returned by an earlier `read_document` /
- * `read_section` / `find_text` call. Guards the eventual apply against a
- * document edit made between that read and this call — `execute.ts`
- * otherwise has no way to distinguish "the model never read this block" from
- * "the model read it and it has since changed".
- *
- * Returns `undefined` when omitted, the parsed precondition when valid, or a
+ * Parse an optional `precondition: { blockTextHash }` field on `add_comment`
+ * arguments, present when the caller echoes a `blockTextHash` returned by an
+ * earlier `read_document` / `read_section` / `find_text` call. Returns
+ * `undefined` when omitted, the parsed precondition when valid, or a
  * plain-language error string otherwise.
  */
 const readOperationPrecondition = (
@@ -96,7 +99,7 @@ const readOperationPrecondition = (
   return { blockTextHash };
 };
 
-/** Mutable running budget threaded through {@link buildSuggestedOperation} for one `suggest_changes` call. */
+/** Mutable running budget threaded through the text caps for one `suggest_changes` call. */
 type TextBudget = { remaining: number };
 
 /** Decrement the shared budget by `length`; returns true once the aggregate cap is exceeded. */
@@ -110,6 +113,7 @@ export type PrepareFolioAgentDocumentOperationBatchOptions = {
   mode?: FolioDocumentOperationMode;
   atomic?: boolean;
   dryRun?: boolean;
+  precondition?: FolioDocumentOperationBatchPrecondition;
 };
 
 /**
@@ -123,6 +127,7 @@ export const prepareFolioAgentDocumentOperationBatch = ({
   mode,
   atomic,
   dryRun,
+  precondition,
 }: PrepareFolioAgentDocumentOperationBatchOptions): FolioDocumentOperationBatch =>
   parseFolioDocumentOperationBatch({
     version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -130,6 +135,7 @@ export const prepareFolioAgentDocumentOperationBatch = ({
     ...(mode !== undefined && { mode }),
     ...(atomic !== undefined && { atomic }),
     ...(dryRun !== undefined && { dryRun }),
+    ...(precondition !== undefined && { precondition }),
   });
 
 /** Result of {@link parseAddCommentInput}. */
@@ -181,333 +187,304 @@ export const parseAddCommentInput = (args: unknown): ParseAddCommentResult => {
   return { ok: true, operation };
 };
 
-const OPERATION_TYPES =
-  "replaceInBlock, replaceRange, commentOnRange, formatRange, insertAfterBlock, insertBeforeBlock, replaceBlock, deleteBlock, insertTableRow, deleteTableRow, insertTableColumn, deleteTableColumn, mergeTableCells, splitTableCell";
-
-type SuggestedOperationType =
-  | "replaceInBlock"
-  | "replaceRange"
-  | "commentOnRange"
-  | "formatRange"
-  | "insertAfterBlock"
-  | "insertBeforeBlock"
-  | "replaceBlock"
-  | "deleteBlock"
-  | "insertTableRow"
-  | "deleteTableRow"
-  | "insertTableColumn"
-  | "deleteTableColumn"
-  | "mergeTableCells"
-  | "splitTableCell";
-
-const isOperationType = (value: unknown): value is SuggestedOperationType =>
-  value === "replaceInBlock" ||
-  value === "replaceRange" ||
-  value === "commentOnRange" ||
-  value === "formatRange" ||
-  value === "insertAfterBlock" ||
-  value === "insertBeforeBlock" ||
-  value === "replaceBlock" ||
-  value === "deleteBlock" ||
-  value === "insertTableRow" ||
-  value === "deleteTableRow" ||
-  value === "insertTableColumn" ||
-  value === "deleteTableColumn" ||
-  value === "mergeTableCells" ||
-  value === "splitTableCell";
-
-const readTextRange = (value: unknown, index: number): FolioAITextRangeHandle | string => {
-  const path = `operations[${index}].range`;
-  if (!isPlainObject(value)) {
-    return `${path} must be an object copied from find_text.`;
-  }
-  const range = decodeMainStoryTextRangeHandle(value);
-  if (range !== null) {
-    return range;
-  }
-  if (value["type"] !== "textRange" || value["story"] !== "main") {
-    return `${path} must be a main-story textRange copied from find_text.`;
-  }
-  if (!isNonEmptyString(value["blockId"])) {
-    return `${path}.blockId must be a non-empty string.`;
-  }
-  if (
-    typeof value["startOffset"] !== "number" ||
-    !Number.isInteger(value["startOffset"]) ||
-    value["startOffset"] < 0
-  ) {
-    return `${path}.startOffset must be a non-negative integer.`;
-  }
-  if (
-    typeof value["endOffset"] !== "number" ||
-    !Number.isInteger(value["endOffset"]) ||
-    value["endOffset"] <= value["startOffset"]
-  ) {
-    return `${path}.endOffset must be an integer greater than startOffset.`;
-  }
-  if (
-    !isNonEmptyString(value["selectedTextHash"]) ||
-    !NORMALIZED_TEXT_HASH_PATTERN.test(value["selectedTextHash"])
-  ) {
-    return `${path}.selectedTextHash must be a normalized text hash.`;
-  }
-  return `${path} must be copied from find_text.`;
-};
-
-/**
- * Validate + map one `suggest_changes` operation, or return a plain-language
- * error string. Parses the shared `precondition` field itself (every
- * operation variant accepts it, so it does not belong to any one type's
- * branch below) and merges it onto whatever {@link buildSuggestedOperationCore}
- * builds.
- */
-const buildSuggestedOperation = (
-  raw: unknown,
-  index: number,
-  budget: TextBudget,
-): FolioAIEditOperation | string => {
-  if (!isPlainObject(raw)) {
-    return `operations[${index}] must be an object.`;
-  }
-  const precondition = readOperationPrecondition(raw["precondition"]);
-  if (typeof precondition === "string") {
-    return `operations[${index}] ${precondition}`;
-  }
-  const built = buildSuggestedOperationCore(raw, index, budget);
-  if (typeof built === "string") {
-    return built;
-  }
-  return precondition === undefined ? built : { ...built, precondition };
-};
-
-/** Type-and-shape-specific half of {@link buildSuggestedOperation}. */
-const buildSuggestedOperationCore = (
-  raw: Record<string, unknown>,
-  index: number,
-  budget: TextBudget,
-): FolioAIEditOperation | string => {
-  const type = raw["type"];
-  const blockId = raw["blockId"];
-  const id = raw["id"];
-  const comment = raw["comment"];
-
-  if (!isOperationType(type)) {
-    return `operations[${index}].type must be one of ${OPERATION_TYPES}.`;
-  }
-  if (id !== undefined && !isNonEmptyString(id)) {
-    return `operations[${index}].id must be a non-empty string when provided.`;
-  }
-  if (comment !== undefined && typeof comment !== "string") {
-    return `operations[${index}].comment must be a string when provided.`;
-  }
-  if (typeof comment === "string") {
-    if (comment.length > MAX_OPERATION_TEXT_LENGTH) {
-      return explainTextTooLong(`operations[${index}].comment`, comment.length);
-    }
-    if (consumeTextBudget(budget, comment.length)) {
-      return explainAggregateTextTooLong(index);
-    }
-  }
-  const opId = isNonEmptyString(id) ? id : `op-${index + 1}`;
-  const commentField = typeof comment === "string" ? { comment: { text: comment } } : {};
-
-  if (type === "replaceRange" || type === "commentOnRange" || type === "formatRange") {
-    const range = readTextRange(raw["range"], index);
-    if (typeof range === "string") {
-      return range;
-    }
-    if (type === "commentOnRange") {
-      if (!isNonEmptyString(comment)) {
-        return `operations[${index}] (commentOnRange) requires a non-empty string \`comment\`.`;
-      }
-      return { id: opId, type, range, comment: { text: comment } };
-    }
-    if (type === "formatRange") {
-      const rawFormatting = raw["formatting"];
-      if (!isPlainObject(rawFormatting)) {
-        return `operations[${index}] (formatRange) requires a \`formatting\` object.`;
-      }
-      const formatting: { bold?: boolean; italic?: boolean; underline?: boolean } = {};
-      for (const key of ["bold", "italic", "underline"] as const) {
-        const value = rawFormatting[key];
-        if (value === undefined) {
-          continue;
-        }
-        if (typeof value !== "boolean") {
-          return `operations[${index}].formatting.${key} must be a boolean when provided.`;
-        }
-        formatting[key] = value;
-      }
-      if (Object.keys(formatting).length === 0) {
-        return `operations[${index}] (formatRange) requires at least one formatting property.`;
-      }
-      return { id: opId, type, range, formatting };
-    }
-    const replace = raw["replace"];
-    if (typeof replace !== "string") {
-      return `operations[${index}] (replaceRange) requires a string \`replace\`.`;
-    }
-    if (replace.length > MAX_OPERATION_TEXT_LENGTH) {
-      return explainTextTooLong(`operations[${index}] (replaceRange) \`replace\``, replace.length);
-    }
-    if (consumeTextBudget(budget, replace.length)) {
-      return explainAggregateTextTooLong(index);
-    }
-    return { id: opId, type, range, replace, ...commentField };
-  }
-
-  if (!isNonEmptyString(blockId)) {
-    return `operations[${index}].blockId must be a non-empty string.`;
-  }
-
-  if (type === "insertTableRow" || type === "insertTableColumn") {
-    const position = raw["position"];
-    if (position !== undefined && position !== "after" && position !== "before") {
-      return `operations[${index}] (${type}) \`position\` must be "after" or "before" when provided.`;
-    }
-    const rawCellTexts = raw["cellTexts"];
-    if (rawCellTexts !== undefined && !Array.isArray(rawCellTexts)) {
-      return `operations[${index}] (${type}) \`cellTexts\` must be an array of strings when provided.`;
-    }
-    if (rawCellTexts !== undefined && rawCellTexts.length > MAX_TABLE_INSERTION_CELL_TEXTS) {
-      return `operations[${index}] (${type}) \`cellTexts\` has ${rawCellTexts.length.toLocaleString()} entries, over the ${MAX_TABLE_INSERTION_CELL_TEXTS.toLocaleString()}-cell limit.`;
-    }
-    const cellTexts: string[] = [];
-    for (const [cellIndex, cellText] of (rawCellTexts ?? []).entries()) {
-      if (typeof cellText !== "string") {
-        return `operations[${index}] (${type}) \`cellTexts[${cellIndex}]\` must be a string.`;
-      }
-      if (cellText.length > MAX_OPERATION_TEXT_LENGTH) {
-        return explainTextTooLong(
-          `operations[${index}] (${type}) \`cellTexts[${cellIndex}]\``,
-          cellText.length,
-        );
-      }
-      if (consumeTextBudget(budget, cellText.length)) {
-        return explainAggregateTextTooLong(index);
-      }
-      cellTexts.push(cellText);
-    }
-    return {
-      id: opId,
-      type,
-      blockId,
-      ...(position !== undefined && { position }),
-      ...(rawCellTexts !== undefined && { cellTexts }),
-    };
-  }
-
-  if (type === "deleteTableRow" || type === "deleteTableColumn" || type === "splitTableCell") {
-    return { id: opId, type, blockId };
-  }
-
-  if (type === "mergeTableCells") {
-    const endBlockId = raw["endBlockId"];
-    const rowCount = raw["rowCount"];
-    if (isNonEmptyString(endBlockId) && rowCount === undefined) {
-      return { id: opId, type, blockId, endBlockId };
-    }
-    if (
-      endBlockId === undefined &&
-      typeof rowCount === "number" &&
-      Number.isInteger(rowCount) &&
-      rowCount >= 2
-    ) {
-      return { id: opId, type, blockId, rowCount };
-    }
-    return `operations[${index}] (mergeTableCells) requires exactly one non-empty \`endBlockId\` or integer \`rowCount\` of at least 2.`;
-  }
-
-  if (type === "replaceInBlock") {
-    const find = raw["find"];
-    const replace = raw["replace"];
-    if (!isNonEmptyString(find)) {
-      return `operations[${index}] (replaceInBlock) requires a non-empty string \`find\`.`;
-    }
-    if (find.length > MAX_OPERATION_TEXT_LENGTH) {
-      return explainTextTooLong(`operations[${index}] (replaceInBlock) \`find\``, find.length);
-    }
-    if (consumeTextBudget(budget, find.length)) {
-      return explainAggregateTextTooLong(index);
-    }
-    if (typeof replace !== "string") {
-      return `operations[${index}] (replaceInBlock) requires a string \`replace\`.`;
-    }
-    if (replace.length > MAX_OPERATION_TEXT_LENGTH) {
-      return explainTextTooLong(
-        `operations[${index}] (replaceInBlock) \`replace\``,
-        replace.length,
-      );
-    }
-    if (consumeTextBudget(budget, replace.length)) {
-      return explainAggregateTextTooLong(index);
-    }
-    return { id: opId, type, blockId, find, replace, ...commentField };
-  }
-  if (type === "insertAfterBlock" || type === "insertBeforeBlock") {
-    const text = raw["text"];
-    if (!isNonEmptyString(text)) {
-      return `operations[${index}] (${type}) requires a non-empty string \`text\`.`;
-    }
-    if (text.length > MAX_OPERATION_TEXT_LENGTH) {
-      return explainTextTooLong(`operations[${index}] (${type}) \`text\``, text.length);
-    }
-    if (consumeTextBudget(budget, text.length)) {
-      return explainAggregateTextTooLong(index);
-    }
-    return { id: opId, type, blockId, text, ...commentField };
-  }
-  if (type === "replaceBlock") {
-    const text = raw["text"];
-    if (!isNonEmptyString(text)) {
-      return "operations[" + index + "] (replaceBlock) requires a non-empty string `text`.";
-    }
-    if (text.length > MAX_OPERATION_TEXT_LENGTH) {
-      return explainTextTooLong(`operations[${index}] (replaceBlock) \`text\``, text.length);
-    }
-    if (consumeTextBudget(budget, text.length)) {
-      return explainAggregateTextTooLong(index);
-    }
-    return { id: opId, type, blockId, text, ...commentField };
-  }
-  // deleteBlock
-  return { id: opId, type, blockId, ...commentField };
-};
+// ---------------------------------------------------------------------------
+// suggest_changes
+// ---------------------------------------------------------------------------
 
 /** Result of {@link parseSuggestChangesInput}. */
 export type ParseSuggestChangesResult =
-  | { ok: true; operations: FolioAIEditOperation[] }
+  | {
+      ok: true;
+      operations: FolioAIEditOperation[];
+      /** Present when the call pinned a host document version. */
+      precondition?: FolioDocumentOperationBatchPrecondition;
+      normalizations: FolioAgentInputNormalization[];
+    }
   | { ok: false; error: string };
+
+const SUGGEST_CHANGES_ARGUMENT_KEYS = ["operations", "documentVersion"] as const;
+
+/** String-valued operation fields that count against the text caps. */
+const TEXT_FIELDS = ["find", "replace", "text", "quote", "styleId", "area"] as const;
+
+/**
+ * Try to read a value the model serialised as a JSON string where an object
+ * or array was expected. Returns `undefined` when it is not such a string.
+ */
+const parseEmbeddedJson = (value: unknown): unknown => {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
+    return undefined;
+  }
+  // Boundary decode of model output: JSON.parse throws on malformed text,
+  // and "not JSON after all" is a normal outcome here, not a failure.
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return undefined;
+  }
+};
+
+type DecodedSuggestChangesInput = {
+  operations: Record<string, unknown>[];
+  documentVersion: unknown;
+  normalizations: FolioAgentInputNormalization[];
+};
+
+/**
+ * Lenient decode of the raw arguments: JSON-string envelopes and operations,
+ * `kind` for `type`, stray keys. Every normalisation is recorded so the host
+ * and the model can see what was tolerated. Shape errors that cannot be
+ * normalised come back as a plain-language string.
+ */
+const decodeSuggestChangesInput = (
+  rawArgs: unknown,
+  options: ResolvedFolioSuggestChangesOptions,
+): DecodedSuggestChangesInput | string => {
+  const normalizations: FolioAgentInputNormalization[] = [];
+  let args = rawArgs;
+  const embeddedArgs = parseEmbeddedJson(args);
+  if (isPlainObject(embeddedArgs)) {
+    normalizations.push({ path: "$", message: "arguments were supplied as a JSON string" });
+    args = embeddedArgs;
+  }
+  if (!isPlainObject(args)) {
+    return "suggest_changes requires an `operations` array.";
+  }
+  for (const key of Object.keys(args)) {
+    if (!(SUGGEST_CHANGES_ARGUMENT_KEYS as readonly string[]).includes(key)) {
+      normalizations.push({ path: key, message: `unknown argument \`${key}\` was ignored` });
+    }
+  }
+
+  let rawOperations = args["operations"];
+  const embeddedOperations = parseEmbeddedJson(rawOperations);
+  if (Array.isArray(embeddedOperations)) {
+    normalizations.push({
+      path: "operations",
+      message: "`operations` was supplied as a JSON string",
+    });
+    rawOperations = embeddedOperations;
+  }
+  if (!Array.isArray(rawOperations)) {
+    return "suggest_changes requires an `operations` array.";
+  }
+  if (rawOperations.length === 0) {
+    return "suggest_changes' `operations` array must not be empty.";
+  }
+  if (rawOperations.length > options.maxOperations) {
+    return `suggest_changes' \`operations\` array has ${rawOperations.length.toLocaleString()} entries, over the ${options.maxOperations}-operation limit; batch it across multiple suggest_changes calls.`;
+  }
+
+  const operations: Record<string, unknown>[] = [];
+  for (const [index, rawOperation] of rawOperations.entries()) {
+    const path = `operations[${index}]`;
+    let operation = rawOperation;
+    const embeddedOperation = parseEmbeddedJson(operation);
+    if (isPlainObject(embeddedOperation)) {
+      normalizations.push({ path, message: "operation was supplied as a JSON string" });
+      operation = embeddedOperation;
+    }
+    if (!isPlainObject(operation)) {
+      return `${path} must be an object.`;
+    }
+    let type = operation["type"];
+    let typeKey = "type";
+    if (type === undefined && typeof operation["kind"] === "string") {
+      normalizations.push({ path: `${path}.kind`, message: "`kind` was read as `type`" });
+      type = operation["kind"];
+      typeKey = "kind";
+    }
+    if (!isAllowedOperationType(type, options)) {
+      return `${path}.type must be one of ${options.operationTypes.join(", ")}.`;
+    }
+    const allowedKeys: readonly string[] = FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE[type];
+    const decoded: Record<string, unknown> = { type };
+    for (const [key, value] of Object.entries(operation)) {
+      if (key === typeKey) {
+        continue;
+      }
+      if (allowedKeys.includes(key)) {
+        decoded[key] = value;
+        continue;
+      }
+      normalizations.push({
+        path: `${path}.${key}`,
+        message: `\`${key}\` does not apply to ${type} and was ignored`,
+      });
+    }
+    operations.push(decoded);
+  }
+  return { operations, documentVersion: args["documentVersion"], normalizations };
+};
+
+const isAllowedOperationType = (
+  value: unknown,
+  options: ResolvedFolioSuggestChangesOptions,
+): value is FolioDocumentOperationType =>
+  typeof value === "string" &&
+  (options.operationTypes as readonly string[]).includes(value) &&
+  Object.hasOwn(FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE, value);
+
+/** Enforce the per-field and aggregate text caps on one decoded operation, or explain the breach. */
+const checkTextCaps = (
+  operation: Record<string, unknown>,
+  index: number,
+  budget: TextBudget,
+): string | undefined => {
+  const label = (field: string) => `operations[${index}].${field}`;
+  const charge = (field: string, value: unknown): string | undefined => {
+    if (typeof value !== "string") {
+      return undefined;
+    }
+    if (value.length > MAX_OPERATION_TEXT_LENGTH) {
+      return explainTextTooLong(label(field), value.length);
+    }
+    return consumeTextBudget(budget, value.length) ? explainAggregateTextTooLong(index) : undefined;
+  };
+  for (const field of TEXT_FIELDS) {
+    const breach = charge(field, operation[field]);
+    if (breach !== undefined) {
+      return breach;
+    }
+  }
+  const comment = operation["comment"];
+  const commentBreach = charge("comment", isPlainObject(comment) ? comment["text"] : comment);
+  if (commentBreach !== undefined) {
+    return commentBreach;
+  }
+  const cellTexts = operation["cellTexts"];
+  if (Array.isArray(cellTexts)) {
+    if (cellTexts.length > MAX_TABLE_INSERTION_CELL_TEXTS) {
+      return `${label("cellTexts")} has ${cellTexts.length.toLocaleString()} entries, over the ${MAX_TABLE_INSERTION_CELL_TEXTS.toLocaleString()}-cell limit.`;
+    }
+    for (const [cellIndex, cellText] of cellTexts.entries()) {
+      const breach = charge(`cellTexts[${cellIndex}]`, cellText);
+      if (breach !== undefined) {
+        return breach;
+      }
+    }
+  }
+  const parties = operation["parties"];
+  if (Array.isArray(parties)) {
+    for (const [partyIndex, party] of parties.entries()) {
+      if (!isPlainObject(party)) {
+        continue;
+      }
+      for (const field of ["name", "signatory", "title"] as const) {
+        const breach = charge(`parties[${partyIndex}].${field}`, party[field]);
+        if (breach !== undefined) {
+          return breach;
+        }
+      }
+    }
+  }
+  return undefined;
+};
+
+/**
+ * Ids minted for operations the model left unnamed. The per-call nonce keeps
+ * them unique across calls so a host queue can key on them without
+ * rewriting; the index keeps them readable in the model's own output.
+ */
+const mintOperationIdPrefix = (): string => `op-${crypto.randomUUID().slice(0, 8)}`;
+
+/** Turn a contract-parser failure into the model-facing message shape (`operations[0].find: expected a string.`). */
+const explainContractError = (error: unknown): string => {
+  if (error instanceof InvalidFolioDocumentOperationBatchError) {
+    return `${error.path.replace(/^\$\.?/, "")}: ${error.reason}.`;
+  }
+  return error instanceof Error ? error.message : String(error);
+};
 
 /**
  * Validate `suggest_changes`' raw tool-call arguments and build the
  * {@link FolioAIEditOperation}s it applies. Pure: does not touch a bridge or
- * document.
+ * document. `options` must match the {@link FolioSuggestChangesOptions} the
+ * tool definition was built with.
  */
-export const parseSuggestChangesInput = (args: unknown): ParseSuggestChangesResult => {
-  if (!isPlainObject(args) || !Array.isArray(args["operations"])) {
-    return { ok: false, error: "suggest_changes requires an `operations` array." };
-  }
-  const rawOperations = args["operations"];
-  if (rawOperations.length === 0) {
-    return { ok: false, error: "suggest_changes' `operations` array must not be empty." };
-  }
-  if (rawOperations.length > MAX_OPERATIONS_PER_CALL) {
-    return {
-      ok: false,
-      error: `suggest_changes' \`operations\` array has ${rawOperations.length.toLocaleString()} entries, over the ${MAX_OPERATIONS_PER_CALL}-operation limit; batch it across multiple suggest_changes calls.`,
-    };
+export const parseSuggestChangesInput = (
+  args: unknown,
+  options?: FolioSuggestChangesOptions,
+): ParseSuggestChangesResult => {
+  const resolved = resolveSuggestChangesOptions(options);
+  const decoded = decodeSuggestChangesInput(args, resolved);
+  if (typeof decoded === "string") {
+    return { ok: false, error: decoded };
   }
 
-  const operations: FolioAIEditOperation[] = [];
-  const budget: TextBudget = { remaining: MAX_TOTAL_OPERATION_TEXT_LENGTH };
-  for (const [index, raw] of rawOperations.entries()) {
-    const built = buildSuggestedOperation(raw, index, budget);
-    if (typeof built === "string") {
-      return { ok: false, error: built };
+  let precondition: FolioDocumentOperationBatchPrecondition | undefined;
+  if (resolved.documentVersion !== null) {
+    if (!isNonEmptyString(decoded.documentVersion)) {
+      return {
+        ok: false,
+        error:
+          "suggest_changes requires `documentVersion`: copy the current document version from the tool schema.",
+      };
     }
-    operations.push(built);
+    precondition = { documentVersion: decoded.documentVersion };
+  } else if (decoded.documentVersion !== undefined) {
+    decoded.normalizations.push({
+      path: "documentVersion",
+      message: "`documentVersion` is not pinned on this surface and was ignored",
+    });
   }
 
-  return { ok: true, operations };
+  const budget: TextBudget = { remaining: MAX_TOTAL_OPERATION_TEXT_LENGTH };
+  const idPrefix = mintOperationIdPrefix();
+  const prepared: Record<string, unknown>[] = [];
+  for (const [index, operation] of decoded.operations.entries()) {
+    const breach = checkTextCaps(operation, index, budget);
+    if (breach !== undefined) {
+      return { ok: false, error: breach };
+    }
+    if (resolved.reviewMeta === "required") {
+      if (operation["severity"] === undefined) {
+        return {
+          ok: false,
+          error: `operations[${index}].severity is required on this surface ("low", "medium", or "high").`,
+        };
+      }
+      if (!isNonEmptyString(operation["area"])) {
+        return {
+          ok: false,
+          error: `operations[${index}].area is required on this surface: a short review area label.`,
+        };
+      }
+    }
+    const id = operation["id"];
+    if (id !== undefined && !isNonEmptyString(id)) {
+      return {
+        ok: false,
+        error: `operations[${index}].id must be a non-empty string when provided.`,
+      };
+    }
+    const comment = operation["comment"];
+    prepared.push({
+      ...operation,
+      id: id ?? `${idPrefix}-${index + 1}`,
+      ...(typeof comment === "string" && { comment: { text: comment } }),
+    });
+  }
+
+  // Boundary adapter over the intentionally throwing contract parser: an
+  // invalid operation is an expected outcome here, reported to the model.
+  try {
+    const batch = parseFolioDocumentOperationBatch({
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      operations: prepared,
+      ...(precondition !== undefined && { precondition }),
+    });
+    return {
+      ok: true,
+      operations: [...batch.operations],
+      ...(batch.precondition !== undefined && { precondition: batch.precondition }),
+      normalizations: decoded.normalizations,
+    };
+  } catch (error) {
+    return { ok: false, error: explainContractError(error) };
+  }
 };

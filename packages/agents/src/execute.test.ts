@@ -185,11 +185,11 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
     );
     expect(suggestResult.version).toBe(1);
     expect(suggestResult.applied).toHaveLength(1);
-    expect(suggestResult.applied[0]?.id).toBe("op-1");
+    expect(suggestResult.applied[0]?.id).toMatch(/^op-[0-9a-f]{8}-1$/);
     expect(suggestResult.skipped).toEqual([]);
     expect(suggestResult.receipts).toEqual([
       {
-        operationId: "op-1",
+        operationId: expect.stringMatching(/^op-[0-9a-f]{8}-1$/),
         operationIndex: 0,
         affected: [
           {
@@ -658,7 +658,7 @@ describe("find_text edge cases", () => {
         bridge,
       ),
     ) as FolioAgentApplyOperationsSummary;
-    expect(suggested.applied).toEqual([{ id: "op-1" }]);
+    expect(suggested.applied).toEqual([{ id: expect.stringMatching(/^op-[0-9a-f]{8}-1$/) }]);
 
     const caseSensitive = expectOk(
       executeFolioToolCall(
