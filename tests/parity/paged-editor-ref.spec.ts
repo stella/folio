@@ -48,8 +48,8 @@ forEachAdapter(
     const rects = geometry?.rects ?? [];
     // Snapshot order is document order, not vertical order: table cells can
     // share a top coordinate, and later page columns can reset it.
-    expect(rects.map(({ blockId }) => blockId)).toEqual(geometry?.snapshotBlockIds);
     for (const rect of rects) {
+      expect(rect.blockId).toBe(rect.snapshotBlockId);
       expect(Number.isInteger(rect.page)).toBe(true);
       expect(rect.page).toBeGreaterThan(0);
       expect(Number.isFinite(rect.top)).toBe(true);

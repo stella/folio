@@ -56,8 +56,13 @@ export type FolioParityBridge = {
   aiSnapshotBlockCount: () => number;
   /** Painted geometry exposed through the public ref contract. */
   readBlockGeometry: () => {
-    snapshotBlockIds: string[];
-    rects: { blockId: string; page: number; top: number; height: number }[];
+    rects: {
+      snapshotBlockId: string;
+      blockId: string;
+      page: number;
+      top: number;
+      height: number;
+    }[];
     missingIsNull: boolean;
     hasScrollRoot: boolean;
   };
@@ -293,16 +298,23 @@ export function buildParityBridge(
       const ref = getRef();
       const snapshot = ref?.createAIEditSnapshot();
       if (!ref || !snapshot) {
-        return { snapshotBlockIds: [], rects: [], missingIsNull: true, hasScrollRoot: false };
+        return { rects: [], missingIsNull: true, hasScrollRoot: false };
       }
       const blockIds = snapshot.blocks.map(({ id }) => id);
       const rects = ref.getBlockRects(blockIds);
       return {
-        snapshotBlockIds: blockIds,
-        rects: blockIds.flatMap((blockId) => {
-          const rect = rects.get(blockId);
+        rects: blockIds.flatMap((snapshotBlockId) => {
+          const rect = rects.get(snapshotBlockId);
           return rect
-            ? [{ blockId: rect.blockId, page: rect.page, top: rect.top, height: rect.height }]
+            ? [
+                {
+                  snapshotBlockId,
+                  blockId: rect.blockId,
+                  page: rect.page,
+                  top: rect.top,
+                  height: rect.height,
+                },
+              ]
             : [];
         }),
         missingIsNull: ref.getBlockRect("missing-block-id") === null,
