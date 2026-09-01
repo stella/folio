@@ -1,5 +1,13 @@
 # @stll/folio-core
 
+## 0.31.2
+
+### Patch Changes
+
+- [#686](https://github.com/stella/folio/pull/686) [`f7fe238`](https://github.com/stella/folio/commit/f7fe2389e1efbc20a2bbf190f0ff59e05fd9c923) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve valid bookmark identities when creating bilingual DOCX copies.
+
+- [#684](https://github.com/stella/folio/pull/684) [`3aa52ae`](https://github.com/stella/folio/commit/3aa52aee3b0b4e29564f15dd0b5b8a93bfe35a12) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep rewritten tracked-change clauses readable by matching words with their surrounding whitespace.
+
 ## 0.31.1
 
 ### Patch Changes
