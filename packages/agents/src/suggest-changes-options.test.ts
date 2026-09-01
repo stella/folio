@@ -114,6 +114,9 @@ describe("resolveSuggestChangesOptions", () => {
     { label: "an empty operationTypes array", options: { operationTypes: [] } },
     {
       label: "an unknown operation type",
+      // SAFETY: the runtime guard exists for callers outside TypeScript (a
+      // JSON config, a JS host); the cast is the only way to hand it an
+      // off-contract string from typed test code.
       options: { operationTypes: ["notAContractType" as FolioDocumentOperationType] },
     },
     { label: "maxOperations 0", options: { maxOperations: 0 } },
