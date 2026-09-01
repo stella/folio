@@ -28,7 +28,7 @@ import {
   prepareFolioAgentDocumentOperationBatch,
   parseSuggestChangesInput,
 } from "./parse";
-import type { FolioSuggestChangesOptions } from "./suggest-changes-options";
+import type { FolioAgentToolOptions } from "./suggest-changes-options";
 import type { FolioAgentToolInputByName, FolioToolCallResultFor } from "./tool-contract";
 import { FOLIO_AGENT_TOOL_NAMES } from "./types";
 import type {
@@ -42,15 +42,6 @@ import type {
   FolioAgentTextMatch,
   FolioToolCallResult,
 } from "./types";
-
-/**
- * Per-surface execution options. Pass the same `suggestChanges` options the
- * tool definitions were built with (`getFolioToolDefinitions`), so the
- * parser enforces exactly what the schema advertised to the model.
- */
-export type FolioAgentExecuteOptions = {
-  suggestChanges?: FolioSuggestChangesOptions;
-};
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -94,7 +85,7 @@ export const executeFolioToolCallUntyped = (
   name: string,
   args: unknown,
   bridge: FolioAgentBridge,
-  options: FolioAgentExecuteOptions = {},
+  options: FolioAgentToolOptions = {},
 ): FolioToolCallResult => {
   if (!VALID_TOOL_NAMES.includes(name)) {
     return fail(`Unknown tool "${name}". Valid tools: ${VALID_TOOL_NAMES.join(", ")}.`);
@@ -111,13 +102,13 @@ export function executeFolioToolCall<TName extends FolioAgentToolName>(
   name: TName,
   args: FolioAgentToolInputByName[TName],
   bridge: FolioAgentBridge,
-  options?: FolioAgentExecuteOptions,
+  options?: FolioAgentToolOptions,
 ): FolioToolCallResultFor<TName>;
 export function executeFolioToolCall(
   name: string,
   args: unknown,
   bridge: FolioAgentBridge,
-  options: FolioAgentExecuteOptions = {},
+  options: FolioAgentToolOptions = {},
 ): FolioToolCallResult {
   return executeFolioToolCallUntyped(name, args, bridge, options);
 }
@@ -126,7 +117,7 @@ const dispatch = (
   name: string,
   args: unknown,
   bridge: FolioAgentBridge,
-  options: FolioAgentExecuteOptions,
+  options: FolioAgentToolOptions,
 ): FolioToolCallResult => {
   if (!isFolioAgentToolName(name)) {
     return fail(`Unknown tool "${name}".`);
@@ -673,7 +664,7 @@ const addComment = (
 const suggestChanges = (
   args: unknown,
   bridge: FolioAgentBridge,
-  options: FolioAgentExecuteOptions,
+  options: FolioAgentToolOptions,
 ): FolioToolCallResultFor<typeof FOLIO_AGENT_TOOL_NAMES.suggestChanges> => {
   const parsed = parseSuggestChangesInput(args, options.suggestChanges);
   if (!parsed.ok) {
@@ -843,7 +834,7 @@ type FolioAgentToolHandlers = {
   [Name in FolioAgentToolName]: (
     args: unknown,
     bridge: FolioAgentBridge,
-    options: FolioAgentExecuteOptions,
+    options: FolioAgentToolOptions,
   ) => FolioToolCallResultFor<Name>;
 };
 

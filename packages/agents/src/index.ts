@@ -16,7 +16,6 @@ export type {
   FolioAgentVersionDiffSegment,
 } from "./compare";
 export { compareDocxVersions, formatVersionDiffForLLM, generateRedlineDocx } from "./compare";
-export type { FolioAgentExecuteOptions } from "./execute";
 export { executeFolioToolCall, executeFolioToolCallUntyped } from "./execute";
 export {
   FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA,
@@ -27,16 +26,11 @@ export type { ParseAddCommentResult, ParseSuggestChangesResult } from "./parse";
 export { parseAddCommentInput, parseSuggestChangesInput } from "./parse";
 export type { AnthropicToolDefinition, OpenAIToolDefinition } from "./providers";
 export { toAnthropicTools, toOpenAITools } from "./providers";
-export type {
-  FolioSuggestChangesDocumentVersionOption,
-  FolioSuggestChangesOptions,
-  FolioSuggestChangesReviewMetaPolicy,
-} from "./suggest-changes-options";
+export type { FolioAgentToolOptions, FolioSuggestChangesOptions } from "./suggest-changes-options";
 export {
   DEFAULT_SUGGEST_CHANGES_OPERATION_TYPES,
   InvalidFolioSuggestChangesOptionsError,
 } from "./suggest-changes-options";
-export type { FolioAgentToolOptions } from "./tools";
 export {
   describeSuggestChangesCapabilities,
   FOLIO_AGENT_TOOLS,

@@ -74,10 +74,10 @@ export const DEFAULT_SUGGEST_CHANGES_OPERATION_TYPES: readonly FolioDocumentOper
 export const describeSuggestChangesCapabilities: (options?: FolioSuggestChangesOptions) => string;
 
 // @public (undocumented)
-export function executeFolioToolCall<TName extends FolioAgentToolName>(name: TName, args: FolioAgentToolInputByName[TName], bridge: FolioAgentBridge, options?: FolioAgentExecuteOptions): FolioToolCallResultFor<TName>;
+export function executeFolioToolCall<TName extends FolioAgentToolName>(name: TName, args: FolioAgentToolInputByName[TName], bridge: FolioAgentBridge, options?: FolioAgentToolOptions): FolioToolCallResultFor<TName>;
 
 // @public
-export const executeFolioToolCallUntyped: (name: string, args: unknown, bridge: FolioAgentBridge, options?: FolioAgentExecuteOptions) => FolioToolCallResult;
+export const executeFolioToolCallUntyped: (name: string, args: unknown, bridge: FolioAgentBridge, options?: FolioAgentToolOptions) => FolioToolCallResult;
 
 // @public
 export const FOLIO_AGENT_TOOL_NAMES: {
@@ -228,11 +228,6 @@ export type FolioAgentEditorRefLike = {
 };
 
 // @public
-export type FolioAgentExecuteOptions = {
-    suggestChanges?: FolioSuggestChangesOptions;
-};
-
-// @public
 export type FolioAgentGenerateRedlineDocxOptions = GenerateRedlineDocxOptions;
 
 // @public
@@ -320,20 +315,12 @@ export type FolioAgentVersionDiffSegment = FolioVersionDiffSegment;
 export const folioDocumentOperationBatchSchema: FolioDocumentOperationBatchSchema;
 
 // @public
-export type FolioSuggestChangesDocumentVersionOption = {
-    current: string;
-};
-
-// @public
 export type FolioSuggestChangesOptions = {
     operationTypes?: readonly FolioDocumentOperationType[];
     reviewMeta?: FolioSuggestChangesReviewMetaPolicy;
     maxOperations?: number;
     documentVersion?: FolioSuggestChangesDocumentVersionOption;
 };
-
-// @public
-export type FolioSuggestChangesReviewMetaPolicy = "optional" | "required";
 
 // @public
 export type FolioToolCallResult<TResult = unknown> = {

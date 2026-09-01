@@ -14,6 +14,7 @@ import { FOLIO_PRECONDITION_JSON_SCHEMA } from "./operation-schema";
 import {
   DEFAULT_SUGGEST_CHANGES_OPERATION_TYPES,
   resolveSuggestChangesOptions,
+  type FolioAgentToolOptions,
   type FolioSuggestChangesOptions,
   type ResolvedFolioSuggestChangesOptions,
 } from "./suggest-changes-options";
@@ -620,11 +621,6 @@ export const FOLIO_AGENT_TOOL_REGISTRY = {
 } as const satisfies FolioAgentToolRegistry;
 
 export const FOLIO_AGENT_TOOLS = definitionsFromRegistry(FOLIO_AGENT_TOOL_REGISTRY);
-
-/** Per-host configuration of the tool surface; every tool but `suggest_changes` is fixed. */
-export type FolioAgentToolOptions = {
-  suggestChanges?: FolioSuggestChangesOptions;
-};
 
 /**
  * The tool definitions this package exposes. Without options this is

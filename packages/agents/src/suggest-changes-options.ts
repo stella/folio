@@ -45,6 +45,14 @@ export type FolioSuggestChangesOptions = {
   documentVersion?: FolioSuggestChangesDocumentVersionOption;
 };
 
+/**
+ * Per-surface configuration shared by `getFolioToolDefinitions` and
+ * `executeFolioToolCall`; every tool but `suggest_changes` is fixed.
+ */
+export type FolioAgentToolOptions = {
+  suggestChanges?: FolioSuggestChangesOptions;
+};
+
 export type ResolvedFolioSuggestChangesOptions = {
   /** Allowed types in contract order, deduplicated. */
   readonly operationTypes: readonly FolioDocumentOperationType[];
