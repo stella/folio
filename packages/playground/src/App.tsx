@@ -108,6 +108,7 @@ export type FolioParityBridge = {
   aiSnapshotBlockCount: () => number;
   /** Painted geometry exposed through the public ref contract. */
   readBlockGeometry: () => {
+    snapshotBlockIds: string[];
     rects: { blockId: string; page: number; top: number; height: number }[];
     missingIsNull: boolean;
     hasScrollRoot: boolean;
@@ -344,11 +345,12 @@ function buildParityBridge(
       const ref = getRef();
       const snapshot = ref?.createAIEditSnapshot();
       if (!ref || !snapshot) {
-        return { rects: [], missingIsNull: true, hasScrollRoot: false };
+        return { snapshotBlockIds: [], rects: [], missingIsNull: true, hasScrollRoot: false };
       }
       const blockIds = snapshot.blocks.map(({ id }) => id);
       const rects = ref.getBlockRects(blockIds);
       return {
+        snapshotBlockIds: blockIds,
         rects: blockIds.flatMap((blockId) => {
           const rect = rects.get(blockId);
           return rect

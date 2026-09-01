@@ -46,14 +46,16 @@ forEachAdapter(
     expect(geometry?.rects.length).toBeGreaterThan(1);
 
     const rects = geometry?.rects ?? [];
-    for (let index = 1; index < rects.length; index += 1) {
-      const previous = rects[index - 1];
-      const current = rects[index];
-      if (!previous || !current || previous.page !== current.page) {
-        continue;
-      }
-      expect(current.top).toBeGreaterThan(previous.top);
-      expect(current.height).toBeGreaterThan(0);
+    // Snapshot order is document order, not vertical order: table cells can
+    // share a top coordinate, and later page columns can reset it.
+    expect(rects.map(({ blockId }) => blockId)).toEqual(geometry?.snapshotBlockIds);
+    for (const rect of rects) {
+      expect(Number.isInteger(rect.page)).toBe(true);
+      expect(rect.page).toBeGreaterThan(0);
+      expect(Number.isFinite(rect.top)).toBe(true);
+      expect(rect.top).toBeGreaterThanOrEqual(0);
+      expect(Number.isFinite(rect.height)).toBe(true);
+      expect(rect.height).toBeGreaterThan(0);
     }
   },
 );
