@@ -15,7 +15,36 @@ export type WordDiffSegment = {
   text: string;
 };
 
-const tokenize = (s: string): string[] => s.match(/\s+|\S+/gu) ?? [];
+const WHITESPACE = /\s/u;
+
+const tokenize = (s: string): string[] => {
+  const tokens = [];
+  let tokenStart = 0;
+  let cursor = 0;
+  // Walk once instead of backtracking across untrusted whitespace-only document text.
+  while (cursor < s.length) {
+    while (cursor < s.length && WHITESPACE.test(s.charAt(cursor))) {
+      cursor++;
+    }
+    if (cursor === s.length) {
+      break;
+    }
+    while (cursor < s.length && !WHITESPACE.test(s.charAt(cursor))) {
+      cursor++;
+    }
+    tokens.push(s.slice(tokenStart, cursor));
+    tokenStart = cursor;
+  }
+
+  const last = tokens.at(-1);
+  if (last === undefined) {
+    return s.length === 0 ? [] : [s];
+  }
+  if (tokenStart < s.length) {
+    tokens[tokens.length - 1] = last + s.slice(tokenStart);
+  }
+  return tokens;
+};
 
 /**
  * Cell budget for the O(n*m) word-diff DP table below, mirroring

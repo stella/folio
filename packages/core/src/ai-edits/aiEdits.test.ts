@@ -1098,15 +1098,15 @@ describe("Folio AI edit operations", () => {
       marksByText[node.text ?? ""] = node.marks.map((mark) => mark.type.name);
     });
     // Shared tokens carry no tracked-change marks.
-    for (const shared of ["The buyer ", " pay the seller within ", " days."]) {
+    for (const shared of ["The buyer", " pay the seller within", " days."]) {
       expect(marksByText[shared] ?? []).not.toContain("insertion");
       expect(marksByText[shared] ?? []).not.toContain("deletion");
     }
-    // Diverging tokens carry exactly the right marks.
-    expect(marksByText["shall"]).toContain("deletion");
-    expect(marksByText["must"]).toContain("insertion");
-    expect(marksByText["thirty"]).toContain("deletion");
-    expect(marksByText["sixty"]).toContain("insertion");
+    // Diverging tokens carry their leading whitespace and exactly the right marks.
+    expect(marksByText[" shall"]).toContain("deletion");
+    expect(marksByText[" must"]).toContain("insertion");
+    expect(marksByText[" thirty"]).toContain("deletion");
+    expect(marksByText[" sixty"]).toContain("insertion");
   });
 
   test("snapshot and apply ignore existing tracked-change marks", () => {
@@ -1550,8 +1550,8 @@ describe("Folio AI edit operations", () => {
   test("word-level diff works for non-Latin scripts split on whitespace", () => {
     // Czech / German / French / Polish all split on whitespace, so
     // the same LCS path applies — only the diverging Czech token
-    // should carry tracked-change marks. Locks in that the regex
-    // tokeniser handles diacritics without pre/post-processing.
+    // should carry tracked-change marks. Locks in that the tokeniser
+    // handles diacritics without pre/post-processing.
     const view = makeView(makeState(["Kupující musí zaplatit do třiceti dnů."]));
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
 
@@ -1576,9 +1576,9 @@ describe("Folio AI edit operations", () => {
       }
       marksByText[node.text ?? ""] = node.marks.map((mark) => mark.type.name);
     });
-    expect(marksByText["třiceti"]).toContain("deletion");
-    expect(marksByText["šedesáti"]).toContain("insertion");
-    expect(marksByText["Kupující musí zaplatit do "] ?? []).not.toContain("deletion");
+    expect(marksByText[" třiceti"]).toContain("deletion");
+    expect(marksByText[" šedesáti"]).toContain("insertion");
+    expect(marksByText["Kupující musí zaplatit do"] ?? []).not.toContain("deletion");
   });
 
   test("insertAfterBlock anchored inside a table cell lands after the table, not in the cell", () => {

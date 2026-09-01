@@ -262,9 +262,9 @@ describe("compareDocxVersions: real w14:paraId alignment", () => {
     }
     expect(modified.kind).toBe("paragraph");
     expect(modified.segments).toEqual([
-      { type: "equal", text: "Beta " },
-      { type: "del", text: "paragraph." },
-      { type: "ins", text: "clause." },
+      { type: "equal", text: "Beta" },
+      { type: "del", text: " paragraph." },
+      { type: "ins", text: " clause." },
     ]);
 
     const deleted = findChange(diff.changes, "00000003");
