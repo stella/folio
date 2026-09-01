@@ -907,19 +907,32 @@ export type FolioDocumentOperationQueuedOperation = {
   id: string;
 };
 
-export type FolioDocumentOperationResult = {
+type FolioDocumentOperationResultBase = {
   version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
-  status: FolioDocumentOperationStatus;
   applied: FolioAIEditAppliedOperation[];
   skipped: FolioAIEditSkippedOperation[];
-  /** Operations parked in a host review queue (`status: "queued"` surfaces only). */
-  queued?: FolioDocumentOperationQueuedOperation[];
   issues: FolioDocumentOperationIssue[];
   /** Successful effects in input-operation order; skipped operations are omitted. */
   receipts: FolioDocumentOperationReceipt[];
   /** Present when the execution surface can undo this committed batch. */
   undoHandle: FolioDocumentOperationUndoHandle | null;
 };
+
+/**
+ * Discriminated on `status`: only a host review-queue surface reports
+ * `"queued"`, and only that branch carries the `queued` list, so a consumer
+ * narrowing on the status can never meet a contradictory payload.
+ */
+export type FolioDocumentOperationResult =
+  | (FolioDocumentOperationResultBase & {
+      status: "queued";
+      /** Operations parked in the host review queue instead of applied. */
+      queued: FolioDocumentOperationQueuedOperation[];
+    })
+  | (FolioDocumentOperationResultBase & {
+      status: Exclude<FolioDocumentOperationStatus, "queued">;
+      queued?: never;
+    });
 
 const recoveryByReason = {
   missingBlock: "refreshDocument",

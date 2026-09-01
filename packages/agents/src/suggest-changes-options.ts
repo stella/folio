@@ -98,6 +98,9 @@ const resolveOperationTypes = (
   if (requested === undefined) {
     return DEFAULT_SUGGEST_CHANGES_OPERATION_TYPES;
   }
+  if (!Array.isArray(requested)) {
+    return invalidOption("operationTypes", "expected an array of operation types");
+  }
   if (requested.length === 0) {
     return invalidOption("operationTypes", "expected at least one operation type");
   }
@@ -128,7 +131,12 @@ const resolveDocumentVersion = (
   if (requested === undefined) {
     return null;
   }
-  if (typeof requested.current !== "string" || requested.current.length === 0) {
+  if (
+    typeof requested !== "object" ||
+    requested === null ||
+    typeof requested.current !== "string" ||
+    requested.current.length === 0
+  ) {
     return invalidOption("documentVersion", "expected a non-empty `current` version token");
   }
   return { current: requested.current };

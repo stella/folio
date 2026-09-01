@@ -386,11 +386,11 @@ const checkTextCaps = (
 };
 
 /**
- * Ids minted for operations the model left unnamed. The per-call nonce keeps
+ * Ids minted for operations the model left unnamed. The per-call UUID keeps
  * them unique across calls so a host queue can key on them without
  * rewriting; the index keeps them readable in the model's own output.
  */
-const mintOperationIdPrefix = (): string => `op-${crypto.randomUUID().slice(0, 8)}`;
+const mintOperationIdPrefix = (): string => `op-${crypto.randomUUID()}`;
 
 /** Turn a contract-parser failure into the model-facing message shape (`operations[0].find: expected a string.`). */
 const explainContractError = (error: unknown): string => {

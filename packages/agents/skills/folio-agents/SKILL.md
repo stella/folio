@@ -36,7 +36,8 @@ comment pending human review — nothing is silently finalized.
    - Raw Anthropic/OpenAI SDKs: `toAnthropicTools(defs)` / `toOpenAITools(defs)`.
    - Vercel AI SDK: wrap each `inputSchema` in `jsonSchema()` from `ai`.
 3. In your tool-use loop, for every `tool_use` / `tool_call` the model emits:
-   call `executeFolioToolCallUntyped(name, args, bridge)` → returns
+   call `executeFolioToolCallUntyped(name, args, bridge, { suggestChanges })`
+   with the same options object as step 1 → returns
    `{ ok: true, result } | { ok: false, error }`.
 4. Feed that result straight back to the model as the tool result message —
    both branches are meant to reach the model, not just the `ok: true` one:

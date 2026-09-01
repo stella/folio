@@ -82,7 +82,7 @@ const operationItemSchemaOf = (definition: FolioAgentToolDefinition): Record<str
   asSchemaObject(propertyOf(definition.inputSchema, "operations")["items"]);
 
 /** Ids the parser mints for unnamed operations: a per-call nonce plus the 1-based index. */
-const MINTED_ID_PATTERN = /^op-[0-9a-f]{8}-1$/;
+const MINTED_ID_PATTERN = /^op-[0-9a-f-]{36}-1$/;
 
 // ---------------------------------------------------------------------------
 // resolveSuggestChangesOptions

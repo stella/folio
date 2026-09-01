@@ -23,7 +23,7 @@ import {
 import { SUGGEST_CHANGES_OPERATION_TYPES } from "./tools";
 
 /** Ids the parser mints for unnamed operations: a per-call nonce plus the 1-based index. */
-const MINTED_FIRST_ID = expect.stringMatching(/^op-[0-9a-f]{8}-1$/);
+const MINTED_FIRST_ID = expect.stringMatching(/^op-[0-9a-f-]{36}-1$/);
 
 describe("parseAddCommentInput", () => {
   test("valid input builds a commentOnBlock operation", () => {

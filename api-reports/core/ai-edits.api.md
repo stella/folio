@@ -450,17 +450,14 @@ export type FolioDocumentOperationReceipt = {
 // @public (undocumented)
 export type FolioDocumentOperationRecovery = "refreshDocument" | "narrowMatch" | "changeMode" | "changeTarget" | "removeOperation" | "inspectBatch" | "retryLater";
 
-// @public (undocumented)
-export type FolioDocumentOperationResult = {
-    version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
-    status: FolioDocumentOperationStatus;
-    applied: FolioAIEditAppliedOperation[];
-    skipped: FolioAIEditSkippedOperation[];
-    queued?: FolioDocumentOperationQueuedOperation[];
-    issues: FolioDocumentOperationIssue[];
-    receipts: FolioDocumentOperationReceipt[];
-    undoHandle: FolioDocumentOperationUndoHandle | null;
-};
+// @public
+export type FolioDocumentOperationResult = (FolioDocumentOperationResultBase & {
+    status: "queued";
+    queued: FolioDocumentOperationQueuedOperation[];
+}) | (FolioDocumentOperationResultBase & {
+    status: Exclude<FolioDocumentOperationStatus, "queued">;
+    queued?: never;
+});
 
 // @public
 export type FolioDocumentOperationStatus = "committed" | "previewed" | "rejected" | "queued";
