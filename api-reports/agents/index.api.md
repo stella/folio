@@ -324,7 +324,7 @@ export type FolioSuggestChangesDocumentVersionOption = {
     current: string;
 };
 
-// @public (undocumented)
+// @public
 export type FolioSuggestChangesOptions = {
     operationTypes?: readonly FolioDocumentOperationType[];
     reviewMeta?: FolioSuggestChangesReviewMetaPolicy;
