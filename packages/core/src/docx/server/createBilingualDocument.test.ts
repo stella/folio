@@ -63,8 +63,14 @@ const buildSource = async (): Promise<Document> => {
   if (bulletNumId === undefined) {
     throw new Error("preset lost its bullet numbering");
   }
+  const bookmarkedPreamble = paragraph("Preamble", "Normal");
+  bookmarkedPreamble.content = [
+    { type: "bookmarkStart", id: 7, name: "preamble" },
+    ...bookmarkedPreamble.content,
+    { type: "bookmarkEnd", id: 7 },
+  ];
   const firstSection: BlockContent[] = [
-    paragraph("Preamble", "Normal"),
+    bookmarkedPreamble,
     paragraph("Definitions", "ClauseHeading1"),
     paragraph("Agreement means this contract.", "ClauseParagraph1"),
     paragraph(""),

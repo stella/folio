@@ -195,6 +195,7 @@ export function createBilingualDocument(
     cloner,
   });
   const paraIds = createParaIdMinter(collectPackageParaIds(source.package));
+  const bookmarkIds = createBookmarkIdMinter(source.package);
 
   const rows: BilingualRow[] = [];
   const content: BlockContent[] = [];
@@ -210,7 +211,7 @@ export function createBilingualDocument(
 
   const copyParagraph = (paragraph: Paragraph): { copy: Paragraph; ref: BilingualParagraphRef } => {
     const targetParaId = paraIds.mint(paragraph.paraId);
-    const copy = cloneParagraphForTarget(paragraph, targetParaId, styleCloner, cloner);
+    const copy = cloneParagraphForTarget(paragraph, targetParaId, styleCloner, cloner, bookmarkIds);
     return {
       copy,
       ref: {
@@ -273,6 +274,7 @@ export function createBilingualDocument(
         paraIds,
         styleCloner,
         cloner,
+        bookmarkIds,
       });
       rows.push({
         kind: "table",
@@ -605,6 +607,7 @@ const cloneParagraphForTarget = (
   targetParaId: string,
   styleCloner: StyleCloner,
   cloner: NumberingCloner,
+  bookmarkIds: BookmarkIdMinter,
 ): Paragraph => {
   const { textId: _textId, sectionProperties: _sectionProperties, ...rest } = paragraph;
   const formatting = paragraph.formatting;
@@ -629,13 +632,65 @@ const cloneParagraphForTarget = (
     ...rest,
     // Own content nodes: repacking assigns rIds to images and hyperlinks in
     // place, which must not hit one shared node graph twice.
-    content: structuredClone(paragraph.content),
+    content: remapClonedBookmarkIds(structuredClone(paragraph.content), bookmarkIds),
     paraId: targetParaId,
     ...(nextFormatting && { formatting: nextFormatting }),
     ...(paragraph.listRendering && {
       listRendering: remapListRendering(paragraph.listRendering, cloner),
     }),
   };
+};
+
+type BookmarkIdMinter = {
+  mint: (sourceId: number) => number;
+};
+
+const createBookmarkIdMinter = (source: unknown): BookmarkIdMinter => {
+  let nextId = 0;
+  const remapped = new Map<number, number>();
+  const visit = (value: unknown, seen: Set<object>): void => {
+    if (typeof value !== "object" || value === null || seen.has(value)) return;
+    seen.add(value);
+    if (Array.isArray(value)) {
+      value.forEach((item) => visit(item, seen));
+      return;
+    }
+    const record = value as Record<string, unknown>;
+    if (record["type"] === "bookmarkStart" || record["type"] === "bookmarkEnd") {
+      const id = record["id"];
+      if (typeof id === "number") nextId = Math.max(nextId, id + 1);
+    }
+    Object.values(record).forEach((item) => visit(item, seen));
+  };
+  visit(source, new Set());
+  return {
+    mint: (sourceId) => {
+      const existing = remapped.get(sourceId);
+      if (existing !== undefined) return existing;
+      const id = nextId++;
+      remapped.set(sourceId, id);
+      return id;
+    },
+  };
+};
+
+const remapClonedBookmarkIds = <T>(value: T, bookmarkIds: BookmarkIdMinter): T => {
+  const visit = (item: unknown, seen: Set<object>): void => {
+    if (typeof item !== "object" || item === null || seen.has(item)) return;
+    seen.add(item);
+    if (Array.isArray(item)) {
+      item.forEach((child) => visit(child, seen));
+      return;
+    }
+    const record = item as Record<string, unknown>;
+    if (record["type"] === "bookmarkStart" || record["type"] === "bookmarkEnd") {
+      const id = record["id"];
+      if (typeof id === "number") record["id"] = bookmarkIds.mint(id);
+    }
+    Object.values(record).forEach((child) => visit(child, seen));
+  };
+  visit(value, new Set());
+  return value;
 };
 
 const remapListRendering = (rendering: ListRendering, cloner: NumberingCloner): ListRendering => {
@@ -672,6 +727,7 @@ type CloneTableForTargetOptions = {
   paraIds: ParaIdMinter;
   styleCloner: StyleCloner;
   cloner: NumberingCloner;
+  bookmarkIds: BookmarkIdMinter;
 };
 
 type CloneTableForTargetResult = {
@@ -685,6 +741,7 @@ const cloneTableForTarget = ({
   paraIds,
   styleCloner,
   cloner,
+  bookmarkIds,
 }: CloneTableForTargetOptions): CloneTableForTargetResult => {
   const paragraphs: BilingualParagraphRef[] = [];
   const cloneTable = (source: Table): Table => ({
@@ -698,7 +755,13 @@ const cloneTableForTarget = ({
             return cloneTable(item);
           }
           const targetParaId = paraIds.mint(item.paraId);
-          const copy = cloneParagraphForTarget(item, targetParaId, styleCloner, cloner);
+          const copy = cloneParagraphForTarget(
+            item,
+            targetParaId,
+            styleCloner,
+            cloner,
+            bookmarkIds,
+          );
           if (item.paraId !== undefined && editableParagraphIds.has(item.paraId)) {
             paragraphs.push({
               sourceParaId: item.paraId,
