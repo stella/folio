@@ -1,5 +1,16 @@
 # @stll/folio-agents
 
+## 0.10.0
+
+### Minor Changes
+
+- [#687](https://github.com/stella/folio/pull/687) [`267bfcd`](https://github.com/stella/folio/commit/267bfcd12a8c352c625f4c339df88acb67751859) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Make `suggest_changes` host-configurable: `getFolioToolDefinitions({ suggestChanges })` and `executeFolioToolCall(name, args, bridge, { suggestChanges })` take `operationTypes`, `reviewMeta`, `maxOperations`, and `documentVersion` options that drive the schema, the parser, and `describeSuggestChangesCapabilities()` from one list. The parser now decodes leniently and reports `normalizations`, passes `severity`/`area` through, mints ids unique across calls, delegates per-operation rules to the core contract parser, and pins batches to a host document version checked against the new optional `FolioAgentBridge.getDocumentVersion()`. Results gain `queued` for host review-queue bridges; `suggestionId` and the batch `precondition` join the JSON Schema projections.
+
+### Patch Changes
+
+- Updated dependencies [[`267bfcd`](https://github.com/stella/folio/commit/267bfcd12a8c352c625f4c339df88acb67751859), [`63c2e75`](https://github.com/stella/folio/commit/63c2e75c79785f6b9117f6ded8753a27b588fb28)]:
+  - @stll/folio-core@0.32.0
+
 ## 0.9.8
 
 ### Patch Changes

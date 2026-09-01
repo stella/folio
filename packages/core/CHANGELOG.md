@@ -1,5 +1,15 @@
 # @stll/folio-core
 
+## 0.32.0
+
+### Minor Changes
+
+- [#687](https://github.com/stella/folio/pull/687) [`267bfcd`](https://github.com/stella/folio/commit/267bfcd12a8c352c625f4c339df88acb67751859) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add a batch-level `precondition.documentVersion` to the document-operation contract, the `documentVersionMismatch` and `documentNotEditable` skip reasons with their recovery hints, a `queued` status and result list for host review-queue surfaces, and export `FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE`, the per-type property map the parser enforces.
+
+### Patch Changes
+
+- [#683](https://github.com/stella/folio/pull/683) [`63c2e75`](https://github.com/stella/folio/commit/63c2e75c79785f6b9117f6ded8753a27b588fb28) Thanks [@berticeek](https://github.com/berticeek)! - Read bounded DOCX archive entries through JSZip's platform-neutral internal stream instead of Node streams, so `ensureParaIds` and `loadDocxArchive` work in browsers and web workers.
+
 ## 0.31.2
 
 ### Patch Changes
