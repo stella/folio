@@ -109,7 +109,9 @@ describe("compileMarkdownToContent", () => {
 
   test("a nested ordered list does not inherit a sibling's bullet level", () => {
     const { content, numbering } = compileMarkdownToContent("- a\n  - x\n- b\n  1. y");
-    const nested = paragraphs(content).filter((paragraph) => paragraph.formatting?.numPr?.ilvl === 1);
+    const nested = paragraphs(content).filter(
+      (paragraph) => paragraph.formatting?.numPr?.ilvl === 1,
+    );
     expect(nested).toHaveLength(2);
     const [bulletItem, orderedItem] = nested;
     const bulletNumId = bulletItem?.formatting?.numPr?.numId;

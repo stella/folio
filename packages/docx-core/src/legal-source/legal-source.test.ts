@@ -453,9 +453,20 @@ describe("Stella Legal Source — markdown bodies", () => {
 
   test("a blank line before a directive never swallows it", () => {
     const result = parseLegalSource(
-      ["", "@doc title=T", "", "@title T", "", "@clause A", "body", "", "@pagebreak", "", "@clause B", "more"].join(
-        "\n",
-      ),
+      [
+        "",
+        "@doc title=T",
+        "",
+        "@title T",
+        "",
+        "@clause A",
+        "body",
+        "",
+        "@pagebreak",
+        "",
+        "@clause B",
+        "more",
+      ].join("\n"),
     );
     expect(result.draft.blocks).toEqual([
       { type: "title", text: "T" },
@@ -521,9 +532,16 @@ describe("Stella Legal Source — markdown bodies", () => {
 
   test("tolerates closing directives a model invents", () => {
     const result = parseLegalSource(
-      ['@doc title="Closers"', "@list", "- one", "- two", "@endlist", "@clause A", "body", "@end"].join(
-        "\n",
-      ),
+      [
+        '@doc title="Closers"',
+        "@list",
+        "- one",
+        "- two",
+        "@endlist",
+        "@clause A",
+        "body",
+        "@end",
+      ].join("\n"),
     );
     expect(result.diagnostics).toEqual([]);
     expect(result.fixes.filter((fix) => fix.code === "closing-directive-ignored")).toHaveLength(2);
