@@ -1,5 +1,11 @@
 # @stll/docx-core
 
+## 0.18.0
+
+### Minor Changes
+
+- [#689](https://github.com/stella/folio/pull/689) [`ab10444`](https://github.com/stella/folio/commit/ab104443c77afde1528148b813c6828db5a2f6e2) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Parse legal-source drafts as GFM markdown plus `@` directives with `marked`: clause bodies, list items, and table cells keep inline emphasis, links, and code spans; markdown lists and pipe tables outside a directive become real list and table blocks. `compileMarkdownToContent` and `sanitizeExternalUrl` move into `@stll/docx-core`, and `@stll/folio-core`'s `fromMarkdown` now wraps them.
+
 ## 0.17.3
 
 ### Patch Changes

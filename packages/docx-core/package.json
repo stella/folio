@@ -1,6 +1,6 @@
 {
   "name": "@stll/docx-core",
-  "version": "0.17.3",
+  "version": "0.18.0",
   "description": "Typed OOXML/DOCX model, validation, serialization, legal-source compilation, and browser-native package projection.",
   "keywords": [
     "document-model",
