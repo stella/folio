@@ -47,7 +47,7 @@
     },
     "packages/agents": {
       "name": "@stll/folio-agents",
-      "version": "0.10.0",
+      "version": "0.10.1",
       "dependencies": {
         "@stll/folio-core": "workspace:^",
         "better-result": "3.0.1",
@@ -55,7 +55,7 @@
     },
     "packages/core": {
       "name": "@stll/folio-core",
-      "version": "0.32.1",
+      "version": "0.32.2",
       "dependencies": {
         "@stll/docx-core": "workspace:^",
         "@stll/docx-utils": "^0.1.0",

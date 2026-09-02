@@ -1,5 +1,13 @@
 # @stll/folio-agents
 
+## 0.10.1
+
+### Patch Changes
+
+- [#691](https://github.com/stella/folio/pull/691) [`69299ce`](https://github.com/stella/folio/commit/69299cedd18d25cd11cdd689227caabf909586ab) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Split `insertAfterBlock` / `insertBeforeBlock` text on line breaks into consecutive paragraphs instead of one paragraph with embedded newlines, and report the split as a `splitMultilineText` normalization (`FolioAIEditApplyResult.normalizations`, surfaced through `suggest_changes`' `normalizations`). Only the first paragraph keeps `styleId` / `inheritFormatting`; later paragraphs get body formatting.
+- Updated dependencies [[`69299ce`](https://github.com/stella/folio/commit/69299cedd18d25cd11cdd689227caabf909586ab)]:
+  - @stll/folio-core@0.32.2
+
 ## 0.10.0
 
 ### Minor Changes
