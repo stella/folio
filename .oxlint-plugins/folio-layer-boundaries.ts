@@ -467,6 +467,13 @@ const isUrlConstruction = (node: AstNode): boolean => {
   return isAstNode(callee) && callee.type === "Identifier" && callee.name === "URL";
 };
 
+// `new URL(specifier, import.meta.url)` resolves a module-relative asset,
+// which is how a kernel bundle would be loaded. A single-argument `new
+// URL(value)` only parses an absolute URL (link validation) and cannot reach
+// a package asset, so it is not a boundary reference.
+const isModuleRelativeUrlConstruction = (node: AstNode): boolean =>
+  isUrlConstruction(node) && Array.isArray(node.arguments) && node.arguments.length >= 2;
+
 const generatedKernelAssetOf = (node: AstNode): string | null => {
   if (!isUrlConstruction(node)) {
     return null;
@@ -486,7 +493,7 @@ const checkProjectionBoundary = (context: RuleContext, node: AstNode): void => {
   const specifier = importSpecifierOf(node);
   const generatedAsset = generatedKernelAssetOf(node);
   const opaqueBoundaryReference =
-    (isUrlConstruction(node) && generatedAsset === null) ||
+    (isModuleRelativeUrlConstruction(node) && generatedAsset === null) ||
     (node.type === "ImportExpression" && specifier === null);
   const importerPath = filenameOf(context);
   if (

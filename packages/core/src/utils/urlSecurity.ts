@@ -1,32 +1,10 @@
-const ALLOWED_URL_PROTOCOLS = new Set(["http:", "https:", "mailto:", "tel:"]);
+import { sanitizeExternalUrl } from "@stll/docx-core";
+
 const ALLOWED_TARGETS = new Set(["_blank", "_self", "_parent", "_top"]);
 
-export function sanitizeExternalUrl(rawUrl: string | undefined): string | undefined {
-  if (!rawUrl) {
-    return undefined;
-  }
-
-  const trimmed = rawUrl.trim();
-  if (!trimmed) {
-    return undefined;
-  }
-
-  try {
-    const parsed = new URL(trimmed);
-    if (!ALLOWED_URL_PROTOCOLS.has(parsed.protocol)) {
-      return undefined;
-    }
-    if (
-      (parsed.protocol === "mailto:" || parsed.protocol === "tel:") &&
-      parsed.pathname.trim() === ""
-    ) {
-      return undefined;
-    }
-    return parsed.href;
-  } catch {
-    return undefined;
-  }
-}
+// One allowlist for every link that enters a document, whether typed in the
+// editor or parsed from markdown: the rule lives in docx-core.
+export { sanitizeExternalUrl };
 
 export function normalizeUserUrl(rawUrl: string): string {
   const trimmed = rawUrl.trim();

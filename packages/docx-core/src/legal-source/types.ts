@@ -36,6 +36,12 @@ export type LegalSignatureParty = {
   title?: string;
 };
 
+/**
+ * A parsed draft block. Every `text`, `heading`, paragraph, list item, and
+ * table cell string keeps its inline GFM markdown (`**bold**`, `*italic*`,
+ * `[link](https://…)`, `` `code` ``) and `[[placeholder]]` markers; the
+ * compiler renders them into runs.
+ */
 export type LegalDraftBlock =
   | { type: "title"; text: string }
   | { type: "recital"; paragraphs: string[] }

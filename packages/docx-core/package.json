@@ -52,7 +52,8 @@
   "dependencies": {
     "better-result": "3.0.1",
     "fast-xml-parser": "^5.10.1",
-    "jszip": "3.10.1"
+    "jszip": "3.10.1",
+    "marked": "^18.0.5"
   },
   "devDependencies": {
     "bun-types": "1.4.0",

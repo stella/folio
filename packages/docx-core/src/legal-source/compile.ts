@@ -2,7 +2,6 @@ import type {
   BlockContent,
   Document,
   Paragraph,
-  Run,
   SectionProperties,
   StyleDefinitions,
   Table,
@@ -10,6 +9,8 @@ import type {
   TableRow,
 } from "../model/document";
 import type { NumberingDefinitions } from "../model/lists";
+import { inlineMarkdownToRuns, textRun } from "../markdown/inline";
+import type { InlineRunFormat } from "../markdown/inline";
 import { parseLegalSource } from "./parser";
 import type {
   Autofix,
@@ -206,11 +207,12 @@ const appendParagraphs = (content: BlockContent[], paragraphs: string[], styleId
   }
 };
 
-type RunOptions = {
-  bold?: boolean;
-  italic?: boolean;
-};
+type RunOptions = Pick<InlineRunFormat, "bold" | "italic">;
 
+// Draft text is inline GFM markdown: `**bold**`, `*italic*`, links, code
+// spans, and `[[…]]` placeholders, which get a yellow highlight so the
+// reviewing lawyer sees at a glance everything still pending. Surrounding
+// text inherits the run options (bold/italic) but not the highlight.
 const paragraph = (
   text: string,
   styleId: string,
@@ -224,49 +226,16 @@ const paragraph = (
     ...(numPr ? { numPr } : {}),
     ...(pageBreakBefore ? { pageBreakBefore: true } : {}),
   },
-  content: textRunsWithPlaceholders(text, runOptions),
+  content: inlineMarkdownToRuns(text, { base: runOptions, placeholders: true }),
 });
 
-// Split text on `[[…]]` markers into a sequence of runs. Each
-// placeholder becomes its own run with a yellow highlight so the
-// reviewing lawyer sees at a glance everything still pending.
-// Surrounding text inherits the run options (bold/italic) but not
-// the highlight.
-const PLACEHOLDER_PATTERN = /\[\[(?<inner>[^\][]+?)\]\]/gu;
-
-const textRunsWithPlaceholders = (text: string, options: RunOptions = {}): Run[] => {
-  if (!text.includes("[[")) {
-    return [textRun(text, options)];
-  }
-  const runs: Run[] = [];
-  let cursor = 0;
-  for (const match of text.matchAll(PLACEHOLDER_PATTERN)) {
-    const start = match.index;
-    if (start > cursor) {
-      runs.push(textRun(text.slice(cursor, start), options));
-    }
-    const inner = match.groups?.["inner"] ?? "";
-    runs.push(textRun(inner, options, { highlight: "yellow" }));
-    cursor = start + match[0].length;
-  }
-  if (cursor < text.length) {
-    runs.push(textRun(text.slice(cursor), options));
-  }
-  return runs.length > 0 ? runs : [textRun(text, options)];
-};
-
-const textRun = (
-  text: string,
-  options: RunOptions = {},
-  extra: { highlight?: "yellow" } = {},
-): Run => ({
-  type: "run",
-  formatting: {
-    ...(options.bold ? { bold: true } : {}),
-    ...(options.italic ? { italic: true } : {}),
-    ...(extra.highlight ? { highlight: extra.highlight } : {}),
-  },
-  content: [{ type: "text", text, preserveSpace: true }],
+// Signature fields are data (a party name, a signatory, the underscore
+// rule), never markdown; a name with an asterisk or underscore must not
+// turn into emphasis.
+const plainParagraph = (text: string, styleId: string, runOptions: RunOptions = {}): Paragraph => ({
+  type: "paragraph",
+  formatting: { styleId },
+  content: [textRun(text, runOptions)],
 });
 
 const table = (headers: string[], rows: string[][]): Table => ({
@@ -292,20 +261,20 @@ const tableCell = (text: string, header: boolean): TableCell => ({
 // it wrote the document in).
 const signatureTable = (parties: { name: string; signatory?: string; title?: string }[]): Table => {
   const partyList = parties.length > 0 ? parties : [{ name: "", signatory: "", title: "" }];
-  const empty = (): Paragraph => paragraph("", "SignatureSpacer");
+  const empty = (): Paragraph => plainParagraph("", "SignatureSpacer");
 
   const buildCell = (party: { name: string; signatory?: string; title?: string }): TableCell => {
     const cellContent: (Paragraph | Table)[] = [
-      paragraph(party.name, "SignatureParty", { bold: true }),
+      plainParagraph(party.name, "SignatureParty", { bold: true }),
       empty(),
       empty(),
-      paragraph(SIGNATURE_LINE, "SignatureRule"),
+      plainParagraph(SIGNATURE_LINE, "SignatureRule"),
     ];
     if (party.signatory) {
-      cellContent.push(paragraph(party.signatory, "SignatureField"));
+      cellContent.push(plainParagraph(party.signatory, "SignatureField"));
     }
     if (party.title) {
-      cellContent.push(paragraph(party.title, "SignatureField", { italic: true }));
+      cellContent.push(plainParagraph(party.title, "SignatureField", { italic: true }));
     }
     return { type: "tableCell", content: cellContent };
   };

@@ -35,6 +35,9 @@ export type {
   LegalSourceDocxCompileResult,
   LegalSourceParseResult,
 } from "./legal-source";
+export { compileMarkdownToContent } from "./markdown/content";
+export type { MarkdownContent } from "./markdown/content";
+export { sanitizeExternalUrl } from "./markdown/href";
 export { serializeDocumentToDocx } from "./serialize/docx";
 export {
   assertValidDocumentModel,

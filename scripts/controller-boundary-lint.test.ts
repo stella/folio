@@ -152,6 +152,15 @@ describe("Rust projection boundary lint", () => {
     expect(lintPath("packages/docx-core/src/projection.ts", PROJECTION_RULE_MARKER)).toBe(0);
   });
 
+  test("accepts absolute URL parsing that carries no module base", () => {
+    expect(
+      lintPath(
+        "test/__fixtures__/packages/docx-core/src/url-parse.valid.ts",
+        PROJECTION_RULE_MARKER,
+      ),
+    ).toBe(0);
+  });
+
   test("accepts allow-listed CommonJS imports at the canonical projection boundary", () => {
     expect(
       lintPath(

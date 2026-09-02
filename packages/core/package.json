@@ -68,7 +68,6 @@
     "fast-xml-parser": "^5.10.1",
     "hyphen": "1.14.1",
     "jszip": "3.10.1",
-    "marked": "^18.0.5",
     "prosemirror-commands": "^1.7.1",
     "prosemirror-dropcursor": "^1.8.2",
     "prosemirror-gapcursor": "^1.4.1",

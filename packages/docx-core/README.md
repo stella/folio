@@ -4,8 +4,9 @@ A typed OOXML/DOCX document model with parsing, validation, and serialization.
 
 The package exposes a structured document model (paragraphs, runs, tables,
 styles, section properties) together with the tools to produce and check DOCX
-packages, plus a legal-source compiler that turns a plain legal draft into that
-model or a finished DOCX file.
+packages, plus a legal-source compiler that turns a legal draft (GFM markdown
+plus `@` directives) into that model or a finished DOCX file, and a plain
+markdown reader (`compileMarkdownToContent`) that shares its parser.
 
 ```ts
 import { compileLegalSourceToDocx, validateDocxPackage } from "@stll/docx-core";
@@ -30,7 +31,8 @@ bun add @stll/docx-core
 
 - `.` — the document model types, the legal-source compiler
   (`parseLegalSource`, `compileLegalSourceToDocument`,
-  `compileLegalSourceToDocx`, `validateLegalDraft`), DOCX serialization
+  `compileLegalSourceToDocx`, `validateLegalDraft`), the markdown reader
+  (`compileMarkdownToContent`, `sanitizeExternalUrl`), DOCX serialization
   (`serializeDocumentToDocx`), and validation (`validateDocxPackage`,
   `validateDocumentModel`, `assertValidDocumentModel`).
 - `./model` — the document model types only.

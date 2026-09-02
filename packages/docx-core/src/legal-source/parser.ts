@@ -1,3 +1,20 @@
+/**
+ * Legal-source parser: GFM markdown plus `@` directives, read from one
+ * `marked` token stream (see `../markdown/lexer.ts`). Directive lines
+ * structure the draft (title, recitals, clauses, schedules, signatures); the
+ * markdown between them is ordinary GFM, so headings, emphasis, links, lists,
+ * and pipe tables all mean what they mean in markdown. Paragraph strings on
+ * the draft keep their inline markdown; the compiler renders it into runs.
+ *
+ * Three directive bodies stay line-oriented on purpose: `@list` (manual
+ * markers such as `2)` or `3.1` are stripped rather than parsed), `@table`
+ * (a pipe table without the `---` separator row still counts), and
+ * `@signatures` (`key: value` lines). Their bodies are taken as raw text.
+ */
+import type { Token, Tokens } from "marked";
+
+import { isLegalDirectiveToken, isTokenType, lexLegalSource } from "../markdown/lexer";
+import type { LegalDirectiveToken } from "../markdown/lexer";
 import type {
   Autofix,
   LegalDraft,
@@ -16,6 +33,7 @@ const DEFAULT_LOCALE = "en-GB";
 const DEFAULT_NUMBERING = "legal" satisfies LegalNumberingProfile;
 const DEFAULT_PAGE_SIZE = "A4" satisfies LegalPageSize;
 const DEFAULT_ORIENTATION = "portrait" satisfies LegalPageOrientation;
+const MAX_CLAUSE_LEVEL = 6;
 
 const DIRECTIVE_ALIASES: Record<string, string> = {
   "@annex": "@schedule",
@@ -44,240 +62,383 @@ const DIRECTIVES = new Set([
   "@pagebreak",
 ]);
 
-type PendingBlock =
-  | { type: "title"; line: number; heading: string; lines: string[] }
-  | { type: "recital"; line: number; heading: string; lines: string[] }
-  | {
-      type: "clause";
-      line: number;
-      level: number;
-      heading: string;
-      lines: string[];
+/**
+ * Walks the top-level token stream. Line numbers come from the newlines in
+ * the consumed tokens' `raw` text, which marked keeps contiguous with the
+ * source, so diagnostics point at the directive line that produced them.
+ */
+class TokenCursor {
+  private readonly tokens: readonly Token[];
+  private index = 0;
+  private lineNumber = 1;
+
+  constructor(tokens: readonly Token[]) {
+    this.tokens = tokens;
+  }
+
+  get current(): Token | undefined {
+    return this.tokens.at(this.index);
+  }
+
+  get line(): number {
+    return this.lineNumber;
+  }
+
+  advance(): Token | undefined {
+    const token = this.current;
+    if (token === undefined) {
+      return undefined;
     }
-  | { type: "paragraph"; line: number; heading: string; lines: string[] }
-  | {
-      type: "list";
-      line: number;
-      ordered: boolean;
-      heading: string;
-      lines: string[];
+    this.index += 1;
+    this.lineNumber += countNewlines(token.raw);
+    return token;
+  }
+}
+
+const countNewlines = (text: string): number => {
+  let count = 0;
+  for (const char of text) {
+    if (char === "\n") {
+      count += 1;
     }
-  | { type: "table"; line: number; heading: string; lines: string[] }
-  | { type: "schedule"; line: number; heading: string; lines: string[] }
-  | { type: "signatures"; line: number; heading: string; lines: string[] };
+  }
+  return count;
+};
+
+/** A token that starts a new structural block, so no body may run past it. */
+const startsStructure = (token: Token): boolean =>
+  isLegalDirectiveToken(token) || isTokenType(token, "heading");
+
+type ParseState = {
+  blocks: LegalDraftBlock[];
+  diagnostics: LegalDraftDiagnostic[];
+  fixes: Autofix[];
+  meta: LegalDraft["meta"];
+  cursor: TokenCursor;
+};
 
 export const parseLegalSource = (
   source: string,
   options: { titleFallback?: string } = {},
 ): LegalSourceParseResult => {
-  const fixes: Autofix[] = [];
-  const diagnostics: LegalDraftDiagnostic[] = [];
-  const blocks: LegalDraftBlock[] = [];
-  const meta: LegalDraft["meta"] = {
-    kind: DEFAULT_KIND,
-    locale: DEFAULT_LOCALE,
-    numbering: DEFAULT_NUMBERING,
-    page: {
-      size: DEFAULT_PAGE_SIZE,
-      orientation: DEFAULT_ORIENTATION,
+  const state: ParseState = {
+    blocks: [],
+    diagnostics: [],
+    fixes: [],
+    meta: {
+      kind: DEFAULT_KIND,
+      locale: DEFAULT_LOCALE,
+      numbering: DEFAULT_NUMBERING,
+      page: {
+        size: DEFAULT_PAGE_SIZE,
+        orientation: DEFAULT_ORIENTATION,
+      },
+      title: null,
     },
-    title: null as string | null,
+    cursor: new TokenCursor(lexLegalSource(source)),
   };
 
-  let pending: PendingBlock | null = null;
-
-  const pushPending = () => {
-    if (!pending) {
-      return;
+  for (;;) {
+    const token = state.cursor.current;
+    if (token === undefined) {
+      break;
     }
-
-    const block = pendingToBlock(pending, diagnostics, fixes);
-    if (block) {
-      blocks.push(block);
-      if (block.type === "title") {
-        meta.title = block.text;
-      }
-    }
-    pending = null;
-  };
-
-  const lines = source.replace(/\r\n?/gu, "\n").split("\n");
-  for (const [index, rawLine] of lines.entries()) {
-    const lineNumber = index + 1;
-    const line = rawLine.trimEnd();
-    const trimmed = line.trim();
-
-    if (!trimmed) {
-      pending?.lines.push("");
+    const line = state.cursor.line;
+    if (isLegalDirectiveToken(token)) {
+      state.cursor.advance();
+      parseDirective(token, line, state);
       continue;
     }
-
-    const markdownHeading = parseMarkdownHeading(trimmed);
-    if (markdownHeading) {
-      pushPending();
-      const { depth, heading } = markdownHeading;
-      if (depth === 1) {
-        // Title blocks have no body — only the heading text survives
-        // through `pendingToBlock`. Flush immediately so subsequent
-        // non-directive lines start a fresh paragraph block via the
-        // fallback below, instead of silently dropping into the
-        // title's discarded `lines` array.
-        pending = { type: "title", line: lineNumber, heading, lines: [] };
-        pushPending();
-      } else {
-        pending = {
-          type: "clause",
-          line: lineNumber,
-          level: Math.min(depth - 1, 6),
-          heading,
-          lines: [],
-        };
-      }
-      fixes.push({
-        code: "markdown-heading-normalized",
-        message: "Converted a Markdown heading into a legal directive.",
-        line: lineNumber,
-      });
+    if (isTokenType(token, "heading")) {
+      state.cursor.advance();
+      parseMarkdownHeading(token, line, state);
       continue;
     }
-
-    if (trimmed.startsWith("@")) {
-      const [rawDirective = "", ...rest] = trimmed.split(/\s+/u);
-      const canonicalDirective =
-        DIRECTIVE_ALIASES[rawDirective.toLowerCase()] ?? rawDirective.toLowerCase();
-      const argument = rest.join(" ").trim();
-
-      if (!DIRECTIVES.has(canonicalDirective)) {
-        diagnostics.push({
-          code: "unknown-directive",
-          message: `Unknown legal directive "${rawDirective}".`,
-          severity: "error",
-          line: lineNumber,
-        });
-        pending?.lines.push(line);
-        continue;
-      }
-
-      if (canonicalDirective !== rawDirective.toLowerCase()) {
-        fixes.push({
-          code: "directive-alias-normalized",
-          message: `Normalized ${rawDirective} to ${canonicalDirective}.`,
-          line: lineNumber,
-        });
-      }
-
-      pushPending();
-
-      switch (canonicalDirective) {
-        case "@doc":
-          parseDocDirective(argument, meta, diagnostics, lineNumber);
-          break;
-        case "@title":
-          // Title blocks have no body — flush immediately (same as
-          // markdown `# Title`) so the next non-directive line starts
-          // a paragraph block instead of dropping into the title's
-          // discarded `lines` array.
-          pending = {
-            type: "title",
-            line: lineNumber,
-            heading: argument,
-            lines: [],
-          };
-          pushPending();
-          break;
-        case "@recital":
-          pending = {
-            type: "recital",
-            line: lineNumber,
-            heading: argument,
-            lines: [],
-          };
-          break;
-        case "@clause":
-          pending = {
-            type: "clause",
-            line: lineNumber,
-            level: 1,
-            heading: argument,
-            lines: [],
-          };
-          break;
-        case "@subclause":
-          pending = {
-            type: "clause",
-            line: lineNumber,
-            level: 2,
-            heading: argument,
-            lines: [],
-          };
-          break;
-        case "@paragraph":
-          pending = {
-            type: "paragraph",
-            line: lineNumber,
-            heading: argument,
-            lines: [],
-          };
-          break;
-        case "@list":
-          pending = {
-            type: "list",
-            line: lineNumber,
-            ordered: /\bordered\b/iu.test(argument),
-            heading: argument,
-            lines: [],
-          };
-          break;
-        case "@table":
-          pending = {
-            type: "table",
-            line: lineNumber,
-            heading: argument,
-            lines: [],
-          };
-          break;
-        case "@schedule":
-          pending = {
-            type: "schedule",
-            line: lineNumber,
-            heading: argument,
-            lines: [],
-          };
-          break;
-        case "@signatures":
-          pending = {
-            type: "signatures",
-            line: lineNumber,
-            heading: argument,
-            lines: [],
-          };
-          break;
-        case "@pagebreak":
-          blocks.push({ type: "pageBreak" });
-          break;
-        default:
-          break;
-      }
-      continue;
-    }
-
-    pending ??= { type: "paragraph", line: lineNumber, heading: "", lines: [] };
-    pending.lines.push(line);
+    parseBareMarkdown(state);
   }
 
-  pushPending();
-
-  if (!meta.title) {
-    const firstTitle = blocks.find((block) => block.type === "title");
-    meta.title =
+  if (!state.meta.title) {
+    const firstTitle = state.blocks.find((block) => block.type === "title");
+    state.meta.title =
       firstTitle?.type === "title"
         ? firstTitle.text
         : (options.titleFallback ?? "Untitled document");
   }
 
-  const draft: LegalDraft = { meta, blocks };
-  return applyDocumentAutofixes({ diagnostics, draft, fixes });
+  const draft: LegalDraft = { meta: state.meta, blocks: state.blocks };
+  return applyDocumentAutofixes({ diagnostics: state.diagnostics, draft, fixes: state.fixes });
 };
+
+const pushBlock = (state: ParseState, block: LegalDraftBlock | null) => {
+  if (!block) {
+    return;
+  }
+  state.blocks.push(block);
+  if (block.type === "title") {
+    state.meta.title = block.text;
+  }
+};
+
+const parseDirective = (token: LegalDirectiveToken, line: number, state: ParseState) => {
+  const { diagnostics, fixes, meta } = state;
+  const rawDirective = token.directive;
+  const directive = DIRECTIVE_ALIASES[rawDirective] ?? rawDirective;
+  const { argument } = token;
+
+  if (!DIRECTIVES.has(directive)) {
+    // Report the directive as the author spelled it, not lower-cased.
+    const spelled = token.raw.trim().split(/\s+/u).at(0) ?? rawDirective;
+    diagnostics.push({
+      code: "unknown-directive",
+      message: `Unknown legal directive "${spelled}".`,
+      severity: "error",
+      line,
+    });
+    return;
+  }
+
+  if (directive !== rawDirective) {
+    fixes.push({
+      code: "directive-alias-normalized",
+      message: `Normalized ${rawDirective} to ${directive}.`,
+      line,
+    });
+  }
+
+  switch (directive) {
+    case "@doc":
+      parseDocDirective(argument, meta, diagnostics, line);
+      return;
+    case "@title":
+      // Title blocks have no body: the argument is the title, and the next
+      // block starts fresh (a bare paragraph after `@title` is body text).
+      pushBlock(state, argument ? { type: "title", text: argument } : null);
+      return;
+    case "@recital":
+      pushBlock(state, { type: "recital", paragraphs: takeParagraphs(state) });
+      return;
+    case "@clause":
+      pushBlock(state, clauseBlock(1, argument, line, state));
+      return;
+    case "@subclause":
+      pushBlock(state, clauseBlock(2, argument, line, state));
+      return;
+    case "@paragraph":
+      pushBlock(state, { type: "paragraph", paragraphs: takeParagraphs(state) });
+      return;
+    case "@list": {
+      const ordered = /\bordered\b/iu.test(argument);
+      const items = takeRawLines(state).flatMap((rawLine) => {
+        const stripped = stripListMarker(rawLine, ordered);
+        return stripped ? [stripped] : [];
+      });
+      pushBlock(state, { type: "list", ordered, items });
+      return;
+    }
+    case "@table":
+      pushBlock(state, parseTableBlock(takeRawLines(state), line, diagnostics, fixes));
+      return;
+    case "@schedule":
+      pushBlock(state, {
+        type: "schedule",
+        heading: stripManualNumbering(argument, line, fixes),
+        paragraphs: takeParagraphs(state),
+      });
+      return;
+    case "@signatures":
+      pushBlock(state, {
+        type: "signatures",
+        parties: parseSignatureParties(takeRawLines(state), argument),
+      });
+      return;
+    case "@pagebreak":
+      pushBlock(state, { type: "pageBreak" });
+      return;
+    default:
+      return;
+  }
+};
+
+const clauseBlock = (
+  level: number,
+  rawHeading: string,
+  line: number,
+  state: ParseState,
+): LegalDraftBlock => {
+  const heading = stripManualNumbering(rawHeading, line, state.fixes);
+  const paragraphs = takeParagraphs(state);
+  // The AI sometimes uses `@clause` as a generic "section" wrapper without
+  // giving it a title. Rather than rejecting, downgrade to a plain paragraph
+  // block: same body content, no clause numbering or heading row. The fix
+  // log keeps the event visible without blocking compile.
+  if (!heading) {
+    state.fixes.push({
+      code: "headingless-clause-downgraded",
+      message: "Converted a headingless @clause into a paragraph block.",
+      line,
+    });
+    return { type: "paragraph", paragraphs };
+  }
+  return { type: "clause", level, heading, paragraphs };
+};
+
+// A markdown heading is the directive-free spelling of a title (`#`) or a
+// clause (`##` and deeper), so a model that writes plain markdown still gets
+// legal structure.
+const parseMarkdownHeading = (token: Tokens.Heading, line: number, state: ParseState) => {
+  const heading = token.text.trim();
+  state.fixes.push({
+    code: "markdown-heading-normalized",
+    message: "Converted a Markdown heading into a legal directive.",
+    line,
+  });
+  if (token.depth === 1) {
+    pushBlock(state, heading ? { type: "title", text: heading } : null);
+    return;
+  }
+  pushBlock(state, clauseBlock(Math.min(token.depth - 1, MAX_CLAUSE_LEVEL), heading, line, state));
+};
+
+/**
+ * Markdown outside any directive. Consecutive prose stays one paragraph
+ * block (several paragraphs), while a list or table is its own block so
+ * markdown lists get real numbering instead of literal `-` markers.
+ */
+const parseBareMarkdown = (state: ParseState) => {
+  const token = state.cursor.current;
+  if (token === undefined) {
+    return;
+  }
+  if (isTokenType(token, "list")) {
+    state.cursor.advance();
+    pushBlock(state, {
+      type: "list",
+      ordered: token.ordered,
+      items: flattenListItems(token),
+    });
+    return;
+  }
+  if (isTokenType(token, "table")) {
+    state.cursor.advance();
+    pushBlock(state, {
+      type: "table",
+      table: {
+        headers: token.header.map((cell) => cellText(cell)),
+        rows: token.rows.map((row) => row.map((cell) => cellText(cell))),
+      },
+    });
+    return;
+  }
+  const paragraphs = takeParagraphs(state);
+  if (paragraphs.length > 0) {
+    pushBlock(state, { type: "paragraph", paragraphs });
+    return;
+  }
+  // Whitespace, a rule, or another token that carries no prose.
+  state.cursor.advance();
+};
+
+/**
+ * Consecutive prose tokens as paragraph strings: paragraphs (soft line
+ * breaks collapsed to spaces), blockquotes, code blocks, and raw HTML. Stops
+ * at the next directive, heading, list, or table so those keep their order.
+ */
+const takeParagraphs = (state: ParseState): string[] => {
+  const paragraphs: string[] = [];
+  for (;;) {
+    const token = state.cursor.current;
+    if (token === undefined || startsStructure(token)) {
+      return paragraphs;
+    }
+    if (isTokenType(token, "list") || isTokenType(token, "table")) {
+      return paragraphs;
+    }
+    const prose = proseParagraphs(token);
+    if (prose === null) {
+      return paragraphs;
+    }
+    state.cursor.advance();
+    paragraphs.push(...prose);
+  }
+};
+
+/** The paragraph strings of one prose token, or `null` when the token is not prose. */
+const proseParagraphs = (token: Token): string[] | null => {
+  if (token.type === "space" || token.type === "hr") {
+    return [];
+  }
+  if (isTokenType(token, "paragraph") || isTokenType(token, "text")) {
+    const text = collapseSoftBreaks(token.text);
+    return text ? [text] : [];
+  }
+  if (isTokenType(token, "blockquote")) {
+    return token.tokens.flatMap((inner) => proseParagraphs(inner) ?? []);
+  }
+  if (isTokenType(token, "code")) {
+    return token.text.split("\n").flatMap((codeLine) => {
+      const trimmed = codeLine.trim();
+      return trimmed ? [trimmed] : [];
+    });
+  }
+  if (isTokenType(token, "html")) {
+    const text = collapseSoftBreaks(token.text);
+    return text ? [text] : [];
+  }
+  return null;
+};
+
+/**
+ * Raw source lines of everything up to the next directive or heading, for
+ * the line-oriented directive bodies (`@list`, `@table`, `@signatures`).
+ */
+const takeRawLines = (state: ParseState): string[] => {
+  let raw = "";
+  for (;;) {
+    const token = state.cursor.current;
+    if (token === undefined || startsStructure(token)) {
+      break;
+    }
+    state.cursor.advance();
+    raw += token.raw;
+  }
+  return raw.split("\n").map((rawLine) => rawLine.trimEnd());
+};
+
+// Nested items lose their depth (the draft's list block is flat), matching
+// how indented `- ` lines under `@list` have always read.
+const flattenListItems = (list: Tokens.List): string[] => {
+  const items: string[] = [];
+  for (const item of list.items) {
+    const parts: string[] = [];
+    const nested: Tokens.List[] = [];
+    for (const child of item.tokens) {
+      if (isTokenType(child, "list")) {
+        nested.push(child);
+        continue;
+      }
+      parts.push(...(proseParagraphs(child) ?? []));
+    }
+    const text = parts.join(" ").trim();
+    if (text) {
+      items.push(text);
+    }
+    for (const nestedList of nested) {
+      items.push(...flattenListItems(nestedList));
+    }
+  }
+  return items;
+};
+
+const cellText = (cell: Tokens.TableCell): string => collapseSoftBreaks(cell.text);
+
+// A paragraph's soft-wrapped lines are one paragraph; trim and join with a
+// single space so the wrapped markdown reads as continuous prose.
+const collapseSoftBreaks = (text: string): string =>
+  text
+    .split("\n")
+    .map((textLine) => textLine.trim())
+    .filter((textLine) => textLine.length > 0)
+    .join(" ");
 
 const parseDocDirective = (
   argument: string,
@@ -466,111 +627,20 @@ const isAsciiAlphaNumeric = (char: string): boolean => {
   return (code >= 48 && code <= 57) || (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
 };
 
-const parseMarkdownHeading = (line: string): { depth: number; heading: string } | null => {
-  let depth = 0;
-  for (const char of line) {
-    if (char !== "#") {
-      break;
-    }
-    depth++;
-  }
-
-  if (depth < 1 || depth > 6 || line.at(depth) !== " ") {
-    return null;
-  }
-
-  const heading = line.slice(depth + 1).trim();
-  return heading ? { depth, heading } : null;
-};
-
-const pendingToBlock = (
-  pending: PendingBlock,
-  diagnostics: LegalDraftDiagnostic[],
-  fixes: Autofix[],
-): LegalDraftBlock | null => {
-  switch (pending.type) {
-    case "title": {
-      const text = pending.heading || paragraphText(pending.lines);
-      if (!text) {
-        return null;
-      }
-      return { type: "title", text };
-    }
-    case "recital":
-      return { type: "recital", paragraphs: compactParagraphs(pending.lines) };
-    case "clause": {
-      const heading = stripManualNumbering(pending.heading, pending.line, fixes);
-      // The AI sometimes uses `@clause` as a generic "section"
-      // wrapper without giving it a title. Rather than rejecting,
-      // downgrade to a plain paragraph block — same body content,
-      // no clause numbering or heading row. The fix log keeps the
-      // event visible without blocking compile.
-      if (!heading) {
-        fixes.push({
-          code: "headingless-clause-downgraded",
-          message: "Converted a headingless @clause into a paragraph block.",
-          line: pending.line,
-        });
-        return {
-          type: "paragraph",
-          paragraphs: compactParagraphs(pending.lines),
-        };
-      }
-      return {
-        type: "clause",
-        level: pending.level,
-        heading,
-        paragraphs: compactParagraphs(pending.lines),
-      };
-    }
-    case "paragraph":
-      return {
-        type: "paragraph",
-        paragraphs: compactParagraphs(pending.lines),
-      };
-    case "list":
-      return {
-        type: "list",
-        ordered: pending.ordered,
-        items: pending.lines.flatMap((line) => {
-          const stripped = stripListMarker(line, pending.ordered);
-          return stripped ? [stripped] : [];
-        }),
-      };
-    case "table":
-      return parseTableBlock(pending, diagnostics, fixes);
-    case "schedule": {
-      const heading = stripManualNumbering(pending.heading, pending.line, fixes);
-      return {
-        type: "schedule",
-        heading,
-        paragraphs: compactParagraphs(pending.lines),
-      };
-    }
-    case "signatures":
-      return {
-        type: "signatures",
-        parties: parseSignatureParties(pending.lines, pending.heading),
-      };
-    default:
-      pending satisfies never;
-      return null;
-  }
-};
-
 const parseTableBlock = (
-  pending: Extract<PendingBlock, { type: "table" }>,
+  lines: string[],
+  line: number,
   diagnostics: LegalDraftDiagnostic[],
   fixes: Autofix[],
 ): LegalDraftBlock => {
-  const tableLines = pending.lines.flatMap((rawLine) => {
-    const line = rawLine.trim();
+  const tableLines = lines.flatMap((rawLine) => {
+    const trimmed = rawLine.trim();
     // A leading pipe is enough to recognise a row; tolerate a missing trailing
     // pipe (a common hand-written/AI variant) so the row is not silently dropped.
-    return line.startsWith("|") ? [line] : [];
+    return trimmed.startsWith("|") ? [trimmed] : [];
   });
-  const rows = tableLines.flatMap((line) => {
-    const row = parsePipeRow(line);
+  const rows = tableLines.flatMap((tableLine) => {
+    const row = parsePipeRow(tableLine);
     return row.length > 0 ? [row] : [];
   });
 
@@ -583,7 +653,7 @@ const parseTableBlock = (
     fixes.push({
       code: "table-row-width-normalized",
       message: "Normalized a table row to match the header width.",
-      line: pending.line,
+      line,
     });
     return header.map((_, index) => row.at(index) ?? "");
   });
@@ -593,7 +663,7 @@ const parseTableBlock = (
       code: "missing-table-header",
       message: "Table directives must include a pipe-table header row.",
       severity: "error",
-      line: pending.line,
+      line,
     });
   }
 
@@ -751,8 +821,8 @@ const parseSignatureParties = (lines: string[], heading: string): LegalSignature
     startParty(heading.trim().replace(/^party:\s*/iu, ""));
   }
 
-  for (const line of lines) {
-    const trimmed = line.trim();
+  for (const rawLine of lines) {
+    const trimmed = rawLine.trim();
     if (!trimmed) {
       continue;
     }
@@ -800,16 +870,16 @@ const parseSignatureParties = (lines: string[], heading: string): LegalSignature
 const ORDERED_LIST_MARKER_RE = /^(?:\d+(?:\.\d+)+|\d+[.)])\s+/u;
 const MANUAL_NUMBERING_PREFIX_RE = /^(?:\d+(?:\.\d+)+|\d+[.)]|[A-Za-z][.)]|\([a-zivx]+\))\s+/u;
 
-const stripListMarker = (line: string, ordered: boolean): string => {
-  const trimmed = line.trim();
+const stripListMarker = (rawLine: string, ordered: boolean): string => {
+  const trimmed = rawLine.trim();
   if (ordered) {
     return trimmed.replace(ORDERED_LIST_MARKER_RE, "");
   }
   return trimmed.replace(/^[-*•]\s+/u, "");
 };
 
-const parsePipeRow = (line: string): string[] =>
-  line
+const parsePipeRow = (tableLine: string): string[] =>
+  tableLine
     .replace(/^\|/u, "")
     .replace(/\|$/u, "")
     .split("|")
@@ -817,31 +887,6 @@ const parsePipeRow = (line: string): string[] =>
 
 const isMarkdownDividerRow = (row: string[]): boolean =>
   row.every((cell) => /^:?-{3,}:?$/u.test(cell));
-
-const compactParagraphs = (lines: string[]): string[] => {
-  const paragraphs: string[] = [];
-  let current: string[] = [];
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      if (current.length > 0) {
-        paragraphs.push(current.join(" "));
-        current = [];
-      }
-      continue;
-    }
-    current.push(trimmed);
-  }
-
-  if (current.length > 0) {
-    paragraphs.push(current.join(" "));
-  }
-
-  return paragraphs;
-};
-
-const paragraphText = (lines: string[]): string => compactParagraphs(lines).join(" ");
 
 const stripManualNumbering = (value: string, line: number, fixes: Autofix[]): string => {
   // Numeric and letter branches both require a delimiter so legit
