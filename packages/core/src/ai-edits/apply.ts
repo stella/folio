@@ -49,6 +49,7 @@ import type {
   FolioAIEditAppliedOperation,
   FolioAIEditApplyMode,
   FolioAIEditApplyResult,
+  FolioAIEditNormalization,
   FolioAIEditOperation,
   FolioAIEditSnapshot,
   FolioAIEditSkipReason,
@@ -115,7 +116,12 @@ type ResolvedOperation = {
   blockFrom: number;
   blockTo: number;
   blockNode: PMNode;
-  insertText?: string;
+  /**
+   * One entry per paragraph the insert produces. Usually a single entry;
+   * more than one when the operation's `text` contained a line break and
+   * was split into consecutive paragraphs (see {@link splitInsertParagraphTexts}).
+   */
+  insertTexts?: readonly string[];
   tableRowInsertion?: TableRowInsertion;
   tableRowDeletion?: TableRowDeletion;
   tableColumnInsertion?: TableColumnInsertion;
@@ -547,6 +553,24 @@ const buildSignatureTableNode = ({
   return tableType.create({}, row);
 };
 
+const LINE_BREAK_PATTERN = /\r\n|\r|\n/;
+
+/**
+ * Split `insertAfterBlock` / `insertBeforeBlock` text on line breaks into one
+ * string per paragraph the operation should produce. A model routinely sends
+ * a whole clause — heading plus body — as one `text` with embedded newlines;
+ * Word has no such thing as a paragraph containing a line break, so each line
+ * becomes its own paragraph instead of literal newline characters inside one.
+ * Blank (whitespace-only) lines are dropped rather than becoming empty
+ * paragraphs, so a trailing/leading newline collapses away. Falls back to a
+ * single empty string when every line is blank, so callers never get zero
+ * paragraphs out of non-empty input.
+ */
+const splitInsertParagraphTexts = (text: string): string[] => {
+  const nonBlankLines = text.split(LINE_BREAK_PATTERN).filter((line) => line.trim().length > 0);
+  return nonBlankLines.length > 0 ? nonBlankLines : [""];
+};
+
 /**
  * Build the inline content for an inserted or replaced block, promoting the
  * model's `**bold**` / `***bold italic***` markdown into real Word marks (the
@@ -595,6 +619,7 @@ const applyFolioAIEditOperationsInternal = ({
 }: ApplyFolioAIEditOperationsInternalOptions): FolioAIEditApplyResult => {
   const applied: FolioAIEditAppliedOperation[] = [];
   const skipped: FolioAIEditSkippedOperation[] = [];
+  const normalizations: FolioAIEditNormalization[] = [];
   const resolved: ResolvedOperation[] = [];
   const insertionType = view.state.schema.marks["insertion"];
   const deletionType = view.state.schema.marks["deletion"];
@@ -664,6 +689,17 @@ const applyFolioAIEditOperationsInternal = ({
       claimedTableColumns.add(columnKey);
     }
 
+    if (
+      (operation.type === "insertAfterBlock" || operation.type === "insertBeforeBlock") &&
+      LINE_BREAK_PATTERN.test(operation.text)
+    ) {
+      normalizations.push({
+        id: operation.id,
+        code: "splitMultilineText",
+        paragraphCount: resolution.operation.insertTexts?.length ?? 1,
+      });
+    }
+
     const commentId = commentText !== undefined ? createCommentId?.(commentText) : undefined;
     resolved.push({
       ...resolution.operation,
@@ -683,7 +719,7 @@ const applyFolioAIEditOperationsInternal = ({
   const executableResolved = tablePlan.executable;
 
   if (executableResolved.length === 0) {
-    return { applied, skipped };
+    return { applied, skipped, ...(normalizations.length > 0 && { normalizations }) };
   }
 
   let tr = view.state.tr;
@@ -951,10 +987,12 @@ const applyFolioAIEditOperationsInternal = ({
       }
       case "insertAfterBlock":
       case "insertBeforeBlock": {
+        const insertTexts = item.insertTexts ?? [""];
+        const isEmptyInsert = insertTexts.length === 1 && insertTexts[0]?.length === 0;
         if (
           mode === "tracked-changes" &&
           item.operation.pageBreakBefore === true &&
-          (!item.insertText || item.insertText.length === 0)
+          isEmptyInsert
         ) {
           skipped.push({
             id: item.operation.id,
@@ -963,72 +1001,83 @@ const applyFolioAIEditOperationsInternal = ({
           continue;
         }
 
-        const marks = [];
-        let insertedBlockRevisionId: number | null = null;
-        if (producesTrackedChanges && insertionType) {
-          const revisionId = revisionSeed++;
-          insertedBlockRevisionId = revisionId;
-          marks.push(
-            insertionType.create({
-              revisionId,
-              author,
-              date,
-              ...trackedRevisionExtras,
-            }),
-          );
-          appliedRevisionIds = [revisionId];
-        }
-        if (commentMark) {
-          marks.push(commentMark);
-        }
-        const content =
-          item.insertText && item.insertText.length > 0
-            ? buildEmphasisInlineContent(view.state.schema, item.insertText, marks)
-            : null;
         // Inherit formatting attrs (listMarker, styleId, …) from
         // the source block but never reuse identity attrs — a new
         // paragraph must get fresh paraId/textId so trackers don't
-        // collide.
+        // collide. Shared by every paragraph the insert produces.
         const baseAttrs =
           item.operation.inheritFormatting === false
             ? {}
             : stripBlockIdentityAttrs(item.blockNode.attrs);
-        const attrs: Record<string, unknown> = { ...baseAttrs };
-        if (item.operation.pageBreakBefore === true) {
-          attrs["pageBreakBefore"] = true;
-        }
-        if (item.operation.styleId !== undefined) {
-          // Heading / clause style ids (e.g. ClauseHeading1) take
-          // precedence over the source block's style so the
-          // inserted paragraph renders as the requested kind, not
-          // as a clone of the anchor.
-          attrs["styleId"] = item.operation.styleId;
-          // A heading is logically a fresh block; drop list marker
-          // attrs that would otherwise leak from the anchor and
-          // render the heading as a list item.
-          if (item.operation.inheritFormatting !== false) {
-            attrs["listMarker"] = null;
-            attrs["listMarkerHidden"] = null;
-            attrs["listLevelNumFmts"] = null;
-            attrs["listLevelStarts"] = null;
-            attrs["listAbstractNumId"] = null;
-            attrs["listStartOverride"] = null;
+
+        const insertedBlockRevisionIds: number[] = [];
+        const nodes = insertTexts.map((text, paragraphIndex) => {
+          // `text` was split from one operation's `text` field on a line
+          // break (see `splitInsertParagraphTexts`); only the first
+          // resulting paragraph is the one the model actually styled —
+          // later ones are body text that happened to share the call.
+          const isFirstParagraph = paragraphIndex === 0;
+
+          const marks: Mark[] = [];
+          let paragraphRevisionId: number | null = null;
+          if (producesTrackedChanges && insertionType) {
+            paragraphRevisionId = revisionSeed++;
+            marks.push(
+              insertionType.create({
+                revisionId: paragraphRevisionId,
+                author,
+                date,
+                ...trackedRevisionExtras,
+              }),
+            );
+            insertedBlockRevisionIds.push(paragraphRevisionId);
           }
+          if (commentMark) {
+            marks.push(commentMark);
+          }
+          const content =
+            text.length > 0 ? buildEmphasisInlineContent(view.state.schema, text, marks) : null;
+
+          const attrs: Record<string, unknown> = { ...baseAttrs };
+          if (isFirstParagraph && item.operation.pageBreakBefore === true) {
+            attrs["pageBreakBefore"] = true;
+          }
+          if (isFirstParagraph && item.operation.styleId !== undefined) {
+            // Heading / clause style ids (e.g. ClauseHeading1) take
+            // precedence over the source block's style so the
+            // inserted paragraph renders as the requested kind, not
+            // as a clone of the anchor.
+            attrs["styleId"] = item.operation.styleId;
+            // A heading is logically a fresh block; drop list marker
+            // attrs that would otherwise leak from the anchor and
+            // render the heading as a list item.
+            if (item.operation.inheritFormatting !== false) {
+              attrs["listMarker"] = null;
+              attrs["listMarkerHidden"] = null;
+              attrs["listLevelNumFmts"] = null;
+              attrs["listLevelStarts"] = null;
+              attrs["listAbstractNumId"] = null;
+              attrs["listStartOverride"] = null;
+            }
+          }
+          // In suggested mode, mark the whole inserted paragraph so the strip
+          // drops it from serialized DOCX until accepted (the inline insertion
+          // marks alone would leave an empty paragraph behind).
+          if (isSuggested && suggestionId !== null && paragraphRevisionId !== null) {
+            attrs["_suggestedInsert"] = {
+              suggestionId,
+              revisionId: paragraphRevisionId,
+              author,
+              date,
+              ...(initials ? { initials } : {}),
+            };
+          }
+          return item.blockNode.type.create(attrs, content);
+        });
+        if (insertedBlockRevisionIds.length > 0) {
+          appliedRevisionIds = insertedBlockRevisionIds;
         }
-        // In suggested mode, mark the whole inserted paragraph so the strip
-        // drops it from serialized DOCX until accepted (the inline insertion
-        // marks alone would leave an empty paragraph behind).
-        if (isSuggested && suggestionId !== null && insertedBlockRevisionId !== null) {
-          attrs["_suggestedInsert"] = {
-            suggestionId,
-            revisionId: insertedBlockRevisionId,
-            author,
-            date,
-            ...(initials ? { initials } : {}),
-          };
-        }
-        const node = item.blockNode.type.create(attrs, content);
-        tr = tr.insert(item.from, node);
+        tr = tr.insert(item.from, nodes);
         break;
       }
       case "insertSignatureTable": {
@@ -1349,7 +1398,7 @@ const applyFolioAIEditOperationsInternal = ({
     view.dispatch(tr);
   }
 
-  return { applied, skipped };
+  return { applied, skipped, ...(normalizations.length > 0 && { normalizations }) };
 };
 
 export const applyFolioAIEditOperations = (
@@ -1378,6 +1427,7 @@ export const previewFolioAIEditOperations = (
   return {
     applied: result.applied.map(({ id }) => ({ id })),
     skipped: result.skipped,
+    ...(result.normalizations !== undefined && { normalizations: result.normalizations }),
   };
 };
 
@@ -1750,6 +1800,9 @@ const resolveOperation = ({
     } else {
       insertFrom = isInsertAfter ? blockTo : blockFrom;
     }
+    const insertTexts = LINE_BREAK_PATTERN.test(operation.text)
+      ? splitInsertParagraphTexts(operation.text)
+      : [operation.text];
     return {
       type: "resolved",
       operation: {
@@ -1759,7 +1812,7 @@ const resolveOperation = ({
         blockFrom,
         blockTo,
         blockNode,
-        insertText: operation.text,
+        insertTexts,
       },
     };
   }

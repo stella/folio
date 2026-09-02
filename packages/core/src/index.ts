@@ -84,6 +84,8 @@ export {
   type FolioAIEditAppliedOperation,
   type FolioAIEditApplyMode,
   type FolioAIEditApplyResult,
+  type FolioAIEditNormalization,
+  type FolioAIEditNormalizationCode,
   type FolioAIEditOperation,
   type FolioAIEditPrecondition,
   type FolioAIEditReviewMeta,

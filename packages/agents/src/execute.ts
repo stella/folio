@@ -7,6 +7,7 @@ import {
   normalizeFolioAIBlockText,
   readFolioDocumentSection,
   type FolioAIBlock,
+  type FolioAIEditNormalization,
   type FolioAITextRangeHandle,
   type FolioDocumentOperation,
   type FolioDocumentOperationBatchPrecondition,
@@ -539,6 +540,31 @@ const explainSkipReason = (reason: string): string => {
   return reason;
 };
 
+/**
+ * Turn one apply-time `FolioAIEditNormalization` (an automatic adjustment the
+ * applier made to an operation's input, e.g. splitting a multi-line
+ * `insertAfterBlock` / `insertBeforeBlock` `text` into several paragraphs)
+ * into the same `{ path, message }` shape lenient decoding reports, so the
+ * model sees every normalization in one list regardless of where it happened.
+ */
+const explainApplyNormalization = (
+  normalization: FolioAIEditNormalization,
+): FolioAgentInputNormalization => {
+  if (normalization.code === "splitMultilineText") {
+    return {
+      path: `operations[id=${normalization.id}].text`,
+      message:
+        `\`text\` contained line breaks; split into ${normalization.paragraphCount} ` +
+        "consecutive paragraphs (one per non-blank line) instead of one paragraph with " +
+        "embedded newlines.",
+    };
+  }
+  return {
+    path: `operations[id=${normalization.id}]`,
+    message: `input was normalized (${normalization.code}).`,
+  };
+};
+
 type ApplyResultLike = {
   version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
   applied: { id: string }[];
@@ -546,6 +572,7 @@ type ApplyResultLike = {
   skipped: { id: string; reason: string }[];
   issues?: FolioAgentApplyOperationsSummary["issues"];
   receipts?: FolioAgentApplyOperationsSummary["receipts"];
+  normalizations?: readonly FolioAIEditNormalization[];
 };
 
 const summarizeApplyResult = (
@@ -561,7 +588,10 @@ const summarizeApplyResult = (
   })),
   issues: result.issues ?? [],
   receipts: result.receipts ?? [],
-  normalizations: [...normalizations],
+  normalizations: [
+    ...normalizations,
+    ...(result.normalizations ?? []).map(explainApplyNormalization),
+  ],
 });
 
 /** Every operation skipped for one batch-wide reason, before anything reached the bridge. */

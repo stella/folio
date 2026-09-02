@@ -240,7 +240,15 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
         ...suggestionIdProperty,
         type: { type: "string", enum: ["insertAfterBlock"] },
         blockId: blockIdProperty,
-        text: { type: "string", description: "The paragraph text to insert." },
+        text: {
+          type: "string",
+          description:
+            "The paragraph text to insert. A line break splits this into consecutive " +
+            "paragraphs at the same anchor instead of one paragraph with embedded newlines " +
+            "— only the first paragraph gets `styleId` / `inheritFormatting`, later ones use " +
+            "body formatting. Prefer one paragraph per operation; only rely on the split for " +
+            "a heading immediately followed by its body text.",
+        },
         inheritFormatting: {
           type: "boolean",
           description: "Inherit the anchor block's formatting for the inserted paragraph.",
@@ -266,7 +274,15 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
         ...suggestionIdProperty,
         type: { type: "string", enum: ["insertBeforeBlock"] },
         blockId: blockIdProperty,
-        text: { type: "string", description: "The paragraph text to insert." },
+        text: {
+          type: "string",
+          description:
+            "The paragraph text to insert. A line break splits this into consecutive " +
+            "paragraphs at the same anchor instead of one paragraph with embedded newlines " +
+            "— only the first paragraph gets `styleId` / `inheritFormatting`, later ones use " +
+            "body formatting. Prefer one paragraph per operation; only rely on the split for " +
+            "a heading immediately followed by its body text.",
+        },
         inheritFormatting: {
           type: "boolean",
           description: "Inherit the anchor block's formatting for the inserted paragraph.",

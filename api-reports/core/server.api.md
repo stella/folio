@@ -512,7 +512,18 @@ export type FolioAIEditApplyMode = "direct" | "tracked-changes" | "suggested";
 export type FolioAIEditApplyResult = {
     applied: FolioAIEditAppliedOperation[];
     skipped: FolioAIEditSkippedOperation[];
+    normalizations?: FolioAIEditNormalization[];
 };
+
+// @public
+export type FolioAIEditNormalization = {
+    id: string;
+    code: FolioAIEditNormalizationCode;
+    paragraphCount: number;
+};
+
+// @public
+export type FolioAIEditNormalizationCode = "splitMultilineText";
 
 // @public (undocumented)
 export type FolioAIEditOperation = FolioAIEditReviewMeta & {

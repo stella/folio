@@ -50,6 +50,8 @@ export type {
   FolioAIEditAppliedOperation,
   FolioAIEditApplyMode,
   FolioAIEditApplyResult,
+  FolioAIEditNormalization,
+  FolioAIEditNormalizationCode,
   FolioAIEditOperation,
   FolioAIEditPrecondition,
   FolioAIEditReviewMeta,

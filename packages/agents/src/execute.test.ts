@@ -307,6 +307,58 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
     expect(afterResolveOpen).toHaveLength(0);
   });
 
+  test("suggest_changes: insertAfterBlock with multi-line text splits into paragraphs and reports a normalization", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture(), { author: "AI Reviewer" });
+    const bridge = createReviewerBridge(reviewer);
+
+    const blocks = expectOk(executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readDocument, {}, bridge));
+    const heading = blocks.find((block) => block.text.includes("Heading"));
+    if (!heading) {
+      throw new Error("expected a block containing 'Heading'");
+    }
+
+    // A cheap model routinely sends a whole clause — heading plus body — as
+    // one operation with embedded newlines instead of one operation per
+    // paragraph. This must not land as one paragraph with literal newlines.
+    const suggestResult = expectOk(
+      executeFolioToolCall(
+        FOLIO_AGENT_TOOL_NAMES.suggestChanges,
+        {
+          operations: [
+            {
+              id: "op-1",
+              type: "insertAfterBlock",
+              blockId: heading.blockId,
+              text: "6. Force Majeure\nNeither party shall be liable for delays beyond its control.",
+              styleId: "Heading2",
+            },
+          ],
+        },
+        bridge,
+      ),
+    );
+    expect(suggestResult.applied).toHaveLength(1);
+    expect(suggestResult.skipped).toEqual([]);
+    expect(suggestResult.normalizations).toEqual([
+      {
+        path: "operations[id=op-1].text",
+        message: expect.stringContaining("split into 2"),
+      },
+    ]);
+
+    const afterInsert = expectOk(
+      executeFolioToolCall(FOLIO_AGENT_TOOL_NAMES.readDocument, {}, bridge),
+    );
+    expect(afterInsert.some((block) => block.text === "6. Force Majeure")).toBe(true);
+    expect(
+      afterInsert.some(
+        (block) => block.text === "Neither party shall be liable for delays beyond its control.",
+      ),
+    ).toBe(true);
+    // No block anywhere in the document carries a literal newline.
+    expect(afterInsert.every((block) => !block.text.includes("\n"))).toBe(true);
+  });
+
   test("suggest_changes reports a plain-language skip reason for a missing block", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
     const bridge = createReviewerBridge(reviewer);

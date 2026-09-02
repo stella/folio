@@ -9,6 +9,7 @@ import type {
   FolioAIEditAppliedOperation,
   FolioAIEditApplyMode,
   FolioAIEditApplyResult,
+  FolioAIEditNormalization,
   FolioAIEditOperation,
   FolioAIEditPrecondition,
   FolioAIEditReviewMeta,
@@ -914,6 +915,8 @@ type FolioDocumentOperationResultBase = {
   issues: FolioDocumentOperationIssue[];
   /** Successful effects in input-operation order; skipped operations are omitted. */
   receipts: FolioDocumentOperationReceipt[];
+  /** Present when at least one operation triggered an automatic input normalization. */
+  normalizations?: FolioAIEditNormalization[];
   /** Present when the execution surface can undo this committed batch. */
   undoHandle: FolioDocumentOperationUndoHandle | null;
 };
@@ -1193,6 +1196,9 @@ export const applyFolioDocumentOperations = ({
       skipped,
       issues: getFolioDocumentOperationIssues(parsedBatch.operations, skipped),
       receipts: [],
+      ...(previewResult.normalizations !== undefined && {
+        normalizations: previewResult.normalizations,
+      }),
       undoHandle: null,
     };
   };
@@ -1212,6 +1218,9 @@ export const applyFolioDocumentOperations = ({
         operations: parsedBatch.operations,
         applied: previewResult.applied,
         story,
+      }),
+      ...(previewResult.normalizations !== undefined && {
+        normalizations: previewResult.normalizations,
       }),
       undoHandle: null,
     };

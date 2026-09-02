@@ -260,4 +260,55 @@ describe("headless reviewer invariants (full corpus)", () => {
     },
     propertyTestTimeout(25_000),
   );
+
+  test(
+    "insertAfterBlock never leaves a block whose text contains a line break",
+    async () => {
+      // A model routinely sends a whole clause — heading plus body — as one
+      // `text` with embedded newlines. Word has no paragraph-with-a-line-break
+      // primitive, so the applier must split it into several paragraphs
+      // instead; this checks that invariant across the full fixture corpus
+      // and random line shapes rather than pinning one example.
+      await fc.assert(
+        fc.asyncProperty(
+          fc.constantFrom(...FIXTURE_FILES),
+          fc.nat(),
+          fc.array(fc.stringMatching(/^[A-Za-z0-9 ]{0,20}$/u), { minLength: 1, maxLength: 4 }),
+          fc.constantFrom("\n", "\r\n"),
+          async (filename, selector, lines, lineBreak) => {
+            const text = lines.join(lineBreak);
+            if (text.trim().length === 0) {
+              return;
+            }
+            const buffer = readFixture(filename);
+            const probe = await FolioDocxReviewer.fromBuffer(buffer, { author: "AI" });
+            const targets = editTargets(probe.snapshot().blocks);
+            if (targets.length === 0) {
+              return;
+            }
+            const target = targets[selector % targets.length]!;
+            const op: FolioAIEditOperation = {
+              id: "1",
+              type: "insertAfterBlock",
+              blockId: target.blockId,
+              text,
+            };
+
+            const reviewer = await FolioDocxReviewer.fromBuffer(buffer, { author: "AI" });
+            const applied = reviewer.applyOperations([op], { mode: "direct" });
+            if (applied.applied.length === 0) {
+              return;
+            }
+
+            for (const blockText of blockTexts(reviewer)) {
+              expect(blockText).not.toContain("\n");
+              expect(blockText).not.toContain("\r");
+            }
+          },
+        ),
+        propertyConfig({ numRuns: 30 }),
+      );
+    },
+    propertyTestTimeout(20_000),
+  );
 });

@@ -177,6 +177,14 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
         id: string;
         type: "insertAfterBlock" | "insertBeforeBlock";
         blockId: string;
+        /**
+         * The paragraph text to insert. A line break splits `text` into
+         * consecutive paragraphs at the same anchor instead of becoming
+         * literal newlines inside one paragraph: only the first paragraph
+         * gets `styleId` / `inheritFormatting`, later ones use body
+         * formatting. Blank lines are dropped. Reported as a
+         * `splitMultilineText` normalization when it happens.
+         */
         text: string;
         inheritFormatting?: boolean;
         /**
@@ -363,7 +371,25 @@ export type FolioAIEditSkippedOperation = {
   reason: FolioAIEditSkipReason;
 };
 
+/** One automatic adjustment `apply.ts` made to an operation's input to keep the applied result well-formed. */
+export type FolioAIEditNormalizationCode = "splitMultilineText";
+
+/**
+ * A line-break in `insertAfterBlock` / `insertBeforeBlock`'s `text` cannot become
+ * one paragraph with an embedded break (Word paragraphs are single lines); the
+ * applier splits it into one paragraph per non-blank line instead and reports it
+ * here so the caller can see what happened to the text it sent.
+ */
+export type FolioAIEditNormalization = {
+  id: string;
+  code: FolioAIEditNormalizationCode;
+  /** Number of paragraphs the operation's `text` was split into. */
+  paragraphCount: number;
+};
+
 export type FolioAIEditApplyResult = {
   applied: FolioAIEditAppliedOperation[];
   skipped: FolioAIEditSkippedOperation[];
+  /** Present only when at least one operation triggered a normalization. */
+  normalizations?: FolioAIEditNormalization[];
 };

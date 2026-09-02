@@ -14,6 +14,8 @@ export type {
   FolioAIBlockAnchor,
   FolioAIBlockKind,
   FolioAIBlockPreviewRun,
+  FolioAIEditNormalization,
+  FolioAIEditNormalizationCode,
   FolioAIEditSnapshot,
   FolioAIInlineFormatting,
   FolioAITextRangeHandle,
