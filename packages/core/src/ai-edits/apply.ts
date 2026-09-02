@@ -1001,17 +1001,31 @@ const applyFolioAIEditOperationsInternal = ({
           continue;
         }
 
+        // Captured once into a `const`, not re-read as `item.operation.*`
+        // inside the loop below: the switch's discriminant narrows
+        // `item.operation` here, but that narrowing does not reliably
+        // survive a property-chain re-read from inside a nested loop body,
+        // whereas a `const` binding's type is fixed for every scope it is
+        // read from.
+        const operation = item.operation;
+
         // Inherit formatting attrs (listMarker, styleId, …) from
         // the source block but never reuse identity attrs — a new
         // paragraph must get fresh paraId/textId so trackers don't
         // collide. Shared by every paragraph the insert produces.
         const baseAttrs =
-          item.operation.inheritFormatting === false
+          operation.inheritFormatting === false
             ? {}
             : stripBlockIdentityAttrs(item.blockNode.attrs);
 
+        // Built with a plain `for` loop rather than `.map()`: a function
+        // declared inside this outer loop that closes over `revisionSeed`
+        // (mutated every iteration via `revisionSeed++`) trips oxlint's
+        // no-loop-func rule, even though this callback always runs
+        // synchronously and never outlives the iteration.
         const insertedBlockRevisionIds: number[] = [];
-        const nodes = insertTexts.map((text, paragraphIndex) => {
+        const nodes: PMNode[] = [];
+        for (const [paragraphIndex, text] of insertTexts.entries()) {
           // `text` was split from one operation's `text` field on a line
           // break (see `splitInsertParagraphTexts`); only the first
           // resulting paragraph is the one the model actually styled —
@@ -1039,19 +1053,19 @@ const applyFolioAIEditOperationsInternal = ({
             text.length > 0 ? buildEmphasisInlineContent(view.state.schema, text, marks) : null;
 
           const attrs: Record<string, unknown> = { ...baseAttrs };
-          if (isFirstParagraph && item.operation.pageBreakBefore === true) {
+          if (isFirstParagraph && operation.pageBreakBefore === true) {
             attrs["pageBreakBefore"] = true;
           }
-          if (isFirstParagraph && item.operation.styleId !== undefined) {
+          if (isFirstParagraph && operation.styleId !== undefined) {
             // Heading / clause style ids (e.g. ClauseHeading1) take
             // precedence over the source block's style so the
             // inserted paragraph renders as the requested kind, not
             // as a clone of the anchor.
-            attrs["styleId"] = item.operation.styleId;
+            attrs["styleId"] = operation.styleId;
             // A heading is logically a fresh block; drop list marker
             // attrs that would otherwise leak from the anchor and
             // render the heading as a list item.
-            if (item.operation.inheritFormatting !== false) {
+            if (operation.inheritFormatting !== false) {
               attrs["listMarker"] = null;
               attrs["listMarkerHidden"] = null;
               attrs["listLevelNumFmts"] = null;
@@ -1072,8 +1086,8 @@ const applyFolioAIEditOperationsInternal = ({
               ...(initials ? { initials } : {}),
             };
           }
-          return item.blockNode.type.create(attrs, content);
-        });
+          nodes.push(item.blockNode.type.create(attrs, content));
+        }
         if (insertedBlockRevisionIds.length > 0) {
           appliedRevisionIds = insertedBlockRevisionIds;
         }
