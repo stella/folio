@@ -41,6 +41,9 @@ export const compileLegalSourceToDocument: (source: string, options?: LegalSourc
 export const compileLegalSourceToDocx: (source: string, options?: LegalSourceCompileOptions) => Promise<LegalSourceDocxCompileResult>;
 
 // @public
+export const compileMarkdownToContent: (markdown: string) => MarkdownContent;
+
+// @public
 type Document_2 = {
     package: DocxPackage;
     originalBuffer?: ArrayBuffer;
@@ -114,7 +117,7 @@ export type LegalDraft = {
     blocks: LegalDraftBlock[];
 };
 
-// @public (undocumented)
+// @public
 export type LegalDraftBlock = {
     type: "title";
     text: string;
@@ -185,6 +188,12 @@ export type LegalSourceParseResult = {
     diagnostics: LegalDraftDiagnostic[];
 };
 
+// @public
+export type MarkdownContent = {
+    content: BlockContent[];
+    numbering?: NumberingDefinitions;
+};
+
 // @public (undocumented)
 export type Paragraph = {
     type: "paragraph";
@@ -224,6 +233,9 @@ export type Run = {
 
 // @public
 export type RunContent = TextContent | TabContent | BreakContent | SymbolContent | NoteReferenceContent | FieldCharContent | InstrTextContent | SoftHyphenContent | NoBreakHyphenContent | RenderedPageBreakContent | DrawingContent | ShapeContent;
+
+// @public
+export const sanitizeExternalUrl: (rawUrl: string | undefined) => string | undefined;
 
 // @public (undocumented)
 export type SectionProperties = {
