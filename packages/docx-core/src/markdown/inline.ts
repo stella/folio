@@ -66,6 +66,13 @@ export const textRun = (text: string, format: InlineRunFormat = {}): Run => {
 // formatting but not the highlight.
 const PLACEHOLDER_PATTERN = /\[\[(?<inner>[^\][]+?)\]\]/gu;
 
+/**
+ * Literal text (no markdown reading) with `[[…]]` placeholders highlighted:
+ * for fields that are data rather than prose, such as signature parties.
+ */
+export const plainTextRuns = (text: string, format: InlineRunFormat = {}): Run[] =>
+  placeholderRuns(text, format);
+
 const placeholderRuns = (text: string, format: InlineRunFormat): Run[] => {
   if (!text.includes("[[")) {
     return [textRun(text, format)];

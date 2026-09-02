@@ -9,7 +9,7 @@ import type {
   TableRow,
 } from "../model/document";
 import type { NumberingDefinitions } from "../model/lists";
-import { inlineMarkdownToRuns, textRun } from "../markdown/inline";
+import { inlineMarkdownToRuns, plainTextRuns } from "../markdown/inline";
 import type { InlineRunFormat } from "../markdown/inline";
 import { parseLegalSource } from "./parser";
 import type {
@@ -231,11 +231,12 @@ const paragraph = (
 
 // Signature fields are data (a party name, a signatory, the underscore
 // rule), never markdown; a name with an asterisk or underscore must not
-// turn into emphasis.
+// turn into emphasis. Placeholders still get their highlight: a model
+// that does not know the signatory writes `[[name]]` here too.
 const plainParagraph = (text: string, styleId: string, runOptions: RunOptions = {}): Paragraph => ({
   type: "paragraph",
   formatting: { styleId },
-  content: [textRun(text, runOptions)],
+  content: plainTextRuns(text, runOptions),
 });
 
 const table = (headers: string[], rows: string[][]): Table => ({

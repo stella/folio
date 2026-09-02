@@ -451,9 +451,16 @@ describe("Stella Legal Source — markdown bodies", () => {
     );
   });
 
-  test("signature fields stay literal, never markdown", () => {
+  test("signature fields stay literal, never markdown, but keep placeholder highlights", () => {
     const result = compileLegalSourceToDocument(
-      ['@doc title="Sign"', "@signatures", "Party: A_B_C Ltd", "By: *Jane*"].join("\n"),
+      [
+        '@doc title="Sign"',
+        "@signatures",
+        "Party: A_B_C Ltd",
+        "By: *Jane*",
+        "Party: [[Seller legal name]]",
+        "By: [[name of signatory]]",
+      ].join("\n"),
     );
     expect(result.status).toBe("ok");
     if (result.status !== "ok") {
@@ -462,5 +469,11 @@ describe("Stella Legal Source — markdown bodies", () => {
     const serialized = JSON.stringify(result.document.package.document.content);
     expect(serialized).toContain("A_B_C Ltd");
     expect(serialized).toContain("*Jane*");
+    expect(serialized).not.toContain("[[");
+    expect(serialized).toContain(
+      JSON.stringify({ text: "Seller legal name", preserveSpace: true }).slice(1, -1),
+    );
+    const highlighted = (serialized.match(/"highlight":"yellow"/gu) ?? []).length;
+    expect(highlighted).toBe(2);
   });
 });
