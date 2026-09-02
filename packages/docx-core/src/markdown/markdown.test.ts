@@ -107,6 +107,20 @@ describe("compileMarkdownToContent", () => {
     ]);
   });
 
+  test("a nested ordered list does not inherit a sibling's bullet level", () => {
+    const { content, numbering } = compileMarkdownToContent("- a\n  - x\n- b\n  1. y");
+    const nested = paragraphs(content).filter((paragraph) => paragraph.formatting?.numPr?.ilvl === 1);
+    expect(nested).toHaveLength(2);
+    const [bulletItem, orderedItem] = nested;
+    const bulletNumId = bulletItem?.formatting?.numPr?.numId;
+    const orderedNumId = orderedItem?.formatting?.numPr?.numId;
+    expect(orderedNumId).not.toBe(bulletNumId);
+    const orderedLevel = numbering?.abstractNums
+      .find((abstract) => abstract.abstractNumId === orderedNumId)
+      ?.levels.find((level) => level.ilvl === 1);
+    expect(orderedLevel?.numFmt).toBe("decimal");
+  });
+
   test("carries no numbering without lists", () => {
     expect(compileMarkdownToContent("Just prose.").numbering).toBeUndefined();
   });

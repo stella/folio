@@ -14,7 +14,7 @@
 import type { Token, Tokens } from "marked";
 
 import { isLegalDirectiveToken, isTokenType, lexLegalSource } from "../markdown/lexer";
-import type { LegalDirectiveToken } from "../markdown/lexer";
+import type { LegalDirectiveToken, LegalSourceLexResult } from "../markdown/lexer";
 import type {
   Autofix,
   LegalDraft,
@@ -48,6 +48,8 @@ const DIRECTIVE_ALIASES: Record<string, string> = {
   "@subsection": "@subclause",
 };
 
+const CLOSING_DIRECTIVE_PATTERN = /^@end[a-z]*$/u;
+
 const DIRECTIVES = new Set([
   "@doc",
   "@title",
@@ -69,19 +71,27 @@ const DIRECTIVES = new Set([
  */
 class TokenCursor {
   private readonly tokens: readonly Token[];
+  private readonly originalLineOf: (line: number) => number;
   private index = 0;
   private lineNumber = 1;
 
-  constructor(tokens: readonly Token[]) {
+  constructor({ tokens, originalLineOf }: LegalSourceLexResult) {
     this.tokens = tokens;
+    this.originalLineOf = originalLineOf;
   }
 
   get current(): Token | undefined {
     return this.tokens.at(this.index);
   }
 
+  /** The author's line number for the current token. */
   get line(): number {
-    return this.lineNumber;
+    return this.originalLineOf(this.lineNumber);
+  }
+
+  /** Index of the current token; lets a caller tell whether a helper consumed anything. */
+  get position(): number {
+    return this.index;
   }
 
   advance(): Token | undefined {
@@ -184,6 +194,18 @@ const parseDirective = (token: LegalDirectiveToken, line: number, state: ParseSt
   const rawDirective = token.directive;
   const directive = DIRECTIVE_ALIASES[rawDirective] ?? rawDirective;
   const { argument } = token;
+
+  // Models raised on HTML and LaTeX close what they open (`@endlist`,
+  // `@end`). Blocks here end where the next one starts, so a closer changes
+  // nothing; accept it and say so rather than failing the whole draft.
+  if (CLOSING_DIRECTIVE_PATTERN.test(directive)) {
+    fixes.push({
+      code: "closing-directive-ignored",
+      message: `Ignored ${rawDirective}: blocks end where the next directive starts.`,
+      line,
+    });
+    return;
+  }
 
   if (!DIRECTIVES.has(directive)) {
     // Report the directive as the author spelled it, not lower-cased.
@@ -329,13 +351,18 @@ const parseBareMarkdown = (state: ParseState) => {
     });
     return;
   }
+  const before = state.cursor.position;
   const paragraphs = takeParagraphs(state);
   if (paragraphs.length > 0) {
     pushBlock(state, { type: "paragraph", paragraphs });
     return;
   }
-  // Whitespace, a rule, or another token that carries no prose.
-  state.cursor.advance();
+  // Nothing prose-like here. When the helper already consumed whitespace or
+  // a rule, the cursor now sits on a directive or heading that the main loop
+  // must dispatch; only a token the helper refused to touch is skipped.
+  if (state.cursor.position === before) {
+    state.cursor.advance();
+  }
 };
 
 /**
@@ -375,9 +402,12 @@ const proseParagraphs = (token: Token): string[] | null => {
     return token.tokens.flatMap((inner) => proseParagraphs(inner) ?? []);
   }
   if (isTokenType(token, "code")) {
+    // Fenced code is literal by markdown semantics; the compiler reads every
+    // paragraph string as inline markdown, so escape the characters that
+    // would otherwise turn into emphasis, links, or placeholders.
     return token.text.split("\n").flatMap((codeLine) => {
       const trimmed = codeLine.trim();
-      return trimmed ? [trimmed] : [];
+      return trimmed ? [escapeInlineMarkdown(trimmed)] : [];
     });
   }
   if (isTokenType(token, "html")) {
@@ -430,6 +460,12 @@ const flattenListItems = (list: Tokens.List): string[] => {
 };
 
 const cellText = (cell: Tokens.TableCell): string => collapseSoftBreaks(cell.text);
+
+const INLINE_MARKDOWN_SPECIALS = /[\\`*_[\]<>~!]/gu;
+
+/** Backslash-escape the inline markdown syntax so the text renders verbatim. */
+const escapeInlineMarkdown = (text: string): string =>
+  text.replaceAll(INLINE_MARKDOWN_SPECIALS, (char) => `\\${char}`);
 
 // A paragraph's soft-wrapped lines are one paragraph; trim and join with a
 // single space so the wrapped markdown reads as continuous prose.

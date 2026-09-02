@@ -113,21 +113,47 @@ const buildListLevel = (ilvl: number, isBullet: boolean, start: number): ListLev
 // so separate lists restart at 1; nested lists share the parent's numId at a
 // deeper ilvl. A markdown exporter resolves the templates back to concrete
 // "N." markers and normalises bullets to "- ", so the markdown round-trips.
+/**
+ * The numId a list renders under. The first list to reach a (numId, ilvl)
+ * pair defines that level; a later list at the same depth under the same
+ * parent shares it when it is the same kind (so sibling nested bullets share
+ * one counter), and gets a numId of its own when it is not (a nested ordered
+ * list must not inherit a sibling's bullet definition).
+ */
+const resolveListNumId = (
+  numIds: NumIdAllocator,
+  parentNumId: number,
+  level: ListLevel,
+): number => {
+  const levels = numIds.levels.get(parentNumId);
+  const existing = levels?.get(level.ilvl);
+  if (levels !== undefined && existing === undefined) {
+    levels.set(level.ilvl, level);
+    return parentNumId;
+  }
+  if (
+    levels !== undefined &&
+    existing !== undefined &&
+    existing.numFmt === level.numFmt &&
+    existing.start === level.start
+  ) {
+    return parentNumId;
+  }
+  const numId = numIds.next++;
+  numIds.levels.set(numId, new Map([[level.ilvl, level]]));
+  return numId;
+};
+
 const listBlocks = (
   list: Tokens.List,
   level: number,
-  numId: number,
-  levels: NumIdLevels,
+  parentNumId: number,
+  numIds: NumIdAllocator,
 ): BlockContent[] => {
   const out: BlockContent[] = [];
   const start = Number(list.start) || 1;
   const decimalLevels = Array.from({ length: level + 1 }, () => "decimal" as const);
-  // First list to reach this (numId, ilvl) defines the synthesized level: a
-  // nested list that later reuses the same depth under the same numId shares
-  // that counter, matching how `listRendering` already treats it.
-  if (!levels.has(level)) {
-    levels.set(level, buildListLevel(level, !list.ordered, start));
-  }
+  const numId = resolveListNumId(numIds, parentNumId, buildListLevel(level, !list.ordered, start));
   for (const item of list.items) {
     const rendering: ListRendering = list.ordered
       ? {
@@ -151,7 +177,7 @@ const listBlocks = (
     }
     out.push(listPara(inlineTokensToRuns(inlineTokens, item.text), rendering));
     for (const nested of nestedLists) {
-      out.push(...listBlocks(nested, level + 1, numId, levels));
+      out.push(...listBlocks(nested, level + 1, numId, numIds));
     }
   }
   return out;
@@ -176,9 +202,8 @@ const blocksFromTokens = (tokens: Token[] | undefined, numIds: NumIdAllocator): 
       blocks.push(para(inlineTokensToRuns(token.tokens, token.text)));
     } else if (isTokenType(token, "list")) {
       const numId = numIds.next++;
-      const levels: NumIdLevels = new Map();
-      numIds.levels.set(numId, levels);
-      blocks.push(...listBlocks(token, 0, numId, levels));
+      numIds.levels.set(numId, new Map());
+      blocks.push(...listBlocks(token, 0, numId, numIds));
     } else if (isTokenType(token, "table")) {
       blocks.push(tableFromToken(token));
     } else if (isTokenType(token, "code")) {

@@ -1,7 +1,49 @@
-import type { LegalDraft, LegalDraftDiagnostic } from "./types";
+import type { LegalDraft, LegalDraftBlock, LegalDraftDiagnostic } from "./types";
+
+// `**whole paragraph**` or `__whole paragraph__`: emphasis wrapping every
+// character of a body string.
+const WHOLE_TEXT_EMPHASIS = /^(?:\*\*[^*]+\*\*|__[^_]+__)$/u;
+
+/** Body strings of a block that a reader would expect to be prose, not a heading. */
+const bodyStrings = (block: LegalDraftBlock): string[] => {
+  switch (block.type) {
+    case "paragraph":
+    case "recital":
+    case "clause":
+    case "schedule":
+      return block.paragraphs;
+    case "list":
+      return block.items;
+    case "table":
+      return block.table.rows.flat();
+    case "title":
+    case "signatures":
+    case "pageBreak":
+      return [];
+    default:
+      block satisfies never;
+      return [];
+  }
+};
 
 export const validateLegalDraft = (draft: LegalDraft): LegalDraftDiagnostic[] => {
   const diagnostics: LegalDraftDiagnostic[] = [];
+
+  // A body paragraph bold from end to end usually carries chat prose over
+  // into the draft; in a two-column bilingual table it turns a whole column
+  // into a heading. The compiler renders it as written and reports it, so
+  // the author can decide.
+  for (const block of draft.blocks) {
+    if (bodyStrings(block).some((text) => WHOLE_TEXT_EMPHASIS.test(text.trim()))) {
+      diagnostics.push({
+        code: "whole-paragraph-emphasis",
+        message:
+          "A body paragraph, list item, or table cell is bold from end to end; use a clause heading for headings and keep bold for short labels.",
+        severity: "warning",
+      });
+      break;
+    }
+  }
 
   if (!draft.meta.title?.trim()) {
     diagnostics.push({

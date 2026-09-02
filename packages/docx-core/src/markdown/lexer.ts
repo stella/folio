@@ -24,6 +24,8 @@ const LEGAL_DIRECTIVE_TOKEN_TYPE = "legalDirective";
 // else (`@ 5%`) is ordinary prose.
 const DIRECTIVE_LINE_PATTERN =
   /^[ \t]*@(?<name>[A-Za-z][A-Za-z0-9_-]*)(?<argument>[^\n]*)(?:\n|$)/u;
+// Line-anchored (`m`) so it serves both the block-start lookahead over a
+// multi-line remainder and the per-line boundary pass in `lexLegalSource`.
 const DIRECTIVE_LINE_START_PATTERN = /^[ \t]*@[A-Za-z]/mu;
 
 const legalDirectiveExtension: TokenizerExtension = {
@@ -60,8 +62,57 @@ const legalMarkdown = new Marked({ gfm: true, extensions: [legalDirectiveExtensi
 /** GFM block tokens of a markdown document. */
 export const lexMarkdown = (source: string): Token[] => plainMarkdown.lexer(source);
 
+export type LegalSourceLexResult = {
+  tokens: Token[];
+  /** Maps a line number in the lexed text back to the author's source. */
+  originalLineOf: (line: number) => number;
+};
+
+/**
+ * A directive line always starts a block. marked's paragraph tokenizer asks
+ * block extensions where the next block starts, but its list and blockquote
+ * tokenizers treat any following non-blank line as lazy continuation, so
+ * `- item\n@clause Next` would swallow the directive. Inserting one blank
+ * line before every directive that lacks one gives every tokenizer the same
+ * boundary; the returned map keeps diagnostics on the author's line numbers.
+ */
+const separateDirectiveLines = (
+  source: string,
+): { text: string; originalLineOf: (line: number) => number } => {
+  const lines = source.split("\n");
+  const output: string[] = [];
+  // insertedBefore[i]: blank lines added ahead of output line i (0-based).
+  const insertedBefore: number[] = [];
+  let inserted = 0;
+  for (const [index, line] of lines.entries()) {
+    const previous = output.at(-1);
+    if (
+      index > 0 &&
+      DIRECTIVE_LINE_START_PATTERN.test(line) &&
+      previous !== undefined &&
+      previous.trim() !== ""
+    ) {
+      output.push("");
+      insertedBefore.push(inserted);
+      inserted += 1;
+    }
+    output.push(line);
+    insertedBefore.push(inserted);
+  }
+  return {
+    text: output.join("\n"),
+    originalLineOf: (line) => line - (insertedBefore.at(line - 1) ?? inserted),
+  };
+};
+
 /** GFM block tokens of a legal draft, with `@directive` lines as {@link LegalDirectiveToken}s. */
-export const lexLegalSource = (source: string): Token[] => legalMarkdown.lexer(source);
+export const lexLegalSource = (source: string): LegalSourceLexResult => {
+  const prepared = separateDirectiveLines(source);
+  return {
+    tokens: legalMarkdown.lexer(prepared.text),
+    originalLineOf: prepared.originalLineOf,
+  };
+};
 
 /** Inline tokens (emphasis, code spans, links, breaks) of one paragraph's text. */
 export const lexInlineMarkdown = (text: string): Token[] =>
