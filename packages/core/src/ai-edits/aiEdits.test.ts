@@ -1117,6 +1117,68 @@ describe("Folio AI edit operations", () => {
     expect(new Set(result.applied[0]?.revisionIds).size).toBe(2);
   });
 
+  test("does not leak a list-item anchor's listMarker onto later paragraphs of a split insert", () => {
+    // baseAttrs (inherited from the anchor) must only land on the first
+    // paragraph. A body-text continuation line is not a list item just
+    // because the anchor it followed was.
+    const view = makeView(makeState([{ text: "Payment one.", listMarker: "7.5.1" }]));
+    const snapshot = createFolioAIEditSnapshot(view.state.doc);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot,
+      operations: [
+        {
+          id: "op-1",
+          type: "insertAfterBlock",
+          blockId: "seq-0001",
+          text: "Payment two.\nSubject to the schedule in Annex A.",
+          inheritFormatting: true,
+        },
+      ],
+      mode: "direct",
+    });
+
+    expect(result.skipped).toEqual([]);
+    expect(view.state.doc.childCount).toBe(3);
+    expect(view.state.doc.child(1).textContent).toBe("Payment two.");
+    expect(view.state.doc.child(1).attrs["listMarker"]).toBe("7.5.1");
+    expect(view.state.doc.child(2).textContent).toBe("Subject to the schedule in Annex A.");
+    expect(view.state.doc.child(2).attrs["listMarker"]).toBeNull();
+  });
+
+  test("does not leak a heading anchor's styleId onto later paragraphs of a split insert", () => {
+    // Same contract from the other direction: when the ANCHOR (not the
+    // operation's own styleId override) carries a styleId, only the first
+    // synthesized paragraph may inherit it.
+    const view = makeView(makeState([{ text: "1. Definitions", styleId: "Heading2" }]));
+    const snapshot = createFolioAIEditSnapshot(view.state.doc);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot,
+      operations: [
+        {
+          id: "op-1",
+          type: "insertAfterBlock",
+          blockId: "seq-0001",
+          text: "In this agreement, the following terms apply.\nMore body text.",
+          inheritFormatting: true,
+        },
+      ],
+      mode: "direct",
+    });
+
+    expect(result.skipped).toEqual([]);
+    expect(view.state.doc.childCount).toBe(3);
+    expect(view.state.doc.child(1).textContent).toBe(
+      "In this agreement, the following terms apply.",
+    );
+    expect(view.state.doc.child(1).attrs["styleId"]).toBe("Heading2");
+    expect(view.state.doc.child(2).textContent).toBe("More body text.");
+    expect(view.state.doc.child(2).attrs["styleId"]).toBeNull();
+  });
+
   test("inheritFormatting does not copy identity attrs (paraId / textId)", () => {
     // The new block synthesized for an insertAfterBlock with
     // inheritFormatting must keep formatting attrs (listMarker,

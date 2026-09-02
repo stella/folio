@@ -352,15 +352,35 @@ type LiveBlockEntry = { from: number; to: number; node: PMNode };
  * uniqueness across overlapping calls in the same JS realm.
  */
 let revisionIdCursor = Date.now() * 1000;
-const nextRevisionSeed = (count: number): number => {
-  // Each replacement allocates up to three ids: deletion, insertion, and
-  // background-format clearing. Insert/delete operations use one each.
-  // Reserve `count * 4` to be safely above any conceivable per-op
-  // allocation (current max is 3). Returning the start of the
-  // reserved range as the seed is enough — the caller bumps it.
+const nextRevisionSeed = (revisionIdCount: number): number => {
+  // The caller has already summed a safe per-operation reservation (see
+  // `estimateRevisionIdReservation`); reserving exactly that many ids keeps
+  // this batch's range from overlapping the next `nextRevisionSeed` call's
+  // range. Returning the start of the reserved range as the seed is enough
+  // — the caller bumps it.
   const start = revisionIdCursor;
-  revisionIdCursor += Math.max(count, 1) * 4;
+  revisionIdCursor += Math.max(revisionIdCount, 1);
   return start;
+};
+
+/**
+ * Ids one resolved operation may allocate from the shared revision-id range
+ * reserved by `nextRevisionSeed`. Most operation types allocate at most
+ * three (delete + insert + background-format clearing); reserving four per
+ * operation is a safe cushion above that. A multi-paragraph
+ * `insertAfterBlock` / `insertBeforeBlock` (`text` split on line breaks,
+ * see `splitInsertParagraphTexts`) allocates one id per paragraph in
+ * tracked-changes mode, so it needs more than four once split into more
+ * than four paragraphs — reserving less than that would let a later
+ * `nextRevisionSeed` call reuse an id this operation already stamped on
+ * the document.
+ */
+const REVISION_IDS_PER_OPERATION = 4;
+const estimateRevisionIdReservation = (item: ResolvedOperation): number => {
+  if (item.operation.type === "insertAfterBlock" || item.operation.type === "insertBeforeBlock") {
+    return Math.max(item.insertTexts?.length ?? 1, REVISION_IDS_PER_OPERATION);
+  }
+  return REVISION_IDS_PER_OPERATION;
 };
 
 /**
@@ -723,7 +743,11 @@ const applyFolioAIEditOperationsInternal = ({
   }
 
   let tr = view.state.tr;
-  let revisionSeed = revisionIdSeed ?? nextRevisionSeed(executableResolved.length);
+  const revisionIdReservation = executableResolved.reduce(
+    (total, item) => total + estimateRevisionIdReservation(item),
+    0,
+  );
+  let revisionSeed = revisionIdSeed ?? nextRevisionSeed(revisionIdReservation);
   const date = new Date().toISOString();
   const insertedColumnCounts = new Map<string, number>();
 
@@ -1009,10 +1033,12 @@ const applyFolioAIEditOperationsInternal = ({
         // read from.
         const operation = item.operation;
 
-        // Inherit formatting attrs (listMarker, styleId, …) from
-        // the source block but never reuse identity attrs — a new
-        // paragraph must get fresh paraId/textId so trackers don't
-        // collide. Shared by every paragraph the insert produces.
+        // Inherit formatting attrs (listMarker, styleId, …) from the source
+        // block but never reuse identity attrs — a new paragraph must get
+        // fresh paraId/textId so trackers don't collide. Applied to the
+        // first paragraph only: a paragraph synthesized from a later line
+        // in a split `text` is body text, not a clone of the anchor, so it
+        // must not carry the anchor's heading/list styling either.
         const baseAttrs =
           operation.inheritFormatting === false
             ? {}
@@ -1052,7 +1078,7 @@ const applyFolioAIEditOperationsInternal = ({
           const content =
             text.length > 0 ? buildEmphasisInlineContent(view.state.schema, text, marks) : null;
 
-          const attrs: Record<string, unknown> = { ...baseAttrs };
+          const attrs: Record<string, unknown> = isFirstParagraph ? { ...baseAttrs } : {};
           if (isFirstParagraph && operation.pageBreakBefore === true) {
             attrs["pageBreakBefore"] = true;
           }

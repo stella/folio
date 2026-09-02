@@ -311,4 +311,63 @@ describe("headless reviewer invariants (full corpus)", () => {
     },
     propertyTestTimeout(20_000),
   );
+
+  test(
+    "revision ids stay unique across a multi-paragraph tracked insert followed by another apply",
+    async () => {
+      // The shared revision-id range is reserved once per apply call, sized
+      // from the operations in that call (see `estimateRevisionIdReservation`
+      // in apply.ts). A tracked-changes insert whose `text` splits into more
+      // paragraphs than the reservation anticipates must not spill into the
+      // range the NEXT apply call reserves — that would stamp two different
+      // marks with the same revision id.
+      await fc.assert(
+        fc.asyncProperty(
+          fc.constantFrom(...FIXTURE_FILES),
+          fc.nat(),
+          fc.nat(),
+          // Non-blank after trim (starts with an alnum) so every requested
+          // line survives the applier's blank-line collapse, guaranteeing a
+          // paragraph count that exceeds the fixed 4-id-per-operation
+          // cushion `estimateRevisionIdReservation` used to fall back to.
+          fc.array(fc.stringMatching(/^[A-Za-z0-9][A-Za-z0-9 ]{0,19}$/u), {
+            minLength: 5,
+            maxLength: 9,
+          }),
+          async (filename, selectorA, selectorB, lines) => {
+            const buffer = readFixture(filename);
+            const probe = await FolioDocxReviewer.fromBuffer(buffer, { author: "AI" });
+            const targets = editTargets(probe.snapshot().blocks);
+            if (targets.length < 2) {
+              return;
+            }
+            const targetA = targets[selectorA % targets.length]!;
+            const targetB = targets[selectorB % targets.length]!;
+
+            const reviewer = await FolioDocxReviewer.fromBuffer(buffer, { author: "AI" });
+            const firstApply = reviewer.applyOperations([
+              {
+                id: "insert-1",
+                type: "insertAfterBlock",
+                blockId: targetA.blockId,
+                text: lines.join("\n"),
+              },
+            ]);
+            const secondApply = reviewer.applyOperations([replaceOp(targetB, "ZZWORD")]);
+
+            const revisionIds = [
+              ...firstApply.applied.flatMap((op) => op.revisionIds ?? []),
+              ...secondApply.applied.flatMap((op) => op.revisionIds ?? []),
+            ];
+            if (revisionIds.length === 0) {
+              return;
+            }
+            expect(new Set(revisionIds).size).toBe(revisionIds.length);
+          },
+        ),
+        propertyConfig({ numRuns: 30 }),
+      );
+    },
+    propertyTestTimeout(20_000),
+  );
 });
