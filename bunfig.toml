@@ -24,6 +24,7 @@ minimumReleaseAge = 432_000
 # `bun run check:quarantine-excludes` enforces all of the above.
 minimumReleaseAgeExcludes = [
   # Keep Bun's compiler contract aligned with the runtime during this upgrade.
+  "bun-types", # quarantine-expires: 2026-09-09T08:36:48.390Z
   "@stll/conditions",
   "@stll/docx-utils",
   "@stll/oxlint-config",
