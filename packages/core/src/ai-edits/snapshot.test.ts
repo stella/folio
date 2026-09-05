@@ -84,6 +84,7 @@ describe("createFolioAIEditSnapshot", () => {
     expect(blocks.at(0)?.table).toBeUndefined();
     expect(blocks.at(-1)?.table).toBeUndefined();
     expect(blocks.at(2)?.table).toEqual({
+      outerTableIndex: 0,
       tableIndex: 0,
       rowIndex: 0,
       cellIndex: 1,
@@ -91,13 +92,16 @@ describe("createFolioAIEditSnapshot", () => {
     });
     // The nested table is the second table in document order, and its own
     // coordinates are relative to itself, not to the table containing it.
+    // The nested table's own index, with the outer table it belongs to.
     expect(blocks.at(5)?.table).toEqual({
+      outerTableIndex: 0,
       tableIndex: 1,
       rowIndex: 0,
       cellIndex: 0,
       paragraphIndex: 0,
     });
     expect(blocks.at(6)?.table).toEqual({
+      outerTableIndex: 0,
       tableIndex: 1,
       rowIndex: 0,
       cellIndex: 0,

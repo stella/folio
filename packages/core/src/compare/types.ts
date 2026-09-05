@@ -146,6 +146,23 @@ export type CompareChange =
       cells: readonly string[];
       targetBlockIds: readonly string[];
     }
+  /** A whole table the target added. */
+  | {
+      kind: "table-insert";
+      location: CompareChangeLocation;
+      tableIndex: number;
+      /** Cell texts row by row, in physical cell order. */
+      rows: readonly (readonly string[])[];
+      targetBlockIds: readonly string[];
+    }
+  /** A whole table the target dropped. */
+  | {
+      kind: "table-delete";
+      location: CompareChangeLocation;
+      tableIndex: number;
+      rows: readonly (readonly string[])[];
+      baseBlockIds: readonly string[];
+    }
   | {
       kind: "table-row-delete";
       location: CompareChangeLocation;

@@ -510,6 +510,7 @@ describe("parseSuggestChangesInput", () => {
       moveId: "move-1",
       listLevel: 1,
       properties: { listLevel: 1 },
+      rows: [["a"]],
       range: {
         type: "textRange",
         story: "main",

@@ -36,6 +36,8 @@ export const FOLIO_DOCUMENT_OPERATION_TYPES = Object.freeze([
   "splitBlock",
   "mergeBlockWithNext",
   "setBlockParagraphProperties",
+  "insertTable",
+  "deleteTable",
   "commentOnBlock",
   "insertSignatureTable",
   "insertTableRow",
@@ -110,6 +112,8 @@ export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE = Object.freeze({
   splitBlock: DIRECT_AND_TRACKED_MODES,
   mergeBlockWithNext: DIRECT_AND_TRACKED_MODES,
   setBlockParagraphProperties: DIRECT_AND_TRACKED_MODES,
+  insertTable: DIRECT_AND_TRACKED_MODES,
+  deleteTable: DIRECT_AND_TRACKED_MODES,
   commentOnBlock: DIRECT_AND_TRACKED_MODES,
   insertSignatureTable: DIRECT_AND_SUGGESTED_MODES,
   insertTableRow: DIRECT_TRACKED_AND_SUGGESTED_MODES,
@@ -329,6 +333,41 @@ const readNonNegativeInteger = (
   return invalidBatch(`${path}.${key}`, "expected a non-negative integer");
 };
 
+/**
+ * A rectangular grid of cell texts. Rectangular because a table whose rows
+ * hold different cell counts is not a table any consumer can lay out, and the
+ * batch is the last place to catch that.
+ */
+const readTableRows = (
+  value: Record<string, unknown>,
+  path: string,
+): readonly (readonly string[])[] => {
+  const rows = value["rows"];
+  const rowsPath = `${path}.rows`;
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return invalidBatch(rowsPath, "expected a non-empty array");
+  }
+  const parsed = rows.map((row, index) => {
+    if (!Array.isArray(row) || row.length === 0) {
+      return invalidBatch(`${rowsPath}[${String(index)}]`, "expected a non-empty array");
+    }
+    return row.map((cell, cellIndex) => {
+      if (typeof cell !== "string") {
+        return invalidBatch(
+          `${rowsPath}[${String(index)}][${String(cellIndex)}]`,
+          "expected a string",
+        );
+      }
+      return cell;
+    });
+  });
+  const width = parsed[0]?.length ?? 0;
+  if (parsed.some((row) => row.length !== width)) {
+    return invalidBatch(rowsPath, "expected every row to hold the same number of cells");
+  }
+  return parsed;
+};
+
 const readParagraphProperties = (
   value: Record<string, unknown>,
   path: string,
@@ -522,6 +561,8 @@ export const FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE = Object.freeze({
   splitBlock: [...COMMON_OPERATION_KEYS, "offset", "separator"],
   mergeBlockWithNext: [...COMMON_OPERATION_KEYS, "separator"],
   setBlockParagraphProperties: [...COMMON_OPERATION_KEYS, "properties"],
+  insertTable: [...COMMON_OPERATION_KEYS, "position", "rows"],
+  deleteTable: COMMON_OPERATION_KEYS,
   commentOnBlock: [...COMMON_OPERATION_KEYS, "quote", "comment"],
   insertSignatureTable: [...COMMON_OPERATION_KEYS, "position", "parties", "comment"],
   insertTableRow: [...COMMON_OPERATION_KEYS, "position", "cellTexts"],
@@ -615,6 +656,25 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
   }
 
   const blockId = readString(value, "blockId", path);
+
+  if (type === "insertTable") {
+    const position = value["position"];
+    if (position !== undefined && position !== "after" && position !== "before") {
+      return invalidBatch(`${path}.position`, 'expected "after" or "before" when provided');
+    }
+    return {
+      ...operationMeta,
+      id,
+      type,
+      blockId,
+      ...(position !== undefined && { position }),
+      rows: readTableRows(value, path),
+    };
+  }
+
+  if (type === "deleteTable") {
+    return { ...operationMeta, id, type, blockId };
+  }
 
   if (type === "setBlockParagraphProperties") {
     return {
@@ -922,7 +982,7 @@ export type FolioDocumentOperationAffectedTarget =
       story: FolioDocumentOperationStory;
       anchorBlockId: string;
       position: "before" | "after";
-      content: "block" | "signatureTable" | "tableRow" | "tableColumn";
+      content: "block" | "signatureTable" | "table" | "tableRow" | "tableColumn";
     }
   | {
       type: "comment";
@@ -1148,6 +1208,21 @@ const getPrimaryAffectedTarget = (
         anchorBlockId: operation.blockId,
         position: operation.position ?? "after",
         content: "signatureTable",
+      };
+    case "insertTable":
+      return {
+        type: "insertion",
+        story,
+        anchorBlockId: operation.blockId,
+        position: operation.position ?? "after",
+        content: "table",
+      };
+    case "deleteTable":
+      return {
+        type: "block",
+        story,
+        blockId: operation.blockId,
+        effect: "deleted",
       };
     case "insertTableRow":
       return {

@@ -121,7 +121,9 @@ type CompareStep =
   | { type: "baseOnly"; block: FolioAIBlock }
   | { type: "targetOnly"; block: FolioAIBlock }
   | { type: "baseRow"; blocks: readonly FolioAIBlock[]; location: FolioAIBlockTableLocation }
-  | { type: "targetRow"; blocks: readonly FolioAIBlock[]; location: FolioAIBlockTableLocation };
+  | { type: "targetRow"; blocks: readonly FolioAIBlock[]; location: FolioAIBlockTableLocation }
+  | { type: "baseTable"; blocks: readonly FolioAIBlock[]; location: FolioAIBlockTableLocation }
+  | { type: "targetTable"; blocks: readonly FolioAIBlock[]; location: FolioAIBlockTableLocation };
 
 /**
  * A maximal run of blocks that share a container: body text, or one table.
@@ -147,7 +149,9 @@ const splitSegments = (blocks: readonly FolioAIBlock[]): DocumentSegment[] => {
   const segments: DocumentSegment[] = [];
   let currentTableIndex: number | null = null;
   for (const block of blocks) {
-    const tableIndex = block.table?.tableIndex ?? null;
+    // The OUTERMOST table, so a table inside a cell stays part of its parent's
+    // segment instead of splitting it in three.
+    const tableIndex = block.table?.outerTableIndex ?? null;
     const current = segments.at(-1);
     if (current !== undefined && currentTableIndex === tableIndex) {
       current.blocks.push(block);
@@ -177,21 +181,29 @@ const proxyBlock = (index: number, text: string): FolioAIBlock => ({
   text,
 });
 
-/** Blocks of one table grouped into rows, in row order. */
+/**
+ * Blocks of one table segment grouped into rows, in document order.
+ *
+ * Keyed by table AND row, not by row alone: a segment holds the whole
+ * outermost table, so a nested table's first row would otherwise merge with
+ * its parent's first row and the alignment would compare one against the
+ * other.
+ */
 const groupRows = (blocks: readonly FolioAIBlock[]): FolioAIBlock[][] => {
-  const rows = new Map<number, FolioAIBlock[]>();
+  const rows = new Map<string, FolioAIBlock[]>();
   for (const block of blocks) {
     if (!block.table) {
       continue;
     }
-    const row = rows.get(block.table.rowIndex);
+    const key = `${String(block.table.tableIndex)}:${String(block.table.rowIndex)}`;
+    const row = rows.get(key);
     if (row) {
       row.push(block);
     } else {
-      rows.set(block.table.rowIndex, [block]);
+      rows.set(key, [block]);
     }
   }
-  return [...rows.keys()].toSorted((left, right) => left - right).map((key) => rows.get(key) ?? []);
+  return [...rows.values()];
 };
 
 const rowText = (row: readonly FolioAIBlock[]): string => row.map(({ text }) => text).join(" ");
@@ -256,6 +268,61 @@ const alignRowCells = (
  * its joined cell text — keeps a whole-row change whole, and confines every
  * other difference to a cell that really corresponds.
  */
+/**
+ * One segment's blocks split per table, in first-appearance order. A segment
+ * is a whole outermost table, so it holds the parent's blocks and every nested
+ * table's; a row alignment that mixed them would compare the parent's first
+ * row against a nested table's.
+ */
+const groupTables = (blocks: readonly FolioAIBlock[]): FolioAIBlock[][] => {
+  const tables = new Map<number, FolioAIBlock[]>();
+  for (const block of blocks) {
+    if (!block.table) {
+      continue;
+    }
+    const existing = tables.get(block.table.tableIndex);
+    if (existing) {
+      existing.push(block);
+    } else {
+      tables.set(block.table.tableIndex, [block]);
+    }
+  }
+  return [...tables.values()];
+};
+
+/**
+ * Align a paired table segment: each table in it against the table at the same
+ * place on the other side, then that table's rows, then its cells. Tables are
+ * paired by order within the segment because the segment IS one table plus
+ * whatever nests inside it — the nth nested table of one answers to the nth of
+ * the other.
+ */
+const buildTableSegmentSteps = (
+  baseBlocks: readonly FolioAIBlock[],
+  targetBlocks: readonly FolioAIBlock[],
+): CompareStep[] => {
+  const baseTables = groupTables(baseBlocks);
+  const targetTables = groupTables(targetBlocks);
+  const steps: CompareStep[] = [];
+  const paired = Math.min(baseTables.length, targetTables.length);
+  for (let index = 0; index < paired; index++) {
+    steps.push(...buildTableSteps(baseTables[index] ?? [], targetTables[index] ?? []));
+  }
+  for (const blocks of baseTables.slice(paired)) {
+    const location = blocks.at(0)?.table;
+    if (location) {
+      steps.push({ type: "baseTable", blocks, location });
+    }
+  }
+  for (const blocks of targetTables.slice(paired)) {
+    const location = blocks.at(0)?.table;
+    if (location) {
+      steps.push({ type: "targetTable", blocks, location });
+    }
+  }
+  return steps;
+};
+
 const buildTableSteps = (
   baseBlocks: readonly FolioAIBlock[],
   targetBlocks: readonly FolioAIBlock[],
@@ -323,20 +390,24 @@ const buildBodySteps = (
     }
   });
 
-/** Every block of an unpaired segment, as one-sided steps. */
+/**
+ * Every block of an unpaired segment, as one-sided steps. A whole table stays
+ * whole: reissuing it row by row would need a table to put the rows in, and
+ * the point of an unpaired table segment is that there is none.
+ */
 const unpairedSegmentSteps = (segment: DocumentSegment, side: "base" | "target"): CompareStep[] => {
-  if (segment.kind === "table") {
-    return groupRows(segment.blocks).flatMap((row) => {
-      const location = rowLocation(row);
-      if (!location) {
-        return [];
-      }
-      return [{ type: side === "base" ? "baseRow" : "targetRow", blocks: row, location }];
-    });
+  if (segment.kind !== "table") {
+    return segment.blocks.map((block) =>
+      side === "base" ? { type: "baseOnly", block } : { type: "targetOnly", block },
+    );
   }
-  return segment.blocks.map((block) =>
-    side === "base" ? { type: "baseOnly", block } : { type: "targetOnly", block },
-  );
+  const location = segment.blocks.at(0)?.table;
+  if (!location) {
+    return [];
+  }
+  return [
+    { type: side === "base" ? "baseTable" : "targetTable", blocks: segment.blocks, location },
+  ];
 };
 
 type BuildStepsOptions = {
@@ -361,37 +432,115 @@ type BuildStepsOptions = {
  * refuses those comparisons rather than returning a package that silently
  * drops one.
  */
-const buildSteps = ({ baseBlocks, targetBlocks }: BuildStepsOptions): CompareStep[] => {
-  const baseSegments = splitSegments(baseBlocks);
-  const targetSegments = splitSegments(targetBlocks);
-  const pairedCount = Math.min(baseSegments.length, targetSegments.length);
-  const steps: CompareStep[] = [];
+const segmentText = (segment: DocumentSegment): string =>
+  segment.blocks.map(({ text }) => text).join(" ");
 
-  for (let index = 0; index < pairedCount; index++) {
-    const baseSegment = baseSegments[index];
-    const targetSegment = targetSegments[index];
+/**
+ * How alike two table segments must be before a lookahead match may steal the
+ * pairing from the table in front of it. Two tables drawn from one document's
+ * vocabulary score alike by chance, so a lookahead has to clear this bar as
+ * well as beat what it displaces.
+ */
+const TABLE_PAIR_SIMILARITY = 0.5;
+
+/**
+ * Pair the two segment sequences, marking the segments only one side has.
+ *
+ * Pairing by index cannot see a table added or removed: the nth table of one
+ * document is put opposite the nth of the other, so deleting the first table
+ * shifts every later one and the comparison rewrites each table's contents
+ * into the next table along. Segments strictly alternate body, table, body,
+ * ..., so a one-segment lookahead on each side is enough to tell "this table
+ * changed a lot" from "this table is gone": the next table on the other side
+ * matching better is what says the current one is unpaired.
+ */
+const alignSegments = (
+  baseSegments: readonly DocumentSegment[],
+  targetSegments: readonly DocumentSegment[],
+): { baseSegment: DocumentSegment | null; targetSegment: DocumentSegment | null }[] => {
+  const paired: { baseSegment: DocumentSegment | null; targetSegment: DocumentSegment | null }[] =
+    [];
+  const similarity = (
+    left: DocumentSegment | undefined,
+    right: DocumentSegment | undefined,
+  ): number =>
+    left === undefined || right === undefined || left.kind !== right.kind
+      ? 0
+      : tokenSimilarity(segmentText(left), segmentText(right));
+
+  let baseCursor = 0;
+  let targetCursor = 0;
+  while (baseCursor < baseSegments.length && targetCursor < targetSegments.length) {
+    const baseSegment = baseSegments[baseCursor];
+    const targetSegment = targetSegments[targetCursor];
     if (!baseSegment || !targetSegment) {
+      break;
+    }
+    // Body segments always answer to body segments: they are the text between
+    // two tables, and the block alignment inside them handles the rest.
+    if (baseSegment.kind !== targetSegment.kind) {
+      paired.push({ baseSegment, targetSegment: null });
+      baseCursor += 1;
       continue;
     }
-    if (baseSegment.kind !== targetSegment.kind) {
+    if (baseSegment.kind === "body") {
+      paired.push({ baseSegment, targetSegment });
+      baseCursor += 1;
+      targetCursor += 1;
+      continue;
+    }
+    // The segment two along is the next one of the same kind: the sequence
+    // alternates body, table, body. A lookahead only wins when it is both a
+    // real match and a better one — two tables drawn from the same vocabulary
+    // score alike by chance, and "better than nothing" is not evidence that
+    // this table is gone.
+    const here = similarity(baseSegment, targetSegment);
+    const baseAhead = similarity(baseSegments[baseCursor + 2], targetSegment);
+    const targetAhead = similarity(baseSegment, targetSegments[targetCursor + 2]);
+    if (baseAhead >= TABLE_PAIR_SIMILARITY && baseAhead > here && baseAhead >= targetAhead) {
+      paired.push({ baseSegment, targetSegment: null });
+      baseCursor += 1;
+      continue;
+    }
+    if (targetAhead >= TABLE_PAIR_SIMILARITY && targetAhead > here) {
+      paired.push({ baseSegment: null, targetSegment });
+      targetCursor += 1;
+      continue;
+    }
+    paired.push({ baseSegment, targetSegment });
+    baseCursor += 1;
+    targetCursor += 1;
+  }
+  for (const segment of baseSegments.slice(baseCursor)) {
+    paired.push({ baseSegment: segment, targetSegment: null });
+  }
+  for (const segment of targetSegments.slice(targetCursor)) {
+    paired.push({ baseSegment: null, targetSegment: segment });
+  }
+  return paired;
+};
+
+const buildSteps = ({ baseBlocks, targetBlocks }: BuildStepsOptions): CompareStep[] => {
+  const steps: CompareStep[] = [];
+  for (const { baseSegment, targetSegment } of alignSegments(
+    splitSegments(baseBlocks),
+    splitSegments(targetBlocks),
+  )) {
+    if (baseSegment && targetSegment) {
       steps.push(
-        ...unpairedSegmentSteps(baseSegment, "base"),
-        ...unpairedSegmentSteps(targetSegment, "target"),
+        ...(baseSegment.kind === "table"
+          ? buildTableSegmentSteps(baseSegment.blocks, targetSegment.blocks)
+          : buildBodySteps(baseSegment.blocks, targetSegment.blocks)),
       );
       continue;
     }
-    steps.push(
-      ...(baseSegment.kind === "table"
-        ? buildTableSteps(baseSegment.blocks, targetSegment.blocks)
-        : buildBodySteps(baseSegment.blocks, targetSegment.blocks)),
-    );
-  }
-
-  for (const segment of baseSegments.slice(pairedCount)) {
-    steps.push(...unpairedSegmentSteps(segment, "base"));
-  }
-  for (const segment of targetSegments.slice(pairedCount)) {
-    steps.push(...unpairedSegmentSteps(segment, "target"));
+    if (baseSegment) {
+      steps.push(...unpairedSegmentSteps(baseSegment, "base"));
+      continue;
+    }
+    if (targetSegment) {
+      steps.push(...unpairedSegmentSteps(targetSegment, "target"));
+    }
   }
   return steps;
 };
@@ -608,9 +757,11 @@ const baseTableBlockOf = (step: CompareStep): FolioAIBlock | null => {
     case "baseOnly":
       return step.block.table ? step.block : null;
     case "baseRow":
+    case "baseTable":
       return step.blocks[0] ?? null;
     case "targetOnly":
     case "targetRow":
+    case "targetTable":
       return null;
     default: {
       const unreachable: never = step;
@@ -647,6 +798,10 @@ const findRowAnchor = (steps: readonly CompareStep[], stepIndex: number): RowAnc
  * slot. An empty cell carries no block at all, so packing only the cells that
  * have text would shift every later cell one column left.
  */
+/** One table's cell texts, row by row, for a whole-table change. */
+const tableCellTexts = (blocks: readonly FolioAIBlock[]): string[][] =>
+  groupRows(blocks).map((row) => rowCellTexts(row));
+
 const rowCellTexts = (blocks: readonly FolioAIBlock[]): string[] => {
   const byCell: (string | undefined)[] = [];
   for (const block of blocks) {
@@ -912,6 +1067,52 @@ export const planStoryCompare = ({
           baseBlockIds: step.blocks.map(({ id }) => id),
         });
         operations.push({ id: nextOperationId(), type: "deleteTableRow", blockId: anchorBlockId });
+        break;
+      }
+      case "baseTable": {
+        const anchorBlockId = step.blocks[0]?.id;
+        if (anchorBlockId === undefined) {
+          panic("An unpaired table segment carried no blocks");
+        }
+        changes.push({
+          kind: "table-delete",
+          location: { story, cell: step.location },
+          tableIndex: step.location.tableIndex,
+          rows: tableCellTexts(step.blocks),
+          baseBlockIds: step.blocks.map(({ id }) => id),
+        });
+        operations.push({ id: nextOperationId(), type: "deleteTable", blockId: anchorBlockId });
+        break;
+      }
+      case "targetTable": {
+        const rows = tableCellTexts(step.blocks);
+        changes.push({
+          kind: "table-insert",
+          location: { story, cell: step.location },
+          tableIndex: step.location.tableIndex,
+          rows,
+          targetBlockIds: step.blocks.map(({ id }) => id),
+        });
+        const before = anchorIds[stepIndex] ?? null;
+        if (before !== null) {
+          operations.push({
+            id: nextOperationId(),
+            type: "insertTable",
+            blockId: before,
+            position: "before",
+            rows,
+          });
+          break;
+        }
+        if (lastBaseBlockId !== null) {
+          operations.push({
+            id: nextOperationId(),
+            type: "insertTable",
+            blockId: lastBaseBlockId,
+            position: "after",
+            rows,
+          });
+        }
         break;
       }
       case "targetRow": {

@@ -36,6 +36,7 @@ export const EDIT_VARIANTS = Object.freeze([
   "churn",
   "reorder",
   "structural",
+  "tablecount",
   "notes",
   "headers",
   "everywhere",
@@ -213,6 +214,31 @@ const structural: BodyRewrite = (children) => {
   return rewritten;
 };
 
+/**
+ * A table removed and a table added: the pair a row-level vocabulary cannot
+ * express at all. Applied only to a class that has tables; every other class
+ * reports the variant as not applicable rather than pretending to cover it.
+ */
+const tablecount: BodyRewrite = (children) => {
+  const tableIndexes = children.flatMap((child, index) =>
+    child.startsWith("<w:tbl>") ? [index] : [],
+  );
+  const firstTable = tableIndexes.at(0);
+  if (firstTable === undefined) {
+    return [...children];
+  }
+  const added =
+    '<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/></w:tblPr>' +
+    '<w:tblGrid><w:gridCol w:w="4680"/><w:gridCol w:w="4680"/></w:tblGrid>' +
+    "<w:tr>" +
+    '<w:tc><w:tcPr><w:tcW w:w="4680" w:type="dxa"/></w:tcPr><w:p><w:r><w:t xml:space="preserve">Added heading</w:t></w:r></w:p></w:tc>' +
+    '<w:tc><w:tcPr><w:tcW w:w="4680" w:type="dxa"/></w:tcPr><w:p><w:r><w:t xml:space="preserve">Added value</w:t></w:r></w:p></w:tc>' +
+    "</w:tr></w:tbl>";
+  const rewritten = children.filter((_child, index) => index !== firstTable);
+  rewritten.push(added);
+  return rewritten;
+};
+
 const rewrite: BodyRewrite = (children) =>
   mapParagraphs(children, (paragraph) => {
     const text = blockText(paragraph);
@@ -228,6 +254,7 @@ const BODY_REWRITES = {
   churn,
   reorder,
   structural,
+  tablecount,
   notes: identical,
   headers: identical,
   everywhere: light,

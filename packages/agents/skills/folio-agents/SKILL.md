@@ -140,8 +140,8 @@ stay exported for validation-only paths.
   `suggest_changes` schema's `type` enum (by default `replaceInBlock`,
   `replaceRange`, `commentOnRange`, `formatRange`, `insertAfterBlock`,
   `insertBeforeBlock`, `replaceBlock`, `deleteBlock`, `splitBlock`,
-  `mergeBlockWithNext`, `setBlockParagraphProperties`, `insertTableRow`,
-  `deleteTableRow`,
+  `mergeBlockWithNext`, `setBlockParagraphProperties`, `insertTable`,
+  `deleteTable`, `insertTableRow`, `deleteTableRow`,
   `insertTableColumn`, `deleteTableColumn`, `mergeTableCells`,
   `splitTableCell`) plus comment/reply/resolve. Do not
   invent an operation kind or a directive marker; if a document needs a

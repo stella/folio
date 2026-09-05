@@ -440,6 +440,39 @@ covers what the comparison claims to compare.
 
 5 digests moved, deliberately.
 
+### A table can be added or removed
+
+The operation vocabulary had no "add a table", so a pair whose table count
+differed failed the round-trip check outright. The new `tablecount` variant
+removes a table and appends another:
+
+| Configuration         | before                      | after     |
+| --------------------- | --------------------------- | --------- |
+| `tables/s/tablecount` | 27 changes                  | 3 changes |
+| `tables/m/tablecount` | `CompareDocxRoundTripError` | 3 changes |
+
+Three changes is the whole edit: one `table-delete`, one `table-insert`, one
+`move`. The 27 before were the comparison rewriting each table's contents into
+the next table along, because segments were paired BY INDEX: remove the first
+table and every later one shifts by one. Segments now pair by walking both
+sequences together, and a table only loses its pairing to the next table on
+the other side when that one is both a real match and a better one — two
+tables drawn from one document's vocabulary score alike by chance, so
+"better than nothing" is not evidence.
+
+`insertTable` and `deleteTable` join the operation vocabulary. A deleted table
+is every row marked `w:trDel` and an inserted one every row marked `w:trIns`,
+which is how Word says it: there is no "this table went away" element.
+
+A segment is now the OUTERMOST table plus everything nested in it, which is
+what makes "this table is gone" a single decision. Row alignment splits the
+segment back into its tables, because a nested table's first row is not the
+parent's first row. `FolioAIBlock.table` gains `outerTableIndex` to carry the
+distinction.
+
+8 digests moved, all `tables`, deliberately. 198 configurations, none with a
+failing invariant.
+
 ## Correctness gaps the baseline surfaced
 
 Three configurations failed, and each named a real gap rather than a flake.

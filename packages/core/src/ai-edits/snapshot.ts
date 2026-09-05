@@ -120,10 +120,14 @@ const getTableLocation = ({
       return undefined;
     }
     const tableIndex = tableIndexByStart.get(table.start);
-    if (tableIndex === undefined) {
+    const outerTable = path.find((entry) => entry.node.type.spec["tableRole"] === TABLE_ROLE_TABLE);
+    const outerTableIndex =
+      outerTable === undefined ? undefined : tableIndexByStart.get(outerTable.start);
+    if (tableIndex === undefined || outerTableIndex === undefined) {
       return undefined;
     }
     return {
+      outerTableIndex,
       tableIndex,
       rowIndex: row.index,
       cellIndex: cell.index,

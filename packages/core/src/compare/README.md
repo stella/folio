@@ -16,8 +16,8 @@ if (result.isOk()) {
 
 The buffer opens as ordinary revisions in any OOXML consumer. `changes` is a
 discriminated union on `kind` (`insert`, `delete`, `replace`, `move`, `format`,
-`table-row-insert`, `table-row-delete`, `split`, `merge`, `paragraph-format`),
-for an agent that wants the summary
+`table-insert`, `table-delete`, `table-row-insert`, `table-row-delete`,
+`split`, `merge`, `paragraph-format`), for an agent that wants the summary
 rather than the document. Every change carries the story it belongs to, so a
 caller can tell a body edit from a footnote edit.
 
@@ -56,8 +56,13 @@ a paragraph inside a table opposite one outside it. Rewriting such a pair in
 place leaves the target's text in the wrong container. So the story is aligned
 in three nested passes, each over things that can stand in for one another:
 
-1. **Segments** — maximal runs of body text and of one table each, normalized to
-   alternate, and paired by position.
+1. **Segments** — maximal runs of body text and of one OUTERMOST table each,
+   normalized to alternate. Paired by walking both sequences together: a table
+   pairs with the table opposite it unless the next table on one side matches
+   it better, which is what says the one in front of it was added or removed.
+   Pairing by index instead cannot see a table appear or disappear — every
+   later table shifts by one and each one's contents get rewritten into the
+   next.
 2. **Rows** inside a paired table, by exact row text and then positionally, so a
    whole-row change stays whole and becomes `insertTableRow` / `deleteTableRow`.
 3. **Cells** inside a paired row, by physical cell index.
@@ -146,16 +151,23 @@ carries the current numbers and the failing cases.
   ProseMirror representation, so folio drops them on any edited paragraph and
   the comparison cannot produce them. A consumer reading the runs sees the
   move; one that groups multi-paragraph moves by range name does not.
-- **Tables cannot be created or destroyed.** The operation vocabulary has no
-  "add a table", so a pair whose table count differs fails the round-trip check.
-- **Empty cells are invisible.** A cell with no text carries no block, so a row
-  whose cells are all empty is not seen as a row at all.
-- **Column operations are out of scope.** A column added or removed reads as
-  cell-level changes.
-- **Row pairing degrades when a table's row count changes.** Rows match on exact
-  text first and positionally after that, so a row deletion combined with cell
-  edits can report per cell instead of as one row change. The result still
-  accepts back to the target; it is just more granular than the edit was.
+- **Empty cells are invisible** (2026-09-06). A cell with no text carries no
+  block, so a row whose cells are all empty is not seen as a row at all. The
+  snapshot skips every empty textblock, and making it stop is a change to every
+  block list in folio, not to the comparison.
+- **Column operations are out of scope** (2026-09-06). A column added or
+  removed reads as cell-level changes. `insertTableColumn` / `deleteTableColumn`
+  exist in the operation vocabulary; nothing detects the difference yet, and
+  detecting it reliably needs the empty cells above.
+- **Row pairing degrades when a table's row count changes** (2026-09-06). Rows
+  match on exact text first and positionally after that, so a row deletion
+  combined with cell edits can report per cell instead of as one row change.
+  The result still accepts back to the target; it is just more granular than
+  the edit was.
+- **A table nested inside a cell cannot be added or removed** (2026-09-06). A
+  whole table added or removed at document level is `table-insert` /
+  `table-delete`; the same edit inside a cell would need `insertTable` to
+  place a table in a cell rather than as a document-level peer.
 - **Numbering definitions are not compared** (2026-09-06). Renumbering that
   follows from an insertion or a deletion is a property of `numbering.xml`, not
   of block text, and no change is reported for it. A changed list LEVEL is

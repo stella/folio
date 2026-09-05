@@ -353,6 +353,8 @@ export const FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE: Readonly<{
     readonly splitBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "offset", "separator"];
     readonly mergeBlockWithNext: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "separator"];
     readonly setBlockParagraphProperties: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "properties"];
+    readonly insertTable: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "position", "rows"];
+    readonly deleteTable: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId"];
     readonly commentOnBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "quote", "comment"];
     readonly insertSignatureTable: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "position", "parties", "comment"];
     readonly insertTableRow: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "position", "cellTexts"];
@@ -379,6 +381,8 @@ export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE: Readonly<{
     readonly splitBlock: readonly ["direct", "tracked-changes"];
     readonly mergeBlockWithNext: readonly ["direct", "tracked-changes"];
     readonly setBlockParagraphProperties: readonly ["direct", "tracked-changes"];
+    readonly insertTable: readonly ["direct", "tracked-changes"];
+    readonly deleteTable: readonly ["direct", "tracked-changes"];
     readonly commentOnBlock: readonly ["direct", "tracked-changes"];
     readonly insertSignatureTable: readonly ["direct", "suggested"];
     readonly insertTableRow: readonly ["direct", "tracked-changes", "suggested"];
@@ -396,7 +400,7 @@ export const FOLIO_DOCUMENT_OPERATION_PRECONDITIONS: readonly ["blockTextHash"];
 export const FOLIO_DOCUMENT_OPERATION_STORIES: readonly ["main", "header", "footer", "footnote", "endnote"];
 
 // @public (undocumented)
-export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replaceRange", "commentOnRange", "formatRange", "insertAfterBlock", "insertBeforeBlock", "replaceBlock", "deleteBlock", "splitBlock", "mergeBlockWithNext", "setBlockParagraphProperties", "commentOnBlock", "insertSignatureTable", "insertTableRow", "deleteTableRow", "insertTableColumn", "deleteTableColumn", "mergeTableCells", "splitTableCell"];
+export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replaceRange", "commentOnRange", "formatRange", "insertAfterBlock", "insertBeforeBlock", "replaceBlock", "deleteBlock", "splitBlock", "mergeBlockWithNext", "setBlockParagraphProperties", "insertTable", "deleteTable", "commentOnBlock", "insertSignatureTable", "insertTableRow", "deleteTableRow", "insertTableColumn", "deleteTableColumn", "mergeTableCells", "splitTableCell"];
 
 // @public (undocumented)
 export const FOLIO_DOCUMENT_PRIVACY_TRANSFORMS: readonly ["remove-attribution", "remove-timestamps", "remove-descriptive-metadata"];
@@ -618,6 +622,27 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     blockId: string;
 } |
 /**
+* Add a whole table next to the anchor block, its rows marked inserted in
+* tracked mode. `insertTableRow` can only grow a table that already
+* exists; a comparison whose target gained one needs to say so.
+*/
+    {
+    id: string;
+    type: "insertTable";
+    blockId: string;
+    position?: "after" | "before";
+    rows: readonly (readonly string[])[];
+} |
+/**
+* Remove the whole table the block sits in, its rows marked deleted in
+* tracked mode. The mirror of `insertTable`.
+*/
+    {
+    id: string;
+    type: "deleteTable";
+    blockId: string;
+} |
+/**
 * Replace the block's paragraph properties, recorded as a `w:pPrChange`
 * in tracked mode so the previous set is restored on reject. The edit
 * that moves no words: a list item demoted a level, a paragraph restyled
@@ -826,7 +851,7 @@ export type FolioDocumentOperationAffectedTarget = {
     story: FolioDocumentOperationStory;
     anchorBlockId: string;
     position: "before" | "after";
-    content: "block" | "signatureTable" | "tableRow" | "tableColumn";
+    content: "block" | "signatureTable" | "table" | "tableRow" | "tableColumn";
 } | {
     type: "comment";
     commentId: number;

@@ -57,6 +57,8 @@ const OPERATION_TYPE_SUMMARIES = {
   mergeBlockWithNext: "join one block with the block after it in the same container",
   setBlockParagraphProperties:
     "change one block's paragraph properties (list level, paragraph style) without touching its words",
+  insertTable: "insert a whole table of `rows` next to the anchor block",
+  deleteTable: "delete the whole table the anchor block sits in",
   commentOnBlock: "attach a comment to one block, optionally quoting text within it",
   insertSignatureTable: "insert a side-by-side signature table for the given `parties`",
   insertTableRow: "insert a table row next to the row containing a cell block",
@@ -167,6 +169,12 @@ const OPERATION_PROPERTY_SCHEMAS = {
       required: ["name"],
       additionalProperties: false,
     },
+  },
+  rows: {
+    type: "array",
+    description:
+      "Required for `insertTable`: cell texts row by row. Every row must hold the same number of cells.",
+    items: { type: "array", items: { type: "string" } },
   },
   cellTexts: {
     type: "array",

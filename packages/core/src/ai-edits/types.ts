@@ -20,6 +20,13 @@ export type FolioAIBlockPreviewRun = {
  * own blocks. Absent on a block that is not inside a table.
  */
 export type FolioAIBlockTableLocation = {
+  /**
+   * Document-order index of the OUTERMOST table the block sits in — the same
+   * as `tableIndex` unless tables nest. A comparison aligns on this: a table
+   * inside a cell is part of its parent, not a structure of its own that can
+   * be paired against one somewhere else.
+   */
+  outerTableIndex: number;
   tableIndex: number;
   rowIndex: number;
   cellIndex: number;
@@ -292,6 +299,29 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
          * deletion-marked in tracked mode, so rejecting restores it.
          */
         separator?: string;
+        blockId: string;
+      }
+    /**
+     * Add a whole table next to the anchor block, its rows marked inserted in
+     * tracked mode. `insertTableRow` can only grow a table that already
+     * exists; a comparison whose target gained one needs to say so.
+     */
+    | {
+        id: string;
+        type: "insertTable";
+        blockId: string;
+        /** Place the table after the anchor (default) or before it. */
+        position?: "after" | "before";
+        /** Cell texts row by row. Every row must hold the same number of cells. */
+        rows: readonly (readonly string[])[];
+      }
+    /**
+     * Remove the whole table the block sits in, its rows marked deleted in
+     * tracked mode. The mirror of `insertTable`.
+     */
+    | {
+        id: string;
+        type: "deleteTable";
         blockId: string;
       }
     /**

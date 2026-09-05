@@ -407,6 +407,18 @@ const CONTRACT_OPERATION_FIXTURES: Record<FolioDocumentOperationType, Record<str
     blockId: "0304003A",
     separator: " ",
   },
+  insertTable: {
+    id: "op-insert-table",
+    type: "insertTable",
+    blockId: "0304003A",
+    position: "after",
+    rows: [["Heading", "Value"]],
+  },
+  deleteTable: {
+    id: "op-delete-table",
+    type: "deleteTable",
+    blockId: "0304003A",
+  },
   commentOnBlock: {
     id: "op-comment-on-block",
     type: "commentOnBlock",

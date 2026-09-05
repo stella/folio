@@ -438,6 +438,40 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
     },
     {
       type: "object",
+      description: "Insert a whole table next to the anchor block.",
+      properties: {
+        ...operationMetaProperties,
+        ...suggestionIdProperty,
+        type: { type: "string", enum: ["insertTable"] },
+        blockId: blockIdProperty,
+        position: {
+          type: "string",
+          enum: ["after", "before"],
+          description: "Place the table after the anchor (default) or before it.",
+        },
+        rows: {
+          type: "array",
+          description: "Cell texts row by row; every row must hold the same number of cells.",
+          items: { type: "array", items: { type: "string" } },
+        },
+      },
+      required: ["id", "type", "blockId", "rows"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      description: "Delete the whole table the anchor block sits in.",
+      properties: {
+        ...operationMetaProperties,
+        ...suggestionIdProperty,
+        type: { type: "string", enum: ["deleteTable"] },
+        blockId: blockIdProperty,
+      },
+      required: ["id", "type", "blockId"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
       description: "Attach a comment to one block, optionally quoting text within it.",
       properties: {
         ...operationMetaProperties,

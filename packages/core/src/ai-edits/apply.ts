@@ -7,6 +7,7 @@ import { expectParagraphAttrs, expectRunPropertyChangeMarkAttrs } from "../prose
 import { PPR_CHANGE_SCOPED_ATTR_KEYS } from "../prosemirror/commands/propertyChangeScope";
 import type { ParagraphPropertyChangeAttrs } from "../prosemirror/schema/nodes";
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
+import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { requestDeterministicParaIds } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
 import type { RunPropertyChange } from "../types/document";
@@ -179,6 +180,8 @@ type ResolvedOperation = {
   tableColumnDeletion?: TableColumnDeletion;
   tableCellMerge?: TableCellMerge;
   tableCellSplit?: TableCellSplit;
+  /** The table `deleteTable` removes, as it stood before the batch. */
+  deletedTable?: { position: number; node: PMNode };
   commentId?: number;
   /**
    * Position in the input `operations` array, used as a secondary
@@ -590,6 +593,41 @@ const ordinalAmongSameHash = (snapshot: FolioAIEditSnapshot, blockId: string): n
  * line matches what `create-document` produces.
  */
 const SIGNATURE_LINE = "_".repeat(28);
+
+type BuildTableNodeOptions = {
+  schema: Schema;
+  rows: readonly (readonly string[])[];
+  /** Present in tracked mode: every row is stamped as an insertion. */
+  revision?: TableStructureRevision;
+};
+
+/**
+ * A plain table from a grid of cell texts, `null` when the schema has no
+ * tables. In tracked mode every row carries `trIns`, which is how Word says
+ * "this table is new": there is no whole-table insertion element, only rows
+ * that were inserted.
+ */
+const buildTableNode = ({ schema, rows, revision }: BuildTableNodeOptions): PMNode | null => {
+  const paragraphType = schema.nodes["paragraph"];
+  const cellType = schema.nodes["tableCell"];
+  const rowType = schema.nodes["tableRow"];
+  const tableType = schema.nodes["table"];
+  if (!paragraphType || !cellType || !rowType || !tableType || rows.length === 0) {
+    return null;
+  }
+  const rowNodes = rows.map((cells) =>
+    rowType.create(
+      revision ? { trIns: revision } : null,
+      cells.map((text) =>
+        cellType.create(
+          null,
+          paragraphType.create(null, text.length > 0 ? schema.text(text) : null),
+        ),
+      ),
+    ),
+  );
+  return tableType.create(null, rowNodes);
+};
 
 type BuildSignatureTableNodeOptions = {
   schema: Schema;
@@ -1561,6 +1599,72 @@ const applyFolioAIEditOperationsInternal = ({
         }
         break;
       }
+      case "insertTable": {
+        const table = buildTableNode({
+          schema: view.state.schema,
+          rows: item.operation.rows,
+          ...(producesTrackedChanges && {
+            revision: { revisionId: revisionSeed, author, date, ...trackedRevisionExtras },
+          }),
+        });
+        if (!table) {
+          skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
+          continue;
+        }
+        if (producesTrackedChanges) {
+          appliedRevisionIds = [revisionSeed++];
+        }
+        tr = tr.insert(item.from, table);
+        markStructuralChange(tr);
+        break;
+      }
+      case "deleteTable": {
+        const deleted = item.deletedTable;
+        if (!deleted) {
+          skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
+          continue;
+        }
+        if (mode === "direct") {
+          const position = tr.mapping.map(deleted.position, 1);
+          const live = tr.doc.nodeAt(position);
+          if (!live || live.type.spec["tableRole"] !== "table") {
+            skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
+            continue;
+          }
+          tr = tr.delete(position, position + live.nodeSize);
+          markStructuralChange(tr);
+          break;
+        }
+        // Word deletes a table by marking every row deleted; there is no
+        // "this table went away" element. Read the rows from the LIVE
+        // document: an earlier operation in this batch may have replaced text
+        // inside the table, and a row position from before that is stale.
+        const livePosition = tr.mapping.map(deleted.position, 1);
+        const liveTable = tr.doc.nodeAt(livePosition);
+        if (!liveTable || liveTable.type.spec["tableRole"] !== "table") {
+          skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
+          continue;
+        }
+        const revision = { revisionId: revisionSeed++, author, date, ...trackedRevisionExtras };
+        const rowPositions: number[] = [];
+        let rowOffset = livePosition + 1;
+        liveTable.forEach((row) => {
+          if (row.type.spec["tableRole"] === "row" && row.attrs["trDel"] == null) {
+            rowPositions.push(rowOffset);
+          }
+          rowOffset += row.nodeSize;
+        });
+        if (rowPositions.length === 0) {
+          skipped.push({ id: item.operation.id, reason: "noopOperation" });
+          continue;
+        }
+        for (const rowPosition of rowPositions.toReversed()) {
+          tr = tr.setNodeAttribute(rowPosition, "trDel", revision);
+        }
+        appliedRevisionIds = [revision.revisionId];
+        markStructuralChange(tr);
+        break;
+      }
       case "setBlockParagraphProperties": {
         const patch = paragraphPropertiesPatch(item.blockNode, item.operation.properties);
         if (patch === null) {
@@ -2357,6 +2461,40 @@ const resolveOperation = ({
           tablePosition: cell.tablePosition,
           rectangle,
         },
+      },
+    };
+  }
+
+  if (operation.type === "insertTable") {
+    // A whole table is a document-level peer, like every other block
+    // insertion: `insertTableRow` is the operation for growing one in place.
+    const boundary = findOutermostTableBoundary(doc, blockFrom) ?? {
+      before: blockFrom,
+      after: blockTo,
+    };
+    const insertFrom =
+      (operation.position ?? "after") === "after" ? boundary.after : boundary.before;
+    return {
+      type: "resolved",
+      operation: { operation, from: insertFrom, to: insertFrom, blockFrom, blockTo, blockNode },
+    };
+  }
+
+  if (operation.type === "deleteTable") {
+    const target = findEnclosingTableRow(doc, blockFrom);
+    if (!target) {
+      return { type: "skip", reason: "unsupportedBlock" };
+    }
+    return {
+      type: "resolved",
+      operation: {
+        operation,
+        from: target.tablePosition,
+        to: target.tablePosition + target.table.nodeSize,
+        blockFrom,
+        blockTo,
+        blockNode,
+        deletedTable: { position: target.tablePosition, node: target.table },
       },
     };
   }

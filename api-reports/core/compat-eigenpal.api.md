@@ -322,6 +322,22 @@ export type CompareChange = {
     rowIndex: number;
     cells: readonly string[];
     targetBlockIds: readonly string[];
+} |
+/** A whole table the target added. */
+    {
+    kind: "table-insert";
+    location: CompareChangeLocation;
+    tableIndex: number;
+    rows: readonly (readonly string[])[];
+    targetBlockIds: readonly string[];
+} |
+/** A whole table the target dropped. */
+    {
+    kind: "table-delete";
+    location: CompareChangeLocation;
+    tableIndex: number;
+    rows: readonly (readonly string[])[];
+    baseBlockIds: readonly string[];
 } | {
     kind: "table-row-delete";
     location: CompareChangeLocation;
@@ -615,6 +631,8 @@ export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE: Readonly<{
     readonly splitBlock: readonly ["direct", "tracked-changes"];
     readonly mergeBlockWithNext: readonly ["direct", "tracked-changes"];
     readonly setBlockParagraphProperties: readonly ["direct", "tracked-changes"];
+    readonly insertTable: readonly ["direct", "tracked-changes"];
+    readonly deleteTable: readonly ["direct", "tracked-changes"];
     readonly commentOnBlock: readonly ["direct", "tracked-changes"];
     readonly insertSignatureTable: readonly ["direct", "suggested"];
     readonly insertTableRow: readonly ["direct", "tracked-changes", "suggested"];
@@ -632,7 +650,7 @@ export const FOLIO_DOCUMENT_OPERATION_PRECONDITIONS: readonly ["blockTextHash"];
 export const FOLIO_DOCUMENT_OPERATION_STORIES: readonly ["main", "header", "footer", "footnote", "endnote"];
 
 // @public (undocumented)
-export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replaceRange", "commentOnRange", "formatRange", "insertAfterBlock", "insertBeforeBlock", "replaceBlock", "deleteBlock", "splitBlock", "mergeBlockWithNext", "setBlockParagraphProperties", "commentOnBlock", "insertSignatureTable", "insertTableRow", "deleteTableRow", "insertTableColumn", "deleteTableColumn", "mergeTableCells", "splitTableCell"];
+export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replaceRange", "commentOnRange", "formatRange", "insertAfterBlock", "insertBeforeBlock", "replaceBlock", "deleteBlock", "splitBlock", "mergeBlockWithNext", "setBlockParagraphProperties", "insertTable", "deleteTable", "commentOnBlock", "insertSignatureTable", "insertTableRow", "deleteTableRow", "insertTableColumn", "deleteTableColumn", "mergeTableCells", "splitTableCell"];
 
 // @public (undocumented)
 export type FolioAIBlock = {
@@ -675,6 +693,7 @@ export type FolioAIBlockPreviewRun = {
 
 // @public
 export type FolioAIBlockTableLocation = {
+    outerTableIndex: number;
     tableIndex: number;
     rowIndex: number;
     cellIndex: number;
@@ -802,6 +821,27 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     type: "splitBlock";
     offset: number;
     separator?: string;
+    blockId: string;
+} |
+/**
+* Add a whole table next to the anchor block, its rows marked inserted in
+* tracked mode. `insertTableRow` can only grow a table that already
+* exists; a comparison whose target gained one needs to say so.
+*/
+    {
+    id: string;
+    type: "insertTable";
+    blockId: string;
+    position?: "after" | "before";
+    rows: readonly (readonly string[])[];
+} |
+/**
+* Remove the whole table the block sits in, its rows marked deleted in
+* tracked mode. The mirror of `insertTable`.
+*/
+    {
+    id: string;
+    type: "deleteTable";
     blockId: string;
 } |
 /**
@@ -959,7 +999,7 @@ export type FolioDocumentOperationAffectedTarget = {
     story: FolioDocumentOperationStory;
     anchorBlockId: string;
     position: "before" | "after";
-    content: "block" | "signatureTable" | "tableRow" | "tableColumn";
+    content: "block" | "signatureTable" | "table" | "tableRow" | "tableColumn";
 } | {
     type: "comment";
     commentId: number;
