@@ -57,6 +57,11 @@ marks only the divergent words. Formatting-only differences are emitted as
 `formatRange` operations and reported as `format`, never as a deletion and
 reinsertion of identical text.
 
+A comparison that finds no difference returns the base package as it arrived
+rather than a re-serialization of it, so an unchanged document is handed back
+byte for byte. The exception is a base that already carried tracked changes:
+there the compared base is its accepted view, so the result is serialized.
+
 `compareDocx` checks its own work before returning: accepting the generated
 revisions must reproduce the target, table cell coordinates included. A
 difference the operation vocabulary cannot express fails with

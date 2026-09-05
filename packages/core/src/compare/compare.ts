@@ -75,20 +75,34 @@ const parseSide = async (
       }),
   });
 
-/**
- * One past the highest revision id the base package already uses, across every
- * story. Seeding there keeps generated ids from colliding with revisions the
- * base already carries, while staying a pure function of the base bytes.
- */
-const revisionIdSeedFor = (reviewer: FolioDocxReviewer): number => {
+type ExistingRevisions = {
+  /**
+   * One past the highest revision id the base package already uses, across
+   * every story. Seeding there keeps generated ids from colliding with
+   * revisions the base already carries, while staying a pure function of the
+   * base bytes.
+   */
+  idSeed: number;
+  /**
+   * Whether the base arrived carrying unresolved revisions. When it did, the
+   * compared base is its accepted view rather than the package as stored, and
+   * the result must be serialized even if nothing else changed.
+   */
+  present: boolean;
+};
+
+/** Read before either side is resolved, so it describes the package as it arrived. */
+const existingRevisionsOf = (reviewer: FolioDocxReviewer): ExistingRevisions => {
   let highest = 0;
+  let present = false;
   for (const { handle } of reviewer.listStories()) {
     const story = reviewer.readReviewedStory({ story: handle, view: "current-markup" });
     for (const change of story?.changes ?? []) {
       highest = Math.max(highest, change.id);
+      present = true;
     }
   }
-  return highest + 1;
+  return { idSeed: highest + 1, present };
 };
 
 const isMainStory = (story: FolioDocumentStoryHandle): boolean => story.type === "main";
@@ -118,6 +132,13 @@ export type ComparedStoryPair = {
 
 /** Everything the later stages need, and nothing they have to re-derive. */
 export type ParsedComparison = {
+  /**
+   * The base package as it arrived. It is the result when nothing changed, but
+   * only when it carried no revisions of its own: otherwise the compared base
+   * is its accepted view and these bytes are a different document.
+   */
+  baseBuffer: ArrayBuffer;
+  baseCarriedRevisions: boolean;
   reviewer: FolioDocxReviewer;
   targetReviewer: FolioDocxReviewer;
   revisionStamp: FolioRevisionStamp;
@@ -154,6 +175,7 @@ export const parseComparison = async (
 
   const reviewer = baseParse.value;
   const targetReviewer = targetParse.value;
+  const existing = existingRevisionsOf(reviewer);
   const pairs: ComparedStoryPair[] = [];
   const unsupported: CompareUnsupportedPart[] = [];
 
@@ -193,9 +215,11 @@ export const parseComparison = async (
   }
 
   return Result.ok({
+    baseBuffer: base,
+    baseCarriedRevisions: existing.present,
     reviewer,
     targetReviewer,
-    revisionStamp: { date: options.timestamp, idSeed: revisionIdSeedFor(reviewer) },
+    revisionStamp: { date: options.timestamp, idSeed: existing.idSeed },
     packageDate,
     pairs,
     unsupported,
@@ -287,12 +311,33 @@ export const applyComparison = (
   return Result.ok(changes);
 };
 
-/** Stage 4: the redlined package, with every ZIP entry date pinned. */
-export const serializeComparison = async ({
-  reviewer,
-  packageDate,
-}: ParsedComparison): Promise<Result<ArrayBuffer, CompareDocxSerializeError>> =>
-  await Result.tryPromise({
+/**
+ * Stage 4: the result package, with every ZIP entry date pinned.
+ *
+ * A comparison that found nothing returns the base bytes as they arrived. A
+ * change is only ever reported alongside the operations that realize it, so no
+ * operations means no changes, and re-serializing then rewrites a document
+ * nobody edited: on a 2,200-block pair that was a second of work to reproduce
+ * the input.
+ *
+ * Unless the base carried revisions of its own. Then the compared base was its
+ * accepted view, the arriving bytes are a different document, and handing them
+ * back would make rejecting the result land before the previous reviewer's
+ * edits rather than after them.
+ *
+ * The short-circuit lives here rather than in {@link compareDocx} so that
+ * every caller of the stages sees the same decision. Putting it in the
+ * composition let the benchmark's own composition disagree with the shipped
+ * one within a single run.
+ */
+export const serializeComparison = async (
+  { baseBuffer, baseCarriedRevisions, reviewer, packageDate }: ParsedComparison,
+  planned: readonly PlannedStoryComparison[],
+): Promise<Result<ArrayBuffer, CompareDocxSerializeError>> => {
+  if (!baseCarriedRevisions && planned.every(({ plan }) => plan.operations.length === 0)) {
+    return Result.ok(baseBuffer);
+  }
+  return await Result.tryPromise({
     try: async () => await withFixedPackageDates(await reviewer.toBuffer(), packageDate),
     catch: (cause) =>
       new CompareDocxSerializeError({
@@ -300,6 +345,7 @@ export const serializeComparison = async ({
         cause,
       }),
   });
+};
 
 /**
  * Compare `base` against `target` and return `base` carrying the tracked
@@ -323,7 +369,7 @@ export const compareDocx = async (
   if (changes.isErr()) {
     return Result.err(changes.error);
   }
-  const serialized = await serializeComparison(parsed.value);
+  const serialized = await serializeComparison(parsed.value, planned.value);
   if (serialized.isErr()) {
     return Result.err(serialized.error);
   }

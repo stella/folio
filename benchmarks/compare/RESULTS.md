@@ -105,11 +105,8 @@ above roughly a thousand blocks, and that is the first thing to profile.
 1. **Find the superlinear term above ~1,000 blocks.** Between `m` and `l` the
    cost per block roughly quadruples. Until that is understood, no other
    optimization matters at document scale.
-2. **A comparison that found nothing should not rewrite the document.**
-   `prose/l/identical` spends 1,041ms serializing a package it did not change,
-   and 2,076ms parsing to discover it did not. The serialize half is
-   recoverable immediately: when no story yields an operation, the base package
-   is already the answer.
+2. ~~**A comparison that found nothing should not rewrite the document.**~~
+   Done; see below.
 3. **Align on the parsed model, convert only what changed.** Parse is 35.5% of
    the total and is paid in full on both sides even when three paragraphs
    differ. The alignment needs block text and container coordinates, not a
@@ -120,6 +117,43 @@ above roughly a thousand blocks, and that is the first thing to profile.
    snapshot anchors against the live document per operation.
 
 Alignment needs no work. It is already 0.4%.
+
+## Changes measured against this baseline
+
+### A comparison that found nothing returns the base package
+
+`serializeComparison` hands back the arriving bytes when no story yielded an
+operation and the base carried no revisions of its own.
+
+| Configuration       | serialize before | serialize after |
+| ------------------- | ---------------- | --------------- |
+| `prose/l/identical` | 1041.4ms         | 0.0ms           |
+| `prose/m/identical` | 27.4ms           | 0.0ms           |
+| `lists/m/identical` | 94.8ms           | 0.0ms           |
+| `notes/m/identical` | 48.3ms           | 0.0ms           |
+
+Read the stage column, not the wall column: the two runs were taken under
+different host load, so wall time is not comparable between them, while the
+serialize stage going to zero is the change itself.
+
+`revised/*` still serializes, and should: its base carries someone else's
+revisions, so the compared base is the accepted view and the arriving bytes are
+a different document. The benchmark shows the distinction directly —
+`revised/s/identical` keeps a non-zero serialize stage while every other class's
+`identical` case drops to zero.
+
+Digests moved for 18 configurations (every clean-base `identical`, plus the two
+`notes/*/notes` cases, which also plan nothing) because their product is now
+the input package rather than a re-serialization of it. Every `revised/*`
+digest moved as well: the revision id seed is now read from the package as it
+arrived, above any ids a previous reviewer used, rather than after resolution
+when none remain.
+
+The benchmark caught the first attempt at this: the short-circuit sat in
+`compareDocx` rather than in the stage, so the harness's own composition of the
+stages disagreed with the shipped one and `byte-determinism` failed on all 18
+`identical` cases within one run. The property suite then caught the second
+attempt, where the base carried revisions.
 
 ## Correctness gaps the baseline surfaced
 
