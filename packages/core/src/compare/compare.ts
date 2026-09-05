@@ -30,11 +30,14 @@ import {
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { pairFolioDocumentStories } from "../document-stories";
 import { planStoryCompare } from "./plan";
+import { withFixedPackageDates } from "./reproducible-package";
 import {
   CompareDocxApplyError,
   CompareDocxOperationLimitError,
   CompareDocxParseError,
+  CompareDocxRoundTripError,
   CompareDocxSerializeError,
+  InvalidCompareDocxOptionsError,
   type CompareChange,
   type CompareDocxError,
   type CompareDocxOptions,
@@ -82,6 +85,24 @@ const revisionIdSeedFor = (reviewer: FolioDocxReviewer): number => {
 const isMainStory = (story: FolioDocumentStoryHandle): boolean => story.type === "main";
 
 /**
+ * One story's text-and-structure projection: every block's text tagged with
+ * the table cell it sits in. The tag is what makes the self-check below see a
+ * paragraph that landed beside a table instead of inside it.
+ */
+const projectStory = (
+  reviewer: FolioDocxReviewer,
+  story: FolioDocumentStoryHandle,
+): string[] => {
+  const blocks = reviewer.readReviewedStory({ story, view: "final" })?.snapshot.blocks ?? [];
+  return blocks.map(({ text, table }) => {
+    const container = table
+      ? `t${String(table.tableIndex)}r${String(table.rowIndex)}c${String(table.cellIndex)}p${String(table.paragraphIndex)}`
+      : "body";
+    return `${container}|${text}`;
+  });
+};
+
+/**
  * Compare `base` against `target` and return `base` carrying the tracked
  * changes that turn it into `target`, alongside the change list describing
  * them.
@@ -91,6 +112,17 @@ export const compareDocx = async (
   target: ArrayBuffer,
   options: CompareDocxOptions,
 ): Promise<Result<CompareResult, CompareDocxError>> => {
+  const packageDate = new Date(options.timestamp);
+  if (Number.isNaN(packageDate.getTime())) {
+    return Result.err(
+      new InvalidCompareDocxOptionsError({
+        message: "timestamp must be a date the package can be stamped with.",
+        option: "timestamp",
+        receivedValue: options.timestamp,
+      }),
+    );
+  }
+
   const baseParse = await parseSide(base, "base", options.author);
   if (baseParse.isErr()) {
     return Result.err(baseParse.error);
@@ -171,10 +203,27 @@ export const compareDocx = async (
         }),
       );
     }
+
+    // Self-check rather than trust: accepting the story's generated revisions
+    // must reproduce the target, structure included. A difference the
+    // operation vocabulary cannot express would otherwise leave a redline that
+    // reads plausibly and is wrong.
+    const accepted = projectStory(reviewer, baseStory);
+    const expected = projectStory(targetReviewer, targetStory);
+    if (accepted.join(" ") !== expected.join(" ")) {
+      return Result.err(
+        new CompareDocxRoundTripError({
+          message: "Accepting the generated tracked changes does not reproduce the target.",
+          story: baseStory,
+          acceptedText: accepted,
+          targetText: expected,
+        }),
+      );
+    }
   }
 
   const serialized = await Result.tryPromise({
-    try: async () => await reviewer.toBuffer(),
+    try: async () => await withFixedPackageDates(await reviewer.toBuffer(), packageDate),
     catch: (cause) =>
       new CompareDocxSerializeError({
         message: "The compared document could not be serialized.",

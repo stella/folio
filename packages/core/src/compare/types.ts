@@ -138,6 +138,12 @@ export type CompareResult = {
   unsupported: readonly CompareUnsupportedPart[];
 };
 
+export class InvalidCompareDocxOptionsError extends TaggedError("InvalidCompareDocxOptionsError")<{
+  message: string;
+  option: "timestamp";
+  receivedValue: unknown;
+}> {}
+
 export class CompareDocxParseError extends TaggedError("CompareDocxParseError")<{
   message: string;
   side: "base" | "target";
@@ -152,6 +158,20 @@ export class CompareDocxParseError extends TaggedError("CompareDocxParseError")<
 export class CompareDocxApplyError extends TaggedError("CompareDocxApplyError")<{
   message: string;
   skipped: readonly FolioAIEditSkippedOperation[];
+}> {}
+
+/**
+ * The generated tracked changes do not accept back to the target. Raised by
+ * the self-check {@link compareDocx} runs before returning: a redline that
+ * quietly loses part of the difference is worse than no redline, so the
+ * mismatch is surfaced instead of the document.
+ */
+export class CompareDocxRoundTripError extends TaggedError("CompareDocxRoundTripError")<{
+  message: string;
+  story: FolioDocumentStoryHandle;
+  /** Block texts the accepted result holds where the target differs. */
+  acceptedText: readonly string[];
+  targetText: readonly string[];
 }> {}
 
 /** The difference needs more operations than the engine will generate. */
@@ -171,4 +191,6 @@ export type CompareDocxError =
   | CompareDocxApplyError
   | CompareDocxOperationLimitError
   | CompareDocxParseError
-  | CompareDocxSerializeError;
+  | CompareDocxRoundTripError
+  | CompareDocxSerializeError
+  | InvalidCompareDocxOptionsError;

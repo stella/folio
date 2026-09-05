@@ -3,25 +3,37 @@
  * and the {@link FolioAIEditOperation}s that reproduce the target when every
  * generated tracked change is accepted.
  *
- * Pure: no parsing, no serialization, no clock. The alignment itself is
- * {@link alignFolioBlocks}, shared with the version-diff and redline paths, so
- * all three interpret one document walk rather than re-deriving it.
+ * Pure: no parsing, no serialization, no clock. Every alignment runs through
+ * {@link alignFolioBlocks}, shared with the version-diff and redline paths.
  *
- * ## Structural passes over the alignment
+ * ## Aligning by container, not by block
  *
- * 1. **Whole-row collapse.** A run of consecutive base-only (or target-only)
- *    blocks that covers every block of one table row is a row deletion (or
- *    insertion), and is emitted as `deleteTableRow` / `insertTableRow`. Left as
- *    paragraph operations it would strand the target row's text outside the
- *    table, because a block insertion anchored inside a table lands as a
- *    sibling of the table, not as a new row.
- * 2. **Move detection.** A base-only and a target-only block with identical
- *    text and at least {@link MOVE_MINIMUM_WORD_COUNT} words are one relocation.
- *    The operations stay a delete plus an insert (the tracked-change grammar
- *    Word round-trips has no durable "moved from here" mark for this path), but
- *    the change list reports a single `move` so the relocation is not read as
- *    unrelated churn. The word floor keeps boilerplate one-liners from pairing
- *    as spurious moves.
+ * A single alignment over every paragraph in the story cannot see structure.
+ * It pairs on text and document order, so it will put a paragraph inside a
+ * table cell opposite one outside it, or a cell of one row opposite a cell of
+ * the next — and rewriting either pair in place leaves the target's text in
+ * the wrong container. A whole row that was added or removed likewise arrives
+ * as a scatter of unmatched paragraphs, which no block operation can turn back
+ * into a row: a block insertion anchored in a table lands beside the table,
+ * never as a new row in it.
+ *
+ * So the story is aligned in three nested passes, each over things that can
+ * actually stand in for one another:
+ *
+ * 1. **Segments.** Maximal runs of body text and of one table each, so a table
+ *    is only ever compared against a table.
+ * 2. **Rows**, within a paired table segment, so a whole-row change stays whole
+ *    and becomes `insertTableRow` / `deleteTableRow`.
+ * 3. **Cells**, within a paired row, matched by physical cell index.
+ *
+ * ## Move detection
+ *
+ * A base-only and a target-only block with identical text and at least
+ * {@link MOVE_MINIMUM_WORD_COUNT} words are one relocation. The operations stay
+ * a delete plus an insert — the tracked-change grammar Word round-trips has no
+ * durable "moved from here" mark on this path — but the change list reports a
+ * single `move` so the relocation is not read as unrelated churn. The word
+ * floor keeps boilerplate one-liners from pairing as spurious moves.
  */
 
 import { panic } from "better-result";
@@ -48,21 +60,6 @@ const MOVE_MINIMUM_WORD_COUNT = 3;
  */
 const MAX_MOVE_CANDIDATES_PER_TEXT = 64;
 
-const rowKey = ({ tableIndex, rowIndex }: FolioAIBlockTableLocation): string =>
-  `${tableIndex}:${rowIndex}`;
-
-/** How many blocks each table row holds, so a partial run is not read as a whole-row change. */
-const countBlocksPerRow = (blocks: readonly FolioAIBlock[]): ReadonlyMap<string, number> => {
-  const counts = new Map<string, number>();
-  for (const { table } of blocks) {
-    if (table) {
-      const key = rowKey(table);
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-    }
-  }
-  return counts;
-};
-
 const wordCountReaches = (text: string, minimum: number): boolean => {
   let count = 0;
   for (const word of text.split(/\s+/u)) {
@@ -74,9 +71,8 @@ const wordCountReaches = (text: string, minimum: number): boolean => {
 };
 
 /**
- * One step of the interpreted alignment. `baseRow` / `targetRow` are the
- * whole-row collapses; the rest mirror {@link alignFolioBlocks}'s events with
- * the revised side renamed to the target side.
+ * One step of the interpreted alignment. `baseRow` / `targetRow` are whole-row
+ * changes; the rest are block-level.
  */
 type CompareStep =
   | { type: "pair"; baseBlock: FolioAIBlock; targetBlock: FolioAIBlock }
@@ -86,57 +82,220 @@ type CompareStep =
   | { type: "targetRow"; blocks: readonly FolioAIBlock[]; location: FolioAIBlockTableLocation };
 
 /**
- * The blocks a same-side run covers, grouped into maximal same-row prefixes.
- * A group whose size matches the row's block count is a whole-row change.
+ * A maximal run of blocks that share a container: body text, or one table.
+ * Blocks arrive in document order and a table's blocks are contiguous, so a
+ * single forward scan recovers the document's structure.
  */
-const collapseRun = (
-  run: readonly FolioAIBlock[],
-  blocksPerRow: ReadonlyMap<string, number>,
-  side: "base" | "target",
-): CompareStep[] => {
-  const steps: CompareStep[] = [];
-  let index = 0;
-  while (index < run.length) {
-    const first = run[index];
-    if (!first) {
-      break;
-    }
-    const { table } = first;
-    if (!table) {
-      steps.push(
-        side === "base"
-          ? { type: "baseOnly", block: first }
-          : { type: "targetOnly", block: first },
-      );
-      index++;
+type DocumentSegment =
+  | { kind: "body"; blocks: FolioAIBlock[] }
+  | { kind: "table"; blocks: FolioAIBlock[] };
+
+/**
+ * The document's segments, normalized to strictly alternate body, table, body,
+ * ... and to begin and end with a body segment — inserting empty body segments
+ * where the document has none.
+ *
+ * Without the padding the two sides can hold different segment shapes (a
+ * document that opens with a table against one that opens with a heading), and
+ * the alignment's positional fallback would then put a body segment opposite a
+ * table. That pair is unusable, so the whole table would be reissued as a
+ * deletion plus an insertion. Padding keeps like opposite like.
+ */
+const splitSegments = (blocks: readonly FolioAIBlock[]): DocumentSegment[] => {
+  const segments: DocumentSegment[] = [];
+  let currentTableIndex: number | null = null;
+  for (const block of blocks) {
+    const tableIndex = block.table?.tableIndex ?? null;
+    const current = segments.at(-1);
+    if (current !== undefined && currentTableIndex === tableIndex) {
+      current.blocks.push(block);
       continue;
     }
-    const key = rowKey(table);
-    let end = index;
-    while (end < run.length) {
-      const candidate = run[end]?.table;
-      if (!candidate || rowKey(candidate) !== key) {
-        break;
-      }
-      end++;
+    if (block.table && segments.at(-1)?.kind !== "body") {
+      segments.push({ kind: "body", blocks: [] });
     }
-    const group = run.slice(index, end);
-    if (group.length === blocksPerRow.get(key)) {
-      steps.push(
-        side === "base"
-          ? { type: "baseRow", blocks: group, location: table }
-          : { type: "targetRow", blocks: group, location: table },
-      );
+    segments.push({ kind: block.table ? "table" : "body", blocks: [block] });
+    currentTableIndex = tableIndex;
+  }
+  if (segments.length === 0 || segments.at(-1)?.kind === "table") {
+    segments.push({ kind: "body", blocks: [] });
+  }
+  return segments;
+};
+
+/**
+ * A stand-in block used only to run {@link alignFolioBlocks} over table rows,
+ * which are not paragraphs. The id is always the `seq-NNNN` shape, which the
+ * alignment treats as unstable, so it pairs rows on text and position alone
+ * instead of mistaking a synthetic id for identity.
+ */
+const proxyBlock = (index: number, text: string): FolioAIBlock => ({
+  id: `seq-${String(index + 1).padStart(4, "0")}`,
+  kind: "paragraph",
+  text,
+});
+
+/** Blocks of one table grouped into rows, in row order. */
+const groupRows = (blocks: readonly FolioAIBlock[]): FolioAIBlock[][] => {
+  const rows = new Map<number, FolioAIBlock[]>();
+  for (const block of blocks) {
+    if (!block.table) {
+      continue;
+    }
+    const row = rows.get(block.table.rowIndex);
+    if (row) {
+      row.push(block);
     } else {
-      for (const block of group) {
-        steps.push(
-          side === "base" ? { type: "baseOnly", block } : { type: "targetOnly", block },
-        );
+      rows.set(block.table.rowIndex, [block]);
+    }
+  }
+  return [...rows.keys()].toSorted((left, right) => left - right).map((key) => rows.get(key) ?? []);
+};
+
+const rowText = (row: readonly FolioAIBlock[]): string =>
+  row.map(({ text }) => text).join(" ");
+
+const rowLocation = (row: readonly FolioAIBlock[]): FolioAIBlockTableLocation | null =>
+  row.at(0)?.table ?? null;
+
+/** Zip one paired row's cells by physical cell index, then by paragraph order. */
+const alignRowCells = (
+  baseRow: readonly FolioAIBlock[],
+  targetRow: readonly FolioAIBlock[],
+): CompareStep[] => {
+  const byCell = (row: readonly FolioAIBlock[]): Map<number, FolioAIBlock[]> => {
+    const cells = new Map<number, FolioAIBlock[]>();
+    for (const block of row) {
+      const cellIndex = block.table?.cellIndex ?? 0;
+      const blocks = cells.get(cellIndex);
+      if (blocks) {
+        blocks.push(block);
+      } else {
+        cells.set(cellIndex, [block]);
       }
     }
-    index = end;
+    return cells;
+  };
+
+  const baseCells = byCell(baseRow);
+  const targetCells = byCell(targetRow);
+  const cellIndexes = [...new Set([...baseCells.keys(), ...targetCells.keys()])].toSorted(
+    (left, right) => left - right,
+  );
+
+  const steps: CompareStep[] = [];
+  for (const cellIndex of cellIndexes) {
+    const baseBlocks = baseCells.get(cellIndex) ?? [];
+    const targetBlocks = targetCells.get(cellIndex) ?? [];
+    const paired = Math.min(baseBlocks.length, targetBlocks.length);
+    for (let index = 0; index < paired; index++) {
+      const baseBlock = baseBlocks[index];
+      const targetBlock = targetBlocks[index];
+      if (baseBlock && targetBlock) {
+        steps.push({ type: "pair", baseBlock, targetBlock });
+      }
+    }
+    for (const block of baseBlocks.slice(paired)) {
+      steps.push({ type: "baseOnly", block });
+    }
+    for (const block of targetBlocks.slice(paired)) {
+      steps.push({ type: "targetOnly", block });
+    }
   }
   return steps;
+};
+
+/**
+ * Align one table's rows, then its cells.
+ *
+ * Running the block alignment straight over a table's paragraphs cannot see
+ * rows: it happily pairs a cell of one row with a cell of another, and a row
+ * that was wholly added or removed shows up as a scatter of unmatched
+ * paragraphs. Aligning rows first — each row standing in as one proxy block of
+ * its joined cell text — keeps a whole-row change whole, and confines every
+ * other difference to a cell that really corresponds.
+ */
+const buildTableSteps = (
+  baseBlocks: readonly FolioAIBlock[],
+  targetBlocks: readonly FolioAIBlock[],
+): CompareStep[] => {
+  const baseRows = groupRows(baseBlocks);
+  const targetRows = groupRows(targetBlocks);
+  const steps: CompareStep[] = [];
+
+  let baseCursor = 0;
+  let targetCursor = 0;
+  for (const event of alignFolioBlocks(
+    baseRows.map((row, index) => proxyBlock(index, rowText(row))),
+    targetRows.map((row, index) => proxyBlock(index, rowText(row))),
+  )) {
+    switch (event.type) {
+      case "pair": {
+        const baseRow = baseRows[baseCursor++];
+        const targetRow = targetRows[targetCursor++];
+        if (baseRow && targetRow) {
+          steps.push(...alignRowCells(baseRow, targetRow));
+        }
+        break;
+      }
+      case "baseOnly": {
+        const row = baseRows[baseCursor++];
+        const location = row ? rowLocation(row) : null;
+        if (row && location) {
+          steps.push({ type: "baseRow", blocks: row, location });
+        }
+        break;
+      }
+      case "revisedOnly": {
+        const row = targetRows[targetCursor++];
+        const location = row ? rowLocation(row) : null;
+        if (row && location) {
+          steps.push({ type: "targetRow", blocks: row, location });
+        }
+        break;
+      }
+      default: {
+        const unreachable: never = event;
+        panic("Unhandled block alignment event", { event: unreachable });
+      }
+    }
+  }
+  return steps;
+};
+
+const buildBodySteps = (
+  baseBlocks: readonly FolioAIBlock[],
+  targetBlocks: readonly FolioAIBlock[],
+): CompareStep[] =>
+  alignFolioBlocks(baseBlocks, targetBlocks).map((event) => {
+    switch (event.type) {
+      case "pair":
+        return { type: "pair", baseBlock: event.baseBlock, targetBlock: event.revisedBlock };
+      case "baseOnly":
+        return { type: "baseOnly", block: event.block };
+      case "revisedOnly":
+        return { type: "targetOnly", block: event.block };
+      default: {
+        const unreachable: never = event;
+        return panic("Unhandled block alignment event", { event: unreachable });
+      }
+    }
+  });
+
+/** Every block of an unpaired segment, as one-sided steps. */
+const unpairedSegmentSteps = (segment: DocumentSegment, side: "base" | "target"): CompareStep[] => {
+  if (segment.kind === "table") {
+    return groupRows(segment.blocks).flatMap((row) => {
+      const location = rowLocation(row);
+      if (!location) {
+        return [];
+      }
+      return [{ type: side === "base" ? "baseRow" : "targetRow", blocks: row, location }];
+    });
+  }
+  return segment.blocks.map((block) =>
+    side === "base" ? { type: "baseOnly", block } : { type: "targetOnly", block },
+  );
 };
 
 type BuildStepsOptions = {
@@ -144,43 +303,55 @@ type BuildStepsOptions = {
   targetBlocks: readonly FolioAIBlock[];
 };
 
+/**
+ * Align the two stories segment by segment, in order.
+ *
+ * Segments are paired by position rather than by text. Both sides have been
+ * normalized to the same alternating shape, so position already carries the
+ * meaning: the nth table of one document answers to the nth table of the
+ * other, and the body text between two tables answers to the body text between
+ * the same two tables. Matching segments on text instead lets a paragraph that
+ * moved across a table steal the table's own pairing, which reissues the whole
+ * table as a deletion and an insertion.
+ *
+ * When the two documents hold different numbers of tables the shapes diverge,
+ * and the surplus segments are reported one-sided. The operation vocabulary
+ * cannot create or destroy a table, so `compareDocx`'s round-trip self-check
+ * refuses those comparisons rather than returning a package that silently
+ * drops one.
+ */
 const buildSteps = ({ baseBlocks, targetBlocks }: BuildStepsOptions): CompareStep[] => {
-  const baseBlocksPerRow = countBlocksPerRow(baseBlocks);
-  const targetBlocksPerRow = countBlocksPerRow(targetBlocks);
+  const baseSegments = splitSegments(baseBlocks);
+  const targetSegments = splitSegments(targetBlocks);
+  const pairedCount = Math.min(baseSegments.length, targetSegments.length);
   const steps: CompareStep[] = [];
-  let baseRun: FolioAIBlock[] = [];
-  let targetRun: FolioAIBlock[] = [];
 
-  const flush = () => {
-    if (baseRun.length > 0) {
-      steps.push(...collapseRun(baseRun, baseBlocksPerRow, "base"));
-      baseRun = [];
+  for (let index = 0; index < pairedCount; index++) {
+    const baseSegment = baseSegments[index];
+    const targetSegment = targetSegments[index];
+    if (!baseSegment || !targetSegment) {
+      continue;
     }
-    if (targetRun.length > 0) {
-      steps.push(...collapseRun(targetRun, targetBlocksPerRow, "target"));
-      targetRun = [];
+    if (baseSegment.kind !== targetSegment.kind) {
+      steps.push(
+        ...unpairedSegmentSteps(baseSegment, "base"),
+        ...unpairedSegmentSteps(targetSegment, "target"),
+      );
+      continue;
     }
-  };
-
-  for (const event of alignFolioBlocks(baseBlocks, targetBlocks)) {
-    switch (event.type) {
-      case "pair":
-        flush();
-        steps.push({ type: "pair", baseBlock: event.baseBlock, targetBlock: event.revisedBlock });
-        break;
-      case "baseOnly":
-        baseRun.push(event.block);
-        break;
-      case "revisedOnly":
-        targetRun.push(event.block);
-        break;
-      default: {
-        const unreachable: never = event;
-        panic("Unhandled block alignment event", { event: unreachable });
-      }
-    }
+    steps.push(
+      ...(baseSegment.kind === "table"
+        ? buildTableSteps(baseSegment.blocks, targetSegment.blocks)
+        : buildBodySteps(baseSegment.blocks, targetSegment.blocks)),
+    );
   }
-  flush();
+
+  for (const segment of baseSegments.slice(pairedCount)) {
+    steps.push(...unpairedSegmentSteps(segment, "base"));
+  }
+  for (const segment of targetSegments.slice(pairedCount)) {
+    steps.push(...unpairedSegmentSteps(segment, "target"));
+  }
   return steps;
 };
 
@@ -280,23 +451,19 @@ const findRowAnchor = (steps: readonly CompareStep[], stepIndex: number): RowAnc
   return null;
 };
 
-/** A row's blocks joined per physical cell, in cell order. */
+/**
+ * A row's text per physical cell, indexed BY cell so an empty cell keeps its
+ * slot. An empty cell carries no block at all, so packing only the cells that
+ * have text would shift every later cell one column left.
+ */
 const rowCellTexts = (blocks: readonly FolioAIBlock[]): string[] => {
-  const byCell = new Map<number, string[]>();
+  const byCell: (string | undefined)[] = [];
   for (const block of blocks) {
-    if (!block.table) {
-      continue;
-    }
-    const texts = byCell.get(block.table.cellIndex);
-    if (texts) {
-      texts.push(block.text);
-    } else {
-      byCell.set(block.table.cellIndex, [block.text]);
-    }
+    const cellIndex = block.table?.cellIndex ?? 0;
+    const existing = byCell[cellIndex];
+    byCell[cellIndex] = existing === undefined ? block.text : `${existing}\n${block.text}`;
   }
-  return [...byCell.keys()]
-    .toSorted((left, right) => left - right)
-    .map((cellIndex) => (byCell.get(cellIndex) ?? []).join("\n"));
+  return Array.from(byCell, (text) => text ?? "");
 };
 
 const locationOf = (story: FolioDocumentStoryHandle, block: FolioAIBlock): CompareChangeLocation =>
