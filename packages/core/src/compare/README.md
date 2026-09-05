@@ -82,8 +82,13 @@ deliberately before comparing.
 
 ## Limitations
 
+`benchmarks/compare` measures each of these; `benchmarks/compare/RESULTS.md`
+carries the current numbers and the failing cases.
+
 - **Main story only.** Headers, footers, footnotes, and endnotes are reported in
-  `unsupported`, not compared. So are parts present on one side only.
+  `unsupported`, not compared. So are parts present on one side only. A caller
+  who reads only `changes` is therefore told that two documents differing solely
+  in a footnote agree; read `unsupported` alongside it.
 - **Moves are reported, not represented.** The document carries a deletion at
   the source and an insertion at the destination; the change list keeps the
   relocation visible as `kind: "move"`. A relocated block needs at least three
@@ -100,7 +105,14 @@ deliberately before comparing.
   accepts back to the target; it is just more granular than the edit was.
 - **Numbering is not compared.** List renumbering that follows from an insertion
   or deletion is a property of the numbering definitions, not of block text, and
-  no change is reported for it.
+  no change is reported for it. A changed list level is invisible for the same
+  reason and more seriously: `w:ilvl` moves and the comparison reports nothing
+  at all, because the edit vocabulary has no paragraph-property operation to
+  express it.
+- **A split or a merge is overstated.** Both move a paragraph mark and no words,
+  but are reported as a replace plus an insert or delete, so the half that did
+  not change reads as newly written. `probes.test.ts` pins the current
+  behaviour.
 
 ## Files
 

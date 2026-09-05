@@ -17,6 +17,7 @@
 
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { loadavg } from "node:os";
 import path from "node:path";
 
 import { loadCorpus, readDocument, type CorpusPair } from "./corpus";
@@ -78,6 +79,12 @@ type CaseResult = MeasuredCase | SkippedCase | FailedCase;
 
 type Report = {
   machine: { platform: string; arch: string; cpus: number; bun: string };
+  /**
+   * One-minute host load before and after the run. A run taken while the
+   * machine was busy with something else is not comparable with one taken
+   * idle, and the only honest way to know is to record it.
+   */
+  loadAverage: { before: number; after: number };
   warmups: number;
   iterations: number;
   cases: readonly CaseResult[];
@@ -366,6 +373,7 @@ const applyDigestMode = (report: Report, mode: CliOptions["mode"]): number => {
 };
 
 const runParent = (options: CliOptions): number => {
+  const loadBefore = loadavg().at(0) ?? Number.NaN;
   const requests: ChildRequest[] = [];
   for (const documentClass of DOCUMENT_CLASSES) {
     for (const size of options.sizes) {
@@ -414,6 +422,7 @@ const runParent = (options: CliOptions): number => {
       cpus: navigator.hardwareConcurrency,
       bun: Bun.version,
     },
+    loadAverage: { before: loadBefore, after: loadavg().at(0) ?? Number.NaN },
     warmups: options.warmups,
     iterations: options.iterations,
     cases,
@@ -429,7 +438,8 @@ const runParent = (options: CliOptions): number => {
       (result.status === "measured" && result.invariants.some(({ status }) => status === "failed")),
   );
   console.log(
-    `\n${String(cases.length)} cases, ${String(broken.length)} with a failing invariant or error.`,
+    `\n${String(cases.length)} cases, ${String(broken.length)} with a failing invariant or error.` +
+      ` Host load ${report.loadAverage.before.toFixed(1)} -> ${report.loadAverage.after.toFixed(1)}.`,
   );
   const digestStatus = applyDigestMode(report, options.mode);
   return broken.length === 0 ? digestStatus : 1;

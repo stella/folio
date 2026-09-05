@@ -22,6 +22,10 @@ heap. Within the process each sample is a whole comparison, bytes in to bytes
 out: medians over nine samples after four discarded warm-ups, plus the heap
 growth of one further un-timed run.
 
+The report records the host's one-minute load average before and after the run.
+A run taken while the machine was busy is not comparable with one taken idle,
+and recording it is the only way to know which you are reading.
+
 The four stages are timed separately: `parse` (both packages to editor models),
 `align` (the pure planning pass), `apply` (writing tracked changes plus the
 round-trip self-check), `serialize`. They are the functions `compareDocx`
@@ -29,17 +33,17 @@ itself composes, so the split cannot drift from the shipped pipeline.
 
 ### Document classes
 
-| Class         | What it isolates                                                                |
-| ------------- | ------------------------------------------------------------------------------- |
-| `prose`       | The common path: headings and paragraphs, nothing else.                         |
-| `lists`       | Multi-level numbering a redline must not silently renumber.                     |
-| `tables`      | Merged, nested and empty cells: structure a flat block alignment cannot see.    |
-| `notes`       | Footnotes and endnotes as separate stories with their own id space.             |
-| `graphics`    | Images, equations and breaks: atoms a word diff must move whole or not at all.  |
-| `fields`      | Simple and complex fields, hyperlinks and bookmarks spanning paragraphs.        |
-| `sections`    | Headers, footers and multiple sections.                                         |
-| `multiscript` | Right-to-left Arabic and Hebrew, CJK without spaces, and Latin interleaved.     |
-| `revised`     | A base that already carries someone else's tracked changes.                     |
+| Class         | What it isolates                                                               |
+| ------------- | ------------------------------------------------------------------------------ |
+| `prose`       | The common path: headings and paragraphs, nothing else.                        |
+| `lists`       | Multi-level numbering a redline must not silently renumber.                    |
+| `tables`      | Merged, nested and empty cells: structure a flat block alignment cannot see.   |
+| `notes`       | Footnotes and endnotes as separate stories with their own id space.            |
+| `graphics`    | Images, equations and breaks: atoms a word diff must move whole or not at all. |
+| `fields`      | Simple and complex fields, hyperlinks and bookmarks spanning paragraphs.       |
+| `sections`    | Headers, footers and multiple sections.                                        |
+| `multiscript` | Right-to-left Arabic and Hebrew, CJK without spaces, and Latin interleaved.    |
+| `revised`     | A base that already carries someone else's tracked changes.                    |
 
 Sizes are block counts: `s` 40, `m` 320, `l` 2200.
 

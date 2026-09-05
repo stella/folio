@@ -1,0 +1,146 @@
+# Compare benchmark results
+
+Baseline for `compareDocx`, taken before any optimization work so every later
+change can report its effect against it. Reproduce with `bun run bench:compare`;
+`README.md` says what each column means.
+
+## How to read these numbers
+
+Absolute milliseconds belong to one machine on one day. What survives a change
+of hardware is the shape: which stage dominates, how cost scales with block
+count, and which invariants fail. Read the shape; re-measure the milliseconds.
+
+Every run records the host's one-minute load average, because a run taken on a
+busy machine is not comparable with one taken idle.
+
+## Run
+
+- Apple arm64, 8 logical CPUs, Bun 1.4.2, macOS.
+- Sizes `s` and `m`: 4 warm-ups, 9 iterations, 144 configurations, host load
+  21.6 falling to 10.0. **The machine was busy.** Treat the absolute
+  milliseconds as an upper bound; the ratios below are what to read.
+- Size `l`, class `prose`: same sampling, measured separately under comparable
+  load.
+- Schema validation was skipped: this machine has no .NET toolchain. CI has
+  one, so the gate runs there.
+
+## Where the time goes
+
+Summed medians over all 127 measured configurations at `s` and `m`:
+
+| Stage       | Share |
+| ----------- | ----- |
+| `parse`     | 35.5% |
+| `align`     | 0.4%  |
+| `apply`     | 41.7% |
+| `serialize` | 22.3% |
+
+**The comparison algorithm is not the cost.** Alignment — segment, row and cell
+pairing, move detection, the whole planning pass — is 0.4% of the work. The
+other 99.6% is converting two packages into editor models, writing tracked
+changes through the applier, and serializing one package back out. Any
+optimization aimed at the diff itself is aimed at the wrong stage.
+
+## Size `m` (320 blocks), by class
+
+Wall time is the median of the whole comparison; the stage columns are medians
+of the same runs measured separately.
+
+| Configuration           | Blocks | Changes | Wall     | parse   | align  | apply    | serialize |
+| ----------------------- | ------ | ------- | -------- | ------- | ------ | -------- | --------- |
+| `prose/m/identical`     | 320    | 0       | 83.8ms   | 57.8ms  | 0.71ms | 0.0ms    | 27.4ms    |
+| `prose/m/light`         | 320    | 22      | 248.0ms  | 197.1ms | 1.46ms | 69.1ms   | 62.7ms    |
+| `prose/m/structural`    | 320    | 145     | 255.4ms  | 88.3ms  | 1.83ms | 76.1ms   | 36.4ms    |
+| `prose/m/rewrite`       | 320    | 320     | 1885.7ms | 245.0ms | 1.58ms | 2403.7ms | 235.6ms   |
+| `lists/m/identical`     | 320    | 0       | 171.9ms  | 124.9ms | 1.19ms | 0.0ms    | 94.8ms    |
+| `lists/m/rewrite`       | 320    | 320     | 688.8ms  | 71.3ms  | 0.96ms | 452.1ms  | 63.6ms    |
+| `tables/m/identical`    | 217    | 0       | 60.0ms   | 51.9ms  | 1.22ms | 0.0ms    | 30.4ms    |
+| `tables/m/rewrite`      | 217    | 217     | 247.3ms  | 46.3ms  | 0.88ms | 110.5ms  | 46.5ms    |
+| `notes/m/identical`     | 320    | 0       | 270.0ms  | 124.5ms | 0.71ms | 0.0ms    | 48.3ms    |
+| `notes/m/rewrite`       | 320    | 320     | 655.2ms  | 93.4ms  | 0.71ms | 348.9ms  | 160.4ms   |
+| `graphics/m/rewrite`    | 320    | 320     | 224.8ms  | 61.3ms  | 0.74ms | 122.7ms  | 38.4ms    |
+| `fields/m/rewrite`      | 320    | 320     | 237.3ms  | 54.0ms  | 0.66ms | 97.7ms   | 32.0ms    |
+| `sections/m/rewrite`    | 320    | 320     | 334.7ms  | 43.9ms  | 0.70ms | 270.0ms  | 38.2ms    |
+| `multiscript/m/rewrite` | 320    | 320     | 242.7ms  | 26.0ms  | 0.50ms | 125.8ms  | 30.4ms    |
+| `revised/m/rewrite`     | 320    | 320     | 333.6ms  | 42.2ms  | 0.63ms | 214.0ms  | 34.6ms    |
+
+Right-to-left and CJK text (`multiscript`) is the cheapest class, not the most
+expensive: the word diff pays nothing extra for bidirectional runs.
+
+## Size `l` (2,200 blocks), class `prose`
+
+| Configuration       | Wall      | parse    | align  | apply    | serialize |
+| ------------------- | --------- | -------- | ------ | -------- | --------- |
+| `prose/l/identical` | 2407.6ms  | 2075.6ms | 28.1ms | 0.0ms    | 1041.4ms  |
+| `prose/l/light`     | 2987.4ms  | 4724.2ms | 35.3ms | 3381.6ms | 577.9ms   |
+| `prose/l/heavy`     | 15872.9ms | 1114.0ms | 14.8ms | 3989.9ms | 244.2ms   |
+| `prose/l/churn`     | 4541.5ms  | 1492.0ms | 34.9ms | 3513.4ms | 239.3ms   |
+| `prose/l/reorder`   | 1863.5ms  | 829.5ms  | 21.5ms | 561.7ms  | 113.8ms   |
+
+The target is a large comparison well under one second. It is not close.
+
+## Scaling
+
+`identical` (parse plus serialize, no edit work at all):
+
+| Class         | `s`            | `m`              | Blocks | Time |
+| ------------- | -------------- | ---------------- | ------ | ---- |
+| `prose`       | 40 blk, 9.5ms  | 320 blk, 83.8ms  | x8.0   | x8.8 |
+| `lists`       | 40 blk, 37.2ms | 320 blk, 171.9ms | x8.0   | x4.6 |
+| `tables`      | 28 blk, 15.9ms | 217 blk, 60.0ms  | x7.8   | x3.8 |
+| `notes`       | 40 blk, 36.6ms | 320 blk, 270.0ms | x8.0   | x7.4 |
+| `graphics`    | 40 blk, 17.0ms | 320 blk, 83.6ms  | x8.0   | x4.9 |
+| `fields`      | 40 blk, 24.1ms | 320 blk, 99.1ms  | x8.0   | x4.1 |
+| `sections`    | 40 blk, 9.0ms  | 320 blk, 66.1ms  | x8.0   | x7.3 |
+| `multiscript` | 40 blk, 10.6ms | 320 blk, 50.5ms  | x8.0   | x4.8 |
+| `revised`     | 40 blk, 17.9ms | 320 blk, 75.5ms  | x8.0   | x4.2 |
+
+Linear or better from `s` to `m`. From `m` to `l` it is not: `prose/identical`
+goes 320 blocks at 83.8ms to 2,200 blocks at 2,407.6ms, which is 6.9 times the
+blocks for 28.7 times the time. Something in parse or serialize is superlinear
+above roughly a thousand blocks, and that is the first thing to profile.
+
+## What to fix, in order
+
+1. **Find the superlinear term above ~1,000 blocks.** Between `m` and `l` the
+   cost per block roughly quadruples. Until that is understood, no other
+   optimization matters at document scale.
+2. **A comparison that found nothing should not rewrite the document.**
+   `prose/l/identical` spends 1,041ms serializing a package it did not change,
+   and 2,076ms parsing to discover it did not. The serialize half is
+   recoverable immediately: when no story yields an operation, the base package
+   is already the answer.
+3. **Align on the parsed model, convert only what changed.** Parse is 35.5% of
+   the total and is paid in full on both sides even when three paragraphs
+   differ. The alignment needs block text and container coordinates, not a
+   ProseMirror document.
+4. **Apply is the largest single share (41.7%) and superlinear in change
+   count.** `prose/m/rewrite` spends 2,404ms applying 320 changes, against
+   452ms for the same count in `lists/m/rewrite`; the applier re-resolves
+   snapshot anchors against the live document per operation.
+
+Alignment needs no work. It is already 0.4%.
+
+## Correctness gaps the baseline surfaced
+
+Three configurations fail, and each names a real gap rather than a flake.
+
+- **`notes/s/notes`, `notes/m/notes` — `difference-is-reported` fails.** The
+  pair differs only in the footnote and endnote stories. The comparison reports
+  nothing and lists `secondary-story` in `unsupported`, so a caller who reads
+  only `changes` is told two different documents agree. This is the documented
+  main-story-only limitation, now with a number on it: 30 of 127 configurations
+  carry an unreported story. Closing it needs per-story revision id ranges that
+  do not collide, which the operation result does not currently expose.
+- **`tables/m/structural` — `CompareDocxRoundTripError`.** A deleted table row
+  combined with paragraph splits and merges produces a plan that does not
+  accept back to the target. The engine refuses rather than returning a wrong
+  redline, which is the designed behaviour, but the refusal is the bug: this is
+  an edit a reviewer makes.
+- **`change_list_level`** is not in the benchmark because the harness cannot
+  build a target for it that the engine can see at all; it is covered by a
+  probe in `packages/core/src/compare/probes.test.ts` instead.
+
+Everything else passes every invariant: the round-trip algebra in both
+directions, self-comparison, and byte determinism, across all nine classes at
+both sizes.
