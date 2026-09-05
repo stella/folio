@@ -3,6 +3,7 @@ import { TaggedError } from "better-result";
 import {
   applyFolioAIEditOperations,
   type FolioAIEditView,
+  type FolioRevisionStamp,
   previewFolioAIEditOperations,
 } from "./ai-edits/apply";
 import type {
@@ -1142,6 +1143,8 @@ export type ApplyFolioDocumentOperationsOptions = {
   author?: string;
   createCommentId?: (text: string) => number;
   createUndoHandle?: () => FolioDocumentOperationUndoHandle;
+  /** Omit to stamp revisions from the wall clock and the shared id cursor. */
+  revisionStamp?: FolioRevisionStamp;
 };
 
 type ApplyParsedDocumentOperationBatchOptions = {
@@ -1158,6 +1161,7 @@ export const applyFolioDocumentOperations = ({
   author,
   createCommentId,
   createUndoHandle,
+  revisionStamp,
 }: ApplyFolioDocumentOperationsOptions): FolioDocumentOperationResult => {
   const parsedBatch = parseFolioDocumentOperationBatch(batch);
   const apply = ({
@@ -1173,6 +1177,7 @@ export const applyFolioDocumentOperations = ({
       mode: parsedBatch.mode ?? "tracked-changes",
       ...(author !== undefined && { author }),
       ...(targetCreateCommentId !== undefined && { createCommentId: targetCreateCommentId }),
+      ...(revisionStamp !== undefined && { revisionStamp }),
     });
   };
 

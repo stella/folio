@@ -67,6 +67,7 @@ import {
   type FolioDocumentOperationUndoHandle,
   type FolioDocumentOperationUndoResult,
 } from "../document-operations";
+import type { FolioRevisionStamp } from "./apply";
 import { buildAnnotatedBlockText } from "./clean-text";
 import {
   getCommentAnchorsFromDoc,
@@ -203,6 +204,8 @@ export type FolioApplyOperationsOptions = {
    * `snapshot()` -> build ops -> `applyOperations()` on the same reviewer.
    */
   snapshot?: FolioAIEditSnapshot;
+  /** Omit to stamp revisions from the wall clock and the shared id cursor. */
+  revisionStamp?: FolioRevisionStamp;
 };
 
 /** Options for {@link FolioDocxReviewer.applyDocumentOperations}. */
@@ -287,6 +290,8 @@ export type FolioApplyDocumentOperationsToStoryOptions = FolioApplyDocumentOpera
   batch: FolioDocumentOperationBatch;
 };
 
+export type { FolioRevisionStamp };
+
 type FolioHeaderFooterStoryHandle = Extract<
   FolioEditableDocumentStoryHandle,
   { type: "header" | "footer" }
@@ -315,6 +320,7 @@ type ApplyDocumentOperationsInternalOptions = {
   story: FolioEditableDocumentStoryHandle;
   batch: FolioDocumentOperationBatch;
   snapshot?: FolioAIEditSnapshot;
+  revisionStamp?: FolioRevisionStamp;
   createUndoEntry: boolean;
 };
 
@@ -656,6 +662,7 @@ export class FolioDocxReviewer {
         mode: options.mode ?? "tracked-changes",
       },
       ...(options.snapshot !== undefined && { snapshot: options.snapshot }),
+      ...(options.revisionStamp !== undefined && { revisionStamp: options.revisionStamp }),
       createUndoEntry: false,
     });
     return { applied, skipped };
@@ -675,6 +682,7 @@ export class FolioDocxReviewer {
       story: MAIN_STORY,
       batch,
       ...(options.snapshot !== undefined && { snapshot: options.snapshot }),
+      ...(options.revisionStamp !== undefined && { revisionStamp: options.revisionStamp }),
       createUndoEntry: true,
     });
   }
@@ -684,11 +692,13 @@ export class FolioDocxReviewer {
     story,
     batch,
     snapshot,
+    revisionStamp,
   }: FolioApplyDocumentOperationsToStoryOptions): FolioDocumentOperationResult {
     return this.applyDocumentOperationsInternal({
       story,
       batch,
       ...(snapshot !== undefined && { snapshot }),
+      ...(revisionStamp !== undefined && { revisionStamp }),
       createUndoEntry: true,
     });
   }
@@ -697,6 +707,7 @@ export class FolioDocxReviewer {
     story,
     batch,
     snapshot,
+    revisionStamp,
     createUndoEntry,
   }: ApplyDocumentOperationsInternalOptions): FolioDocumentOperationResult {
     const beforeState = this.requireEditableStoryState(story);
@@ -714,6 +725,7 @@ export class FolioDocxReviewer {
       batch,
       story: story.type === "main" ? "main" : story,
       author: this.author,
+      ...(revisionStamp !== undefined && { revisionStamp }),
       createCommentId: (text) => {
         const comment = createReviewerComment(this.nextCommentId(), text, this.author);
         this.createdComments.push(comment);

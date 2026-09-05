@@ -72,6 +72,21 @@ export type FolioAIEditView = {
   dispatch: (transaction: Transaction) => void;
 };
 
+/**
+ * Fixed revision provenance, for callers whose output must be reproducible.
+ * Both halves of the stamp travel together because either one left to the
+ * ambient clock (`new Date()` for the date, a `Date.now()`-seeded cursor for
+ * the ids) makes the produced package differ between two runs over the same
+ * inputs. `idSeed` starts a contiguous range the batch allocates from, so it
+ * must sit above every revision id the target document already carries.
+ */
+export type FolioRevisionStamp = {
+  /** ISO-8601 date stamped on every `w:ins` / `w:del` this batch produces. */
+  date: string;
+  /** First revision id the batch may allocate. */
+  idSeed: number;
+};
+
 type ApplyFolioAIEditOperationsOptions = {
   view: FolioAIEditView;
   snapshot: FolioAIEditSnapshot;
@@ -81,6 +96,8 @@ type ApplyFolioAIEditOperationsOptions = {
   /** Optional author initials (w:initials) stamped alongside the author. */
   initials?: string;
   createCommentId?: (text: string) => number;
+  /** Omit to stamp revisions from the wall clock and the shared id cursor. */
+  revisionStamp?: FolioRevisionStamp;
 };
 
 type ApplyFolioAIEditOperationsInternalOptions = ApplyFolioAIEditOperationsOptions & {
@@ -635,6 +652,7 @@ const applyFolioAIEditOperationsInternal = ({
   author = "AI",
   initials,
   createCommentId,
+  revisionStamp,
   revisionIdSeed,
 }: ApplyFolioAIEditOperationsInternalOptions): FolioAIEditApplyResult => {
   const applied: FolioAIEditAppliedOperation[] = [];
@@ -747,8 +765,9 @@ const applyFolioAIEditOperationsInternal = ({
     (total, item) => total + estimateRevisionIdReservation(item),
     0,
   );
-  let revisionSeed = revisionIdSeed ?? nextRevisionSeed(revisionIdReservation);
-  const date = new Date().toISOString();
+  let revisionSeed =
+    revisionIdSeed ?? revisionStamp?.idSeed ?? nextRevisionSeed(revisionIdReservation);
+  const date = revisionStamp?.date ?? new Date().toISOString();
   const insertedColumnCounts = new Map<string, number>();
 
   // Sort right-to-left so each tr.insert / tr.delete leaves earlier
