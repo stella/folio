@@ -3,6 +3,20 @@ import { describe, expect, test } from "bun:test";
 import { schema } from "./schema";
 import { assertValidProseMirrorDocument, validateProseMirrorDocument } from "./validation";
 
+/**
+ * Assert an issue whose message starts with `fragment`. Bookmark messages carry
+ * the bookmark's name and its paragraph so a failing document is diagnosable;
+ * the tests pin the reason, not that decoration.
+ */
+const expectIssueContaining = (
+  result: ReturnType<typeof validateProseMirrorDocument>,
+  fragment: string,
+): void => {
+  expect(result.issues.map((issue) => issue.message)).toEqual(
+    expect.arrayContaining([expect.stringContaining(fragment)]),
+  );
+};
+
 describe("ProseMirror document validation", () => {
   test("reports attr issues with document paths", () => {
     const highlight = schema.mark("highlight", { color: "customYellow" });
@@ -44,12 +58,12 @@ describe("ProseMirror document validation", () => {
     {
       name: "lone start",
       content: [schema.node("bookmarkBoundary", { type: "start", id: 1, name: "one" })],
-      message: "Bookmark id 1 has no matching end boundary.",
+      message: 'Bookmark "one" (id 1) has no matching end boundary',
     },
     {
       name: "lone end",
       content: [schema.node("bookmarkBoundary", { type: "end", id: 1 })],
-      message: "Bookmark id 1 has no open start boundary.",
+      message: "Bookmark id 1 has no open start boundary",
     },
     {
       name: "duplicate starts",
@@ -59,7 +73,7 @@ describe("ProseMirror document validation", () => {
         schema.node("bookmarkBoundary", { type: "start", id: 1, name: "duplicate" }),
         schema.node("bookmarkBoundary", { type: "end", id: 1 }),
       ],
-      message: "Bookmark id 1 has more than one start boundary.",
+      message: 'Bookmark "duplicate" (id 1) has more than one start boundary',
     },
   ])("rejects $name bookmark boundaries", ({ content, message }) => {
     const doc = schema.node("doc", null, [schema.node("paragraph", null, content)]);
@@ -67,7 +81,36 @@ describe("ProseMirror document validation", () => {
     const result = validateProseMirrorDocument(doc);
 
     expect(result.valid).toBe(false);
-    expect(result.issues.map((issue) => issue.message)).toContain(message);
+    expectIssueContaining(result, message);
+  });
+
+  test("tolerates one id repeated across paragraph bookmark attrs", () => {
+    // Real documents repeat a bookmark id this way (a stray `_GoBack`, a
+    // template assembled from several sources). Word and LibreOffice keep the
+    // first start and open the file; refusing it here made those documents
+    // unloadable. The attr serializes as a start and an end around its own
+    // paragraph, so the repeat writes back exactly what was read.
+    const paragraph = (paraId: string) =>
+      schema.node("paragraph", { paraId, bookmarks: [{ id: 0, name: "_GoBack" }] }, [
+        schema.text(`clause ${paraId}`),
+      ]);
+    const doc = schema.node("doc", null, [paragraph("A0000001"), paragraph("A0000002")]);
+
+    expect(validateProseMirrorDocument(doc)).toEqual({ valid: true, issues: [] });
+  });
+
+  test("names the bookmark and the paragraph a boundary failure sits in", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", { paraId: "B0000001" }, [
+        schema.node("bookmarkBoundary", { type: "start", id: 4, name: "unclosed" }),
+        schema.text("body"),
+      ]),
+    ]);
+
+    expectIssueContaining(
+      validateProseMirrorDocument(doc),
+      'Bookmark "unclosed" (id 4) has no matching end boundary (paragraph B0000001)',
+    );
   });
 
   test("allows paired bookmark ranges to overlap", () => {
@@ -128,8 +171,9 @@ describe("ProseMirror document validation", () => {
     const result = validateProseMirrorDocument(doc);
 
     expect(result.valid).toBe(false);
-    expect(result.issues.map((issue) => issue.message)).toContain(
-      "Bookmark boundaries inside tracked changes require a hyperlink serialization parent.",
+    expectIssueContaining(
+      result,
+      "Bookmark boundaries inside tracked changes require a hyperlink serialization parent",
     );
   });
 
@@ -229,9 +273,7 @@ describe("ProseMirror document validation", () => {
     const result = validateProseMirrorDocument(doc);
 
     expect(result.valid).toBe(false);
-    expect(result.issues.map((issue) => issue.message)).toContain(
-      "Bookmark id 1 has more than one start boundary.",
-    );
+    expectIssueContaining(result, 'Bookmark "pasted" (id 1) has more than one start boundary');
   });
 
   test("rejects an internally pasted pair that collides with an existing id", () => {
@@ -246,8 +288,6 @@ describe("ProseMirror document validation", () => {
     const result = validateProseMirrorDocument(doc);
 
     expect(result.valid).toBe(false);
-    expect(result.issues.map((issue) => issue.message)).toContain(
-      "Bookmark id 1 has more than one start boundary.",
-    );
+    expectIssueContaining(result, 'Bookmark "pasted" (id 1) has more than one start boundary');
   });
 });

@@ -39,12 +39,49 @@ import { Fragment, type Node as PMNode } from "prosemirror-model";
 import { Plugin, PluginKey } from "prosemirror-state";
 import type { EditorState, Transaction } from "prosemirror-state";
 
-import { generateHexId } from "../../../utils/hexId";
+import { deterministicHexId, generateHexId } from "../../../utils/hexId";
 import { createExtension } from "../create";
 import type { ExtensionRuntime } from "../types";
 import { ignoreTrackedChanges } from "./ParagraphChangeTrackerExtension";
 
 export const paraIdAllocatorKey = new PluginKey("paraIdAllocator");
+
+/**
+ * Transaction meta asking this plugin to derive the ids it mints from a
+ * caller-supplied seed instead of `Math.random()`.
+ *
+ * A live editor wants random ids: two people typing must not collide. A
+ * generator whose whole output has to be reproducible — the document compare —
+ * cannot afford them, and it is the only party that knows its run is meant to
+ * be deterministic, so it says so on its own transaction rather than leaving
+ * the plugin to guess.
+ */
+export const deterministicParaIdSeedKey = new PluginKey<string>("deterministicParaIdSeed");
+
+/** Ask the allocator to mint reproducible ids for the paragraphs `tr` creates. */
+export const requestDeterministicParaIds = (tr: Transaction, seed: string): Transaction =>
+  tr.setMeta(deterministicParaIdSeedKey, seed);
+
+/**
+ * A fresh id not already in `taken`: derived from `seed` and the paragraph's
+ * position when the caller asked for reproducibility, random otherwise. Both
+ * loops terminate — the id space is 2^31 wide and `taken` holds at most one
+ * entry per paragraph.
+ */
+const mintParaId = (taken: ReadonlySet<string>, seed: string | null, pos: number): string => {
+  if (seed === null) {
+    let id = generateHexId();
+    while (taken.has(id)) {
+      id = generateHexId();
+    }
+    return id;
+  }
+  let id = deterministicHexId(`${seed}:${String(pos)}`);
+  for (let salt = 1; taken.has(id); salt++) {
+    id = deterministicHexId(`${seed}:${String(pos)}:${String(salt)}`);
+  }
+  return id;
+};
 
 type ParaIdUpdate = {
   pos: number;
@@ -99,6 +136,7 @@ const mapKeeperPositions = (
 const collectParaIdUpdates = (
   doc: PMNode,
   keeperPositions?: Map<string, number>,
+  deterministicSeed: string | null = null,
 ): ParaIdUpdate[] => {
   // Pass 1: paragraphs without a usable id, and occurrences per id.
   const missing: ParagraphOccurrence[] = [];
@@ -143,10 +181,7 @@ const collectParaIdUpdates = (
   const taken = new Set(occurrencesById.keys());
   const updates: ParaIdUpdate[] = [];
   for (const { pos, attrs } of needFreshId) {
-    let newId = generateHexId();
-    while (taken.has(newId)) {
-      newId = generateHexId();
-    }
+    const newId = mintParaId(taken, deterministicSeed, pos);
     taken.add(newId);
     updates.push({ pos, attrs: { ...attrs, paraId: newId } });
   }
@@ -255,7 +290,11 @@ const createParaIdAllocatorPlugin = (): Plugin =>
       }
 
       const keeperPositions = mapKeeperPositions(oldState.doc, transactions);
-      const updates = collectParaIdUpdates(newState.doc, keeperPositions);
+      const seed =
+        transactions
+          .map((transaction) => transaction.getMeta(deterministicParaIdSeedKey))
+          .find((value) => typeof value === "string") ?? null;
+      const updates = collectParaIdUpdates(newState.doc, keeperPositions, seed);
       if (updates.length === 0) {
         return null;
       }

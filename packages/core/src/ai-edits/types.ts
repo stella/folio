@@ -11,6 +11,21 @@ export type FolioAIBlockPreviewRun = {
   color?: string;
 };
 
+/**
+ * Where a block sits inside its innermost enclosing table. Every index is
+ * zero-based: `tableIndex` counts tables in document order across the story,
+ * `rowIndex` is the row's index in that table, `cellIndex` is the cell's
+ * PHYSICAL index within the row (a merged cell occupies one slot, so this is
+ * not a grid column), and `paragraphIndex` orders the block among the cell's
+ * own blocks. Absent on a block that is not inside a table.
+ */
+export type FolioAIBlockTableLocation = {
+  tableIndex: number;
+  rowIndex: number;
+  cellIndex: number;
+  paragraphIndex: number;
+};
+
 export type FolioAIBlock = {
   id: string;
   kind: FolioAIBlockKind;
@@ -20,6 +35,7 @@ export type FolioAIBlock = {
   displayLabel?: string;
   styleId?: string;
   previewRuns?: FolioAIBlockPreviewRun[];
+  table?: FolioAIBlockTableLocation;
 };
 
 export type FolioAIEditSnapshot = {
