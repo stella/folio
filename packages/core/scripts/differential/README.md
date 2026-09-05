@@ -76,6 +76,17 @@ bun packages/core/scripts/differential/diff.ts path/to/file.docx open-xml-sdk
 bun packages/core/scripts/differential/diff.ts path/to/file.docx python-docx
 ```
 
+The same .NET build also answers schema validity:
+
+```bash
+dotnet packages/core/scripts/differential/dotnet/bin/Release/net8.0/OpenXmlProjector.dll \
+  validate path/to/file.docx
+```
+
+It prints `{ "schemaVersion", "errors" }` from `OpenXmlValidator`. The compare
+benchmark uses it to assert that a generated redline is a package Word will
+open; see `benchmarks/compare/README.md`.
+
 Exit codes:
 
 - `0` — projections are equivalent.

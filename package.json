@@ -43,8 +43,9 @@
     "build:docx-core": "bun --filter '@stll/docx-core' build",
     "build:core": "bun --filter '@stll/folio-core' build",
     "build:react": "bun --filter '@stll/folio-react' build",
-    "typecheck": "bun --filter '*' typecheck && bun run typecheck:parity && bun run typecheck:tooling",
+    "typecheck": "bun --filter '*' typecheck && bun run typecheck:parity && bun run typecheck:benchmarks && bun run typecheck:tooling",
     "typecheck:parity": "tsc -p parity/tsconfig.check.json --noEmit",
+    "typecheck:benchmarks": "bunx tsc -p benchmarks/tsconfig.json --noEmit",
     "typecheck:tooling": "bun scripts/tsc-native.ts -p scripts/tsconfig.budgets.json",
     "typecheck:budget": "bun scripts/typecheck-budget.ts --check",
     "typecheck:budget:write": "bun scripts/typecheck-budget.ts --write",
@@ -84,7 +85,8 @@
     "test:measure-parity": "bunx playwright test --project=measure-parity",
     "test:differential": "cd packages/core && bun test src/docx/__tests__/differential.test.ts",
     "test:visual:update": "bunx playwright test --update-snapshots",
-    "test:visual:report": "bunx playwright show-report"
+    "test:visual:report": "bunx playwright show-report",
+    "bench:compare": "bun benchmarks/compare/run.ts"
   },
   "devDependencies": {
     "@babel/core": "^8.0.1",

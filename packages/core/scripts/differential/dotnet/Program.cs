@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
+using DocumentFormat.OpenXml.Validation;
 using DocumentFormat.OpenXml.Wordprocessing;
 
 namespace OpenXmlProjector;
@@ -10,20 +11,27 @@ internal static class Program
 {
     private static int Main(string[] args)
     {
+        // Two modes over one build, so the differential harness and the compare
+        // benchmark share a single .NET install in CI.
+        if (args.Length == 2 && args[0] == "validate")
+        {
+            return Run(() => SchemaValidator.Validate(args[1]));
+        }
+
         if (args.Length != 1)
         {
-            Console.Error.WriteLine("usage: OpenXmlProjector <docx-path>");
+            Console.Error.WriteLine("usage: OpenXmlProjector [validate] <docx-path>");
             return 2;
         }
 
+        return Run(() => StructuralProjector.Project(args[0]));
+    }
+
+    private static int Run(Func<object> produce)
+    {
         try
         {
-            var projection = StructuralProjector.Project(args[0]);
-            var json = JsonSerializer.Serialize(
-                projection,
-                JsonOptions.Default
-            );
-            Console.WriteLine(json);
+            Console.WriteLine(JsonSerializer.Serialize(produce(), JsonOptions.Default));
             return 0;
         }
         catch (Exception error)
@@ -31,6 +39,39 @@ internal static class Program
             Console.Error.WriteLine(error.Message);
             return 2;
         }
+    }
+}
+
+internal sealed record ValidationReport
+{
+    public required int SchemaVersion { get; init; }
+    public required IReadOnlyList<string> Errors { get; init; }
+}
+
+/// <summary>
+/// Word's own schema check, as the last word on whether a generated redline is
+/// a legal package. A malformed move pair or an orphaned revision id reads
+/// fine as XML and makes Word report unreadable content, so a text comparison
+/// of the output cannot stand in for this.
+/// </summary>
+internal static class SchemaValidator
+{
+    private const int MaxReportedErrors = 50;
+
+    public static ValidationReport Validate(string path)
+    {
+        using var document = WordprocessingDocument.Open(path, false);
+        var validator = new OpenXmlValidator(FileFormatVersions.Office2019);
+        var errors = new List<string>();
+        foreach (ValidationErrorInfo error in validator.Validate(document))
+        {
+            errors.Add($"{error.ErrorType} {error.Id} at {error.Path?.XPath}: {error.Description}");
+            if (errors.Count >= MaxReportedErrors)
+            {
+                break;
+            }
+        }
+        return new ValidationReport { SchemaVersion = 1, Errors = errors };
     }
 }
 
