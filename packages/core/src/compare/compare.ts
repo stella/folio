@@ -17,6 +17,14 @@
  * cover is reported in `unsupported`, or fails the call, rather than being
  * silently dropped.
  *
+ * ## Stages
+ *
+ * The call is four named steps: {@link parseComparison},
+ * {@link planComparison}, {@link applyComparison}, {@link serializeComparison}.
+ * `compareDocx` is their composition and nothing else, so the benchmark can
+ * time the stages separately without keeping a second copy of the pipeline
+ * that would drift from this one.
+ *
  * @packageDocumentation
  */
 
@@ -27,9 +35,10 @@ import {
   type FolioDocumentStoryHandle,
   type FolioRevisionStamp,
 } from "../ai-edits/headless";
+import type { FolioAIEditSnapshot } from "../ai-edits/types";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { pairFolioDocumentStories } from "../document-stories";
-import { planStoryCompare } from "./plan";
+import { planStoryCompare, type CompareStoryPlan } from "./plan";
 import { withFixedPackageDates } from "./reproducible-package";
 import {
   CompareDocxApplyError,
@@ -99,16 +108,30 @@ const projectStory = (reviewer: FolioDocxReviewer, story: FolioDocumentStoryHand
   });
 };
 
-/**
- * Compare `base` against `target` and return `base` carrying the tracked
- * changes that turn it into `target`, alongside the change list describing
- * them.
- */
-export const compareDocx = async (
+/** Two stories the comparison will align against one another. */
+export type ComparedStoryPair = {
+  baseStory: FolioDocumentStoryHandle;
+  targetStory: FolioDocumentStoryHandle;
+  baseSnapshot: FolioAIEditSnapshot;
+  targetSnapshot: FolioAIEditSnapshot;
+};
+
+/** Everything the later stages need, and nothing they have to re-derive. */
+export type ParsedComparison = {
+  reviewer: FolioDocxReviewer;
+  targetReviewer: FolioDocxReviewer;
+  revisionStamp: FolioRevisionStamp;
+  packageDate: Date;
+  pairs: readonly ComparedStoryPair[];
+  unsupported: readonly CompareUnsupportedPart[];
+};
+
+/** Stage 1: both packages to editor models, paired story by story. */
+export const parseComparison = async (
   base: ArrayBuffer,
   target: ArrayBuffer,
   options: CompareDocxOptions,
-): Promise<Result<CompareResult, CompareDocxError>> => {
+): Promise<Result<ParsedComparison, CompareDocxParseError | InvalidCompareDocxOptionsError>> => {
   const packageDate = new Date(options.timestamp);
   if (Number.isNaN(packageDate.getTime())) {
     return Result.err(
@@ -131,19 +154,12 @@ export const compareDocx = async (
 
   const reviewer = baseParse.value;
   const targetReviewer = targetParse.value;
-  const revisionStamp: FolioRevisionStamp = {
-    date: options.timestamp,
-    idSeed: revisionIdSeedFor(reviewer),
-  };
-
-  const baseStories = reviewer.listStories().map(({ handle }) => handle);
-  const targetStories = targetReviewer.listStories().map(({ handle }) => handle);
-  const changes: CompareChange[] = [];
+  const pairs: ComparedStoryPair[] = [];
   const unsupported: CompareUnsupportedPart[] = [];
 
   for (const { baseStory, revisedStory: targetStory } of pairFolioDocumentStories(
-    baseStories,
-    targetStories,
+    reviewer.listStories().map(({ handle }) => handle),
+    targetReviewer.listStories().map(({ handle }) => handle),
   )) {
     if (!baseStory) {
       unsupported.push({ reason: "story-missing-in-base", baseStory: null, targetStory });
@@ -161,11 +177,35 @@ export const compareDocx = async (
       unsupported.push({ reason: "secondary-story", baseStory, targetStory });
       continue;
     }
+    pairs.push({ baseStory, targetStory, baseSnapshot, targetSnapshot });
+  }
 
+  return Result.ok({
+    reviewer,
+    targetReviewer,
+    revisionStamp: { date: options.timestamp, idSeed: revisionIdSeedFor(reviewer) },
+    packageDate,
+    pairs,
+    unsupported,
+  });
+};
+
+/** One story's plan, kept with the pair it belongs to. */
+export type PlannedStoryComparison = { pair: ComparedStoryPair; plan: CompareStoryPlan };
+
+/**
+ * Stage 2: align every paired story and derive its operations. Pure — no
+ * parsing, no serialization, no clock.
+ */
+export const planComparison = ({
+  pairs,
+}: ParsedComparison): Result<readonly PlannedStoryComparison[], CompareDocxOperationLimitError> => {
+  const planned: PlannedStoryComparison[] = [];
+  for (const pair of pairs) {
     const plan = planStoryCompare({
-      story: baseStory,
-      baseSnapshot,
-      targetBlocks: targetSnapshot.blocks,
+      story: pair.baseStory,
+      baseSnapshot: pair.baseSnapshot,
+      targetBlocks: pair.targetSnapshot.blocks,
       maxOperations: MAX_COMPARE_OPERATIONS,
     });
     if (plan === null) {
@@ -176,14 +216,32 @@ export const compareDocx = async (
         }),
       );
     }
+    planned.push({ pair, plan });
+  }
+  return Result.ok(planned);
+};
+
+/**
+ * Stage 3: write the planned operations into the base document as tracked
+ * changes, then check the work rather than trust it: accepting the story's
+ * generated revisions must reproduce the target, structure included. A
+ * difference the operation vocabulary cannot express would otherwise leave a
+ * redline that reads plausibly and is wrong.
+ */
+export const applyComparison = (
+  { reviewer, targetReviewer, revisionStamp }: ParsedComparison,
+  planned: readonly PlannedStoryComparison[],
+): Result<readonly CompareChange[], CompareDocxApplyError | CompareDocxRoundTripError> => {
+  const changes: CompareChange[] = [];
+  for (const { pair, plan } of planned) {
     changes.push(...plan.changes);
     if (plan.operations.length === 0) {
       continue;
     }
 
     const { skipped } = reviewer.applyDocumentOperationsToStory({
-      story: baseStory,
-      snapshot: baseSnapshot,
+      story: pair.baseStory,
+      snapshot: pair.baseSnapshot,
       revisionStamp,
       batch: {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -201,25 +259,28 @@ export const compareDocx = async (
       );
     }
 
-    // Self-check rather than trust: accepting the story's generated revisions
-    // must reproduce the target, structure included. A difference the
-    // operation vocabulary cannot express would otherwise leave a redline that
-    // reads plausibly and is wrong.
-    const accepted = projectStory(reviewer, baseStory);
-    const expected = projectStory(targetReviewer, targetStory);
+    const accepted = projectStory(reviewer, pair.baseStory);
+    const expected = projectStory(targetReviewer, pair.targetStory);
     if (accepted.join(" ") !== expected.join(" ")) {
       return Result.err(
         new CompareDocxRoundTripError({
           message: "Accepting the generated tracked changes does not reproduce the target.",
-          story: baseStory,
+          story: pair.baseStory,
           acceptedText: accepted,
           targetText: expected,
         }),
       );
     }
   }
+  return Result.ok(changes);
+};
 
-  const serialized = await Result.tryPromise({
+/** Stage 4: the redlined package, with every ZIP entry date pinned. */
+export const serializeComparison = async ({
+  reviewer,
+  packageDate,
+}: ParsedComparison): Promise<Result<ArrayBuffer, CompareDocxSerializeError>> =>
+  await Result.tryPromise({
     try: async () => await withFixedPackageDates(await reviewer.toBuffer(), packageDate),
     catch: (cause) =>
       new CompareDocxSerializeError({
@@ -227,8 +288,36 @@ export const compareDocx = async (
         cause,
       }),
   });
+
+/**
+ * Compare `base` against `target` and return `base` carrying the tracked
+ * changes that turn it into `target`, alongside the change list describing
+ * them.
+ */
+export const compareDocx = async (
+  base: ArrayBuffer,
+  target: ArrayBuffer,
+  options: CompareDocxOptions,
+): Promise<Result<CompareResult, CompareDocxError>> => {
+  const parsed = await parseComparison(base, target, options);
+  if (parsed.isErr()) {
+    return Result.err(parsed.error);
+  }
+  const planned = planComparison(parsed.value);
+  if (planned.isErr()) {
+    return Result.err(planned.error);
+  }
+  const changes = applyComparison(parsed.value, planned.value);
+  if (changes.isErr()) {
+    return Result.err(changes.error);
+  }
+  const serialized = await serializeComparison(parsed.value);
   if (serialized.isErr()) {
     return Result.err(serialized.error);
   }
-  return Result.ok({ buffer: serialized.value, changes, unsupported });
+  return Result.ok({
+    buffer: serialized.value,
+    changes: changes.value,
+    unsupported: parsed.value.unsupported,
+  });
 };
