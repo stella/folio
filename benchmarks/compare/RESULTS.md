@@ -170,9 +170,29 @@ more. `--check` now reproduces all 127 across runs, which it did not before.
 Until it did, the digest baseline could not prove an optimization changed
 nothing, which is the whole reason it exists.
 
+### A paragraph appended after a nested table lands at body level
+
+`tables/m/structural` failed the round-trip check. The generated tables carry a
+nested table in one cell, so the story's last block is two levels deep, and the
+target's appended body paragraph had no anchor outside a table. A block
+insertion escapes the table it is anchored in, but it escaped only the
+innermost one, leaving the paragraph in the outer cell.
+
+| Configuration         | before                      | after               |
+| --------------------- | --------------------------- | ------------------- |
+| `tables/m/structural` | `CompareDocxRoundTripError` | 8 changes, 49.3ms   |
+| `tables/l/structural` | `CompareDocxRoundTripError` | 20 changes, 488.0ms |
+
+The fix is in folio's insertion semantics, not in the compare:
+`findOutermostTableBoundary` replaces `findEnclosingTableBoundary` for
+`insertBeforeBlock`, `insertAfterBlock`, and `insertSignatureTable`. One digest
+was added and no other moved, which is the evidence that the change reached
+only the case it was aimed at. `probes.test.ts` carries the minimal
+reproduction as `append_after_nested_table`.
+
 ## Correctness gaps the baseline surfaced
 
-Three configurations fail, and each names a real gap rather than a flake.
+Three configurations failed, and each named a real gap rather than a flake.
 
 - **`notes/s/notes`, `notes/m/notes` — `difference-is-reported` fails.** The
   pair differs only in the footnote and endnote stories. The comparison reports
@@ -181,11 +201,8 @@ Three configurations fail, and each names a real gap rather than a flake.
   main-story-only limitation, now with a number on it: 30 of 127 configurations
   carry an unreported story. Closing it needs per-story revision id ranges that
   do not collide, which the operation result does not currently expose.
-- **`tables/m/structural` — `CompareDocxRoundTripError`.** A deleted table row
-  combined with paragraph splits and merges produces a plan that does not
-  accept back to the target. The engine refuses rather than returning a wrong
-  redline, which is the designed behaviour, but the refusal is the bug: this is
-  an edit a reviewer makes.
+- ~~**`tables/m/structural` — `CompareDocxRoundTripError`.**~~ Fixed; see "A
+  paragraph appended after a nested table" above.
 - **`change_list_level`** is not in the benchmark because the harness cannot
   build a target for it that the engine can see at all; it is covered by a
   probe in `packages/core/src/compare/probes.test.ts` instead.

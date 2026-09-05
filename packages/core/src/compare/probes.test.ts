@@ -23,6 +23,7 @@ import path from "node:path";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import type { FolioAIBlock } from "../ai-edits/types";
 import { FOLIO_DOCUMENT_OPERATION_TYPES } from "../document-operations";
+import { buildNestedTableDocx } from "./__fixtures__/nested-table";
 import {
   buildNumberedListDocx,
   NUMBERED_LIST_ITEMS,
@@ -199,6 +200,31 @@ describe("single-mutation probes", () => {
       { type: "deleteTableRow", blockIndex: firstTableBlockIndex(TABLE_BLOCKS) },
     ]);
     expect(kinds).toEqual(["table-row-delete"]);
+  });
+
+  /**
+   * The story's last block sits in a table inside a table, so the appended
+   * paragraph's only anchor is two cells deep. A block insertion escapes the
+   * table it is anchored in; escaping one level leaves it in the outer cell,
+   * where the paragraph is not a document-level peer and the round trip fails.
+   */
+  test("append_after_nested_table: the new paragraph lands at body level", async () => {
+    const base = await buildNestedTableDocx();
+    const target = await buildNestedTableDocx({
+      trailingParagraph: "Signed by the parties on the date first written above.",
+    });
+
+    const result = await compareDocx(base, target, OPTIONS);
+    if (result.isErr()) {
+      throw result.error;
+    }
+    expect(result.value.changes.map(({ kind }) => kind)).toEqual(["insert"]);
+    expect(await projectView(result.value.buffer, "final")).toEqual(
+      await projectView(target, "final"),
+    );
+    expect(await projectView(result.value.buffer, "original")).toEqual(
+      await projectView(base, "final"),
+    );
   });
 
   test("format_only_bold: bolding a phrase is a format, never a rewrite", async () => {

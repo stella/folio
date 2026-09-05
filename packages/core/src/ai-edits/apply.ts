@@ -41,7 +41,7 @@ import {
   type TableStructureRevision,
 } from "./table-row-column-mutations";
 import {
-  findEnclosingTableBoundary,
+  findOutermostTableBoundary,
   findEnclosingTableCell,
   findEnclosingTableRow,
   tableRectangleCutsMergedCell,
@@ -1859,7 +1859,7 @@ const resolveOperation = ({
     // into the cell". Override the insertion bounds to the table's
     // outer boundary so the synthesized sibling lands as a peer of
     // the table at doc level.
-    const tableBoundary = findEnclosingTableBoundary(doc, blockFrom);
+    const tableBoundary = findOutermostTableBoundary(doc, blockFrom);
     const isInsertAfter = operation.type === "insertAfterBlock";
     let insertFrom: number;
     if (tableBoundary) {
@@ -1889,7 +1889,7 @@ const resolveOperation = ({
       return { type: "skip", reason: "emptyOperation" };
     }
     const position = operation.position ?? "after";
-    const tableBoundary = findEnclosingTableBoundary(doc, blockFrom);
+    const tableBoundary = findOutermostTableBoundary(doc, blockFrom);
     let insertFrom: number;
     if (tableBoundary) {
       insertFrom = position === "after" ? tableBoundary.after : tableBoundary.before;

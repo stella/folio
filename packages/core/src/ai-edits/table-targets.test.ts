@@ -3,7 +3,7 @@ import { type Node as PMNode, Schema } from "prosemirror-model";
 import { TableMap } from "prosemirror-tables";
 
 import {
-  findEnclosingTableBoundary,
+  findOutermostTableBoundary,
   findEnclosingTableCell,
   findEnclosingTableRow,
   tableRectangleCutsMergedCell,
@@ -60,7 +60,7 @@ const findParagraphPosition = (doc: PMNode, paraId: string): number => {
 };
 
 describe("table targets", () => {
-  test("resolves the nearest table, row, and cell for a nested anchor", () => {
+  test("resolves the outermost boundary and the nearest row and cell for a nested anchor", () => {
     const nestedTable = schema.node("table", null, [
       schema.node("tableRow", null, [cell([paragraph("nested")])]),
     ]);
@@ -70,21 +70,24 @@ describe("table targets", () => {
     const doc = schema.node("doc", null, [outerTable]);
     const blockFrom = findParagraphPosition(doc, "nested");
 
-    const boundary = findEnclosingTableBoundary(doc, blockFrom);
+    const boundary = findOutermostTableBoundary(doc, blockFrom);
     const row = findEnclosingTableRow(doc, blockFrom);
     const targetCell = findEnclosingTableCell(doc, blockFrom);
 
+    // A block-adjacent insertion escapes every table, so the boundary is the
+    // outer table even though the row and the cell are the nested ones.
     expect(boundary).not.toBeNull();
-    expect(doc.nodeAt(boundary?.before ?? -1)).toEqual(nestedTable);
+    expect(doc.nodeAt(boundary?.before ?? -1)).toEqual(outerTable);
+    expect(boundary?.after).toBe(doc.content.size);
     expect(row?.table).toEqual(nestedTable);
     expect(row?.rowIndex).toBe(0);
     expect(targetCell).toMatchObject({
-      tablePosition: boundary?.before,
       leftColumnIndex: 0,
       rightColumnIndex: 1,
       topRowIndex: 0,
       bottomRowIndex: 1,
     });
+    expect(doc.nodeAt(targetCell?.tablePosition ?? -1)).toEqual(nestedTable);
   });
 
   test("returns the full grid rectangle for a spanning target cell", () => {

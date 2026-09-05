@@ -26,18 +26,28 @@ export type TableCellTarget = {
   bottomRowIndex: number;
 };
 
-/** Resolve the nearest enclosing table boundary for block-adjacent insertions. */
-export const findEnclosingTableBoundary = (
+/**
+ * The boundary a block-adjacent insertion escapes to: the outermost table the
+ * anchor sits in, so the new block lands as a peer of that table at document
+ * level.
+ *
+ * The nearest table is the wrong answer once tables nest. Escaping one level
+ * out of a table inside a cell leaves the insertion in the enclosing cell,
+ * which is still "inside a table" and is never what a block-level insertion
+ * meant.
+ */
+export const findOutermostTableBoundary = (
   doc: PMNode,
   blockFrom: number,
 ): TableBoundary | null => {
   const resolved = doc.resolve(blockFrom);
+  let boundary: TableBoundary | null = null;
   for (let depth = resolved.depth; depth > 0; depth--) {
     if (resolved.node(depth).type.name === "table") {
-      return { before: resolved.before(depth), after: resolved.after(depth) };
+      boundary = { before: resolved.before(depth), after: resolved.after(depth) };
     }
   }
-  return null;
+  return boundary;
 };
 
 export const findEnclosingTableRow = (doc: PMNode, blockFrom: number): TableRowTarget | null => {

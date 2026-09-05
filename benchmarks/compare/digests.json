@@ -479,6 +479,10 @@
     "buffer": "7919db49954b1437a7258bfb3a5555b3fe1e73c97c72608388ca5b413b4661ef",
     "changes": "c70983c3e9e7e46b78306f95e4ab41feb11987f57e8421d8b57abb57485ec2fe"
   },
+  "tables/m/structural": {
+    "buffer": "50944e02f15f228f507b148b1ad7410623b33003230119425c33e1ef4cc7b897",
+    "changes": "3f0cce399f1828651aac6cac51b9a95cef57b97c70fdf160247ea8c1e56e5778"
+  },
   "tables/s/churn": {
     "buffer": "1c9648eafe273db7c64585a76909ca36bd9c0db8a29220f08012a8002b3b200e",
     "changes": "bb39f4d2cbc540a89b75b1027460fcbad3b7d120affa6476a22c0c9a302fe290"
