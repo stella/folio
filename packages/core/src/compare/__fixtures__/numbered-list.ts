@@ -18,6 +18,12 @@ const WORDPROCESSING = "application/vnd.openxmlformats-officedocument.wordproces
 /** Pinned so two builds of the fixture produce identical bytes. */
 const FIXED_ZIP_DATE = new Date(Date.UTC(2000, 0, 1));
 
+/**
+ * `createFolders: false` because JSZip stamps the folder entries it
+ * synthesizes with `new Date()`, which the fixed date above does not reach.
+ */
+const ZIP_ENTRY_OPTIONS = { date: FIXED_ZIP_DATE, createFolders: false } as const;
+
 const LIST_LEVELS = 3;
 
 const abstractLevels = (): string =>
@@ -103,7 +109,7 @@ export const buildNumberedListDocx = async (
 
   const zip = new JSZip();
   for (const name of Object.keys(parts).toSorted()) {
-    zip.file(name, parts[name] ?? "", { date: FIXED_ZIP_DATE });
+    zip.file(name, parts[name] ?? "", ZIP_ENTRY_OPTIONS);
   }
   return await zip.generateAsync({ type: "arraybuffer" });
 };

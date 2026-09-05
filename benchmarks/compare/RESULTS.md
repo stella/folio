@@ -155,6 +155,21 @@ stages disagreed with the shipped one and `byte-determinism` failed on all 18
 `identical` cases within one run. The property suite then caught the second
 attempt, where the base carried revisions.
 
+### The corpus stopped changing every two seconds
+
+`--check` reported 18 drifted digests on an unmodified tree, and different ones
+depending on the minute it ran in. The generator pins a fixed date on every
+part it writes, but JSZip synthesizes a folder entry per directory in a part
+name and stamps that one with `new Date()`; DOS timestamps have two-second
+granularity, so two runs in one bucket agreed and two runs a minute apart did
+not. It surfaced only once an identical pair started returning the base package
+as it arrived: every other product is restamped on the way out.
+
+Every digest moved, because no generated package carries folder entries any
+more. `--check` now reproduces all 127 across runs, which it did not before.
+Until it did, the digest baseline could not prove an optimization changed
+nothing, which is the whole reason it exists.
+
 ## Correctness gaps the baseline surfaced
 
 Three configurations fail, and each names a real gap rather than a flake.

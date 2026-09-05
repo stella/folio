@@ -21,6 +21,14 @@ export type DocxPackage = ReadonlyMap<string, PackagePart>;
  */
 const FIXED_ZIP_DATE = new Date(Date.UTC(2000, 0, 1));
 
+/**
+ * Folder entries are the one part of the package the fixed date does not
+ * reach: JSZip synthesizes them from the part names and stamps them with
+ * `new Date()`, so a corpus package changed every two seconds. Word writes no
+ * folder entries either, so dropping them is also the more faithful package.
+ */
+const ZIP_ENTRY_OPTIONS = { date: FIXED_ZIP_DATE, createFolders: false } as const;
+
 export const zipPackage = async (parts: DocxPackage): Promise<ArrayBuffer> => {
   const zip = new JSZip();
   for (const name of [...parts.keys()].toSorted()) {
@@ -28,7 +36,7 @@ export const zipPackage = async (parts: DocxPackage): Promise<ArrayBuffer> => {
     if (part === undefined) {
       continue;
     }
-    zip.file(name, part, { date: FIXED_ZIP_DATE });
+    zip.file(name, part, ZIP_ENTRY_OPTIONS);
   }
   return await zip.generateAsync({
     type: "arraybuffer",
