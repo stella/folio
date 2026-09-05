@@ -365,6 +365,17 @@ const formatStoryStateForLLM = (state: EditorState, annotated: boolean): string 
   if (!annotated) {
     return snapshot.blocks.map(formatBlockForLLM).join("\n");
   }
+  // One walk, not one `doc.nodeAt` per block: `nodeAt` re-descends from the
+  // root and scans each level's fragment from index 0, so looking every block
+  // up costs O(blocks^2) on a flat document.
+  const nodeByStart = new Map<number, PMNode>();
+  state.doc.descendants((node, pos) => {
+    if (!node.isTextblock) {
+      return true;
+    }
+    nodeByStart.set(pos, node);
+    return false;
+  });
   const startById = new Map<string, number>();
   for (const anchor of Object.values(snapshot.anchors)) {
     startById.set(anchor.id, anchor.from);
@@ -372,7 +383,7 @@ const formatStoryStateForLLM = (state: EditorState, annotated: boolean): string 
   return snapshot.blocks
     .map((block) => {
       const from = startById.get(block.id);
-      const node = from === undefined ? null : state.doc.nodeAt(from);
+      const node = from === undefined ? undefined : nodeByStart.get(from);
       const text = node ? buildAnnotatedBlockText(node) : block.text;
       return formatBlockLine(block, text);
     })

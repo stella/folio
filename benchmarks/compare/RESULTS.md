@@ -102,9 +102,7 @@ above roughly a thousand blocks, and that is the first thing to profile.
 
 ## What to fix, in order
 
-1. **Find the superlinear term above ~1,000 blocks.** Between `m` and `l` the
-   cost per block roughly quadruples. Until that is understood, no other
-   optimization matters at document scale.
+1. ~~**Find the superlinear term above ~1,000 blocks.**~~ Done; see below.
 2. ~~**A comparison that found nothing should not rewrite the document.**~~
    Done; see below.
 3. **Align on the parsed model, convert only what changed.** Parse is 35.5% of
@@ -189,6 +187,64 @@ The fix is in folio's insertion semantics, not in the compare:
 was added and no other moved, which is the evidence that the change reached
 only the case it was aimed at. `probes.test.ts` carries the minimal
 reproduction as `append_after_nested_table`.
+
+### The superlinear term above ~1,000 blocks was one `doc.resolve` per block
+
+`createFolioAIEditSnapshot` asked the document where each block sat, twice:
+once for the hidden-row check and once for the table coordinates.
+`doc.resolve` re-descends from the root and finds each level's child by
+scanning that level's fragment from index 0, so on a flat document it costs
+O(blocks) per block and the snapshot costs O(blocks^2). The snapshot runs on
+both sides, again per reviewed view, so parse and apply both carried it.
+`formatStoryStateForLLM` had the same shape with `doc.nodeAt` per block.
+
+A depth-first walk already visits every ancestor before the block, so the
+snapshot now carries the path it is on and resolves nothing.
+
+Standalone, one document class, over a growing paragraph count (ms, median of
+one run each; the shape is the point, not the milliseconds):
+
+| Paragraphs | snapshot before | snapshot after | final view before | final view after |
+| ---------- | --------------- | -------------- | ----------------- | ---------------- |
+| 250        | 12.3            | 7.8            | 16.7              | 7.3              |
+| 1,000      | 16.2            | 7.6            | 52.9              | 21.6             |
+| 2,000      | 49.4            | 13.3           | 130.9             | 35.3             |
+| 4,000      | 124.0           | 24.2           | 381.4             | 79.2             |
+
+Four times the blocks cost 7.7x before and 3.2x after: quadratic to linear.
+
+In the compare benchmark, `prose/l`, both runs back to back on an idle machine
+(the baseline table above was taken under load 21.6 and its absolute
+milliseconds are not comparable with these):
+
+| Configuration        | parse before | parse after | wall before | wall after |
+| -------------------- | ------------ | ----------- | ----------- | ---------- |
+| `prose/l/identical`  | 273.8ms      | 171.9ms     | 292.2ms     | 196.5ms    |
+| `prose/l/light`      | 346.2ms      | 176.4ms     | 618.9ms     | 394.5ms    |
+| `prose/l/heavy`      | 388.4ms      | 182.4ms     | 1794.3ms    | 1382.6ms   |
+| `prose/l/churn`      | 391.4ms      | 188.2ms     | 1288.7ms    | 1019.5ms   |
+| `prose/l/reorder`    | 325.4ms      | 200.3ms     | 722.6ms     | 428.2ms    |
+| `prose/l/structural` | 395.3ms      | 213.7ms     | 9490.6ms    | 8923.3ms   |
+
+Scaling of `identical`'s parse stage, same two runs:
+
+| Blocks | before  | after   |
+| ------ | ------- | ------- |
+| 40     | 3.9ms   | 4.0ms   |
+| 320    | 29.0ms  | 28.3ms  |
+| 2,200  | 273.8ms | 171.9ms |
+
+6.9 times the blocks from `m` to `l` cost 9.4x before and 6.1x after. The
+superlinear term is gone; what is left tracks block count.
+
+Every one of the 128 digests is unchanged, which is the proof that the
+optimization changed nothing.
+
+The guard is an invariant, not a stopwatch: `snapshot.test.ts` hands the
+snapshot a document that throws if asked to resolve a position. Writing that
+test surfaced a second defect: the hidden-row check consulted the block's
+NEAREST row, so a table nested inside a hidden row published its text after
+all. The walk now skips a hidden row's whole subtree.
 
 ## Correctness gaps the baseline surfaced
 
