@@ -798,6 +798,48 @@ const applyFolioAIEditOperationsInternal = ({
     };
   }
 
+  // A `moveId` names one relocation. It is a move only when it reaches both
+  // halves: `w:moveTo` without its `w:moveFrom` is a relocation from nowhere,
+  // and a reader accepting it would see text appear with no source. An
+  // unpaired id degrades to a plain insertion or deletion and is reported.
+  const moveSideCounts = new Map<string, { from: number; to: number }>();
+  for (const { operation } of executableResolved) {
+    const moveId =
+      operation.type === "deleteBlock" ||
+      operation.type === "insertAfterBlock" ||
+      operation.type === "insertBeforeBlock"
+        ? operation.moveId
+        : undefined;
+    if (moveId === undefined) {
+      continue;
+    }
+    const counts = moveSideCounts.get(moveId) ?? { from: 0, to: 0 };
+    if (operation.type === "deleteBlock") {
+      counts.from += 1;
+    } else {
+      counts.to += 1;
+    }
+    moveSideCounts.set(moveId, counts);
+  }
+  const isPairedMove = (moveId: string | undefined): moveId is string => {
+    if (moveId === undefined) {
+      return false;
+    }
+    const counts = moveSideCounts.get(moveId);
+    return counts?.from === 1 && counts.to === 1;
+  };
+  for (const { operation } of executableResolved) {
+    const moveId =
+      operation.type === "deleteBlock" ||
+      operation.type === "insertAfterBlock" ||
+      operation.type === "insertBeforeBlock"
+        ? operation.moveId
+        : undefined;
+    if (moveId !== undefined && !isPairedMove(moveId)) {
+      normalizations.push({ id: operation.id, code: "unpairedMove", moveId });
+    }
+  }
+
   let tr = view.state.tr;
   const revisionIdReservation = executableResolved.reduce(
     (total, item) => total + estimateRevisionIdReservation(item),
@@ -1126,6 +1168,7 @@ const applyFolioAIEditOperationsInternal = ({
                 revisionId: paragraphRevisionId,
                 author,
                 date,
+                ...(isPairedMove(operation.moveId) && { moveKind: "moveTo" }),
                 ...trackedRevisionExtras,
               }),
             );
@@ -1447,6 +1490,7 @@ const applyFolioAIEditOperationsInternal = ({
               revisionId,
               author,
               date,
+              ...(isPairedMove(item.operation.moveId) && { moveKind: "moveFrom" }),
               ...trackedRevisionExtras,
             }),
           );

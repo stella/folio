@@ -53,6 +53,8 @@ const OPERATION_TYPE_SUMMARIES = {
   insertBeforeBlock: "insert a new paragraph before a block",
   replaceBlock: "replace one block's entire text",
   deleteBlock: "delete one block",
+  splitBlock: "break one block in two at `offset`, moving a paragraph mark and no words",
+  mergeBlockWithNext: "join one block with the block after it in the same container",
   commentOnBlock: "attach a comment to one block, optionally quoting text within it",
   insertSignatureTable: "insert a side-by-side signature table for the given `parties`",
   insertTableRow: "insert a table row next to the row containing a cell block",
@@ -182,6 +184,22 @@ const OPERATION_PROPERTY_SCHEMAS = {
     },
     minProperties: 1,
     additionalProperties: false,
+  },
+  offset: {
+    type: "integer",
+    minimum: 0,
+    description:
+      "Required for `splitBlock`: character offset in the block's text where the paragraph break goes. Must fall strictly inside the text.",
+  },
+  separator: {
+    type: "string",
+    description:
+      "For `splitBlock`, the text at `offset` the break replaces (usually a space); for `mergeBlockWithNext`, the text the join inserts between the two halves.",
+  },
+  moveId: {
+    type: "string",
+    description:
+      "Links one `deleteBlock` to one insertion as a single relocation, written as `w:moveFrom` / `w:moveTo`. An id that does not name exactly one of each applies as an ordinary deletion and insertion.",
   },
   comment: {
     type: "string",

@@ -204,6 +204,12 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
         text: string;
         inheritFormatting?: boolean;
         /**
+         * Links this insertion to the deletion that carries the same
+         * `moveId`: together they are one relocation, written as `w:moveTo`
+         * and `w:moveFrom`. See `deleteBlock`.
+         */
+        moveId?: string;
+        /**
          * When true, mark the inserted paragraph with
          * `pageBreakBefore` so the layout engine starts it on a
          * new page. Use for explicit page-break inserts.
@@ -231,6 +237,14 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
         id: string;
         type: "deleteBlock";
         blockId: string;
+        /**
+         * Links this deletion to the insertion that carries the same
+         * `moveId`: together they are one relocation, written as `w:moveFrom`
+         * and `w:moveTo` rather than as an unrelated deletion and insertion.
+         * A `moveId` that does not name exactly one of each is reported as an
+         * `unpairedMove` normalization and both halves apply plainly.
+         */
+        moveId?: string;
         comment?: FolioAIComment;
       }
     /**
@@ -428,21 +442,33 @@ export type FolioAIEditSkippedOperation = {
   reason: FolioAIEditSkipReason;
 };
 
-/** One automatic adjustment `apply.ts` made to an operation's input to keep the applied result well-formed. */
-export type FolioAIEditNormalizationCode = "splitMultilineText";
-
 /**
- * A line-break in `insertAfterBlock` / `insertBeforeBlock`'s `text` cannot become
- * one paragraph with an embedded break (Word paragraphs are single lines); the
- * applier splits it into one paragraph per non-blank line instead and reports it
- * here so the caller can see what happened to the text it sent.
+ * One automatic adjustment `apply.ts` made to an operation's input to keep the
+ * applied result well-formed. Reported rather than applied silently: the
+ * caller asked for something the document could not hold, and gets told what
+ * it got instead.
  */
-export type FolioAIEditNormalization = {
-  id: string;
-  code: FolioAIEditNormalizationCode;
-  /** Number of paragraphs the operation's `text` was split into. */
-  paragraphCount: number;
-};
+export type FolioAIEditNormalization =
+  /**
+   * A line-break in `insertAfterBlock` / `insertBeforeBlock`'s `text` cannot
+   * become one paragraph with an embedded break (Word paragraphs are single
+   * lines); the applier split it into one paragraph per non-blank line.
+   */
+  | {
+      id: string;
+      code: "splitMultilineText";
+      /** Number of paragraphs the operation's `text` was split into. */
+      paragraphCount: number;
+    }
+  /**
+   * A `moveId` that did not name exactly one deletion and one insertion in
+   * the batch. The operation still applies, as an ordinary insertion or
+   * deletion: half a move pair is not a move, and `w:moveTo` without its
+   * `w:moveFrom` is a relocation from nowhere.
+   */
+  | { id: string; code: "unpairedMove"; moveId: string };
+
+export type FolioAIEditNormalizationCode = FolioAIEditNormalization["code"];
 
 export type FolioAIEditApplyResult = {
   applied: FolioAIEditAppliedOperation[];

@@ -377,6 +377,38 @@ consumer can express.
 16 digests moved, all `structural`, deliberately. All 180 configurations still
 pass every invariant.
 
+### A move is a linked pair in the document, not just in the change list
+
+The change list already said `move`. The document did not: every OOXML
+consumer saw an unrelated deletion and an unrelated insertion, and a reviewer
+reading the redline in Word could not tell relocated text from rewritten text.
+
+| Configuration         | changes      | `w:moveFrom` + `w:moveTo` before | after   |
+| --------------------- | ------------ | -------------------------------- | ------- |
+| `prose/m/reorder`     | 27 (25 move) | 0                                | 25 + 25 |
+| `lists/m/reorder`     | 26 (26 move) | 0                                | 26 + 26 |
+| `tables/m/reorder`    | 1 (1 move)   | 0                                | 1 + 1   |
+| `tables/m/structural` | 7 (1 move)   | 0                                | 1 + 1   |
+
+The change counts do not move, and that is the point: the same comparison,
+with the document now saying what the change list already said.
+
+folio's schema, parser and serializer already understood `w:moveFrom` /
+`w:moveTo`; nothing produced them. `deleteBlock` and the two insertions take a
+`moveId` that links the two halves, and the applier stamps `moveKind` only
+when the id names exactly one deletion and one insertion — half a pair is not
+a move, and `w:moveTo` without its `w:moveFrom` is a relocation from nowhere.
+An unpaired id applies as an ordinary edit and is reported as an
+`unpairedMove` normalization rather than dropped.
+
+Move detection also stopped requiring the relocated text to be identical: a
+paragraph keeping at least 80% of its word tokens and at least three words is
+the same paragraph somewhere else. The corpus relocates paragraphs verbatim,
+so its numbers do not move; `plan.test.ts` carries the threshold's own cases.
+
+19 digests moved, all `reorder` plus `tables/m/structural`, deliberately. All
+180 configurations still pass every invariant.
+
 ## Correctness gaps the baseline surfaced
 
 Three configurations failed, and each named a real gap rather than a flake.

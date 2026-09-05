@@ -60,6 +60,47 @@ const MOVE_MINIMUM_WORD_COUNT = 3;
  */
 const MAX_MOVE_CANDIDATES_PER_TEXT = 64;
 
+/**
+ * How much of a relocated paragraph must survive the relocation for it still
+ * to read as one. Below it the two paragraphs are a deletion and an unrelated
+ * insertion, and calling them a move would tell the reader the wrong story
+ * about where the text came from.
+ */
+const MOVE_SIMILARITY_THRESHOLD = 0.8;
+
+/**
+ * Total pair comparisons the similarity pass may make in one story. Exact text
+ * matches are found by lookup; only what is left pays this, and it is capped
+ * so two documents of unmatched paragraphs cannot make the pass quadratic.
+ */
+const MAX_MOVE_SIMILARITY_COMPARISONS = 20_000;
+
+/**
+ * Dice coefficient over word tokens: twice the shared tokens over the two
+ * token counts. Multiset rather than set, so a paragraph repeating a word does
+ * not match one that says it once.
+ */
+const tokenSimilarity = (left: string, right: string): number => {
+  const leftTokens = left.split(/\s+/u).filter((token) => token.length > 0);
+  const rightTokens = right.split(/\s+/u).filter((token) => token.length > 0);
+  if (leftTokens.length === 0 || rightTokens.length === 0) {
+    return 0;
+  }
+  const remaining = new Map<string, number>();
+  for (const token of leftTokens) {
+    remaining.set(token, (remaining.get(token) ?? 0) + 1);
+  }
+  let shared = 0;
+  for (const token of rightTokens) {
+    const count = remaining.get(token) ?? 0;
+    if (count > 0) {
+      remaining.set(token, count - 1);
+      shared += 1;
+    }
+  }
+  return (2 * shared) / (leftTokens.length + rightTokens.length);
+};
+
 const wordCountReaches = (text: string, minimum: number): boolean => {
   let count = 0;
   for (const word of text.split(/\s+/u)) {
@@ -478,15 +519,58 @@ const detectMoves = (
     }
   }
 
+  const unmatched: FolioAIBlock[] = [];
+  for (const [index, step] of steps.entries()) {
+    if (
+      consumed.has(index) ||
+      step.type !== "baseOnly" ||
+      !wordCountReaches(step.block.text, MOVE_MINIMUM_WORD_COUNT)
+    ) {
+      continue;
+    }
+    unmatched.push(step.block);
+  }
+
   const movesByBaseBlockId = new Map<string, string>();
+  const takenBaseBlockIds = new Set<string>();
+  let comparisonBudget = MAX_MOVE_SIMILARITY_COMPARISONS;
   for (const [index, step] of steps.entries()) {
     if (consumed.has(index) || step.type !== "targetOnly") {
       continue;
     }
-    const queue = candidatesByText.get(step.block.text);
-    const baseBlockId = queue?.shift();
-    if (baseBlockId !== undefined) {
-      movesByBaseBlockId.set(baseBlockId, step.block.id);
+    const exact = candidatesByText.get(step.block.text)?.shift();
+    if (exact !== undefined) {
+      takenBaseBlockIds.add(exact);
+      movesByBaseBlockId.set(exact, step.block.id);
+      continue;
+    }
+    // A relocated paragraph is often edited on the way. Exact text is the
+    // fast path; everything else pays a bounded similarity pass, because a
+    // document repeating one paragraph thousands of times would otherwise
+    // make this quadratic on attacker-controlled input.
+    if (!wordCountReaches(step.block.text, MOVE_MINIMUM_WORD_COUNT)) {
+      continue;
+    }
+    let best: { block: FolioAIBlock; similarity: number } | null = null;
+    for (const candidate of unmatched) {
+      if (comparisonBudget <= 0) {
+        break;
+      }
+      if (takenBaseBlockIds.has(candidate.id)) {
+        continue;
+      }
+      comparisonBudget -= 1;
+      const similarity = tokenSimilarity(candidate.text, step.block.text);
+      if (
+        similarity >= MOVE_SIMILARITY_THRESHOLD &&
+        (best === null || similarity > best.similarity)
+      ) {
+        best = { block: candidate, similarity };
+      }
+    }
+    if (best) {
+      takenBaseBlockIds.add(best.block.id);
+      movesByBaseBlockId.set(best.block.id, step.block.id);
     }
   }
   return movesByBaseBlockId;
@@ -618,16 +702,25 @@ export const planStoryCompare = ({
 
   const nextOperationId = (): string => `compare-${++operationSequence}`;
 
+  /**
+   * The relocation this block belongs to, named so the applier can link the
+   * deletion at the source with the insertion at the destination as
+   * `w:moveFrom` and `w:moveTo` instead of writing two unrelated revisions.
+   */
+  const moveIdOf = (baseBlockId: string): string => `move-${baseBlockId}`;
+
   const pushInsertOperation = (block: FolioAIBlock, anchorId: string | null): void => {
     if (anchorId === null) {
       trailingInserts.push(block);
       return;
     }
+    const moveSourceId = moveSourceByTargetBlockId.get(block.id);
     operations.push({
       id: nextOperationId(),
       type: "insertBeforeBlock",
       blockId: anchorId,
       text: block.text,
+      ...(moveSourceId !== undefined && { moveId: moveIdOf(moveSourceId) }),
       ...(block.styleId !== undefined && { styleId: block.styleId }),
     });
   };
@@ -735,7 +828,12 @@ export const planStoryCompare = ({
             before: step.block.text,
           });
         }
-        operations.push({ id: nextOperationId(), type: "deleteBlock", blockId: step.block.id });
+        operations.push({
+          id: nextOperationId(),
+          type: "deleteBlock",
+          blockId: step.block.id,
+          ...(targetBlockId !== undefined && { moveId: moveIdOf(step.block.id) }),
+        });
         break;
       }
       case "targetOnly": {
@@ -836,11 +934,13 @@ export const planStoryCompare = ({
       });
       continue;
     }
+    const moveSourceId = moveSourceByTargetBlockId.get(block.id);
     operations.push({
       id: nextOperationId(),
       type: "insertAfterBlock",
       blockId: anchorId,
       text: block.text,
+      ...(moveSourceId !== undefined && { moveId: moveIdOf(moveSourceId) }),
       ...styleId,
     });
   }

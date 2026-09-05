@@ -17,6 +17,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import JSZip from "jszip";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -46,6 +47,9 @@ const PROSE_BASE = readFixture("upstream-styled-content.docx");
 const TABLE_BASE = readFixture("upstream-with-tables.docx");
 /** Authored here: no corpus fixture carries numbering. */
 const LIST_BASE = await buildNumberedListDocx();
+
+const documentPartOf = async (buffer: ArrayBuffer): Promise<string> =>
+  (await (await JSZip.loadAsync(buffer)).file("word/document.xml")?.async("string")) ?? "";
 
 const blocksOf = async (buffer: ArrayBuffer): Promise<FolioAIBlock[]> =>
   (await FolioDocxReviewer.fromBuffer(buffer)).getContent();
@@ -191,6 +195,40 @@ describe("single-mutation probes", () => {
     // The alignment may absorb a relocation it can still walk forward past;
     // what it must not do is report it as unrelated churn.
     expect(kinds.every((kind) => kind === "move")).toBe(true);
+  });
+
+  test("move_clause: the package carries a linked w:moveFrom / w:moveTo pair", async () => {
+    // A move reported only in the change list is a move the document does not
+    // know about: every OOXML consumer sees an unrelated deletion and
+    // insertion, and a reviewer reading the redline in Word cannot tell the
+    // text was relocated rather than rewritten.
+    const blockIndex = wordyBlockIndex(PROSE_BLOCKS, 4);
+    const scripted = await applyEditScript(PROSE_BASE, [
+      { type: "moveParagraph", blockIndex, beforeBlockIndex: PROSE_BLOCKS.length - 1 },
+    ]);
+    if (scripted.isErr()) {
+      throw scripted.error;
+    }
+    const result = await compareDocx(PROSE_BASE, scripted.value.buffer, OPTIONS);
+    if (result.isErr()) {
+      throw result.error;
+    }
+    expect(result.value.changes.map(({ kind }) => kind)).toEqual(["move"]);
+
+    const documentXml = await documentPartOf(result.value.buffer);
+    expect(documentXml).toContain("<w:moveFrom ");
+    expect(documentXml).toContain("<w:moveTo ");
+    // The relocated text is not also written as a plain insertion or deletion.
+    expect(documentXml).not.toContain("<w:ins ");
+    expect(documentXml).not.toContain("<w:del ");
+
+    // A move pair resolves like any other revision.
+    expect(await projectView(result.value.buffer, "final")).toEqual(
+      await projectView(scripted.value.buffer, "final"),
+    );
+    expect(await projectView(result.value.buffer, "original")).toEqual(
+      await projectView(PROSE_BASE, "final"),
+    );
   });
 
   test("add_list_item: an added item is one insert", async () => {

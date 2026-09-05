@@ -346,10 +346,10 @@ export const FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE: Readonly<{
     readonly replaceRange: readonly ["id", "type", "range", "severity", "area", "precondition", "suggestionId", "replace", "comment"];
     readonly commentOnRange: readonly ["id", "type", "range", "severity", "area", "precondition", "comment"];
     readonly formatRange: readonly ["id", "type", "range", "severity", "area", "precondition", "suggestionId", "formatting"];
-    readonly insertAfterBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "text", "inheritFormatting", "pageBreakBefore", "styleId", "comment"];
-    readonly insertBeforeBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "text", "inheritFormatting", "pageBreakBefore", "styleId", "comment"];
+    readonly insertAfterBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "text", "inheritFormatting", "moveId", "pageBreakBefore", "styleId", "comment"];
+    readonly insertBeforeBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "text", "inheritFormatting", "moveId", "pageBreakBefore", "styleId", "comment"];
     readonly replaceBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "text", "preserveFormatting", "styleId", "comment"];
-    readonly deleteBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "comment"];
+    readonly deleteBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "moveId", "comment"];
     readonly splitBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "offset", "separator"];
     readonly mergeBlockWithNext: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "separator"];
     readonly commentOnBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "quote", "comment"];
@@ -521,14 +521,31 @@ export type FolioAIEditApplyResult = {
 };
 
 // @public
-export type FolioAIEditNormalization = {
+export type FolioAIEditNormalization =
+/**
+* A line-break in `insertAfterBlock` / `insertBeforeBlock`'s `text` cannot
+* become one paragraph with an embedded break (Word paragraphs are single
+* lines); the applier split it into one paragraph per non-blank line.
+*/
+    {
     id: string;
-    code: FolioAIEditNormalizationCode;
+    code: "splitMultilineText";
     paragraphCount: number;
+} |
+/**
+* A `moveId` that did not name exactly one deletion and one insertion in
+* the batch. The operation still applies, as an ordinary insertion or
+* deletion: half a move pair is not a move, and `w:moveTo` without its
+* `w:moveFrom` is a relocation from nowhere.
+*/
+    {
+    id: string;
+    code: "unpairedMove";
+    moveId: string;
 };
 
-// @public
-export type FolioAIEditNormalizationCode = "splitMultilineText";
+// @public (undocumented)
+export type FolioAIEditNormalizationCode = FolioAIEditNormalization["code"];
 
 // @public (undocumented)
 export type FolioAIEditOperation = FolioAIEditReviewMeta & {
@@ -563,6 +580,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     blockId: string;
     text: string;
     inheritFormatting?: boolean;
+    moveId?: string;
     pageBreakBefore?: boolean;
     styleId?: string;
     comment?: FolioAIComment;
@@ -578,6 +596,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     id: string;
     type: "deleteBlock";
     blockId: string;
+    moveId?: string;
     comment?: FolioAIComment;
 } |
 /**
@@ -900,7 +919,7 @@ export type FolioDocumentOperationResultBase = {
     receipts: FolioDocumentOperationReceipt[];
     normalizations?: FolioAIEditNormalization[];
     undoHandle: FolioDocumentOperationUndoHandle | null;
-    nextRevisionId: number;
+    nextRevisionId?: number;
 };
 
 // @public

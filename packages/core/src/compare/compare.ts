@@ -28,7 +28,7 @@
  * @packageDocumentation
  */
 
-import { Result } from "better-result";
+import { panic, Result } from "better-result";
 
 import {
   FolioDocxReviewer,
@@ -288,6 +288,13 @@ export const applyComparison = (
         operations: plan.operations,
       },
     });
+    if (nextRevisionId === undefined) {
+      // Only a host bridge that does not allocate ids itself omits this, and
+      // the comparison drives the in-process applier.
+      panic("The applier did not report where it left the revision-id counter", {
+        story: pair.baseStory,
+      });
+    }
     idSeed = nextRevisionId;
     if (skipped.length > 0) {
       return Result.err(

@@ -560,8 +560,11 @@ const explainApplyNormalization = (
     };
   }
   return {
-    path: `operations[id=${normalization.id}]`,
-    message: `input was normalized (${normalization.code}).`,
+    path: `operations[id=${normalization.id}].moveId`,
+    message:
+      `\`moveId\` "${normalization.moveId}" did not name exactly one deletion and one ` +
+      "insertion in this batch, so the operation applied as an ordinary insertion or " +
+      "deletion rather than half of a move.",
   };
 };
 

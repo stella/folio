@@ -472,6 +472,7 @@ export const FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE = Object.freeze({
     ...COMMON_OPERATION_KEYS,
     "text",
     "inheritFormatting",
+    "moveId",
     "pageBreakBefore",
     "styleId",
     "comment",
@@ -480,12 +481,13 @@ export const FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE = Object.freeze({
     ...COMMON_OPERATION_KEYS,
     "text",
     "inheritFormatting",
+    "moveId",
     "pageBreakBefore",
     "styleId",
     "comment",
   ],
   replaceBlock: [...COMMON_OPERATION_KEYS, "text", "preserveFormatting", "styleId", "comment"],
-  deleteBlock: [...COMMON_OPERATION_KEYS, "comment"],
+  deleteBlock: [...COMMON_OPERATION_KEYS, "moveId", "comment"],
   splitBlock: [...COMMON_OPERATION_KEYS, "offset", "separator"],
   mergeBlockWithNext: [...COMMON_OPERATION_KEYS, "separator"],
   commentOnBlock: [...COMMON_OPERATION_KEYS, "quote", "comment"],
@@ -613,6 +615,7 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
     const inheritFormatting = readOptionalBoolean(value, "inheritFormatting", path);
     const pageBreakBefore = readOptionalBoolean(value, "pageBreakBefore", path);
     const styleId = readOptionalString(value, "styleId", path);
+    const moveId = readOptionalString(value, "moveId", path);
     return {
       ...operationMeta,
       id,
@@ -620,6 +623,7 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
       blockId,
       text: readString(value, "text", path),
       ...(inheritFormatting !== undefined && { inheritFormatting }),
+      ...(moveId !== undefined && { moveId }),
       ...(pageBreakBefore !== undefined && { pageBreakBefore }),
       ...(styleId !== undefined && { styleId }),
       ...(comment !== undefined && { comment }),
@@ -642,7 +646,15 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
   }
 
   if (type === "deleteBlock") {
-    return { ...operationMeta, id, type, blockId, ...(comment !== undefined && { comment }) };
+    const moveId = readOptionalString(value, "moveId", path);
+    return {
+      ...operationMeta,
+      id,
+      type,
+      blockId,
+      ...(moveId !== undefined && { moveId }),
+      ...(comment !== undefined && { comment }),
+    };
   }
 
   if (type === "commentOnBlock") {
@@ -953,8 +965,12 @@ export type FolioDocumentOperationResultBase = {
    * allocated none. A caller writing several batches into one package — one
    * per document story — must seed each from the previous batch's value, or
    * two stories claim the same `w:id`.
+   *
+   * The in-process applier always reports it. A host bridge that delegates to
+   * an editor it does not control omits it rather than guessing a number a
+   * caller would seed the next batch from.
    */
-  nextRevisionId: number;
+  nextRevisionId?: number;
 };
 
 /**

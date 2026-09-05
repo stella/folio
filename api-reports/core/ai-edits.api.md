@@ -174,14 +174,31 @@ export type FolioAIEditApplyResult = {
 };
 
 // @public
-export type FolioAIEditNormalization = {
+export type FolioAIEditNormalization =
+/**
+* A line-break in `insertAfterBlock` / `insertBeforeBlock`'s `text` cannot
+* become one paragraph with an embedded break (Word paragraphs are single
+* lines); the applier split it into one paragraph per non-blank line.
+*/
+    {
     id: string;
-    code: FolioAIEditNormalizationCode;
+    code: "splitMultilineText";
     paragraphCount: number;
+} |
+/**
+* A `moveId` that did not name exactly one deletion and one insertion in
+* the batch. The operation still applies, as an ordinary insertion or
+* deletion: half a move pair is not a move, and `w:moveTo` without its
+* `w:moveFrom` is a relocation from nowhere.
+*/
+    {
+    id: string;
+    code: "unpairedMove";
+    moveId: string;
 };
 
-// @public
-export type FolioAIEditNormalizationCode = "splitMultilineText";
+// @public (undocumented)
+export type FolioAIEditNormalizationCode = FolioAIEditNormalization["code"];
 
 // @public (undocumented)
 export type FolioAIEditOperation = FolioAIEditReviewMeta & {
@@ -216,6 +233,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     blockId: string;
     text: string;
     inheritFormatting?: boolean;
+    moveId?: string;
     pageBreakBefore?: boolean;
     styleId?: string;
     comment?: FolioAIComment;
@@ -231,6 +249,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     id: string;
     type: "deleteBlock";
     blockId: string;
+    moveId?: string;
     comment?: FolioAIComment;
 } |
 /**
@@ -527,7 +546,7 @@ export type FolioDocumentOperationResultBase = {
     receipts: FolioDocumentOperationReceipt[];
     normalizations?: FolioAIEditNormalization[];
     undoHandle: FolioDocumentOperationUndoHandle | null;
-    nextRevisionId: number;
+    nextRevisionId?: number;
 };
 
 // @public

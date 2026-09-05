@@ -42,6 +42,12 @@ along with the round trip (accept-all yields the target, reject-all yields the
 base), self-comparison, a churn bound, and the reporting of formatting-only and
 move-only edits.
 
+A relocated block is one `move` when it keeps at least three words and at
+least 80% of its word tokens: a paragraph is usually edited on the way to its
+new home, and a relocation that survives that is still a relocation. Below the
+threshold it is a deletion and an unrelated insertion, which is what a reader
+should be told when the text really did change that much.
+
 ## How the alignment works
 
 Aligning every paragraph in one pass cannot see structure: it pairs on text and
@@ -125,10 +131,14 @@ carries the current numbers and the failing cases.
   of the main story, so their text is compared, but the round-trip self-check
   tags only the enclosing table cell — an insertion that landed inside a box
   instead of beside it would not be caught by it.
-- **Moves are reported, not represented.** The document carries a deletion at
-  the source and an insertion at the destination; the change list keeps the
-  relocation visible as `kind: "move"`. A relocated block needs at least three
-  words to be recognized as a move, so boilerplate one-liners do not pair.
+- **A move's range markers are not written** (2026-09-06). The relocation
+  itself is in the document: the deletion at the source is `w:moveFrom`, the
+  insertion at the destination `w:moveTo`, and the change list reports
+  `kind: "move"`. Word also brackets each side with
+  `w:moveFromRangeStart`/`End` and a shared `w:name`; those markers have no
+  ProseMirror representation, so folio drops them on any edited paragraph and
+  the comparison cannot produce them. A consumer reading the runs sees the
+  move; one that groups multi-paragraph moves by range name does not.
 - **Tables cannot be created or destroyed.** The operation vocabulary has no
   "add a table", so a pair whose table count differs fails the round-trip check.
 - **Empty cells are invisible.** A cell with no text carries no block, so a row
