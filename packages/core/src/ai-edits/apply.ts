@@ -4,6 +4,7 @@ import { TableMap } from "prosemirror-tables";
 
 import { expectRunPropertyChangeMarkAttrs } from "../prosemirror/attrs";
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
+import { requestDeterministicParaIds } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
 import type { RunPropertyChange } from "../types/document";
 import { stripBlockIdentityAttrs } from "./block-identity";
@@ -1454,6 +1455,13 @@ const applyFolioAIEditOperationsInternal = ({
   }
 
   if (tr.docChanged) {
+    if (revisionStamp) {
+      // Paragraphs this batch creates get their `w14:paraId` from the
+      // allocator plugin, which is random by default. A stamped batch has
+      // promised its caller a reproducible package, so the ids must be
+      // derived from the stamp too.
+      requestDeterministicParaIds(tr, `${revisionStamp.date}:${String(revisionStamp.idSeed)}`);
+    }
     view.dispatch(tr);
   }
 
