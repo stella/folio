@@ -113,11 +113,14 @@ const existingRevisionsOf = (reviewer: FolioDocxReviewer): ExistingRevisions => 
  */
 const projectStory = (reviewer: FolioDocxReviewer, story: FolioDocumentStoryHandle): string[] => {
   const blocks = reviewer.readReviewedStory({ story, view: "final" })?.snapshot.blocks ?? [];
-  return blocks.map(({ text, table }) => {
+  return blocks.map(({ text, table, styleId, listLevel }) => {
     const container = table
       ? `t${String(table.tableIndex)}r${String(table.rowIndex)}c${String(table.cellIndex)}p${String(table.paragraphIndex)}`
       : "body";
-    return `${container}|${text}`;
+    // The properties the comparison claims to compare are in the projection
+    // too, or the self-check would pass a redline that reproduces every word
+    // and leaves a list item at the wrong level.
+    return `${container}|${styleId ?? ""}|${listLevel ?? ""}|${text}`;
   });
 };
 

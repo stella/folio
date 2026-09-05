@@ -34,8 +34,27 @@ export type FolioAIBlock = {
   headingLevel?: number;
   displayLabel?: string;
   styleId?: string;
+  /**
+   * `w:numPr/w:ilvl`: the block's list indent level. Present only on a block
+   * that carries numbering, and the only pPr property a redline can move
+   * without touching a word — a demoted list item reads as unchanged text and
+   * is not.
+   */
+  listLevel?: number;
   previewRuns?: FolioAIBlockPreviewRun[];
   table?: FolioAIBlockTableLocation;
+};
+
+/**
+ * The paragraph properties an operation may set. A subset of `w:pPrChange`'s
+ * scope: the two a comparison can see in a block projection, and the two an
+ * agent has a reason to change.
+ */
+export type FolioAIBlockParagraphProperties = {
+  /** `w:pStyle`. `null` clears the style back to the default. */
+  styleId?: string | null;
+  /** `w:numPr/w:ilvl`, zero-based. */
+  listLevel?: number;
 };
 
 export type FolioAIEditSnapshot = {
@@ -219,9 +238,17 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
          * Override the paragraph `styleId` attr of the inserted
          * block (e.g. `ClauseHeading1`). When omitted the inserted
          * block inherits the source block's styleId via
-         * `inheritFormatting`.
+         * `inheritFormatting`; `null` gives it no style at all, which
+         * inheritance alone cannot say.
          */
-        styleId?: string;
+        styleId?: string | null;
+        /**
+         * Override `w:numPr/w:ilvl` on the inserted block, keeping the
+         * anchor's `w:numId`. Without it the inserted paragraph takes the
+         * anchor's level, which is the wrong one whenever the new item sits
+         * beside a list item at a different depth.
+         */
+        listLevel?: number;
         comment?: FolioAIComment;
       }
     | {
@@ -266,6 +293,18 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
          */
         separator?: string;
         blockId: string;
+      }
+    /**
+     * Replace the block's paragraph properties, recorded as a `w:pPrChange`
+     * in tracked mode so the previous set is restored on reject. The edit
+     * that moves no words: a list item demoted a level, a paragraph restyled
+     * as a heading.
+     */
+    | {
+        id: string;
+        type: "setBlockParagraphProperties";
+        blockId: string;
+        properties: FolioAIBlockParagraphProperties;
       }
     /**
      * Join the block with the one after it, the mirror of `splitBlock`: in

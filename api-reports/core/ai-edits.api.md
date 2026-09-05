@@ -73,6 +73,7 @@ export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE: Readonly<{
     readonly deleteBlock: readonly ["direct", "tracked-changes", "suggested"];
     readonly splitBlock: readonly ["direct", "tracked-changes"];
     readonly mergeBlockWithNext: readonly ["direct", "tracked-changes"];
+    readonly setBlockParagraphProperties: readonly ["direct", "tracked-changes"];
     readonly commentOnBlock: readonly ["direct", "tracked-changes"];
     readonly insertSignatureTable: readonly ["direct", "suggested"];
     readonly insertTableRow: readonly ["direct", "tracked-changes", "suggested"];
@@ -90,7 +91,7 @@ export const FOLIO_DOCUMENT_OPERATION_PRECONDITIONS: readonly ["blockTextHash"];
 export const FOLIO_DOCUMENT_OPERATION_STORIES: readonly ["main", "header", "footer", "footnote", "endnote"];
 
 // @public (undocumented)
-export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replaceRange", "commentOnRange", "formatRange", "insertAfterBlock", "insertBeforeBlock", "replaceBlock", "deleteBlock", "splitBlock", "mergeBlockWithNext", "commentOnBlock", "insertSignatureTable", "insertTableRow", "deleteTableRow", "insertTableColumn", "deleteTableColumn", "mergeTableCells", "splitTableCell"];
+export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replaceRange", "commentOnRange", "formatRange", "insertAfterBlock", "insertBeforeBlock", "replaceBlock", "deleteBlock", "splitBlock", "mergeBlockWithNext", "setBlockParagraphProperties", "commentOnBlock", "insertSignatureTable", "insertTableRow", "deleteTableRow", "insertTableColumn", "deleteTableColumn", "mergeTableCells", "splitTableCell"];
 
 // @public (undocumented)
 export const FOLIO_RESOLVED_REVIEWED_VIEWS: readonly ["original", "final"];
@@ -106,6 +107,7 @@ export type FolioAIBlock = {
     headingLevel?: number;
     displayLabel?: string;
     styleId?: string;
+    listLevel?: number;
     previewRuns?: FolioAIBlockPreviewRun[];
     table?: FolioAIBlockTableLocation;
 };
@@ -235,7 +237,8 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     inheritFormatting?: boolean;
     moveId?: string;
     pageBreakBefore?: boolean;
-    styleId?: string;
+    styleId?: string | null;
+    listLevel?: number;
     comment?: FolioAIComment;
 } | {
     id: string;
@@ -265,6 +268,18 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     offset: number;
     separator?: string;
     blockId: string;
+} |
+/**
+* Replace the block's paragraph properties, recorded as a `w:pPrChange`
+* in tracked mode so the previous set is restored on reject. The edit
+* that moves no words: a list item demoted a level, a paragraph restyled
+* as a heading.
+*/
+    {
+    id: string;
+    type: "setBlockParagraphProperties";
+    blockId: string;
+    properties: FolioAIBlockParagraphProperties;
 } |
 /**
 * Join the block with the one after it, the mirror of `splitBlock`: in

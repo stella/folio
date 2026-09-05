@@ -222,6 +222,7 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
     const kind = getBlockKind(node, headingLevel);
     const displayLabel = getDisplayLabel(node);
     const styleId = getStyleId(node);
+    const listLevel = getListLevel(node);
     const previewRuns = getPreviewRuns(node);
     const table = getTableLocation({ path, blockIndex: index, tableIndexByStart });
 
@@ -233,6 +234,7 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
         ...(headingLevel !== undefined && { headingLevel }),
         ...(displayLabel !== undefined && { displayLabel }),
         ...(styleId !== undefined && { styleId }),
+        ...(listLevel !== undefined && { listLevel }),
         ...(previewRuns !== undefined && { previewRuns }),
         ...(table !== undefined && { table }),
       },
@@ -330,6 +332,15 @@ const getDisplayLabel = (node: PMNode): string | undefined => {
   }
 
   return undefined;
+};
+
+const getListLevel = (node: PMNode): number | undefined => {
+  const numPr: unknown = node.attrs["numPr"];
+  if (typeof numPr !== "object" || numPr === null || !("ilvl" in numPr)) {
+    return undefined;
+  }
+  const { ilvl } = numPr;
+  return typeof ilvl === "number" && Number.isInteger(ilvl) && ilvl >= 0 ? ilvl : undefined;
 };
 
 const getStyleId = (node: PMNode): string | undefined => {

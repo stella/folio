@@ -9,6 +9,7 @@ import {
   previewFolioAIEditOperations,
 } from "./ai-edits/apply";
 import type {
+  FolioAIBlockParagraphProperties,
   FolioAIEditAppliedOperation,
   FolioAIEditApplyMode,
   FolioAIEditNormalization,
@@ -34,6 +35,7 @@ export const FOLIO_DOCUMENT_OPERATION_TYPES = Object.freeze([
   "deleteBlock",
   "splitBlock",
   "mergeBlockWithNext",
+  "setBlockParagraphProperties",
   "commentOnBlock",
   "insertSignatureTable",
   "insertTableRow",
@@ -107,6 +109,7 @@ export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE = Object.freeze({
   deleteBlock: DIRECT_TRACKED_AND_SUGGESTED_MODES,
   splitBlock: DIRECT_AND_TRACKED_MODES,
   mergeBlockWithNext: DIRECT_AND_TRACKED_MODES,
+  setBlockParagraphProperties: DIRECT_AND_TRACKED_MODES,
   commentOnBlock: DIRECT_AND_TRACKED_MODES,
   insertSignatureTable: DIRECT_AND_SUGGESTED_MODES,
   insertTableRow: DIRECT_TRACKED_AND_SUGGESTED_MODES,
@@ -326,6 +329,32 @@ const readNonNegativeInteger = (
   return invalidBatch(`${path}.${key}`, "expected a non-negative integer");
 };
 
+const readParagraphProperties = (
+  value: Record<string, unknown>,
+  path: string,
+): FolioAIBlockParagraphProperties => {
+  const candidate = value["properties"];
+  const propertiesPath = `${path}.properties`;
+  if (!isPlainObject(candidate)) {
+    return invalidBatch(propertiesPath, "expected an object");
+  }
+  assertAllowedKeys(candidate, propertiesPath, ["styleId", "listLevel"]);
+  const rawStyleId = candidate["styleId"];
+  const styleId =
+    rawStyleId === null ? null : readOptionalString(candidate, "styleId", propertiesPath);
+  const listLevel =
+    candidate["listLevel"] === undefined
+      ? undefined
+      : readNonNegativeInteger(candidate, "listLevel", propertiesPath);
+  if (styleId === undefined && listLevel === undefined) {
+    return invalidBatch(propertiesPath, "expected at least one property to set");
+  }
+  return {
+    ...(styleId !== undefined && { styleId }),
+    ...(listLevel !== undefined && { listLevel }),
+  };
+};
+
 const readTextRange = (value: Record<string, unknown>, path: string): FolioAITextRangeHandle => {
   const candidate = value["range"];
   const rangePath = `${path}.range`;
@@ -472,6 +501,7 @@ export const FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE = Object.freeze({
     ...COMMON_OPERATION_KEYS,
     "text",
     "inheritFormatting",
+    "listLevel",
     "moveId",
     "pageBreakBefore",
     "styleId",
@@ -481,6 +511,7 @@ export const FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE = Object.freeze({
     ...COMMON_OPERATION_KEYS,
     "text",
     "inheritFormatting",
+    "listLevel",
     "moveId",
     "pageBreakBefore",
     "styleId",
@@ -490,6 +521,7 @@ export const FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE = Object.freeze({
   deleteBlock: [...COMMON_OPERATION_KEYS, "moveId", "comment"],
   splitBlock: [...COMMON_OPERATION_KEYS, "offset", "separator"],
   mergeBlockWithNext: [...COMMON_OPERATION_KEYS, "separator"],
+  setBlockParagraphProperties: [...COMMON_OPERATION_KEYS, "properties"],
   commentOnBlock: [...COMMON_OPERATION_KEYS, "quote", "comment"],
   insertSignatureTable: [...COMMON_OPERATION_KEYS, "position", "parties", "comment"],
   insertTableRow: [...COMMON_OPERATION_KEYS, "position", "cellTexts"],
@@ -584,6 +616,16 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
 
   const blockId = readString(value, "blockId", path);
 
+  if (type === "setBlockParagraphProperties") {
+    return {
+      ...operationMeta,
+      id,
+      type,
+      blockId,
+      properties: readParagraphProperties(value, path),
+    };
+  }
+
   if (type === "splitBlock" || type === "mergeBlockWithNext") {
     const separator = readOptionalString(value, "separator", path);
     if (type === "mergeBlockWithNext") {
@@ -614,8 +656,12 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
   if (type === "insertAfterBlock" || type === "insertBeforeBlock") {
     const inheritFormatting = readOptionalBoolean(value, "inheritFormatting", path);
     const pageBreakBefore = readOptionalBoolean(value, "pageBreakBefore", path);
-    const styleId = readOptionalString(value, "styleId", path);
+    const styleId = value["styleId"] === null ? null : readOptionalString(value, "styleId", path);
     const moveId = readOptionalString(value, "moveId", path);
+    const listLevel =
+      value["listLevel"] === undefined
+        ? undefined
+        : readNonNegativeInteger(value, "listLevel", path);
     return {
       ...operationMeta,
       id,
@@ -623,6 +669,7 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
       blockId,
       text: readString(value, "text", path),
       ...(inheritFormatting !== undefined && { inheritFormatting }),
+      ...(listLevel !== undefined && { listLevel }),
       ...(moveId !== undefined && { moveId }),
       ...(pageBreakBefore !== undefined && { pageBreakBefore }),
       ...(styleId !== undefined && { styleId }),
@@ -1076,6 +1123,7 @@ const getPrimaryAffectedTarget = (
         blockId: operation.blockId,
         effect: "deleted",
       };
+    case "setBlockParagraphProperties":
     case "splitBlock":
     case "mergeBlockWithNext":
       // The paragraph mark moved, and it belongs to this block; the block the

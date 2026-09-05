@@ -261,6 +261,11 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
           type: "string",
           description: 'Paragraph style id for the inserted block (e.g. "ClauseHeading1").',
         },
+        listLevel: {
+          type: "integer",
+          minimum: 0,
+          description: "`w:numPr/w:ilvl` for the inserted block, keeping the anchor's list.",
+        },
         moveId: {
           type: "string",
           description:
@@ -301,6 +306,11 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
         styleId: {
           type: "string",
           description: 'Paragraph style id for the inserted block (e.g. "ClauseHeading1").',
+        },
+        listLevel: {
+          type: "integer",
+          minimum: 0,
+          description: "`w:numPr/w:ilvl` for the inserted block, keeping the anchor's list.",
         },
         moveId: {
           type: "string",
@@ -394,6 +404,36 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
         },
       },
       required: ["id", "type", "blockId"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      description:
+        "Change one block's paragraph properties without touching its words, recorded as a `w:pPrChange`.",
+      properties: {
+        ...operationMetaProperties,
+        ...suggestionIdProperty,
+        type: { type: "string", enum: ["setBlockParagraphProperties"] },
+        blockId: blockIdProperty,
+        properties: {
+          type: "object",
+          description: "The paragraph properties to set; at least one.",
+          properties: {
+            styleId: {
+              type: "string",
+              description: 'Paragraph style id (e.g. "ClauseHeading1").',
+            },
+            listLevel: {
+              type: "integer",
+              minimum: 0,
+              description: "`w:numPr/w:ilvl`, the zero-based list indent level.",
+            },
+          },
+          minProperties: 1,
+          additionalProperties: false,
+        },
+      },
+      required: ["id", "type", "blockId", "properties"],
       additionalProperties: false,
     },
     {

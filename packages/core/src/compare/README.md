@@ -16,8 +16,8 @@ if (result.isOk()) {
 
 The buffer opens as ordinary revisions in any OOXML consumer. `changes` is a
 discriminated union on `kind` (`insert`, `delete`, `replace`, `move`, `format`,
-`table-row-insert`, `table-row-delete`, `split`, `merge`), for an agent that
-wants the summary
+`table-row-insert`, `table-row-delete`, `split`, `merge`, `paragraph-format`),
+for an agent that wants the summary
 rather than the document. Every change carries the story it belongs to, so a
 caller can tell a body edit from a footnote edit.
 
@@ -94,6 +94,13 @@ restores the base's. A mark is never written on the last paragraph of a table
 cell: there is no sibling to join with, so the revision could not do what it
 says.
 
+A paragraph property that moved without any word moving — a list item demoted
+a level, a paragraph restyled — is a `paragraph-format` change, written as
+`w:pPrChange` with the complete previous property set so a reject restores it
+the way Word does. The self-check's projection carries the style and the list
+level alongside the text, so a redline that reproduces every word and leaves a
+list item at the wrong level fails instead of passing.
+
 `compareDocx` checks its own work before returning: accepting the generated
 revisions must reproduce the target, table cell coordinates included. A
 difference the operation vocabulary cannot express fails with
@@ -149,12 +156,10 @@ carries the current numbers and the failing cases.
   text first and positionally after that, so a row deletion combined with cell
   edits can report per cell instead of as one row change. The result still
   accepts back to the target; it is just more granular than the edit was.
-- **Numbering is not compared.** List renumbering that follows from an insertion
-  or deletion is a property of the numbering definitions, not of block text, and
-  no change is reported for it. A changed list level is invisible for the same
-  reason and more seriously: `w:ilvl` moves and the comparison reports nothing
-  at all, because the edit vocabulary has no paragraph-property operation to
-  express it.
+- **Numbering definitions are not compared** (2026-09-06). Renumbering that
+  follows from an insertion or a deletion is a property of `numbering.xml`, not
+  of block text, and no change is reported for it. A changed list LEVEL is
+  compared: it is a `paragraph-format` change written as `w:pPrChange`.
 
 ## Files
 

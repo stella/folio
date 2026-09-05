@@ -409,6 +409,37 @@ so its numbers do not move; `plan.test.ts` carries the threshold's own cases.
 19 digests moved, all `reorder` plus `tables/m/structural`, deliberately. All
 180 configurations still pass every invariant.
 
+### A demoted list item is a `w:pPrChange`, not silence
+
+`change_list_level` was the gap the probe suite existed to keep visible: the
+edit moves `w:ilvl` and nothing a text diff can see, so the comparison reported
+NOTHING and the redline said two different documents agreed. It is now one
+`paragraph-format` change.
+
+| Configuration        | changes before | changes after |
+| -------------------- | -------------- | ------------- |
+| `lists/m/structural` | 87             | 100           |
+| `lists/s/structural` | 11             | 13            |
+
+The 13 extra changes at size `m` are the demotions the comparison used to drop
+on the floor.
+
+`setBlockParagraphProperties` joins the operation vocabulary and writes the
+complete previous property set into `w:pPrChange`, which is what a reject
+restores — storing only the keys the operation touched would leave a reject
+unable to tell "the change did not set this" from "the change cleared it".
+`FolioAIBlock` gains `listLevel` so the comparison can see the difference at
+all.
+
+The self-check's projection now carries each block's style and list level
+beside its text, and that immediately caught two real defects: an inserted
+paragraph took its list level and its style from whichever block happened to
+follow it, rather than from the block it was inserted to match. Both
+insertions take `listLevel` and a nullable `styleId` now, and the round trip
+covers what the comparison claims to compare.
+
+5 digests moved, deliberately.
+
 ## Correctness gaps the baseline surfaced
 
 Three configurations failed, and each named a real gap rather than a flake.

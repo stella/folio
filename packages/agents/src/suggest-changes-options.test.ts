@@ -92,7 +92,7 @@ describe("resolveSuggestChangesOptions", () => {
   test("defaults to every contract type except commentOnBlock and insertSignatureTable", () => {
     const resolved = resolveSuggestChangesOptions();
     expect(resolved.operationTypes).toEqual(DEFAULT_SUGGEST_CHANGES_OPERATION_TYPES);
-    expect(resolved.operationTypes).toHaveLength(16);
+    expect(resolved.operationTypes).toHaveLength(17);
     expect(resolved.operationTypes).not.toContain("commentOnBlock");
     expect(resolved.operationTypes).not.toContain("insertSignatureTable");
     expect(resolved.reviewMeta).toBe("optional");

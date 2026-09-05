@@ -8,6 +8,7 @@ import { TaggedError } from "better-result";
 import type { FolioDocumentStoryHandle } from "../ai-edits/headless";
 import type { WordDiffGranularity } from "../ai-edits/word-diff";
 import type {
+  FolioAIBlockParagraphProperties,
   FolioAIBlockTableLocation,
   FolioAIEditSkippedOperation,
   FolioAIInlineFormatting,
@@ -113,6 +114,19 @@ export type CompareChange =
       baseBlockIds: readonly string[];
       targetBlockId: string;
       text: string;
+    }
+  /**
+   * A paragraph property moved and no words did: a list item demoted a level,
+   * a paragraph restyled. Written as `w:pPrChange`, so rejecting restores the
+   * whole previous property set the way Word does.
+   */
+  | {
+      kind: "paragraph-format";
+      location: CompareChangeLocation;
+      baseBlockId: string;
+      targetBlockId: string;
+      /** Only the properties that differ, set to the target document's value. */
+      properties: FolioAIBlockParagraphProperties;
     }
   | {
       kind: "format";

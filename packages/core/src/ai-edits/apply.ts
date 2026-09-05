@@ -3,7 +3,9 @@ import type { EditorState, Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 import { canJoin, canSplit } from "prosemirror-transform";
 
-import { expectRunPropertyChangeMarkAttrs } from "../prosemirror/attrs";
+import { expectParagraphAttrs, expectRunPropertyChangeMarkAttrs } from "../prosemirror/attrs";
+import { PPR_CHANGE_SCOPED_ATTR_KEYS } from "../prosemirror/commands/propertyChangeScope";
+import type { ParagraphPropertyChangeAttrs } from "../prosemirror/schema/nodes";
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
 import { requestDeterministicParaIds } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
@@ -48,6 +50,7 @@ import {
   tableRectangleCutsMergedCell,
 } from "./table-targets";
 import type {
+  FolioAIBlockParagraphProperties,
   FolioAIEditAppliedOperation,
   FolioAIEditApplyMode,
   FolioAIEditApplyResult,
@@ -183,6 +186,50 @@ type ResolvedOperation = {
    * ordering when applied bottom-up.
    */
   originalIndex: number;
+};
+
+/**
+ * The attrs one `setBlockParagraphProperties` writes, or `null` when the
+ * block already holds them. `styleId: null` clears the style; `listLevel`
+ * moves `w:numPr/w:ilvl` and leaves `w:numId` alone, because a demoted item
+ * stays in the same list.
+ */
+const paragraphPropertiesPatch = (
+  node: PMNode,
+  properties: FolioAIBlockParagraphProperties,
+): Record<string, unknown> | null => {
+  const patch: Record<string, unknown> = {};
+  if (properties.styleId !== undefined && (node.attrs["styleId"] ?? null) !== properties.styleId) {
+    patch["styleId"] = properties.styleId;
+  }
+  if (properties.listLevel !== undefined) {
+    const numPr: unknown = node.attrs["numPr"];
+    const current =
+      typeof numPr === "object" && numPr !== null && "ilvl" in numPr ? numPr.ilvl : undefined;
+    if (current !== properties.listLevel) {
+      const numId =
+        typeof numPr === "object" && numPr !== null && "numId" in numPr ? numPr.numId : undefined;
+      patch["numPr"] = {
+        ...(typeof numId === "number" && { numId }),
+        ilvl: properties.listLevel,
+      };
+    }
+  }
+  return Object.keys(patch).length > 0 ? patch : null;
+};
+
+/** The in-scope paragraph properties as they stand, for a `w:pPrChange` record. */
+const paragraphPropertiesSnapshot = (
+  node: PMNode,
+): NonNullable<ParagraphPropertyChangeAttrs["previousFormatting"]> => {
+  const snapshot: Record<string, unknown> = {};
+  for (const key of PPR_CHANGE_SCOPED_ATTR_KEYS) {
+    const value: unknown = node.attrs[key];
+    if (value !== null && value !== undefined) {
+      snapshot[key] = value;
+    }
+  }
+  return snapshot;
 };
 
 const applyReplaceBlockStyleId = ({
@@ -1184,6 +1231,17 @@ const applyFolioAIEditOperationsInternal = ({
           if (isFirstParagraph && operation.pageBreakBefore === true) {
             attrs["pageBreakBefore"] = true;
           }
+          if (isFirstParagraph && operation.listLevel !== undefined) {
+            const anchorNumPr: unknown = baseAttrs["numPr"];
+            const numId =
+              typeof anchorNumPr === "object" && anchorNumPr !== null && "numId" in anchorNumPr
+                ? anchorNumPr.numId
+                : undefined;
+            attrs["numPr"] = {
+              ...(typeof numId === "number" && { numId }),
+              ilvl: operation.listLevel,
+            };
+          }
           if (isFirstParagraph && operation.styleId !== undefined) {
             // Heading / clause style ids (e.g. ClauseHeading1) take
             // precedence over the source block's style so the
@@ -1192,8 +1250,10 @@ const applyFolioAIEditOperationsInternal = ({
             attrs["styleId"] = operation.styleId;
             // A heading is logically a fresh block; drop list marker
             // attrs that would otherwise leak from the anchor and
-            // render the heading as a list item.
-            if (operation.inheritFormatting !== false) {
+            // render the heading as a list item. Clearing the style
+            // (`null`) is not that: an unstyled list item is still a
+            // list item, so its markers stay.
+            if (operation.inheritFormatting !== false && operation.styleId !== null) {
               attrs["listMarker"] = null;
               attrs["listMarkerHidden"] = null;
               attrs["listLevelNumFmts"] = null;
@@ -1499,6 +1559,35 @@ const applyFolioAIEditOperationsInternal = ({
         if (commentMark) {
           tr = tr.addMark(item.from, item.to, commentMark);
         }
+        break;
+      }
+      case "setBlockParagraphProperties": {
+        const patch = paragraphPropertiesPatch(item.blockNode, item.operation.properties);
+        if (patch === null) {
+          skipped.push({ id: item.operation.id, reason: "noopOperation" });
+          continue;
+        }
+        if (mode === "direct") {
+          tr = tr.setNodeMarkup(item.blockFrom, undefined, { ...item.blockNode.attrs, ...patch });
+          break;
+        }
+        // Word stores the COMPLETE old pPr inside `w:pPrChange`, so rejecting
+        // restores the properties wholesale within that scope. Storing only
+        // the keys this operation touched would leave a reject unable to tell
+        // "the change did not set this" from "the change cleared it".
+        const revisionId = revisionSeed++;
+        const change: ParagraphPropertyChangeAttrs = {
+          type: "paragraphPropertyChange",
+          info: { id: revisionId, author, date, ...(initials ? { initials } : {}) },
+          previousFormatting: paragraphPropertiesSnapshot(item.blockNode),
+        };
+        const existing = expectParagraphAttrs(item.blockNode)._propertyChanges;
+        tr = tr.setNodeMarkup(item.blockFrom, undefined, {
+          ...item.blockNode.attrs,
+          ...patch,
+          _propertyChanges: [...(Array.isArray(existing) ? existing : []), change],
+        });
+        appliedRevisionIds = [revisionId];
         break;
       }
       case "splitBlock": {
@@ -2269,6 +2358,13 @@ const resolveOperation = ({
           rectangle,
         },
       },
+    };
+  }
+
+  if (operation.type === "setBlockParagraphProperties") {
+    return {
+      type: "resolved",
+      operation: { operation, from: blockFrom, to: blockTo, blockFrom, blockTo, blockNode },
     };
   }
 

@@ -42,6 +42,7 @@ import type { FolioDocumentStoryHandle } from "../ai-edits/headless";
 import { createFolioAITextRangeHandle } from "../ai-edits/snapshot";
 import type {
   FolioAIBlock,
+  FolioAIBlockParagraphProperties,
   FolioAIBlockTableLocation,
   FolioAIEditOperation,
   FolioAIEditSnapshot,
@@ -656,6 +657,26 @@ const rowCellTexts = (blocks: readonly FolioAIBlock[]): string[] => {
   return Array.from(byCell, (text) => text ?? "");
 };
 
+/**
+ * The paragraph properties that differ, or `null` when they agree. Only the
+ * ones a block projection can see and an operation can set: a list level and
+ * a paragraph style, the two edits that move no words and are invisible in a
+ * text diff.
+ */
+const changedParagraphProperties = (
+  baseBlock: FolioAIBlock,
+  targetBlock: FolioAIBlock,
+): FolioAIBlockParagraphProperties | null => {
+  const properties: FolioAIBlockParagraphProperties = {};
+  if ((baseBlock.styleId ?? null) !== (targetBlock.styleId ?? null)) {
+    properties.styleId = targetBlock.styleId ?? null;
+  }
+  if (targetBlock.listLevel !== undefined && baseBlock.listLevel !== targetBlock.listLevel) {
+    properties.listLevel = targetBlock.listLevel;
+  }
+  return Object.keys(properties).length > 0 ? properties : null;
+};
+
 const locationOf = (story: FolioDocumentStoryHandle, block: FolioAIBlock): CompareChangeLocation =>
   block.table ? { story, cell: block.table } : { story };
 
@@ -721,7 +742,11 @@ export const planStoryCompare = ({
       blockId: anchorId,
       text: block.text,
       ...(moveSourceId !== undefined && { moveId: moveIdOf(moveSourceId) }),
-      ...(block.styleId !== undefined && { styleId: block.styleId }),
+      // Always explicit, `null` included: an inserted paragraph that says
+      // nothing about its style takes the anchor's, and the anchor is
+      // whichever block happened to follow it.
+      styleId: block.styleId ?? null,
+      ...(block.listLevel !== undefined && { listLevel: block.listLevel }),
     });
   };
 
@@ -768,6 +793,22 @@ export const planStoryCompare = ({
     switch (step.type) {
       case "pair": {
         const { baseBlock, targetBlock } = step;
+        const properties = changedParagraphProperties(baseBlock, targetBlock);
+        if (properties) {
+          changes.push({
+            kind: "paragraph-format",
+            location: locationOf(story, baseBlock),
+            baseBlockId: baseBlock.id,
+            targetBlockId: targetBlock.id,
+            properties,
+          });
+          operations.push({
+            id: nextOperationId(),
+            type: "setBlockParagraphProperties",
+            blockId: baseBlock.id,
+            properties,
+          });
+        }
         if (baseBlock.text !== targetBlock.text) {
           changes.push({
             kind: "replace",
@@ -923,14 +964,14 @@ export const planStoryCompare = ({
       // receive tracked insertions at all.
       break;
     }
-    const styleId = block.styleId === undefined ? {} : { styleId: block.styleId };
+    const listLevel = block.listLevel === undefined ? {} : { listLevel: block.listLevel };
     if (insertIndex === 0 && emptyBaseAnchorId !== undefined) {
       operations.push({
         id: nextOperationId(),
         type: "replaceBlock",
         blockId: emptyBaseAnchorId,
         text: block.text,
-        ...styleId,
+        ...(block.styleId !== undefined && { styleId: block.styleId }),
       });
       continue;
     }
@@ -941,7 +982,8 @@ export const planStoryCompare = ({
       blockId: anchorId,
       text: block.text,
       ...(moveSourceId !== undefined && { moveId: moveIdOf(moveSourceId) }),
-      ...styleId,
+      styleId: block.styleId ?? null,
+      ...listLevel,
     });
   }
 

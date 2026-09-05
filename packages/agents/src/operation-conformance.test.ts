@@ -362,6 +362,7 @@ const CONTRACT_OPERATION_FIXTURES: Record<FolioDocumentOperationType, Record<str
     blockId: "0304003A",
     text: "New paragraph.",
     inheritFormatting: true,
+    listLevel: 1,
     moveId: "move-1",
     pageBreakBefore: true,
     styleId: "Heading1",
@@ -386,6 +387,12 @@ const CONTRACT_OPERATION_FIXTURES: Record<FolioDocumentOperationType, Record<str
     blockId: "0304003A",
     moveId: "move-1",
     comment: { text: "Redundant." },
+  },
+  setBlockParagraphProperties: {
+    id: "op-set-paragraph-properties",
+    type: "setBlockParagraphProperties",
+    blockId: "0304003A",
+    properties: { styleId: "ClauseHeading1", listLevel: 1 },
   },
   splitBlock: {
     id: "op-split-block",

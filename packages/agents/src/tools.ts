@@ -55,6 +55,8 @@ const OPERATION_TYPE_SUMMARIES = {
   deleteBlock: "delete one block",
   splitBlock: "break one block in two at `offset`, moving a paragraph mark and no words",
   mergeBlockWithNext: "join one block with the block after it in the same container",
+  setBlockParagraphProperties:
+    "change one block's paragraph properties (list level, paragraph style) without touching its words",
   commentOnBlock: "attach a comment to one block, optionally quoting text within it",
   insertSignatureTable: "insert a side-by-side signature table for the given `parties`",
   insertTableRow: "insert a table row next to the row containing a cell block",
@@ -184,6 +186,22 @@ const OPERATION_PROPERTY_SCHEMAS = {
     },
     minProperties: 1,
     additionalProperties: false,
+  },
+  properties: {
+    type: "object",
+    description:
+      "Required for `setBlockParagraphProperties`: the paragraph properties to set. `styleId: null` clears the style.",
+    properties: {
+      styleId: { type: "string", description: "Paragraph style id." },
+      listLevel: { type: "integer", minimum: 0, description: "`w:numPr/w:ilvl`, zero-based." },
+    },
+    minProperties: 1,
+    additionalProperties: false,
+  },
+  listLevel: {
+    type: "integer",
+    minimum: 0,
+    description: "For inserts: `w:numPr/w:ilvl` for the inserted block, keeping the anchor's list.",
   },
   offset: {
     type: "integer",

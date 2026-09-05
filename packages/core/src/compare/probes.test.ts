@@ -23,7 +23,6 @@ import path from "node:path";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import type { FolioAIBlock } from "../ai-edits/types";
-import { FOLIO_DOCUMENT_OPERATION_TYPES } from "../document-operations";
 import { buildNestedTableDocx } from "./__fixtures__/nested-table";
 import {
   buildNumberedListDocx,
@@ -329,27 +328,26 @@ describe("single-mutation probes", () => {
     expect(kinds).toEqual(["insert"]);
   });
 
-  /**
-   * The gap this suite exists to keep visible. Changing a list item's level is
-   * a paragraph-property change, and the operation vocabulary has no way to
-   * say it: `w:pPrChange` is not generated, so a level change reaches the
-   * comparison as nothing at all. Until an operation exists, the probe pins
-   * that the engine does not silently claim to have handled it.
-   */
-  test("change_list_level: reaches the comparison as no change at all", async () => {
-    // Demoting an item changes `w:ilvl` and nothing a block projection can
-    // see, so the comparison reports nothing and the redline says the two
-    // documents agree. The probe pins the size of the hole rather than
-    // papering over it: closing it needs a paragraph-property operation in
-    // the edit vocabulary and `w:pPrChange` on the apply side, at which point
-    // this expectation flips and the probe becomes the feature's test.
-    expect([...FOLIO_DOCUMENT_OPERATION_TYPES]).not.toContain("setBlockParagraphProperties");
-
+  test("change_list_level: a demoted list item is one paragraph-format change", async () => {
+    // Demoting an item changes `w:ilvl` and nothing a text diff can see. It
+    // used to reach the comparison as no change at all, so the redline said
+    // the two documents agreed; it is now a `w:pPrChange`, which is what Word
+    // writes for the same edit.
     const demoted = await buildNumberedListDocx(withItemDemoted(NUMBERED_LIST_ITEMS, 3));
     const result = await compareDocx(LIST_BASE, demoted, OPTIONS);
     if (result.isErr()) {
       throw result.error;
     }
-    expect(result.value.changes).toEqual([]);
+    expect(result.value.changes.map(({ kind }) => kind)).toEqual(["paragraph-format"]);
+    const [change] = result.value.changes;
+    expect(change?.kind === "paragraph-format" && change.properties).toEqual({ listLevel: 1 });
+
+    expect(await projectView(result.value.buffer, "final")).toEqual(
+      await projectView(demoted, "final"),
+    );
+    expect(await projectView(result.value.buffer, "original")).toEqual(
+      await projectView(LIST_BASE, "final"),
+    );
+    expect(await documentPartOf(result.value.buffer)).toContain("<w:pPrChange ");
   });
 });

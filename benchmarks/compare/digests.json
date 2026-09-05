@@ -128,7 +128,7 @@
     "changes": "c0f9546fb3a6081b2245125b8af414a8b0fa0860bd85f67e1dd9f9be1ce3c174"
   },
   "lists/m/reorder": {
-    "buffer": "4b6e17e2a2571406b18078f041de2003cf0f0de0114b2320ac149eddea9d634a",
+    "buffer": "35828a977c774bc6d1a6d461f728fd3c887b6b0c622d14b93ed2989e5731ff4d",
     "changes": "72bbb957f11201a145d8ea8ca1f8191de586c42f561bd8b707f0805f2df2b127"
   },
   "lists/m/rewrite": {
@@ -136,8 +136,8 @@
     "changes": "c983c291e9aae0336ec6846af613e6f8c52a7226b65abf92328da5395fffddc2"
   },
   "lists/m/structural": {
-    "buffer": "b32c33a6c51e9171aece99c82b88b7b34147a44fe4b6adac6dedf8ae92a0344d",
-    "changes": "c78ec49a704f631242402c4a803b22ec90fbfcf15c5701fce0cdfa55b710f42c"
+    "buffer": "0118f8b77eb61c1881ace93363ebbd9a7e9b154030184d95993d9c50ba4a669f",
+    "changes": "20607800e8827b6d0a3976204cab9fd4c822de74a57adb9854359954aa2ee1c0"
   },
   "lists/s/churn": {
     "buffer": "07614a0d6b2a6e50d4207310dc837ac963d590fe5af1e76c0c62d07c08aaeedf",
@@ -156,7 +156,7 @@
     "changes": "072dfea0e9c138fc5070b2061f5760719df156340ed13ee5eb48746f4e4241e9"
   },
   "lists/s/reorder": {
-    "buffer": "2a2b26fd83282ecabf3f90fcb446a236a2eda50d51b10e58e06e01cfb30db893",
+    "buffer": "28c4856035f06d4f439137111ad6e8ff356b8d8bedf05fbe4482d3b7d3f1ece3",
     "changes": "650365d977bdddeb4b4ab51735d117d63ddbd18ea1539c80f76fdd23c52cea66"
   },
   "lists/s/rewrite": {
@@ -164,8 +164,8 @@
     "changes": "188970cf6b8280f11a0264794d2795dec04fe3785bf7966d34022d9a5120e176"
   },
   "lists/s/structural": {
-    "buffer": "0067320feff47cd7756cae87c1d49e812434c622202b1c72f9226da2e894f85e",
-    "changes": "d2c136bf66bdb1ec88efe495f5e62ed335d60a6b2cccbf123613bf928cbef325"
+    "buffer": "8cdd48b334578fe8b2277a87c4a021832934ca43328dece1e97b4622cd4e7428",
+    "changes": "cc2576068da990111cdd85ac7a1478e7d894718c7effca348ee019bdc2892b4a"
   },
   "multiscript/m/churn": {
     "buffer": "a4b601c96e7ff7d9b545bf4b6ff385d38d714111668115b337cc81732478c764",
@@ -320,7 +320,7 @@
     "changes": "f21907120f955d0f551c2759425bc26820c508960d765a3a681ee2a4c3b9c3f0"
   },
   "prose/m/structural": {
-    "buffer": "fdcd29aa08040c526163fb27d8b35045dd449ecd3360fd046f5e120e578eac64",
+    "buffer": "90bf210c10d54bb6b81233fc64f5b6ca8b42175877b0183a6d55cd6ed6b1a7aa",
     "changes": "11f106933225a87f59afd63d888924588635a7baab0f48548c29cd42e37c96e6"
   },
   "prose/s/churn": {
