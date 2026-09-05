@@ -16,7 +16,8 @@ if (result.isOk()) {
 
 The buffer opens as ordinary revisions in any OOXML consumer. `changes` is a
 discriminated union on `kind` (`insert`, `delete`, `replace`, `move`, `format`,
-`table-row-insert`, `table-row-delete`), for an agent that wants the summary
+`table-row-insert`, `table-row-delete`, `split`, `merge`), for an agent that
+wants the summary
 rather than the document. Every change carries the story it belongs to, so a
 caller can tell a body edit from a footnote edit.
 
@@ -78,6 +79,15 @@ rather than a re-serialization of it, so an unchanged document is handed back
 byte for byte. The exception is a base that already carried tracked changes:
 there the compared base is its accepted view, so the result is serialized.
 
+A split and a merge move a paragraph mark and no words, and are reported as
+exactly that: `splitBlock` writes an inserted mark on the paragraph the break
+now ends, `mergeBlockWithNext` a deleted one, and the change list says `split`
+or `merge`. The space the break stands in for travels with the operation as
+`separator`, so accepting reproduces the target's spacing and rejecting
+restores the base's. A mark is never written on the last paragraph of a table
+cell: there is no sibling to join with, so the revision could not do what it
+says.
+
 `compareDocx` checks its own work before returning: accepting the generated
 revisions must reproduce the target, table cell coordinates included. A
 difference the operation vocabulary cannot express fails with
@@ -135,10 +145,6 @@ carries the current numbers and the failing cases.
   reason and more seriously: `w:ilvl` moves and the comparison reports nothing
   at all, because the edit vocabulary has no paragraph-property operation to
   express it.
-- **A split or a merge is overstated.** Both move a paragraph mark and no words,
-  but are reported as a replace plus an insert or delete, so the half that did
-  not change reads as newly written. `probes.test.ts` pins the current
-  behaviour.
 
 ## Files
 

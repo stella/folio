@@ -340,6 +340,43 @@ of a clause number rather than the whole token. Case and whitespace
 normalization stay on `diffWordSegments` alone: a comparison that leaves a
 difference unmarked does not accept back to the target.
 
+### A split is one inserted paragraph mark, a merge one deleted mark
+
+Both move a paragraph mark and no words. The engine reported them as a rewrite
+of the half that stayed plus an insertion or a deletion of the other, which
+round-trips and lies: the tail was not written today.
+
+`splitBlock` and `mergeBlockWithNext` join the operation vocabulary and write
+`w:rPr/w:ins` and `w:rPr/w:del` inside `w:pPr`, which folio's schema,
+serializer and accept/reject commands already understood — the plumbing was
+there and nothing produced it. The space the break stands in for travels with
+the operation as `separator`, deletion-marked on a split and insertion-marked
+on a merge, so both directions of the round trip reproduce the right spacing.
+
+| Configuration         | changes before | changes after | text runs before | text runs after |
+| --------------------- | -------------- | ------------- | ---------------- | --------------- |
+| `prose/m/structural`  | 145            | 87            | 156              | 87              |
+| `lists/m/structural`  | 145            | 87            | 155              | 87              |
+| `tables/m/structural` | 8              | 7             | 9                | 8               |
+
+"Text runs" counts `w:ins` and `w:del` elements that carry words. The 58
+paragraph marks the comparison now writes carry none at all: that is the
+point, and it is why the change count and the text-run count converge.
+
+`notes/m/structural` does not move (145 either way), and should not: that
+variant rewrites paragraphs that carry footnote references, so the two halves
+are not the base paragraph's text split in two and the edit really is a
+rewrite.
+
+A deleted mark is refused on the last paragraph of a table cell and on the
+last paragraph of a story. `canJoin` decides it, so the rule is structural
+rather than a check someone has to remember: there is no sibling to join with,
+and accepting a mark that says otherwise would have to do something no OOXML
+consumer can express.
+
+16 digests moved, all `structural`, deliberately. All 180 configurations still
+pass every invariant.
+
 ## Correctness gaps the baseline surfaced
 
 Three configurations failed, and each named a real gap rather than a flake.

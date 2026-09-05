@@ -1,6 +1,7 @@
 import type { Mark, Node as PMNode, Schema } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
+import { canJoin, canSplit } from "prosemirror-transform";
 
 import { expectRunPropertyChangeMarkAttrs } from "../prosemirror/attrs";
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
@@ -1456,6 +1457,71 @@ const applyFolioAIEditOperationsInternal = ({
         }
         break;
       }
+      case "splitBlock": {
+        if (mode === "direct") {
+          if (item.to > item.from) {
+            tr = tr.delete(item.from, item.to);
+          }
+          tr = tr.split(item.from);
+          break;
+        }
+        const revisionIdMark = revisionSeed++;
+        const info = { id: revisionIdMark, author, date, ...trackedRevisionExtras };
+        appliedRevisionIds = [revisionIdMark];
+        if (item.to > item.from && deletionType) {
+          const revisionIdSeparator = revisionSeed++;
+          tr = tr.addMark(
+            item.from,
+            item.to,
+            deletionType.create({
+              revisionId: revisionIdSeparator,
+              author,
+              date,
+              ...trackedRevisionExtras,
+            }),
+          );
+          appliedRevisionIds = [revisionIdMark, revisionIdSeparator];
+        }
+        tr = tr.split(item.from);
+        // The mark goes on the FIRST half: the break belongs to the paragraph
+        // it now ends, and a reader rejecting it closes that paragraph back
+        // over the second half.
+        tr = tr.setNodeAttribute(item.blockFrom, "pPrMark", { kind: "ins", info });
+        break;
+      }
+      case "mergeBlockWithNext": {
+        const separator = item.operation.separator ?? "";
+        const insertAt = item.blockTo - 1;
+        if (mode === "direct") {
+          if (separator.length > 0) {
+            tr = tr.insertText(separator, insertAt);
+          }
+          tr = tr.join(item.blockTo + separator.length);
+          break;
+        }
+        const revisionIdMark = revisionSeed++;
+        appliedRevisionIds = [revisionIdMark];
+        if (separator.length > 0 && insertionType) {
+          const revisionIdSeparator = revisionSeed++;
+          tr = tr.insertText(separator, insertAt);
+          tr = tr.addMark(
+            insertAt,
+            insertAt + separator.length,
+            insertionType.create({
+              revisionId: revisionIdSeparator,
+              author,
+              date,
+              ...trackedRevisionExtras,
+            }),
+          );
+          appliedRevisionIds = [revisionIdMark, revisionIdSeparator];
+        }
+        tr = tr.setNodeAttribute(item.blockFrom, "pPrMark", {
+          kind: "del",
+          info: { id: revisionIdMark, author, date, ...trackedRevisionExtras },
+        });
+        break;
+      }
       case "commentOnBlock": {
         if (commentMark) {
           tr = tr.addMark(item.from, item.to, commentMark);
@@ -2159,6 +2225,46 @@ const resolveOperation = ({
           rectangle,
         },
       },
+    };
+  }
+
+  if (operation.type === "splitBlock") {
+    // A split at either end of the block moves no words and produces an empty
+    // paragraph; the caller meant an insertion.
+    const separator = operation.separator ?? "";
+    const at = cleanBlock.offsets[operation.offset];
+    const after = cleanBlock.offsets[operation.offset + separator.length];
+    if (
+      at === undefined ||
+      after === undefined ||
+      operation.offset === 0 ||
+      operation.offset + separator.length >= currentText.length
+    ) {
+      return { type: "skip", reason: "staleRange" };
+    }
+    if (currentText.slice(operation.offset, operation.offset + separator.length) !== separator) {
+      return { type: "skip", reason: "staleRange" };
+    }
+    if (!canSplit(doc, at)) {
+      return { type: "skip", reason: "unsupportedBlock" };
+    }
+    return {
+      type: "resolved",
+      operation: { operation, from: at, to: after, blockFrom, blockTo, blockNode },
+    };
+  }
+
+  if (operation.type === "mergeBlockWithNext") {
+    // `canJoin` is what keeps a deleted paragraph mark off the last paragraph
+    // of a table cell, and off the last paragraph of the story: there is no
+    // sibling to join with, so accepting the revision could not do what the
+    // mark says it does.
+    if (!canJoin(doc, blockTo)) {
+      return { type: "skip", reason: "unsupportedBlock" };
+    }
+    return {
+      type: "resolved",
+      operation: { operation, from: blockTo, to: blockTo, blockFrom, blockTo, blockNode },
     };
   }
 

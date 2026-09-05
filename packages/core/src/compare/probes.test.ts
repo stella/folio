@@ -157,24 +157,29 @@ describe("single-mutation probes", () => {
   });
 
   /**
-   * A split moves a paragraph mark and no words. The engine keeps the first
-   * half in place and reports the second as new text, which round-trips but
-   * overstates the edit: the words in the tail were not written today. A
-   * paragraph-mark atom would let this read as one inserted mark.
+   * A split moves a paragraph mark and no words, and is reported as exactly
+   * that: one inserted mark. Reporting it as a rewrite of the head plus an
+   * insertion of the tail round-trips and lies — the tail was not written
+   * today.
    */
-  test("split_paragraph: reported as a replace plus an insert", async () => {
+  test("split_paragraph: one inserted paragraph mark", async () => {
     const blockIndex = wordyBlockIndex(PROSE_BLOCKS, 6);
-    const { kinds } = await probe(PROSE_BASE, [
+    const { changes, kinds } = await probe(PROSE_BASE, [
       { type: "splitParagraph", blockIndex, wordIndex: 3 },
     ]);
-    expect(kinds).toEqual(["replace", "insert"]);
+    expect(kinds).toEqual(["split"]);
+    const [change] = changes;
+    expect(change?.kind === "split" && change.targetBlockIds).toHaveLength(2);
+    expect(change?.kind === "split" && change.text).toBe(PROSE_BLOCKS[blockIndex]?.text);
   });
 
-  /** The mirror of the split, and overstated the same way. */
-  test("merge_paragraphs: reported as a replace plus a delete", async () => {
+  /** The mirror of the split: one deleted paragraph mark. */
+  test("merge_paragraphs: one deleted paragraph mark", async () => {
     const blockIndex = wordyBlockIndex(PROSE_BLOCKS, 3);
-    const { kinds } = await probe(PROSE_BASE, [{ type: "mergeParagraphs", blockIndex }]);
-    expect(kinds).toEqual(["replace", "delete"]);
+    const { changes, kinds } = await probe(PROSE_BASE, [{ type: "mergeParagraphs", blockIndex }]);
+    expect(kinds).toEqual(["merge"]);
+    const [change] = changes;
+    expect(change?.kind === "merge" && change.baseBlockIds).toHaveLength(2);
   });
 
   test("move_clause: a relocated paragraph is reported as a move", async () => {

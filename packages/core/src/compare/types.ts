@@ -92,6 +92,28 @@ export type CompareChange =
       targetBlockId: string;
       text: string;
     }
+  /**
+   * One paragraph became two: a paragraph mark was inserted and no words
+   * changed. Reported as its own kind so a reader is not told the tail was
+   * newly written.
+   */
+  | {
+      kind: "split";
+      location: CompareChangeLocation;
+      baseBlockId: string;
+      /** The two blocks the base block became, in target order. */
+      targetBlockIds: readonly string[];
+      text: string;
+    }
+  /** Two paragraphs became one: a paragraph mark was deleted. */
+  | {
+      kind: "merge";
+      location: CompareChangeLocation;
+      /** The two blocks that became one, in base order. */
+      baseBlockIds: readonly string[];
+      targetBlockId: string;
+      text: string;
+    }
   | {
       kind: "format";
       location: CompareChangeLocation;

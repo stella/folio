@@ -354,11 +354,118 @@ const buildSteps = ({ baseBlocks, targetBlocks }: BuildStepsOptions): CompareSte
   return steps;
 };
 
+/**
+ * Two blocks are in the same container when a paragraph mark between them
+ * exists at all: two body paragraphs, or two paragraphs of one table cell. A
+ * mark cannot span a cell boundary, so a split or a merge across one is not a
+ * paragraph-mark edit however similar the text looks.
+ */
+const shareAContainer = (left: FolioAIBlock, right: FolioAIBlock): boolean => {
+  if (!left.table || !right.table) {
+    return left.table === undefined && right.table === undefined;
+  }
+  return (
+    left.table.tableIndex === right.table.tableIndex &&
+    left.table.rowIndex === right.table.rowIndex &&
+    left.table.cellIndex === right.table.cellIndex
+  );
+};
+
+/**
+ * The text between `head` and `tail` inside `whole`, when `whole` is exactly
+ * the two joined by whitespace (or by nothing). `null` when it is not: any
+ * other difference is a rewrite, not a moved paragraph mark.
+ */
+const separatorBetween = (whole: string, head: string, tail: string): string | null => {
+  if (head.length === 0 || tail.length === 0 || whole.length < head.length + tail.length) {
+    return null;
+  }
+  if (!whole.startsWith(head) || !whole.endsWith(tail)) {
+    return null;
+  }
+  const separator = whole.slice(head.length, whole.length - tail.length);
+  return separator.length === 0 || /^\s+$/u.test(separator) ? separator : null;
+};
+
+/** A split or a merge, and the step it consumed alongside the paired one. */
+type ParagraphMarkPlan =
+  | {
+      type: "split";
+      baseBlock: FolioAIBlock;
+      targetBlocks: readonly [FolioAIBlock, FolioAIBlock];
+      offset: number;
+      separator: string;
+    }
+  | {
+      type: "merge";
+      baseBlocks: readonly [FolioAIBlock, FolioAIBlock];
+      targetBlock: FolioAIBlock;
+      separator: string;
+    };
+
+/**
+ * Where the alignment produced a rewrite plus an insertion or a deletion that
+ * is really one paragraph mark moving, by step index of the PAIR step. The
+ * step after it is consumed with it.
+ *
+ * The alignment cannot see this: it pairs the base paragraph with the target
+ * half that still matches it and leaves the other half unpaired, which is a
+ * correct alignment and a misleading redline.
+ */
+const detectParagraphMarkEdits = (
+  steps: readonly CompareStep[],
+): ReadonlyMap<number, ParagraphMarkPlan> => {
+  const plans = new Map<number, ParagraphMarkPlan>();
+  for (const [index, step] of steps.entries()) {
+    const next = steps[index + 1];
+    if (step.type !== "pair" || next === undefined) {
+      continue;
+    }
+    if (next.type === "targetOnly") {
+      const separator = separatorBetween(
+        step.baseBlock.text,
+        step.targetBlock.text,
+        next.block.text,
+      );
+      if (separator !== null && shareAContainer(step.targetBlock, next.block)) {
+        plans.set(index, {
+          type: "split",
+          baseBlock: step.baseBlock,
+          targetBlocks: [step.targetBlock, next.block],
+          offset: step.targetBlock.text.length,
+          separator,
+        });
+      }
+      continue;
+    }
+    if (next.type !== "baseOnly") {
+      continue;
+    }
+    const separator = separatorBetween(step.targetBlock.text, step.baseBlock.text, next.block.text);
+    if (separator !== null && shareAContainer(step.baseBlock, next.block)) {
+      plans.set(index, {
+        type: "merge",
+        baseBlocks: [step.baseBlock, next.block],
+        targetBlock: step.targetBlock,
+        separator,
+      });
+    }
+  }
+  return plans;
+};
+
 /** Base block id -> target block id for every relocation the move pass found. */
-const detectMoves = (steps: readonly CompareStep[]): ReadonlyMap<string, string> => {
+const detectMoves = (
+  steps: readonly CompareStep[],
+  consumed: ReadonlySet<number>,
+): ReadonlyMap<string, string> => {
   const candidatesByText = new Map<string, string[]>();
-  for (const step of steps) {
-    if (step.type !== "baseOnly" || !wordCountReaches(step.block.text, MOVE_MINIMUM_WORD_COUNT)) {
+  for (const [index, step] of steps.entries()) {
+    if (
+      consumed.has(index) ||
+      step.type !== "baseOnly" ||
+      !wordCountReaches(step.block.text, MOVE_MINIMUM_WORD_COUNT)
+    ) {
       continue;
     }
     const queue = candidatesByText.get(step.block.text);
@@ -372,8 +479,8 @@ const detectMoves = (steps: readonly CompareStep[]): ReadonlyMap<string, string>
   }
 
   const movesByBaseBlockId = new Map<string, string>();
-  for (const step of steps) {
-    if (step.type !== "targetOnly") {
+  for (const [index, step] of steps.entries()) {
+    if (consumed.has(index) || step.type !== "targetOnly") {
       continue;
     }
     const queue = candidatesByText.get(step.block.text);
@@ -492,7 +599,11 @@ export const planStoryCompare = ({
   maxOperations,
 }: PlanStoryCompareOptions): CompareStoryPlan | null => {
   const steps = buildSteps({ baseBlocks: baseSnapshot.blocks, targetBlocks });
-  const movesByBaseBlockId = detectMoves(steps);
+  const paragraphMarkPlans = detectParagraphMarkEdits(steps);
+  // The step after each paragraph-mark plan is part of it, so neither the move
+  // pass nor the main loop may claim it again.
+  const consumedSteps = new Set([...paragraphMarkPlans.keys()].map((index) => index + 1));
+  const movesByBaseBlockId = detectMoves(steps, consumedSteps);
   const moveSourceByTargetBlockId = new Map<string, string>();
   for (const [baseBlockId, targetBlockId] of movesByBaseBlockId) {
     moveSourceByTargetBlockId.set(targetBlockId, baseBlockId);
@@ -522,6 +633,45 @@ export const planStoryCompare = ({
   };
 
   for (const [stepIndex, step] of steps.entries()) {
+    if (consumedSteps.has(stepIndex)) {
+      continue;
+    }
+    const paragraphMarkPlan = paragraphMarkPlans.get(stepIndex);
+    if (paragraphMarkPlan?.type === "split") {
+      const { baseBlock, targetBlocks: splitInto, offset, separator } = paragraphMarkPlan;
+      changes.push({
+        kind: "split",
+        location: locationOf(story, baseBlock),
+        baseBlockId: baseBlock.id,
+        targetBlockIds: splitInto.map(({ id }) => id),
+        text: baseBlock.text,
+      });
+      operations.push({
+        id: nextOperationId(),
+        type: "splitBlock",
+        blockId: baseBlock.id,
+        offset,
+        ...(separator.length > 0 && { separator }),
+      });
+      continue;
+    }
+    if (paragraphMarkPlan?.type === "merge") {
+      const { baseBlocks, targetBlock, separator } = paragraphMarkPlan;
+      changes.push({
+        kind: "merge",
+        location: locationOf(story, baseBlocks[0]),
+        baseBlockIds: baseBlocks.map(({ id }) => id),
+        targetBlockId: targetBlock.id,
+        text: targetBlock.text,
+      });
+      operations.push({
+        id: nextOperationId(),
+        type: "mergeBlockWithNext",
+        blockId: baseBlocks[0].id,
+        ...(separator.length > 0 && { separator }),
+      });
+      continue;
+    }
     switch (step.type) {
       case "pair": {
         const { baseBlock, targetBlock } = step;

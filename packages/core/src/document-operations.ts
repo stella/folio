@@ -32,6 +32,8 @@ export const FOLIO_DOCUMENT_OPERATION_TYPES = Object.freeze([
   "insertBeforeBlock",
   "replaceBlock",
   "deleteBlock",
+  "splitBlock",
+  "mergeBlockWithNext",
   "commentOnBlock",
   "insertSignatureTable",
   "insertTableRow",
@@ -103,6 +105,8 @@ export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE = Object.freeze({
   insertBeforeBlock: DIRECT_TRACKED_AND_SUGGESTED_MODES,
   replaceBlock: DIRECT_TRACKED_AND_SUGGESTED_MODES,
   deleteBlock: DIRECT_TRACKED_AND_SUGGESTED_MODES,
+  splitBlock: DIRECT_AND_TRACKED_MODES,
+  mergeBlockWithNext: DIRECT_AND_TRACKED_MODES,
   commentOnBlock: DIRECT_AND_TRACKED_MODES,
   insertSignatureTable: DIRECT_AND_SUGGESTED_MODES,
   insertTableRow: DIRECT_TRACKED_AND_SUGGESTED_MODES,
@@ -482,6 +486,8 @@ export const FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE = Object.freeze({
   ],
   replaceBlock: [...COMMON_OPERATION_KEYS, "text", "preserveFormatting", "styleId", "comment"],
   deleteBlock: [...COMMON_OPERATION_KEYS, "comment"],
+  splitBlock: [...COMMON_OPERATION_KEYS, "offset", "separator"],
+  mergeBlockWithNext: [...COMMON_OPERATION_KEYS, "separator"],
   commentOnBlock: [...COMMON_OPERATION_KEYS, "quote", "comment"],
   insertSignatureTable: [...COMMON_OPERATION_KEYS, "position", "parties", "comment"],
   insertTableRow: [...COMMON_OPERATION_KEYS, "position", "cellTexts"],
@@ -575,6 +581,21 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
   }
 
   const blockId = readString(value, "blockId", path);
+
+  if (type === "splitBlock" || type === "mergeBlockWithNext") {
+    const separator = readOptionalString(value, "separator", path);
+    if (type === "mergeBlockWithNext") {
+      return { ...operationMeta, id, type, blockId, ...(separator !== undefined && { separator }) };
+    }
+    return {
+      ...operationMeta,
+      id,
+      type,
+      blockId,
+      offset: readNonNegativeInteger(value, "offset", path),
+      ...(separator !== undefined && { separator }),
+    };
+  }
 
   if (type === "replaceInBlock") {
     return {
@@ -1038,6 +1059,16 @@ const getPrimaryAffectedTarget = (
         story,
         blockId: operation.blockId,
         effect: "deleted",
+      };
+    case "splitBlock":
+    case "mergeBlockWithNext":
+      // The paragraph mark moved, and it belongs to this block; the block the
+      // break was taken from or given to is the one a caller navigates to.
+      return {
+        type: "block",
+        story,
+        blockId: operation.blockId,
+        effect: "updated",
       };
     case "commentOnBlock":
       return {

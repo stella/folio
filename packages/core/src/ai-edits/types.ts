@@ -233,6 +233,47 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
         blockId: string;
         comment?: FolioAIComment;
       }
+    /**
+     * Break the block in two at `offset`, moving a paragraph mark and no
+     * words. In tracked-changes mode the first half carries an INSERTED
+     * paragraph mark, so accepting keeps the break and rejecting closes it;
+     * the alternative — rewriting the first half and inserting the second —
+     * claims the tail was newly written when nobody touched it.
+     */
+    | {
+        id: string;
+        type: "splitBlock";
+        /** Offset in the block's text. Must fall strictly inside it. */
+        offset: number;
+        /**
+         * Text at `offset` the break replaces — the space between the two
+         * halves, when the split consumed one. Deleted in `"direct"` mode and
+         * deletion-marked in tracked mode, so rejecting restores it.
+         */
+        separator?: string;
+        blockId: string;
+      }
+    /**
+     * Join the block with the one after it, the mirror of `splitBlock`: in
+     * tracked-changes mode the block carries a DELETED paragraph mark, so
+     * accepting closes the break and rejecting keeps it.
+     *
+     * Refused when the block has no joinable sibling — the last paragraph of
+     * a table cell, or of the story — because a deleted mark there would
+     * accept into a join that cannot happen and leave a revision no reader
+     * can resolve.
+     */
+    | {
+        id: string;
+        type: "mergeBlockWithNext";
+        /**
+         * Text the join inserts between the two halves — the space the
+         * paragraph break used to stand in for. Insertion-marked in tracked
+         * mode, so rejecting removes it along with the join.
+         */
+        separator?: string;
+        blockId: string;
+      }
     | {
         id: string;
         type: "commentOnBlock";

@@ -71,6 +71,8 @@ export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE: Readonly<{
     readonly insertBeforeBlock: readonly ["direct", "tracked-changes", "suggested"];
     readonly replaceBlock: readonly ["direct", "tracked-changes", "suggested"];
     readonly deleteBlock: readonly ["direct", "tracked-changes", "suggested"];
+    readonly splitBlock: readonly ["direct", "tracked-changes"];
+    readonly mergeBlockWithNext: readonly ["direct", "tracked-changes"];
     readonly commentOnBlock: readonly ["direct", "tracked-changes"];
     readonly insertSignatureTable: readonly ["direct", "suggested"];
     readonly insertTableRow: readonly ["direct", "tracked-changes", "suggested"];
@@ -88,7 +90,7 @@ export const FOLIO_DOCUMENT_OPERATION_PRECONDITIONS: readonly ["blockTextHash"];
 export const FOLIO_DOCUMENT_OPERATION_STORIES: readonly ["main", "header", "footer", "footnote", "endnote"];
 
 // @public (undocumented)
-export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replaceRange", "commentOnRange", "formatRange", "insertAfterBlock", "insertBeforeBlock", "replaceBlock", "deleteBlock", "commentOnBlock", "insertSignatureTable", "insertTableRow", "deleteTableRow", "insertTableColumn", "deleteTableColumn", "mergeTableCells", "splitTableCell"];
+export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replaceRange", "commentOnRange", "formatRange", "insertAfterBlock", "insertBeforeBlock", "replaceBlock", "deleteBlock", "splitBlock", "mergeBlockWithNext", "commentOnBlock", "insertSignatureTable", "insertTableRow", "deleteTableRow", "insertTableColumn", "deleteTableColumn", "mergeTableCells", "splitTableCell"];
 
 // @public (undocumented)
 export const FOLIO_RESOLVED_REVIEWED_VIEWS: readonly ["original", "final"];
@@ -230,6 +232,36 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     type: "deleteBlock";
     blockId: string;
     comment?: FolioAIComment;
+} |
+/**
+* Break the block in two at `offset`, moving a paragraph mark and no
+* words. In tracked-changes mode the first half carries an INSERTED
+* paragraph mark, so accepting keeps the break and rejecting closes it;
+* the alternative — rewriting the first half and inserting the second —
+* claims the tail was newly written when nobody touched it.
+*/
+    {
+    id: string;
+    type: "splitBlock";
+    offset: number;
+    separator?: string;
+    blockId: string;
+} |
+/**
+* Join the block with the one after it, the mirror of `splitBlock`: in
+* tracked-changes mode the block carries a DELETED paragraph mark, so
+* accepting closes the break and rejecting keeps it.
+*
+* Refused when the block has no joinable sibling — the last paragraph of
+* a table cell, or of the story — because a deleted mark there would
+* accept into a join that cannot happen and leave a revision no reader
+* can resolve.
+*/
+    {
+    id: string;
+    type: "mergeBlockWithNext";
+    separator?: string;
+    blockId: string;
 } | {
     id: string;
     type: "commentOnBlock";
