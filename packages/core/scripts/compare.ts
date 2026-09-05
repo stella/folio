@@ -100,6 +100,42 @@ const describeChange = (change: CompareChange): string => {
 const describeUnsupported = ({ reason, baseStory, targetStory }: CompareUnsupportedPart): string =>
   `unsupported (${reason}): ${JSON.stringify(baseStory ?? targetStory)}`;
 
+const describeError = (value: unknown): string => {
+  if (value instanceof Error) {
+    return `${value.name}: ${value.message}`;
+  }
+  return typeof value === "string" ? value : JSON.stringify(value);
+};
+
+/** Guard against a chain that loops or is pathologically deep. */
+const MAX_CAUSE_DEPTH = 8;
+
+const readCause = (value: unknown): unknown =>
+  typeof value === "object" && value !== null && "cause" in value ? value.cause : undefined;
+
+/**
+ * The error and every cause behind it, outermost first.
+ *
+ * A parse failure says only that the document could not be parsed; which part
+ * refused it lives in the cause. Printing the tag alone left a failing file
+ * undiagnosable from the CLI.
+ */
+const causeChain = (error: unknown): string[] => {
+  const lines: string[] = [];
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  while (current !== undefined && current !== null && !seen.has(current)) {
+    if (lines.length >= MAX_CAUSE_DEPTH) {
+      lines.push("... further causes omitted");
+      break;
+    }
+    seen.add(current);
+    lines.push(describeError(current));
+    current = readCause(current);
+  }
+  return lines;
+};
+
 const args = parseArgs(process.argv.slice(2));
 if (!args) {
   console.error(USAGE);
@@ -113,6 +149,9 @@ const result = await compareDocx(readDocx(args.basePath), readDocx(args.targetPa
 
 if (result.isErr()) {
   console.error(`${result.error._tag}: ${result.error.message}`);
+  for (const [index, line] of causeChain(readCause(result.error)).entries()) {
+    console.error(`${"  ".repeat(index + 1)}caused by: ${line}`);
+  }
   process.exit(1);
 }
 
