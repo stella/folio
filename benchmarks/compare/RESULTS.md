@@ -109,10 +109,27 @@ above roughly a thousand blocks, and that is the first thing to profile.
    the total and is paid in full on both sides even when three paragraphs
    differ. The alignment needs block text and container coordinates, not a
    ProseMirror document.
-4. **Apply is the largest single share (41.7%) and superlinear in change
-   count.** `prose/m/rewrite` spends 2,404ms applying 320 changes, against
-   452ms for the same count in `lists/m/rewrite`; the applier re-resolves
-   snapshot anchors against the live document per operation.
+4. **Accepting all changes is O(changes x blocks).** Now the largest single
+   cost on a large structural comparison, and measured rather than guessed:
+   of `prose/l/structural`'s 8.9s, the apply stage is 8.3s, and 3.3s of that
+   is one `readReviewedStory({ view: "final" })` on the redlined base — of
+   which 3.28s is `acceptAllChanges` and 0.05s is everything else. The same
+   read on the unredlined target costs 48ms.
+
+   `resolveChange` emits one `tr.delete` or `tr.removeMark` step per marked
+   run. Every step rebuilds the fragment containing it, which is O(blocks)
+   for a flat document, so k changes over n blocks cost O(k x n): 2,395
+   changes over 2,200 blocks is roughly 5M child copies. Accepting all
+   changes over the whole document is a whole-document rewrite, and should
+   be one pass producing one step rather than k steps. This is a product
+   cost, not a compare cost: a reviewer clicking "accept all" on a heavily
+   redlined contract pays it too.
+
+5. **Applying operations is linear in operation count, with a per-document
+   constant.** 400 `replaceBlock` operations cost 112ms over 500 blocks and
+   290ms over 4,000; insertions and deletions are cheaper and flatter. There
+   is no quadratic here to find, so the remaining apply cost is the volume of
+   redline marks, not the addressing.
 
 Alignment needs no work. It is already 0.4%.
 
