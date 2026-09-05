@@ -37,6 +37,16 @@ export type EditScriptStep =
   | { type: "replaceWords"; blockIndex: number; find: string; replace: string }
   /** Delete the block at `blockIndex` and reinsert its text before `beforeBlockIndex`. */
   | { type: "moveParagraph"; blockIndex: number; beforeBlockIndex: number }
+  /**
+   * Break one paragraph into two at `wordIndex`, which is an inserted
+   * paragraph mark and nothing else: both halves keep their words.
+   */
+  | { type: "splitParagraph"; blockIndex: number; wordIndex: number }
+  /**
+   * Join the block at `blockIndex` with the one after it, which is a deleted
+   * paragraph mark and nothing else.
+   */
+  | { type: "mergeParagraphs"; blockIndex: number }
   | {
       type: "formatRange";
       blockIndex: number;
@@ -55,6 +65,8 @@ export const EDIT_SCRIPT_UNRESOLVED_REASONS = Object.freeze([
   "block-not-in-table",
   "range-out-of-bounds",
   "text-not-found",
+  /** A split or merge needs a word to break at, or a block to join with. */
+  "no-paragraph-boundary",
   /** The applier refused the operation the step produced. */
   "refused",
 ] as const);
@@ -141,6 +153,48 @@ const planStep = ({ step, blocks, nextOperationId }: PlanStepOptions): StepPlan 
             blockId: destination.id,
             text: block.text,
           },
+        ],
+      };
+    }
+    case "splitParagraph": {
+      const words = block.text.split(" ");
+      if (step.wordIndex <= 0 || step.wordIndex >= words.length) {
+        return { status: "unresolved", reason: "no-paragraph-boundary" };
+      }
+      return {
+        status: "planned",
+        operations: [
+          {
+            id: nextOperationId(),
+            type: "replaceBlock",
+            blockId: block.id,
+            text: words.slice(0, step.wordIndex).join(" "),
+          },
+          {
+            id: nextOperationId(),
+            type: "insertAfterBlock",
+            blockId: block.id,
+            text: words.slice(step.wordIndex).join(" "),
+            ...(block.styleId !== undefined && { styleId: block.styleId }),
+          },
+        ],
+      };
+    }
+    case "mergeParagraphs": {
+      const next = blockAt(blocks, step.blockIndex + 1);
+      if (!next || next.table?.cellIndex !== block.table?.cellIndex) {
+        return { status: "unresolved", reason: "no-paragraph-boundary" };
+      }
+      return {
+        status: "planned",
+        operations: [
+          {
+            id: nextOperationId(),
+            type: "replaceBlock",
+            blockId: block.id,
+            text: `${block.text} ${next.text}`,
+          },
+          { id: nextOperationId(), type: "deleteBlock", blockId: next.id },
         ],
       };
     }

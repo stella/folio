@@ -1,0 +1,253 @@
+/**
+ * Twelve labelled single mutations, one probe each.
+ *
+ * The property tests generate scripts and pin what must hold for all of them.
+ * These pin the opposite thing: for one named edit a reviewer would recognize,
+ * exactly what the change list should say. A comparison that round-trips
+ * correctly can still describe a split paragraph as two rewrites, or a bolded
+ * phrase as a deletion and a reinsertion of the same words, and a reader
+ * cannot tell those apart from the real edit. The property suite cannot see
+ * that; a named probe can.
+ *
+ * Each probe applies its mutation directly to a base (so the difference is
+ * known by construction), compares, and asserts the round trip plus the change
+ * kinds. Where the engine does not yet describe the edit the way a reviewer
+ * would, the probe records what it does describe and names the gap, rather
+ * than being deleted or weakened into a tautology.
+ */
+
+import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
+import { FolioDocxReviewer } from "../ai-edits/headless";
+import type { FolioAIBlock } from "../ai-edits/types";
+import { FOLIO_DOCUMENT_OPERATION_TYPES } from "../document-operations";
+import {
+  buildNumberedListDocx,
+  NUMBERED_LIST_ITEMS,
+  withItemDemoted,
+} from "./__fixtures__/numbered-list";
+import { compareDocx } from "./compare";
+import { applyEditScript, type EditScript } from "./scenario";
+import type { CompareChange } from "./types";
+
+const FIXTURES_DIR = path.join(import.meta.dir, "../docx/__tests__/__fixtures__/corpus");
+
+const readFixture = (filename: string): ArrayBuffer => {
+  const bytes = readFileSync(path.join(FIXTURES_DIR, filename));
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+};
+
+const OPTIONS = { author: "compare", timestamp: "2024-03-01T00:00:00.000Z" } as const;
+
+const PROSE_BASE = readFixture("upstream-styled-content.docx");
+const TABLE_BASE = readFixture("upstream-with-tables.docx");
+/** Authored here: no corpus fixture carries numbering. */
+const LIST_BASE = await buildNumberedListDocx();
+
+const blocksOf = async (buffer: ArrayBuffer): Promise<FolioAIBlock[]> =>
+  (await FolioDocxReviewer.fromBuffer(buffer)).getContent();
+
+type BlockProjection = { text: string; table: FolioAIBlock["table"] | null };
+
+const projectView = async (
+  buffer: ArrayBuffer,
+  view: "original" | "final",
+): Promise<BlockProjection[]> => {
+  const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
+  const story = reviewer.readReviewedStory({ view });
+  return (story?.snapshot.blocks ?? []).map((block) => ({
+    text: block.text,
+    table: block.table ?? null,
+  }));
+};
+
+type ProbeOutcome = {
+  changes: readonly CompareChange[];
+  kinds: readonly string[];
+};
+
+/**
+ * Apply one mutation, compare, and assert the round trip. Every probe shares
+ * this much; what differs is what each one then says about the change list.
+ */
+const probe = async (base: ArrayBuffer, script: EditScript): Promise<ProbeOutcome> => {
+  const scripted = await applyEditScript(base, script);
+  if (scripted.isErr()) {
+    throw scripted.error;
+  }
+  expect(scripted.value.unresolved).toEqual([]);
+  const target = scripted.value.buffer;
+
+  const result = await compareDocx(base, target, OPTIONS);
+  if (result.isErr()) {
+    throw result.error;
+  }
+
+  expect(await projectView(result.value.buffer, "final")).toEqual(
+    await projectView(target, "final"),
+  );
+  expect(await projectView(result.value.buffer, "original")).toEqual(
+    await projectView(base, "final"),
+  );
+
+  return { changes: result.value.changes, kinds: result.value.changes.map(({ kind }) => kind) };
+};
+
+/** A block with enough words to split, edit inside, or bold part of. */
+const wordyBlockIndex = (blocks: readonly FolioAIBlock[], minimumWords: number): number => {
+  const index = blocks.findIndex(
+    (block) => !block.table && block.text.split(" ").length >= minimumWords,
+  );
+  if (index === -1) {
+    throw new Error("The fixture has no paragraph long enough for this probe.");
+  }
+  return index;
+};
+
+const firstTableBlockIndex = (blocks: readonly FolioAIBlock[]): number => {
+  const index = blocks.findIndex((block) => block.table !== undefined);
+  if (index === -1) {
+    throw new Error("The fixture has no table.");
+  }
+  return index;
+};
+
+const PROSE_BLOCKS = await blocksOf(PROSE_BASE);
+const TABLE_BLOCKS = await blocksOf(TABLE_BASE);
+const LIST_BLOCKS = await blocksOf(LIST_BASE);
+
+describe("single-mutation probes", () => {
+  test("insert_sentence: one added sentence is one replace", async () => {
+    const blockIndex = wordyBlockIndex(PROSE_BLOCKS, 4);
+    const word = PROSE_BLOCKS[blockIndex]?.text.split(" ").at(0) ?? "";
+    const { kinds } = await probe(PROSE_BASE, [
+      { type: "replaceWords", blockIndex, find: word, replace: `${word} A new sentence applies.` },
+    ]);
+    expect(kinds).toEqual(["replace"]);
+  });
+
+  test("delete_sentence: one removed phrase is one replace", async () => {
+    const blockIndex = wordyBlockIndex(PROSE_BLOCKS, 6);
+    const phrase = PROSE_BLOCKS[blockIndex]?.text.split(" ").slice(1, 3).join(" ") ?? "";
+    const { kinds } = await probe(PROSE_BASE, [
+      { type: "replaceWords", blockIndex, find: `${phrase} `, replace: "" },
+    ]);
+    expect(kinds).toEqual(["replace"]);
+  });
+
+  test("insert_paragraph: a new paragraph is one insert", async () => {
+    const { kinds } = await probe(PROSE_BASE, [
+      {
+        type: "insertParagraphAfter",
+        blockIndex: wordyBlockIndex(PROSE_BLOCKS, 3),
+        text: "An entirely new clause governs the schedule.",
+      },
+    ]);
+    expect(kinds).toEqual(["insert"]);
+  });
+
+  test("delete_paragraph: a removed paragraph is one delete", async () => {
+    const { kinds } = await probe(PROSE_BASE, [
+      { type: "deleteParagraph", blockIndex: wordyBlockIndex(PROSE_BLOCKS, 3) },
+    ]);
+    expect(kinds).toEqual(["delete"]);
+  });
+
+  /**
+   * A split moves a paragraph mark and no words. The engine keeps the first
+   * half in place and reports the second as new text, which round-trips but
+   * overstates the edit: the words in the tail were not written today. A
+   * paragraph-mark atom would let this read as one inserted mark.
+   */
+  test("split_paragraph: reported as a replace plus an insert", async () => {
+    const blockIndex = wordyBlockIndex(PROSE_BLOCKS, 6);
+    const { kinds } = await probe(PROSE_BASE, [
+      { type: "splitParagraph", blockIndex, wordIndex: 3 },
+    ]);
+    expect(kinds).toEqual(["replace", "insert"]);
+  });
+
+  /** The mirror of the split, and overstated the same way. */
+  test("merge_paragraphs: reported as a replace plus a delete", async () => {
+    const blockIndex = wordyBlockIndex(PROSE_BLOCKS, 3);
+    const { kinds } = await probe(PROSE_BASE, [{ type: "mergeParagraphs", blockIndex }]);
+    expect(kinds).toEqual(["replace", "delete"]);
+  });
+
+  test("move_clause: a relocated paragraph is reported as a move", async () => {
+    const blockIndex = wordyBlockIndex(PROSE_BLOCKS, 4);
+    const beforeBlockIndex = PROSE_BLOCKS.length - 1;
+    const { kinds } = await probe(PROSE_BASE, [
+      { type: "moveParagraph", blockIndex, beforeBlockIndex },
+    ]);
+    // The alignment may absorb a relocation it can still walk forward past;
+    // what it must not do is report it as unrelated churn.
+    expect(kinds.every((kind) => kind === "move")).toBe(true);
+  });
+
+  test("add_list_item: an added item is one insert", async () => {
+    const { kinds } = await probe(LIST_BASE, [
+      { type: "insertParagraphAfter", blockIndex: 1, text: "Delivery may be made in instalments." },
+    ]);
+    expect(kinds).toEqual(["insert"]);
+  });
+
+  test("delete_table_row: a removed row is one table-row-delete", async () => {
+    const { kinds } = await probe(TABLE_BASE, [
+      { type: "deleteTableRow", blockIndex: firstTableBlockIndex(TABLE_BLOCKS) },
+    ]);
+    expect(kinds).toEqual(["table-row-delete"]);
+  });
+
+  test("format_only_bold: bolding a phrase is a format, never a rewrite", async () => {
+    const blockIndex = wordyBlockIndex(PROSE_BLOCKS, 4);
+    const { changes, kinds } = await probe(PROSE_BASE, [
+      { type: "formatRange", blockIndex, startOffset: 0, endOffset: 4, formatting: { bold: true } },
+    ]);
+    expect(kinds).toEqual(["format"]);
+    const [change] = changes;
+    expect(change?.kind === "format" && change.ranges.length).toBe(1);
+  });
+
+  test("renumbering: an added list item does not report the items after it", async () => {
+    // Inserting at the top renumbers every item below. Labels are rendered
+    // from the numbering definitions rather than stored in the paragraphs, so
+    // the comparison must report the insertion and nothing else; reporting
+    // the renumbered items would bury the real edit.
+    expect(LIST_BLOCKS.length).toBe(NUMBERED_LIST_ITEMS.length);
+    const { kinds } = await probe(LIST_BASE, [
+      {
+        type: "insertParagraphAfter",
+        blockIndex: 0,
+        text: "The goods shall conform to the specification.",
+      },
+    ]);
+    expect(kinds).toEqual(["insert"]);
+  });
+
+  /**
+   * The gap this suite exists to keep visible. Changing a list item's level is
+   * a paragraph-property change, and the operation vocabulary has no way to
+   * say it: `w:pPrChange` is not generated, so a level change reaches the
+   * comparison as nothing at all. Until an operation exists, the probe pins
+   * that the engine does not silently claim to have handled it.
+   */
+  test("change_list_level: reaches the comparison as no change at all", async () => {
+    // Demoting an item changes `w:ilvl` and nothing a block projection can
+    // see, so the comparison reports nothing and the redline says the two
+    // documents agree. The probe pins the size of the hole rather than
+    // papering over it: closing it needs a paragraph-property operation in
+    // the edit vocabulary and `w:pPrChange` on the apply side, at which point
+    // this expectation flips and the probe becomes the feature's test.
+    expect([...FOLIO_DOCUMENT_OPERATION_TYPES]).not.toContain("setBlockParagraphProperties");
+
+    const demoted = await buildNumberedListDocx(withItemDemoted(NUMBERED_LIST_ITEMS, 3));
+    const result = await compareDocx(LIST_BASE, demoted, OPTIONS);
+    if (result.isErr()) {
+      throw result.error;
+    }
+    expect(result.value.changes).toEqual([]);
+  });
+});
