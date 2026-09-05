@@ -105,8 +105,6 @@ const existingRevisionsOf = (reviewer: FolioDocxReviewer): ExistingRevisions => 
   return { idSeed: highest + 1, present };
 };
 
-const isMainStory = (story: FolioDocumentStoryHandle): boolean => story.type === "main";
-
 /**
  * One story's text-and-structure projection: every block's text tagged with
  * the table cell it sits in. The tag is what makes the self-check below see a
@@ -191,11 +189,6 @@ export const parseComparison = async (
       unsupported.push({ reason: "story-missing-in-target", baseStory, targetStory: null });
       continue;
     }
-    if (!isMainStory(baseStory) || !isMainStory(targetStory)) {
-      unsupported.push({ reason: "secondary-story", baseStory, targetStory });
-      continue;
-    }
-
     // Compare the accepted view of both sides. An input that already carries
     // revisions otherwise makes the result unreadable: the redline would layer
     // this comparison's marks on top of someone else's, and rejecting them all
@@ -208,7 +201,7 @@ export const parseComparison = async (
     const baseSnapshot = reviewer.snapshotStory(baseStory);
     const targetSnapshot = targetReviewer.snapshotStory(targetStory);
     if (!baseSnapshot || !targetSnapshot) {
-      unsupported.push({ reason: "secondary-story", baseStory, targetStory });
+      unsupported.push({ reason: "story-not-editable", baseStory, targetStory });
       continue;
     }
     pairs.push({ baseStory, targetStory, baseSnapshot, targetSnapshot });
@@ -269,22 +262,28 @@ export const applyComparison = (
   planned: readonly PlannedStoryComparison[],
 ): Result<readonly CompareChange[], CompareDocxApplyError | CompareDocxRoundTripError> => {
   const changes: CompareChange[] = [];
+  // Each story gets the range that starts where the previous story's ended.
+  // Word's `w:id` namespace is the package, not the part, so two stories
+  // seeded alike would let a reader resolving a header revision resolve a
+  // body revision with it.
+  let idSeed = revisionStamp.idSeed;
   for (const { pair, plan } of planned) {
     changes.push(...plan.changes);
     if (plan.operations.length === 0) {
       continue;
     }
 
-    const { skipped } = reviewer.applyDocumentOperationsToStory({
+    const { skipped, nextRevisionId } = reviewer.applyDocumentOperationsToStory({
       story: pair.baseStory,
       snapshot: pair.baseSnapshot,
-      revisionStamp,
+      revisionStamp: { date: revisionStamp.date, idSeed },
       batch: {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
         mode: "tracked-changes",
         operations: plan.operations,
       },
     });
+    idSeed = nextRevisionId;
     if (skipped.length > 0) {
       return Result.err(
         new CompareDocxApplyError({

@@ -2,6 +2,7 @@ import { TaggedError } from "better-result";
 
 import {
   applyFolioAIEditOperations,
+  type FolioAIEditApplyOutcome,
   type FolioAIEditView,
   type FolioRevisionStamp,
   previewFolioAIEditOperations,
@@ -9,7 +10,6 @@ import {
 import type {
   FolioAIEditAppliedOperation,
   FolioAIEditApplyMode,
-  FolioAIEditApplyResult,
   FolioAIEditNormalization,
   FolioAIEditOperation,
   FolioAIEditPrecondition,
@@ -909,7 +909,12 @@ export type FolioDocumentOperationQueuedOperation = {
   id: string;
 };
 
-type FolioDocumentOperationResultBase = {
+/**
+ * What every operation result carries, whichever status it reports. Exported
+ * so the public API report shows these fields rather than a name it cannot
+ * resolve.
+ */
+export type FolioDocumentOperationResultBase = {
   version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
   applied: FolioAIEditAppliedOperation[];
   skipped: FolioAIEditSkippedOperation[];
@@ -920,6 +925,14 @@ type FolioDocumentOperationResultBase = {
   normalizations?: FolioAIEditNormalization[];
   /** Present when the execution surface can undo this committed batch. */
   undoHandle: FolioDocumentOperationUndoHandle | null;
+  /**
+   * First revision id a following batch may allocate against this document:
+   * one past the last id this batch used, or the seed it started from when it
+   * allocated none. A caller writing several batches into one package — one
+   * per document story — must seed each from the previous batch's value, or
+   * two stories claim the same `w:id`.
+   */
+  nextRevisionId: number;
 };
 
 /**
@@ -1184,7 +1197,7 @@ export const applyFolioDocumentOperations = ({
   const preview = () => apply({ targetView: view, preview: true });
 
   const atomicResult = (
-    previewResult: FolioAIEditApplyResult,
+    previewResult: FolioAIEditApplyOutcome,
     status: "previewed" | "rejected",
   ): FolioDocumentOperationResult => {
     const skippedById = new Map(
@@ -1205,6 +1218,7 @@ export const applyFolioDocumentOperations = ({
         normalizations: previewResult.normalizations,
       }),
       undoHandle: null,
+      nextRevisionId: previewResult.nextRevisionId,
     };
   };
 
@@ -1228,6 +1242,7 @@ export const applyFolioDocumentOperations = ({
         normalizations: previewResult.normalizations,
       }),
       undoHandle: null,
+      nextRevisionId: previewResult.nextRevisionId,
     };
   }
 

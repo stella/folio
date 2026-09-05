@@ -1,4 +1,9 @@
-export { applyFolioAIEditOperations, type FolioAIEditView, type FolioRevisionStamp } from "./apply";
+export {
+  applyFolioAIEditOperations,
+  type FolioAIEditApplyOutcome,
+  type FolioAIEditView,
+  type FolioRevisionStamp,
+} from "./apply";
 export {
   clampRangeToDocSize,
   resolveFolioAIBlockRange,
@@ -100,6 +105,7 @@ export {
   type FolioDocumentOperationReceipt,
   type FolioDocumentOperationType,
   type FolioDocumentOperationResult,
+  type FolioDocumentOperationResultBase,
   type FolioDocumentOperationStatus,
   type FolioDocumentOperationStory,
   type FolioDocumentOperationUndoFailureReason,

@@ -17,7 +17,8 @@ if (result.isOk()) {
 The buffer opens as ordinary revisions in any OOXML consumer. `changes` is a
 discriminated union on `kind` (`insert`, `delete`, `replace`, `move`, `format`,
 `table-row-insert`, `table-row-delete`), for an agent that wants the summary
-rather than the document.
+rather than the document. Every change carries the story it belongs to, so a
+caller can tell a body edit from a footnote edit.
 
 ## Determinism contract
 
@@ -26,7 +27,9 @@ random source:
 
 - revision dates come from `options.timestamp`, which is required rather than
   defaulted so a caller cannot get an irreproducible package by omission;
-- revision ids start one past the highest id the base package already carries;
+- revision ids start one past the highest id the base package already carries,
+  and each story continues where the previous one stopped, so the ranges are
+  disjoint without a guessed stride;
 - `w14:paraId`s for paragraphs the comparison creates are derived from the
   stamp instead of `Math.random()`;
 - ZIP entry dates are restamped from the same timestamp, because JSZip
@@ -90,10 +93,15 @@ deliberately before comparing.
 `benchmarks/compare` measures each of these; `benchmarks/compare/RESULTS.md`
 carries the current numbers and the failing cases.
 
-- **Main story only.** Headers, footers, footnotes, and endnotes are reported in
-  `unsupported`, not compared. So are parts present on one side only. A caller
-  who reads only `changes` is therefore told that two documents differing solely
-  in a footnote agree; read `unsupported` alongside it.
+- **Parts present on one side only are reported, not compared** (2026-09-05).
+  Creating or removing a header, footer or note part is not a text edit, so
+  such a story is listed in `unsupported`. Every story present on both sides is
+  compared: main, headers, footers, footnotes and endnotes, each with its own
+  revision id range so no two stories claim the same `w:id`.
+- **A text box is compared as body text** (2026-09-05). Its paragraphs are part
+  of the main story, so their text is compared, but the round-trip self-check
+  tags only the enclosing table cell — an insertion that landed inside a box
+  instead of beside it would not be caught by it.
 - **Moves are reported, not represented.** The document carries a deletion at
   the source and an insertion at the destination; the change list keeps the
   relocation visible as `kind: "move"`. A relocated block needs at least three

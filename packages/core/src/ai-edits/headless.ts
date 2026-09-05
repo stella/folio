@@ -1088,19 +1088,32 @@ export class FolioDocxReviewer {
   }
 
   /**
-   * Accept every tracked change in the body. Returns the number of changes
-   * present before the sweep. Note-body changes are out of scope.
+   * Accept every tracked change in the package. Returns the number of changes
+   * present before the sweep.
+   *
+   * Every story, not just the body: a revision in a header or a footnote is
+   * one a reviewer meant to resolve, and leaving it behind means an accepted
+   * document still carries a redline nobody can see from the body.
    */
   acceptAll(): number {
-    const count = this.getChanges().length;
-    this.runCommand(acceptAllChanges());
-    return count;
+    return this.resolveEveryStory(acceptAllChanges());
   }
 
-  /** Reject every tracked change in the body. See {@link acceptAll}. */
+  /** Reject every tracked change in the package. See {@link acceptAll}. */
   rejectAll(): number {
-    const count = this.getChanges().length;
-    this.runCommand(rejectAllChanges());
+    return this.resolveEveryStory(rejectAllChanges());
+  }
+
+  private resolveEveryStory(command: Command): number {
+    let count = 0;
+    for (const { handle } of this.listStories()) {
+      const state = this.getEditableStoryState(handle);
+      if (!state) {
+        continue;
+      }
+      count += getTrackedChangesFromDoc(state.doc).length;
+      this.runStoryCommand(command, handle);
+    }
     return count;
   }
 
@@ -1414,15 +1427,22 @@ export class FolioDocxReviewer {
    * resulting state for {@link toBuffer}.
    */
   private runCommand(command: Command): boolean {
-    this.resolvedStoryExpectations.delete("main");
+    return this.runStoryCommand(command, MAIN_STORY);
+  }
+
+  private runStoryCommand(command: Command, story: FolioEditableDocumentStoryHandle): boolean {
+    const state = this.getEditableStoryState(story);
+    if (!state) {
+      return false;
+    }
     const view = {
-      state: this.state,
+      state,
       dispatch: (transaction: Transaction) => {
         view.state = view.state.apply(transaction);
       },
     };
     const handled = command(view.state, view.dispatch);
-    this.state = view.state;
+    this.setEditableStoryState(story, view.state);
     return handled;
   }
 }

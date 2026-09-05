@@ -1835,6 +1835,7 @@ describe("headless docx review round-trip", () => {
     });
 
     expect(result).toEqual({
+      nextRevisionId: expect.any(Number),
       version: 1,
       status: "rejected",
       applied: [],
@@ -2087,6 +2088,7 @@ describe("headless docx review round-trip", () => {
     });
 
     expect(preview).toEqual({
+      nextRevisionId: expect.any(Number),
       version: 1,
       status: "previewed",
       applied: [{ id: "valid" }],
@@ -2147,6 +2149,7 @@ describe("headless docx review round-trip", () => {
     });
 
     expect(preview).toEqual({
+      nextRevisionId: expect.any(Number),
       version: 1,
       status: "previewed",
       applied: [],

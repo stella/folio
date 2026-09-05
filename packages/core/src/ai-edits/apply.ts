@@ -106,6 +106,24 @@ type ApplyFolioAIEditOperationsInternalOptions = ApplyFolioAIEditOperationsOptio
 };
 
 /**
+ * An apply result plus where the batch left the revision-id counter.
+ *
+ * A caller writing several batches into one package — a comparison walking
+ * the main story, then each header, footer and note — has to give every batch
+ * a seed above the last id the previous one used, or two stories claim the
+ * same `w:id` and a consumer resolving one revision resolves the other with
+ * it. The batch is the only thing that knows how many ids it took, so it says
+ * so rather than making the caller guess a stride.
+ */
+export type FolioAIEditApplyOutcome = FolioAIEditApplyResult & {
+  /**
+   * First revision id a following batch may allocate: one past the last id
+   * this batch used, or the seed it started from when it allocated none.
+   */
+  nextRevisionId: number;
+};
+
+/**
  * Operation types applied in `"suggested"` mode. Every produced revision — an
  * inline mark, a whole-node `_suggestedInsert` marker, or a suggested
  * `trIns`/`trDel`/`cellMarker` — is stripped from serialized DOCX until
@@ -655,7 +673,7 @@ const applyFolioAIEditOperationsInternal = ({
   createCommentId,
   revisionStamp,
   revisionIdSeed,
-}: ApplyFolioAIEditOperationsInternalOptions): FolioAIEditApplyResult => {
+}: ApplyFolioAIEditOperationsInternalOptions): FolioAIEditApplyOutcome => {
   const applied: FolioAIEditAppliedOperation[] = [];
   const skipped: FolioAIEditSkippedOperation[] = [];
   const normalizations: FolioAIEditNormalization[] = [];
@@ -679,6 +697,7 @@ const applyFolioAIEditOperationsInternal = ({
         id: operation.id,
         reason: "unsupportedBlock",
       })),
+      nextRevisionId: revisionIdSeed ?? revisionStamp?.idSeed ?? revisionIdCursor,
     };
   }
 
@@ -758,7 +777,12 @@ const applyFolioAIEditOperationsInternal = ({
   const executableResolved = tablePlan.executable;
 
   if (executableResolved.length === 0) {
-    return { applied, skipped, ...(normalizations.length > 0 && { normalizations }) };
+    return {
+      applied,
+      skipped,
+      ...(normalizations.length > 0 && { normalizations }),
+      nextRevisionId: revisionIdSeed ?? revisionStamp?.idSeed ?? revisionIdCursor,
+    };
   }
 
   let tr = view.state.tr;
@@ -1465,16 +1489,21 @@ const applyFolioAIEditOperationsInternal = ({
     view.dispatch(tr);
   }
 
-  return { applied, skipped, ...(normalizations.length > 0 && { normalizations }) };
+  return {
+    applied,
+    skipped,
+    ...(normalizations.length > 0 && { normalizations }),
+    nextRevisionId: revisionSeed,
+  };
 };
 
 export const applyFolioAIEditOperations = (
   options: ApplyFolioAIEditOperationsOptions,
-): FolioAIEditApplyResult => applyFolioAIEditOperationsInternal(options);
+): FolioAIEditApplyOutcome => applyFolioAIEditOperationsInternal(options);
 
 export const previewFolioAIEditOperations = (
   options: ApplyFolioAIEditOperationsOptions,
-): FolioAIEditApplyResult => {
+): FolioAIEditApplyOutcome => {
   const { view, createCommentId, ...applyOptions } = options;
   let previewCommentId = -1;
   const previewView: FolioAIEditView = {
@@ -1495,6 +1524,9 @@ export const previewFolioAIEditOperations = (
     applied: result.applied.map(({ id }) => ({ id })),
     skipped: result.skipped,
     ...(result.normalizations !== undefined && { normalizations: result.normalizations }),
+    // A preview allocates from a sentinel range and commits nothing, so the
+    // next id is still the one the batch would have started from.
+    nextRevisionId: options.revisionStamp?.idSeed ?? revisionIdCursor,
   };
 };
 

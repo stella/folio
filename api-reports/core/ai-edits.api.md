@@ -10,7 +10,7 @@ import { TaggedErrorClass } from 'better-result';
 import { Transaction } from 'prosemirror-state';
 
 // @public (undocumented)
-export const applyFolioAIEditOperations: (options: ApplyFolioAIEditOperationsOptions) => FolioAIEditApplyResult;
+export const applyFolioAIEditOperations: (options: ApplyFolioAIEditOperationsOptions) => FolioAIEditApplyOutcome;
 
 // @public (undocumented)
 export const applyFolioDocumentOperations: (input: ApplyFolioDocumentOperationsOptions) => FolioDocumentOperationResult;
@@ -157,6 +157,11 @@ export type FolioAIEditAppliedOperation = {
 
 // @public
 export type FolioAIEditApplyMode = "direct" | "tracked-changes" | "suggested";
+
+// @public
+export type FolioAIEditApplyOutcome = FolioAIEditApplyResult & {
+    nextRevisionId: number;
+};
 
 // @public (undocumented)
 export type FolioAIEditApplyResult = {
@@ -479,6 +484,18 @@ export type FolioDocumentOperationResult = (FolioDocumentOperationResultBase & {
     status: Exclude<FolioDocumentOperationStatus, "queued">;
     queued?: never;
 });
+
+// @public
+export type FolioDocumentOperationResultBase = {
+    version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
+    applied: FolioAIEditAppliedOperation[];
+    skipped: FolioAIEditSkippedOperation[];
+    issues: FolioDocumentOperationIssue[];
+    receipts: FolioDocumentOperationReceipt[];
+    normalizations?: FolioAIEditNormalization[];
+    undoHandle: FolioDocumentOperationUndoHandle | null;
+    nextRevisionId: number;
+};
 
 // @public
 export type FolioDocumentOperationStatus = "committed" | "previewed" | "rejected" | "queued";

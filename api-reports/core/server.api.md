@@ -857,6 +857,18 @@ export type FolioDocumentOperationResult = (FolioDocumentOperationResultBase & {
 });
 
 // @public
+export type FolioDocumentOperationResultBase = {
+    version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
+    applied: FolioAIEditAppliedOperation[];
+    skipped: FolioAIEditSkippedOperation[];
+    issues: FolioDocumentOperationIssue[];
+    receipts: FolioDocumentOperationReceipt[];
+    normalizations?: FolioAIEditNormalization[];
+    undoHandle: FolioDocumentOperationUndoHandle | null;
+    nextRevisionId: number;
+};
+
+// @public
 export type FolioDocumentOperationStatus = "committed" | "previewed" | "rejected" | "queued";
 
 // @public (undocumented)

@@ -31,6 +31,14 @@ export const INVARIANTS = Object.freeze([
    * survives accept and reject alike, and self-compares clean.
    */
   "difference-is-reported",
+  /**
+   * No two revisions in the package share a `w:id`. Word's revision-id space
+   * is the package, not the part, so a comparison writing one story at a time
+   * has to seed each story's range above the last one it used. Colliding ids
+   * make a reader resolving one revision resolve an unrelated one with it,
+   * and every other invariant here passes anyway.
+   */
+  "revision-ids-are-unique",
 ] as const);
 
 export type Invariant = (typeof INVARIANTS)[number];
@@ -143,6 +151,33 @@ const differenceIsReported = ({
   };
 };
 
+/**
+ * Every revision id in the redlined package, story by story. Read from the
+ * markup view so ids are the ones a consumer would see, rather than the ones
+ * the engine believes it allocated.
+ */
+const revisionIdsAreUnique = async (redlined: ArrayBuffer): Promise<InvariantOutcome> => {
+  const invariant: Invariant = "revision-ids-are-unique";
+  const reviewer = await FolioDocxReviewer.fromBuffer(redlined);
+  const seen = new Map<number, string>();
+  const collisions: string[] = [];
+  for (const { handle } of reviewer.listStories()) {
+    const story = reviewer.readReviewedStory({ story: handle, view: "current-markup" });
+    const label = JSON.stringify(handle);
+    for (const { id } of story?.changes ?? []) {
+      const owner = seen.get(id);
+      if (owner !== undefined && owner !== label) {
+        collisions.push(`${String(id)} in ${owner} and ${label}`);
+        continue;
+      }
+      seen.set(id, label);
+    }
+  }
+  return collisions.length === 0
+    ? { invariant, status: "passed" }
+    : { invariant, status: "failed", detail: collisions.slice(0, 5).join(" | ") };
+};
+
 const selfCompareIsEmpty = (outcome: ChangeCount): InvariantOutcome => {
   const invariant: Invariant = "self-compare-is-empty";
   if ("error" in outcome) {
@@ -200,6 +235,8 @@ export const checkInvariants = async ({
   outcomes.push(differenceIsReported({ expectation, changes, unsupported }));
 
   outcomes.push(selfCompareIsEmpty(await changeCountBetween(base, base, options)));
+
+  outcomes.push(await revisionIdsAreUnique(redlined));
 
   const digests = await digestsOf(redlined, changes);
   const repeated = await compareDocx(base, target, options);

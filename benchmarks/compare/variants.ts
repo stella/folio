@@ -37,6 +37,8 @@ export const EDIT_VARIANTS = Object.freeze([
   "reorder",
   "structural",
   "notes",
+  "headers",
+  "everywhere",
   "rewrite",
 ] as const);
 
@@ -227,18 +229,39 @@ const BODY_REWRITES = {
   reorder,
   structural,
   notes: identical,
+  headers: identical,
+  everywhere: light,
   rewrite,
 } as const satisfies Record<EditVariant, BodyRewrite>;
 
 const NOTE_PARTS = Object.freeze(["word/footnotes.xml", "word/endnotes.xml"] as const);
 
+const CHROME_PARTS = Object.freeze(["word/header1.xml", "word/footer1.xml"] as const);
+
 /**
- * Rewrite the note stories only, leaving the main story byte-identical: the
- * pair that tells a main-story-only engine apart from one that compares every
- * story.
+ * The stories that are not the body. `notes` rewrites the footnote and endnote
+ * parts, `headers` the header and footer parts, and both leave the main story
+ * byte-identical: the pairs that tell a main-story-only engine apart from one
+ * that compares every story.
  */
-const rewriteNoteParts = (parts: Map<string, PackagePart>): void => {
-  for (const name of NOTE_PARTS) {
+const SECONDARY_STORY_PARTS = {
+  notes: NOTE_PARTS,
+  headers: CHROME_PARTS,
+  /**
+   * `everywhere` edits the body as well, so the comparison writes revisions
+   * into more than one story in one call. That is the only shape in which two
+   * stories can claim the same `w:id`, which is what
+   * `revision-ids-are-unique` exists to catch.
+   */
+  everywhere: Object.freeze([...NOTE_PARTS, ...CHROME_PARTS]),
+} as const satisfies Partial<Record<EditVariant, readonly string[]>>;
+
+const rewriteStoryParts = (
+  parts: Map<string, PackagePart>,
+  names: readonly string[],
+  stride: number,
+): void => {
+  for (const name of names) {
     const part = parts.get(name);
     if (typeof part !== "string") {
       continue;
@@ -247,7 +270,7 @@ const rewriteNoteParts = (parts: Map<string, PackagePart>): void => {
     parts.set(
       name,
       part.replaceAll(/<w:t(?:\s[^>]*?)?>([\s\S]*?)<\/w:t>/gu, (match, text: string) =>
-        index++ % 3 === 0 ? `<w:t xml:space="preserve">${text} as amended</w:t>` : match,
+        index++ % stride === 0 ? `<w:t xml:space="preserve">${text} as amended</w:t>` : match,
       ),
     );
   }
@@ -266,12 +289,17 @@ export type ApplyVariantOptions = {
  */
 export const applyVariant = ({ parts, variant }: ApplyVariantOptions): DocxPackage | null => {
   const target = new Map(parts);
-  if (variant === "notes") {
-    if (!NOTE_PARTS.some((name) => typeof parts.get(name) === "string")) {
+  if (variant === "notes" || variant === "headers" || variant === "everywhere") {
+    const names = SECONDARY_STORY_PARTS[variant];
+    if (!names.some((name) => typeof parts.get(name) === "string")) {
       return null;
     }
-    rewriteNoteParts(target);
-    return target;
+    // Every string in a header or footer is short, so a stride of three would
+    // leave some of them untouched; the note parts keep theirs.
+    rewriteStoryParts(target, names, variant === "notes" ? 3 : 1);
+    if (variant !== "everywhere") {
+      return target;
+    }
   }
 
   const documentXml = documentPartOf(parts);

@@ -263,17 +263,52 @@ test surfaced a second defect: the hidden-row check consulted the block's
 NEAREST row, so a table nested inside a hidden row published its text after
 all. The walk now skips a hidden row's whole subtree.
 
+### Every story is compared, each with its own revision id range
+
+`notes/s/notes` and `notes/m/notes` differ only in the footnote and endnote
+stories. The comparison reported nothing and listed the stories as
+unsupported, so a caller reading only `changes` was told two different
+documents agree. Both now pass, with 28 and 214 changes.
+
+| Configuration           | before                                    | after       |
+| ----------------------- | ----------------------------------------- | ----------- |
+| `notes/s/notes`         | 0 changes, `difference-is-reported` fails | 28 changes  |
+| `notes/m/notes`         | 0 changes, `difference-is-reported` fails | 214 changes |
+| `sections/s/headers`    | not measured                              | 2 changes   |
+| `sections/m/headers`    | not measured                              | 2 changes   |
+| `notes/m/everywhere`    | not measured                              | 662 changes |
+| `sections/m/everywhere` | not measured                              | 23 changes  |
+
+Word's revision-id space is the package rather than the part, so a comparison
+writing one story at a time must seed each story above the last id the
+previous one used. The batch is the only thing that knows how many ids it
+took, so it now says: `FolioDocumentOperationResult.nextRevisionId`.
+
+Two harness variants are new. `headers` rewrites the header and footer parts
+and leaves the body byte-identical, the way `notes` does for the note parts.
+`everywhere` edits the body AND both sets of secondary stories, which is the
+only shape where two stories can collide on an id — and a new invariant,
+`revision-ids-are-unique`, reads every story's markup view and fails when two
+stories claim one `w:id`. Removing the seed hand-off makes
+`notes/s/everywhere` fail that invariant and nothing else, which is what makes
+it a guard rather than decoration.
+
+Accepting or rejecting every change now sweeps every story too. It swept the
+body only, so a header revision survived an "accept all" — invisible from the
+body, and enough to make `reject-returns-base` fail on the note configurations
+the moment they carried revisions at all.
+
+180 configurations, none with a failing invariant. Of the 134 digests, six are
+new configurations and two are the `notes/*/notes` pair that now reports its
+difference; every other digest is unchanged.
+
 ## Correctness gaps the baseline surfaced
 
 Three configurations failed, and each named a real gap rather than a flake.
+All three are now closed.
 
-- **`notes/s/notes`, `notes/m/notes` — `difference-is-reported` fails.** The
-  pair differs only in the footnote and endnote stories. The comparison reports
-  nothing and lists `secondary-story` in `unsupported`, so a caller who reads
-  only `changes` is told two different documents agree. This is the documented
-  main-story-only limitation, now with a number on it: 30 of 127 configurations
-  carry an unreported story. Closing it needs per-story revision id ranges that
-  do not collide, which the operation result does not currently expose.
+- ~~**`notes/s/notes`, `notes/m/notes` — `difference-is-reported` fails.**~~
+  Fixed; see "Every story is compared" above.
 - ~~**`tables/m/structural` — `CompareDocxRoundTripError`.**~~ Fixed; see "A
   paragraph appended after a nested table" above.
 - **`change_list_level`** is not in the benchmark because the harness cannot

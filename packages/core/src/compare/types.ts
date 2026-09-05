@@ -111,12 +111,12 @@ export type CompareChange =
 
 /** Why a part of the package is absent from `changes`. */
 export const COMPARE_UNSUPPORTED_REASONS = Object.freeze([
-  /** Header, footer, footnote, and endnote stories are out of scope this iteration. */
-  "secondary-story",
   /** The story exists only in the target package; creating a part is not a text edit. */
   "story-missing-in-base",
   /** The story exists only in the base package. */
   "story-missing-in-target",
+  /** The story is present on both sides but carries no editable state. */
+  "story-not-editable",
 ] as const);
 
 export type CompareUnsupportedReason = (typeof COMPARE_UNSUPPORTED_REASONS)[number];
