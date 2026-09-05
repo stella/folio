@@ -169,10 +169,22 @@ export const parseComparison = async (
       unsupported.push({ reason: "story-missing-in-target", baseStory, targetStory: null });
       continue;
     }
-    const baseSnapshot = isMainStory(baseStory) ? reviewer.snapshotStory(baseStory) : null;
-    const targetSnapshot = isMainStory(targetStory)
-      ? targetReviewer.snapshotStory(targetStory)
-      : null;
+    if (!isMainStory(baseStory) || !isMainStory(targetStory)) {
+      unsupported.push({ reason: "secondary-story", baseStory, targetStory });
+      continue;
+    }
+
+    // Compare the accepted view of both sides. An input that already carries
+    // revisions otherwise makes the result unreadable: the redline would layer
+    // this comparison's marks on top of someone else's, and rejecting them all
+    // would land on neither document. Accepting first states one question --
+    // how does the base as it stands differ from the target as it stands --
+    // and leaves the answer as the only redline in the package.
+    reviewer.resolveReviewedStory({ story: baseStory, view: "final" });
+    targetReviewer.resolveReviewedStory({ story: targetStory, view: "final" });
+
+    const baseSnapshot = reviewer.snapshotStory(baseStory);
+    const targetSnapshot = targetReviewer.snapshotStory(targetStory);
     if (!baseSnapshot || !targetSnapshot) {
       unsupported.push({ reason: "secondary-story", baseStory, targetStory });
       continue;

@@ -63,6 +63,23 @@ difference the operation vocabulary cannot express fails with
 `CompareDocxRoundTripError` rather than returning a redline that reads
 plausibly and is wrong.
 
+## Inputs that already carry tracked changes
+
+Both sides are compared **as accepted**. Either document may arrive carrying
+someone else's unresolved revisions, and there are only two things a comparison
+can do with them: layer its own marks on top, or resolve them first.
+
+Layering does not survive contact with a reader. The package would hold two
+redlines by two authors with no way to tell which belongs to the comparison,
+and rejecting everything would land on a third document neither side wrote.
+Resolving to the accepted view states one question instead — how does the base
+as it stands differ from the target as it stands — and leaves the answer as the
+only redline in the package. The round trip is then exact: rejecting returns
+the base's accepted view, accepting returns the target's.
+
+A caller who wants the earlier revisions preserved should resolve them
+deliberately before comparing.
+
 ## Limitations
 
 - **Main story only.** Headers, footers, footnotes, and endnotes are reported in
@@ -87,7 +104,8 @@ plausibly and is wrong.
 
 ## Files
 
-- `compare.ts` — the entry point, story pairing, and the round-trip self-check.
+- `compare.ts` — the four stages (parse, align, apply, serialize), story
+  pairing, and the round-trip self-check. `compareDocx` composes them.
 - `plan.ts` — alignment and operation derivation. Pure.
 - `formatting.ts` — the inline-formatting diff, shared with the redline
   generator.
