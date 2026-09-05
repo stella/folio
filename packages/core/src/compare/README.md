@@ -60,6 +60,19 @@ marks only the divergent words. Formatting-only differences are emitted as
 `formatRange` operations and reported as `format`, never as a deletion and
 reinsertion of identical text.
 
+An LCS on its own maximises matched characters, which on a rewritten sentence
+means matching every stray "the" and comma it can reach and handing the reader
+a dozen struck-through fragments interleaved with a dozen inserted ones. Three
+rules pull it back: a match made only of separators is not a match, a
+one-token match with changes on both sides of it is dropped into them, and a
+paragraph whose surviving matches are too short for its length is replaced
+whole. `options.granularity` cuts the redline at `"word"` (default) or
+`"character"`.
+
+`diffWordSegments` also takes case and whitespace normalization, which
+`compareDocx` deliberately does not expose: a comparison that leaves a
+difference unmarked does not accept back to the target.
+
 A comparison that finds no difference returns the base package as it arrived
 rather than a re-serialization of it, so an unchanged document is handed back
 byte for byte. The exception is a base that already carried tracked changes:

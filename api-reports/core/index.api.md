@@ -167,6 +167,7 @@ export type ApplyFolioDocumentOperationsOptions = {
     createCommentId?: (text: string) => number;
     createUndoHandle?: () => FolioDocumentOperationUndoHandle;
     revisionStamp?: FolioRevisionStamp;
+    wordDiff?: FolioWordDiffOptions;
 };
 
 // @public (undocumented)
@@ -326,6 +327,7 @@ export class CompareDocxOperationLimitError extends CompareDocxOperationLimitErr
 export type CompareDocxOptions = {
     author: string;
     timestamp: string;
+    granularity?: WordDiffGranularity;
 };
 
 // @public (undocumented)
@@ -418,7 +420,7 @@ export type DeriveBlockIdInput = {
 };
 
 // @public (undocumented)
-export const diffWordSegments: (before: string, after: string) => WordDiffSegment[];
+export const diffWordSegments: (before: string, after: string, options?: WordDiffOptions) => WordDiffSegment[];
 
 export { DirectiveKind }
 
@@ -1014,6 +1016,11 @@ export type FolioRevisionStamp = {
 };
 
 // @public
+export type FolioWordDiffOptions = {
+    granularity?: WordDiffGranularity;
+};
+
+// @public
 export function fromMarkdown(markdown: string): import__stll_docx_core_model.Document;
 
 // @public
@@ -1280,6 +1287,24 @@ export class UnsupportedFolioDocumentOperationVersionError extends UnsupportedFo
     message: string;
     receivedVersion: unknown;
 }> {}
+
+// @public
+export const WORD_DIFF_GRANULARITIES: readonly ["word", "character"];
+
+// @public (undocumented)
+export type WordDiffGranularity = (typeof WORD_DIFF_GRANULARITIES)[number];
+
+// @public
+export type WordDiffNormalization = {
+    case?: boolean;
+    whitespace?: boolean;
+};
+
+// @public (undocumented)
+export type WordDiffOptions = {
+    granularity?: WordDiffGranularity;
+    normalization?: WordDiffNormalization;
+};
 
 // @public
 export type WordDiffSegment = {

@@ -667,6 +667,7 @@ export type FolioApplyOperationsOptions = {
     mode?: FolioAIEditApplyMode;
     snapshot?: FolioAIEditSnapshot;
     revisionStamp?: FolioRevisionStamp;
+    wordDiff?: FolioWordDiffOptions;
 };
 
 // @public

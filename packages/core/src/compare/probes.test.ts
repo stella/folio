@@ -227,6 +227,39 @@ describe("single-mutation probes", () => {
     );
   });
 
+  test("granularity: character-level marks less of the word than word-level does", async () => {
+    const blockIndex = wordyBlockIndex(PROSE_BLOCKS, 4);
+    const word = PROSE_BLOCKS[blockIndex]?.text.split(" ").at(0) ?? "";
+    const scripted = await applyEditScript(PROSE_BASE, [
+      { type: "replaceWords", blockIndex, find: word, replace: `${word}ing` },
+    ]);
+    if (scripted.isErr()) {
+      throw scripted.error;
+    }
+    const target = scripted.value.buffer;
+
+    const wordLevel = await compareDocx(PROSE_BASE, target, OPTIONS);
+    const characterLevel = await compareDocx(PROSE_BASE, target, {
+      ...OPTIONS,
+      granularity: "character",
+    });
+    if (wordLevel.isErr() || characterLevel.isErr()) {
+      throw wordLevel.isErr() ? wordLevel.error : characterLevel.error;
+    }
+
+    // The option reaches the package: the same edit is redlined two ways.
+    expect(new Uint8Array(wordLevel.value.buffer)).not.toEqual(
+      new Uint8Array(characterLevel.value.buffer),
+    );
+    // Both still accept back to the target and reject back to the base.
+    for (const result of [wordLevel.value, characterLevel.value]) {
+      expect(await projectView(result.buffer, "final")).toEqual(await projectView(target, "final"));
+      expect(await projectView(result.buffer, "original")).toEqual(
+        await projectView(PROSE_BASE, "final"),
+      );
+    }
+  });
+
   test("format_only_bold: bolding a phrase is a format, never a rewrite", async () => {
     const blockIndex = wordyBlockIndex(PROSE_BLOCKS, 4);
     const { changes, kinds } = await probe(PROSE_BASE, [

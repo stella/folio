@@ -4,6 +4,7 @@ import {
   applyFolioAIEditOperations,
   type FolioAIEditApplyOutcome,
   type FolioAIEditView,
+  type FolioWordDiffOptions,
   type FolioRevisionStamp,
   previewFolioAIEditOperations,
 } from "./ai-edits/apply";
@@ -1158,6 +1159,8 @@ export type ApplyFolioDocumentOperationsOptions = {
   createUndoHandle?: () => FolioDocumentOperationUndoHandle;
   /** Omit to stamp revisions from the wall clock and the shared id cursor. */
   revisionStamp?: FolioRevisionStamp;
+  /** Token size a replacement's redline is cut at. Word-level by default. */
+  wordDiff?: FolioWordDiffOptions;
 };
 
 type ApplyParsedDocumentOperationBatchOptions = {
@@ -1175,6 +1178,7 @@ export const applyFolioDocumentOperations = ({
   createCommentId,
   createUndoHandle,
   revisionStamp,
+  wordDiff,
 }: ApplyFolioDocumentOperationsOptions): FolioDocumentOperationResult => {
   const parsedBatch = parseFolioDocumentOperationBatch(batch);
   const apply = ({
@@ -1191,6 +1195,7 @@ export const applyFolioDocumentOperations = ({
       ...(author !== undefined && { author }),
       ...(targetCreateCommentId !== undefined && { createCommentId: targetCreateCommentId }),
       ...(revisionStamp !== undefined && { revisionStamp }),
+      ...(wordDiff !== undefined && { wordDiff }),
     });
   };
 

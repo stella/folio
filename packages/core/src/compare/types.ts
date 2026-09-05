@@ -6,6 +6,7 @@
 import { TaggedError } from "better-result";
 
 import type { FolioDocumentStoryHandle } from "../ai-edits/headless";
+import type { WordDiffGranularity } from "../ai-edits/word-diff";
 import type {
   FolioAIBlockTableLocation,
   FolioAIEditSkippedOperation,
@@ -23,6 +24,16 @@ export type CompareDocxOptions = {
    * fixed epoch.
    */
   timestamp: string;
+  /**
+   * Token size a changed paragraph's redline is cut at: `"word"` (default)
+   * marks whole words, `"character"` marks the changed letters inside one.
+   *
+   * Case and whitespace normalization are not options here, though
+   * `diffWordSegments` offers them: a comparison that leaves a difference
+   * unmarked does not accept back to the target, and the round trip is the
+   * one thing this call promises.
+   */
+  granularity?: WordDiffGranularity;
 };
 
 /** Where one change sits in the base or target document. */

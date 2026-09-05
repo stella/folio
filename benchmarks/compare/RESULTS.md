@@ -302,6 +302,44 @@ the moment they carried revisions at all.
 new configurations and two are the `notes/*/notes` pair that now reports its
 difference; every other digest is unchanged.
 
+### A rewritten paragraph is one replacement, not a dozen fragments
+
+An LCS maximises matched characters. On a paragraph that was rewritten it
+therefore matches every stray "the" and comma it can reach, and the reader
+gets a shredded paragraph where one deletion followed by one insertion says
+the same thing. Three rules pull the output back: a match made only of
+separators is not a match, a one-token match with changes on both sides of it
+is dropped into them, and a paragraph whose surviving matches are too short
+for its length is replaced whole.
+
+The number that says whether it worked is how many separately marked runs the
+package carries — `w:ins` and `w:del` elements in `word/document.xml`, one per
+fragment a reader has to read as its own edit:
+
+| Configuration           | before | after | change |
+| ----------------------- | ------ | ----- | ------ |
+| `prose/m/rewrite`       | 2,528  | 817   | -68%   |
+| `lists/m/rewrite`       | 1,875  | 882   | -53%   |
+| `multiscript/m/rewrite` | 1,392  | 912   | -34%   |
+| `prose/m/structural`    | 157    | 156   | -1%    |
+| `prose/m/heavy`         | 462    | 462   | 0%     |
+| `prose/m/light`         | 63     | 63    | 0%     |
+
+The last three are the control: a light or heavy edit that really did change a
+few words per paragraph is still marked word by word. Only the rewrites
+collapse, which is the whole intent.
+
+25 digests moved, all in `structural` and `rewrite` — deliberately, and only
+there. Every invariant still passes across all 180 configurations, so the
+round trip is intact: the redline reads differently and accepts to the same
+document.
+
+`granularity` is threaded end to end — `compareDocx` to the operation batch to
+the applier to the diff — so `"character"` really does mark the changed digits
+of a clause number rather than the whole token. Case and whitespace
+normalization stay on `diffWordSegments` alone: a comparison that leaves a
+difference unmarked does not accept back to the target.
+
 ## Correctness gaps the baseline surfaced
 
 Three configurations failed, and each named a real gap rather than a flake.

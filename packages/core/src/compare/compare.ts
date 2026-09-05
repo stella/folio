@@ -36,6 +36,7 @@ import {
   type FolioRevisionStamp,
 } from "../ai-edits/headless";
 import type { FolioAIEditSnapshot } from "../ai-edits/types";
+import type { WordDiffGranularity } from "../ai-edits/word-diff";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { pairFolioDocumentStories } from "../document-stories";
 import { planStoryCompare, type CompareStoryPlan } from "./plan";
@@ -130,6 +131,8 @@ export type ComparedStoryPair = {
 
 /** Everything the later stages need, and nothing they have to re-derive. */
 export type ParsedComparison = {
+  /** Token size a changed paragraph's redline is cut at. */
+  granularity: WordDiffGranularity;
   /**
    * The base package as it arrived. It is the result when nothing changed, but
    * only when it carried no revisions of its own: otherwise the compared base
@@ -208,6 +211,7 @@ export const parseComparison = async (
   }
 
   return Result.ok({
+    granularity: options.granularity ?? "word",
     baseBuffer: base,
     baseCarriedRevisions: existing.present,
     reviewer,
@@ -258,7 +262,7 @@ export const planComparison = ({
  * redline that reads plausibly and is wrong.
  */
 export const applyComparison = (
-  { reviewer, targetReviewer, revisionStamp }: ParsedComparison,
+  { reviewer, targetReviewer, revisionStamp, granularity }: ParsedComparison,
   planned: readonly PlannedStoryComparison[],
 ): Result<readonly CompareChange[], CompareDocxApplyError | CompareDocxRoundTripError> => {
   const changes: CompareChange[] = [];
@@ -277,6 +281,7 @@ export const applyComparison = (
       story: pair.baseStory,
       snapshot: pair.baseSnapshot,
       revisionStamp: { date: revisionStamp.date, idSeed },
+      wordDiff: { granularity },
       batch: {
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
         mode: "tracked-changes",

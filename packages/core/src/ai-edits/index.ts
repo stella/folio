@@ -2,6 +2,7 @@ export {
   applyFolioAIEditOperations,
   type FolioAIEditApplyOutcome,
   type FolioAIEditView,
+  type FolioWordDiffOptions,
   type FolioRevisionStamp,
 } from "./apply";
 export {
@@ -27,7 +28,7 @@ export {
 } from "./snapshot";
 export { getFolioDocumentOutline, readFolioDocumentSection } from "./scoped-reading";
 export { getFolioParaIdFromBlockId } from "../types/block-id";
-export { diffWordSegments } from "./word-diff";
+export { diffWordSegments, WORD_DIFF_GRANULARITIES } from "./word-diff";
 export {
   FOLIO_RESOLVED_REVIEWED_VIEWS,
   FOLIO_REVIEWED_VIEWS,
@@ -45,7 +46,12 @@ export {
   type FolioReviewedStory,
   type FolioReviewedView,
 } from "./headless";
-export type { WordDiffSegment } from "./word-diff";
+export type {
+  WordDiffGranularity,
+  WordDiffNormalization,
+  WordDiffOptions,
+  WordDiffSegment,
+} from "./word-diff";
 export type {
   FolioAIBlock,
   FolioAIBlockAnchor,

@@ -25,6 +25,7 @@ export type ApplyFolioDocumentOperationsOptions = {
     createCommentId?: (text: string) => number;
     createUndoHandle?: () => FolioDocumentOperationUndoHandle;
     revisionStamp?: FolioRevisionStamp;
+    wordDiff?: FolioWordDiffOptions;
 };
 
 // @public (undocumented)
@@ -43,7 +44,7 @@ export const createFolioAIEditSnapshot: (doc: Node_2) => FolioAIEditSnapshot;
 export const createFolioAITextRangeHandle: (input: CreateFolioAITextRangeHandleOptions) => FolioAITextRangeHandle | null;
 
 // @public (undocumented)
-export const diffWordSegments: (before: string, after: string) => WordDiffSegment[];
+export const diffWordSegments: (before: string, after: string, options?: WordDiffOptions) => WordDiffSegment[];
 
 // @public (undocumented)
 export type DocPositionRange = {
@@ -656,6 +657,11 @@ export type FolioRevisionStamp = {
 };
 
 // @public
+export type FolioWordDiffOptions = {
+    granularity?: WordDiffGranularity;
+};
+
+// @public
 export const getCommentAnchorsFromDoc: (doc: Node_2) => FolioCommentAnchor[];
 
 // @public (undocumented)
@@ -727,6 +733,24 @@ export class UnsupportedFolioReviewedViewError extends UnsupportedFolioReviewedV
     message: string;
     receivedView: unknown;
 }> {}
+
+// @public
+export const WORD_DIFF_GRANULARITIES: readonly ["word", "character"];
+
+// @public (undocumented)
+export type WordDiffGranularity = (typeof WORD_DIFF_GRANULARITIES)[number];
+
+// @public
+export type WordDiffNormalization = {
+    case?: boolean;
+    whitespace?: boolean;
+};
+
+// @public (undocumented)
+export type WordDiffOptions = {
+    granularity?: WordDiffGranularity;
+    normalization?: WordDiffNormalization;
+};
 
 // @public
 export type WordDiffSegment = {

@@ -57,7 +57,7 @@ import type {
   FolioAIEditSkippedOperation,
   FolioAISignatureParty,
 } from "./types";
-import { diffWordSegments } from "./word-diff";
+import { diffWordSegments, type WordDiffGranularity } from "./word-diff";
 
 /**
  * The only editor surface the apply logic touches: a current `state`
@@ -99,11 +99,22 @@ type ApplyFolioAIEditOperationsOptions = {
   createCommentId?: (text: string) => number;
   /** Omit to stamp revisions from the wall clock and the shared id cursor. */
   revisionStamp?: FolioRevisionStamp;
+  /** How a replacement's redline is cut. */
+  wordDiff?: FolioWordDiffOptions;
 };
 
 type ApplyFolioAIEditOperationsInternalOptions = ApplyFolioAIEditOperationsOptions & {
   revisionIdSeed?: number;
 };
+
+/**
+ * How an apply batch cuts the redline for a replacement. Word-level by
+ * default; character granularity marks the changed letters inside a token,
+ * which reads well for a reference or a date. Normalization is deliberately
+ * absent: a batch that leaves a difference unmarked does not accept back to
+ * the text the caller asked for.
+ */
+export type FolioWordDiffOptions = { granularity?: WordDiffGranularity };
 
 /**
  * An apply result plus where the batch left the revision-id counter.
@@ -673,6 +684,7 @@ const applyFolioAIEditOperationsInternal = ({
   createCommentId,
   revisionStamp,
   revisionIdSeed,
+  wordDiff,
 }: ApplyFolioAIEditOperationsInternalOptions): FolioAIEditApplyOutcome => {
   const applied: FolioAIEditAppliedOperation[] = [];
   const skipped: FolioAIEditSkippedOperation[] = [];
@@ -927,6 +939,7 @@ const applyFolioAIEditOperationsInternal = ({
           commentMark,
           suggestionId,
           initials,
+          granularity: wordDiff?.granularity ?? "word",
         });
         if (producesTrackedChanges) {
           appliedRevisionIds = [
@@ -1042,6 +1055,7 @@ const applyFolioAIEditOperationsInternal = ({
           commentMark,
           suggestionId,
           initials,
+          granularity: wordDiff?.granularity ?? "word",
         });
         tr = applyReplaceBlockStyleId({ item, tr });
         if (producesTrackedChanges) {
@@ -1552,6 +1566,8 @@ type TextReplacementOptions = {
   suggestionId?: string | null;
   /** Optional author initials stamped on the produced marks. */
   initials?: string | undefined;
+  /** Token size the redline is cut at. */
+  granularity: WordDiffGranularity;
 };
 
 const applyTextReplacement = ({
@@ -1565,6 +1581,7 @@ const applyTextReplacement = ({
   commentMark,
   suggestionId = null,
   initials,
+  granularity,
 }: TextReplacementOptions): Transaction => {
   let nextTr = tr;
   const replacement = stripInlineEmphasisMarkers(
@@ -1659,7 +1676,7 @@ const applyTextReplacement = ({
   }
 
   if (sourceText !== null && cleanBlock !== null) {
-    const segments = diffWordSegments(sourceText, replacement);
+    const segments = diffWordSegments(sourceText, replacement, { granularity });
     const offsets = cleanBlock.offsets;
     const offsetAt = (cleanOffset: number): number | null => offsets[cleanOffset] ?? null;
 

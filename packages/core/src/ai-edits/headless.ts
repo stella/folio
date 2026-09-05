@@ -67,7 +67,7 @@ import {
   type FolioDocumentOperationUndoHandle,
   type FolioDocumentOperationUndoResult,
 } from "../document-operations";
-import type { FolioRevisionStamp } from "./apply";
+import type { FolioRevisionStamp, FolioWordDiffOptions } from "./apply";
 import { buildAnnotatedBlockText } from "./clean-text";
 import {
   getCommentAnchorsFromDoc,
@@ -206,6 +206,8 @@ export type FolioApplyOperationsOptions = {
   snapshot?: FolioAIEditSnapshot;
   /** Omit to stamp revisions from the wall clock and the shared id cursor. */
   revisionStamp?: FolioRevisionStamp;
+  /** Token size a replacement's redline is cut at. Word-level by default. */
+  wordDiff?: FolioWordDiffOptions;
 };
 
 /** Options for {@link FolioDocxReviewer.applyDocumentOperations}. */
@@ -321,6 +323,7 @@ type ApplyDocumentOperationsInternalOptions = {
   batch: FolioDocumentOperationBatch;
   snapshot?: FolioAIEditSnapshot;
   revisionStamp?: FolioRevisionStamp;
+  wordDiff?: FolioWordDiffOptions;
   createUndoEntry: boolean;
 };
 
@@ -704,12 +707,14 @@ export class FolioDocxReviewer {
     batch,
     snapshot,
     revisionStamp,
+    wordDiff,
   }: FolioApplyDocumentOperationsToStoryOptions): FolioDocumentOperationResult {
     return this.applyDocumentOperationsInternal({
       story,
       batch,
       ...(snapshot !== undefined && { snapshot }),
       ...(revisionStamp !== undefined && { revisionStamp }),
+      ...(wordDiff !== undefined && { wordDiff }),
       createUndoEntry: true,
     });
   }
@@ -719,6 +724,7 @@ export class FolioDocxReviewer {
     batch,
     snapshot,
     revisionStamp,
+    wordDiff,
     createUndoEntry,
   }: ApplyDocumentOperationsInternalOptions): FolioDocumentOperationResult {
     const beforeState = this.requireEditableStoryState(story);
@@ -737,6 +743,7 @@ export class FolioDocxReviewer {
       story: story.type === "main" ? "main" : story,
       author: this.author,
       ...(revisionStamp !== undefined && { revisionStamp }),
+      ...(wordDiff !== undefined && { wordDiff }),
       createCommentId: (text) => {
         const comment = createReviewerComment(this.nextCommentId(), text, this.author);
         this.createdComments.push(comment);
