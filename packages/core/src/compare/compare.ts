@@ -33,6 +33,7 @@ import { panic, Result } from "better-result";
 import {
   FolioDocxReviewer,
   type FolioDocumentStoryHandle,
+  type FolioNumberingLevel,
   type FolioRevisionStamp,
 } from "../ai-edits/headless";
 import type { FolioAIEditSnapshot } from "../ai-edits/types";
@@ -124,6 +125,56 @@ const projectStory = (reviewer: FolioDocxReviewer, story: FolioDocumentStoryHand
   });
 };
 
+const numberingKey = ({ numId, level }: FolioNumberingLevel): string =>
+  `${String(numId)}:${String(level)}`;
+
+const sameNumbering = (left: FolioNumberingLevel, right: FolioNumberingLevel): boolean =>
+  left.format === right.format && left.levelText === right.levelText && left.start === right.start;
+
+/**
+ * Numbering levels that differ between the two packages, in `numId` then
+ * level order.
+ *
+ * A list renumbered BY an edit needs no entry: labels come from these
+ * definitions rather than from the paragraphs, so inserting an item already
+ * renumbers the ones below it as-if-accepted. A definition that itself
+ * changed — decimal to lower-roman, a different level template, a different
+ * start — changes every label in the list and nothing in any block's text,
+ * which is exactly the difference a caller would otherwise never hear about.
+ */
+type NumberingChange = Extract<CompareChange, { kind: "numbering" }>;
+
+const compareNumbering = (
+  base: FolioDocxReviewer,
+  target: FolioDocxReviewer,
+): NumberingChange[] => {
+  const baseLevels = new Map(
+    base.readNumberingDefinitions().map((level) => [numberingKey(level), level]),
+  );
+  const targetLevels = new Map(
+    target.readNumberingDefinitions().map((level) => [numberingKey(level), level]),
+  );
+  const changes: NumberingChange[] = [];
+  for (const [key, before] of baseLevels) {
+    const after = targetLevels.get(key) ?? null;
+    if (after === null || !sameNumbering(before, after)) {
+      changes.push({ kind: "numbering", numId: before.numId, level: before.level, before, after });
+    }
+  }
+  for (const [key, after] of targetLevels) {
+    if (!baseLevels.has(key)) {
+      changes.push({
+        kind: "numbering",
+        numId: after.numId,
+        level: after.level,
+        before: null,
+        after,
+      });
+    }
+  }
+  return changes.toSorted((left, right) => left.numId - right.numId || left.level - right.level);
+};
+
 /** Two stories the comparison will align against one another. */
 export type ComparedStoryPair = {
   baseStory: FolioDocumentStoryHandle;
@@ -148,6 +199,8 @@ export type ParsedComparison = {
   revisionStamp: FolioRevisionStamp;
   packageDate: Date;
   pairs: readonly ComparedStoryPair[];
+  /** Package-level numbering differences, which belong to no story. */
+  numberingChanges: readonly CompareChange[];
   unsupported: readonly CompareUnsupportedPart[];
 };
 
@@ -222,6 +275,7 @@ export const parseComparison = async (
     revisionStamp: { date: options.timestamp, idSeed: existing.idSeed },
     packageDate,
     pairs,
+    numberingChanges: compareNumbering(reviewer, targetReviewer),
     unsupported,
   });
 };
@@ -265,10 +319,10 @@ export const planComparison = ({
  * redline that reads plausibly and is wrong.
  */
 export const applyComparison = (
-  { reviewer, targetReviewer, revisionStamp, granularity }: ParsedComparison,
+  { reviewer, targetReviewer, revisionStamp, granularity, numberingChanges }: ParsedComparison,
   planned: readonly PlannedStoryComparison[],
 ): Result<readonly CompareChange[], CompareDocxApplyError | CompareDocxRoundTripError> => {
-  const changes: CompareChange[] = [];
+  const changes: CompareChange[] = [...numberingChanges];
   // Each story gets the range that starts where the previous story's ended.
   // Word's `w:id` namespace is the package, not the part, so two stories
   // seeded alike would let a reader resolving a header revision resolve a

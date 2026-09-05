@@ -37,6 +37,7 @@ export const EDIT_VARIANTS = Object.freeze([
   "reorder",
   "structural",
   "tablecount",
+  "numbering",
   "notes",
   "headers",
   "everywhere",
@@ -255,6 +256,7 @@ const BODY_REWRITES = {
   reorder,
   structural,
   tablecount,
+  numbering: identical,
   notes: identical,
   headers: identical,
   everywhere: light,
@@ -262,6 +264,29 @@ const BODY_REWRITES = {
 } as const satisfies Record<EditVariant, BodyRewrite>;
 
 const NOTE_PARTS = Object.freeze(["word/footnotes.xml", "word/endnotes.xml"] as const);
+
+const NUMBERING_PART = "word/numbering.xml";
+
+/**
+ * Renumber the list without touching a word: every level's format becomes
+ * `lowerRoman`. Labels are rendered from the numbering definitions, so no
+ * block's text changes and a text-only comparison sees nothing at all.
+ */
+const rewriteNumberingPart = (parts: Map<string, PackagePart>): boolean => {
+  const part = parts.get(NUMBERING_PART);
+  if (typeof part !== "string") {
+    return false;
+  }
+  const rewritten = part.replaceAll(
+    /<w:numFmt w:val="[^"]*"\/>/gu,
+    '<w:numFmt w:val="lowerRoman"/>',
+  );
+  if (rewritten === part) {
+    return false;
+  }
+  parts.set(NUMBERING_PART, rewritten);
+  return true;
+};
 
 const CHROME_PARTS = Object.freeze(["word/header1.xml", "word/footer1.xml"] as const);
 
@@ -316,6 +341,10 @@ export type ApplyVariantOptions = {
  */
 export const applyVariant = ({ parts, variant }: ApplyVariantOptions): DocxPackage | null => {
   const target = new Map(parts);
+  if (variant === "numbering") {
+    return rewriteNumberingPart(target) ? target : null;
+  }
+
   if (variant === "notes" || variant === "headers" || variant === "everywhere") {
     const names = SECONDARY_STORY_PARTS[variant];
     if (!names.some((name) => typeof parts.get(name) === "string")) {

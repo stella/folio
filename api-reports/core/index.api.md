@@ -323,6 +323,25 @@ export type CompareChange = {
     cells: readonly string[];
     targetBlockIds: readonly string[];
 } |
+/**
+* A numbering definition that differs. It carries no `location`: numbering
+* lives in the package, not in a story, and one definition governs every
+* list that references it.
+*
+* Reported and not represented. A renumbering that FOLLOWS from an edit —
+* an item inserted, so the ones below it count on — is already shown
+* as-if-accepted, because labels are rendered from these definitions rather
+* than stored on the paragraphs. A definition that itself changed is a
+* different thing, and OOXML has no tracked-change grammar for it: Word
+* does not track `numbering.xml` either.
+*/
+    {
+    kind: "numbering";
+    numId: number;
+    level: number;
+    before: FolioNumberingLevel | null;
+    after: FolioNumberingLevel | null;
+} |
 /** A whole table the target added. */
     {
     kind: "table-insert";

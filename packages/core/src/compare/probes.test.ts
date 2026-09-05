@@ -328,6 +328,22 @@ describe("single-mutation probes", () => {
     expect(kinds).toEqual(["insert"]);
   });
 
+  test("renumbering_definition: a changed list format is reported, not silently dropped", async () => {
+    // The words are identical; only `numbering.xml` differs. Labels are
+    // rendered from the definitions, so nothing in any block's text moves and
+    // a text-only comparison sees two identical documents.
+    const roman = await buildNumberedListDocx(NUMBERED_LIST_ITEMS, { format: "lowerRoman" });
+    const result = await compareDocx(LIST_BASE, roman, OPTIONS);
+    if (result.isErr()) {
+      throw result.error;
+    }
+    const kinds = result.value.changes.map(({ kind }) => kind);
+    expect(new Set(kinds)).toEqual(new Set(["numbering"]));
+    const [change] = result.value.changes;
+    expect(change?.kind === "numbering" && change.before?.format).toBe("decimal");
+    expect(change?.kind === "numbering" && change.after?.format).toBe("lowerRoman");
+  });
+
   test("change_list_level: a demoted list item is one paragraph-format change", async () => {
     // Demoting an item changes `w:ilvl` and nothing a text diff can see. It
     // used to reach the comparison as no change at all, so the redline said

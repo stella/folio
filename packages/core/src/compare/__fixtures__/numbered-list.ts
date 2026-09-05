@@ -26,9 +26,9 @@ const ZIP_ENTRY_OPTIONS = { date: FIXED_ZIP_DATE, createFolders: false } as cons
 
 const LIST_LEVELS = 3;
 
-const abstractLevels = (): string =>
+const abstractLevels = (topLevelFormat: string): string =>
   Array.from({ length: LIST_LEVELS }, (_unused, level) => {
-    const format = level === 0 ? "decimal" : "lowerLetter";
+    const format = level === 0 ? topLevelFormat : "lowerLetter";
     return (
       `<w:lvl w:ilvl="${String(level)}"><w:start w:val="1"/>` +
       `<w:numFmt w:val="${format}"/><w:lvlText w:val="%${String(level + 1)}."/>` +
@@ -62,8 +62,14 @@ export const withItemDemoted = (
     at === index ? { level: Math.min(LIST_LEVELS - 1, item.level + 1), text: item.text } : item,
   );
 
+export type NumberedListDocxOptions = {
+  /** `w:numFmt` for the top level. Default `"decimal"`. */
+  format?: string;
+};
+
 export const buildNumberedListDocx = async (
   items: readonly NumberedListItem[] = NUMBERED_LIST_ITEMS,
+  { format = "decimal" }: NumberedListDocxOptions = {},
 ): Promise<ArrayBuffer> => {
   const parts: Record<string, string> = {
     "[Content_Types].xml":
@@ -95,7 +101,7 @@ export const buildNumberedListDocx = async (
     "word/numbering.xml":
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
       `<w:numbering xmlns:w="${NAMESPACE}">` +
-      `<w:abstractNum w:abstractNumId="0">${abstractLevels()}</w:abstractNum>` +
+      `<w:abstractNum w:abstractNumId="0">${abstractLevels(format)}</w:abstractNum>` +
       `<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>` +
       `</w:numbering>`,
     "word/document.xml":

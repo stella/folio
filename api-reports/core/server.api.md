@@ -1205,6 +1205,7 @@ export class FolioDocxReviewer {
     getDocumentProperties(): Readonly<NonNullable<import__stll_docx_core_model.Document["package"]["properties"]>> | null;
     getNotesAsText(): string;
     listStories(): FolioDocumentStory[];
+    readNumberingDefinitions(): FolioNumberingLevel[];
     readReviewedStory(options?: FolioReadReviewedStoryOptions): FolioReviewedStory | null;
     readStory(handle: FolioDocumentStoryHandle): FolioDocumentStory | null;
     rejectAll(): number;

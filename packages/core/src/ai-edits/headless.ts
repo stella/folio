@@ -240,6 +240,18 @@ export type FolioDocumentStoryHandle =
 
 export type FolioEditableDocumentStoryHandle = FolioDocumentStoryHandle;
 
+/**
+ * One numbering level as a reader meets it: which list, which depth, and the
+ * format and template that produce the label.
+ */
+export type FolioNumberingLevel = {
+  numId: number;
+  level: number;
+  format: string;
+  levelText: string;
+  start?: number;
+};
+
 export type FolioDocumentStory = {
   handle: FolioDocumentStoryHandle;
   text: string;
@@ -588,6 +600,47 @@ export class FolioDocxReviewer {
    */
   snapshot(): FolioAIEditSnapshot {
     return createFolioAIEditSnapshot(this.state.doc);
+  }
+
+  /**
+   * The package's numbering, flattened to what a reader sees: one entry per
+   * numbering instance and level, with the format and level text that produce
+   * its labels.
+   *
+   * Labels are rendered from these definitions rather than stored on the
+   * paragraphs, so nothing in a block projection changes when a list is
+   * renumbered — which is right for an insertion that renumbers the items
+   * below it, and wrong for a list whose FORMAT changed. Sorted so two
+   * packages can be compared entry by entry.
+   */
+  readNumberingDefinitions(): FolioNumberingLevel[] {
+    const numbering = this.baseDocument.package.numbering;
+    if (!numbering) {
+      return [];
+    }
+    const levelsByAbstractId = new Map(
+      numbering.abstractNums.map((abstractNum) => [abstractNum.abstractNumId, abstractNum.levels]),
+    );
+    const levels: FolioNumberingLevel[] = [];
+    for (const instance of numbering.nums) {
+      const overrides = new Map(
+        (instance.levelOverrides ?? []).map((override) => [override.ilvl, override]),
+      );
+      for (const level of levelsByAbstractId.get(instance.abstractNumId) ?? []) {
+        const override = overrides.get(level.ilvl);
+        const resolved = override?.lvl ?? level;
+        levels.push({
+          numId: instance.numId,
+          level: resolved.ilvl,
+          format: resolved.numFmt,
+          levelText: resolved.lvlText,
+          ...((override?.startOverride ?? resolved.start) !== undefined
+            ? { start: override?.startOverride ?? resolved.start }
+            : {}),
+        });
+      }
+    }
+    return levels.toSorted((left, right) => left.numId - right.numId || left.level - right.level);
   }
 
   /** Return parsed package metadata without exposing the mutable document model. */

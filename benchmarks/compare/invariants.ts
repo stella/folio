@@ -85,6 +85,15 @@ const resolvedBufferOf = async (redlined: ArrayBuffer, view: ResolveView): Promi
 
 type ChangeCount = { count: number } | { error: string };
 
+/**
+ * Changes a redline can carry. A `numbering` change is reported precisely
+ * because it cannot be: OOXML has no tracked-change grammar for
+ * `numbering.xml`, and Word does not track it either. Counting it in the
+ * round trip would demand that accepting a redline change a part the redline
+ * never touched.
+ */
+const isRepresentable = ({ kind }: CompareChange): boolean => kind !== "numbering";
+
 const changeCountBetween = async (
   left: ArrayBuffer,
   right: ArrayBuffer,
@@ -93,7 +102,7 @@ const changeCountBetween = async (
   const result = await compareDocx(left, right, options);
   return result.isErr()
     ? { error: `${result.error.name}: ${result.error.message}` }
-    : { count: result.value.changes.length };
+    : { count: result.value.changes.filter(isRepresentable).length };
 };
 
 /**

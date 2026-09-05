@@ -17,7 +17,8 @@ if (result.isOk()) {
 The buffer opens as ordinary revisions in any OOXML consumer. `changes` is a
 discriminated union on `kind` (`insert`, `delete`, `replace`, `move`, `format`,
 `table-insert`, `table-delete`, `table-row-insert`, `table-row-delete`,
-`split`, `merge`, `paragraph-format`), for an agent that wants the summary
+`split`, `merge`, `paragraph-format`, `numbering`), for an agent that wants
+the summary
 rather than the document. Every change carries the story it belongs to, so a
 caller can tell a body edit from a footnote edit.
 
@@ -104,6 +105,13 @@ restores the base's. A mark is never written on the last paragraph of a table
 cell: there is no sibling to join with, so the revision could not do what it
 says.
 
+Renumbering that FOLLOWS from an edit needs no change of its own: labels are
+rendered from the numbering definitions rather than stored on the paragraphs,
+so inserting a list item already renumbers the ones below it as-if-accepted,
+and reporting them would bury the real edit. A definition that itself changed
+is the opposite case — every label in the list moves and no block's text does
+— and is reported as `numbering`.
+
 A paragraph property that moved without any word moving — a list item demoted
 a level, a paragraph restyled — is a `paragraph-format` change, written as
 `w:pPrChange` with the complete previous property set so a reject restores it
@@ -168,10 +176,11 @@ carries the current numbers and the failing cases.
   whole table added or removed at document level is `table-insert` /
   `table-delete`; the same edit inside a cell would need `insertTable` to
   place a table in a cell rather than as a document-level peer.
-- **Numbering definitions are not compared** (2026-09-06). Renumbering that
-  follows from an insertion or a deletion is a property of `numbering.xml`, not
-  of block text, and no change is reported for it. A changed list LEVEL is
-  compared: it is a `paragraph-format` change written as `w:pPrChange`.
+- **A numbering definition is reported, not represented** (2026-09-06). A list
+  whose format, level template or start changed is a `numbering` change, and
+  the redline cannot carry it: OOXML has no tracked-change grammar for
+  `numbering.xml` and Word does not track it either. Accepting the result
+  therefore reproduces the target's words and keeps the base's numbering.
 
 ## Files
 

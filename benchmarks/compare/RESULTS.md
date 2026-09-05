@@ -479,6 +479,30 @@ edit that removed one row reported a change in every row of the table. No
 digest moves: the corpus never deletes a row and edits cells in the same
 table, so the case lives in `plan.test.ts` rather than in a number here.
 
+### A changed numbering definition is reported
+
+The new `numbering` variant rewrites every level's `w:numFmt` to `lowerRoman`
+and leaves the body byte-identical. Labels come from `numbering.xml` rather
+than from the paragraphs, so every block's text is the same and a text-only
+comparison sees two identical documents.
+
+| Configuration       | before    | after     |
+| ------------------- | --------- | --------- |
+| `lists/s/numbering` | 0 changes | 2 changes |
+| `lists/m/numbering` | 0 changes | 2 changes |
+
+Reported, not represented: OOXML has no tracked-change grammar for
+`numbering.xml`, and Word does not track it either. The redline is the base
+package unchanged, and the change list is where the difference lives. The
+round-trip invariants count only the changes a redline CAN carry, or they
+would demand that accepting a redline change a part it never touched.
+
+Renumbering that follows from an edit still needs no change of its own, and
+the `renumbering` probe still pins that: inserting a list item renumbers the
+items below it as-if-accepted, and reporting them would bury the real edit.
+
+216 configurations, none with a failing invariant.
+
 ## Correctness gaps the baseline surfaced
 
 Three configurations failed, and each named a real gap rather than a flake.
