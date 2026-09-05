@@ -63,8 +63,13 @@ in three nested passes, each over things that can stand in for one another:
    Pairing by index instead cannot see a table appear or disappear — every
    later table shifts by one and each one's contents get rewritten into the
    next.
-2. **Rows** inside a paired table, by exact row text and then positionally, so a
-   whole-row change stays whole and becomes `insertTableRow` / `deleteTableRow`.
+2. **Rows** inside a paired table, by similarity rather than by position: a
+   row pairs with the row opposite it unless the next row on one side matches
+   it better. Positional pairing is what made a deleted row plus a few cell
+   edits report as a change in every row of the table, each row put opposite
+   the one below it. Rows also carry their shape into the score, so two rows
+   with the same words in a different number of cells are a replacement rather
+   than an edit.
 3. **Cells** inside a paired row, by physical cell index.
 
 Changed paragraphs go through `diffWordSegments` at apply time, so a redline
@@ -159,11 +164,6 @@ carries the current numbers and the failing cases.
   removed reads as cell-level changes. `insertTableColumn` / `deleteTableColumn`
   exist in the operation vocabulary; nothing detects the difference yet, and
   detecting it reliably needs the empty cells above.
-- **Row pairing degrades when a table's row count changes** (2026-09-06). Rows
-  match on exact text first and positionally after that, so a row deletion
-  combined with cell edits can report per cell instead of as one row change.
-  The result still accepts back to the target; it is just more granular than
-  the edit was.
 - **A table nested inside a cell cannot be added or removed** (2026-09-06). A
   whole table added or removed at document level is `table-insert` /
   `table-delete`; the same edit inside a cell would need `insertTable` to

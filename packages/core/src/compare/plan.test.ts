@@ -17,6 +17,14 @@ const MAIN_STORY = { type: "main" } as const;
 
 const block = (id: string, text: string): FolioAIBlock => ({ id, kind: "paragraph", text });
 
+/** One single-cell row of a table, as the snapshot would project it. */
+const cell = (id: string, text: string, rowIndex: number): FolioAIBlock => ({
+  id,
+  kind: "paragraph",
+  text,
+  table: { outerTableIndex: 0, tableIndex: 0, rowIndex, cellIndex: 0, paragraphIndex: 0 },
+});
+
 const snapshotOf = (blocks: readonly FolioAIBlock[]): FolioAIEditSnapshot => ({
   blocks: [...blocks],
   anchors: Object.fromEntries(
@@ -58,6 +66,35 @@ const RELOCATED_EDITED =
 /** A clause that shares only its opening: a different obligation entirely. */
 const UNRELATED =
   "The Supplier shall not be liable for any indirect loss however it arises in contract.";
+
+describe("table row pairing", () => {
+  test("a deleted row plus edits in the rows below is one deleted row", () => {
+    // Pairing rows by position instead reads every row as changed: row 0 is
+    // put opposite row 1, row 1 opposite row 2, and the last row of the base
+    // is deleted — a table-wide rewrite for an edit that removed one row.
+    const { changes } = planOf(
+      [
+        cell("a", "Ordered quantity is one hundred units.", 0),
+        cell("b", "Delivery is due on the first of the month.", 1),
+        cell("c", "Payment falls due within thirty days.", 2),
+      ],
+      [
+        cell("b2", "Delivery is due on the first of the quarter.", 0),
+        cell("c2", "Payment falls due within sixty days.", 1),
+      ],
+    );
+
+    expect(changes.map(({ kind }) => kind)).toEqual(["table-row-delete", "replace", "replace"]);
+  });
+
+  test("an unchanged table reports nothing", () => {
+    const rows = [
+      cell("a", "Ordered quantity is one hundred units.", 0),
+      cell("b", "Delivery is due.", 1),
+    ];
+    expect(planOf(rows, rows).changes).toEqual([]);
+  });
+});
 
 describe("move detection", () => {
   test("a relocated paragraph is a move even when a word changed on the way", () => {

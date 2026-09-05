@@ -473,6 +473,12 @@ distinction.
 8 digests moved, all `tables`, deliberately. 198 configurations, none with a
 failing invariant.
 
+Rows inside a paired table also stopped pairing by position. A deleted row
+plus a few cell edits used to put every row opposite the one below it, so an
+edit that removed one row reported a change in every row of the table. No
+digest moves: the corpus never deletes a row and edits cells in the same
+table, so the case lives in `plan.test.ts` rather than in a number here.
+
 ## Correctness gaps the baseline surfaced
 
 Three configurations failed, and each named a real gap rather than a flake.

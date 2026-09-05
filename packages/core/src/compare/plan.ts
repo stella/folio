@@ -170,18 +170,6 @@ const splitSegments = (blocks: readonly FolioAIBlock[]): DocumentSegment[] => {
 };
 
 /**
- * A stand-in block used only to run {@link alignFolioBlocks} over table rows,
- * which are not paragraphs. The id is always the `seq-NNNN` shape, which the
- * alignment treats as unstable, so it pairs rows on text and position alone
- * instead of mistaking a synthetic id for identity.
- */
-const proxyBlock = (index: number, text: string): FolioAIBlock => ({
-  id: `seq-${String(index + 1).padStart(4, "0")}`,
-  kind: "paragraph",
-  text,
-});
-
-/**
  * Blocks of one table segment grouped into rows, in document order.
  *
  * Keyed by table AND row, not by row alone: a segment holds the whole
@@ -323,53 +311,91 @@ const buildTableSegmentSteps = (
   return steps;
 };
 
-const buildTableSteps = (
-  baseBlocks: readonly FolioAIBlock[],
-  targetBlocks: readonly FolioAIBlock[],
+/**
+ * How alike two rows must be for one to be read as the other, edited. Below
+ * it the pair is a deleted row and an inserted one.
+ */
+const ROW_PAIR_SIMILARITY = 0.5;
+
+/**
+ * How alike two rows are: their text, halved when their shapes differ.
+ *
+ * A row's shape is its physical cell count. Two rows with the same words in a
+ * different number of cells are not the same row edited, and pairing them
+ * would report every cell as changed rather than the row as replaced.
+ */
+const rowSimilarity = (
+  base: readonly FolioAIBlock[] | undefined,
+  target: readonly FolioAIBlock[] | undefined,
+): number => {
+  if (!base || !target) {
+    return 0;
+  }
+  const text = tokenSimilarity(rowText(base), rowText(target));
+  return rowCellTexts(base).length === rowCellTexts(target).length ? text : text / 2;
+};
+
+/**
+ * Align one table's rows.
+ *
+ * Exact text first, then SIMILARITY rather than position. Positional fallback
+ * is what made a deleted row plus a few cell edits report as a change in every
+ * row of the table: each row was paired with the one below it, so every cell
+ * differed. Pairing on similarity, and stepping one row on the side whose next
+ * row matches better, keeps the deletion where it happened.
+ */
+const alignTableRows = (
+  baseRows: readonly FolioAIBlock[][],
+  targetRows: readonly FolioAIBlock[][],
 ): CompareStep[] => {
-  const baseRows = groupRows(baseBlocks);
-  const targetRows = groupRows(targetBlocks);
   const steps: CompareStep[] = [];
+  const pushRow = (row: readonly FolioAIBlock[], side: "base" | "target"): void => {
+    const location = rowLocation(row);
+    if (location) {
+      steps.push({ type: side === "base" ? "baseRow" : "targetRow", blocks: row, location });
+    }
+  };
 
   let baseCursor = 0;
   let targetCursor = 0;
-  for (const event of alignFolioBlocks(
-    baseRows.map((row, index) => proxyBlock(index, rowText(row))),
-    targetRows.map((row, index) => proxyBlock(index, rowText(row))),
-  )) {
-    switch (event.type) {
-      case "pair": {
-        const baseRow = baseRows[baseCursor++];
-        const targetRow = targetRows[targetCursor++];
-        if (baseRow && targetRow) {
-          steps.push(...alignRowCells(baseRow, targetRow));
-        }
-        break;
+  while (baseCursor < baseRows.length && targetCursor < targetRows.length) {
+    const baseRow = baseRows[baseCursor];
+    const targetRow = targetRows[targetCursor];
+    if (!baseRow || !targetRow) {
+      break;
+    }
+    const here = rowSimilarity(baseRow, targetRow);
+    if (here < 1) {
+      const baseAhead = rowSimilarity(baseRows[baseCursor + 1], targetRow);
+      const targetAhead = rowSimilarity(baseRow, targetRows[targetCursor + 1]);
+      if (baseAhead >= ROW_PAIR_SIMILARITY && baseAhead > here && baseAhead >= targetAhead) {
+        pushRow(baseRow, "base");
+        baseCursor += 1;
+        continue;
       }
-      case "baseOnly": {
-        const row = baseRows[baseCursor++];
-        const location = row ? rowLocation(row) : null;
-        if (row && location) {
-          steps.push({ type: "baseRow", blocks: row, location });
-        }
-        break;
-      }
-      case "revisedOnly": {
-        const row = targetRows[targetCursor++];
-        const location = row ? rowLocation(row) : null;
-        if (row && location) {
-          steps.push({ type: "targetRow", blocks: row, location });
-        }
-        break;
-      }
-      default: {
-        const unreachable: never = event;
-        panic("Unhandled block alignment event", { event: unreachable });
+      if (targetAhead >= ROW_PAIR_SIMILARITY && targetAhead > here) {
+        pushRow(targetRow, "target");
+        targetCursor += 1;
+        continue;
       }
     }
+    steps.push(...alignRowCells(baseRow, targetRow));
+    baseCursor += 1;
+    targetCursor += 1;
+  }
+  for (const row of baseRows.slice(baseCursor)) {
+    pushRow(row, "base");
+  }
+  for (const row of targetRows.slice(targetCursor)) {
+    pushRow(row, "target");
   }
   return steps;
 };
+
+const buildTableSteps = (
+  baseBlocks: readonly FolioAIBlock[],
+  targetBlocks: readonly FolioAIBlock[],
+): CompareStep[] => alignTableRows(groupRows(baseBlocks), groupRows(targetBlocks));
 
 const buildBodySteps = (
   baseBlocks: readonly FolioAIBlock[],
