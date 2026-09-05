@@ -36,6 +36,7 @@ import {
   readTrackedChangeMarkAttrs,
   readUnderlineMarkAttrs,
 } from "./attrs";
+import type { ParagraphAttrs } from "./schema/nodes";
 import { readTextBoxAnchorAttrs } from "./textBoxAnchorAttrs";
 
 export type ProseMirrorDocumentValidationIssue = {
@@ -80,10 +81,41 @@ export const validateProseMirrorDocument = (doc: PMNode): ValidateProseMirrorDoc
   };
 };
 
+/**
+ * Where a bookmark boundary came from. A `bookmarkBoundary` node is emitted by
+ * this codebase's own conversion, always in matched pairs. A
+ * `paragraph.attrs.bookmarks` entry is input data the conversion could not pair
+ * (see `collectPairedBookmarkIds`) and is written back out as a start and an end
+ * around that one paragraph. The distinction decides how strictly a duplicate
+ * id is treated.
+ */
+type BookmarkBoundaryOrigin = "attr" | "node";
+
 type OpenBookmarkBoundary = {
   id: number;
+  name: string | null;
   path: string;
+  paragraph: string;
+  origin: BookmarkBoundaryOrigin;
 };
+
+/**
+ * Locate a bookmark boundary by the paragraph holding it, so a failure names a
+ * place a reader can find rather than only a node path.
+ *
+ * The paragraph's text is deliberately left out. Validation messages travel
+ * into logs and error reports, and document text is not log data.
+ */
+const describeParagraph = (
+  attrs: ReadProseMirrorAttrsResult<ParagraphAttrs> | null,
+  path: string,
+): string => {
+  const paraId = attrs?.ok === true ? attrs.value.paraId : undefined;
+  return paraId !== undefined && paraId.length > 0 ? `paragraph ${paraId}` : `paragraph at ${path}`;
+};
+
+const describeBookmark = (id: number, name: string | null): string =>
+  name === null || name.length === 0 ? `Bookmark id ${id}` : `Bookmark "${name}" (id ${id})`;
 
 const validateBookmarkBoundaryStructure = (
   doc: PMNode,
@@ -91,32 +123,75 @@ const validateBookmarkBoundaryStructure = (
 ): void => {
   // Bookmark boundaries pair by id, not by stack order. Word permits ranges
   // to overlap (start A, start B, end A, end B), so crossing pairs are valid.
+  //
+  // A duplicate id is an error EXCEPT when both occurrences are paragraph-attr
+  // bookmarks. Real documents repeat an id that way — a stray `_GoBack`, a
+  // template assembled from several sources, a file round-tripped through
+  // another editor — and Word and LibreOffice keep the first start and open the
+  // file rather than refusing it. Rejecting the document instead made every such
+  // file unopenable here, and the attr carries no range to corrupt: it
+  // serializes as a start and an end around its own paragraph, so the tolerated
+  // occurrence writes back exactly what was read.
+  //
+  // A duplicate involving a `bookmarkBoundary` node stays an error. Those this
+  // codebase emits itself, in pairs, so a collision there means an editing
+  // operation (a paste carrying an id the document already uses) produced an
+  // ambiguous anchor rather than an input document being untidy.
   const open = new Map<number, OpenBookmarkBoundary>();
-  const startedIds = new Set<number>();
+  const startedBy = new Map<number, BookmarkBoundaryOrigin>();
 
-  const registerStart = (id: number, path: string): void => {
-    if (startedIds.has(id)) {
-      issues.push({ path, message: `Bookmark id ${id} has more than one start boundary.` });
-      return;
+  /** Whether the boundary opened, and so needs a matching end registered later. */
+  const registerStart = (boundary: OpenBookmarkBoundary): boolean => {
+    const { id, name, path, paragraph, origin } = boundary;
+    const previousOrigin = startedBy.get(id);
+    if (previousOrigin !== undefined) {
+      if (origin === "attr" && previousOrigin === "attr") {
+        return false;
+      }
+      issues.push({
+        path,
+        message: `${describeBookmark(id, name)} has more than one start boundary (${paragraph}).`,
+      });
+      return false;
     }
-    startedIds.add(id);
-    open.set(id, { id, path });
+    startedBy.set(id, origin);
+    open.set(id, boundary);
+    return true;
   };
 
-  const registerEnd = (id: number, path: string): void => {
-    const start = open.get(id);
-    if (!start) {
-      issues.push({ path, message: `Bookmark id ${id} has no open start boundary.` });
+  const registerEnd = (id: number, path: string, paragraph: string): void => {
+    if (!open.has(id)) {
+      issues.push({
+        path,
+        message: `${describeBookmark(id, null)} has no open start boundary (${paragraph}).`,
+      });
       return;
     }
     open.delete(id);
   };
 
-  const visit = (node: PMNode, path: string): void => {
+  const visit = (node: PMNode, path: string, paragraph: string): void => {
     const paragraphAttrs = node.type.name === "paragraph" ? readParagraphAttrs(node) : null;
+    const enclosingParagraph =
+      node.type.name === "paragraph" ? describeParagraph(paragraphAttrs, path) : paragraph;
+
+    // Only the attr bookmarks that actually opened are closed after the
+    // children. A tolerated duplicate never opened, so registering its end
+    // would report an unmatched end that is not there.
+    const openedAttrBookmarks: { id: number; path: string }[] = [];
     if (paragraphAttrs?.ok) {
       for (const [index, bookmark] of (paragraphAttrs.value.bookmarks ?? []).entries()) {
-        registerStart(bookmark.id, `${path}.paragraph.attrs.bookmarks[${index}]`);
+        const bookmarkPath = `${path}.paragraph.attrs.bookmarks[${index}]`;
+        const opened = registerStart({
+          id: bookmark.id,
+          name: bookmark.name,
+          path: bookmarkPath,
+          paragraph: enclosingParagraph,
+          origin: "attr",
+        });
+        if (opened) {
+          openedAttrBookmarks.push({ id: bookmark.id, path: bookmarkPath });
+        }
       }
     }
 
@@ -131,39 +206,43 @@ const validateBookmarkBoundaryStructure = (
         if (trackedChanges.length > 1) {
           issues.push({
             path,
-            message: "Bookmark boundaries cannot carry multiple tracked-change parents.",
+            message: `Bookmark boundaries cannot carry multiple tracked-change parents (${enclosingParagraph}).`,
           });
         } else if (trackedChanges.length === 1 && !hasHyperlink) {
           issues.push({
             path,
-            message:
-              "Bookmark boundaries inside tracked changes require a hyperlink serialization parent.",
+            message: `Bookmark boundaries inside tracked changes require a hyperlink serialization parent (${enclosingParagraph}).`,
           });
         }
         if (attrs.type === "start") {
-          registerStart(attrs.id, path);
+          registerStart({
+            id: attrs.id,
+            name: attrs.name ?? null,
+            path,
+            paragraph: enclosingParagraph,
+            origin: "node",
+          });
         } else {
-          registerEnd(attrs.id, path);
+          registerEnd(attrs.id, path, enclosingParagraph);
         }
       }
     }
 
     // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
     node.forEach((child, _offset, index) => {
-      visit(child, `${path}.content[${index}]`);
+      visit(child, `${path}.content[${index}]`, enclosingParagraph);
     });
-    if (paragraphAttrs?.ok) {
-      for (const [index, bookmark] of (paragraphAttrs.value.bookmarks ?? []).entries()) {
-        registerEnd(bookmark.id, `${path}.paragraph.attrs.bookmarks[${index}]`);
-      }
+
+    for (const { id, path: bookmarkPath } of openedAttrBookmarks) {
+      registerEnd(id, bookmarkPath, enclosingParagraph);
     }
   };
 
-  visit(doc, "doc");
+  visit(doc, "doc", "the document root");
   for (const boundary of open.values()) {
     issues.push({
       path: boundary.path,
-      message: `Bookmark id ${boundary.id} has no matching end boundary.`,
+      message: `${describeBookmark(boundary.id, boundary.name)} has no matching end boundary (${boundary.paragraph}).`,
     });
   }
 };
