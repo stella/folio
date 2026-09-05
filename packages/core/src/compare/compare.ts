@@ -89,10 +89,7 @@ const isMainStory = (story: FolioDocumentStoryHandle): boolean => story.type ===
  * the table cell it sits in. The tag is what makes the self-check below see a
  * paragraph that landed beside a table instead of inside it.
  */
-const projectStory = (
-  reviewer: FolioDocxReviewer,
-  story: FolioDocumentStoryHandle,
-): string[] => {
+const projectStory = (reviewer: FolioDocxReviewer, story: FolioDocumentStoryHandle): string[] => {
   const blocks = reviewer.readReviewedStory({ story, view: "final" })?.snapshot.blocks ?? [];
   return blocks.map(({ text, table }) => {
     const container = table

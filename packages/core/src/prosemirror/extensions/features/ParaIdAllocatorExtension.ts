@@ -290,10 +290,10 @@ const createParaIdAllocatorPlugin = (): Plugin =>
       }
 
       const keeperPositions = mapKeeperPositions(oldState.doc, transactions);
-      const seed = transactions.reduce<string | null>(
-        (found, transaction) => found ?? transaction.getMeta(deterministicParaIdSeedKey) ?? null,
-        null,
-      );
+      const seed =
+        transactions
+          .map((transaction) => transaction.getMeta(deterministicParaIdSeedKey))
+          .find((value) => typeof value === "string") ?? null;
       const updates = collectParaIdUpdates(newState.doc, keeperPositions, seed);
       if (updates.length === 0) {
         return null;

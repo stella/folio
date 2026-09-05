@@ -175,9 +175,7 @@ export class CompareDocxRoundTripError extends TaggedError("CompareDocxRoundTrip
 }> {}
 
 /** The difference needs more operations than the engine will generate. */
-export class CompareDocxOperationLimitError extends TaggedError(
-  "CompareDocxOperationLimitError",
-)<{
+export class CompareDocxOperationLimitError extends TaggedError("CompareDocxOperationLimitError")<{
   message: string;
   limit: number;
 }> {}

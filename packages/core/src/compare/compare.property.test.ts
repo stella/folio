@@ -162,17 +162,15 @@ const formatStepArb = (blocks: readonly FolioAIBlock[]): fc.Arbitrary<EditScript
   if (indexes.length === 0) {
     return null;
   }
-  return fc
-    .constantFrom(...indexes)
-    .chain((blockIndex) =>
-      fc.record({
-        type: fc.constant("formatRange" as const),
-        blockIndex: fc.constant(blockIndex),
-        startOffset: fc.constant(0),
-        endOffset: fc.nat({ max: (blocks[blockIndex]?.text.length ?? 1) - 1 }).map((n) => n + 1),
-        formatting: formattingArb,
-      }),
-    );
+  return fc.constantFrom(...indexes).chain((blockIndex) =>
+    fc.record({
+      type: fc.constant("formatRange" as const),
+      blockIndex: fc.constant(blockIndex),
+      startOffset: fc.constant(0),
+      endOffset: fc.nat({ max: (blocks[blockIndex]?.text.length ?? 1) - 1 }).map((n) => n + 1),
+      formatting: formattingArb,
+    }),
+  );
 };
 
 const editStepArb = (blocks: readonly FolioAIBlock[]): fc.Arbitrary<EditScriptStep> => {
@@ -294,18 +292,18 @@ const touchedBlockBudget = (
       return tableIndex === undefined ? [] : [tableIndex];
     }),
   );
-  const tableBudget = [...rowCountChanged].reduce(
-    (total, tableIndex) =>
-      total + blocks.filter((block) => block.table?.tableIndex === tableIndex).length,
-    0,
-  );
-  return applied.reduce((total, step) => {
+  let budget = 0;
+  for (const tableIndex of rowCountChanged) {
+    budget += blocks.filter((block) => block.table?.tableIndex === tableIndex).length;
+  }
+  for (const step of applied) {
     const tableIndex = blocks[step.blockIndex]?.table?.tableIndex;
     if (tableIndex !== undefined && rowCountChanged.has(tableIndex)) {
-      return total;
+      continue;
     }
-    return total + (step.type === "moveParagraph" ? 2 : 1);
-  }, tableBudget);
+    budget += step.type === "moveParagraph" ? 2 : 1;
+  }
+  return budget;
 };
 
 describe("compareDocx", () => {

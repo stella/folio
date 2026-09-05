@@ -472,6 +472,7 @@ export type FolioAIBlock = {
     displayLabel?: string;
     styleId?: string;
     previewRuns?: FolioAIBlockPreviewRun[];
+    table?: FolioAIBlockTableLocation;
 };
 
 // @public (undocumented)
@@ -665,6 +666,7 @@ export type FolioApplyDocumentOperationsToStoryOptions = FolioApplyDocumentOpera
 export type FolioApplyOperationsOptions = {
     mode?: FolioAIEditApplyMode;
     snapshot?: FolioAIEditSnapshot;
+    revisionStamp?: FolioRevisionStamp;
 };
 
 // @public

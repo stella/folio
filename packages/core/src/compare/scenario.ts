@@ -179,9 +179,7 @@ const planStep = ({ step, blocks, nextOperationId }: PlanStepOptions): StepPlan 
       return block.table
         ? {
             status: "planned",
-            operations: [
-              { id: nextOperationId(), type: "deleteTableRow", blockId: block.id },
-            ],
+            operations: [{ id: nextOperationId(), type: "deleteTableRow", blockId: block.id }],
           }
         : { status: "unresolved", reason: "block-not-in-table" };
     case "editTableCell":

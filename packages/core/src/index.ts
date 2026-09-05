@@ -28,6 +28,26 @@ export {
   type DocumentPreset,
   type DocumentStyleSet,
 } from "./style-sets/types";
+// Deterministic two-document compare: a redlined package plus a JSON change
+// list. See `./compare/README.md` for the determinism contract and limitations.
+export { compareDocx, MAX_COMPARE_OPERATIONS } from "./compare/compare";
+export {
+  COMPARE_UNSUPPORTED_REASONS,
+  CompareDocxApplyError,
+  CompareDocxOperationLimitError,
+  CompareDocxParseError,
+  CompareDocxRoundTripError,
+  CompareDocxSerializeError,
+  InvalidCompareDocxOptionsError,
+  type CompareChange,
+  type CompareChangeLocation,
+  type CompareDocxError,
+  type CompareDocxOptions,
+  type CompareFormatRange,
+  type CompareResult,
+  type CompareUnsupportedPart,
+  type CompareUnsupportedReason,
+} from "./compare/types";
 export { createDocx } from "./docx/rezip";
 export { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
 export type { Document, DocxConformanceClass } from "./types/document";
@@ -78,6 +98,8 @@ export {
   type WordDiffSegment,
   type FolioAIBlock,
   type FolioAIBlockAnchor,
+  type FolioAIBlockTableLocation,
+  type FolioRevisionStamp,
   type FolioAIBlockKind,
   type FolioAIBlockPreviewRun,
   type FolioAIComment,

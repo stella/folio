@@ -152,8 +152,7 @@ const groupRows = (blocks: readonly FolioAIBlock[]): FolioAIBlock[][] => {
   return [...rows.keys()].toSorted((left, right) => left - right).map((key) => rows.get(key) ?? []);
 };
 
-const rowText = (row: readonly FolioAIBlock[]): string =>
-  row.map(({ text }) => text).join(" ");
+const rowText = (row: readonly FolioAIBlock[]): string => row.map(({ text }) => text).join(" ");
 
 const rowLocation = (row: readonly FolioAIBlock[]): FolioAIBlockTableLocation | null =>
   row.at(0)?.table ?? null;
