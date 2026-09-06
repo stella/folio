@@ -109,7 +109,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, LegacyDocxEditorProps>(
       agentPanel: _agentPanel,
       colorMode: _colorMode,
       commentsSidebarOpen: _commentsSidebarOpen,
-      disableFindReplaceShortcuts: _disableFindReplaceShortcuts,
+      disableFindReplaceShortcuts,
       documentName: _documentName,
       documentNameEditable: _documentNameEditable,
       externalContent: _externalContent,
@@ -134,12 +134,21 @@ export const DocxEditor = forwardRef<DocxEditorRef, LegacyDocxEditorProps>(
       showHelpMenu: _showHelpMenu,
       showOutlineButton: _showOutlineButton,
       watermarkPresets: _watermarkPresets,
+      keyboardShortcuts,
       ...props
     },
     ref,
   ) => (
     <LocaleProvider i18n={i18n} locale={locale}>
-      <FolioDocxEditor {...props} ref={ref} />
+      <FolioDocxEditor
+        {...props}
+        // The legacy flag only ever switched the shortcuts off; an explicit
+        // scope from a migrated call site is the finer statement and wins.
+        keyboardShortcuts={
+          keyboardShortcuts ?? (disableFindReplaceShortcuts === true ? "none" : "document")
+        }
+        ref={ref}
+      />
     </LocaleProvider>
   ),
 );

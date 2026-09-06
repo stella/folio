@@ -25,6 +25,7 @@ import type {
 } from "@stll/folio-core/content-controls";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type { DocxCompatibility } from "@stll/folio-core/docx/compatibility";
+import type { KeyboardShortcutScope } from "@stll/folio-core/managers/editorShortcuts";
 import type { FolioSelectiveSaveFlags } from "@stll/folio-core/docx/selectiveSaveFlags";
 import type { TripwireResult } from "@stll/folio-core/docx/selectiveSaveTripwire";
 import type { SelectionState, TableContextInfo } from "@stll/folio-core/prosemirror";
@@ -182,6 +183,20 @@ export type DocxEditorProps = {
   initialZoom?: number;
   /** Whether Ctrl/Cmd+wheel and trackpad-pinch zoom are enabled (default: true) */
   enableWheelZoom?: boolean;
+  /**
+   * Which key presses the editor's page-level shortcuts answer: find and
+   * replace (Cmd/Ctrl+F, Cmd/Ctrl+H), hyperlink (Cmd/Ctrl+K), `File > Open`
+   * (Cmd/Ctrl+O) and zoom (Cmd/Ctrl+0, +, -). Editing keymaps inside the
+   * document body are unaffected.
+   *  - `"document"`: every press on the page. Default; for a page whose only
+   *    surface is the editor.
+   *  - `"editor"`: only a press whose target is inside this editor, so a host
+   *    that docks the editor beside other panes keeps its own bindings
+   *    elsewhere.
+   *  - `"none"`: the editor answers no page-level press. The host dispatches
+   *    the shortcuts itself.
+   */
+  keyboardShortcuts?: KeyboardShortcutScope;
   /** Whether the editor is read-only. When true, hides toolbar and rulers */
   readOnly?: boolean;
   /** Whether comments/tracked changes should auto-open the review sidebar (default: true) */
@@ -407,6 +422,17 @@ export type DocxEditorRef = {
   openPrintPreview: () => void;
   /** Print the document directly */
   print: () => void;
+  /**
+   * Open the find dialog. The Vue panel opens in its find state; it does not
+   * seed the search box from the selection yet (React does).
+   */
+  openFind: () => void;
+  /**
+   * Open the replace dialog. The Vue panel has one open state, so this opens
+   * the same panel as {@link openFind}, with the replace row reachable from
+   * its toggle.
+   */
+  openReplace: () => void;
   /** Load a pre-parsed document programmatically */
   loadDocument: (doc: Document) => void;
   /** Load a DOCX buffer programmatically (ArrayBuffer, Uint8Array, Blob, or File) */

@@ -18,7 +18,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
+import { isKeydownInShortcutScope } from "@stll/folio-core/managers/editorShortcuts";
+import type { KeyboardShortcutScope } from "@stll/folio-core/managers/editorShortcuts";
 import { ZOOM_MAX, ZOOM_MIN, ZOOM_STEP } from "@stll/folio-core/utils/zoom";
+
+/** Stable empty default so an omitted `shortcutRoots` never re-runs the effect. */
+const NO_SHORTCUT_ROOTS: readonly RefObject<HTMLElement | null>[] = [];
 
 // ============================================================================
 // TYPES
@@ -49,8 +54,15 @@ export type UseWheelZoomOptions = {
   getCurrentZoom?: () => number;
   /** Callback when zoom changes */
   onZoomChange?: (zoom: number) => void;
-  /** Whether to enable keyboard shortcuts (Ctrl++, Ctrl+-, Ctrl+0) */
-  enableKeyboardShortcuts?: boolean;
+  /**
+   * Which presses the zoom shortcuts (Cmd/Ctrl+0, Cmd/Ctrl++, Cmd/Ctrl+-)
+   * answer (default: `"document"`). `"editor"` answers only a press inside
+   * `shortcutRoots`, so a host that docks the editor beside other panes keeps
+   * its own bindings elsewhere; `"none"` binds no keyboard listener.
+   */
+  keyboardShortcuts?: KeyboardShortcutScope;
+  /** Elements a press must land inside under the `"editor"` scope. */
+  shortcutRoots?: readonly RefObject<HTMLElement | null>[];
   /** Whether to prevent default browser zoom behavior */
   preventDefault?: boolean;
 };
@@ -188,7 +200,8 @@ export function useWheelZoom(options: UseWheelZoomOptions = {}): UseWheelZoomRet
     containerRef,
     getCurrentZoom,
     onZoomChange,
-    enableKeyboardShortcuts = true,
+    keyboardShortcuts = "document",
+    shortcutRoots = NO_SHORTCUT_ROOTS,
     preventDefault = true,
   } = options;
 
@@ -307,7 +320,11 @@ export function useWheelZoom(options: UseWheelZoomOptions = {}): UseWheelZoomRet
    */
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
-      if (!enabled || !enableKeyboardShortcuts) {
+      const inScope = isKeydownInShortcutScope(event, {
+        scope: keyboardShortcuts,
+        roots: shortcutRoots.map((root) => root.current),
+      });
+      if (!enabled || !inScope) {
         return;
       }
 
@@ -337,7 +354,7 @@ export function useWheelZoom(options: UseWheelZoomOptions = {}): UseWheelZoomRet
         return;
       }
     },
-    [enabled, enableKeyboardShortcuts, zoomIn, zoomOut, zoomTo100],
+    [enabled, keyboardShortcuts, shortcutRoots, zoomIn, zoomOut, zoomTo100],
   );
 
   // Attach wheel listener to container. Read `.current` inside the effect (it
@@ -360,7 +377,7 @@ export function useWheelZoom(options: UseWheelZoomOptions = {}): UseWheelZoomRet
 
   // Attach keyboard listener
   useEffect(() => {
-    if (!enabled || !enableKeyboardShortcuts) {
+    if (!enabled || keyboardShortcuts === "none") {
       return;
     }
 
@@ -369,7 +386,7 @@ export function useWheelZoom(options: UseWheelZoomOptions = {}): UseWheelZoomRet
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [enabled, enableKeyboardShortcuts, handleKeyDown]);
+  }, [enabled, keyboardShortcuts, handleKeyDown]);
 
   const currentZoom = getCurrentZoom ? getCurrentZoom() : zoom;
 

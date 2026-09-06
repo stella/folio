@@ -231,6 +231,7 @@ import {
 import type { TrackedChangeEntry } from "./CommentsSidebar";
 import { ContentControlWidgetsOverlay } from "./ContentControlWidgetsOverlay";
 // Dialog hooks and utilities (static imports — lightweight, no UI)
+import { readFindSelectionSeed } from "./dialogs/findReplaceSelectionSeed";
 import type { FindMatch } from "./dialogs/findReplaceUtils";
 import type { ImagePropertiesData } from "./dialogs/ImagePropertiesDialog";
 import { useFindReplace as useFindReplaceState } from "./dialogs/useFindReplace";
@@ -460,6 +461,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     rulerUnit = "inch",
     initialZoom = 1,
     enableWheelZoom = true,
+    keyboardShortcuts = "document",
     readOnly: readOnlyProp = false,
     autoOpenReviewSidebar = true,
     components,
@@ -857,6 +859,9 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   const pagedEditorRef = useRef<PagedEditorRef>(null);
   const hfEditorRef = useRef<InlineHeaderFooterEditorRef>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  // Roots that scope page-level shortcuts to this editor. Everything the editor
+  // renders, dialogs included, lives under the container element.
+  const shortcutRoots = useMemo(() => [containerRef], []);
   // Save the last known selection for restoring after toolbar interactions
   const lastSelectionRef = useRef<{ from: number; to: number } | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -956,14 +961,15 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   // Ctrl/Cmd+wheel and trackpad-pinch zoom. Controlled by DocxEditor's
   // viewport-anchored zoom (a single source of truth): the hook reads the live
   // value and emits the next one through setZoomWithViewportAnchor, so it never
-  // diverges from the toolbar control or the imperative setZoom. Keyboard
-  // shortcuts stay off here to avoid clashing with the editor's own Ctrl chords.
+  // diverges from the toolbar control or the imperative setZoom. The zoom keys
+  // stay unbound here whatever `keyboardShortcuts` says, so Cmd/Ctrl+0/+/- keeps
+  // reaching the browser instead of clashing with the editor's own Ctrl chords.
   useWheelZoom({
     containerRef: scrollContainerRef,
     enabled: enableWheelZoom,
     getCurrentZoom: () => zoomRef.current,
     onZoomChange: setZoomWithViewportAnchor,
-    enableKeyboardShortcuts: false,
+    keyboardShortcuts: "none",
   });
   const [bodyHistoryAvailability, setBodyHistoryAvailability] = useState({
     canRedo: false,
@@ -1787,6 +1793,10 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     findReplace,
     tableSelection,
     onDirectPrint: handleDirectPrint,
+    scope: keyboardShortcuts,
+    // The find/replace dialog renders inside the editor root, so the root alone
+    // scopes a press with the caret in the dialog to this editor.
+    roots: shortcutRoots,
   });
 
   // Handle footnote/endnote properties update
@@ -2904,6 +2914,12 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         pagedEditorRef.current?.scrollToParaId(paraId, options) ?? false,
       openPrintPreview: handleDirectPrint,
       print: handleDirectPrint,
+      openFind: () => {
+        findReplace.openFind(readFindSelectionSeed());
+      },
+      openReplace: () => {
+        findReplace.openReplace(readFindSelectionSeed());
+      },
       loadDocument: (document) => {
         const editor = pagedEditorRef.current?.getEditor();
         if (editor) {
@@ -3404,6 +3420,8 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       setZoomWithViewportAnchor,
       zoomRef,
       handleDirectPrint,
+      findReplace.openFind,
+      findReplace.openReplace,
       loadParsedDocument,
       loadBuffer,
       updateComments,

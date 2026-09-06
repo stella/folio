@@ -38,6 +38,7 @@ import { FolioSelectiveSaveFlags } from '@stll/folio-core/docx/selectiveSaveFlag
 import { FolioSuggestion } from '@stll/folio-core/prosemirror/commands/comments';
 import { ForwardRefExoticComponent } from 'react';
 import { JSX } from 'react';
+import { KeyboardShortcutScope } from '@stll/folio-core/managers/editorShortcuts';
 import { Layout } from '@stll/folio-core/layout-engine/types';
 import { Menu } from '@base-ui/react/menu';
 import { PageRendererName } from '@stll/folio-core/display-list/editor/pageRenderer';
@@ -128,6 +129,8 @@ export type DocxEditorRef = {
     scrollToParaId: (paraId: string, options?: ScrollToParaIdOptions) => boolean;
     openPrintPreview: () => void;
     print: () => void;
+    openFind: () => void;
+    openReplace: () => void;
     loadDocument: (doc: Document_2) => void;
     loadDocumentBuffer: (buffer: DocxInput) => Promise<void>;
     ensureEditorView: (options?: {

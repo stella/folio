@@ -25,6 +25,7 @@ import type {
   SetContentControlValueInput,
 } from "@stll/folio-core/content-controls";
 import type { PageRendererName } from "@stll/folio-core/display-list/editor/pageRenderer";
+import type { KeyboardShortcutScope } from "@stll/folio-core/managers/editorShortcuts";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type { DocxCompatibility } from "@stll/folio-core/docx/compatibility";
 import type { FolioSelectiveSaveFlags } from "@stll/folio-core/docx/selectiveSaveFlags";
@@ -174,6 +175,22 @@ export type DocxEditorProps = {
   initialZoom?: number | "fit-width";
   /** Whether Ctrl/Cmd+wheel and trackpad-pinch zoom are enabled (default: true) */
   enableWheelZoom?: boolean;
+  /**
+   * Which key presses the editor's page-level shortcuts answer: find and
+   * replace (Cmd/Ctrl+F, Cmd/Ctrl+H), print (Cmd/Ctrl+P) and deleting the
+   * selected table (Delete/Backspace). Editing keymaps inside the document
+   * body are unaffected, and so are the zoom keys, which the editor leaves to
+   * the browser (`useWheelZoom` takes the same scope for a host that binds
+   * them itself).
+   *  - `"document"`: every press on the page. Default; for a page whose only
+   *    surface is the editor.
+   *  - `"editor"`: only a press whose target is inside this editor (its root
+   *    element, which contains the find/replace dialog), so a host that docks
+   *    the editor beside other panes keeps its own bindings elsewhere.
+   *  - `"none"`: no page-level listener. The host dispatches shortcuts itself
+   *    and opens the dialog through `DocxEditorRef.openFind` / `openReplace`.
+   */
+  keyboardShortcuts?: KeyboardShortcutScope;
   /** Whether the editor is read-only. When true, hides toolbar and rulers */
   readOnly?: boolean;
   /** Whether comments/tracked changes should auto-open the review sidebar (default: true) */
@@ -403,6 +420,10 @@ export type DocxEditorRef = {
   openPrintPreview: () => void;
   /** Print the document directly */
   print: () => void;
+  /** Open the find dialog, seeded with the current text selection when there is one. */
+  openFind: () => void;
+  /** Open the replace dialog, seeded with the current text selection when there is one. */
+  openReplace: () => void;
   /** Load a pre-parsed document programmatically */
   loadDocument: (doc: Document) => void;
   /** Load a DOCX buffer programmatically (ArrayBuffer, Uint8Array, Blob, or File) */

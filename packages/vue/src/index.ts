@@ -57,6 +57,7 @@ export type {
   HighlightPassageOptions,
   HighlightPassageResult,
 } from "./components/DocxEditor/types";
+export type { KeyboardShortcutScope } from "@stll/folio-core/managers/editorShortcuts";
 export type { ScrollToParaIdOptions } from "@stll/folio-core/paged-layout/paragraphFlash";
 export type { BlockRect } from "@stll/folio-core/paged-layout/blockGeometry";
 export type {
