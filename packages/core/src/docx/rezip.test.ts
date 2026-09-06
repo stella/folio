@@ -423,14 +423,16 @@ describe("repackDocx", () => {
     );
   });
 
-  test("reuses a sanitized source package while preserving later model edits", async () => {
+  test("reuses the cached source package while preserving later model edits", async () => {
     const sourceZip = await JSZip.loadAsync(await createHeaderFixture());
     sourceZip.file("word/vbaProject.bin", new Uint8Array([1, 2, 3]));
     const sourceBuffer = await sourceZip.generateAsync({ type: "arraybuffer" });
     const document = await parseDocx(sourceBuffer, { preloadFonts: false });
 
     const firstSave = await createDocx(document);
-    expect((await JSZip.loadAsync(firstSave)).file("word/vbaProject.bin")).toBeNull();
+    expect(
+      await (await JSZip.loadAsync(firstSave)).file("word/vbaProject.bin")?.async("uint8array"),
+    ).toEqual(new Uint8Array([1, 2, 3]));
 
     const body = document.package.document.content.at(0);
     if (!body || body.type !== "paragraph") {
@@ -452,8 +454,9 @@ describe("repackDocx", () => {
     expect(await secondZip.file("word/document.xml")?.async("text")).toContain(
       "Edited after first save",
     );
-    expect(secondZip.file("word/vbaProject.bin")).toBeNull();
-    expect((await JSZip.loadAsync(sourceBuffer)).file("word/vbaProject.bin")).not.toBeNull();
+    expect(await secondZip.file("word/vbaProject.bin")?.async("uint8array")).toEqual(
+      new Uint8Array([1, 2, 3]),
+    );
   });
 
   test("drops orphan comment references before full repack validation", async () => {

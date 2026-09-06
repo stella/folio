@@ -93,6 +93,36 @@ describe("unzipDocx security limits", () => {
     expect(error).toBeInstanceOf(DocxSecurityError);
   });
 
+  test("counts an entry the parser never reads toward the expansion ceiling", async () => {
+    // A save carries every part of the package, so an entry folio does not
+    // model still passes through the host. The ceiling has to see it.
+    const zip = new JSZip();
+    zip.file("[Content_Types].xml", "<Types />");
+    zip.file("word/document.xml", "<w:document />");
+    zip.file("word/embeddings/workbook.xlsx", "\0".repeat(4 * 1024 * 1024));
+
+    const buffer = await zip.generateAsync({ compression: "DEFLATE", type: "arraybuffer" });
+    const error = await getRejectedError(
+      unzipDocx(buffer, { maxTotalUncompressedBytes: 1024 * 1024 }),
+    );
+
+    expect(error).toBeInstanceOf(DocxSecurityError);
+  });
+
+  test("carries a macro project through the archive without reading it", async () => {
+    const zip = new JSZip();
+    zip.file("[Content_Types].xml", "<Types />");
+    zip.file("word/document.xml", "<w:document />");
+    zip.file("word/vbaProject.bin", new Uint8Array([0xd0, 0xcf, 0x11, 0xe0]));
+
+    const content = await unzipDocx(await zip.generateAsync({ type: "arraybuffer" }));
+
+    expect(content.allXml.has("word/vbaProject.bin")).toBe(false);
+    expect(getFileList(content)).not.toContain("word/vbaProject.bin");
+    expect(await extractFile(content, "word/vbaProject.bin")).toBeNull();
+    expect(content.originalZip.file("word/vbaProject.bin")).not.toBeNull();
+  });
+
   test("skips media entries with mismatched content signatures", async () => {
     const zip = new JSZip();
     zip.file("[Content_Types].xml", "<Types />");
