@@ -200,7 +200,14 @@ const paintFragment = ({
     }
     case "table":
       if (block.kind === "table" && measure.kind === "table") {
-        paintTableFragment({ fragment, block, measure, context, composer });
+        paintTableFragment({
+          fragment,
+          block,
+          measure,
+          context,
+          composer,
+          paintTextBox: paintTextBoxFragment,
+        });
         return;
       }
       mismatch();

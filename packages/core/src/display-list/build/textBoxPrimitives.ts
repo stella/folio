@@ -154,6 +154,7 @@ export const paintTextBoxFragment = ({
             xPx: contentFragment.x,
             yPx: contentFragment.y,
             context,
+            paintTextBox: paintTextBoxFragment,
           });
         },
       );

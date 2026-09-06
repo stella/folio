@@ -114,7 +114,14 @@ const paintStoryBlock = ({
       toRow: block.rows.length,
     } as const;
     composer.region(blockRegion({ fragment, kind: HIT_REGION_KINDS.table, context }), () => {
-      paintTableFragment({ fragment, block, measure, context, composer });
+      paintTableFragment({
+        fragment,
+        block,
+        measure,
+        context,
+        composer,
+        paintTextBox: paintTextBoxFragment,
+      });
     });
     return;
   }

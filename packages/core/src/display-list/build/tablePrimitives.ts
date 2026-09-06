@@ -31,6 +31,9 @@ import type {
   TableFragment,
   TableMeasure,
   TableRow,
+  TextBoxBlock,
+  TextBoxFragment,
+  TextBoxMeasure,
 } from "../../layout-engine/types";
 import type { DisplayPrimitive, DisplayRect, DisplayStroke } from "../types";
 import type { BuildContext } from "./buildContext";
@@ -40,7 +43,6 @@ import { parseDisplayColor } from "./colors";
 import { paintImageFragment } from "./imagePrimitives";
 import { paintParagraphFragment } from "./paragraphPrimitives";
 import { resolveBorderStroke } from "./strokes";
-import { paintTextBoxFragment } from "./textBoxPrimitives";
 import { UNSUPPORTED_CONSTRUCT } from "./unsupported";
 
 /** A cell edge is "visible" for collapse purposes on style alone, as the painter decides it. */
@@ -86,6 +88,7 @@ type PaintCellOptions = {
   readonly cellMeasure: { blocks: Measure[]; width: number; height: number };
   readonly box: CellBox;
   readonly context: BuildContext;
+  readonly paintTextBox: PaintTextBox;
   readonly sides: {
     readonly top: boolean;
     readonly bottom: boolean;
@@ -100,6 +103,7 @@ const paintCell = ({
   cellMeasure,
   box,
   context,
+  paintTextBox,
   sides,
 }: PaintCellOptions): void => {
   const primitives: DisplayPrimitive[] = [];
@@ -208,6 +212,7 @@ const paintCell = ({
     yPx: contentYPx,
     widthPx: contentWidthPx,
     context,
+    paintTextBox,
   });
 
   const diagonals = [
@@ -240,7 +245,16 @@ type PaintCellBlocksOptions = {
   readonly yPx: number;
   readonly widthPx: number;
   readonly context: BuildContext;
+  readonly paintTextBox: PaintTextBox;
 };
+
+type PaintTextBox = (options: {
+  readonly composer: PageComposer;
+  readonly fragment: TextBoxFragment;
+  readonly block: TextBoxBlock;
+  readonly measure: TextBoxMeasure;
+  readonly context: BuildContext;
+}) => void;
 
 /**
  * A cell's inner blocks, stacked by the same flow state the measurer used, so
@@ -254,6 +268,7 @@ const paintCellBlocks = ({
   yPx,
   widthPx,
   context,
+  paintTextBox,
 }: PaintCellBlocksOptions): void => {
   const flowState = createTableCellFlowState();
 
@@ -312,7 +327,15 @@ const paintCellBlocks = ({
         height: measure.totalHeight,
       };
       composer.region(blockRegion({ fragment, kind: HIT_REGION_KINDS.table, context }), () => {
-        paintTableBlock({ composer, block, measure, xPx: fragment.x, yPx: fragment.y, context });
+        paintTableBlock({
+          composer,
+          block,
+          measure,
+          xPx: fragment.x,
+          yPx: fragment.y,
+          context,
+          paintTextBox,
+        });
       });
       continue;
     }
@@ -342,7 +365,7 @@ const paintCellBlocks = ({
         height: measure.height,
       } as const;
       composer.region(blockRegion({ fragment, kind: HIT_REGION_KINDS.textBox, context }), () => {
-        paintTextBoxFragment({ composer, fragment, block, measure, context });
+        paintTextBox({ composer, fragment, block, measure, context });
       });
       continue;
     }
@@ -365,6 +388,7 @@ type PaintTableBodyOptions = {
   readonly toRow: number;
   readonly headerRowCount: number;
   readonly context: BuildContext;
+  readonly paintTextBox: PaintTextBox;
 };
 
 const rowIsPainted = (row: TableRow | undefined): row is TableRow =>
@@ -380,6 +404,7 @@ const paintTableBody = ({
   toRow,
   headerRowCount,
   context,
+  paintTextBox,
 }: PaintTableBodyOptions): void => {
   const grid = buildTableCellGrid(block.rows, measure.columnWidths.length);
   const placements = buildTableCellPlacements({
@@ -471,6 +496,7 @@ const paintTableBody = ({
             cellMeasure,
             box,
             context,
+            paintTextBox,
             sides: {
               // The shared edge belongs to the upper / leading cell; the other
               // side suppresses its own only when that owner actually draws one.
@@ -512,6 +538,7 @@ export type TableBlockPaintOptions = {
   readonly xPx: number;
   readonly yPx: number;
   readonly context: BuildContext;
+  readonly paintTextBox: PaintTextBox;
 };
 
 /** A whole, unpaginated table: what a nested table inside a cell or box is. */
@@ -522,6 +549,7 @@ export const paintTableBlock = ({
   xPx,
   yPx,
   context,
+  paintTextBox,
 }: TableBlockPaintOptions): void =>
   paintTableBody({
     composer,
@@ -533,6 +561,7 @@ export const paintTableBlock = ({
     toRow: block.rows.length,
     headerRowCount: 0,
     context,
+    paintTextBox,
   });
 
 export type TablePaintOptions = {
@@ -541,6 +570,7 @@ export type TablePaintOptions = {
   readonly block: TableBlock;
   readonly measure: TableMeasure;
   readonly context: BuildContext;
+  readonly paintTextBox: PaintTextBox;
 };
 
 /**
@@ -554,6 +584,7 @@ export const paintTableFragment = ({
   block,
   measure,
   context,
+  paintTextBox,
 }: TablePaintOptions): void => {
   const headerRowCount = fragment.continuesFromPrev === true ? (fragment.headerRowCount ?? 0) : 0;
   let headerHeightPx = 0;
@@ -575,6 +606,7 @@ export const paintTableFragment = ({
       toRow: 0,
       headerRowCount,
       context,
+      paintTextBox,
     });
   };
 
@@ -590,6 +622,7 @@ export const paintTableFragment = ({
       toRow: fragment.toRow,
       headerRowCount: 0,
       context,
+      paintTextBox,
     });
   };
 

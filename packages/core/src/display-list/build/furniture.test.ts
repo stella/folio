@@ -74,26 +74,29 @@ const storyContent = (id: string, text: string): HeaderFooterContent => {
 
 const storyBlocks = (blocks: FlowBlock[]): HeaderFooterContent => {
   const measures = measureBlocks(blocks, CONTENT_WIDTH);
+  let height = 0;
+  for (const measure of measures) {
+    switch (measure.kind) {
+      case "paragraph":
+      case "table":
+        height += measure.totalHeight;
+        break;
+      case "image":
+      case "textBox":
+        height += measure.height;
+        break;
+      case "sectionBreak":
+      case "pageBreak":
+      case "columnBreak":
+        break;
+      default:
+        measure satisfies never;
+    }
+  }
   return {
     blocks,
     measures,
-    height: measures.reduce((height, measure) => {
-      switch (measure.kind) {
-        case "paragraph":
-        case "table":
-          return height + measure.totalHeight;
-        case "image":
-        case "textBox":
-          return height + measure.height;
-        case "sectionBreak":
-        case "pageBreak":
-        case "columnBreak":
-          return height;
-        default:
-          measure satisfies never;
-          return height;
-      }
-    }, 0),
+    height,
   };
 };
 
