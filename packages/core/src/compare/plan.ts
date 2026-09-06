@@ -825,8 +825,27 @@ const findRowAnchor = (steps: readonly CompareStep[], stepIndex: number): RowAnc
  * have text would shift every later cell one column left.
  */
 /** One table's cell texts, row by row, for a whole-table change. */
-const tableCellTexts = (blocks: readonly FolioAIBlock[]): string[][] =>
-  groupRows(blocks).map((row) => rowCellTexts(row));
+/**
+ * One table's cell texts, row by row, padded to the widest row.
+ *
+ * A row's own width is its highest occupied cell index, so a table with
+ * merged cells or a short last row produces a ragged grid — and a ragged grid
+ * is not a table any consumer can lay out. Padding states the grid the table
+ * actually occupies; the empty strings are the cells a `w:gridSpan` covers.
+ */
+const tableCellTexts = (blocks: readonly FolioAIBlock[]): string[][] => {
+  const rows = groupRows(blocks).map((row) => rowCellTexts(row));
+  let width = 0;
+  for (const row of rows) {
+    width = Math.max(width, row.length);
+  }
+  for (const row of rows) {
+    while (row.length < width) {
+      row.push("");
+    }
+  }
+  return rows;
+};
 
 const rowCellTexts = (blocks: readonly FolioAIBlock[]): string[] => {
   const byCell: (string | undefined)[] = [];

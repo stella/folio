@@ -517,7 +517,7 @@
   },
   "tables/m/tablecount": {
     "buffer": "d47c26f271b06f275060e438173045dc06d8042d6444760435cadaf1b0446693",
-    "changes": "c96203ae90abbae938b911308e56fa36541f6cb90728e5f5351f0e1b084717e0"
+    "changes": "787c4dd3e79f3ce60bfea8e79d85ed4e033d3fe6d4a72b8e6d9b880b2abd1cb9"
   },
   "tables/s/churn": {
     "buffer": "1c9648eafe273db7c64585a76909ca36bd9c0db8a29220f08012a8002b3b200e",
@@ -549,6 +549,6 @@
   },
   "tables/s/tablecount": {
     "buffer": "68a3be4e0ca5c3acb3b050d29332f8356f455a48c3e13ffde3171825d71a1578",
-    "changes": "b33de5d6ebd8b5aff6d959bd6bc5cb85421a2d8c3bcdfadf6aafcabee0defd69"
+    "changes": "d5310f2978d692d5b225c1e9cc92edb76def4de91b69b8f05430fbdc2d4ea4c7"
   }
 }
