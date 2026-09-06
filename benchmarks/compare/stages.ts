@@ -67,10 +67,22 @@ export const runStagedCompare = async (
   }
 
   const applyStart = performance.now();
-  const changes = applyComparison(parsed.value, planned.value);
+  const applied = applyComparison(parsed.value, planned.value);
   const apply = performance.now() - applyStart;
-  if (changes.isErr()) {
-    return { status: "failed", stage: "apply", error: describe(changes.error) };
+  if (applied.isErr()) {
+    return { status: "failed", stage: "apply", error: describe(applied.error) };
+  }
+  // The stages compose what `compareDocx` composes, and it refuses an
+  // unverified result by default. Reporting the same refusal keeps the timed
+  // pipeline the shipped one rather than a lenient copy of it.
+  const { verification } = applied.value;
+  if (verification.status === "unverified") {
+    const [failure] = verification.failures;
+    return {
+      status: "failed",
+      stage: "apply",
+      error: `CompareDocxRoundTripError: ${failure?.invariant ?? "unknown"}: ${failure?.detail ?? ""}`,
+    };
   }
 
   const serializeStart = performance.now();
@@ -84,7 +96,7 @@ export const runStagedCompare = async (
     status: "ok",
     durations: { parse, align, apply, serialize },
     buffer: serialized.value,
-    changes: changes.value,
+    changes: applied.value.changes,
     unsupported: parsed.value.unsupported,
     baseBlocks: parsed.value.pairs.reduce(
       (total, { baseSnapshot }) => total + baseSnapshot.blocks.length,

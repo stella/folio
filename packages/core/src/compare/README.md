@@ -10,7 +10,7 @@ const result = await compareDocx(base, target, {
   timestamp: "2024-03-01T00:00:00.000Z",
 });
 if (result.isOk()) {
-  const { buffer, changes, unsupported } = result.value;
+  const { buffer, changes, verification, unsupported } = result.value;
 }
 ```
 
@@ -119,11 +119,49 @@ the way Word does. The self-check's projection carries the style and the list
 level alongside the text, so a redline that reproduces every word and leaves a
 list item at the wrong level fails instead of passing.
 
-`compareDocx` checks its own work before returning: accepting the generated
-revisions must reproduce the target, table cell coordinates included. A
-difference the operation vocabulary cannot express fails with
+## Verification
+
+`compareDocx` checks its own work before returning, in both directions:
+accepting the generated revisions must reproduce the target, and rejecting
+them must reproduce the base they were written against — table cell
+coordinates included.
+
+A difference the operation vocabulary cannot express fails with
 `CompareDocxRoundTripError` rather than returning a redline that reads
-plausibly and is wrong.
+plausibly and is wrong. That is the default, and it is the right default: a
+reader cannot tell a redline that lost something from one that did not.
+
+`onUnverified: "emit"` asks for the other trade. The call then returns the best
+redline it could build and a `verification` that names what it could not prove:
+
+```ts
+const result = await compareDocx(base, target, {
+  author: "folio compare",
+  timestamp: "2024-03-01T00:00:00.000Z",
+  onUnverified: "emit",
+});
+if (result.isOk() && result.value.verification.status === "unverified") {
+  for (const { invariant, cause, story, detail } of result.value.verification.failures) {
+    // invariant: "accept-reproduces-target" | "reject-reproduces-base"
+    // cause: which field of the block projection diverged
+  }
+}
+```
+
+`verification` is on every successful result, so a caller that never passes the
+option still sees `{ status: "verified" }` and can assert on it. `cause` is one
+of `invisible-structure`, `block-count`, `container`, `style`, `list-level`,
+`whitespace`, `text` — the projection field that diverged, which is what names
+the part of the pipeline that lost the difference. `invisible-structure` is the
+one cause that is not a lost difference: every block is present, in order, at
+coordinates the block model cannot reach, because the snapshot carries no block
+for an empty paragraph.
+
+Every `detail` is structural — counts, offsets, container kinds — and carries no
+phrase of either document, so it is safe to log, report, or quote.
+
+A parse, apply or serialize failure is still an error under either setting:
+there is no redline to emit.
 
 ## Inputs that already carry tracked changes
 
@@ -187,6 +225,8 @@ carries the current numbers and the failing cases.
 - `compare.ts` — the four stages (parse, align, apply, serialize), story
   pairing, and the round-trip self-check. `compareDocx` composes them.
 - `plan.ts` — alignment and operation derivation. Pure.
+- `verification.ts` — the round-trip verdict: the invariants, the causes, and
+  the safe-to-quote detail each failure carries. Pure.
 - `formatting.ts` — the inline-formatting diff, shared with the redline
   generator.
 - `reproducible-package.ts` — ZIP entry-date restamping.

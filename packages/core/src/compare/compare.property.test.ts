@@ -530,4 +530,36 @@ describe("compareDocx", () => {
       expect(changes).toEqual([]);
     });
   });
+
+  for (const { name, buffer: base, blocks: baseBlocks } of BASE_CASES) {
+    test(
+      `every scripted difference is representable, so the result verifies (${name})`,
+      async () => {
+        // The strict default turns an unproven redline into an error, so the
+        // properties above enforce this by not throwing. Stated directly it
+        // says the stronger thing: asked to emit whatever it can, the engine
+        // still has nothing it could not represent. A scripted edit is built
+        // from the operation vocabulary, so anything unverified here is a
+        // defect in the engine rather than a document it cannot express.
+        await fc.assert(
+          fc.asyncProperty(editScriptArb(baseBlocks), async (script) => {
+            const scripted = await applyEditScript(base, script);
+            if (scripted.isErr()) {
+              throw scripted.error;
+            }
+            const result = await compareDocx(base, scripted.value.buffer, {
+              ...OPTIONS,
+              onUnverified: "emit",
+            });
+            if (result.isErr()) {
+              throw result.error;
+            }
+            expect(result.value.verification).toEqual({ status: "verified" });
+          }),
+          propertyConfig({ numRuns: 10 }),
+        );
+      },
+      propertyTestTimeout(120_000),
+    );
+  }
 });

@@ -253,6 +253,12 @@ export const clearTemplateSlashMenu: (tr: Transaction) => Transaction;
 export const COMPARE_UNSUPPORTED_REASONS: readonly ["story-missing-in-base", "story-missing-in-target", "story-not-editable"];
 
 // @public
+export const COMPARE_VERIFICATION_CAUSES: readonly ["invisible-structure", "block-count", "container", "style", "list-level", "whitespace", "text"];
+
+// @public
+export const COMPARE_VERIFICATION_INVARIANTS: readonly ["accept-reproduces-target", "reject-reproduces-base"];
+
+// @public
 export type CompareChange = {
     kind: "insert";
     location: CompareChangeLocation;
@@ -394,6 +400,7 @@ export class CompareDocxOperationLimitError extends CompareDocxOperationLimitErr
 export type CompareDocxOptions = {
     author: string;
     timestamp: string;
+    onUnverified?: "refuse" | "emit";
     granularity?: WordDiffGranularity;
 };
 
@@ -408,8 +415,9 @@ export class CompareDocxParseError extends CompareDocxParseError_base<{
 export class CompareDocxRoundTripError extends CompareDocxRoundTripError_base<{
     message: string;
     story: FolioDocumentStoryHandle;
-    acceptedText: readonly string[];
-    targetText: readonly string[];
+    invariant: CompareVerificationInvariant;
+    cause: CompareVerificationCause;
+    failures: readonly CompareVerificationFailure[];
 }> {}
 
 // @public (undocumented)
@@ -429,6 +437,7 @@ export type CompareFormatRange = {
 export type CompareResult = {
     buffer: ArrayBuffer;
     changes: readonly CompareChange[];
+    verification: CompareVerification;
     unsupported: readonly CompareUnsupportedPart[];
 };
 
@@ -441,6 +450,28 @@ export type CompareUnsupportedPart = {
 
 // @public (undocumented)
 export type CompareUnsupportedReason = (typeof COMPARE_UNSUPPORTED_REASONS)[number];
+
+// @public
+export type CompareVerification = {
+    status: "verified";
+} | {
+    status: "unverified";
+    failures: readonly CompareVerificationFailure[];
+};
+
+// @public (undocumented)
+export type CompareVerificationCause = (typeof COMPARE_VERIFICATION_CAUSES)[number];
+
+// @public
+export type CompareVerificationFailure = {
+    invariant: CompareVerificationInvariant;
+    cause: CompareVerificationCause;
+    story: FolioDocumentStoryHandle;
+    detail: string;
+};
+
+// @public (undocumented)
+export type CompareVerificationInvariant = (typeof COMPARE_VERIFICATION_INVARIANTS)[number];
 
 // @public
 export const consumeTemplateSlashQuery: (state: EditorState) => {

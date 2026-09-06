@@ -13,9 +13,15 @@
  * ## Round-trip contract
  *
  * Accepting every tracked change in the result yields the target's content;
- * rejecting every one yields the base's. Anything the comparison does not
- * cover is reported in `unsupported`, or fails the call, rather than being
- * silently dropped.
+ * rejecting every one yields the base's. Both directions are checked before
+ * the call returns, and the verdict travels with the result as
+ * `verification`. Anything the comparison does not cover is reported in
+ * `unsupported`, or fails the call, rather than being silently dropped.
+ *
+ * An unproven redline is refused by default. `onUnverified: "emit"` returns it
+ * anyway, with every invariant that did not hold named: a caller that would
+ * rather show its best attempt and say what is missing can, and one that wants
+ * a redline it can stand behind still gets nothing else.
  *
  * ## Stages
  *
@@ -55,6 +61,11 @@ import {
   type CompareResult,
   type CompareUnsupportedPart,
 } from "./types";
+import {
+  classifyProjectionMismatch,
+  type CompareVerification,
+  type CompareVerificationFailure,
+} from "./verification";
 
 /**
  * Cap on operations one comparison generates. Both inputs are untrusted
@@ -112,8 +123,12 @@ const existingRevisionsOf = (reviewer: FolioDocxReviewer): ExistingRevisions => 
  * the table cell it sits in. The tag is what makes the self-check below see a
  * paragraph that landed beside a table instead of inside it.
  */
-const projectStory = (reviewer: FolioDocxReviewer, story: FolioDocumentStoryHandle): string[] => {
-  const blocks = reviewer.readReviewedStory({ story, view: "final" })?.snapshot.blocks ?? [];
+const projectStory = (
+  reviewer: FolioDocxReviewer,
+  story: FolioDocumentStoryHandle,
+  view: "final" | "original" = "final",
+): string[] => {
+  const blocks = reviewer.readReviewedStory({ story, view })?.snapshot.blocks ?? [];
   return blocks.map(({ text, table, styleId, listLevel }) => {
     const container = table
       ? `t${String(table.tableIndex)}r${String(table.rowIndex)}c${String(table.cellIndex)}p${String(table.paragraphIndex)}`
@@ -311,18 +326,31 @@ export const planComparison = ({
   return Result.ok(planned);
 };
 
+/** What stage 3 produced: the change list, and whether it was proven. */
+export type AppliedComparison = {
+  changes: readonly CompareChange[];
+  verification: CompareVerification;
+};
+
 /**
  * Stage 3: write the planned operations into the base document as tracked
- * changes, then check the work rather than trust it: accepting the story's
- * generated revisions must reproduce the target, structure included. A
- * difference the operation vocabulary cannot express would otherwise leave a
- * redline that reads plausibly and is wrong.
+ * changes, then check the work rather than trust it. Both directions of the
+ * round trip are checked, structure included: accepting the story's generated
+ * revisions must reproduce the target, and rejecting them must reproduce the
+ * base it was compared from. A difference the operation vocabulary cannot
+ * express would otherwise leave a redline that reads plausibly and is wrong.
+ *
+ * The check reports rather than throws. {@link compareDocx} decides what to do
+ * with an unverified result, because "give me your best attempt and tell me
+ * what you could not represent" and "give me nothing unless you can prove it"
+ * are both legitimate asks and only the caller knows which one it is making.
  */
 export const applyComparison = (
   { reviewer, targetReviewer, revisionStamp, granularity, numberingChanges }: ParsedComparison,
   planned: readonly PlannedStoryComparison[],
-): Result<readonly CompareChange[], CompareDocxApplyError | CompareDocxRoundTripError> => {
+): Result<AppliedComparison, CompareDocxApplyError> => {
   const changes: CompareChange[] = [...numberingChanges];
+  const failures: CompareVerificationFailure[] = [];
   // Each story gets the range that starts where the previous story's ended.
   // A revision `w:id` is scoped to the package, not the part, so two stories
   // seeded alike would let a reader resolving a header revision resolve a
@@ -333,6 +361,10 @@ export const applyComparison = (
     if (plan.operations.length === 0) {
       continue;
     }
+
+    // Read before the operations land: this is the document the redline is
+    // written against, and rejecting every revision has to return to it.
+    const baseBefore = projectStory(reviewer, pair.baseStory);
 
     const { skipped, nextRevisionId } = reviewer.applyDocumentOperationsToStory({
       story: pair.baseStory,
@@ -363,20 +395,30 @@ export const applyComparison = (
       );
     }
 
-    const accepted = projectStory(reviewer, pair.baseStory);
-    const expected = projectStory(targetReviewer, pair.targetStory);
-    if (accepted.join(" ") !== expected.join(" ")) {
-      return Result.err(
-        new CompareDocxRoundTripError({
-          message: "Accepting the generated tracked changes does not reproduce the target.",
-          story: pair.baseStory,
-          acceptedText: accepted,
-          targetText: expected,
-        }),
-      );
+    const acceptFailure = classifyProjectionMismatch({
+      invariant: "accept-reproduces-target",
+      story: pair.baseStory,
+      actual: projectStory(reviewer, pair.baseStory),
+      expected: projectStory(targetReviewer, pair.targetStory),
+    });
+    if (acceptFailure) {
+      failures.push(acceptFailure);
+    }
+    const rejectFailure = classifyProjectionMismatch({
+      invariant: "reject-reproduces-base",
+      story: pair.baseStory,
+      actual: projectStory(reviewer, pair.baseStory, "original"),
+      expected: baseBefore,
+    });
+    if (rejectFailure) {
+      failures.push(rejectFailure);
     }
   }
-  return Result.ok(changes);
+  return Result.ok({
+    changes,
+    verification:
+      failures.length === 0 ? { status: "verified" } : { status: "unverified", failures },
+  });
 };
 
 /**
@@ -419,6 +461,13 @@ export const serializeComparison = async (
  * Compare `base` against `target` and return `base` carrying the tracked
  * changes that turn it into `target`, alongside the change list describing
  * them.
+ *
+ * The result is verified by default: a redline whose round trip cannot be
+ * proven is refused rather than returned, because one that reads plausibly and
+ * is wrong is worse than none. `onUnverified: "emit"` asks for the opposite
+ * trade — the best redline available, plus the typed list of what could not be
+ * represented — for a caller that would rather show something and say what is
+ * missing.
  */
 export const compareDocx = async (
   base: ArrayBuffer,
@@ -433,9 +482,25 @@ export const compareDocx = async (
   if (planned.isErr()) {
     return Result.err(planned.error);
   }
-  const changes = applyComparison(parsed.value, planned.value);
-  if (changes.isErr()) {
-    return Result.err(changes.error);
+  const applied = applyComparison(parsed.value, planned.value);
+  if (applied.isErr()) {
+    return Result.err(applied.error);
+  }
+  const { changes, verification } = applied.value;
+  if (verification.status === "unverified" && (options.onUnverified ?? "refuse") === "refuse") {
+    const [firstFailure] = verification.failures;
+    if (firstFailure === undefined) {
+      panic("An unverified comparison reported no failing invariant");
+    }
+    return Result.err(
+      new CompareDocxRoundTripError({
+        message: `The generated tracked changes do not satisfy ${firstFailure.invariant}: ${firstFailure.detail}`,
+        story: firstFailure.story,
+        invariant: firstFailure.invariant,
+        cause: firstFailure.cause,
+        failures: verification.failures,
+      }),
+    );
   }
   const serialized = await serializeComparison(parsed.value, planned.value);
   if (serialized.isErr()) {
@@ -443,7 +508,8 @@ export const compareDocx = async (
   }
   return Result.ok({
     buffer: serialized.value,
-    changes: changes.value,
+    changes,
+    verification,
     unsupported: parsed.value.unsupported,
   });
 };

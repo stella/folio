@@ -118,21 +118,27 @@ fetch one into.
 
 ### Why a corpus was refused
 
-`--refusals` compares every pair of a `--corpus` directory once and reports
-what the refusals were refused for, largest bucket first. On documents nobody
-authored for the engine the interesting number is the refusal rate, and a
-refusal rate is only actionable split by cause: a total says how much was
-refused, a bucket says which part of it is one missing operation and which is
-a document the engine must not process.
+`--refusals` compares every pair of a `--corpus` directory in both modes and
+reports two tables. The strict default refuses what it cannot prove, so its
+number is the refusal rate: what a caller who demands a proven redline gets.
+`onUnverified: "emit"` returns the best redline available and names the
+invariants it could not prove, so its number is the verified share: what the
+engine can stand behind among the redlines it is willing to show.
 
-`refusals.ts` holds the classification. It is total over `compareDocx`'s error
-union, so a new failure class cannot land without a bucket, and it reads the
-round-trip self-check's verdict structurally: the check compares two block
-projections, so which field of the projection diverged says which part of the
-pipeline lost the difference. Every bucket's `shape` string carries counts,
-offsets and container kinds only, never a phrase of either document: the corpus
-it read stays outside this repository, and the table it prints must be safe to
-quote anywhere.
+The second is never worse than the first, and the gap between them is exactly
+the set of documents where the engine has something to offer but cannot stand
+behind all of it. Both are only actionable split by cause: a total says how
+much was refused or left unproven, a bucket says which part of it is one
+missing operation and which is a document the engine must not process.
+
+`refusals.ts` holds the bucketing. It is total over `compareDocx`'s error
+union, so a new failure class cannot land without a bucket. The round-trip
+buckets are not classified here: they are the engine's own verification causes,
+prefixed. A second judgement of the same thing would drift from the one that
+ships, and it is the shipped one a caller sees. Every bucket's `shape` string
+carries counts, offsets and container kinds only, never a phrase of either
+document: the corpus it read stays outside this repository, and the table it
+prints must be safe to quote anywhere.
 
 One bucket is not a defect. `round-trip-invisible-structure` collects the pairs
 whose every block matches, in order, at coordinates the block model cannot
