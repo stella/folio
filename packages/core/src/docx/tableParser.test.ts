@@ -60,12 +60,12 @@ describe("rowless tables", () => {
 });
 
 describe("table cell marker visibility", () => {
-  test("preserves an explicit false value so it can override a table style", () => {
+  test("uses hideMark's schema-valid off token for an explicit false override", () => {
     const root = parseXmlDocument(`<w:tcPr ${NS}><w:hideMark w:val="false"/></w:tcPr>`);
     const formatting = parseTableCellProperties(root);
 
     expect(formatting?.hideMark).toBe(false);
-    expect(serializeTableCellFormatting(formatting)).toContain('<w:hideMark w:val="false"/>');
+    expect(serializeTableCellFormatting(formatting)).toContain('<w:hideMark w:val="off"/>');
   });
 });
 

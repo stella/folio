@@ -1130,7 +1130,28 @@ function injectRenderedPageBreakIntoFirstRun(xml: string): string | null {
   ) {
     return xml;
   }
-  return xml.replace(runOpeningTag, (match) => `${match}<w:lastRenderedPageBreak/>`);
+  const contentStart = openingTag.index + openingTag[0].length;
+  let insertionOffset = contentStart;
+  if (xml.startsWith("<w:rPr", contentStart)) {
+    const propertyTag = /<\/?w:rPr(?=[\s>/])[^>]*>/gu;
+    propertyTag.lastIndex = contentStart;
+    let depth = 0;
+    for (const match of xml.matchAll(propertyTag)) {
+      if (match.index !== contentStart && depth === 0) {
+        break;
+      }
+      if (match[0].startsWith("</")) {
+        depth--;
+      } else if (!match[0].endsWith("/>")) {
+        depth++;
+      }
+      if (depth === 0) {
+        insertionOffset = match.index + match[0].length;
+        break;
+      }
+    }
+  }
+  return `${xml.slice(0, insertionOffset)}<w:lastRenderedPageBreak/>${xml.slice(insertionOffset)}`;
 }
 
 /**

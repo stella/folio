@@ -175,6 +175,119 @@ describe("runSerializer emphasis marks", () => {
   });
 });
 
+describe("runSerializer property order", () => {
+  test("emits language after the formatting properties that precede it in CT_RPr", () => {
+    const xml = serializeRun({
+      type: "run",
+      formatting: {
+        fontFamily: { ascii: "Aptos" },
+        bold: true,
+        italic: true,
+        color: { rgb: "112233" },
+        fontSize: 22,
+        emphasisMark: "dot",
+        language: { val: "en-US" },
+      },
+      content: [{ type: "text", text: "Text" }],
+    });
+
+    expect(xml).toMatch(
+      /<w:rPr><w:rFonts [^>]+\/><w:b\/><w:i\/><w:color [^>]+\/><w:sz [^>]+\/><w:em [^>]+\/><w:lang [^>]+\/><\/w:rPr>/u,
+    );
+  });
+
+  test("emits every supported run property in CT_RPr order", () => {
+    const xml = serializeRun({
+      type: "run",
+      formatting: {
+        styleId: "Emphasis",
+        fontFamily: { ascii: "Aptos" },
+        bold: true,
+        boldCs: true,
+        italic: true,
+        italicCs: true,
+        allCaps: true,
+        smallCaps: true,
+        strike: true,
+        doubleStrike: true,
+        outline: true,
+        shadow: true,
+        emboss: true,
+        imprint: true,
+        hidden: true,
+        color: { rgb: "112233" },
+        spacing: 1,
+        scale: 100,
+        kerning: 2,
+        position: 1,
+        fontSize: 22,
+        fontSizeCs: 22,
+        highlight: "yellow",
+        underline: { style: "single" },
+        effect: "blinkBackground",
+        shading: { fill: { rgb: "445566" } },
+        vertAlign: "superscript",
+        rtl: true,
+        cs: true,
+        emphasisMark: "dot",
+        language: { val: "en-US" },
+      },
+      content: [{ type: "text", text: "Text" }],
+    });
+    const propertyNames = [...xml.matchAll(/<w:([A-Za-z]+)(?:\s[^>]*)?\/>/gu)].map(
+      ([, name]) => name,
+    );
+
+    expect(propertyNames).toEqual([
+      "rStyle",
+      "rFonts",
+      "b",
+      "bCs",
+      "i",
+      "iCs",
+      "caps",
+      "smallCaps",
+      "strike",
+      "dstrike",
+      "outline",
+      "shadow",
+      "emboss",
+      "imprint",
+      "vanish",
+      "color",
+      "spacing",
+      "w",
+      "kern",
+      "position",
+      "sz",
+      "szCs",
+      "highlight",
+      "u",
+      "effect",
+      "shd",
+      "vertAlign",
+      "rtl",
+      "cs",
+      "em",
+      "lang",
+    ]);
+  });
+
+  test("emits a custom highlight fallback at the shading position", () => {
+    const xml = serializeRun({
+      type: "run",
+      formatting: {
+        highlight: "#445566",
+        underline: { style: "single" },
+        vertAlign: "superscript",
+      },
+      content: [{ type: "text", text: "Text" }],
+    });
+
+    expect(xml).toMatch(/<w:u [^>]+\/><w:shd [^>]+\/><w:vertAlign [^>]+\/>/u);
+  });
+});
+
 describe("image EMU attributes are integer-only (issue #417)", () => {
   test("inline image with float dimensions serializes integer cx/cy/effectExtent", () => {
     const xml = serializeRun(FLOAT_INLINE_IMAGE);
