@@ -14,6 +14,7 @@ import {
 } from "../layout-engine/measure";
 import type { FloatingExclusionRect, FloatingImageZone } from "../layout-engine/measure";
 import { MIN_WRAP_SEGMENT_WIDTH } from "../layout-engine/measure/measureParagraph";
+import { resolveTableInlineOffset } from "../layout-engine/measure/tableInlinePlacement";
 import {
   FOOTNOTE_ENTRY_MARGIN_BOTTOM,
   FOOTNOTE_FALLBACK_LINE_HEIGHT,
@@ -1198,16 +1199,14 @@ function renderHeaderFooterContent(
         // floating table weren't there (Word semantics for unwrapped
         // floating tables).
       } else {
-        // Honor `w:jc` / `w:tblInd` for inline HF tables, matching the body
-        // pagination path (see core/layout-engine `desiredX` computation).
-        let inlineLeft = 0;
-        if (block.justification === "center") {
-          inlineLeft = (contentWidth - measure.totalWidth) / 2;
-        } else if (block.justification === "right") {
-          inlineLeft = contentWidth - measure.totalWidth;
-        } else if (block.indent) {
-          inlineLeft = block.indent;
-        }
+        // Inline header/footer tables resolve `w:jc` / `w:tblInd` through the
+        // same owner as the body pagination path, so one placement rule covers
+        // both stories.
+        const inlineLeft = resolveTableInlineOffset({
+          table: block,
+          frameWidth: contentWidth,
+          tableWidth: measure.totalWidth,
+        });
         fragEl.style.position = "absolute";
         fragEl.style.top = `${cursorY}px`;
         fragEl.style.left = `${inlineLeft}px`;
