@@ -1,7 +1,7 @@
 {
-  "tests/visual/fixtures/docx-editor-demo.docx": 0.9803,
-  "tests/visual/fixtures/sample.docx": 0.9857,
-  "tests/visual/fixtures/podily-bps.docx": 0.9578,
-  "packages/core/src/docx/__tests__/__fixtures__/corpus/diacritics-latin-ext.docx": 0.9878,
-  "packages/core/src/docx/__tests__/__fixtures__/corpus/rtl-arabic-shaping.docx": 0.9965
+  "tests/visual/fixtures/docx-editor-demo.docx": 0.9839,
+  "tests/visual/fixtures/sample.docx": 0.9882,
+  "tests/visual/fixtures/podily-bps.docx": 0.9622,
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/diacritics-latin-ext.docx": 0.9916,
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/rtl-arabic-shaping.docx": 0.9964
 }

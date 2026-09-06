@@ -28,6 +28,7 @@ const FACE: DisplayFontFace = {
   weight: 400,
   italic: false,
   generic: "sans-serif",
+  fallbacks: [],
   fontBoxAscentRatio: 0.9,
   fontBoxDescentRatio: 0.2,
 };
@@ -74,6 +75,8 @@ const listFor = (advances: readonly number[]): DisplayList => ({
           text: TEXT,
           advancesPx: advances,
           direction: "ltr",
+          kerning: false,
+          smallCaps: false,
         },
       ],
       links: [],

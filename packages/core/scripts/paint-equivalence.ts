@@ -27,7 +27,7 @@
  *    ligatures, and then painted by a *browser*, which shapes. A run is one
  *    element and the browser advances the glyphs inside it, so the two
  *    disagree by whatever shaping changes: measured over `podily-bps.docx`,
- *    median 0.163 px and p90 4.078 px, worst 64.9 px.
+ *    median 0.047 px and p90 0.261 px, worst 20.3 px.
  *
  *    That number is reported here and gated nowhere, because it does not
  *    describe what the editor does. In the editor the same list is built by

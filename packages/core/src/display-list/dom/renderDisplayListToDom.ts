@@ -47,6 +47,7 @@ import type {
   DisplayFontFace,
   DisplayFontRef,
   DisplayGlyphRun,
+  DisplayRunAdjustments,
   DisplayImagePrimitive,
   DisplayImageRef,
   DisplayImageSource,
@@ -118,8 +119,16 @@ const quoteFontFamily = (family: string) => `"${family.replaceAll('"', '\\"')}"`
  * An embedded face wins over any installed face of the same name by being
  * named first, under the id its `@font-face` rule was registered with.
  */
-const fontFamilyStack = ({ family, generic, embedded }: DisplayFontFace) => {
-  const resolved = `${quoteFontFamily(family)}, ${generic}`;
+/**
+ * The stack the measurer resolved, rebuilt in CSS.
+ *
+ * Every entry, not just the first: the browser picks the first family it has,
+ * and so did the measurement. A shorter stack here paints a different face on
+ * any host missing the first one.
+ */
+const fontFamilyStack = ({ family, fallbacks, generic, embedded }: DisplayFontFace) => {
+  const names = [family, ...fallbacks].map(quoteFontFamily).join(", ");
+  const resolved = `${names}, ${generic}`;
   return embedded === undefined ? resolved : `${quoteFontFamily(embedded.id)}, ${resolved}`;
 };
 
@@ -345,6 +354,40 @@ const paintLineSegment = (line: DisplayLine, context: PaintContext) => {
   context.parent.append(element);
 };
 
+/**
+ * Reapply what the measurer added to the advances.
+ *
+ * The browser shapes the run's text and advances it by what the font says, and
+ * none of these three is in the font: without them the painted run is as wide
+ * as the glyphs alone, which is not the width the line was fitted at. The CSS
+ * is the same CSS the legacy painter emits, so the two agree by construction
+ * rather than by coincidence.
+ *
+ * Spacing goes on before the transform scales it, so the painted-pixel numbers
+ * the list carries are divided by the scale first.
+ */
+const applyAdjustments = (
+  span: HTMLElement,
+  adjustments: DisplayRunAdjustments | undefined,
+): void => {
+  if (adjustments === undefined) {
+    return;
+  }
+  const { letterSpacingPx, horizontalScale, wordSpacingPx } = adjustments;
+  if (letterSpacingPx !== 0) {
+    span.style.letterSpacing = px(letterSpacingPx / horizontalScale);
+  }
+  if (wordSpacingPx !== 0) {
+    span.style.wordSpacing = px(wordSpacingPx / horizontalScale);
+  }
+  if (horizontalScale !== 1) {
+    // The run's own box is already the scaled width, so the transform must not
+    // widen it again: it scales the glyphs inside a box the list sized.
+    span.style.transform = `scaleX(${String(horizontalScale)})`;
+    span.style.transformOrigin = "left center";
+  }
+};
+
 const paintGlyphRun = (run: DisplayGlyphRun, context: PaintContext) => {
   if ([...run.text].length !== run.advancesPx.length) {
     panic(
@@ -366,10 +409,12 @@ const paintGlyphRun = (run: DisplayGlyphRun, context: PaintContext) => {
   span.style.lineHeight = px(ascentPx + descentPx);
   span.style.display = "inline-block";
   span.style.boxSizing = "content-box";
-  // The declared extent. The browser shapes and advances the glyphs inside
-  // it, so the painted extent can differ from this by the shaper's rounding;
-  // that residue is measured rather than assumed (see the module header).
-  span.style.width = px(advanceSum);
+  // The declared extent. The browser shapes and advances the glyphs inside it,
+  // so the painted extent can differ from this by the shaper's rounding; that
+  // residue is measured rather than assumed (see the module header). A scaled
+  // run's box is stated before the transform, which then scales it to the
+  // declared width.
+  span.style.width = px(advanceSum / (run.adjustments?.horizontalScale ?? 1));
   span.style.whiteSpace = "pre";
   span.style.fontFamily = fontFamilyStack(face);
   span.style.fontSize = px(run.fontSizePx);
@@ -384,6 +429,13 @@ const paintGlyphRun = (run: DisplayGlyphRun, context: PaintContext) => {
     // is lost here, where PDF can dash it.
     span.style.webkitTextStroke = `${px(run.stroke.thicknessPx)} ${cssColor(run.stroke.color)}`;
   }
+  // Stated, never defaulted: a browser asked nothing kerns whenever the face
+  // has the table, and these advances may have been measured with it off.
+  span.style.fontKerning = run.kerning ? "normal" : "none";
+  if (run.smallCaps) {
+    span.style.fontVariant = "small-caps";
+  }
+  applyAdjustments(span, run.adjustments);
   // The producer's own number, readable back out of the DOM by the
   // equivalence harness without measuring anything.
   span.dataset["advanceSum"] = String(advanceSum);

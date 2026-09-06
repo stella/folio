@@ -71,6 +71,7 @@ const FONT: DisplayFontFace = {
   weight: 400,
   italic: false,
   generic: "serif",
+  fallbacks: [],
   fontBoxAscentRatio: 0.75,
   fontBoxDescentRatio: 0.25,
 };
@@ -79,6 +80,7 @@ const EMBEDDED_FONT: DisplayFontFace = {
   ...FONT,
   family: "Folio Sans",
   generic: "sans-serif",
+  fallbacks: [],
   embedded: { id: "embedded-1", bytes: new Uint8Array([0, 1, 0, 0]) },
 };
 
@@ -100,11 +102,14 @@ const emptyPage = (primitives: readonly DisplayPrimitive[]): DisplayPage => ({
   links: [],
 });
 
-const renderPrimitives = (primitives: readonly DisplayPrimitive[]) =>
+const renderPrimitives = (
+  primitives: readonly DisplayPrimitive[],
+  fonts: readonly DisplayFontFace[] = [FONT],
+) =>
   asStub(
     renderDisplayPageToDom(emptyPage(primitives), {
       doc: stubDocument(),
-      fonts: [FONT],
+      fonts,
       images: [IMAGE],
       pageIndex: 0,
     }),
@@ -128,6 +133,8 @@ const PRIMITIVE_SAMPLES = {
     text: "abc",
     advancesPx: [5, 6, 7],
     direction: "ltr",
+    kerning: false,
+    smallCaps: false,
   },
   rect: {
     kind: "rect",
@@ -220,6 +227,68 @@ describe("renderDisplayListToDom", () => {
     expect(span?.style.textAlign).toBeUndefined();
     expect(span?.style.textIndent).toBeUndefined();
     expect(span?.style.unicodeBidi).toBeUndefined();
+  });
+
+  test("states whether the run kerns rather than leaving it to the browser", () => {
+    // A browser asked nothing kerns whenever the face has the table, and OOXML
+    // kerns only above `w:kern`. A run measured unkerned and painted kerned is
+    // narrower than the line it was fitted into.
+    expect(renderRun({ kerning: false })?.style.fontKerning).toBe("none");
+    expect(renderRun({ kerning: true })?.style.fontKerning).toBe("normal");
+  });
+
+  test("draws a small-caps run as small caps", () => {
+    expect(renderRun({ smallCaps: true })?.style.fontVariant).toBe("small-caps");
+    expect(renderRun({ smallCaps: false })?.style.fontVariant).toBeUndefined();
+  });
+
+  test("reapplies the spacing the advances were measured with", () => {
+    const span = renderRun({
+      adjustments: { letterSpacingPx: 2, horizontalScale: 1, wordSpacingPx: -1.5 },
+    });
+
+    expect(span?.style.letterSpacing).toBe("2px");
+    expect(span?.style.wordSpacing).toBe("-1.5px");
+    expect(span?.style.transform).toBeUndefined();
+  });
+
+  test("scales a run's glyphs and states its box before the scale", () => {
+    // The transform scales whatever it is given, so a box already at the
+    // declared width would be scaled twice, and so would the spacing.
+    const span = renderRun({
+      advancesPx: [10, 10],
+      text: "ab",
+      adjustments: { letterSpacingPx: 3, horizontalScale: 2, wordSpacingPx: 4 },
+    });
+
+    expect(span?.style.transform).toBe("scaleX(2)");
+    expect(span?.style.transformOrigin).toBe("left center");
+    expect(span?.style.width).toBe("10px");
+    expect(span?.dataset.advanceSum).toBe("20");
+    expect(span?.style.letterSpacing).toBe("1.5px");
+    expect(span?.style.wordSpacing).toBe("2px");
+  });
+
+  test("a run with nothing added to its advances carries no spacing at all", () => {
+    const span = renderRun({});
+
+    expect(span?.style.letterSpacing).toBeUndefined();
+    expect(span?.style.wordSpacing).toBeUndefined();
+    expect(span?.style.transform).toBeUndefined();
+  });
+
+  test("names every family the measurer would have fallen through", () => {
+    // A face is a stack. Handed only its first entry, a host missing that entry
+    // drops straight to the generic and paints a face nothing was measured in.
+    const face: DisplayFontFace = {
+      ...FONT,
+      family: "Calibri",
+      fallbacks: ["Carlito", "Arial"],
+      generic: "sans-serif",
+    };
+    const page = renderPrimitives([PRIMITIVE_SAMPLES.glyphRun], [face]);
+
+    expect(page.children.at(0)?.style.fontFamily).toBe(`"Calibri", "Carlito", "Arial", sans-serif`);
   });
 
   test("gives an rtl run the same box as an ltr one", () => {
