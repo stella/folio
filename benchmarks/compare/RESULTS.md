@@ -519,3 +519,125 @@ All three are now closed.
 Everything else passes every invariant: the round-trip algebra in both
 directions, self-comparison, and byte determinism, across all nine classes at
 both sizes.
+
+## Against an external scoreboard
+
+There is a public, independently maintained benchmark (AGPL) that renders a
+candidate redline and Microsoft Word's own redline of the same pair to PDF and
+scores the two rasters, 0-100 per document. It was cloned into a temporary
+directory, run, and deleted: no corpus file, no scorer code and no fixture from
+it is in this repository, and the numbers below are the only thing kept.
+
+Read the two local rows against each other, not against that project's
+published board. Two things differ from its published runs, and both move every
+row rather than one:
+
+- **The renderer.** The board pins LibreOffice 26.2.4.2; this machine has
+  25.8.4.2. Candidate and oracle both go through it.
+- **The corpus revision.** The published row for `@stll/folio-core` 0.15.13 is
+  stamped `b7f467074a51`; this clone is `5ed816028d99`. The ITT denominator is
+  763 pairs in both, which is that project's own condition for comparing rows
+  at all.
+
+Its adapter calls `generateRedlineDocx`, folio's other base+next→redline entry
+point. `compareDocx` was scored by pointing the adapter at a local shim that
+calls it instead, so the two local rows are the same build, corpus, renderer
+and machine, differing only in which of folio's two engines produced the
+redline. Both local rows carry `tool_version: 0.17.1` in the harness output
+because that is its npm pin; the runs actually loaded this branch's build.
+
+### The redline track
+
+|                        | published, 0.15.13 | this branch, `generateRedlineDocx` | this branch, `compareDocx` |
+| ---------------------- | -----------------: | ---------------------------------: | -------------------------: |
+| pairs offered          |                763 |                                763 |                        763 |
+| redlines produced      |                744 |                                747 |                        601 |
+| refused                |                 19 |                                 16 |                        162 |
+| ITT mean / median      |      50.83 / 50.29 |                      49.96 / 49.74 |              41.28 / 48.25 |
+| produced mean / median |      52.13 / 50.43 |                      51.03 / 49.90 |              52.41 / 50.62 |
+| at least 90            |                  5 |                                  5 |                          5 |
+| below 50               |                354 |                                376 |                        280 |
+
+ITT counts a refusal as 0, so the compare engine's ITT gap is its refusal rate
+and nothing else. On the 601 documents both local engines produced:
+
+|        | `compareDocx` | `generateRedlineDocx` |
+| ------ | ------------: | --------------------: |
+| mean   |         52.41 |                 52.48 |
+| median |         50.62 |                 50.57 |
+
+The per-document difference has mean -0.07 and median 0.00; 428 of the 601 are
+within half a point, 73 favour the compare and 100 the other engine. **On a
+document both produce, the two are the same redline to the scorer.** What
+separates them is coverage: 21.2% refused against 2.0%.
+
+The refusals are the round-trip self-check doing its job, not crashes:
+
+| Reason                                                  | Documents |
+| ------------------------------------------------------- | --------: |
+| accepting the result does not reproduce the target      |       148 |
+| an operation was refused, so the result would not match |         9 |
+| the compared document could not be serialized           |         5 |
+
+The other engine's 16 are 13 invalid-document conversions and 3 stories that
+did not persist: it emits and the check happens afterwards, or not at all. The
+compare refuses rather than hand back an unverified redline, and that trade is
+the whole difference in the ITT column.
+
+### The accept/reject track
+
+The same harness accepts and rejects every candidate with its own neutral
+machinery, which understands run-level `w:ins` and `w:del` and nothing else,
+then compares the text. On the 307 documents where that lens can judge:
+
+|                              | `compareDocx` | `generateRedlineDocx` |
+| ---------------------------- | ------------: | --------------------: |
+| accept reproduces the target |           251 |                   288 |
+| reject reproduces the base   |           277 |                   300 |
+
+Every one of the 38 documents that lost the accept check has a deleted table
+row, and every one of the 23 that lost the reject check has an inserted one:
+the correlation is exact, with no other cause left over. We mark a row change
+as `w:trPr/w:ins` or `w:trPr/w:del` and leave the cell runs alone, so a
+consumer that reads only run-level revisions keeps the row's text. Word marks
+both. This is recorded as a limitation in `packages/core/src/compare/README.md`
+and is the clearest next fix the run produced.
+
+No move markup reached the corpus at all: `w:moveFrom` appears in none of the
+601 outputs, so the move detector's thresholds were never exercised here.
+
+### The speed track
+
+Generation time per pair, over the same 601 documents (milliseconds, the
+harness's own measurement):
+
+|                       | mean | median |  p95 |   max |
+| --------------------- | ---: | -----: | ---: | ----: |
+| `compareDocx`         | 20.1 |   11.2 | 68.3 | 245.5 |
+| `generateRedlineDocx` | 19.7 |    9.7 | 60.6 | 237.6 |
+
+The compare costs about 1.5ms more at the median, and the round-trip
+self-check that produces its refusals is inside that: both engines spend most
+of the time parsing the two packages, which they do identically.
+
+### The round-trip track
+
+This track re-serializes 166 documents through `FolioDocxReviewer.fromBuffer`
+→ `toBuffer` and scores the render against the source's. All 166 came back
+without an error, but 160 came back with a byte-identical
+`word/document.xml`: the save path patches selectively, so an unedited document
+is returned unchanged and scores 100 by construction. The track therefore says
+almost nothing about the serializer, and the six documents it did re-serialize
+are where the signal is:
+
+- three no longer open in LibreOffice at all;
+- five lost `word/embeddings/*.xlsx` and `.bin` media while
+  `word/_rels/document.xml.rels` still points at them;
+- the three that do open score 99.12, 98.78 and 44.79; the last of those lost
+  no part, so its drift is in the layout the model reproduced.
+
+Every redline the two local runs produced kept all of its media and
+embeddings (46 and 65 documents carried some), so the loss is in the full
+repack, not in the redline path, and it is a `@stll/folio-core` save-path
+defect rather than a comparison one. It is recorded here because this run is
+what found it.
