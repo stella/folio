@@ -1696,6 +1696,15 @@ function extractParagraphContent(
         currentTrackedChange.wrapper.content.push(boundary);
         return;
       }
+      if (node.type.name === "field" || node.type.name === "structuredField") {
+        currentTrackedChange.wrapper.content.push(
+          createFieldFromNode(node, {
+            marks: otherMarks,
+            textBoxAnchorMarkers,
+          }),
+        );
+        return;
+      }
       const run = createTrackedChangeRun({ inheritedFormatting, marks: otherMarks, node });
       if (run) {
         currentTrackedChange.wrapper.content.push(run);

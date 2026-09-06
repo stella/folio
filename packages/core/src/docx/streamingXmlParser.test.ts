@@ -4,7 +4,7 @@ import JSZip from "jszip";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { parseStreamingXml } from "./streamingXmlParser";
+import { parseStreamingXml, rewriteStreamingXmlDecimalAttributes } from "./streamingXmlParser";
 import {
   getAttributeByNamespaceUri,
   getChildElements,
@@ -147,3 +147,12 @@ describe("parseStreamingXml", () => {
     }
   });
 });
+
+test.each(["' injected='yes", '"/>', "&quot;", "1.5", "-1"])(
+  "refuses a non-decimal attribute replacement: %s",
+  (replacement) => {
+    expect(
+      rewriteStreamingXmlDecimalAttributes('<r id="1"/>', () => new Map([["id", replacement]])),
+    ).toEqual({ status: "unsupported" });
+  },
+);
