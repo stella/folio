@@ -21,18 +21,19 @@
  * The absolute number is bounded by three known residuals between the two
  * backends, not by how wrong either one is. Read a drop, not a level.
  *
- * 1. **Advance drift, and it dominates.** The harness builds the display list
- *    with the *headless* measure provider, whose advances come from `hmtx`
- *    with no kerning and no ligatures, and then renders that list in a
- *    *browser*, which advances glyphs on its own shaped metrics. Measured over
- *    `podily-bps.docx`: of 2506 runs, the width Chrome paints differs from the
- *    run's declared `advancesPx` by more than 2 px in 23.7% of them (median
- *    0.2 px over all runs, p90 4.1 px). Each line starts flush and separates
- *    left to right, which is what the diff PNGs show. **This is an artifact of
- *    how the harness is wired, not of the product path**: in the editor the
- *    same list is built by the canvas provider inside the same browser that
- *    paints it, so the two agree there. Nobody should read podily's 0.96 as
- *    the editor being 4% wrong.
+ * 1. **Advance drift, and it dominates. It is a property of this harness's
+ *    wiring, not of the product path.** The list is built by the *headless*
+ *    measure provider, whose advances come from `hmtx` with no kerning and no
+ *    ligatures, and then painted by a *browser*, which shapes. A run is one
+ *    element and the browser advances the glyphs inside it, so the two
+ *    disagree by whatever shaping changes: measured over `podily-bps.docx`,
+ *    median 0.163 px and p90 4.078 px, worst 64.9 px.
+ *
+ *    That number is reported here and gated nowhere, because it does not
+ *    describe what the editor does. In the editor the same list is built by
+ *    the canvas provider inside the browser that paints it, so both sides come
+ *    from one shaper; `tests/visual/display-list-run-drift.spec.ts` measures
+ *    *that* arrangement and is the gate.
  * 2. **Baseline placement: ~0.22 px, and no longer the backend's doing.**
  *    Measured on `sample.docx` page 1 (Carlito bold at 18.667 px): the DOM
  *    backend asks for `top: 107.399px` and Chrome lays the span out at
@@ -485,8 +486,30 @@ const ARM_DISPOSITION = {
 
 type ArmDisposition = (typeof ARM_DISPOSITION)[keyof typeof ARM_DISPOSITION];
 
+/**
+ * How far the browser's painted glyph runs sit from the advances the display
+ * list declared, in CSS px.
+ *
+ * The DOM arm reads this out of the page it just rendered, so the number is a
+ * measurement rather than a claim in a comment. It answers the one question a
+ * per-page pixel score cannot: whether the DOM backend is painting the display
+ * list's geometry or the browser's own idea of it.
+ */
+type AdvanceDrift = {
+  readonly runs: number;
+  readonly medianPx: number;
+  readonly p90Px: number;
+  /** Runs off by more than a pixel, where a reader starts to see it. */
+  readonly overOnePxRatio: number;
+  readonly worstPx: number;
+};
+
 type RasterArm =
-  | { readonly status: "rendered"; readonly pagePngs: readonly string[] }
+  | {
+      readonly status: "rendered";
+      readonly pagePngs: readonly string[];
+      readonly drift: AdvanceDrift | null;
+    }
   | { readonly status: ArmDisposition; readonly reason: string };
 
 /** Where a problem came from: one of the two arms, or the comparison itself. */
@@ -620,6 +643,57 @@ const screenshotDom = async ({
         await document.fonts.ready;
       });
 
+      // Read the drift before any screenshot, while the page is untouched by
+      // scrolling: a run's declared advance sum against the extent the browser
+      // actually painted for it.
+      const drift = await page.evaluate(() => {
+        const deltas: number[] = [];
+        // A rotated ancestor turns the run's own x-axis away from the
+        // viewport's, so its painted width is not comparable to a declared
+        // extent. Watermark text is the case in the corpus.
+        const isAxisAligned = (element: HTMLElement): boolean => {
+          for (let node: HTMLElement | null = element; node; node = node.parentElement) {
+            const transform = getComputedStyle(node).transform;
+            if (transform !== "none" && transform !== "") {
+              return false;
+            }
+          }
+          return true;
+        };
+        for (const run of document.querySelectorAll<HTMLElement>("[data-advance-sum]")) {
+          if (!isAxisAligned(run)) {
+            continue;
+          }
+          const declared = Number(run.dataset["advanceSum"]);
+          if (!Number.isFinite(declared) || declared <= 0) {
+            continue;
+          }
+          // The run's own box is sized from the declared extent, so measuring
+          // it would compare a number with itself. The text inside it is what
+          // the shaper actually laid out.
+          const range = document.createRange();
+          range.selectNodeContents(run);
+          const painted = range.getBoundingClientRect().width;
+          range.detach();
+          if (painted > 0) {
+            deltas.push(Math.abs(painted - declared));
+          }
+        }
+        if (deltas.length === 0) {
+          return null;
+        }
+        deltas.sort((left, right) => left - right);
+        const at = (fraction: number) =>
+          deltas[Math.min(deltas.length - 1, Math.floor(deltas.length * fraction))] ?? 0;
+        return {
+          runs: deltas.length,
+          medianPx: at(0.5),
+          p90Px: at(0.9),
+          overOnePxRatio: deltas.filter((delta) => delta > 1).length / deltas.length,
+          worstPx: deltas.at(-1) ?? 0,
+        };
+      });
+
       const pagePngs: string[] = [];
       for (let index = 0; index < pageCount; index++) {
         const locator = page.locator(PAGE_SELECTOR).nth(index);
@@ -630,7 +704,7 @@ const screenshotDom = async ({
         await locator.screenshot({ path: pngPath, timeout: SCREENSHOT_TIMEOUT_MS });
         pagePngs.push(pngPath);
       }
-      return pagePngs;
+      return { pagePngs, drift };
     },
     catch: (cause) => (cause instanceof Error ? cause.message : String(cause)),
   });
@@ -646,7 +720,11 @@ const screenshotDom = async ({
       reason: `chromium could not capture the pages: ${captured.error}`,
     };
   }
-  return { status: "rendered", pagePngs: captured.value };
+  return {
+    status: "rendered",
+    pagePngs: captured.value.pagePngs,
+    drift: captured.value.drift,
+  };
 };
 
 // ---------------------------------------------------------------------------
@@ -677,6 +755,8 @@ type FixtureReport = {
   readonly layoutGaps: readonly HeadlessLayoutGap[];
   readonly measurementSubstitutions: readonly HeadlessFontSubstitution[];
   readonly embeddingSubstitutions: readonly PdfSubstitution[];
+  /** Null when the DOM arm did not render, or the page declared no runs. */
+  readonly drift: AdvanceDrift | null;
 };
 
 const problemOf = (source: ProblemSource, arm: RasterArm): readonly RunProblem[] =>
@@ -721,6 +801,11 @@ const runFixture = async ({
   const list = buildDisplayList({
     layout: laidOut.value.layout,
     blockLookup: laidOut.value.blockLookup,
+    // The headless entry lays the header, footer and footnote stories out too,
+    // so both arms paint the pages an editor paints rather than bare bodies.
+    documentFeatures: laidOut.value.documentFeatures,
+    embeddedFonts: laidOut.value.embeddedFonts,
+    ...laidOut.value.furniture,
   });
 
   const written = writePdf(list, {
@@ -774,6 +859,7 @@ const runFixture = async ({
     layoutGaps: laidOut.value.unsupported,
     measurementSubstitutions: headless.substitutions(),
     embeddingSubstitutions: written.value.substitutions,
+    drift: domArm.status === "rendered" ? domArm.drift : null,
   };
   const unscored = {
     meanSimilarity: null,
@@ -950,6 +1036,14 @@ const printReport = (report: FixtureReport, baseline: Baseline | null): void => 
     `  ${String(report.pageCount)} page(s), ${report.pdfByteSize.toLocaleString("en")} pdf bytes, ` +
       `${report.exportMs.toFixed(0)} ms export, worst ${worst}, mean ${mean}`,
   );
+  if (report.drift !== null) {
+    const { runs, medianPx, p90Px, overOnePxRatio, worstPx } = report.drift;
+    console.log(
+      `  advance drift over ${String(runs)} runs: median ${medianPx.toFixed(3)} px, ` +
+        `p90 ${p90Px.toFixed(3)} px, worst ${worstPx.toFixed(3)} px, ` +
+        `${(overOnePxRatio * 100).toFixed(1)}% over 1 px`,
+    );
+  }
   for (const problem of report.problems) {
     console.log(`  ${PROBLEM_LABEL[problem.disposition]} (${problem.source}): ${problem.reason}`);
   }

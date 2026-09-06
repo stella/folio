@@ -31,6 +31,7 @@ import { LayoutSelectionGate } from '@stll/folio-core/paged-layout/LayoutSelecti
 import { MaybeRefOrGetter } from 'vue';
 import { Measure } from '@stll/folio-core/layout-engine/types';
 import { NoteStoryKey } from '@stll/folio-core/controller/noteEditorManager';
+import { PageRendererName } from '@stll/folio-core/display-list/editor/pageRenderer';
 import { ParsedClipboardContent } from '@stll/folio-core/utils/clipboard';
 import { Plugin as Plugin_2 } from 'prosemirror-state';
 import { ProseMirrorFindMatch } from '@stll/folio-core/prosemirror/findReplaceSelection';
@@ -126,6 +127,7 @@ export type UseDocxEditorOptions = {
     pagesContainer: Ref<HTMLElement | null>;
     readOnly?: MaybeRefOrGetter<boolean>;
     pageGap?: number;
+    pageRenderer?: MaybeRefOrGetter<PageRendererName | undefined>;
     showMarginGuides?: MaybeRefOrGetter<boolean | undefined>;
     marginGuideColor?: MaybeRefOrGetter<string | undefined>;
     password?: MaybeRefOrGetter<string | undefined>;

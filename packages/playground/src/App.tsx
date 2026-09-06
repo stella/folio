@@ -583,6 +583,9 @@ export function App() {
   const parityFonts = globalThis.__folioParityFonts;
   const showMarginGuides = query.has("marginGuides");
   const marginGuideColor = query.get("marginGuideColor") ?? undefined;
+  // `?pageRenderer=display-list` paints the pages from the display list, so a
+  // spec can measure the renderer the editor would actually use.
+  const pageRenderer = query.get("pageRenderer") === "display-list" ? "display-list" : undefined;
 
   // Load fixture from ?file= query param (visual + interaction tests) or
   // generate a body from ?paragraphs= (performance tests).
@@ -764,6 +767,7 @@ export function App() {
             showRuler={true}
             showMarginGuides={showMarginGuides}
             {...(marginGuideColor !== undefined ? { marginGuideColor } : {})}
+            {...(pageRenderer === undefined ? {} : { pageRenderer })}
             initialZoom={ZOOM_INITIAL}
             mode={editorMode}
             onModeChange={setEditorMode}

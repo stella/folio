@@ -55,6 +55,12 @@ import type {
 } from "../layout-engine/types";
 import type { BlockLookup, LayoutPainter } from "../layout-painter";
 import { renderPages } from "../layout-painter/renderPage";
+import { createDisplayListPagePainter } from "../display-list/editor/displayListPagePainter";
+import {
+  PAGE_RENDERER,
+  displayListFurnitureFrom,
+  type PageRendererName,
+} from "../display-list/editor/pageRenderer";
 import type {
   FootnoteRenderItem,
   HeaderFooterContent,
@@ -158,6 +164,18 @@ export type LayoutPipelineDeps<THfPMs> = {
     doc: Document | null,
   ) => Map<number, FootnoteRenderItem[]>;
   describeInvalidHighlightMarks: (doc: EditorState["doc"]) => string;
+  /**
+   * Which renderer paints the pages. `"legacy"` is the painter that has always
+   * painted them; `"display-list"` builds the painter-neutral paint IR from
+   * this layout and paints the pages from it, so the editor and an export draw
+   * from one structure.
+   *
+   * Only the *painting* is swapped. Page shells, virtualization, the
+   * fingerprint comparison that skips an unchanged page and the painted event
+   * are page-container concerns and stay shared, because a second copy of them
+   * is how incremental repaint would quietly stop working on long documents.
+   */
+  pageRenderer?: PageRendererName;
   emptyTemplatePreviewEntries: readonly TemplatePreviewEntry[];
 };
 
@@ -315,6 +333,7 @@ export function runLayoutPipeline<THfPMs>(
     documentFontsAreLoaded,
     buildFootnoteRenderItems,
     describeInvalidHighlightMarks,
+    pageRenderer = PAGE_RENDERER.legacy,
     emptyTemplatePreviewEntries: EMPTY_TEMPLATE_PREVIEW_ENTRIES,
   } = deps;
   // Reassigned to {} in the catch so a failed run returns no outcome (the
@@ -1079,6 +1098,21 @@ export function runLayoutPipeline<THfPMs>(
             renderOpts.watermarkByHeaderRId = watermarkByHeaderRId;
           }
         }
+      }
+      if (pageRenderer === PAGE_RENDERER.displayList) {
+        // Built once per layout run: `paintPage` is called per page, and
+        // building the list per call would be quadratic in page count.
+        renderOpts.paintPage = createDisplayListPagePainter({
+          layout: newLayout,
+          blockLookup,
+          doc: pagesContainer.ownerDocument,
+          ...displayListFurnitureFrom(renderOpts),
+          // Footnote bodies never reach `RenderPageOptions`: the existing
+          // painter takes them per page through `footnotesByPage`, so the
+          // furniture adapter cannot find them and the band would reserve its
+          // height and paint nothing.
+          ...(footnoteContentMap.size === 0 ? {} : { footnoteContentById: footnoteContentMap }),
+        }).paintPage;
       }
       renderPages(newLayout.pages, pagesContainer, renderOpts);
       recordPhaseDuration("render-pages", phaseStartedAt);

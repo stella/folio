@@ -411,3 +411,56 @@ describe.skipIf(!TEST_FONTS_INSTALLED || mutool === null)("mutool over two subse
     }
   });
 });
+
+/**
+ * Arabic is the case that matters most here: a face can carry every code point
+ * and the output still be unreadable, because the correct glyph depends on a
+ * letter's neighbours rather than on the character. The report exists so that
+ * fact reaches a caller instead of a reader.
+ */
+describe("scripts this backend cannot shape", () => {
+  const ARABIC_TEXT = "بيت";
+  const ARABIC_FIRST_CODE_POINT = 0x0628;
+
+  test("reports a run whose script needs shaping", () => {
+    const result = writePdf(listFor({ text: ARABIC_TEXT, advances: [6, 6, 6] }), {
+      fonts: { load: () => [] },
+      timestamp: TIMESTAMP,
+    });
+
+    expect(result.isErr()).toBe(false);
+    if (result.isErr()) {
+      return;
+    }
+    expect(result.value.unshaped).toEqual([
+      { text: ARABIC_TEXT, codePoint: ARABIC_FIRST_CODE_POINT, pageIndex: 0 },
+    ]);
+  });
+
+  test("reports nothing for a script where one code point is one glyph", () => {
+    const result = writePdf(listFor({ text: "abc", advances: [6, 6, 6] }), {
+      fonts: { load: () => [] },
+      timestamp: TIMESTAMP,
+    });
+
+    expect(result.isErr()).toBe(false);
+    if (result.isErr()) {
+      return;
+    }
+    expect(result.value.unshaped).toEqual([]);
+  });
+
+  test("strict mode refuses rather than painting one glyph per code point", () => {
+    const result = writePdf(listFor({ text: ARABIC_TEXT, advances: [6, 6, 6] }), {
+      fonts: { load: () => [] },
+      timestamp: TIMESTAMP,
+      strictShapedScripts: true,
+    });
+
+    expect(result.isErr()).toBe(true);
+    if (result.isErr()) {
+      expect(result.error.message).toContain("U+0628");
+      expect(result.error.message).toContain("shaping");
+    }
+  });
+});

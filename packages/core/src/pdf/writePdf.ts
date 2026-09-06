@@ -17,7 +17,9 @@ import type {
   DisplayList,
   DisplayOutlineEntry,
   DisplayPage,
+  DisplayPrimitive,
 } from "../display-list/types";
+import { isComplexScriptCodePoint } from "../display-list/primitives";
 import { collectResources, renderContentStream, type ContentResources } from "./contentStream";
 import { prepareFonts, type PdfFontSource, type PdfSubstitution } from "./fonts";
 import { decodeImage, type PdfImageSamples } from "./images";
@@ -57,6 +59,12 @@ export type WritePdfOptions = {
    * would rather fail than hand a reader a page of empty boxes.
    */
   readonly strictGlyphCoverage?: boolean;
+  /**
+   * Refuse a document containing a run this backend cannot shape, rather than
+   * painting one glyph per code point and reporting it. For a caller who would
+   * rather fail than hand a reader mangled text.
+   */
+  readonly strictShapedScripts?: boolean;
 };
 
 /**
@@ -73,12 +81,39 @@ export type PdfUnencodable = {
   readonly italic: boolean;
 };
 
+/**
+ * A run in a script whose glyphs cannot be chosen from its code points alone.
+ *
+ * This backend maps each code point through `cmap` and places it at its
+ * declared advance, which is right where a character has one glyph and wrong
+ * for every script that shapes: Arabic and Syriac select initial, medial and
+ * final forms, Devanagari reorders and forms conjuncts, Thai stacks marks,
+ * Hebrew positions points. Painting those without a shaper produces text a
+ * reader of the script sees as broken at a glance, and nothing downstream can
+ * tell that it was broken here rather than authored that way.
+ *
+ * Such a run is therefore reported rather than painted quietly, and
+ * `strictShapedScripts` refuses the document outright.
+ */
+export type PdfUnshapedRun = {
+  /** The run's text, so a report names what would have been mangled. */
+  readonly text: string;
+  /** The first code point requiring shaping, for a precise report. */
+  readonly codePoint: number;
+  readonly pageIndex: number;
+};
+
 export type WritePdfResult = {
   readonly bytes: Uint8Array;
   /** Faces the font source could not supply, painted with a base-14 stand-in. */
   readonly substitutions: readonly PdfSubstitution[];
   /** Code points painted as `.notdef` because no supplied face covers them. */
   readonly unencodable: readonly PdfUnencodable[];
+  /**
+   * Runs painted without shaping. Empty means every run in this document is in
+   * a script where one code point selects one glyph.
+   */
+  readonly unshaped: readonly PdfUnshapedRun[];
 };
 
 export class WritePdfError extends TaggedError("WritePdfError")<{
@@ -104,6 +139,64 @@ const describeUnencodable = (points: readonly PdfUnencodable[]): string => {
   const rest = points.length - Math.min(points.length, UNENCODABLE_SAMPLE);
   const suffix = rest === 0 ? "" : `, and ${String(rest)} more`;
   return `no supplied face can encode ${String(points.length)} code point${points.length === 1 ? "" : "s"}: ${named}${suffix}`;
+};
+
+/**
+ * Every run whose script this backend cannot shape.
+ *
+ * Detected by code-point range rather than by asking the font, because the
+ * question is not whether a glyph exists for the character: it is whether the
+ * correct glyph can be chosen without shaping, and for these scripts it cannot
+ * be, however complete the face.
+ */
+const collectUnshapedRuns = (list: DisplayList): readonly PdfUnshapedRun[] => {
+  const unshaped: PdfUnshapedRun[] = [];
+  const visit = (primitives: readonly DisplayPrimitive[], pageIndex: number): void => {
+    for (const primitive of primitives) {
+      switch (primitive.kind) {
+        case "glyphRun": {
+          const shaping = [...primitive.text]
+            .map((char) => char.codePointAt(0) ?? 0)
+            .find((codePoint) => isComplexScriptCodePoint(codePoint));
+          if (shaping !== undefined) {
+            unshaped.push({ text: primitive.text, codePoint: shaping, pageIndex });
+          }
+          break;
+        }
+        case "clipGroup":
+        case "rotateGroup":
+        case "opacityGroup":
+          visit(primitive.children, pageIndex);
+          break;
+        case "rect":
+        case "line":
+        case "image":
+          break;
+        default:
+          primitive satisfies never;
+      }
+    }
+  };
+  for (const [pageIndex, page] of list.pages.entries()) {
+    visit(page.primitives, pageIndex);
+  }
+  return unshaped;
+};
+
+const describeUnshaped = (runs: readonly PdfUnshapedRun[]): string => {
+  const named = runs
+    .slice(0, UNENCODABLE_SAMPLE)
+    .map(
+      ({ codePoint, pageIndex }) =>
+        `${formatCodePoint(codePoint)} on page ${String(pageIndex + 1)}`,
+    )
+    .join(", ");
+  const rest = runs.length - Math.min(runs.length, UNENCODABLE_SAMPLE);
+  const suffix = rest === 0 ? "" : `, and ${String(rest)} more`;
+  return (
+    `${String(runs.length)} run${runs.length === 1 ? "" : "s"} need shaping this backend does not do: ` +
+    `${named}${suffix}. Painting them would place one glyph per code point, which these scripts do not read as.`
+  );
 };
 
 /** Every `/ProcSet` folio's own output can need. */
@@ -434,6 +527,11 @@ export const writePdf = (
     return Result.err(new WritePdfError({ message: describeUnencodable(unencodable) }));
   }
 
+  const unshaped = collectUnshapedRuns(list);
+  if (options.strictShapedScripts === true && unshaped.length > 0) {
+    return Result.err(new WritePdfError({ message: describeUnshaped(unshaped) }));
+  }
+
   const imageRefs = new Map<number, PdfRef>();
   for (const imageIndex of [...usage.value.imageIndices].sort((left, right) => left - right)) {
     const source = list.images[imageIndex];
@@ -551,5 +649,6 @@ export const writePdf = (
     }),
     substitutions,
     unencodable,
+    unshaped,
   });
 };

@@ -133,6 +133,7 @@ import { MarkdownOptions } from '@stll/folio-core/markdown';
 import { MarkdownResult } from '@stll/folio-core/markdown';
 import { MaybeRefOrGetter } from 'vue';
 import { normalizeFolioAIBlockText } from '@stll/folio-core/ai-edits';
+import { PageRendererName } from '@stll/folio-core/display-list/editor/pageRenderer';
 import { PictureWatermark } from '@stll/folio-core/watermark';
 import { Plugin as Plugin_2 } from 'prosemirror-state';
 import { PositionalText } from '@stll/folio-core/ai-suggestions/text-positions';
@@ -384,6 +385,7 @@ export type DocxEditorProps = {
     showZoomControl?: boolean;
     showReviewControls?: boolean;
     showHeaderFooterEditing?: boolean;
+    pageRenderer?: PageRendererName;
     showMarginGuides?: boolean;
     marginGuideColor?: string;
     showRuler?: boolean;

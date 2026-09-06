@@ -1,21 +1,27 @@
 /**
  * Page furniture: everything on a page that is not a body fragment.
  *
- * `renderPage.ts` is the authority on the order, and it takes most of this from
- * `RenderPageOptions` rather than from the `Layout`: page borders, watermarks,
- * footnote bodies and header/footer stories all reach the DOM painter as render
- * options that the layout never carried. `buildDisplayList` is handed a
- * `Layout` and a `BlockLookup`, so those four are not reachable from here and
- * are reported through `unsupported` instead of being silently absent. The
- * furniture that *is* derivable — the page background, the column separators
- * and the footnote separator rule — is painted.
+ * `renderPage.ts` is the authority on the order and on the geometry, and it
+ * takes most of this from `RenderPageOptions` rather than from the `Layout`:
+ * page borders, watermarks, footnote bodies and header/footer stories all reach
+ * the DOM painter as render options the layout never carried. The builder is
+ * handed the same inputs, so a construct the caller supplies is painted and a
+ * construct the layout shows evidence of but the caller withheld is reported.
+ * The furniture that is derivable from the `Layout` alone — the page
+ * background, the column separators and the footnote separator rule — is always
+ * painted.
  */
 
 import { FOOTNOTE_SEPARATOR_HEIGHT } from "../../layout-engine/types";
-import type { Page } from "../../layout-engine/types";
+import type { FootnoteContent, Page } from "../../layout-engine/types";
+import {
+  calculateFootnoteAreaRenderHeight,
+  type FootnoteRenderItem,
+} from "../../layout-painter/renderPage";
 import type { DisplayColor, DisplayPrimitive } from "../types";
 import type { BuildContext } from "./buildContext";
 import { DOC_CANVAS_TEXT } from "./colors";
+import { paintFootnoteBlocks } from "./storyPrimitives";
 import { UNSUPPORTED_CONSTRUCT } from "./unsupported";
 
 /** `renderPage.ts:2049`: a hairline in the canvas ink colour. */
@@ -65,36 +71,62 @@ export const paintColumnSeparators = (page: Page): readonly DisplayPrimitive[] =
   return primitives;
 };
 
+export type FootnoteAreaPaintOptions = {
+  readonly page: Page;
+  readonly context: BuildContext;
+  /**
+   * The bodies, by `w:footnote` id. Absent, or missing an id the page carries,
+   * means the caller did not supply that body: the band still opens with its
+   * rule and reserves its height, and the missing bodies are named.
+   */
+  readonly contentById?: ReadonlyMap<number, FootnoteContent>;
+};
+
 /**
- * The footnote separator rule.
+ * The footnote band at the foot of the body column: the separator rule, then
+ * one body per note the paginator put on this page.
  *
- * The bodies are not painted: `FootnoteContent` reaches the DOM painter through
- * `RenderPageOptions.footnoteArea`, and nothing in the `Layout` carries it. The
- * reservation itself is a layout fact, so the rule that opens the reserved band
- * is drawn and the missing bodies are named.
+ * The band's top comes from the reservation the paginator made, clamped up to
+ * what the bodies actually need, so a stack that under-reserved by a pixel ends
+ * at the page bottom instead of spilling past it.
  */
-export const paintFootnoteArea = (
-  page: Page,
-  context: BuildContext,
-): readonly DisplayPrimitive[] => {
+export const paintFootnoteArea = ({
+  page,
+  context,
+  contentById,
+}: FootnoteAreaPaintOptions): readonly DisplayPrimitive[] => {
   const reservedHeightPx = page.footnoteReservedHeight ?? 0;
-  const noteCount = page.footnoteIds?.length ?? 0;
-  if (reservedHeightPx <= 0 || noteCount === 0) {
+  const noteIds = page.footnoteIds ?? [];
+  if (reservedHeightPx <= 0 || noteIds.length === 0) {
     return [];
   }
 
-  context.unsupported.report(
-    UNSUPPORTED_CONSTRUCT.footnoteContent,
-    context.pageIndex,
-    `${noteCount} footnote bodies are not painted: FootnoteContent reaches the painter through render options, not through Layout`,
-  );
+  const bodies = noteIds.map((noteId) => ({ noteId, content: contentById?.get(noteId) }));
+  const missing = bodies.flatMap(({ noteId, content }) => (content === undefined ? [noteId] : []));
+  if (missing.length > 0) {
+    context.unsupported.report(
+      UNSUPPORTED_CONSTRUCT.footnoteContent,
+      context.pageIndex,
+      `footnote bodies ${missing.join(", ")} were not supplied to the builder, so the band reserves their height and paints nothing`,
+    );
+  }
+
+  const items: FootnoteRenderItem[] = bodies.map(({ noteId, content }) => ({
+    noteId,
+    displayNumber: String(content?.displayNumber ?? noteId),
+    ...(content === undefined
+      ? {}
+      : {
+          content: { blocks: content.blocks, measures: content.measures, height: content.height },
+        }),
+  }));
 
   const contentHeightPx = page.size.h - page.margins.top - page.margins.bottom;
   const contentWidthPx = page.size.w - page.margins.left - page.margins.right;
-  const areaTopPx =
-    page.margins.top + Math.max(-page.margins.top, contentHeightPx - reservedHeightPx);
+  const bandHeightPx = Math.max(reservedHeightPx, calculateFootnoteAreaRenderHeight(items));
+  const areaTopPx = page.margins.top + Math.max(-page.margins.top, contentHeightPx - bandHeightPx);
 
-  return [
+  const primitives: DisplayPrimitive[] = [
     {
       kind: "rect",
       rect: {
@@ -106,19 +138,29 @@ export const paintFootnoteArea = (
       fill: DOC_CANVAS_TEXT,
     },
   ];
-};
 
-/**
- * Name the furniture the builder's inputs cannot reach, once per page that
- * shows evidence of it. A backend cannot tell a page with no header from a page
- * whose header the producer never received.
- */
-export const reportUnreachableFurniture = (page: Page, context: BuildContext): void => {
-  if (page.headerFooterRefs !== undefined) {
-    context.unsupported.report(
-      UNSUPPORTED_CONSTRUCT.headerFooterContent,
-      context.pageIndex,
-      "header and footer stories reach the painter through render options (headerContentByRId), not through Layout",
+  for (const [index, { content }] of bodies.entries()) {
+    if (content === undefined) {
+      continue;
+    }
+    // The band's own height function over the notes above this one: the
+    // separator slot plus each preceding entry and its margin, which is exactly
+    // this entry's offset from the band top. Taking it from the same helper the
+    // clamp above uses keeps a note that was not supplied from shifting the
+    // ones below it.
+    const offsetPx = calculateFootnoteAreaRenderHeight(items.slice(0, index));
+    primitives.push(
+      ...paintFootnoteBlocks({
+        blocks: content.blocks,
+        measures: content.measures,
+        xPx: page.margins.left,
+        yPx: areaTopPx + offsetPx,
+        widthPx: contentWidthPx,
+        context: { ...context, story: "footnote" },
+        label: `footnote ${content.displayNumber}`,
+      }),
     );
   }
+
+  return primitives;
 };

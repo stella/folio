@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { DISPLAY_PRIMITIVE_KINDS } from "../primitives";
 import type {
   DisplayFontFace,
+  DisplayGlyphRun,
   DisplayImageSource,
   DisplayList,
   DisplayPage,
@@ -109,6 +110,9 @@ const renderPrimitives = (primitives: readonly DisplayPrimitive[]) =>
     }),
   );
 
+/** The run's text as a document-order reader (a `Range`, a copy) sees it. */
+const runText = (span: StubElement | undefined) => span?.textContent ?? "";
+
 /**
  * One primitive per discriminator. `satisfies Record<...>` is what makes a new
  * kind a compile error here rather than a mark that quietly never renders.
@@ -163,6 +167,9 @@ const PRIMITIVE_SAMPLES = {
   },
 } satisfies Record<DisplayPrimitive["kind"], DisplayPrimitive>;
 
+const renderRun = (run: Partial<DisplayGlyphRun>) =>
+  renderPrimitives([{ ...PRIMITIVE_SAMPLES.glyphRun, ...run }]).children.at(0);
+
 const listOf = (
   pages: readonly DisplayPage[],
   fonts: readonly DisplayFontFace[] = [FONT],
@@ -206,7 +213,7 @@ describe("renderDisplayListToDom", () => {
     expect(span?.style.lineHeight).toBe("12px");
     expect(span?.style.width).toBe("18px");
     expect(span?.dataset.advanceSum).toBe("18");
-    expect(span?.textContent).toBe("abc");
+    expect(runText(span)).toBe("abc");
     expect(span?.style.fontFamily).toBe(`"Times New Roman", serif`);
     expect(span?.style.direction).toBe("ltr");
     // Nothing may re-derive a position from inline flow, or re-order a run.
@@ -224,6 +231,38 @@ describe("renderDisplayListToDom", () => {
     expect(rtl?.style.left).toBe(ltr?.style.left);
     expect(rtl?.style.width).toBe(ltr?.style.width);
     expect(rtl?.style.direction).toBe("rtl");
+  });
+
+  test("emits a run's text as one shaped element", () => {
+    // The display list places the origin; the browser shapes inside the run,
+    // which is the only thing that can form a ligature, kern a pair, or pick a
+    // cursive letter's positional form. Splitting the run into a box per code
+    // point would override all three.
+    const span = renderRun({ text: "abc", advancesPx: [5, 6, 7] });
+
+    expect(runText(span)).toBe("abc");
+    expect(span?.children.length ?? 0).toBe(0);
+    expect(span?.style.width).toBe("18px");
+    expect(span?.dataset.advanceSum).toBe("18");
+  });
+
+  test("keeps a cursively joined word whole", () => {
+    // Nothing may split it: isolated forms are what a reader would see.
+    const span = renderRun({ text: "\u0628\u064a\u062a", advancesPx: [6, 6, 6] });
+
+    expect(runText(span)).toBe("\u0628\u064a\u062a");
+    expect(span?.children.length ?? 0).toBe(0);
+  });
+
+  test("counts code points, not UTF-16 units, when sizing a run", () => {
+    const span = renderRun({ text: "a\u{1f600}b", advancesPx: [5, 12, 5] });
+
+    expect(span?.dataset.advanceSum).toBe("22");
+    expect(runText(span)).toBe("a\u{1f600}b");
+  });
+
+  test("refuses a run whose advances do not match its code points", () => {
+    expect(() => renderRun({ text: "abc", advancesPx: [5, 6] })).toThrow();
   });
 
   test("gives each stroke pattern a distinguishable background", () => {

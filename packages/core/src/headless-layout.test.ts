@@ -8,6 +8,8 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
+import { buildDisplayList } from "./display-list/build/buildDisplayList";
+import type { DisplayPrimitive } from "./display-list/types";
 import { installHeadlessMeasureProvider } from "./fonts/headlessMeasure";
 import { layoutDocxHeadless } from "./headless-layout";
 import {
@@ -164,5 +166,111 @@ describe("layoutDocxHeadless", () => {
     for (const gap of result.value.unsupported) {
       expect(gap.detail.length).toBeGreaterThan(0);
     }
+    // Headers, footers and footnotes are laid out here now; only the endnote
+    // story is still collected rather than placed.
+    expect(result.value.unsupported.every((gap) => gap.story === "endnote")).toBe(true);
+  });
+});
+
+const STORY_FIXTURE = new URL(
+  "../../../tests/visual/fixtures/docx-editor-demo.docx",
+  import.meta.url,
+);
+
+const EMBEDDED_FONT_FIXTURE = new URL(
+  "../../../tests/visual/fixtures/performance-mixed-script-embedded-font.docx",
+  import.meta.url,
+);
+
+const glyphTextOf = (primitives: readonly DisplayPrimitive[]): string[] =>
+  primitives.flatMap((primitive) => {
+    switch (primitive.kind) {
+      case "glyphRun":
+        return [primitive.text];
+      case "clipGroup":
+      case "rotateGroup":
+      case "opacityGroup":
+        return glyphTextOf(primitive.children);
+      default:
+        return [];
+    }
+  });
+
+describe("layoutDocxHeadless furniture", () => {
+  test("converts the package's header and footer parts without an editing view", async () => {
+    installFixedWidthProvider();
+    const bytes = await Bun.file(STORY_FIXTURE).arrayBuffer();
+
+    const result = await layoutDocxHeadless(bytes, { now: new Date("2026-01-01T00:00:00Z") });
+
+    expect(result.isErr()).toBe(false);
+    if (result.isErr()) {
+      return;
+    }
+    const { furniture, layout } = result.value;
+    expect(furniture.headerContentByRId?.size ?? 0).toBeGreaterThan(0);
+    expect(furniture.footerContentByRId?.size ?? 0).toBeGreaterThan(0);
+    for (const content of furniture.headerContentByRId ?? []) {
+      expect(content[1].blocks.length).toBeGreaterThan(0);
+      expect(content[1].height).toBeGreaterThan(0);
+    }
+    // The stories are selected per page from the layout's own section refs.
+    expect(layout.pages.every((page) => page.headerFooterRefs !== undefined)).toBe(true);
+  });
+
+  test("the display list paints the header on every page and the footer's own page number", async () => {
+    installFixedWidthProvider();
+    const bytes = await Bun.file(STORY_FIXTURE).arrayBuffer();
+
+    const result = await layoutDocxHeadless(bytes, { now: new Date("2026-01-01T00:00:00Z") });
+    expect(result.isErr()).toBe(false);
+    if (result.isErr()) {
+      return;
+    }
+    const { layout, blockLookup, furniture, documentFeatures, embeddedFonts } = result.value;
+    const list = buildDisplayList({
+      layout,
+      blockLookup,
+      documentFeatures,
+      embeddedFonts,
+      ...furniture,
+    });
+
+    expect(list.pages.length).toBeGreaterThan(1);
+    for (const [index, page] of list.pages.entries()) {
+      const texts = glyphTextOf(page.primitives);
+      expect(texts.some((text) => text.includes("Project Charter"))).toBe(true);
+      // The footer's `PAGE` field resolves against the page it paints on.
+      expect(texts).toContain(String(index + 1));
+    }
+    // Nothing was withheld, so nothing is named.
+    expect(list.unsupported).toEqual([]);
+  });
+
+  test("an embedded face travels with its bytes", async () => {
+    installFixedWidthProvider();
+    const bytes = await Bun.file(EMBEDDED_FONT_FIXTURE).arrayBuffer();
+
+    const result = await layoutDocxHeadless(bytes);
+    expect(result.isErr()).toBe(false);
+    if (result.isErr()) {
+      return;
+    }
+    expect(result.value.embeddedFonts.length).toBeGreaterThan(0);
+
+    const list = buildDisplayList({
+      layout: result.value.layout,
+      blockLookup: result.value.blockLookup,
+      documentFeatures: result.value.documentFeatures,
+      embeddedFonts: result.value.embeddedFonts,
+      ...result.value.furniture,
+    });
+    const embedded = list.fonts.flatMap((face) =>
+      face.embedded === undefined ? [] : [face.embedded],
+    );
+    expect(embedded.length).toBeGreaterThan(0);
+    expect(embedded.at(0)?.bytes.byteLength ?? 0).toBeGreaterThan(0);
+    // One face, one binary: the table interns by id.
+    expect(new Set(embedded.map((face) => face.id)).size).toBe(embedded.length);
   });
 });

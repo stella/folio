@@ -10,6 +10,7 @@
 import { panic, Result, TaggedError } from "better-result";
 import {
   DOUBLE_STROKE_GAP_FACTOR,
+  glyphCellOffsetsPx,
   STROKE_DASH_FACTORS,
   WAVY_STROKE_AMPLITUDE_FACTOR,
   WAVY_STROKE_PERIOD_FACTOR,
@@ -216,21 +217,12 @@ const paintRect = (context: PaintContext, primitive: DisplayRectPrimitive) => {
 
 /**
  * Left edge of every code point, from the ordering the display list pins
- * down: a run occupies `[xPx, xPx + sum(advances)]` in either direction, and
- * an `rtl` run's first *logical* code point sits at its right end.
+ * down. The mirroring rule is shared with the DOM backend rather than stated
+ * twice: two backends agreeing by coincidence is the divergence the display
+ * list exists to prevent.
  */
-const glyphOrigins = (run: DisplayGlyphRun): readonly number[] => {
-  const total = run.advancesPx.reduce((sum, advance) => sum + advance, 0);
-  const origins: number[] = [];
-  let consumed = 0;
-  for (const advance of run.advancesPx) {
-    origins.push(
-      run.direction === "ltr" ? run.xPx + consumed : run.xPx + total - consumed - advance,
-    );
-    consumed += advance;
-  }
-  return origins;
-};
+const glyphOrigins = (run: DisplayGlyphRun): readonly number[] =>
+  glyphCellOffsetsPx(run).map((offsetPx) => run.xPx + offsetPx);
 
 /**
  * A maximal consecutive stretch of one run served by a single font resource.

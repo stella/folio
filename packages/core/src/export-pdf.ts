@@ -32,7 +32,7 @@ import { layoutDocxHeadless } from "./headless-layout";
 import type { HeadlessLayoutGap } from "./headless-layout";
 import { getMeasureProvider, setMeasureProvider } from "./layout-engine/measure/measureProvider";
 import { writePdf } from "./pdf/writePdf";
-import type { PdfSubstitution, PdfUnencodable } from "./pdf/writePdf";
+import type { PdfSubstitution, PdfUnencodable, PdfUnshapedRun } from "./pdf/writePdf";
 import type { DocxInput } from "./utils/docxInput";
 
 export class ExportPdfError extends TaggedError("ExportPdfError")<{
@@ -67,6 +67,8 @@ export type ExportDocxToPdfResult = {
   readonly embeddingSubstitutions: readonly PdfSubstitution[];
   /** Code points painted as `.notdef` because no supplied face covers them. */
   readonly unencodable: readonly PdfUnencodable[];
+  /** Runs painted without the shaping their script needs. */
+  readonly unshaped: readonly PdfUnshapedRun[];
 };
 
 const toFontRequest = ({ family, weight, italic }: DisplayFontFace) => ({
@@ -136,6 +138,11 @@ const exportWithHeadlessProvider = async (
     // Without these the producer must assume every render-option construct
     // might be present, and reports a gap for a document that has none.
     documentFeatures: laidOut.value.documentFeatures,
+    // The page furniture the layout does not carry: page borders, the
+    // watermark, the header and footer stories, the footnote bodies. An export
+    // that omits them prints the body of a page rather than the page.
+    ...laidOut.value.furniture,
+    embeddedFonts: laidOut.value.embeddedFonts,
     ...(options.metadata === undefined ? {} : { metadata: options.metadata }),
   });
 
@@ -156,5 +163,6 @@ const exportWithHeadlessProvider = async (
     measurementSubstitutions: headless.substitutions(),
     embeddingSubstitutions: written.value.substitutions,
     unencodable: written.value.unencodable,
+    unshaped: written.value.unshaped,
   });
 };

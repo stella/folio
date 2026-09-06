@@ -1,16 +1,70 @@
 /**
  * Runtime companions of the paint IR.
  *
- * `types.ts` is pure data by rule, so the handful of values a backend needs
- * live here instead: the discriminator list a coverage test enumerates, and
- * the two colours every producer resolves a theme variable to. Nothing here
- * carries a layout fact, which is why a backend may take a runtime edge to it
- * and not to `types.ts`.
+ * `types.ts` is pure data by rule, so what a backend needs at runtime lives
+ * here instead: the discriminator list a coverage test enumerates, the two
+ * colours every producer resolves a theme variable to, the stroke geometry
+ * both backends draw from, and the rule that turns a run's advances into a
+ * position per code point. A rule two backends must agree on belongs in one
+ * module, not in one copy each. Nothing here carries a layout fact, which is
+ * why a backend may take a runtime edge to it and not to `types.ts`.
  */
 
-import type { DisplayColor, DisplayPrimitive, DisplayStrokePattern } from "./types";
+import type {
+  DisplayColor,
+  DisplayGlyphRun,
+  DisplayPrimitive,
+  DisplayStrokePattern,
+} from "./types";
+
+/**
+ * Cursive joining, for the backends.
+ *
+ * A paint module needs a shaping predicate because a backend that places code
+ * points independently has to know which ones may not be separated: in Arabic,
+ * Syriac, N'Ko and Adlam a letter's glyph depends on its neighbours, so a
+ * letter cut into a box of its own paints in isolated form and the word comes
+ * apart where a reader sees it. Joining types are Unicode data rather than a
+ * layout fact, which is what lets a backend take a runtime edge to them here.
+ */
+export { hasCursiveLetter, joinsAcrossBoundary } from "../utils/cursiveJoining";
+
+/**
+ * Whether a code point belongs to a script whose glyphs cannot be chosen from
+ * the code point alone: Arabic, Hebrew with marks, the Indic scripts, Thai.
+ *
+ * A paint module needs this for the same reason it needs the joining
+ * predicates: a backend that maps each code point straight to a glyph produces
+ * text that is wrong in a way its author can read at a glance, and it has to
+ * know when it is about to. Which scripts those are is Unicode data, not a
+ * layout fact, which is why it lives here beside the other shared rules.
+ */
+export { isComplexScriptCodePoint, hasComplexScript } from "../utils/scriptSegments";
 
 type PrimitiveKind = DisplayPrimitive["kind"];
+
+/**
+ * Left edge of every code point of a run, as an offset from the run's `xPx`.
+ *
+ * One implementation for both backends. The ordering rule is prose in
+ * `types.ts`, and two backends reading that prose separately is the
+ * divergence the display list exists to prevent: a run occupies
+ * `[xPx, xPx + sum(advancesPx)]` whichever way it runs, so under `ltr` code
+ * point `i` starts at `sum(advancesPx[0..i))` and under `rtl` it ends there,
+ * counted back from the run's right edge. A backend adds its own origin: the
+ * left edge is where a glyph is placed in either direction, because a glyph
+ * advances rightward from its origin whatever the paragraph does.
+ */
+export const glyphCellOffsetsPx = (run: DisplayGlyphRun): readonly number[] => {
+  const totalPx = run.advancesPx.reduce((total, advance) => total + advance, 0);
+  const offsetsPx: number[] = [];
+  let consumedPx = 0;
+  for (const advancePx of run.advancesPx) {
+    offsetsPx.push(run.direction === "ltr" ? consumedPx : totalPx - consumedPx - advancePx);
+    consumedPx += advancePx;
+  }
+  return offsetsPx;
+};
 
 /**
  * Total map over the primitive kinds. `satisfies Record<PrimitiveKind, ...>`

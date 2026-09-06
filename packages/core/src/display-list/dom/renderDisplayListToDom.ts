@@ -6,6 +6,18 @@
  * (`text-align`, `text-indent`, floats, line boxes): a second opinion about
  * where a glyph goes is the divergence the display list exists to remove.
  *
+ * A glyph run is one element, and the display list places its origin. Where
+ * each glyph lands inside the run is the browser's, because shaping is the
+ * only thing that forms a ligature, applies a kern, or picks a cursive
+ * letter's initial, medial or final form, and none of those can be recovered
+ * from advances alone. The painted extent of a run can therefore differ from
+ * its declared extent by the shaper's rounding.
+ *
+ * That residue is measured rather than assumed. It is small when the list was
+ * built by the same engine that paints it, which is the editor's own path, and
+ * larger when a list built from font-table advances is painted by a shaper
+ * that kerns; the harness reports both and gates only on the first.
+ *
  * This module takes a type-only edge to the paint IR and a runtime edge to its
  * companions in `../primitives`, which carry no layout fact. It has no access
  * to the layout engine, so a fact it needs and the display list does not carry
@@ -334,6 +346,11 @@ const paintLineSegment = (line: DisplayLine, context: PaintContext) => {
 };
 
 const paintGlyphRun = (run: DisplayGlyphRun, context: PaintContext) => {
+  if ([...run.text].length !== run.advancesPx.length) {
+    panic(
+      `renderDisplayListToDom: glyph run carries ${run.advancesPx.length} advances for ${[...run.text].length} code points`,
+    );
+  }
   const face = resolveFont(run.font, context.fonts);
   const advanceSum = run.advancesPx.reduce((total, advance) => total + advance, 0);
   const ascentPx = face.fontBoxAscentRatio * run.fontSizePx;
@@ -349,6 +366,9 @@ const paintGlyphRun = (run: DisplayGlyphRun, context: PaintContext) => {
   span.style.lineHeight = px(ascentPx + descentPx);
   span.style.display = "inline-block";
   span.style.boxSizing = "content-box";
+  // The declared extent. The browser shapes and advances the glyphs inside
+  // it, so the painted extent can differ from this by the shaper's rounding;
+  // that residue is measured rather than assumed (see the module header).
   span.style.width = px(advanceSum);
   span.style.whiteSpace = "pre";
   span.style.fontFamily = fontFamilyStack(face);
@@ -367,6 +387,12 @@ const paintGlyphRun = (run: DisplayGlyphRun, context: PaintContext) => {
   // The producer's own number, readable back out of the DOM by the
   // equivalence harness without measuring anything.
   span.dataset["advanceSum"] = String(advanceSum);
+
+  // One text node, shaped by the browser. The display list places the run's
+  // origin; where each glyph lands inside it is the shaper's business, which
+  // is the only thing that can form a ligature, apply a kern or choose a
+  // cursive positional form. Placing code points independently would override
+  // all three to buy a sub-pixel advance nobody sees.
   span.textContent = run.text;
 
   context.parent.append(span);
