@@ -25,7 +25,6 @@ import type {
 import type {
   DisplayColor,
   DisplayHitRegionKind,
-  DisplayHitRegionModel,
   DisplayLink,
   DisplayLinkTarget,
   DisplayList,
@@ -43,7 +42,7 @@ import { paintPageFurniture, type PageFurnitureInputs } from "./furniture";
 import { ImageTable, paintImageFragment } from "./imagePrimitives";
 import { paintColumnSeparators, paintPageBackground } from "./pageFurniture";
 import { paintParagraphFragment } from "./paragraphPrimitives";
-import { createPageComposer, type PageComposer, type RegionDescriptor } from "./regions";
+import { blockRegion, createPageComposer, type PageComposer } from "./regions";
 import { paintTableFragment } from "./tablePrimitives";
 import { paintTextBoxFragment } from "./textBoxPrimitives";
 import { UnsupportedCollector, UNSUPPORTED_CONSTRUCT } from "./unsupported";
@@ -329,7 +328,7 @@ const buildPage = ({
           );
           continue;
         }
-        composer.region(fragmentRegion(fragment, context), () => {
+        composer.region(blockRegion(fragment, FRAGMENT_REGION_KIND[fragment.kind], context), () => {
           paintFragment({
             fragment,
             entry,
@@ -365,32 +364,6 @@ const FRAGMENT_REGION_KIND = {
   image: HIT_REGION_KINDS.image,
   textBox: HIT_REGION_KINDS.textBox,
 } as const satisfies Record<Fragment["kind"], DisplayHitRegionKind>;
-
-/**
- * The region one fragment occupies.
- *
- * Its box and its model range are the layout's own: the same numbers the
- * painting below uses, so a click resolves against what was drawn rather than
- * against a second opinion about where the block went.
- */
-const fragmentRegion = (fragment: Fragment, context: BuildContext): RegionDescriptor => {
-  const model: DisplayHitRegionModel = {
-    blockId: String(fragment.blockId),
-    ...(fragment.pmStart === undefined || fragment.pmEnd === undefined
-      ? {}
-      : { pmRange: { start: fragment.pmStart, end: fragment.pmEnd, story: context.story } }),
-  };
-  return {
-    kind: FRAGMENT_REGION_KIND[fragment.kind],
-    rect: {
-      xPx: fragment.x,
-      yPx: fragment.y,
-      widthPx: fragment.width,
-      heightPx: fragment.height,
-    },
-    model,
-  };
-};
 
 /** Whether the caller handed over the construct this document-wide gap names. */
 const SUPPLIED_BY = {

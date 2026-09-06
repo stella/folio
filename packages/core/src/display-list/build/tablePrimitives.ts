@@ -35,10 +35,12 @@ import type {
 import type { DisplayPrimitive, DisplayRect, DisplayStroke } from "../types";
 import type { BuildContext } from "./buildContext";
 import { HIT_REGION_KINDS } from "../primitives";
-import { createPageComposer, type PageComposer } from "./regions";
+import { blockRegion, createPageComposer, type PageComposer } from "./regions";
 import { parseDisplayColor } from "./colors";
+import { paintImageFragment } from "./imagePrimitives";
 import { paintParagraphFragment } from "./paragraphPrimitives";
 import { resolveBorderStroke } from "./strokes";
+import { paintTextBoxFragment } from "./textBoxPrimitives";
 import { UNSUPPORTED_CONSTRUCT } from "./unsupported";
 
 /** A cell edge is "visible" for collapse purposes on style alone, as the painter decides it. */
@@ -273,39 +275,74 @@ const paintCellBlocks = ({
     if (block.kind === "paragraph" && measure.kind === "paragraph") {
       const previous = blocks[index - 1];
       const next = blocks[index + 1];
-      paintParagraphFragment({
-        composer,
-        fragment: {
-          kind: "paragraph",
-          blockId: block.id,
-          x: xPx,
-          y: yPx + placement.contentTop,
-          width: widthPx,
-          height: placement.contentHeight,
-          fromLine: 0,
-          toLine: measure.lines.length,
-        },
-        block,
-        measure,
-        context,
-        ...(previous?.kind === "paragraph" && previous.attrs?.borders !== undefined
-          ? { prevBorders: previous.attrs.borders }
-          : {}),
-        ...(next?.kind === "paragraph" && next.attrs?.borders !== undefined
-          ? { nextBorders: next.attrs.borders }
-          : {}),
+      const fragment = {
+        kind: "paragraph",
+        blockId: block.id,
+        x: xPx,
+        y: yPx + placement.contentTop,
+        width: widthPx,
+        height: placement.contentHeight,
+        fromLine: 0,
+        toLine: measure.lines.length,
+      } as const;
+      composer.region(blockRegion(fragment, HIT_REGION_KINDS.paragraph, context), () => {
+        paintParagraphFragment({
+          composer,
+          fragment,
+          block,
+          measure,
+          context,
+          ...(previous?.kind === "paragraph" && previous.attrs?.borders !== undefined
+            ? { prevBorders: previous.attrs.borders }
+            : {}),
+          ...(next?.kind === "paragraph" && next.attrs?.borders !== undefined
+            ? { nextBorders: next.attrs.borders }
+            : {}),
+        });
       });
       continue;
     }
 
     if (block.kind === "table" && measure.kind === "table") {
-      paintTableBlock({
-        composer,
-        block,
-        measure,
-        xPx,
-        yPx: yPx + placement.contentTop,
-        context,
+      const fragment = {
+        blockId: block.id,
+        x: xPx,
+        y: yPx + placement.contentTop,
+        width: measure.totalWidth,
+        height: measure.totalHeight,
+      };
+      composer.region(blockRegion(fragment, HIT_REGION_KINDS.table, context), () => {
+        paintTableBlock({ composer, block, measure, xPx: fragment.x, yPx: fragment.y, context });
+      });
+      continue;
+    }
+
+    if (block.kind === "image" && measure.kind === "image") {
+      const fragment = {
+        kind: "image",
+        blockId: block.id,
+        x: xPx,
+        y: yPx + placement.contentTop,
+        width: measure.width,
+        height: measure.height,
+      } as const;
+      composer.region(blockRegion(fragment, HIT_REGION_KINDS.image, context), () => {
+        composer.push(paintImageFragment(fragment, block, context));
+      });
+      continue;
+    }
+
+    if (block.kind === "textBox" && measure.kind === "textBox") {
+      const fragment = {
+        kind: "textBox",
+        blockId: block.id,
+        x: xPx,
+        y: yPx + placement.contentTop,
+        width: measure.width,
+        height: measure.height,
+      } as const;
+      composer.region(blockRegion(fragment, HIT_REGION_KINDS.textBox, context), () => {
+        paintTextBoxFragment({ composer, fragment, block, measure, context });
       });
       continue;
     }

@@ -8,14 +8,16 @@ import {
 import { measureBlocks } from "../../layout-engine/measure/measureBlocks";
 import type {
   FlowBlock,
+  ImageBlock,
   Layout,
   LayoutOptions,
   PageMargins,
   ParagraphBlock,
   TableBlock,
+  TextBoxBlock,
 } from "../../layout-engine/types";
 import type { BlockLookup } from "../../layout-painter/index";
-import type { DisplayGlyphRun, DisplayList, DisplayPrimitive } from "../types";
+import type { DisplayGlyphRun, DisplayHitRegion, DisplayList, DisplayPrimitive } from "../types";
 import { buildDisplayList } from "./buildDisplayList";
 import { UNSUPPORTED_CONSTRUCT } from "./unsupported";
 
@@ -54,6 +56,9 @@ const pagePrimitives = (blocks: FlowBlock[]): readonly DisplayPrimitive[] => {
 
 const glyphRuns = (primitives: readonly DisplayPrimitive[]): DisplayGlyphRun[] =>
   primitives.filter((primitive): primitive is DisplayGlyphRun => primitive.kind === "glyphRun");
+
+const flattenRegions = (regions: readonly DisplayHitRegion[]): DisplayHitRegion[] =>
+  regions.flatMap((region) => [region, ...flattenRegions(region.children)]);
 
 const para = (id: string, text: string, attrs?: ParagraphBlock["attrs"]): ParagraphBlock => ({
   kind: "paragraph",
@@ -147,6 +152,38 @@ describe("buildDisplayList: tabs and justification", () => {
       expect(runs.map((run) => run.text)).toEqual(["A", "B"]);
       expect(runs[0]?.xPx).toBe(MARGINS.left);
       expect(runs[1]?.xPx).toBeCloseTo(MARGINS.left + 96, 6);
+    }, fakeMeasure);
+  });
+
+  test("tab and empty-line regions carry the positions a caret resolves", () => {
+    withFakeTextMeasure(() => {
+      const tabbed: ParagraphBlock = {
+        kind: "paragraph",
+        id: "tabbed",
+        pmStart: 10,
+        pmEnd: 14,
+        runs: [
+          { kind: "text", text: "A", pmStart: 11, pmEnd: 12 },
+          { kind: "tab", pmStart: 12, pmEnd: 13 },
+          { kind: "text", text: "B", pmStart: 13, pmEnd: 14 },
+        ],
+      };
+      const blank: ParagraphBlock = {
+        kind: "paragraph",
+        id: "blank",
+        pmStart: 20,
+        pmEnd: 21,
+        runs: [],
+      };
+      const regions = flattenRegions(buildFrom([tabbed, blank]).pages.at(0)?.regions ?? []);
+      const tab = regions.find((region) => region.kind === "tab");
+      const empty = regions.find(
+        (region) => region.kind === "emptyRun" && region.model?.blockId === "blank",
+      );
+
+      expect(tab?.model?.pmRange).toMatchObject({ start: 12, end: 13 });
+      expect(tab?.rect.widthPx).toBeGreaterThan(0);
+      expect(empty?.model?.pmRange).toMatchObject({ start: 21, end: 21 });
     }, fakeMeasure);
   });
 
@@ -279,6 +316,56 @@ describe("buildDisplayList: paint order", () => {
       // All four authored edges are painted on a single-cell table.
       expect(kinds.filter((kind) => kind === "line")).toHaveLength(4);
       expect(glyphRuns(primitives)[0]?.text).toBe("Cell");
+    }, fakeMeasure);
+  });
+
+  test("image and text-box cell blocks keep nested hit regions", () => {
+    withFakeTextMeasure(() => {
+      const image: ImageBlock = {
+        kind: "image",
+        id: "cell-image",
+        src: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+        width: 20,
+        height: 10,
+      };
+      const textBox: TextBoxBlock = {
+        kind: "textBox",
+        id: "cell-box",
+        width: 100,
+        height: 30,
+        content: [para("box-paragraph", "Inside")],
+      };
+      const table: TableBlock = {
+        kind: "table",
+        id: "t",
+        columnWidths: [200],
+        rows: [
+          {
+            id: "r0",
+            cells: [
+              {
+                id: "c0",
+                blocks: [image, textBox],
+                padding: { top: 0, right: 0, bottom: 0, left: 0 },
+              },
+            ],
+          },
+        ],
+      };
+
+      const regions = flattenRegions(buildFrom([table]).pages.at(0)?.regions ?? []);
+      expect(
+        regions
+          .filter((region) => region.kind === "image" || region.kind === "textBox")
+          .map((region) => [region.kind, region.model?.blockId]),
+      ).toEqual([
+        ["image", "cell-image"],
+        ["textBox", "cell-box"],
+      ]);
+      const box = regions.find((region) => region.model?.blockId === "cell-box");
+      expect(
+        flattenRegions(box?.children ?? []).some((region) => region.kind === "paragraph"),
+      ).toBe(true);
     }, fakeMeasure);
   });
 });

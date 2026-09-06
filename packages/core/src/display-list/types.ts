@@ -415,10 +415,6 @@ export type DisplayHitRegionModel = {
   /** Row and column, for a cell; row only, for a row. */
   readonly rowIndex?: number;
   readonly columnIndex?: number;
-  /** Leading and trailing spaces the line collapsed, and what they advanced. */
-  readonly collapsedLeadingSpaces?: boolean;
-  readonly collapsedTrailingSpaces?: boolean;
-  readonly collapsedSpaceAdvancePx?: number;
 };
 
 /**

@@ -26,7 +26,8 @@ import type {
 } from "../../layout-engine/types";
 import { isFloatingImageRun } from "../../layout-painter/renderUtils";
 import type { BuildContext } from "./buildContext";
-import type { PageComposer } from "./regions";
+import { blockRegion, type PageComposer } from "./regions";
+import { HIT_REGION_KINDS } from "../primitives";
 import { paintImageFragment } from "./imagePrimitives";
 import { paintParagraphFragment } from "./paragraphPrimitives";
 import { paintTableFragment } from "./tablePrimitives";
@@ -85,77 +86,65 @@ const paintStoryBlock = ({
   construct,
 }: PaintStoryBlockOptions): void => {
   if (block.kind === "paragraph" && measure.kind === "paragraph") {
-    paintParagraphFragment({
-      fragment: {
-        kind: "paragraph",
-        blockId: block.id,
-        x: xPx,
-        y: yPx,
-        width: widthPx,
-        height: measure.totalHeight,
-        fromLine: 0,
-        toLine: measure.lines.length,
-      },
-      block,
-      measure,
-      context,
-      composer,
+    const fragment = {
+      kind: "paragraph",
+      blockId: block.id,
+      x: xPx,
+      y: yPx,
+      width: widthPx,
+      height: measure.totalHeight,
+      fromLine: 0,
+      toLine: measure.lines.length,
+    } as const;
+    composer.region(blockRegion(fragment, HIT_REGION_KINDS.paragraph, context), () => {
+      paintParagraphFragment({ fragment, block, measure, context, composer });
     });
     return;
   }
 
   if (block.kind === "table" && measure.kind === "table") {
-    paintTableFragment({
-      fragment: {
-        kind: "table",
-        blockId: block.id,
-        x: xPx,
-        y: yPx,
-        width: measure.totalWidth,
-        height: measure.totalHeight,
-        fromRow: 0,
-        toRow: block.rows.length,
-      },
-      block,
-      measure,
-      context,
-      composer,
+    const fragment = {
+      kind: "table",
+      blockId: block.id,
+      x: xPx,
+      y: yPx,
+      width: measure.totalWidth,
+      height: measure.totalHeight,
+      fromRow: 0,
+      toRow: block.rows.length,
+    } as const;
+    composer.region(blockRegion(fragment, HIT_REGION_KINDS.table, context), () => {
+      paintTableFragment({ fragment, block, measure, context, composer });
     });
     return;
   }
 
   if (block.kind === "image" && measure.kind === "image") {
-    composer.push(
-      paintImageFragment(
-        {
-          kind: "image",
-          blockId: block.id,
-          x: xPx,
-          y: yPx,
-          width: measure.width,
-          height: measure.height,
-        },
-        block,
-        context,
-      ),
-    );
+    const fragment = {
+      kind: "image",
+      blockId: block.id,
+      x: xPx,
+      y: yPx,
+      width: measure.width,
+      height: measure.height,
+    } as const;
+    composer.region(blockRegion(fragment, HIT_REGION_KINDS.image, context), () => {
+      composer.push(paintImageFragment(fragment, block, context));
+    });
     return;
   }
 
   if (block.kind === "textBox" && measure.kind === "textBox") {
-    paintTextBoxFragment({
-      composer,
-      fragment: {
-        kind: "textBox",
-        blockId: block.id,
-        x: xPx,
-        y: yPx,
-        width: measure.width,
-        height: measure.height,
-      },
-      block,
-      measure,
-      context,
+    const fragment = {
+      kind: "textBox",
+      blockId: block.id,
+      x: xPx,
+      y: yPx,
+      width: measure.width,
+      height: measure.height,
+    } as const;
+    composer.region(blockRegion(fragment, HIT_REGION_KINDS.textBox, context), () => {
+      paintTextBoxFragment({ composer, fragment, block, measure, context });
     });
     return;
   }

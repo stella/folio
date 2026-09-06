@@ -19,14 +19,16 @@ import type {
   FlowBlock,
   FootnoteContent,
   HeaderFooterContent,
+  ImageBlock,
   Layout,
   LayoutOptions,
   PageMargins,
   ParagraphBlock,
+  TextBoxBlock,
 } from "../../layout-engine/types";
 import type { BlockLookup } from "../../layout-painter/index";
 import type { EmbeddedFont } from "../../fonts/embeddedFonts";
-import type { DisplayGlyphRun, DisplayList, DisplayPrimitive } from "../types";
+import type { DisplayGlyphRun, DisplayHitRegion, DisplayList, DisplayPrimitive } from "../types";
 import { buildDisplayList, type BuildDisplayListOptions } from "./buildDisplayList";
 import { UNSUPPORTED_CONSTRUCT } from "./unsupported";
 
@@ -70,6 +72,31 @@ const storyContent = (id: string, text: string): HeaderFooterContent => {
   };
 };
 
+const storyBlocks = (blocks: FlowBlock[]): HeaderFooterContent => {
+  const measures = measureBlocks(blocks, CONTENT_WIDTH);
+  return {
+    blocks,
+    measures,
+    height: measures.reduce((height, measure) => {
+      switch (measure.kind) {
+        case "paragraph":
+        case "table":
+          return height + measure.totalHeight;
+        case "image":
+        case "textBox":
+          return height + measure.height;
+        case "sectionBreak":
+        case "pageBreak":
+        case "columnBreak":
+          return height;
+        default:
+          measure satisfies never;
+          return height;
+      }
+    }, 0),
+  };
+};
+
 const footnoteContent = (id: number, text: string): FootnoteContent => {
   const blocks = [para(`fn-${String(id)}`, text)];
   const measures = measureBlocks(blocks, CONTENT_WIDTH);
@@ -99,6 +126,9 @@ const glyphRuns = (list: DisplayList, pageIndex = 0): DisplayGlyphRun[] =>
 
 const constructsOf = (list: DisplayList): string[] =>
   list.unsupported.map((entry) => entry.construct);
+
+const flattenRegions = (regions: readonly DisplayHitRegion[]): DisplayHitRegion[] =>
+  regions.flatMap((region) => [region, ...flattenRegions(region.children)]);
 
 const BORDERS: NonNullable<BuildDisplayListOptions["pageBorders"]> = {
   top: { style: "single", size: 8, space: 24, color: { rgb: "FF0000" } },
@@ -331,6 +361,43 @@ describe("header and footer stories", () => {
         headerContentByRId: new Map([["rIdH", storyContent("h", "Header")]]),
       });
       expect(glyphRuns(list).find((run) => run.text === "Header")?.pmRange).toBeUndefined();
+    }, fakeMeasure);
+  });
+
+  test("header images and text boxes identify their blocks inside the header story", () => {
+    withFakeTextMeasure(() => {
+      const image: ImageBlock = {
+        kind: "image",
+        id: "header-image",
+        src: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+        width: 20,
+        height: 10,
+      };
+      const textBox: TextBoxBlock = {
+        kind: "textBox",
+        id: "header-box",
+        width: 100,
+        height: 30,
+        content: [para("header-box-paragraph", "Inside")],
+      };
+      const list = buildDisplayList({
+        ...buildLayout([para("a", "Body")], { sectionHeaderFooterRefs: SECTION_REFS }),
+        headerContentByRId: new Map([["rIdH", storyBlocks([image, textBox])]]),
+      });
+      const regions = flattenRegions(list.pages.at(0)?.regions ?? []);
+
+      expect(
+        regions
+          .filter((region) => region.kind === "image" || region.kind === "textBox")
+          .map((region) => [region.kind, region.model?.blockId]),
+      ).toEqual([
+        ["image", "header-image"],
+        ["textBox", "header-box"],
+      ]);
+      const box = regions.find((region) => region.model?.blockId === "header-box");
+      expect(
+        flattenRegions(box?.children ?? []).some((region) => region.kind === "paragraph"),
+      ).toBe(true);
     }, fakeMeasure);
   });
 

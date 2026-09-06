@@ -13,12 +13,14 @@
  * That is what lets the tree index into the paint list rather than copy it.
  */
 
+import type { BlockId } from "../../layout-engine/types";
 import type {
   DisplayHitRegion,
   DisplayHitRegionKind,
   DisplayHitRegionModel,
   DisplayPrimitive,
   DisplayRect,
+  DisplayStoryRef,
 } from "../types";
 
 export type RegionDescriptor = {
@@ -82,3 +84,39 @@ export const createPageComposer = (): PageComposer => {
     regions: () => roots,
   };
 };
+
+/**
+ * The region a whole block occupies, wherever it is painted.
+ *
+ * A body fragment, a picture inside a header, a text box inside a cell: each is
+ * one block at one place, and a surface asks the same questions of all of them.
+ * Taking the box and the range from the same fragment the painting uses is what
+ * keeps the answer the one that was drawn.
+ */
+export const blockRegion = (
+  fragment: {
+    readonly blockId: BlockId;
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+    readonly pmStart?: number;
+    readonly pmEnd?: number;
+  },
+  kind: DisplayHitRegionKind,
+  context: { readonly story: DisplayStoryRef },
+): RegionDescriptor => ({
+  kind,
+  rect: {
+    xPx: fragment.x,
+    yPx: fragment.y,
+    widthPx: fragment.width,
+    heightPx: fragment.height,
+  },
+  model: {
+    blockId: String(fragment.blockId),
+    ...(fragment.pmStart === undefined || fragment.pmEnd === undefined
+      ? {}
+      : { pmRange: { start: fragment.pmStart, end: fragment.pmEnd, story: context.story } }),
+  },
+});

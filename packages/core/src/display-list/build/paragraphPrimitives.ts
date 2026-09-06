@@ -82,7 +82,7 @@ import type {
 } from "../types";
 import { type BuildContext, trackedChangeColor } from "./buildContext";
 import { HIT_REGION_KINDS } from "../primitives";
-import type { PageComposer } from "./regions";
+import type { PageComposer, RegionDescriptor } from "./regions";
 import { DOC_CANVAS_TEXT, parseDisplayColor } from "./colors";
 import { buildGlyphs, glyphRunText, type Glyphs } from "./glyphs";
 import { paintImage } from "./imagePrimitives";
@@ -777,6 +777,11 @@ type PaintLineOptions = {
   readonly markerInlineWidthPx: number;
 };
 
+type PaintedLine = {
+  readonly primitives: DisplayPrimitive[];
+  readonly tabRegions: readonly RegionDescriptor[];
+};
+
 const paintLine = ({
   block,
   line,
@@ -791,8 +796,9 @@ const paintLine = ({
   indentLeft,
   firstLineOffsetPx,
   markerInlineWidthPx,
-}: PaintLineOptions): DisplayPrimitive[] => {
+}: PaintLineOptions): PaintedLine => {
   const sink: LineSink = { backgrounds: [], glyphs: [], decorations: [] };
+  const tabRegions: RegionDescriptor[] = [];
   // The painter's own splitter decides which line-edge spaces collapse, and it
   // splits a part-word part-space run so the collapsed span is a whole run.
   // Reusing it is the only way the editor and the export cannot come to
@@ -975,7 +981,7 @@ const paintLine = ({
         break;
       }
       case "tab": {
-        layoutXPx += paintTab({
+        const widthPx = paintTab({
           sink,
           context,
           runs,
@@ -987,6 +993,28 @@ const paintLine = ({
           baselineYPx: geometry.baselineYPx,
           layoutRightEdgeXPx: geometry.layoutRightEdgeXPx,
         });
+        tabRegions.push({
+          kind: HIT_REGION_KINDS.tab,
+          rect: {
+            xPx: paintXOf(),
+            yPx: geometry.lineTopYPx,
+            widthPx,
+            heightPx: line.lineHeight,
+          },
+          model: {
+            blockId: String(block.id),
+            ...(run.pmStart === undefined || run.pmEnd === undefined
+              ? {}
+              : {
+                  pmRange: {
+                    start: run.pmStart,
+                    end: run.pmEnd,
+                    story: context.story,
+                  },
+                }),
+          },
+        });
+        layoutXPx += widthPx;
         break;
       }
       case "image": {
@@ -1018,7 +1046,10 @@ const paintLine = ({
     }
   }
 
-  return [...sink.backgrounds, ...sink.glyphs, ...sink.decorations];
+  return {
+    primitives: [...sink.backgrounds, ...sink.glyphs, ...sink.decorations],
+    tabRegions,
+  };
 };
 
 type PaintListMarkerOptions = {
@@ -1308,31 +1339,33 @@ export const paintParagraphFragment = (options: ParagraphPaintOptions): void => 
           widthPx: fragment.width,
           heightPx: line.lineHeight,
         },
-        model: lineModel(block, lineRuns, context),
+        model: lineModel(block, line, lineRuns, context),
       },
       () => {
-        composer.push(
-          paintLine({
-            block,
-            line,
-            geometry,
-            context,
-            alignment,
-            isRtl,
-            isFirstLine,
-            isLastLine: lineIndex === totalLines - 1,
-            paragraphEndsWithLineBreak,
-            availableWidthPx:
-              fragment.width -
-              indentLeft -
-              indentRight -
-              (line.leftOffset ?? 0) -
-              (line.rightOffset ?? 0),
-            indentLeft,
-            firstLineOffsetPx,
-            markerInlineWidthPx,
-          }),
-        );
+        const painted = paintLine({
+          block,
+          line,
+          geometry,
+          context,
+          alignment,
+          isRtl,
+          isFirstLine,
+          isLastLine: lineIndex === totalLines - 1,
+          paragraphEndsWithLineBreak,
+          availableWidthPx:
+            fragment.width -
+            indentLeft -
+            indentRight -
+            (line.leftOffset ?? 0) -
+            (line.rightOffset ?? 0),
+          indentLeft,
+          firstLineOffsetPx,
+          markerInlineWidthPx,
+        });
+        composer.push(painted.primitives);
+        for (const tab of painted.tabRegions) {
+          composer.region(tab, () => undefined);
+        }
       },
     );
 
@@ -1346,7 +1379,14 @@ export const paintParagraphFragment = (options: ParagraphPaintOptions): void => 
  * to put the caret between, the other has only a position.
  */
 const lineRegionKind = (runs: readonly Run[]): DisplayHitRegionKind =>
-  runs.some((run) => run.kind === "text" && run.text.length > 0)
+  runs.some(
+    (run) =>
+      (run.kind === "text" && run.text.length > 0) ||
+      run.kind === "field" ||
+      run.kind === "math" ||
+      run.kind === "image" ||
+      run.kind === "tab",
+  )
     ? HIT_REGION_KINDS.line
     : HIT_REGION_KINDS.emptyRun;
 
@@ -1356,6 +1396,7 @@ const lineRegionKind = (runs: readonly Run[]): DisplayHitRegionKind =>
  */
 const lineModel = (
   block: ParagraphBlock,
+  line: MeasuredLine,
   runs: readonly Run[],
   context: BuildContext,
 ): DisplayHitRegionModel => {
@@ -1367,8 +1408,17 @@ const lineModel = (
   const commentIds = [
     ...new Set(runs.flatMap((run) => (run.kind === "text" ? (run.commentIds ?? []) : []))),
   ];
-  const start = positions.at(0)?.start;
-  const end = positions.at(-1)?.end;
+  const trailingRun = block.runs.at(-1);
+  const trailingBreakEnd =
+    runs.length === 0 && line.fromRun > block.runs.length - 1 && trailingRun?.kind === "lineBreak"
+      ? trailingRun.pmEnd
+      : undefined;
+  const emptyStart =
+    trailingBreakEnd ?? (block.pmStart === undefined ? undefined : block.pmStart + 1);
+  const start = positions.at(0)?.start ?? emptyStart;
+  const end =
+    positions.at(-1)?.end ??
+    (trailingBreakEnd === undefined ? (block.pmEnd ?? emptyStart) : trailingBreakEnd);
   return {
     blockId: String(block.id),
     ...(start === undefined || end === undefined
