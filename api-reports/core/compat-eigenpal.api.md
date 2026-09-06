@@ -370,6 +370,20 @@ export type CompareChange = {
     rowIndex: number;
     cells: readonly string[];
     baseBlockIds: readonly string[];
+} | {
+    kind: "table-column-insert";
+    location: CompareChangeLocation;
+    tableIndex: number;
+    columnIndex: number;
+    cells: readonly string[];
+    targetBlockIds: readonly string[];
+} | {
+    kind: "table-column-delete";
+    location: CompareChangeLocation;
+    tableIndex: number;
+    columnIndex: number;
+    cells: readonly string[];
+    baseBlockIds: readonly string[];
 };
 
 // @public
@@ -747,6 +761,9 @@ export type FolioAIBlockTableLocation = {
     tableIndex: number;
     rowIndex: number;
     cellIndex: number;
+    gridColumnIndex: number;
+    columnSpan: number;
+    rowSpan: number;
     paragraphIndex: number;
 };
 

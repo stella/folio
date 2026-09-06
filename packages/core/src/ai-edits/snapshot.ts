@@ -1,4 +1,5 @@
 import type { Mark, Node as PMNode } from "prosemirror-model";
+import { TableMap } from "prosemirror-tables";
 
 import { deriveBlankBlockId, deriveBlockId, type FolioBlockId } from "../types/block-id";
 import { buildCleanBlockText } from "./clean-text";
@@ -169,11 +170,15 @@ const getTableLocation = ({
     if (tableIndex === undefined || outerTableIndex === undefined) {
       return undefined;
     }
+    const rectangle = TableMap.get(table.node).findCell(cell.start - table.start - 1);
     return {
       outerTableIndex,
       tableIndex,
       rowIndex: row.index,
       cellIndex: cell.index,
+      gridColumnIndex: rectangle.left,
+      columnSpan: rectangle.right - rectangle.left,
+      rowSpan: rectangle.bottom - rectangle.top,
       paragraphIndex: blockIndex,
     };
   }

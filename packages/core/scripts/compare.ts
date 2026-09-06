@@ -75,10 +75,13 @@ const readDocx = (filePath: string): ArrayBuffer => {
 };
 
 const describeChange = (change: CompareChange): string => {
-  const where =
-    change.location.cell === undefined
-      ? "body"
-      : `table ${String(change.location.cell.tableIndex)} row ${String(change.location.cell.rowIndex)} cell ${String(change.location.cell.cellIndex)}`;
+  let where = "package";
+  if ("location" in change) {
+    const { cell } = change.location;
+    where = cell
+      ? `table ${String(cell.tableIndex)} row ${String(cell.rowIndex)} cell ${String(cell.cellIndex)}`
+      : "body";
+  }
   switch (change.kind) {
     case "insert":
       return `insert  [${where}] ${change.after}`;
@@ -90,10 +93,30 @@ const describeChange = (change: CompareChange): string => {
       return `move    [${where}] ${change.text}`;
     case "format":
       return `format  [${where}] ${String(change.ranges.length)} range(s) in ${change.text}`;
+    case "split":
+      return `split   [${where}] ${change.text}`;
+    case "merge":
+      return `merge   [${where}] ${change.text}`;
+    case "paragraph-format":
+      return `pformat [${where}] ${JSON.stringify(change.properties)}`;
+    case "numbering":
+      return `numbering [${String(change.numId)}:${String(change.level)}]`;
+    case "table-insert":
+      return `table + [table ${String(change.tableIndex)}]`;
+    case "table-delete":
+      return `table - [table ${String(change.tableIndex)}]`;
     case "table-row-insert":
       return `row +   [table ${String(change.tableIndex)} row ${String(change.rowIndex)}] ${change.cells.join(" | ")}`;
     case "table-row-delete":
       return `row -   [table ${String(change.tableIndex)} row ${String(change.rowIndex)}] ${change.cells.join(" | ")}`;
+    case "table-column-insert":
+      return `column + [table ${String(change.tableIndex)} column ${String(change.columnIndex)}] ${change.cells.join(" | ")}`;
+    case "table-column-delete":
+      return `column - [table ${String(change.tableIndex)} column ${String(change.columnIndex)}] ${change.cells.join(" | ")}`;
+    default: {
+      const unreachable: never = change;
+      return JSON.stringify(unreachable);
+    }
   }
 };
 

@@ -30,6 +30,12 @@ export type FolioAIBlockTableLocation = {
   tableIndex: number;
   rowIndex: number;
   cellIndex: number;
+  /** Grid column occupied by the cell's left edge, derived from `TableMap`. */
+  gridColumnIndex: number;
+  /** Number of grid columns occupied by this physical cell. */
+  columnSpan: number;
+  /** Number of grid rows occupied by this physical cell. */
+  rowSpan: number;
   paragraphIndex: number;
 };
 

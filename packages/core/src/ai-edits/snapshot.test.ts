@@ -31,7 +31,15 @@ const schema = new Schema({
       tableRole: "row",
       attrs: { hidden: { default: false } },
     },
-    tableCell: { content: "block+", tableRole: "cell" },
+    tableCell: {
+      content: "block+",
+      tableRole: "cell",
+      attrs: {
+        colspan: { default: 1 },
+        rowspan: { default: 1 },
+        colwidth: { default: null },
+      },
+    },
   },
 });
 
@@ -89,6 +97,9 @@ describe("createFolioAIEditSnapshot", () => {
       tableIndex: 0,
       rowIndex: 0,
       cellIndex: 1,
+      gridColumnIndex: 1,
+      columnSpan: 1,
+      rowSpan: 1,
       paragraphIndex: 0,
     });
     // The nested table is the second table in document order, and its own
@@ -99,6 +110,9 @@ describe("createFolioAIEditSnapshot", () => {
       tableIndex: 1,
       rowIndex: 0,
       cellIndex: 0,
+      gridColumnIndex: 0,
+      columnSpan: 1,
+      rowSpan: 1,
       paragraphIndex: 0,
     });
     expect(blocks.at(6)?.table).toEqual({
@@ -106,7 +120,41 @@ describe("createFolioAIEditSnapshot", () => {
       tableIndex: 1,
       rowIndex: 0,
       cellIndex: 0,
+      gridColumnIndex: 0,
+      columnSpan: 1,
+      rowSpan: 1,
       paragraphIndex: 1,
+    });
+  });
+
+  test("derives grid coordinates and spans independently of physical cell indexes", () => {
+    const doc = schema.node("doc", null, [
+      table([
+        row([
+          schema.node("tableCell", { colspan: 2, rowspan: 1, colwidth: null }, [
+            paragraph("merged"),
+          ]),
+          cell([paragraph("right")]),
+        ]),
+        row([
+          cell([paragraph("left")]),
+          cell([paragraph("middle")]),
+          cell([paragraph("lower right")]),
+        ]),
+      ]),
+    ]);
+
+    const { blocks } = createFolioAIEditSnapshot(doc);
+
+    expect(blocks.find(({ text }) => text === "merged")?.table).toMatchObject({
+      cellIndex: 0,
+      gridColumnIndex: 0,
+      columnSpan: 2,
+    });
+    expect(blocks.find(({ text }) => text === "right")?.table).toMatchObject({
+      cellIndex: 1,
+      gridColumnIndex: 2,
+      columnSpan: 1,
     });
   });
 
