@@ -41,3 +41,12 @@ test("normalizes every tracked revision element kind", () => {
   expect(new Set(ids).size).toBe(ids.length);
   expect(ids.at(0)).toBe("5");
 });
+
+test("respects Strict namespaces and nested prefix rebinding", () => {
+  const strict = "http://purl.oclc.org/ooxml/wordprocessingml/main";
+  const xml = `<w:document xmlns:w="${strict}"><w:del w:id="8"/><w:del xmlns:w="urn:foreign" w:id="8"/><w:del w:id="8"/></w:document>`;
+  const normalized = normalizeRevisionIdsInXmlParts(new Map([["word/document.xml", xml]]));
+  expect(normalized.get("word/document.xml")).toBe(
+    xml.replace('<w:del w:id="8"/></w:document>', '<w:del w:id="0"/></w:document>'),
+  );
+});
