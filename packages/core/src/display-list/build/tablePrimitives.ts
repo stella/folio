@@ -285,7 +285,7 @@ const paintCellBlocks = ({
         fromLine: 0,
         toLine: measure.lines.length,
       } as const;
-      composer.region(blockRegion(fragment, HIT_REGION_KINDS.paragraph, context), () => {
+      composer.region(blockRegion({ fragment, kind: HIT_REGION_KINDS.paragraph, context }), () => {
         paintParagraphFragment({
           composer,
           fragment,
@@ -311,7 +311,7 @@ const paintCellBlocks = ({
         width: measure.totalWidth,
         height: measure.totalHeight,
       };
-      composer.region(blockRegion(fragment, HIT_REGION_KINDS.table, context), () => {
+      composer.region(blockRegion({ fragment, kind: HIT_REGION_KINDS.table, context }), () => {
         paintTableBlock({ composer, block, measure, xPx: fragment.x, yPx: fragment.y, context });
       });
       continue;
@@ -326,7 +326,7 @@ const paintCellBlocks = ({
         width: measure.width,
         height: measure.height,
       } as const;
-      composer.region(blockRegion(fragment, HIT_REGION_KINDS.image, context), () => {
+      composer.region(blockRegion({ fragment, kind: HIT_REGION_KINDS.image, context }), () => {
         composer.push(paintImageFragment(fragment, block, context));
       });
       continue;
@@ -341,7 +341,7 @@ const paintCellBlocks = ({
         width: measure.width,
         height: measure.height,
       } as const;
-      composer.region(blockRegion(fragment, HIT_REGION_KINDS.textBox, context), () => {
+      composer.region(blockRegion({ fragment, kind: HIT_REGION_KINDS.textBox, context }), () => {
         paintTextBoxFragment({ composer, fragment, block, measure, context });
       });
       continue;

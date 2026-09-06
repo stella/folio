@@ -1339,7 +1339,7 @@ export const paintParagraphFragment = (options: ParagraphPaintOptions): void => 
           widthPx: fragment.width,
           heightPx: line.lineHeight,
         },
-        model: lineModel(block, line, lineRuns, context),
+        model: lineModel({ block, line, runs: lineRuns, context }),
       },
       () => {
         const painted = paintLine({
@@ -1394,12 +1394,14 @@ const lineRegionKind = (runs: readonly Run[]): DisplayHitRegionKind =>
  * What a click on this line resolves to: the characters it holds, and the
  * comment threads anchored on them.
  */
-const lineModel = (
-  block: ParagraphBlock,
-  line: MeasuredLine,
-  runs: readonly Run[],
-  context: BuildContext,
-): DisplayHitRegionModel => {
+type LineModelOptions = {
+  readonly block: ParagraphBlock;
+  readonly line: MeasuredLine;
+  readonly runs: readonly Run[];
+  readonly context: BuildContext;
+};
+
+const lineModel = ({ block, line, runs, context }: LineModelOptions): DisplayHitRegionModel => {
   const positions = runs.flatMap((run) =>
     run.kind === "text" && run.pmStart !== undefined && run.pmEnd !== undefined
       ? [{ start: run.pmStart, end: run.pmEnd }]

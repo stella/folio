@@ -116,21 +116,24 @@ export const paintTextBoxFragment = ({
         fromLine: 0,
         toLine: contentMeasure.lines.length,
       } as const;
-      composer.region(blockRegion(contentFragment, HIT_REGION_KINDS.paragraph, context), () => {
-        paintParagraphFragment({
-          composer,
-          fragment: contentFragment,
-          block: contentBlock,
-          measure: contentMeasure,
-          context,
-          ...(previous?.kind === "paragraph" && previous.attrs?.borders !== undefined
-            ? { prevBorders: previous.attrs.borders }
-            : {}),
-          ...(next?.kind === "paragraph" && next.attrs?.borders !== undefined
-            ? { nextBorders: next.attrs.borders }
-            : {}),
-        });
-      });
+      composer.region(
+        blockRegion({ fragment: contentFragment, kind: HIT_REGION_KINDS.paragraph, context }),
+        () => {
+          paintParagraphFragment({
+            composer,
+            fragment: contentFragment,
+            block: contentBlock,
+            measure: contentMeasure,
+            context,
+            ...(previous?.kind === "paragraph" && previous.attrs?.borders !== undefined
+              ? { prevBorders: previous.attrs.borders }
+              : {}),
+            ...(next?.kind === "paragraph" && next.attrs?.borders !== undefined
+              ? { nextBorders: next.attrs.borders }
+              : {}),
+          });
+        },
+      );
     } else if (contentBlock.kind === "table" && contentMeasure.kind === "table") {
       composer.push(primitives);
       primitives.length = 0;
@@ -141,16 +144,19 @@ export const paintTextBoxFragment = ({
         width: contentMeasure.totalWidth,
         height: contentMeasure.totalHeight,
       };
-      composer.region(blockRegion(contentFragment, HIT_REGION_KINDS.table, context), () => {
-        paintTableBlock({
-          composer,
-          block: contentBlock,
-          measure: contentMeasure,
-          xPx: contentFragment.x,
-          yPx: contentFragment.y,
-          context,
-        });
-      });
+      composer.region(
+        blockRegion({ fragment: contentFragment, kind: HIT_REGION_KINDS.table, context }),
+        () => {
+          paintTableBlock({
+            composer,
+            block: contentBlock,
+            measure: contentMeasure,
+            xPx: contentFragment.x,
+            yPx: contentFragment.y,
+            context,
+          });
+        },
+      );
     } else {
       context.unsupported.report(
         UNSUPPORTED_CONSTRUCT.fragmentKind,

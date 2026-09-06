@@ -328,16 +328,19 @@ const buildPage = ({
           );
           continue;
         }
-        composer.region(blockRegion(fragment, FRAGMENT_REGION_KIND[fragment.kind], context), () => {
-          paintFragment({
-            fragment,
-            entry,
-            context,
-            composer,
-            prevEntry: entries[index - 1],
-            nextEntry: entries[index + 1],
-          });
-        });
+        composer.region(
+          blockRegion({ fragment, kind: FRAGMENT_REGION_KIND[fragment.kind], context }),
+          () => {
+            paintFragment({
+              fragment,
+              entry,
+              context,
+              composer,
+              prevEntry: entries[index - 1],
+              nextEntry: entries[index + 1],
+            });
+          },
+        );
       }
     },
   );

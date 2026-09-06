@@ -93,8 +93,8 @@ export const createPageComposer = (): PageComposer => {
  * Taking the box and the range from the same fragment the painting uses is what
  * keeps the answer the one that was drawn.
  */
-export const blockRegion = (
-  fragment: {
+type BlockRegionOptions = {
+  readonly fragment: {
     readonly blockId: BlockId;
     readonly x: number;
     readonly y: number;
@@ -102,10 +102,12 @@ export const blockRegion = (
     readonly height: number;
     readonly pmStart?: number;
     readonly pmEnd?: number;
-  },
-  kind: DisplayHitRegionKind,
-  context: { readonly story: DisplayStoryRef },
-): RegionDescriptor => ({
+  };
+  readonly kind: DisplayHitRegionKind;
+  readonly context: { readonly story: DisplayStoryRef };
+};
+
+export const blockRegion = ({ fragment, kind, context }: BlockRegionOptions): RegionDescriptor => ({
   kind,
   rect: {
     xPx: fragment.x,
