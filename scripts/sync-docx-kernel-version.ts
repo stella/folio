@@ -12,7 +12,6 @@ if (process.argv.length > 3 || (process.argv[2] !== undefined && !write)) {
 const repoRoot = path.resolve(import.meta.dir, "..");
 const packageJsonPath = path.join(repoRoot, "packages", "docx-core", "package.json");
 const cargoManifestPath = path.join(repoRoot, "Cargo.toml");
-const cargoLockPath = path.join(repoRoot, "Cargo.lock");
 const packageJson = (await Bun.file(packageJsonPath).json()) as { version?: unknown };
 if (typeof packageJson.version !== "string") {
   panic("@stll/docx-core package.json has no string version");
@@ -23,11 +22,6 @@ const manifestVersionPattern = /(\[workspace\.package\][\s\S]*?\nversion = ")([^
 const manifestMatch = manifest.match(manifestVersionPattern);
 const manifestVersion = manifestMatch?.[2] ?? panic("Cargo workspace package version is missing");
 
-const lock = await readFile(cargoLockPath, "utf8");
-const lockVersionPattern = /(\[\[package\]\]\nname = "stella-docx-kernel"\nversion = ")([^"]+)(")/u;
-const lockMatch = lock.match(lockVersionPattern);
-const lockVersion = lockMatch?.[2] ?? panic("stella-docx-kernel Cargo.lock entry is missing");
-
 if (write) {
   await writeFile(
     cargoManifestPath,
@@ -37,20 +31,23 @@ if (write) {
         `${prefix}${packageJson.version}${suffix}`,
     ),
   );
-  await writeFile(
-    cargoLockPath,
-    lock.replace(
-      lockVersionPattern,
-      (_match, prefix: string, _version: string, suffix: string) =>
-        `${prefix}${packageJson.version}${suffix}`,
-    ),
-  );
+  // Cargo owns the lock graph, including every crate inheriting the workspace version.
+  const update = Bun.spawnSync(["cargo", "update", "--workspace"], {
+    cwd: repoRoot,
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+  if (update.exitCode !== 0) panic("Failed to synchronize Cargo workspace lock versions");
   console.log(`Synchronized DOCX kernel to ${packageJson.version}`);
 } else {
-  if (manifestVersion !== packageJson.version || lockVersion !== packageJson.version) {
-    panic(
-      `DOCX kernel version drift: npm=${packageJson.version}, Cargo.toml=${manifestVersion}, Cargo.lock=${lockVersion}`,
-    );
+  if (manifestVersion !== packageJson.version) {
+    panic(`DOCX kernel version drift: npm=${packageJson.version}, Cargo.toml=${manifestVersion}`);
   }
+  const metadata = Bun.spawnSync(["cargo", "metadata", "--locked", "--format-version", "1"], {
+    cwd: repoRoot,
+    stdout: "ignore",
+    stderr: "inherit",
+  });
+  if (metadata.exitCode !== 0) panic("Cargo.lock is not synchronized with the workspace");
   console.log(`DOCX kernel version ${packageJson.version} is synchronized`);
 }
