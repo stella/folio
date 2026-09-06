@@ -724,6 +724,12 @@ export type TableBlock = {
   justification?: "left" | "center" | "right";
   /** Table indent from the leading margin (in pixels, from w:tblInd). */
   indent?: number;
+  /**
+   * Pre-Word-2013 `w:tblInd` semantics: the indent measures to the leading
+   * cell's text edge instead of the table border. Derived from the document's
+   * `compatibilityMode` (see `resolveTableIndentCompatibility`).
+   */
+  indentCompatibility?: { type: "legacy" };
   /** Right-to-left column order (w:bidiVisual): logical column 0 paints on the right. */
   bidi?: boolean;
   /** Floating table properties (pixel values). */

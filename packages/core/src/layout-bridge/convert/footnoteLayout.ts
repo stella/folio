@@ -51,6 +51,7 @@ export type ConvertFootnoteOptions = {
   defaultTabStopTwips?: number;
   lineBreakRules?: ToFlowBlocksOptions["lineBreakRules"];
   justificationCompatibility?: ToFlowBlocksOptions["justificationCompatibility"];
+  tableIndentCompatibility?: ToFlowBlocksOptions["tableIndentCompatibility"];
   automaticHyphenation?: ToFlowBlocksOptions["automaticHyphenation"];
 };
 
@@ -351,6 +352,9 @@ export function convertFootnoteToContent(
   }
   if (options.justificationCompatibility) {
     flowOptions.justificationCompatibility = options.justificationCompatibility;
+  }
+  if (options.tableIndentCompatibility) {
+    flowOptions.tableIndentCompatibility = options.tableIndentCompatibility;
   }
   if (options.automaticHyphenation) {
     flowOptions.automaticHyphenation = options.automaticHyphenation;

@@ -60,3 +60,56 @@ describe("resolveTableInlinePlacement", () => {
     });
   });
 });
+
+describe("resolveTableInlinePlacement with a text-edge indent", () => {
+  const legacyTable = (bidi: boolean, padding: number): TableBlock => {
+    const table = tableWithLeadingPadding(bidi, padding);
+    table.indentCompatibility = { type: "legacy" };
+    return table;
+  };
+
+  test.each([
+    { bidi: false, alignment: "left" as const },
+    { bidi: true, alignment: "right" as const },
+  ])("pulls the $alignment border back by the leading cell margin", ({ bidi, alignment }) => {
+    for (const padding of [0, 7, 12, 96]) {
+      expect(resolveTableInlinePlacement(legacyTable(bidi, padding))).toEqual({
+        alignment,
+        offset: 12 - padding,
+      });
+    }
+  });
+
+  test("moves an unindented table border out by the default leading cell margin", () => {
+    const table = legacyTable(false, 7);
+    delete table.indent;
+
+    expect(resolveTableInlinePlacement(table)).toEqual({ alignment: "left", offset: -7 });
+  });
+
+  test("leaves the trailing edge of a right-justified table alone", () => {
+    const table = legacyTable(false, 7);
+    table.justification = "right";
+
+    expect(resolveTableInlinePlacement(table)).toEqual({ alignment: "right", offset: 0 });
+  });
+
+  test("leaves a centered table alone", () => {
+    const table = legacyTable(false, 7);
+    table.justification = "center";
+
+    expect(resolveTableInlinePlacement(table)).toEqual({ alignment: "center" });
+  });
+
+  test("falls back to the default cell margin when the table has no rows", () => {
+    expect(
+      resolveTableInlinePlacement({
+        kind: "table",
+        id: "empty",
+        rows: [],
+        indent: 12,
+        indentCompatibility: { type: "legacy" },
+      }),
+    ).toEqual({ alignment: "left", offset: 5 });
+  });
+});

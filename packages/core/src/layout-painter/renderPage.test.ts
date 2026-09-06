@@ -452,6 +452,54 @@ describe("header and footer rendering", () => {
     ).toBeUndefined();
   });
 
+  test.each([
+    { policy: undefined, expectedLeft: "24px" },
+    { policy: { type: "legacy" } as const, expectedLeft: "17px" },
+  ])(
+    "places an inline header table by the document's w:tblInd policy",
+    ({ policy, expectedLeft }) => {
+      const block: TableBlock = {
+        kind: "table",
+        id: "hf-table",
+        indent: 24,
+        ...(policy ? { indentCompatibility: policy } : {}),
+        rows: [
+          {
+            id: "hf-row",
+            cells: [
+              {
+                id: "hf-cell",
+                blocks: [],
+                padding: { top: 0, right: 7, bottom: 0, left: 7 },
+              },
+            ],
+          },
+        ],
+        columnWidths: [200],
+      };
+      const measure: TableMeasure = {
+        kind: "table",
+        rows: [{ cells: [{ blocks: [], width: 200, height: 20 }], height: 20 }],
+        columnWidths: [200],
+        totalWidth: 200,
+        totalHeight: 20,
+      };
+      const content: HeaderFooterContent = {
+        blocks: [block],
+        measures: [measure],
+        height: 20,
+      };
+
+      const pageElement = renderPage(
+        { ...page, fragments: [] },
+        { pageNumber: 1, totalPages: 1, section: "body" },
+        { document: fakeDocument, headerContent: content },
+      ) as unknown as FakeElement;
+
+      expect(findByClass(pageElement, "layout-table")?.style.left).toBe(expectedLeft);
+    },
+  );
+
   test("keeps horizontal paragraph rule endpoints visible outside the text band", () => {
     const content: HeaderFooterContent = {
       blocks: [
