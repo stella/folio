@@ -176,14 +176,6 @@ carries the current numbers and the failing cases.
   whole table added or removed at document level is `table-insert` /
   `table-delete`; the same edit inside a cell would need `insertTable` to
   place a table in a cell rather than as a document-level peer.
-- **A row insert or delete marks the row, not its cells** (2026-09-06). A row
-  added or removed carries `w:trPr/w:ins` or `w:trPr/w:del` and nothing else;
-  the runs in its cells stay unmarked. Word marks both, so a consumer that
-  reads only run-level `w:ins`/`w:del` keeps a deleted row's text on accept and
-  an inserted row's text on reject. Marking the content too reaches the
-  accept/reject path as well as the applier, because rejecting a row deletion
-  must then clear both marks. Measured: see "Against an external scoreboard" in
-  `benchmarks/compare/RESULTS.md`.
 - **A numbering definition is reported, not represented** (2026-09-06). A list
   whose format, level template or start changed is a `numbering` change, and
   the redline cannot carry it: OOXML has no tracked-change grammar for
