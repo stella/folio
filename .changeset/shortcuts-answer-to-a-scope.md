@@ -15,3 +15,5 @@ which seed the search box from the current selection exactly as Cmd/Ctrl+F
 does. The scope predicate is `isKeydownInShortcutScope` in
 `@stll/folio-core/managers/editorShortcuts`; `useWheelZoom` takes the same
 scope in place of its `enableKeyboardShortcuts` flag.
+The compat `DocxEditor` forwards its legacy `disableFindReplaceShortcuts` flag
+as `keyboardShortcuts: "none"` instead of dropping it.
