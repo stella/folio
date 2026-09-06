@@ -5,7 +5,13 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { parseStreamingXml } from "./streamingXmlParser";
-import { parseXml } from "./xmlParser";
+import {
+  getAttributeByNamespaceUri,
+  getChildElements,
+  getNamespaceUri,
+  parseXml,
+  WORDPROCESSINGML_NAMESPACE_URIS,
+} from "./xmlParser";
 
 const REPO_ROOT = resolve(import.meta.dir, "../../../..");
 const DOCUMENT_FIXTURE_GLOBS = [
@@ -45,6 +51,43 @@ describe("parseStreamingXml", () => {
     expect(parseStreamingXml("<document>&custom;</document>").status).toBe("unsupported");
     expect(parseStreamingXml('<document __proto__="unsafe"/>').status).toBe("unsupported");
     expect(parseStreamingXml(deeplyNested).status).toBe("unsupported");
+  });
+
+  test("matches inherited and rebound namespace metadata", () => {
+    const xml = `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:body>
+        <w:p w:id="transitional"><w:r/></w:p>
+        <x:p xmlns:x="http://purl.oclc.org/ooxml/wordprocessingml/main" x:id="strict"><x:r/></x:p>
+        <w:p xmlns:w="https://example.com/foreign" w:id="foreign"><w:r/></w:p>
+        <w:p w:id="restored"><w:r/></w:p>
+      </w:body>
+    </w:document>`;
+    const streaming = parseStreamingXml(xml);
+    expect(streaming.status).toBe("parsed");
+    if (streaming.status !== "parsed") {
+      return;
+    }
+    const namespaceEntries = (root: ReturnType<typeof parseXml>) => {
+      const entries: [string, string | undefined, string | null][] = [];
+      const visit = (element: typeof root): void => {
+        if (element.name) {
+          entries.push([
+            element.name,
+            getNamespaceUri(element),
+            getAttributeByNamespaceUri(element, WORDPROCESSINGML_NAMESPACE_URIS, "id"),
+          ]);
+        }
+        for (const child of getChildElements(element)) {
+          visit(child);
+        }
+      };
+      for (const child of getChildElements(root)) {
+        visit(child);
+      }
+      return entries;
+    };
+
+    expect(namespaceEntries(streaming.value)).toEqual(namespaceEntries(parseXml(xml)));
   });
 
   test("matches entity and line-ending behavior for generated values", () => {

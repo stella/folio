@@ -453,10 +453,8 @@ type BuildStepsOptions = {
  * table as a deletion and an insertion.
  *
  * When the two documents hold different numbers of tables the shapes diverge,
- * and the surplus segments are reported one-sided. The operation vocabulary
- * cannot create or destroy a table, so `compareDocx`'s round-trip self-check
- * refuses those comparisons rather than returning a package that silently
- * drops one.
+ * and the surplus segments are reported one-sided. The operation builder turns
+ * those segments into `insertTable` or `deleteTable` operations.
  */
 const segmentText = (segment: DocumentSegment): string =>
   segment.blocks.map(({ text }) => text).join(" ");
