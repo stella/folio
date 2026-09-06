@@ -52,6 +52,10 @@ const LIST_BASE = await buildNumberedListDocx();
 const documentPartOf = async (buffer: ArrayBuffer): Promise<string> =>
   (await (await JSZip.loadAsync(buffer)).file("word/document.xml")?.async("string")) ?? "";
 
+/** Every `w:p` element of a document part, as raw XML. */
+const paragraphsOf = (documentXml: string): string[] =>
+  documentXml.match(/<w:p[ >][\s\S]*?<\/w:p>/gu) ?? [];
+
 const blocksOf = async (buffer: ArrayBuffer): Promise<FolioAIBlock[]> =>
   (await FolioDocxReviewer.fromBuffer(buffer)).getContent();
 
@@ -414,6 +418,100 @@ describe("single-mutation probes", () => {
     expect(reviewer.getContent().map(({ listLevel }) => listLevel ?? null)).toEqual(
       withParagraph.map(({ level }) => level),
     );
+  });
+
+  test("delete_paragraph: the paragraph MARK is deleted with the words", async () => {
+    // Deleting only the runs leaves the mark, so a consumer that accepts the
+    // redline is left with a blank line where the paragraph was. A deleted
+    // paragraph carries `w:pPr/w:rPr/w:del` too, and that mark is what makes
+    // the paragraph itself go away.
+    const clauses = [
+      "The parties agree as set out below.",
+      "This clause is withdrawn by the target.",
+      "This agreement is governed by the stated law.",
+    ] as const;
+    const base = await buildBodySequenceDocx(
+      clauses.map((text) => ({ kind: "paragraph", text }) as const),
+    );
+    const target = await buildBodySequenceDocx(
+      [clauses[0], clauses[2]].map((text) => ({ kind: "paragraph", text }) as const),
+    );
+
+    const result = await compareDocx(base, target, OPTIONS);
+    if (result.isErr()) {
+      throw result.error;
+    }
+    expect(result.value.changes.map(({ kind }) => kind)).toEqual(["delete"]);
+    const deleted = paragraphsOf(await documentPartOf(result.value.buffer)).filter((paragraph) =>
+      paragraph.includes("<w:delText"),
+    );
+    expect(deleted).toHaveLength(1);
+    expect(deleted.at(0)).toMatch(/<w:pPr>[\s\S]*<w:rPr>[\s\S]*<w:del\s/u);
+
+    expect(await projectView(result.value.buffer, "final")).toEqual(
+      await projectView(target, "final"),
+    );
+    expect(await projectView(result.value.buffer, "original")).toEqual(
+      await projectView(base, "final"),
+    );
+  });
+
+  test("insert_paragraph: the paragraph MARK is inserted with the words", async () => {
+    const clauses = [
+      "The parties agree as set out below.",
+      "A clause the target adds between the two.",
+      "This agreement is governed by the stated law.",
+    ] as const;
+    const base = await buildBodySequenceDocx(
+      [clauses[0], clauses[2]].map((text) => ({ kind: "paragraph", text }) as const),
+    );
+    const target = await buildBodySequenceDocx(
+      clauses.map((text) => ({ kind: "paragraph", text }) as const),
+    );
+
+    const result = await compareDocx(base, target, OPTIONS);
+    if (result.isErr()) {
+      throw result.error;
+    }
+    expect(result.value.changes.map(({ kind }) => kind)).toEqual(["insert"]);
+    const inserted = paragraphsOf(await documentPartOf(result.value.buffer)).filter(
+      (paragraph) => paragraph.includes("<w:ins ") && !paragraph.includes("<w:delText"),
+    );
+    expect(inserted).toHaveLength(1);
+    expect(inserted.at(0)).toMatch(/<w:pPr>[\s\S]*<w:rPr>[\s\S]*<w:ins\s/u);
+
+    expect(await projectView(result.value.buffer, "final")).toEqual(
+      await projectView(target, "final"),
+    );
+    expect(await projectView(result.value.buffer, "original")).toEqual(
+      await projectView(base, "final"),
+    );
+  });
+
+  test("delete_last_paragraph_of_a_cell: no mark, because nothing follows it", async () => {
+    // A paragraph-mark revision joins the paragraph with the one after it, so
+    // on the last paragraph of a cell it could not do what it says: resolving
+    // it would merge the cells rather than the paragraphs.
+    const base = await buildBodySequenceDocx([
+      { kind: "paragraph", text: "The schedule below records the agreed fees." },
+      { kind: "table", rows: [["Service", "Fee"]] },
+      { kind: "paragraph", text: "This agreement is governed by the stated law." },
+    ]);
+    const target = await buildBodySequenceDocx([
+      { kind: "paragraph", text: "The schedule below records the agreed fees." },
+      { kind: "table", rows: [["Service", ""]] },
+      { kind: "paragraph", text: "This agreement is governed by the stated law." },
+    ]);
+
+    const result = await compareDocx(base, target, OPTIONS);
+    if (result.isErr()) {
+      throw result.error;
+    }
+    const deleted = paragraphsOf(await documentPartOf(result.value.buffer)).filter((paragraph) =>
+      paragraph.includes("<w:delText"),
+    );
+    expect(deleted).toHaveLength(1);
+    expect(deleted.at(0)).not.toMatch(/<w:pPr>[\s\S]*<w:rPr>[\s\S]*<w:del\s/u);
   });
 
   test("append_paragraph_then_table: additions past the last block keep target order", async () => {

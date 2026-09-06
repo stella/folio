@@ -161,6 +161,8 @@ const SUGGESTED_SUPPORTED_OPERATION_TYPES: ReadonlySet<FolioAIEditOperation["typ
   "deleteTableColumn",
 ]);
 
+const PARAGRAPH_NODE_NAME = "paragraph";
+
 type ResolvedOperation = {
   operation: FolioAIEditOperation;
   from: number;
@@ -224,6 +226,22 @@ const paragraphPropertiesPatch = (
     }
   }
   return Object.keys(patch).length > 0 ? patch : null;
+};
+
+/**
+ * Whether a PARAGRAPH follows the position, so a paragraph mark there has
+ * something to be joined with.
+ *
+ * A paragraph-mark revision says "this break was added" or "this break was
+ * removed", and resolving it joins the paragraph with the one after it. On the
+ * last paragraph of a table cell or of the body there is nothing to join, and
+ * a table is not something a paragraph mark can be joined with at all: the
+ * revision could not do what it says, so it is not written.
+ */
+const paragraphFollows = (doc: PMNode, position: number): boolean => {
+  const resolved = doc.resolve(Math.min(Math.max(position, 0), doc.content.size));
+  const next = resolved.parent.maybeChild(resolved.index());
+  return next?.type.name === PARAGRAPH_NODE_NAME;
 };
 
 /** The in-scope paragraph properties as they stand, for a `w:pPrChange` record. */
@@ -473,15 +491,20 @@ const nextRevisionSeed = (revisionIdCount: number): number => {
  * operation is a safe cushion above that. A multi-paragraph
  * `insertAfterBlock` / `insertBeforeBlock` (`text` split on line breaks,
  * see `splitInsertParagraphTexts`) allocates one id per paragraph in
- * tracked-changes mode, so it needs more than four once split into more
- * than four paragraphs — reserving less than that would let a later
- * `nextRevisionSeed` call reuse an id this operation already stamped on
- * the document.
+ * tracked-changes mode plus one for each paragraph MARK it brings, so it
+ * needs more than four once split into more than two paragraphs — reserving
+ * less than that would let a later `nextRevisionSeed` call reuse an id this
+ * operation already stamped on the document.
  */
 const REVISION_IDS_PER_OPERATION = 4;
+/** Ids one inserted paragraph allocates: its runs, and its paragraph mark. */
+const REVISION_IDS_PER_INSERTED_PARAGRAPH = 2;
 const estimateRevisionIdReservation = (item: ResolvedOperation): number => {
   if (item.operation.type === "insertAfterBlock" || item.operation.type === "insertBeforeBlock") {
-    return Math.max(item.insertTexts?.length ?? 1, REVISION_IDS_PER_OPERATION);
+    return Math.max(
+      (item.insertTexts?.length ?? 1) * REVISION_IDS_PER_INSERTED_PARAGRAPH,
+      REVISION_IDS_PER_OPERATION,
+    );
   }
   return REVISION_IDS_PER_OPERATION;
 };
@@ -1330,6 +1353,25 @@ const applyFolioAIEditOperationsInternal = ({
           }
           nodes.push(item.blockNode.type.create(attrs, content));
         }
+        // A new paragraph brings a new paragraph MARK, and the format records
+        // one: `w:pPr/w:rPr/w:ins`, so rejecting closes the paragraph away
+        // instead of leaving an empty one where its words were. The mark
+        // belongs to the paragraph it ends, so the last inserted paragraph
+        // only carries one when a sibling follows it to be joined with.
+        if (producesTrackedChanges && !isSuggested && !isPairedMove(operation.moveId)) {
+          const followsASibling = paragraphFollows(view.state.doc, item.from);
+          for (const [index, node] of nodes.entries()) {
+            if (index === nodes.length - 1 && !followsASibling) {
+              continue;
+            }
+            const revisionId = revisionSeed++;
+            nodes[index] = node.type.create(
+              { ...node.attrs, pPrMark: { kind: "ins", info: { id: revisionId, author, date, ...trackedRevisionExtras } } },
+              node.content,
+            );
+            insertedBlockRevisionIds.push(revisionId);
+          }
+        }
         if (insertedBlockRevisionIds.length > 0) {
           appliedRevisionIds = insertedBlockRevisionIds;
         }
@@ -1609,6 +1651,25 @@ const applyFolioAIEditOperationsInternal = ({
             }),
           );
           appliedRevisionIds = [revisionId];
+          // Deleting a paragraph's words leaves its paragraph mark behind, and
+          // an accepted redline then holds a blank line where the paragraph
+          // was: a deleted paragraph carries `w:pPr/w:rPr/w:del` as well as
+          // its deleted runs. The mark belongs to the paragraph it ends, so
+          // the last paragraph of a cell or of the body keeps its own: there
+          // is no sibling to join with. A relocation is left alone — a moved
+          // paragraph's mark is `w:moveFrom`, and writing `w:del` there would
+          // report the move as a deletion as well.
+          if (
+            !isPairedMove(item.operation.moveId) &&
+            paragraphFollows(view.state.doc, item.blockTo)
+          ) {
+            const markRevisionId = revisionSeed++;
+            tr = tr.setNodeAttribute(item.blockFrom, "pPrMark", {
+              kind: "del",
+              info: { id: markRevisionId, author, date, ...trackedRevisionExtras },
+            });
+            appliedRevisionIds = [revisionId, markRevisionId];
+          }
         }
         if (commentMark) {
           tr = tr.addMark(item.from, item.to, commentMark);

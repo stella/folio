@@ -1117,8 +1117,12 @@ describe("Folio AI edit operations", () => {
     });
 
     expect(result.skipped).toEqual([]);
-    expect(result.applied[0]?.revisionIds).toHaveLength(2);
-    expect(new Set(result.applied[0]?.revisionIds).size).toBe(2);
+    // Two paragraphs of inserted runs, and one inserted paragraph MARK: two
+    // paragraphs appended after the document's last block introduce one new
+    // break, because the second reuses the mark that already ended the
+    // document. Rejecting has to close that break, so it carries a revision.
+    expect(result.applied[0]?.revisionIds).toHaveLength(3);
+    expect(new Set(result.applied[0]?.revisionIds).size).toBe(3);
   });
 
   test("does not leak a list-item anchor's listMarker onto later paragraphs of a split insert", () => {
