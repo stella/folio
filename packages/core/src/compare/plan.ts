@@ -871,8 +871,11 @@ const changedParagraphProperties = (
   if ((baseBlock.styleId ?? null) !== (targetBlock.styleId ?? null)) {
     properties.styleId = targetBlock.styleId ?? null;
   }
-  if (targetBlock.listLevel !== undefined && baseBlock.listLevel !== targetBlock.listLevel) {
-    properties.listLevel = targetBlock.listLevel;
+  // `null` when the target's paragraph carries no numbering at all: a list
+  // item that stopped being one moves no words, and reading only the target's
+  // level left the difference unreported and the round trip unsatisfiable.
+  if (baseBlock.listLevel !== targetBlock.listLevel) {
+    properties.listLevel = targetBlock.listLevel ?? null;
   }
   return Object.keys(properties).length > 0 ? properties : null;
 };

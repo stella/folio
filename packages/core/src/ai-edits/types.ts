@@ -60,8 +60,11 @@ export type FolioAIBlock = {
 export type FolioAIBlockParagraphProperties = {
   /** `w:pStyle`. `null` clears the style back to the default. */
   styleId?: string | null;
-  /** `w:numPr/w:ilvl`, zero-based. */
-  listLevel?: number;
+  /**
+   * `w:numPr/w:ilvl`, zero-based. `null` removes `w:numPr` altogether: the
+   * paragraph stops being a list item rather than moving to another level.
+   */
+  listLevel?: number | null;
 };
 
 export type FolioAIEditSnapshot = {

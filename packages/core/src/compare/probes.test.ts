@@ -29,6 +29,7 @@ import {
   buildNumberedListDocx,
   NUMBERED_LIST_ITEMS,
   withItemDemoted,
+  withItemUnnumbered,
 } from "./__fixtures__/numbered-list";
 import { compareDocx } from "./compare";
 import { applyEditScript, type EditScript } from "./scenario";
@@ -361,6 +362,29 @@ describe("single-mutation probes", () => {
 
     expect(await projectView(result.value.buffer, "final")).toEqual(
       await projectView(demoted, "final"),
+    );
+    expect(await projectView(result.value.buffer, "original")).toEqual(
+      await projectView(LIST_BASE, "final"),
+    );
+    expect(await documentPartOf(result.value.buffer)).toContain("<w:pPrChange ");
+  });
+
+  test("unnumber_list_item: a paragraph that stopped being a list item is reported", async () => {
+    // The words are identical and only `w:numPr` is gone. Reading the target's
+    // level alone made this invisible — an absent level is not a level that
+    // differs — so the comparison reported nothing and its own self-check
+    // then refused the pair, because the accepted result was still a list.
+    const unnumbered = await buildNumberedListDocx(withItemUnnumbered(NUMBERED_LIST_ITEMS, 2));
+    const result = await compareDocx(LIST_BASE, unnumbered, OPTIONS);
+    if (result.isErr()) {
+      throw result.error;
+    }
+    expect(result.value.changes.map(({ kind }) => kind)).toEqual(["paragraph-format"]);
+    const [change] = result.value.changes;
+    expect(change?.kind === "paragraph-format" && change.properties).toEqual({ listLevel: null });
+
+    expect(await projectView(result.value.buffer, "final")).toEqual(
+      await projectView(unnumbered, "final"),
     );
     expect(await projectView(result.value.buffer, "original")).toEqual(
       await projectView(LIST_BASE, "final"),

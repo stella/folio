@@ -195,7 +195,8 @@ type ResolvedOperation = {
  * The attrs one `setBlockParagraphProperties` writes, or `null` when the
  * block already holds them. `styleId: null` clears the style; `listLevel`
  * moves `w:numPr/w:ilvl` and leaves `w:numId` alone, because a demoted item
- * stays in the same list.
+ * stays in the same list; `listLevel: null` drops `w:numPr` entirely, which
+ * is a paragraph that stopped being a list item.
  */
 const paragraphPropertiesPatch = (
   node: PMNode,
@@ -209,7 +210,11 @@ const paragraphPropertiesPatch = (
     const numPr: unknown = node.attrs["numPr"];
     const current =
       typeof numPr === "object" && numPr !== null && "ilvl" in numPr ? numPr.ilvl : undefined;
-    if (current !== properties.listLevel) {
+    if (properties.listLevel === null) {
+      if (numPr !== null && numPr !== undefined) {
+        patch["numPr"] = null;
+      }
+    } else if (current !== properties.listLevel) {
       const numId =
         typeof numPr === "object" && numPr !== null && "numId" in numPr ? numPr.numId : undefined;
       patch["numPr"] = {

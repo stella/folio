@@ -381,10 +381,13 @@ const readParagraphProperties = (
   const rawStyleId = candidate["styleId"];
   const styleId =
     rawStyleId === null ? null : readOptionalString(candidate, "styleId", propertiesPath);
+  const rawListLevel = candidate["listLevel"];
   const listLevel =
-    candidate["listLevel"] === undefined
+    rawListLevel === undefined
       ? undefined
-      : readNonNegativeInteger(candidate, "listLevel", propertiesPath);
+      : rawListLevel === null
+        ? null
+        : readNonNegativeInteger(candidate, "listLevel", propertiesPath);
   if (styleId === undefined && listLevel === undefined) {
     return invalidBatch(propertiesPath, "expected at least one property to set");
   }
