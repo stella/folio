@@ -79,6 +79,7 @@ export default library({
     // wasm-bindgen output is verified byte-for-byte by wasm:check. Formatting
     // or lint fixes would make the committed artifact differ from its source.
     "packages/docx-core/src/generated/**",
+    "packages/core/src/generated/**",
     // Lint-rule fixtures contain deliberate violations; the repo-wide run must
     // skip them. scripts/no-untranslated-jsx-literal.test.ts lints them
     // explicitly with `--no-ignore` to assert the rule's behaviour.
@@ -201,12 +202,15 @@ export default library({
       },
     },
     {
-      // The browser projection surface is a thin boundary around the canonical
-      // bounded Rust/WASM kernel. Prevent a TypeScript OOXML/archive fallback
-      // or a second generated-kernel entry point from appearing silently.
+      // Each artifact compiled from Rust has one boundary module around it: the
+      // DOCX kernel behind docx-core's projection, the text shaper behind
+      // core's. Prevent a TypeScript reimplementation of what the crate does,
+      // or a second entry point to the artifact, from appearing silently.
       files: [
         "packages/docx-core/src/**/*.{ts,tsx}",
+        "packages/core/src/**/*.{ts,tsx}",
         "test/__fixtures__/packages/docx-core/src/**/*.{ts,tsx}",
+        "test/__fixtures__/packages/core/src/**/*.{ts,tsx}",
       ],
       rules: {
         "folio-layer-boundaries/rust-projection-boundary": "error",

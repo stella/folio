@@ -125,6 +125,50 @@ export function scriptClassOf(cp: number): ScriptClass {
  * True when the text contains at least one complex-script code point. Callers
  * use this to skip segmentation entirely on the common all-Latin path.
  */
+/**
+ * True when a code point belongs to a right-to-left script.
+ *
+ * A subset of the complex-script ranges: Thai, Lao, Khmer, Myanmar, Tibetan and
+ * the Indic scripts shape but read left to right. Shaping needs the answer
+ * because the direction decides the order glyphs come back in, and a run shaped
+ * the wrong way round reads backwards.
+ */
+export function isRightToLeftCodePoint(cp: number): boolean {
+  return (
+    (cp >= 0x05_90 && cp <= 0x05_ff) || // Hebrew
+    (cp >= 0x06_00 && cp <= 0x06_ff) || // Arabic
+    (cp >= 0x07_00 && cp <= 0x07_4f) || // Syriac
+    (cp >= 0x07_50 && cp <= 0x07_7f) || // Arabic Supplement
+    (cp >= 0x07_80 && cp <= 0x07_bf) || // Thaana
+    (cp >= 0x07_c0 && cp <= 0x07_ff) || // NKo
+    (cp >= 0x08_00 && cp <= 0x08_3f) || // Samaritan
+    (cp >= 0x08_40 && cp <= 0x08_5f) || // Mandaic
+    (cp >= 0x08_60 && cp <= 0x08_6f) || // Syriac Supplement
+    (cp >= 0x08_70 && cp <= 0x08_9f) || // Arabic Extended-B
+    (cp >= 0x08_a0 && cp <= 0x08_ff) || // Arabic Extended-A
+    (cp >= 0xfb_1d && cp <= 0xfb_4f) || // Hebrew presentation forms
+    (cp >= 0xfb_50 && cp <= 0xfd_ff) || // Arabic presentation forms-A
+    (cp >= 0xfe_70 && cp <= 0xfe_ff) || // Arabic presentation forms-B
+    (cp >= 0x10_d0_0 && cp <= 0x10_d3_f) || // Hanifi Rohingya
+    (cp >= 0x10_ec_0 && cp <= 0x10_ef_f) || // Arabic Extended-C
+    (cp >= 0x10_f3_0 && cp <= 0x10_f6_f) || // Sogdian
+    (cp >= 0x10_f7_0 && cp <= 0x10_fa_f) || // Old Uyghur
+    (cp >= 0x1e_90_0 && cp <= 0x1e_95_f) || // Adlam
+    (cp >= 0x1e_e0_0 && cp <= 0x1e_ef_f) // Arabic Mathematical Alphabetic Symbols
+  );
+}
+
+/** True when the text contains at least one right-to-left code point. */
+export function hasRightToLeft(text: string): boolean {
+  for (const ch of text) {
+    // SAFETY: for...of over a string yields whole code points.
+    if (isRightToLeftCodePoint(ch.codePointAt(0)!)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function hasComplexScript(text: string): boolean {
   for (const ch of text) {
     // SAFETY: for...of over a string yields whole code points.

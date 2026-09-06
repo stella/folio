@@ -7,6 +7,16 @@ The crate supports native Rust consumers directly. Browser consumers can enable 
 `wasm` feature; `@stll/docx-core/projection` provides the corresponding TypeScript
 binding.
 
+## The artifact
+
+The WebAssembly artifact is committed under `packages/docx-core/src/generated`
+with its own size budget. Regenerate it with
+`bun --filter @stll/docx-core wasm:generate`. The committed bytes are compared
+against a fresh build, and CI builds on linux/amd64, so on any other platform
+regenerate through `scripts/regenerate-wasm-canonically.sh @stll/docx-core`,
+which runs the same step in that image. CI is still the arbiter of the bytes:
+when its drift check fails it uploads what it built, and that is what to commit.
+
 The parser treats package identifiers as document facts, not durable application
 identities. ZIP and XML resource limits are enforced at the input boundary;
 semantic scans also bound XML events and inline-context copies and report both as

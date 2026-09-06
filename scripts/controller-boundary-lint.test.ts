@@ -173,4 +173,32 @@ describe("Rust projection boundary lint", () => {
   test("accepts a projection test that loads the generated fixture", () => {
     expect(lintPath("packages/docx-core/src/projection.test.ts", PROJECTION_RULE_MARKER)).toBe(0);
   });
+
+  test("rejects a second generated-shaper entry point", () => {
+    expect(
+      lintPath(
+        "test/__fixtures__/packages/core/src/alternate-shaper.invalid.ts",
+        PROJECTION_RULE_MARKER,
+      ),
+    ).toBe(1);
+  });
+
+  test("rejects a direct generated-shaper WASM asset entry point", () => {
+    expect(
+      lintPath(
+        "test/__fixtures__/packages/core/src/alternate-shaper-wasm.invalid.ts",
+        PROJECTION_RULE_MARKER,
+      ),
+    ).toBe(1);
+  });
+
+  test("rejects a TypeScript shaping implementation at the shaper boundary", () => {
+    expect(
+      lintPath("test/__fixtures__/packages/core/src/shaping/shaper.ts", PROJECTION_RULE_MARKER),
+    ).toBe(1);
+  });
+
+  test("accepts the canonical shaper boundary", () => {
+    expect(lintPath("packages/core/src/shaping/shaper.ts", PROJECTION_RULE_MARKER)).toBe(0);
+  });
 });

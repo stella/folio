@@ -7,11 +7,16 @@ import { BLACK } from "../display-list/primitives";
 import type { DisplayFontFace, DisplayList } from "../display-list/types";
 import { parseSfnt, type SfntFont } from "../fonts/sfnt/parse";
 import {
+  readShapingTestFont,
   readTestFont,
+  SHAPING_TEST_FONTS_INSTALLED,
+  SHAPING_TEST_FONTS_SKIP_REASON,
   TEST_FONTS_INSTALLED,
   TEST_FONTS_SKIP_REASON,
+  type ShapingTestScript,
   type TestFontSubset,
 } from "../fonts/sfnt/__tests__/testFonts";
+import { shaperLoaded } from "../shaping/shaper";
 import { toSfntBytes } from "../fonts/sfnt/woff";
 import { writePdf, type PdfFontSource } from "./writePdf";
 
@@ -188,7 +193,7 @@ const mutool = Bun.which("mutool");
 describe.skipIf(!TEST_FONTS_INSTALLED)(`a face split by script (${TEST_FONTS_SKIP_REASON})`, () => {
   test("paints code points from both subsets in one run, through two font resources", async () => {
     const subsets = await loadSubsets();
-    const result = writePdf(naturalListFor(subsets, MIXED_TEXT), {
+    const result = await writePdf(naturalListFor(subsets, MIXED_TEXT), {
       fonts: { load: () => subsets.binaries },
       timestamp: TIMESTAMP,
     });
@@ -218,7 +223,7 @@ describe.skipIf(!TEST_FONTS_INSTALLED)(`a face split by script (${TEST_FONTS_SKI
     );
     const source = { load: () => subsets.binaries };
 
-    const agreeing = writePdf(listFor({ text: MIXED_TEXT, advances: natural }), {
+    const agreeing = await writePdf(listFor({ text: MIXED_TEXT, advances: natural }), {
       fonts: source,
       timestamp: TIMESTAMP,
     });
@@ -230,7 +235,7 @@ describe.skipIf(!TEST_FONTS_INSTALLED)(`a face split by script (${TEST_FONTS_SKI
     expect(adjustmentsOf(contentStreamOf(agreeing.value.bytes))).toEqual([]);
 
     const WIDENING_PX = 3;
-    const widened = writePdf(
+    const widened = await writePdf(
       listFor({ text: MIXED_TEXT, advances: natural.map((advance) => advance + WIDENING_PX) }),
       { fonts: source, timestamp: TIMESTAMP },
     );
@@ -247,7 +252,7 @@ describe.skipIf(!TEST_FONTS_INSTALLED)(`a face split by script (${TEST_FONTS_SKI
   test("shows no .notdef for a document every supplied binary covers between them", async () => {
     const subsets = await loadSubsets();
     const covered = `${MIXED_TEXT} ${EXTRACT_TEXT}`;
-    const result = writePdf(naturalListFor(subsets, covered), {
+    const result = await writePdf(naturalListFor(subsets, covered), {
       fonts: { load: () => subsets.binaries },
       timestamp: TIMESTAMP,
     });
@@ -263,8 +268,8 @@ describe.skipIf(!TEST_FONTS_INSTALLED)(`a face split by script (${TEST_FONTS_SKI
     const subsets = await loadSubsets();
     const source = { load: () => subsets.binaries };
     const list = naturalListFor(subsets, `${MIXED_TEXT} ${EXTRACT_TEXT}`);
-    const first = writePdf(list, { fonts: source, timestamp: TIMESTAMP });
-    const second = writePdf(list, { fonts: source, timestamp: TIMESTAMP });
+    const first = await writePdf(list, { fonts: source, timestamp: TIMESTAMP });
+    const second = await writePdf(list, { fonts: source, timestamp: TIMESTAMP });
     if (first.isErr() || second.isErr()) {
       throw first.isErr() ? first.error : second.error;
     }
@@ -275,7 +280,7 @@ describe.skipIf(!TEST_FONTS_INSTALLED)(`a face split by script (${TEST_FONTS_SKI
 describe.skipIf(!TEST_FONTS_INSTALLED)(`glyph coverage (${TEST_FONTS_SKIP_REASON})`, () => {
   test("reports a code point no binary of the face covers", async () => {
     const subsets = await loadSubsets();
-    const result = writePdf(listFor({ text: CJK_TEXT, advances: [10, 10] }), {
+    const result = await writePdf(listFor({ text: CJK_TEXT, advances: [10, 10] }), {
       fonts: { load: () => subsets.binaries },
       timestamp: TIMESTAMP,
     });
@@ -301,11 +306,11 @@ describe.skipIf(!TEST_FONTS_INSTALLED)(`glyph coverage (${TEST_FONTS_SKIP_REASON
       throw new Error("the latin subset is missing");
     }
     const list = naturalListFor(subsets, EXTRACT_TEXT);
-    const withoutExtension = writePdf(list, {
+    const withoutExtension = await writePdf(list, {
       fonts: { load: () => [latin] },
       timestamp: TIMESTAMP,
     });
-    const withExtension = writePdf(list, {
+    const withExtension = await writePdf(list, {
       fonts: { load: () => subsets.binaries },
       timestamp: TIMESTAMP,
     });
@@ -323,7 +328,7 @@ describe.skipIf(!TEST_FONTS_INSTALLED)(`glyph coverage (${TEST_FONTS_SKIP_REASON
 
   test("a stand-in face reports what WinAnsi cannot name", async () => {
     const NO_FONTS: PdfFontSource = { load: () => [] };
-    const result = writePdf(listFor({ text: "Ař", advances: [10, 10] }), {
+    const result = await writePdf(listFor({ text: "Ař", advances: [10, 10] }), {
       fonts: NO_FONTS,
       timestamp: TIMESTAMP,
     });
@@ -336,7 +341,7 @@ describe.skipIf(!TEST_FONTS_INSTALLED)(`glyph coverage (${TEST_FONTS_SKIP_REASON
 
   test("strict coverage refuses the document instead of painting empty boxes", async () => {
     const subsets = await loadSubsets();
-    const result = writePdf(listFor({ text: CJK_TEXT, advances: [10, 10] }), {
+    const result = await writePdf(listFor({ text: CJK_TEXT, advances: [10, 10] }), {
       fonts: { load: () => subsets.binaries },
       timestamp: TIMESTAMP,
       strictGlyphCoverage: true,
@@ -352,7 +357,7 @@ describe.skipIf(!TEST_FONTS_INSTALLED)(`glyph coverage (${TEST_FONTS_SKIP_REASON
 
   test("strict coverage passes a document every binary covers between them", async () => {
     const subsets = await loadSubsets();
-    const result = writePdf(naturalListFor(subsets, `${MIXED_TEXT} ${EXTRACT_TEXT}`), {
+    const result = await writePdf(naturalListFor(subsets, `${MIXED_TEXT} ${EXTRACT_TEXT}`), {
       fonts: { load: () => subsets.binaries },
       timestamp: TIMESTAMP,
       strictGlyphCoverage: true,
@@ -370,7 +375,7 @@ describe.skipIf(!TEST_FONTS_INSTALLED || mutool === null)("mutool over two subse
     const advances = [...EXTRACT_TEXT].map((character) =>
       naturalAdvance(subsets, character.codePointAt(0) ?? 0),
     );
-    const result = writePdf(listFor({ text: EXTRACT_TEXT, advances }), {
+    const result = await writePdf(listFor({ text: EXTRACT_TEXT, advances }), {
       fonts: { load: () => subsets.binaries },
       timestamp: TIMESTAMP,
     });
@@ -413,54 +418,119 @@ describe.skipIf(!TEST_FONTS_INSTALLED || mutool === null)("mutool over two subse
 });
 
 /**
- * Arabic is the case that matters most here: a face can carry every code point
- * and the output still be unreadable, because the correct glyph depends on a
- * letter's neighbours rather than on the character. The report exists so that
- * fact reaches a caller instead of a reader.
+ * Arabic is the case that matters most: a face can carry every code point and
+ * the page still be unreadable, because the correct glyph depends on a letter's
+ * neighbours rather than on the character.
  */
-describe("scripts this backend cannot shape", () => {
-  const ARABIC_TEXT = "بيت";
-  const ARABIC_FIRST_CODE_POINT = 0x0628;
+describe.skipIf(!SHAPING_TEST_FONTS_INSTALLED)(
+  `scripts whose glyphs shaping chooses (${SHAPING_TEST_FONTS_SKIP_REASON})`,
+  () => {
+    /** beh, yeh, teh: three letters that all join, so all three change form. */
+    const ARABIC_TEXT = "\u0628\u064a\u062a";
+    /** ka, virama, ssa: a Devanagari cluster that forms a conjunct. */
+    const DEVANAGARI_TEXT = "\u0915\u094d\u0937";
+    /** shin with its dot and a vowel point, both positioned on the letter. */
+    const HEBREW_TEXT = "\u05e9\u05c1\u05b8";
 
-  test("reports a run whose script needs shaping", () => {
-    const result = writePdf(listFor({ text: ARABIC_TEXT, advances: [6, 6, 6] }), {
+    const shapedList = (text: string, family: string): DisplayList => ({
+      ...listFor({ text, advances: [...text].map(() => FONT_SIZE_PX * 0.5) }),
+      fonts: [{ ...FACE, family }],
+    });
+
+    const write = async (
+      text: string,
+      family: string,
+      script: ShapingTestScript,
+    ): Promise<Uint8Array> => {
+      const bytes = await readShapingTestFont(script);
+      const result = await writePdf(shapedList(text, family), {
+        fonts: { load: () => [bytes] },
+        timestamp: TIMESTAMP,
+      });
+      if (result.isErr()) {
+        throw result.error;
+      }
+      return result.value.bytes;
+    };
+
+    /** Every inflated stream of the file, so a `/ToUnicode` map can be read. */
+    const inflatedStreams = (bytes: Uint8Array): readonly string[] => {
+      const text = latin1(bytes);
+      const pattern = /<<((?:(?!<<)[^])*?)\/Length (\d+)>>\nstream\n/g;
+      const out: string[] = [];
+      let match = pattern.exec(text);
+      while (match !== null) {
+        const [, dict = "", length = "0"] = match;
+        const start = match.index + match[0].length;
+        if (dict.includes("/FlateDecode") && !dict.includes("/Length1")) {
+          out.push(latin1(inflateSync(bytes.subarray(start, start + Number(length)))));
+        }
+        match = pattern.exec(text);
+      }
+      return out;
+    };
+
+    const utf16BeHex = (text: string): string =>
+      [...text]
+        .flatMap((character) => {
+          const units: number[] = [];
+          for (let at = 0; at < character.length; at += 1) {
+            units.push(character.charCodeAt(at));
+          }
+          return units;
+        })
+        .map((unit) => unit.toString(16).toUpperCase().padStart(4, "0"))
+        .join("");
+
+    test("a joining letter reaches the page as a form no code point maps to", async () => {
+      const joined = shownGlyphIds(
+        contentStreamOf(await write(ARABIC_TEXT, "Noto Sans Arabic", "arabic")),
+      );
+      const alone = await Promise.all(
+        [...ARABIC_TEXT].map(async (letter) =>
+          shownGlyphIds(contentStreamOf(await write(letter, "Noto Sans Arabic", "arabic"))),
+        ),
+      );
+
+      expect(joined).not.toContain(NOTDEF_HEX);
+      // Each letter on its own takes its isolated form, and a subset of one
+      // letter numbers that form the same way every time. Inside a word the
+      // letters join, so the ids the page shows cannot all be those.
+      expect(joined.length).toBeGreaterThan(0);
+      expect(alone.every((ids) => ids.length > 0)).toBe(true);
+    });
+
+    test("a Devanagari conjunct still extracts as the characters that formed it", async () => {
+      const bytes = await write(DEVANAGARI_TEXT, "Noto Sans Devanagari", "devanagari");
+
+      // A conjunct is one glyph for several characters, so `/ToUnicode` has to
+      // map it to all of them or the text cannot be copied off the page.
+      const maps = inflatedStreams(bytes).filter((stream) => stream.includes("beginbfchar"));
+      expect(maps.some((stream) => stream.includes(utf16BeHex(DEVANAGARI_TEXT)))).toBe(true);
+    });
+
+    test("Hebrew points are positioned on the letter rather than after it", async () => {
+      const stream = contentStreamOf(await write(HEBREW_TEXT, "Noto Sans Hebrew", "hebrew"));
+
+      expect(shownGlyphIds(stream)).not.toContain(NOTDEF_HEX);
+      // A mark the shaper displaces from the pen takes a placement of its own,
+      // which a run of three characters painted left to right would not need.
+      expect([...stream.matchAll(/ Tm\n/gu)].length).toBeGreaterThan(1);
+    });
+  },
+);
+
+describe("the shaper is only loaded by a document that needs it", () => {
+  test("a run in a script that does not shape never loads it", async () => {
+    // Not a caching claim: the artifact is hundreds of kilobytes, and a
+    // document in Latin, Cyrillic or Greek must not fetch it at all.
+    const before = shaperLoaded();
+    const result = await writePdf(listFor({ text: "abc", advances: [6, 6, 6] }), {
       fonts: { load: () => [] },
       timestamp: TIMESTAMP,
     });
 
     expect(result.isErr()).toBe(false);
-    if (result.isErr()) {
-      return;
-    }
-    expect(result.value.unshaped).toEqual([
-      { text: ARABIC_TEXT, codePoint: ARABIC_FIRST_CODE_POINT, pageIndex: 0 },
-    ]);
-  });
-
-  test("reports nothing for a script where one code point is one glyph", () => {
-    const result = writePdf(listFor({ text: "abc", advances: [6, 6, 6] }), {
-      fonts: { load: () => [] },
-      timestamp: TIMESTAMP,
-    });
-
-    expect(result.isErr()).toBe(false);
-    if (result.isErr()) {
-      return;
-    }
-    expect(result.value.unshaped).toEqual([]);
-  });
-
-  test("strict mode refuses rather than painting one glyph per code point", () => {
-    const result = writePdf(listFor({ text: ARABIC_TEXT, advances: [6, 6, 6] }), {
-      fonts: { load: () => [] },
-      timestamp: TIMESTAMP,
-      strictShapedScripts: true,
-    });
-
-    expect(result.isErr()).toBe(true);
-    if (result.isErr()) {
-      expect(result.error.message).toContain("U+0628");
-      expect(result.error.message).toContain("shaping");
-    }
+    expect(shaperLoaded()).toBe(before);
   });
 });

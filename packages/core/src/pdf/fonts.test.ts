@@ -94,7 +94,7 @@ describe.skipIf(!TEST_FONTS_INSTALLED)(`embedded faces (${TEST_FONTS_SKIP_REASON
     const advances = [...TEXT].map((character) =>
       naturalAdvance(font, character.codePointAt(0) ?? 0),
     );
-    const result = writePdf(listFor(advances), {
+    const result = await writePdf(listFor(advances), {
       fonts: { load: () => [woff] },
       timestamp: TIMESTAMP,
     });
@@ -121,8 +121,8 @@ describe.skipIf(!TEST_FONTS_INSTALLED)(`embedded faces (${TEST_FONTS_SKIP_REASON
       naturalAdvance(font, character.codePointAt(0) ?? 0),
     );
     const source = { load: () => [woff] };
-    const first = writePdf(listFor(advances), { fonts: source, timestamp: TIMESTAMP });
-    const second = writePdf(listFor(advances), { fonts: source, timestamp: TIMESTAMP });
+    const first = await writePdf(listFor(advances), { fonts: source, timestamp: TIMESTAMP });
+    const second = await writePdf(listFor(advances), { fonts: source, timestamp: TIMESTAMP });
     if (first.isErr() || second.isErr()) {
       throw first.isErr() ? first.error : new Error("unreachable");
     }
@@ -135,7 +135,7 @@ describe.skipIf(!TEST_FONTS_INSTALLED)(`embedded faces (${TEST_FONTS_SKIP_REASON
       naturalAdvance(font, character.codePointAt(0) ?? 0),
     );
     const widened = natural.map((advance) => advance + 3);
-    const result = writePdf(listFor(widened), {
+    const result = await writePdf(listFor(widened), {
       fonts: { load: () => [woff] },
       timestamp: TIMESTAMP,
     });
@@ -158,7 +158,7 @@ describe.skipIf(!TEST_FONTS_INSTALLED)(`embedded faces (${TEST_FONTS_SKIP_REASON
     const advances = [...TEXT].map((character) =>
       naturalAdvance(font, character.codePointAt(0) ?? 0),
     );
-    const result = writePdf(listFor(advances), {
+    const result = await writePdf(listFor(advances), {
       fonts: { load: () => [woff] },
       timestamp: TIMESTAMP,
     });
@@ -198,7 +198,7 @@ describe.skipIf(!TEST_FONTS_INSTALLED || mutool === null)("mutool with an embedd
     const advances = [...TEXT].map(
       (character) => naturalAdvance(font, character.codePointAt(0) ?? 0) + 3,
     );
-    const result = writePdf(listFor(advances), {
+    const result = await writePdf(listFor(advances), {
       fonts: { load: () => [woff] },
       timestamp: TIMESTAMP,
     });

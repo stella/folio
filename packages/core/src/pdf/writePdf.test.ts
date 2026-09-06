@@ -83,8 +83,8 @@ const FIXTURE = listWith([
   textRun("Hello PDF"),
 ]);
 
-const write = (list: DisplayList, timestamp = TIMESTAMP) => {
-  const result = writePdf(list, { fonts: NO_FONTS, timestamp });
+const write = async (list: DisplayList, timestamp = TIMESTAMP) => {
+  const result = await writePdf(list, { fonts: NO_FONTS, timestamp });
   if (result.isErr()) {
     throw result.error;
   }
@@ -118,37 +118,39 @@ const contentStreamOf = (bytes: Uint8Array): string =>
   textStreams(bytes).find((stream) => stream.includes(" cm\n")) ?? "";
 
 describe("determinism", () => {
-  test("two runs with the same timestamp produce identical bytes", () => {
-    const first = write(FIXTURE);
-    const second = write(FIXTURE);
+  test("two runs with the same timestamp produce identical bytes", async () => {
+    const first = await write(FIXTURE);
+    const second = await write(FIXTURE);
     expect(first.bytes.length).toBe(second.bytes.length);
     expect(Buffer.from(first.bytes).equals(Buffer.from(second.bytes))).toBe(true);
   });
 
-  test("a different timestamp changes the bytes", () => {
-    const first = write(FIXTURE);
-    const second = write(FIXTURE, "2026-01-02T03:04:06Z");
+  test("a different timestamp changes the bytes", async () => {
+    const first = await write(FIXTURE);
+    const second = await write(FIXTURE, "2026-01-02T03:04:06Z");
     expect(Buffer.from(first.bytes).equals(Buffer.from(second.bytes))).toBe(false);
   });
 
-  test("stamps the timestamp as a PDF date in UTC", () => {
-    expect(latin1(write(FIXTURE).bytes)).toContain("/CreationDate (D:20260102030405+00'00')");
+  test("stamps the timestamp as a PDF date in UTC", async () => {
+    expect(latin1((await write(FIXTURE)).bytes)).toContain(
+      "/CreationDate (D:20260102030405+00'00')",
+    );
   });
 
-  test("an offset timestamp and the same instant in Z agree byte for byte", () => {
-    const zulu = write(FIXTURE, "2026-01-02T03:04:05Z");
-    const offset = write(FIXTURE, "2026-01-02T05:04:05+02:00");
+  test("an offset timestamp and the same instant in Z agree byte for byte", async () => {
+    const zulu = await write(FIXTURE, "2026-01-02T03:04:05Z");
+    const offset = await write(FIXTURE, "2026-01-02T05:04:05+02:00");
     expect(Buffer.from(zulu.bytes).equals(Buffer.from(offset.bytes))).toBe(true);
   });
 
-  test("refuses a timestamp that is not an instant", () => {
-    const result = writePdf(FIXTURE, { fonts: NO_FONTS, timestamp: "not a date" });
+  test("refuses a timestamp that is not an instant", async () => {
+    const result = await writePdf(FIXTURE, { fonts: NO_FONTS, timestamp: "not a date" });
     expect(result.isErr()).toBe(true);
   });
 });
 
-describe("file structure", () => {
-  const bytes = write(FIXTURE).bytes;
+describe("file structure", async () => {
+  const bytes = (await write(FIXTURE)).bytes;
   const text = latin1(bytes);
 
   test("starts with a 1.7 header and a binary marker", () => {
@@ -206,24 +208,24 @@ describe("the y flip", () => {
     expect(displayPointToPdf(pageHeightPx, 40, 80)).toEqual({ x: 30, y: 90 });
   });
 
-  test("opens the content stream with the one base matrix and paints in px", () => {
-    const content = contentStreamOf(write(FIXTURE).bytes);
+  test("opens the content stream with the one base matrix and paints in px", async () => {
+    const content = contentStreamOf((await write(FIXTURE)).bytes);
     expect(content.startsWith(`0.75 0 0 -0.75 0 ${PAGE_HEIGHT_PX * 0.75} cm\n`)).toBe(true);
     // The rect keeps its display-list coordinates: nothing below the base
     // matrix does arithmetic on the page height.
     expect(content).toContain("10 20 100 30 re");
   });
 
-  test("places a link annotation in default user space, not content space", () => {
-    const text = latin1(write(FIXTURE).bytes);
+  test("places a link annotation in default user space, not content space", async () => {
+    const text = latin1((await write(FIXTURE)).bytes);
     const top = displayPointToPdf(PAGE_HEIGHT_PX, 72, 90);
     const bottom = displayPointToPdf(PAGE_HEIGHT_PX, 172, 110);
     expect(text).toContain(`/Rect [${top.x} ${bottom.y} ${bottom.x} ${top.y}]`);
   });
 });
 
-describe("annotations and outline", () => {
-  const text = latin1(write(FIXTURE).bytes);
+describe("annotations and outline", async () => {
+  const text = latin1((await write(FIXTURE)).bytes);
 
   test("writes an external link as a URI action with no border", () => {
     expect(text).toContain("/Subtype /Link");
@@ -244,8 +246,8 @@ describe("annotations and outline", () => {
 });
 
 describe("substitution", () => {
-  test("reports a face the source cannot supply instead of throwing", () => {
-    const result = write(FIXTURE);
+  test("reports a face the source cannot supply instead of throwing", async () => {
+    const result = await write(FIXTURE);
     expect(result.substitutions).toEqual([
       {
         family: "Helvetica",
@@ -257,8 +259,8 @@ describe("substitution", () => {
     expect(latin1(result.bytes)).toContain("/BaseFont /Helvetica");
   });
 
-  test("reports a face whose bytes will not parse", () => {
-    const result = writePdf(FIXTURE, {
+  test("reports a face whose bytes will not parse", async () => {
+    const result = await writePdf(FIXTURE, {
       fonts: { load: () => [new Uint8Array([1, 2, 3, 4])] },
       timestamp: TIMESTAMP,
     });
@@ -269,25 +271,25 @@ describe("substitution", () => {
     expect(result.value.substitutions[0]?.reason).toContain("font parsing failed");
   });
 
-  test("does not report a face nothing paints", () => {
+  test("does not report a face nothing paints", async () => {
     const unused: DisplayList = {
       ...FIXTURE,
       pages: [{ ...FIXTURE.pages[0]!, primitives: [], links: [] }],
     };
-    expect(write(unused).substitutions).toEqual([]);
+    expect((await write(unused)).substitutions).toEqual([]);
   });
 
-  test("chooses the base-14 face from the generic category", () => {
+  test("chooses the base-14 face from the generic category", async () => {
     const serif: DisplayList = {
       ...FIXTURE,
       fonts: [{ ...FACE, generic: "serif", weight: 700, italic: true }],
     };
-    expect(latin1(write(serif).bytes)).toContain("/BaseFont /Times-BoldItalic");
+    expect(latin1((await write(serif)).bytes)).toContain("/BaseFont /Times-BoldItalic");
   });
 });
 
 describe("malformed display lists", () => {
-  test("refuses a run whose advances do not match its code points", () => {
+  test("refuses a run whose advances do not match its code points", async () => {
     const broken = listWith([
       {
         kind: "glyphRun",
@@ -301,23 +303,25 @@ describe("malformed display lists", () => {
         direction: "ltr",
       },
     ]);
-    expect(writePdf(broken, { fonts: NO_FONTS, timestamp: TIMESTAMP }).isErr()).toBe(true);
+    expect((await writePdf(broken, { fonts: NO_FONTS, timestamp: TIMESTAMP })).isErr()).toBe(true);
   });
 
-  test("refuses a run that names a font outside the table", () => {
+  test("refuses a run that names a font outside the table", async () => {
     const broken = listWith([{ ...textRun("x"), font: 7 }]);
-    expect(writePdf(broken, { fonts: NO_FONTS, timestamp: TIMESTAMP }).isErr()).toBe(true);
+    expect((await writePdf(broken, { fonts: NO_FONTS, timestamp: TIMESTAMP })).isErr()).toBe(true);
   });
 
-  test("refuses a document with no pages", () => {
+  test("refuses a document with no pages", async () => {
     expect(
-      writePdf({ ...FIXTURE, pages: [] }, { fonts: NO_FONTS, timestamp: TIMESTAMP }).isErr(),
+      (
+        await writePdf({ ...FIXTURE, pages: [] }, { fonts: NO_FONTS, timestamp: TIMESTAMP })
+      ).isErr(),
     ).toBe(true);
   });
 });
 
 describe("graphics state", () => {
-  test("names one ExtGState per distinct alpha, sorted", () => {
+  test("names one ExtGState per distinct alpha, sorted", async () => {
     const translucent = listWith([
       {
         kind: "rect",
@@ -336,7 +340,7 @@ describe("graphics state", () => {
         ],
       },
     ]);
-    const bytes = write(translucent).bytes;
+    const bytes = (await write(translucent)).bytes;
     const text = latin1(bytes);
     // 0.25 from the nested pair and 0.5 from both the group and the plain
     // fill: the group's alpha multiplies down rather than replacing.
@@ -347,7 +351,7 @@ describe("graphics state", () => {
 });
 
 describe("right-to-left runs", () => {
-  test("places the first logical code point at the run's right end", () => {
+  test("places the first logical code point at the run's right end", async () => {
     const rtl = listWith([
       {
         kind: "glyphRun",
@@ -361,7 +365,7 @@ describe("right-to-left runs", () => {
         direction: "rtl",
       },
     ]);
-    const content = contentStreamOf(write(rtl).bytes);
+    const content = contentStreamOf((await write(rtl)).bytes);
     // The run occupies [100, 160]; logical "a" ends at 160, "b" at 150 and
     // "c" at 130, so their left edges are 150, 130 and 100.
     expect(content).toContain("1 0 0 -1 150 50 Tm");
@@ -416,28 +420,28 @@ const SAMPLE_BY_KIND = {
 describe("primitive coverage", () => {
   // Total over the display list's own list of kinds: a kind added there and
   // not painted here fails to compile rather than silently painting nothing.
-  test.each(DISPLAY_PRIMITIVE_KINDS)("paints a %s", (kind) => {
+  test.each(DISPLAY_PRIMITIVE_KINDS)("paints a %s", async (kind) => {
     const list: DisplayList = {
       ...listWith([SAMPLE_BY_KIND[kind]]),
       images: [{ format: "jpeg", bytes: TINY_JPEG, pixelWidth: 96, pixelHeight: 64 }],
     };
-    const content = contentStreamOf(write(list).bytes);
+    const content = contentStreamOf((await write(list)).bytes);
     const operators = content.trimEnd().split("\n");
     // More than the base matrix: the primitive reached the page.
     expect(operators.length).toBeGreaterThan(1);
   });
 
-  test("rotates about the given origin", () => {
-    const content = contentStreamOf(write(listWith([SAMPLE_BY_KIND.rotateGroup])).bytes);
+  test("rotates about the given origin", async () => {
+    const content = contentStreamOf((await write(listWith([SAMPLE_BY_KIND.rotateGroup]))).bytes);
     expect(content).toContain("0 1 -1 0 30 10 cm");
   });
 
-  test("clips a cropped image and scales it past the destination box", () => {
+  test("clips a cropped image and scales it past the destination box", async () => {
     const list: DisplayList = {
       ...listWith([SAMPLE_BY_KIND.image]),
       images: [{ format: "jpeg", bytes: TINY_JPEG, pixelWidth: 96, pixelHeight: 64 }],
     };
-    const content = contentStreamOf(write(list).bytes);
+    const content = contentStreamOf((await write(list)).bytes);
     expect(content).toContain("5 6 20 10 re\nW n");
     // A 10% crop on each side scales the full image to 25x12.5 px and puts
     // its top-left at (2.5, 4.75), so the kept region fills the 20x10 box.
@@ -452,7 +456,7 @@ describe.skipIf(mutool === null)("mutool", () => {
   test("extracts the text of a glyph run painted with a base-14 stand-in", async () => {
     const directory = mkdtempSync(join(tmpdir(), "folio-pdf-"));
     const file = join(directory, "out.pdf");
-    await Bun.write(file, write(FIXTURE).bytes);
+    await Bun.write(file, (await write(FIXTURE)).bytes);
     const process = Bun.spawn({
       cmd: [mutool ?? "mutool", "draw", "-F", "stext", "-o", join(directory, "out.xml"), file],
       stdout: "pipe",

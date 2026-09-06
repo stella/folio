@@ -114,3 +114,11 @@ Die Parteien vereinbaren Änderungen der Größe, die Übergabe der Schlüssel u
 
 cs/sk: Ř ř Ů ů Ě ě Č č Š š Ž ž Ď ď Ť ť Ň ň — **pl: Ł ł Ż ż Ź ź Ć ć Ę ę Ą ą Ń ń Ś ś —** *de: Ä ä Ö ö Ü ü ß (ASCII 0123 xyz).*"
 `;
+
+exports[`docxToMarkdown corpus snapshots extracts rtl-arabic-shaping.docx 1`] = `
+"اتفاقية بيع وشراء بين الطرفين بتاريخ 6 سبتمبر 2026 بشأن نقل ملكية الحصة البالغة 40 بالمئة.
+
+الطرف الأول: شركة Folio s.r.o. ومقرها في براغ، الجمهورية التشيكية.
+
+لا لا لا — بب تت ثث — كتب يكتب مكتوب"
+`;

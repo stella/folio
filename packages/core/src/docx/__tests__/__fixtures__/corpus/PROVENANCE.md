@@ -62,6 +62,7 @@ its Apache-2.0 license.
 | `upstream-with-tables.docx`           | Body text and a three-by-three table                                                                     |
 | `upstream-complex-styles.docx`        | Paragraph styles, font families, colors, and highlighting                                                |
 | `diacritics-latin-ext.docx`           | Czech, Slovak, Polish and German diacritics beside ASCII in one run; two font subsets per face           |
+| `rtl-arabic-shaping.docx`             | Arabic with `w:bidi`, `w:rtl` and a `w:cs` face; joining forms, a required ligature, and a Latin run     |
 
 All fixtures are under 30 KB.
 

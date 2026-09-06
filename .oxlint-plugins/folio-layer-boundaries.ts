@@ -456,9 +456,31 @@ const checkControllerAndEngineSeams = (context: RuleContext, importNode: AstNode
 // Portable Rust/WASM projection boundary.
 // ---------------------------------------------------------------------------
 
-const DOCX_CORE_SOURCE_SEGMENT = "/packages/docx-core/src/";
-const DOCX_PROJECTION_SUFFIX = "/packages/docx-core/src/projection.ts";
-const ALLOWED_PROJECTION_IMPORTS = new Set(["better-result", "./generated/docx_kernel.js"]);
+/**
+ * Every artifact compiled from Rust, and the one module allowed to reach it.
+ *
+ * A generated artifact has exactly one importer, so what crosses the boundary
+ * is a contract rather than a habit: initialization and error translation live
+ * in that module, and no second implementation of what the crate does can grow
+ * beside it. A new artifact is listed here, or it has no boundary at all.
+ */
+const RUST_BOUNDARIES = [
+  {
+    /** Source tree the boundary rule applies to. */
+    sourceSegment: "/packages/docx-core/src/",
+    /** The only module that may import the generated artifact. */
+    boundarySuffix: "/packages/docx-core/src/projection.ts",
+    /** Path fragment identifying the artifact's own files. */
+    generated: "generated/docx_kernel",
+    allowedImports: new Set(["better-result", "./generated/docx_kernel.js"]),
+  },
+  {
+    sourceSegment: "/packages/core/src/",
+    boundarySuffix: "/packages/core/src/shaping/shaper.ts",
+    generated: "generated/text_shaper",
+    allowedImports: new Set(["better-result", "../generated/text_shaper.js"]),
+  },
+] as const;
 
 const isUrlConstruction = (node: AstNode): boolean => {
   if (node.type !== "NewExpression") {
@@ -504,21 +526,26 @@ const checkProjectionBoundary = (context: RuleContext, node: AstNode): void => {
     return;
   }
   const normalizedImporter = normalizedWithLeadingSlash(importerPath);
-  if (!normalizedImporter.includes(DOCX_CORE_SOURCE_SEGMENT)) {
-    return;
-  }
   if (/\.(?:spec|test)\.[cm]?[jt]sx?$/.test(normalizedImporter)) {
     return;
   }
-  if (normalizedImporter.endsWith(DOCX_PROJECTION_SUFFIX)) {
-    if (specifier !== null && !ALLOWED_PROJECTION_IMPORTS.has(specifier)) {
+  const boundary = RUST_BOUNDARIES.find(({ sourceSegment }) =>
+    normalizedImporter.includes(sourceSegment),
+  );
+  if (boundary === undefined) {
+    return;
+  }
+  if (normalizedImporter.endsWith(boundary.boundarySuffix)) {
+    if (specifier !== null && !boundary.allowedImports.has(specifier)) {
       context.report({ node, messageId: "projectionBoundaryImport" });
     }
     return;
   }
   if (
-    specifier?.includes("generated/docx_kernel") === true ||
-    generatedAsset?.includes("generated/docx_kernel") === true ||
+    specifier?.includes(boundary.generated) === true ||
+    generatedAsset?.includes(boundary.generated) === true ||
+    // A reference the rule cannot read is a reference it cannot clear: a
+    // computed specifier is exactly how a second importer would hide.
     opaqueBoundaryReference
   ) {
     context.report({ node, messageId: "generatedKernelImport" });
@@ -746,9 +773,9 @@ export default {
         type: "problem",
         messages: {
           projectionBoundaryImport:
-            "The TypeScript projection boundary may only initialize the generated Rust/WASM kernel and translate boundary errors; do not add an OOXML/archive fallback here.",
+            "A Rust boundary module may only initialize its generated artifact and translate boundary errors; do not add a TypeScript implementation of what the crate does here.",
           generatedKernelImport:
-            "Import the generated DOCX kernel only through packages/docx-core/src/projection.ts.",
+            "Import a generated Rust artifact only through its own boundary module: the DOCX kernel through packages/docx-core/src/projection.ts, the text shaper through packages/core/src/shaping/shaper.ts.",
         },
       },
       create(context: RuleContext) {
