@@ -44,6 +44,7 @@ export const COMPARE_VERIFICATION_CAUSES = Object.freeze([
   "container",
   "style",
   "list-level",
+  "inline-formatting",
   "whitespace",
   "text",
 ] as const);

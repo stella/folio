@@ -19,6 +19,7 @@ import type {
   FolioAIEditSeverity,
   FolioAIEditSkippedOperation,
   FolioAIEditSnapshot,
+  FolioAIInlineFormatting,
   FolioAITextRangeHandle,
 } from "./ai-edits/types";
 
@@ -454,23 +455,30 @@ const readTextRange = (value: Record<string, unknown>, path: string): FolioAITex
 const readInlineFormatting = (
   value: Record<string, unknown>,
   path: string,
-): { bold?: boolean; italic?: boolean; underline?: boolean } => {
+): FolioAIInlineFormatting => {
   const candidate = value["formatting"];
   const formattingPath = `${path}.formatting`;
   if (!isPlainObject(candidate)) {
     return invalidBatch(formattingPath, "expected an object");
   }
-  assertAllowedKeys(candidate, formattingPath, ["bold", "italic", "underline"]);
+  assertAllowedKeys(candidate, formattingPath, ["bold", "italic", "underline", "strike"]);
   const bold = readOptionalBoolean(candidate, "bold", formattingPath);
   const italic = readOptionalBoolean(candidate, "italic", formattingPath);
   const underline = readOptionalBoolean(candidate, "underline", formattingPath);
-  if (bold === undefined && italic === undefined && underline === undefined) {
+  const strike = readOptionalBoolean(candidate, "strike", formattingPath);
+  if (
+    bold === undefined &&
+    italic === undefined &&
+    underline === undefined &&
+    strike === undefined
+  ) {
     return invalidBatch(formattingPath, "expected at least one formatting property");
   }
   return {
     ...(bold !== undefined && { bold }),
     ...(italic !== undefined && { italic }),
     ...(underline !== undefined && { underline }),
+    ...(strike !== undefined && { strike }),
   };
 };
 

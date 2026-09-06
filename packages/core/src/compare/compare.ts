@@ -42,7 +42,7 @@ import {
   type FolioNumberingLevel,
   type FolioRevisionStamp,
 } from "../ai-edits/headless";
-import type { FolioAIEditSnapshot } from "../ai-edits/types";
+import type { FolioAIBlock, FolioAIEditSnapshot } from "../ai-edits/types";
 import type { WordDiffGranularity } from "../ai-edits/word-diff";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { pairFolioDocumentStories } from "../document-stories";
@@ -138,6 +138,59 @@ const projectStory = (
     // and leaves a list item at the wrong level.
     return `${container}|${styleId ?? ""}|${listLevel ?? ""}|${text}`;
   });
+};
+
+/** Effective supported formatting, normalized into character-length runs. */
+const projectSupportedInlineFormatting = ({ text, previewRuns }: FolioAIBlock): string =>
+  (previewRuns ?? [{ text }])
+    .map(
+      ({ text: runText, bold, italic, underline, strike }) =>
+        `${runText.length}:${bold === true ? "b" : ""}${italic === true ? "i" : ""}${
+          underline === true ? "u" : ""
+        }${strike === true ? "s" : ""}`,
+    )
+    .join(",");
+
+type FormattingRoundTripFailureOptions = {
+  invariant: CompareVerificationFailure["invariant"];
+  story: FolioDocumentStoryHandle;
+  changes: readonly CompareChange[];
+  actualBlocks: readonly FolioAIBlock[];
+  expectedBlocks: readonly FolioAIBlock[];
+  expectedBlockId: (change: Extract<CompareChange, { kind: "format" }>) => string;
+};
+
+/** Verify formatting only where the plan claims a text-equal formatting change. */
+const formattingRoundTripFailure = ({
+  invariant,
+  story,
+  changes,
+  actualBlocks,
+  expectedBlocks,
+  expectedBlockId,
+}: FormattingRoundTripFailureOptions): CompareVerificationFailure | null => {
+  const actualById = new Map(actualBlocks.map((block) => [block.id, block]));
+  const expectedById = new Map(expectedBlocks.map((block) => [block.id, block]));
+  for (const change of changes) {
+    if (change.kind !== "format") {
+      continue;
+    }
+    const actual = actualById.get(change.baseBlockId);
+    const expected = expectedById.get(expectedBlockId(change));
+    // Text/structure verification owns missing or displaced blocks.
+    if (!actual || !expected) {
+      continue;
+    }
+    if (projectSupportedInlineFormatting(actual) !== projectSupportedInlineFormatting(expected)) {
+      return {
+        invariant,
+        cause: "inline-formatting",
+        story,
+        detail: "supported inline formatting differs in a text-equal aligned block",
+      };
+    }
+  }
+  return null;
 };
 
 const numberingKey = ({ numId, level }: FolioNumberingLevel): string =>
@@ -395,6 +448,7 @@ export const applyComparison = (
       );
     }
 
+    const acceptedStory = reviewer.readReviewedStory({ story: pair.baseStory, view: "final" });
     const acceptFailure = classifyProjectionMismatch({
       invariant: "accept-reproduces-target",
       story: pair.baseStory,
@@ -403,7 +457,20 @@ export const applyComparison = (
     });
     if (acceptFailure) {
       failures.push(acceptFailure);
+    } else {
+      const formattingFailure = formattingRoundTripFailure({
+        invariant: "accept-reproduces-target",
+        story: pair.baseStory,
+        changes: plan.changes,
+        actualBlocks: acceptedStory?.snapshot.blocks ?? [],
+        expectedBlocks: pair.targetSnapshot.blocks,
+        expectedBlockId: ({ targetBlockId }) => targetBlockId,
+      });
+      if (formattingFailure) {
+        failures.push(formattingFailure);
+      }
     }
+    const rejectedStory = reviewer.readReviewedStory({ story: pair.baseStory, view: "original" });
     const rejectFailure = classifyProjectionMismatch({
       invariant: "reject-reproduces-base",
       story: pair.baseStory,
@@ -412,6 +479,18 @@ export const applyComparison = (
     });
     if (rejectFailure) {
       failures.push(rejectFailure);
+    } else {
+      const formattingFailure = formattingRoundTripFailure({
+        invariant: "reject-reproduces-base",
+        story: pair.baseStory,
+        changes: plan.changes,
+        actualBlocks: rejectedStory?.snapshot.blocks ?? [],
+        expectedBlocks: pair.baseSnapshot.blocks,
+        expectedBlockId: ({ baseBlockId }) => baseBlockId,
+      });
+      if (formattingFailure) {
+        failures.push(formattingFailure);
+      }
     }
   }
   return Result.ok({
