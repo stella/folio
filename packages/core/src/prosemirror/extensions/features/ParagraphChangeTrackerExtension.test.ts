@@ -26,6 +26,7 @@ const schema = new Schema({
       attrs: {
         paraId: { default: null },
         textId: { default: null },
+        pPrMark: { default: null },
       },
       toDOM: () => ["p", 0],
     },
@@ -325,6 +326,45 @@ describe("ParagraphChangeTrackerExtension", () => {
       expect(changed.has("P1")).toBe(true);
       expect(changed.has("P2")).toBe(false);
       expect(changed.has("P3")).toBe(false);
+    });
+  });
+
+  describe("attribute-only edits", () => {
+    // A blank paragraph has no text to mark, so its paragraph mark, its list
+    // level and its style are the only things about it that CAN change. Those
+    // arrive as `AttrStep`s, whose step map is empty: read the position off
+    // the step, or the save writes the paragraph's original XML and the edit
+    // is gone from the file while the editor still shows it.
+    test("tracks the paragraph an attribute step changed", () => {
+      const state = createState([
+        { text: "kept", paraId: "P1" },
+        { text: "", paraId: "P2" },
+      ]);
+      let position = 0;
+      state.doc.descendants((node, pos) => {
+        if (node.type.name === "paragraph" && node.attrs["paraId"] === "P2") {
+          position = pos;
+        }
+      });
+
+      const next = state.apply(
+        state.tr.setNodeAttribute(position, "pPrMark", {
+          kind: "del",
+          info: { id: 1, author: "a", date: "2000-01-01T00:00:00.000Z" },
+        }),
+      );
+
+      expect(getChangedParagraphIds(next).has("P2")).toBe(true);
+      expect(getChangedParagraphIds(next).has("P1")).toBe(false);
+      expect(hasStructuralChanges(next)).toBe(false);
+    });
+
+    test("reports an attribute step on a paragraph with no paraId as untracked", () => {
+      const state = createState([{ text: "" }]);
+
+      const next = state.apply(state.tr.setNodeAttribute(0, "pPrMark", null));
+
+      expect(hasUntrackedChanges(next)).toBe(true);
     });
   });
 

@@ -23,35 +23,75 @@ const FIXED_ZIP_DATE = new Date(Date.UTC(2000, 0, 1));
  */
 const ZIP_ENTRY_OPTIONS = { date: FIXED_ZIP_DATE, createFolders: false } as const;
 
+/**
+ * One cell's content: a line of text, or a sequence of its own — which is how
+ * a nested table, a blank line inside a cell, or a cell that ends with a table
+ * gets written.
+ */
+export type CellContent = string | readonly BodyItem[];
+
 /** One body-level item: a paragraph, or a table given row by row. */
 export type BodyItem =
   | { kind: "paragraph"; text: string }
-  | { kind: "table"; rows: readonly (readonly string[])[] };
+  | {
+      kind: "table";
+      rows: readonly (readonly CellContent[])[];
+      /**
+       * Rows a package hides with `w:hidden`. The snapshot skips their whole
+       * subtree, so a document that has one is the case where the snapshot
+       * walk and the live walk could disagree.
+       */
+      hiddenRows?: readonly number[];
+    };
 
+/**
+ * An empty paragraph is a `w:p` with no run at all, which is what a package
+ * holds for a blank line or an empty cell. It is not the same thing as a
+ * paragraph whose run carries an empty string, and both shapes occur.
+ */
 const paragraph = (text: string): string =>
-  `<w:p><w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:p>`;
+  text.length === 0 ? `<w:p/>` : `<w:p><w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:p>`;
 
-const table = (rows: readonly (readonly string[])[]): string =>
-  `<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/></w:tblPr>` +
-  rows
-    .map(
-      (cells) =>
-        `<w:tr>${cells
-          .map(
-            (text) =>
-              `<w:tc><w:tcPr><w:tcW w:w="2000" w:type="dxa"/></w:tcPr>${paragraph(text)}</w:tc>`,
-          )
-          .join("")}</w:tr>`,
-    )
-    .join("") +
-  `</w:tbl>`;
+const EMPTY_PARAGRAPH = { kind: "paragraph", text: "" } as const satisfies BodyItem;
 
-const bodyXml = (items: readonly BodyItem[]): string =>
-  items
-    .map((item) => (item.kind === "paragraph" ? paragraph(item.text) : table(item.rows)))
-    // A table may not be the body's last element: it needs a paragraph after
-    // it, which the section properties do not supply.
-    .join("");
+/**
+ * A container may not end with a table: the format requires a paragraph after
+ * one, and a body's section properties do not supply it. One rule for both
+ * containers, because a fixture that is well formed in a cell and malformed in
+ * the body would be measuring two different things.
+ */
+const closedSequence = (items: readonly BodyItem[]): readonly BodyItem[] => {
+  const last = items.at(-1);
+  return last === undefined || last.kind === "table" ? [...items, EMPTY_PARAGRAPH] : items;
+};
+
+/** A cell must also contain a paragraph, which the empty sequence supplies. */
+const cellXml = (content: CellContent): string =>
+  typeof content === "string" ? paragraph(content) : itemsXml(closedSequence(content));
+
+const table = (item: Extract<BodyItem, { kind: "table" }>): string => {
+  const hidden = new Set(item.hiddenRows ?? []);
+  return (
+    `<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/></w:tblPr>` +
+    item.rows
+      .map(
+        (cells, rowIndex) =>
+          `<w:tr>${hidden.has(rowIndex) ? `<w:trPr><w:hidden/></w:trPr>` : ""}${cells
+            .map(
+              (content) =>
+                `<w:tc><w:tcPr><w:tcW w:w="2000" w:type="dxa"/></w:tcPr>${cellXml(content)}</w:tc>`,
+            )
+            .join("")}</w:tr>`,
+      )
+      .join("") +
+    `</w:tbl>`
+  );
+};
+
+const itemsXml = (items: readonly BodyItem[]): string =>
+  items.map((item) => (item.kind === "paragraph" ? paragraph(item.text) : table(item))).join("");
+
+const bodyXml = (items: readonly BodyItem[]): string => itemsXml(closedSequence(items));
 
 export const buildBodySequenceDocx = async (items: readonly BodyItem[]): Promise<ArrayBuffer> => {
   const parts: Record<string, string> = {

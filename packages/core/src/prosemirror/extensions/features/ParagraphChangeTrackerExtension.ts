@@ -11,6 +11,7 @@ import type { EditorState, Transaction } from "prosemirror-state";
 import {
   AddMarkStep,
   AddNodeMarkStep,
+  AttrStep,
   RemoveMarkStep,
   RemoveNodeMarkStep,
 } from "prosemirror-transform";
@@ -195,7 +196,16 @@ function createParagraphChangeTrackerPlugin(): Plugin<ParagraphChangeTrackerStat
             continue;
           }
 
-          if (step instanceof AddNodeMarkStep || step instanceof RemoveNodeMarkStep) {
+          // `AttrStep` and the node-mark steps carry a position and an EMPTY
+          // step map, so the generic `stepMap.forEach` below never visits
+          // them. Reading their position directly is what keeps an
+          // attribute-only edit — a paragraph mark on a blank paragraph, a
+          // list level, a style id — from saving as the original XML.
+          if (
+            step instanceof AddNodeMarkStep ||
+            step instanceof RemoveNodeMarkStep ||
+            step instanceof AttrStep
+          ) {
             const pos = mapStepPosition(remap, step.pos, 1);
             const node = tr.doc.nodeAt(pos);
             if (!node) {

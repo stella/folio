@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  deriveBlankBlockId,
   deriveBlockId,
   getFolioParaIdFromBlockId,
   getSequentialFolioBlockIdIndex,
@@ -150,5 +151,29 @@ describe("getSequentialFolioBlockIdIndex", () => {
     expect(getSequentialFolioBlockIdIndex("seq-")).toBeNull();
     expect(getSequentialFolioBlockIdIndex("seq-abc")).toBeNull();
     expect(getSequentialFolioBlockIdIndex("seq-001")).toBeNull();
+  });
+});
+
+// `seq-` and `blank-` name ids this module generated, so a source paraId in
+// either shape would be read back as one and told apart from itself. Every
+// mint routes through these two functions, which is where the reservation
+// belongs.
+describe("the reserved id prefixes", () => {
+  test("a source paraId shaped like a generated id is not used verbatim", () => {
+    for (const paraId of ["seq-0001", "blank-0001", "seq-anything", "blank-x"]) {
+      expect(deriveBlockId({ paraId, index: 3, taken: new Set() })).toBe("seq-0003");
+      expect(deriveBlankBlockId({ paraId, index: 3, taken: new Set() })).toBe("blank-0003");
+    }
+  });
+
+  test("every id either resolves to its source paragraph or reports none", () => {
+    for (const paraId of ["AAAA0001", "seq-0001", "blank-0001", null]) {
+      for (const derive of [deriveBlockId, deriveBlankBlockId]) {
+        const id = derive({ paraId, index: 4, taken: new Set() });
+        expect(isFolioBlockId(id)).toBe(true);
+        const source = getFolioParaIdFromBlockId(id);
+        expect(source === null || source === paraId).toBe(true);
+      }
+    }
   });
 });

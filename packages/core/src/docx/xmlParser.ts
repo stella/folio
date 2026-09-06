@@ -128,6 +128,49 @@ const resolveNamespaceUri = (
   return undefined;
 };
 
+/** Attach the element's resolved namespace metadata from its in-scope declarations. */
+export const attachXmlNamespaceContext = (
+  element: XmlElement,
+  inheritedNamespaceScope: XmlNamespaceScope = EMPTY_NAMESPACE_SCOPE,
+): XmlNamespaceScope => {
+  let localBindings: Map<string, string> | null = null;
+  if (element.attributes) {
+    for (const [attribute, value] of Object.entries(element.attributes)) {
+      if (typeof value !== "string" || (attribute !== "xmlns" && !attribute.startsWith("xmlns:"))) {
+        continue;
+      }
+      localBindings ??= new Map();
+      const prefix = attribute === "xmlns" ? "" : attribute.slice("xmlns:".length);
+      localBindings.set(prefix, value);
+    }
+  }
+  const namespaceScope =
+    localBindings === null
+      ? inheritedNamespaceScope
+      : { bindings: localBindings, parent: inheritedNamespaceScope };
+
+  Object.defineProperty(element, "namespaceScope", {
+    configurable: false,
+    enumerable: false,
+    value: namespaceScope,
+    writable: false,
+  });
+
+  const name = element.name ?? "";
+  const colonIndex = name.indexOf(":");
+  const prefix = colonIndex === -1 ? "" : name.slice(0, colonIndex);
+  const namespaceUri = resolveNamespaceUri(namespaceScope, prefix);
+  if (namespaceUri !== undefined) {
+    Object.defineProperty(element, "namespaceUri", {
+      configurable: false,
+      enumerable: false,
+      value: namespaceUri,
+      writable: false,
+    });
+  }
+  return namespaceScope;
+};
+
 /**
  * Convert a fast-xml-parser preserveOrder node into an XmlElement.
  *
@@ -163,40 +206,7 @@ function fxpNodeToElement(
       element.attributes = attrs;
     }
 
-    let localBindings: Map<string, string> | null = null;
-    if (attrs) {
-      for (const [attribute, value] of Object.entries(attrs)) {
-        if (attribute !== "xmlns" && !attribute.startsWith("xmlns:")) {
-          continue;
-        }
-        localBindings ??= new Map();
-        const prefix = attribute === "xmlns" ? "" : attribute.slice("xmlns:".length);
-        localBindings.set(prefix, value);
-      }
-    }
-    const namespaceScope =
-      localBindings === null
-        ? inheritedNamespaceScope
-        : { bindings: localBindings, parent: inheritedNamespaceScope };
-
-    Object.defineProperty(element, "namespaceScope", {
-      configurable: false,
-      enumerable: false,
-      value: namespaceScope,
-      writable: false,
-    });
-
-    const colonIndex = key.indexOf(":");
-    const prefix = colonIndex === -1 ? "" : key.slice(0, colonIndex);
-    const namespaceUri = resolveNamespaceUri(namespaceScope, prefix);
-    if (namespaceUri !== undefined) {
-      Object.defineProperty(element, "namespaceUri", {
-        configurable: false,
-        enumerable: false,
-        value: namespaceUri,
-        writable: false,
-      });
-    }
+    const namespaceScope = attachXmlNamespaceContext(element, inheritedNamespaceScope);
 
     if (children.length > 0) {
       for (let index = 0; index < children.length; index += 1) {

@@ -39,7 +39,7 @@
 import { panic } from "better-result";
 
 import type { FolioDocumentStoryHandle } from "../ai-edits/headless";
-import { createFolioAITextRangeHandle } from "../ai-edits/snapshot";
+import { createFolioAITextRangeHandle, trailingBodyBlockId } from "../ai-edits/snapshot";
 import type {
   FolioAIBlock,
   FolioAIBlockParagraphProperties,
@@ -453,10 +453,8 @@ type BuildStepsOptions = {
  * table as a deletion and an insertion.
  *
  * When the two documents hold different numbers of tables the shapes diverge,
- * and the surplus segments are reported one-sided. The operation vocabulary
- * cannot create or destroy a table, so `compareDocx`'s round-trip self-check
- * refuses those comparisons rather than returning a package that silently
- * drops one.
+ * and the surplus segments are reported one-sided. The operation builder turns
+ * those segments into `insertTable` or `deleteTable` operations.
  */
 const segmentText = (segment: DocumentSegment): string =>
   segment.blocks.map(({ text }) => text).join(" ");
@@ -920,19 +918,22 @@ export const planStoryCompare = ({
   const anchorIds = nextBaseBlockIdByStep(steps);
   const changes: CompareChange[] = [];
   const operations: FolioAIEditOperation[] = [];
-  const lastBaseBlockId = baseSnapshot.blocks.at(-1)?.id ?? null;
   /**
-   * The anchor everything past the base document's last block hangs from, and
-   * the hidden paragraph an empty base offers instead. The applier orders
-   * insertions that resolve to one position by their order in this array, so
-   * the tail is emitted where its step sits rather than collected and appended
-   * — a table and a paragraph both added after the last base block otherwise
-   * come out in operation order, which is not target order.
+   * The anchor everything past the base document's content hangs from: its
+   * last BODY-LEVEL paragraph, which the format guarantees exists because a
+   * table may not be the last child of a body. Anchoring to the last block
+   * instead put the anchor inside a table whenever the story ended with one,
+   * and an insertion anchored there escapes to the table's boundary, where no
+   * paragraph mark can express the break it added.
+   *
+   * The applier orders insertions that resolve to one position by their order
+   * in this array, so the tail is emitted where its step sits rather than
+   * collected and appended — a table and a paragraph both added after the last
+   * base block otherwise come out in operation order, which is not target
+   * order.
    */
-  const tailAnchorId = lastBaseBlockId ?? baseSnapshot.emptyDocumentAnchorId ?? null;
-  const emptyBaseAnchorId =
-    lastBaseBlockId === null ? (baseSnapshot.emptyDocumentAnchorId ?? null) : null;
-  let tailInsertCount = 0;
+  const tailAnchorId = trailingBodyBlockId(baseSnapshot);
+
   let operationSequence = 0;
 
   const nextOperationId = (): string => `compare-${++operationSequence}`;
@@ -968,19 +969,6 @@ export const planStoryCompare = ({
     if (tailAnchorId === null) {
       // An empty base with no anchor paragraph cannot receive tracked
       // insertions at all.
-      return;
-    }
-    // An empty base document has no block to insert after, only the hidden
-    // anchor paragraph. Its first addition therefore replaces that paragraph
-    // instead of following it, so the result does not open with a stray blank.
-    if (tailInsertCount++ === 0 && emptyBaseAnchorId !== null) {
-      operations.push({
-        id: nextOperationId(),
-        type: "replaceBlock",
-        blockId: emptyBaseAnchorId,
-        text: block.text,
-        ...(block.styleId !== undefined && { styleId: block.styleId }),
-      });
       return;
     }
     operations.push({

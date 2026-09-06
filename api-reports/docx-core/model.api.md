@@ -660,7 +660,7 @@ export type NumberingInstance = {
 // @public
 export type PageOrientation = "portrait" | "landscape";
 
-// @public (undocumented)
+// @public
 export type Paragraph = {
     type: "paragraph";
     paraId?: string;
@@ -673,6 +673,9 @@ export type Paragraph = {
     renderedPageBreakBefore?: boolean;
     sectionProperties?: SectionProperties;
 };
+
+// @public
+export const PARAGRAPH_MARK_CHANGE_KINDS: readonly ["moveFrom", "moveTo", "ins", "del"];
 
 // @public
 export type ParagraphAlignment = "left" | "center" | "right" | "both" | "distribute" | "mediumKashida" | "highKashida" | "lowKashida" | "thaiDistribute";
@@ -746,9 +749,12 @@ export type ParagraphFormatting = {
 
 // @public
 export type ParagraphMarkChange = {
-    kind: "ins" | "del";
+    kind: ParagraphMarkChangeKind;
     info: TrackedChangeInfo;
 };
+
+// @public
+export type ParagraphMarkChangeKind = (typeof PARAGRAPH_MARK_CHANGE_KINDS)[number];
 
 // @public
 export type ParagraphPropertyChange = {

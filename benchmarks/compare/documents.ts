@@ -543,6 +543,20 @@ const seedFor = (documentClass: DocumentClass, size: DocumentSize): number => {
   return seed;
 };
 
+/**
+ * A body may not end with a table: the format requires a paragraph after one,
+ * and the section properties do not supply it. A class that ends on a table
+ * gets that paragraph here, once, rather than every builder remembering.
+ *
+ * A document that breaks the rule is malformed INPUT, which the engine has to
+ * survive but which does not belong in a corpus measuring what the engine does
+ * with well-formed documents: with no paragraph at the end there is no anchor
+ * to append after, so a comparison that has to add a table there can only
+ * report the difference it cannot place.
+ */
+const wellFormedBody = (body: string): string =>
+  body.endsWith("</w:tbl>") ? `${body}<w:p/>` : body;
+
 export type BuildDocumentOptions = {
   documentClass: DocumentClass;
   size: DocumentSize;
@@ -600,7 +614,7 @@ export const buildDocumentPackage = ({
     ["word/styles.xml", STYLES_XML],
     [
       "word/document.xml",
-      `${DOCUMENT_OPEN}${build.body}${SECTION_PROPERTIES}</w:body></w:document>`,
+      `${DOCUMENT_OPEN}${wellFormedBody(build.body)}${SECTION_PROPERTIES}</w:body></w:document>`,
     ],
     ...(build.parts ?? []),
   ]);

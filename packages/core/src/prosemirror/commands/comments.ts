@@ -15,9 +15,12 @@ import type {
   TableFormatting,
   TableRowFormatting,
 } from "../../types/document";
+import { PARAGRAPH_MARK_CHANGE_KINDS, type ParagraphMarkChangeKind } from "@stll/docx-core/model";
+
 import { expectParagraphAttrs, expectRunPropertyChangeMarkAttrs } from "../attrs";
 import { textFormattingToMarks } from "../conversion/toProseDoc";
 import { markStructuralChange } from "../extensions/features/ParagraphChangeTrackerExtension";
+import { holdsNoContent } from "../zeroWidthAnchors";
 import { getFolioNodeRevisionCarriers } from "../revisionCarriers";
 import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
 import type { ParagraphPropertyChangeAttrs } from "../schema/nodes";
@@ -301,18 +304,48 @@ function resolveChange(
           continue;
         }
         const joinPos = mappedPos + paragraph.nodeSize;
-        if (joinPos >= tr.doc.content.size) {
-          // No next sibling to join with (paragraph terminates the doc).
-          // Leave the marker in place — Word treats this the same way.
-          continue;
-        }
-        const nextNode = tr.doc.nodeAt(joinPos);
-        if (nextNode?.type.name !== paragraph.type.name) {
-          // The next sibling is a table, or the paragraph ends its cell and
-          // the position lands on the cell boundary. `join` there merges the
-          // containers rather than the paragraphs, which silently loses rows;
-          // an input document may carry such a mark, so this is checked here
-          // and not only where the marks are written.
+        const nextNode = joinPos < tr.doc.content.size ? tr.doc.nodeAt(joinPos) : null;
+        const joinable =
+          nextNode?.type.name === paragraph.type.name &&
+          !(carriesSection(paragraph) && carriesSection(nextNode));
+        if (!joinable) {
+          // Nothing to join with: the paragraph ends the document, or the next
+          // sibling is a table, or the position lands on a cell boundary where
+          // `join` would merge the containers and silently lose rows.
+          //
+          // Resolving the mark still has a meaning. The paragraph whose break
+          // and content were both resolved away is simply not there any more,
+          // so it is removed rather than left blank — which is what a document
+          // holds after a paragraph before a table is deleted and the deletion
+          // is accepted.
+          //
+          // A cell must contain a paragraph, so its parent's only child stays
+          // blank whatever its mark says.
+          //
+          // A section's properties live on a paragraph mark, so the paragraph
+          // is where its section ENDS. It can still go, but the section cannot
+          // go with it: the content before it is still in that section, which
+          // now ends one paragraph earlier. There is no next paragraph here to
+          // hand the properties to, so they move back to the previous one —
+          // unless that paragraph ends a section of its own, in which case
+          // there is nowhere to put them and the paragraph stays.
+          const resolved = tr.doc.resolve(mappedPos);
+          const previous = resolved.nodeBefore;
+          const sectionCanMoveBack =
+            !carriesSection(paragraph) ||
+            (previous?.type.name === paragraph.type.name && !carriesSection(previous));
+          if (sectionCanMoveBack && holdsNoContent(paragraph) && resolved.parent.childCount > 1) {
+            if (carriesSection(paragraph) && previous) {
+              tr.setNodeMarkup(mappedPos - previous.nodeSize, undefined, {
+                ...previous.attrs,
+                sectionBreakType: paragraph.attrs["sectionBreakType"],
+                _sectionProperties: paragraph.attrs["_sectionProperties"],
+              });
+            }
+            tr.delete(mappedPos, mappedPos + paragraph.nodeSize);
+            continue;
+          }
+          tr.setNodeAttribute(mappedPos, "pPrMark", null);
           continue;
         }
         // The inline sweep above has already run, so a paragraph that is empty
@@ -323,19 +356,27 @@ function resolveChange(
         // paragraph's properties live on its mark. PM's `join` keeps the
         // first node's attrs, so they are restored explicitly; otherwise a
         // deleted heading would hand its style to the paragraph below it.
-        const emptyFirstParagraph = paragraph.content.size === 0;
+        const emptyFirstParagraph = holdsNoContent(paragraph);
         // The next paragraph's own `pPrMark` travels with its attrs: it is a
         // different revision, and resolving this one must not resolve it.
-        const nextAttrs = nextNode.attrs;
+        //
+        // A section's properties are the exception to "the next paragraph's
+        // properties win". They are not formatting the resolved paragraph
+        // owned; they are where a section ENDS, and the paragraph the join
+        // leaves behind is now that end. Dropping them merges two sections
+        // into one and takes the dropped one's page size, margins and
+        // header and footer references with it.
+        const formattingOwner = emptyFirstParagraph ? nextNode : paragraph;
+        const sectionOwner = carriesSection(paragraph) ? paragraph : nextNode;
+        const joinedAttrs = {
+          ...formattingOwner.attrs,
+          pPrMark: nextNode.attrs["pPrMark"],
+          sectionBreakType: sectionOwner.attrs["sectionBreakType"],
+          _sectionProperties: sectionOwner.attrs["_sectionProperties"],
+        };
         try {
           tr.join(joinPos);
-          // PM's `join` keeps the first paragraph's attrs, so the marker
-          // would survive an otherwise-resolved revision. Drop it now.
-          if (emptyFirstParagraph) {
-            tr.setNodeMarkup(mappedPos, undefined, nextAttrs);
-          } else {
-            tr.setNodeAttribute(mappedPos, "pPrMark", null);
-          }
+          tr.setNodeMarkup(mappedPos, undefined, joinedAttrs);
         } catch {
           // PM rejects the join if the two blocks aren't structurally
           // compatible (e.g. paragraph followed by a table). Leaving the
@@ -769,10 +810,10 @@ function collectPPrMarkOp(
   if (revisionSet !== null && !revisionSet.has(pPrMark.info.id)) {
     return null;
   }
-  // accept-ins / reject-del keep the paragraph break (clear attr).
-  // reject-ins / accept-del remove the paragraph break (join with next).
+  // Accepting an added break, or rejecting a removed one, keeps the break
+  // (clear the attr). The other two remove it (join with the next paragraph).
   const action: PPrMarkOp["action"] =
-    (pPrMark.kind === "ins") === (mode === "accept") ? "clear" : "join";
+    paragraphMarkWasAdded(pPrMark.kind) === (mode === "accept") ? "clear" : "join";
   return { paragraphPos: pos, action };
 }
 
@@ -879,13 +920,15 @@ function resolveTablePropertyChangeAttrs(
   return nextAttrs;
 }
 
-function isPPrMarkAttr(value: unknown): value is { kind: "ins" | "del"; info: { id: number } } {
+function isPPrMarkAttr(
+  value: unknown,
+): value is { kind: ParagraphMarkChangeKind; info: { id: number } } {
   if (typeof value !== "object" || value === null) {
     return false;
   }
   const kind = (value as { kind?: unknown }).kind;
   const info = (value as { info?: unknown }).info;
-  if (kind !== "ins" && kind !== "del") {
+  if (!PARAGRAPH_MARK_CHANGE_KINDS.some((allowed) => allowed === kind)) {
     return false;
   }
   if (typeof info !== "object" || info === null) {
@@ -893,6 +936,26 @@ function isPPrMarkAttr(value: unknown): value is { kind: "ins" | "del"; info: { 
   }
   return typeof (info as { id?: unknown }).id === "number";
 }
+
+/**
+ * Whether the mark says the paragraph break was ADDED. A relocation's
+ * destination break was added exactly as an insertion's was, and its source
+ * break went exactly as a deletion's did; the kinds differ so a reader is told
+ * the two ends belong together, not because they resolve differently.
+ */
+const paragraphMarkWasAdded = (kind: ParagraphMarkChangeKind): boolean =>
+  kind === "ins" || kind === "moveTo";
+
+/**
+ * Whether the paragraph's mark carries a section's properties.
+ *
+ * A section break lives on a paragraph mark, so the paragraph is where the
+ * section ends. Removing it removes the section: a document that had two ends
+ * up with one, and every setting the dropped section carried — page size,
+ * margins, its header and footer references — goes with it.
+ */
+const carriesSection = (paragraph: PMNode): boolean =>
+  paragraph.attrs["sectionBreakType"] != null || paragraph.attrs["_sectionProperties"] != null;
 
 function readRevisionInfo(info: RevisionInfoAttrs | undefined): {
   author?: string;
@@ -979,7 +1042,10 @@ export function findParagraphBoundaryChangeAtPosition(
     return toParagraphBoundaryChange(
       node,
       paragraphPos,
-      pPrMark.kind === "ins" ? "insertion" : "deletion",
+      // A relocation's destination break was added exactly as an insertion's
+      // was; naming the kinds one by one here read `moveTo` as a deletion and
+      // showed the reader a paragraph arriving as one going away.
+      paragraphMarkWasAdded(pPrMark.kind) ? "insertion" : "deletion",
       pPrMark.info,
     );
   }

@@ -1,4 +1,4 @@
-import type { XmlElement } from "./xmlParser";
+import { attachXmlNamespaceContext, type XmlElement } from "./xmlParser";
 import { FOLIO_XML_RESOURCE_LIMITS } from "./xmlResourceLimits";
 
 type ParseXmlResult = { status: "parsed"; value: XmlElement } | { status: "unsupported" };
@@ -97,6 +97,7 @@ export const parseStreamingXml = (xml: string): ParseXmlResult => {
     }
 
     const parent = stack.at(-1)?.element ?? root;
+    attachXmlNamespaceContext(parsedTag.element, parent.namespaceScope);
     appendElement(parent, parsedTag.element);
     if (!parsedTag.selfClosing) {
       if (stack.length >= FOLIO_XML_RESOURCE_LIMITS.maxDepth) {

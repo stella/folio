@@ -18,11 +18,12 @@ const schema = new Schema({
   nodes: {
     doc: { content: "block+" },
     paragraph: {
-      content: "text*",
+      content: "inline*",
       group: "block",
       attrs: {
         listMarker: { default: null },
         pageBreakBefore: { default: null },
+        pPrMark: { default: null },
         styleId: { default: null },
         // Identity attrs — must NOT be copied when a new block is
         // synthesized from a sibling, otherwise downstream tracking
@@ -32,7 +33,12 @@ const schema = new Schema({
         defaultTextFormatting: { default: null },
       },
     },
-    text: {},
+    text: { group: "inline" },
+    // An inline image is content a block deletion has to take with it; a
+    // bookmark boundary is a zero-width anchor it must leave alone, because
+    // the format cannot say one was deleted outside a hyperlink.
+    image: { inline: true, group: "inline", atom: true, attrs: { src: { default: "" } } },
+    bookmarkBoundary: { inline: true, group: "inline", atom: true },
     table: {
       content: "tableRow+",
       group: "block",
@@ -504,22 +510,25 @@ describe("Folio AI edit operations", () => {
     expect(snapshot.anchors["seq-0001"]?.textHash).toMatch(/^h/u);
   });
 
-  test("an entirely empty document exposes an operation anchor without a visible block", () => {
+  test("an entirely empty document is one blank block", () => {
     const state = makeState([""]);
 
     const snapshot = createFolioAIEditSnapshot(state.doc);
 
-    expect(snapshot.blocks).toEqual([]);
-    expect(snapshot.emptyDocumentAnchorId).toBe("seq-0001");
-    expect(snapshot.anchors["seq-0001"]).toMatchObject({
-      id: "seq-0001",
+    // An empty document is one blank paragraph, not no blocks, and it is a
+    // block like any other: an operation can address it and replace it. The
+    // blank sequence numbers it, so `seq-NNNN` keeps counting only the
+    // paragraphs that carry text.
+    expect(snapshot.blocks).toEqual([{ id: "blank-0001", kind: "paragraph", text: "" }]);
+    expect(snapshot.anchors["blank-0001"]).toMatchObject({
+      id: "blank-0001",
       text: "",
       normalizedText: "",
       hashOccurrenceCount: 1,
     });
   });
 
-  test("an empty table cell is not treated as an empty-document operation anchor", () => {
+  test("an empty table cell is a blank block that names its cell", () => {
     const doc = schema.node("doc", null, [
       schema.node("table", null, [
         schema.node("tableRow", null, [schema.node("tableCell", null, [schema.node("paragraph")])]),
@@ -529,9 +538,24 @@ describe("Folio AI edit operations", () => {
 
     const snapshot = createFolioAIEditSnapshot(state.doc);
 
-    expect(snapshot.blocks).toEqual([]);
-    expect(snapshot.emptyDocumentAnchorId).toBeUndefined();
-    expect(snapshot.anchors).toEqual({});
+    // An empty cell is part of the table's shape, so it is addressable and
+    // carries its location. The document is not empty: its one blank block
+    // sits in a table rather than in the body.
+    expect(snapshot.blocks).toEqual([
+      {
+        id: "blank-0001",
+        kind: "paragraph",
+        text: "",
+        table: {
+          outerTableIndex: 0,
+          tableIndex: 0,
+          rowIndex: 0,
+          cellIndex: 0,
+          paragraphIndex: 0,
+        },
+      },
+    ]);
+    expect(snapshot.anchors["blank-0001"]).toMatchObject({ id: "blank-0001", text: "" });
   });
 
   test("hides text inside a hidden table row from the AI-facing snapshot", () => {
@@ -557,6 +581,45 @@ describe("Folio AI edit operations", () => {
     expect(
       Object.values(snapshot.anchors).some((anchor) => anchor.text.includes("Hidden secret")),
     ).toBe(false);
+  });
+
+  // The snapshot skips a hidden row's whole subtree, so resolution has to skip
+  // it too. A paraId reused across a hidden and a visible paragraph otherwise
+  // resolved the visible block onto content no reader can see, and edited it
+  // there — content the operation was never addressed to.
+  test("resolves past a hidden row that reuses a visible paragraph's paraId", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("table", null, [
+        schema.node("tableRow", { hidden: true }, [
+          schema.node("tableCell", null, [
+            schema.node("paragraph", { paraId: "AAAA0001" }, [schema.text("Hidden secret")]),
+          ]),
+        ]),
+        schema.node("tableRow", null, [
+          schema.node("tableCell", null, [
+            schema.node("paragraph", { paraId: "AAAA0001" }, [schema.text("Visible")]),
+          ]),
+        ]),
+      ]),
+    ]);
+    const state = EditorState.create({ schema, doc });
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [{ id: "replace", type: "replaceBlock", blockId: "AAAA0001", text: "Rewritten" }],
+      mode: "direct",
+    });
+
+    expect(result.skipped).toEqual([]);
+    const texts: string[] = [];
+    view.state.doc.descendants((node) => {
+      if (node.type.name === "paragraph") {
+        texts.push(node.textContent);
+      }
+    });
+    expect(texts).toEqual(["Hidden secret", "Rewritten"]);
   });
 
   test("snapshot uses sequential fallback ids for duplicate paraIds", () => {
@@ -1117,12 +1180,13 @@ describe("Folio AI edit operations", () => {
     });
 
     expect(result.skipped).toEqual([]);
-    // Two paragraphs of inserted runs, and one inserted paragraph MARK: two
-    // paragraphs appended after the document's last block introduce one new
-    // break, because the second reuses the mark that already ended the
-    // document. Rejecting has to close that break, so it carries a revision.
-    expect(result.applied[0]?.revisionIds).toHaveLength(3);
-    expect(new Set(result.applied[0]?.revisionIds).size).toBe(3);
+    // Four: one run revision per inserted paragraph, plus the two paragraph
+    // MARKS the pair introduces. Appended after the document's last block, the
+    // new breaks are the first inserted paragraph's and the ANCHOR's; the last
+    // inserted paragraph ends at the mark that used to end the document and
+    // carries none. Rejecting closes both new breaks, so both are revisions.
+    expect(result.applied[0]?.revisionIds).toHaveLength(4);
+    expect(new Set(result.applied[0]?.revisionIds).size).toBe(4);
   });
 
   test("does not leak a list-item anchor's listMarker onto later paragraphs of a split insert", () => {
@@ -1748,14 +1812,15 @@ describe("Folio AI edit operations", () => {
     expect(view.state.doc.lastChild?.textContent).toBe("Delta block.");
   });
 
-  test("snapshot omits a block whose entire content is deletion-marked", () => {
-    // After the user accepts the deletion the block becomes empty
-    // anyway, so the AI has nothing useful to anchor against.
-    // Today the snapshot just skips it (zero-length normalized
-    // text). Locks in that behaviour.
+  test("snapshot keeps a block whose entire content is deletion-marked, with no text", () => {
+    // The paragraph is still in the document until the deletion is accepted,
+    // so it is still a block: a comparison that cannot address it cannot
+    // describe what changed around it. Its deletion-marked runs stay out of
+    // the text, which is the post-tracked-changes view every reader gets.
     const { state } = makeTrackedDoc([["del", "Entire block is gone."]]);
     const snapshot = createFolioAIEditSnapshot(state.doc);
-    expect(snapshot.blocks).toHaveLength(0);
+    expect(snapshot.blocks).toHaveLength(1);
+    expect(snapshot.blocks[0]?.text).toBe("");
   });
 
   test("word-level diff works for non-Latin scripts split on whitespace", () => {
@@ -4437,6 +4502,50 @@ describe("Folio AI edit operations", () => {
     });
   });
 
+  // The row a span narrows has fewer cells than the table has columns.
+  // `cellTexts` fills the cells the row actually has, and is only SIZED
+  // against the column count — measuring it against the cells refused a row
+  // the table can perfectly well hold.
+  test("a row inserted under a vertical span takes as many texts as it has cells", () => {
+    const cell = (text: string, attrs: Record<string, unknown> = {}) =>
+      schema.node("tableCell", attrs, [schema.node("paragraph", null, [schema.text(text)])]);
+    const table = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        cell("spans down", { rowspan: 2 }),
+        cell("b1"),
+        schema.node("tableCell", null, [
+          schema.node("paragraph", { paraId: "anchor-cell" }, [schema.text("c1")]),
+        ]),
+      ]),
+      schema.node("tableRow", null, [cell("b2"), cell("c2")]),
+    ]);
+    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [
+        {
+          id: "insert-row",
+          type: "insertTableRow",
+          blockId: "anchor-cell",
+          cellTexts: ["first", "second", "third"],
+        },
+      ],
+      mode: "direct",
+    });
+
+    expect(result.skipped).toEqual([]);
+    const inserted = view.state.doc.child(0).child(1);
+    // Two cells, because the spanning cell above still occupies the first
+    // column; three texts is within the table's three columns, so the
+    // operation is not refused.
+    expect(inserted.childCount).toBe(2);
+    expect(inserted.child(0).textContent).toBe("first");
+    expect(inserted.child(1).textContent).toBe("second");
+  });
+
   test("tracked row insertion rejects a boundary crossed by a vertical span", () => {
     const table = schema.node("table", null, [
       schema.node("tableRow", null, [
@@ -4462,5 +4571,103 @@ describe("Folio AI edit operations", () => {
       skipped: [{ id: "insert-row", reason: "unsupportedBlock" }],
     });
     expect(view.state.doc).toEqual(state.doc);
+  });
+});
+
+describe("deleteBlock over inline content that is not text", () => {
+  const deleteSecondBlock = (children: ReturnType<typeof schema.node>[]) => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", { paraId: "keep" }, [schema.text("kept")]),
+      schema.node("paragraph", { paraId: "gone" }, children),
+    ]);
+    const state = EditorState.create({ schema, doc });
+    const view = makeView(state);
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [{ id: "delete", type: "deleteBlock", blockId: "gone" }],
+      mode: "tracked-changes",
+    });
+    expect(result.skipped).toEqual([]);
+    return view;
+  };
+
+  // The deletion range is built from the block's clean TEXT, so an image
+  // outside the words was left unmarked and accepting the deletion kept a
+  // paragraph standing around it.
+  test("takes an inline image with it", () => {
+    const view = deleteSecondBlock([schema.text("words"), schema.node("image", { src: "data:," })]);
+
+    acceptAllChanges()(view.state, view.dispatch);
+
+    expect(view.state.doc.childCount).toBe(1);
+    expect(view.state.doc.child(0).textContent).toBe("kept");
+  });
+
+  // A bookmark boundary is zero-width, and the format cannot say one was
+  // deleted outside a hyperlink: marking it produces a document the serializer
+  // refuses to write, and leaving it must not keep the paragraph alive.
+  test("leaves a bookmark boundary unmarked and still removes the paragraph", () => {
+    const view = deleteSecondBlock([schema.node("bookmarkBoundary"), schema.text("words")]);
+
+    let markedAnchors = 0;
+    view.state.doc.descendants((node) => {
+      if (node.type.name === "bookmarkBoundary" && node.marks.length > 0) {
+        markedAnchors += 1;
+      }
+    });
+    expect(markedAnchors).toBe(0);
+
+    acceptAllChanges()(view.state, view.dispatch);
+
+    expect(view.state.doc.childCount).toBe(1);
+    expect(view.state.doc.child(0).textContent).toBe("kept");
+  });
+
+  test("preserves a pre-existing revision on an anchor outside the operation", () => {
+    const insertion = schema.marks["insertion"]!;
+    const existingRevision = insertion.create({
+      revisionId: 1,
+      author: "Alice",
+      date: "2026-05-01",
+    });
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", { paraId: "anchor" }, [
+        schema.node("bookmarkBoundary", null, null, [existingRevision]),
+        schema.text("kept"),
+      ]),
+      schema.node("paragraph", { paraId: "target" }, schema.text("target")),
+    ]);
+    const state = EditorState.create({ schema, doc });
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [{ id: "insert", type: "insertAfterBlock", blockId: "target", text: "new" }],
+      mode: "tracked-changes",
+    });
+
+    expect(result.skipped).toEqual([]);
+    expect(view.state.doc.child(0).child(0)?.marks).toEqual([existingRevision]);
+  });
+
+  test("reports only the paragraph-mark revision for an empty block", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", { paraId: "gone" }),
+      schema.node("paragraph", { paraId: "keep" }, schema.text("kept")),
+    ]);
+    const state = EditorState.create({ schema, doc });
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [{ id: "delete", type: "deleteBlock", blockId: "gone" }],
+      mode: "tracked-changes",
+    });
+
+    const paragraphRevisionId = view.state.doc.child(0).attrs["pPrMark"]?.info.id;
+    expect(result.applied.at(0)?.revisionIds).toEqual([paragraphRevisionId]);
   });
 });

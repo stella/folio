@@ -1,6 +1,6 @@
 import type { Mark, Node as PMNode } from "prosemirror-model";
 
-import { deriveBlockId } from "../types/block-id";
+import { deriveBlankBlockId, deriveBlockId, type FolioBlockId } from "../types/block-id";
 import { buildCleanBlockText } from "./clean-text";
 import type {
   FolioAIBlock,
@@ -14,6 +14,49 @@ import type {
 
 export const normalizeFolioAIBlockText = (text: string): string =>
   text.replace(/\s+/gu, " ").trim();
+
+/**
+ * Whether a block carries text a reader would see.
+ *
+ * The snapshot holds every paragraph, blank ones included: an empty cell is
+ * part of a table's shape, an empty row is a row, and a comparison that cannot
+ * address them cannot describe what changed around them. A reading surface
+ * wants the opposite — a model shown a document should see its content, not a
+ * line per blank paragraph.
+ *
+ * So the two needs are split here rather than in the walk: the snapshot is
+ * complete, and every surface that reads it for a person or a model states
+ * that it wants content by calling this. One helper, so "what counts as
+ * content" has a single answer; five inline emptiness checks would drift.
+ */
+export const isFolioAIContentBlock = ({ text }: Pick<FolioAIBlock, "text">): boolean =>
+  normalizeFolioAIBlockText(text).length > 0;
+
+/**
+ * The block that content appended to the end of a story hangs from: the last
+ * paragraph at body level.
+ *
+ * Not simply the last block. A story's last block is often inside a table, and
+ * a paragraph cannot be appended after one: the insertion escapes to the
+ * table's boundary, where the block it was anchored to is not adjacent to it
+ * and its paragraph mark ends a different container's paragraph. Neither
+ * container-edge rule then applies and the addition cannot be rejected
+ * cleanly.
+ *
+ * A body always ends with a paragraph — a table may not be the last child of a
+ * body or a cell, so a package that ends in a table carries a trailing, often
+ * empty, paragraph after it — so this is only `null` for a story with no
+ * body-level paragraph at all, which is a malformed document.
+ */
+export const trailingBodyBlockId = ({ blocks }: FolioAIEditSnapshot): string | null => {
+  for (let index = blocks.length - 1; index >= 0; index--) {
+    const block = blocks[index];
+    if (block !== undefined && block.table === undefined) {
+      return block.id;
+    }
+  }
+  return null;
+};
 
 export const hashFolioAIBlockText = (text: string): string => {
   let hash = 5381;
@@ -81,7 +124,7 @@ type AncestorPathEntry = { node: PMNode; start: number; end: number; index: numb
  * instructions into a row that no human ever sees. The walk skips the row's
  * whole subtree, so a table nested inside a hidden row is hidden with it.
  */
-const isHiddenTableRow = (node: PMNode): boolean =>
+export const isHiddenTableRow = (node: PMNode): boolean =>
   node.type.name === TABLE_ROW_NODE_NAME && node.attrs["hidden"] === true;
 
 type TableLocationOptions = {
@@ -148,17 +191,13 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
   // `descendants` reaches a table before any textblock inside it, so a nested
   // block's lookup always finds its table already numbered.
   const tableIndexByStart = new Map<number, number>();
-  const emptyAnchorState: {
-    candidate: { from: number; to: number; paraId: string | null } | null;
-    textblockCount: number;
-  } = { candidate: null, textblockCount: 0 };
-
   // The containers enclosing the node being visited, innermost last. Kept in
   // step with the walk so no block has to resolve its own position.
   const path: AncestorPathEntry[] = [];
 
   let blockIndex = 0;
-  doc.descendants((node, pos, parent, index) => {
+  let blankIndex = 0;
+  doc.descendants((node, pos, _parent, index) => {
     while (pos >= (path.at(-1)?.end ?? Number.POSITIVE_INFINITY)) {
       path.pop();
     }
@@ -184,22 +223,6 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
     // operation positions, so the offsets stay consistent.
     const { text } = buildCleanBlockText(node, pos);
     const normalizedText = normalizeFolioAIBlockText(text);
-    if (normalizedText.length === 0) {
-      if (parent?.type !== doc.type) {
-        return true;
-      }
-      emptyAnchorState.textblockCount++;
-      if (emptyAnchorState.candidate === null) {
-        const paraIdAttr: unknown = node.attrs["paraId"];
-        emptyAnchorState.candidate = {
-          from: pos,
-          to: pos + node.nodeSize,
-          paraId: typeof paraIdAttr === "string" && paraIdAttr.length > 0 ? paraIdAttr : null,
-        };
-      }
-      return true;
-    }
-
     const textHash = hashFolioAIBlockText(normalizedText);
     hashCounts.set(textHash, (hashCounts.get(textHash) ?? 0) + 1);
 
@@ -211,16 +234,25 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
     // at the wrong paragraph after an insertion-above" surprise.
     //
     // Shared with `apps/api/.../docx-blocks.ts` via `deriveBlockId`,
-    // so a server-emitted citation id is always one of the two shapes
-    // this snapshot produces (paraId verbatim or `seq-NNNN`).
-    blockIndex++;
+    // so a server-emitted citation id is always one of the shapes this
+    // snapshot produces (paraId verbatim, `seq-NNNN`, or `blank-NNNN`).
+    //
+    // `seq-NNNN` counts the paragraphs that carry text, and nothing
+    // else: that count is the published contract the server extractor
+    // derives too, so a stored citation keeps naming its paragraph. A
+    // paragraph with no text is numbered in the separate blank
+    // sequence rather than consuming a position in it.
     const paraIdAttr: unknown = node.attrs["paraId"];
     const paraId = typeof paraIdAttr === "string" && paraIdAttr.length > 0 ? paraIdAttr : null;
-    const id = deriveBlockId({
-      paraId,
-      index: blockIndex,
-      taken: usedBlockIds,
-    });
+    const isBlank = normalizedText.length === 0;
+    let id: FolioBlockId;
+    if (isBlank) {
+      blankIndex++;
+      id = deriveBlankBlockId({ paraId, index: blankIndex, taken: usedBlockIds });
+    } else {
+      blockIndex++;
+      id = deriveBlockId({ paraId, index: blockIndex, taken: usedBlockIds });
+    }
     usedBlockIds.add(id);
     const headingLevel = getHeadingLevel(node);
     const kind = getBlockKind(node, headingLevel);
@@ -264,27 +296,7 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
     };
   }
 
-  const emptyAnchorCandidate = emptyAnchorState.candidate;
-  if (blocks.length > 0 || emptyAnchorCandidate === null) {
-    return { blocks, anchors };
-  }
-
-  const emptyDocumentAnchorId = deriveBlockId({
-    paraId: emptyAnchorCandidate.paraId,
-    index: 1,
-    taken: usedBlockIds,
-  });
-  const normalizedText = "";
-  anchors[emptyDocumentAnchorId] = {
-    id: emptyDocumentAnchorId,
-    from: emptyAnchorCandidate.from,
-    to: emptyAnchorCandidate.to,
-    text: "",
-    normalizedText,
-    textHash: hashFolioAIBlockText(normalizedText),
-    hashOccurrenceCount: emptyAnchorState.textblockCount,
-  };
-  return { blocks, anchors, emptyDocumentAnchorId };
+  return { blocks, anchors };
 };
 
 const getBlockKind = (node: PMNode, headingLevel: number | undefined): FolioAIBlockKind => {

@@ -236,7 +236,10 @@ const tablecount: BodyRewrite = (children) => {
     '<w:tc><w:tcPr><w:tcW w:w="4680" w:type="dxa"/></w:tcPr><w:p><w:r><w:t xml:space="preserve">Added value</w:t></w:r></w:p></w:tc>' +
     "</w:tr></w:tbl>";
   const rewritten = children.filter((_child, index) => index !== firstTable);
-  rewritten.push(added);
+  // Before the body's closing paragraph, not after it: a table may not be a
+  // body's last child, and a target that breaks the rule would be measuring
+  // the engine against malformed input rather than against the edit.
+  rewritten.splice(rewritten.length - 1, 0, added);
   return rewritten;
 };
 

@@ -75,7 +75,11 @@ import {
   type FolioReviewChange,
   type FolioReviewChangeKind,
 } from "./read";
-import { createFolioAIEditSnapshot, normalizeFolioAIBlockText } from "./snapshot";
+import {
+  createFolioAIEditSnapshot,
+  isFolioAIContentBlock,
+  normalizeFolioAIBlockText,
+} from "./snapshot";
 import type {
   FolioAIBlock,
   FolioAIEditApplyMode,
@@ -377,8 +381,11 @@ const resolveReviewedState = (state: EditorState, view: FolioReviewedView): Edit
 
 const formatStoryStateForLLM = (state: EditorState, annotated: boolean): string => {
   const snapshot = createFolioAIEditSnapshot(state.doc);
+  // A reading surface shows content. The snapshot also carries the document's
+  // blank paragraphs, which are structure rather than something to read.
+  const blocks = snapshot.blocks.filter(isFolioAIContentBlock);
   if (!annotated) {
-    return snapshot.blocks.map(formatBlockForLLM).join("\n");
+    return blocks.map(formatBlockForLLM).join("\n");
   }
   // One walk, not one `doc.nodeAt` per block: `nodeAt` re-descends from the
   // root and scans each level's fragment from index 0, so looking every block
@@ -395,7 +402,7 @@ const formatStoryStateForLLM = (state: EditorState, annotated: boolean): string 
   for (const anchor of Object.values(snapshot.anchors)) {
     startById.set(anchor.id, anchor.from);
   }
-  return snapshot.blocks
+  return blocks
     .map((block) => {
       const from = startById.get(block.id);
       const node = from === undefined ? undefined : nodeByStart.get(from);

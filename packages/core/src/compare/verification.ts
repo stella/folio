@@ -31,9 +31,13 @@ export type CompareVerificationInvariant = (typeof COMPARE_VERIFICATION_INVARIAN
 export const COMPARE_VERIFICATION_CAUSES = Object.freeze([
   /**
    * Every block is present, in order, at coordinates the block model cannot
-   * reach. The snapshot carries no block for an empty paragraph, so a cell
-   * holding a blank line reports its visible paragraph one position along and
-   * no operation can put a block there. Not a lost difference.
+   * reach, so no operation could have put a block at the expected ones. Not a
+   * lost difference.
+   *
+   * Blank paragraphs no longer cause this: the snapshot carries them. What is
+   * left is the row a package hides, whose whole subtree the snapshot skips on
+   * purpose. A table hiding a row on one side only shifts every later row's
+   * index, and nothing the comparison can do reaches those positions.
    */
   "invisible-structure",
   "block-count",
@@ -109,11 +113,10 @@ export const sameProjection = (left: readonly string[], right: readonly string[]
  * appearance, so it counts the blocks the model holds rather than the
  * paragraphs the package contains.
  *
- * The snapshot skips every empty textblock, so a cell holding a blank
- * paragraph reports its visible paragraph at `p1`, and a table whose first
- * rows are empty reports its visible rows starting at `r3`. No operation can
- * put a block at those coordinates, because none can create the empty
- * paragraphs that produce them. When two projections agree here and disagree
+ * The snapshot skips a hidden row's whole subtree, so a table that hides a row
+ * on one side only reports every later row one position along. No operation
+ * can put a block at those coordinates, because none can create or remove the
+ * hidden row that produces them. When two projections agree here and disagree
  * on the raw coordinates, the redline holds every block the other side does,
  * in order, and the difference is one the block model cannot see.
  */

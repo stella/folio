@@ -67,11 +67,18 @@ export type FolioAIBlockParagraphProperties = {
   listLevel?: number | null;
 };
 
+/**
+ * Every paragraph of one story, blank ones included.
+ *
+ * A blank paragraph is part of a document's shape: an empty cell is a column,
+ * an empty row is a row, and an operation or a comparison that cannot address
+ * them cannot describe what changed around them. A surface that reads the
+ * document for a person or a model wants only the paragraphs that carry text,
+ * and says so with `isFolioAIContentBlock`.
+ */
 export type FolioAIEditSnapshot = {
   blocks: FolioAIBlock[];
   anchors: Record<string, FolioAIBlockAnchor>;
-  /** Hidden empty paragraph used to anchor insertions when `blocks` is empty. */
-  emptyDocumentAnchorId?: string;
 };
 
 export type FolioAIBlockAnchor = {
@@ -229,6 +236,11 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
          * gets `styleId` / `inheritFormatting`, later ones use body
          * formatting. Blank lines are dropped. Reported as a
          * `splitMultilineText` normalization when it happens.
+         *
+         * `""` inserts a BLANK paragraph, and is a real edit: adding an empty
+         * line is a change a reader sees, and a document that has one where
+         * another does not differs. It is applied like any other insertion,
+         * with a tracked paragraph mark, so rejecting closes it away.
          */
         text: string;
         inheritFormatting?: boolean;
@@ -272,6 +284,11 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
         styleId?: string;
         comment?: FolioAIComment;
       }
+    /**
+     * Delete the whole block. A block with words loses them and its paragraph
+     * mark; a BLANK block has only a paragraph mark to lose, and loses it, so
+     * the empty line goes away rather than the operation doing nothing.
+     */
     | {
         id: string;
         type: "deleteBlock";
@@ -317,7 +334,16 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
         blockId: string;
         /** Place the table after the anchor (default) or before it. */
         position?: "after" | "before";
-        /** Cell texts row by row. Every row must hold the same number of cells. */
+        /**
+         * Cell texts row by row. Every row must hold the same number of cells.
+         *
+         * A cell holds paragraphs, not lines: a line break in a cell's text
+         * starts a new paragraph in that cell, and a blank line is a blank
+         * paragraph. That is not the rule `insertAfterBlock` follows for
+         * prose, where a blank line between two model-written clauses is
+         * formatting noise and is dropped — a cell's text describes paragraphs
+         * that exist, so dropping one would lose a block.
+         */
         rows: readonly (readonly string[])[];
       }
     /**
@@ -388,7 +414,18 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
         /** Stable paragraph anchor inside the row that receives the new sibling. */
         blockId: string;
         position?: "after" | "before";
-        /** Initial text for each physical cell in source order; omitted cells stay empty. */
+        /**
+         * Initial text for each cell of the new row, in order — the same order
+         * a block's `table.cellIndex` counts. Cells left unnamed stay empty.
+         *
+         * Sized against the table's COLUMN count, which is the most cells any
+         * row of it could have: more texts than that is refused rather than
+         * silently truncated, and fewer is not, so a row the table can hold is
+         * no longer refused because a span makes it narrower than the table.
+         *
+         * A line break in a cell's text starts a new paragraph in that cell,
+         * as in `insertTable`.
+         */
         cellTexts?: string[];
       }
     | {

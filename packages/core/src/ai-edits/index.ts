@@ -24,6 +24,7 @@ export {
   createFolioAIEditSnapshot,
   createFolioAITextRangeHandle,
   hashFolioAIBlockText,
+  isFolioAIContentBlock,
   normalizeFolioAIBlockText,
 } from "./snapshot";
 export { getFolioDocumentOutline, readFolioDocumentSection } from "./scoped-reading";

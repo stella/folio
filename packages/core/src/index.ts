@@ -102,6 +102,7 @@ export {
   createFolioAIEditSnapshot,
   diffWordSegments,
   hashFolioAIBlockText,
+  isFolioAIContentBlock,
   normalizeFolioAIBlockText,
   WORD_DIFF_GRANULARITIES,
   type FolioWordDiffOptions,

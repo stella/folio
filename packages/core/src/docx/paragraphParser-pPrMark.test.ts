@@ -90,4 +90,39 @@ describe("parseParagraph — paragraph-mark tracked change (ECMA-376 §17.13.5)"
       info: { id: 3, author: "Carol" },
     });
   });
+
+  test("reads paragraph-mark changes in the Strict WordprocessingML namespace", () => {
+    const paragraph = parseParagraphXml(`
+      <x:p xmlns:x="http://purl.oclc.org/ooxml/wordprocessingml/main">
+        <x:pPr>
+          <x:rPr>
+            <x:moveTo x:id="4" x:author="Dana"/>
+          </x:rPr>
+        </x:pPr>
+      </x:p>
+    `);
+
+    expect(paragraph.pPrMark).toEqual({
+      kind: "moveTo",
+      info: { id: 4, author: "Dana" },
+    });
+  });
+
+  test("ignores same-named paragraph-mark elements from a foreign namespace", () => {
+    const paragraph = parseParagraphXml(`
+      <w:p
+        xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+        xmlns:foreign="https://example.com/foreign"
+      >
+        <w:pPr>
+          <w:rPr>
+            <foreign:moveFrom w:id="5" w:author="Eve"/>
+            <foreign:del w:id="6" w:author="Frank"/>
+          </w:rPr>
+        </w:pPr>
+      </w:p>
+    `);
+
+    expect(paragraph.pPrMark).toBeUndefined();
+  });
 });

@@ -600,7 +600,13 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     preserveFormatting?: boolean;
     styleId?: string;
     comment?: FolioAIComment;
-} | {
+} |
+/**
+* Delete the whole block. A block with words loses them and its paragraph
+* mark; a BLANK block has only a paragraph mark to lose, and loses it, so
+* the empty line goes away rather than the operation doing nothing.
+*/
+    {
     id: string;
     type: "deleteBlock";
     blockId: string;
@@ -723,11 +729,10 @@ export type FolioAIEditPrecondition = {
     blockTextHash: string;
 };
 
-// @public (undocumented)
+// @public
 export type FolioAIEditSnapshot = {
     blocks: FolioAIBlock[];
     anchors: Record<string, FolioAIBlockAnchor>;
-    emptyDocumentAnchorId?: string;
 };
 
 // @public (undocumented)
@@ -1614,6 +1619,9 @@ export class InvalidGenerateRedlineDocxOptionsError extends InvalidGenerateRedli
     option: "baseView" | "revisedView";
     receivedValue: unknown;
 }> {}
+
+// @public
+export const isFolioAIContentBlock: (input: Pick<FolioAIBlock, "text">) => boolean;
 
 // @public
 export const isFolioBlockId: (value: unknown) => value is FolioBlockId;

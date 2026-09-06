@@ -164,6 +164,21 @@ skipped }` where each applied entry carries `revisionIds` (note: nested per
   contract is published (host server extractors and prompts consume it);
   `seq-` support must remain for legacy snapshots. The goal is that new
   snapshots never contain it.
+- **`seq-NNNN` numbering counts only the paragraphs that carry text.** That is
+  the invariant the published contract rests on: the host extractor derives the
+  same numbers from the same walk, and a `seq-` citation stored against a
+  document has to keep naming the paragraph it named when it was written.
+  A paragraph that holds no text keeps its own `w14:paraId` when it has one,
+  exactly as a paragraph with text does; `deriveBlankBlockId` falls back to a
+  separate `blank-NNNN` sequence only when it does not. Either way, adding,
+  removing or newly surfacing blank paragraphs cannot renumber anything a
+  citation points at. Never number
+  the two into one sequence, and never renumber `seq-` to close its gaps.
+  `snapshot.test.ts` holds this as a property: for any document, the `seq-` ids
+  are the same whether or not the blank paragraphs are present.
+- The snapshot carries blank paragraphs, so `blocks[i].id` is NOT `seq-{i+1}`.
+  Resolve a `seq-` id by counting the blocks that carry text
+  (`resolveSequentialBlockAnchor` does), never by indexing the array.
 - `w:rsid*` attributes on `<w:p>` are dropped on import. Out of scope; leave
   as-is.
 - The serializer emits `w14:paraId` only when truthy; after ingest

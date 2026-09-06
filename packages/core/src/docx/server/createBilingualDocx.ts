@@ -1,4 +1,5 @@
 import { FolioDocxReviewer } from "../../ai-edits/headless";
+import { isFolioAIContentBlock } from "../../ai-edits/snapshot";
 import { toArrayBuffer } from "../../utils/docxInput";
 import { ensureParaIds } from "../ensureParaIds";
 import { parseDocx } from "../parser";
@@ -34,8 +35,12 @@ export async function createBilingualDocx(
 ): Promise<CreateBilingualDocxResult> {
   const stamped = await ensureParaIds(input);
   const stampedBuffer = await toArrayBuffer(stamped.docx);
+  // A blank paragraph is not an editable row: it carries nothing to translate.
   const editableParagraphIds = new Set(
-    (await FolioDocxReviewer.fromBuffer(stampedBuffer)).snapshot().blocks.map(({ id }) => id),
+    (await FolioDocxReviewer.fromBuffer(stampedBuffer))
+      .snapshot()
+      .blocks.filter(isFolioAIContentBlock)
+      .map(({ id }) => id),
   );
   const source = await parseDocx(stampedBuffer, { preloadFonts: false });
   const { document, warnings } = createBilingualDocument(source, {
@@ -52,7 +57,10 @@ export async function readBilingualDocx(input: ArrayBuffer | Uint8Array): Promis
   const buffer = await toArrayBuffer(input);
   const document = await parseDocx(buffer, { preloadFonts: false });
   const editableParagraphIds = new Set(
-    (await FolioDocxReviewer.fromBuffer(buffer)).snapshot().blocks.map(({ id }) => id),
+    (await FolioDocxReviewer.fromBuffer(buffer))
+      .snapshot()
+      .blocks.filter(isFolioAIContentBlock)
+      .map(({ id }) => id),
   );
   return readBilingualDocument(document, editableParagraphIds);
 }
