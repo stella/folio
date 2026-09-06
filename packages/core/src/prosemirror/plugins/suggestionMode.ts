@@ -146,6 +146,13 @@ function markRangeAsDeleted(
     const isOwnInsert = node.marks.some(
       (m) => m.type === insertionType && m.attrs["author"] === pluginState.author,
     );
+    // Already struck by someone: re-marking it would overwrite their author,
+    // date and revision id with ours, losing who proposed the deletion. The
+    // single-character path already steps over such a node; the range path
+    // has to agree.
+    if (node.marks.some((m) => m.type === deletionType)) {
+      return;
+    }
     ranges.push({ from: start, to: end, isOwnInsert });
   });
 

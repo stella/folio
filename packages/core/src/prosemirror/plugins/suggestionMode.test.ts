@@ -244,6 +244,48 @@ describe("SuggestionMode Plugin", () => {
       expect(get().selection.empty).toBe(true);
     });
 
+    test("striking text another author already struck keeps their attribution", () => {
+      // Re-marking a range that already carries a deletion overwrote the first
+      // author's revision id, author and date with ours, so the file lost who
+      // proposed the deletion. The single-character delete path already steps
+      // over such a node, and markRangeAsInserted already guards the same way.
+      const theirDeletion = schema.marks.deletion.create({
+        revisionId: 77,
+        author: "Other Author",
+        date: "2026-01-01T10:00:00Z",
+      });
+      const doc = schema.node("doc", null, [
+        schema.node("paragraph", null, [
+          schema.text("The "),
+          schema.text("lazy", [theirDeletion]),
+          schema.text(" dog"),
+        ]),
+      ]);
+      let state = EditorState.create({
+        doc,
+        plugins: [createSuggestionModePlugin(true, "TestUser")],
+      });
+      state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 5, 9)));
+
+      const { view, get } = mockView(state);
+      const slice = new Slice(Fragment.from(schema.text("quick")), 0, 0);
+      const pluginState = suggestionModeKey.getState(state)!;
+      expect(handleSuggestionPaste(view, slice, pluginState)).toBe(true);
+
+      const struck = { value: null as null | Record<string, unknown> };
+      get().doc.descendants((node) => {
+        if (node.text !== "lazy") {
+          return;
+        }
+        struck.value = node.marks.find((m) => m.type.name === "deletion")?.attrs ?? null;
+      });
+      expect(struck.value).toMatchObject({
+        revisionId: 77,
+        author: "Other Author",
+        date: "2026-01-01T10:00:00Z",
+      });
+    });
+
     test("pasting block content over a selection fits the slice and tracks it", () => {
       // Select "lazy" and paste two whole paragraphs (block content). A raw
       // `replace` at the inline point would fail or drop structure; the

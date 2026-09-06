@@ -1,7 +1,13 @@
 import { describe, expect, test } from "bun:test";
 
 import { withFakeTextMeasure } from "../layout-engine/measure/__tests__/fakeTextMeasure";
-import type { ImageRun, TableBlock, TableFragment, TableMeasure } from "../layout-engine/types";
+import type {
+  ImageRun,
+  TableBlock,
+  TableCell,
+  TableFragment,
+  TableMeasure,
+} from "../layout-engine/types";
 import type { PageGeometry } from "./anchoredImagePosition";
 import { renderTableFragment, TABLE_CLASS_NAMES } from "./renderTable";
 import type { RenderContext } from "./renderUtils";
@@ -1041,5 +1047,164 @@ describe("renderTableFragment cell floating images", () => {
     expect(container?.style["overflow"]).toBeUndefined();
     expect(container?.style["width"]).toBeUndefined();
     expect(image?.style["opacity"]).toBe("0.6");
+  });
+});
+
+describe("renderTableFragment paragraph border groups", () => {
+  const BORDERS = {
+    top: { style: "solid", width: 1, color: "#000000" },
+    bottom: { style: "solid", width: 1, color: "#000000" },
+    between: { style: "dotted", width: 1, color: "#000000" },
+  } as const;
+
+  const borderedCellTable = (): {
+    fragment: TableFragment;
+    block: TableBlock;
+    measure: TableMeasure;
+  } => {
+    const paragraph = (id: string, text: string) => ({
+      kind: "paragraph" as const,
+      id,
+      runs: [{ kind: "text" as const, text }],
+      attrs: { borders: { ...BORDERS } },
+    });
+    const block: TableBlock = {
+      kind: "table",
+      id: "tbl",
+      rows: [
+        {
+          id: "row",
+          cells: [{ id: "cell", blocks: [paragraph("p1", "One"), paragraph("p2", "Two")] }],
+        },
+      ],
+      columnWidths: [100],
+    };
+    const cellMeasure = {
+      blocks: [
+        { kind: "paragraph" as const, lines: [], totalHeight: 20 },
+        { kind: "paragraph" as const, lines: [], totalHeight: 20 },
+      ],
+      width: 100,
+      height: 40,
+    };
+    const measure: TableMeasure = {
+      kind: "table",
+      rows: [{ cells: [cellMeasure], height: 40 }],
+      columnWidths: [100],
+      totalWidth: 100,
+      totalHeight: 40,
+    };
+    const fragment: TableFragment = {
+      kind: "table",
+      blockId: "tbl",
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 40,
+      fromRow: 0,
+      toRow: 1,
+    };
+    return { fragment, block, measure };
+  };
+
+  test("two identically bordered cell paragraphs draw one frame, not two", () => {
+    withFakeTextMeasure(() => {
+      const { fragment, block, measure } = borderedCellTable();
+      const table = renderTableFragment(fragment, block, measure, renderContext, {
+        document: fakeDocument,
+        pageGeometry,
+      }) as unknown as FakeElement;
+
+      const boxes = findByClass(table, "layout-paragraph-border");
+      expect(boxes).toHaveLength(2);
+      // First of the group: the frame's top rule, no closing rule.
+      expect(boxes[0]?.style["borderTop"]).toContain("solid");
+      expect(boxes[0]?.style["borderBottom"]).toBeUndefined();
+      // Last of the group: the interior `w:between` rule on top, the frame's
+      // bottom rule below. Painting `top` here would double the interior line.
+      expect(boxes[1]?.style["borderTop"]).toContain("dotted");
+      expect(boxes[1]?.style["borderBottom"]).toContain("solid");
+    });
+  });
+});
+
+describe("renderTableFragment vertical cell text", () => {
+  const rotatedCellTable = (
+    textDirection: NonNullable<TableCell["textDirection"]>,
+  ): { fragment: TableFragment; block: TableBlock; measure: TableMeasure } => {
+    const block: TableBlock = {
+      kind: "table",
+      id: "tbl",
+      rows: [
+        {
+          id: "row",
+          cells: [
+            {
+              id: "cell",
+              textDirection,
+              blocks: [{ kind: "paragraph", id: "p", runs: [{ kind: "text", text: "Header" }] }],
+            },
+          ],
+        },
+      ],
+      columnWidths: [40],
+    };
+    const measure: TableMeasure = {
+      kind: "table",
+      rows: [
+        {
+          cells: [
+            {
+              blocks: [{ kind: "paragraph", lines: [], totalHeight: 20 }],
+              width: 40,
+              height: 120,
+            },
+          ],
+          height: 120,
+        },
+      ],
+      columnWidths: [40],
+      totalWidth: 40,
+      totalHeight: 120,
+    };
+    const fragment: TableFragment = {
+      kind: "table",
+      blockId: "tbl",
+      x: 0,
+      y: 0,
+      width: 40,
+      height: 120,
+      fromRow: 0,
+      toRow: 1,
+    };
+    return { fragment, block, measure };
+  };
+
+  const contentTransform = (textDirection: NonNullable<TableCell["textDirection"]>) => {
+    let transform: string | undefined;
+    withFakeTextMeasure(() => {
+      const { fragment, block, measure } = rotatedCellTable(textDirection);
+      const table = renderTableFragment(fragment, block, measure, renderContext, {
+        document: fakeDocument,
+        pageGeometry,
+      }) as unknown as FakeElement;
+      transform = findByClass(table, TABLE_CLASS_NAMES.cellContent).at(0)?.style["transform"];
+    });
+    return transform;
+  };
+
+  test("a top-to-bottom cell turns clockwise", () => {
+    expect(contentTransform("tbRl")).toContain("rotate(90deg)");
+    expect(contentTransform("tbRlV")).toContain("rotate(90deg)");
+    expect(contentTransform("tb")).toContain("rotate(90deg)");
+  });
+
+  test("a bottom-to-top cell turns counter-clockwise", () => {
+    expect(contentTransform("btLr")).toContain("rotate(-90deg)");
+  });
+
+  test("a horizontal cell is not turned", () => {
+    expect(contentTransform("lr")).toBeUndefined();
+    expect(contentTransform("rl")).toBeUndefined();
   });
 });

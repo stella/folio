@@ -1,8 +1,8 @@
 /**
  * Walk the PM doc once and derive (a) the tracked-change list and (b) a
  * comment→revision overlap map for threading. Adjacent entries from the
- * same revision are merged; deletion+insertion pairs from the same
- * author/date become a single `replacement` entry (matches Word's UX
+ * same revision are merged; an adjacent deletion+insertion pair from the
+ * same author becomes a single `replacement` entry (matches Word's UX
  * for replace ops).
  *
  * Pure function — no React, no Vue, no side effects. Single O(N) walk
@@ -171,8 +171,8 @@ const foldIntoRowRevision = (scope: RowRevisionScope | undefined, mark: Mark): b
  * Walk the PM doc and extract every tracked change as a flat list of
  * `TrackedChangeEntry` plus a comment→revision overlap map. Adjacent
  * inline marks coalesce by `(type, revisionId, author, date)`; a
- * deletion immediately followed by an insertion (same author + same
- * date) collapses into a single `replacement` entry; paragraph-mark
+ * deletion immediately followed by the same author's insertion
+ * collapses into a single `replacement` entry; paragraph-mark
  * cards (`paragraphMarkInsertion` / `paragraphMarkDeletion`) are
  * hidden when an inline entry already covers their revision triple
  * (one Accept clears every site of one conceptual change).
@@ -677,9 +677,13 @@ export function extractTrackedChanges(state: EditorState | null): TrackedChanges
     }
   }
 
-  // Detect replacement pairs: adjacent deletion + insertion from the
-  // same author/date. Word assigns different w:id values but same
-  // author+date for a single replace.
+  // Detect replacement pairs: a deletion immediately followed by the same
+  // author's insertion. Author plus adjacency is the whole identity of a
+  // replace — the two halves carry different `w:id` values, and their
+  // `w:date` stamps differ whenever the clock ticked between them or the
+  // producer rounded them differently. Requiring the stamps to match split
+  // such a replace into a Deleted card and an Inserted card, so accepting or
+  // rejecting the change only ever acted on half of it.
   const final: TrackedChangeEntry[] = [];
   for (let i = 0; i < merged.length; i++) {
     const curr = merged[i]!;
@@ -689,7 +693,6 @@ export function extractTrackedChanges(state: EditorState | null): TrackedChanges
       next &&
       next.type === "insertion" &&
       curr.author === next.author &&
-      curr.date === next.date &&
       curr.to === next.from
     ) {
       final.push({

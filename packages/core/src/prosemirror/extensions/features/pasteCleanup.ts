@@ -20,6 +20,7 @@
 
 import { Fragment, Slice, type Node as PMNode } from "prosemirror-model";
 
+import { htmlCommentEnd } from "../../../utils/htmlComments";
 import { stripXmlDeclarations } from "../../../utils/stripXmlDeclarations";
 import { readBookmarkBoundaryAttrs } from "../../bookmarkBoundaryAttrs";
 
@@ -69,12 +70,12 @@ function stripHtmlComments(html: string): string {
     }
 
     result += html.slice(cursor, commentStart);
-    const commentEnd = html.indexOf("-->", commentStart + 4);
-    if (commentEnd === -1) {
+    const commentEnd = htmlCommentEnd(html, commentStart);
+    if (commentEnd === null) {
       break;
     }
 
-    cursor = commentEnd + 3;
+    cursor = commentEnd;
   }
 
   return result;
