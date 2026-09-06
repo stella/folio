@@ -652,6 +652,35 @@ describe("single-mutation probes", () => {
     expect(deleted.at(0)).not.toMatch(/<w:pPr>[\s\S]*<w:rPr>[\s\S]*<w:del\s/u);
   });
 
+  test("delete_table_before_terminal_carrier: final paragraph mark remains untracked", async () => {
+    // Microsoft Word keeps a body carrier after a terminal table. A deletion
+    // on that paragraph mark cannot resolve because there is no next body
+    // paragraph to join it to.
+    const keptTable = { kind: "table", rows: [["Kept row"]] } as const;
+    const base = await buildBodySequenceDocx([
+      keptTable,
+      { kind: "paragraph", text: "" },
+      { kind: "table", rows: [["Removed row"]] },
+    ]);
+    const target = await buildBodySequenceDocx([keptTable]);
+
+    const result = await compareDocx(base, target, OPTIONS);
+    if (result.isErr()) {
+      throw result.error;
+    }
+
+    expect(result.value.changes.map(({ kind }) => kind)).toEqual(["delete", "table-delete"]);
+    const terminalParagraph = paragraphsOf(await documentPartOf(result.value.buffer)).at(-1);
+    expect(terminalParagraph).toBeDefined();
+    expect(terminalParagraph).not.toMatch(/<w:pPr>[\s\S]*<w:rPr>[\s\S]*<w:del\b/u);
+    expect(await projectView(result.value.buffer, "final")).toEqual(
+      await projectView(target, "final"),
+    );
+    expect(await projectView(result.value.buffer, "original")).toEqual(
+      await projectView(base, "final"),
+    );
+  });
+
   test("unrepresentable_difference: refused by default, emitted and named on request", async () => {
     // Every column is empty, so there is no evidence for which of the three
     // target columns is new. Guessing would produce a plausible but misleading

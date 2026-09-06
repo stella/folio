@@ -469,8 +469,9 @@ const unpairedSegmentSteps = (segment: DocumentSegment, side: "base" | "target")
 };
 
 type BuildStepsOptions = {
-  baseBlocks: readonly FolioAIBlock[];
-  targetBlocks: readonly FolioAIBlock[];
+  story: FolioDocumentStoryHandle;
+  baseSnapshot: FolioAIEditSnapshot;
+  targetSnapshot: FolioAIEditSnapshot;
 };
 
 /**
@@ -576,11 +577,40 @@ const alignSegments = (
   return paired;
 };
 
-const buildSteps = ({ baseBlocks, targetBlocks }: BuildStepsOptions): CompareStep[] => {
+const isEmptyParagraphNode = (block: FolioAIBlock, snapshot: FolioAIEditSnapshot): boolean => {
+  const anchor =
+    snapshot.anchors[block.id] ??
+    panic("A comparison snapshot block has no matching anchor", { blockId: block.id });
+  return (
+    block.text === "" &&
+    block.table === undefined &&
+    anchor.to - anchor.from === 2
+  );
+};
+
+const buildSteps = ({ story, baseSnapshot, targetSnapshot }: BuildStepsOptions): CompareStep[] => {
+  const baseBlocks = baseSnapshot.blocks;
+  const targetBlocks = targetSnapshot.blocks;
+  // Microsoft Word retains the final body paragraph mark when accepting or
+  // rejecting a deletion on it. When both sides end in a truly empty paragraph
+  // node, reserve that structural carrier before general alignment and compare
+  // its supported properties normally.
+  const baseLast = baseBlocks.at(-1);
+  const targetLast = targetBlocks.at(-1);
+  const terminalCarrierPair =
+    story.type === "main" &&
+    baseLast !== undefined &&
+    isEmptyParagraphNode(baseLast, baseSnapshot) &&
+    targetLast !== undefined &&
+    isEmptyParagraphNode(targetLast, targetSnapshot)
+      ? { type: "pair" as const, baseBlock: baseLast, targetBlock: targetLast }
+      : null;
+  const alignedBaseBlocks = terminalCarrierPair ? baseBlocks.slice(0, -1) : baseBlocks;
+  const alignedTargetBlocks = terminalCarrierPair ? targetBlocks.slice(0, -1) : targetBlocks;
   const steps: CompareStep[] = [];
   for (const { baseSegment, targetSegment } of alignSegments(
-    splitSegments(baseBlocks),
-    splitSegments(targetBlocks),
+    splitSegments(alignedBaseBlocks),
+    splitSegments(alignedTargetBlocks),
   )) {
     if (baseSegment && targetSegment) {
       steps.push(
@@ -597,6 +627,9 @@ const buildSteps = ({ baseBlocks, targetBlocks }: BuildStepsOptions): CompareSte
     if (targetSegment) {
       steps.push(...unpairedSegmentSteps(targetSegment, "target"));
     }
+  }
+  if (terminalCarrierPair) {
+    steps.push(terminalCarrierPair);
   }
   return steps;
 };
@@ -939,7 +972,7 @@ export type CompareStoryPlan = {
 export type PlanStoryCompareOptions = {
   story: FolioDocumentStoryHandle;
   baseSnapshot: FolioAIEditSnapshot;
-  targetBlocks: readonly FolioAIBlock[];
+  targetSnapshot: FolioAIEditSnapshot;
   /** Cap on generated operations; the caller turns `null` into its own error. */
   maxOperations: number;
 };
@@ -951,10 +984,10 @@ export type PlanStoryCompareOptions = {
 export const planStoryCompare = ({
   story,
   baseSnapshot,
-  targetBlocks,
+  targetSnapshot,
   maxOperations,
 }: PlanStoryCompareOptions): CompareStoryPlan | null => {
-  const steps = buildSteps({ baseBlocks: baseSnapshot.blocks, targetBlocks });
+  const steps = buildSteps({ story, baseSnapshot, targetSnapshot });
   const paragraphMarkPlans = detectParagraphMarkEdits(steps);
   // The step after each paragraph-mark plan is part of it, so neither the move
   // pass nor the main loop may claim it again.
