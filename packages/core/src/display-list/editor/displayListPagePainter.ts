@@ -17,16 +17,19 @@
  * second copy the display list was introduced to remove, and it would silently
  * lose incremental repaint on documents past the virtualization threshold.
  *
- * ## Why the list is built once
+ * ## Why a page is built when it is painted
  *
- * `renderPage` is called per page, and building the whole display list per
- * call would be quadratic in page count. The list is built once from the
- * layout the pipeline just produced, and `paintPage` looks its page up.
+ * `renderPage` is called per page, so building the whole list per call would be
+ * quadratic in page count. Building it once per layout run is not right either:
+ * the container paints a window of pages and skips every page whose fingerprint
+ * has not changed, so a document of ninety pages would build ninety to paint
+ * three, on every keystroke. The builder computes what belongs to the document
+ * once and each page when it is asked for, so the work follows the screen.
  */
 
 import { panic } from "better-result";
 
-import { buildDisplayList } from "../build/buildDisplayList";
+import { createDisplayListBuilder } from "../build/buildDisplayList";
 import type { BuildDisplayListOptions } from "../build/buildDisplayList";
 import { renderDisplayPageToDom } from "../dom/renderDisplayListToDom";
 import type { DisplayList } from "../types";
@@ -40,8 +43,11 @@ export type DisplayListPagePainterOptions = BuildDisplayListOptions & {
 export type DisplayListPagePainter = {
   /** Matches `RenderPageOptions.paintPage`. */
   readonly paintPage: (request: { readonly page: Page }) => HTMLElement | null;
-  /** The list every page was painted from, for tests and diagnostics. */
-  readonly list: DisplayList;
+  /**
+   * The list as far as the painter has built it, for tests and diagnostics.
+   * Pages nobody painted are absent, because nobody built them.
+   */
+  readonly list: () => DisplayList;
 };
 
 /**
@@ -50,35 +56,34 @@ export type DisplayListPagePainter = {
  * number. Both sequences come from the same `Layout`, so they align by
  * construction; a mismatch is a programming error, not a document one.
  */
-const indexByPageNumber = (list: DisplayList): ReadonlyMap<number, number> =>
-  new Map(list.pages.map((page, index) => [page.pageNumber, index]));
+const indexByPageNumber = (
+  layout: BuildDisplayListOptions["layout"],
+): ReadonlyMap<number, number> => new Map(layout.pages.map((page, index) => [page.number, index]));
 
 export const createDisplayListPagePainter = (
   options: DisplayListPagePainterOptions,
 ): DisplayListPagePainter => {
   const { doc, ...build } = options;
-  const list = buildDisplayList(build);
-  const indexOf = indexByPageNumber(list);
+  const builder = createDisplayListBuilder(build);
+  const indexOf = indexByPageNumber(build.layout);
 
   const paintPage = ({ page }: { readonly page: Page }): HTMLElement | null => {
     const index = indexOf.get(page.number);
     if (index === undefined) {
-      // The layout grew a page after the list was built. Yielding paints the
+      // The layout grew a page after this painter was made. Yielding paints the
       // page through the existing renderer, which is wrong-looking rather
-      // than missing, and the next layout run rebuilds the list.
+      // than missing, and the next layout run makes a new painter.
       return null;
     }
-    const displayPage = list.pages.at(index);
+    const displayPage = builder.pageAt(index);
     if (displayPage === undefined) {
       panic(`display list page ${String(index)} is indexed but absent`);
     }
-    return renderDisplayPageToDom(displayPage, {
-      doc,
-      fonts: list.fonts,
-      images: list.images,
-      pageIndex: index,
-    });
+    // The tables are read after the page is built, never before: building it is
+    // what puts its faces and images in them.
+    const { fonts, images } = builder.snapshot();
+    return renderDisplayPageToDom(displayPage, { doc, fonts, images, pageIndex: index });
   };
 
-  return { paintPage, list };
+  return { paintPage, list: builder.snapshot };
 };

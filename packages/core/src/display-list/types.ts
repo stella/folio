@@ -143,6 +143,29 @@ export type DisplayImageSource = {
 };
 
 /**
+ * Which document a run's model positions address.
+ *
+ * A page is not one document. Its body, each header and footer part, and each
+ * note are separate stories with separate position spaces, and the same number
+ * means a different character in each. A range that did not say which one it
+ * belonged to could only be used for the body, which is why the producer used
+ * to drop the others and the painter used to strip them; naming the story is
+ * what lets an editing surface route a click into the story it landed in.
+ */
+export type DisplayStoryRef =
+  | { readonly kind: "body" }
+  /** `rId` is the relationship that names the part, as the section selects it. */
+  | { readonly kind: "header" | "footer"; readonly rId: string }
+  /** `id` is the note's own `w:footnote`/`w:endnote` id. */
+  | { readonly kind: "footnote" | "endnote"; readonly id: number };
+
+export type DisplayModelRange = {
+  readonly start: number;
+  readonly end: number;
+  readonly story: DisplayStoryRef;
+};
+
+/**
  * Text drawn from one face at one size in one colour.
  *
  * `advancesPx` holds one advance per code point of `text` (not per UTF-16
@@ -233,7 +256,7 @@ export type DisplayGlyphRun = {
    * them. Absent when a run has no counterpart in the model: a list marker, a
    * substituted field value, a tab leader.
    */
-  readonly pmRange?: { readonly start: number; readonly end: number };
+  readonly pmRange?: DisplayModelRange;
 };
 
 /** An axis-aligned rectangle, filled and/or stroked. At least one is set. */

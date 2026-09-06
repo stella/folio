@@ -3,6 +3,11 @@ import type { ChangeEvent } from "react";
 import { IntlProvider } from "use-intl";
 
 import {
+  isPageRendererName,
+  type PageRendererName,
+} from "@stll/folio-core/display-list/editor/pageRenderer";
+
+import {
   DocxEditor,
   appendAutocompleteToken,
   clearAutocompleteSuggestion,
@@ -583,9 +588,11 @@ export function App() {
   const parityFonts = globalThis.__folioParityFonts;
   const showMarginGuides = query.has("marginGuides");
   const marginGuideColor = query.get("marginGuideColor") ?? undefined;
-  // `?pageRenderer=display-list` paints the pages from the display list, so a
-  // spec can measure the renderer the editor would actually use.
-  const pageRenderer = query.get("pageRenderer") === "display-list" ? "display-list" : undefined;
+  // The editor paints from the display list. `?pageRenderer=legacy` selects the
+  // painter it replaced, so a spec can measure the two against each other.
+  const pageRenderer = isPageRendererName(query.get("pageRenderer"))
+    ? (query.get("pageRenderer") as PageRendererName)
+    : undefined;
 
   // Load fixture from ?file= query param (visual + interaction tests) or
   // generate a body from ?paragraphs= (performance tests).

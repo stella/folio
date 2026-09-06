@@ -142,10 +142,8 @@ describe("the two page renderers paint the same pages", () => {
         ...furniture,
       });
 
-      // The IR renderer paints from a list built once for the whole layout, so
-      // a page count mismatch here means the list and the layout disagree
-      // before any page is drawn.
-      expect(painter.list.pages).toHaveLength(layout.pages.length);
+      // The IR renderer builds a page when it paints it, so the list holds
+      // exactly the pages painted below: it is checked after the loop.
 
       for (const [index, page] of layout.pages.entries()) {
         const context = contextFor(page, layout.pages.length);
@@ -187,6 +185,11 @@ describe("the two page renderers paint the same pages", () => {
           missingFrom: uncoveredAt === -1 ? "" : expected.slice(uncoveredAt, uncoveredAt + 40),
         }).toEqual({ page: index + 1, uncoveredAt: -1, missingFrom: "" });
       }
+
+      // Every page the layout has was asked for above, so the list now holds
+      // one for each: a mismatch means the list and the layout disagree about
+      // which pages exist.
+      expect(painter.list().pages).toHaveLength(layout.pages.length);
     });
   }
 });

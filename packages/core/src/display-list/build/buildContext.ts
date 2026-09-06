@@ -11,7 +11,7 @@
  */
 
 import { AUTHOR_COLORS } from "../../utils/authorColors";
-import type { DisplayColor, DisplayLink, DisplayLinkTarget } from "../types";
+import type { DisplayColor, DisplayLink, DisplayLinkTarget, DisplayStoryRef } from "../types";
 import { parseDisplayColor, SUGGESTION_COLOR } from "./colors";
 import type { FontTable } from "./fontTable";
 import type { ImageTable } from "./imagePrimitives";
@@ -41,15 +41,11 @@ export const trackedChangeColor = (
 ): DisplayColor => (isSuggestion ? SUGGESTION_COLOR : authorColors.colorFor(changeAuthor));
 
 /**
- * Which OOXML story the primitives being built belong to.
- *
- * Only the body's runs carry positions in the editable model the caller holds.
- * A header, a footer and a footnote are each their own story with their own
- * document positions, so a range taken from one of them would address
- * unrelated body content; the painter drops the same anchors for the same
- * reason (`stripFootnotePmAnchors`).
+ * Which OOXML story the primitives being built belong to, named precisely
+ * enough to address it: a document has many headers and many notes, and a
+ * position only means something against one of them.
  */
-export type DisplayStory = "body" | "header" | "footer" | "footnote";
+export type DisplayStory = DisplayStoryRef;
 
 export type BuildContext = {
   readonly fonts: FontTable;

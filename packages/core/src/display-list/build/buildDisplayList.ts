@@ -248,7 +248,7 @@ const buildPage = ({
     authorColors,
     links,
     bookmarkTargets,
-    story: "body",
+    story: { kind: "body" },
     pageIndex,
     pageNumber: page.logicalNumber,
     totalPages,
@@ -336,7 +336,33 @@ const SUPPLIED_BY = {
   (furniture: PageFurnitureInputs) => boolean
 >;
 
-export const buildDisplayList = ({
+/**
+ * A document's display list, one page at a time.
+ *
+ * The tables a page refers to (faces, images), the bookmark targets a link can
+ * resolve against, and the outline are properties of the whole document, so
+ * they are computed once; a page's primitives are not, and an editor paints a
+ * window of pages rather than all of them. Building every page to paint three
+ * of them is the difference between work proportional to the screen and work
+ * proportional to the document, which on a long one is the difference a reader
+ * feels on every keystroke.
+ *
+ * A page is built at most once. `snapshot` returns what has been built so far,
+ * so a caller that wants the whole list asks for every page first — which is
+ * what {@link buildDisplayList} does.
+ */
+export type DisplayListBuilder = {
+  readonly pageCount: number;
+  /** The page at that index, built on first request and kept. */
+  readonly pageAt: (pageIndex: number) => DisplayPage | undefined;
+  /**
+   * The list as far as it has been built. The tables grow as pages are built,
+   * so a backend reads them after the page it is about to paint, never before.
+   */
+  readonly snapshot: () => DisplayList;
+};
+
+export const createDisplayListBuilder = ({
   layout,
   blockLookup,
   metadata,
@@ -344,7 +370,7 @@ export const buildDisplayList = ({
   documentFeatures,
   embeddedFonts,
   ...furniture
-}: BuildDisplayListOptions): DisplayList => {
+}: BuildDisplayListOptions): DisplayListBuilder => {
   const fonts = new FontTable(embeddedFonts ?? []);
   const images = new ImageTable();
   const unsupported = new UnsupportedCollector();
@@ -368,8 +394,18 @@ export const buildDisplayList = ({
     }
   }
 
-  const pages = layout.pages.map((page, pageIndex) =>
-    buildPage({
+  const built = new Map<number, DisplayPage>();
+
+  const pageAt = (pageIndex: number): DisplayPage | undefined => {
+    const existing = built.get(pageIndex);
+    if (existing !== undefined) {
+      return existing;
+    }
+    const page = layout.pages[pageIndex];
+    if (page === undefined) {
+      return undefined;
+    }
+    const display = buildPage({
       page,
       pageIndex,
       totalPages: layout.pages.length,
@@ -381,15 +417,36 @@ export const buildDisplayList = ({
       unsupported,
       authorColors,
       furniture,
-    }),
-  );
+    });
+    built.set(pageIndex, display);
+    return display;
+  };
 
   return {
-    pages,
-    fonts: fonts.snapshot(),
-    images: images.snapshot(),
-    outline,
-    metadata: metadata ?? {},
-    unsupported: unsupported.snapshot(),
+    pageCount: layout.pages.length,
+    pageAt,
+    snapshot: () => ({
+      // In layout order whichever order they were built in: a page's index is
+      // its place in the document, not its place in a paint sequence.
+      pages: [...built.entries()].sort(([left], [right]) => left - right).map(([, page]) => page),
+      fonts: fonts.snapshot(),
+      images: images.snapshot(),
+      outline,
+      metadata: metadata ?? {},
+      unsupported: unsupported.snapshot(),
+    }),
   };
+};
+
+/**
+ * The whole document's display list. Every page is built, so the tables, the
+ * outline and the gap report are complete; an editor that paints a window of
+ * pages uses {@link createDisplayListBuilder} instead.
+ */
+export const buildDisplayList = (options: BuildDisplayListOptions): DisplayList => {
+  const builder = createDisplayListBuilder(options);
+  for (let pageIndex = 0; pageIndex < builder.pageCount; pageIndex += 1) {
+    builder.pageAt(pageIndex);
+  }
+  return builder.snapshot();
 };

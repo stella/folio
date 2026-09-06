@@ -139,7 +139,7 @@ export const paintFootnoteArea = ({
     },
   ];
 
-  for (const [index, { content }] of bodies.entries()) {
+  for (const [index, { noteId, content }] of bodies.entries()) {
     if (content === undefined) {
       continue;
     }
@@ -156,7 +156,7 @@ export const paintFootnoteArea = ({
         xPx: page.margins.left,
         yPx: areaTopPx + offsetPx,
         widthPx: contentWidthPx,
-        context: { ...context, story: "footnote" },
+        context: { ...context, story: { kind: "footnote", id: noteId } },
         label: `footnote ${content.displayNumber}`,
       }),
     );

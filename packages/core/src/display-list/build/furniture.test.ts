@@ -451,7 +451,7 @@ describe("model ranges", () => {
       const marker = runs.find((run) => run.text === "1.");
       const body = runs.find((run) => run.text === "Item");
       expect(marker?.pmRange).toBeUndefined();
-      expect(body?.pmRange).toEqual({ start: 3, end: 7 });
+      expect(body?.pmRange).toEqual({ start: 3, end: 7, story: { kind: "body" } });
     }, fakeMeasure);
   });
 
