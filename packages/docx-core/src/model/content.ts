@@ -1053,7 +1053,14 @@ export type PropertyChangeInfo = {
 } & TrackedChangeInfo;
 
 /** Inline content that may sit inside a run-level tracked-change wrapper. */
-export type TrackedRunContent = Run | Hyperlink | BookmarkStart | BookmarkEnd;
+export type TrackedRunContent =
+  | Run
+  | Hyperlink
+  | BookmarkStart
+  | BookmarkEnd
+  | SimpleField
+  | ComplexField
+  | TrackedRunChange;
 
 /**
  * Insertion wrapper (w:ins) — runs inserted by tracked changes

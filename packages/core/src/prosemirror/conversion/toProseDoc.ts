@@ -13,6 +13,7 @@
  */
 
 import type { MarkType, Node as PMNode } from "prosemirror-model";
+import { panic } from "better-result";
 
 import { createStyleEngine } from "../../style-engine";
 import type { StyleEngine, TableCellParagraphSpacingOverlay } from "../../style-engine";
@@ -45,8 +46,7 @@ import type {
   DrawingContent,
   MoveFrom,
   MoveTo,
-  BookmarkStart,
-  BookmarkEnd,
+  TrackedRunContent,
   MathEquation,
   ShapeTextBody,
   Theme,
@@ -746,6 +746,36 @@ function convertTrackedChange(
           textBoxAnchors,
         }),
       );
+    } else if (item.type === "simpleField" || item.type === "complexField") {
+      const fieldNode = convertField(item, {
+        getInheritedRunFormatting,
+        styleResolver,
+        nextHyperlinkInstanceIndex,
+        textBoxAnchors,
+      });
+      if (fieldNode) {
+        nodes.push(fieldNode);
+      }
+    } else if (
+      item.type === "insertion" ||
+      item.type === "deletion" ||
+      item.type === "moveFrom" ||
+      item.type === "moveTo"
+    ) {
+      const nestedMarkType =
+        item.type === "insertion" || item.type === "moveTo" ? "insertion" : "deletion";
+      const nestedMoveKind = item.type === "moveFrom" || item.type === "moveTo" ? item.type : null;
+      nodes.push(
+        ...convertTrackedChange(
+          item,
+          nestedMarkType,
+          nextHyperlinkInstanceIndex,
+          getInheritedRunFormatting,
+          styleResolver,
+          nestedMoveKind,
+          textBoxAnchors,
+        ),
+      );
     } else if (item.type === "bookmarkStart") {
       nodes.push(
         schema.node("bookmarkBoundary", {
@@ -756,8 +786,11 @@ function convertTrackedChange(
           colLast: item.colLast,
         }),
       );
-    } else {
+    } else if (item.type === "bookmarkEnd") {
       nodes.push(schema.node("bookmarkBoundary", { type: "end", id: item.id }));
+    } else {
+      const unsupported: never = item;
+      panic(`Unsupported tracked-run content: ${JSON.stringify(unsupported)}`);
     }
   }
 
@@ -771,6 +804,12 @@ function convertTrackedChange(
   });
 
   return nodes.map((node) => {
+    // ProseMirror marks cannot nest another mark of the same type. Keep the
+    // inner revision intact rather than replacing its identity with the outer
+    // wrapper; the surrounding nodes still retain the outer revision.
+    if (node.marks.some(({ type }) => type.name === "insertion" || type.name === "deletion")) {
+      return node;
+    }
     if (canCarryTrackedRunMark(node, mark.type)) {
       return node.mark(mark.addToSet(node.marks));
     }
@@ -779,17 +818,24 @@ function convertTrackedChange(
 }
 
 function canCarryTrackedRunMark(node: PMNode, markType: MarkType): boolean {
+  if (node.isText) {
+    return true;
+  }
+  if (!node.isInline) {
+    return false;
+  }
+  if (node.type.name === "field" || node.type.name === "structuredField") {
+    return true;
+  }
   return (
-    node.isText ||
-    (node.isInline &&
-      node.type.allowsMarkType(markType) &&
-      (node.type.name === "image" ||
-        node.type.name === "shape" ||
-        node.type.name === "hardBreak" ||
-        node.type.name === "tab" ||
-        node.type.name === "symbol" ||
-        node.type.name === "bookmarkBoundary" ||
-        node.type.name === "textBoxAnchor"))
+    node.type.allowsMarkType(markType) &&
+    (node.type.name === "image" ||
+      node.type.name === "shape" ||
+      node.type.name === "hardBreak" ||
+      node.type.name === "tab" ||
+      node.type.name === "symbol" ||
+      node.type.name === "bookmarkBoundary" ||
+      node.type.name === "textBoxAnchor")
   );
 }
 
@@ -4191,20 +4237,48 @@ function findParagraphPageBreakPosition(paragraph: Paragraph): "before" | "after
     return false;
   }
 
-  // Walk a (Run | Hyperlink)[] list — the shared inner shape of tracked-change
-  // wrappers, simple fields, and inline SDTs. We rely on visitRun to set
+  // Walk tracked-wrapper content recursively. We rely on visitRun to set
   // state.seenVisibleContent when (and only when) it encounters visible run
   // content; an empty wrapper must not be treated as visible — an empty
   // bookmark-only hyperlink before a page break should still classify the
   // break as "before".
-  function visitRunOrHyperlinkList(
-    children: readonly (Run | Hyperlink | BookmarkStart | BookmarkEnd)[],
-  ): boolean {
+  function visitRunOrHyperlinkList(children: readonly TrackedRunContent[]): boolean {
     for (const child of children) {
       if (child.type === "run" && visitRun(child)) {
         return true;
       }
       if (child.type === "hyperlink" && visitHyperlinkChildren(child)) {
+        return true;
+      }
+      if (child.type === "simpleField") {
+        for (const fieldChild of child.content) {
+          if (fieldChild.type === "run" && visitRun(fieldChild)) {
+            return true;
+          }
+          if (fieldChild.type === "hyperlink" && visitHyperlinkChildren(fieldChild)) {
+            return true;
+          }
+        }
+      }
+      if (child.type === "complexField") {
+        for (const run of child.fieldCode) {
+          if (visitRun(run)) {
+            return true;
+          }
+        }
+        for (const run of child.fieldResult) {
+          if (visitRun(run)) {
+            return true;
+          }
+        }
+      }
+      if (
+        (child.type === "insertion" ||
+          child.type === "deletion" ||
+          child.type === "moveFrom" ||
+          child.type === "moveTo") &&
+        visitRunOrHyperlinkList(child.content)
+      ) {
         return true;
       }
     }

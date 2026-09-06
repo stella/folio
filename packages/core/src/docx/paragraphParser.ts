@@ -1045,7 +1045,13 @@ function isTrackedChangeWrapperChild(
     content.type === "run" ||
     content.type === "hyperlink" ||
     content.type === "bookmarkStart" ||
-    content.type === "bookmarkEnd"
+    content.type === "bookmarkEnd" ||
+    content.type === "simpleField" ||
+    content.type === "complexField" ||
+    content.type === "insertion" ||
+    content.type === "deletion" ||
+    content.type === "moveFrom" ||
+    content.type === "moveTo"
   );
 }
 

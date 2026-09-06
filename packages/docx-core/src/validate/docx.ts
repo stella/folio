@@ -627,11 +627,7 @@ const validateTrackedRunChange = (
 
   for (const [index, child] of change.content.entries()) {
     const childPath = `${path}.content[${index}]`;
-    if (child.type === "hyperlink") {
-      validateHyperlink(child, childPath, ctx);
-      continue;
-    }
-    validateHyperlinkChild(child, childPath, ctx);
+    validateParagraphContent(child, childPath, ctx);
   }
 };
 

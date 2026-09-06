@@ -923,6 +923,21 @@ function rewriteRunTextAsDeleted(xml: string): string {
     .replace(/<\/w:instrText>/gu, "</w:delInstrText>");
 }
 
+function trackedChangeTag(
+  change: Insertion | Deletion | MoveFrom | MoveTo,
+): "ins" | "del" | "moveFrom" | "moveTo" {
+  switch (change.type) {
+    case "insertion":
+      return "ins";
+    case "deletion":
+      return "del";
+    case "moveFrom":
+      return "moveFrom";
+    case "moveTo":
+      return "moveTo";
+  }
+}
+
 function serializeTrackedChange(
   tag: "ins" | "del" | "moveFrom" | "moveTo",
   change: Insertion | Deletion | MoveFrom | MoveTo,
@@ -976,6 +991,19 @@ function serializeTrackedChange(
       }
       if (item.type === "hyperlink") {
         return serializeHyperlink(item);
+      }
+      if (item.type === "simpleField" || item.type === "complexField") {
+        const xml =
+          item.type === "simpleField" ? serializeSimpleField(item) : serializeComplexField(item);
+        return tag === "del" || tag === "moveFrom" ? rewriteRunTextAsDeleted(xml) : xml;
+      }
+      if (
+        item.type === "insertion" ||
+        item.type === "deletion" ||
+        item.type === "moveFrom" ||
+        item.type === "moveTo"
+      ) {
+        return serializeTrackedChange(trackedChangeTag(item), item);
       }
       return item.type === "bookmarkStart"
         ? serializeBookmarkStart(item)

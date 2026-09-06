@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
 import { parseParagraph } from "../paragraphParser";
+import { fromProseDoc } from "../../prosemirror/conversion/fromProseDoc";
+import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import type { ComplexField, Paragraph } from "../../types/document";
+import { createEmptyDocument } from "../../utils/createDocument";
 import { parseXmlDocument, type XmlElement } from "../xmlParser";
 import { serializeParagraph } from "./paragraphSerializer";
 
@@ -232,6 +235,95 @@ describe("serializeSimpleField structural round-trip", () => {
 });
 
 describe("serializeParagraph tracked-change hardening", () => {
+  test("keeps a complex field inside its authored revision wrapper through the editor model", () => {
+    const namespace = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+    const source = parseXmlDocument(`
+      <w:p ${namespace}>
+        <w:del w:id="22" w:author="Reviewer">
+          <w:r><w:delText>before </w:delText></w:r>
+          <w:r><w:fldChar w:fldCharType="begin"/></w:r>
+          <w:r><w:delInstrText> REF target </w:delInstrText></w:r>
+          <w:r><w:fldChar w:fldCharType="separate"/></w:r>
+          <w:r><w:delText>1</w:delText></w:r>
+          <w:r><w:fldChar w:fldCharType="end"/></w:r>
+          <w:r><w:delText> after</w:delText></w:r>
+        </w:del>
+      </w:p>
+    `);
+    if (!source) {
+      throw new Error("failed to parse tracked field fixture");
+    }
+    const paragraph = parseParagraph(source, null, null, null, null, null);
+    const deletion = paragraph.content.at(0);
+    expect(deletion?.type).toBe("deletion");
+    if (deletion?.type !== "deletion") {
+      return;
+    }
+    expect(deletion.content.map(({ type }) => type)).toEqual(["run", "complexField", "run"]);
+
+    const document = createEmptyDocument();
+    document.package.document.content = [paragraph];
+    const rebuilt = fromProseDoc(toProseDoc(document), document);
+    const rebuiltParagraph = rebuilt.package.document.content.at(0);
+    expect(rebuiltParagraph?.type).toBe("paragraph");
+    if (rebuiltParagraph?.type !== "paragraph") {
+      return;
+    }
+    const xml = serializeParagraph(rebuiltParagraph);
+    expect(xml.match(/<w:del\b/gu)).toHaveLength(1);
+    expect(xml).toContain("<w:delInstrText");
+  });
+
+  test("keeps nested revisions inside the authored outer wrapper", () => {
+    const namespace = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+    const source = parseXmlDocument(`
+      <w:p ${namespace}>
+        <w:ins w:id="40" w:author="Outer">
+          <w:r><w:t>added </w:t></w:r>
+          <w:del w:id="41" w:author="Inner"><w:r><w:delText>removed</w:delText></w:r></w:del>
+          <w:r><w:t> text</w:t></w:r>
+        </w:ins>
+      </w:p>
+    `);
+    if (!source) {
+      throw new Error("failed to parse nested revision fixture");
+    }
+    const paragraph = parseParagraph(source, null, null, null, null, null);
+    const insertion = paragraph.content.at(0);
+    expect(insertion?.type).toBe("insertion");
+    if (insertion?.type !== "insertion") {
+      return;
+    }
+    expect(insertion.content.map(({ type }) => type)).toEqual(["run", "deletion", "run"]);
+    const xml = serializeParagraph(paragraph);
+    expect(xml.match(/<w:ins\b/gu)).toHaveLength(1);
+    expect(xml.match(/<w:del\b/gu)).toHaveLength(1);
+    expect(xml.indexOf("<w:del ")).toBeGreaterThan(xml.indexOf("<w:ins "));
+    expect(xml.indexOf("</w:del>")).toBeLessThan(xml.indexOf("</w:ins>"));
+  });
+
+  test("does not absorb untracked content between separate same-id revisions", () => {
+    const info = { id: 7, author: "Reviewer" };
+    const paragraph: Paragraph = {
+      type: "paragraph",
+      content: [
+        {
+          type: "insertion",
+          info,
+          content: [{ type: "run", content: [{ type: "text", text: "A" }] }],
+        },
+        { type: "run", content: [{ type: "text", text: "B" }] },
+        {
+          type: "insertion",
+          info,
+          content: [{ type: "run", content: [{ type: "text", text: "C" }] }],
+        },
+      ],
+    };
+    const xml = serializeParagraph(paragraph);
+    expect(xml).toContain("</w:ins><w:r><w:t>B</w:t></w:r><w:ins");
+  });
+
   test("serializes deletion runs using delText and delInstrText", () => {
     const paragraph: Paragraph = {
       type: "paragraph",
