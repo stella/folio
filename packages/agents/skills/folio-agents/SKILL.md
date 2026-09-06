@@ -139,9 +139,11 @@ stay exported for validation-only paths.
 - The operation kinds a surface accepts are exactly the ones in its
   `suggest_changes` schema's `type` enum (by default `replaceInBlock`,
   `replaceRange`, `commentOnRange`, `formatRange`, `insertAfterBlock`,
-  `insertBeforeBlock`, `replaceBlock`, `deleteBlock`, `insertTableRow`,
-  `deleteTableRow`, `insertTableColumn`, `deleteTableColumn`,
-  `mergeTableCells`, `splitTableCell`) plus comment/reply/resolve. Do not
+  `insertBeforeBlock`, `replaceBlock`, `deleteBlock`, `splitBlock`,
+  `mergeBlockWithNext`, `setBlockParagraphProperties`, `insertTable`,
+  `deleteTable`, `insertTableRow`, `deleteTableRow`,
+  `insertTableColumn`, `deleteTableColumn`, `mergeTableCells`,
+  `splitTableCell`) plus comment/reply/resolve. Do not
   invent an operation kind or a directive marker; if a document needs a
   structural operation the contract lacks, extend `@stll/folio-core`'s
   ai-edits engine and the contract, then the schema follows.

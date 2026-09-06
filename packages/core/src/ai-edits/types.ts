@@ -20,6 +20,13 @@ export type FolioAIBlockPreviewRun = {
  * own blocks. Absent on a block that is not inside a table.
  */
 export type FolioAIBlockTableLocation = {
+  /**
+   * Document-order index of the OUTERMOST table the block sits in — the same
+   * as `tableIndex` unless tables nest. A comparison aligns on this: a table
+   * inside a cell is part of its parent, not a structure of its own that can
+   * be paired against one somewhere else.
+   */
+  outerTableIndex: number;
   tableIndex: number;
   rowIndex: number;
   cellIndex: number;
@@ -34,8 +41,27 @@ export type FolioAIBlock = {
   headingLevel?: number;
   displayLabel?: string;
   styleId?: string;
+  /**
+   * `w:numPr/w:ilvl`: the block's list indent level. Present only on a block
+   * that carries numbering, and the only pPr property a redline can move
+   * without touching a word — a demoted list item reads as unchanged text and
+   * is not.
+   */
+  listLevel?: number;
   previewRuns?: FolioAIBlockPreviewRun[];
   table?: FolioAIBlockTableLocation;
+};
+
+/**
+ * The paragraph properties an operation may set. A subset of `w:pPrChange`'s
+ * scope: the two a comparison can see in a block projection, and the two an
+ * agent has a reason to change.
+ */
+export type FolioAIBlockParagraphProperties = {
+  /** `w:pStyle`. `null` clears the style back to the default. */
+  styleId?: string | null;
+  /** `w:numPr/w:ilvl`, zero-based. */
+  listLevel?: number;
 };
 
 export type FolioAIEditSnapshot = {
@@ -204,6 +230,12 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
         text: string;
         inheritFormatting?: boolean;
         /**
+         * Links this insertion to the deletion that carries the same
+         * `moveId`: together they are one relocation, written as `w:moveTo`
+         * and `w:moveFrom`. See `deleteBlock`.
+         */
+        moveId?: string;
+        /**
          * When true, mark the inserted paragraph with
          * `pageBreakBefore` so the layout engine starts it on a
          * new page. Use for explicit page-break inserts.
@@ -213,9 +245,17 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
          * Override the paragraph `styleId` attr of the inserted
          * block (e.g. `ClauseHeading1`). When omitted the inserted
          * block inherits the source block's styleId via
-         * `inheritFormatting`.
+         * `inheritFormatting`; `null` gives it no style at all, which
+         * inheritance alone cannot say.
          */
-        styleId?: string;
+        styleId?: string | null;
+        /**
+         * Override `w:numPr/w:ilvl` on the inserted block, keeping the
+         * anchor's `w:numId`. Without it the inserted paragraph takes the
+         * anchor's level, which is the wrong one whenever the new item sits
+         * beside a list item at a different depth.
+         */
+        listLevel?: number;
         comment?: FolioAIComment;
       }
     | {
@@ -231,7 +271,91 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
         id: string;
         type: "deleteBlock";
         blockId: string;
+        /**
+         * Links this deletion to the insertion that carries the same
+         * `moveId`: together they are one relocation, written as `w:moveFrom`
+         * and `w:moveTo` rather than as an unrelated deletion and insertion.
+         * A `moveId` that does not name exactly one of each is reported as an
+         * `unpairedMove` normalization and both halves apply plainly.
+         */
+        moveId?: string;
         comment?: FolioAIComment;
+      }
+    /**
+     * Break the block in two at `offset`, moving a paragraph mark and no
+     * words. In tracked-changes mode the first half carries an INSERTED
+     * paragraph mark, so accepting keeps the break and rejecting closes it;
+     * the alternative — rewriting the first half and inserting the second —
+     * claims the tail was newly written when nobody touched it.
+     */
+    | {
+        id: string;
+        type: "splitBlock";
+        /** Offset in the block's text. Must fall strictly inside it. */
+        offset: number;
+        /**
+         * Text at `offset` the break replaces — the space between the two
+         * halves, when the split consumed one. Deleted in `"direct"` mode and
+         * deletion-marked in tracked mode, so rejecting restores it.
+         */
+        separator?: string;
+        blockId: string;
+      }
+    /**
+     * Add a whole table next to the anchor block, its rows marked inserted in
+     * tracked mode. `insertTableRow` can only grow a table that already
+     * exists; a comparison whose target gained one needs to say so.
+     */
+    | {
+        id: string;
+        type: "insertTable";
+        blockId: string;
+        /** Place the table after the anchor (default) or before it. */
+        position?: "after" | "before";
+        /** Cell texts row by row. Every row must hold the same number of cells. */
+        rows: readonly (readonly string[])[];
+      }
+    /**
+     * Remove the whole table the block sits in, its rows marked deleted in
+     * tracked mode. The mirror of `insertTable`.
+     */
+    | {
+        id: string;
+        type: "deleteTable";
+        blockId: string;
+      }
+    /**
+     * Replace the block's paragraph properties, recorded as a `w:pPrChange`
+     * in tracked mode so the previous set is restored on reject. The edit
+     * that moves no words: a list item demoted a level, a paragraph restyled
+     * as a heading.
+     */
+    | {
+        id: string;
+        type: "setBlockParagraphProperties";
+        blockId: string;
+        properties: FolioAIBlockParagraphProperties;
+      }
+    /**
+     * Join the block with the one after it, the mirror of `splitBlock`: in
+     * tracked-changes mode the block carries a DELETED paragraph mark, so
+     * accepting closes the break and rejecting keeps it.
+     *
+     * Refused when the block has no joinable sibling — the last paragraph of
+     * a table cell, or of the story — because a deleted mark there would
+     * accept into a join that cannot happen and leave a revision no reader
+     * can resolve.
+     */
+    | {
+        id: string;
+        type: "mergeBlockWithNext";
+        /**
+         * Text the join inserts between the two halves — the space the
+         * paragraph break used to stand in for. Insertion-marked in tracked
+         * mode, so rejecting removes it along with the join.
+         */
+        separator?: string;
+        blockId: string;
       }
     | {
         id: string;
@@ -387,21 +511,33 @@ export type FolioAIEditSkippedOperation = {
   reason: FolioAIEditSkipReason;
 };
 
-/** One automatic adjustment `apply.ts` made to an operation's input to keep the applied result well-formed. */
-export type FolioAIEditNormalizationCode = "splitMultilineText";
-
 /**
- * A line-break in `insertAfterBlock` / `insertBeforeBlock`'s `text` cannot become
- * one paragraph with an embedded break (Word paragraphs are single lines); the
- * applier splits it into one paragraph per non-blank line instead and reports it
- * here so the caller can see what happened to the text it sent.
+ * One automatic adjustment `apply.ts` made to an operation's input to keep the
+ * applied result well-formed. Reported rather than applied silently: the
+ * caller asked for something the document could not hold, and gets told what
+ * it got instead.
  */
-export type FolioAIEditNormalization = {
-  id: string;
-  code: FolioAIEditNormalizationCode;
-  /** Number of paragraphs the operation's `text` was split into. */
-  paragraphCount: number;
-};
+export type FolioAIEditNormalization =
+  /**
+   * A line-break in `insertAfterBlock` / `insertBeforeBlock`'s `text` cannot
+   * become one paragraph with an embedded break (Word paragraphs are single
+   * lines); the applier split it into one paragraph per non-blank line.
+   */
+  | {
+      id: string;
+      code: "splitMultilineText";
+      /** Number of paragraphs the operation's `text` was split into. */
+      paragraphCount: number;
+    }
+  /**
+   * A `moveId` that did not name exactly one deletion and one insertion in
+   * the batch. The operation still applies, as an ordinary insertion or
+   * deletion: half a move pair is not a move, and `w:moveTo` without its
+   * `w:moveFrom` is a relocation from nowhere.
+   */
+  | { id: string; code: "unpairedMove"; moveId: string };
+
+export type FolioAIEditNormalizationCode = FolioAIEditNormalization["code"];
 
 export type FolioAIEditApplyResult = {
   applied: FolioAIEditAppliedOperation[];

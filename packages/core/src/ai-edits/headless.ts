@@ -67,7 +67,7 @@ import {
   type FolioDocumentOperationUndoHandle,
   type FolioDocumentOperationUndoResult,
 } from "../document-operations";
-import type { FolioRevisionStamp } from "./apply";
+import type { FolioRevisionStamp, FolioWordDiffOptions } from "./apply";
 import { buildAnnotatedBlockText } from "./clean-text";
 import {
   getCommentAnchorsFromDoc,
@@ -206,6 +206,8 @@ export type FolioApplyOperationsOptions = {
   snapshot?: FolioAIEditSnapshot;
   /** Omit to stamp revisions from the wall clock and the shared id cursor. */
   revisionStamp?: FolioRevisionStamp;
+  /** Token size a replacement's redline is cut at. Word-level by default. */
+  wordDiff?: FolioWordDiffOptions;
 };
 
 /** Options for {@link FolioDocxReviewer.applyDocumentOperations}. */
@@ -237,6 +239,18 @@ export type FolioDocumentStoryHandle =
   | { type: "endnote"; noteId: number };
 
 export type FolioEditableDocumentStoryHandle = FolioDocumentStoryHandle;
+
+/**
+ * One numbering level as a reader meets it: which list, which depth, and the
+ * format and template that produce the label.
+ */
+export type FolioNumberingLevel = {
+  numId: number;
+  level: number;
+  format: string;
+  levelText: string;
+  start?: number;
+};
 
 export type FolioDocumentStory = {
   handle: FolioDocumentStoryHandle;
@@ -321,6 +335,7 @@ type ApplyDocumentOperationsInternalOptions = {
   batch: FolioDocumentOperationBatch;
   snapshot?: FolioAIEditSnapshot;
   revisionStamp?: FolioRevisionStamp;
+  wordDiff?: FolioWordDiffOptions;
   createUndoEntry: boolean;
 };
 
@@ -365,6 +380,17 @@ const formatStoryStateForLLM = (state: EditorState, annotated: boolean): string 
   if (!annotated) {
     return snapshot.blocks.map(formatBlockForLLM).join("\n");
   }
+  // One walk, not one `doc.nodeAt` per block: `nodeAt` re-descends from the
+  // root and scans each level's fragment from index 0, so looking every block
+  // up costs O(blocks^2) on a flat document.
+  const nodeByStart = new Map<number, PMNode>();
+  state.doc.descendants((node, pos) => {
+    if (!node.isTextblock) {
+      return true;
+    }
+    nodeByStart.set(pos, node);
+    return false;
+  });
   const startById = new Map<string, number>();
   for (const anchor of Object.values(snapshot.anchors)) {
     startById.set(anchor.id, anchor.from);
@@ -372,7 +398,7 @@ const formatStoryStateForLLM = (state: EditorState, annotated: boolean): string 
   return snapshot.blocks
     .map((block) => {
       const from = startById.get(block.id);
-      const node = from === undefined ? null : state.doc.nodeAt(from);
+      const node = from === undefined ? undefined : nodeByStart.get(from);
       const text = node ? buildAnnotatedBlockText(node) : block.text;
       return formatBlockLine(block, text);
     })
@@ -576,6 +602,47 @@ export class FolioDocxReviewer {
     return createFolioAIEditSnapshot(this.state.doc);
   }
 
+  /**
+   * The package's numbering, flattened to what a reader sees: one entry per
+   * numbering instance and level, with the format and level text that produce
+   * its labels.
+   *
+   * Labels are rendered from these definitions rather than stored on the
+   * paragraphs, so nothing in a block projection changes when a list is
+   * renumbered — which is right for an insertion that renumbers the items
+   * below it, and wrong for a list whose FORMAT changed. Sorted so two
+   * packages can be compared entry by entry.
+   */
+  readNumberingDefinitions(): FolioNumberingLevel[] {
+    const numbering = this.baseDocument.package.numbering;
+    if (!numbering) {
+      return [];
+    }
+    const levelsByAbstractId = new Map(
+      numbering.abstractNums.map((abstractNum) => [abstractNum.abstractNumId, abstractNum.levels]),
+    );
+    const levels: FolioNumberingLevel[] = [];
+    for (const instance of numbering.nums) {
+      const overrides = new Map(
+        (instance.levelOverrides ?? []).map((override) => [override.ilvl, override]),
+      );
+      for (const level of levelsByAbstractId.get(instance.abstractNumId) ?? []) {
+        const override = overrides.get(level.ilvl);
+        const resolved = override?.lvl ?? level;
+        levels.push({
+          numId: instance.numId,
+          level: resolved.ilvl,
+          format: resolved.numFmt,
+          levelText: resolved.lvlText,
+          ...((override?.startOverride ?? resolved.start) !== undefined
+            ? { start: override?.startOverride ?? resolved.start }
+            : {}),
+        });
+      }
+    }
+    return levels.toSorted((left, right) => left.numId - right.numId || left.level - right.level);
+  }
+
   /** Return parsed package metadata without exposing the mutable document model. */
   getDocumentProperties(): Readonly<NonNullable<Document["package"]["properties"]>> | null {
     const properties = this.baseDocument.package.properties;
@@ -693,12 +760,14 @@ export class FolioDocxReviewer {
     batch,
     snapshot,
     revisionStamp,
+    wordDiff,
   }: FolioApplyDocumentOperationsToStoryOptions): FolioDocumentOperationResult {
     return this.applyDocumentOperationsInternal({
       story,
       batch,
       ...(snapshot !== undefined && { snapshot }),
       ...(revisionStamp !== undefined && { revisionStamp }),
+      ...(wordDiff !== undefined && { wordDiff }),
       createUndoEntry: true,
     });
   }
@@ -708,6 +777,7 @@ export class FolioDocxReviewer {
     batch,
     snapshot,
     revisionStamp,
+    wordDiff,
     createUndoEntry,
   }: ApplyDocumentOperationsInternalOptions): FolioDocumentOperationResult {
     const beforeState = this.requireEditableStoryState(story);
@@ -726,6 +796,7 @@ export class FolioDocxReviewer {
       story: story.type === "main" ? "main" : story,
       author: this.author,
       ...(revisionStamp !== undefined && { revisionStamp }),
+      ...(wordDiff !== undefined && { wordDiff }),
       createCommentId: (text) => {
         const comment = createReviewerComment(this.nextCommentId(), text, this.author);
         this.createdComments.push(comment);
@@ -1077,19 +1148,32 @@ export class FolioDocxReviewer {
   }
 
   /**
-   * Accept every tracked change in the body. Returns the number of changes
-   * present before the sweep. Note-body changes are out of scope.
+   * Accept every tracked change in the package. Returns the number of changes
+   * present before the sweep.
+   *
+   * Every story, not just the body: a revision in a header or a footnote is
+   * one a reviewer meant to resolve, and leaving it behind means an accepted
+   * document still carries a redline nobody can see from the body.
    */
   acceptAll(): number {
-    const count = this.getChanges().length;
-    this.runCommand(acceptAllChanges());
-    return count;
+    return this.resolveEveryStory(acceptAllChanges());
   }
 
-  /** Reject every tracked change in the body. See {@link acceptAll}. */
+  /** Reject every tracked change in the package. See {@link acceptAll}. */
   rejectAll(): number {
-    const count = this.getChanges().length;
-    this.runCommand(rejectAllChanges());
+    return this.resolveEveryStory(rejectAllChanges());
+  }
+
+  private resolveEveryStory(command: Command): number {
+    let count = 0;
+    for (const { handle } of this.listStories()) {
+      const state = this.getEditableStoryState(handle);
+      if (!state) {
+        continue;
+      }
+      count += getTrackedChangesFromDoc(state.doc).length;
+      this.runStoryCommand(command, handle);
+    }
     return count;
   }
 
@@ -1403,15 +1487,22 @@ export class FolioDocxReviewer {
    * resulting state for {@link toBuffer}.
    */
   private runCommand(command: Command): boolean {
-    this.resolvedStoryExpectations.delete("main");
+    return this.runStoryCommand(command, MAIN_STORY);
+  }
+
+  private runStoryCommand(command: Command, story: FolioEditableDocumentStoryHandle): boolean {
+    const state = this.getEditableStoryState(story);
+    if (!state) {
+      return false;
+    }
     const view = {
-      state: this.state,
+      state,
       dispatch: (transaction: Transaction) => {
         view.state = view.state.apply(transaction);
       },
     };
     const handled = command(view.state, view.dispatch);
-    this.state = view.state;
+    this.setEditableStoryState(story, view.state);
     return handled;
   }
 }

@@ -58,59 +58,80 @@ export const createFolioAITextRangeHandle = ({
 
 const TABLE_ROW_NODE_NAME = "tableRow";
 
-/**
- * True when `pos`'s nearest `tableRow` ancestor is marked `hidden` (OOXML
- * `w:trPr/w:hidden` — Word never renders the row). A textblock inside such a
- * row must not surface its text to the AI/agent snapshot: an attacker DOCX
- * could otherwise smuggle prompt-injection instructions into a row that no
- * human ever sees.
- */
-const isInHiddenTableRow = (doc: PMNode, pos: number): boolean => {
-  const $pos = doc.resolve(pos);
-  for (let depth = $pos.depth; depth > 0; depth--) {
-    const ancestor = $pos.node(depth);
-    if (ancestor.type.name === TABLE_ROW_NODE_NAME) {
-      return ancestor.attrs["hidden"] === true;
-    }
-  }
-  return false;
-};
-
 const TABLE_ROLE_TABLE = "table";
 const TABLE_ROLE_ROW = "row";
 
 /**
- * Locate `pos` inside its innermost enclosing table, or `undefined` when it
- * sits outside every table.
+ * One node on the path from the document to the block being visited: the node
+ * itself, where it ends, and its index in its own parent.
+ *
+ * The walk below keeps this path instead of calling `doc.resolve(pos)` per
+ * block. `resolve` re-descends from the root and finds each level's child by
+ * scanning that level's fragment from index 0, so on a flat document of n
+ * paragraphs it costs O(n) per block and the snapshot costs O(n^2). The path
+ * is already known: a depth-first walk in document order visits every ancestor
+ * before the block, so carrying it costs nothing and the snapshot is linear.
  */
-const getTableLocation = (
-  doc: PMNode,
-  pos: number,
-  tableIndexByStart: ReadonlyMap<number, number>,
-): FolioAIBlockTableLocation | undefined => {
-  const $pos = doc.resolve(pos);
-  for (let cellDepth = $pos.depth; cellDepth > 1; cellDepth--) {
-    const role = $pos.node(cellDepth).type.spec["tableRole"];
+type AncestorPathEntry = { node: PMNode; start: number; end: number; index: number };
+
+/**
+ * True for a `tableRow` marked `hidden` (OOXML `w:trPr/w:hidden` — Word never
+ * renders the row). Nothing inside such a row may surface its text to the
+ * AI/agent snapshot: an attacker DOCX could otherwise smuggle prompt-injection
+ * instructions into a row that no human ever sees. The walk skips the row's
+ * whole subtree, so a table nested inside a hidden row is hidden with it.
+ */
+const isHiddenTableRow = (node: PMNode): boolean =>
+  node.type.name === TABLE_ROW_NODE_NAME && node.attrs["hidden"] === true;
+
+type TableLocationOptions = {
+  path: readonly AncestorPathEntry[];
+  /** The visited block's index in its own parent. */
+  blockIndex: number;
+  tableIndexByStart: ReadonlyMap<number, number>;
+};
+
+/**
+ * Locate the block inside its innermost enclosing table, or `undefined` when
+ * it sits outside every table.
+ */
+const getTableLocation = ({
+  path,
+  blockIndex,
+  tableIndexByStart,
+}: TableLocationOptions): FolioAIBlockTableLocation | undefined => {
+  for (let cellDepth = path.length - 1; cellDepth > 1; cellDepth--) {
+    const cell = path[cellDepth];
+    if (!cell) {
+      continue;
+    }
+    const role = cell.node.type.spec["tableRole"];
     if (role !== "cell" && role !== "header_cell") {
       continue;
     }
-    const rowDepth = cellDepth - 1;
-    const tableDepth = rowDepth - 1;
+    const row = path[cellDepth - 1];
+    const table = path[cellDepth - 2];
     if (
-      $pos.node(rowDepth).type.spec["tableRole"] !== TABLE_ROLE_ROW ||
-      $pos.node(tableDepth).type.spec["tableRole"] !== TABLE_ROLE_TABLE
+      !row ||
+      !table ||
+      row.node.type.spec["tableRole"] !== TABLE_ROLE_ROW ||
+      table.node.type.spec["tableRole"] !== TABLE_ROLE_TABLE
     ) {
       return undefined;
     }
-    const tableIndex = tableIndexByStart.get($pos.before(tableDepth));
-    if (tableIndex === undefined) {
+    const tableIndex = tableIndexByStart.get(table.start);
+    const outerTable = path.find((entry) => entry.node.type.spec["tableRole"] === TABLE_ROLE_TABLE);
+    const outerTableIndex =
+      outerTable === undefined ? undefined : tableIndexByStart.get(outerTable.start);
+    if (tableIndex === undefined || outerTableIndex === undefined) {
       return undefined;
     }
     return {
+      outerTableIndex,
       tableIndex,
-      rowIndex: $pos.index(tableDepth),
-      cellIndex: $pos.index(rowDepth),
-      paragraphIndex: $pos.index(cellDepth),
+      rowIndex: row.index,
+      cellIndex: cell.index,
+      paragraphIndex: blockIndex,
     };
   }
   return undefined;
@@ -132,19 +153,26 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
     textblockCount: number;
   } = { candidate: null, textblockCount: 0 };
 
+  // The containers enclosing the node being visited, innermost last. Kept in
+  // step with the walk so no block has to resolve its own position.
+  const path: AncestorPathEntry[] = [];
+
   let blockIndex = 0;
-  doc.descendants((node, pos, parent) => {
+  doc.descendants((node, pos, parent, index) => {
+    while (pos >= (path.at(-1)?.end ?? Number.POSITIVE_INFINITY)) {
+      path.pop();
+    }
     if (!node.isTextblock) {
+      if (isHiddenTableRow(node)) {
+        return false;
+      }
       if (node.type.spec["tableRole"] === TABLE_ROLE_TABLE) {
         tableIndexByStart.set(pos, tableIndexByStart.size);
       }
+      if (!node.isLeaf) {
+        path.push({ node, start: pos, end: pos + node.nodeSize, index });
+      }
       return true;
-    }
-
-    if (isInHiddenTableRow(doc, pos)) {
-      // Don't descend into a hidden row's content — nothing inside it
-      // should reach the AI-facing snapshot.
-      return false;
     }
 
     // Snapshot the AI-facing text in its post-tracked-changes
@@ -198,8 +226,9 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
     const kind = getBlockKind(node, headingLevel);
     const displayLabel = getDisplayLabel(node);
     const styleId = getStyleId(node);
+    const listLevel = getListLevel(node);
     const previewRuns = getPreviewRuns(node);
-    const table = getTableLocation(doc, pos, tableIndexByStart);
+    const table = getTableLocation({ path, blockIndex: index, tableIndexByStart });
 
     draftBlocks.push({
       block: {
@@ -209,6 +238,7 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
         ...(headingLevel !== undefined && { headingLevel }),
         ...(displayLabel !== undefined && { displayLabel }),
         ...(styleId !== undefined && { styleId }),
+        ...(listLevel !== undefined && { listLevel }),
         ...(previewRuns !== undefined && { previewRuns }),
         ...(table !== undefined && { table }),
       },
@@ -306,6 +336,15 @@ const getDisplayLabel = (node: PMNode): string | undefined => {
   }
 
   return undefined;
+};
+
+const getListLevel = (node: PMNode): number | undefined => {
+  const numPr: unknown = node.attrs["numPr"];
+  if (typeof numPr !== "object" || numPr === null || !("ilvl" in numPr)) {
+    return undefined;
+  }
+  const { ilvl } = numPr;
+  return typeof ilvl === "number" && Number.isInteger(ilvl) && ilvl >= 0 ? ilvl : undefined;
 };
 
 const getStyleId = (node: PMNode): string | undefined => {

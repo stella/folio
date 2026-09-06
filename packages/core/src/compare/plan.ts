@@ -42,6 +42,7 @@ import type { FolioDocumentStoryHandle } from "../ai-edits/headless";
 import { createFolioAITextRangeHandle } from "../ai-edits/snapshot";
 import type {
   FolioAIBlock,
+  FolioAIBlockParagraphProperties,
   FolioAIBlockTableLocation,
   FolioAIEditOperation,
   FolioAIEditSnapshot,
@@ -59,6 +60,47 @@ const MOVE_MINIMUM_WORD_COUNT = 3;
  * quadratic on attacker-controlled input.
  */
 const MAX_MOVE_CANDIDATES_PER_TEXT = 64;
+
+/**
+ * How much of a relocated paragraph must survive the relocation for it still
+ * to read as one. Below it the two paragraphs are a deletion and an unrelated
+ * insertion, and calling them a move would tell the reader the wrong story
+ * about where the text came from.
+ */
+const MOVE_SIMILARITY_THRESHOLD = 0.8;
+
+/**
+ * Total pair comparisons the similarity pass may make in one story. Exact text
+ * matches are found by lookup; only what is left pays this, and it is capped
+ * so two documents of unmatched paragraphs cannot make the pass quadratic.
+ */
+const MAX_MOVE_SIMILARITY_COMPARISONS = 20_000;
+
+/**
+ * Dice coefficient over word tokens: twice the shared tokens over the two
+ * token counts. Multiset rather than set, so a paragraph repeating a word does
+ * not match one that says it once.
+ */
+const tokenSimilarity = (left: string, right: string): number => {
+  const leftTokens = left.split(/\s+/u).filter((token) => token.length > 0);
+  const rightTokens = right.split(/\s+/u).filter((token) => token.length > 0);
+  if (leftTokens.length === 0 || rightTokens.length === 0) {
+    return 0;
+  }
+  const remaining = new Map<string, number>();
+  for (const token of leftTokens) {
+    remaining.set(token, (remaining.get(token) ?? 0) + 1);
+  }
+  let shared = 0;
+  for (const token of rightTokens) {
+    const count = remaining.get(token) ?? 0;
+    if (count > 0) {
+      remaining.set(token, count - 1);
+      shared += 1;
+    }
+  }
+  return (2 * shared) / (leftTokens.length + rightTokens.length);
+};
 
 const wordCountReaches = (text: string, minimum: number): boolean => {
   let count = 0;
@@ -79,7 +121,9 @@ type CompareStep =
   | { type: "baseOnly"; block: FolioAIBlock }
   | { type: "targetOnly"; block: FolioAIBlock }
   | { type: "baseRow"; blocks: readonly FolioAIBlock[]; location: FolioAIBlockTableLocation }
-  | { type: "targetRow"; blocks: readonly FolioAIBlock[]; location: FolioAIBlockTableLocation };
+  | { type: "targetRow"; blocks: readonly FolioAIBlock[]; location: FolioAIBlockTableLocation }
+  | { type: "baseTable"; blocks: readonly FolioAIBlock[]; location: FolioAIBlockTableLocation }
+  | { type: "targetTable"; blocks: readonly FolioAIBlock[]; location: FolioAIBlockTableLocation };
 
 /**
  * A maximal run of blocks that share a container: body text, or one table.
@@ -105,7 +149,9 @@ const splitSegments = (blocks: readonly FolioAIBlock[]): DocumentSegment[] => {
   const segments: DocumentSegment[] = [];
   let currentTableIndex: number | null = null;
   for (const block of blocks) {
-    const tableIndex = block.table?.tableIndex ?? null;
+    // The OUTERMOST table, so a table inside a cell stays part of its parent's
+    // segment instead of splitting it in three.
+    const tableIndex = block.table?.outerTableIndex ?? null;
     const current = segments.at(-1);
     if (current !== undefined && currentTableIndex === tableIndex) {
       current.blocks.push(block);
@@ -124,32 +170,28 @@ const splitSegments = (blocks: readonly FolioAIBlock[]): DocumentSegment[] => {
 };
 
 /**
- * A stand-in block used only to run {@link alignFolioBlocks} over table rows,
- * which are not paragraphs. The id is always the `seq-NNNN` shape, which the
- * alignment treats as unstable, so it pairs rows on text and position alone
- * instead of mistaking a synthetic id for identity.
+ * Blocks of one table segment grouped into rows, in document order.
+ *
+ * Keyed by table AND row, not by row alone: a segment holds the whole
+ * outermost table, so a nested table's first row would otherwise merge with
+ * its parent's first row and the alignment would compare one against the
+ * other.
  */
-const proxyBlock = (index: number, text: string): FolioAIBlock => ({
-  id: `seq-${String(index + 1).padStart(4, "0")}`,
-  kind: "paragraph",
-  text,
-});
-
-/** Blocks of one table grouped into rows, in row order. */
 const groupRows = (blocks: readonly FolioAIBlock[]): FolioAIBlock[][] => {
-  const rows = new Map<number, FolioAIBlock[]>();
+  const rows = new Map<string, FolioAIBlock[]>();
   for (const block of blocks) {
     if (!block.table) {
       continue;
     }
-    const row = rows.get(block.table.rowIndex);
+    const key = `${String(block.table.tableIndex)}:${String(block.table.rowIndex)}`;
+    const row = rows.get(key);
     if (row) {
       row.push(block);
     } else {
-      rows.set(block.table.rowIndex, [block]);
+      rows.set(key, [block]);
     }
   }
-  return [...rows.keys()].toSorted((left, right) => left - right).map((key) => rows.get(key) ?? []);
+  return [...rows.values()];
 };
 
 const rowText = (row: readonly FolioAIBlock[]): string => row.map(({ text }) => text).join(" ");
@@ -214,53 +256,146 @@ const alignRowCells = (
  * its joined cell text — keeps a whole-row change whole, and confines every
  * other difference to a cell that really corresponds.
  */
-const buildTableSteps = (
+/**
+ * One segment's blocks split per table, in first-appearance order. A segment
+ * is a whole outermost table, so it holds the parent's blocks and every nested
+ * table's; a row alignment that mixed them would compare the parent's first
+ * row against a nested table's.
+ */
+const groupTables = (blocks: readonly FolioAIBlock[]): FolioAIBlock[][] => {
+  const tables = new Map<number, FolioAIBlock[]>();
+  for (const block of blocks) {
+    if (!block.table) {
+      continue;
+    }
+    const existing = tables.get(block.table.tableIndex);
+    if (existing) {
+      existing.push(block);
+    } else {
+      tables.set(block.table.tableIndex, [block]);
+    }
+  }
+  return [...tables.values()];
+};
+
+/**
+ * Align a paired table segment: each table in it against the table at the same
+ * place on the other side, then that table's rows, then its cells. Tables are
+ * paired by order within the segment because the segment IS one table plus
+ * whatever nests inside it — the nth nested table of one answers to the nth of
+ * the other.
+ */
+const buildTableSegmentSteps = (
   baseBlocks: readonly FolioAIBlock[],
   targetBlocks: readonly FolioAIBlock[],
 ): CompareStep[] => {
-  const baseRows = groupRows(baseBlocks);
-  const targetRows = groupRows(targetBlocks);
+  const baseTables = groupTables(baseBlocks);
+  const targetTables = groupTables(targetBlocks);
   const steps: CompareStep[] = [];
-
-  let baseCursor = 0;
-  let targetCursor = 0;
-  for (const event of alignFolioBlocks(
-    baseRows.map((row, index) => proxyBlock(index, rowText(row))),
-    targetRows.map((row, index) => proxyBlock(index, rowText(row))),
-  )) {
-    switch (event.type) {
-      case "pair": {
-        const baseRow = baseRows[baseCursor++];
-        const targetRow = targetRows[targetCursor++];
-        if (baseRow && targetRow) {
-          steps.push(...alignRowCells(baseRow, targetRow));
-        }
-        break;
-      }
-      case "baseOnly": {
-        const row = baseRows[baseCursor++];
-        const location = row ? rowLocation(row) : null;
-        if (row && location) {
-          steps.push({ type: "baseRow", blocks: row, location });
-        }
-        break;
-      }
-      case "revisedOnly": {
-        const row = targetRows[targetCursor++];
-        const location = row ? rowLocation(row) : null;
-        if (row && location) {
-          steps.push({ type: "targetRow", blocks: row, location });
-        }
-        break;
-      }
-      default: {
-        const unreachable: never = event;
-        panic("Unhandled block alignment event", { event: unreachable });
-      }
+  const paired = Math.min(baseTables.length, targetTables.length);
+  for (let index = 0; index < paired; index++) {
+    steps.push(...buildTableSteps(baseTables[index] ?? [], targetTables[index] ?? []));
+  }
+  for (const blocks of baseTables.slice(paired)) {
+    const location = blocks.at(0)?.table;
+    if (location) {
+      steps.push({ type: "baseTable", blocks, location });
+    }
+  }
+  for (const blocks of targetTables.slice(paired)) {
+    const location = blocks.at(0)?.table;
+    if (location) {
+      steps.push({ type: "targetTable", blocks, location });
     }
   }
   return steps;
 };
+
+/**
+ * How alike two rows must be for one to be read as the other, edited. Below
+ * it the pair is a deleted row and an inserted one.
+ */
+const ROW_PAIR_SIMILARITY = 0.5;
+
+/**
+ * How alike two rows are: their text, halved when their shapes differ.
+ *
+ * A row's shape is its physical cell count. Two rows with the same words in a
+ * different number of cells are not the same row edited, and pairing them
+ * would report every cell as changed rather than the row as replaced.
+ */
+const rowSimilarity = (
+  base: readonly FolioAIBlock[] | undefined,
+  target: readonly FolioAIBlock[] | undefined,
+): number => {
+  if (!base || !target) {
+    return 0;
+  }
+  const text = tokenSimilarity(rowText(base), rowText(target));
+  return rowCellTexts(base).length === rowCellTexts(target).length ? text : text / 2;
+};
+
+/**
+ * Align one table's rows.
+ *
+ * Exact text first, then SIMILARITY rather than position. Positional fallback
+ * is what made a deleted row plus a few cell edits report as a change in every
+ * row of the table: each row was paired with the one below it, so every cell
+ * differed. Pairing on similarity, and stepping one row on the side whose next
+ * row matches better, keeps the deletion where it happened.
+ */
+const alignTableRows = (
+  baseRows: readonly FolioAIBlock[][],
+  targetRows: readonly FolioAIBlock[][],
+): CompareStep[] => {
+  const steps: CompareStep[] = [];
+  const pushRow = (row: readonly FolioAIBlock[], side: "base" | "target"): void => {
+    const location = rowLocation(row);
+    if (location) {
+      steps.push({ type: side === "base" ? "baseRow" : "targetRow", blocks: row, location });
+    }
+  };
+
+  let baseCursor = 0;
+  let targetCursor = 0;
+  while (baseCursor < baseRows.length && targetCursor < targetRows.length) {
+    const baseRow = baseRows[baseCursor];
+    const targetRow = targetRows[targetCursor];
+    if (!baseRow || !targetRow) {
+      break;
+    }
+    const here = rowSimilarity(baseRow, targetRow);
+    if (here < 1) {
+      const baseAhead = rowSimilarity(baseRows[baseCursor + 1], targetRow);
+      const targetAhead = rowSimilarity(baseRow, targetRows[targetCursor + 1]);
+      if (baseAhead >= ROW_PAIR_SIMILARITY && baseAhead > here && baseAhead >= targetAhead) {
+        pushRow(baseRow, "base");
+        baseCursor += 1;
+        continue;
+      }
+      if (targetAhead >= ROW_PAIR_SIMILARITY && targetAhead > here) {
+        pushRow(targetRow, "target");
+        targetCursor += 1;
+        continue;
+      }
+    }
+    steps.push(...alignRowCells(baseRow, targetRow));
+    baseCursor += 1;
+    targetCursor += 1;
+  }
+  for (const row of baseRows.slice(baseCursor)) {
+    pushRow(row, "base");
+  }
+  for (const row of targetRows.slice(targetCursor)) {
+    pushRow(row, "target");
+  }
+  return steps;
+};
+
+const buildTableSteps = (
+  baseBlocks: readonly FolioAIBlock[],
+  targetBlocks: readonly FolioAIBlock[],
+): CompareStep[] => alignTableRows(groupRows(baseBlocks), groupRows(targetBlocks));
 
 const buildBodySteps = (
   baseBlocks: readonly FolioAIBlock[],
@@ -281,20 +416,24 @@ const buildBodySteps = (
     }
   });
 
-/** Every block of an unpaired segment, as one-sided steps. */
+/**
+ * Every block of an unpaired segment, as one-sided steps. A whole table stays
+ * whole: reissuing it row by row would need a table to put the rows in, and
+ * the point of an unpaired table segment is that there is none.
+ */
 const unpairedSegmentSteps = (segment: DocumentSegment, side: "base" | "target"): CompareStep[] => {
-  if (segment.kind === "table") {
-    return groupRows(segment.blocks).flatMap((row) => {
-      const location = rowLocation(row);
-      if (!location) {
-        return [];
-      }
-      return [{ type: side === "base" ? "baseRow" : "targetRow", blocks: row, location }];
-    });
+  if (segment.kind !== "table") {
+    return segment.blocks.map((block) =>
+      side === "base" ? { type: "baseOnly", block } : { type: "targetOnly", block },
+    );
   }
-  return segment.blocks.map((block) =>
-    side === "base" ? { type: "baseOnly", block } : { type: "targetOnly", block },
-  );
+  const location = segment.blocks.at(0)?.table;
+  if (!location) {
+    return [];
+  }
+  return [
+    { type: side === "base" ? "baseTable" : "targetTable", blocks: segment.blocks, location },
+  ];
 };
 
 type BuildStepsOptions = {
@@ -319,46 +458,231 @@ type BuildStepsOptions = {
  * refuses those comparisons rather than returning a package that silently
  * drops one.
  */
-const buildSteps = ({ baseBlocks, targetBlocks }: BuildStepsOptions): CompareStep[] => {
-  const baseSegments = splitSegments(baseBlocks);
-  const targetSegments = splitSegments(targetBlocks);
-  const pairedCount = Math.min(baseSegments.length, targetSegments.length);
-  const steps: CompareStep[] = [];
+const segmentText = (segment: DocumentSegment): string =>
+  segment.blocks.map(({ text }) => text).join(" ");
 
-  for (let index = 0; index < pairedCount; index++) {
-    const baseSegment = baseSegments[index];
-    const targetSegment = targetSegments[index];
+/**
+ * How alike two table segments must be before a lookahead match may steal the
+ * pairing from the table in front of it. Two tables drawn from one document's
+ * vocabulary score alike by chance, so a lookahead has to clear this bar as
+ * well as beat what it displaces.
+ */
+const TABLE_PAIR_SIMILARITY = 0.5;
+
+/**
+ * Pair the two segment sequences, marking the segments only one side has.
+ *
+ * Pairing by index cannot see a table added or removed: the nth table of one
+ * document is put opposite the nth of the other, so deleting the first table
+ * shifts every later one and the comparison rewrites each table's contents
+ * into the next table along. Segments strictly alternate body, table, body,
+ * ..., so a one-segment lookahead on each side is enough to tell "this table
+ * changed a lot" from "this table is gone": the next table on the other side
+ * matching better is what says the current one is unpaired.
+ */
+const alignSegments = (
+  baseSegments: readonly DocumentSegment[],
+  targetSegments: readonly DocumentSegment[],
+): { baseSegment: DocumentSegment | null; targetSegment: DocumentSegment | null }[] => {
+  const paired: { baseSegment: DocumentSegment | null; targetSegment: DocumentSegment | null }[] =
+    [];
+  const similarity = (
+    left: DocumentSegment | undefined,
+    right: DocumentSegment | undefined,
+  ): number =>
+    left === undefined || right === undefined || left.kind !== right.kind
+      ? 0
+      : tokenSimilarity(segmentText(left), segmentText(right));
+
+  let baseCursor = 0;
+  let targetCursor = 0;
+  while (baseCursor < baseSegments.length && targetCursor < targetSegments.length) {
+    const baseSegment = baseSegments[baseCursor];
+    const targetSegment = targetSegments[targetCursor];
     if (!baseSegment || !targetSegment) {
+      break;
+    }
+    // Body segments always answer to body segments: they are the text between
+    // two tables, and the block alignment inside them handles the rest.
+    if (baseSegment.kind !== targetSegment.kind) {
+      paired.push({ baseSegment, targetSegment: null });
+      baseCursor += 1;
       continue;
     }
-    if (baseSegment.kind !== targetSegment.kind) {
+    if (baseSegment.kind === "body") {
+      paired.push({ baseSegment, targetSegment });
+      baseCursor += 1;
+      targetCursor += 1;
+      continue;
+    }
+    // The segment two along is the next one of the same kind: the sequence
+    // alternates body, table, body. A lookahead only wins when it is both a
+    // real match and a better one — two tables drawn from the same vocabulary
+    // score alike by chance, and "better than nothing" is not evidence that
+    // this table is gone.
+    const here = similarity(baseSegment, targetSegment);
+    const baseAhead = similarity(baseSegments[baseCursor + 2], targetSegment);
+    const targetAhead = similarity(baseSegment, targetSegments[targetCursor + 2]);
+    if (baseAhead >= TABLE_PAIR_SIMILARITY && baseAhead > here && baseAhead >= targetAhead) {
+      paired.push({ baseSegment, targetSegment: null });
+      baseCursor += 1;
+      continue;
+    }
+    if (targetAhead >= TABLE_PAIR_SIMILARITY && targetAhead > here) {
+      paired.push({ baseSegment: null, targetSegment });
+      targetCursor += 1;
+      continue;
+    }
+    paired.push({ baseSegment, targetSegment });
+    baseCursor += 1;
+    targetCursor += 1;
+  }
+  for (const segment of baseSegments.slice(baseCursor)) {
+    paired.push({ baseSegment: segment, targetSegment: null });
+  }
+  for (const segment of targetSegments.slice(targetCursor)) {
+    paired.push({ baseSegment: null, targetSegment: segment });
+  }
+  return paired;
+};
+
+const buildSteps = ({ baseBlocks, targetBlocks }: BuildStepsOptions): CompareStep[] => {
+  const steps: CompareStep[] = [];
+  for (const { baseSegment, targetSegment } of alignSegments(
+    splitSegments(baseBlocks),
+    splitSegments(targetBlocks),
+  )) {
+    if (baseSegment && targetSegment) {
       steps.push(
-        ...unpairedSegmentSteps(baseSegment, "base"),
-        ...unpairedSegmentSteps(targetSegment, "target"),
+        ...(baseSegment.kind === "table"
+          ? buildTableSegmentSteps(baseSegment.blocks, targetSegment.blocks)
+          : buildBodySteps(baseSegment.blocks, targetSegment.blocks)),
       );
       continue;
     }
-    steps.push(
-      ...(baseSegment.kind === "table"
-        ? buildTableSteps(baseSegment.blocks, targetSegment.blocks)
-        : buildBodySteps(baseSegment.blocks, targetSegment.blocks)),
-    );
-  }
-
-  for (const segment of baseSegments.slice(pairedCount)) {
-    steps.push(...unpairedSegmentSteps(segment, "base"));
-  }
-  for (const segment of targetSegments.slice(pairedCount)) {
-    steps.push(...unpairedSegmentSteps(segment, "target"));
+    if (baseSegment) {
+      steps.push(...unpairedSegmentSteps(baseSegment, "base"));
+      continue;
+    }
+    if (targetSegment) {
+      steps.push(...unpairedSegmentSteps(targetSegment, "target"));
+    }
   }
   return steps;
 };
 
+/**
+ * Two blocks are in the same container when a paragraph mark between them
+ * exists at all: two body paragraphs, or two paragraphs of one table cell. A
+ * mark cannot span a cell boundary, so a split or a merge across one is not a
+ * paragraph-mark edit however similar the text looks.
+ */
+const shareAContainer = (left: FolioAIBlock, right: FolioAIBlock): boolean => {
+  if (!left.table || !right.table) {
+    return left.table === undefined && right.table === undefined;
+  }
+  return (
+    left.table.tableIndex === right.table.tableIndex &&
+    left.table.rowIndex === right.table.rowIndex &&
+    left.table.cellIndex === right.table.cellIndex
+  );
+};
+
+/**
+ * The text between `head` and `tail` inside `whole`, when `whole` is exactly
+ * the two joined by whitespace (or by nothing). `null` when it is not: any
+ * other difference is a rewrite, not a moved paragraph mark.
+ */
+const separatorBetween = (whole: string, head: string, tail: string): string | null => {
+  if (head.length === 0 || tail.length === 0 || whole.length < head.length + tail.length) {
+    return null;
+  }
+  if (!whole.startsWith(head) || !whole.endsWith(tail)) {
+    return null;
+  }
+  const separator = whole.slice(head.length, whole.length - tail.length);
+  return separator.length === 0 || /^\s+$/u.test(separator) ? separator : null;
+};
+
+/** A split or a merge, and the step it consumed alongside the paired one. */
+type ParagraphMarkPlan =
+  | {
+      type: "split";
+      baseBlock: FolioAIBlock;
+      targetBlocks: readonly [FolioAIBlock, FolioAIBlock];
+      offset: number;
+      separator: string;
+    }
+  | {
+      type: "merge";
+      baseBlocks: readonly [FolioAIBlock, FolioAIBlock];
+      targetBlock: FolioAIBlock;
+      separator: string;
+    };
+
+/**
+ * Where the alignment produced a rewrite plus an insertion or a deletion that
+ * is really one paragraph mark moving, by step index of the PAIR step. The
+ * step after it is consumed with it.
+ *
+ * The alignment cannot see this: it pairs the base paragraph with the target
+ * half that still matches it and leaves the other half unpaired, which is a
+ * correct alignment and a misleading redline.
+ */
+const detectParagraphMarkEdits = (
+  steps: readonly CompareStep[],
+): ReadonlyMap<number, ParagraphMarkPlan> => {
+  const plans = new Map<number, ParagraphMarkPlan>();
+  for (const [index, step] of steps.entries()) {
+    const next = steps[index + 1];
+    if (step.type !== "pair" || next === undefined) {
+      continue;
+    }
+    if (next.type === "targetOnly") {
+      const separator = separatorBetween(
+        step.baseBlock.text,
+        step.targetBlock.text,
+        next.block.text,
+      );
+      if (separator !== null && shareAContainer(step.targetBlock, next.block)) {
+        plans.set(index, {
+          type: "split",
+          baseBlock: step.baseBlock,
+          targetBlocks: [step.targetBlock, next.block],
+          offset: step.targetBlock.text.length,
+          separator,
+        });
+      }
+      continue;
+    }
+    if (next.type !== "baseOnly") {
+      continue;
+    }
+    const separator = separatorBetween(step.targetBlock.text, step.baseBlock.text, next.block.text);
+    if (separator !== null && shareAContainer(step.baseBlock, next.block)) {
+      plans.set(index, {
+        type: "merge",
+        baseBlocks: [step.baseBlock, next.block],
+        targetBlock: step.targetBlock,
+        separator,
+      });
+    }
+  }
+  return plans;
+};
+
 /** Base block id -> target block id for every relocation the move pass found. */
-const detectMoves = (steps: readonly CompareStep[]): ReadonlyMap<string, string> => {
+const detectMoves = (
+  steps: readonly CompareStep[],
+  consumed: ReadonlySet<number>,
+): ReadonlyMap<string, string> => {
   const candidatesByText = new Map<string, string[]>();
-  for (const step of steps) {
-    if (step.type !== "baseOnly" || !wordCountReaches(step.block.text, MOVE_MINIMUM_WORD_COUNT)) {
+  for (const [index, step] of steps.entries()) {
+    if (
+      consumed.has(index) ||
+      step.type !== "baseOnly" ||
+      !wordCountReaches(step.block.text, MOVE_MINIMUM_WORD_COUNT)
+    ) {
       continue;
     }
     const queue = candidatesByText.get(step.block.text);
@@ -371,15 +695,58 @@ const detectMoves = (steps: readonly CompareStep[]): ReadonlyMap<string, string>
     }
   }
 
-  const movesByBaseBlockId = new Map<string, string>();
-  for (const step of steps) {
-    if (step.type !== "targetOnly") {
+  const unmatched: FolioAIBlock[] = [];
+  for (const [index, step] of steps.entries()) {
+    if (
+      consumed.has(index) ||
+      step.type !== "baseOnly" ||
+      !wordCountReaches(step.block.text, MOVE_MINIMUM_WORD_COUNT)
+    ) {
       continue;
     }
-    const queue = candidatesByText.get(step.block.text);
-    const baseBlockId = queue?.shift();
-    if (baseBlockId !== undefined) {
-      movesByBaseBlockId.set(baseBlockId, step.block.id);
+    unmatched.push(step.block);
+  }
+
+  const movesByBaseBlockId = new Map<string, string>();
+  const takenBaseBlockIds = new Set<string>();
+  let comparisonBudget = MAX_MOVE_SIMILARITY_COMPARISONS;
+  for (const [index, step] of steps.entries()) {
+    if (consumed.has(index) || step.type !== "targetOnly") {
+      continue;
+    }
+    const exact = candidatesByText.get(step.block.text)?.shift();
+    if (exact !== undefined) {
+      takenBaseBlockIds.add(exact);
+      movesByBaseBlockId.set(exact, step.block.id);
+      continue;
+    }
+    // A relocated paragraph is often edited on the way. Exact text is the
+    // fast path; everything else pays a bounded similarity pass, because a
+    // document repeating one paragraph thousands of times would otherwise
+    // make this quadratic on attacker-controlled input.
+    if (!wordCountReaches(step.block.text, MOVE_MINIMUM_WORD_COUNT)) {
+      continue;
+    }
+    let best: { block: FolioAIBlock; similarity: number } | null = null;
+    for (const candidate of unmatched) {
+      if (comparisonBudget <= 0) {
+        break;
+      }
+      if (takenBaseBlockIds.has(candidate.id)) {
+        continue;
+      }
+      comparisonBudget -= 1;
+      const similarity = tokenSimilarity(candidate.text, step.block.text);
+      if (
+        similarity >= MOVE_SIMILARITY_THRESHOLD &&
+        (best === null || similarity > best.similarity)
+      ) {
+        best = { block: candidate, similarity };
+      }
+    }
+    if (best) {
+      takenBaseBlockIds.add(best.block.id);
+      movesByBaseBlockId.set(best.block.id, step.block.id);
     }
   }
   return movesByBaseBlockId;
@@ -416,9 +783,11 @@ const baseTableBlockOf = (step: CompareStep): FolioAIBlock | null => {
     case "baseOnly":
       return step.block.table ? step.block : null;
     case "baseRow":
+    case "baseTable":
       return step.blocks[0] ?? null;
     case "targetOnly":
     case "targetRow":
+    case "targetTable":
       return null;
     default: {
       const unreachable: never = step;
@@ -455,6 +824,29 @@ const findRowAnchor = (steps: readonly CompareStep[], stepIndex: number): RowAnc
  * slot. An empty cell carries no block at all, so packing only the cells that
  * have text would shift every later cell one column left.
  */
+/** One table's cell texts, row by row, for a whole-table change. */
+/**
+ * One table's cell texts, row by row, padded to the widest row.
+ *
+ * A row's own width is its highest occupied cell index, so a table with
+ * merged cells or a short last row produces a ragged grid — and a ragged grid
+ * is not a table any consumer can lay out. Padding states the grid the table
+ * actually occupies; the empty strings are the cells a `w:gridSpan` covers.
+ */
+const tableCellTexts = (blocks: readonly FolioAIBlock[]): string[][] => {
+  const rows = groupRows(blocks).map((row) => rowCellTexts(row));
+  let width = 0;
+  for (const row of rows) {
+    width = Math.max(width, row.length);
+  }
+  for (const row of rows) {
+    while (row.length < width) {
+      row.push("");
+    }
+  }
+  return rows;
+};
+
 const rowCellTexts = (blocks: readonly FolioAIBlock[]): string[] => {
   const byCell: (string | undefined)[] = [];
   for (const block of blocks) {
@@ -463,6 +855,26 @@ const rowCellTexts = (blocks: readonly FolioAIBlock[]): string[] => {
     byCell[cellIndex] = existing === undefined ? block.text : `${existing}\n${block.text}`;
   }
   return Array.from(byCell, (text) => text ?? "");
+};
+
+/**
+ * The paragraph properties that differ, or `null` when they agree. Only the
+ * ones a block projection can see and an operation can set: a list level and
+ * a paragraph style, the two edits that move no words and are invisible in a
+ * text diff.
+ */
+const changedParagraphProperties = (
+  baseBlock: FolioAIBlock,
+  targetBlock: FolioAIBlock,
+): FolioAIBlockParagraphProperties | null => {
+  const properties: FolioAIBlockParagraphProperties = {};
+  if ((baseBlock.styleId ?? null) !== (targetBlock.styleId ?? null)) {
+    properties.styleId = targetBlock.styleId ?? null;
+  }
+  if (targetBlock.listLevel !== undefined && baseBlock.listLevel !== targetBlock.listLevel) {
+    properties.listLevel = targetBlock.listLevel;
+  }
+  return Object.keys(properties).length > 0 ? properties : null;
 };
 
 const locationOf = (story: FolioDocumentStoryHandle, block: FolioAIBlock): CompareChangeLocation =>
@@ -492,7 +904,11 @@ export const planStoryCompare = ({
   maxOperations,
 }: PlanStoryCompareOptions): CompareStoryPlan | null => {
   const steps = buildSteps({ baseBlocks: baseSnapshot.blocks, targetBlocks });
-  const movesByBaseBlockId = detectMoves(steps);
+  const paragraphMarkPlans = detectParagraphMarkEdits(steps);
+  // The step after each paragraph-mark plan is part of it, so neither the move
+  // pass nor the main loop may claim it again.
+  const consumedSteps = new Set([...paragraphMarkPlans.keys()].map((index) => index + 1));
+  const movesByBaseBlockId = detectMoves(steps, consumedSteps);
   const moveSourceByTargetBlockId = new Map<string, string>();
   for (const [baseBlockId, targetBlockId] of movesByBaseBlockId) {
     moveSourceByTargetBlockId.set(targetBlockId, baseBlockId);
@@ -507,24 +923,92 @@ export const planStoryCompare = ({
 
   const nextOperationId = (): string => `compare-${++operationSequence}`;
 
+  /**
+   * The relocation this block belongs to, named so the applier can link the
+   * deletion at the source with the insertion at the destination as
+   * `w:moveFrom` and `w:moveTo` instead of writing two unrelated revisions.
+   */
+  const moveIdOf = (baseBlockId: string): string => `move-${baseBlockId}`;
+
   const pushInsertOperation = (block: FolioAIBlock, anchorId: string | null): void => {
     if (anchorId === null) {
       trailingInserts.push(block);
       return;
     }
+    const moveSourceId = moveSourceByTargetBlockId.get(block.id);
     operations.push({
       id: nextOperationId(),
       type: "insertBeforeBlock",
       blockId: anchorId,
       text: block.text,
-      ...(block.styleId !== undefined && { styleId: block.styleId }),
+      ...(moveSourceId !== undefined && { moveId: moveIdOf(moveSourceId) }),
+      // Always explicit, `null` included: an inserted paragraph that says
+      // nothing about its style takes the anchor's, and the anchor is
+      // whichever block happened to follow it.
+      styleId: block.styleId ?? null,
+      ...(block.listLevel !== undefined && { listLevel: block.listLevel }),
     });
   };
 
   for (const [stepIndex, step] of steps.entries()) {
+    if (consumedSteps.has(stepIndex)) {
+      continue;
+    }
+    const paragraphMarkPlan = paragraphMarkPlans.get(stepIndex);
+    if (paragraphMarkPlan?.type === "split") {
+      const { baseBlock, targetBlocks: splitInto, offset, separator } = paragraphMarkPlan;
+      changes.push({
+        kind: "split",
+        location: locationOf(story, baseBlock),
+        baseBlockId: baseBlock.id,
+        targetBlockIds: splitInto.map(({ id }) => id),
+        text: baseBlock.text,
+      });
+      operations.push({
+        id: nextOperationId(),
+        type: "splitBlock",
+        blockId: baseBlock.id,
+        offset,
+        ...(separator.length > 0 && { separator }),
+      });
+      continue;
+    }
+    if (paragraphMarkPlan?.type === "merge") {
+      const { baseBlocks, targetBlock, separator } = paragraphMarkPlan;
+      changes.push({
+        kind: "merge",
+        location: locationOf(story, baseBlocks[0]),
+        baseBlockIds: baseBlocks.map(({ id }) => id),
+        targetBlockId: targetBlock.id,
+        text: targetBlock.text,
+      });
+      operations.push({
+        id: nextOperationId(),
+        type: "mergeBlockWithNext",
+        blockId: baseBlocks[0].id,
+        ...(separator.length > 0 && { separator }),
+      });
+      continue;
+    }
     switch (step.type) {
       case "pair": {
         const { baseBlock, targetBlock } = step;
+        const properties = changedParagraphProperties(baseBlock, targetBlock);
+        if (properties) {
+          changes.push({
+            kind: "paragraph-format",
+            location: locationOf(story, baseBlock),
+            baseBlockId: baseBlock.id,
+            targetBlockId: targetBlock.id,
+            properties,
+          });
+          operations.push({
+            id: nextOperationId(),
+            type: "setBlockParagraphProperties",
+            blockId: baseBlock.id,
+            properties,
+          });
+        }
         if (baseBlock.text !== targetBlock.text) {
           changes.push({
             kind: "replace",
@@ -585,7 +1069,12 @@ export const planStoryCompare = ({
             before: step.block.text,
           });
         }
-        operations.push({ id: nextOperationId(), type: "deleteBlock", blockId: step.block.id });
+        operations.push({
+          id: nextOperationId(),
+          type: "deleteBlock",
+          blockId: step.block.id,
+          ...(targetBlockId !== undefined && { moveId: moveIdOf(step.block.id) }),
+        });
         break;
       }
       case "targetOnly": {
@@ -623,6 +1112,52 @@ export const planStoryCompare = ({
           baseBlockIds: step.blocks.map(({ id }) => id),
         });
         operations.push({ id: nextOperationId(), type: "deleteTableRow", blockId: anchorBlockId });
+        break;
+      }
+      case "baseTable": {
+        const anchorBlockId = step.blocks[0]?.id;
+        if (anchorBlockId === undefined) {
+          panic("An unpaired table segment carried no blocks");
+        }
+        changes.push({
+          kind: "table-delete",
+          location: { story, cell: step.location },
+          tableIndex: step.location.tableIndex,
+          rows: tableCellTexts(step.blocks),
+          baseBlockIds: step.blocks.map(({ id }) => id),
+        });
+        operations.push({ id: nextOperationId(), type: "deleteTable", blockId: anchorBlockId });
+        break;
+      }
+      case "targetTable": {
+        const rows = tableCellTexts(step.blocks);
+        changes.push({
+          kind: "table-insert",
+          location: { story, cell: step.location },
+          tableIndex: step.location.tableIndex,
+          rows,
+          targetBlockIds: step.blocks.map(({ id }) => id),
+        });
+        const before = anchorIds[stepIndex] ?? null;
+        if (before !== null) {
+          operations.push({
+            id: nextOperationId(),
+            type: "insertTable",
+            blockId: before,
+            position: "before",
+            rows,
+          });
+          break;
+        }
+        if (lastBaseBlockId !== null) {
+          operations.push({
+            id: nextOperationId(),
+            type: "insertTable",
+            blockId: lastBaseBlockId,
+            position: "after",
+            rows,
+          });
+        }
         break;
       }
       case "targetRow": {
@@ -675,23 +1210,26 @@ export const planStoryCompare = ({
       // receive tracked insertions at all.
       break;
     }
-    const styleId = block.styleId === undefined ? {} : { styleId: block.styleId };
+    const listLevel = block.listLevel === undefined ? {} : { listLevel: block.listLevel };
     if (insertIndex === 0 && emptyBaseAnchorId !== undefined) {
       operations.push({
         id: nextOperationId(),
         type: "replaceBlock",
         blockId: emptyBaseAnchorId,
         text: block.text,
-        ...styleId,
+        ...(block.styleId !== undefined && { styleId: block.styleId }),
       });
       continue;
     }
+    const moveSourceId = moveSourceByTargetBlockId.get(block.id);
     operations.push({
       id: nextOperationId(),
       type: "insertAfterBlock",
       blockId: anchorId,
       text: block.text,
-      ...styleId,
+      ...(moveSourceId !== undefined && { moveId: moveIdOf(moveSourceId) }),
+      styleId: block.styleId ?? null,
+      ...listLevel,
     });
   }
 

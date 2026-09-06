@@ -2,14 +2,16 @@ import { TaggedError } from "better-result";
 
 import {
   applyFolioAIEditOperations,
+  type FolioAIEditApplyOutcome,
   type FolioAIEditView,
+  type FolioWordDiffOptions,
   type FolioRevisionStamp,
   previewFolioAIEditOperations,
 } from "./ai-edits/apply";
 import type {
+  FolioAIBlockParagraphProperties,
   FolioAIEditAppliedOperation,
   FolioAIEditApplyMode,
-  FolioAIEditApplyResult,
   FolioAIEditNormalization,
   FolioAIEditOperation,
   FolioAIEditPrecondition,
@@ -31,6 +33,11 @@ export const FOLIO_DOCUMENT_OPERATION_TYPES = Object.freeze([
   "insertBeforeBlock",
   "replaceBlock",
   "deleteBlock",
+  "splitBlock",
+  "mergeBlockWithNext",
+  "setBlockParagraphProperties",
+  "insertTable",
+  "deleteTable",
   "commentOnBlock",
   "insertSignatureTable",
   "insertTableRow",
@@ -102,6 +109,11 @@ export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE = Object.freeze({
   insertBeforeBlock: DIRECT_TRACKED_AND_SUGGESTED_MODES,
   replaceBlock: DIRECT_TRACKED_AND_SUGGESTED_MODES,
   deleteBlock: DIRECT_TRACKED_AND_SUGGESTED_MODES,
+  splitBlock: DIRECT_AND_TRACKED_MODES,
+  mergeBlockWithNext: DIRECT_AND_TRACKED_MODES,
+  setBlockParagraphProperties: DIRECT_AND_TRACKED_MODES,
+  insertTable: DIRECT_AND_TRACKED_MODES,
+  deleteTable: DIRECT_AND_TRACKED_MODES,
   commentOnBlock: DIRECT_AND_TRACKED_MODES,
   insertSignatureTable: DIRECT_AND_SUGGESTED_MODES,
   insertTableRow: DIRECT_TRACKED_AND_SUGGESTED_MODES,
@@ -321,6 +333,67 @@ const readNonNegativeInteger = (
   return invalidBatch(`${path}.${key}`, "expected a non-negative integer");
 };
 
+/**
+ * A rectangular grid of cell texts. Rectangular because a table whose rows
+ * hold different cell counts is not a table any consumer can lay out, and the
+ * batch is the last place to catch that.
+ */
+const readTableRows = (
+  value: Record<string, unknown>,
+  path: string,
+): readonly (readonly string[])[] => {
+  const rows = value["rows"];
+  const rowsPath = `${path}.rows`;
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return invalidBatch(rowsPath, "expected a non-empty array");
+  }
+  const parsed = rows.map((row, index) => {
+    if (!Array.isArray(row) || row.length === 0) {
+      return invalidBatch(`${rowsPath}[${String(index)}]`, "expected a non-empty array");
+    }
+    return row.map((cell, cellIndex) => {
+      if (typeof cell !== "string") {
+        return invalidBatch(
+          `${rowsPath}[${String(index)}][${String(cellIndex)}]`,
+          "expected a string",
+        );
+      }
+      return cell;
+    });
+  });
+  const width = parsed[0]?.length ?? 0;
+  if (parsed.some((row) => row.length !== width)) {
+    return invalidBatch(rowsPath, "expected every row to hold the same number of cells");
+  }
+  return parsed;
+};
+
+const readParagraphProperties = (
+  value: Record<string, unknown>,
+  path: string,
+): FolioAIBlockParagraphProperties => {
+  const candidate = value["properties"];
+  const propertiesPath = `${path}.properties`;
+  if (!isPlainObject(candidate)) {
+    return invalidBatch(propertiesPath, "expected an object");
+  }
+  assertAllowedKeys(candidate, propertiesPath, ["styleId", "listLevel"]);
+  const rawStyleId = candidate["styleId"];
+  const styleId =
+    rawStyleId === null ? null : readOptionalString(candidate, "styleId", propertiesPath);
+  const listLevel =
+    candidate["listLevel"] === undefined
+      ? undefined
+      : readNonNegativeInteger(candidate, "listLevel", propertiesPath);
+  if (styleId === undefined && listLevel === undefined) {
+    return invalidBatch(propertiesPath, "expected at least one property to set");
+  }
+  return {
+    ...(styleId !== undefined && { styleId }),
+    ...(listLevel !== undefined && { listLevel }),
+  };
+};
+
 const readTextRange = (value: Record<string, unknown>, path: string): FolioAITextRangeHandle => {
   const candidate = value["range"];
   const rangePath = `${path}.range`;
@@ -467,6 +540,8 @@ export const FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE = Object.freeze({
     ...COMMON_OPERATION_KEYS,
     "text",
     "inheritFormatting",
+    "listLevel",
+    "moveId",
     "pageBreakBefore",
     "styleId",
     "comment",
@@ -475,12 +550,19 @@ export const FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE = Object.freeze({
     ...COMMON_OPERATION_KEYS,
     "text",
     "inheritFormatting",
+    "listLevel",
+    "moveId",
     "pageBreakBefore",
     "styleId",
     "comment",
   ],
   replaceBlock: [...COMMON_OPERATION_KEYS, "text", "preserveFormatting", "styleId", "comment"],
-  deleteBlock: [...COMMON_OPERATION_KEYS, "comment"],
+  deleteBlock: [...COMMON_OPERATION_KEYS, "moveId", "comment"],
+  splitBlock: [...COMMON_OPERATION_KEYS, "offset", "separator"],
+  mergeBlockWithNext: [...COMMON_OPERATION_KEYS, "separator"],
+  setBlockParagraphProperties: [...COMMON_OPERATION_KEYS, "properties"],
+  insertTable: [...COMMON_OPERATION_KEYS, "position", "rows"],
+  deleteTable: COMMON_OPERATION_KEYS,
   commentOnBlock: [...COMMON_OPERATION_KEYS, "quote", "comment"],
   insertSignatureTable: [...COMMON_OPERATION_KEYS, "position", "parties", "comment"],
   insertTableRow: [...COMMON_OPERATION_KEYS, "position", "cellTexts"],
@@ -575,6 +657,50 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
 
   const blockId = readString(value, "blockId", path);
 
+  if (type === "insertTable") {
+    const position = value["position"];
+    if (position !== undefined && position !== "after" && position !== "before") {
+      return invalidBatch(`${path}.position`, 'expected "after" or "before" when provided');
+    }
+    return {
+      ...operationMeta,
+      id,
+      type,
+      blockId,
+      ...(position !== undefined && { position }),
+      rows: readTableRows(value, path),
+    };
+  }
+
+  if (type === "deleteTable") {
+    return { ...operationMeta, id, type, blockId };
+  }
+
+  if (type === "setBlockParagraphProperties") {
+    return {
+      ...operationMeta,
+      id,
+      type,
+      blockId,
+      properties: readParagraphProperties(value, path),
+    };
+  }
+
+  if (type === "splitBlock" || type === "mergeBlockWithNext") {
+    const separator = readOptionalString(value, "separator", path);
+    if (type === "mergeBlockWithNext") {
+      return { ...operationMeta, id, type, blockId, ...(separator !== undefined && { separator }) };
+    }
+    return {
+      ...operationMeta,
+      id,
+      type,
+      blockId,
+      offset: readNonNegativeInteger(value, "offset", path),
+      ...(separator !== undefined && { separator }),
+    };
+  }
+
   if (type === "replaceInBlock") {
     return {
       ...operationMeta,
@@ -590,7 +716,12 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
   if (type === "insertAfterBlock" || type === "insertBeforeBlock") {
     const inheritFormatting = readOptionalBoolean(value, "inheritFormatting", path);
     const pageBreakBefore = readOptionalBoolean(value, "pageBreakBefore", path);
-    const styleId = readOptionalString(value, "styleId", path);
+    const styleId = value["styleId"] === null ? null : readOptionalString(value, "styleId", path);
+    const moveId = readOptionalString(value, "moveId", path);
+    const listLevel =
+      value["listLevel"] === undefined
+        ? undefined
+        : readNonNegativeInteger(value, "listLevel", path);
     return {
       ...operationMeta,
       id,
@@ -598,6 +729,8 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
       blockId,
       text: readString(value, "text", path),
       ...(inheritFormatting !== undefined && { inheritFormatting }),
+      ...(listLevel !== undefined && { listLevel }),
+      ...(moveId !== undefined && { moveId }),
       ...(pageBreakBefore !== undefined && { pageBreakBefore }),
       ...(styleId !== undefined && { styleId }),
       ...(comment !== undefined && { comment }),
@@ -620,7 +753,15 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
   }
 
   if (type === "deleteBlock") {
-    return { ...operationMeta, id, type, blockId, ...(comment !== undefined && { comment }) };
+    const moveId = readOptionalString(value, "moveId", path);
+    return {
+      ...operationMeta,
+      id,
+      type,
+      blockId,
+      ...(moveId !== undefined && { moveId }),
+      ...(comment !== undefined && { comment }),
+    };
   }
 
   if (type === "commentOnBlock") {
@@ -841,7 +982,7 @@ export type FolioDocumentOperationAffectedTarget =
       story: FolioDocumentOperationStory;
       anchorBlockId: string;
       position: "before" | "after";
-      content: "block" | "signatureTable" | "tableRow" | "tableColumn";
+      content: "block" | "signatureTable" | "table" | "tableRow" | "tableColumn";
     }
   | {
       type: "comment";
@@ -909,7 +1050,12 @@ export type FolioDocumentOperationQueuedOperation = {
   id: string;
 };
 
-type FolioDocumentOperationResultBase = {
+/**
+ * What every operation result carries, whichever status it reports. Exported
+ * so the public API report shows these fields rather than a name it cannot
+ * resolve.
+ */
+export type FolioDocumentOperationResultBase = {
   version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
   applied: FolioAIEditAppliedOperation[];
   skipped: FolioAIEditSkippedOperation[];
@@ -920,6 +1066,18 @@ type FolioDocumentOperationResultBase = {
   normalizations?: FolioAIEditNormalization[];
   /** Present when the execution surface can undo this committed batch. */
   undoHandle: FolioDocumentOperationUndoHandle | null;
+  /**
+   * First revision id a following batch may allocate against this document:
+   * one past the last id this batch used, or the seed it started from when it
+   * allocated none. A caller writing several batches into one package — one
+   * per document story — must seed each from the previous batch's value, or
+   * two stories claim the same `w:id`.
+   *
+   * The in-process applier always reports it. A host bridge that delegates to
+   * an editor it does not control omits it rather than guessing a number a
+   * caller would seed the next batch from.
+   */
+  nextRevisionId?: number;
 };
 
 /**
@@ -1025,6 +1183,17 @@ const getPrimaryAffectedTarget = (
         blockId: operation.blockId,
         effect: "deleted",
       };
+    case "setBlockParagraphProperties":
+    case "splitBlock":
+    case "mergeBlockWithNext":
+      // The paragraph mark moved, and it belongs to this block; the block the
+      // break was taken from or given to is the one a caller navigates to.
+      return {
+        type: "block",
+        story,
+        blockId: operation.blockId,
+        effect: "updated",
+      };
     case "commentOnBlock":
       return {
         type: "block",
@@ -1039,6 +1208,21 @@ const getPrimaryAffectedTarget = (
         anchorBlockId: operation.blockId,
         position: operation.position ?? "after",
         content: "signatureTable",
+      };
+    case "insertTable":
+      return {
+        type: "insertion",
+        story,
+        anchorBlockId: operation.blockId,
+        position: operation.position ?? "after",
+        content: "table",
+      };
+    case "deleteTable":
+      return {
+        type: "block",
+        story,
+        blockId: operation.blockId,
+        effect: "deleted",
       };
     case "insertTableRow":
       return {
@@ -1145,6 +1329,8 @@ export type ApplyFolioDocumentOperationsOptions = {
   createUndoHandle?: () => FolioDocumentOperationUndoHandle;
   /** Omit to stamp revisions from the wall clock and the shared id cursor. */
   revisionStamp?: FolioRevisionStamp;
+  /** Token size a replacement's redline is cut at. Word-level by default. */
+  wordDiff?: FolioWordDiffOptions;
 };
 
 type ApplyParsedDocumentOperationBatchOptions = {
@@ -1162,6 +1348,7 @@ export const applyFolioDocumentOperations = ({
   createCommentId,
   createUndoHandle,
   revisionStamp,
+  wordDiff,
 }: ApplyFolioDocumentOperationsOptions): FolioDocumentOperationResult => {
   const parsedBatch = parseFolioDocumentOperationBatch(batch);
   const apply = ({
@@ -1178,13 +1365,14 @@ export const applyFolioDocumentOperations = ({
       ...(author !== undefined && { author }),
       ...(targetCreateCommentId !== undefined && { createCommentId: targetCreateCommentId }),
       ...(revisionStamp !== undefined && { revisionStamp }),
+      ...(wordDiff !== undefined && { wordDiff }),
     });
   };
 
   const preview = () => apply({ targetView: view, preview: true });
 
   const atomicResult = (
-    previewResult: FolioAIEditApplyResult,
+    previewResult: FolioAIEditApplyOutcome,
     status: "previewed" | "rejected",
   ): FolioDocumentOperationResult => {
     const skippedById = new Map(
@@ -1205,6 +1393,7 @@ export const applyFolioDocumentOperations = ({
         normalizations: previewResult.normalizations,
       }),
       undoHandle: null,
+      nextRevisionId: previewResult.nextRevisionId,
     };
   };
 
@@ -1228,6 +1417,7 @@ export const applyFolioDocumentOperations = ({
         normalizations: previewResult.normalizations,
       }),
       undoHandle: null,
+      nextRevisionId: previewResult.nextRevisionId,
     };
   }
 

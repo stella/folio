@@ -346,10 +346,15 @@ export const FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE: Readonly<{
     readonly replaceRange: readonly ["id", "type", "range", "severity", "area", "precondition", "suggestionId", "replace", "comment"];
     readonly commentOnRange: readonly ["id", "type", "range", "severity", "area", "precondition", "comment"];
     readonly formatRange: readonly ["id", "type", "range", "severity", "area", "precondition", "suggestionId", "formatting"];
-    readonly insertAfterBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "text", "inheritFormatting", "pageBreakBefore", "styleId", "comment"];
-    readonly insertBeforeBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "text", "inheritFormatting", "pageBreakBefore", "styleId", "comment"];
+    readonly insertAfterBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "text", "inheritFormatting", "listLevel", "moveId", "pageBreakBefore", "styleId", "comment"];
+    readonly insertBeforeBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "text", "inheritFormatting", "listLevel", "moveId", "pageBreakBefore", "styleId", "comment"];
     readonly replaceBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "text", "preserveFormatting", "styleId", "comment"];
-    readonly deleteBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "comment"];
+    readonly deleteBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "moveId", "comment"];
+    readonly splitBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "offset", "separator"];
+    readonly mergeBlockWithNext: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "separator"];
+    readonly setBlockParagraphProperties: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "properties"];
+    readonly insertTable: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "position", "rows"];
+    readonly deleteTable: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId"];
     readonly commentOnBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "quote", "comment"];
     readonly insertSignatureTable: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "position", "parties", "comment"];
     readonly insertTableRow: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "position", "cellTexts"];
@@ -373,6 +378,11 @@ export const FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE: Readonly<{
     readonly insertBeforeBlock: readonly ["direct", "tracked-changes", "suggested"];
     readonly replaceBlock: readonly ["direct", "tracked-changes", "suggested"];
     readonly deleteBlock: readonly ["direct", "tracked-changes", "suggested"];
+    readonly splitBlock: readonly ["direct", "tracked-changes"];
+    readonly mergeBlockWithNext: readonly ["direct", "tracked-changes"];
+    readonly setBlockParagraphProperties: readonly ["direct", "tracked-changes"];
+    readonly insertTable: readonly ["direct", "tracked-changes"];
+    readonly deleteTable: readonly ["direct", "tracked-changes"];
     readonly commentOnBlock: readonly ["direct", "tracked-changes"];
     readonly insertSignatureTable: readonly ["direct", "suggested"];
     readonly insertTableRow: readonly ["direct", "tracked-changes", "suggested"];
@@ -390,7 +400,7 @@ export const FOLIO_DOCUMENT_OPERATION_PRECONDITIONS: readonly ["blockTextHash"];
 export const FOLIO_DOCUMENT_OPERATION_STORIES: readonly ["main", "header", "footer", "footnote", "endnote"];
 
 // @public (undocumented)
-export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replaceRange", "commentOnRange", "formatRange", "insertAfterBlock", "insertBeforeBlock", "replaceBlock", "deleteBlock", "commentOnBlock", "insertSignatureTable", "insertTableRow", "deleteTableRow", "insertTableColumn", "deleteTableColumn", "mergeTableCells", "splitTableCell"];
+export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replaceRange", "commentOnRange", "formatRange", "insertAfterBlock", "insertBeforeBlock", "replaceBlock", "deleteBlock", "splitBlock", "mergeBlockWithNext", "setBlockParagraphProperties", "insertTable", "deleteTable", "commentOnBlock", "insertSignatureTable", "insertTableRow", "deleteTableRow", "insertTableColumn", "deleteTableColumn", "mergeTableCells", "splitTableCell"];
 
 // @public (undocumented)
 export const FOLIO_DOCUMENT_PRIVACY_TRANSFORMS: readonly ["remove-attribution", "remove-timestamps", "remove-descriptive-metadata"];
@@ -471,6 +481,7 @@ export type FolioAIBlock = {
     headingLevel?: number;
     displayLabel?: string;
     styleId?: string;
+    listLevel?: number;
     previewRuns?: FolioAIBlockPreviewRun[];
     table?: FolioAIBlockTableLocation;
 };
@@ -517,14 +528,31 @@ export type FolioAIEditApplyResult = {
 };
 
 // @public
-export type FolioAIEditNormalization = {
+export type FolioAIEditNormalization =
+/**
+* A line-break in `insertAfterBlock` / `insertBeforeBlock`'s `text` cannot
+* become one paragraph with an embedded break (Word paragraphs are single
+* lines); the applier split it into one paragraph per non-blank line.
+*/
+    {
     id: string;
-    code: FolioAIEditNormalizationCode;
+    code: "splitMultilineText";
     paragraphCount: number;
+} |
+/**
+* A `moveId` that did not name exactly one deletion and one insertion in
+* the batch. The operation still applies, as an ordinary insertion or
+* deletion: half a move pair is not a move, and `w:moveTo` without its
+* `w:moveFrom` is a relocation from nowhere.
+*/
+    {
+    id: string;
+    code: "unpairedMove";
+    moveId: string;
 };
 
-// @public
-export type FolioAIEditNormalizationCode = "splitMultilineText";
+// @public (undocumented)
+export type FolioAIEditNormalizationCode = FolioAIEditNormalization["code"];
 
 // @public (undocumented)
 export type FolioAIEditOperation = FolioAIEditReviewMeta & {
@@ -559,8 +587,10 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     blockId: string;
     text: string;
     inheritFormatting?: boolean;
+    moveId?: string;
     pageBreakBefore?: boolean;
-    styleId?: string;
+    styleId?: string | null;
+    listLevel?: number;
     comment?: FolioAIComment;
 } | {
     id: string;
@@ -574,7 +604,71 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     id: string;
     type: "deleteBlock";
     blockId: string;
+    moveId?: string;
     comment?: FolioAIComment;
+} |
+/**
+* Break the block in two at `offset`, moving a paragraph mark and no
+* words. In tracked-changes mode the first half carries an INSERTED
+* paragraph mark, so accepting keeps the break and rejecting closes it;
+* the alternative — rewriting the first half and inserting the second —
+* claims the tail was newly written when nobody touched it.
+*/
+    {
+    id: string;
+    type: "splitBlock";
+    offset: number;
+    separator?: string;
+    blockId: string;
+} |
+/**
+* Add a whole table next to the anchor block, its rows marked inserted in
+* tracked mode. `insertTableRow` can only grow a table that already
+* exists; a comparison whose target gained one needs to say so.
+*/
+    {
+    id: string;
+    type: "insertTable";
+    blockId: string;
+    position?: "after" | "before";
+    rows: readonly (readonly string[])[];
+} |
+/**
+* Remove the whole table the block sits in, its rows marked deleted in
+* tracked mode. The mirror of `insertTable`.
+*/
+    {
+    id: string;
+    type: "deleteTable";
+    blockId: string;
+} |
+/**
+* Replace the block's paragraph properties, recorded as a `w:pPrChange`
+* in tracked mode so the previous set is restored on reject. The edit
+* that moves no words: a list item demoted a level, a paragraph restyled
+* as a heading.
+*/
+    {
+    id: string;
+    type: "setBlockParagraphProperties";
+    blockId: string;
+    properties: FolioAIBlockParagraphProperties;
+} |
+/**
+* Join the block with the one after it, the mirror of `splitBlock`: in
+* tracked-changes mode the block carries a DELETED paragraph mark, so
+* accepting closes the break and rejecting keeps it.
+*
+* Refused when the block has no joinable sibling — the last paragraph of
+* a table cell, or of the story — because a deleted mark there would
+* accept into a join that cannot happen and leave a revision no reader
+* can resolve.
+*/
+    {
+    id: string;
+    type: "mergeBlockWithNext";
+    separator?: string;
+    blockId: string;
 } | {
     id: string;
     type: "commentOnBlock";
@@ -667,6 +761,7 @@ export type FolioApplyOperationsOptions = {
     mode?: FolioAIEditApplyMode;
     snapshot?: FolioAIEditSnapshot;
     revisionStamp?: FolioRevisionStamp;
+    wordDiff?: FolioWordDiffOptions;
 };
 
 // @public
@@ -756,7 +851,7 @@ export type FolioDocumentOperationAffectedTarget = {
     story: FolioDocumentOperationStory;
     anchorBlockId: string;
     position: "before" | "after";
-    content: "block" | "signatureTable" | "tableRow" | "tableColumn";
+    content: "block" | "signatureTable" | "table" | "tableRow" | "tableColumn";
 } | {
     type: "comment";
     commentId: number;
@@ -855,6 +950,18 @@ export type FolioDocumentOperationResult = (FolioDocumentOperationResultBase & {
     status: Exclude<FolioDocumentOperationStatus, "queued">;
     queued?: never;
 });
+
+// @public
+export type FolioDocumentOperationResultBase = {
+    version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
+    applied: FolioAIEditAppliedOperation[];
+    skipped: FolioAIEditSkippedOperation[];
+    issues: FolioDocumentOperationIssue[];
+    receipts: FolioDocumentOperationReceipt[];
+    normalizations?: FolioAIEditNormalization[];
+    undoHandle: FolioDocumentOperationUndoHandle | null;
+    nextRevisionId?: number;
+};
 
 // @public
 export type FolioDocumentOperationStatus = "committed" | "previewed" | "rejected" | "queued";
@@ -1098,6 +1205,7 @@ export class FolioDocxReviewer {
     getDocumentProperties(): Readonly<NonNullable<import__stll_docx_core_model.Document["package"]["properties"]>> | null;
     getNotesAsText(): string;
     listStories(): FolioDocumentStory[];
+    readNumberingDefinitions(): FolioNumberingLevel[];
     readReviewedStory(options?: FolioReadReviewedStoryOptions): FolioReviewedStory | null;
     readStory(handle: FolioDocumentStoryHandle): FolioDocumentStory | null;
     rejectAll(): number;

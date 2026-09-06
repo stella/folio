@@ -505,6 +505,12 @@ describe("parseSuggestChangesInput", () => {
       replace: "new",
       text: "inserted",
       comment: "why",
+      offset: 3,
+      separator: " ",
+      moveId: "move-1",
+      listLevel: 1,
+      properties: { listLevel: 1 },
+      rows: [["a"]],
       range: {
         type: "textRange",
         story: "main",

@@ -6,10 +6,10 @@
     "declarationLines": 2567
   },
   "core": {
-    "reportBytes": 246894,
-    "reportLines": 7952,
-    "declarationBytes": 1620894,
-    "declarationLines": 33023
+    "reportBytes": 278552,
+    "reportLines": 8955,
+    "declarationBytes": 1663586,
+    "declarationLines": 33906
   },
   "react": {
     "reportBytes": 56922,
@@ -20,7 +20,7 @@
   "agents": {
     "reportBytes": 13171,
     "reportLines": 393,
-    "declarationBytes": 53905,
+    "declarationBytes": 54007,
     "declarationLines": 1053
   },
   "vue": {

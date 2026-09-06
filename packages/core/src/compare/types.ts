@@ -5,8 +5,10 @@
 
 import { TaggedError } from "better-result";
 
-import type { FolioDocumentStoryHandle } from "../ai-edits/headless";
+import type { FolioDocumentStoryHandle, FolioNumberingLevel } from "../ai-edits/headless";
+import type { WordDiffGranularity } from "../ai-edits/word-diff";
 import type {
+  FolioAIBlockParagraphProperties,
   FolioAIBlockTableLocation,
   FolioAIEditSkippedOperation,
   FolioAIInlineFormatting,
@@ -23,6 +25,16 @@ export type CompareDocxOptions = {
    * fixed epoch.
    */
   timestamp: string;
+  /**
+   * Token size a changed paragraph's redline is cut at: `"word"` (default)
+   * marks whole words, `"character"` marks the changed letters inside one.
+   *
+   * Case and whitespace normalization are not options here, though
+   * `diffWordSegments` offers them: a comparison that leaves a difference
+   * unmarked does not accept back to the target, and the round trip is the
+   * one thing this call promises.
+   */
+  granularity?: WordDiffGranularity;
 };
 
 /** Where one change sits in the base or target document. */
@@ -81,6 +93,41 @@ export type CompareChange =
       targetBlockId: string;
       text: string;
     }
+  /**
+   * One paragraph became two: a paragraph mark was inserted and no words
+   * changed. Reported as its own kind so a reader is not told the tail was
+   * newly written.
+   */
+  | {
+      kind: "split";
+      location: CompareChangeLocation;
+      baseBlockId: string;
+      /** The two blocks the base block became, in target order. */
+      targetBlockIds: readonly string[];
+      text: string;
+    }
+  /** Two paragraphs became one: a paragraph mark was deleted. */
+  | {
+      kind: "merge";
+      location: CompareChangeLocation;
+      /** The two blocks that became one, in base order. */
+      baseBlockIds: readonly string[];
+      targetBlockId: string;
+      text: string;
+    }
+  /**
+   * A paragraph property moved and no words did: a list item demoted a level,
+   * a paragraph restyled. Written as `w:pPrChange`, so rejecting restores the
+   * whole previous property set the way Word does.
+   */
+  | {
+      kind: "paragraph-format";
+      location: CompareChangeLocation;
+      baseBlockId: string;
+      targetBlockId: string;
+      /** Only the properties that differ, set to the target document's value. */
+      properties: FolioAIBlockParagraphProperties;
+    }
   | {
       kind: "format";
       location: CompareChangeLocation;
@@ -99,6 +146,44 @@ export type CompareChange =
       cells: readonly string[];
       targetBlockIds: readonly string[];
     }
+  /**
+   * A numbering definition that differs. It carries no `location`: numbering
+   * lives in the package, not in a story, and one definition governs every
+   * list that references it.
+   *
+   * Reported and not represented. A renumbering that FOLLOWS from an edit —
+   * an item inserted, so the ones below it count on — is already shown
+   * as-if-accepted, because labels are rendered from these definitions rather
+   * than stored on the paragraphs. A definition that itself changed is a
+   * different thing, and OOXML has no tracked-change grammar for it: Word
+   * does not track `numbering.xml` either.
+   */
+  | {
+      kind: "numbering";
+      numId: number;
+      level: number;
+      /** `null` when the target added this level. */
+      before: FolioNumberingLevel | null;
+      /** `null` when the target dropped it. */
+      after: FolioNumberingLevel | null;
+    }
+  /** A whole table the target added. */
+  | {
+      kind: "table-insert";
+      location: CompareChangeLocation;
+      tableIndex: number;
+      /** Cell texts row by row, in physical cell order. */
+      rows: readonly (readonly string[])[];
+      targetBlockIds: readonly string[];
+    }
+  /** A whole table the target dropped. */
+  | {
+      kind: "table-delete";
+      location: CompareChangeLocation;
+      tableIndex: number;
+      rows: readonly (readonly string[])[];
+      baseBlockIds: readonly string[];
+    }
   | {
       kind: "table-row-delete";
       location: CompareChangeLocation;
@@ -111,12 +196,12 @@ export type CompareChange =
 
 /** Why a part of the package is absent from `changes`. */
 export const COMPARE_UNSUPPORTED_REASONS = Object.freeze([
-  /** Header, footer, footnote, and endnote stories are out of scope this iteration. */
-  "secondary-story",
   /** The story exists only in the target package; creating a part is not a text edit. */
   "story-missing-in-base",
   /** The story exists only in the base package. */
   "story-missing-in-target",
+  /** The story is present on both sides but carries no editable state. */
+  "story-not-editable",
 ] as const);
 
 export type CompareUnsupportedReason = (typeof COMPARE_UNSUPPORTED_REASONS)[number];

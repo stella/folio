@@ -17,3 +17,6 @@ benchmarks/cross-language/rust/target/
 # Word rendering parity engine artifacts
 parity/report/
 tests/visual/fixtures/parity-tmp-*
+
+# Locally fetched compare corpora (never committed; see benchmarks/compare/README.md)
+benchmarks/compare/.local/

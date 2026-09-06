@@ -1,9 +1,13 @@
 import type { Mark, Node as PMNode, Schema } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
+import { canJoin, canSplit } from "prosemirror-transform";
 
-import { expectRunPropertyChangeMarkAttrs } from "../prosemirror/attrs";
+import { expectParagraphAttrs, expectRunPropertyChangeMarkAttrs } from "../prosemirror/attrs";
+import { PPR_CHANGE_SCOPED_ATTR_KEYS } from "../prosemirror/commands/propertyChangeScope";
+import type { ParagraphPropertyChangeAttrs } from "../prosemirror/schema/nodes";
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
+import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { requestDeterministicParaIds } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
 import type { RunPropertyChange } from "../types/document";
@@ -41,12 +45,13 @@ import {
   type TableStructureRevision,
 } from "./table-row-column-mutations";
 import {
-  findEnclosingTableBoundary,
+  findOutermostTableBoundary,
   findEnclosingTableCell,
   findEnclosingTableRow,
   tableRectangleCutsMergedCell,
 } from "./table-targets";
 import type {
+  FolioAIBlockParagraphProperties,
   FolioAIEditAppliedOperation,
   FolioAIEditApplyMode,
   FolioAIEditApplyResult,
@@ -57,7 +62,7 @@ import type {
   FolioAIEditSkippedOperation,
   FolioAISignatureParty,
 } from "./types";
-import { diffWordSegments } from "./word-diff";
+import { diffWordSegments, type WordDiffGranularity } from "./word-diff";
 
 /**
  * The only editor surface the apply logic touches: a current `state`
@@ -99,10 +104,39 @@ type ApplyFolioAIEditOperationsOptions = {
   createCommentId?: (text: string) => number;
   /** Omit to stamp revisions from the wall clock and the shared id cursor. */
   revisionStamp?: FolioRevisionStamp;
+  /** How a replacement's redline is cut. */
+  wordDiff?: FolioWordDiffOptions;
 };
 
 type ApplyFolioAIEditOperationsInternalOptions = ApplyFolioAIEditOperationsOptions & {
   revisionIdSeed?: number;
+};
+
+/**
+ * How an apply batch cuts the redline for a replacement. Word-level by
+ * default; character granularity marks the changed letters inside a token,
+ * which reads well for a reference or a date. Normalization is deliberately
+ * absent: a batch that leaves a difference unmarked does not accept back to
+ * the text the caller asked for.
+ */
+export type FolioWordDiffOptions = { granularity?: WordDiffGranularity };
+
+/**
+ * An apply result plus where the batch left the revision-id counter.
+ *
+ * A caller writing several batches into one package — a comparison walking
+ * the main story, then each header, footer and note — has to give every batch
+ * a seed above the last id the previous one used, or two stories claim the
+ * same `w:id` and a consumer resolving one revision resolves the other with
+ * it. The batch is the only thing that knows how many ids it took, so it says
+ * so rather than making the caller guess a stride.
+ */
+export type FolioAIEditApplyOutcome = FolioAIEditApplyResult & {
+  /**
+   * First revision id a following batch may allocate: one past the last id
+   * this batch used, or the seed it started from when it allocated none.
+   */
+  nextRevisionId: number;
 };
 
 /**
@@ -146,6 +180,8 @@ type ResolvedOperation = {
   tableColumnDeletion?: TableColumnDeletion;
   tableCellMerge?: TableCellMerge;
   tableCellSplit?: TableCellSplit;
+  /** The table `deleteTable` removes, as it stood before the batch. */
+  deletedTable?: { position: number; node: PMNode };
   commentId?: number;
   /**
    * Position in the input `operations` array, used as a secondary
@@ -153,6 +189,50 @@ type ResolvedOperation = {
    * ordering when applied bottom-up.
    */
   originalIndex: number;
+};
+
+/**
+ * The attrs one `setBlockParagraphProperties` writes, or `null` when the
+ * block already holds them. `styleId: null` clears the style; `listLevel`
+ * moves `w:numPr/w:ilvl` and leaves `w:numId` alone, because a demoted item
+ * stays in the same list.
+ */
+const paragraphPropertiesPatch = (
+  node: PMNode,
+  properties: FolioAIBlockParagraphProperties,
+): Record<string, unknown> | null => {
+  const patch: Record<string, unknown> = {};
+  if (properties.styleId !== undefined && (node.attrs["styleId"] ?? null) !== properties.styleId) {
+    patch["styleId"] = properties.styleId;
+  }
+  if (properties.listLevel !== undefined) {
+    const numPr: unknown = node.attrs["numPr"];
+    const current =
+      typeof numPr === "object" && numPr !== null && "ilvl" in numPr ? numPr.ilvl : undefined;
+    if (current !== properties.listLevel) {
+      const numId =
+        typeof numPr === "object" && numPr !== null && "numId" in numPr ? numPr.numId : undefined;
+      patch["numPr"] = {
+        ...(typeof numId === "number" && { numId }),
+        ilvl: properties.listLevel,
+      };
+    }
+  }
+  return Object.keys(patch).length > 0 ? patch : null;
+};
+
+/** The in-scope paragraph properties as they stand, for a `w:pPrChange` record. */
+const paragraphPropertiesSnapshot = (
+  node: PMNode,
+): NonNullable<ParagraphPropertyChangeAttrs["previousFormatting"]> => {
+  const snapshot: Record<string, unknown> = {};
+  for (const key of PPR_CHANGE_SCOPED_ATTR_KEYS) {
+    const value: unknown = node.attrs[key];
+    if (value !== null && value !== undefined) {
+      snapshot[key] = value;
+    }
+  }
+  return snapshot;
 };
 
 const applyReplaceBlockStyleId = ({
@@ -514,6 +594,41 @@ const ordinalAmongSameHash = (snapshot: FolioAIEditSnapshot, blockId: string): n
  */
 const SIGNATURE_LINE = "_".repeat(28);
 
+type BuildTableNodeOptions = {
+  schema: Schema;
+  rows: readonly (readonly string[])[];
+  /** Present in tracked mode: every row is stamped as an insertion. */
+  revision?: TableStructureRevision;
+};
+
+/**
+ * A plain table from a grid of cell texts, `null` when the schema has no
+ * tables. In tracked mode every row carries `trIns`, which is how Word says
+ * "this table is new": there is no whole-table insertion element, only rows
+ * that were inserted.
+ */
+const buildTableNode = ({ schema, rows, revision }: BuildTableNodeOptions): PMNode | null => {
+  const paragraphType = schema.nodes["paragraph"];
+  const cellType = schema.nodes["tableCell"];
+  const rowType = schema.nodes["tableRow"];
+  const tableType = schema.nodes["table"];
+  if (!paragraphType || !cellType || !rowType || !tableType || rows.length === 0) {
+    return null;
+  }
+  const rowNodes = rows.map((cells) =>
+    rowType.create(
+      revision ? { trIns: revision } : null,
+      cells.map((text) =>
+        cellType.create(
+          null,
+          paragraphType.create(null, text.length > 0 ? schema.text(text) : null),
+        ),
+      ),
+    ),
+  );
+  return tableType.create(null, rowNodes);
+};
+
 type BuildSignatureTableNodeOptions = {
   schema: Schema;
   parties: readonly FolioAISignatureParty[];
@@ -655,7 +770,8 @@ const applyFolioAIEditOperationsInternal = ({
   createCommentId,
   revisionStamp,
   revisionIdSeed,
-}: ApplyFolioAIEditOperationsInternalOptions): FolioAIEditApplyResult => {
+  wordDiff,
+}: ApplyFolioAIEditOperationsInternalOptions): FolioAIEditApplyOutcome => {
   const applied: FolioAIEditAppliedOperation[] = [];
   const skipped: FolioAIEditSkippedOperation[] = [];
   const normalizations: FolioAIEditNormalization[] = [];
@@ -679,6 +795,7 @@ const applyFolioAIEditOperationsInternal = ({
         id: operation.id,
         reason: "unsupportedBlock",
       })),
+      nextRevisionId: revisionIdSeed ?? revisionStamp?.idSeed ?? revisionIdCursor,
     };
   }
 
@@ -758,7 +875,54 @@ const applyFolioAIEditOperationsInternal = ({
   const executableResolved = tablePlan.executable;
 
   if (executableResolved.length === 0) {
-    return { applied, skipped, ...(normalizations.length > 0 && { normalizations }) };
+    return {
+      applied,
+      skipped,
+      ...(normalizations.length > 0 && { normalizations }),
+      nextRevisionId: revisionIdSeed ?? revisionStamp?.idSeed ?? revisionIdCursor,
+    };
+  }
+
+  // A `moveId` names one relocation. It is a move only when it reaches both
+  // halves: `w:moveTo` without its `w:moveFrom` is a relocation from nowhere,
+  // and a reader accepting it would see text appear with no source. An
+  // unpaired id degrades to a plain insertion or deletion and is reported.
+  const moveSideCounts = new Map<string, { from: number; to: number }>();
+  for (const { operation } of executableResolved) {
+    const moveId =
+      operation.type === "deleteBlock" ||
+      operation.type === "insertAfterBlock" ||
+      operation.type === "insertBeforeBlock"
+        ? operation.moveId
+        : undefined;
+    if (moveId === undefined) {
+      continue;
+    }
+    const counts = moveSideCounts.get(moveId) ?? { from: 0, to: 0 };
+    if (operation.type === "deleteBlock") {
+      counts.from += 1;
+    } else {
+      counts.to += 1;
+    }
+    moveSideCounts.set(moveId, counts);
+  }
+  const isPairedMove = (moveId: string | undefined): moveId is string => {
+    if (moveId === undefined) {
+      return false;
+    }
+    const counts = moveSideCounts.get(moveId);
+    return counts?.from === 1 && counts.to === 1;
+  };
+  for (const { operation } of executableResolved) {
+    const moveId =
+      operation.type === "deleteBlock" ||
+      operation.type === "insertAfterBlock" ||
+      operation.type === "insertBeforeBlock"
+        ? operation.moveId
+        : undefined;
+    if (moveId !== undefined && !isPairedMove(moveId)) {
+      normalizations.push({ id: operation.id, code: "unpairedMove", moveId });
+    }
   }
 
   let tr = view.state.tr;
@@ -903,6 +1067,7 @@ const applyFolioAIEditOperationsInternal = ({
           commentMark,
           suggestionId,
           initials,
+          granularity: wordDiff?.granularity ?? "word",
         });
         if (producesTrackedChanges) {
           appliedRevisionIds = [
@@ -1018,6 +1183,7 @@ const applyFolioAIEditOperationsInternal = ({
           commentMark,
           suggestionId,
           initials,
+          granularity: wordDiff?.granularity ?? "word",
         });
         tr = applyReplaceBlockStyleId({ item, tr });
         if (producesTrackedChanges) {
@@ -1087,6 +1253,7 @@ const applyFolioAIEditOperationsInternal = ({
                 revisionId: paragraphRevisionId,
                 author,
                 date,
+                ...(isPairedMove(operation.moveId) && { moveKind: "moveTo" }),
                 ...trackedRevisionExtras,
               }),
             );
@@ -1102,6 +1269,17 @@ const applyFolioAIEditOperationsInternal = ({
           if (isFirstParagraph && operation.pageBreakBefore === true) {
             attrs["pageBreakBefore"] = true;
           }
+          if (isFirstParagraph && operation.listLevel !== undefined) {
+            const anchorNumPr: unknown = baseAttrs["numPr"];
+            const numId =
+              typeof anchorNumPr === "object" && anchorNumPr !== null && "numId" in anchorNumPr
+                ? anchorNumPr.numId
+                : undefined;
+            attrs["numPr"] = {
+              ...(typeof numId === "number" && { numId }),
+              ilvl: operation.listLevel,
+            };
+          }
           if (isFirstParagraph && operation.styleId !== undefined) {
             // Heading / clause style ids (e.g. ClauseHeading1) take
             // precedence over the source block's style so the
@@ -1110,8 +1288,10 @@ const applyFolioAIEditOperationsInternal = ({
             attrs["styleId"] = operation.styleId;
             // A heading is logically a fresh block; drop list marker
             // attrs that would otherwise leak from the anchor and
-            // render the heading as a list item.
-            if (operation.inheritFormatting !== false) {
+            // render the heading as a list item. Clearing the style
+            // (`null`) is not that: an unstyled list item is still a
+            // list item, so its markers stay.
+            if (operation.inheritFormatting !== false && operation.styleId !== null) {
               attrs["listMarker"] = null;
               attrs["listMarkerHidden"] = null;
               attrs["listLevelNumFmts"] = null;
@@ -1408,6 +1588,7 @@ const applyFolioAIEditOperationsInternal = ({
               revisionId,
               author,
               date,
+              ...(isPairedMove(item.operation.moveId) && { moveKind: "moveFrom" }),
               ...trackedRevisionExtras,
             }),
           );
@@ -1416,6 +1597,166 @@ const applyFolioAIEditOperationsInternal = ({
         if (commentMark) {
           tr = tr.addMark(item.from, item.to, commentMark);
         }
+        break;
+      }
+      case "insertTable": {
+        const table = buildTableNode({
+          schema: view.state.schema,
+          rows: item.operation.rows,
+          ...(producesTrackedChanges && {
+            revision: { revisionId: revisionSeed, author, date, ...trackedRevisionExtras },
+          }),
+        });
+        if (!table) {
+          skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
+          continue;
+        }
+        if (producesTrackedChanges) {
+          appliedRevisionIds = [revisionSeed++];
+        }
+        tr = tr.insert(item.from, table);
+        markStructuralChange(tr);
+        break;
+      }
+      case "deleteTable": {
+        const deleted = item.deletedTable;
+        if (!deleted) {
+          skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
+          continue;
+        }
+        if (mode === "direct") {
+          const position = tr.mapping.map(deleted.position, 1);
+          const live = tr.doc.nodeAt(position);
+          if (!live || live.type.spec["tableRole"] !== "table") {
+            skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
+            continue;
+          }
+          tr = tr.delete(position, position + live.nodeSize);
+          markStructuralChange(tr);
+          break;
+        }
+        // Word deletes a table by marking every row deleted; there is no
+        // "this table went away" element. Read the rows from the LIVE
+        // document: an earlier operation in this batch may have replaced text
+        // inside the table, and a row position from before that is stale.
+        const livePosition = tr.mapping.map(deleted.position, 1);
+        const liveTable = tr.doc.nodeAt(livePosition);
+        if (!liveTable || liveTable.type.spec["tableRole"] !== "table") {
+          skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
+          continue;
+        }
+        const revision = { revisionId: revisionSeed++, author, date, ...trackedRevisionExtras };
+        const rowPositions: number[] = [];
+        let rowOffset = livePosition + 1;
+        liveTable.forEach((row) => {
+          if (row.type.spec["tableRole"] === "row" && row.attrs["trDel"] == null) {
+            rowPositions.push(rowOffset);
+          }
+          rowOffset += row.nodeSize;
+        });
+        if (rowPositions.length === 0) {
+          skipped.push({ id: item.operation.id, reason: "noopOperation" });
+          continue;
+        }
+        for (const rowPosition of rowPositions.toReversed()) {
+          tr = tr.setNodeAttribute(rowPosition, "trDel", revision);
+        }
+        appliedRevisionIds = [revision.revisionId];
+        markStructuralChange(tr);
+        break;
+      }
+      case "setBlockParagraphProperties": {
+        const patch = paragraphPropertiesPatch(item.blockNode, item.operation.properties);
+        if (patch === null) {
+          skipped.push({ id: item.operation.id, reason: "noopOperation" });
+          continue;
+        }
+        if (mode === "direct") {
+          tr = tr.setNodeMarkup(item.blockFrom, undefined, { ...item.blockNode.attrs, ...patch });
+          break;
+        }
+        // Word stores the COMPLETE old pPr inside `w:pPrChange`, so rejecting
+        // restores the properties wholesale within that scope. Storing only
+        // the keys this operation touched would leave a reject unable to tell
+        // "the change did not set this" from "the change cleared it".
+        const revisionId = revisionSeed++;
+        const change: ParagraphPropertyChangeAttrs = {
+          type: "paragraphPropertyChange",
+          info: { id: revisionId, author, date, ...(initials ? { initials } : {}) },
+          previousFormatting: paragraphPropertiesSnapshot(item.blockNode),
+        };
+        const existing = expectParagraphAttrs(item.blockNode)._propertyChanges;
+        tr = tr.setNodeMarkup(item.blockFrom, undefined, {
+          ...item.blockNode.attrs,
+          ...patch,
+          _propertyChanges: [...(Array.isArray(existing) ? existing : []), change],
+        });
+        appliedRevisionIds = [revisionId];
+        break;
+      }
+      case "splitBlock": {
+        if (mode === "direct") {
+          if (item.to > item.from) {
+            tr = tr.delete(item.from, item.to);
+          }
+          tr = tr.split(item.from);
+          break;
+        }
+        const revisionIdMark = revisionSeed++;
+        const info = { id: revisionIdMark, author, date, ...trackedRevisionExtras };
+        appliedRevisionIds = [revisionIdMark];
+        if (item.to > item.from && deletionType) {
+          const revisionIdSeparator = revisionSeed++;
+          tr = tr.addMark(
+            item.from,
+            item.to,
+            deletionType.create({
+              revisionId: revisionIdSeparator,
+              author,
+              date,
+              ...trackedRevisionExtras,
+            }),
+          );
+          appliedRevisionIds = [revisionIdMark, revisionIdSeparator];
+        }
+        tr = tr.split(item.from);
+        // The mark goes on the FIRST half: the break belongs to the paragraph
+        // it now ends, and a reader rejecting it closes that paragraph back
+        // over the second half.
+        tr = tr.setNodeAttribute(item.blockFrom, "pPrMark", { kind: "ins", info });
+        break;
+      }
+      case "mergeBlockWithNext": {
+        const separator = item.operation.separator ?? "";
+        const insertAt = item.blockTo - 1;
+        if (mode === "direct") {
+          if (separator.length > 0) {
+            tr = tr.insertText(separator, insertAt);
+          }
+          tr = tr.join(item.blockTo + separator.length);
+          break;
+        }
+        const revisionIdMark = revisionSeed++;
+        appliedRevisionIds = [revisionIdMark];
+        if (separator.length > 0 && insertionType) {
+          const revisionIdSeparator = revisionSeed++;
+          tr = tr.insertText(separator, insertAt);
+          tr = tr.addMark(
+            insertAt,
+            insertAt + separator.length,
+            insertionType.create({
+              revisionId: revisionIdSeparator,
+              author,
+              date,
+              ...trackedRevisionExtras,
+            }),
+          );
+          appliedRevisionIds = [revisionIdMark, revisionIdSeparator];
+        }
+        tr = tr.setNodeAttribute(item.blockFrom, "pPrMark", {
+          kind: "del",
+          info: { id: revisionIdMark, author, date, ...trackedRevisionExtras },
+        });
         break;
       }
       case "commentOnBlock": {
@@ -1465,16 +1806,21 @@ const applyFolioAIEditOperationsInternal = ({
     view.dispatch(tr);
   }
 
-  return { applied, skipped, ...(normalizations.length > 0 && { normalizations }) };
+  return {
+    applied,
+    skipped,
+    ...(normalizations.length > 0 && { normalizations }),
+    nextRevisionId: revisionSeed,
+  };
 };
 
 export const applyFolioAIEditOperations = (
   options: ApplyFolioAIEditOperationsOptions,
-): FolioAIEditApplyResult => applyFolioAIEditOperationsInternal(options);
+): FolioAIEditApplyOutcome => applyFolioAIEditOperationsInternal(options);
 
 export const previewFolioAIEditOperations = (
   options: ApplyFolioAIEditOperationsOptions,
-): FolioAIEditApplyResult => {
+): FolioAIEditApplyOutcome => {
   const { view, createCommentId, ...applyOptions } = options;
   let previewCommentId = -1;
   const previewView: FolioAIEditView = {
@@ -1495,6 +1841,9 @@ export const previewFolioAIEditOperations = (
     applied: result.applied.map(({ id }) => ({ id })),
     skipped: result.skipped,
     ...(result.normalizations !== undefined && { normalizations: result.normalizations }),
+    // A preview allocates from a sentinel range and commits nothing, so the
+    // next id is still the one the batch would have started from.
+    nextRevisionId: options.revisionStamp?.idSeed ?? revisionIdCursor,
   };
 };
 
@@ -1520,6 +1869,8 @@ type TextReplacementOptions = {
   suggestionId?: string | null;
   /** Optional author initials stamped on the produced marks. */
   initials?: string | undefined;
+  /** Token size the redline is cut at. */
+  granularity: WordDiffGranularity;
 };
 
 const applyTextReplacement = ({
@@ -1533,6 +1884,7 @@ const applyTextReplacement = ({
   commentMark,
   suggestionId = null,
   initials,
+  granularity,
 }: TextReplacementOptions): Transaction => {
   let nextTr = tr;
   const replacement = stripInlineEmphasisMarkers(
@@ -1627,7 +1979,7 @@ const applyTextReplacement = ({
   }
 
   if (sourceText !== null && cleanBlock !== null) {
-    const segments = diffWordSegments(sourceText, replacement);
+    const segments = diffWordSegments(sourceText, replacement, { granularity });
     const offsets = cleanBlock.offsets;
     const offsetAt = (cleanOffset: number): number | null => offsets[cleanOffset] ?? null;
 
@@ -1859,7 +2211,7 @@ const resolveOperation = ({
     // into the cell". Override the insertion bounds to the table's
     // outer boundary so the synthesized sibling lands as a peer of
     // the table at doc level.
-    const tableBoundary = findEnclosingTableBoundary(doc, blockFrom);
+    const tableBoundary = findOutermostTableBoundary(doc, blockFrom);
     const isInsertAfter = operation.type === "insertAfterBlock";
     let insertFrom: number;
     if (tableBoundary) {
@@ -1889,7 +2241,7 @@ const resolveOperation = ({
       return { type: "skip", reason: "emptyOperation" };
     }
     const position = operation.position ?? "after";
-    const tableBoundary = findEnclosingTableBoundary(doc, blockFrom);
+    const tableBoundary = findOutermostTableBoundary(doc, blockFrom);
     let insertFrom: number;
     if (tableBoundary) {
       insertFrom = position === "after" ? tableBoundary.after : tableBoundary.before;
@@ -2110,6 +2462,87 @@ const resolveOperation = ({
           rectangle,
         },
       },
+    };
+  }
+
+  if (operation.type === "insertTable") {
+    // A whole table is a document-level peer, like every other block
+    // insertion: `insertTableRow` is the operation for growing one in place.
+    const boundary = findOutermostTableBoundary(doc, blockFrom) ?? {
+      before: blockFrom,
+      after: blockTo,
+    };
+    const insertFrom =
+      (operation.position ?? "after") === "after" ? boundary.after : boundary.before;
+    return {
+      type: "resolved",
+      operation: { operation, from: insertFrom, to: insertFrom, blockFrom, blockTo, blockNode },
+    };
+  }
+
+  if (operation.type === "deleteTable") {
+    const target = findEnclosingTableRow(doc, blockFrom);
+    if (!target) {
+      return { type: "skip", reason: "unsupportedBlock" };
+    }
+    return {
+      type: "resolved",
+      operation: {
+        operation,
+        from: target.tablePosition,
+        to: target.tablePosition + target.table.nodeSize,
+        blockFrom,
+        blockTo,
+        blockNode,
+        deletedTable: { position: target.tablePosition, node: target.table },
+      },
+    };
+  }
+
+  if (operation.type === "setBlockParagraphProperties") {
+    return {
+      type: "resolved",
+      operation: { operation, from: blockFrom, to: blockTo, blockFrom, blockTo, blockNode },
+    };
+  }
+
+  if (operation.type === "splitBlock") {
+    // A split at either end of the block moves no words and produces an empty
+    // paragraph; the caller meant an insertion.
+    const separator = operation.separator ?? "";
+    const at = cleanBlock.offsets[operation.offset];
+    const after = cleanBlock.offsets[operation.offset + separator.length];
+    if (
+      at === undefined ||
+      after === undefined ||
+      operation.offset === 0 ||
+      operation.offset + separator.length >= currentText.length
+    ) {
+      return { type: "skip", reason: "staleRange" };
+    }
+    if (currentText.slice(operation.offset, operation.offset + separator.length) !== separator) {
+      return { type: "skip", reason: "staleRange" };
+    }
+    if (!canSplit(doc, at)) {
+      return { type: "skip", reason: "unsupportedBlock" };
+    }
+    return {
+      type: "resolved",
+      operation: { operation, from: at, to: after, blockFrom, blockTo, blockNode },
+    };
+  }
+
+  if (operation.type === "mergeBlockWithNext") {
+    // `canJoin` is what keeps a deleted paragraph mark off the last paragraph
+    // of a table cell, and off the last paragraph of the story: there is no
+    // sibling to join with, so accepting the revision could not do what the
+    // mark says it does.
+    if (!canJoin(doc, blockTo)) {
+      return { type: "skip", reason: "unsupportedBlock" };
+    }
+    return {
+      type: "resolved",
+      operation: { operation, from: blockTo, to: blockTo, blockFrom, blockTo, blockNode },
     };
   }
 

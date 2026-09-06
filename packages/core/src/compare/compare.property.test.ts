@@ -54,6 +54,37 @@ const buildSyntheticBase = async (): Promise<ArrayBuffer> => {
   return await reviewer.toBuffer();
 };
 
+const PRIOR_AUTHOR = "a previous reviewer";
+
+/**
+ * A base that already carries someone else's tracked changes: three edits
+ * applied in `"tracked-changes"` mode, so the document holds unresolved
+ * insertions and deletions before the comparison ever sees it.
+ */
+const withPriorRevisions = async (buffer: ArrayBuffer): Promise<ArrayBuffer> => {
+  const reviewer = await FolioDocxReviewer.fromBuffer(buffer, { author: PRIOR_AUTHOR });
+  const snapshot = reviewer.snapshot();
+  reviewer.applyOperations(
+    snapshot.blocks.slice(0, 3).map((block, index) => ({
+      id: `prior-${String(index)}`,
+      type: "replaceBlock" as const,
+      blockId: block.id,
+      text: `${block.text} As previously amended.`,
+    })),
+    {
+      mode: "tracked-changes",
+      snapshot,
+      revisionStamp: { date: "2023-01-01T00:00:00.000Z", idSeed: 900 },
+    },
+  );
+  return await reviewer.toBuffer();
+};
+
+const authorsOfChanges = async (buffer: ArrayBuffer): Promise<string[]> => {
+  const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
+  return [...new Set(reviewer.getChanges().map(({ author }) => author))].toSorted();
+};
+
 const FIXTURE_FILES = [
   "upstream-styled-content.docx",
   "upstream-with-tables.docx",
@@ -459,4 +490,44 @@ describe("compareDocx", () => {
     },
     propertyTestTimeout(120_000),
   );
+
+  describe("a base that already carries tracked changes", () => {
+    test(
+      "is compared as accepted, and the comparison is the only redline left",
+      async () => {
+        const revisedBase = await withPriorRevisions(SYNTHETIC_BASE);
+        expect(await authorsOfChanges(revisedBase)).toEqual([PRIOR_AUTHOR]);
+        const acceptedBase = await projectView(revisedBase, "final");
+
+        await fc.assert(
+          fc.asyncProperty(editScriptArb(await blocksOf(revisedBase)), async (script) => {
+            const scripted = await applyEditScript(revisedBase, script);
+            if (scripted.isErr()) {
+              throw scripted.error;
+            }
+            const target = scripted.value.buffer;
+            const { buffer } = await compareOrThrow(revisedBase, target);
+
+            // Rejecting lands on the base as it stands, not on the document
+            // before the previous reviewer touched it.
+            expect(await projectView(buffer, "original")).toEqual(acceptedBase);
+            expect(await projectView(buffer, "final")).toEqual(await projectView(target, "final"));
+
+            // The prior reviewer's marks are resolved rather than layered
+            // under this comparison's: a reader has one redline to read, and
+            // rejecting it cannot land on a document neither side wrote.
+            expect(await authorsOfChanges(buffer)).not.toContain(PRIOR_AUTHOR);
+          }),
+          propertyConfig({ numRuns: 10 }),
+        );
+      },
+      propertyTestTimeout(120_000),
+    );
+
+    test("comparing it with itself still reports nothing", async () => {
+      const revisedBase = await withPriorRevisions(SYNTHETIC_BASE);
+      const { changes } = await compareOrThrow(revisedBase, revisedBase);
+      expect(changes).toEqual([]);
+    });
+  });
 });

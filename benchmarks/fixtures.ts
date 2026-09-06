@@ -68,7 +68,9 @@ export const FIXTURES: readonly Fixture[] = SPECS.map(loadFixture);
  */
 export function freshArrayBuffer(fixture: Fixture): ArrayBuffer {
   const { buffer } = fixture;
-  return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+  const copy = new ArrayBuffer(buffer.byteLength);
+  new Uint8Array(copy).set(buffer);
+  return copy;
 }
 
 /** Short "label (NN KB)" string for bench case names. */

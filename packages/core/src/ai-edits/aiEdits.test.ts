@@ -709,6 +709,7 @@ describe("Folio AI edit operations", () => {
     });
 
     expect(result).toEqual({
+      nextRevisionId: expect.any(Number),
       applied: [],
       skipped: [{ id: "op-1", reason: "changedBlock" }],
     });
@@ -872,6 +873,7 @@ describe("Folio AI edit operations", () => {
     });
 
     expect(result).toEqual({
+      nextRevisionId: expect.any(Number),
       applied: [],
       skipped: [{ id: "op-1", reason: "changedBlock" }],
     });
@@ -905,6 +907,7 @@ describe("Folio AI edit operations", () => {
     });
 
     expect(result).toEqual({
+      nextRevisionId: expect.any(Number),
       applied: [],
       skipped: [{ id: "op-1", reason: "preconditionFailed" }],
     });
@@ -932,6 +935,7 @@ describe("Folio AI edit operations", () => {
     });
 
     expect(result).toEqual({
+      nextRevisionId: expect.any(Number),
       applied: [],
       skipped: [{ id: "op-1", reason: "missingBlock" }],
     });
@@ -2570,6 +2574,7 @@ describe("Folio AI edit operations", () => {
     });
 
     expect(result).toEqual({
+      nextRevisionId: expect.any(Number),
       applied: [],
       skipped: [{ id: "insert-column", reason: "unsupportedBlock" }],
     });
@@ -2744,7 +2749,11 @@ describe("Folio AI edit operations", () => {
       mode: "direct",
     });
 
-    expect(result).toEqual({ applied: [{ id: "delete-column" }], skipped: [] });
+    expect(result).toEqual({
+      nextRevisionId: expect.any(Number),
+      applied: [{ id: "delete-column" }],
+      skipped: [],
+    });
     const updatedTable = view.state.doc.child(0);
     expect(TableMap.get(updatedTable).width).toBe(2);
     expect(updatedTable.child(0).child(0).attrs["colspan"]).toBe(1);
@@ -2818,7 +2827,11 @@ describe("Folio AI edit operations", () => {
       mode: "direct",
     });
 
-    expect(result).toEqual({ applied: [{ id: "delete-column" }], skipped: [] });
+    expect(result).toEqual({
+      nextRevisionId: expect.any(Number),
+      applied: [{ id: "delete-column" }],
+      skipped: [],
+    });
     expect(view.state.doc.childCount).toBe(1);
     expect(view.state.doc.child(0).type.name).toBe("paragraph");
     expect(view.state.doc.textContent).toBe("");
@@ -3035,6 +3048,7 @@ describe("Folio AI edit operations", () => {
       throw new Error("expected a column deletion revision");
     }
     expect(acceptedResult).toEqual({
+      nextRevisionId: expect.any(Number),
       applied: [{ id: "delete-column", revisionId, revisionIds: [revisionId] }],
       skipped: [],
     });
@@ -3126,6 +3140,7 @@ describe("Folio AI edit operations", () => {
     });
 
     expect(result).toEqual({
+      nextRevisionId: expect.any(Number),
       applied: [],
       skipped: [{ id: "delete-column", reason: "unsupportedBlock" }],
     });
@@ -3173,6 +3188,7 @@ describe("Folio AI edit operations", () => {
       throw new Error("expected a column insertion revision");
     }
     expect(acceptedResult).toEqual({
+      nextRevisionId: expect.any(Number),
       applied: [{ id: "insert-column", revisionId, revisionIds: [revisionId] }],
       skipped: [],
     });
@@ -3265,6 +3281,7 @@ describe("Folio AI edit operations", () => {
     });
 
     expect(result).toEqual({
+      nextRevisionId: expect.any(Number),
       applied: [],
       skipped: [{ id: "insert-column", reason: "unsupportedBlock" }],
     });
@@ -3306,7 +3323,11 @@ describe("Folio AI edit operations", () => {
       mode: "direct",
     });
 
-    expect(result).toEqual({ applied: [{ id: "merge-cells" }], skipped: [] });
+    expect(result).toEqual({
+      nextRevisionId: expect.any(Number),
+      applied: [{ id: "merge-cells" }],
+      skipped: [],
+    });
     const table = view.state.doc.child(0);
     expect(TableMap.get(table)).toMatchObject({ width: 2, height: 2 });
     expect(table.child(0).childCount).toBe(1);
@@ -3395,6 +3416,7 @@ describe("Folio AI edit operations", () => {
     });
 
     expect(result).toEqual({
+      nextRevisionId: expect.any(Number),
       applied: [],
       skipped: [{ id: "partial-merge", reason: "unsupportedBlock" }],
     });
@@ -3754,6 +3776,7 @@ describe("Folio AI edit operations", () => {
         }),
         name,
       ).toEqual({
+        nextRevisionId: expect.any(Number),
         applied: [],
         skipped: [{ id: operation.id, reason: "unsupportedBlock" }],
       });
@@ -3787,6 +3810,7 @@ describe("Folio AI edit operations", () => {
         mode: "direct",
       }),
     ).toEqual({
+      nextRevisionId: expect.any(Number),
       applied: [],
       skipped: [{ id: "same-cell", reason: "noopOperation" }],
     });
@@ -3807,6 +3831,7 @@ describe("Folio AI edit operations", () => {
         mode: "tracked-changes",
       }),
     ).toEqual({
+      nextRevisionId: expect.any(Number),
       applied: [],
       skipped: [{ id: "tracked-merge", reason: "noopOperation" }],
     });
@@ -3831,7 +3856,11 @@ describe("Folio AI edit operations", () => {
       mode: "direct",
     });
 
-    expect(result).toEqual({ applied: [{ id: "split-cell" }], skipped: [] });
+    expect(result).toEqual({
+      nextRevisionId: expect.any(Number),
+      applied: [{ id: "split-cell" }],
+      skipped: [],
+    });
     const updatedTable = view.state.doc.child(0);
     expect(TableMap.get(updatedTable)).toMatchObject({ width: 2, height: 2 });
     expect(updatedTable.child(0).childCount).toBe(2);
@@ -4063,6 +4092,7 @@ describe("Folio AI edit operations", () => {
     });
 
     expect(result).toEqual({
+      nextRevisionId: expect.any(Number),
       applied: [],
       skipped: [{ id: "split-cell", reason: "unsupportedBlock" }],
     });
@@ -4231,6 +4261,7 @@ describe("Folio AI edit operations", () => {
         mode: "direct",
       }),
     ).toEqual({
+      nextRevisionId: expect.any(Number),
       applied: [],
       skipped: [{ id: "plain", reason: "noopOperation" }],
     });
@@ -4244,6 +4275,7 @@ describe("Folio AI edit operations", () => {
         mode: "tracked-changes",
       }),
     ).toEqual({
+      nextRevisionId: expect.any(Number),
       applied: [],
       skipped: [{ id: "tracked", reason: "noopOperation" }],
     });
@@ -4316,6 +4348,7 @@ describe("Folio AI edit operations", () => {
     });
 
     expect(result).toEqual({
+      nextRevisionId: expect.any(Number),
       applied: [],
       skipped: [{ id: "delete-row", reason: "unsupportedBlock" }],
     });
@@ -4420,6 +4453,7 @@ describe("Folio AI edit operations", () => {
     });
 
     expect(result).toEqual({
+      nextRevisionId: expect.any(Number),
       applied: [],
       skipped: [{ id: "insert-row", reason: "unsupportedBlock" }],
     });

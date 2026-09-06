@@ -187,6 +187,7 @@ export {
   type FolioDocumentOperationReceipt,
   type FolioDocumentOperationType,
   type FolioDocumentOperationResult,
+  type FolioDocumentOperationResultBase,
   type FolioDocumentOperationStatus,
   type FolioDocumentOperationStory,
   type FolioDocumentOperationUndoFailureReason,

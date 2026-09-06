@@ -261,6 +261,18 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
           type: "string",
           description: 'Paragraph style id for the inserted block (e.g. "ClauseHeading1").',
         },
+        listLevel: {
+          type: "integer",
+          minimum: 0,
+          description: "`w:numPr/w:ilvl` for the inserted block, keeping the anchor's list.",
+        },
+        moveId: {
+          type: "string",
+          description:
+            "Links this operation to the other half of one relocation: a `deleteBlock` and " +
+            "an insertion sharing a `moveId` are written as `w:moveFrom` / `w:moveTo`. An id " +
+            "that does not name exactly one of each applies as an ordinary edit.",
+        },
         comment: commentJsonSchema,
       },
       required: ["id", "type", "blockId", "text"],
@@ -294,6 +306,18 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
         styleId: {
           type: "string",
           description: 'Paragraph style id for the inserted block (e.g. "ClauseHeading1").',
+        },
+        listLevel: {
+          type: "integer",
+          minimum: 0,
+          description: "`w:numPr/w:ilvl` for the inserted block, keeping the anchor's list.",
+        },
+        moveId: {
+          type: "string",
+          description:
+            "Links this operation to the other half of one relocation: a `deleteBlock` and " +
+            "an insertion sharing a `moveId` are written as `w:moveFrom` / `w:moveTo`. An id " +
+            "that does not name exactly one of each applies as an ordinary edit.",
         },
         comment: commentJsonSchema,
       },
@@ -330,7 +354,118 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
         ...suggestionIdProperty,
         type: { type: "string", enum: ["deleteBlock"] },
         blockId: blockIdProperty,
+        moveId: {
+          type: "string",
+          description:
+            "Links this operation to the other half of one relocation: a `deleteBlock` and " +
+            "an insertion sharing a `moveId` are written as `w:moveFrom` / `w:moveTo`. An id " +
+            "that does not name exactly one of each applies as an ordinary edit.",
+        },
         comment: commentJsonSchema,
+      },
+      required: ["id", "type", "blockId"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      description:
+        "Break one block in two at `offset`: a paragraph mark is inserted and no words change.",
+      properties: {
+        ...operationMetaProperties,
+        ...suggestionIdProperty,
+        type: { type: "string", enum: ["splitBlock"] },
+        blockId: blockIdProperty,
+        offset: {
+          type: "integer",
+          minimum: 0,
+          description:
+            "Character offset in the block's text where the break goes. Must fall strictly inside it.",
+        },
+        separator: {
+          type: "string",
+          description: "Text at `offset` the break replaces, usually the space between the halves.",
+        },
+      },
+      required: ["id", "type", "blockId", "offset"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      description:
+        "Join one block with the block after it in the same container: a paragraph mark is deleted.",
+      properties: {
+        ...operationMetaProperties,
+        ...suggestionIdProperty,
+        type: { type: "string", enum: ["mergeBlockWithNext"] },
+        blockId: blockIdProperty,
+        separator: {
+          type: "string",
+          description: "Text the join inserts between the two halves, usually a space.",
+        },
+      },
+      required: ["id", "type", "blockId"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      description:
+        "Change one block's paragraph properties without touching its words, recorded as a `w:pPrChange`.",
+      properties: {
+        ...operationMetaProperties,
+        ...suggestionIdProperty,
+        type: { type: "string", enum: ["setBlockParagraphProperties"] },
+        blockId: blockIdProperty,
+        properties: {
+          type: "object",
+          description: "The paragraph properties to set; at least one.",
+          properties: {
+            styleId: {
+              type: "string",
+              description: 'Paragraph style id (e.g. "ClauseHeading1").',
+            },
+            listLevel: {
+              type: "integer",
+              minimum: 0,
+              description: "`w:numPr/w:ilvl`, the zero-based list indent level.",
+            },
+          },
+          minProperties: 1,
+          additionalProperties: false,
+        },
+      },
+      required: ["id", "type", "blockId", "properties"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      description: "Insert a whole table next to the anchor block.",
+      properties: {
+        ...operationMetaProperties,
+        ...suggestionIdProperty,
+        type: { type: "string", enum: ["insertTable"] },
+        blockId: blockIdProperty,
+        position: {
+          type: "string",
+          enum: ["after", "before"],
+          description: "Place the table after the anchor (default) or before it.",
+        },
+        rows: {
+          type: "array",
+          description: "Cell texts row by row; every row must hold the same number of cells.",
+          items: { type: "array", items: { type: "string" } },
+        },
+      },
+      required: ["id", "type", "blockId", "rows"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      description: "Delete the whole table the anchor block sits in.",
+      properties: {
+        ...operationMetaProperties,
+        ...suggestionIdProperty,
+        type: { type: "string", enum: ["deleteTable"] },
+        blockId: blockIdProperty,
       },
       required: ["id", "type", "blockId"],
       additionalProperties: false,
