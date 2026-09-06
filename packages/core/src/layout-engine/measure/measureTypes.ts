@@ -47,8 +47,20 @@ export type FontStyle = {
  */
 export type FontMetrics = {
   fontSize: number;
+  /** Ink extent above the baseline: how far the glyphs actually reach. */
   ascent: number;
+  /** Ink extent below the baseline. */
   descent: number;
+  /**
+   * Extent of the font's own box (hhea/OS-2), which is wider than the ink and
+   * is what a browser builds an inline content area from. A painter that
+   * positions a text box from the ink extents instead puts every baseline out
+   * by half the difference between the two, per face, with nothing to
+   * attribute it to. Carried beside the ink extents rather than replacing them
+   * because line boxes are sized from the ink.
+   */
+  fontBoxAscent: number;
+  fontBoxDescent: number;
   lineHeight: number;
   fontFamily: string;
   /** OS/2 single-line ratio for OOXML line spacing calculation */

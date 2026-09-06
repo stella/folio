@@ -3,12 +3,17 @@
  *
  * Produces small, hand-written DOCX packages exercising a few real OOXML
  * shapes (block SDTs, inline SDTs, dropdown lists, checkboxes, alt-prefix
- * namespaces). The generated files live in
- * `src/core/docx/__tests__/__fixtures__/corpus/` and are read by
- * `corpusRoundtrip.test.ts`.
+ * namespaces, Latin-Extended text). The generated files live in
+ * `src/docx/__tests__/__fixtures__/corpus/` and are read by
+ * `corpusRoundtrip.test.ts` and `corpusFixedPoint.test.ts`.
  *
  * Run manually after editing this script:
- *   bun run scripts/build-corpus-fixtures.ts
+ *   bun packages/core/scripts/build-corpus-fixtures.ts [filename ...]
+ *
+ * Naming a filename writes only that fixture. A bare run rewrites all of
+ * them, and JSZip stamps each entry with the current time, so every fixture's
+ * bytes change whether or not its content did; adding one fixture should not
+ * churn the other twenty-five.
  *
  * The script is intentionally not wired into a package script; fixtures are
  * checked in as binaries so tests stay offline and deterministic.
@@ -22,7 +27,6 @@ const FIXTURES_DIR = path.join(
   import.meta.dir,
   "..",
   "src",
-  "core",
   "docx",
   "__tests__",
   "__fixtures__",
@@ -582,7 +586,34 @@ const FIXTURES: Fixture[] = [
     <w:p><w:r><w:t>After empty sdt.</w:t></w:r></w:p>`,
   },
 
-  // 25. `<w:placeholder>` with no `<w:docPart>` child. ECMA-376 §17.5.2.27
+  // 25. Czech, Slovak, Polish and German diacritics beside ASCII, in the
+  // same paragraph and in the same run. `@fontsource` cuts a family into
+  // disjoint `latin` and `latin-ext` files: `latin` carries `A` and `ß` but
+  // no `ř`, `latin-ext` carries `ř` but no ASCII at all. A run mixing the two
+  // is therefore the case that fails when a font source serves one binary per
+  // face, and the ASCII around each letter is what makes the failure visible
+  // as `.notdef` boxes rather than as a missing document. Bold and italic
+  // runs carry the same mix so the 700 and italic files are exercised too.
+  {
+    filename: "diacritics-latin-ext.docx",
+    body: `
+    <w:p>
+      <w:r><w:t>Smluvní strany: Řehoř Křížek a Ľudmila Šťastná uzavírají dne 6. 9. 2026 dohodu č. 128/2026 o převodu podílu ve výši 40 %.</w:t></w:r>
+    </w:p>
+    <w:p>
+      <w:r><w:t>Strony: Łukasz Żółkiewski (Śniadecka 12, Gdańsk) — załącznik nr 3, część ogólna, kwota 1250 zł.</w:t></w:r>
+    </w:p>
+    <w:p>
+      <w:r><w:t>Die Parteien vereinbaren Änderungen der Größe, die Übergabe der Schlüssel und den Maßstab 1:100 (§ 305 BGB).</w:t></w:r>
+    </w:p>
+    <w:p>
+      <w:r><w:t xml:space="preserve">cs/sk: Ř ř Ů ů Ě ě Č č Š š Ž ž Ď ď Ť ť Ň ň — </w:t></w:r>
+      <w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">pl: Ł ł Ż ż Ź ź Ć ć Ę ę Ą ą Ń ń Ś ś — </w:t></w:r>
+      <w:r><w:rPr><w:i/></w:rPr><w:t>de: Ä ä Ö ö Ü ü ß (ASCII 0123 xyz).</w:t></w:r>
+    </w:p>`,
+  },
+
+  // 26. `<w:placeholder>` with no `<w:docPart>` child. ECMA-376 §17.5.2.27
   // nominally requires the docPart child, but Word tolerates its absence.
   // The parser must not crash and must not fabricate a placeholder string.
   {
@@ -629,9 +660,20 @@ async function buildFixture(fixture: Fixture): Promise<ArrayBuffer> {
 }
 
 async function main(): Promise<void> {
+  const requested = new Set(process.argv.slice(2));
+  const selected =
+    requested.size === 0 ? FIXTURES : FIXTURES.filter((fixture) => requested.has(fixture.filename));
+  const unknown = [...requested].filter(
+    (filename) => !FIXTURES.some((fixture) => fixture.filename === filename),
+  );
+  if (unknown.length > 0) {
+    console.error(`no such fixture: ${unknown.join(", ")}`);
+    process.exit(1);
+  }
+
   mkdirSync(FIXTURES_DIR, { recursive: true });
   await Promise.all(
-    FIXTURES.map(async (fixture) => {
+    selected.map(async (fixture) => {
       const buf = await buildFixture(fixture);
       const outPath = path.join(FIXTURES_DIR, fixture.filename);
       await Bun.write(outPath, buf);

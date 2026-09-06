@@ -136,7 +136,8 @@ type RuleContext = {
       | "controllerImportedUpstream"
       | "engineImportsRuntime"
       | "projectionBoundaryImport"
-      | "generatedKernelImport";
+      | "generatedKernelImport"
+      | "paintBackendValueImport";
   }) => void;
 };
 
@@ -524,9 +525,97 @@ const checkProjectionBoundary = (context: RuleContext, node: AstNode): void => {
   }
 };
 
+// A paint backend consumes the display list as data. A value import would let
+// behaviour cross the seam, and behaviour that only one backend has is how two
+// backends come to disagree about a page. Dependency-cruiser owns the coarser
+// half of this rule (a backend may not reach the layout engine at all); it
+// cannot see `import type`, so the shape of the edge is checked here.
+//
+// Flagged:
+//   import { DisplayList } from "../types";        // value import
+// Safe:
+//   import type { DisplayList } from "../types";
+//   import { STROKE_DASH_FACTORS } from "../primitives";  // no layout facts
+const PAINT_BACKEND_PREFIXES = ["packages/core/src/pdf/", "packages/core/src/display-list/dom/"];
+
+const DISPLAY_LIST_TYPES_SUFFIX = "packages/core/src/display-list/types";
+
+const isPaintBackendFile = (absolutePath: string): boolean => {
+  const normalized = normalizedWithLeadingSlash(absolutePath);
+  return PAINT_BACKEND_PREFIXES.some(
+    (prefix) => normalized.includes(`/${prefix}`) || normalized.startsWith(prefix),
+  );
+};
+
+/**
+ * Whether a static `import` declaration crosses the seam as a value.
+ *
+ * `import type { X }` does not, and neither does `import { type X }`: a
+ * declaration whose every named specifier is itself typed erases completely.
+ */
+const isValueImportDeclaration = (node: AstNode): boolean => {
+  if (node.importKind === "type") {
+    return false;
+  }
+  const specifiers = node.specifiers;
+  return !(
+    Array.isArray(specifiers) &&
+    specifiers.length > 0 &&
+    specifiers.every(
+      (entry) => isAstNode(entry) && (entry as { importKind?: unknown }).importKind === "type",
+    )
+  );
+};
+
+const checkPaintBackendSeam = (context: RuleContext, node: AstNode): void => {
+  const importerPath = filenameOf(context);
+  if (importerPath === "" || !isPaintBackendFile(importerPath)) {
+    return;
+  }
+  const specifier = importSpecifierOf(node);
+  if (specifier === null) {
+    return;
+  }
+  const resolved = resolveCoreTarget(importerPath, specifier);
+  if (resolved === null || !stripExtAndIndex(resolved).endsWith(DISPLAY_LIST_TYPES_SUFFIX)) {
+    return;
+  }
+  // `require()` and `import()` load the module at runtime whatever they are
+  // used for, so unlike a static declaration there is no type-only form of
+  // them to allow. Checking only `ImportDeclaration` left the seam open to
+  // exactly the edge it exists to forbid.
+  if (node.type === "ImportDeclaration" && !isValueImportDeclaration(node)) {
+    return;
+  }
+  context.report({ node, messageId: "paintBackendValueImport" });
+};
+
 export default {
   meta: { name: "folio-layer-boundaries" },
   rules: {
+    "paint-backend-seam": {
+      meta: {
+        type: "problem",
+        messages: {
+          paintBackendValueImport:
+            "A paint backend consumes the display list as types. Use `import type` " +
+            "from display-list/types; runtime values shared by backends belong in " +
+            "display-list/primitives, which carries no layout facts.",
+        },
+      },
+      create(context: RuleContext) {
+        const handle = (node: unknown) => {
+          if (isAstNode(node)) {
+            checkPaintBackendSeam(context, node);
+          }
+        };
+        return {
+          ImportDeclaration: handle,
+          ImportExpression: handle,
+          CallExpression: handle,
+        };
+      },
+    },
     "no-upstream-import": {
       meta: {
         type: "problem",

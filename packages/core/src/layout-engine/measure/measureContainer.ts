@@ -133,6 +133,8 @@ function canvasGetFontMetrics(style: FontStyle): FontMetrics {
       fontSize,
       ascent: cached.ascent,
       descent: cached.descent,
+      fontBoxAscent: cached.fontBoxAscent,
+      fontBoxDescent: cached.fontBoxDescent,
       lineHeight: cached.lineHeight,
       fontFamily,
       singleLineRatio: cached.singleLineRatio,
@@ -145,6 +147,8 @@ function canvasGetFontMetrics(style: FontStyle): FontMetrics {
   // Try to get precise metrics from canvas
   let ascent = fontSizePx * DEFAULT_ASCENT_RATIO;
   let descent = fontSizePx * DEFAULT_DESCENT_RATIO;
+  let fontBoxAscent = ascent;
+  let fontBoxDescent = descent;
   let lineHeight = fontSizePx * DEFAULT_LINE_HEIGHT_MULTIPLIER;
 
   try {
@@ -162,6 +166,20 @@ function canvasGetFontMetrics(style: FontStyle): FontMetrics {
     ) {
       ascent = metrics.actualBoundingBoxAscent;
       descent = metrics.actualBoundingBoxDescent;
+    }
+
+    // The font's own box, which a browser builds an inline content area from.
+    // Absent on older canvas implementations, in which case the ink extents
+    // are the closest honest answer.
+    if (
+      typeof metrics.fontBoundingBoxAscent === "number" &&
+      typeof metrics.fontBoundingBoxDescent === "number"
+    ) {
+      fontBoxAscent = metrics.fontBoundingBoxAscent;
+      fontBoxDescent = metrics.fontBoundingBoxDescent;
+    } else {
+      fontBoxAscent = ascent;
+      fontBoxDescent = descent;
     }
 
     // Note: We intentionally do NOT use fontBoundingBoxAscent/Descent for lineHeight.
@@ -184,6 +202,8 @@ function canvasGetFontMetrics(style: FontStyle): FontMetrics {
     fontSize, // Keep in points for reference
     ascent,
     descent,
+    fontBoxAscent,
+    fontBoxDescent,
     lineHeight,
     fontFamily,
     singleLineRatio,

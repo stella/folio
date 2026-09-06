@@ -54,8 +54,50 @@ const closedWorkspaceRules = Object.entries(WORKSPACE_DEPENDENCIES).flatMap(
   },
 );
 
+const coreSource = (directory) => `^packages/core/src/${directory}(?:/|$)`;
+
+/**
+ * Modules a paint backend must not see. A backend that can read the layout
+ * engine can quietly grow a second opinion about where something goes, which
+ * is the exact divergence the display list exists to prevent: whatever a
+ * backend needs has to be added to the display list, where every backend sees
+ * it, rather than fetched behind the seam.
+ */
+const LAYOUT_OWNED_SOURCES = [
+  "layout-engine",
+  "layout-painter",
+  "layout-bridge",
+  "paged-layout",
+  "prosemirror",
+  "controller",
+  "docx",
+  "ai-edits",
+  "compare",
+  // The producer knows about layout by design, so reaching it is reaching
+  // layout one step removed.
+  "display-list/build",
+].map(coreSource);
+
+const paintBackendRules = [
+  {
+    name: "paint-backends-read-only-the-display-list",
+    comment:
+      "The PDF and display-list DOM backends may not reach into layout: a fact a backend needs belongs in the display list, where both backends see it.",
+    severity: "error",
+    from: { path: [coreSource("pdf"), coreSource("display-list/dom")] },
+    to: { path: LAYOUT_OWNED_SOURCES, dependencyTypes: PHYSICAL_DEPENDENCY_TYPES },
+  },
+  {
+    name: "display-list-types-stay-pure-data",
+    comment: "The paint IR is serializable data: it may not import anything from core.",
+    severity: "error",
+    from: { path: "^packages/core/src/display-list/types\\.ts$" },
+    to: { path: "^packages/core/src/", dependencyTypes: PHYSICAL_DEPENDENCY_TYPES },
+  },
+];
+
 module.exports = {
-  forbidden: [...closedWorkspaceRules],
+  forbidden: [...closedWorkspaceRules, ...paintBackendRules],
   options: {
     combinedDependencies: true,
     doNotFollow: {

@@ -148,6 +148,8 @@ export function getTextCacheSize(): number {
 type FontMetricsEntry = {
   ascent: number;
   descent: number;
+  fontBoxAscent: number;
+  fontBoxDescent: number;
   lineHeight: number;
   singleLineRatio: number;
 };

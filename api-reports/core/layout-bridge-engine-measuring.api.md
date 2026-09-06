@@ -87,6 +87,8 @@ export type FontMetrics = {
     fontSize: number;
     ascent: number;
     descent: number;
+    fontBoxAscent: number;
+    fontBoxDescent: number;
     lineHeight: number;
     fontFamily: string;
     singleLineRatio: number;
