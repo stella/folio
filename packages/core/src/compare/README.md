@@ -191,4 +191,8 @@ carries the current numbers and the failing cases.
   generator.
 - `reproducible-package.ts` — ZIP entry-date restamping.
 - `scenario.ts` — the edit-script DSL the property tests build targets with.
+- `plan.test.ts` — the judgement calls the corpus does not reach: the move
+  similarity threshold, and row pairing when a table's row count changed.
+- `probes.test.ts` — one labelled single mutation each, pinning what the
+  change list SAYS rather than only that it round-trips.
 - `../../scripts/compare.ts` — a manual runner for humans.
