@@ -1,5 +1,7 @@
 ---
 "@stll/folio-core": minor
+"@stll/docx-core": minor
+"@stll/folio-agents": patch
 ---
 
 Blank paragraphs are blocks. The AI-facing snapshot skipped every paragraph

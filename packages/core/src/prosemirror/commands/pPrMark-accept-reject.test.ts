@@ -250,6 +250,32 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
       expect(view.state.doc.child(0).attrs["sectionBreakType"]).toBe("nextPage");
     });
 
+    test("keeps both paragraphs when the next one ends a section of its own", () => {
+      const state = EditorState.create({
+        schema,
+        doc: schema.node("doc", null, [
+          schema.node(
+            "paragraph",
+            { pPrMark: delMark({ id: 2 }), sectionBreakType: "nextPage" },
+            schema.text("first section"),
+          ),
+          schema.node(
+            "paragraph",
+            { sectionBreakType: "continuous" },
+            schema.text("second section"),
+          ),
+        ]),
+      });
+      const view = dispatcher(state);
+
+      acceptAllChanges()(view.state, view.dispatch);
+
+      expect(view.state.doc.childCount).toBe(2);
+      expect(view.state.doc.child(0).attrs["sectionBreakType"]).toBe("nextPage");
+      expect(view.state.doc.child(0).attrs["pPrMark"]).toBeNull();
+      expect(view.state.doc.child(1).attrs["sectionBreakType"]).toBe("continuous");
+    });
+
     test("moves back a paragraph when there is nothing to join it with", () => {
       const state = EditorState.create({
         schema,

@@ -258,13 +258,19 @@ const REVISION_MARK_NAMES: ReadonlySet<string> = new Set(["insertion", "deletion
  * not be saved. Marking is by range everywhere, so the guard is here, once,
  * rather than at each of the dozen call sites that would have to remember.
  */
-const withoutRevisionsOnZeroWidthAnchors = (tr: Transaction): Transaction => {
+const withoutRevisionsOnZeroWidthAnchors = (
+  tr: Transaction,
+  batchRevisionIds: ReadonlySet<number>,
+): Transaction => {
   const anchors: { from: number; to: number; marks: readonly Mark[] }[] = [];
   tr.doc.descendants((node, pos) => {
     if (!isZeroWidthAnchor(node)) {
       return true;
     }
-    const marks = node.marks.filter(({ type }) => REVISION_MARK_NAMES.has(type.name));
+    const marks = node.marks.filter(
+      ({ attrs, type }) =>
+        REVISION_MARK_NAMES.has(type.name) && batchRevisionIds.has(attrs["revisionId"]),
+    );
     if (marks.length > 0) {
       anchors.push({ from: pos, to: pos + node.nodeSize, marks });
     }
@@ -1976,7 +1982,8 @@ const applyFolioAIEditOperationsInternal = ({
   }
 
   if (tr.docChanged) {
-    tr = withoutRevisionsOnZeroWidthAnchors(tr);
+    const batchRevisionIds = new Set(applied.flatMap(({ revisionIds }) => revisionIds ?? []));
+    tr = withoutRevisionsOnZeroWidthAnchors(tr, batchRevisionIds);
     if (revisionStamp) {
       // Paragraphs this batch creates get their `w14:paraId` from the
       // allocator plugin, which is random by default. A stamped batch has

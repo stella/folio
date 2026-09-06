@@ -68,6 +68,7 @@ import { isValidHexColor } from "../utils/colorResolver";
 import type { StyleMap } from "./styleParser";
 import {
   findChild,
+  findChildByNamespaceUri,
   findChildren,
   getAttribute,
   getChildElements,
@@ -78,6 +79,7 @@ import {
   parseNumberingLevelAttribute,
   parseNumericAttribute,
   elementToXml,
+  WORDPROCESSINGML_NAMESPACE_URIS,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
@@ -1027,7 +1029,7 @@ function parseParagraphMarkChange(pPr: XmlElement | null): ParagraphMarkChange |
   // the parser silently drops. `moveFrom` / `moveTo` come first: a moved
   // paragraph's mark carries one of them INSTEAD of `del` / `ins`, never both.
   for (const kind of PARAGRAPH_MARK_CHANGE_KINDS) {
-    const element = findChild(rPr, "w", kind);
+    const element = findChildByNamespaceUri(rPr, WORDPROCESSINGML_NAMESPACE_URIS, kind);
     if (element) {
       return { kind, info: parseTrackedChangeInfo(element) };
     }

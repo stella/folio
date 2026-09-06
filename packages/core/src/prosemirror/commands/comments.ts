@@ -305,7 +305,9 @@ function resolveChange(
         }
         const joinPos = mappedPos + paragraph.nodeSize;
         const nextNode = joinPos < tr.doc.content.size ? tr.doc.nodeAt(joinPos) : null;
-        const joinable = nextNode?.type.name === paragraph.type.name;
+        const joinable =
+          nextNode?.type.name === paragraph.type.name &&
+          !(carriesSection(paragraph) && carriesSection(nextNode));
         if (!joinable) {
           // Nothing to join with: the paragraph ends the document, or the next
           // sibling is a table, or the position lands on a cell boundary where

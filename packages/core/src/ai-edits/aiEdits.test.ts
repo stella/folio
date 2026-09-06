@@ -4623,4 +4623,32 @@ describe("deleteBlock over inline content that is not text", () => {
     expect(view.state.doc.childCount).toBe(1);
     expect(view.state.doc.child(0).textContent).toBe("kept");
   });
+
+  test("preserves a pre-existing revision on an anchor outside the operation", () => {
+    const insertion = schema.marks["insertion"]!;
+    const existingRevision = insertion.create({
+      revisionId: 1,
+      author: "Alice",
+      date: "2026-05-01",
+    });
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", { paraId: "anchor" }, [
+        schema.node("bookmarkBoundary", null, null, [existingRevision]),
+        schema.text("kept"),
+      ]),
+      schema.node("paragraph", { paraId: "target" }, schema.text("target")),
+    ]);
+    const state = EditorState.create({ schema, doc });
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [{ id: "insert", type: "insertAfterBlock", blockId: "target", text: "new" }],
+      mode: "tracked-changes",
+    });
+
+    expect(result.skipped).toEqual([]);
+    expect(view.state.doc.child(0).child(0)?.marks).toEqual([existingRevision]);
+  });
 });
