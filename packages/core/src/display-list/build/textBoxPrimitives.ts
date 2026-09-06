@@ -9,7 +9,9 @@ import { layoutTextBoxContent } from "../../layout-engine/measure/textBoxParagra
 import { DEFAULT_TEXTBOX_MARGINS } from "../../layout-engine/types";
 import type { TextBoxBlock, TextBoxFragment, TextBoxMeasure } from "../../layout-engine/types";
 import type { DisplayPrimitive } from "../types";
+import { HIT_REGION_KINDS } from "../primitives";
 import type { BuildContext } from "./buildContext";
+import { blockRegion, type PageComposer } from "./regions";
 import { parseDisplayColor } from "./colors";
 import { paintParagraphFragment } from "./paragraphPrimitives";
 import { paintTableBlock } from "./tablePrimitives";
@@ -17,6 +19,7 @@ import { resolveBorderStroke } from "./strokes";
 import { UNSUPPORTED_CONSTRUCT } from "./unsupported";
 
 export type TextBoxPaintOptions = {
+  readonly composer: PageComposer;
   readonly fragment: TextBoxFragment;
   readonly block: TextBoxBlock;
   readonly measure: TextBoxMeasure;
@@ -24,11 +27,12 @@ export type TextBoxPaintOptions = {
 };
 
 export const paintTextBoxFragment = ({
+  composer,
   fragment,
   block,
   measure,
   context,
-}: TextBoxPaintOptions): readonly DisplayPrimitive[] => {
+}: TextBoxPaintOptions): void => {
   const primitives: DisplayPrimitive[] = [];
   const box = {
     xPx: fragment.x,
@@ -100,38 +104,59 @@ export const paintTextBoxFragment = ({
     if (contentBlock.kind === "paragraph" && contentMeasure.kind === "paragraph") {
       const previous = block.content[index - 1];
       const next = block.content[index + 1];
-      primitives.push(
-        ...paintParagraphFragment({
-          fragment: {
-            kind: "paragraph",
-            blockId: contentBlock.id,
-            x: box.xPx + outlineWidthPx + margins.left,
-            y: cursorYPx,
-            width: innerWidthPx,
-            height: placement.contentHeight,
-            fromLine: 0,
-            toLine: contentMeasure.lines.length,
-          },
-          block: contentBlock,
-          measure: contentMeasure,
-          context,
-          ...(previous?.kind === "paragraph" && previous.attrs?.borders !== undefined
-            ? { prevBorders: previous.attrs.borders }
-            : {}),
-          ...(next?.kind === "paragraph" && next.attrs?.borders !== undefined
-            ? { nextBorders: next.attrs.borders }
-            : {}),
-        }),
+      composer.push(primitives);
+      primitives.length = 0;
+      const contentFragment = {
+        kind: "paragraph",
+        blockId: contentBlock.id,
+        x: box.xPx + outlineWidthPx + margins.left,
+        y: cursorYPx,
+        width: innerWidthPx,
+        height: placement.contentHeight,
+        fromLine: 0,
+        toLine: contentMeasure.lines.length,
+      } as const;
+      composer.region(
+        blockRegion({ fragment: contentFragment, kind: HIT_REGION_KINDS.paragraph, context }),
+        () => {
+          paintParagraphFragment({
+            composer,
+            fragment: contentFragment,
+            block: contentBlock,
+            measure: contentMeasure,
+            context,
+            ...(previous?.kind === "paragraph" && previous.attrs?.borders !== undefined
+              ? { prevBorders: previous.attrs.borders }
+              : {}),
+            ...(next?.kind === "paragraph" && next.attrs?.borders !== undefined
+              ? { nextBorders: next.attrs.borders }
+              : {}),
+          });
+        },
       );
     } else if (contentBlock.kind === "table" && contentMeasure.kind === "table") {
-      primitives.push(
-        ...paintTableBlock({
-          block: contentBlock,
-          measure: contentMeasure,
-          xPx: box.xPx + outlineWidthPx + margins.left,
-          yPx: cursorYPx,
-          context,
-        }),
+      composer.push(primitives);
+      primitives.length = 0;
+      const contentFragment = {
+        blockId: contentBlock.id,
+        x: box.xPx + outlineWidthPx + margins.left,
+        y: cursorYPx,
+        width: contentMeasure.totalWidth,
+        height: contentMeasure.totalHeight,
+      };
+      composer.region(
+        blockRegion({ fragment: contentFragment, kind: HIT_REGION_KINDS.table, context }),
+        () => {
+          paintTableBlock({
+            composer,
+            block: contentBlock,
+            measure: contentMeasure,
+            xPx: contentFragment.x,
+            yPx: contentFragment.y,
+            context,
+            paintTextBox: paintTextBoxFragment,
+          });
+        },
       );
     } else {
       context.unsupported.report(
@@ -152,5 +177,5 @@ export const paintTextBoxFragment = ({
     );
   }
 
-  return primitives;
+  composer.push(primitives);
 };

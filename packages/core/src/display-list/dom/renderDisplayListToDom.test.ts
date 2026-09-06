@@ -4,6 +4,7 @@ import { DISPLAY_PRIMITIVE_KINDS } from "../primitives";
 import type {
   DisplayFontFace,
   DisplayGlyphRun,
+  DisplayHitRegion,
   DisplayImageSource,
   DisplayList,
   DisplayPage,
@@ -98,6 +99,7 @@ const emptyPage = (primitives: readonly DisplayPrimitive[]): DisplayPage => ({
   widthPx: 816,
   heightPx: 1056,
   orientation: "portrait",
+  regions: [],
   primitives,
   links: [],
 });
@@ -117,6 +119,19 @@ const renderPrimitives = (
 
 /** The run's text as a document-order reader (a `Range`, a copy) sees it. */
 const runText = (span: StubElement | undefined) => span?.textContent ?? "";
+
+const findByClass = (element: StubElement, className: string): StubElement | undefined => {
+  if (element.className.split(" ").includes(className)) {
+    return element;
+  }
+  for (const child of element.children) {
+    const found = findByClass(child, className);
+    if (found !== undefined) {
+      return found;
+    }
+  }
+  return undefined;
+};
 
 /**
  * One primitive per discriminator. `satisfies Record<...>` is what makes a new
@@ -190,6 +205,71 @@ const listOf = (
 });
 
 describe("renderDisplayListToDom", () => {
+  test("renders region classes and editing model attributes", () => {
+    const rect = { xPx: 10, yPx: 20, widthPx: 30, heightPx: 40 };
+    const region = (
+      kind: DisplayHitRegion["kind"],
+      model?: DisplayHitRegion["model"],
+    ): DisplayHitRegion => ({
+      kind,
+      rect,
+      from: 0,
+      to: 0,
+      children: [],
+      ...(model ? { model } : {}),
+    });
+    const regions: DisplayHitRegion[] = [
+      region("headerSlot", { story: { kind: "header", rId: "rId7" } }),
+      region("footerSlot", { story: { kind: "footer", rId: null } }),
+      region("line", {
+        blockId: "paragraph-1",
+        pmRange: { start: 12, end: 18, story: { kind: "body" } },
+        commentIds: [42],
+      }),
+      region("tableRow", { rowIndex: 3 }),
+      region("tableCell", { rowIndex: 3, columnIndex: 2 }),
+      region("note", { story: { kind: "footnote", id: 9 } }),
+      region("tab", { pmRange: { start: 15, end: 16, story: { kind: "body" } } }),
+    ];
+    const page = asStub(
+      renderDisplayPageToDom(
+        { ...emptyPage([]), regions },
+        { doc: stubDocument(), fonts: [FONT], images: [IMAGE], pageIndex: 0 },
+      ),
+    );
+
+    expect(findByClass(page, "layout-page-header")?.dataset).toMatchObject({
+      story: "header",
+      rid: "rId7",
+      hfRid: "rId7",
+      hfRId: "rId7",
+      hfSlotKind: "header",
+      hfKind: "header",
+    });
+    expect(findByClass(page, "layout-page-footer")?.dataset).toEqual({ story: "footer" });
+    expect(findByClass(page, "layout-line")?.dataset).toMatchObject({
+      blockId: "paragraph-1",
+      pmStart: "12",
+      pmEnd: "18",
+      story: "body",
+      commentId: "42",
+    });
+    expect(findByClass(page, "layout-table-row")?.dataset).toMatchObject({ rowIndex: "3" });
+    expect(findByClass(page, "layout-table-cell")?.dataset).toMatchObject({
+      rowIndex: "3",
+      columnIndex: "2",
+    });
+    expect(findByClass(page, "layout-note")?.dataset).toMatchObject({
+      story: "footnote",
+      noteKind: "footnote",
+      noteId: "9",
+    });
+    expect(findByClass(page, "layout-run-tab")?.dataset).toMatchObject({
+      pmStart: "15",
+      pmEnd: "16",
+    });
+  });
+
   test("renders one page element per display page, in page order", () => {
     const list = listOf([emptyPage([]), { ...emptyPage([]), pageNumber: 7 }]);
 

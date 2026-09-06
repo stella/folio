@@ -31,10 +31,16 @@ import type {
   TableFragment,
   TableMeasure,
   TableRow,
+  TextBoxBlock,
+  TextBoxFragment,
+  TextBoxMeasure,
 } from "../../layout-engine/types";
 import type { DisplayPrimitive, DisplayRect, DisplayStroke } from "../types";
 import type { BuildContext } from "./buildContext";
+import { HIT_REGION_KINDS } from "../primitives";
+import { blockRegion, createPageComposer, type PageComposer } from "./regions";
 import { parseDisplayColor } from "./colors";
+import { paintImageFragment } from "./imagePrimitives";
 import { paintParagraphFragment } from "./paragraphPrimitives";
 import { resolveBorderStroke } from "./strokes";
 import { UNSUPPORTED_CONSTRUCT } from "./unsupported";
@@ -77,10 +83,12 @@ const strokeFor = (
 };
 
 type PaintCellOptions = {
+  readonly composer: PageComposer;
   readonly cell: TableCell;
   readonly cellMeasure: { blocks: Measure[]; width: number; height: number };
   readonly box: CellBox;
   readonly context: BuildContext;
+  readonly paintTextBox: PaintTextBox;
   readonly sides: {
     readonly top: boolean;
     readonly bottom: boolean;
@@ -90,12 +98,14 @@ type PaintCellOptions = {
 };
 
 const paintCell = ({
+  composer,
   cell,
   cellMeasure,
   box,
   context,
+  paintTextBox,
   sides,
-}: PaintCellOptions): readonly DisplayPrimitive[] => {
+}: PaintCellOptions): void => {
   const primitives: DisplayPrimitive[] = [];
 
   if (cell.background) {
@@ -190,16 +200,20 @@ const paintCell = ({
     );
   }
 
-  primitives.push(
-    ...paintCellBlocks({
-      blocks: cell.blocks,
-      measures: cellMeasure.blocks,
-      xPx: contentXPx,
-      yPx: contentYPx,
-      widthPx: contentWidthPx,
-      context,
-    }),
-  );
+  // The cell's own chrome first, then its content through the composer so the
+  // blocks inside it open their regions here, then anything drawn over them.
+  composer.push(primitives);
+  primitives.length = 0;
+  paintCellBlocks({
+    composer,
+    blocks: cell.blocks,
+    measures: cellMeasure.blocks,
+    xPx: contentXPx,
+    yPx: contentYPx,
+    widthPx: contentWidthPx,
+    context,
+    paintTextBox,
+  });
 
   const diagonals = [
     { border: borders?.topLeftToBottomRight, from: "topLeft" as const },
@@ -220,31 +234,42 @@ const paintCell = ({
     });
   }
 
-  return primitives;
+  composer.push(primitives);
 };
 
 type PaintCellBlocksOptions = {
+  readonly composer: PageComposer;
   readonly blocks: readonly FlowBlock[];
   readonly measures: readonly Measure[];
   readonly xPx: number;
   readonly yPx: number;
   readonly widthPx: number;
   readonly context: BuildContext;
+  readonly paintTextBox: PaintTextBox;
 };
+
+type PaintTextBox = (options: {
+  readonly composer: PageComposer;
+  readonly fragment: TextBoxFragment;
+  readonly block: TextBoxBlock;
+  readonly measure: TextBoxMeasure;
+  readonly context: BuildContext;
+}) => void;
 
 /**
  * A cell's inner blocks, stacked by the same flow state the measurer used, so
  * paragraph spacing collapses in paint exactly where it collapsed in layout.
  */
 const paintCellBlocks = ({
+  composer,
   blocks,
   measures,
   xPx,
   yPx,
   widthPx,
   context,
-}: PaintCellBlocksOptions): readonly DisplayPrimitive[] => {
-  const primitives: DisplayPrimitive[] = [];
+  paintTextBox,
+}: PaintCellBlocksOptions): void => {
   const flowState = createTableCellFlowState();
 
   for (let index = 0; index < blocks.length; index += 1) {
@@ -265,18 +290,20 @@ const paintCellBlocks = ({
     if (block.kind === "paragraph" && measure.kind === "paragraph") {
       const previous = blocks[index - 1];
       const next = blocks[index + 1];
-      primitives.push(
-        ...paintParagraphFragment({
-          fragment: {
-            kind: "paragraph",
-            blockId: block.id,
-            x: xPx,
-            y: yPx + placement.contentTop,
-            width: widthPx,
-            height: placement.contentHeight,
-            fromLine: 0,
-            toLine: measure.lines.length,
-          },
+      const fragment = {
+        kind: "paragraph",
+        blockId: block.id,
+        x: xPx,
+        y: yPx + placement.contentTop,
+        width: widthPx,
+        height: placement.contentHeight,
+        fromLine: 0,
+        toLine: measure.lines.length,
+      } as const;
+      composer.region(blockRegion({ fragment, kind: HIT_REGION_KINDS.paragraph, context }), () => {
+        paintParagraphFragment({
+          composer,
+          fragment,
           block,
           measure,
           context,
@@ -286,15 +313,60 @@ const paintCellBlocks = ({
           ...(next?.kind === "paragraph" && next.attrs?.borders !== undefined
             ? { nextBorders: next.attrs.borders }
             : {}),
-        }),
-      );
+        });
+      });
       continue;
     }
 
     if (block.kind === "table" && measure.kind === "table") {
-      primitives.push(
-        ...paintTableBlock({ block, measure, xPx, yPx: yPx + placement.contentTop, context }),
-      );
+      const fragment = {
+        blockId: block.id,
+        x: xPx,
+        y: yPx + placement.contentTop,
+        width: measure.totalWidth,
+        height: measure.totalHeight,
+      };
+      composer.region(blockRegion({ fragment, kind: HIT_REGION_KINDS.table, context }), () => {
+        paintTableBlock({
+          composer,
+          block,
+          measure,
+          xPx: fragment.x,
+          yPx: fragment.y,
+          context,
+          paintTextBox,
+        });
+      });
+      continue;
+    }
+
+    if (block.kind === "image" && measure.kind === "image") {
+      const fragment = {
+        kind: "image",
+        blockId: block.id,
+        x: xPx,
+        y: yPx + placement.contentTop,
+        width: measure.width,
+        height: measure.height,
+      } as const;
+      composer.region(blockRegion({ fragment, kind: HIT_REGION_KINDS.image, context }), () => {
+        composer.push(paintImageFragment(fragment, block, context));
+      });
+      continue;
+    }
+
+    if (block.kind === "textBox" && measure.kind === "textBox") {
+      const fragment = {
+        kind: "textBox",
+        blockId: block.id,
+        x: xPx,
+        y: yPx + placement.contentTop,
+        width: measure.width,
+        height: measure.height,
+      } as const;
+      composer.region(blockRegion({ fragment, kind: HIT_REGION_KINDS.textBox, context }), () => {
+        paintTextBox({ composer, fragment, block, measure, context });
+      });
       continue;
     }
 
@@ -304,11 +376,10 @@ const paintCellBlocks = ({
       `table cell content of kind ${block.kind} is not painted`,
     );
   }
-
-  return primitives;
 };
 
 type PaintTableBodyOptions = {
+  readonly composer: PageComposer;
   readonly block: TableBlock;
   readonly measure: TableMeasure;
   readonly xPx: number;
@@ -317,12 +388,14 @@ type PaintTableBodyOptions = {
   readonly toRow: number;
   readonly headerRowCount: number;
   readonly context: BuildContext;
+  readonly paintTextBox: PaintTextBox;
 };
 
 const rowIsPainted = (row: TableRow | undefined): row is TableRow =>
   row !== undefined && row.hidden !== true;
 
 const paintTableBody = ({
+  composer,
   block,
   measure,
   xPx,
@@ -331,8 +404,8 @@ const paintTableBody = ({
   toRow,
   headerRowCount,
   context,
-}: PaintTableBodyOptions): readonly DisplayPrimitive[] => {
-  const primitives: DisplayPrimitive[] = [];
+  paintTextBox,
+}: PaintTableBodyOptions): void => {
   const grid = buildTableCellGrid(block.rows, measure.columnWidths.length);
   const placements = buildTableCellPlacements({
     grid,
@@ -353,7 +426,29 @@ const paintTableBody = ({
     if (!rowIsPainted(row) || !rowMeasure) {
       return;
     }
+    composer.region(
+      {
+        kind: HIT_REGION_KINDS.tableRow,
+        rect: {
+          xPx,
+          yPx: rowYPx,
+          widthPx: measure.columnWidths.reduce((total, width) => total + width, 0),
+          heightPx: rowMeasure.height,
+        },
+        model: { rowIndex },
+      },
+      () => {
+        paintRowCells(row, rowMeasure, rowIndex, rowYPx);
+      },
+    );
+  };
 
+  const paintRowCells = (
+    row: TableRow,
+    rowMeasure: TableMeasure["rows"][number],
+    rowIndex: number,
+    rowYPx: number,
+  ): void => {
     for (let cellIndex = 0; cellIndex < row.cells.length; cellIndex += 1) {
       const cell = row.cells[cellIndex];
       const cellMeasure = rowMeasure.cells[cellIndex];
@@ -382,26 +477,36 @@ const paintTableBody = ({
           : placement.sourceColumn - 1;
       const leftCell = getSourceCellAt(grid, rowIndex, leftNeighborColumn);
 
-      primitives.push(
-        ...paintCell({
-          cell,
-          cellMeasure,
-          box: {
-            xPx: xPx + placement.left,
-            yPx: rowYPx,
-            widthPx: placement.width,
-            heightPx,
-          },
-          context,
-          sides: {
-            // The shared edge belongs to the upper / leading cell; the other
-            // side suppresses its own only when that owner actually draws one.
-            top: rowIndex === fromRow || !hasVisibleBorder(aboveCell?.borders?.bottom),
-            bottom: true,
-            left: isFirstColumn || !hasVisibleBorder(leftCell?.borders?.right),
-            right: true,
-          },
-        }),
+      const box = {
+        xPx: xPx + placement.left,
+        yPx: rowYPx,
+        widthPx: placement.width,
+        heightPx,
+      };
+      composer.region(
+        {
+          kind: HIT_REGION_KINDS.tableCell,
+          rect: box,
+          model: { rowIndex, columnIndex: placement.sourceColumn },
+        },
+        () => {
+          paintCell({
+            composer,
+            cell,
+            cellMeasure,
+            box,
+            context,
+            paintTextBox,
+            sides: {
+              // The shared edge belongs to the upper / leading cell; the other
+              // side suppresses its own only when that owner actually draws one.
+              top: rowIndex === fromRow || !hasVisibleBorder(aboveCell?.borders?.bottom),
+              bottom: true,
+              left: isFirstColumn || !hasVisibleBorder(leftCell?.borders?.right),
+              right: true,
+            },
+          });
+        },
       );
     }
   };
@@ -424,27 +529,30 @@ const paintTableBody = ({
     paintRow(rowIndex, cursorYPx);
     cursorYPx += rowMeasure.height;
   }
-
-  return primitives;
 };
 
 export type TableBlockPaintOptions = {
+  readonly composer: PageComposer;
   readonly block: TableBlock;
   readonly measure: TableMeasure;
   readonly xPx: number;
   readonly yPx: number;
   readonly context: BuildContext;
+  readonly paintTextBox: PaintTextBox;
 };
 
 /** A whole, unpaginated table: what a nested table inside a cell or box is. */
 export const paintTableBlock = ({
+  composer,
   block,
   measure,
   xPx,
   yPx,
   context,
-}: TableBlockPaintOptions): readonly DisplayPrimitive[] =>
+  paintTextBox,
+}: TableBlockPaintOptions): void =>
   paintTableBody({
+    composer,
     block,
     measure,
     xPx,
@@ -453,13 +561,16 @@ export const paintTableBlock = ({
     toRow: block.rows.length,
     headerRowCount: 0,
     context,
+    paintTextBox,
   });
 
 export type TablePaintOptions = {
+  readonly composer: PageComposer;
   readonly fragment: TableFragment;
   readonly block: TableBlock;
   readonly measure: TableMeasure;
   readonly context: BuildContext;
+  readonly paintTextBox: PaintTextBox;
 };
 
 /**
@@ -468,52 +579,71 @@ export type TablePaintOptions = {
  * the painter's negative row-stack offset plus `overflow: hidden` does.
  */
 export const paintTableFragment = ({
+  composer,
   fragment,
   block,
   measure,
   context,
-}: TablePaintOptions): readonly DisplayPrimitive[] => {
+  paintTextBox,
+}: TablePaintOptions): void => {
   const headerRowCount = fragment.continuesFromPrev === true ? (fragment.headerRowCount ?? 0) : 0;
   let headerHeightPx = 0;
   for (let rowIndex = 0; rowIndex < headerRowCount; rowIndex += 1) {
     headerHeightPx += measure.rows[rowIndex]?.height ?? 0;
   }
 
-  const topClipPx = fragment.topClip ?? 0;
-  const body = paintTableBody({
-    block,
-    measure,
-    xPx: fragment.x,
-    yPx: fragment.y + headerHeightPx - topClipPx,
-    fromRow: fragment.fromRow,
-    toRow: fragment.toRow,
-    headerRowCount: 0,
-    context,
-  });
+  const paintHeaders = (into: PageComposer): void => {
+    if (headerRowCount === 0) {
+      return;
+    }
+    paintTableBody({
+      composer: into,
+      block,
+      measure,
+      xPx: fragment.x,
+      yPx: fragment.y,
+      fromRow: 0,
+      toRow: 0,
+      headerRowCount,
+      context,
+      paintTextBox,
+    });
+  };
 
-  const headers =
-    headerRowCount === 0
-      ? []
-      : paintTableBody({
-          block,
-          measure,
-          xPx: fragment.x,
-          yPx: fragment.y,
-          fromRow: 0,
-          toRow: 0,
-          headerRowCount,
-          context,
-        });
+  const topClipPx = fragment.topClip ?? 0;
+  const paintBody = (into: PageComposer): void => {
+    paintTableBody({
+      composer: into,
+      block,
+      measure,
+      xPx: fragment.x,
+      yPx: fragment.y + headerHeightPx - topClipPx,
+      fromRow: fragment.fromRow,
+      toRow: fragment.toRow,
+      headerRowCount: 0,
+      context,
+      paintTextBox,
+    });
+  };
 
   if (fragment.topClip === undefined && fragment.bottomClip === undefined) {
-    return [...headers, ...body];
+    paintHeaders(composer);
+    paintBody(composer);
+    return;
   }
 
+  // A fragment that cuts a row mid-content wraps its body in a clip group, and
+  // a region addresses the page's own primitive list rather than the inside of
+  // a group. The rows of such a fragment therefore carry no regions of their
+  // own; the table's fragment region still resolves a click to the table.
+  paintHeaders(composer);
+  const clipped = createPageComposer();
+  paintBody(clipped);
   const clip: DisplayRect = {
     xPx: fragment.x,
     yPx: fragment.y + headerHeightPx,
     widthPx: fragment.width,
     heightPx: Math.max(0, fragment.height - headerHeightPx),
   };
-  return [...headers, { kind: "clipGroup", rect: clip, children: body }];
+  composer.push([{ kind: "clipGroup", rect: clip, children: [...clipped.primitives()] }]);
 };

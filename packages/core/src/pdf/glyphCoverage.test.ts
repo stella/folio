@@ -103,6 +103,7 @@ const listFor = ({ text, advances }: ListOptions): DisplayList => ({
       widthPx: 816,
       heightPx: 1056,
       orientation: "portrait",
+      regions: [],
       primitives: [
         {
           kind: "glyphRun",

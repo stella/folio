@@ -39,6 +39,7 @@ import {
   STROKE_DASH_FACTORS,
   WAVY_STROKE_AMPLITUDE_FACTOR,
   WAVY_STROKE_PERIOD_FACTOR,
+  walkRegions,
 } from "../primitives";
 import type {
   DisplayClipGroup,
@@ -47,6 +48,8 @@ import type {
   DisplayFontFace,
   DisplayFontRef,
   DisplayGlyphRun,
+  DisplayHitRegion,
+  DisplayHitRegionKind,
   DisplayRunAdjustments,
   DisplayImagePrimitive,
   DisplayImageRef,
@@ -414,7 +417,9 @@ const applyModelRange = (span: HTMLElement, range: DisplayModelRange | undefined
       break;
     case "header":
     case "footer":
-      span.dataset["hfRid"] = story.rId;
+      if (story.rId !== null) {
+        span.dataset["hfRid"] = story.rId;
+      }
       break;
     case "footnote":
     case "endnote":
@@ -480,6 +485,18 @@ const paintGlyphRun = (run: DisplayGlyphRun, context: PaintContext) => {
   // equivalence harness without measuring anything.
   span.dataset["advanceSum"] = String(advanceSum);
   applyModelRange(span, run.pmRange);
+  if (run.collapsedEdge !== undefined) {
+    // Addressable and painted at no width, as the line was fitted: the browser
+    // must not advance the spaces this run holds, and a surface steps the caret
+    // by the advance the producer states instead.
+    span.dataset[
+      run.collapsedEdge.side === "leading" ? "collapsedLeadingSpaces" : "collapsedTrailingSpaces"
+    ] = "true";
+    span.dataset["collapsedSpaceAdvance"] = String(run.collapsedEdge.spaceAdvancePx);
+    span.style.fontSize = "0";
+    span.style.letterSpacing = "0";
+    span.style.wordSpacing = "0";
+  }
 
   // One text node, shaped by the browser. The display list places the run's
   // origin; where each glyph lands inside it is the shaper's business, which
@@ -726,16 +743,136 @@ const renderPage = (page: DisplayPage, options: RenderPageOptions) => {
     originYPx: 0,
   };
   // Painted back to front: DOM order is the display list's order, with no
-  // z-index to re-sort what the producer already stacked.
-  for (const primitive of page.primitives) {
-    paintPrimitive(primitive, context);
-  }
+  // z-index to re-sort what the producer already stacked. A region becomes an
+  // element the primitives inside it are painted into, so the structure a
+  // surface hit-tests against is the structure the producer laid out.
+  paintRegionTree(page, context);
   // Links sit above the paint by coming last.
   for (const link of page.links) {
     paintLink(link, context);
   }
 
   return element;
+};
+
+/**
+ * The element a region becomes.
+ *
+ * The class names are the ones the interaction layer has always read; naming
+ * them here rather than in a painter is what lets a reader keep working while
+ * the thing that emits them changes underneath.
+ */
+const REGION_CLASS = {
+  pageContent: "layout-page-content",
+  headerSlot: "layout-page-header",
+  footerSlot: "layout-page-footer",
+  note: "layout-note",
+  paragraph: "layout-paragraph",
+  line: "layout-line",
+  emptyRun: "layout-empty-run",
+  tab: "layout-run-tab",
+  image: "layout-run-image",
+  table: "layout-table",
+  tableRow: "layout-table-row",
+  tableCell: "layout-table-cell",
+  textBox: "layout-text-box",
+} as const satisfies Record<DisplayHitRegionKind, string>;
+
+/** Model facts a surface reads off the element, as the painter wrote them. */
+const applyRegionModel = (element: HTMLElement, region: DisplayHitRegion): void => {
+  const model = region.model;
+  if (model === undefined) {
+    return;
+  }
+  if (model.pmRange !== undefined) {
+    element.dataset["pmStart"] = String(model.pmRange.start);
+    element.dataset["pmEnd"] = String(model.pmRange.end);
+  }
+  if (model.blockId !== undefined) {
+    element.dataset["blockId"] = model.blockId;
+  }
+  if (model.commentIds !== undefined && model.commentIds.length > 0) {
+    element.dataset["commentId"] = String(model.commentIds[0]);
+  }
+  if (model.rowIndex !== undefined) {
+    element.dataset["rowIndex"] = String(model.rowIndex);
+  }
+  if (model.columnIndex !== undefined) {
+    element.dataset["columnIndex"] = String(model.columnIndex);
+  }
+  const story = model.story ?? model.pmRange?.story;
+  if (story === undefined) {
+    return;
+  }
+  element.dataset["story"] = story.kind;
+  switch (story.kind) {
+    case "body":
+      break;
+    case "header":
+    case "footer":
+      if (story.rId === null) {
+        break;
+      }
+      // Slot identity is the part's relationship id: two sections that share a
+      // part share its painted spans and its editor.
+      //
+      // Four names for two facts, because readers grew separately and each
+      // learned the spelling in front of it. One fact each is written here to
+      // every name that is read; unifying them is a change to those readers.
+      element.dataset["rid"] = story.rId;
+      element.dataset["hfRid"] = story.rId;
+      element.dataset["hfRId"] = story.rId;
+      element.dataset["hfSlotKind"] = story.kind;
+      element.dataset["hfKind"] = story.kind;
+      break;
+    case "footnote":
+    case "endnote":
+      element.dataset["noteKind"] = story.kind;
+      element.dataset["noteId"] = String(story.id);
+      break;
+    default: {
+      const unreachable: never = story;
+      panic(`renderDisplayListToDom: unhandled story ${JSON.stringify(unreachable)}`);
+    }
+  }
+};
+
+/**
+ * Paint a page's primitives into the elements its regions describe.
+ *
+ * A region's children are positioned inside it, so the origin follows the
+ * nesting; everything else about the paint is unchanged, and a page with no
+ * regions paints exactly as a flat list.
+ */
+const paintRegionTree = (page: DisplayPage, context: PaintContext): void => {
+  let current = context;
+  const stack: PaintContext[] = [];
+  walkRegions(page.primitives, page.regions, {
+    onPrimitive: (primitive) => {
+      paintPrimitive(primitive, current);
+    },
+    enter: (region) => {
+      const element = current.doc.createElement("div");
+      element.className = REGION_CLASS[region.kind];
+      element.style.position = "absolute";
+      element.style.left = px(region.rect.xPx - current.originXPx);
+      element.style.top = px(region.rect.yPx - current.originYPx);
+      element.style.width = px(region.rect.widthPx);
+      element.style.height = px(region.rect.heightPx);
+      applyRegionModel(element, region);
+      current.parent.append(element);
+      stack.push(current);
+      current = {
+        ...current,
+        parent: element,
+        originXPx: region.rect.xPx,
+        originYPx: region.rect.yPx,
+      };
+    },
+    exit: () => {
+      current = stack.pop() ?? context;
+    },
+  });
 };
 
 export const renderDisplayPageToDom = (

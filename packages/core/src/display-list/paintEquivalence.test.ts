@@ -243,6 +243,7 @@ const pageWith = (primitives: readonly DisplayPrimitive[]): DisplayPage => ({
   widthPx: PAGE_WIDTH_PX,
   heightPx: PAGE_HEIGHT_PX,
   orientation: "portrait",
+  regions: [],
   primitives,
   links: [],
 });
@@ -303,6 +304,7 @@ describe("one display list, two backends", () => {
       widthPx: SECOND_PAGE_WIDTH_PX,
       heightPx: SECOND_PAGE_HEIGHT_PX,
       orientation: "landscape",
+      regions: [],
       primitives: [PRIMITIVE_SAMPLES.line],
       links: [],
     },

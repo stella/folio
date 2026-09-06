@@ -13,6 +13,8 @@
 import type {
   DisplayColor,
   DisplayGlyphRun,
+  DisplayHitRegion,
+  DisplayHitRegionKind,
   DisplayPrimitive,
   DisplayStrokePattern,
 } from "./types";
@@ -122,3 +124,67 @@ export const WAVY_STROKE_AMPLITUDE_FACTOR = 2;
 
 export const BLACK: DisplayColor = { r: 0, g: 0, b: 0, a: 1 };
 export const WHITE: DisplayColor = { r: 255, g: 255, b: 255, a: 1 };
+
+/**
+ * The kinds of region a click can land in, as a total map over the union: a
+ * new kind that is not listed fails to compile, and so does a name that is not
+ * a kind.
+ */
+export const HIT_REGION_KINDS = {
+  pageContent: "pageContent",
+  headerSlot: "headerSlot",
+  footerSlot: "footerSlot",
+  note: "note",
+  paragraph: "paragraph",
+  line: "line",
+  emptyRun: "emptyRun",
+  tab: "tab",
+  image: "image",
+  table: "table",
+  tableRow: "tableRow",
+  tableCell: "tableCell",
+  textBox: "textBox",
+} as const satisfies Record<DisplayHitRegionKind, DisplayHitRegionKind>;
+
+/**
+ * Walk a region tree with the primitives each level owns directly.
+ *
+ * A backend that paints structure needs both, interleaved in paint order: the
+ * primitives before a child, then the child, then the ones after it. Reading
+ * the tree any other way would paint a page in an order the producer did not
+ * choose.
+ */
+export type RegionVisitor = {
+  readonly onPrimitive: (primitive: DisplayPrimitive, index: number) => void;
+  readonly enter: (region: DisplayHitRegion) => void;
+  readonly exit: (region: DisplayHitRegion) => void;
+};
+
+export const walkRegions = (
+  primitives: readonly DisplayPrimitive[],
+  regions: readonly DisplayHitRegion[],
+  visitor: RegionVisitor,
+): void => {
+  const visit = (from: number, to: number, children: readonly DisplayHitRegion[]): void => {
+    let cursor = from;
+    for (const child of children) {
+      for (; cursor < child.from; cursor += 1) {
+        const primitive = primitives[cursor];
+        if (primitive !== undefined) {
+          visitor.onPrimitive(primitive, cursor);
+        }
+      }
+      visitor.enter(child);
+      visit(child.from, child.to, child.children);
+      visitor.exit(child);
+      cursor = child.to;
+    }
+    for (; cursor < to; cursor += 1) {
+      const primitive = primitives[cursor];
+      if (primitive !== undefined) {
+        visitor.onPrimitive(primitive, cursor);
+      }
+    }
+  };
+  visit(0, primitives.length, regions);
+};
