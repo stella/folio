@@ -32,6 +32,7 @@ import { getColumns } from "../layout-bridge/sectionColumns";
 import { layoutDocument } from "../layout-engine";
 import type { ColumnLayout, SectionLayoutConfig } from "../layout-engine";
 import { resolveJustificationCompatibility } from "../layout-engine/justificationCompatibility";
+import { resolveTableIndentCompatibility } from "../layout-engine/tableIndentCompatibility";
 import {
   recordLayoutComplete,
   recordLayoutError,
@@ -387,6 +388,12 @@ export function runLayoutPipeline<THfPMs>(
     if (justificationCompatibility) {
       flowOpts.justificationCompatibility = justificationCompatibility;
     }
+    const tableIndentCompatibility = resolveTableIndentCompatibility(
+      documentSettings?.compatibilityMode,
+    );
+    if (tableIndentCompatibility) {
+      flowOpts.tableIndentCompatibility = tableIndentCompatibility;
+    }
     if (documentSettings?.autoHyphenation === true) {
       flowOpts.automaticHyphenation = {
         enabled: true,
@@ -496,6 +503,9 @@ export function runLayoutPipeline<THfPMs>(
         ...(flowOpts.lineBreakRules ? { lineBreakRules: flowOpts.lineBreakRules } : {}),
         ...(flowOpts.justificationCompatibility
           ? { justificationCompatibility: flowOpts.justificationCompatibility }
+          : {}),
+        ...(flowOpts.tableIndentCompatibility
+          ? { tableIndentCompatibility: flowOpts.tableIndentCompatibility }
           : {}),
         ...(flowOpts.automaticHyphenation
           ? { automaticHyphenation: flowOpts.automaticHyphenation }
@@ -750,6 +760,9 @@ export function runLayoutPipeline<THfPMs>(
           }
           if (flowOpts.justificationCompatibility) {
             footnoteOptions.justificationCompatibility = flowOpts.justificationCompatibility;
+          }
+          if (flowOpts.tableIndentCompatibility) {
+            footnoteOptions.tableIndentCompatibility = flowOpts.tableIndentCompatibility;
           }
           if (flowOpts.automaticHyphenation) {
             footnoteOptions.automaticHyphenation = flowOpts.automaticHyphenation;

@@ -154,6 +154,8 @@ export type ToFlowBlocksOptions = {
   };
   /** Document-generation policy for justified line fitting. */
   justificationCompatibility?: NonNullable<ParagraphAttrs["justificationCompatibility"]>;
+  /** Document-generation policy for where `w:tblInd` is measured from. */
+  tableIndentCompatibility?: NonNullable<TableBlock["indentCompatibility"]>;
   /** Document-wide automatic hyphenation policy. */
   automaticHyphenation?: NonNullable<ParagraphAttrs["automaticHyphenation"]>;
   /** Line pitch for the final body section, whose properties live outside the PM body. */
@@ -2447,6 +2449,9 @@ function convertTable(node: PMNode, startPos: number, options: FlowConversionOpt
   }
   if (indentPx !== undefined) {
     tableBlock.indent = indentPx;
+  }
+  if (options.tableIndentCompatibility) {
+    tableBlock.indentCompatibility = options.tableIndentCompatibility;
   }
   if (floatingPx) {
     tableBlock.floating = floatingPx;

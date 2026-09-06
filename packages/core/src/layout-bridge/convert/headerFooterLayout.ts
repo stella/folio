@@ -701,6 +701,7 @@ export type ConvertHeaderFooterOptions = {
   defaultTabStopTwips?: number;
   lineBreakRules?: ToFlowBlocksOptions["lineBreakRules"];
   justificationCompatibility?: ToFlowBlocksOptions["justificationCompatibility"];
+  tableIndentCompatibility?: ToFlowBlocksOptions["tableIndentCompatibility"];
   automaticHyphenation?: ToFlowBlocksOptions["automaticHyphenation"];
   /**
    * Relationship id of the source HF part. Stamped onto the returned
@@ -758,6 +759,9 @@ export function convertHeaderFooterToContent(
   if (options.justificationCompatibility) {
     flowOptions.justificationCompatibility = options.justificationCompatibility;
   }
+  if (options.tableIndentCompatibility) {
+    flowOptions.tableIndentCompatibility = options.tableIndentCompatibility;
+  }
   if (options.automaticHyphenation) {
     flowOptions.automaticHyphenation = options.automaticHyphenation;
   }
@@ -804,6 +808,9 @@ export function convertHeaderFooterPmDocToContent(
   }
   if (options.justificationCompatibility) {
     flowOptions.justificationCompatibility = options.justificationCompatibility;
+  }
+  if (options.tableIndentCompatibility) {
+    flowOptions.tableIndentCompatibility = options.tableIndentCompatibility;
   }
   if (options.automaticHyphenation) {
     flowOptions.automaticHyphenation = options.automaticHyphenation;

@@ -1119,6 +1119,32 @@ describe("left-aligned table placement", () => {
   });
 });
 
+describe("text-edge table placement", () => {
+  test("lands the leading cell text on an authored w:tblInd", () => {
+    const { block, measure } = tallTable(1);
+    block.indent = 10;
+    block.indentCompatibility = { type: "legacy" };
+    block.rows[0]!.cells[0]!.padding.left = 7;
+
+    const fragment = tableFragments(block, measure).at(0);
+
+    expect((fragment?.x ?? 0) + 7).toBe(OPTIONS.margins.left + 10);
+  });
+
+  test("lands the logical leading cell text on an authored w:tblInd in an RTL table", () => {
+    const { block, measure } = tallTable(1);
+    block.bidi = true;
+    block.indent = 10;
+    block.indentCompatibility = { type: "legacy" };
+    block.rows[0]!.cells[0]!.padding.right = 7;
+
+    const fragment = tableFragments(block, measure).at(0);
+    const contentRight = OPTIONS.pageSize.w - OPTIONS.margins.right;
+
+    expect((fragment?.x ?? 0) + measure.totalWidth - 7).toBe(contentRight - 10);
+  });
+});
+
 describe("RTL table placement", () => {
   test.each([
     { justification: "left" as const, expectedX: 30 },

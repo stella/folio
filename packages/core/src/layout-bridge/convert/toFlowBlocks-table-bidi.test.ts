@@ -35,3 +35,17 @@ describe("toFlowBlocks table bidiVisual", () => {
     expect(firstTable(tableDoc({})).bidi).toBeUndefined();
   });
 });
+
+describe("toFlowBlocks table indent compatibility", () => {
+  test("carries the document's text-edge indent policy onto every table block", () => {
+    const block = toFlowBlocks(tableDoc(null), {
+      tableIndentCompatibility: { type: "legacy" },
+    }).find((b) => b.kind === "table");
+
+    expect(block?.indentCompatibility).toEqual({ type: "legacy" });
+  });
+
+  test("leaves the policy unset when the document uses border-edge indents", () => {
+    expect(firstTable(tableDoc(null)).indentCompatibility).toBeUndefined();
+  });
+});

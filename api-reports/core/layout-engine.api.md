@@ -899,6 +899,9 @@ export type TableBlock = {
     layout?: "fixed" | "autofit";
     justification?: "left" | "center" | "right";
     indent?: number;
+    indentCompatibility?: {
+        type: "legacy";
+    };
     bidi?: boolean;
     floating?: FloatingTablePosition;
     pmStart?: number;
