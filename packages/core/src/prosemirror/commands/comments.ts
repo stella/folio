@@ -306,11 +306,36 @@ function resolveChange(
           // Leave the marker in place — Word treats this the same way.
           continue;
         }
+        const nextNode = tr.doc.nodeAt(joinPos);
+        if (nextNode?.type.name !== paragraph.type.name) {
+          // The next sibling is a table, or the paragraph ends its cell and
+          // the position lands on the cell boundary. `join` there merges the
+          // containers rather than the paragraphs, which silently loses rows;
+          // an input document may carry such a mark, so this is checked here
+          // and not only where the marks are written.
+          continue;
+        }
+        // The inline sweep above has already run, so a paragraph that is empty
+        // here is one whose whole content was resolved away: a deleted
+        // paragraph being accepted, or an inserted one being rejected. Nothing
+        // of it survives but the join, and the paragraph the reader is left
+        // with is the NEXT one — which keeps its own mark, and in OOXML a
+        // paragraph's properties live on its mark. PM's `join` keeps the
+        // first node's attrs, so they are restored explicitly; otherwise a
+        // deleted heading would hand its style to the paragraph below it.
+        const emptyFirstParagraph = paragraph.content.size === 0;
+        // The next paragraph's own `pPrMark` travels with its attrs: it is a
+        // different revision, and resolving this one must not resolve it.
+        const nextAttrs = nextNode.attrs;
         try {
           tr.join(joinPos);
           // PM's `join` keeps the first paragraph's attrs, so the marker
           // would survive an otherwise-resolved revision. Drop it now.
-          tr.setNodeAttribute(mappedPos, "pPrMark", null);
+          if (emptyFirstParagraph) {
+            tr.setNodeMarkup(mappedPos, undefined, nextAttrs);
+          } else {
+            tr.setNodeAttribute(mappedPos, "pPrMark", null);
+          }
         } catch {
           // PM rejects the join if the two blocks aren't structurally
           // compatible (e.g. paragraph followed by a table). Leaving the

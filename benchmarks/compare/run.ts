@@ -20,6 +20,8 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { loadavg } from "node:os";
 import path from "node:path";
 
+import { compareDocx } from "@stll/folio-core/compare/compare";
+
 import { loadCorpus, readDocument, type CorpusPair } from "./corpus";
 import {
   buildDocumentPackage,
@@ -31,6 +33,7 @@ import {
 import { checkInvariants, type InvariantOutcome } from "./invariants";
 import { measureHeapGrowth, sample, summarize, type Distribution } from "./measure";
 import { zipPackage } from "./package-xml";
+import { classifyRefusal, REFUSAL_BUCKETS, summarizeRefusals, type PairOutcome } from "./refusals";
 import { COMPARE_STAGES, runStagedCompare, type CompareStage } from "./stages";
 import { applyVariant, EDIT_VARIANTS, type EditVariant } from "./variants";
 import { PACKAGE_VALIDATOR_HINT, resolvePackageValidator } from "./validator";
@@ -188,6 +191,63 @@ const corpusPairBytes = (pair: CorpusPair): PairBytes => ({
   target: readDocument(pair.targetPath),
 });
 
+/**
+ * Compare every pair of an external corpus once and report what the refusals
+ * were refused for.
+ *
+ * Unlike the measurement modes this runs in one process: a refusal is a yes or
+ * no that no warm JIT can change, and a process per pair would turn a
+ * half-minute pass over the whole corpus into ten minutes of spawning.
+ */
+const runRefusals = async (options: CliOptions): Promise<number> => {
+  if (options.corpusDirectory === null) {
+    console.log("--refusals needs --corpus <dir>; the repository ships no corpus of its own.");
+    return 1;
+  }
+  const corpus = loadCorpus(options.corpusDirectory);
+  if (corpus.status === "empty") {
+    console.log(`corpus skipped: ${corpus.detail}`);
+    return 1;
+  }
+
+  const outcomes: PairOutcome[] = [];
+  for (const pair of corpus.pairs) {
+    if (options.filter !== null && !pair.id.includes(options.filter)) {
+      continue;
+    }
+    const { base, target } = corpusPairBytes(pair);
+    const result = await compareDocx(base, target, OPTIONS);
+    outcomes.push(
+      result.isOk()
+        ? {
+            id: pair.id,
+            status: "produced",
+            changes: result.value.changes.length,
+            unsupported: [...new Set(result.value.unsupported.map(({ reason }) => reason))],
+          }
+        : { id: pair.id, status: "refused", ...classifyRefusal(result.error) },
+    );
+  }
+
+  const refused = outcomes.filter(({ status }) => status === "refused").length;
+  const share = outcomes.length === 0 ? 0 : (refused / outcomes.length) * 100;
+  console.log(
+    `\n${String(outcomes.length)} pairs, ${String(outcomes.length - refused)} produced, ` +
+      `${String(refused)} refused (${share.toFixed(1)}%).\n`,
+  );
+  console.log("| Bucket | Documents | What it is | A representative shape |");
+  console.log("| ------ | --------: | ---------- | ---------------------- |");
+  for (const { bucket, count, shape } of summarizeRefusals(outcomes)) {
+    console.log(`| \`${bucket}\` | ${String(count)} | ${REFUSAL_BUCKETS[bucket]} | ${shape} |`);
+  }
+
+  if (options.out !== null) {
+    writeFileSync(options.out, `${JSON.stringify(outcomes, null, 2)}\n`);
+    console.log(`\nWrote ${options.out}`);
+  }
+  return 0;
+};
+
 type CliOptions = {
   configuration: string | null;
   corpusPair: string | null;
@@ -196,13 +256,16 @@ type CliOptions = {
   sizes: readonly DocumentSize[];
   warmups: number;
   iterations: number;
-  mode: "measure" | "baseline" | "check";
+  mode: "measure" | "baseline" | "check" | "refusals";
   out: string | null;
 };
 
 const modeOf = (argv: readonly string[]): CliOptions["mode"] => {
   if (argv.includes("--baseline")) {
     return "baseline";
+  }
+  if (argv.includes("--refusals")) {
+    return "refusals";
   }
   return argv.includes("--check") ? "check" : "measure";
 };
@@ -448,6 +511,8 @@ const runParent = (options: CliOptions): number => {
 const options = parseArguments(process.argv.slice(2));
 if (options.configuration !== null || options.corpusPair !== null) {
   await runChild(options);
+} else if (options.mode === "refusals") {
+  process.exitCode = await runRefusals(options);
 } else {
   process.exitCode = runParent(options);
 }

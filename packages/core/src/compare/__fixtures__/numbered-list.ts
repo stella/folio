@@ -36,13 +36,24 @@ const abstractLevels = (topLevelFormat: string): string =>
     );
   }).join("");
 
-const listParagraph = (level: number, text: string): string =>
-  `<w:p><w:pPr><w:pStyle w:val="ListParagraph"/><w:numPr>` +
-  `<w:ilvl w:val="${String(level)}"/><w:numId w:val="1"/></w:numPr></w:pPr>` +
-  `<w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:p>`;
+const listParagraph = (level: number | null, text: string): string => {
+  // The style stays either way, so a fixture that drops the numbering isolates
+  // `w:numPr` rather than moving the style with it.
+  const numbering =
+    level === null
+      ? ""
+      : `<w:numPr><w:ilvl w:val="${String(level)}"/><w:numId w:val="1"/></w:numPr>`;
+  return (
+    `<w:p><w:pPr><w:pStyle w:val="ListParagraph"/>${numbering}</w:pPr>` +
+    `<w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:p>`
+  );
+};
 
-/** One list item: its indent level and its text. */
-export type NumberedListItem = { level: number; text: string };
+/**
+ * One item: its indent level and its text. `null` is a paragraph that keeps
+ * the list style and carries no numbering.
+ */
+export type NumberedListItem = { level: number | null; text: string };
 
 export const NUMBERED_LIST_ITEMS: readonly NumberedListItem[] = Object.freeze([
   { level: 0, text: "The supplier shall deliver the goods to the named place." },
@@ -59,8 +70,21 @@ export const withItemDemoted = (
   index: number,
 ): NumberedListItem[] =>
   items.map((item, at) =>
-    at === index ? { level: Math.min(LIST_LEVELS - 1, item.level + 1), text: item.text } : item,
+    at === index
+      ? { level: Math.min(LIST_LEVELS - 1, (item.level ?? 0) + 1), text: item.text }
+      : item,
   );
+
+/**
+ * The same list with one item no longer numbered: the paragraph keeps every
+ * word and stops being a list item, which is the edit a level change cannot
+ * express.
+ */
+export const withItemUnnumbered = (
+  items: readonly NumberedListItem[],
+  index: number,
+): NumberedListItem[] =>
+  items.map((item, at) => (at === index ? { level: null, text: item.text } : item));
 
 export type NumberedListDocxOptions = {
   /** `w:numFmt` for the top level. Default `"decimal"`. */

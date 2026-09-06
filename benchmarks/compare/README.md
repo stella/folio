@@ -10,6 +10,7 @@ bun benchmarks/compare/run.ts --filter tables        # one class, size or varian
 bun benchmarks/compare/run.ts --out report.json      # the full machine-readable run
 bun benchmarks/compare/run.ts --baseline             # record product digests
 bun benchmarks/compare/run.ts --check                # prove an edit changed nothing
+bun benchmarks/compare/run.ts --corpus dir --refusals # why a corpus was refused
 ```
 
 Recorded numbers live in `RESULTS.md`. Recorded digests live in `digests.json`.
@@ -114,3 +115,32 @@ automatically.
 
 `benchmarks/compare/.local/` is git-ignored, so it is a convenient place to
 fetch one into.
+
+### Why a corpus was refused
+
+`--refusals` compares every pair of a `--corpus` directory once and reports
+what the refusals were refused for, largest bucket first. On documents nobody
+authored for the engine the interesting number is the refusal rate, and a
+refusal rate is only actionable split by cause: a total says how much was
+refused, a bucket says which part of it is one missing operation and which is
+a document the engine must not process.
+
+`refusals.ts` holds the classification. It is total over `compareDocx`'s error
+union, so a new failure class cannot land without a bucket, and it reads the
+round-trip self-check's verdict structurally: the check compares two block
+projections, so which field of the projection diverged says which part of the
+pipeline lost the difference. Every bucket's `shape` string carries counts,
+offsets and container kinds only, never a phrase of either document: the corpus
+it read stays outside this repository, and the table it prints must be safe to
+quote anywhere.
+
+One bucket is not a defect. `round-trip-invisible-structure` collects the pairs
+whose every block matches, in order, at coordinates the block model cannot
+reach: the snapshot skips empty textblocks, so a cell holding a blank paragraph
+reports its visible paragraph at `p1` and no operation can put a block there.
+Those are separated from redlines that actually lost content rather than
+resolved by loosening the self-check.
+
+Unlike the measurement modes this runs in one process. A refusal is a yes or
+no that no warm JIT can change, so a process per pair would turn a half-minute
+pass over a corpus into ten minutes of spawning.

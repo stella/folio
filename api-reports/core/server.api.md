@@ -590,7 +590,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     moveId?: string;
     pageBreakBefore?: boolean;
     styleId?: string | null;
-    listLevel?: number;
+    listLevel?: number | null;
     comment?: FolioAIComment;
 } | {
     id: string;

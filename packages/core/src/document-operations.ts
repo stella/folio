@@ -334,6 +334,23 @@ const readNonNegativeInteger = (
 };
 
 /**
+ * A non-negative integer that may also be cleared. `undefined` is "say
+ * nothing"; `null` is "there is none", which is a different instruction and
+ * the one absence alone cannot give.
+ */
+const readClearableNonNegativeInteger = (
+  value: Record<string, unknown>,
+  key: string,
+  path: string,
+): number | null | undefined => {
+  const candidate = value[key];
+  if (candidate === undefined) {
+    return undefined;
+  }
+  return candidate === null ? null : readNonNegativeInteger(value, key, path);
+};
+
+/**
  * A rectangular grid of cell texts. Rectangular because a table whose rows
  * hold different cell counts is not a table any consumer can lay out, and the
  * batch is the last place to catch that.
@@ -381,10 +398,7 @@ const readParagraphProperties = (
   const rawStyleId = candidate["styleId"];
   const styleId =
     rawStyleId === null ? null : readOptionalString(candidate, "styleId", propertiesPath);
-  const listLevel =
-    candidate["listLevel"] === undefined
-      ? undefined
-      : readNonNegativeInteger(candidate, "listLevel", propertiesPath);
+  const listLevel = readClearableNonNegativeInteger(candidate, "listLevel", propertiesPath);
   if (styleId === undefined && listLevel === undefined) {
     return invalidBatch(propertiesPath, "expected at least one property to set");
   }
@@ -718,10 +732,7 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
     const pageBreakBefore = readOptionalBoolean(value, "pageBreakBefore", path);
     const styleId = value["styleId"] === null ? null : readOptionalString(value, "styleId", path);
     const moveId = readOptionalString(value, "moveId", path);
-    const listLevel =
-      value["listLevel"] === undefined
-        ? undefined
-        : readNonNegativeInteger(value, "listLevel", path);
+    const listLevel = readClearableNonNegativeInteger(value, "listLevel", path);
     return {
       ...operationMeta,
       id,
