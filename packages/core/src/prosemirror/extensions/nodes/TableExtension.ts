@@ -1174,7 +1174,8 @@ export const TablePluginExtension = createExtension({
       const extended = new Set<number>();
       let lastTemplatePos = -1;
       for (let column = 0; column < map.width; column += 1) {
-        const below = boundaryRow < map.height ? map.map[boundaryRow * map.width + column] : undefined;
+        const below =
+          boundaryRow < map.height ? map.map[boundaryRow * map.width + column] : undefined;
         const above = boundaryRow > 0 ? map.map[(boundaryRow - 1) * map.width + column] : undefined;
         if (below !== undefined && below === above) {
           // One cell covers both sides of the boundary: grow it by a row.

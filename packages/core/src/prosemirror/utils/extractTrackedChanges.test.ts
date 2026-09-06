@@ -284,10 +284,7 @@ describe("extractTrackedChanges: replacement pairing", () => {
 
   test("does not pair across authors", () => {
     const doc = schema.nodes.doc.create({}, [
-      schema.nodes.paragraph.create({}, [
-        del(1, "Jane", DATE, "old"),
-        ins(2, "Bob", DATE, "new"),
-      ]),
+      schema.nodes.paragraph.create({}, [del(1, "Jane", DATE, "old"), ins(2, "Bob", DATE, "new")]),
     ]);
 
     const { entries } = extractTrackedChanges(makeState(doc));
