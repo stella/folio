@@ -387,7 +387,7 @@ describe("renderDisplayListToDom", () => {
         );
 
         const headerRows = findAllByClass(rendered, "layout-table-row").filter(
-          (row) => row.dataset["rowIndex"] === "0",
+          (headerRow) => headerRow.dataset["rowIndex"] === "0",
         );
         expect(headerRows).toHaveLength(1);
         expect(findByClass(clip!, "layout-paragraph")?.dataset["blockId"]).not.toBe(
