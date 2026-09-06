@@ -246,13 +246,26 @@ function renderCellContent({
         ...(paragraphBlock.pmEnd !== undefined ? { pmEnd: paragraphBlock.pmEnd } : {}),
       };
 
+      // Consecutive paragraphs sharing a border definition are ONE frame with an
+      // interior `w:between` rule, not a frame each (§17.3.1.7). The neighbours
+      // decide that, so they have to reach the fragment renderer here exactly as
+      // they do in a text box and in the body flow.
+      const previousBlock = cell.blocks[i - 1];
+      const nextBlock = cell.blocks[i + 1];
+      const prevBorders =
+        previousBlock?.kind === "paragraph" ? previousBlock.attrs?.borders : undefined;
+      const nextBorders = nextBlock?.kind === "paragraph" ? nextBlock.attrs?.borders : undefined;
       const cellContext = { ...context, insideTableCell: true as const };
       const fragEl = renderParagraphFragment(
         syntheticFragment,
         paragraphBlock,
         paragraphMeasure,
         cellContext,
-        { document: doc },
+        {
+          document: doc,
+          ...(prevBorders !== undefined ? { prevBorders } : {}),
+          ...(nextBorders !== undefined ? { nextBorders } : {}),
+        },
       );
 
       fragEl.style.position = "relative";

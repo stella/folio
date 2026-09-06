@@ -1043,3 +1043,81 @@ describe("renderTableFragment cell floating images", () => {
     expect(image?.style["opacity"]).toBe("0.6");
   });
 });
+
+describe("renderTableFragment paragraph border groups", () => {
+  const BORDERS = {
+    top: { style: "solid", width: 1, color: "#000000" },
+    bottom: { style: "solid", width: 1, color: "#000000" },
+    between: { style: "dotted", width: 1, color: "#000000" },
+  } as const;
+
+  const borderedCellTable = (): {
+    fragment: TableFragment;
+    block: TableBlock;
+    measure: TableMeasure;
+  } => {
+    const paragraph = (id: string, text: string) => ({
+      kind: "paragraph" as const,
+      id,
+      runs: [{ kind: "text" as const, text }],
+      attrs: { borders: { ...BORDERS } },
+    });
+    const block: TableBlock = {
+      kind: "table",
+      id: "tbl",
+      rows: [
+        {
+          id: "row",
+          cells: [{ id: "cell", blocks: [paragraph("p1", "One"), paragraph("p2", "Two")] }],
+        },
+      ],
+      columnWidths: [100],
+    };
+    const cellMeasure = {
+      blocks: [
+        { kind: "paragraph" as const, lines: [], totalHeight: 20 },
+        { kind: "paragraph" as const, lines: [], totalHeight: 20 },
+      ],
+      width: 100,
+      height: 40,
+    };
+    const measure: TableMeasure = {
+      kind: "table",
+      rows: [{ cells: [cellMeasure], height: 40 }],
+      columnWidths: [100],
+      totalWidth: 100,
+      totalHeight: 40,
+    };
+    const fragment: TableFragment = {
+      kind: "table",
+      blockId: "tbl",
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 40,
+      fromRow: 0,
+      toRow: 1,
+    };
+    return { fragment, block, measure };
+  };
+
+  test("two identically bordered cell paragraphs draw one frame, not two", () => {
+    withFakeTextMeasure(() => {
+      const { fragment, block, measure } = borderedCellTable();
+      const table = renderTableFragment(fragment, block, measure, renderContext, {
+        document: fakeDocument,
+        pageGeometry,
+      }) as unknown as FakeElement;
+
+      const boxes = findByClass(table, "layout-paragraph-border");
+      expect(boxes).toHaveLength(2);
+      // First of the group: the frame's top rule, no closing rule.
+      expect(boxes[0]?.style["borderTop"]).toContain("solid");
+      expect(boxes[0]?.style["borderBottom"]).toBeUndefined();
+      // Last of the group: the interior `w:between` rule on top, the frame's
+      // bottom rule below. Painting `top` here would double the interior line.
+      expect(boxes[1]?.style["borderTop"]).toContain("dotted");
+      expect(boxes[1]?.style["borderBottom"]).toContain("solid");
+    });
+  });
+});
