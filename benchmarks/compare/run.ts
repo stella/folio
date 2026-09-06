@@ -33,7 +33,15 @@ import {
 import { checkInvariants, type InvariantOutcome } from "./invariants";
 import { measureHeapGrowth, sample, summarize, type Distribution } from "./measure";
 import { zipPackage } from "./package-xml";
-import { classifyRefusal, REFUSAL_BUCKETS, summarizeRefusals, type PairOutcome } from "./refusals";
+import {
+  classifyRefusal,
+  REFUSAL_BUCKETS,
+  summarizeRefusals,
+  summarizeUnverified,
+  summarizeVerification,
+  type PairOutcome,
+  type RefusalBucket,
+} from "./refusals";
 import { COMPARE_STAGES, runStagedCompare, type CompareStage } from "./stages";
 import { applyVariant, EDIT_VARIANTS, type EditVariant } from "./variants";
 import { PACKAGE_VALIDATOR_HINT, resolvePackageValidator } from "./validator";
@@ -191,9 +199,49 @@ const corpusPairBytes = (pair: CorpusPair): PairBytes => ({
   target: readDocument(pair.targetPath),
 });
 
+/** One pair's best-effort side: what `onUnverified: "emit"` gave back. */
+const bestEffortOutcome = (
+  result: Awaited<ReturnType<typeof compareDocx>>,
+): PairOutcome["bestEffort"] => {
+  if (result.isErr()) {
+    return { status: "failed", ...classifyRefusal(result.error) };
+  }
+  const { changes, unsupported, verification } = result.value;
+  if (verification.status === "verified") {
+    return {
+      status: "verified",
+      changes: changes.length,
+      unsupported: [...new Set(unsupported.map(({ reason }) => reason))],
+    };
+  }
+  return {
+    status: "unverified",
+    changes: changes.length,
+    ...summarizeVerification(verification),
+  };
+};
+
+const printBucketTable = (
+  rows: readonly { bucket: RefusalBucket; count: number; shape: string }[],
+): void => {
+  console.log("| Bucket | Documents | What it is | A representative shape |");
+  console.log("| ------ | --------: | ---------- | ---------------------- |");
+  for (const { bucket, count, shape } of rows) {
+    console.log(`| \`${bucket}\` | ${String(count)} | ${REFUSAL_BUCKETS[bucket]} | ${shape} |`);
+  }
+};
+
 /**
- * Compare every pair of an external corpus once and report what the refusals
- * were refused for.
+ * Compare every pair of an external corpus in both modes: the strict default,
+ * which refuses what it cannot prove, and `onUnverified: "emit"`, which
+ * returns its best attempt and says which invariants did not hold.
+ *
+ * Both numbers matter and they answer different questions. The refusal rate is
+ * what a caller who demands a proven redline gets; the verified share is what
+ * the engine can prove about the redlines it is willing to show. The second is
+ * never worse than the first, and the gap between them is exactly the set of
+ * documents where the engine has something to offer but cannot stand behind
+ * all of it.
  *
  * Unlike the measurement modes this runs in one process: a refusal is a yes or
  * no that no warm JIT can change, and a process per pair would turn a
@@ -216,30 +264,33 @@ const runRefusals = async (options: CliOptions): Promise<number> => {
       continue;
     }
     const { base, target } = corpusPairBytes(pair);
-    const result = await compareDocx(base, target, OPTIONS);
-    outcomes.push(
-      result.isOk()
-        ? {
-            id: pair.id,
-            status: "produced",
-            changes: result.value.changes.length,
-            unsupported: [...new Set(result.value.unsupported.map(({ reason }) => reason))],
-          }
-        : { id: pair.id, status: "refused", ...classifyRefusal(result.error) },
-    );
+    const strictResult = await compareDocx(base, target, OPTIONS);
+    const emitted = await compareDocx(base, target, { ...OPTIONS, onUnverified: "emit" });
+    outcomes.push({
+      id: pair.id,
+      strict: strictResult.isOk()
+        ? { status: "produced" }
+        : { status: "refused", ...classifyRefusal(strictResult.error) },
+      bestEffort: bestEffortOutcome(emitted),
+    });
   }
 
-  const refused = outcomes.filter(({ status }) => status === "refused").length;
-  const share = outcomes.length === 0 ? 0 : (refused / outcomes.length) * 100;
+  const total = outcomes.length;
+  const share = (count: number): string =>
+    total === 0 ? "0.0%" : `${((count / total) * 100).toFixed(1)}%`;
+  const refused = outcomes.filter(({ strict }) => strict.status === "refused").length;
+  const emittedCount = outcomes.filter(({ bestEffort }) => bestEffort.status !== "failed").length;
+  const verified = outcomes.filter(({ bestEffort }) => bestEffort.status === "verified").length;
+
   console.log(
-    `\n${String(outcomes.length)} pairs, ${String(outcomes.length - refused)} produced, ` +
-      `${String(refused)} refused (${share.toFixed(1)}%).\n`,
+    `\n${String(total)} pairs.\n` +
+      `  strict:      ${String(total - refused)} produced, ${String(refused)} refused (${share(refused)})\n` +
+      `  best effort: ${String(emittedCount)} emitted, of which ${String(verified)} verified (${share(verified)} of all pairs)\n`,
   );
-  console.log("| Bucket | Documents | What it is | A representative shape |");
-  console.log("| ------ | --------: | ---------- | ---------------------- |");
-  for (const { bucket, count, shape } of summarizeRefusals(outcomes)) {
-    console.log(`| \`${bucket}\` | ${String(count)} | ${REFUSAL_BUCKETS[bucket]} | ${shape} |`);
-  }
+  console.log("Refused under the strict default:\n");
+  printBucketTable(summarizeRefusals(outcomes));
+  console.log("\nInvariants left unproven under best effort:\n");
+  printBucketTable(summarizeUnverified(outcomes));
 
   if (options.out !== null) {
     writeFileSync(options.out, `${JSON.stringify(outcomes, null, 2)}\n`);

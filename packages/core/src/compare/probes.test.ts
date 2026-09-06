@@ -514,6 +514,48 @@ describe("single-mutation probes", () => {
     expect(deleted.at(0)).not.toMatch(/<w:pPr>[\s\S]*<w:rPr>[\s\S]*<w:del\s/u);
   });
 
+  test("unrepresentable_difference: refused by default, emitted and named on request", async () => {
+    // The target's row has a cell the base's row does not. No operation puts a
+    // paragraph inside a new cell, so the insertion lands beside the table and
+    // accepting cannot reproduce the target. The default refuses; the opt-in
+    // returns the redline it could build and names the invariant it broke.
+    const base = await buildBodySequenceDocx([
+      { kind: "paragraph", text: "The schedule below records the agreed fees." },
+      { kind: "table", rows: [["Service"]] },
+      { kind: "paragraph", text: "This agreement is governed by the stated law." },
+    ]);
+    const target = await buildBodySequenceDocx([
+      { kind: "paragraph", text: "The schedule below records the agreed fees." },
+      { kind: "table", rows: [["Service", "Fee payable on delivery"]] },
+      { kind: "paragraph", text: "This agreement is governed by the stated law." },
+    ]);
+
+    const refused = await compareDocx(base, target, OPTIONS);
+    expect(refused.isErr()).toBe(true);
+    if (refused.isErr()) {
+      const error = refused.error;
+      expect(error._tag).toBe("CompareDocxRoundTripError");
+      if (error._tag === "CompareDocxRoundTripError") {
+        expect(error.invariant).toBe("accept-reproduces-target");
+        expect(error.cause).toBe("container");
+        expect(error.failures.length).toBeGreaterThan(0);
+        // Structural facts only: nothing a document said.
+        expect(error.failures.at(0)?.detail).not.toContain("Fee payable");
+      }
+    }
+
+    const emitted = await compareDocx(base, target, { ...OPTIONS, onUnverified: "emit" });
+    if (emitted.isErr()) {
+      throw emitted.error;
+    }
+    expect(emitted.value.buffer.byteLength).toBeGreaterThan(0);
+    expect(emitted.value.changes.length).toBeGreaterThan(0);
+    expect(emitted.value.verification.status).toBe("unverified");
+    if (emitted.value.verification.status === "unverified") {
+      expect(emitted.value.verification.failures.map(({ cause }) => cause)).toContain("container");
+    }
+  });
+
   test("append_paragraph_then_table: additions past the last block keep target order", async () => {
     // Both additions resolve to the same position — after the base's last
     // block — so their order in the document is their order in the operation

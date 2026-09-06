@@ -48,6 +48,14 @@ export {
   type CompareUnsupportedPart,
   type CompareUnsupportedReason,
 } from "./compare/types";
+export {
+  COMPARE_VERIFICATION_CAUSES,
+  COMPARE_VERIFICATION_INVARIANTS,
+  type CompareVerification,
+  type CompareVerificationCause,
+  type CompareVerificationFailure,
+  type CompareVerificationInvariant,
+} from "./compare/verification";
 export { createDocx } from "./docx/rezip";
 export { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
 export type { Document, DocxConformanceClass } from "./types/document";

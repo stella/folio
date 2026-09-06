@@ -13,6 +13,12 @@ import type {
   FolioAIEditSkippedOperation,
   FolioAIInlineFormatting,
 } from "../ai-edits/types";
+import type {
+  CompareVerification,
+  CompareVerificationCause,
+  CompareVerificationFailure,
+  CompareVerificationInvariant,
+} from "./verification";
 
 /** Everything {@link compareDocx} needs; nothing it reads from the ambient clock. */
 export type CompareDocxOptions = {
@@ -25,6 +31,16 @@ export type CompareDocxOptions = {
    * fixed epoch.
    */
   timestamp: string;
+  /**
+   * What to do when the round-trip self-check cannot prove the result.
+   *
+   * `"refuse"` (default) returns a {@link CompareDocxRoundTripError}: a
+   * redline that reads plausibly and is wrong is worse than no redline.
+   * `"emit"` returns the redline anyway, with `verification` naming every
+   * invariant that did not hold, for a caller that would rather show its best
+   * attempt and say what is missing.
+   */
+  onUnverified?: "refuse" | "emit";
   /**
    * Token size a changed paragraph's redline is cut at: `"word"` (default)
    * marks whole words, `"character"` marks the changed letters inside one.
@@ -220,6 +236,12 @@ export type CompareResult = {
   /** The base package carrying the generated tracked changes. */
   buffer: ArrayBuffer;
   changes: readonly CompareChange[];
+  /**
+   * Whether the round trip was proven. Always `verified` unless the call asked
+   * for `onUnverified: "emit"`, which is the only way an unproven redline is
+   * returned at all.
+   */
+  verification: CompareVerification;
   unsupported: readonly CompareUnsupportedPart[];
 };
 
@@ -254,9 +276,16 @@ export class CompareDocxApplyError extends TaggedError("CompareDocxApplyError")<
 export class CompareDocxRoundTripError extends TaggedError("CompareDocxRoundTripError")<{
   message: string;
   story: FolioDocumentStoryHandle;
-  /** Block texts the accepted result holds where the target differs. */
-  acceptedText: readonly string[];
-  targetText: readonly string[];
+  /** The invariant that did not hold, and what diverged under it. */
+  invariant: CompareVerificationInvariant;
+  cause: CompareVerificationCause;
+  /**
+   * Every invariant that failed, not only the one named above: a redline that
+   * loses a difference usually loses it in both directions, and a caller
+   * deciding what to do next wants the whole list. Each detail is structural,
+   * so it is safe to log or quote.
+   */
+  failures: readonly CompareVerificationFailure[];
 }> {}
 
 /** The difference needs more operations than the engine will generate. */
