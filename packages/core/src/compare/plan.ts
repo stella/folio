@@ -581,11 +581,7 @@ const isEmptyParagraphNode = (block: FolioAIBlock, snapshot: FolioAIEditSnapshot
   const anchor =
     snapshot.anchors[block.id] ??
     panic("A comparison snapshot block has no matching anchor", { blockId: block.id });
-  return (
-    block.text === "" &&
-    block.table === undefined &&
-    anchor.to - anchor.from === 2
-  );
+  return block.text === "" && block.table === undefined && anchor.to - anchor.from === 2;
 };
 
 const buildSteps = ({ story, baseSnapshot, targetSnapshot }: BuildStepsOptions): CompareStep[] => {
