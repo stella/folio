@@ -45,6 +45,8 @@ import type {
   DrawingContent,
   MoveFrom,
   MoveTo,
+  BookmarkStart,
+  BookmarkEnd,
   MathEquation,
   ShapeTextBody,
   Theme,
@@ -734,7 +736,7 @@ function convertTrackedChange(
           textBoxAnchors,
         ),
       );
-    } else {
+    } else if (item.type === "hyperlink") {
       const currentHyperlinkIndex = nextHyperlinkInstanceIndex();
       nodes.push(
         ...convertHyperlink(item, {
@@ -744,6 +746,18 @@ function convertTrackedChange(
           textBoxAnchors,
         }),
       );
+    } else if (item.type === "bookmarkStart") {
+      nodes.push(
+        schema.node("bookmarkBoundary", {
+          type: "start",
+          id: item.id,
+          name: item.name,
+          colFirst: item.colFirst,
+          colLast: item.colLast,
+        }),
+      );
+    } else {
+      nodes.push(schema.node("bookmarkBoundary", { type: "end", id: item.id }));
     }
   }
 
@@ -3720,7 +3734,9 @@ function extractTextBoxes(paragraph: Paragraph, textBoxGroupId: string): Extract
         visitRun(item, { ...context, trackedChange });
         continue;
       }
-      visitHyperlink(item, { ...context, trackedChange });
+      if (item.type === "hyperlink") {
+        visitHyperlink(item, { ...context, trackedChange });
+      }
     }
   };
 
@@ -4181,7 +4197,9 @@ function findParagraphPageBreakPosition(paragraph: Paragraph): "before" | "after
   // content; an empty wrapper must not be treated as visible — an empty
   // bookmark-only hyperlink before a page break should still classify the
   // break as "before".
-  function visitRunOrHyperlinkList(children: (Run | Hyperlink)[]): boolean {
+  function visitRunOrHyperlinkList(
+    children: readonly (Run | Hyperlink | BookmarkStart | BookmarkEnd)[],
+  ): boolean {
     for (const child of children) {
       if (child.type === "run" && visitRun(child)) {
         return true;

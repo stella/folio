@@ -199,7 +199,6 @@ const validateBookmarkBoundaryStructure = (
       const result = readBookmarkBoundaryAttrs(node);
       if (result.ok) {
         const attrs = result.value;
-        const hasHyperlink = node.marks.some((mark) => mark.type.name === "hyperlink");
         const trackedChanges = node.marks.filter(
           (mark) => mark.type.name === "insertion" || mark.type.name === "deletion",
         );
@@ -207,11 +206,6 @@ const validateBookmarkBoundaryStructure = (
           issues.push({
             path,
             message: `Bookmark boundaries cannot carry multiple tracked-change parents (${enclosingParagraph}).`,
-          });
-        } else if (trackedChanges.length === 1 && !hasHyperlink) {
-          issues.push({
-            path,
-            message: `Bookmark boundaries inside tracked changes require a hyperlink serialization parent (${enclosingParagraph}).`,
           });
         }
         if (attrs.type === "start") {

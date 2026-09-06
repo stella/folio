@@ -9,6 +9,7 @@ import type {
   ParagraphContent,
   Run,
   Table,
+  TrackedRunChange,
 } from "../types/document";
 
 export type DocxParagraphSurfaces = {
@@ -33,13 +34,15 @@ export const visitParagraphRuns = (paragraph: Paragraph, visit: (run: Run) => vo
     }
   };
 
-  const visitInlineContent = (content: readonly (Run | Hyperlink)[]): void => {
+  const visitInlineContent = (content: readonly TrackedRunChange["content"][number][]): void => {
     for (const child of content) {
       if (child.type === "run") {
         visitRun(child);
         continue;
       }
-      visitHyperlink(child);
+      if (child.type === "hyperlink") {
+        visitHyperlink(child);
+      }
     }
   };
 

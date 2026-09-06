@@ -33,6 +33,7 @@ import type {
   ParagraphMarkChange,
   ParagraphPropertyChange,
   TrackedChangeInfo,
+  TrackedRunChange,
   MathEquation,
   RunContent,
 } from "../types/document";
@@ -1037,8 +1038,15 @@ function parseParagraphMarkChange(pPr: XmlElement | null): ParagraphMarkChange |
   return undefined;
 }
 
-function isTrackedChangeWrapperChild(content: ParagraphContent): content is Run | Hyperlink {
-  return content.type === "run" || content.type === "hyperlink";
+function isTrackedChangeWrapperChild(
+  content: ParagraphContent,
+): content is TrackedRunChange["content"][number] {
+  return (
+    content.type === "run" ||
+    content.type === "hyperlink" ||
+    content.type === "bookmarkStart" ||
+    content.type === "bookmarkEnd"
+  );
 }
 
 // Mirror of upstream eigenpal/docx-editor PR #482 (commit 29f95751d):
@@ -1067,7 +1075,7 @@ type PushTrackedChangeWrapperParams = {
   contents: ParagraphContent[];
   type: TrackedChangeWrapperType;
   info: TrackedChangeInfo;
-  content: readonly (Run | Hyperlink)[];
+  content: readonly TrackedRunChange["content"][number][];
   preserveEmpty?: boolean;
 };
 
@@ -1125,7 +1133,7 @@ function pushTrackedChangeSegments({
     return;
   }
 
-  const segment: (Run | Hyperlink)[] = [];
+  const segment: TrackedRunChange["content"] = [];
 
   for (const content of parsedContent) {
     if (isTrackedChangeWrapperChild(content)) {

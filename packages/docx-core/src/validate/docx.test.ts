@@ -204,6 +204,28 @@ describe("canonical DOCX document model validation", () => {
     });
   });
 
+  test("counts bookmark boundaries inside tracked run changes", () => {
+    const result = validateDocumentModel(
+      createDocument({
+        content: [
+          paragraph([
+            {
+              type: "insertion",
+              info: { id: 7, author: "Reviewer" },
+              content: [
+                { type: "bookmarkStart", id: 9, name: "inserted" },
+                textRun("Inserted term"),
+                { type: "bookmarkEnd", id: 9 },
+              ],
+            },
+          ]),
+        ],
+      }),
+    );
+
+    expect(result).toEqual({ valid: true, issues: [] });
+  });
+
   test("rejects invalid table shape", () => {
     const result = validateDocumentModel(
       createDocument({

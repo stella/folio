@@ -118,6 +118,7 @@ export type {
   CommentReference,
   MathEquation,
   TrackedChangeInfo,
+  TrackedRunContent,
   TrackedRunChange,
   PropertyChangeInfo,
   Insertion,

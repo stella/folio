@@ -22,6 +22,7 @@ import type {
   ParagraphContent,
   Run,
   RunContent,
+  TrackedRunContent,
 } from "../types/document";
 import { decodeOoxmlSymbolCharacter } from "../utils/ooxmlSymbol";
 import { wrapComment, wrapDeletion, wrapInsertion, wrapMoveFrom, wrapMoveTo } from "./annotations";
@@ -258,26 +259,23 @@ function renderTrackedWrapper(
   wrapper: Insertion | Deletion | MoveFrom | MoveTo,
   paraId: string | undefined,
 ): string {
+  const renderChild = (child: TrackedRunContent): string => {
+    if (child.type === "run") {
+      return renderRun(ctx, pkg, child, paraId);
+    }
+    if (child.type === "hyperlink") {
+      return renderHyperlink(ctx, pkg, child, paraId);
+    }
+    return "";
+  };
   if (ctx.opts.trackedChanges === "clean") {
     // Insertions become real text; deletions vanish.
     if (wrapper.type === "insertion" || wrapper.type === "moveTo") {
-      return wrapper.content
-        .map((child) =>
-          child.type === "run"
-            ? renderRun(ctx, pkg, child, paraId)
-            : renderHyperlink(ctx, pkg, child, paraId),
-        )
-        .join("");
+      return wrapper.content.map(renderChild).join("");
     }
     return "";
   }
-  const inner = wrapper.content
-    .map((child) =>
-      child.type === "run"
-        ? renderRun(ctx, pkg, child, paraId)
-        : renderHyperlink(ctx, pkg, child, paraId),
-    )
-    .join("");
+  const inner = wrapper.content.map(renderChild).join("");
   switch (wrapper.type) {
     case "insertion":
       return wrapInsertion(ctx, wrapper.info, inner);

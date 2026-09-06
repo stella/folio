@@ -6,6 +6,7 @@ import type {
   Hyperlink,
   ParagraphContent,
   Run,
+  TrackedRunContent,
 } from "../types/document";
 import { visitDocxParagraphs } from "./paragraphTraversal";
 
@@ -74,11 +75,16 @@ const scanHyperlink = (hyperlink: Hyperlink, scan: RenderedPageBreakScan): boole
 };
 
 const scanInlineContent = (
-  content: readonly (Run | Hyperlink)[],
+  content: readonly TrackedRunContent[],
   scan: RenderedPageBreakScan,
 ): boolean | undefined => {
   for (const child of content) {
-    const result = child.type === "run" ? scanRun(child, scan) : scanHyperlink(child, scan);
+    let result: boolean | undefined;
+    if (child.type === "run") {
+      result = scanRun(child, scan);
+    } else if (child.type === "hyperlink") {
+      result = scanHyperlink(child, scan);
+    }
     if (result !== undefined) {
       return result;
     }

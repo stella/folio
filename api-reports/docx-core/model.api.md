@@ -147,7 +147,7 @@ export type ConditionalFormatStyle = {
 export type Deletion = {
     type: "deletion";
     info: TrackedChangeInfo;
-    content: (Run | Hyperlink)[];
+    content: TrackedRunContent[];
 };
 
 // @public
@@ -493,7 +493,7 @@ export type InlineSdt = {
 export type Insertion = {
     type: "insertion";
     info: TrackedChangeInfo;
-    content: (Run | Hyperlink)[];
+    content: TrackedRunContent[];
 };
 
 // @public
@@ -584,7 +584,7 @@ export type MediaFile = {
 export type MoveFrom = {
     type: "moveFrom";
     info: TrackedChangeInfo;
-    content: (Run | Hyperlink)[];
+    content: TrackedRunContent[];
 };
 
 // @public
@@ -604,7 +604,7 @@ export type MoveFromRangeStart = {
 export type MoveTo = {
     type: "moveTo";
     info: TrackedChangeInfo;
-    content: (Run | Hyperlink)[];
+    content: TrackedRunContent[];
 };
 
 // @public
@@ -1411,6 +1411,9 @@ export type TrackedChangeInfo = {
 
 // @public
 export type TrackedRunChange = Insertion | Deletion | MoveFrom | MoveTo;
+
+// @public
+export type TrackedRunContent = Run | Hyperlink | BookmarkStart | BookmarkEnd;
 
 // @public
 export type UnderlineStyle = "none" | "single" | "words" | "double" | "thick" | "dotted" | "dottedHeavy" | "dash" | "dashedHeavy" | "dashLong" | "dashLongHeavy" | "dotDash" | "dashDotHeavy" | "dotDotDash" | "dashDotDotHeavy" | "wave" | "wavyHeavy" | "wavyDouble";

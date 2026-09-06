@@ -83,6 +83,7 @@ export type {
   TextBox,
   TextContent,
   TrackedChangeInfo,
+  TrackedRunContent,
   TrackedRunChange,
   VerticalAlign,
 } from "@stll/docx-core/model";
