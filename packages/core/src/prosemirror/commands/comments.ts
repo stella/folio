@@ -4,7 +4,7 @@
  * PM commands for adding/removing comments and accepting/rejecting tracked changes.
  */
 
-import type { Mark, Node as PMNode } from "prosemirror-model";
+import type { Mark, MarkType, Node as PMNode } from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 import { removeRow, TableMap } from "prosemirror-tables";
 
@@ -328,6 +328,15 @@ function resolveChange(
         }
         if (op.action === "clear") {
           tr.setNodeAttribute(mappedPos, op.attrName, null);
+          // The row keeps its content, so the run-level half of the same
+          // revision has to go with the row attribute: `keepType` is exactly
+          // the mark kind whose row marker resolves by clearing.
+          clearTableRowContentMarks({
+            tr,
+            rowPos: mappedPos,
+            markType: keepType,
+            revision: op.revision,
+          });
           resolvedTableRowStructure = true;
           continue;
         }
@@ -451,10 +460,13 @@ type TableRowStructuralOp = {
   rowPos: number;
   attrName: "trIns" | "trDel";
   action: "clear" | "remove";
+  revision: TableRowRevisionAttr;
 };
 
 type TableRowRevisionAttr = {
   revisionId: number;
+  author?: string;
+  date?: string | null;
 };
 
 type TableCellStructuralOp =
@@ -506,6 +518,7 @@ function collectTableRowStructuralOp(
       rowPos,
       attrName,
       action: keepsRow ? "clear" : "remove",
+      revision: marker,
     };
   }
   return null;
@@ -518,6 +531,67 @@ function isTableRowRevisionAttr(value: unknown): value is TableRowRevisionAttr {
     "revisionId" in value &&
     typeof value.revisionId === "number"
   );
+}
+
+/**
+ * Whether an inline revision mark inside a row belongs to that row's own
+ * structural revision. Folio writes both halves under one id; Word mints a
+ * fresh `w:id` per element, so an author + timestamp match counts too. A third
+ * party's edit inside the same row matches neither and survives untouched.
+ */
+function markBelongsToRowRevision(mark: Mark, revision: TableRowRevisionAttr): boolean {
+  if (mark.attrs["revisionId"] === revision.revisionId) {
+    return true;
+  }
+  return (
+    revision.author !== undefined &&
+    mark.attrs["author"] === revision.author &&
+    (mark.attrs["date"] ?? null) === (revision.date ?? null)
+  );
+}
+
+type ClearTableRowContentMarksOptions = {
+  tr: Transaction;
+  rowPos: number;
+  markType: MarkType | undefined;
+  revision: TableRowRevisionAttr;
+};
+
+/**
+ * Clear the run-level revision marks a row's structural revision wrote.
+ *
+ * A tracked row insertion or deletion is marked twice — on the row and around
+ * every run in its cells — so resolving one half and leaving the other would
+ * hand back a row whose text still reads as inserted (or struck through) after
+ * the change was accepted. Both halves resolve in the caller's transaction.
+ */
+function clearTableRowContentMarks({
+  tr,
+  rowPos,
+  markType,
+  revision,
+}: ClearTableRowContentMarksOptions): void {
+  const row = tr.doc.nodeAt(rowPos);
+  if (!row || !markType) {
+    return;
+  }
+  const contentFrom = rowPos + 1;
+  const removals: { from: number; to: number; mark: Mark }[] = [];
+  row.descendants((node, offset) => {
+    if (!node.isInline) {
+      return true;
+    }
+    for (const mark of node.marks) {
+      if (mark.type === markType && markBelongsToRowRevision(mark, revision)) {
+        const from = contentFrom + offset;
+        removals.push({ from, to: from + node.nodeSize, mark });
+      }
+    }
+    return false;
+  });
+  for (const removal of removals) {
+    tr.removeMark(removal.from, removal.to, removal.mark);
+  }
 }
 
 function collectTableCellStructuralOps(
