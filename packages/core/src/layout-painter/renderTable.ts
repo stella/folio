@@ -79,6 +79,31 @@ const CELL_DIAGONAL_BORDER_CLASS = "layout-table-cell-diagonal-border";
 const CELL_BOTTOM_BORDER_CLASS = "layout-table-cell-bottom-border";
 
 /**
+ * Quarter turn a `w:textDirection` puts on cell content (§17.18.93, plus the
+ * short spellings Word also writes).
+ *
+ * `btLr` runs bottom-to-top up the left edge, so it turns counter-clockwise;
+ * every top-to-bottom direction runs down the right edge and turns clockwise.
+ * The horizontal directions are the identity — `rl` is bidi, not rotation.
+ * Only `btLr` was handled, so a rotated header cell (the common `tbRl` shape)
+ * painted horizontally and overflowed its column.
+ *
+ * Total over the union on purpose: a new direction has to state its turn here
+ * rather than silently falling back to horizontal.
+ */
+const CELL_TEXT_ROTATION_DEGREES = {
+  lr: 0,
+  lrV: 0,
+  rl: 0,
+  rlV: 0,
+  tb: 90,
+  tbV: 90,
+  tbRl: 90,
+  tbRlV: 90,
+  btLr: -90,
+} as const satisfies Record<NonNullable<TableCell["textDirection"]>, number>;
+
+/**
  * Options for rendering a table fragment
  */
 export type RenderTableFragmentOptions = {
@@ -714,8 +739,9 @@ function renderTableCell({
   }
 
   // Render cell content
+  const cellTextRotation = cell.textDirection ? CELL_TEXT_ROTATION_DEGREES[cell.textDirection] : 0;
   const contentWidthOverride =
-    cell.textDirection === "btLr" ? Math.max(1, rowHeight - padTop - padBottom) : undefined;
+    cellTextRotation === 0 ? undefined : Math.max(1, rowHeight - padTop - padBottom);
   const renderedContent = renderCellContent({
     cell,
     cellMeasure,
@@ -732,11 +758,11 @@ function renderTableCell({
         }
       : {}),
   });
-  if (cell.textDirection === "btLr") {
+  if (cellTextRotation !== 0) {
     renderedContent.content.style.position = "absolute";
     renderedContent.content.style.left = "50%";
     renderedContent.content.style.top = "50%";
-    renderedContent.content.style.transform = "translate(-50%, -50%) rotate(-90deg)";
+    renderedContent.content.style.transform = `translate(-50%, -50%) rotate(${cellTextRotation}deg)`;
   }
   if (renderedContent.floatingLayers.length > 0) {
     renderedContent.content.style.height = "100%";
