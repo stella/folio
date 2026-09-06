@@ -417,7 +417,9 @@ const applyModelRange = (span: HTMLElement, range: DisplayModelRange | undefined
       break;
     case "header":
     case "footer":
-      span.dataset["hfRid"] = story.rId;
+      if (story.rId !== null) {
+        span.dataset["hfRid"] = story.rId;
+      }
       break;
     case "footnote":
     case "endnote":
@@ -808,6 +810,9 @@ const applyRegionModel = (element: HTMLElement, region: DisplayHitRegion): void 
       break;
     case "header":
     case "footer":
+      if (story.rId === null) {
+        break;
+      }
       // Slot identity is the part's relationship id: two sections that share a
       // part share its painted spans and its editor.
       //

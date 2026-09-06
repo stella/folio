@@ -220,6 +220,7 @@ describe("renderDisplayListToDom", () => {
     });
     const regions: DisplayHitRegion[] = [
       region("headerSlot", { story: { kind: "header", rId: "rId7" } }),
+      region("footerSlot", { story: { kind: "footer", rId: null } }),
       region("line", {
         blockId: "paragraph-1",
         pmRange: { start: 12, end: 18, story: { kind: "body" } },
@@ -245,6 +246,7 @@ describe("renderDisplayListToDom", () => {
       hfSlotKind: "header",
       hfKind: "header",
     });
+    expect(findByClass(page, "layout-page-footer")?.dataset).toEqual({ story: "footer" });
     expect(findByClass(page, "layout-line")?.dataset).toMatchObject({
       blockId: "paragraph-1",
       pmStart: "12",

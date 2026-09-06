@@ -51,7 +51,7 @@ export const paintHeaderFooter = ({
     (section === "header" ? page.margins.header : page.margins.footer) ??
     DEFAULT_DISTANCE_PX;
   const originYPx = section === "header" ? distance : page.size.h - distance - content.height;
-  const story: DisplayStoryRef = { kind: section, rId: content.rId ?? "" };
+  const story: DisplayStoryRef = { kind: section, rId: content.rId ?? null };
 
   // The slot's own box, which is what a double-click enters: the story it
   // belongs to is the part the page selected, not the slot's name, because two

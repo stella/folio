@@ -155,7 +155,7 @@ export type DisplayImageSource = {
 export type DisplayStoryRef =
   | { readonly kind: "body" }
   /** `rId` is the relationship that names the part, as the section selects it. */
-  | { readonly kind: "header" | "footer"; readonly rId: string }
+  | { readonly kind: "header" | "footer"; readonly rId: string | null }
   /** `id` is the note's own `w:footnote`/`w:endnote` id. */
   | { readonly kind: "footnote" | "endnote"; readonly id: number };
 
