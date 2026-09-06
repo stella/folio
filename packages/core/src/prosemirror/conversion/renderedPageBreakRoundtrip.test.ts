@@ -19,8 +19,32 @@ describe("renderedPageBreakBefore round-trip", () => {
 
     const xml = serializeParagraph(parsed as never);
     expect(xml).toMatch(/<w:lastRenderedPageBreak\/>/u);
-    expect(xml).toMatch(/<w:r[^>]*><w:lastRenderedPageBreak\/>/u);
+    expect(xml).toMatch(/<w:r[^>]*>(?:<w:rPr>.*<\/w:rPr>)?<w:lastRenderedPageBreak\/>/u);
     expect(xml.match(/<w:lastRenderedPageBreak\/>/gu)).toHaveLength(1);
+  });
+
+  test("injects the marker after run properties, including a nested previous-property snapshot", () => {
+    const xml = serializeParagraph({
+      type: "paragraph",
+      renderedPageBreakBefore: true,
+      content: [
+        {
+          type: "run",
+          formatting: { bold: true },
+          propertyChanges: [
+            {
+              info: { id: 1, author: "Reviewer" },
+              previousFormatting: { italic: true },
+            },
+          ],
+          content: [{ type: "text", text: "Attachment 1" }],
+        },
+      ],
+    } as never);
+
+    expect(xml).toMatch(
+      /<w:r><w:rPr><w:b\/><w:rPrChange [^>]+><w:rPr><w:i\/><\/w:rPr><\/w:rPrChange><\/w:rPr><w:lastRenderedPageBreak\/><w:t>/u,
+    );
   });
 
   test("preserves an inline cached boundary at its editable position", () => {

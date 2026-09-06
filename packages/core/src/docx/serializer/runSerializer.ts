@@ -230,22 +230,6 @@ export function serializeTextFormatting(formatting: TextFormatting | undefined):
     }
   }
 
-  if (formatting.language) {
-    const languageAttrs: string[] = [];
-    if (formatting.language.val) {
-      languageAttrs.push(`w:val="${escapeXml(formatting.language.val)}"`);
-    }
-    if (formatting.language.eastAsia) {
-      languageAttrs.push(`w:eastAsia="${escapeXml(formatting.language.eastAsia)}"`);
-    }
-    if (formatting.language.bidi) {
-      languageAttrs.push(`w:bidi="${escapeXml(formatting.language.bidi)}"`);
-    }
-    if (languageAttrs.length > 0) {
-      parts.push(`<w:lang ${languageAttrs.join(" ")}/>`);
-    }
-  }
-
   // Bold
   if (formatting.bold === true) {
     parts.push("<w:b/>");
@@ -369,9 +353,10 @@ export function serializeTextFormatting(formatting: TextFormatting | undefined):
     parts.push(`<w:szCs w:val="${intAttr(formatting.fontSizeCs)}"/>`);
   }
 
-  // Highlight — emit valid OOXML named colors via w:highlight,
-  // including `none`, which explicitly cancels an inherited highlight.
-  // Fall back to w:shd for custom hex colors.
+  // Highlight — emit valid OOXML named colors via w:highlight, including
+  // `none`, which explicitly cancels an inherited highlight. A custom color
+  // falls back to w:shd at that property's later CT_RPr position.
+  let customHighlightShadingXml = "";
   if (formatting.highlight) {
     if (VALID_HIGHLIGHT_COLORS.has(formatting.highlight)) {
       parts.push(`<w:highlight w:val="${formatting.highlight}"/>`);
@@ -380,7 +365,7 @@ export function serializeTextFormatting(formatting: TextFormatting | undefined):
       // Only emit if value looks like a valid hex color.
       const hex = formatting.highlight.replace(/^#/u, "");
       if (/^[0-9a-fA-F]{6}$/u.test(hex)) {
-        parts.push(`<w:shd w:val="clear" w:color="auto" w:fill="${hex}"/>`);
+        customHighlightShadingXml = `<w:shd w:val="clear" w:color="auto" w:fill="${hex}"/>`;
       }
     }
   }
@@ -410,13 +395,8 @@ export function serializeTextFormatting(formatting: TextFormatting | undefined):
     parts.push(`<w:effect w:val="${formatting.effect}"/>`);
   }
 
-  // Emphasis mark
-  if (formatting.emphasisMark) {
-    parts.push(`<w:em w:val="${formatting.emphasisMark}"/>`);
-  }
-
   // Shading
-  const shadingXml = serializeShading(formatting.shading);
+  const shadingXml = serializeShading(formatting.shading) || customHighlightShadingXml;
   if (shadingXml) {
     parts.push(shadingXml);
   }
@@ -439,6 +419,27 @@ export function serializeTextFormatting(formatting: TextFormatting | undefined):
     parts.push("<w:cs/>");
   } else if (formatting.cs === false) {
     parts.push('<w:cs w:val="0"/>');
+  }
+
+  // Emphasis mark
+  if (formatting.emphasisMark) {
+    parts.push(`<w:em w:val="${formatting.emphasisMark}"/>`);
+  }
+
+  if (formatting.language) {
+    const languageAttrs: string[] = [];
+    if (formatting.language.val) {
+      languageAttrs.push(`w:val="${escapeXml(formatting.language.val)}"`);
+    }
+    if (formatting.language.eastAsia) {
+      languageAttrs.push(`w:eastAsia="${escapeXml(formatting.language.eastAsia)}"`);
+    }
+    if (formatting.language.bidi) {
+      languageAttrs.push(`w:bidi="${escapeXml(formatting.language.bidi)}"`);
+    }
+    if (languageAttrs.length > 0) {
+      parts.push(`<w:lang ${languageAttrs.join(" ")}/>`);
+    }
   }
 
   if (parts.length === 0) {

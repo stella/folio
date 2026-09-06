@@ -696,8 +696,10 @@ export function serializeTableCellFormatting(
     }
 
     // Hide mark
-    if (formatting.hideMark !== undefined) {
-      parts.push(formatting.hideMark ? "<w:hideMark/>" : '<w:hideMark w:val="false"/>');
+    if (formatting.hideMark === true) {
+      parts.push("<w:hideMark/>");
+    } else if (formatting.hideMark === false) {
+      parts.push('<w:hideMark w:val="off"/>');
     }
   }
 
