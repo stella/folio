@@ -4651,4 +4651,23 @@ describe("deleteBlock over inline content that is not text", () => {
     expect(result.skipped).toEqual([]);
     expect(view.state.doc.child(0).child(0)?.marks).toEqual([existingRevision]);
   });
+
+  test("reports only the paragraph-mark revision for an empty block", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", { paraId: "gone" }),
+      schema.node("paragraph", { paraId: "keep" }, schema.text("kept")),
+    ]);
+    const state = EditorState.create({ schema, doc });
+    const view = makeView(state);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot: createFolioAIEditSnapshot(state.doc),
+      operations: [{ id: "delete", type: "deleteBlock", blockId: "gone" }],
+      mode: "tracked-changes",
+    });
+
+    const paragraphRevisionId = view.state.doc.child(0).attrs["pPrMark"]?.info.id;
+    expect(result.applied.at(0)?.revisionIds).toEqual([paragraphRevisionId]);
+  });
 });

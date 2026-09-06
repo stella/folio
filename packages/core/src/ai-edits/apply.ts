@@ -1748,10 +1748,12 @@ const applyFolioAIEditOperationsInternal = ({
           // field sits outside it whenever it leads or trails the words.
           // Deleting a block deletes what is in it: left unmarked, accepting
           // the deletion kept a paragraph standing around an orphan image.
-          for (const { from, to } of undeletedContentAtomRanges(tr, item.blockFrom)) {
+          const atomRanges = undeletedContentAtomRanges(tr, item.blockFrom);
+          for (const { from, to } of atomRanges) {
             tr = tr.addMark(from, to, deletionMark);
           }
-          appliedRevisionIds = [revisionId];
+          const inlineRevisionApplied = item.from < item.to || atomRanges.length > 0;
+          appliedRevisionIds = inlineRevisionApplied ? [revisionId] : [];
           // Deleting a paragraph's words leaves its paragraph mark behind, and
           // an accepted redline then holds a blank line where the paragraph
           // was: a deleted paragraph carries `w:pPr/w:rPr/w:del` as well as
@@ -1777,7 +1779,9 @@ const applyFolioAIEditOperationsInternal = ({
               kind: isPairedMove(item.operation.moveId) ? "moveFrom" : "del",
               info: { id: markRevisionId, author, date, ...trackedRevisionExtras },
             });
-            appliedRevisionIds = [revisionId, markRevisionId];
+            appliedRevisionIds = inlineRevisionApplied
+              ? [revisionId, markRevisionId]
+              : [markRevisionId];
           }
         }
         if (commentMark) {

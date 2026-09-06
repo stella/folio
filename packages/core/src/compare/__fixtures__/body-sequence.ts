@@ -37,7 +37,7 @@ export type BodyItem =
       kind: "table";
       rows: readonly (readonly CellContent[])[];
       /**
-       * Rows a package hides with `w:vanish`. The snapshot skips their whole
+       * Rows a package hides with `w:hidden`. The snapshot skips their whole
        * subtree, so a document that has one is the case where the snapshot
        * walk and the live walk could disagree.
        */
@@ -76,7 +76,7 @@ const table = (item: Extract<BodyItem, { kind: "table" }>): string => {
     item.rows
       .map(
         (cells, rowIndex) =>
-          `<w:tr>${hidden.has(rowIndex) ? `<w:trPr><w:vanish/></w:trPr>` : ""}${cells
+          `<w:tr>${hidden.has(rowIndex) ? `<w:trPr><w:hidden/></w:trPr>` : ""}${cells
             .map(
               (content) =>
                 `<w:tc><w:tcPr><w:tcW w:w="2000" w:type="dxa"/></w:tcPr>${cellXml(content)}</w:tc>`,

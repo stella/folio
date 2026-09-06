@@ -379,6 +379,13 @@ function resolveChange(
           // would survive an otherwise-resolved revision. Drop it now.
           if (emptyFirstParagraph) {
             tr.setNodeMarkup(mappedPos, undefined, nextAttrs);
+          } else if (!carriesSection(paragraph) && carriesSection(nextNode)) {
+            tr.setNodeMarkup(mappedPos, undefined, {
+              ...paragraph.attrs,
+              pPrMark: null,
+              sectionBreakType: nextNode.attrs["sectionBreakType"],
+              _sectionProperties: nextNode.attrs["_sectionProperties"],
+            });
           } else {
             tr.setNodeAttribute(mappedPos, "pPrMark", null);
           }
