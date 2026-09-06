@@ -18,9 +18,9 @@ The buffer opens as ordinary revisions in any OOXML consumer. `changes` is a
 discriminated union on `kind` (`insert`, `delete`, `replace`, `move`, `format`,
 `table-insert`, `table-delete`, `table-row-insert`, `table-row-delete`,
 `split`, `merge`, `paragraph-format`, `numbering`), for an agent that wants
-the summary
-rather than the document. Every change carries the story it belongs to, so a
-caller can tell a body edit from a footnote edit.
+the summary rather than the document. Every change carries the story it
+belongs to, so a caller can tell a body edit from a footnote edit — except
+`numbering`, which belongs to the package.
 
 ## Determinism contract
 
