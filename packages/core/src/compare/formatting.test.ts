@@ -21,9 +21,9 @@ describe("inlineFormattingSegments", () => {
     ]);
     const joined = block([{ text: "Contract", strike: true }]);
 
-    expect(inlineFormattingSegments({ baseBlock: split, targetBlock: joined, maxSegments: 10 })).toEqual(
-      [],
-    );
+    expect(
+      inlineFormattingSegments({ baseBlock: split, targetBlock: joined, maxSegments: 10 }),
+    ).toEqual([]);
     expect(projectSupportedInlineFormatting(split)).toBe(projectSupportedInlineFormatting(joined));
   });
 

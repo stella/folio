@@ -426,7 +426,13 @@ describe("single-mutation probes", () => {
   test("format_only_strike: striking a phrase round-trips as tracked formatting", async () => {
     const blockIndex = wordyBlockIndex(PROSE_BLOCKS, 4);
     const target = await applyEditScript(PROSE_BASE, [
-      { type: "formatRange", blockIndex, startOffset: 0, endOffset: 4, formatting: { strike: true } },
+      {
+        type: "formatRange",
+        blockIndex,
+        startOffset: 0,
+        endOffset: 4,
+        formatting: { strike: true },
+      },
     ]);
     if (target.isErr()) {
       throw target.error;
@@ -440,8 +446,12 @@ describe("single-mutation probes", () => {
     expect(result.value.changes.map(({ kind }) => kind)).toEqual(["format"]);
     expect(result.value.verification).toEqual({ status: "verified" });
     const accepted = await FolioDocxReviewer.fromBuffer(result.value.buffer);
-    const acceptedBlock = accepted.readReviewedStory({ view: "final" })?.snapshot.blocks[blockIndex];
-    const rejectedBlock = accepted.readReviewedStory({ view: "original" })?.snapshot.blocks[blockIndex];
+    const acceptedBlock = accepted.readReviewedStory({ view: "final" })?.snapshot.blocks[
+      blockIndex
+    ];
+    const rejectedBlock = accepted.readReviewedStory({ view: "original" })?.snapshot.blocks[
+      blockIndex
+    ];
     expect(acceptedBlock?.previewRuns?.at(0)?.strike).toBe(true);
     expect(rejectedBlock?.previewRuns?.at(0)?.strike).not.toBe(true);
   });
