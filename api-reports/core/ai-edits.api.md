@@ -24,6 +24,7 @@ export type ApplyFolioDocumentOperationsOptions = {
     author?: string;
     createCommentId?: (text: string) => number;
     createUndoHandle?: () => FolioDocumentOperationUndoHandle;
+    revisionStamp?: FolioRevisionStamp;
 };
 
 // @public (undocumented)
@@ -103,6 +104,7 @@ export type FolioAIBlock = {
     displayLabel?: string;
     styleId?: string;
     previewRuns?: FolioAIBlockPreviewRun[];
+    table?: FolioAIBlockTableLocation;
 };
 
 // @public (undocumented)
@@ -129,6 +131,14 @@ export type FolioAIBlockPreviewRun = {
     fontFamily?: string;
     fontSizePt?: number;
     color?: string;
+};
+
+// @public
+export type FolioAIBlockTableLocation = {
+    tableIndex: number;
+    rowIndex: number;
+    cellIndex: number;
+    paragraphIndex: number;
 };
 
 // @public (undocumented)
@@ -621,6 +631,12 @@ export type FolioReviewedStory = {
 
 // @public (undocumented)
 export type FolioReviewedView = (typeof FOLIO_REVIEWED_VIEWS)[number];
+
+// @public
+export type FolioRevisionStamp = {
+    date: string;
+    idSeed: number;
+};
 
 // @public
 export const getCommentAnchorsFromDoc: (doc: Node_2) => FolioCommentAnchor[];

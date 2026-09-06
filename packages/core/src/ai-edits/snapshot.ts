@@ -7,6 +7,7 @@ import type {
   FolioAIBlockAnchor,
   FolioAIBlockKind,
   FolioAIBlockPreviewRun,
+  FolioAIBlockTableLocation,
   FolioAIEditSnapshot,
   FolioAITextRangeHandle,
 } from "./types";
@@ -75,6 +76,46 @@ const isInHiddenTableRow = (doc: PMNode, pos: number): boolean => {
   return false;
 };
 
+const TABLE_ROLE_TABLE = "table";
+const TABLE_ROLE_ROW = "row";
+
+/**
+ * Locate `pos` inside its innermost enclosing table, or `undefined` when it
+ * sits outside every table.
+ */
+const getTableLocation = (
+  doc: PMNode,
+  pos: number,
+  tableIndexByStart: ReadonlyMap<number, number>,
+): FolioAIBlockTableLocation | undefined => {
+  const $pos = doc.resolve(pos);
+  for (let cellDepth = $pos.depth; cellDepth > 1; cellDepth--) {
+    const role = $pos.node(cellDepth).type.spec["tableRole"];
+    if (role !== "cell" && role !== "header_cell") {
+      continue;
+    }
+    const rowDepth = cellDepth - 1;
+    const tableDepth = rowDepth - 1;
+    if (
+      $pos.node(rowDepth).type.spec["tableRole"] !== TABLE_ROLE_ROW ||
+      $pos.node(tableDepth).type.spec["tableRole"] !== TABLE_ROLE_TABLE
+    ) {
+      return undefined;
+    }
+    const tableIndex = tableIndexByStart.get($pos.before(tableDepth));
+    if (tableIndex === undefined) {
+      return undefined;
+    }
+    return {
+      tableIndex,
+      rowIndex: $pos.index(tableDepth),
+      cellIndex: $pos.index(rowDepth),
+      paragraphIndex: $pos.index(cellDepth),
+    };
+  }
+  return undefined;
+};
+
 export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
   const draftBlocks: {
     block: FolioAIBlock;
@@ -82,6 +123,10 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
   }[] = [];
   const hashCounts = new Map<string, number>();
   const usedBlockIds = new Set<string>();
+  // Table start position -> document-order index, filled by the walk below.
+  // `descendants` reaches a table before any textblock inside it, so a nested
+  // block's lookup always finds its table already numbered.
+  const tableIndexByStart = new Map<number, number>();
   const emptyAnchorState: {
     candidate: { from: number; to: number; paraId: string | null } | null;
     textblockCount: number;
@@ -90,6 +135,9 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
   let blockIndex = 0;
   doc.descendants((node, pos, parent) => {
     if (!node.isTextblock) {
+      if (node.type.spec["tableRole"] === TABLE_ROLE_TABLE) {
+        tableIndexByStart.set(pos, tableIndexByStart.size);
+      }
       return true;
     }
 
@@ -151,6 +199,7 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
     const displayLabel = getDisplayLabel(node);
     const styleId = getStyleId(node);
     const previewRuns = getPreviewRuns(node);
+    const table = getTableLocation(doc, pos, tableIndexByStart);
 
     draftBlocks.push({
       block: {
@@ -161,6 +210,7 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
         ...(displayLabel !== undefined && { displayLabel }),
         ...(styleId !== undefined && { styleId }),
         ...(previewRuns !== undefined && { previewRuns }),
+        ...(table !== undefined && { table }),
       },
       anchor: {
         id,

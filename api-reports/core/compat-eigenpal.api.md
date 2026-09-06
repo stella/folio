@@ -13,6 +13,7 @@ import * as import__stll_docx_core_model from '@stll/docx-core/model';
 import { Node as Node_2 } from 'prosemirror-model';
 import { Plugin as Plugin_2 } from 'prosemirror-state';
 import { PluginKey } from 'prosemirror-state';
+import { Result } from 'better-result';
 import { TaggedErrorClass } from 'better-result';
 import { Transaction } from 'prosemirror-state';
 
@@ -165,6 +166,7 @@ export type ApplyFolioDocumentOperationsOptions = {
     author?: string;
     createCommentId?: (text: string) => number;
     createUndoHandle?: () => FolioDocumentOperationUndoHandle;
+    revisionStamp?: FolioRevisionStamp;
 };
 
 // @public (undocumented)
@@ -245,6 +247,131 @@ export const clearAutocompleteSuggestion: (tr: Transaction) => Transaction;
 
 // @public
 export const clearTemplateSlashMenu: (tr: Transaction) => Transaction;
+
+// @public
+export const COMPARE_UNSUPPORTED_REASONS: readonly ["secondary-story", "story-missing-in-base", "story-missing-in-target"];
+
+// @public
+export type CompareChange = {
+    kind: "insert";
+    location: CompareChangeLocation;
+    targetBlockId: string;
+    after: string;
+} | {
+    kind: "delete";
+    location: CompareChangeLocation;
+    baseBlockId: string;
+    before: string;
+} | {
+    kind: "replace";
+    location: CompareChangeLocation;
+    baseBlockId: string;
+    targetBlockId: string;
+    before: string;
+    after: string;
+} | {
+    kind: "move";
+    location: CompareChangeLocation;
+    baseBlockId: string;
+    targetBlockId: string;
+    text: string;
+} | {
+    kind: "format";
+    location: CompareChangeLocation;
+    baseBlockId: string;
+    targetBlockId: string;
+    text: string;
+    ranges: readonly CompareFormatRange[];
+} | {
+    kind: "table-row-insert";
+    location: CompareChangeLocation;
+    tableIndex: number;
+    rowIndex: number;
+    cells: readonly string[];
+    targetBlockIds: readonly string[];
+} | {
+    kind: "table-row-delete";
+    location: CompareChangeLocation;
+    tableIndex: number;
+    rowIndex: number;
+    cells: readonly string[];
+    baseBlockIds: readonly string[];
+};
+
+// @public
+export type CompareChangeLocation = {
+    story: FolioDocumentStoryHandle;
+    cell?: FolioAIBlockTableLocation;
+};
+
+// @public
+export const compareDocx: (base: ArrayBuffer, target: ArrayBuffer, options: CompareDocxOptions) => Promise<Result<CompareResult, CompareDocxError>>;
+
+// @public
+export class CompareDocxApplyError extends CompareDocxApplyError_base<{
+    message: string;
+    skipped: readonly FolioAIEditSkippedOperation[];
+}> {}
+
+// @public (undocumented)
+export type CompareDocxError = CompareDocxApplyError | CompareDocxOperationLimitError | CompareDocxParseError | CompareDocxRoundTripError | CompareDocxSerializeError | InvalidCompareDocxOptionsError;
+
+// @public
+export class CompareDocxOperationLimitError extends CompareDocxOperationLimitError_base<{
+    message: string;
+    limit: number;
+}> {}
+
+// @public
+export type CompareDocxOptions = {
+    author: string;
+    timestamp: string;
+};
+
+// @public (undocumented)
+export class CompareDocxParseError extends CompareDocxParseError_base<{
+    message: string;
+    side: "base" | "target";
+    cause: unknown;
+}> {}
+
+// @public
+export class CompareDocxRoundTripError extends CompareDocxRoundTripError_base<{
+    message: string;
+    story: FolioDocumentStoryHandle;
+    acceptedText: readonly string[];
+    targetText: readonly string[];
+}> {}
+
+// @public (undocumented)
+export class CompareDocxSerializeError extends CompareDocxSerializeError_base<{
+    message: string;
+    cause: unknown;
+}> {}
+
+// @public
+export type CompareFormatRange = {
+    startOffset: number;
+    endOffset: number;
+    formatting: FolioAIInlineFormatting;
+};
+
+// @public (undocumented)
+export type CompareResult = {
+    buffer: ArrayBuffer;
+    changes: readonly CompareChange[];
+    unsupported: readonly CompareUnsupportedPart[];
+};
+
+// @public
+export type CompareUnsupportedPart = {
+    reason: CompareUnsupportedReason;
+    baseStory: FolioDocumentStoryHandle | null;
+    targetStory: FolioDocumentStoryHandle | null;
+};
+
+// @public (undocumented)
+export type CompareUnsupportedReason = (typeof COMPARE_UNSUPPORTED_REASONS)[number];
 
 // @public
 export const consumeTemplateSlashQuery: (state: EditorState) => {
@@ -479,6 +606,7 @@ export type FolioAIBlock = {
     displayLabel?: string;
     styleId?: string;
     previewRuns?: FolioAIBlockPreviewRun[];
+    table?: FolioAIBlockTableLocation;
 };
 
 // @public (undocumented)
@@ -505,6 +633,14 @@ export type FolioAIBlockPreviewRun = {
     fontFamily?: string;
     fontSizePt?: number;
     color?: string;
+};
+
+// @public
+export type FolioAIBlockTableLocation = {
+    tableIndex: number;
+    rowIndex: number;
+    cellIndex: number;
+    paragraphIndex: number;
 };
 
 // @public (undocumented)
@@ -855,6 +991,12 @@ export type FolioDocxCompatibilityHost = "browser" | "server" | "unknown";
 export type FolioDocxCompatibilityProfile = import__stll_docx_core_model.DocxConformanceClass;
 
 // @public
+export type FolioRevisionStamp = {
+    date: string;
+    idSeed: number;
+};
+
+// @public
 export function fromMarkdown(markdown: string): import__stll_docx_core_model.Document;
 
 // @public
@@ -926,6 +1068,13 @@ export const inspectDocxCompatibility: (doc: import__stll_docx_core_model.Docume
 export type InspectDocxCompatibilityOptions = Partial<DocxCompatibilityContext>;
 
 // @public (undocumented)
+export class InvalidCompareDocxOptionsError extends InvalidCompareDocxOptionsError_base<{
+    message: string;
+    option: "timestamp";
+    receivedValue: unknown;
+}> {}
+
+// @public (undocumented)
 export class InvalidFolioDocumentOperationBatchError extends InvalidFolioDocumentOperationBatchError_base<{
     message: string;
     path: string;
@@ -963,6 +1112,9 @@ export type MarkdownResult = {
     images: Map<string, ImageRef>;
     warnings: string[];
 };
+
+// @public
+export const MAX_COMPARE_OPERATIONS = 10000;
 
 // @public
 export function mergeDocumentContent(target: import__stll_docx_core_model.Document, source: import__stll_docx_core_model.Document): import__stll_docx_core_model.Document;

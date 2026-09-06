@@ -22,11 +22,9 @@ import { createFolioAITextRangeHandle } from "./ai-edits/snapshot";
 import type {
   FolioAIBlock,
   FolioAIEditAppliedOperation,
-  FolioAIInlineFormatting,
   FolioAIEditOperation,
   FolioAIEditSkippedOperation,
   FolioAIEditSnapshot,
-  FolioAIBlockPreviewRun,
 } from "./ai-edits/types";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "./document-operations";
 import { pairFolioDocumentStories } from "./document-stories";
@@ -36,6 +34,7 @@ import {
   type FolioDocumentPrivacyOptions,
   type FolioDocumentPrivacyReport,
 } from "./docx/metadataPrivacy";
+import { inlineFormattingSegments } from "./compare/formatting";
 import {
   GenerateRedlineDocxOperationLimitError,
   MAX_GENERATED_REDLINE_OPERATIONS,
@@ -108,117 +107,6 @@ type BuildRedlineOperationsOptions = {
   nextOperationId: () => string;
 };
 
-type RedlineFormattingSegment = {
-  startOffset: number;
-  endOffset: number;
-  formatting: FolioAIInlineFormatting;
-};
-
-const changedSupportedFormatting = (
-  base: FolioAIBlockPreviewRun,
-  revised: FolioAIBlockPreviewRun,
-): FolioAIInlineFormatting => ({
-  ...(Boolean(base.bold) !== Boolean(revised.bold) && { bold: Boolean(revised.bold) }),
-  ...(Boolean(base.italic) !== Boolean(revised.italic) && { italic: Boolean(revised.italic) }),
-  ...(Boolean(base.underline) !== Boolean(revised.underline) && {
-    underline: Boolean(revised.underline),
-  }),
-});
-
-const sameInlineFormatting = (
-  left: FolioAIInlineFormatting,
-  right: FolioAIInlineFormatting,
-): boolean =>
-  left.bold === right.bold && left.italic === right.italic && left.underline === right.underline;
-
-const hasInlineFormatting = (formatting: FolioAIInlineFormatting): boolean =>
-  formatting.bold !== undefined ||
-  formatting.italic !== undefined ||
-  formatting.underline !== undefined;
-
-const previewRunsForBlock = (block: FolioAIBlock): readonly FolioAIBlockPreviewRun[] | null => {
-  const runs = block.previewRuns ?? [{ text: block.text }];
-  return runs.map(({ text }) => text).join("") === block.text ? runs : null;
-};
-
-const formattingSegments = (
-  baseBlock: FolioAIBlock,
-  revisedBlock: FolioAIBlock,
-): RedlineFormattingSegment[] => {
-  const baseRuns = previewRunsForBlock(baseBlock);
-  const revisedRuns = previewRunsForBlock(revisedBlock);
-  if (!baseRuns || !revisedRuns || baseBlock.text.length === 0) {
-    return [];
-  }
-
-  const segments: RedlineFormattingSegment[] = [];
-  let baseRunIndex = 0;
-  let revisedRunIndex = 0;
-  let baseRunOffset = 0;
-  let revisedRunOffset = 0;
-  let textOffset = 0;
-
-  while (baseRunIndex < baseRuns.length && revisedRunIndex < revisedRuns.length) {
-    const baseRun = baseRuns[baseRunIndex];
-    const revisedRun = revisedRuns[revisedRunIndex];
-    if (!baseRun || !revisedRun) {
-      break;
-    }
-    const length = Math.min(
-      baseRun.text.length - baseRunOffset,
-      revisedRun.text.length - revisedRunOffset,
-    );
-    if (length <= 0) {
-      if (baseRunOffset >= baseRun.text.length) {
-        baseRunIndex++;
-        baseRunOffset = 0;
-      }
-      if (revisedRunOffset >= revisedRun.text.length) {
-        revisedRunIndex++;
-        revisedRunOffset = 0;
-      }
-      continue;
-    }
-
-    const formatting = changedSupportedFormatting(baseRun, revisedRun);
-    if (hasInlineFormatting(formatting)) {
-      const previous = segments.at(-1);
-      if (
-        previous &&
-        previous.endOffset === textOffset &&
-        sameInlineFormatting(previous.formatting, formatting)
-      ) {
-        previous.endOffset += length;
-      } else {
-        if (segments.length >= MAX_GENERATED_REDLINE_OPERATIONS) {
-          throw new GenerateRedlineDocxOperationLimitError({
-            message: "The document comparison exceeds the generated operation limit.",
-          });
-        }
-        segments.push({
-          startOffset: textOffset,
-          endOffset: textOffset + length,
-          formatting,
-        });
-      }
-    }
-
-    textOffset += length;
-    baseRunOffset += length;
-    revisedRunOffset += length;
-    if (baseRunOffset >= baseRun.text.length) {
-      baseRunIndex++;
-      baseRunOffset = 0;
-    }
-    if (revisedRunOffset >= revisedRun.text.length) {
-      revisedRunIndex++;
-      revisedRunOffset = 0;
-    }
-  }
-
-  return segments;
-};
-
 type BuildFormattingRedlineOperationsOptions = {
   baseBlock: FolioAIBlock;
   revisedBlock: FolioAIBlock;
@@ -230,11 +118,18 @@ const buildFormattingRedlineOperations = ({
   revisedBlock,
   nextOperationId,
 }: BuildFormattingRedlineOperationsOptions): FolioAIEditOperation[] => {
-  const operations: FolioAIEditOperation[] = [];
-  for (const { startOffset, endOffset, formatting } of formattingSegments(
+  const segments = inlineFormattingSegments({
     baseBlock,
-    revisedBlock,
-  )) {
+    targetBlock: revisedBlock,
+    maxSegments: MAX_GENERATED_REDLINE_OPERATIONS,
+  });
+  if (segments === null) {
+    throw new GenerateRedlineDocxOperationLimitError({
+      message: "The document comparison exceeds the generated operation limit.",
+    });
+  }
+  const operations: FolioAIEditOperation[] = [];
+  for (const { startOffset, endOffset, formatting } of segments) {
     const range = createFolioAITextRangeHandle({
       blockId: baseBlock.id,
       text: baseBlock.text,

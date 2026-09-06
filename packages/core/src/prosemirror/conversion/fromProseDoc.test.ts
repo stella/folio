@@ -330,7 +330,9 @@ describe("fromProseDoc", () => {
       ]),
     ]);
 
-    expect(() => fromProseDoc(pmDoc)).toThrow("Bookmark id 99 has no matching end boundary.");
+    expect(() => fromProseDoc(pmDoc)).toThrow(
+      'Bookmark "unpaired" (id 99) has no matching end boundary',
+    );
   });
 
   test("round-trips table row structural revision markers through the editor model", () => {
