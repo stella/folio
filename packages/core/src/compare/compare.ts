@@ -358,7 +358,7 @@ export const planComparison = ({
     const plan = planStoryCompare({
       story: pair.baseStory,
       baseSnapshot: pair.baseSnapshot,
-      targetBlocks: pair.targetSnapshot.blocks,
+      targetSnapshot: pair.targetSnapshot,
       maxOperations: MAX_COMPARE_OPERATIONS,
     });
     if (plan === null) {

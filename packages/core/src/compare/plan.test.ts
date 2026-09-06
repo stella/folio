@@ -18,13 +18,13 @@ const MAIN_STORY = { type: "main" } as const;
 const block = (id: string, text: string): FolioAIBlock => ({ id, kind: "paragraph", text });
 
 /** One single-cell row of a table, as the snapshot would project it. */
-const cell = (id: string, text: string, rowIndex: number): FolioAIBlock => ({
+const cell = (id: string, text: string, rowIndex: number, tableIndex = 0): FolioAIBlock => ({
   id,
   kind: "paragraph",
   text,
   table: {
-    outerTableIndex: 0,
-    tableIndex: 0,
+    outerTableIndex: tableIndex,
+    tableIndex,
     rowIndex,
     cellIndex: 0,
     gridColumnIndex: 0,
@@ -66,7 +66,7 @@ const snapshotOf = (blocks: readonly FolioAIBlock[]): FolioAIEditSnapshot => ({
       {
         id: entry.id,
         from: index * 2,
-        to: index * 2 + 1,
+        to: index * 2 + 2,
         text: entry.text,
         normalizedText: entry.text,
         textHash: entry.text,
@@ -80,7 +80,7 @@ const planOf = (base: readonly FolioAIBlock[], target: readonly FolioAIBlock[]) 
   const plan = planStoryCompare({
     story: MAIN_STORY,
     baseSnapshot: snapshotOf(base),
-    targetBlocks: target,
+    targetSnapshot: snapshotOf(target),
     maxOperations: 1000,
   });
   if (plan === null) {
@@ -126,6 +126,131 @@ describe("table row pairing", () => {
       cell("b", "Delivery is due.", 1),
     ];
     expect(planOf(rows, rows).changes).toEqual([]);
+  });
+});
+
+describe("document-terminal paragraph carrier", () => {
+  test("pairs required blank carriers across preceding table deletion", () => {
+    const base = [
+      cell("kept", "Kept row", 0),
+      block("between", ""),
+      cell("removed", "Removed row", 0, 1),
+      block("base-carrier", ""),
+    ];
+    const target = [cell("kept-target", "Kept row", 0), block("target-carrier", "")];
+
+    const { changes, operations } = planOf(base, target);
+
+    expect(operations).not.toContainEqual(
+      expect.objectContaining({ type: "deleteBlock", blockId: "base-carrier" }),
+    );
+    expect(changes.map(({ kind }) => kind)).toEqual(["delete", "table-delete"]);
+    expect(operations).toEqual([
+      { id: "compare-1", type: "deleteBlock", blockId: "between" },
+      { id: "compare-2", type: "deleteTable", blockId: "removed" },
+    ]);
+  });
+
+  test("still compares paragraph properties on the reserved carrier", () => {
+    const baseCarrier = block("base-carrier", "");
+    const targetCarrier = { ...block("target-carrier", ""), styleId: "CustomStyle" };
+
+    const { changes, operations } = planOf([baseCarrier], [targetCarrier]);
+
+    expect(changes.map(({ kind }) => kind)).toEqual(["paragraph-format"]);
+    expect(operations).toEqual([
+      {
+        id: "compare-1",
+        type: "setBlockParagraphProperties",
+        blockId: "base-carrier",
+        properties: { styleId: "CustomStyle" },
+      },
+    ]);
+  });
+
+  test("reserves empty heading and list carriers while comparing their properties", () => {
+    const cases = [
+      {
+        base: { ...block("base-heading", ""), kind: "heading" as const, styleId: "Heading1" },
+        target: { ...block("target-heading", ""), kind: "heading" as const, styleId: "Heading2" },
+        properties: { styleId: "Heading2" },
+      },
+      {
+        base: { ...block("base-list", ""), kind: "listItem" as const, listLevel: 0 },
+        target: { ...block("target-list", ""), kind: "listItem" as const, listLevel: 1 },
+        properties: { listLevel: 1 },
+      },
+    ];
+
+    for (const { base, target, properties } of cases) {
+      const { changes, operations } = planOf([base], [target]);
+      expect(changes.map(({ kind }) => kind)).toEqual(["paragraph-format"]);
+      expect(operations).toEqual([
+        {
+          id: "compare-1",
+          type: "setBlockParagraphProperties",
+          blockId: base.id,
+          properties,
+        },
+      ]);
+    }
+  });
+
+  test("does not reserve a textless paragraph that contains inline content", () => {
+    const base = [
+      cell("kept", "Kept row", 0),
+      block("between", ""),
+      cell("removed", "Removed row", 0, 1),
+      block("base-carrier", ""),
+    ];
+    const target = [cell("kept-target", "Kept row", 0), block("target-content", "")];
+    const targetSnapshot = snapshotOf(target);
+    const targetAnchor = targetSnapshot.anchors["target-content"];
+    if (!targetAnchor) {
+      throw new Error("The target fixture is missing its anchor.");
+    }
+    targetAnchor.to += 1;
+
+    const plan = planStoryCompare({
+      story: MAIN_STORY,
+      baseSnapshot: snapshotOf(base),
+      targetSnapshot,
+      maxOperations: 1000,
+    });
+    if (plan === null) {
+      throw new Error("The plan exceeded its operation budget.");
+    }
+
+    expect(plan.operations).toContainEqual({
+      id: "compare-2",
+      type: "deleteBlock",
+      blockId: "base-carrier",
+    });
+  });
+
+  test("does not apply the body-only carrier rule to headers", () => {
+    const base = [
+      cell("kept", "Kept row", 0),
+      block("between", ""),
+      cell("removed", "Removed row", 0, 1),
+      block("base-carrier", ""),
+    ];
+    const target = [cell("kept-target", "Kept row", 0), block("target-carrier", "")];
+    const plan = planStoryCompare({
+      story: { type: "header", relationshipId: "rId1" },
+      baseSnapshot: snapshotOf(base),
+      targetSnapshot: snapshotOf(target),
+      maxOperations: 1000,
+    });
+    if (plan === null) {
+      throw new Error("The plan exceeded its operation budget.");
+    }
+
+    expect(plan.operations).toContainEqual({
+      id: "compare-2",
+      type: "deleteBlock",
+      blockId: "base-carrier",
+    });
   });
 });
 
