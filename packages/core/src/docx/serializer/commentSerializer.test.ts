@@ -27,6 +27,21 @@ function makeComment(id: number, parentId?: number): Comment {
 }
 
 describe("serializeComments", () => {
+  test.each([{ comments: [] }, { comments: [makeComment(1)] }])(
+    "binds every ignorable namespace prefix",
+    ({ comments }) => {
+      const xml = serializeComments(comments);
+      const prefixes = xml
+        .match(/mc:Ignorable="([^"]+)"/u)
+        ?.at(1)
+        ?.split(/\s+/u);
+      expect(prefixes?.length).toBeGreaterThan(0);
+      for (const prefix of prefixes ?? []) {
+        expect(xml).toContain(`xmlns:${prefix}="`);
+      }
+    },
+  );
+
   test("emits a valid empty <w:comments/> document when the array is empty", () => {
     // Previously returned the empty string, which is not valid OOXML.
     // Save paths now overwrite the original `word/comments.xml` part

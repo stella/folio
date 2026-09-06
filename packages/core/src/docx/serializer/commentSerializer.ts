@@ -70,6 +70,16 @@ function serializeComment(comment: Comment): string {
   return xml;
 }
 
+const COMMENT_EXTENSION_NAMESPACES = {
+  w14: "http://schemas.microsoft.com/office/word/2010/wordml",
+  wp14: "http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing",
+} as const;
+
+// Every ignorable prefix needs a binding even when no comment uses its elements.
+const COMMENT_EXTENSION_DECLARATIONS = Object.entries(COMMENT_EXTENSION_NAMESPACES)
+  .map(([prefix, namespace]) => `xmlns:${prefix}="${namespace}"`)
+  .join(" ");
+
 const COMMENTS_HEADER =
   '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
   '<w:comments xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas" ' +
@@ -81,12 +91,12 @@ const COMMENTS_HEADER =
   'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" ' +
   'xmlns:w10="urn:schemas-microsoft-com:office:word" ' +
   'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ' +
-  'xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" ' +
+  `${COMMENT_EXTENSION_DECLARATIONS} ` +
   'xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup" ' +
   'xmlns:wpi="http://schemas.microsoft.com/office/word/2010/wordprocessingInk" ' +
   'xmlns:wne="http://schemas.microsoft.com/office/word/2006/wordml" ' +
   'xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" ' +
-  'mc:Ignorable="w14 wp14">';
+  `mc:Ignorable="${Object.keys(COMMENT_EXTENSION_NAMESPACES).join(" ")}">`;
 
 /**
  * Serialize comments array to comments.xml content. Returns a valid empty
