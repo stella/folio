@@ -1,4 +1,4 @@
-import type { Node as PMNode } from "prosemirror-model";
+import type { Mark, Node as PMNode } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 import {
   columnIsHeader,
@@ -147,7 +147,89 @@ export const applyTableRowInsertion = ({
     : null;
   const row = insertion.rowType.create(rowAttrs, insertion.cells);
   tr.insert(insertion.rowPosition, populateTableRow(row, cellTexts));
+  if (revision) {
+    markTableRowContent({ tr, rowPosition: insertion.rowPosition, kind: "insertion", revision });
+  }
   return applied(tr, revision);
+};
+
+type MarkTableRowContentOptions = {
+  tr: Transaction;
+  rowPosition: number;
+  kind: "insertion" | "deletion";
+  revision: TableStructureRevision;
+};
+
+/**
+ * Mark the runs inside a row whose structural revision was just written.
+ *
+ * Word records a tracked row insertion or deletion twice: on the row
+ * (`w:trPr/w:ins` | `w:trPr/w:del`) AND around every run in its cells
+ * (`w:ins` | `w:del`, the latter with `w:delText`). A consumer that reads only
+ * run-level revisions — which is most of them — keeps a deleted row's text on
+ * accept and an inserted row's text on reject when the row marker stands
+ * alone, so the two must always be written together.
+ *
+ * Two kinds of run stay unmarked. A run that already carries a revision keeps
+ * it, because OOXML nests `w:ins`/`w:del` but the editable model holds one
+ * wrapper per run and overwriting would drop the earlier revision. A cell that
+ * spans into the row below survives the deletion — `removeRow` moves it down
+ * and shortens its span — so marking its text would delete content the
+ * accepted document must still hold.
+ */
+const markTableRowContent = ({
+  tr,
+  rowPosition,
+  kind,
+  revision,
+}: MarkTableRowContentOptions): void => {
+  const row = tr.doc.nodeAt(rowPosition);
+  const markType = tr.doc.type.schema.marks[kind];
+  if (!row || row.type.spec["tableRole"] !== "row" || !markType) {
+    return;
+  }
+  const mark = markType.create({
+    revisionId: revision.revisionId,
+    author: revision.author,
+    date: revision.date,
+    ...(revision.initials != null && { initials: revision.initials }),
+    ...(revision.provenance != null && { provenance: revision.provenance }),
+    ...(revision.suggestionId != null && { suggestionId: revision.suggestionId }),
+  });
+  const contentFrom = rowPosition + 1;
+  const markable: { from: number; to: number }[] = [];
+  let wholeRowMarkable = true;
+  row.descendants((node, offset) => {
+    if (isRowSpanningCell(node)) {
+      wholeRowMarkable = false;
+      return false;
+    }
+    if (!node.isInline) {
+      return true;
+    }
+    if (node.marks.some(isTrackedChangeMark)) {
+      wholeRowMarkable = false;
+      return false;
+    }
+    const from = contentFrom + offset;
+    markable.push({ from, to: from + node.nodeSize });
+    return false;
+  });
+  if (wholeRowMarkable) {
+    tr.addMark(contentFrom, rowPosition + row.nodeSize - 1, mark);
+    return;
+  }
+  for (const range of markable) {
+    tr.addMark(range.from, range.to, mark);
+  }
+};
+
+const isTrackedChangeMark = (mark: Mark): boolean =>
+  mark.type.name === "insertion" || mark.type.name === "deletion";
+
+const isRowSpanningCell = (node: PMNode): boolean => {
+  const role = node.type.spec["tableRole"];
+  return (role === "cell" || role === "header_cell") && Number(node.attrs["rowspan"]) > 1;
 };
 
 type ApplyTableColumnInsertionOptions = {
@@ -287,6 +369,7 @@ export const applyTableRowDeletion = ({
       return { type: "unsupported" };
     }
     tr.setNodeAttribute(rowPosition, "trDel", revision);
+    markTableRowContent({ tr, rowPosition, kind: "deletion", revision });
     markStructuralChange(tr);
     return applied(tr, revision);
   }

@@ -14,7 +14,7 @@
 import type { EditorState } from "prosemirror-state";
 
 import { getTableCellMergeChange } from "../tableCellMergeRevision";
-import type { Mark } from "prosemirror-model";
+import type { Mark, MarkType } from "prosemirror-model";
 import { expectRunPropertyChangeMarkAttrs } from "../attrs";
 
 /**
@@ -131,6 +131,42 @@ const EMPTY_RESULT: TrackedChangesResult = {
   commentToRevision: new Map(),
 };
 
+/** An enclosing table row whose structural revision also marked its runs. */
+type RowRevisionScope = {
+  /** Document position one past the row, where the scope ends. */
+  end: number;
+  /** The run mark type the row's revision wrote (`insertion` for `w:trPr/w:ins`). */
+  markType: MarkType | undefined;
+  /** The row's own card, which absorbs the run marks' revision ids. */
+  entry: TrackedChangeEntry;
+};
+
+/**
+ * Fold a run's revision mark into the enclosing row's card when both halves
+ * are the same change. Folio writes both under one revision id; Word mints a
+ * fresh `w:id` per element, so an author + timestamp match counts too. Returns
+ * false for a third party's edit inside the row, which keeps its own card.
+ */
+const foldIntoRowRevision = (scope: RowRevisionScope | undefined, mark: Mark): boolean => {
+  if (!scope || mark.type !== scope.markType) {
+    return false;
+  }
+  const revisionId = mark.attrs["revisionId"] as number;
+  const sameRevision =
+    revisionId === scope.entry.revisionId ||
+    ((mark.attrs["author"] as string) === scope.entry.author &&
+      (mark.attrs["date"] as string | undefined) === scope.entry.date);
+  if (!sameRevision) {
+    return false;
+  }
+  if (revisionId !== scope.entry.revisionId) {
+    const ids = new Set(scope.entry.coalescedRevisionIds ?? []);
+    ids.add(revisionId);
+    scope.entry.coalescedRevisionIds = [...ids];
+  }
+  return true;
+};
+
 /**
  * Walk the PM doc and extract every tracked change as a flat list of
  * `TrackedChangeEntry` plus a comment→revision overlap map. Adjacent
@@ -157,7 +193,16 @@ export function extractTrackedChanges(state: EditorState | null): TrackedChanges
   const raw: TrackedChangeEntry[] = [];
   const commentToRevision = new Map<number, number>();
   const commentMetadata = new Map<number, { revisions: Set<number>; hasCleanText: boolean }>();
+  // A tracked row insertion / deletion is marked on the row AND around every
+  // run in its cells, the way Word writes it. Both halves are one change, so
+  // the run marks fold into the row's card instead of listing a second time.
+  // The stack tracks the innermost enclosing marked row: a table nested in a
+  // marked row can carry a marked row of its own.
+  const rowRevisionScopes: RowRevisionScope[] = [];
   doc.descendants((node, pos) => {
+    while (pos >= (rowRevisionScopes.at(-1)?.end ?? Number.POSITIVE_INFINITY)) {
+      rowRevisionScopes.pop();
+    }
     // Structural revisions on the paragraph mark itself
     // (`<w:pPr><w:rPr><w:ins/>` / `<w:del/>`). Surface as their own entry
     // types so the sidebar can label and dispatch them correctly.
@@ -229,7 +274,7 @@ export function extractTrackedChanges(state: EditorState | null): TrackedChanges
         date: string | null;
       } | null;
       if (trIns) {
-        raw.push({
+        const entry: TrackedChangeEntry = {
           type: "rowInserted",
           text: node.textContent || "",
           author: trIns.author || "",
@@ -237,10 +282,12 @@ export function extractTrackedChanges(state: EditorState | null): TrackedChanges
           from: pos,
           to: pos + node.nodeSize,
           revisionId: trIns.revisionId,
-        });
+        };
+        raw.push(entry);
+        rowRevisionScopes.push({ end: pos + node.nodeSize, markType: insertionType, entry });
       }
       if (trDel) {
-        raw.push({
+        const entry: TrackedChangeEntry = {
           type: "rowDeleted",
           text: node.textContent || "",
           author: trDel.author || "",
@@ -248,7 +295,9 @@ export function extractTrackedChanges(state: EditorState | null): TrackedChanges
           from: pos,
           to: pos + node.nodeSize,
           revisionId: trDel.revisionId,
-        });
+        };
+        raw.push(entry);
+        rowRevisionScopes.push({ end: pos + node.nodeSize, markType: deletionType, entry });
       }
       const trPrChange = node.attrs["trPrChange"] as Array<{
         info: { id: number; author: string; date?: string };
@@ -407,13 +456,15 @@ export function extractTrackedChanges(state: EditorState | null): TrackedChanges
           rowRevIds.push(v.revisionId);
         });
         if (allShare) {
-          // Exclude text inside deletion marks: the empty-vs-content switch
-          // downstream compares `text.trim().length` to decide whether to
-          // surface "Inserted table" or defer to an inline card. Deletion-
-          // marked text is still rendered in the doc but represents removed
-          // content, so it shouldn't count as "the table has content".
+          // For an INSERTED table, exclude text inside deletion marks: the
+          // empty-vs-content switch downstream compares `text.trim().length`
+          // to decide whether to surface "Inserted table" or defer to an
+          // inline card, and deletion-marked text is still rendered in the doc
+          // but represents removed content. A DELETED table carries deletion
+          // marks on every run by construction (the row revision marks its
+          // cells too), so the same filter would empty its card.
           let visibleText = "";
-          if (deletionType) {
+          if (deletionType && sharedAttr === "trIns") {
             node.descendants((child) => {
               if (child.isText && !child.marks.some((m) => m.type === deletionType)) {
                 visibleText += child.text || "";
@@ -465,6 +516,10 @@ export function extractTrackedChanges(state: EditorState | null): TrackedChanges
         continue;
       }
       if (mark.type === insertionType || mark.type === deletionType) {
+        tcMark = mark;
+        if (foldIntoRowRevision(rowRevisionScopes.at(-1), mark)) {
+          continue;
+        }
         raw.push({
           type: mark.type === insertionType ? "insertion" : "deletion",
           text: inlineText,
@@ -474,7 +529,6 @@ export function extractTrackedChanges(state: EditorState | null): TrackedChanges
           to: pos + node.nodeSize,
           revisionId: mark.attrs["revisionId"] as number,
         });
-        tcMark = mark;
       }
     }
     if (commentType) {

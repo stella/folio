@@ -118,10 +118,37 @@ const firstBlockIdWithin = ({
   return blockId;
 };
 
+/** An enclosing table row whose structural revision also marked its runs. */
+type RowRevisionScope = {
+  /** Document position one past the row, where the scope ends. */
+  end: number;
+  /** The run revision the row's marker wrote (`insertion` for `w:trPr/w:ins`). */
+  kind: "insertion" | "deletion";
+  /** The row's own change, which the folded run marks belong to. */
+  change: FolioReviewChange;
+};
+
+/**
+ * Whether a run's revision inside a marked row is that row's own. Folio writes
+ * both halves under one revision id; Word mints a fresh `w:id` per element, so
+ * an author + timestamp match counts too. A third party's edit inside the row
+ * matches neither and keeps its own entry.
+ */
+const belongsToRowRevision = (
+  scope: RowRevisionScope,
+  revision: { id: number; author: string; date: string | null },
+): boolean =>
+  revision.id === scope.change.id ||
+  (revision.author === scope.change.author && revision.date === scope.change.date);
+
 /**
  * The tracked changes present in the body, read from inline marks and
  * structural node attributes. Runs of one inline revision within a block fold
  * into a single entry.
+ *
+ * A tracked row insertion or deletion marks the row AND every run in its
+ * cells, the way Word writes it. Both halves are one change, so the run marks
+ * fold into the row's entry rather than reporting a second time.
  */
 export const getTrackedChangesFromDoc = (doc: PMNode): FolioReviewChange[] => {
   const insertionType = doc.type.schema.marks["insertion"];
@@ -129,9 +156,15 @@ export const getTrackedChangesFromDoc = (doc: PMNode): FolioReviewChange[] => {
   const blockStarts = blockStartIdsFromDoc(doc);
   const grouped = new Map<string, FolioReviewChange>();
   const structuralChangeCellPositions = new Map<string, Set<number>>();
+  // Innermost enclosing marked row first: a table nested in a marked row can
+  // carry a marked row of its own.
+  const rowRevisionScopes: RowRevisionScope[] = [];
   let currentBlockId: string | null = null;
 
   doc.descendants((node, pos) => {
+    while (pos >= (rowRevisionScopes.at(-1)?.end ?? Number.POSITIVE_INFINITY)) {
+      rowRevisionScopes.pop();
+    }
     const nodeRevisionCarriers = getFolioNodeRevisionCarriers(node, pos);
     if (nodeRevisionCarriers.length > 0) {
       const blockId = node.isTextblock
@@ -168,13 +201,19 @@ export const getTrackedChangesFromDoc = (doc: PMNode): FolioReviewChange[] => {
         const revisionId = marker.revisionId;
         const author = "author" in marker ? marker.author : undefined;
         const date = "date" in marker ? marker.date : undefined;
-        grouped.set(`row:${kind}:${revisionId}:${String(pos)}`, {
+        const change: FolioReviewChange = {
           id: revisionId,
           type: kind,
           author: typeof author === "string" ? author : "",
           date: typeof date === "string" ? date : null,
           text: node.textContent,
           blockId: firstBlockIdWithin({ node, nodePos: pos, blockStarts }),
+        };
+        grouped.set(`row:${kind}:${revisionId}:${String(pos)}`, change);
+        rowRevisionScopes.push({
+          end: pos + node.nodeSize,
+          kind: kind === "rowInserted" ? "insertion" : "deletion",
+          change,
         });
       }
     }
@@ -290,22 +329,24 @@ export const getTrackedChangesFromDoc = (doc: PMNode): FolioReviewChange[] => {
         continue;
       }
       const revisionId = mark.attrs["revisionId"];
+      const author = mark.attrs["author"];
+      const date = mark.attrs["date"];
+      const revision = {
+        id: revisionId,
+        author: typeof author === "string" ? author : "",
+        date: typeof date === "string" ? date : null,
+      };
+      const rowScope = rowRevisionScopes.at(-1);
+      if (rowScope?.kind === kind && belongsToRowRevision(rowScope, revision)) {
+        continue;
+      }
       const key = `${currentBlockId ?? ""}:${kind}:${revisionId}`;
       const existing = grouped.get(key);
       if (existing) {
         existing.text += text;
         continue;
       }
-      const author = mark.attrs["author"];
-      const date = mark.attrs["date"];
-      grouped.set(key, {
-        id: revisionId,
-        type: kind,
-        author: typeof author === "string" ? author : "",
-        date: typeof date === "string" ? date : null,
-        text,
-        blockId: currentBlockId,
-      });
+      grouped.set(key, { ...revision, type: kind, text, blockId: currentBlockId });
     }
     return undefined;
   });
