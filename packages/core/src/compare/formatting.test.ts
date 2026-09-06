@@ -14,8 +14,10 @@ const block = (previewRuns: FolioAIBlock["previewRuns"]): FolioAIBlock => ({
 describe("inlineFormattingSegments", () => {
   test("treats equivalent formatting across different run splits as equal", () => {
     const split = block([
+      { text: "", bold: true },
       { text: "Con", strike: true },
       { text: "tract", strike: true },
+      { text: "", italic: true },
     ]);
     const joined = block([{ text: "Contract", strike: true }]);
 

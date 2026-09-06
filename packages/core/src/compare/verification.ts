@@ -89,6 +89,9 @@ export const projectSupportedInlineFormatting = ({
 }: FolioAIBlock): string => {
   const projected: { length: number; style: string }[] = [];
   for (const run of previewRuns ?? [{ text }]) {
+    if (run.text.length === 0) {
+      continue;
+    }
     const style = supportedInlineStyle(run);
     const previous = projected.at(-1);
     if (previous?.style === style) {

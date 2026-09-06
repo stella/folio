@@ -154,12 +154,18 @@ const formattingRoundTripFailure = ({
   expectedBlocks,
   expectedBlockId,
 }: FormattingRoundTripFailureOptions): CompareVerificationFailure | null => {
+  const expectedIndexById = new Map(expectedBlocks.map(({ id }, index) => [id, index]));
+  const checkedExpectedIds = new Set<string>();
   for (const change of changes) {
     if (change.kind !== "format") {
       continue;
     }
     const expectedId = expectedBlockId(change);
-    const expectedIndex = expectedBlocks.findIndex(({ id }) => id === expectedId);
+    if (checkedExpectedIds.has(expectedId)) {
+      continue;
+    }
+    checkedExpectedIds.add(expectedId);
+    const expectedIndex = expectedIndexById.get(expectedId) ?? -1;
     const expected = expectedBlocks.at(expectedIndex);
     const actual = actualBlocks.at(expectedIndex);
     if (expectedIndex === -1 || !actual || !expected) {
