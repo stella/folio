@@ -223,8 +223,13 @@ const rowBlockCount = (blocks: readonly FolioAIBlock[], index: number): number =
 };
 
 const formattingArb = fc
-  .record({ bold: fc.boolean(), italic: fc.boolean(), underline: fc.boolean() })
-  .filter(({ bold, italic, underline }) => bold || italic || underline);
+  .record({
+    bold: fc.boolean(),
+    italic: fc.boolean(),
+    underline: fc.boolean(),
+    strike: fc.boolean(),
+  })
+  .filter(({ bold, italic, underline, strike }) => bold || italic || underline || strike);
 
 /** Steps that only change formatting, for the formatting-only property. */
 const formatStepArb = (blocks: readonly FolioAIBlock[]): fc.Arbitrary<EditScriptStep> | null => {

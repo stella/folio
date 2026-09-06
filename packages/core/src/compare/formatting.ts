@@ -30,18 +30,25 @@ const changedSupportedFormatting = (
   ...(Boolean(base.underline) !== Boolean(target.underline) && {
     underline: Boolean(target.underline),
   }),
+  ...(Boolean(base.strike) !== Boolean(target.strike) && {
+    strike: Boolean(target.strike),
+  }),
 });
 
 const sameInlineFormatting = (
   left: FolioAIInlineFormatting,
   right: FolioAIInlineFormatting,
 ): boolean =>
-  left.bold === right.bold && left.italic === right.italic && left.underline === right.underline;
+  left.bold === right.bold &&
+  left.italic === right.italic &&
+  left.underline === right.underline &&
+  left.strike === right.strike;
 
 const hasInlineFormatting = (formatting: FolioAIInlineFormatting): boolean =>
   formatting.bold !== undefined ||
   formatting.italic !== undefined ||
-  formatting.underline !== undefined;
+  formatting.underline !== undefined ||
+  formatting.strike !== undefined;
 
 /**
  * A block's runs, or `null` when they cannot describe the block's text.
@@ -62,7 +69,7 @@ type InlineFormattingSegmentsOptions = {
 };
 
 /**
- * Segments where `targetBlock`'s bold / italic / underline differs from
+ * Segments where `targetBlock`'s bold / italic / underline / strike differs from
  * `baseBlock`'s, for two blocks that carry the same text. Returns `null` only
  * when the diff would exceed `maxSegments`.
  *

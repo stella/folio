@@ -253,7 +253,7 @@ export const clearTemplateSlashMenu: (tr: Transaction) => Transaction;
 export const COMPARE_UNSUPPORTED_REASONS: readonly ["story-missing-in-base", "story-missing-in-target", "story-not-editable"];
 
 // @public
-export const COMPARE_VERIFICATION_CAUSES: readonly ["invisible-structure", "block-count", "container", "style", "list-level", "whitespace", "text"];
+export const COMPARE_VERIFICATION_CAUSES: readonly ["invisible-structure", "block-count", "container", "style", "list-level", "inline-formatting", "whitespace", "text"];
 
 // @public
 export const COMPARE_VERIFICATION_INVARIANTS: readonly ["accept-reproduces-target", "reject-reproduces-base"];

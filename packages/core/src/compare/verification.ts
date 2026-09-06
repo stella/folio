@@ -14,6 +14,7 @@
  */
 
 import type { FolioDocumentStoryHandle } from "../ai-edits/headless";
+import type { FolioAIBlock, FolioAIBlockPreviewRun } from "../ai-edits/types";
 
 /** The two directions of the round trip, each an invariant of its own. */
 export const COMPARE_VERIFICATION_INVARIANTS = Object.freeze([
@@ -44,6 +45,7 @@ export const COMPARE_VERIFICATION_CAUSES = Object.freeze([
   "container",
   "style",
   "list-level",
+  "inline-formatting",
   "whitespace",
   "text",
 ] as const);
@@ -69,6 +71,34 @@ export type CompareVerificationFailure = {
 export type CompareVerification =
   | { status: "verified" }
   | { status: "unverified"; failures: readonly CompareVerificationFailure[] };
+
+const supportedInlineStyle = ({
+  bold,
+  italic,
+  underline,
+  strike,
+}: FolioAIBlockPreviewRun): string =>
+  `${bold === true ? "b" : ""}${italic === true ? "i" : ""}${underline === true ? "u" : ""}${
+    strike === true ? "s" : ""
+  }`;
+
+/** Effective supported formatting with equivalent adjacent runs normalized. */
+export const projectSupportedInlineFormatting = ({ text, previewRuns }: FolioAIBlock): string => {
+  const projected: { length: number; style: string }[] = [];
+  for (const run of previewRuns ?? [{ text }]) {
+    if (run.text.length === 0) {
+      continue;
+    }
+    const style = supportedInlineStyle(run);
+    const previous = projected.at(-1);
+    if (previous?.style === style) {
+      previous.length += run.text.length;
+      continue;
+    }
+    projected.push({ length: run.text.length, style });
+  }
+  return projected.map(({ length, style }) => `${String(length)}:${style}`).join(",");
+};
 
 /**
  * One block of a projection. `projectStory` writes

@@ -42,7 +42,7 @@ import {
   type FolioNumberingLevel,
   type FolioRevisionStamp,
 } from "../ai-edits/headless";
-import type { FolioAIEditSnapshot } from "../ai-edits/types";
+import type { FolioAIBlock, FolioAIEditSnapshot } from "../ai-edits/types";
 import type { WordDiffGranularity } from "../ai-edits/word-diff";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { pairFolioDocumentStories } from "../document-stories";
@@ -63,6 +63,7 @@ import {
 } from "./types";
 import {
   classifyProjectionMismatch,
+  projectSupportedInlineFormatting,
   type CompareVerification,
   type CompareVerificationFailure,
 } from "./verification";
@@ -123,12 +124,7 @@ const existingRevisionsOf = (reviewer: FolioDocxReviewer): ExistingRevisions => 
  * the table cell it sits in. The tag is what makes the self-check below see a
  * paragraph that landed beside a table instead of inside it.
  */
-const projectStory = (
-  reviewer: FolioDocxReviewer,
-  story: FolioDocumentStoryHandle,
-  view: "final" | "original" = "final",
-): string[] => {
-  const blocks = reviewer.readReviewedStory({ story, view })?.snapshot.blocks ?? [];
+const projectBlocks = (blocks: readonly FolioAIBlock[]): string[] => {
   return blocks.map(({ text, table, styleId, listLevel }) => {
     const container = table
       ? `t${String(table.tableIndex)}r${String(table.rowIndex)}c${String(table.cellIndex)}g${String(table.gridColumnIndex)}x${String(table.columnSpan)}y${String(table.rowSpan)}p${String(table.paragraphIndex)}`
@@ -138,6 +134,58 @@ const projectStory = (
     // and leaves a list item at the wrong level.
     return `${container}|${styleId ?? ""}|${listLevel ?? ""}|${text}`;
   });
+};
+
+type FormattingRoundTripFailureOptions = {
+  invariant: CompareVerificationFailure["invariant"];
+  story: FolioDocumentStoryHandle;
+  changes: readonly CompareChange[];
+  actualBlocks: readonly FolioAIBlock[];
+  expectedBlocks: readonly FolioAIBlock[];
+  expectedBlockId: (change: Extract<CompareChange, { kind: "format" }>) => string;
+};
+
+/** Verify formatting only where the plan claims a text-equal formatting change. */
+const formattingRoundTripFailure = ({
+  invariant,
+  story,
+  changes,
+  actualBlocks,
+  expectedBlocks,
+  expectedBlockId,
+}: FormattingRoundTripFailureOptions): CompareVerificationFailure | null => {
+  const expectedIndexById = new Map(expectedBlocks.map(({ id }, index) => [id, index]));
+  const checkedExpectedIds = new Set<string>();
+  for (const change of changes) {
+    if (change.kind !== "format") {
+      continue;
+    }
+    const expectedId = expectedBlockId(change);
+    if (checkedExpectedIds.has(expectedId)) {
+      continue;
+    }
+    checkedExpectedIds.add(expectedId);
+    const expectedIndex = expectedIndexById.get(expectedId) ?? -1;
+    const expected = expectedBlocks.at(expectedIndex);
+    const actual = actualBlocks.at(expectedIndex);
+    if (expectedIndex === -1 || !actual || !expected) {
+      return {
+        invariant,
+        cause: "inline-formatting",
+        story,
+        detail: "a text-equal aligned block could not be projected for formatting verification",
+      };
+    }
+    if (projectSupportedInlineFormatting(actual) !== projectSupportedInlineFormatting(expected)) {
+      return {
+        invariant,
+        cause: "inline-formatting",
+        story,
+        detail: "supported inline formatting differs in a text-equal aligned block",
+      };
+    }
+  }
+  return null;
 };
 
 const numberingKey = ({ numId, level }: FolioNumberingLevel): string =>
@@ -346,7 +394,7 @@ export type AppliedComparison = {
  * are both legitimate asks and only the caller knows which one it is making.
  */
 export const applyComparison = (
-  { reviewer, targetReviewer, revisionStamp, granularity, numberingChanges }: ParsedComparison,
+  { reviewer, revisionStamp, granularity, numberingChanges }: ParsedComparison,
   planned: readonly PlannedStoryComparison[],
 ): Result<AppliedComparison, CompareDocxApplyError> => {
   const changes: CompareChange[] = [...numberingChanges];
@@ -364,7 +412,9 @@ export const applyComparison = (
 
     // Read before the operations land: this is the document the redline is
     // written against, and rejecting every revision has to return to it.
-    const baseBefore = projectStory(reviewer, pair.baseStory);
+    const baseBeforeBlocks =
+      reviewer.readReviewedStory({ story: pair.baseStory, view: "final" })?.snapshot.blocks ?? [];
+    const baseBefore = projectBlocks(baseBeforeBlocks);
 
     const { skipped, nextRevisionId } = reviewer.applyDocumentOperationsToStory({
       story: pair.baseStory,
@@ -395,23 +445,49 @@ export const applyComparison = (
       );
     }
 
+    const acceptedStory = reviewer.readReviewedStory({ story: pair.baseStory, view: "final" });
     const acceptFailure = classifyProjectionMismatch({
       invariant: "accept-reproduces-target",
       story: pair.baseStory,
-      actual: projectStory(reviewer, pair.baseStory),
-      expected: projectStory(targetReviewer, pair.targetStory),
+      actual: projectBlocks(acceptedStory?.snapshot.blocks ?? []),
+      expected: projectBlocks(pair.targetSnapshot.blocks),
     });
     if (acceptFailure) {
       failures.push(acceptFailure);
+    } else {
+      const formattingFailure = formattingRoundTripFailure({
+        invariant: "accept-reproduces-target",
+        story: pair.baseStory,
+        changes: plan.changes,
+        actualBlocks: acceptedStory?.snapshot.blocks ?? [],
+        expectedBlocks: pair.targetSnapshot.blocks,
+        expectedBlockId: ({ targetBlockId }) => targetBlockId,
+      });
+      if (formattingFailure) {
+        failures.push(formattingFailure);
+      }
     }
+    const rejectedStory = reviewer.readReviewedStory({ story: pair.baseStory, view: "original" });
     const rejectFailure = classifyProjectionMismatch({
       invariant: "reject-reproduces-base",
       story: pair.baseStory,
-      actual: projectStory(reviewer, pair.baseStory, "original"),
+      actual: projectBlocks(rejectedStory?.snapshot.blocks ?? []),
       expected: baseBefore,
     });
     if (rejectFailure) {
       failures.push(rejectFailure);
+    } else {
+      const formattingFailure = formattingRoundTripFailure({
+        invariant: "reject-reproduces-base",
+        story: pair.baseStory,
+        changes: plan.changes,
+        actualBlocks: rejectedStory?.snapshot.blocks ?? [],
+        expectedBlocks: pair.baseSnapshot.blocks,
+        expectedBlockId: ({ baseBlockId }) => baseBlockId,
+      });
+      if (formattingFailure) {
+        failures.push(formattingFailure);
+      }
     }
   }
   return Result.ok({

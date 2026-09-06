@@ -423,6 +423,39 @@ describe("single-mutation probes", () => {
     expect(change?.kind === "format" && change.ranges.length).toBe(1);
   });
 
+  test("format_only_strike: striking a phrase round-trips as tracked formatting", async () => {
+    const blockIndex = wordyBlockIndex(PROSE_BLOCKS, 4);
+    const target = await applyEditScript(PROSE_BASE, [
+      {
+        type: "formatRange",
+        blockIndex,
+        startOffset: 0,
+        endOffset: 4,
+        formatting: { strike: true },
+      },
+    ]);
+    if (target.isErr()) {
+      throw target.error;
+    }
+
+    const result = await compareDocx(PROSE_BASE, target.value.buffer, OPTIONS);
+    if (result.isErr()) {
+      throw result.error;
+    }
+
+    expect(result.value.changes.map(({ kind }) => kind)).toEqual(["format"]);
+    expect(result.value.verification).toEqual({ status: "verified" });
+    const accepted = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+    const acceptedBlock = accepted.readReviewedStory({ view: "final" })?.snapshot.blocks[
+      blockIndex
+    ];
+    const rejectedBlock = accepted.readReviewedStory({ view: "original" })?.snapshot.blocks[
+      blockIndex
+    ];
+    expect(acceptedBlock?.previewRuns?.at(0)?.strike).toBe(true);
+    expect(rejectedBlock?.previewRuns?.at(0)?.strike).not.toBe(true);
+  });
+
   test("renumbering: an added list item does not report the items after it", async () => {
     // Inserting at the top renumbers every item below. Labels are rendered
     // from the numbering definitions rather than stored in the paragraphs, so
