@@ -171,6 +171,14 @@ describe("cleanPastedHtml — safety and robustness", () => {
     expect(cleanPastedHtml("safe<!--dangling")).toBe("safe");
   });
 
+  test("an abrupt-closing comment does not swallow the rest of the paste", () => {
+    // `<!-->` and `<!--->` close at that `>` (HTML §13.2.5.42-43). Scanning for
+    // `-->` past them found nothing and dropped the whole document.
+    expect(cleanPastedHtml("<!--><p>keep me</p>")).toBe("<p>keep me</p>");
+    expect(cleanPastedHtml("<!---><p>keep me</p>")).toBe("<p>keep me</p>");
+    expect(cleanPastedHtml("<p>a</p><!--><p>b</p>")).toBe("<p>a</p><p>b</p>");
+  });
+
   test("empty input returns empty", () => {
     expect(cleanPastedHtml("")).toBe("");
   });

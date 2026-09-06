@@ -11,6 +11,7 @@
 import createDOMPurify from "dompurify";
 
 import type { Run, TextFormatting, Paragraph } from "../types/document";
+import { htmlCommentEnd } from "./htmlComments";
 import { stripXmlDeclarations } from "./stripXmlDeclarations";
 
 // DOMPurify's default export only binds `sanitize` when a `window` exists.
@@ -462,12 +463,12 @@ function stripHtmlComments(html: string): string {
     }
 
     result += html.slice(cursor, start);
-    const end = html.indexOf("-->", start + 4);
-    if (end === -1) {
+    const end = htmlCommentEnd(html, start);
+    if (end === null) {
       break;
     }
 
-    cursor = end + 3;
+    cursor = end;
   }
 
   return result;
