@@ -32,6 +32,17 @@ import type { FontMetrics, FontStyle, RunMeasurement } from "./measureTypes";
  */
 export type GlyphAdvanceFn = (text: string, style: FontStyle) => number;
 
+/**
+ * Advances for a whole string, one per code point, from a backend that shapes.
+ *
+ * Separate from {@link GlyphAdvanceFn} because a shaped run has no per-code-point
+ * width to ask for: two letters that ligate have one advance between them, and
+ * a letter's width depends on the neighbours it joins to. A backend that can
+ * answer for the string as a whole supplies this; one that cannot leaves it out
+ * and every code point is measured alone.
+ */
+export type GlyphAdvancesFn = (text: string, style: FontStyle) => readonly number[];
+
 export const applyMeasurementTextTransform = (text: string, style: FontStyle): string =>
   style.textTransform === "uppercase" ? text.toLocaleUpperCase() : text;
 
@@ -143,6 +154,13 @@ type ComposeRunMeasurementOptions = {
   readonly style: FontStyle;
   readonly metrics: FontMetrics;
   readonly advanceOf: GlyphAdvanceFn;
+  /**
+   * Used for the stretches of text whose glyphs shaping chooses. Absent when
+   * the backend has no shaper, which leaves those stretches measured one code
+   * point at a time: visibly wrong for the script, and the reason a document
+   * that contains one resolves a shaper before it is laid out.
+   */
+  readonly advancesOf?: GlyphAdvancesFn | undefined;
 };
 
 /**
@@ -159,6 +177,7 @@ export const composeRunMeasurement = ({
   style: source,
   metrics,
   advanceOf,
+  advancesOf,
 }: ComposeRunMeasurementOptions): RunMeasurement => {
   const style = source.forceComplexScript ? applyComplexScriptFormatting(source, source) : source;
   if (!text) {
@@ -172,11 +191,18 @@ export const composeRunMeasurement = ({
   let totalWidth = 0;
   let offset = 0;
 
+  // Advances the backend supplied for the whole run, by code-point index, for
+  // the stretches it shaped. Absent entries fall back to measuring alone.
+  const shaped = shapedAdvances({ text, style, advancesOf, perScript });
+  let codePointIndex = 0;
+
   for (const char of text) {
     // SAFETY: iterating a string yields whole code points.
     const cp = char.codePointAt(0)!;
     const charStyle = perScript ? scriptStyle(style, scriptClassOf(cp)) : style;
-    let charWidth = advanceOf(applyMeasurementTextTransform(char, style), charStyle);
+    let charWidth =
+      shaped.get(codePointIndex) ??
+      advanceOf(applyMeasurementTextTransform(char, style), charStyle);
     if (letterSpacing && offset + char.length < text.length) {
       charWidth += letterSpacing;
     }
@@ -187,7 +213,64 @@ export const composeRunMeasurement = ({
     }
     totalWidth += charWidth;
     offset += char.length;
+    codePointIndex += 1;
   }
 
   return { width: totalWidth, charWidths, metrics };
+};
+
+type ShapedAdvancesOptions = {
+  readonly text: string;
+  readonly style: FontStyle;
+  readonly advancesOf: GlyphAdvancesFn | undefined;
+  readonly perScript: boolean;
+};
+
+/**
+ * Advances by code-point index for every stretch of the run that shapes.
+ *
+ * Each such stretch is measured in one call, because that is the only unit
+ * shaping has an answer for. A text transform that changes the length of a
+ * shaping stretch would break the alignment between the advances and the
+ * source's code points, so the transform is applied to the stretch and the
+ * result is only used when it did not change.
+ */
+const shapedAdvances = ({
+  text,
+  style,
+  advancesOf,
+  perScript,
+}: ShapedAdvancesOptions): ReadonlyMap<number, number> => {
+  const byIndex = new Map<number, number>();
+  if (advancesOf === undefined || !hasComplexScript(text)) {
+    return byIndex;
+  }
+  const characters = [...text];
+  const shapingStyle = perScript ? scriptStyle(style, SCRIPT_CLASS.complex) : style;
+  let start = 0;
+  while (start < characters.length) {
+    // SAFETY: the array holds whole code points.
+    if (scriptClassOf(characters[start]!.codePointAt(0)!) !== SCRIPT_CLASS.complex) {
+      start += 1;
+      continue;
+    }
+    let end = start + 1;
+    while (
+      end < characters.length &&
+      // SAFETY: the array holds whole code points.
+      scriptClassOf(characters[end]!.codePointAt(0)!) === SCRIPT_CLASS.complex
+    ) {
+      end += 1;
+    }
+    const segment = characters.slice(start, end).join("");
+    const transformed = applyMeasurementTextTransform(segment, style);
+    if (transformed === segment) {
+      const advances = advancesOf(segment, shapingStyle);
+      for (const [offset, advance] of advances.entries()) {
+        byIndex.set(start + offset, advance);
+      }
+    }
+    start = end;
+  }
+  return byIndex;
 };

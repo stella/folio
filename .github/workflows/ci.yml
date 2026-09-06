@@ -35,6 +35,8 @@ jobs:
           release-paths: |
             crates/docx-kernel/Cargo.toml
             crates/docx-kernel/src/**
+            crates/text-shaper/Cargo.toml
+            crates/text-shaper/src/**
             packages/docx-core/src/**
             packages/core/src/**
             packages/react/src/**
@@ -46,6 +48,7 @@ jobs:
             Cargo.toml
             bun.lock
             packages/docx-core/src/generated/**
+            packages/core/src/generated/**
             packages/docx-core/CHANGELOG.md
             packages/docx-core/package.json
             packages/core/CHANGELOG.md
@@ -229,12 +232,16 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Rust tests
-        run: cargo test -p stella-docx-kernel
+        run: |
+          cargo test -p stella-docx-kernel
+          cargo test -p stella-text-shaper
 
       - name: Rust lint
         run: |
           cargo clippy -p stella-docx-kernel --all-targets -- -D warnings
           cargo clippy -p stella-docx-kernel --lib --features wasm --target wasm32-unknown-unknown -- -D warnings
+          cargo clippy -p stella-text-shaper --all-targets -- -D warnings
+          cargo clippy -p stella-text-shaper --lib --features wasm --target wasm32-unknown-unknown -- -D warnings
 
       - name: Hawk visibility lint
         run: bun run rust:hawk
@@ -246,11 +253,13 @@ jobs:
         run: bun run check:docx-kernel-version
 
       - name: Generate canonical single-thread WebAssembly and enforce size budgets
-        run: bun --filter '@stll/docx-core' wasm:generate
+        run: |
+          bun --filter '@stll/docx-core' wasm:generate
+          bun --filter '@stll/folio-core' wasm:generate
 
       - name: Verify canonical WebAssembly artifacts are committed
         run: |
-          drift="$(git status --porcelain=v1 --untracked-files=all -- packages/docx-core/src/generated)"
+          drift="$(git status --porcelain=v1 --untracked-files=all -- packages/docx-core/src/generated packages/core/src/generated)"
           if [[ -n "${drift}" ]]; then
             echo "canonical WebAssembly artifacts are stale or untracked:" >&2
             echo "${drift}" >&2
@@ -261,8 +270,10 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: canonical-docx-kernel-wasm
-          path: packages/docx-core/src/generated/
+          name: canonical-wasm
+          path: |
+            packages/docx-core/src/generated/
+            packages/core/src/generated/
           retention-days: 1
           if-no-files-found: error
 

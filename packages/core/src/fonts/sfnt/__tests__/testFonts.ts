@@ -59,3 +59,34 @@ export const TEST_FONTS_SKIP_REASON =
 
 export const readTestFont = async (options: TestFontFaceOptions): Promise<Uint8Array> =>
   new Uint8Array(await Bun.file(testFontPath(options)).arrayBuffer());
+
+/**
+ * Faces for the scripts that shape. Kept apart from the Latin fixtures because
+ * they come from this package's own devDependencies rather than the adapter's
+ * runtime ones: a consumer of `@stll/folio-react` has no use for a Devanagari
+ * face, and a test of shaping cannot do without one.
+ */
+export const SHAPING_TEST_FACES = {
+  arabic:
+    "../../../../../react/node_modules/@fontsource/noto-sans-arabic/files/noto-sans-arabic-arabic-400-normal.woff",
+  devanagari:
+    "../../../../node_modules/@fontsource/noto-sans-devanagari/files/noto-sans-devanagari-devanagari-400-normal.woff",
+  hebrew:
+    "../../../../node_modules/@fontsource/noto-sans-hebrew/files/noto-sans-hebrew-hebrew-400-normal.woff",
+} as const;
+
+export type ShapingTestScript = keyof typeof SHAPING_TEST_FACES;
+
+export const shapingTestFontPath = (script: ShapingTestScript): string =>
+  join(import.meta.dir, SHAPING_TEST_FACES[script]);
+
+/** Whether every shaping fixture is on disk, checked before any test body runs. */
+export const SHAPING_TEST_FONTS_INSTALLED = Object.keys(SHAPING_TEST_FACES).every((script) =>
+  existsSync(shapingTestFontPath(script as ShapingTestScript)),
+);
+
+export const SHAPING_TEST_FONTS_SKIP_REASON =
+  "needs the @fontsource shaping fixtures installed (bun install)";
+
+export const readShapingTestFont = async (script: ShapingTestScript): Promise<Uint8Array> =>
+  new Uint8Array(await Bun.file(shapingTestFontPath(script)).arrayBuffer());

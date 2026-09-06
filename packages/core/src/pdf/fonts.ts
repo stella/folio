@@ -20,6 +20,8 @@
 
 import { panic, Result, TaggedError } from "better-result";
 import type { DisplayFontFace } from "../display-list/types";
+import { needsShaping, placeRun, type PlacedGlyph } from "../shaping/placeRun";
+import type { Shaper, ShapingDirection } from "../shaping/shaper";
 import { parseSfnt, type SfntFont } from "../fonts/sfnt/parse";
 import { subsetTrueType } from "../fonts/sfnt/subset";
 import { toSfntBytes } from "../fonts/sfnt/woff";
@@ -68,18 +70,44 @@ export type PdfGlyph = {
  * reaches the page, so the painter switches on `kind` rather than carrying
  * optional fields that are only valid in one of them.
  */
-export type PreparedFont =
-  | {
-      readonly kind: "embedded";
-      /** Resource and subset glyph for a code point the collection pass saw. */
-      readonly glyphFor: (codePoint: number) => PdfGlyph;
-    }
-  | {
-      readonly kind: "standard";
-      readonly resourceIndex: number;
-      /** WinAnsi byte for a code point. */
-      readonly byteFor: (codePoint: number) => number;
-    };
+/** One shaped glyph, in the glyph space of the resource that will paint it. */
+export type PlacedPdfGlyph = PdfGlyph & {
+  /** Code-point index in the run's text of the cluster this glyph came from. */
+  readonly clusterIndex: number;
+  readonly xAdvancePx: number;
+  readonly xOffsetPx: number;
+  readonly yOffsetPx: number;
+};
+
+/** A run whose glyphs shaping has to choose, as the collection pass saw it. */
+export type ShapedRunRequest = {
+  readonly text: string;
+  readonly direction: ShapingDirection;
+  readonly fontSizePx: number;
+};
+
+/** A face embedded as a subset of its own program. */
+export type EmbeddedPdfFont = {
+  readonly kind: "embedded";
+  /** Resource and subset glyph for a code point the collection pass saw. */
+  readonly glyphFor: (codePoint: number) => PdfGlyph;
+  /**
+   * The glyphs shaping chose for a run, in visual order, or `null` when this
+   * run was not shaped: no shaper was resolved, or the run is in a script where
+   * a code point selects its own glyph.
+   */
+  readonly placeShapedRun: (request: ShapedRunRequest) => readonly PlacedPdfGlyph[] | null;
+};
+
+/** A base-14 stand-in for a face that could not be embedded. */
+export type StandardPdfFont = {
+  readonly kind: "standard";
+  readonly resourceIndex: number;
+  /** WinAnsi byte for a code point. */
+  readonly byteFor: (codePoint: number) => number;
+};
+
+export type PreparedFont = EmbeddedPdfFont | StandardPdfFont;
 
 /** Text space is 1000 units to the em whatever the font's own head is. */
 const TEXT_SPACE_UNITS_PER_EM = 1000;
@@ -238,6 +266,9 @@ const buildWinAnsiTable = (): ReadonlyMap<number, number> => {
 
 const WIN_ANSI_BY_CODE_POINT = buildWinAnsiTable();
 
+const utf16BeHexOf = (text: string): string =>
+  [...text].map((character) => utf16BeHex(character.codePointAt(0) ?? 0)).join("");
+
 const utf16BeHex = (codePoint: number): string => {
   const SUPPLEMENTARY_START = 0x10000;
   const SURROGATE_HALF_BITS = 10;
@@ -258,14 +289,14 @@ const utf16BeHex = (codePoint: number): string => {
 /** Entries per `beginbfchar` block; the CMap syntax caps this at 100. */
 const BFCHAR_BLOCK_SIZE = 100;
 
-const toUnicodeCMap = (glyphToCodePoint: ReadonlyMap<number, number>): string => {
-  const entries = [...glyphToCodePoint.entries()].sort(([left], [right]) => left - right);
+const toUnicodeCMap = (glyphToText: ReadonlyMap<number, string>): string => {
+  const entries = [...glyphToText.entries()].sort(([left], [right]) => left - right);
   let body = "";
   for (let start = 0; start < entries.length; start += BFCHAR_BLOCK_SIZE) {
     const block = entries.slice(start, start + BFCHAR_BLOCK_SIZE);
     body += `${String(block.length)} beginbfchar\n`;
-    for (const [glyphId, codePoint] of block) {
-      body += `<${utf16BeHex(glyphId)}> <${utf16BeHex(codePoint)}>\n`;
+    for (const [glyphId, text] of block) {
+      body += `<${utf16BeHex(glyphId)}> <${utf16BeHexOf(text)}>\n`;
     }
     body += "endbfchar\n";
   }
@@ -356,6 +387,15 @@ type PlanOptions = {
   readonly font: SfntFont;
   readonly face: DisplayFontFace;
   readonly codePoints: readonly number[];
+  /**
+   * Glyphs shaping chose that no code point maps to: a lam-alef ligature, an
+   * Arabic letter's medial form, a Devanagari conjunct. They have to be in the
+   * subset before the first page is written, which is why shaping happens in
+   * the same pass that collects code points.
+   */
+  readonly shapedGlyphIds?: ReadonlySet<number> | undefined;
+  /** Source text behind each shaped glyph, so extraction still reads it. */
+  readonly textByShapedGlyphId?: ReadonlyMap<number, string> | undefined;
 };
 
 /**
@@ -372,15 +412,26 @@ type FontPlan = {
   readonly programBytes: Uint8Array;
   readonly glyphIdByCodePoint: ReadonlyMap<number, number>;
   readonly widthByGlyphId: ReadonlyMap<number, number>;
-  readonly glyphToCodePoint: ReadonlyMap<number, number>;
+  readonly glyphToText: ReadonlyMap<number, string>;
+  /** Source glyph id to the id it took in the subset. */
+  readonly glyphIdMap: ReadonlyMap<number, number>;
 };
 
-const planFont = ({ font, face, codePoints }: PlanOptions): Result<FontPlan, PdfFontError> => {
+const planFont = ({
+  font,
+  face,
+  codePoints,
+  shapedGlyphIds,
+  textByShapedGlyphId,
+}: PlanOptions): Result<FontPlan, PdfFontError> => {
   const sourceGlyphByCodePoint = new Map<number, number>();
   const sourceGlyphIds = new Set<number>([NOTDEF_GLYPH]);
   for (const codePoint of codePoints) {
     const glyphId = font.glyphIdFor(codePoint);
     sourceGlyphByCodePoint.set(codePoint, glyphId);
+    sourceGlyphIds.add(glyphId);
+  }
+  for (const glyphId of shapedGlyphIds ?? []) {
     sourceGlyphIds.add(glyphId);
   }
 
@@ -407,7 +458,7 @@ const planFont = ({ font, face, codePoints }: PlanOptions): Result<FontPlan, Pdf
   const scale = TEXT_SPACE_UNITS_PER_EM / font.unitsPerEm;
   const glyphIdByCodePoint = new Map<number, number>();
   const widthByGlyphId = new Map<number, number>();
-  const glyphToCodePoint = new Map<number, number>();
+  const glyphToText = new Map<number, string>();
   for (const sourceGlyphId of [...sourceGlyphIds].sort((left, right) => left - right)) {
     const targetGlyphId = glyphIdMap.get(sourceGlyphId);
     if (targetGlyphId === undefined) {
@@ -424,8 +475,16 @@ const planFont = ({ font, face, codePoints }: PlanOptions): Result<FontPlan, Pdf
     const sourceGlyphId = sourceGlyphByCodePoint.get(codePoint) ?? NOTDEF_GLYPH;
     const targetGlyphId = glyphIdMap.get(sourceGlyphId) ?? NOTDEF_GLYPH;
     glyphIdByCodePoint.set(codePoint, targetGlyphId);
-    if (!glyphToCodePoint.has(targetGlyphId)) {
-      glyphToCodePoint.set(targetGlyphId, codePoint);
+    if (!glyphToText.has(targetGlyphId)) {
+      glyphToText.set(targetGlyphId, String.fromCodePoint(codePoint));
+    }
+  }
+  // A glyph no code point maps to still has to extract as text, or a reader
+  // copies a page of Arabic and gets nothing back for every ligature on it.
+  for (const [sourceGlyphId, text] of textByShapedGlyphId ?? []) {
+    const targetGlyphId = glyphIdMap.get(sourceGlyphId);
+    if (targetGlyphId !== undefined && !glyphToText.has(targetGlyphId)) {
+      glyphToText.set(targetGlyphId, text);
     }
   }
 
@@ -439,7 +498,8 @@ const planFont = ({ font, face, codePoints }: PlanOptions): Result<FontPlan, Pdf
     programBytes,
     glyphIdByCodePoint,
     widthByGlyphId,
-    glyphToCodePoint,
+    glyphToText,
+    glyphIdMap,
   });
 };
 
@@ -460,7 +520,7 @@ const emitFont = (document: PdfDocument, plan: FontPlan): PdfRef => {
     }),
   );
   const toUnicodeRef = document.add(
-    pdfFlateStream([], new TextEncoder().encode(toUnicodeCMap(plan.glyphToCodePoint))),
+    pdfFlateStream([], new TextEncoder().encode(toUnicodeCMap(plan.glyphToText))),
   );
   // A CFF-flavoured OpenType descends from a CIDFontType0; only a `glyf`
   // program is a CIDFontType2. Both keep the two-byte Identity-H codes, which
@@ -557,6 +617,15 @@ type FaceCoverage = {
 /** Where a code point no binary covers is painted from: `.notdef` is there. */
 const FALLBACK_BINARY = 0;
 
+/**
+ * Which binary of the face serves a code point, or -1 when none does. One
+ * answer for the whole file: coverage and shaping must agree about which
+ * binary a character belongs to, or a run is shaped against one face and
+ * painted from another's glyph space.
+ */
+const binaryIndexFor = (fonts: readonly SfntFont[], codePoint: number): number =>
+  fonts.findIndex((font) => font.glyphIdFor(codePoint) !== NOTDEF_GLYPH);
+
 const resolveCoverage = (
   fonts: readonly SfntFont[],
   codePoints: readonly number[],
@@ -564,7 +633,7 @@ const resolveCoverage = (
   const codePointsByBinary = new Map<number, number[]>();
   const uncovered: number[] = [];
   for (const codePoint of codePoints) {
-    const found = fonts.findIndex((font) => font.glyphIdFor(codePoint) !== NOTDEF_GLYPH);
+    const found = binaryIndexFor(fonts, codePoint);
     if (found === -1) {
       uncovered.push(codePoint);
     }
@@ -576,11 +645,152 @@ const resolveCoverage = (
   return { codePointsByBinary, uncovered };
 };
 
+/** A stretch of one run's text served by a single binary of the face. */
+type RunSegment = {
+  readonly binaryIndex: number;
+  /** Code-point index in the run's text where this stretch begins. */
+  readonly startIndex: number;
+  readonly text: string;
+};
+
+const segmentRun = (fonts: readonly SfntFont[], text: string): readonly RunSegment[] => {
+  const segments: { binaryIndex: number; startIndex: number; text: string }[] = [];
+  let open: { binaryIndex: number; startIndex: number; text: string } | null = null;
+  let index = 0;
+  for (const character of text) {
+    const found = binaryIndexFor(fonts, character.codePointAt(0) ?? 0);
+    const binaryIndex = found === -1 ? FALLBACK_BINARY : found;
+    if (open === null || open.binaryIndex !== binaryIndex) {
+      open = { binaryIndex, startIndex: index, text: character };
+      segments.push(open);
+    } else {
+      open.text += character;
+    }
+    index += 1;
+  }
+  return segments;
+};
+
+/** One shaped stretch of a run, still in the source face's glyph space. */
+type PlacedSegment = {
+  readonly binaryIndex: number;
+  readonly startIndex: number;
+  readonly glyphs: readonly PlacedGlyph[];
+};
+
+/**
+ * Everything shaping contributes to one face: which glyphs the subset must
+ * carry, what text each of them came from, and where every run's glyphs go.
+ *
+ * Computed once, before a single object is written, and read again while
+ * painting. Shaping twice would be two answers to one question, and the file
+ * would be subset for one of them and painted from the other.
+ */
+type FaceShaping = {
+  readonly glyphIdsByBinary: ReadonlyMap<number, ReadonlySet<number>>;
+  readonly textByGlyphByBinary: ReadonlyMap<number, ReadonlyMap<number, string>>;
+  readonly placementsByRun: ReadonlyMap<string, readonly PlacedSegment[]>;
+};
+
+const EMPTY_SHAPING: FaceShaping = {
+  glyphIdsByBinary: new Map(),
+  textByGlyphByBinary: new Map(),
+  placementsByRun: new Map(),
+};
+
+const runKeyOf = ({ text, direction, fontSizePx }: ShapedRunRequest): string =>
+  `${direction}\u0000${String(fontSizePx)}\u0000${text}`;
+
+/**
+ * The characters behind one glyph: the code points of its cluster, carried by
+ * the first glyph of that cluster only. Giving every mark of a cluster the same
+ * characters would repeat them on extraction.
+ */
+const clusterText = (
+  characters: readonly string[],
+  glyphs: readonly PlacedGlyph[],
+  position: number,
+): string => {
+  const glyph = glyphs[position];
+  if (glyph === undefined) {
+    return "";
+  }
+  const first = glyphs.find((other) => other.clusterIndex === glyph.clusterIndex);
+  if (first !== glyph) {
+    return "";
+  }
+  const starts = [...new Set(glyphs.map((other) => other.clusterIndex))].sort(
+    (left, right) => left - right,
+  );
+  const next = starts.find((start) => start > glyph.clusterIndex) ?? characters.length;
+  return characters.slice(glyph.clusterIndex, next).join("");
+};
+
+const shapeFace = (
+  fonts: readonly SfntFont[],
+  runs: readonly ShapedRunRequest[],
+  shaper: Shaper,
+): FaceShaping => {
+  const glyphIdsByBinary = new Map<number, Set<number>>();
+  const textByGlyphByBinary = new Map<number, Map<number, string>>();
+  const placementsByRun = new Map<string, readonly PlacedSegment[]>();
+
+  for (const run of runs) {
+    const key = runKeyOf(run);
+    if (placementsByRun.has(key)) {
+      continue;
+    }
+    const placed: PlacedSegment[] = [];
+    for (const segment of segmentRun(fonts, run.text)) {
+      const font = fonts[segment.binaryIndex];
+      if (font === undefined || !needsShaping(segment.text)) {
+        continue;
+      }
+      const glyphs = placeRun({
+        shaper,
+        font: font.bytes,
+        text: segment.text,
+        fontSizePx: run.fontSizePx,
+        direction: run.direction,
+      });
+      placed.push({ binaryIndex: segment.binaryIndex, startIndex: segment.startIndex, glyphs });
+
+      const ids = glyphIdsByBinary.get(segment.binaryIndex) ?? new Set<number>();
+      const texts = textByGlyphByBinary.get(segment.binaryIndex) ?? new Map<number, string>();
+      const characters = [...segment.text];
+      for (const [position, glyph] of glyphs.entries()) {
+        ids.add(glyph.glyphId);
+        const text = clusterText(characters, glyphs, position);
+        // A glyph that is not the first of its cluster contributes no
+        // characters here: they belong to the glyph that opens the cluster.
+        // It may still open one elsewhere in the document, so nothing is
+        // recorded for it now rather than an empty entry that would block that.
+        if (text !== "" && !texts.has(glyph.glyphId)) {
+          texts.set(glyph.glyphId, text);
+        }
+      }
+      glyphIdsByBinary.set(segment.binaryIndex, ids);
+      textByGlyphByBinary.set(segment.binaryIndex, texts);
+    }
+    placementsByRun.set(key, placed);
+  }
+  return { glyphIdsByBinary, textByGlyphByBinary, placementsByRun };
+};
+
 type PrepareFontsOptions = {
   readonly document: PdfDocument;
   readonly faces: readonly DisplayFontFace[];
   /** Font index to the code points the document paints from that face. */
   readonly usedCodePoints: ReadonlyMap<number, ReadonlySet<number>>;
+  /** Font index to the runs whose glyphs shaping has to choose. */
+  readonly shapedRuns?: ReadonlyMap<number, readonly ShapedRunRequest[]>;
+  /**
+   * The shaper, when the document contains a run that needs one. Absent leaves
+   * such runs painted one glyph per code point, which the scripts that shape do
+   * not read as; the caller resolves a shaper whenever the display list has
+   * one, which is what keeps the artifact off the path of a Latin document.
+   */
+  readonly shaper?: Shaper | null;
   readonly source: PdfFontSource;
 };
 
@@ -601,6 +811,8 @@ export const prepareFonts = ({
   document,
   faces,
   usedCodePoints,
+  shapedRuns,
+  shaper = null,
   source,
 }: PrepareFontsOptions): PreparedFonts => {
   const byFontIndex = new Map<number, PreparedFont>();
@@ -677,19 +889,26 @@ export const prepareFonts = ({
       continue;
     }
 
+    // Shaping first: the subset has to carry the glyphs it chooses, and those
+    // are not reachable from any code point.
+    const shaping =
+      shaper === null
+        ? EMPTY_SHAPING
+        : shapeFace(parsed.fonts, shapedRuns?.get(fontIndex) ?? [], shaper);
+
     const coverage = resolveCoverage(parsed.fonts, codePoints);
-    const binaryIndices = [...coverage.codePointsByBinary.keys()].sort(
-      (left, right) => left - right,
-    );
+    const binaryIndices = [
+      ...new Set([...coverage.codePointsByBinary.keys(), ...shaping.glyphIdsByBinary.keys()]),
+    ].sort((left, right) => left - right);
     const plans: FontPlan[] = [];
     let failure: PdfFontError | null = null;
     for (const binaryIndex of binaryIndices) {
       const plan = planFont({
         font: parsed.fonts[binaryIndex] ?? panic(`face lost binary ${String(binaryIndex)}`),
         face,
-        codePoints:
-          coverage.codePointsByBinary.get(binaryIndex) ??
-          panic(`binary ${String(binaryIndex)} lost its code points`),
+        codePoints: coverage.codePointsByBinary.get(binaryIndex) ?? [],
+        shapedGlyphIds: shaping.glyphIdsByBinary.get(binaryIndex),
+        textByShapedGlyphId: shaping.textByGlyphByBinary.get(binaryIndex),
       });
       if (plan.isErr()) {
         failure = plan.error;
@@ -703,8 +922,10 @@ export const prepareFonts = ({
     }
 
     const glyphByCodePoint = new Map<number, PdfGlyph>();
-    for (const plan of plans) {
+    const emitted = new Map<number, { plan: FontPlan; resourceIndex: number }>();
+    for (const [position, plan] of plans.entries()) {
       const resourceIndex = claimResource(emitFont(document, plan));
+      emitted.set(binaryIndices[position] ?? FALLBACK_BINARY, { plan, resourceIndex });
       for (const [codePoint, glyphId] of plan.glyphIdByCodePoint) {
         glyphByCodePoint.set(codePoint, {
           resourceIndex,
@@ -723,6 +944,33 @@ export const prepareFonts = ({
       glyphFor: (codePoint) =>
         glyphByCodePoint.get(codePoint) ??
         panic(`code point ${String(codePoint)} was painted but never collected`),
+      placeShapedRun: (request) => {
+        const segments = shaping.placementsByRun.get(runKeyOf(request));
+        if (segments === undefined || segments.length === 0) {
+          return null;
+        }
+        return segments.flatMap(({ binaryIndex, startIndex, glyphs }) => {
+          const target =
+            emitted.get(binaryIndex) ??
+            panic(`shaped run used binary ${String(binaryIndex)}, which was never emitted`);
+          return glyphs.map(({ glyphId, clusterIndex, xAdvancePx, xOffsetPx, yOffsetPx }) => {
+            const subsetGlyphId =
+              target.plan.glyphIdMap.get(glyphId) ??
+              panic(`subset dropped shaped glyph ${String(glyphId)}`);
+            return {
+              resourceIndex: target.resourceIndex,
+              glyphId: subsetGlyphId,
+              widthUnits:
+                target.plan.widthByGlyphId.get(subsetGlyphId) ??
+                panic(`no width for glyph ${String(subsetGlyphId)}`),
+              clusterIndex: startIndex + clusterIndex,
+              xAdvancePx,
+              xOffsetPx,
+              yOffsetPx,
+            };
+          });
+        });
+      },
     });
   }
 

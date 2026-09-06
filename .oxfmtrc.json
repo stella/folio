@@ -1,4 +1,9 @@
 {
   "$schema": "./node_modules/oxfmt/configuration_schema.json",
-  "ignorePatterns": ["**/*.gen.*", "api-reports/**", "packages/docx-core/src/generated/**"]
+  "ignorePatterns": [
+    "**/*.gen.*",
+    "api-reports/**",
+    "packages/docx-core/src/generated/**",
+    "packages/core/src/generated/**"
+  ]
 }

@@ -142,16 +142,19 @@ const BASELINE_PATH = path.join(import.meta.dir, "paint-equivalence.baseline.jso
 
 /**
  * The default corpus: one small, one medium and one large document, so a bare
- * run is fast enough to be habitual, plus the diacritics fixture, whose text
- * spans two font subsets in a single run and so is the one document here that
- * fails visibly when a face resolves to one binary. A directory argument runs
- * everything in it.
+ * run is fast enough to be habitual, plus the two documents whose text is the
+ * hard case for a font pipeline. The diacritics fixture spans two font subsets
+ * in a single run, and so fails visibly when a face resolves to one binary.
+ * The Arabic fixture runs right to left and every letter in it takes its form
+ * from its neighbours, so it fails visibly when a run reaches the page without
+ * being shaped. A directory argument runs everything in it.
  */
 const DEFAULT_FIXTURES = [
   "tests/visual/fixtures/docx-editor-demo.docx",
   "tests/visual/fixtures/sample.docx",
   "tests/visual/fixtures/podily-bps.docx",
   "packages/core/src/docx/__tests__/__fixtures__/corpus/diacritics-latin-ext.docx",
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/rtl-arabic-shaping.docx",
 ] as const;
 
 const VIEWPORT = { width: 1400, height: 1200 };
@@ -808,7 +811,7 @@ const runFixture = async ({
     ...laidOut.value.furniture,
   });
 
-  const written = writePdf(list, {
+  const written = await writePdf(list, {
     fonts: { load: (face) => fonts.load(toFontRequest(face)) },
     timestamp: FIXED_TIMESTAMP,
     producer: PRODUCER,

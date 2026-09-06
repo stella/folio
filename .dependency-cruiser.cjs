@@ -105,7 +105,12 @@ module.exports = {
       dependencyTypes: ["npm", "npm-dev", "npm-optional", "npm-peer", "npm-bundled", "npm-no-pkg"],
     },
     exclude: {
-      path: ["(^|/)dist/", "(^|/)node_modules/", "^packages/docx-core/src/generated/"],
+      path: [
+        "(^|/)dist/",
+        "(^|/)node_modules/",
+        "^packages/docx-core/src/generated/",
+        "^packages/core/src/generated/",
+      ],
     },
     enhancedResolveOptions: {
       extensions: [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".vue"],

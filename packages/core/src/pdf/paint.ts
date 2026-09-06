@@ -30,7 +30,8 @@ import {
   type ContentStream,
   type PositionedGlyph,
 } from "./contentStream";
-import type { PreparedFont } from "./fonts";
+import { needsShaping } from "../shaping/placeRun";
+import type { EmbeddedPdfFont, PreparedFont, ShapedRunRequest } from "./fonts";
 import { basePageMatrix, rotationMatrix } from "./pageSpace";
 
 export class PaintError extends TaggedError("PaintError")<{ message: string }> {}
@@ -225,17 +226,143 @@ const glyphOrigins = (run: DisplayGlyphRun): readonly number[] =>
   glyphCellOffsetsPx(run).map((offsetPx) => run.xPx + offsetPx);
 
 /**
- * A maximal consecutive stretch of one run served by a single font resource.
- * A face split into script subsets embeds as several fonts, each with its own
- * glyph space, so a run crossing from one subset to the other has to change
- * font mid-run; the advances are untouched, because every span still carries
- * the display list's own numbers for its own code points.
+ * One glyph of a run, placed on the page.
+ *
+ * Both paths through a run end here: the glyphs shaping chose, and the glyphs a
+ * `cmap` lookup chose where the script does not shape. Painting reads only this,
+ * so the two cannot be positioned by different rules.
+ */
+type PlacedRunGlyph = {
+  readonly resourceIndex: number;
+  readonly glyphId: number;
+  /** The width this file declares for the glyph, in 1000ths of an em. */
+  readonly widthUnits: number;
+  /** Where the glyph is drawn, left edge, in page space. */
+  readonly xPx: number;
+  /** Baseline for this glyph: a mark that hangs off a letter moves it. */
+  readonly yPx: number;
+  /** What the pen advances by after it, which is not its drawn width. */
+  readonly advancePx: number;
+  /**
+   * True for a glyph the shaper displaced from the pen. It is positioned on its
+   * own rather than shown after its neighbour, because a text-showing operator
+   * has no way to draw one glyph off the pen and leave the pen where it was.
+   */
+  readonly displaced: boolean;
+};
+
+/**
+ * A maximal consecutive stretch of glyphs one text-showing operator can draw:
+ * one font resource, one baseline, and no glyph the shaper displaced. A face
+ * split into script subsets embeds as several fonts, each with its own glyph
+ * space, so a run crossing from one subset to the other has to change font
+ * mid-run.
  */
 type GlyphSpan = {
   readonly resourceIndex: number;
-  /** Index into the run's code points, for the span's text-matrix origin. */
-  readonly startIndex: number;
+  readonly xPx: number;
+  readonly yPx: number;
   readonly glyphs: PositionedGlyph[];
+};
+
+/**
+ * Where each glyph of an embedded run goes.
+ *
+ * Cluster origins come from the display list's own advances whichever path
+ * produced the glyphs, so letter spacing and every other adjustment the
+ * measurer applied survive: the line was broken on those numbers. What shaping
+ * contributes is which glyphs there are and where they sit inside their
+ * cluster.
+ */
+const placeEmbeddedRun = (
+  run: DisplayGlyphRun,
+  font: EmbeddedPdfFont,
+  origins: readonly number[],
+): readonly PlacedRunGlyph[] => {
+  const shaped = font.placeShapedRun({
+    text: run.text,
+    direction: run.direction,
+    fontSizePx: run.fontSizePx,
+  });
+  if (shaped === null) {
+    return [...run.text].map((character, index) => {
+      const { resourceIndex, glyphId, widthUnits } = font.glyphFor(character.codePointAt(0) ?? 0);
+      return {
+        resourceIndex,
+        glyphId,
+        widthUnits,
+        xPx: origins[index] ?? run.xPx,
+        yPx: run.baselineYPx,
+        advancePx: run.advancesPx[index] ?? 0,
+        displaced: false,
+      };
+    });
+  }
+
+  const placed: PlacedRunGlyph[] = [];
+  let penPx = run.xPx;
+  let openCluster: number | null = null;
+  for (const glyph of shaped) {
+    if (glyph.clusterIndex !== openCluster) {
+      penPx = origins[glyph.clusterIndex] ?? penPx;
+      openCluster = glyph.clusterIndex;
+    }
+    const displaced = glyph.xOffsetPx !== 0 || glyph.yOffsetPx !== 0;
+    placed.push({
+      resourceIndex: glyph.resourceIndex,
+      glyphId: glyph.glyphId,
+      widthUnits: glyph.widthUnits,
+      xPx: penPx + glyph.xOffsetPx,
+      // Display-list space runs y down, so a mark raised above the baseline
+      // sits at a smaller y.
+      yPx: run.baselineYPx - glyph.yOffsetPx,
+      advancePx: glyph.xAdvancePx,
+      displaced,
+    });
+    penPx += glyph.xAdvancePx;
+  }
+  return placed;
+};
+
+/** Glyphs one text-showing operator can draw together, in painting order. */
+const spanGlyphs = (
+  placed: readonly PlacedRunGlyph[],
+  fontSizePx: number,
+): readonly GlyphSpan[] => {
+  const spans: GlyphSpan[] = [];
+  for (const [index, glyph] of placed.entries()) {
+    const next = placed[index + 1];
+    const open = spans.at(-1);
+    const continues =
+      open !== undefined &&
+      !glyph.displaced &&
+      open.resourceIndex === glyph.resourceIndex &&
+      open.yPx === glyph.yPx;
+    // The measurer's advance wins over the font's own, always: line breaking
+    // and pagination were decided on these numbers, so a page positioned on
+    // the font's metrics is a page the engine never laid out. The correction
+    // is against the width *this file* declares for the glyph, which is what a
+    // reader will actually advance by.
+    const delta =
+      next === undefined || next.displaced || next.yPx !== glyph.yPx
+        ? glyph.advancePx
+        : next.xPx - glyph.xPx;
+    const positioned = {
+      glyphId: glyph.glyphId,
+      adjustment: glyph.widthUnits - (delta * TEXT_SPACE_UNITS_PER_EM) / fontSizePx,
+    };
+    if (continues && open !== undefined) {
+      open.glyphs.push(positioned);
+      continue;
+    }
+    spans.push({
+      resourceIndex: glyph.resourceIndex,
+      xPx: glyph.xPx,
+      yPx: glyph.yPx,
+      glyphs: [positioned],
+    });
+  }
+  return spans;
 };
 
 const paintGlyphRun = (context: PaintContext, run: DisplayGlyphRun) => {
@@ -260,29 +387,7 @@ const paintGlyphRun = (context: PaintContext, run: DisplayGlyphRun) => {
 
   switch (font.kind) {
     case "embedded": {
-      const spans: GlyphSpan[] = [];
-      for (const [index, codePoint] of codePoints.entries()) {
-        const { resourceIndex, glyphId, widthUnits } = font.glyphFor(codePoint.codePointAt(0) ?? 0);
-        const origin = origins[index] ?? run.xPx;
-        const next = origins[index + 1];
-        const advance = run.advancesPx[index] ?? 0;
-        // The measurer's advance wins over the font's own, always: line
-        // breaking and pagination were decided on these numbers, so a page
-        // positioned on the font's metrics is a page the engine never laid
-        // out. The correction is against the width *this file* declares for
-        // the glyph, which is what a reader will actually advance by.
-        const delta = next === undefined ? advance : next - origin;
-        const glyph = {
-          glyphId,
-          adjustment: widthUnits - (delta * TEXT_SPACE_UNITS_PER_EM) / run.fontSizePx,
-        };
-        const open = spans.at(-1);
-        if (open === undefined || open.resourceIndex !== resourceIndex) {
-          spans.push({ resourceIndex, startIndex: index, glyphs: [glyph] });
-        } else {
-          open.glyphs.push(glyph);
-        }
-      }
+      const spans = spanGlyphs(placeEmbeddedRun(run, font, origins), run.fontSizePx);
       for (const [spanIndex, span] of spans.entries()) {
         stream.setFont(span.resourceIndex, run.fontSizePx);
         // The render mode is text state, not font state: one setting covers
@@ -293,7 +398,7 @@ const paintGlyphRun = (context: PaintContext, run: DisplayGlyphRun) => {
         // The text matrix flips y back: the page CTM already turned the page
         // upside down so that display-list coordinates work, and glyphs must
         // not come along for that ride.
-        stream.setTextMatrix([1, 0, 0, -1, origins[span.startIndex] ?? run.xPx, run.baselineYPx]);
+        stream.setTextMatrix([1, 0, 0, -1, span.xPx, span.yPx]);
         stream.showGlyphs(span.glyphs);
       }
       break;
@@ -436,11 +541,18 @@ export const paintPage = ({ page, fonts }: PaintPageOptions): readonly ContentPa
 /** What the file must carry, gathered before anything is written. */
 export type DisplayUsage = {
   readonly codePointsByFont: ReadonlyMap<number, ReadonlySet<number>>;
+  /**
+   * Runs whose glyphs shaping has to choose, by font index. Collected here
+   * because the subset has to carry those glyphs before the first page is
+   * written, and they are not reachable from any code point.
+   */
+  readonly shapedRunsByFont: ReadonlyMap<number, readonly ShapedRunRequest[]>;
   readonly imageIndices: ReadonlySet<number>;
 };
 
 type UsageAccumulator = {
   readonly codePointsByFont: Map<number, Set<number>>;
+  readonly shapedRunsByFont: Map<number, ShapedRunRequest[]>;
   readonly imageIndices: Set<number>;
 };
 
@@ -468,6 +580,15 @@ const collectPrimitive = (
         seen.add(codePoint.codePointAt(0) ?? 0);
       }
       into.codePointsByFont.set(primitive.font, seen);
+      if (needsShaping(primitive.text)) {
+        const runs = into.shapedRunsByFont.get(primitive.font) ?? [];
+        runs.push({
+          text: primitive.text,
+          direction: primitive.direction,
+          fontSizePx: primitive.fontSizePx,
+        });
+        into.shapedRunsByFont.set(primitive.font, runs);
+      }
       return null;
     }
     case "rect":
@@ -508,7 +629,11 @@ export const collectUsage = (
   fontCount: number,
   imageCount: number,
 ): Result<DisplayUsage, PaintError> => {
-  const into: UsageAccumulator = { codePointsByFont: new Map(), imageIndices: new Set() };
+  const into: UsageAccumulator = {
+    codePointsByFont: new Map(),
+    shapedRunsByFont: new Map(),
+    imageIndices: new Set(),
+  };
   for (const page of pages) {
     for (const primitive of page.primitives) {
       const error = collectPrimitive(primitive, fontCount, imageCount, into);

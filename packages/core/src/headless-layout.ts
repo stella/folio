@@ -42,6 +42,8 @@ import { extractEmbeddedFonts, type EmbeddedFont } from "./fonts/embeddedFonts";
 import { buildHeaderFooterFieldValues } from "./fields/resolveFieldValues";
 import { layoutDocument } from "./layout-engine/index";
 import { getMeasureProvider } from "./layout-engine/measure/measureProvider";
+import { needsShaping } from "./shaping/placeRun";
+import { getShaper } from "./shaping/shaper";
 import { measureBlocks } from "./layout-engine/measure/measureBlocks";
 import { resolveSectionHeaderFooterRefs } from "./layout-engine/headerFooterRefs";
 import { FOOTNOTE_ENTRY_MARGIN_BOTTOM } from "./layout-engine/types";
@@ -367,6 +369,30 @@ const declaresEmbeddedFonts = (document: Document): boolean =>
  * measurement backend is installed: a layout measured by the wrong provider
  * is wrong in a way no downstream check catches.
  */
+/**
+ * Whether any text in the package needs shaping.
+ *
+ * Every story a page paints, body, headers, footers and notes alike, is built
+ * from the same content model, so one walk over the package answers for all of
+ * them. The answer decides whether the shaper is fetched at all: a document in
+ * Latin, Cyrillic or Greek must not pay for an artifact it has no use for.
+ */
+const packageNeedsShaping = (value: unknown): boolean => {
+  if (Array.isArray(value)) {
+    return value.some(packageNeedsShaping);
+  }
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const entries = Object.entries(value);
+  const text = entries.find(([key]) => key === "text")?.[1];
+  const kind = entries.find(([key]) => key === "type")?.[1];
+  if (kind === "text" && typeof text === "string" && needsShaping(text)) {
+    return true;
+  }
+  return entries.some(([, child]) => packageNeedsShaping(child));
+};
+
 export const layoutDocxHeadless = async (
   input: DocxInput,
   options: HeadlessLayoutOptions = {},
@@ -406,6 +432,23 @@ export const layoutDocxHeadless = async (
         cause: projected.error,
       }),
     );
+  }
+
+  // Before anything is measured, and only for a document that contains a run
+  // whose glyphs shaping has to choose: the measure seam is synchronous, so a
+  // measurement cannot fetch anything of its own.
+  if (packageNeedsShaping(document.package)) {
+    const loaded = await Result.tryPromise({
+      try: () => getShaper(),
+      catch: (cause) =>
+        new HeadlessLayoutError({
+          message: "The text shaper could not be loaded, and this document needs one.",
+          cause,
+        }),
+    });
+    if (loaded.isErr()) {
+      return Result.err(loaded.error);
+    }
   }
 
   const sections = document.package.document.sections ?? [];

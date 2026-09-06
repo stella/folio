@@ -613,7 +613,45 @@ const FIXTURES: Fixture[] = [
     </w:p>`,
   },
 
-  // 26. `<w:placeholder>` with no `<w:docPart>` child. ECMA-376 §17.5.2.27
+  // 26. Arabic: the case where a face can carry every code point and the page
+  // still be unreadable. Every letter here joins, so each takes an initial,
+  // medial or final form that no code point maps to; `\u0644\u0627` is a
+  // ligature Arabic requires; and the Latin words and digits inside the
+  // paragraph make it a run that changes direction, which the producer has to
+  // split. Marked up the way Word does it: `w:bidi` on the paragraph,
+  // `w:rtl` on the runs, and the face in the `w:cs` slot.
+  {
+    filename: "rtl-arabic-shaping.docx",
+    body: `
+    <w:p>
+      <w:pPr><w:bidi/></w:pPr>
+      <w:r>
+        <w:rPr><w:rtl/><w:rFonts w:cs="Noto Sans Arabic"/></w:rPr>
+        <w:t>اتفاقية بيع وشراء بين الطرفين بتاريخ 6 سبتمبر 2026 بشأن نقل ملكية الحصة البالغة 40 بالمئة.</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr><w:bidi/></w:pPr>
+      <w:r>
+        <w:rPr><w:rtl/><w:rFonts w:cs="Noto Sans Arabic"/></w:rPr>
+        <w:t xml:space="preserve">الطرف الأول: شركة </w:t>
+      </w:r>
+      <w:r><w:t>Folio s.r.o.</w:t></w:r>
+      <w:r>
+        <w:rPr><w:rtl/><w:rFonts w:cs="Noto Sans Arabic"/></w:rPr>
+        <w:t xml:space="preserve"> ومقرها في براغ، الجمهورية التشيكية.</w:t>
+      </w:r>
+    </w:p>
+    <w:p>
+      <w:pPr><w:bidi/></w:pPr>
+      <w:r>
+        <w:rPr><w:rtl/><w:rFonts w:cs="Noto Sans Arabic"/></w:rPr>
+        <w:t xml:space="preserve">لا لا لا — بب تت ثث — كتب يكتب مكتوب</w:t>
+      </w:r>
+    </w:p>`,
+  },
+
+  // 27. `<w:placeholder>` with no `<w:docPart>` child. ECMA-376 §17.5.2.27
   // nominally requires the docPart child, but Word tolerates its absence.
   // The parser must not crash and must not fabricate a placeholder string.
   {

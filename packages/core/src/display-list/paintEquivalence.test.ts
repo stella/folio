@@ -253,23 +253,25 @@ const listOf = (pages: readonly DisplayPage[]): DisplayList => ({
   unsupported: [],
 });
 
-const write = (list: DisplayList) => {
-  const result = writePdf(list, { fonts: NO_FONTS, timestamp: TIMESTAMP });
+const write = async (list: DisplayList) => {
+  const result = await writePdf(list, { fonts: NO_FONTS, timestamp: TIMESTAMP });
   if (result.isErr()) {
     throw result.error;
   }
   return result.value;
 };
 
-describe("both backends cover every primitive kind", () => {
-  const emptyPageStreamLength = contentStreams(write(listOf([pageWith([])])).bytes).at(0)?.length;
+describe("both backends cover every primitive kind", async () => {
+  const emptyPageStreamLength = contentStreams((await write(listOf([pageWith([])]))).bytes).at(
+    0,
+  )?.length;
 
   test("the empty page establishes a floor for the coverage comparison", () => {
     expect(emptyPageStreamLength).toBeGreaterThan(0);
   });
 
   for (const kind of DISPLAY_PRIMITIVE_KINDS) {
-    test(`${kind} reaches both backends`, () => {
+    test(`${kind} reaches both backends`, async () => {
       const list = listOf([pageWith([PRIMITIVE_SAMPLES[kind]])]);
 
       const domPage = renderToStubs(list).at(0);
@@ -278,7 +280,7 @@ describe("both backends cover every primitive kind", () => {
         `the DOM backend painted nothing for ${kind}`,
       ).toBeGreaterThan(0);
 
-      const stream = contentStreams(write(list).bytes).at(0) ?? "";
+      const stream = contentStreams((await write(list)).bytes).at(0) ?? "";
       expect(
         stream.length,
         `the PDF backend emitted no content stream for ${kind}`,
@@ -303,14 +305,14 @@ describe("one display list, two backends", () => {
     },
   ]);
 
-  test("both backends emit one page per display page", () => {
+  test("both backends emit one page per display page", async () => {
     expect(renderToStubs(list)).toHaveLength(list.pages.length);
-    expect(mediaBoxes(write(list).bytes)).toHaveLength(list.pages.length);
+    expect(mediaBoxes((await write(list)).bytes)).toHaveLength(list.pages.length);
   });
 
-  test("both backends give each page the box the display list states", () => {
+  test("both backends give each page the box the display list states", async () => {
     const domPages = renderToStubs(list);
-    const boxes = mediaBoxes(write(list).bytes);
+    const boxes = mediaBoxes((await write(list)).bytes);
 
     for (const [index, page] of list.pages.entries()) {
       const dom = domPages.at(index);
@@ -324,11 +326,11 @@ describe("one display list, two backends", () => {
 });
 
 describe("determinism", () => {
-  test("writePdf twice over one list and timestamp is byte-identical", () => {
+  test("writePdf twice over one list and timestamp is byte-identical", async () => {
     const list = listOf([pageWith(DISPLAY_PRIMITIVE_KINDS.map((kind) => PRIMITIVE_SAMPLES[kind]))]);
 
-    const first = write(list).bytes;
-    const second = write(list).bytes;
+    const first = (await write(list)).bytes;
+    const second = (await write(list)).bytes;
 
     expect(first.length).toBe(second.length);
     expect(Buffer.from(first).equals(Buffer.from(second))).toBe(true);

@@ -1,0 +1,29 @@
+[package]
+name = "stella-text-shaper"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Complex-script text shaping for measurement and PDF painting"
+license.workspace = true
+readme = "README.md"
+publish = ["crates-io"]
+repository.workspace = true
+keywords = ["opentype", "shaping", "text", "wasm"]
+categories = ["text-processing", "wasm"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+wasm = ["dep:wasm-bindgen"]
+
+[dependencies]
+rustybuzz = { version = "0.20.1", default-features = false, features = ["std"] }
+wasm-bindgen = { version = "0.2.126", optional = true }
+
+[dev-dependencies]
+miniz_oxide = { version = "0.9.1", default-features = false, features = ["with-alloc"] }
+
+[lints]
+workspace = true

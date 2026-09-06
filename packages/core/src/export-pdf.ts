@@ -32,7 +32,7 @@ import { layoutDocxHeadless } from "./headless-layout";
 import type { HeadlessLayoutGap } from "./headless-layout";
 import { getMeasureProvider, setMeasureProvider } from "./layout-engine/measure/measureProvider";
 import { writePdf } from "./pdf/writePdf";
-import type { PdfSubstitution, PdfUnencodable, PdfUnshapedRun } from "./pdf/writePdf";
+import type { PdfSubstitution, PdfUnencodable } from "./pdf/writePdf";
 import type { DocxInput } from "./utils/docxInput";
 
 export class ExportPdfError extends TaggedError("ExportPdfError")<{
@@ -67,8 +67,6 @@ export type ExportDocxToPdfResult = {
   readonly embeddingSubstitutions: readonly PdfSubstitution[];
   /** Code points painted as `.notdef` because no supplied face covers them. */
   readonly unencodable: readonly PdfUnencodable[];
-  /** Runs painted without the shaping their script needs. */
-  readonly unshaped: readonly PdfUnshapedRun[];
 };
 
 const toFontRequest = ({ family, weight, italic }: DisplayFontFace) => ({
@@ -146,7 +144,7 @@ const exportWithHeadlessProvider = async (
     ...(options.metadata === undefined ? {} : { metadata: options.metadata }),
   });
 
-  const written = writePdf(list, {
+  const written = await writePdf(list, {
     fonts: { load: (face) => options.fonts.load(toFontRequest(face)) },
     timestamp: options.timestamp,
     ...(options.producer === undefined ? {} : { producer: options.producer }),
@@ -163,6 +161,5 @@ const exportWithHeadlessProvider = async (
     measurementSubstitutions: headless.substitutions(),
     embeddingSubstitutions: written.value.substitutions,
     unencodable: written.value.unencodable,
-    unshaped: written.value.unshaped,
   });
 };
