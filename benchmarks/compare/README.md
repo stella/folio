@@ -52,10 +52,14 @@ Sizes are block counts: `s` 40, `m` 320, `l` 2200.
 `identical` (the fixed cost of parse and serialize alone), `light` (one
 paragraph in fifteen, the shape a review pass leaves), `heavy`, `churn`
 (insertions, deletions and edits interleaved), `reorder` (a relocated run),
-`structural` (splits, merges, a deleted row, a changed list level), `notes`
-(the note stories only, main story byte-identical), `rewrite` (every
-paragraph). A variant that would leave a class unchanged is skipped rather
-than reported as a passing case.
+`structural` (splits, merges, a deleted row, a changed list level),
+`tablecount` (a table removed and another appended), `numbering` (every list
+level's format, body byte-identical), `notes` (the note stories only, main
+story byte-identical), `headers` (the header and footer stories only),
+`everywhere` (the body AND both sets of secondary stories, the only shape in
+which two stories can collide on a revision id), `rewrite` (every paragraph).
+A variant that would leave a class unchanged is skipped rather than reported
+as a passing case.
 
 Targets are built by rewriting the package XML, never by driving folio's own
 applier: a target the engine produced is a target the engine agrees with by
@@ -76,6 +80,10 @@ Timings mean nothing without these, so a failing invariant fails the run.
   as differing. Every other invariant here is satisfiable by seeing nothing, so
   without this one a blind spot passes: a change in a part the engine never
   reads survives accept and reject alike and self-compares clean.
+- **`revision-ids-are-unique`** — no two stories claim one `w:id`. Word's
+  revision-id space is the package rather than the part, so a comparison
+  writing one story at a time has to seed each story above the last id the
+  previous one used; every other invariant here passes when it does not.
 - **`byte-determinism`** — two runs over the same inputs produce the same
   package bytes and the same change list.
 - **`schema-validity`** — the redlined package passes the Open XML SDK
