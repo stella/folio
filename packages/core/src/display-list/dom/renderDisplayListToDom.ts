@@ -54,6 +54,7 @@ import type {
   DisplayLine,
   DisplayLink,
   DisplayLinkTarget,
+  DisplayModelRange,
   DisplayList,
   DisplayOpacityGroup,
   DisplayPage,
@@ -388,6 +389,45 @@ const applyAdjustments = (
   }
 };
 
+/**
+ * Where a run's glyphs came from in the editable model, on the element that
+ * paints them.
+ *
+ * An editing surface maps a click and a selection through these, and the
+ * browser's own hit-tester resolves the offset inside the run. The story is
+ * written beside the range because a page is not one document: the same number
+ * addresses a different character in the body, in each header and footer part,
+ * and in each note, so a surface has to know which one it landed in before it
+ * can use the number at all.
+ */
+const applyModelRange = (span: HTMLElement, range: DisplayModelRange | undefined): void => {
+  if (range === undefined) {
+    return;
+  }
+  span.className = "layout-run-text";
+  span.dataset["pmStart"] = String(range.start);
+  span.dataset["pmEnd"] = String(range.end);
+  const { story } = range;
+  span.dataset["story"] = story.kind;
+  switch (story.kind) {
+    case "body":
+      break;
+    case "header":
+    case "footer":
+      span.dataset["hfRid"] = story.rId;
+      break;
+    case "footnote":
+    case "endnote":
+      span.dataset["noteKind"] = story.kind;
+      span.dataset["noteId"] = String(story.id);
+      break;
+    default: {
+      const unreachable: never = story;
+      panic(`renderDisplayListToDom: unhandled story ${JSON.stringify(unreachable)}`);
+    }
+  }
+};
+
 const paintGlyphRun = (run: DisplayGlyphRun, context: PaintContext) => {
   if ([...run.text].length !== run.advancesPx.length) {
     panic(
@@ -439,6 +479,7 @@ const paintGlyphRun = (run: DisplayGlyphRun, context: PaintContext) => {
   // The producer's own number, readable back out of the DOM by the
   // equivalence harness without measuring anything.
   span.dataset["advanceSum"] = String(advanceSum);
+  applyModelRange(span, run.pmRange);
 
   // One text node, shaped by the browser. The display list places the run's
   // origin; where each glyph lands inside it is the shaper's business, which

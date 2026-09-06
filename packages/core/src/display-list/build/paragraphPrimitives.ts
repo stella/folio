@@ -501,14 +501,17 @@ const resolveJustification = ({
 
 /**
  * The editable-model range a run's glyphs came from, or `undefined` when they
- * have no counterpart there. Only body runs qualify: a header, footer or
- * footnote run's positions belong to that story's own document, so handing
- * them out as model positions would address unrelated body content.
+ * have no counterpart there.
+ *
+ * Every story qualifies, named. A header, footer or note run's positions belong
+ * to that story's own document, and a range that said only "start 12" could be
+ * used against the body and address unrelated content; one that says which
+ * document it came from can be routed into it instead.
  */
 const modelRangeOf = (run: TextRun, context: BuildContext): DisplayGlyphRun["pmRange"] =>
-  context.story !== "body" || run.pmStart === undefined || run.pmEnd === undefined
+  run.pmStart === undefined || run.pmEnd === undefined
     ? undefined
-    : { start: run.pmStart, end: run.pmEnd };
+    : { start: run.pmStart, end: run.pmEnd, story: context.story };
 
 type EmitGlyphRunOptions = {
   readonly sink: LineSink;

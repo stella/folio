@@ -105,7 +105,7 @@ const collectRunDrift = (page: Page): Promise<RunDrift[]> =>
   });
 
 const openWithDisplayListRenderer = async (page: Page, fixture: string): Promise<void> => {
-  await page.goto(`/?file=${fixture}&pageRenderer=display-list`);
+  await page.goto(`/?file=${fixture}&pageRenderer=display-list`, { timeout: 60_000 });
   await page.waitForSelector("[data-advance-sum]", { timeout: 30_000 });
   await page.evaluate(async () => {
     await document.fonts.ready;

@@ -54,7 +54,12 @@ export const paintHeaderFooter = ({
     xPx: page.margins.left,
     yPx: originYPx,
     widthPx: page.size.w - page.margins.left - page.margins.right,
-    context: { ...context, story: section },
+    // A page can select a different part per section, so the story is the part
+    // rather than the slot: a click in this header addresses that document.
+    context: {
+      ...context,
+      story: { kind: section, rId: content.rId ?? "" },
+    },
     label: content.rId === undefined ? section : `${section} ${content.rId}`,
   });
 };
