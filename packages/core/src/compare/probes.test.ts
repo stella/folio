@@ -23,6 +23,7 @@ import path from "node:path";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import type { FolioAIBlock } from "../ai-edits/types";
+import { buildBodySequenceDocx } from "./__fixtures__/body-sequence";
 import { buildNestedTableDocx } from "./__fixtures__/nested-table";
 import {
   buildNumberedListDocx,
@@ -365,5 +366,34 @@ describe("single-mutation probes", () => {
       await projectView(LIST_BASE, "final"),
     );
     expect(await documentPartOf(result.value.buffer)).toContain("<w:pPrChange ");
+  });
+
+  test("append_paragraph_then_table: additions past the last block keep target order", async () => {
+    // Both additions resolve to the same position — after the base's last
+    // block — so their order in the document is their order in the operation
+    // list and nothing else. Collecting the paragraph insertions and emitting
+    // them after the loop put every one of them behind a table that the target
+    // has after them.
+    const base = await buildBodySequenceDocx([
+      { kind: "paragraph", text: "The parties agree as set out below." },
+      { kind: "paragraph", text: "This agreement is governed by the stated law." },
+    ]);
+    const target = await buildBodySequenceDocx([
+      { kind: "paragraph", text: "The parties agree as set out below." },
+      { kind: "paragraph", text: "This agreement is governed by the stated law." },
+      { kind: "paragraph", text: "The schedule below records the agreed fees." },
+      { kind: "table", rows: [["Service", "Fee"]] },
+    ]);
+
+    const result = await compareDocx(base, target, OPTIONS);
+    if (result.isErr()) {
+      throw result.error;
+    }
+    expect(await projectView(result.value.buffer, "final")).toEqual(
+      await projectView(target, "final"),
+    );
+    expect(await projectView(result.value.buffer, "original")).toEqual(
+      await projectView(base, "final"),
+    );
   });
 });

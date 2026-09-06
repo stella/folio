@@ -917,8 +917,18 @@ export const planStoryCompare = ({
   const anchorIds = nextBaseBlockIdByStep(steps);
   const changes: CompareChange[] = [];
   const operations: FolioAIEditOperation[] = [];
-  const trailingInserts: FolioAIBlock[] = [];
   const lastBaseBlockId = baseSnapshot.blocks.at(-1)?.id ?? null;
+  /**
+   * The anchor everything past the base document's last block hangs from, and
+   * the hidden paragraph an empty base offers instead. The applier orders
+   * insertions that resolve to one position by their order in this array, so
+   * the tail is emitted where its step sits rather than collected and appended
+   * — a table and a paragraph both added after the last base block otherwise
+   * come out in operation order, which is not target order.
+   */
+  const tailAnchorId = lastBaseBlockId ?? baseSnapshot.emptyDocumentAnchorId ?? null;
+  const emptyBaseAnchorId = lastBaseBlockId === null ? baseSnapshot.emptyDocumentAnchorId : null;
+  let tailInsertCount = 0;
   let operationSequence = 0;
 
   const nextOperationId = (): string => `compare-${++operationSequence}`;
@@ -931,22 +941,48 @@ export const planStoryCompare = ({
   const moveIdOf = (baseBlockId: string): string => `move-${baseBlockId}`;
 
   const pushInsertOperation = (block: FolioAIBlock, anchorId: string | null): void => {
-    if (anchorId === null) {
-      trailingInserts.push(block);
-      return;
-    }
     const moveSourceId = moveSourceByTargetBlockId.get(block.id);
-    operations.push({
-      id: nextOperationId(),
-      type: "insertBeforeBlock",
-      blockId: anchorId,
+    // Always explicit, `null` included: an inserted paragraph that says
+    // nothing about its style takes the anchor's, and the anchor is
+    // whichever block happened to follow it.
+    const shared = {
       text: block.text,
       ...(moveSourceId !== undefined && { moveId: moveIdOf(moveSourceId) }),
-      // Always explicit, `null` included: an inserted paragraph that says
-      // nothing about its style takes the anchor's, and the anchor is
-      // whichever block happened to follow it.
       styleId: block.styleId ?? null,
       ...(block.listLevel !== undefined && { listLevel: block.listLevel }),
+    };
+    if (anchorId !== null) {
+      operations.push({
+        id: nextOperationId(),
+        type: "insertBeforeBlock",
+        blockId: anchorId,
+        ...shared,
+      });
+      return;
+    }
+    if (tailAnchorId === null) {
+      // An empty base with no anchor paragraph cannot receive tracked
+      // insertions at all.
+      return;
+    }
+    // An empty base document has no block to insert after, only the hidden
+    // anchor paragraph. Its first addition therefore replaces that paragraph
+    // instead of following it, so the result does not open with a stray blank.
+    if (tailInsertCount++ === 0 && emptyBaseAnchorId !== null) {
+      operations.push({
+        id: nextOperationId(),
+        type: "replaceBlock",
+        blockId: emptyBaseAnchorId,
+        text: block.text,
+        ...(block.styleId !== undefined && { styleId: block.styleId }),
+      });
+      return;
+    }
+    operations.push({
+      id: nextOperationId(),
+      type: "insertAfterBlock",
+      blockId: tailAnchorId,
+      ...shared,
     });
   };
 
@@ -1149,11 +1185,11 @@ export const planStoryCompare = ({
           });
           break;
         }
-        if (lastBaseBlockId !== null) {
+        if (tailAnchorId !== null) {
           operations.push({
             id: nextOperationId(),
             type: "insertTable",
-            blockId: lastBaseBlockId,
+            blockId: tailAnchorId,
             position: "after",
             rows,
           });
@@ -1196,41 +1232,6 @@ export const planStoryCompare = ({
     if (operations.length > maxOperations) {
       return null;
     }
-  }
-
-  // An empty base document has no block to insert after, only the hidden
-  // anchor paragraph. Its first addition therefore replaces that paragraph
-  // instead of following it, so the result does not open with a stray blank.
-  const emptyBaseAnchorId =
-    lastBaseBlockId === null ? baseSnapshot.emptyDocumentAnchorId : undefined;
-  const anchorId = lastBaseBlockId ?? emptyBaseAnchorId;
-  for (const [insertIndex, block] of trailingInserts.entries()) {
-    if (anchorId === undefined) {
-      // Nothing to anchor to: an empty base with no anchor paragraph cannot
-      // receive tracked insertions at all.
-      break;
-    }
-    const listLevel = block.listLevel === undefined ? {} : { listLevel: block.listLevel };
-    if (insertIndex === 0 && emptyBaseAnchorId !== undefined) {
-      operations.push({
-        id: nextOperationId(),
-        type: "replaceBlock",
-        blockId: emptyBaseAnchorId,
-        text: block.text,
-        ...(block.styleId !== undefined && { styleId: block.styleId }),
-      });
-      continue;
-    }
-    const moveSourceId = moveSourceByTargetBlockId.get(block.id);
-    operations.push({
-      id: nextOperationId(),
-      type: "insertAfterBlock",
-      blockId: anchorId,
-      text: block.text,
-      ...(moveSourceId !== undefined && { moveId: moveIdOf(moveSourceId) }),
-      styleId: block.styleId ?? null,
-      ...listLevel,
-    });
   }
 
   return operations.length > maxOperations ? null : { changes, operations };
