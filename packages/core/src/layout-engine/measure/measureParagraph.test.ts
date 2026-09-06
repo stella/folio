@@ -1237,6 +1237,34 @@ describe("measureParagraph justified shrink tolerance", () => {
     );
   });
 
+  test.each([
+    { slack: 0.25, expectedLines: 1, label: "keeps" },
+    { slack: 2, expectedLines: 2, label: "drops" },
+  ])(
+    "$label the last word of a legacy justified line that misses the measure by $slack px",
+    ({ slack, expectedLines }) => {
+      withFakeTextMeasure(
+        () => {
+          const measure = measureParagraph(
+            {
+              kind: "paragraph",
+              id: "legacy-justified-sub-pixel-fit",
+              runs: [{ kind: "text", text: `${"a".repeat(9)} b` }],
+              attrs: {
+                alignment: "justify",
+                justificationCompatibility: { type: "legacy" },
+              },
+            },
+            110 - slack,
+          );
+
+          expect(measure.lines).toHaveLength(expectedLines);
+        },
+        { charWidth: fixedCharWidth(10) },
+      );
+    },
+  );
+
   test("does not count non-breaking spaces toward justified shrink capacity", () => {
     const fixedSpaceText = `${"a".repeat(99)}\u00a0bbb`;
 
