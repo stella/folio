@@ -2111,14 +2111,17 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       [activeHeaderFooterRId, folioEditor, hfEditMode],
     );
 
-    const marginGuideSettingsInitializedRef = useRef(false);
+    // Painter-level settings: changing one does not change the layout, so
+    // nothing else would repaint. `pageRenderer` belongs here for the same
+    // reason, and the Vue adapter watches the same three.
+    const paintSettingsInitializedRef = useRef(false);
     useEffect(() => {
-      if (!marginGuideSettingsInitializedRef.current) {
-        marginGuideSettingsInitializedRef.current = true;
+      if (!paintSettingsInitializedRef.current) {
+        paintSettingsInitializedRef.current = true;
         return;
       }
       folioEditor.relayout();
-    }, [folioEditor, marginGuideColor, showMarginGuides]);
+    }, [folioEditor, marginGuideColor, showMarginGuides, pageRenderer]);
 
     // =========================================================================
     // Coalesced Layout (rAF throttle)

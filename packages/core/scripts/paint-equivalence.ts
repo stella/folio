@@ -647,7 +647,24 @@ const screenshotDom = async ({
       // actually painted for it.
       const drift = await page.evaluate(() => {
         const deltas: number[] = [];
+        // A rotated ancestor turns the run's own x-axis away from the
+        // viewport's, so a viewport-space left edge no longer differs from the
+        // declared offset by that offset. Watermark text is the case in the
+        // corpus. Such a run is skipped rather than counted as drift it does
+        // not have.
+        const isAxisAligned = (element: HTMLElement): boolean => {
+          for (let node: HTMLElement | null = element; node; node = node.parentElement) {
+            const transform = getComputedStyle(node).transform;
+            if (transform !== "none" && transform !== "") {
+              return false;
+            }
+          }
+          return true;
+        };
         for (const run of document.querySelectorAll<HTMLElement>("[data-advance-sum]")) {
+          if (!isAxisAligned(run)) {
+            continue;
+          }
           // Each glyph box declares its own run-local left edge, so this reads
           // where the browser actually put every code point against where the
           // display list said to put it. Measuring the run's own extent would

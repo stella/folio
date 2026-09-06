@@ -30,6 +30,8 @@
  * wrong provider produces a plausible layout that is wrong everywhere.
  */
 
+import { createHash } from "node:crypto";
+
 import { Result, TaggedError } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 
@@ -337,12 +339,18 @@ const resolveWatermarkImageSrc = (
  * The scope every extracted face's family carries here.
  *
  * `getEmbeddedFontFaces` defaults it to a fresh random id, which would make two
- * layouts of one package differ in a field the caller compares. A fixed value
- * is safe because this entry registers nothing on a page-global font list: the
- * faces travel with the result, and the display list's font table matches them
- * by the authored family as well as by the scoped one.
+ * layouts of one package differ in a field the caller compares. Deriving it
+ * from the package's own bytes keeps two layouts of one package identical
+ * while keeping two *different* packages apart: a DOM backend registers each
+ * face under this name, so a fixed scope would let two documents on one page
+ * define competing faces under one name and leave which one wins to font
+ * matching.
  */
-const EMBEDDED_FONT_NONCE = "headless";
+const embeddedFontNonce = (source: ArrayBuffer): string =>
+  createHash("sha256").update(new Uint8Array(source)).digest("hex").slice(0, NONCE_LENGTH);
+
+/** Enough of the digest to separate packages without bloating every family. */
+const NONCE_LENGTH = 12;
 
 /** Whether `fontTable.xml` declares any embedded face at all. */
 const declaresEmbeddedFonts = (document: Document): boolean =>
@@ -513,7 +521,10 @@ export const layoutDocxHeadless = async (
 
   const embeddedFonts = declaresEmbeddedFonts(document)
     ? await Result.tryPromise({
-        try: async () => extractEmbeddedFonts(await toArrayBuffer(input), EMBEDDED_FONT_NONCE),
+        try: async () => {
+          const source = await toArrayBuffer(input);
+          return extractEmbeddedFonts(source, embeddedFontNonce(source));
+        },
         catch: (cause) =>
           new HeadlessLayoutError({
             message: "The package's embedded fonts could not be extracted.",
@@ -526,7 +537,20 @@ export const layoutDocxHeadless = async (
   }
 
   const watermark = getDocumentWatermark(document);
-  const watermarkImageSrc = resolveWatermarkImageSrc(document, watermark);
+  // `watermarkImageSrc` is one source for the whole document, so a package with
+  // a different picture per header (a `w:titlePg` first page, or even/odd
+  // headers) cannot be served by it: supplying it anyway would paint one
+  // header's picture under another's watermark, silently. It is supplied only
+  // when every picture watermark in the package resolves to the same source,
+  // and withheld otherwise so the builder reports the picture it could not
+  // paint. Serving them properly needs a source per relationship id.
+  const watermarksByHeader = collectWatermarks(document.package.headers);
+  const pictureSources = new Set(
+    [watermark, ...watermarksByHeader.values()]
+      .filter((candidate) => candidate !== undefined)
+      .map((candidate) => resolveWatermarkImageSrc(document, candidate)),
+  );
+  const watermarkImageSrc = pictureSources.size === 1 ? [...pictureSources].at(0) : undefined;
   const pageBorders = firstSection?.pageBorders;
 
   return Result.ok({
@@ -541,7 +565,7 @@ export const layoutDocxHeadless = async (
       ...(pageBorders === undefined ? {} : { pageBorders }),
       ...(document.package.theme === undefined ? {} : { theme: document.package.theme }),
       ...(watermark === undefined ? {} : { watermark }),
-      watermarkByHeaderRId: collectWatermarks(document.package.headers),
+      watermarkByHeaderRId: watermarksByHeader,
       ...(watermarkImageSrc === undefined ? {} : { watermarkImageSrc }),
       headerContentByRId: stories.value.headerContentByRId,
       footerContentByRId: stories.value.footerContentByRId,

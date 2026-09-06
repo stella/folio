@@ -1107,6 +1107,11 @@ export function runLayoutPipeline<THfPMs>(
           blockLookup,
           doc: pagesContainer.ownerDocument,
           ...displayListFurnitureFrom(renderOpts),
+          // Footnote bodies never reach `RenderPageOptions`: the existing
+          // painter takes them per page through `footnotesByPage`, so the
+          // furniture adapter cannot find them and the band would reserve its
+          // height and paint nothing.
+          ...(footnoteContentMap.size === 0 ? {} : { footnoteContentById: footnoteContentMap }),
         }).paintPage;
       }
       renderPages(newLayout.pages, pagesContainer, renderOpts);

@@ -186,6 +186,13 @@ export type FootnoteRenderItem = {
 /**
  * Options for rendering a page
  */
+/** Everything a replacement page renderer is handed. */
+export type PaintPageRequest = {
+  readonly page: Page;
+  readonly context: RenderContext;
+  readonly options: RenderPageOptions;
+};
+
 export type RenderPageOptions = {
   /** Document to create elements in (default: window.document) */
   document?: Document;
@@ -275,11 +282,7 @@ export type RenderPageOptions = {
    * module for that page, so a renderer that cannot express a page yields
    * rather than painting it wrong.
    */
-  paintPage?: (
-    page: Page,
-    context: RenderContext,
-    options: RenderPageOptions,
-  ) => HTMLElement | null;
+  paintPage?: (request: PaintPageRequest) => HTMLElement | null;
 };
 
 export type HeaderFooterLayoutInfo = {
@@ -1665,7 +1668,7 @@ export function renderPage(
 ): HTMLElement {
   const doc = options.document ?? document;
 
-  const painted = options.paintPage?.(page, context, options);
+  const painted = options.paintPage?.({ page, context, options });
   if (painted) {
     return painted;
   }
@@ -2323,18 +2326,30 @@ export function selectSectionHeaderFooterRIds(page: Page): {
   }
   const useFirst = refs.titlePg === true && page.sectionPageNumber === 1;
   const useEven = refs.evenAndOddHeaders === true && page.logicalNumber % 2 === 0;
-  const pick = (first?: string, even?: string, fallback?: string) => {
+  const pick = (variants: {
+    first: string | undefined;
+    even: string | undefined;
+    fallback: string | undefined;
+  }) => {
     if (useFirst) {
-      return first;
+      return variants.first;
     }
     if (useEven) {
-      return even;
+      return variants.even;
     }
-    return fallback;
+    return variants.fallback;
   };
   return {
-    headerRId: pick(refs.headerFirst, refs.headerEven, refs.headerDefault),
-    footerRId: pick(refs.footerFirst, refs.footerEven, refs.footerDefault),
+    headerRId: pick({
+      first: refs.headerFirst,
+      even: refs.headerEven,
+      fallback: refs.headerDefault,
+    }),
+    footerRId: pick({
+      first: refs.footerFirst,
+      even: refs.footerEven,
+      fallback: refs.footerDefault,
+    }),
   };
 }
 

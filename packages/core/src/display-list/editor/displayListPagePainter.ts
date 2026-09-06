@@ -39,7 +39,7 @@ export type DisplayListPagePainterOptions = BuildDisplayListOptions & {
 
 export type DisplayListPagePainter = {
   /** Matches `RenderPageOptions.paintPage`. */
-  readonly paintPage: (page: Page) => HTMLElement | null;
+  readonly paintPage: (request: { readonly page: Page }) => HTMLElement | null;
   /** The list every page was painted from, for tests and diagnostics. */
   readonly list: DisplayList;
 };
@@ -60,7 +60,7 @@ export const createDisplayListPagePainter = (
   const list = buildDisplayList(build);
   const indexOf = indexByPageNumber(list);
 
-  const paintPage = (page: Page): HTMLElement | null => {
+  const paintPage = ({ page }: { readonly page: Page }): HTMLElement | null => {
     const index = indexOf.get(page.number);
     if (index === undefined) {
       // The layout grew a page after the list was built. Yielding paints the

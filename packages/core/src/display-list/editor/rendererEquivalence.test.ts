@@ -134,7 +134,7 @@ describe("the two page renderers paint the same pages", () => {
       for (const [index, page] of layout.pages.entries()) {
         const context = contextFor(page, layout.pages.length);
         const legacy = renderPage(page, context, legacyOptions);
-        const fromList = painter.paintPage(page);
+        const fromList = painter.paintPage({ page });
 
         expect({ page: index + 1, painted: fromList !== null }).toEqual({
           page: index + 1,
