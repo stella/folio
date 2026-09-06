@@ -597,11 +597,12 @@ then compares the text. On the 307 documents where that lens can judge:
 
 Every one of the 38 documents that lost the accept check has a deleted table
 row, and every one of the 23 that lost the reject check has an inserted one:
-the correlation is exact, with no other cause left over. We mark a row change
-as `w:trPr/w:ins` or `w:trPr/w:del` and leave the cell runs alone, so a
-consumer that reads only run-level revisions keeps the row's text. Word marks
-both. This is recorded as a limitation in `packages/core/src/compare/README.md`
-and is the clearest next fix the run produced.
+the correlation is exact, with no other cause left over. At the time of the run
+a row change was written as `w:trPr/w:ins` or `w:trPr/w:del` with the cell runs
+left alone, so a consumer that reads only run-level revisions kept the row's
+text. Word marks both, and folio now does too: a row revision stamps its cell
+runs and `resolveChange` clears both halves together. The rows above are the
+measurement that found it, not the current behaviour.
 
 No move markup reached the corpus at all: `w:moveFrom` appears in none of the
 601 outputs, so the move detector's thresholds were never exercised here.
