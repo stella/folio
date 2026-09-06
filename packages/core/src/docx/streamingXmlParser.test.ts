@@ -148,7 +148,7 @@ describe("parseStreamingXml", () => {
   });
 });
 
-test.each(["' injected='yes", '\"/>', "&quot;", "1.5", "-1"])(
+test.each(["' injected='yes", '"/>', "&quot;", "1.5", "-1"])(
   "refuses a non-decimal attribute replacement: %s",
   (replacement) => {
     expect(
