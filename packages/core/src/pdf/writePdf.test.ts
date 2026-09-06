@@ -409,6 +409,7 @@ const SAMPLE_BY_KIND = {
   clipGroup: {
     kind: "clipGroup",
     rect: { xPx: 0, yPx: 0, widthPx: 10, heightPx: 10 },
+    regions: [],
     children: [{ kind: "rect", rect: { xPx: 1, yPx: 1, widthPx: 2, heightPx: 2 }, fill: BLACK }],
   },
   rotateGroup: {

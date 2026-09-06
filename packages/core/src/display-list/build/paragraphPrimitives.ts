@@ -1230,6 +1230,7 @@ const paintTab = ({
         sink.glyphs.push({
           kind: "clipGroup",
           rect: clip,
+          regions: [],
           children: [
             {
               kind: "glyphRun",
