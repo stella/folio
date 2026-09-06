@@ -190,6 +190,17 @@ export default library({
       },
     },
     {
+      // A paint backend consumes the display list and nothing else. The coarse
+      // half of that boundary (no edge to the layout engine at all) is a
+      // dependency-cruiser rule; this one checks the shape of the remaining
+      // edge, which dependency-cruiser cannot see: the display-list types must
+      // arrive as types, so that data crosses the seam and behaviour does not.
+      files: ["packages/core/src/pdf/**/*.ts", "packages/core/src/display-list/dom/**/*.ts"],
+      rules: {
+        "folio-layer-boundaries/paint-backend-seam": "error",
+      },
+    },
+    {
       // The browser projection surface is a thin boundary around the canonical
       // bounded Rust/WASM kernel. Prevent a TypeScript OOXML/archive fallback
       // or a second generated-kernel entry point from appearing silently.

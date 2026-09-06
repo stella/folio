@@ -136,7 +136,8 @@ type RuleContext = {
       | "controllerImportedUpstream"
       | "engineImportsRuntime"
       | "projectionBoundaryImport"
-      | "generatedKernelImport";
+      | "generatedKernelImport"
+      | "paintBackendValueImport";
   }) => void;
 };
 
@@ -524,9 +525,77 @@ const checkProjectionBoundary = (context: RuleContext, node: AstNode): void => {
   }
 };
 
+// A paint backend consumes the display list as data. A value import would let
+// behaviour cross the seam, and behaviour that only one backend has is how two
+// backends come to disagree about a page. Dependency-cruiser owns the coarser
+// half of this rule (a backend may not reach the layout engine at all); it
+// cannot see `import type`, so the shape of the edge is checked here.
+//
+// Flagged:
+//   import { DisplayList } from "../types";        // value import
+// Safe:
+//   import type { DisplayList } from "../types";
+//   import { STROKE_DASH_FACTORS } from "../primitives";  // no layout facts
+const PAINT_BACKEND_PREFIXES = ["packages/core/src/pdf/", "packages/core/src/display-list/dom/"];
+
+const DISPLAY_LIST_TYPES_SUFFIX = "packages/core/src/display-list/types";
+
+const isPaintBackendFile = (absolutePath: string): boolean => {
+  const normalized = normalizedWithLeadingSlash(absolutePath);
+  return PAINT_BACKEND_PREFIXES.some(
+    (prefix) => normalized.includes(`/${prefix}`) || normalized.startsWith(prefix),
+  );
+};
+
+const checkPaintBackendSeam = (context: RuleContext, node: AstNode): void => {
+  if (node.type !== "ImportDeclaration" || node.importKind === "type") {
+    return;
+  }
+  const specifier = importSpecifierOf(node);
+  const importerPath = filenameOf(context);
+  if (specifier === null || importerPath === "" || !isPaintBackendFile(importerPath)) {
+    return;
+  }
+  const resolved = resolveCoreTarget(importerPath, specifier);
+  if (resolved === null || !stripExtAndIndex(resolved).endsWith(DISPLAY_LIST_TYPES_SUFFIX)) {
+    return;
+  }
+  // A value import is still fine when every named specifier is itself typed,
+  // which is how `import { type X }` is written.
+  const specifiers = node.specifiers;
+  const everySpecifierIsType =
+    Array.isArray(specifiers) &&
+    specifiers.length > 0 &&
+    specifiers.every(
+      (entry) => isAstNode(entry) && (entry as { importKind?: unknown }).importKind === "type",
+    );
+  if (!everySpecifierIsType) {
+    context.report({ node, messageId: "paintBackendValueImport" });
+  }
+};
+
 export default {
   meta: { name: "folio-layer-boundaries" },
   rules: {
+    "paint-backend-seam": {
+      meta: {
+        type: "problem",
+        messages: {
+          paintBackendValueImport:
+            "A paint backend consumes the display list as types. Use `import type` " +
+            "from display-list/types; runtime values shared by backends belong in " +
+            "display-list/primitives, which carries no layout facts.",
+        },
+      },
+      create(context: RuleContext) {
+        const handle = (node: unknown) => {
+          if (isAstNode(node)) {
+            checkPaintBackendSeam(context, node);
+          }
+        };
+        return { ImportDeclaration: handle };
+      },
+    },
     "no-upstream-import": {
       meta: {
         type: "problem",

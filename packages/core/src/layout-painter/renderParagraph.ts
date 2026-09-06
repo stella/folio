@@ -271,7 +271,7 @@ function shouldRenderTextColor(
   return !isDefaultBlackTextColor(color);
 }
 
-function getRenderableTextColor(run: TextRun | TabRun): string | undefined {
+export function getRenderableTextColor(run: TextRun | TabRun): string | undefined {
   const textColor = run.color;
   if (!textColor) {
     return undefined;
@@ -930,7 +930,7 @@ function applyTabUnderline(element: HTMLElement, run: TabRun): void {
 /**
  * Get leader character for tab
  */
-function getLeaderChar(leader: string): string | null {
+export function getLeaderChar(leader: string): string | null {
   switch (leader) {
     case "dot":
       return ".";
@@ -1662,7 +1662,7 @@ const splitTextRunAt = (run: TextRun, index: number): [TextRun, TextRun] => {
  * paragraph start or after a manual line break. Split paint runs to preserve
  * exact PM ranges.
  */
-const splitCollapsibleLineEdgeSpaces = (
+export const splitCollapsibleLineEdgeSpaces = (
   sourceRuns: Run[],
   collapseLeading: boolean,
 ): CollapsibleLineEdgeSpacesResult => {
@@ -1725,7 +1725,7 @@ const splitCollapsibleLineEdgeSpaces = (
   return { runs, collapsedLeadingRuns, collapsedTrailingRuns };
 };
 
-const startsAfterSoftWrap = (block: ParagraphBlock, line: MeasuredLine): boolean => {
+export const startsAfterSoftWrap = (block: ParagraphBlock, line: MeasuredLine): boolean => {
   if (line.fromChar > 0) {
     return true;
   }
