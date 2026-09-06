@@ -22,7 +22,7 @@
 
 import { expect, test, type Page } from "@playwright/test";
 
-// A repaint of a 91-page document, six times, for two renderers.
+// Repeated repaints of a 91-page document for both renderers.
 test.setTimeout(180_000);
 
 import type { DocxEditorRef } from "../../packages/react/src/components/DocxEditor.props";
@@ -37,8 +37,11 @@ declare global {
 /** 91 pages: past the virtualization threshold, and long enough to be work. */
 const FIXTURE = "performance-1500-paragraphs.docx";
 
-/** How many repaints to time. The first is dropped as warm-up. */
-const REPAINTS = 4;
+/** Warm both rendering paths before collecting the steady-state samples. */
+const WARMUP_REPAINTS = 3;
+
+/** Sub-millisecond page costs need enough samples to resist scheduler noise. */
+const MEASURED_REPAINTS = 11;
 
 /**
  * How much more per painted page the IR renderer may cost.
@@ -125,6 +128,9 @@ const repaint = (page: Page): Promise<RepaintCost> =>
     });
     const frameMs = performance.now() - startedAt;
     const recorded = globalThis.__folioRenderPagesMs ?? [];
+    if (recorded.length === before) {
+      throw new Error("the repaint produced no render-pages timing before the deadline");
+    }
     const ourMs = recorded.slice(before).reduce((total, value) => total + value, 0);
     // A page the container has not filled yet paints nothing, and counting it
     // would flatter whichever renderer happened to be given fewer.
@@ -145,11 +151,10 @@ const perPage = (costs: readonly RepaintCost[], read: (cost: RepaintCost) => num
 const measure = async (page: Page, renderer: string): Promise<readonly RepaintCost[]> => {
   await open(page, renderer);
   const costs: RepaintCost[] = [];
-  for (let index = 0; index < REPAINTS; index += 1) {
+  for (let index = 0; index < WARMUP_REPAINTS + MEASURED_REPAINTS; index += 1) {
     costs.push(await repaint(page));
   }
-  // The first repaint of a session pays for warm-up that neither renderer owns.
-  return costs.slice(1);
+  return costs.slice(WARMUP_REPAINTS);
 };
 
 test.describe("what each renderer costs per page", () => {
