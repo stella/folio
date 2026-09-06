@@ -25,8 +25,8 @@ import type {
   TextBoxBlock,
 } from "../../layout-engine/types";
 import { isFloatingImageRun } from "../../layout-painter/renderUtils";
-import type { DisplayPrimitive } from "../types";
 import type { BuildContext } from "./buildContext";
+import type { PageComposer } from "./regions";
 import { paintImageFragment } from "./imagePrimitives";
 import { paintParagraphFragment } from "./paragraphPrimitives";
 import { paintTableFragment } from "./tablePrimitives";
@@ -60,6 +60,7 @@ const explicitSpaceBeforePx = (block: ParagraphBlock): number =>
   block.attrs?.spacingExplicit?.before === true ? (block.attrs.spacing?.before ?? 0) : 0;
 
 type PaintStoryBlockOptions = {
+  readonly composer: PageComposer;
   readonly block: FlowBlock;
   readonly measure: Measure;
   readonly xPx: number;
@@ -73,6 +74,7 @@ type PaintStoryBlockOptions = {
 
 /** One block of a story, painted at an absolute page position. */
 const paintStoryBlock = ({
+  composer,
   block,
   measure,
   xPx,
@@ -81,9 +83,9 @@ const paintStoryBlock = ({
   context,
   label,
   construct,
-}: PaintStoryBlockOptions): readonly DisplayPrimitive[] => {
+}: PaintStoryBlockOptions): void => {
   if (block.kind === "paragraph" && measure.kind === "paragraph") {
-    return paintParagraphFragment({
+    paintParagraphFragment({
       fragment: {
         kind: "paragraph",
         blockId: block.id,
@@ -97,11 +99,13 @@ const paintStoryBlock = ({
       block,
       measure,
       context,
+      composer,
     });
+    return;
   }
 
   if (block.kind === "table" && measure.kind === "table") {
-    return paintTableFragment({
+    paintTableFragment({
       fragment: {
         kind: "table",
         blockId: block.id,
@@ -115,26 +119,32 @@ const paintStoryBlock = ({
       block,
       measure,
       context,
+      composer,
     });
+    return;
   }
 
   if (block.kind === "image" && measure.kind === "image") {
-    return paintImageFragment(
-      {
-        kind: "image",
-        blockId: block.id,
-        x: xPx,
-        y: yPx,
-        width: measure.width,
-        height: measure.height,
-      },
-      block,
-      context,
+    composer.push(
+      paintImageFragment(
+        {
+          kind: "image",
+          blockId: block.id,
+          x: xPx,
+          y: yPx,
+          width: measure.width,
+          height: measure.height,
+        },
+        block,
+        context,
+      ),
     );
+    return;
   }
 
   if (block.kind === "textBox" && measure.kind === "textBox") {
-    return paintTextBoxFragment({
+    paintTextBoxFragment({
+      composer,
       fragment: {
         kind: "textBox",
         blockId: block.id,
@@ -147,6 +157,7 @@ const paintStoryBlock = ({
       measure,
       context,
     });
+    return;
   }
 
   context.unsupported.report(
@@ -154,7 +165,6 @@ const paintStoryBlock = ({
     context.pageIndex,
     `${label}: a ${block.kind} block with a ${measure.kind} measure is not painted`,
   );
-  return [];
 };
 
 const measuredHeightPx = (measure: Measure): number => {
@@ -176,6 +186,7 @@ const measuredHeightPx = (measure: Measure): number => {
 };
 
 export type PaintStoryOptions = {
+  readonly composer: PageComposer;
   readonly blocks: readonly FlowBlock[];
   readonly measures: readonly Measure[];
   /** Page-absolute origin of the story's own content box. */
@@ -191,6 +202,7 @@ export type PaintStoryOptions = {
  * height the paginator reserved the band from.
  */
 export const paintFootnoteBlocks = ({
+  composer,
   blocks,
   measures,
   xPx,
@@ -198,8 +210,7 @@ export const paintFootnoteBlocks = ({
   widthPx,
   context,
   label,
-}: PaintStoryOptions): readonly DisplayPrimitive[] => {
-  const primitives: DisplayPrimitive[] = [];
+}: PaintStoryOptions): void => {
   let cursorYPx = yPx;
 
   for (const [index, block] of blocks.entries()) {
@@ -212,22 +223,19 @@ export const paintFootnoteBlocks = ({
       );
       continue;
     }
-    primitives.push(
-      ...paintStoryBlock({
-        block,
-        measure,
-        xPx,
-        yPx: cursorYPx,
-        widthPx,
-        context,
-        label,
-        construct: UNSUPPORTED_CONSTRUCT.footnoteContent,
-      }),
-    );
+    paintStoryBlock({
+      composer,
+      block,
+      measure,
+      xPx,
+      yPx: cursorYPx,
+      widthPx,
+      context,
+      label,
+      construct: UNSUPPORTED_CONSTRUCT.footnoteContent,
+    });
     cursorYPx += measuredHeightPx(measure);
   }
-
-  return primitives;
 };
 
 /**
@@ -237,6 +245,7 @@ export const paintFootnoteBlocks = ({
  * and margin anchors the display list producer does not carry.
  */
 export const paintHeaderFooterBlocks = ({
+  composer,
   blocks,
   measures,
   xPx,
@@ -244,8 +253,7 @@ export const paintHeaderFooterBlocks = ({
   widthPx,
   context,
   label,
-}: PaintStoryOptions): readonly DisplayPrimitive[] => {
-  const primitives: DisplayPrimitive[] = [];
+}: PaintStoryOptions): void => {
   let cursorYPx = yPx;
 
   const reportOutOfFlow = (detail: string): void => {
@@ -282,18 +290,17 @@ export const paintHeaderFooterBlocks = ({
             `paragraph ${String(block.id)} anchors a floating picture, which resolves against page and margin anchors the display list does not carry`,
           );
         }
-        primitives.push(
-          ...paintStoryBlock({
-            block,
-            measure,
-            xPx,
-            yPx: cursorYPx + explicitSpaceBeforePx(block),
-            widthPx,
-            context,
-            label,
-            construct: UNSUPPORTED_CONSTRUCT.headerFooterContent,
-          }),
-        );
+        paintStoryBlock({
+          composer,
+          block,
+          measure,
+          xPx,
+          yPx: cursorYPx + explicitSpaceBeforePx(block),
+          widthPx,
+          context,
+          label,
+          construct: UNSUPPORTED_CONSTRUCT.headerFooterContent,
+        });
         cursorYPx += measure.totalHeight;
         continue;
       }
@@ -305,18 +312,17 @@ export const paintHeaderFooterBlocks = ({
           reportOutOfFlow(`table ${String(block.id)} is floating (w:tblpPr) and is not painted`);
           continue;
         }
-        primitives.push(
-          ...paintStoryBlock({
-            block,
-            measure,
-            xPx: xPx + inlineTableOffsetPx(block, measure.totalWidth, widthPx),
-            yPx: cursorYPx,
-            widthPx,
-            context,
-            label,
-            construct: UNSUPPORTED_CONSTRUCT.headerFooterContent,
-          }),
-        );
+        paintStoryBlock({
+          composer,
+          block,
+          measure,
+          xPx: xPx + inlineTableOffsetPx(block, measure.totalWidth, widthPx),
+          yPx: cursorYPx,
+          widthPx,
+          context,
+          label,
+          construct: UNSUPPORTED_CONSTRUCT.headerFooterContent,
+        });
         cursorYPx += measure.totalHeight;
         continue;
       }
@@ -328,18 +334,17 @@ export const paintHeaderFooterBlocks = ({
           reportOutOfFlow(`image ${String(block.id)} is anchored and is not painted`);
           continue;
         }
-        primitives.push(
-          ...paintStoryBlock({
-            block,
-            measure,
-            xPx,
-            yPx: cursorYPx,
-            widthPx,
-            context,
-            label,
-            construct: UNSUPPORTED_CONSTRUCT.headerFooterContent,
-          }),
-        );
+        paintStoryBlock({
+          composer,
+          block,
+          measure,
+          xPx,
+          yPx: cursorYPx,
+          widthPx,
+          context,
+          label,
+          construct: UNSUPPORTED_CONSTRUCT.headerFooterContent,
+        });
         cursorYPx += measure.height;
         continue;
       }
@@ -351,18 +356,17 @@ export const paintHeaderFooterBlocks = ({
           reportOutOfFlow(`text box ${String(block.id)} is positioned and is not painted`);
           continue;
         }
-        primitives.push(
-          ...paintStoryBlock({
-            block,
-            measure,
-            xPx,
-            yPx: cursorYPx,
-            widthPx,
-            context,
-            label,
-            construct: UNSUPPORTED_CONSTRUCT.headerFooterContent,
-          }),
-        );
+        paintStoryBlock({
+          composer,
+          block,
+          measure,
+          xPx,
+          yPx: cursorYPx,
+          widthPx,
+          context,
+          label,
+          construct: UNSUPPORTED_CONSTRUCT.headerFooterContent,
+        });
         cursorYPx += measure.height;
         continue;
       }
@@ -383,6 +387,4 @@ export const paintHeaderFooterBlocks = ({
       `${label}: block ${String(block.id)} is a ${block.kind} with a ${measure.kind} measure`,
     );
   }
-
-  return primitives;
 };

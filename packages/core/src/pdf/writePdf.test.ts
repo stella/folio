@@ -34,6 +34,7 @@ const listWith = (primitives: readonly DisplayPrimitive[]): DisplayList => ({
       widthPx: PAGE_WIDTH_PX,
       heightPx: PAGE_HEIGHT_PX,
       orientation: "portrait",
+      regions: [],
       primitives,
       links: [
         {

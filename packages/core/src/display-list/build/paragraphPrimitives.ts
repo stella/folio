@@ -72,6 +72,8 @@ import { sanitizeExternalUrl } from "../../utils/urlSecurity";
 import type {
   DisplayColor,
   DisplayGlyphRun,
+  DisplayHitRegionKind,
+  DisplayHitRegionModel,
   DisplayLine,
   DisplayLinkTarget,
   DisplayPrimitive,
@@ -79,6 +81,8 @@ import type {
   DisplayStroke,
 } from "../types";
 import { type BuildContext, trackedChangeColor } from "./buildContext";
+import { HIT_REGION_KINDS } from "../primitives";
+import type { PageComposer } from "./regions";
 import { DOC_CANVAS_TEXT, parseDisplayColor } from "./colors";
 import { buildGlyphs, glyphRunText, type Glyphs } from "./glyphs";
 import { paintImage } from "./imagePrimitives";
@@ -203,6 +207,8 @@ const horizontalLine = (
 });
 
 export type ParagraphPaintOptions = {
+  /** Where the primitives and the regions over them are collected. */
+  readonly composer: PageComposer;
   readonly fragment: ParagraphFragment;
   readonly block: ParagraphBlock;
   readonly measure: ParagraphMeasure;
@@ -530,6 +536,8 @@ type EmitGlyphRunOptions = {
    * an editing surface maps clicks and selections through it.
    */
   readonly pmRange?: DisplayGlyphRun["pmRange"];
+  /** Set for a line-edge space run painted at no width. */
+  readonly collapsedEdge?: DisplayGlyphRun["collapsedEdge"];
 };
 
 /**
@@ -549,6 +557,7 @@ const emitGlyphRun = ({
   lineHeightPx,
   isRtl,
   pmRange,
+  collapsedEdge,
 }: EmitGlyphRunOptions): void => {
   if (glyphs.text.length === 0) {
     return;
@@ -617,6 +626,7 @@ const emitGlyphRun = ({
     direction: isRtl ? "rtl" : "ltr",
     ...(stroke === undefined ? {} : { stroke }),
     ...(pmRange === undefined ? {} : { pmRange }),
+    ...(collapsedEdge === undefined ? {} : { collapsedEdge }),
   });
 
   emitDecorations({
@@ -794,6 +804,25 @@ const paintLine = ({
   const isCollapsedEdgeRun = (run: TextRun): boolean =>
     collapsedLeadingRuns.has(run) || collapsedTrailingRuns.has(run);
 
+  /**
+   * What a collapsed line-edge run is worth to a caret.
+   *
+   * The run paints at no width, so there is nothing for a caret to step over
+   * and an editing surface steps by this instead: one space in the run's own
+   * style, which is what the painter measured for the same purpose.
+   */
+  const collapsedEdgeOf = (
+    run: TextRun,
+    style: FontStyle,
+    leading: ReadonlySet<TextRun>,
+  ): DisplayGlyphRun["collapsedEdge"] =>
+    isCollapsedEdgeRun(run)
+      ? {
+          side: leading.has(run) ? "leading" : "trailing",
+          spaceAdvancePx: measureTextWidth(" ", style),
+        }
+      : undefined;
+
   const hasVisibleMarker =
     Boolean(block.attrs?.listMarker) && block.attrs?.listMarkerHidden !== true;
   let shrinkableSpaces = 0;
@@ -871,6 +900,7 @@ const paintLine = ({
           collapsed: isCollapsedEdgeRun(run),
         });
         const pmRange = modelRangeOf(run, context);
+        const collapsedEdge = collapsedEdgeOf(run, style, collapsedLeadingRuns);
         emitGlyphRun({
           sink,
           context,
@@ -883,6 +913,7 @@ const paintLine = ({
           lineHeightPx: line.lineHeight,
           isRtl,
           ...(pmRange === undefined ? {} : { pmRange }),
+          ...(collapsedEdge === undefined ? {} : { collapsedEdge }),
         });
         layoutXPx += glyphs.widthPx;
         break;
@@ -1219,11 +1250,9 @@ const measureDecimalPrefixWidth = (
 };
 
 /** Every primitive a paragraph fragment paints, back to front. */
-export const paintParagraphFragment = (
-  options: ParagraphPaintOptions,
-): readonly DisplayPrimitive[] => {
-  const { fragment, block, measure, context } = options;
-  const primitives: DisplayPrimitive[] = paintParagraphChrome(options);
+export const paintParagraphFragment = (options: ParagraphPaintOptions): void => {
+  const { fragment, block, measure, context, composer } = options;
+  composer.push(paintParagraphChrome(options));
 
   const { alignment, indentLeft, indentRight, isRtl } = resolvePhysicalParagraphInlineLayout(block);
   const indent = block.attrs?.indent;
@@ -1265,31 +1294,86 @@ export const paintParagraphFragment = (
       isFirstLine,
     });
 
-    primitives.push(
-      ...paintLine({
-        block,
-        line,
-        geometry,
-        context,
-        alignment,
-        isRtl,
-        isFirstLine,
-        isLastLine: lineIndex === totalLines - 1,
-        paragraphEndsWithLineBreak,
-        availableWidthPx:
-          fragment.width -
-          indentLeft -
-          indentRight -
-          (line.leftOffset ?? 0) -
-          (line.rightOffset ?? 0),
-        indentLeft,
-        firstLineOffsetPx,
-        markerInlineWidthPx,
-      }),
+    // The line's own runs, from the same slice the painting below uses.
+    const lineRuns = sliceRunsForLine(block, line);
+    // The line's own box spans the fragment's width, not the glyphs': a click
+    // to the right of the last word is still on that line, and that is where
+    // the caret goes.
+    composer.region(
+      {
+        kind: lineRegionKind(lineRuns),
+        rect: {
+          xPx: fragment.x,
+          yPx: geometry.lineTopYPx,
+          widthPx: fragment.width,
+          heightPx: line.lineHeight,
+        },
+        model: lineModel(block, lineRuns, context),
+      },
+      () => {
+        composer.push(
+          paintLine({
+            block,
+            line,
+            geometry,
+            context,
+            alignment,
+            isRtl,
+            isFirstLine,
+            isLastLine: lineIndex === totalLines - 1,
+            paragraphEndsWithLineBreak,
+            availableWidthPx:
+              fragment.width -
+              indentLeft -
+              indentRight -
+              (line.leftOffset ?? 0) -
+              (line.rightOffset ?? 0),
+            indentLeft,
+            firstLineOffsetPx,
+            markerInlineWidthPx,
+          }),
+        );
+      },
     );
 
     cursorYPx += line.lineHeight;
   }
+};
 
-  return primitives;
+/**
+ * A line with no text of its own is where a caret lands in an empty paragraph,
+ * and the surface has always needed to tell the two apart: one has characters
+ * to put the caret between, the other has only a position.
+ */
+const lineRegionKind = (runs: readonly Run[]): DisplayHitRegionKind =>
+  runs.some((run) => run.kind === "text" && run.text.length > 0)
+    ? HIT_REGION_KINDS.line
+    : HIT_REGION_KINDS.emptyRun;
+
+/**
+ * What a click on this line resolves to: the characters it holds, and the
+ * comment threads anchored on them.
+ */
+const lineModel = (
+  block: ParagraphBlock,
+  runs: readonly Run[],
+  context: BuildContext,
+): DisplayHitRegionModel => {
+  const positions = runs.flatMap((run) =>
+    run.kind === "text" && run.pmStart !== undefined && run.pmEnd !== undefined
+      ? [{ start: run.pmStart, end: run.pmEnd }]
+      : [],
+  );
+  const commentIds = [
+    ...new Set(runs.flatMap((run) => (run.kind === "text" ? (run.commentIds ?? []) : []))),
+  ];
+  const start = positions.at(0)?.start;
+  const end = positions.at(-1)?.end;
+  return {
+    blockId: String(block.id),
+    ...(start === undefined || end === undefined
+      ? {}
+      : { pmRange: { start, end, story: context.story } }),
+    ...(commentIds.length === 0 ? {} : { commentIds }),
+  };
 };

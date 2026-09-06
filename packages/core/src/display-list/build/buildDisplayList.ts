@@ -24,6 +24,8 @@ import type {
 } from "../../layout-engine/types";
 import type {
   DisplayColor,
+  DisplayHitRegionKind,
+  DisplayHitRegionModel,
   DisplayLink,
   DisplayLinkTarget,
   DisplayList,
@@ -32,6 +34,7 @@ import type {
   DisplayPage,
   DisplayPrimitive,
 } from "../types";
+import { HIT_REGION_KINDS } from "../primitives";
 import { AuthorColorTable, type BuildContext } from "./buildContext";
 import { DOC_CANVAS } from "./colors";
 import { collectFloatingImages, pageGeometryOf } from "./floatingImages";
@@ -40,6 +43,7 @@ import { paintPageFurniture, type PageFurnitureInputs } from "./furniture";
 import { ImageTable, paintImageFragment } from "./imagePrimitives";
 import { paintColumnSeparators, paintPageBackground } from "./pageFurniture";
 import { paintParagraphFragment } from "./paragraphPrimitives";
+import { createPageComposer, type PageComposer, type RegionDescriptor } from "./regions";
 import { paintTableFragment } from "./tablePrimitives";
 import { paintTextBoxFragment } from "./textBoxPrimitives";
 import { UnsupportedCollector, UNSUPPORTED_CONSTRUCT } from "./unsupported";
@@ -151,6 +155,7 @@ const bordersOfNeighbour = (entry: BlockLookupEntry | undefined): ParagraphBorde
   entry?.block.kind === "paragraph" ? entry.block.attrs?.borders : undefined;
 
 type PaintFragmentOptions = {
+  readonly composer: PageComposer;
   readonly fragment: Fragment;
   readonly entry: BlockLookupEntry;
   readonly context: BuildContext;
@@ -162,45 +167,59 @@ const paintFragment = ({
   fragment,
   entry,
   context,
+  composer,
   prevEntry,
   nextEntry,
-}: PaintFragmentOptions): readonly DisplayPrimitive[] => {
+}: PaintFragmentOptions): void => {
   const { block, measure } = entry;
-  const mismatch = (): readonly DisplayPrimitive[] => {
+  const mismatch = (): void => {
     context.unsupported.report(
       UNSUPPORTED_CONSTRUCT.measureMismatch,
       context.pageIndex,
       `${fragment.kind} fragment ${String(fragment.blockId)} has a ${block.kind} block and a ${measure.kind} measure`,
     );
-    return [];
   };
 
   switch (fragment.kind) {
     case "paragraph": {
       if (block.kind !== "paragraph" || measure.kind !== "paragraph") {
-        return mismatch();
+        mismatch();
+        return;
       }
       const prevBorders = bordersOfNeighbour(prevEntry);
       const nextBorders = bordersOfNeighbour(nextEntry);
-      return paintParagraphFragment({
+      paintParagraphFragment({
         fragment,
         block,
         measure,
         context,
+        composer,
         ...(prevBorders === undefined ? {} : { prevBorders }),
         ...(nextBorders === undefined ? {} : { nextBorders }),
       });
+      return;
     }
     case "table":
-      return block.kind === "table" && measure.kind === "table"
-        ? paintTableFragment({ fragment, block, measure, context })
-        : mismatch();
+      if (block.kind === "table" && measure.kind === "table") {
+        paintTableFragment({ fragment, block, measure, context, composer });
+        return;
+      }
+      mismatch();
+      return;
     case "image":
-      return block.kind === "image" ? paintImageFragment(fragment, block, context) : mismatch();
+      if (block.kind === "image") {
+        composer.push(paintImageFragment(fragment, block, context));
+        return;
+      }
+      mismatch();
+      return;
     case "textBox":
-      return block.kind === "textBox" && measure.kind === "textBox"
-        ? paintTextBoxFragment({ fragment, block, measure, context })
-        : mismatch();
+      if (block.kind === "textBox" && measure.kind === "textBox") {
+        paintTextBoxFragment({ composer, fragment, block, measure, context });
+        return;
+      }
+      mismatch();
+      return;
     default: {
       const unreachable: never = fragment;
       context.unsupported.report(
@@ -208,7 +227,6 @@ const paintFragment = ({
         context.pageIndex,
         `fragment kind ${JSON.stringify(unreachable)} has no builder`,
       );
-      return [];
     }
   }
 };
@@ -285,44 +303,92 @@ const buildPage = ({
   // page border, the watermark, behind-document floats, body fragments in
   // `page.fragments` order, front floats, column separators, the footnote band,
   // the header, the footer, and last a `zOrder="front"` page border.
-  const primitives: DisplayPrimitive[] = [
-    paintPageBackground(page, pageBackground),
-    ...behind,
-    ...behindFloats,
-  ];
+  const composer = createPageComposer();
+  composer.push([paintPageBackground(page, pageBackground), ...behind, ...behindFloats]);
 
-  for (const [index, fragment] of page.fragments.entries()) {
-    const entry = entries[index];
-    if (!entry) {
-      unsupported.report(
-        UNSUPPORTED_CONSTRUCT.missingBlock,
-        pageIndex,
-        `no block lookup entry for ${fragment.kind} fragment ${String(fragment.blockId)}`,
-      );
-      continue;
-    }
-    primitives.push(
-      ...paintFragment({
-        fragment,
-        entry,
-        context,
-        prevEntry: entries[index - 1],
-        nextEntry: entries[index + 1],
-      }),
-    );
-  }
+  // The body's own box. A click outside it is in a margin, where the caret
+  // belongs to whichever line is nearest rather than to the page.
+  composer.region(
+    {
+      kind: HIT_REGION_KINDS.pageContent,
+      rect: {
+        xPx: page.margins.left,
+        yPx: page.margins.top,
+        widthPx: page.size.w - page.margins.left - page.margins.right,
+        heightPx: page.size.h - page.margins.top - page.margins.bottom,
+      },
+    },
+    () => {
+      for (const [index, fragment] of page.fragments.entries()) {
+        const entry = entries[index];
+        if (!entry) {
+          unsupported.report(
+            UNSUPPORTED_CONSTRUCT.missingBlock,
+            pageIndex,
+            `no block lookup entry for ${fragment.kind} fragment ${String(fragment.blockId)}`,
+          );
+          continue;
+        }
+        composer.region(fragmentRegion(fragment, context), () => {
+          paintFragment({
+            fragment,
+            entry,
+            context,
+            composer,
+            prevEntry: entries[index - 1],
+            nextEntry: entries[index + 1],
+          });
+        });
+      }
+    },
+  );
 
-  primitives.push(...frontFloats);
-  primitives.push(...paintColumnSeparators(page));
-  primitives.push(...above);
+  composer.push(frontFloats);
+  composer.push(paintColumnSeparators(page));
+  above(composer);
 
   return {
     pageNumber: page.number,
     widthPx: page.size.w,
     heightPx: page.size.h,
     orientation: page.orientation ?? (page.size.w > page.size.h ? "landscape" : "portrait"),
-    primitives,
+    primitives: composer.primitives(),
+    regions: composer.regions(),
     links,
+  };
+};
+
+/** Which kind of region a fragment paints into. */
+const FRAGMENT_REGION_KIND = {
+  paragraph: HIT_REGION_KINDS.paragraph,
+  table: HIT_REGION_KINDS.table,
+  image: HIT_REGION_KINDS.image,
+  textBox: HIT_REGION_KINDS.textBox,
+} as const satisfies Record<Fragment["kind"], DisplayHitRegionKind>;
+
+/**
+ * The region one fragment occupies.
+ *
+ * Its box and its model range are the layout's own: the same numbers the
+ * painting below uses, so a click resolves against what was drawn rather than
+ * against a second opinion about where the block went.
+ */
+const fragmentRegion = (fragment: Fragment, context: BuildContext): RegionDescriptor => {
+  const model: DisplayHitRegionModel = {
+    blockId: String(fragment.blockId),
+    ...(fragment.pmStart === undefined || fragment.pmEnd === undefined
+      ? {}
+      : { pmRange: { start: fragment.pmStart, end: fragment.pmEnd, story: context.story } }),
+  };
+  return {
+    kind: FRAGMENT_REGION_KIND[fragment.kind],
+    rect: {
+      xPx: fragment.x,
+      yPx: fragment.y,
+      widthPx: fragment.width,
+      heightPx: fragment.height,
+    },
+    model,
   };
 };
 

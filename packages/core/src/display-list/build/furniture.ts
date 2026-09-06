@@ -22,6 +22,7 @@ import type { BuildContext } from "./buildContext";
 import { paintHeaderFooter } from "./headerFooterPrimitives";
 import { paintPageBorders, type PageBorders } from "./pageBorderPrimitives";
 import { paintFootnoteArea } from "./pageFurniture";
+import type { PageComposer } from "./regions";
 import { UNSUPPORTED_CONSTRUCT } from "./unsupported";
 import { paintWatermark } from "./watermarkPrimitives";
 
@@ -195,8 +196,10 @@ const reportMissingStories = (
  * under the body, `above` over it. `renderPage.ts` establishes both.
  */
 export type PageFurniturePrimitives = {
+  /** Painted under the body: a back page border, the watermark. */
   readonly behind: readonly DisplayPrimitive[];
-  readonly above: readonly DisplayPrimitive[];
+  /** Painted over it, into the composer, so its regions nest. */
+  readonly above: (composer: PageComposer) => void;
 };
 
 export type PaintPageFurnitureOptions = {
@@ -236,18 +239,21 @@ export const paintPageFurniture = ({
           context,
         });
 
-  const above: DisplayPrimitive[] = [
-    ...paintFootnoteArea({
+  // What goes over the body is painted after it, through the composer, because
+  // the note band and the header and footer slots are stories a click can land
+  // in and their regions have to nest around what fills them.
+  const above = (composer: PageComposer): void => {
+    paintFootnoteArea({
+      composer,
       page,
       context,
       ...(furniture.footnoteContentById === undefined
         ? {}
         : { contentById: furniture.footnoteContentById }),
-    }),
-  ];
-  if (selected.headerContent !== undefined) {
-    above.push(
-      ...paintHeaderFooter({
+    });
+    if (selected.headerContent !== undefined) {
+      paintHeaderFooter({
+        composer,
         page,
         section: "header",
         content: selected.headerContent,
@@ -255,12 +261,11 @@ export const paintPageFurniture = ({
           ? {}
           : { distancePx: furniture.headerDistancePx }),
         context,
-      }),
-    );
-  }
-  if (selected.footerContent !== undefined) {
-    above.push(
-      ...paintHeaderFooter({
+      });
+    }
+    if (selected.footerContent !== undefined) {
+      paintHeaderFooter({
+        composer,
         page,
         section: "footer",
         content: selected.footerContent,
@@ -268,12 +273,12 @@ export const paintPageFurniture = ({
           ? {}
           : { distancePx: furniture.footerDistancePx }),
         context,
-      }),
-    );
-  }
-  if (!paintsBorderBehind) {
-    above.push(...borders);
-  }
+      });
+    }
+    if (!paintsBorderBehind) {
+      composer.push(borders);
+    }
+  };
 
   return { behind: [...(paintsBorderBehind ? borders : []), ...watermark], above };
 };

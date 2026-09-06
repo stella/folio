@@ -20,6 +20,9 @@ import {
 } from "../../layout-painter/renderPage";
 import type { DisplayColor, DisplayPrimitive } from "../types";
 import type { BuildContext } from "./buildContext";
+import { HIT_REGION_KINDS } from "../primitives";
+import type { PageComposer } from "./regions";
+import type { DisplayStoryRef } from "../types";
 import { DOC_CANVAS_TEXT } from "./colors";
 import { paintFootnoteBlocks } from "./storyPrimitives";
 import { UNSUPPORTED_CONSTRUCT } from "./unsupported";
@@ -72,6 +75,7 @@ export const paintColumnSeparators = (page: Page): readonly DisplayPrimitive[] =
 };
 
 export type FootnoteAreaPaintOptions = {
+  readonly composer: PageComposer;
   readonly page: Page;
   readonly context: BuildContext;
   /**
@@ -91,14 +95,15 @@ export type FootnoteAreaPaintOptions = {
  * at the page bottom instead of spilling past it.
  */
 export const paintFootnoteArea = ({
+  composer,
   page,
   context,
   contentById,
-}: FootnoteAreaPaintOptions): readonly DisplayPrimitive[] => {
+}: FootnoteAreaPaintOptions): void => {
   const reservedHeightPx = page.footnoteReservedHeight ?? 0;
   const noteIds = page.footnoteIds ?? [];
   if (reservedHeightPx <= 0 || noteIds.length === 0) {
-    return [];
+    return;
   }
 
   const bodies = noteIds.map((noteId) => ({ noteId, content: contentById?.get(noteId) }));
@@ -139,6 +144,8 @@ export const paintFootnoteArea = ({
     },
   ];
 
+  composer.push(primitives);
+
   for (const [index, { noteId, content }] of bodies.entries()) {
     if (content === undefined) {
       continue;
@@ -149,18 +156,31 @@ export const paintFootnoteArea = ({
     // clamp above uses keeps a note that was not supplied from shifting the
     // ones below it.
     const offsetPx = calculateFootnoteAreaRenderHeight(items.slice(0, index));
-    primitives.push(
-      ...paintFootnoteBlocks({
-        blocks: content.blocks,
-        measures: content.measures,
-        xPx: page.margins.left,
-        yPx: areaTopPx + offsetPx,
-        widthPx: contentWidthPx,
-        context: { ...context, story: { kind: "footnote", id: noteId } },
-        label: `footnote ${content.displayNumber}`,
-      }),
+    const story: DisplayStoryRef = { kind: "footnote", id: noteId };
+    // A note is its own document, and a click in the band edits that one.
+    composer.region(
+      {
+        kind: HIT_REGION_KINDS.note,
+        rect: {
+          xPx: page.margins.left,
+          yPx: areaTopPx + offsetPx,
+          widthPx: contentWidthPx,
+          heightPx: content.height,
+        },
+        model: { story },
+      },
+      () => {
+        paintFootnoteBlocks({
+          composer,
+          blocks: content.blocks,
+          measures: content.measures,
+          xPx: page.margins.left,
+          yPx: areaTopPx + offsetPx,
+          widthPx: contentWidthPx,
+          context: { ...context, story },
+          label: `footnote ${content.displayNumber}`,
+        });
+      },
     );
   }
-
-  return primitives;
 };

@@ -13,6 +13,7 @@
 import type {
   DisplayColor,
   DisplayGlyphRun,
+  DisplayHitRegionKind,
   DisplayPrimitive,
   DisplayStrokePattern,
 } from "./types";
@@ -122,3 +123,24 @@ export const WAVY_STROKE_AMPLITUDE_FACTOR = 2;
 
 export const BLACK: DisplayColor = { r: 0, g: 0, b: 0, a: 1 };
 export const WHITE: DisplayColor = { r: 255, g: 255, b: 255, a: 1 };
+
+/**
+ * The kinds of region a click can land in, as a total map over the union: a
+ * new kind that is not listed fails to compile, and so does a name that is not
+ * a kind.
+ */
+export const HIT_REGION_KINDS = {
+  pageContent: "pageContent",
+  headerSlot: "headerSlot",
+  footerSlot: "footerSlot",
+  note: "note",
+  paragraph: "paragraph",
+  line: "line",
+  emptyRun: "emptyRun",
+  tab: "tab",
+  image: "image",
+  table: "table",
+  tableRow: "tableRow",
+  tableCell: "tableCell",
+  textBox: "textBox",
+} as const satisfies Record<DisplayHitRegionKind, DisplayHitRegionKind>;

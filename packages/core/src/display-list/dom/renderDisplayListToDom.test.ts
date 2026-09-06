@@ -98,6 +98,7 @@ const emptyPage = (primitives: readonly DisplayPrimitive[]): DisplayPage => ({
   widthPx: 816,
   heightPx: 1056,
   orientation: "portrait",
+  regions: [],
   primitives,
   links: [],
 });

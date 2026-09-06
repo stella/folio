@@ -242,6 +242,19 @@ export type DisplayGlyphRun = {
   /** What the measurer added to the advances; absent when it added nothing. */
   readonly adjustments?: DisplayRunAdjustments;
   /**
+   * A run of spaces at a line edge that the line was fitted without.
+   *
+   * Word keeps such spaces addressable and paints them at no width, so the
+   * caret can sit among them while the line breaks as though they were not
+   * there. The advances are therefore all zero, and `spaceAdvancePx` is what
+   * one of those spaces would have been worth: an editing surface steps the
+   * caret by it, because there is nothing painted to step over.
+   */
+  readonly collapsedEdge?: {
+    readonly side: "leading" | "trailing";
+    readonly spaceAdvancePx: number;
+  };
+  /**
    * Glyph outline stroke, for `w:outline` and the emboss/imprint effects.
    * Absent means fill only.
    */
@@ -354,6 +367,84 @@ export type DisplayLinkTarget =
    */
   | { readonly kind: "page"; readonly pageIndex: number; readonly yPx: number };
 
+/**
+ * What kind of thing a click landed in.
+ *
+ * A surface that edits a page has to answer more than "which character": which
+ * story, which paragraph, which cell, whether it hit a picture or the space
+ * after a line. The painter answered those from its own element structure, and
+ * every reader learned that structure; naming them here makes the answer a
+ * property of the page rather than of the markup that happened to paint it.
+ */
+export type DisplayHitRegionKind =
+  /** The page's content area, inside its margins. */
+  | "pageContent"
+  | "headerSlot"
+  | "footerSlot"
+  /** One note's body in the band at the foot of the page. */
+  | "note"
+  | "paragraph"
+  /** One laid-out line of a paragraph, full content width. */
+  | "line"
+  /** A line with no runs: the caret still has to land somewhere. */
+  | "emptyRun"
+  /** A tab's advance, which is space rather than characters. */
+  | "tab"
+  | "image"
+  | "table"
+  | "tableRow"
+  | "tableCell"
+  | "textBox";
+
+/**
+ * What a region resolves to besides its box.
+ *
+ * Every field is something a reader of the painted markup used to get from an
+ * attribute the painter wrote. They are optional because they are properties of
+ * particular kinds: a cell has a column index and a paragraph does not.
+ */
+export type DisplayHitRegionModel = {
+  /** Model range and story, for a region a caret can land in. */
+  readonly pmRange?: DisplayModelRange;
+  /** The story a slot or note region *is*, whether or not it has a range. */
+  readonly story?: DisplayStoryRef;
+  /** Durable block identity, for scrolling to and highlighting a block. */
+  readonly blockId?: string;
+  /** Comment threads anchored on this region's text. */
+  readonly commentIds?: readonly number[];
+  /** Row and column, for a cell; row only, for a row. */
+  readonly rowIndex?: number;
+  readonly columnIndex?: number;
+  /** Leading and trailing spaces the line collapsed, and what they advanced. */
+  readonly collapsedLeadingSpaces?: boolean;
+  readonly collapsedTrailingSpaces?: boolean;
+  readonly collapsedSpaceAdvancePx?: number;
+};
+
+/**
+ * A box a click can land in, and what it means.
+ *
+ * Regions form a tree over the page's primitives rather than a copy of them:
+ * `from` and `to` are a half-open range into `DisplayPage.primitives`, and a
+ * child's range lies inside its parent's. The producer emits a line's
+ * primitives together, so every region owns a contiguous slice; a backend that
+ * paints structure walks the tree and a backend that only draws ignores it.
+ *
+ * Primitives no region claims are the page's own furniture: its background, its
+ * borders, a watermark. Nothing about them is editable, so nothing has to
+ * resolve them.
+ */
+export type DisplayHitRegion = {
+  readonly kind: DisplayHitRegionKind;
+  readonly rect: DisplayRect;
+  /** First primitive of this region, as an index into the page's list. */
+  readonly from: number;
+  /** One past its last. */
+  readonly to: number;
+  readonly children: readonly DisplayHitRegion[];
+  readonly model?: DisplayHitRegionModel;
+};
+
 export type DisplayPage = {
   /** Physical 1-based page number, as the layout engine numbered it. */
   readonly pageNumber: number;
@@ -362,6 +453,14 @@ export type DisplayPage = {
   readonly orientation: "portrait" | "landscape";
   /** Painted back to front. */
   readonly primitives: readonly DisplayPrimitive[];
+  /**
+   * Where a click can land on this page, over the same primitives.
+   *
+   * Not paint: a rasterizer ignores it, as it ignores `links`. It is here
+   * because the surface that edits a page and the backend that paints it must
+   * agree about what is where, and they can only do that from one structure.
+   */
+  readonly regions: readonly DisplayHitRegion[];
   readonly links: readonly DisplayLink[];
 };
 
