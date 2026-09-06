@@ -503,6 +503,91 @@ items below it as-if-accepted, and reporting them would bury the real edit.
 
 216 configurations, none with a failing invariant.
 
+### Additions past the last block keep the target's order
+
+Every target-only block with no following base block was collected and emitted
+after the main loop. The applier orders operations that resolve to one position
+by their order in the operation list, so a paragraph and a table both added
+after the base document's last block came out table first, whatever the target
+said — and the round-trip self-check refused the comparison rather than return
+it.
+
+The tail is now emitted where its step sits. The empty-base rule is unchanged:
+the first addition replaces the hidden anchor paragraph instead of following it,
+so the result does not open with a stray blank.
+
+`append_paragraph_then_table` builds the pair the edit script cannot: two
+paragraphs, then a paragraph AND a table appended after the last of them.
+
+### A list level that is absent is a list level that changed
+
+`changedParagraphProperties` read the target's list level and skipped the block
+when there was none, so a list item that lost its numbering moved no words and
+produced no change: the comparison reported the two documents as agreeing on
+that paragraph, and its own self-check then refused the pair, because accepting
+still left a list item.
+
+An insertion had the mirror defect. It inherits the anchor's numbering unless
+the operation says otherwise, and the anchor is whichever block happened to sit
+next to it, so a paragraph added beside a list arrived as a further item of it.
+
+`listLevel: null` now clears `w:numPr` the way `styleId: null` already clears
+`w:pStyle` — on `setBlockParagraphProperties` and on both block insertions —
+and the comparison always states the level it wants rather than staying silent
+about absence. `unnumber_list_item` and `insert_paragraph_beside_list_item` pin
+the two directions.
+
+### A whole paragraph added or removed carries its paragraph mark
+
+Deleting a paragraph marked only its runs. Folio's own accept path removes the
+node, so the round trip passed; every other consumer was left with a blank line
+where the paragraph had been, because the mark that terminated it survived.
+Inserting one had the mirror defect: rejecting left an empty paragraph rather
+than closing the break. `w:pPr/w:rPr/w:del` and `w:pPr/w:rPr/w:ins` are what
+this means to an OOXML consumer, and the mark is what makes the paragraph
+itself appear or go away.
+
+The mark belongs to the paragraph it ends, so it is written only when a
+paragraph follows: the last paragraph of a cell or of the body has nothing to
+join with, and a table is not something a paragraph mark can be joined with at
+all. Resolving one at that boundary merges the containers and loses the table's
+rows, so the resolution path checks the same thing — an input document may
+carry a mark folio did not write. A relocation is left alone: a moved
+paragraph's mark is `w:moveFrom`, which this vocabulary cannot say, and `w:del`
+there would report the move as a deletion as well.
+
+Resolving a deleted mark joins the paragraph with the next one, and
+ProseMirror's join keeps the FIRST node's attributes. A paragraph's properties
+live on its mark, so the surviving paragraph is the second and its properties
+are restored explicitly; otherwise a deleted heading handed its style to the
+paragraph below it.
+
+`delete_paragraph`, `insert_paragraph` and `delete_last_paragraph_of_a_cell`
+pin the three cases.
+
+37 of the 138 digests moved across the three changes above, deliberately: every
+`churn` and `structural` configuration, plus three `reorder` ones. Those are
+the variants that add or remove a whole block, move a list level, or append
+past the last block; no other variant's product changed, and no configuration
+has a failing invariant.
+
+### Headers pair by order when two packages share no part id
+
+A relationship id names a part inside ONE package. Two revisions of one file
+carry it forward, so matching on it pairs the right header exactly; two
+independently authored documents never agree on one, and matching on it alone
+left every header and footer of such a comparison reported as present on one
+side only.
+
+Identity still wins, so nothing that paired before pairs differently. What is
+left falls back to kind and document order, and the surplus stays unpaired
+rather than putting a first-page header opposite a default one. Notes keep
+pairing by note id: that is the note itself, not a package-scoped pointer.
+
+No digest moved: the generated corpus builds both sides from one package, so
+every story already paired by identity. `document-stories.test.ts` pins the
+precedence, the kinds, the surplus and the notes.
+
 ## Correctness gaps the baseline surfaced
 
 Three configurations failed, and each named a real gap rather than a flake.
