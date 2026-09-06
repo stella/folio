@@ -63,6 +63,7 @@ import {
 } from "./types";
 import {
   classifyProjectionMismatch,
+  projectSupportedInlineFormatting,
   type CompareVerification,
   type CompareVerificationFailure,
 } from "./verification";
@@ -123,12 +124,7 @@ const existingRevisionsOf = (reviewer: FolioDocxReviewer): ExistingRevisions => 
  * the table cell it sits in. The tag is what makes the self-check below see a
  * paragraph that landed beside a table instead of inside it.
  */
-const projectStory = (
-  reviewer: FolioDocxReviewer,
-  story: FolioDocumentStoryHandle,
-  view: "final" | "original" = "final",
-): string[] => {
-  const blocks = reviewer.readReviewedStory({ story, view })?.snapshot.blocks ?? [];
+const projectBlocks = (blocks: readonly FolioAIBlock[]): string[] => {
   return blocks.map(({ text, table, styleId, listLevel }) => {
     const container = table
       ? `t${String(table.tableIndex)}r${String(table.rowIndex)}c${String(table.cellIndex)}g${String(table.gridColumnIndex)}x${String(table.columnSpan)}y${String(table.rowSpan)}p${String(table.paragraphIndex)}`
@@ -139,17 +135,6 @@ const projectStory = (
     return `${container}|${styleId ?? ""}|${listLevel ?? ""}|${text}`;
   });
 };
-
-/** Effective supported formatting, normalized into character-length runs. */
-const projectSupportedInlineFormatting = ({ text, previewRuns }: FolioAIBlock): string =>
-  (previewRuns ?? [{ text }])
-    .map(
-      ({ text: runText, bold, italic, underline, strike }) =>
-        `${runText.length}:${bold === true ? "b" : ""}${italic === true ? "i" : ""}${
-          underline === true ? "u" : ""
-        }${strike === true ? "s" : ""}`,
-    )
-    .join(",");
 
 type FormattingRoundTripFailureOptions = {
   invariant: CompareVerificationFailure["invariant"];
@@ -169,17 +154,21 @@ const formattingRoundTripFailure = ({
   expectedBlocks,
   expectedBlockId,
 }: FormattingRoundTripFailureOptions): CompareVerificationFailure | null => {
-  const actualById = new Map(actualBlocks.map((block) => [block.id, block]));
-  const expectedById = new Map(expectedBlocks.map((block) => [block.id, block]));
   for (const change of changes) {
     if (change.kind !== "format") {
       continue;
     }
-    const actual = actualById.get(change.baseBlockId);
-    const expected = expectedById.get(expectedBlockId(change));
-    // Text/structure verification owns missing or displaced blocks.
-    if (!actual || !expected) {
-      continue;
+    const expectedId = expectedBlockId(change);
+    const expectedIndex = expectedBlocks.findIndex(({ id }) => id === expectedId);
+    const expected = expectedBlocks.at(expectedIndex);
+    const actual = actualBlocks.at(expectedIndex);
+    if (expectedIndex === -1 || !actual || !expected) {
+      return {
+        invariant,
+        cause: "inline-formatting",
+        story,
+        detail: "a text-equal aligned block could not be projected for formatting verification",
+      };
     }
     if (projectSupportedInlineFormatting(actual) !== projectSupportedInlineFormatting(expected)) {
       return {
@@ -399,7 +388,7 @@ export type AppliedComparison = {
  * are both legitimate asks and only the caller knows which one it is making.
  */
 export const applyComparison = (
-  { reviewer, targetReviewer, revisionStamp, granularity, numberingChanges }: ParsedComparison,
+  { reviewer, revisionStamp, granularity, numberingChanges }: ParsedComparison,
   planned: readonly PlannedStoryComparison[],
 ): Result<AppliedComparison, CompareDocxApplyError> => {
   const changes: CompareChange[] = [...numberingChanges];
@@ -417,7 +406,9 @@ export const applyComparison = (
 
     // Read before the operations land: this is the document the redline is
     // written against, and rejecting every revision has to return to it.
-    const baseBefore = projectStory(reviewer, pair.baseStory);
+    const baseBeforeBlocks =
+      reviewer.readReviewedStory({ story: pair.baseStory, view: "final" })?.snapshot.blocks ?? [];
+    const baseBefore = projectBlocks(baseBeforeBlocks);
 
     const { skipped, nextRevisionId } = reviewer.applyDocumentOperationsToStory({
       story: pair.baseStory,
@@ -452,8 +443,8 @@ export const applyComparison = (
     const acceptFailure = classifyProjectionMismatch({
       invariant: "accept-reproduces-target",
       story: pair.baseStory,
-      actual: projectStory(reviewer, pair.baseStory),
-      expected: projectStory(targetReviewer, pair.targetStory),
+      actual: projectBlocks(acceptedStory?.snapshot.blocks ?? []),
+      expected: projectBlocks(pair.targetSnapshot.blocks),
     });
     if (acceptFailure) {
       failures.push(acceptFailure);
@@ -474,7 +465,7 @@ export const applyComparison = (
     const rejectFailure = classifyProjectionMismatch({
       invariant: "reject-reproduces-base",
       story: pair.baseStory,
-      actual: projectStory(reviewer, pair.baseStory, "original"),
+      actual: projectBlocks(rejectedStory?.snapshot.blocks ?? []),
       expected: baseBefore,
     });
     if (rejectFailure) {
