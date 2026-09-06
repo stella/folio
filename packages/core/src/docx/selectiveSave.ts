@@ -18,8 +18,8 @@ import { hasUnsynthesizedReplyRanges } from "./commentReplyMarkers";
 import { validateFolioDocumentModel } from "./modelValidation";
 import { isNewDataUrlDrawing } from "./newImage";
 import { parseNumbering } from "./numberingParser";
+import { isUnsafePackagePath } from "./packageParts";
 import { RELATIONSHIP_TYPES } from "./relsParser";
-import { isPreservableDocxEntry } from "./unzip";
 import {
   applyUpdatesToZip,
   findMaxRId,
@@ -463,16 +463,14 @@ export async function attemptSelectiveSave(
     const JSZip = (await import("jszip")).default;
     const zip = await JSZip.loadAsync(originalBuffer);
 
-    // The selective path only ever overlays a handful of known-safe parts
-    // (document.xml, comments, headers/footers, numbering, core props) on
-    // top of the ORIGINAL zip and re-emits everything else verbatim —
-    // unlike the full repack (`repackDocx`), which drops every entry that
-    // fails `isPreservableDocxEntry` (macros, OLE embeddings, disallowed
-    // media). An untrusted DOCX carrying one of those would otherwise
-    // round-trip its active content unfiltered through a selective save.
-    // Bail to the full repack, which owns that filtering.
+    // The selective path overlays a handful of parts on top of the ORIGINAL
+    // zip and re-emits everything else verbatim, which is what the document's
+    // own content deserves. An entry whose PATH would escape the package is
+    // the one thing it cannot re-emit: the full repack drops such an entry and
+    // reconciles the references to it, so bail there. Both paths read one
+    // predicate, so neither can drift into passing what the other blocks.
     for (const [path, file] of Object.entries(zip.files)) {
-      if (!file.dir && !isPreservableDocxEntry(path)) {
+      if (!file.dir && isUnsafePackagePath(path)) {
         return null;
       }
     }

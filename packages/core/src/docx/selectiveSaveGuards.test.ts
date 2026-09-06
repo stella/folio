@@ -266,14 +266,11 @@ describe("fallback contract", () => {
   });
 });
 
-describe("non-preservable entry guard", () => {
-  test("bails to full repack when the original zip carries a vbaProject.bin macro part", async () => {
-    // attemptSelectiveSave loads the ORIGINAL buffer into JSZip and overlays
-    // only a handful of known-safe part updates — unlike repackDocx, which
-    // drops every entry failing isPreservableDocxEntry (macros, OLE
-    // embeddings, disallowed media). Without this guard, an attacker DOCX
-    // carrying an active-content part would round-trip it unfiltered
-    // through the selective path.
+describe("package entry guard", () => {
+  test("takes the selective path for a macro-enabled document", async () => {
+    // The document is the author's: a macro project is carried verbatim by
+    // both save paths, so the selective path has no reason to bail. It only
+    // refuses an entry PATH that would escape the package.
     const zip = new JSZip();
     zip.file("[Content_Types].xml", CONTENT_TYPES);
     zip.file("_rels/.rels", PACKAGE_RELS);
@@ -291,13 +288,17 @@ describe("non-preservable entry guard", () => {
       hasUntrackedChanges: false,
     });
 
-    expect(result).toBeNull();
+    expect(result).not.toBeNull();
+    const saved = await JSZip.loadAsync(result!);
+    expect(await saved.file("word/vbaProject.bin")?.async("uint8array")).toEqual(
+      new Uint8Array([0, 1, 2, 3]),
+    );
   });
 
   test("does not bail on the Word package preview thumbnail", async () => {
     // `docProps/thumbnail.jpeg` is plain preview media Word writes into
-    // nearly every authored file; if the guard treated it as active
-    // content, the selective path would be dead code for real documents.
+    // nearly every authored file; the selective path carries it like any
+    // other part.
     const zip = new JSZip();
     zip.file("[Content_Types].xml", CONTENT_TYPES);
     zip.file("_rels/.rels", PACKAGE_RELS);
@@ -318,9 +319,8 @@ describe("non-preservable entry guard", () => {
     expect(result).not.toBeNull();
   });
 
-  test("still takes the selective path when every entry is preservable", async () => {
-    // Control case: the same fixture shape without the macro part must
-    // still take the selective path, so the new guard is not overly broad.
+  test("still takes the selective path for an ordinary package", async () => {
+    // Control case: the plain fixture shape, so the guard is not overly broad.
     const buffer = await makeFixture();
     const doc = await parseDocx(buffer, { preloadFonts: false });
 

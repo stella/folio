@@ -303,19 +303,24 @@ export async function unzipDocx(
       throw new DocxSecurityError("DOCX file contains an unsafe entry path");
     }
 
-    if (!isPreservableDocxEntry(path)) {
-      continue;
-    }
-
-    const lowerPath = path.toLowerCase();
+    // The expansion ceiling covers EVERY entry, including the ones this parser
+    // never reads: a save hands the whole package back, so a part folio does
+    // not model still passes through the host's memory on the way out, and a
+    // package that inflates past the ceiling has to be refused whether or not
+    // anything here looks inside it.
     const declaredSize = getEntryUncompressedSize(file);
-
     if (declaredSize !== null) {
       totalUncompressedBytes += declaredSize;
       if (totalUncompressedBytes > limits.maxTotalUncompressedBytes) {
         throw new DocxSecurityError("DOCX file expands beyond the maximum allowed size");
       }
     }
+
+    if (!isParsedDocxEntry(path)) {
+      continue;
+    }
+
+    const lowerPath = path.toLowerCase();
 
     // Determine file type and extract
     if (lowerPath.endsWith(".xml") || lowerPath.endsWith(".rels")) {
@@ -619,20 +624,43 @@ function isSafeDocxPath(path: string): boolean {
   return !path.split("/").some((part) => part === "..");
 }
 
-export function isPreservableDocxEntry(path: string): boolean {
+/**
+ * Parts folio never looks inside. A macro project and an ActiveX control carry
+ * code; folio models neither, so it reads neither — not into the document
+ * model, not even into the raw XML map. The save path carries them anyway,
+ * straight from the source archive, which is what keeps a `.docm` a `.docm`.
+ */
+const UNINTERPRETED_PART_NAMES = new Set(["word/vbaproject.bin", "word/vbadata.xml"]);
+
+const isUninterpretedPart = (lowerPath: string): boolean =>
+  UNINTERPRETED_PART_NAMES.has(lowerPath) || lowerPath.startsWith("word/activex/");
+
+/**
+ * Whether this entry is one the PARSER reads into the document model. It says
+ * nothing about what a save keeps: a repack hands back every part of the
+ * package (see `packageParts.ts`), including the ones this returns false for.
+ *
+ * That asymmetry is the point. A macro project, an ActiveX control and an OLE
+ * embedding are opaque bytes to folio — never decoded, never interpreted,
+ * never executed — and they travel from the source archive to the saved one
+ * without any code here looking inside them.
+ */
+function isParsedDocxEntry(path: string): boolean {
   if (!isSafeDocxPath(path)) {
     return false;
   }
 
   const lowerPath = path.toLowerCase();
+  if (isUninterpretedPart(lowerPath)) {
+    return false;
+  }
   if (lowerPath.startsWith("word/media/")) {
     return PRESERVABLE_MEDIA_MIME_TYPES.has(getMediaMimeType(path));
   }
 
   // Word writes an optional package preview image (`docProps/thumbnail.jpeg`,
-  // `.wmf`, or `.emf`) into nearly every authored file. It is plain media,
-  // not active content; treat it like `word/media/` so neither the repack
-  // nor the selective-save non-preservable-entry guard drops it.
+  // `.wmf`, or `.emf`) into nearly every authored file. It is plain media the
+  // renderer can use, so the parser reads it like `word/media/`.
   if (lowerPath.startsWith("docprops/thumbnail.")) {
     return PRESERVABLE_MEDIA_MIME_TYPES.has(getMediaMimeType(path));
   }
@@ -734,7 +762,7 @@ export function getFileList(content: RawDocxContent): string[] {
   const files: string[] = [];
 
   for (const path of Object.keys(content.originalZip.files)) {
-    if (!content.originalZip.files[path]?.dir && isPreservableDocxEntry(path)) {
+    if (!content.originalZip.files[path]?.dir && isParsedDocxEntry(path)) {
       files.push(path);
     }
   }
@@ -808,7 +836,7 @@ export function extractFile(
   path: string,
 ): Promise<string | ArrayBuffer | null> {
   const file = content.originalZip.file(path);
-  if (!file || !isPreservableDocxEntry(path)) {
+  if (!file || !isParsedDocxEntry(path)) {
     return Promise.resolve(null);
   }
 

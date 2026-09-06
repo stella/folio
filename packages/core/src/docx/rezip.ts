@@ -79,7 +79,11 @@ import { serializeSettingsXml } from "./serializer/settingsSerializer";
 import { serializeStyle, serializeStylesXml } from "./serializer/stylesSerializer";
 import { serializeThemeXml } from "./serializer/themeSerializer";
 import { escapeXml } from "./serializer/xmlUtils";
-import { isPreservableDocxEntry } from "./unzip";
+import {
+  isUnsafePackagePath,
+  reconcilePackageReferences,
+  removeUnsafeEntries,
+} from "./packageParts";
 import type { RawDocxContent } from "./unzip";
 import {
   findChild,
@@ -767,12 +771,19 @@ export type RepackOptions = {
   changedNoteParaIds?: ReadonlySet<string>;
 };
 
-const generateDocxZip = (zip: JSZip, compressionLevel: number): Promise<ArrayBuffer> =>
-  zip.generateAsync({
+/**
+ * The single exit for a repacked package. Reconciliation runs here rather than
+ * at each caller so no save path can emit a package whose relationships or
+ * content types name a part it does not hold.
+ */
+const generateDocxZip = async (zip: JSZip, compressionLevel: number): Promise<ArrayBuffer> => {
+  await reconcilePackageReferences(zip, compressionLevel);
+  return zip.generateAsync({
     type: "arraybuffer",
     compression: "DEFLATE",
     compressionOptions: { level: compressionLevel },
   });
+};
 
 type ParsedZipSource = {
   buffer: ArrayBuffer;
@@ -782,14 +793,6 @@ type ParsedZipSource = {
 };
 
 const parsedZipSources = new WeakMap<Document, ParsedZipSource>();
-
-const removeNonPreservableEntries = (zip: JSZip): void => {
-  for (const [path, file] of Object.entries(zip.files)) {
-    if (!file.dir && !isPreservableDocxEntry(path)) {
-      zip.remove(path);
-    }
-  }
-};
 
 const loadParsedZipSource = async (
   document: Document,
@@ -801,7 +804,7 @@ const loadParsedZipSource = async (
   }
 
   const zip = await JSZip.loadAsync(buffer);
-  removeNonPreservableEntries(zip);
+  removeUnsafeEntries(zip);
   const [documentXml, corePropertiesXml] = await Promise.all([
     zip.file("word/document.xml")?.async("text"),
     zip.file("docProps/core.xml")?.async("text"),
@@ -925,7 +928,7 @@ export async function repackDocx(doc: Document, options: RepackOptions = {}): Pr
     originalZip.file("docProps/core.xml")?.async("text"),
   ]);
 
-  removeNonPreservableEntries(originalZip);
+  removeUnsafeEntries(originalZip);
   const newZip = cloneDocxZip(originalZip);
 
   return finishRepack({
@@ -973,7 +976,7 @@ export async function repackDocxFromRaw(
       continue;
     }
 
-    if (!isPreservableDocxEntry(path)) {
+    if (isUnsafePackagePath(path)) {
       continue;
     }
 
@@ -1058,14 +1061,7 @@ export async function repackDocxFromRaw(
     });
   }
 
-  // Generate the new DOCX file
-  const arrayBuffer = await newZip.generateAsync({
-    type: "arraybuffer",
-    compression: "DEFLATE",
-    compressionOptions: { level: compressionLevel },
-  });
-
-  return arrayBuffer;
+  return generateDocxZip(newZip, compressionLevel);
 }
 
 // ============================================================================
