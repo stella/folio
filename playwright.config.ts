@@ -33,7 +33,7 @@ export default defineConfig({
     // Measure/paint parity compares two numbers read from the SAME browser in
     // the same layout pass, so unlike the screenshot baselines it cannot go
     // flaky on cross-machine font rendering, and it is safe to gate CI on.
-    { name: "measure-parity", testMatch: /measure-parity\.spec\.ts/u },
+    { name: "measure-parity", testMatch: /measure(?:-backend)?-parity\.spec\.ts/u },
     { name: "rendering", testMatch: /rendering\.spec\.ts/u },
     { name: "performance", testMatch: /editing-performance\.spec\.ts/u },
     { name: "parity", testDir: "./tests/parity" },
