@@ -223,6 +223,7 @@ const PRIMITIVE_SAMPLES = {
     kind: "clipGroup",
     rect: { xPx: 0, yPx: 0, widthPx: 10, heightPx: 10 },
     children: [],
+    regions: [],
   },
   rotateGroup: {
     kind: "rotateGroup",

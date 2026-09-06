@@ -594,7 +594,7 @@ const paintImage = (
   context.parent.append(clip);
 };
 
-const paintClipGroup = ({ rect, children }: DisplayClipGroup, context: PaintContext) => {
+const paintClipGroup = ({ rect, children, regions }: DisplayClipGroup, context: PaintContext) => {
   const element = createAbsoluteDiv(context, rect);
   element.style.overflow = "hidden";
   context.parent.append(element);
@@ -605,9 +605,7 @@ const paintClipGroup = ({ rect, children }: DisplayClipGroup, context: PaintCont
     originXPx: rect.xPx,
     originYPx: rect.yPx,
   };
-  for (const child of children) {
-    paintPrimitive(child, inner);
-  }
+  paintRegionTree({ primitives: children, regions }, inner);
 };
 
 const paintRotateGroup = (
@@ -844,10 +842,12 @@ const applyRegionModel = (element: HTMLElement, region: DisplayHitRegion): void 
  * nesting; everything else about the paint is unchanged, and a page with no
  * regions paints exactly as a flat list.
  */
-const paintRegionTree = (page: DisplayPage, context: PaintContext): void => {
+type RegionTree = Pick<DisplayPage, "primitives" | "regions">;
+
+const paintRegionTree = ({ primitives, regions }: RegionTree, context: PaintContext): void => {
   let current = context;
   const stack: PaintContext[] = [];
-  walkRegions(page.primitives, page.regions, {
+  walkRegions(primitives, regions, {
     onPrimitive: (primitive) => {
       paintPrimitive(primitive, current);
     },

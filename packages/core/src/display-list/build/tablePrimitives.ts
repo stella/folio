@@ -632,10 +632,10 @@ export const paintTableFragment = ({
     return;
   }
 
-  // A fragment that cuts a row mid-content wraps its body in a clip group, and
-  // a region addresses the page's own primitive list rather than the inside of
-  // a group. The rows of such a fragment therefore carry no regions of their
-  // own; the table's fragment region still resolves a click to the table.
+  // A fragment that cuts a row mid-content keeps its body primitives and hit
+  // regions together inside the clip group. Both use page coordinates, so a
+  // structured backend can preserve row, cell and text ancestry while paint
+  // backends ignore the hit data.
   paintHeaders(composer);
   const clipped = createPageComposer();
   paintBody(clipped);
@@ -645,5 +645,12 @@ export const paintTableFragment = ({
     widthPx: fragment.width,
     heightPx: Math.max(0, fragment.height - headerHeightPx),
   };
-  composer.push([{ kind: "clipGroup", rect: clip, children: [...clipped.primitives()] }]);
+  composer.push([
+    {
+      kind: "clipGroup",
+      rect: clip,
+      children: [...clipped.primitives()],
+      regions: [...clipped.regions()],
+    },
+  ]);
 };

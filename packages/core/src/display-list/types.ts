@@ -314,6 +314,8 @@ export type DisplayClipGroup = {
   readonly kind: "clipGroup";
   readonly rect: DisplayRect;
   readonly children: readonly DisplayPrimitive[];
+  /** Hit regions over `children`, in the group's page-coordinate space. */
+  readonly regions: readonly DisplayHitRegion[];
 };
 
 /**

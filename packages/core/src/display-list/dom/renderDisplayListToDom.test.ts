@@ -174,6 +174,7 @@ const PRIMITIVE_SAMPLES = {
     kind: "clipGroup",
     rect: { xPx: 0, yPx: 0, widthPx: 10, heightPx: 10 },
     children: [],
+    regions: [],
   },
   rotateGroup: {
     kind: "rotateGroup",
@@ -474,6 +475,7 @@ describe("renderDisplayListToDom", () => {
       {
         kind: "clipGroup",
         rect: { xPx: 10, yPx: 20, widthPx: 100, heightPx: 50 },
+        regions: [],
         children: [
           {
             kind: "rect",
