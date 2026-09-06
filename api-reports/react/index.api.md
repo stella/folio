@@ -130,6 +130,7 @@ import { isFolioBlockId } from '@stll/folio-core/types/block-id';
 import { isSequentialFolioBlockId } from '@stll/folio-core/types/block-id';
 import { isSuggestionStale } from '@stll/folio-core/ai-suggestions/conflict';
 import { JSX } from 'react';
+import { KeyboardShortcutScope } from '@stll/folio-core/managers/editorShortcuts';
 import { Layout } from '@stll/folio-core/layout-engine/types';
 import { MarkdownOptions } from '@stll/folio-core/markdown';
 import { MarkdownResult } from '@stll/folio-core/markdown';
@@ -390,6 +391,7 @@ export type DocxEditorProps = {
     rulerUnit?: "inch" | "cm";
     initialZoom?: number | "fit-width";
     enableWheelZoom?: boolean;
+    keyboardShortcuts?: KeyboardShortcutScope;
     readOnly?: boolean;
     autoOpenReviewSidebar?: boolean;
     components?: Partial<FolioUIComponents>;
@@ -459,6 +461,8 @@ export type DocxEditorRef = {
     scrollToParaId: (paraId: string, options?: ScrollToParaIdOptions) => boolean;
     openPrintPreview: () => void;
     print: () => void;
+    openFind: () => void;
+    openReplace: () => void;
     loadDocument: (doc: Document_2) => void;
     loadDocumentBuffer: (buffer: DocxInput) => Promise<void>;
     ensureEditorView: (options?: {
@@ -843,6 +847,8 @@ export { isSequentialFolioBlockId }
 
 export { isSuggestionStale }
 
+export { KeyboardShortcutScope }
+
 export { MarkdownOptions }
 
 export { MarkdownResult }
@@ -998,7 +1004,8 @@ export type UseWheelZoomOptions = {
     containerRef?: RefObject<HTMLElement | null>;
     getCurrentZoom?: () => number;
     onZoomChange?: (zoom: number) => void;
-    enableKeyboardShortcuts?: boolean;
+    keyboardShortcuts?: KeyboardShortcutScope;
+    shortcutRoots?: readonly RefObject<HTMLElement | null>[];
     preventDefault?: boolean;
 };
 

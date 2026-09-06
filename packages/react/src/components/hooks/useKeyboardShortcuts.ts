@@ -5,9 +5,12 @@ import {
   classifyEditorKeydown,
   deleteSelectedTable,
   isFocusInInputLike,
+  isKeydownInShortcutScope,
   isMacPlatform,
 } from "@stll/folio-core/managers/editorShortcuts";
+import type { KeyboardShortcutScope } from "@stll/folio-core/managers/editorShortcuts";
 import type { PagedEditorRef } from "../../paged-editor/PagedEditor";
+import { readFindSelectionSeed } from "../dialogs/findReplaceSelectionSeed";
 import type { UseFindReplaceReturn } from "../dialogs/useFindReplace";
 
 export type UseKeyboardShortcutsArgs = {
@@ -19,10 +22,18 @@ export type UseKeyboardShortcutsArgs = {
   };
   /** Triggered on Cmd/Ctrl+P. */
   onDirectPrint: () => void;
+  /** Which presses these shortcuts answer. */
+  scope: KeyboardShortcutScope;
+  /**
+   * Elements a press must land inside under the `"editor"` scope. The editor
+   * root covers the find/replace dialog, which renders inside it; pass a
+   * further root for any surface portaled out of that subtree.
+   */
+  roots: readonly RefObject<HTMLElement | null>[];
 };
 
 /**
- * Document-level keyboard shortcuts:
+ * Page-level keyboard shortcuts:
  *  - Cmd/Ctrl+F → open find dialog with selected text
  *  - Cmd/Ctrl+H → open replace dialog
  *  - Cmd/Ctrl+P → trigger the custom print path (intercepts the OS dialog)
@@ -32,7 +43,11 @@ export type UseKeyboardShortcutsArgs = {
  *    focus is in a non-editor input/textarea/contenteditable to avoid
  *    deleting tables while the user is typing in a sidebar or dialog.
  *
- * Thin React binding: the classification, platform/input predicates, and
+ * `scope` decides which presses reach that dispatch: `"document"` every press
+ * on the page, `"editor"` only presses inside `roots`, `"none"` no listener at
+ * all, leaving the shortcuts to the host.
+ *
+ * Thin React binding: the classification, scope, platform/input predicates, and
  * whole-table deletion check live in `@stll/folio-core`; this hook owns only
  * the listener lifecycle, ref freshness, and the host-callback dispatch.
  */
@@ -41,18 +56,19 @@ export function useKeyboardShortcuts({
   findReplace,
   tableSelection,
   onDirectPrint,
+  scope,
+  roots,
 }: UseKeyboardShortcutsArgs): void {
-  // Keep callbacks fresh without re-attaching the global listener on every
-  // change to `findReplace.state` (which updates on every search keystroke).
-  const callbacksRef = useRef({ findReplace, tableSelection, onDirectPrint });
-  callbacksRef.current = { findReplace, tableSelection, onDirectPrint };
+  // Keep callbacks and roots fresh without re-attaching the listener on every
+  // change to `findReplace.state` (which updates on every search keystroke) or
+  // on a fresh `roots` array identity.
+  const callbacksRef = useRef({ findReplace, tableSelection, onDirectPrint, roots });
+  callbacksRef.current = { findReplace, tableSelection, onDirectPrint, roots };
 
   useEffect(() => {
-    const openFindFromSelection = () => {
-      const selection = window.getSelection();
-      const selectedText = selection && !selection.isCollapsed ? selection.toString() : "";
-      callbacksRef.current.findReplace.openFind(selectedText);
-    };
+    if (scope === "none") {
+      return;
+    }
 
     const handleDeleteSelectedTable = (e: KeyboardEvent) => {
       const view = pagedEditorRef.current?.getView();
@@ -67,6 +83,14 @@ export function useKeyboardShortcuts({
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      const inScope = isKeydownInShortcutScope(e, {
+        scope,
+        roots: callbacksRef.current.roots.map((root) => root.current),
+      });
+      if (!inScope) {
+        return;
+      }
+
       const editorDom = pagedEditorRef.current?.getView()?.dom;
       const intent = classifyEditorKeydown(e, {
         isMac: isMacPlatform(),
@@ -79,7 +103,7 @@ export function useKeyboardShortcuts({
           return;
         case "openFind":
           e.preventDefault();
-          openFindFromSelection();
+          callbacksRef.current.findReplace.openFind(readFindSelectionSeed());
           return;
         case "print":
           e.preventDefault();
@@ -94,5 +118,5 @@ export function useKeyboardShortcuts({
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [pagedEditorRef]);
+  }, [pagedEditorRef, scope]);
 }

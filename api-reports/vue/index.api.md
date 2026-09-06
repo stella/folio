@@ -128,6 +128,7 @@ import { inspectDocumentStylesFromDocx } from '@stll/folio-core/style-sets/extra
 import { isFolioBlockId } from '@stll/folio-core/types/block-id';
 import { isSequentialFolioBlockId } from '@stll/folio-core/types/block-id';
 import { isSuggestionStale } from '@stll/folio-core/ai-suggestions/conflict';
+import { KeyboardShortcutScope } from '@stll/folio-core/managers/editorShortcuts';
 import { Layout } from '@stll/folio-core/layout-engine';
 import { MarkdownOptions } from '@stll/folio-core/markdown';
 import { MarkdownResult } from '@stll/folio-core/markdown';
@@ -392,6 +393,7 @@ export type DocxEditorProps = {
     rulerUnit?: "inch" | "cm";
     initialZoom?: number;
     enableWheelZoom?: boolean;
+    keyboardShortcuts?: KeyboardShortcutScope;
     readOnly?: boolean;
     autoOpenReviewSidebar?: boolean;
     components?: Partial<FolioUIComponents>;
@@ -461,6 +463,8 @@ export type DocxEditorRef = {
     scrollToParaId: (paraId: string, options?: ScrollToParaIdOptions) => boolean;
     openPrintPreview: () => void;
     print: () => void;
+    openFind: () => void;
+    openReplace: () => void;
     loadDocument: (doc: Document_2) => void;
     loadDocumentBuffer: (buffer: DocxInput) => Promise<void>;
     ensureEditorView: (options?: {
@@ -722,6 +726,8 @@ export { isFolioBlockId }
 export { isSequentialFolioBlockId }
 
 export { isSuggestionStale }
+
+export { KeyboardShortcutScope }
 
 export { MarkdownOptions }
 

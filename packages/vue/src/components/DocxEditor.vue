@@ -29,6 +29,7 @@
 -->
 <template>
   <div
+    ref="rootRef"
     :class="[
       'docx-editor-vue ep-root paged-editor',
       className,
@@ -629,6 +630,9 @@ watch(hasDocumentInput, (hasInput) => {
 });
 
 // ---- Template refs (paint targets) --------------------------------------
+// The component root. Everything the editor renders, dialogs included, lives
+// under it, so it is the containment root for scoped keyboard shortcuts.
+const rootRef = ref<HTMLElement | null>(null);
 const hiddenPmRef = ref<HTMLElement | null>(null);
 const hiddenHfPmRef = ref<HTMLElement | null>(null);
 const pagesRef = ref<HTMLElement | null>(null);
@@ -695,6 +699,8 @@ useKeyboardShortcuts({
   showFindReplace,
   showHyperlink,
   handleZoomKeyDown,
+  scope: () => props.keyboardShortcuts ?? "document",
+  roots: [rootRef],
 });
 
 // ---- Pipeline -----------------------------------------------------------
@@ -1472,6 +1478,9 @@ const { exposed } = useDocxEditorRefApi({
   closeNoteStory,
   getHeaderFooterView,
   setZoom,
+  openFindReplace: () => {
+    showFindReplace.value = true;
+  },
   onPrint: props.onPrint,
   onSave: props.onSave,
 });

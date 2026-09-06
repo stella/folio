@@ -168,6 +168,11 @@ export type UseDocxEditorRefApiOptions = {
   setZoom: (zoom: number) => void;
   /** Serialize and commit a host-facing save through useDocxEditor. */
   saveDocument: (options?: { selective?: boolean }) => Promise<Blob | null>;
+  /**
+   * Open the find/replace panel. Backs `openFind` and `openReplace`: the Vue
+   * panel has a single open state, so both land here.
+   */
+  openFindReplace: () => void;
   /** Optional host hook for print. */
   onPrint?: (() => void) | undefined;
   /** Optional host hook fired with the serialized `.docx` bytes after `save()`. */
@@ -401,6 +406,8 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
     scrollToParaId,
     openPrintPreview: () => print(),
     print,
+    openFind: () => opts.openFindReplace(),
+    openReplace: () => opts.openFindReplace(),
     loadDocument: (document) => opts.editor.loadDocument(document),
     loadDocumentBuffer: (buffer) => opts.editor.loadDocx(buffer),
     // The fork's controller ensureView() takes no focus argument yet; the
