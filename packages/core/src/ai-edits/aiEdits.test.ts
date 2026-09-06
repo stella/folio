@@ -3,6 +3,7 @@ import { Schema } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
+import { ReplaceStep } from "prosemirror-transform";
 
 import {
   acceptAIEditRevision,
@@ -1041,6 +1042,197 @@ describe("Folio AI edit operations", () => {
     // apply must preserve that.
     expect(view.state.doc.child(1).textContent).toBe("First inserted.");
     expect(view.state.doc.child(2).textContent).toBe("Second inserted.");
+  });
+
+  test("coalesces a same-position insertion run into one document replacement", () => {
+    const replacementStepsByOperationCount = [64, 128, 256].map((operationCount) => {
+      const state = makeState(["Anchor block."]);
+      let replacementSteps = 0;
+      const view = {
+        state,
+        dispatch(transaction: Transaction) {
+          replacementSteps = transaction.steps.filter((step) => step instanceof ReplaceStep).length;
+          view.state = view.state.apply(transaction);
+        },
+      };
+      const snapshot = createFolioAIEditSnapshot(view.state.doc);
+      const operations = Array.from({ length: operationCount }, (_, index) => ({
+        id: `op-${String(index)}`,
+        type: "insertAfterBlock" as const,
+        blockId: "seq-0001",
+        text: `Inserted ${String(index)}.`,
+      }));
+
+      const result = applyFolioAIEditOperations({ view, snapshot, operations, mode: "direct" });
+
+      expect(result.skipped).toEqual([]);
+      expect(result.applied).toHaveLength(operationCount);
+      expect(view.state.doc.childCount).toBe(operationCount + 1);
+      expect(view.state.doc.child(1).textContent).toBe("Inserted 0.");
+      expect(view.state.doc.child(operationCount).textContent).toBe(
+        `Inserted ${String(operationCount - 1)}.`,
+      );
+      return replacementSteps;
+    });
+
+    expect(replacementStepsByOperationCount).toEqual([1, 1, 1]);
+  });
+
+  test("keeps a structural operation between paragraph insertions at one boundary", () => {
+    const view = makeView(makeState(["First anchor.", "Second anchor."]));
+    const snapshot = createFolioAIEditSnapshot(view.state.doc);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot,
+      operations: [
+        {
+          id: "paragraph-after",
+          type: "insertAfterBlock",
+          blockId: "seq-0001",
+          text: "Before the table.",
+        },
+        {
+          id: "table",
+          type: "insertSignatureTable",
+          blockId: "seq-0001",
+          parties: [{ name: "Signer" }],
+        },
+        {
+          id: "paragraph-before",
+          type: "insertBeforeBlock",
+          blockId: "seq-0002",
+          text: "After the table.",
+        },
+      ],
+      mode: "direct",
+    });
+
+    expect(result.skipped).toEqual([]);
+    expect(
+      Array.from({ length: view.state.doc.childCount }, (_, index) => {
+        const child = view.state.doc.child(index);
+        return child.type.name === "table" ? "table" : child.textContent;
+      }),
+    ).toEqual([
+      "First anchor.",
+      "Before the table.",
+      "table",
+      "After the table.",
+      "Second anchor.",
+    ]);
+  });
+
+  test("preserves formatting and revision ownership across a coalesced insertion run", () => {
+    const applyInsertions = () => {
+      const view = makeView(makeState([{ text: "Anchor block.", styleId: "Anchor" }]));
+      const snapshot = createFolioAIEditSnapshot(view.state.doc);
+      const result = applyFolioAIEditOperations({
+        view,
+        snapshot,
+        revisionStamp: { date: "2026-01-02T03:04:05.000Z", idSeed: 100 },
+        operations: [
+          {
+            id: "first",
+            type: "insertAfterBlock",
+            blockId: "seq-0001",
+            text: "First.",
+            styleId: "Heading1",
+          },
+          {
+            id: "second",
+            type: "insertAfterBlock",
+            blockId: "seq-0001",
+            text: "Second line.\nSecond body.",
+            inheritFormatting: false,
+          },
+        ],
+        mode: "tracked-changes",
+        author: "Reviewer",
+      });
+      expect(result.skipped).toEqual([]);
+      expect(result.applied.map(({ id }) => id)).toEqual(["second", "first"]);
+      expect(result.applied.map(({ revisionIds }) => revisionIds)).toEqual([
+        [100, 101, 102, 103],
+        [104, 105],
+      ]);
+      expect(view.state.doc.childCount).toBe(4);
+      expect(view.state.doc.child(1).attrs["styleId"]).toBe("Heading1");
+      expect(view.state.doc.child(2).attrs["styleId"]).toBe(null);
+      expect(view.state.doc.child(3).attrs["styleId"]).toBe(null);
+      return view;
+    };
+
+    const accepting = applyInsertions();
+    acceptAllChanges()(accepting.state, accepting.dispatch);
+    expect(
+      Array.from(
+        { length: accepting.state.doc.childCount },
+        (_, index) => accepting.state.doc.child(index).textContent,
+      ),
+    ).toEqual(["Anchor block.", "First.", "Second line.", "Second body."]);
+
+    const rejecting = applyInsertions();
+    rejectAllChanges()(rejecting.state, rejecting.dispatch);
+    expect(rejecting.state.doc.childCount).toBe(1);
+    expect(rejecting.state.doc.child(0).textContent).toBe("Anchor block.");
+  });
+
+  test("preserves suggestion and comment attribution when a coalesced run includes a blank", () => {
+    const view = makeView(makeState(["Anchor block."]));
+    const snapshot = createFolioAIEditSnapshot(view.state.doc);
+    let nextCommentId = 40;
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot,
+      operations: [
+        {
+          id: "text",
+          type: "insertAfterBlock",
+          blockId: "seq-0001",
+          text: "Commented text.",
+          suggestionId: "suggestion-text",
+          comment: { text: "Text comment." },
+        },
+        {
+          id: "blank",
+          type: "insertAfterBlock",
+          blockId: "seq-0001",
+          text: "",
+          suggestionId: "suggestion-blank",
+          comment: { text: "Blank comment." },
+        },
+      ],
+      mode: "suggested",
+      createCommentId: () => nextCommentId++,
+      revisionStamp: { date: "2026-01-02T03:04:05.000Z", idSeed: 200 },
+    });
+
+    expect(result.skipped).toEqual([]);
+    expect(result.applied).toEqual([
+      {
+        id: "blank",
+        commentId: 41,
+        revisionId: 200,
+        revisionIds: [200],
+        suggestionId: "suggestion-blank",
+      },
+      {
+        id: "text",
+        commentId: 40,
+        revisionId: 201,
+        revisionIds: [201],
+        suggestionId: "suggestion-text",
+      },
+    ]);
+    expect(view.state.doc.childCount).toBe(3);
+    expect(view.state.doc.child(1).textContent).toBe("Commented text.");
+    expect(view.state.doc.child(2).textContent).toBe("");
+    expect(view.state.doc.child(1).firstChild?.marks.map(({ type }) => type.name)).toEqual([
+      "insertion",
+      "comment",
+    ]);
   });
 
   test("splits multi-line insertAfterBlock text into consecutive paragraphs and reports a normalization", () => {
