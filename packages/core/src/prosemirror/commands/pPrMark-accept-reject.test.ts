@@ -283,20 +283,56 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
           schema.node("paragraph", { pPrMark: delMark({ id: 2 }) }, schema.text("first")),
           schema.node(
             "paragraph",
-            { sectionBreakType: "continuous", _sectionProperties: { columns: 2 } },
+            {
+              pPrMark: insMark({ id: 3 }),
+              sectionBreakType: "continuous",
+              _sectionProperties: { columns: 2 },
+            },
             schema.text("second"),
           ),
         ]),
       });
       const view = dispatcher(state);
 
-      acceptAllChanges()(view.state, view.dispatch);
+      acceptChange(0, view.state.doc.child(0).nodeSize)(view.state, view.dispatch);
 
       expect(view.state.doc.childCount).toBe(1);
       expect(view.state.doc.child(0).textContent).toBe("firstsecond");
       expect(view.state.doc.child(0).attrs["sectionBreakType"]).toBe("continuous");
       expect(view.state.doc.child(0).attrs["_sectionProperties"]).toEqual({ columns: 2 });
-      expect(view.state.doc.child(0).attrs["pPrMark"]).toBeNull();
+      expect(view.state.doc.child(0).attrs["pPrMark"]).toEqual(insMark({ id: 3 }));
+    });
+
+    test("keeps the next paragraph's revision and section after emptied content is joined", () => {
+      const deletionMark = deletion().create(revision);
+      const state = EditorState.create({
+        schema,
+        doc: schema.node("doc", null, [
+          schema.node(
+            "paragraph",
+            { pPrMark: delMark({ id: 2 }) },
+            schema.text("gone", [deletionMark]),
+          ),
+          schema.node(
+            "paragraph",
+            {
+              pPrMark: insMark({ id: 3 }),
+              sectionBreakType: "continuous",
+              _sectionProperties: { columns: 2 },
+            },
+            schema.text("second"),
+          ),
+        ]),
+      });
+      const view = dispatcher(state);
+
+      acceptChange(0, view.state.doc.child(0).nodeSize)(view.state, view.dispatch);
+
+      expect(view.state.doc.childCount).toBe(1);
+      expect(view.state.doc.child(0).textContent).toBe("second");
+      expect(view.state.doc.child(0).attrs["sectionBreakType"]).toBe("continuous");
+      expect(view.state.doc.child(0).attrs["_sectionProperties"]).toEqual({ columns: 2 });
+      expect(view.state.doc.child(0).attrs["pPrMark"]).toEqual(insMark({ id: 3 }));
     });
 
     test("moves back a paragraph when there is nothing to join it with", () => {

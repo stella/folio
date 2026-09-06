@@ -366,29 +366,17 @@ function resolveChange(
         // leaves behind is now that end. Dropping them merges two sections
         // into one and takes the dropped one's page size, margins and
         // header and footer references with it.
-        const nextAttrs = carriesSection(paragraph)
-          ? {
-              ...nextNode.attrs,
-              sectionBreakType: paragraph.attrs["sectionBreakType"],
-              _sectionProperties: paragraph.attrs["_sectionProperties"],
-            }
-          : nextNode.attrs;
+        const formattingOwner = emptyFirstParagraph ? nextNode : paragraph;
+        const sectionOwner = carriesSection(paragraph) ? paragraph : nextNode;
+        const joinedAttrs = {
+          ...formattingOwner.attrs,
+          pPrMark: nextNode.attrs["pPrMark"],
+          sectionBreakType: sectionOwner.attrs["sectionBreakType"],
+          _sectionProperties: sectionOwner.attrs["_sectionProperties"],
+        };
         try {
           tr.join(joinPos);
-          // PM's `join` keeps the first paragraph's attrs, so the marker
-          // would survive an otherwise-resolved revision. Drop it now.
-          if (emptyFirstParagraph) {
-            tr.setNodeMarkup(mappedPos, undefined, nextAttrs);
-          } else if (!carriesSection(paragraph) && carriesSection(nextNode)) {
-            tr.setNodeMarkup(mappedPos, undefined, {
-              ...paragraph.attrs,
-              pPrMark: null,
-              sectionBreakType: nextNode.attrs["sectionBreakType"],
-              _sectionProperties: nextNode.attrs["_sectionProperties"],
-            });
-          } else {
-            tr.setNodeAttribute(mappedPos, "pPrMark", null);
-          }
+          tr.setNodeMarkup(mappedPos, undefined, joinedAttrs);
         } catch {
           // PM rejects the join if the two blocks aren't structurally
           // compatible (e.g. paragraph followed by a table). Leaving the
