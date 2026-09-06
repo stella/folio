@@ -1,5 +1,105 @@
 # @stll/folio-agents
 
+## 0.11.0
+
+### Minor Changes
+
+- [#695](https://github.com/stella/folio/pull/695) [`7356867`](https://github.com/stella/folio/commit/7356867bf96e9975ca08ae2c6d43830c1a97a54d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - `insertTable` and `deleteTable` add and remove a whole table: every row marked
+  `w:trIns` or `w:trDel` in tracked mode, which is how Word says it. `compareDocx`
+  emits them as `table-insert` / `table-delete`, so a pair whose table count
+  differs is compared instead of refused.
+
+  Its segment pairing no longer goes by index. A table pairs with the table
+  opposite it unless the next table on one side matches it better, so removing
+  the first table no longer shifts every later one and rewrites each table's
+  contents into the next. A segment is the outermost table plus everything nested
+  in it; `FolioAIBlock.table` gains `outerTableIndex` to carry that distinction.
+
+- [#695](https://github.com/stella/folio/pull/695) [`7356867`](https://github.com/stella/folio/commit/7356867bf96e9975ca08ae2c6d43830c1a97a54d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - `setBlockParagraphProperties` changes a block's list level or paragraph style
+  without touching its words, recorded as a `w:pPrChange` carrying the complete
+  previous property set so a reject restores it the way Word does. `FolioAIBlock`
+  gains `listLevel`, and the two insert operations take `listLevel` and a
+  nullable `styleId` so an inserted paragraph no longer takes its level and style
+  from whichever block happens to follow it.
+
+  `compareDocx` reports the edit as `paragraph-format`. A demoted list item used
+  to reach the comparison as no change at all, so the redline said two different
+  documents agreed. Its round-trip self-check now covers each block's style and
+  list level alongside its text.
+
+- [#695](https://github.com/stella/folio/pull/695) [`7356867`](https://github.com/stella/folio/commit/7356867bf96e9975ca08ae2c6d43830c1a97a54d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A relocation is written into the document as a linked pair.
+  `deleteBlock`, `insertAfterBlock` and `insertBeforeBlock` take a `moveId`; when
+  one id names exactly one deletion and one insertion the applier writes
+  `w:moveFrom` and `w:moveTo` instead of an unrelated deletion and insertion.
+  An id that does not is reported as an `unpairedMove` normalization and both
+  halves apply plainly.
+
+  `compareDocx` emits the pair, so a reordered document now says so to every
+  OOXML consumer rather than only in its JSON change list. A relocated paragraph
+  is recognized when it keeps at least 80% of its word tokens, so a clause edited
+  on the way to its new home is still a move.
+
+  `FolioAIEditNormalization` is a discriminated union on `code` rather than one
+  shape with a `splitMultilineText`-specific field.
+  `FolioDocumentOperationResult.nextRevisionId` is optional: a host bridge that
+  delegates to an editor it does not control omits it rather than guessing.
+
+### Patch Changes
+
+- [#714](https://github.com/stella/folio/pull/714) [`3c5e627`](https://github.com/stella/folio/commit/3c5e627559b2cbd9d06e7c6dd7066488076d67b8) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Blank paragraphs are blocks. The AI-facing snapshot skipped every paragraph
+  with no words, so a blank line had no id, nothing could address it, and a
+  comparison could neither add nor remove one. It carries them now, under an
+  additive `blank-NNNN` id shape that leaves the published `seq-NNNN` numbering
+  over the paragraphs that DO carry words exactly where it was, and the reading
+  surfaces filter them through one shared helper.
+
+  `FolioAIEditSnapshot.emptyDocumentAnchorId` is gone, which is why this is a
+  minor rather than a patch. It named the anchor an empty document had no block
+  for; an empty document is one blank paragraph, and that paragraph is now a
+  block, so its id is `blocks[0].id` like any other. Read that instead.
+
+  Three operations follow from that:
+
+  - `insertAfterBlock` / `insertBeforeBlock` with `text: ""` insert a blank
+    paragraph rather than being refused as empty.
+  - `deleteBlock` on a blank removes it, with its paragraph mark tracked, rather
+    than doing nothing.
+  - `insertTableRow` sizes the new row against the table's own column count, so a
+    row a table can hold is no longer refused because a cell in it spans columns.
+
+  Five defects the blanks made visible, each of which was already losing content:
+
+  - An attribute-only edit — a paragraph mark, a list level, a style on a blank
+    paragraph — never reached the saved file. The change tracker reads positions
+    off each step, and `AttrStep` carries an empty step map, so the selective save
+    wrote the paragraph's original XML and the edit was gone from the document
+    while the editor still showed it.
+  - Deleting a block left its images behind. The deletion range is built from the
+    block's text, so an image outside the words kept no mark, and accepting the
+    deletion left a paragraph standing around an orphan picture.
+  - Zero-width anchors counted as content. A bookmark boundary, a text-box
+    anchor, or Word's cached pagination boundary (`w:lastRenderedPageBreak`)
+    survived a deletion that took every word, and the emptied paragraph stayed as
+    a blank line nobody asked for. They are not content, they never carry a
+    revision, and a revision landing on one produced a document the serializer
+    refuses to write.
+  - Resolving a paragraph's mark could take a section with it. A section's
+    properties live on a paragraph mark, so the paragraph is where the section
+    ends: removing it merged two sections into one and dropped the removed
+    section's page size, margins, and header and footer references. The
+    properties now travel to the paragraph the resolution leaves behind, and a
+    paragraph with nothing after it to carry them keeps its mark.
+  - Appending a paragraph at the end of a container handed its paragraph mark to
+    the anchor. That is equivalent only while the two stay adjacent, and a table
+    inserted between them by a later operation in the same batch separated them:
+    the mark then joined the anchor to the table, which is nothing, and the
+    appended paragraph survived a reject that should have closed it. Every
+    inserted paragraph carries its own mark, and resolving a mark with nothing
+    after it removes the emptied paragraph instead of joining.
+
+- Updated dependencies [[`3c46347`](https://github.com/stella/folio/commit/3c463478e19fd21f5f9a526fcc8288a66b59d97f), [`55b5f43`](https://github.com/stella/folio/commit/55b5f43b917191303287af9a05e961486026d18f), [`f3b1f14`](https://github.com/stella/folio/commit/f3b1f1456af587f12b9a9a23cb27932136fda4bb), [`79ac7cb`](https://github.com/stella/folio/commit/79ac7cbcd1f60f2bc4bd3153c98056a62a9c6685), [`16f8546`](https://github.com/stella/folio/commit/16f85467f9f4111d2715adaac7aea46d8a07b87e), [`4400948`](https://github.com/stella/folio/commit/4400948699fb154a55fe2b8f3fdd595fb9f21186), [`2f6e5eb`](https://github.com/stella/folio/commit/2f6e5ebbc8abf3d2c541dcfab3e7643f2140a9cb), [`3408880`](https://github.com/stella/folio/commit/3408880b0b7945b76addfd744fe31395299f50e7), [`7356867`](https://github.com/stella/folio/commit/7356867bf96e9975ca08ae2c6d43830c1a97a54d), [`7356867`](https://github.com/stella/folio/commit/7356867bf96e9975ca08ae2c6d43830c1a97a54d), [`d7962d1`](https://github.com/stella/folio/commit/d7962d1c41f990260e3f2b81aef8bfd89dadfa62), [`7356867`](https://github.com/stella/folio/commit/7356867bf96e9975ca08ae2c6d43830c1a97a54d), [`e3a5f8f`](https://github.com/stella/folio/commit/e3a5f8f00253abe34ebf85b9bd3d8c1f05d22636), [`627e8bc`](https://github.com/stella/folio/commit/627e8bc24cb79f1ec8643150cf90d3fbe2c2cf0d), [`7356867`](https://github.com/stella/folio/commit/7356867bf96e9975ca08ae2c6d43830c1a97a54d), [`7356867`](https://github.com/stella/folio/commit/7356867bf96e9975ca08ae2c6d43830c1a97a54d), [`21be1d7`](https://github.com/stella/folio/commit/21be1d728e00131c519f2e5bd1187d97b04da318), [`3c5e627`](https://github.com/stella/folio/commit/3c5e627559b2cbd9d06e7c6dd7066488076d67b8), [`7356867`](https://github.com/stella/folio/commit/7356867bf96e9975ca08ae2c6d43830c1a97a54d), [`745d509`](https://github.com/stella/folio/commit/745d5098a6dad02d9ef8c88d6a7871d042385a23), [`7356867`](https://github.com/stella/folio/commit/7356867bf96e9975ca08ae2c6d43830c1a97a54d), [`6b0e4a6`](https://github.com/stella/folio/commit/6b0e4a6cc387965cf7cdb708a176650289574edf), [`cfefc7f`](https://github.com/stella/folio/commit/cfefc7f0c11d05244fbb6822aa3f1e5887a96a69), [`010e5c3`](https://github.com/stella/folio/commit/010e5c3c0e621a17ad4ca0b5f997f2e8c0785c36), [`7356867`](https://github.com/stella/folio/commit/7356867bf96e9975ca08ae2c6d43830c1a97a54d), [`4974a68`](https://github.com/stella/folio/commit/4974a68a62d93d2853f4419f6c16ef74390c57b3), [`916b84d`](https://github.com/stella/folio/commit/916b84def4f48f476e74b77641b9d44bf92b8799), [`9b3defa`](https://github.com/stella/folio/commit/9b3defaa25d805b04143fa174a7d142860db7c21), [`39894a3`](https://github.com/stella/folio/commit/39894a3c95530b671c0dc06709bf61573dbd5589), [`2473407`](https://github.com/stella/folio/commit/24734075bca57bc54a766cd090a4a1a0a633b54a), [`006ba65`](https://github.com/stella/folio/commit/006ba65bf738695625cc3a169ba048f12777a75f), [`7356867`](https://github.com/stella/folio/commit/7356867bf96e9975ca08ae2c6d43830c1a97a54d), [`7356867`](https://github.com/stella/folio/commit/7356867bf96e9975ca08ae2c6d43830c1a97a54d), [`046302a`](https://github.com/stella/folio/commit/046302a9b1b0aef5d7a3dad8d3bf9c33e0f8babd), [`b489528`](https://github.com/stella/folio/commit/b489528bdce66a9c6215eee90e19b2afb80cb283), [`21be1d7`](https://github.com/stella/folio/commit/21be1d728e00131c519f2e5bd1187d97b04da318), [`681923a`](https://github.com/stella/folio/commit/681923ab277b78acc69f3eeaea0262ec07fcf168), [`4562029`](https://github.com/stella/folio/commit/4562029cd050d4a44c8eb7bac63c796d04648b07), [`b74acb2`](https://github.com/stella/folio/commit/b74acb2ed0325a907f9967fb5c190daf0cf79ff6), [`7356867`](https://github.com/stella/folio/commit/7356867bf96e9975ca08ae2c6d43830c1a97a54d)]:
+  - @stll/folio-core@0.33.0
+
 ## 0.10.1
 
 ### Patch Changes

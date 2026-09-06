@@ -1,5 +1,49 @@
 # @stll/folio-vue
 
+## 0.14.0
+
+### Minor Changes
+
+- [#705](https://github.com/stella/folio/pull/705) [`627e8bc`](https://github.com/stella/folio/commit/627e8bc24cb79f1ec8643150cf90d3fbe2c2cf0d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Paint the editor's pages from the display list, behind a renderer option.
+
+  `buildDisplayList` now takes the page furniture it previously could only
+  report: page borders, watermarks, footnote bodies, header and footer stories,
+  and the package's own embedded font faces. A construct that is supplied is
+  painted; one the document has but the caller withheld is still reported; one
+  the document does not have is neither. `layoutDocxHeadless` produces all of it,
+  so an export paints the pages an editor paints rather than bare bodies.
+
+  The DOM backend places every code point at the advance the layout engine
+  measured instead of letting inline layout advance it, so the two backends agree
+  on glyph positions to within the browser's 1/64 px layout quantum. Cursively
+  joined clusters stay in one box, because only shaping can choose a positional
+  form; the advances inside such a cluster are the shaper's.
+
+  `pageRenderer` on the React and Vue editors selects which renderer paints the
+  pages, defaulting to the existing painter. Only painting is swapped: page
+  shells, virtualization, the fingerprint comparison that skips an unchanged page
+  and the painted event stay shared, so incremental repaint behaves the same
+  under either renderer.
+
+- [#729](https://github.com/stella/folio/pull/729) [`9b3defa`](https://github.com/stella/folio/commit/9b3defaa25d805b04143fa174a7d142860db7c21) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Let a host say which key presses the editor's page-level shortcuts answer.
+
+  `DocxEditor` takes a `keyboardShortcuts` prop: `"document"` (the unchanged
+  default) answers every press on the page, `"editor"` answers only a press
+  landing inside the editor, and `"none"` binds no page-level listener at all.
+  A host that docks the editor beside its own panes keeps its own bindings and
+  opens the dialog through the new `DocxEditorRef.openFind` / `openReplace`,
+  which seed the search box from the current selection exactly as Cmd/Ctrl+F
+  does. The scope predicate is `isKeydownInShortcutScope` in
+  `@stll/folio-core/managers/editorShortcuts`; `useWheelZoom` takes the same
+  scope in place of its `enableKeyboardShortcuts` flag.
+  The compat `DocxEditor` forwards its legacy `disableFindReplaceShortcuts` flag
+  as `keyboardShortcuts: "none"` instead of dropping it.
+
+### Patch Changes
+
+- Updated dependencies [[`3c46347`](https://github.com/stella/folio/commit/3c463478e19fd21f5f9a526fcc8288a66b59d97f), [`55b5f43`](https://github.com/stella/folio/commit/55b5f43b917191303287af9a05e961486026d18f), [`f3b1f14`](https://github.com/stella/folio/commit/f3b1f1456af587f12b9a9a23cb27932136fda4bb), [`79ac7cb`](https://github.com/stella/folio/commit/79ac7cbcd1f60f2bc4bd3153c98056a62a9c6685), [`16f8546`](https://github.com/stella/folio/commit/16f85467f9f4111d2715adaac7aea46d8a07b87e), [`4400948`](https://github.com/stella/folio/commit/4400948699fb154a55fe2b8f3fdd595fb9f21186), [`2f6e5eb`](https://github.com/stella/folio/commit/2f6e5ebbc8abf3d2c541dcfab3e7643f2140a9cb), [`3408880`](https://github.com/stella/folio/commit/3408880b0b7945b76addfd744fe31395299f50e7), [`7356867`](https://github.com/stella/folio/commit/7356867bf96e9975ca08ae2c6d43830c1a97a54d), [`7356867`](https://github.com/stella/folio/commit/7356867bf96e9975ca08ae2c6d43830c1a97a54d), [`d7962d1`](https://github.com/stella/folio/commit/d7962d1c41f990260e3f2b81aef8bfd89dadfa62), [`7356867`](https://github.com/stella/folio/commit/7356867bf96e9975ca08ae2c6d43830c1a97a54d), [`e3a5f8f`](https://github.com/stella/folio/commit/e3a5f8f00253abe34ebf85b9bd3d8c1f05d22636), [`627e8bc`](https://github.com/stella/folio/commit/627e8bc24cb79f1ec8643150cf90d3fbe2c2cf0d), [`7356867`](https://github.com/stella/folio/commit/7356867bf96e9975ca08ae2c6d43830c1a97a54d), [`7356867`](https://github.com/stella/folio/commit/7356867bf96e9975ca08ae2c6d43830c1a97a54d), [`21be1d7`](https://github.com/stella/folio/commit/21be1d728e00131c519f2e5bd1187d97b04da318), [`3c5e627`](https://github.com/stella/folio/commit/3c5e627559b2cbd9d06e7c6dd7066488076d67b8), [`7356867`](https://github.com/stella/folio/commit/7356867bf96e9975ca08ae2c6d43830c1a97a54d), [`745d509`](https://github.com/stella/folio/commit/745d5098a6dad02d9ef8c88d6a7871d042385a23), [`7356867`](https://github.com/stella/folio/commit/7356867bf96e9975ca08ae2c6d43830c1a97a54d), [`6b0e4a6`](https://github.com/stella/folio/commit/6b0e4a6cc387965cf7cdb708a176650289574edf), [`cfefc7f`](https://github.com/stella/folio/commit/cfefc7f0c11d05244fbb6822aa3f1e5887a96a69), [`010e5c3`](https://github.com/stella/folio/commit/010e5c3c0e621a17ad4ca0b5f997f2e8c0785c36), [`7356867`](https://github.com/stella/folio/commit/7356867bf96e9975ca08ae2c6d43830c1a97a54d), [`4974a68`](https://github.com/stella/folio/commit/4974a68a62d93d2853f4419f6c16ef74390c57b3), [`916b84d`](https://github.com/stella/folio/commit/916b84def4f48f476e74b77641b9d44bf92b8799), [`9b3defa`](https://github.com/stella/folio/commit/9b3defaa25d805b04143fa174a7d142860db7c21), [`39894a3`](https://github.com/stella/folio/commit/39894a3c95530b671c0dc06709bf61573dbd5589), [`2473407`](https://github.com/stella/folio/commit/24734075bca57bc54a766cd090a4a1a0a633b54a), [`006ba65`](https://github.com/stella/folio/commit/006ba65bf738695625cc3a169ba048f12777a75f), [`7356867`](https://github.com/stella/folio/commit/7356867bf96e9975ca08ae2c6d43830c1a97a54d), [`7356867`](https://github.com/stella/folio/commit/7356867bf96e9975ca08ae2c6d43830c1a97a54d), [`046302a`](https://github.com/stella/folio/commit/046302a9b1b0aef5d7a3dad8d3bf9c33e0f8babd), [`b489528`](https://github.com/stella/folio/commit/b489528bdce66a9c6215eee90e19b2afb80cb283), [`21be1d7`](https://github.com/stella/folio/commit/21be1d728e00131c519f2e5bd1187d97b04da318), [`681923a`](https://github.com/stella/folio/commit/681923ab277b78acc69f3eeaea0262ec07fcf168), [`4562029`](https://github.com/stella/folio/commit/4562029cd050d4a44c8eb7bac63c796d04648b07), [`b74acb2`](https://github.com/stella/folio/commit/b74acb2ed0325a907f9967fb5c190daf0cf79ff6), [`7356867`](https://github.com/stella/folio/commit/7356867bf96e9975ca08ae2c6d43830c1a97a54d)]:
+  - @stll/folio-core@0.33.0
+
 ## 0.13.5
 
 ### Patch Changes

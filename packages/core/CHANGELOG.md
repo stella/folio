@@ -1,5 +1,460 @@
 # @stll/folio-core
 
+## 0.33.0
+
+### Minor Changes
+
+- [#713](https://github.com/stella/folio/pull/713) [`3c46347`](https://github.com/stella/folio/commit/3c463478e19fd21f5f9a526fcc8288a66b59d97f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Build a display page when it is painted, and let a run say which document its
+  positions belong to.
+
+  The editor's display-list renderer built the whole document's list on every
+  layout run, then painted the three pages on screen from it. Measured on a
+  ninety-one-page document, that cost 49.6 ms per painted page against the
+  painter's 0.567 ms: work proportional to the document where the page container
+  does work proportional to the screen. `createDisplayListBuilder` computes what
+  belongs to the document once and each page when it is asked for, which brings
+  the same measurement to 0.43 ms per painted page.
+
+  `DisplayGlyphRun.pmRange` now carries the story it addresses, so a header, a
+  footer and a note run can carry one at all. A page is not one document: the same
+  position means a different character in the body, in each header and footer
+  part, and in each note, so a range that did not name its story could only be
+  used for the body. The producer used to drop the others and the painter used to
+  strip them; both now travel, named, and the DOM backend writes them onto the
+  element that paints the run.
+
+- [#715](https://github.com/stella/folio/pull/715) [`55b5f43`](https://github.com/stella/folio/commit/55b5f43b917191303287af9a05e961486026d18f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A page says where a click can land, not just what it paints.
+
+  `DisplayPage` gains `regions`: a tree of boxes over the same primitives — the
+  content area, header and footer slots, notes, paragraphs, lines, empty lines,
+  tables, rows and cells — each carrying the model range and the story it
+  resolves to, plus the block id, comment threads and row and column indices a
+  surface reads. The producer opens a region around the painting that fills it, so
+  the structure comes from the walk that lays the page out rather than from a
+  second pass over it, and a region indexes into the paint list rather than
+  copying it.
+
+  The DOM backend paints each region as the element the interaction layer has
+  always looked for, with the runs nested inside, so clicks, drags and selections
+  resolve against what the producer laid out. A glyph run also states when it is a
+  line-edge space run the line was fitted without, and what one of those spaces
+  would have advanced, which is what lets a caret step through them.
+
+  `interactionContract.test.ts` reads the interaction layer's own source, extracts
+  every class and data attribute it looks for, and fails unless each one has a
+  source in the IR. A reader that learns a new selector without the producer
+  gaining something to emit it from fails that test.
+
+- [#695](https://github.com/stella/folio/pull/695) [`7356867`](https://github.com/stella/folio/commit/7356867bf96e9975ca08ae2c6d43830c1a97a54d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - `insertTable` and `deleteTable` add and remove a whole table: every row marked
+  `w:trIns` or `w:trDel` in tracked mode, which is how Word says it. `compareDocx`
+  emits them as `table-insert` / `table-delete`, so a pair whose table count
+  differs is compared instead of refused.
+
+  Its segment pairing no longer goes by index. A table pairs with the table
+  opposite it unless the next table on one side matches it better, so removing
+  the first table no longer shifts every later one and rewrites each table's
+  contents into the next. A segment is the outermost table plus everything nested
+  in it; `FolioAIBlock.table` gains `outerTableIndex` to carry that distinction.
+
+- [#706](https://github.com/stella/folio/pull/706) [`d7962d1`](https://github.com/stella/folio/commit/d7962d1c41f990260e3f2b81aef8bfd89dadfa62) Thanks [@jan-kubica](https://github.com/jan-kubica)! - `compareDocx` now reports what its self-check found instead of only acting on
+  it, and can be asked for its best attempt when it cannot prove one.
+
+  Every successful result carries `verification`: `{ status: "verified" }`, or
+  `{ status: "unverified", failures }` where each failure names the invariant that
+  did not hold (`accept-reproduces-target` or `reject-reproduces-base`), the
+  projection field that diverged (`container`, `block-count`, `style`,
+  `list-level`, `invisible-structure`, `whitespace`, `text`), the story it
+  happened in, and a structural detail carrying no phrase of either document.
+
+  The default is unchanged: an unproven redline is refused, because a reader
+  cannot tell one that lost something from one that did not.
+  `CompareDocxRoundTripError` now names the invariant and the cause and carries
+  the whole failure list, in place of the two block-text arrays it used to hold.
+
+  `onUnverified: "emit"` is the opt-in for the other trade — the redline it could
+  build, plus the typed list of what it could not represent. A parse, apply or
+  serialize failure is still an error under either setting: there is no redline
+  to emit.
+
+  Both directions of the round trip are now checked. The self-check previously
+  proved only that accepting reproduces the target; it also proves that rejecting
+  reproduces the base it was written against.
+
+- [#695](https://github.com/stella/folio/pull/695) [`7356867`](https://github.com/stella/folio/commit/7356867bf96e9975ca08ae2c6d43830c1a97a54d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - `diffWordSegments` stops shredding a rewritten paragraph. An LCS maximises
+  matched characters, so a rewritten sentence used to come back as a dozen
+  struck-through fragments interleaved with a dozen inserted ones. Three rules
+  pull it back: a match made only of separators is not a match, a one-token match
+  with changes on both sides of it is dropped into them, and a paragraph whose
+  surviving matches are too short for its length is replaced whole. On a
+  320-paragraph rewrite the package carries 68% fewer separately marked runs; a
+  light edit is marked word by word exactly as before.
+
+  The diff now takes options: `granularity` (`"word"` default, or `"character"`
+  to mark the changed letters inside a token) and `normalization` (`case`,
+  `whitespace`). `granularity` is threaded through `applyFolioDocumentOperations`
+  and `compareDocx`; normalization is not, because a comparison that leaves a
+  difference unmarked does not accept back to the target.
+
+- [#705](https://github.com/stella/folio/pull/705) [`627e8bc`](https://github.com/stella/folio/commit/627e8bc24cb79f1ec8643150cf90d3fbe2c2cf0d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Paint the editor's pages from the display list, behind a renderer option.
+
+  `buildDisplayList` now takes the page furniture it previously could only
+  report: page borders, watermarks, footnote bodies, header and footer stories,
+  and the package's own embedded font faces. A construct that is supplied is
+  painted; one the document has but the caller withheld is still reported; one
+  the document does not have is neither. `layoutDocxHeadless` produces all of it,
+  so an export paints the pages an editor paints rather than bare bodies.
+
+  The DOM backend places every code point at the advance the layout engine
+  measured instead of letting inline layout advance it, so the two backends agree
+  on glyph positions to within the browser's 1/64 px layout quantum. Cursively
+  joined clusters stay in one box, because only shaping can choose a positional
+  form; the advances inside such a cluster are the shaper's.
+
+  `pageRenderer` on the React and Vue editors selects which renderer paints the
+  pages, defaulting to the existing painter. Only painting is swapped: page
+  shells, virtualization, the fingerprint comparison that skips an unchanged page
+  and the painted event stay shared, so incremental repaint behaves the same
+  under either renderer.
+
+- [#695](https://github.com/stella/folio/pull/695) [`7356867`](https://github.com/stella/folio/commit/7356867bf96e9975ca08ae2c6d43830c1a97a54d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - `compareDocx` reports a changed numbering definition as a `numbering` change:
+  a list whose format, level template or start differs moves every label in the
+  list and no block's text, so a text comparison saw two identical documents.
+  Reported and not represented — OOXML has no tracked-change grammar for
+  `numbering.xml`, and Word does not track it either.
+
+  `FolioDocxReviewer.readNumberingDefinitions()` returns the package's numbering
+  flattened to one entry per instance and level, with overrides resolved.
+
+- [#714](https://github.com/stella/folio/pull/714) [`3c5e627`](https://github.com/stella/folio/commit/3c5e627559b2cbd9d06e7c6dd7066488076d67b8) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Blank paragraphs are blocks. The AI-facing snapshot skipped every paragraph
+  with no words, so a blank line had no id, nothing could address it, and a
+  comparison could neither add nor remove one. It carries them now, under an
+  additive `blank-NNNN` id shape that leaves the published `seq-NNNN` numbering
+  over the paragraphs that DO carry words exactly where it was, and the reading
+  surfaces filter them through one shared helper.
+
+  `FolioAIEditSnapshot.emptyDocumentAnchorId` is gone, which is why this is a
+  minor rather than a patch. It named the anchor an empty document had no block
+  for; an empty document is one blank paragraph, and that paragraph is now a
+  block, so its id is `blocks[0].id` like any other. Read that instead.
+
+  Three operations follow from that:
+
+  - `insertAfterBlock` / `insertBeforeBlock` with `text: ""` insert a blank
+    paragraph rather than being refused as empty.
+  - `deleteBlock` on a blank removes it, with its paragraph mark tracked, rather
+    than doing nothing.
+  - `insertTableRow` sizes the new row against the table's own column count, so a
+    row a table can hold is no longer refused because a cell in it spans columns.
+
+  Five defects the blanks made visible, each of which was already losing content:
+
+  - An attribute-only edit — a paragraph mark, a list level, a style on a blank
+    paragraph — never reached the saved file. The change tracker reads positions
+    off each step, and `AttrStep` carries an empty step map, so the selective save
+    wrote the paragraph's original XML and the edit was gone from the document
+    while the editor still showed it.
+  - Deleting a block left its images behind. The deletion range is built from the
+    block's text, so an image outside the words kept no mark, and accepting the
+    deletion left a paragraph standing around an orphan picture.
+  - Zero-width anchors counted as content. A bookmark boundary, a text-box
+    anchor, or Word's cached pagination boundary (`w:lastRenderedPageBreak`)
+    survived a deletion that took every word, and the emptied paragraph stayed as
+    a blank line nobody asked for. They are not content, they never carry a
+    revision, and a revision landing on one produced a document the serializer
+    refuses to write.
+  - Resolving a paragraph's mark could take a section with it. A section's
+    properties live on a paragraph mark, so the paragraph is where the section
+    ends: removing it merged two sections into one and dropped the removed
+    section's page size, margins, and header and footer references. The
+    properties now travel to the paragraph the resolution leaves behind, and a
+    paragraph with nothing after it to carry them keeps its mark.
+  - Appending a paragraph at the end of a container handed its paragraph mark to
+    the anchor. That is equivalent only while the two stay adjacent, and a table
+    inserted between them by a later operation in the same batch separated them:
+    the mark then joined the anchor to the table, which is nothing, and the
+    appended paragraph survived a reject that should have closed it. Every
+    inserted paragraph carries its own mark, and resolving a mark with nothing
+    after it removes the emptied paragraph instead of joining.
+
+- [#695](https://github.com/stella/folio/pull/695) [`7356867`](https://github.com/stella/folio/commit/7356867bf96e9975ca08ae2c6d43830c1a97a54d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - `setBlockParagraphProperties` changes a block's list level or paragraph style
+  without touching its words, recorded as a `w:pPrChange` carrying the complete
+  previous property set so a reject restores it the way Word does. `FolioAIBlock`
+  gains `listLevel`, and the two insert operations take `listLevel` and a
+  nullable `styleId` so an inserted paragraph no longer takes its level and style
+  from whichever block happens to follow it.
+
+  `compareDocx` reports the edit as `paragraph-format`. A demoted list item used
+  to reach the comparison as no change at all, so the redline said two different
+  documents agreed. Its round-trip self-check now covers each block's style and
+  list level alongside its text.
+
+- [#695](https://github.com/stella/folio/pull/695) [`7356867`](https://github.com/stella/folio/commit/7356867bf96e9975ca08ae2c6d43830c1a97a54d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - `compareDocx` compares every story present on both sides — main, headers,
+  footers, footnotes and endnotes — instead of the body alone. A pair differing
+  only in a footnote used to be reported as agreeing.
+
+  `FolioDocumentOperationResult` gains `nextRevisionId`: the first revision id a
+  following batch may allocate against the same document. The revision-id space
+  is the package rather than the part, so a caller writing one batch per
+  story has to seed each from the previous batch's value; the batch is the only
+  thing that knows how many ids it took.
+
+  `FolioDocxReviewer.acceptAll` and `rejectAll` now sweep every story rather than
+  the body, so a revision in a header or a note no longer survives an accept-all.
+
+  `COMPARE_UNSUPPORTED_REASONS` drops `secondary-story` and gains
+  `story-not-editable`; a story present on one side only is still reported as
+  `story-missing-in-base` / `story-missing-in-target`.
+
+- [#694](https://github.com/stella/folio/pull/694) [`6b0e4a6`](https://github.com/stella/folio/commit/6b0e4a6cc387965cf7cdb708a176650289574edf) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add `compareDocx(base, target, { author, timestamp })`: a deterministic
+  two-document compare returning the base package with tracked changes that
+  accept back to the target and reject back to the base, plus a JSON change list
+  (`insert`, `delete`, `replace`, `move`, `format`, `table-row-insert`,
+  `table-row-delete`). Header, footer, footnote, and endnote stories are reported
+  as unsupported rather than silently skipped.
+
+  The call reads no clock and no random source, so the same inputs give
+  byte-identical output. Supporting that, `FolioRevisionStamp` lets any apply
+  batch pin its revision date and id seed, and `FolioAIBlock.table` records the
+  block's enclosing table cell.
+
+- [#710](https://github.com/stella/folio/pull/710) [`4974a68`](https://github.com/stella/folio/commit/4974a68a62d93d2853f4419f6c16ef74390c57b3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Carry what the measurer applied on the glyph run, so a backend can reproduce
+  the width the line was fitted at.
+
+  `advancesPx` folded letter spacing, a horizontal scale, justification, kerning
+  and small capitals into one number per code point. A backend that hands the run
+  to a shaper cannot recover any of them from the text: the shaper advances glyphs
+  by what the font says, and none of those five is in the font. The DOM backend
+  therefore painted runs at the glyphs' own width rather than the laid-out one,
+  by as much as 78 px on a justified line.
+
+  `DisplayGlyphRun` now names them: `adjustments` carries the letter spacing,
+  horizontal scale and per-space justification delta, and `kerning` and
+  `smallCaps` state what the advances were measured with. `DisplayFontFace` gains
+  `fallbacks`, the families between the first and the generic, because a face is a
+  stack and a backend handed only its first entry paints a different face from the
+  one measured wherever that entry is missing.
+
+  A run's advances now also sum to the width the line was broken on. They were the
+  sum of per-character measurements, which differs from the string's own width
+  wherever a pair kerns or ligates; the difference is spread across the run rather
+  than left as an extent no backend paints.
+
+  The editor's run-drift check gates the painted extent as well as the origin:
+  every run in the two fixtures now lands within one browser layout quantum.
+
+- [#709](https://github.com/stella/folio/pull/709) [`916b84d`](https://github.com/stella/folio/commit/916b84def4f48f476e74b77641b9d44bf92b8799) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Shape text in the scripts that need it, from one implementation both the
+  measurer and the PDF backend use.
+
+  Arabic, Hebrew, the Indic scripts and their neighbours do not select one glyph
+  per code point: a letter takes its form from the letters beside it, lam followed
+  by alef ligates, a Devanagari cluster reorders into a conjunct, a Hebrew point
+  hangs off the letter it belongs to. A new `stella-text-shaper` crate answers
+  that question over rustybuzz, and `packages/core/src/shaping` is the only way to
+  it, so a measurement in CSS pixels and a PDF text matrix scale the same glyph
+  ids and the same advances.
+
+  The headless measure provider now measures such a run by its clusters rather
+  than a code point at a time, and the PDF backend paints the glyphs shaping
+  chose, subsets them, and maps each back to the characters that formed it so a
+  ligature or a conjunct still extracts as text. `writePdf` is asynchronous as a
+  result, and no longer reports `unshaped` runs or refuses them under
+  `strictShapedScripts`: the runs it used to name are painted correctly.
+
+  The shaper is a separate WebAssembly artifact with its own size budget, fetched
+  the first time a document actually contains a run that needs it. A document in
+  Latin, Cyrillic or Greek never loads it.
+
+- [#729](https://github.com/stella/folio/pull/729) [`9b3defa`](https://github.com/stella/folio/commit/9b3defaa25d805b04143fa174a7d142860db7c21) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Let a host say which key presses the editor's page-level shortcuts answer.
+
+  `DocxEditor` takes a `keyboardShortcuts` prop: `"document"` (the unchanged
+  default) answers every press on the page, `"editor"` answers only a press
+  landing inside the editor, and `"none"` binds no page-level listener at all.
+  A host that docks the editor beside its own panes keeps its own bindings and
+  opens the dialog through the new `DocxEditorRef.openFind` / `openReplace`,
+  which seed the search box from the current selection exactly as Cmd/Ctrl+F
+  does. The scope predicate is `isKeydownInShortcutScope` in
+  `@stll/folio-core/managers/editorShortcuts`; `useWheelZoom` takes the same
+  scope in place of its `enableKeyboardShortcuts` flag.
+  The compat `DocxEditor` forwards its legacy `disableFindReplaceShortcuts` flag
+  as `keyboardShortcuts: "none"` instead of dropping it.
+
+- [#703](https://github.com/stella/folio/pull/703) [`2473407`](https://github.com/stella/folio/commit/24734075bca57bc54a766cd090a4a1a0a633b54a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add a painter-neutral display list and a native PDF backend that consumes it.
+
+  `buildDisplayList` turns a laid-out document into an ordered list of paint
+  primitives per page: glyph runs carrying the advances layout was decided on,
+  filled and stroked rects, lines, images, clip, rotate and opacity groups, link
+  annotations and a heading outline. Two backends consume it and nothing else:
+  `renderDisplayListToDom` paints it into DOM elements, and `writePdf` writes a
+  PDF with subset TrueType faces, PNG and JPEG images, vector borders and
+  shading, hyperlinks and an outline. A backend that reads layout data the
+  display list does not carry now fails a dependency-cruiser rule rather than a
+  review.
+
+  `exportDocxToPdf` composes the whole chain without a browser:
+  `layoutDocxHeadless` paginates a package through the measurement seam, and
+  `installHeadlessMeasureProvider` supplies that seam from parsed font binaries
+  instead of a canvas. Output is deterministic: `timestamp` is required rather
+  than defaulted, so two exports of one document are byte-identical.
+
+  A font source supplies every binary that carries part of a face, not one, and
+  both measurement and embedding resolve each code point to the binary that
+  covers it. Families are routinely shipped split by script, so a Czech, Slovak
+  or Polish document needs two subsets of one family in the same paragraph;
+  resolving per face rather than per code point would paint an empty box for
+  every character outside whichever subset was chosen. A code point no supplied
+  binary can encode is reported in `unencodable` rather than painted silently,
+  and `strictGlyphCoverage` turns it into a failure for a caller who would
+  rather not ship the page at all.
+
+  The existing layout painter is unchanged and still paints the editor. The
+  display-list DOM backend is additive in this release.
+
+- [#723](https://github.com/stella/folio/pull/723) [`006ba65`](https://github.com/stella/folio/commit/006ba65bf738695625cc3a169ba048f12777a75f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Compare strikethrough as a tracked inline-formatting change.
+
+- [#695](https://github.com/stella/folio/pull/695) [`7356867`](https://github.com/stella/folio/commit/7356867bf96e9975ca08ae2c6d43830c1a97a54d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Two operations for the edit that moves a paragraph mark and no words:
+  `splitBlock` writes an inserted mark on the paragraph the break now ends, and
+  `mergeBlockWithNext` a deleted one. Both carry the `separator` the break stands
+  in for, deletion-marked on a split and insertion-marked on a merge, so either
+  direction of accept/reject reproduces the right spacing. A deleted mark is
+  refused where there is no sibling to join with — the last paragraph of a table
+  cell, or of a story.
+
+  `compareDocx` emits them, so a split is reported as `split` and a merge as
+  `merge` rather than as a rewrite of the half that stayed put plus an insertion
+  or deletion of the other. On a 320-paragraph document of splits and merges the
+  change list drops from 145 entries to 87 and the redline's text-carrying runs
+  from 156 to 87.
+
+- [#720](https://github.com/stella/folio/pull/720) [`b489528`](https://github.com/stella/folio/commit/b489528bdce66a9c6215eee90e19b2afb80cb283) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Align uniquely matching table columns and report tracked column insertions and deletions.
+
+- [#721](https://github.com/stella/folio/pull/721) [`681923a`](https://github.com/stella/folio/commit/681923ab277b78acc69f3eeaea0262ec07fcf168) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve bookmark boundaries inside tracked inline changes so accepting and rejecting revisions keeps bookmark ownership intact.
+
+- [#695](https://github.com/stella/folio/pull/695) [`7356867`](https://github.com/stella/folio/commit/7356867bf96e9975ca08ae2c6d43830c1a97a54d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A relocation is written into the document as a linked pair.
+  `deleteBlock`, `insertAfterBlock` and `insertBeforeBlock` take a `moveId`; when
+  one id names exactly one deletion and one insertion the applier writes
+  `w:moveFrom` and `w:moveTo` instead of an unrelated deletion and insertion.
+  An id that does not is reported as an `unpairedMove` normalization and both
+  halves apply plainly.
+
+  `compareDocx` emits the pair, so a reordered document now says so to every
+  OOXML consumer rather than only in its JSON change list. A relocated paragraph
+  is recognized when it keeps at least 80% of its word tokens, so a clause edited
+  on the way to its new home is still a move.
+
+  `FolioAIEditNormalization` is a discriminated union on `code` rather than one
+  shape with a `splitMultilineText`-specific field.
+  `FolioDocumentOperationResult.nextRevisionId` is optional: a host bridge that
+  delegates to an editor it does not control omits it rather than guessing.
+
+### Patch Changes
+
+- [#712](https://github.com/stella/folio/pull/712) [`f3b1f14`](https://github.com/stella/folio/commit/f3b1f1456af587f12b9a9a23cb27932136fda4bb) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Stop reporting a watermark-only header as a story that never arrived.
+
+  Word puts a watermark in a header part that holds nothing else, so that
+  header converts to no paintable content and the display list reported it as
+  "the header part this page selects was not among the supplied stories" on
+  every page of every watermarked document. The watermark painted from that same
+  part proves it reached the producer and was read, so it is no longer reported
+  as a gap; a header that names content the builder really did not get still is.
+
+- [#717](https://github.com/stella/folio/pull/717) [`79ac7cb`](https://github.com/stella/folio/commit/79ac7cbcd1f60f2bc4bd3153c98056a62a9c6685) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve editing hit regions inside clipped table rows.
+
+- [#722](https://github.com/stella/folio/pull/722) [`16f8546`](https://github.com/stella/folio/commit/16f85467f9f4111d2715adaac7aea46d8a07b87e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve paragraph style and list level in generated move scenarios.
+
+- [#728](https://github.com/stella/folio/pull/728) [`4400948`](https://github.com/stella/folio/commit/4400948699fb154a55fe2b8f3fdd595fb9f21186) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep the required final body paragraph outside tracked paragraph-mark deletions.
+
+- [#697](https://github.com/stella/folio/pull/697) [`2f6e5eb`](https://github.com/stella/folio/commit/2f6e5ebbc8abf3d2c541dcfab3e7643f2140a9cb) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A save now carries every part of the source package byte for byte — embeddings,
+  media, custom XML, fonts, macro projects, ActiveX controls, parts folio does not
+  model — and a macro-enabled document keeps its main-part content type. The only
+  entry a save refuses is one whose path would escape the package, and its
+  relationships and content-type entries leave with it, so a saved package never
+  references a part it no longer holds.
+
+- [#716](https://github.com/stella/folio/pull/716) [`3408880`](https://github.com/stella/folio/commit/3408880b0b7945b76addfd744fe31395299f50e7) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep the last word of a justified line that fills its measure exactly in documents that predate the current justification rules.
+
+- [#695](https://github.com/stella/folio/pull/695) [`7356867`](https://github.com/stella/folio/commit/7356867bf96e9975ca08ae2c6d43830c1a97a54d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - `compareDocx` compares the accepted view of both documents. An input that
+  already carried tracked changes previously produced a package with two
+  redlines layered on one another, where rejecting everything landed on a
+  document neither side wrote; the base's own revisions are now resolved first,
+  so the comparison is the only redline in the result and the round trip is
+  exact.
+
+- [#711](https://github.com/stella/folio/pull/711) [`e3a5f8f`](https://github.com/stella/folio/commit/e3a5f8f00253abe34ebf85b9bd3d8c1f05d22636) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Give the Arabic, narrow and ClearType faces documents actually request their own single-line height instead of the generic default.
+
+- [#695](https://github.com/stella/folio/pull/695) [`7356867`](https://github.com/stella/folio/commit/7356867bf96e9975ca08ae2c6d43830c1a97a54d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - The AI-facing snapshot is linear in block count again. It resolved each block's
+  position twice, and `ProseMirror`'s `resolve` scans a fragment from index 0, so
+  a flat document cost O(blocks^2); the walk now carries the path it is already
+  on. A 4,000-paragraph snapshot drops from 124ms to 24ms, and every reviewer
+  read built on it drops with it. Fixing it surfaced a second defect: text in a
+  table nested inside a hidden `w:trPr/w:hidden` row reached the snapshot,
+  because the check consulted the nearest row rather than every enclosing row.
+
+- [#707](https://github.com/stella/folio/pull/707) [`21be1d7`](https://github.com/stella/folio/commit/21be1d728e00131c519f2e5bd1187d97b04da318) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Place inline header and footer tables through the shared table placement rule, so `w:jc`, `w:tblInd` and `w:bidiVisual` behave as they do in the body.
+
+- [#719](https://github.com/stella/folio/pull/719) [`745d509`](https://github.com/stella/folio/commit/745d5098a6dad02d9ef8c88d6a7871d042385a23) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Apply consecutive paragraph insertions at one document position in a single step.
+
+- [#704](https://github.com/stella/folio/pull/704) [`cfefc7f`](https://github.com/stella/folio/commit/cfefc7f0c11d05244fbb6822aa3f1e5887a96a69) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A comparison covers more of what two documents differ by, and says it in the
+  markup the format defines for it.
+
+  A whole paragraph added or removed now carries its paragraph mark as well as its
+  runs — `w:pPr/w:rPr/w:ins` and `w:pPr/w:rPr/w:del` — so accepting a deletion
+  removes the paragraph instead of leaving a blank line, and rejecting an
+  insertion closes the break instead of leaving an empty one.
+  Resolving a deleted mark keeps the surviving paragraph's own properties.
+
+  A list item that stopped being one is reported, and a paragraph inserted beside a
+  list item is no longer silently made a further item of that list:
+  `setBlockParagraphProperties` and the block insertions accept `listLevel: null`,
+  which clears `w:numPr` the way `styleId: null` already clears `w:pStyle`.
+
+  Additions past the base document's last block keep the target's order, so a
+  paragraph and a table added after it no longer come out table first. Headers and
+  footers pair by kind and document order when the two packages share no
+  relationship id, so a comparison of two independently authored documents covers
+  them instead of reporting them as present on one side only.
+
+- [#696](https://github.com/stella/folio/pull/696) [`010e5c3`](https://github.com/stella/folio/commit/010e5c3c0e621a17ad4ca0b5f997f2e8c0785c36) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A tracked table-row insertion or deletion now marks the runs in its cells as
+  well as the row, the way Word writes it, and resolves both halves together.
+
+- [#695](https://github.com/stella/folio/pull/695) [`7356867`](https://github.com/stella/folio/commit/7356867bf96e9975ca08ae2c6d43830c1a97a54d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - `compareDocx` returns the base package unchanged when it finds no difference,
+  instead of re-serializing it. A 2,200-block comparison of two identical
+  documents spent a second rewriting bytes nobody edited. A base that arrived
+  carrying its own tracked changes is still serialized, because the compared base
+  is its accepted view rather than the package as stored.
+
+- [#702](https://github.com/stella/folio/pull/702) [`39894a3`](https://github.com/stella/folio/commit/39894a3c95530b671c0dc06709bf61573dbd5589) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Seven fidelity and review fixes:
+
+  - A paragraph whose `w:pPr` states only `w:ilvl` now keeps the `w:numId` its
+    style supplies, so a demoted styled list paragraph stays numbered.
+  - Inserting a table row through a vertical merge extends the merge instead of
+    splitting the grid.
+  - Adjacent paragraphs in a table cell that share a border definition draw one
+    frame with the `w:between` rule, as they already do elsewhere.
+  - Every vertical `w:textDirection`, not only `btLr`, rotates its cell text.
+  - An abrupt-closing HTML comment (`<!-->`) no longer swallows the rest of a
+    paste.
+  - A tracked replace whose two halves carry different timestamps is one review
+    card again.
+  - Striking a selection leaves another author's existing deletion attributed to
+    them.
+
+- [#695](https://github.com/stella/folio/pull/695) [`7356867`](https://github.com/stella/folio/commit/7356867bf96e9975ca08ae2c6d43830c1a97a54d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A block inserted next to a block inside nested tables now lands at document
+  level. `insertBeforeBlock`, `insertAfterBlock`, and `insertSignatureTable`
+  escape the table their anchor sits in; they escaped only the innermost one, so
+  an anchor two tables deep left the new block inside the outer cell. This is
+  what made `compareDocx` refuse a pair whose base ends with a nested table and
+  whose target appends a paragraph after it.
+
+- [#727](https://github.com/stella/folio/pull/727) [`046302a`](https://github.com/stella/folio/commit/046302a9b1b0aef5d7a3dad8d3bf9c33e0f8babd) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep physical tracked-change revision IDs unique when saving DOCX packages.
+
+- [#707](https://github.com/stella/folio/pull/707) [`21be1d7`](https://github.com/stella/folio/commit/21be1d728e00131c519f2e5bd1187d97b04da318) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Measure `w:tblInd` from the leading cell's text edge in documents whose `compatibilityMode` predates the border-edge rule.
+
+- [#724](https://github.com/stella/folio/pull/724) [`4562029`](https://github.com/stella/folio/commit/4562029cd050d4a44c8eb7bac63c796d04648b07) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Declare every ignorable namespace in serialized comment parts.
+
+- [#726](https://github.com/stella/folio/pull/726) [`b74acb2`](https://github.com/stella/folio/commit/b74acb2ed0325a907f9967fb5c190daf0cf79ff6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Serialize run, rendered-page-break, and table-cell properties in schema-valid OOXML order and form.
+- Updated dependencies [[`3c5e627`](https://github.com/stella/folio/commit/3c5e627559b2cbd9d06e7c6dd7066488076d67b8), [`046302a`](https://github.com/stella/folio/commit/046302a9b1b0aef5d7a3dad8d3bf9c33e0f8babd), [`681923a`](https://github.com/stella/folio/commit/681923ab277b78acc69f3eeaea0262ec07fcf168)]:
+  - @stll/docx-core@0.19.0
+
 ## 0.32.2
 
 ### Patch Changes
