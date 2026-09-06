@@ -740,6 +740,7 @@ export type FolioAIInlineFormatting = {
     bold?: boolean;
     italic?: boolean;
     underline?: boolean;
+    strike?: boolean;
 };
 
 // @public
