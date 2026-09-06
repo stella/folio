@@ -32,8 +32,8 @@ export const INVARIANTS = Object.freeze([
    */
   "difference-is-reported",
   /**
-   * No two revisions in the package share a `w:id`. Word's revision-id space
-   * is the package, not the part, so a comparison writing one story at a time
+   * No two revisions in the package share a `w:id`. The revision-id space is
+   * the package, not the part, so a comparison writing one story at a time
    * has to seed each story's range above the last one it used. Colliding ids
    * make a reader resolving one revision resolve an unrelated one with it,
    * and every other invariant here passes anyway.

@@ -49,10 +49,10 @@ internal sealed record ValidationReport
 }
 
 /// <summary>
-/// Word's own schema check, as the last word on whether a generated redline is
-/// a legal package. A malformed move pair or an orphaned revision id reads
-/// fine as XML and makes Word report unreadable content, so a text comparison
-/// of the output cannot stand in for this.
+/// The WordprocessingML schema check, as the last word on whether a generated
+/// redline is a legal package. A malformed move pair or an orphaned revision
+/// id reads fine as XML and still violates the schema, so a text comparison of
+/// the output cannot stand in for this.
 /// </summary>
 internal static class SchemaValidator
 {

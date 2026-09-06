@@ -7,8 +7,8 @@ footers, footnotes and endnotes — instead of the body alone. A pair differing
 only in a footnote used to be reported as agreeing.
 
 `FolioDocumentOperationResult` gains `nextRevisionId`: the first revision id a
-following batch may allocate against the same document. Word's revision-id
-space is the package rather than the part, so a caller writing one batch per
+following batch may allocate against the same document. The revision-id space
+is the package rather than the part, so a caller writing one batch per
 story has to seed each from the previous batch's value; the batch is the only
 thing that knows how many ids it took.
 
