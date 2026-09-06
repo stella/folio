@@ -75,12 +75,13 @@ const readDocx = (filePath: string): ArrayBuffer => {
 };
 
 const describeChange = (change: CompareChange): string => {
-  const where =
-    "location" in change && change.location.cell === undefined
-      ? "body"
-      : "location" in change
-        ? `table ${String(change.location.cell?.tableIndex)} row ${String(change.location.cell?.rowIndex)} cell ${String(change.location.cell?.cellIndex)}`
-        : "package";
+  let where = "package";
+  if ("location" in change) {
+    const { cell } = change.location;
+    where = cell
+      ? `table ${String(cell.tableIndex)} row ${String(cell.rowIndex)} cell ${String(cell.cellIndex)}`
+      : "body";
+  }
   switch (change.kind) {
     case "insert":
       return `insert  [${where}] ${change.after}`;

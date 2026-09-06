@@ -146,6 +146,9 @@ export type FolioAIBlockTableLocation = {
     tableIndex: number;
     rowIndex: number;
     cellIndex: number;
+    gridColumnIndex: number;
+    columnSpan: number;
+    rowSpan: number;
     paragraphIndex: number;
 };
 
