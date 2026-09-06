@@ -28,11 +28,7 @@ import {
   DEFAULT_FONT_SIZE,
   ptToPx,
 } from "../../layout-engine/measure/measureHelpers";
-import {
-  getFontMetrics,
-  measureRun,
-  measureTextWidth,
-} from "../../layout-engine/measure/measureProvider";
+import { getFontMetrics, measureTextWidth } from "../../layout-engine/measure/measureProvider";
 import type { FontStyle } from "../../layout-engine/measure/measureTypes";
 import {
   calculateTabWidth,
@@ -75,6 +71,7 @@ import { inlineImageBoundingBox } from "../../utils/rotationBoundingBox";
 import { sanitizeExternalUrl } from "../../utils/urlSecurity";
 import type {
   DisplayColor,
+  DisplayGlyphRun,
   DisplayLine,
   DisplayLinkTarget,
   DisplayPrimitive,
@@ -83,6 +80,7 @@ import type {
 } from "../types";
 import { type BuildContext, trackedChangeColor } from "./buildContext";
 import { DOC_CANVAS_TEXT, parseDisplayColor } from "./colors";
+import { buildGlyphs, type Glyphs } from "./glyphs";
 import { paintImage } from "./imagePrimitives";
 import { decorationPatternForStyle, resolveBorderStroke } from "./strokes";
 import {
@@ -176,65 +174,6 @@ const paintableText = (run: PaintableRun, context: BuildContext): string => {
     case "math":
       return toPaintedText(run.plainText || "[equation]");
   }
-};
-
-type Glyphs = {
-  readonly text: string;
-  readonly advancesPx: number[];
-  readonly widthPx: number;
-};
-
-type BuildGlyphsOptions = {
-  readonly text: string;
-  readonly style: FontStyle;
-  readonly allCaps: boolean;
-  /** Justification delta applied to every compressible space. */
-  readonly spaceDeltaPx: number;
-  /**
-   * A line-edge space run Word keeps addressable but paints with no advance
-   * (the painter zeroes the split-off span's font size instead).
-   */
-  readonly collapsed: boolean;
-};
-
-/**
- * One advance per code point, taken from the measure seam.
- *
- * `measureRun` returns `charWidths` indexed by UTF-16 unit with the trailing
- * unit of a surrogate pair set to 0, because that is what ProseMirror offsets
- * need. The display list wants code points, so the pair folds into one entry.
- * An uppercase transform that expands a code point (ß → SS) keeps the source
- * advance on the first output code point and gives the rest zero, so the sum
- * still equals what the measurer decided the line on.
- */
-const buildGlyphs = ({
-  text,
-  style,
-  allCaps,
-  spaceDeltaPx,
-  collapsed,
-}: BuildGlyphsOptions): Glyphs => {
-  const { charWidths } = measureRun(text, style);
-  const advancesPx: number[] = [];
-  let painted = "";
-  let widthPx = 0;
-  let unitOffset = 0;
-
-  for (const char of text) {
-    const measured = charWidths[unitOffset] ?? 0;
-    unitOffset += char.length;
-    const advance = collapsed ? 0 : measured + (char === " " ? spaceDeltaPx : 0);
-    widthPx += advance;
-
-    let isFirst = true;
-    for (const outputChar of allCaps ? char.toLocaleUpperCase() : char) {
-      painted += outputChar;
-      advancesPx.push(isFirst ? advance : 0);
-      isFirst = false;
-    }
-  }
-
-  return { text: painted, advancesPx, widthPx };
 };
 
 const convertTabStop = (stop: TabStop): TabCalcStop => ({
@@ -560,6 +499,17 @@ const resolveJustification = ({
   return { spaceDeltaPx: 0 };
 };
 
+/**
+ * The editable-model range a run's glyphs came from, or `undefined` when they
+ * have no counterpart there. Only body runs qualify: a header, footer or
+ * footnote run's positions belong to that story's own document, so handing
+ * them out as model positions would address unrelated body content.
+ */
+const modelRangeOf = (run: TextRun, context: BuildContext): DisplayGlyphRun["pmRange"] =>
+  context.story !== "body" || run.pmStart === undefined || run.pmEnd === undefined
+    ? undefined
+    : { start: run.pmStart, end: run.pmEnd };
+
 type EmitGlyphRunOptions = {
   readonly sink: LineSink;
   readonly context: BuildContext;
@@ -571,6 +521,12 @@ type EmitGlyphRunOptions = {
   readonly lineTopYPx: number;
   readonly lineHeightPx: number;
   readonly isRtl: boolean;
+  /**
+   * Absent for glyphs the model does not contain: a list marker, a substituted
+   * field value, a tab leader. An approximate range is worse than none, since
+   * an editing surface maps clicks and selections through it.
+   */
+  readonly pmRange?: DisplayGlyphRun["pmRange"];
 };
 
 /**
@@ -589,6 +545,7 @@ const emitGlyphRun = ({
   lineTopYPx,
   lineHeightPx,
   isRtl,
+  pmRange,
 }: EmitGlyphRunOptions): void => {
   if (glyphs.text.length === 0) {
     return;
@@ -657,6 +614,7 @@ const emitGlyphRun = ({
     advancesPx: glyphs.advancesPx,
     direction: isRtl ? "rtl" : "ltr",
     ...(stroke === undefined ? {} : { stroke }),
+    ...(pmRange === undefined ? {} : { pmRange }),
   });
 
   emitDecorations({
@@ -910,6 +868,7 @@ const paintLine = ({
           spaceDeltaPx,
           collapsed: isCollapsedEdgeRun(run),
         });
+        const pmRange = modelRangeOf(run, context);
         emitGlyphRun({
           sink,
           context,
@@ -921,6 +880,7 @@ const paintLine = ({
           lineTopYPx: geometry.lineTopYPx,
           lineHeightPx: line.lineHeight,
           isRtl,
+          ...(pmRange === undefined ? {} : { pmRange }),
         });
         layoutXPx += glyphs.widthPx;
         break;

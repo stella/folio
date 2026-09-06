@@ -453,6 +453,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     showZoomControl = true,
     showReviewControls = true,
     showHeaderFooterEditing = true,
+    pageRenderer,
     showMarginGuides = false,
     marginGuideColor,
     showRuler: showRulerProp = false,
@@ -4389,6 +4390,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                         onBodyClick={handleBodyClick}
                         onActiveNoteStoryChange={handleActiveNoteStoryChange}
                         zoom={zoom}
+                        {...(pageRenderer === undefined ? {} : { pageRenderer })}
                         showMarginGuides={showMarginGuides}
                         {...(marginGuideColor !== undefined ? { marginGuideColor } : {})}
                         readOnly={readOnly}

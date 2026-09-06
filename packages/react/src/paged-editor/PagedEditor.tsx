@@ -38,6 +38,7 @@ import { HiddenHeaderFooterPMs } from "../components/HiddenHeaderFooterPMs";
 import type { HiddenHeaderFooterPMsRef } from "../components/HiddenHeaderFooterPMs";
 import { NoteStoryEditor } from "../components/NoteStoryEditor";
 import type { NoteStoryEditorRef } from "../components/NoteStoryEditor";
+import type { PageRendererName } from "@stll/folio-core/display-list/editor/pageRenderer";
 import type { AISuggestion } from "@stll/folio-core/ai-suggestions/types";
 import { createFolioAIEditSnapshot } from "@stll/folio-core/ai-edits/snapshot";
 import { createFolioEditor } from "@stll/folio-core/controller/folioEditor";
@@ -287,6 +288,7 @@ export type PagedEditorProps = {
   /** Zoom level (1 = 100%). */
   zoom?: number;
   /** Show the effective body-content boundary for each page. */
+  pageRenderer?: PageRendererName;
   showMarginGuides?: boolean;
   /** CSS color used for margin guides. */
   marginGuideColor?: string;
@@ -1467,6 +1469,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       readOnly = false,
       pageGap = DEFAULT_PAGE_GAP,
       zoom = 1,
+      pageRenderer,
       showMarginGuides = false,
       marginGuideColor,
       onDocumentChange,
@@ -1991,6 +1994,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             pageGap,
             showMarginGuides,
             marginGuideColor,
+            ...(pageRenderer === undefined ? {} : { pageRenderer }),
             syncCoordinator,
             headerContent,
             footerContent,
@@ -2053,6 +2057,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         zoom,
         showMarginGuides,
         marginGuideColor,
+        pageRenderer,
         syncCoordinator,
         headerContent,
         footerContent,

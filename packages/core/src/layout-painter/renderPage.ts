@@ -265,6 +265,21 @@ export type RenderPageOptions = {
    * silently skipped.
    */
   watermarkImageSrc?: string;
+  /**
+   * Paints the page in place of this module, returning the finished element.
+   *
+   * The one seam a second page renderer needs: everything around it (page
+   * shells, virtualization, the fingerprint comparison, the intersection
+   * observer, the painted event) is a page-container concern rather than a
+   * painting one, and stays shared. Returning `null` falls back to this
+   * module for that page, so a renderer that cannot express a page yields
+   * rather than painting it wrong.
+   */
+  paintPage?: (
+    page: Page,
+    context: RenderContext,
+    options: RenderPageOptions,
+  ) => HTMLElement | null;
 };
 
 export type HeaderFooterLayoutInfo = {
@@ -1650,6 +1665,11 @@ export function renderPage(
 ): HTMLElement {
   const doc = options.document ?? document;
 
+  const painted = options.paintPage?.(page, context, options);
+  if (painted) {
+    return painted;
+  }
+
   // Create page container
   const pageEl = doc.createElement("div");
   pageEl.className = options.pageClassName ?? PAGE_CLASS_NAMES.page;
@@ -2286,6 +2306,38 @@ type FullPageOptions = RenderPageOptions & {
   footnotesByPage?: Map<number, FootnoteRenderItem[]>;
 };
 
+/**
+ * Which header and footer part a page selects, by `w:titlePg` and
+ * `w:evenAndOddHeaders`. Exported because a second consumer needs to tell "this
+ * page selects no part" from "this page selects a part nobody supplied", and
+ * recomputing the rule to answer that is how the two would come to disagree
+ * about which header a page carries. `undefined` means the page selects none.
+ */
+export function selectSectionHeaderFooterRIds(page: Page): {
+  headerRId: string | undefined;
+  footerRId: string | undefined;
+} {
+  const refs = page.headerFooterRefs;
+  if (!refs) {
+    return { headerRId: undefined, footerRId: undefined };
+  }
+  const useFirst = refs.titlePg === true && page.sectionPageNumber === 1;
+  const useEven = refs.evenAndOddHeaders === true && page.logicalNumber % 2 === 0;
+  const pick = (first?: string, even?: string, fallback?: string) => {
+    if (useFirst) {
+      return first;
+    }
+    if (useEven) {
+      return even;
+    }
+    return fallback;
+  };
+  return {
+    headerRId: pick(refs.headerFirst, refs.headerEven, refs.headerDefault),
+    footerRId: pick(refs.footerFirst, refs.footerEven, refs.footerDefault),
+  };
+}
+
 export function applySectionHeaderFooterOptions(
   page: Page,
   pageOptions: RenderPageOptions,
@@ -2296,28 +2348,7 @@ export function applySectionHeaderFooterOptions(
     return false;
   }
 
-  const isFirstSectionPage = page.sectionPageNumber === 1;
-  const useFirst = refs.titlePg === true && isFirstSectionPage;
-  const useEven = refs.evenAndOddHeaders === true && page.logicalNumber % 2 === 0;
-
-  const headerRId = (() => {
-    if (useFirst) {
-      return refs.headerFirst;
-    }
-    if (useEven) {
-      return refs.headerEven;
-    }
-    return refs.headerDefault;
-  })();
-  const footerRId = (() => {
-    if (useFirst) {
-      return refs.footerFirst;
-    }
-    if (useEven) {
-      return refs.footerEven;
-    }
-    return refs.footerDefault;
-  })();
+  const { headerRId, footerRId } = selectSectionHeaderFooterRIds(page);
 
   if (headerRId) {
     const content = options.headerContentByRId?.get(headerRId);

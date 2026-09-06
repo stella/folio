@@ -12,6 +12,7 @@
  * that is the same seam line breaking already ran through, which is the point.
  */
 
+import type { EmbeddedFont } from "../../fonts/embeddedFonts";
 import type { BlockLookup, BlockLookupEntry } from "../../layout-painter/index";
 import type {
   Fragment,
@@ -35,13 +36,9 @@ import { AuthorColorTable, type BuildContext } from "./buildContext";
 import { DOC_CANVAS } from "./colors";
 import { collectFloatingImages, pageGeometryOf } from "./floatingImages";
 import { FontTable } from "./fontTable";
+import { paintPageFurniture, type PageFurnitureInputs } from "./furniture";
 import { ImageTable, paintImageFragment } from "./imagePrimitives";
-import {
-  paintColumnSeparators,
-  paintFootnoteArea,
-  paintPageBackground,
-  reportUnreachableFurniture,
-} from "./pageFurniture";
+import { paintColumnSeparators, paintPageBackground } from "./pageFurniture";
 import { paintParagraphFragment } from "./paragraphPrimitives";
 import { paintTableFragment } from "./tablePrimitives";
 import { paintTextBoxFragment } from "./textBoxPrimitives";
@@ -51,19 +48,25 @@ import { UnsupportedCollector, UNSUPPORTED_CONSTRUCT } from "./unsupported";
 const FIRST_PAGE_INDEX = 0;
 
 /**
- * Every feature a source document can have that a `Layout` does not record,
- * with the reason it paints nothing. The list is the single source of truth:
- * {@link DocumentFeatures} is derived from it, so a feature added here cannot
- * be left without a flag or without a reason.
+ * Every feature a source document can have that a `Layout` does not record and
+ * that nothing on a page betrays, with the reason it paints nothing when the
+ * caller supplies neither the construct nor a flag denying it. The list is the
+ * single source of truth: {@link DocumentFeatures} is derived from it, so a
+ * feature added here cannot be left without a flag or without a reason.
+ *
+ * Footnote bodies and header/footer stories are deliberately absent: a page
+ * that carries them says so itself (`footnoteIds`, `headerFooterRefs`), so
+ * their gaps are reported per page from the layout rather than from a
+ * document-wide flag the caller would have to remember to set.
  */
 const DOCUMENT_FEATURE_GAPS = [
   [
     "pageBorders",
-    "w:pgBorders reach the painter through render options, not through Layout, so the builder cannot paint them",
+    "w:pgBorders reach the painter through render options, not through Layout, and none were supplied to the builder",
   ],
   [
     "watermark",
-    "watermarks reach the painter through render options, not through Layout, so the builder cannot paint them",
+    "watermarks reach the painter through render options, not through Layout, and none was supplied to the builder",
   ],
 ] as const satisfies readonly (readonly [keyof typeof UNSUPPORTED_CONSTRUCT, string])[];
 
@@ -75,17 +78,26 @@ export type DocumentFeatures = {
   readonly [Feature in (typeof DOCUMENT_FEATURE_GAPS)[number][0]]: boolean;
 };
 
-export type BuildDisplayListOptions = {
+export type BuildDisplayListOptions = PageFurnitureInputs & {
   readonly layout: Layout;
   readonly blockLookup: BlockLookup;
   readonly metadata?: DisplayMetadata;
   /** Page background. Defaults to opaque white: the PDF has no theme. */
   readonly pageBackground?: DisplayColor;
   /**
-   * Omitted means unknown, and an unknown document is reported as having both:
-   * a silent gap is worse than one the reader can dismiss.
+   * States, for each construct in {@link DOCUMENT_FEATURE_GAPS}, whether the
+   * document has one at all. Omitted means unknown, and an unknown document is
+   * reported as having both: a silent gap is worse than one the reader can
+   * dismiss. A construct supplied through {@link PageFurnitureInputs} is
+   * painted and never reported, whatever this says.
    */
   readonly documentFeatures?: DocumentFeatures;
+  /**
+   * The package's own font faces (`fonts/embeddedFonts.ts`). Absent: a face the
+   * measurer resolved to an embedded family travels as a name, and a backend
+   * that cannot find that name on the host paints the document in a substitute.
+   */
+  readonly embeddedFonts?: readonly EmbeddedFont[];
 };
 
 const paragraphTextOf = (block: ParagraphBlock): string =>
@@ -212,6 +224,7 @@ type BuildPageOptions = {
   readonly images: ImageTable;
   readonly unsupported: UnsupportedCollector;
   readonly authorColors: AuthorColorTable;
+  readonly furniture: PageFurnitureInputs;
 };
 
 const buildPage = ({
@@ -225,6 +238,7 @@ const buildPage = ({
   images,
   unsupported,
   authorColors,
+  furniture,
 }: BuildPageOptions): DisplayPage => {
   const links: DisplayLink[] = [];
   const context: BuildContext = {
@@ -234,6 +248,7 @@ const buildPage = ({
     authorColors,
     links,
     bookmarkTargets,
+    story: "body",
     pageIndex,
     pageNumber: page.logicalNumber,
     totalPages,
@@ -264,11 +279,15 @@ const buildPage = ({
     }
   }
 
-  // Back to front, as `renderPage.ts` appends: background, behind-document
-  // floats, body fragments in `page.fragments` order, front floats, column
-  // separators, then the footnote band.
+  const { behind, above } = paintPageFurniture({ page, furniture, context });
+
+  // Back to front, as `renderPage.ts` appends: background, a `zOrder="back"`
+  // page border, the watermark, behind-document floats, body fragments in
+  // `page.fragments` order, front floats, column separators, the footnote band,
+  // the header, the footer, and last a `zOrder="front"` page border.
   const primitives: DisplayPrimitive[] = [
     paintPageBackground(page, pageBackground),
+    ...behind,
     ...behindFloats,
   ];
 
@@ -295,8 +314,7 @@ const buildPage = ({
 
   primitives.push(...frontFloats);
   primitives.push(...paintColumnSeparators(page));
-  primitives.push(...paintFootnoteArea(page, context));
-  reportUnreachableFurniture(page, context);
+  primitives.push(...above);
 
   return {
     pageNumber: page.number,
@@ -308,26 +326,41 @@ const buildPage = ({
   };
 };
 
+/** Whether the caller handed over the construct this document-wide gap names. */
+const SUPPLIED_BY = {
+  pageBorders: (furniture: PageFurnitureInputs) => furniture.pageBorders !== undefined,
+  watermark: (furniture: PageFurnitureInputs) =>
+    furniture.watermark !== undefined || furniture.watermarkByHeaderRId !== undefined,
+} as const satisfies Record<
+  (typeof DOCUMENT_FEATURE_GAPS)[number][0],
+  (furniture: PageFurnitureInputs) => boolean
+>;
+
 export const buildDisplayList = ({
   layout,
   blockLookup,
   metadata,
   pageBackground,
   documentFeatures,
+  embeddedFonts,
+  ...furniture
 }: BuildDisplayListOptions): DisplayList => {
-  const fonts = new FontTable();
+  const fonts = new FontTable(embeddedFonts ?? []);
   const images = new ImageTable();
   const unsupported = new UnsupportedCollector();
   const authorColors = new AuthorColorTable();
   const { bookmarkTargets, outline } = collectDocumentTargets(layout, blockLookup);
 
-  // Page borders and watermarks reach the DOM painter through
-  // `RenderPageOptions`; nothing in a `Layout` records either, so the gap is
-  // stated once per document rather than per page. A `DisplayUnsupported`
-  // carries a page index, so a document with no page has nothing to attribute
-  // the gap to, and nothing was painted there to be missing from.
+  // Nothing on a page betrays a page border or a watermark the caller withheld,
+  // so the gap is stated once per document rather than per page. A
+  // `DisplayUnsupported` carries a page index, so a document with no page has
+  // nothing to attribute the gap to, and nothing was painted there to be
+  // missing from.
   if (layout.pages.length > 0) {
     for (const [feature, detail] of DOCUMENT_FEATURE_GAPS) {
+      if (SUPPLIED_BY[feature](furniture)) {
+        continue;
+      }
       if (documentFeatures !== undefined && !documentFeatures[feature]) {
         continue;
       }
@@ -347,6 +380,7 @@ export const buildDisplayList = ({
       images,
       unsupported,
       authorColors,
+      furniture,
     }),
   );
 

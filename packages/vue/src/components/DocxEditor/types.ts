@@ -1,5 +1,6 @@
 import type { CSSProperties, VNodeChild } from "vue";
 
+import type { PageRendererName } from "@stll/folio-core/display-list/editor/pageRenderer";
 import type { Plugin } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import type { XmlFragment } from "yjs";
@@ -154,6 +155,17 @@ export type DocxEditorProps = {
    * no running header/footer.
    */
   showHeaderFooterEditing?: boolean;
+  /**
+   * Which renderer paints the pages (default: `"legacy"`).
+   *
+   * `"display-list"` builds folio's painter-neutral paint IR from the layout
+   * and paints the pages from it, so the editor and a document export draw
+   * from one structure rather than from two painters that have to agree. It
+   * places every code point at the advance the layout engine measured, which
+   * costs substantially more DOM per page; measure before turning it on for a
+   * long document.
+   */
+  pageRenderer?: PageRendererName;
   /** Whether to show page margin guides/boundaries (default: false) */
   showMarginGuides?: boolean;
   /** Color for margin guides (default: '#c0c0c0') */

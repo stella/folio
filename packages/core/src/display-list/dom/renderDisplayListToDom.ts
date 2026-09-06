@@ -6,6 +6,18 @@
  * (`text-align`, `text-indent`, floats, line boxes): a second opinion about
  * where a glyph goes is the divergence the display list exists to remove.
  *
+ * Text is placed one code point at a time, for that reason. Positions inside
+ * a single text element come from the browser's shaped advances, which this
+ * module cannot know without measuring, so a code point whose declared origin
+ * has to be honoured gets its own positioned box; {@link absorbsCodePoint}
+ * states the three cases where a box may hold more than one. Ligatures and
+ * kerning consequently do not form across boxes, which is the glyph selection
+ * the PDF backend makes as well: it too shows one glyph per code point at the
+ * advance the display list declares. The exception is a cursively joined
+ * cluster, which stays in one box because only shaping can pick a letter's
+ * initial, medial or final form; there the declared advances give the cluster
+ * its origin and the browser spaces the letters inside it.
+ *
  * This module takes a type-only edge to the paint IR and a runtime edge to its
  * companions in `../primitives`, which carry no layout fact. It has no access
  * to the layout engine, so a fact it needs and the display list does not carry
@@ -24,6 +36,9 @@ import { panic } from "better-result";
 
 import {
   DOUBLE_STROKE_GAP_FACTOR,
+  glyphCellOffsetsPx,
+  hasCursiveLetter,
+  joinsAcrossBoundary,
   STROKE_DASH_FACTORS,
   WAVY_STROKE_AMPLITUDE_FACTOR,
   WAVY_STROKE_PERIOD_FACTOR,
@@ -333,6 +348,123 @@ const paintLineSegment = (line: DisplayLine, context: PaintContext) => {
   context.parent.append(element);
 };
 
+/**
+ * One positioned box of a run: the code points it holds, the run-local offset
+ * of its left edge, and the extent the display list gives those code points.
+ */
+type GlyphBox = {
+  offsetPx: number;
+  advancePx: number;
+  text: string;
+  /** Whether any code point in the box paints ink. */
+  inked: boolean;
+};
+
+/**
+ * A code point that paints nothing: every space separator, the tab, and the
+ * zero-width no-break space. `\s` is exactly this set plus the line breaks,
+ * which a run never carries.
+ */
+const BLANK_CODE_POINT = /^\s$/u;
+
+type AbsorbsCodePointOptions = {
+  readonly box: GlyphBox;
+  readonly codePoint: string;
+  readonly advancePx: number;
+  readonly direction: DisplayGlyphRun["direction"];
+  /**
+   * Whether the run holds a cursive letter at all. Measured: one scan per run
+   * costs a fifth of what asking the joining tables per code point costs,
+   * because a call across the module edge does not inline, so text in a
+   * non-joining script never reaches the analysis.
+   */
+  readonly cursive: boolean;
+};
+
+/**
+ * Whether the open box may take one more code point without putting ink
+ * somewhere the display list did not ask for.
+ *
+ * Inside one box the browser advances the pen on its own shaped metrics,
+ * which this module cannot know without measuring, so only three kinds of
+ * code point may join a box that is already open:
+ *
+ * - one the display list does not advance past (`advancePx === 0`), which
+ *   shares its predecessor's pen position by definition and is a mark on it:
+ *   splitting the pair would paint the mark as an isolated glyph;
+ * - one cursively joined to what the box already holds. This one is a trade,
+ *   not a free win: the cluster gets a single declared origin and the browser
+ *   shapes inside it, so the display list's per-code-point advances are *not*
+ *   honoured within a cursive word. Splitting the word instead would select
+ *   isolated forms for every letter of it, which a reader sees immediately
+ *   where a sub-pixel advance is not; there is no third option, because only
+ *   shaping can choose an initial, medial or final form at all;
+ * - one that paints no ink, which has no painted position to get wrong. Under
+ *   `rtl` a box lays its first code point out at its *right* edge, so an
+ *   absorbed code point moves the ink of an inked box: there, a blank may only
+ *   join a box that is blank throughout.
+ */
+const absorbsCodePoint = ({
+  box,
+  codePoint,
+  advancePx,
+  direction,
+  cursive,
+}: AbsorbsCodePointOptions) => {
+  if (advancePx === 0) {
+    return true;
+  }
+  if (cursive && joinsAcrossBoundary(box.text, codePoint)) {
+    return true;
+  }
+  return BLANK_CODE_POINT.test(codePoint) && (direction === "ltr" || !box.inked);
+};
+
+/**
+ * The boxes a run is painted with, in logical order.
+ *
+ * Offsets come from `glyphCellOffsetsPx`, which the PDF backend positions
+ * glyphs with too, so neither backend holds its own copy of the mirroring
+ * rule. A box's own offset is the left edge of the cell it declares.
+ */
+const glyphBoxes = (run: DisplayGlyphRun): readonly GlyphBox[] => {
+  const codePoints = [...run.text];
+  if (codePoints.length !== run.advancesPx.length) {
+    panic(
+      `renderDisplayListToDom: glyph run carries ${run.advancesPx.length} advances for ${codePoints.length} code points`,
+    );
+  }
+
+  const offsetsPx = glyphCellOffsetsPx(run);
+  const cursive = hasCursiveLetter(run.text);
+  const boxes: GlyphBox[] = [];
+  for (const [index, codePoint] of codePoints.entries()) {
+    const advancePx = run.advancesPx[index] ?? 0;
+    const inked = !BLANK_CODE_POINT.test(codePoint);
+    const open = boxes.at(-1);
+    if (
+      open !== undefined &&
+      absorbsCodePoint({ box: open, codePoint, advancePx, direction: run.direction, cursive })
+    ) {
+      open.text += codePoint;
+      open.advancePx += advancePx;
+      open.inked = open.inked || inked;
+      // An `rtl` run advances leftwards, so an absorbed cell extends the box
+      // past its own left edge and the box has to follow: a box paints its
+      // content rightward from that edge, and `[offsetPx, offsetPx +
+      // advancePx]` stays the cell the box declares. A cursive cluster the
+      // browser shapes narrower than its declared cells therefore leaves its
+      // slack at the right, where an `rtl` word begins.
+      if (run.direction === "rtl") {
+        open.offsetPx -= advancePx;
+      }
+    } else {
+      boxes.push({ offsetPx: offsetsPx[index] ?? 0, advancePx, text: codePoint, inked });
+    }
+  }
+  return boxes;
+};
+
 const paintGlyphRun = (run: DisplayGlyphRun, context: PaintContext) => {
   const face = resolveFont(run.font, context.fonts);
   const advanceSum = run.advancesPx.reduce((total, advance) => total + advance, 0);
@@ -349,6 +481,8 @@ const paintGlyphRun = (run: DisplayGlyphRun, context: PaintContext) => {
   span.style.lineHeight = px(ascentPx + descentPx);
   span.style.display = "inline-block";
   span.style.boxSizing = "content-box";
+  // The declared extent, and now exactly that: the glyph boxes below are out
+  // of flow, so no shaped advance can grow or shrink the run's own box.
   span.style.width = px(advanceSum);
   span.style.whiteSpace = "pre";
   span.style.fontFamily = fontFamilyStack(face);
@@ -367,7 +501,23 @@ const paintGlyphRun = (run: DisplayGlyphRun, context: PaintContext) => {
   // The producer's own number, readable back out of the DOM by the
   // equivalence harness without measuring anything.
   span.dataset["advanceSum"] = String(advanceSum);
-  span.textContent = run.text;
+
+  // Each box carries its own left edge, so a code point's painted position
+  // comes from the display list rather than from the advance the browser
+  // would have used for everything before it. The boxes are out of flow, so
+  // one box's shaped width cannot move the next.
+  for (const box of glyphBoxes(run)) {
+    const element = context.doc.createElement("span");
+    element.style.position = "absolute";
+    element.style.left = px(box.offsetPx);
+    element.style.top = "0px";
+    // The declared cell, for a harness that checks placement per code point
+    // instead of only the run's total.
+    element.dataset["advanceOffset"] = String(box.offsetPx);
+    element.dataset["advance"] = String(box.advancePx);
+    element.textContent = box.text;
+    span.append(element);
+  }
 
   context.parent.append(span);
 };

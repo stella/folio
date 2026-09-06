@@ -40,6 +40,17 @@ export const trackedChangeColor = (
   isSuggestion: boolean | undefined,
 ): DisplayColor => (isSuggestion ? SUGGESTION_COLOR : authorColors.colorFor(changeAuthor));
 
+/**
+ * Which OOXML story the primitives being built belong to.
+ *
+ * Only the body's runs carry positions in the editable model the caller holds.
+ * A header, a footer and a footnote are each their own story with their own
+ * document positions, so a range taken from one of them would address
+ * unrelated body content; the painter drops the same anchors for the same
+ * reason (`stripFootnotePmAnchors`).
+ */
+export type DisplayStory = "body" | "header" | "footer" | "footnote";
+
 export type BuildContext = {
   readonly fonts: FontTable;
   readonly images: ImageTable;
@@ -53,6 +64,7 @@ export type BuildContext = {
    * known, which is why this is resolved before any page is painted.
    */
   readonly bookmarkTargets: ReadonlyMap<string, DisplayLinkTarget>;
+  readonly story: DisplayStory;
   readonly pageIndex: number;
   /** Authored page number, for `PAGE` fields. */
   readonly pageNumber: number;

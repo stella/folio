@@ -24,6 +24,7 @@ import type {
   SetContentControlContentInput,
   SetContentControlValueInput,
 } from "@stll/folio-core/content-controls";
+import type { PageRendererName } from "@stll/folio-core/display-list/editor/pageRenderer";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type { DocxCompatibility } from "@stll/folio-core/docx/compatibility";
 import type { FolioSelectiveSaveFlags } from "@stll/folio-core/docx/selectiveSaveFlags";
@@ -142,6 +143,17 @@ export type DocxEditorProps = {
    * header/footer.
    */
   showHeaderFooterEditing?: boolean;
+  /**
+   * Which renderer paints the pages (default: `"legacy"`).
+   *
+   * `"display-list"` builds folio's painter-neutral paint IR from the layout
+   * and paints the pages from it, so the editor and a document export draw
+   * from one structure rather than from two painters that have to agree. It
+   * places every code point at the advance the layout engine measured, which
+   * costs substantially more DOM per page; measure before turning it on for a
+   * long document.
+   */
+  pageRenderer?: PageRendererName;
   /** Whether to show page margin guides/boundaries (default: false) */
   showMarginGuides?: boolean;
   /** Color for margin guides (default: '#c0c0c0') */

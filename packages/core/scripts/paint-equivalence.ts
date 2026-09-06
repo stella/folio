@@ -21,18 +21,17 @@
  * The absolute number is bounded by three known residuals between the two
  * backends, not by how wrong either one is. Read a drop, not a level.
  *
- * 1. **Advance drift, and it dominates.** The harness builds the display list
- *    with the *headless* measure provider, whose advances come from `hmtx`
- *    with no kerning and no ligatures, and then renders that list in a
- *    *browser*, which advances glyphs on its own shaped metrics. Measured over
- *    `podily-bps.docx`: of 2506 runs, the width Chrome paints differs from the
- *    run's declared `advancesPx` by more than 2 px in 23.7% of them (median
- *    0.2 px over all runs, p90 4.1 px). Each line starts flush and separates
- *    left to right, which is what the diff PNGs show. **This is an artifact of
- *    how the harness is wired, not of the product path**: in the editor the
- *    same list is built by the canvas provider inside the same browser that
- *    paints it, so the two agree there. Nobody should read podily's 0.96 as
- *    the editor being 4% wrong.
+ * 1. **Advance drift: now the browser's layout quantum, and nothing more.**
+ *    The DOM backend places every code point at the offset the display list
+ *    declares rather than letting inline layout advance it, so the two backends
+ *    no longer disagree about where a glyph starts. Measured across all four
+ *    fixtures: median 0.007 px, p90 0.014 px, worst 0.016 px, and not one
+ *    glyph box of 65 360 off by more than a pixel. That residue is a browser
+ *    snapping each layout value to 1/64 px (0.0156), which is the floor CSS
+ *    admits. Before per-code-point placement the same measurement read median
+ *    0.163 px and p90 4.078 px on `podily-bps.docx`, with 31.5% of runs off by
+ *    more than a pixel and the worst off by 64.9 px, because a line accumulated
+ *    the difference between measured and shaped advances from left to right.
  * 2. **Baseline placement: ~0.22 px, and no longer the backend's doing.**
  *    Measured on `sample.docx` page 1 (Carlito bold at 18.667 px): the DOM
  *    backend asks for `top: 107.399px` and Chrome lays the span out at
@@ -485,8 +484,31 @@ const ARM_DISPOSITION = {
 
 type ArmDisposition = (typeof ARM_DISPOSITION)[keyof typeof ARM_DISPOSITION];
 
+/**
+ * How far the browser's painted glyph runs sit from the advances the display
+ * list declared, in CSS px.
+ *
+ * The DOM arm reads this out of the page it just rendered, so the number is a
+ * measurement rather than a claim in a comment. It answers the one question a
+ * per-page pixel score cannot: whether the DOM backend is painting the display
+ * list's geometry or the browser's own idea of it.
+ */
+type AdvanceDrift = {
+  /** Glyph boxes measured, not runs: placement is per code point. */
+  readonly runs: number;
+  readonly medianPx: number;
+  readonly p90Px: number;
+  /** Runs off by more than a pixel, where a reader starts to see it. */
+  readonly overOnePxRatio: number;
+  readonly worstPx: number;
+};
+
 type RasterArm =
-  | { readonly status: "rendered"; readonly pagePngs: readonly string[] }
+  | {
+      readonly status: "rendered";
+      readonly pagePngs: readonly string[];
+      readonly drift: AdvanceDrift | null;
+    }
   | { readonly status: ArmDisposition; readonly reason: string };
 
 /** Where a problem came from: one of the two arms, or the comparison itself. */
@@ -620,6 +642,41 @@ const screenshotDom = async ({
         await document.fonts.ready;
       });
 
+      // Read the drift before any screenshot, while the page is untouched by
+      // scrolling: a run's declared advance sum against the extent the browser
+      // actually painted for it.
+      const drift = await page.evaluate(() => {
+        const deltas: number[] = [];
+        for (const run of document.querySelectorAll<HTMLElement>("[data-advance-sum]")) {
+          // Each glyph box declares its own run-local left edge, so this reads
+          // where the browser actually put every code point against where the
+          // display list said to put it. Measuring the run's own extent would
+          // answer nothing: the run box is sized from the declared total, so
+          // it agrees with itself by construction.
+          const runLeft = run.getBoundingClientRect().left;
+          for (const box of run.querySelectorAll<HTMLElement>("[data-advance-offset]")) {
+            const declared = Number(box.dataset["advanceOffset"]);
+            if (!Number.isFinite(declared)) {
+              continue;
+            }
+            deltas.push(Math.abs(box.getBoundingClientRect().left - (runLeft + declared)));
+          }
+        }
+        if (deltas.length === 0) {
+          return null;
+        }
+        deltas.sort((left, right) => left - right);
+        const at = (fraction: number) =>
+          deltas[Math.min(deltas.length - 1, Math.floor(deltas.length * fraction))] ?? 0;
+        return {
+          runs: deltas.length,
+          medianPx: at(0.5),
+          p90Px: at(0.9),
+          overOnePxRatio: deltas.filter((delta) => delta > 1).length / deltas.length,
+          worstPx: deltas.at(-1) ?? 0,
+        };
+      });
+
       const pagePngs: string[] = [];
       for (let index = 0; index < pageCount; index++) {
         const locator = page.locator(PAGE_SELECTOR).nth(index);
@@ -630,7 +687,7 @@ const screenshotDom = async ({
         await locator.screenshot({ path: pngPath, timeout: SCREENSHOT_TIMEOUT_MS });
         pagePngs.push(pngPath);
       }
-      return pagePngs;
+      return { pagePngs, drift };
     },
     catch: (cause) => (cause instanceof Error ? cause.message : String(cause)),
   });
@@ -646,7 +703,11 @@ const screenshotDom = async ({
       reason: `chromium could not capture the pages: ${captured.error}`,
     };
   }
-  return { status: "rendered", pagePngs: captured.value };
+  return {
+    status: "rendered",
+    pagePngs: captured.value.pagePngs,
+    drift: captured.value.drift,
+  };
 };
 
 // ---------------------------------------------------------------------------
@@ -677,6 +738,8 @@ type FixtureReport = {
   readonly layoutGaps: readonly HeadlessLayoutGap[];
   readonly measurementSubstitutions: readonly HeadlessFontSubstitution[];
   readonly embeddingSubstitutions: readonly PdfSubstitution[];
+  /** Null when the DOM arm did not render, or the page declared no runs. */
+  readonly drift: AdvanceDrift | null;
 };
 
 const problemOf = (source: ProblemSource, arm: RasterArm): readonly RunProblem[] =>
@@ -721,6 +784,11 @@ const runFixture = async ({
   const list = buildDisplayList({
     layout: laidOut.value.layout,
     blockLookup: laidOut.value.blockLookup,
+    // The headless entry lays the header, footer and footnote stories out too,
+    // so both arms paint the pages an editor paints rather than bare bodies.
+    documentFeatures: laidOut.value.documentFeatures,
+    embeddedFonts: laidOut.value.embeddedFonts,
+    ...laidOut.value.furniture,
   });
 
   const written = writePdf(list, {
@@ -774,6 +842,7 @@ const runFixture = async ({
     layoutGaps: laidOut.value.unsupported,
     measurementSubstitutions: headless.substitutions(),
     embeddingSubstitutions: written.value.substitutions,
+    drift: domArm.status === "rendered" ? domArm.drift : null,
   };
   const unscored = {
     meanSimilarity: null,
@@ -950,6 +1019,14 @@ const printReport = (report: FixtureReport, baseline: Baseline | null): void => 
     `  ${String(report.pageCount)} page(s), ${report.pdfByteSize.toLocaleString("en")} pdf bytes, ` +
       `${report.exportMs.toFixed(0)} ms export, worst ${worst}, mean ${mean}`,
   );
+  if (report.drift !== null) {
+    const { runs, medianPx, p90Px, overOnePxRatio, worstPx } = report.drift;
+    console.log(
+      `  advance drift over ${String(runs)} glyph boxes: median ${medianPx.toFixed(3)} px, ` +
+        `p90 ${p90Px.toFixed(3)} px, worst ${worstPx.toFixed(3)} px, ` +
+        `${(overOnePxRatio * 100).toFixed(1)}% over 1 px`,
+    );
+  }
   for (const problem of report.problems) {
     console.log(`  ${PROBLEM_LABEL[problem.disposition]} (${problem.source}): ${problem.reason}`);
   }

@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { DISPLAY_PRIMITIVE_KINDS } from "../primitives";
 import type {
   DisplayFontFace,
+  DisplayGlyphRun,
   DisplayImageSource,
   DisplayList,
   DisplayPage,
@@ -109,6 +110,19 @@ const renderPrimitives = (primitives: readonly DisplayPrimitive[]) =>
     }),
   );
 
+/** The run's text as a document-order reader (a `Range`, a copy) sees it. */
+const runText = (span: StubElement | undefined) =>
+  (span?.children ?? []).map((box) => box.textContent).join("");
+
+/** Each placed box: what it holds, where it starts, and the cell it declares. */
+const glyphBoxes = (span: StubElement | undefined) =>
+  (span?.children ?? []).map((box) => ({
+    text: box.textContent,
+    left: box.style.left,
+    offset: box.dataset.advanceOffset,
+    advance: box.dataset.advance,
+  }));
+
 /**
  * One primitive per discriminator. `satisfies Record<...>` is what makes a new
  * kind a compile error here rather than a mark that quietly never renders.
@@ -163,6 +177,9 @@ const PRIMITIVE_SAMPLES = {
   },
 } satisfies Record<DisplayPrimitive["kind"], DisplayPrimitive>;
 
+const renderRun = (run: Partial<DisplayGlyphRun>) =>
+  renderPrimitives([{ ...PRIMITIVE_SAMPLES.glyphRun, ...run }]).children.at(0);
+
 const listOf = (
   pages: readonly DisplayPage[],
   fonts: readonly DisplayFontFace[] = [FONT],
@@ -206,7 +223,7 @@ describe("renderDisplayListToDom", () => {
     expect(span?.style.lineHeight).toBe("12px");
     expect(span?.style.width).toBe("18px");
     expect(span?.dataset.advanceSum).toBe("18");
-    expect(span?.textContent).toBe("abc");
+    expect(runText(span)).toBe("abc");
     expect(span?.style.fontFamily).toBe(`"Times New Roman", serif`);
     expect(span?.style.direction).toBe("ltr");
     // Nothing may re-derive a position from inline flow, or re-order a run.
@@ -224,6 +241,183 @@ describe("renderDisplayListToDom", () => {
     expect(rtl?.style.left).toBe(ltr?.style.left);
     expect(rtl?.style.width).toBe(ltr?.style.width);
     expect(rtl?.style.direction).toBe("rtl");
+  });
+
+  test("places every code point at the offset its advances declare", () => {
+    // Deliberately uneven: an offset that follows the run's own advances
+    // cannot be reproduced by any one spacing applied to the whole run.
+    const span = renderRun({ text: "abc", advancesPx: [5, 6, 7] });
+
+    expect(glyphBoxes(span)).toEqual([
+      { text: "a", left: "0px", offset: "0", advance: "5" },
+      { text: "b", left: "5px", offset: "5", advance: "6" },
+      { text: "c", left: "11px", offset: "11", advance: "7" },
+    ]);
+  });
+
+  test("places a code point no natural advance would reach at its declared offset", () => {
+    // Advances a face at this size cannot plausibly have: the second cell is
+    // three times the font size, the third a fraction of it. Placement follows
+    // the display list, so neither depends on what the glyph is.
+    const span = renderRun({ fontSizePx: 12, text: "xyz", advancesPx: [0.5, 36, 3.25] });
+
+    expect(glyphBoxes(span).map((box) => box.left)).toEqual(["0px", "0.5px", "36.5px"]);
+    expect(span?.dataset.advanceSum).toBe("39.75");
+    expect(span?.style.width).toBe("39.75px");
+  });
+
+  test("mirrors an rtl run about its own extent", () => {
+    // The run occupies the same 18px either way; the first logical code point
+    // ends at the run's right edge, so its box starts one advance short of it.
+    const span = renderRun({ text: "abc", advancesPx: [5, 6, 7], direction: "rtl" });
+
+    expect(glyphBoxes(span)).toEqual([
+      { text: "a", left: "13px", offset: "13", advance: "5" },
+      { text: "b", left: "7px", offset: "7", advance: "6" },
+      { text: "c", left: "0px", offset: "0", advance: "7" },
+    ]);
+  });
+
+  test("keeps a code point the run does not advance past with the one before it", () => {
+    // A combining mark shares its base's pen position: placed on its own it
+    // would paint as an isolated glyph.
+    const span = renderRun({ text: "a\u0301b", advancesPx: [5, 0, 6] });
+
+    expect(glyphBoxes(span)).toEqual([
+      { text: "a\u0301", left: "0px", offset: "0", advance: "5" },
+      { text: "b", left: "5px", offset: "5", advance: "6" },
+    ]);
+  });
+
+  test("gives a blank code point its declared cell without a box of its own", () => {
+    const span = renderRun({ text: "a  b", advancesPx: [5, 4, 3, 6] });
+
+    // The blanks paint nothing, so only the cell they push `b` into is
+    // observable, and that cell is the display list's own.
+    expect(glyphBoxes(span)).toEqual([
+      { text: "a  ", left: "0px", offset: "0", advance: "12" },
+      { text: "b", left: "12px", offset: "12", advance: "6" },
+    ]);
+  });
+
+  test("keeps an rtl blank out of an inked box", () => {
+    // An rtl box lays its first code point out at its right edge, so absorbing
+    // a blank would move the ink that box exists to place.
+    const span = renderRun({ text: "a b", advancesPx: [5, 4, 6], direction: "rtl" });
+
+    expect(glyphBoxes(span)).toEqual([
+      { text: "a", left: "10px", offset: "10", advance: "5" },
+      { text: " ", left: "6px", offset: "6", advance: "4" },
+      { text: "b", left: "0px", offset: "0", advance: "6" },
+    ]);
+  });
+
+  // U+0628 beh and U+064A yeh join on both sides, U+0627 alef only backwards,
+  // and U+064E fatha is transparent to joining.
+  const BEH = "\u0628";
+  const YEH = "\u064a";
+  const TEH = "\u062a";
+  const ALEF = "\u0627";
+  const FATHA = "\u064e";
+
+  test("keeps a cursively joined word in one box", () => {
+    // Split letter by letter the word would paint in isolated forms, because
+    // only shaping can pick an initial, medial or final form.
+    const span = renderRun({
+      text: `${BEH}${YEH}${TEH}`,
+      advancesPx: [5, 6, 7],
+      direction: "rtl",
+    });
+
+    expect(glyphBoxes(span)).toEqual([
+      { text: `${BEH}${YEH}${TEH}`, left: "0px", offset: "0", advance: "18" },
+    ]);
+  });
+
+  test("ends a box at a letter that joins on one side only", () => {
+    // Alef takes a connection from its right and gives none to its left, so
+    // the letter after it is placed on the display list's own offset.
+    const span = renderRun({ text: `${ALEF}${BEH}`, advancesPx: [5, 6], direction: "rtl" });
+
+    expect(glyphBoxes(span)).toEqual([
+      { text: ALEF, left: "6px", offset: "6", advance: "5" },
+      { text: BEH, left: "0px", offset: "0", advance: "6" },
+    ]);
+  });
+
+  test("joins through a mark that is transparent to joining", () => {
+    const span = renderRun({
+      text: `${BEH}${FATHA}${YEH}`,
+      advancesPx: [5, 0, 6],
+      direction: "rtl",
+    });
+
+    expect(glyphBoxes(span)).toEqual([
+      { text: `${BEH}${FATHA}${YEH}`, left: "0px", offset: "0", advance: "11" },
+    ]);
+  });
+
+  test("counts code points, not UTF-16 units", () => {
+    const span = renderRun({ text: "\u{1f600}a", advancesPx: [12, 5] });
+
+    expect(glyphBoxes(span).map((box) => box.text)).toEqual(["\u{1f600}", "a"]);
+  });
+
+  test("emits a run's text in document order", () => {
+    const span = renderRun({ text: "a b\u0301c", advancesPx: [5, 4, 6, 0, 7] });
+
+    // What a Range over the run yields, and so what a copy of it carries.
+    expect(runText(span)).toBe("a b\u0301c");
+  });
+
+  test("panics on a run whose advances do not match its code points", () => {
+    expect(() => renderRun({ text: "abc", advancesPx: [5, 6] })).toThrow(
+      /carries 2 advances for 3 code points/,
+    );
+  });
+
+  test("tiles every run with boxes that cover its declared extent exactly", () => {
+    // The invariant behind the individual cases: whatever the text, the boxes
+    // partition `[0, sum(advancesPx)]` in the run's own direction and carry
+    // its text unchanged. A coalescing rule that placed a code point at the
+    // wrong offset, dropped one, or left a gap fails here for every run shape
+    // at once.
+    let seed = 0x9e3779b9;
+    const nextRandom = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 0x1_0000_0000;
+    };
+    const ALPHABET = [..."ab\u0301 \t\u{1f600}\u0628\u064a\u0627"];
+
+    for (let sample = 0; sample < 200; sample++) {
+      const length = 1 + Math.floor(nextRandom() * 12);
+      const codePoints = Array.from(
+        { length },
+        () => ALPHABET[Math.floor(nextRandom() * ALPHABET.length)] ?? "a",
+      );
+      const advancesPx = codePoints.map((codePoint) =>
+        codePoint === "\u0301" ? 0 : Math.round(nextRandom() * 2000) / 100,
+      );
+      const direction = nextRandom() < 0.5 ? "ltr" : "rtl";
+      const totalPx = advancesPx.reduce((total, advance) => total + advance, 0);
+      const label = `${direction} ${JSON.stringify(codePoints.join(""))}`;
+
+      const span = renderRun({ text: codePoints.join(""), advancesPx, direction });
+      const boxes = glyphBoxes(span);
+
+      expect(runText(span), label).toBe(codePoints.join(""));
+      expect(span?.dataset.advanceSum, label).toBe(String(totalPx));
+
+      let consumedPx = 0;
+      for (const box of boxes) {
+        const advancePx = Number(box.advance);
+        const expectedPx = direction === "ltr" ? consumedPx : totalPx - consumedPx - advancePx;
+        expect(Number(box.offset), label).toBeCloseTo(expectedPx, 9);
+        expect(box.left, label).toBe(`${String(Number(box.offset))}px`);
+        consumedPx += advancePx;
+      }
+      expect(consumedPx, label).toBeCloseTo(totalPx, 9);
+    }
   });
 
   test("gives each stroke pattern a distinguishable background", () => {

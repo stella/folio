@@ -136,6 +136,11 @@ const exportWithHeadlessProvider = async (
     // Without these the producer must assume every render-option construct
     // might be present, and reports a gap for a document that has none.
     documentFeatures: laidOut.value.documentFeatures,
+    // The page furniture the layout does not carry: page borders, the
+    // watermark, the header and footer stories, the footnote bodies. An export
+    // that omits them prints the body of a page rather than the page.
+    ...laidOut.value.furniture,
+    embeddedFonts: laidOut.value.embeddedFonts,
     ...(options.metadata === undefined ? {} : { metadata: options.metadata }),
   });
 

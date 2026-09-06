@@ -733,6 +733,7 @@ const {
   editorMode,
   author: () => props.author,
   password: () => props.password,
+  pageRenderer: () => props.pageRenderer,
   showMarginGuides: () => props.showMarginGuides,
   marginGuideColor: () => props.marginGuideColor,
   externalPlugins: [],

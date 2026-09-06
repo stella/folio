@@ -37,6 +37,7 @@ import {
   type FolioEditorDocumentIO,
   type FolioGetDocxOptions,
 } from "@stll/folio-core/controller/folioEditor";
+import type { PageRendererName } from "@stll/folio-core/display-list/editor/pageRenderer";
 import { createFolioEditorEmitter } from "@stll/folio-core/controller/folioEditorEvents";
 import { loadCollaborationModules } from "@stll/folio-core/controller/collaborationModules";
 import { createHeaderFooterEditorManager } from "@stll/folio-core/controller/headerFooterEditorManager";
@@ -324,6 +325,7 @@ export type UseDocxEditorOptions = {
   /** Gap between pages in pixels. */
   pageGap?: number;
   /** Whether to paint each page's effective body-content boundary. Reactive. */
+  pageRenderer?: MaybeRefOrGetter<PageRendererName | undefined>;
   showMarginGuides?: MaybeRefOrGetter<boolean | undefined>;
   /** CSS color used for margin guides. Reactive. */
   marginGuideColor?: MaybeRefOrGetter<string | undefined>;
@@ -470,6 +472,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     pagesContainer,
     readOnly = false,
     pageGap = DEFAULT_PAGE_GAP,
+    pageRenderer,
     showMarginGuides,
     marginGuideColor,
     password,
@@ -692,6 +695,10 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
           pageGap,
           showMarginGuides: toValue(showMarginGuides) === true,
           marginGuideColor: toValue(marginGuideColor),
+          ...(() => {
+            const selected = toValue(pageRenderer);
+            return selected === undefined ? {} : { pageRenderer: selected };
+          })(),
           syncCoordinator,
           headerContent: hf.headerContent,
           footerContent: hf.footerContent,
@@ -1265,7 +1272,10 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     }
   }
 
-  watch([() => toValue(showMarginGuides), () => toValue(marginGuideColor)], () => reLayout());
+  watch(
+    [() => toValue(showMarginGuides), () => toValue(marginGuideColor), () => toValue(pageRenderer)],
+    () => reLayout(),
+  );
 
   function destroy(): void {
     scheduler.dispose();

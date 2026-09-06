@@ -164,6 +164,17 @@ export type DisplayGlyphRun = {
    * Absent means fill only.
    */
   readonly stroke?: DisplayStroke;
+  /**
+   * Editable-model range this run's text occupies, when the producer knows it.
+   *
+   * Not paint, and a backend that only draws ignores it, the way a rasterizer
+   * ignores `links`. It is here because an editing surface has to map a click
+   * and a selection back to a position in the document, and the only structure
+   * that knows which glyphs came from which characters is the one that placed
+   * them. Absent when a run has no counterpart in the model: a list marker, a
+   * substituted field value, a tab leader.
+   */
+  readonly pmRange?: { readonly start: number; readonly end: number };
 };
 
 /** An axis-aligned rectangle, filled and/or stroked. At least one is set. */
