@@ -32,7 +32,7 @@ export type CellContent = string | readonly BodyItem[];
 
 /** One body-level item: a paragraph, or a table given row by row. */
 export type BodyItem =
-  | { kind: "paragraph"; text: string }
+  | { kind: "paragraph"; text: string; styleId?: string }
   | {
       kind: "table";
       rows: readonly (readonly CellContent[])[];
@@ -49,8 +49,12 @@ export type BodyItem =
  * holds for a blank line or an empty cell. It is not the same thing as a
  * paragraph whose run carries an empty string, and both shapes occur.
  */
-const paragraph = (text: string): string =>
-  text.length === 0 ? `<w:p/>` : `<w:p><w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:p>`;
+const paragraph = (text: string, styleId?: string): string => {
+  const properties = styleId === undefined ? "" : `<w:pPr><w:pStyle w:val="${styleId}"/></w:pPr>`;
+  return text.length === 0
+    ? `<w:p>${properties}</w:p>`
+    : `<w:p>${properties}<w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:p>`;
+};
 
 const EMPTY_PARAGRAPH = { kind: "paragraph", text: "" } as const satisfies BodyItem;
 
@@ -89,7 +93,9 @@ const table = (item: Extract<BodyItem, { kind: "table" }>): string => {
 };
 
 const itemsXml = (items: readonly BodyItem[]): string =>
-  items.map((item) => (item.kind === "paragraph" ? paragraph(item.text) : table(item))).join("");
+  items
+    .map((item) => (item.kind === "paragraph" ? paragraph(item.text, item.styleId) : table(item)))
+    .join("");
 
 const bodyXml = (items: readonly BodyItem[]): string => itemsXml(closedSequence(items));
 
@@ -117,6 +123,7 @@ export const buildBodySequenceDocx = async (items: readonly BodyItem[]): Promise
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
       `<w:styles xmlns:w="${NAMESPACE}">` +
       `<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style>` +
+      `<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/></w:style>` +
       `</w:styles>`,
     "word/document.xml":
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +

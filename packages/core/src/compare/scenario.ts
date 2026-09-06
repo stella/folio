@@ -152,6 +152,8 @@ const planStep = ({ step, blocks, nextOperationId }: PlanStepOptions): StepPlan 
             type: "insertBeforeBlock",
             blockId: destination.id,
             text: block.text,
+            styleId: block.styleId ?? null,
+            listLevel: block.listLevel ?? null,
           },
         ],
       };
