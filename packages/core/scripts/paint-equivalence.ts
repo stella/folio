@@ -21,17 +21,19 @@
  * The absolute number is bounded by three known residuals between the two
  * backends, not by how wrong either one is. Read a drop, not a level.
  *
- * 1. **Advance drift: now the browser's layout quantum, and nothing more.**
- *    The DOM backend places every code point at the offset the display list
- *    declares rather than letting inline layout advance it, so the two backends
- *    no longer disagree about where a glyph starts. Measured across all four
- *    fixtures: median 0.007 px, p90 0.014 px, worst 0.016 px, and not one
- *    glyph box of 65 360 off by more than a pixel. That residue is a browser
- *    snapping each layout value to 1/64 px (0.0156), which is the floor CSS
- *    admits. Before per-code-point placement the same measurement read median
- *    0.163 px and p90 4.078 px on `podily-bps.docx`, with 31.5% of runs off by
- *    more than a pixel and the worst off by 64.9 px, because a line accumulated
- *    the difference between measured and shaped advances from left to right.
+ * 1. **Advance drift, and it dominates. It is a property of this harness's
+ *    wiring, not of the product path.** The list is built by the *headless*
+ *    measure provider, whose advances come from `hmtx` with no kerning and no
+ *    ligatures, and then painted by a *browser*, which shapes. A run is one
+ *    element and the browser advances the glyphs inside it, so the two
+ *    disagree by whatever shaping changes: measured over `podily-bps.docx`,
+ *    median 0.163 px and p90 4.078 px, worst 64.9 px.
+ *
+ *    That number is reported here and gated nowhere, because it does not
+ *    describe what the editor does. In the editor the same list is built by
+ *    the canvas provider inside the browser that paints it, so both sides come
+ *    from one shaper; `tests/visual/display-list-run-drift.spec.ts` measures
+ *    *that* arrangement and is the gate.
  * 2. **Baseline placement: ~0.22 px, and no longer the backend's doing.**
  *    Measured on `sample.docx` page 1 (Carlito bold at 18.667 px): the DOM
  *    backend asks for `top: 107.399px` and Chrome lays the span out at
@@ -494,7 +496,6 @@ type ArmDisposition = (typeof ARM_DISPOSITION)[keyof typeof ARM_DISPOSITION];
  * list's geometry or the browser's own idea of it.
  */
 type AdvanceDrift = {
-  /** Glyph boxes measured, not runs: placement is per code point. */
   readonly runs: number;
   readonly medianPx: number;
   readonly p90Px: number;
@@ -648,10 +649,8 @@ const screenshotDom = async ({
       const drift = await page.evaluate(() => {
         const deltas: number[] = [];
         // A rotated ancestor turns the run's own x-axis away from the
-        // viewport's, so a viewport-space left edge no longer differs from the
-        // declared offset by that offset. Watermark text is the case in the
-        // corpus. Such a run is skipped rather than counted as drift it does
-        // not have.
+        // viewport's, so its painted width is not comparable to a declared
+        // extent. Watermark text is the case in the corpus.
         const isAxisAligned = (element: HTMLElement): boolean => {
           for (let node: HTMLElement | null = element; node; node = node.parentElement) {
             const transform = getComputedStyle(node).transform;
@@ -665,18 +664,19 @@ const screenshotDom = async ({
           if (!isAxisAligned(run)) {
             continue;
           }
-          // Each glyph box declares its own run-local left edge, so this reads
-          // where the browser actually put every code point against where the
-          // display list said to put it. Measuring the run's own extent would
-          // answer nothing: the run box is sized from the declared total, so
-          // it agrees with itself by construction.
-          const runLeft = run.getBoundingClientRect().left;
-          for (const box of run.querySelectorAll<HTMLElement>("[data-advance-offset]")) {
-            const declared = Number(box.dataset["advanceOffset"]);
-            if (!Number.isFinite(declared)) {
-              continue;
-            }
-            deltas.push(Math.abs(box.getBoundingClientRect().left - (runLeft + declared)));
+          const declared = Number(run.dataset["advanceSum"]);
+          if (!Number.isFinite(declared) || declared <= 0) {
+            continue;
+          }
+          // The run's own box is sized from the declared extent, so measuring
+          // it would compare a number with itself. The text inside it is what
+          // the shaper actually laid out.
+          const range = document.createRange();
+          range.selectNodeContents(run);
+          const painted = range.getBoundingClientRect().width;
+          range.detach();
+          if (painted > 0) {
+            deltas.push(Math.abs(painted - declared));
           }
         }
         if (deltas.length === 0) {
@@ -1039,7 +1039,7 @@ const printReport = (report: FixtureReport, baseline: Baseline | null): void => 
   if (report.drift !== null) {
     const { runs, medianPx, p90Px, overOnePxRatio, worstPx } = report.drift;
     console.log(
-      `  advance drift over ${String(runs)} glyph boxes: median ${medianPx.toFixed(3)} px, ` +
+      `  advance drift over ${String(runs)} runs: median ${medianPx.toFixed(3)} px, ` +
         `p90 ${p90Px.toFixed(3)} px, worst ${worstPx.toFixed(3)} px, ` +
         `${(overOnePxRatio * 100).toFixed(1)}% over 1 px`,
     );

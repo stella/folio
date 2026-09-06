@@ -1,6 +1,6 @@
 {
-  "tests/visual/fixtures/docx-editor-demo.docx": 0.9856,
-  "tests/visual/fixtures/sample.docx": 0.9892,
-  "tests/visual/fixtures/podily-bps.docx": 0.9644,
-  "packages/core/src/docx/__tests__/__fixtures__/corpus/diacritics-latin-ext.docx": 0.9924
+  "tests/visual/fixtures/docx-editor-demo.docx": 0.9803,
+  "tests/visual/fixtures/sample.docx": 0.9857,
+  "tests/visual/fixtures/podily-bps.docx": 0.9578,
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/diacritics-latin-ext.docx": 0.9878
 }

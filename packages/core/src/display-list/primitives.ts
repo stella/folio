@@ -29,6 +29,18 @@ import type {
  */
 export { hasCursiveLetter, joinsAcrossBoundary } from "../utils/cursiveJoining";
 
+/**
+ * Whether a code point belongs to a script whose glyphs cannot be chosen from
+ * the code point alone: Arabic, Hebrew with marks, the Indic scripts, Thai.
+ *
+ * A paint module needs this for the same reason it needs the joining
+ * predicates: a backend that maps each code point straight to a glyph produces
+ * text that is wrong in a way its author can read at a glance, and it has to
+ * know when it is about to. Which scripts those are is Unicode data, not a
+ * layout fact, which is why it lives here beside the other shared rules.
+ */
+export { isComplexScriptCodePoint, hasComplexScript } from "../utils/scriptSegments";
+
 type PrimitiveKind = DisplayPrimitive["kind"];
 
 /**
