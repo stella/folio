@@ -1366,7 +1366,13 @@ const applyFolioAIEditOperationsInternal = ({
             }
             const revisionId = revisionSeed++;
             nodes[index] = node.type.create(
-              { ...node.attrs, pPrMark: { kind: "ins", info: { id: revisionId, author, date, ...trackedRevisionExtras } } },
+              {
+                ...node.attrs,
+                pPrMark: {
+                  kind: "ins",
+                  info: { id: revisionId, author, date, ...trackedRevisionExtras },
+                },
+              },
               node.content,
             );
             insertedBlockRevisionIds.push(revisionId);

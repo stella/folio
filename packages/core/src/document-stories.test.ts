@@ -41,9 +41,7 @@ describe("pairFolioDocumentStories", () => {
   });
 
   test("the surplus stays unpaired when one side has more", () => {
-    expect(
-      pairFolioDocumentStories([header("rId3")], [header("rId8"), header("rId9")]),
-    ).toEqual([
+    expect(pairFolioDocumentStories([header("rId3")], [header("rId8"), header("rId9")])).toEqual([
       { baseStory: header("rId3"), revisedStory: header("rId8") },
       { baseStory: null, revisedStory: header("rId9") },
     ]);

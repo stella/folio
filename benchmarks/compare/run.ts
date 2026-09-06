@@ -33,12 +33,7 @@ import {
 import { checkInvariants, type InvariantOutcome } from "./invariants";
 import { measureHeapGrowth, sample, summarize, type Distribution } from "./measure";
 import { zipPackage } from "./package-xml";
-import {
-  classifyRefusal,
-  REFUSAL_BUCKETS,
-  summarizeRefusals,
-  type PairOutcome,
-} from "./refusals";
+import { classifyRefusal, REFUSAL_BUCKETS, summarizeRefusals, type PairOutcome } from "./refusals";
 import { COMPARE_STAGES, runStagedCompare, type CompareStage } from "./stages";
 import { applyVariant, EDIT_VARIANTS, type EditVariant } from "./variants";
 import { PACKAGE_VALIDATOR_HINT, resolvePackageValidator } from "./validator";

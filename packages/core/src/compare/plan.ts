@@ -930,7 +930,8 @@ export const planStoryCompare = ({
    * come out in operation order, which is not target order.
    */
   const tailAnchorId = lastBaseBlockId ?? baseSnapshot.emptyDocumentAnchorId ?? null;
-  const emptyBaseAnchorId = lastBaseBlockId === null ? baseSnapshot.emptyDocumentAnchorId : null;
+  const emptyBaseAnchorId =
+    lastBaseBlockId === null ? (baseSnapshot.emptyDocumentAnchorId ?? null) : null;
   let tailInsertCount = 0;
   let operationSequence = 0;
 
