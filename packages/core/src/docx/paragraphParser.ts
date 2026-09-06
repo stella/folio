@@ -1820,21 +1820,34 @@ export function parseParagraph(
   paragraph.content = consolidateParagraphContent(rawContent);
 
   // Compute list rendering if this is a list item.
-  // numPr can come from inline pPr or from the referenced paragraph style.
-  let effectiveNumPr = paragraph.formatting?.numPr;
+  //
+  // `w:numId` and `w:ilvl` inherit INDEPENDENTLY (ECMA-376 §17.3.1.19): a tier
+  // that states only the level keeps the id it inherits, and a tier that states
+  // only the id keeps the inherited level. Word writes the level-only shape
+  // whenever a styled list paragraph is demoted (`<w:numPr><w:ilvl w:val="1"/>
+  // </w:numPr>` with the `w:num` named by the style), so treating a direct
+  // `w:numPr` as a whole replacement dropped the id and left the paragraph
+  // unnumbered. The style chain itself already merges per field
+  // (mergeParagraphFormatting); this is the last tier, direct over style.
+  const paragraphFormatting = paragraph.formatting;
+  const directNumPr = paragraphFormatting?.numPr;
+  const styleNumPr =
+    paragraphFormatting?.styleId && styles
+      ? styles.get(paragraphFormatting.styleId)?.pPr?.numPr
+      : undefined;
+  let effectiveNumPr = directNumPr;
+  // Drives indent precedence below: true when the numbering REFERENCE came from
+  // the style chain, whether or not the paragraph stated its own level.
   let numPrFromStyle = false;
-  if (!effectiveNumPr && paragraph.formatting?.styleId && styles) {
-    const style = styles.get(paragraph.formatting.styleId);
-    if (style?.pPr?.numPr) {
-      effectiveNumPr = style.pPr.numPr;
-      numPrFromStyle = true;
-      // Store it on the paragraph formatting so downstream code sees it,
-      // and record the provenance so the serializer can drop it again —
-      // materializing style numbering as direct <w:numPr> flips Word's
-      // level-indent precedence on the saved file.
-      paragraph.formatting.numPr = effectiveNumPr;
-      paragraph.formatting.numPrFromStyle = effectiveNumPr;
-    }
+  if (paragraphFormatting && styleNumPr && directNumPr?.numId === undefined) {
+    effectiveNumPr = { ...styleNumPr, ...directNumPr };
+    numPrFromStyle = true;
+    // Store it on the paragraph formatting so downstream code sees it, and
+    // record the style tier so the serializer can drop a numPr the paragraph
+    // never stated — materializing style numbering as direct <w:numPr> flips
+    // Word's level-indent precedence on the saved file.
+    paragraphFormatting.numPr = effectiveNumPr;
+    paragraphFormatting.numPrFromStyle = styleNumPr;
   }
 
   if (effectiveNumPr && numbering) {

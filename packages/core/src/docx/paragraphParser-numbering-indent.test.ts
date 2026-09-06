@@ -233,3 +233,95 @@ describe("style-attached numbering and indentation (#765)", () => {
     expect(para.formatting?.numPrFromStyle).toBeUndefined();
   });
 });
+
+// abstractNum 20 / numId 3 — two levels, so a level-only `w:numPr` has a level
+// to move to and a marker that proves which one resolved.
+const NUMBERING_TWO_LEVEL = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:numbering ${W}>
+  <w:abstractNum w:abstractNumId="20">
+    <w:lvl w:ilvl="0">
+      <w:start w:val="1"/>
+      <w:numFmt w:val="decimal"/>
+      <w:lvlText w:val="%1."/>
+    </w:lvl>
+    <w:lvl w:ilvl="1">
+      <w:start w:val="1"/>
+      <w:numFmt w:val="decimal"/>
+      <w:lvlText w:val="%1.%2."/>
+    </w:lvl>
+  </w:abstractNum>
+  <w:num w:numId="3"><w:abstractNumId w:val="20"/></w:num>
+</w:numbering>`;
+
+// LegalHeading1 names the `w:num`; LegalHeading2 states only the level and
+// inherits the id through `w:basedOn` — the shape Word writes for a numbered
+// heading family.
+const LEVEL_ONLY_STYLES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles ${W}>
+  <w:style w:type="paragraph" w:styleId="LegalHeading1">
+    <w:name w:val="LegalHeading1"/>
+    <w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="3"/></w:numPr></w:pPr>
+  </w:style>
+  <w:style w:type="paragraph" w:styleId="LegalHeading2">
+    <w:name w:val="LegalHeading2"/>
+    <w:basedOn w:val="LegalHeading1"/>
+    <w:pPr><w:numPr><w:ilvl w:val="1"/></w:numPr></w:pPr>
+  </w:style>
+</w:styles>`;
+
+describe("w:numId and w:ilvl inherit independently", () => {
+  const numbering = parseNumbering(NUMBERING_TWO_LEVEL);
+  const styles = parseStyles(LEVEL_ONLY_STYLES_XML, null);
+
+  test("a style that states only w:ilvl keeps the id from its basedOn chain", () => {
+    const para = parseStyledParagraph(
+      '<w:pPr><w:pStyle w:val="LegalHeading2"/></w:pPr>',
+      styles,
+      numbering,
+    );
+
+    expect(para.listRendering?.numId).toBe(3);
+    expect(para.listRendering?.level).toBe(1);
+    expect(para.listRendering?.marker).toBe("%1.%2.");
+  });
+
+  test("a direct level-only w:numPr keeps the id the style supplies", () => {
+    // Demoting a styled list paragraph in Word writes the level alone into
+    // w:pPr. Reading that as a whole replacement dropped the id and left the
+    // paragraph unnumbered.
+    const para = parseStyledParagraph(
+      '<w:pPr><w:pStyle w:val="LegalHeading1"/><w:numPr><w:ilvl w:val="1"/></w:numPr></w:pPr>',
+      styles,
+      numbering,
+    );
+
+    expect(para.listRendering?.numId).toBe(3);
+    expect(para.listRendering?.level).toBe(1);
+    expect(para.listRendering?.marker).toBe("%1.%2.");
+  });
+
+  test("a direct level-only w:numPr still records the style as the id's source", () => {
+    const para = parseStyledParagraph(
+      '<w:pPr><w:pStyle w:val="LegalHeading1"/><w:numPr><w:ilvl w:val="1"/></w:numPr></w:pPr>',
+      styles,
+      numbering,
+    );
+
+    expect(para.formatting?.numPr).toEqual({ numId: 3, ilvl: 1 });
+    // The style tier, not the merged value: the serializer drops only a numPr
+    // the paragraph never stated.
+    expect(para.formatting?.numPrFromStyle).toEqual({ numId: 3, ilvl: 0 });
+  });
+
+  test('a direct w:numId w:val="0" switches the style numbering off', () => {
+    // ECMA-376 §17.9.18: numId 0 is the null numbering definition.
+    const para = parseStyledParagraph(
+      '<w:pPr><w:pStyle w:val="LegalHeading1"/><w:numPr><w:numId w:val="0"/></w:numPr></w:pPr>',
+      styles,
+      numbering,
+    );
+
+    expect(para.listRendering).toBeUndefined();
+    expect(para.formatting?.numPrFromStyle).toBeUndefined();
+  });
+});
