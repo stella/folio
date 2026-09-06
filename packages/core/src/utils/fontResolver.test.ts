@@ -43,6 +43,14 @@ describe("fontResolver — single-line ratios are derived from real hhea metrics
     ["garamond", 1.1273],
     ["century gothic", 1.2261],
     ["lucida console", 1.0],
+    ["arial narrow", 1.1475],
+    ["bookman old style", 1.1738],
+    ["franklin gothic book", 1.1338],
+    ["calibri light", 1.2207],
+    ["candara", 1.2207],
+    ["constantia", 1.2207],
+    ["corbel", 1.2075],
+    ["dubai", 1.688],
   ];
 
   for (const [font, expectedRatio] of verifiedRatios) {
@@ -159,6 +167,23 @@ describe("fontResolver — previously wrong ratios are corrected and reach consu
   for (const [font, correctedRatio] of correctedCases) {
     test(`${font} resolves to the corrected ratio via getResolvedData`, () => {
       expect(getResolvedData(font).singleLineRatio).toBeCloseTo(correctedRatio, 4);
+    });
+  }
+});
+
+describe("fontResolver — faces without a readable font file carry a measured ratio", () => {
+  // These ship with the office suite rather than as a font file this repository
+  // can read hhea metrics from, so the ratio comes from a measured line pitch.
+  // They are far above the 1.15 default, which is what makes them worth pinning.
+  const measuredCases: [font: string, ratio: number][] = [
+    ["helvetica", 1.2],
+    ["simplified arabic", 1.6582],
+    ["sakkal majalla", 1.3964],
+  ];
+
+  for (const [font, ratio] of measuredCases) {
+    test(`${font} resolves to its measured ratio`, () => {
+      expect(getResolvedData(font).singleLineRatio).toBeCloseTo(ratio, 4);
     });
   }
 });
