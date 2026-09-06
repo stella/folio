@@ -25,14 +25,14 @@
  *    with the *headless* measure provider, whose advances come from `hmtx`
  *    with no kerning and no ligatures, and then renders that list in a
  *    *browser*, which advances glyphs on its own shaped metrics. Measured over
- *    `podily-bps.docx`: of 1995 runs, the width Chrome paints differs from the
- *    run's declared `advancesPx` by more than 2 px in 53.7% of them (median
- *    3.0 px, p90 17.8 px). Each line starts flush and separates left to right,
- *    which is what the diff PNGs show. **This is an artifact of how the
- *    harness is wired, not of the product path**: in the editor the same list
- *    is built by the canvas provider inside the same browser that paints it,
- *    so the two agree there. Nobody should read podily's 0.94 as the editor
- *    being 6% wrong.
+ *    `podily-bps.docx`: of 2506 runs, the width Chrome paints differs from the
+ *    run's declared `advancesPx` by more than 2 px in 23.7% of them (median
+ *    0.2 px over all runs, p90 4.1 px). Each line starts flush and separates
+ *    left to right, which is what the diff PNGs show. **This is an artifact of
+ *    how the harness is wired, not of the product path**: in the editor the
+ *    same list is built by the canvas provider inside the same browser that
+ *    paints it, so the two agree there. Nobody should read podily's 0.96 as
+ *    the editor being 4% wrong.
  * 2. **Baseline placement: ~0.22 px, and no longer the backend's doing.**
  *    Measured on `sample.docx` page 1 (Carlito bold at 18.667 px): the DOM
  *    backend asks for `top: 107.399px` and Chrome lays the span out at
@@ -47,10 +47,17 @@
  *    from `mutool` and `0,0,0` from Chrome.
  *
  * Two further differences are *shared* rather than divergent, so they do not
- * move the score: glyphs outside the loaded font subset paint the same
+ * move the score: a code point no served subset covers paints the same
  * `.notdef` box in both arms, and both arms rasterize with different engines
  * (MuPDF and Skia), whose antialiasing spreads ink over slightly different
  * rows.
+ *
+ * The first of those is a *shared* residual only because both arms resolve a
+ * code point to the same binary. `bundledFontSource.ts` serves every subset of
+ * a face and declares each one to the browser under the `unicode-range` it
+ * covers, so Czech, Slovak and Polish text paints real glyphs on both sides
+ * rather than matching boxes. Serving one subset per face instead scored
+ * `podily-bps.docx` at 0.9419 with half its letters missing from both arms.
  *
  * ## What makes the run fail
  *
@@ -124,13 +131,16 @@ const BASELINE_PATH = path.join(import.meta.dir, "paint-equivalence.baseline.jso
 
 /**
  * The default corpus: one small, one medium and one large document, so a bare
- * run is fast enough to be habitual. A directory argument runs everything in
- * it.
+ * run is fast enough to be habitual, plus the diacritics fixture, whose text
+ * spans two font subsets in a single run and so is the one document here that
+ * fails visibly when a face resolves to one binary. A directory argument runs
+ * everything in it.
  */
 const DEFAULT_FIXTURES = [
   "tests/visual/fixtures/docx-editor-demo.docx",
   "tests/visual/fixtures/sample.docx",
   "tests/visual/fixtures/podily-bps.docx",
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/diacritics-latin-ext.docx",
 ] as const;
 
 const VIEWPORT = { width: 1400, height: 1200 };

@@ -20,5 +20,15 @@ review.
 instead of a canvas. Output is deterministic: `timestamp` is required rather
 than defaulted, so two exports of one document are byte-identical.
 
+A font source supplies every binary that carries part of a face, not one, and
+both measurement and embedding resolve each code point to the binary that
+covers it. Families are routinely shipped split by script, so a Czech, Slovak
+or Polish document needs two subsets of one family in the same paragraph;
+resolving per face rather than per code point would paint an empty box for
+every character outside whichever subset was chosen. A code point no supplied
+binary can encode is reported in `unencodable` rather than painted silently,
+and `strictGlyphCoverage` turns it into a failure for a caller who would
+rather not ship the page at all.
+
 The existing layout painter is unchanged and still paints the editor. The
 display-list DOM backend is additive in this release.

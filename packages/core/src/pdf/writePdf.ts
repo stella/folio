@@ -51,12 +51,34 @@ export type WritePdfOptions = {
    */
   readonly timestamp: string;
   readonly producer?: string;
+  /**
+   * Refuse to write a document containing a code point no supplied face can
+   * encode, instead of painting `.notdef` and reporting it. For a caller that
+   * would rather fail than hand a reader a page of empty boxes.
+   */
+  readonly strictGlyphCoverage?: boolean;
+};
+
+/**
+ * A code point no binary of its face could encode. It is painted as `.notdef`
+ * and reported here, never dropped and never silently substituted: a reader
+ * cannot tell an empty box from a character the document never had, and every
+ * such code point collapses onto glyph 0, so even `/ToUnicode` cannot tell
+ * them apart afterwards.
+ */
+export type PdfUnencodable = {
+  readonly codePoint: number;
+  readonly family: string;
+  readonly weight: number;
+  readonly italic: boolean;
 };
 
 export type WritePdfResult = {
   readonly bytes: Uint8Array;
   /** Faces the font source could not supply, painted with a base-14 stand-in. */
   readonly substitutions: readonly PdfSubstitution[];
+  /** Code points painted as `.notdef` because no supplied face covers them. */
+  readonly unencodable: readonly PdfUnencodable[];
 };
 
 export class WritePdfError extends TaggedError("WritePdfError")<{
@@ -65,6 +87,24 @@ export class WritePdfError extends TaggedError("WritePdfError")<{
 }> {}
 
 const DEFAULT_PRODUCER = "folio";
+
+/** How many code points the strict-coverage refusal names before counting. */
+const UNENCODABLE_SAMPLE = 5;
+
+const HEX_DIGITS = 4;
+
+const formatCodePoint = (codePoint: number): string =>
+  `U+${codePoint.toString(16).toUpperCase().padStart(HEX_DIGITS, "0")}`;
+
+const describeUnencodable = (points: readonly PdfUnencodable[]): string => {
+  const named = points
+    .slice(0, UNENCODABLE_SAMPLE)
+    .map(({ codePoint }) => formatCodePoint(codePoint))
+    .join(", ");
+  const rest = points.length - Math.min(points.length, UNENCODABLE_SAMPLE);
+  const suffix = rest === 0 ? "" : `, and ${String(rest)} more`;
+  return `no supplied face can encode ${String(points.length)} code point${points.length === 1 ? "" : "s"}: ${named}${suffix}`;
+};
 
 /** Every `/ProcSet` folio's own output can need. */
 const PROC_SET = ["PDF", "Text", "ImageB", "ImageC", "ImageI"] as const;
@@ -146,7 +186,7 @@ type ResourceDictOptions = {
 
 const buildResources = ({ resources, fontRefs, imageRefs }: ResourceDictOptions): PdfValue => {
   const fontEntries = [...resources.fontNames].map(
-    ([fontIndex, name]) => [name, fontRefs.get(fontIndex)] as const,
+    ([resourceIndex, name]) => [name, fontRefs.get(resourceIndex)] as const,
   );
   const imageEntries = [...resources.imageNames].map(
     ([imageIndex, name]) => [name, imageRefs.get(imageIndex)] as const,
@@ -384,13 +424,15 @@ export const writePdf = (
   const infoRef = document.allocate();
   const pageRefs = list.pages.map(() => document.allocate());
 
-  const { byFontIndex, substitutions } = prepareFonts({
+  const { byFontIndex, fontRefByResourceIndex, substitutions, unencodable } = prepareFonts({
     document,
     faces: list.fonts,
     usedCodePoints: usage.value.codePointsByFont,
     source: options.fonts,
   });
-  const fontRefs = new Map([...byFontIndex].map(([index, font]) => [index, font.ref]));
+  if (options.strictGlyphCoverage === true && unencodable.length > 0) {
+    return Result.err(new WritePdfError({ message: describeUnencodable(unencodable) }));
+  }
 
   const imageRefs = new Map<number, PdfRef>();
   for (const imageIndex of [...usage.value.imageIndices].sort((left, right) => left - right)) {
@@ -441,7 +483,7 @@ export const writePdf = (
         ["Type", pdfName("Page")],
         ["Parent", pagesRef],
         ["MediaBox", pdfNumberArray([0, 0, pxToPt(page.widthPx), pxToPt(page.heightPx)])],
-        ["Resources", buildResources({ resources, fontRefs, imageRefs })],
+        ["Resources", buildResources({ resources, fontRefs: fontRefByResourceIndex, imageRefs })],
         ["Contents", contentRef],
         ["Annots", annotationRefs.length === 0 ? undefined : pdfArray(annotationRefs)],
       ]),
@@ -508,5 +550,6 @@ export const writePdf = (
       idHex: (body) => createHash("sha256").update(body).digest("hex").toUpperCase(),
     }),
     substitutions,
+    unencodable,
   });
 };

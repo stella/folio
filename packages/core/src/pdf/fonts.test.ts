@@ -95,7 +95,7 @@ describe.skipIf(!TEST_FONTS_INSTALLED)(`embedded faces (${TEST_FONTS_SKIP_REASON
       naturalAdvance(font, character.codePointAt(0) ?? 0),
     );
     const result = writePdf(listFor(advances), {
-      fonts: { load: () => woff },
+      fonts: { load: () => [woff] },
       timestamp: TIMESTAMP,
     });
     if (result.isErr()) {
@@ -120,7 +120,7 @@ describe.skipIf(!TEST_FONTS_INSTALLED)(`embedded faces (${TEST_FONTS_SKIP_REASON
     const advances = [...TEXT].map((character) =>
       naturalAdvance(font, character.codePointAt(0) ?? 0),
     );
-    const source = { load: () => woff };
+    const source = { load: () => [woff] };
     const first = writePdf(listFor(advances), { fonts: source, timestamp: TIMESTAMP });
     const second = writePdf(listFor(advances), { fonts: source, timestamp: TIMESTAMP });
     if (first.isErr() || second.isErr()) {
@@ -136,7 +136,7 @@ describe.skipIf(!TEST_FONTS_INSTALLED)(`embedded faces (${TEST_FONTS_SKIP_REASON
     );
     const widened = natural.map((advance) => advance + 3);
     const result = writePdf(listFor(widened), {
-      fonts: { load: () => woff },
+      fonts: { load: () => [woff] },
       timestamp: TIMESTAMP,
     });
     if (result.isErr()) {
@@ -159,7 +159,7 @@ describe.skipIf(!TEST_FONTS_INSTALLED)(`embedded faces (${TEST_FONTS_SKIP_REASON
       naturalAdvance(font, character.codePointAt(0) ?? 0),
     );
     const result = writePdf(listFor(advances), {
-      fonts: { load: () => woff },
+      fonts: { load: () => [woff] },
       timestamp: TIMESTAMP,
     });
     if (result.isErr()) {
@@ -199,7 +199,7 @@ describe.skipIf(!TEST_FONTS_INSTALLED || mutool === null)("mutool with an embedd
       (character) => naturalAdvance(font, character.codePointAt(0) ?? 0) + 3,
     );
     const result = writePdf(listFor(advances), {
-      fonts: { load: () => woff },
+      fonts: { load: () => [woff] },
       timestamp: TIMESTAMP,
     });
     if (result.isErr()) {

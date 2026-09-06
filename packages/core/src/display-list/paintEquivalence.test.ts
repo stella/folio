@@ -176,7 +176,7 @@ const IMAGE: DisplayImageSource = {
   pixelHeight: 1,
 };
 
-const NO_FONTS: PdfFontSource = { load: () => null };
+const NO_FONTS: PdfFontSource = { load: () => [] };
 
 /**
  * One primitive per discriminator. `satisfies Record<...>` is what makes a new

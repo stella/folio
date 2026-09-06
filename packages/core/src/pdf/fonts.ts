@@ -7,6 +7,15 @@
  * cannot supply, or whose licence bits forbid embedding, falls back to a
  * base-14 face and is *reported*: a substitution the caller cannot see is a
  * silently different document.
+ *
+ * ## A face is not a binary
+ *
+ * A packaged family arrives cut into disjoint script subsets: one binary
+ * carries ASCII, another the Central European letters, and Czech, Slovak or
+ * Polish text needs both at once. Each binary is its own sfnt with its own
+ * glyph space, so one face becomes one PDF font resource *per binary the
+ * document actually uses*, and a code point is served by the first binary
+ * whose cmap covers it.
  */
 
 import { panic, Result, TaggedError } from "better-result";
@@ -26,15 +35,16 @@ import {
   pdfNumber,
   pdfNumberArray,
 } from "./objects";
+import type { PdfUnencodable } from "./writePdf";
 
 class PdfFontError extends TaggedError("PdfFontError")<{ message: string }> {}
 
 export type PdfFontSource = {
   /**
-   * Font bytes for one face of the display list's font table. Returning null
-   * is a reported substitution, never a silent one.
+   * Every binary that carries part of this face, in priority order. A code
+   * point is served by the first binary whose cmap covers it.
    */
-  readonly load: (face: DisplayFontFace) => Uint8Array | null;
+  readonly load: (face: DisplayFontFace) => readonly Uint8Array[];
 };
 
 export type PdfSubstitution = {
@@ -42,6 +52,15 @@ export type PdfSubstitution = {
   readonly weight: number;
   readonly italic: boolean;
   readonly reason: string;
+};
+
+/** A code point placed in the glyph space of the resource that serves it. */
+export type PdfGlyph = {
+  /** The PDF font resource this glyph id belongs to. */
+  readonly resourceIndex: number;
+  readonly glyphId: number;
+  /** The width this file declares for the glyph, in 1000ths of an em. */
+  readonly widthUnits: number;
 };
 
 /**
@@ -52,15 +71,12 @@ export type PdfSubstitution = {
 export type PreparedFont =
   | {
       readonly kind: "embedded";
-      readonly ref: PdfRef;
-      /** Subset glyph id for a code point the collection pass saw. */
-      readonly glyphIdFor: (codePoint: number) => number;
-      /** The width this file declares for the glyph, in 1000ths of an em. */
-      readonly widthFor: (glyphId: number) => number;
+      /** Resource and subset glyph for a code point the collection pass saw. */
+      readonly glyphFor: (codePoint: number) => PdfGlyph;
     }
   | {
       readonly kind: "standard";
-      readonly ref: PdfRef;
+      readonly resourceIndex: number;
       /** WinAnsi byte for a code point. */
       readonly byteFor: (codePoint: number) => number;
     };
@@ -84,6 +100,8 @@ const FONT_FLAG_ITALIC = 64;
 const STEM_V_REGULAR = 80;
 const STEM_V_BOLD = 160;
 const BOLD_WEIGHT_THRESHOLD = 600;
+
+const NOTDEF_GLYPH = 0;
 
 const SUBSET_TAG_LENGTH = 6;
 const ALPHABET_LENGTH = 26;
@@ -334,26 +352,30 @@ const fontDescriptor = ({
   ]);
 };
 
-type EmbedOptions = {
-  readonly document: PdfDocument;
+type PlanOptions = {
   readonly font: SfntFont;
   readonly face: DisplayFontFace;
   readonly codePoints: readonly number[];
 };
 
-type EmbedResult = {
-  readonly ref: PdfRef;
+/**
+ * Everything one binary contributes to the file, computed before a single
+ * object is allocated. Planning and emitting are separate because a face that
+ * arrives as several binaries must either embed all of them or none: a
+ * failure discovered halfway would otherwise leave the earlier binaries in
+ * the file with nothing referring to them.
+ */
+type FontPlan = {
+  readonly font: SfntFont;
+  readonly face: DisplayFontFace;
+  readonly fontName: string;
+  readonly programBytes: Uint8Array;
   readonly glyphIdByCodePoint: ReadonlyMap<number, number>;
   readonly widthByGlyphId: ReadonlyMap<number, number>;
+  readonly glyphToCodePoint: ReadonlyMap<number, number>;
 };
 
-const embedFont = ({
-  document,
-  font,
-  face,
-  codePoints,
-}: EmbedOptions): Result<EmbedResult, PdfFontError> => {
-  const NOTDEF_GLYPH = 0;
+const planFont = ({ font, face, codePoints }: PlanOptions): Result<FontPlan, PdfFontError> => {
   const sourceGlyphByCodePoint = new Map<number, number>();
   const sourceGlyphIds = new Set<number>([NOTDEF_GLYPH]);
   for (const codePoint of codePoints) {
@@ -410,6 +432,19 @@ const embedFont = ({
   const baseName = asciiOnly(font.postScriptName) || asciiOnly(face.family) || "Unknown";
   const fontName = `${subsetTag(`${baseName}:${[...sourceGlyphIds].sort((left, right) => left - right).join(",")}`)}+${baseName}`;
 
+  return Result.ok({
+    font,
+    face,
+    fontName,
+    programBytes,
+    glyphIdByCodePoint,
+    widthByGlyphId,
+    glyphToCodePoint,
+  });
+};
+
+const emitFont = (document: PdfDocument, plan: FontPlan): PdfRef => {
+  const { font, face, fontName, programBytes } = plan;
   const fontFileRef = document.add(
     font.isCff
       ? pdfFlateStream([["Subtype", pdfName("OpenType")]], programBytes)
@@ -425,7 +460,7 @@ const embedFont = ({
     }),
   );
   const toUnicodeRef = document.add(
-    pdfFlateStream([], new TextEncoder().encode(toUnicodeCMap(glyphToCodePoint))),
+    pdfFlateStream([], new TextEncoder().encode(toUnicodeCMap(plan.glyphToCodePoint))),
   );
   // A CFF-flavoured OpenType descends from a CIDFontType0; only a `glyf`
   // program is a CIDFontType2. Both keep the two-byte Identity-H codes, which
@@ -446,11 +481,11 @@ const embedFont = ({
       ],
       ["FontDescriptor", descriptorRef],
       ["DW", pdfNumber(TEXT_SPACE_UNITS_PER_EM)],
-      ["W", widthsArray(widthByGlyphId)],
+      ["W", widthsArray(plan.widthByGlyphId)],
       ["CIDToGIDMap", font.isCff ? undefined : pdfName("Identity")],
     ]),
   );
-  const ref = document.add(
+  return document.add(
     pdfDict([
       ["Type", pdfName("Font")],
       ["Subtype", pdfName("Type0")],
@@ -460,11 +495,10 @@ const embedFont = ({
       ["ToUnicode", toUnicodeRef],
     ]),
   );
-  return Result.ok({ ref, glyphIdByCodePoint, widthByGlyphId });
 };
 
-const standardFont = (document: PdfDocument, face: DisplayFontFace): PreparedFont => {
-  const ref = document.add(
+const standardFont = (document: PdfDocument, face: DisplayFontFace): PdfRef =>
+  document.add(
     pdfDict([
       ["Type", pdfName("Font")],
       ["Subtype", pdfName("Type1")],
@@ -472,11 +506,74 @@ const standardFont = (document: PdfDocument, face: DisplayFontFace): PreparedFon
       ["Encoding", pdfName("WinAnsiEncoding")],
     ]),
   );
-  return {
-    kind: "standard",
-    ref,
-    byteFor: (codePoint) => WIN_ANSI_BY_CODE_POINT.get(codePoint) ?? WIN_ANSI_QUESTION_MARK,
-  };
+
+/** Decoded and licence-checked binaries of one face, in priority order. */
+type ParsedFace =
+  | { readonly kind: "usable"; readonly fonts: readonly SfntFont[] }
+  | { readonly kind: "unusable"; readonly reason: string };
+
+const parseFace = (binaries: readonly Uint8Array[]): ParsedFace => {
+  if (binaries.length === 0) {
+    return { kind: "unusable", reason: "the font source supplied no bytes for this face" };
+  }
+  const fonts: SfntFont[] = [];
+  let reason = "";
+  for (const bytes of binaries) {
+    let sfntBytes = bytes;
+    if (WOFF_SIGNATURES.includes(readTag(bytes) as (typeof WOFF_SIGNATURES)[number])) {
+      const decoded = toSfntBytes(bytes);
+      if (decoded.isErr()) {
+        reason = `WOFF decoding failed: ${decoded.error.message}`;
+        continue;
+      }
+      sfntBytes = decoded.value;
+    }
+    const parsed = parseSfnt(sfntBytes);
+    if (parsed.isErr()) {
+      reason = `font parsing failed: ${parsed.error.message}`;
+      continue;
+    }
+    if ((parsed.value.fsType & FSTYPE_RESTRICTED_LICENSE) !== 0) {
+      reason = "the face's fsType bits forbid embedding";
+      continue;
+    }
+    fonts.push(parsed.value);
+  }
+  // One unusable binary of several is not a substitution: the face still
+  // paints from the rest, and the code points it carried are reported as
+  // unencodable like any other gap in the face's coverage.
+  return fonts.length === 0 ? { kind: "unusable", reason } : { kind: "usable", fonts };
+};
+
+/**
+ * The binary that serves each code point, by index into the face's list, and
+ * the code points no binary of the face covers.
+ */
+type FaceCoverage = {
+  readonly codePointsByBinary: ReadonlyMap<number, readonly number[]>;
+  readonly uncovered: readonly number[];
+};
+
+/** Where a code point no binary covers is painted from: `.notdef` is there. */
+const FALLBACK_BINARY = 0;
+
+const resolveCoverage = (
+  fonts: readonly SfntFont[],
+  codePoints: readonly number[],
+): FaceCoverage => {
+  const codePointsByBinary = new Map<number, number[]>();
+  const uncovered: number[] = [];
+  for (const codePoint of codePoints) {
+    const found = fonts.findIndex((font) => font.glyphIdFor(codePoint) !== NOTDEF_GLYPH);
+    if (found === -1) {
+      uncovered.push(codePoint);
+    }
+    const binary = found === -1 ? FALLBACK_BINARY : found;
+    const bucket = codePointsByBinary.get(binary) ?? [];
+    bucket.push(codePoint);
+    codePointsByBinary.set(binary, bucket);
+  }
+  return { codePointsByBinary, uncovered };
 };
 
 type PrepareFontsOptions = {
@@ -489,7 +586,10 @@ type PrepareFontsOptions = {
 
 export type PreparedFonts = {
   readonly byFontIndex: ReadonlyMap<number, PreparedFont>;
+  /** Every PDF font resource the pages may name, by resource index. */
+  readonly fontRefByResourceIndex: ReadonlyMap<number, PdfRef>;
   readonly substitutions: readonly PdfSubstitution[];
+  readonly unencodable: readonly PdfUnencodable[];
 };
 
 /**
@@ -504,76 +604,142 @@ export const prepareFonts = ({
   source,
 }: PrepareFontsOptions): PreparedFonts => {
   const byFontIndex = new Map<number, PreparedFont>();
+  const fontRefByResourceIndex = new Map<number, PdfRef>();
   const substitutions: PdfSubstitution[] = [];
+  const unencodable: PdfUnencodable[] = [];
+  // Resource indices run in face order, then in binary order within a face,
+  // so the names a page assigns from its sorted keys never depend on the
+  // order the painter happened to reach a run.
+  let nextResourceIndex = 0;
+  const claimResource = (ref: PdfRef): number => {
+    const resourceIndex = nextResourceIndex;
+    nextResourceIndex += 1;
+    fontRefByResourceIndex.set(resourceIndex, ref);
+    return resourceIndex;
+  };
 
-  const substitute = (fontIndex: number, face: DisplayFontFace, reason: string) => {
+  // Two faces of one family can differ only in a field the report does not
+  // carry, so the same gap must not be reported twice.
+  const reported = new Set<string>();
+  const report = (face: DisplayFontFace, codePoints: readonly number[]) => {
+    for (const codePoint of codePoints) {
+      const key = `${face.family} ${String(face.weight)} ${String(face.italic)} ${String(codePoint)}`;
+      if (reported.has(key)) {
+        continue;
+      }
+      reported.add(key);
+      unencodable.push({
+        codePoint,
+        family: face.family,
+        weight: face.weight,
+        italic: face.italic,
+      });
+    }
+  };
+
+  const substitute = (
+    fontIndex: number,
+    face: DisplayFontFace,
+    codePoints: readonly number[],
+    reason: string,
+  ) => {
     substitutions.push({
       family: face.family,
       weight: face.weight,
       italic: face.italic,
       reason,
     });
-    byFontIndex.set(fontIndex, standardFont(document, face));
+    // A base-14 stand-in carries no cmap this process can consult, so its
+    // coverage is the encoding's: anything WinAnsi cannot name paints as `?`.
+    report(
+      face,
+      codePoints.filter((codePoint) => !WIN_ANSI_BY_CODE_POINT.has(codePoint)),
+    );
+    byFontIndex.set(fontIndex, {
+      kind: "standard",
+      resourceIndex: claimResource(standardFont(document, face)),
+      byteFor: (codePoint) => WIN_ANSI_BY_CODE_POINT.get(codePoint) ?? WIN_ANSI_QUESTION_MARK,
+    });
   };
 
   for (const [fontIndex, face] of faces.entries()) {
-    const codePoints = usedCodePoints.get(fontIndex);
-    if (codePoints === undefined || codePoints.size === 0) {
+    const used = usedCodePoints.get(fontIndex);
+    if (used === undefined || used.size === 0) {
       continue;
     }
+    const codePoints = [...used].sort((left, right) => left - right);
     // A face embedded in the source package wins over anything the host can
     // supply: its bytes are the ones the measurer took its advances from.
-    const bytes = face.embedded?.bytes ?? source.load(face);
-    if (bytes === null || bytes === undefined) {
-      substitute(fontIndex, face, "the font source supplied no bytes for this face");
+    const binaries = face.embedded === undefined ? source.load(face) : [face.embedded.bytes];
+    const parsed = parseFace(binaries);
+    if (parsed.kind === "unusable") {
+      substitute(fontIndex, face, codePoints, parsed.reason);
       continue;
     }
 
-    let sfntBytes = bytes;
-    if (WOFF_SIGNATURES.includes(readTag(bytes) as (typeof WOFF_SIGNATURES)[number])) {
-      const decoded = toSfntBytes(bytes);
-      if (decoded.isErr()) {
-        substitute(fontIndex, face, `WOFF decoding failed: ${decoded.error.message}`);
-        continue;
+    const coverage = resolveCoverage(parsed.fonts, codePoints);
+    const binaryIndices = [...coverage.codePointsByBinary.keys()].sort(
+      (left, right) => left - right,
+    );
+    const plans: FontPlan[] = [];
+    let failure: PdfFontError | null = null;
+    for (const binaryIndex of binaryIndices) {
+      const plan = planFont({
+        font: parsed.fonts[binaryIndex] ?? panic(`face lost binary ${String(binaryIndex)}`),
+        face,
+        codePoints:
+          coverage.codePointsByBinary.get(binaryIndex) ??
+          panic(`binary ${String(binaryIndex)} lost its code points`),
+      });
+      if (plan.isErr()) {
+        failure = plan.error;
+        break;
       }
-      sfntBytes = decoded.value;
+      plans.push(plan.value);
     }
-
-    const parsed = parseSfnt(sfntBytes);
-    if (parsed.isErr()) {
-      substitute(fontIndex, face, `font parsing failed: ${parsed.error.message}`);
-      continue;
-    }
-    const font = parsed.value;
-    if ((font.fsType & FSTYPE_RESTRICTED_LICENSE) !== 0) {
-      substitute(fontIndex, face, "the face's fsType bits forbid embedding");
+    if (failure !== null) {
+      substitute(fontIndex, face, codePoints, failure.message);
       continue;
     }
 
-    const embedded = embedFont({
-      document,
-      font,
-      face,
-      codePoints: [...codePoints].sort((left, right) => left - right),
-    });
-    if (embedded.isErr()) {
-      substitute(fontIndex, face, embedded.error.message);
-      continue;
+    const glyphByCodePoint = new Map<number, PdfGlyph>();
+    for (const plan of plans) {
+      const resourceIndex = claimResource(emitFont(document, plan));
+      for (const [codePoint, glyphId] of plan.glyphIdByCodePoint) {
+        glyphByCodePoint.set(codePoint, {
+          resourceIndex,
+          glyphId,
+          widthUnits:
+            plan.widthByGlyphId.get(glyphId) ?? panic(`no width for glyph ${String(glyphId)}`),
+        });
+      }
     }
-    const { ref, glyphIdByCodePoint, widthByGlyphId } = embedded.value;
+    report(face, coverage.uncovered);
     byFontIndex.set(fontIndex, {
       kind: "embedded",
-      ref,
       // A code point the collection pass did not see is a painter that walked
       // the display list differently from the collector: a defect, not a
       // missing glyph.
-      glyphIdFor: (codePoint) =>
-        glyphIdByCodePoint.get(codePoint) ??
+      glyphFor: (codePoint) =>
+        glyphByCodePoint.get(codePoint) ??
         panic(`code point ${String(codePoint)} was painted but never collected`),
-      widthFor: (glyphId) =>
-        widthByGlyphId.get(glyphId) ?? panic(`no width for glyph ${String(glyphId)}`),
     });
   }
 
-  return { byFontIndex, substitutions };
+  // Code-unit order, not locale order: a report a caller diffs across two
+  // machines must not depend on either machine's collation.
+  const byCodeUnit = (left: string, right: string): number => {
+    if (left === right) {
+      return 0;
+    }
+    return left < right ? -1 : 1;
+  };
+  unencodable.sort(
+    (left, right) =>
+      byCodeUnit(left.family, right.family) ||
+      left.weight - right.weight ||
+      Number(left.italic) - Number(right.italic) ||
+      left.codePoint - right.codePoint,
+  );
+  return { byFontIndex, fontRefByResourceIndex, substitutions, unencodable };
 };

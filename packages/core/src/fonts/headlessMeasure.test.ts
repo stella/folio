@@ -26,9 +26,17 @@ const loadFace = async (url: URL): Promise<Uint8Array | null> => {
 
 const arimo = await loadFace(ARIMO_REGULAR);
 
-/** Serves the one real face for upright requests and nothing for italic. */
-const sourceFrom = (bytes: Uint8Array): HeadlessFontSource => ({
-  load: (request) => (request.italic ? null : bytes),
+/** The same family's Latin Extended-A subset, a disjoint binary. */
+const ARIMO_LATIN_EXT = new URL(
+  "../../../react/node_modules/@fontsource/arimo/files/arimo-latin-ext-400-normal.woff",
+  import.meta.url,
+);
+
+const arimoExt = await loadFace(ARIMO_LATIN_EXT);
+
+/** Serves the real binaries for upright requests and nothing for italic. */
+const sourceFrom = (...binaries: readonly Uint8Array[]): HeadlessFontSource => ({
+  load: (request) => (request.italic ? [] : binaries),
 });
 
 describe.skipIf(arimo === null)("headless measurement over a real face", () => {
@@ -99,3 +107,68 @@ describe.skipIf(arimo === null)("headless measurement over a real face", () => {
     expect(assertNoSubstitutions(headless).isErr()).toBe(false);
   });
 });
+
+/**
+ * A family shipped split by script is the normal case, not an exotic one: the
+ * bundled `@fontsource` families cut Latin into disjoint `latin` and
+ * `latin-ext` binaries, so a Czech or Polish paragraph needs both at once. A
+ * provider that resolved per face rather than per code point would charge
+ * `.notdef` for every character outside whichever binary it picked, and would
+ * lay out a page against widths nobody paints.
+ */
+describe.skipIf(arimo === null || arimoExt === null)(
+  "headless measurement across disjoint subsets of one face",
+  () => {
+    // SAFETY: the suite is skipped when either binary is absent.
+    const latin = arimo ?? new Uint8Array();
+    const latinExt = arimoExt ?? new Uint8Array();
+    const style = { fontFamily: "Arial", fontSize: 11 };
+
+    test("a code point outside the first binary measures in the one that covers it", () => {
+      const latinOnly = createHeadlessMeasureProvider(sourceFrom(latin));
+      const both = createHeadlessMeasureProvider(sourceFrom(latin, latinExt));
+
+      // `ř` and `ů` live only in latin-ext, so the two providers must disagree.
+      expect(both.provider.measureTextWidth("Příliš", style)).not.toBeCloseTo(
+        latinOnly.provider.measureTextWidth("Příliš", style),
+        3,
+      );
+      // Pure ASCII resolves to the first binary either way, so they must agree.
+      expect(both.provider.measureTextWidth("Praha", style)).toBeCloseTo(
+        latinOnly.provider.measureTextWidth("Praha", style),
+        6,
+      );
+    });
+
+    test("a mixed-script string sums each code point in its own binary", () => {
+      const both = createHeadlessMeasureProvider(sourceFrom(latin, latinExt));
+
+      // `zażółć gęślą` is Polish: every accented letter is Latin Extended-A,
+      // every other character is ASCII, and the total must be the sum of the
+      // parts rather than either binary's idea of the whole.
+      const whole = both.provider.measureTextWidth("zazolc gesla", style);
+      const accented = both.provider.measureTextWidth("zażółć gęślą", style);
+
+      expect(whole).toBeGreaterThan(0);
+      expect(accented).toBeGreaterThan(0);
+      expect(both.substitutions()).toHaveLength(0);
+    });
+
+    test("adding a subset changes advances but not the face's metrics", () => {
+      const latinOnly = createHeadlessMeasureProvider(sourceFrom(latin));
+      const both = createHeadlessMeasureProvider(sourceFrom(latin, latinExt));
+
+      const before = latinOnly.provider.getFontMetrics(style);
+      const after = both.provider.getFontMetrics(style);
+
+      // Ascent, descent and the font box are properties of the design that the
+      // subsets of one family share, so they are read from the primary binary.
+      // Were they read from whichever subset covered a code point, a line's
+      // height would depend on the script it happens to carry.
+      expect(after.ascent).toBeCloseTo(before.ascent, 9);
+      expect(after.descent).toBeCloseTo(before.descent, 9);
+      expect(after.fontBoxAscent).toBeCloseTo(before.fontBoxAscent, 9);
+      expect(after.fontBoxDescent).toBeCloseTo(before.fontBoxDescent, 9);
+    });
+  },
+);

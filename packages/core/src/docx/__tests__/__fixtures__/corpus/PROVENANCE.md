@@ -61,6 +61,7 @@ its Apache-2.0 license.
 | `upstream-styled-content.docx`        | Mixed run formatting, font sizes, and paragraph alignment                                                |
 | `upstream-with-tables.docx`           | Body text and a three-by-three table                                                                     |
 | `upstream-complex-styles.docx`        | Paragraph styles, font families, colors, and highlighting                                                |
+| `diacritics-latin-ext.docx`           | Czech, Slovak, Polish and German diacritics beside ASCII in one run; two font subsets per face           |
 
 All fixtures are under 30 KB.
 

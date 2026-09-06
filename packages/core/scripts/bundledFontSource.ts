@@ -17,11 +17,14 @@
  * ## One resolution table, three consumers
  *
  * The measurer, the PDF writer and the browser page must all end at the same
- * bytes for a family, or the harness measures its own font plumbing instead of
- * backend divergence. {@link bundledFontFaceCss} therefore emits an
- * `@font-face` for every name {@link resolveBundledFamily} accepts — the Word
- * names included — pointing at the very file the measurer read. A face the
- * browser resolves through its own font list is a face nobody measured.
+ * bytes for a code point, or the harness measures its own font plumbing
+ * instead of backend divergence. A face is several binaries here (see
+ * {@link SUBSET_PRIORITY}), so that agreement is per code point rather than
+ * per face: the measurer and the PDF writer take the first binary whose
+ * `cmap` covers the code point, and {@link bundledFontFaceCss} gives the
+ * browser one `@font-face` per binary carrying the `unicode-range` that
+ * routes the same code point to the same file. A face the browser resolves
+ * through its own font list is a face nobody measured.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -36,8 +39,28 @@ const REPO_ROOT = path.resolve(import.meta.dir, "..", "..", "..");
 
 const FONTSOURCE_DIR = path.join(REPO_ROOT, "packages", "react", "node_modules", "@fontsource");
 
-/** The subset folio's fixtures are written in. */
-const DEFAULT_SUBSET = "latin";
+/**
+ * The subsets served for one face, highest priority first.
+ *
+ * `@fontsource` cuts every family into *disjoint* files, so a subset is a
+ * coverage fact and not a preference: `latin-ext` carries the Czech, Slovak
+ * and Polish letters but no ASCII at all (its `cmap` has no entry for `A`),
+ * and `latin` carries ASCII but no `ř`. Serving one binary per face would
+ * therefore mean picking a script per document and painting `.notdef` for
+ * everything outside it. A face is a list instead, and a code point is served
+ * by the first binary whose `cmap` covers it. `latin` leads because ASCII
+ * dominates every document; `latin-ext` follows because Czech, Slovak, Polish
+ * and German text is this product's common case; `arabic` is what
+ * `Noto Sans Arabic` is bundled for.
+ *
+ * The list is short because {@link bundledFontFaceCss} inlines every served
+ * binary once per family alias: `cyrillic`, `greek` and `vietnamese` sit
+ * beside these files and each adds megabytes to the harness page, so a subset
+ * is indexed when a fixture needs it rather than in advance.
+ */
+const SUBSET_PRIORITY = ["latin", "latin-ext", "arabic"] as const;
+
+type ServedSubset = (typeof SUBSET_PRIORITY)[number];
 
 /** Folio paints 400 and 700 only, as `DisplayFontFace` states. */
 const REGULAR_WEIGHT = 400;
@@ -142,75 +165,166 @@ const resolveBundledFamily = (family: string): BundledFamily | null => {
   return null;
 };
 
-type FaceFileOptions = {
+// ---------------------------------------------------------------------------
+// Face files
+// ---------------------------------------------------------------------------
+
+/** One served binary of a face: which subset it carries and where it lives. */
+type FaceBinary = {
+  readonly subset: ServedSubset;
+  readonly filePath: string;
+};
+
+type FaceOptions = {
   family: string;
   weight: number;
   italic: boolean;
-  subset: string;
 };
 
-const faceFilePath = ({ family, weight, italic, subset }: FaceFileOptions): string | null => {
+/**
+ * Every served subset of a face that exists on disk, in priority order.
+ * Empty when no bundled family covers the name, or when the `@fontsource`
+ * packages are not installed.
+ */
+const faceBinaries = ({ family, weight, italic }: FaceOptions): readonly FaceBinary[] => {
   const bundled = resolveBundledFamily(family);
-  if (bundled === null) return null;
+  if (bundled === null) return [];
   const directory = BUNDLED_FAMILY_DIRECTORIES[bundled];
   const style = italic ? "italic" : "normal";
-  const filePath = path.join(
-    FONTSOURCE_DIR,
-    directory,
-    "files",
-    `${directory}-${subset}-${String(weight)}-${style}.woff`,
-  );
-  return existsSync(filePath) ? filePath : null;
+  return SUBSET_PRIORITY.flatMap((subset) => {
+    const filePath = path.join(
+      FONTSOURCE_DIR,
+      directory,
+      "files",
+      `${directory}-${subset}-${String(weight)}-${style}.woff`,
+    );
+    return existsSync(filePath) ? [{ subset, filePath }] : [];
+  });
 };
 
-const faceCacheKey = ({ family, weight, italic }: Omit<FaceFileOptions, "subset">): string =>
+const faceCacheKey = ({ family, weight, italic }: FaceOptions): string =>
   `${family.toLowerCase()}|${String(weight)}|${italic ? "i" : "n"}`;
 
 const weightOf = (bold: boolean): number => (bold ? BOLD_WEIGHT : REGULAR_WEIGHT);
 
-export type BundledFontSourceOptions = {
-  /**
-   * `latin`, `latin-ext`, `cyrillic`, `greek`, `hebrew`, `vietnamese`, ...
-   *
-   * One subset, not a union: `load` returns one binary per face and the
-   * `@fontsource` split is disjoint, so a subset is a real limit rather than a
-   * preference. `latin-ext` carries the Czech and Polish letters but *no
-   * ASCII* (its `cmap` has no entry for `A`), so preferring it would leave
-   * every ordinary word painting `.notdef`. `latin` is therefore the default,
-   * and a document outside it is a reported substitution, not a silent one.
-   * {@link bundledFontFaceCss} declares exactly this subset with no
-   * `unicode-range`, so the browser cannot reach a face the PDF did not embed.
-   */
-  readonly subset?: string;
-};
-
 /**
  * Read the bundled faces off disk, caching bytes per face.
  *
- * A face with no file returns `null` rather than a stand-in: the measurer logs
- * the substitution and the caller reports it, where a silent substitution
- * would paginate against a font nobody chose.
+ * A face with no file at all returns an empty list rather than a stand-in:
+ * the measurer logs the substitution and the caller reports it, where a
+ * silent substitution would paginate against a font nobody chose.
  */
-export const createBundledFontSource = (
-  options: BundledFontSourceOptions = {},
-): HeadlessFontSource => {
-  const subset = options.subset ?? DEFAULT_SUBSET;
-  const cache = new Map<string, Uint8Array | null>();
+export const createBundledFontSource = (): HeadlessFontSource => {
+  const cache = new Map<string, readonly Uint8Array[]>();
 
-  const load = ({ family, bold, italic }: HeadlessFontRequest): Uint8Array | null => {
-    const weight = weightOf(bold);
-    const key = faceCacheKey({ family, weight, italic });
+  const load = ({ family, bold, italic }: HeadlessFontRequest): readonly Uint8Array[] => {
+    const face = { family, weight: weightOf(bold), italic };
+    const key = faceCacheKey(face);
     const cached = cache.get(key);
     if (cached !== undefined) return cached;
 
-    const filePath = faceFilePath({ family, weight, italic, subset });
-    const bytes = filePath === null ? null : new Uint8Array(readFileSync(filePath));
+    const bytes = faceBinaries(face).map(({ filePath }) => new Uint8Array(readFileSync(filePath)));
     cache.set(key, bytes);
     return bytes;
   };
 
   return { load };
 };
+
+// ---------------------------------------------------------------------------
+// Unicode ranges
+// ---------------------------------------------------------------------------
+
+/** An inclusive `[first, last]` span of code points. */
+type CodePointRange = readonly [number, number];
+
+/**
+ * `@fontsource` ships the subset ranges it cut the family with, as JSON,
+ * beside the files themselves. Reading that is what keeps the browser's
+ * routing and this source's routing the same table rather than two tables
+ * that agree until someone edits one of them.
+ */
+const UNICODE_RANGE_FILE = "unicode.json";
+
+const RANGE_TOKEN_RE = /^U\+([0-9A-Fa-f]+)(?:-([0-9A-Fa-f]+))?$/u;
+
+const parseRangeToken = (token: string): readonly CodePointRange[] => {
+  const match = RANGE_TOKEN_RE.exec(token.trim());
+  if (match === null) return [];
+  const first = Number.parseInt(match[1] ?? "", 16);
+  const last = match[2] === undefined ? first : Number.parseInt(match[2], 16);
+  if (Number.isNaN(first) || Number.isNaN(last)) return [];
+  const range: CodePointRange = [first, last];
+  return [range];
+};
+
+const parseRangeList = (declared: string): readonly CodePointRange[] =>
+  declared.split(",").flatMap(parseRangeToken);
+
+const readDeclaredRanges = (filePath: string): ReadonlyMap<string, readonly CodePointRange[]> => {
+  const ranges = new Map<string, readonly CodePointRange[]>();
+  const parsed: unknown = JSON.parse(readFileSync(filePath, "utf8"));
+  if (typeof parsed !== "object" || parsed === null) return ranges;
+  for (const [subset, declared] of Object.entries(parsed)) {
+    if (typeof declared === "string") {
+      ranges.set(subset, parseRangeList(declared));
+    }
+  }
+  return ranges;
+};
+
+const declaredRangeCache = new Map<string, ReadonlyMap<string, readonly CodePointRange[]>>();
+
+const declaredRanges = (directory: string): ReadonlyMap<string, readonly CodePointRange[]> => {
+  const cached = declaredRangeCache.get(directory);
+  if (cached !== undefined) return cached;
+  const filePath = path.join(FONTSOURCE_DIR, directory, UNICODE_RANGE_FILE);
+  const ranges = existsSync(filePath)
+    ? readDeclaredRanges(filePath)
+    : new Map<string, readonly CodePointRange[]>();
+  declaredRangeCache.set(directory, ranges);
+  return ranges;
+};
+
+const withoutRange = (range: CodePointRange, [start, end]: CodePointRange): CodePointRange[] => {
+  const [first, last] = range;
+  if (end < first || start > last) return [range];
+  const remainder: CodePointRange[] = [];
+  if (start > first) remainder.push([first, start - 1]);
+  if (end < last) remainder.push([end + 1, last]);
+  return remainder;
+};
+
+/**
+ * `subject` minus everything a higher-priority subset already serves.
+ *
+ * The declared ranges overlap (`latin` and `latin-ext` both claim the
+ * combining marks U+0304, U+0308 and U+0329), and a browser resolves an
+ * overlap by declaration order while this source resolves it by priority.
+ * Cutting the overlap out of the lower-priority rule makes the two agree
+ * whatever order the rules are emitted in.
+ */
+const subtractRanges = (
+  subject: readonly CodePointRange[],
+  taken: readonly CodePointRange[],
+): readonly CodePointRange[] => {
+  let remaining = subject;
+  for (const range of taken) {
+    remaining = remaining.flatMap((candidate) => withoutRange(candidate, range));
+  }
+  return remaining;
+};
+
+const hex = (codePoint: number): string => codePoint.toString(16).toUpperCase().padStart(4, "0");
+
+const formatRangeList = (ranges: readonly CodePointRange[]): string =>
+  ranges
+    .map(([first, last]) => (first === last ? `U+${hex(first)}` : `U+${hex(first)}-${hex(last)}`))
+    .join(",");
+
+// ---------------------------------------------------------------------------
+// `@font-face` CSS
+// ---------------------------------------------------------------------------
 
 const FACE_VARIANTS = [
   { weight: REGULAR_WEIGHT, italic: false },
@@ -219,22 +333,68 @@ const FACE_VARIANTS = [
   { weight: BOLD_WEIGHT, italic: true },
 ] as const;
 
-const fontFaceRule = (family: string, options: FaceFileOptions): string | null => {
-  const filePath = faceFilePath(options);
-  if (filePath === null) return null;
-  const base64 = readFileSync(filePath).toString("base64");
-  return [
+const base64Cache = new Map<string, string>();
+
+/** One file's bytes, base64 once and reused across the aliases that share it. */
+const base64Of = (filePath: string): string => {
+  const cached = base64Cache.get(filePath);
+  if (cached !== undefined) return cached;
+  const encoded = readFileSync(filePath).toString("base64");
+  base64Cache.set(filePath, encoded);
+  return encoded;
+};
+
+type FontFaceRuleOptions = {
+  readonly family: string;
+  readonly binary: FaceBinary;
+  readonly weight: number;
+  readonly italic: boolean;
+  readonly unicodeRange: readonly CodePointRange[];
+};
+
+const fontFaceRule = ({
+  family,
+  binary,
+  weight,
+  italic,
+  unicodeRange,
+}: FontFaceRuleOptions): string =>
+  [
     "@font-face {",
     `  font-family: "${family.replaceAll('"', '\\"')}";`,
-    `  src: url(data:font/woff;base64,${base64}) format("woff");`,
-    `  font-weight: ${String(options.weight)};`,
-    `  font-style: ${options.italic ? "italic" : "normal"};`,
+    `  src: url(data:font/woff;base64,${base64Of(binary.filePath)}) format("woff");`,
+    `  font-weight: ${String(weight)};`,
+    `  font-style: ${italic ? "italic" : "normal"};`,
+    `  unicode-range: ${formatRangeList(unicodeRange)};`,
     "  font-display: block;",
     "}",
   ].join("\n");
+
+/**
+ * The rules for one variant of one declared family name.
+ *
+ * A subset whose declared range is entirely served by a higher-priority
+ * subset, or that `unicode.json` does not describe, is not declared at all: a
+ * rule with no `unicode-range` covers every code point and would let the
+ * browser paint from a binary the PDF resolved elsewhere, which is exactly
+ * the divergence this file exists to prevent.
+ */
+const variantRules = ({ family, weight, italic }: FaceOptions): readonly string[] => {
+  const bundled = resolveBundledFamily(family);
+  if (bundled === null) return [];
+  const ranges = declaredRanges(BUNDLED_FAMILY_DIRECTORIES[bundled]);
+  const rules: string[] = [];
+  const taken: CodePointRange[] = [];
+  for (const binary of faceBinaries({ family, weight, italic })) {
+    const unicodeRange = subtractRanges(ranges.get(binary.subset) ?? [], taken);
+    if (unicodeRange.length === 0) continue;
+    rules.push(fontFaceRule({ family, binary, weight, italic, unicodeRange }));
+    taken.push(...unicodeRange);
+  }
+  return rules;
 };
 
-export type BundledFontFaceCssOptions = BundledFontSourceOptions & {
+export type BundledFontFaceCssOptions = {
   /**
    * Families to declare on top of the ones this source answers to by name.
    * Pass a display list's own `fonts` families: a face the source resolves
@@ -246,25 +406,23 @@ export type BundledFontFaceCssOptions = BundledFontSourceOptions & {
 };
 
 /**
- * `@font-face` rules with the `.woff` files inlined as `data:` URLs.
+ * `@font-face` rules with the `.woff` files inlined as `data:` URLs, one rule
+ * per served subset of each face.
  *
  * The bytes are repeated per family because CSS has no way to point two family
  * names at one face. That costs a few megabytes of local HTML and buys the
- * only property that matters here: the browser paints the faces the headless
- * measurer measured, so a raster difference is a backend difference.
+ * only property that matters here: the browser paints, per code point, the
+ * binary the headless measurer measured, so a raster difference is a backend
+ * difference.
  */
 export const bundledFontFaceCss = (options: BundledFontFaceCssOptions = {}): string => {
-  const subset = options.subset ?? DEFAULT_SUBSET;
   const declared = new Map<string, string>();
   for (const family of [...bundledFamilyAliases(), ...(options.families ?? [])]) {
     declared.set(family.trim().toLowerCase(), family.trim());
   }
   return [...declared.values()]
     .flatMap((family) =>
-      FACE_VARIANTS.flatMap(({ weight, italic }) => {
-        const rule = fontFaceRule(family, { family, weight, italic, subset });
-        return rule === null ? [] : [rule];
-      }),
+      FACE_VARIANTS.flatMap(({ weight, italic }) => variantRules({ family, weight, italic })),
     )
     .join("\n");
 };

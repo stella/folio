@@ -32,7 +32,7 @@ import { layoutDocxHeadless } from "./headless-layout";
 import type { HeadlessLayoutGap } from "./headless-layout";
 import { getMeasureProvider, setMeasureProvider } from "./layout-engine/measure/measureProvider";
 import { writePdf } from "./pdf/writePdf";
-import type { PdfSubstitution } from "./pdf/writePdf";
+import type { PdfSubstitution, PdfUnencodable } from "./pdf/writePdf";
 import type { DocxInput } from "./utils/docxInput";
 
 export class ExportPdfError extends TaggedError("ExportPdfError")<{
@@ -65,6 +65,8 @@ export type ExportDocxToPdfResult = {
   readonly measurementSubstitutions: readonly HeadlessFontSubstitution[];
   /** Faces embedded as a stand-in. */
   readonly embeddingSubstitutions: readonly PdfSubstitution[];
+  /** Code points painted as `.notdef` because no supplied face covers them. */
+  readonly unencodable: readonly PdfUnencodable[];
 };
 
 const toFontRequest = ({ family, weight, italic }: DisplayFontFace) => ({
@@ -112,5 +114,6 @@ export const exportDocxToPdf = async (
     layoutGaps: laidOut.value.unsupported,
     measurementSubstitutions: headless.substitutions(),
     embeddingSubstitutions: written.value.substitutions,
+    unencodable: written.value.unencodable,
   });
 };

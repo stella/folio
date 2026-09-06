@@ -14,10 +14,20 @@ export const TEST_FONT_FAMILIES = ["arimo", "caladea", "carlito", "cousine", "ti
 
 export type TestFontFamily = (typeof TEST_FONT_FAMILIES)[number];
 
+/**
+ * `@fontsource` ships a family cut into disjoint script subsets: `latin` has
+ * ASCII but no `Ř`, `latin-ext` has `Ř` but no `A`. A Czech, Slovak or Polish
+ * document needs both at once, so a fixture has to be able to name one.
+ */
+export const TEST_FONT_SUBSETS = ["latin", "latin-ext"] as const;
+
+export type TestFontSubset = (typeof TEST_FONT_SUBSETS)[number];
+
 type TestFontFaceOptions = {
   readonly family: TestFontFamily;
   readonly weight?: 400 | 700;
   readonly style?: "normal" | "italic";
+  readonly subset?: TestFontSubset;
 };
 
 /** Path of one `@fontsource` WOFF face, resolved from this module's location. */
@@ -25,13 +35,14 @@ export const testFontPath = ({
   family,
   weight = 400,
   style = "normal",
+  subset = "latin",
 }: TestFontFaceOptions): string =>
   join(
     import.meta.dir,
     "../../../../../react/node_modules/@fontsource",
     family,
     "files",
-    `${family}-latin-${weight}-${style}.woff`,
+    `${family}-${subset}-${weight}-${style}.woff`,
   );
 
 /**
@@ -39,7 +50,7 @@ export const testFontPath = ({
  * suites can decide to skip before any test body runs.
  */
 export const TEST_FONTS_INSTALLED = TEST_FONT_FAMILIES.every((family) =>
-  existsSync(testFontPath({ family })),
+  TEST_FONT_SUBSETS.every((subset) => existsSync(testFontPath({ family, subset }))),
 );
 
 /** Reason shown on skipped suites, so an absent fixture is never a mystery. */

@@ -17,7 +17,7 @@ import { formatNumber } from "./objects";
 import type { PdfMatrix } from "./pageSpace";
 
 export type PdfResourceUse =
-  | { readonly kind: "font"; readonly fontIndex: number }
+  | { readonly kind: "font"; readonly resourceIndex: number }
   | { readonly kind: "image"; readonly imageIndex: number }
   | { readonly kind: "extGState"; readonly alpha: number };
 
@@ -67,7 +67,7 @@ export type ContentStream = {
   readonly clipToCurrentPath: () => void;
   readonly beginText: () => void;
   readonly endText: () => void;
-  readonly setFont: (fontIndex: number, sizePx: number) => void;
+  readonly setFont: (resourceIndex: number, sizePx: number) => void;
   readonly setTextRenderMode: (mode: PdfTextRenderMode) => void;
   readonly setTextMatrix: (matrix: PdfMatrix) => void;
   readonly showGlyphs: (glyphs: readonly PositionedGlyph[]) => void;
@@ -107,7 +107,8 @@ export const createContentStream = (): ContentStream => {
     clipToCurrentPath: () => line("W n"),
     beginText: () => line("BT"),
     endText: () => line("ET"),
-    setFont: (fontIndex, sizePx) => use({ kind: "font", fontIndex }, ` ${formatNumber(sizePx)} Tf`),
+    setFont: (resourceIndex, sizePx) =>
+      use({ kind: "font", resourceIndex }, ` ${formatNumber(sizePx)} Tf`),
     setTextRenderMode: (mode) => line(`${String(mode)} Tr`),
     setTextMatrix: (matrix) => line(`${matrix.map(formatNumber).join(" ")} Tm`),
     showGlyphs: (glyphs) => {
@@ -146,6 +147,7 @@ export const createContentStream = (): ContentStream => {
 
 /** Resource names for one page, assigned from sorted keys. */
 export type ContentResources = {
+  /** Keyed by font resource index: one face can hold several of them. */
   readonly fontNames: ReadonlyMap<number, string>;
   readonly imageNames: ReadonlyMap<number, string>;
   /** Keyed by the formatted alpha, so two alphas that print alike share a state. */
@@ -161,7 +163,7 @@ export const collectResources = (parts: readonly ContentPart[]): ContentResource
       case "literal":
         break;
       case "font":
-        fonts.add(part.fontIndex);
+        fonts.add(part.resourceIndex);
         break;
       case "image":
         images.add(part.imageIndex);
@@ -205,7 +207,7 @@ export const renderContentStream = (
         out += part.text;
         break;
       case "font":
-        out += `/${resources.fontNames.get(part.fontIndex) ?? panic("unnamed font resource")}`;
+        out += `/${resources.fontNames.get(part.resourceIndex) ?? panic("unnamed font resource")}`;
         break;
       case "image":
         out += `/${resources.imageNames.get(part.imageIndex) ?? panic("unnamed image resource")}`;

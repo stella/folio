@@ -96,7 +96,7 @@ describe.skipIf(arimo === null)("layoutDocxHeadless with parsed font metrics", (
   test("paginates a real package with no canvas anywhere in the chain", async () => {
     // SAFETY: the suite is skipped when the face is absent.
     const face = arimo ?? new Uint8Array();
-    const headless = installHeadlessMeasureProvider({ load: () => face });
+    const headless = installHeadlessMeasureProvider({ load: () => [face] });
     const bytes = await Bun.file(FIXTURE).arrayBuffer();
 
     const result = await layoutDocxHeadless(bytes);

@@ -232,6 +232,20 @@ const glyphOrigins = (run: DisplayGlyphRun): readonly number[] => {
   return origins;
 };
 
+/**
+ * A maximal consecutive stretch of one run served by a single font resource.
+ * A face split into script subsets embeds as several fonts, each with its own
+ * glyph space, so a run crossing from one subset to the other has to change
+ * font mid-run; the advances are untouched, because every span still carries
+ * the display list's own numbers for its own code points.
+ */
+type GlyphSpan = {
+  readonly resourceIndex: number;
+  /** Index into the run's code points, for the span's text-matrix origin. */
+  readonly startIndex: number;
+  readonly glyphs: PositionedGlyph[];
+};
+
 const paintGlyphRun = (context: PaintContext, run: DisplayGlyphRun) => {
   const codePoints = [...run.text];
   // A run at zero size has zero extent: there is nothing to paint, and the
@@ -251,20 +265,12 @@ const paintGlyphRun = (context: PaintContext, run: DisplayGlyphRun) => {
     stream.setLineWidth(run.stroke.thicknessPx);
   }
   stream.beginText();
-  stream.setFont(run.font, run.fontSizePx);
-  if (run.stroke !== undefined) {
-    stream.setTextRenderMode(TEXT_RENDER_MODE.fillThenStroke);
-  }
 
   switch (font.kind) {
     case "embedded": {
-      // The text matrix flips y back: the page CTM already turned the page
-      // upside down so that display-list coordinates work, and glyphs must
-      // not come along for that ride.
-      stream.setTextMatrix([1, 0, 0, -1, origins[0] ?? run.xPx, run.baselineYPx]);
-      const glyphs: PositionedGlyph[] = [];
+      const spans: GlyphSpan[] = [];
       for (const [index, codePoint] of codePoints.entries()) {
-        const glyphId = font.glyphIdFor(codePoint.codePointAt(0) ?? 0);
+        const { resourceIndex, glyphId, widthUnits } = font.glyphFor(codePoint.codePointAt(0) ?? 0);
         const origin = origins[index] ?? run.xPx;
         const next = origins[index + 1];
         const advance = run.advancesPx[index] ?? 0;
@@ -274,15 +280,37 @@ const paintGlyphRun = (context: PaintContext, run: DisplayGlyphRun) => {
         // out. The correction is against the width *this file* declares for
         // the glyph, which is what a reader will actually advance by.
         const delta = next === undefined ? advance : next - origin;
-        glyphs.push({
+        const glyph = {
           glyphId,
-          adjustment: font.widthFor(glyphId) - (delta * TEXT_SPACE_UNITS_PER_EM) / run.fontSizePx,
-        });
+          adjustment: widthUnits - (delta * TEXT_SPACE_UNITS_PER_EM) / run.fontSizePx,
+        };
+        const open = spans.at(-1);
+        if (open === undefined || open.resourceIndex !== resourceIndex) {
+          spans.push({ resourceIndex, startIndex: index, glyphs: [glyph] });
+        } else {
+          open.glyphs.push(glyph);
+        }
       }
-      stream.showGlyphs(glyphs);
+      for (const [spanIndex, span] of spans.entries()) {
+        stream.setFont(span.resourceIndex, run.fontSizePx);
+        // The render mode is text state, not font state: one setting covers
+        // every span of the text object.
+        if (spanIndex === 0 && run.stroke !== undefined) {
+          stream.setTextRenderMode(TEXT_RENDER_MODE.fillThenStroke);
+        }
+        // The text matrix flips y back: the page CTM already turned the page
+        // upside down so that display-list coordinates work, and glyphs must
+        // not come along for that ride.
+        stream.setTextMatrix([1, 0, 0, -1, origins[span.startIndex] ?? run.xPx, run.baselineYPx]);
+        stream.showGlyphs(span.glyphs);
+      }
       break;
     }
     case "standard": {
+      stream.setFont(font.resourceIndex, run.fontSizePx);
+      if (run.stroke !== undefined) {
+        stream.setTextRenderMode(TEXT_RENDER_MODE.fillThenStroke);
+      }
       // A base-14 stand-in has no width table here, so every code point is
       // positioned outright rather than corrected against an advance nobody
       // in this process knows.

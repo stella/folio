@@ -21,7 +21,7 @@ const FACE: DisplayFontFace = {
   fontBoxDescentRatio: 0.2,
 };
 
-const NO_FONTS: PdfFontSource = { load: () => null };
+const NO_FONTS: PdfFontSource = { load: () => [] };
 
 const PAGE_WIDTH_PX = 816;
 const PAGE_HEIGHT_PX = 1056;
@@ -259,7 +259,7 @@ describe("substitution", () => {
 
   test("reports a face whose bytes will not parse", () => {
     const result = writePdf(FIXTURE, {
-      fonts: { load: () => new Uint8Array([1, 2, 3, 4]) },
+      fonts: { load: () => [new Uint8Array([1, 2, 3, 4])] },
       timestamp: TIMESTAMP,
     });
     if (result.isErr()) {

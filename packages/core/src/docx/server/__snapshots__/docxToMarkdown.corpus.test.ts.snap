@@ -104,3 +104,13 @@ exports[`docxToMarkdown corpus snapshots extracts upstream-with-tables.docx 1`] 
 
 End of document."
 `;
+
+exports[`docxToMarkdown corpus snapshots extracts diacritics-latin-ext.docx 1`] = `
+"Smluvní strany: Řehoř Křížek a Ľudmila Šťastná uzavírají dne 6. 9. 2026 dohodu č. 128/2026 o převodu podílu ve výši 40 %.
+
+Strony: Łukasz Żółkiewski (Śniadecka 12, Gdańsk) — załącznik nr 3, część ogólna, kwota 1250 zł.
+
+Die Parteien vereinbaren Änderungen der Größe, die Übergabe der Schlüssel und den Maßstab 1:100 (§ 305 BGB).
+
+cs/sk: Ř ř Ů ů Ě ě Č č Š š Ž ž Ď ď Ť ť Ň ň — **pl: Ł ł Ż ż Ź ź Ć ć Ę ę Ą ą Ń ń Ś ś —** *de: Ä ä Ö ö Ü ü ß (ASCII 0123 xyz).*"
+`;
