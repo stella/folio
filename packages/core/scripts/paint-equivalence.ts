@@ -141,20 +141,37 @@ const DEFAULT_OUTPUT_DIR = path.join(REPO_ROOT, ".cache", "paint-equivalence");
 const BASELINE_PATH = path.join(import.meta.dir, "paint-equivalence.baseline.json");
 
 /**
- * The default corpus: one small, one medium and one large document, so a bare
- * run is fast enough to be habitual, plus the two documents whose text is the
- * hard case for a font pipeline. The diacritics fixture spans two font subsets
- * in a single run, and so fails visibly when a face resolves to one binary.
- * The Arabic fixture runs right to left and every letter in it takes its form
- * from its neighbours, so it fails visibly when a run reaches the page without
- * being shaped. A directory argument runs everything in it.
+ * The default corpus: one small, one medium and one large real document, so a
+ * bare run is fast enough to be habitual, plus a synthetic page for each thing
+ * a real document has only some of.
+ *
+ * The text ones are the hard cases for a font pipeline. The diacritics fixture
+ * spans two font subsets in a single run, and so fails visibly when a face
+ * resolves to one binary; the Arabic one runs right to left and every letter in
+ * it takes its form from its neighbours, so it fails visibly when a run reaches
+ * the page unshaped.
+ *
+ * The rest each carry one construct a page has besides its body text: notes, a
+ * watermark of either kind, page borders, and header and footer stories whose
+ * fields the layout resolves. A score for those is only a score for a page the
+ * construct actually reached, which `pageConstructs.test.ts` asserts
+ * separately: two backends that both omit a watermark agree perfectly about it.
+ *
+ * A directory argument runs everything in it instead.
  */
+const CORPUS_DIR = "packages/core/src/docx/__tests__/__fixtures__/corpus";
+
 const DEFAULT_FIXTURES = [
   "tests/visual/fixtures/docx-editor-demo.docx",
   "tests/visual/fixtures/sample.docx",
   "tests/visual/fixtures/podily-bps.docx",
-  "packages/core/src/docx/__tests__/__fixtures__/corpus/diacritics-latin-ext.docx",
-  "packages/core/src/docx/__tests__/__fixtures__/corpus/rtl-arabic-shaping.docx",
+  `${CORPUS_DIR}/diacritics-latin-ext.docx`,
+  `${CORPUS_DIR}/rtl-arabic-shaping.docx`,
+  `${CORPUS_DIR}/step3-footnotes.docx`,
+  `${CORPUS_DIR}/step3-watermark-text.docx`,
+  `${CORPUS_DIR}/step3-watermark-picture.docx`,
+  `${CORPUS_DIR}/step3-page-borders.docx`,
+  `${CORPUS_DIR}/step3-header-footer-fields.docx`,
 ] as const;
 
 const VIEWPORT = { width: 1400, height: 1200 };

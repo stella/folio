@@ -122,3 +122,46 @@ exports[`docxToMarkdown corpus snapshots extracts rtl-arabic-shaping.docx 1`] = 
 
 لا لا لا — بب تت ثث — كتب يكتب مكتوب"
 `;
+
+exports[`docxToMarkdown corpus snapshots extracts step3-footnotes.docx 1`] = `
+"The purchase price is payable within thirty days[^1] of the transfer of the share, against the invoice[^2].
+
+The parties confirm that no other consideration has been agreed.
+
+[^1]: Counted from the day the transfer is registered, not from the day it is agreed.
+[^2]: An invoice meeting the requirements of the VAT Act."
+`;
+
+exports[`docxToMarkdown corpus snapshots extracts step3-header-footer-fields.docx 1`] = `
+"First page of the agreement.
+
+
+
+
+
+Second page, which takes the default header and footer.
+
+
+
+
+
+Third page, the same."
+`;
+
+exports[`docxToMarkdown corpus snapshots extracts step3-page-borders.docx 1`] = `
+"A bordered page.
+
+The border sits at a stated distance from the page edge, and every corner is where two strokes meet."
+`;
+
+exports[`docxToMarkdown corpus snapshots extracts step3-watermark-picture.docx 1`] = `
+"The mark behind this page is an image rather than text.
+
+It is anchored in the header and painted behind the body."
+`;
+
+exports[`docxToMarkdown corpus snapshots extracts step3-watermark-text.docx 1`] = `
+"This copy is provided for review and is not for execution.
+
+Every page of it carries the same mark."
+`;

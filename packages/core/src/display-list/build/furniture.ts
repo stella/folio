@@ -168,7 +168,13 @@ const reportMissingStories = (
   const { headerRId, footerRId } = selectSectionHeaderFooterRIds(page);
   const namesHeader = headerRId !== undefined;
   const namesFooter = footerRId !== undefined;
-  if (namesHeader && selected.headerContent === undefined) {
+  // A watermark from that same part proves the part reached the producer and
+  // was read. Word's own watermark lives in a header that holds nothing else,
+  // so a header with no story content is that document's normal shape rather
+  // than a story that went missing on the way here.
+  const headerCarriedAWatermark =
+    headerRId !== undefined && furniture.watermarkByHeaderRId?.has(headerRId) === true;
+  if (namesHeader && !headerCarriedAWatermark && selected.headerContent === undefined) {
     context.unsupported.report(
       UNSUPPORTED_CONSTRUCT.headerFooterContent,
       context.pageIndex,

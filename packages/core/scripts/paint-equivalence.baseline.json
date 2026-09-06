@@ -1,7 +1,12 @@
 {
   "tests/visual/fixtures/docx-editor-demo.docx": 0.9839,
   "tests/visual/fixtures/sample.docx": 0.9882,
-  "tests/visual/fixtures/podily-bps.docx": 0.9622,
+  "tests/visual/fixtures/podily-bps.docx": 0.9631,
   "packages/core/src/docx/__tests__/__fixtures__/corpus/diacritics-latin-ext.docx": 0.9916,
-  "packages/core/src/docx/__tests__/__fixtures__/corpus/rtl-arabic-shaping.docx": 0.9964
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/rtl-arabic-shaping.docx": 0.9964,
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-footnotes.docx": 0.9948,
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-watermark-text.docx": 0.9979,
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-watermark-picture.docx": 0.9979,
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-page-borders.docx": 0.9976,
+  "packages/core/src/docx/__tests__/__fixtures__/corpus/step3-header-footer-fields.docx": 0.9987
 }

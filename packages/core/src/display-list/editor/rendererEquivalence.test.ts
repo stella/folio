@@ -30,10 +30,26 @@ import {
 import { ptToPx } from "../../layout-engine/measure/measureHelpers";
 import type { Page } from "../../layout-engine/types";
 
-const FIXTURES = ["sample.docx", "docx-editor-demo.docx", "podily-bps.docx"] as const;
+/**
+ * Real documents, and the synthetic pages for the constructs a real document
+ * has only some of: a page's furniture is painted by the same two renderers,
+ * and can go missing from one of them just as a paragraph can.
+ */
+const FIXTURES = [
+  { name: "sample.docx", from: "visual" },
+  { name: "docx-editor-demo.docx", from: "visual" },
+  { name: "podily-bps.docx", from: "visual" },
+  { name: "step3-footnotes.docx", from: "corpus" },
+  { name: "step3-watermark-text.docx", from: "corpus" },
+  { name: "step3-watermark-picture.docx", from: "corpus" },
+  { name: "step3-page-borders.docx", from: "corpus" },
+  { name: "step3-header-footer-fields.docx", from: "corpus" },
+] as const;
 
-const fixtureUrl = (name: string) =>
-  new URL(`../../../../../tests/visual/fixtures/${name}`, import.meta.url);
+const fixtureUrl = ({ name, from }: (typeof FIXTURES)[number]) =>
+  from === "visual"
+    ? new URL(`../../../../../tests/visual/fixtures/${name}`, import.meta.url)
+    : new URL(`../../docx/__tests__/__fixtures__/corpus/${name}`, import.meta.url);
 
 const FIXED_ADVANCE_RATIO = 0.5;
 
@@ -105,10 +121,10 @@ describe("the two page renderers paint the same pages", () => {
     setMeasureProvider(installed);
   });
 
-  for (const name of FIXTURES) {
-    test(`${name} paints the same page count, boxes and text either way`, async () => {
+  for (const fixture of FIXTURES) {
+    test(`${fixture.name} paints the same page count, boxes and text either way`, async () => {
       installFixedWidthProvider();
-      const bytes = await Bun.file(fixtureUrl(name)).arrayBuffer();
+      const bytes = await Bun.file(fixtureUrl(fixture)).arrayBuffer();
 
       const laidOut = await layoutDocxHeadless(bytes);
       expect(laidOut.isErr()).toBe(false);

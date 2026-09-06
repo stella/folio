@@ -63,6 +63,11 @@ its Apache-2.0 license.
 | `upstream-complex-styles.docx`        | Paragraph styles, font families, colors, and highlighting                                                |
 | `diacritics-latin-ext.docx`           | Czech, Slovak, Polish and German diacritics beside ASCII in one run; two font subsets per face           |
 | `rtl-arabic-shaping.docx`             | Arabic with `w:bidi`, `w:rtl` and a `w:cs` face; joining forms, a required ligature, and a Latin run     |
+| `step3-footnotes.docx`                | Two footnote references, their notes, and Word's separator and continuation separator                    |
+| `step3-watermark-text.docx`           | VML WordArt watermark in a header that holds nothing else, rotated to the diagonal                       |
+| `step3-watermark-picture.docx`        | VML picture watermark with its own header relationship and a 16x16 PNG media part                        |
+| `step3-page-borders.docx`             | `w:pgBorders` on all four sides, two solid and two dashed, offset from the page edge                     |
+| `step3-header-footer-fields.docx`     | `PAGE` and `NUMPAGES` in a header and footer over three pages, with a `w:titlePg` first-page header      |
 
 All fixtures are under 30 KB.
 
