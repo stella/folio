@@ -251,3 +251,47 @@ describe("extractTrackedChanges: foreign-doc coalescing by (author, date)", () =
     expect(entries).toHaveLength(3);
   });
 });
+
+describe("extractTrackedChanges: replacement pairing", () => {
+  const del = (id: number, author: string, date: string, text: string) =>
+    schema.text(text, [schema.marks.deletion.create({ revisionId: id, author, date })]);
+  const ins = (id: number, author: string, date: string, text: string) =>
+    schema.text(text, [schema.marks.insertion.create({ revisionId: id, author, date })]);
+
+  test("pairs a replace whose halves carry different timestamps", () => {
+    // One replace, but the clock ticked between the two halves. Requiring the
+    // stamps to match surfaced a Deleted card and an Inserted card, so accept
+    // or reject only ever acted on half the change.
+    const doc = schema.nodes.doc.create({}, [
+      schema.nodes.paragraph.create({}, [
+        del(1, AUTHOR, "2026-01-01T10:00:00Z", "old"),
+        ins(2, AUTHOR, "2026-01-01T13:20:00Z", "new"),
+      ]),
+    ]);
+
+    const { entries } = extractTrackedChanges(makeState(doc));
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      type: "replacement",
+      deletedText: "old",
+      text: "new",
+      author: AUTHOR,
+      revisionId: 1,
+      insertionRevisionId: 2,
+    });
+  });
+
+  test("does not pair across authors", () => {
+    const doc = schema.nodes.doc.create({}, [
+      schema.nodes.paragraph.create({}, [
+        del(1, "Jane", DATE, "old"),
+        ins(2, "Bob", DATE, "new"),
+      ]),
+    ]);
+
+    const { entries } = extractTrackedChanges(makeState(doc));
+
+    expect(entries.map((entry) => entry.type)).toEqual(["deletion", "insertion"]);
+  });
+});
