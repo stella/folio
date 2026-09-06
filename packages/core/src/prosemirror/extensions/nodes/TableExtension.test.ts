@@ -473,3 +473,83 @@ describe("table cell paste — dataset.bgcolor validation", () => {
     expect(attrs["backgroundColor"]).toBe("336699");
   });
 });
+
+describe("inserting a row through a vertical merge", () => {
+  const cell = (text: string, attrs: Record<string, unknown> = {}) =>
+    schema.node("tableCell", attrs, [schema.node("paragraph", null, [schema.text(text)])]);
+
+  /**
+   * Two columns, three rows; column 0 is one cell merged across all three, so
+   * rows 1 and 2 carry a single cell each — the `w:vMerge="continue"` shape.
+   */
+  const mergedColumnState = (caretText: string) => {
+    const doc = schema.node("doc", null, [
+      schema.node("table", null, [
+        schema.node("tableRow", null, [cell("merged", { rowspan: 3 }), cell("r0")]),
+        schema.node("tableRow", null, [cell("r1")]),
+        schema.node("tableRow", null, [cell("r2")]),
+      ]),
+    ]);
+
+    const caret = { value: null as number | null };
+    doc.descendants((node, pos) => {
+      if (caret.value !== null || node.text !== caretText) {
+        return;
+      }
+      caret.value = pos;
+      return false;
+    });
+    if (caret.value === null) {
+      throw new Error(`Expected a cell containing ${caretText}`);
+    }
+
+    return EditorState.create({
+      doc,
+      schema,
+      selection: TextSelection.create(doc, caret.value),
+    });
+  };
+
+  const tableOf = (doc: PMNode) => {
+    const table = { value: null as PMNode | null };
+    doc.descendants((node) => {
+      if (table.value !== null || node.type.name !== "table") {
+        return;
+      }
+      table.value = node;
+      return false;
+    });
+    if (table.value === null) {
+      throw new Error("Expected a table");
+    }
+    return table.value;
+  };
+
+  test("a merge spanning the boundary grows instead of gaining a stray cell", () => {
+    const state = runTableCommand(mergedColumnState("r1"), "addRowBelow");
+    const table = tableOf(state.doc);
+
+    expect(table.childCount).toBe(4);
+    expect(table.child(0).child(0).attrs["rowspan"]).toBe(4);
+    // The boundary opens only column 1, so the inserted row carries one cell.
+    expect(table.child(2).childCount).toBe(1);
+  });
+
+  test("a boundary outside the merge still gets a full row", () => {
+    const state = runTableCommand(mergedColumnState("r2"), "addRowBelow");
+    const table = tableOf(state.doc);
+
+    expect(table.childCount).toBe(4);
+    expect(table.child(0).child(0).attrs["rowspan"]).toBe(3);
+    expect(table.child(3).childCount).toBe(2);
+  });
+
+  test("inserting above the first row does not extend the merge", () => {
+    const state = runTableCommand(mergedColumnState("r0"), "addRowAbove");
+    const table = tableOf(state.doc);
+
+    expect(table.childCount).toBe(4);
+    expect(table.child(0).childCount).toBe(2);
+    expect(table.child(1).child(0).attrs["rowspan"]).toBe(3);
+  });
+});

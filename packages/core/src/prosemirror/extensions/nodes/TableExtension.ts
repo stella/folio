@@ -1131,7 +1131,26 @@ export const TablePluginExtension = createExtension({
       };
     }
 
-    function addRowAbove(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
+    /**
+     * Insert an empty row so that it lands ABOVE grid row `boundaryRow`.
+     *
+     * A vertically merged cell that covers both sides of the boundary is
+     * EXTENDED, not duplicated: Word grows the merge through the inserted row
+     * (`w:vMerge="continue"` gains one row) rather than splitting it. Cloning
+     * the caret row cell-for-cell instead emitted a cell for a column the merge
+     * already occupies, which widens the grid and desynchronises every later
+     * row — the opposite of `deleteRow`, which is merge-correct because it
+     * delegates to prosemirror-tables.
+     *
+     * Only the columns the boundary actually opens get a new cell, and each is
+     * shaped from the cell covering that column so widths, borders, margins and
+     * text direction survive.
+     */
+    function insertTableRow(
+      state: EditorState,
+      dispatch: ((tr: Transaction) => void) | undefined,
+      boundaryOffset: 0 | 1,
+    ): boolean {
       const context = getTableContext(state);
       if (
         !context.isInTable ||
@@ -1141,74 +1160,75 @@ export const TablePluginExtension = createExtension({
       ) {
         return false;
       }
-
-      if (dispatch) {
-        const tr = state.tr;
-        const rowNode = context.table.child(context.rowIndex);
-        const cells: PMNode[] = [];
-        // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
-        rowNode.forEach((cell) => {
-          const paragraph = nodeTypeParagraph.create();
-          const cellAttrs = buildCellAttrsFromTemplate(cell);
-          cells.push(nodeTypeTableCell.create(cellAttrs, paragraph));
-        });
-        const newRow = nodeTypeTableRow.create(
-          {
-            height: rowNode.attrs["height"] ?? 360,
-            heightRule: rowNode.attrs["heightRule"] ?? "atLeast",
-          },
-          cells,
-        );
-
-        let rowPos = context.tablePos + 1;
-        for (let i = 0; i < context.rowIndex; i++) {
-          rowPos += context.table.child(i).nodeSize;
-        }
-
-        tr.insert(rowPos, newRow);
-        dispatch(tr.scrollIntoView());
+      if (!dispatch) {
+        return true;
       }
+
+      const { table, tablePos, rowIndex } = context;
+      const boundaryRow = rowIndex + boundaryOffset;
+      const map = TableMap.get(table);
+      const tableStart = tablePos + 1;
+      const tr = state.tr;
+
+      const cells: PMNode[] = [];
+      const extended = new Set<number>();
+      let lastTemplatePos = -1;
+      for (let column = 0; column < map.width; column += 1) {
+        const below = boundaryRow < map.height ? map.map[boundaryRow * map.width + column] : undefined;
+        const above = boundaryRow > 0 ? map.map[(boundaryRow - 1) * map.width + column] : undefined;
+        if (below !== undefined && below === above) {
+          // One cell covers both sides of the boundary: grow it by a row.
+          if (!extended.has(below)) {
+            extended.add(below);
+            const merged = table.nodeAt(below);
+            if (merged) {
+              tr.setNodeMarkup(tableStart + below, undefined, {
+                ...merged.attrs,
+                rowspan: (Number(merged.attrs["rowspan"]) || 1) + 1,
+              });
+            }
+          }
+          continue;
+        }
+        const templatePos = below ?? above;
+        // A colspan cell reports the same position for every column it covers.
+        if (templatePos === undefined || templatePos === lastTemplatePos) {
+          continue;
+        }
+        lastTemplatePos = templatePos;
+        cells.push(
+          nodeTypeTableCell.create(
+            buildCellAttrsFromTemplate(table.nodeAt(templatePos)),
+            nodeTypeParagraph.create(),
+          ),
+        );
+      }
+
+      const rowNode = table.child(rowIndex);
+      const newRow = nodeTypeTableRow.create(
+        {
+          height: rowNode.attrs["height"] ?? 360,
+          heightRule: rowNode.attrs["heightRule"] ?? "atLeast",
+        },
+        cells,
+      );
+
+      let rowPos = tableStart;
+      for (let i = 0; i < boundaryRow; i += 1) {
+        rowPos += table.child(i).nodeSize;
+      }
+
+      tr.insert(rowPos, newRow);
+      dispatch(tr.scrollIntoView());
       return true;
     }
 
+    function addRowAbove(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
+      return insertTableRow(state, dispatch, 0);
+    }
+
     function addRowBelow(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
-      const context = getTableContext(state);
-      if (
-        !context.isInTable ||
-        context.rowIndex === undefined ||
-        !context.table ||
-        context.tablePos === undefined
-      ) {
-        return false;
-      }
-
-      if (dispatch) {
-        const tr = state.tr;
-        const rowNode = context.table.child(context.rowIndex);
-        const cells: PMNode[] = [];
-        // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
-        rowNode.forEach((cell) => {
-          const paragraph = nodeTypeParagraph.create();
-          const cellAttrs = buildCellAttrsFromTemplate(cell);
-          cells.push(nodeTypeTableCell.create(cellAttrs, paragraph));
-        });
-        const newRow = nodeTypeTableRow.create(
-          {
-            height: rowNode.attrs["height"] ?? 360,
-            heightRule: rowNode.attrs["heightRule"] ?? "atLeast",
-          },
-          cells,
-        );
-
-        let rowPos = context.tablePos + 1;
-        for (let i = 0; i <= context.rowIndex; i++) {
-          rowPos += context.table.child(i).nodeSize;
-        }
-
-        tr.insert(rowPos, newRow);
-        dispatch(tr.scrollIntoView());
-      }
-      return true;
+      return insertTableRow(state, dispatch, 1);
     }
 
     function deleteRow(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
