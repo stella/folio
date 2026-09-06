@@ -9,7 +9,8 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { createPageComposer, walkRegions } from "./regions";
+import { createPageComposer } from "./regions";
+import { walkRegions } from "../primitives";
 import { BLACK } from "../primitives";
 import type { DisplayHitRegion, DisplayPrimitive } from "../types";
 

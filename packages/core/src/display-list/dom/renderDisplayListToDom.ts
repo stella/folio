@@ -34,12 +34,12 @@
 
 import { panic } from "better-result";
 
-import { walkRegions } from "../build/regions";
 import {
   DOUBLE_STROKE_GAP_FACTOR,
   STROKE_DASH_FACTORS,
   WAVY_STROKE_AMPLITUDE_FACTOR,
   WAVY_STROKE_PERIOD_FACTOR,
+  walkRegions,
 } from "../primitives";
 import type {
   DisplayClipGroup,
