@@ -36,6 +36,33 @@ describe("normalizeLineText", () => {
     expect(normalizeLineText("\uf0b7 First item")).toBe("• First item");
   });
 
+  test("folds Persian code points a PDF font map returns for Arabic letters", () => {
+    expect(
+      normalizeLineText(
+        "\u0648\u0632\u0627\u0631\u0629 \u0627\u0644\u062a\u0639\u0644\u06cc\u0645",
+      ),
+    ).toBe(
+      normalizeLineText(
+        "\u0648\u0632\u0627\u0631\u0629 \u0627\u0644\u062a\u0639\u0644\u064a\u0645",
+      ),
+    );
+    expect(normalizeLineText("\u0627\u0644\u0645\u0642\u0628\u0648\u0644\u0629 \u06be\u064a")).toBe(
+      normalizeLineText("\u0627\u0644\u0645\u0642\u0628\u0648\u0644\u0629 \u0647\u064a"),
+    );
+  });
+
+  test("folds mirrored bracket pairs on an RTL line", () => {
+    expect(normalizeLineText(")\u0633\u0628\u0628 \u0627\u0644\u063a\u064a\u0627\u0628(")).toBe(
+      normalizeLineText("(\u0633\u0628\u0628 \u0627\u0644\u063a\u064a\u0627\u0628)"),
+    );
+  });
+
+  test("keeps bracket direction on an LTR line", () => {
+    expect(normalizeLineText(")Reason for absence(")).not.toBe(
+      normalizeLineText("(Reason for absence)"),
+    );
+  });
+
   test("folds CJK radical aliases emitted by PDF font maps", () => {
     expect(normalizeLineText("⺟甲⼄丙丁")).toBe("母甲乙丙丁");
   });

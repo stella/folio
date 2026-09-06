@@ -7,6 +7,35 @@ import { detectBaseDirection } from "../packages/core/src/utils/baseDirection";
 
 const RTL_LEADER_LINE_PATTERN = /^(?<page>[\p{Decimal_Number}]+)\s+…\s+(?<title>.+)$/u;
 
+const MIRRORABLE_BRACKET_PATTERN = /[()[\]{}]/u;
+const MIRRORABLE_BRACKETS_PATTERN = /[()[\]{}]/gu;
+const BRACKET_PAIR_REPRESENTATIVE: Record<string, string> = {
+  "(": "(",
+  ")": "(",
+  "[": "[",
+  "]": "[",
+  "{": "{",
+  "}": "{",
+};
+
+/**
+ * A PDF records the mirrored glyph an RTL line actually paints, while a DOM
+ * carries the logical character, so one extractor reports `)…(` where the other
+ * reports `(…)`. Neither text model observes painted mirroring (the browser
+ * mirrors at paint time), so comparing bracket direction on an RTL line only
+ * manufactures text differences. Fold each pair to one representative instead;
+ * LTR lines keep both characters distinct.
+ */
+const canonicalizeRtlBracketPairs = (text: string): string => {
+  if (!MIRRORABLE_BRACKET_PATTERN.test(text) || detectBaseDirection(text) !== "rtl") {
+    return text;
+  }
+  return text.replace(
+    MIRRORABLE_BRACKETS_PATTERN,
+    (bracket) => BRACKET_PAIR_REPRESENTATIVE[bracket] ?? bracket,
+  );
+};
+
 const normalizeRtlLeaderOrder = (text: string): string => {
   const match = text.match(RTL_LEADER_LINE_PATTERN);
   const page = match?.groups?.["page"];
@@ -30,11 +59,16 @@ export const normalizeLineText = (text: string): string => {
     .replace(/[­​-‍﻿]/gu, "")
     .replace(/\uf0b7/gu, "•")
     .replace(/\uf0e3/gu, "ã")
+    // A PDF's ToUnicode map answers shaped Arabic glyphs with the Persian code
+    // points (Farsi Yeh, Heh Doachashmee) even for documents that authored the
+    // Arabic letters, so extraction spelling would read as a text difference.
+    .replace(/\u06cc/gu, "\u064a")
+    .replace(/\u06be/gu, "\u0647")
     .replace(/\s*\.{3,}\s*/gu, " … ")
     .replace(/(?:\s*…\s*){2,}/gu, " … ")
     .replace(/\s+/gu, " ")
     .trim();
-  return normalizeRtlLeaderOrder(normalized);
+  return canonicalizeRtlBracketPairs(normalizeRtlLeaderOrder(normalized));
 };
 
 /** Levenshtein-based similarity in [0, 1]; 1 means identical. */
