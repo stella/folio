@@ -21,9 +21,24 @@ const BUILT_IN_ENTITIES = {
  * pass. Unsupported or malformed constructs return a sentinel so callers can
  * retain the general-purpose parser as a compatibility fallback.
  */
-export const parseStreamingXml = (xml: string): ParseXmlResult => {
+type AttributeValueSpan = { start: number; end: number };
+type OpenTagVisitor = (
+  element: XmlElement,
+  attributeValueSpans: ReadonlyMap<string, AttributeValueSpan>,
+) => ReadonlyMap<string, string> | null;
+
+type XmlReplacement = AttributeValueSpan & { value: string };
+type InternalParseXmlResult =
+  | { status: "parsed"; value: XmlElement; replacements: XmlReplacement[] }
+  | { status: "unsupported" };
+
+const parseStreamingXmlInternal = (
+  xml: string,
+  visitOpenTag?: OpenTagVisitor,
+): InternalParseXmlResult => {
   const root: XmlElement = { elements: [] };
   const stack: ElementFrame[] = [];
+  const replacements: XmlReplacement[] = [];
   let cursor = 0;
   let mergeAdjacentText = false;
 
@@ -91,13 +106,23 @@ export const parseStreamingXml = (xml: string): ParseXmlResult => {
       continue;
     }
 
-    const parsedTag = parseOpenTag(xml, open + 1, close);
+    const parsedTag = parseOpenTag(xml, open + 1, close, visitOpenTag !== undefined);
     if (parsedTag.status === "unsupported") {
       return parsedTag;
     }
 
     const parent = stack.at(-1)?.element ?? root;
     attachXmlNamespaceContext(parsedTag.element, parent.namespaceScope);
+    const rewritten = visitOpenTag?.(parsedTag.element, parsedTag.attributeValueSpans ?? new Map());
+    if (rewritten) {
+      for (const [attributeName, value] of rewritten) {
+        const span = parsedTag.attributeValueSpans?.get(attributeName);
+        if (!span) {
+          return { status: "unsupported" };
+        }
+        replacements.push({ ...span, value });
+      }
+    }
     appendElement(parent, parsedTag.element);
     if (!parsedTag.selfClosing) {
       if (stack.length >= FOLIO_XML_RESOURCE_LIMITS.maxDepth) {
@@ -112,7 +137,38 @@ export const parseStreamingXml = (xml: string): ParseXmlResult => {
   if (stack.length > 0) {
     return { status: "unsupported" };
   }
-  return { status: "parsed", value: root };
+  return { status: "parsed", value: root, replacements };
+};
+
+export const parseStreamingXml = (xml: string): ParseXmlResult => {
+  const parsed = parseStreamingXmlInternal(xml);
+  return parsed.status === "parsed"
+    ? { status: "parsed", value: parsed.value }
+    : { status: "unsupported" };
+};
+
+/** Rewrite selected decimal attribute values while preserving every other source byte. */
+export const rewriteStreamingXmlDecimalAttributes = (
+  xml: string,
+  visitOpenTag: OpenTagVisitor,
+): { status: "rewritten"; value: string } | { status: "unsupported" } => {
+  const parsed = parseStreamingXmlInternal(xml, visitOpenTag);
+  if (parsed.status === "unsupported") {
+    return parsed;
+  }
+  const chunks: string[] = [];
+  let cursor = 0;
+  for (const replacement of parsed.replacements.toSorted(
+    (left, right) => left.start - right.start,
+  )) {
+    if (!/^\d+$/u.test(replacement.value)) {
+      return { status: "unsupported" };
+    }
+    chunks.push(xml.slice(cursor, replacement.start), replacement.value);
+    cursor = replacement.end;
+  }
+  chunks.push(xml.slice(cursor));
+  return { status: "rewritten", value: chunks.join("") };
 };
 
 type ParsedOpenTag =
@@ -121,10 +177,16 @@ type ParsedOpenTag =
       element: XmlElement;
       name: string;
       selfClosing: boolean;
+      attributeValueSpans: ReadonlyMap<string, AttributeValueSpan> | undefined;
     }
   | { status: "unsupported" };
 
-const parseOpenTag = (xml: string, start: number, close: number): ParsedOpenTag => {
+const parseOpenTag = (
+  xml: string,
+  start: number,
+  close: number,
+  captureAttributeSpans: boolean,
+): ParsedOpenTag => {
   let cursor = skipWhitespace(xml, start, close);
   const nameStart = cursor;
   cursor = scanName(xml, cursor, close);
@@ -137,6 +199,9 @@ const parseOpenTag = (xml: string, start: number, close: number): ParsedOpenTag 
     return { status: "unsupported" };
   }
   let attributes: Record<string, string> | undefined;
+  const attributeValueSpans = captureAttributeSpans
+    ? new Map<string, AttributeValueSpan>()
+    : undefined;
   let selfClosing = false;
 
   while (cursor < close) {
@@ -183,6 +248,7 @@ const parseOpenTag = (xml: string, start: number, close: number): ParsedOpenTag 
     }
     attributes ??= {};
     attributes[attributeName] = decoded;
+    attributeValueSpans?.set(attributeName, { start: valueStart, end: cursor });
     cursor += 1;
   }
 
@@ -190,7 +256,7 @@ const parseOpenTag = (xml: string, start: number, close: number): ParsedOpenTag 
   if (attributes) {
     element.attributes = attributes;
   }
-  return { status: "parsed", element, name, selfClosing };
+  return { status: "parsed", element, name, selfClosing, attributeValueSpans };
 };
 
 const appendElement = (parent: XmlElement, child: XmlElement): void => {

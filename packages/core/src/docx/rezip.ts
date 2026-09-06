@@ -97,6 +97,7 @@ import {
   WORDPROCESSINGML_NAMESPACE_URIS,
   type XmlElement,
 } from "./xmlParser";
+import { normalizeRevisionIdsInXmlParts } from "./revisionIdNormalization";
 import { assertXmlResourceLimits } from "./xmlResourceLimits";
 import { isAllowedExternalWatermarkImageUrl } from "../watermark";
 
@@ -778,6 +779,22 @@ export type RepackOptions = {
  */
 const generateDocxZip = async (zip: JSZip, compressionLevel: number): Promise<ArrayBuffer> => {
   await reconcilePackageReferences(zip, compressionLevel);
+  const xmlParts = new Map<string, string>();
+  for (const [path, file] of Object.entries(zip.files)) {
+    if (!file.dir && path.startsWith("word/") && path.endsWith(".xml")) {
+      // oxlint-disable-next-line no-await-in-loop -- package parts share one revision-id namespace and must be collected before rewriting
+      xmlParts.set(path, await file.async("text"));
+    }
+  }
+  const normalizedParts = normalizeRevisionIdsInXmlParts(xmlParts);
+  for (const [path, xml] of normalizedParts) {
+    if (xml !== xmlParts.get(path)) {
+      zip.file(path, xml, {
+        compression: "DEFLATE",
+        compressionOptions: { level: compressionLevel },
+      });
+    }
+  }
   return zip.generateAsync({
     type: "arraybuffer",
     compression: "DEFLATE",
