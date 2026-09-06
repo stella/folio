@@ -71,10 +71,60 @@ type Fixture = {
   /** Optional override of the `w:document` open tag, e.g. for alt prefixes. */
   documentOpenTag?: string;
   documentCloseTag?: string;
+  /**
+   * Replaces the default `w:sectPr`. Page borders, and the header and footer
+   * references that select a story, are section properties.
+   */
+  sectionProps?: string;
+  /** Parts beyond the four every fixture has, by path inside the package. */
+  parts?: Record<string, string | Uint8Array>;
+  /** `<Override>` entries those parts need in `[Content_Types].xml`. */
+  contentTypes?: readonly { partName: string; contentType: string }[];
+  /** `<Default>` entries, for a media extension the package introduces. */
+  contentTypeDefaults?: readonly { extension: string; contentType: string }[];
+  /** Relationships from `word/document.xml` to those parts. */
+  documentRelationships?: readonly { id: string; type: string; target: string }[];
 };
+
+/** Relationship types, spelled once. */
+const REL = {
+  footnotes: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes",
+  header: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/header",
+  footer: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer",
+  image: "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+} as const;
+
+const CONTENT_TYPE = {
+  footnotes: "application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml",
+  header: "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml",
+  footer: "application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml",
+} as const;
+
+/**
+ * A 16x16 PNG, written here rather than checked in beside the fixtures: a
+ * picture watermark needs a real image part, and the smallest honest one is
+ * cheaper to generate than to store.
+ */
+const WATERMARK_PNG_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAFklEQVR42mM4ceISSYhhVMOohuGrAQA/ymIfmkHlDAAAAABJRU5ErkJggg==";
+
+const watermarkPng = (): Uint8Array => Uint8Array.from(Buffer.from(WATERMARK_PNG_BASE64, "base64"));
+
+/** The namespaces a VML watermark shape needs on its story's root element. */
+const STORY_NS =
+  'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"' +
+  ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"' +
+  ' xmlns:v="urn:schemas-microsoft-com:vml"' +
+  ' xmlns:o="urn:schemas-microsoft-com:office:office"';
 
 const DEFAULT_DOC_OPEN = `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml">`;
 const DEFAULT_DOC_CLOSE = `</w:document>`;
+
+// Variant root that also declares the relationships namespace, for a section
+// that names a header or footer part by `r:id`. A document that uses the
+// prefix without declaring it is not well-formed XML, however leniently a
+// given parser recovers from it.
+const RELATIONSHIP_DOC_OPEN = `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml">`;
 
 // Variant root that also declares the w16sdtdh namespace used by the
 // dataHash content control extension.
@@ -651,7 +701,212 @@ const FIXTURES: Fixture[] = [
     </w:p>`,
   },
 
-  // 27. `<w:placeholder>` with no `<w:docPart>` child. ECMA-376 §17.5.2.27
+  // 27. Footnotes: two references in the body and the notes they point at,
+  // with the separator and continuation separator Word writes. The band is
+  // reserved on the page the reference lands on, so a fixture with no notes
+  // exercises none of the pagination that makes footnotes hard.
+  {
+    filename: "step3-footnotes.docx",
+    body: `
+    <w:p>
+      <w:r><w:t xml:space="preserve">The purchase price is payable within thirty days</w:t></w:r>
+      <w:r><w:rPr><w:vertAlign w:val="superscript"/></w:rPr><w:footnoteReference w:id="2"/></w:r>
+      <w:r><w:t xml:space="preserve"> of the transfer of the share, against the invoice</w:t></w:r>
+      <w:r><w:rPr><w:vertAlign w:val="superscript"/></w:rPr><w:footnoteReference w:id="3"/></w:r>
+      <w:r><w:t>.</w:t></w:r>
+    </w:p>
+    <w:p>
+      <w:r><w:t>The parties confirm that no other consideration has been agreed.</w:t></w:r>
+    </w:p>`,
+    parts: {
+      "word/footnotes.xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:footnotes ${STORY_NS}>
+  <w:footnote w:type="separator" w:id="-1"><w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:separator/></w:r></w:p></w:footnote>
+  <w:footnote w:type="continuationSeparator" w:id="0"><w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:continuationSeparator/></w:r></w:p></w:footnote>
+  <w:footnote w:id="2">
+    <w:p>
+      <w:r><w:rPr><w:vertAlign w:val="superscript"/></w:rPr><w:footnoteRef/></w:r>
+      <w:r><w:t xml:space="preserve"> Counted from the day the transfer is registered, not from the day it is agreed.</w:t></w:r>
+    </w:p>
+  </w:footnote>
+  <w:footnote w:id="3">
+    <w:p>
+      <w:r><w:rPr><w:vertAlign w:val="superscript"/></w:rPr><w:footnoteRef/></w:r>
+      <w:r><w:t xml:space="preserve"> An invoice meeting the requirements of the VAT Act.</w:t></w:r>
+    </w:p>
+  </w:footnote>
+</w:footnotes>`,
+    },
+    contentTypes: [{ partName: "/word/footnotes.xml", contentType: CONTENT_TYPE.footnotes }],
+    documentRelationships: [{ id: "rId10", type: REL.footnotes, target: "footnotes.xml" }],
+  },
+
+  // 28. A text watermark, as Word writes one: VML WordArt in a header part,
+  // rotated to the diagonal. The header carries nothing else, so what the page
+  // shows behind its text is the watermark alone.
+  {
+    filename: "step3-watermark-text.docx",
+    documentOpenTag: RELATIONSHIP_DOC_OPEN,
+    body: `
+    <w:p><w:r><w:t>This copy is provided for review and is not for execution.</w:t></w:r></w:p>
+    <w:p><w:r><w:t>Every page of it carries the same mark.</w:t></w:r></w:p>`,
+    sectionProps: `
+    <w:sectPr>
+      <w:headerReference w:type="default" r:id="rId11"/>
+      <w:pgSz w:w="12240" w:h="15840"/>
+      <w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/>
+    </w:sectPr>`,
+    parts: {
+      "word/header1.xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:hdr ${STORY_NS}>
+  <w:p>
+    <w:r>
+      <w:pict>
+        <v:shape id="PowerPlusWaterMarkObject1" type="#_x0000_t136"
+                 style="position:absolute;margin-left:0;margin-top:0;width:415pt;height:207pt;rotation:315"
+                 fillcolor="#C0C0C0" stroked="f">
+          <v:textpath style="font-family:'Calibri';font-size:1pt" string="DRAFT"/>
+        </v:shape>
+      </w:pict>
+    </w:r>
+  </w:p>
+</w:hdr>`,
+    },
+    contentTypes: [{ partName: "/word/header1.xml", contentType: CONTENT_TYPE.header }],
+    documentRelationships: [{ id: "rId11", type: REL.header, target: "header1.xml" }],
+  },
+
+  // 29. A picture watermark: the same header slot, a VML image shape, and a
+  // real media part behind it. The image is what makes it different from #28 —
+  // a backend has to resolve the relationship and paint the bytes.
+  {
+    filename: "step3-watermark-picture.docx",
+    documentOpenTag: RELATIONSHIP_DOC_OPEN,
+    body: `
+    <w:p><w:r><w:t>The mark behind this page is an image rather than text.</w:t></w:r></w:p>
+    <w:p><w:r><w:t>It is anchored in the header and painted behind the body.</w:t></w:r></w:p>`,
+    sectionProps: `
+    <w:sectPr>
+      <w:headerReference w:type="default" r:id="rId11"/>
+      <w:pgSz w:w="12240" w:h="15840"/>
+      <w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/>
+    </w:sectPr>`,
+    parts: {
+      "word/header1.xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:hdr ${STORY_NS}>
+  <w:p>
+    <w:r>
+      <w:pict>
+        <v:shape id="WordPictureWatermark1" type="#_x0000_t75"
+                 style="position:absolute;margin-left:0;margin-top:0;width:300pt;height:300pt">
+          <v:imagedata r:id="rId12" o:title="mark"/>
+        </v:shape>
+      </w:pict>
+    </w:r>
+  </w:p>
+</w:hdr>`,
+      "word/_rels/header1.xml.rels": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId12" Type="${REL.image}" Target="media/watermark.png"/>
+</Relationships>`,
+      "word/media/watermark.png": watermarkPng(),
+    },
+    contentTypes: [{ partName: "/word/header1.xml", contentType: CONTENT_TYPE.header }],
+    contentTypeDefaults: [{ extension: "png", contentType: "image/png" }],
+    documentRelationships: [{ id: "rId11", type: REL.header, target: "header1.xml" }],
+  },
+
+  // 30. Page borders on all four sides, with two different line styles and a
+  // gap from the page edge. Borders are the construct where a stroke's
+  // alignment (centred on its path, not inside it) is visible at a corner.
+  {
+    filename: "step3-page-borders.docx",
+    body: `
+    <w:p><w:r><w:t>A bordered page.</w:t></w:r></w:p>
+    <w:p><w:r><w:t>The border sits at a stated distance from the page edge, and every corner is where two strokes meet.</w:t></w:r></w:p>`,
+    sectionProps: `
+    <w:sectPr>
+      <w:pgSz w:w="12240" w:h="15840"/>
+      <w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/>
+      <w:pgBorders w:offsetFrom="page">
+        <w:top w:val="single" w:sz="18" w:space="24" w:color="1F4E79"/>
+        <w:left w:val="dashed" w:sz="12" w:space="24" w:color="1F4E79"/>
+        <w:bottom w:val="single" w:sz="18" w:space="24" w:color="1F4E79"/>
+        <w:right w:val="dashed" w:sz="12" w:space="24" w:color="1F4E79"/>
+      </w:pgBorders>
+    </w:sectPr>`,
+  },
+
+  // 31. A header and a footer carrying page fields, with a different pair on
+  // the first page. The field values are the layout's own, so a renderer that
+  // paints the cached result instead of recomputing shows the wrong number on
+  // every page but the one Word last saved.
+  {
+    filename: "step3-header-footer-fields.docx",
+    documentOpenTag: RELATIONSHIP_DOC_OPEN,
+    body: `
+    <w:p><w:r><w:t>First page of the agreement.</w:t></w:r></w:p>
+    <w:p><w:r><w:br w:type="page"/></w:r></w:p>
+    <w:p><w:r><w:t>Second page, which takes the default header and footer.</w:t></w:r></w:p>
+    <w:p><w:r><w:br w:type="page"/></w:r></w:p>
+    <w:p><w:r><w:t>Third page, the same.</w:t></w:r></w:p>`,
+    sectionProps: `
+    <w:sectPr>
+      <w:headerReference w:type="default" r:id="rId11"/>
+      <w:headerReference w:type="first" r:id="rId13"/>
+      <w:footerReference w:type="default" r:id="rId12"/>
+      <w:titlePg/>
+      <w:pgSz w:w="12240" w:h="15840"/>
+      <w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/>
+    </w:sectPr>`,
+    parts: {
+      "word/header1.xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:hdr ${STORY_NS}>
+  <w:p>
+    <w:pPr><w:jc w:val="right"/></w:pPr>
+    <w:r><w:t xml:space="preserve">Share transfer agreement — page </w:t></w:r>
+    <w:r><w:fldChar w:fldCharType="begin"/></w:r>
+    <w:r><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r>
+    <w:r><w:fldChar w:fldCharType="separate"/></w:r>
+    <w:r><w:t>1</w:t></w:r>
+    <w:r><w:fldChar w:fldCharType="end"/></w:r>
+    <w:r><w:t xml:space="preserve"> of </w:t></w:r>
+    <w:r><w:fldChar w:fldCharType="begin"/></w:r>
+    <w:r><w:instrText xml:space="preserve"> NUMPAGES </w:instrText></w:r>
+    <w:r><w:fldChar w:fldCharType="separate"/></w:r>
+    <w:r><w:t>1</w:t></w:r>
+    <w:r><w:fldChar w:fldCharType="end"/></w:r>
+  </w:p>
+</w:hdr>`,
+      "word/header2.xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:hdr ${STORY_NS}>
+  <w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:t>Confidential</w:t></w:r></w:p>
+</w:hdr>`,
+      "word/footer1.xml": `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:ftr ${STORY_NS}>
+  <w:p>
+    <w:pPr><w:jc w:val="center"/></w:pPr>
+    <w:r><w:fldChar w:fldCharType="begin"/></w:r>
+    <w:r><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r>
+    <w:r><w:fldChar w:fldCharType="separate"/></w:r>
+    <w:r><w:t>1</w:t></w:r>
+    <w:r><w:fldChar w:fldCharType="end"/></w:r>
+  </w:p>
+</w:ftr>`,
+    },
+    contentTypes: [
+      { partName: "/word/header1.xml", contentType: CONTENT_TYPE.header },
+      { partName: "/word/header2.xml", contentType: CONTENT_TYPE.header },
+      { partName: "/word/footer1.xml", contentType: CONTENT_TYPE.footer },
+    ],
+    documentRelationships: [
+      { id: "rId11", type: REL.header, target: "header1.xml" },
+      { id: "rId13", type: REL.header, target: "header2.xml" },
+      { id: "rId12", type: REL.footer, target: "footer1.xml" },
+    ],
+  },
+
+  // 32. `<w:placeholder>` with no `<w:docPart>` child. ECMA-376 §17.5.2.27
   // nominally requires the docPart child, but Word tolerates its absence.
   // The parser must not crash and must not fabricate a placeholder string.
   {
@@ -671,18 +926,47 @@ const FIXTURES: Fixture[] = [
   },
 ];
 
+const contentTypesFor = (fixture: Fixture): string => {
+  const defaults = (fixture.contentTypeDefaults ?? [])
+    .map(
+      ({ extension, contentType }) =>
+        `\n  <Default Extension="${extension}" ContentType="${contentType}"/>`,
+    )
+    .join("");
+  const overrides = (fixture.contentTypes ?? [])
+    .map(
+      ({ partName, contentType }) =>
+        `\n  <Override PartName="${partName}" ContentType="${contentType}"/>`,
+    )
+    .join("");
+  return CONTENT_TYPES.replace("\n</Types>", `${defaults}${overrides}\n</Types>`);
+};
+
+const documentRelsFor = (fixture: Fixture): string => {
+  const extra = (fixture.documentRelationships ?? [])
+    .map(
+      ({ id, type, target }) => `\n  <Relationship Id="${id}" Type="${type}" Target="${target}"/>`,
+    )
+    .join("");
+  return DOCUMENT_RELS.replace("\n</Relationships>", `${extra}\n</Relationships>`);
+};
+
 async function buildFixture(fixture: Fixture): Promise<ArrayBuffer> {
   const zip = new JSZip();
-  zip.file("[Content_Types].xml", CONTENT_TYPES);
+  zip.file("[Content_Types].xml", contentTypesFor(fixture));
   zip.file("_rels/.rels", PACKAGE_RELS);
-  zip.file("word/_rels/document.xml.rels", DOCUMENT_RELS);
+  zip.file("word/_rels/document.xml.rels", documentRelsFor(fixture));
   zip.file("word/styles.xml", STYLES_XML);
+  for (const [partPath, content] of Object.entries(fixture.parts ?? {})) {
+    zip.file(partPath, content);
+  }
 
   const open = fixture.documentOpenTag ?? DEFAULT_DOC_OPEN;
   const close = fixture.documentCloseTag ?? DEFAULT_DOC_CLOSE;
   // Alt-prefix fixture also needs the body element to use the same prefix.
   const bodyTag = open.startsWith("<x:") ? "x:body" : "w:body";
-  const sectPr = open.startsWith("<x:") ? SECTION_PROPS.replace(/w:/gu, "x:") : SECTION_PROPS;
+  const section = fixture.sectionProps ?? SECTION_PROPS;
+  const sectPr = open.startsWith("<x:") ? section.replace(/w:/gu, "x:") : section;
 
   const documentXml =
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n` +
