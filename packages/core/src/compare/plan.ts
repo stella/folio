@@ -49,6 +49,7 @@ import type {
 } from "../ai-edits/types";
 import { alignFolioBlocks } from "../version-comparison";
 import { inlineFormattingSegments } from "./formatting";
+import { alignTableColumns, type TableColumnAlignmentStep } from "./column-alignment";
 import type { CompareChange, CompareChangeLocation } from "./types";
 
 /** Words a relocated block needs before the move pass will pair it. */
@@ -123,7 +124,8 @@ type CompareStep =
   | { type: "baseRow"; blocks: readonly FolioAIBlock[]; location: FolioAIBlockTableLocation }
   | { type: "targetRow"; blocks: readonly FolioAIBlock[]; location: FolioAIBlockTableLocation }
   | { type: "baseTable"; blocks: readonly FolioAIBlock[]; location: FolioAIBlockTableLocation }
-  | { type: "targetTable"; blocks: readonly FolioAIBlock[]; location: FolioAIBlockTableLocation };
+  | { type: "targetTable"; blocks: readonly FolioAIBlock[]; location: FolioAIBlockTableLocation }
+  | TableColumnAlignmentStep;
 
 /**
  * A maximal run of blocks that share a container: body text, or one table.
@@ -203,11 +205,26 @@ const rowLocation = (row: readonly FolioAIBlock[]): FolioAIBlockTableLocation | 
 const alignRowCells = (
   baseRow: readonly FolioAIBlock[],
   targetRow: readonly FolioAIBlock[],
+  baseColumnKeys?: ReadonlyMap<number, number>,
+  targetColumnKeys?: ReadonlyMap<number, number>,
 ): CompareStep[] => {
-  const byCell = (row: readonly FolioAIBlock[]): Map<number, FolioAIBlock[]> => {
+  const byCell = (
+    row: readonly FolioAIBlock[],
+    columnKeys: ReadonlyMap<number, number> | undefined,
+  ): Map<number, FolioAIBlock[]> => {
     const cells = new Map<number, FolioAIBlock[]>();
     for (const block of row) {
-      const cellIndex = block.table?.cellIndex ?? 0;
+      const table = block.table;
+      let cellIndex = table?.cellIndex ?? 0;
+      if (table && columnKeys) {
+        const alignedColumn = columnKeys.get(table.gridColumnIndex);
+        if (alignedColumn === undefined) {
+          return panic("A paired table cell has no aligned grid column", {
+            gridColumnIndex: table.gridColumnIndex,
+          });
+        }
+        cellIndex = alignedColumn;
+      }
       const blocks = cells.get(cellIndex);
       if (blocks) {
         blocks.push(block);
@@ -218,8 +235,8 @@ const alignRowCells = (
     return cells;
   };
 
-  const baseCells = byCell(baseRow);
-  const targetCells = byCell(targetRow);
+  const baseCells = byCell(baseRow, baseColumnKeys);
+  const targetCells = byCell(targetRow, targetColumnKeys);
   const cellIndexes = [...new Set([...baseCells.keys(), ...targetCells.keys()])].toSorted(
     (left, right) => left - right,
   );
@@ -347,6 +364,8 @@ const rowSimilarity = (
 const alignTableRows = (
   baseRows: readonly FolioAIBlock[][],
   targetRows: readonly FolioAIBlock[][],
+  baseColumnKeys?: ReadonlyMap<number, number>,
+  targetColumnKeys?: ReadonlyMap<number, number>,
 ): CompareStep[] => {
   const steps: CompareStep[] = [];
   const pushRow = (row: readonly FolioAIBlock[], side: "base" | "target"): void => {
@@ -379,7 +398,7 @@ const alignTableRows = (
         continue;
       }
     }
-    steps.push(...alignRowCells(baseRow, targetRow));
+    steps.push(...alignRowCells(baseRow, targetRow, baseColumnKeys, targetColumnKeys));
     baseCursor += 1;
     targetCursor += 1;
   }
@@ -395,7 +414,20 @@ const alignTableRows = (
 const buildTableSteps = (
   baseBlocks: readonly FolioAIBlock[],
   targetBlocks: readonly FolioAIBlock[],
-): CompareStep[] => alignTableRows(groupRows(baseBlocks), groupRows(targetBlocks));
+): CompareStep[] => {
+  const columns = alignTableColumns(baseBlocks, targetBlocks);
+  return columns
+    ? [
+        ...columns.steps,
+        ...alignTableRows(
+          groupRows(columns.baseBlocks),
+          groupRows(columns.targetBlocks),
+          columns.baseColumnKeys,
+          columns.targetColumnKeys,
+        ),
+      ]
+    : alignTableRows(groupRows(baseBlocks), groupRows(targetBlocks));
+};
 
 const buildBodySteps = (
   baseBlocks: readonly FolioAIBlock[],
@@ -766,6 +798,8 @@ const nextBaseBlockIdByStep = (steps: readonly CompareStep[]): (string | null)[]
       next = step.block.id;
     } else if (step?.type === "baseRow") {
       next = step.blocks[0]?.id ?? next;
+    } else if (step?.type === "baseColumn") {
+      next = step.blocks[0]?.id ?? next;
     }
   }
   return anchors;
@@ -782,10 +816,12 @@ const baseTableBlockOf = (step: CompareStep): FolioAIBlock | null => {
       return step.block.table ? step.block : null;
     case "baseRow":
     case "baseTable":
+    case "baseColumn":
       return step.blocks[0] ?? null;
     case "targetOnly":
     case "targetRow":
     case "targetTable":
+    case "targetColumn":
       return null;
     default: {
       const unreachable: never = step;
@@ -853,6 +889,20 @@ const rowCellTexts = (blocks: readonly FolioAIBlock[]): string[] => {
     byCell[cellIndex] = existing === undefined ? block.text : `${existing}\n${block.text}`;
   }
   return Array.from(byCell, (text) => text ?? "");
+};
+
+const columnCellTexts = (blocks: readonly FolioAIBlock[]): string[] => {
+  const byCell = new Map<string, string>();
+  for (const block of blocks) {
+    const table = block.table;
+    if (!table) {
+      continue;
+    }
+    const key = `${String(table.rowIndex)}:${String(table.cellIndex)}`;
+    const existing = byCell.get(key);
+    byCell.set(key, existing === undefined ? block.text : `${existing}\n${block.text}`);
+  }
+  return [...byCell.values()];
 };
 
 /**
@@ -1143,6 +1193,26 @@ export const planStoryCompare = ({
         operations.push({ id: nextOperationId(), type: "deleteTableRow", blockId: anchorBlockId });
         break;
       }
+      case "baseColumn": {
+        const anchorBlockId = step.blocks.at(0)?.id;
+        if (anchorBlockId === undefined) {
+          panic("A table column carried no blocks");
+        }
+        changes.push({
+          kind: "table-column-delete",
+          location: { story, cell: step.location },
+          tableIndex: step.location.tableIndex,
+          columnIndex: step.columnIndex,
+          cells: columnCellTexts(step.blocks),
+          baseBlockIds: step.blocks.map(({ id }) => id),
+        });
+        operations.push({
+          id: nextOperationId(),
+          type: "deleteTableColumn",
+          blockId: anchorBlockId,
+        });
+        break;
+      }
       case "baseTable": {
         const anchorBlockId = step.blocks[0]?.id;
         if (anchorBlockId === undefined) {
@@ -1214,6 +1284,24 @@ export const planStoryCompare = ({
           blockId: anchor.blockId,
           position: anchor.position,
           cellTexts: cells,
+        });
+        break;
+      }
+      case "targetColumn": {
+        changes.push({
+          kind: "table-column-insert",
+          location: { story, cell: step.location },
+          tableIndex: step.location.tableIndex,
+          columnIndex: step.columnIndex,
+          cells: columnCellTexts(step.blocks),
+          targetBlockIds: step.blocks.map(({ id }) => id),
+        });
+        operations.push({
+          id: nextOperationId(),
+          type: "insertTableColumn",
+          blockId: step.anchor.blockId,
+          position: step.anchor.position,
+          cellTexts: columnCellTexts(step.blocks),
         });
         break;
       }

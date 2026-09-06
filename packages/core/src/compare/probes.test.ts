@@ -23,6 +23,9 @@ import path from "node:path";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import type { FolioAIBlock } from "../ai-edits/types";
+import { createDocx } from "../docx/rezip";
+import type { Table, TableCell } from "../types/document";
+import { createEmptyDocument } from "../utils/createDocument";
 import { buildBodySequenceDocx } from "./__fixtures__/body-sequence";
 import { buildNestedTableDocx } from "./__fixtures__/nested-table";
 import {
@@ -48,6 +51,33 @@ const PROSE_BASE = readFixture("upstream-styled-content.docx");
 const TABLE_BASE = readFixture("upstream-with-tables.docx");
 /** Authored here: no corpus fixture carries numbering. */
 const LIST_BASE = await buildNumberedListDocx();
+
+type ColumnCell = { text: string; gridSpan?: number };
+
+const buildColumnTableDocx = (rows: readonly (readonly ColumnCell[])[]): Promise<ArrayBuffer> => {
+  const template = createEmptyDocument();
+  const cell = ({ text, gridSpan }: ColumnCell): TableCell => ({
+    type: "tableCell",
+    ...(gridSpan !== undefined && { formatting: { gridSpan } }),
+    content: [
+      {
+        type: "paragraph",
+        content: [{ type: "run", content: [{ type: "text", text }] }],
+      },
+    ],
+  });
+  const table: Table = {
+    type: "table",
+    rows: rows.map((cells) => ({ type: "tableRow", cells: cells.map(cell) })),
+  };
+  return createDocx({
+    ...template,
+    package: {
+      ...template.package,
+      document: { ...template.package.document, content: [table] },
+    },
+  });
+};
 
 const documentPartOf = async (buffer: ArrayBuffer): Promise<string> =>
   (await (await JSZip.loadAsync(buffer)).file("word/document.xml")?.async("string")) ?? "";
@@ -248,6 +278,81 @@ describe("single-mutation probes", () => {
       { type: "deleteTableRow", blockIndex: firstTableBlockIndex(TABLE_BLOCKS) },
     ]);
     expect(kinds).toEqual(["table-row-delete"]);
+  });
+
+  test("insert_table_column: a grid-aligned column is inserted beside merged neighbours", async () => {
+    const base = await buildColumnTableDocx([
+      [{ text: "Account details", gridSpan: 2 }, { text: "Status" }],
+      [{ text: "Fees" }, { text: "Annual" }, { text: "Open" }],
+    ]);
+    const target = await buildColumnTableDocx([
+      [{ text: "Account details", gridSpan: 2 }, { text: "Currency" }, { text: "Status" }],
+      [{ text: "Fees" }, { text: "Annual" }, { text: "EUR" }, { text: "Open" }],
+    ]);
+
+    const result = await compareDocx(base, target, OPTIONS);
+    if (result.isErr()) {
+      throw result.error;
+    }
+    expect(result.value.verification).toEqual({ status: "verified" });
+    expect(result.value.changes.map(({ kind }) => kind)).toEqual(["table-column-insert"]);
+    expect(await projectView(result.value.buffer, "final")).toEqual(
+      await projectView(target, "final"),
+    );
+    expect(await projectView(result.value.buffer, "original")).toEqual(
+      await projectView(base, "final"),
+    );
+  });
+
+  test("delete_table_column: physical-cell anchors resolve the matching grid column", async () => {
+    const base = await buildColumnTableDocx([
+      [{ text: "Account" }, { text: "Currency" }, { text: "Status" }],
+      [{ text: "Fees" }, { text: "EUR" }, { text: "Open" }],
+    ]);
+    const target = await buildColumnTableDocx([
+      [{ text: "Account" }, { text: "Status" }],
+      [{ text: "Fees" }, { text: "Open" }],
+    ]);
+
+    const result = await compareDocx(base, target, OPTIONS);
+    if (result.isErr()) {
+      throw result.error;
+    }
+    expect(result.value.verification).toEqual({ status: "verified" });
+    expect(result.value.changes.map(({ kind }) => kind)).toEqual(["table-column-delete"]);
+    expect(await projectView(result.value.buffer, "final")).toEqual(
+      await projectView(target, "final"),
+    );
+    expect(await projectView(result.value.buffer, "original")).toEqual(
+      await projectView(base, "final"),
+    );
+  });
+
+  test("multiple table columns round-trip in one comparison", async () => {
+    const base = await buildColumnTableDocx([
+      [{ text: "Account" }, { text: "Status" }],
+      [{ text: "Fees" }, { text: "Open" }],
+    ]);
+    const target = await buildColumnTableDocx([
+      [{ text: "Account" }, { text: "Currency" }, { text: "Region" }, { text: "Status" }],
+      [{ text: "Fees" }, { text: "EUR" }, { text: "EMEA" }, { text: "Open" }],
+    ]);
+
+    const result = await compareDocx(base, target, OPTIONS);
+    if (result.isErr()) {
+      throw result.error;
+    }
+    expect(result.value.verification).toEqual({ status: "verified" });
+    expect(result.value.changes.map(({ kind }) => kind)).toEqual([
+      "table-column-insert",
+      "table-column-insert",
+    ]);
+    expect(await projectView(result.value.buffer, "final")).toEqual(
+      await projectView(target, "final"),
+    );
+    expect(await projectView(result.value.buffer, "original")).toEqual(
+      await projectView(base, "final"),
+    );
   });
 
   /**
@@ -515,18 +620,17 @@ describe("single-mutation probes", () => {
   });
 
   test("unrepresentable_difference: refused by default, emitted and named on request", async () => {
-    // The target's row has a cell the base's row does not. No operation puts a
-    // paragraph inside a new cell, so the insertion lands beside the table and
-    // accepting cannot reproduce the target. The default refuses; the opt-in
-    // returns the redline it could build and names the invariant it broke.
+    // Every column is empty, so there is no evidence for which of the three
+    // target columns is new. Guessing would produce a plausible but misleading
+    // structural change; the conservative alignment leaves it unrepresented.
     const base = await buildBodySequenceDocx([
       { kind: "paragraph", text: "The schedule below records the agreed fees." },
-      { kind: "table", rows: [["Service"]] },
+      { kind: "table", rows: [["", ""]] },
       { kind: "paragraph", text: "This agreement is governed by the stated law." },
     ]);
     const target = await buildBodySequenceDocx([
       { kind: "paragraph", text: "The schedule below records the agreed fees." },
-      { kind: "table", rows: [["Service", "Fee payable on delivery"]] },
+      { kind: "table", rows: [["", "", ""]] },
       { kind: "paragraph", text: "This agreement is governed by the stated law." },
     ]);
 
@@ -540,7 +644,7 @@ describe("single-mutation probes", () => {
         expect(error.cause).toBe("container");
         expect(error.failures.length).toBeGreaterThan(0);
         // Structural facts only: nothing a document said.
-        expect(error.failures.at(0)?.detail).not.toContain("Fee payable");
+        expect(error.failures.at(0)?.detail).not.toContain("schedule below");
       }
     }
 

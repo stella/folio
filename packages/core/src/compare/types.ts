@@ -208,6 +208,25 @@ export type CompareChange =
       rowIndex: number;
       cells: readonly string[];
       baseBlockIds: readonly string[];
+    }
+  | {
+      kind: "table-column-insert";
+      location: CompareChangeLocation;
+      tableIndex: number;
+      /** Grid-column index in the target table. */
+      columnIndex: number;
+      /** Newly created physical-cell text in row order. */
+      cells: readonly string[];
+      targetBlockIds: readonly string[];
+    }
+  | {
+      kind: "table-column-delete";
+      location: CompareChangeLocation;
+      tableIndex: number;
+      /** Grid-column index in the base table. */
+      columnIndex: number;
+      cells: readonly string[];
+      baseBlockIds: readonly string[];
     };
 
 /** Why a part of the package is absent from `changes`. */

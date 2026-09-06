@@ -131,7 +131,7 @@ const projectStory = (
   const blocks = reviewer.readReviewedStory({ story, view })?.snapshot.blocks ?? [];
   return blocks.map(({ text, table, styleId, listLevel }) => {
     const container = table
-      ? `t${String(table.tableIndex)}r${String(table.rowIndex)}c${String(table.cellIndex)}p${String(table.paragraphIndex)}`
+      ? `t${String(table.tableIndex)}r${String(table.rowIndex)}c${String(table.cellIndex)}g${String(table.gridColumnIndex)}x${String(table.columnSpan)}y${String(table.rowSpan)}p${String(table.paragraphIndex)}`
       : "body";
     // The properties the comparison claims to compare are in the projection
     // too, or the self-check would pass a redline that reproduces every word

@@ -233,9 +233,12 @@ carries the current numbers and the failing cases.
   drops them on any edited paragraph and the comparison cannot produce them. A
   consumer reading the runs sees the move; one that groups multi-paragraph
   moves by range name does not.
-- **Column operations are out of scope** (2026-09-06). A column added or
-  removed reads as cell-level changes. `insertTableColumn` / `deleteTableColumn`
-  exist in the operation vocabulary; nothing detects the difference yet.
+- **Ambiguous column operations are refused** (2026-09-06). The comparison
+  emits `table-column-insert` / `table-column-delete` only when the unchanged
+  columns give one exact grid alignment. Grid coordinates and spans come from
+  `TableMap`; the snapshot's `cellIndex` remains a physical row-child index.
+  Repeated empty columns, edits that cut a horizontal span, and target columns
+  containing vertical spans stay unverified rather than being guessed.
 - **A table nested inside a cell cannot be added or removed** (2026-09-06). A
   whole table added or removed at document level is `table-insert` /
   `table-delete`; the same edit inside a cell would need `insertTable` to
