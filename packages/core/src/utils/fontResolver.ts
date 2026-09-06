@@ -408,6 +408,136 @@ const FONT_MAPPINGS: Record<string, FontMapping> = {
     }), // 1.1709 (was hand-transcribed 1.1626 — wrong)
   },
 
+  "arial narrow": {
+    googleFont: "Arimo",
+    category: "sans-serif",
+    fallbackStack: ["Arial Narrow", "Arimo", "Arial", "Helvetica", "sans-serif"],
+    singleLineRatio: singleLineRatioOf({
+      source: "hhea",
+      hheaAscent: 1916,
+      hheaDescent: -434,
+      hheaLineGap: 0,
+      unitsPerEm: 2048,
+    }), // 1.1475
+  },
+  helvetica: {
+    googleFont: "Arimo",
+    category: "sans-serif",
+    fallbackStack: ["Helvetica", "Arimo", "Arial", "sans-serif"],
+    singleLineRatio: singleLineRatioOf({
+      source: "measured",
+      ratio: 1.2,
+      note: "Measured at 11pt against a 13.2pt reference-layout line pitch. Helvetica's hhea ascent and descent sum to exactly one em, and that 1.0 ratio is not the rendered pitch, so the formula does not apply here.",
+    }),
+  },
+  "bookman old style": {
+    googleFont: "EB Garamond",
+    category: "serif",
+    fallbackStack: ["Bookman Old Style", "EB Garamond", "Georgia", "serif"],
+    singleLineRatio: singleLineRatioOf({
+      source: "hhea",
+      hheaAscent: 1929,
+      hheaDescent: -475,
+      hheaLineGap: 0,
+      unitsPerEm: 2048,
+    }), // 1.1738
+  },
+  "franklin gothic book": {
+    googleFont: "Libre Franklin",
+    category: "sans-serif",
+    fallbackStack: ["Franklin Gothic Book", "Libre Franklin", "Arial", "sans-serif"],
+    singleLineRatio: singleLineRatioOf({
+      source: "hhea",
+      hheaAscent: 1877,
+      hheaDescent: -445,
+      hheaLineGap: 0,
+      unitsPerEm: 2048,
+    }), // 1.1338
+  },
+  "calibri light": {
+    googleFont: "Carlito",
+    category: "sans-serif",
+    fallbackStack: ["Calibri Light", "Calibri", "Carlito", "Arial", "sans-serif"],
+    singleLineRatio: singleLineRatioOf({
+      source: "hhea",
+      hheaAscent: 1950,
+      hheaDescent: -550,
+      hheaLineGap: 0,
+      unitsPerEm: 2048,
+    }), // 1.2207
+  },
+  candara: {
+    googleFont: "Carlito",
+    category: "sans-serif",
+    fallbackStack: ["Candara", "Carlito", "Arial", "sans-serif"],
+    singleLineRatio: singleLineRatioOf({
+      source: "hhea",
+      hheaAscent: 1484,
+      hheaDescent: -564,
+      hheaLineGap: 452,
+      unitsPerEm: 2048,
+    }), // 1.2207
+  },
+  constantia: {
+    googleFont: "Caladea",
+    category: "serif",
+    fallbackStack: ["Constantia", "Caladea", "Georgia", "serif"],
+    singleLineRatio: singleLineRatioOf({
+      source: "hhea",
+      hheaAscent: 1538,
+      hheaDescent: -510,
+      hheaLineGap: 452,
+      unitsPerEm: 2048,
+    }), // 1.2207
+  },
+  corbel: {
+    googleFont: "Carlito",
+    category: "sans-serif",
+    fallbackStack: ["Corbel", "Carlito", "Arial", "sans-serif"],
+    singleLineRatio: singleLineRatioOf({
+      source: "hhea",
+      hheaAscent: 1523,
+      hheaDescent: -525,
+      hheaLineGap: 425,
+      unitsPerEm: 2048,
+    }), // 1.2075
+  },
+
+  // Arabic faces. Their line height is far above the 1.15 default, so leaving
+  // them unmapped understates every line box by a third or more.
+  dubai: {
+    googleFont: "Noto Sans Arabic",
+    category: "sans-serif",
+    fallbackStack: ["Dubai", "Noto Sans Arabic", "Arial", "sans-serif"],
+    singleLineRatio: singleLineRatioOf({
+      source: "hhea",
+      hheaAscent: 1129,
+      hheaDescent: -559,
+      hheaLineGap: 0,
+      unitsPerEm: 1000,
+    }), // 1.688
+  },
+  "simplified arabic": {
+    googleFont: "Noto Naskh Arabic",
+    category: "serif",
+    fallbackStack: ["Simplified Arabic", "Noto Naskh Arabic", "Times New Roman", "serif"],
+    singleLineRatio: singleLineRatioOf({
+      source: "measured",
+      ratio: 1.6582,
+      note: "Measured at 11pt against an 18.24pt reference-layout line pitch; the face ships with the office suite, not as a readable font file.",
+    }),
+  },
+  "sakkal majalla": {
+    googleFont: "Noto Naskh Arabic",
+    category: "serif",
+    fallbackStack: ["Sakkal Majalla", "Noto Naskh Arabic", "Times New Roman", "serif"],
+    singleLineRatio: singleLineRatioOf({
+      source: "measured",
+      ratio: 1.3964,
+      note: "Measured at 11pt against a 15.36pt reference-layout line pitch; the face ships with the office suite, not as a readable font file.",
+    }),
+  },
+
   // CJK fonts
   "ms mincho": {
     googleFont: "Noto Serif JP",
