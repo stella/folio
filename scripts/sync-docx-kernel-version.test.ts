@@ -21,19 +21,15 @@ test("version changes synchronize every inherited crate and reach a fixed point"
       path.join(root, "Cargo.toml"),
       '[workspace]\nmembers = ["crates/*"]\nresolver = "2"\n\n[workspace.package]\nversion = "1.0.0"\n',
     );
-    const names = [
-      "stella-docx-kernel",
-      "stella-text-shaper",
-      "future-member",
-      "independent-member",
-    ];
+    const independentMember = "independent-member";
+    const names = ["stella-docx-kernel", "stella-text-shaper", "future-member", independentMember];
     for (const name of names) {
       const crate = path.join(root, "crates", name);
       await mkdir(path.join(crate, "src"), { recursive: true });
       await writeFile(path.join(crate, "src/lib.rs"), "pub const VALUE: u8 = 1;\n");
       await writeFile(
         path.join(crate, "Cargo.toml"),
-        `[package]\nname = "${name}"\n${name === "independent-member" ? 'version = "0.5.0"' : "version.workspace = true"}\nedition = "2021"\n`,
+        `[package]\nname = "${name}"\n${name === independentMember ? 'version = "0.5.0"' : "version.workspace = true"}\nedition = "2021"\n`,
       );
     }
     const run = (command: string[]) =>
@@ -54,7 +50,7 @@ test("version changes synchronize every inherited crate and reach a fixed point"
       const lock = await readFile(path.join(root, "Cargo.lock"), "utf8");
       for (const name of names) {
         expect(lock).toContain(
-          `name = "${name}"\nversion = "${name === "independent-member" ? "0.5.0" : version}"`,
+          `name = "${name}"\nversion = "${name === independentMember ? "0.5.0" : version}"`,
         );
       }
       expect(check().exitCode).toBe(0);
