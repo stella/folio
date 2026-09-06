@@ -94,6 +94,14 @@ Timings mean nothing without these, so a failing invariant fails the run.
 `--baseline` records a SHA-256 of every product; `--check` reruns and reports
 any that moved. That is how a performance change proves it altered nothing.
 
+A digest that moves needs a reason in the pull request that moves it. The
+recorded set was last re-taken when blank paragraphs became blocks: the
+generated documents themselves changed, because a body may not end with a
+table and the classes that ended on one now carry the paragraph the format
+requires; and the redline's shape changed where a paragraph is appended at a
+container's edge, where a deleted block held an image, and wherever a revision
+used to land on a zero-width anchor.
+
 ## An external corpus (local only)
 
 `--corpus <dir>` adds pairs from a directory outside the repository. Nothing
@@ -142,10 +150,10 @@ prints must be safe to quote anywhere.
 
 One bucket is not a defect. `round-trip-invisible-structure` collects the pairs
 whose every block matches, in order, at coordinates the block model cannot
-reach: the snapshot skips empty textblocks, so a cell holding a blank paragraph
-reports its visible paragraph at `p1` and no operation can put a block there.
-Those are separated from redlines that actually lost content rather than
-resolved by loosening the self-check.
+reach: the snapshot skips a hidden row's whole subtree on purpose, so a table
+hiding a row on one side only shifts every later row's index and no operation
+reaches those positions. Those are separated from redlines that actually lost
+content rather than resolved by loosening the self-check.
 
 Unlike the measurement modes this runs in one process. A refusal is a yes or
 no that no warm JIT can change, so a process per pair would turn a half-minute

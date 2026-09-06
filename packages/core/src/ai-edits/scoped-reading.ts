@@ -1,3 +1,4 @@
+import { isFolioAIContentBlock } from "./snapshot";
 import type {
   FolioAIEditSnapshot,
   FolioDocumentOutline,
@@ -30,7 +31,9 @@ export const getFolioDocumentOutline = (snapshot: FolioAIEditSnapshot): FolioDoc
   const parentStack: FolioDocumentOutlineEntry[] = [];
 
   for (const block of snapshot.blocks) {
-    if (block.headingLevel === undefined) {
+    // A heading-styled blank paragraph is not a section: it has no text to
+    // name it, and every one of them would hash alike and collide as handles.
+    if (block.headingLevel === undefined || !isFolioAIContentBlock(block)) {
       continue;
     }
     const handle = toSectionHandle(snapshot, block.id, block.headingLevel);
@@ -80,10 +83,19 @@ export const readFolioDocumentSection = (
     return { status: "missing" };
   }
 
+  // The same test the outline applies, or the two disagree about what a
+  // section is: a heading-styled BLANK paragraph is not one, and treating it
+  // as a boundary here ended the section early and dropped everything the
+  // outline still counts as inside it.
   let endIndex = snapshot.blocks.length;
   for (let index = startIndex + 1; index < snapshot.blocks.length; index++) {
     const block = snapshot.blocks.at(index);
-    if (block?.headingLevel !== undefined && block.headingLevel <= heading.level) {
+    if (
+      block !== undefined &&
+      block.headingLevel !== undefined &&
+      block.headingLevel <= heading.level &&
+      isFolioAIContentBlock(block)
+    ) {
       endIndex = index;
       break;
     }
@@ -94,7 +106,9 @@ export const readFolioDocumentSection = (
     section: {
       handle,
       heading,
-      blocks: snapshot.blocks.slice(startIndex, endIndex),
+      // A section is what a reader would read. The blank paragraphs between
+      // its blocks are part of the document's shape, not part of the section.
+      blocks: snapshot.blocks.slice(startIndex, endIndex).filter(isFolioAIContentBlock),
     },
   };
 };

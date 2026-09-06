@@ -75,6 +75,31 @@ describe("scoped document reading", () => {
     }
   });
 
+  // The outline does not call a heading-styled BLANK paragraph a section: it
+  // has no text to name it. The section's END has to agree, or a blank heading
+  // closes a section the outline says is still open and everything after it is
+  // dropped from the read.
+  test("a heading-styled blank paragraph does not end a section", () => {
+    const withBlankHeading = makeSnapshot([
+      { id: "h1", kind: "heading", headingLevel: 1, text: "Agreement" },
+      { id: "p1", kind: "paragraph", text: "Opening" },
+      { id: "blank-0001", kind: "heading", headingLevel: 1, text: "" },
+      { id: "p2", kind: "paragraph", text: "Still the agreement" },
+    ]);
+    const handle = getFolioDocumentOutline(withBlankHeading).sections.at(0)?.handle;
+    if (handle === undefined) {
+      throw new Error("Expected outline handle");
+    }
+
+    const result = readFolioDocumentSection(withBlankHeading, handle);
+
+    expect(result.status).toBe("found");
+    if (result.status !== "found") {
+      return;
+    }
+    expect(result.section.blocks.map(({ id }) => id)).toEqual(["h1", "p1", "p2"]);
+  });
+
   test("distinguishes stale or structurally changed handles from deleted headings", () => {
     const handle = getFolioDocumentOutline(snapshot).sections.at(0)?.handle;
     if (handle === undefined) {

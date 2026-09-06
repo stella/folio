@@ -38,7 +38,9 @@ const readFixture = (filename: string): ArrayBuffer => {
 const buildSyntheticBase = async (): Promise<ArrayBuffer> => {
   const reviewer = await FolioDocxReviewer.fromBuffer(readFixture("upstream-empty.docx"));
   const anchor = reviewer.snapshot();
-  const anchorId = anchor.blocks.at(0)?.id ?? anchor.emptyDocumentAnchorId;
+  // An empty document is one blank paragraph, so its first block is the anchor
+  // the synthetic clauses are built on.
+  const anchorId = anchor.blocks.at(0)?.id;
   if (anchorId === undefined) {
     throw new Error("The empty fixture offers no anchor to build a synthetic base on.");
   }
@@ -144,6 +146,43 @@ const compareOrThrow = async (base: ArrayBuffer, target: ArrayBuffer): Promise<C
 /** Every block index of `blocks`, so a generated step always addresses a real block. */
 const blockIndexArb = (blocks: readonly FolioAIBlock[]) => fc.nat({ max: blocks.length - 1 });
 
+/**
+ * Body-level block indexes only.
+ *
+ * A relocation is a deletion here and an insertion there, and an insertion
+ * anchored inside a table cell cannot land in that cell: no operation places a
+ * paragraph in one, so the applier puts it beside the table instead. Moving a
+ * cell's paragraph out to the body, or a body paragraph into a cell, is
+ * therefore not an edit this vocabulary can express, and generating one tests
+ * the engine against a target it never claimed to reach. The property that
+ * every scripted difference is representable means scripted differences have
+ * to stay inside what the vocabulary covers; the cell case is the documented
+ * `container` limitation, measured on real documents rather than asserted here.
+ */
+const bodyBlockIndexArb = (blocks: readonly FolioAIBlock[]) => {
+  const bodyIndexes = blocks.flatMap((block, index) => (block.table ? [] : [index]));
+  return bodyIndexes.length === 0 ? null : fc.constantFrom(...bodyIndexes);
+};
+
+/**
+ * Words a relocated block needs before the move pass will pair its two halves.
+ * Mirrors `MOVE_MINIMUM_WORD_COUNT` in `plan.ts`: below the floor a base-only
+ * and a target-only block with the same text are not called one relocation,
+ * because boilerplate one-liners — and blank paragraphs, which have no words at
+ * all — would pair as spurious moves.
+ */
+const MOVE_MINIMUM_WORD_COUNT = 3;
+
+/** Body-level blocks with enough words for the move pass to pair them. */
+const movableBlockIndexArb = (blocks: readonly FolioAIBlock[]) => {
+  const indexes = blocks.flatMap((block, index) =>
+    !block.table && block.text.trim().split(/\s+/u).length >= MOVE_MINIMUM_WORD_COUNT
+      ? [index]
+      : [],
+  );
+  return indexes.length === 0 ? null : fc.constantFrom(...indexes);
+};
+
 const wordArb = fc.stringMatching(/^[A-Za-z]{3,9}$/u);
 const sentenceArb = fc
   .array(wordArb, { minLength: 3, maxLength: 6 })
@@ -215,12 +254,18 @@ const editStepArb = (blocks: readonly FolioAIBlock[]): fc.Arbitrary<EditScriptSt
       type: fc.constant("deleteParagraph" as const),
       blockIndex: blockIndexArb(blocks),
     }),
-    fc.record({
-      type: fc.constant("moveParagraph" as const),
-      blockIndex: blockIndexArb(blocks),
-      beforeBlockIndex: blockIndexArb(blocks),
-    }),
   ];
+
+  const bodyIndex = bodyBlockIndexArb(blocks);
+  if (bodyIndex) {
+    steps.push(
+      fc.record({
+        type: fc.constant("moveParagraph" as const),
+        blockIndex: bodyIndex,
+        beforeBlockIndex: bodyIndex,
+      }),
+    );
+  }
 
   const findable = findableWordArb(blocks);
   if (findable) {
@@ -463,11 +508,13 @@ describe("compareDocx", () => {
     async () => {
       const base = SYNTHETIC_BASE;
       const baseBlocks = BASE_CASES.at(-1)?.blocks ?? [];
+      const movable = movableBlockIndexArb(baseBlocks);
+      if (movable === null) {
+        throw new Error("The synthetic base offers no block the move pass would pair.");
+      }
       await fc.assert(
         fc.asyncProperty(
-          fc
-            .tuple(blockIndexArb(baseBlocks), blockIndexArb(baseBlocks))
-            .filter(([from, to]) => Math.abs(from - to) > 1),
+          fc.tuple(movable, movable).filter(([from, to]) => Math.abs(from - to) > 1),
           async ([blockIndex, beforeBlockIndex]) => {
             const scripted = await applyEditScript(base, [
               { type: "moveParagraph", blockIndex, beforeBlockIndex },

@@ -4,6 +4,7 @@ import {
   getFolioDocumentOperationIssues,
   getFolioDocumentOutline,
   hashFolioAIBlockText,
+  isFolioAIContentBlock,
   normalizeFolioAIBlockText,
   readFolioDocumentSection,
   type FolioAIBlock,
@@ -129,7 +130,10 @@ const dispatch = (
 const readDocument = (
   bridge: FolioAgentBridge,
 ): FolioToolCallResultFor<typeof FOLIO_AGENT_TOOL_NAMES.readDocument> => {
-  const { blocks } = bridge.snapshot();
+  // The snapshot carries the document's blank paragraphs so operations and the
+  // comparison can address them. A model reading the document wants its
+  // content, not a line per blank line.
+  const blocks = bridge.snapshot().blocks.filter(isFolioAIContentBlock);
   return ok(
     blocks.map((block) => ({
       blockId: block.id,
@@ -397,7 +401,7 @@ const findText = (
   }
 
   const scope = args["scope"];
-  let blocks = bridge.snapshot().blocks;
+  let blocks = bridge.snapshot().blocks.filter(isFolioAIContentBlock);
   let getTargetPage: ((target: FolioAITextRangeHandle) => number | null) | undefined;
   let pageFilter: number | undefined;
   if (scope !== undefined) {

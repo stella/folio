@@ -36,7 +36,7 @@ import type {
   MathEquation,
   RunContent,
 } from "../types/document";
-import { normalizeRevisionId } from "@stll/docx-core/model";
+import { normalizeRevisionId, PARAGRAPH_MARK_CHANGE_KINDS } from "@stll/docx-core/model";
 import { panic } from "better-result";
 import { isValidHexId } from "../utils/hexId";
 import {
@@ -1023,13 +1023,14 @@ function parseParagraphMarkChange(pPr: XmlElement | null): ParagraphMarkChange |
   if (!rPr) {
     return undefined;
   }
-  const ins = findChild(rPr, "w", "ins");
-  if (ins) {
-    return { kind: "ins", info: parseTrackedChangeInfo(ins) };
-  }
-  const del = findChild(rPr, "w", "del");
-  if (del) {
-    return { kind: "del", info: parseTrackedChangeInfo(del) };
+  // Driven by the kinds themselves, so a kind the model gains cannot be one
+  // the parser silently drops. `moveFrom` / `moveTo` come first: a moved
+  // paragraph's mark carries one of them INSTEAD of `del` / `ins`, never both.
+  for (const kind of PARAGRAPH_MARK_CHANGE_KINDS) {
+    const element = findChild(rPr, "w", kind);
+    if (element) {
+      return { kind, info: parseTrackedChangeInfo(element) };
+    }
   }
   return undefined;
 }

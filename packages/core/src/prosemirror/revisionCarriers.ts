@@ -1,5 +1,7 @@
 import type { Node as PMNode } from "prosemirror-model";
 
+import { PARAGRAPH_MARK_CHANGE_KINDS, type ParagraphMarkChangeKind } from "@stll/docx-core/model";
+
 import { expectParagraphAttrs } from "./attrs";
 
 export type FolioNodeRevisionKind =
@@ -10,6 +12,24 @@ export type FolioNodeRevisionKind =
   | "tablePropertiesChanged"
   | "rowPropertiesChanged"
   | "cellPropertiesChanged";
+
+/**
+ * Which carrier each paragraph-mark kind reports as. A relocation's break
+ * resolves as the insertion or deletion it is; the kind exists so a reader is
+ * told the two ends belong together, not to change what resolving does.
+ *
+ * Total over the kinds by construction, so a kind the model gains has to be
+ * given a carrier here rather than silently reporting none.
+ */
+const PARAGRAPH_MARK_KIND_CARRIERS = {
+  ins: "paragraphMarkInserted",
+  moveTo: "paragraphMarkInserted",
+  del: "paragraphMarkDeleted",
+  moveFrom: "paragraphMarkDeleted",
+} as const satisfies Record<ParagraphMarkChangeKind, FolioNodeRevisionKind>;
+
+const isParagraphMarkChangeKind = (value: unknown): value is ParagraphMarkChangeKind =>
+  PARAGRAPH_MARK_CHANGE_KINDS.some((kind) => kind === value);
 
 export type FolioNodeRevisionCarrier = {
   id: number;
@@ -86,15 +106,16 @@ export const getFolioNodeRevisionCarriers = (
     const to = nodePos + node.nodeSize;
     const paragraphAttrs = expectParagraphAttrs(node);
     const paragraphMark = node.attrs["pPrMark"];
-    if (
-      isObjectRecord(paragraphMark) &&
-      (paragraphMark["kind"] === "ins" || paragraphMark["kind"] === "del")
-    ) {
+    const paragraphMarkKind =
+      isObjectRecord(paragraphMark) && isParagraphMarkChangeKind(paragraphMark["kind"])
+        ? PARAGRAPH_MARK_KIND_CARRIERS[paragraphMark["kind"]]
+        : undefined;
+    if (paragraphMarkKind !== undefined && isObjectRecord(paragraphMark)) {
       const metadata = revisionMetadata(paragraphMark["info"]);
       if (metadata) {
         carriers.push({
           ...metadata,
-          type: paragraphMark["kind"] === "ins" ? "paragraphMarkInserted" : "paragraphMarkDeleted",
+          type: paragraphMarkKind,
           text: node.textContent,
           from,
           to,

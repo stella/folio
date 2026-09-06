@@ -13,9 +13,12 @@ type TextBoxAnchorOptions = {
   getInternalClipboardToken?: () => string;
 };
 
+/** The node name, for callers asking whether a paragraph holds any content. */
+export const TEXT_BOX_ANCHOR_NODE_NAME = "textBoxAnchor";
+
 export const TextBoxAnchorExtension = createNodeExtension<TextBoxAnchorOptions>({
-  name: "textBoxAnchor",
-  schemaNodeName: "textBoxAnchor",
+  name: TEXT_BOX_ANCHOR_NODE_NAME,
+  schemaNodeName: TEXT_BOX_ANCHOR_NODE_NAME,
   nodeSpec: (options) => ({
     inline: true,
     group: "inline",

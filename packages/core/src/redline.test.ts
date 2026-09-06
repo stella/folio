@@ -338,8 +338,13 @@ describe("generateRedlineDocx", () => {
     expect(changes.length).toBeGreaterThan(0);
     expect(new Set(changes.map((change) => change.author))).toEqual(new Set(["folio compare"]));
 
-    // Invariant 1: the as-accepted view (snapshot) equals the revised document.
-    expect(blockTexts(acceptView)).toEqual(revisedTexts);
+    // Invariant 1: the as-accepted view (snapshot) equals the revised
+    // document, plus the paragraph the revision removed. Its runs and its
+    // paragraph mark both carry `w:del`, so it stands blank where it was,
+    // before the Omega paragraph, and closes away only once the deletion is
+    // accepted for real.
+    const removedClauseIndex = revisedTexts.indexOf("Omega paragraph closes the document.");
+    expect(blockTexts(acceptView)).toEqual(revisedTexts.toSpliced(removedClauseIndex, 0, ""));
 
     // Invariant 2: rejecting every change restores the base document.
     const rejectView = await FolioDocxReviewer.fromBuffer(result.buffer);
@@ -460,9 +465,14 @@ describe("generateRedlineDocx", () => {
     expect(result.skipped).toEqual([]);
 
     const acceptView = await FolioDocxReviewer.fromBuffer(result.buffer);
+    // The relocated block is deleted where it stood and inserted again below.
+    // The deleted paragraph closed the body, so the break that went with it is
+    // the one before it: the preceding paragraph carries `w:pPr/w:rPr/w:del`.
+    // Until that is accepted the emptied paragraph is still there, blank.
     expect(blockTexts(acceptView)).toEqual([
       "Notices must be delivered in writing.",
       "Governing law shall be Czech law.",
+      "",
     ]);
 
     const rejectView = await FolioDocxReviewer.fromBuffer(result.buffer);
@@ -535,7 +545,9 @@ describe("generateRedlineDocx", () => {
 
     const rejectView = await FolioDocxReviewer.fromBuffer(result.buffer);
     rejectView.rejectAll();
-    expect(blockTexts(rejectView)).toEqual([]);
+    // The empty base is one blank paragraph, not nothing: a package always
+    // holds at least one. Rejecting the additions restores exactly that.
+    expect(blockTexts(rejectView)).toEqual([""]);
   });
 
   test("a custom author is recorded on the generated changes", async () => {

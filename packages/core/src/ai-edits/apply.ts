@@ -9,6 +9,7 @@ import type { ParagraphPropertyChangeAttrs } from "../prosemirror/schema/nodes";
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
 import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { requestDeterministicParaIds } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
+import { isZeroWidthAnchor } from "../prosemirror/zeroWidthAnchors";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
 import type { RunPropertyChange } from "../types/document";
 import { stripBlockIdentityAttrs } from "./block-identity";
@@ -18,7 +19,7 @@ import {
   parseInlineEmphasisRuns,
   stripInlineEmphasisMarkers,
 } from "./inline-emphasis";
-import { hashFolioAIBlockText, normalizeFolioAIBlockText } from "./snapshot";
+import { hashFolioAIBlockText, isHiddenTableRow, normalizeFolioAIBlockText } from "./snapshot";
 import {
   mergeTableRectangle,
   mergeTrackedVerticalTableCells,
@@ -38,6 +39,7 @@ import {
   findTableColumnInsertion,
   findTableRowInsertion,
   getTableColumnCoordinateKey,
+  splitCellParagraphTexts,
   type TableColumnDeletion,
   type TableColumnInsertion,
   type TableRowDeletion,
@@ -161,8 +163,6 @@ const SUGGESTED_SUPPORTED_OPERATION_TYPES: ReadonlySet<FolioAIEditOperation["typ
   "deleteTableColumn",
 ]);
 
-const PARAGRAPH_NODE_NAME = "paragraph";
-
 /**
  * The attrs that render a list label, cleared together whenever a paragraph
  * stops being a list item. `w:numPr` alone is not enough: the marker attrs the
@@ -245,20 +245,70 @@ const paragraphPropertiesPatch = (
   return Object.keys(patch).length > 0 ? patch : null;
 };
 
+const REVISION_MARK_NAMES: ReadonlySet<string> = new Set(["insertion", "deletion"]);
+
 /**
- * Whether a PARAGRAPH follows the position, so a paragraph mark there has
- * something to be joined with.
+ * Strip insertion and deletion marks from the zero-width anchors the batch
+ * touched.
  *
- * A paragraph-mark revision says "this break was added" or "this break was
- * removed", and resolving it joins the paragraph with the one after it. On the
- * last paragraph of a table cell or of the body there is nothing to join, and
- * a table is not something a paragraph mark can be joined with at all: the
- * revision could not do what it says, so it is not written.
+ * An operation marks a RANGE, and a bookmark boundary between two words is
+ * inside it. The format has no way to say a bookmark boundary was inserted or
+ * deleted outside a hyperlink, so a document carrying one is a document the
+ * serializer refuses to write — an edit that applied cleanly and then could
+ * not be saved. Marking is by range everywhere, so the guard is here, once,
+ * rather than at each of the dozen call sites that would have to remember.
  */
-const paragraphFollows = (doc: PMNode, position: number): boolean => {
-  const resolved = doc.resolve(Math.min(Math.max(position, 0), doc.content.size));
-  const next = resolved.parent.maybeChild(resolved.index());
-  return next?.type.name === PARAGRAPH_NODE_NAME;
+const withoutRevisionsOnZeroWidthAnchors = (tr: Transaction): Transaction => {
+  const anchors: { from: number; to: number; marks: readonly Mark[] }[] = [];
+  tr.doc.descendants((node, pos) => {
+    if (!isZeroWidthAnchor(node)) {
+      return true;
+    }
+    const marks = node.marks.filter(({ type }) => REVISION_MARK_NAMES.has(type.name));
+    if (marks.length > 0) {
+      anchors.push({ from: pos, to: pos + node.nodeSize, marks });
+    }
+    return false;
+  });
+  for (const { from, to, marks } of anchors) {
+    for (const mark of marks) {
+      tr = tr.removeMark(from, to, mark);
+    }
+  }
+  return tr;
+};
+
+/**
+ * The block's non-text inline children a block deletion still has to mark, as
+ * positions in `tr.doc`.
+ *
+ * Skips what is already deleted, so an earlier revision's run is not marked
+ * twice, and skips the zero-width anchors: they are not content, and the
+ * format cannot say one was deleted outside a hyperlink, so marking one
+ * produces a document the serializer refuses to write.
+ */
+const undeletedContentAtomRanges = (
+  tr: Transaction,
+  blockFrom: number,
+): { from: number; to: number }[] => {
+  const position = tr.mapping.map(blockFrom);
+  const block = tr.doc.nodeAt(position);
+  if (!block?.isTextblock) {
+    return [];
+  }
+  const ranges: { from: number; to: number }[] = [];
+  block.forEach((child, offset) => {
+    if (
+      child.isText ||
+      isZeroWidthAnchor(child) ||
+      child.marks.some(({ type }) => type.name === "deletion")
+    ) {
+      return;
+    }
+    const from = position + 1 + offset;
+    ranges.push({ from, to: from + child.nodeSize });
+  });
+  return ranges;
 };
 
 /** The in-scope paragraph properties as they stand, for a `w:pPrChange` record. */
@@ -537,8 +587,16 @@ const estimateRevisionIdReservation = (item: ResolvedOperation): number => {
 const collectLiveBlocksByHash = (doc: PMNode) => {
   const byHash = new Map<string, LiveBlockEntry[]>();
   doc.descendants((node, pos) => {
+    // The snapshot skips a hidden row's whole subtree, and resolution pairs a
+    // snapshot anchor with the live block at the same ordinal among the blocks
+    // sharing its hash. Counting hidden blocks here and not there shifts every
+    // later ordinal, which resolves an operation onto the wrong paragraph
+    // rather than skipping it. The two walks have to agree.
+    if (isHiddenTableRow(node)) {
+      return false;
+    }
     if (!node.isTextblock) {
-      return;
+      return true;
     }
     // Hash from the post-tracked-changes view so the snapshot
     // (taken with the same view) and live doc bucket the same
@@ -550,6 +608,7 @@ const collectLiveBlocksByHash = (doc: PMNode) => {
     const bucket = byHash.get(hash) ?? [];
     bucket.push({ from: pos, to: pos + node.nodeSize, node });
     byHash.set(hash, bucket);
+    return false;
   });
   return byHash;
 };
@@ -565,18 +624,27 @@ const collectLiveBlocksByHash = (doc: PMNode) => {
 const collectLiveBlocksByParaId = (doc: PMNode) => {
   const byParaId = new Map<string, LiveBlockEntry>();
   doc.descendants((node, pos) => {
+    // The same rule as the hash index and the snapshot: a hidden row's whole
+    // subtree is not walked. A paraId is only unique because Word keeps it so,
+    // and a package that reuses one across a hidden and a visible paragraph
+    // would otherwise resolve the visible block onto content no reader can
+    // see, and edit it there. All three walks have to agree on what exists.
+    if (isHiddenTableRow(node)) {
+      return false;
+    }
     if (!node.isTextblock) {
-      return;
+      return true;
     }
     const paraId: unknown = node.attrs["paraId"];
     if (typeof paraId !== "string" || paraId.length === 0) {
-      return;
+      return false;
     }
     // First-write-wins so an Enter-split duplicate (briefly co-existing
     // before the allocator re-issues) doesn't override the original.
     if (!byParaId.has(paraId)) {
       byParaId.set(paraId, { from: pos, to: pos + node.nodeSize, node });
     }
+    return false;
   });
   return byParaId;
 };
@@ -666,7 +734,9 @@ const buildTableNode = ({ schema, rows, revision }: BuildTableNodeOptions): PMNo
       cells.map((text) =>
         cellType.create(
           null,
-          paragraphType.create(null, text.length > 0 ? schema.text(text) : null),
+          splitCellParagraphTexts(text).map((line) =>
+            paragraphType.create(null, line.length > 0 ? schema.text(line) : null),
+          ),
         ),
       ),
     ),
@@ -1362,26 +1432,29 @@ const applyFolioAIEditOperationsInternal = ({
         }
         // A new paragraph brings a new paragraph MARK, and the format records
         // one: `w:pPr/w:rPr/w:ins`, so rejecting closes the paragraph away
-        // instead of leaving an empty one where its words were. The mark
-        // belongs to the paragraph it ends, so the last inserted paragraph
-        // only carries one when a sibling follows it to be joined with.
+        // instead of leaving an empty one where its words were.
         //
-        // Read from the transaction rather than the original document: the
-        // batch applies right to left, so a paragraph an earlier operation
-        // inserted after this position is already there, and is exactly the
-        // sibling the last of these paragraphs would be joined with.
-        if (producesTrackedChanges && !isSuggested && !isPairedMove(operation.moveId)) {
-          const followsASibling = paragraphFollows(tr.doc, tr.mapping.map(item.from));
+        // Every new paragraph carries its own, including the last of a run
+        // appended at the end of a container. Standing the ANCHOR's mark in
+        // for that last one reads closer to what an editor writes, but it is
+        // only equivalent while the two stay adjacent, and a later operation
+        // in the same batch — a table inserted between them — separates them.
+        // The mark then joins the anchor to the table, which is nothing, and
+        // the appended paragraph survives a reject that should have closed it.
+        //
+        // Marking the paragraph itself needs no such adjacency: rejecting
+        // strips its inserted runs and then removes the emptied paragraph when
+        // there is nothing to join it with (see `resolveRevisions`), which is
+        // the same document either way.
+        const marksParagraphs = producesTrackedChanges && !isSuggested;
+        if (marksParagraphs) {
           for (const [index, node] of nodes.entries()) {
-            if (index === nodes.length - 1 && !followsASibling) {
-              continue;
-            }
             const revisionId = revisionSeed++;
             nodes[index] = node.type.create(
               {
                 ...node.attrs,
                 pPrMark: {
-                  kind: "ins",
+                  kind: isPairedMove(operation.moveId) ? "moveTo" : "ins",
                   info: { id: revisionId, author, date, ...trackedRevisionExtras },
                 },
               },
@@ -1657,33 +1730,45 @@ const applyFolioAIEditOperationsInternal = ({
 
         if (deletionType) {
           const revisionId = revisionSeed++;
-          tr = tr.addMark(
-            item.from,
-            item.to,
-            deletionType.create({
-              revisionId,
-              author,
-              date,
-              ...(isPairedMove(item.operation.moveId) && { moveKind: "moveFrom" }),
-              ...trackedRevisionExtras,
-            }),
-          );
+          const deletionMark = deletionType.create({
+            revisionId,
+            author,
+            date,
+            ...(isPairedMove(item.operation.moveId) && { moveKind: "moveFrom" }),
+            ...trackedRevisionExtras,
+          });
+          tr = tr.addMark(item.from, item.to, deletionMark);
+          // The range above spans the block's clean TEXT, so an inline image or
+          // field sits outside it whenever it leads or trails the words.
+          // Deleting a block deletes what is in it: left unmarked, accepting
+          // the deletion kept a paragraph standing around an orphan image.
+          for (const { from, to } of undeletedContentAtomRanges(tr, item.blockFrom)) {
+            tr = tr.addMark(from, to, deletionMark);
+          }
           appliedRevisionIds = [revisionId];
           // Deleting a paragraph's words leaves its paragraph mark behind, and
           // an accepted redline then holds a blank line where the paragraph
           // was: a deleted paragraph carries `w:pPr/w:rPr/w:del` as well as
-          // its deleted runs. The mark belongs to the paragraph it ends, so
-          // the last paragraph of a cell or of the body keeps its own: there
-          // is no sibling to join with. A relocation is left alone — a moved
-          // paragraph's mark is `w:moveFrom`, and writing `w:del` there would
-          // report the move as a deletion as well.
-          if (
-            !isPairedMove(item.operation.moveId) &&
-            paragraphFollows(tr.doc, tr.mapping.map(item.blockTo))
-          ) {
+          // its deleted runs.
+          //
+          // A mark belongs to the paragraph it ends, so the paragraph's own
+          // mark is the one that went. That holds wherever it sat: resolving
+          // the mark joins it with the next paragraph when there is one, and
+          // removes the paragraph outright when there is not, which is what a
+          // document holds after a paragraph before a table is deleted. The
+          // only paragraph that cannot say it is the one its parent cannot do
+          // without: a cell must contain a paragraph, so the last one in a
+          // cell keeps its mark and stays blank.
+          //
+          // A relocation's source break is `w:moveFrom`, not `w:del`: the two
+          // resolve alike, and the kind is what tells a reader this end has a
+          // matching one elsewhere rather than being a deletion of its own.
+          const markPosition = tr.mapping.map(item.blockFrom);
+          const parent = tr.doc.resolve(markPosition).parent;
+          if (parent.childCount > 1 && tr.doc.nodeAt(markPosition)?.attrs["pPrMark"] == null) {
             const markRevisionId = revisionSeed++;
-            tr = tr.setNodeAttribute(item.blockFrom, "pPrMark", {
-              kind: "del",
+            tr = tr.setNodeAttribute(markPosition, "pPrMark", {
+              kind: isPairedMove(item.operation.moveId) ? "moveFrom" : "del",
               info: { id: markRevisionId, author, date, ...trackedRevisionExtras },
             });
             appliedRevisionIds = [revisionId, markRevisionId];
@@ -1891,6 +1976,7 @@ const applyFolioAIEditOperationsInternal = ({
   }
 
   if (tr.docChanged) {
+    tr = withoutRevisionsOnZeroWidthAnchors(tr);
     if (revisionStamp) {
       // Paragraphs this batch creates get their `w14:paraId` from the
       // allocator plugin, which is random by default. A stamped batch has
@@ -2293,14 +2379,11 @@ const resolveOperation = ({
   }
 
   if (operation.type === "insertAfterBlock" || operation.type === "insertBeforeBlock") {
-    // An empty `text` is normally an error, but a page-break-only
-    // paragraph is legitimate (the user just wants whitespace +
-    // forced break). Letting it through with no inline content
-    // means the inserted block renders as an empty paragraph that
-    // starts a new page.
-    if (operation.text.length === 0 && operation.pageBreakBefore !== true) {
-      return { type: "skip", reason: "emptyOperation" };
-    }
+    // An empty `text` inserts a blank paragraph. That is a real edit — a blank
+    // line between two clauses is something a document says — and it is the
+    // only way to write one, so it is not refused. An insertion always changes
+    // the document: there is no empty insert that would leave it as it was.
+    //
     // If the anchor lives inside a `tableCell`, the model meant
     // "place the new block adjacent to the table", not "stuff it
     // into the cell". Override the insertion bounds to the table's
@@ -2359,7 +2442,11 @@ const resolveOperation = ({
   if (operation.type === "insertTableRow") {
     const position = operation.position ?? "after";
     const insertion = findTableRowInsertion({ doc, blockFrom, position });
-    if (!insertion || (operation.cellTexts?.length ?? 0) > insertion.cells.length) {
+    // Sized against the table's COLUMN count, which is what a caller reading
+    // the table counts. `cells.length` is smaller whenever a cell spans
+    // columns or a row above spans down into this one, and refusing on that
+    // would refuse a row the table can perfectly well hold.
+    if (!insertion || (operation.cellTexts?.length ?? 0) > insertion.columnCount) {
       return { type: "skip", reason: "unsupportedBlock" };
     }
     return {
@@ -2645,25 +2732,32 @@ const resolveOperation = ({
     const range = getTextRangeFromCleanBlock(cleanBlock);
     if (!range) {
       const insertionPoint = cleanBlock.offsets.at(0);
-      if (
-        operation.type === "replaceBlock" &&
-        currentText.length === 0 &&
-        operation.text.length > 0 &&
-        insertionPoint !== undefined
-      ) {
-        return {
-          type: "resolved",
-          operation: {
-            operation,
-            from: insertionPoint,
-            to: insertionPoint,
-            blockFrom,
-            blockTo,
-            blockNode,
-          },
-        };
+      if (insertionPoint === undefined) {
+        return { type: "skip", reason: "unsupportedBlock" };
       }
-      return { type: "skip", reason: "unsupportedBlock" };
+      // A blank paragraph has no run range to mark. Deleting one, or writing
+      // into one, is still an edit: what changes is the paragraph itself, and
+      // its MARK is where the revision goes. An empty range resolves both —
+      // `replaceBlock` inserts at it, `deleteBlock` marks nothing inline and
+      // lets the paragraph-mark deletion carry the change.
+      const resolvesOnABlank =
+        operation.type === "deleteBlock"
+          ? true
+          : currentText.length === 0 && operation.text.length > 0;
+      if (!resolvesOnABlank) {
+        return { type: "skip", reason: "unsupportedBlock" };
+      }
+      return {
+        type: "resolved",
+        operation: {
+          operation,
+          from: insertionPoint,
+          to: insertionPoint,
+          blockFrom,
+          blockTo,
+          blockNode,
+        },
+      };
     }
     // The model occasionally emits replaceBlock with text identical
     // to the live block's clean text — usually as a side effect of

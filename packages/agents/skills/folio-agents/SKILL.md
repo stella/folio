@@ -124,7 +124,8 @@ stay exported for validation-only paths.
 - Block ids (`blockId`) and comment ids (`commentId`) only ever come from a
   prior tool call in the same conversation — `read_document`, `find_text`, or
   `read_comments`. Never invent or reuse one from outside the conversation;
-  ids are not guessable and change whenever the document's structure changes.
+  ids are opaque values a caller reads, never ones it constructs, and they
+  change whenever the document's structure changes.
 - `suggest_changes` operations that get skipped (`skipped: [{ id, reason }]`)
   return a plain-language reason, not a machine code (e.g. "the block changed
   since your snapshot; re-read the document and retry with fresh ids"). Treat
@@ -147,6 +148,13 @@ stay exported for validation-only paths.
   invent an operation kind or a directive marker; if a document needs a
   structural operation the contract lacks, extend `@stll/folio-core`'s
   ai-edits engine and the contract, then the schema follows.
+- **A blank paragraph is a block like any other.** It has an id, it is
+  addressable, and adding or removing one is a real edit. `insertAfterBlock` /
+  `insertBeforeBlock` with `text: ""` insert a blank line; `deleteBlock` on a
+  blank removes it rather than doing nothing. Only an operation that would
+  change nothing at all is refused.
+- `insertTableRow` builds the new row to the table's own column count, so
+  `cellTexts` fills the columns that exist and any it does not name stay empty.
 - A `queued` list in a `suggest_changes` result means the host parked those
   operations in its own review queue; treat it like `applied` for the purpose
   of "the edit has been proposed", never as a failure.

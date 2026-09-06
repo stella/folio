@@ -30,6 +30,7 @@ import {
   applyFolioAIEditsToBuffer,
 } from "./headless";
 import type { FolioReviewChange } from "./headless";
+import { isFolioAIContentBlock } from "./snapshot";
 import type { FolioAIBlock } from "./types";
 
 const FIXTURE = path.join(
@@ -2282,7 +2283,10 @@ describe("headless docx review discovery + resolve", () => {
     const text = reviewer.getContentAsText();
     expect(text).toContain(`[${heading.id}] `);
     expect(text).toContain("Heading paragraph.");
-    for (const block of blocks) {
+    // Every block a reader would see is labelled. The blank paragraphs the
+    // snapshot also holds are not: a model shown the document should see its
+    // content, not a line per empty paragraph.
+    for (const block of blocks.filter(isFolioAIContentBlock)) {
       expect(text).toContain(`[${block.id}]`);
     }
   });

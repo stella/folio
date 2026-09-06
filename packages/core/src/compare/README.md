@@ -101,9 +101,39 @@ exactly that: `splitBlock` writes an inserted mark on the paragraph the break
 now ends, `mergeBlockWithNext` a deleted one, and the change list says `split`
 or `merge`. The space the break stands in for travels with the operation as
 `separator`, so accepting reproduces the target's spacing and rejecting
-restores the base's. A mark is never written on the last paragraph of a table
-cell: there is no sibling to join with, so the revision could not do what it
-says.
+restores the base's.
+
+### Which paragraph mark changed
+
+A paragraph mark belongs to the paragraph it ends: a paragraph added or removed
+carries its own mark, inserted or deleted alongside its runs. That holds
+everywhere, including at a container's edge, and what changes at the edge is
+how the mark RESOLVES rather than where it sits.
+
+- **A mark with a paragraph after it resolves by joining.** Accepting a deleted
+  mark closes the break; rejecting an inserted one does the same.
+- **A mark with no paragraph after it resolves by removing the paragraph.** The
+  last paragraph of a body, and a paragraph before a table, have nothing to be
+  joined with. Once the resolution has taken the paragraph's words away, what
+  is left is a paragraph whose break was resolved too, so it goes. The
+  exception is a paragraph its parent cannot do without: a cell must contain
+  one, so the last paragraph of a cell keeps its mark and stays blank.
+
+Handing the last new paragraph's mark to the ANCHOR instead reads closer to
+what an editor writes, and is equivalent only while the two stay adjacent. A
+later operation in the same batch — a table inserted between them — separates
+them, and the mark then joins the anchor to the table, which is nothing. The
+rule above needs no adjacency.
+
+A body and every table cell end with a paragraph: a table may never be a
+container's last child. A comparison that adds a table at the end therefore
+adds the paragraph after it too, and that paragraph is an insertion like any
+other.
+
+A relocated paragraph's break is `w:moveFrom` at the source and `w:moveTo` at
+the destination. They resolve exactly as a deletion and an insertion do; the
+kinds are what tell a reader the two ends belong together rather than being an
+unrelated removal and addition.
 
 Renumbering that FOLLOWS from an edit needs no change of its own: labels are
 rendered from the numbering definitions rather than stored on the paragraphs,
@@ -114,8 +144,8 @@ is the opposite case — every label in the list moves and no block's text does
 
 A paragraph property that moved without any word moving — a list item demoted
 a level, a paragraph restyled — is a `paragraph-format` change, written as
-`w:pPrChange` with the complete previous property set so a reject restores it
-the way Word does. The self-check's projection carries the style and the list
+`w:pPrChange` with the complete previous property set, which is what a reject
+restores. The self-check's projection carries the style and the list
 level alongside the text, so a redline that reproduces every word and leaves a
 list item at the wrong level fails instead of passing.
 
@@ -197,19 +227,15 @@ carries the current numbers and the failing cases.
 - **A move's range markers are not written** (2026-09-06). The relocation
   itself is in the document: the deletion at the source is `w:moveFrom`, the
   insertion at the destination `w:moveTo`, and the change list reports
-  `kind: "move"`. Word also brackets each side with
-  `w:moveFromRangeStart`/`End` and a shared `w:name`; those markers have no
-  ProseMirror representation, so folio drops them on any edited paragraph and
-  the comparison cannot produce them. A consumer reading the runs sees the
-  move; one that groups multi-paragraph moves by range name does not.
-- **Empty cells are invisible** (2026-09-06). A cell with no text carries no
-  block, so a row whose cells are all empty is not seen as a row at all. The
-  snapshot skips every empty textblock, and making it stop is a change to every
-  block list in folio, not to the comparison.
+  `kind: "move"`. The format also brackets each side with
+  `w:moveFromRangeStart`/`End`, `w:moveToRangeStart`/`End` and a shared
+  `w:name`; those markers have no ProseMirror representation, so folio
+  drops them on any edited paragraph and the comparison cannot produce them. A
+  consumer reading the runs sees the move; one that groups multi-paragraph
+  moves by range name does not.
 - **Column operations are out of scope** (2026-09-06). A column added or
   removed reads as cell-level changes. `insertTableColumn` / `deleteTableColumn`
-  exist in the operation vocabulary; nothing detects the difference yet, and
-  detecting it reliably needs the empty cells above.
+  exist in the operation vocabulary; nothing detects the difference yet.
 - **A table nested inside a cell cannot be added or removed** (2026-09-06). A
   whole table added or removed at document level is `table-insert` /
   `table-delete`; the same edit inside a cell would need `insertTable` to
@@ -217,7 +243,7 @@ carries the current numbers and the failing cases.
 - **A numbering definition is reported, not represented** (2026-09-06). A list
   whose format, level template or start changed is a `numbering` change, and
   the redline cannot carry it: OOXML has no tracked-change grammar for
-  `numbering.xml` and Word does not track it either. Accepting the result
+  `numbering.xml` at all. Accepting the result
   therefore reproduces the target's words and keeps the base's numbering.
 
 ## Files

@@ -18,7 +18,7 @@ import {
   type FolioDocumentStoryHandle,
   type FolioResolvedReviewedView,
 } from "./ai-edits/headless";
-import { createFolioAITextRangeHandle } from "./ai-edits/snapshot";
+import { createFolioAITextRangeHandle, trailingBodyBlockId } from "./ai-edits/snapshot";
 import type {
   FolioAIBlock,
   FolioAIEditAppliedOperation,
@@ -158,7 +158,12 @@ const buildRedlineOperations = ({
   const anchorIds = nextBaseBlockIdByIndex(events);
   const operations: FolioAIEditOperation[] = [];
   const trailingAdditions: { text: string; styleId?: string }[] = [];
-  const lastBaseBlockId = baseSnapshot.blocks.at(-1)?.id ?? null;
+  // The last BODY-LEVEL paragraph, which the format guarantees exists: a table
+  // may not be the last child of a body. Anchoring to the last block put the
+  // anchor inside a table whenever the story ended with one, and an insertion
+  // anchored there escapes to the table's boundary with no mark able to
+  // express the break it added.
+  const lastBaseBlockId = trailingBodyBlockId(baseSnapshot);
 
   events.forEach((event, eventIndex) => {
     if (event.type === "pair") {
@@ -205,24 +210,14 @@ const buildRedlineOperations = ({
     });
   });
 
-  if (lastBaseBlockId === null && baseSnapshot.emptyDocumentAnchorId !== undefined) {
-    const firstAddition = trailingAdditions.shift();
-    if (firstAddition !== undefined) {
-      operations.push({
-        id: nextOperationId(),
-        type: "replaceBlock",
-        blockId: baseSnapshot.emptyDocumentAnchorId,
-        text: firstAddition.text,
-        ...(firstAddition.styleId !== undefined && { styleId: firstAddition.styleId }),
-      });
-    }
-  }
-
+  // An empty document is one blank paragraph, and the alignment pairs it with
+  // the first addition like any other block: it is replaced, and the rest
+  // follow it. There is no hidden anchor to special-case any more.
   for (const addition of trailingAdditions) {
     operations.push({
       id: nextOperationId(),
       type: "insertAfterBlock",
-      blockId: lastBaseBlockId ?? baseSnapshot.emptyDocumentAnchorId ?? "redline-unanchored",
+      blockId: lastBaseBlockId ?? "redline-unanchored",
       text: addition.text,
       ...(addition.styleId !== undefined && { styleId: addition.styleId }),
     });

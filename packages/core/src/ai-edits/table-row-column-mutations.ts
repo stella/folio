@@ -24,6 +24,17 @@ export type TableRowInsertion = {
   rowType: PMNode["type"];
   cells: readonly PMNode[];
   rowspanUpdates: readonly number[];
+  /**
+   * The table's column count, which is not `cells.length`. One cell can occupy
+   * several columns (a `colspan`), and one column can have no cell in this row
+   * at all (a `rowspan` from a row above reaches down into it).
+   *
+   * It is what `cellTexts` is SIZED against — the most cells any row of this
+   * table could have — while the texts themselves fill the new row's cells in
+   * order. Sizing against `cells.length` refused a row the table can hold
+   * whenever a span made this row narrower than the table.
+   */
+  columnCount: number;
 };
 
 export type TableRowDeletion = Omit<TableRowTarget, "table">;
@@ -500,24 +511,49 @@ const buildTableRowInsertion = ({
     rowType: tableNodeTypes(table.type.schema).row,
     cells,
     rowspanUpdates,
+    columnCount: map.width,
   };
 };
 
+const CELL_LINE_BREAK_PATTERN = /\r\n|\r|\n/;
+
+/**
+ * Split one cell's text into the paragraphs it describes, one string each.
+ *
+ * A cell holds paragraphs, not lines: a line break starts a new one, and a
+ * blank line is a blank paragraph, exactly as `text: ""` is for an insertion.
+ *
+ * This is deliberately not the prose rule `insertAfterBlock` follows, where a
+ * blank line between two model-written clauses is formatting noise and is
+ * dropped. A cell's text is read off a cell that HAS those paragraphs, so
+ * dropping one would lose a block that was there.
+ */
+export const splitCellParagraphTexts = (text: string): string[] =>
+  text.split(CELL_LINE_BREAK_PATTERN);
+
+/**
+ * Fill the new row's cells from `cellTexts`, in order: the nth text goes in
+ * the nth cell the row actually has, which is how a caller reading the row
+ * through the block snapshot counts them (`table.cellIndex`). Cells the caller
+ * did not name stay empty.
+ */
 const populateTableRow = (row: PMNode, cellTexts: readonly string[] | undefined): PMNode => {
   if (cellTexts === undefined) {
     return row;
   }
   const cells: PMNode[] = [];
   row.forEach((cell, _offset, index) => {
+    const text = cellTexts[index] ?? "";
     const paragraph = cell.firstChild;
     if (!paragraph?.isTextblock) {
       cells.push(cell);
       return;
     }
-    const text = cellTexts[index] ?? "";
-    const content = text.length > 0 ? row.type.schema.text(text) : null;
-    const nextParagraph = paragraph.type.create(stripBlockIdentityAttrs(paragraph.attrs), content);
-    cells.push(cell.type.create(cell.attrs, nextParagraph));
+    const attrs = stripBlockIdentityAttrs(paragraph.attrs);
+    const paragraphs = splitCellParagraphTexts(text).map((line) =>
+      paragraph.type.create(attrs, line.length > 0 ? row.type.schema.text(line) : null),
+    );
+    cells.push(cell.type.create(cell.attrs, paragraphs));
   });
   return row.type.create(row.attrs, cells);
 };

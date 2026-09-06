@@ -69,6 +69,7 @@ export {
   isOoxmlSymbolCharacter,
   MAX_REVISION_ID,
   normalizeRevisionId,
+  PARAGRAPH_MARK_CHANGE_KINDS,
 } from "./content";
 
 export type {
@@ -141,6 +142,7 @@ export type {
   ParagraphContent,
   Paragraph,
   ParagraphMarkChange,
+  ParagraphMarkChangeKind,
   HeaderFooterType,
   HeaderReference,
   FooterReference,

@@ -852,7 +852,13 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     preserveFormatting?: boolean;
     styleId?: string;
     comment?: FolioAIComment;
-} | {
+} |
+/**
+* Delete the whole block. A block with words loses them and its paragraph
+* mark; a BLANK block has only a paragraph mark to lose, and loses it, so
+* the empty line goes away rather than the operation doing nothing.
+*/
+    {
     id: string;
     type: "deleteBlock";
     blockId: string;
@@ -1011,11 +1017,10 @@ export type FolioAIEditSkipReason = "missingBlock" | "changedBlock" | "ambiguous
 */
 "documentNotEditable";
 
-// @public (undocumented)
+// @public
 export type FolioAIEditSnapshot = {
     blocks: FolioAIBlock[];
     anchors: Record<string, FolioAIBlockAnchor>;
-    emptyDocumentAnchorId?: string;
 };
 
 // @public
@@ -1292,6 +1297,9 @@ export class InvalidFolioDocumentOperationBatchError extends InvalidFolioDocumen
     path: string;
     reason: string;
 }> {}
+
+// @public
+export const isFolioAIContentBlock: (input: Pick<FolioAIBlock, "text">) => boolean;
 
 // @public
 export const isFolioBlockId: (value: unknown) => value is FolioBlockId;

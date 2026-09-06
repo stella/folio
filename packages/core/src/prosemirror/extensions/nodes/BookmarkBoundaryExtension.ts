@@ -20,9 +20,12 @@ function readOptionalColumn(dom: HTMLElement, attribute: string): number | undef
   return value === null ? undefined : readNonnegativeInteger(value);
 }
 
+/** The node name, for callers asking whether a paragraph holds any content. */
+export const BOOKMARK_BOUNDARY_NODE_NAME = "bookmarkBoundary";
+
 export const BookmarkBoundaryExtension = createNodeExtension<BookmarkBoundaryOptions>({
-  name: "bookmarkBoundary",
-  schemaNodeName: "bookmarkBoundary",
+  name: BOOKMARK_BOUNDARY_NODE_NAME,
+  schemaNodeName: BOOKMARK_BOUNDARY_NODE_NAME,
   nodeSpec: (options) => ({
     inline: true,
     group: "inline",

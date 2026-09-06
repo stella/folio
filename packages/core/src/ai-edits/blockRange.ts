@@ -11,7 +11,7 @@
 import type { Node as PMNode } from "prosemirror-model";
 
 import { buildCleanBlockText } from "./clean-text";
-import { createFolioAIEditSnapshot, hashFolioAIBlockText } from "./snapshot";
+import { createFolioAIEditSnapshot, hashFolioAIBlockText, isFolioAIContentBlock } from "./snapshot";
 import type { FolioAIBlockAnchor, FolioAIEditSnapshot, FolioAITextRangeHandle } from "./types";
 import { findParagraphByParaId } from "../prosemirror/utils/findParagraphByParaId";
 import { getFolioParaIdFromBlockId, getSequentialFolioBlockIdIndex } from "../types/block-id";
@@ -189,9 +189,13 @@ const matchPassage = (haystack: string, needleSource: string): PassageMatch | nu
  * server's `seq-NNNN`: the direct anchor lookup misses, and a
  * paraId-based live lookup can't match either (no node carries a
  * `seq-` paraId). The seq number is the block's 1-based position in
- * the same non-empty-block walk the server extractor and
- * `createFolioAIEditSnapshot` share, so it indexes the snapshot's
- * ordered `blocks` directly.
+ * the non-empty-block walk the server extractor and
+ * `createFolioAIEditSnapshot` share.
+ *
+ * That walk is not the snapshot's `blocks` array: `blocks` also holds
+ * the document's blank paragraphs, which the seq sequence does not
+ * count. So the position is counted here over the blocks that carry
+ * text, which is what the number means.
  */
 export const resolveSequentialBlockAnchor = (
   blockId: string,
@@ -201,8 +205,17 @@ export const resolveSequentialBlockAnchor = (
   if (index === null) {
     return undefined;
   }
-  const block = snapshot.blocks.at(index - 1);
-  return block ? snapshot.anchors[block.id] : undefined;
+  let remaining = index;
+  for (const block of snapshot.blocks) {
+    if (!isFolioAIContentBlock(block)) {
+      continue;
+    }
+    remaining -= 1;
+    if (remaining === 0) {
+      return snapshot.anchors[block.id];
+    }
+  }
+  return undefined;
 };
 
 /**

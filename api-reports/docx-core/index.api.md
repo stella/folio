@@ -194,7 +194,7 @@ export type MarkdownContent = {
     numbering?: NumberingDefinitions;
 };
 
-// @public (undocumented)
+// @public
 export type Paragraph = {
     type: "paragraph";
     paraId?: string;

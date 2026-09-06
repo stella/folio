@@ -24,7 +24,15 @@ const FIXED_ZIP_DATE = new Date(Date.UTC(2000, 0, 1));
 const ZIP_ENTRY_OPTIONS = { date: FIXED_ZIP_DATE, createFolders: false } as const;
 
 const paragraph = (text: string): string =>
-  `<w:p><w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:p>`;
+  text.length === 0 ? `<w:p/>` : `<w:p><w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:p>`;
+
+/**
+ * A table may not be the last child of a body or a cell, so every container
+ * that ends with one is closed by a paragraph. Word writes that paragraph and
+ * usually leaves it empty; a fixture that omits it is malformed, and the
+ * comparison should be exercised against the shape real packages have.
+ */
+const closingParagraph = paragraph("");
 
 const cell = (inner: string): string =>
   `<w:tc><w:tcPr><w:tcW w:w="4680" w:type="dxa"/></w:tcPr>${inner}</w:tc>`;
@@ -34,14 +42,14 @@ const table = (rows: readonly string[]): string =>
   `<w:tblGrid><w:gridCol w:w="4680"/><w:gridCol w:w="4680"/></w:tblGrid>` +
   `${rows.join("")}</w:tbl>`;
 
-/** The nested table sits in the outer table's last cell, so it closes the story. */
+/** The nested table sits in the outer table's last cell, deep in the story. */
 const NESTED_TABLE = table([
-  `<w:tr>${cell(paragraph("The nested schedule lists the delivery dates."))}</w:tr>`,
+  `<w:tr>${cell(`${paragraph("The nested schedule lists the delivery dates.")}${closingParagraph}`)}</w:tr>`,
 ]);
 
 const OUTER_TABLE = table([
   `<w:tr>${cell(paragraph("Obligations of the supplier."))}${cell(paragraph("Obligations of the buyer."))}</w:tr>`,
-  `<w:tr>${cell(paragraph("Deliver the goods to the named place."))}${cell(`${paragraph("See the schedule below.")}${NESTED_TABLE}`)}</w:tr>`,
+  `<w:tr>${cell(paragraph("Deliver the goods to the named place."))}${cell(`${paragraph("See the schedule below.")}${NESTED_TABLE}${closingParagraph}`)}</w:tr>`,
 ]);
 
 export type NestedTableDocxOptions = {
@@ -55,7 +63,9 @@ export const buildNestedTableDocx = async ({
   const body =
     paragraph("This agreement is made between the parties named below.") +
     OUTER_TABLE +
-    (trailingParagraph === undefined ? "" : paragraph(trailingParagraph));
+    (trailingParagraph === undefined
+      ? closingParagraph
+      : `${paragraph(trailingParagraph)}${closingParagraph}`);
 
   const parts: Record<string, string> = {
     "[Content_Types].xml":

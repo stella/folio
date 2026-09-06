@@ -29,6 +29,7 @@ export type {
 export {
   createFolioAITextRangeHandle,
   hashFolioAIBlockText,
+  isFolioAIContentBlock,
   normalizeFolioAIBlockText,
 } from "./ai-edits/snapshot";
 export { getFolioDocumentOutline, readFolioDocumentSection } from "./ai-edits/scoped-reading";

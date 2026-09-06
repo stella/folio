@@ -1396,22 +1396,37 @@ export type ParagraphContent =
   | MathEquation;
 
 /**
- * Paragraph (w:p)
- */
-/**
- * Paragraph-mark tracked-change marker (ECMA-376 §17.13.5).
+ * The kinds a paragraph-mark tracked change can be (ECMA-376 §17.13.5).
  *
- * Word writes this as a child of `<w:pPr><w:rPr>` — `<w:ins/>` when the
- * paragraph break itself was inserted in track-changes mode (the user
- * pressed Enter mid-paragraph), `<w:del/>` when the paragraph break is
- * pending deletion (Backspace at paragraph start or Delete at paragraph
- * end). The mark is independent of the inline runs the paragraph carries.
+ * Written as a child of `<w:pPr><w:rPr>` — `<w:ins/>` when the paragraph
+ * break itself was inserted in track-changes mode (the user pressed Enter
+ * mid-paragraph), `<w:del/>` when the paragraph break is pending deletion
+ * (Backspace at paragraph start or Delete at paragraph end). The mark is
+ * independent of the inline runs the paragraph carries.
+ *
+ * A relocated paragraph's break is `<w:moveFrom/>` at the source and
+ * `<w:moveTo/>` at the destination. They resolve exactly as `del` and `ins`
+ * do — a move is a deletion and an insertion that a reader is told belong
+ * together — but they are not those kinds: writing `w:del` on a moved
+ * paragraph's mark reports the relocation as a deletion as well.
  */
+export const PARAGRAPH_MARK_CHANGE_KINDS = Object.freeze([
+  "moveFrom",
+  "moveTo",
+  "ins",
+  "del",
+] as const);
+
+/** One of {@link PARAGRAPH_MARK_CHANGE_KINDS}. */
+export type ParagraphMarkChangeKind = (typeof PARAGRAPH_MARK_CHANGE_KINDS)[number];
+
+/** A paragraph-mark tracked change, written under `<w:pPr><w:rPr>`. */
 export type ParagraphMarkChange = {
-  kind: "ins" | "del";
+  kind: ParagraphMarkChangeKind;
   info: TrackedChangeInfo;
 };
 
+/** Paragraph (w:p) */
 export type Paragraph = {
   type: "paragraph";
   /** Unique paragraph ID */

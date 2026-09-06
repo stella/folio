@@ -13,7 +13,8 @@
 import { describe, expect, test } from "bun:test";
 import { type Node as PMNode, Schema } from "prosemirror-model";
 
-import { createFolioAIEditSnapshot } from "./snapshot";
+import { resolveSequentialBlockAnchor } from "./blockRange";
+import { createFolioAIEditSnapshot, isFolioAIContentBlock } from "./snapshot";
 
 const schema = new Schema({
   nodes: {
@@ -138,5 +139,57 @@ describe("createFolioAIEditSnapshot", () => {
     );
 
     expect(createFolioAIEditSnapshot(doc).blocks).toHaveLength(480);
+  });
+
+  test("the seq- ids are the same whether or not blank paragraphs are there", () => {
+    // The published contract: `seq-NNNN` counts the paragraphs that carry
+    // text. A host extractor derives the same numbers, and a stored citation
+    // has to keep naming its paragraph, so blank paragraphs may never take a
+    // position in that sequence however many of them a document grows.
+    const contentTexts = ["first", "second", "third", "fourth"];
+    const withoutBlanks = schema.node(
+      "doc",
+      null,
+      contentTexts.map((text) => paragraph(text)),
+    );
+    const withBlanks = schema.node("doc", null, [
+      paragraph(""),
+      paragraph("first"),
+      paragraph(""),
+      paragraph(""),
+      paragraph("second"),
+      paragraph("third"),
+      paragraph(""),
+      paragraph("fourth"),
+      paragraph(""),
+    ]);
+
+    const seqIdsOf = (doc: PMNode): string[] =>
+      createFolioAIEditSnapshot(doc)
+        .blocks.filter(isFolioAIContentBlock)
+        .map(({ id }) => id);
+
+    expect(seqIdsOf(withoutBlanks)).toEqual(["seq-0001", "seq-0002", "seq-0003", "seq-0004"]);
+    expect(seqIdsOf(withBlanks)).toEqual(seqIdsOf(withoutBlanks));
+
+    // The blanks are addressable, and in their own sequence.
+    expect(
+      createFolioAIEditSnapshot(withBlanks)
+        .blocks.filter((block) => !isFolioAIContentBlock(block))
+        .map(({ id }) => id),
+    ).toEqual(["blank-0001", "blank-0002", "blank-0003", "blank-0004", "blank-0005"]);
+  });
+
+  test("a seq- id resolves to the paragraph it numbered, past any blanks", () => {
+    const doc = schema.node("doc", null, [
+      paragraph(""),
+      paragraph("first"),
+      paragraph(""),
+      paragraph("second"),
+    ]);
+    const snapshot = createFolioAIEditSnapshot(doc);
+
+    expect(resolveSequentialBlockAnchor("seq-0002", snapshot)?.text).toBe("second");
+    expect(resolveSequentialBlockAnchor("seq-0003", snapshot)).toBeUndefined();
   });
 });
