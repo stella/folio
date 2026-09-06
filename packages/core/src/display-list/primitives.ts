@@ -13,6 +13,7 @@
 import type {
   DisplayColor,
   DisplayGlyphRun,
+  DisplayHitRegion,
   DisplayHitRegionKind,
   DisplayPrimitive,
   DisplayStrokePattern,
