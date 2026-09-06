@@ -163,6 +163,22 @@ const SUGGESTED_SUPPORTED_OPERATION_TYPES: ReadonlySet<FolioAIEditOperation["typ
 
 const PARAGRAPH_NODE_NAME = "paragraph";
 
+/**
+ * The attrs that render a list label, cleared together whenever a paragraph
+ * stops being a list item. `w:numPr` alone is not enough: the marker attrs the
+ * editor caches would keep drawing a label on a paragraph that is no longer in
+ * the list. One frozen record rather than a list repeated at each call site,
+ * because a list repeated is a list that drifts.
+ */
+const CLEARED_LIST_MARKER_ATTRS = Object.freeze({
+  listMarker: null,
+  listMarkerHidden: null,
+  listLevelNumFmts: null,
+  listLevelStarts: null,
+  listAbstractNumId: null,
+  listStartOverride: null,
+});
+
 type ResolvedOperation = {
   operation: FolioAIEditOperation;
   from: number;
@@ -215,6 +231,7 @@ const paragraphPropertiesPatch = (
     if (properties.listLevel === null) {
       if (numPr !== null && numPr !== undefined) {
         patch["numPr"] = null;
+        Object.assign(patch, CLEARED_LIST_MARKER_ATTRS);
       }
     } else if (current !== properties.listLevel) {
       const numId =
@@ -1302,12 +1319,7 @@ const applyFolioAIEditOperationsInternal = ({
             // with the numbering: left behind they render a list label on a
             // paragraph that is no longer in the list.
             attrs["numPr"] = null;
-            attrs["listMarker"] = null;
-            attrs["listMarkerHidden"] = null;
-            attrs["listLevelNumFmts"] = null;
-            attrs["listLevelStarts"] = null;
-            attrs["listAbstractNumId"] = null;
-            attrs["listStartOverride"] = null;
+            Object.assign(attrs, CLEARED_LIST_MARKER_ATTRS);
           } else if (isFirstParagraph && operation.listLevel !== undefined) {
             const anchorNumPr: unknown = baseAttrs["numPr"];
             const numId =
@@ -1331,12 +1343,7 @@ const applyFolioAIEditOperationsInternal = ({
             // (`null`) is not that: an unstyled list item is still a
             // list item, so its markers stay.
             if (operation.inheritFormatting !== false && operation.styleId !== null) {
-              attrs["listMarker"] = null;
-              attrs["listMarkerHidden"] = null;
-              attrs["listLevelNumFmts"] = null;
-              attrs["listLevelStarts"] = null;
-              attrs["listAbstractNumId"] = null;
-              attrs["listStartOverride"] = null;
+              Object.assign(attrs, CLEARED_LIST_MARKER_ATTRS);
             }
           }
           // In suggested mode, mark the whole inserted paragraph so the strip
@@ -1358,8 +1365,13 @@ const applyFolioAIEditOperationsInternal = ({
         // instead of leaving an empty one where its words were. The mark
         // belongs to the paragraph it ends, so the last inserted paragraph
         // only carries one when a sibling follows it to be joined with.
+        //
+        // Read from the transaction rather than the original document: the
+        // batch applies right to left, so a paragraph an earlier operation
+        // inserted after this position is already there, and is exactly the
+        // sibling the last of these paragraphs would be joined with.
         if (producesTrackedChanges && !isSuggested && !isPairedMove(operation.moveId)) {
-          const followsASibling = paragraphFollows(view.state.doc, item.from);
+          const followsASibling = paragraphFollows(tr.doc, tr.mapping.map(item.from));
           for (const [index, node] of nodes.entries()) {
             if (index === nodes.length - 1 && !followsASibling) {
               continue;
@@ -1667,7 +1679,7 @@ const applyFolioAIEditOperationsInternal = ({
           // report the move as a deletion as well.
           if (
             !isPairedMove(item.operation.moveId) &&
-            paragraphFollows(view.state.doc, item.blockTo)
+            paragraphFollows(tr.doc, tr.mapping.map(item.blockTo))
           ) {
             const markRevisionId = revisionSeed++;
             tr = tr.setNodeAttribute(item.blockFrom, "pPrMark", {

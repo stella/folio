@@ -324,13 +324,15 @@ function resolveChange(
         // first node's attrs, so they are restored explicitly; otherwise a
         // deleted heading would hand its style to the paragraph below it.
         const emptyFirstParagraph = paragraph.content.size === 0;
+        // The next paragraph's own `pPrMark` travels with its attrs: it is a
+        // different revision, and resolving this one must not resolve it.
         const nextAttrs = nextNode.attrs;
         try {
           tr.join(joinPos);
           // PM's `join` keeps the first paragraph's attrs, so the marker
           // would survive an otherwise-resolved revision. Drop it now.
           if (emptyFirstParagraph) {
-            tr.setNodeMarkup(mappedPos, undefined, { ...nextAttrs, pPrMark: null });
+            tr.setNodeMarkup(mappedPos, undefined, nextAttrs);
           } else {
             tr.setNodeAttribute(mappedPos, "pPrMark", null);
           }

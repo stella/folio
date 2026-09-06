@@ -171,8 +171,10 @@ const byVisibleOrdinal = (entries: readonly string[]): string[] => {
     const rowOrdinal = ordinalWithin(rowScope, row);
     const cellScope = `c${String(tableOrdinal)}.${String(rowOrdinal)}`;
     const cellOrdinal = ordinalWithin(cellScope, cell);
-    const paragraphOrdinal = paragraphCounts.get(cellScope + cell) ?? 0;
-    paragraphCounts.set(cellScope + cell, paragraphOrdinal + 1);
+    // Separated, so cell 23 of scope `c0.1` is not cell 3 of scope `c0.12`.
+    const cellKey = `${cellScope}:${cell}`;
+    const paragraphOrdinal = paragraphCounts.get(cellKey) ?? 0;
+    paragraphCounts.set(cellKey, paragraphOrdinal + 1);
     return (
       `t${String(tableOrdinal)}r${String(rowOrdinal)}c${String(cellOrdinal)}p${String(paragraphOrdinal)}` +
       entry.slice(first)
@@ -180,8 +182,12 @@ const byVisibleOrdinal = (entries: readonly string[]): string[] => {
   });
 };
 
+/** Element by element, never by joining: a block's text may hold the separator. */
+const sameEntries = (left: readonly string[], right: readonly string[]): boolean =>
+  left.length === right.length && left.every((entry, index) => entry === right[index]);
+
 const classifyRoundTrip = (accepted: readonly string[], target: readonly string[]): Refusal => {
-  if (byVisibleOrdinal(accepted).join(" ") === byVisibleOrdinal(target).join(" ")) {
+  if (sameEntries(byVisibleOrdinal(accepted), byVisibleOrdinal(target))) {
     return {
       bucket: "round-trip-invisible-structure",
       shape: `every block matches once table coordinates count visible blocks (${String(target.length)} blocks)`,
