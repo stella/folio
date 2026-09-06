@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/docx-kernel"]
+members = ["crates/docx-kernel", "crates/text-shaper"]
 resolver = "3"
 
 [workspace.package]
