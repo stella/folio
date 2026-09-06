@@ -2,6 +2,7 @@ import type { Mark, Node as PMNode, Schema } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 import { canJoin, canSplit } from "prosemirror-transform";
+import { panic } from "better-result";
 
 import { expectParagraphAttrs, expectRunPropertyChangeMarkAttrs } from "../prosemirror/attrs";
 import { PPR_CHANGE_SCOPED_ATTR_KEYS } from "../prosemirror/commands/propertyChangeScope";
@@ -881,6 +882,148 @@ const buildEmphasisInlineContent = (
   return nodes.length > 0 ? nodes : [schema.text(text, [...baseMarks])];
 };
 
+type BuildInsertedParagraphsOptions = {
+  item: ResolvedOperation;
+  schema: Schema;
+  mode: FolioAIEditApplyMode;
+  author: string;
+  date: string;
+  initials: string | undefined;
+  commentMark: Mark | null;
+  suggestionId: string | null;
+  revisionSeed: number;
+  isPairedMove: (moveId: string | undefined) => moveId is string;
+};
+
+type BuiltInsertedParagraphs = {
+  nodes: PMNode[];
+  revisionIds: number[];
+  nextRevisionId: number;
+};
+
+const isBatchableParagraphInsertion = (
+  item: ResolvedOperation,
+  mode: FolioAIEditApplyMode,
+): boolean => {
+  if (item.operation.type !== "insertAfterBlock" && item.operation.type !== "insertBeforeBlock") {
+    return false;
+  }
+  const insertTexts = item.insertTexts ?? [""];
+  const isEmptyInsert = insertTexts.length === 1 && insertTexts[0]?.length === 0;
+  return !(mode === "tracked-changes" && item.operation.pageBreakBefore === true && isEmptyInsert);
+};
+
+const buildInsertedParagraphs = ({
+  item,
+  schema,
+  mode,
+  author,
+  date,
+  initials,
+  commentMark,
+  suggestionId,
+  revisionSeed,
+  isPairedMove,
+}: BuildInsertedParagraphsOptions): BuiltInsertedParagraphs => {
+  const operation = item.operation;
+  if (operation.type !== "insertAfterBlock" && operation.type !== "insertBeforeBlock") {
+    panic("Only paragraph insertions can build inserted paragraphs", { type: operation.type });
+  }
+  const insertionType = schema.marks["insertion"];
+  const producesTrackedChanges = mode !== "direct";
+  const isSuggested = mode === "suggested";
+  const trackedRevisionExtras = {
+    ...(initials ? { initials } : {}),
+    ...(suggestionId !== null ? { provenance: "suggested" as const, suggestionId } : {}),
+  };
+  // Only the first paragraph split from one operation inherits the anchor's
+  // formatting. Later lines are new body paragraphs, not anchor clones.
+  const baseAttrs =
+    operation.inheritFormatting === false ? {} : stripBlockIdentityAttrs(item.blockNode.attrs);
+  const insertTexts = item.insertTexts ?? [""];
+  const revisionIds: number[] = [];
+  const nodes: PMNode[] = [];
+  let nextRevisionId = revisionSeed;
+
+  for (const [paragraphIndex, text] of insertTexts.entries()) {
+    const isFirstParagraph = paragraphIndex === 0;
+    const marks: Mark[] = [];
+    let paragraphRevisionId: number | null = null;
+    if (producesTrackedChanges && insertionType) {
+      paragraphRevisionId = nextRevisionId++;
+      marks.push(
+        insertionType.create({
+          revisionId: paragraphRevisionId,
+          author,
+          date,
+          ...(isPairedMove(operation.moveId) && { moveKind: "moveTo" }),
+          ...trackedRevisionExtras,
+        }),
+      );
+      revisionIds.push(paragraphRevisionId);
+    }
+    if (commentMark) {
+      marks.push(commentMark);
+    }
+    const content = text.length > 0 ? buildEmphasisInlineContent(schema, text, marks) : null;
+    const attrs: Record<string, unknown> = isFirstParagraph ? { ...baseAttrs } : {};
+    if (isFirstParagraph && operation.pageBreakBefore === true) {
+      attrs["pageBreakBefore"] = true;
+    }
+    if (isFirstParagraph && operation.listLevel === null) {
+      attrs["numPr"] = null;
+      Object.assign(attrs, CLEARED_LIST_MARKER_ATTRS);
+    } else if (isFirstParagraph && operation.listLevel !== undefined) {
+      const anchorNumPr: unknown = baseAttrs["numPr"];
+      const numId =
+        typeof anchorNumPr === "object" && anchorNumPr !== null && "numId" in anchorNumPr
+          ? anchorNumPr.numId
+          : undefined;
+      attrs["numPr"] = {
+        ...(typeof numId === "number" && { numId }),
+        ilvl: operation.listLevel,
+      };
+    }
+    if (isFirstParagraph && operation.styleId !== undefined) {
+      attrs["styleId"] = operation.styleId;
+      if (operation.inheritFormatting !== false && operation.styleId !== null) {
+        Object.assign(attrs, CLEARED_LIST_MARKER_ATTRS);
+      }
+    }
+    if (isSuggested && suggestionId !== null && paragraphRevisionId !== null) {
+      attrs["_suggestedInsert"] = {
+        suggestionId,
+        revisionId: paragraphRevisionId,
+        author,
+        date,
+        ...(initials ? { initials } : {}),
+      };
+    }
+    nodes.push(item.blockNode.type.create(attrs, content));
+  }
+
+  if (producesTrackedChanges && !isSuggested) {
+    // Each inserted paragraph owns its paragraph mark. Reusing the anchor's
+    // mark fails when another operation inserts a table between the two.
+    for (const [index, node] of nodes.entries()) {
+      const revisionId = nextRevisionId++;
+      nodes[index] = node.type.create(
+        {
+          ...node.attrs,
+          pPrMark: {
+            kind: isPairedMove(operation.moveId) ? "moveTo" : "ins",
+            info: { id: revisionId, author, date, ...trackedRevisionExtras },
+          },
+        },
+        node.content,
+      );
+      revisionIds.push(revisionId);
+    }
+  }
+
+  return { nodes, revisionIds, nextRevisionId };
+};
+
 const applyFolioAIEditOperationsInternal = ({
   view,
   snapshot,
@@ -1062,7 +1205,7 @@ const applyFolioAIEditOperationsInternal = ({
   // inserted columns so it still removes the original target. Other
   // ties use reverse input order so repeated insertions retain their
   // requested sequence.
-  for (const item of executableResolved.toSorted((left, right) => {
+  const executionOrder = executableResolved.toSorted((left, right) => {
     const leftCellShape = left.tableCellMerge ?? left.tableCellSplit;
     const rightCellShape = right.tableCellMerge ?? right.tableCellSplit;
     if (!leftCellShape && rightCellShape) {
@@ -1109,7 +1252,72 @@ const applyFolioAIEditOperationsInternal = ({
       return right.from - left.from;
     }
     return right.originalIndex - left.originalIndex;
-  })) {
+  });
+  for (let executionIndex = 0; executionIndex < executionOrder.length; executionIndex++) {
+    const item = executionOrder[executionIndex];
+    if (!item) {
+      panic("The operation execution index exceeded the resolved plan", { executionIndex });
+    }
+    if (isBatchableParagraphInsertion(item, mode)) {
+      const insertionRun: ResolvedOperation[] = [item];
+      for (let lookahead = executionIndex + 1; lookahead < executionOrder.length; lookahead++) {
+        const candidate = executionOrder[lookahead];
+        if (
+          !candidate ||
+          candidate.from !== item.from ||
+          !isBatchableParagraphInsertion(candidate, mode)
+        ) {
+          break;
+        }
+        insertionRun.push(candidate);
+      }
+      if (insertionRun.length > 1) {
+        const nodeGroups: PMNode[][] = [];
+        const runApplied: FolioAIEditAppliedOperation[] = [];
+        for (const insertion of insertionRun) {
+          const insertionSuggestionId = isSuggested
+            ? (insertion.operation.suggestionId ?? insertion.operation.id)
+            : null;
+          const insertionCommentMark =
+            insertion.commentId !== undefined && commentType
+              ? commentType.create({ commentId: insertion.commentId })
+              : null;
+          const built = buildInsertedParagraphs({
+            item: insertion,
+            schema: view.state.schema,
+            mode,
+            author,
+            date,
+            initials,
+            commentMark: insertionCommentMark,
+            suggestionId: insertionSuggestionId,
+            revisionSeed,
+            isPairedMove,
+          });
+          revisionSeed = built.nextRevisionId;
+          nodeGroups.push(built.nodes);
+          runApplied.push({
+            id: insertion.operation.id,
+            ...(insertion.commentId !== undefined && { commentId: insertion.commentId }),
+            ...(built.revisionIds[0] !== undefined && {
+              revisionId: built.revisionIds[0],
+              revisionIds: built.revisionIds,
+            }),
+            ...(insertionSuggestionId !== null && { suggestionId: insertionSuggestionId }),
+          });
+        }
+        const nodes: PMNode[] = [];
+        for (const group of nodeGroups.toReversed()) {
+          for (const node of group) {
+            nodes.push(node);
+          }
+        }
+        tr = tr.insert(item.from, nodes);
+        applied.push(...runApplied);
+        executionIndex += insertionRun.length - 1;
+        continue;
+      }
+    }
     const commentMark =
       item.commentId !== undefined && commentType
         ? commentType.create({ commentId: item.commentId })
@@ -1331,148 +1539,23 @@ const applyFolioAIEditOperationsInternal = ({
           });
           continue;
         }
-
-        // Captured once into a `const`, not re-read as `item.operation.*`
-        // inside the loop below: the switch's discriminant narrows
-        // `item.operation` here, but that narrowing does not reliably
-        // survive a property-chain re-read from inside a nested loop body,
-        // whereas a `const` binding's type is fixed for every scope it is
-        // read from.
-        const operation = item.operation;
-
-        // Inherit formatting attrs (listMarker, styleId, …) from the source
-        // block but never reuse identity attrs — a new paragraph must get
-        // fresh paraId/textId so trackers don't collide. Applied to the
-        // first paragraph only: a paragraph synthesized from a later line
-        // in a split `text` is body text, not a clone of the anchor, so it
-        // must not carry the anchor's heading/list styling either.
-        const baseAttrs =
-          operation.inheritFormatting === false
-            ? {}
-            : stripBlockIdentityAttrs(item.blockNode.attrs);
-
-        // Built with a plain `for` loop rather than `.map()`: a function
-        // declared inside this outer loop that closes over `revisionSeed`
-        // (mutated every iteration via `revisionSeed++`) trips oxlint's
-        // no-loop-func rule, even though this callback always runs
-        // synchronously and never outlives the iteration.
-        const insertedBlockRevisionIds: number[] = [];
-        const nodes: PMNode[] = [];
-        for (const [paragraphIndex, text] of insertTexts.entries()) {
-          // `text` was split from one operation's `text` field on a line
-          // break (see `splitInsertParagraphTexts`); only the first
-          // resulting paragraph is the one the model actually styled —
-          // later ones are body text that happened to share the call.
-          const isFirstParagraph = paragraphIndex === 0;
-
-          const marks: Mark[] = [];
-          let paragraphRevisionId: number | null = null;
-          if (producesTrackedChanges && insertionType) {
-            paragraphRevisionId = revisionSeed++;
-            marks.push(
-              insertionType.create({
-                revisionId: paragraphRevisionId,
-                author,
-                date,
-                ...(isPairedMove(operation.moveId) && { moveKind: "moveTo" }),
-                ...trackedRevisionExtras,
-              }),
-            );
-            insertedBlockRevisionIds.push(paragraphRevisionId);
-          }
-          if (commentMark) {
-            marks.push(commentMark);
-          }
-          const content =
-            text.length > 0 ? buildEmphasisInlineContent(view.state.schema, text, marks) : null;
-
-          const attrs: Record<string, unknown> = isFirstParagraph ? { ...baseAttrs } : {};
-          if (isFirstParagraph && operation.pageBreakBefore === true) {
-            attrs["pageBreakBefore"] = true;
-          }
-          if (isFirstParagraph && operation.listLevel === null) {
-            // An ordinary paragraph beside a list item. The marker attrs go
-            // with the numbering: left behind they render a list label on a
-            // paragraph that is no longer in the list.
-            attrs["numPr"] = null;
-            Object.assign(attrs, CLEARED_LIST_MARKER_ATTRS);
-          } else if (isFirstParagraph && operation.listLevel !== undefined) {
-            const anchorNumPr: unknown = baseAttrs["numPr"];
-            const numId =
-              typeof anchorNumPr === "object" && anchorNumPr !== null && "numId" in anchorNumPr
-                ? anchorNumPr.numId
-                : undefined;
-            attrs["numPr"] = {
-              ...(typeof numId === "number" && { numId }),
-              ilvl: operation.listLevel,
-            };
-          }
-          if (isFirstParagraph && operation.styleId !== undefined) {
-            // Heading / clause style ids (e.g. ClauseHeading1) take
-            // precedence over the source block's style so the
-            // inserted paragraph renders as the requested kind, not
-            // as a clone of the anchor.
-            attrs["styleId"] = operation.styleId;
-            // A heading is logically a fresh block; drop list marker
-            // attrs that would otherwise leak from the anchor and
-            // render the heading as a list item. Clearing the style
-            // (`null`) is not that: an unstyled list item is still a
-            // list item, so its markers stay.
-            if (operation.inheritFormatting !== false && operation.styleId !== null) {
-              Object.assign(attrs, CLEARED_LIST_MARKER_ATTRS);
-            }
-          }
-          // In suggested mode, mark the whole inserted paragraph so the strip
-          // drops it from serialized DOCX until accepted (the inline insertion
-          // marks alone would leave an empty paragraph behind).
-          if (isSuggested && suggestionId !== null && paragraphRevisionId !== null) {
-            attrs["_suggestedInsert"] = {
-              suggestionId,
-              revisionId: paragraphRevisionId,
-              author,
-              date,
-              ...(initials ? { initials } : {}),
-            };
-          }
-          nodes.push(item.blockNode.type.create(attrs, content));
+        const built = buildInsertedParagraphs({
+          item,
+          schema: view.state.schema,
+          mode,
+          author,
+          date,
+          initials,
+          commentMark,
+          suggestionId,
+          revisionSeed,
+          isPairedMove,
+        });
+        revisionSeed = built.nextRevisionId;
+        if (built.revisionIds.length > 0) {
+          appliedRevisionIds = built.revisionIds;
         }
-        // A new paragraph brings a new paragraph MARK, and the format records
-        // one: `w:pPr/w:rPr/w:ins`, so rejecting closes the paragraph away
-        // instead of leaving an empty one where its words were.
-        //
-        // Every new paragraph carries its own, including the last of a run
-        // appended at the end of a container. Standing the ANCHOR's mark in
-        // for that last one reads closer to what an editor writes, but it is
-        // only equivalent while the two stay adjacent, and a later operation
-        // in the same batch — a table inserted between them — separates them.
-        // The mark then joins the anchor to the table, which is nothing, and
-        // the appended paragraph survives a reject that should have closed it.
-        //
-        // Marking the paragraph itself needs no such adjacency: rejecting
-        // strips its inserted runs and then removes the emptied paragraph when
-        // there is nothing to join it with (see `resolveRevisions`), which is
-        // the same document either way.
-        const marksParagraphs = producesTrackedChanges && !isSuggested;
-        if (marksParagraphs) {
-          for (const [index, node] of nodes.entries()) {
-            const revisionId = revisionSeed++;
-            nodes[index] = node.type.create(
-              {
-                ...node.attrs,
-                pPrMark: {
-                  kind: isPairedMove(operation.moveId) ? "moveTo" : "ins",
-                  info: { id: revisionId, author, date, ...trackedRevisionExtras },
-                },
-              },
-              node.content,
-            );
-            insertedBlockRevisionIds.push(revisionId);
-          }
-        }
-        if (insertedBlockRevisionIds.length > 0) {
-          appliedRevisionIds = insertedBlockRevisionIds;
-        }
-        tr = tr.insert(item.from, nodes);
+        tr = tr.insert(item.from, built.nodes);
         break;
       }
       case "insertSignatureTable": {
