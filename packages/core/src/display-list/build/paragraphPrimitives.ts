@@ -80,7 +80,7 @@ import type {
 } from "../types";
 import { type BuildContext, trackedChangeColor } from "./buildContext";
 import { DOC_CANVAS_TEXT, parseDisplayColor } from "./colors";
-import { buildGlyphs, type Glyphs } from "./glyphs";
+import { buildGlyphs, glyphRunText, type Glyphs } from "./glyphs";
 import { paintImage } from "./imagePrimitives";
 import { decorationPatternForStyle, resolveBorderStroke } from "./strokes";
 import {
@@ -610,8 +610,7 @@ const emitGlyphRun = ({
     color,
     xPx: paintXPx,
     baselineYPx: runBaselineYPx,
-    text: glyphs.text,
-    advancesPx: glyphs.advancesPx,
+    ...glyphRunText(glyphs),
     direction: isRtl ? "rtl" : "ltr",
     ...(stroke === undefined ? {} : { stroke }),
     ...(pmRange === undefined ? {} : { pmRange }),
@@ -716,14 +715,14 @@ const reportRunEffects = (run: TextRun, context: BuildContext): void => {
     unsupported.report(
       UNSUPPORTED_CONSTRUCT.smallCaps,
       pageIndex,
-      "w:smallCaps advances are measured, but the display list carries no small-cap glyph selection",
+      "w:smallCaps is carried on the run and painted by the DOM backend; the PDF backend paints full-size glyphs for it",
     );
   }
   if (getHorizontalScaleFactor(run.horizontalScale) !== 1) {
     unsupported.report(
       UNSUPPORTED_CONSTRUCT.horizontalScale,
       pageIndex,
-      `w:w ${String(run.horizontalScale)}% is folded into the advances, but the glyphs are not narrowed`,
+      `w:w ${String(run.horizontalScale)}% is carried on the run and painted by the DOM backend; the PDF backend paints unnarrowed glyphs at the measured advances`,
     );
   }
   if (run.textEffect) {
@@ -1039,8 +1038,7 @@ const paintListMarker = ({
     color,
     xPx: paintXPx,
     baselineYPx,
-    text: glyphs.text,
-    advancesPx: glyphs.advancesPx,
+    ...glyphRunText(glyphs),
     direction: (formatting.rtl ?? isRtl) ? "rtl" : "ltr",
   });
 
@@ -1178,8 +1176,7 @@ const paintTab = ({
                   : (parseDisplayColor(run.color) ?? DOC_CANVAS_TEXT),
               xPx: paintXPx,
               baselineYPx,
-              text: glyphs.text,
-              advancesPx: glyphs.advancesPx,
+              ...glyphRunText(glyphs),
               direction: "ltr",
             },
           ],

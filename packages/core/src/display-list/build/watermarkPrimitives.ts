@@ -21,7 +21,7 @@ import type { Watermark } from "../../types/document";
 import type { DisplayImagePrimitive, DisplayPrimitive, DisplayRect } from "../types";
 import type { BuildContext } from "./buildContext";
 import { parseDisplayColor } from "./colors";
-import { buildGlyphs } from "./glyphs";
+import { buildGlyphs, glyphRunText } from "./glyphs";
 import { UNSUPPORTED_CONSTRUCT } from "./unsupported";
 
 /**
@@ -104,8 +104,7 @@ const paintTextWatermark = (
               color,
               xPx: centerXPx - glyphs.widthPx / 2,
               baselineYPx,
-              text: glyphs.text,
-              advancesPx: glyphs.advancesPx,
+              ...glyphRunText(glyphs),
               direction: "ltr",
             },
           ],

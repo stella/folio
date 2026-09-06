@@ -17,6 +17,7 @@ const FACE: DisplayFontFace = {
   weight: 400,
   italic: false,
   generic: "sans-serif",
+  fallbacks: [],
   fontBoxAscentRatio: 0.9,
   fontBoxDescentRatio: 0.2,
 };
@@ -68,6 +69,8 @@ const textRun = (text: string): DisplayPrimitive => ({
   text,
   advancesPx: [...text].map(() => 9),
   direction: "ltr",
+  kerning: false,
+  smallCaps: false,
 });
 
 const FIXTURE = listWith([
@@ -301,6 +304,8 @@ describe("malformed display lists", () => {
         text: "abc",
         advancesPx: [1, 2],
         direction: "ltr",
+        kerning: false,
+        smallCaps: false,
       },
     ]);
     expect((await writePdf(broken, { fonts: NO_FONTS, timestamp: TIMESTAMP })).isErr()).toBe(true);
@@ -363,6 +368,8 @@ describe("right-to-left runs", () => {
         text: "abc",
         advancesPx: [10, 20, 30],
         direction: "rtl",
+        kerning: false,
+        smallCaps: false,
       },
     ]);
     const content = contentStreamOf((await write(rtl)).bytes);

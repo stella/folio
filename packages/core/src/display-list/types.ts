@@ -98,6 +98,17 @@ export type DisplayFontFace = {
   /** Category to fall back on when the family itself is unavailable. */
   readonly generic: "serif" | "sans-serif" | "monospace" | "cursive" | "fantasy";
   /**
+   * The concrete families between `family` and `generic`, in the order the
+   * measurer would fall through them.
+   *
+   * A face is a stack, not a name: the measurer resolves one and measures with
+   * whichever entry the host actually has. A backend handed only the first
+   * entry falls straight to the generic when that entry is missing, and paints
+   * a different face from the one the page was laid out in. Empty when the
+   * resolved stack is one family and a generic.
+   */
+  readonly fallbacks: readonly string[];
+  /**
    * The face's own box, above and below the baseline, as fractions of the font
    * size, exactly as the measurer reported it (`FontMetrics.fontBox*`).
    *
@@ -148,6 +159,33 @@ export type DisplayImageSource = {
  * never emits a run that spans a direction change, so no backend runs the bidi
  * algorithm and no two backends can disagree about its result.
  */
+/**
+ * What the measurer added on top of the glyphs' own advances.
+ *
+ * `advancesPx` already carries all three, because that is what line breaking
+ * decided the page on. They are named again here because a backend that hands
+ * the text to a shaper cannot recover them from it: a shaper advances glyphs by
+ * what the font says, and letter spacing, a horizontal scale and the space
+ * compression a justified line was fitted with are not in the font. Such a
+ * backend reapplies them and lands on the same extent; one that positions every
+ * glyph itself ignores this and reads `advancesPx`.
+ *
+ * Absent means none of the three applies, which is the common run.
+ *
+ * Every number is in the same painted pixels as `advancesPx`: `letterSpacingPx`
+ * and `wordSpacingPx` are what a code point actually gained on the page, after
+ * `horizontalScale`. A backend that applies the scale as a transform divides by
+ * it first, because a transform scales the spacing it is given.
+ */
+export type DisplayRunAdjustments = {
+  /** Added after every code point of the run but the last. */
+  readonly letterSpacingPx: number;
+  /** Multiplies every advance. 1 when the run carries no `w:w`. */
+  readonly horizontalScale: number;
+  /** Added to each compressible space, negative on a contracted line. */
+  readonly wordSpacingPx: number;
+};
+
 export type DisplayGlyphRun = {
   readonly kind: "glyphRun";
   readonly font: DisplayFontRef;
@@ -159,6 +197,27 @@ export type DisplayGlyphRun = {
   readonly text: string;
   readonly advancesPx: readonly number[];
   readonly direction: "ltr" | "rtl";
+  /**
+   * Whether the glyphs kern.
+   *
+   * Stated rather than left to the backend's default, because the two defaults
+   * disagree: OOXML kerns only above the `w:kern` size and a run without it
+   * does not kern at all, while a browser asked nothing kerns whenever the face
+   * has the table. A run measured unkerned and painted kerned is narrower on
+   * the page than the line it was fitted into.
+   */
+  readonly kerning: boolean;
+  /**
+   * Whether the run's lowercase letters are drawn as small capitals.
+   *
+   * Carried because it changes every advance in the run: a backend that paints
+   * the text at full size occupies a different width from the one the line was
+   * fitted to. Which glyphs a face uses for them, real `smcp` forms or scaled
+   * capitals, is the backend's business.
+   */
+  readonly smallCaps: boolean;
+  /** What the measurer added to the advances; absent when it added nothing. */
+  readonly adjustments?: DisplayRunAdjustments;
   /**
    * Glyph outline stroke, for `w:outline` and the emboss/imprint effects.
    * Absent means fill only.

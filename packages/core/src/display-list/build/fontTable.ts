@@ -136,6 +136,12 @@ export class FontTable {
       weight,
       italic: isItalic,
       generic: genericOf(stack),
+      // Everything the measurer would fall through before reaching the
+      // generic. Dropping it is what makes a backend paint a different face
+      // from the one measured when the first family is not installed.
+      fallbacks: stack
+        .slice(1)
+        .filter((entry) => GENERIC_FAMILIES[entry.toLowerCase() as GenericFamily] === undefined),
       fontBoxAscentRatio: metrics.fontBoxAscent * scale,
       fontBoxDescentRatio: metrics.fontBoxDescent * scale,
       ...(embedded === undefined ? {} : { embedded }),

@@ -160,6 +160,7 @@ const FACE: DisplayFontFace = {
   weight: 400,
   italic: false,
   generic: "sans-serif",
+  fallbacks: [],
   fontBoxAscentRatio: 0.9,
   fontBoxDescentRatio: 0.2,
 };
@@ -195,6 +196,8 @@ const PRIMITIVE_SAMPLES = {
     text: "abc",
     advancesPx: [9, 9, 9],
     direction: "ltr",
+    kerning: false,
+    smallCaps: false,
   },
   rect: {
     kind: "rect",
