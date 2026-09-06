@@ -2373,6 +2373,10 @@ function convertTable(node: PMNode, startPos: number, options: FlowConversionOpt
     effectiveIndent?.value !== undefined && effectiveIndent?.type === "dxa"
       ? twipsToPixels(effectiveIndent.value)
       : undefined;
+  // An indent measurement folio cannot apply must not half-apply: pairing the
+  // text-edge compensation with a dropped `w:tblInd` would shift the table by
+  // the leading cell margin alone, which no indent asked for.
+  const dropsAuthoredIndent = effectiveIndent?.value !== undefined && indentPx === undefined;
 
   const floating = attrs.floating as
     | {
@@ -2450,7 +2454,7 @@ function convertTable(node: PMNode, startPos: number, options: FlowConversionOpt
   if (indentPx !== undefined) {
     tableBlock.indent = indentPx;
   }
-  if (options.tableIndentCompatibility) {
+  if (options.tableIndentCompatibility && !dropsAuthoredIndent) {
     tableBlock.indentCompatibility = options.tableIndentCompatibility;
   }
   if (floatingPx) {

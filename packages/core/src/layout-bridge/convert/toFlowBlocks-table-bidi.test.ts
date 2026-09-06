@@ -48,4 +48,22 @@ describe("toFlowBlocks table indent compatibility", () => {
   test("leaves the policy unset when the document uses border-edge indents", () => {
     expect(firstTable(tableDoc(null)).indentCompatibility).toBeUndefined();
   });
+
+  test("drops the policy for a table whose indent measurement cannot be applied", () => {
+    const block = toFlowBlocks(tableDoc({ indent: { value: 108, type: "pct" } }), {
+      tableIndentCompatibility: { type: "legacy" },
+    }).find((b) => b.kind === "table");
+
+    expect(block?.indent).toBeUndefined();
+    expect(block?.indentCompatibility).toBeUndefined();
+  });
+
+  test("keeps the policy for a table with a usable indent measurement", () => {
+    const block = toFlowBlocks(tableDoc({ indent: { value: 108, type: "dxa" } }), {
+      tableIndentCompatibility: { type: "legacy" },
+    }).find((b) => b.kind === "table");
+
+    expect(block?.indent).toBeCloseTo(7.2, 3);
+    expect(block?.indentCompatibility).toEqual({ type: "legacy" });
+  });
 });
