@@ -134,6 +134,13 @@ offsets and container kinds only, never a phrase of either document: the corpus
 it read stays outside this repository, and the table it prints must be safe to
 quote anywhere.
 
+One bucket is not a defect. `round-trip-invisible-structure` collects the pairs
+whose every block matches, in order, at coordinates the block model cannot
+reach: the snapshot skips empty textblocks, so a cell holding a blank paragraph
+reports its visible paragraph at `p1` and no operation can put a block there.
+Those are separated from redlines that actually lost content rather than
+resolved by loosening the self-check.
+
 Unlike the measurement modes this runs in one process. A refusal is a yes or
 no that no warm JIT can change, so a process per pair would turn a half-minute
 pass over a corpus into ten minutes of spawning.
