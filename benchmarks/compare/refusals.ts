@@ -94,8 +94,11 @@ const messageShape = (message: string): string =>
   message
     .replace(/"[^"]*"/gu, '"…"')
     .replace(/'[^']*'/gu, "'…'")
+    .replace(/\(paragraph [^)]*\)/gu, "")
     .replace(/\d+/gu, "N")
-    .slice(0, 120);
+    .replace(/\s+/gu, " ")
+    .trim()
+    .slice(0, 180);
 
 const causeMessage = (cause: unknown): string =>
   cause instanceof Error ? `${cause.name}: ${messageShape(cause.message)}` : "non-Error cause";

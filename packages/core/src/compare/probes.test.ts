@@ -392,6 +392,30 @@ describe("single-mutation probes", () => {
     expect(await documentPartOf(result.value.buffer)).toContain("<w:pPrChange ");
   });
 
+  test("insert_paragraph_beside_list_item: the new paragraph is not a list item", async () => {
+    // An insertion inherits the anchor's numbering unless it says otherwise,
+    // and the anchor is whichever block happened to sit next to it. Saying
+    // nothing left every paragraph added beside a list as a further item of
+    // that list, which the self-check then refused.
+    const withParagraph = [
+      ...NUMBERED_LIST_ITEMS.slice(0, 2),
+      { level: null, text: "The following item restates the delivery duty." },
+      ...NUMBERED_LIST_ITEMS.slice(2),
+    ];
+    const target = await buildNumberedListDocx(withParagraph);
+    const result = await compareDocx(LIST_BASE, target, OPTIONS);
+    if (result.isErr()) {
+      throw result.error;
+    }
+    expect(result.value.changes.map(({ kind }) => kind)).toEqual(["insert"]);
+
+    const reviewer = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+    reviewer.resolveReviewedStory({ view: "final" });
+    expect(reviewer.getContent().map(({ listLevel }) => listLevel ?? null)).toEqual(
+      withParagraph.map(({ level }) => level),
+    );
+  });
+
   test("append_paragraph_then_table: additions past the last block keep target order", async () => {
     // Both additions resolve to the same position — after the base's last
     // block — so their order in the document is their order in the operation

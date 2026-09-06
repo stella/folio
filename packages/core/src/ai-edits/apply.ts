@@ -1274,7 +1274,18 @@ const applyFolioAIEditOperationsInternal = ({
           if (isFirstParagraph && operation.pageBreakBefore === true) {
             attrs["pageBreakBefore"] = true;
           }
-          if (isFirstParagraph && operation.listLevel !== undefined) {
+          if (isFirstParagraph && operation.listLevel === null) {
+            // An ordinary paragraph beside a list item. The marker attrs go
+            // with the numbering: left behind they render a list label on a
+            // paragraph that is no longer in the list.
+            attrs["numPr"] = null;
+            attrs["listMarker"] = null;
+            attrs["listMarkerHidden"] = null;
+            attrs["listLevelNumFmts"] = null;
+            attrs["listLevelStarts"] = null;
+            attrs["listAbstractNumId"] = null;
+            attrs["listStartOverride"] = null;
+          } else if (isFirstParagraph && operation.listLevel !== undefined) {
             const anchorNumPr: unknown = baseAttrs["numPr"];
             const numId =
               typeof anchorNumPr === "object" && anchorNumPr !== null && "numId" in anchorNumPr

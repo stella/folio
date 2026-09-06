@@ -721,10 +721,13 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
     const pageBreakBefore = readOptionalBoolean(value, "pageBreakBefore", path);
     const styleId = value["styleId"] === null ? null : readOptionalString(value, "styleId", path);
     const moveId = readOptionalString(value, "moveId", path);
+    const rawListLevel = value["listLevel"];
     const listLevel =
-      value["listLevel"] === undefined
+      rawListLevel === undefined
         ? undefined
-        : readNonNegativeInteger(value, "listLevel", path);
+        : rawListLevel === null
+          ? null
+          : readNonNegativeInteger(value, "listLevel", path);
     return {
       ...operationMeta,
       id,

@@ -945,14 +945,15 @@ export const planStoryCompare = ({
 
   const pushInsertOperation = (block: FolioAIBlock, anchorId: string | null): void => {
     const moveSourceId = moveSourceByTargetBlockId.get(block.id);
-    // Always explicit, `null` included: an inserted paragraph that says
-    // nothing about its style takes the anchor's, and the anchor is
-    // whichever block happened to follow it.
+    // Both always explicit, `null` included: an inserted paragraph that says
+    // nothing about its style or its list level takes the anchor's, and the
+    // anchor is whichever block happened to follow it. A new paragraph beside
+    // a list item is not a list item.
     const shared = {
       text: block.text,
       ...(moveSourceId !== undefined && { moveId: moveIdOf(moveSourceId) }),
       styleId: block.styleId ?? null,
-      ...(block.listLevel !== undefined && { listLevel: block.listLevel }),
+      listLevel: block.listLevel ?? null,
     };
     if (anchorId !== null) {
       operations.push({
