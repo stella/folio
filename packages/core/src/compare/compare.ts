@@ -324,7 +324,7 @@ export const applyComparison = (
 ): Result<readonly CompareChange[], CompareDocxApplyError | CompareDocxRoundTripError> => {
   const changes: CompareChange[] = [...numberingChanges];
   // Each story gets the range that starts where the previous story's ended.
-  // Word's `w:id` namespace is the package, not the part, so two stories
+  // A revision `w:id` is scoped to the package, not the part, so two stories
   // seeded alike would let a reader resolving a header revision resolve a
   // body revision with it.
   let idSeed = revisionStamp.idSeed;

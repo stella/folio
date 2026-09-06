@@ -80,7 +80,7 @@ Timings mean nothing without these, so a failing invariant fails the run.
   as differing. Every other invariant here is satisfiable by seeing nothing, so
   without this one a blind spot passes: a change in a part the engine never
   reads survives accept and reject alike and self-compares clean.
-- **`revision-ids-are-unique`** — no two stories claim one `w:id`. Word's
+- **`revision-ids-are-unique`** — no two stories claim one `w:id`. The
   revision-id space is the package rather than the part, so a comparison
   writing one story at a time has to seed each story above the last id the
   previous one used; every other invariant here passes when it does not.
