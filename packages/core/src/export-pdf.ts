@@ -75,25 +75,67 @@ const toFontRequest = ({ family, weight, italic }: DisplayFontFace) => ({
   italic,
 });
 
-export const exportDocxToPdf = async (
+/**
+ * Exports run one at a time.
+ *
+ * The measurement provider is process-wide, and an export must install its own
+ * fonts across an `await`. Two overlapping exports would otherwise interleave:
+ * the second replaces the first's provider, the first resumes and measures
+ * against the second's fonts, then restores the provider while the second is
+ * still running. Serialising is the honest fix while the provider is ambient;
+ * threading it explicitly through the layout call would remove the need, and
+ * is the larger change this defers to.
+ */
+let exportQueue: Promise<unknown> = Promise.resolve();
+
+const runExclusively = <T>(run: () => Promise<T>): Promise<T> => {
+  const previous = exportQueue;
+  const current = previous.then(run, run);
+  // Keep the chain alive after a rejection: the next caller must still run.
+  exportQueue = current.then(
+    () => undefined,
+    () => undefined,
+  );
+  return current;
+};
+
+export const exportDocxToPdf = (
+  input: DocxInput,
+  options: ExportDocxToPdfOptions,
+): Promise<Result<ExportDocxToPdfResult, ExportPdfError>> =>
+  runExclusively(() => exportOnce(input, options));
+
+const exportOnce = async (
   input: DocxInput,
   options: ExportDocxToPdfOptions,
 ): Promise<Result<ExportDocxToPdfResult, ExportPdfError>> => {
-  // The provider is process-wide state. An export must measure against its own
-  // fonts, but a caller that also has an editor open must get its canvas
-  // backend back afterwards, including when the export fails.
+  // A caller that also has an editor open must get its canvas backend back on
+  // every exit path, including a throw.
   const callerProvider = getMeasureProvider();
+  try {
+    return await exportWithHeadlessProvider(input, options);
+  } finally {
+    setMeasureProvider(callerProvider);
+  }
+};
+
+const exportWithHeadlessProvider = async (
+  input: DocxInput,
+  options: ExportDocxToPdfOptions,
+): Promise<Result<ExportDocxToPdfResult, ExportPdfError>> => {
   const headless = installHeadlessMeasureProvider(options.fonts);
 
   const laidOut = await layoutDocxHeadless(input, { pageGap: 0 });
   if (laidOut.isErr()) {
-    setMeasureProvider(callerProvider);
     return Result.err(new ExportPdfError({ message: laidOut.error.message, cause: laidOut.error }));
   }
 
   const list = buildDisplayList({
     layout: laidOut.value.layout,
     blockLookup: laidOut.value.blockLookup,
+    // Without these the producer must assume every render-option construct
+    // might be present, and reports a gap for a document that has none.
+    documentFeatures: laidOut.value.documentFeatures,
     ...(options.metadata === undefined ? {} : { metadata: options.metadata }),
   });
 
@@ -102,7 +144,6 @@ export const exportDocxToPdf = async (
     timestamp: options.timestamp,
     ...(options.producer === undefined ? {} : { producer: options.producer }),
   });
-  setMeasureProvider(callerProvider);
   if (written.isErr()) {
     return Result.err(new ExportPdfError({ message: written.error.message, cause: written.error }));
   }

@@ -15,7 +15,7 @@ import type {
   TableBlock,
 } from "../../layout-engine/types";
 import type { BlockLookup } from "../../layout-painter/index";
-import type { DisplayGlyphRun, DisplayPrimitive } from "../types";
+import type { DisplayGlyphRun, DisplayList, DisplayPrimitive } from "../types";
 import { buildDisplayList } from "./buildDisplayList";
 import { UNSUPPORTED_CONSTRUCT } from "./unsupported";
 
@@ -327,6 +327,44 @@ describe("buildDisplayList: contract obligations", () => {
     }, fakeMeasure);
   });
 
+  test("a cell block with no measure is named rather than dropped", () => {
+    withFakeTextMeasure(() => {
+      const table: TableBlock = {
+        kind: "table",
+        id: "t",
+        columnWidths: [200],
+        rows: [
+          {
+            id: "r0",
+            cells: [
+              {
+                id: "c0",
+                blocks: [para("cp", "Cell")],
+                padding: { top: 0, right: 0, bottom: 0, left: 0 },
+              },
+            ],
+          },
+        ],
+      };
+      const built = buildLayout([table]);
+      const measure = built.blockLookup.get("t")?.measure;
+      expect(measure?.kind).toBe("table");
+      if (measure?.kind === "table") {
+        // The pair the builder walks: one block, no measure beside it.
+        measure.rows[0]?.cells[0]?.blocks.pop();
+      }
+
+      const list = buildDisplayList(built);
+      expect(glyphRuns(list.pages[0]?.primitives ?? [])).toHaveLength(0);
+      const reported = list.unsupported.filter(
+        (entry) => entry.construct === UNSUPPORTED_CONSTRUCT.missingBlock,
+      );
+      expect(reported).toHaveLength(1);
+      expect(reported[0]?.detail).toContain("cp");
+      expect(reported[0]?.detail).toContain("measure");
+    }, fakeMeasure);
+  });
+
   test("the font table interns one face per distinct family/weight/slant", () => {
     withFakeTextMeasure(() => {
       const block: ParagraphBlock = {
@@ -343,5 +381,50 @@ describe("buildDisplayList: contract obligations", () => {
       expect(list.fonts.map((face) => face.weight)).toEqual([400, 700]);
       expect(glyphRuns(list.pages[0]?.primitives ?? []).map((run) => run.font)).toEqual([0, 1, 0]);
     }, fakeMeasure);
+  });
+});
+
+describe("buildDisplayList: layout-invisible features", () => {
+  const constructsOf = (list: DisplayList): string[] =>
+    list.unsupported.map((entry) => entry.construct);
+
+  test("a document with neither page borders nor a watermark reports neither", () => {
+    withFakeTextMeasure(() => {
+      const list = buildDisplayList({
+        ...buildLayout([para("a", "Alpha")]),
+        documentFeatures: { pageBorders: false, watermark: false },
+      });
+      expect(list.unsupported).toEqual([]);
+    }, fakeMeasure);
+  });
+
+  test("only the feature the document has is reported", () => {
+    withFakeTextMeasure(() => {
+      const list = buildDisplayList({
+        ...buildLayout([para("a", "Alpha")]),
+        documentFeatures: { pageBorders: true, watermark: false },
+      });
+      expect(constructsOf(list)).toEqual([UNSUPPORTED_CONSTRUCT.pageBorders]);
+      expect(list.unsupported.at(0)?.pageIndex).toBe(0);
+    }, fakeMeasure);
+  });
+
+  test("an unstated document reports both, because unknown is not absent", () => {
+    withFakeTextMeasure(() => {
+      const list = buildDisplayList(buildLayout([para("a", "Alpha")]));
+      expect(constructsOf(list)).toEqual([
+        UNSUPPORTED_CONSTRUCT.pageBorders,
+        UNSUPPORTED_CONSTRUCT.watermark,
+      ]);
+    }, fakeMeasure);
+  });
+
+  test("a layout with no page reports no gap, because there is no page to name", () => {
+    const list = buildDisplayList({
+      layout: { pageSize: PAGE_SIZE, pages: [] },
+      blockLookup: new Map(),
+    });
+    expect(list.pages).toEqual([]);
+    expect(list.unsupported).toEqual([]);
   });
 });

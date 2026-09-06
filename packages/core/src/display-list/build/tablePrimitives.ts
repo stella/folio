@@ -251,6 +251,13 @@ const paintCellBlocks = ({
     const block = blocks[index];
     const measure = measures[index];
     if (!block || !measure) {
+      context.unsupported.report(
+        UNSUPPORTED_CONSTRUCT.missingBlock,
+        context.pageIndex,
+        block === undefined
+          ? `table cell content at index ${String(index)} has no block`
+          : `table cell block ${String(block.id)} has no measure`,
+      );
       continue;
     }
     const placement = placeTableCellBlock(flowState, block, measure);

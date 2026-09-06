@@ -9,8 +9,8 @@
  *
  * ## What it does not do
  *
- * Header, footer and footnote stories are separate OOXML stories that the
- * editor lays out as their own ProseMirror views. This entry paginates the
+ * Header, footer, footnote and endnote stories are separate OOXML stories that
+ * the editor lays out as their own ProseMirror views. This entry paginates the
  * body only, and says so through {@link HeadlessLayoutResult.unsupported}
  * rather than emitting pages that quietly lack their furniture.
  *
@@ -36,8 +36,20 @@ import type { BlockLookup } from "./layout-painter/index";
 import { toFlowBlocks } from "./layout-bridge/convert/toFlowBlocks";
 import type { ToFlowBlocksOptions } from "./layout-bridge/convert/toFlowBlocks";
 import { getMargins, getPageSize, getPageNumbering } from "./paged-layout/sectionGeometry";
+import type { DocumentFeatures } from "./display-list/build/buildDisplayList";
 import { toProseDoc } from "./prosemirror/conversion/toProseDoc";
+import { getDocumentWatermark } from "./watermark/index";
 import type { Document } from "./types/document";
+
+/**
+ * Constructs the painter takes from render options rather than from `Layout`.
+ *
+ * Imported from the display-list producer rather than restated, so a feature
+ * added there cannot silently go unreported here: the producer derives the
+ * shape from its own gap list, and this module has to fill whatever that list
+ * names.
+ */
+export type DocumentPaintFeatures = DocumentFeatures;
 
 /** A story this entry does not paginate, named so a caller can see the hole. */
 export type HeadlessLayoutGap = {
@@ -66,27 +78,42 @@ export type HeadlessLayoutResult = {
    * text (`getPageTextFromLayout`) is impossible without it.
    */
   readonly proseDoc: PMNode;
+  /**
+   * Whether the package authors constructs that reach the editor's painter
+   * through render options rather than through `Layout`. A display-list
+   * producer cannot see them, and needs to know whether it is reporting a real
+   * gap or a construct the document never had.
+   */
+  readonly documentFeatures: DocumentPaintFeatures;
   readonly unsupported: readonly HeadlessLayoutGap[];
 };
 
 /**
- * Stories the editor lays out separately. Listed once, as data, so the gap
- * reported to callers cannot drift from the gap that actually exists.
+ * Stories the editor lays out separately, keyed by story so the map is total
+ * over the union. `satisfies Record<…>` is what makes it total in both
+ * directions: a story this entry does not paginate but forgets to list is a
+ * compile error rather than content that vanishes without a report. It was
+ * exactly that omission (endnotes were detectable but unlisted) that this
+ * shape now prevents.
  */
-const UNPAGINATED_STORIES = [
-  {
+const UNPAGINATED_STORIES = {
+  header: {
     story: "header",
     detail: "Header stories are laid out by the editor pipeline; this entry paginates the body.",
   },
-  {
+  footer: {
     story: "footer",
     detail: "Footer stories are laid out by the editor pipeline; this entry paginates the body.",
   },
-  {
+  footnote: {
     story: "footnote",
     detail: "Footnote heights come from the editor's footnote views; body lines reserve no space.",
   },
-] as const satisfies readonly HeadlessLayoutGap[];
+  endnote: {
+    story: "endnote",
+    detail: "Endnotes are their own story and are not paginated with the body.",
+  },
+} as const satisfies Record<HeadlessLayoutGap["story"], HeadlessLayoutGap>;
 
 const hasStory = (document: Document, story: HeadlessLayoutGap["story"]): boolean => {
   const sections = document.package.document.sections ?? [];
@@ -104,6 +131,13 @@ const hasStory = (document: Document, story: HeadlessLayoutGap["story"]): boolea
       return false;
   }
 };
+
+const readPaintFeatures = (document: Document): DocumentPaintFeatures => ({
+  pageBorders: (document.package.document.sections ?? []).some((section) =>
+    Object.values(section.properties.pageBorders ?? {}).some((border) => border !== undefined),
+  ),
+  watermark: getDocumentWatermark(document) !== undefined,
+});
 
 const buildFlowOptions = (document: Document, pageContentHeight: number): ToFlowBlocksOptions => {
   const settings = document.package.settings;
@@ -248,6 +282,7 @@ export const layoutDocxHeadless = async (
     blockLookup: laidOut.value.blockLookup,
     document,
     proseDoc: projected.value,
-    unsupported: UNPAGINATED_STORIES.filter((gap) => hasStory(document, gap.story)),
+    documentFeatures: readPaintFeatures(document),
+    unsupported: Object.values(UNPAGINATED_STORIES).filter((gap) => hasStory(document, gap.story)),
   });
 };

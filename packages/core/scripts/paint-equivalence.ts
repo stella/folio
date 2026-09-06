@@ -62,7 +62,7 @@
  * ## What makes the run fail
  *
  * The gate is the committed baseline, not an absolute score. With no
- * `--threshold`, the run fails only when a fixture scores more than
+ * `--threshold`, a score fails the run only when a fixture scores more than
  * {@link BASELINE_REGRESSION_TOLERANCE} below its baseline entry, or when a
  * default-corpus fixture the baseline names did not run at all. A fixture with
  * no baseline entry is reported as new and does not fail. `--threshold <n>`
@@ -70,11 +70,19 @@
  * script whose plain invocation always exits 1 teaches everyone to ignore its
  * exit code, at which point it has stopped being a signal.
  *
+ * The run also fails when an installed tool ran and failed: `mutool` rejecting
+ * the PDF, or chromium failing a capture for anything but a timeout. A gate
+ * that reports "skipped" for both an absent tool and a broken one passes while
+ * measuring nothing, which is worse than no gate.
+ *
  * ## Optional arms
  *
  * `mutool` rasterizes the PDF and Playwright's chromium rasterizes the DOM.
- * Either being absent is reported and exits 0, the way `parity/` treats a
- * reference renderer it cannot find: a missing tool is not a regression.
+ * Either being *absent* is reported and exits 0, the way `parity/` treats a
+ * reference renderer it cannot find: a missing tool is not a regression. A
+ * capture timeout on a browser that did launch is reported under its own name
+ * and also exits 0, because a loaded machine misses the stability mark on a
+ * long document; every other failure of a tool that is present exits 1.
  */
 
 import { existsSync } from "node:fs";
@@ -103,14 +111,16 @@ const USAGE = [
     "[--json] [--out <dir>] [--threshold <0..1>] [--update-baseline]",
   "",
   "Gates on the committed baseline, not on an absolute score: exit 1 when a fixture",
-  "scores more than 0.005 below its baseline entry, or when a default-corpus fixture",
-  "the baseline names did not run. A fixture with no baseline entry is reported as new",
-  "and does not fail. The absolute score is bounded by the two backends' known",
-  "residuals (see the module header) rather than by correctness, so read a drop, not a",
-  "level.",
+  "scores more than 0.005 below its baseline entry, when a default-corpus fixture",
+  "the baseline names did not run, or when a rasterizer that is installed ran and",
+  "failed. A fixture with no baseline entry is reported as new and does not fail; an",
+  "absent rasterizer is skipped. The absolute score is bounded by the two backends'",
+  "known residuals (see the module header) rather than by correctness, so read a drop,",
+  "not a level.",
   "",
   "  --threshold <0..1>  add an absolute floor on top of the regression check",
-  "  --update-baseline   rewrite paint-equivalence.baseline.json from this run",
+  "  --update-baseline   rewrite paint-equivalence.baseline.json from a complete,",
+  "                      fully scored default-corpus run; refused otherwise",
 ].join("\n");
 
 /** Fixed so two runs over one fixture produce byte-identical PDFs. */
@@ -456,9 +466,49 @@ const buildPageHtml = ({ pages, elements, fontFaceCss }: BuildPageHtmlOptions): 
 // The two raster arms
 // ---------------------------------------------------------------------------
 
+/**
+ * What a raster arm did, and what that costs the run.
+ *
+ * `unavailable` is the only disposition a green run may contain: the optional
+ * tool is not installed, so nothing was measured and nothing regressed.
+ * `timedOut` is an installed tool that ran out of budget, tolerated on a
+ * loaded machine but named apart, because a capture that never finished is not
+ * the same event as a browser that was never there. `failed` is an installed
+ * tool that ran and failed, which is a result, not an absence: the run reports
+ * it and exits non-zero rather than passing while measuring nothing.
+ */
+const ARM_DISPOSITION = {
+  unavailable: "unavailable",
+  timedOut: "timedOut",
+  failed: "failed",
+} as const;
+
+type ArmDisposition = (typeof ARM_DISPOSITION)[keyof typeof ARM_DISPOSITION];
+
 type RasterArm =
   | { readonly status: "rendered"; readonly pagePngs: readonly string[] }
-  | { readonly status: "skipped"; readonly reason: string };
+  | { readonly status: ArmDisposition; readonly reason: string };
+
+/** Where a problem came from: one of the two arms, or the comparison itself. */
+type ProblemSource = "pdf" | "dom" | "compare";
+
+type RunProblem = {
+  readonly source: ProblemSource;
+  readonly disposition: ArmDisposition;
+  readonly reason: string;
+};
+
+/** A Playwright timeout says so in its message and nowhere else. */
+const TIMEOUT_MARKER = "timeout";
+
+const classifyChromiumFailure = (message: string): ArmDisposition => {
+  if (message.includes(CHROMIUM_MISSING_MARKER)) {
+    return ARM_DISPOSITION.unavailable;
+  }
+  return message.toLowerCase().includes(TIMEOUT_MARKER)
+    ? ARM_DISPOSITION.timedOut
+    : ARM_DISPOSITION.failed;
+};
 
 const pageNumberOf = (filename: string): number => {
   const match = PAGE_PNG_RE.exec(filename);
@@ -490,7 +540,10 @@ type RasterizePdfOptions = {
 
 const rasterizePdf = async ({ pdfPath, pagesDir }: RasterizePdfOptions): Promise<RasterArm> => {
   if (Bun.which("mutool") === null) {
-    return { status: "skipped", reason: "mutool is not on PATH; the PDF arm did not rasterize." };
+    return {
+      status: ARM_DISPOSITION.unavailable,
+      reason: "mutool is not on PATH; the PDF arm did not rasterize.",
+    };
   }
   await freshDir(pagesDir);
   const proc = Bun.spawn(
@@ -509,9 +562,21 @@ const rasterizePdf = async ({ pdfPath, pagesDir }: RasterizePdfOptions): Promise
   );
   const [exitCode, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
   if (exitCode !== 0) {
-    return { status: "skipped", reason: `mutool exited ${String(exitCode)}: ${stderr.trim()}` };
+    // mutool is installed and rejected the PDF this run wrote: a result about
+    // the writer, not a missing tool.
+    return {
+      status: ARM_DISPOSITION.failed,
+      reason: `mutool exited ${String(exitCode)}: ${stderr.trim()}`,
+    };
   }
-  return { status: "rendered", pagePngs: await listPagePngs(pagesDir) };
+  const pagePngs = await listPagePngs(pagesDir);
+  if (pagePngs.length === 0) {
+    return {
+      status: ARM_DISPOSITION.failed,
+      reason: "mutool exited 0 but wrote no page raster.",
+    };
+  }
+  return { status: "rendered", pagePngs };
 };
 
 type ScreenshotDomOptions = {
@@ -531,11 +596,13 @@ const screenshotDom = async ({
     catch: (cause) => (cause instanceof Error ? cause.message : String(cause)),
   });
   if (launched.isErr()) {
+    const disposition = classifyChromiumFailure(launched.error);
     return {
-      status: "skipped",
-      reason: launched.error.includes(CHROMIUM_MISSING_MARKER)
-        ? CHROMIUM_MISSING_MESSAGE
-        : `chromium could not launch: ${launched.error}`,
+      status: disposition,
+      reason:
+        disposition === ARM_DISPOSITION.unavailable
+          ? CHROMIUM_MISSING_MESSAGE
+          : `chromium could not launch: ${launched.error}`,
     };
   }
 
@@ -569,12 +636,17 @@ const screenshotDom = async ({
   });
   await browser.close();
 
-  // A browser that launches and then fails mid-capture is the same kind of
-  // event as one that never launched: a tool problem, not a paint regression.
-  // Crashing the run here would fail a fixture for the machine being busy.
-  return captured.isErr()
-    ? { status: "skipped", reason: `chromium could not capture the pages: ${captured.error}` }
-    : { status: "rendered", pagePngs: captured.value };
+  if (captured.isErr()) {
+    // A browser that launched is an available tool. Only a timeout is
+    // tolerated, and only because a loaded machine misses the stability mark
+    // on a long document; every other mid-capture failure is the browser
+    // telling us something about the page it was handed.
+    return {
+      status: classifyChromiumFailure(captured.error),
+      reason: `chromium could not capture the pages: ${captured.error}`,
+    };
+  }
+  return { status: "rendered", pagePngs: captured.value };
 };
 
 // ---------------------------------------------------------------------------
@@ -599,12 +671,16 @@ type FixtureReport = {
   readonly pixelWeightedScore: number | null;
   readonly worstPage: PageScore | null;
   readonly pages: readonly PageScore[];
-  readonly skipped: readonly string[];
+  /** Empty on a fully scored fixture; a `failed` entry fails the run. */
+  readonly problems: readonly RunProblem[];
   readonly unsupported: readonly DisplayUnsupported[];
   readonly layoutGaps: readonly HeadlessLayoutGap[];
   readonly measurementSubstitutions: readonly HeadlessFontSubstitution[];
   readonly embeddingSubstitutions: readonly PdfSubstitution[];
 };
+
+const problemOf = (source: ProblemSource, arm: RasterArm): readonly RunProblem[] =>
+  arm.status === "rendered" ? [] : [{ source, disposition: arm.status, reason: arm.reason }];
 
 const slugOf = (fixturePath: string): string =>
   path.basename(fixturePath, path.extname(fixturePath)).replaceAll(/[^\w.-]+/gu, "-");
@@ -706,11 +782,12 @@ const runFixture = async ({
     pages: [],
   } as const;
 
-  if (pdfArm.status === "skipped" || domArm.status === "skipped") {
-    const skipped = [pdfArm, domArm].flatMap((arm) =>
-      arm.status === "skipped" ? [arm.reason] : [],
-    );
-    return Result.ok({ ...shared, ...unscored, skipped });
+  if (pdfArm.status !== "rendered" || domArm.status !== "rendered") {
+    return Result.ok({
+      ...shared,
+      ...unscored,
+      problems: [...problemOf("pdf", pdfArm), ...problemOf("dom", domArm)],
+    });
   }
 
   const { comparison } = await comparePageRasters({
@@ -719,10 +796,18 @@ const runFixture = async ({
     outputDir: path.join(fixtureDir, "diff"),
   });
   if (comparison.status === "empty") {
+    // Both arms reported pages and the comparison found none to score: a
+    // harness failure, not an absent tool.
     return Result.ok({
       ...shared,
       ...unscored,
-      skipped: ["Neither arm produced a page raster."],
+      problems: [
+        {
+          source: "compare",
+          disposition: ARM_DISPOSITION.failed,
+          reason: "both arms rasterized, but no page pair could be compared.",
+        },
+      ],
     });
   }
 
@@ -748,7 +833,7 @@ const runFixture = async ({
     pixelWeightedScore: comparison.score,
     worstPage,
     pages,
-    skipped: [],
+    problems: [],
   });
 };
 
@@ -822,6 +907,12 @@ const findMissing = (reports: readonly FixtureReport[], baseline: Baseline): rea
 // Reporting
 // ---------------------------------------------------------------------------
 
+const PROBLEM_LABEL = {
+  unavailable: "skipped",
+  timedOut: "timed out",
+  failed: "failed",
+} as const satisfies Record<ArmDisposition, string>;
+
 const formatSimilarity = (value: number): string => value.toFixed(4);
 
 /** Rounded before the sign is chosen, so a movement too small to print does
@@ -859,8 +950,8 @@ const printReport = (report: FixtureReport, baseline: Baseline | null): void => 
     `  ${String(report.pageCount)} page(s), ${report.pdfByteSize.toLocaleString("en")} pdf bytes, ` +
       `${report.exportMs.toFixed(0)} ms export, worst ${worst}, mean ${mean}`,
   );
-  for (const reason of report.skipped) {
-    console.log(`  skipped: ${reason}`);
+  for (const problem of report.problems) {
+    console.log(`  ${PROBLEM_LABEL[problem.disposition]} (${problem.source}): ${problem.reason}`);
   }
   for (const gap of report.layoutGaps) {
     console.log(`  layout gap: ${gap.story} (${gap.detail})`);
@@ -938,7 +1029,44 @@ const newFixtures =
         .filter((report) => baseline[report.fixture] === undefined)
         .map((report) => report.fixture);
 
+type FixtureFailure = RunProblem & { readonly fixture: string };
+
+const failures = reports.flatMap((report): readonly FixtureFailure[] =>
+  report.problems.flatMap((problem) =>
+    problem.disposition === ARM_DISPOSITION.failed
+      ? [
+          {
+            fixture: report.fixture,
+            source: problem.source,
+            disposition: problem.disposition,
+            reason: problem.reason,
+          },
+        ]
+      : [],
+  ),
+);
+
 if (args.updateBaseline) {
+  // The file is rewritten whole, so a partial run would delete the entries it
+  // did not measure. Only a complete default-corpus run may write it.
+  const unscoredFixtures = reports.filter((report) => report.meanSimilarity === null);
+  const refusals = [
+    ...(args.target === null
+      ? []
+      : ["a named fixture or directory covers less than the baseline describes"]),
+    ...unscoredFixtures.map((report) => `${report.fixture} was not scored`),
+    ...missing.map((fixture) => `${fixture} is in the baseline but did not run`),
+  ];
+  if (refusals.length > 0) {
+    console.error(
+      "--update-baseline needs a complete default-corpus run with every fixture scored:",
+    );
+    for (const refusal of refusals) {
+      console.error(`  ${refusal}`);
+    }
+    console.error("The baseline was left unchanged.");
+    process.exit(2);
+  }
   const next: Baseline = Object.fromEntries(
     reports.flatMap((report) =>
       report.meanSimilarity === null ? [] : [[report.fixture, round(report.meanSimilarity)]],
@@ -971,6 +1099,7 @@ if (args.json) {
         missingFromRun: missing,
         newFixtures,
         belowThreshold: belowThreshold.map((report) => report.fixture),
+        failures,
         fixtures: reports,
       },
       null,
@@ -997,6 +1126,9 @@ if (args.json) {
       `below threshold: ${report.fixture} ${formatSimilarity(report.meanSimilarity ?? 0)} < ${formatSimilarity(args.threshold ?? 0)}`,
     );
   }
+  for (const { fixture, source, reason } of failures) {
+    console.log(`failed: ${fixture} ${source} arm ran and failed: ${reason}`);
+  }
   const overall = meanOf(scored);
   const gate =
     args.threshold === null
@@ -1008,4 +1140,8 @@ if (args.json) {
   );
 }
 
-process.exit(regressions.length > 0 || missing.length > 0 || belowThreshold.length > 0 ? 1 : 0);
+process.exit(
+  regressions.length > 0 || missing.length > 0 || belowThreshold.length > 0 || failures.length > 0
+    ? 1
+    : 0,
+);

@@ -54,7 +54,7 @@
     "prepack": "bun run build",
     "pack:dry-run": "bun pm pack --dry-run",
     "typecheck": "bun ../../scripts/tsc-native.ts --noEmit -p tsconfig.build.json",
-    "test": "bun test src",
+    "test": "bun test src scripts",
     "test:property": "bun test $(grep -rlF 'fc.assert' src --include='*.test.ts')",
     "perf": "bun scripts/profile-editor.ts"
   },

@@ -30,30 +30,34 @@ const AUTOMATIC_COLOR_VALUES = new Set(["auto", "windowtext", "currentcolor", "i
  * bridge can pass through. Kept small on purpose: the bridge resolves named
  * highlights to hex before layout, so this is a safety net for the values that
  * still arrive as names.
+ *
+ * A `Map`, not an object: the key is an authored string, and an object lookup
+ * would answer `constructor`, `toString` or `__proto__` from the prototype and
+ * hand a function to {@link parseHex}.
  */
-const NAMED_COLORS = {
-  black: "#000000",
-  blue: "#0000ff",
-  cyan: "#00ffff",
-  darkblue: "#000080",
-  darkcyan: "#008080",
-  darkgray: "#808080",
-  darkgrey: "#808080",
-  darkgreen: "#008000",
-  darkmagenta: "#800080",
-  darkred: "#800000",
-  darkyellow: "#808000",
-  gray: "#808080",
-  grey: "#808080",
-  green: "#00ff00",
-  lightgray: "#c0c0c0",
-  lightgrey: "#c0c0c0",
-  magenta: "#ff00ff",
-  red: "#ff0000",
-  silver: "#c0c0c0",
-  white: "#ffffff",
-  yellow: "#ffff00",
-} as const;
+const NAMED_COLORS = new Map([
+  ["black", "#000000"],
+  ["blue", "#0000ff"],
+  ["cyan", "#00ffff"],
+  ["darkblue", "#000080"],
+  ["darkcyan", "#008080"],
+  ["darkgray", "#808080"],
+  ["darkgrey", "#808080"],
+  ["darkgreen", "#008000"],
+  ["darkmagenta", "#800080"],
+  ["darkred", "#800000"],
+  ["darkyellow", "#808000"],
+  ["gray", "#808080"],
+  ["grey", "#808080"],
+  ["green", "#00ff00"],
+  ["lightgray", "#c0c0c0"],
+  ["lightgrey", "#c0c0c0"],
+  ["magenta", "#ff00ff"],
+  ["red", "#ff0000"],
+  ["silver", "#c0c0c0"],
+  ["white", "#ffffff"],
+  ["yellow", "#ffff00"],
+]);
 
 const DOC_CUSTOM_PROPERTIES: Record<string, DisplayColor> = {
   "--doc-canvas": DOC_CANVAS,
@@ -140,7 +144,7 @@ export const parseDisplayColor = (color: string | undefined): DisplayColor | und
     return parseDisplayColor(varMatch[2]);
   }
 
-  const named = NAMED_COLORS[lower as keyof typeof NAMED_COLORS];
+  const named = NAMED_COLORS.get(lower);
   if (named !== undefined) {
     return parseHex(named);
   }

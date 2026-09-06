@@ -344,6 +344,24 @@ const base64Of = (filePath: string): string => {
   return encoded;
 };
 
+/**
+ * A CSS `<string>` token, quoted and escaped.
+ *
+ * A family name comes from an authored document, and the rule is emitted into
+ * a `<style>` element. The backslash is escaped first: escaping the quote
+ * first turns an authored `\"` into `\\"`, which CSS reads as a literal
+ * backslash followed by the closing quote, and the rest of the name becomes
+ * declarations. A newline is not a valid CSS string character at all, so it is
+ * emitted as the `\A ` escape, whose trailing space ends the hex escape.
+ */
+export const cssString = (value: string): string =>
+  `"${value
+    .replaceAll("\\", "\\\\")
+    .replaceAll('"', '\\"')
+    .replaceAll("\n", "\\A ")
+    .replaceAll("\r", "\\D ")
+    .replaceAll("\f", "\\C ")}"`;
+
 type FontFaceRuleOptions = {
   readonly family: string;
   readonly binary: FaceBinary;
@@ -361,7 +379,7 @@ const fontFaceRule = ({
 }: FontFaceRuleOptions): string =>
   [
     "@font-face {",
-    `  font-family: "${family.replaceAll('"', '\\"')}";`,
+    `  font-family: ${cssString(family)};`,
     `  src: url(data:font/woff;base64,${base64Of(binary.filePath)}) format("woff");`,
     `  font-weight: ${String(weight)};`,
     `  font-style: ${italic ? "italic" : "normal"};`,

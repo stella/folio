@@ -47,12 +47,45 @@ import { paintTableFragment } from "./tablePrimitives";
 import { paintTextBoxFragment } from "./textBoxPrimitives";
 import { UnsupportedCollector, UNSUPPORTED_CONSTRUCT } from "./unsupported";
 
+/** Document-wide gaps are attributed to the first page, the only one certain to exist. */
+const FIRST_PAGE_INDEX = 0;
+
+/**
+ * Every feature a source document can have that a `Layout` does not record,
+ * with the reason it paints nothing. The list is the single source of truth:
+ * {@link DocumentFeatures} is derived from it, so a feature added here cannot
+ * be left without a flag or without a reason.
+ */
+const DOCUMENT_FEATURE_GAPS = [
+  [
+    "pageBorders",
+    "w:pgBorders reach the painter through render options, not through Layout, so the builder cannot paint them",
+  ],
+  [
+    "watermark",
+    "watermarks reach the painter through render options, not through Layout, so the builder cannot paint them",
+  ],
+] as const satisfies readonly (readonly [keyof typeof UNSUPPORTED_CONSTRUCT, string])[];
+
+/**
+ * Which of those features the source document actually has. The builder cannot
+ * detect them, so the caller that parsed the document states it.
+ */
+export type DocumentFeatures = {
+  readonly [Feature in (typeof DOCUMENT_FEATURE_GAPS)[number][0]]: boolean;
+};
+
 export type BuildDisplayListOptions = {
   readonly layout: Layout;
   readonly blockLookup: BlockLookup;
   readonly metadata?: DisplayMetadata;
   /** Page background. Defaults to opaque white: the PDF has no theme. */
   readonly pageBackground?: DisplayColor;
+  /**
+   * Omitted means unknown, and an unknown document is reported as having both:
+   * a silent gap is worse than one the reader can dismiss.
+   */
+  readonly documentFeatures?: DocumentFeatures;
 };
 
 const paragraphTextOf = (block: ParagraphBlock): string =>
@@ -280,6 +313,7 @@ export const buildDisplayList = ({
   blockLookup,
   metadata,
   pageBackground,
+  documentFeatures,
 }: BuildDisplayListOptions): DisplayList => {
   const fonts = new FontTable();
   const images = new ImageTable();
@@ -288,19 +322,18 @@ export const buildDisplayList = ({
   const { bookmarkTargets, outline } = collectDocumentTargets(layout, blockLookup);
 
   // Page borders and watermarks reach the DOM painter through
-  // `RenderPageOptions`; nothing in a `Layout` records that a document has
-  // either, so their absence cannot even be detected per page. Said once, so a
-  // backend author sees the gap rather than an unexplained blank margin.
-  unsupported.report(
-    UNSUPPORTED_CONSTRUCT.pageBorders,
-    0,
-    "w:pgBorders reach the painter through render options, not through Layout, so the builder cannot paint them",
-  );
-  unsupported.report(
-    UNSUPPORTED_CONSTRUCT.watermark,
-    0,
-    "watermarks reach the painter through render options, not through Layout, so the builder cannot paint them",
-  );
+  // `RenderPageOptions`; nothing in a `Layout` records either, so the gap is
+  // stated once per document rather than per page. A `DisplayUnsupported`
+  // carries a page index, so a document with no page has nothing to attribute
+  // the gap to, and nothing was painted there to be missing from.
+  if (layout.pages.length > 0) {
+    for (const [feature, detail] of DOCUMENT_FEATURE_GAPS) {
+      if (documentFeatures !== undefined && !documentFeatures[feature]) {
+        continue;
+      }
+      unsupported.report(UNSUPPORTED_CONSTRUCT[feature], FIRST_PAGE_INDEX, detail);
+    }
+  }
 
   const pages = layout.pages.map((page, pageIndex) =>
     buildPage({

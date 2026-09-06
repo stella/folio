@@ -9,6 +9,8 @@
  * than a named one.
  */
 
+import { Result } from "better-result";
+
 import type { ImageBlock, ImageFragment } from "../../layout-engine/types";
 import { parseRotationDegrees } from "../../utils/rotationBoundingBox";
 import { sanitizeImageSrc } from "../../utils/sanitizeImageSrc";
@@ -34,8 +36,16 @@ type DecodedImage = {
 
 type DecodeFailure = { readonly reason: string };
 
+/**
+ * `undefined` for a payload `atob` rejects: a malformed `data:` URL is a
+ * document the builder reports, not an exception that aborts the build.
+ */
 const decodeBase64 = (encoded: string): Uint8Array | undefined => {
-  const binary = atob(encoded);
+  const decoded = Result.try(() => atob(encoded));
+  if (decoded.isErr()) {
+    return undefined;
+  }
+  const binary = decoded.value;
   const bytes = new Uint8Array(binary.length);
   for (let index = 0; index < binary.length; index += 1) {
     bytes[index] = binary.charCodeAt(index);
@@ -178,7 +188,10 @@ export class ImageTable {
       return fail("only base64 data: URLs carry decodable bytes");
     }
     const bytes = decodeBase64(match[3]!);
-    if (bytes === undefined || bytes.length === 0) {
+    if (bytes === undefined) {
+      return fail("image data: URL payload is not valid base64");
+    }
+    if (bytes.length === 0) {
       return fail("image data: URL decoded to no bytes");
     }
 

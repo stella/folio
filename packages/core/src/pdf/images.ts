@@ -280,11 +280,28 @@ const decodePng = (bytes: Uint8Array): Result<PdfImageSamples, PdfImageError> =>
     );
   }
 
-  const inflated = inflateSync(pixels);
-  const filtered = new Uint8Array(inflated.buffer, inflated.byteOffset, inflated.byteLength);
   const bitsPerPixel = bitDepth * channels;
   const bytesPerRow = Math.ceil((bitsPerPixel * width) / EIGHT_BIT);
   const bytesPerPixel = Math.max(1, Math.ceil(bitsPerPixel / EIGHT_BIT));
+  // A non-interlaced PNG inflates to exactly one filter byte plus one packed
+  // scanline per row, so the geometry the IHDR already declared is the whole
+  // budget: a stream that wants more is a decompression bomb, not an image.
+  const inflatedBytesExpected = height * (bytesPerRow + 1);
+  const inflated = Result.try({
+    try: () => inflateSync(pixels, { maxOutputLength: inflatedBytesExpected }),
+    catch: (cause) =>
+      new PdfImageError({
+        message: `PNG IDAT does not inflate to the ${String(inflatedBytesExpected)} bytes its IHDR declares: ${cause instanceof Error ? cause.message : String(cause)}`,
+      }),
+  });
+  if (inflated.isErr()) {
+    return Result.err(inflated.error);
+  }
+  const filtered = new Uint8Array(
+    inflated.value.buffer,
+    inflated.value.byteOffset,
+    inflated.value.byteLength,
+  );
   const unfiltered = unfilterPng({ filtered, bytesPerRow, bytesPerPixel, height });
   if (unfiltered.isErr()) {
     return Result.err(unfiltered.error);
@@ -440,12 +457,35 @@ const JPEG_COMPONENTS_TO_COLOR_SPACE = {
 
 const CMYK_INVERTED_DECODE = [1, 0, 1, 0, 1, 0, 1, 0] as const;
 
+/**
+ * The frame headers of the 0xC0..0xCF marker block, minus DHT (0xC4) and DAC
+ * (0xCC), which are tables rather than frames. `/DCTDecode` is defined over
+ * the Huffman-coded sequential and progressive modes only; a lossless,
+ * arithmetic-coded or hierarchical frame passed through unchanged is a stream
+ * no viewer can decode, so it is refused by name. Reading geometry is as far
+ * as this decoder goes either way: it never transcodes a frame it accepts.
+ */
+const JPEG_FRAME_MODES = {
+  0xc0: { name: "baseline DCT", dctDecodable: true },
+  0xc1: { name: "extended sequential DCT", dctDecodable: true },
+  0xc2: { name: "progressive DCT", dctDecodable: true },
+  0xc3: { name: "lossless", dctDecodable: false },
+  0xc5: { name: "differential sequential DCT", dctDecodable: false },
+  0xc6: { name: "differential progressive DCT", dctDecodable: false },
+  0xc7: { name: "differential lossless", dctDecodable: false },
+  0xc8: { name: "reserved JPG extension", dctDecodable: false },
+  0xc9: { name: "arithmetic extended sequential DCT", dctDecodable: false },
+  0xca: { name: "arithmetic progressive DCT", dctDecodable: false },
+  0xcb: { name: "arithmetic lossless", dctDecodable: false },
+  0xcd: { name: "differential arithmetic sequential DCT", dctDecodable: false },
+  0xce: { name: "differential arithmetic progressive DCT", dctDecodable: false },
+  0xcf: { name: "differential arithmetic lossless", dctDecodable: false },
+} as const satisfies Record<number, { readonly name: string; readonly dctDecodable: boolean }>;
+
 const decodeJpeg = (bytes: Uint8Array): Result<PdfImageSamples, PdfImageError> => {
   const MARKER_PREFIX = 0xff;
   const START_OF_IMAGE = 0xd8;
   const START_OF_SCAN = 0xda;
-  const DEFINE_HUFFMAN_TABLES = 0xc4;
-  const DEFINE_ARITHMETIC_CONDITIONING = 0xcc;
   const APP14 = 0xee;
 
   if (bytes[0] !== MARKER_PREFIX || bytes[1] !== START_OF_IMAGE) {
@@ -464,15 +504,18 @@ const decodeJpeg = (bytes: Uint8Array): Result<PdfImageSamples, PdfImageError> =
     }
     const length = view.getUint16(cursor + 2);
     const segment = cursor + 4;
-    const isFrameHeader =
-      marker >= 0xc0 &&
-      marker <= 0xcf &&
-      marker !== DEFINE_HUFFMAN_TABLES &&
-      marker !== DEFINE_ARITHMETIC_CONDITIONING;
+    const frame = JPEG_FRAME_MODES[marker as keyof typeof JPEG_FRAME_MODES];
     if (marker === APP14 && length >= 12) {
       adobe = String.fromCharCode(...bytes.subarray(segment, segment + 5)) === "Adobe";
     }
-    if (isFrameHeader) {
+    if (frame !== undefined) {
+      if (!frame.dctDecodable) {
+        return Result.err(
+          new PdfImageError({
+            message: `JPEG ${frame.name} frame (marker 0xff${marker.toString(16)}) has no /DCTDecode equivalent`,
+          }),
+        );
+      }
       const height = view.getUint16(segment + 1);
       const width = view.getUint16(segment + 3);
       const components = bytes[segment + 5] ?? 0;

@@ -547,31 +547,47 @@ const isPaintBackendFile = (absolutePath: string): boolean => {
   );
 };
 
+/**
+ * Whether a static `import` declaration crosses the seam as a value.
+ *
+ * `import type { X }` does not, and neither does `import { type X }`: a
+ * declaration whose every named specifier is itself typed erases completely.
+ */
+const isValueImportDeclaration = (node: AstNode): boolean => {
+  if (node.importKind === "type") {
+    return false;
+  }
+  const specifiers = node.specifiers;
+  return !(
+    Array.isArray(specifiers) &&
+    specifiers.length > 0 &&
+    specifiers.every(
+      (entry) => isAstNode(entry) && (entry as { importKind?: unknown }).importKind === "type",
+    )
+  );
+};
+
 const checkPaintBackendSeam = (context: RuleContext, node: AstNode): void => {
-  if (node.type !== "ImportDeclaration" || node.importKind === "type") {
+  const importerPath = filenameOf(context);
+  if (importerPath === "" || !isPaintBackendFile(importerPath)) {
     return;
   }
   const specifier = importSpecifierOf(node);
-  const importerPath = filenameOf(context);
-  if (specifier === null || importerPath === "" || !isPaintBackendFile(importerPath)) {
+  if (specifier === null) {
     return;
   }
   const resolved = resolveCoreTarget(importerPath, specifier);
   if (resolved === null || !stripExtAndIndex(resolved).endsWith(DISPLAY_LIST_TYPES_SUFFIX)) {
     return;
   }
-  // A value import is still fine when every named specifier is itself typed,
-  // which is how `import { type X }` is written.
-  const specifiers = node.specifiers;
-  const everySpecifierIsType =
-    Array.isArray(specifiers) &&
-    specifiers.length > 0 &&
-    specifiers.every(
-      (entry) => isAstNode(entry) && (entry as { importKind?: unknown }).importKind === "type",
-    );
-  if (!everySpecifierIsType) {
-    context.report({ node, messageId: "paintBackendValueImport" });
+  // `require()` and `import()` load the module at runtime whatever they are
+  // used for, so unlike a static declaration there is no type-only form of
+  // them to allow. Checking only `ImportDeclaration` left the seam open to
+  // exactly the edge it exists to forbid.
+  if (node.type === "ImportDeclaration" && !isValueImportDeclaration(node)) {
+    return;
   }
+  context.report({ node, messageId: "paintBackendValueImport" });
 };
 
 export default {
@@ -593,7 +609,11 @@ export default {
             checkPaintBackendSeam(context, node);
           }
         };
-        return { ImportDeclaration: handle };
+        return {
+          ImportDeclaration: handle,
+          ImportExpression: handle,
+          CallExpression: handle,
+        };
       },
     },
     "no-upstream-import": {

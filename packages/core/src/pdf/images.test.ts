@@ -292,3 +292,84 @@ describe("JPEG", () => {
     expect(decoded.isErr()).toBe(true);
   });
 });
+
+describe("PNG streams that lie about their size", () => {
+  /** A well-formed 1x1 RGB PNG with its IDAT payload replaced. */
+  const withIdat = (payload: Uint8Array): Uint8Array => {
+    const png = buildPng({
+      width: 1,
+      height: 1,
+      bitDepth: 8,
+      colorType: 2,
+      rows: [new Uint8Array([1, 2, 3])],
+      filters: [0],
+      bytesPerPixel: 3,
+    });
+    const SIGNATURE_AND_IHDR_BYTES = 8 + 25;
+    return concat([
+      png.subarray(0, SIGNATURE_AND_IHDR_BYTES),
+      chunk("IDAT", payload),
+      chunk("IEND", new Uint8Array(0)),
+    ]);
+  };
+
+  test("reports a corrupt IDAT stream instead of throwing", () => {
+    const decoded = decodeImage(asSource(withIdat(new Uint8Array([0x78, 0x9c, 0xff, 0xff])), 1, 1));
+    expect(decoded.isErr()).toBe(true);
+    if (decoded.isErr()) {
+      expect(decoded.error.message).toContain("IDAT");
+    }
+  });
+
+  test("refuses an IDAT that inflates past the declared geometry", () => {
+    // 8 MB of zeroes behind a 1x1 IHDR: unbounded, the whole thing is
+    // allocated before any check looks at how big the image claims to be.
+    const bomb = deflateSync(new Uint8Array(8 << 20));
+    const decoded = decodeImage(
+      asSource(withIdat(new Uint8Array(bomb.buffer, bomb.byteOffset, bomb.byteLength)), 1, 1),
+    );
+    expect(decoded.isErr()).toBe(true);
+    if (decoded.isErr()) {
+      expect(decoded.error.message).toContain("IDAT");
+    }
+  });
+});
+
+describe("JPEG frame modes /DCTDecode cannot represent", () => {
+  /** A minimal JPEG whose only frame header carries `marker`. */
+  const decodeFrame = (marker: number) =>
+    decodeImage({
+      format: "jpeg",
+      bytes: concat([
+        new Uint8Array([0xff, 0xd8]),
+        new Uint8Array([0xff, marker, 0x00, 0x11, 0x08, 0x00, 0x40, 0x00, 0x60, 0x03]),
+        new Uint8Array(9),
+        new Uint8Array([0xff, 0xda, 0x00, 0x02]),
+      ]),
+      pixelWidth: 96,
+      pixelHeight: 64,
+    });
+
+  test("keeps progressive alongside the sequential Huffman modes", () => {
+    for (const marker of [0xc0, 0xc1, 0xc2]) {
+      const decoded = decodeFrame(marker);
+      if (decoded.isErr()) {
+        throw decoded.error;
+      }
+      expect(decoded.value.encoding).toBe("jpeg");
+      expect(decoded.value.widthPx).toBe(96);
+      expect(decoded.value.heightPx).toBe(64);
+    }
+  });
+
+  test("names every lossless, arithmetic and hierarchical frame it refuses", () => {
+    for (const marker of [0xc3, 0xc5, 0xc6, 0xc7, 0xc8, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf]) {
+      const decoded = decodeFrame(marker);
+      expect(decoded.isErr()).toBe(true);
+      if (decoded.isErr()) {
+        expect(decoded.error.message).toContain(`0xff${marker.toString(16)}`);
+        expect(decoded.error.message).toContain("/DCTDecode");
+      }
+    }
+  });
+});

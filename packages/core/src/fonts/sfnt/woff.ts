@@ -50,6 +50,25 @@ const WOFF_ENTRY = {
  */
 const MAX_TABLE_LENGTH = 1 << 27;
 
+/**
+ * Ceiling on the whole decoded font. Nothing stops two directory entries from
+ * naming the same compressed span, so a per-table limit bounds one inflate but
+ * not what 65535 of them add up to. The largest faces anyone ships as web
+ * fonts, full CJK OpenType, decompress to some tens of megabytes; 256 MB
+ * clears that with room to spare and still refuses the terabytes an adversarial
+ * directory could otherwise claim.
+ */
+const MAX_DECODED_FONT_LENGTH = 1 << 28;
+
+/** One WOFF directory entry, read before any table is inflated. */
+type WoffEntry = {
+  readonly tag: string;
+  readonly offset: number;
+  readonly compLength: number;
+  readonly origLength: number;
+  readonly checksum: number;
+};
+
 type DecodedTable = {
   readonly tag: string;
   readonly checksum: number;
@@ -138,7 +157,8 @@ export const decodeWoff = (bytes: Uint8Array): Result<Uint8Array, WoffDecodeErro
     );
   }
 
-  const tables: DecodedTable[] = [];
+  const entries: WoffEntry[] = [];
+  let decodedLength = 0;
   for (let index = 0; index < numTables; index++) {
     const entry = WOFF_HEADER.size + index * WOFF_ENTRY.size;
     const tag = readTag(view, entry + WOFF_ENTRY.tag);
@@ -155,15 +175,29 @@ export const decodeWoff = (bytes: Uint8Array): Result<Uint8Array, WoffDecodeErro
     if (origLength > MAX_TABLE_LENGTH) {
       return fail(`WOFF table '${tag}' claims ${origLength} bytes, above the decode ceiling`);
     }
+    decodedLength += origLength;
+    if (decodedLength > MAX_DECODED_FONT_LENGTH) {
+      return fail(
+        `WOFF directory claims ${decodedLength} decoded bytes in total, above the ${MAX_DECODED_FONT_LENGTH}-byte container ceiling`,
+      );
+    }
 
+    entries.push({ tag, offset, compLength, origLength, checksum });
+  }
+
+  const tables: DecodedTable[] = [];
+  for (const { tag, offset, compLength, origLength, checksum } of entries) {
     const stored = bytes.subarray(offset, offset + compLength);
     if (compLength === origLength) {
       tables.push({ tag, checksum, data: stored });
       continue;
     }
 
+    // The entry declares the decompressed size, so the inflate is bounded by
+    // that rather than by the ceiling: a table cannot spend the whole per-table
+    // budget only to be rejected afterwards for not matching its own header.
     const inflated = Result.try({
-      try: () => inflateSync(stored, { maxOutputLength: MAX_TABLE_LENGTH }),
+      try: () => inflateSync(stored, { maxOutputLength: origLength }),
       catch: (cause) =>
         new WoffDecodeError({
           message: `WOFF table '${tag}' failed to inflate: ${cause instanceof Error ? cause.message : String(cause)}`,

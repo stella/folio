@@ -27,7 +27,7 @@
  * whole-document assertion below carries the load for the rest.
  */
 
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 
 import { buildDisplayList } from "./build/buildDisplayList";
 import type { DisplayPage, DisplayPrimitive } from "./types";
@@ -135,7 +135,15 @@ const firstUncoveredIndex = (needle: string, haystack: string): number => {
 };
 
 describe("every character the engine placed on a page is painted", () => {
+  // The provider is process-wide state that the bun preload installs once, so
+  // it is restored after every test rather than at the end of the happy path:
+  // a failed assertion would otherwise leave the fixed-width provider in place
+  // and fail whichever file bun runs next, as that file's bug.
   const installed = getMeasureProvider();
+
+  afterEach(() => {
+    setMeasureProvider(installed);
+  });
 
   for (const fixture of FIXTURES) {
     const name = fixture.pathname.split("/").at(-1) ?? "fixture";
@@ -185,8 +193,6 @@ describe("every character the engine placed on a page is painted", () => {
           missingFrom: uncovered === -1 ? "" : expected.slice(uncovered, uncovered + 40),
         }).toEqual({ page: index + 1, uncoveredAt: -1, missingFrom: "" });
       }
-
-      setMeasureProvider(installed);
     });
   }
 });

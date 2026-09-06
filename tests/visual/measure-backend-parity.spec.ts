@@ -55,6 +55,7 @@
  */
 
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { test, expect, type Page, type TestInfo } from "@playwright/test";
 
@@ -699,7 +700,11 @@ const attachReport = async (testInfo: TestInfo, lines: readonly string[]): Promi
 const fontsourceBaseUrlFor = (testInfo: TestInfo): string => {
   const { configFile } = testInfo.config;
   if (configFile === undefined) throw new Error("no playwright config file to locate the repo");
-  return `/@fs${path.join(path.dirname(configFile), FONTSOURCE_WORKSPACE_DIR)}`;
+  // A URL path, not a filesystem path: `pathToFileURL` supplies the leading
+  // separator and the percent-encoding, and turns a drive path into one the
+  // dev server can route.
+  const { pathname } = pathToFileURL(path.join(path.dirname(configFile), FONTSOURCE_WORKSPACE_DIR));
+  return `/@fs${pathname}`;
 };
 
 const BUNDLED_FAMILIES = SUBSTITUTED_FAMILIES.map((entry) => entry.bundled);
