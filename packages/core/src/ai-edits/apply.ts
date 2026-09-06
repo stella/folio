@@ -252,12 +252,10 @@ const REVISION_MARK_NAMES: ReadonlySet<string> = new Set(["insertion", "deletion
  * Strip insertion and deletion marks from the zero-width anchors the batch
  * touched.
  *
- * An operation marks a RANGE, and a bookmark boundary between two words is
- * inside it. The format has no way to say a bookmark boundary was inserted or
- * deleted outside a hyperlink, so a document carrying one is a document the
- * serializer refuses to write — an edit that applied cleanly and then could
- * not be saved. Marking is by range everywhere, so the guard is here, once,
- * rather than at each of the dozen call sites that would have to remember.
+ * An operation marks a RANGE, and a zero-width anchor between two words is
+ * inside it. The operation did not create or delete that anchor, so the anchor
+ * must keep its existing revision ownership. Marking is by range everywhere;
+ * the guard lives here once rather than at every call site.
  */
 const withoutRevisionsOnZeroWidthAnchors = (
   tr: Transaction,
@@ -290,9 +288,8 @@ const withoutRevisionsOnZeroWidthAnchors = (
  * positions in `tr.doc`.
  *
  * Skips what is already deleted, so an earlier revision's run is not marked
- * twice, and skips the zero-width anchors: they are not content, and the
- * format cannot say one was deleted outside a hyperlink, so marking one
- * produces a document the serializer refuses to write.
+ * twice, and skips zero-width anchors because the operation did not create or
+ * delete them; their existing revision ownership must remain unchanged.
  */
 const undeletedContentAtomRanges = (
   tr: Transaction,

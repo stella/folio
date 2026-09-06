@@ -1052,6 +1052,9 @@ export type PropertyChangeInfo = {
   rsid?: string;
 } & TrackedChangeInfo;
 
+/** Inline content that may sit inside a run-level tracked-change wrapper. */
+export type TrackedRunContent = Run | Hyperlink | BookmarkStart | BookmarkEnd;
+
 /**
  * Insertion wrapper (w:ins) — runs inserted by tracked changes
  */
@@ -1060,7 +1063,7 @@ export type Insertion = {
   /** Tracked change metadata */
   info: TrackedChangeInfo;
   /** Inserted content */
-  content: (Run | Hyperlink)[];
+  content: TrackedRunContent[];
 };
 
 /**
@@ -1071,7 +1074,7 @@ export type Deletion = {
   /** Tracked change metadata */
   info: TrackedChangeInfo;
   /** Deleted content */
-  content: (Run | Hyperlink)[];
+  content: TrackedRunContent[];
 };
 
 /**
@@ -1082,7 +1085,7 @@ export type MoveFrom = {
   /** Tracked change metadata */
   info: TrackedChangeInfo;
   /** Moved content */
-  content: (Run | Hyperlink)[];
+  content: TrackedRunContent[];
 };
 
 /**
@@ -1093,7 +1096,7 @@ export type MoveTo = {
   /** Tracked change metadata */
   info: TrackedChangeInfo;
   /** Moved content */
-  content: (Run | Hyperlink)[];
+  content: TrackedRunContent[];
 };
 
 /**

@@ -1401,18 +1401,19 @@ type TrackedRunWrapper = Extract<
 function createTrackedRunWrapper(
   type: TrackedRunWrapper["type"],
   info: TrackedChangeInfo,
-  child: Run | Hyperlink,
+  child?: TrackedRunWrapper["content"][number],
 ): TrackedRunWrapper {
+  const content = child ? [child] : [];
   if (type === "insertion") {
-    return { type, info, content: [child] };
+    return { type, info, content };
   }
   if (type === "deletion") {
-    return { type, info, content: [child] };
+    return { type, info, content };
   }
   if (type === "moveFrom") {
-    return { type, info, content: [child] };
+    return { type, info, content };
   }
-  return { type, info, content: [child] };
+  return { type, info, content };
 }
 
 function extractParagraphContent(
@@ -1444,7 +1445,14 @@ function extractParagraphContent(
   let currentHyperlinkKey: string | null = null;
   let currentTrackedChange:
     | {
+        type: "direct";
         key: string;
+        wrapper: TrackedRunWrapper;
+      }
+    | {
+        type: "hyperlink";
+        key: string;
+        wrapper: TrackedRunWrapper;
         hyperlink: Hyperlink;
         hyperlinkKey: string;
       }
@@ -1629,15 +1637,25 @@ function extractParagraphContent(
         const linkKey = getLinkKey(linkMark);
         if (
           !currentTrackedChange ||
+          currentTrackedChange.type !== "hyperlink" ||
           currentTrackedChange.key !== trackedChangeKey ||
           currentTrackedChange.hyperlinkKey !== linkKey
         ) {
           const hyperlink = createHyperlink(linkMark);
           const wrapper = createTrackedRunWrapper(type, info, hyperlink);
           content.push(wrapper);
-          currentTrackedChange = { key: trackedChangeKey, hyperlink, hyperlinkKey: linkKey };
+          currentTrackedChange = {
+            type: "hyperlink",
+            key: trackedChangeKey,
+            wrapper,
+            hyperlink,
+            hyperlinkKey: linkKey,
+          };
         }
 
+        if (currentTrackedChange.type !== "hyperlink") {
+          panic("A tracked hyperlink lost its serialization parent");
+        }
         if (node.type.name === "bookmarkBoundary") {
           addNodeToHyperlink({
             hyperlink: currentTrackedChange.hyperlink,
@@ -1654,10 +1672,33 @@ function extractParagraphContent(
         return;
       }
 
-      currentTrackedChange = undefined;
+      if (
+        !currentTrackedChange ||
+        currentTrackedChange.type !== "direct" ||
+        currentTrackedChange.key !== trackedChangeKey
+      ) {
+        const wrapper = createTrackedRunWrapper(type, info);
+        content.push(wrapper);
+        currentTrackedChange = { type: "direct", key: trackedChangeKey, wrapper };
+      }
+      if (node.type.name === "bookmarkBoundary") {
+        const attrs = expectBookmarkBoundaryAttrs(node);
+        const boundary: TrackedRunWrapper["content"][number] =
+          attrs.type === "start"
+            ? {
+                type: "bookmarkStart",
+                id: attrs.id,
+                name: attrs.name,
+                ...(attrs.colFirst !== undefined ? { colFirst: attrs.colFirst } : {}),
+                ...(attrs.colLast !== undefined ? { colLast: attrs.colLast } : {}),
+              }
+            : { type: "bookmarkEnd", id: attrs.id };
+        currentTrackedChange.wrapper.content.push(boundary);
+        return;
+      }
       const run = createTrackedChangeRun({ inheritedFormatting, marks: otherMarks, node });
       if (run) {
-        content.push(createTrackedRunWrapper(type, info, run));
+        currentTrackedChange.wrapper.content.push(run);
       }
       return;
     }

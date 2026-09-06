@@ -974,7 +974,12 @@ function serializeTrackedChange(
         }
         return serializeRun(item);
       }
-      return serializeHyperlink(item);
+      if (item.type === "hyperlink") {
+        return serializeHyperlink(item);
+      }
+      return item.type === "bookmarkStart"
+        ? serializeBookmarkStart(item)
+        : serializeBookmarkEnd(item);
     })
     .join("");
 

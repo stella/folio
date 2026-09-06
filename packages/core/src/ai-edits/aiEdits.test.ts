@@ -4799,9 +4799,8 @@ describe("deleteBlock over inline content that is not text", () => {
     expect(view.state.doc.child(0).textContent).toBe("kept");
   });
 
-  // A bookmark boundary is zero-width, and the format cannot say one was
-  // deleted outside a hyperlink: marking it produces a document the serializer
-  // refuses to write, and leaving it must not keep the paragraph alive.
+  // A bookmark boundary is zero-width. Deleting the surrounding words did not
+  // delete the bookmark itself, and leaving it must not keep the paragraph alive.
   test("leaves a bookmark boundary unmarked and still removes the paragraph", () => {
     const view = deleteSecondBlock([schema.node("bookmarkBoundary"), schema.text("words")]);
 

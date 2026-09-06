@@ -11,6 +11,7 @@ import type {
   Hyperlink,
   ParagraphContent,
   Run,
+  TrackedRunContent,
   Table,
   TableCell,
   TableRow,
@@ -295,15 +296,19 @@ function renderHtmlInline(
 function renderHtmlChildren(
   ctx: RenderContext,
   pkg: DocxPackage | undefined,
-  children: (Run | Hyperlink)[],
+  children: readonly TrackedRunContent[],
   paraId: string | undefined,
 ): string {
   return children
-    .map((c) =>
-      c.type === "run"
-        ? renderHtmlRun(ctx, pkg, c, paraId)
-        : renderHtmlHyperlink(ctx, pkg, c, paraId),
-    )
+    .map((child) => {
+      if (child.type === "run") {
+        return renderHtmlRun(ctx, pkg, child, paraId);
+      }
+      if (child.type === "hyperlink") {
+        return renderHtmlHyperlink(ctx, pkg, child, paraId);
+      }
+      return "";
+    })
     .join("");
 }
 

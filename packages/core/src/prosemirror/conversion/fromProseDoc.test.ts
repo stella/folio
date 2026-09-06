@@ -1516,6 +1516,40 @@ describe("fromProseDoc", () => {
     },
   );
 
+  test.each(["insertion", "deletion", "moveFrom", "moveTo"] as const)(
+    "preserves direct bookmark boundaries inside one %s wrapper",
+    (type) => {
+      const info = {
+        id: 92,
+        author: "Reviewer",
+        date: "2026-08-29T10:15:00Z",
+      } satisfies TrackedChangeInfo;
+      const trackedChange: TrackedRunChange = {
+        type,
+        info,
+        content: [
+          { type: "bookmarkStart", id: 92, name: "defined-term" },
+          { type: "run", content: [{ type: "text", text: "Agreement" }] },
+          { type: "bookmarkEnd", id: 92 },
+        ],
+      };
+      const document: Document = {
+        package: {
+          document: {
+            content: [{ type: "paragraph", content: [trackedChange] }],
+          },
+        },
+      };
+
+      const roundTripped = fromProseDoc(toProseDoc(document), document);
+      const paragraph = roundTripped.package.document.content.at(0);
+      if (paragraph?.type !== "paragraph") {
+        throw new Error("Expected round-tripped paragraph");
+      }
+      expect(paragraph.content).toEqual([trackedChange]);
+    },
+  );
+
   test("preserves drawing content in vMerge continuation cells", () => {
     const rawXml = "<w:drawing><wp:anchor/></w:drawing>";
     const document: Document = {

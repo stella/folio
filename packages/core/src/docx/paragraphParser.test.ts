@@ -14,6 +14,49 @@ function parseParagraphXml(xml: string) {
 }
 
 describe("parseParagraph tracked-change hardening", () => {
+  for (const { tag, type, deleted } of [
+    { tag: "ins", type: "insertion", deleted: false },
+    { tag: "del", type: "deletion", deleted: true },
+    { tag: "moveFrom", type: "moveFrom", deleted: true },
+    { tag: "moveTo", type: "moveTo", deleted: false },
+  ] as const) {
+    test(`keeps bookmark boundaries inside w:${tag}`, () => {
+      const textTag = deleted ? "delText" : "t";
+      const paragraph = parseParagraphXml(`
+        <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+          <w:${tag} w:id="7" w:author="Reviewer">
+            <w:bookmarkStart w:id="9" w:name="TrackedTerm"/>
+            <w:r><w:${textTag}>term</w:${textTag}></w:r>
+            <w:bookmarkEnd w:id="9"/>
+          </w:${tag}>
+        </w:p>
+      `);
+
+      const change = paragraph.content.at(0);
+      expect(change?.type).toBe(type);
+      if (
+        !change ||
+        (change.type !== "insertion" &&
+          change.type !== "deletion" &&
+          change.type !== "moveFrom" &&
+          change.type !== "moveTo")
+      ) {
+        return;
+      }
+      expect(change.content.map(({ type: childType }) => childType)).toEqual([
+        "bookmarkStart",
+        "run",
+        "bookmarkEnd",
+      ]);
+
+      const serialized = serializeParagraph(paragraph);
+      expect(serialized).toContain(
+        `<w:${tag} w:id="7" w:author="Reviewer"><w:bookmarkStart w:id="9" w:name="TrackedTerm"/>`,
+      );
+      expect(serialized).toContain(`<w:bookmarkEnd w:id="9"/></w:${tag}>`);
+    });
+  }
+
   test("parses deletion text from w:delText runs", () => {
     const paragraph = parseParagraphXml(`
       <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -110,17 +153,14 @@ describe("parseParagraph tracked-change hardening", () => {
       </w:p>
     `);
 
-    expect(paragraph.content.map((content) => content.type)).toEqual([
-      "insertion",
-      "bookmarkStart",
-    ]);
+    expect(paragraph.content.map((content) => content.type)).toEqual(["insertion"]);
     const insertion = paragraph.content.at(0);
     expect(insertion?.type).toBe("insertion");
     if (!insertion || insertion.type !== "insertion") {
       return;
     }
     expect(insertion.info).toMatchObject({ id: 12, author: "Reviewer" });
-    expect(insertion.content).toHaveLength(0);
+    expect(insertion.content).toEqual([{ type: "bookmarkStart", id: 5, name: "insertedMarker" }]);
   });
 
   test("preserves inline SDT metadata for marker-only controls", () => {
@@ -203,7 +243,7 @@ describe("parseParagraph tracked-change hardening", () => {
     });
   });
 
-  test("lifts bookmark markers out of tracked-change wrappers", () => {
+  test("keeps a bookmark boundary owned by its tracked-change wrapper", () => {
     const paragraph = parseParagraphXml(`
       <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
         <w:bookmarkStart w:id="5" w:name="deletedRange"/>
@@ -214,15 +254,13 @@ describe("parseParagraph tracked-change hardening", () => {
       </w:p>
     `);
 
-    expect(paragraph.content.map((content) => content.type)).toEqual([
-      "bookmarkStart",
-      "deletion",
-      "bookmarkEnd",
-    ]);
-    expect(paragraph.content.at(2)).toMatchObject({
-      type: "bookmarkEnd",
-      id: 5,
-    });
+    expect(paragraph.content.map((content) => content.type)).toEqual(["bookmarkStart", "deletion"]);
+    const deletion = paragraph.content.at(1);
+    expect(deletion?.type).toBe("deletion");
+    if (deletion?.type !== "deletion") {
+      return;
+    }
+    expect(deletion.content.at(-1)).toEqual({ type: "bookmarkEnd", id: 5 });
   });
 
   test("folds an out-of-range id on an inline w:ins into the int32 range (eigenpal #1093)", () => {

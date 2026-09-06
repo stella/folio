@@ -152,7 +152,7 @@ describe("ProseMirror document validation", () => {
     expect(result).toEqual({ valid: true, issues: [] });
   });
 
-  test("rejects a tracked boundary placement the document model cannot serialize", () => {
+  test("allows a bookmark boundary directly inside a tracked change", () => {
     const insertion = schema.mark("insertion", {
       revisionId: 7,
       author: "Reviewer",
@@ -170,11 +170,7 @@ describe("ProseMirror document validation", () => {
 
     const result = validateProseMirrorDocument(doc);
 
-    expect(result.valid).toBe(false);
-    expectIssueContaining(
-      result,
-      "Bookmark boundaries inside tracked changes require a hyperlink serialization parent",
-    );
+    expect(result).toEqual({ valid: true, issues: [] });
   });
 
   test("rejects a field boundary without its required hyperlink parent", () => {
