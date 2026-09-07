@@ -1402,6 +1402,51 @@ function hasRunPayloadElement(runElement: XmlElement): boolean {
   return getChildElements(runElement).some((child) => !matchesName(child, "w", "rPr"));
 }
 
+const LEGACY_FORM_CHECKBOX_GLYPHS = {
+  checked: "☒",
+  unchecked: "☐",
+} as const;
+const LEGACY_FORM_CHECKBOX_INSTRUCTION = "FORMCHECKBOX";
+
+type LegacyFormCheckboxDisplay = {
+  text: string;
+  fontSize?: number;
+};
+
+function getLegacyFormCheckboxDisplay(
+  runElement: XmlElement,
+): LegacyFormCheckboxDisplay | undefined {
+  const fieldChar = findChild(runElement, "w", "fldChar");
+  const fieldData = fieldChar ? findChild(fieldChar, "w", "ffData") : null;
+  const checkBox = fieldData ? findChild(fieldData, "w", "checkBox") : null;
+  if (!checkBox) {
+    return undefined;
+  }
+
+  const checked = findChild(checkBox, "w", "checked");
+  const defaultChecked = findChild(checkBox, "w", "default");
+  let isChecked = defaultChecked ? parseBooleanElement(defaultChecked) : false;
+  if (checked) {
+    isChecked = parseBooleanElement(checked);
+  }
+  const explicitSize = parseNumericAttribute(
+    findChild(checkBox, "w", "size"),
+    "w",
+    "val",
+  );
+  return {
+    text: isChecked
+      ? LEGACY_FORM_CHECKBOX_GLYPHS.checked
+      : LEGACY_FORM_CHECKBOX_GLYPHS.unchecked,
+    ...(explicitSize !== null ? { fontSize: explicitSize } : {}),
+  };
+}
+
+function isLegacyFormCheckboxInstruction(instruction: string): boolean {
+  const instructionName = instruction.trim().split(/\s+/u).at(0)?.toUpperCase();
+  return instructionName === LEGACY_FORM_CHECKBOX_INSTRUCTION;
+}
+
 /**
  * Parse all content within a paragraph
  *
@@ -1432,6 +1477,7 @@ function parseParagraphContents(
   let afterSeparator = false;
   let complexFieldLock = false;
   let complexFieldDirty = false;
+  let complexFieldFallbackDisplay: LegacyFormCheckboxDisplay | undefined;
   // Run formatting (w:rPr) carried on the field's structural runs, used as a
   // fallback when the field has no separate result run (eigenpal/docx-editor#909).
   let complexFieldFormatting: TextFormatting | undefined;
@@ -1451,6 +1497,7 @@ function parseParagraphContents(
         let hasFieldBegin = false;
         let beginFldLock = false;
         let beginDirty = false;
+        const beginFallbackDisplay = getLegacyFormCheckboxDisplay(runElement);
         let hasFieldSeparate = false;
         let hasFieldEnd = false;
         let endOriginalValue: string | undefined;
@@ -1496,6 +1543,7 @@ function parseParagraphContents(
           // `w:fldLock` / `w:dirty` live on the begin fldChar of this field.
           complexFieldLock = beginFldLock;
           complexFieldDirty = beginDirty;
+          complexFieldFallbackDisplay = beginFallbackDisplay;
           // The structural run carrying `begin` often holds the field's run
           // formatting (e.g. a footer PAGE field collapsed into one run).
           complexFieldFormatting = run.formatting;
@@ -1550,13 +1598,35 @@ function parseParagraphContents(
           }
 
           if (hasFieldEnd) {
-            // Self-numbering fields (LISTNUM, AUTONUM, …) often skip the
-            // `separate` and stash their last-rendered display on the end
-            // fldChar's `<w:numberingChange w:original="…"/>`. Without this
-            // synthesized result run, the field renders empty and any tab
-            // that follows pushes the body text into the wrong column.
             let resultRuns = complexFieldResultRuns;
-            if (resultRuns.length === 0 && !afterSeparator && endOriginalValue !== undefined) {
+            // Legacy form checkboxes are rendered from `w:ffData`; they often
+            // have a separator but no cached result run of their own.
+            if (
+              resultRuns.length === 0 &&
+              complexFieldFallbackDisplay !== undefined &&
+              isLegacyFormCheckboxInstruction(complexFieldInstr)
+            ) {
+              const formatting = {
+                ...complexFieldFormatting,
+                ...(complexFieldFallbackDisplay.fontSize !== undefined
+                  ? { fontSize: complexFieldFallbackDisplay.fontSize }
+                  : {}),
+              };
+              resultRuns = [
+                {
+                  type: "run",
+                  ...(Object.keys(formatting).length > 0 ? { formatting } : {}),
+                  content: [{ type: "text", text: complexFieldFallbackDisplay.text }],
+                },
+              ];
+            }
+            // Self-numbering fields (LISTNUM, AUTONUM, …) often skip the
+            // separator and stash their display on the end field character.
+            if (
+              resultRuns.length === 0 &&
+              !afterSeparator &&
+              endOriginalValue !== undefined
+            ) {
               resultRuns = [
                 {
                   type: "run",
