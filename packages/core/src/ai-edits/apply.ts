@@ -1810,7 +1810,21 @@ const applyFolioAIEditOperationsInternal = ({
       }
       case "deleteBlock": {
         if (mode === "direct") {
-          tr = tr.delete(item.blockFrom, item.blockTo);
+          // A container has to END with a paragraph: a body, a cell, a header,
+          // a note and a text box each do, and one left ending in a table is a
+          // package a consumer refuses. Removing the node removes its mark
+          // with it, so the last paragraph of a container that nothing else
+          // could terminate keeps its place and loses only its content. Where
+          // a paragraph precedes it, that one becomes the terminator and this
+          // node goes as any other would — which is what the tracked path
+          // resolves to as well, its mark deleted one paragraph earlier.
+          const at = tr.doc.resolve(item.blockFrom);
+          const endsItsContainer = at.index() === at.parent.childCount - 1;
+          const leavesAParagraph =
+            !endsItsContainer || at.nodeBefore?.type.name === item.blockNode.type.name;
+          tr = leavesAParagraph
+            ? tr.delete(item.blockFrom, item.blockTo)
+            : tr.delete(item.blockFrom + 1, item.blockTo - 1);
           break;
         }
 
@@ -1840,20 +1854,30 @@ const applyFolioAIEditOperationsInternal = ({
           // its deleted runs.
           //
           // A mark belongs to the paragraph it ends, so the paragraph's own
-          // mark is the one that went. That holds wherever it sat: resolving
-          // the mark joins it with the next paragraph when there is one, and
-          // removes the paragraph outright when there is not, which is what a
-          // document holds after a paragraph before a table is deleted. The
-          // only paragraph that cannot say it is the one its parent cannot do
-          // without: a cell must contain a paragraph, so the last one in a
-          // cell keeps its mark and stays blank.
+          // mark is the one that went — except on the paragraph that ends its
+          // container. A deleted mark says "join this paragraph with the one
+          // after it", and a container's last paragraph has none: a body, a
+          // cell, a header, a note and a text box each end with a paragraph
+          // that nothing follows. Such a mark states an edit that cannot be
+          // carried out, and a consumer reading it refuses the package. That
+          // paragraph therefore loses its words and keeps its mark, and the
+          // caller that wants the paragraph gone deletes the mark of the one
+          // BEFORE it, which merges forward into this carrier.
+          //
+          // A paragraph before a TABLE still carries its own mark: the table
+          // is a following sibling, so the paragraph does not end anything.
+          //
+          // Read from the document as it stands, which is exact: operations
+          // run right to left, so everything after this paragraph has already
+          // landed and the paragraph it will end up next to is the one here.
           //
           // A relocation's source break is `w:moveFrom`, not `w:del`: the two
           // resolve alike, and the kind is what tells a reader this end has a
           // matching one elsewhere rather than being a deletion of its own.
           const markPosition = tr.mapping.map(item.blockFrom);
-          const parent = tr.doc.resolve(markPosition).parent;
-          if (parent.childCount > 1 && tr.doc.nodeAt(markPosition)?.attrs["pPrMark"] == null) {
+          const markPlace = tr.doc.resolve(markPosition);
+          const endsItsContainer = markPlace.index() === markPlace.parent.childCount - 1;
+          if (!endsItsContainer && tr.doc.nodeAt(markPosition)?.attrs["pPrMark"] == null) {
             const markRevisionId = revisionSeed++;
             tr = tr.setNodeAttribute(markPosition, "pPrMark", {
               kind: isPairedMove(item.operation.moveId) ? "moveFrom" : "del",

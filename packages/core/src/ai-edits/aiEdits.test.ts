@@ -4770,10 +4770,13 @@ describe("Folio AI edit operations", () => {
 });
 
 describe("deleteBlock over inline content that is not text", () => {
-  const deleteSecondBlock = (children: ReturnType<typeof schema.node>[]) => {
+  // The deleted paragraph is followed by another: the paragraph that ENDS a
+  // container keeps its mark, so a deletion there resolves to a blank line
+  // rather than to the paragraph going, which is a different case.
+  const deleteFirstBlock = (children: ReturnType<typeof schema.node>[]) => {
     const doc = schema.node("doc", null, [
-      schema.node("paragraph", { paraId: "keep" }, [schema.text("kept")]),
       schema.node("paragraph", { paraId: "gone" }, children),
+      schema.node("paragraph", { paraId: "keep" }, [schema.text("kept")]),
     ]);
     const state = EditorState.create({ schema, doc });
     const view = makeView(state);
@@ -4791,7 +4794,7 @@ describe("deleteBlock over inline content that is not text", () => {
   // outside the words was left unmarked and accepting the deletion kept a
   // paragraph standing around it.
   test("takes an inline image with it", () => {
-    const view = deleteSecondBlock([schema.text("words"), schema.node("image", { src: "data:," })]);
+    const view = deleteFirstBlock([schema.text("words"), schema.node("image", { src: "data:," })]);
 
     acceptAllChanges()(view.state, view.dispatch);
 
@@ -4802,7 +4805,7 @@ describe("deleteBlock over inline content that is not text", () => {
   // A bookmark boundary is zero-width. Deleting the surrounding words did not
   // delete the bookmark itself, and leaving it must not keep the paragraph alive.
   test("leaves a bookmark boundary unmarked and still removes the paragraph", () => {
-    const view = deleteSecondBlock([schema.node("bookmarkBoundary"), schema.text("words")]);
+    const view = deleteFirstBlock([schema.node("bookmarkBoundary"), schema.text("words")]);
 
     let markedAnchors = 0;
     view.state.doc.descendants((node) => {

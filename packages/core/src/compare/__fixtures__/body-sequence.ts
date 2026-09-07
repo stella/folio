@@ -99,7 +99,22 @@ const itemsXml = (items: readonly BodyItem[]): string =>
 
 const bodyXml = (items: readonly BodyItem[]): string => itemsXml(closedSequence(items));
 
-export const buildBodySequenceDocx = async (items: readonly BodyItem[]): Promise<ArrayBuffer> => {
+/** The relationship id the default header takes when a fixture asks for one. */
+const HEADER_RELATIONSHIP_ID = "rId2";
+
+export type BodySequenceOptions = {
+  /**
+   * A default header part, written as its own sequence. A header is a story of
+   * its own: it ends with its own paragraph, and a comparison writes it with
+   * its own revision ids.
+   */
+  header?: readonly BodyItem[];
+};
+
+export const buildBodySequenceDocx = async (
+  items: readonly BodyItem[],
+  { header }: BodySequenceOptions = {},
+): Promise<ArrayBuffer> => {
   const parts: Record<string, string> = {
     "[Content_Types].xml":
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
@@ -108,6 +123,9 @@ export const buildBodySequenceDocx = async (items: readonly BodyItem[]): Promise
       `<Default Extension="xml" ContentType="application/xml"/>` +
       `<Override PartName="/word/document.xml" ContentType="${WORDPROCESSING}.document.main+xml"/>` +
       `<Override PartName="/word/styles.xml" ContentType="${WORDPROCESSING}.styles+xml"/>` +
+      (header
+        ? `<Override PartName="/word/header1.xml" ContentType="${WORDPROCESSING}.header+xml"/>`
+        : "") +
       `</Types>`,
     "_rels/.rels":
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
@@ -118,6 +136,9 @@ export const buildBodySequenceDocx = async (items: readonly BodyItem[]): Promise
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
       `<Relationships xmlns="${RELATIONSHIPS}">` +
       `<Relationship Id="rId1" Type="${OFFICE_RELATIONSHIPS}/styles" Target="styles.xml"/>` +
+      (header
+        ? `<Relationship Id="${HEADER_RELATIONSHIP_ID}" Type="${OFFICE_RELATIONSHIPS}/header" Target="header1.xml"/>`
+        : "") +
       `</Relationships>`,
     "word/styles.xml":
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
@@ -127,11 +148,20 @@ export const buildBodySequenceDocx = async (items: readonly BodyItem[]): Promise
       `</w:styles>`,
     "word/document.xml":
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
-      `<w:document xmlns:w="${NAMESPACE}"><w:body>` +
+      `<w:document xmlns:w="${NAMESPACE}" xmlns:r="${OFFICE_RELATIONSHIPS}"><w:body>` +
       bodyXml(items) +
-      `<w:sectPr><w:pgSz w:w="12240" w:h="15840"/>` +
+      `<w:sectPr>` +
+      (header ? `<w:headerReference w:type="default" r:id="${HEADER_RELATIONSHIP_ID}"/>` : "") +
+      `<w:pgSz w:w="12240" w:h="15840"/>` +
       `<w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>` +
       `</w:body></w:document>`,
+    ...(header
+      ? {
+          "word/header1.xml":
+            `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+            `<w:hdr xmlns:w="${NAMESPACE}">${itemsXml(closedSequence(header))}</w:hdr>`,
+        }
+      : {}),
   };
 
   const zip = new JSZip();

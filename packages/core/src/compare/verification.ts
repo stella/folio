@@ -286,3 +286,75 @@ export const classifyProjectionMismatch = ({
       `length ${String(left.text.length)} against ${String(right.text.length)} (${counts})`,
   );
 };
+
+/**
+ * A container whose last paragraph carries a deletion on its mark.
+ *
+ * Structural facts only — a path through the package model and an index — so
+ * the finding is safe to log, report or quote.
+ */
+export type FinalParagraphMarkDeletion = {
+  /** Where the container sits in the package model, e.g. `package.document.content`. */
+  container: string;
+  /** The paragraph's index among its container's children. */
+  paragraphIndex: number;
+  /** The mark kind found there: `del`, or `moveFrom` for a relocation's source. */
+  kind: "del" | "moveFrom";
+};
+
+/** The mark kinds that resolve by joining the paragraph with the one after it. */
+const JOINS_FORWARD_ON_ACCEPT = Object.freeze(["del", "moveFrom"] as const);
+
+const joinsForwardOnAccept = (value: unknown): value is FinalParagraphMarkDeletion["kind"] =>
+  JOINS_FORWARD_ON_ACCEPT.some((kind) => kind === value);
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+const isParagraph = (value: unknown): value is Record<string, unknown> =>
+  isRecord(value) && value["type"] === "paragraph";
+
+/**
+ * Every container in a package whose final paragraph mark carries a deletion.
+ *
+ * A deleted paragraph mark says "join this paragraph with the one after it".
+ * The last paragraph of a body, a table cell, a header or footer, a note or a
+ * text box has no paragraph after it, so the mark states an edit that cannot
+ * be carried out, and a consumer refuses the package rather than opening it.
+ *
+ * The walk is over the package model rather than over a list of the containers
+ * known today: a container is any sequence that ends in a paragraph, so a part
+ * the model grows later is covered the day it arrives instead of the day
+ * someone remembers this function.
+ */
+export const deletedFinalParagraphMarks = (packageModel: unknown): FinalParagraphMarkDeletion[] => {
+  const found: FinalParagraphMarkDeletion[] = [];
+  const visit = (value: unknown, path: string): void => {
+    if (Array.isArray(value)) {
+      const last: unknown = value.at(-1);
+      const mark = isParagraph(last) ? last["pPrMark"] : undefined;
+      const kind = isRecord(mark) ? mark["kind"] : undefined;
+      if (joinsForwardOnAccept(kind)) {
+        found.push({ container: path, paragraphIndex: value.length - 1, kind });
+      }
+      for (const [index, item] of value.entries()) {
+        visit(item, `${path}[${String(index)}]`);
+      }
+      return;
+    }
+    if (value instanceof Map) {
+      for (const [key, item] of value) {
+        visit(item, `${path}.${String(key)}`);
+      }
+      return;
+    }
+    if (!isRecord(value) || value instanceof Date || ArrayBuffer.isView(value)) {
+      return;
+    }
+    for (const [key, item] of Object.entries(value)) {
+      visit(item, `${path}.${key}`);
+    }
+  };
+  visit(packageModel, "package");
+  return found;
+};

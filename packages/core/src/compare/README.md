@@ -107,17 +107,36 @@ restores the base's.
 
 A paragraph mark belongs to the paragraph it ends: a paragraph added or removed
 carries its own mark, inserted or deleted alongside its runs. That holds
-everywhere, including at a container's edge, and what changes at the edge is
-how the mark RESOLVES rather than where it sits.
+everywhere but at the END of a container, which is the one place a mark cannot
+say it went.
 
 - **A mark with a paragraph after it resolves by joining.** Accepting a deleted
   mark closes the break; rejecting an inserted one does the same.
-- **A mark with no paragraph after it resolves by removing the paragraph.** The
-  last paragraph of a body, and a paragraph before a table, have nothing to be
-  joined with. Once the resolution has taken the paragraph's words away, what
-  is left is a paragraph whose break was resolved too, so it goes. The
-  exception is a paragraph its parent cannot do without: a cell must contain
-  one, so the last paragraph of a cell keeps its mark and stays blank.
+- **A mark with a table after it resolves by removing the paragraph.** There is
+  nothing to join with, and once the resolution has taken the paragraph's words
+  away, what is left is a paragraph whose break was resolved too, so it goes.
+- **The mark that ENDS a container is never deleted.** A body, a table cell, a
+  header or footer, a note and a text box each end with a paragraph, and that
+  paragraph has none after it: a deleted mark there asks for a merge that
+  cannot happen, and a consumer refuses the whole package rather than opening
+  it. So a comparison that removes the paragraphs a container ends with runs
+  the chain from the last SURVIVING paragraph forward: its mark goes, each
+  removed paragraph's mark goes with it, and the container's final paragraph
+  loses its words and keeps its mark as the carrier the merged text lands in.
+  A paragraph's properties live on its mark, so the carrier's become the
+  target's, written as `w:pPrChange` — that is bookkeeping for the merge and
+  adds no entry to the change list, which says what it should say: the
+  paragraphs were removed.
+- **An inserted mark at a container's end is the mirror case, and stands.** The
+  break was ADDED, so the paragraph it ends was not there before it, and
+  rejecting the addition removes the paragraph and leaves the container ending
+  where it did.
+
+The serialize stage refuses a package whose final paragraph mark carries a
+deletion, with `CompareDocxFinalParagraphMarkError` naming the container and
+the paragraph. That one is fatal under `onUnverified: "emit"` too: unlike an
+unproven redline there is no partial result worth handing back, because the
+file does not open.
 
 Handing the last new paragraph's mark to the ANCHOR instead reads closer to
 what an editor writes, and is equivalent only while the two stay adjacent. A
@@ -191,7 +210,9 @@ Every `detail` is structural — counts, offsets, container kinds — and carrie
 phrase of either document, so it is safe to log, report, or quote.
 
 A parse, apply or serialize failure is still an error under either setting:
-there is no redline to emit.
+there is no redline to emit. So is a deletion on a container's final paragraph
+mark, for the same reason at the other end — the bytes would be written, and no
+consumer would open them.
 
 ## Inputs that already carry tracked changes
 
@@ -255,7 +276,8 @@ carries the current numbers and the failing cases.
   pairing, and the round-trip self-check. `compareDocx` composes them.
 - `plan.ts` — alignment and operation derivation. Pure.
 - `verification.ts` — the round-trip verdict: the invariants, the causes, and
-  the safe-to-quote detail each failure carries. Pure.
+  the safe-to-quote detail each failure carries, plus the structural guard on a
+  container's final paragraph mark. Pure.
 - `formatting.ts` — the inline-formatting diff, shared with the redline
   generator.
 - `reproducible-package.ts` — ZIP entry-date restamping.

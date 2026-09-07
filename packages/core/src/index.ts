@@ -34,6 +34,7 @@ export { compareDocx, MAX_COMPARE_OPERATIONS } from "./compare/compare";
 export {
   COMPARE_UNSUPPORTED_REASONS,
   CompareDocxApplyError,
+  CompareDocxFinalParagraphMarkError,
   CompareDocxOperationLimitError,
   CompareDocxParseError,
   CompareDocxRoundTripError,
@@ -55,6 +56,7 @@ export {
   type CompareVerificationCause,
   type CompareVerificationFailure,
   type CompareVerificationInvariant,
+  type FinalParagraphMarkDeletion,
 } from "./compare/verification";
 export { createDocx } from "./docx/rezip";
 export { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";

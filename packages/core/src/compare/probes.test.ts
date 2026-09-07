@@ -79,12 +79,29 @@ const buildColumnTableDocx = (rows: readonly (readonly ColumnCell[])[]): Promise
   });
 };
 
+const partOf = async (buffer: ArrayBuffer, name: string): Promise<string> =>
+  (await (await JSZip.loadAsync(buffer)).file(name)?.async("string")) ?? "";
+
 const documentPartOf = async (buffer: ArrayBuffer): Promise<string> =>
-  (await (await JSZip.loadAsync(buffer)).file("word/document.xml")?.async("string")) ?? "";
+  await partOf(buffer, "word/document.xml");
 
 /** Every `w:p` element of a document part, as raw XML. */
 const paragraphsOf = (documentXml: string): string[] =>
   documentXml.match(/<w:p[ >][\s\S]*?<\/w:p>/gu) ?? [];
+
+/**
+ * Whether the paragraph's OWN mark carries a deletion. `w:pPr` is a paragraph's
+ * first child, so reading only that far keeps a deleted RUN's own `w:rPr` out
+ * of the answer.
+ */
+const markIsDeleted = (paragraph: string): boolean => {
+  const properties = /^<w:p\b[^>]*><w:pPr>([\s\S]*?)<\/w:pPr>/u.exec(paragraph)?.[1] ?? "";
+  return /<w:rPr>[\s\S]*?<w:(?:del|moveFrom)\b/u.test(properties);
+};
+
+/** Every paragraph of a part whose own mark carries a deletion, in order. */
+const marksDeletedIn = (partXml: string): string[] =>
+  paragraphsOf(partXml).filter((paragraph) => markIsDeleted(paragraph));
 
 const blocksOf = async (buffer: ArrayBuffer): Promise<FolioAIBlock[]> =>
   (await FolioDocxReviewer.fromBuffer(buffer)).getContent();
@@ -100,6 +117,20 @@ const projectView = async (
   return (story?.snapshot.blocks ?? []).map((block) => ({
     text: block.text,
     table: block.table ?? null,
+  }));
+};
+
+/** The same projection with the paragraph style, for a properties assertion. */
+const styledView = async (
+  buffer: ArrayBuffer,
+  view: "original" | "final",
+): Promise<(BlockProjection & { styleId: string | null })[]> => {
+  const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
+  const story = reviewer.readReviewedStory({ view });
+  return (story?.snapshot.blocks ?? []).map((block) => ({
+    text: block.text,
+    table: block.table ?? null,
+    styleId: block.styleId ?? null,
   }));
 };
 
@@ -653,9 +684,9 @@ describe("single-mutation probes", () => {
   });
 
   test("delete_table_before_terminal_carrier: final paragraph mark remains untracked", async () => {
-    // Microsoft Word keeps a body carrier after a terminal table. A deletion
-    // on that paragraph mark cannot resolve because there is no next body
-    // paragraph to join it to.
+    // A body may not end with a table, so a package that does carries a
+    // paragraph after it. A deletion on that paragraph's mark cannot resolve:
+    // there is no next body paragraph to join it to.
     const keptTable = { kind: "table", rows: [["Kept row"]] } as const;
     const base = await buildBodySequenceDocx([
       keptTable,
@@ -679,6 +710,149 @@ describe("single-mutation probes", () => {
     expect(await projectView(result.value.buffer, "original")).toEqual(
       await projectView(base, "final"),
     );
+  });
+
+  /**
+   * Four paragraphs become one: the first is edited and the three after it are
+   * removed. The last of them ends the body, so its mark cannot be deleted —
+   * nothing follows it to merge into. The chain therefore starts at the last
+   * SURVIVING paragraph: the marks of the first three go, the fourth keeps its
+   * own, and the merged paragraph lands on it.
+   */
+  const TRAILING_CLAUSES = [
+    "Alpha clause states the agreed position.",
+    "Bravo clause states the agreed position.",
+    "Charlie clause states the agreed position.",
+    "Delta clause states the agreed position.",
+  ] as const;
+  const REVISED_CLAUSE = "Alpha clause states the revised position.";
+
+  test("delete_trailing_paragraphs: the body's final mark stays, the chain moves back", async () => {
+    const base = await buildBodySequenceDocx(
+      TRAILING_CLAUSES.map((text) => ({ kind: "paragraph", text }) as const),
+    );
+    const target = await buildBodySequenceDocx([{ kind: "paragraph", text: REVISED_CLAUSE }]);
+
+    const result = await compareDocx(base, target, OPTIONS);
+    if (result.isErr()) {
+      throw result.error;
+    }
+    expect(result.value.changes.map(({ kind }) => kind)).toEqual([
+      "replace",
+      "delete",
+      "delete",
+      "delete",
+    ]);
+
+    const paragraphs = paragraphsOf(await documentPartOf(result.value.buffer));
+    expect(paragraphs).toHaveLength(4);
+    expect(paragraphs.map((paragraph) => markIsDeleted(paragraph))).toEqual([
+      true,
+      true,
+      true,
+      false,
+    ]);
+
+    expect(await projectView(result.value.buffer, "final")).toEqual(
+      await projectView(target, "final"),
+    );
+    expect(await projectView(result.value.buffer, "original")).toEqual(
+      await projectView(base, "final"),
+    );
+  });
+
+  test("delete_trailing_paragraphs_in_a_cell: the cell's final mark stays", async () => {
+    const cell = (texts: readonly string[]) =>
+      texts.map((text) => ({ kind: "paragraph", text }) as const);
+    const base = await buildBodySequenceDocx([
+      { kind: "paragraph", text: "The schedule below records the agreed fees." },
+      { kind: "table", rows: [[cell(TRAILING_CLAUSES), "Fee"]] },
+      { kind: "paragraph", text: "This agreement is governed by the stated law." },
+    ]);
+    const target = await buildBodySequenceDocx([
+      { kind: "paragraph", text: "The schedule below records the agreed fees." },
+      { kind: "table", rows: [[cell([REVISED_CLAUSE]), "Fee"]] },
+      { kind: "paragraph", text: "This agreement is governed by the stated law." },
+    ]);
+
+    const result = await compareDocx(base, target, OPTIONS);
+    if (result.isErr()) {
+      throw result.error;
+    }
+    const documentXml = await documentPartOf(result.value.buffer);
+    // Three marks go — the edited paragraph's and the two after it — and the
+    // cell's fourth paragraph keeps its own.
+    expect(marksDeletedIn(documentXml)).toHaveLength(3);
+    const cellParagraphs = paragraphsOf(documentXml).filter((paragraph) =>
+      paragraph.includes("clause states"),
+    );
+    expect(cellParagraphs).toHaveLength(4);
+    expect(markIsDeleted(cellParagraphs.at(-1) ?? "")).toBe(false);
+
+    expect(await projectView(result.value.buffer, "final")).toEqual(
+      await projectView(target, "final"),
+    );
+    expect(await projectView(result.value.buffer, "original")).toEqual(
+      await projectView(base, "final"),
+    );
+  });
+
+  test("delete_trailing_paragraphs_in_a_header: the header story keeps its final mark", async () => {
+    const body = [{ kind: "paragraph", text: "The parties agree as set out below." }] as const;
+    const base = await buildBodySequenceDocx(body, {
+      header: TRAILING_CLAUSES.map((text) => ({ kind: "paragraph", text }) as const),
+    });
+    const target = await buildBodySequenceDocx(body, {
+      header: [{ kind: "paragraph", text: REVISED_CLAUSE }],
+    });
+
+    const result = await compareDocx(base, target, OPTIONS);
+    if (result.isErr()) {
+      throw result.error;
+    }
+    expect(result.value.unsupported).toEqual([]);
+    const headerParagraphs = paragraphsOf(await partOf(result.value.buffer, "word/header1.xml"));
+    expect(headerParagraphs).toHaveLength(4);
+    expect(headerParagraphs.map((paragraph) => markIsDeleted(paragraph))).toEqual([
+      true,
+      true,
+      true,
+      false,
+    ]);
+  });
+
+  test("trailing_deletion_moves_the_surviving_properties_to_the_carrier", async () => {
+    // The merged paragraph ends on the carrier's mark, and a paragraph's
+    // properties live on its mark, so the carrier is where the surviving
+    // paragraph's style has to end up: as `w:pPrChange`, which is what a
+    // rejection reads to put the carrier's own style back.
+    const base = await buildBodySequenceDocx([
+      { kind: "paragraph", text: TRAILING_CLAUSES[0], styleId: "Heading1" },
+      { kind: "paragraph", text: TRAILING_CLAUSES[1] },
+      { kind: "paragraph", text: TRAILING_CLAUSES[2] },
+      { kind: "paragraph", text: TRAILING_CLAUSES[3] },
+    ]);
+    const target = await buildBodySequenceDocx([
+      { kind: "paragraph", text: REVISED_CLAUSE, styleId: "Heading1" },
+    ]);
+
+    const result = await compareDocx(base, target, OPTIONS);
+    if (result.isErr()) {
+      throw result.error;
+    }
+    const carrier = paragraphsOf(await documentPartOf(result.value.buffer)).at(-1) ?? "";
+    expect(carrier).toContain(`<w:pStyle w:val="Heading1"/>`);
+    expect(carrier).toContain("<w:pPrChange ");
+    expect(markIsDeleted(carrier)).toBe(false);
+
+    const [accepted, expected, rejected, original] = await Promise.all([
+      styledView(result.value.buffer, "final"),
+      styledView(target, "final"),
+      styledView(result.value.buffer, "original"),
+      styledView(base, "final"),
+    ]);
+    expect(accepted).toEqual(expected);
+    expect(rejected).toEqual(original);
   });
 
   test("unrepresentable_difference: refused by default, emitted and named on request", async () => {
