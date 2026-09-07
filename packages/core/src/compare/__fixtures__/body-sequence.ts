@@ -16,6 +16,10 @@ const WORDPROCESSING = "application/vnd.openxmlformats-officedocument.wordproces
 const MARKUP_COMPATIBILITY = "http://schemas.openxmlformats.org/markup-compatibility/2006";
 const PACKAGE_RELATIONSHIPS = "http://schemas.openxmlformats.org/package/2006";
 const CORE_PROPERTIES_TYPE = "application/vnd.openxmlformats-package.core-properties+xml";
+const EXTENDED_PROPERTIES =
+  "http://schemas.openxmlformats.org/officeDocument/2006/extended-properties";
+const EXTENDED_PROPERTIES_TYPE =
+  "application/vnd.openxmlformats-officedocument.extended-properties+xml";
 const WORDML_2010 = "http://schemas.microsoft.com/office/word/2010/wordml";
 
 /** Pinned so two builds of the fixture produce identical bytes. */
@@ -440,12 +444,14 @@ export const buildBodySequenceDocx = async (
         ? `<Override PartName="/word/header1.xml" ContentType="${WORDPROCESSING}.header+xml"/>`
         : "") +
       `<Override PartName="/docProps/core.xml" ContentType="${CORE_PROPERTIES_TYPE}"/>` +
+      `<Override PartName="/docProps/app.xml" ContentType="${EXTENDED_PROPERTIES_TYPE}"/>` +
       `</Types>`,
     "_rels/.rels":
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
       `<Relationships xmlns="${RELATIONSHIPS}">` +
       `<Relationship Id="rId1" Type="${OFFICE_RELATIONSHIPS}/officeDocument" Target="word/document.xml"/>` +
       `<Relationship Id="rId2" Type="${PACKAGE_RELATIONSHIPS}/metadata/core-properties" Target="docProps/core.xml"/>` +
+      `<Relationship Id="rId3" Type="${OFFICE_RELATIONSHIPS}/extended-properties" Target="docProps/app.xml"/>` +
       `</Relationships>`,
     // A real package dates itself. Without this part nothing would prove that
     // the comparison stamps `dcterms:modified` from its own timestamp rather
@@ -458,6 +464,14 @@ export const buildBodySequenceDocx = async (
       `<dcterms:created xsi:type="dcterms:W3CDTF">2000-01-01T00:00:00Z</dcterms:created>` +
       `<dcterms:modified xsi:type="dcterms:W3CDTF">2000-01-01T00:00:00Z</dcterms:modified>` +
       `</cp:coreProperties>`,
+    // A package also states which application wrote it, in a version whose
+    // form the schema fixes. This one states a version the form rejects, so
+    // that a comparison carrying it through would be visible.
+    "docProps/app.xml":
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+      `<Properties xmlns="${EXTENDED_PROPERTIES}">` +
+      `<AppVersion>1.0.0</AppVersion>` +
+      `</Properties>`,
     "word/_rels/document.xml.rels":
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
       `<Relationships xmlns="${RELATIONSHIPS}">` +

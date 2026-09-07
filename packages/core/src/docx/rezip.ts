@@ -97,6 +97,7 @@ import {
   WORDPROCESSINGML_NAMESPACE_URIS,
   type XmlElement,
 } from "./xmlParser";
+import { normalizeAppVersionInExtendedProperties } from "./appVersionNormalization";
 import { normalizeParaIdRangeInXmlParts } from "./paraIdRangeNormalization";
 import { normalizeRevisionIdsInXmlParts } from "./revisionIdNormalization";
 import { assertXmlResourceLimits } from "./xmlResourceLimits";
@@ -804,6 +805,37 @@ const normalizePackageIdsInZip = async (zip: JSZip, compressionLevel: number): P
   }
 };
 
+const EXTENDED_PROPERTIES_PATH = "docProps/app.xml";
+
+/**
+ * Bring the application version the package states about itself into the form
+ * the schema gives it. A package that holds no extended properties keeps
+ * holding none.
+ */
+const normalizeAppVersionInZip = async (zip: JSZip, compressionLevel: number): Promise<void> => {
+  const extendedProperties = zip.file(EXTENDED_PROPERTIES_PATH);
+  if (!extendedProperties) {
+    return;
+  }
+  const xml = await extendedProperties.async("text");
+  const normalized = normalizeAppVersionInExtendedProperties(xml);
+  if (normalized !== xml) {
+    zip.file(EXTENDED_PROPERTIES_PATH, normalized, {
+      compression: "DEFLATE",
+      compressionOptions: { level: compressionLevel },
+    });
+  }
+};
+
+/**
+ * Every pass a save owes the package as a whole, in one function so that the
+ * full repack and the selective save cannot drift into running different ones.
+ */
+const normalizePackageOnSave = async (zip: JSZip, compressionLevel: number): Promise<void> => {
+  await normalizePackageIdsInZip(zip, compressionLevel);
+  await normalizeAppVersionInZip(zip, compressionLevel);
+};
+
 /**
  * The single exit for a repacked package. Reconciliation runs here rather than
  * at each caller so no save path can emit a package whose relationships or
@@ -811,7 +843,7 @@ const normalizePackageIdsInZip = async (zip: JSZip, compressionLevel: number): P
  */
 const generateDocxZip = async (zip: JSZip, compressionLevel: number): Promise<ArrayBuffer> => {
   await reconcilePackageReferences(zip, compressionLevel);
-  await normalizePackageIdsInZip(zip, compressionLevel);
+  await normalizePackageOnSave(zip, compressionLevel);
   return zip.generateAsync({
     type: "arraybuffer",
     compression: "DEFLATE",
@@ -1414,11 +1446,11 @@ export async function updateMultipleFiles(
  * Apply file updates to an already-loaded JSZip instance and generate the output.
  * Use this when the zip is already loaded to avoid a redundant decompression pass.
  *
- * This is the selective save's exit, so it owes the package the same id passes
+ * This is the selective save's exit, so it owes the package the same passes
  * {@link generateDocxZip} runs: a save that rewrites only the changed
  * paragraphs still has to see the parts it left alone, both to know which
- * revision ids are free and because an out-of-range paragraph id can sit in a
- * part it never touched.
+ * revision ids are free and because an out-of-range paragraph id, or a
+ * malformed application version, can sit in a part it never touched.
  */
 export async function applyUpdatesToZip(
   zip: JSZip,
@@ -1434,7 +1466,7 @@ export async function applyUpdatesToZip(
     });
   }
 
-  await normalizePackageIdsInZip(zip, compressionLevel);
+  await normalizePackageOnSave(zip, compressionLevel);
 
   return await zip.generateAsync({
     type: "arraybuffer",
