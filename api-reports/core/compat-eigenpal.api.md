@@ -771,6 +771,7 @@ export type FolioAIBlockPreviewRun = {
     fontFamily?: string;
     fontSizePt?: number;
     color?: string;
+    directFormatting?: FolioAIInlineFormatting;
 };
 
 // @public

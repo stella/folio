@@ -71,6 +71,7 @@ import type {
   FolioAIEditNormalization,
   FolioAIEditOperation,
   FolioAIEditSnapshot,
+  FolioAIInlineFormatting,
   FolioAIEditSkipReason,
   FolioAIEditSkippedOperation,
   FolioAISignatureParty,
@@ -392,6 +393,47 @@ type InlineFormattingPatch =
   | Extract<FolioAIEditOperation, { type: "formatRange" }>["formatting"]
   | typeof REPLACEMENT_BACKGROUND_CLEAR_FORMATTING;
 
+const INLINE_FORMATTING_MARK_NAMES = {
+  bold: "bold",
+  italic: "italic",
+  underline: "underline",
+  strike: "strike",
+  fontFamily: "fontFamily",
+  fontSizePt: "fontSize",
+  color: "textColor",
+  highlight: "highlight",
+  runShading: "runShading",
+} as const satisfies Record<
+  keyof FolioAIInlineFormatting | keyof typeof REPLACEMENT_BACKGROUND_CLEAR_FORMATTING,
+  string
+>;
+
+const formattingMarkName = (property: string): string | null => {
+  if (!Object.hasOwn(INLINE_FORMATTING_MARK_NAMES, property)) {
+    return null;
+  }
+  const name: unknown = Reflect.get(INLINE_FORMATTING_MARK_NAMES, property);
+  return typeof name === "string" ? name : null;
+};
+
+const formattingMarkAttrs = (
+  property: string,
+  value: boolean | string | number,
+): Record<string, unknown> | null => {
+  switch (property) {
+    case "underline":
+      return { style: "single" };
+    case "fontFamily":
+      return typeof value === "string" ? { ascii: value, hAnsi: value } : null;
+    case "fontSizePt":
+      return typeof value === "number" ? { size: value * 2 } : null;
+    case "color":
+      return typeof value === "string" ? { rgb: value.replace(/^#/u, "").toUpperCase() } : null;
+    default:
+      return {};
+  }
+};
+
 const applyInlineFormatting = ({
   tr,
   schema,
@@ -399,17 +441,17 @@ const applyInlineFormatting = ({
   to,
   formatting,
 }: ApplyInlineFormattingOptions): Transaction => {
-  for (const [name, enabled] of Object.entries(formatting)) {
-    const markType = schema.marks[name];
+  for (const [property, value] of Object.entries(formatting)) {
+    const markName = formattingMarkName(property);
+    const markType = markName ? schema.marks[markName] : undefined;
     if (!markType) {
       continue;
     }
-    if (enabled) {
-      tr.addMark(
-        from,
-        to,
-        name === "underline" ? markType.create({ style: "single" }) : markType.create(),
-      );
+    if (value !== false && value !== null) {
+      const attrs = formattingMarkAttrs(property, value);
+      if (attrs) {
+        tr.addMark(from, to, markType.create(attrs));
+      }
       continue;
     }
     tr.removeMark(from, to, markType);
@@ -421,13 +463,26 @@ const formattingWouldChange = (
   marks: readonly Mark[],
   formatting: InlineFormattingPatch,
 ): boolean =>
-  Object.entries(formatting).some(([name, enabled]) => {
-    const mark = marks.find((candidate) => candidate.type.name === name);
-    if (!enabled) {
+  Object.entries(formatting).some(([property, value]) => {
+    const markName = formattingMarkName(property);
+    const mark = marks.find((candidate) => candidate.type.name === markName);
+    if (value === false || value === null) {
       return mark !== undefined;
     }
-    if (name === "underline") {
+    if (property === "underline") {
       return mark?.attrs["style"] !== "single";
+    }
+    if (property === "fontFamily") {
+      return mark?.attrs["ascii"] !== value || mark?.attrs["hAnsi"] !== value;
+    }
+    if (property === "fontSizePt") {
+      return Number(mark?.attrs["size"]) !== Number(value) * 2;
+    }
+    if (property === "color") {
+      const current = mark?.attrs["rgb"];
+      const normalizedCurrent =
+        typeof current === "string" ? current.replace(/^#/u, "").toUpperCase() : null;
+      return normalizedCurrent !== String(value).replace(/^#/u, "").toUpperCase();
     }
     return mark === undefined;
   });

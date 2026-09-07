@@ -1,5 +1,15 @@
 export type FolioAIBlockKind = "heading" | "listItem" | "paragraph";
 
+export type FolioAIInlineFormatting = {
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strike?: boolean;
+  fontFamily?: string | null;
+  fontSizePt?: number | null;
+  color?: string | null;
+};
+
 export type FolioAIBlockPreviewRun = {
   text: string;
   bold?: boolean;
@@ -9,6 +19,7 @@ export type FolioAIBlockPreviewRun = {
   fontFamily?: string;
   fontSizePt?: number;
   color?: string;
+  directFormatting?: FolioAIInlineFormatting;
 };
 
 /**
@@ -175,13 +186,6 @@ export type FolioDocumentSectionReadResult =
 export type FolioDocumentNavigationTarget =
   | { type: "block"; story: "main"; blockId: string }
   | FolioAITextRangeHandle;
-
-export type FolioAIInlineFormatting = {
-  bold?: boolean;
-  italic?: boolean;
-  underline?: boolean;
-  strike?: boolean;
-};
 
 /**
  * A party in an `insertSignatureTable` op. Mirrors the

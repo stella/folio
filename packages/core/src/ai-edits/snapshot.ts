@@ -400,7 +400,7 @@ const getStyleId = (node: PMNode): string | undefined => {
   return typeof styleId === "string" && styleId.length > 0 ? styleId : undefined;
 };
 
-type PreviewRunStyle = Omit<FolioAIBlockPreviewRun, "text">;
+type PreviewRunStyle = Omit<FolioAIBlockPreviewRun, "text" | "directFormatting">;
 
 const DELETION_MARK = "deletion";
 
@@ -417,13 +417,22 @@ const getPreviewRuns = (node: PMNode): FolioAIBlockPreviewRun[] | undefined => {
     }
 
     const style = getPreviewRunStyle(child.marks, defaultStyle);
+    const directFormatting = getDirectPreviewRunStyle(child.marks, defaultStyle);
     const previous = runs.at(-1);
-    if (previous && samePreviewRunStyle(previous, style)) {
+    if (
+      previous &&
+      samePreviewRunStyle(previous, style) &&
+      sameDirectFormatting(previous.directFormatting, directFormatting)
+    ) {
       previous.text += child.text;
       return false;
     }
 
-    runs.push({ text: child.text, ...style });
+    runs.push({
+      text: child.text,
+      ...style,
+      ...(!isEmptyPreviewRunStyle(directFormatting) && { directFormatting }),
+    });
     return false;
   });
 
@@ -497,6 +506,37 @@ const getPreviewRunStyle = (
   }
 
   return style;
+};
+
+const getDirectPreviewRunStyle = (
+  marks: readonly Mark[],
+  inheritedStyle: PreviewRunStyle,
+): PreviewRunStyle => {
+  const markedStyle = getPreviewRunStyle(marks, {});
+  const directStyle: PreviewRunStyle = {};
+
+  for (const property of ["bold", "italic", "underline", "strike"] as const) {
+    if (Boolean(markedStyle[property]) !== Boolean(inheritedStyle[property])) {
+      directStyle[property] = Boolean(markedStyle[property]);
+    }
+  }
+  if (
+    markedStyle.fontFamily !== undefined &&
+    markedStyle.fontFamily !== inheritedStyle.fontFamily
+  ) {
+    directStyle.fontFamily = markedStyle.fontFamily;
+  }
+  if (
+    markedStyle.fontSizePt !== undefined &&
+    markedStyle.fontSizePt !== inheritedStyle.fontSizePt
+  ) {
+    directStyle.fontSizePt = markedStyle.fontSizePt;
+  }
+  if (markedStyle.color !== undefined && markedStyle.color !== inheritedStyle.color) {
+    directStyle.color = markedStyle.color;
+  }
+
+  return directStyle;
 };
 
 const getBooleanTextFormatting = (formatting: object): PreviewRunStyle => ({
@@ -585,6 +625,37 @@ const samePreviewRunStyle = (run: FolioAIBlockPreviewRun, style: PreviewRunStyle
   run.fontFamily === style.fontFamily &&
   run.fontSizePt === style.fontSizePt &&
   run.color === style.color;
+
+const isEmptyPreviewRunStyle = ({
+  bold,
+  italic,
+  underline,
+  strike,
+  fontFamily,
+  fontSizePt,
+  color,
+}: PreviewRunStyle): boolean =>
+  bold === undefined &&
+  italic === undefined &&
+  underline === undefined &&
+  strike === undefined &&
+  fontFamily === undefined &&
+  fontSizePt === undefined &&
+  color === undefined;
+
+const sameDirectFormatting = (
+  left: FolioAIBlockPreviewRun["directFormatting"],
+  right: PreviewRunStyle,
+): boolean =>
+  (left === undefined && isEmptyPreviewRunStyle(right)) ||
+  (left !== undefined &&
+    left.bold === right.bold &&
+    left.italic === right.italic &&
+    left.underline === right.underline &&
+    left.strike === right.strike &&
+    left.fontFamily === right.fontFamily &&
+    left.fontSizePt === right.fontSizePt &&
+    left.color === right.color);
 
 const isUnstyledPreviewRun = ({
   bold,

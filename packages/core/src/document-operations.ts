@@ -303,6 +303,51 @@ const readOptionalBoolean = (
   return invalidBatch(`${path}.${key}`, "expected a boolean when provided");
 };
 
+const readClearableNonEmptyString = (
+  value: Record<string, unknown>,
+  key: string,
+  path: string,
+): string | null | undefined => {
+  const candidate = value[key];
+  if (candidate === undefined || candidate === null) {
+    return candidate;
+  }
+  if (typeof candidate === "string" && candidate.trim().length > 0) {
+    return candidate.trim();
+  }
+  return invalidBatch(`${path}.${key}`, "expected a non-empty string or null when provided");
+};
+
+const readClearableFontSize = (
+  value: Record<string, unknown>,
+  key: string,
+  path: string,
+): number | null | undefined => {
+  const candidate = value[key];
+  if (candidate === undefined || candidate === null) {
+    return candidate;
+  }
+  if (typeof candidate === "number" && candidate > 0 && Number.isInteger(candidate * 2)) {
+    return candidate;
+  }
+  return invalidBatch(`${path}.${key}`, "expected a positive half-point value or null");
+};
+
+const readClearableRgbColor = (
+  value: Record<string, unknown>,
+  key: string,
+  path: string,
+): string | null | undefined => {
+  const candidate = value[key];
+  if (candidate === undefined || candidate === null) {
+    return candidate;
+  }
+  if (typeof candidate === "string" && /^#?[0-9a-fA-F]{6}$/u.test(candidate)) {
+    return candidate.replace(/^#/u, "").toUpperCase();
+  }
+  return invalidBatch(`${path}.${key}`, "expected a six-digit RGB color or null");
+};
+
 const readOptionalStringArray = (
   value: Record<string, unknown>,
   key: string,
@@ -462,16 +507,30 @@ const readInlineFormatting = (
   if (!isPlainObject(candidate)) {
     return invalidBatch(formattingPath, "expected an object");
   }
-  assertAllowedKeys(candidate, formattingPath, ["bold", "italic", "underline", "strike"]);
+  assertAllowedKeys(candidate, formattingPath, [
+    "bold",
+    "italic",
+    "underline",
+    "strike",
+    "fontFamily",
+    "fontSizePt",
+    "color",
+  ]);
   const bold = readOptionalBoolean(candidate, "bold", formattingPath);
   const italic = readOptionalBoolean(candidate, "italic", formattingPath);
   const underline = readOptionalBoolean(candidate, "underline", formattingPath);
   const strike = readOptionalBoolean(candidate, "strike", formattingPath);
+  const fontFamily = readClearableNonEmptyString(candidate, "fontFamily", formattingPath);
+  const fontSizePt = readClearableFontSize(candidate, "fontSizePt", formattingPath);
+  const color = readClearableRgbColor(candidate, "color", formattingPath);
   if (
     bold === undefined &&
     italic === undefined &&
     underline === undefined &&
-    strike === undefined
+    strike === undefined &&
+    fontFamily === undefined &&
+    fontSizePt === undefined &&
+    color === undefined
   ) {
     return invalidBatch(formattingPath, "expected at least one formatting property");
   }
@@ -480,6 +539,9 @@ const readInlineFormatting = (
     ...(italic !== undefined && { italic }),
     ...(underline !== undefined && { underline }),
     ...(strike !== undefined && { strike }),
+    ...(fontFamily !== undefined && { fontFamily }),
+    ...(fontSizePt !== undefined && { fontSizePt }),
+    ...(color !== undefined && { color }),
   };
 };
 

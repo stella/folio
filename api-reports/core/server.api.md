@@ -511,6 +511,7 @@ export type FolioAIBlockPreviewRun = {
     fontFamily?: string;
     fontSizePt?: number;
     color?: string;
+    directFormatting?: FolioAIInlineFormatting;
 };
 
 // @public (undocumented)
@@ -749,6 +750,9 @@ export type FolioAIInlineFormatting = {
     italic?: boolean;
     underline?: boolean;
     strike?: boolean;
+    fontFamily?: string | null;
+    fontSizePt?: number | null;
+    color?: string | null;
 };
 
 // @public

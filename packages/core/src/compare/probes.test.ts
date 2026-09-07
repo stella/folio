@@ -140,6 +140,7 @@ const styledView = async (
 };
 
 type ProbeOutcome = {
+  buffer: ArrayBuffer;
   changes: readonly CompareChange[];
   kinds: readonly string[];
 };
@@ -168,7 +169,11 @@ const probe = async (base: ArrayBuffer, script: EditScript): Promise<ProbeOutcom
     await projectView(base, "final"),
   );
 
-  return { changes: result.value.changes, kinds: result.value.changes.map(({ kind }) => kind) };
+  return {
+    buffer: result.value.buffer,
+    changes: result.value.changes,
+    kinds: result.value.changes.map(({ kind }) => kind),
+  };
 };
 
 /** A block with enough words to split, edit inside, or bold part of. */
@@ -490,6 +495,96 @@ describe("single-mutation probes", () => {
     ];
     expect(acceptedBlock?.previewRuns?.at(0)?.strike).toBe(true);
     expect(rejectedBlock?.previewRuns?.at(0)?.strike).not.toBe(true);
+  });
+
+  test("format_only_font: changing face, half-point size, and color is one format", async () => {
+    const blockIndex = wordyBlockIndex(PROSE_BLOCKS, 4);
+    const { buffer, changes, kinds } = await probe(PROSE_BASE, [
+      {
+        type: "formatRange",
+        blockIndex,
+        startOffset: 0,
+        endOffset: 4,
+        formatting: { fontFamily: "Georgia", fontSizePt: 10.5, color: "C00000" },
+      },
+    ]);
+    expect(kinds).toEqual(["format"]);
+    const change = changes.at(0);
+    expect(change?.kind === "format" ? change.ranges : []).toEqual([
+      {
+        startOffset: 0,
+        endOffset: 4,
+        formatting: { fontFamily: "Georgia", fontSizePt: 10.5, color: "C00000" },
+      },
+    ]);
+    const reviewed = await FolioDocxReviewer.fromBuffer(buffer);
+    expect(
+      reviewed
+        .readReviewedStory({ view: "final" })
+        ?.snapshot.blocks[blockIndex]?.previewRuns?.at(0),
+    ).toMatchObject({
+      fontFamily: "Georgia",
+      fontSizePt: 10.5,
+      color: "#C00000",
+      directFormatting: {
+        fontFamily: "Georgia",
+        fontSizePt: 10.5,
+        color: "#C00000",
+      },
+    });
+  });
+
+  test("format_only_font_clear: clearing direct font properties is one format", async () => {
+    const blockIndex = wordyBlockIndex(PROSE_BLOCKS, 4);
+    const formatted = await applyEditScript(PROSE_BASE, [
+      {
+        type: "formatRange",
+        blockIndex,
+        startOffset: 0,
+        endOffset: 4,
+        formatting: { fontFamily: "Georgia", fontSizePt: 10.5, color: "C00000" },
+      },
+    ]);
+    if (formatted.isErr()) {
+      throw formatted.error;
+    }
+
+    const { buffer, changes, kinds } = await probe(formatted.value.buffer, [
+      {
+        type: "formatRange",
+        blockIndex,
+        startOffset: 0,
+        endOffset: 4,
+        formatting: { fontFamily: null, fontSizePt: null, color: null },
+      },
+    ]);
+    expect(kinds).toEqual(["format"]);
+    expect(changes.at(0)?.kind === "format" ? changes.at(0)?.ranges : []).toEqual([
+      {
+        startOffset: 0,
+        endOffset: 4,
+        formatting: { fontFamily: null, fontSizePt: null, color: null },
+      },
+    ]);
+    const reviewed = await FolioDocxReviewer.fromBuffer(buffer);
+    expect(
+      reviewed.readReviewedStory({ view: "final" })?.snapshot.blocks[blockIndex]?.previewRuns?.at(0)
+        ?.directFormatting,
+    ).toBeUndefined();
+    expect(
+      reviewed
+        .readReviewedStory({ view: "original" })
+        ?.snapshot.blocks[blockIndex]?.previewRuns?.at(0),
+    ).toMatchObject({
+      fontFamily: "Georgia",
+      fontSizePt: 10.5,
+      color: "#C00000",
+      directFormatting: {
+        fontFamily: "Georgia",
+        fontSizePt: 10.5,
+        color: "#C00000",
+      },
+    });
   });
 
   test("renumbering: an added list item does not report the items after it", async () => {

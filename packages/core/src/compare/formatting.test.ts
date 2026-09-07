@@ -39,4 +39,75 @@ describe("inlineFormattingSegments", () => {
       }),
     ).toEqual([{ startOffset: 0, endOffset: 8, formatting: { strike: true } }]);
   });
+
+  test("reports target font face, half-point size, and normalized RGB color", () => {
+    expect(
+      inlineFormattingSegments({
+        baseBlock: block([{ text: "Contract", fontFamily: "Arial", fontSizePt: 10 }]),
+        targetBlock: block([
+          {
+            text: "Contract",
+            fontFamily: "Georgia",
+            fontSizePt: 10.5,
+            color: "c00000",
+            directFormatting: {
+              fontFamily: "Georgia",
+              fontSizePt: 10.5,
+              color: "c00000",
+            },
+          },
+        ]),
+        maxSegments: 10,
+      }),
+    ).toEqual([
+      {
+        startOffset: 0,
+        endOffset: 8,
+        formatting: { fontFamily: "Georgia", fontSizePt: 10.5, color: "C00000" },
+      },
+    ]);
+  });
+
+  test("represents cleared direct font properties explicitly", () => {
+    expect(
+      inlineFormattingSegments({
+        baseBlock: block([
+          {
+            text: "Contract",
+            fontFamily: "Georgia",
+            fontSizePt: 10.5,
+            color: "C00000",
+            directFormatting: {
+              fontFamily: "Georgia",
+              fontSizePt: 10.5,
+              color: "C00000",
+            },
+          },
+        ]),
+        targetBlock: block([{ text: "Contract" }]),
+        maxSegments: 10,
+      }),
+    ).toEqual([
+      {
+        startOffset: 0,
+        endOffset: 8,
+        formatting: { fontFamily: null, fontSizePt: null, color: null },
+      },
+    ]);
+  });
+
+  test("verification distinguishes an inherited value from the same direct value", () => {
+    const inherited = block([{ text: "Contract", fontFamily: "Georgia" }]);
+    const direct = block([
+      {
+        text: "Contract",
+        fontFamily: "Georgia",
+        directFormatting: { fontFamily: "Georgia" },
+      },
+    ]);
+
+    expect(projectSupportedInlineFormatting(inherited)).not.toBe(
+      projectSupportedInlineFormatting(direct),
+    );
+  });
 });
