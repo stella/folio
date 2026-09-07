@@ -1,5 +1,11 @@
 # @stll/docx-core
 
+## 0.19.1
+
+### Patch Changes
+
+- [#738](https://github.com/stella/folio/pull/738) [`da95224`](https://github.com/stella/folio/commit/da9522486bdfd5e50c5fa935f10ebb3173b06cd6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A save that changed nothing writes a table's `w:tblPr`, `w:tblGrid`, `w:trPr` and `w:tcPr` back as they arrived, rather than rebuilding them from the typed model and dropping the conditional-format flags, the `w:tblGridChange`, and whatever else the model does not cover. The capture is re-parsed and checked against the model before it is used, so a `Document` edited in place is still honoured. `w:tcPr` and `w:tblPr` also stop gaining an inherited value — a border a table style supplied, a margin the table declared — as the cell's or table's own override, and an absent `w:hideMark` stops being written back as an explicit `w:val="off"`.
+
 ## 0.19.0
 
 ### Minor Changes
