@@ -26,6 +26,11 @@ export type FolioDocumentSettings = DocumentSettings & {
   mirrorMargins?: boolean;
 };
 
+type ParsedDocumentSettings = FolioDocumentSettings & {
+  /** Apply section line-grid pitch to paragraphs inside table cells. */
+  adjustLineHeightInTable?: true;
+};
+
 /** OOXML default per §17.6.13 when `w:defaultTabStop` is absent. */
 export const DEFAULT_TAB_STOP_TWIPS = 720;
 
@@ -55,7 +60,7 @@ const MAX_KINSOKU_CHARACTERS_LENGTH = 128;
 
 export function parseSettings(xml: string | null): FolioDocumentSettings {
   const root = xml ? (parseXmlDocument(xml) as XmlElement | null) : null;
-  const settings: FolioDocumentSettings = {
+  const settings: ParsedDocumentSettings = {
     defaultTabStop: parseDefaultTabStop(root),
   };
   // On/off flags are resolved by namespace URI: a foreign-namespace element
@@ -131,6 +136,19 @@ export function parseSettings(xml: string | null): FolioDocumentSettings {
     : null;
   if (splitPageBreakAndParagraphMark && parseBooleanElement(splitPageBreakAndParagraphMark)) {
     settings.splitPageBreakAndParagraphMark = true;
+  }
+  const wordprocessingCompat = root
+    ? findChildByNamespaceUri(root, WORDPROCESSINGML_NAMESPACE_URIS, "compat")
+    : null;
+  const adjustLineHeightInTable = wordprocessingCompat
+    ? findChildByNamespaceUri(
+        wordprocessingCompat,
+        WORDPROCESSINGML_NAMESPACE_URIS,
+        "adjustLineHeightInTable",
+      )
+    : null;
+  if (adjustLineHeightInTable && parseBooleanElement(adjustLineHeightInTable)) {
+    settings.adjustLineHeightInTable = true;
   }
   const applyBreakingRules = compat ? findChild(compat, "w", "applyBreakingRules") : null;
   const useLegacyEthiopicAmharicRules =

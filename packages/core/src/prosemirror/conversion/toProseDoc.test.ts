@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { toFlowBlocks } from "../../layout-bridge/convert/toFlowBlocks";
+import { parseSettings } from "../../docx/settingsParser";
 import type { Document, ShadingProperties, TableCell, Theme } from "../../types/document";
 import { fromProseDoc } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
@@ -59,6 +60,19 @@ describe("toProseDoc", () => {
     };
 
     expect(toProseDoc(document).attrs["_finalSectionStart"]).toBe("oddPage");
+  });
+
+  test("keeps the table line-grid compatibility policy on the internal document node", () => {
+    const settingsXml =
+      '<w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:compat><w:adjustLineHeightInTable/></w:compat></w:settings>';
+    const document: Document = {
+      package: {
+        document: { content: [{ type: "paragraph", content: [] }] },
+        settings: parseSettings(settingsXml),
+      },
+    };
+
+    expect(toProseDoc(document).attrs["_adjustLineHeightInTable"]).toBe(true);
   });
 
   test("renders OOXML symbol characters with their declared font", () => {

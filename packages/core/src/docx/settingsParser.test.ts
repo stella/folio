@@ -165,6 +165,27 @@ describe("parseSettings — application compatibility generation", () => {
   });
 });
 
+describe("parseSettings — table line-grid compatibility", () => {
+  test("records only an enabled adjustLineHeightInTable flag", () => {
+    expect(parseSettings(wrap(`<w:compat><w:adjustLineHeightInTable/></w:compat>`))).toMatchObject({
+      adjustLineHeightInTable: true,
+    });
+    expect(
+      parseSettings(wrap(`<w:compat><w:adjustLineHeightInTable w:val="0"/></w:compat>`)),
+    ).not.toHaveProperty("adjustLineHeightInTable");
+    expect(parseSettings(wrap(""))).not.toHaveProperty("adjustLineHeightInTable");
+  });
+
+  test("resolves the setting by namespace URI", () => {
+    const strictNamespace = "http://purl.oclc.org/ooxml/wordprocessingml/main";
+    const alternatePrefix = `<?xml version="1.0"?><q:settings xmlns:q="${strictNamespace}"><q:compat><q:adjustLineHeightInTable/></q:compat></q:settings>`;
+    const foreignChild = `<?xml version="1.0"?><w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:x="urn:example:foreign"><w:compat><x:adjustLineHeightInTable/></w:compat></w:settings>`;
+
+    expect(parseSettings(alternatePrefix)).toMatchObject({ adjustLineHeightInTable: true });
+    expect(parseSettings(foreignChild)).not.toHaveProperty("adjustLineHeightInTable");
+  });
+});
+
 describe("parseSettings — document automatic hyphenation", () => {
   test("reads the Word hyphenation controls", () => {
     expect(

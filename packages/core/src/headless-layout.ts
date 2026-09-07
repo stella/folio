@@ -35,6 +35,7 @@ import { createHash } from "node:crypto";
 import { Result, TaggedError } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 
+import { resolveDocumentGridLinePitch } from "./docx/documentGrid";
 import { parseDocx } from "./docx/parser";
 import { formatOoxmlCounter } from "./docx/ooxmlCounterFormatter";
 import { toArrayBuffer, type DocxInput } from "./utils/docxInput";
@@ -220,6 +221,12 @@ const buildFlowOptions = (document: Document, pageContentHeight: number): ToFlow
         ? {}
         : { hyphenationZoneTwips: settings.hyphenationZoneTwips }),
     };
+  }
+  const finalSectionDocumentGridLinePitchTwips = resolveDocumentGridLinePitch(
+    document.package.document.sections?.at(-1)?.properties.docGrid,
+  );
+  if (finalSectionDocumentGridLinePitchTwips !== undefined) {
+    options.finalSectionDocumentGridLinePitchTwips = finalSectionDocumentGridLinePitchTwips;
   }
   return options;
 };

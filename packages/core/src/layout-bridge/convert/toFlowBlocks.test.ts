@@ -86,6 +86,45 @@ describe("toFlowBlocks paragraph formatting", () => {
     expect(cellParagraph.attrs?.documentGridLinePitch).toBeUndefined();
   });
 
+  test("applies the section line grid to nested table cells when requested", () => {
+    const nestedTable = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node("tableCell", null, [schema.node("paragraph", null, [schema.text("Nested")])]),
+      ]),
+    ]);
+    const table = schema.node("table", null, [
+      schema.node("tableRow", null, [
+        schema.node("tableCell", null, [
+          schema.node("paragraph", null, [schema.text("Cell")]),
+          nestedTable,
+        ]),
+      ]),
+    ]);
+    const blocks = toFlowBlocks(schema.node("doc", { _adjustLineHeightInTable: true }, [table]), {
+      finalSectionDocumentGridLinePitchTwips: 360,
+    });
+    const tableBlock = blocks.at(0);
+
+    expect(tableBlock?.kind).toBe("table");
+    if (tableBlock?.kind !== "table") {
+      return;
+    }
+    const cellBlocks = tableBlock.rows.at(0)?.cells.at(0)?.blocks;
+    const cellParagraph = cellBlocks?.at(0);
+    const nestedTableBlock = cellBlocks?.at(1);
+    expect(cellParagraph?.kind).toBe("paragraph");
+    expect(nestedTableBlock?.kind).toBe("table");
+    if (cellParagraph?.kind !== "paragraph" || nestedTableBlock?.kind !== "table") {
+      return;
+    }
+    expect(cellParagraph.attrs?.documentGridLinePitch).toBe(24);
+    const nestedParagraph = nestedTableBlock.rows.at(0)?.cells.at(0)?.blocks.at(0);
+    expect(nestedParagraph?.kind).toBe("paragraph");
+    if (nestedParagraph?.kind === "paragraph") {
+      expect(nestedParagraph.attrs?.documentGridLinePitch).toBe(24);
+    }
+  });
+
   test("lays out a trailing page-break section mark on the following page", () => {
     const doc = schema.node("doc", null, [
       schema.node(

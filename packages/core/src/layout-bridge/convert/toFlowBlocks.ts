@@ -3173,17 +3173,24 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
   suppressFinalEmptyParagraphAfterTable(blocks);
   suppressFinalParagraphInRepeatedEmptySuffix(blocks);
   const mergedBlocks = mergeRunInParagraphs(blocks);
-  const griddedBlocks = applySectionDocumentGrid(
-    mergedBlocks,
-    opts.finalSectionDocumentGridLinePitchTwips,
-  );
+  const tableCellLinePitch =
+    doc.attrs["_adjustLineHeightInTable"] === true ? "sectionGrid" : undefined;
+  const griddedBlocks = applySectionDocumentGrid(mergedBlocks, {
+    finalLinePitchTwips: opts.finalSectionDocumentGridLinePitchTwips,
+    tableCellLinePitch,
+  });
   const boundaryBlocks = applySectionStartsToBoundaries(griddedBlocks, readFinalSectionStart(doc));
   return groupParagraphFrames(boundaryBlocks, nextBlockId);
 }
 
+type SectionDocumentGridOptions = {
+  finalLinePitchTwips: number | undefined;
+  tableCellLinePitch: "sectionGrid" | undefined;
+};
+
 function applySectionDocumentGrid(
   blocks: FlowBlock[],
-  finalLinePitchTwips: number | undefined,
+  { finalLinePitchTwips, tableCellLinePitch }: SectionDocumentGridOptions,
 ): FlowBlock[] {
   const result = [...blocks];
   let sectionStart = 0;
@@ -3193,15 +3200,33 @@ function applySectionDocumentGrid(
       return;
     }
     const linePitch = twipsToPixels(linePitchTwips);
+    const stampBlock = (block: FlowBlock): FlowBlock => {
+      if (block.kind === "paragraph") {
+        return {
+          ...block,
+          attrs: { ...block.attrs, documentGridLinePitch: linePitch },
+        };
+      }
+      if (block.kind !== "table" || tableCellLinePitch !== "sectionGrid") {
+        return block;
+      }
+      return {
+        ...block,
+        rows: block.rows.map((row) => ({
+          ...row,
+          cells: row.cells.map((cell) => ({
+            ...cell,
+            blocks: cell.blocks.map(stampBlock),
+          })),
+        })),
+      };
+    };
     for (let index = sectionStart; index < end; index += 1) {
       const block = result[index];
-      if (block?.kind !== "paragraph") {
+      if (!block) {
         continue;
       }
-      result[index] = {
-        ...block,
-        attrs: { ...block.attrs, documentGridLinePitch: linePitch },
-      };
+      result[index] = stampBlock(block);
     }
   };
 
