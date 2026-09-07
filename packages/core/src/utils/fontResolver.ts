@@ -550,6 +550,32 @@ const FONT_MAPPINGS: Record<string, FontMapping> = {
     }),
   },
 
+  // Hebrew faces
+  frankruehl: {
+    googleFont: "Frank Ruhl Libre",
+    category: "serif",
+    fallbackStack: ["FrankRuehl", "Frank Ruhl Libre", "Times New Roman", "serif"],
+    singleLineRatio: singleLineRatioOf({
+      source: "hhea",
+      hheaAscent: 1462,
+      hheaDescent: -442,
+      hheaLineGap: 0,
+      unitsPerEm: 2048,
+    }), // 0.9297
+  },
+  miriam: {
+    googleFont: "Miriam Libre",
+    category: "sans-serif",
+    fallbackStack: ["Miriam", "Miriam Libre", "Arial", "sans-serif"],
+    singleLineRatio: singleLineRatioOf({
+      source: "hhea",
+      hheaAscent: 1546,
+      hheaDescent: -512,
+      hheaLineGap: 0,
+      unitsPerEm: 2048,
+    }), // 1.0049
+  },
+
   // CJK fonts
   "ms mincho": {
     googleFont: "Noto Serif JP",
