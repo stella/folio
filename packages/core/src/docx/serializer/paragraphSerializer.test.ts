@@ -536,4 +536,25 @@ describe("pPr children follow the schema's sequence", () => {
     expect(order).not.toContain(-1);
     expect(order).toEqual([...order].toSorted((left, right) => left - right));
   });
+
+  // `CT_PPr` ends with `rPr`, `sectPr`, `pPrChange`. A section break on a
+  // paragraph whose properties also record a change used to be appended after
+  // the change, and a consumer refused the part.
+  test("a section break precedes the recorded property change", () => {
+    const paragraph = parseProperties(
+      `<w:pStyle w:val="Heading1"/><w:rPr><w:rFonts w:hint="eastAsia"/></w:rPr>` +
+        `<w:sectPr><w:pgSz w:w="15840" w:h="12240" w:orient="landscape"/></w:sectPr>` +
+        `<w:pPrChange w:id="410" w:author="Reviewer" w:date="2000-01-01T00:00:00Z">` +
+        `<w:pPr><w:spacing w:after="200"/></w:pPr></w:pPrChange>`,
+    );
+
+    const xml = serializeParagraph(paragraph);
+    const order = ["<w:pStyle", "<w:rPr>", "<w:sectPr>", "<w:pPrChange"].map((element) =>
+      xml.indexOf(element),
+    );
+
+    expect(order).not.toContain(-1);
+    expect(order).toEqual([...order].toSorted((left, right) => left - right));
+    expect(xml.indexOf("<w:sectPr>")).toBeLessThan(xml.indexOf("</w:pPr>"));
+  });
 });
