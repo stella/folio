@@ -366,78 +366,70 @@ export function serializeTableFormatting(
 ): string {
   const parts: string[] = [];
 
+  // CT_TblPrBase is a SEQUENCE (ECMA-376 §17.4.60), so the children are
+  // written in the order it declares: tblStyle, tblpPr, tblOverlap,
+  // bidiVisual, tblW, jc, tblCellSpacing, tblInd, tblBorders, shd, tblLayout,
+  // tblCellMar, tblLook. A consumer validating the part refuses one written in
+  // any other order.
   if (formatting) {
-    // Table style (must be first)
     if (formatting.styleId) {
       parts.push(`<w:tblStyle w:val="${escapeXml(formatting.styleId)}"/>`);
     }
 
-    // Floating table properties
     const floatingXml = serializeFloatingTableProperties(formatting.floating);
     if (floatingXml) {
       parts.push(floatingXml);
     }
 
-    // Bidirectional
+    if (formatting.overlap) {
+      parts.push(`<w:tblOverlap w:val="${formatting.overlap}"/>`);
+    }
+
     if (formatting.bidi !== undefined) {
       parts.push(formatting.bidi ? "<w:bidiVisual/>" : '<w:bidiVisual w:val="0"/>');
     }
 
-    // Table width
     const widthXml = serializeMeasurement(formatting.width, "tblW");
     if (widthXml) {
       parts.push(widthXml);
     }
 
-    // Table justification
     if (formatting.justification) {
       parts.push(`<w:jc w:val="${formatting.justification}"/>`);
     }
 
-    // Cell spacing
     const cellSpacingXml = serializeMeasurement(formatting.cellSpacing, "tblCellSpacing");
     if (cellSpacingXml) {
       parts.push(cellSpacingXml);
     }
 
-    // Table indent
     const indentXml = serializeMeasurement(formatting.indent, "tblInd");
     if (indentXml) {
       parts.push(indentXml);
     }
 
-    // Table borders
     const bordersXml = serializeTableBorders(formatting.borders, "tblBorders");
     if (bordersXml) {
       parts.push(bordersXml);
     }
 
-    // Default cell margins
-    const marginsXml = serializeCellMargins(formatting.cellMargins, "tblCellMar");
-    if (marginsXml) {
-      parts.push(marginsXml);
-    }
-
-    // Table layout
-    if (formatting.layout) {
-      parts.push(`<w:tblLayout w:type="${formatting.layout}"/>`);
-    }
-
-    // Shading
     const shadingXml = serializeShading(formatting.shading);
     if (shadingXml) {
       parts.push(shadingXml);
     }
 
-    // Table look
+    if (formatting.layout) {
+      parts.push(`<w:tblLayout w:type="${formatting.layout}"/>`);
+    }
+
+    const marginsXml = serializeCellMargins(formatting.cellMargins, "tblCellMar");
+    if (marginsXml) {
+      parts.push(marginsXml);
+    }
+
     const lookXml = serializeTableLook(formatting.look);
     if (lookXml) {
       parts.push(lookXml);
-    }
-
-    // Overlap
-    if (formatting.overlap) {
-      parts.push(`<w:tblOverlap w:val="${formatting.overlap}"/>`);
     }
   }
 

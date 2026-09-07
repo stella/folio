@@ -10,8 +10,8 @@ import {
 } from "prosemirror-tables";
 
 import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
-import type { TrackedChangeProvenance } from "../prosemirror/schema/marks";
 import { stripBlockIdentityAttrs } from "./block-identity";
+import { tableRowFromTemplate, type TableStructureRevision } from "./table-template";
 import {
   findEnclosingTableCell,
   findEnclosingTableRow,
@@ -45,20 +45,6 @@ export type TableColumnInsertion = {
 };
 
 export type TableColumnDeletion = TableColumnInsertion;
-
-export type TableStructureRevision = {
-  revisionId: number;
-  author: string;
-  date: string;
-  /** Optional author initials (w:initials), carried for round-trip. */
-  initials?: string;
-  /**
-   * `"suggested"` marks the produced `trIns`/`trDel`/`cellMarker` as an AI
-   * proposal that is stripped from serialized DOCX until accepted.
-   */
-  provenance?: TrackedChangeProvenance;
-  suggestionId?: string;
-};
 
 type TableRowColumnMutationResult =
   | { type: "applied"; transaction: Transaction; revisionId: number | null }
@@ -121,6 +107,13 @@ type ApplyTableRowInsertionOptions = {
   insertion: TableRowInsertion;
   cellTexts: readonly string[] | undefined;
   revision: TableStructureRevision | null;
+  /**
+   * The row to place, when the caller has one — a comparison adding a row the
+   * target document already holds. Its `w:trPr` and per-cell `w:tcPr` travel
+   * with it; `cellTexts` builds the row from the neighbouring one when it is
+   * absent or does not fit this table's grid.
+   */
+  template?: PMNode;
 };
 
 export const applyTableRowInsertion = ({
@@ -128,6 +121,7 @@ export const applyTableRowInsertion = ({
   insertion,
   cellTexts,
   revision,
+  template,
 }: ApplyTableRowInsertionOptions): TableRowColumnMutationResult => {
   if (revision && insertion.rowspanUpdates.length > 0) {
     return { type: "unsupported" };
@@ -156,15 +150,21 @@ export const applyTableRowInsertion = ({
         trIns: revision,
       }
     : null;
-  const row = insertion.rowType.create(rowAttrs, insertion.cells);
-  tr.insert(insertion.rowPosition, populateTableRow(row, cellTexts));
+  const templated =
+    template === undefined
+      ? null
+      : tableRowFromTemplate({ template, columnCount: insertion.columnCount });
+  const row = templated
+    ? templated.type.create({ ...templated.attrs, ...rowAttrs }, templated.content)
+    : populateTableRow(insertion.rowType.create(rowAttrs, insertion.cells), cellTexts);
+  tr.insert(insertion.rowPosition, row);
   if (revision) {
     markTableRowContent({ tr, rowPosition: insertion.rowPosition, kind: "insertion", revision });
   }
   return applied(tr, revision);
 };
 
-type MarkTableRowContentOptions = {
+export type MarkTableRowContentOptions = {
   tr: Transaction;
   rowPosition: number;
   kind: "insertion" | "deletion";
@@ -188,7 +188,7 @@ type MarkTableRowContentOptions = {
  * and shortens its span — so marking its text would delete content the
  * accepted document must still hold.
  */
-const markTableRowContent = ({
+export const markTableRowContent = ({
   tr,
   rowPosition,
   kind,

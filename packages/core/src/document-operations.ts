@@ -1,5 +1,6 @@
 import { TaggedError } from "better-result";
 
+import type { FolioTableTemplates } from "./ai-edits/table-template";
 import {
   applyFolioAIEditOperations,
   type FolioAIEditApplyOutcome,
@@ -1350,6 +1351,14 @@ export type ApplyFolioDocumentOperationsOptions = {
   revisionStamp?: FolioRevisionStamp;
   /** Token size a replacement's redline is cut at. Word-level by default. */
   wordDiff?: FolioWordDiffOptions;
+  /**
+   * Tables and rows an `insertTable` / `insertTableRow` in the batch places
+   * verbatim, by operation id. Outside the serialized batch because a table
+   * node is not JSON: the contract still describes a table by its cell texts,
+   * and an in-process caller that already holds the table — a comparison
+   * copying the target document's — hands the whole thing over instead.
+   */
+  tableTemplates?: FolioTableTemplates;
 };
 
 type ApplyParsedDocumentOperationBatchOptions = {
@@ -1368,6 +1377,7 @@ export const applyFolioDocumentOperations = ({
   createUndoHandle,
   revisionStamp,
   wordDiff,
+  tableTemplates,
 }: ApplyFolioDocumentOperationsOptions): FolioDocumentOperationResult => {
   const parsedBatch = parseFolioDocumentOperationBatch(batch);
   const apply = ({
@@ -1385,6 +1395,7 @@ export const applyFolioDocumentOperations = ({
       ...(targetCreateCommentId !== undefined && { createCommentId: targetCreateCommentId }),
       ...(revisionStamp !== undefined && { revisionStamp }),
       ...(wordDiff !== undefined && { wordDiff }),
+      ...(tableTemplates !== undefined && { tableTemplates }),
     });
   };
 

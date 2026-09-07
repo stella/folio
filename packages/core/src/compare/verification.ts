@@ -43,6 +43,12 @@ export const COMPARE_VERIFICATION_CAUSES = Object.freeze([
   "invisible-structure",
   "block-count",
   "container",
+  /**
+   * Every block is where it should be and a table's own properties are not:
+   * `w:tblPr`, the `w:tblGrid` widths, `w:trPr`, `w:tcPr`. No block carries
+   * them, so a projection of blocks alone cannot see them go.
+   */
+  "table-geometry",
   "style",
   "list-level",
   "inline-formatting",
@@ -220,6 +226,28 @@ type ClassifyOptions = {
   actual: readonly string[];
   /** What the invariant says it should leave. */
   expected: readonly string[];
+};
+
+/**
+ * The failure two table-geometry projections describe, or `null` when they
+ * agree. One line per table, so the detail names which table diverged and
+ * whether the count itself did — never a property value, which could carry a
+ * style name either document chose.
+ */
+export const classifyGeometryMismatch = ({
+  invariant,
+  story,
+  actual,
+  expected,
+}: ClassifyOptions): CompareVerificationFailure | null => {
+  if (sameProjection(actual, expected)) {
+    return null;
+  }
+  const detail =
+    actual.length === expected.length
+      ? `table ${String(actual.findIndex((entry, index) => entry !== expected[index]))} of ${String(actual.length)} carries different properties`
+      : `${String(actual.length)} tables against ${String(expected.length)}`;
+  return { invariant, cause: "table-geometry", story, detail };
 };
 
 /**

@@ -35,6 +35,7 @@
  */
 
 import { panic, Result } from "better-result";
+import type { Node as PMNode } from "prosemirror-model";
 
 import {
   FolioDocxReviewer,
@@ -42,11 +43,13 @@ import {
   type FolioNumberingLevel,
   type FolioRevisionStamp,
 } from "../ai-edits/headless";
+import { projectTableGeometry } from "../ai-edits/table-geometry";
+import type { FolioTableTemplates } from "../ai-edits/table-template";
 import type { FolioAIBlock, FolioAIEditSnapshot } from "../ai-edits/types";
 import type { WordDiffGranularity } from "../ai-edits/word-diff";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { pairFolioDocumentStories } from "../document-stories";
-import { planStoryCompare, type CompareStoryPlan } from "./plan";
+import { planStoryCompare, type CompareStoryPlan, type CompareTableTemplateRequest } from "./plan";
 import { withFixedPackageDates } from "./reproducible-package";
 import {
   CompareDocxApplyError,
@@ -63,6 +66,7 @@ import {
   type CompareUnsupportedPart,
 } from "./types";
 import {
+  classifyGeometryMismatch,
   classifyProjectionMismatch,
   deletedFinalParagraphMarks,
   projectSupportedInlineFormatting,
@@ -376,19 +380,57 @@ export const planComparison = ({
   return Result.ok(planned);
 };
 
-/** What stage 3 produced: the change list, and whether it was proven. */
+/** What stage 3 produced: the change list, whether it was proven, and whether it wrote anything. */
 export type AppliedComparison = {
   changes: readonly CompareChange[];
   verification: CompareVerification;
+  /**
+   * Whether the stage wrote into the base document at all. A comparison that
+   * found nothing writes nothing, and the serialize stage then hands the
+   * arriving bytes back rather than reproducing them.
+   */
+  documentChanged: boolean;
+};
+
+/**
+ * The table each `insertTable` / `insertTableRow` in the plan should place,
+ * resolved against the target document the plan named it in.
+ *
+ * The plan is pure and names a table by index; the node lives in the other
+ * package, which only this stage holds. A request naming a table the target
+ * does not have resolves to nothing and the operation falls back to its cell
+ * texts, which is the same redline the comparison produced before.
+ */
+const resolveTableTemplates = (
+  targetTables: ReadonlyMap<number, PMNode>,
+  requests: readonly CompareTableTemplateRequest[],
+): FolioTableTemplates => {
+  const templates = new Map<string, PMNode>();
+  for (const { operationId, targetTableIndex, targetRowIndex } of requests) {
+    const table = targetTables.get(targetTableIndex);
+    if (!table) {
+      continue;
+    }
+    if (targetRowIndex === undefined) {
+      templates.set(operationId, table);
+      continue;
+    }
+    const row = table.maybeChild(targetRowIndex);
+    if (row) {
+      templates.set(operationId, row);
+    }
+  }
+  return templates;
 };
 
 /**
  * Stage 3: write the planned operations into the base document as tracked
  * changes, then check the work rather than trust it. Both directions of the
- * round trip are checked, structure included: accepting the story's generated
- * revisions must reproduce the target, and rejecting them must reproduce the
- * base it was compared from. A difference the operation vocabulary cannot
- * express would otherwise leave a redline that reads plausibly and is wrong.
+ * round trip are checked, structure and table geometry included: accepting the
+ * story's generated revisions must reproduce the target, and rejecting them
+ * must reproduce the base it was compared from. A difference the operation
+ * vocabulary cannot express would otherwise leave a redline that reads
+ * plausibly and is wrong.
  *
  * The check reports rather than throws. {@link compareDocx} decides what to do
  * with an unverified result, because "give me your best attempt and tell me
@@ -396,7 +438,7 @@ export type AppliedComparison = {
  * are both legitimate asks and only the caller knows which one it is making.
  */
 export const applyComparison = (
-  { reviewer, revisionStamp, granularity, numberingChanges }: ParsedComparison,
+  { reviewer, targetReviewer, revisionStamp, granularity, numberingChanges }: ParsedComparison,
   planned: readonly PlannedStoryComparison[],
 ): Result<AppliedComparison, CompareDocxApplyError> => {
   const changes: CompareChange[] = [...numberingChanges];
@@ -406,45 +448,76 @@ export const applyComparison = (
   // seeded alike would let a reader resolving a header revision resolve a
   // body revision with it.
   let idSeed = revisionStamp.idSeed;
+  let documentChanged = false;
   for (const { pair, plan } of planned) {
     changes.push(...plan.changes);
-    if (plan.operations.length === 0) {
+    if (plan.operations.length === 0 && plan.tableGeometryPairings.length === 0) {
       continue;
     }
 
-    // Read before the operations land: this is the document the redline is
-    // written against, and rejecting every revision has to return to it.
+    // Read before anything lands: this is the document the redline is written
+    // against, and rejecting every revision has to return to it.
     const baseBeforeBlocks =
       reviewer.readReviewedStory({ story: pair.baseStory, view: "final" })?.snapshot.blocks ?? [];
     const baseBefore = projectBlocks(baseBeforeBlocks);
+    const baseBeforeGeometry = projectTableGeometry(
+      reviewer.storyTables({ story: pair.baseStory }),
+    );
+    const targetTables = new Map(
+      targetReviewer
+        .storyTables({ story: pair.targetStory })
+        .map(({ index, node }) => [index, node] as const),
+    );
 
-    const { skipped, nextRevisionId } = reviewer.applyDocumentOperationsToStory({
+    // Table properties first, while the base's table indices still describe
+    // the document the plan was written against: the operations below add and
+    // remove tables, and every index past the first one would then name a
+    // different table.
+    const afterGeometry = reviewer.matchStoryTableGeometry({
       story: pair.baseStory,
-      snapshot: pair.baseSnapshot,
+      targetTables,
+      pairings: plan.tableGeometryPairings,
       revisionStamp: { date: revisionStamp.date, idSeed },
-      wordDiff: { granularity },
-      batch: {
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "tracked-changes",
-        operations: plan.operations,
-      },
     });
-    if (nextRevisionId === undefined) {
-      // Only a host bridge that does not allocate ids itself omits this, and
-      // the comparison drives the in-process applier.
-      panic("The applier did not report where it left the revision-id counter", {
-        story: pair.baseStory,
-      });
+    const geometryChanged = afterGeometry > idSeed;
+    documentChanged ||= geometryChanged;
+    idSeed = afterGeometry;
+
+    if (plan.operations.length === 0 && !geometryChanged) {
+      continue;
     }
-    idSeed = nextRevisionId;
-    if (skipped.length > 0) {
-      return Result.err(
-        new CompareDocxApplyError({
-          message:
-            "Some derived operations were refused, so the result would not match the target.",
-          skipped,
-        }),
-      );
+
+    if (plan.operations.length > 0) {
+      const { skipped, nextRevisionId } = reviewer.applyDocumentOperationsToStory({
+        story: pair.baseStory,
+        snapshot: pair.baseSnapshot,
+        revisionStamp: { date: revisionStamp.date, idSeed },
+        wordDiff: { granularity },
+        batch: {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode: "tracked-changes",
+          operations: plan.operations,
+        },
+        tableTemplates: resolveTableTemplates(targetTables, plan.tableTemplates),
+      });
+      if (nextRevisionId === undefined) {
+        // Only a host bridge that does not allocate ids itself omits this, and
+        // the comparison drives the in-process applier.
+        panic("The applier did not report where it left the revision-id counter", {
+          story: pair.baseStory,
+        });
+      }
+      idSeed = nextRevisionId;
+      documentChanged = true;
+      if (skipped.length > 0) {
+        return Result.err(
+          new CompareDocxApplyError({
+            message:
+              "Some derived operations were refused, so the result would not match the target.",
+            skipped,
+          }),
+        );
+      }
     }
 
     const acceptedStory = reviewer.readReviewedStory({ story: pair.baseStory, view: "final" });
@@ -491,11 +564,38 @@ export const applyComparison = (
         failures.push(formattingFailure);
       }
     }
+    // The block projection says which cell every paragraph landed in and
+    // nothing about the cell. A table's own properties need their own
+    // comparison, or a redline that reproduces every word and none of the
+    // widths, spans, shading or borders passes the self-check. Checked after
+    // the blocks, because a block in the wrong container is the finding a
+    // reader needs first and a geometry difference follows from it.
+    const geometryAcceptFailure = classifyGeometryMismatch({
+      invariant: "accept-reproduces-target",
+      story: pair.baseStory,
+      actual: projectTableGeometry(reviewer.storyTables({ story: pair.baseStory, view: "final" })),
+      expected: projectTableGeometry(targetReviewer.storyTables({ story: pair.targetStory })),
+    });
+    if (geometryAcceptFailure) {
+      failures.push(geometryAcceptFailure);
+    }
+    const geometryRejectFailure = classifyGeometryMismatch({
+      invariant: "reject-reproduces-base",
+      story: pair.baseStory,
+      actual: projectTableGeometry(
+        reviewer.storyTables({ story: pair.baseStory, view: "original" }),
+      ),
+      expected: baseBeforeGeometry,
+    });
+    if (geometryRejectFailure) {
+      failures.push(geometryRejectFailure);
+    }
   }
   return Result.ok({
     changes,
     verification:
       failures.length === 0 ? { status: "verified" } : { status: "unverified", failures },
+    documentChanged,
   });
 };
 
@@ -520,9 +620,9 @@ export const applyComparison = (
  */
 export const serializeComparison = async (
   { baseBuffer, baseCarriedRevisions, reviewer, packageDate }: ParsedComparison,
-  planned: readonly PlannedStoryComparison[],
+  { documentChanged }: AppliedComparison,
 ): Promise<Result<ArrayBuffer, CompareDocxSerializeError | CompareDocxFinalParagraphMarkError>> => {
-  if (!baseCarriedRevisions && planned.every(({ plan }) => plan.operations.length === 0)) {
+  if (!baseCarriedRevisions && !documentChanged) {
     return Result.ok(baseBuffer);
   }
   const document = reviewer.toDocument();
@@ -599,7 +699,7 @@ export const compareDocx = async (
       }),
     );
   }
-  const serialized = await serializeComparison(parsed.value, planned.value);
+  const serialized = await serializeComparison(parsed.value, applied.value);
   if (serialized.isErr()) {
     return Result.err(serialized.error);
   }
