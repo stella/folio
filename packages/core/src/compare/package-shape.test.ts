@@ -27,11 +27,11 @@ type ComparedDocumentOptions = {
   onUnverified?: "emit";
 };
 
-const comparedDocumentXml = async (
+const comparedPackage = async (
   base: readonly BodyItem[],
   target: readonly BodyItem[],
   { onUnverified }: ComparedDocumentOptions = {},
-): Promise<string> => {
+): Promise<JSZip> => {
   const result = await compareDocx(
     await buildBodySequenceDocx(base),
     await buildBodySequenceDocx(target),
@@ -40,7 +40,15 @@ const comparedDocumentXml = async (
   if (result.isErr()) {
     throw result.error;
   }
-  const zip = await JSZip.loadAsync(result.value.buffer);
+  return await JSZip.loadAsync(result.value.buffer);
+};
+
+const comparedDocumentXml = async (
+  base: readonly BodyItem[],
+  target: readonly BodyItem[],
+  options: ComparedDocumentOptions = {},
+): Promise<string> => {
+  const zip = await comparedPackage(base, target, options);
   return (await zip.file("word/document.xml")?.async("text")) ?? "";
 };
 
@@ -330,5 +338,23 @@ describe("paragraph ids", () => {
       [{ kind: "paragraph", text: "alpha BETA", paraId: OUT_OF_RANGE[1] }],
     ];
     expect(await comparedDocumentXml(...pair)).toBe(await comparedDocumentXml(...pair));
+  });
+});
+
+describe("extended properties", () => {
+  /** The extended-properties `AppVersion` is `XX.YYYY`. */
+  const SCHEMA_FORM = /^\d{1,2}\.\d{4}$/u;
+
+  test("states an application version of the form the schema fixes", async () => {
+    // Both inputs state a version the form rejects, and the comparison copies
+    // the part through, so an untouched package would hand a consumer a
+    // version it refuses to open the document over.
+    const zip = await comparedPackage(
+      [{ kind: "paragraph", text: "alpha beta" }],
+      [{ kind: "paragraph", text: "alpha BETA" }],
+    );
+
+    const xml = (await zip.file("docProps/app.xml")?.async("text")) ?? "";
+    expect(/<AppVersion>([^<]*)<\/AppVersion>/u.exec(xml)?.[1] ?? "").toMatch(SCHEMA_FORM);
   });
 });
