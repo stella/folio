@@ -1,5 +1,5 @@
 /**
- * Twelve labelled single mutations, one probe each.
+ * Labelled single mutations, one probe each.
  *
  * The property tests generate scripts and pin what must hold for all of them.
  * These pin the opposite thing: for one named edit a reviewer would recognize,

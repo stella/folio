@@ -380,7 +380,19 @@ export const revisedFinalParagraphMarks = (
   { since = 0 }: { since?: number } = {},
 ): FinalParagraphMarkRevision[] => {
   const found: FinalParagraphMarkRevision[] = [];
-  const visit = (value: unknown, path: string, insideADeletedRow: boolean): void => {
+  // The path is kept as a stack of raw keys and formatted only where something
+  // is found. Building the string at every node instead made the walk cost
+  // more than the serialization it guards, on a package where it never has
+  // anything to report.
+  const trail: (string | number)[] = ["package"];
+  const pathOf = (): string => {
+    let path = "";
+    for (const segment of trail) {
+      path += typeof segment === "number" ? `[${String(segment)}]` : `.${segment}`;
+    }
+    return path.slice(1);
+  };
+  const visit = (value: unknown, insideADeletedRow: boolean): void => {
     if (Array.isArray(value)) {
       const last: unknown = value.at(-1);
       const mark = isParagraph(last) ? last["pPrMark"] : undefined;
@@ -389,16 +401,20 @@ export const revisedFinalParagraphMarks = (
       const revisionId = isRecord(info) ? info["id"] : undefined;
       const isOurs = typeof revisionId === "number" ? revisionId >= since : true;
       if (isAParagraphMarkChangeKind(kind) && isOurs && !insideADeletedRow) {
-        found.push({ container: path, paragraphIndex: value.length - 1, kind });
+        found.push({ container: pathOf(), paragraphIndex: value.length - 1, kind });
       }
       for (const [index, item] of value.entries()) {
-        visit(item, `${path}[${String(index)}]`, insideADeletedRow);
+        trail.push(index);
+        visit(item, insideADeletedRow);
+        trail.pop();
       }
       return;
     }
     if (value instanceof Map) {
       for (const [key, item] of value) {
-        visit(item, `${path}.${String(key)}`, insideADeletedRow);
+        trail.push(String(key));
+        visit(item, insideADeletedRow);
+        trail.pop();
       }
       return;
     }
@@ -407,9 +423,11 @@ export const revisedFinalParagraphMarks = (
     }
     const inADeletedRow = insideADeletedRow || isADeletedTableRow(value);
     for (const [key, item] of Object.entries(value)) {
-      visit(item, `${path}.${key}`, inADeletedRow);
+      trail.push(key);
+      visit(item, inADeletedRow);
+      trail.pop();
     }
   };
-  visit(packageModel, "package", false);
+  visit(packageModel, false);
   return found;
 };
