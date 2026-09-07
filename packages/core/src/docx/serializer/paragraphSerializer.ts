@@ -29,6 +29,7 @@ import type {
   MoveFromRangeStart,
   MoveToRangeStart,
   ParagraphPropertyChange,
+  SectionProperties,
   SdtProperties,
   TabStop,
   ShadingProperties,
@@ -389,11 +390,20 @@ function serializeParagraphMarkChange(mark: ParagraphMarkChange): string {
   return `<w:${mark.kind} ${attrs}/>`;
 }
 
-export function serializeParagraphFormatting(
+type SerializeParagraphFormattingOptions = {
+  propertyChanges?: ParagraphPropertyChange[] | undefined;
+  paragraphMarkChange?: ParagraphMarkChange | undefined;
+  sectionProperties?: SectionProperties | undefined;
+};
+
+const serializeParagraphFormattingWithOptions = (
   formatting: ParagraphFormatting | undefined,
-  propertyChanges?: ParagraphPropertyChange[],
-  pPrMark?: ParagraphMarkChange,
-): string {
+  {
+    propertyChanges,
+    paragraphMarkChange,
+    sectionProperties,
+  }: SerializeParagraphFormattingOptions = {},
+): string => {
   const parts: string[] = [];
 
   // Emit a boolean toggle: a bare element for true, `w:val="0"` for an explicit
@@ -510,8 +520,10 @@ export function serializeParagraphFormatting(
     // EG_ParaRPrTrackChanges (ECMA-376 §17.13.5 / wml.xsd:1837) puts
     // <w:ins>/<w:del> FIRST inside the paragraph mark's rPr; strict
     // readers reject other orderings.
-    if (pPrMark || formatting.runProperties || formatting.runInWithNext) {
-      const pPrMarkXml = pPrMark ? serializeParagraphMarkChange(pPrMark) : "";
+    if (paragraphMarkChange || formatting.runProperties || formatting.runInWithNext) {
+      const pPrMarkXml = paragraphMarkChange
+        ? serializeParagraphMarkChange(paragraphMarkChange)
+        : "";
       const innerRPr = formatting.runProperties
         ? extractRPrInner(serializeTextFormatting(formatting.runProperties))
         : "";
@@ -521,19 +533,36 @@ export function serializeParagraphFormatting(
         parts.push(`<w:rPr>${fullInner}</w:rPr>`);
       }
     }
-  } else if (pPrMark) {
-    parts.push(`<w:rPr>${serializeParagraphMarkChange(pPrMark)}</w:rPr>`);
+  } else if (paragraphMarkChange) {
+    parts.push(`<w:rPr>${serializeParagraphMarkChange(paragraphMarkChange)}</w:rPr>`);
   }
+
+  // `CT_PPr` closes with `rPr`, `sectPr`, `pPrChange` in that order: a section
+  // break sits between the mark's run properties and the recorded change, so
+  // it is placed here rather than appended after the properties are built.
+  parts.push(serializeSectionProperties(sectionProperties));
 
   if (propertyChanges && propertyChanges.length > 0) {
     parts.push(...propertyChanges.map((change) => serializeParagraphPropertyChange(change)));
   }
 
-  if (parts.length === 0) {
+  const inner = parts.join("");
+  if (inner.length === 0) {
     return "";
   }
 
-  return `<w:pPr>${parts.join("")}</w:pPr>`;
+  return `<w:pPr>${inner}</w:pPr>`;
+};
+
+export function serializeParagraphFormatting(
+  formatting: ParagraphFormatting | undefined,
+  propertyChanges?: ParagraphPropertyChange[],
+  paragraphMarkChange?: ParagraphMarkChange,
+): string {
+  return serializeParagraphFormattingWithOptions(formatting, {
+    propertyChanges,
+    paragraphMarkChange,
+  });
 }
 
 function extractPPrInner(pPrXml: string): string {
@@ -1159,15 +1188,13 @@ export function serializeParagraph(paragraph: Paragraph): string {
   const attrsStr = attrs.length > 0 ? ` ${attrs.join(" ")}` : "";
 
   // Add paragraph properties if present
-  const pPrXml = serializeParagraphFormatting(
-    paragraph.formatting,
-    paragraph.propertyChanges,
-    paragraph.pPrMark,
+  parts.push(
+    serializeParagraphFormattingWithOptions(paragraph.formatting, {
+      propertyChanges: paragraph.propertyChanges,
+      paragraphMarkChange: paragraph.pPrMark,
+      sectionProperties: paragraph.sectionProperties,
+    }),
   );
-  const sectionPropertiesXml = serializeSectionProperties(paragraph.sectionProperties);
-  if (pPrXml || sectionPropertiesXml) {
-    parts.push(`<w:pPr>${extractPPrInner(pPrXml)}${sectionPropertiesXml}</w:pPr>`);
-  }
 
   // Comment ids whose reference run is modeled explicitly (parsed-from-Word),
   // so the matching commentRangeEnd does not double-emit it (see
