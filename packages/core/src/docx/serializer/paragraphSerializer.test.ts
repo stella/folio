@@ -446,3 +446,52 @@ describe("serializeParagraph native frame geometry", () => {
     );
   });
 });
+
+describe("serializeParagraph revision nesting around a hyperlink", () => {
+  const NAMESPACES =
+    'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ' +
+    'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
+
+  const parseBody = (inner: string): Paragraph => {
+    const element = parseXmlDocument(`<w:p ${NAMESPACES}>${inner}</w:p>`);
+    if (!element) {
+      throw new Error("failed to parse the hyperlink revision fixture");
+    }
+    return parseParagraph(element, null, null, null, null, null);
+  };
+
+  // `w:del` at run level takes run-level content, and `w:hyperlink` is not in
+  // that set: the legal nesting is the link around the revision. The model
+  // nests the other way, because a revision is the unit a redline reads, so
+  // parsing and serializing have to be inverses of one another.
+  test.each(["del", "ins"] as const)(
+    "wraps the link around a w:%s rather than the other way round",
+    (tag) => {
+      const text = tag === "del" ? "<w:delText>linked</w:delText>" : "<w:t>linked</w:t>";
+      const paragraph = parseBody(
+        `<w:hyperlink r:id="rId7"><w:${tag} w:id="3" w:author="Reviewer">` +
+          `<w:r>${text}</w:r></w:${tag}></w:hyperlink>`,
+      );
+
+      const xml = serializeParagraph(paragraph);
+
+      expect(xml).toContain(`<w:hyperlink r:id="rId7"><w:${tag} w:id="3"`);
+      expect(new RegExp(`<w:${tag}\\b[^>]*><w:hyperlink`, "u").test(xml)).toBe(false);
+    },
+  );
+
+  test("splits one revision into a wrapper per link boundary", () => {
+    const paragraph = parseBody(
+      `<w:del w:id="9" w:author="Reviewer"><w:r><w:delText>before </w:delText></w:r></w:del>` +
+        `<w:hyperlink r:id="rId7"><w:del w:id="9" w:author="Reviewer">` +
+        `<w:r><w:delText>linked</w:delText></w:r></w:del></w:hyperlink>` +
+        `<w:del w:id="9" w:author="Reviewer"><w:r><w:delText> after</w:delText></w:r></w:del>`,
+    );
+
+    const xml = serializeParagraph(paragraph);
+
+    expect(xml.match(/<w:del\b/gu)).toHaveLength(3);
+    expect(xml.match(/<w:hyperlink\b/gu)).toHaveLength(1);
+    expect(xml).not.toContain("<w:t>");
+  });
+});

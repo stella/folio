@@ -146,10 +146,10 @@ const buildStoryDocument = async ({
   footnoteText,
   footerText,
 }: StoryDocumentOptions): Promise<ArrayBuffer> => {
-  const source = await buildDocxBuffer([{ text: bodyText, paraId: "A1000001" }]);
+  const source = await buildDocxBuffer([{ text: bodyText, paraId: "21000001" }]);
   const document = await parseDocx(source, { detectVariables: false, preloadFonts: false });
   document.package.headers = new Map([
-    ["rIdHeader", headerFooterStory("header", headerText, "B1000001")],
+    ["rIdHeader", headerFooterStory("header", headerText, "31000001")],
   ]);
   document.package.document.finalSectionProperties = {
     ...document.package.document.finalSectionProperties,
@@ -157,7 +157,7 @@ const buildStoryDocument = async ({
   };
   if (footerText !== undefined) {
     document.package.footers = new Map([
-      ["rIdFooter", headerFooterStory("footer", footerText, "D1000001")],
+      ["rIdFooter", headerFooterStory("footer", footerText, "51000001")],
     ]);
     document.package.document.finalSectionProperties.footerReferences = [
       { type: "default", rId: "rIdFooter" },
@@ -188,7 +188,7 @@ const buildStoryDocument = async ({
   );
   zip.file(
     "word/footnotes.xml",
-    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:footnote w:id="2"><w:p w14:paraId="C1000001"><w:r><w:t>${footnoteText}</w:t></w:r></w:p></w:footnote></w:footnotes>`,
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:footnote w:id="2"><w:p w14:paraId="41000001"><w:r><w:t>${footnoteText}</w:t></w:r></w:p></w:footnote></w:footnotes>`,
   );
   return zip.generateAsync({ type: "arraybuffer" });
 };
@@ -213,9 +213,9 @@ describe("compareDocxVersions: real w14:paraId alignment", () => {
     const change = diff.changes.at(0);
     expect(change).toMatchObject({
       type: "modified",
-      blockId: "A2000003",
-      baseHandle: { story: { type: "main" }, blockId: "A2000003" },
-      revisedHandle: { story: { type: "main" }, blockId: "A2000003" },
+      blockId: "22000003",
+      baseHandle: { story: { type: "main" }, blockId: "22000003" },
+      revisedHandle: { story: { type: "main" }, blockId: "22000003" },
     });
     if (change?.type !== "modified") {
       throw new Error("expected a modified cell paragraph");
@@ -323,11 +323,11 @@ describe("compareDocxVersions: document stories", () => {
     }
     expect(headerChange.baseHandle).toEqual({
       story: { type: "header", relationshipId: "rIdHeader" },
-      blockId: "B1000001",
+      blockId: "31000001",
     });
     expect(headerChange.revisedHandle).toEqual({
       story: { type: "header", relationshipId: "rIdHeader" },
-      blockId: "B1000001",
+      blockId: "31000001",
     });
 
     const footer = diff.stories.find(({ revisedStory }) => revisedStory?.type === "footer");
@@ -339,7 +339,7 @@ describe("compareDocxVersions: document stories", () => {
     }
     expect(footerChange.revisedHandle).toEqual({
       story: { type: "footer", relationshipId: "rIdFooter" },
-      blockId: "D1000001",
+      blockId: "51000001",
     });
   });
 });

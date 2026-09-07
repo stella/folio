@@ -29,7 +29,7 @@ const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 // followed by one normal note whose paragraph carries a paraId so the selective
 // patch can target it. `ORIGINAL_FOOTNOTE_TEXT` is the editable body text.
 const ORIGINAL_FOOTNOTE_TEXT = "Original footnote body";
-const FOOTNOTE_PARA_ID = "F1000001";
+const FOOTNOTE_PARA_ID = "71000001";
 const FOOTNOTE_SEPARATORS =
   '<w:footnote w:type="separator" w:id="-1"><w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:separator/></w:r></w:p></w:footnote>' +
   '<w:footnote w:type="continuationSeparator" w:id="0"><w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:continuationSeparator/></w:r></w:p></w:footnote>';
@@ -41,7 +41,7 @@ const footnotesXml = `${XML_DECLARATION}
 <w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">${FOOTNOTE_SEPARATORS}<w:footnote w:id="1"><w:p w14:paraId="${FOOTNOTE_PARA_ID}"><w:pPr><w:pStyle w:val="FootnoteText"/></w:pPr><w:r><w:rPr><w:rStyle w:val="FootnoteReference"/></w:rPr><w:footnoteRef/></w:r><w:r><w:t xml:space="preserve">${ORIGINAL_FOOTNOTE_TEXT}</w:t></w:r></w:p></w:footnote></w:footnotes>`;
 
 const ORIGINAL_ENDNOTE_TEXT = "Original endnote body";
-const ENDNOTE_PARA_ID = "E1000001";
+const ENDNOTE_PARA_ID = "61000001";
 const ENDNOTE_SEPARATORS =
   '<w:endnote w:type="separator" w:id="-1"><w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:separator/></w:r></w:p></w:endnote>' +
   '<w:endnote w:type="continuationSeparator" w:id="0"><w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr><w:r><w:continuationSeparator/></w:r></w:p></w:endnote>';
@@ -49,7 +49,7 @@ const ENDNOTE_SEPARATORS =
 const endnotesXml = `${XML_DECLARATION}
 <w:endnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">${ENDNOTE_SEPARATORS}<w:endnote w:id="1"><w:p w14:paraId="${ENDNOTE_PARA_ID}"><w:pPr><w:pStyle w:val="EndnoteText"/></w:pPr><w:r><w:rPr><w:rStyle w:val="EndnoteReference"/></w:rPr><w:endnoteRef/></w:r><w:r><w:t xml:space="preserve">${ORIGINAL_ENDNOTE_TEXT}</w:t></w:r></w:p></w:endnote></w:endnotes>`;
 
-const BODY_PARA_ID = "B0000001";
+const BODY_PARA_ID = "30000001";
 const documentXml = `${XML_DECLARATION}
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <w:body>
@@ -390,7 +390,7 @@ describe("footnote / endnote body write path (full repack)", () => {
     if (paragraph?.type !== "paragraph") {
       throw new Error("expected a footnote paragraph");
     }
-    const generatedParaId = "F2000001";
+    const generatedParaId = "72000001";
     paragraph.paraId = generatedParaId;
     const editedText = "Edited paraId-less footnote via raw repack";
     setFirstNoteText(footnote, editedText);
@@ -405,7 +405,7 @@ describe("footnote / endnote body write path (full repack)", () => {
   });
 
   test("raw repack ignores a dirty paragraph id removed by a note merge", async () => {
-    const removedParaId = "F1000002";
+    const removedParaId = "71000002";
     const twoParagraphFootnotesXml = footnotesXml.replace(
       "</w:p></w:footnote></w:footnotes>",
       `</w:p><w:p w14:paraId="${removedParaId}"><w:r><w:t>Second paragraph</w:t></w:r></w:p></w:footnote></w:footnotes>`,

@@ -12,6 +12,7 @@
 
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
+import JSZip from "jszip";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -81,6 +82,57 @@ const withPriorRevisions = async (buffer: ArrayBuffer): Promise<ArrayBuffer> => 
     },
   );
   return await reviewer.toBuffer();
+};
+
+const REVISION_ELEMENT_ID =
+  /<w:(?:ins|del|moveFrom|moveTo|rPrChange|pPrChange|tblPrChange|trPrChange|tcPrChange|cellIns|cellDel|cellMerge)\b[^>]*\bw:id="(\d+)"/gu;
+
+/**
+ * Every revision `w:id` the package carries, across every part.
+ *
+ * A `w:id` is unique package-wide rather than part-wide, and one logical change
+ * can serialize as several wrappers — a redline cut around the words that
+ * survived, a revision split around a hyperlink — so the ids only stay distinct
+ * if something checks them all together.
+ */
+const revisionIdsInPackage = async (buffer: ArrayBuffer): Promise<string[]> => {
+  const zip = await JSZip.loadAsync(buffer);
+  const ids: string[] = [];
+  for (const [partPath, file] of Object.entries(zip.files)) {
+    if (file.dir || !partPath.startsWith("word/") || !partPath.endsWith(".xml")) {
+      continue;
+    }
+    // oxlint-disable-next-line no-await-in-loop -- the parts share one id space, so they are read together
+    const xml = await file.async("text");
+    for (const [, id] of xml.matchAll(REVISION_ELEMENT_ID)) {
+      ids.push(id ?? "");
+    }
+  }
+  return ids;
+};
+
+const PARAGRAPH_ID_ATTRIBUTE =
+  /\b(?:w|w14|w15|w16cid):(?:paraId|paraIdParent|textId)="([0-9A-Fa-f]{8})"/gu;
+
+/**
+ * Every paragraph id and text-revision marker the package carries. They are
+ * `ST_LongHexNumber` with a maximum, so the values are 31-bit, and a package
+ * carrying a larger one is a package a consumer refuses.
+ */
+const paragraphIdsInPackage = async (buffer: ArrayBuffer): Promise<string[]> => {
+  const zip = await JSZip.loadAsync(buffer);
+  const ids: string[] = [];
+  for (const [partPath, file] of Object.entries(zip.files)) {
+    if (file.dir || !partPath.startsWith("word/") || !partPath.endsWith(".xml")) {
+      continue;
+    }
+    // oxlint-disable-next-line no-await-in-loop -- the parts share one id space, so they are read together
+    const xml = await file.async("text");
+    for (const [, id] of xml.matchAll(PARAGRAPH_ID_ATTRIBUTE)) {
+      ids.push(id ?? "");
+    }
+  }
+  return ids;
 };
 
 const authorsOfChanges = async (buffer: ArrayBuffer): Promise<string[]> => {
@@ -454,6 +506,44 @@ describe("compareDocx", () => {
             expect(first.changes).toEqual(second.changes);
           }),
           propertyConfig({ numRuns: 8 }),
+        );
+      },
+      propertyTestTimeout(120_000),
+    );
+
+    test(
+      `every revision id in the package is claimed once (${name})`,
+      async () => {
+        await fc.assert(
+          fc.asyncProperty(editScriptArb(baseBlocks), async (script) => {
+            const scripted = await applyEditScript(base, script);
+            if (scripted.isErr()) {
+              throw scripted.error;
+            }
+            const { buffer } = await compareOrThrow(base, scripted.value.buffer);
+            const ids = await revisionIdsInPackage(buffer);
+            expect(new Set(ids).size).toBe(ids.length);
+          }),
+          propertyConfig({ numRuns: 10 }),
+        );
+      },
+      propertyTestTimeout(120_000),
+    );
+
+    test(
+      `every paragraph id in the package fits the 31-bit range (${name})`,
+      async () => {
+        await fc.assert(
+          fc.asyncProperty(editScriptArb(baseBlocks), async (script) => {
+            const scripted = await applyEditScript(base, script);
+            if (scripted.isErr()) {
+              throw scripted.error;
+            }
+            const { buffer } = await compareOrThrow(base, scripted.value.buffer);
+            const ids = await paragraphIdsInPackage(buffer);
+            expect(ids.every((id) => Number.parseInt(id, 16) < 0x8000_0000)).toBe(true);
+          }),
+          propertyConfig({ numRuns: 10 }),
         );
       },
       propertyTestTimeout(120_000),

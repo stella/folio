@@ -27,10 +27,10 @@ import {
 
 const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
-const BODY_PARA_ID = "B0000001";
-const PARENT_PARA_ID = "AAAA0001";
-const REPLY1_PARA_ID = "AAAA0002";
-const REPLY2_PARA_ID = "AAAA0003";
+const BODY_PARA_ID = "30000001";
+const PARENT_PARA_ID = "2AAA0001";
+const REPLY1_PARA_ID = "2AAA0002";
+const REPLY2_PARA_ID = "2AAA0003";
 
 const PARENT_ID = 1;
 const REPLY1_ID = 2;

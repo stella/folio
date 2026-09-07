@@ -151,11 +151,11 @@ const buildStoryDocument = async ({
   footnoteText,
   endnoteText,
 }: StoryDocumentOptions): Promise<ArrayBuffer> => {
-  const source = await buildDocxBuffer([{ text: bodyText, paraId: "A1000001" }]);
+  const source = await buildDocxBuffer([{ text: bodyText, paraId: "21000001" }]);
   const document = await parseDocx(source, { detectVariables: false, preloadFonts: false });
   if (headerText !== undefined) {
     document.package.headers = new Map([
-      ["rIdHeader", headerFooterStory("header", headerText, "B1000001")],
+      ["rIdHeader", headerFooterStory("header", headerText, "31000001")],
     ]);
     document.package.document.finalSectionProperties = {
       ...document.package.document.finalSectionProperties,
@@ -164,7 +164,7 @@ const buildStoryDocument = async ({
   }
   if (footerText !== undefined) {
     document.package.footers = new Map([
-      ["rIdFooter", headerFooterStory("footer", footerText, "C1000001")],
+      ["rIdFooter", headerFooterStory("footer", footerText, "41000001")],
     ]);
     document.package.document.finalSectionProperties = {
       ...document.package.document.finalSectionProperties,
@@ -211,13 +211,13 @@ const buildStoryDocument = async ({
   if (footnoteText !== undefined) {
     zip.file(
       "word/footnotes.xml",
-      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:footnote w:id="2"><w:p w14:paraId="D1000001"><w:r><w:t>${footnoteText}</w:t></w:r></w:p></w:footnote></w:footnotes>`,
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:footnote w:id="2"><w:p w14:paraId="51000001"><w:r><w:t>${footnoteText}</w:t></w:r></w:p></w:footnote></w:footnotes>`,
     );
   }
   if (endnoteText !== undefined) {
     zip.file(
       "word/endnotes.xml",
-      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:endnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:endnote w:id="3"><w:p w14:paraId="E1000001"><w:r><w:t>${endnoteText}</w:t></w:r></w:p></w:endnote></w:endnotes>`,
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:endnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:endnote w:id="3"><w:p w14:paraId="61000001"><w:r><w:t>${endnoteText}</w:t></w:r></w:p></w:endnote></w:endnotes>`,
     );
   }
   return zip.generateAsync({ type: "arraybuffer" });
@@ -266,7 +266,7 @@ describe("generateRedlineDocx", () => {
     expect(new Uint8Array(revised)).toEqual(revisedBytes);
 
     const acceptView = await FolioDocxReviewer.fromBuffer(result.buffer);
-    expect(acceptView.snapshot().blocks.find(({ id }) => id === "A2000003")?.text).toBe(
+    expect(acceptView.snapshot().blocks.find(({ id }) => id === "22000003")?.text).toBe(
       "Revised cell value",
     );
     expect(acceptView.getChanges().length).toBeGreaterThan(0);
@@ -291,7 +291,7 @@ describe("generateRedlineDocx", () => {
 
     const rejectView = await FolioDocxReviewer.fromBuffer(result.buffer);
     rejectView.rejectAll();
-    expect(rejectView.snapshot().blocks.find(({ id }) => id === "A2000003")?.text).toBe(
+    expect(rejectView.snapshot().blocks.find(({ id }) => id === "22000003")?.text).toBe(
       "Original cell value",
     );
   });

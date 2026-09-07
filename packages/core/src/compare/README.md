@@ -35,7 +35,10 @@ random source:
 - `w14:paraId`s for paragraphs the comparison creates are derived from the
   stamp instead of `Math.random()`;
 - ZIP entry dates are restamped from the same timestamp, because JSZip
-  otherwise writes the current time into every part it rewrites.
+  otherwise writes the current time into every part it rewrites;
+- `dcterms:modified` in `docProps/core.xml` is restamped from it too, because
+  the save otherwise dates the package from the second it happened to run and
+  two runs then differ in that part alone.
 
 Two runs over the same inputs therefore produce byte-identical buffers and
 deeply equal change lists. `compare.property.test.ts` holds this as a property,
@@ -280,7 +283,8 @@ carries the current numbers and the failing cases.
   container's final paragraph mark. Pure.
 - `formatting.ts` — the inline-formatting diff, shared with the redline
   generator.
-- `reproducible-package.ts` — ZIP entry-date restamping.
+- `reproducible-package.ts` — the clocks outside the document body: ZIP entry
+  dates and `dcterms:modified`.
 - `scenario.ts` — the edit-script DSL the property tests build targets with.
 - `plan.test.ts` — the judgement calls the corpus does not reach: the move
   similarity threshold, and row pairing when a table's row count changed.

@@ -171,31 +171,43 @@ export function parseHyperlink(
   // VML `w:pict` inside a run resolves a non-canonical prefix scoped on the
   // `w:hyperlink` wrapper itself.
   const inScopeXmlns = mergeXmlnsDeclarations(rootXmlns, node);
-  const children = getChildElements(node);
-  for (const child of children) {
-    const localName = getLocalName(child.name);
-
-    switch (localName) {
-      case "r":
-        hyperlink.children.push(parseRun(child, styles, theme, rels, media, inScopeXmlns));
-        break;
-
-      case "bookmarkStart":
-        hyperlink.children.push(parseBookmarkStart(child));
-        break;
-
-      case "bookmarkEnd":
-        hyperlink.children.push(parseBookmarkEnd(child));
-        break;
-
-      // Note: hyperlinks can technically contain other elements like
-      // fldSimple, but these are rare. Add support as needed.
-      default:
-        break;
+  for (const child of getChildElements(node)) {
+    const parsed = parseHyperlinkChild(child, styles, theme, rels, media, inScopeXmlns);
+    if (parsed) {
+      hyperlink.children.push(parsed);
     }
   }
 
   return hyperlink;
+}
+
+/**
+ * One `w:hyperlink` child, or `null` for markup the model does not carry.
+ *
+ * Exposed so a caller that has to segment a hyperlink — one holding revision
+ * wrappers, which the model nests the other way round — parses its plain
+ * children exactly as {@link parseHyperlink} does.
+ */
+export function parseHyperlinkChild(
+  node: XmlElement,
+  styles: StyleMap | null,
+  theme: Theme | null,
+  rels: RelationshipMap | null,
+  media: Map<string, MediaFile> | null,
+  inScopeXmlns: Record<string, string>,
+): Hyperlink["children"][number] | null {
+  switch (getLocalName(node.name)) {
+    case "r":
+      return parseRun(node, styles, theme, rels, media, inScopeXmlns);
+    case "bookmarkStart":
+      return parseBookmarkStart(node);
+    case "bookmarkEnd":
+      return parseBookmarkEnd(node);
+    // Note: hyperlinks can technically contain other elements like
+    // fldSimple, but these are rare. Add support as needed.
+    default:
+      return null;
+  }
 }
 
 // ============================================================================

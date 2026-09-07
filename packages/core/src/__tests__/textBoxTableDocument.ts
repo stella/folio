@@ -8,7 +8,7 @@ export const buildTextBoxTableDocument = async (cellText = "Cell value"): Promis
   document.package.document.content = [
     {
       type: "paragraph",
-      paraId: "A2000001",
+      paraId: "22000001",
       content: [
         {
           type: "run",
@@ -25,7 +25,7 @@ export const buildTextBoxTableDocument = async (cellText = "Cell value"): Promis
                   content: [
                     {
                       type: "paragraph",
-                      paraId: "A2000002",
+                      paraId: "22000002",
                       content: [{ type: "run", content: [{ type: "text", text: "Before table" }] }],
                     },
                     {
@@ -39,7 +39,7 @@ export const buildTextBoxTableDocument = async (cellText = "Cell value"): Promis
                               content: [
                                 {
                                   type: "paragraph",
-                                  paraId: "A2000003",
+                                  paraId: "22000003",
                                   content: [
                                     {
                                       type: "run",
@@ -55,7 +55,7 @@ export const buildTextBoxTableDocument = async (cellText = "Cell value"): Promis
                     },
                     {
                       type: "paragraph",
-                      paraId: "A2000004",
+                      paraId: "22000004",
                       content: [{ type: "run", content: [{ type: "text", text: "After table" }] }],
                     },
                   ],

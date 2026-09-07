@@ -97,6 +97,7 @@ import {
   WORDPROCESSINGML_NAMESPACE_URIS,
   type XmlElement,
 } from "./xmlParser";
+import { normalizeParaIdRangeInXmlParts } from "./paraIdRangeNormalization";
 import { normalizeRevisionIdsInXmlParts } from "./revisionIdNormalization";
 import { assertXmlResourceLimits } from "./xmlResourceLimits";
 import { isAllowedExternalWatermarkImageUrl } from "../watermark";
@@ -773,20 +774,26 @@ export type RepackOptions = {
 };
 
 /**
- * The single exit for a repacked package. Reconciliation runs here rather than
- * at each caller so no save path can emit a package whose relationships or
- * content types name a part it does not hold.
+ * Bring the ids a package addresses itself by inside the bounds the format
+ * gives them.
+ *
+ * Both bounds belong to the package rather than to a part, and neither is
+ * something one serializer can see on its own. A revision `w:id` is unique
+ * across the package, and one logical revision serializes as several physical
+ * wrappers — a word diff cut around unchanged words, a revision split around a
+ * hyperlink. A paragraph id is 31-bit, and a paragraph is referenced by id
+ * from parts other than the one it lives in. So the passes run at the exits,
+ * over every `word/*.xml` part including the ones a save left untouched.
  */
-const generateDocxZip = async (zip: JSZip, compressionLevel: number): Promise<ArrayBuffer> => {
-  await reconcilePackageReferences(zip, compressionLevel);
+const normalizePackageIdsInZip = async (zip: JSZip, compressionLevel: number): Promise<void> => {
   const xmlParts = new Map<string, string>();
   for (const [path, file] of Object.entries(zip.files)) {
     if (!file.dir && path.startsWith("word/") && path.endsWith(".xml")) {
-      // oxlint-disable-next-line no-await-in-loop -- package parts share one revision-id namespace and must be collected before rewriting
+      // oxlint-disable-next-line no-await-in-loop -- package parts share one id space and must be collected before rewriting
       xmlParts.set(path, await file.async("text"));
     }
   }
-  const normalizedParts = normalizeRevisionIdsInXmlParts(xmlParts);
+  const normalizedParts = normalizeParaIdRangeInXmlParts(normalizeRevisionIdsInXmlParts(xmlParts));
   for (const [path, xml] of normalizedParts) {
     if (xml !== xmlParts.get(path)) {
       zip.file(path, xml, {
@@ -795,6 +802,16 @@ const generateDocxZip = async (zip: JSZip, compressionLevel: number): Promise<Ar
       });
     }
   }
+};
+
+/**
+ * The single exit for a repacked package. Reconciliation runs here rather than
+ * at each caller so no save path can emit a package whose relationships or
+ * content types name a part it does not hold.
+ */
+const generateDocxZip = async (zip: JSZip, compressionLevel: number): Promise<ArrayBuffer> => {
+  await reconcilePackageReferences(zip, compressionLevel);
+  await normalizePackageIdsInZip(zip, compressionLevel);
   return zip.generateAsync({
     type: "arraybuffer",
     compression: "DEFLATE",
@@ -1396,8 +1413,14 @@ export async function updateMultipleFiles(
 /**
  * Apply file updates to an already-loaded JSZip instance and generate the output.
  * Use this when the zip is already loaded to avoid a redundant decompression pass.
+ *
+ * This is the selective save's exit, so it owes the package the same id passes
+ * {@link generateDocxZip} runs: a save that rewrites only the changed
+ * paragraphs still has to see the parts it left alone, both to know which
+ * revision ids are free and because an out-of-range paragraph id can sit in a
+ * part it never touched.
  */
-export function applyUpdatesToZip(
+export async function applyUpdatesToZip(
   zip: JSZip,
   updates: Map<string, string | ArrayBuffer>,
   options: RepackOptions = {},
@@ -1411,7 +1434,9 @@ export function applyUpdatesToZip(
     });
   }
 
-  return zip.generateAsync({
+  await normalizePackageIdsInZip(zip, compressionLevel);
+
+  return await zip.generateAsync({
     type: "arraybuffer",
     compression: "DEFLATE",
     compressionOptions: { level: compressionLevel },

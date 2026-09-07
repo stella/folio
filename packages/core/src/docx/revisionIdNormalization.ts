@@ -1,3 +1,5 @@
+import { TaggedError } from "better-result";
+
 import {
   findAttributeByNamespaceUri,
   getLocalName,
@@ -7,6 +9,20 @@ import {
 } from "./xmlParser";
 import { rewriteStreamingXmlDecimalAttributes } from "./streamingXmlParser";
 import { assertXmlResourceLimits, XmlResourceLimitError } from "./xmlResourceLimits";
+
+/**
+ * Two revision elements in one package claimed the same `w:id`.
+ *
+ * `w:id` on a revision element is unique across the package, so a collision is
+ * a package a consumer may reject rather than a cosmetic detail. The
+ * normalization below hands every id it emits to one choke point, which throws
+ * this rather than letting the duplicate reach the ZIP.
+ */
+export class RevisionIdCollisionError extends TaggedError("RevisionIdCollisionError")<{
+  message: string;
+  revisionId: number;
+  part: string;
+}> {}
 
 export const REVISION_ELEMENT_NAMES = new Set([
   "cellDel",
@@ -114,9 +130,22 @@ export const normalizeRevisionIdsInXmlParts = (
     if (!ids) {
       continue;
     }
+    // Every id this pass lets stand or mints goes through `claim`, so a shape
+    // the branches below did not anticipate surfaces as a typed error instead
+    // of a package carrying two revisions under one id.
+    const claim = (id: number): void => {
+      if (seen.has(id)) {
+        throw new RevisionIdCollisionError({
+          message: `Revision id ${String(id)} is claimed twice in ${path}`,
+          revisionId: id,
+          part: path,
+        });
+      }
+      seen.add(id);
+    };
     if (!repeatedPaths.has(path) && ids.every((id) => !seen.has(id))) {
       for (const id of ids) {
-        seen.add(id);
+        claim(id);
       }
       continue;
     }
@@ -126,11 +155,11 @@ export const normalizeRevisionIdsInXmlParts = (
         return null;
       }
       if (!seen.has(attribute.id)) {
-        seen.add(attribute.id);
+        claim(attribute.id);
         return null;
       }
       const replacement = allocate();
-      seen.add(replacement);
+      claim(replacement);
       return new Map([[attribute.name, String(replacement)]]);
     });
     if (rewritten.status === "unsupported") {
