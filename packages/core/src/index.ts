@@ -73,6 +73,7 @@ export {
   type InspectDocxCompatibilityOptions,
 } from "./docx/compatibility";
 export {
+  currentFolioBlockId,
   deriveBlockId,
   getFolioParaIdFromBlockId,
   isFolioBlockId,

@@ -27,6 +27,9 @@
  * every stored citation after the first blank line in a document.
  */
 
+import { paraIdInRange } from "../docx/paraIdRangeNormalization";
+import { isValidHexId } from "../utils/hexId";
+
 const SEQUENTIAL_BLOCK_ID_PREFIX = "seq-";
 const BLANK_BLOCK_ID_PREFIX = "blank-";
 const SEQUENTIAL_BLOCK_ID_PADDING = 4;
@@ -130,6 +133,21 @@ export const isBlankFolioBlockId = (id: string): boolean => BLANK_BLOCK_ID_PATTE
  */
 export const getFolioParaIdFromBlockId = (id: string): string | null =>
   isSequentialFolioBlockId(id) || isBlankFolioBlockId(id) ? null : id;
+
+/**
+ * The id a block recorded earlier answers to in the document as parsed now.
+ *
+ * A paragraph id above the 31-bit bound the schema sets is brought into range
+ * on parse, so an id recorded from such a paragraph before that no longer
+ * names it. The mapping is a pure function of the id alone, so the recorded id
+ * resolves to the current one with no document in hand. Sequential and blank
+ * ids carry no paragraph id, and an id the parser would not have mapped is
+ * returned as it is.
+ */
+export const currentFolioBlockId = (id: string): string => {
+  const paraId = getFolioParaIdFromBlockId(id);
+  return paraId !== null && isValidHexId(paraId) ? paraIdInRange(paraId) : id;
+};
 
 /**
  * The 1-based document position encoded in a sequential fallback id

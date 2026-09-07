@@ -524,6 +524,9 @@ export const createStellaStyleDocumentPreset: () => DocumentPreset;
 export const createStellaStyleSet: () => DocumentStyleSet;
 
 // @public
+export const currentFolioBlockId: (id: string) => string;
+
+// @public
 export const DEFAULT_AI_SUGGESTION_PRESETS: AISuggestionPreset[];
 
 // @public

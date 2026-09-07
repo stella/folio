@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  currentFolioBlockId,
   deriveBlankBlockId,
   deriveBlockId,
   getFolioParaIdFromBlockId,
@@ -8,6 +9,7 @@ import {
   isFolioBlockId,
   isSequentialFolioBlockId,
 } from "./block-id";
+import { paraIdInRange } from "../docx/paraIdRangeNormalization";
 
 describe("deriveBlockId", () => {
   test("returns the source paraId when present and unused", () => {
@@ -132,6 +134,23 @@ describe("isFolioBlockId", () => {
     expect(isFolioBlockId(undefined)).toBe(false);
     expect(isFolioBlockId(null)).toBe(false);
     expect(isFolioBlockId(42)).toBe(false);
+  });
+});
+
+describe("currentFolioBlockId", () => {
+  test("an id the parser brings into range resolves to the id it gives now", () => {
+    expect(currentFolioBlockId("FFFF0001")).toBe(paraIdInRange("FFFF0001"));
+    expect(currentFolioBlockId("FFFF0001")).not.toBe("FFFF0001");
+  });
+
+  test("an id already in range is returned as it is", () => {
+    expect(currentFolioBlockId("7FFF0001")).toBe("7FFF0001");
+  });
+
+  test("sequential, blank and non-hex ids pass through", () => {
+    expect(currentFolioBlockId("seq-0004")).toBe("seq-0004");
+    expect(currentFolioBlockId("blank-0002")).toBe("blank-0002");
+    expect(currentFolioBlockId("not-a-para-id")).toBe("not-a-para-id");
   });
 });
 
