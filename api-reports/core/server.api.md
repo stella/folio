@@ -606,6 +606,13 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
 * Delete the whole block. A block with words loses them and its paragraph
 * mark; a BLANK block has only a paragraph mark to lose, and loses it, so
 * the empty line goes away rather than the operation doing nothing.
+*
+* The block that ENDS its container is the exception, in both modes: a
+* body, a cell, a header or footer, a note and a text box each end with a
+* paragraph, and a deleted mark there would say "join with the paragraph
+* after this one" where there is none. It loses its words and keeps its
+* place. To remove it, delete the mark of the block BEFORE it, which
+* merges forward into it.
 */
     {
     id: string;

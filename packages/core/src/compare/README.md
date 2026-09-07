@@ -129,9 +129,13 @@ say it went.
   A paragraph's properties live on its mark, so the carrier's become the
   target's, written as `w:pPrChange` — that is bookkeeping for the merge and
   adds no entry to the change list, which says what it should say: the
-  paragraphs were removed. A carrier with no words to lose is not deleted at
-  all: the removal is entirely the marks in front of it, and an operation that
-  would write no revision is left out of the plan.
+  paragraphs were removed. "Its properties" means the ones the comparison
+  compares at all, the paragraph style and the list level; a property outside
+  that set is not read on either side, so the carrier keeps its own, and a
+  reader accepting the redline sees the carrier's alignment or spacing rather
+  than the surviving paragraph's. A carrier with no words to lose is not
+  deleted at all: the removal is entirely the marks in front of it, and an
+  operation that would write no revision is left out of the plan.
 - **Paragraphs ADDED where the removed ones were land in the carrier.** The
   last of them is written into it as inserted runs before its kept mark; the
   rest become inserted paragraphs, marks and all, in front of it. So

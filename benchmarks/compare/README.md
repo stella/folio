@@ -95,12 +95,18 @@ Timings mean nothing without these, so a failing invariant fails the run.
 any that moved. That is how a performance change proves it altered nothing.
 
 A digest that moves needs a reason in the pull request that moves it. The
-recorded set was last re-taken when blank paragraphs became blocks: the
-generated documents themselves changed, because a body may not end with a
-table and the classes that ended on one now carry the paragraph the format
-requires; and the redline's shape changed where a paragraph is appended at a
-container's edge, where a deleted block held an image, and wherever a revision
-used to land on a zero-width anchor.
+recorded set was last re-taken after a run of fixes that each changed the
+bytes a comparison writes: a container's final paragraph mark carries no
+revision in either direction, so removals at a container's edge merge forward
+into a carrier and an appended run's break rotates one paragraph back (#730,
+#734); every revision id is claimed package-wide on both save exits, a
+hyperlink wraps its revision marks, and paragraph ids stay in the range the
+schema gives them (#731); inserted and deleted tables carry their table, row
+and cell properties, and paired ones record property changes (#735); a table's
+properties a save did not touch come back as they arrived (#738); the
+application version in the extended properties is written in the form the
+schema fixes (#737); and every rebuilt part declares every namespace prefix it
+uses (#740).
 
 ## An external corpus (local only)
 
