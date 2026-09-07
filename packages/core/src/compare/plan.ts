@@ -470,7 +470,6 @@ const unpairedSegmentSteps = (segment: DocumentSegment, side: "base" | "target")
 };
 
 type BuildStepsOptions = {
-  story: FolioDocumentStoryHandle;
   baseSnapshot: FolioAIEditSnapshot;
   targetSnapshot: FolioAIEditSnapshot;
 };
@@ -585,23 +584,14 @@ const isEmptyParagraphNode = (block: FolioAIBlock, snapshot: FolioAIEditSnapshot
   return block.text === "" && block.table === undefined && anchor.to - anchor.from === 2;
 };
 
-const buildSteps = ({ story, baseSnapshot, targetSnapshot }: BuildStepsOptions): CompareStep[] => {
-  const baseBlocks = baseSnapshot.blocks;
-  const targetBlocks = targetSnapshot.blocks;
-  // A body's final paragraph mark survives accepting or rejecting a deletion
-  // on it: nothing follows it to merge into. When both sides end in a truly
-  // empty paragraph node, reserve that structural carrier before general
-  // alignment and compare its supported properties normally.
-  const baseLast = baseBlocks.at(-1);
-  const targetLast = targetBlocks.at(-1);
-  const terminalCarrierPair =
-    story.type === "main" &&
-    baseLast !== undefined &&
-    isEmptyParagraphNode(baseLast, baseSnapshot) &&
-    targetLast !== undefined &&
-    isEmptyParagraphNode(targetLast, targetSnapshot)
-      ? { type: "pair" as const, baseBlock: baseLast, targetBlock: targetLast }
-      : null;
+type TerminalCarrierPair = Extract<CompareStep, { type: "pair" }>;
+
+/** Align both stories, optionally holding the two last paragraphs out as a pair. */
+const alignedSteps = (
+  baseBlocks: readonly FolioAIBlock[],
+  targetBlocks: readonly FolioAIBlock[],
+  terminalCarrierPair: TerminalCarrierPair | null,
+): CompareStep[] => {
   const alignedBaseBlocks = terminalCarrierPair ? baseBlocks.slice(0, -1) : baseBlocks;
   const alignedTargetBlocks = terminalCarrierPair ? targetBlocks.slice(0, -1) : targetBlocks;
   const steps: CompareStep[] = [];
@@ -629,6 +619,79 @@ const buildSteps = ({ story, baseSnapshot, targetSnapshot }: BuildStepsOptions):
     steps.push(terminalCarrierPair);
   }
   return steps;
+};
+
+/**
+ * Whether an alignment left the story's last paragraph removed with no
+ * paragraph of its own container surviving in front of it.
+ *
+ * That paragraph's mark is the one a story cannot lose, and a deleted mark
+ * joins two paragraphs of ONE container, so with nothing of that container in
+ * front of it there is no chain a removal could run down. The paragraph then
+ * stays whatever the plan says, and the story ends on a blank line the target
+ * does not have — unless the words the target ends with are written into it,
+ * which is what reserving it for the target's last paragraph does.
+ */
+const terminalCarrierIsStranded = (
+  steps: readonly CompareStep[],
+  baseBlocks: readonly FolioAIBlock[],
+): boolean => {
+  const carrier = baseBlocks.at(-1);
+  if (carrier === undefined) {
+    return false;
+  }
+  const removed = new Set(steps.flatMap((step) => (step.type === "baseOnly" ? [step.block.id] : [])));
+  if (!removed.has(carrier.id)) {
+    return false;
+  }
+  const container = containerKeyOf(carrier);
+  for (let index = baseBlocks.length - 2; index >= 0; index--) {
+    const block = baseBlocks[index];
+    if (block === undefined || containerKeyOf(block) !== container) {
+      return true;
+    }
+    if (!removed.has(block.id)) {
+      return false;
+    }
+  }
+  return true;
+};
+
+const buildSteps = ({ baseSnapshot, targetSnapshot }: BuildStepsOptions): CompareStep[] => {
+  const baseBlocks = baseSnapshot.blocks;
+  const targetBlocks = targetSnapshot.blocks;
+  const baseLast = baseBlocks.at(-1);
+  const targetLast = targetBlocks.at(-1);
+  const carrierPair =
+    baseLast !== undefined && targetLast !== undefined
+      ? ({ type: "pair", baseBlock: baseLast, targetBlock: targetLast } as const)
+      : null;
+  // A body's final paragraph mark survives accepting or rejecting a deletion
+  // on it: nothing follows it to merge into. When both sides end in a truly
+  // empty paragraph node, reserve that structural carrier before general
+  // alignment and compare its supported properties normally.
+  const bothStoriesEndBlank =
+    carrierPair !== null &&
+    isEmptyParagraphNode(carrierPair.baseBlock, baseSnapshot) &&
+    isEmptyParagraphNode(carrierPair.targetBlock, targetSnapshot);
+  const steps = alignedSteps(baseBlocks, targetBlocks, bothStoriesEndBlank ? carrierPair : null);
+  // Otherwise the reservation is a repair, not a preference, and the alignment
+  // is what says whether it is needed: pairing the two last paragraphs where
+  // the ordinary alignment reaches the carrier would trade a plain "this
+  // paragraph was removed" for a removal plus a rewrite that reads nothing
+  // like the edit.
+  // The carrier can only take the target's last paragraph when that paragraph
+  // is its opposite number: a story ends with a body paragraph, and a target
+  // whose last block sits in a table cell has nothing to hand it.
+  if (
+    carrierPair === null ||
+    bothStoriesEndBlank ||
+    !shareAContainer(carrierPair.baseBlock, carrierPair.targetBlock) ||
+    !terminalCarrierIsStranded(steps, baseBlocks)
+  ) {
+    return steps;
+  }
+  return alignedSteps(baseBlocks, targetBlocks, carrierPair);
 };
 
 /**
@@ -986,116 +1049,215 @@ const lastBlockByContainer = (
 type TrailingDeletionOptions = {
   baseSnapshot: FolioAIEditSnapshot;
   targetSnapshot: FolioAIEditSnapshot;
-  /** The plan so far, read for the blocks it deletes and where it inserts. */
+  /** The plan so far, rewritten around each container it empties. */
   operations: readonly FolioAIEditOperation[];
   nextOperationId: () => string;
 };
 
 /**
- * The operations that keep a container's final paragraph mark when the plan
- * deletes the paragraphs that end it.
+ * Where the plan's inserts land for one container's trailing deleted run, and
+ * which paragraph the merge chain starts from.
+ */
+type TrailingRun = {
+  /** The deleted blocks that end the container, carrier first. */
+  blockIds: readonly string[];
+  /** The last SURVIVING paragraph of the container, when its mark is free. */
+  chainStart: FolioAIBlock | null;
+  /** Indexes into the plan of the paragraph insertions placed in the run. */
+  insertIndexes: readonly number[];
+  /** A table the plan places inside the run, which no rule here covers. */
+  holdsAnInsertedTable: boolean;
+};
+
+/**
+ * Rewrite the plan so a container's final paragraph mark survives the removal
+ * of the paragraphs that end it.
  *
  * A deleted paragraph mark means "merge this paragraph into the following
  * one". A container's final paragraph has no following one, so the mark cannot
  * say it: the applier leaves that mark alone, and the removal has to be
- * expressed one paragraph earlier. The chain therefore runs from the last
- * SURVIVING paragraph forward — its mark goes, each removed paragraph's mark
- * goes with it, and the container's final paragraph stays as the carrier the
- * merged text lands in.
+ * expressed one paragraph earlier. The carrier is that final paragraph, and
+ * every trailing removal resolves onto it.
  *
- * The carrier keeps its own mark, and a paragraph's properties live on its
- * mark, so the merged paragraph ends up with the carrier's. Those properties
- * therefore become the target's, written as `w:pPrChange` so rejecting
- * restores what the carrier had. That is bookkeeping for the merge rather than
- * an edit of its own, so it adds no entry to the change list: what the reader
- * is told is that the paragraphs were removed.
+ * Nothing is inserted where the run was: the chain runs from the last
+ * SURVIVING paragraph forward. Its mark goes, each removed paragraph's mark
+ * goes with it, and the carrier loses its words and keeps its mark as the
+ * paragraph the merged text lands in. A carrier that has no words to lose is
+ * not deleted at all: its removal is entirely the marks in front of it, and an
+ * operation that would write no revision belongs nowhere in the plan.
  *
- * Nothing is rotated when the plan puts a block inside or after the run. The
- * carrier is then no longer what ends the container, its mark is deleted like
- * any other, and the count already works out.
+ * Something IS inserted there: the inserted paragraphs stand where the removed
+ * ones did, and the last of them lands INSIDE the carrier as inserted runs
+ * before its kept mark, so the carrier is the target's last paragraph rather
+ * than a blank line after it. The other inserted paragraphs carry inserted
+ * marks of their own and sit before the carrier. The mark count then works out
+ * on its own — one mark deleted for every removed paragraph but the carrier,
+ * one inserted for every added paragraph but the last — so the chain is not
+ * rotated as well.
+ *
+ * The carrier keeps its own mark either way, and a paragraph's properties live
+ * on its mark, so the merged paragraph ends up with the carrier's. Those
+ * properties therefore become the target's, written as `w:pPrChange` so
+ * rejecting restores what the carrier had. That is bookkeeping for the merge
+ * rather than an edit of its own, so it adds no entry to the change list: what
+ * the reader is told is that paragraphs were removed and paragraphs added.
  */
-const trailingDeletionOperations = ({
+const withTrailingDeletionRules = ({
   baseSnapshot,
   targetSnapshot,
   operations,
   nextOperationId,
 }: TrailingDeletionOptions): FolioAIEditOperation[] => {
-  const blocks = baseSnapshot.blocks;
-  const deletedBlockIds = new Set(
-    operations.flatMap((operation) =>
-      operation.type === "deleteBlock" ? [operation.blockId] : [],
-    ),
-  );
-  if (deletedBlockIds.size === 0) {
-    return [];
-  }
-  // Anchors of everything the plan PLACES in a container: a block landing in
-  // the run breaks the merge chain, and one landing after the carrier means
-  // the carrier no longer ends the container.
-  const placedAtBlockIds = new Set(
-    operations.flatMap((operation) =>
-      operation.type === "insertBeforeBlock" ||
-      operation.type === "insertAfterBlock" ||
-      operation.type === "insertTable"
-        ? [operation.blockId]
-        : [],
-    ),
-  );
+  const plan = [...operations];
+  const deletionIndexByBlockId = new Map<string, number>();
+  const insertIndexesByAnchor = new Map<string, number[]>();
+  const tableAnchorIds = new Set<string>();
   // A block whose own mark the plan already moves is not a chain start: a
   // split has put a second paragraph after it, and a merge has spent its mark.
-  const markedBlockIds = new Set(
-    operations.flatMap((operation) =>
-      operation.type === "splitBlock" || operation.type === "mergeBlockWithNext"
-        ? [operation.blockId]
-        : [],
-    ),
-  );
-  const targetLastByContainer = lastBlockByContainer(targetSnapshot.blocks);
-  const indexById = new Map(blocks.map((block, index) => [block.id, index]));
-  const added: FolioAIEditOperation[] = [];
-  for (const [container, carrier] of lastBlockByContainer(blocks)) {
-    if (!deletedBlockIds.has(carrier.id)) {
-      continue;
+  const markedBlockIds = new Set<string>();
+  for (const [index, operation] of plan.entries()) {
+    switch (operation.type) {
+      case "deleteBlock": {
+        deletionIndexByBlockId.set(operation.blockId, index);
+        break;
+      }
+      case "insertBeforeBlock":
+      case "insertAfterBlock": {
+        const placed = insertIndexesByAnchor.get(operation.blockId) ?? [];
+        placed.push(index);
+        insertIndexesByAnchor.set(operation.blockId, placed);
+        break;
+      }
+      case "insertTable": {
+        tableAnchorIds.add(operation.blockId);
+        break;
+      }
+      case "splitBlock":
+      case "mergeBlockWithNext": {
+        markedBlockIds.add(operation.blockId);
+        break;
+      }
+      default: {
+        break;
+      }
     }
+  }
+  if (deletionIndexByBlockId.size === 0) {
+    return plan;
+  }
+
+  const blocks = baseSnapshot.blocks;
+  const indexById = new Map(blocks.map((block, index) => [block.id, index]));
+  /**
+   * Walk back from a container's last block over the run of deleted
+   * paragraphs it ends with. A block of another container in between — a
+   * table between two body paragraphs, a table nested in a cell — ends the
+   * walk: no mark joins across it.
+   */
+  const trailingRunOf = (container: string, carrier: FolioAIBlock): TrailingRun => {
+    const blockIds: string[] = [];
+    const insertIndexes: number[] = [];
+    let chainStart: FolioAIBlock | null = null;
+    let holdsAnInsertedTable = false;
     let index =
       indexById.get(carrier.id) ??
       panic("A container's last block is not in the snapshot it came from", {
         blockId: carrier.id,
       });
-    let chainStart: FolioAIBlock | null = null;
-    let placedInRun = false;
-    // Backwards over the run of deleted paragraphs this container ends with. A
-    // block of another container in between — a table between two body
-    // paragraphs, a table nested in a cell — ends the walk: no mark joins
-    // across it.
     for (; index >= 0; index--) {
       const block = blocks[index];
       if (block === undefined || containerKeyOf(block) !== container) {
         break;
       }
-      if (!deletedBlockIds.has(block.id)) {
+      if (!deletionIndexByBlockId.has(block.id)) {
         chainStart = markedBlockIds.has(block.id) ? null : block;
         break;
       }
-      placedInRun ||= placedAtBlockIds.has(block.id);
+      blockIds.push(block.id);
+      insertIndexes.push(...(insertIndexesByAnchor.get(block.id) ?? []));
+      holdsAnInsertedTable ||= tableAnchorIds.has(block.id);
     }
-    if (placedInRun) {
+    // The plan emits operations in target order, so the plan's own order is
+    // the order the inserted paragraphs have to end up in.
+    return { blockIds, chainStart, insertIndexes: insertIndexes.toSorted(), holdsAnInsertedTable };
+  };
+
+  const targetLastByContainer = lastBlockByContainer(targetSnapshot.blocks);
+  const dropped = new Set<number>();
+  const appended: FolioAIEditOperation[] = [];
+  for (const [container, carrier] of lastBlockByContainer(blocks)) {
+    const carrierDeletionIndex = deletionIndexByBlockId.get(carrier.id);
+    if (carrierDeletionIndex === undefined) {
       continue;
     }
-    if (chainStart) {
-      added.push({
-        id: nextOperationId(),
-        type: "mergeBlockWithNext",
-        blockId: chainStart.id,
-      });
+    const run = trailingRunOf(container, carrier);
+    if (run.holdsAnInsertedTable) {
+      // A table between the chain and the carrier leaves a deleted mark with
+      // no paragraph to join, and the self-check reports what it could not
+      // prove rather than the plan guessing at a shape.
+      continue;
     }
-    // The merged paragraph is the target's last one in this container, and it
-    // ends on the carrier's mark, so the carrier is where its properties have
-    // to be.
+    const lastInsertIndex = run.insertIndexes.at(-1);
+    const lastInsert = lastInsertIndex === undefined ? undefined : plan[lastInsertIndex];
+    if (lastInsert === undefined) {
+      if (run.chainStart) {
+        appended.push({
+          id: nextOperationId(),
+          type: "mergeBlockWithNext",
+          blockId: run.chainStart.id,
+        });
+      }
+      if (isEmptyParagraphNode(carrier, baseSnapshot)) {
+        dropped.add(carrierDeletionIndex);
+      }
+    } else {
+      if (
+        (lastInsert.type !== "insertBeforeBlock" && lastInsert.type !== "insertAfterBlock") ||
+        lastInsert.moveId !== undefined
+      ) {
+        // A relocation's destination has to stay an insertion for its source
+        // to stay a `w:moveFrom`, so this run keeps the shape it has.
+        continue;
+      }
+      const carrierDeletion = plan[carrierDeletionIndex];
+      if (carrierDeletion?.type !== "deleteBlock" || carrierDeletion.moveId !== undefined) {
+        continue;
+      }
+      dropped.add(lastInsertIndex);
+      if (carrier.text === lastInsert.text) {
+        // The carrier already holds the words the last inserted paragraph
+        // brings, so neither half of the exchange is a revision.
+        dropped.add(carrierDeletionIndex);
+      } else {
+        plan[carrierDeletionIndex] = {
+          id: carrierDeletion.id,
+          type: "replaceBlock",
+          blockId: carrier.id,
+          text: lastInsert.text,
+        };
+      }
+      for (const index of run.insertIndexes.slice(0, -1)) {
+        const insert = plan[index];
+        if (insert?.type !== "insertBeforeBlock" && insert?.type !== "insertAfterBlock") {
+          continue;
+        }
+        plan[index] = {
+          id: insert.id,
+          type: "insertBeforeBlock",
+          blockId: carrier.id,
+          text: insert.text,
+          ...(insert.moveId !== undefined && { moveId: insert.moveId }),
+          styleId: insert.styleId ?? null,
+          listLevel: insert.listLevel ?? null,
+        };
+      }
+    }
+    // The paragraph the carrier's mark now ends is the target's last one in
+    // this container, so the carrier is where its properties have to be.
     const targetCarrier = targetLastByContainer.get(container);
     const properties = targetCarrier && changedParagraphProperties(carrier, targetCarrier);
     if (properties) {
-      added.push({
+      appended.push({
         id: nextOperationId(),
         type: "setBlockParagraphProperties",
         blockId: carrier.id,
@@ -1103,7 +1265,7 @@ const trailingDeletionOperations = ({
       });
     }
   }
-  return added;
+  return [...plan.filter((_, index) => !dropped.has(index)), ...appended];
 };
 
 /**
@@ -1192,7 +1354,7 @@ export const planStoryCompare = ({
   targetSnapshot,
   maxOperations,
 }: PlanStoryCompareOptions): CompareStoryPlan | null => {
-  const steps = buildSteps({ story, baseSnapshot, targetSnapshot });
+  const steps = buildSteps({ baseSnapshot, targetSnapshot });
   const paragraphMarkPlans = detectParagraphMarkEdits(steps);
   // The step after each paragraph-mark plan is part of it, so neither the move
   // pass nor the main loop may claim it again.
@@ -1556,20 +1718,18 @@ export const planStoryCompare = ({
     }
   }
 
-  operations.push(
-    ...trailingDeletionOperations({
-      baseSnapshot,
-      targetSnapshot,
-      operations,
-      nextOperationId,
-    }),
-  );
+  const planned = withTrailingDeletionRules({
+    baseSnapshot,
+    targetSnapshot,
+    operations,
+    nextOperationId,
+  });
 
-  return operations.length > maxOperations
+  return planned.length > maxOperations
     ? null
     : {
         changes,
-        operations,
+        operations: planned,
         tableTemplates,
         tableGeometryPairings: tableGeometryPairingsOf(steps),
       };

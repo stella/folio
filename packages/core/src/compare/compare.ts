@@ -45,7 +45,7 @@ import {
 } from "../ai-edits/headless";
 import { projectTableGeometry } from "../ai-edits/table-geometry";
 import type { FolioTableTemplates } from "../ai-edits/table-template";
-import type { FolioAIBlock, FolioAIEditSnapshot } from "../ai-edits/types";
+import type { FolioAIBlock, FolioAIEditSkipReason, FolioAIEditSnapshot } from "../ai-edits/types";
 import type { WordDiffGranularity } from "../ai-edits/word-diff";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { pairFolioDocumentStories } from "../document-stories";
@@ -302,6 +302,24 @@ export const parseComparison = async (
   const reviewer = baseParse.value;
   const targetReviewer = targetParse.value;
   const existing = existingRevisionsOf(reviewer);
+  // Compare the accepted view of both sides. An input that already carries
+  // revisions otherwise makes the result unreadable: the redline would layer
+  // this comparison's marks on top of someone else's, and rejecting them all
+  // would land on neither document. Accepting first states one question --
+  // how does the base as it stands differ from the target as it stands --
+  // and leaves the answer as the only redline in the package.
+  //
+  // EVERY story, not only the paired ones. A note or a header the other side
+  // does not have is reported rather than compared, but the base's copy of it
+  // still ships in the result, so it ships accepted like the rest -- and an
+  // unresolvable mark it carried, on the paragraph a note ends with, would
+  // otherwise fail the structural guard on bytes this comparison never wrote.
+  for (const { handle } of reviewer.listStories()) {
+    reviewer.resolveReviewedStory({ story: handle, view: "final" });
+  }
+  for (const { handle } of targetReviewer.listStories()) {
+    targetReviewer.resolveReviewedStory({ story: handle, view: "final" });
+  }
   const pairs: ComparedStoryPair[] = [];
   const unsupported: CompareUnsupportedPart[] = [];
 
@@ -317,15 +335,6 @@ export const parseComparison = async (
       unsupported.push({ reason: "story-missing-in-target", baseStory, targetStory: null });
       continue;
     }
-    // Compare the accepted view of both sides. An input that already carries
-    // revisions otherwise makes the result unreadable: the redline would layer
-    // this comparison's marks on top of someone else's, and rejecting them all
-    // would land on neither document. Accepting first states one question --
-    // how does the base as it stands differ from the target as it stands --
-    // and leaves the answer as the only redline in the package.
-    reviewer.resolveReviewedStory({ story: baseStory, view: "final" });
-    targetReviewer.resolveReviewedStory({ story: targetStory, view: "final" });
-
     const baseSnapshot = reviewer.snapshotStory(baseStory);
     const targetSnapshot = targetReviewer.snapshotStory(targetStory);
     if (!baseSnapshot || !targetSnapshot) {
@@ -379,6 +388,38 @@ export const planComparison = ({
   }
   return Result.ok(planned);
 };
+
+/**
+ * What a skipped operation says about the plan that derived it.
+ *
+ * Two different things go wrong at apply time, and only one of them leaves the
+ * result unusable. A reason that says the plan did not match the document it
+ * was planned against is an engine defect — the operations came from this very
+ * snapshot moments earlier, so nothing should have moved under them, and a
+ * redline built on the rest is built on a document the plan no longer
+ * describes. A reason that says the applier had nothing to write, or could not
+ * write that shape THERE, leaves the redline standing and turns the question
+ * into "was anything lost", which is what the round-trip check answers a few
+ * lines below. Refusing on those instead trades a partial answer for none, and
+ * refuses a whole document because one paragraph sits inside a structure the
+ * block snapshot does not model — a text box, a content control — where a
+ * paragraph mark has nowhere to go.
+ */
+const COMPARE_SKIP_DISPOSITION = {
+  missingBlock: "fatal",
+  changedBlock: "fatal",
+  ambiguousFind: "fatal",
+  missingFind: "fatal",
+  unsupportedBlock: "unwritable",
+  unsupportedMode: "fatal",
+  atomicBatchRejected: "fatal",
+  preconditionFailed: "fatal",
+  staleRange: "fatal",
+  emptyOperation: "unwritable",
+  noopOperation: "unwritable",
+  documentVersionMismatch: "fatal",
+  documentNotEditable: "fatal",
+} as const satisfies Record<FolioAIEditSkipReason, "fatal" | "unwritable">;
 
 /** What stage 3 produced: the change list, whether it was proven, and whether it wrote anything. */
 export type AppliedComparison = {
@@ -509,12 +550,13 @@ export const applyComparison = (
       }
       idSeed = nextRevisionId;
       documentChanged = true;
-      if (skipped.length > 0) {
+      const refused = skipped.filter(({ reason }) => COMPARE_SKIP_DISPOSITION[reason] === "fatal");
+      if (refused.length > 0) {
         return Result.err(
           new CompareDocxApplyError({
             message:
               "Some derived operations were refused, so the result would not match the target.",
-            skipped,
+            skipped: refused,
           }),
         );
       }

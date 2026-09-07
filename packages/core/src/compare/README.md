@@ -129,7 +129,28 @@ say it went.
   A paragraph's properties live on its mark, so the carrier's become the
   target's, written as `w:pPrChange` — that is bookkeeping for the merge and
   adds no entry to the change list, which says what it should say: the
-  paragraphs were removed.
+  paragraphs were removed. A carrier with no words to lose is not deleted at
+  all: the removal is entirely the marks in front of it, and an operation that
+  would write no revision is left out of the plan.
+- **Paragraphs ADDED where the removed ones were land in the carrier.** The
+  last of them is written into it as inserted runs before its kept mark; the
+  rest become inserted paragraphs, marks and all, in front of it. So
+  `[del A ¶del][del B][ins A'] ¶kept` accepts to `A'` and rejects to `A ¶ B`,
+  and `[del A ¶del][del B][ins P1 ¶ins][ins P2] ¶kept` accepts to `P1 ¶ P2`.
+  The mark count then works out on its own — one deleted for every removed
+  paragraph but the carrier, one inserted for every added paragraph but the
+  last — so the chain above is not rotated as well.
+- **A carrier nothing precedes is reserved for the target's last paragraph.**
+  A deleted mark joins two paragraphs of ONE container, so with nothing of that
+  container in front of the carrier there is no chain a removal could run down:
+  an empty body, or the blank paragraph a body that ends in a table has to
+  carry because a table may not be a body's last child. The words the story
+  ends with are then written into the carrier, and the alignment is told to
+  hold the two last paragraphs out as a pair before it runs. That is a repair
+  rather than a preference, and the alignment is what says whether it is
+  needed: pairing the two ends where the chain does reach the carrier would
+  trade a plain "this paragraph was removed" for a removal plus a rewrite that
+  reads nothing like the edit.
 - **An inserted mark at a container's end is the mirror case, and stands.** The
   break was ADDED, so the paragraph it ends was not there before it, and
   rejecting the addition removes the paragraph and leaves the container ending
@@ -139,7 +160,9 @@ The serialize stage refuses a package whose final paragraph mark carries a
 deletion, with `CompareDocxFinalParagraphMarkError` naming the container and
 the paragraph. That one is fatal under `onUnverified: "emit"` too: unlike an
 unproven redline there is no partial result worth handing back, because the
-file does not open.
+file does not open. A cell of a row the package is DELETING is the exception
+the format asks for: `w:trPr/w:del` plus a deletion on every mark its cells
+end with is how a removed row is written, and those marks leave with the row.
 
 Handing the last new paragraph's mark to the ANCHOR instead reads closer to
 what an editor writes, and is equivalent only while the two stay adjacent. A
@@ -220,6 +243,15 @@ A parse, apply or serialize failure is still an error under either setting:
 there is no redline to emit. So is a deletion on a container's final paragraph
 mark, for the same reason at the other end — the bytes would be written, and no
 consumer would open them.
+
+A SKIPPED operation is not automatically one of those. An operation the applier
+had nothing to write for, or could not write in that place — a paragraph inside
+a text box or a content control, where a paragraph mark has nowhere to go —
+leaves the redline standing, and whether anything was lost by it is the
+question the round trip already answers. A skip that says the plan did not
+match the document it was planned against is the other kind: the operations
+came from that very snapshot moments earlier, so nothing should have moved
+under them, and the call fails with `CompareDocxApplyError`.
 
 ## Inputs that already carry tracked changes
 

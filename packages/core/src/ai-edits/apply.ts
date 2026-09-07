@@ -10,6 +10,7 @@ import type { ParagraphPropertyChangeAttrs } from "../prosemirror/schema/nodes";
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
 import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { requestDeterministicParaIds } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
+import { paragraphEndsItsContainer } from "../prosemirror/containerFinalParagraph";
 import { isZeroWidthAnchor } from "../prosemirror/zeroWidthAnchors";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
 import type { RunPropertyChange } from "../types/document";
@@ -1857,7 +1858,7 @@ const applyFolioAIEditOperationsInternal = ({
           // node goes as any other would — which is what the tracked path
           // resolves to as well, its mark deleted one paragraph earlier.
           const at = tr.doc.resolve(item.blockFrom);
-          const endsItsContainer = at.index() === at.parent.childCount - 1;
+          const endsItsContainer = paragraphEndsItsContainer(at, item.blockNode.type.name);
           const leavesAParagraph =
             !endsItsContainer || at.nodeBefore?.type.name === item.blockNode.type.name;
           tr = leavesAParagraph
@@ -1914,7 +1915,7 @@ const applyFolioAIEditOperationsInternal = ({
           // matching one elsewhere rather than being a deletion of its own.
           const markPosition = tr.mapping.map(item.blockFrom);
           const markPlace = tr.doc.resolve(markPosition);
-          const endsItsContainer = markPlace.index() === markPlace.parent.childCount - 1;
+          const endsItsContainer = paragraphEndsItsContainer(markPlace, item.blockNode.type.name);
           if (!endsItsContainer && tr.doc.nodeAt(markPosition)?.attrs["pPrMark"] == null) {
             const markRevisionId = revisionSeed++;
             tr = tr.setNodeAttribute(markPosition, "pPrMark", {
@@ -2010,13 +2011,23 @@ const applyFolioAIEditOperationsInternal = ({
         break;
       }
       case "setBlockParagraphProperties": {
-        const patch = paragraphPropertiesPatch(item.blockNode, item.operation.properties);
+        // Rewriting a node's attributes replaces ALL of them, so they have to
+        // be read from the document as it stands rather than from the
+        // resolution-time snapshot. Another operation of the same batch may
+        // already have written to this paragraph — a merge puts its deleted
+        // paragraph mark in `pPrMark`, and the batch runs right to left, so
+        // the mark lands before the properties do. Rebuilding the node from
+        // the stale attributes dropped that mark without a trace: the
+        // properties applied, the merge silently did not.
+        const blockPosition = tr.mapping.map(item.blockFrom);
+        const liveBlock = tr.doc.nodeAt(blockPosition) ?? item.blockNode;
+        const patch = paragraphPropertiesPatch(liveBlock, item.operation.properties);
         if (patch === null) {
           skipped.push({ id: item.operation.id, reason: "noopOperation" });
           continue;
         }
         if (mode === "direct") {
-          tr = tr.setNodeMarkup(item.blockFrom, undefined, { ...item.blockNode.attrs, ...patch });
+          tr = tr.setNodeMarkup(blockPosition, undefined, { ...liveBlock.attrs, ...patch });
           break;
         }
         // Word stores the COMPLETE old pPr inside `w:pPrChange`, so rejecting
@@ -2027,11 +2038,11 @@ const applyFolioAIEditOperationsInternal = ({
         const change: ParagraphPropertyChangeAttrs = {
           type: "paragraphPropertyChange",
           info: { id: revisionId, author, date, ...(initials ? { initials } : {}) },
-          previousFormatting: paragraphPropertiesSnapshot(item.blockNode),
+          previousFormatting: paragraphPropertiesSnapshot(liveBlock),
         };
-        const existing = expectParagraphAttrs(item.blockNode)._propertyChanges;
-        tr = tr.setNodeMarkup(item.blockFrom, undefined, {
-          ...item.blockNode.attrs,
+        const existing = expectParagraphAttrs(liveBlock)._propertyChanges;
+        tr = tr.setNodeMarkup(blockPosition, undefined, {
+          ...liveBlock.attrs,
           ...patch,
           _propertyChanges: [...(Array.isArray(existing) ? existing : []), change],
         });

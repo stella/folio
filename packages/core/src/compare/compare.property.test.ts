@@ -396,6 +396,67 @@ const distinctByBlock = (steps: readonly EditScriptStep[]): EditScriptStep[] => 
   return distinct;
 };
 
+/** The body-level blocks a story ENDS with, as a contiguous run of indexes. */
+const trailingBodyIndexes = (blocks: readonly FolioAIBlock[]): number[] => {
+  const indexes: number[] = [];
+  for (let index = blocks.length - 1; index >= 0 && blocks[index]?.table === undefined; index--) {
+    indexes.unshift(index);
+  }
+  return indexes;
+};
+
+/**
+ * Scripts that remove the paragraphs a container ENDS with, with and without
+ * new paragraphs written where they were.
+ *
+ * That shape is where the container's final paragraph mark cannot say what
+ * happened: it is deleted nowhere, so the removal has to resolve onto the
+ * paragraph it ends and anything put in its place has to land INSIDE it. The
+ * general step arbitrary reaches the shape only by accident — it would have to
+ * draw the last body block and every block back to the surviving one, and
+ * never draw one twice — so it is generated on purpose here.
+ *
+ * The anchor covers both sides of the run: `"first"` puts the new paragraphs
+ * where the removed ones started, `"last"` after the paragraph the container
+ * ends with.
+ */
+const trailingRewriteScriptArb = (
+  blocks: readonly FolioAIBlock[],
+): fc.Arbitrary<EditScript> | null => {
+  const tail = trailingBodyIndexes(blocks);
+  if (tail.length === 0) {
+    return null;
+  }
+  return fc
+    .record({
+      removed: fc.integer({ min: 1, max: Math.min(tail.length, 4) }),
+      inserted: fc.array(sentenceArb, { minLength: 0, maxLength: 3 }),
+      anchor: fc.constantFrom("first" as const, "last" as const),
+    })
+    .map(({ removed, inserted, anchor }) => {
+      const run = tail.slice(tail.length - removed);
+      const anchorIndex = anchor === "first" ? run[0] : run.at(-1);
+      const steps: EditScriptStep[] = inserted.map((text) => ({
+        type: "insertParagraphAfter" as const,
+        blockIndex: anchorIndex ?? 0,
+        text,
+      }));
+      for (const blockIndex of run) {
+        steps.push({ type: "deleteParagraph", blockIndex });
+      }
+      return steps;
+    });
+};
+
+/**
+ * Every script shape the round trip has to hold for: the general edits, and
+ * the trailing rewrites the general ones do not reach.
+ */
+const roundTripScriptArb = (blocks: readonly FolioAIBlock[]): fc.Arbitrary<EditScript> => {
+  const trailing = trailingRewriteScriptArb(blocks);
+  return trailing ? fc.oneof(editScriptArb(blocks), trailing) : editScriptArb(blocks);
+};
+
 const kindsOf = (changes: readonly CompareChange[]): string[] => changes.map(({ kind }) => kind);
 
 /**
@@ -465,7 +526,7 @@ describe("compareDocx", () => {
       `accepting every change yields the target and rejecting yields the base (${name})`,
       async () => {
         await fc.assert(
-          fc.asyncProperty(editScriptArb(baseBlocks), async (script) => {
+          fc.asyncProperty(roundTripScriptArb(baseBlocks), async (script) => {
             const scripted = await applyEditScript(base, script);
             if (scripted.isErr()) {
               throw scripted.error;
@@ -610,7 +671,7 @@ describe("compareDocx", () => {
         // bytes the comparison produced, so it covers what was written and not
         // only what was planned.
         await fc.assert(
-          fc.asyncProperty(editScriptArb(baseBlocks), async (script) => {
+          fc.asyncProperty(roundTripScriptArb(baseBlocks), async (script) => {
             const scripted = await applyEditScript(base, script);
             if (scripted.isErr()) {
               throw scripted.error;
@@ -712,7 +773,7 @@ describe("compareDocx", () => {
         // from the operation vocabulary, so anything unverified here is a
         // defect in the engine rather than a document it cannot express.
         await fc.assert(
-          fc.asyncProperty(editScriptArb(baseBlocks), async (script) => {
+          fc.asyncProperty(roundTripScriptArb(baseBlocks), async (script) => {
             const scripted = await applyEditScript(base, script);
             if (scripted.isErr()) {
               throw scripted.error;

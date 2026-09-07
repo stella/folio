@@ -855,6 +855,43 @@ describe("single-mutation probes", () => {
     expect(rejected).toEqual(original);
   });
 
+  test("closing_paragraph_after_a_table: the target's last words land in the carrier", async () => {
+    // A body may not end with a table, so a document that ends in one carries
+    // a blank paragraph after it whose mark the format keeps. Nothing of the
+    // body sits between that carrier and the table, so no merge chain reaches
+    // it: the paragraph the target ends with is written INTO the carrier as
+    // inserted runs before its kept mark, and the story ends where the target
+    // ends instead of on a blank line the target does not have.
+    const base = await buildBodySequenceDocx([
+      { kind: "paragraph", text: TRAILING_CLAUSES[0] },
+      { kind: "paragraph", text: TRAILING_CLAUSES[1] },
+      { kind: "table", rows: [["Service", "Fee"]] },
+      { kind: "paragraph", text: "" },
+    ]);
+    const target = await buildBodySequenceDocx([
+      { kind: "paragraph", text: TRAILING_CLAUSES[0] },
+      { kind: "paragraph", text: "The agreement closes on the words below." },
+    ]);
+
+    const result = await compareDocx(base, target, OPTIONS);
+    if (result.isErr()) {
+      throw result.error;
+    }
+
+    const paragraphs = paragraphsOf(await documentPartOf(result.value.buffer));
+    const carrier = paragraphs.at(-1) ?? "";
+    expect(markIsDeleted(carrier)).toBe(false);
+    expect(carrier).toContain("<w:ins ");
+    expect(carrier).toContain("The agreement closes on the words below.");
+
+    expect(await projectView(result.value.buffer, "final")).toEqual(
+      await projectView(target, "final"),
+    );
+    expect(await projectView(result.value.buffer, "original")).toEqual(
+      await projectView(base, "final"),
+    );
+  });
+
   test("unrepresentable_difference: refused by default, emitted and named on request", async () => {
     // Every column is empty, so there is no evidence for which of the three
     // target columns is new. Guessing would produce a plausible but misleading

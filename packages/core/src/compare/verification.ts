@@ -343,12 +343,26 @@ const isParagraph = (value: unknown): value is Record<string, unknown> =>
   isRecord(value) && value["type"] === "paragraph";
 
 /**
+ * A row the package marks deleted, whose cells' marks go with it.
+ *
+ * A deleted table row is written as `w:trPr/w:del` PLUS a deletion on every
+ * mark the row's cells end with: accepting takes the whole row away, so those
+ * marks never have to join anything and are the shape the format asks for.
+ */
+const isADeletedTableRow = (value: Record<string, unknown>): boolean => {
+  const change = value["structuralChange"];
+  return isRecord(change) && change["type"] === "tableRowDeletion";
+};
+
+/**
  * Every container in a package whose final paragraph mark carries a deletion.
  *
  * A deleted paragraph mark says "join this paragraph with the one after it".
  * The last paragraph of a body, a table cell, a header or footer, a note or a
  * text box has no paragraph after it, so the mark states an edit that cannot
  * be carried out, and a consumer refuses the package rather than opening it.
+ * The exception is a cell of a row the package is DELETING: there the mark
+ * leaves with its row.
  *
  * The walk is over the package model rather than over a list of the containers
  * known today: a container is any sequence that ends in a paragraph, so a part
@@ -357,32 +371,33 @@ const isParagraph = (value: unknown): value is Record<string, unknown> =>
  */
 export const deletedFinalParagraphMarks = (packageModel: unknown): FinalParagraphMarkDeletion[] => {
   const found: FinalParagraphMarkDeletion[] = [];
-  const visit = (value: unknown, path: string): void => {
+  const visit = (value: unknown, path: string, insideADeletedRow: boolean): void => {
     if (Array.isArray(value)) {
       const last: unknown = value.at(-1);
       const mark = isParagraph(last) ? last["pPrMark"] : undefined;
       const kind = isRecord(mark) ? mark["kind"] : undefined;
-      if (joinsForwardOnAccept(kind)) {
+      if (joinsForwardOnAccept(kind) && !insideADeletedRow) {
         found.push({ container: path, paragraphIndex: value.length - 1, kind });
       }
       for (const [index, item] of value.entries()) {
-        visit(item, `${path}[${String(index)}]`);
+        visit(item, `${path}[${String(index)}]`, insideADeletedRow);
       }
       return;
     }
     if (value instanceof Map) {
       for (const [key, item] of value) {
-        visit(item, `${path}.${String(key)}`);
+        visit(item, `${path}.${String(key)}`, insideADeletedRow);
       }
       return;
     }
     if (!isRecord(value) || value instanceof Date || ArrayBuffer.isView(value)) {
       return;
     }
+    const inADeletedRow = insideADeletedRow || isADeletedTableRow(value);
     for (const [key, item] of Object.entries(value)) {
-      visit(item, `${path}.${key}`);
+      visit(item, `${path}.${key}`, inADeletedRow);
     }
   };
-  visit(packageModel, "package");
+  visit(packageModel, "package", false);
   return found;
 };

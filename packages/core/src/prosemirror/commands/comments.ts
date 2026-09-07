@@ -20,6 +20,7 @@ import { PARAGRAPH_MARK_CHANGE_KINDS, type ParagraphMarkChangeKind } from "@stll
 import { expectParagraphAttrs, expectRunPropertyChangeMarkAttrs } from "../attrs";
 import { textFormattingToMarks } from "../conversion/toProseDoc";
 import { markStructuralChange } from "../extensions/features/ParagraphChangeTrackerExtension";
+import { paragraphEndsItsContainer } from "../containerFinalParagraph";
 import { holdsNoContent } from "../zeroWidthAnchors";
 import { getFolioNodeRevisionCarriers } from "../revisionCarriers";
 import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
@@ -343,7 +344,7 @@ function resolveChange(
           const sectionCanMoveBack =
             !carriesSection(paragraph) ||
             (previous?.type.name === paragraph.type.name && !carriesSection(previous));
-          const endsItsContainer = resolved.index() === resolved.parent.childCount - 1;
+          const endsItsContainer = paragraphEndsItsContainer(resolved, paragraph.type.name);
           const canGo = op.markWasAdded || !endsItsContainer;
           if (
             sectionCanMoveBack &&
