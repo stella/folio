@@ -1945,7 +1945,7 @@ function convertParagraph(
   if (isFullyHiddenParagraph) {
     attrs.suppressEmptyParagraphHeight = true;
   }
-  if (runs.length === 0 && expectDetachedWatermarkHostAttr(node)) {
+  if (runs.length === 0 && expectDetachedWatermarkHostAttr(node.attrs)) {
     attrs.suppressEmptyParagraphHeight = false;
   }
   const hasVisibleParagraphPayload =

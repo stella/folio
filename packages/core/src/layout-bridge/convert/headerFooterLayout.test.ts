@@ -1093,7 +1093,7 @@ describe("convertHeaderFooterPmDocToContent", () => {
   test("rejects malformed detached watermark host metadata with its attr path", () => {
     const malformedParagraph = schema.node("paragraph", { _detachedWatermarkHost: "invalid" });
 
-    expect(() => expectDetachedWatermarkHostAttr(malformedParagraph)).toThrow(
+    expect(() => expectDetachedWatermarkHostAttr(malformedParagraph.attrs)).toThrow(
       "paragraph.attrs._detachedWatermarkHost",
     );
   });
