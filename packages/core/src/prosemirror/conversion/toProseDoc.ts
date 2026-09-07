@@ -466,6 +466,10 @@ function convertParagraph(
     inheritableParagraphRunFormatting =
       stripParagraphMarkFormattingForBodyRuns(paragraphRunFormatting);
   }
+  const ordinaryStyleFormatting =
+    paragraph.formatting?.styleId === undefined
+      ? mergeTextFormatting(styleRunFormatting, extraRunFormatting)
+      : mergeTextFormatting(extraRunFormatting, styleRunFormatting);
   const orderedToggleFormatting = cascadeStyleTextFormatting(
     [
       { formatting: styleResolver?.getDocDefaults()?.rPr, type: "defaults" },
@@ -473,15 +477,13 @@ function convertParagraph(
       { formatting: paragraphStyleRunFormatting, type: "style" },
     ],
     {
-      ordinaryFormatting: mergeTextFormatting(styleRunFormatting, extraRunFormatting),
+      ordinaryFormatting: ordinaryStyleFormatting,
     },
   );
   let baseRunFormatting = orderedToggleFormatting.formatting;
   // A table style can carry legacy theme/fallback fonts from the template
-  // that created it. Word keeps the paragraph style's authored font in that
-  // case while still applying the table style's color, emphasis, and size.
-  // Preserve the paragraph-style font slots over the table contribution;
-  // direct run formatting still wins later in getInheritedRunFormatting.
+  // that created it. Preserve the paragraph style's authored font slots over
+  // the table contribution; direct run formatting still wins later.
   if (paragraphStyleFontFamily) {
     baseRunFormatting = mergeTextFormatting(baseRunFormatting, {
       fontFamily: paragraphStyleFontFamily,
@@ -2141,22 +2143,10 @@ function convertTableRow(
       effectiveRowBandStyle = conditionalStyles?.band2Horz;
     }
 
-    // Build conditional style precedence (wholeTable -> banding -> row/col -> corners)
+    // Build conditional style precedence (wholeTable -> banding -> columns -> rows -> corners)
     let cellConditionalStyle = conditionalStyles?.wholeTable;
     cellConditionalStyle = mergeConditionalStyles(cellConditionalStyle, effectiveRowBandStyle);
     cellConditionalStyle = mergeConditionalStyles(cellConditionalStyle, vertBandStyle);
-    if (cellIsFirstRow && (tableLook?.firstRow || rowCnf?.firstRow || cellCnf?.firstRow)) {
-      cellConditionalStyle = mergeConditionalStyles(
-        cellConditionalStyle,
-        conditionalStyles?.firstRow,
-      );
-    }
-    if (cellIsLastRow && (tableLook?.lastRow || rowCnf?.lastRow || cellCnf?.lastRow)) {
-      cellConditionalStyle = mergeConditionalStyles(
-        cellConditionalStyle,
-        conditionalStyles?.lastRow,
-      );
-    }
     if (cellIsFirstCol && (tableLook?.firstColumn || rowCnf?.firstColumn || cellCnf?.firstColumn)) {
       cellConditionalStyle = mergeConditionalStyles(
         cellConditionalStyle,
@@ -2167,6 +2157,18 @@ function convertTableRow(
       cellConditionalStyle = mergeConditionalStyles(
         cellConditionalStyle,
         conditionalStyles?.lastCol,
+      );
+    }
+    if (cellIsFirstRow && (tableLook?.firstRow || rowCnf?.firstRow || cellCnf?.firstRow)) {
+      cellConditionalStyle = mergeConditionalStyles(
+        cellConditionalStyle,
+        conditionalStyles?.firstRow,
+      );
+    }
+    if (cellIsLastRow && (tableLook?.lastRow || rowCnf?.lastRow || cellCnf?.lastRow)) {
+      cellConditionalStyle = mergeConditionalStyles(
+        cellConditionalStyle,
+        conditionalStyles?.lastRow,
       );
     }
     if (

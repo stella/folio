@@ -626,6 +626,113 @@ describe("toFlowBlocks style cascade", () => {
     expect(firstTableRun(blocks).fontFamily).toBe("Arial");
   });
 
+  test("a paragraph style color overrides table conditional run formatting", () => {
+    const styles: StyleDefinitions = {
+      styles: [
+        {
+          styleId: "BodyText",
+          type: "paragraph",
+          name: "Body Text",
+          rPr: { color: { rgb: "22272B" } },
+        },
+        {
+          styleId: "AccentTable",
+          type: "table",
+          name: "Accent Table",
+          rPr: { color: { rgb: "CBEDFD" } },
+          tblStylePr: [
+            {
+              type: "firstCol",
+              tcPr: { shading: { fill: { rgb: "FFFFFF" } } },
+            },
+            {
+              type: "firstRow",
+              rPr: { color: { rgb: "FFFFFF" } },
+              tcPr: { shading: { fill: { rgb: "CBEDFD" } } },
+            },
+          ],
+        },
+      ],
+    };
+    const table: Table = {
+      type: "table",
+      formatting: { styleId: "AccentTable", look: { firstRow: true, firstColumn: true } },
+      rows: [
+        {
+          type: "tableRow",
+          cells: [
+            {
+              type: "tableCell",
+              content: [
+                {
+                  type: "paragraph",
+                  formatting: { styleId: "BodyText" },
+                  content: [{ type: "run", content: [{ type: "text", text: "body" }] }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const proseDoc = toProseDoc(
+      { package: { document: { content: [table] }, styles } },
+      { styles },
+    );
+    const blocks = toFlowBlocks(proseDoc, {});
+
+    expect(firstTableRun(blocks).color).toBe("#22272B");
+    expect(proseDoc.firstChild?.firstChild?.firstChild?.attrs["backgroundColor"]).toBe("CBEDFD");
+  });
+
+  test("table conditional color overrides the implicit default paragraph style", () => {
+    const styles: StyleDefinitions = {
+      styles: [
+        {
+          styleId: "Normal",
+          type: "paragraph",
+          default: true,
+          name: "Normal",
+          rPr: { color: { rgb: "22272B" } },
+        },
+        {
+          styleId: "HeaderTable",
+          type: "table",
+          name: "Header Table",
+          tblStylePr: [{ type: "firstRow", rPr: { color: { rgb: "FFFFFF" } } }],
+        },
+      ],
+    };
+    const table: Table = {
+      type: "table",
+      formatting: { styleId: "HeaderTable", look: { firstRow: true } },
+      rows: [
+        {
+          type: "tableRow",
+          cells: [
+            {
+              type: "tableCell",
+              content: [
+                {
+                  type: "paragraph",
+                  content: [{ type: "run", content: [{ type: "text", text: "header" }] }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const blocks = toFlowBlocks(
+      toProseDoc({ package: { document: { content: [table] }, styles } }, { styles }),
+      {},
+    );
+
+    expect(firstTableRun(blocks).color).toBe("#FFFFFF");
+  });
+
   test("paragraph style toggles apply above an explicit table-style off", () => {
     const styles: StyleDefinitions = {
       styles: [
