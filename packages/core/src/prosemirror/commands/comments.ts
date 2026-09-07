@@ -117,6 +117,9 @@ function resolveChange(
     const keepType = mode === "accept" ? insertionType : deletionType;
     const removeType = mode === "accept" ? deletionType : insertionType;
     const revisionSet = revisionIds === undefined ? null : new Set<number>(revisionIds);
+    // A range-wide removal lets ProseMirror coalesce one revision split by
+    // inline formatting. The id-scoped path must keep matching each mark.
+    const removeKeptMarksInBulk = revisionSet === null && keepType !== undefined;
     const matchesRevision = (mark: { attrs: Record<string, unknown> }) =>
       revisionSet === null ||
       (typeof mark.attrs["revisionId"] === "number" && revisionSet.has(mark.attrs["revisionId"]));
@@ -277,15 +280,36 @@ function resolveChange(
           deleteRanges.push({ from: rangeFrom, to: rangeTo });
         }
 
-        for (const mark of node.marks) {
-          if (keepType && mark.type === keepType && matchesRevision(mark)) {
-            tr.removeMark(rangeFrom, rangeTo, mark);
+        if (!removeKeptMarksInBulk) {
+          for (const mark of node.marks) {
+            if (keepType && mark.type === keepType && matchesRevision(mark)) {
+              tr.removeMark(rangeFrom, rangeTo, mark);
+            }
           }
         }
         return true;
       });
 
-      for (const range of deleteRanges.toReversed()) {
+      if (removeKeptMarksInBulk) {
+        tr.removeMark(from, to, keepType);
+      }
+
+      let rangesToDelete = deleteRanges;
+      if (revisionSet === null) {
+        // Adjacent inline ranges have no paragraph boundary between them, so
+        // one replacement has the same mapping outside the deleted content.
+        const coalescedDeleteRanges: { from: number; to: number }[] = [];
+        for (const range of deleteRanges) {
+          const previous = coalescedDeleteRanges.at(-1);
+          if (previous && range.from <= previous.to) {
+            previous.to = Math.max(previous.to, range.to);
+            continue;
+          }
+          coalescedDeleteRanges.push({ from: range.from, to: range.to });
+        }
+        rangesToDelete = coalescedDeleteRanges;
+      }
+      for (const range of rangesToDelete.toReversed()) {
         tr.delete(range.from, range.to);
       }
 
