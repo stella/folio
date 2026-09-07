@@ -87,7 +87,8 @@ import {
 import { marksToTextFormatting } from "./fromProseDoc";
 import { shadingToRunShadingAttrs } from "./runShadingMark";
 import { sdtAttrsFromProperties } from "./sdtAttrs";
-import { isDetachedWatermarkHost } from "./watermarkHostMarker";
+
+const DETACHED_WATERMARK_HOST = Symbol.for("stll.detachedWatermarkHost");
 
 /**
  * Options for document conversion
@@ -4128,7 +4129,7 @@ export function headerFooterToProseDoc(
           textBoxGroupId: nextTextBoxGroupId(),
           context: conversionContext,
         });
-        if (isDetachedWatermarkHost(block)) {
+        if (Reflect.get(block, DETACHED_WATERMARK_HOST) === true) {
           const paragraphNodeIndex = paragraphNodes.findIndex(
             ({ type }) => type.name === "paragraph",
           );

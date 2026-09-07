@@ -14,7 +14,6 @@ import { EditorView } from "prosemirror-view";
 import { clearHeaderFooterVerbatimXml } from "../docx/headerFooterVerbatim";
 import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
 import { headerFooterToProseDoc } from "../prosemirror/conversion/toProseDoc";
-import { headerFooterToProseDocWithDetachedWatermarkHost } from "../prosemirror/conversion/watermarkHost";
 import { ExtensionManager } from "../prosemirror/extensions/ExtensionManager";
 import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/AutoBidiDetectionExtension";
 import { ensureParaIdsInState } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
@@ -73,6 +72,21 @@ type MountedView = {
   view: EditorView;
 };
 
+const DETACHED_WATERMARK_HOST = Symbol.for("stll.detachedWatermarkHost");
+
+const headerFooterToProseDocWithDetachedWatermarkHost = (
+  headerFooter: HeaderFooter,
+  options: { styles?: StyleDefinitions; theme?: Theme | null },
+) => {
+  const markedContent = headerFooter.content.map((block, blockIndex) => {
+    if (blockIndex !== headerFooter.watermarkBlockIndex || block.type !== "paragraph") {
+      return block;
+    }
+    return { ...block, [DETACHED_WATERMARK_HOST]: true };
+  });
+  return headerFooterToProseDoc(markedContent, options);
+};
+
 const buildInitialState = (
   headerFooter: HeaderFooter,
   styles: StyleDefinitions | null | undefined,
@@ -89,11 +103,7 @@ const buildInitialState = (
   const document =
     headerFooter.watermarkBlockIndex === undefined
       ? headerFooterToProseDoc(headerFooter.content, proseDocOptions)
-      : headerFooterToProseDocWithDetachedWatermarkHost({
-          content: headerFooter.content,
-          hostBlockIndex: headerFooter.watermarkBlockIndex,
-          options: proseDocOptions,
-        });
+      : headerFooterToProseDocWithDetachedWatermarkHost(headerFooter, proseDocOptions);
   return ensureBaseDirectionInState(
     ensureParaIdsInState(
       EditorState.create({

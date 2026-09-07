@@ -35,12 +35,26 @@ import type {
 } from "../../layout-engine/types";
 import { isFloatingImageRun, isFloatingTextBoxBlock } from "../../layout-engine/types";
 import { headerFooterToProseDoc } from "../../prosemirror/conversion/toProseDoc";
-import { headerFooterToProseDocWithDetachedWatermarkHost } from "../../prosemirror/conversion/watermarkHost";
 import type { HeaderFooter, StyleDefinitions, Theme } from "../../types/document";
 import { emuToPixels } from "../../utils/units";
 import type { MeasureBlocksFn } from "./footnoteLayout";
 import { toFlowBlocks } from "./toFlowBlocks";
 import type { ToFlowBlocksOptions } from "./toFlowBlocks";
+
+const DETACHED_WATERMARK_HOST = Symbol.for("stll.detachedWatermarkHost");
+
+const headerFooterToProseDocWithDetachedWatermarkHost = (
+  headerFooter: HeaderFooter,
+  options: { styles?: StyleDefinitions; theme?: Theme | null },
+): PMNode => {
+  const markedContent = headerFooter.content.map((block, blockIndex) => {
+    if (blockIndex !== headerFooter.watermarkBlockIndex || block.type !== "paragraph") {
+      return block;
+    }
+    return { ...block, [DETACHED_WATERMARK_HOST]: true };
+  });
+  return headerFooterToProseDoc(markedContent, options);
+};
 
 // =============================================================================
 // 1. Page-level metrics passed in by the caller
@@ -753,11 +767,7 @@ export function convertHeaderFooterToContent(
   const pmDoc =
     headerFooter.watermarkBlockIndex === undefined
       ? headerFooterToProseDoc(headerFooter.content, proseDocOptions)
-      : headerFooterToProseDocWithDetachedWatermarkHost({
-          content: headerFooter.content,
-          hostBlockIndex: headerFooter.watermarkBlockIndex,
-          options: proseDocOptions,
-        });
+      : headerFooterToProseDocWithDetachedWatermarkHost(headerFooter, proseDocOptions);
   const flowOptions: ToFlowBlocksOptions = {};
   if (options.theme !== undefined) {
     flowOptions.theme = options.theme;
