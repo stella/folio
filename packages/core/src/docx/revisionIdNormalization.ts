@@ -48,14 +48,6 @@ const REVISION_ELEMENT_CANDIDATE = new RegExp(
   "u",
 );
 
-/**
- * Whether an XML part could hold a revision element at all. A save that wrote
- * none cannot have created a collision, so this is what lets an exit skip the
- * pass instead of reading every part of the package to prove nothing changed.
- */
-export const containsRevisionElement = (xml: string): boolean =>
-  REVISION_ELEMENT_CANDIDATE.test(xml);
-
 type RevisionAttribute = { name: string; id: number };
 
 const revisionAttribute = (element: XmlElement): RevisionAttribute | null => {

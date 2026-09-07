@@ -62,10 +62,10 @@ const makeHeaderFooterBaseline = async (): Promise<ArrayBuffer> => {
   const source = await createEmptyDocx();
   const document = await parseDocx(source, { detectVariables: false, preloadFonts: false });
   document.package.headers = new Map([
-    [HEADER_RELATIONSHIP_ID, textStory("header", "Header text", "A1000001")],
+    [HEADER_RELATIONSHIP_ID, textStory("header", "Header text", "21000001")],
   ]);
   document.package.footers = new Map([
-    [FOOTER_RELATIONSHIP_ID, textStory("footer", "Footer text", "A1000002")],
+    [FOOTER_RELATIONSHIP_ID, textStory("footer", "Footer text", "21000002")],
   ]);
   document.package.document.finalSectionProperties = {
     ...document.package.document.finalSectionProperties,
@@ -1646,13 +1646,13 @@ describe("headless docx review round-trip", () => {
       story: { type: "header", relationshipId: HEADER_RELATIONSHIP_ID } as const,
       part: "word/header1.xml",
       originalText: "Header text",
-      paraId: "A1000001",
+      paraId: "21000001",
     },
     {
       story: { type: "footer", relationshipId: FOOTER_RELATIONSHIP_ID } as const,
       part: "word/footer1.xml",
       originalText: "Footer text",
-      paraId: "A1000002",
+      paraId: "21000002",
     },
   ])(
     "persists insertion, deletion, and move resolution in a paraId-less $story.type",
@@ -2704,12 +2704,12 @@ const readNotesFixture = async (): Promise<ArrayBuffer> => {
   const footnotesXml = await footnotesFile.async("text");
   const injected = footnotesXml.replace(
     "</w:footnotes>",
-    '<w:footnote w:id="2"><w:p w14:paraId="B2000001"><w:r><w:t>Injected footnote body text.</w:t></w:r></w:p></w:footnote></w:footnotes>',
+    '<w:footnote w:id="2"><w:p w14:paraId="32000001"><w:r><w:t>Injected footnote body text.</w:t></w:r></w:p></w:footnote></w:footnotes>',
   );
   zip.file("word/footnotes.xml", injected);
   zip.file(
     "word/endnotes.xml",
-    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:endnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:endnote w:id="3"><w:p w14:paraId="B2000002"><w:r><w:t>Injected endnote body text.</w:t></w:r></w:p></w:endnote></w:endnotes>',
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:endnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:endnote w:id="3"><w:p w14:paraId="32000002"><w:r><w:t>Injected endnote body text.</w:t></w:r></w:p></w:endnote></w:endnotes>',
   );
   return zip.generateAsync({ type: "arraybuffer" });
 };
@@ -2726,7 +2726,7 @@ const readRichNotesFixture = async (): Promise<ArrayBuffer> => {
     footnotesXml.replace(
       /<w:footnote w:id="2">.*?<\/w:footnote>/u,
       `<w:footnote w:id="2">
-        <w:p w14:paraId="B2000001">
+        <w:p w14:paraId="32000001">
           <w:r><w:t xml:space="preserve">See </w:t></w:r>
           <w:ins w:id="1" w:author="Reviewer"><w:r><w:t xml:space="preserve">INSERTED </w:t></w:r></w:ins>
           <w:del w:id="2" w:author="Reviewer"><w:r><w:delText xml:space="preserve">DELETED </w:delText></w:r></w:del>
@@ -2741,13 +2741,13 @@ const readRichNotesFixture = async (): Promise<ArrayBuffer> => {
           <w:r><w:fldChar w:fldCharType="end"/></w:r>
           <w:sdt><w:sdtPr/><w:sdtContent><w:r><w:t>SDT.</w:t></w:r></w:sdtContent></w:sdt>
         </w:p>
-        <w:tbl><w:tr><w:tc><w:p w:rsidR="F00D0002"><w:r><w:t>TABLE CELL</w:t></w:r></w:p></w:tc></w:tr></w:tbl>
+        <w:tbl><w:tr><w:tc><w:p w:rsidR="700D0002"><w:r><w:t>TABLE CELL</w:t></w:r></w:p></w:tc></w:tr></w:tbl>
       </w:footnote>`,
     ),
   );
   zip.file(
     "word/endnotes.xml",
-    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:endnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:endnote w:id="3"><w:p w14:paraId="B2000002"><w:r><w:t xml:space="preserve">Endnote </w:t></w:r><w:ins w:id="5" w:author="Reviewer"><w:r><w:t>INSERTED</w:t></w:r></w:ins><w:del w:id="6" w:author="Reviewer"><w:r><w:delText>DELETED</w:delText></w:r></w:del><w:moveFrom w:id="7" w:author="Reviewer"><w:r><w:t xml:space="preserve"> MOVED FROM </w:t></w:r></w:moveFrom><w:moveTo w:id="8" w:author="Reviewer"><w:r><w:t xml:space="preserve"> MOVED TO </w:t></w:r></w:moveTo></w:p><w:tbl><w:tr><w:tc><w:p w:rsidR="E00D0003"><w:r><w:t>ENDNOTE CELL</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:endnote></w:endnotes>',
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:endnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:endnote w:id="3"><w:p w14:paraId="32000002"><w:r><w:t xml:space="preserve">Endnote </w:t></w:r><w:ins w:id="5" w:author="Reviewer"><w:r><w:t>INSERTED</w:t></w:r></w:ins><w:del w:id="6" w:author="Reviewer"><w:r><w:delText>DELETED</w:delText></w:r></w:del><w:moveFrom w:id="7" w:author="Reviewer"><w:r><w:t xml:space="preserve"> MOVED FROM </w:t></w:r></w:moveFrom><w:moveTo w:id="8" w:author="Reviewer"><w:r><w:t xml:space="preserve"> MOVED TO </w:t></w:r></w:moveTo></w:p><w:tbl><w:tr><w:tc><w:p w:rsidR="600D0003"><w:r><w:t>ENDNOTE CELL</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:endnote></w:endnotes>',
   );
   return zip.generateAsync({ type: "arraybuffer" });
 };
@@ -2769,18 +2769,18 @@ describe("headless docx review notes read surface", () => {
     {
       story: { type: "footnote", noteId: 2 } as const,
       part: "word/footnotes.xml",
-      removedParaId: "B2000001",
+      removedParaId: "32000001",
       idProfile: "without paragraph ids",
       expectedText: "See INSERTED MOVED TO LINK SIMPLE COMPLEX SDT.TABLE CELL",
-      preservedParagraph: '<w:p w:rsidR="F00D0002"><w:r><w:t>TABLE CELL</w:t></w:r></w:p>',
+      preservedParagraph: '<w:p w:rsidR="700D0002"><w:r><w:t>TABLE CELL</w:t></w:r></w:p>',
     },
     {
       story: { type: "endnote", noteId: 3 } as const,
       part: "word/endnotes.xml",
-      removedParaId: "B2000002",
+      removedParaId: "32000002",
       idProfile: "without paragraph ids",
       expectedText: "Endnote INSERTED MOVED TO ENDNOTE CELL",
-      preservedParagraph: '<w:p w:rsidR="E00D0003"><w:r><w:t>ENDNOTE CELL</w:t></w:r></w:p>',
+      preservedParagraph: '<w:p w:rsidR="600D0003"><w:r><w:t>ENDNOTE CELL</w:t></w:r></w:p>',
     },
     {
       story: { type: "footnote", noteId: 2 } as const,
@@ -2788,7 +2788,7 @@ describe("headless docx review notes read surface", () => {
       removedParaId: null,
       idProfile: "with paragraph ids",
       expectedText: "See INSERTED MOVED TO LINK SIMPLE COMPLEX SDT.TABLE CELL",
-      preservedParagraph: '<w:p w:rsidR="F00D0002"><w:r><w:t>TABLE CELL</w:t></w:r></w:p>',
+      preservedParagraph: '<w:p w:rsidR="700D0002"><w:r><w:t>TABLE CELL</w:t></w:r></w:p>',
     },
     {
       story: { type: "endnote", noteId: 3 } as const,
@@ -2796,7 +2796,7 @@ describe("headless docx review notes read surface", () => {
       removedParaId: null,
       idProfile: "with paragraph ids",
       expectedText: "Endnote INSERTED MOVED TO ENDNOTE CELL",
-      preservedParagraph: '<w:p w:rsidR="E00D0003"><w:r><w:t>ENDNOTE CELL</w:t></w:r></w:p>',
+      preservedParagraph: '<w:p w:rsidR="600D0003"><w:r><w:t>ENDNOTE CELL</w:t></w:r></w:p>',
     },
   ])(
     "persists a resolved final $story.type $idProfile",

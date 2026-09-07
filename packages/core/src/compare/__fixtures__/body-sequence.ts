@@ -44,7 +44,16 @@ export type ParagraphInline = string | { text: string; href: string };
 
 /** One body-level item: a paragraph, or a table given row by row. */
 export type BodyItem =
-  | { kind: "paragraph"; text: string | readonly ParagraphInline[]; styleId?: string }
+  | {
+      kind: "paragraph";
+      text: string | readonly ParagraphInline[];
+      styleId?: string;
+      /**
+       * An authored `w14:paraId`, for a package whose ids a producer wrote
+       * without respecting the 31-bit bound the schema puts on them.
+       */
+      paraId?: string;
+    }
   | {
       kind: "table";
       rows: readonly (readonly CellContent[])[];
@@ -85,10 +94,11 @@ const createParaIdAllocator = (): ((content: string) => string) => {
     for (let index = 0; index < content.length; index += 1) {
       hash = Math.imul(hash ^ content.charCodeAt(index), 0x0100_0193) >>> 0;
     }
-    // `00000000` and `FFFFFFFF` are reserved, and an id is unique per package.
-    let candidate = hash % 0xffff_fffe;
+    // A paragraph id is 31-bit, `00000000` is the reserved "no id", and an id
+    // is unique per package.
+    let candidate = hash % 0x7fff_fffe;
     while (taken.has((candidate + 1).toString(16).toUpperCase().padStart(8, "0"))) {
-      candidate = (candidate + 1) % 0xffff_fffe;
+      candidate = (candidate + 1) % 0x7fff_fffe;
     }
     const paraId = (candidate + 1).toString(16).toUpperCase().padStart(8, "0");
     taken.add(paraId);
@@ -112,18 +122,21 @@ const inlineXml = (inline: ParagraphInline, { links }: BodyContext): string =>
 const nonEmptyInlines = (text: string): readonly ParagraphInline[] =>
   text.length === 0 ? [] : [text];
 
+type ParagraphOptions = { styleId?: string; paraId?: string };
+
 const paragraph = (
   text: string | readonly ParagraphInline[],
   context: BodyContext,
-  styleId?: string,
+  { styleId, paraId }: ParagraphOptions = {},
 ): string => {
   const properties = styleId === undefined ? "" : `<w:pPr><w:pStyle w:val="${styleId}"/></w:pPr>`;
   const inlines = typeof text === "string" ? nonEmptyInlines(text) : text;
   const content = inlines
     .map((inline) => (typeof inline === "string" ? inline : inline.text))
     .join("");
+  const id = paraId ?? context.paraId(`${styleId ?? ""}|${content}`);
   return (
-    `<w:p w14:paraId="${context.paraId(`${styleId ?? ""}|${content}`)}">${properties}` +
+    `<w:p w14:paraId="${id}" w14:textId="${id}">${properties}` +
     `${inlines.map((inline) => inlineXml(inline, context)).join("")}</w:p>`
   );
 };
@@ -204,7 +217,10 @@ const itemsXml = (items: readonly BodyItem[], context: BodyContext): string =>
   items
     .map((item) =>
       item.kind === "paragraph"
-        ? paragraph(item.text, context, item.styleId)
+        ? paragraph(item.text, context, {
+            ...(item.styleId === undefined ? {} : { styleId: item.styleId }),
+            ...(item.paraId === undefined ? {} : { paraId: item.paraId }),
+          })
         : table(item, context),
     )
     .join("");

@@ -66,12 +66,12 @@ const numberingXml =
   `<w:num w:numId="2"><w:abstractNumId w:val="${UNTOUCHED_ABSTRACT_ID}"/></w:num>` +
   "</w:numbering>";
 
-const BODY_PARA_ID = "B0000001";
+const BODY_PARA_ID = "30000001";
 const documentXml = `${XML_DECLARATION}
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <w:body>
     <w:p w14:paraId="${BODY_PARA_ID}"><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="${EDITED_NUM_ID}"/></w:numPr></w:pPr><w:r><w:t xml:space="preserve">First item</w:t></w:r></w:p>
-    <w:p w14:paraId="B0000002"><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="2"/></w:numPr></w:pPr><w:r><w:t xml:space="preserve">Bullet item</w:t></w:r></w:p>
+    <w:p w14:paraId="30000002"><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="2"/></w:numPr></w:pPr><w:r><w:t xml:space="preserve">Bullet item</w:t></w:r></w:p>
     <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>
   </w:body>
 </w:document>`;
@@ -350,7 +350,7 @@ describe("numbering-definition write path (full repack)", () => {
 const singleListDocumentXml = (numId: number) => `${XML_DECLARATION}
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <w:body>
-    <w:p w14:paraId="C0000001"><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="${numId}"/></w:numPr></w:pPr><w:r><w:t xml:space="preserve">Item</w:t></w:r></w:p>
+    <w:p w14:paraId="40000001"><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="${numId}"/></w:numPr></w:pPr><w:r><w:t xml:space="preserve">Item</w:t></w:r></w:p>
     <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>
   </w:body>
 </w:document>`;

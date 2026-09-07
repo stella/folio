@@ -111,6 +111,30 @@ const revisionIdsInPackage = async (buffer: ArrayBuffer): Promise<string[]> => {
   return ids;
 };
 
+const PARAGRAPH_ID_ATTRIBUTE =
+  /\b(?:w|w14|w15|w16cid):(?:paraId|paraIdParent|textId)="([0-9A-Fa-f]{8})"/gu;
+
+/**
+ * Every paragraph id and text-revision marker the package carries. They are
+ * `ST_LongHexNumber` with a maximum, so the values are 31-bit, and a package
+ * carrying a larger one is a package a consumer refuses.
+ */
+const paragraphIdsInPackage = async (buffer: ArrayBuffer): Promise<string[]> => {
+  const zip = await JSZip.loadAsync(buffer);
+  const ids: string[] = [];
+  for (const [partPath, file] of Object.entries(zip.files)) {
+    if (file.dir || !partPath.startsWith("word/") || !partPath.endsWith(".xml")) {
+      continue;
+    }
+    // oxlint-disable-next-line no-await-in-loop -- the parts share one id space, so they are read together
+    const xml = await file.async("text");
+    for (const [, id] of xml.matchAll(PARAGRAPH_ID_ATTRIBUTE)) {
+      ids.push(id ?? "");
+    }
+  }
+  return ids;
+};
+
 const authorsOfChanges = async (buffer: ArrayBuffer): Promise<string[]> => {
   const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
   return [...new Set(reviewer.getChanges().map(({ author }) => author))].toSorted();
@@ -499,6 +523,25 @@ describe("compareDocx", () => {
             const { buffer } = await compareOrThrow(base, scripted.value.buffer);
             const ids = await revisionIdsInPackage(buffer);
             expect(new Set(ids).size).toBe(ids.length);
+          }),
+          propertyConfig({ numRuns: 10 }),
+        );
+      },
+      propertyTestTimeout(120_000),
+    );
+
+    test(
+      `every paragraph id in the package fits the 31-bit range (${name})`,
+      async () => {
+        await fc.assert(
+          fc.asyncProperty(editScriptArb(baseBlocks), async (script) => {
+            const scripted = await applyEditScript(base, script);
+            if (scripted.isErr()) {
+              throw scripted.error;
+            }
+            const { buffer } = await compareOrThrow(base, scripted.value.buffer);
+            const ids = await paragraphIdsInPackage(buffer);
+            expect(ids.every((id) => Number.parseInt(id, 16) < 0x8000_0000)).toBe(true);
           }),
           propertyConfig({ numRuns: 10 }),
         );

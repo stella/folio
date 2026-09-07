@@ -257,7 +257,7 @@ async function createMultiSectionFirstHeaderImageFixture(): Promise<ArrayBuffer>
     `${XML_DECLARATION}
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <w:body>
-    <w:p w14:paraId="AAA00001">
+    <w:p w14:paraId="2AA00001">
       <w:r><w:t>First section text</w:t></w:r>
       <w:pPr>
         <w:sectPr>
@@ -266,7 +266,7 @@ async function createMultiSectionFirstHeaderImageFixture(): Promise<ArrayBuffer>
         </w:sectPr>
       </w:pPr>
     </w:p>
-    <w:p w14:paraId="BBB00001"><w:r><w:t>Second section text</w:t></w:r></w:p>
+    <w:p w14:paraId="3BB00001"><w:r><w:t>Second section text</w:t></w:r></w:p>
     <w:sectPr>
       <w:headerReference w:type="default" r:id="rId12"/>
     </w:sectPr>

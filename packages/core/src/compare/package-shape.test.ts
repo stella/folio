@@ -90,6 +90,21 @@ const hyperlinkAncestors = (xml: string): string[][] => {
   return ancestors;
 };
 
+const PARAGRAPH_ID = /\b(?:w|w14|w15|w16cid):(?:paraId|paraIdParent|textId)="([0-9A-Fa-f]{8})"/gu;
+
+/** A paragraph id is `ST_LongHexNumber` with a maximum: the values are 31-bit. */
+const isParagraphIdInRange = (id: string): boolean => Number.parseInt(id, 16) < 0x8000_0000;
+
+const paragraphIdsOf = (xml: string): string[] =>
+  [...xml.matchAll(PARAGRAPH_ID)].map(([, id]) => id ?? "");
+
+/**
+ * Only the ids that identify a paragraph. `w14:textId` is a text-revision
+ * marker written beside one, not identity, and two paragraphs may share it.
+ */
+const paraIdsOf = (xml: string): string[] =>
+  [...xml.matchAll(/\bw(?:14)?:paraId="([0-9A-Fa-f]{8})"/gu)].map(([, id]) => id ?? "");
+
 const LINK = { text: "the guide", href: "https://example.invalid/guide" } as const;
 
 const TABLE: BodyItem = {
@@ -247,5 +262,41 @@ describe("determinism", () => {
     expect(await zip.file("docProps/core.xml")?.async("text")).toContain(
       `<dcterms:modified xsi:type="dcterms:W3CDTF">${OPTIONS.timestamp}</dcterms:modified>`,
     );
+  });
+});
+
+describe("paragraph ids", () => {
+  const OUT_OF_RANGE = ["FFAABBC1", "C0DEC0DE", "80000000"] as const;
+
+  test("brings an input's out-of-range ids into the 31-bit range", async () => {
+    // A producer can write eight hex digits without the type's maximum, and
+    // folio preserves the ids a document arrives with, so an untouched
+    // paragraph would carry the invalid id straight through.
+    const base: BodyItem[] = [
+      { kind: "paragraph", text: "untouched", paraId: OUT_OF_RANGE[0] },
+      { kind: "paragraph", text: "alpha beta gamma", paraId: OUT_OF_RANGE[1] },
+      { kind: "paragraph", text: "trailing", paraId: OUT_OF_RANGE[2] },
+    ];
+    const target: BodyItem[] = [
+      { kind: "paragraph", text: "untouched", paraId: OUT_OF_RANGE[0] },
+      { kind: "paragraph", text: "alpha BETA gamma", paraId: OUT_OF_RANGE[1] },
+      { kind: "paragraph", text: "trailing", paraId: OUT_OF_RANGE[2] },
+    ];
+
+    const xml = await comparedDocumentXml(base, target);
+
+    const ids = paragraphIdsOf(xml);
+    expect(ids.length).toBeGreaterThan(0);
+    expect(ids.every(isParagraphIdInRange)).toBe(true);
+    const paraIds = paraIdsOf(xml);
+    expect(new Set(paraIds).size).toBe(paraIds.length);
+  });
+
+  test("gives an out-of-range id the same replacement on every run", async () => {
+    const pair: [BodyItem[], BodyItem[]] = [
+      [{ kind: "paragraph", text: "alpha beta", paraId: OUT_OF_RANGE[1] }],
+      [{ kind: "paragraph", text: "alpha BETA", paraId: OUT_OF_RANGE[1] }],
+    ];
+    expect(await comparedDocumentXml(...pair)).toBe(await comparedDocumentXml(...pair));
   });
 });

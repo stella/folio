@@ -4,9 +4,9 @@
 
 Emit schema-valid OOXML for compared packages, and date them from the comparison.
 
-Three shapes a compared package could carry were not shapes the content model
-allows, and the round-trip self-check could not see any of them: it reads which
-words a view resolves to, and all three parse back to the right words.
+Four shapes a compared package could carry were not shapes the schema allows,
+and the round-trip self-check could not see any of them: it reads which words a
+view resolves to, and all four parse back to the right words.
 
 - **A revision `w:id` is unique across the package.** One logical change
   serializes as several physical wrappers — a word-level redline cut around the
@@ -26,6 +26,15 @@ words a view resolves to, and all three parse back to the right words.
   inserting linked text now emits
   `<w:hyperlink><w:del><w:r><w:delText>…`, splitting the revision at each link
   boundary, and reading such a package back restores the same model.
+- **A paragraph id is 31-bit.** `w14:paraId`, `w14:textId` and the comment-part
+  ids that reference a paragraph are `ST_LongHexNumber` with a maximum below
+  `0x80000000`. Producers exist that ignore the bound, and folio preserves the
+  ids a document arrives with, so an out-of-range id travelled straight through
+  a save. One mapping, a pure function of the id, now brings such a value into
+  range — applied when a paragraph is parsed and again across every part of the
+  package on the way out, so a paragraph and every reference to it move
+  together and a document's identity does not shift between reading and
+  writing.
 
 `compareDocx` also restamps `dcterms:modified` in `docProps/core.xml` from its
 `timestamp` option. The save wrote the wall clock there, so two runs over

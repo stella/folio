@@ -40,6 +40,7 @@ import type {
 import { normalizeRevisionId, PARAGRAPH_MARK_CHANGE_KINDS } from "@stll/docx-core/model";
 import { panic } from "better-result";
 import { isValidHexId } from "../utils/hexId";
+import { paraIdInRange } from "./paraIdRangeNormalization";
 import {
   parseBookmarkStart as parseBookmarkStartFromModule,
   parseBookmarkEnd as parseBookmarkEndFromModule,
@@ -1892,14 +1893,16 @@ export function parseParagraph(
   // threading, XML serialization) must not trust it as one. Drop it rather
   // than store a malformed value — comment threading already re-derives a
   // fresh id when one is missing (see ensureThreadedCommentParaIds).
+  // An id above the type's maximum is brought into range here rather than at
+  // save, so the id this paragraph answers to is the id the file will carry.
   const paraId = getAttribute(node, "w14", "paraId") ?? getAttribute(node, "w", "paraId");
   if (paraId && isValidHexId(paraId)) {
-    paragraph.paraId = paraId;
+    paragraph.paraId = paraIdInRange(paraId);
   }
 
   const textId = getAttribute(node, "w14", "textId") ?? getAttribute(node, "w", "textId");
   if (textId && isValidHexId(textId)) {
-    paragraph.textId = textId;
+    paragraph.textId = paraIdInRange(textId);
   }
 
   if (!options?.inHeaderFooter && paragraphStartsWithRenderedPageBreak(node)) {

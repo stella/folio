@@ -97,7 +97,8 @@ import {
   WORDPROCESSINGML_NAMESPACE_URIS,
   type XmlElement,
 } from "./xmlParser";
-import { containsRevisionElement, normalizeRevisionIdsInXmlParts } from "./revisionIdNormalization";
+import { normalizeParaIdRangeInXmlParts } from "./paraIdRangeNormalization";
+import { normalizeRevisionIdsInXmlParts } from "./revisionIdNormalization";
 import { assertXmlResourceLimits } from "./xmlResourceLimits";
 import { isAllowedExternalWatermarkImageUrl } from "../watermark";
 
@@ -773,23 +774,26 @@ export type RepackOptions = {
 };
 
 /**
- * Give every revision element in the package its own `w:id`.
+ * Bring the ids a package addresses itself by inside the bounds the format
+ * gives them.
  *
- * One logical revision can serialize as several physical wrappers — a word
- * diff cut around unchanged words, a revision split around a hyperlink — and
- * `w:id` is unique across the package, not within a part. The pass therefore
- * has to see every `word/*.xml` part, including the ones the save left
- * untouched, so it runs at the exits rather than at the serializers.
+ * Both bounds belong to the package rather than to a part, and neither is
+ * something one serializer can see on its own. A revision `w:id` is unique
+ * across the package, and one logical revision serializes as several physical
+ * wrappers — a word diff cut around unchanged words, a revision split around a
+ * hyperlink. A paragraph id is 31-bit, and a paragraph is referenced by id
+ * from parts other than the one it lives in. So the passes run at the exits,
+ * over every `word/*.xml` part including the ones a save left untouched.
  */
-const normalizeRevisionIdsInZip = async (zip: JSZip, compressionLevel: number): Promise<void> => {
+const normalizePackageIdsInZip = async (zip: JSZip, compressionLevel: number): Promise<void> => {
   const xmlParts = new Map<string, string>();
   for (const [path, file] of Object.entries(zip.files)) {
     if (!file.dir && path.startsWith("word/") && path.endsWith(".xml")) {
-      // oxlint-disable-next-line no-await-in-loop -- package parts share one revision-id namespace and must be collected before rewriting
+      // oxlint-disable-next-line no-await-in-loop -- package parts share one id space and must be collected before rewriting
       xmlParts.set(path, await file.async("text"));
     }
   }
-  const normalizedParts = normalizeRevisionIdsInXmlParts(xmlParts);
+  const normalizedParts = normalizeParaIdRangeInXmlParts(normalizeRevisionIdsInXmlParts(xmlParts));
   for (const [path, xml] of normalizedParts) {
     if (xml !== xmlParts.get(path)) {
       zip.file(path, xml, {
@@ -807,7 +811,7 @@ const normalizeRevisionIdsInZip = async (zip: JSZip, compressionLevel: number): 
  */
 const generateDocxZip = async (zip: JSZip, compressionLevel: number): Promise<ArrayBuffer> => {
   await reconcilePackageReferences(zip, compressionLevel);
-  await normalizeRevisionIdsInZip(zip, compressionLevel);
+  await normalizePackageIdsInZip(zip, compressionLevel);
   return zip.generateAsync({
     type: "arraybuffer",
     compression: "DEFLATE",
@@ -1410,12 +1414,11 @@ export async function updateMultipleFiles(
  * Apply file updates to an already-loaded JSZip instance and generate the output.
  * Use this when the zip is already loaded to avoid a redundant decompression pass.
  *
- * This is the selective save's exit, so it owes the package the same revision-id
- * pass {@link generateDocxZip} runs: a save that rewrites only the changed
- * paragraphs still has to see the parts it left alone before it can say an id
- * is free. It runs only when an update carries a revision element, so a save
- * that wrote none keeps the whole point of the selective path — reading no part
- * it did not have to.
+ * This is the selective save's exit, so it owes the package the same id passes
+ * {@link generateDocxZip} runs: a save that rewrites only the changed
+ * paragraphs still has to see the parts it left alone, both to know which
+ * revision ids are free and because an out-of-range paragraph id can sit in a
+ * part it never touched.
  */
 export async function applyUpdatesToZip(
   zip: JSZip,
@@ -1424,18 +1427,14 @@ export async function applyUpdatesToZip(
 ): Promise<ArrayBuffer> {
   const { compressionLevel = 6 } = options;
 
-  let wroteRevisions = false;
   for (const [path, content] of updates) {
     zip.file(path, content, {
       compression: "DEFLATE",
       compressionOptions: { level: compressionLevel },
     });
-    wroteRevisions ||= typeof content === "string" && containsRevisionElement(content);
   }
 
-  if (wroteRevisions) {
-    await normalizeRevisionIdsInZip(zip, compressionLevel);
-  }
+  await normalizePackageIdsInZip(zip, compressionLevel);
 
   return await zip.generateAsync({
     type: "arraybuffer",
