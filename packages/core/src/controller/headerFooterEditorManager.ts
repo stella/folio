@@ -15,7 +15,7 @@ import { clearHeaderFooterVerbatimXml } from "../docx/headerFooterVerbatim";
 import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
 import {
   headerFooterToProseDoc,
-  type HeaderFooterToProseDocOptions,
+  type ToProseDocOptions,
 } from "../prosemirror/conversion/toProseDoc";
 import { ExtensionManager } from "../prosemirror/extensions/ExtensionManager";
 import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/AutoBidiDetectionExtension";
@@ -81,7 +81,7 @@ const buildInitialState = (
   theme: Theme | null | undefined,
   manager: ExtensionManager,
 ): EditorStateT => {
-  const proseDocOptions: HeaderFooterToProseDocOptions = {};
+  const proseDocOptions: ToProseDocOptions = {};
   if (styles) {
     proseDocOptions.styles = styles;
   }

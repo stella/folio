@@ -96,9 +96,6 @@ export type ToProseDocOptions = {
   styles?: StyleDefinitions;
   /** Theme used when converting themed table/cell values in nested content. */
   theme?: Theme | null;
-};
-
-export type HeaderFooterToProseDocOptions = ToProseDocOptions & {
   /** Top-level header block whose detached watermark still owns its paragraph line box. */
   detachedWatermarkHostBlockIndex?: number;
 };
@@ -4109,7 +4106,7 @@ function convertTextBox(
  */
 export function headerFooterToProseDoc(
   content: BlockContent[],
-  options?: HeaderFooterToProseDocOptions,
+  options?: ToProseDocOptions,
 ): PMNode {
   const nodes: PMNode[] = [];
   const styleResolver = options?.styles ? createStyleEngine(options.styles) : null;

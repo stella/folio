@@ -36,7 +36,7 @@ import type {
 import { isFloatingImageRun, isFloatingTextBoxBlock } from "../../layout-engine/types";
 import {
   headerFooterToProseDoc,
-  type HeaderFooterToProseDocOptions,
+  type ToProseDocOptions,
 } from "../../prosemirror/conversion/toProseDoc";
 import type { HeaderFooter, StyleDefinitions, Theme } from "../../types/document";
 import { emuToPixels } from "../../utils/units";
@@ -745,7 +745,7 @@ export function convertHeaderFooterToContent(
     return undefined;
   }
 
-  const proseDocOptions: HeaderFooterToProseDocOptions = {};
+  const proseDocOptions: ToProseDocOptions = {};
   if (options.styles) {
     proseDocOptions.styles = options.styles;
   }

@@ -603,6 +603,7 @@ export function toProseDoc(document: import__stll_docx_core_model.Document, opti
 export type ToProseDocOptions = {
     styles?: import__stll_docx_core_model.StyleDefinitions;
     theme?: import__stll_docx_core_model.Theme | null;
+    detachedWatermarkHostBlockIndex?: number;
 };
 
 // @public
