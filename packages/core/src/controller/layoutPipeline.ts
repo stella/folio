@@ -117,6 +117,18 @@ export type LayoutOutcome = {
   blockLookup?: BlockLookup;
 };
 
+/** Resolve only package-owned picture-watermark bytes for the DOM painter. */
+const resolveWatermarkImageSrc = (
+  document: Document,
+  watermark: Watermark | undefined,
+): string | undefined => {
+  if (watermark?.kind !== "picture" || watermark.imageTargetExternal === true) {
+    return undefined;
+  }
+  const target = watermark.imageTarget;
+  return target === undefined ? undefined : document.package.media?.get(target)?.dataUrl;
+};
+
 // Everything the compute reads from the React adapter's scope. The adapter
 // rebuilds this on every call from current props/refs/handlers, so plain values
 // (not accessors) are safe: there is no stale-closure risk. `THfPMs` keeps the
@@ -1120,18 +1132,17 @@ export function runLayoutPipeline<THfPMs>(
       // per-header-rId map so titlePg / even-odd / per-section
       // header parts each paint their own watermark; the painter
       // falls back to `renderOpts.watermark` for documents that
-      // share one header. Picture watermarks need an image-rId →
-      // asset URL resolver that currently lives outside the
-      // editor; until that's wired in, the painter silently skips
-      // them.
+      // share one header. Picture watermarks use package-owned media
+      // bytes only; linked targets remain unavailable to the painter.
       if (document) {
         const watermark = getDocumentWatermark(document);
         if (watermark) {
           renderOpts.watermark = watermark;
         }
+        let watermarkByHeaderRId: Map<string, Watermark> | undefined;
         const headers = document.package.headers;
         if (headers) {
-          const watermarkByHeaderRId = new Map<string, Watermark>();
+          watermarkByHeaderRId = new Map<string, Watermark>();
           for (const [rId, header] of headers) {
             if (header.watermark) {
               watermarkByHeaderRId.set(rId, header.watermark);
@@ -1140,6 +1151,18 @@ export function runLayoutPipeline<THfPMs>(
           if (watermarkByHeaderRId.size > 0) {
             renderOpts.watermarkByHeaderRId = watermarkByHeaderRId;
           }
+        }
+        // The renderer currently accepts one image source for all pages. Only
+        // provide it when every active watermark resolves to that same source;
+        // otherwise a page could paint another header's picture.
+        const pictureSources = new Set(
+          [watermark, ...(watermarkByHeaderRId?.values() ?? [])]
+            .filter((candidate) => candidate !== undefined)
+            .map((candidate) => resolveWatermarkImageSrc(document, candidate)),
+        );
+        const watermarkImageSrc = pictureSources.size === 1 ? [...pictureSources].at(0) : undefined;
+        if (watermarkImageSrc !== undefined) {
+          renderOpts.watermarkImageSrc = watermarkImageSrc;
         }
       }
       if (pageRenderer === PAGE_RENDERER.displayList) {

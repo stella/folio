@@ -13,7 +13,7 @@
  * its watermark and a page that never had one must not look alike.
  */
 
-import { pxToPt } from "../../layout-engine/measure/measureHelpers";
+import { ptToPx, pxToPt } from "../../layout-engine/measure/measureHelpers";
 import { getFontMetrics } from "../../layout-engine/measure/measureProvider";
 import type { FontStyle } from "../../layout-engine/measure/measureTypes";
 import type { Page } from "../../layout-engine/types";
@@ -34,7 +34,7 @@ const TEXT_DEFAULT_COLOR = "#C0C0C0";
 const TEXT_DEFAULT_OPACITY = 0.5;
 const TEXT_DIAGONAL_DEGREES = -45;
 const PICTURE_NATIVE_SCALE = 1;
-const PICTURE_WASHOUT_OPACITY = 0.4;
+const PICTURE_WASHOUT_OPACITY = 0.18;
 
 const paintTextWatermark = (
   watermark: Extract<Watermark, { kind: "text" }>,
@@ -137,6 +137,25 @@ const containedRect = (
   };
 };
 
+/** The centred VML shape box, when both authored dimensions survived parsing. */
+const authoredPictureRect = (
+  page: Page,
+  widthPt: number | undefined,
+  heightPt: number | undefined,
+): DisplayRect | undefined => {
+  if (widthPt === undefined || heightPt === undefined) {
+    return undefined;
+  }
+  const widthPx = ptToPx(widthPt);
+  const heightPx = ptToPx(heightPt);
+  return {
+    xPx: (page.size.w - widthPx) / 2,
+    yPx: (page.size.h - heightPx) / 2,
+    widthPx,
+    heightPx,
+  };
+};
+
 const paintPictureWatermark = (
   watermark: Extract<Watermark, { kind: "picture" }>,
   page: Page,
@@ -169,12 +188,14 @@ const paintPictureWatermark = (
   const image: DisplayImagePrimitive = {
     kind: "image",
     image: ref,
-    rect: containedRect(
-      page,
-      watermark.scale ?? PICTURE_NATIVE_SCALE,
-      source?.pixelWidth ?? 0,
-      source?.pixelHeight ?? 0,
-    ),
+    rect:
+      authoredPictureRect(page, watermark.widthPt, watermark.heightPt) ??
+      containedRect(
+        page,
+        watermark.scale ?? PICTURE_NATIVE_SCALE,
+        source?.pixelWidth ?? 0,
+        source?.pixelHeight ?? 0,
+      ),
     opacity: watermark.washout === false ? 1 : PICTURE_WASHOUT_OPACITY,
   };
   return [image];

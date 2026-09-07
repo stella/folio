@@ -117,7 +117,25 @@ describe("renderWatermarkLayer", () => {
     expect(img?.src).toBe("data:image/png;base64,iVBORw0KGgo=");
     expect(img?.alt).toBe("");
     expect(img?.getAttribute("aria-hidden")).toBe("true");
-    expect(img?.style["opacity"]).toBe("0.4");
+    expect(img?.style["opacity"]).toBe("0.18");
+  });
+
+  test("uses the authored picture shape box without preserving source aspect ratio", () => {
+    const layer = renderWatermarkLayer(
+      {
+        kind: "picture",
+        imageRId: "rId42",
+        widthPt: 300,
+        heightPt: 120,
+      },
+      pageFixture(),
+      fakeDocument,
+      { imageSrc: "data:image/png;base64,iVBORw0KGgo=" },
+    ) as unknown as FakeElement;
+    const img = layer.firstElementChild;
+    expect(img?.style["width"]).toBe("400px");
+    expect(img?.style["height"]).toBe("160px");
+    expect(img?.style["maxWidth"]).toBeUndefined();
   });
 
   test("returns null for a picture watermark without a resolved src", () => {

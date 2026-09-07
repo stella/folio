@@ -874,6 +874,98 @@ describe("runLayoutPipeline", () => {
     });
   });
 
+  test("paints package-owned picture watermarks", () => {
+    const imageTarget = "word/media/watermark.png";
+    const imageSrc = "data:image/png;base64,iVBORw0KGgo=";
+    const document = createEmptyDocument();
+    document.package.media = new Map([
+      [
+        imageTarget,
+        {
+          path: imageTarget,
+          mimeType: "image/png",
+          data: new ArrayBuffer(0),
+          dataUrl: imageSrc,
+        },
+      ],
+    ]);
+    document.package.headers = new Map([
+      [
+        "rId1",
+        {
+          type: "header",
+          hdrFtrType: "default",
+          content: [],
+          watermark: {
+            kind: "picture",
+            imageRId: "rId1",
+            imageTarget,
+          },
+        },
+      ],
+    ]);
+    const pagesContainer = new FakeElement("div");
+
+    runLayoutPipeline(
+      makeDeps(createLayoutSession(), {
+        document,
+        painter: new LayoutPainter(),
+        pagesContainer: asContainer(pagesContainer),
+      }),
+      makeState(),
+    );
+
+    const watermarkLayer = pagesContainer.querySelector(".layout-page-watermark");
+    expect(watermarkLayer?.children.at(0)).toMatchObject({
+      src: imageSrc,
+      tagName: "img",
+    });
+  });
+
+  test("does not resolve linked picture watermarks through package media", () => {
+    const imageTarget = "https://example.com/watermark.png";
+    const document = createEmptyDocument();
+    document.package.media = new Map([
+      [
+        imageTarget,
+        {
+          path: imageTarget,
+          mimeType: "image/png",
+          data: new ArrayBuffer(0),
+          dataUrl: "data:image/png;base64,iVBORw0KGgo=",
+        },
+      ],
+    ]);
+    document.package.headers = new Map([
+      [
+        "rId1",
+        {
+          type: "header",
+          hdrFtrType: "default",
+          content: [],
+          watermark: {
+            kind: "picture",
+            imageRId: "rId1",
+            imageTarget,
+            imageTargetExternal: true,
+          },
+        },
+      ],
+    ]);
+    const pagesContainer = new FakeElement("div");
+
+    runLayoutPipeline(
+      makeDeps(createLayoutSession(), {
+        document,
+        painter: new LayoutPainter(),
+        pagesContainer: asContainer(pagesContainer),
+      }),
+      makeState(),
+    );
+
+    expect(pagesContainer.querySelector(".layout-page-watermark")).toBeNull();
+  });
+
   test("applies the final section start mode at its preceding implicit boundary", () => {
     const continuous = runLayoutPipeline(
       makeDeps(createLayoutSession(), {
