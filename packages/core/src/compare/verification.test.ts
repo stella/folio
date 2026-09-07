@@ -9,7 +9,7 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { deletedFinalParagraphMarks } from "./verification";
+import { revisedFinalParagraphMarks } from "./verification";
 
 const revision = { id: 1, author: "compare", date: "2024-03-01T00:00:00.000Z" };
 
@@ -26,10 +26,10 @@ const table = (cells: unknown[][]) => ({
   rows: [{ type: "tableRow", cells: cells.map((content) => cell(content)) }],
 });
 
-describe("deletedFinalParagraphMarks", () => {
+describe("revisedFinalParagraphMarks", () => {
   test("a body whose last paragraph mark is deleted is named", () => {
     expect(
-      deletedFinalParagraphMarks({
+      revisedFinalParagraphMarks({
         document: { content: [paragraph("first"), paragraph("last", { kind: "del" })] },
       }),
     ).toEqual([{ container: "package.document.content", paragraphIndex: 1, kind: "del" }]);
@@ -37,7 +37,7 @@ describe("deletedFinalParagraphMarks", () => {
 
   test("a relocation's source break counts, because it resolves the same way", () => {
     expect(
-      deletedFinalParagraphMarks({
+      revisedFinalParagraphMarks({
         document: { content: [paragraph("first"), paragraph("last", { kind: "moveFrom" })] },
       }),
     ).toEqual([{ container: "package.document.content", paragraphIndex: 1, kind: "moveFrom" }]);
@@ -45,7 +45,7 @@ describe("deletedFinalParagraphMarks", () => {
 
   test("a mark deleted on a paragraph that something follows is not a finding", () => {
     expect(
-      deletedFinalParagraphMarks({
+      revisedFinalParagraphMarks({
         document: {
           content: [paragraph("first", { kind: "del" }), paragraph("last")],
         },
@@ -53,16 +53,28 @@ describe("deletedFinalParagraphMarks", () => {
     ).toEqual([]);
   });
 
-  test("an inserted final mark is not a finding: rejecting it removes the paragraph it added", () => {
+  test("an inserted final mark is a finding too: nothing follows it to close over", () => {
+    // The break was ADDED, and rejecting an added break closes the paragraph
+    // it ends back over the NEXT one. A container's last paragraph has none,
+    // so the mark states an edit no reader can carry out in either direction:
+    // it survives accepting everything and rejecting everything alike.
     expect(
-      deletedFinalParagraphMarks({
+      revisedFinalParagraphMarks({
         document: { content: [paragraph("first"), paragraph("added", { kind: "ins" })] },
       }),
-    ).toEqual([]);
+    ).toEqual([{ container: "package.document.content", paragraphIndex: 1, kind: "ins" }]);
+  });
+
+  test("a relocation's destination break counts for the same reason", () => {
+    expect(
+      revisedFinalParagraphMarks({
+        document: { content: [paragraph("first"), paragraph("moved", { kind: "moveTo" })] },
+      }),
+    ).toEqual([{ container: "package.document.content", paragraphIndex: 1, kind: "moveTo" }]);
   });
 
   test("a cell, a header and a note are containers too", () => {
-    const found = deletedFinalParagraphMarks({
+    const found = revisedFinalParagraphMarks({
       document: {
         content: [table([[paragraph("cell", { kind: "del" })]]), paragraph("last")],
       },
@@ -78,7 +90,7 @@ describe("deletedFinalParagraphMarks", () => {
 
   test("a package with nothing on any final mark reports nothing", () => {
     expect(
-      deletedFinalParagraphMarks({
+      revisedFinalParagraphMarks({
         document: { content: [table([[paragraph("cell")]]), paragraph("last")] },
       }),
     ).toEqual([]);

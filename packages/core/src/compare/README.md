@@ -151,24 +151,33 @@ say it went.
   needed: pairing the two ends where the chain does reach the carrier would
   trade a plain "this paragraph was removed" for a removal plus a rewrite that
   reads nothing like the edit.
-- **An inserted mark at a container's end is the mirror case, and stands.** The
-  break was ADDED, so the paragraph it ends was not there before it, and
-  rejecting the addition removes the paragraph and leaves the container ending
-  where it did.
+- **An inserted mark at a container's end rotates the same way.** The break was
+  ADDED, and rejecting an added break closes the paragraph it ends back over
+  the NEXT one — which a container's last paragraph does not have, so the mark
+  survives accepting everything and rejecting everything alike. The break
+  therefore sits where it belongs: between the paragraph the run was appended
+  after and the first appended one. That paragraph's mark is the inserted one,
+  each appended paragraph but the last keeps an inserted mark of its own, and
+  the paragraph the container now ends with takes the free mark, recording the
+  other's properties as `w:pPrChange`. Only which paragraph is left markless
+  changes, so `[A][B ¶ins][C ¶kept]` accepts to `A ¶ B ¶ C` and rejects to
+  `A ¶ B`. The rotation reaches across paragraphs and no further: a table among
+  the appended blocks stops it, and the words the target ends with are written
+  into the base's own last paragraph instead.
 
 The serialize stage refuses a package whose final paragraph mark carries a
-deletion, with `CompareDocxFinalParagraphMarkError` naming the container and
-the paragraph. That one is fatal under `onUnverified: "emit"` too: unlike an
-unproven redline there is no partial result worth handing back, because the
-file does not open. A cell of a row the package is DELETING is the exception
-the format asks for: `w:trPr/w:del` plus a deletion on every mark its cells
-end with is how a removed row is written, and those marks leave with the row.
+revision in either direction, with `CompareDocxFinalParagraphMarkError` naming
+the container and the paragraph. That one is fatal under `onUnverified:
+"emit"` too: unlike an unproven redline there is no partial result worth
+handing back, because the file does not open, or opens carrying a revision no
+reader can clear. A cell of a row the package is DELETING is the exception the
+format asks for: `w:trPr/w:del` plus a deletion on every mark its cells end
+with is how a removed row is written, and those marks leave with the row.
 
-Handing the last new paragraph's mark to the ANCHOR instead reads closer to
-what an editor writes, and is equivalent only while the two stay adjacent. A
-later operation in the same batch — a table inserted between them — separates
-them, and the mark then joins the anchor to the table, which is nothing. The
-rule above needs no adjacency.
+Which paragraph ends a container is settled only when the whole batch is, so
+the rotation runs once over the finished document rather than at each
+insertion: an insertion that looked final is not one after the next operation
+writes a table past it.
 
 A body and every table cell end with a paragraph: a table may never be a
 container's last child. A comparison that adds a table at the end therefore
@@ -240,9 +249,10 @@ Every `detail` is structural — counts, offsets, container kinds — and carrie
 phrase of either document, so it is safe to log, report, or quote.
 
 A parse, apply or serialize failure is still an error under either setting:
-there is no redline to emit. So is a deletion on a container's final paragraph
-mark, for the same reason at the other end — the bytes would be written, and no
-consumer would open them.
+there is no redline to emit. So is any revision on a container's final
+paragraph mark, for the same reason at the other end — the bytes would be
+written, and no consumer would open them, or would open them carrying a
+revision neither accepting nor rejecting everything can clear.
 
 A SKIPPED operation is not automatically one of those. An operation the applier
 had nothing to write for, or could not write in that place — a paragraph inside

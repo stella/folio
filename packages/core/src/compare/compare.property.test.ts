@@ -23,7 +23,7 @@ import type { FolioAIBlock } from "../ai-edits/types";
 import { compareDocx } from "./compare";
 import { applyEditScript, type EditScript, type EditScriptStep } from "./scenario";
 import type { CompareChange, CompareResult } from "./types";
-import { deletedFinalParagraphMarks } from "./verification";
+import { revisedFinalParagraphMarks } from "./verification";
 
 const FIXTURES_DIR = path.join(import.meta.dir, "../docx/__tests__/__fixtures__/corpus");
 
@@ -427,18 +427,22 @@ const trailingRewriteScriptArb = (
   if (tail.length === 0) {
     return null;
   }
+  const lastIndex = tail.at(-1) ?? 0;
   return fc
     .record({
-      removed: fc.integer({ min: 1, max: Math.min(tail.length, 4) }),
+      // Zero removed is a plain append past the container's end, where the
+      // mark that was ADDED has the same nowhere to go.
+      removed: fc.integer({ min: 0, max: Math.min(tail.length, 4) }),
       inserted: fc.array(sentenceArb, { minLength: 0, maxLength: 3 }),
       anchor: fc.constantFrom("first" as const, "last" as const),
     })
+    .filter(({ removed, inserted }) => removed > 0 || inserted.length > 0)
     .map(({ removed, inserted, anchor }) => {
       const run = tail.slice(tail.length - removed);
-      const anchorIndex = anchor === "first" ? run[0] : run.at(-1);
+      const anchorIndex = (anchor === "first" ? run[0] : run.at(-1)) ?? lastIndex;
       const steps: EditScriptStep[] = inserted.map((text) => ({
         type: "insertParagraphAfter" as const,
-        blockIndex: anchorIndex ?? 0,
+        blockIndex: anchorIndex,
         text,
       }));
       for (const blockIndex of run) {
@@ -662,14 +666,17 @@ describe("compareDocx", () => {
 
   for (const { name, buffer: base, blocks: baseBlocks } of BASE_CASES) {
     test(
-      `no container's final paragraph mark is ever deleted (${name})`,
+      `no container's final paragraph mark carries any revision (${name})`,
       async () => {
         // A deleted paragraph mark means "merge this paragraph into the
-        // following one", and the last paragraph of a body, a cell, a header,
-        // a note or a text box has no following one: a consumer reading such a
-        // mark refuses the package rather than opening it. Read back from the
-        // bytes the comparison produced, so it covers what was written and not
-        // only what was planned.
+        // following one" and an inserted one means the break was added, so
+        // rejecting it closes the paragraph back over the next one. The last
+        // paragraph of a body, a cell, a header, a note or a text box has no
+        // following one, so neither states an edit a reader can carry out: one
+        // makes a consumer refuse the package, the other leaves a revision
+        // standing that neither accepting nor rejecting everything can clear.
+        // Read back from the bytes the comparison produced, so it covers what
+        // was written and not only what was planned.
         await fc.assert(
           fc.asyncProperty(roundTripScriptArb(baseBlocks), async (script) => {
             const scripted = await applyEditScript(base, script);
@@ -678,7 +685,7 @@ describe("compareDocx", () => {
             }
             const { buffer } = await compareOrThrow(base, scripted.value.buffer);
             const written = await FolioDocxReviewer.fromBuffer(buffer);
-            expect(deletedFinalParagraphMarks(written.toDocument())).toEqual([]);
+            expect(revisedFinalParagraphMarks(written.toDocument())).toEqual([]);
           }),
           propertyConfig({ numRuns: 12 }),
         );

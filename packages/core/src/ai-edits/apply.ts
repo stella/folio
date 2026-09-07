@@ -10,7 +10,11 @@ import type { ParagraphPropertyChangeAttrs } from "../prosemirror/schema/nodes";
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
 import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { requestDeterministicParaIds } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
-import { paragraphEndsItsContainer } from "../prosemirror/containerFinalParagraph";
+import {
+  addedBreakCarrierBefore,
+  finalParagraphsOf,
+  paragraphEndsItsContainer,
+} from "../prosemirror/containerFinalParagraph";
 import { isZeroWidthAnchor } from "../prosemirror/zeroWidthAnchors";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
 import type { RunPropertyChange } from "../types/document";
@@ -944,6 +948,104 @@ const isBatchableParagraphInsertion = (
   const insertTexts = item.insertTexts ?? [""];
   const isEmptyInsert = insertTexts.length === 1 && insertTexts[0]?.length === 0;
   return !(mode === "tracked-changes" && item.operation.pageBreakBefore === true && isEmptyInsert);
+};
+
+type RotateAddedFinalBreaksOptions = {
+  tr: Transaction;
+  /** Revision ids this batch minted, so marks it did not write are left alone. */
+  batchRevisionIds: ReadonlySet<number>;
+  revisionSeed: number;
+  author: string;
+  date: string;
+  initials: string | undefined;
+};
+
+type RotatedAddedFinalBreaks = {
+  transaction: Transaction;
+  nextRevisionId: number;
+};
+
+/**
+ * Move an ADDED paragraph break off every paragraph its container ends with.
+ *
+ * A container's final mark carries no revision in either direction: nothing
+ * follows it, so "join this paragraph with the one after it" and its mirror
+ * both state an edit that cannot be carried out, and a reader is left with a
+ * revision neither accepting nor rejecting everything can clear.
+ *
+ * Appending at a container's end therefore rotates exactly as removing from it
+ * does. The break that was added sits between the paragraph the run was
+ * appended after and the first appended one, so THAT paragraph's mark is the
+ * inserted one, each appended paragraph but the last keeps an inserted mark of
+ * its own, and the paragraph the container now ends with takes the free mark
+ * the run was appended after. Only which paragraph is left markless changes.
+ *
+ * A paragraph's properties live on its mark, so the paragraph that inherits
+ * the free one records the other's as `w:pPrChange` — what a rejection reads
+ * to put the container's ending back the way it was.
+ *
+ * This runs once over the finished document rather than at each insertion:
+ * which paragraph ends a container is only settled when the batch is, and an
+ * insertion that looked final was undone by the next operation writing a table
+ * after it.
+ */
+const withRotatedAddedFinalBreaks = ({
+  tr,
+  batchRevisionIds,
+  revisionSeed,
+  author,
+  date,
+  initials,
+}: RotateAddedFinalBreaksOptions): RotatedAddedFinalBreaks => {
+  const paragraphTypeName = tr.doc.type.schema.nodes["paragraph"]?.name ?? "paragraph";
+  const rotations = finalParagraphsOf(tr.doc, paragraphTypeName).filter(({ node }) => {
+    const mark: unknown = node.attrs["pPrMark"];
+    if (typeof mark !== "object" || mark === null || !("kind" in mark)) {
+      return false;
+    }
+    if (mark.kind !== "ins" && mark.kind !== "moveTo") {
+      return false;
+    }
+    const info: unknown = "info" in mark ? mark.info : undefined;
+    const revisionId =
+      typeof info === "object" && info !== null && "id" in info ? info.id : undefined;
+    return typeof revisionId === "number" && batchRevisionIds.has(revisionId);
+  });
+
+  let next = tr;
+  let nextRevisionId = revisionSeed;
+  // Attribute writes do not move anything, so the positions stay valid.
+  for (const { position: finalPosition, node: final } of rotations) {
+    const carrier = addedBreakCarrierBefore(next.doc.resolve(finalPosition), final.type.name);
+    if (!carrier) {
+      // Nothing to hand the break to. Writing it would be worse than losing
+      // it: the redline would carry a revision no reader can resolve.
+      next = next.setNodeAttribute(finalPosition, "pPrMark", null);
+      continue;
+    }
+    next = next.setNodeAttribute(carrier.position, "pPrMark", final.attrs["pPrMark"]);
+    const previousFormatting = paragraphPropertiesSnapshot(carrier.node);
+    // Both snapshots are built by the same fixed walk over the in-scope keys,
+    // so comparing them serialized compares them key for key.
+    if (JSON.stringify(previousFormatting) === JSON.stringify(paragraphPropertiesSnapshot(final))) {
+      next = next.setNodeAttribute(finalPosition, "pPrMark", null);
+      continue;
+    }
+    const existing = expectParagraphAttrs(final)._propertyChanges;
+    next = next.setNodeMarkup(finalPosition, undefined, {
+      ...final.attrs,
+      pPrMark: null,
+      _propertyChanges: [
+        ...(Array.isArray(existing) ? existing : []),
+        {
+          type: "paragraphPropertyChange",
+          info: { id: nextRevisionId++, author, date, ...(initials ? { initials } : {}) },
+          previousFormatting,
+        } satisfies ParagraphPropertyChangeAttrs,
+      ],
+    });
+  }
+  return { transaction: next, nextRevisionId };
 };
 
 const buildInsertedParagraphs = ({
@@ -2153,6 +2255,16 @@ const applyFolioAIEditOperationsInternal = ({
   if (tr.docChanged) {
     const batchRevisionIds = new Set(applied.flatMap(({ revisionIds }) => revisionIds ?? []));
     tr = withoutRevisionsOnZeroWidthAnchors(tr, batchRevisionIds);
+    const rotated = withRotatedAddedFinalBreaks({
+      tr,
+      batchRevisionIds,
+      revisionSeed,
+      author,
+      date,
+      initials,
+    });
+    tr = rotated.transaction;
+    revisionSeed = rotated.nextRevisionId;
     if (revisionStamp) {
       // Paragraphs this batch creates get their `w14:paraId` from the
       // allocator plugin, which is random by default. A stamped batch has

@@ -18,7 +18,7 @@ import type {
   CompareVerificationCause,
   CompareVerificationFailure,
   CompareVerificationInvariant,
-  FinalParagraphMarkDeletion,
+  FinalParagraphMarkRevision,
 } from "./verification";
 
 /** Everything {@link compareDocx} needs; nothing it reads from the ambient clock. */
@@ -320,20 +320,22 @@ export class CompareDocxSerializeError extends TaggedError("CompareDocxSerialize
 }> {}
 
 /**
- * A container's final paragraph mark carries a deletion, so the package would
- * not open.
+ * A container's final paragraph mark carries a revision, so the package would
+ * not open, or would open carrying one no reader can resolve.
  *
  * A deleted paragraph mark means "merge this paragraph into the following
- * one", and a container's last paragraph has no following one. Checked before
- * the package is written, and fatal under either `onUnverified` setting: there
- * is no redline to emit when a consumer refuses the file.
+ * one", an inserted one means the break was added and rejecting it closes the
+ * paragraph back over the next one, and a container's last paragraph has no
+ * following one either way. Checked before the package is written, and fatal
+ * under either `onUnverified` setting: there is no redline to emit when a
+ * consumer refuses the file.
  */
 export class CompareDocxFinalParagraphMarkError extends TaggedError(
   "CompareDocxFinalParagraphMarkError",
 )<{
   message: string;
   /** Every container that carries one, each named structurally. */
-  deletions: readonly FinalParagraphMarkDeletion[];
+  revisions: readonly FinalParagraphMarkRevision[];
 }> {}
 
 export type CompareDocxError =

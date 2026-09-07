@@ -13,6 +13,8 @@
  * report, or quote it in a review.
  */
 
+import { PARAGRAPH_MARK_CHANGE_KINDS, type ParagraphMarkChangeKind } from "@stll/docx-core/model";
+
 import type { FolioDocumentStoryHandle } from "../ai-edits/headless";
 import type { FolioAIBlock, FolioAIBlockPreviewRun } from "../ai-edits/types";
 
@@ -316,25 +318,22 @@ export const classifyProjectionMismatch = ({
 };
 
 /**
- * A container whose last paragraph carries a deletion on its mark.
+ * A container whose last paragraph carries a revision on its mark.
  *
  * Structural facts only — a path through the package model and an index — so
  * the finding is safe to log, report or quote.
  */
-export type FinalParagraphMarkDeletion = {
+export type FinalParagraphMarkRevision = {
   /** Where the container sits in the package model, e.g. `package.document.content`. */
   container: string;
   /** The paragraph's index among its container's children. */
   paragraphIndex: number;
-  /** The mark kind found there: `del`, or `moveFrom` for a relocation's source. */
-  kind: "del" | "moveFrom";
+  /** The mark kind found there, `moveFrom` / `moveTo` for a relocation's ends. */
+  kind: ParagraphMarkChangeKind;
 };
 
-/** The mark kinds that resolve by joining the paragraph with the one after it. */
-const JOINS_FORWARD_ON_ACCEPT = Object.freeze(["del", "moveFrom"] as const);
-
-const joinsForwardOnAccept = (value: unknown): value is FinalParagraphMarkDeletion["kind"] =>
-  JOINS_FORWARD_ON_ACCEPT.some((kind) => kind === value);
+const isAParagraphMarkChangeKind = (value: unknown): value is ParagraphMarkChangeKind =>
+  PARAGRAPH_MARK_CHANGE_KINDS.some((kind) => kind === value);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
@@ -355,28 +354,30 @@ const isADeletedTableRow = (value: Record<string, unknown>): boolean => {
 };
 
 /**
- * Every container in a package whose final paragraph mark carries a deletion.
+ * Every container in a package whose final paragraph mark carries a revision.
  *
- * A deleted paragraph mark says "join this paragraph with the one after it".
- * The last paragraph of a body, a table cell, a header or footer, a note or a
- * text box has no paragraph after it, so the mark states an edit that cannot
- * be carried out, and a consumer refuses the package rather than opening it.
- * The exception is a cell of a row the package is DELETING: there the mark
- * leaves with its row.
+ * A deleted paragraph mark says "join this paragraph with the one after it",
+ * and an inserted one says that break was ADDED, so rejecting it closes the
+ * paragraph back over the next one. The last paragraph of a body, a table
+ * cell, a header or footer, a note or a text box has no paragraph after it, so
+ * neither direction states an edit that can be carried out: a consumer refuses
+ * the package, or opens it and leaves a revision standing that neither
+ * accepting nor rejecting everything can clear. The exception is a cell of a
+ * row the package is DELETING: there the mark leaves with its row.
  *
  * The walk is over the package model rather than over a list of the containers
  * known today: a container is any sequence that ends in a paragraph, so a part
  * the model grows later is covered the day it arrives instead of the day
  * someone remembers this function.
  */
-export const deletedFinalParagraphMarks = (packageModel: unknown): FinalParagraphMarkDeletion[] => {
-  const found: FinalParagraphMarkDeletion[] = [];
+export const revisedFinalParagraphMarks = (packageModel: unknown): FinalParagraphMarkRevision[] => {
+  const found: FinalParagraphMarkRevision[] = [];
   const visit = (value: unknown, path: string, insideADeletedRow: boolean): void => {
     if (Array.isArray(value)) {
       const last: unknown = value.at(-1);
       const mark = isParagraph(last) ? last["pPrMark"] : undefined;
       const kind = isRecord(mark) ? mark["kind"] : undefined;
-      if (joinsForwardOnAccept(kind) && !insideADeletedRow) {
+      if (isAParagraphMarkChangeKind(kind) && !insideADeletedRow) {
         found.push({ container: path, paragraphIndex: value.length - 1, kind });
       }
       for (const [index, item] of value.entries()) {

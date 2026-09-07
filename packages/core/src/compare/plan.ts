@@ -659,6 +659,41 @@ const terminalCarrierIsStranded = (
   return true;
 };
 
+/**
+ * Whether an alignment ADDED the story's last paragraph with something other
+ * than paragraphs between it and the base's.
+ *
+ * An inserted mark at a container's end has the same problem its deletion
+ * does: nothing follows it, so rejecting the addition cannot close the break
+ * back over the next paragraph. The applier rotates instead — the paragraph
+ * the run was appended after takes the inserted mark, and the last one takes
+ * the free mark — and that rotation reaches only across paragraphs. A table
+ * among them stops it, and the words the target ends with have to be written
+ * into the base's own last paragraph instead.
+ */
+const addedTerminalCarrierIsStranded = (
+  steps: readonly CompareStep[],
+  baseBlocks: readonly FolioAIBlock[],
+  targetBlocks: readonly FolioAIBlock[],
+): boolean => {
+  const baseLast = baseBlocks.at(-1);
+  const targetLast = targetBlocks.at(-1);
+  if (baseLast === undefined || targetLast === undefined) {
+    return false;
+  }
+  if (!steps.some((step) => step.type === "targetOnly" && step.block.id === targetLast.id)) {
+    return false;
+  }
+  const baseLastStep = steps.findIndex(
+    (step) =>
+      (step.type === "pair" && step.baseBlock.id === baseLast.id) ||
+      (step.type === "baseOnly" && step.block.id === baseLast.id),
+  );
+  return (
+    baseLastStep === -1 || steps.slice(baseLastStep + 1).some((step) => step.type !== "targetOnly")
+  );
+};
+
 const buildSteps = ({ baseSnapshot, targetSnapshot }: BuildStepsOptions): CompareStep[] => {
   const baseBlocks = baseSnapshot.blocks;
   const targetBlocks = targetSnapshot.blocks;
@@ -681,7 +716,9 @@ const buildSteps = ({ baseSnapshot, targetSnapshot }: BuildStepsOptions): Compar
   // is what says whether it is needed: pairing the two last paragraphs where
   // the ordinary alignment reaches the carrier would trade a plain "this
   // paragraph was removed" for a removal plus a rewrite that reads nothing
-  // like the edit.
+  // like the edit. Both ends can need it, because the mark that ends a
+  // container carries no revision in either direction.
+  //
   // The carrier can only take the target's last paragraph when that paragraph
   // is its opposite number: a story ends with a body paragraph, and a target
   // whose last block sits in a table cell has nothing to hand it.
@@ -689,7 +726,10 @@ const buildSteps = ({ baseSnapshot, targetSnapshot }: BuildStepsOptions): Compar
     carrierPair === null ||
     bothStoriesEndBlank ||
     !shareAContainer(carrierPair.baseBlock, carrierPair.targetBlock) ||
-    !terminalCarrierIsStranded(steps, baseBlocks)
+    !(
+      terminalCarrierIsStranded(steps, baseBlocks) ||
+      addedTerminalCarrierIsStranded(steps, baseBlocks, targetBlocks)
+    )
   ) {
     return steps;
   }
