@@ -114,8 +114,8 @@ export const classifyRefusal = (error: CompareDocxError): Refusal => {
     case "CompareDocxFinalParagraphMarkError":
       return {
         bucket: "final-paragraph-mark",
-        shape: `${String(error.deletions.length)} container(s), first ${
-          error.deletions.at(0)?.container ?? "unknown"
+        shape: `${String(error.revisions.length)} container(s), first ${
+          error.revisions.at(0)?.container ?? "unknown"
         }`,
       };
     case "CompareDocxRoundTripError":
