@@ -6,8 +6,13 @@ import type { BlockContent } from "../../types/document";
 const DETACHED_WATERMARK_HOST = Symbol("detachedWatermarkHost");
 const DETACHED_WATERMARK_HOST_ATTR = "_detachedWatermarkHost";
 
-export const markDetachedWatermarkHost = (block: BlockContent): BlockContent =>
-  block.type === "paragraph" ? { ...block, [DETACHED_WATERMARK_HOST]: true } : block;
+export const markDetachedWatermarkHost = (block: BlockContent): BlockContent => {
+  if (block.type !== "paragraph") {
+    return block;
+  }
+  const markedBlock = { ...block, [DETACHED_WATERMARK_HOST]: true };
+  return markedBlock;
+};
 
 export const isDetachedWatermarkHost = (block: BlockContent): boolean =>
   Reflect.get(block, DETACHED_WATERMARK_HOST) === true;
