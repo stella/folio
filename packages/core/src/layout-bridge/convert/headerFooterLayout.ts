@@ -34,10 +34,8 @@ import type {
   TableMeasure,
 } from "../../layout-engine/types";
 import { isFloatingImageRun, isFloatingTextBoxBlock } from "../../layout-engine/types";
-import {
-  headerFooterToProseDoc,
-  type ToProseDocOptions,
-} from "../../prosemirror/conversion/toProseDoc";
+import { headerFooterToProseDoc } from "../../prosemirror/conversion/toProseDoc";
+import { headerFooterToProseDocWithDetachedWatermarkHost } from "../../prosemirror/conversion/watermarkHost";
 import type { HeaderFooter, StyleDefinitions, Theme } from "../../types/document";
 import { emuToPixels } from "../../utils/units";
 import type { MeasureBlocksFn } from "./footnoteLayout";
@@ -566,7 +564,7 @@ export function calculateHeaderFooterMarginPushBounds(
         block.kind === "paragraph" &&
         isPaintlessParagraph(block) &&
         !hasAuthoredVisualContent(block) &&
-        block.attrs?.detachedWatermarkHost !== true &&
+        block.attrs?.suppressEmptyParagraphHeight !== false &&
         !preservesInheritedSpacing(block),
     );
   if (isPaintlessStory) {
@@ -745,17 +743,21 @@ export function convertHeaderFooterToContent(
     return undefined;
   }
 
-  const proseDocOptions: ToProseDocOptions = {};
+  const proseDocOptions: { styles?: StyleDefinitions; theme?: Theme | null } = {};
   if (options.styles) {
     proseDocOptions.styles = options.styles;
   }
   if (options.theme !== undefined) {
     proseDocOptions.theme = options.theme;
   }
-  if (headerFooter.watermarkBlockIndex !== undefined) {
-    proseDocOptions.detachedWatermarkHostBlockIndex = headerFooter.watermarkBlockIndex;
-  }
-  const pmDoc = headerFooterToProseDoc(headerFooter.content, proseDocOptions);
+  const pmDoc =
+    headerFooter.watermarkBlockIndex === undefined
+      ? headerFooterToProseDoc(headerFooter.content, proseDocOptions)
+      : headerFooterToProseDocWithDetachedWatermarkHost({
+          content: headerFooter.content,
+          hostBlockIndex: headerFooter.watermarkBlockIndex,
+          options: proseDocOptions,
+        });
   const flowOptions: ToFlowBlocksOptions = {};
   if (options.theme !== undefined) {
     flowOptions.theme = options.theme;

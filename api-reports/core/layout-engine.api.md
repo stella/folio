@@ -643,7 +643,6 @@ export type ParagraphAttrs = {
     shading?: string;
     tabs?: TabStop[];
     suppressEmptyParagraphHeight?: boolean;
-    detachedWatermarkHost?: boolean;
     reserveEmptyOutlineHeight?: boolean;
     numPr?: ListNumPr;
     listMarker?: string;

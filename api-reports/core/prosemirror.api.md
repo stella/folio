@@ -339,7 +339,6 @@ export type ParagraphAttrs = {
     pageBreakBefore?: boolean;
     renderedPageBreakBefore?: boolean;
     _pageBreakCarrier?: boolean;
-    _detachedWatermarkHost?: boolean;
     _trailingPageBreak?: boolean;
     keepNext?: boolean;
     keepLines?: boolean;
@@ -603,7 +602,6 @@ export function toProseDoc(document: import__stll_docx_core_model.Document, opti
 export type ToProseDocOptions = {
     styles?: import__stll_docx_core_model.StyleDefinitions;
     theme?: import__stll_docx_core_model.Theme | null;
-    detachedWatermarkHostBlockIndex?: number;
 };
 
 // @public

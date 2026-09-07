@@ -1944,8 +1944,8 @@ function convertParagraph(
   if (isFullyHiddenParagraph) {
     attrs.suppressEmptyParagraphHeight = true;
   }
-  if (pmAttrs._detachedWatermarkHost === true) {
-    attrs.detachedWatermarkHost = true;
+  if (runs.length === 0 && node.attrs["_detachedWatermarkHost"] === true) {
+    attrs.suppressEmptyParagraphHeight = false;
   }
   const hasVisibleParagraphPayload =
     (attrs.listMarker !== undefined && !attrs.listMarkerHidden) ||

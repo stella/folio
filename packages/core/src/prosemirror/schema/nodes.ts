@@ -197,8 +197,6 @@ export type ParagraphAttrs = {
   renderedPageBreakBefore?: boolean;
   /** Internal import marker for a paragraph whose only run content is a hard page break. */
   _pageBreakCarrier?: boolean;
-  /** PM-only marker for an empty paragraph whose detached watermark still owns a line box. */
-  _detachedWatermarkHost?: boolean;
   /** Internal import marker for a hard page break after this paragraph's text. */
   _trailingPageBreak?: boolean;
   keepNext?: boolean;

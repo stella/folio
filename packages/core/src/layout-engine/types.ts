@@ -519,8 +519,6 @@ export type ParagraphAttrs = {
   tabs?: TabStop[]; // Custom tab stops
   /** Render structural empty paragraphs as zero-height anchors. */
   suppressEmptyParagraphHeight?: boolean;
-  /** Empty header paragraph whose detached watermark still owns this line box. */
-  detachedWatermarkHost?: boolean;
   /** Reserve the reference extra line advance for a story-leading empty level-0 outline paragraph. */
   reserveEmptyOutlineHeight?: boolean;
   // List properties

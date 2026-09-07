@@ -327,12 +327,6 @@ export const readParagraphAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Par
   );
   optionalBoolean(attrs, "_trailingPageBreak", "paragraph.attrs._trailingPageBreak", issues);
   optionalBoolean(attrs, "_pageBreakCarrier", "paragraph.attrs._pageBreakCarrier", issues);
-  optionalBoolean(
-    attrs,
-    "_detachedWatermarkHost",
-    "paragraph.attrs._detachedWatermarkHost",
-    issues,
-  );
   optionalBoolean(attrs, "runInWithNext", "paragraph.attrs.runInWithNext", issues);
   optionalBoolean(attrs, "keepNext", "paragraph.attrs.keepNext", issues);
   optionalBoolean(attrs, "keepLines", "paragraph.attrs.keepLines", issues);

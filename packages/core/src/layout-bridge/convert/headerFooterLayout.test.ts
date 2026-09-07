@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import type { FlowBlock, Measure, ParagraphBlock, TableBlock } from "../../layout-engine/types";
 import { headerFooterToProseDoc } from "../../prosemirror/conversion/toProseDoc";
+import { headerFooterToProseDocWithDetachedWatermarkHost } from "../../prosemirror/conversion/watermarkHost";
 import { schema } from "../../prosemirror/schema";
 import type { HeaderFooter } from "../../types/document";
 import type { HeaderFooterMetrics } from "./headerFooterLayout";
@@ -1054,8 +1055,9 @@ describe("convertHeaderFooterPmDocToContent", () => {
     const fromContent = convertHeaderFooterToContent(hf, 456, pmMetrics, {
       measureBlocks,
     });
-    const pmDoc = headerFooterToProseDoc(hf.content, {
-      detachedWatermarkHostBlockIndex: hf.watermarkBlockIndex,
+    const pmDoc = headerFooterToProseDocWithDetachedWatermarkHost({
+      content: hf.content,
+      hostBlockIndex: 0,
     });
     const fromPmDoc = convertHeaderFooterPmDocToContent(pmDoc, 456, pmMetrics, {
       measureBlocks,
@@ -1067,10 +1069,23 @@ describe("convertHeaderFooterPmDocToContent", () => {
 
     expect(fromContent?.blocks.at(0)).toMatchObject({
       kind: "paragraph",
-      attrs: { detachedWatermarkHost: true },
+      attrs: { suppressEmptyParagraphHeight: false },
     });
     expect(fromContent?.marginPushBottom).toBe(12);
     expect(fromPmDoc?.marginPushBottom).toBe(12);
     expect(bare?.marginPushBottom).toBe(0);
+  });
+
+  test("marks the indexed watermark host when another paragraph precedes it", () => {
+    const pmDoc = headerFooterToProseDocWithDetachedWatermarkHost({
+      content: [
+        { type: "paragraph", content: [] },
+        { type: "paragraph", content: [] },
+      ],
+      hostBlockIndex: 1,
+    });
+
+    expect(pmDoc.child(0).attrs["_detachedWatermarkHost"]).toBeNull();
+    expect(pmDoc.child(1).attrs["_detachedWatermarkHost"]).toBe(true);
   });
 });

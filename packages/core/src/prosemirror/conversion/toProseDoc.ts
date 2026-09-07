@@ -96,8 +96,6 @@ export type ToProseDocOptions = {
   styles?: StyleDefinitions;
   /** Theme used when converting themed table/cell values in nested content. */
   theme?: Theme | null;
-  /** Top-level header block whose detached watermark still owns its paragraph line box. */
-  detachedWatermarkHostBlockIndex?: number;
 };
 
 type ResolvedRunFormatting = {
@@ -4108,6 +4106,21 @@ export function headerFooterToProseDoc(
   content: BlockContent[],
   options?: ToProseDocOptions,
 ): PMNode {
+  return headerFooterToProseDocInternal({ content, options });
+}
+
+type HeaderFooterToProseDocInternalOptions = {
+  content: BlockContent[];
+  options?: ToProseDocOptions;
+  detachedWatermarkHostBlockIndex?: number;
+};
+
+/** @internal Conversion entry point for header/footer-only ProseMirror metadata. */
+export function headerFooterToProseDocInternal({
+  content,
+  options,
+  detachedWatermarkHostBlockIndex,
+}: HeaderFooterToProseDocInternalOptions): PMNode {
   const nodes: PMNode[] = [];
   const styleResolver = options?.styles ? createStyleEngine(options.styles) : null;
   const theme = options?.theme ?? null;
@@ -4121,26 +4134,7 @@ export function headerFooterToProseDoc(
     pairedBookmarkIds,
   };
 
-  const markDetachedWatermarkHost = (paragraphNodes: PMNode[]): PMNode[] => {
-    const hostIndex = paragraphNodes.findIndex(({ type }) => type.name === "paragraph");
-    if (hostIndex < 0) {
-      return paragraphNodes;
-    }
-    return paragraphNodes.map((node, index) =>
-      index === hostIndex
-        ? node.type.create(
-            { ...node.attrs, _detachedWatermarkHost: true },
-            node.content,
-            node.marks,
-          )
-        : node,
-    );
-  };
-
-  const convertBlocks = (
-    blocks: BlockContent[],
-    detachedWatermarkHostBlockIndex?: number,
-  ): PMNode[] => {
+  const convertBlocks = (blocks: BlockContent[], hostBlockIndex?: number): PMNode[] => {
     const out: PMNode[] = [];
     for (const [blockIndex, block] of blocks.entries()) {
       if (block.type === "paragraph") {
@@ -4148,11 +4142,20 @@ export function headerFooterToProseDoc(
           textBoxGroupId: nextTextBoxGroupId(),
           context: conversionContext,
         });
-        out.push(
-          ...(blockIndex === detachedWatermarkHostBlockIndex
-            ? markDetachedWatermarkHost(paragraphNodes)
-            : paragraphNodes),
-        );
+        if (blockIndex === hostBlockIndex) {
+          const paragraphNodeIndex = paragraphNodes.findIndex(
+            ({ type }) => type.name === "paragraph",
+          );
+          const paragraphNode = paragraphNodes[paragraphNodeIndex];
+          if (paragraphNode) {
+            paragraphNodes[paragraphNodeIndex] = paragraphNode.type.create(
+              { ...paragraphNode.attrs, _detachedWatermarkHost: true },
+              paragraphNode.content,
+              paragraphNode.marks,
+            );
+          }
+        }
+        out.push(...paragraphNodes);
       } else if (block.type === "table") {
         out.push(convertTable(block, styleResolver, conversionContext));
       } else {
@@ -4162,7 +4165,7 @@ export function headerFooterToProseDoc(
     return out;
   };
 
-  nodes.push(...convertBlocks(content, options?.detachedWatermarkHostBlockIndex));
+  nodes.push(...convertBlocks(content, detachedWatermarkHostBlockIndex));
   // Caret affordance after a final isolating blockSdt is handled by
   // prosemirror-gapcursor at runtime; we no longer pad the converted doc
   // with a synthetic trailing paragraph because that paragraph survives
