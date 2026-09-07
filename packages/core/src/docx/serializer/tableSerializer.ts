@@ -759,14 +759,15 @@ function serializeTableCellPropertyChange(change: TableCellPropertyChange): stri
  * narrower than a row leaves cells with no column to sit in.
  */
 function gridColumnCount(table: Table): number {
-  return table.rows.reduce(
-    (widest, row) =>
-      Math.max(
-        widest,
-        row.cells.reduce((count, cell) => count + (cell.formatting?.gridSpan ?? 1), 0),
-      ),
-    0,
-  );
+  let widest = 0;
+  for (const row of table.rows) {
+    let columns = 0;
+    for (const cell of row.cells) {
+      columns += cell.formatting?.gridSpan ?? 1;
+    }
+    widest = Math.max(widest, columns);
+  }
+  return widest;
 }
 
 /**

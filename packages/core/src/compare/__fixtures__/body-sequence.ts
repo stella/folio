@@ -108,13 +108,17 @@ const inlineXml = (inline: ParagraphInline, { links }: BodyContext): string =>
  * holds for a blank line or an empty cell. It is not the same thing as a
  * paragraph whose run carries an empty string, and both shapes occur.
  */
+/** A blank line carries no run at all, so an empty string is no inline. */
+const nonEmptyInlines = (text: string): readonly ParagraphInline[] =>
+  text.length === 0 ? [] : [text];
+
 const paragraph = (
   text: string | readonly ParagraphInline[],
   context: BodyContext,
   styleId?: string,
 ): string => {
   const properties = styleId === undefined ? "" : `<w:pPr><w:pStyle w:val="${styleId}"/></w:pPr>`;
-  const inlines = typeof text === "string" ? (text.length === 0 ? [] : [text]) : text;
+  const inlines = typeof text === "string" ? nonEmptyInlines(text) : text;
   const content = inlines
     .map((inline) => (typeof inline === "string" ? inline : inline.text))
     .join("");
@@ -169,7 +173,10 @@ const cellXml = (content: CellContent, context: BodyContext): string =>
 
 /** `w:tbl` is `w:tblPr, w:tblGrid, rows`: a fixture without the grid is not one. */
 const tableGrid = (rows: readonly (readonly CellContent[])[]): string => {
-  const columns = rows.reduce((widest, cells) => Math.max(widest, cells.length), 0);
+  let columns = 0;
+  for (const cells of rows) {
+    columns = Math.max(columns, cells.length);
+  }
   return `<w:tblGrid>${`<w:gridCol w:w="2000"/>`.repeat(columns)}</w:tblGrid>`;
 };
 

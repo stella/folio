@@ -97,7 +97,7 @@ import {
   WORDPROCESSINGML_NAMESPACE_URIS,
   type XmlElement,
 } from "./xmlParser";
-import { normalizeRevisionIdsInXmlParts } from "./revisionIdNormalization";
+import { containsRevisionElement, normalizeRevisionIdsInXmlParts } from "./revisionIdNormalization";
 import { assertXmlResourceLimits } from "./xmlResourceLimits";
 import { isAllowedExternalWatermarkImageUrl } from "../watermark";
 
@@ -1413,7 +1413,9 @@ export async function updateMultipleFiles(
  * This is the selective save's exit, so it owes the package the same revision-id
  * pass {@link generateDocxZip} runs: a save that rewrites only the changed
  * paragraphs still has to see the parts it left alone before it can say an id
- * is free.
+ * is free. It runs only when an update carries a revision element, so a save
+ * that wrote none keeps the whole point of the selective path — reading no part
+ * it did not have to.
  */
 export async function applyUpdatesToZip(
   zip: JSZip,
@@ -1422,14 +1424,18 @@ export async function applyUpdatesToZip(
 ): Promise<ArrayBuffer> {
   const { compressionLevel = 6 } = options;
 
+  let wroteRevisions = false;
   for (const [path, content] of updates) {
     zip.file(path, content, {
       compression: "DEFLATE",
       compressionOptions: { level: compressionLevel },
     });
+    wroteRevisions ||= typeof content === "string" && containsRevisionElement(content);
   }
 
-  await normalizeRevisionIdsInZip(zip, compressionLevel);
+  if (wroteRevisions) {
+    await normalizeRevisionIdsInZip(zip, compressionLevel);
+  }
 
   return await zip.generateAsync({
     type: "arraybuffer",

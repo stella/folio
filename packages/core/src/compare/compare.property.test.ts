@@ -98,8 +98,8 @@ const REVISION_ELEMENT_ID =
 const revisionIdsInPackage = async (buffer: ArrayBuffer): Promise<string[]> => {
   const zip = await JSZip.loadAsync(buffer);
   const ids: string[] = [];
-  for (const [path, file] of Object.entries(zip.files)) {
-    if (file.dir || !path.startsWith("word/") || !path.endsWith(".xml")) {
+  for (const [partPath, file] of Object.entries(zip.files)) {
+    if (file.dir || !partPath.startsWith("word/") || !partPath.endsWith(".xml")) {
       continue;
     }
     // oxlint-disable-next-line no-await-in-loop -- the parts share one id space, so they are read together
