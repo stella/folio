@@ -4124,12 +4124,12 @@ export function headerFooterToProseDoc(
     pairedBookmarkIds,
   };
 
-  const markDetachedWatermarkHost = (nodes: PMNode[]): PMNode[] => {
-    const hostIndex = nodes.findIndex(({ type }) => type.name === "paragraph");
+  const markDetachedWatermarkHost = (paragraphNodes: PMNode[]): PMNode[] => {
+    const hostIndex = paragraphNodes.findIndex(({ type }) => type.name === "paragraph");
     if (hostIndex < 0) {
-      return nodes;
+      return paragraphNodes;
     }
-    return nodes.map((node, index) =>
+    return paragraphNodes.map((node, index) =>
       index === hostIndex
         ? node.type.create({ ...node.attrs, _detachedWatermarkHost: true }, node.content, node.marks)
         : node,

@@ -563,10 +563,11 @@ export function calculateHeaderFooterMarginPushBounds(
     blocks.length > 0 &&
     blocks.every(
       (block) =>
+        block.kind === "paragraph" &&
         isPaintlessParagraph(block) &&
         !hasAuthoredVisualContent(block) &&
         block.attrs?.detachedWatermarkHost !== true &&
-        !(block.kind === "paragraph" && preservesInheritedSpacing(block)),
+        !preservesInheritedSpacing(block),
     );
   if (isPaintlessStory) {
     return { top: 0, bottom: 0 };
