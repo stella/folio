@@ -4131,7 +4131,11 @@ export function headerFooterToProseDoc(
     }
     return paragraphNodes.map((node, index) =>
       index === hostIndex
-        ? node.type.create({ ...node.attrs, _detachedWatermarkHost: true }, node.content, node.marks)
+        ? node.type.create(
+            { ...node.attrs, _detachedWatermarkHost: true },
+            node.content,
+            node.marks,
+          )
         : node,
     );
   };
