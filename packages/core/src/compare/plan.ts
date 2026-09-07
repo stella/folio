@@ -640,7 +640,9 @@ const terminalCarrierIsStranded = (
   if (carrier === undefined) {
     return false;
   }
-  const removed = new Set(steps.flatMap((step) => (step.type === "baseOnly" ? [step.block.id] : [])));
+  const removed = new Set(
+    steps.flatMap((step) => (step.type === "baseOnly" ? [step.block.id] : [])),
+  );
   if (!removed.has(carrier.id)) {
     return false;
   }
@@ -1198,8 +1200,7 @@ const withTrailingDeletionRules = ({
       continue;
     }
     const lastInsertIndex = run.insertIndexes.at(-1);
-    const lastInsert = lastInsertIndex === undefined ? undefined : plan[lastInsertIndex];
-    if (lastInsert === undefined) {
+    if (lastInsertIndex === undefined) {
       if (run.chainStart) {
         appended.push({
           id: nextOperationId(),
@@ -1211,7 +1212,9 @@ const withTrailingDeletionRules = ({
         dropped.add(carrierDeletionIndex);
       }
     } else {
+      const lastInsert = plan[lastInsertIndex];
       if (
+        lastInsert === undefined ||
         (lastInsert.type !== "insertBeforeBlock" && lastInsert.type !== "insertAfterBlock") ||
         lastInsert.moveId !== undefined
       ) {
