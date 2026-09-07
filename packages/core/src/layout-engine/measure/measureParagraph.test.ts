@@ -551,6 +551,37 @@ describe("empty paragraph line-height floor", () => {
     expect(measure.lines[0]?.lineHeight).toBe(0);
   });
 
+  test("suppressed hidden text keeps a zero-height anchor", () => {
+    const measure = measureParagraph(
+      {
+        kind: "paragraph",
+        id: "hidden-text",
+        pmStart: 0,
+        pmEnd: 21,
+        runs: [
+          { kind: "text", text: "Internal ", hidden: true },
+          { kind: "text", text: "drafting note", hidden: true, italic: true },
+        ],
+        attrs: { suppressEmptyParagraphHeight: true },
+      },
+      600,
+    );
+
+    expect(measure.totalHeight).toBe(0);
+    expect(measure.lines).toEqual([
+      {
+        fromRun: 0,
+        fromChar: 0,
+        toRun: 1,
+        toChar: 13,
+        width: 0,
+        ascent: 0,
+        descent: 0,
+        lineHeight: 0,
+      },
+    ]);
+  });
+
   test("uses paragraph mark metrics for blank hard-break lines", () => {
     withFakeTextMeasure(() => {
       const measure = measureParagraph(

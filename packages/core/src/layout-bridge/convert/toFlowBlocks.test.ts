@@ -975,6 +975,43 @@ describe("toFlowBlocks paragraph formatting", () => {
     expect(paragraph?.attrs?.listMarkerHidden).toBe(true);
   });
 
+  test("suppresses a paragraph whose mark and text runs are hidden", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", { defaultTextFormatting: { hidden: true } }, [
+        schema.text("Internal drafting note", [schema.marks.hidden.create()]),
+      ]),
+    ]);
+
+    const paragraph = toFlowBlocks(doc).at(0);
+
+    expect(paragraph?.kind).toBe("paragraph");
+    if (paragraph?.kind !== "paragraph") {
+      return;
+    }
+    expect(paragraph.runs).toMatchObject([
+      { kind: "text", text: "Internal drafting note", hidden: true },
+    ]);
+    expect(paragraph.attrs?.suppressEmptyParagraphHeight).toBe(true);
+  });
+
+  test("keeps a line when either its paragraph mark or a text run remains visible", () => {
+    const hidden = schema.marks.hidden.create();
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [schema.text("Hidden text", [hidden])]),
+      schema.node("paragraph", { defaultTextFormatting: { hidden: true } }, [
+        schema.text("Hidden", [hidden]),
+        schema.text(" visible"),
+      ]),
+    ]);
+
+    const paragraphs = toFlowBlocks(doc).filter((block) => block.kind === "paragraph");
+
+    expect(paragraphs.map((paragraph) => paragraph.attrs?.suppressEmptyParagraphHeight)).toEqual([
+      undefined,
+      undefined,
+    ]);
+  });
+
   test("suppresses a paintless imported page-break carrier", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", { _pageBreakCarrier: true, spaceBefore: 360 }),
