@@ -255,6 +255,7 @@ export type ParagraphAttrs = {
     pageBreakBefore?: boolean;
     renderedPageBreakBefore?: boolean;
     _pageBreakCarrier?: boolean;
+    _detachedWatermarkHost?: boolean;
     _trailingPageBreak?: boolean;
     keepNext?: boolean;
     keepLines?: boolean;

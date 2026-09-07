@@ -20,7 +20,7 @@ export const formatProseMirrorDocumentIssues: (issues: ProseMirrorDocumentValida
 export function fromProseDoc(pmDoc: Node_2, baseDocument?: import__stll_docx_core_model.Document): import__stll_docx_core_model.Document;
 
 // @public
-export function headerFooterToProseDoc(content: import__stll_docx_core_model.BlockContent[], options?: ToProseDocOptions): Node_2;
+export function headerFooterToProseDoc(content: import__stll_docx_core_model.BlockContent[], options?: HeaderFooterToProseDocOptions): Node_2;
 
 // @public
 export function proseDocToBlocks(pmDoc: Node_2): import__stll_docx_core_model.BlockContent[];
