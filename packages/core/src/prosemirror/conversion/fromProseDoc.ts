@@ -16,6 +16,7 @@ import type { Node as PMNode, Mark } from "prosemirror-model";
 import { Fragment } from "prosemirror-model";
 
 import { numPrEqual } from "../../docx/numberingParser";
+import { canonicalJson } from "../../utils/canonicalJson";
 import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import { parseShapeGeometryAdjustments } from "../shapeGeometryAdjustments";
 import { narrowEnum, ShapeOutlineStyleSchema } from "../../docx/parserEnums";
@@ -3201,6 +3202,18 @@ function buildCellMarginsFromAttrs(m: {
 /**
  * Convert ProseMirror table attrs to TableFormatting
  */
+/**
+ * Whether a live attr still holds what the style cascade resolved to.
+ *
+ * `toProseDoc` seeds an attr with the EFFECTIVE value — a border a table
+ * style supplied, a margin a table declared — because that is what the editor
+ * renders with. A save must write only what the node itself states, or the
+ * inherited value becomes a direct override that outranks the style it came
+ * from on reload. The resolved companion is what tells the two apart.
+ */
+const sameResolvedValue = (live: unknown, resolved: unknown): boolean =>
+  resolved !== undefined && resolved !== null && canonicalJson(live) === canonicalJson(resolved);
+
 export function tableAttrsToFormatting(attrs: TableAttrs): TableFormatting | undefined {
   // If we have the original formatting from the DOCX, use it as a base
   // for lossless round-trip. This preserves properties like cellSpacing,
@@ -3262,8 +3275,10 @@ export function tableAttrsToFormatting(attrs: TableAttrs): TableFormatting | und
         delete result.width;
       }
     }
-    // CellMargins: override if changed
-    if (attrs.cellMargins) {
+    // Only what the table states: `cellMargins` also carries what the table
+    // style resolved to, and writing that into `w:tblCellMar` would turn a
+    // style's default into the table's own override.
+    if (attrs.cellMargins && !sameResolvedValue(attrs.cellMargins, attrs._resolvedCellMargins)) {
       result.cellMargins = buildCellMarginsFromAttrs(attrs.cellMargins);
     }
 
@@ -3609,10 +3624,13 @@ export function tableCellAttrsToFormatting(attrs: TableCellAttrs): TableCellForm
     if (backgroundChanged) {
       result.shading = cellShadingFromAttrs(attrs);
     }
-    if (attrs.borders) {
+    // Only what the cell states: both attrs also carry what the table and the
+    // table style resolved to, and writing those into `w:tcPr` would turn an
+    // inherited value into the cell's own override.
+    if (attrs.borders && !sameResolvedValue(attrs.borders, attrs._resolvedBorders)) {
       result.borders = attrs.borders;
     }
-    if (attrs.margins) {
+    if (attrs.margins && !sameResolvedValue(attrs.margins, attrs._resolvedMargins)) {
       result.margins = buildCellMarginsFromAttrs(attrs.margins);
     }
     if (attrs.textDirection !== (orig.textDirection ?? undefined)) {

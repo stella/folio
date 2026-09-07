@@ -37,13 +37,123 @@ import type {
   Paragraph,
 } from "../../types/document";
 import { normalizeRevisionId } from "@stll/docx-core/model";
+import { canonicalJson } from "../../utils/canonicalJson";
 import { isValidHexColor } from "../../utils/colorResolver";
+import {
+  parseTableCellProperties,
+  parseTableGrid,
+  parseTableProperties,
+  parseTableRowProperties,
+} from "../tableParser";
+import { OOXML_NAMESPACE_SCOPE, parseXml, type XmlElement } from "../xmlParser";
 import { serializeBorder } from "./borderSerializer";
 import { escapeXml, intAttr } from "./xmlUtils";
 
 type ParagraphSerializer = (paragraph: Paragraph) => string;
 
-function normalizeTrackedChangeInfo(info: { id: number; author: string; date?: string }): {
+/**
+ * The element a formatting object was parsed from, when it still describes it.
+ *
+ * `sourceXml` is only usable while the typed values around it are the ones it
+ * was parsed into. Anything may edit a `Document` in place — a host building
+ * one by hand, a migration, a test — and a capture written back over a changed
+ * model would silently discard the change. So the capture is re-parsed and
+ * checked rather than trusted: it is written only when parsing it reproduces
+ * the formatting it sits on.
+ *
+ * The re-parse runs under {@link OOXML_NAMESPACE_SCOPE} because a captured
+ * fragment carries no `xmlns` of its own. A document that binds the
+ * WordprocessingML prefix differently fails the check and is rebuilt from the
+ * model, which is what happened to every document before the capture existed.
+ */
+/**
+ * The captured element with the revision children written back into it.
+ *
+ * The capture holds properties only, so a revision the model carries — a row
+ * marked inserted, a `w:tcPrChange` — is appended here rather than forcing the
+ * whole element to be rebuilt and losing everything the model does not cover.
+ */
+const withRevisionChildren = (sourceXml: string, revisions: readonly string[]): string => {
+  const written = revisions.join("");
+  if (written.length === 0) {
+    return sourceXml;
+  }
+  if (sourceXml.endsWith("/>")) {
+    const name = sourceXml.slice(1, sourceXml.length - 2).split(/[\s/]/u)[0] ?? "";
+    return `${sourceXml.slice(0, -2)}>${written}</${name}>`;
+  }
+  const close = sourceXml.lastIndexOf("</");
+  return close === -1
+    ? sourceXml
+    : `${sourceXml.slice(0, close)}${written}${sourceXml.slice(close)}`;
+};
+
+/** `w:trPr/w:ins` | `w:trPr/w:del`, the row's own structural revision. */
+const rowStructuralChangeXml = (change: TableStructuralChangeInfo | undefined): string[] => {
+  if (change?.type === "tableRowInsertion") {
+    return [`<w:ins ${serializeTrackedChangeAttributes(change.info)}/>`];
+  }
+  if (change?.type === "tableRowDeletion") {
+    return [`<w:del ${serializeTrackedChangeAttributes(change.info)}/>`];
+  }
+  return [];
+};
+
+/** `w:tcPr/w:cellIns` | `w:cellDel` | `w:cellMerge`, the cell's own. */
+const cellStructuralChangeXml = (change: TableStructuralChangeInfo | undefined): string[] => {
+  if (change?.type === "tableCellInsertion") {
+    return [`<w:cellIns ${serializeTrackedChangeAttributes(change.info)}/>`];
+  }
+  if (change?.type === "tableCellDeletion") {
+    return [`<w:cellDel ${serializeTrackedChangeAttributes(change.info)}/>`];
+  }
+  if (change?.type !== "tableCellMerge") {
+    return [];
+  }
+  const attrs = [serializeTrackedChangeAttributes(change.info)];
+  if (change.verticalMerge) {
+    attrs.push(`w:vMerge="${change.verticalMerge === "continue" ? "cont" : "rest"}"`);
+  }
+  if (change.verticalMergeOriginal) {
+    attrs.push(`w:vMergeOrig="${change.verticalMergeOriginal === "continue" ? "cont" : "rest"}"`);
+  }
+  return [`<w:cellMerge ${attrs.join(" ")}/>`];
+};
+
+/**
+ * A property set without the elements kept beside it. Only the typed values
+ * decide whether a capture still describes the node; the captures themselves
+ * are what is being decided about.
+ */
+const withoutCaptures = (
+  formatting: { sourceXml?: string; gridSourceXml?: string } | undefined,
+): Record<string, unknown> => {
+  const { sourceXml: _source, gridSourceXml: _grid, ...rest } = formatting ?? {};
+  return rest;
+};
+
+const verifiedSourceXml = <TFormatting extends { sourceXml?: string }>(
+  formatting: TFormatting | undefined,
+  parse: (element: XmlElement | null) => TFormatting | undefined,
+): string | null => {
+  if (formatting === undefined || formatting.sourceXml === undefined) {
+    return null;
+  }
+  const { sourceXml } = formatting;
+  const reparsed = parse(parseXml(sourceXml, OOXML_NAMESPACE_SCOPE).elements?.[0] ?? null);
+  return canonicalJson(withoutCaptures(reparsed)) === canonicalJson(withoutCaptures(formatting))
+    ? sourceXml
+    : null;
+};
+
+type TrackedChangeAttributes = {
+  id: number;
+  author: string;
+  date?: string;
+  utcDate?: { attribute: string; value: string };
+};
+
+function normalizeTrackedChangeInfo(info: TrackedChangeAttributes): {
   id: number;
   author: string;
   date?: string;
@@ -60,15 +170,15 @@ function normalizeTrackedChangeInfo(info: { id: number; author: string; date?: s
   };
 }
 
-function serializeTrackedChangeAttributes(
-  info: { id: number; author: string; date?: string },
-  rsid?: string,
-): string {
+function serializeTrackedChangeAttributes(info: TrackedChangeAttributes, rsid?: string): string {
   // `w:initials` is intentionally NOT emitted (non-standard on CT_TrackChange).
   const normalized = normalizeTrackedChangeInfo(info);
   const attrs = [`w:id="${normalized.id}"`, `w:author="${escapeXml(normalized.author)}"`];
   if (normalized.date) {
     attrs.push(`w:date="${escapeXml(normalized.date)}"`);
+  }
+  if (info.utcDate) {
+    attrs.push(`${info.utcDate.attribute}="${escapeXml(info.utcDate.value)}"`);
   }
   if (rsid && rsid.trim().length > 0) {
     attrs.push(`w:rsid="${escapeXml(rsid.trim())}"`);
@@ -364,6 +474,17 @@ export function serializeTableFormatting(
   formatting: TableFormatting | undefined,
   propertyChanges?: TablePropertyChange[],
 ): string {
+  // Nothing in the model moved, so the element goes back as it arrived —
+  // conditional-format flags, producer-specific children and all — with the
+  // revisions the model carries written into it. See `TableFormatting.sourceXml`.
+  const tableSource = verifiedSourceXml(formatting, parseTableProperties);
+  if (tableSource !== null) {
+    return withRevisionChildren(
+      tableSource,
+      (propertyChanges ?? []).map((change) => serializeTablePropertyChange(change)),
+    );
+  }
+
   const parts: string[] = [];
 
   // CT_TblPrBase is a SEQUENCE (ECMA-376 §17.4.60), so the children are
@@ -473,6 +594,16 @@ export function serializeTableRowFormatting(
   propertyChanges?: TableRowPropertyChange[],
   structuralChange?: TableStructuralChangeInfo,
 ): string {
+  // See `serializeTableFormatting`: the source element is written back while
+  // the model holds what it was parsed into, with the revisions spliced in.
+  const rowSource = verifiedSourceXml(formatting, parseTableRowProperties);
+  if (rowSource !== null) {
+    return withRevisionChildren(rowSource, [
+      ...rowStructuralChangeXml(structuralChange),
+      ...(propertyChanges ?? []).map((change) => serializeTableRowPropertyChange(change)),
+    ]);
+  }
+
   const parts: string[] = [];
 
   if (formatting) {
@@ -533,13 +664,7 @@ export function serializeTableRowFormatting(
     }
   }
 
-  if (structuralChange) {
-    if (structuralChange.type === "tableRowInsertion") {
-      parts.push(`<w:ins ${serializeTrackedChangeAttributes(structuralChange.info)}/>`);
-    } else if (structuralChange.type === "tableRowDeletion") {
-      parts.push(`<w:del ${serializeTrackedChangeAttributes(structuralChange.info)}/>`);
-    }
-  }
+  parts.push(...rowStructuralChangeXml(structuralChange));
 
   if (propertyChanges && propertyChanges.length > 0) {
     parts.push(...propertyChanges.map((change) => serializeTableRowPropertyChange(change)));
@@ -619,6 +744,16 @@ export function serializeTableCellFormatting(
   propertyChanges?: TableCellPropertyChange[],
   structuralChange?: TableStructuralChangeInfo,
 ): string {
+  // See `serializeTableFormatting`: the source element is written back while
+  // the model holds what it was parsed into, with the revisions spliced in.
+  const cellSource = verifiedSourceXml(formatting, parseTableCellProperties);
+  if (cellSource !== null) {
+    return withRevisionChildren(cellSource, [
+      ...cellStructuralChangeXml(structuralChange),
+      ...(propertyChanges ?? []).map((change) => serializeTableCellPropertyChange(change)),
+    ]);
+  }
+
   const parts: string[] = [];
 
   if (formatting) {
@@ -695,24 +830,7 @@ export function serializeTableCellFormatting(
     }
   }
 
-  if (structuralChange) {
-    if (structuralChange.type === "tableCellInsertion") {
-      parts.push(`<w:cellIns ${serializeTrackedChangeAttributes(structuralChange.info)}/>`);
-    } else if (structuralChange.type === "tableCellDeletion") {
-      parts.push(`<w:cellDel ${serializeTrackedChangeAttributes(structuralChange.info)}/>`);
-    } else if (structuralChange.type === "tableCellMerge") {
-      const attrs = [serializeTrackedChangeAttributes(structuralChange.info)];
-      if (structuralChange.verticalMerge) {
-        attrs.push(`w:vMerge="${structuralChange.verticalMerge === "continue" ? "cont" : "rest"}"`);
-      }
-      if (structuralChange.verticalMergeOriginal) {
-        attrs.push(
-          `w:vMergeOrig="${structuralChange.verticalMergeOriginal === "continue" ? "cont" : "rest"}"`,
-        );
-      }
-      parts.push(`<w:cellMerge ${attrs.join(" ")}/>`);
-    }
-  }
+  parts.push(...cellStructuralChangeXml(structuralChange));
 
   if (propertyChanges && propertyChanges.length > 0) {
     parts.push(...propertyChanges.map((change) => serializeTableCellPropertyChange(change)));
@@ -771,6 +889,17 @@ function gridColumnCount(table: Table): number {
  */
 function serializeTableGrid(table: Table): string {
   const columnWidths = table.columnWidths;
+  // The grid as it arrived, while it still states the widths the model holds.
+  // A `w:tblGridChange` sits inside it and nothing else carries one.
+  const gridSourceXml = table.formatting?.gridSourceXml;
+  if (gridSourceXml !== undefined) {
+    const parsed = parseTableGrid(
+      parseXml(gridSourceXml, OOXML_NAMESPACE_SCOPE).elements?.[0] ?? null,
+    );
+    if (canonicalJson(parsed) === canonicalJson(columnWidths)) {
+      return gridSourceXml;
+    }
+  }
   if (columnWidths && columnWidths.length > 0) {
     return `<w:tblGrid>${columnWidths.map((w) => `<w:gridCol w:w="${intAttr(w)}"/>`).join("")}</w:tblGrid>`;
   }

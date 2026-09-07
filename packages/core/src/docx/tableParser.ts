@@ -72,6 +72,7 @@ import {
 } from "./parserEnums";
 import type { StyleMap } from "./styleParser";
 import {
+  elementToXml,
   findChild,
   findChildByLocalName,
   findChildren,
@@ -146,8 +147,26 @@ function parseTrackedChangeInfo(node: XmlElement): TableStructuralChangeInfo["in
   if (initials.length > 0) {
     info.initials = initials;
   }
+  const utcDate = utcDateAttribute(node);
+  if (utcDate) {
+    info.utcDate = utcDate;
+  }
   return info;
 }
+
+/** `w16du:dateUtc` under whatever prefix the document bound it to. */
+const utcDateAttribute = (node: XmlElement): { attribute: string; value: string } | null => {
+  for (const [attribute, value] of Object.entries(node.attributes ?? {})) {
+    if (typeof value !== "string" || getLocalName(attribute) !== "dateUtc") {
+      continue;
+    }
+    const trimmed = value.trim();
+    if (trimmed.length > 0) {
+      return { attribute, value: trimmed };
+    }
+  }
+  return null;
+};
 
 function parsePropertyChangeInfo(
   node: XmlElement,
@@ -594,6 +613,41 @@ export function parseFloatingTableProperties(
  * @param tblPrElement - The w:tblPr element
  * @returns Parsed table formatting
  */
+/**
+ * Children of a property element that record a revision rather than a
+ * property. They are parsed into records of their own and written back from
+ * those, so the capture leaves them out: a capture that kept them would put a
+ * resolved revision back into the document after it was accepted.
+ */
+const REVISION_PROPERTY_CHILDREN: ReadonlySet<string> = new Set([
+  "tblPrChange",
+  "trPrChange",
+  "tcPrChange",
+  "ins",
+  "del",
+  "cellIns",
+  "cellDel",
+  "cellMerge",
+]);
+
+/**
+ * The property element a formatting object was parsed from, kept beside the
+ * typed values so a save that did not touch them writes the element back
+ * exactly as it arrived.
+ */
+const withSourceXml = <TFormatting extends { sourceXml?: string }>(
+  formatting: TFormatting,
+  element: XmlElement,
+): TFormatting => ({
+  ...formatting,
+  sourceXml: elementToXml({
+    ...element,
+    elements: (element.elements ?? []).filter(
+      (child) => !REVISION_PROPERTY_CHILDREN.has(getLocalName(child.name)),
+    ),
+  }),
+});
+
 export function parseTableProperties(tblPrElement: XmlElement | null): TableFormatting | undefined {
   if (!tblPrElement) {
     return undefined;
@@ -695,7 +749,7 @@ export function parseTableProperties(tblPrElement: XmlElement | null): TableForm
     return undefined;
   }
 
-  return formatting;
+  return withSourceXml(formatting, tblPrElement);
 }
 
 function parseTablePropertyChanges(
@@ -956,7 +1010,7 @@ export function parseTableRowProperties(
     return undefined;
   }
 
-  return formatting;
+  return withSourceXml(formatting, trPrElement);
 }
 
 // ============================================================================
@@ -1183,10 +1237,12 @@ export function parseTableCellProperties(
     formatting.noWrap = true;
   }
 
-  // Hide mark (w:hideMark)
-  const hideMark = parseBooleanElement(findChild(tcPrElement, "w", "hideMark"));
-  if (hideMark !== undefined) {
-    formatting.hideMark = hideMark;
+  // Hide mark (w:hideMark). Only when the element is there: `w:hideMark` is a
+  // presence flag, and reading its absence as an explicit `false` made every
+  // cell that never mentioned it serialize `<w:hideMark w:val="off"/>`.
+  const hideMarkElement = findChild(tcPrElement, "w", "hideMark");
+  if (hideMarkElement) {
+    formatting.hideMark = parseBooleanElement(hideMarkElement);
   }
 
   // Conditional format style (w:cnfStyle)
@@ -1199,7 +1255,7 @@ export function parseTableCellProperties(
     return undefined;
   }
 
-  return formatting;
+  return withSourceXml(formatting, tcPrElement);
 }
 
 // ============================================================================
@@ -1653,9 +1709,16 @@ export function parseTable(
   }
 
   // Parse table grid (w:tblGrid)
-  const columnWidths = parseTableGrid(findChild(tblElement, "w", "tblGrid"));
+  const gridElement = findChild(tblElement, "w", "tblGrid");
+  const columnWidths = parseTableGrid(gridElement);
   if (columnWidths) {
     table.columnWidths = columnWidths;
+  }
+  // The grid element travels with the table's formatting, so a save that did
+  // not resize a column writes it back with whatever it carried — a
+  // `w:tblGridChange` among it, which nothing in the model represents.
+  if (gridElement) {
+    table.formatting = { ...table.formatting, gridSourceXml: elementToXml(gridElement) };
   }
 
   // Parse rows, threading the table's own xmlns down the in-scope set.

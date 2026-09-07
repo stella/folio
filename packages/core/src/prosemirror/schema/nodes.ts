@@ -676,6 +676,13 @@ export type TableAttrs = {
   look?: TableLook;
   /** Table-level borders (w:tblBorders) — full BorderSpec per side */
   borders?: TableBorders;
+  /**
+   * Effective default cell margins after the table-style cascade. PM-only;
+   * never serialized. What `cellMargins` resolves to when the table declares
+   * none of its own, so a save can tell a value a style supplied from one the
+   * table states — and stop writing the style's into the table's `w:tblPr`.
+   */
+  _resolvedCellMargins?: TableAttrs["cellMargins"];
   /** Effective table indent after style resolution. PM-only; never serialized. */
   _resolvedIndent?: NonNullable<TableFormatting["indent"]>;
   /** Style-derived table justification fallback. PM-only; never serialized. */
@@ -791,8 +798,18 @@ export type TableCellAttrs = {
   hideMark?: boolean;
   /** Cell borders — full BorderSpec per side (style, color, size) */
   borders?: TableCellBorders;
+  /**
+   * Effective borders after the table and table-style cascade. PM-only; never
+   * serialized. The companion to `borders` that `_resolvedBackgroundColor` is
+   * to `backgroundColor`: what the cell renders with when it declares none of
+   * its own, so a save can tell a border a style supplied from one the cell
+   * states.
+   */
+  _resolvedBorders?: TableCellBorders;
   /** Cell margins/padding in twips per side */
   margins?: { top?: number; bottom?: number; left?: number; right?: number };
+  /** Effective margins after the cascade. PM-only; never serialized. */
+  _resolvedMargins?: { top?: number; bottom?: number; left?: number; right?: number };
   /** Original cell formatting from DOCX for lossless round-trip serialization */
   _originalFormatting?: TableCellFormatting;
   /** Tracked cell property changes (w:tcPrChange) for round-trip + accept/reject */

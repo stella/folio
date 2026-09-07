@@ -158,8 +158,7 @@ describe("a table the comparison adds", () => {
     expect(xml).toContain('<w:gridCol w:w="3200"/>');
     expect(xml).toContain('<w:tblStyle w:val="TableGrid"/>');
     expect(xml).toContain('<w:tblW w:w="8000" w:type="dxa"/>');
-    // `w:tblLook` round-trips through the flag attributes, not the packed value.
-    expect(xml).toContain('<w:tblLook w:firstRow="1"');
+    expect(xml).toContain('<w:tblLook w:val="04A0"');
     expect(xml).toContain("<w:tblHeader/>");
     expect(xml).toContain('<w:gridSpan w:val="2"/>');
     expect(xml).toContain('<w:vMerge w:val="restart"/>');
@@ -202,7 +201,7 @@ describe("a table the comparison removes", () => {
     expect(xml).toContain('<w:gridCol w:w="3200"/>');
     expect(xml).toContain('<w:gridSpan w:val="2"/>');
     expect(xml).toContain('<w:vMerge w:val="restart"/>');
-    expect(xml).toContain('<w:tblLook w:firstRow="1"');
+    expect(xml).toContain('<w:tblLook w:val="04A0"');
 
     expect(rejected).toEqual(expectedBase);
   });

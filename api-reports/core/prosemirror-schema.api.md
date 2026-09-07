@@ -413,6 +413,7 @@ export type TableAttrs = {
     };
     look?: import__stll_docx_core_model.TableLook;
     borders?: import__stll_docx_core_model.TableBorders;
+    _resolvedCellMargins?: TableAttrs["cellMargins"];
     _resolvedIndent?: NonNullable<import__stll_docx_core_model.TableFormatting["indent"]>;
     _resolvedJustification?: NonNullable<import__stll_docx_core_model.TableFormatting["justification"]>;
     _resolvedBidi?: boolean;
@@ -435,7 +436,14 @@ export type TableCellAttrs = {
     noWrap?: boolean;
     hideMark?: boolean;
     borders?: import__stll_docx_core_model.TableCellBorders;
+    _resolvedBorders?: import__stll_docx_core_model.TableCellBorders;
     margins?: {
+        top?: number;
+        bottom?: number;
+        left?: number;
+        right?: number;
+    };
+    _resolvedMargins?: {
         top?: number;
         bottom?: number;
         left?: number;
