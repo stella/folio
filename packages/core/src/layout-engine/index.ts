@@ -50,6 +50,7 @@ import type {
   ParagraphMeasure,
   ParagraphFragment,
   TableBlock,
+  TableCell,
   TableMeasure,
   TableFragment,
   ImageBlock,
@@ -937,13 +938,14 @@ export function getHeaderRowsHeight(measure: TableMeasure, headerRowCount: numbe
 }
 
 const tableRowStartsWithRenderedPageBreak = (block: TableBlock, rowIndex: number): boolean => {
-  const visibleCells = block.rows[rowIndex]?.cells.filter((cell) =>
+  const row = block.rows[rowIndex];
+  const visibleCells = row?.cells.filter((cell) =>
     cell.blocks.some((cellBlock) => cellBlock.kind !== "paragraph" || !isEmptyParagraph(cellBlock)),
   );
   if (!visibleCells || visibleCells.length === 0) {
     return false;
   }
-  return visibleCells.every((cell) => {
+  const startsWithRenderedPageBreak = (cell: TableCell): boolean => {
     const firstVisibleBlock = cell.blocks.find(
       (cellBlock) => cellBlock.kind !== "paragraph" || !isEmptyParagraph(cellBlock),
     );
@@ -951,7 +953,15 @@ const tableRowStartsWithRenderedPageBreak = (block: TableBlock, rowIndex: number
       firstVisibleBlock?.kind === "paragraph" &&
       firstVisibleBlock.attrs?.renderedPageBreakBefore === true
     );
-  });
+  };
+
+  // A fixed row's leading marker describes the row boundary once, in its
+  // first visible cell. Flexible rows need agreement across visible cells
+  // because unmarked siblings may carry content from the preceding page.
+  if (row?.heightRule === "exact") {
+    return startsWithRenderedPageBreak(visibleCells[0]!); // SAFETY: guarded by length check.
+  }
+  return visibleCells.every(startsWithRenderedPageBreak);
 };
 
 const getVerticallyMergedRows = (block: TableBlock): Set<number> => {

@@ -1710,6 +1710,54 @@ describe("oversized table row splits across pages (#570)", () => {
     });
   });
 
+  test("promotes the first cell's cached boundary for an exact-height row", () => {
+    const spacer: FlowBlock = {
+      kind: "paragraph",
+      id: "spacer",
+      runs: [{ kind: "text", text: "spacer" }],
+    };
+    const spacerMeasure = paraMeasureWithLineHeight(1, 70);
+    const { block, measure } = tallTable(5);
+    markFirstTableParagraphWithRenderedBreak(block);
+    block.rows[0]!.height = 5 * LINE;
+    block.rows[0]!.heightRule = "exact";
+    block.rows[0]!.cells.push({
+      id: "c1",
+      padding: { top: 0, right: 0, bottom: 0, left: 0 },
+      blocks: [
+        {
+          kind: "paragraph",
+          id: "p1",
+          runs: [{ kind: "text", text: "starts with its row" }],
+        },
+      ],
+    });
+    block.columnWidths = [110, 110];
+    measure.rows[0]!.cells.push({
+      blocks: [paraMeasure(5)],
+      width: 110,
+      height: 5 * LINE,
+    });
+    measure.rows[0]!.cells[0]!.width = 110;
+    measure.columnWidths = [110, 110];
+
+    const layout = layoutDocument([spacer, block], [spacerMeasure, measure], OPTIONS);
+    const fragments = layout.pages
+      .flatMap((page) => page.fragments)
+      .filter((fragment): fragment is TableFragment => fragment.kind === "table");
+
+    expect(layout.pages[0]?.fragments.every((fragment) => fragment.kind !== "table")).toBe(true);
+    expect(fragments).toHaveLength(1);
+    expect(fragments[0]).toMatchObject({
+      y: OPTIONS.margins.top,
+      height: 5 * LINE,
+      fromRow: 0,
+      toRow: 1,
+    });
+    expect(fragments[0]?.topClip).toBeUndefined();
+    expect(fragments[0]?.bottomClip).toBeUndefined();
+  });
+
   test("still splits an oversized cached-boundary row on the fresh page", () => {
     const spacer: FlowBlock = {
       kind: "paragraph",
