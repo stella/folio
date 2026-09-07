@@ -363,6 +363,7 @@ const paragraphNodeSpec: NodeSpec = {
     pageBreakBefore: { default: null },
     renderedPageBreakBefore: { default: null },
     _pageBreakCarrier: { default: null },
+    _detachedWatermarkHost: { default: null },
     _trailingPageBreak: { default: null },
     keepNext: { default: null },
     keepLines: { default: null },

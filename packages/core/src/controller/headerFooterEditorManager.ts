@@ -13,7 +13,10 @@ import { EditorView } from "prosemirror-view";
 
 import { clearHeaderFooterVerbatimXml } from "../docx/headerFooterVerbatim";
 import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
-import { headerFooterToProseDoc } from "../prosemirror/conversion/toProseDoc";
+import {
+  headerFooterToProseDoc,
+  type HeaderFooterToProseDocOptions,
+} from "../prosemirror/conversion/toProseDoc";
 import { ExtensionManager } from "../prosemirror/extensions/ExtensionManager";
 import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/AutoBidiDetectionExtension";
 import { ensureParaIdsInState } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
@@ -78,12 +81,15 @@ const buildInitialState = (
   theme: Theme | null | undefined,
   manager: ExtensionManager,
 ): EditorStateT => {
-  const proseDocOptions: { styles?: StyleDefinitions; theme?: Theme | null } = {};
+  const proseDocOptions: HeaderFooterToProseDocOptions = {};
   if (styles) {
     proseDocOptions.styles = styles;
   }
   if (theme !== undefined) {
     proseDocOptions.theme = theme;
+  }
+  if (headerFooter.watermarkBlockIndex !== undefined) {
+    proseDocOptions.detachedWatermarkHostBlockIndex = headerFooter.watermarkBlockIndex;
   }
 
   const document = headerFooterToProseDoc(headerFooter.content, proseDocOptions);

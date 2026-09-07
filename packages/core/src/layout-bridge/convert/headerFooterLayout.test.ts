@@ -1041,4 +1041,36 @@ describe("convertHeaderFooterPmDocToContent", () => {
     expect(fromContent?.marginPushBottom).toBe(12);
     expect(fromPmDoc?.marginPushBottom).toBe(12);
   });
+
+  test("keeps one line of clearance for an unformatted detached watermark host", () => {
+    const hf: HeaderFooter = {
+      type: "header",
+      hdrFtrType: "default",
+      content: [{ type: "paragraph", content: [] }],
+      watermark: { kind: "text", text: "DRAFT" },
+      watermarkBlockIndex: 0,
+    };
+
+    const fromContent = convertHeaderFooterToContent(hf, 456, pmMetrics, {
+      measureBlocks,
+    });
+    const pmDoc = headerFooterToProseDoc(hf.content, {
+      detachedWatermarkHostBlockIndex: hf.watermarkBlockIndex,
+    });
+    const fromPmDoc = convertHeaderFooterPmDocToContent(pmDoc, 456, pmMetrics, {
+      measureBlocks,
+    });
+    const barePmDoc = headerFooterToProseDoc(hf.content);
+    const bare = convertHeaderFooterPmDocToContent(barePmDoc, 456, pmMetrics, {
+      measureBlocks,
+    });
+
+    expect(fromContent?.blocks.at(0)).toMatchObject({
+      kind: "paragraph",
+      attrs: { detachedWatermarkHost: true },
+    });
+    expect(fromContent?.marginPushBottom).toBe(12);
+    expect(fromPmDoc?.marginPushBottom).toBe(12);
+    expect(bare?.marginPushBottom).toBe(0);
+  });
 });

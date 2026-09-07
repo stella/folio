@@ -34,7 +34,10 @@ import type {
   TableMeasure,
 } from "../../layout-engine/types";
 import { isFloatingImageRun, isFloatingTextBoxBlock } from "../../layout-engine/types";
-import { headerFooterToProseDoc } from "../../prosemirror/conversion/toProseDoc";
+import {
+  headerFooterToProseDoc,
+  type HeaderFooterToProseDocOptions,
+} from "../../prosemirror/conversion/toProseDoc";
 import type { HeaderFooter, StyleDefinitions, Theme } from "../../types/document";
 import { emuToPixels } from "../../utils/units";
 import type { MeasureBlocksFn } from "./footnoteLayout";
@@ -562,6 +565,7 @@ export function calculateHeaderFooterMarginPushBounds(
       (block) =>
         isPaintlessParagraph(block) &&
         !hasAuthoredVisualContent(block) &&
+        block.attrs?.detachedWatermarkHost !== true &&
         !(block.kind === "paragraph" && preservesInheritedSpacing(block)),
     );
   if (isPaintlessStory) {
@@ -740,12 +744,15 @@ export function convertHeaderFooterToContent(
     return undefined;
   }
 
-  const proseDocOptions: { styles?: StyleDefinitions; theme?: Theme | null } = {};
+  const proseDocOptions: HeaderFooterToProseDocOptions = {};
   if (options.styles) {
     proseDocOptions.styles = options.styles;
   }
   if (options.theme !== undefined) {
     proseDocOptions.theme = options.theme;
+  }
+  if (headerFooter.watermarkBlockIndex !== undefined) {
+    proseDocOptions.detachedWatermarkHostBlockIndex = headerFooter.watermarkBlockIndex;
   }
   const pmDoc = headerFooterToProseDoc(headerFooter.content, proseDocOptions);
   const flowOptions: ToFlowBlocksOptions = {};

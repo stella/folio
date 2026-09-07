@@ -98,6 +98,11 @@ export type ToProseDocOptions = {
   theme?: Theme | null;
 };
 
+export type HeaderFooterToProseDocOptions = ToProseDocOptions & {
+  /** Top-level header block whose detached watermark still owns its paragraph line box. */
+  detachedWatermarkHostBlockIndex?: number;
+};
+
 type ResolvedRunFormatting = {
   formatting: TextFormatting | undefined;
   paragraphMarkOverrides?: TextFormatting;
@@ -4104,7 +4109,7 @@ function convertTextBox(
  */
 export function headerFooterToProseDoc(
   content: BlockContent[],
-  options?: ToProseDocOptions,
+  options?: HeaderFooterToProseDocOptions,
 ): PMNode {
   const nodes: PMNode[] = [];
   const styleResolver = options?.styles ? createStyleEngine(options.styles) : null;
@@ -4119,15 +4124,33 @@ export function headerFooterToProseDoc(
     pairedBookmarkIds,
   };
 
-  const convertBlocks = (blocks: BlockContent[]): PMNode[] => {
+  const markDetachedWatermarkHost = (nodes: PMNode[]): PMNode[] => {
+    const hostIndex = nodes.findIndex(({ type }) => type.name === "paragraph");
+    if (hostIndex < 0) {
+      return nodes;
+    }
+    return nodes.map((node, index) =>
+      index === hostIndex
+        ? node.type.create({ ...node.attrs, _detachedWatermarkHost: true }, node.content, node.marks)
+        : node,
+    );
+  };
+
+  const convertBlocks = (
+    blocks: BlockContent[],
+    detachedWatermarkHostBlockIndex?: number,
+  ): PMNode[] => {
     const out: PMNode[] = [];
-    for (const block of blocks) {
+    for (const [blockIndex, block] of blocks.entries()) {
       if (block.type === "paragraph") {
+        const paragraphNodes = convertParagraphWithTextBoxes(block, styleResolver, {
+          textBoxGroupId: nextTextBoxGroupId(),
+          context: conversionContext,
+        });
         out.push(
-          ...convertParagraphWithTextBoxes(block, styleResolver, {
-            textBoxGroupId: nextTextBoxGroupId(),
-            context: conversionContext,
-          }),
+          ...(blockIndex === detachedWatermarkHostBlockIndex
+            ? markDetachedWatermarkHost(paragraphNodes)
+            : paragraphNodes),
         );
       } else if (block.type === "table") {
         out.push(convertTable(block, styleResolver, conversionContext));
@@ -4138,7 +4161,7 @@ export function headerFooterToProseDoc(
     return out;
   };
 
-  nodes.push(...convertBlocks(content));
+  nodes.push(...convertBlocks(content, options?.detachedWatermarkHostBlockIndex));
   // Caret affordance after a final isolating blockSdt is handled by
   // prosemirror-gapcursor at runtime; we no longer pad the converted doc
   // with a synthetic trailing paragraph because that paragraph survives
