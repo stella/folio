@@ -50,6 +50,7 @@ import { planStoryCompare, type CompareStoryPlan } from "./plan";
 import { withFixedPackageDates } from "./reproducible-package";
 import {
   CompareDocxApplyError,
+  CompareDocxFinalParagraphMarkError,
   CompareDocxOperationLimitError,
   CompareDocxParseError,
   CompareDocxRoundTripError,
@@ -63,6 +64,7 @@ import {
 } from "./types";
 import {
   classifyProjectionMismatch,
+  deletedFinalParagraphMarks,
   projectSupportedInlineFormatting,
   type CompareVerification,
   type CompareVerificationFailure,
@@ -519,9 +521,28 @@ export const applyComparison = (
 export const serializeComparison = async (
   { baseBuffer, baseCarriedRevisions, reviewer, packageDate }: ParsedComparison,
   planned: readonly PlannedStoryComparison[],
-): Promise<Result<ArrayBuffer, CompareDocxSerializeError>> => {
+): Promise<Result<ArrayBuffer, CompareDocxSerializeError | CompareDocxFinalParagraphMarkError>> => {
   if (!baseCarriedRevisions && planned.every(({ plan }) => plan.operations.length === 0)) {
     return Result.ok(baseBuffer);
+  }
+  const document = reviewer.toDocument();
+  // A deleted mark on the paragraph that ends a container asks a consumer to
+  // merge it with a paragraph that is not there, and the consumer refuses the
+  // whole package rather than opening it. Nothing downstream can recover from
+  // that, so it is fatal under either `onUnverified` setting: unlike an
+  // unproven redline there is no partial result worth handing back.
+  const deletions = deletedFinalParagraphMarks(document);
+  const [firstDeletion] = deletions;
+  if (firstDeletion !== undefined) {
+    return Result.err(
+      new CompareDocxFinalParagraphMarkError({
+        message:
+          `A container's final paragraph mark carries a ${firstDeletion.kind}, which no ` +
+          `consumer can resolve: ${firstDeletion.container} paragraph ` +
+          `${String(firstDeletion.paragraphIndex)}.`,
+        deletions,
+      }),
+    );
   }
   return await Result.tryPromise({
     try: async () => await withFixedPackageDates(await reviewer.toBuffer(), packageDate),

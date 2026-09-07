@@ -18,6 +18,9 @@ const schema = new Schema({
       },
     },
     text: { group: "inline", marks: "_" },
+    // A block a paragraph mark cannot join with, and which cannot end a
+    // container: what a table is to the paragraph before it.
+    table: { content: "block+", group: "block" },
     // Zero-width anchors: they hold a position, carry no revision of their
     // own, and therefore outlive a deletion that took every word around them.
     renderedPageBreak: { inline: true, group: "inline", atom: true },
@@ -184,12 +187,57 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
     const state = EditorState.create({
       schema,
       doc: schema.node("doc", null, [
+        schema.node("paragraph", { pPrMark: delMark({ id: 1 }) }),
+        schema.node("table", null, [schema.node("paragraph", null, schema.text("cell"))]),
+        schema.node("paragraph", null, schema.text("last")),
+      ]),
+    });
+    const view = dispatcher(state);
+    acceptAllChanges()(view.state, view.dispatch);
+
+    expect(view.state.doc.childCount).toBe(2);
+    expect(view.state.doc.child(0).type.name).toBe("table");
+  });
+
+  test("acceptAll keeps an emptied paragraph that ENDS its container", () => {
+    // Nothing follows it, so the break it claims went cannot be closed over
+    // anything and the container would be left without the paragraph it has to
+    // end with. The revision is resolved; the paragraph stays, blank.
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [
         schema.node("paragraph", null, schema.text("first")),
         schema.node("paragraph", { pPrMark: delMark({ id: 1 }) }),
       ]),
     });
     const view = dispatcher(state);
     acceptAllChanges()(view.state, view.dispatch);
+
+    expect(view.state.doc.childCount).toBe(2);
+    expect(view.state.doc.child(1).textContent).toBe("");
+    expect(view.state.doc.child(1).attrs["pPrMark"]).toBeNull();
+  });
+
+  test("rejectAll still removes an emptied paragraph an insertion ADDED at the end", () => {
+    // The mirror case: the break was added, so the paragraph it ends was not
+    // there before it and taking the addition back leaves the container ending
+    // where it did.
+    const insertion = schema.marks["insertion"]!;
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [
+        schema.node("paragraph", null, schema.text("first")),
+        schema.node(
+          "paragraph",
+          { pPrMark: insMark({ id: 1 }) },
+          schema.text("added", [
+            insertion.create({ revisionId: 1, author: "Alice", date: "2026-05-01" }),
+          ]),
+        ),
+      ]),
+    });
+    const view = dispatcher(state);
+    rejectAllChanges()(view.state, view.dispatch);
 
     expect(view.state.doc.childCount).toBe(1);
     expect(view.state.doc.child(0).textContent).toBe("first");
@@ -205,19 +253,20 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
       const state = EditorState.create({
         schema,
         doc: schema.node("doc", null, [
-          schema.node("paragraph", null, schema.text("first")),
           schema.node("paragraph", { pPrMark: delMark({ id: 2 }) }, [
             schema.node(anchor),
             schema.text("gone", [deletion.create(revision)]),
           ]),
+          schema.node("table", null, [schema.node("paragraph", null, schema.text("cell"))]),
+          schema.node("paragraph", null, schema.text("last")),
         ]),
       });
       const view = dispatcher(state);
 
       acceptAllChanges()(view.state, view.dispatch);
 
-      expect(view.state.doc.childCount).toBe(1);
-      expect(view.state.doc.child(0).textContent).toBe("first");
+      expect(view.state.doc.childCount).toBe(2);
+      expect(view.state.doc.child(0).type.name).toBe("table");
     });
   }
 
@@ -345,6 +394,8 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
             { pPrMark: delMark({ id: 2 }), sectionBreakType: "nextPage" },
             schema.text("gone", [deletion().create(revision)]),
           ),
+          schema.node("table", null, [schema.node("paragraph", null, schema.text("cell"))]),
+          schema.node("paragraph", null, schema.text("last")),
         ]),
       });
       const view = dispatcher(state);
@@ -353,7 +404,7 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
 
       // The section now ends one paragraph earlier; the content before it is
       // still in that section.
-      expect(view.state.doc.childCount).toBe(1);
+      expect(view.state.doc.childCount).toBe(3);
       expect(view.state.doc.child(0).textContent).toBe("first");
       expect(view.state.doc.child(0).attrs["sectionBreakType"]).toBe("nextPage");
     });
@@ -368,13 +419,15 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
             { pPrMark: delMark({ id: 2 }), sectionBreakType: "nextPage" },
             schema.text("gone", [deletion().create(revision)]),
           ),
+          schema.node("table", null, [schema.node("paragraph", null, schema.text("cell"))]),
+          schema.node("paragraph", null, schema.text("last")),
         ]),
       });
       const view = dispatcher(state);
 
       acceptAllChanges()(view.state, view.dispatch);
 
-      expect(view.state.doc.childCount).toBe(2);
+      expect(view.state.doc.childCount).toBe(4);
       expect(view.state.doc.child(0).attrs["sectionBreakType"]).toBe("continuous");
       expect(view.state.doc.child(1).attrs["sectionBreakType"]).toBe("nextPage");
       expect(view.state.doc.child(1).attrs["pPrMark"]).toBeNull();

@@ -22,6 +22,7 @@ import type { FolioAIBlock } from "../ai-edits/types";
 import { compareDocx } from "./compare";
 import { applyEditScript, type EditScript, type EditScriptStep } from "./scenario";
 import type { CompareChange, CompareResult } from "./types";
+import { deletedFinalParagraphMarks } from "./verification";
 
 const FIXTURES_DIR = path.join(import.meta.dir, "../docx/__tests__/__fixtures__/corpus");
 
@@ -506,6 +507,33 @@ describe("compareDocx", () => {
         propertyTestTimeout(120_000),
       );
     }
+  }
+
+  for (const { name, buffer: base, blocks: baseBlocks } of BASE_CASES) {
+    test(
+      `no container's final paragraph mark is ever deleted (${name})`,
+      async () => {
+        // A deleted paragraph mark means "merge this paragraph into the
+        // following one", and the last paragraph of a body, a cell, a header,
+        // a note or a text box has no following one: a consumer reading such a
+        // mark refuses the package rather than opening it. Read back from the
+        // bytes the comparison produced, so it covers what was written and not
+        // only what was planned.
+        await fc.assert(
+          fc.asyncProperty(editScriptArb(baseBlocks), async (script) => {
+            const scripted = await applyEditScript(base, script);
+            if (scripted.isErr()) {
+              throw scripted.error;
+            }
+            const { buffer } = await compareOrThrow(base, scripted.value.buffer);
+            const written = await FolioDocxReviewer.fromBuffer(buffer);
+            expect(deletedFinalParagraphMarks(written.toDocument())).toEqual([]);
+          }),
+          propertyConfig({ numRuns: 12 }),
+        );
+      },
+      propertyTestTimeout(120_000),
+    );
   }
 
   test(

@@ -402,7 +402,13 @@ export class CompareDocxApplyError extends CompareDocxApplyError_base<{
 }> {}
 
 // @public (undocumented)
-export type CompareDocxError = CompareDocxApplyError | CompareDocxOperationLimitError | CompareDocxParseError | CompareDocxRoundTripError | CompareDocxSerializeError | InvalidCompareDocxOptionsError;
+export type CompareDocxError = CompareDocxApplyError | CompareDocxFinalParagraphMarkError | CompareDocxOperationLimitError | CompareDocxParseError | CompareDocxRoundTripError | CompareDocxSerializeError | InvalidCompareDocxOptionsError;
+
+// @public
+export class CompareDocxFinalParagraphMarkError extends CompareDocxFinalParagraphMarkError_base<{
+    message: string;
+    deletions: readonly FinalParagraphMarkDeletion[];
+}> {}
 
 // @public
 export class CompareDocxOperationLimitError extends CompareDocxOperationLimitError_base<{
@@ -669,6 +675,13 @@ export type ExtractDocumentStyleSetOptions = {
 
 // @public
 export function extractEmbeddedFonts(buffer: ArrayBuffer, docNonce?: string): Promise<EmbeddedFont[]>;
+
+// @public
+export type FinalParagraphMarkDeletion = {
+    container: string;
+    paragraphIndex: number;
+    kind: "del" | "moveFrom";
+};
 
 // @public (undocumented)
 export const finishAutocompleteSuggestion: (tr: Transaction, requestId: string) => Transaction;

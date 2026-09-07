@@ -33,6 +33,8 @@ export const REFUSAL_BUCKETS = Object.freeze({
   "apply-refused": "The applier refused a derived operation.",
   "operation-limit": "The difference needs more operations than the engine generates.",
   serialize: "The redlined package could not be written back out.",
+  "final-paragraph-mark":
+    "A container's final paragraph mark carried a deletion no consumer could resolve.",
   "invalid-options": "The call's options were not usable.",
   "round-trip-invisible-structure":
     "Every block is there, in order, at coordinates the block model cannot reach.",
@@ -99,6 +101,13 @@ export const classifyRefusal = (error: CompareDocxError): Refusal => {
       return { bucket: "operation-limit", shape: `over ${String(error.limit)} operations` };
     case "CompareDocxSerializeError":
       return { bucket: "serialize", shape: causeMessage(error.cause) };
+    case "CompareDocxFinalParagraphMarkError":
+      return {
+        bucket: "final-paragraph-mark",
+        shape: `${String(error.deletions.length)} container(s), first ${
+          error.deletions.at(0)?.container ?? "unknown"
+        }`,
+      };
     case "CompareDocxRoundTripError":
       return {
         bucket: bucketOfCause(error.cause),

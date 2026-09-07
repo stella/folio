@@ -309,18 +309,27 @@ function resolveChange(
           nextNode?.type.name === paragraph.type.name &&
           !(carriesSection(paragraph) && carriesSection(nextNode));
         if (!joinable) {
-          // Nothing to join with: the paragraph ends the document, or the next
-          // sibling is a table, or the position lands on a cell boundary where
+          // Nothing to join with: the next sibling is a table, or the paragraph
+          // ends its container — a body, a cell, a header, a note or a text box
+          // each end with one, and the position then lands on a boundary where
           // `join` would merge the containers and silently lose rows.
           //
-          // Resolving the mark still has a meaning. The paragraph whose break
-          // and content were both resolved away is simply not there any more,
-          // so it is removed rather than left blank — which is what a document
-          // holds after a paragraph before a table is deleted and the deletion
-          // is accepted.
+          // A paragraph before a TABLE is still gone once its break and its
+          // content are both resolved away: it is simply not there any more, so
+          // it is removed rather than left blank.
           //
-          // A cell must contain a paragraph, so its parent's only child stays
-          // blank whatever its mark says.
+          // At the container's END the two directions part. A break that was
+          // ADDED there added the paragraph it ends, so taking the addition
+          // back removes the paragraph and the container ends where it did
+          // before. A break that was REMOVED there cannot be honoured at all:
+          // it says "join with the paragraph after this one" and there is
+          // none, so the paragraph keeps its place and loses only the mark's
+          // revision. That is also what makes a redline that deleted such a
+          // mark fail its own round trip rather than resolve into a document
+          // no consumer would have reached from it.
+          //
+          // A container must contain a paragraph either way, so its parent's
+          // only child stays blank whatever its mark says.
           //
           // A section's properties live on a paragraph mark, so the paragraph
           // is where its section ENDS. It can still go, but the section cannot
@@ -334,7 +343,14 @@ function resolveChange(
           const sectionCanMoveBack =
             !carriesSection(paragraph) ||
             (previous?.type.name === paragraph.type.name && !carriesSection(previous));
-          if (sectionCanMoveBack && holdsNoContent(paragraph) && resolved.parent.childCount > 1) {
+          const endsItsContainer = resolved.index() === resolved.parent.childCount - 1;
+          const canGo = op.markWasAdded || !endsItsContainer;
+          if (
+            sectionCanMoveBack &&
+            holdsNoContent(paragraph) &&
+            canGo &&
+            resolved.parent.childCount > 1
+          ) {
             if (carriesSection(paragraph) && previous) {
               tr.setNodeMarkup(mappedPos - previous.nodeSize, undefined, {
                 ...previous.attrs,
@@ -520,6 +536,13 @@ const resolveRunPropertyChange = ({
 type PPrMarkOp = {
   paragraphPos: number;
   action: "clear" | "join";
+  /**
+   * Whether the mark said the break was ADDED. A break that was added can be
+   * taken back out at a container's edge, because the paragraph it ends was
+   * not there before it; one that was removed cannot, because that paragraph
+   * is what the container ends with.
+   */
+  markWasAdded: boolean;
 };
 
 type TableRowStructuralOp = {
@@ -812,9 +835,9 @@ function collectPPrMarkOp(
   }
   // Accepting an added break, or rejecting a removed one, keeps the break
   // (clear the attr). The other two remove it (join with the next paragraph).
-  const action: PPrMarkOp["action"] =
-    paragraphMarkWasAdded(pPrMark.kind) === (mode === "accept") ? "clear" : "join";
-  return { paragraphPos: pos, action };
+  const markWasAdded = paragraphMarkWasAdded(pPrMark.kind);
+  const action: PPrMarkOp["action"] = markWasAdded === (mode === "accept") ? "clear" : "join";
+  return { paragraphPos: pos, action, markWasAdded };
 }
 
 function rangeCoversParagraphBoundary(
