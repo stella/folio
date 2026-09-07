@@ -26,6 +26,7 @@ export type ApplyFolioDocumentOperationsOptions = {
     createUndoHandle?: () => FolioDocumentOperationUndoHandle;
     revisionStamp?: FolioRevisionStamp;
     wordDiff?: FolioWordDiffOptions;
+    tableTemplates?: FolioTableTemplates;
 };
 
 // @public (undocumented)
@@ -460,6 +461,7 @@ export type FolioAITextRangeHandle = {
 export type FolioApplyDocumentOperationsToStoryOptions = FolioApplyDocumentOperationsOptions & {
     story: FolioEditableDocumentStoryHandle;
     batch: FolioDocumentOperationBatch;
+    tableTemplates?: FolioTableTemplates;
 };
 
 // @public

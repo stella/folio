@@ -86,7 +86,7 @@ export const runStagedCompare = async (
   }
 
   const serializeStart = performance.now();
-  const serialized = await serializeComparison(parsed.value, planned.value);
+  const serialized = await serializeComparison(parsed.value, applied.value);
   const serialize = performance.now() - serializeStart;
   if (serialized.isErr()) {
     return { status: "failed", stage: "serialize", error: describe(serialized.error) };

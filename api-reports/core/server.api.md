@@ -6,6 +6,7 @@
 
 import { Hyperlink } from '@stll/docx-core/model';
 import * as import__stll_docx_core_model from '@stll/docx-core/model';
+import { Node as Node_2 } from 'prosemirror-model';
 import { Paragraph } from '@stll/docx-core/model';
 import { ParagraphContent } from '@stll/docx-core/model';
 import { ParagraphFormatting } from '@stll/docx-core/model';
@@ -760,6 +761,7 @@ export type FolioApplyDocumentOperationsOptions = Omit<FolioApplyOperationsOptio
 export type FolioApplyDocumentOperationsToStoryOptions = FolioApplyDocumentOperationsOptions & {
     story: FolioEditableDocumentStoryHandle;
     batch: FolioDocumentOperationBatch;
+    tableTemplates?: FolioTableTemplates;
 };
 
 // @public
@@ -1211,6 +1213,7 @@ export class FolioDocxReviewer {
     getDocumentProperties(): Readonly<NonNullable<import__stll_docx_core_model.Document["package"]["properties"]>> | null;
     getNotesAsText(): string;
     listStories(): FolioDocumentStory[];
+    matchStoryTableGeometry(input: FolioMatchStoryTableGeometryOptions): number;
     readNumberingDefinitions(): FolioNumberingLevel[];
     readReviewedStory(options?: FolioReadReviewedStoryOptions): FolioReviewedStory | null;
     readStory(handle: FolioDocumentStoryHandle): FolioDocumentStory | null;
@@ -1223,6 +1226,7 @@ export class FolioDocxReviewer {
     resolveReviewedStory(input: FolioResolveReviewedStoryOptions): boolean;
     snapshot(): FolioAIEditSnapshot;
     snapshotStory(story: FolioEditableDocumentStoryHandle): FolioAIEditSnapshot | null;
+    storyTables(input?: FolioReadReviewedStoryOptions): readonly FolioStoryTable[];
     toBuffer(): Promise<ArrayBuffer>;
     toDocument(): import__stll_docx_core_model.Document;
     undoDocumentOperations(undoHandle: FolioDocumentOperationUndoHandle): FolioDocumentOperationUndoResult;

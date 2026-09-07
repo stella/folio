@@ -17,15 +17,23 @@
 import type { CompareDocxError, CompareUnsupportedPart } from "@stll/folio-core/compare/types";
 import type {
   CompareVerification,
+  CompareVerificationCause,
   CompareVerificationFailure,
 } from "@stll/folio-core/compare/verification";
+
+/**
+ * A bucket per verification cause, so a cause the engine gains cannot land in
+ * the report without a description. The prefix is what tells a reader that the
+ * self-check produced the refusal rather than the parser or the serializer.
+ */
+type RoundTripBuckets = { [Cause in CompareVerificationCause as `round-trip-${Cause}`]: string };
 
 /**
  * Why one comparison produced nothing under the strict default.
  *
  * The round-trip buckets are the engine's verification causes, prefixed so a
  * reader can tell a refusal the self-check produced from one the parser or the
- * serializer did.
+ * serializer did, and checked against them so neither side can gain one alone.
  */
 export const REFUSAL_BUCKETS = Object.freeze({
   "parse-base": "The base package could not be read into an editor model.",
@@ -40,12 +48,14 @@ export const REFUSAL_BUCKETS = Object.freeze({
     "Every block is there, in order, at coordinates the block model cannot reach.",
   "round-trip-block-count": "The result holds a different number of blocks than expected.",
   "round-trip-container": "Every block's text matched, but one sits in the wrong container.",
+  "round-trip-table-geometry":
+    "Every block is where it should be, and a table's own properties are not.",
   "round-trip-style": "A block kept a paragraph style the other side changed.",
   "round-trip-list-level": "A block kept a list level the other side changed.",
   "round-trip-inline-formatting": "A planned formatting change did not round-trip.",
   "round-trip-whitespace": "A block's text differs only in whitespace.",
   "round-trip-text": "A block's text does not match.",
-} as const);
+} as const satisfies Record<string, string> & RoundTripBuckets);
 
 export type RefusalBucket = keyof typeof REFUSAL_BUCKETS;
 

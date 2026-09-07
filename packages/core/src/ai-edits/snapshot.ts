@@ -128,6 +128,41 @@ type AncestorPathEntry = { node: PMNode; start: number; end: number; index: numb
 export const isHiddenTableRow = (node: PMNode): boolean =>
   node.type.name === TABLE_ROW_NODE_NAME && node.attrs["hidden"] === true;
 
+/** One table of a story, numbered the way {@link createFolioAIEditSnapshot} numbers it. */
+export type FolioStoryTable = {
+  /** Document-order index over every table, nested ones included. */
+  index: number;
+  /** The table node's position in the story document. */
+  start: number;
+  node: PMNode;
+};
+
+/**
+ * Every table of one story in document order, nested tables included and
+ * hidden rows' subtrees excluded.
+ *
+ * The single place a story's tables are numbered. `table.tableIndex` on a
+ * block, the geometry a comparison copies out of the target and the geometry
+ * it checks its own work against all read this list, so no second walk can
+ * number the same document differently.
+ */
+export const folioStoryTables = (doc: PMNode): FolioStoryTable[] => {
+  const tables: FolioStoryTable[] = [];
+  doc.descendants((node, pos) => {
+    if (node.isTextblock) {
+      return false;
+    }
+    if (isHiddenTableRow(node)) {
+      return false;
+    }
+    if (node.type.spec["tableRole"] === TABLE_ROLE_TABLE) {
+      tables.push({ index: tables.length, start: pos, node });
+    }
+    return true;
+  });
+  return tables;
+};
+
 type TableLocationOptions = {
   path: readonly AncestorPathEntry[];
   /** The visited block's index in its own parent. */
@@ -192,10 +227,9 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
   }[] = [];
   const hashCounts = new Map<string, number>();
   const usedBlockIds = new Set<string>();
-  // Table start position -> document-order index, filled by the walk below.
-  // `descendants` reaches a table before any textblock inside it, so a nested
-  // block's lookup always finds its table already numbered.
-  const tableIndexByStart = new Map<number, number>();
+  const tableIndexByStart = new Map(
+    folioStoryTables(doc).map(({ start, index }) => [start, index] as const),
+  );
   // The containers enclosing the node being visited, innermost last. Kept in
   // step with the walk so no block has to resolve its own position.
   const path: AncestorPathEntry[] = [];
@@ -209,9 +243,6 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
     if (!node.isTextblock) {
       if (isHiddenTableRow(node)) {
         return false;
-      }
-      if (node.type.spec["tableRole"] === TABLE_ROLE_TABLE) {
-        tableIndexByStart.set(pos, tableIndexByStart.size);
       }
       if (!node.isLeaf) {
         path.push({ node, start: pos, end: pos + node.nodeSize, index });

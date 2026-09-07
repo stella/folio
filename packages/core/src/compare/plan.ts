@@ -47,6 +47,7 @@ import type {
   FolioAIEditOperation,
   FolioAIEditSnapshot,
 } from "../ai-edits/types";
+import type { TableCellCoordinate, TableGeometryPairing } from "../ai-edits/table-geometry";
 import { alignFolioBlocks } from "../version-comparison";
 import { inlineFormattingSegments } from "./formatting";
 import { alignTableColumns, type TableColumnAlignmentStep } from "./column-alignment";
@@ -1105,9 +1106,72 @@ const trailingDeletionOperations = ({
   return added;
 };
 
+/**
+ * A table the target document already holds, which the operation naming it
+ * should place verbatim instead of rebuilding from its cell texts.
+ *
+ * The plan is pure and sees only block snapshots, so it names the table by the
+ * index the snapshot numbers tables with; the caller, which has both
+ * documents, resolves the index to the node.
+ */
+export type CompareTableTemplateRequest = {
+  /** The `insertTable` or `insertTableRow` operation this table belongs to. */
+  operationId: string;
+  /** Index of the table in the TARGET story. */
+  targetTableIndex: number;
+  /** Set for a row insertion: which of that table's rows to place. */
+  targetRowIndex?: number;
+};
+
 export type CompareStoryPlan = {
   changes: CompareChange[];
   operations: FolioAIEditOperation[];
+  /**
+   * Where an operation's table comes from. Kept beside the operations rather
+   * than inside them because a table node is not JSON, and the serialized
+   * operation contract describes a table by its cell texts.
+   */
+  tableTemplates: CompareTableTemplateRequest[];
+  /**
+   * Base cells the alignment put opposite a target cell. Their tables, rows
+   * and cells are the ones whose `w:tblPr` / `w:trPr` / `w:tcPr` the caller
+   * matches: a table that stayed in place while its widths, shading or header
+   * row changed moves no block, so no operation carries the difference.
+   */
+  tableGeometryPairings: TableGeometryPairing[];
+};
+
+const cellCoordinate = ({
+  tableIndex,
+  rowIndex,
+  cellIndex,
+}: FolioAIBlockTableLocation): TableCellCoordinate => ({ tableIndex, rowIndex, cellIndex });
+
+/**
+ * The cells the alignment paired, one entry each. A cell holds several
+ * paragraphs and each pairs on its own, so the first pairing of a cell is the
+ * one kept: later ones would name the same two cells.
+ */
+const tableGeometryPairingsOf = (steps: readonly CompareStep[]): TableGeometryPairing[] => {
+  const pairings: TableGeometryPairing[] = [];
+  const seen = new Set<string>();
+  for (const step of steps) {
+    if (step.type !== "pair") {
+      continue;
+    }
+    const base = step.baseBlock.table;
+    const target = step.targetBlock.table;
+    if (!base || !target) {
+      continue;
+    }
+    const key = `${String(base.tableIndex)}:${String(base.rowIndex)}:${String(base.cellIndex)}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    pairings.push({ base: cellCoordinate(base), target: cellCoordinate(target) });
+  }
+  return pairings;
 };
 
 export type PlanStoryCompareOptions = {
@@ -1142,6 +1206,7 @@ export const planStoryCompare = ({
   const anchorIds = nextBaseBlockIdByStep(steps);
   const changes: CompareChange[] = [];
   const operations: FolioAIEditOperation[] = [];
+  const tableTemplates: CompareTableTemplateRequest[] = [];
   /**
    * The anchor everything past the base document's content hangs from: its
    * last BODY-LEVEL paragraph, which the format guarantees exists because a
@@ -1412,25 +1477,21 @@ export const planStoryCompare = ({
           targetBlockIds: step.blocks.map(({ id }) => id),
         });
         const before = anchorIds[stepIndex] ?? null;
-        if (before !== null) {
-          operations.push({
-            id: nextOperationId(),
-            type: "insertTable",
-            blockId: before,
-            position: "before",
-            rows,
-          });
+        const anchorBlockId = before ?? tailAnchorId;
+        if (anchorBlockId === null) {
           break;
         }
-        if (tailAnchorId !== null) {
-          operations.push({
-            id: nextOperationId(),
-            type: "insertTable",
-            blockId: tailAnchorId,
-            position: "after",
-            rows,
-          });
-        }
+        const operationId = nextOperationId();
+        operations.push({
+          id: operationId,
+          type: "insertTable",
+          blockId: anchorBlockId,
+          position: before === null ? "after" : "before",
+          rows,
+        });
+        // The rows above are the change list's summary; the table itself comes
+        // from the target, so its grid, row and cell properties survive.
+        tableTemplates.push({ operationId, targetTableIndex: step.location.tableIndex });
         break;
       }
       case "targetRow": {
@@ -1452,12 +1513,18 @@ export const planStoryCompare = ({
           }
           break;
         }
+        const rowOperationId = nextOperationId();
         operations.push({
-          id: nextOperationId(),
+          id: rowOperationId,
           type: "insertTableRow",
           blockId: anchor.blockId,
           position: anchor.position,
           cellTexts: cells,
+        });
+        tableTemplates.push({
+          operationId: rowOperationId,
+          targetTableIndex: step.location.tableIndex,
+          targetRowIndex: step.location.rowIndex,
         });
         break;
       }
@@ -1498,5 +1565,12 @@ export const planStoryCompare = ({
     }),
   );
 
-  return operations.length > maxOperations ? null : { changes, operations };
+  return operations.length > maxOperations
+    ? null
+    : {
+        changes,
+        operations,
+        tableTemplates,
+        tableGeometryPairings: tableGeometryPairingsOf(steps),
+      };
 };

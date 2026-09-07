@@ -77,9 +77,13 @@ import {
 } from "./read";
 import {
   createFolioAIEditSnapshot,
+  folioStoryTables,
   isFolioAIContentBlock,
   normalizeFolioAIBlockText,
+  type FolioStoryTable,
 } from "./snapshot";
+import { matchTableGeometry, type TableGeometryPairing } from "./table-geometry";
+import type { FolioTableTemplates } from "./table-template";
 import type {
   FolioAIBlock,
   FolioAIEditApplyMode,
@@ -266,6 +270,16 @@ export type FolioReadReviewedStoryOptions = {
   view?: FolioReviewedView;
 };
 
+/** What {@link FolioDocxReviewer.matchStoryTableGeometry} needs to move a table's properties. */
+export type FolioMatchStoryTableGeometryOptions = {
+  story?: FolioEditableDocumentStoryHandle;
+  /** The other document's tables, by the index its snapshot numbers them with. */
+  targetTables: ReadonlyMap<number, PMNode>;
+  /** Base cells and the target cells they were aligned with. */
+  pairings: readonly TableGeometryPairing[];
+  revisionStamp: FolioRevisionStamp;
+};
+
 export type FolioResolveReviewedStoryOptions = {
   story?: FolioEditableDocumentStoryHandle;
   view: FolioResolvedReviewedView;
@@ -306,6 +320,14 @@ class FolioResolvedStorySerializationError extends TaggedError(
 export type FolioApplyDocumentOperationsToStoryOptions = FolioApplyDocumentOperationsOptions & {
   story: FolioEditableDocumentStoryHandle;
   batch: FolioDocumentOperationBatch;
+  /**
+   * Tables and rows an `insertTable` / `insertTableRow` in the batch places
+   * verbatim, by operation id. A caller copying a table it already holds —
+   * `compareDocx` placing the target document's table — hands it over whole
+   * instead of letting the operation rebuild it from its cell texts and lose
+   * every table, row and cell property on the way.
+   */
+  tableTemplates?: FolioTableTemplates;
 };
 
 export type { FolioRevisionStamp };
@@ -340,6 +362,7 @@ type ApplyDocumentOperationsInternalOptions = {
   snapshot?: FolioAIEditSnapshot;
   revisionStamp?: FolioRevisionStamp;
   wordDiff?: FolioWordDiffOptions;
+  tableTemplates?: FolioTableTemplates;
   createUndoEntry: boolean;
 };
 
@@ -673,6 +696,69 @@ export class FolioDocxReviewer {
     return state ? createFolioAIEditSnapshot(state.doc) : null;
   }
 
+  /**
+   * One story's tables, in the document order {@link snapshotStory} numbers
+   * them with, read through a reviewed view.
+   *
+   * A block snapshot says which table a paragraph sits in and nothing about
+   * the table itself. A caller that has to reproduce one — a comparison
+   * copying the target's table into the base, or checking that accepting its
+   * own redline reproduced it — needs the node: its `w:tblPr`, its `w:tblGrid`
+   * widths, and every row's and cell's properties.
+   */
+  storyTables({
+    story = MAIN_STORY,
+    view = "final",
+  }: FolioReadReviewedStoryOptions = {}): readonly FolioStoryTable[] {
+    if (!isFolioReviewedView(view)) {
+      throw new UnsupportedFolioReviewedViewError({
+        message: "Unsupported reviewed document view.",
+        receivedView: view,
+      });
+    }
+    const sourceState = this.getEditableStoryState(story);
+    return sourceState ? folioStoryTables(resolveReviewedState(sourceState, view).doc) : [];
+  }
+
+  /**
+   * Move the paired tables' own properties onto this story's tables, as
+   * tracked property changes.
+   *
+   * `w:tblPr`, `w:trPr` and `w:tcPr` belong to no block, so no block operation
+   * can carry them: a table that stayed in place while its widths, shading,
+   * borders or header row changed reads as unedited. Each difference is
+   * written as the target's property set plus a `w:tblPrChange` /
+   * `w:trPrChange` / `w:tcPrChange` holding the previous one, which is what a
+   * reject restores. A set that already agrees produces no revision.
+   */
+  matchStoryTableGeometry({
+    story = MAIN_STORY,
+    targetTables,
+    pairings,
+    revisionStamp,
+  }: FolioMatchStoryTableGeometryOptions): number {
+    const state = this.getEditableStoryState(story);
+    if (!state || pairings.length === 0) {
+      return revisionStamp.idSeed;
+    }
+    const transaction = state.tr;
+    const { nextRevisionId } = matchTableGeometry({
+      tr: transaction,
+      baseTables: folioStoryTables(state.doc),
+      targetTables,
+      pairings,
+      revision: {
+        author: this.author,
+        date: revisionStamp.date,
+        idSeed: revisionStamp.idSeed,
+      },
+    });
+    if (transaction.docChanged) {
+      this.setEditableStoryState(story, state.apply(transaction));
+    }
+    return nextRevisionId;
+  }
+
   /** Read one story through an immutable reviewed-view projection. */
   readReviewedStory(options: FolioReadReviewedStoryOptions = {}): FolioReviewedStory | null {
     const story = options.story ?? MAIN_STORY;
@@ -768,6 +854,7 @@ export class FolioDocxReviewer {
     snapshot,
     revisionStamp,
     wordDiff,
+    tableTemplates,
   }: FolioApplyDocumentOperationsToStoryOptions): FolioDocumentOperationResult {
     return this.applyDocumentOperationsInternal({
       story,
@@ -775,6 +862,7 @@ export class FolioDocxReviewer {
       ...(snapshot !== undefined && { snapshot }),
       ...(revisionStamp !== undefined && { revisionStamp }),
       ...(wordDiff !== undefined && { wordDiff }),
+      ...(tableTemplates !== undefined && { tableTemplates }),
       createUndoEntry: true,
     });
   }
@@ -785,6 +873,7 @@ export class FolioDocxReviewer {
     snapshot,
     revisionStamp,
     wordDiff,
+    tableTemplates,
     createUndoEntry,
   }: ApplyDocumentOperationsInternalOptions): FolioDocumentOperationResult {
     const beforeState = this.requireEditableStoryState(story);
@@ -804,6 +893,7 @@ export class FolioDocxReviewer {
       author: this.author,
       ...(revisionStamp !== undefined && { revisionStamp }),
       ...(wordDiff !== undefined && { wordDiff }),
+      ...(tableTemplates !== undefined && { tableTemplates }),
       createCommentId: (text) => {
         const comment = createReviewerComment(this.nextCommentId(), text, this.author);
         this.createdComments.push(comment);

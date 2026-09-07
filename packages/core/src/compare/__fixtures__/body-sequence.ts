@@ -34,6 +34,76 @@ const ZIP_ENTRY_OPTIONS = { date: FIXED_ZIP_DATE, createFolders: false } as cons
  */
 export type CellContent = string | readonly BodyItem[];
 
+/** `w:tcPr` children a fixture can author, each named after the element. */
+export type CellProperties = {
+  /** `w:gridSpan`: grid columns this cell occupies. */
+  gridSpan?: number;
+  /** `w:vMerge`: the cell starts a vertical merge, or continues one. */
+  verticalMerge?: "restart" | "continue";
+  /** `w:tcW` in twips. */
+  width?: number;
+  /** `w:shd` fill colour, as six hex digits. */
+  shadingFill?: string;
+  /** `w:vAlign`. */
+  verticalAlign?: "top" | "center" | "bottom";
+  /** `w:tcBorders`, single style on all four sides, in eighths of a point. */
+  borderSize?: number;
+  /** `w:tcMar`, the same margin on all four sides, in twips. */
+  margin?: number;
+};
+
+/** A cell: its content alone, or its content and its own `w:tcPr`. */
+export type Cell = CellContent | ({ content: CellContent } & CellProperties);
+
+/** A row: its cells alone, or its cells and its own `w:trPr`. */
+export type TableRow =
+  | readonly Cell[]
+  | {
+      cells: readonly Cell[];
+      /** `w:trHeight` in twips. */
+      height?: number;
+      /** `w:tblHeader`: the row repeats at the top of every page. */
+      header?: boolean;
+      /** `w:jc` on the row. */
+      justification?: "left" | "center" | "right";
+    };
+
+/** `w:tblPr` children a fixture can author, each named after the element. */
+export type TableProperties = {
+  /** `w:tblStyle`. */
+  styleId?: string;
+  /** `w:tblW`. */
+  width?: { value: number; type: "auto" | "dxa" | "pct" };
+  /** `w:jc` on the table. */
+  justification?: "left" | "center" | "right";
+  /** `w:tblInd` in twips. */
+  indent?: number;
+  /** `w:tblBorders`, single style on every side, in eighths of a point. */
+  borderSize?: number;
+  /** `w:shd` fill colour on the table, as six hex digits. */
+  shadingFill?: string;
+  /** `w:tblLayout`. */
+  layout?: "fixed" | "autofit";
+  /** `w:tblCellMar`, the same margin on all four sides, in twips. */
+  cellMargin?: number;
+  /** `w:tblLook` value, as four hex digits. */
+  look?: string;
+};
+
+type RowOptions = Exclude<TableRow, readonly Cell[]>;
+type CellSpec = Exclude<Cell, CellContent>;
+
+const isRowOptions = (row: TableRow): row is RowOptions => "cells" in row;
+const isCellSpec = (cell: Cell): cell is CellSpec => typeof cell === "object" && "content" in cell;
+
+const rowCells = (row: TableRow): readonly Cell[] => (isRowOptions(row) ? row.cells : row);
+
+const rowOptions = (row: TableRow): Omit<RowOptions, "cells"> => (isRowOptions(row) ? row : {});
+
+const cellContent = (cell: Cell): CellContent => (isCellSpec(cell) ? cell.content : cell);
+
+const cellProperties = (cell: Cell): CellProperties => (isCellSpec(cell) ? cell : {});
+
 /**
  * One inline of a paragraph: plain text, or text carrying an external
  * hyperlink. A link is the case where a revision wrapper and the linked runs
@@ -56,7 +126,11 @@ export type BodyItem =
     }
   | {
       kind: "table";
-      rows: readonly (readonly CellContent[])[];
+      rows: readonly TableRow[];
+      /** `w:tblPr` children, written in the order the schema requires. */
+      properties?: TableProperties;
+      /** `w:tblGrid` column widths, in twips. One per grid column. */
+      columnWidths?: readonly number[];
       /**
        * Rows a package hides with `w:hidden`. The snapshot skips their whole
        * subtree, so a document that has one is the case where the snapshot
@@ -156,9 +230,10 @@ const collectHrefs = (items: readonly BodyItem[], hrefs: string[]): void => {
       continue;
     }
     for (const row of item.rows) {
-      for (const cell of row) {
-        if (typeof cell !== "string") {
-          collectHrefs(cell, hrefs);
+      for (const cell of rowCells(row)) {
+        const content = cellContent(cell);
+        if (typeof content !== "string") {
+          collectHrefs(content, hrefs);
         }
       }
     }
@@ -185,26 +260,118 @@ const cellXml = (content: CellContent, context: BodyContext): string =>
     : itemsXml(closedSequence(content), context);
 
 /** `w:tbl` is `w:tblPr, w:tblGrid, rows`: a fixture without the grid is not one. */
-const tableGrid = (rows: readonly (readonly CellContent[])[]): string => {
+const tableGrid = (item: Extract<BodyItem, { kind: "table" }>): string => {
+  if (item.columnWidths) {
+    return `<w:tblGrid>${item.columnWidths.map((width) => `<w:gridCol w:w="${String(width)}"/>`).join("")}</w:tblGrid>`;
+  }
   let columns = 0;
-  for (const cells of rows) {
-    columns = Math.max(columns, cells.length);
+  for (const row of item.rows) {
+    let spanned = 0;
+    for (const cell of rowCells(row)) {
+      spanned += cellProperties(cell).gridSpan ?? 1;
+    }
+    columns = Math.max(columns, spanned);
   }
   return `<w:tblGrid>${`<w:gridCol w:w="2000"/>`.repeat(columns)}</w:tblGrid>`;
+};
+
+const BORDER_SIDES = ["top", "left", "bottom", "right", "insideH", "insideV"] as const;
+const CELL_BORDER_SIDES = ["top", "left", "bottom", "right"] as const;
+const MARGIN_SIDES = ["top", "left", "bottom", "right"] as const;
+
+const borders = (element: string, sides: readonly string[], size: number): string =>
+  `<w:${element}>${sides
+    .map(
+      (side) => `<w:${side} w:val="single" w:sz="${String(size)}" w:space="0" w:color="000000"/>`,
+    )
+    .join("")}</w:${element}>`;
+
+const margins = (element: string, value: number): string =>
+  `<w:${element}>${MARGIN_SIDES.map(
+    (side) => `<w:${side} w:w="${String(value)}" w:type="dxa"/>`,
+  ).join("")}</w:${element}>`;
+
+/**
+ * `w:tblPr` children in the order CT_TblPrBase declares: tblStyle, tblW, jc,
+ * tblInd, tblBorders, shd, tblLayout, tblCellMar, tblLook. `w:tblW` is always
+ * written.
+ */
+const tableProperties = ({ properties }: Extract<BodyItem, { kind: "table" }>): string => {
+  const width = properties?.width ?? { value: 0, type: "auto" };
+  const parts = [
+    ...(properties?.styleId === undefined ? [] : [`<w:tblStyle w:val="${properties.styleId}"/>`]),
+    `<w:tblW w:w="${String(width.value)}" w:type="${width.type}"/>`,
+    ...(properties?.justification === undefined
+      ? []
+      : [`<w:jc w:val="${properties.justification}"/>`]),
+    ...(properties?.indent === undefined
+      ? []
+      : [`<w:tblInd w:w="${String(properties.indent)}" w:type="dxa"/>`]),
+    ...(properties?.borderSize === undefined
+      ? []
+      : [borders("tblBorders", BORDER_SIDES, properties.borderSize)]),
+    ...(properties?.shadingFill === undefined
+      ? []
+      : [`<w:shd w:val="clear" w:color="auto" w:fill="${properties.shadingFill}"/>`]),
+    ...(properties?.layout === undefined ? [] : [`<w:tblLayout w:type="${properties.layout}"/>`]),
+    ...(properties?.cellMargin === undefined ? [] : [margins("tblCellMar", properties.cellMargin)]),
+    ...(properties?.look === undefined ? [] : [`<w:tblLook w:val="${properties.look}"/>`]),
+  ];
+  return `<w:tblPr>${parts.join("")}</w:tblPr>`;
+};
+
+/**
+ * `w:trPr` children. `CT_TrPrBase` is a repeated choice rather than a
+ * sequence, so the order here is the readable one rather than a required one.
+ */
+const rowProperties = (row: TableRow, hidden: boolean): string => {
+  const { header, height, justification } = rowOptions(row);
+  const parts = [
+    ...(height === undefined ? [] : [`<w:trHeight w:val="${String(height)}"/>`]),
+    ...(header === true ? ["<w:tblHeader/>"] : []),
+    ...(justification === undefined ? [] : [`<w:jc w:val="${justification}"/>`]),
+    ...(hidden ? ["<w:hidden/>"] : []),
+  ];
+  return parts.length === 0 ? "" : `<w:trPr>${parts.join("")}</w:trPr>`;
+};
+
+/** `w:tcPr` children in schema order; `w:tcW` is always written. */
+const cellPropertiesXml = (cell: Cell): string => {
+  const properties = cellProperties(cell);
+  const parts = [
+    `<w:tcW w:w="${String(properties.width ?? 2000)}" w:type="dxa"/>`,
+    ...(properties.gridSpan === undefined
+      ? []
+      : [`<w:gridSpan w:val="${String(properties.gridSpan)}"/>`]),
+    ...(properties.verticalMerge === undefined
+      ? []
+      : [properties.verticalMerge === "restart" ? `<w:vMerge w:val="restart"/>` : `<w:vMerge/>`]),
+    ...(properties.borderSize === undefined
+      ? []
+      : [borders("tcBorders", CELL_BORDER_SIDES, properties.borderSize)]),
+    ...(properties.shadingFill === undefined
+      ? []
+      : [`<w:shd w:val="clear" w:color="auto" w:fill="${properties.shadingFill}"/>`]),
+    ...(properties.margin === undefined ? [] : [margins("tcMar", properties.margin)]),
+    ...(properties.verticalAlign === undefined
+      ? []
+      : [`<w:vAlign w:val="${properties.verticalAlign}"/>`]),
+  ];
+  return `<w:tcPr>${parts.join("")}</w:tcPr>`;
 };
 
 const table = (item: Extract<BodyItem, { kind: "table" }>, context: BodyContext): string => {
   const hidden = new Set(item.hiddenRows ?? []);
   return (
-    `<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/></w:tblPr>` +
-    tableGrid(item.rows) +
+    `<w:tbl>${tableProperties(item)}` +
+    tableGrid(item) +
     item.rows
       .map(
-        (cells, rowIndex) =>
-          `<w:tr>${hidden.has(rowIndex) ? `<w:trPr><w:hidden/></w:trPr>` : ""}${cells
+        (row, rowIndex) =>
+          `<w:tr>${rowProperties(row, hidden.has(rowIndex))}${rowCells(row)
             .map(
-              (content) =>
-                `<w:tc><w:tcPr><w:tcW w:w="2000" w:type="dxa"/></w:tcPr>${cellXml(content, context)}</w:tc>`,
+              (cell) =>
+                `<w:tc>${cellPropertiesXml(cell)}${cellXml(cellContent(cell), context)}</w:tc>`,
             )
             .join("")}</w:tr>`,
       )

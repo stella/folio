@@ -3201,7 +3201,7 @@ function buildCellMarginsFromAttrs(m: {
 /**
  * Convert ProseMirror table attrs to TableFormatting
  */
-function tableAttrsToFormatting(attrs: TableAttrs): TableFormatting | undefined {
+export function tableAttrsToFormatting(attrs: TableAttrs): TableFormatting | undefined {
   // If we have the original formatting from the DOCX, use it as a base
   // for lossless round-trip. This preserves properties like cellSpacing,
   // indent, layout, bidi, overlap, shading that aren't tracked as PM attrs.
@@ -3424,7 +3424,7 @@ function createVerticalMergeContinuationCell(colspan: number): TableCell {
 /**
  * Convert ProseMirror table row attrs to TableRowFormatting
  */
-function tableRowAttrsToFormatting(attrs: TableRowAttrs): TableRowFormatting | undefined {
+export function tableRowAttrsToFormatting(attrs: TableRowAttrs): TableRowFormatting | undefined {
   // If we have the original formatting from the DOCX, use it as a base
   // for lossless round-trip. This preserves properties like cantSplit,
   // justification, hidden, conditionalFormat that aren't tracked as PM attrs.
@@ -3567,7 +3567,7 @@ type CellShading = NonNullable<TableCellFormatting["shading"]>;
 const cellShadingFromAttrs = (attrs: TableCellAttrs): CellShading =>
   attrs.backgroundColor ? { fill: { rgb: attrs.backgroundColor } } : { pattern: "nil" };
 
-function tableCellAttrsToFormatting(attrs: TableCellAttrs): TableCellFormatting | undefined {
+export function tableCellAttrsToFormatting(attrs: TableCellAttrs): TableCellFormatting | undefined {
   const backgroundChanged = attrs.backgroundColor !== attrs._resolvedBackgroundColor;
 
   // If we have the original formatting from the DOCX, use it as a base

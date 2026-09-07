@@ -45,8 +45,13 @@ import {
   type TableColumnInsertion,
   type TableRowDeletion,
   type TableRowInsertion,
-  type TableStructureRevision,
+  markTableRowContent,
 } from "./table-row-column-mutations";
+import {
+  tableFromTemplate,
+  type FolioTableTemplates,
+  type TableStructureRevision,
+} from "./table-template";
 import {
   findOutermostTableBoundary,
   findEnclosingTableCell,
@@ -109,6 +114,20 @@ type ApplyFolioAIEditOperationsOptions = {
   revisionStamp?: FolioRevisionStamp;
   /** How a replacement's redline is cut. */
   wordDiff?: FolioWordDiffOptions;
+  /**
+   * Tables and rows an `insertTable` / `insertTableRow` operation should place
+   * verbatim, by operation id.
+   *
+   * The operations describe their content as cell texts, which is what a
+   * caller writing a table from nothing has. A caller copying one it already
+   * holds — a comparison placing the target document's table — has the whole
+   * thing: `w:tblPr`, the `w:tblGrid` widths, `w:trPr`, `w:tcPr` with its
+   * spans and merges, and cell paragraphs with their own properties. Rebuilt
+   * from text, none of that survives. Kept out of the operation payload
+   * because it is a document node rather than JSON: the serialized contract
+   * still describes a table by its cell texts.
+   */
+  tableTemplates?: FolioTableTemplates;
 };
 
 type ApplyFolioAIEditOperationsInternalOptions = ApplyFolioAIEditOperationsOptions & {
@@ -720,9 +739,11 @@ type BuildTableNodeOptions = {
 
 /**
  * A plain table from a grid of cell texts, `null` when the schema has no
- * tables. In tracked mode every row carries `trIns`, which is how Word says
- * "this table is new": there is no whole-table insertion element, only rows
- * that were inserted.
+ * tables. In tracked mode every row carries `trIns` and every run inside it
+ * carries `w:ins`, which is how the format says "this table is new": there is
+ * no whole-table insertion element, only rows that were inserted, and a
+ * consumer that reads only run-level revisions keeps the text of a rejected
+ * insertion when the row marker stands alone.
  */
 const buildTableNode = ({ schema, rows, revision }: BuildTableNodeOptions): PMNode | null => {
   const paragraphType = schema.nodes["paragraph"];
@@ -732,6 +753,20 @@ const buildTableNode = ({ schema, rows, revision }: BuildTableNodeOptions): PMNo
   if (!paragraphType || !cellType || !rowType || !tableType || rows.length === 0) {
     return null;
   }
+  const insertionType = schema.marks["insertion"];
+  const marks =
+    revision && insertionType
+      ? [
+          insertionType.create({
+            revisionId: revision.revisionId,
+            author: revision.author,
+            date: revision.date,
+            ...(revision.initials != null && { initials: revision.initials }),
+            ...(revision.provenance != null && { provenance: revision.provenance }),
+            ...(revision.suggestionId != null && { suggestionId: revision.suggestionId }),
+          }),
+        ]
+      : undefined;
   const rowNodes = rows.map((cells) =>
     rowType.create(
       revision ? { trIns: revision } : null,
@@ -739,7 +774,7 @@ const buildTableNode = ({ schema, rows, revision }: BuildTableNodeOptions): PMNo
         cellType.create(
           null,
           splitCellParagraphTexts(text).map((line) =>
-            paragraphType.create(null, line.length > 0 ? schema.text(line) : null),
+            paragraphType.create(null, line.length > 0 ? schema.text(line, marks) : null),
           ),
         ),
       ),
@@ -1032,6 +1067,7 @@ const applyFolioAIEditOperationsInternal = ({
   revisionStamp,
   revisionIdSeed,
   wordDiff,
+  tableTemplates,
 }: ApplyFolioAIEditOperationsInternalOptions): FolioAIEditApplyOutcome => {
   const applied: FolioAIEditAppliedOperation[] = [];
   const skipped: FolioAIEditSkippedOperation[] = [];
@@ -1614,11 +1650,13 @@ const applyFolioAIEditOperationsInternal = ({
           continue;
         }
         const revision: TableStructureRevision | null = structuralRevision;
+        const template = tableTemplates?.get(item.operation.id);
         const result = applyTableRowInsertion({
           tr,
           insertion,
           cellTexts: item.operation.cellTexts,
           revision,
+          ...(template !== undefined && { template }),
         });
         if (result.type === "unsupported") {
           skipped.push({
@@ -1894,13 +1932,21 @@ const applyFolioAIEditOperationsInternal = ({
         break;
       }
       case "insertTable": {
-        const table = buildTableNode({
-          schema: view.state.schema,
-          rows: item.operation.rows,
-          ...(producesTrackedChanges && {
-            revision: { revisionId: revisionSeed, author, date, ...trackedRevisionExtras },
-          }),
-        });
+        const revision = { revisionId: revisionSeed, author, date, ...trackedRevisionExtras };
+        const template = tableTemplates?.get(item.operation.id);
+        const table =
+          (template === undefined
+            ? null
+            : tableFromTemplate({
+                schema: view.state.schema,
+                template,
+                ...(producesTrackedChanges && { revision }),
+              })) ??
+          buildTableNode({
+            schema: view.state.schema,
+            rows: item.operation.rows,
+            ...(producesTrackedChanges && { revision }),
+          });
         if (!table) {
           skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
           continue;
@@ -1954,6 +2000,10 @@ const applyFolioAIEditOperationsInternal = ({
         }
         for (const rowPosition of rowPositions.toReversed()) {
           tr = tr.setNodeAttribute(rowPosition, "trDel", revision);
+          // The row marker alone is not the deletion: a consumer reading only
+          // run-level revisions keeps the text on accept. Same rule the
+          // row-level deletion follows.
+          markTableRowContent({ tr, rowPosition, kind: "deletion", revision });
         }
         appliedRevisionIds = [revision.revisionId];
         markStructuralChange(tr);

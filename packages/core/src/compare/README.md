@@ -176,7 +176,7 @@ list item at the wrong level fails instead of passing.
 `compareDocx` checks its own work before returning, in both directions:
 accepting the generated revisions must reproduce the target, and rejecting
 them must reproduce the base they were written against — table cell
-coordinates included.
+coordinates and the tables' own properties included.
 
 A difference the operation vocabulary cannot express fails with
 `CompareDocxRoundTripError` rather than returning a redline that reads
@@ -202,9 +202,13 @@ if (result.isOk() && result.value.verification.status === "unverified") {
 
 `verification` is on every successful result, so a caller that never passes the
 option still sees `{ status: "verified" }` and can assert on it. `cause` is one
-of `invisible-structure`, `block-count`, `container`, `style`, `list-level`,
-`whitespace`, `text` — the projection field that diverged, which is what names
-the part of the pipeline that lost the difference. `invisible-structure` is the
+of `invisible-structure`, `block-count`, `container`, `table-geometry`,
+`style`, `list-level`, `whitespace`, `text` — the projection field that
+diverged, which is what names the part of the pipeline that lost the
+difference. `table-geometry` is the one that no block carries: a second
+projection reads each table's `w:tblPr`, `w:trPr` and `w:tcPr` so a redline
+that reproduces every word and none of the widths, spans, merges, shading or
+borders fails instead of passing. `invisible-structure` is the
 one cause that is not a lost difference: every block is present, in order, at
 coordinates the block model cannot reach, because the snapshot carries no block
 for an empty paragraph.
@@ -233,6 +237,35 @@ the base's accepted view, accepting returns the target's.
 
 A caller who wants the earlier revisions preserved should resolve them
 deliberately before comparing.
+
+## Tables
+
+A table the comparison adds is the target's table, not a grid of its cell
+texts: `w:tblPr` with its style, width, indent, justification, borders, cell
+margins, layout and look; `w:tblGrid` with the target's column widths; each
+row's `w:trPr`; each cell's `w:tcPr` with `w:tcW`, `w:gridSpan`, `w:vMerge`,
+`w:shd`, `w:tcBorders`, `w:tcMar` and `w:vAlign`; cell paragraphs with their
+own properties and runs; and tables nested in cells, recursively. The operation
+vocabulary is unchanged — `insertTable` and `insertTableRow` still describe
+their content as cell texts, because that is what a caller writing a table from
+nothing has — and the node travels beside the batch instead, since a document
+node is not JSON.
+
+A table crossing from one package into the other cannot bring what only the
+first package can resolve, so a copied table drops hyperlink, note and comment
+marks, paragraph identities, and any inline content that names a relationship.
+Everything that describes the table itself travels.
+
+A table or row the comparison removes keeps every property it had, under the
+deletion marks: the row carries `w:trPr/w:del` and every run inside it carries
+`w:del`, so rejecting restores the table exactly and a consumer that reads only
+one of the two marks still resolves the deletion.
+
+A table that stayed in place while its properties changed moves no block, so no
+block operation carries the difference. Each paired table, row and cell whose
+properties differ is rewritten to the target's and records the previous set as
+`w:tblPrChange` / `w:trPrChange` / `w:tcPrChange`, which is what a reject
+restores.
 
 ## Limitations
 
@@ -266,7 +299,25 @@ carries the current numbers and the failing cases.
 - **A table nested inside a cell cannot be added or removed** (2026-09-06). A
   whole table added or removed at document level is `table-insert` /
   `table-delete`; the same edit inside a cell would need `insertTable` to
-  place a table in a cell rather than as a document-level peer.
+  place a table in a cell rather than as a document-level peer. A nested table
+  travels with the table that holds it, so one added or removed alongside its
+  parent keeps its own grid and properties.
+- **A paired table's grid is not moved** (2026-09-07). `w:tblGrid` changes are
+  recorded with `w:tblGridChange`, which the editable model does not carry, so
+  a table whose columns kept their text and changed their widths keeps the
+  base's. A table the comparison ADDS carries the target's grid, because there
+  is no previous one to record.
+- **A property a table style resolves is not moved** (2026-09-07). A change
+  element stores the complete previous property set, and rejecting it rebuilds
+  the live properties from that record alone. Where the base's effective
+  properties cannot be rebuilt from what would be written for it — a value a
+  style resolves that no `w:tcPr` of the document states — the difference is
+  left alone rather than written as a revision that rejects to a third
+  document.
+- **`colspan` and `rowspan` are not moved on a paired cell** (2026-09-07). They
+  shape the table's map, and changing one without restructuring the rows around
+  it leaves the map inconsistent with its own grid. A span that changed is a
+  row or column edit, not a property change.
 - **A numbering definition is reported, not represented** (2026-09-06). A list
   whose format, level template or start changed is a `numbering` change, and
   the redline cannot carry it: OOXML has no tracked-change grammar for
@@ -277,7 +328,13 @@ carries the current numbers and the failing cases.
 
 - `compare.ts` — the four stages (parse, align, apply, serialize), story
   pairing, and the round-trip self-check. `compareDocx` composes them.
-- `plan.ts` — alignment and operation derivation. Pure.
+- `plan.ts` — alignment and operation derivation, including which table each
+  `insertTable` / `insertTableRow` should place and which cells were paired.
+  Pure.
+- `../ai-edits/table-template.ts` — copying a table out of one package into the
+  other: what travels, what cannot, and how an insertion is stamped.
+- `../ai-edits/table-geometry.ts` — the table-property projection the
+  self-check compares, and the matching that moves a paired table's properties.
 - `verification.ts` — the round-trip verdict: the invariants, the causes, and
   the safe-to-quote detail each failure carries, plus the structural guard on a
   container's final paragraph mark. Pure.

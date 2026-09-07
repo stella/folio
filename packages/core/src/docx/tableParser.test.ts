@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   serializeTableCellFormatting,
+  serializeTableFormatting,
   serializeTableRowFormatting,
 } from "./serializer/tableSerializer";
 import { parseBlockContent } from "./blockContentParser";
@@ -123,6 +124,45 @@ describe("table cell merge revisions", () => {
     expect(serializeTableCellFormatting(undefined, undefined, change)).toContain(
       '<w:cellMerge w:id="18" w:author="Reviewer"/>',
     );
+  });
+});
+
+describe("table properties", () => {
+  test("writes w:tblPr children in the order CT_TblPrBase declares", () => {
+    const xml = serializeTableFormatting({
+      styleId: "TableGrid",
+      overlap: "never",
+      bidi: false,
+      width: { value: 8000, type: "dxa" },
+      justification: "center",
+      indent: { value: 120, type: "dxa" },
+      borders: { top: { style: "single", size: 4, space: 0, color: { rgb: "000000" } } },
+      shading: { fill: { rgb: "D9D9D9" }, pattern: "clear" },
+      layout: "fixed",
+      cellMargins: { top: { value: 80, type: "dxa" } },
+      look: { firstRow: true },
+    });
+
+    // CT_TblPrBase is a sequence, so a consumer validating the part refuses
+    // any other order. Pinned because the elements are written from separate
+    // branches that read the same object.
+    const order = [...xml.matchAll(/<w:([A-Za-z]+)/gu)].map(([, name]) => name);
+    expect(order).toEqual([
+      "tblPr",
+      "tblStyle",
+      "tblOverlap",
+      "bidiVisual",
+      "tblW",
+      "jc",
+      "tblInd",
+      "tblBorders",
+      "top",
+      "shd",
+      "tblLayout",
+      "tblCellMar",
+      "top",
+      "tblLook",
+    ]);
   });
 });
 
