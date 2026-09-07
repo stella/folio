@@ -4111,7 +4111,7 @@ export function headerFooterToProseDoc(
 
 type HeaderFooterToProseDocInternalOptions = {
   content: BlockContent[];
-  options?: ToProseDocOptions;
+  options: ToProseDocOptions | undefined;
   detachedWatermarkHostBlockIndex?: number;
 };
 
