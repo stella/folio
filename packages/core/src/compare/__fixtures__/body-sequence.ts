@@ -250,9 +250,7 @@ export const buildBodySequenceDocx = async (
   // rId1 is the style part and rId2 the header when there is one; hyperlink
   // relationships follow them in document order.
   const firstLinkRelationship = header ? 3 : 2;
-  const links = new Map(
-    hrefs.map((href, index) => [href, `rId${index + firstLinkRelationship}`]),
-  );
+  const links = new Map(hrefs.map((href, index) => [href, `rId${index + firstLinkRelationship}`]));
   const linkRelationships = hrefs
     .map(
       (href, index) =>

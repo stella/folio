@@ -17,14 +17,25 @@ import { compareDocx } from "./compare";
 
 const OPTIONS = { author: "compare", timestamp: "2024-03-01T00:00:00.000Z" } as const;
 
+type ComparedDocumentOptions = {
+  /**
+   * Take the redline the comparison could build even when its round trip is
+   * not proven. Only for a pair whose round trip is a known gap: the markup
+   * these assertions read is still the markup the engine emits, and the round
+   * trip itself belongs to the property tests.
+   */
+  onUnverified?: "emit";
+};
+
 const comparedDocumentXml = async (
   base: readonly BodyItem[],
   target: readonly BodyItem[],
+  { onUnverified }: ComparedDocumentOptions = {},
 ): Promise<string> => {
   const result = await compareDocx(
     await buildBodySequenceDocx(base),
     await buildBodySequenceDocx(target),
-    OPTIONS,
+    { ...OPTIONS, ...(onUnverified === undefined ? {} : { onUnverified }) },
   );
   if (result.isErr()) {
     throw result.error;
@@ -135,13 +146,31 @@ describe("table placement", () => {
   test.each([
     {
       name: "an added table",
-      base: [{ kind: "paragraph", text: "before" }] satisfies BodyItem[],
-      target: [{ kind: "paragraph", text: "before" }, TABLE] satisfies BodyItem[],
+      base: [
+        { kind: "paragraph", text: "before" },
+        { kind: "paragraph", text: "after" },
+      ] satisfies BodyItem[],
+      target: [
+        { kind: "paragraph", text: "before" },
+        TABLE,
+        { kind: "paragraph", text: "after" },
+      ] satisfies BodyItem[],
     },
     {
       name: "a removed table",
-      base: [{ kind: "paragraph", text: "before" }, TABLE] satisfies BodyItem[],
-      target: [{ kind: "paragraph", text: "before" }] satisfies BodyItem[],
+      base: [
+        { kind: "paragraph", text: "before" },
+        TABLE,
+        { kind: "paragraph", text: "after" },
+      ] satisfies BodyItem[],
+      target: [
+        { kind: "paragraph", text: "before" },
+        { kind: "paragraph", text: "after" },
+      ] satisfies BodyItem[],
+      // Removing a whole table leaves one blank paragraph behind, so the
+      // comparison cannot prove the round trip; what it emits for the table
+      // it keeps is still what this asserts.
+      onUnverified: { onUnverified: "emit" } as const,
     },
     {
       name: "a row added at the top",
@@ -175,18 +204,21 @@ describe("table placement", () => {
       base: [TABLE] satisfies BodyItem[],
       target: [{ kind: "table", rows: TABLE.rows.slice(0, 2) }] satisfies BodyItem[],
     },
-  ])("$name keeps every row after the table's properties and grid", async ({ base, target }) => {
-    const xml = await comparedDocumentXml(base, target);
-    const tables = tableChildNames(xml);
-    expect(tables.length).toBeGreaterThan(0);
-    for (const children of tables) {
-      expect(children.slice(0, 2)).toEqual(["w:tblPr", "w:tblGrid"]);
-      expect(children.slice(2).every((name) => name === "w:tr")).toBe(true);
-    }
-    // A tracked row is marked inside its own `w:trPr`, never by wrapping the
-    // row in a revision element.
-    expect(/<w:(?:ins|del)\b[^>]*>\s*<w:tr\b/u.test(xml)).toBe(false);
-  });
+  ])(
+    "$name keeps every row after the table's properties and grid",
+    async ({ base, target, onUnverified }) => {
+      const xml = await comparedDocumentXml(base, target, { ...onUnverified });
+      const tables = tableChildNames(xml);
+      expect(tables.length).toBeGreaterThan(0);
+      for (const children of tables) {
+        expect(children.slice(0, 2)).toEqual(["w:tblPr", "w:tblGrid"]);
+        expect(children.slice(2).every((name) => name === "w:tr")).toBe(true);
+      }
+      // A tracked row is marked inside its own `w:trPr`, never by wrapping the
+      // row in a revision element.
+      expect(/<w:(?:ins|del)\b[^>]*>\s*<w:tr\b/u.test(xml)).toBe(false);
+    },
+  );
 });
 
 describe("hyperlink nesting", () => {
