@@ -1180,8 +1180,15 @@ const withTrailingDeletionRules = ({
       holdsAnInsertedTable ||= tableAnchorIds.has(block.id);
     }
     // The plan emits operations in target order, so the plan's own order is
-    // the order the inserted paragraphs have to end up in.
-    return { blockIds, chainStart, insertIndexes: insertIndexes.toSorted(), holdsAnInsertedTable };
+    // the order the inserted paragraphs have to end up in. Numerically: the
+    // walk collects them container-block by container-block, and the default
+    // comparator would sort index 10 in front of index 2.
+    return {
+      blockIds,
+      chainStart,
+      insertIndexes: insertIndexes.toSorted((left, right) => left - right),
+      holdsAnInsertedTable,
+    };
   };
 
   const targetLastByContainer = lastBlockByContainer(targetSnapshot.blocks);

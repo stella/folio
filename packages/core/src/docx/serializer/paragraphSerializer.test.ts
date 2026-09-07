@@ -518,13 +518,14 @@ describe("pPr children follow the schema's sequence", () => {
     const paragraph = parseProperties(
       `<w:pStyle w:val="ListParagraph"/><w:contextualSpacing/><w:snapToGrid/>` +
         `<w:numPr><w:ilvl w:val="0"/><w:numId w:val="5"/></w:numPr>` +
-        `<w:spacing w:after="0"/><w:ind w:left="360"/><w:jc w:val="both"/>`,
+        `<w:spacing w:after="0"/><w:ind w:left="360"/><w:bidi/><w:jc w:val="both"/>`,
     );
 
     const xml = serializeParagraph(paragraph);
     const order = [
       "<w:pStyle",
       "<w:numPr>",
+      "<w:bidi",
       "<w:snapToGrid",
       "<w:spacing",
       "<w:ind",
