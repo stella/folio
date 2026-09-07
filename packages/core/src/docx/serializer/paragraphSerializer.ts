@@ -991,7 +991,12 @@ function serializeTrackedChange(
     // nested textbox document. eigenpal #641.
     tag === "del" || tag === "moveFrom" ? serializeDeletedRun(run) : serializeRun(run);
 
-  const serializeWrappedItem = (item: (typeof change.content)[number]): string => {
+  // A hyperlink is not written inside the wrapper at all, so it is not one of
+  // the items this writes: the loop below opens the wrapper inside the link
+  // instead.
+  type WrappedItem = Exclude<(typeof change.content)[number], Hyperlink>;
+
+  const serializeWrappedItem = (item: WrappedItem): string => {
     if (item.type === "run") {
       return serializeContentRun(item);
     }

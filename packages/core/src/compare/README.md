@@ -283,7 +283,8 @@ carries the current numbers and the failing cases.
   container's final paragraph mark. Pure.
 - `formatting.ts` — the inline-formatting diff, shared with the redline
   generator.
-- `reproducible-package.ts` — ZIP entry-date restamping.
+- `reproducible-package.ts` — the clocks outside the document body: ZIP entry
+  dates and `dcterms:modified`.
 - `scenario.ts` — the edit-script DSL the property tests build targets with.
 - `plan.test.ts` — the judgement calls the corpus does not reach: the move
   similarity threshold, and row pairing when a table's row count changed.
