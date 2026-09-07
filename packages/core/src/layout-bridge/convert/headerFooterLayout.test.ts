@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test";
 
 import type { FlowBlock, Measure, ParagraphBlock, TableBlock } from "../../layout-engine/types";
 import { headerFooterToProseDoc } from "../../prosemirror/conversion/toProseDoc";
-import { headerFooterToProseDocWithDetachedWatermarkHost } from "../../prosemirror/conversion/watermarkHost";
+import {
+  expectDetachedWatermarkHostAttr,
+  headerFooterToProseDocWithDetachedWatermarkHost,
+} from "../../prosemirror/conversion/watermarkHost";
 import { schema } from "../../prosemirror/schema";
 import type { HeaderFooter } from "../../types/document";
 import type { HeaderFooterMetrics } from "./headerFooterLayout";
@@ -1087,5 +1090,13 @@ describe("convertHeaderFooterPmDocToContent", () => {
 
     expect(pmDoc.child(0).attrs["_detachedWatermarkHost"]).toBeNull();
     expect(pmDoc.child(1).attrs["_detachedWatermarkHost"]).toBe(true);
+  });
+
+  test("rejects malformed detached watermark host metadata with its attr path", () => {
+    const malformedParagraph = schema.node("paragraph", { _detachedWatermarkHost: "invalid" });
+
+    expect(() => expectDetachedWatermarkHostAttr(malformedParagraph)).toThrow(
+      "paragraph.attrs._detachedWatermarkHost",
+    );
   });
 });

@@ -71,6 +71,7 @@ import {
 } from "../../prosemirror/attrs";
 import { autospacingMatchesBase } from "../../prosemirror/autospacingBase";
 import { runShadingAttrsToShading } from "../../prosemirror/conversion/runShadingMark";
+import { expectDetachedWatermarkHostAttr } from "../../prosemirror/conversion/watermarkHost";
 import { directionToBidi } from "../../prosemirror/paragraphDirection";
 import { expectTextBoxAnchorAttrs } from "../../prosemirror/textBoxAnchorAttrs";
 import { cascadeStyleTextFormatting } from "../../prosemirror/styles/styleToggleCascade";
@@ -1944,7 +1945,7 @@ function convertParagraph(
   if (isFullyHiddenParagraph) {
     attrs.suppressEmptyParagraphHeight = true;
   }
-  if (runs.length === 0 && node.attrs["_detachedWatermarkHost"] === true) {
+  if (runs.length === 0 && expectDetachedWatermarkHostAttr(node)) {
     attrs.suppressEmptyParagraphHeight = false;
   }
   const hasVisibleParagraphPayload =
