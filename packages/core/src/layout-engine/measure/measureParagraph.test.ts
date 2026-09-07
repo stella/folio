@@ -1357,6 +1357,73 @@ describe("measureParagraph justified shrink tolerance", () => {
     );
   });
 
+  test.each([
+    {
+      label: "accepts modern indented justified prose within the bound",
+      overflow: 2.4,
+      attrs: { alignment: "justify", indent: { left: 36 } } satisfies ParagraphAttrs,
+      maxWidth: 136,
+      expectedLines: 1,
+      expectedPaint: true,
+    },
+    {
+      label: "rejects modern indented justified prose beyond the bound",
+      overflow: 2.6,
+      attrs: { alignment: "justify", indent: { left: 36 } } satisfies ParagraphAttrs,
+      maxWidth: 136,
+      expectedLines: 2,
+      expectedPaint: false,
+    },
+    {
+      label: "rejects legacy indented justified prose",
+      overflow: 2.4,
+      attrs: {
+        alignment: "justify",
+        indent: { left: 36 },
+        justificationCompatibility: { type: "legacy" },
+      } satisfies ParagraphAttrs,
+      maxWidth: 136,
+      expectedLines: 2,
+      expectedPaint: false,
+    },
+    {
+      label: "rejects non-justified indented prose",
+      overflow: 2.4,
+      attrs: { alignment: "left", indent: { left: 36 } } satisfies ParagraphAttrs,
+      maxWidth: 136,
+      expectedLines: 2,
+      expectedPaint: false,
+    },
+    {
+      label: "rejects zero-indent non-list justified prose",
+      overflow: 2.4,
+      attrs: { alignment: "justify", indent: { left: 0 } } satisfies ParagraphAttrs,
+      maxWidth: 100,
+      expectedLines: 2,
+      expectedPaint: false,
+    },
+  ])("$label", ({ overflow, attrs, maxWidth, expectedLines, expectedPaint }) => {
+    withFakeTextMeasure(
+      () => {
+        const measure = measureParagraph(
+          {
+            kind: "paragraph",
+            id: "justified-prose-final-line-contraction",
+            runs: [{ kind: "text", text: `${"aaaaaaaaa ".repeat(10)}bbb` }],
+            attrs,
+          },
+          maxWidth,
+        );
+
+        expect(measure.lines).toHaveLength(expectedLines);
+        expect(measure.lines[0]?.justificationPaint?.type === "space-contraction").toBe(
+          expectedPaint,
+        );
+      },
+      { charWidth: (char) => (char === "b" ? overflow / 3 : 1) },
+    );
+  });
+
   test("ignores unused tab stops when choosing justified prose shrink tolerance", () => {
     withFakeTextMeasure(
       () => {

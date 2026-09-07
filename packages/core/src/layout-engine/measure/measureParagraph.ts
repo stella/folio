@@ -18,9 +18,9 @@ import { hasCjk, hasComplexScript } from "../../utils/scriptSegments";
 import { getHorizontalScaleFactor } from "../../utils/horizontalScale";
 import { measuredLineAdvance } from "../lineFlow";
 import {
-  JUSTIFIED_LIST_FINAL_LINE_MAX_SHRINK_RATIO,
-  JUSTIFIED_LIST_SPACE_CONTRACTION_RATIO,
-  supportsJustifiedListFinalLineContraction,
+  JUSTIFIED_FINAL_LINE_MAX_SHRINK_RATIO,
+  JUSTIFIED_FINAL_LINE_SPACE_CONTRACTION_RATIO,
+  supportsJustifiedFinalLineContraction,
 } from "../justifiedLineFit";
 import type {
   ParagraphBlock,
@@ -680,7 +680,7 @@ function resolveJustifyFitStrategy(
     }
     return {
       type: "space",
-      ratio: JUSTIFIED_LIST_SPACE_CONTRACTION_RATIO,
+      ratio: JUSTIFIED_FINAL_LINE_SPACE_CONTRACTION_RATIO,
       maxWidthRatio: JUSTIFY_SHRINK_TOLERANCE_RATIO,
     };
   }
@@ -711,11 +711,11 @@ function resolveFinalLineJustifyFitStrategy(
   block: ParagraphBlock,
   profile: JustificationProfile,
 ): JustifyFitStrategy {
-  if (supportsJustifiedListFinalLineContraction(block)) {
+  if (supportsJustifiedFinalLineContraction(block)) {
     return {
       type: "space",
-      ratio: JUSTIFIED_LIST_SPACE_CONTRACTION_RATIO,
-      maxWidthRatio: JUSTIFIED_LIST_FINAL_LINE_MAX_SHRINK_RATIO,
+      ratio: JUSTIFIED_FINAL_LINE_SPACE_CONTRACTION_RATIO,
+      maxWidthRatio: JUSTIFIED_FINAL_LINE_MAX_SHRINK_RATIO,
     };
   }
   return resolveJustifyFitStrategy(block, false, profile);
@@ -795,11 +795,13 @@ function resolveTextCandidateFit({
   continuationStrategy,
   finalStrategy,
 }: ResolveTextCandidateFitOptions): TextCandidateFit {
-  if (isFirstLine || !isFinalCandidate || !supportsJustifiedListFinalLineContraction(block)) {
+  if (!isFinalCandidate || !supportsJustifiedFinalLineContraction(block)) {
     return { type: "ordinary", tolerancePx: fallbackTolerancePx };
   }
 
-  const ordinaryTolerancePx = justifyFitTolerance(line, continuationStrategy, candidateSpaceWidth);
+  const ordinaryTolerancePx = isFirstLine
+    ? fallbackTolerancePx
+    : justifyFitTolerance(line, continuationStrategy, candidateSpaceWidth);
   if (candidateWidth <= line.availableWidth + ordinaryTolerancePx) {
     return { type: "ordinary", tolerancePx: ordinaryTolerancePx };
   }
