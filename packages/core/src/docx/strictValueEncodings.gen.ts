@@ -19,238 +19,271 @@ export type SlotEncoding = {
   readonly percent?: PercentUnit;
 };
 
-/**
- * Slots whose Transitional type spells one value two ways.
- *
- * Keyed `"<namespace URI> <element local name>"` for element text and
- * `"<namespace URI> <element local name> @<attribute local name>"` for an
- * attribute.
- */
-export const TRANSITIONAL_SLOT_ENCODINGS: ReadonlyMap<string, SlotEncoding> = new Map([
-  ["http://schemas.openxmlformats.org/drawingml/2006/main ahPolar @maxR", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main ahPolar @minR", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main ahXY @maxX", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main ahXY @maxY", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main ahXY @minX", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main ahXY @minY", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main alpha @val", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main alphaBiLevel @thresh", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main alphaMod @val", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main alphaModFix @amt", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main alphaOff @val", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main alphaOutset @rad", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main alphaRepl @a", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main anchor @x", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main anchor @y", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main anchor @z", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main arcTo @hR", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main arcTo @wR", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main biLevel @thresh", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main blue @val", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main blueMod @val", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main blueOff @val", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main bodyPr @bIns", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main bodyPr @lIns", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main bodyPr @rIns", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main bodyPr @tIns", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main camera @zoom", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main chOff @x", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main chOff @y", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main defPPr @defTabSz", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main defRPr @baseline", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main defRPr @spc", { measure: "hundredthPoints" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main ds @d", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main ds @sp", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main endParaRPr @baseline", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main endParaRPr @spc", { measure: "hundredthPoints" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main fillRect @b", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main fillRect @l", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main fillRect @r", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main fillRect @t", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main fillToRect @b", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main fillToRect @l", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main fillToRect @r", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main fillToRect @t", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main flatTx @z", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main green @val", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main greenMod @val", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main greenOff @val", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main gridCol @w", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main gs @pos", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main hsl @lum", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main hsl @sat", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main hslClr @lum", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main hslClr @sat", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main hueMod @val", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main lum @bright", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main lum @contrast", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main lum @val", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main lumMod @val", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main lumOff @val", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main lvl1pPr @defTabSz", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main lvl2pPr @defTabSz", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main lvl3pPr @defTabSz", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main lvl4pPr @defTabSz", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main lvl5pPr @defTabSz", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main lvl6pPr @defTabSz", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main lvl7pPr @defTabSz", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main lvl8pPr @defTabSz", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main lvl9pPr @defTabSz", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main miter @lim", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main norm @dx", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main norm @dy", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main norm @dz", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main normAutofit @fontScale", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main normAutofit @lnSpcReduction", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main off @x", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main off @y", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main outerShdw @sx", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main outerShdw @sy", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main pPr @defTabSz", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main pos @x", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main pos @y", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main pt @x", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main pt @y", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main rPr @baseline", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main rPr @spc", { measure: "hundredthPoints" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main rect @b", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main rect @l", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main rect @r", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main rect @t", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main red @val", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main redMod @val", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main redOff @val", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main reflection @endA", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main reflection @endPos", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main reflection @stA", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main reflection @stPos", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main reflection @sx", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main reflection @sy", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main relOff @tx", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main relOff @ty", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main sat @val", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main satMod @val", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main satOff @val", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main scrgbClr @b", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main scrgbClr @g", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main scrgbClr @r", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main shade @val", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main sp3d @z", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main spcPct @val", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main srcRect @b", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main srcRect @l", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main srcRect @r", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main srcRect @t", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main tab @pos", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main tcPr @marB", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main tcPr @marL", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main tcPr @marR", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main tcPr @marT", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main tile @sx", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main tile @sy", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main tile @tx", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main tile @ty", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main tileRect @b", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main tileRect @l", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main tileRect @r", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main tileRect @t", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main tint @amt", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main tint @val", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main tr @h", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main up @dx", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main up @dy", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main up @dz", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main xfrm @sx", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main xfrm @sy", { percent: "thousandthPercent" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main xfrm @tx", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/main xfrm @ty", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing bodyPr @bIns", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing bodyPr @lIns", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing bodyPr @rIns", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing bodyPr @tIns", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing effectExtent @b", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing effectExtent @l", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing effectExtent @r", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing effectExtent @t", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing lineTo @x", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing lineTo @y", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing simplePos @x", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing simplePos @y", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing start @x", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing start @y", { measure: "emu" }],
-  ["http://schemas.openxmlformats.org/officeDocument/2006/math interSp @val", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/officeDocument/2006/math intraSp @val", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/officeDocument/2006/math lMargin @val", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/officeDocument/2006/math postSp @val", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/officeDocument/2006/math preSp @val", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/officeDocument/2006/math rMargin @val", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/officeDocument/2006/math wrapIndent @val", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main bottom @w", { measure: "twips", percent: "fiftiethPercent" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main col @space", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main col @w", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main cols @space", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main end @w", { measure: "twips", percent: "fiftiethPercent" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main fitText @val", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main framePr @h", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main framePr @hSpace", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main framePr @vSpace", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main framePr @w", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main framePr @x", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main framePr @y", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main gridCol @w", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main hps @val", { measure: "halfPoints" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main hpsBaseText @val", { measure: "halfPoints" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main hpsRaise @val", { measure: "halfPoints" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main ind @end", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main ind @firstLine", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main ind @hanging", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main ind @left", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main ind @right", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main ind @start", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main kern @val", { measure: "halfPoints" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main left @w", { measure: "twips", percent: "fiftiethPercent" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main lnNumType @distance", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main object @dxaOrig", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main object @dyaOrig", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main pgMar @bottom", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main pgMar @footer", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main pgMar @gutter", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main pgMar @header", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main pgMar @left", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main pgMar @right", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main pgMar @top", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main pgSz @h", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main pgSz @w", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main position @val", { measure: "halfPoints" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main right @w", { measure: "twips", percent: "fiftiethPercent" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main size @val", { measure: "halfPoints" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main spacing @after", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main spacing @before", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main spacing @line", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main spacing @val", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main start @w", { measure: "twips", percent: "fiftiethPercent" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main sz @val", { measure: "halfPoints" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main szCs @val", { measure: "halfPoints" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main tab @pos", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main tblCellSpacing @w", { measure: "twips", percent: "fiftiethPercent" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main tblInd @w", { measure: "twips", percent: "fiftiethPercent" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main tblW @w", { measure: "twips", percent: "fiftiethPercent" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main tblpPr @bottomFromText", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main tblpPr @leftFromText", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main tblpPr @rightFromText", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main tblpPr @tblpX", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main tblpPr @tblpY", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main tblpPr @topFromText", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main tcW @w", { measure: "twips", percent: "fiftiethPercent" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main top @w", { measure: "twips", percent: "fiftiethPercent" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main trHeight @val", { measure: "twips" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main w @val", { percent: "wholePercent" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main wAfter @w", { measure: "twips", percent: "fiftiethPercent" }],
-  ["http://schemas.openxmlformats.org/wordprocessingml/2006/main wBefore @w", { measure: "twips", percent: "fiftiethPercent" }],
-]);
+const MEASURE_UNITS: Readonly<Record<string, MeasureUnit>> = {
+  emu: "emu",
+  halfPoints: "halfPoints",
+  hundredthPoints: "hundredthPoints",
+  twips: "twips",
+};
 
-/** Every Strict namespace URI a WordprocessingML part can carry, and its Transitional pair. */
-export const TRANSITIONAL_NAMESPACE_BY_STRICT_URI: ReadonlyMap<string, string> = new Map([
+const PERCENT_UNITS: Readonly<Record<string, PercentUnit>> = {
+  fiftiethPercent: "fiftiethPercent",
+  thousandthPercent: "thousandthPercent",
+  wholePercent: "wholePercent",
+};
+
+/**
+ * One slot per line: the slot, a tab, its measure unit, a tab, its percent unit.
+ *
+ * Text rather than object literals because every package that depends on
+ * `@stll/folio-core` pays this file's inference cost, and a few hundred
+ * literals breach the repository's compiler-workload budget on their own.
+ * The slot is `"<namespace URI> <element local name>"` for element text and
+ * `"<namespace URI> <element local name> @<attribute local name>"` for an
+ * attribute; an empty column means the type has no spelling of that kind.
+ */
+const SLOT_TABLE = `http://schemas.openxmlformats.org/drawingml/2006/main ahPolar @maxR	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main ahPolar @minR	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main ahXY @maxX	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main ahXY @maxY	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main ahXY @minX	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main ahXY @minY	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main alpha @val		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main alphaBiLevel @thresh		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main alphaMod @val		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main alphaModFix @amt		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main alphaOff @val		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main alphaOutset @rad	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main alphaRepl @a		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main anchor @x	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main anchor @y	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main anchor @z	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main arcTo @hR	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main arcTo @wR	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main biLevel @thresh		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main blue @val		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main blueMod @val		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main blueOff @val		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main bodyPr @bIns	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main bodyPr @lIns	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main bodyPr @rIns	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main bodyPr @tIns	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main camera @zoom		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main chOff @x	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main chOff @y	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main defPPr @defTabSz	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main defRPr @baseline		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main defRPr @spc	hundredthPoints	
+http://schemas.openxmlformats.org/drawingml/2006/main ds @d		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main ds @sp		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main endParaRPr @baseline		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main endParaRPr @spc	hundredthPoints	
+http://schemas.openxmlformats.org/drawingml/2006/main fillRect @b		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main fillRect @l		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main fillRect @r		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main fillRect @t		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main fillToRect @b		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main fillToRect @l		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main fillToRect @r		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main fillToRect @t		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main flatTx @z	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main green @val		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main greenMod @val		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main greenOff @val		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main gridCol @w	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main gs @pos		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main hsl @lum		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main hsl @sat		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main hslClr @lum		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main hslClr @sat		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main hueMod @val		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main lum @bright		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main lum @contrast		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main lum @val		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main lumMod @val		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main lumOff @val		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main lvl1pPr @defTabSz	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main lvl2pPr @defTabSz	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main lvl3pPr @defTabSz	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main lvl4pPr @defTabSz	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main lvl5pPr @defTabSz	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main lvl6pPr @defTabSz	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main lvl7pPr @defTabSz	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main lvl8pPr @defTabSz	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main lvl9pPr @defTabSz	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main miter @lim		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main norm @dx	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main norm @dy	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main norm @dz	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main normAutofit @fontScale		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main normAutofit @lnSpcReduction		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main off @x	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main off @y	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main outerShdw @sx		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main outerShdw @sy		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main pPr @defTabSz	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main pos @x	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main pos @y	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main pt @x	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main pt @y	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main rPr @baseline		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main rPr @spc	hundredthPoints	
+http://schemas.openxmlformats.org/drawingml/2006/main rect @b	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main rect @l	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main rect @r	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main rect @t	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main red @val		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main redMod @val		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main redOff @val		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main reflection @endA		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main reflection @endPos		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main reflection @stA		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main reflection @stPos		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main reflection @sx		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main reflection @sy		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main relOff @tx		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main relOff @ty		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main sat @val		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main satMod @val		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main satOff @val		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main scrgbClr @b		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main scrgbClr @g		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main scrgbClr @r		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main shade @val		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main sp3d @z	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main spcPct @val		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main srcRect @b		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main srcRect @l		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main srcRect @r		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main srcRect @t		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main tab @pos	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main tcPr @marB	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main tcPr @marL	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main tcPr @marR	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main tcPr @marT	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main tile @sx		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main tile @sy		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main tile @tx	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main tile @ty	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main tileRect @b		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main tileRect @l		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main tileRect @r		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main tileRect @t		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main tint @amt		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main tint @val		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main tr @h	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main up @dx	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main up @dy	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main up @dz	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main xfrm @sx		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main xfrm @sy		thousandthPercent
+http://schemas.openxmlformats.org/drawingml/2006/main xfrm @tx	emu	
+http://schemas.openxmlformats.org/drawingml/2006/main xfrm @ty	emu	
+http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing bodyPr @bIns	emu	
+http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing bodyPr @lIns	emu	
+http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing bodyPr @rIns	emu	
+http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing bodyPr @tIns	emu	
+http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing effectExtent @b	emu	
+http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing effectExtent @l	emu	
+http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing effectExtent @r	emu	
+http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing effectExtent @t	emu	
+http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing lineTo @x	emu	
+http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing lineTo @y	emu	
+http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing simplePos @x	emu	
+http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing simplePos @y	emu	
+http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing start @x	emu	
+http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing start @y	emu	
+http://schemas.openxmlformats.org/officeDocument/2006/math interSp @val	twips	
+http://schemas.openxmlformats.org/officeDocument/2006/math intraSp @val	twips	
+http://schemas.openxmlformats.org/officeDocument/2006/math lMargin @val	twips	
+http://schemas.openxmlformats.org/officeDocument/2006/math postSp @val	twips	
+http://schemas.openxmlformats.org/officeDocument/2006/math preSp @val	twips	
+http://schemas.openxmlformats.org/officeDocument/2006/math rMargin @val	twips	
+http://schemas.openxmlformats.org/officeDocument/2006/math wrapIndent @val	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main bottom @w	twips	fiftiethPercent
+http://schemas.openxmlformats.org/wordprocessingml/2006/main col @space	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main col @w	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main cols @space	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main end @w	twips	fiftiethPercent
+http://schemas.openxmlformats.org/wordprocessingml/2006/main fitText @val	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main framePr @h	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main framePr @hSpace	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main framePr @vSpace	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main framePr @w	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main framePr @x	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main framePr @y	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main gridCol @w	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main hps @val	halfPoints	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main hpsBaseText @val	halfPoints	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main hpsRaise @val	halfPoints	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main ind @end	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main ind @firstLine	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main ind @hanging	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main ind @left	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main ind @right	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main ind @start	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main kern @val	halfPoints	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main left @w	twips	fiftiethPercent
+http://schemas.openxmlformats.org/wordprocessingml/2006/main lnNumType @distance	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main object @dxaOrig	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main object @dyaOrig	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main pgMar @bottom	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main pgMar @footer	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main pgMar @gutter	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main pgMar @header	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main pgMar @left	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main pgMar @right	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main pgMar @top	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main pgSz @h	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main pgSz @w	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main position @val	halfPoints	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main right @w	twips	fiftiethPercent
+http://schemas.openxmlformats.org/wordprocessingml/2006/main size @val	halfPoints	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main spacing @after	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main spacing @before	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main spacing @line	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main spacing @val	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main start @w	twips	fiftiethPercent
+http://schemas.openxmlformats.org/wordprocessingml/2006/main sz @val	halfPoints	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main szCs @val	halfPoints	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main tab @pos	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main tblCellSpacing @w	twips	fiftiethPercent
+http://schemas.openxmlformats.org/wordprocessingml/2006/main tblInd @w	twips	fiftiethPercent
+http://schemas.openxmlformats.org/wordprocessingml/2006/main tblW @w	twips	fiftiethPercent
+http://schemas.openxmlformats.org/wordprocessingml/2006/main tblpPr @bottomFromText	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main tblpPr @leftFromText	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main tblpPr @rightFromText	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main tblpPr @tblpX	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main tblpPr @tblpY	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main tblpPr @topFromText	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main tcW @w	twips	fiftiethPercent
+http://schemas.openxmlformats.org/wordprocessingml/2006/main top @w	twips	fiftiethPercent
+http://schemas.openxmlformats.org/wordprocessingml/2006/main trHeight @val	twips	
+http://schemas.openxmlformats.org/wordprocessingml/2006/main w @val		wholePercent
+http://schemas.openxmlformats.org/wordprocessingml/2006/main wAfter @w	twips	fiftiethPercent
+http://schemas.openxmlformats.org/wordprocessingml/2006/main wBefore @w	twips	fiftiethPercent`;
+
+const readSlotTable = (): ReadonlyMap<string, SlotEncoding> => {
+  const slots = new Map<string, SlotEncoding>();
+  for (const line of SLOT_TABLE.split("\n")) {
+    const [slot, measure, percent] = line.split("\t");
+    if (slot === undefined) {
+      continue;
+    }
+    const measureUnit = measure === undefined ? undefined : MEASURE_UNITS[measure];
+    const percentUnit = percent === undefined ? undefined : PERCENT_UNITS[percent];
+    slots.set(slot, {
+      ...(measureUnit === undefined ? {} : { measure: measureUnit }),
+      ...(percentUnit === undefined ? {} : { percent: percentUnit }),
+    });
+  }
+  return slots;
+};
+
+/** Slots whose Transitional type spells one value two ways. */
+export const TRANSITIONAL_SLOT_ENCODINGS: ReadonlyMap<string, SlotEncoding> = readSlotTable();
+
+const NAMESPACE_PAIRS: readonly (readonly [strict: string, transitional: string])[] = [
   ["http://purl.oclc.org/ooxml/drawingml/chart", "http://schemas.openxmlformats.org/drawingml/2006/chart"],
   ["http://purl.oclc.org/ooxml/drawingml/chartDrawing", "http://schemas.openxmlformats.org/drawingml/2006/chartDrawing"],
   ["http://purl.oclc.org/ooxml/drawingml/diagram", "http://schemas.openxmlformats.org/drawingml/2006/diagram"],
@@ -263,4 +296,9 @@ export const TRANSITIONAL_NAMESPACE_BY_STRICT_URI: ReadonlyMap<string, string> =
   ["http://purl.oclc.org/ooxml/officeDocument/sharedTypes", "http://schemas.openxmlformats.org/officeDocument/2006/sharedTypes"],
   ["http://purl.oclc.org/ooxml/schemaLibrary/main", "http://schemas.openxmlformats.org/schemaLibrary/2006/main"],
   ["http://purl.oclc.org/ooxml/wordprocessingml/main", "http://schemas.openxmlformats.org/wordprocessingml/2006/main"],
-]);
+];
+
+/** Every Strict namespace URI a WordprocessingML part can carry, and its Transitional pair. */
+export const TRANSITIONAL_NAMESPACE_BY_STRICT_URI: ReadonlyMap<string, string> = new Map(
+  NAMESPACE_PAIRS,
+);

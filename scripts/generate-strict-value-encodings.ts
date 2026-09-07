@@ -469,13 +469,9 @@ const renderModule = (slots: Slot[], namespacePairs: Array<[string, string]>): s
   }
 
   const entries = [...bySlot.entries()].sort(([left], [right]) => (left < right ? -1 : 1));
-  const encodings = entries.map(([key, slot]) => {
-    const parts = [
-      slot.encoding.measure === undefined ? null : `measure: "${slot.encoding.measure}"`,
-      slot.encoding.percent === undefined ? null : `percent: "${slot.encoding.percent}"`,
-    ].filter((part) => part !== null);
-    return `  ["${key}", { ${parts.join(", ")} }],`;
-  });
+  const encodings = entries.map(
+    ([key, slot]) => `${key}\t${slot.encoding.measure ?? ""}\t${slot.encoding.percent ?? ""}`,
+  );
 
   const namespaces = namespacePairs
     .sort(([left], [right]) => (left < right ? -1 : 1))
@@ -502,21 +498,59 @@ export type SlotEncoding = {
   readonly percent?: PercentUnit;
 };
 
+const MEASURE_UNITS: Readonly<Record<string, MeasureUnit>> = {
+  emu: "emu",
+  halfPoints: "halfPoints",
+  hundredthPoints: "hundredthPoints",
+  twips: "twips",
+};
+
+const PERCENT_UNITS: Readonly<Record<string, PercentUnit>> = {
+  fiftiethPercent: "fiftiethPercent",
+  thousandthPercent: "thousandthPercent",
+  wholePercent: "wholePercent",
+};
+
 /**
- * Slots whose Transitional type spells one value two ways.
+ * One slot per line: the slot, a tab, its measure unit, a tab, its percent unit.
  *
- * Keyed \`"<namespace URI> <element local name>"\` for element text and
+ * Text rather than object literals because every package that depends on
+ * \`@stll/folio-core\` pays this file's inference cost, and a few hundred
+ * literals breach the repository's compiler-workload budget on their own.
+ * The slot is \`"<namespace URI> <element local name>"\` for element text and
  * \`"<namespace URI> <element local name> @<attribute local name>"\` for an
- * attribute.
+ * attribute; an empty column means the type has no spelling of that kind.
  */
-export const TRANSITIONAL_SLOT_ENCODINGS: ReadonlyMap<string, SlotEncoding> = new Map([
-${encodings.join("\n")}
-]);
+const SLOT_TABLE = \`${encodings.join("\n")}\`;
+
+const readSlotTable = (): ReadonlyMap<string, SlotEncoding> => {
+  const slots = new Map<string, SlotEncoding>();
+  for (const line of SLOT_TABLE.split("\\n")) {
+    const [slot, measure, percent] = line.split("\\t");
+    if (slot === undefined) {
+      continue;
+    }
+    const measureUnit = measure === undefined ? undefined : MEASURE_UNITS[measure];
+    const percentUnit = percent === undefined ? undefined : PERCENT_UNITS[percent];
+    slots.set(slot, {
+      ...(measureUnit === undefined ? {} : { measure: measureUnit }),
+      ...(percentUnit === undefined ? {} : { percent: percentUnit }),
+    });
+  }
+  return slots;
+};
+
+/** Slots whose Transitional type spells one value two ways. */
+export const TRANSITIONAL_SLOT_ENCODINGS: ReadonlyMap<string, SlotEncoding> = readSlotTable();
+
+const NAMESPACE_PAIRS: readonly (readonly [strict: string, transitional: string])[] = [
+${namespaces.join("\n")}
+];
 
 /** Every Strict namespace URI a WordprocessingML part can carry, and its Transitional pair. */
-export const TRANSITIONAL_NAMESPACE_BY_STRICT_URI: ReadonlyMap<string, string> = new Map([
-${namespaces.join("\n")}
-]);
+export const TRANSITIONAL_NAMESPACE_BY_STRICT_URI: ReadonlyMap<string, string> = new Map(
+  NAMESPACE_PAIRS,
+);
 `;
 };
 
