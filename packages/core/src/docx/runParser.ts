@@ -66,6 +66,7 @@ import { resolveThemeFontRef } from "./themeParser";
 import { requiresXmlSpacePreserve } from "./textWhitespace";
 import { isValidHexColor } from "../utils/colorResolver";
 import { parseHorizontalScalePercent } from "../utils/horizontalScale";
+import { captureVerbatimXml } from "./verbatimCapture";
 import {
   cloneWithXmlnsDeclarations,
   findAllDeep,
@@ -78,7 +79,6 @@ import {
   mergeXmlnsDeclarations,
   parseBooleanElement,
   parseNumericAttribute,
-  elementToXml,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
@@ -892,7 +892,7 @@ function parseDrawingContent(
 ): DrawingContent | ShapeContent | null {
   const groupImage = parseGroupDrawing(element, rels ?? undefined, media ?? undefined);
   if (groupImage) {
-    return { type: "drawing", image: groupImage, rawXml: elementToXml(element) };
+    return { type: "drawing", image: groupImage, rawXml: captureVerbatimXml(element) };
   }
   if (shouldPreserveRawShapeDrawing(element)) {
     return {
@@ -903,7 +903,7 @@ function parseDrawingContent(
         size: { width: 0, height: 0 },
         wrap: { type: "inline" },
       },
-      rawXml: elementToXml(element),
+      rawXml: captureVerbatimXml(element),
       rawXmlMode: DRAWING_RAW_XML_MODES.PRESERVE_ONLY,
     };
   }
@@ -925,7 +925,7 @@ function parseDrawingContent(
     image,
   };
   if (!image.src) {
-    drawing.rawXml = elementToXml(element);
+    drawing.rawXml = captureVerbatimXml(element);
   }
   return drawing;
 }
@@ -1075,7 +1075,7 @@ function parseRunContents(
         if (groupedChoiceDrawing) {
           const groupedDrawing = parseDrawingContent(groupedChoiceDrawing, rels, media);
           if (groupedDrawing?.type === "drawing" && groupedDrawing.image.src) {
-            groupedDrawing.rawXml = elementToXml(child);
+            groupedDrawing.rawXml = captureVerbatimXml(child);
             contents.push(groupedDrawing);
             break;
           }
@@ -1089,7 +1089,7 @@ function parseRunContents(
             ? parseVmlImageContent(fallbackPict, rels, media, rootXmlns)
             : null;
         if (fallbackVml?.image.src) {
-          fallbackVml.rawXml = elementToXml(cloneWithXmlnsDeclarations(child, rootXmlns));
+          fallbackVml.rawXml = captureVerbatimXml(cloneWithXmlnsDeclarations(child, rootXmlns));
           contents.push(fallbackVml);
           break;
         }
@@ -1107,7 +1107,7 @@ function parseRunContents(
                   innerDrawing.type === "drawing" &&
                   (innerDrawing.rawXml !== undefined || !innerDrawing.image.src)
                 ) {
-                  innerDrawing.rawXml = elementToXml(child);
+                  innerDrawing.rawXml = captureVerbatimXml(child);
                 }
                 contents.push(innerDrawing);
               }
@@ -1115,7 +1115,7 @@ function parseRunContents(
               // A VML picture in the chosen Choice (no Fallback image present).
               const innerVml = parseVmlImageContent(innerChild, rels, media, rootXmlns);
               if (innerVml) {
-                innerVml.rawXml = elementToXml(cloneWithXmlnsDeclarations(child, rootXmlns));
+                innerVml.rawXml = captureVerbatimXml(cloneWithXmlnsDeclarations(child, rootXmlns));
                 contents.push(innerVml);
               }
             }

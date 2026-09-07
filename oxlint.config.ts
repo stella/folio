@@ -66,6 +66,7 @@ export default library({
     "./.oxlint-plugins/folio-layer-boundaries.ts",
     "./.oxlint-plugins/folio-asset-urls.ts",
     "./.oxlint-plugins/folio-fragment-ownership.ts",
+    "./.oxlint-plugins/folio-verbatim-capture.ts",
     "./.oxlint-plugins/no-untranslated-jsx-literal.ts",
   ],
   ignorePatterns: [
@@ -127,6 +128,22 @@ export default library({
       ],
       rules: {
         "folio-fragment-ownership/no-direct-page-fragment-push": "error",
+      },
+    },
+    {
+      // `docx/verbatimCapture` owns the conversion a Strict fragment needs
+      // before a Transitional part replays it. The fixtures verify this custom
+      // rule; repo-wide lint ignores their deliberate violation.
+      files: ["packages/core/src/docx/**/*.ts", "test/__fixtures__/verbatim-capture.*.ts"],
+      rules: {
+        "folio-verbatim-capture/no-direct-element-to-xml": "error",
+      },
+    },
+    {
+      // A test may serialize markup directly; it writes no package part.
+      files: ["packages/core/src/docx/**/*.test.ts"],
+      rules: {
+        "folio-verbatim-capture/no-direct-element-to-xml": "off",
       },
     },
     {

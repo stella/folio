@@ -1083,12 +1083,13 @@ function serializeShapeContent(content: ShapeContent): string {
     }
   }
 
-  // Build wps:wsp
+  // `wps:bodyPr` closes the shape's content model whether or not the shape has
+  // text, so a shape with no text body still writes an empty one.
   const wsp = [
     "<wps:wsp>",
     `<wps:cNvSpPr${isTextBox ? ' txBox="1"' : ""}/>`,
     spPr,
-    textBody,
+    textBody === "" ? "<wps:bodyPr/>" : textBody,
     "</wps:wsp>",
   ].join("");
 

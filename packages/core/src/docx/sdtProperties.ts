@@ -12,8 +12,8 @@
 
 import type { SdtProperties } from "../types/document";
 import { SdtLockSchema, narrowEnum } from "./parserEnums";
+import { captureVerbatimXml } from "./verbatimCapture";
 import {
-  elementToXml,
   findChild,
   getAttributeAnyPrefix,
   getLocalName,
@@ -334,7 +334,7 @@ export function parseSdtProperties(
   const props: SdtProperties = { sdtType: "richText" };
 
   if (sdtPr) {
-    props.rawPropertiesXml = normalizeWordPrefix(elementToXml(sdtPr), sdtPr);
+    props.rawPropertiesXml = normalizeWordPrefix(captureVerbatimXml(sdtPr), sdtPr);
 
     for (const el of sdtPr.elements ?? []) {
       if (el.type !== "element") {
@@ -472,7 +472,7 @@ export function parseSdtProperties(
   }
 
   if (sdtEndPr) {
-    props.rawEndPropertiesXml = normalizeWordPrefix(elementToXml(sdtEndPr), sdtEndPr);
+    props.rawEndPropertiesXml = normalizeWordPrefix(captureVerbatimXml(sdtEndPr), sdtEndPr);
   }
 
   return props;

@@ -21,6 +21,7 @@ import {
   ShapeOutlineStyleSchema,
   narrowEnum,
 } from "./parserEnums";
+import { captureVerbatimXml } from "./verbatimCapture";
 import {
   getChildElements,
   getAttribute,
@@ -29,7 +30,6 @@ import {
   findByFullName,
   findChildByLocalName,
   findChildrenByLocalName,
-  elementToXml,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
@@ -265,7 +265,7 @@ function parseGradientFill(gradientFill: XmlElement): ShapeFill {
 
   return {
     type: "gradient",
-    rawXml: elementToXml(gradientFill),
+    rawXml: captureVerbatimXml(gradientFill),
     gradient: {
       type,
       ...(angle !== undefined ? { angle } : {}),
@@ -288,7 +288,7 @@ export function parseOutline(spPr: XmlElement | null): ShapeOutline | undefined 
   }
 
   const outline: ShapeOutline = {
-    rawXml: elementToXml(ln),
+    rawXml: captureVerbatimXml(ln),
   };
 
   const w = getAttribute(ln, null, "w");

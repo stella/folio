@@ -132,6 +132,9 @@ jobs:
       - name: Unicode joining tables up to date
         run: bun run generate:joining-types:check
 
+      - name: Strict value encodings up to date
+        run: bun run generate:strict-value-encodings:check
+
       - name: Adapter parity contract (React <-> Vue props/ref)
         run: bun run check:parity-contract
 
