@@ -47,10 +47,8 @@ export type ParsedWatermark = {
   hostingParagraph: XmlElement;
   /**
    * Index where the watermark paragraph sat among block-level siblings
-   * (`w:p` / `w:tbl`) in the source header. After the host paragraph is
-   * filtered out of `content`, the serializer inserts the watermark
-   * back at this index so a header that originally placed the
-   * watermark after visible text rounds-trips with the same flow.
+   * (`w:p` / `w:tbl` / `w:sdt`) in the source header. The serializer uses
+   * this index to replace the retained host paragraph with watermark XML.
    */
   blockIndex: number;
 };
@@ -125,11 +123,9 @@ export function parseWatermark(header: XmlElement): ParsedWatermark | undefined 
 }
 
 /**
- * Index of `target` among block-level children of `header` (only
- * `w:p` and `w:tbl` count as blocks). Since the hosting paragraph
- * is filtered out of `content` after parse, this is the index the
- * serializer needs to splice the watermark XML back into so the
- * header rounds-trips with the same flow as the source.
+ * Index of `target` among block-level children of `header`. Keep this list
+ * aligned with `parseBlockContent`, which emits paragraphs, tables, and
+ * block-level content controls as one content item each.
  */
 function blockIndexOf(header: XmlElement, target: XmlElement): number {
   let blockIdx = 0;
@@ -141,7 +137,7 @@ function blockIndexOf(header: XmlElement, target: XmlElement): number {
       continue;
     }
     const local = getLocalName(child.name ?? "");
-    if (local === "p" || local === "tbl") {
+    if (local === "p" || local === "tbl" || local === "sdt") {
       blockIdx++;
     }
   }

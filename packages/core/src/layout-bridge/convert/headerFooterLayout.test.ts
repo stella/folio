@@ -852,6 +852,17 @@ describe("header/footer layout conversion", () => {
     expect(bounds).toEqual({ top: 0, bottom: 0 });
   });
 
+  test("keeps a styled watermark host line in body margin clearance", () => {
+    const bounds = calculateHeaderFooterMarginPushBounds(
+      [emptyParagraph({ id: "watermark-host", attrs: { styleId: "Header" } })],
+      [{ kind: "paragraph", lines: [], totalHeight: 12 }],
+      12,
+      metrics,
+    );
+
+    expect(bounds).toEqual({ top: 0, bottom: 12 });
+  });
+
   test("keeps a tab-only story out of body margin clearance", () => {
     const bounds = calculateHeaderFooterMarginPushBounds(
       [paragraph({ id: "tab-only-story", runs: [{ kind: "tab" }] })],
@@ -1004,5 +1015,30 @@ describe("convertHeaderFooterPmDocToContent", () => {
     if (trailing?.kind === "paragraph") {
       expect(trailing.totalHeight).toBe(0);
     }
+  });
+
+  test("preserves styled empty header clearance on direct and PM-doc paths", () => {
+    const hf: HeaderFooter = {
+      type: "header",
+      hdrFtrType: "default",
+      content: [
+        {
+          type: "paragraph",
+          content: [],
+          formatting: { styleId: "Header" },
+        },
+      ],
+    };
+
+    const fromContent = convertHeaderFooterToContent(hf, 456, pmMetrics, {
+      measureBlocks,
+    });
+    const pmDoc = headerFooterToProseDoc(hf.content);
+    const fromPmDoc = convertHeaderFooterPmDocToContent(pmDoc, 456, pmMetrics, {
+      measureBlocks,
+    });
+
+    expect(fromContent?.marginPushBottom).toBe(12);
+    expect(fromPmDoc?.marginPushBottom).toBe(12);
   });
 });

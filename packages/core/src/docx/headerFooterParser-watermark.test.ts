@@ -455,6 +455,31 @@ describe("parseHeader watermark detection", () => {
     expect(header.watermarkBlockIndex).toBe(1);
   });
 
+  test("retains the empty watermark host paragraph for header flow", () => {
+    const xml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:hdr ${NS}>
+  <w:p>
+    <w:pPr><w:pStyle w:val="Header"/></w:pPr>
+    <w:r>
+      <w:pict>
+        <v:shape id="PowerPlusWaterMarkObject1" type="#_x0000_t136">
+          <v:textpath string="DRAFT"/>
+        </v:shape>
+      </w:pict>
+    </w:r>
+  </w:p>
+</w:hdr>`;
+    const header = parseHeader(xml);
+    const host = header.content.at(0);
+
+    expect(host?.type).toBe("paragraph");
+    if (host?.type !== "paragraph") {
+      return;
+    }
+    expect(host.formatting?.styleId).toBe("Header");
+    expect(host.content).toEqual([]);
+  });
+
   test("treats `w:t` consistently even when WordprocessingML is bound to a foreign prefix", () => {
     // Producers occasionally bind WordprocessingML as a non-`w` prefix
     // (the spec allows any prefix). The mixed-paragraph guard now

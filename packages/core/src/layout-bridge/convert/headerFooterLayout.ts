@@ -558,7 +558,12 @@ export function calculateHeaderFooterMarginPushBounds(
 ): { top: number; bottom: number } {
   const isPaintlessStory =
     blocks.length > 0 &&
-    blocks.every((block) => isPaintlessParagraph(block) && !hasAuthoredVisualContent(block));
+    blocks.every(
+      (block) =>
+        isPaintlessParagraph(block) &&
+        !hasAuthoredVisualContent(block) &&
+        !(block.kind === "paragraph" && preservesInheritedSpacing(block)),
+    );
   if (isPaintlessStory) {
     return { top: 0, bottom: 0 };
   }

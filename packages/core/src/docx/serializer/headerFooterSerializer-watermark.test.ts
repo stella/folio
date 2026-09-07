@@ -13,6 +13,7 @@ import { describe, expect, test } from "bun:test";
 
 import type { HeaderFooter } from "../../types/document";
 import { parseHeader } from "../headerFooterParser";
+import { clearHeaderFooterVerbatimXml } from "../headerFooterVerbatim";
 import { serializeHeaderFooter } from "./headerFooterSerializer";
 
 const NS =
@@ -214,8 +215,8 @@ describe("serializeHeaderFooter — watermark replay", () => {
   });
 
   test("does not duplicate the watermark paragraph in the regular content stream", () => {
-    // Regression for the parser-side filtering: the watermark paragraph
-    // is detached from `content` so it isn't emitted twice.
+    // The parser retains the host for layout. Exercise structural serialization
+    // to prove raw replay replaces that placeholder instead of duplicating it.
     const sourceXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:hdr ${NS}>
   <w:p>
@@ -229,9 +230,75 @@ describe("serializeHeaderFooter — watermark replay", () => {
   </w:p>
 </w:hdr>`;
     const header = parseHeader(sourceXml);
+    expect(header.content).toHaveLength(1);
+    clearHeaderFooterVerbatimXml(header);
     const out = serializeHeaderFooter(header);
     // Watermark shape appears exactly once.
     expect(out.match(/<v:shape/gu)?.length).toBe(1);
     expect(out.match(/string="CONFIDENTIAL"/gu)?.length).toBe(1);
+  });
+
+  test("preserves edited host formatting during structural watermark serialization", () => {
+    const sourceXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:hdr ${NS}>
+  <w:p>
+    <w:pPr><w:pStyle w:val="Header"/></w:pPr>
+    <w:r>
+      <w:pict>
+        <v:shape id="PowerPlusWaterMarkObject1" type="#_x0000_t136">
+          <v:textpath string="DRAFT"/>
+        </v:shape>
+      </w:pict>
+    </w:r>
+  </w:p>
+</w:hdr>`;
+    const header = parseHeader(sourceXml);
+    const host = header.content.at(0);
+    expect(host?.type).toBe("paragraph");
+    if (host?.type !== "paragraph") {
+      return;
+    }
+    host.formatting = { ...host.formatting, styleId: "ChangedHeader" };
+    clearHeaderFooterVerbatimXml(header);
+
+    const out = serializeHeaderFooter(header);
+
+    expect(out).toContain('<w:pStyle w:val="ChangedHeader"/>');
+    expect(out.match(/<v:shape/gu)?.length).toBe(1);
+    expect(out.match(/<w:p(?=[\s>])/gu)?.length).toBe(1);
+  });
+
+  test("keeps watermark position after a block content control", () => {
+    const sourceXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:hdr ${NS}>
+  <w:sdt>
+    <w:sdtPr><w:tag w:val="prefix"/></w:sdtPr>
+    <w:sdtContent><w:p><w:r><w:t>preceding</w:t></w:r></w:p></w:sdtContent>
+  </w:sdt>
+  <w:p>
+    <w:r>
+      <w:pict>
+        <v:shape id="PowerPlusWaterMarkObject1" type="#_x0000_t136">
+          <v:textpath string="DRAFT"/>
+        </v:shape>
+      </w:pict>
+    </w:r>
+  </w:p>
+  <w:p><w:r><w:t>following</w:t></w:r></w:p>
+</w:hdr>`;
+    const header = parseHeader(sourceXml);
+    expect(header.content.map(({ type }) => type)).toEqual(["blockSdt", "paragraph", "paragraph"]);
+    expect(header.watermarkBlockIndex).toBe(1);
+    clearHeaderFooterVerbatimXml(header);
+
+    const out = serializeHeaderFooter(header);
+    const precedingPosition = out.indexOf("preceding");
+    const watermarkPosition = out.indexOf('string="DRAFT"');
+    const followingPosition = out.indexOf("following");
+
+    expect(precedingPosition).toBeGreaterThan(-1);
+    expect(watermarkPosition).toBeGreaterThan(precedingPosition);
+    expect(followingPosition).toBeGreaterThan(watermarkPosition);
+    expect(out.match(/<v:shape/gu)?.length).toBe(1);
   });
 });

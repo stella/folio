@@ -12,6 +12,9 @@
 
 import type { BlockContent, HeaderFooter, Watermark } from "../../types/document";
 import { getHeaderFooterVerbatimXml, canReplayHeaderFooterVerbatim } from "../headerFooterVerbatim";
+import { isEmptyParagraph } from "../paragraphParser";
+import { captureVerbatimXml } from "../verbatimCapture";
+import { getLocalName, parseXmlDocument } from "../xmlParser";
 import { serializeBlockSdt } from "./blockSdtSerializer";
 import { serializePartElement, type OoxmlNamespacePrefix, type SourcePart } from "./partNamespaces";
 import { serializeParagraph } from "./paragraphSerializer";
@@ -79,13 +82,12 @@ export function serializeHeaderFooter(hf: HeaderFooter, source?: SourcePart): st
 
   const rootTag = hf.type === "header" ? "w:hdr" : "w:ftr";
 
-  // Watermark replay. The parser captured the hosting paragraph's
-  // verbatim XML (`rawWatermarkXml`) and detached it from `content`,
-  // so emit it back at its original block position (tracked in
-  // `watermarkBlockIndex`). If a caller mutated `hf.watermark` without
-  // updating the raw XML (e.g. the setDocumentWatermark path), the
-  // model-driven synthesizer takes over and emits a freshly-built VML
-  // watermark paragraph at the top of the header.
+  // Watermark replay. The parser retains the empty hosting paragraph in
+  // `content` so its formatting participates in header layout. Merge the
+  // captured watermark run into that modeled paragraph so structural saves
+  // preserve later formatting edits without emitting a second host line. If
+  // the host acquired visible content, preserve it and insert the captured
+  // paragraph beside it. Model-driven watermarks keep insertion semantics.
   const watermarkXml = serializeWatermarkParagraph(hf);
   const watermarkInsertIndex =
     hf.watermarkBlockIndex !== undefined
@@ -95,9 +97,21 @@ export function serializeHeaderFooter(hf: HeaderFooter, source?: SourcePart): st
   const blocksXml = hf.content.map((block) => serializeBlock(block));
   let contentXml: string;
   if (watermarkXml) {
+    const watermarkHost = hf.content.at(watermarkInsertIndex);
+    const rawWatermarkXml = hf.rawWatermarkXml;
+    const mergesIntoRetainedHost =
+      rawWatermarkXml !== undefined &&
+      watermarkHost?.type === "paragraph" &&
+      isEmptyParagraph(watermarkHost);
+    if (mergesIntoRetainedHost) {
+      blocksXml[watermarkInsertIndex] = serializeRawWatermarkIntoHost({
+        hostXml: blocksXml[watermarkInsertIndex] ?? serializeParagraph(watermarkHost),
+        rawWatermarkXml,
+      });
+    }
     contentXml =
       blocksXml.slice(0, watermarkInsertIndex).join("") +
-      watermarkXml +
+      (mergesIntoRetainedHost ? "" : watermarkXml) +
       blocksXml.slice(watermarkInsertIndex).join("");
   } else {
     contentXml = blocksXml.join("");
@@ -118,6 +132,38 @@ export function serializeHeaderFooter(hf: HeaderFooter, source?: SourcePart): st
       body: contentXml,
     })
   );
+}
+
+type SerializeRawWatermarkIntoHostOptions = {
+  hostXml: string;
+  rawWatermarkXml: string;
+};
+
+function serializeRawWatermarkIntoHost({
+  hostXml,
+  rawWatermarkXml,
+}: SerializeRawWatermarkIntoHostOptions): string {
+  const rawHost = parseXmlDocument(rawWatermarkXml);
+  if (!rawHost || getLocalName(rawHost.name ?? "") !== "p") {
+    return rawWatermarkXml;
+  }
+
+  const watermarkContent = (rawHost.elements ?? [])
+    .filter((child) => child.type === "element" && getLocalName(child.name ?? "") !== "pPr")
+    .map((child) => captureVerbatimXml(child))
+    .join("");
+  if (!watermarkContent) {
+    return rawWatermarkXml;
+  }
+
+  const namespaceAttributes = Object.entries(rawHost.attributes ?? {})
+    .filter(
+      ([name, value]) => value !== undefined && (name === "xmlns" || name.startsWith("xmlns:")),
+    )
+    .map(([name, value]) => ` ${name}="${escapeXml(String(value))}"`)
+    .join("");
+  const namespacedHost = hostXml.replace(/^<w:p(?=[\s>])/u, `<w:p${namespaceAttributes}`);
+  return namespacedHost.replace("</w:p>", `${watermarkContent}</w:p>`);
 }
 
 function serializeWatermarkParagraph(hf: HeaderFooter): string {
