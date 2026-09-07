@@ -22,41 +22,47 @@
 
 import type { BlockContent, Endnote, Footnote } from "../../types/document";
 import { serializeBlockSdt } from "./blockSdtSerializer";
+import { serializePartElement, type OoxmlNamespacePrefix } from "./partNamespaces";
 import { serializeParagraph } from "./paragraphSerializer";
 import { serializeTable } from "./tableSerializer";
 
-// Namespaces declared on the notes root. Mirrors the header/footer serializer's
-// declared set so note bodies carrying DrawingML, math, or raw-replayed SDT
-// extensions land on a root that declares every prefix they might use.
-const NAMESPACES: Record<string, string> = {
-  wpc: "http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas",
-  mc: "http://schemas.openxmlformats.org/markup-compatibility/2006",
-  o: "urn:schemas-microsoft-com:office:office",
-  r: "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
-  m: "http://schemas.openxmlformats.org/officeDocument/2006/math",
-  v: "urn:schemas-microsoft-com:vml",
-  a: "http://schemas.openxmlformats.org/drawingml/2006/main",
-  pic: "http://schemas.openxmlformats.org/drawingml/2006/picture",
-  wp14: "http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing",
-  wp: "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing",
-  w10: "urn:schemas-microsoft-com:office:word",
-  w: "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
-  w14: "http://schemas.microsoft.com/office/word/2010/wordml",
-  w15: "http://schemas.microsoft.com/office/word/2012/wordml",
-  w16: "http://schemas.microsoft.com/office/word/2018/wordml",
-  w16cex: "http://schemas.microsoft.com/office/word/2018/wordml/cex",
-  w16cid: "http://schemas.microsoft.com/office/word/2016/wordml/cid",
-  w16sdtdh: "http://schemas.microsoft.com/office/word/2020/wordml/sdtdatahash",
-  w16se: "http://schemas.microsoft.com/office/word/2015/wordml/symex",
-  wpg: "http://schemas.microsoft.com/office/word/2010/wordprocessingGroup",
-  wps: "http://schemas.microsoft.com/office/word/2010/wordprocessingShape",
-};
+// Prefixes a notes part declares whether or not the bodies use them. Mirrors
+// the header/footer baseline so note bodies carrying DrawingML, math, or
+// raw-replayed SDT extensions land on a root that declares every prefix they
+// might use.
+const NOTE_BASELINE_PREFIXES = [
+  "wpc",
+  "mc",
+  "o",
+  "r",
+  "m",
+  "v",
+  "a",
+  "pic",
+  "wp14",
+  "wp",
+  "w10",
+  "w",
+  "w14",
+  "w15",
+  "w16",
+  "w16cex",
+  "w16cid",
+  "w16sdtdh",
+  "w16se",
+  "wpg",
+  "wps",
+] as const satisfies readonly OoxmlNamespacePrefix[];
 
-function buildNamespaceDeclarations(): string {
-  return Object.entries(NAMESPACES)
-    .map(([prefix, uri]) => `xmlns:${prefix}="${uri}"`)
-    .join(" ");
-}
+const serializeNotePart = (elementName: "footnote" | "endnote", body: string): string =>
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+  serializePartElement({
+    partPath: `word/${elementName}s.xml`,
+    rootName: `w:${elementName}s`,
+    baselinePrefixes: NOTE_BASELINE_PREFIXES,
+    sourceBindings: undefined,
+    body,
+  });
 
 /**
  * Serialize a block content item (paragraph, table, or block-level SDT) for a
@@ -127,16 +133,12 @@ function serializeNewNotePart(
   elementName: "footnote" | "endnote",
   notes: readonly (Footnote | Endnote)[],
 ): string {
-  const nsDecl = buildNamespaceDeclarations();
   const serializedNotes = notes
     .map((note) => insertNoteReferenceMark(serializeNote(elementName, note), elementName))
     .join("");
-  return (
-    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n` +
-    `<w:${elementName}s ${nsDecl} mc:Ignorable="w14 w15 wp14">` +
-    serializeRequiredNoteSeparators(elementName) +
-    serializedNotes +
-    `</w:${elementName}s>`
+  return serializeNotePart(
+    elementName,
+    serializeRequiredNoteSeparators(elementName) + serializedNotes,
   );
 }
 
@@ -147,9 +149,10 @@ function serializeNewNotePart(
  * @returns Complete footnotes.xml string.
  */
 export function serializeFootnotes(footnotes: readonly Footnote[]): string {
-  const nsDecl = buildNamespaceDeclarations();
-  const notes = footnotes.map((fn) => serializeNote("footnote", fn)).join("");
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:footnotes ${nsDecl} mc:Ignorable="w14 w15 wp14">${notes}</w:footnotes>`;
+  return serializeNotePart(
+    "footnote",
+    footnotes.map((fn) => serializeNote("footnote", fn)).join(""),
+  );
 }
 
 /**
@@ -159,9 +162,7 @@ export function serializeFootnotes(footnotes: readonly Footnote[]): string {
  * @returns Complete endnotes.xml string.
  */
 export function serializeEndnotes(endnotes: readonly Endnote[]): string {
-  const nsDecl = buildNamespaceDeclarations();
-  const notes = endnotes.map((en) => serializeNote("endnote", en)).join("");
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:endnotes ${nsDecl} mc:Ignorable="w14 w15 wp14">${notes}</w:endnotes>`;
+  return serializeNotePart("endnote", endnotes.map((en) => serializeNote("endnote", en)).join(""));
 }
 
 /** Serialize a brand-new footnote part, including Word's required separators

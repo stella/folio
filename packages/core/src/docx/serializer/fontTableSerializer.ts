@@ -1,12 +1,16 @@
 import type { FontInfo, FontTable } from "../../types/document";
+import { serializePartElement } from "./partNamespaces";
 import { escapeXml } from "./xmlUtils";
 
-const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-
-export const serializeFontTableXml = (fontTable: FontTable): string => {
-  const fonts = fontTable.fonts.map(serializeFont).join("");
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:fonts xmlns:w="${W_NS}">${fonts}</w:fonts>`;
-};
+export const serializeFontTableXml = (fontTable: FontTable): string =>
+  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+  serializePartElement({
+    partPath: "word/fontTable.xml",
+    rootName: "w:fonts",
+    baselinePrefixes: ["w"],
+    sourceBindings: undefined,
+    body: fontTable.fonts.map(serializeFont).join(""),
+  });
 
 const serializeFont = (font: FontInfo): string => {
   const parts: string[] = [];

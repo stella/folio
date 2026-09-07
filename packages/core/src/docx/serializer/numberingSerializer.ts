@@ -29,10 +29,9 @@ import type {
   NumberingInstance,
   ParagraphFormatting,
 } from "../../types/document";
+import { serializePartElement } from "./partNamespaces";
 import { serializeTextFormatting } from "./runSerializer";
 import { escapeXml, intAttr } from "./xmlUtils";
-
-const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
 /**
  * Serialize a level's paragraph properties — the modeled subset is indentation
@@ -178,5 +177,14 @@ function serializeNum(instance: NumberingInstance): string {
 export function serializeNumberingXml(numbering: NumberingDefinitions): string {
   const abstractNums = numbering.abstractNums.map(serializeAbstractNum).join("");
   const nums = numbering.nums.map(serializeNum).join("");
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:numbering xmlns:w="${W_NS}">${abstractNums}${nums}</w:numbering>`;
+  return (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+    serializePartElement({
+      partPath: "word/numbering.xml",
+      rootName: "w:numbering",
+      baselinePrefixes: ["w"],
+      sourceBindings: undefined,
+      body: `${abstractNums}${nums}`,
+    })
+  );
 }

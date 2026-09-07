@@ -13,48 +13,41 @@
 import type { BlockContent, HeaderFooter, Watermark } from "../../types/document";
 import { getHeaderFooterVerbatimXml, canReplayHeaderFooterVerbatim } from "../headerFooterVerbatim";
 import { serializeBlockSdt } from "./blockSdtSerializer";
+import { serializePartElement, type OoxmlNamespacePrefix, type SourcePart } from "./partNamespaces";
 import { serializeParagraph } from "./paragraphSerializer";
 import { serializeTable } from "./tableSerializer";
 import { escapeXml } from "./xmlUtils";
 
-// Namespaces declared on the header/footer root. Mirrors the document
-// serializer's declared set so any raw replay path (`rawPropertiesXml`,
+// Prefixes a header/footer declares whether or not the body uses them. Mirrors
+// the document serializer's baseline so any raw replay path (`rawPropertiesXml`,
 // unmodeled OOXML extensions inside a captured SDT) lands on a root that
-// declares every standard prefix it might use.
-const NAMESPACES: Record<string, string> = {
-  wpc: "http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas",
-  mc: "http://schemas.openxmlformats.org/markup-compatibility/2006",
-  o: "urn:schemas-microsoft-com:office:office",
-  r: "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
-  m: "http://schemas.openxmlformats.org/officeDocument/2006/math",
-  v: "urn:schemas-microsoft-com:vml",
-  // DrawingML core + picture. Required for raw-replay of DrawingML
-  // watermarks captured by `parseWatermark`: `rawWatermarkXml` carries
-  // `<a:graphic>` / `<a:txBody>` / `<pic:pic>` descendants, but the
-  // hosting paragraph alone doesn't preserve the original header's
-  // ancestor namespace declarations.
-  a: "http://schemas.openxmlformats.org/drawingml/2006/main",
-  pic: "http://schemas.openxmlformats.org/drawingml/2006/picture",
-  wp14: "http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing",
-  wp: "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing",
-  w10: "urn:schemas-microsoft-com:office:word",
-  w: "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
-  w14: "http://schemas.microsoft.com/office/word/2010/wordml",
-  w15: "http://schemas.microsoft.com/office/word/2012/wordml",
-  w16: "http://schemas.microsoft.com/office/word/2018/wordml",
-  w16cex: "http://schemas.microsoft.com/office/word/2018/wordml/cex",
-  w16cid: "http://schemas.microsoft.com/office/word/2016/wordml/cid",
-  w16sdtdh: "http://schemas.microsoft.com/office/word/2020/wordml/sdtdatahash",
-  w16se: "http://schemas.microsoft.com/office/word/2015/wordml/symex",
-  wpg: "http://schemas.microsoft.com/office/word/2010/wordprocessingGroup",
-  wps: "http://schemas.microsoft.com/office/word/2010/wordprocessingShape",
-};
-
-function buildNamespaceDeclarations(): string {
-  return Object.entries(NAMESPACES)
-    .map(([prefix, uri]) => `xmlns:${prefix}="${uri}"`)
-    .join(" ");
-}
+// declares every standard prefix it might use. `a` and `pic` cover DrawingML
+// watermarks: `rawWatermarkXml` carries `<a:graphic>` / `<a:txBody>` /
+// `<pic:pic>` descendants, but the hosting paragraph does not preserve the
+// original header's ancestor declarations.
+const HEADER_FOOTER_BASELINE_PREFIXES = [
+  "wpc",
+  "mc",
+  "o",
+  "r",
+  "m",
+  "v",
+  "a",
+  "pic",
+  "wp14",
+  "wp",
+  "w10",
+  "w",
+  "w14",
+  "w15",
+  "w16",
+  "w16cex",
+  "w16cid",
+  "w16sdtdh",
+  "w16se",
+  "wpg",
+  "wps",
+] as const satisfies readonly OoxmlNamespacePrefix[];
 
 /**
  * Serialize a block content item (paragraph, table, or block-level SDT) for
@@ -74,16 +67,17 @@ function serializeBlock(block: BlockContent): string {
  * Serialize a HeaderFooter object to valid OOXML XML
  *
  * @param hf - HeaderFooter object to serialize
+ * @param source - The part being replaced, so a prefix only the source
+ *   document bound keeps its URI
  * @returns Complete XML string for header*.xml or footer*.xml
  */
-export function serializeHeaderFooter(hf: HeaderFooter): string {
+export function serializeHeaderFooter(hf: HeaderFooter, source?: SourcePart): string {
   const verbatim = getHeaderFooterVerbatimXml(hf);
   if (verbatim && canReplayHeaderFooterVerbatim(hf)) {
     return verbatim;
   }
 
   const rootTag = hf.type === "header" ? "w:hdr" : "w:ftr";
-  const nsDecl = buildNamespaceDeclarations();
 
   // Watermark replay. The parser captured the hosting paragraph's
   // verbatim XML (`rawWatermarkXml`) and detached it from `content`,
@@ -114,7 +108,16 @@ export function serializeHeaderFooter(hf: HeaderFooter): string {
     contentXml = "<w:p><w:pPr/></w:p>";
   }
 
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<${rootTag} ${nsDecl}>${contentXml}</${rootTag}>`;
+  return (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+    serializePartElement({
+      partPath: source?.path ?? `word/${hf.type}.xml`,
+      rootName: rootTag,
+      baselinePrefixes: HEADER_FOOTER_BASELINE_PREFIXES,
+      sourceBindings: source?.bindings,
+      body: contentXml,
+    })
+  );
 }
 
 function serializeWatermarkParagraph(hf: HeaderFooter): string {

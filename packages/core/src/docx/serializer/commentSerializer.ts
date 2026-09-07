@@ -7,6 +7,7 @@
 import { deterministicHexId } from "../../utils/hexId";
 import type { Comment, Paragraph } from "../../types/content";
 import type { TextFormatting } from "../../types/formatting";
+import { serializePartElement, type OoxmlNamespacePrefix } from "./partNamespaces";
 import { serializeParagraph } from "./paragraphSerializer";
 import { serializeTextFormatting } from "./runSerializer";
 import { escapeXml } from "./xmlUtils";
@@ -70,33 +71,35 @@ function serializeComment(comment: Comment): string {
   return xml;
 }
 
-const COMMENT_EXTENSION_NAMESPACES = {
-  w14: "http://schemas.microsoft.com/office/word/2010/wordml",
-  wp14: "http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing",
-} as const;
+// Prefixes word/comments.xml declares whether or not the comment bodies use
+// them, so a comment carrying a drawing or a raw-replayed extension lands on a
+// root that already declares its prefix.
+const COMMENTS_BASELINE_PREFIXES = [
+  "wpc",
+  "mc",
+  "o",
+  "r",
+  "m",
+  "v",
+  "wp",
+  "w10",
+  "w",
+  // Every ignorable prefix needs a binding even when no comment uses its elements.
+  "w14",
+  "wp14",
+  "wpg",
+  "wpi",
+  "wne",
+  "wps",
+] as const satisfies readonly OoxmlNamespacePrefix[];
 
-// Every ignorable prefix needs a binding even when no comment uses its elements.
-const COMMENT_EXTENSION_DECLARATIONS = Object.entries(COMMENT_EXTENSION_NAMESPACES)
-  .map(([prefix, namespace]) => `xmlns:${prefix}="${namespace}"`)
-  .join(" ");
+const COMMENTS_EXTENDED_BASELINE_PREFIXES = [
+  "mc",
+  "w",
+  "w15",
+] as const satisfies readonly OoxmlNamespacePrefix[];
 
-const COMMENTS_HEADER =
-  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
-  '<w:comments xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas" ' +
-  'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" ' +
-  'xmlns:o="urn:schemas-microsoft-com:office:office" ' +
-  'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" ' +
-  'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" ' +
-  'xmlns:v="urn:schemas-microsoft-com:vml" ' +
-  'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" ' +
-  'xmlns:w10="urn:schemas-microsoft-com:office:word" ' +
-  'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ' +
-  `${COMMENT_EXTENSION_DECLARATIONS} ` +
-  'xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup" ' +
-  'xmlns:wpi="http://schemas.microsoft.com/office/word/2010/wordprocessingInk" ' +
-  'xmlns:wne="http://schemas.microsoft.com/office/word/2006/wordml" ' +
-  'xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" ' +
-  `mc:Ignorable="${Object.keys(COMMENT_EXTENSION_NAMESPACES).join(" ")}">`;
+const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
 
 /**
  * Serialize comments array to comments.xml content. Returns a valid empty
@@ -105,7 +108,10 @@ const COMMENTS_HEADER =
  * comment — leaving the previous file in place would otherwise re-emit
  * the orphaned comment threads on every save.
  */
-export function serializeComments(comments: Comment[]): string {
+export function serializeComments(
+  comments: Comment[],
+  sourceBindings?: ReadonlyMap<string, string>,
+): string {
   // Separate top-level comments and replies in a single pass
   const topLevel: Comment[] = [];
   const replies: Comment[] = [];
@@ -115,18 +121,21 @@ export function serializeComments(comments: Comment[]): string {
     (parentId === null || parentId === undefined ? topLevel : replies).push(c);
   }
 
-  let xml = COMMENTS_HEADER;
-
   // Serialize top-level comments first, then replies
-  for (const comment of topLevel) {
-    xml += serializeComment(comment);
-  }
-  for (const reply of replies) {
-    xml += serializeComment(reply);
-  }
+  const body =
+    topLevel.map((comment) => serializeComment(comment)).join("") +
+    replies.map((reply) => serializeComment(reply)).join("");
 
-  xml += "</w:comments>";
-  return xml;
+  return (
+    XML_DECLARATION +
+    serializePartElement({
+      partPath: "word/comments.xml",
+      rootName: "w:comments",
+      baselinePrefixes: COMMENTS_BASELINE_PREFIXES,
+      sourceBindings,
+      body,
+    })
+  );
 }
 
 /** The `w14:paraId` Word threads a comment by: its LAST paragraph's paraId. */
@@ -271,13 +280,6 @@ function buildCommentExtendedEntries(comments: readonly Comment[]): CommentExten
   return entries.length > 0 ? entries : null;
 }
 
-const COMMENTS_EXTENDED_HEADER =
-  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
-  '<w15:commentsEx xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" ' +
-  'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ' +
-  'xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml" ' +
-  'mc:Ignorable="w15">';
-
 /**
  * Serialize `commentsExtended.xml` (`w15:commentsEx`) for reply threading and
  * resolved state, or `null` when no comment needs an entry (see
@@ -290,14 +292,24 @@ export function serializeCommentsExtended(comments: readonly Comment[]): string 
     return null;
   }
 
-  let xml = COMMENTS_EXTENDED_HEADER;
-  for (const entry of entries) {
-    const parentAttr =
-      entry.paraIdParent !== undefined
-        ? ` w15:paraIdParent="${escapeXml(entry.paraIdParent)}"`
-        : "";
-    xml += `<w15:commentEx w15:paraId="${escapeXml(entry.paraId)}"${parentAttr} w15:done="${entry.done ? "1" : "0"}"/>`;
-  }
-  xml += "</w15:commentsEx>";
-  return xml;
+  const body = entries
+    .map((entry) => {
+      const parentAttr =
+        entry.paraIdParent !== undefined
+          ? ` w15:paraIdParent="${escapeXml(entry.paraIdParent)}"`
+          : "";
+      return `<w15:commentEx w15:paraId="${escapeXml(entry.paraId)}"${parentAttr} w15:done="${entry.done ? "1" : "0"}"/>`;
+    })
+    .join("");
+
+  return (
+    XML_DECLARATION +
+    serializePartElement({
+      partPath: "word/commentsExtended.xml",
+      rootName: "w15:commentsEx",
+      baselinePrefixes: COMMENTS_EXTENDED_BASELINE_PREFIXES,
+      sourceBindings: undefined,
+      body,
+    })
+  );
 }

@@ -13,99 +13,43 @@
 
 import type { Document, DocumentBody, BlockContent } from "../../types/document";
 import { serializeBlockSdt } from "./blockSdtSerializer";
+import { serializePartElement, type OoxmlNamespacePrefix } from "./partNamespaces";
 import { serializeParagraph } from "./paragraphSerializer";
 import { resetAutoIdCounter } from "./runSerializer";
 import { serializeSectionProperties } from "./sectionPropertiesSerializer";
 import { serializeTable } from "./tableSerializer";
 
-// ============================================================================
-// XML NAMESPACES
-// ============================================================================
-
 /**
- * Standard OOXML namespaces for document.xml
+ * Prefixes document.xml declares whether or not the body uses them.
+ *
+ * A canonical `<w:sdtPr>` legitimately carries `<w16sdtdh:dataHash>` /
+ * `<w16cex:*>` / `<w16cid:*>` children the parser stores opaquely, and the
+ * drawing prefixes host raw-replayed shapes, so the part keeps the shape Word
+ * writes even when this particular save emits none of them.
  */
-const NAMESPACES = {
-  a: "http://schemas.openxmlformats.org/drawingml/2006/main",
-  wpc: "http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas",
-  cx: "http://schemas.microsoft.com/office/drawing/2014/chartex",
-  cx1: "http://schemas.microsoft.com/office/drawing/2015/9/8/chartex",
-  cx2: "http://schemas.microsoft.com/office/drawing/2015/10/21/chartex",
-  cx3: "http://schemas.microsoft.com/office/drawing/2016/5/9/chartex",
-  cx4: "http://schemas.microsoft.com/office/drawing/2016/5/10/chartex",
-  cx5: "http://schemas.microsoft.com/office/drawing/2016/5/11/chartex",
-  cx6: "http://schemas.microsoft.com/office/drawing/2016/5/12/chartex",
-  cx7: "http://schemas.microsoft.com/office/drawing/2016/5/13/chartex",
-  cx8: "http://schemas.microsoft.com/office/drawing/2016/5/14/chartex",
-  mc: "http://schemas.openxmlformats.org/markup-compatibility/2006",
-  aink: "http://schemas.microsoft.com/office/drawing/2016/ink",
-  am3d: "http://schemas.microsoft.com/office/drawing/2017/model3d",
-  o: "urn:schemas-microsoft-com:office:office",
-  oel: "http://schemas.microsoft.com/office/2019/extlst",
-  pic: "http://schemas.openxmlformats.org/drawingml/2006/picture",
-  r: "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
-  m: "http://schemas.openxmlformats.org/officeDocument/2006/math",
-  v: "urn:schemas-microsoft-com:vml",
-  wp14: "http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing",
-  wp: "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing",
-  w10: "urn:schemas-microsoft-com:office:word",
-  w: "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
-  w14: "http://schemas.microsoft.com/office/word/2010/wordml",
-  w15: "http://schemas.microsoft.com/office/word/2012/wordml",
-  w16cex: "http://schemas.microsoft.com/office/word/2018/wordml/cex",
-  w16cid: "http://schemas.microsoft.com/office/word/2016/wordml/cid",
-  w16: "http://schemas.microsoft.com/office/word/2018/wordml",
-  w16sdtdh: "http://schemas.microsoft.com/office/word/2020/wordml/sdtdatahash",
-  w16se: "http://schemas.microsoft.com/office/word/2015/wordml/symex",
-  wpg: "http://schemas.microsoft.com/office/word/2010/wordprocessingGroup",
-  wpi: "http://schemas.microsoft.com/office/word/2010/wordprocessingInk",
-  wne: "http://schemas.microsoft.com/office/word/2006/wordml",
-  wps: "http://schemas.microsoft.com/office/word/2010/wordprocessingShape",
-};
-
-/**
- * Build namespace declaration string for document element
- */
-function buildNamespaceDeclarations(): string {
-  // Declare every namespace the parser preserves verbatim through
-  // `rawPropertiesXml` / `rawEndPropertiesXml` (and any other raw
-  // replay path). A canonical `<w:sdtPr>` legitimately contains
-  // `<w16sdtdh:dataHash>` / `<w16cex:*>` / `<w16cid:*>` children that
-  // the parser stores opaquely; without these declarations on the
-  // document root, the replayed XML would carry undefined prefixes and
-  // Word refuses to open the file.
-  const declared = {
-    a: NAMESPACES.a,
-    wpc: NAMESPACES.wpc,
-    mc: NAMESPACES.mc,
-    o: NAMESPACES.o,
-    pic: NAMESPACES.pic,
-    r: NAMESPACES.r,
-    m: NAMESPACES.m,
-    v: NAMESPACES.v,
-    wp14: NAMESPACES.wp14,
-    wp: NAMESPACES.wp,
-    w10: NAMESPACES.w10,
-    w: NAMESPACES.w,
-    w14: NAMESPACES.w14,
-    w15: NAMESPACES.w15,
-    w16: NAMESPACES.w16,
-    w16cex: NAMESPACES.w16cex,
-    w16cid: NAMESPACES.w16cid,
-    w16sdtdh: NAMESPACES.w16sdtdh,
-    w16se: NAMESPACES.w16se,
-    wpg: NAMESPACES.wpg,
-    wps: NAMESPACES.wps,
-  };
-
-  return Object.entries(declared)
-    .map(([prefix, uri]) => `xmlns:${prefix}="${uri}"`)
-    .join(" ");
-}
-
-// ============================================================================
-// XML ESCAPING
-// ============================================================================
+const DOCUMENT_BASELINE_PREFIXES = [
+  "a",
+  "wpc",
+  "mc",
+  "o",
+  "pic",
+  "r",
+  "m",
+  "v",
+  "wp14",
+  "wp",
+  "w10",
+  "w",
+  "w14",
+  "w15",
+  "w16",
+  "w16cex",
+  "w16cid",
+  "w16sdtdh",
+  "w16se",
+  "wpg",
+  "wps",
+] as const satisfies readonly OoxmlNamespacePrefix[];
 
 // ============================================================================
 // CONTENT SERIALIZATION
@@ -159,30 +103,29 @@ export function serializeDocumentBody(body: DocumentBody): string {
  * Serialize a complete Document to valid document.xml
  *
  * @param doc - The document to serialize
+ * @param sourceBindings - Root `xmlns:*` of the part being replaced, so a
+ *   prefix only the source document bound keeps its URI
  * @returns Complete XML string for document.xml
  */
-export function serializeDocument(doc: Document): string {
+export function serializeDocument(
+  doc: Document,
+  sourceBindings?: ReadonlyMap<string, string>,
+): string {
   // Reset auto-incrementing image/shape ID counter for this serialization pass
   resetAutoIdCounter();
 
-  const parts: string[] = [];
+  const body = `<w:body>${serializeDocumentBody(doc.package.document)}</w:body>`;
 
-  // XML declaration
-  parts.push('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>');
-
-  // Document element with namespaces
-  const nsDecl = buildNamespaceDeclarations();
-  parts.push(`<w:document ${nsDecl} mc:Ignorable="w14 w15 wp14">`);
-
-  // Document body
-  parts.push("<w:body>");
-  parts.push(serializeDocumentBody(doc.package.document));
-  parts.push("</w:body>");
-
-  // Close document element
-  parts.push("</w:document>");
-
-  return parts.join("");
+  return (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    serializePartElement({
+      partPath: "word/document.xml",
+      rootName: "w:document",
+      baselinePrefixes: DOCUMENT_BASELINE_PREFIXES,
+      sourceBindings,
+      body,
+    })
+  );
 }
 
 /**

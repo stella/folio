@@ -1,11 +1,21 @@
 import type { Theme, ThemeColorScheme, ThemeFont } from "../../types/document";
+import { serializePartElement } from "./partNamespaces";
 import { escapeXml } from "./xmlUtils";
-
-const A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
 export const serializeThemeXml = (theme: Theme): string => {
   const name = escapeXml(theme.name ?? "Folio Theme");
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<a:theme xmlns:a="${A_NS}" name="${name}"><a:themeElements>${serializeColorScheme(theme.colorScheme)}${serializeFontScheme(theme)}${serializeFormatScheme(theme)}</a:themeElements></a:theme>`;
+  const elements = `${serializeColorScheme(theme.colorScheme)}${serializeFontScheme(theme)}${serializeFormatScheme(theme)}`;
+  return (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+    serializePartElement({
+      partPath: "word/theme/theme1.xml",
+      rootName: "a:theme",
+      rootAttributes: `name="${name}"`,
+      baselinePrefixes: ["a"],
+      sourceBindings: undefined,
+      body: `<a:themeElements>${elements}</a:themeElements>`,
+    })
+  );
 };
 
 const serializeColorScheme = (colors: ThemeColorScheme | undefined): string => {
