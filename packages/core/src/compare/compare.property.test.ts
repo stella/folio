@@ -464,11 +464,70 @@ const roundTripScriptArb = (blocks: readonly FolioAIBlock[]): fc.Arbitrary<EditS
 const kindsOf = (changes: readonly CompareChange[]): string[] => changes.map(({ kind }) => kind);
 
 /**
+ * The formatting a block carries, one entry per character, so two text-equal
+ * blocks compare on what a reader sees rather than on how their runs happen to
+ * be split. A block the snapshot gives no runs for is unstyled throughout.
+ */
+const characterFormatting = (block: FolioAIBlock): string =>
+  JSON.stringify(
+    (block.previewRuns ?? [{ text: block.text }]).flatMap((run) => {
+      const formatting = [
+        run.bold,
+        run.italic,
+        run.underline,
+        run.strike,
+        run.fontFamily,
+        run.fontSizePt,
+        run.color,
+      ];
+      return Array.from(run.text, () => formatting);
+    }),
+  );
+
+/**
+ * Whether the relocation of `moved` arrived carrying different formatting.
+ *
+ * `moveParagraph` is a deletion plus an insertion of the block's TEXT: the
+ * operation vocabulary carries a paragraph's style and list level to the new
+ * position but not its direct character formatting, so a styled block arrives
+ * plain. Read off the target instead of predicted from the base, because only
+ * the arrival separates the formatting the block got from its style (which the
+ * re-insertion keeps) from the formatting set on its runs (which it does not).
+ */
+const relocationDroppedFormatting = (
+  moved: FolioAIBlock,
+  targetBlocks: readonly FolioAIBlock[],
+): boolean => {
+  const before = characterFormatting(moved);
+  return targetBlocks.some(
+    (block) => block.text === moved.text && characterFormatting(block) !== before,
+  );
+};
+
+type TouchedBlockBudgetOptions = {
+  applied: readonly EditScriptStep[];
+  baseBlocks: readonly FolioAIBlock[];
+  targetBlocks: readonly FolioAIBlock[];
+};
+
+/**
  * Changes one script may legitimately produce.
  *
  * A paragraph step touches one block. A relocation touches two, and is
  * reported as two when the move pass declines to pair it (its text is below
  * the word floor, or it landed where the alignment can still walk forward).
+ *
+ * A relocation that also dropped the block's formatting is budgeted at three,
+ * because it made two differences and the alignment picks which one it names.
+ * Swapping a block past a SINGLE neighbour reads equally well from either side
+ * ("this one moved down" and "that one moved up" match the same number of
+ * blocks), and the alignment breaks that tie by position, not by which side the
+ * script meant. When it relocates the neighbour, the moved block pairs where it
+ * always was and reports the formatting its plain re-insertion lost, on top of
+ * the neighbour's two ends. Both readings accept back to the target; this one
+ * costs one change more. A move that kept its formatting stays budgeted at two,
+ * so an engine that reports a plain relocation more granularly than that is
+ * still caught.
  *
  * A table whose row COUNT changed is budgeted at its whole size. Rows pair on
  * exact text first and positionally after that, so once the counts differ the
@@ -478,29 +537,35 @@ const kindsOf = (changes: readonly CompareChange[]): string[] => changes.map(({ 
  * table keeps the real guarantee: the comparison never invents work beyond the
  * content the script disturbed.
  */
-const touchedBlockBudget = (
-  applied: readonly EditScriptStep[],
-  blocks: readonly FolioAIBlock[],
-): number => {
+const touchedBlockBudget = ({
+  applied,
+  baseBlocks,
+  targetBlocks,
+}: TouchedBlockBudgetOptions): number => {
   const rowCountChanged = new Set(
     applied.flatMap((step) => {
       if (step.type !== "insertTableRow" && step.type !== "deleteTableRow") {
         return [];
       }
-      const tableIndex = blocks[step.blockIndex]?.table?.tableIndex;
+      const tableIndex = baseBlocks[step.blockIndex]?.table?.tableIndex;
       return tableIndex === undefined ? [] : [tableIndex];
     }),
   );
   let budget = 0;
   for (const tableIndex of rowCountChanged) {
-    budget += blocks.filter((block) => block.table?.tableIndex === tableIndex).length;
+    budget += baseBlocks.filter((block) => block.table?.tableIndex === tableIndex).length;
   }
   for (const step of applied) {
-    const tableIndex = blocks[step.blockIndex]?.table?.tableIndex;
+    const block = baseBlocks[step.blockIndex];
+    const tableIndex = block?.table?.tableIndex;
     if (tableIndex !== undefined && rowCountChanged.has(tableIndex)) {
       continue;
     }
-    budget += step.type === "moveParagraph" ? 2 : 1;
+    if (step.type !== "moveParagraph") {
+      budget += 1;
+      continue;
+    }
+    budget += block && relocationDroppedFormatting(block, targetBlocks) ? 3 : 2;
   }
   return budget;
 };
@@ -625,7 +690,11 @@ describe("compareDocx", () => {
             }
             const { changes } = await compareOrThrow(base, scripted.value.buffer);
             expect(changes.length).toBeLessThanOrEqual(
-              touchedBlockBudget(scripted.value.applied, baseBlocks),
+              touchedBlockBudget({
+                applied: scripted.value.applied,
+                baseBlocks,
+                targetBlocks: await blocksOf(scripted.value.buffer),
+              }),
             );
           }),
           propertyConfig({ numRuns: 12 }),
@@ -663,6 +732,40 @@ describe("compareDocx", () => {
       );
     }
   }
+
+  test("a relocation past one neighbour may be reported from the neighbour's side", async () => {
+    // The counterexample the change-count property found. Pinned so the shape
+    // is covered on every run rather than on the draw that happens to reach it:
+    // the styled paragraph swaps past exactly one neighbour, so both readings
+    // of the swap match the same number of blocks, and the alignment names the
+    // neighbour. The moved paragraph then pairs where it always was and reports
+    // the direct formatting its plain re-insertion could not carry.
+    const base = readFixture("upstream-styled-content.docx");
+    const baseBlocks = await blocksOf(base);
+    const script: EditScript = [
+      { type: "deleteParagraph", blockIndex: 2 },
+      { type: "moveParagraph", blockIndex: 1, beforeBlockIndex: 4 },
+    ];
+
+    const scripted = await applyEditScript(base, script);
+    if (scripted.isErr()) {
+      throw scripted.error;
+    }
+    expect(scripted.value.unresolved).toEqual([]);
+
+    const targetBlocks = await blocksOf(scripted.value.buffer);
+    const moved = baseBlocks[1];
+    if (!moved) {
+      throw new Error("The styled fixture no longer holds the block this scenario relocates.");
+    }
+    expect(relocationDroppedFormatting(moved, targetBlocks)).toBe(true);
+
+    const { changes } = await compareOrThrow(base, scripted.value.buffer);
+    expect(kindsOf(changes).toSorted()).toEqual(["delete", "delete", "format", "insert"]);
+    expect(changes.length).toBe(
+      touchedBlockBudget({ applied: scripted.value.applied, baseBlocks, targetBlocks }),
+    );
+  });
 
   for (const { name, buffer: base, blocks: baseBlocks } of BASE_CASES) {
     test(
