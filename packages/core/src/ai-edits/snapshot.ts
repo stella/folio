@@ -1,3 +1,4 @@
+import { panic } from "better-result";
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import { TableMap } from "prosemirror-tables";
 
@@ -14,6 +15,13 @@ import type {
   FolioAIInlineFormatting,
   FolioAITextRangeHandle,
 } from "./types";
+
+const numberingReferenceKeysBySnapshot = new WeakMap<FolioAIEditSnapshot, readonly string[]>();
+
+/** @internal Numbering references collected during the snapshot's document walk. */
+export const numberingReferenceKeysOf = (snapshot: FolioAIEditSnapshot): readonly string[] =>
+  numberingReferenceKeysBySnapshot.get(snapshot) ??
+  panic("A numbering census was requested for a snapshot that did not record one");
 
 export const normalizeFolioAIBlockText = (text: string): string =>
   text.replace(/\s+/gu, " ").trim();
@@ -229,6 +237,7 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
   }[] = [];
   const hashCounts = new Map<string, number>();
   const usedBlockIds = new Set<string>();
+  const numberingReferenceKeys = new Set<string>();
   const tableIndexByStart = new Map(
     folioStoryTables(doc).map(({ start, index }) => [start, index] as const),
   );
@@ -297,6 +306,10 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
     const displayLabel = getDisplayLabel(node);
     const styleId = getStyleId(node);
     const listLevel = getListLevel(node);
+    const numberingReferenceKey = getNumberingReferenceKey(node);
+    if (numberingReferenceKey) {
+      numberingReferenceKeys.add(numberingReferenceKey);
+    }
     const previewRuns = getPreviewRuns(node);
     const table = getTableLocation({ path, blockIndex: index, tableIndexByStart });
 
@@ -334,7 +347,9 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
     };
   }
 
-  return { blocks, anchors };
+  const snapshot = { blocks, anchors };
+  numberingReferenceKeysBySnapshot.set(snapshot, [...numberingReferenceKeys]);
+  return snapshot;
 };
 
 const getBlockKind = (node: PMNode, headingLevel: number | undefined): FolioAIBlockKind => {
@@ -395,6 +410,22 @@ const getListLevel = (node: PMNode): number | undefined => {
   }
   const { ilvl } = numPr;
   return typeof ilvl === "number" && Number.isInteger(ilvl) && ilvl >= 0 ? ilvl : undefined;
+};
+
+const getNumberingReferenceKey = (node: PMNode): string | null => {
+  const numPr: unknown = node.attrs["numPr"];
+  if (typeof numPr !== "object" || numPr === null || !("numId" in numPr)) {
+    return null;
+  }
+  const { numId } = numPr;
+  if (typeof numId !== "number" || !Number.isInteger(numId) || numId <= 0) {
+    return null;
+  }
+  const level = "ilvl" in numPr ? numPr.ilvl : undefined;
+  if (level !== undefined && (typeof level !== "number" || !Number.isInteger(level) || level < 0)) {
+    return null;
+  }
+  return `${String(numId)}:${String(level ?? 0)}`;
 };
 
 const getStyleId = (node: PMNode): string | undefined => {

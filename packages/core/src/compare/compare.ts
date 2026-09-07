@@ -45,6 +45,7 @@ import {
 } from "../ai-edits/headless";
 import { projectTableGeometry } from "../ai-edits/table-geometry";
 import type { FolioTableTemplates } from "../ai-edits/table-template";
+import { numberingReferenceKeysOf } from "../ai-edits/snapshot";
 import type { FolioAIBlock, FolioAIEditSkipReason, FolioAIEditSnapshot } from "../ai-edits/types";
 import type { WordDiffGranularity } from "../ai-edits/word-diff";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
@@ -194,15 +195,15 @@ const formattingRoundTripFailure = ({
   return null;
 };
 
-const numberingKey = ({ numId, level }: FolioNumberingLevel): string =>
+const numberingKey = ({ numId, level }: Pick<FolioNumberingLevel, "numId" | "level">): string =>
   `${String(numId)}:${String(level)}`;
 
 const sameNumbering = (left: FolioNumberingLevel, right: FolioNumberingLevel): boolean =>
   left.format === right.format && left.levelText === right.levelText && left.start === right.start;
 
 /**
- * Numbering levels that differ between the two packages, in `numId` then
- * level order.
+ * Referenced numbering levels that differ between the two packages, in
+ * `numId` then level order.
  *
  * A list renumbered BY an edit needs no entry: labels come from these
  * definitions rather than from the paragraphs, so inserting an item already
@@ -216,6 +217,7 @@ type NumberingChange = Extract<CompareChange, { kind: "numbering" }>;
 const compareNumbering = (
   base: FolioDocxReviewer,
   target: FolioDocxReviewer,
+  referenced: ReadonlySet<string>,
 ): NumberingChange[] => {
   const baseLevels = new Map(
     base.readNumberingDefinitions().map((level) => [numberingKey(level), level]),
@@ -225,13 +227,16 @@ const compareNumbering = (
   );
   const changes: NumberingChange[] = [];
   for (const [key, before] of baseLevels) {
+    if (!referenced.has(key)) {
+      continue;
+    }
     const after = targetLevels.get(key) ?? null;
     if (after === null || !sameNumbering(before, after)) {
       changes.push({ kind: "numbering", numId: before.numId, level: before.level, before, after });
     }
   }
   for (const [key, after] of targetLevels) {
-    if (!baseLevels.has(key)) {
+    if (referenced.has(key) && !baseLevels.has(key)) {
       changes.push({
         kind: "numbering",
         numId: after.numId,
@@ -322,21 +327,37 @@ export const parseComparison = async (
   }
   const pairs: ComparedStoryPair[] = [];
   const unsupported: CompareUnsupportedPart[] = [];
+  const referencedNumberingLevels = new Set<string>();
+  const collectNumberingReferences = (snapshot: FolioAIEditSnapshot | null): void => {
+    if (!snapshot) {
+      return;
+    }
+    for (const referenceKey of numberingReferenceKeysOf(snapshot)) {
+      referencedNumberingLevels.add(referenceKey);
+    }
+  };
 
   for (const { baseStory, revisedStory: targetStory } of pairFolioDocumentStories(
     reviewer.listStories().map(({ handle }) => handle),
     targetReviewer.listStories().map(({ handle }) => handle),
   )) {
     if (!baseStory) {
+      if (!targetStory) {
+        panic("A story pair contained neither a base nor a target story");
+      }
+      collectNumberingReferences(targetReviewer.snapshotStory(targetStory));
       unsupported.push({ reason: "story-missing-in-base", baseStory: null, targetStory });
       continue;
     }
     if (!targetStory) {
+      collectNumberingReferences(reviewer.snapshotStory(baseStory));
       unsupported.push({ reason: "story-missing-in-target", baseStory, targetStory: null });
       continue;
     }
     const baseSnapshot = reviewer.snapshotStory(baseStory);
     const targetSnapshot = targetReviewer.snapshotStory(targetStory);
+    collectNumberingReferences(baseSnapshot);
+    collectNumberingReferences(targetSnapshot);
     if (!baseSnapshot || !targetSnapshot) {
       unsupported.push({ reason: "story-not-editable", baseStory, targetStory });
       continue;
@@ -353,7 +374,7 @@ export const parseComparison = async (
     revisionStamp: { date: options.timestamp, idSeed: existing.idSeed },
     packageDate,
     pairs,
-    numberingChanges: compareNumbering(reviewer, targetReviewer),
+    numberingChanges: compareNumbering(reviewer, targetReviewer, referencedNumberingLevels),
     unsupported,
   });
 };
