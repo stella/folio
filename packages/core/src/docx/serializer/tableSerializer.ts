@@ -52,21 +52,6 @@ import { escapeXml, intAttr } from "./xmlUtils";
 type ParagraphSerializer = (paragraph: Paragraph) => string;
 
 /**
- * The element a formatting object was parsed from, when it still describes it.
- *
- * `sourceXml` is only usable while the typed values around it are the ones it
- * was parsed into. Anything may edit a `Document` in place — a host building
- * one by hand, a migration, a test — and a capture written back over a changed
- * model would silently discard the change. So the capture is re-parsed and
- * checked rather than trusted: it is written only when parsing it reproduces
- * the formatting it sits on.
- *
- * The re-parse runs under {@link OOXML_NAMESPACE_SCOPE} because a captured
- * fragment carries no `xmlns` of its own. A document that binds the
- * WordprocessingML prefix differently fails the check and is rebuilt from the
- * model, which is what happened to every document before the capture existed.
- */
-/**
  * The captured element with the revision children written back into it.
  *
  * The capture holds properties only, so a revision the model carries — a row
@@ -132,6 +117,21 @@ const withoutCaptures = (
   return rest;
 };
 
+/**
+ * The element a formatting object was parsed from, when it still describes it.
+ *
+ * `sourceXml` is only usable while the typed values around it are the ones it
+ * was parsed into. Anything may edit a `Document` in place — a host building
+ * one by hand, a migration, a test — and a capture written back over a changed
+ * model would silently discard the change. So the capture is re-parsed and
+ * checked rather than trusted: it is written only when parsing it reproduces
+ * the formatting it sits on.
+ *
+ * The re-parse runs under {@link OOXML_NAMESPACE_SCOPE} because a captured
+ * fragment carries no `xmlns` of its own. A document that binds the
+ * WordprocessingML prefix differently fails the check and is rebuilt from the
+ * model, which is what happened to every document before the capture existed.
+ */
 const verifiedSourceXml = <TFormatting extends { sourceXml?: string }>(
   formatting: TFormatting | undefined,
   parse: (element: XmlElement | null) => TFormatting | undefined,
