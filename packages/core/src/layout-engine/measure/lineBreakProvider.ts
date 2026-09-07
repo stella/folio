@@ -269,6 +269,14 @@ const allowsBreak = (
 ): boolean => {
   const previous = previousCodePoint(text, index);
   const next = nextLineStart ?? firstCodePoint(text, index);
+  const appliesLineEdgeRestrictions =
+    usesEastAsianRules ||
+    policy?.kinsoku === true ||
+    policy?.noLineBreaksBefore !== undefined ||
+    policy?.noLineBreaksAfter !== undefined;
+  if (!appliesLineEdgeRestrictions) {
+    return true;
+  }
   const permitsSpacedPercentage =
     previous === " " &&
     next === "%" &&

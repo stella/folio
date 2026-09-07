@@ -60,6 +60,11 @@ describe("findWordBreaks", () => {
     expect(findWordBreaks("text a text", { locale: "cs-CZ" })).toEqual([5, 7]);
   });
 
+  test("does not apply East-Asian line-edge punctuation defaults to Arabic text", () => {
+    expect(findWordBreaks("بنك ………………..", { locale: "ar-SA" })).toEqual([4]);
+    expect(findWordBreaks("بنك ………………..", { locale: "ar-SA", kinsoku: true })).toEqual([]);
+  });
+
   test("allows a spaced percentage to wrap in non-East-Asian text", () => {
     expect(findWordBreaks("10 %. Pro", { locale: "cs-CZ" })).toEqual([3, 6]);
     expect(findWordBreaks("10 %. Next", { locale: "en-US" })).toEqual([3, 6]);
