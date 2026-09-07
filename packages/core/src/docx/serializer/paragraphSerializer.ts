@@ -413,10 +413,14 @@ export function serializeParagraphFormatting(
       parts.push(`<w:pStyle w:val="${escapeXml(formatting.styleId)}"/>`);
     }
 
-    // Keep next/lines, contextual spacing, page break before.
+    // `CT_PPrBase` is a SEQUENCE, so every child below is written where that
+    // sequence puts it, not where it reads best: a validating consumer that
+    // meets one out of order reports the NEXT element as unexpected and
+    // refuses the part. `contextualSpacing` and `snapToGrid` sit after the
+    // indentation and the spacing, several elements past `numPr`, which is
+    // what an early one made unexpected.
     pushToggle("keepNext", formatting.keepNext);
     pushToggle("keepLines", formatting.keepLines);
-    pushToggle("contextualSpacing", formatting.contextualSpacing);
     pushToggle("pageBreakBefore", formatting.pageBreakBefore);
 
     // Frame properties
@@ -427,7 +431,6 @@ export function serializeParagraphFormatting(
 
     // Widow control
     pushToggle("widowControl", formatting.widowControl);
-    pushToggle("snapToGrid", formatting.snapToGrid);
 
     // Numbering. Skip numPr that still equals its style-sourced value (see
     // ParagraphFormatting.numPrFromStyle) — the parser materialized it from
@@ -466,6 +469,11 @@ export function serializeParagraphFormatting(
     pushToggle("kinsoku", formatting.kinsoku);
     pushToggle("overflowPunct", formatting.overflowPunctuation);
 
+    // Text direction (bidi)
+    pushToggle("bidi", formatting.bidi);
+
+    pushToggle("snapToGrid", formatting.snapToGrid);
+
     // Spacing
     const spacingXml = serializeSpacing(formatting);
     if (spacingXml) {
@@ -478,8 +486,7 @@ export function serializeParagraphFormatting(
       parts.push(indXml);
     }
 
-    // Text direction (bidi)
-    pushToggle("bidi", formatting.bidi);
+    pushToggle("contextualSpacing", formatting.contextualSpacing);
 
     // Justification
     if (formatting.alignment) {

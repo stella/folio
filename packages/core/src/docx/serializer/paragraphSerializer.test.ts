@@ -495,3 +495,44 @@ describe("serializeParagraph revision nesting around a hyperlink", () => {
     expect(xml).not.toContain("<w:t>");
   });
 });
+
+describe("pPr children follow the schema's sequence", () => {
+  const NAMESPACES =
+    'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ' +
+    'xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"';
+
+  const parseProperties = (inner: string): Paragraph => {
+    const element = parseXmlDocument(`<w:p ${NAMESPACES}><w:pPr>${inner}</w:pPr></w:p>`);
+    if (!element) {
+      throw new Error("failed to parse the paragraph-properties fixture");
+    }
+    return parseParagraph(element, null, null, null, null, null);
+  };
+
+  // `CT_PPrBase` is a sequence, so a consumer that validates reports the NEXT
+  // element as unexpected when one arrives out of order and refuses the part.
+  // `contextualSpacing` and `snapToGrid` both sit AFTER the indentation and
+  // the spacing, several elements past `numPr` — which is what an early one
+  // made unexpected.
+  test("numbering precedes the children the schema puts after it", () => {
+    const paragraph = parseProperties(
+      `<w:pStyle w:val="ListParagraph"/><w:contextualSpacing/><w:snapToGrid/>` +
+        `<w:numPr><w:ilvl w:val="0"/><w:numId w:val="5"/></w:numPr>` +
+        `<w:spacing w:after="0"/><w:ind w:left="360"/><w:jc w:val="both"/>`,
+    );
+
+    const xml = serializeParagraph(paragraph);
+    const order = [
+      "<w:pStyle",
+      "<w:numPr>",
+      "<w:snapToGrid",
+      "<w:spacing",
+      "<w:ind",
+      "<w:contextualSpacing",
+      "<w:jc",
+    ].map((element) => xml.indexOf(element));
+
+    expect(order).not.toContain(-1);
+    expect(order).toEqual([...order].toSorted((left, right) => left - right));
+  });
+});
