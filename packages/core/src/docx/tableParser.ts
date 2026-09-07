@@ -71,8 +71,9 @@ import {
   narrowEnum,
 } from "./parserEnums";
 import type { StyleMap } from "./styleParser";
+import { captureVerbatimXml } from "./verbatimCapture";
 import {
-  elementToXml,
+  cloneElement,
   findChild,
   findChildByLocalName,
   findChildren,
@@ -640,12 +641,13 @@ const withSourceXml = <TFormatting extends { sourceXml?: string }>(
   element: XmlElement,
 ): TFormatting => ({
   ...formatting,
-  sourceXml: elementToXml({
-    ...element,
-    elements: (element.elements ?? []).filter(
-      (child) => !REVISION_PROPERTY_CHILDREN.has(getLocalName(child.name)),
-    ),
-  }),
+  sourceXml: captureVerbatimXml(
+    cloneElement(element, {
+      elements: (element.elements ?? []).filter(
+        (child) => !REVISION_PROPERTY_CHILDREN.has(getLocalName(child.name)),
+      ),
+    }),
+  ),
 });
 
 export function parseTableProperties(tblPrElement: XmlElement | null): TableFormatting | undefined {
@@ -1718,7 +1720,7 @@ export function parseTable(
   // not resize a column writes it back with whatever it carried — a
   // `w:tblGridChange` among it, which nothing in the model represents.
   if (gridElement) {
-    table.formatting = { ...table.formatting, gridSourceXml: elementToXml(gridElement) };
+    table.formatting = { ...table.formatting, gridSourceXml: captureVerbatimXml(gridElement) };
   }
 
   // Parse rows, threading the table's own xmlns down the in-scope set.

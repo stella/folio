@@ -31,8 +31,8 @@ import { enrichParagraphTextBoxes } from "./paragraphTextBoxEnrichment";
 import { parseSdtProperties } from "./sdtProperties";
 import type { StyleMap } from "./styleParser";
 import { parseTable } from "./tableParser";
+import { captureVerbatimXml } from "./verbatimCapture";
 import {
-  elementToXml,
   findChild,
   getChildElements,
   getLocalName,
@@ -397,7 +397,7 @@ const captureSdtSiblingMarkers = (sdt: XmlElement): { before: string; after: str
       sawContent = true;
       continue;
     }
-    const xml = elementToXml(ch);
+    const xml = captureVerbatimXml(ch);
     if (sawContent) {
       afterParts.push(xml);
     } else {

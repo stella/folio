@@ -68,6 +68,7 @@ import { parseSdtProperties } from "./sdtProperties";
 import { parseSectionProperties } from "./sectionParser";
 import { isValidHexColor } from "../utils/colorResolver";
 import type { StyleMap } from "./styleParser";
+import { captureVerbatimXml } from "./verbatimCapture";
 import {
   findChild,
   findChildByNamespaceUri,
@@ -80,7 +81,6 @@ import {
   parseBooleanElement,
   parseNumberingLevelAttribute,
   parseNumericAttribute,
-  elementToXml,
   WORDPROCESSINGML_NAMESPACE_URIS,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
@@ -1817,7 +1817,7 @@ function parseParagraphContents(
       case "oMathPara": {
         // Math equations — store raw OMML XML and extract text fallback
         const isBlock = localName === "oMathPara";
-        const ommlXml = elementToXml(child);
+        const ommlXml = captureVerbatimXml(child);
         const plainText = extractMathText(child);
         const mathEq: MathEquation = {
           type: "mathEquation",

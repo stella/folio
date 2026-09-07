@@ -15,6 +15,7 @@
 import { OOXML_NS, type OoxmlPrefix } from "@stll/docx-utils";
 import { TaggedError } from "better-result";
 
+import { toTransitionalNamespaceUri } from "../transitionalSpelling";
 import { escapeXml } from "./xmlUtils";
 
 /**
@@ -334,7 +335,13 @@ export const serializePartElement = ({
     if (bindings.has(prefix)) {
       continue;
     }
-    const uri = NAMESPACE_TABLE.get(prefix)?.uri ?? sourceBindings?.get(prefix);
+    const sourceBinding = sourceBindings?.get(prefix);
+    // A rebuilt part is Transitional, so a binding taken from a Strict source
+    // has to move with it; keeping the Strict URI would put the prefix's whole
+    // subtree back in the vocabulary the rest of the part left behind.
+    const uri =
+      NAMESPACE_TABLE.get(prefix)?.uri ??
+      (sourceBinding === undefined ? undefined : toTransitionalNamespaceUri(sourceBinding));
     if (uri !== undefined) {
       bindings.set(prefix, uri);
       continue;

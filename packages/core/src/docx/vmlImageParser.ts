@@ -39,9 +39,9 @@ import { sanitizeImageSrc } from "../utils/sanitizeImageSrc";
 import { pixelsToEmu } from "../utils/units";
 import { resolveImageData } from "./imageParser";
 import { isWatermarkShape } from "./watermarkParser";
+import { captureVerbatimXml } from "./verbatimCapture";
 import {
   cloneWithXmlnsDeclarations,
-  elementToXml,
   findAllDeep,
   findChild,
   getChildElements,
@@ -184,7 +184,7 @@ const previewImage = (
   return {
     type: "drawing",
     image,
-    rawXml: elementToXml(cloneWithXmlnsDeclarations(pictElement, rootXmlns)),
+    rawXml: captureVerbatimXml(cloneWithXmlnsDeclarations(pictElement, rootXmlns)),
   };
 };
 
@@ -319,7 +319,7 @@ export function parseVmlImageContent(
     return {
       type: "drawing",
       image,
-      rawXml: elementToXml(cloneWithXmlnsDeclarations(pictElement, rootXmlns)),
+      rawXml: captureVerbatimXml(cloneWithXmlnsDeclarations(pictElement, rootXmlns)),
     };
   }
 

@@ -21,10 +21,10 @@
  */
 
 import type { Watermark } from "../types/document";
+import { captureVerbatimXml } from "./verbatimCapture";
 import {
   cloneWithXmlnsDeclarations,
   collectXmlnsDeclarations,
-  elementToXml,
   findChild,
   findChildren,
   findDeep,
@@ -100,7 +100,7 @@ export function parseWatermark(header: XmlElement): ParsedWatermark | undefined 
       if (hosting) {
         return {
           watermark,
-          rawParagraphXml: elementToXml(cloneWithXmlnsDeclarations(hosting, headerXmlns)),
+          rawParagraphXml: captureVerbatimXml(cloneWithXmlnsDeclarations(hosting, headerXmlns)),
           hostingParagraph: hosting,
           blockIndex: blockIndexOf(header, hosting),
         };
@@ -114,7 +114,7 @@ export function parseWatermark(header: XmlElement): ParsedWatermark | undefined 
       if (hosting) {
         return {
           watermark,
-          rawParagraphXml: elementToXml(cloneWithXmlnsDeclarations(hosting, headerXmlns)),
+          rawParagraphXml: captureVerbatimXml(cloneWithXmlnsDeclarations(hosting, headerXmlns)),
           hostingParagraph: hosting,
           blockIndex: blockIndexOf(header, hosting),
         };

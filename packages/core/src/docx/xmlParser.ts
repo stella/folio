@@ -23,6 +23,9 @@ import { XMLBuilder, XMLParser } from "fast-xml-parser";
 
 import { OOXML_NS } from "@stll/docx-utils";
 
+import { transitionalSlotEncoding } from "./transitionalSpelling";
+import { universalMeasureAs } from "./universalMeasure";
+
 /**
  * XML element tree node — drop-in replacement for the `Element` type
  * previously imported from `xml-js`. Every consumer imports this from
@@ -901,6 +904,20 @@ export function parseNumericAttribute(
     return undefined;
   }
 
+  // A Strict producer writes a length carrying its unit wherever the type
+  // allows it, and `parseInt` would read only the leading digits: `155.85pt` is
+  // 3117 twips, not 155. The unit the number counts comes from the attribute's
+  // own Transitional type, the same table the verbatim capture converts by.
+  const unit = transitionalSlotEncoding(
+    element?.namespaceUri,
+    getLocalName(element?.name),
+    name,
+  )?.measure;
+  const measure = unit === undefined ? undefined : universalMeasureAs(value, unit);
+  if (measure !== undefined) {
+    return measure * scale;
+  }
+
   const num = Number.parseInt(value, 10);
   if (Number.isNaN(num)) {
     return undefined;
@@ -944,6 +961,13 @@ export function parseTableMeasurementValue(
     if (!Number.isNaN(pct)) {
       return Math.round(pct * 50);
     }
+  }
+
+  // `w:tcW`/`w:tblW` accept a length carrying its unit; a Strict producer
+  // writes one, and `parseInt` would read only its leading digits.
+  const measure = universalMeasureAs(trimmed, "twips");
+  if (measure !== undefined) {
+    return measure;
   }
 
   const num = Number.parseInt(trimmed, 10);
@@ -1299,10 +1323,22 @@ export function cloneWithXmlnsDeclarations(
     additions[name] = NAMESPACES[prefix];
   }
   for (const _key in additions) {
-    return {
-      ...element,
-      attributes: { ...attributes, ...additions },
-    };
+    return cloneElement(element, { attributes: { ...attributes, ...additions } });
   }
   return element;
+}
+
+/**
+ * Shallow clone of an element that keeps its resolved namespace metadata.
+ *
+ * `namespaceUri` and `namespaceScope` are non-enumerable so structural
+ * comparisons stay stable, which also means a plain spread drops them and
+ * every namespace-URI lookup on the copy misses. Re-attaching over the
+ * original's scope leaves resolution unchanged whether or not the clone
+ * carries `xmlns` attributes of its own.
+ */
+export function cloneElement(element: XmlElement, overrides: Partial<XmlElement>): XmlElement {
+  const clone: XmlElement = { ...element, ...overrides };
+  attachXmlNamespaceContext(clone, element.namespaceScope);
+  return clone;
 }
