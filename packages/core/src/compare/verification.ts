@@ -369,15 +369,26 @@ const isADeletedTableRow = (value: Record<string, unknown>): boolean => {
  * known today: a container is any sequence that ends in a paragraph, so a part
  * the model grows later is covered the day it arrives instead of the day
  * someone remembers this function.
+ *
+ * `since` scopes it to the revisions a comparison MINTED: a base may arrive
+ * carrying one of these on a paragraph in a part no story mounts, which folio
+ * preserves the way it preserves everything else it parses. What this proves
+ * is that the comparison writes none of its own.
  */
-export const revisedFinalParagraphMarks = (packageModel: unknown): FinalParagraphMarkRevision[] => {
+export const revisedFinalParagraphMarks = (
+  packageModel: unknown,
+  { since = 0 }: { since?: number } = {},
+): FinalParagraphMarkRevision[] => {
   const found: FinalParagraphMarkRevision[] = [];
   const visit = (value: unknown, path: string, insideADeletedRow: boolean): void => {
     if (Array.isArray(value)) {
       const last: unknown = value.at(-1);
       const mark = isParagraph(last) ? last["pPrMark"] : undefined;
       const kind = isRecord(mark) ? mark["kind"] : undefined;
-      if (isAParagraphMarkChangeKind(kind) && !insideADeletedRow) {
+      const info = isRecord(mark) ? mark["info"] : undefined;
+      const revisionId = isRecord(info) ? info["id"] : undefined;
+      const isOurs = typeof revisionId === "number" ? revisionId >= since : true;
+      if (isAParagraphMarkChangeKind(kind) && isOurs && !insideADeletedRow) {
         found.push({ container: path, paragraphIndex: value.length - 1, kind });
       }
       for (const [index, item] of value.entries()) {

@@ -88,6 +88,19 @@ describe("revisedFinalParagraphMarks", () => {
     ]);
   });
 
+  test("a mark the base arrived with is not this comparison's to report", () => {
+    // A base can carry one on a paragraph of a part no story mounts, so
+    // resolving it to its accepted view does not reach it. `since` is one past
+    // the highest id the base already used, so what is left is what this
+    // comparison wrote.
+    expect(
+      revisedFinalParagraphMarks(
+        { document: { content: [paragraph("first"), paragraph("last", { kind: "del" })] } },
+        { since: revision.id + 1 },
+      ),
+    ).toEqual([]);
+  });
+
   test("a package with nothing on any final mark reports nothing", () => {
     expect(
       revisedFinalParagraphMarks({

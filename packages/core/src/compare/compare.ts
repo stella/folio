@@ -661,7 +661,7 @@ export const applyComparison = (
  * one within a single run.
  */
 export const serializeComparison = async (
-  { baseBuffer, baseCarriedRevisions, reviewer, packageDate }: ParsedComparison,
+  { baseBuffer, baseCarriedRevisions, reviewer, packageDate, revisionStamp }: ParsedComparison,
   { documentChanged }: AppliedComparison,
 ): Promise<Result<ArrayBuffer, CompareDocxSerializeError | CompareDocxFinalParagraphMarkError>> => {
   if (!baseCarriedRevisions && !documentChanged) {
@@ -673,7 +673,12 @@ export const serializeComparison = async (
   // and neither is an edit that can be carried out. Nothing downstream can
   // recover from that, so it is fatal under either `onUnverified` setting:
   // unlike an unproven redline there is no partial result worth handing back.
-  const revisions = revisedFinalParagraphMarks(document);
+  //
+  // Scoped to the revisions this comparison minted. A base can arrive carrying
+  // one on a paragraph of a part no story mounts, so resolving to its accepted
+  // view does not reach it; folio preserves what it parses, and refusing the
+  // comparison would report the base's own bytes as this call's doing.
+  const revisions = revisedFinalParagraphMarks(document, { since: revisionStamp.idSeed });
   const [first] = revisions;
   if (first !== undefined) {
     return Result.err(
