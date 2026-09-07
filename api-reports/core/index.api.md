@@ -11,6 +11,7 @@ import { EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import * as import__stll_docx_core_model from '@stll/docx-core/model';
 import { Node as Node_2 } from 'prosemirror-model';
+import { ParagraphMarkChangeKind } from '@stll/docx-core/model';
 import { Plugin as Plugin_2 } from 'prosemirror-state';
 import { PluginKey } from 'prosemirror-state';
 import { Result } from 'better-result';
@@ -408,7 +409,7 @@ export type CompareDocxError = CompareDocxApplyError | CompareDocxFinalParagraph
 // @public
 export class CompareDocxFinalParagraphMarkError extends CompareDocxFinalParagraphMarkError_base<{
     message: string;
-    deletions: readonly FinalParagraphMarkDeletion[];
+    revisions: readonly FinalParagraphMarkRevision[];
 }> {}
 
 // @public
@@ -678,10 +679,10 @@ export type ExtractDocumentStyleSetOptions = {
 export function extractEmbeddedFonts(buffer: ArrayBuffer, docNonce?: string): Promise<EmbeddedFont[]>;
 
 // @public
-export type FinalParagraphMarkDeletion = {
+export type FinalParagraphMarkRevision = {
     container: string;
     paragraphIndex: number;
-    kind: "del" | "moveFrom";
+    kind: ParagraphMarkChangeKind;
 };
 
 // @public (undocumented)

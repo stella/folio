@@ -196,39 +196,72 @@ describe("document-terminal paragraph carrier", () => {
     }
   });
 
-  test("does not reserve a textless paragraph that contains inline content", () => {
+  test("a carrier the merge chain reaches is removed rather than reserved", () => {
+    // The reservation is a repair for a carrier nothing can reach, not a
+    // preference. Where a paragraph of the same container survives in front of
+    // it, the removal resolves down the chain and the reader is told the last
+    // paragraph went — not that the one before it went and the last was
+    // rewritten into its words, which is what pairing the two ends would say.
     const base = [
-      cell("kept", "Kept row", 0),
-      block("between", ""),
-      cell("removed", "Removed row", 0, 1),
-      block("base-carrier", ""),
+      block("alpha", RELOCATED),
+      block("bravo", UNRELATED),
+      block("charlie", RELOCATED_EDITED),
     ];
-    const target = [cell("kept-target", "Kept row", 0), block("target-content", "")];
-    const targetSnapshot = snapshotOf(target);
-    const targetAnchor = targetSnapshot.anchors["target-content"];
-    if (!targetAnchor) {
-      throw new Error("The target fixture is missing its anchor.");
-    }
-    targetAnchor.to += 1;
+    const target = [block("alpha-target", RELOCATED), block("bravo-target", UNRELATED)];
 
-    const plan = planStoryCompare({
-      story: MAIN_STORY,
-      baseSnapshot: snapshotOf(base),
-      targetSnapshot,
-      maxOperations: 1000,
-    });
-    if (plan === null) {
-      throw new Error("The plan exceeded its operation budget.");
-    }
+    const { changes, operations } = planOf(base, target);
 
-    expect(plan.operations).toContainEqual({
-      id: "compare-2",
-      type: "deleteBlock",
-      blockId: "base-carrier",
-    });
+    expect(changes).toContainEqual(
+      expect.objectContaining({ kind: "delete", baseBlockId: "charlie" }),
+    );
+    expect(changes).not.toContainEqual(expect.objectContaining({ baseBlockId: "bravo" }));
+    expect(operations).toContainEqual(
+      expect.objectContaining({ type: "mergeBlockWithNext", blockId: "bravo" }),
+    );
   });
 
-  test("does not apply the body-only carrier rule to headers", () => {
+  test("insertions placed in a cell's removed run land in the cell's carrier", () => {
+    // The target's first cell grew two paragraphs and its second cell is gone,
+    // so the additions anchor on the paragraph the removed cell ends with —
+    // the one whose mark cannot say it went. The last of them is written INTO
+    // that carrier and the rest go in front of it, which is what makes the
+    // mark count work out without deleting a mark the format keeps.
+    const base = [
+      gridCell("a0", "Alpha clause states the agreed position.", 0, 0, 0),
+      gridCell("b0", "Payment falls due within thirty days of invoice.", 0, 1, 1),
+    ];
+    const target = [
+      gridCell("ta", "Alpha clause states the agreed position.", 0, 0, 0),
+      gridCell("tb", "Notices travel to the address named above.", 0, 0, 0),
+      gridCell("tc", "Governing law is that of the named place.", 0, 0, 0),
+    ];
+
+    const { operations } = planOf(base, target);
+
+    expect(operations).toContainEqual(
+      expect.objectContaining({
+        type: "insertBeforeBlock",
+        blockId: "b0",
+        text: "Notices travel to the address named above.",
+      }),
+    );
+    expect(operations).toContainEqual(
+      expect.objectContaining({
+        type: "replaceBlock",
+        blockId: "b0",
+        text: "Governing law is that of the named place.",
+      }),
+    );
+    expect(operations).not.toContainEqual(
+      expect.objectContaining({ type: "deleteBlock", blockId: "b0" }),
+    );
+  });
+
+  test("reserves a stranded final paragraph in a header story too", () => {
+    // A header ends with a paragraph for the same reason a body does, and its
+    // mark is as unable to say it went. Nothing of the header's own container
+    // survives in front of this carrier — a table sits there — so no merge
+    // chain reaches it and the words the story ends with have to land on it.
     const base = [
       cell("kept", "Kept row", 0),
       block("between", ""),
@@ -246,11 +279,12 @@ describe("document-terminal paragraph carrier", () => {
       throw new Error("The plan exceeded its operation budget.");
     }
 
-    expect(plan.operations).toContainEqual({
-      id: "compare-2",
-      type: "deleteBlock",
-      blockId: "base-carrier",
-    });
+    expect(plan.changes).not.toContainEqual(
+      expect.objectContaining({ kind: "delete", baseBlockId: "base-carrier" }),
+    );
+    expect(plan.operations).not.toContainEqual(
+      expect.objectContaining({ type: "deleteBlock", blockId: "base-carrier" }),
+    );
   });
 });
 

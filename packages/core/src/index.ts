@@ -56,7 +56,7 @@ export {
   type CompareVerificationCause,
   type CompareVerificationFailure,
   type CompareVerificationInvariant,
-  type FinalParagraphMarkDeletion,
+  type FinalParagraphMarkRevision,
 } from "./compare/verification";
 export { createDocx } from "./docx/rezip";
 export { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";

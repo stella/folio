@@ -103,6 +103,11 @@ const markIsDeleted = (paragraph: string): boolean => {
 const marksDeletedIn = (partXml: string): string[] =>
   paragraphsOf(partXml).filter((paragraph) => markIsDeleted(paragraph));
 
+const markIsInserted = (paragraph: string): boolean => {
+  const properties = /^<w:p\b[^>]*><w:pPr>([\s\S]*?)<\/w:pPr>/u.exec(paragraph)?.[1] ?? "";
+  return /<w:rPr>[\s\S]*?<w:(?:ins|moveTo)\b/u.test(properties);
+};
+
 const blocksOf = async (buffer: ArrayBuffer): Promise<FolioAIBlock[]> =>
   (await FolioDocxReviewer.fromBuffer(buffer)).getContent();
 
@@ -853,6 +858,84 @@ describe("single-mutation probes", () => {
     ]);
     expect(accepted).toEqual(expected);
     expect(rejected).toEqual(original);
+  });
+
+  test("closing_paragraph_after_a_table: the target's last words land in the carrier", async () => {
+    // A body may not end with a table, so a document that ends in one carries
+    // a blank paragraph after it whose mark the format keeps. Nothing of the
+    // body sits between that carrier and the table, so no merge chain reaches
+    // it: the paragraph the target ends with is written INTO the carrier as
+    // inserted runs before its kept mark, and the story ends where the target
+    // ends instead of on a blank line the target does not have.
+    const base = await buildBodySequenceDocx([
+      { kind: "paragraph", text: TRAILING_CLAUSES[0] },
+      { kind: "paragraph", text: TRAILING_CLAUSES[1] },
+      { kind: "table", rows: [["Service", "Fee"]] },
+      { kind: "paragraph", text: "" },
+    ]);
+    const target = await buildBodySequenceDocx([
+      { kind: "paragraph", text: TRAILING_CLAUSES[0] },
+      { kind: "paragraph", text: "The agreement closes on the words below." },
+    ]);
+
+    const result = await compareDocx(base, target, OPTIONS);
+    if (result.isErr()) {
+      throw result.error;
+    }
+
+    const paragraphs = paragraphsOf(await documentPartOf(result.value.buffer));
+    const carrier = paragraphs.at(-1) ?? "";
+    expect(markIsDeleted(carrier)).toBe(false);
+    expect(carrier).toContain("<w:ins ");
+    expect(carrier).toContain("The agreement closes on the words below.");
+
+    expect(await projectView(result.value.buffer, "final")).toEqual(
+      await projectView(target, "final"),
+    );
+    expect(await projectView(result.value.buffer, "original")).toEqual(
+      await projectView(base, "final"),
+    );
+  });
+
+  test("append_paragraphs: the ADDED break lands one paragraph back", async () => {
+    // The mirror of the trailing removal. An inserted mark says the break was
+    // added, so rejecting it closes the paragraph it ends back over the next
+    // one — which the paragraph a container ENDS with does not have. The break
+    // therefore sits between the paragraph the run was appended after and the
+    // first appended one: that paragraph's mark is the inserted one, and the
+    // paragraph the container now ends with takes the free mark it had.
+    const base = await buildBodySequenceDocx([
+      { kind: "paragraph", text: TRAILING_CLAUSES[0] },
+      { kind: "paragraph", text: TRAILING_CLAUSES[1] },
+    ]);
+    const target = await buildBodySequenceDocx([
+      { kind: "paragraph", text: TRAILING_CLAUSES[0] },
+      { kind: "paragraph", text: TRAILING_CLAUSES[1] },
+      { kind: "paragraph", text: TRAILING_CLAUSES[2] },
+      { kind: "paragraph", text: TRAILING_CLAUSES[3] },
+    ]);
+
+    const result = await compareDocx(base, target, OPTIONS);
+    if (result.isErr()) {
+      throw result.error;
+    }
+    expect(result.value.changes.map(({ kind }) => kind)).toEqual(["insert", "insert"]);
+
+    const paragraphs = paragraphsOf(await documentPartOf(result.value.buffer));
+    expect(paragraphs).toHaveLength(4);
+    expect(paragraphs.map((paragraph) => markIsInserted(paragraph))).toEqual([
+      false,
+      true,
+      true,
+      false,
+    ]);
+
+    expect(await projectView(result.value.buffer, "final")).toEqual(
+      await projectView(target, "final"),
+    );
+    expect(await projectView(result.value.buffer, "original")).toEqual(
+      await projectView(base, "final"),
+    );
   });
 
   test("unrepresentable_difference: refused by default, emitted and named on request", async () => {
