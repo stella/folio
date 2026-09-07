@@ -331,9 +331,11 @@ const makeSectionedState = (): EditorState =>
     ]),
   });
 
-const makeImplicitSectionBoundaryState = (): EditorState =>
+const makeImplicitSectionBoundaryState = (
+  finalSectionStart?: "continuous" | "nextPage",
+): EditorState =>
   EditorState.create({
-    doc: schema.node("doc", null, [
+    doc: schema.node("doc", { _finalSectionStart: finalSectionStart ?? null }, [
       schema.node(
         "paragraph",
         {
@@ -872,25 +874,36 @@ describe("runLayoutPipeline", () => {
     });
   });
 
-  test("does not apply the final section start mode to an earlier implicit boundary", () => {
-    const state = makeImplicitSectionBoundaryState();
+  test("applies the final section start mode at its preceding implicit boundary", () => {
     const continuous = runLayoutPipeline(
       makeDeps(createLayoutSession(), {
         document: makeSectionBoundaryDocument("continuous"),
         sectionProperties: {},
       }),
-      state,
+      makeImplicitSectionBoundaryState("continuous"),
     );
     const nextPage = runLayoutPipeline(
       makeDeps(createLayoutSession(), {
         document: makeSectionBoundaryDocument("nextPage"),
         sectionProperties: {},
       }),
-      state,
+      makeImplicitSectionBoundaryState("nextPage"),
     );
 
-    expect(continuous.layout?.pages).toHaveLength(2);
+    expect(continuous.layout?.pages).toHaveLength(1);
     expect(nextPage.layout?.pages).toHaveLength(2);
+  });
+
+  test("uses the supplied section start when document metadata is unavailable", () => {
+    const outcome = runLayoutPipeline(
+      makeDeps(createLayoutSession(), {
+        document: null,
+        sectionProperties: { sectionStart: "continuous" },
+      }),
+      makeImplicitSectionBoundaryState(),
+    );
+
+    expect(outcome.layout?.pages).toHaveLength(1);
   });
 
   test("uses the referenced final-section footer for body clearance", () => {

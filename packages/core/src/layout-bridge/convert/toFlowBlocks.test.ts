@@ -9,6 +9,30 @@ import { AUTO_PARAGRAPH_SPACING_PX } from "../../utils/units";
 import { toFlowBlocks } from "./toFlowBlocks";
 
 describe("toFlowBlocks paragraph formatting", () => {
+  test("moves each section-owned start mode to its preceding boundary", () => {
+    const doc = schema.node("doc", { _finalSectionStart: "evenPage" }, [
+      schema.node("paragraph", { _sectionProperties: { sectionStart: "continuous" } }),
+      schema.node("paragraph", { _sectionProperties: { sectionStart: "oddPage" } }),
+      schema.node("paragraph"),
+    ]);
+
+    const breaks = toFlowBlocks(doc).filter((block) => block.kind === "sectionBreak");
+
+    expect(breaks.map((block) => block.type)).toEqual(["oddPage", "evenPage"]);
+  });
+
+  test("keeps an omitted following section start omitted", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", { _sectionProperties: { sectionStart: "continuous" } }),
+      schema.node("paragraph", { _sectionProperties: {} }),
+      schema.node("paragraph"),
+    ]);
+
+    const breaks = toFlowBlocks(doc).filter((block) => block.kind === "sectionBreak");
+
+    expect(breaks.map((block) => block.type)).toEqual([undefined, undefined]);
+  });
+
   test("projects authored section page-number restarts", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", {

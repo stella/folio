@@ -2656,6 +2656,62 @@ function getLastMapKey<K, V>(map: ReadonlyMap<K, V>): K | undefined {
 }
 
 /**
+ * Translate section-owned start modes into the boundary-owned values consumed
+ * by the paginator. Each flow section break carries the properties for the
+ * section it ends, so its start mode belongs on the preceding boundary.
+ */
+function applySectionStartsToBoundaries(
+  blocks: readonly FlowBlock[],
+  finalSectionStart: NonNullable<SectionBreakBlock["type"]> | undefined,
+): FlowBlock[] {
+  const breakIndexes: number[] = [];
+  for (let index = 0; index < blocks.length; index += 1) {
+    if (blocks[index]?.kind === "sectionBreak") {
+      breakIndexes.push(index);
+    }
+  }
+  if (breakIndexes.length === 0) {
+    return [...blocks];
+  }
+
+  const result = [...blocks];
+  for (let index = 0; index < breakIndexes.length; index += 1) {
+    const boundaryIndex = breakIndexes[index];
+    if (boundaryIndex === undefined) {
+      continue;
+    }
+    const boundary = blocks[boundaryIndex];
+    if (boundary?.kind !== "sectionBreak") {
+      continue;
+    }
+    const nextBoundaryIndex = breakIndexes[index + 1];
+    const nextBoundary = nextBoundaryIndex === undefined ? undefined : blocks[nextBoundaryIndex];
+    const nextStart = nextBoundary?.kind === "sectionBreak" ? nextBoundary.type : finalSectionStart;
+    const translated = { ...boundary };
+    if (nextStart === undefined) {
+      delete translated.type;
+    } else {
+      translated.type = nextStart;
+    }
+    result[boundaryIndex] = translated;
+  }
+  return result;
+}
+
+function readFinalSectionStart(doc: PMNode): NonNullable<SectionBreakBlock["type"]> | undefined {
+  const sectionStart = doc.attrs["_finalSectionStart"];
+  switch (sectionStart) {
+    case "continuous":
+    case "nextPage":
+    case "oddPage":
+    case "evenPage":
+      return sectionStart;
+    default:
+      return undefined;
+  }
+}
+
+/**
  * Convert a ProseMirror document to FlowBlock array.
  *
  * Walks the document tree, converting each node to the appropriate block type.
@@ -3072,7 +3128,8 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
     mergedBlocks,
     opts.finalSectionDocumentGridLinePitchTwips,
   );
-  return groupParagraphFrames(griddedBlocks, nextBlockId);
+  const boundaryBlocks = applySectionStartsToBoundaries(griddedBlocks, readFinalSectionStart(doc));
+  return groupParagraphFrames(boundaryBlocks, nextBlockId);
 }
 
 function applySectionDocumentGrid(

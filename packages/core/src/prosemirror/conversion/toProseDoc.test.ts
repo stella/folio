@@ -45,6 +45,22 @@ function firstTableCellAttrs(doc: Document): Record<string, unknown> {
 }
 
 describe("toProseDoc", () => {
+  test("keeps the final section start on the internal document node", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [{ type: "paragraph", content: [] }],
+          sections: [
+            { properties: {}, content: [] },
+            { properties: { sectionStart: "oddPage" }, content: [] },
+          ],
+        },
+      },
+    };
+
+    expect(toProseDoc(document).attrs["_finalSectionStart"]).toBe("oddPage");
+  });
+
   test("renders OOXML symbol characters with their declared font", () => {
     const document: Document = {
       package: {

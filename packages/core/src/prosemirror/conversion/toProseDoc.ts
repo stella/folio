@@ -342,7 +342,11 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
     nodes.push(schema.node("paragraph", {}, []));
   }
 
-  const pmDoc = stampNumberedRefFieldBaselines(schema.node("doc", null, nodes));
+  const finalSectionStart =
+    document.package.document.sections?.at(-1)?.properties.sectionStart ?? null;
+  const pmDoc = stampNumberedRefFieldBaselines(
+    schema.node("doc", { _finalSectionStart: finalSectionStart }, nodes),
+  );
   assertValidProseMirrorDocument(
     pmDoc,
     "Document conversion produced an invalid ProseMirror document",
