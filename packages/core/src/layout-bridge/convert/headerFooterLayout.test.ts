@@ -2,10 +2,8 @@ import { describe, expect, test } from "bun:test";
 
 import type { FlowBlock, Measure, ParagraphBlock, TableBlock } from "../../layout-engine/types";
 import { headerFooterToProseDoc } from "../../prosemirror/conversion/toProseDoc";
-import {
-  expectDetachedWatermarkHostAttr,
-  headerFooterToProseDocWithDetachedWatermarkHost,
-} from "../../prosemirror/conversion/watermarkHost";
+import { headerFooterToProseDocWithDetachedWatermarkHost } from "../../prosemirror/conversion/watermarkHost";
+import { expectDetachedWatermarkHostAttr } from "../../prosemirror/conversion/watermarkHostMarker";
 import { schema } from "../../prosemirror/schema";
 import type { HeaderFooter } from "../../types/document";
 import type { HeaderFooterMetrics } from "./headerFooterLayout";

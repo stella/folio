@@ -87,6 +87,7 @@ import {
 import { marksToTextFormatting } from "./fromProseDoc";
 import { shadingToRunShadingAttrs } from "./runShadingMark";
 import { sdtAttrsFromProperties } from "./sdtAttrs";
+import { isDetachedWatermarkHost } from "./watermarkHostMarker";
 
 /**
  * Options for document conversion
@@ -4106,21 +4107,6 @@ export function headerFooterToProseDoc(
   content: BlockContent[],
   options?: ToProseDocOptions,
 ): PMNode {
-  return headerFooterToProseDocInternal({ content, options });
-}
-
-type HeaderFooterToProseDocInternalOptions = {
-  content: BlockContent[];
-  options: ToProseDocOptions | undefined;
-  detachedWatermarkHostBlockIndex?: number;
-};
-
-/** @internal Conversion entry point for header/footer-only ProseMirror metadata. */
-export function headerFooterToProseDocInternal({
-  content,
-  options,
-  detachedWatermarkHostBlockIndex,
-}: HeaderFooterToProseDocInternalOptions): PMNode {
   const nodes: PMNode[] = [];
   const styleResolver = options?.styles ? createStyleEngine(options.styles) : null;
   const theme = options?.theme ?? null;
@@ -4134,15 +4120,15 @@ export function headerFooterToProseDocInternal({
     pairedBookmarkIds,
   };
 
-  const convertBlocks = (blocks: BlockContent[], hostBlockIndex?: number): PMNode[] => {
+  const convertBlocks = (blocks: BlockContent[]): PMNode[] => {
     const out: PMNode[] = [];
-    for (const [blockIndex, block] of blocks.entries()) {
+    for (const block of blocks) {
       if (block.type === "paragraph") {
         const paragraphNodes = convertParagraphWithTextBoxes(block, styleResolver, {
           textBoxGroupId: nextTextBoxGroupId(),
           context: conversionContext,
         });
-        if (blockIndex === hostBlockIndex) {
+        if (isDetachedWatermarkHost(block)) {
           const paragraphNodeIndex = paragraphNodes.findIndex(
             ({ type }) => type.name === "paragraph",
           );
@@ -4165,7 +4151,7 @@ export function headerFooterToProseDocInternal({
     return out;
   };
 
-  nodes.push(...convertBlocks(content, detachedWatermarkHostBlockIndex));
+  nodes.push(...convertBlocks(content));
   // Caret affordance after a final isolating blockSdt is handled by
   // prosemirror-gapcursor at runtime; we no longer pad the converted doc
   // with a synthetic trailing paragraph because that paragraph survives

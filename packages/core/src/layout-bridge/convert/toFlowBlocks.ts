@@ -71,7 +71,7 @@ import {
 } from "../../prosemirror/attrs";
 import { autospacingMatchesBase } from "../../prosemirror/autospacingBase";
 import { runShadingAttrsToShading } from "../../prosemirror/conversion/runShadingMark";
-import { expectDetachedWatermarkHostAttr } from "../../prosemirror/conversion/watermarkHost";
+import { expectDetachedWatermarkHostAttr } from "../../prosemirror/conversion/watermarkHostMarker";
 import { directionToBidi } from "../../prosemirror/paragraphDirection";
 import { expectTextBoxAnchorAttrs } from "../../prosemirror/textBoxAnchorAttrs";
 import { cascadeStyleTextFormatting } from "../../prosemirror/styles/styleToggleCascade";
