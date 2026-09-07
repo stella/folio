@@ -773,12 +773,15 @@ export type RepackOptions = {
 };
 
 /**
- * The single exit for a repacked package. Reconciliation runs here rather than
- * at each caller so no save path can emit a package whose relationships or
- * content types name a part it does not hold.
+ * Give every revision element in the package its own `w:id`.
+ *
+ * One logical revision can serialize as several physical wrappers — a word
+ * diff cut around unchanged words, a revision split around a hyperlink — and
+ * `w:id` is unique across the package, not within a part. The pass therefore
+ * has to see every `word/*.xml` part, including the ones the save left
+ * untouched, so it runs at the exits rather than at the serializers.
  */
-const generateDocxZip = async (zip: JSZip, compressionLevel: number): Promise<ArrayBuffer> => {
-  await reconcilePackageReferences(zip, compressionLevel);
+const normalizeRevisionIdsInZip = async (zip: JSZip, compressionLevel: number): Promise<void> => {
   const xmlParts = new Map<string, string>();
   for (const [path, file] of Object.entries(zip.files)) {
     if (!file.dir && path.startsWith("word/") && path.endsWith(".xml")) {
@@ -795,6 +798,16 @@ const generateDocxZip = async (zip: JSZip, compressionLevel: number): Promise<Ar
       });
     }
   }
+};
+
+/**
+ * The single exit for a repacked package. Reconciliation runs here rather than
+ * at each caller so no save path can emit a package whose relationships or
+ * content types name a part it does not hold.
+ */
+const generateDocxZip = async (zip: JSZip, compressionLevel: number): Promise<ArrayBuffer> => {
+  await reconcilePackageReferences(zip, compressionLevel);
+  await normalizeRevisionIdsInZip(zip, compressionLevel);
   return zip.generateAsync({
     type: "arraybuffer",
     compression: "DEFLATE",
@@ -1396,8 +1409,13 @@ export async function updateMultipleFiles(
 /**
  * Apply file updates to an already-loaded JSZip instance and generate the output.
  * Use this when the zip is already loaded to avoid a redundant decompression pass.
+ *
+ * This is the selective save's exit, so it owes the package the same revision-id
+ * pass {@link generateDocxZip} runs: a save that rewrites only the changed
+ * paragraphs still has to see the parts it left alone before it can say an id
+ * is free.
  */
-export function applyUpdatesToZip(
+export async function applyUpdatesToZip(
   zip: JSZip,
   updates: Map<string, string | ArrayBuffer>,
   options: RepackOptions = {},
@@ -1411,7 +1429,9 @@ export function applyUpdatesToZip(
     });
   }
 
-  return zip.generateAsync({
+  await normalizeRevisionIdsInZip(zip, compressionLevel);
+
+  return await zip.generateAsync({
     type: "arraybuffer",
     compression: "DEFLATE",
     compressionOptions: { level: compressionLevel },

@@ -45,7 +45,7 @@ import {
   parseBookmarkEnd as parseBookmarkEndFromModule,
 } from "./bookmarkParser";
 import { parseFieldType } from "./fieldParser";
-import { parseHyperlink as parseHyperlinkFromModule } from "./hyperlinkParser";
+import { parseHyperlinkChild, parseHyperlink as parseHyperlinkFromModule } from "./hyperlinkParser";
 import { markerFormattingFromLevel } from "./numberingParser";
 import type { NumberingMap } from "./numberingParser";
 import {
@@ -1220,6 +1220,119 @@ function parseHyperlink(
   return parseHyperlinkFromModule(node, rels, styles, theme, media, rootXmlns);
 }
 
+/** The revision wrapper a `w:hyperlink` child is, when it is one. */
+const hyperlinkRevisionWrapperType = (node: XmlElement): TrackedChangeWrapperType | undefined => {
+  switch (getLocalName(node.name)) {
+    case "ins":
+      return "insertion";
+    case "del":
+      return "deletion";
+    case "moveFrom":
+      return "moveFrom";
+    case "moveTo":
+      return "moveTo";
+    default:
+      return undefined;
+  }
+};
+
+const isHyperlinkChildContent = (
+  content: ParagraphContent,
+): content is Hyperlink["children"][number] =>
+  content.type === "run" || content.type === "bookmarkStart" || content.type === "bookmarkEnd";
+
+/**
+ * A `w:hyperlink` as paragraph content, with any revision wrapper it holds
+ * hoisted around it.
+ *
+ * OOXML nests `w:ins`/`w:del` INSIDE `w:hyperlink`; the model nests the
+ * hyperlink inside the revision, because a revision is the unit a redline
+ * reads and a link that is half deleted is two links to it. This is the exact
+ * inverse of what the serializer writes, so a package survives the round trip.
+ */
+function parseHyperlinkParagraphContents(
+  node: XmlElement,
+  rels: RelationshipMap | null,
+  styles: StyleMap | null,
+  theme: Theme | null,
+  media: Map<string, MediaFile> | null,
+  rootXmlns: Record<string, string>,
+): ParagraphContent[] {
+  const children = getChildElements(node);
+  if (!children.some((child) => hyperlinkRevisionWrapperType(child) !== undefined)) {
+    return [parseHyperlink(node, rels, styles, theme, media, rootXmlns)];
+  }
+
+  const inScopeXmlns = mergeXmlnsDeclarations(rootXmlns, node);
+  const shell = parseHyperlink(node, rels, styles, theme, media, rootXmlns);
+  const linkOver = (linkChildren: readonly Hyperlink["children"][number][]): Hyperlink => ({
+    ...shell,
+    children: [...linkChildren],
+  });
+
+  const contents: ParagraphContent[] = [];
+  let plain: Hyperlink["children"][number][] = [];
+  const flushPlain = (): void => {
+    if (plain.length > 0) {
+      contents.push(linkOver(plain));
+      plain = [];
+    }
+  };
+
+  for (const child of children) {
+    const wrapperType = hyperlinkRevisionWrapperType(child);
+    if (wrapperType === undefined) {
+      const parsed = parseHyperlinkChild(child, styles, theme, rels, media, inScopeXmlns);
+      if (parsed) {
+        plain.push(parsed);
+      }
+      continue;
+    }
+    flushPlain();
+    const wrapped = parseParagraphContents(
+      child,
+      styles,
+      theme,
+      null,
+      rels,
+      media,
+      wrapperType === "deletion" || wrapperType === "moveFrom" ? "deletion" : "default",
+      inScopeXmlns,
+    );
+    // Group the runs the wrapper holds back under the link; anything else it
+    // carries stays where it sits rather than being dropped.
+    const content: TrackedRunChange["content"][number][] = [];
+    let linked: Hyperlink["children"][number][] = [];
+    const flushLinked = (): void => {
+      if (linked.length > 0) {
+        content.push(linkOver(linked));
+        linked = [];
+      }
+    };
+    for (const item of wrapped) {
+      if (isHyperlinkChildContent(item)) {
+        linked.push(item);
+        continue;
+      }
+      flushLinked();
+      if (isTrackedChangeWrapperChild(item)) {
+        content.push(item);
+      }
+    }
+    flushLinked();
+    pushTrackedChangeWrapper({
+      contents,
+      type: wrapperType,
+      info: parseTrackedChangeInfo(child),
+      content,
+      preserveEmpty: true,
+    });
+  }
+  flushPlain();
+
+  return contents;
+}
+
 /**
  * Parse bookmark start (w:bookmarkStart)
  * Delegates to bookmarkParser module.
@@ -1502,7 +1615,9 @@ function parseParagraphContents(
       }
 
       case "hyperlink":
-        contents.push(parseHyperlink(child, rels, styles, theme, media, inScopeXmlns));
+        contents.push(
+          ...parseHyperlinkParagraphContents(child, rels, styles, theme, media, inScopeXmlns),
+        );
         break;
 
       case "bookmarkStart":

@@ -573,10 +573,8 @@ function serializeParagraphPropertyChange(change: ParagraphPropertyChange): stri
 // CONTENT SERIALIZATION
 // ============================================================================
 
-/**
- * Serialize a hyperlink (w:hyperlink)
- */
-function serializeHyperlink(hyperlink: Hyperlink): string {
+/** The attribute list of a `w:hyperlink`, without its children. */
+function hyperlinkAttributes(hyperlink: Hyperlink): string {
   const attrs: string[] = [];
 
   if (hyperlink.rId) {
@@ -608,21 +606,30 @@ function serializeHyperlink(hyperlink: Hyperlink): string {
     attrs.push(`w:docLocation="${escapeXml(hyperlink.docLocation)}"`);
   }
 
-  // Serialize children
-  const childrenXml = hyperlink.children
-    .map((child) => {
-      if (child.type === "run") {
-        return serializeRun(child);
-      }
-      if (child.type === "bookmarkStart") {
-        return serializeBookmarkStart(child);
-      }
-      return serializeBookmarkEnd(child);
-    })
-    .join("");
+  return attrs.length > 0 ? ` ${attrs.join(" ")}` : "";
+}
 
-  const attrsStr = attrs.length > 0 ? ` ${attrs.join(" ")}` : "";
-  return `<w:hyperlink${attrsStr}>${childrenXml}</w:hyperlink>`;
+/** One `w:hyperlink` child, with the caller deciding how a run is written. */
+function serializeHyperlinkChild(
+  child: Hyperlink["children"][number],
+  serializeChildRun: (run: Run) => string,
+): string {
+  if (child.type === "run") {
+    return serializeChildRun(child);
+  }
+  return child.type === "bookmarkStart"
+    ? serializeBookmarkStart(child)
+    : serializeBookmarkEnd(child);
+}
+
+/**
+ * Serialize a hyperlink (w:hyperlink)
+ */
+function serializeHyperlink(hyperlink: Hyperlink): string {
+  const childrenXml = hyperlink.children
+    .map((child) => serializeHyperlinkChild(child, serializeRun))
+    .join("");
+  return `<w:hyperlink${hyperlinkAttributes(hyperlink)}>${childrenXml}</w:hyperlink>`;
 }
 
 /**
@@ -976,42 +983,78 @@ function serializeTrackedChange(
       .join("");
   };
 
-  const contentXml = change.content
-    .map((item) => {
-      if (item.type === "run") {
-        // A deleted drawing/shape run keeps its content verbatim: a picture
-        // has no `<w:t>`, and a shape's nested textbox text
-        // (`<w:txbxContent><w:t>`) must NOT be rewritten to `<w:delText>` —
-        // that markup belongs only to a run's own deleted text, not to a
-        // nested textbox document. eigenpal #641.
-        if (tag === "del" || tag === "moveFrom") {
-          return serializeDeletedRun(item);
-        }
-        return serializeRun(item);
-      }
-      if (item.type === "hyperlink") {
-        return serializeHyperlink(item);
-      }
-      if (item.type === "simpleField" || item.type === "complexField") {
-        const xml =
-          item.type === "simpleField" ? serializeSimpleField(item) : serializeComplexField(item);
-        return tag === "del" || tag === "moveFrom" ? rewriteRunTextAsDeleted(xml) : xml;
-      }
-      if (
-        item.type === "insertion" ||
-        item.type === "deletion" ||
-        item.type === "moveFrom" ||
-        item.type === "moveTo"
-      ) {
-        return serializeTrackedChange(trackedChangeTag(item), item);
-      }
-      return item.type === "bookmarkStart"
-        ? serializeBookmarkStart(item)
-        : serializeBookmarkEnd(item);
-    })
-    .join("");
+  const serializeContentRun = (run: Run): string =>
+    // A deleted drawing/shape run keeps its content verbatim: a picture
+    // has no `<w:t>`, and a shape's nested textbox text
+    // (`<w:txbxContent><w:t>`) must NOT be rewritten to `<w:delText>` —
+    // that markup belongs only to a run's own deleted text, not to a
+    // nested textbox document. eigenpal #641.
+    tag === "del" || tag === "moveFrom" ? serializeDeletedRun(run) : serializeRun(run);
 
-  return `<w:${tag} ${attrs.join(" ")}>${contentXml}</w:${tag}>`;
+  const serializeWrappedItem = (item: (typeof change.content)[number]): string => {
+    if (item.type === "run") {
+      return serializeContentRun(item);
+    }
+    if (item.type === "simpleField" || item.type === "complexField") {
+      const xml =
+        item.type === "simpleField" ? serializeSimpleField(item) : serializeComplexField(item);
+      return tag === "del" || tag === "moveFrom" ? rewriteRunTextAsDeleted(xml) : xml;
+    }
+    if (
+      item.type === "insertion" ||
+      item.type === "deletion" ||
+      item.type === "moveFrom" ||
+      item.type === "moveTo"
+    ) {
+      return serializeTrackedChange(trackedChangeTag(item), item);
+    }
+    return item.type === "bookmarkStart"
+      ? serializeBookmarkStart(item)
+      : serializeBookmarkEnd(item);
+  };
+
+  const open = `<w:${tag} ${attrs.join(" ")}>`;
+  const close = `</w:${tag}>`;
+  const wrap = (inner: string): string => (inner.length === 0 ? "" : `${open}${inner}${close}`);
+
+  // An empty wrapper is a marker in its own right (a paragraph mark's
+  // revision, a move end), so it survives the segmentation below.
+  if (change.content.length === 0) {
+    return `${open}${close}`;
+  }
+
+  // `w:hyperlink` may not appear inside a revision wrapper; the nesting runs
+  // the other way, with the wrapper opened again around the linked runs. So a
+  // revision spanning a hyperlink is emitted as several wrappers — text
+  // before, the hyperlink carrying its own, text after — which the package's
+  // revision-id pass then gives distinct `w:id`s.
+  const segments: string[] = [];
+  const pending: string[] = [];
+  const flushPending = (): void => {
+    if (pending.length > 0) {
+      segments.push(wrap(pending.join("")));
+      pending.length = 0;
+    }
+  };
+  for (const item of change.content) {
+    if (item.type === "hyperlink") {
+      flushPending();
+      const childrenXml = item.children
+        .map((child) => serializeHyperlinkChild(child, serializeContentRun))
+        .join("");
+      // Always the full wrapper, never `wrap`: a linked run range that is
+      // empty still has to say it was inserted or deleted, or reopening the
+      // package finds a plain hyperlink.
+      segments.push(
+        `<w:hyperlink${hyperlinkAttributes(item)}>${open}${childrenXml}${close}</w:hyperlink>`,
+      );
+      continue;
+    }
+    pending.push(serializeWrappedItem(item));
+  }
+  flushPending();
+
+  return segments.join("");
 }
 
 /** Emit the `<w:commentReference>` run Word places after a comment range end. */

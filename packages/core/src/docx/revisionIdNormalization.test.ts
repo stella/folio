@@ -1,6 +1,10 @@
 import { expect, test } from "bun:test";
 
-import { normalizeRevisionIdsInXmlParts, REVISION_ELEMENT_NAMES } from "./revisionIdNormalization";
+import {
+  normalizeRevisionIdsInXmlParts,
+  RevisionIdCollisionError,
+  REVISION_ELEMENT_NAMES,
+} from "./revisionIdNormalization";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
@@ -49,4 +53,23 @@ test("respects Strict namespaces and nested prefix rebinding", () => {
   expect(normalized.get("word/document.xml")).toBe(
     xml.replace('<w:del w:id="8"/></w:document>', '<w:del w:id="0"/></w:document>'),
   );
+});
+
+// Every id the pass lets stand or mints goes through one choke point, which
+// throws rather than emit a package where two revisions answer to one `w:id`.
+test("claims every id once when every part repeats the same one", () => {
+  const parts = new Map(
+    ["word/document.xml", "word/header1.xml", "word/footnotes.xml"].map((path) => [
+      path,
+      `<w:root xmlns:w="${W}"><w:del w:id="3"/><w:ins w:id="3"/><w:rPrChange w:id="3"/></w:root>`,
+    ]),
+  );
+
+  expect(() => normalizeRevisionIdsInXmlParts(parts)).not.toThrow(RevisionIdCollisionError);
+
+  const ids = [...normalizeRevisionIdsInXmlParts(parts).values()].flatMap((xml) =>
+    [...xml.matchAll(/w:id="(\d+)"/gu)].map((match) => match[1]),
+  );
+  expect(ids).toHaveLength(9);
+  expect(new Set(ids).size).toBe(ids.length);
 });

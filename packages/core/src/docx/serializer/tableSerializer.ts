@@ -755,16 +755,37 @@ function serializeTableCellPropertyChange(change: TableCellPropertyChange): stri
 // ============================================================================
 
 /**
- * Serialize table grid (w:tblGrid)
+ * Columns the grid has to declare: the widest row's span total, because a grid
+ * narrower than a row leaves cells with no column to sit in.
  */
-function serializeTableGrid(columnWidths: number[] | undefined): string {
-  if (!columnWidths || columnWidths.length === 0) {
-    return "";
+function gridColumnCount(table: Table): number {
+  return table.rows.reduce(
+    (widest, row) =>
+      Math.max(
+        widest,
+        row.cells.reduce((count, cell) => count + (cell.formatting?.gridSpan ?? 1), 0),
+      ),
+    0,
+  );
+}
+
+/**
+ * Serialize table grid (w:tblGrid).
+ *
+ * `w:tblGrid` is required on every `w:tbl` and `w:w` is optional on a
+ * `w:gridCol`, so a table whose column widths were never measured — one the
+ * comparison creates, say — still declares a grid, just without widths.
+ */
+function serializeTableGrid(table: Table): string {
+  const columnWidths = table.columnWidths;
+  if (columnWidths && columnWidths.length > 0) {
+    return `<w:tblGrid>${columnWidths.map((w) => `<w:gridCol w:w="${intAttr(w)}"/>`).join("")}</w:tblGrid>`;
   }
 
-  const cols = columnWidths.map((w) => `<w:gridCol w:w="${intAttr(w)}"/>`);
-
-  return `<w:tblGrid>${cols.join("")}</w:tblGrid>`;
+  const columns = gridColumnCount(table);
+  return columns === 0
+    ? "<w:tblGrid/>"
+    : `<w:tblGrid>${"<w:gridCol/>".repeat(columns)}</w:tblGrid>`;
 }
 
 // ============================================================================
@@ -864,21 +885,15 @@ export function serializeTableRow(row: TableRow, serializeParagraph: ParagraphSe
  * @returns XML string for the table
  */
 export function serializeTable(table: Table, serializeParagraph: ParagraphSerializer): string {
-  const parts: string[] = [];
+  // `w:tbl` is `w:tblPr, w:tblGrid, (rows)*`: both properties and grid are
+  // required and precede every row. Emitting them only when the model carried
+  // something to put in them made a table with neither — the shape a tracked
+  // table insertion produces — open with a `w:tr` the content model has no
+  // place for. Empty elements are the valid way to say "nothing here".
+  const tblPrXml =
+    serializeTableFormatting(table.formatting, table.propertyChanges) || "<w:tblPr/>";
+  const parts: string[] = [tblPrXml, serializeTableGrid(table)];
 
-  // Table properties
-  const tblPrXml = serializeTableFormatting(table.formatting, table.propertyChanges);
-  if (tblPrXml) {
-    parts.push(tblPrXml);
-  }
-
-  // Table grid
-  const tblGridXml = serializeTableGrid(table.columnWidths);
-  if (tblGridXml) {
-    parts.push(tblGridXml);
-  }
-
-  // Rows
   for (const row of table.rows) {
     parts.push(serializeTableRow(row, serializeParagraph));
   }
