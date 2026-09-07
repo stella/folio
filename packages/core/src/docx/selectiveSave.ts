@@ -50,6 +50,7 @@ import {
 import { serializeDocument } from "./serializer/documentSerializer";
 import { serializeEndnotes, serializeFootnotes } from "./serializer/noteSerializer";
 import { serializeNumberingXml } from "./serializer/numberingSerializer";
+import { readRootNamespaceBindings } from "./serializer/partNamespaces";
 
 /**
  * Check if document content has new images (data: URL without rId) or
@@ -457,7 +458,6 @@ export async function attemptSelectiveSave(
 
   const comments = doc.package.document.comments ?? [];
   const hasComments = comments.length > 0;
-  const headerFooterUpdates = collectHeaderFooterUpdates(doc);
 
   try {
     const JSZip = (await import("jszip")).default;
@@ -511,7 +511,7 @@ export async function attemptSelectiveSave(
       }
 
       if (bodyChangedIds.size > 0) {
-        const serializedDocXml = serializeDocument(doc);
+        const serializedDocXml = serializeDocument(doc, readRootNamespaceBindings(originalDocXml));
         const patchedDocXml = buildPatchedDocumentXml(
           originalDocXml,
           serializedDocXml,
@@ -528,12 +528,15 @@ export async function attemptSelectiveSave(
     // even if the editor now has zero comments — otherwise the stale
     // entries linger in the saved file (the rezip baseline copies the
     // previous part as-is) and round-trip back as phantom threads.
-    const hadCommentsFile = zip.file("word/comments.xml") !== null;
-    if (hasComments || hadCommentsFile) {
+    const sourceCommentsFile = zip.file("word/comments.xml");
+    if (hasComments || sourceCommentsFile) {
       // Threaded/resolved comments need a stable last-paragraph paraId so
       // comments.xml and commentsExtended.xml reference the same key.
       ensureThreadedCommentParaIds(comments);
-      updates.set("word/comments.xml", serializeComments(comments));
+      const sourceBindings = sourceCommentsFile
+        ? readRootNamespaceBindings(await sourceCommentsFile.async("text"))
+        : undefined;
+      updates.set("word/comments.xml", serializeComments(comments, sourceBindings));
     }
     if (hasComments) {
       // Ensure [Content_Types].xml has an Override for comments.xml
@@ -583,7 +586,7 @@ export async function attemptSelectiveSave(
     await patchNumberingPart(zip, doc, updates);
 
     // Serialize modified headers/footers
-    for (const [path, xml] of headerFooterUpdates) {
+    for (const [path, xml] of await collectHeaderFooterUpdates(doc, zip)) {
       updates.set(path, xml);
     }
 

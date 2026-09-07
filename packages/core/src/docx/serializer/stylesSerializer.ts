@@ -1,4 +1,5 @@
 import type { Style, StyleDefinitions } from "../../types/document";
+import { serializePartElement } from "./partNamespaces";
 import { serializeParagraphFormatting } from "./paragraphSerializer";
 import { serializeTextFormatting } from "./runSerializer";
 import {
@@ -8,13 +9,20 @@ import {
 } from "./tableSerializer";
 import { escapeXml } from "./xmlUtils";
 
-const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-
 export const serializeStylesXml = (definitions: StyleDefinitions): string => {
   const docDefaults = serializeDocumentDefaults(definitions);
   const latentStyles = serializeLatentStyles(definitions);
   const styles = definitions.styles.map(serializeStyle).join("");
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:styles xmlns:w="${W_NS}">${docDefaults}${latentStyles}${styles}</w:styles>`;
+  return (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+    serializePartElement({
+      partPath: "word/styles.xml",
+      rootName: "w:styles",
+      baselinePrefixes: ["w"],
+      sourceBindings: undefined,
+      body: `${docDefaults}${latentStyles}${styles}`,
+    })
+  );
 };
 
 const serializeDocumentDefaults = (definitions: StyleDefinitions): string => {

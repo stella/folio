@@ -74,6 +74,7 @@ import {
   serializeNewFootnotesPart,
 } from "./serializer/noteSerializer";
 import { serializeNumberingXml } from "./serializer/numberingSerializer";
+import { readRootNamespaceBindings } from "./serializer/partNamespaces";
 import { serializeFontTableXml } from "./serializer/fontTableSerializer";
 import { serializeSettingsXml } from "./serializer/settingsSerializer";
 import { serializeStyle, serializeStylesXml } from "./serializer/stylesSerializer";
@@ -223,10 +224,8 @@ async function serializeCommentsToZip(
 ): Promise<void> {
   const comments = doc.package.document.comments ?? [];
   const sourceCommentsFile = findZipEntryCaseInsensitive(zip, "word/comments.xml");
+  const sourceCommentsXml = sourceCommentsFile ? await sourceCommentsFile.async("text") : undefined;
   if (comments.length === 0) {
-    if (!sourceCommentsFile) {
-      return;
-    }
     // An empty source part is already a fixed point. Preserve it and its
     // packaging verbatim: adding a missing relationship or pruning an empty
     // extension part would turn a no-op save into a structural package edit.
@@ -234,8 +233,7 @@ async function serializeCommentsToZip(
     // A non-empty source part with an empty current model is different: the
     // user removed the last comment, so it must still be overwritten below to
     // prevent the old thread from reappearing.
-    const sourceCommentsXml = await sourceCommentsFile.async("text");
-    if (!hasCommentEntries(sourceCommentsXml)) {
+    if (sourceCommentsXml === undefined || !hasCommentEntries(sourceCommentsXml)) {
       return;
     }
   }
@@ -244,7 +242,10 @@ async function serializeCommentsToZip(
   // comments.xml and commentsExtended.xml reference the same key.
   ensureThreadedCommentParaIds(comments);
 
-  const commentsXml = serializeComments(comments);
+  const commentsXml = serializeComments(
+    comments,
+    sourceCommentsXml === undefined ? undefined : readRootNamespaceBindings(sourceCommentsXml),
+  );
   zip.file(sourceCommentsFile?.name ?? "word/comments.xml", commentsXml, {
     compression: "DEFLATE",
     compressionOptions: { level: compressionLevel },
@@ -919,7 +920,10 @@ const finishRepack = async ({
 
   applyReplyThreadMarkers(document);
 
-  const documentXml = serializeDocument(document);
+  const documentXml = serializeDocument(
+    document,
+    originalDocumentXml === undefined ? undefined : readRootNamespaceBindings(originalDocumentXml),
+  );
   if (originalDocumentXml) {
     assertDocumentPackageFidelity(originalDocumentXml, documentXml, document);
   }
@@ -930,7 +934,7 @@ const finishRepack = async ({
 
   await rebindWatermarkRelIds(document, outputZip, compressionLevel);
 
-  serializeHeadersFootersToZip(document, outputZip, compressionLevel);
+  await serializeHeadersFootersToZip(document, outputZip, compressionLevel);
 
   await serializeNotesToZip({
     doc: document,
@@ -1072,7 +1076,10 @@ export async function repackDocxFromRaw(
   // reply round-trips with matching commentRange markers + reference.
   applyReplyThreadMarkers(exportDocument);
 
-  const documentXml = serializeDocument(exportDocument);
+  const documentXml = serializeDocument(
+    exportDocument,
+    rawContent.documentXml ? readRootNamespaceBindings(rawContent.documentXml) : undefined,
+  );
   if (rawContent.documentXml) {
     assertDocumentPackageFidelity(rawContent.documentXml, documentXml, exportDocument);
   }
@@ -1087,7 +1094,7 @@ export async function repackDocxFromRaw(
   await rebindWatermarkRelIds(exportDocument, newZip, compressionLevel);
 
   // Serialize and update modified headers/footers
-  serializeHeadersFootersToZip(exportDocument, newZip, compressionLevel);
+  await serializeHeadersFootersToZip(exportDocument, newZip, compressionLevel);
 
   // Splice edited footnote/endnote bodies back into their parts (separators and
   // unedited notes stay byte-exact).
@@ -1999,7 +2006,16 @@ async function rebindWatermarkRelIds(
   }
 }
 
-export function collectHeaderFooterUpdates(doc: Document): Map<string, string> {
+/**
+ * Re-serialize every header/footer the model still owns, keyed by part path.
+ *
+ * `sourceZip` supplies each part as it stands before the save so the rebuilt
+ * root can keep any prefix binding only the source document declared.
+ */
+export async function collectHeaderFooterUpdates(
+  doc: Document,
+  sourceZip: JSZip,
+): Promise<Map<string, string>> {
   const updates = new Map<string, string>();
   const rels = doc.package.relationships;
   if (!rels) {
@@ -2022,8 +2038,12 @@ export function collectHeaderFooterUpdates(doc: Document): Map<string, string> {
     for (const [rId, headerFooter] of map.entries()) {
       const rel = rels.get(rId);
       if (rel && rel.type === type && rel.target) {
-        const filename = resolveRelativePath(documentRelsPath, rel.target);
-        updates.set(filename, serializeHeaderFooter(headerFooter));
+        const path = resolveRelativePath(documentRelsPath, rel.target);
+        const sourceFile = findZipEntryCaseInsensitive(sourceZip, path.toLowerCase());
+        const bindings = sourceFile
+          ? readRootNamespaceBindings(await sourceFile.async("text"))
+          : new Map<string, string>();
+        updates.set(path, serializeHeaderFooter(headerFooter, { path, bindings }));
       }
     }
   }
@@ -2034,9 +2054,13 @@ export function collectHeaderFooterUpdates(doc: Document): Map<string, string> {
 /**
  * Serialize modified headers and footers into the ZIP
  */
-function serializeHeadersFootersToZip(doc: Document, zip: JSZip, compressionLevel: number): void {
+async function serializeHeadersFootersToZip(
+  doc: Document,
+  zip: JSZip,
+  compressionLevel: number,
+): Promise<void> {
   const compressionOptions = { level: compressionLevel };
-  for (const [filename, xml] of collectHeaderFooterUpdates(doc)) {
+  for (const [filename, xml] of await collectHeaderFooterUpdates(doc, zip)) {
     zip.file(filename, xml, { compression: "DEFLATE", compressionOptions });
   }
 }

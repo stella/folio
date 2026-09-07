@@ -1,7 +1,6 @@
 import type { DocumentSettings } from "../../types/document";
+import { serializePartElement } from "./partNamespaces";
 import { escapeXml, intAttr } from "./xmlUtils";
-
-const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
 export const serializeSettingsXml = (settings: DocumentSettings): string => {
   const parts = [`<w:defaultTabStop w:val="${intAttr(settings.defaultTabStop)}"/>`];
@@ -23,5 +22,14 @@ export const serializeSettingsXml = (settings: DocumentSettings): string => {
       parts.push(`<w:themeFontLang ${attrs.join(" ")}/>`);
     }
   }
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:settings xmlns:w="${W_NS}">${parts.join("")}</w:settings>`;
+  return (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+    serializePartElement({
+      partPath: "word/settings.xml",
+      rootName: "w:settings",
+      baselinePrefixes: ["w"],
+      sourceBindings: undefined,
+      body: parts.join(""),
+    })
+  );
 };
