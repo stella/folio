@@ -9,7 +9,7 @@ import { describe, expect, test } from "bun:test";
 import type { ShadingProperties } from "../../types/colors";
 import { resolveShadingFill } from "../formatToStyle";
 
-describe("resolveShadingFill — clear pattern shows the fill", () => {
+describe("resolveShadingFill", () => {
   test("clear + concrete fill renders the fill as a solid background", () => {
     expect(resolveShadingFill({ pattern: "clear", fill: { rgb: "D9D9D9" } })).toBe("#D9D9D9");
   });
@@ -34,6 +34,20 @@ describe("resolveShadingFill — clear pattern shows the fill", () => {
 
   test("solid pattern still uses the pattern colour when there is no fill", () => {
     expect(resolveShadingFill({ pattern: "solid", color: { rgb: "FF0000" } })).toBe("#FF0000");
+  });
+
+  test("renders percentage shading with automatic colors", () => {
+    expect(resolveShadingFill({ pattern: "pct12" })).toBe("#DFDFDF");
+  });
+
+  test("blends explicit percentage pattern and background colors", () => {
+    expect(
+      resolveShadingFill({
+        pattern: "pct25",
+        color: { rgb: "FF0000" },
+        fill: { rgb: "FFFFFF" },
+      }),
+    ).toBe("#FFBFBF");
   });
 
   test("undefined shading is transparent", () => {
