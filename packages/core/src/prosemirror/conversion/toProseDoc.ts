@@ -1825,6 +1825,7 @@ function convertTable(
   }
   if (cellMarginsAttr) {
     attrs.cellMargins = cellMarginsAttr;
+    attrs._resolvedCellMargins = cellMarginsAttr;
   }
   if (table.formatting?.look) {
     attrs.look = table.formatting.look;
@@ -2309,9 +2310,11 @@ function convertTableCell({
   }
   if (effectiveFormatting.borders) {
     attrs.borders = effectiveFormatting.borders;
+    attrs._resolvedBorders = effectiveFormatting.borders;
   }
   if (effectiveFormatting.margins) {
     attrs.margins = effectiveFormatting.margins;
+    attrs._resolvedMargins = effectiveFormatting.margins;
   }
   if (formatting) {
     attrs._originalFormatting = formatting;

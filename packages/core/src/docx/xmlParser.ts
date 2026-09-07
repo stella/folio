@@ -227,9 +227,12 @@ function fxpNodeToElement(
  * XmlElement that matches xml-js's non-compact root structure:
  * `{ elements: [...] }`.
  */
-function fxpToRootElement(nodes: MutableFxpNode[]): XmlElement {
+function fxpToRootElement(
+  nodes: MutableFxpNode[],
+  inheritedNamespaceScope: XmlNamespaceScope = EMPTY_NAMESPACE_SCOPE,
+): XmlElement {
   for (let index = 0; index < nodes.length; index += 1) {
-    nodes[index] = fxpNodeToElement(nodes[index]!);
+    nodes[index] = fxpNodeToElement(nodes[index]!, inheritedNamespaceScope);
   }
 
   return {
@@ -269,7 +272,24 @@ export const NAMESPACES = OOXML_NS;
  * @param xml - XML string to parse
  * @returns Parsed element tree
  */
-export function parseXml(xml: string): XmlElement {
+/**
+ * The prefix bindings a WordprocessingML part declares on its root.
+ *
+ * A property element captured out of a document carries no `xmlns` of its
+ * own, so parsing it on its own resolves no prefix and every lookup by
+ * namespace URI misses. Parsing it under this scope puts it back in the
+ * context it was written in. A part that binds `w` to something else — or
+ * binds it to a prefix this map does not know — simply fails to match, and
+ * the caller falls back to whatever it does without the capture.
+ */
+export const OOXML_NAMESPACE_SCOPE: XmlNamespaceScope = {
+  bindings: new Map(Object.entries(OOXML_NS)),
+};
+
+export function parseXml(
+  xml: string,
+  inheritedNamespaceScope: XmlNamespaceScope = EMPTY_NAMESPACE_SCOPE,
+): XmlElement {
   // fast-xml-parser with preserveOrder returns an array of nodes.
   // We convert it into the same tree shape that xml-js used to produce
   // (non-compact mode with attributesKey="attributes", textKey="text").
@@ -279,7 +299,7 @@ export function parseXml(xml: string): XmlElement {
   // xml-js captureSpacesBetweenElements behaviour.
   const parser = xml.includes("binData") ? fxpParserWithStopNodes : fxpParser;
   const nodes = parser.parse(xml) as MutableFxpNode[];
-  return fxpToRootElement(nodes);
+  return fxpToRootElement(nodes, inheritedNamespaceScope);
 }
 
 /**

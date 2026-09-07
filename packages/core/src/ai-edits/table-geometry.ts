@@ -40,6 +40,7 @@ import {
 } from "../prosemirror/conversion/fromProseDoc";
 import type { TableCellAttrs } from "../prosemirror/schema/nodes";
 import type { TableCellFormatting, TableFormatting, TableRowFormatting } from "../types/document";
+import { canonicalJson } from "../utils/canonicalJson";
 import type { FolioStoryTable } from "./snapshot";
 
 const ORIGINAL_FORMATTING = "_originalFormatting";
@@ -68,26 +69,6 @@ const CELL_SCOPED_ATTRS = withoutOriginalFormatting(
 );
 
 /**
- * Key-ordered JSON, so two values that differ only in the order their parser
- * happened to write them read as equal.
- */
-const canonical = (value: unknown): string => {
-  if (value === null || value === undefined) {
-    return "null";
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map(canonical).join(",")}]`;
-  }
-  if (typeof value !== "object") {
-    return JSON.stringify(value) ?? "null";
-  }
-  const entries = Object.entries(value)
-    .filter(([, entry]) => entry !== undefined)
-    .toSorted(([left], [right]) => left.localeCompare(right));
-  return `{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${canonical(entry)}`).join(",")}}`;
-};
-
-/**
  * `false` and absent are the same thing for every property in scope here: they
  * are all presence flags (`w:tblHeader`, `w:hidden`, `w:noWrap`), and a parser
  * that materializes an absent one as `false` must not read as a difference
@@ -106,7 +87,7 @@ const scopedAttrs = (
 };
 
 const cellProjection = (cell: PMNode): string =>
-  canonical({
+  canonicalJson({
     colspan: cell.attrs["colspan"],
     rowspan: cell.attrs["rowspan"],
     ...scopedAttrs(cell.attrs, CELL_SCOPED_ATTRS),
@@ -117,7 +98,7 @@ const rowProjection = (row: PMNode): string => {
   row.forEach((cell) => {
     cells.push(cellProjection(cell));
   });
-  return `${canonical(scopedAttrs(row.attrs, ROW_SCOPED_ATTRS))}|${cells.join("|")}`;
+  return `${canonicalJson(scopedAttrs(row.attrs, ROW_SCOPED_ATTRS))}|${cells.join("|")}`;
 };
 
 /**
@@ -132,7 +113,7 @@ export const projectTableGeometry = (tables: readonly FolioStoryTable[]): string
     node.forEach((row) => {
       rows.push(rowProjection(row));
     });
-    return `${canonical(scopedAttrs(node.attrs, TABLE_SCOPED_ATTRS))}#${rows.join("#")}`;
+    return `${canonicalJson(scopedAttrs(node.attrs, TABLE_SCOPED_ATTRS))}#${rows.join("#")}`;
   });
 
 /** Where a cell sits: which table, which row of it, which cell of that row. */
@@ -208,14 +189,32 @@ type PropertyScope<TFormatting> = {
  * carries a value for, so naming them is what turns the record into one.
  */
 const cellAttrsOf = (node: PMNode): TableCellAttrs => ({
-  ...node.attrs,
+  ...effectiveAttrs(node),
   colspan: typeof node.attrs["colspan"] === "number" ? node.attrs["colspan"] : 1,
   rowspan: typeof node.attrs["rowspan"] === "number" ? node.attrs["rowspan"] : 1,
 });
 
+/**
+ * The node's attrs with the style cascade's own values cleared, so the
+ * converter treats every effective value as one the node states.
+ *
+ * A change element stores the COMPLETE previous property set and a reject
+ * rebuilds the live properties from it alone, so the record has to hold what
+ * the node renders with — including a border its table style supplied. The
+ * save path wants the opposite (write only what the node states, or the
+ * inherited value becomes an override), which is what the resolved companions
+ * are for; a record is the one place they get in the way.
+ */
+const effectiveAttrs = (node: PMNode): Record<string, unknown> => ({
+  ...node.attrs,
+  _resolvedBorders: null,
+  _resolvedMargins: null,
+  _resolvedCellMargins: null,
+});
+
 const TABLE_SCOPE = {
   keys: TABLE_SCOPED_ATTRS,
-  formattingOf: (node) => tableAttrsToFormatting(node.attrs),
+  formattingOf: (node) => tableAttrsToFormatting(effectiveAttrs(node)),
   rejectPatch: (previousFormatting) => tableRejectAttrPatch(previousFormatting),
   changeAttr: "tblPrChange",
   changeType: "tablePropertyChange",
@@ -239,7 +238,7 @@ const CELL_SCOPE = {
 } as const satisfies PropertyScope<TableCellFormatting>;
 
 const scopedValues = (attrs: Record<string, unknown>, keys: readonly string[]): string =>
-  canonical(scopedAttrs(attrs, keys));
+  canonicalJson(scopedAttrs(attrs, keys));
 
 /**
  * One node's properties, matched to the node it was paired with, or `null`

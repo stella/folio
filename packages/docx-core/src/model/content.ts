@@ -1042,6 +1042,13 @@ export type TrackedChangeInfo = {
    * and carried through the round-trip when present on the source document.
    */
   initials?: string;
+  /**
+   * The UTC companion to `w:date` a recent producer writes alongside it, kept
+   * with the prefix the document bound it under: the attribute names a
+   * namespace the part declares on its root, and re-emitting it under a
+   * prefix of our choosing would name one that is not there.
+   */
+  utcDate?: { attribute: string; value: string };
 };
 
 /**

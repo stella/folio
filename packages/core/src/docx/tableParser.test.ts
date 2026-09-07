@@ -29,6 +29,23 @@ function parseTableXml(xml: string) {
 
 const NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 
+/**
+ * A property set as if it had been built rather than parsed.
+ *
+ * A parsed one carries the element it came from, and the serializer writes
+ * that back verbatim; dropping it is how these cases reach the branch that
+ * rebuilds the element from the typed values.
+ */
+const rebuilt = <TFormatting extends { sourceXml?: string }>(
+  formatting: TFormatting | undefined,
+): TFormatting | undefined => {
+  if (!formatting) {
+    return formatting;
+  }
+  const { sourceXml: _source, ...rest } = formatting;
+  return rest as TFormatting;
+};
+
 describe("parseTableMeasurement", () => {
   const tblW = (w: string, type = "pct") => {
     const root = parseXmlDocument(`<w:tblW ${NS} w:w="${w}" w:type="${type}"/>`) as XmlElement;
@@ -66,7 +83,12 @@ describe("table cell marker visibility", () => {
     const formatting = parseTableCellProperties(root);
 
     expect(formatting?.hideMark).toBe(false);
-    expect(serializeTableCellFormatting(formatting)).toContain('<w:hideMark w:val="off"/>');
+    // The parsed element goes back exactly as it arrived, `w:val="false"` and
+    // all; the rebuilt one writes the token the schema names.
+    expect(serializeTableCellFormatting(formatting)).toContain('<w:hideMark w:val="false"/>');
+    expect(serializeTableCellFormatting(rebuilt(formatting))).toContain(
+      '<w:hideMark w:val="off"/>',
+    );
   });
 });
 
@@ -183,7 +205,11 @@ describe("table row grid offsets", () => {
       gridAfter: 1,
       widthAfter: { value: 450, type: "dxa" },
     });
-    expect(serializeTableRowFormatting(formatting)).toContain(
+    // Parsed, the element is written back as it arrived — the fixture's own
+    // indentation included. Rebuilt, the children come out in the order the
+    // serializer writes them.
+    expect(serializeTableRowFormatting(formatting)).toContain('<w:gridBefore w:val="2"/>');
+    expect(serializeTableRowFormatting(rebuilt(formatting))).toContain(
       '<w:gridBefore w:val="2"/><w:wBefore w:w="900" w:type="dxa"/><w:gridAfter w:val="1"/><w:wAfter w:w="450" w:type="dxa"/>',
     );
   });
@@ -206,15 +232,23 @@ describe("table row conditional formatting", () => {
     ) as XmlElement;
     const formatting = parseTableRowProperties(root);
 
-    expect(formatting).toEqual({
+    expect(rebuilt(formatting)).toEqual({
       conditionalFormat: {
         firstRow: true,
         oddHBand: true,
       },
     });
 
-    const serialized = serializeTableRowFormatting(formatting);
-    expect(parseTableRowProperties(parseXmlDocument(serialized))).toEqual(formatting);
+    // Both ways round: the element as parsed, and the element the serializer
+    // builds when it has no capture to write back.
+    for (const serialized of [
+      serializeTableRowFormatting(formatting),
+      serializeTableRowFormatting(rebuilt(formatting)),
+    ]) {
+      expect(rebuilt(parseTableRowProperties(parseXmlDocument(serialized)))).toEqual(
+        rebuilt(formatting),
+      );
+    }
   });
 });
 

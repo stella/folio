@@ -1158,6 +1158,7 @@ export type TableCellFormatting = {
     noWrap?: boolean;
     hideMark?: boolean;
     conditionalFormat?: ConditionalFormatStyle;
+    sourceXml?: string;
 };
 
 // @public
@@ -1183,6 +1184,8 @@ export type TableFormatting = {
     overlap?: "never" | "overlap";
     floating?: FloatingTableProperties;
     bidi?: boolean;
+    gridSourceXml?: string;
+    sourceXml?: string;
 };
 
 // @public
@@ -1231,6 +1234,7 @@ export type TableRowFormatting = {
     justification?: "left" | "center" | "right";
     hidden?: boolean;
     conditionalFormat?: ConditionalFormatStyle;
+    sourceXml?: string;
 };
 
 // @public
@@ -1407,6 +1411,10 @@ export type TrackedChangeInfo = {
     author: string;
     date?: string;
     initials?: string;
+    utcDate?: {
+        attribute: string;
+        value: string;
+    };
 };
 
 // @public

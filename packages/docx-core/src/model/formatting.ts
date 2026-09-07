@@ -482,6 +482,31 @@ export type TableFormatting = {
   floating?: FloatingTableProperties;
   /** Right to left table */
   bidi?: boolean;
+  /**
+   * The table's `w:tblGrid`, verbatim.
+   *
+   * The grid is a sibling of `w:tblPr` rather than a child of it, but it is
+   * the table's own property set that travels through the editable model, so
+   * it rides along here. Rebuilding the grid from the column widths alone
+   * drops `w:tblGridChange` — the tracked record of a grid a reviewer resized
+   * — which nothing else in the model carries.
+   */
+  gridSourceXml?: string;
+  /**
+   * The element this formatting was parsed from, verbatim.
+   *
+   * A typed model covers what the editor understands, and a document carries
+   * more than that: conditional-format flags, properties a later revision of
+   * the format added, properties a producer wrote that nothing here reads.
+   * Rebuilding the element from the model alone drops every one of them, so a
+   * save that rewrites an untouched table would change it.
+   *
+   * The source therefore travels with the parse, and the serializer writes it
+   * back unchanged while nothing in the model has moved. It is dropped the
+   * moment an edit changes a modelled value, because the two would then
+   * disagree and the source is the stale one.
+   */
+  sourceXml?: string;
 };
 
 /**
@@ -510,6 +535,21 @@ export type TableRowFormatting = {
   hidden?: boolean;
   /** Conditional format style */
   conditionalFormat?: ConditionalFormatStyle;
+  /**
+   * The element this formatting was parsed from, verbatim.
+   *
+   * A typed model covers what the editor understands, and a document carries
+   * more than that: conditional-format flags, properties a later revision of
+   * the format added, properties a producer wrote that nothing here reads.
+   * Rebuilding the element from the model alone drops every one of them, so a
+   * save that rewrites an untouched table would change it.
+   *
+   * The source therefore travels with the parse, and the serializer writes it
+   * back unchanged while nothing in the model has moved. It is dropped the
+   * moment an edit changes a modelled value, because the two would then
+   * disagree and the source is the stale one.
+   */
+  sourceXml?: string;
 };
 
 /**
@@ -570,4 +610,19 @@ export type TableCellFormatting = {
   hideMark?: boolean;
   /** Conditional format style */
   conditionalFormat?: ConditionalFormatStyle;
+  /**
+   * The element this formatting was parsed from, verbatim.
+   *
+   * A typed model covers what the editor understands, and a document carries
+   * more than that: conditional-format flags, properties a later revision of
+   * the format added, properties a producer wrote that nothing here reads.
+   * Rebuilding the element from the model alone drops every one of them, so a
+   * save that rewrites an untouched table would change it.
+   *
+   * The source therefore travels with the parse, and the serializer writes it
+   * back unchanged while nothing in the model has moved. It is dropped the
+   * moment an edit changes a modelled value, because the two would then
+   * disagree and the source is the stale one.
+   */
+  sourceXml?: string;
 };
