@@ -464,43 +464,134 @@ const roundTripScriptArb = (blocks: readonly FolioAIBlock[]): fc.Arbitrary<EditS
 const kindsOf = (changes: readonly CompareChange[]): string[] => changes.map(({ kind }) => kind);
 
 /**
+ * A block's text with the formatting it carries, one entry per character, so
+ * two blocks compare on what a reader sees rather than on how their runs happen
+ * to be split. A block the snapshot gives no runs for is unstyled throughout.
+ */
+const blockSignature = (block: FolioAIBlock): string =>
+  JSON.stringify([
+    block.text,
+    (block.previewRuns ?? [{ text: block.text }]).flatMap((run) => {
+      const formatting = [
+        run.bold,
+        run.italic,
+        run.underline,
+        run.strike,
+        run.fontFamily,
+        run.fontSizePt,
+        run.color,
+      ];
+      return Array.from(run.text, () => formatting);
+    }),
+  ]);
+
+/** Every block a story holds, as signatures in an order-independent form. */
+const signaturesOf = (blocks: readonly FolioAIBlock[]): string =>
+  blocks.map(blockSignature).toSorted().join("\n");
+
+/**
+ * Whether a relocation re-inserted its paragraph carrying different formatting.
+ *
+ * `moveParagraph` is a deletion plus an insertion of the block's TEXT: the
+ * operation vocabulary carries a paragraph's style and list level to the new
+ * position but not the formatting set on its runs, so a directly styled block
+ * arrives plain. Only the arrival separates the two, since the style's share
+ * survives the trip, so the step is applied and the result read back.
+ *
+ * Applied ON ITS OWN, and compared as an order-independent whole: a relocation
+ * that carried its formatting leaves the very same paragraphs in a different
+ * order, so any difference at all is formatting the re-insertion dropped. That
+ * needs no guess about which arrival belongs to the step, which matching by
+ * text alone cannot tell when a document repeats a paragraph.
+ */
+const relocationDroppedFormatting = async (
+  base: ArrayBuffer,
+  baseBlocks: readonly FolioAIBlock[],
+  step: Extract<EditScriptStep, { type: "moveParagraph" }>,
+): Promise<boolean> => {
+  const relocated = await applyEditScript(base, [step]);
+  if (relocated.isErr()) {
+    throw relocated.error;
+  }
+  return signaturesOf(await blocksOf(relocated.value.buffer)) !== signaturesOf(baseBlocks);
+};
+
+type TouchedBlockBudgetOptions = {
+  base: ArrayBuffer;
+  applied: readonly EditScriptStep[];
+  baseBlocks: readonly FolioAIBlock[];
+};
+
+/**
  * Changes one script may legitimately produce.
  *
  * A paragraph step touches one block. A relocation touches two, and is
  * reported as two when the move pass declines to pair it (its text is below
  * the word floor, or it landed where the alignment can still walk forward).
  *
- * A table whose row COUNT changed is budgeted at its whole size. Rows pair on
- * exact text first and positionally after that, so once the counts differ the
+ * A relocation that also dropped the block's formatting is budgeted at three,
+ * because it made two differences and the alignment picks which one it names.
+ * Swapping a block past a SINGLE neighbour reads equally well from either side
+ * ("this one moved down" and "that one moved up" match the same number of
+ * blocks), and the alignment breaks that tie by position, not by which side the
+ * script meant. When it relocates the neighbour, the moved block pairs where it
+ * always was and reports the formatting its plain re-insertion lost, on top of
+ * the neighbour's two ends. Both readings accept back to the target; this one
+ * costs one change more. A move that kept its formatting stays budgeted at two,
+ * so an engine that reports a plain relocation more granularly than that is
+ * still caught.
+ *
+ * A table whose row COUNT changed is budgeted at every cell it holds in the
+ * base, plus one for each row the script added or removed. Rows pair on exact
+ * text first and positionally after that, so once the counts differ the
  * surviving rows can line up one row off and every cell in the table reports as
- * changed. The result still accepts back to the target — that is a separate
- * property — but it is more granular than the script was. Bounding it at one
- * table keeps the real guarantee: the comparison never invents work beyond the
- * content the script disturbed.
+ * changed; the rows left with nothing to pair against are reported whole, one
+ * change each, on top of that. The result still accepts back to the target —
+ * that is a separate property — but it is more granular than the script was.
+ * Bounding it at the table plus its row edits keeps the real guarantee: the
+ * comparison never invents work beyond the content the script disturbed.
+ *
+ * That budget covers the steps that stay inside the table, which is every step
+ * anchored in one of its cells EXCEPT an insertion: no operation places a
+ * paragraph in a cell, so an insertion anchored in one writes its paragraph
+ * beside the table instead. It is a body change wherever it was anchored, so it
+ * is budgeted like any other paragraph step.
  */
-const touchedBlockBudget = (
-  applied: readonly EditScriptStep[],
-  blocks: readonly FolioAIBlock[],
-): number => {
-  const rowCountChanged = new Set(
-    applied.flatMap((step) => {
-      if (step.type !== "insertTableRow" && step.type !== "deleteTableRow") {
-        return [];
-      }
-      const tableIndex = blocks[step.blockIndex]?.table?.tableIndex;
-      return tableIndex === undefined ? [] : [tableIndex];
-    }),
-  );
-  let budget = 0;
-  for (const tableIndex of rowCountChanged) {
-    budget += blocks.filter((block) => block.table?.tableIndex === tableIndex).length;
-  }
+const touchedBlockBudget = async ({
+  base,
+  applied,
+  baseBlocks,
+}: TouchedBlockBudgetOptions): Promise<number> => {
+  const rowEditsByTable = new Map<number, number>();
   for (const step of applied) {
-    const tableIndex = blocks[step.blockIndex]?.table?.tableIndex;
-    if (tableIndex !== undefined && rowCountChanged.has(tableIndex)) {
+    if (step.type !== "insertTableRow" && step.type !== "deleteTableRow") {
       continue;
     }
-    budget += step.type === "moveParagraph" ? 2 : 1;
+    const tableIndex = baseBlocks[step.blockIndex]?.table?.tableIndex;
+    if (tableIndex !== undefined) {
+      rowEditsByTable.set(tableIndex, (rowEditsByTable.get(tableIndex) ?? 0) + 1);
+    }
+  }
+  let budget = 0;
+  for (const [tableIndex, rowEdits] of rowEditsByTable) {
+    budget +=
+      baseBlocks.filter((block) => block.table?.tableIndex === tableIndex).length + rowEdits;
+  }
+  for (const step of applied) {
+    const tableIndex = baseBlocks[step.blockIndex]?.table?.tableIndex;
+    const staysInsideChangedTable =
+      tableIndex !== undefined &&
+      rowEditsByTable.has(tableIndex) &&
+      step.type !== "insertParagraphAfter";
+    if (staysInsideChangedTable) {
+      continue;
+    }
+    if (step.type !== "moveParagraph") {
+      budget += 1;
+      continue;
+    }
+    // oxlint-disable-next-line no-await-in-loop -- each relocation is replayed on its own
+    budget += (await relocationDroppedFormatting(base, baseBlocks, step)) ? 3 : 2;
   }
   return budget;
 };
@@ -625,7 +716,7 @@ describe("compareDocx", () => {
             }
             const { changes } = await compareOrThrow(base, scripted.value.buffer);
             expect(changes.length).toBeLessThanOrEqual(
-              touchedBlockBudget(scripted.value.applied, baseBlocks),
+              await touchedBlockBudget({ base, applied: scripted.value.applied, baseBlocks }),
             );
           }),
           propertyConfig({ numRuns: 12 }),
@@ -663,6 +754,113 @@ describe("compareDocx", () => {
       );
     }
   }
+
+  test("a relocation past one neighbour may be reported from the neighbour's side", async () => {
+    // The counterexample the change-count property found. Pinned so the shape
+    // is covered on every run rather than on the draw that happens to reach it:
+    // the styled paragraph swaps past exactly one neighbour, so both readings
+    // of the swap match the same number of blocks, and the alignment names the
+    // neighbour. The moved paragraph then pairs where it always was and reports
+    // the direct formatting its plain re-insertion could not carry.
+    const base = readFixture("upstream-styled-content.docx");
+    const baseBlocks = await blocksOf(base);
+    const move = { type: "moveParagraph", blockIndex: 1, beforeBlockIndex: 4 } as const;
+    const script: EditScript = [{ type: "deleteParagraph", blockIndex: 2 }, move];
+
+    // The scenario reads the fixture by index, so pin the shape it relies on:
+    // the relocated paragraph carries direct formatting, and it swaps past
+    // exactly one surviving neighbour.
+    expect(baseBlocks.map(({ text }) => text)).toEqual([
+      "Normal text. Bold text. Italic text. Underlined text.",
+      "Bold and italic text. Strikethrough text.",
+      "Large text (18pt). Small text (8pt).",
+      "Centered paragraph.",
+      "Right-aligned paragraph.",
+    ]);
+    expect(await relocationDroppedFormatting(base, baseBlocks, move)).toBe(true);
+
+    const scripted = await applyEditScript(base, script);
+    if (scripted.isErr()) {
+      throw scripted.error;
+    }
+    expect(scripted.value.unresolved).toEqual([]);
+
+    const { changes } = await compareOrThrow(base, scripted.value.buffer);
+    expect(kindsOf(changes).toSorted()).toEqual(["delete", "delete", "format", "insert"]);
+    expect(changes.length).toBe(
+      await touchedBlockBudget({ base, applied: scripted.value.applied, baseBlocks }),
+    );
+  });
+
+  test("a paragraph inserted on a cell anchor lands beside the table it grew", async () => {
+    // The second counterexample the change-count property found. An insertion
+    // anchored in a cell writes its paragraph beside the table, so a script that
+    // also changes that table's row count produces body changes the table's own
+    // budget does not cover.
+    const base = readFixture("upstream-with-tables.docx");
+    const baseBlocks = await blocksOf(base);
+    const script: EditScript = [
+      { type: "insertParagraphAfter", blockIndex: 3, text: "Anchored in the third cell." },
+      { type: "insertParagraphAfter", blockIndex: 4, text: "Anchored in the fourth cell." },
+      { type: "insertTableRow", blockIndex: 1, cellTexts: ["one", "two", "three"] },
+      { type: "insertTableRow", blockIndex: 2, cellTexts: ["four", "five", "six"] },
+    ];
+
+    // The scenario reads the fixture by index, so pin the shape it relies on:
+    // blocks 1 to 4 are cells of one table with three columns.
+    expect(baseBlocks.slice(1, 5).map(({ table }) => table?.tableIndex)).toEqual([0, 0, 0, 0]);
+
+    const scripted = await applyEditScript(base, script);
+    if (scripted.isErr()) {
+      throw scripted.error;
+    }
+    expect(scripted.value.unresolved).toEqual([]);
+
+    const targetBlocks = await blocksOf(scripted.value.buffer);
+    expect(targetBlocks.filter(({ table }) => table === undefined).map(({ text }) => text)).toEqual(
+      [
+        "Document with tables:",
+        "Anchored in the third cell.",
+        "Anchored in the fourth cell.",
+        "End of document.",
+      ],
+    );
+
+    const { changes } = await compareOrThrow(base, scripted.value.buffer);
+    expect(kindsOf(changes).filter((kind) => kind === "insert")).toHaveLength(2);
+    expect(changes.length).toBeLessThanOrEqual(
+      await touchedBlockBudget({ base, applied: scripted.value.applied, baseBlocks }),
+    );
+  });
+
+  test("added rows are reported on top of the cells that report as changed", async () => {
+    // The third counterexample the change-count property found. Rows added past
+    // the count the base table holds have nothing to pair against, so each is
+    // reported whole, over and above the cells that report as changed. A table's
+    // own size does not bound that.
+    const base = readFixture("upstream-with-tables.docx");
+    const baseBlocks = await blocksOf(base);
+    const cells = baseBlocks.filter(({ table }) => table?.tableIndex === 0);
+    const script: EditScript = [
+      { type: "insertTableRow", blockIndex: 1, cellTexts: ["one", "two", "three"] },
+      { type: "insertTableRow", blockIndex: 3, cellTexts: ["four", "five", "six"] },
+      { type: "insertTableRow", blockIndex: 7, cellTexts: ["seven", "eight", "nine"] },
+      { type: "insertTableRow", blockIndex: 9, cellTexts: ["ten", "eleven", "twelve"] },
+    ];
+
+    const scripted = await applyEditScript(base, script);
+    if (scripted.isErr()) {
+      throw scripted.error;
+    }
+    expect(scripted.value.unresolved).toEqual([]);
+
+    const { changes } = await compareOrThrow(base, scripted.value.buffer);
+    expect(kindsOf(changes).filter((kind) => kind === "table-row-insert")).toHaveLength(4);
+    expect(changes.length).toBeGreaterThan(cells.length);
+    expect(changes.length).toBeLessThanOrEqual(
+      await touchedBlockBudget({ base, applied: scripted.value.applied, baseBlocks }),
+    );
+  });
 
   for (const { name, buffer: base, blocks: baseBlocks } of BASE_CASES) {
     test(
