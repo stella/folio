@@ -35,6 +35,7 @@ describe("fontResolver — single-line ratios are derived from real hhea metrics
     ["montserrat", 1.219],
     ["trebuchet ms", 1.1611],
     ["courier new", 1.1328],
+    ["david", 0.9839],
     ["consolas", 1.1709],
     ["comic sans ms", 1.3936],
     ["impact", 1.2197],
@@ -67,6 +68,18 @@ describe("fontResolver — Aptos falls back to bundled Lato", () => {
     expect(resolved.googleFont).toBe("Lato");
     expect(resolved.cssFallback).toContain("Lato");
     expect(resolved.hasGoogleEquivalent).toBe(true);
+  });
+});
+
+describe("fontResolver — David uses a Hebrew serif fallback", () => {
+  test("keeps the authored face first and loads Noto Serif Hebrew", () => {
+    const resolved = resolveFontFamily("David");
+
+    expect(resolved.googleFont).toBe("Noto Serif Hebrew");
+    expect(parseFontFamilyList(resolved.cssFallback).slice(0, 2)).toEqual([
+      "David",
+      "Noto Serif Hebrew",
+    ]);
   });
 });
 

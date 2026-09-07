@@ -24,6 +24,23 @@ describe("wordFontDefinitions", () => {
     });
   });
 
+  test("includes the Hebrew faces used by reference documents", () => {
+    expect(wordFontDefinitions("/word-fonts")).toEqual(
+      expect.arrayContaining([
+        {
+          family: "David",
+          filePath: "/word-fonts/david.ttf",
+          weight: 400,
+        },
+        {
+          family: "David",
+          filePath: "/word-fonts/davidbd.ttf",
+          weight: 700,
+        },
+      ]),
+    );
+  });
+
   test("uses one unique source file for each declared face", () => {
     const paths = wordFontDefinitions("/word-fonts").map(({ filePath }) => filePath);
     expect(new Set(paths).size).toBe(paths.length);
