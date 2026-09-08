@@ -18,6 +18,7 @@ import JSZip from "jszip";
 
 import { buildTextBoxTableDocument, findTextBoxShape } from "./__tests__/textBoxTableDocument";
 import { FolioDocxReviewer } from "./ai-edits/headless";
+import { compareDocx } from "./compare/compare";
 import { parseDocx } from "./docx/parser";
 import { createDocx } from "./docx/rezip";
 import { repackDocx } from "./docx/rezip";
@@ -251,6 +252,46 @@ const withPendingMainChange = async (source: ArrayBuffer, text: string): Promise
 };
 
 describe("generateRedlineDocx", () => {
+  test("package comparisons share one inline-alignment allowance across stories", async () => {
+    const alternating = (first: string, second: string): string =>
+      Array.from({ length: 2000 }, (_unused, index) => (index % 2 === 0 ? first : second)).join(
+        " ",
+      );
+    const before = alternating("a", "b");
+    const after = alternating("b", "a");
+    const base = await buildStoryDocument({
+      bodyText: before,
+      headerText: before,
+      footnoteText: before,
+    });
+    const revised = await buildStoryDocument({
+      bodyText: after,
+      headerText: after,
+      footnoteText: after,
+    });
+    const buffers = [(await generateRedlineDocx(base, revised)).buffer];
+    const compared = await compareDocx(base, revised, {
+      author: "compare",
+      timestamp: "2026-09-08T12:00:00.000Z",
+      onUnverified: "emit",
+    });
+    if (compared.isErr()) {
+      throw compared.error;
+    }
+    buffers.push(compared.value.buffer);
+
+    for (const buffer of buffers) {
+      const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
+      const hasFineGrainedChange = reviewer.listStories().map(({ handle }) => {
+        const story = reviewer.readReviewedStory({ story: handle, view: "current-markup" });
+        return (story?.changes ?? [])
+          .filter(({ type }) => type === "insertion" || type === "deletion")
+          .some(({ text }) => text.length < before.length);
+      });
+      expect(hasFineGrainedChange).toEqual([true, false, false]);
+    }
+  });
+
   test("redlines a nested text-box table-cell edit without changing either source", async () => {
     const base = await buildTextBoxTableDocument("Original cell value");
     const revised = await buildTextBoxTableDocument("Revised cell value");

@@ -47,7 +47,7 @@ import { projectTableGeometry } from "../ai-edits/table-geometry";
 import type { FolioTableTemplates } from "../ai-edits/table-template";
 import { numberingReferenceKeysOf } from "../ai-edits/snapshot";
 import type { FolioAIBlock, FolioAIEditSkipReason, FolioAIEditSnapshot } from "../ai-edits/types";
-import type { WordDiffGranularity } from "../ai-edits/word-diff";
+import { createScopedWordDiffOptions, type WordDiffGranularity } from "../ai-edits/word-diff";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { pairFolioDocumentStories } from "../document-stories";
 import { planStoryCompare, type CompareStoryPlan, type CompareTableTemplateRequest } from "./plan";
@@ -494,6 +494,7 @@ export const applyComparison = (
   // body revision with it.
   let idSeed = revisionStamp.idSeed;
   let documentChanged = false;
+  const wordDiff = createScopedWordDiffOptions({ granularity });
   for (const { pair, plan } of planned) {
     changes.push(...plan.changes);
     if (plan.operations.length === 0 && plan.tableGeometryPairings.length === 0) {
@@ -537,7 +538,7 @@ export const applyComparison = (
         story: pair.baseStory,
         snapshot: pair.baseSnapshot,
         revisionStamp: { date: revisionStamp.date, idSeed },
-        wordDiff: { granularity },
+        wordDiff,
         batch: {
           version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
           mode: "tracked-changes",

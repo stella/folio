@@ -77,7 +77,7 @@ import { panic, TaggedError } from "better-result";
 
 import { FolioDocxReviewer, type FolioDocumentStoryHandle } from "./ai-edits/headless";
 import type { FolioAIBlock, FolioAIBlockPreviewRun } from "./ai-edits/types";
-import { diffWordSegments, type WordDiffSegment } from "./ai-edits/word-diff";
+import { createWordDiffSession, type WordDiffSegment } from "./ai-edits/word-diff";
 import { pairFolioDocumentStories, type FolioDocumentStoryPair } from "./document-stories";
 import {
   FOLIO_DOCUMENT_METADATA_PROPERTIES,
@@ -724,6 +724,7 @@ type CompareStoryBlocksOptions = FolioDocumentStoryPair & {
   includeText: boolean;
   includeFormatting: boolean;
   lcsBudget: FolioVersionComparisonLcsBudget;
+  diffText: ReturnType<typeof createWordDiffSession>["diff"];
 };
 
 const compareStoryBlocks = ({
@@ -735,6 +736,7 @@ const compareStoryBlocks = ({
   includeText,
   includeFormatting,
   lcsBudget,
+  diffText,
 }: CompareStoryBlocksOptions): FolioStoryDiff => {
   const changes: FolioBlockDiff[] = [];
   const counts = createSummaryCounts();
@@ -757,7 +759,7 @@ const compareStoryBlocks = ({
           type: "modified",
           blockId: revisedBlock.id,
           kind: revisedBlock.kind,
-          segments: diffWordSegments(baseBlock.text, revisedBlock.text),
+          segments: diffText(baseBlock.text, revisedBlock.text),
           baseHandle,
           revisedHandle,
         });
@@ -949,6 +951,7 @@ export const compareDocxVersions = async (
   // fresh near-MAX_LCS_CELLS allocation per story. See
   // FolioVersionComparisonLcsBudget's doc comment.
   const lcsBudget = createLcsBudget();
+  const wordDiffSession = createWordDiffSession();
 
   for (const pair of pairFolioDocumentStories(baseStories, revisedStories)) {
     const baseBlocks = pair.baseStory
@@ -967,6 +970,7 @@ export const compareDocxVersions = async (
       includeText: scopes.has("text"),
       includeFormatting: scopes.has("formatting"),
       lcsBudget,
+      diffText: wordDiffSession.diff,
     });
     stories.push(storyDiff);
     for (const change of storyDiff.changes) {

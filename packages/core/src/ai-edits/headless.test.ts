@@ -1996,6 +1996,74 @@ describe("headless docx review round-trip", () => {
     );
   });
 
+  test("both headless apply entry points honor character-granularity redlines", async () => {
+    const baseline = await makeParaIdBaseline(readFixture());
+    for (const entryPoint of ["operations", "document-operations"] as const) {
+      const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
+      const target = findBlock(reviewer.snapshot().blocks, "Heading");
+      const operation = {
+        id: `character-${entryPoint}`,
+        type: "replaceInBlock" as const,
+        blockId: target.id,
+        find: "Heading",
+        replace: "Hearing",
+      };
+      const options = {
+        wordDiff: { granularity: "character" as const },
+        revisionStamp: { date: "2026-09-08T12:00:00.000Z", idSeed: 100 },
+      };
+
+      if (entryPoint === "operations") {
+        reviewer.applyOperations([operation], options);
+      } else {
+        reviewer.applyDocumentOperations(
+          { version: 1, mode: "tracked-changes", operations: [operation] },
+          options,
+        );
+      }
+
+      expect(reviewer.getContentAsText({ annotated: true })).toContain(
+        'Hea<del author="AI">d</del><ins author="AI">r</ins>ing paragraph.',
+      );
+    }
+  });
+
+  test("story-scoped headless apply honors character-granularity redlines", async () => {
+    const baseline = await makeHeaderFooterBaseline();
+    const story = { type: "header", relationshipId: HEADER_RELATIONSHIP_ID } as const;
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
+    const snapshot = reviewer.snapshotStory(story);
+    if (!snapshot) {
+      throw new Error("expected the header story");
+    }
+    const target = findBlock(snapshot.blocks, "Header text");
+
+    const result = reviewer.applyDocumentOperationsToStory({
+      story,
+      snapshot,
+      batch: {
+        version: 1,
+        mode: "tracked-changes",
+        operations: [
+          {
+            id: "character-story",
+            type: "replaceInBlock",
+            blockId: target.id,
+            find: "Header",
+            replace: "Heater",
+          },
+        ],
+      },
+      wordDiff: { granularity: "character" },
+      revisionStamp: { date: "2026-09-08T12:00:00.000Z", idSeed: 100 },
+    });
+
+    expect(result.status).toBe("committed");
+    expect(reviewer.readReviewedStory({ story, view: "current-markup" })?.text).toContain(
+      'Hea<del author="AI">d</del><ins author="AI">t</ins>er text',
+    );
+  });
+
   test("applyDocumentOperations executes a versioned tracked-change batch", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI Reviewer" });
