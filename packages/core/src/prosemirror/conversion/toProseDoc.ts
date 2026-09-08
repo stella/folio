@@ -346,8 +346,16 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
 
   const finalSectionStart =
     document.package.document.sections?.at(-1)?.properties.sectionStart ?? null;
+  const adjustLineHeightInTable = document.package.settings?.adjustLineHeightInTable === true;
   const pmDoc = stampNumberedRefFieldBaselines(
-    schema.node("doc", { _finalSectionStart: finalSectionStart }, nodes),
+    schema.node(
+      "doc",
+      {
+        _finalSectionStart: finalSectionStart,
+        _adjustLineHeightInTable: adjustLineHeightInTable,
+      },
+      nodes,
+    ),
   );
   assertValidProseMirrorDocument(
     pmDoc,

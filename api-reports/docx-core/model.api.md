@@ -179,6 +179,7 @@ export type DocumentSettings = {
     compatibilityMode?: number;
     defaultTabStop: number;
     evenAndOddHeaders?: boolean;
+    adjustLineHeightInTable?: true;
     updateFields?: boolean;
     themeFontLang?: {
         eastAsia?: string;

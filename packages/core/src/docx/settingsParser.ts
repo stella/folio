@@ -132,6 +132,19 @@ export function parseSettings(xml: string | null): FolioDocumentSettings {
   if (splitPageBreakAndParagraphMark && parseBooleanElement(splitPageBreakAndParagraphMark)) {
     settings.splitPageBreakAndParagraphMark = true;
   }
+  const wordprocessingCompat = root
+    ? findChildByNamespaceUri(root, WORDPROCESSINGML_NAMESPACE_URIS, "compat")
+    : null;
+  const adjustLineHeightInTable = wordprocessingCompat
+    ? findChildByNamespaceUri(
+        wordprocessingCompat,
+        WORDPROCESSINGML_NAMESPACE_URIS,
+        "adjustLineHeightInTable",
+      )
+    : null;
+  if (adjustLineHeightInTable && parseBooleanElement(adjustLineHeightInTable)) {
+    settings.adjustLineHeightInTable = true;
+  }
   const applyBreakingRules = compat ? findChild(compat, "w", "applyBreakingRules") : null;
   const useLegacyEthiopicAmharicRules =
     applyBreakingRules !== null && parseBooleanElement(applyBreakingRules);

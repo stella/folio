@@ -10,6 +10,7 @@ export const DocExtension = createNodeExtension({
   nodeSpec: {
     attrs: {
       _finalSectionStart: { default: null },
+      _adjustLineHeightInTable: { default: false },
     },
     content: "(paragraph | horizontalRule | pageBreak | table | textBox | blockSdt)+",
   },
