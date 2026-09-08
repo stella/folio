@@ -1,5 +1,13 @@
 # @stll/folio-core
 
+## 0.35.1
+
+### Patch Changes
+
+- [#773](https://github.com/stella/folio/pull/773) [`edb6ff1`](https://github.com/stella/folio/commit/edb6ff1bd5bbe2feb9446202aec1ae6e525d2e9c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve run property revision boundaries when parsing DOCX content.
+
+- [#775](https://github.com/stella/folio/pull/775) [`3c90955`](https://github.com/stella/folio/commit/3c90955f7e61215b7479747e25067bf761f2f7c6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Widen the `@stll/template-conditions` dependency to `>=0.4.0 <1.0.0`. folio-core consumes only the scanner surface, so a host monorepo that already provides template-conditions as a workspace package satisfies the range across 0.x minors instead of installing a second registry copy beside its own.
+
 ## 0.35.0
 
 ### Minor Changes
