@@ -2441,7 +2441,7 @@ export function renderLine(
   // are rendered visually (unlike 'nowrap' which collapses them).
   lineEl.style.whiteSpace = "pre";
 
-  lineEl.style.overflow = "visible";
+  lineEl.style.overflow = block.attrs?.suppressEmptyParagraphHeight ? "hidden" : "visible";
 
   // Per-line floating margins (leftOffset/rightOffset) are now applied by
   // renderParagraphFragment via MeasuredLine offsets from re-measurement.

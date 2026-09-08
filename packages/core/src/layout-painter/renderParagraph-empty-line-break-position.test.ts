@@ -210,3 +210,49 @@ describe("blank line-break rows carry a resolvable position", () => {
     expect(marker?.dataset["pmStart"]).toBe("2");
   });
 });
+
+describe("suppressed paragraph positions", () => {
+  test("keeps every hidden source run positioned while clipping its zero-height line", () => {
+    const hiddenBlock: ParagraphBlock = {
+      kind: "paragraph",
+      id: "hidden",
+      pmStart: 0,
+      pmEnd: 14,
+      attrs: { suppressEmptyParagraphHeight: true },
+      runs: [
+        { kind: "text", text: "Hidden", hidden: true, pmStart: 1, pmEnd: 7 },
+        { kind: "text", text: " source", hidden: true, italic: true, pmStart: 7, pmEnd: 14 },
+      ],
+    };
+    const lineEl = renderLine(
+      hiddenBlock,
+      {
+        fromRun: 0,
+        fromChar: 0,
+        toRun: 1,
+        toChar: 7,
+        width: 0,
+        ascent: 0,
+        descent: 0,
+        lineHeight: 0,
+      },
+      undefined,
+      fakeDocument,
+      {
+        availableWidth: 360,
+        isLastLine: true,
+        isFirstLine: true,
+        paragraphEndsWithLineBreak: false,
+        leftIndentPx: 0,
+      },
+    ) as unknown as FakeElement;
+
+    expect(lineEl.style["overflow"]).toBe("hidden");
+    expect(
+      positionedSpans(lineEl).map((span) => [span.dataset["pmStart"], span.dataset["pmEnd"]]),
+    ).toEqual([
+      ["1", "7"],
+      ["7", "14"],
+    ]);
+  });
+});

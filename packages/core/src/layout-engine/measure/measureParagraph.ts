@@ -1368,27 +1368,29 @@ export function measureParagraph(
   const lines: MeasuredLine[] = [];
   let consecutiveHyphenatedLines = 0;
 
+  if (attrs?.suppressEmptyParagraphHeight) {
+    const finalRunIndex = Math.max(0, runs.length - 1);
+    const finalRun = runs.at(-1);
+    lines.push({
+      fromRun: 0,
+      fromChar: 0,
+      toRun: finalRunIndex,
+      toChar: finalRun?.kind === "text" ? finalRun.text.length : 0,
+      width: 0,
+      ascent: 0,
+      descent: 0,
+      lineHeight: 0,
+    });
+
+    return {
+      kind: "paragraph",
+      lines,
+      totalHeight: 0,
+    };
+  }
+
   // Handle empty paragraph
   if (runs.length === 0) {
-    if (attrs?.suppressEmptyParagraphHeight) {
-      lines.push({
-        fromRun: 0,
-        fromChar: 0,
-        toRun: 0,
-        toChar: 0,
-        width: 0,
-        ascent: 0,
-        descent: 0,
-        lineHeight: 0,
-      });
-
-      return {
-        kind: "paragraph",
-        lines,
-        totalHeight: 0,
-      };
-    }
-
     const emptyFontSize = attrs?.defaultFontSize ?? DEFAULT_FONT_SIZE;
     const emptyFontFamily = attrs?.defaultFontFamily ?? DEFAULT_FONT_FAMILY;
     const emptyMetrics = calculateEmptyParagraphMetrics(

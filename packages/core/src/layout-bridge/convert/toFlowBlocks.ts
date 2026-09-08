@@ -1861,6 +1861,10 @@ function hasOnlyVisuallyEmptyTextRuns(runs: Run[]): boolean {
   );
 }
 
+function hasOnlyHiddenTextRuns(runs: Run[]): boolean {
+  return runs.length > 0 && runs.every((run) => run.kind === "text" && run.hidden === true);
+}
+
 function convertParagraph(
   node: PMNode,
   startPos: number,
@@ -1914,11 +1918,13 @@ function convertParagraph(
       }
     }
   }
-  if (runs.length === 0 && defaultTextFormatting?.hidden === true) {
+  const isFullyHiddenParagraph =
+    defaultTextFormatting?.hidden === true && (runs.length === 0 || hasOnlyHiddenTextRuns(runs));
+  if (isFullyHiddenParagraph && attrs.listMarker !== undefined) {
+    attrs.listMarkerHidden = true;
+  }
+  if (isFullyHiddenParagraph) {
     attrs.suppressEmptyParagraphHeight = true;
-    if (attrs.listMarker !== undefined) {
-      attrs.listMarkerHidden = true;
-    }
   }
   const hasVisibleParagraphPayload =
     (attrs.listMarker !== undefined && !attrs.listMarkerHidden) ||
