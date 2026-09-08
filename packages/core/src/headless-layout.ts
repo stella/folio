@@ -36,6 +36,7 @@ import { Result, TaggedError } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 
 import { parseDocx } from "./docx/parser";
+import { formatOoxmlCounter } from "./docx/ooxmlCounterFormatter";
 import { toArrayBuffer, type DocxInput } from "./utils/docxInput";
 import { buildFontAlternates } from "./fonts/fontAlternates";
 import { extractEmbeddedFonts, type EmbeddedFont } from "./fonts/embeddedFonts";
@@ -76,6 +77,17 @@ import type { PageFurnitureInputs } from "./display-list/build/furniture";
 import { toProseDoc } from "./prosemirror/conversion/toProseDoc";
 import { getDocumentWatermark } from "./watermark/index";
 import type { Document, HeaderFooter, Watermark } from "./types/document";
+
+const formatEndnoteTexts = (
+  numbers: ReadonlyMap<number, number>,
+  formatNumber: (displayNumber: number) => string,
+): ReadonlyMap<number, string> => {
+  const texts = new Map<number, string>();
+  for (const [id, displayNumber] of numbers) {
+    texts.set(id, formatNumber(displayNumber));
+  }
+  return texts;
+};
 
 /**
  * Constructs the painter takes from render options rather than from `Layout`.
@@ -480,7 +492,14 @@ export const layoutDocxHeadless = async (
       endnotes,
       collectEndnoteRefs(authored).map((ref) => ref.endnoteId),
     );
-    const blocks = remapNoteMarkerText(authored, { footnoteNumbers, endnoteNumbers });
+    const endnoteNumberFormat = finalSection?.endnotePr?.numFmt ?? "lowerRoman";
+    const endnoteTexts = formatEndnoteTexts(endnoteNumbers, (displayNumber) =>
+      formatOoxmlCounter(displayNumber, endnoteNumberFormat),
+    );
+    const blocks = remapNoteMarkerText(authored, {
+      footnoteNumbers,
+      endnoteTexts,
+    });
 
     const measures = measureBlocks(blocks, contentWidth);
 

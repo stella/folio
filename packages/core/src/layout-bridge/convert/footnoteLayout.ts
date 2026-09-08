@@ -163,8 +163,8 @@ export function computeNoteDisplayNumbers(
 export type NoteDisplayNumberMaps = {
   /** footnote `w:id` → sequential display number */
   footnoteNumbers?: ReadonlyMap<number, number>;
-  /** endnote `w:id` → sequential display number */
-  endnoteNumbers?: ReadonlyMap<number, number>;
+  /** endnote `w:id` → formatted display text */
+  endnoteTexts?: ReadonlyMap<number, string>;
 };
 
 /**
@@ -179,7 +179,7 @@ export type NoteDisplayNumberMaps = {
  * template preview substitution).
  */
 export function remapNoteMarkerText(blocks: FlowBlock[], maps: NoteDisplayNumberMaps): FlowBlock[] {
-  if ((maps.footnoteNumbers?.size ?? 0) === 0 && (maps.endnoteNumbers?.size ?? 0) === 0) {
+  if ((maps.footnoteNumbers?.size ?? 0) === 0 && (maps.endnoteTexts?.size ?? 0) === 0) {
     return blocks;
   }
 
@@ -250,20 +250,20 @@ function remapNoteMarkerRun(run: Run, maps: NoteDisplayNumberMaps): Run {
   if (run.kind !== "text") {
     return run;
   }
-  const displayNumber = getRunDisplayNumber(run, maps);
-  if (displayNumber === undefined) {
+  const displayText = getRunDisplayText(run, maps);
+  if (displayText === undefined) {
     return run;
   }
-  const text = String(displayNumber);
-  return run.text === text ? run : { ...run, text };
+  return run.text === displayText ? run : { ...run, text: displayText };
 }
 
-function getRunDisplayNumber(run: TextRun, maps: NoteDisplayNumberMaps): number | undefined {
+function getRunDisplayText(run: TextRun, maps: NoteDisplayNumberMaps): string | undefined {
   if (run.footnoteRefId !== undefined) {
-    return maps.footnoteNumbers?.get(run.footnoteRefId);
+    const displayNumber = maps.footnoteNumbers?.get(run.footnoteRefId);
+    return displayNumber === undefined ? undefined : String(displayNumber);
   }
   if (run.endnoteRefId !== undefined) {
-    return maps.endnoteNumbers?.get(run.endnoteRefId);
+    return maps.endnoteTexts?.get(run.endnoteRefId);
   }
   return undefined;
 }

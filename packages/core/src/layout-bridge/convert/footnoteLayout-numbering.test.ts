@@ -196,7 +196,7 @@ describe("remapNoteMarkerText", () => {
 
     const remapped = remapNoteMarkerText(blocks, {
       footnoteNumbers: new Map([[5, 1]]),
-      endnoteNumbers: new Map([[8, 1]]),
+      endnoteTexts: new Map([[8, "i"]]),
     });
 
     const footnoteParagraph = remapped.at(0);
@@ -205,7 +205,27 @@ describe("remapNoteMarkerText", () => {
       throw new Error("Expected paragraph blocks");
     }
     expect(footnoteParagraph.runs.at(0)).toMatchObject({ text: "1", footnoteRefId: 5 });
-    expect(endnoteParagraph.runs.at(0)).toMatchObject({ text: "1", endnoteRefId: 8 });
+    expect(endnoteParagraph.runs.at(0)).toMatchObject({ text: "i", endnoteRefId: 8 });
+  });
+
+  test("uses preformatted endnote display text", () => {
+    const blocks: FlowBlock[] = [
+      {
+        kind: "paragraph",
+        id: "en",
+        runs: [{ kind: "text", text: "8", endnoteRefId: 8 }],
+      },
+    ];
+
+    const remapped = remapNoteMarkerText(blocks, {
+      endnoteTexts: new Map([[8, "C"]]),
+    });
+
+    const endnoteParagraph = remapped.at(0);
+    if (endnoteParagraph?.kind !== "paragraph") {
+      throw new Error("Expected a paragraph block");
+    }
+    expect(endnoteParagraph.runs.at(0)).toMatchObject({ text: "C", endnoteRefId: 8 });
   });
 });
 
