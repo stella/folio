@@ -88,6 +88,8 @@ import { marksToTextFormatting } from "./fromProseDoc";
 import { shadingToRunShadingAttrs } from "./runShadingMark";
 import { sdtAttrsFromProperties } from "./sdtAttrs";
 
+const DETACHED_WATERMARK_HOST = Symbol.for("stll.detachedWatermarkHost");
+
 /**
  * Options for document conversion
  */
@@ -4123,12 +4125,24 @@ export function headerFooterToProseDoc(
     const out: PMNode[] = [];
     for (const block of blocks) {
       if (block.type === "paragraph") {
-        out.push(
-          ...convertParagraphWithTextBoxes(block, styleResolver, {
-            textBoxGroupId: nextTextBoxGroupId(),
-            context: conversionContext,
-          }),
-        );
+        const paragraphNodes = convertParagraphWithTextBoxes(block, styleResolver, {
+          textBoxGroupId: nextTextBoxGroupId(),
+          context: conversionContext,
+        });
+        if (Reflect.get(block, DETACHED_WATERMARK_HOST) === true) {
+          const paragraphNodeIndex = paragraphNodes.findIndex(
+            ({ type }) => type.name === "paragraph",
+          );
+          const paragraphNode = paragraphNodes[paragraphNodeIndex];
+          if (paragraphNode) {
+            paragraphNodes[paragraphNodeIndex] = paragraphNode.type.create(
+              { ...paragraphNode.attrs, _detachedWatermarkHost: true },
+              paragraphNode.content,
+              paragraphNode.marks,
+            );
+          }
+        }
+        out.push(...paragraphNodes);
       } else if (block.type === "table") {
         out.push(convertTable(block, styleResolver, conversionContext));
       } else {

@@ -7,6 +7,7 @@
  * manager.
  */
 
+import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import type { EditorState as EditorStateT } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
@@ -72,6 +73,21 @@ type MountedView = {
   view: EditorView;
 };
 
+const DETACHED_WATERMARK_HOST = Symbol.for("stll.detachedWatermarkHost");
+
+const headerFooterToProseDocWithDetachedWatermarkHost = (
+  headerFooter: HeaderFooter,
+  options: { styles?: StyleDefinitions; theme?: Theme | null },
+): PMNode => {
+  const markedContent: BlockContent[] = headerFooter.content.map((block, blockIndex) => {
+    if (blockIndex !== headerFooter.watermarkBlockIndex || block.type !== "paragraph") {
+      return block;
+    }
+    return { ...block, [DETACHED_WATERMARK_HOST]: true };
+  });
+  return headerFooterToProseDoc(markedContent, options);
+};
+
 const buildInitialState = (
   headerFooter: HeaderFooter,
   styles: StyleDefinitions | null | undefined,
@@ -85,8 +101,10 @@ const buildInitialState = (
   if (theme !== undefined) {
     proseDocOptions.theme = theme;
   }
-
-  const document = headerFooterToProseDoc(headerFooter.content, proseDocOptions);
+  const document =
+    headerFooter.watermarkBlockIndex === undefined
+      ? headerFooterToProseDoc(headerFooter.content, proseDocOptions)
+      : headerFooterToProseDocWithDetachedWatermarkHost(headerFooter, proseDocOptions);
   return ensureBaseDirectionInState(
     ensureParaIdsInState(
       EditorState.create({

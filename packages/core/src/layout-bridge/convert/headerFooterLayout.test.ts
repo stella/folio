@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import type { FlowBlock, Measure, ParagraphBlock, TableBlock } from "../../layout-engine/types";
 import { headerFooterToProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import { schema } from "../../prosemirror/schema";
-import type { HeaderFooter } from "../../types/document";
+import type { BlockContent, HeaderFooter } from "../../types/document";
 import type { HeaderFooterMetrics } from "./headerFooterLayout";
 import {
   calculateHeaderFooterBodyTopClearance,
@@ -13,6 +13,18 @@ import {
   convertHeaderFooterToContent,
   normalizeHeaderFooterMeasureBlocks,
 } from "./headerFooterLayout";
+
+const DETACHED_WATERMARK_HOST = Symbol.for("stll.detachedWatermarkHost");
+
+const headerFooterToProseDocWithDetachedWatermarkHost = (headerFooter: HeaderFooter) => {
+  const markedContent: BlockContent[] = headerFooter.content.map((block, blockIndex) => {
+    if (blockIndex !== headerFooter.watermarkBlockIndex || block.type !== "paragraph") {
+      return block;
+    }
+    return { ...block, [DETACHED_WATERMARK_HOST]: true };
+  });
+  return headerFooterToProseDoc(markedContent);
+};
 
 const metrics: HeaderFooterMetrics = {
   section: "header",
@@ -1040,5 +1052,59 @@ describe("convertHeaderFooterPmDocToContent", () => {
 
     expect(fromContent?.marginPushBottom).toBe(12);
     expect(fromPmDoc?.marginPushBottom).toBe(12);
+  });
+
+  test("keeps one line of clearance for an unformatted detached watermark host", () => {
+    const hf: HeaderFooter = {
+      type: "header",
+      hdrFtrType: "default",
+      content: [{ type: "paragraph", content: [] }],
+      watermark: { kind: "text", text: "DRAFT" },
+      watermarkBlockIndex: 0,
+    };
+
+    const fromContent = convertHeaderFooterToContent(hf, 456, pmMetrics, {
+      measureBlocks,
+    });
+    const pmDoc = headerFooterToProseDocWithDetachedWatermarkHost(hf);
+    const fromPmDoc = convertHeaderFooterPmDocToContent(pmDoc, 456, pmMetrics, {
+      measureBlocks,
+    });
+    const barePmDoc = headerFooterToProseDoc(hf.content);
+    const bare = convertHeaderFooterPmDocToContent(barePmDoc, 456, pmMetrics, {
+      measureBlocks,
+    });
+
+    expect(fromContent?.blocks.at(0)).toMatchObject({
+      kind: "paragraph",
+      attrs: { suppressEmptyParagraphHeight: false },
+    });
+    expect(fromContent?.marginPushBottom).toBe(12);
+    expect(fromPmDoc?.marginPushBottom).toBe(12);
+    expect(bare?.marginPushBottom).toBe(0);
+  });
+
+  test("marks the indexed watermark host when another paragraph precedes it", () => {
+    const pmDoc = headerFooterToProseDocWithDetachedWatermarkHost({
+      type: "header",
+      hdrFtrType: "default",
+      content: [
+        { type: "paragraph", content: [] },
+        { type: "paragraph", content: [] },
+      ],
+      watermarkBlockIndex: 1,
+    });
+
+    expect(pmDoc.child(0).attrs["_detachedWatermarkHost"]).toBeNull();
+    expect(pmDoc.child(1).attrs["_detachedWatermarkHost"]).toBe(true);
+  });
+
+  test("rejects malformed detached watermark host metadata with its attr path", () => {
+    const malformedParagraph = schema.node("paragraph", { _detachedWatermarkHost: "invalid" });
+    const malformedDoc = schema.node("doc", null, [malformedParagraph]);
+
+    expect(() =>
+      convertHeaderFooterPmDocToContent(malformedDoc, 456, pmMetrics, { measureBlocks }),
+    ).toThrow("paragraph.attrs._detachedWatermarkHost");
   });
 });

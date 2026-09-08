@@ -35,11 +35,26 @@ import type {
 } from "../../layout-engine/types";
 import { isFloatingImageRun, isFloatingTextBoxBlock } from "../../layout-engine/types";
 import { headerFooterToProseDoc } from "../../prosemirror/conversion/toProseDoc";
-import type { HeaderFooter, StyleDefinitions, Theme } from "../../types/document";
+import type { BlockContent, HeaderFooter, StyleDefinitions, Theme } from "../../types/document";
 import { emuToPixels } from "../../utils/units";
 import type { MeasureBlocksFn } from "./footnoteLayout";
 import { toFlowBlocks } from "./toFlowBlocks";
 import type { ToFlowBlocksOptions } from "./toFlowBlocks";
+
+const DETACHED_WATERMARK_HOST = Symbol.for("stll.detachedWatermarkHost");
+
+const headerFooterToProseDocWithDetachedWatermarkHost = (
+  headerFooter: HeaderFooter,
+  options: { styles?: StyleDefinitions; theme?: Theme | null },
+): PMNode => {
+  const markedContent: BlockContent[] = headerFooter.content.map((block, blockIndex) => {
+    if (blockIndex !== headerFooter.watermarkBlockIndex || block.type !== "paragraph") {
+      return block;
+    }
+    return { ...block, [DETACHED_WATERMARK_HOST]: true };
+  });
+  return headerFooterToProseDoc(markedContent, options);
+};
 
 // =============================================================================
 // 1. Page-level metrics passed in by the caller
@@ -560,9 +575,11 @@ export function calculateHeaderFooterMarginPushBounds(
     blocks.length > 0 &&
     blocks.every(
       (block) =>
+        block.kind === "paragraph" &&
         isPaintlessParagraph(block) &&
         !hasAuthoredVisualContent(block) &&
-        !(block.kind === "paragraph" && preservesInheritedSpacing(block)),
+        block.attrs?.suppressEmptyParagraphHeight !== false &&
+        !preservesInheritedSpacing(block),
     );
   if (isPaintlessStory) {
     return { top: 0, bottom: 0 };
@@ -747,7 +764,10 @@ export function convertHeaderFooterToContent(
   if (options.theme !== undefined) {
     proseDocOptions.theme = options.theme;
   }
-  const pmDoc = headerFooterToProseDoc(headerFooter.content, proseDocOptions);
+  const pmDoc =
+    headerFooter.watermarkBlockIndex === undefined
+      ? headerFooterToProseDoc(headerFooter.content, proseDocOptions)
+      : headerFooterToProseDocWithDetachedWatermarkHost(headerFooter, proseDocOptions);
   const flowOptions: ToFlowBlocksOptions = {};
   if (options.theme !== undefined) {
     flowOptions.theme = options.theme;

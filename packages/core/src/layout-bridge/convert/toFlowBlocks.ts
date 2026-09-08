@@ -6,6 +6,7 @@
  */
 
 import type { Node as PMNode, Mark } from "prosemirror-model";
+import { panic } from "better-result";
 
 import { convertBulletToUnicode } from "../../docx/bulletMarkers";
 import { resolveDocumentGridLinePitch } from "../../docx/documentGrid";
@@ -105,6 +106,21 @@ import {
   halfPointsToPoints,
 } from "../../utils/units";
 import { groupParagraphFrames } from "./paragraphFrames";
+
+const DETACHED_WATERMARK_HOST_ATTR = "_detachedWatermarkHost";
+
+const expectDetachedWatermarkHostAttr = (attrs: Readonly<Record<string, unknown>>): boolean => {
+  const value = Reflect.get(attrs, DETACHED_WATERMARK_HOST_ATTR);
+  if (value === null || value === undefined) {
+    return false;
+  }
+  if (typeof value !== "boolean") {
+    panic(
+      "Invalid ProseMirror detached watermark host attrs:\nparagraph.attrs._detachedWatermarkHost: Expected a boolean.",
+    );
+  }
+  return value;
+};
 
 export { formatCounter, resolveListTemplate } from "../../prosemirror/listMarker";
 
@@ -1943,6 +1959,9 @@ function convertParagraph(
   }
   if (isFullyHiddenParagraph) {
     attrs.suppressEmptyParagraphHeight = true;
+  }
+  if (runs.length === 0 && expectDetachedWatermarkHostAttr(node.attrs)) {
+    attrs.suppressEmptyParagraphHeight = false;
   }
   const hasVisibleParagraphPayload =
     (attrs.listMarker !== undefined && !attrs.listMarkerHidden) ||
