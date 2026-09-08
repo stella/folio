@@ -206,6 +206,86 @@ describe("tracked run formatting", () => {
     });
   });
 
+  test("tracks same-valued inherited font properties as new direct formatting", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await createSameValuedDirectFormattingDocument(),
+      { author: "Reviewer" },
+    );
+    const block = reviewer.snapshot().blocks.at(0);
+    const range = block
+      ? createFolioAITextRangeHandle({
+          blockId: block.id,
+          text: block.text,
+          startOffset: 0,
+          endOffset: "Inherited".length,
+        })
+      : null;
+    if (!range) {
+      throw new Error("expected an inherited formatting range");
+    }
+
+    const result = reviewer.applyOperations([
+      {
+        id: "format-inherited",
+        type: "formatRange",
+        range,
+        formatting: { fontFamily: "Georgia", fontSizePt: 10.5, color: "C00000" },
+      },
+    ]);
+
+    expect(result.skipped).toEqual([]);
+    expect(reviewer.readReviewedStory({ view: "current-markup" })?.changes).toEqual([
+      expect.objectContaining({ type: "formatting", text: "Inherited" }),
+    ]);
+    expect(
+      reviewer.readReviewedStory({ view: "final" })?.snapshot.blocks.at(0)?.previewRuns?.at(0)
+        ?.directFormatting,
+    ).toEqual({ fontFamily: "Georgia", fontSizePt: 10.5, color: "#C00000" });
+  });
+
+  test("clears only direct font properties in a mixed inherited range", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await createSameValuedDirectFormattingDocument(),
+      { author: "Reviewer" },
+    );
+    const block = reviewer.snapshot().blocks.at(0);
+    const range = block
+      ? createFolioAITextRangeHandle({
+          blockId: block.id,
+          text: block.text,
+          startOffset: 0,
+          endOffset: block.text.length,
+        })
+      : null;
+    if (!range) {
+      throw new Error("expected a mixed formatting range");
+    }
+
+    const result = reviewer.applyOperations([
+      {
+        id: "clear-direct",
+        type: "formatRange",
+        range,
+        formatting: { fontFamily: null, fontSizePt: null, color: null },
+      },
+    ]);
+
+    expect(result.skipped).toEqual([]);
+    expect(reviewer.readReviewedStory({ view: "current-markup" })?.changes).toEqual([
+      expect.objectContaining({ type: "formatting", text: "Direct" }),
+    ]);
+    expect(
+      reviewer.readReviewedStory({ view: "final" })?.snapshot.blocks.at(0)?.previewRuns,
+    ).toEqual([
+      {
+        text: "InheritedDirect",
+        fontFamily: "Georgia",
+        fontSizePt: 10.5,
+        color: "#C00000",
+      },
+    ]);
+  });
+
   test("saves, reopens, accepts, and rejects a formatting revision", async () => {
     const tracked = await applyTrackedBold();
     const trackedXml = await documentXml(tracked);
