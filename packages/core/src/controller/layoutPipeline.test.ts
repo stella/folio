@@ -558,7 +558,7 @@ describe("runLayoutPipeline", () => {
       { noteId: 5, text: "1" },
       { noteId: 2, text: "2" },
       { noteId: 9, text: "3" },
-      { noteId: 8, text: "1" },
+      { noteId: 8, text: "i" },
     ]);
 
     // The footnote area numbering comes from the same map as the body markers.
