@@ -102,6 +102,41 @@ const TEST_EXPLICIT_BLACK_COLOR = " #000000 ";
 const TEST_EXPLICIT_TEXT_COLOR = "#C00000";
 
 describe("renderLine inline image handling", () => {
+  test("hides an unpaintable image while preserving its authored line box", () => {
+    const imageRun: ImageRun = {
+      kind: "image",
+      src: "",
+      width: 200,
+      height: 159,
+      pmStart: 1,
+      pmEnd: 2,
+    };
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "paintless-picture",
+      runs: [imageRun],
+      pmStart: 0,
+      pmEnd: 3,
+    };
+    const line: MeasuredLine = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 0,
+      toChar: 1,
+      width: 200,
+      ascent: 159,
+      descent: 0,
+      lineHeight: 159,
+    };
+
+    const lineEl = renderLine(block, line, undefined, fakeDocument);
+    const imageEl = lineEl.children.at(0);
+
+    expect(imageEl?.style.visibility).toBe("hidden");
+    expect(imageEl?.style.width).toBe("200px");
+    expect(imageEl?.style.aspectRatio).toBe("200 / 159");
+  });
+
   // The plain inline image fits to its container's content width while keeping
   // the run's aspect ratio: width is pinned but `max-width: 100%` + `aspect-ratio`
   // let a wide image scale down inside a narrow column/cell instead of squashing

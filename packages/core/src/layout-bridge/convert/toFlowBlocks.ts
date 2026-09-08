@@ -994,6 +994,17 @@ function buildImageRun(
   return run;
 }
 
+/** A package image whose bytes cannot paint still owns its authored line box. */
+const hasRelationshipBackedImageBox = (attrs: ImageAttrs): boolean =>
+  typeof attrs.rId === "string" &&
+  attrs.rId.length > 0 &&
+  typeof attrs.width === "number" &&
+  Number.isFinite(attrs.width) &&
+  attrs.width >= 0 &&
+  typeof attrs.height === "number" &&
+  Number.isFinite(attrs.height) &&
+  attrs.height >= 0;
+
 /**
  * In TOC paragraphs, strip the resolved Hyperlink character-style colour and
  * underline so the painter's link fallback doesn't fire. The PM doc keeps the
@@ -1116,11 +1127,12 @@ function paragraphToRuns(node: PMNode, startPos: number, _options: FlowConversio
     }
     if (child.type.name === "image") {
       const attrs = expectImageAttrs(child);
-      if (!attrs.src) {
+      if (!attrs.src && !hasRelationshipBackedImageBox(attrs)) {
         // Unsupported DrawingML shapes can survive the parser as image nodes
-        // without a relationship target. They have no paintable payload; a
-        // 100x100 fallback box would render a broken image and incorrectly
-        // consume paragraph flow. Keep the host paragraph, but omit the run.
+        // without a relationship target or authored extent. They have no
+        // paintable payload; a 100x100 fallback box would incorrectly consume
+        // paragraph flow. Relationship-backed package images keep their real
+        // line box even when the browser cannot paint that image format.
         return;
       }
       const constrained = constrainImageToPage(
