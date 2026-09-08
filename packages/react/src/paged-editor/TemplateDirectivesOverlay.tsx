@@ -1,7 +1,7 @@
 /**
  * Template Directives Overlay
  *
- * Paints a subtle, translucent highlight over each {{...}} marker's range so a
+ * Paints a subtle, translucent highlight over each marker's range so a
  * marker reads as a token while staying fully visible and editable: the
  * highlight is faint and `pointer-events: none`, so the real text shows through
  * and the caret lands in it normally. Because it's a tint (not an opaque cover),
@@ -10,7 +10,7 @@
  *
  * Rails are quiet by default and loud on intent: every rail renders faint until
  * the block either contains the caret (innermost wins) or is hovered (via its
- * rail or one of its {{#if}}/{{/if}} chips), at which point that one block's
+ * rail or one of its `{% if %}`/`{% endif %}` chips), at which point that one block's
  * rail and both chips brighten so it can be traced end-to-end. Rails are clipped
  * per page (never across the inter-page gap, header, or footer) and confined to
  * the left margin by a depth budget derived from the margin width.
@@ -69,8 +69,8 @@ const overlayStyles: CSSProperties = {
   zIndex: 10,
 };
 
-const BLOCK_OPENERS = new Set<DirectiveKind>(["if", "each"]);
-const BLOCK_CLOSERS = new Set<DirectiveKind>(["endif", "endeach"]);
+const BLOCK_OPENERS = new Set<DirectiveKind>(["if", "for"]);
+const BLOCK_CLOSERS = new Set<DirectiveKind>(["endif", "endfor"]);
 
 const RAIL_WIDTH = 2.5;
 /** Horizontal gap between adjacent nesting depths' rails. */
@@ -82,10 +82,10 @@ const RAIL_EDGE_PAD = 2;
 /** Drop per-page segments thinner than this (sub-pixel slivers at a page seam). */
 const RAIL_SEGMENT_MIN_HEIGHT = 2;
 
-/** Opener kind of a band ("if" ⇒ condition family, "each" ⇒ loop family). */
-type BandKind = "if" | "each";
+/** Opener kind of a band ("if" ⇒ condition family, "for" ⇒ loop family). */
+type BandKind = "if" | "for";
 
-const bandKindOf = (kind: DirectiveKind): BandKind => (kind === "each" ? "each" : "if");
+const bandKindOf = (kind: DirectiveKind): BandKind => (kind === "for" ? "for" : "if");
 
 /**
  * Deepest nesting level whose rail still fits inside the left margin with a
@@ -168,9 +168,10 @@ type OpenBlock = { range: DirectiveRange; depth: number };
  * a pair share a `blockId`, the rail knows its opener→closer PM span, and each
  * pairing carries the `depth` recorded in this very walk (never a second,
  * possibly-divergent depth pass). A closer matches the nearest opener of the same
- * family ({{/if}} ⇒ {{#if}}, {{/each}} ⇒ {{#each}}) and drops any still-open
- * openers nested above it; a closer with no matching opener is ignored. This keeps
- * a mid-edit / unbalanced template from pairing a {{/if}} with an {{#each}}.
+ * family (`{% endif %}` ⇒ `{% if %}`, `{% endfor %}` ⇒ `{% for %}`) and drops any
+ * still-open openers nested above it; a closer with no matching opener is ignored.
+ * This keeps a mid-edit / unbalanced template from pairing an `{% endif %}` with a
+ * `{% for %}`.
  * Inline (block:false) markers are excluded. Pure function of the ranges.
  */
 export const pairBlockRanges = (ranges: readonly DirectiveRange[]): BlockPairing[] => {
@@ -186,7 +187,7 @@ export const pairBlockRanges = (ranges: readonly DirectiveRange[]): BlockPairing
       stack.push({ range, depth: stack.length });
       continue;
     }
-    const wantOpener: DirectiveKind = range.kind === "endif" ? "if" : "each";
+    const wantOpener: DirectiveKind = range.kind === "endif" ? "if" : "for";
     let matched: OpenBlock | undefined;
     let matchIdx = -1;
     for (let i = stack.length - 1; i >= 0; i -= 1) {
@@ -214,9 +215,9 @@ export const pairBlockRanges = (ranges: readonly DirectiveRange[]): BlockPairing
   return pairings;
 };
 
-/** Hover hint for a closer chip: what it closes, e.g. `/if · hasVerdicts`. */
+/** Hover hint for a closer chip: what it closes, e.g. `endif · hasVerdicts`. */
 export const closerHintLabel = (kind: BandKind, openerExpr: string): string => {
-  const head = kind === "each" ? "/each" : "/if";
+  const head = kind === "for" ? "endfor" : "endif";
   return openerExpr ? `${head} · ${openerExpr}` : head;
 };
 

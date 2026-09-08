@@ -295,8 +295,8 @@ export type DocxEditorProps = {
   /** Monotonic counter from the bridge store; drives the re-scroll. */
   anonymizationSelectionSeq?: number | undefined;
   /**
-   * Render legal-template markers ({{field}}, {{@clause:..}},
-   * {{#if}}/{{#each}}) as rich widgets on the page instead of raw
+   * Render legal-template markers (`{{ field }}`, `{{ clause("Name") }}`,
+   * `{% if %}`/`{% for %}`) as rich widgets on the page instead of raw
    * text. Off for ordinary documents; on for the template editor.
    */
   showTemplateDirectives?: boolean | undefined;

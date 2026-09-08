@@ -106,19 +106,19 @@ describe("segmentBandByPages", () => {
 
 describe("pairBlockRanges", () => {
   test("pairs nested openers with their closers and carries id/kind/expr", () => {
-    // {{#each contracts.risks}} > {{#if hasVerdicts}} ... {{/if}} {{/each}}
+    // {% for r in contracts.risks %} > {% if hasVerdicts %} ... {% endif %} {% endfor %}
     const ranges = [
-      blockRange(0, "each", "contracts.risks"),
+      blockRange(0, "for", "contracts.risks"),
       blockRange(10, "if", "hasVerdicts"),
       blockRange(20, "endif"),
-      blockRange(30, "endeach"),
+      blockRange(30, "endfor"),
     ];
 
     const pairings = pairBlockRanges(ranges);
 
     expect(pairings).toHaveLength(2);
     const inner = pairings.find((p) => p.kind === "if");
-    const outer = pairings.find((p) => p.kind === "each");
+    const outer = pairings.find((p) => p.kind === "for");
     expect(inner).toMatchObject({ blockId: 10, openerFrom: 10, closerFrom: 20, closerTo: 21 });
     expect(inner?.openerExpr).toBe("hasVerdicts");
     expect(outer).toMatchObject({ blockId: 0, closerFrom: 30, openerExpr: "contracts.risks" });
@@ -139,29 +139,30 @@ describe("pairBlockRanges", () => {
   });
 
   test("carries the nesting depth from the same walk", () => {
-    // {{#each}} > {{#if}} ... {{/if}} {{/each}}: depth rides on the pairing so the
-    // rail's indentation and its opener→closer span can never diverge.
+    // {% for %} > {% if %} ... {% endif %} {% endfor %}: depth rides on the
+    // pairing so the rail's indentation and its span can never diverge.
     const pairings = pairBlockRanges([
-      blockRange(0, "each", "items"),
+      blockRange(0, "for", "items"),
       blockRange(10, "if", "cond"),
       blockRange(20, "endif"),
-      blockRange(30, "endeach"),
+      blockRange(30, "endfor"),
     ]);
 
     expect(pairings.find((p) => p.kind === "if")?.depth).toBe(1);
-    expect(pairings.find((p) => p.kind === "each")?.depth).toBe(0);
+    expect(pairings.find((p) => p.kind === "for")?.depth).toBe(0);
   });
 
-  test("kind-aware: a {{/if}} pairs with its {{#if}}, not an intervening {{#each}}", () => {
-    // {{#if}} {{#each}} {{/if}} {{/each}} (crossed nesting). Blind popping would
-    // pair the {{/if}} with the {{#each}} (an each-kind band) and the {{/each}}
-    // with the {{#if}}. Kind-aware matching closes the if correctly and drops the
-    // improperly-nested each rather than mislabelling a band.
+  test("kind-aware: an endif pairs with its if, not an intervening for", () => {
+    // {% if %} {% for %} {% endif %} {% endfor %} (crossed nesting). Blind
+    // popping would pair the {% endif %} with the {% for %} (a for-kind band) and
+    // the {% endfor %} with the {% if %}. Kind-aware matching closes the if
+    // correctly and drops the improperly-nested for rather than mislabelling a
+    // band.
     const pairings = pairBlockRanges([
       blockRange(0, "if", "A"),
-      blockRange(10, "each", "B"),
+      blockRange(10, "for", "B"),
       blockRange(20, "endif"),
-      blockRange(30, "endeach"),
+      blockRange(30, "endfor"),
     ]);
 
     expect(pairings).toHaveLength(1);
@@ -174,10 +175,11 @@ describe("pairBlockRanges", () => {
     });
   });
 
-  test("kind-aware: a {{/if}} never closes an {{#each}}", () => {
-    // {{#each}} {{/if}}: mismatched families must not pair (would be an each-kind
-    // band closed by a /if). Blind popping paired them; kind-aware drops both.
-    const pairings = pairBlockRanges([blockRange(0, "each", "B"), blockRange(10, "endif")]);
+  test("kind-aware: an endif never closes a for", () => {
+    // {% for %} {% endif %}: mismatched families must not pair (would be a
+    // for-kind band closed by an endif). Blind popping paired them; kind-aware
+    // drops both.
+    const pairings = pairBlockRanges([blockRange(0, "for", "B"), blockRange(10, "endif")]);
 
     expect(pairings).toHaveLength(0);
   });
@@ -185,22 +187,22 @@ describe("pairBlockRanges", () => {
 
 describe("closerHintLabel", () => {
   test("names what the closer closes", () => {
-    expect(closerHintLabel("if", "hasVerdicts")).toBe("/if · hasVerdicts");
-    expect(closerHintLabel("each", "contracts.risks")).toBe("/each · contracts.risks");
+    expect(closerHintLabel("if", "hasVerdicts")).toBe("endif · hasVerdicts");
+    expect(closerHintLabel("for", "contracts.risks")).toBe("endfor · contracts.risks");
   });
 
   test("falls back to the bare keyword when there is no expression", () => {
-    expect(closerHintLabel("if", "")).toBe("/if");
-    expect(closerHintLabel("each", "")).toBe("/each");
+    expect(closerHintLabel("if", "")).toBe("endif");
+    expect(closerHintLabel("for", "")).toBe("endfor");
   });
 });
 
 describe("innermostBlockAt", () => {
   const pairings = pairBlockRanges([
-    blockRange(0, "each", "items"),
+    blockRange(0, "for", "items"),
     blockRange(10, "if", "cond"),
     blockRange(20, "endif"),
-    blockRange(30, "endeach"),
+    blockRange(30, "endfor"),
   ]);
 
   test("picks the deepest block whose span contains the caret", () => {
@@ -208,7 +210,7 @@ describe("innermostBlockAt", () => {
   });
 
   test("falls back to the enclosing block when outside the inner one", () => {
-    expect(innermostBlockAt(pairings, 25)).toBe(0); // between /if and /each
+    expect(innermostBlockAt(pairings, 25)).toBe(0); // between endif and endfor
   });
 
   test("returns null outside every block or with no caret", () => {
