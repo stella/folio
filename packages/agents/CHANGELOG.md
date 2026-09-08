@@ -1,5 +1,17 @@
 # @stll/folio-agents
 
+## 0.11.3
+
+### Patch Changes
+
+- [#776](https://github.com/stella/folio/pull/776) [`6dcb318`](https://github.com/stella/folio/commit/6dcb3189516dd12728ec99c8b76f38b85f51cd14) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Compare and track direct paragraph alignment changes while preserving the distinction between direct formatting and style inheritance.
+  Paragraph replacement operations can now clear a direct paragraph style with `null`; paragraph insertion and property schemas expose their existing style and list clear values consistently.
+  Unstamped multi-paragraph insert batches now reserve revision IDs for synthesized paragraph-property changes, so later batches cannot reuse an existing ID.
+  Tracked paragraph insertion receipts include synthesized paragraph-property revisions, so targeted acceptance and rejection resolve the whole operation.
+  Accepting or independently resolving suggested paragraphs at the end of a container keeps every final paragraph mark resolvable.
+- Updated dependencies [[`607c7b0`](https://github.com/stella/folio/commit/607c7b061ecec6d3f15dc6d82fc0ec1334e81887), [`6dcb318`](https://github.com/stella/folio/commit/6dcb3189516dd12728ec99c8b76f38b85f51cd14), [`4569d94`](https://github.com/stella/folio/commit/4569d94efb1ca031e6c2182fcc8af4d31338f388)]:
+  - @stll/folio-core@0.36.0
+
 ## 0.11.2
 
 ### Patch Changes
