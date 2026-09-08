@@ -1,10 +1,8 @@
 export type FolioAIBlockKind = "heading" | "listItem" | "paragraph";
 
-export type FolioAIInlineFormatting = {
-  bold?: boolean;
-  italic?: boolean;
-  underline?: boolean;
-  strike?: boolean;
+export type FolioAIInlineFormatting = Partial<
+  Record<"bold" | "italic" | "underline" | "strike", boolean>
+> & {
   fontFamily?: string | null;
   fontSizePt?: number | null;
   color?: string | null;
