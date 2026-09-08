@@ -7,6 +7,7 @@ import { toFlowBlocks } from "../../../layout-bridge/convert/toFlowBlocks";
 import type { Document } from "../../../types/document";
 import { PARAGRAPH_ALIGNMENT_VALUES } from "../../../types/documentEnumValues";
 import { fromProseDoc } from "../../conversion/fromProseDoc";
+import { toProseDoc } from "../../conversion/toProseDoc";
 import { AUTO_PARAGRAPH_SPACING_PX, formatPx } from "../../../utils/units";
 import { schema, singletonManager } from "../../schema";
 
@@ -361,6 +362,67 @@ describe("ParagraphExtension", () => {
 
     const block = toFlowBlocks(state.doc).at(0);
     expect(block?.attrs?.spacing?.before).toBe(24);
+
+    const saved = fromProseDoc(state.doc, { package: { document: { content: [] } } });
+    const paragraph = saved.package.document.content.at(0);
+    expect(paragraph?.type).toBe("paragraph");
+    if (paragraph?.type !== "paragraph") {
+      return;
+    }
+    expect(paragraph.formatting?.styleId).toBe("Spaced");
+    expect(paragraph.formatting?.spaceBefore).toBeUndefined();
+    expect(paragraph.formatting?.beforeAutospacing).toBeUndefined();
+  });
+
+  test("applying a style does not inline any resolved spacing attribute", () => {
+    const source: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              formatting: {
+                styleId: "Source",
+                spaceBefore: 120,
+                spaceAfter: 240,
+                lineSpacing: 360,
+                lineSpacingRule: "exact",
+                beforeAutospacing: false,
+                afterAutospacing: true,
+              },
+              content: [{ type: "run", content: [{ type: "text", text: "Restyle" }] }],
+            },
+          ],
+        },
+      },
+    };
+    const doc = toProseDoc(source);
+    let state = EditorState.create({ doc, schema, selection: TextSelection.create(doc, 1) });
+    const applyStyle = singletonManager.getCommand("applyStyle");
+    if (!applyStyle) {
+      throw new Error("Missing applyStyle command");
+    }
+
+    applyStyle("Target", {
+      paragraphFormatting: {
+        spaceBefore: 480,
+        spaceAfter: 600,
+        lineSpacing: 240,
+        lineSpacingRule: "auto",
+        beforeAutospacing: true,
+        afterAutospacing: false,
+      },
+    })(state, (tr: Transaction) => {
+      state = state.apply(tr);
+    });
+
+    const saved = fromProseDoc(state.doc, source);
+    const paragraph = saved.package.document.content.at(0);
+    expect(paragraph?.type).toBe("paragraph");
+    if (paragraph?.type !== "paragraph") {
+      return;
+    }
+    expect(paragraph.formatting).toEqual({ styleId: "Target" });
   });
 
   test("applying a style without auto spacing clears the imported auto-spacing baseline (#823)", () => {

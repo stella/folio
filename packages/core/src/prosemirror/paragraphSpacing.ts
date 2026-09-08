@@ -79,11 +79,19 @@ export const directParagraphSpacing = (
       Reflect.deleteProperty(spacing, "spaceAfter");
     }
   }
-  if (attrs.spacingExplicit?.before === true && typeof spaceBefore === "number") {
-    spacing.spaceBefore = spaceBefore;
+  if (spacing.spaceBefore !== undefined || attrs.spacingExplicit?.before === true) {
+    if (typeof spaceBefore === "number") {
+      spacing.spaceBefore = spaceBefore;
+    } else {
+      Reflect.deleteProperty(spacing, "spaceBefore");
+    }
   }
-  if (attrs.spacingExplicit?.after === true && typeof spaceAfter === "number") {
-    spacing.spaceAfter = spaceAfter;
+  if (spacing.spaceAfter !== undefined || attrs.spacingExplicit?.after === true) {
+    if (typeof spaceAfter === "number") {
+      spacing.spaceAfter = spaceAfter;
+    } else {
+      Reflect.deleteProperty(spacing, "spaceAfter");
+    }
   }
   if (
     attrs.lineSpacingExplicit === true ||

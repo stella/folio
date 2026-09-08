@@ -29,6 +29,7 @@ import { expectParagraphAttrs } from "../../attrs";
 import { autospacingMatchesBase } from "../../autospacingBase";
 import { directParagraphAlignment } from "../../paragraphAlignment";
 import { directionIsRtl } from "../../paragraphDirection";
+import { withDirectParagraphSpacing } from "../../paragraphSpacing";
 import type { ParagraphDirection } from "../../paragraphDirection";
 import type { ParagraphAttrs } from "../../schema/nodes";
 import {
@@ -823,15 +824,16 @@ function makeApplyStyle(schema: Schema) {
                 ...(resolvedAttrs.styleName ? { styleName: resolvedAttrs.styleName } : {}),
               }),
             );
-            const originalFormatting = expectParagraphAttrs(node)._originalFormatting;
-            if (originalFormatting?.alignment !== undefined) {
-              const formattingWithoutDirectAlignment = { ...originalFormatting };
-              Reflect.deleteProperty(formattingWithoutDirectAlignment, "alignment");
-              newAttrs["_originalFormatting"] =
-                Object.keys(formattingWithoutDirectAlignment).length > 0
-                  ? formattingWithoutDirectAlignment
-                  : null;
-            }
+            const originalFormatting = {
+              ...expectParagraphAttrs(node)._originalFormatting,
+              styleId,
+            };
+            Reflect.deleteProperty(originalFormatting, "alignment");
+            newAttrs["_originalFormatting"] = withDirectParagraphSpacing(
+              originalFormatting,
+              undefined,
+            );
+            newAttrs["spacingExplicit"] = null;
             // A style with `w:numPr` attaches its numbering (numPr + marker
             // attrs). A style without numbering leaves existing list attrs
             // untouched — direct numbering survives a style switch in Word.

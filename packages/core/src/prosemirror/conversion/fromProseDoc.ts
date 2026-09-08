@@ -1377,11 +1377,19 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
     // A spacing command is a direct override even when the imported value was
     // inherited from a style. Keep the explicit zero instead of dropping the
     // side and letting the style value reappear on the next load.
-    if (attrs.spacingExplicit?.before && typeof spaceBefore === "number") {
-      result.spaceBefore = spaceBefore;
+    if (orig.spaceBefore !== undefined || attrs.spacingExplicit?.before) {
+      if (typeof spaceBefore === "number") {
+        result.spaceBefore = spaceBefore;
+      } else {
+        Reflect.deleteProperty(result, "spaceBefore");
+      }
     }
-    if (attrs.spacingExplicit?.after && typeof spaceAfter === "number") {
-      result.spaceAfter = spaceAfter;
+    if (orig.spaceAfter !== undefined || attrs.spacingExplicit?.after) {
+      if (typeof spaceAfter === "number") {
+        result.spaceAfter = spaceAfter;
+      } else {
+        Reflect.deleteProperty(result, "spaceAfter");
+      }
     }
 
     const originalHasDirectLineSpacing =

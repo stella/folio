@@ -1279,6 +1279,48 @@ describe("fromProseDoc", () => {
     expect(block.formatting?.spaceBefore).toBeUndefined();
   });
 
+  test.each([
+    { attr: "spaceBefore", formatting: { spaceBefore: 200 }, side: "before" },
+    { attr: "spaceAfter", formatting: { spaceAfter: 200 }, side: "after" },
+  ] as const)(
+    "does not restore cleared direct numeric $side spacing from imported provenance",
+    ({ attr, formatting }) => {
+      const document: Document = {
+        package: {
+          document: {
+            content: [
+              {
+                type: "paragraph",
+                formatting,
+                content: [{ type: "run", content: [{ type: "text", text: "Clear spacing" }] }],
+              },
+            ],
+          },
+        },
+      };
+
+      const pmDoc = toProseDoc(document);
+      const paragraph = pmDoc.child(0);
+      const cleared = paragraph.type.create(
+        { ...paragraph.attrs, [attr]: null },
+        paragraph.content,
+      );
+      const clearedPmDoc = schema.node("doc", null, [cleared]);
+
+      expect(directParagraphSpacing(expectParagraphAttrs(cleared))).toBeUndefined();
+      const clearedDocument = fromProseDoc(clearedPmDoc, document);
+      const block = clearedDocument.package.document.content.at(0);
+      expect(block?.type).toBe("paragraph");
+      if (block?.type !== "paragraph") {
+        return;
+      }
+      expect(block.formatting?.[attr]).toBeUndefined();
+      expect(
+        directParagraphSpacing(expectParagraphAttrs(toProseDoc(clearedDocument).child(0))),
+      ).toBeUndefined();
+    },
+  );
+
   test("saves a style reset from direct auto spacing with auto disabled", () => {
     const document: Document = {
       package: {
