@@ -15,6 +15,7 @@ import type {
   SectionProperties,
   Watermark,
 } from "../types/document";
+import { isEmptyParagraph } from "../docx/paragraphParser";
 
 export type { Watermark, TextWatermark, PictureWatermark } from "../types/document";
 
@@ -72,6 +73,19 @@ export function setDocumentWatermark(doc: Document, watermark: Watermark | undef
   if (headers) {
     for (const [rId, header] of headers) {
       const next: HeaderFooter = { ...header };
+      const retainedHostIndex = next.watermarkBlockIndex;
+      const retainedHost =
+        next.rawWatermarkXml !== undefined && retainedHostIndex !== undefined
+          ? next.content.at(retainedHostIndex)
+          : undefined;
+      if (
+        retainedHostIndex !== undefined &&
+        retainedHost?.type === "paragraph" &&
+        isEmptyParagraph(retainedHost)
+      ) {
+        next.content = [...next.content];
+        next.content.splice(retainedHostIndex, 1);
+      }
       if (watermark === undefined) {
         delete next.watermark;
         // No watermark left to position — drop the parsed block index too

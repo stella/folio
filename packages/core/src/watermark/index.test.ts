@@ -99,6 +99,31 @@ describe("setDocumentWatermark", () => {
     expect(header?.rawWatermarkXml).toBeUndefined();
   });
 
+  test.each([
+    { label: "replaced", watermark: { kind: "text", text: "NEW" } satisfies Watermark },
+    { label: "cleared", watermark: undefined },
+  ])("removes a retained watermark host when the watermark is $label", ({ watermark }) => {
+    const retainedHost: HeaderFooter = {
+      ...emptyHeader(),
+      content: [
+        {
+          type: "paragraph",
+          content: [],
+          formatting: { styleId: "Header" },
+        },
+      ],
+      watermark: { kind: "text", text: "OLD" },
+      watermarkBlockIndex: 0,
+      rawWatermarkXml: "<w:p><w:r><w:pict>OLD VML</w:pict></w:r></w:p>",
+    };
+    const doc = makeDoc({ rId1: retainedHost });
+
+    const next = setDocumentWatermark(doc, watermark);
+
+    expect(next.package.headers?.get("rId1")?.content).toEqual([]);
+    expect(retainedHost.content).toHaveLength(1);
+  });
+
   test("passing undefined removes the watermark from every header", () => {
     const doc = makeDoc({
       rId1: { ...emptyHeader(), watermark: { kind: "text", text: "x" } },

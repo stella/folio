@@ -119,10 +119,10 @@ export function parseHeader(
     return result;
   }
 
-  // Watermark detection runs first so the hosting paragraph can be
-  // excluded from regular body parsing — otherwise the parser would
-  // emit an empty paragraph placeholder where the watermark sat (the
-  // run-level VML / DrawingML is not surfaced by `runParser`).
+  // Watermark detection runs independently from regular block parsing. The
+  // run-level VML / DrawingML is owned by `watermarkParser`, while its hosting
+  // paragraph still participates in header flow. Keep that empty, formatted
+  // paragraph so its line box can clear a body margin that overlaps the header.
   const watermarkResult = parseWatermark(rootElement);
   if (watermarkResult) {
     result.watermark = watermarkResult.watermark;
@@ -132,32 +132,23 @@ export function parseHeader(
     // anchored to a stable, package-absolute path by parseHeadersAndFooters,
     // which knows this header part's own path.
   }
-  const contentRoot = watermarkResult
-    ? withoutChild(rootElement, watermarkResult.hostingParagraph)
-    : rootElement;
-
-  result.content = parseBlockContent(contentRoot, styles, theme, numbering, rels, media, {
+  result.content = parseBlockContent(rootElement, styles, theme, numbering, rels, media, {
     inHeaderFooter: true,
     rootXmlns: collectXmlnsDeclarations(rootElement),
   });
+  if (watermarkResult) {
+    const host = result.content.at(watermarkResult.blockIndex);
+    if (host?.type === "paragraph") {
+      // The modeled watermark paints the detached VML / DrawingML. Retain only
+      // the host paragraph's formatting here so header flow keeps its line box
+      // without painting the same artwork a second time.
+      result.content[watermarkResult.blockIndex] = { ...host, content: [] };
+    }
+  }
 
   assignHeaderFooterVerbatimXml(result, headerXml);
 
   return result;
-}
-
-/**
- * Return a shallow copy of `parent` whose `elements` array omits the
- * single child reference `child`. Used to skip the watermark paragraph
- * when feeding the header into `parseBlockContent` — without this the
- * body parser would emit an empty placeholder paragraph where the
- * watermark sits in the source.
- */
-function withoutChild(parent: XmlElement, child: XmlElement): XmlElement {
-  return {
-    ...parent,
-    elements: (parent.elements ?? []).filter((el) => el !== child),
-  };
 }
 
 /**
