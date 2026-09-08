@@ -35,6 +35,13 @@ const sentence = fc
   })
   .map((words) => words.join(" "));
 
+const unicodeText = fc
+  .array(fc.constantFrom("a", " ", "\n", "😀", "👩‍⚖️", "§", "č", "م", "क", "e\u0301"), {
+    minLength: 0,
+    maxLength: 40,
+  })
+  .map((units) => units.join(""));
+
 describe("diffWordSegments", () => {
   test("both strings reconstruct from the segments, at either granularity", () => {
     fc.assert(
@@ -46,6 +53,24 @@ describe("diffWordSegments", () => {
           const segments = diffWordSegments(before, after, { granularity });
           expect(rebuildBefore(segments)).toBe(before);
           expect(rebuildAfter(segments)).toBe(after);
+        },
+      ),
+      propertyConfig({ numRuns: 200 }),
+    );
+  });
+
+  test("arbitrary Unicode reconstructs exactly and aligns deterministically", () => {
+    fc.assert(
+      fc.property(
+        unicodeText,
+        unicodeText,
+        fc.constantFrom("word" as const, "character" as const),
+        (before, after, granularity) => {
+          const first = diffWordSegments(before, after, { granularity });
+          const second = diffWordSegments(before, after, { granularity });
+          expect(first).toEqual(second);
+          expect(rebuildBefore(first)).toBe(before);
+          expect(rebuildAfter(first)).toBe(after);
         },
       ),
       propertyConfig({ numRuns: 200 }),
@@ -139,6 +164,56 @@ describe("diffWordSegments", () => {
     );
   });
 
+  test("anchors a unique term instead of matching more repeated boilerplate", () => {
+    expect(
+      diffWordSegments("the the the the the SIGNATURE PAGE", "the the SIGNATURE PAGE the the the"),
+    ).toEqual([
+      { type: "equal", text: "the the" },
+      { type: "del", text: " the the the" },
+      { type: "equal", text: " SIGNATURE PAGE" },
+      { type: "ins", text: " the the the" },
+    ]);
+  });
+
+  test("preserves the historical LCS tie break when no unique anchor is selected", () => {
+    const cases = [
+      {
+        before: "aabb",
+        after: "bbaa",
+        granularity: "character" as const,
+        expected: [
+          { type: "del" as const, text: "aa" },
+          { type: "equal" as const, text: "bb" },
+          { type: "ins" as const, text: "aa" },
+        ],
+      },
+      {
+        before: "abab",
+        after: "baba",
+        granularity: "character" as const,
+        expected: [
+          { type: "del" as const, text: "a" },
+          { type: "equal" as const, text: "bab" },
+          { type: "ins" as const, text: "a" },
+        ],
+      },
+      {
+        before: "the the the",
+        after: "the the",
+        granularity: "word" as const,
+        expected: [
+          { type: "equal" as const, text: "the" },
+          { type: "del" as const, text: " the" },
+          { type: "equal" as const, text: " the" },
+        ],
+      },
+    ];
+
+    for (const { before, after, granularity, expected } of cases) {
+      expect(diffWordSegments(before, after, { granularity })).toEqual(expected);
+    }
+  });
+
   test("character granularity marks the changed letters inside one word", () => {
     expect(diffWordSegments("clause 14.2", "clause 14.3", { granularity: "character" })).toEqual([
       { type: "equal", text: "clause 14." },
@@ -198,5 +273,60 @@ describe("diffWordSegments", () => {
       { type: "del", text: before },
       { type: "ins", text: after },
     ]);
+  });
+
+  test("factors a usable common affix before applying the residual cell budget", () => {
+    const shared = Array.from({ length: 2001 }, (_unused, index) => `clause${String(index)}`).join(
+      " ",
+    );
+    const before = `${shared} former`;
+    const after = `${shared} revised`;
+
+    expect(diffWordSegments(before, after)).toEqual([
+      { type: "equal", text: shared },
+      { type: "del", text: " former" },
+      { type: "ins", text: " revised" },
+    ]);
+  });
+
+  test("uses unique anchors when the whole input exceeds the residual cell budget", () => {
+    const shared = Array.from({ length: 2000 }, (_unused, index) => `clause${String(index)}`).join(
+      " ",
+    );
+    const before = `before ${shared} former`;
+    const after = `after ${shared} revised`;
+
+    expect(diffWordSegments(before, after)).toEqual([
+      { type: "del", text: "before" },
+      { type: "ins", text: "after" },
+      { type: "equal", text: ` ${shared}` },
+      { type: "del", text: " former" },
+      { type: "ins", text: " revised" },
+    ]);
+  });
+
+  test("bounds unique-anchor discovery for very large residuals at either granularity", () => {
+    const wordAnchors = Array.from(
+      { length: 8193 },
+      (_unused, index) => `anchor${String(index)}`,
+    ).join(" ");
+    const wordBefore = `before ${wordAnchors} former`;
+    const wordAfter = `after ${wordAnchors} revised`;
+    expect(diffWordSegments(wordBefore, wordAfter)).toEqual([
+      { type: "del", text: wordBefore },
+      { type: "ins", text: wordAfter },
+    ]);
+
+    const characterAnchors = Array.from({ length: 8193 }, (_unused, index) =>
+      String.fromCodePoint(0x10_000 + index),
+    ).join("");
+    const characterBefore = `a${characterAnchors}b`;
+    const characterAfter = `c${characterAnchors}d`;
+    expect(diffWordSegments(characterBefore, characterAfter, { granularity: "character" })).toEqual(
+      [
+        { type: "del", text: characterBefore },
+        { type: "ins", text: characterAfter },
+      ],
+    );
   });
 });

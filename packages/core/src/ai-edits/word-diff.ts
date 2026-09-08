@@ -22,8 +22,10 @@
  * 3. When what survives is still too fragmented for its length, the whole
  *    paragraph is one replacement ({@link isTooFragmented}).
  *
- * O(n*m) on token counts; past {@link MAX_WORD_DIFF_CELLS} the DP is skipped
- * for a single whole-string `del` + `ins` pair.
+ * Common affixes and unique-token anchors split the input into independent
+ * gaps before any quadratic work. The residual gaps share one
+ * {@link MAX_WORD_DIFF_CELLS} allowance per call; once it is spent, a gap is a
+ * single `del` + `ins` pair.
  */
 
 export type WordDiffSegment = {
@@ -145,13 +147,29 @@ const comparisonKey = (token: string, normalization: WordDiffNormalization): str
 const isSeparatorOnly = (text: string): boolean => SEPARATOR_ONLY.test(text);
 
 /**
- * Cell budget for the O(n*m) DP table below. `before`/`after` come from
- * attacker-controlled document text (a `modified` block pair), so an
- * unbounded pair of large strings would otherwise force a quadratic-sized
- * allocation. Past this budget, skip the DP and fall back to a single
- * whole-string `del` + `ins` pair — a coarser diff, but O(1) memory.
+ * Cell budget shared by the residual LCS gaps inside one
+ * {@link diffWordSegments} call. `before`/`after` come from attacker-controlled
+ * document text (a `modified` block pair), so an unbounded pair of large
+ * strings would otherwise force a quadratic-sized allocation. This is not a
+ * document-wide budget: callers diffing several blocks receive one allowance
+ * per call.
  */
 const MAX_WORD_DIFF_CELLS = 4_000_000;
+
+/**
+ * Maximum combined residual tokens considered for unique-anchor discovery.
+ * The token and comparison-key arrays are already required by the public
+ * operation, but the occurrence maps and candidate list are optional linear
+ * storage over attacker-controlled text. Common affixes are removed before
+ * this cap, so a small edit in a very long paragraph can still use anchors.
+ */
+const MAX_WORD_DIFF_ANCHOR_TOKENS = 16_384;
+
+const ALIGNMENT_OPERATION = {
+  Equal: 1,
+  Delete: 2,
+  Insert: 3,
+} as const;
 
 /** One aligned run, before the quality rules turn matches into changes. */
 type DiffRun =
@@ -165,86 +183,434 @@ type AlignOptions = {
   normalization: WordDiffNormalization;
 };
 
-/** The LCS alignment, as runs. Longest common subsequence on comparison keys. */
+type TokenRange = {
+  start: number;
+  end: number;
+};
+
+type TokenAnchor = {
+  beforeIndex: number;
+  afterIndex: number;
+};
+
+type AlignmentBudget = {
+  remainingCells: number;
+};
+
+const pushRun = (runs: DiffRun[], run: DiffRun): void => {
+  const last = runs.at(-1);
+  if (last?.type === "equal" && run.type === "equal") {
+    last.before += run.before;
+    last.after += run.after;
+    last.units += run.units;
+    return;
+  }
+  if (
+    (last?.type === "del" && run.type === "del") ||
+    (last?.type === "ins" && run.type === "ins")
+  ) {
+    last.text += run.text;
+    return;
+  }
+  runs.push(run);
+};
+
+const pushEqualRange = (
+  runs: DiffRun[],
+  before: readonly string[],
+  after: readonly string[],
+  beforeRange: TokenRange,
+  afterRange: TokenRange,
+): void => {
+  const units = beforeRange.end - beforeRange.start;
+  if (units === 0) {
+    return;
+  }
+  pushRun(runs, {
+    type: "equal",
+    before: before.slice(beforeRange.start, beforeRange.end).join(""),
+    after: after.slice(afterRange.start, afterRange.end).join(""),
+    units,
+  });
+};
+
+const pushChangedRange = (
+  runs: DiffRun[],
+  before: readonly string[],
+  after: readonly string[],
+  beforeRange: TokenRange,
+  afterRange: TokenRange,
+): void => {
+  if (beforeRange.start !== beforeRange.end) {
+    pushRun(runs, {
+      type: "del",
+      text: before.slice(beforeRange.start, beforeRange.end).join(""),
+    });
+  }
+  if (afterRange.start !== afterRange.end) {
+    pushRun(runs, {
+      type: "ins",
+      text: after.slice(afterRange.start, afterRange.end).join(""),
+    });
+  }
+};
+
+/**
+ * Unique tokens common to both ranges, reduced to a monotone subsequence of
+ * target positions. Repeated boilerplate is deliberately ineligible: a unique
+ * clause number or name is stronger lineage evidence than another occurrence
+ * of "the" chosen by an arbitrary LCS tie.
+ */
+const findPatienceAnchors = (
+  beforeKeys: readonly string[],
+  afterKeys: readonly string[],
+  beforeRange: TokenRange,
+  afterRange: TokenRange,
+): TokenAnchor[] => {
+  const beforeOccurrences = new Map<string, number>();
+  for (let index = beforeRange.start; index < beforeRange.end; index++) {
+    const key = beforeKeys[index] ?? "";
+    beforeOccurrences.set(key, (beforeOccurrences.get(key) ?? 0) + 1);
+  }
+
+  const afterOccurrences = new Map<string, { count: number; index: number }>();
+  for (let index = afterRange.start; index < afterRange.end; index++) {
+    const key = afterKeys[index] ?? "";
+    const occurrence = afterOccurrences.get(key);
+    if (occurrence) {
+      occurrence.count++;
+    } else {
+      afterOccurrences.set(key, { count: 1, index });
+    }
+  }
+
+  const candidates: TokenAnchor[] = [];
+  for (let beforeIndex = beforeRange.start; beforeIndex < beforeRange.end; beforeIndex++) {
+    const key = beforeKeys[beforeIndex] ?? "";
+    const beforeCount = beforeOccurrences.get(key);
+    const afterOccurrence = afterOccurrences.get(key);
+    if (beforeCount === 1 && afterOccurrence?.count === 1) {
+      candidates.push({ beforeIndex, afterIndex: afterOccurrence.index });
+    }
+  }
+  if (candidates.length < 2) {
+    return candidates;
+  }
+
+  const predecessors = new Int32Array(candidates.length);
+  predecessors.fill(-1);
+  const tailCandidateIndexes = new Int32Array(candidates.length);
+  let tailCount = 0;
+
+  for (const [candidateIndex, candidate] of candidates.entries()) {
+    let low = 0;
+    let high = tailCount;
+    while (low < high) {
+      const middle = low + Math.floor((high - low) / 2);
+      const tail = candidates[tailCandidateIndexes[middle] ?? -1];
+      if (tail && tail.afterIndex < candidate.afterIndex) {
+        low = middle + 1;
+      } else {
+        high = middle;
+      }
+    }
+    if (low > 0) {
+      predecessors[candidateIndex] = tailCandidateIndexes[low - 1] ?? -1;
+    }
+    tailCandidateIndexes[low] = candidateIndex;
+    if (low === tailCount) {
+      tailCount++;
+    }
+  }
+
+  const anchors: TokenAnchor[] = [];
+  let candidateIndex = tailCandidateIndexes[tailCount - 1] ?? -1;
+  while (candidateIndex >= 0) {
+    const candidate = candidates[candidateIndex];
+    if (candidate) {
+      anchors.push(candidate);
+    }
+    candidateIndex = predecessors[candidateIndex] ?? -1;
+  }
+  anchors.reverse();
+  return anchors;
+};
+
+type DenseGapOptions = {
+  before: readonly string[];
+  after: readonly string[];
+  beforeKeys: readonly string[];
+  afterKeys: readonly string[];
+  beforeRange: TokenRange;
+  afterRange: TokenRange;
+  runs: DiffRun[];
+  budget: AlignmentBudget;
+};
+
+/** Longest-common-subsequence alignment for one residual, bounded gap. */
+const alignDenseGap = ({
+  before,
+  after,
+  beforeKeys,
+  afterKeys,
+  beforeRange,
+  afterRange,
+  runs,
+  budget,
+}: DenseGapOptions): void => {
+  const beforeLength = beforeRange.end - beforeRange.start;
+  const afterLength = afterRange.end - afterRange.start;
+  if (beforeLength === 0 || afterLength === 0) {
+    pushChangedRange(runs, before, after, beforeRange, afterRange);
+    return;
+  }
+
+  if (beforeLength > Math.floor(budget.remainingCells / afterLength)) {
+    pushChangedRange(runs, before, after, beforeRange, afterRange);
+    return;
+  }
+  const cellCount = beforeLength * afterLength;
+  budget.remainingCells -= cellCount;
+
+  // No nested JS arrays: at the maximum allowance this table is exactly
+  // 16 MB, and the operation trace below is at most m+n bytes.
+  const lengths = new Uint32Array(cellCount);
+  for (let beforeOffset = 0; beforeOffset < beforeLength; beforeOffset++) {
+    for (let afterOffset = 0; afterOffset < afterLength; afterOffset++) {
+      const index = beforeOffset * afterLength + afterOffset;
+      const beforeKey = beforeKeys[beforeRange.start + beforeOffset];
+      const afterKey = afterKeys[afterRange.start + afterOffset];
+      if (beforeKey === afterKey) {
+        const diagonal =
+          beforeOffset > 0 && afterOffset > 0
+            ? (lengths[(beforeOffset - 1) * afterLength + afterOffset - 1] ?? 0)
+            : 0;
+        lengths[index] = diagonal + 1;
+        continue;
+      }
+      const above =
+        beforeOffset > 0 ? (lengths[(beforeOffset - 1) * afterLength + afterOffset] ?? 0) : 0;
+      const left = afterOffset > 0 ? (lengths[index - 1] ?? 0) : 0;
+      lengths[index] = Math.max(above, left);
+    }
+  }
+
+  const reversedOperations = new Uint8Array(beforeLength + afterLength);
+  let operationCount = 0;
+  let beforeOffset = beforeLength - 1;
+  let afterOffset = afterLength - 1;
+  while (beforeOffset >= 0 && afterOffset >= 0) {
+    if (
+      beforeKeys[beforeRange.start + beforeOffset] === afterKeys[afterRange.start + afterOffset]
+    ) {
+      reversedOperations[operationCount++] = ALIGNMENT_OPERATION.Equal;
+      beforeOffset--;
+      afterOffset--;
+      continue;
+    }
+    const above =
+      beforeOffset > 0 ? (lengths[(beforeOffset - 1) * afterLength + afterOffset] ?? 0) : 0;
+    const left = afterOffset > 0 ? (lengths[beforeOffset * afterLength + afterOffset - 1] ?? 0) : 0;
+    // Preserve the old LCS tie break. Because this trace is reversed, choosing
+    // insertion on a tie yields deletion before insertion in forward order.
+    if (above > left) {
+      reversedOperations[operationCount++] = ALIGNMENT_OPERATION.Delete;
+      beforeOffset--;
+    } else {
+      reversedOperations[operationCount++] = ALIGNMENT_OPERATION.Insert;
+      afterOffset--;
+    }
+  }
+  while (beforeOffset >= 0) {
+    reversedOperations[operationCount++] = ALIGNMENT_OPERATION.Delete;
+    beforeOffset--;
+  }
+  while (afterOffset >= 0) {
+    reversedOperations[operationCount++] = ALIGNMENT_OPERATION.Insert;
+    afterOffset--;
+  }
+
+  let beforeCursor = beforeRange.start;
+  let afterCursor = afterRange.start;
+  for (let operationIndex = operationCount - 1; operationIndex >= 0; operationIndex--) {
+    const operation = reversedOperations[operationIndex];
+    if (operation === ALIGNMENT_OPERATION.Equal) {
+      pushRun(runs, {
+        type: "equal",
+        before: before[beforeCursor] ?? "",
+        after: after[afterCursor] ?? "",
+        units: 1,
+      });
+      beforeCursor++;
+      afterCursor++;
+      continue;
+    }
+    if (operation === ALIGNMENT_OPERATION.Delete) {
+      pushRun(runs, { type: "del", text: before[beforeCursor] ?? "" });
+      beforeCursor++;
+      continue;
+    }
+    pushRun(runs, { type: "ins", text: after[afterCursor] ?? "" });
+    afterCursor++;
+  }
+};
+
+/** Factor exact boundary matches before spending the residual DP allowance. */
+const alignGap = (options: DenseGapOptions): void => {
+  const { beforeKeys, afterKeys, runs } = options;
+  let beforeStart = options.beforeRange.start;
+  let afterStart = options.afterRange.start;
+  const beforeEnd = options.beforeRange.end;
+  const afterEnd = options.afterRange.end;
+
+  while (
+    beforeStart < beforeEnd &&
+    afterStart < afterEnd &&
+    beforeKeys[beforeStart] === afterKeys[afterStart]
+  ) {
+    beforeStart++;
+    afterStart++;
+  }
+  pushEqualRange(
+    runs,
+    options.before,
+    options.after,
+    { start: options.beforeRange.start, end: beforeStart },
+    { start: options.afterRange.start, end: afterStart },
+  );
+
+  let beforeMiddleEnd = beforeEnd;
+  let afterMiddleEnd = afterEnd;
+  while (
+    beforeMiddleEnd > beforeStart &&
+    afterMiddleEnd > afterStart &&
+    beforeKeys[beforeMiddleEnd - 1] === afterKeys[afterMiddleEnd - 1]
+  ) {
+    beforeMiddleEnd--;
+    afterMiddleEnd--;
+  }
+
+  alignDenseGap({
+    ...options,
+    beforeRange: { start: beforeStart, end: beforeMiddleEnd },
+    afterRange: { start: afterStart, end: afterMiddleEnd },
+  });
+  pushEqualRange(
+    runs,
+    options.before,
+    options.after,
+    { start: beforeMiddleEnd, end: beforeEnd },
+    { start: afterMiddleEnd, end: afterEnd },
+  );
+};
+
+/**
+ * LCS alignment split at stable, unique-token anchors. Patience anchoring keeps
+ * repeated boilerplate from winning a tie over a unique legal term, and makes
+ * a small edit inside a long paragraph pay for only its changed gap.
+ */
 const alignTokens = ({ before, after, normalization }: AlignOptions): DiffRun[] => {
   const beforeKeys = before.map((token) => comparisonKey(token, normalization));
   const afterKeys = after.map((token) => comparisonKey(token, normalization));
-  const m = before.length;
-  const n = after.length;
-
-  const dp: number[][] = Array.from({ length: m + 1 }, () =>
-    Array.from({ length: n + 1 }, () => 0),
-  );
-  for (let i = 0; i < m; i++) {
-    for (let j = 0; j < n; j++) {
-      const row = dp[i + 1];
-      const previousRow = dp[i];
-      if (!row || !previousRow) {
-        continue;
-      }
-      row[j + 1] =
-        beforeKeys[i] === afterKeys[j]
-          ? (previousRow[j] ?? 0) + 1
-          : Math.max(row[j] ?? 0, previousRow[j + 1] ?? 0);
-    }
+  let commonPrefixLength = 0;
+  while (
+    commonPrefixLength < before.length &&
+    commonPrefixLength < after.length &&
+    beforeKeys[commonPrefixLength] === afterKeys[commonPrefixLength]
+  ) {
+    commonPrefixLength++;
   }
 
-  const reversed: DiffRun[] = [];
-  let i = m;
-  let j = n;
-  while (i > 0 && j > 0) {
-    if (beforeKeys[i - 1] === afterKeys[j - 1]) {
-      reversed.push({
-        type: "equal",
-        before: before[i - 1] ?? "",
-        after: after[j - 1] ?? "",
-        units: 1,
-      });
-      i--;
-      j--;
-      continue;
-    }
-    // Backtracking emits in reverse, so pushing `ins` first here makes `del`
-    // come BEFORE `ins` in the final left-to-right output. That ordering
-    // matters at apply time: the inserted text lands after the
-    // deletion-marked span, matching reader convention (strike-through → new
-    // text) and the engine's existing expectation ("shallmust", not
-    // "mustshall").
-    if ((dp[i - 1]?.[j] ?? 0) > (dp[i]?.[j - 1] ?? 0)) {
-      reversed.push({ type: "del", text: before[i - 1] ?? "" });
-      i--;
-    } else {
-      reversed.push({ type: "ins", text: after[j - 1] ?? "" });
-      j--;
-    }
-  }
-  while (i > 0) {
-    reversed.push({ type: "del", text: before[i - 1] ?? "" });
-    i--;
-  }
-  while (j > 0) {
-    reversed.push({ type: "ins", text: after[j - 1] ?? "" });
-    j--;
+  let beforeMiddleEnd = before.length;
+  let afterMiddleEnd = after.length;
+  while (
+    beforeMiddleEnd > commonPrefixLength &&
+    afterMiddleEnd > commonPrefixLength &&
+    beforeKeys[beforeMiddleEnd - 1] === afterKeys[afterMiddleEnd - 1]
+  ) {
+    beforeMiddleEnd--;
+    afterMiddleEnd--;
   }
 
+  const beforeRange = { start: commonPrefixLength, end: beforeMiddleEnd };
+  const afterRange = { start: commonPrefixLength, end: afterMiddleEnd };
+  const residualTokenCount =
+    beforeRange.end - beforeRange.start + afterRange.end - afterRange.start;
+  const anchors =
+    residualTokenCount <= MAX_WORD_DIFF_ANCHOR_TOKENS
+      ? findPatienceAnchors(beforeKeys, afterKeys, beforeRange, afterRange)
+      : [];
+  const budget = { remainingCells: MAX_WORD_DIFF_CELLS };
   const runs: DiffRun[] = [];
-  for (const run of reversed.toReversed()) {
-    const last = runs.at(-1);
-    if (last?.type === "equal" && run.type === "equal") {
-      last.before += run.before;
-      last.after += run.after;
-      last.units += run.units;
-      continue;
-    }
-    if (
-      (last?.type === "del" && run.type === "del") ||
-      (last?.type === "ins" && run.type === "ins")
-    ) {
-      last.text += run.text;
-      continue;
-    }
-    runs.push({ ...run });
+
+  // Affix factoring changes which occurrence wins an LCS tie. If no stronger
+  // unique anchor was selected and the original region fits, preserve the
+  // historical alignment exactly; factoring is then only a scalability path.
+  if (
+    anchors.length === 0 &&
+    (after.length === 0 || before.length <= Math.floor(budget.remainingCells / after.length))
+  ) {
+    alignDenseGap({
+      before,
+      after,
+      beforeKeys,
+      afterKeys,
+      beforeRange: { start: 0, end: before.length },
+      afterRange: { start: 0, end: after.length },
+      runs,
+      budget,
+    });
+    return runs;
   }
+
+  pushEqualRange(
+    runs,
+    before,
+    after,
+    { start: 0, end: commonPrefixLength },
+    { start: 0, end: commonPrefixLength },
+  );
+  let beforeStart = commonPrefixLength;
+  let afterStart = commonPrefixLength;
+
+  for (const anchor of anchors) {
+    alignGap({
+      before,
+      after,
+      beforeKeys,
+      afterKeys,
+      beforeRange: { start: beforeStart, end: anchor.beforeIndex },
+      afterRange: { start: afterStart, end: anchor.afterIndex },
+      runs,
+      budget,
+    });
+    pushRun(runs, {
+      type: "equal",
+      before: before[anchor.beforeIndex] ?? "",
+      after: after[anchor.afterIndex] ?? "",
+      units: 1,
+    });
+    beforeStart = anchor.beforeIndex + 1;
+    afterStart = anchor.afterIndex + 1;
+  }
+
+  alignGap({
+    before,
+    after,
+    beforeKeys,
+    afterKeys,
+    beforeRange: { start: beforeStart, end: beforeMiddleEnd },
+    afterRange: { start: afterStart, end: afterMiddleEnd },
+    runs,
+    budget,
+  });
+  pushEqualRange(
+    runs,
+    before,
+    after,
+    { start: beforeMiddleEnd, end: before.length },
+    { start: afterMiddleEnd, end: after.length },
+  );
   return runs;
 };
 
@@ -371,15 +737,15 @@ export const diffWordSegments = (
   after: string,
   options: WordDiffOptions = {},
 ): WordDiffSegment[] => {
+  if (before === after) {
+    return before.length === 0 ? [] : [{ type: "equal", text: before }];
+  }
   const granularity = options.granularity ?? "word";
   const normalization = options.normalization ?? {};
   const beforeTokens = tokenize(before, granularity);
   const afterTokens = tokenize(after, granularity);
   if (beforeTokens.length === 0 && afterTokens.length === 0) {
     return [];
-  }
-  if (beforeTokens.length * afterTokens.length > MAX_WORD_DIFF_CELLS) {
-    return wholeStringReplacement(before, after);
   }
 
   const aligned = alignTokens({ before: beforeTokens, after: afterTokens, normalization });
