@@ -82,6 +82,35 @@ const buildColumnTableDocx = (rows: readonly (readonly ColumnCell[])[]): Promise
 const partOf = async (buffer: ArrayBuffer, name: string): Promise<string> =>
   (await (await JSZip.loadAsync(buffer)).file(name)?.async("string")) ?? "";
 
+type NumberingFormatOverride = { level: number; format: string };
+
+const withNumberingFormats = async (
+  buffer: ArrayBuffer,
+  overrides: readonly NumberingFormatOverride[],
+): Promise<ArrayBuffer> => {
+  const zip = await JSZip.loadAsync(buffer);
+  const entry = zip.file("word/numbering.xml");
+  if (!entry) {
+    throw new Error("The numbered-list fixture has no numbering part.");
+  }
+  let xml = await entry.async("string");
+  for (const { level, format } of overrides) {
+    const levelFormat = new RegExp(
+      `(<w:lvl w:ilvl="${String(level)}">[\\s\\S]*?<w:numFmt w:val=")[^"]+("/>)`,
+      "u",
+    );
+    const replaced = xml.replace(levelFormat, (_match, before: string, after: string) =>
+      [before, format, after].join(""),
+    );
+    if (replaced === xml) {
+      throw new Error(`The numbered-list fixture has no level ${String(level)} format.`);
+    }
+    xml = replaced;
+  }
+  zip.file("word/numbering.xml", xml);
+  return await zip.generateAsync({ type: "arraybuffer" });
+};
+
 const documentPartOf = async (buffer: ArrayBuffer): Promise<string> =>
   await partOf(buffer, "word/document.xml");
 
@@ -617,6 +646,48 @@ describe("single-mutation probes", () => {
     const [change] = result.value.changes;
     expect(change?.kind === "numbering" && change.before?.format).toBe("decimal");
     expect(change?.kind === "numbering" && change.after?.format).toBe("lowerRoman");
+  });
+
+  test("numbering definitions: only changed levels referenced by either document are reported", async () => {
+    const changed = await withNumberingFormats(LIST_BASE, [
+      { level: 0, format: "upperRoman" },
+      { level: 1, format: "upperLetter" },
+      { level: 2, format: "ordinal" },
+    ]);
+    const result = await compareDocx(LIST_BASE, changed, OPTIONS);
+    if (result.isErr()) {
+      throw result.error;
+    }
+
+    const numberingChanges = result.value.changes.filter(({ kind }) => kind === "numbering");
+    expect(numberingChanges.map(({ level }) => level)).toEqual([0, 1]);
+  });
+
+  test("numbering definitions: a changed level newly referenced by the target is reported", async () => {
+    const items = withItemDemoted(NUMBERED_LIST_ITEMS, 1);
+    const changed = await withNumberingFormats(await buildNumberedListDocx(items), [
+      { level: 2, format: "upperRoman" },
+    ]);
+    const result = await compareDocx(LIST_BASE, changed, OPTIONS);
+    if (result.isErr()) {
+      throw result.error;
+    }
+
+    const numberingChanges = result.value.changes.filter(({ kind }) => kind === "numbering");
+    expect(numberingChanges.map(({ level }) => level)).toEqual([2]);
+  });
+
+  test("numbering definitions: a changed level referenced only by the base is reported", async () => {
+    const baseItems = withItemDemoted(NUMBERED_LIST_ITEMS, 1);
+    const base = await buildNumberedListDocx(baseItems);
+    const changed = await withNumberingFormats(LIST_BASE, [{ level: 2, format: "upperRoman" }]);
+    const result = await compareDocx(base, changed, OPTIONS);
+    if (result.isErr()) {
+      throw result.error;
+    }
+
+    const numberingChanges = result.value.changes.filter(({ kind }) => kind === "numbering");
+    expect(numberingChanges.map(({ level }) => level)).toEqual([2]);
   });
 
   test("change_list_level: a demoted list item is one paragraph-format change", async () => {

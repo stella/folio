@@ -198,9 +198,10 @@ unrelated removal and addition.
 Renumbering that FOLLOWS from an edit needs no change of its own: labels are
 rendered from the numbering definitions rather than stored on the paragraphs,
 so inserting a list item already renumbers the ones below it as-if-accepted,
-and reporting them would bury the real edit. A definition that itself changed
-is the opposite case — every label in the list moves and no block's text does
-— and is reported as `numbering`.
+and reporting them would bury the real edit. A referenced definition that
+itself changed is the opposite case: every label using that level moves and no
+block's text does, so it is reported as `numbering`. Differences in levels no
+paragraph references on either side are omitted from the change list.
 
 A paragraph property that moved without any word moving — a list item demoted
 a level, a paragraph restyled — is a `paragraph-format` change, written as
@@ -369,8 +370,10 @@ carries the current numbers and the failing cases.
 - **A numbering definition is reported, not represented** (2026-09-06). A list
   whose format, level template or start changed is a `numbering` change, and
   the redline cannot carry it: OOXML has no tracked-change grammar for
-  `numbering.xml` at all. Accepting the result
-  therefore reproduces the target's words and keeps the base's numbering.
+  `numbering.xml` at all. Only levels referenced by a paragraph in either
+  document are reported; unused definitions are package bookkeeping, not
+  document changes. Accepting the result therefore reproduces the target's
+  words and keeps the base's numbering.
 
 ## Files
 
