@@ -99,34 +99,37 @@ describe("toFlowBlocks — blockSdt grouping", () => {
     expect(innermost).toEqual(["only"]);
   });
 
-  test("keeps a picture control's authored line box when its package image cannot paint", () => {
-    const image = schema.nodes.image.create({
-      src: "",
-      rId: "rId4",
-      width: 200,
-      height: 159,
-      wrapType: "inline",
-    });
-    const picture = schema.node("blockSdt", { sdtType: "picture" }, [
-      schema.node("paragraph", {}, [image]),
-    ]);
-
-    const paragraph = toFlowBlocks(schema.node("doc", null, [picture])).at(0);
-
-    expect(paragraph?.kind).toBe("paragraph");
-    if (paragraph?.kind !== "paragraph") {
-      return;
-    }
-    expect(paragraph.sdtGroups?.at(0)?.sdtType).toBe("picture");
-    expect(paragraph.runs).toEqual([
-      expect.objectContaining({
-        kind: "image",
-        src: "",
+  test.each(["", "  ", "https://example.invalid/image.png"])(
+    "keeps a picture control's authored line box for rejected source %j",
+    (src) => {
+      const image = schema.nodes.image.create({
+        src,
+        rId: "rId4",
         width: 200,
         height: 159,
-      }),
-    ]);
-  });
+        wrapType: "inline",
+      });
+      const picture = schema.node("blockSdt", { sdtType: "picture" }, [
+        schema.node("paragraph", {}, [image]),
+      ]);
+
+      const paragraph = toFlowBlocks(schema.node("doc", null, [picture])).at(0);
+
+      expect(paragraph?.kind).toBe("paragraph");
+      if (paragraph?.kind !== "paragraph") {
+        return;
+      }
+      expect(paragraph.sdtGroups?.at(0)?.sdtType).toBe("picture");
+      expect(paragraph.runs).toEqual([
+        expect.objectContaining({
+          kind: "image",
+          src,
+          width: 200,
+          height: 159,
+        }),
+      ]);
+    },
+  );
 
   test("outer SDT does not overwrite inner SDT's first/middle/last", () => {
     // Outer SDT has `[pre, inner SDT containing two paragraphs, post]`.

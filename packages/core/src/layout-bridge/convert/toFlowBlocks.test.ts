@@ -2509,30 +2509,45 @@ describe("toFlowBlocks list numbering", () => {
 // carry rounded OOXML dimensions, where zero is a valid subpixel result rather
 // than an absent value that should receive the default size.
 describe("toFlowBlocks image attribute normalization", () => {
-  test("omits inline image nodes without a paintable source", () => {
-    const doc = schema.node("doc", null, [
-      schema.node("paragraph", null, [
-        schema.nodes.image.create({
-          src: "",
-          width: 100,
-          height: 100,
-        }),
-      ]),
-    ]);
+  const paintableImageSource = "data:image/png;base64,";
 
-    const paragraph = toFlowBlocks(doc).at(0);
+  test.each(["", "  ", "https://example.invalid/image.png"])(
+    "omits inline image nodes with rejected source %j",
+    (src) => {
+      const doc = schema.node("doc", null, [
+        schema.node("paragraph", null, [
+          schema.nodes.image.create({
+            src,
+            width: 100,
+            height: 100,
+          }),
+        ]),
+      ]);
 
-    expect(paragraph?.kind).toBe("paragraph");
-    if (paragraph?.kind === "paragraph") {
-      expect(paragraph.runs).toEqual([]);
-    }
-  });
+      const paragraph = toFlowBlocks(doc).at(0);
+
+      expect(paragraph?.kind).toBe("paragraph");
+      if (paragraph?.kind === "paragraph") {
+        expect(paragraph.runs).toEqual([]);
+      }
+    },
+  );
+
+  test.each(["  ", "https://example.invalid/image.png"])(
+    "omits standalone image nodes with rejected source %j",
+    (src) => {
+      const image = schema.nodes.image.create({ src });
+      const doc = schema.topNodeType.create(null, [image]);
+
+      expect(toFlowBlocks(doc)).toEqual([]);
+    },
+  );
 
   test("preserves zero-sized inline image dimensions", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", null, [
         schema.nodes.image.create({
-          src: "media/subpixel-placeholder.png",
+          src: paintableImageSource,
           width: 1,
           height: 0,
         }),
@@ -2550,7 +2565,7 @@ describe("toFlowBlocks image attribute normalization", () => {
 
   test("preserves zero-sized standalone image dimensions", () => {
     const image = schema.nodes.image.create({
-      src: "media/subpixel-placeholder.png",
+      src: paintableImageSource,
       width: 1,
       height: 0,
     });
@@ -2570,7 +2585,7 @@ describe("toFlowBlocks image attribute normalization", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", null, [
         schema.nodes.image.create({
-          src: "media/image.png",
+          src: paintableImageSource,
           width: 100,
           height: 100,
         }),
@@ -2596,7 +2611,7 @@ describe("toFlowBlocks image attribute normalization", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", null, [
         schema.nodes.image.create({
-          src: "media/image.png",
+          src: paintableImageSource,
           width: 100,
           height: 100,
           opacity: 0.5,
@@ -2620,7 +2635,7 @@ describe("toFlowBlocks image attribute normalization", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", null, [
         schema.nodes.image.create({
-          src: "media/image.png",
+          src: paintableImageSource,
           width: 100,
           height: 100,
           wrapType: "square",
@@ -2643,7 +2658,7 @@ describe("toFlowBlocks image attribute normalization", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", null, [
         schema.nodes.image.create({
-          src: "media/preview.png",
+          src: paintableImageSource,
           width: 20,
           height: 18,
           _docxObjectPreview: true,
