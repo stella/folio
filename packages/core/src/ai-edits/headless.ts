@@ -320,11 +320,15 @@ export class FolioDocumentStoryNotFoundError extends TaggedError(
   story: FolioEditableDocumentStoryHandle;
 }> {}
 
+const FOLIO_RESOLVED_STORY_SERIALIZATION_MISMATCHES = Object.freeze({
+  storyMissing: "story-missing",
+  revisionMarkupRemains: "revision-markup-remains",
+  textProjection: "text-projection",
+  blockProjection: "block-projection",
+} as const);
+
 type FolioResolvedStorySerializationMismatch =
-  | "story-missing"
-  | "revision-markup-remains"
-  | "text-projection"
-  | "block-projection";
+  (typeof FOLIO_RESOLVED_STORY_SERIALIZATION_MISMATCHES)[keyof typeof FOLIO_RESOLVED_STORY_SERIALIZATION_MISMATCHES];
 
 class FolioResolvedStorySerializationError extends TaggedError(
   "FolioResolvedStorySerializationError",
@@ -1349,16 +1353,16 @@ export class FolioDocxReviewer {
         : null;
       const mismatches: FolioResolvedStorySerializationMismatch[] = [];
       if (!serialized || !serializedState) {
-        mismatches.push("story-missing");
+        mismatches.push(FOLIO_RESOLVED_STORY_SERIALIZATION_MISMATCHES.storyMissing);
       } else {
         if (serialized.changes.length > 0) {
-          mismatches.push("revision-markup-remains");
+          mismatches.push(FOLIO_RESOLVED_STORY_SERIALIZATION_MISMATCHES.revisionMarkupRemains);
         }
         if (serializedText !== text) {
-          mismatches.push("text-projection");
+          mismatches.push(FOLIO_RESOLVED_STORY_SERIALIZATION_MISMATCHES.textProjection);
         }
         if (JSON.stringify(serializedBlocks) !== JSON.stringify(blocks)) {
-          mismatches.push("block-projection");
+          mismatches.push(FOLIO_RESOLVED_STORY_SERIALIZATION_MISMATCHES.blockProjection);
         }
       }
       if (mismatches.length === 0) {
