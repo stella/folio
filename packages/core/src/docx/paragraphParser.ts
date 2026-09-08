@@ -1433,7 +1433,7 @@ function getLegacyFormCheckboxDisplay(
   const text = isChecked
     ? LEGACY_FORM_CHECKBOX_GLYPHS.checked
     : LEGACY_FORM_CHECKBOX_GLYPHS.unchecked;
-  if (explicitSize === null || explicitSize === undefined) {
+  if (explicitSize === undefined) {
     return { text };
   }
 
@@ -1441,6 +1441,28 @@ function getLegacyFormCheckboxDisplay(
     text,
     fontSize: explicitSize,
   };
+}
+
+function createLegacyFormCheckboxResultRun(
+  display: LegacyFormCheckboxDisplay,
+  inheritedFormatting: TextFormatting | undefined,
+): Run {
+  const run: Run = {
+    type: "run",
+    content: [{ type: "text", text: display.text }],
+  };
+  const hasInheritedFormatting =
+    inheritedFormatting !== undefined && Object.keys(inheritedFormatting).length > 0;
+
+  if (display.fontSize !== undefined) {
+    run.formatting = hasInheritedFormatting
+      ? { ...inheritedFormatting, fontSize: display.fontSize }
+      : { fontSize: display.fontSize };
+  } else if (hasInheritedFormatting) {
+    run.formatting = inheritedFormatting;
+  }
+
+  return run;
 }
 
 function isLegacyFormCheckboxInstruction(instruction: string): boolean {
@@ -1607,18 +1629,11 @@ function parseParagraphContents(
               complexFieldFallbackDisplay !== undefined &&
               isLegacyFormCheckboxInstruction(complexFieldInstr)
             ) {
-              const formatting = {
-                ...complexFieldFormatting,
-                ...(complexFieldFallbackDisplay.fontSize !== undefined
-                  ? { fontSize: complexFieldFallbackDisplay.fontSize }
-                  : {}),
-              };
               resultRuns = [
-                {
-                  type: "run",
-                  ...(Object.keys(formatting).length > 0 ? { formatting } : {}),
-                  content: [{ type: "text", text: complexFieldFallbackDisplay.text }],
-                },
+                createLegacyFormCheckboxResultRun(
+                  complexFieldFallbackDisplay,
+                  complexFieldFormatting,
+                ),
               ];
             }
             // Self-numbering fields (LISTNUM, AUTONUM, …) often skip the
