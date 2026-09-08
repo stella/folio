@@ -113,7 +113,7 @@ describe("text box fitting", () => {
     }, fakeMeasure);
   });
 
-  test("shape fitting expands past the authored height without shrinking a larger box", () => {
+  test("shape fitting resizes the authored height to its content", () => {
     withFakeTextMeasure(() => {
       const fixed: TextBoxBlock = {
         kind: "textBox",
@@ -143,7 +143,7 @@ describe("text box fitting", () => {
 
       expect(fittedMeasure.height).toBeGreaterThan(fixedMeasure.height);
       expect(fixedMeasure.height).toBe(1);
-      expect(largeMeasure.height).toBe(1_000);
+      expect(largeMeasure.height).toBe(fittedMeasure.height);
     }, fakeMeasure);
   });
 

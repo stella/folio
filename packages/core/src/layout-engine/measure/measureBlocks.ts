@@ -1081,10 +1081,7 @@ export function measureTextBoxBlock(
     tb.autoFit === "shape" && tb.textWrap === "none" ? Math.max(tb.width, fittedWidth) : tb.width;
   const contentHeight = layoutTextBoxContent(tb.content, innerMeasures).totalHeight;
   const contentBoxHeight = contentHeight + margins.top + margins.bottom;
-  const totalHeight =
-    tb.autoFit === "shape"
-      ? Math.max(tb.height ?? 0, contentBoxHeight)
-      : (tb.height ?? contentBoxHeight);
+  const totalHeight = tb.autoFit === "shape" ? contentBoxHeight : (tb.height ?? contentBoxHeight);
   return {
     kind: "textBox",
     width: totalWidth,
