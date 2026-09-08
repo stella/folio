@@ -4,16 +4,16 @@
  * Scans the document for legal-template markers and exposes their
  * PM ranges so the paged-canvas overlay can paint rich widgets
  * (field chips, conditional/loop bands) in place of the raw
- * `{{...}}` text. Mirrors the anonymization plugin's shape via the
- * shared {@link createDocScanPlugin} factory; the document text is
- * the only input, so there is no host-pushed config.
+ * `{{ ... }}` / `{% ... %}` text. Mirrors the anonymization plugin's
+ * shape via the shared {@link createDocScanPlugin} factory; the
+ * document text is the only input, so there is no host-pushed config.
  *
- * The grammar itself is NOT defined here: the kinds and the
- * `{{...}}` parser come from `@stll/template-conditions`
- * ({@link scanMarkers}, {@link classifyMarker}), the same module the
- * fill pipeline uses. This file only maps the scanner's text offsets
- * onto ProseMirror positions, so a new directive added to the shared
- * grammar is highlighted here automatically.
+ * The grammar itself is NOT defined here: the kinds and the marker
+ * parser come from `@stll/template-conditions` ({@link scanMarkers}),
+ * the docxtpl dialect of Jinja the fill pipeline uses. This file only
+ * maps the scanner's text offsets onto ProseMirror positions, so a new
+ * directive added to the shared grammar is highlighted here
+ * automatically.
  */
 
 import type { Node as PMNode } from "prosemirror-model";
@@ -40,15 +40,22 @@ export type DirectiveRange = {
   /** Exclusive PM doc position of the marker end. */
   to: number;
   kind: DirectiveKind;
-  /** Field path, clause name, or condition/loop expression. */
+  /**
+   * Field path, clause name, key, condition, or — for a `for` marker — the
+   * array path the loop iterates (`{% for row in items %}` ⇒ `items`).
+   */
   expr: string;
   /** Clause-slot version selector, e.g. "v3" or "latest". */
   clauseVersion?: string;
+  /** Loop alias of a `for` marker (`{% for row in items %}` ⇒ `row`); unset
+   *  for every other kind. */
+  alias?: string;
   /** True for block directives that occupy their own paragraph. */
   block: boolean;
 };
 
-/** The display expression for a marker (field path, clause name, key, condition). */
+/** The display expression for a marker (field path, clause name, key,
+ *  condition, loop array path, loop property). */
 const directiveExpr = (meta: MarkerMeta): string => {
   switch (meta.kind) {
     case "placeholder":
@@ -58,39 +65,41 @@ const directiveExpr = (meta: MarkerMeta): string => {
     case "num":
     case "ref":
       return meta.key;
+    case "loop":
+      return meta.property;
     case "if":
-    case "elseif":
-    case "each":
+    case "elif":
       return meta.expr;
-    case "index":
-    case "count":
+    case "for":
+      return meta.path;
     case "else":
     case "endif":
-    case "endeach":
+    case "endfor":
       return "";
     default:
       return assertNever(meta);
   }
 };
 
-/** Block-directive openers ({{#if}}, {{#each}}) that start a gutter-rail band. */
-const BLOCK_OPENER_KINDS = new Set<DirectiveKind>(["if", "each"]);
-/** Block-directive closers ({{/if}}, {{/each}}) that end a gutter-rail band. */
-const BLOCK_CLOSER_KINDS = new Set<DirectiveKind>(["endif", "endeach"]);
+/** Block-directive openers (`{% if %}`, `{% for %}`) that start a gutter-rail band. */
+const BLOCK_OPENER_KINDS = new Set<DirectiveKind>(["if", "for"]);
+/** Block-directive closers (`{% endif %}`, `{% endfor %}`) that end a gutter-rail band. */
+const BLOCK_CLOSER_KINDS = new Set<DirectiveKind>(["endif", "endfor"]);
 
 /**
  * Nesting depth (0-based) of every block-directive opener, derived purely from
  * the scanned ranges by containment: walk the block openers/closers in document
  * order with a kind-aware stack, and record each opener's depth as the stack size
- * before it is pushed. Only `block:true` if/each pairs participate (inline markers
+ * before it is pushed. Only `block:true` if/for pairs participate (inline markers
  * resolve within a paragraph and get no rail).
  *
  * Matching is kind-aware so a mid-edit / unbalanced template stays sane: a closer
- * pops the nearest opener of the *same family* ({{/if}} ⇒ {{#if}}, {{/each}} ⇒
- * {{#each}}), dropping any still-open openers nested above it; a closer with no
- * matching opener is ignored (never decrements a foreign block's depth). A blind
- * open/close counter would mis-count here: e.g. a stray {{/each}} between {{#if}}
- * and a nested {{#each}} would wrongly pull the inner {{#each}} back to depth 0.
+ * pops the nearest opener of the *same family* (`{% endif %}` ⇒ `{% if %}`,
+ * `{% endfor %}` ⇒ `{% for %}`), dropping any still-open openers nested above it;
+ * a closer with no matching opener is ignored (never decrements a foreign block's
+ * depth). A blind open/close counter would mis-count here: e.g. a stray
+ * `{% endfor %}` between `{% if %}` and a nested `{% for %}` would wrongly pull
+ * the inner `{% for %}` back to depth 0.
  *
  * Keyed by the opener's `from` PM position, which is unique per marker, so the
  * overlay can look a band's depth up from its opener range. This is a pure
@@ -110,7 +119,7 @@ export const computeBlockDepths = (ranges: readonly DirectiveRange[]): Map<numbe
       stack.push(range.kind);
       continue;
     }
-    const wantOpener: DirectiveKind = range.kind === "endif" ? "if" : "each";
+    const wantOpener: DirectiveKind = range.kind === "endif" ? "if" : "for";
     const matchIdx = stack.lastIndexOf(wantOpener);
     if (matchIdx !== -1) {
       stack.length = matchIdx;
@@ -118,6 +127,10 @@ export const computeBlockDepths = (ranges: readonly DirectiveRange[]): Map<numbe
   }
   return depths;
 };
+
+/** The loop alias a `for` marker binds, or undefined for every other kind. */
+const directiveAlias = (meta: MarkerMeta): string | undefined =>
+  meta.kind === "for" ? meta.alias : undefined;
 
 export const scanDirectives = (doc: PMNode): DirectiveRange[] => {
   const ranges: DirectiveRange[] = [];
@@ -132,23 +145,26 @@ export const scanDirectives = (doc: PMNode): DirectiveRange[] => {
     const sole = lineMarkers.length === 1 ? lineMarkers[0] : undefined;
     if (sole && sole.raw === trimmed && isBlockDirectiveKind(sole.meta.kind)) {
       const last = chunks.at(-1);
+      const alias = directiveAlias(sole.meta);
       ranges.push({
         from: chunks[0]?.start ?? 0,
         to: last ? (last.end ?? last.start + last.text.length) : 0,
         kind: sole.meta.kind,
         expr: directiveExpr(sole.meta),
         block: true,
+        ...(alias !== undefined ? { alias } : {}),
       });
       continue;
     }
 
-    // Otherwise, inline markers. Mid-line if/elseif/else/endif and
-    // {{#each}}/{{/each}} are emitted with `block:false`: the fill engine
+    // Otherwise, inline markers. Mid-line if/elif/else/endif and
+    // `{% for %}`/`{% endfor %}` are emitted with `block:false`: the fill engine
     // resolves inline conditional spans and inline loops within a paragraph,
     // so they get the marker tint and join the outline, while the gutter-rail
     // bands stay block-only (the overlay checks `block`).
     for (const marker of scanMarkers(joined)) {
       const clauseVersion = marker.meta.kind === "clause" ? marker.meta.version : undefined;
+      const alias = directiveAlias(marker.meta);
       ranges.push({
         from: offsetToDocPos(chunks, marker.start),
         to: offsetToDocPos(chunks, marker.end, "end"),
@@ -156,6 +172,7 @@ export const scanDirectives = (doc: PMNode): DirectiveRange[] => {
         expr: directiveExpr(marker.meta),
         block: false,
         ...(clauseVersion !== undefined ? { clauseVersion } : {}),
+        ...(alias !== undefined ? { alias } : {}),
       });
     }
   }

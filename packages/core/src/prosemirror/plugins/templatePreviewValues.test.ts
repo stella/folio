@@ -76,17 +76,17 @@ describe("templatePreviewValues: entry tracking", () => {
 
   test("skips empty values, unmatched fields, and structural directives", () => {
     const doc = docOf(
-      "Field {{tenant.name}} and clause {{@clause:Indemnity}}.",
-      "{{#if premium}}",
-      "Premium terms for {{tenant.name}}.",
-      "{{/if}}",
+      'Field {{ tenant.name }} and clause {{ clause("Indemnity") }}.',
+      "{% if premium %}",
+      "Premium terms for {{ tenant.name }}.",
+      "{% endif %}",
     );
     const state = makeState(doc, {
       values: {
         "tenant.name": "",
         "landlord.name": "Unused",
         // A clause slot keys by SLOT NAME, not the `@clause:` patch key,
-        // so this value never matches the {{@clause:Indemnity}} marker.
+        // so this value never matches the clause("Indemnity") marker.
         "@clause:Indemnity": "Not a field",
         premium: "true",
       },
@@ -97,7 +97,7 @@ describe("templatePreviewValues: entry tracking", () => {
   });
 
   test("previews a linked clause slot, keyed by slot name", () => {
-    const doc = docOf("Field {{tenant.name}} and clause {{@clause:Indemnity}}.");
+    const doc = docOf('Field {{ tenant.name }} and clause {{ clause("Indemnity") }}.');
     const state = makeState(doc, {
       values: {
         "tenant.name": "Pavel Novák",
@@ -112,11 +112,11 @@ describe("templatePreviewValues: entry tracking", () => {
       "Indemnity=The Supplier shall indemnify the Customer.",
     ]);
     const clause = entries.find((e) => e.expr === "Indemnity")!;
-    expect(sliceFromTo(state.doc, clause.from, clause.to)).toBe("{{@clause:Indemnity}}");
+    expect(sliceFromTo(state.doc, clause.from, clause.to)).toBe('{{ clause("Indemnity") }}');
   });
 
   test("renders multi-paragraph clause text as one wrapping run", () => {
-    const doc = docOf("Clause {{@clause:Terms}}.");
+    const doc = docOf('Clause {{ clause("Terms") }}.');
     const state = makeState(doc, {
       values: { Terms: "First paragraph.\nSecond paragraph." },
       mode: "highlighted",
@@ -128,7 +128,7 @@ describe("templatePreviewValues: entry tracking", () => {
   });
 
   test("skips an unlinked clause slot (no value supplied)", () => {
-    const doc = docOf("Clause {{@clause:Missing}}.");
+    const doc = docOf('Clause {{ clause("Missing") }}.');
     const state = makeState(doc, {
       values: { tenant: "Pavel Novák" },
       mode: "plain",

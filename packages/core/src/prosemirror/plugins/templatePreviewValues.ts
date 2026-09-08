@@ -140,8 +140,8 @@ function collectPreviewEntries(
 
   const entries: TemplatePreviewEntry[] = [];
   for (const range of scanDirectives(doc)) {
-    // Field placeholders (`{{path}}`) key the preview map by their path;
-    // clause slots (`{{@clause:Name}}`) key it by the slot name, which
+    // Field placeholders (`{{ path }}`) key the preview map by their path;
+    // clause slots (`{{ clause("Name") }}`) key it by the slot name, which
     // `scanDirectives` exposes as the clause range's `expr`. The host
     // supplies the resolved clause text under that same slot name.
     if (range.kind !== "placeholder" && range.kind !== "clause") {
