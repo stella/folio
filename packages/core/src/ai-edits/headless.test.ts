@@ -8,7 +8,7 @@
  * case; the copied-through package parts for the structural full-repack case).
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { panic } from "better-result";
 import JSZip from "jszip";
 import { EditorState } from "prosemirror-state";
@@ -2573,6 +2573,44 @@ const insertionChange = (reviewer: FolioDocxReviewer): FolioReviewChange => {
 };
 
 describe("headless docx review discovery + resolve", () => {
+  test("serialization mismatch errors never retain document text", async () => {
+    const makeBaseline = async (text: string, paraId: string) => {
+      const document = createEmptyDocument();
+      document.package.document.content = [
+        {
+          type: "paragraph",
+          paraId,
+          content: [{ type: "run", content: [{ type: "text", text }] }],
+        },
+      ];
+      return createDocx(document);
+    };
+    const sensitiveText = "privileged serialization expectation";
+    const expectedReviewer = await FolioDocxReviewer.fromBuffer(
+      await makeBaseline(sensitiveText, "21000010"),
+    );
+    const mismatchedReviewer = await FolioDocxReviewer.fromBuffer(
+      await makeBaseline("different serialized content", "21000011"),
+    );
+    expect(expectedReviewer.resolveReviewedStory({ view: "final" })).toBe(true);
+
+    const reopen = spyOn(FolioDocxReviewer, "fromBuffer");
+    try {
+      reopen.mockResolvedValue(mismatchedReviewer);
+      const saving = expectedReviewer.toBuffer();
+      await expect(saving).rejects.not.toHaveProperty("expectedText");
+      await expect(saving).rejects.not.toHaveProperty("actualText");
+      await expect(saving).rejects.toMatchObject({
+        mismatches: ["text-projection", "block-projection"],
+        expectedBlockCount: 1,
+        actualBlockCount: 1,
+        remainingChangeCount: 0,
+      });
+    } finally {
+      reopen.mockRestore();
+    }
+  });
+
   test("getContentAsText labels every block with its stable id", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
