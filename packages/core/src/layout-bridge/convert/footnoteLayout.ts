@@ -27,7 +27,8 @@ import {
   FOOTNOTE_SEPARATOR_HEIGHT,
 } from "../../layout-engine/types";
 import { footnoteToProseDoc } from "../../prosemirror/conversion/toProseDoc";
-import type { Footnote, StyleDefinitions, Theme } from "../../types/document";
+import type { Footnote, NumberFormat, StyleDefinitions, Theme } from "../../types/document";
+import { formatOoxmlCounter } from "../../docx/ooxmlCounterFormatter";
 import { measureParagraph } from "../engine/measuring";
 import { layoutTextBoxContent } from "../../layout-engine/measure/textBoxParagraphLayout";
 import { toFlowBlocks } from "./toFlowBlocks";
@@ -165,6 +166,8 @@ export type NoteDisplayNumberMaps = {
   footnoteNumbers?: ReadonlyMap<number, number>;
   /** endnote `w:id` → sequential display number */
   endnoteNumbers?: ReadonlyMap<number, number>;
+  /** Number format for endnote reference markers. Defaults to lower Roman. */
+  endnoteNumberFormat?: NumberFormat;
 };
 
 /**
@@ -250,20 +253,23 @@ function remapNoteMarkerRun(run: Run, maps: NoteDisplayNumberMaps): Run {
   if (run.kind !== "text") {
     return run;
   }
-  const displayNumber = getRunDisplayNumber(run, maps);
-  if (displayNumber === undefined) {
+  const displayText = getRunDisplayText(run, maps);
+  if (displayText === undefined) {
     return run;
   }
-  const text = String(displayNumber);
-  return run.text === text ? run : { ...run, text };
+  return run.text === displayText ? run : { ...run, text: displayText };
 }
 
-function getRunDisplayNumber(run: TextRun, maps: NoteDisplayNumberMaps): number | undefined {
+function getRunDisplayText(run: TextRun, maps: NoteDisplayNumberMaps): string | undefined {
   if (run.footnoteRefId !== undefined) {
-    return maps.footnoteNumbers?.get(run.footnoteRefId);
+    const displayNumber = maps.footnoteNumbers?.get(run.footnoteRefId);
+    return displayNumber === undefined ? undefined : String(displayNumber);
   }
   if (run.endnoteRefId !== undefined) {
-    return maps.endnoteNumbers?.get(run.endnoteRefId);
+    const displayNumber = maps.endnoteNumbers?.get(run.endnoteRefId);
+    return displayNumber === undefined
+      ? undefined
+      : formatOoxmlCounter(displayNumber, maps.endnoteNumberFormat ?? "lowerRoman");
   }
   return undefined;
 }

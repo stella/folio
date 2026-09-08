@@ -462,6 +462,8 @@ export function runLayoutPipeline<THfPMs>(
     newBlocks = remapNoteMarkerText(newBlocks, {
       ...(footnoteDisplayNumbers ? { footnoteNumbers: footnoteDisplayNumbers } : {}),
       ...(endnoteDisplayNumbers ? { endnoteNumbers: endnoteDisplayNumbers } : {}),
+      endnoteNumberFormat:
+        document?.package.document.sections?.at(-1)?.properties.endnotePr?.numFmt ?? "lowerRoman",
     });
     outcome.blocks = newBlocks;
 

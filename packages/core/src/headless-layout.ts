@@ -480,7 +480,11 @@ export const layoutDocxHeadless = async (
       endnotes,
       collectEndnoteRefs(authored).map((ref) => ref.endnoteId),
     );
-    const blocks = remapNoteMarkerText(authored, { footnoteNumbers, endnoteNumbers });
+    const blocks = remapNoteMarkerText(authored, {
+      footnoteNumbers,
+      endnoteNumbers,
+      endnoteNumberFormat: finalSection?.endnotePr?.numFmt ?? "lowerRoman",
+    });
 
     const measures = measureBlocks(blocks, contentWidth);
 
