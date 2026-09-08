@@ -196,7 +196,7 @@ describe("remapNoteMarkerText", () => {
 
     const remapped = remapNoteMarkerText(blocks, {
       footnoteNumbers: new Map([[5, 1]]),
-      endnoteNumbers: new Map([[8, 1]]),
+      endnoteTexts: new Map([[8, "i"]]),
     });
 
     const footnoteParagraph = remapped.at(0);
@@ -208,7 +208,7 @@ describe("remapNoteMarkerText", () => {
     expect(endnoteParagraph.runs.at(0)).toMatchObject({ text: "i", endnoteRefId: 8 });
   });
 
-  test("uses the configured endnote number format", () => {
+  test("uses preformatted endnote display text", () => {
     const blocks: FlowBlock[] = [
       {
         kind: "paragraph",
@@ -218,8 +218,7 @@ describe("remapNoteMarkerText", () => {
     ];
 
     const remapped = remapNoteMarkerText(blocks, {
-      endnoteNumbers: new Map([[8, 3]]),
-      endnoteNumberFormat: "upperLetter",
+      endnoteTexts: new Map([[8, "C"]]),
     });
 
     const endnoteParagraph = remapped.at(0);

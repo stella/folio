@@ -1,6 +1,7 @@
 import type { EditorState } from "prosemirror-state";
 
 import { resolveDocumentGridLinePitch } from "../docx/documentGrid";
+import { formatOoxmlCounter } from "../docx/ooxmlCounterFormatter";
 import { buildBookmarkPageMap } from "../fields/bookmarkPages";
 import { buildBookmarkText } from "../fields/bookmarkText";
 import {
@@ -459,11 +460,20 @@ export function runLayoutPipeline<THfPMs>(
           collectEndnoteRefs(newBlocks).map((ref) => ref.endnoteId),
         )
       : undefined;
+    const endnoteNumberFormat =
+      document?.package.document.sections?.at(-1)?.properties.endnotePr?.numFmt ?? "lowerRoman";
+    const endnoteTexts = endnoteDisplayNumbers
+      ? new Map(
+          Array.from(
+            endnoteDisplayNumbers,
+            ([id, displayNumber]) =>
+              [id, formatOoxmlCounter(displayNumber, endnoteNumberFormat)] as const,
+          ),
+        )
+      : undefined;
     newBlocks = remapNoteMarkerText(newBlocks, {
       ...(footnoteDisplayNumbers ? { footnoteNumbers: footnoteDisplayNumbers } : {}),
-      ...(endnoteDisplayNumbers ? { endnoteNumbers: endnoteDisplayNumbers } : {}),
-      endnoteNumberFormat:
-        document?.package.document.sections?.at(-1)?.properties.endnotePr?.numFmt ?? "lowerRoman",
+      ...(endnoteTexts ? { endnoteTexts } : {}),
     });
     outcome.blocks = newBlocks;
 

@@ -6,9 +6,6 @@
  * per-page footnote area heights for layout space reservation.
  */
 
-import type { NumberFormat } from "@stll/docx-core/model";
-
-import { formatOoxmlCounter } from "../../docx/ooxmlCounterFormatter";
 import type {
   FlowBlock,
   Measure,
@@ -166,10 +163,8 @@ export function computeNoteDisplayNumbers(
 export type NoteDisplayNumberMaps = {
   /** footnote `w:id` → sequential display number */
   footnoteNumbers?: ReadonlyMap<number, number>;
-  /** endnote `w:id` → sequential display number */
-  endnoteNumbers?: ReadonlyMap<number, number>;
-  /** Number format for endnote reference markers. Defaults to lower Roman. */
-  endnoteNumberFormat?: NumberFormat;
+  /** endnote `w:id` → formatted display text */
+  endnoteTexts?: ReadonlyMap<number, string>;
 };
 
 /**
@@ -184,7 +179,7 @@ export type NoteDisplayNumberMaps = {
  * template preview substitution).
  */
 export function remapNoteMarkerText(blocks: FlowBlock[], maps: NoteDisplayNumberMaps): FlowBlock[] {
-  if ((maps.footnoteNumbers?.size ?? 0) === 0 && (maps.endnoteNumbers?.size ?? 0) === 0) {
+  if ((maps.footnoteNumbers?.size ?? 0) === 0 && (maps.endnoteTexts?.size ?? 0) === 0) {
     return blocks;
   }
 
@@ -268,10 +263,7 @@ function getRunDisplayText(run: TextRun, maps: NoteDisplayNumberMaps): string | 
     return displayNumber === undefined ? undefined : String(displayNumber);
   }
   if (run.endnoteRefId !== undefined) {
-    const displayNumber = maps.endnoteNumbers?.get(run.endnoteRefId);
-    return displayNumber === undefined
-      ? undefined
-      : formatOoxmlCounter(displayNumber, maps.endnoteNumberFormat ?? "lowerRoman");
+    return maps.endnoteTexts?.get(run.endnoteRefId);
   }
   return undefined;
 }

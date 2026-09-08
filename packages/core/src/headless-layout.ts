@@ -36,6 +36,7 @@ import { Result, TaggedError } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 
 import { parseDocx } from "./docx/parser";
+import { formatOoxmlCounter } from "./docx/ooxmlCounterFormatter";
 import { toArrayBuffer, type DocxInput } from "./utils/docxInput";
 import { buildFontAlternates } from "./fonts/fontAlternates";
 import { extractEmbeddedFonts, type EmbeddedFont } from "./fonts/embeddedFonts";
@@ -480,10 +481,17 @@ export const layoutDocxHeadless = async (
       endnotes,
       collectEndnoteRefs(authored).map((ref) => ref.endnoteId),
     );
+    const endnoteNumberFormat = finalSection?.endnotePr?.numFmt ?? "lowerRoman";
+    const endnoteTexts = new Map(
+      Array.from(
+        endnoteNumbers,
+        ([id, displayNumber]) =>
+          [id, formatOoxmlCounter(displayNumber, endnoteNumberFormat)] as const,
+      ),
+    );
     const blocks = remapNoteMarkerText(authored, {
       footnoteNumbers,
-      endnoteNumbers,
-      endnoteNumberFormat: finalSection?.endnotePr?.numFmt ?? "lowerRoman",
+      endnoteTexts,
     });
 
     const measures = measureBlocks(blocks, contentWidth);
