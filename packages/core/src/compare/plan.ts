@@ -48,6 +48,7 @@ import type {
   FolioAIEditSnapshot,
 } from "../ai-edits/types";
 import type { TableCellCoordinate, TableGeometryPairing } from "../ai-edits/table-geometry";
+import { paragraphSpacingEqual } from "../prosemirror/paragraphSpacing";
 import { alignFolioBlocks } from "../version-comparison";
 import { inlineFormattingSegments } from "./formatting";
 import { alignTableColumns, type TableColumnAlignmentStep } from "./column-alignment";
@@ -1043,8 +1044,8 @@ const columnCellTexts = (blocks: readonly FolioAIBlock[]): string[] => {
 /**
  * The paragraph properties that differ, or `null` when they agree. Only the
  * ones a block projection can see and an operation can set: a list level, a
- * paragraph style, and direct alignment. These edits move no words and are
- * invisible in a text diff.
+ * paragraph style, direct alignment, and direct spacing. These edits move no
+ * words and are invisible in a text diff.
  */
 const changedParagraphProperties = (
   baseBlock: FolioAIBlock,
@@ -1062,6 +1063,9 @@ const changedParagraphProperties = (
   }
   if (baseBlock.directAlignment !== targetBlock.directAlignment) {
     properties.alignment = targetBlock.directAlignment ?? null;
+  }
+  if (!paragraphSpacingEqual(baseBlock.directSpacing, targetBlock.directSpacing)) {
+    properties.spacing = targetBlock.directSpacing ?? null;
   }
   return Object.keys(properties).length > 0 ? properties : null;
 };
@@ -1303,6 +1307,7 @@ const withTrailingDeletionRules = ({
           styleId: insert.styleId ?? null,
           listLevel: insert.listLevel ?? null,
           alignment: insert.alignment ?? null,
+          spacing: insert.spacing ?? null,
         };
       }
     }
@@ -1452,7 +1457,7 @@ export const planStoryCompare = ({
 
   const pushInsertOperation = (block: FolioAIBlock, anchorId: string | null): void => {
     const moveSourceId = moveSourceByTargetBlockId.get(block.id);
-    // All three always explicit, `null` included: an inserted paragraph that
+    // All four always explicit, `null` included: an inserted paragraph that
     // says nothing takes the anchor's paragraph properties, and the anchor is
     // whichever block happened to follow it. A new ordinary paragraph beside
     // a styled, aligned list item is not implicitly the same kind of paragraph.
@@ -1462,6 +1467,7 @@ export const planStoryCompare = ({
       styleId: block.styleId ?? null,
       listLevel: block.listLevel ?? null,
       alignment: block.directAlignment ?? null,
+      spacing: block.directSpacing ?? null,
     };
     if (anchorId !== null) {
       operations.push({

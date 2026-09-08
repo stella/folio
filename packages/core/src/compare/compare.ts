@@ -420,6 +420,7 @@ const COMPARE_SKIP_DISPOSITION = {
   preconditionFailed: "fatal",
   staleRange: "fatal",
   emptyOperation: "unwritable",
+  pendingParagraphPropertyChange: "unwritable",
   noopOperation: "unwritable",
   documentVersionMismatch: "fatal",
   documentNotEditable: "fatal",

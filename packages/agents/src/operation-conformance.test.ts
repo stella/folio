@@ -232,6 +232,7 @@ type JsonSchemaNode = {
   readonly enum?: readonly unknown[];
   readonly pattern?: string;
   readonly minimum?: number;
+  readonly maximum?: number;
   readonly minLength?: number;
   readonly minProperties?: number;
   readonly properties?: Readonly<Record<string, JsonSchemaNode>>;
@@ -288,7 +289,8 @@ const admits = (schema: JsonSchemaNode, value: unknown): boolean => {
       return (
         typeof value === "number" &&
         Number.isInteger(value) &&
-        (schema.minimum === undefined || value >= schema.minimum)
+        (schema.minimum === undefined || value >= schema.minimum) &&
+        (schema.maximum === undefined || value <= schema.maximum)
       );
     case "boolean":
       return typeof value === "boolean";
@@ -365,6 +367,7 @@ const CONTRACT_OPERATION_FIXTURES: Record<FolioDocumentOperationType, Record<str
     text: "New paragraph.",
     inheritFormatting: true,
     alignment: "both",
+    spacing: { spaceBefore: 0, lineSpacing: -240, beforeAutospacing: false },
     listLevel: 1,
     moveId: "move-1",
     pageBreakBefore: true,
@@ -395,7 +398,12 @@ const CONTRACT_OPERATION_FIXTURES: Record<FolioDocumentOperationType, Record<str
     id: "op-set-paragraph-properties",
     type: "setBlockParagraphProperties",
     blockId: "0304003A",
-    properties: { styleId: "ClauseHeading1", listLevel: 1, alignment: "both" },
+    properties: {
+      styleId: "ClauseHeading1",
+      listLevel: 1,
+      alignment: "both",
+      spacing: { spaceAfter: 360, lineSpacingRule: "atLeast", afterAutospacing: true },
+    },
   },
   splitBlock: {
     id: "op-split-block",
@@ -559,6 +567,83 @@ describe("document operation contract JSON schema conformance", () => {
     expect(parseFolioDocumentOperationBatch(batch)).toEqual(batch);
     expect(admits(OPERATION_SCHEMA, operation)).toBe(true);
     expect(admits(BATCH_SCHEMA, batch)).toBe(true);
+  });
+
+  test.each([
+    {
+      label: "negative space before",
+      spacing: { spaceBefore: -1 },
+    },
+    {
+      label: "unsafe space after",
+      spacing: { spaceAfter: 1e100 },
+    },
+    {
+      label: "unsafe signed line spacing",
+      spacing: { lineSpacing: -1e100 },
+    },
+  ] as const)("rejects $label in both the parser and schema", ({ spacing }) => {
+    const operation = {
+      id: "invalid-spacing",
+      type: "setBlockParagraphProperties",
+      blockId: "0304003A",
+      properties: { spacing },
+    };
+    expect(() => parseFolioDocumentOperationBatch({ version: 1, operations: [operation] })).toThrow(
+      InvalidFolioDocumentOperationBatchError,
+    );
+    expect(admits(OPERATION_SCHEMA, operation)).toBe(false);
+  });
+
+  test.each([
+    {
+      label: "unsafe text-range offset",
+      operation: {
+        id: "unsafe-range",
+        type: "replaceRange",
+        range: {
+          type: "textRange",
+          story: "main",
+          blockId: "0304003A",
+          startOffset: 1e100,
+          endOffset: 2,
+          selectedTextHash: "h1",
+        },
+        replace: "replacement",
+      },
+    },
+    {
+      label: "unsafe list level",
+      operation: {
+        id: "unsafe-list-level",
+        type: "setBlockParagraphProperties",
+        blockId: "0304003A",
+        properties: { listLevel: 1e100 },
+      },
+    },
+    {
+      label: "unsafe split offset",
+      operation: {
+        id: "unsafe-split-offset",
+        type: "splitBlock",
+        blockId: "0304003A",
+        offset: 1e100,
+      },
+    },
+    {
+      label: "unsafe merge row count",
+      operation: {
+        id: "unsafe-row-count",
+        type: "mergeTableCells",
+        blockId: "0304003A",
+        rowCount: 1e100,
+      },
+    },
+  ] as const)("rejects $label wherever the shared reader is exposed", ({ operation }) => {
+    expect(() => parseFolioDocumentOperationBatch({ version: 1, operations: [operation] })).toThrow(
+      InvalidFolioDocumentOperationBatchError,
+    );
+    expect(admits(OPERATION_SCHEMA, operation)).toBe(false);
   });
 
   test("cell merge targeting admits exactly one endpoint form", () => {

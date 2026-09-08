@@ -14,6 +14,7 @@ import type {
 } from "../../types/document";
 import { pixelsToEmu } from "../../utils/units";
 import { expectHardBreakAttrs, expectParagraphAttrs } from "../attrs";
+import { directParagraphSpacing } from "../paragraphSpacing";
 import { schema } from "../schema";
 import { fromProseDoc, proseDocToBlocks } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
@@ -1086,6 +1087,10 @@ describe("fromProseDoc", () => {
       paragraph.content,
     );
     const editedPmDoc = schema.node("doc", null, [editedParagraph]);
+    expect(directParagraphSpacing(expectParagraphAttrs(editedParagraph))).toEqual({
+      spaceBefore: 240,
+      beforeAutospacing: false,
+    });
     const roundTripped = fromProseDoc(editedPmDoc, document);
     const block = roundTripped.package.document.content.at(0);
 
@@ -1224,6 +1229,10 @@ describe("fromProseDoc", () => {
       paragraph.content,
     );
     const editedPmDoc = schema.node("doc", null, [editedParagraph]);
+    expect(directParagraphSpacing(expectParagraphAttrs(editedParagraph))).toEqual({
+      spaceBefore: 240,
+      beforeAutospacing: false,
+    });
     const roundTripped = fromProseDoc(editedPmDoc, document);
     const block = roundTripped.package.document.content.at(0);
 

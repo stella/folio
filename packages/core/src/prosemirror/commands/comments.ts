@@ -9,6 +9,7 @@ import type { Command, EditorState, Transaction } from "prosemirror-state";
 import { removeRow, TableMap } from "prosemirror-tables";
 
 import type {
+  ParagraphFormatting,
   RunPropertyChange,
   SectionProperties,
   TableCellFormatting,
@@ -37,6 +38,7 @@ import {
   resolveVisibleTableCellMerge,
 } from "./tableCellMergeResolution";
 import {
+  hasSerializableParagraphPropertyChange,
   paragraphRejectAttrPatch,
   paragraphRejectOriginalFormatting,
   paragraphPropertiesSnapshot,
@@ -180,15 +182,20 @@ function resolveChange(
                 // propertyChangeScope.ts. Earlier removed runs were folded
                 // into the next retained entry, so only a removed trailing
                 // run changes the live properties now.
-                const previousAlignmentFromStyle = styleResolver
-                  ? styleResolver.resolveParagraphStyle(rejection.previousFormatting?.styleId)
-                      .paragraphFormatting?.alignment
-                  : expectParagraphAttrs(node).alignmentFromStyle;
+                const inheritedAlignment = expectParagraphAttrs(node).alignmentFromStyle;
+                let previousFormattingFromStyle: ParagraphFormatting | undefined;
+                if (styleResolver) {
+                  previousFormattingFromStyle = styleResolver.resolveParagraphStyle(
+                    rejection.previousFormatting?.styleId,
+                  ).paragraphFormatting;
+                } else if (inheritedAlignment !== undefined) {
+                  previousFormattingFromStyle = { alignment: inheritedAlignment };
+                }
                 Object.assign(
                   nextAttrs,
                   paragraphRejectAttrPatch(
                     rejection.previousFormatting,
-                    previousAlignmentFromStyle,
+                    previousFormattingFromStyle,
                   ),
                 );
                 nextAttrs["_originalFormatting"] = paragraphRejectOriginalFormatting(
@@ -1786,6 +1793,35 @@ const reauthorParagraphPropertySuggestions = ({
   return changed ? next : null;
 };
 
+const canReauthorParagraphPropertySuggestions = (
+  doc: PMNode,
+  matchesSuggestion: (suggestionId: string) => boolean,
+): boolean => {
+  let valid = true;
+  doc.descendants((node) => {
+    if (!valid || node.type.name !== "paragraph") {
+      return undefined;
+    }
+    const propertyChanges = expectParagraphAttrs(node)._propertyChanges;
+    if (!Array.isArray(propertyChanges)) {
+      return undefined;
+    }
+    let serializableCount = 0;
+    for (const change of propertyChanges) {
+      const suggested = readSuggestedParagraphPropertyChange(change);
+      if (!suggested || matchesSuggestion(suggested.suggestionId)) {
+        serializableCount++;
+      }
+    }
+    if (serializableCount > 1) {
+      valid = false;
+      return false;
+    }
+    return undefined;
+  });
+  return valid;
+};
+
 type FinalParagraphRotationOptions = {
   tr: Transaction;
   shouldRotate: (node: PMNode, position: number) => boolean;
@@ -1818,6 +1854,9 @@ const appendRotatedParagraphPropertyChange = ({
     return false;
   }
   const existing = expectParagraphAttrs(current)._propertyChanges;
+  if (hasSerializableParagraphPropertyChange(existing)) {
+    return false;
+  }
   tr.setNodeMarkup(currentPosition, undefined, {
     ...current.attrs,
     _propertyChanges: [
@@ -2214,6 +2253,9 @@ const acceptSuggestions = (
   options: AcceptSuggestionOptions,
 ): Command => {
   return (state, dispatch) => {
+    if (!canReauthorParagraphPropertySuggestions(state.doc, matchesSuggestion)) {
+      return false;
+    }
     const insertionType = state.schema.marks["insertion"];
     const deletionType = state.schema.marks["deletion"];
     const runPropertyChangeType = state.schema.marks["runPropertyChange"];

@@ -237,7 +237,10 @@ describe("suggest_changes schema + capability description follow operationTypes"
     );
     const paragraphProperties = propertyOf(itemSchema, "properties");
     const clearableStyle = [{ type: "string" }, { type: "null" }];
-    const clearableListLevel = [{ type: "integer", minimum: 0 }, { type: "null" }];
+    const clearableListLevel = [
+      { type: "integer", minimum: 0, maximum: Number.MAX_SAFE_INTEGER },
+      { type: "null" },
+    ];
 
     expect(propertyOf(itemSchema, "styleId")["oneOf"]).toEqual(clearableStyle);
     expect(propertyOf(itemSchema, "listLevel")["oneOf"]).toEqual(clearableListLevel);

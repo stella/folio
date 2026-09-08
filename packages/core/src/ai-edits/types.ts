@@ -1,4 +1,4 @@
-import type { ParagraphAlignment } from "../types/document";
+import type { ParagraphAlignment, ParagraphFormatting } from "../types/document";
 
 export type FolioAIBlockKind = "heading" | "listItem" | "paragraph";
 
@@ -60,6 +60,8 @@ export type FolioAIBlock = {
   styleId?: string;
   /** Direct `w:pPr/w:jc`; absent when alignment comes only from a style. */
   directAlignment?: ParagraphAlignment;
+  /** Direct `w:pPr/w:spacing`; absent when every spacing value is inherited. */
+  directSpacing?: FolioAIParagraphSpacing;
   /**
    * `w:numPr/w:ilvl`: the block's list indent level. Present only on a block
    * that carries numbering, and the only pPr property a redline can move
@@ -70,6 +72,21 @@ export type FolioAIBlock = {
   previewRuns?: FolioAIBlockPreviewRun[];
   table?: FolioAIBlockTableLocation;
 };
+
+/**
+ * The complete modeled attribute set of one direct `w:pPr/w:spacing` child.
+ * Optional fields preserve the distinction between an absent attribute and
+ * an explicit zero or false value.
+ */
+export type FolioAIParagraphSpacing = Pick<
+  ParagraphFormatting,
+  | "spaceBefore"
+  | "spaceAfter"
+  | "lineSpacing"
+  | "lineSpacingRule"
+  | "beforeAutospacing"
+  | "afterAutospacing"
+>;
 
 /**
  * The paragraph properties an operation may set. A subset of `w:pPrChange`'s
@@ -86,6 +103,8 @@ export type FolioAIBlockParagraphProperties = {
   listLevel?: number | null;
   /** Direct `w:jc`. `null` clears the override and restores style inheritance. */
   alignment?: ParagraphAlignment | null;
+  /** Direct `w:spacing` attributes. `null` removes the whole direct child. */
+  spacing?: FolioAIParagraphSpacing | null;
 };
 
 /**
@@ -293,6 +312,11 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
          * from the anchor and lets the inserted paragraph's style decide.
          */
         alignment?: ParagraphAlignment | null;
+        /**
+         * Direct `w:spacing` for the inserted block. `null` clears spacing
+         * copied from the anchor and lets the inserted paragraph's style decide.
+         */
+        spacing?: FolioAIParagraphSpacing | null;
         comment?: FolioAIComment;
       }
     | {
@@ -529,6 +553,8 @@ export type FolioAIEditSkipReason =
   | "preconditionFailed"
   | "staleRange"
   | "emptyOperation"
+  /** The paragraph already owns the one `w:pPrChange` OOXML permits. */
+  | "pendingParagraphPropertyChange"
   /**
    * The operation would not change the document — find equals
    * replace, or replaceBlock's `text` matches the live block.

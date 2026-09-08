@@ -240,6 +240,13 @@ const paragraphXmlContaining = (xml: string, text: string): string => {
   return found ?? panic(`expected a paragraph containing ${text}`);
 };
 
+const expectAtMostOneParagraphPropertyChange = (xml: string): void => {
+  const paragraphs = xml.match(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/gu) ?? [];
+  for (const paragraphXml of paragraphs) {
+    expect(paragraphXml.match(/<w:pPrChange\b/gu)?.length ?? 0).toBeLessThanOrEqual(1);
+  }
+};
+
 const paragraphProperties = (paragraphXml: string): string =>
   paragraphXml.match(/<w:pPr>([\s\S]*?)<\/w:pPr>/u)?.at(1) ?? "";
 
@@ -605,6 +612,7 @@ describe("accepted suggested container-final paragraphs", () => {
       expect(terminalChainState(tracked.state, containerKind)).toEqual(
         expectedTerminalChainState(["accept", "accept", "accept"]),
       );
+      expectAtMostOneParagraphPropertyChange(await documentXml(tracked.state));
       const reopenedTracked = await reopenedState(tracked.state);
       expect(terminalChainFormattingState(reopenedTracked, containerKind)).toEqual(
         terminalChainFormattingState(tracked.state, containerKind),
@@ -678,6 +686,7 @@ describe("accepted suggested container-final paragraphs", () => {
       const model = fromProseDoc(view.state.doc);
       expect(revisedFinalParagraphMarks(model)).toEqual([]);
       const xml = await documentXml(view.state);
+      expectAtMostOneParagraphPropertyChange(xml);
       const carrierXml = paragraphXmlContaining(xml, CARRIER_TEXT);
       const insertedXml = paragraphXmlContaining(xml, INSERTED_TEXT);
       expect(paragraphProperties(carrierXml)).toBe(
@@ -705,6 +714,40 @@ describe("accepted suggested container-final paragraphs", () => {
       ]);
     },
   );
+
+  test("fails closed when final-mark rotation would append beside a pending pPrChange", () => {
+    const state = makeSuggestedTailState("body");
+    const carrier = state.doc.child(0);
+    const inserted = state.doc.child(1);
+    const withPendingPropertyChange = inserted.type.create(
+      {
+        ...inserted.attrs,
+        _propertyChanges: [
+          {
+            type: "paragraphPropertyChange",
+            info: { id: 700, author: "Reviewer", date: DATE },
+            previousFormatting: { alignment: "center" },
+          },
+        ],
+      },
+      inserted.content,
+    );
+    const view = dispatcher(
+      EditorState.create({
+        schema,
+        doc: state.doc.type.create(state.doc.attrs, [carrier, withPendingPropertyChange]),
+      }),
+    );
+    const before = view.state.doc.toJSON();
+
+    expect(
+      acceptSuggestion(TAIL_SUGGESTION_ID, { author: "Reviewer", date: DATE })(
+        view.state,
+        view.dispatch,
+      ),
+    ).toBe(false);
+    expect(view.state.doc.toJSON()).toEqual(before);
+  });
 
   test.each(ACCEPTANCE_CASES)(
     "$acceptance suggestion acceptance keeps $containerKind resolution atomic",

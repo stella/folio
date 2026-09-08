@@ -778,6 +778,14 @@ const serializeParagraphFormattingWithOptions = (
     sectionProperties,
   }: SerializeParagraphFormattingOptions = {},
 ): string => {
+  // Suggested editor-only history is stripped before it reaches the document
+  // model, so every entry here would serialize as a sibling w:pPrChange.
+  const serializablePropertyChangeCount = propertyChanges?.length ?? 0;
+  if (serializablePropertyChangeCount > 1) {
+    panic("A paragraph cannot serialize more than one w:pPrChange", {
+      count: serializablePropertyChangeCount,
+    });
+  }
   const paragraphMarkXml = paragraphMarkChange
     ? serializeParagraphMarkChange(paragraphMarkChange)
     : "";

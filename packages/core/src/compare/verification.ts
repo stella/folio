@@ -4,9 +4,9 @@
  * The check compares two block projections: what accepting the generated
  * revisions leaves against the target, and what rejecting them leaves against
  * the base. A projection carries each block's container, style, list level,
- * direct alignment and text, so WHICH field diverged names which part of the
- * pipeline lost the difference — and that is worth reporting as a typed cause
- * rather than as one opaque "did not reproduce".
+ * direct alignment, direct spacing and text, so WHICH field diverged names
+ * which part of the pipeline lost the difference — and that is worth reporting
+ * as a typed cause rather than as one opaque "did not reproduce".
  *
  * Every `detail` string here is structural: counts, offsets, container kinds.
  * Never a phrase of either document, because a caller may log it, put it in a
@@ -17,6 +17,7 @@ import { PARAGRAPH_MARK_CHANGE_KINDS, type ParagraphMarkChangeKind } from "@stll
 
 import type { FolioDocumentStoryHandle } from "../ai-edits/headless";
 import type { FolioAIBlock, FolioAIBlockPreviewRun } from "../ai-edits/types";
+import { paragraphSpacingEqual } from "../prosemirror/paragraphSpacing";
 import { resolveColorToHex } from "../utils/colorResolver";
 
 const normalizeInlineFormattingColor = (color: string | undefined): string | undefined =>
@@ -58,6 +59,7 @@ export const COMPARE_VERIFICATION_CAUSES = Object.freeze([
   "style",
   "list-level",
   "alignment",
+  "spacing",
   "inline-formatting",
   "whitespace",
   "text",
@@ -132,7 +134,7 @@ export const projectSupportedInlineFormatting = ({ text, previewRuns }: FolioAIB
 
 type ProjectedBlock = Pick<
   FolioAIBlock,
-  "text" | "table" | "styleId" | "listLevel" | "directAlignment"
+  "text" | "table" | "styleId" | "listLevel" | "directAlignment" | "directSpacing"
 >;
 
 type ProjectedTableContainer = NonNullable<ProjectedBlock["table"]>;
@@ -161,6 +163,7 @@ const sameProjectedBlock = (left: ProjectedBlock, right: ProjectedBlock): boolea
   left.styleId === right.styleId &&
   left.listLevel === right.listLevel &&
   left.directAlignment === right.directAlignment &&
+  paragraphSpacingEqual(left.directSpacing, right.directSpacing) &&
   left.text === right.text;
 
 const containerKind = (container: ProjectedTableContainer | undefined): "body" | "cell" =>
@@ -349,6 +352,9 @@ export const classifyProjectionMismatch = ({
   }
   if (left.text === right.text && left.directAlignment !== right.directAlignment) {
     return failure("alignment", `the direct paragraph alignment did not move ${at} (${counts})`);
+  }
+  if (left.text === right.text && !paragraphSpacingEqual(left.directSpacing, right.directSpacing)) {
+    return failure("spacing", `the direct paragraph spacing did not move ${at} (${counts})`);
   }
   if (collapseWhitespace(left.text) === collapseWhitespace(right.text)) {
     return failure("whitespace", `a block's text differs only in whitespace ${at} (${counts})`);

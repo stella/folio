@@ -1335,10 +1335,22 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
   const afterAutospacingEdited = afterHasAutospacingBase
     ? !autospacingMatchesBase(attrs._autospacingBase, "after", spaceAfter)
     : afterOriginalAutospacing && attrs._autospacingBase == null;
+  const beforeIsInherited =
+    attrs.spacingFromDocDefaults?.before === true ||
+    attrs.spacingFromImplicitDefaultStyle?.before === true;
+  const afterIsInherited =
+    attrs.spacingFromDocDefaults?.after === true ||
+    attrs.spacingFromImplicitDefaultStyle?.after === true;
   const shouldSerializeSpaceBefore =
-    typeof spaceBefore === "number" && (!beforeHasAutospacingBase || beforeAutospacingEdited);
+    typeof spaceBefore === "number" &&
+    (attrs.spacingExplicit?.before === true ||
+      beforeAutospacingEdited ||
+      (!beforeIsInherited && !beforeHasAutospacingBase));
   const shouldSerializeSpaceAfter =
-    typeof spaceAfter === "number" && (!afterHasAutospacingBase || afterAutospacingEdited);
+    typeof spaceAfter === "number" &&
+    (attrs.spacingExplicit?.after === true ||
+      afterAutospacingEdited ||
+      (!afterIsInherited && !afterHasAutospacingBase));
   const hasDirectLineSpacing = attrs.lineSpacingExplicit === true;
 
   if (attrs._originalFormatting) {

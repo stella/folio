@@ -4,6 +4,7 @@ import { TableMap } from "prosemirror-tables";
 
 import { expectParagraphAttrs, expectRunFormattingOverrideMarkAttrs } from "../prosemirror/attrs";
 import { directParagraphAlignment } from "../prosemirror/paragraphAlignment";
+import { directParagraphSpacing } from "../prosemirror/paragraphSpacing";
 import { deriveBlankBlockId, deriveBlockId, type FolioBlockId } from "../types/block-id";
 import { buildCleanBlockText } from "./clean-text";
 import type {
@@ -312,6 +313,7 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
       numberingReferenceKeys.add(numberingReferenceKey);
     }
     const directAlignment = getDirectAlignment(node);
+    const directSpacing = getDirectSpacing(node);
     const previewRuns = getPreviewRuns(node);
     const table = getTableLocation({ path, blockIndex: index, tableIndexByStart });
 
@@ -325,6 +327,7 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
         ...(styleId !== undefined && { styleId }),
         ...(listLevel !== undefined && { listLevel }),
         ...(directAlignment !== undefined && { directAlignment }),
+        ...(directSpacing !== undefined && { directSpacing }),
         ...(previewRuns !== undefined && { previewRuns }),
         ...(table !== undefined && { table }),
       },
@@ -438,6 +441,9 @@ const getStyleId = (node: PMNode): string | undefined => {
 
 /** Read only authored `w:jc`, never the effective alignment resolved from a style. */
 const getDirectAlignment = (node: PMNode) => directParagraphAlignment(expectParagraphAttrs(node));
+
+/** Read only authored `w:spacing`, never effective spacing resolved from a style. */
+const getDirectSpacing = (node: PMNode) => directParagraphSpacing(expectParagraphAttrs(node));
 
 type PreviewRunStyle = {
   bold?: boolean;
