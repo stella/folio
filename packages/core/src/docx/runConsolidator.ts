@@ -266,6 +266,13 @@ function isMergeableContent(content: RunContent): boolean {
  * Runs with breaks, tabs, images, fields, etc. act as merge boundaries
  */
 export function canMergeRun(run: Run): boolean {
+  // A run-property revision owns an exact text range. Merging either boundary
+  // would discard that range because a consolidated run can carry only one
+  // property-change collection.
+  if (run.propertyChanges && run.propertyChanges.length > 0) {
+    return false;
+  }
+
   // Empty runs can be merged
   if (run.content.length === 0) {
     return true;
