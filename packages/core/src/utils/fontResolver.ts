@@ -229,6 +229,18 @@ const FONT_MAPPINGS: Record<string, FontMapping> = {
       unitsPerEm: 2048,
     }), // 1.1328
   },
+  david: {
+    googleFont: "Noto Serif Hebrew",
+    category: "serif",
+    fallbackStack: ["David", "Noto Serif Hebrew", "Times New Roman", "serif"],
+    singleLineRatio: singleLineRatioOf({
+      source: "hhea",
+      hheaAscent: 1505,
+      hheaDescent: -510,
+      hheaLineGap: 0,
+      unitsPerEm: 2048,
+    }), // 0.9839
+  },
 
   // Additional common fonts
   georgia: {

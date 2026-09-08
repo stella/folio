@@ -36,8 +36,15 @@ const APTOS_FACES = [
   },
 ] as const satisfies ReadonlyArray<WordFontFace>;
 
+const HEBREW_FACES = [
+  { fileName: "david.ttf", family: "David", weight: 400 },
+  { fileName: "davidbd.ttf", family: "David", weight: 700 },
+] as const satisfies ReadonlyArray<WordFontFace>;
+
+const WORD_FONT_FACES = [...APTOS_FACES, ...HEBREW_FACES];
+
 export const wordFontDefinitions = (fontDirectory: string): LocalFontDefinition[] =>
-  APTOS_FACES.map((face) => {
+  WORD_FONT_FACES.map((face) => {
     const font: LocalFontDefinition = {
       family: face.family,
       filePath: path.join(fontDirectory, face.fileName),
