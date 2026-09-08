@@ -2586,11 +2586,12 @@ describe("headless docx review discovery + resolve", () => {
       return createDocx(document);
     };
     const sensitiveText = "privileged serialization expectation";
+    const actualSensitiveText = "different serialized content";
     const expectedReviewer = await FolioDocxReviewer.fromBuffer(
       await makeBaseline(sensitiveText, "21000010"),
     );
     const mismatchedReviewer = await FolioDocxReviewer.fromBuffer(
-      await makeBaseline("different serialized content", "21000011"),
+      await makeBaseline(actualSensitiveText, "21000011"),
     );
     expect(expectedReviewer.resolveReviewedStory({ view: "final" })).toBe(true);
 
@@ -2598,9 +2599,14 @@ describe("headless docx review discovery + resolve", () => {
     try {
       reopen.mockResolvedValue(mismatchedReviewer);
       const saving = expectedReviewer.toBuffer();
-      await expect(saving).rejects.not.toHaveProperty("expectedText");
-      await expect(saving).rejects.not.toHaveProperty("actualText");
-      await expect(saving).rejects.toMatchObject({
+      const rejection = await saving.then(
+        () => null,
+        (reason: unknown) => reason,
+      );
+      const serializedRejection = JSON.stringify(rejection);
+      expect(serializedRejection).not.toContain(sensitiveText);
+      expect(serializedRejection).not.toContain(actualSensitiveText);
+      expect(rejection).toMatchObject({
         mismatches: ["text-projection", "block-projection"],
         expectedBlockCount: 1,
         actualBlockCount: 1,
