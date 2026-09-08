@@ -7,6 +7,7 @@
  * manager.
  */
 
+import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import type { EditorState as EditorStateT } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
@@ -77,8 +78,8 @@ const DETACHED_WATERMARK_HOST = Symbol.for("stll.detachedWatermarkHost");
 const headerFooterToProseDocWithDetachedWatermarkHost = (
   headerFooter: HeaderFooter,
   options: { styles?: StyleDefinitions; theme?: Theme | null },
-) => {
-  const markedContent = headerFooter.content.map((block, blockIndex) => {
+): PMNode => {
+  const markedContent: BlockContent[] = headerFooter.content.map((block, blockIndex) => {
     if (blockIndex !== headerFooter.watermarkBlockIndex || block.type !== "paragraph") {
       return block;
     }

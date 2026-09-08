@@ -35,7 +35,7 @@ import type {
 } from "../../layout-engine/types";
 import { isFloatingImageRun, isFloatingTextBoxBlock } from "../../layout-engine/types";
 import { headerFooterToProseDoc } from "../../prosemirror/conversion/toProseDoc";
-import type { HeaderFooter, StyleDefinitions, Theme } from "../../types/document";
+import type { BlockContent, HeaderFooter, StyleDefinitions, Theme } from "../../types/document";
 import { emuToPixels } from "../../utils/units";
 import type { MeasureBlocksFn } from "./footnoteLayout";
 import { toFlowBlocks } from "./toFlowBlocks";
@@ -47,7 +47,7 @@ const headerFooterToProseDocWithDetachedWatermarkHost = (
   headerFooter: HeaderFooter,
   options: { styles?: StyleDefinitions; theme?: Theme | null },
 ): PMNode => {
-  const markedContent = headerFooter.content.map((block, blockIndex) => {
+  const markedContent: BlockContent[] = headerFooter.content.map((block, blockIndex) => {
     if (blockIndex !== headerFooter.watermarkBlockIndex || block.type !== "paragraph") {
       return block;
     }

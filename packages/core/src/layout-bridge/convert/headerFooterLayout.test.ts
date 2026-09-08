@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import type { FlowBlock, Measure, ParagraphBlock, TableBlock } from "../../layout-engine/types";
 import { headerFooterToProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import { schema } from "../../prosemirror/schema";
-import type { HeaderFooter } from "../../types/document";
+import type { BlockContent, HeaderFooter } from "../../types/document";
 import type { HeaderFooterMetrics } from "./headerFooterLayout";
 import {
   calculateHeaderFooterBodyTopClearance,
@@ -17,7 +17,7 @@ import {
 const DETACHED_WATERMARK_HOST = Symbol.for("stll.detachedWatermarkHost");
 
 const headerFooterToProseDocWithDetachedWatermarkHost = (headerFooter: HeaderFooter) => {
-  const markedContent = headerFooter.content.map((block, blockIndex) => {
+  const markedContent: BlockContent[] = headerFooter.content.map((block, blockIndex) => {
     if (blockIndex !== headerFooter.watermarkBlockIndex || block.type !== "paragraph") {
       return block;
     }
