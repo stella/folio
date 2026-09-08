@@ -311,34 +311,8 @@ test("paragraph cache preserves field, math, and rendered-break runs", () => {
   });
 });
 
-test("paragraph cache preserves inferred RTL and tab typography", () => {
+test("paragraph cache preserves tab typography", () => {
   withFakeTextMeasure(() => {
-    const rtlTab = {
-      kind: "paragraph",
-      id: "rtl-tab",
-      runs: [
-        { kind: "text", text: "عنوان عربي", fontSize: 11, rtl: true },
-        { kind: "tab", fontSize: 11 },
-        { kind: "text", text: "1", fontSize: 11, rtl: true },
-      ],
-      attrs: {
-        indent: { left: 48, right: 48, hanging: 48 },
-        tabs: [{ val: "end", pos: 9000, leader: "dot" }],
-      },
-    } as const satisfies ParagraphBlock;
-    expectCachedMeasurementsMatchFreshInBothOrders(
-      rtlTab,
-      {
-        ...rtlTab,
-        runs: [
-          { ...rtlTab.runs[0], rtl: false },
-          rtlTab.runs[1],
-          { ...rtlTab.runs[2], rtl: false },
-        ],
-      },
-      624,
-    );
-
     const smallTab = {
       kind: "paragraph",
       id: "tab-typography",

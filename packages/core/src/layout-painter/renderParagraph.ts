@@ -2561,13 +2561,26 @@ export function renderLine(
           break;
         }
       }
+      const authoredEndpoint = currentX + tabResult.width + followingWidthForCheck;
+      const activeContentRightEdge =
+        options?.contentWidthPx === undefined
+          ? undefined
+          : options.contentWidthPx - (options.floatingMargins?.rightMargin ?? 0);
+      const preservesAuthoredEndStop =
+        activeContentRightEdge !== undefined &&
+        tabResult.alignment === "end" &&
+        authoredEndpoint <= activeContentRightEdge + RIGHT_EDGE_EPSILON_PX;
+      const preservesAuthoredEndStopPastIndent =
+        lineRightEdgeX !== undefined &&
+        preservesAuthoredEndStop &&
+        authoredEndpoint > lineRightEdgeX + RIGHT_EDGE_EPSILON_PX;
       const useRightAnchor =
         lineRightEdgeX !== undefined &&
         options?.isRtl !== true &&
         tabResult.alignment === "end" &&
         !hasFollowingTab &&
-        currentX + tabResult.width + followingWidthForCheck >=
-          lineRightEdgeX - RIGHT_EDGE_EPSILON_PX;
+        !preservesAuthoredEndStopPastIndent &&
+        authoredEndpoint >= lineRightEdgeX - RIGHT_EDGE_EPSILON_PX;
 
       if (useRightAnchor) {
         // Promote to flex row. text-indent applies per flex item (not to the
@@ -2662,22 +2675,12 @@ export function renderLine(
       // the content area (Word TOC styles author stops a hair beyond the
       // margin); without this, the painted tab spills into the right margin.
       let tabWidth = tabResult.width;
-      const activeContentRightEdge =
-        options?.contentWidthPx === undefined
-          ? undefined
-          : options.contentWidthPx - (options.floatingMargins?.rightMargin ?? 0);
-      const preservesLogicalRtlEndStop =
-        options?.isRtl === true &&
-        tabResult.alignment === "end" &&
-        activeContentRightEdge !== undefined &&
-        currentX + tabWidth + followingWidthForCheck <=
-          activeContentRightEdge + RIGHT_EDGE_EPSILON_PX;
       const landsOnLeftIndent =
         tabResult.alignment === "start" &&
         tabLeftIndentPx > 0 &&
         Math.abs(currentX + tabWidth - tabLeftIndentPx) <= RIGHT_EDGE_EPSILON_PX;
       if (
-        !preservesLogicalRtlEndStop &&
+        !preservesAuthoredEndStop &&
         !landsOnLeftIndent &&
         lineRightEdgeX !== undefined &&
         canClampTabToRightEdge(

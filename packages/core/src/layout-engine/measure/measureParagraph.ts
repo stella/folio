@@ -13,7 +13,6 @@ import {
   isCjkFont,
 } from "../../utils/fontResolver";
 import { inlineImageBoundingBox } from "../../utils/rotationBoundingBox";
-import { isRtlParagraph } from "../../utils/paragraphBaseDirection";
 import { hasCjk, hasComplexScript } from "../../utils/scriptSegments";
 import { getHorizontalScaleFactor } from "../../utils/horizontalScale";
 import { measuredLineAdvance } from "../lineFlow";
@@ -1259,7 +1258,6 @@ export function measureParagraph(
 ): ParagraphMeasure {
   const runs = block.runs;
   const attrs = block.attrs;
-  const isRtl = isRtlParagraph(block);
   const spacing = attrs?.spacing;
   const isJustifiedParagraph = attrs?.alignment === "justify";
   const justificationProfile: JustificationProfile = {
@@ -1772,8 +1770,7 @@ export function measureParagraph(
       let tabWidth = tabResult.width;
       const authoredEndpoint = contentX + tabWidth + followingWidth;
       const activeContentRightEdge = maxWidth - currentLine.rightOffset;
-      const preservesLogicalRtlEndStop =
-        isRtl &&
+      const preservesAuthoredEndStop =
         tabResult.alignment === "end" &&
         authoredEndpoint <= activeContentRightEdge + WIDTH_TOLERANCE;
       const landsOnLeftIndent =
@@ -1787,7 +1784,7 @@ export function measureParagraph(
         currentLine.availableWidth +
         currentLine.leftOffset;
       if (
-        !preservesLogicalRtlEndStop &&
+        !preservesAuthoredEndStop &&
         !landsOnLeftIndent &&
         !hasFollowingTabOnLine(runs, runIndex) &&
         canClampTabToRightEdge(
@@ -1803,13 +1800,11 @@ export function measureParagraph(
         tabWidth = Math.max(1, lineRightEdgeX - contentX - followingWidth);
       }
 
-      // OOXML tab positions remain logical in bidi paragraphs. The browser's
-      // `dir="rtl"` mirrors this endpoint, so an authored end stop may extend
-      // past the paragraph's physical right-indent edge and still land inside
-      // the page at the corresponding left-side position. Preserve enough
-      // line budget for the tab and its trailing content instead of wrapping
-      // a valid RTL TOC entry at that physical edge.
-      if (preservesLogicalRtlEndStop) {
+      // An explicit end stop remains authored against the content box, even
+      // when a paragraph right indent narrows the ordinary line edge. Preserve
+      // enough budget for that endpoint while it remains inside the active
+      // content frame; default and out-of-frame tabs retain the clamp above.
+      if (preservesAuthoredEndStop) {
         currentLine.availableWidth = Math.max(
           currentLine.availableWidth,
           currentLine.width + tabWidth + followingWidth,

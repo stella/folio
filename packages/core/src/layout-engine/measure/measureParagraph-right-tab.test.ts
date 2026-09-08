@@ -220,6 +220,54 @@ describe("measureParagraph — right/center tab stops (eigenpal #576)", () => {
     });
   });
 
+  test("preserves an authored end tab past the right indent inside the content box", () => {
+    withFakeTextMeasure(() => {
+      const measure = measureParagraph(
+        {
+          kind: "paragraph",
+          id: "indented-authored-end-tab",
+          runs: [
+            { kind: "text", text: "Title", fontSize: 11 },
+            { kind: "tab" },
+            { kind: "text", text: "7", fontSize: 11 },
+          ],
+          attrs: {
+            indent: { right: 50 },
+            tabs: [{ val: "end", pos: 5700 }],
+          },
+        },
+        400,
+      );
+
+      expect(measure.lines).toHaveLength(1);
+      expect(measure.lines.at(0)?.width).toBe(380);
+    });
+  });
+
+  test("bounds an authored LTR end tab outside the content box", () => {
+    withFakeTextMeasure(() => {
+      const measure = measureParagraph(
+        {
+          kind: "paragraph",
+          id: "bounded-ltr-end-tab",
+          runs: [
+            { kind: "text", text: "Title", fontSize: 11 },
+            { kind: "tab" },
+            { kind: "text", text: "7", fontSize: 11 },
+          ],
+          attrs: {
+            indent: { right: 50 },
+            tabs: [{ val: "end", pos: 7500 }],
+          },
+        },
+        400,
+      );
+
+      expect(measure.lines).toHaveLength(1);
+      expect(measure.lines.at(0)?.width).toBe(350);
+    });
+  });
+
   test("preserves the logical endpoint of an RTL TOC end tab", () => {
     withFakeTextMeasure(
       () => {
