@@ -359,7 +359,10 @@ export function convertFootnoteToContent(
   if (options.automaticHyphenation) {
     flowOptions.automaticHyphenation = options.automaticHyphenation;
   }
-  const blocks = applyFootnotePresentation(toFlowBlocks(pmDoc, flowOptions), displayNumber);
+  const blocks = applyFootnotePresentation(
+    preserveAuthoredFootnoteTerminalParagraph(toFlowBlocks(pmDoc, flowOptions)),
+    displayNumber,
+  );
 
   const measures = options.measureBlocks
     ? options.measureBlocks(blocks, contentWidth)
@@ -383,6 +386,23 @@ export function convertFootnoteToContent(
     measures,
     height: totalHeight,
   };
+}
+
+/** Restore an authored footnote line that the body-only terminal-table policy collapsed. */
+function preserveAuthoredFootnoteTerminalParagraph(blocks: FlowBlock[]): FlowBlock[] {
+  const finalBlock = blocks.at(-1);
+  const precedingBlock = blocks.at(-2);
+  if (
+    precedingBlock?.kind !== "table" ||
+    finalBlock?.kind !== "paragraph" ||
+    finalBlock.attrs?.suppressEmptyParagraphHeight !== true
+  ) {
+    return blocks;
+  }
+
+  const attrs = { ...finalBlock.attrs };
+  delete attrs.suppressEmptyParagraphHeight;
+  return [...blocks.slice(0, -1), { ...finalBlock, attrs }];
 }
 
 function measureFootnoteBlocks(blocks: FlowBlock[], contentWidth: number): Measure[] {
