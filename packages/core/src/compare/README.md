@@ -244,15 +244,15 @@ if (result.isOk() && result.value.verification.status === "unverified") {
 `verification` is on every successful result, so a caller that never passes the
 option still sees `{ status: "verified" }` and can assert on it. `cause` is one
 of `invisible-structure`, `block-count`, `container`, `table-geometry`,
-`style`, `list-level`, `alignment`, `whitespace`, `text` — the projection field
-that diverged, which is what names the part of the pipeline that lost the
-difference. `table-geometry` is the one that no block carries: a second
+`style`, `list-level`, `alignment`, `inline-formatting`, `whitespace`, `text` —
+the projection field that diverged, which is what names the part of the
+pipeline that lost the difference. `table-geometry` is the one that no block carries: a second
 projection reads each table's `w:tblPr`, `w:trPr` and `w:tcPr` so a redline
 that reproduces every word and none of the widths, spans, merges, shading or
-borders fails instead of passing. `invisible-structure` is the
-one cause that is not a lost difference: every block is present, in order, at
-coordinates the block model cannot reach, because the snapshot carries no block
-for an empty paragraph.
+borders fails instead of passing. `invisible-structure` is the one cause that
+is not a lost difference: every block is present in order, but a hidden row the
+snapshot cannot address shifts the raw table coordinates of later visible
+blocks.
 
 Every `detail` is structural — counts, offsets, container kinds — and carries no
 phrase of either document, so it is safe to log, report, or quote.

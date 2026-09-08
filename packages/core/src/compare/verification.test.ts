@@ -9,6 +9,7 @@
 
 import { describe, expect, test } from "bun:test";
 
+import type { FolioAIBlock, FolioAIBlockTableLocation } from "../ai-edits/types";
 import { classifyProjectionMismatch, revisedFinalParagraphMarks } from "./verification";
 
 const revision = { id: 1, author: "compare", date: "2024-03-01T00:00:00.000Z" };
@@ -111,20 +112,132 @@ describe("revisedFinalParagraphMarks", () => {
 });
 
 describe("classifyProjectionMismatch", () => {
+  const projectedBlock = (
+    table: FolioAIBlockTableLocation | undefined,
+    text: string,
+  ): FolioAIBlock => ({
+    id: "projected-block",
+    kind: "paragraph",
+    text,
+    ...(table ? { table } : {}),
+  });
+
+  test("names table-cell containers from the complete projected coordinate", () => {
+    const tableContainer = {
+      outerTableIndex: 0,
+      tableIndex: 0,
+      rowIndex: 0,
+      cellIndex: 0,
+      gridColumnIndex: 0,
+      columnSpan: 1,
+      rowSpan: 1,
+      paragraphIndex: 0,
+    } satisfies FolioAIBlockTableLocation;
+    expect(
+      classifyProjectionMismatch({
+        invariant: "accept-reproduces-target",
+        story: { type: "main" },
+        actual: [projectedBlock(tableContainer, "same text")],
+        expected: [projectedBlock(undefined, "same text")],
+      }),
+    ).toEqual({
+      invariant: "accept-reproduces-target",
+      cause: "container",
+      story: { type: "main" },
+      detail:
+        "a block sits in a cell where it is expected in a body, at block 0/1 (1 blocks against 1)",
+    });
+  });
+
+  test("normalizes hidden-row coordinate gaps while retaining cell geometry", () => {
+    const container = (
+      outerTableIndex: number,
+      tableIndex: number,
+      rowIndex: number,
+      cellIndex: number,
+      paragraphIndex: number,
+    ): FolioAIBlockTableLocation => ({
+      outerTableIndex,
+      tableIndex,
+      rowIndex,
+      cellIndex,
+      gridColumnIndex: 0,
+      columnSpan: 1,
+      rowSpan: 1,
+      paragraphIndex,
+    });
+    expect(
+      classifyProjectionMismatch({
+        invariant: "accept-reproduces-target",
+        story: { type: "main" },
+        actual: [
+          projectedBlock(container(0, 1, 0, 0, 0), "first"),
+          projectedBlock(container(0, 1, 2, 0, 0), "second"),
+        ],
+        expected: [
+          projectedBlock(container(4, 9, 5, 7, 3), "first"),
+          projectedBlock(container(4, 9, 9, 7, 8), "second"),
+        ],
+      }),
+    ).toEqual({
+      invariant: "accept-reproduces-target",
+      cause: "invisible-structure",
+      story: { type: "main" },
+      detail: "every block matches once table coordinates count visible blocks (2 blocks)",
+    });
+  });
+
+  test("distinguishes a nested table moved to another outer table", () => {
+    const location = (outerTableIndex: number, tableIndex: number): FolioAIBlockTableLocation => ({
+      outerTableIndex,
+      tableIndex,
+      rowIndex: 0,
+      cellIndex: 0,
+      gridColumnIndex: 0,
+      columnSpan: 1,
+      rowSpan: 1,
+      paragraphIndex: 0,
+    });
+    expect(
+      classifyProjectionMismatch({
+        invariant: "accept-reproduces-target",
+        story: { type: "main" },
+        actual: [projectedBlock(location(0, 0), "outer"), projectedBlock(location(0, 2), "nested")],
+        expected: [
+          projectedBlock(location(0, 0), "outer"),
+          projectedBlock(location(1, 2), "nested"),
+        ],
+      }),
+    ).toEqual({
+      invariant: "accept-reproduces-target",
+      cause: "container",
+      story: { type: "main" },
+      detail:
+        "a block sits in a cell where it is expected in a cell, at block 1/2 (2 blocks against 2)",
+    });
+  });
+
   test("reports a direct alignment mismatch separately from text and style", () => {
     expect(
       classifyProjectionMismatch({
-        invariant: "accepted-target",
+        invariant: "accept-reproduces-target",
         story: { type: "main" },
-        actual: ["body|Body||left|same text"],
-        expected: ["body|Body||right|same text"],
+        actual: [
+          { ...projectedBlock(undefined, "same text"), styleId: "Body", directAlignment: "left" },
+        ],
+        expected: [
+          {
+            ...projectedBlock(undefined, "same text"),
+            styleId: "Body",
+            directAlignment: "right",
+          },
+        ],
       }),
     ).toEqual({
-      invariant: "accepted-target",
+      invariant: "accept-reproduces-target",
       cause: "alignment",
       story: { type: "main" },
-      detail:
-        "the direct paragraph alignment did not move at block 0/1 (1 blocks against 1)",
+      detail: "the direct paragraph alignment did not move at block 0/1 (1 blocks against 1)",
     });
   });
 });

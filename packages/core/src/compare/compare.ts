@@ -126,23 +126,6 @@ const existingRevisionsOf = (reviewer: FolioDocxReviewer): ExistingRevisions => 
   return { idSeed: highest + 1, present };
 };
 
-/**
- * One story's text-and-structure projection: every block's text tagged with
- * the table cell it sits in. The tag is what makes the self-check below see a
- * paragraph that landed beside a table instead of inside it.
- */
-const projectBlocks = (blocks: readonly FolioAIBlock[]): string[] => {
-  return blocks.map(({ text, table, styleId, listLevel, directAlignment }) => {
-    const container = table
-      ? `t${String(table.tableIndex)}r${String(table.rowIndex)}c${String(table.cellIndex)}g${String(table.gridColumnIndex)}x${String(table.columnSpan)}y${String(table.rowSpan)}p${String(table.paragraphIndex)}`
-      : "body";
-    // The properties the comparison claims to compare are in the projection
-    // too, or the self-check would pass a redline that reproduces every word
-    // and leaves paragraph formatting at the wrong value or provenance.
-    return `${container}|${styleId ?? ""}|${listLevel ?? ""}|${directAlignment ?? ""}|${text}`;
-  });
-};
-
 type FormattingRoundTripFailureOptions = {
   invariant: CompareVerificationFailure["invariant"];
   story: FolioDocumentStoryHandle;
@@ -521,7 +504,7 @@ export const applyComparison = (
     // against, and rejecting every revision has to return to it.
     const baseBeforeBlocks =
       reviewer.readReviewedStory({ story: pair.baseStory, view: "final" })?.snapshot.blocks ?? [];
-    const baseBefore = projectBlocks(baseBeforeBlocks);
+    const baseBefore = baseBeforeBlocks;
     const baseBeforeGeometry = projectTableGeometry(
       reviewer.storyTables({ story: pair.baseStory }),
     );
@@ -587,8 +570,8 @@ export const applyComparison = (
     const acceptFailure = classifyProjectionMismatch({
       invariant: "accept-reproduces-target",
       story: pair.baseStory,
-      actual: projectBlocks(acceptedStory?.snapshot.blocks ?? []),
-      expected: projectBlocks(pair.targetSnapshot.blocks),
+      actual: acceptedStory?.snapshot.blocks ?? [],
+      expected: pair.targetSnapshot.blocks,
     });
     if (acceptFailure) {
       failures.push(acceptFailure);
@@ -609,7 +592,7 @@ export const applyComparison = (
     const rejectFailure = classifyProjectionMismatch({
       invariant: "reject-reproduces-base",
       story: pair.baseStory,
-      actual: projectBlocks(rejectedStory?.snapshot.blocks ?? []),
+      actual: rejectedStory?.snapshot.blocks ?? [],
       expected: baseBefore,
     });
     if (rejectFailure) {
