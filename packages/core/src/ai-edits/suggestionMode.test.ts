@@ -4,7 +4,7 @@
  * Covers:
  * - applying operations in `"suggested"` mode stamps provenance "suggested"
  *   and a suggestionId on the produced insertion/deletion marks;
- * - block/table operations report `unsupportedMode` under suggested mode;
+ * - operations without reversible suggestion semantics report `unsupportedMode`;
  * - `getSuggestions` lists the pending suggestions;
  * - `acceptSuggestion` rewrites the marks to a normal (user) tracked change
  *   authored by the accepting user, so the change then serializes;

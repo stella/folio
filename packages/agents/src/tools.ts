@@ -1,5 +1,6 @@
 import {
   FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE,
+  FOLIO_PARAGRAPH_ALIGNMENT_VALUES,
   type FolioDocumentOperationType,
 } from "@stll/folio-core/server";
 
@@ -10,7 +11,11 @@ import {
   FOLIO_STORY_HANDLE_JSON_SCHEMA,
   FOLIO_TEXT_RANGE_JSON_SCHEMA,
 } from "./codecs";
-import { FOLIO_PRECONDITION_JSON_SCHEMA } from "./operation-schema";
+import {
+  FOLIO_CLEARABLE_LIST_LEVEL_JSON_SCHEMA,
+  FOLIO_CLEARABLE_PARAGRAPH_STYLE_ID_JSON_SCHEMA,
+  FOLIO_PRECONDITION_JSON_SCHEMA,
+} from "./operation-schema";
 import {
   DEFAULT_SUGGEST_CHANGES_OPERATION_TYPES,
   resolveSuggestChangesOptions,
@@ -49,14 +54,14 @@ const OPERATION_TYPE_SUMMARIES = {
   replaceRange: "replace the text covered by a `range` copied from find_text",
   commentOnRange: "attach a comment to a `range` copied from find_text",
   formatRange: "toggle bold, italic, or underline on a `range` copied from find_text",
-  insertAfterBlock: "insert a new paragraph after a block",
-  insertBeforeBlock: "insert a new paragraph before a block",
+  insertAfterBlock: "insert a new paragraph after a block, with optional direct alignment",
+  insertBeforeBlock: "insert a new paragraph before a block, with optional direct alignment",
   replaceBlock: "replace one block's entire text",
   deleteBlock: "delete one block",
   splitBlock: "break one block in two at `offset`, moving a paragraph mark and no words",
   mergeBlockWithNext: "join one block with the block after it in the same container",
   setBlockParagraphProperties:
-    "change one block's paragraph properties (list level, paragraph style) without touching its words",
+    "change one block's paragraph properties (list level, paragraph style, direct alignment) without touching its words",
   insertTable: "insert a whole table of `rows` next to the anchor block",
   deleteTable: "delete the whole table the anchor block sits in",
   commentOnBlock: "attach a comment to one block, optionally quoting text within it",
@@ -132,11 +137,7 @@ const OPERATION_PROPERTY_SCHEMAS = {
     description:
       "For `commentOnBlock`: optional exact text within the block the comment is about, up to 100,000 characters.",
   },
-  styleId: {
-    type: "string",
-    description:
-      "For inserts and `replaceBlock`: paragraph style id to apply (e.g. a clause-heading style from the document).",
-  },
+  styleId: FOLIO_CLEARABLE_PARAGRAPH_STYLE_ID_JSON_SCHEMA,
   pageBreakBefore: {
     type: "boolean",
     description: "For inserts: start the inserted paragraph on a new page.",
@@ -144,6 +145,10 @@ const OPERATION_PROPERTY_SCHEMAS = {
   inheritFormatting: {
     type: "boolean",
     description: "For inserts: inherit the anchor block's formatting for the inserted paragraph.",
+  },
+  alignment: {
+    oneOf: [{ type: "string", enum: FOLIO_PARAGRAPH_ALIGNMENT_VALUES }, { type: "null" }],
+    description: "For inserts: direct paragraph alignment; null restores style inheritance.",
   },
   preserveFormatting: {
     type: "boolean",
@@ -198,19 +203,19 @@ const OPERATION_PROPERTY_SCHEMAS = {
   properties: {
     type: "object",
     description:
-      "Required for `setBlockParagraphProperties`: the paragraph properties to set. `styleId: null` clears the style.",
+      "Required for `setBlockParagraphProperties`: the paragraph properties to set. Null clears a direct property.",
     properties: {
-      styleId: { type: "string", description: "Paragraph style id." },
-      listLevel: { type: "integer", minimum: 0, description: "`w:numPr/w:ilvl`, zero-based." },
+      styleId: FOLIO_CLEARABLE_PARAGRAPH_STYLE_ID_JSON_SCHEMA,
+      listLevel: FOLIO_CLEARABLE_LIST_LEVEL_JSON_SCHEMA,
+      alignment: {
+        oneOf: [{ type: "string", enum: FOLIO_PARAGRAPH_ALIGNMENT_VALUES }, { type: "null" }],
+        description: "Direct paragraph alignment; null restores style inheritance.",
+      },
     },
     minProperties: 1,
     additionalProperties: false,
   },
-  listLevel: {
-    type: "integer",
-    minimum: 0,
-    description: "For inserts: `w:numPr/w:ilvl` for the inserted block, keeping the anchor's list.",
-  },
+  listLevel: FOLIO_CLEARABLE_LIST_LEVEL_JSON_SCHEMA,
   offset: {
     type: "integer",
     minimum: 0,
@@ -298,11 +303,15 @@ const describeResolvedCapabilities = (resolved: ResolvedFolioSuggestChangesOptio
     ...(hasAnyType(resolved, ["replaceBlock"]) ? ["replaceBlock"] : []),
   ];
   if (styleIdTargets.length > 0) {
-    const pageBreak = hasAnyType(resolved, ["insertAfterBlock", "insertBeforeBlock"])
+    const supportsInsert = hasAnyType(resolved, ["insertAfterBlock", "insertBeforeBlock"]);
+    const pageBreak = supportsInsert
       ? "set `pageBreakBefore: true` on an insert to start it on a new page; "
       : "";
+    const insertAlignment = supportsInsert
+      ? " Inserts also accept direct `alignment`, with null restoring style inheritance."
+      : "";
     lines.push(
-      `Structural edits: ${pageBreak}set \`styleId\` on ${styleIdTargets.join(" or ")} to apply a paragraph style such as a clause heading. Never emit directive markers or markdown syntax as paragraph text.`,
+      `Structural edits: ${pageBreak}set \`styleId\` on ${styleIdTargets.join(" or ")} to apply a paragraph style such as a clause heading.${insertAlignment} Never emit directive markers or markdown syntax as paragraph text.`,
     );
   }
   if (hasAnyType(resolved, ["insertSignatureTable"])) {
@@ -312,7 +321,7 @@ const describeResolvedCapabilities = (resolved: ResolvedFolioSuggestChangesOptio
   }
   if (!hasAnyType(resolved, ["formatRange"])) {
     lines.push(
-      "This surface cannot change run formatting (fonts, bold/italic/underline, size, colour, alignment, spacing, list style); do not promise formatting changes.",
+      "This surface cannot change run formatting (fonts, bold/italic/underline, size, or colour); do not promise run-formatting changes.",
     );
   }
   lines.push(

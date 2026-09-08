@@ -84,6 +84,8 @@ export type ParagraphAttrs = {
 
   // Alignment
   alignment?: ParagraphAlignment;
+  /** Effective inherited alignment beneath any direct `w:jc` override. */
+  alignmentFromStyle?: ParagraphAlignment;
   /** Effective East Asian line-edge policy (`w:kinsoku`). */
   kinsoku?: boolean;
   /** Effective hanging-punctuation policy (`w:overflowPunct`). */
@@ -290,8 +292,13 @@ export type ParagraphAttrs = {
  */
 export type ParagraphPropertyChangeAttrs = Omit<
   ParagraphPropertyChange,
-  "previousFormatting" | "currentFormatting"
+  "info" | "previousFormatting" | "currentFormatting"
 > & {
+  info: ParagraphPropertyChange["info"] & {
+    /** Editor-only proposal provenance; stripped or re-authored before OOXML serialization. */
+    provenance?: TrackedChangeProvenance;
+    suggestionId?: string | null;
+  };
   previousFormatting?: Omit<ParagraphFormatting, "numPr"> & {
     numPr?: ParagraphFormatting["numPr"] | null;
   } & Partial<

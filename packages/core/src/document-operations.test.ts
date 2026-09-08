@@ -5,6 +5,7 @@ import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   FOLIO_DOCUMENT_OPERATION_BATCH_MODES,
   FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE,
+  FOLIO_PARAGRAPH_ALIGNMENT_VALUES,
   FOLIO_DOCUMENT_OPERATION_PRECONDITIONS,
   getFolioDocumentOperationCapabilities,
   getFolioDocumentOperationReceipts,
@@ -239,6 +240,90 @@ describe("document operation contract", () => {
         }),
       );
     }
+  });
+
+  test("validates every direct paragraph alignment and explicit inheritance", () => {
+    for (const alignment of [...FOLIO_PARAGRAPH_ALIGNMENT_VALUES, null]) {
+      const batch = parseFolioDocumentOperationBatch({
+        version: 1,
+        operations: [
+          {
+            id: "alignment",
+            type: "setBlockParagraphProperties",
+            blockId: "paragraph-2",
+            properties: { alignment },
+          },
+        ],
+      });
+      expect(batch.operations.at(0)).toMatchObject({ properties: { alignment } });
+
+      for (const type of ["insertBeforeBlock", "insertAfterBlock"] as const) {
+        const insertBatch = parseFolioDocumentOperationBatch({
+          version: 1,
+          operations: [
+            {
+              id: "insert-alignment",
+              type,
+              blockId: "paragraph-2",
+              text: "Aligned paragraph",
+              alignment,
+            },
+          ],
+        });
+        expect(insertBatch.operations.at(0)).toMatchObject({ alignment, type });
+      }
+    }
+
+    for (const alignment of ["justify", "start", 1, false]) {
+      expect(() =>
+        parseFolioDocumentOperationBatch({
+          version: 1,
+          operations: [
+            {
+              id: "alignment",
+              type: "setBlockParagraphProperties",
+              blockId: "paragraph-2",
+              properties: { alignment },
+            },
+          ],
+        }),
+      ).toThrow("$.operations[0].properties.alignment");
+
+      expect(() =>
+        parseFolioDocumentOperationBatch({
+          version: 1,
+          operations: [
+            {
+              id: "insert-alignment",
+              type: "insertAfterBlock",
+              blockId: "paragraph-2",
+              text: "Aligned paragraph",
+              alignment,
+            },
+          ],
+        }),
+      ).toThrow("$.operations[0].alignment");
+    }
+  });
+
+  test("accepts null to clear the paragraph style on a block replacement", () => {
+    const batch = parseFolioDocumentOperationBatch({
+      version: 1,
+      operations: [
+        {
+          id: "replace-without-style",
+          type: "replaceBlock",
+          blockId: "paragraph-2",
+          text: "Unstyled replacement",
+          styleId: null,
+        },
+      ],
+    });
+
+    expect(batch.operations.at(0)).toMatchObject({
+      type: "replaceBlock",
+      styleId: null,
+    });
   });
 
   test("builds input-ordered receipts for successful affected targets", () => {

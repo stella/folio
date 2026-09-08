@@ -11,6 +11,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { panic } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
@@ -169,7 +170,7 @@ describe("splitBlockClearBorders — w:next style switch", () => {
     });
     const headingNode = state.doc.firstChild;
     if (!headingNode) {
-      throw new Error("Expected heading paragraph");
+      panic("Expected heading paragraph");
     }
     state = state.apply(
       state.tr.setSelection(TextSelection.create(state.doc, headingNode.nodeSize - 1)),
@@ -180,12 +181,70 @@ describe("splitBlockClearBorders — w:next style switch", () => {
       captured.tr = tr;
     });
     if (!captured.tr) {
-      throw new Error("Enter handler did not produce a transaction");
+      panic("Enter handler did not produce a transaction");
     }
 
     const newPara = captured.tr.doc.child(1);
     expect(newPara.attrs["styleId"]).toBe("Callout");
     expect(newPara.attrs["borders"]).toEqual(calloutBorder);
+  });
+
+  test("a next-style switch replaces inherited alignment without carrying a direct override", () => {
+    const customResolver = createStyleResolver({
+      styles: [
+        {
+          styleId: "Normal",
+          type: "paragraph",
+          name: "Normal",
+          default: true,
+          pPr: { alignment: "both" },
+        },
+        {
+          styleId: "AlignedHeading",
+          type: "paragraph",
+          name: "Aligned Heading",
+          next: "Normal",
+          pPr: { alignment: "right" },
+        },
+      ],
+    });
+    const heading = schema.node(
+      "paragraph",
+      {
+        styleId: "AlignedHeading",
+        alignment: "center",
+        alignmentFromStyle: "right",
+        _originalFormatting: { styleId: "AlignedHeading", alignment: "center" },
+      },
+      [schema.text("Heading")],
+    );
+    const plugins = [...singletonManager.getPlugins(), createDocumentStylesPlugin(customResolver)];
+    let state = EditorState.create({
+      doc: schema.node("doc", null, [heading]),
+      schema,
+      plugins,
+    });
+    const headingNode = state.doc.firstChild;
+    if (!headingNode) {
+      panic("Expected heading paragraph");
+    }
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, headingNode.nodeSize - 1)),
+    );
+
+    const captured: { tr: Transaction | null } = { tr: null };
+    splitBlockClearBorders(state, (tr) => {
+      captured.tr = tr;
+    });
+    if (!captured.tr) {
+      panic("Enter handler did not produce a transaction");
+    }
+
+    const newPara = captured.tr.doc.child(1);
+    expect(newPara.attrs["styleId"]).toBe("Normal");
+    expect(newPara.attrs["alignment"]).toBe("both");
+    expect(newPara.attrs["alignmentFromStyle"]).toBe("both");
+    expect(newPara.attrs["_originalFormatting"]).toBeNull();
   });
 
   test("mid-paragraph split before an inline atom keeps the heading style", () => {

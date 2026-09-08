@@ -464,11 +464,12 @@ const roundTripScriptArb = (blocks: readonly FolioAIBlock[]): fc.Arbitrary<EditS
 const kindsOf = (changes: readonly CompareChange[]): string[] => changes.map(({ kind }) => kind);
 
 /**
- * A block's text with the formatting it carries, one entry per character, so
- * two blocks compare on what a reader sees rather than on how their runs happen
- * to be split. A block the snapshot gives no runs for is unstyled throughout.
+ * A block's text with the inline formatting it carries, one entry per
+ * character, so two blocks compare on what a reader sees rather than on how
+ * their runs happen to be split. A block the snapshot gives no runs for is
+ * unstyled throughout.
  */
-const blockSignature = (block: FolioAIBlock): string =>
+const inlineFormattingSignature = (block: FolioAIBlock): string =>
   JSON.stringify([
     block.text,
     (block.previewRuns ?? [{ text: block.text }]).flatMap((run) => {
@@ -485,18 +486,24 @@ const blockSignature = (block: FolioAIBlock): string =>
     }),
   ]);
 
+const paragraphFormattingSignature = (block: FolioAIBlock): string =>
+  JSON.stringify([block.text, block.styleId, block.listLevel, block.directAlignment]);
+
 /** Every block a story holds, as signatures in an order-independent form. */
-const signaturesOf = (blocks: readonly FolioAIBlock[]): string =>
-  blocks.map(blockSignature).toSorted().join("\n");
+const signaturesOf = (
+  blocks: readonly FolioAIBlock[],
+  signature: (block: FolioAIBlock) => string,
+): string => blocks.map(signature).toSorted().join("\n");
 
 /**
- * Whether a relocation re-inserted its paragraph carrying different formatting.
+ * How many independently reported formatting categories a relocation dropped.
  *
  * `moveParagraph` is a deletion plus an insertion of the block's TEXT: the
- * operation vocabulary carries a paragraph's style and list level to the new
- * position but not the formatting set on its runs, so a directly styled block
- * arrives plain. Only the arrival separates the two, since the style's share
- * survives the trip, so the step is applied and the result read back.
+ * The edit-script vocabulary intentionally re-inserts only the paragraph's
+ * text. Inline formatting can therefore produce one `format` change and direct
+ * paragraph formatting can produce one `paragraph-format` change. Count those
+ * projections separately so the change-count property stays tight as the
+ * comparison learns to see another formatting category.
  *
  * Applied ON ITS OWN, and compared as an order-independent whole: a relocation
  * that carried its formatting leaves the very same paragraphs in a different
@@ -504,16 +511,23 @@ const signaturesOf = (blocks: readonly FolioAIBlock[]): string =>
  * needs no guess about which arrival belongs to the step, which matching by
  * text alone cannot tell when a document repeats a paragraph.
  */
-const relocationDroppedFormatting = async (
+const relocationDroppedFormattingCount = async (
   base: ArrayBuffer,
   baseBlocks: readonly FolioAIBlock[],
   step: Extract<EditScriptStep, { type: "moveParagraph" }>,
-): Promise<boolean> => {
+): Promise<number> => {
   const relocated = await applyEditScript(base, [step]);
   if (relocated.isErr()) {
     throw relocated.error;
   }
-  return signaturesOf(await blocksOf(relocated.value.buffer)) !== signaturesOf(baseBlocks);
+  const relocatedBlocks = await blocksOf(relocated.value.buffer);
+  const droppedInlineFormatting =
+    signaturesOf(relocatedBlocks, inlineFormattingSignature) !==
+    signaturesOf(baseBlocks, inlineFormattingSignature);
+  const droppedParagraphFormatting =
+    signaturesOf(relocatedBlocks, paragraphFormattingSignature) !==
+    signaturesOf(baseBlocks, paragraphFormattingSignature);
+  return Number(droppedInlineFormatting) + Number(droppedParagraphFormatting);
 };
 
 type TouchedBlockBudgetOptions = {
@@ -529,8 +543,9 @@ type TouchedBlockBudgetOptions = {
  * reported as two when the move pass declines to pair it (its text is below
  * the word floor, or it landed where the alignment can still walk forward).
  *
- * A relocation that also dropped the block's formatting is budgeted at three,
- * because it made two differences and the alignment picks which one it names.
+ * A relocation that also dropped formatting is budgeted one extra change for
+ * each independently reported formatting projection, because it made two
+ * structural differences and the alignment picks which one it names.
  * Swapping a block past a SINGLE neighbour reads equally well from either side
  * ("this one moved down" and "that one moved up" match the same number of
  * blocks), and the alignment breaks that tie by position, not by which side the
@@ -591,7 +606,7 @@ const touchedBlockBudget = async ({
       continue;
     }
     // oxlint-disable-next-line no-await-in-loop -- each relocation is replayed on its own
-    budget += (await relocationDroppedFormatting(base, baseBlocks, step)) ? 3 : 2;
+    budget += 2 + (await relocationDroppedFormattingCount(base, baseBlocks, step));
   }
   return budget;
 };
@@ -777,7 +792,7 @@ describe("compareDocx", () => {
       "Centered paragraph.",
       "Right-aligned paragraph.",
     ]);
-    expect(await relocationDroppedFormatting(base, baseBlocks, move)).toBe(true);
+    expect(await relocationDroppedFormattingCount(base, baseBlocks, move)).toBe(2);
 
     const scripted = await applyEditScript(base, script);
     if (scripted.isErr()) {
@@ -786,7 +801,13 @@ describe("compareDocx", () => {
     expect(scripted.value.unresolved).toEqual([]);
 
     const { changes } = await compareOrThrow(base, scripted.value.buffer);
-    expect(kindsOf(changes).toSorted()).toEqual(["delete", "delete", "format", "insert"]);
+    expect(kindsOf(changes).toSorted()).toEqual([
+      "delete",
+      "delete",
+      "format",
+      "insert",
+      "paragraph-format",
+    ]);
     expect(changes.length).toBe(
       await touchedBlockBudget({ base, applied: scripted.value.applied, baseBlocks }),
     );

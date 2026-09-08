@@ -3,10 +3,10 @@
  *
  * The check compares two block projections: what accepting the generated
  * revisions leaves against the target, and what rejecting them leaves against
- * the base. A projection carries each block's container, style, list level and
- * text, so WHICH field diverged names which part of the pipeline lost the
- * difference — and that is worth reporting as a typed cause rather than as one
- * opaque "did not reproduce".
+ * the base. A projection carries each block's container, style, list level,
+ * direct alignment and text, so WHICH field diverged names which part of the
+ * pipeline lost the difference — and that is worth reporting as a typed cause
+ * rather than as one opaque "did not reproduce".
  *
  * Every `detail` string here is structural: counts, offsets, container kinds.
  * Never a phrase of either document, because a caller may log it, put it in a
@@ -57,6 +57,7 @@ export const COMPARE_VERIFICATION_CAUSES = Object.freeze([
   "table-geometry",
   "style",
   "list-level",
+  "alignment",
   "inline-formatting",
   "whitespace",
   "text",
@@ -129,42 +130,55 @@ export const projectSupportedInlineFormatting = ({ text, previewRuns }: FolioAIB
   return projected.map(({ length, style }) => `${String(length)}:${style}`).join(",");
 };
 
-/**
- * One block of a projection. `projectStory` writes
- * `container|styleId|listLevel|text`, so the text is everything after the
- * third separator and may itself contain one.
- */
-type ProjectedBlock = {
-  container: string;
-  styleId: string;
-  listLevel: string;
-  text: string;
-};
+type ProjectedBlock = Pick<
+  FolioAIBlock,
+  "text" | "table" | "styleId" | "listLevel" | "directAlignment"
+>;
 
-const parseProjection = (entry: string): ProjectedBlock => {
-  const first = entry.indexOf("|");
-  const second = entry.indexOf("|", first + 1);
-  const third = entry.indexOf("|", second + 1);
-  if (first === -1 || second === -1 || third === -1) {
-    return { container: "", styleId: "", listLevel: "", text: entry };
+type ProjectedTableContainer = NonNullable<ProjectedBlock["table"]>;
+
+const sameContainer = (
+  left: ProjectedTableContainer | undefined,
+  right: ProjectedTableContainer | undefined,
+): boolean => {
+  if (!left || !right) {
+    return left === right;
   }
-  return {
-    container: entry.slice(0, first),
-    styleId: entry.slice(first + 1, second),
-    listLevel: entry.slice(second + 1, third),
-    text: entry.slice(third + 1),
-  };
+  return (
+    left.outerTableIndex === right.outerTableIndex &&
+    left.tableIndex === right.tableIndex &&
+    left.rowIndex === right.rowIndex &&
+    left.cellIndex === right.cellIndex &&
+    left.gridColumnIndex === right.gridColumnIndex &&
+    left.columnSpan === right.columnSpan &&
+    left.rowSpan === right.rowSpan &&
+    left.paragraphIndex === right.paragraphIndex
+  );
 };
 
-const CONTAINER_PATTERN = /^t(\d+)r(\d+)c(\d+)p(\d+)$/u;
+const sameProjectedBlock = (left: ProjectedBlock, right: ProjectedBlock): boolean =>
+  sameContainer(left.table, right.table) &&
+  left.styleId === right.styleId &&
+  left.listLevel === right.listLevel &&
+  left.directAlignment === right.directAlignment &&
+  left.text === right.text;
 
-const containerKind = (container: string): "body" | "cell" =>
-  CONTAINER_PATTERN.test(container) ? "cell" : "body";
+const containerKind = (container: ProjectedTableContainer | undefined): "body" | "cell" =>
+  container ? "cell" : "body";
 
 const collapseWhitespace = (text: string): string => text.replace(/\s+/gu, " ").trim();
 
-/** Element by element, never by joining: a block's text may hold the separator. */
-export const sameProjection = (left: readonly string[], right: readonly string[]): boolean =>
+const sameBlockProjection = (
+  left: readonly ProjectedBlock[],
+  right: readonly ProjectedBlock[],
+): boolean =>
+  left.length === right.length &&
+  left.every((entry, index) => {
+    const other = right[index];
+    return other !== undefined && sameProjectedBlock(entry, other);
+  });
+
+const sameStringProjection = (left: readonly string[], right: readonly string[]): boolean =>
   left.length === right.length && left.every((entry, index) => entry === right[index]);
 
 /**
@@ -179,7 +193,7 @@ export const sameProjection = (left: readonly string[], right: readonly string[]
  * on the raw coordinates, the redline holds every block the other side does,
  * in order, and the difference is one the block model cannot see.
  */
-const byVisibleOrdinal = (entries: readonly string[]): string[] => {
+const byVisibleOrdinal = (entries: readonly ProjectedBlock[]): ProjectedBlock[] => {
   const ordinals = new Map<string, number>();
   const counts = new Map<string, number>();
   const ordinalWithin = (scope: string, index: string): number => {
@@ -196,24 +210,30 @@ const byVisibleOrdinal = (entries: readonly string[]): string[] => {
 
   const paragraphCounts = new Map<string, number>();
   return entries.map((entry) => {
-    const first = entry.indexOf("|");
-    const match = CONTAINER_PATTERN.exec(entry.slice(0, first));
-    if (!match) {
+    const container = entry.table;
+    if (!container) {
       return entry;
     }
-    const [, table = "", row = "", cell = ""] = match;
-    const tableOrdinal = ordinalWithin("t", table);
+    const outerTableOrdinal = ordinalWithin("t", String(container.outerTableIndex));
+    const tableOrdinal = ordinalWithin("t", String(container.tableIndex));
     const rowScope = `r${String(tableOrdinal)}`;
-    const rowOrdinal = ordinalWithin(rowScope, row);
+    const rowOrdinal = ordinalWithin(rowScope, String(container.rowIndex));
     const cellScope = `c${String(tableOrdinal)}.${String(rowOrdinal)}`;
-    const cellOrdinal = ordinalWithin(cellScope, cell);
-    const cellKey = `${cellScope}:${cell}`;
+    const cellOrdinal = ordinalWithin(cellScope, String(container.cellIndex));
+    const cellKey = `${cellScope}:${String(container.cellIndex)}`;
     const paragraphOrdinal = paragraphCounts.get(cellKey) ?? 0;
     paragraphCounts.set(cellKey, paragraphOrdinal + 1);
-    return (
-      `t${String(tableOrdinal)}r${String(rowOrdinal)}c${String(cellOrdinal)}p${String(paragraphOrdinal)}` +
-      entry.slice(first)
-    );
+    return {
+      ...entry,
+      table: {
+        ...container,
+        outerTableIndex: outerTableOrdinal,
+        tableIndex: tableOrdinal,
+        rowIndex: rowOrdinal,
+        cellIndex: cellOrdinal,
+        paragraphIndex: paragraphOrdinal,
+      },
+    };
   });
 };
 
@@ -222,33 +242,35 @@ const byVisibleOrdinal = (entries: readonly string[]): string[] => {
  * matches everywhere but in length diverges at the shorter one's end.
  */
 const firstDivergence = (
-  actual: readonly string[],
-  expected: readonly string[],
+  actual: readonly ProjectedBlock[],
+  expected: readonly ProjectedBlock[],
 ): { index: number; actual: ProjectedBlock | null; expected: ProjectedBlock | null } => {
   const shared = Math.min(actual.length, expected.length);
   for (let index = 0; index < shared; index++) {
-    if (actual[index] !== expected[index]) {
+    const left = actual[index];
+    const right = expected[index];
+    if (left !== undefined && right !== undefined && !sameProjectedBlock(left, right)) {
       return {
         index,
-        actual: parseProjection(actual[index] ?? ""),
-        expected: parseProjection(expected[index] ?? ""),
+        actual: left,
+        expected: right,
       };
     }
   }
   return {
     index: shared,
-    actual: shared < actual.length ? parseProjection(actual[shared] ?? "") : null,
-    expected: shared < expected.length ? parseProjection(expected[shared] ?? "") : null,
+    actual: actual.at(shared) ?? null,
+    expected: expected.at(shared) ?? null,
   };
 };
 
-type ClassifyOptions = {
+type ClassifyOptions<T> = {
   invariant: CompareVerificationInvariant;
   story: FolioDocumentStoryHandle;
   /** What the redline actually leaves. */
-  actual: readonly string[];
+  actual: readonly T[];
   /** What the invariant says it should leave. */
-  expected: readonly string[];
+  expected: readonly T[];
 };
 
 /**
@@ -262,8 +284,8 @@ export const classifyGeometryMismatch = ({
   story,
   actual,
   expected,
-}: ClassifyOptions): CompareVerificationFailure | null => {
-  if (sameProjection(actual, expected)) {
+}: ClassifyOptions<string>): CompareVerificationFailure | null => {
+  if (sameStringProjection(actual, expected)) {
     return null;
   }
   const detail =
@@ -284,8 +306,8 @@ export const classifyProjectionMismatch = ({
   story,
   actual,
   expected,
-}: ClassifyOptions): CompareVerificationFailure | null => {
-  if (sameProjection(actual, expected)) {
+}: ClassifyOptions<ProjectedBlock>): CompareVerificationFailure | null => {
+  if (sameBlockProjection(actual, expected)) {
     return null;
   }
   const failure = (
@@ -298,7 +320,7 @@ export const classifyProjectionMismatch = ({
     detail,
   });
 
-  if (sameProjection(byVisibleOrdinal(actual), byVisibleOrdinal(expected))) {
+  if (sameBlockProjection(byVisibleOrdinal(actual), byVisibleOrdinal(expected))) {
     return failure(
       "invisible-structure",
       `every block matches once table coordinates count visible blocks (${String(expected.length)} blocks)`,
@@ -313,10 +335,10 @@ export const classifyProjectionMismatch = ({
     return failure("block-count", `${side} blocks than expected (${counts}), diverging ${at}`);
   }
   const { actual: left, expected: right } = divergence;
-  if (left.container !== right.container) {
+  if (!sameContainer(left.table, right.table)) {
     return failure(
       "container",
-      `a block sits in a ${containerKind(left.container)} where it is expected in a ${containerKind(right.container)}, ${at} (${counts})`,
+      `a block sits in a ${containerKind(left.table)} where it is expected in a ${containerKind(right.table)}, ${at} (${counts})`,
     );
   }
   if (left.text === right.text && left.styleId !== right.styleId) {
@@ -324,6 +346,9 @@ export const classifyProjectionMismatch = ({
   }
   if (left.text === right.text && left.listLevel !== right.listLevel) {
     return failure("list-level", `the list level did not move ${at} (${counts})`);
+  }
+  if (left.text === right.text && left.directAlignment !== right.directAlignment) {
+    return failure("alignment", `the direct paragraph alignment did not move ${at} (${counts})`);
   }
   if (collapseWhitespace(left.text) === collapseWhitespace(right.text)) {
     return failure("whitespace", `a block's text differs only in whitespace ${at} (${counts})`);
@@ -333,7 +358,7 @@ export const classifyProjectionMismatch = ({
   }
   return failure(
     "text",
-    `a ${containerKind(left.container)} block's text does not match ${at}, ` +
+    `a ${containerKind(left.table)} block's text does not match ${at}, ` +
       `length ${String(left.text.length)} against ${String(right.text.length)} (${counts})`,
   );
 };

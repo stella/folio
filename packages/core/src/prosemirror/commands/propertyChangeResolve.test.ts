@@ -20,7 +20,7 @@ import type {
 } from "../../types/document";
 import { fromProseDoc } from "../conversion/fromProseDoc";
 import { toProseDoc } from "../conversion/toProseDoc";
-import { acceptChange, rejectChange } from "./comments";
+import { acceptChange, rejectAIEditRevision, rejectChange } from "./comments";
 
 const CHANGE_INFO = { id: 42, author: "Reviewer", date: "2026-05-15T12:00:00Z" };
 
@@ -113,6 +113,76 @@ describe("pPrChange accept/reject (real schema)", () => {
     expect(rejectChange(0, view.state.doc.content.size)(view.state, view.dispatch)).toBe(true);
 
     expect(view.state.doc.eq(before)).toBe(true);
+  });
+
+  const REJECTION_ORDERS = [
+    [101, 102, 103],
+    [101, 103, 102],
+    [102, 101, 103],
+    [102, 103, 101],
+    [103, 101, 102],
+    [103, 102, 101],
+  ] as const;
+
+  const makeChainedParagraph = (): Paragraph => ({
+    type: "paragraph",
+    formatting: { alignment: "both" },
+    propertyChanges: [
+      {
+        type: "paragraphPropertyChange",
+        info: { ...CHANGE_INFO, id: 101 },
+        previousFormatting: { alignment: "left" },
+      },
+      {
+        type: "paragraphPropertyChange",
+        info: { ...CHANGE_INFO, id: 102 },
+        previousFormatting: { alignment: "center" },
+      },
+      {
+        type: "paragraphPropertyChange",
+        info: { ...CHANGE_INFO, id: 103 },
+        previousFormatting: { alignment: "right" },
+      },
+    ],
+    content: paragraphText("body"),
+  });
+
+  test("targeted rejection is order-independent across a property-change chain", () => {
+    for (const order of REJECTION_ORDERS) {
+      const view = dispatcher(makeState([makeChainedParagraph()]));
+
+      for (const revisionId of order) {
+        expect(rejectAIEditRevision(revisionId)(view.state, view.dispatch)).toBe(true);
+      }
+
+      expect(view.state.doc.child(0).attrs["alignment"]).toBe("left");
+      expect(view.state.doc.child(0).attrs["_propertyChanges"]).toBeNull();
+      const roundtripped = fromProseDoc(view.state.doc).package.document.content[0] as Paragraph;
+      expect(roundtripped.formatting?.alignment).toBe("left");
+      expect(roundtripped.propertyChanges).toBeUndefined();
+    }
+  });
+
+  test("targeted rejection rebases an interleaved retained property change", () => {
+    const view = dispatcher(makeState([makeChainedParagraph()]));
+
+    expect(rejectAIEditRevision([101, 103])(view.state, view.dispatch)).toBe(true);
+
+    expect(view.state.doc.child(0).attrs["alignment"]).toBe("right");
+    const roundtripped = fromProseDoc(view.state.doc).package.document.content[0] as Paragraph;
+    expect(roundtripped.propertyChanges).toEqual([
+      {
+        type: "paragraphPropertyChange",
+        info: { ...CHANGE_INFO, id: 102 },
+        previousFormatting: { alignment: "left" },
+      },
+    ]);
+
+    expect(rejectAIEditRevision(102)(view.state, view.dispatch)).toBe(true);
+    expect(view.state.doc.child(0).attrs["alignment"]).toBe("left");
+    expect(
+      (fromProseDoc(view.state.doc).package.document.content[0] as Paragraph).propertyChanges,
+    ).toBeUndefined();
   });
 });
 

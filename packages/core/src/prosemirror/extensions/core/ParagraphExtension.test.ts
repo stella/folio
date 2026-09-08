@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import { panic } from "better-result";
 import { EditorState, TextSelection } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 
 import { toFlowBlocks } from "../../../layout-bridge/convert/toFlowBlocks";
 import type { Document } from "../../../types/document";
+import { PARAGRAPH_ALIGNMENT_VALUES } from "../../../types/documentEnumValues";
 import { fromProseDoc } from "../../conversion/fromProseDoc";
 import { AUTO_PARAGRAPH_SPACING_PX, formatPx } from "../../../utils/units";
 import { schema, singletonManager } from "../../schema";
@@ -20,12 +22,94 @@ const paragraphDomAttrs = (attrs: Record<string, unknown>): Record<string, strin
   return domSpec[1];
 };
 
+class FakeParagraphElement {
+  readonly dataset: Record<string, string>;
+  readonly style = {};
+
+  constructor(dataset: Record<string, string>) {
+    this.dataset = dataset;
+  }
+}
+
+const parseParagraphDomAttrs = (dataset: Record<string, string>) => {
+  const getAttrs = schema.nodes.paragraph.spec.parseDOM?.at(0)?.getAttrs;
+  if (!getAttrs) {
+    panic("ParagraphExtension must define parseDOM[0].getAttrs");
+  }
+
+  const originalElement = globalThis.HTMLElement;
+  Object.defineProperty(globalThis, "HTMLElement", {
+    configurable: true,
+    value: FakeParagraphElement,
+  });
+
+  try {
+    return getAttrs(new FakeParagraphElement(dataset) as unknown as HTMLElement);
+  } finally {
+    if (originalElement) {
+      Object.defineProperty(globalThis, "HTMLElement", {
+        configurable: true,
+        value: originalElement,
+      });
+    } else {
+      Reflect.deleteProperty(globalThis, "HTMLElement");
+    }
+  }
+};
+
 describe("ParagraphExtension", () => {
   test("carries an imported TOC level through editor DOM", () => {
     expect(paragraphDomAttrs({ _tableOfContentsLevel: 2 })).toMatchObject({
       "data-table-of-contents-level": "2",
     });
     expect(paragraphDomAttrs({})).not.toHaveProperty("data-table-of-contents-level");
+  });
+
+  test("keeps direct and inherited alignment provenance distinct in editor DOM", () => {
+    expect(paragraphDomAttrs({ alignment: "right", alignmentFromStyle: "right" })).toMatchObject({
+      "data-alignment": "right",
+      "data-alignment-from-style": "right",
+    });
+    expect(
+      paragraphDomAttrs({ alignment: "right", alignmentFromStyle: "right" }),
+    ).not.toHaveProperty("data-direct-alignment");
+    expect(
+      paragraphDomAttrs({
+        alignment: "right",
+        alignmentFromStyle: "right",
+        _originalFormatting: { alignment: "right" },
+      }),
+    ).toMatchObject({
+      "data-alignment": "right",
+      "data-alignment-from-style": "right",
+      "data-direct-alignment": "right",
+    });
+  });
+
+  test.each(PARAGRAPH_ALIGNMENT_VALUES)(
+    "parses every alignment value from each editor DOM attribute: %s",
+    (alignment) => {
+      expect(parseParagraphDomAttrs({ alignment })).toMatchObject({
+        alignment,
+        _originalFormatting: { alignment },
+      });
+      expect(parseParagraphDomAttrs({ directAlignment: alignment })).toMatchObject({
+        _originalFormatting: { alignment },
+      });
+      expect(parseParagraphDomAttrs({ alignmentFromStyle: alignment })).toMatchObject({
+        alignmentFromStyle: alignment,
+      });
+    },
+  );
+
+  test("ignores invalid alignment values from every editor DOM attribute", () => {
+    expect(
+      parseParagraphDomAttrs({
+        alignment: "invalid",
+        directAlignment: "invalid",
+        alignmentFromStyle: "invalid",
+      }),
+    ).toEqual({});
   });
 
   test("recomputes the TOC role when paragraph styles change", () => {

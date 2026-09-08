@@ -347,8 +347,8 @@ export const FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE: Readonly<{
     readonly replaceRange: readonly ["id", "type", "range", "severity", "area", "precondition", "suggestionId", "replace", "comment"];
     readonly commentOnRange: readonly ["id", "type", "range", "severity", "area", "precondition", "comment"];
     readonly formatRange: readonly ["id", "type", "range", "severity", "area", "precondition", "suggestionId", "formatting"];
-    readonly insertAfterBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "text", "inheritFormatting", "listLevel", "moveId", "pageBreakBefore", "styleId", "comment"];
-    readonly insertBeforeBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "text", "inheritFormatting", "listLevel", "moveId", "pageBreakBefore", "styleId", "comment"];
+    readonly insertAfterBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "text", "inheritFormatting", "alignment", "listLevel", "moveId", "pageBreakBefore", "styleId", "comment"];
+    readonly insertBeforeBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "text", "inheritFormatting", "alignment", "listLevel", "moveId", "pageBreakBefore", "styleId", "comment"];
     readonly replaceBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "text", "preserveFormatting", "styleId", "comment"];
     readonly deleteBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "moveId", "comment"];
     readonly splitBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "offset", "separator"];
@@ -453,6 +453,9 @@ export const FOLIO_DOCX_XML_PATCH_PROPOSAL_PROFILE: "folio-xml-patch-proposal-v1
 // @public (undocumented)
 export const FOLIO_DOCX_XML_PATCH_PROPOSAL_VERSION: 1;
 
+// @public
+export const FOLIO_PARAGRAPH_ALIGNMENT_VALUES: readonly ("left" | "center" | "right" | "both" | "distribute" | "mediumKashida" | "highKashida" | "lowKashida" | "thaiDistribute")[];
+
 // @public (undocumented)
 export const FOLIO_RESOLVED_REVIEWED_VIEWS: readonly ["original", "final"];
 
@@ -482,6 +485,7 @@ export type FolioAIBlock = {
     headingLevel?: number;
     displayLabel?: string;
     styleId?: string;
+    directAlignment?: import__stll_docx_core_model.ParagraphAlignment;
     listLevel?: number;
     previewRuns?: FolioAIBlockPreviewRun[];
     table?: FolioAIBlockTableLocation;
@@ -593,6 +597,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     pageBreakBefore?: boolean;
     styleId?: string | null;
     listLevel?: number | null;
+    alignment?: import__stll_docx_core_model.ParagraphAlignment | null;
     comment?: FolioAIComment;
 } | {
     id: string;
@@ -600,7 +605,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     blockId: string;
     text: string;
     preserveFormatting?: boolean;
-    styleId?: string;
+    styleId?: string | null;
     comment?: FolioAIComment;
 } |
 /**

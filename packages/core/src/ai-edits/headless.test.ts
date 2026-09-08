@@ -18,12 +18,17 @@ import path from "node:path";
 import { buildTextBoxTableDocument, findTextBoxShape } from "../__tests__/textBoxTableDocument";
 import { parseDocx } from "../docx/parser";
 import { ensureParaIds } from "../docx/ensureParaIds";
-import { createEmptyDocx, repackDocx } from "../docx/rezip";
+import { createDocx, createEmptyDocx, repackDocx } from "../docx/rezip";
 import { updateDocumentContent } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { ensureParaIdsInState } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import { schema, singletonManager } from "../prosemirror/schema";
-import type { HeaderFooter, TableStructuralChangeInfo } from "../types/document";
+import type {
+  HeaderFooter,
+  ParagraphAlignment,
+  TableStructuralChangeInfo,
+} from "../types/document";
+import { createEmptyDocument } from "../utils/createDocument";
 import {
   FolioDocumentStoryNotFoundError,
   FolioDocxReviewer,
@@ -46,6 +51,7 @@ const readFixture = (): ArrayBuffer => {
 
 const HEADER_RELATIONSHIP_ID = "rId_header_story";
 const FOOTER_RELATIONSHIP_ID = "rId_footer_story";
+const ALIGNED_STORY_STYLE_ID = "AlignedStory";
 
 const textStory = (type: "header" | "footer", text: string, paraId: string): HeaderFooter => ({
   type,
@@ -78,6 +84,129 @@ const makeHeaderFooterBaseline = async (): Promise<ArrayBuffer> => {
   return new Uint8Array(docx).buffer;
 };
 
+const SECONDARY_ALIGNMENT_STORIES = [
+  {
+    story: { type: "header", relationshipId: HEADER_RELATIONSHIP_ID } as const,
+    part: "word/header1.xml",
+    text: "Aligned header text",
+    paraId: "22000001",
+  },
+  {
+    story: { type: "footer", relationshipId: FOOTER_RELATIONSHIP_ID } as const,
+    part: "word/footer1.xml",
+    text: "Aligned footer text",
+    paraId: "22000002",
+  },
+  {
+    story: { type: "footnote", noteId: 2 } as const,
+    part: "word/footnotes.xml",
+    text: "Aligned footnote text",
+    paraId: "22000003",
+  },
+  {
+    story: { type: "endnote", noteId: 3 } as const,
+    part: "word/endnotes.xml",
+    text: "Aligned endnote text",
+    paraId: "22000004",
+  },
+] as const;
+
+const SECONDARY_ALIGNMENT_TRANSITIONS = [
+  {
+    transition: "inherited to direct",
+    before: undefined,
+    after: "center",
+  },
+  {
+    transition: "direct to inherited",
+    before: "center",
+    after: undefined,
+  },
+] as const satisfies readonly {
+  transition: string;
+  before: ParagraphAlignment | undefined;
+  after: ParagraphAlignment | undefined;
+}[];
+
+const SECONDARY_ALIGNMENT_CASES = SECONDARY_ALIGNMENT_STORIES.flatMap((story) =>
+  SECONDARY_ALIGNMENT_TRANSITIONS.map((transition) => Object.assign({}, story, transition)),
+);
+
+const alignedStoryParagraph = (
+  text: string,
+  paraId: string,
+  directAlignment: ParagraphAlignment | undefined,
+) => ({
+  type: "paragraph" as const,
+  paraId,
+  textId: paraId,
+  formatting: {
+    styleId: ALIGNED_STORY_STYLE_ID,
+    ...(directAlignment === undefined ? {} : { alignment: directAlignment }),
+  },
+  content: [{ type: "run" as const, content: [{ type: "text" as const, text }] }],
+});
+
+const alignedSecondaryStoriesBaseline = async (
+  directAlignment: ParagraphAlignment | undefined,
+): Promise<ArrayBuffer> => {
+  const document = createEmptyDocument();
+  document.package.styles = {
+    styles: [
+      { type: "paragraph", styleId: "Normal", name: "Normal", default: true },
+      {
+        type: "paragraph",
+        styleId: ALIGNED_STORY_STYLE_ID,
+        name: "Aligned Story",
+        basedOn: "Normal",
+        pPr: { alignment: "right" },
+      },
+    ],
+  };
+  document.package.headers = new Map([
+    [
+      HEADER_RELATIONSHIP_ID,
+      {
+        type: "header",
+        hdrFtrType: "default",
+        content: [alignedStoryParagraph("Aligned header text", "22000001", directAlignment)],
+      },
+    ],
+  ]);
+  document.package.footers = new Map([
+    [
+      FOOTER_RELATIONSHIP_ID,
+      {
+        type: "footer",
+        hdrFtrType: "default",
+        content: [alignedStoryParagraph("Aligned footer text", "22000002", directAlignment)],
+      },
+    ],
+  ]);
+  document.package.document.finalSectionProperties = {
+    ...document.package.document.finalSectionProperties,
+    headerReferences: [{ type: "default", rId: HEADER_RELATIONSHIP_ID }],
+    footerReferences: [{ type: "default", rId: FOOTER_RELATIONSHIP_ID }],
+  };
+  document.package.footnotes = [
+    {
+      type: "footnote",
+      id: 2,
+      noteType: "normal",
+      content: [alignedStoryParagraph("Aligned footnote text", "22000003", directAlignment)],
+    },
+  ];
+  document.package.endnotes = [
+    {
+      type: "endnote",
+      id: 3,
+      noteType: "normal",
+      content: [alignedStoryParagraph("Aligned endnote text", "22000004", directAlignment)],
+    },
+  ];
+  return createDocx(document);
+};
+
 /**
  * Corpus fixtures ship without `w14:paraId`s. The editor allocates them on load
  * and its first save is a full repack that writes them out; only subsequent
@@ -104,6 +233,39 @@ const partText = async (buffer: ArrayBuffer, part: string): Promise<string> => {
   }
   return file.async("text");
 };
+
+const paragraphXmlContaining = (xml: string, text: string): string => {
+  const paragraph = (xml.match(/<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>/gu) ?? []).find((candidate) =>
+    candidate.includes(text),
+  );
+  if (!paragraph) {
+    panic(`missing paragraph containing ${text}`);
+  }
+  return paragraph;
+};
+
+const trackedParagraphProperties = (paragraph: string): { current: string; previous: string } => {
+  const propertiesStart = paragraph.indexOf("<w:pPr>");
+  const changeStart = paragraph.indexOf("<w:pPrChange ");
+  const previous = paragraph
+    .match(/<w:pPrChange\b[^>]*><w:pPr>([\s\S]*?)<\/w:pPr><\/w:pPrChange>/u)
+    ?.at(1);
+  if (propertiesStart < 0 || changeStart < 0 || previous === undefined) {
+    panic("expected tracked paragraph properties");
+  }
+  return { current: paragraph.slice(propertiesStart + "<w:pPr>".length, changeStart), previous };
+};
+
+const untrackedParagraphProperties = (paragraph: string): string => {
+  const properties = paragraph.match(/<w:pPr>([\s\S]*?)<\/w:pPr>/u)?.at(1);
+  if (properties === undefined) {
+    panic("expected paragraph properties");
+  }
+  return properties;
+};
+
+const alignedStoryProperties = (alignment: ParagraphAlignment | undefined): string =>
+  `<w:pStyle w:val="${ALIGNED_STORY_STYLE_ID}"/>${alignment ? `<w:jc w:val="${alignment}"/>` : ""}`;
 
 const partBytes = async (buffer: ArrayBuffer, part: string): Promise<Uint8Array> => {
   const zip = await JSZip.loadAsync(buffer);
@@ -1694,6 +1856,74 @@ describe("headless docx review round-trip", () => {
       const reopened = await FolioDocxReviewer.fromBuffer(saved);
       expect(reopened.readReviewedStory({ story, view: "current-markup" })?.changes).toEqual([]);
       expect(reopened.readStory(story)?.text).toBe("Kept INSERTED MOVED TO");
+    },
+  );
+
+  test.each(SECONDARY_ALIGNMENT_CASES)(
+    "tracks $transition paragraph alignment in a $story.type story",
+    async ({ story, part, text, before, after }) => {
+      const baseline = await alignedSecondaryStoriesBaseline(before);
+      const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "Reviewer" });
+      const initial = reviewer.snapshotStory(story);
+      if (!initial) {
+        panic(`expected ${story.type} story`);
+      }
+      const target = findBlock(initial.blocks, text);
+      expect(target.directAlignment).toBe(before);
+
+      const result = reviewer.applyDocumentOperationsToStory({
+        story,
+        snapshot: initial,
+        batch: {
+          version: 1,
+          mode: "tracked-changes",
+          operations: [
+            {
+              id: "secondary-alignment",
+              type: "setBlockParagraphProperties",
+              blockId: target.id,
+              properties: { alignment: after ?? null },
+            },
+          ],
+        },
+      });
+
+      expect(result.status).toBe("committed");
+      expect(reviewer.snapshotStory(story)?.blocks.at(0)?.directAlignment).toBe(after);
+      expect(
+        reviewer
+          .readReviewedStory({ story, view: "current-markup" })
+          ?.changes.map(({ type }) => type),
+      ).toEqual(["paragraphPropertiesChanged"]);
+      const pending = await reviewer.toBuffer();
+      const pendingXml = await partText(pending, part);
+      expect(pendingXml.match(/<w:pPrChange\b/gu)).toHaveLength(1);
+      expect(trackedParagraphProperties(paragraphXmlContaining(pendingXml, text))).toEqual({
+        current: alignedStoryProperties(after),
+        previous: alignedStoryProperties(before),
+      });
+
+      const accepting = await FolioDocxReviewer.fromBuffer(pending);
+      expect(accepting.resolveReviewedStory({ story, view: "final" })).toBe(true);
+      expect(accepting.snapshotStory(story)?.blocks.at(0)?.directAlignment).toBe(after);
+      const accepted = await accepting.toBuffer();
+      const acceptedXml = await partText(accepted, part);
+      const acceptedParagraph = paragraphXmlContaining(acceptedXml, text);
+      expect(acceptedParagraph).not.toContain("<w:pPrChange");
+      expect(untrackedParagraphProperties(acceptedParagraph)).toBe(alignedStoryProperties(after));
+      const reopenedAccepted = await FolioDocxReviewer.fromBuffer(accepted);
+      expect(reopenedAccepted.snapshotStory(story)?.blocks.at(0)?.directAlignment).toBe(after);
+
+      const rejecting = await FolioDocxReviewer.fromBuffer(pending);
+      expect(rejecting.resolveReviewedStory({ story, view: "original" })).toBe(true);
+      expect(rejecting.snapshotStory(story)?.blocks.at(0)?.directAlignment).toBe(before);
+      const rejected = await rejecting.toBuffer();
+      const rejectedXml = await partText(rejected, part);
+      const rejectedParagraph = paragraphXmlContaining(rejectedXml, text);
+      expect(rejectedParagraph).not.toContain("<w:pPrChange");
+      expect(untrackedParagraphProperties(rejectedParagraph)).toBe(alignedStoryProperties(before));
+      const reopenedRejected = await FolioDocxReviewer.fromBuffer(rejected);
+      expect(reopenedRejected.snapshotStory(story)?.blocks.at(0)?.directAlignment).toBe(before);
     },
   );
 

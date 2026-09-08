@@ -986,6 +986,7 @@ function paragraphFormattingToAttrs(
 
     // Apply style-based values as defaults (inline overrides)
     set("alignment", formatting?.alignment ?? stylePpr?.alignment);
+    set("alignmentFromStyle", stylePpr?.alignment);
     set("spaceBefore", formatting?.spaceBefore ?? stylePpr?.spaceBefore);
     set("spaceAfter", formatting?.spaceAfter ?? stylePpr?.spaceAfter);
     set("lineSpacing", formatting?.lineSpacing ?? stylePpr?.lineSpacing);

@@ -264,6 +264,13 @@ export const readParagraphAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Par
     issues,
     PARAGRAPH_ALIGNMENT_VALUES,
   );
+  optionalOneOf(
+    attrs,
+    "alignmentFromStyle",
+    "paragraph.attrs.alignmentFromStyle",
+    issues,
+    PARAGRAPH_ALIGNMENT_VALUES,
+  );
   optionalString(attrs, "styleId", "paragraph.attrs.styleId", issues);
   optionalNumber(attrs, "_tableOfContentsLevel", "paragraph.attrs._tableOfContentsLevel", issues);
   optionalBoolean(attrs, "kinsoku", "paragraph.attrs.kinsoku", issues);
@@ -2482,6 +2489,14 @@ const validatePropertyChangeInfo = (
     }
   }
   optionalString(value, "rsid", `${path}.rsid`, issues);
+  optionalOneOf(
+    value,
+    "provenance",
+    `${path}.provenance`,
+    issues,
+    TRACKED_CHANGE_PROVENANCE_VALUES,
+  );
+  optionalString(value, "suggestionId", `${path}.suggestionId`, issues);
 };
 
 const optionalImagePosition = (

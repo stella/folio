@@ -61,6 +61,8 @@ describe("ProseMirror attr readers", () => {
   test("accepts valid paragraph attrs with preservation payloads", () => {
     const node = schema.nodes.paragraph.create({
       paraId: "para-1",
+      alignment: "center",
+      alignmentFromStyle: "right",
       numPr: { numId: 4, ilvl: 1 },
       bookmarks: [{ id: 7, name: "_Ref7" }],
       _autospacingBase: { before: 200, after: null },
@@ -76,6 +78,8 @@ describe("ProseMirror attr readers", () => {
       throw new Error("Expected paragraph attrs to parse");
     }
     expect(result.value.numPr?.numId).toBe(4);
+    expect(result.value.alignment).toBe("center");
+    expect(result.value.alignmentFromStyle).toBe("right");
     expect(result.value.bookmarks?.at(0)?.name).toBe("_Ref7");
     expect(result.value._autospacingBase?.before).toBe(200);
     expect(result.value._autospacingBase?.after).toBeNull();
@@ -83,8 +87,71 @@ describe("ProseMirror attr readers", () => {
     expect(expectParagraphAttrs(node).paraId).toBe("para-1");
   });
 
+  test("validates paragraph property change suggestion provenance", () => {
+    const suggested = schema.nodes.paragraph.create({
+      _propertyChanges: [
+        {
+          type: "paragraphPropertyChange",
+          info: {
+            id: 1,
+            author: "Reviewer",
+            provenance: "suggested",
+            suggestionId: "suggestion-1",
+          },
+          previousFormatting: { alignment: "left" },
+          currentFormatting: { alignment: "center" },
+        },
+      ],
+    });
+    const accepted = schema.nodes.paragraph.create({
+      _propertyChanges: [
+        {
+          type: "paragraphPropertyChange",
+          info: {
+            id: 2,
+            author: "Reviewer",
+            provenance: "user",
+            suggestionId: null,
+          },
+          previousFormatting: { alignment: "left" },
+          currentFormatting: { alignment: "center" },
+        },
+      ],
+    });
+
+    expect(readParagraphAttrs(suggested).ok).toBe(true);
+    expect(readParagraphAttrs(accepted).ok).toBe(true);
+
+    for (const [info, expectedPath] of [
+      [
+        { id: 3, author: "Reviewer", provenance: "invalid" },
+        "paragraph.attrs._propertyChanges[0].info.provenance",
+      ],
+      [
+        { id: 4, author: "Reviewer", provenance: "suggested", suggestionId: 5 },
+        "paragraph.attrs._propertyChanges[0].info.suggestionId",
+      ],
+    ] as const) {
+      const node = schema.nodes.paragraph.create({
+        _propertyChanges: [
+          {
+            type: "paragraphPropertyChange",
+            info,
+            previousFormatting: { alignment: "left" },
+          },
+        ],
+      });
+      const result = readParagraphAttrs(node);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.issues.map((issue) => issue.path)).toContain(expectedPath);
+      }
+    }
+  });
+
   test("rejects malformed paragraph attrs", () => {
     const node = schema.nodes.paragraph.create({
+      alignmentFromStyle: "start",
       numPr: { numId: "bad" },
       bookmarks: [{ id: "bad", name: 7 }],
       _emptyHyperlinks: [{ offset: -1, href: 42 }],
@@ -96,6 +163,7 @@ describe("ProseMirror attr readers", () => {
     expect(issueMessages(result)).toContain("Expected a number.");
     expect(result.ok ? [] : result.issues.map((issue) => issue.path)).toEqual(
       expect.arrayContaining([
+        "paragraph.attrs.alignmentFromStyle",
         "paragraph.attrs._emptyHyperlinks[0].offset",
         "paragraph.attrs._emptyHyperlinks[0].href",
       ]),

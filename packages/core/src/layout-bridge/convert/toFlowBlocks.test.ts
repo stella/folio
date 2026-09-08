@@ -4,11 +4,41 @@ import { getHyperlinkInstanceIndex } from "../../layout-engine/measure/hyperlink
 import { getTextBoxGroupId } from "../../layout-engine/textBoxGroup";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import { schema } from "../../prosemirror/schema";
-import type { Document } from "../../types/document";
+import type { Document, ParagraphAlignment } from "../../types/document";
+import { PARAGRAPH_ALIGNMENT_VALUES } from "../../types/documentEnumValues";
 import { AUTO_PARAGRAPH_SPACING_PX } from "../../utils/units";
 import { toFlowBlocks } from "./toFlowBlocks";
 
 describe("toFlowBlocks paragraph formatting", () => {
+  const expectedFlowAlignment = {
+    left: "left",
+    center: "center",
+    right: "right",
+    both: "justify",
+    distribute: "justify",
+    mediumKashida: "justify",
+    highKashida: "justify",
+    lowKashida: "justify",
+    thaiDistribute: "justify",
+  } as const satisfies Record<ParagraphAlignment, "left" | "center" | "right" | "justify">;
+
+  test.each(PARAGRAPH_ALIGNMENT_VALUES)(
+    "projects %s alignment to the layout engine",
+    (alignment) => {
+      const paragraph = toFlowBlocks(
+        schema.node("doc", null, [
+          schema.node("paragraph", { alignment }, [schema.text("Aligned paragraph")]),
+        ]),
+      ).at(0);
+
+      expect(paragraph?.kind).toBe("paragraph");
+      if (paragraph?.kind !== "paragraph") {
+        return;
+      }
+      expect(paragraph.attrs?.alignment).toBe(expectedFlowAlignment[alignment]);
+    },
+  );
+
   test("moves each section-owned start mode to its preceding boundary", () => {
     const doc = schema.node("doc", { _finalSectionStart: "evenPage" }, [
       schema.node("paragraph", { _sectionProperties: { sectionStart: "continuous" } }),

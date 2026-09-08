@@ -1,3 +1,5 @@
+import type { ParagraphAlignment } from "../types/document";
+
 export type FolioAIBlockKind = "heading" | "listItem" | "paragraph";
 
 export type FolioAIInlineFormatting = Partial<
@@ -56,6 +58,8 @@ export type FolioAIBlock = {
   headingLevel?: number;
   displayLabel?: string;
   styleId?: string;
+  /** Direct `w:pPr/w:jc`; absent when alignment comes only from a style. */
+  directAlignment?: ParagraphAlignment;
   /**
    * `w:numPr/w:ilvl`: the block's list indent level. Present only on a block
    * that carries numbering, and the only pPr property a redline can move
@@ -69,8 +73,8 @@ export type FolioAIBlock = {
 
 /**
  * The paragraph properties an operation may set. A subset of `w:pPrChange`'s
- * scope: the two a comparison can see in a block projection, and the two an
- * agent has a reason to change.
+ * scope: properties a comparison can see in a block projection and an agent
+ * has a reason to change.
  */
 export type FolioAIBlockParagraphProperties = {
   /** `w:pStyle`. `null` clears the style back to the default. */
@@ -80,6 +84,8 @@ export type FolioAIBlockParagraphProperties = {
    * paragraph stops being a list item rather than moving to another level.
    */
   listLevel?: number | null;
+  /** Direct `w:jc`. `null` clears the override and restores style inheritance. */
+  alignment?: ParagraphAlignment | null;
 };
 
 /**
@@ -242,7 +248,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
          * The paragraph text to insert. A line break splits `text` into
          * consecutive paragraphs at the same anchor instead of becoming
          * literal newlines inside one paragraph: only the first paragraph
-         * gets `styleId` / `inheritFormatting`, later ones use body
+         * gets `styleId` / `alignment` / `inheritFormatting`, later ones use body
          * formatting. Blank lines are dropped. Reported as a
          * `splitMultilineText` normalization when it happens.
          *
@@ -282,6 +288,11 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
          * inheritance alone cannot say.
          */
         listLevel?: number | null;
+        /**
+         * Direct `w:jc` for the inserted block. `null` clears alignment copied
+         * from the anchor and lets the inserted paragraph's style decide.
+         */
+        alignment?: ParagraphAlignment | null;
         comment?: FolioAIComment;
       }
     | {
@@ -290,7 +301,8 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
         blockId: string;
         text: string;
         preserveFormatting?: boolean;
-        styleId?: string;
+        /** Paragraph style to apply; `null` clears the direct style. */
+        styleId?: string | null;
         comment?: FolioAIComment;
       }
     /**
@@ -498,8 +510,8 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
  *   provenance: rendered with the tracked-change grammar but stripped from
  *   serialized DOCX until a human accepts them. Behaves like `"tracked-changes"`
  *   and covers the inline text/format operations (replaceInBlock, replaceRange,
- *   formatRange) plus the block and table row/column structural operations
- *   (insertAfterBlock, insertBeforeBlock, replaceBlock, deleteBlock,
+ *   formatRange), paragraph properties, plus the block and table row/column structural
+ *   operations (insertAfterBlock, insertBeforeBlock, replaceBlock, deleteBlock,
  *   insertSignatureTable, insertTableRow, deleteTableRow, insertTableColumn,
  *   deleteTableColumn). Only comment operations and cell merge/split report
  *   `unsupportedMode`.
@@ -552,6 +564,8 @@ export type FolioAIEditAppliedOperation = {
    * fromProseDoc serialises a single id carrying both as a Word
    * "moveTo/moveFrom" pair, not an ins/del — so the two sides must
    * be distinct ids in the doc but conceptually one operation here.
+   * The list also includes a paragraph-property revision synthesized
+   * when an inserted final paragraph mark rotates to its carrier.
    * Use this list when you need to accept or reject every mark
    * belonging to this op.
    */
