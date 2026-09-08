@@ -13,8 +13,10 @@ import type { Page } from "../layout-engine/types";
 import type { Watermark } from "../types/document";
 import { resolveFontFamily } from "../utils/fontResolver";
 import { applySanitizedImageSrc } from "../utils/sanitizeImageSrc";
+import { pointsToPixels } from "../utils/units";
 
 const WATERMARK_CLASS = "layout-page-watermark";
+const PICTURE_WASHOUT_OPACITY = 0.18;
 
 export type RenderWatermarkOptions = {
   /** Resolved image src for picture watermarks (`data:` / `blob:` only). */
@@ -108,13 +110,19 @@ function renderPictureWatermark(
   img.alt = "";
   // Decorative — never announced.
   img.setAttribute("aria-hidden", "true");
-  // `PictureWatermark.scale` is documented as a factor (1.0 = native,
-  // 0.5 = half-size). Convert to a CSS percentage for max-width/height.
-  // A nil scale defaults to 1.0 (native).
-  const scalePct = (watermark.scale ?? 1) * 100;
-  img.style.maxWidth = `${scalePct}%`;
-  img.style.maxHeight = `${scalePct}%`;
-  img.style.opacity = watermark.washout === false ? "1" : "0.4";
+  if (watermark.widthPt !== undefined && watermark.heightPt !== undefined) {
+    // VML stretches the source into its authored shape box, including a
+    // deliberate aspect-ratio change. The flex parent centres that box.
+    img.style.width = `${pointsToPixels(watermark.widthPt)}px`;
+    img.style.height = `${pointsToPixels(watermark.heightPt)}px`;
+  } else {
+    // Synthesized watermarks have no authored box. Preserve the page-relative
+    // scale fallback (1.0 = native, 0.5 = half-size).
+    const scalePct = (watermark.scale ?? 1) * 100;
+    img.style.maxWidth = `${scalePct}%`;
+    img.style.maxHeight = `${scalePct}%`;
+  }
+  img.style.opacity = String(watermark.washout === false ? 1 : PICTURE_WASHOUT_OPACITY);
   img.style.objectFit = "contain";
   return img;
 }

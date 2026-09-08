@@ -244,6 +244,37 @@ describe("watermark", () => {
     }, fakeMeasure);
   });
 
+  test("a picture watermark uses its authored shape box", () => {
+    withFakeTextMeasure(() => {
+      const list = buildDisplayList({
+        ...buildLayout([para("a", "A")]),
+        watermark: {
+          kind: "picture",
+          imageRId: "rId7",
+          widthPt: 300,
+          heightPt: 120,
+        },
+        watermarkImageSrc:
+          "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+      });
+      const image = (list.pages.at(0)?.primitives ?? []).find(
+        (primitive) => primitive.kind === "image",
+      );
+
+      expect(image?.kind).toBe("image");
+      if (image?.kind !== "image") {
+        return;
+      }
+      expect(image.rect).toEqual({
+        xPx: 208,
+        yPx: 448,
+        widthPx: 400,
+        heightPx: 160,
+      });
+      expect(image.opacity).toBe(0.18);
+    }, fakeMeasure);
+  });
+
   test("a document that has a watermark the caller withheld is reported", () => {
     withFakeTextMeasure(() => {
       const list = buildDisplayList({
