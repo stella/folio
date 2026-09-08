@@ -197,6 +197,50 @@ describe("document operation contract", () => {
     expect(Object.isFrozen(operation?.precondition)).toBe(true);
   });
 
+  test("validates and normalizes valued inline formatting", () => {
+    const range = {
+      type: "textRange",
+      story: "main",
+      blockId: "paragraph-2",
+      startOffset: 0,
+      endOffset: 4,
+      selectedTextHash: "h123",
+    } as const;
+    const batch = parseFolioDocumentOperationBatch({
+      version: 1,
+      operations: [
+        {
+          id: "format",
+          type: "formatRange",
+          range,
+          formatting: { fontFamily: " Georgia ", fontSizePt: 10.5, color: "c00000" },
+        },
+      ],
+    });
+    expect(batch.operations.at(0)).toMatchObject({
+      formatting: { fontFamily: "Georgia", fontSizePt: 10.5, color: "C00000" },
+    });
+
+    for (const [formatting, property] of [
+      [{ fontFamily: "" }, "fontFamily"],
+      [{ fontFamily: "  " }, "fontFamily"],
+      [{ fontSizePt: 10.25 }, "fontSizePt"],
+      [{ color: "red" }, "color"],
+    ] as const) {
+      expect(() =>
+        parseFolioDocumentOperationBatch({
+          version: 1,
+          operations: [{ id: "format", type: "formatRange", range, formatting }],
+        }),
+      ).toThrow(
+        expect.objectContaining({
+          _tag: "InvalidFolioDocumentOperationBatchError",
+          path: `$.operations[0].formatting.${property}`,
+        }),
+      );
+    }
+  });
+
   test("builds input-ordered receipts for successful affected targets", () => {
     const range = {
       type: "textRange",

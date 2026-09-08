@@ -296,13 +296,11 @@ export type ParagraphPropertyChangeAttrs = Omit<import__stll_docx_core_model.Par
 };
 
 // @public (undocumented)
-export type RunFormattingOverrideAttrs = { [K in keyof Pick<import__stll_docx_core_model.TextFormatting, "bold" | "italic" | "strike" | "allCaps" | "smallCaps" | "hidden" | "emboss" | "imprint" | "shadow" | "outline">]?: boolean; } & {
+export type RunFormattingOverrideAttrs = Partial<Record<"bold" | "boldCs" | "cs" | "italic" | "italicCs" | "strike" | "allCaps" | "smallCaps" | "hidden" | "emboss" | "imprint" | "shadow" | "outline", boolean>> & {
+    directFontProperties?: readonly ("fontFamily" | "fontSize" | "color")[];
     doubleStrike?: false;
     rtl?: false;
-    boldCs?: boolean;
-    cs?: boolean;
     fontSizeCs?: number;
-    italicCs?: boolean;
     underline?: "none";
 };
 

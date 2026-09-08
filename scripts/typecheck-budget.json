@@ -5,14 +5,14 @@
   },
   "core": {
     "types": 123527,
-    "instantiations": 97311
+    "instantiations": 97474
   },
   "react": {
     "types": 139563,
     "instantiations": 289321
   },
   "agents": {
-    "types": 71542,
+    "types": 71655,
     "instantiations": 61574
   },
   "vue": {

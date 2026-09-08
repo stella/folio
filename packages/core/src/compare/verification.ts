@@ -17,6 +17,10 @@ import { PARAGRAPH_MARK_CHANGE_KINDS, type ParagraphMarkChangeKind } from "@stll
 
 import type { FolioDocumentStoryHandle } from "../ai-edits/headless";
 import type { FolioAIBlock, FolioAIBlockPreviewRun } from "../ai-edits/types";
+import { resolveColorToHex } from "../utils/colorResolver";
+
+const normalizeInlineFormattingColor = (color: string | undefined): string | undefined =>
+  resolveColorToHex(color === undefined ? undefined : { rgb: color }, null);
 
 /** The two directions of the round trip, each an invariant of its own. */
 export const COMPARE_VERIFICATION_INVARIANTS = Object.freeze([
@@ -85,10 +89,27 @@ const supportedInlineStyle = ({
   italic,
   underline,
   strike,
+  fontFamily,
+  fontSizePt,
+  color,
+  directFormatting,
 }: FolioAIBlockPreviewRun): string =>
-  `${bold === true ? "b" : ""}${italic === true ? "i" : ""}${underline === true ? "u" : ""}${
-    strike === true ? "s" : ""
-  }`;
+  JSON.stringify([
+    bold === true,
+    italic === true,
+    underline === true,
+    strike === true,
+    fontFamily ?? null,
+    fontSizePt ?? null,
+    normalizeInlineFormattingColor(color) ?? null,
+    directFormatting?.bold === true,
+    directFormatting?.italic === true,
+    directFormatting?.underline === true,
+    directFormatting?.strike === true,
+    directFormatting?.fontFamily ?? null,
+    directFormatting?.fontSizePt ?? null,
+    normalizeInlineFormattingColor(directFormatting?.color ?? undefined) ?? null,
+  ]);
 
 /** Effective supported formatting with equivalent adjacent runs normalized. */
 export const projectSupportedInlineFormatting = ({ text, previewRuns }: FolioAIBlock): string => {

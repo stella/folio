@@ -79,7 +79,9 @@ in three nested passes, each over things that can stand in for one another:
 Changed paragraphs go through `diffWordSegments` at apply time, so a redline
 marks only the divergent words. Formatting-only differences are emitted as
 `formatRange` operations and reported as `format`, never as a deletion and
-reinsertion of identical text.
+reinsertion of identical text. The tracked inline properties are bold, italic,
+underline, strike, direct font family, half-point font size and RGB color;
+clearing a direct font property is tracked as well as setting one.
 
 An LCS on its own maximises matched characters, which on a rewritten sentence
 means matching every stray "the" and comma it can reach and handing the reader

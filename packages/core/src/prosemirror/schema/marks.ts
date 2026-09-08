@@ -152,11 +152,13 @@ export type RunPropertyChangeMarkAttrs = {
   suggestionId?: string;
 };
 
-export type RunFormattingOverrideAttrs = {
-  [K in keyof Pick<
-    TextFormatting,
+export type RunFormattingOverrideAttrs = Partial<
+  Record<
     | "bold"
+    | "boldCs"
+    | "cs"
     | "italic"
+    | "italicCs"
     | "strike"
     | "allCaps"
     | "smallCaps"
@@ -164,19 +166,14 @@ export type RunFormattingOverrideAttrs = {
     | "emboss"
     | "imprint"
     | "shadow"
-    | "outline"
-  >]?: boolean;
-} & {
+    | "outline",
+    boolean
+  >
+> & {
+  directFontProperties?: readonly ("fontFamily" | "fontSize" | "color")[];
   doubleStrike?: false;
   rtl?: false;
-  /** Independent complex-script weight (`w:bCs`). */
-  boldCs?: boolean;
-  /** Force complex-script formatting for the full run (`w:cs`). */
-  cs?: boolean;
-  /** Independent complex-script size in half-points (`w:szCs`). */
   fontSizeCs?: number;
-  /** Independent complex-script slant (`w:iCs`). */
-  italicCs?: boolean;
   underline?: "none";
 };
 

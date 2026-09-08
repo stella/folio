@@ -11,6 +11,34 @@ import type {
   FolioAIBlockPreviewRun,
   FolioAIInlineFormatting,
 } from "../ai-edits/types";
+import { resolveColorToHex } from "../utils/colorResolver";
+
+const normalizeInlineFormattingColor = (color: string | undefined): string | undefined =>
+  resolveColorToHex(color === undefined ? undefined : { rgb: color }, null);
+
+const changedStringValue = (
+  baseEffective: string | undefined,
+  targetEffective: string | undefined,
+  baseAuthored: string | null | undefined,
+  targetAuthored: string | null | undefined,
+): string | null | undefined => {
+  if (baseAuthored !== targetAuthored) {
+    return targetAuthored ?? null;
+  }
+  return baseEffective === targetEffective ? undefined : (targetEffective ?? null);
+};
+
+const changedNumberValue = (
+  baseEffective: number | undefined,
+  targetEffective: number | undefined,
+  baseAuthored: number | null | undefined,
+  targetAuthored: number | null | undefined,
+): number | null | undefined => {
+  if (baseAuthored !== targetAuthored) {
+    return targetAuthored ?? null;
+  }
+  return baseEffective === targetEffective ? undefined : (targetEffective ?? null);
+};
 
 /** One run of characters whose supported inline formatting differs. */
 export type InlineFormattingSegment = {
@@ -24,16 +52,58 @@ export type InlineFormattingSegment = {
 const changedSupportedFormatting = (
   base: FolioAIBlockPreviewRun,
   target: FolioAIBlockPreviewRun,
-): FolioAIInlineFormatting => ({
-  ...(Boolean(base.bold) !== Boolean(target.bold) && { bold: Boolean(target.bold) }),
-  ...(Boolean(base.italic) !== Boolean(target.italic) && { italic: Boolean(target.italic) }),
-  ...(Boolean(base.underline) !== Boolean(target.underline) && {
-    underline: Boolean(target.underline),
-  }),
-  ...(Boolean(base.strike) !== Boolean(target.strike) && {
-    strike: Boolean(target.strike),
-  }),
-});
+): FolioAIInlineFormatting => {
+  const baseDirect = base.directFormatting ?? {};
+  const targetDirect = target.directFormatting ?? {};
+  const formatting: FolioAIInlineFormatting = {};
+
+  const changedBoolean = (property: "bold" | "italic" | "underline" | "strike") => {
+    if (baseDirect[property] !== targetDirect[property]) {
+      return targetDirect[property] === true;
+    }
+    return Boolean(base[property]) === Boolean(target[property])
+      ? undefined
+      : Boolean(target[property]);
+  };
+  for (const property of ["bold", "italic", "underline", "strike"] as const) {
+    const changed = changedBoolean(property);
+    if (changed !== undefined) {
+      formatting[property] = changed;
+    }
+  }
+
+  const fontFamily = changedStringValue(
+    base.fontFamily,
+    target.fontFamily,
+    baseDirect.fontFamily,
+    targetDirect.fontFamily,
+  );
+  if (fontFamily !== undefined) {
+    formatting.fontFamily = fontFamily;
+  }
+
+  const fontSizePt = changedNumberValue(
+    base.fontSizePt,
+    target.fontSizePt,
+    baseDirect.fontSizePt,
+    targetDirect.fontSizePt,
+  );
+  if (fontSizePt !== undefined) {
+    formatting.fontSizePt = fontSizePt;
+  }
+
+  const color = changedStringValue(
+    normalizeInlineFormattingColor(base.color),
+    normalizeInlineFormattingColor(target.color),
+    normalizeInlineFormattingColor(baseDirect.color ?? undefined),
+    normalizeInlineFormattingColor(targetDirect.color ?? undefined),
+  );
+  if (color !== undefined) {
+    formatting.color = color;
+  }
+
+  return formatting;
+};
 
 const sameInlineFormatting = (
   left: FolioAIInlineFormatting,
@@ -42,13 +112,19 @@ const sameInlineFormatting = (
   left.bold === right.bold &&
   left.italic === right.italic &&
   left.underline === right.underline &&
-  left.strike === right.strike;
+  left.strike === right.strike &&
+  left.fontFamily === right.fontFamily &&
+  left.fontSizePt === right.fontSizePt &&
+  left.color === right.color;
 
 const hasInlineFormatting = (formatting: FolioAIInlineFormatting): boolean =>
   formatting.bold !== undefined ||
   formatting.italic !== undefined ||
   formatting.underline !== undefined ||
-  formatting.strike !== undefined;
+  formatting.strike !== undefined ||
+  formatting.fontFamily !== undefined ||
+  formatting.fontSizePt !== undefined ||
+  formatting.color !== undefined;
 
 /**
  * A block's runs, or `null` when they cannot describe the block's text.
@@ -69,7 +145,7 @@ type InlineFormattingSegmentsOptions = {
 };
 
 /**
- * Segments where `targetBlock`'s bold / italic / underline / strike differs from
+ * Segments where `targetBlock`'s supported run formatting differs from
  * `baseBlock`'s, for two blocks that carry the same text. Returns `null` only
  * when the diff would exceed `maxSegments`.
  *

@@ -697,8 +697,54 @@ describe("Folio AI edit operations", () => {
         underline: true,
         fontFamily: "Aptos",
         fontSizePt: 14,
+        directFormatting: {
+          bold: true,
+          italic: true,
+          underline: true,
+          fontFamily: "Aptos",
+          fontSizePt: 14,
+        },
       },
       { text: " No underline" },
+    ]);
+  });
+
+  test("distinguishes inherited formatting from direct run formatting", () => {
+    const fontSizeType = schema.marks["fontSize"];
+    const fontFamilyType = schema.marks["fontFamily"];
+    const state = EditorState.create({
+      schema,
+      doc: schema.node("doc", null, [
+        schema.node(
+          "paragraph",
+          {
+            defaultTextFormatting: {
+              fontFamily: { ascii: "Arial", hAnsi: "Arial" },
+              fontSize: 22,
+            },
+          },
+          [
+            schema.text("Inherited ", [
+              fontSizeType.create({ size: 22 }),
+              fontFamilyType.create({ ascii: "Arial", hAnsi: "Arial" }),
+            ]),
+            schema.text("Direct", [
+              fontSizeType.create({ size: 24 }),
+              fontFamilyType.create({ ascii: "Georgia", hAnsi: "Georgia" }),
+            ]),
+          ],
+        ),
+      ]),
+    });
+
+    expect(createFolioAIEditSnapshot(state.doc).blocks.at(0)?.previewRuns).toEqual([
+      { text: "Inherited ", fontFamily: "Arial", fontSizePt: 11 },
+      {
+        text: "Direct",
+        fontFamily: "Georgia",
+        fontSizePt: 12,
+        directFormatting: { fontFamily: "Georgia", fontSizePt: 12 },
+      },
     ]);
   });
 
