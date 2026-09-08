@@ -1429,16 +1429,17 @@ function getLegacyFormCheckboxDisplay(
   if (checked) {
     isChecked = parseBooleanElement(checked);
   }
-  const explicitSize = parseNumericAttribute(
-    findChild(checkBox, "w", "size"),
-    "w",
-    "val",
-  );
+  const explicitSize = parseNumericAttribute(findChild(checkBox, "w", "size"), "w", "val");
+  const text = isChecked
+    ? LEGACY_FORM_CHECKBOX_GLYPHS.checked
+    : LEGACY_FORM_CHECKBOX_GLYPHS.unchecked;
+  if (explicitSize === null) {
+    return { text };
+  }
+
   return {
-    text: isChecked
-      ? LEGACY_FORM_CHECKBOX_GLYPHS.checked
-      : LEGACY_FORM_CHECKBOX_GLYPHS.unchecked,
-    ...(explicitSize !== null ? { fontSize: explicitSize } : {}),
+    text,
+    fontSize: explicitSize,
   };
 }
 
@@ -1622,11 +1623,7 @@ function parseParagraphContents(
             }
             // Self-numbering fields (LISTNUM, AUTONUM, …) often skip the
             // separator and stash their display on the end field character.
-            if (
-              resultRuns.length === 0 &&
-              !afterSeparator &&
-              endOriginalValue !== undefined
-            ) {
+            if (resultRuns.length === 0 && !afterSeparator && endOriginalValue !== undefined) {
               resultRuns = [
                 {
                   type: "run",
