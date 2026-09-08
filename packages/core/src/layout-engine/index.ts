@@ -1603,6 +1603,11 @@ type LayoutTextBoxOptions = {
   sectionMarginBottom: number;
 };
 
+const TEXT_BOX_ANCHOR_BLOCK_ID = Symbol.for("stll.textBoxAnchorBlockId");
+
+const readTextBoxAnchorBlockId = (block: TextBoxBlock): unknown =>
+  Reflect.get(block, TEXT_BOX_ANCHOR_BLOCK_ID);
+
 /**
  * Layout a text box block onto pages.
  */
@@ -1674,6 +1679,13 @@ function layoutTextBox(
         })
       : paginator.getColumnX(state.columnIndex);
     const vertical = block.position.vertical;
+    const anchorBlockId = readTextBoxAnchorBlockId(block);
+    const anchorParagraph =
+      vertical?.relativeTo === "paragraph" && typeof anchorBlockId === "string"
+        ? state.page.fragments.find(
+            (fragment) => fragment.kind === "paragraph" && fragment.blockId === anchorBlockId,
+          )
+        : undefined;
     const y = isPageFrameRelativeAnchor(vertical?.relativeTo)
       ? state.topMargin +
         bandTopContentY(vertical, {
@@ -1682,7 +1694,7 @@ function layoutTextBox(
           marginBottom: sectionMarginBottom,
           boxHeight: measure.height,
         })
-      : state.cursorY + emuToPixels(vertical?.posOffset ?? 0);
+      : (anchorParagraph?.y ?? state.cursorY) + emuToPixels(vertical?.posOffset ?? 0);
     const fragment: TextBoxFragment = {
       kind: "textBox",
       blockId: block.id,

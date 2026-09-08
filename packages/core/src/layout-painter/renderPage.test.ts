@@ -724,6 +724,90 @@ describe("header and footer rendering", () => {
     expect(textBox?.dataset["hfRid"]).toBe("rIdFooter");
   });
 
+  test("positions a paragraph-owned header text box from its host paragraph", () => {
+    const emusPerPixel = 9_525;
+    const hostBlock: ParagraphBlock = {
+      kind: "paragraph",
+      id: "text-box-host",
+      runs: [{ kind: "text", text: "Host" }],
+    };
+    const textBoxBlock: TextBoxBlock = {
+      kind: "textBox",
+      id: "owned-header-box",
+      width: 80,
+      height: 20,
+      content: [],
+      wrapType: "inFront",
+      position: {
+        vertical: {
+          relativeTo: "paragraph",
+          posOffset: 8 * emusPerPixel,
+        },
+      },
+    };
+    Reflect.set(textBoxBlock, Symbol.for("stll.textBoxAnchorBlockId"), hostBlock.id);
+
+    const pageElement = renderPage(
+      { ...page, fragments: [] },
+      { pageNumber: 1, totalPages: 1, section: "body" },
+      {
+        document: fakeDocument,
+        headerContent: {
+          blocks: [hostBlock, textBoxBlock],
+          measures: [
+            { kind: "paragraph", lines: [], totalHeight: 12 },
+            textBoxMeasure(textBoxBlock.width, textBoxBlock.height),
+          ],
+          height: 12,
+        },
+      },
+    ) as unknown as FakeElement;
+
+    expect(findByClass(pageElement, "layout-textbox")?.style.top).toBe("8px");
+  });
+
+  test("keeps line-relative header text boxes anchored to the current flow cursor", () => {
+    const emusPerPixel = 9_525;
+    const hostBlock: ParagraphBlock = {
+      kind: "paragraph",
+      id: "line-anchor-host",
+      runs: [{ kind: "text", text: "Host" }],
+    };
+    const textBoxBlock: TextBoxBlock = {
+      kind: "textBox",
+      id: "line-relative-header-box",
+      width: 80,
+      height: 20,
+      content: [],
+      wrapType: "inFront",
+      position: {
+        vertical: {
+          relativeTo: "line",
+          posOffset: 8 * emusPerPixel,
+        },
+      },
+    };
+    Reflect.set(textBoxBlock, Symbol.for("stll.textBoxAnchorBlockId"), hostBlock.id);
+
+    const pageElement = renderPage(
+      { ...page, fragments: [] },
+      { pageNumber: 1, totalPages: 1, section: "body" },
+      {
+        document: fakeDocument,
+        headerContent: {
+          blocks: [hostBlock, textBoxBlock],
+          measures: [
+            { kind: "paragraph", lines: [], totalHeight: 12 },
+            textBoxMeasure(textBoxBlock.width, textBoxBlock.height),
+          ],
+          height: 12,
+        },
+      },
+    ) as unknown as FakeElement;
+
+    expect(findByClass(pageElement, "layout-textbox")?.style.top).toBe("20px");
+  });
+
   test("interactive header/footer box tracks the flow band, not a floating shape's extent (#869)", () => {
     const para = (id: string): ParagraphBlock => ({
       kind: "paragraph",

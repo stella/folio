@@ -177,6 +177,35 @@ describe("toFlowBlocks paragraph formatting", () => {
     ]);
   });
 
+  test("retains the exact host paragraph for an extracted text box", () => {
+    const anchorId = "paragraph:0";
+    const blocks = toFlowBlocks(
+      schema.node("doc", null, [
+        schema.node("paragraph", null, [
+          schema.text("Before"),
+          schema.node("textBoxAnchor", { anchorId }),
+          schema.text("After"),
+        ]),
+        schema.node(
+          "textBox",
+          {
+            width: 100,
+            _docxPlacement: "inlineWithPrevious",
+            _docxAnchorId: anchorId,
+          },
+          [schema.node("paragraph")],
+        ),
+      ]),
+    );
+    const paragraph = blocks.at(0);
+    const textBox = blocks.at(1);
+    if (paragraph?.kind !== "paragraph" || textBox?.kind !== "textBox") {
+      throw new Error("Expected an owned text box after its host paragraph");
+    }
+
+    expect(Reflect.get(textBox, Symbol.for("stll.textBoxAnchorBlockId"))).toBe(paragraph.id);
+  });
+
   test("retains paragraph suppression and stamps the document hyphenation policy", () => {
     const paragraph = toFlowBlocks(
       schema.node("doc", null, [
