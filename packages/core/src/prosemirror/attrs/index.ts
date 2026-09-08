@@ -72,7 +72,10 @@ import type {
   TrackedChangeMarkAttrs,
   UnderlineAttrs,
 } from "../schema";
-import { TRACKED_CHANGE_PROVENANCE_VALUES } from "../schema/marks";
+import {
+  COMPLEX_SCRIPT_RUN_PROPERTY_KEYS,
+  TRACKED_CHANGE_PROVENANCE_VALUES,
+} from "../schema/marks";
 
 export type ProseMirrorAttrIssue = {
   path: string;
@@ -1210,6 +1213,13 @@ export const readRunFormattingOverrideMarkAttrs = (
     issues,
     RUN_FORMATTING_OVERRIDE_DIRECT_FONT_PROPERTIES,
   );
+  optionalOneOfArray(
+    attrs,
+    "complexScriptPropertyAbsences",
+    "runFormattingOverride.attrs.complexScriptPropertyAbsences",
+    issues,
+    COMPLEX_SCRIPT_RUN_PROPERTY_KEYS,
+  );
   const directFontProperties = attrs["directFontProperties"];
   if (
     Array.isArray(directFontProperties) &&
@@ -1219,6 +1229,26 @@ export const readRunFormattingOverrideMarkAttrs = (
       path: "runFormattingOverride.attrs.directFontProperties",
       message: "Expected unique direct font properties.",
     });
+  }
+  const complexScriptPropertyAbsences = attrs["complexScriptPropertyAbsences"];
+  if (
+    Array.isArray(complexScriptPropertyAbsences) &&
+    new Set(complexScriptPropertyAbsences).size !== complexScriptPropertyAbsences.length
+  ) {
+    issues.push({
+      path: "runFormattingOverride.attrs.complexScriptPropertyAbsences",
+      message: "Expected unique complex-script property absences.",
+    });
+  }
+  if (Array.isArray(complexScriptPropertyAbsences)) {
+    for (const property of complexScriptPropertyAbsences) {
+      if (attrs[property] !== undefined && attrs[property] !== null) {
+        issues.push({
+          path: `runFormattingOverride.attrs.${property}`,
+          message: "Expected a property to be either present or explicitly absent, not both.",
+        });
+      }
+    }
   }
 
   return attrsResult(attrs, issues);

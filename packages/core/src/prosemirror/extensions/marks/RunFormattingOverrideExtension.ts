@@ -67,7 +67,7 @@ export function buildRunFormattingOverrideAttrs(
   if (formatting.italicCs !== undefined) {
     attrs.italicCs = formatting.italicCs;
   }
-  if (formatting.fontSizeCs !== undefined && formatting.fontSizeCs !== formatting.fontSize) {
+  if (formatting.fontSizeCs !== undefined) {
     attrs.fontSizeCs = formatting.fontSizeCs;
   }
   if (formatting.cs !== undefined) {
@@ -144,6 +144,7 @@ export const RunFormattingOverrideExtension = createMarkExtension({
   markSpec: {
     attrs: {
       directFontProperties: { default: null },
+      complexScriptPropertyAbsences: { default: null },
       bold: { default: null },
       italic: { default: null },
       underline: { default: null },

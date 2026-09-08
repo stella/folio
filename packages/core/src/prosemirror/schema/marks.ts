@@ -154,6 +154,10 @@ export type RunPropertyChangeMarkAttrs = {
   suggestionId?: string;
 };
 
+export const COMPLEX_SCRIPT_RUN_PROPERTY_KEYS = ["boldCs", "italicCs", "fontSizeCs"] as const;
+
+export type ComplexScriptRunPropertyKey = (typeof COMPLEX_SCRIPT_RUN_PROPERTY_KEYS)[number];
+
 export type RunFormattingOverrideAttrs = Partial<
   Record<
     | "bold"
@@ -173,6 +177,8 @@ export type RunFormattingOverrideAttrs = Partial<
   >
 > & {
   directFontProperties?: readonly ("fontFamily" | "fontSize" | "color")[];
+  /** Complex-script mirrors that the source run explicitly omitted. */
+  complexScriptPropertyAbsences?: readonly ComplexScriptRunPropertyKey[];
   doubleStrike?: false;
   rtl?: false;
   fontSizeCs?: number;

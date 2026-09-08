@@ -141,7 +141,7 @@ describe("characterStyle mark schema registration", () => {
     expect(schema.marks["characterStyle"]).toBeDefined();
   });
 
-  test("run override schema exposes no source-provenance attributes", () => {
+  test("run override schema exposes no raw source-formatting payloads", () => {
     const attrs = Object.keys(schema.marks["runFormattingOverride"]?.spec.attrs ?? {});
     expect(attrs).not.toContain("_baseRPr");
     expect(attrs).not.toContain("_effectiveRPr");

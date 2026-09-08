@@ -21,7 +21,9 @@ import type {
   TableCellFormatting,
   TableFormatting,
   TableRowFormatting,
+  TextFormatting,
 } from "../../types/document";
+import { mergeTextFormatting } from "../../utils/textFormattingMerge";
 import { PARAGRAPH_MARK_CHANGE_KINDS, type ParagraphMarkChangeKind } from "@stll/docx-core/model";
 
 import { expectParagraphAttrs, expectRunPropertyChangeMarkAttrs } from "../attrs";
@@ -602,6 +604,17 @@ type ResolveRunPropertyChangeOptions = {
   revisionSet: Set<number> | null;
 };
 
+const inheritedRunFormattingAt = (doc: PMNode, pos: number): TextFormatting | undefined => {
+  const resolved = doc.resolve(pos);
+  for (let depth = resolved.depth; depth >= 0; depth--) {
+    const ancestor = resolved.node(depth);
+    if (ancestor.type.name === "paragraph") {
+      return expectParagraphAttrs(ancestor).defaultTextFormatting ?? undefined;
+    }
+  }
+  return undefined;
+};
+
 const resolveRunPropertyChange = ({
   tr,
   node,
@@ -632,12 +645,19 @@ const resolveRunPropertyChange = ({
 
   const previousFormatting: RunPropertyChange["previousFormatting"] =
     matches.at(0)?.previousFormatting;
+  const effectivePreviousFormatting = mergeTextFormatting(
+    inheritedRunFormattingAt(tr.doc, from),
+    previousFormatting,
+  );
   for (const currentMark of node.marks) {
     if (RUN_FORMATTING_MARK_NAMES.has(currentMark.type.name)) {
       tr.removeMark(from, to, currentMark.type);
     }
   }
-  for (const previousMark of textFormattingToMarks(previousFormatting)) {
+  for (const previousMark of textFormattingToMarks(effectivePreviousFormatting, {
+    overrideFormatting: previousFormatting,
+    directFormatting: previousFormatting,
+  })) {
     tr.addMark(from, to, previousMark);
   }
   if (previousFormatting?.styleId) {

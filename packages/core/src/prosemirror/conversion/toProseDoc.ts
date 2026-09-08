@@ -69,6 +69,10 @@ import { buildRunFormattingOverrideAttrs } from "../extensions/marks/RunFormatti
 import { directionFromBidi } from "../paragraphDirection";
 import { lineSpacingProvenanceFromSpacing } from "../paragraphSpacing";
 import { schema } from "../schema";
+import {
+  COMPLEX_SCRIPT_RUN_PROPERTY_KEYS,
+  type ComplexScriptRunPropertyKey,
+} from "../schema/marks";
 import { cascadeStyleTextFormatting } from "../styles/styleToggleCascade";
 import type {
   ImagePositionAttrs,
@@ -2773,8 +2777,8 @@ function buildRunMarks(
   });
   const marks = textFormattingToMarks(mergedFormatting, {
     overrideFormatting,
+    directFormatting: runFormatting,
   });
-  addDirectFontProvenance(marks, runFormatting);
 
   if (styleId) {
     const styleRPr = characterStyleFormatting
@@ -2825,9 +2829,47 @@ const addDirectFontProvenance = (
   marks.push(override);
 };
 
+const COMPLEX_SCRIPT_MIRRORS = [
+  { ordinary: "bold", complex: "boldCs" },
+  { ordinary: "italic", complex: "italicCs" },
+  { ordinary: "fontSize", complex: "fontSizeCs" },
+] as const satisfies readonly {
+  ordinary: keyof TextFormatting;
+  complex: ComplexScriptRunPropertyKey;
+}[];
+
+const addComplexScriptAbsenceProvenance = (
+  marks: ReturnType<typeof schema.mark>[],
+  directFormatting: TextFormatting | undefined,
+): void => {
+  const absent = COMPLEX_SCRIPT_MIRRORS.filter(
+    ({ ordinary, complex }) =>
+      directFormatting?.[ordinary] !== undefined && directFormatting[complex] === undefined,
+  ).map(({ complex }) => complex);
+  if (absent.length === 0) {
+    return;
+  }
+
+  const index = marks.findIndex(({ type }) => type.name === "runFormattingOverride");
+  const existing = index >= 0 ? marks.at(index) : undefined;
+  const existingAbsences = new Set(existing?.attrs["complexScriptPropertyAbsences"] ?? []);
+  for (const property of absent) {
+    existingAbsences.add(property);
+  }
+  const override = schema.mark("runFormattingOverride", {
+    ...existing?.attrs,
+    complexScriptPropertyAbsences: COMPLEX_SCRIPT_RUN_PROPERTY_KEYS.filter((property) =>
+      existingAbsences.has(property),
+    ),
+  });
+  if (index >= 0) {
+    marks[index] = override;
+    return;
+  }
+  marks.push(override);
+};
+
 const ORDINARY_STYLE_TOGGLE_KEYS = [
-  "bold",
-  "italic",
   "strike",
   "allCaps",
   "smallCaps",
@@ -2859,6 +2901,9 @@ function getRunFormattingOverrides({
   // A positive PM mark already preserves direct formatting unless character-style
   // subtraction would mistake it for an inherited visual. Keep only that ambiguous
   // positive state in the structural override; negative state remains explicit.
+  // Bold and italic stay in the override too: their presence distinguishes a
+  // direct ordinary toggle from an inherited mark before deciding whether its
+  // complex-script partner was authored.
   for (const key of ORDINARY_STYLE_TOGGLE_KEYS) {
     if (
       directFormatting[key] === true &&
@@ -2866,21 +2911,6 @@ function getRunFormattingOverrides({
     ) {
       Reflect.deleteProperty(overrides, key);
     }
-  }
-
-  if (
-    directFormatting.boldCs === true &&
-    directFormatting.boldCs === directFormatting.bold &&
-    (!hasCharacterStyle || effectiveStyleFormatting?.boldCs === undefined)
-  ) {
-    Reflect.deleteProperty(overrides, "boldCs");
-  }
-  if (
-    directFormatting.italicCs === true &&
-    directFormatting.italicCs === directFormatting.italic &&
-    (!hasCharacterStyle || effectiveStyleFormatting?.italicCs === undefined)
-  ) {
-    Reflect.deleteProperty(overrides, "italicCs");
   }
 
   return overrides;
@@ -3309,6 +3339,8 @@ function convertHyperlink(
  */
 type TextFormattingToMarksOptions = {
   overrideFormatting: TextFormatting | undefined;
+  /** Direct standard font properties whose authored provenance must survive. */
+  directFormatting?: TextFormatting | undefined;
 };
 
 export function textFormattingToMarks(
@@ -3487,6 +3519,11 @@ export function textFormattingToMarks(
   // eigenpal #424 (gap 11) — text effect animation (w:effect)
   if (formatting.effect && formatting.effect !== "none") {
     marks.push(schema.mark("textEffect", { effect: formatting.effect }));
+  }
+
+  addDirectFontProvenance(marks, options?.directFormatting);
+  if (options) {
+    addComplexScriptAbsenceProvenance(marks, options.directFormatting);
   }
 
   return marks;

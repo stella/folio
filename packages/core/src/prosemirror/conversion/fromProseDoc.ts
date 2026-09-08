@@ -441,7 +441,10 @@ function stripSuggestedInlineMarks(marks: readonly Mark[]): readonly Mark[] {
       suggestedRunPropertyChange,
     ).changes.at(0)?.previousFormatting;
     next = next.filter((mark) => !RUN_FORMATTING_MARK_NAMES.has(mark.type.name));
-    for (const restored of textFormattingToMarks(previousFormatting)) {
+    for (const restored of textFormattingToMarks(previousFormatting, {
+      overrideFormatting: previousFormatting,
+      directFormatting: previousFormatting,
+    })) {
       next = restored.addToSet(next);
     }
   }
@@ -2968,6 +2971,7 @@ export function marksToTextFormatting(
   let directFontProperties: RunFormattingOverrideAttrs["directFontProperties"];
   let characterStyleRPr: TextFormatting | undefined;
   let runFormattingOverrideMark: Mark | undefined;
+  let runFormattingOverrideAttrs: RunFormattingOverrideAttrs | undefined;
 
   for (const mark of marks) {
     switch (mark.type.name) {
@@ -3175,8 +3179,12 @@ export function marksToTextFormatting(
   // bold/font-size mark cannot overwrite their more specific OOXML values.
   if (runFormattingOverrideMark) {
     const overrideAttrs = expectRunFormattingOverrideMarkAttrs(runFormattingOverrideMark);
+    runFormattingOverrideAttrs = overrideAttrs;
     directFontProperties = overrideAttrs.directFontProperties;
     applyRunFormattingOverrideAttrs(formatting, overrideAttrs);
+    for (const property of overrideAttrs.complexScriptPropertyAbsences ?? []) {
+      Reflect.deleteProperty(formatting, property);
+    }
     directOverrideFormatting = {};
     applyRunFormattingOverrideAttrs(directOverrideFormatting, overrideAttrs);
     for (const property of directFontProperties ?? []) {
@@ -3194,6 +3202,39 @@ export function marksToTextFormatting(
       inheritedFormatting: options?.inheritedFormatting,
       styleRPr: characterStyleRPr,
     });
+  }
+
+  for (const [ordinary, complex] of [
+    ["bold", "boldCs"],
+    ["italic", "italicCs"],
+  ] as const) {
+    const inherited = options?.inheritedFormatting?.[ordinary];
+    const isDirect =
+      runFormattingOverrideAttrs?.[ordinary] !== undefined ||
+      inherited === undefined ||
+      formatting[ordinary] !== inherited;
+    if (!isDirect) {
+      Reflect.deleteProperty(formatting, ordinary);
+    }
+    if (
+      runFormattingOverrideAttrs?.[complex] === undefined &&
+      (runFormattingOverrideAttrs?.complexScriptPropertyAbsences?.includes(complex) || !isDirect)
+    ) {
+      Reflect.deleteProperty(formatting, complex);
+    }
+  }
+
+  const inheritedFontSize = options?.inheritedFormatting?.fontSize;
+  const fontSizeIsDirect =
+    directFontProperties?.includes("fontSize") === true ||
+    inheritedFontSize === undefined ||
+    formatting.fontSize !== inheritedFontSize;
+  if (
+    runFormattingOverrideAttrs?.fontSizeCs === undefined &&
+    (runFormattingOverrideAttrs?.complexScriptPropertyAbsences?.includes("fontSizeCs") ||
+      !fontSizeIsDirect)
+  ) {
+    Reflect.deleteProperty(formatting, "fontSizeCs");
   }
 
   for (const property of ["fontFamily", "fontSize", "color"] as const) {
