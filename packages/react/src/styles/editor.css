@@ -1055,18 +1055,20 @@
   background: color-mix(in srgb, #0000ff 24%, transparent);
 }
 
-/* Condition directives (if / elseif / else / endif) tint teal, matching their
+/* Condition directives (if / elif / else / endif) tint teal, matching their
    rail, so a marker's role is legible at the chip. */
 .folio-template-directive--if,
-.folio-template-directive--elseif,
+.folio-template-directive--elif,
 .folio-template-directive--else,
 .folio-template-directive--endif {
   background: color-mix(in srgb, var(--doc-tmpl-cond) 26%, transparent);
 }
 
-/* Loop directives (each / endeach) tint violet, matching their rail. */
-.folio-template-directive--each,
-.folio-template-directive--endeach {
+/* Loop directives (for / endfor) and the loop counters (`{{ loop.index }}`)
+   tint violet, matching their rail. */
+.folio-template-directive--loop,
+.folio-template-directive--for,
+.folio-template-directive--endfor {
   background: color-mix(in srgb, var(--doc-tmpl-loop) 26%, transparent);
 }
 
@@ -1081,14 +1083,14 @@
 
 /* Chip emphasis mirrors the rail: brighten the twin chips of the active pair. */
 .folio-template-directive--if.folio-template-directive--active,
-.folio-template-directive--elseif.folio-template-directive--active,
+.folio-template-directive--elif.folio-template-directive--active,
 .folio-template-directive--else.folio-template-directive--active,
 .folio-template-directive--endif.folio-template-directive--active {
   background: color-mix(in srgb, var(--doc-tmpl-cond) 44%, transparent);
 }
 
-.folio-template-directive--each.folio-template-directive--active,
-.folio-template-directive--endeach.folio-template-directive--active {
+.folio-template-directive--for.folio-template-directive--active,
+.folio-template-directive--endfor.folio-template-directive--active {
   background: color-mix(in srgb, var(--doc-tmpl-loop) 44%, transparent);
 }
 
@@ -1107,7 +1109,7 @@
     box-shadow 120ms ease;
 }
 
-.folio-template-band-rail--each {
+.folio-template-band-rail--for {
   background: color-mix(in srgb, var(--doc-tmpl-loop) 22%, transparent);
 }
 
@@ -1118,7 +1120,7 @@
 /* Loud on intent: the innermost block around the caret, or the block whose rail
    or chip is hovered, gets full strength plus a hairline glow that widens the
    rail without shifting layout — so one block is easy to trace end-to-end. */
-.folio-template-band-rail--each.folio-template-band-rail--active {
+.folio-template-band-rail--for.folio-template-band-rail--active {
   background: color-mix(in srgb, var(--doc-tmpl-loop) 90%, transparent);
   box-shadow: 0 0 0 0.75px color-mix(in srgb, var(--doc-tmpl-loop) 45%, transparent);
 }

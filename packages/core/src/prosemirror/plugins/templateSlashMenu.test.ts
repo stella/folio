@@ -309,13 +309,13 @@ describe("templateSlashMenu handleTextInput", () => {
   });
 
   test('"/" inside an existing directive does not open the menu', () => {
-    // `{{#if cond}}` with the caret after "#if " (a whitespace boundary, so the
+    // `{% if cond %}` with the caret after "if " (a whitespace boundary, so the
     // generic guard would open). Opening here would nest markers
-    // (`{{#if {{field}}}}`), which the fill grammar cannot parse, so the
+    // (`{% if {{ field }} %}`), which the fill grammar cannot parse, so the
     // directive-range guard must reject it.
-    const text = "{{#if cond}}";
+    const text = "{% if cond %}";
     const doc = schema.node("doc", null, [schema.node("paragraph", null, [schema.text(text)])]);
-    const caretAfterIf = text.indexOf("#if ") + "#if ".length; // parent offset
+    const caretAfterIf = text.indexOf("if ") + "if ".length; // parent offset
     const slash = templateSlashMenuPlugin();
     const view: FakeView = {
       state: EditorState.create({

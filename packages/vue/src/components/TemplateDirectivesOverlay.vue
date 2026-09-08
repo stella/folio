@@ -1,7 +1,7 @@
 <!--
   Template Directives Overlay (Vue)
 
-  Paints a subtle translucent highlight over each {{...}} marker's range so a
+  Paints a subtle translucent highlight over each marker's range so a
   marker reads as a token while staying visible and editable. Block directives
   additionally get a thin left-margin gutter rail spanning opener→closer, quiet
   by default and loud on caret/hover intent.
@@ -102,10 +102,10 @@ const RAIL_EDGE_PAD = 2;
 /** Drop per-page segments thinner than this (sub-pixel slivers at a page seam). */
 const RAIL_SEGMENT_MIN_HEIGHT = 2;
 
-const BLOCK_OPENERS = new Set<DirectiveKind>(["if", "each"]);
-const BLOCK_CLOSERS = new Set<DirectiveKind>(["endif", "endeach"]);
+const BLOCK_OPENERS = new Set<DirectiveKind>(["if", "for"]);
+const BLOCK_CLOSERS = new Set<DirectiveKind>(["endif", "endfor"]);
 
-type BandKind = "if" | "each";
+type BandKind = "if" | "for";
 type BandSegment = { top: number; bottom: number };
 type BlockPairing = {
   blockId: number;
@@ -125,7 +125,7 @@ type RailBand = {
 };
 type ProjectedDirectiveGroup = { range: DirectiveRange; rects: SelectionRect[] };
 
-const bandKindOf = (kind: DirectiveKind): BandKind => (kind === "each" ? "each" : "if");
+const bandKindOf = (kind: DirectiveKind): BandKind => (kind === "for" ? "for" : "if");
 
 function railBudgetDepth(marginWidth: number): number {
   const usable = marginWidth - RAIL_TEXT_CLEARANCE - RAIL_WIDTH - RAIL_EDGE_PAD;
@@ -173,7 +173,7 @@ function pairBlockRanges(ranges: readonly DirectiveRange[]): BlockPairing[] {
       stack.push({ range, depth: stack.length });
       continue;
     }
-    const wantOpener: DirectiveKind = range.kind === "endif" ? "if" : "each";
+    const wantOpener: DirectiveKind = range.kind === "endif" ? "if" : "for";
     let matched: OpenBlock | undefined;
     let matchIdx = -1;
     for (let i = stack.length - 1; i >= 0; i -= 1) {
@@ -202,7 +202,7 @@ function pairBlockRanges(ranges: readonly DirectiveRange[]): BlockPairing[] {
 }
 
 function closerHintLabel(kind: BandKind, openerExpr: string): string {
-  const head = kind === "each" ? "/each" : "/if";
+  const head = kind === "for" ? "endfor" : "endif";
   return openerExpr ? `${head} · ${openerExpr}` : head;
 }
 
@@ -432,14 +432,15 @@ onBeforeUnmount(() => {
 }
 
 .folio-template-directive--if,
-.folio-template-directive--elseif,
+.folio-template-directive--elif,
 .folio-template-directive--else,
 .folio-template-directive--endif {
   background: color-mix(in srgb, var(--doc-tmpl-cond, #0d9488) 26%, transparent);
 }
 
-.folio-template-directive--each,
-.folio-template-directive--endeach {
+.folio-template-directive--loop,
+.folio-template-directive--for,
+.folio-template-directive--endfor {
   background: color-mix(in srgb, var(--doc-tmpl-loop, #7c3aed) 26%, transparent);
 }
 
@@ -449,14 +450,14 @@ onBeforeUnmount(() => {
 }
 
 .folio-template-directive--if.folio-template-directive--active,
-.folio-template-directive--elseif.folio-template-directive--active,
+.folio-template-directive--elif.folio-template-directive--active,
 .folio-template-directive--else.folio-template-directive--active,
 .folio-template-directive--endif.folio-template-directive--active {
   background: color-mix(in srgb, var(--doc-tmpl-cond, #0d9488) 44%, transparent);
 }
 
-.folio-template-directive--each.folio-template-directive--active,
-.folio-template-directive--endeach.folio-template-directive--active {
+.folio-template-directive--for.folio-template-directive--active,
+.folio-template-directive--endfor.folio-template-directive--active {
   background: color-mix(in srgb, var(--doc-tmpl-loop, #7c3aed) 44%, transparent);
 }
 
@@ -469,7 +470,7 @@ onBeforeUnmount(() => {
     box-shadow 120ms ease;
 }
 
-.folio-template-band-rail--each {
+.folio-template-band-rail--for {
   background: color-mix(in srgb, var(--doc-tmpl-loop, #7c3aed) 22%, transparent);
 }
 
@@ -477,7 +478,7 @@ onBeforeUnmount(() => {
   background: color-mix(in srgb, var(--doc-tmpl-cond, #0d9488) 22%, transparent);
 }
 
-.folio-template-band-rail--each.folio-template-band-rail--active {
+.folio-template-band-rail--for.folio-template-band-rail--active {
   background: color-mix(in srgb, var(--doc-tmpl-loop, #7c3aed) 90%, transparent);
   box-shadow: 0 0 0 0.75px color-mix(in srgb, var(--doc-tmpl-loop, #7c3aed) 45%, transparent);
 }

@@ -94,8 +94,8 @@ const atTriggerBoundary = (state: EditorState, pos: number): boolean => {
 /** Whether `pos` falls strictly inside an existing template directive. The
  *  slash activations insert markers as raw text rather than going through
  *  `insertInline`'s overlap guard, so opening here would nest markers — e.g. a
- *  `/` typed after `#if ` inside `{{#if condition}}` could produce
- *  `{{#if {{field}}}}`, which the scanner/fill grammar cannot interpret.
+ *  `/` typed after `if ` inside `{% if condition %}` could produce
+ *  `{% if {{ field }} %}`, which the scanner/fill grammar cannot interpret.
  *  Boundaries are exclusive: a caret right before `{{` or after `}}` is fine. */
 const insideDirective = (state: EditorState, pos: number): boolean =>
   getTemplateDirectives(state).some((range) => pos > range.from && pos < range.to);
