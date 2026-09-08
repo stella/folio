@@ -5,6 +5,7 @@
 ```ts
 
 import { EditorState } from 'prosemirror-state';
+import * as import__stll_docx_core_model from '@stll/docx-core/model';
 import { Node as Node_2 } from 'prosemirror-model';
 import { TaggedErrorClass } from 'better-result';
 import { Transaction } from 'prosemirror-state';
@@ -96,6 +97,9 @@ export const FOLIO_DOCUMENT_OPERATION_STORIES: readonly ["main", "header", "foot
 // @public (undocumented)
 export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replaceRange", "commentOnRange", "formatRange", "insertAfterBlock", "insertBeforeBlock", "replaceBlock", "deleteBlock", "splitBlock", "mergeBlockWithNext", "setBlockParagraphProperties", "insertTable", "deleteTable", "commentOnBlock", "insertSignatureTable", "insertTableRow", "deleteTableRow", "insertTableColumn", "deleteTableColumn", "mergeTableCells", "splitTableCell"];
 
+// @public
+export const FOLIO_PARAGRAPH_ALIGNMENT_VALUES: readonly ("left" | "center" | "right" | "both" | "distribute" | "mediumKashida" | "highKashida" | "lowKashida" | "thaiDistribute")[];
+
 // @public (undocumented)
 export const FOLIO_RESOLVED_REVIEWED_VIEWS: readonly ["original", "final"];
 
@@ -110,6 +114,7 @@ export type FolioAIBlock = {
     headingLevel?: number;
     displayLabel?: string;
     styleId?: string;
+    directAlignment?: import__stll_docx_core_model.ParagraphAlignment;
     listLevel?: number;
     previewRuns?: FolioAIBlockPreviewRun[];
     table?: FolioAIBlockTableLocation;
@@ -247,6 +252,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     pageBreakBefore?: boolean;
     styleId?: string | null;
     listLevel?: number | null;
+    alignment?: import__stll_docx_core_model.ParagraphAlignment | null;
     comment?: FolioAIComment;
 } | {
     id: string;
@@ -254,7 +260,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     blockId: string;
     text: string;
     preserveFormatting?: boolean;
-    styleId?: string;
+    styleId?: string | null;
     comment?: FolioAIComment;
 } |
 /**

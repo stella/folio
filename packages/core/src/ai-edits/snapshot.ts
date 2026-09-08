@@ -2,7 +2,8 @@ import { panic } from "better-result";
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import { TableMap } from "prosemirror-tables";
 
-import { expectRunFormattingOverrideMarkAttrs } from "../prosemirror/attrs";
+import { expectParagraphAttrs, expectRunFormattingOverrideMarkAttrs } from "../prosemirror/attrs";
+import { directParagraphAlignment } from "../prosemirror/paragraphAlignment";
 import { deriveBlankBlockId, deriveBlockId, type FolioBlockId } from "../types/block-id";
 import { buildCleanBlockText } from "./clean-text";
 import type {
@@ -310,6 +311,7 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
     if (numberingReferenceKey) {
       numberingReferenceKeys.add(numberingReferenceKey);
     }
+    const directAlignment = getDirectAlignment(node);
     const previewRuns = getPreviewRuns(node);
     const table = getTableLocation({ path, blockIndex: index, tableIndexByStart });
 
@@ -322,6 +324,7 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
         ...(displayLabel !== undefined && { displayLabel }),
         ...(styleId !== undefined && { styleId }),
         ...(listLevel !== undefined && { listLevel }),
+        ...(directAlignment !== undefined && { directAlignment }),
         ...(previewRuns !== undefined && { previewRuns }),
         ...(table !== undefined && { table }),
       },
@@ -432,6 +435,9 @@ const getStyleId = (node: PMNode): string | undefined => {
   const styleId: unknown = node.attrs["styleId"];
   return typeof styleId === "string" && styleId.length > 0 ? styleId : undefined;
 };
+
+/** Read only authored `w:jc`, never the effective alignment resolved from a style. */
+const getDirectAlignment = (node: PMNode) => directParagraphAlignment(expectParagraphAttrs(node));
 
 type PreviewRunStyle = {
   bold?: boolean;

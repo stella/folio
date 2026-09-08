@@ -10,6 +10,8 @@ import {
   expectRunPropertyChangeMarkAttrs,
 } from "../prosemirror/attrs";
 import { PPR_CHANGE_SCOPED_ATTR_KEYS } from "../prosemirror/commands/propertyChangeScope";
+import { directParagraphAlignment } from "../prosemirror/paragraphAlignment";
+import { getDocumentStyleResolver } from "../prosemirror/plugins/documentStyles";
 import type { ParagraphPropertyChangeAttrs } from "../prosemirror/schema/nodes";
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
 import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
@@ -21,7 +23,7 @@ import {
 } from "../prosemirror/containerFinalParagraph";
 import { isZeroWidthAnchor } from "../prosemirror/zeroWidthAnchors";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
-import type { RunPropertyChange } from "../types/document";
+import type { ParagraphAlignment, ParagraphFormatting, RunPropertyChange } from "../types/document";
 import { stripBlockIdentityAttrs } from "./block-identity";
 import { buildCleanBlockText } from "./clean-text";
 import {
@@ -182,6 +184,7 @@ const SUGGESTED_SUPPORTED_OPERATION_TYPES: ReadonlySet<FolioAIEditOperation["typ
   "replaceInBlock",
   "replaceRange",
   "formatRange",
+  "setBlockParagraphProperties",
   "replaceBlock",
   "deleteBlock",
   "insertAfterBlock",
@@ -209,7 +212,7 @@ const CLEARED_LIST_MARKER_ATTRS = Object.freeze({
   listStartOverride: null,
 });
 
-type ResolvedOperation = {
+type ResolvedOperationFields = {
   operation: FolioAIEditOperation;
   from: number;
   to: number;
@@ -239,6 +242,50 @@ type ResolvedOperation = {
   originalIndex: number;
 };
 
+const REPLACE_BLOCK_IMPACT = {
+  text: { changesStyle: false, changesText: true },
+  style: { changesStyle: true, changesText: false },
+  textAndStyle: { changesStyle: true, changesText: true },
+} as const;
+
+type ReplaceBlockImpact = keyof typeof REPLACE_BLOCK_IMPACT;
+type ReplaceBlockOperation = Extract<FolioAIEditOperation, { type: "replaceBlock" }>;
+type NonReplaceBlockOperation = Exclude<FolioAIEditOperation, ReplaceBlockOperation>;
+
+type ResolvedReplaceBlockOperation = Omit<ResolvedOperationFields, "operation"> & {
+  operation: ReplaceBlockOperation;
+  replaceBlockImpact: ReplaceBlockImpact;
+};
+
+type ResolvedOperation =
+  | ResolvedReplaceBlockOperation
+  | (Omit<ResolvedOperationFields, "operation"> & {
+      operation: NonReplaceBlockOperation;
+      replaceBlockImpact?: never;
+    });
+
+const isResolvedReplaceBlockOperation = (
+  item: ResolvedOperation,
+): item is ResolvedReplaceBlockOperation => item.operation.type === "replaceBlock";
+
+type ReplaceBlockImpactOptions = {
+  changesText: boolean;
+  changesStyle: boolean;
+};
+
+const resolveReplaceBlockImpact = ({
+  changesText,
+  changesStyle,
+}: ReplaceBlockImpactOptions): ReplaceBlockImpact => {
+  if (changesText) {
+    return changesStyle ? "textAndStyle" : "text";
+  }
+  if (changesStyle) {
+    return "style";
+  }
+  return panic("Cannot resolve a replaceBlock that changes neither text nor style");
+};
+
 /**
  * The attrs one `setBlockParagraphProperties` writes, or `null` when the
  * block already holds them. `styleId: null` clears the style; `listLevel`
@@ -246,13 +293,43 @@ type ResolvedOperation = {
  * stays in the same list; `listLevel: null` drops `w:numPr` entirely, which
  * is a paragraph that stopped being a list item.
  */
-const paragraphPropertiesPatch = (
-  node: PMNode,
-  properties: FolioAIBlockParagraphProperties,
-): Record<string, unknown> | null => {
+type ParagraphPropertiesPatchOptions = {
+  node: PMNode;
+  properties: FolioAIBlockParagraphProperties;
+  resolvedAlignmentFromStyle: ParagraphAlignment | undefined;
+};
+
+const paragraphPropertiesPatch = ({
+  node,
+  properties,
+  resolvedAlignmentFromStyle,
+}: ParagraphPropertiesPatchOptions): Record<string, unknown> | null => {
+  const attrs = expectParagraphAttrs(node);
+  const currentDirectAlignment = directParagraphAlignment(attrs);
   const patch: Record<string, unknown> = {};
-  if (properties.styleId !== undefined && (node.attrs["styleId"] ?? null) !== properties.styleId) {
-    patch["styleId"] = properties.styleId;
+  let originalFormatting =
+    attrs._originalFormatting === undefined || attrs._originalFormatting === null
+      ? undefined
+      : { ...attrs._originalFormatting };
+  let originalFormattingChanged = false;
+  const nextStyleId = properties.styleId;
+  const styleChanged = nextStyleId !== undefined && (attrs.styleId ?? null) !== nextStyleId;
+  if (styleChanged) {
+    patch["styleId"] = nextStyleId;
+    patch["alignmentFromStyle"] = resolvedAlignmentFromStyle;
+    if (properties.alignment === undefined) {
+      patch["alignment"] = currentDirectAlignment ?? resolvedAlignmentFromStyle ?? null;
+    }
+    originalFormatting ??= {};
+    if (nextStyleId === null) {
+      Reflect.deleteProperty(originalFormatting, "styleId");
+    } else {
+      originalFormatting.styleId = nextStyleId;
+    }
+    if (currentDirectAlignment !== undefined) {
+      originalFormatting.alignment = currentDirectAlignment;
+    }
+    originalFormattingChanged = true;
   }
   if (properties.listLevel !== undefined) {
     const numPr: unknown = node.attrs["numPr"];
@@ -271,6 +348,25 @@ const paragraphPropertiesPatch = (
         ilvl: properties.listLevel,
       };
     }
+  }
+  if (
+    properties.alignment !== undefined &&
+    (styleChanged || (currentDirectAlignment ?? null) !== properties.alignment)
+  ) {
+    originalFormatting ??= {};
+    if (properties.alignment === null) {
+      Reflect.deleteProperty(originalFormatting, "alignment");
+    } else {
+      originalFormatting.alignment = properties.alignment;
+    }
+    const alignmentFromStyle =
+      properties.styleId === undefined ? attrs.alignmentFromStyle : resolvedAlignmentFromStyle;
+    patch["alignment"] = properties.alignment ?? alignmentFromStyle ?? null;
+    originalFormattingChanged = true;
+  }
+  if (originalFormattingChanged && originalFormatting !== undefined) {
+    patch["_originalFormatting"] =
+      Object.keys(originalFormatting).length > 0 ? originalFormatting : null;
   }
   return Object.keys(patch).length > 0 ? patch : null;
 };
@@ -348,36 +444,108 @@ const undeletedContentAtomRanges = (
 const paragraphPropertiesSnapshot = (
   node: PMNode,
 ): NonNullable<ParagraphPropertyChangeAttrs["previousFormatting"]> => {
+  const attrs = expectParagraphAttrs(node);
   const snapshot: Record<string, unknown> = {};
   for (const key of PPR_CHANGE_SCOPED_ATTR_KEYS) {
-    const value: unknown = node.attrs[key];
+    if (key === "alignment") {
+      continue;
+    }
+    const value: unknown = attrs[key];
+    if (
+      key === "hangingIndent" &&
+      value === false &&
+      attrs._originalFormatting?.hangingIndent === undefined
+    ) {
+      continue;
+    }
     if (value !== null && value !== undefined) {
       snapshot[key] = value;
     }
   }
+  const directAlignment = directParagraphAlignment(attrs);
+  if (directAlignment !== undefined) {
+    snapshot["alignment"] = directAlignment;
+  }
   return snapshot;
+};
+
+/** The carrier pPr before this batch changed it, for final-mark rotation. */
+const paragraphPropertiesBeforeBatch = (
+  node: PMNode,
+  batchRevisionIds: ReadonlySet<number>,
+): NonNullable<ParagraphPropertyChangeAttrs["previousFormatting"]> => {
+  const propertyChanges = expectParagraphAttrs(node)._propertyChanges;
+  if (!Array.isArray(propertyChanges)) {
+    return paragraphPropertiesSnapshot(node);
+  }
+  const earliestBatchChange = propertyChanges.find(({ info }) => batchRevisionIds.has(info.id));
+  if (!earliestBatchChange) {
+    return paragraphPropertiesSnapshot(node);
+  }
+  return earliestBatchChange.previousFormatting ?? {};
+};
+
+type ApplyReplaceBlockStyleIdResult = {
+  tr: Transaction;
+  revisionId: number | null;
+};
+
+type ApplyReplaceBlockStyleIdOptions = {
+  item: ResolvedOperation;
+  tr: Transaction;
+  styleResolver: ReturnType<typeof getDocumentStyleResolver>;
+  revisionInfo?: ParagraphPropertyChangeAttrs["info"];
 };
 
 const applyReplaceBlockStyleId = ({
   item,
   tr,
-}: {
-  item: ResolvedOperation;
-  tr: Transaction;
-}): Transaction => {
+  styleResolver,
+  revisionInfo,
+}: ApplyReplaceBlockStyleIdOptions): ApplyReplaceBlockStyleIdResult => {
   if (item.operation.type !== "replaceBlock" || item.operation.styleId === undefined) {
-    return tr;
+    return { tr, revisionId: null };
   }
 
-  const block = tr.doc.nodeAt(item.blockFrom);
+  const blockPosition = tr.mapping.map(item.blockFrom, -1);
+  const block = tr.doc.nodeAt(blockPosition);
   if (!block) {
-    return tr;
+    return { tr, revisionId: null };
   }
 
-  return tr.setNodeMarkup(item.blockFrom, undefined, {
-    ...block.attrs,
-    styleId: item.operation.styleId,
+  const attrs = expectParagraphAttrs(block);
+  const resolvedAlignmentFromStyle =
+    styleResolver?.resolveParagraphStyle(item.operation.styleId).paragraphFormatting?.alignment ??
+    ((item.operation.styleId ?? undefined) === (attrs.styleId ?? undefined)
+      ? attrs.alignmentFromStyle
+      : undefined);
+  const patch = paragraphPropertiesPatch({
+    node: block,
+    properties: { styleId: item.operation.styleId },
+    resolvedAlignmentFromStyle,
   });
+  if (patch === null) {
+    return { tr, revisionId: null };
+  }
+
+  const existing = attrs._propertyChanges;
+  const change: ParagraphPropertyChangeAttrs | null = revisionInfo
+    ? {
+        type: "paragraphPropertyChange",
+        info: revisionInfo,
+        previousFormatting: paragraphPropertiesSnapshot(block),
+      }
+    : null;
+  return {
+    tr: tr.setNodeMarkup(blockPosition, undefined, {
+      ...block.attrs,
+      ...patch,
+      ...(change
+        ? { _propertyChanges: [...(Array.isArray(existing) ? existing : []), change] }
+        : {}),
+    }),
+    revisionId: change?.info.id ?? null,
+  };
 };
 
 type ApplyInlineFormattingOptions = {
@@ -1112,6 +1280,7 @@ const buildEmphasisInlineContent = (
 type BuildInsertedParagraphsOptions = {
   item: ResolvedOperation;
   schema: Schema;
+  alignmentFromStyle: ParagraphAlignment | undefined;
   mode: FolioAIEditApplyMode;
   author: string;
   date: string;
@@ -1214,7 +1383,7 @@ const withRotatedAddedFinalBreaks = ({
       continue;
     }
     next = next.setNodeAttribute(carrier.position, "pPrMark", final.attrs["pPrMark"]);
-    const previousFormatting = paragraphPropertiesSnapshot(carrier.node);
+    const previousFormatting = paragraphPropertiesBeforeBatch(carrier.node, batchRevisionIds);
     // Both snapshots are built by the same fixed walk over the in-scope keys,
     // so comparing them serialized compares them key for key.
     if (JSON.stringify(previousFormatting) === JSON.stringify(paragraphPropertiesSnapshot(final))) {
@@ -1241,6 +1410,7 @@ const withRotatedAddedFinalBreaks = ({
 const buildInsertedParagraphs = ({
   item,
   schema,
+  alignmentFromStyle,
   mode,
   author,
   date,
@@ -1315,6 +1485,42 @@ const buildInsertedParagraphs = ({
         Object.assign(attrs, CLEARED_LIST_MARKER_ATTRS);
       }
     }
+    if (
+      isFirstParagraph &&
+      (operation.styleId !== undefined || operation.alignment !== undefined)
+    ) {
+      const inheritedDirectAlignment =
+        operation.inheritFormatting === false
+          ? undefined
+          : directParagraphAlignment(expectParagraphAttrs(item.blockNode));
+      const directAlignment =
+        operation.alignment === undefined
+          ? inheritedDirectAlignment
+          : (operation.alignment ?? undefined);
+      attrs["alignmentFromStyle"] = alignmentFromStyle;
+      attrs["alignment"] = directAlignment ?? alignmentFromStyle ?? null;
+      const sourceFormatting = attrs["_originalFormatting"];
+      const originalFormatting: ParagraphFormatting =
+        typeof sourceFormatting === "object" && sourceFormatting !== null
+          ? { ...sourceFormatting }
+          : {};
+      if (operation.styleId !== undefined) {
+        if (operation.styleId === null) {
+          Reflect.deleteProperty(originalFormatting, "styleId");
+        } else {
+          originalFormatting.styleId = operation.styleId;
+        }
+      }
+      if (operation.alignment !== undefined || inheritedDirectAlignment !== undefined) {
+        if (directAlignment === undefined) {
+          Reflect.deleteProperty(originalFormatting, "alignment");
+        } else {
+          originalFormatting.alignment = directAlignment;
+        }
+      }
+      attrs["_originalFormatting"] =
+        Object.keys(originalFormatting).length > 0 ? originalFormatting : null;
+    }
     if (isSuggested && suggestionId !== null && paragraphRevisionId !== null) {
       attrs["_suggestedInsert"] = {
         suggestionId,
@@ -1369,6 +1575,25 @@ const applyFolioAIEditOperationsInternal = ({
   const insertionType = view.state.schema.marks["insertion"];
   const deletionType = view.state.schema.marks["deletion"];
   const commentType = view.state.schema.marks["comment"];
+  const styleResolver = getDocumentStyleResolver(view.state);
+  const alignmentFromStyleForInsertion = (item: ResolvedOperation) => {
+    if (item.operation.type !== "insertAfterBlock" && item.operation.type !== "insertBeforeBlock") {
+      return undefined;
+    }
+    const anchorAttrs = expectParagraphAttrs(item.blockNode);
+    const styleId =
+      item.operation.styleId !== undefined
+        ? item.operation.styleId
+        : item.operation.inheritFormatting === false
+          ? null
+          : anchorAttrs.styleId;
+    return (
+      styleResolver?.resolveParagraphStyle(styleId).paragraphFormatting?.alignment ??
+      ((styleId ?? undefined) === (anchorAttrs.styleId ?? undefined)
+        ? anchorAttrs.alignmentFromStyle
+        : undefined)
+    );
+  };
   const claimedTableRows = new Set<string>();
   const claimedTableColumns = new Set<string>();
 
@@ -1611,6 +1836,7 @@ const applyFolioAIEditOperationsInternal = ({
           const built = buildInsertedParagraphs({
             item: insertion,
             schema: view.state.schema,
+            alignmentFromStyle: alignmentFromStyleForInsertion(insertion),
             mode,
             author,
             date,
@@ -1768,9 +1994,17 @@ const applyFolioAIEditOperationsInternal = ({
         break;
       }
       case "replaceBlock": {
-        const revisionIdDelete = revisionSeed++;
-        const revisionIdInsert = revisionSeed++;
-        const revisionIdBackground = revisionSeed++;
+        if (!isResolvedReplaceBlockOperation(item)) {
+          panic("Resolved replaceBlock operation lost its impact discriminator");
+        }
+        const { changesStyle, changesText } = REPLACE_BLOCK_IMPACT[item.replaceBlockImpact];
+        const revisionIdDelete = revisionSeed;
+        const revisionIdInsert = changesText ? revisionSeed + 1 : revisionSeed;
+        const revisionIdBackground = changesText ? revisionSeed + 2 : revisionSeed;
+        if (changesText) {
+          revisionSeed += 3;
+        }
+        const revisionIdParagraph = producesTrackedChanges && changesStyle ? revisionSeed++ : null;
         // Default to preserving formatting (existing behaviour);
         // when explicitly disabled and we're in direct mode, swap
         // the whole block node for a fresh paragraph that drops
@@ -1780,15 +2014,14 @@ const applyFolioAIEditOperationsInternal = ({
           const replacement = item.operation.text;
           const paragraphType = view.state.schema.nodes["paragraph"];
           if (paragraphType) {
-            const replaceAttrs: Record<string, unknown> | null =
-              item.operation.styleId !== undefined ? { styleId: item.operation.styleId } : null;
             const node = paragraphType.create(
-              replaceAttrs,
+              null,
               replacement.length === 0
                 ? null
                 : buildEmphasisInlineContent(view.state.schema, replacement, []),
             );
             tr = tr.replaceWith(item.blockFrom, item.blockTo, node);
+            tr = applyReplaceBlockStyleId({ item, tr, styleResolver }).tr;
             break;
           }
         }
@@ -1798,12 +2031,8 @@ const applyFolioAIEditOperationsInternal = ({
         // inline marks through its word-diff redline, so it still strips them;
         // plain replacements fall through to the text-only swap below unchanged.
         if (mode === "direct" && hasInlineEmphasis(item.operation.text)) {
-          const attrs: Record<string, unknown> =
-            item.operation.styleId !== undefined
-              ? { ...item.blockNode.attrs, styleId: item.operation.styleId }
-              : { ...item.blockNode.attrs };
           const node = item.blockNode.type.create(
-            attrs,
+            { ...item.blockNode.attrs },
             buildEmphasisInlineContent(
               view.state.schema,
               item.operation.text,
@@ -1811,41 +2040,60 @@ const applyFolioAIEditOperationsInternal = ({
             ),
           );
           tr = tr.replaceWith(item.blockFrom, item.blockTo, node);
+          tr = applyReplaceBlockStyleId({ item, tr, styleResolver }).tr;
           break;
         }
-        const stepsBeforeBackgroundClear = tr.steps.length;
-        tr = clearReplacementBackground({
-          tr,
-          schema: view.state.schema,
-          from: item.from,
-          to: item.to,
-          mode,
-          revisionId: revisionIdBackground,
-          author,
-          date,
-          initials,
-          suggestionId,
-        });
-        const clearedBackground = tr.steps.length > stepsBeforeBackgroundClear;
-        tr = applyTextReplacement({
-          tr,
-          item,
-          mode,
-          author,
-          date,
-          revisionIdDelete,
-          revisionIdInsert,
-          commentMark,
-          suggestionId,
-          initials,
-          granularity: wordDiff?.granularity ?? "word",
-        });
-        tr = applyReplaceBlockStyleId({ item, tr });
-        if (producesTrackedChanges) {
-          appliedRevisionIds = [
+        let clearedBackground = false;
+        if (changesText) {
+          const stepsBeforeBackgroundClear = tr.steps.length;
+          tr = clearReplacementBackground({
+            tr,
+            schema: view.state.schema,
+            from: item.from,
+            to: item.to,
+            mode,
+            revisionId: revisionIdBackground,
+            author,
+            date,
+            initials,
+            suggestionId,
+          });
+          clearedBackground = tr.steps.length > stepsBeforeBackgroundClear;
+          tr = applyTextReplacement({
+            tr,
+            item,
+            mode,
+            author,
+            date,
             revisionIdDelete,
             revisionIdInsert,
+            commentMark,
+            suggestionId,
+            initials,
+            granularity: wordDiff?.granularity ?? "word",
+          });
+        }
+        const styleResult = applyReplaceBlockStyleId({
+          item,
+          tr,
+          styleResolver,
+          ...(revisionIdParagraph !== null
+            ? {
+                revisionInfo: {
+                  id: revisionIdParagraph,
+                  author,
+                  date,
+                  ...trackedRevisionExtras,
+                },
+              }
+            : {}),
+        });
+        tr = styleResult.tr;
+        if (producesTrackedChanges) {
+          appliedRevisionIds = [
+            ...(changesText ? [revisionIdDelete, revisionIdInsert] : []),
             ...(clearedBackground ? [revisionIdBackground] : []),
+            ...(styleResult.revisionId === null ? [] : [styleResult.revisionId]),
           ];
         }
         break;
@@ -1868,6 +2116,7 @@ const applyFolioAIEditOperationsInternal = ({
         const built = buildInsertedParagraphs({
           item,
           schema: view.state.schema,
+          alignmentFromStyle: alignmentFromStyleForInsertion(item),
           mode,
           author,
           date,
@@ -2313,7 +2562,16 @@ const applyFolioAIEditOperationsInternal = ({
         // properties applied, the merge silently did not.
         const blockPosition = tr.mapping.map(item.blockFrom);
         const liveBlock = tr.doc.nodeAt(blockPosition) ?? item.blockNode;
-        const patch = paragraphPropertiesPatch(liveBlock, item.operation.properties);
+        const resolvedAlignmentFromStyle =
+          item.operation.properties.styleId === undefined
+            ? undefined
+            : styleResolver?.resolveParagraphStyle(item.operation.properties.styleId)
+                .paragraphFormatting?.alignment;
+        const patch = paragraphPropertiesPatch({
+          node: liveBlock,
+          properties: item.operation.properties,
+          resolvedAlignmentFromStyle,
+        });
         if (patch === null) {
           skipped.push({ id: item.operation.id, reason: "noopOperation" });
           continue;
@@ -2329,7 +2587,7 @@ const applyFolioAIEditOperationsInternal = ({
         const revisionId = revisionSeed++;
         const change: ParagraphPropertyChangeAttrs = {
           type: "paragraphPropertyChange",
-          info: { id: revisionId, author, date, ...(initials ? { initials } : {}) },
+          info: { id: revisionId, author, date, ...trackedRevisionExtras },
           previousFormatting: paragraphPropertiesSnapshot(liveBlock),
         };
         const existing = expectParagraphAttrs(liveBlock)._propertyChanges;
@@ -2723,7 +2981,10 @@ const applyTextReplacement = ({
   return nextTr;
 };
 
-type ResolvedBase = Omit<ResolvedOperation, "originalIndex" | "commentId">;
+type WithoutResolutionMetadata<T> = T extends ResolvedOperation
+  ? Omit<T, "originalIndex" | "commentId">
+  : never;
+type ResolvedBase = WithoutResolutionMetadata<ResolvedOperation>;
 
 type ResolveOperationArgs = {
   snapshot: FolioAIEditSnapshot;
@@ -3207,6 +3468,10 @@ const resolveOperation = ({
   }
 
   if (operation.type === "deleteBlock" || operation.type === "replaceBlock") {
+    const replaceChangesStyle =
+      operation.type === "replaceBlock" &&
+      operation.styleId !== undefined &&
+      operation.styleId !== (expectParagraphAttrs(blockNode).styleId ?? null);
     const range = getTextRangeFromCleanBlock(cleanBlock);
     if (!range) {
       const insertionPoint = cleanBlock.offsets.at(0);
@@ -3221,9 +3486,26 @@ const resolveOperation = ({
       const resolvesOnABlank =
         operation.type === "deleteBlock"
           ? true
-          : currentText.length === 0 && operation.text.length > 0;
+          : currentText.length === 0 && (operation.text.length > 0 || replaceChangesStyle);
       if (!resolvesOnABlank) {
         return { type: "skip", reason: "unsupportedBlock" };
+      }
+      if (operation.type === "replaceBlock") {
+        return {
+          type: "resolved",
+          operation: {
+            operation,
+            from: insertionPoint,
+            to: insertionPoint,
+            blockFrom,
+            blockTo,
+            blockNode,
+            replaceBlockImpact: resolveReplaceBlockImpact({
+              changesText: operation.text !== currentText,
+              changesStyle: replaceChangesStyle,
+            }),
+          },
+        };
       }
       return {
         type: "resolved",
@@ -3244,7 +3526,26 @@ const resolveOperation = ({
     // trace where one such op surfaced as "Prodávající 3 →
     // Prodávající 3").
     if (operation.type === "replaceBlock" && operation.text === currentText) {
-      return { type: "skip", reason: "noopOperation" };
+      if (!replaceChangesStyle) {
+        return { type: "skip", reason: "noopOperation" };
+      }
+    }
+    if (operation.type === "replaceBlock") {
+      return {
+        type: "resolved",
+        operation: {
+          operation,
+          from: range.from,
+          to: range.to,
+          blockFrom,
+          blockTo,
+          blockNode,
+          replaceBlockImpact: resolveReplaceBlockImpact({
+            changesText: operation.text !== currentText,
+            changesStyle: replaceChangesStyle,
+          }),
+        },
+      };
     }
     return {
       type: "resolved",

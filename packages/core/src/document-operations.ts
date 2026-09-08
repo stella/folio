@@ -23,8 +23,13 @@ import type {
   FolioAIInlineFormatting,
   FolioAITextRangeHandle,
 } from "./ai-edits/types";
+import type { ParagraphAlignment } from "./types/document";
+import { PARAGRAPH_ALIGNMENT_VALUES } from "./types/documentEnumValues";
 
 export const FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION = 1 as const;
+
+/** Direct paragraph-alignment values accepted by the operation contract. */
+export const FOLIO_PARAGRAPH_ALIGNMENT_VALUES = Object.freeze([...PARAGRAPH_ALIGNMENT_VALUES]);
 
 export const FOLIO_DOCUMENT_OPERATION_TYPES = Object.freeze([
   "replaceInBlock",
@@ -397,6 +402,26 @@ const readClearableNonNegativeInteger = (
   return candidate === null ? null : readNonNegativeInteger(value, key, path);
 };
 
+const readClearableParagraphAlignment = (
+  value: Record<string, unknown>,
+  key: string,
+  path: string,
+): ParagraphAlignment | null | undefined => {
+  const candidate = value[key];
+  if (candidate === undefined || candidate === null) {
+    return candidate;
+  }
+  for (const alignment of FOLIO_PARAGRAPH_ALIGNMENT_VALUES) {
+    if (candidate === alignment) {
+      return alignment;
+    }
+  }
+  return invalidBatch(
+    `${path}.${key}`,
+    `expected one of ${FOLIO_PARAGRAPH_ALIGNMENT_VALUES.join(", ")} or null when provided`,
+  );
+};
+
 /**
  * A rectangular grid of cell texts. Rectangular because a table whose rows
  * hold different cell counts is not a table any consumer can lay out, and the
@@ -441,17 +466,19 @@ const readParagraphProperties = (
   if (!isPlainObject(candidate)) {
     return invalidBatch(propertiesPath, "expected an object");
   }
-  assertAllowedKeys(candidate, propertiesPath, ["styleId", "listLevel"]);
+  assertAllowedKeys(candidate, propertiesPath, ["styleId", "listLevel", "alignment"]);
   const rawStyleId = candidate["styleId"];
   const styleId =
     rawStyleId === null ? null : readOptionalString(candidate, "styleId", propertiesPath);
   const listLevel = readClearableNonNegativeInteger(candidate, "listLevel", propertiesPath);
-  if (styleId === undefined && listLevel === undefined) {
+  const alignment = readClearableParagraphAlignment(candidate, "alignment", propertiesPath);
+  if (styleId === undefined && listLevel === undefined && alignment === undefined) {
     return invalidBatch(propertiesPath, "expected at least one property to set");
   }
   return {
     ...(styleId !== undefined && { styleId }),
     ...(listLevel !== undefined && { listLevel }),
+    ...(alignment !== undefined && { alignment }),
   };
 };
 
@@ -625,6 +652,7 @@ export const FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE = Object.freeze({
     ...COMMON_OPERATION_KEYS,
     "text",
     "inheritFormatting",
+    "alignment",
     "listLevel",
     "moveId",
     "pageBreakBefore",
@@ -635,6 +663,7 @@ export const FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE = Object.freeze({
     ...COMMON_OPERATION_KEYS,
     "text",
     "inheritFormatting",
+    "alignment",
     "listLevel",
     "moveId",
     "pageBreakBefore",
@@ -804,6 +833,7 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
     const styleId = value["styleId"] === null ? null : readOptionalString(value, "styleId", path);
     const moveId = readOptionalString(value, "moveId", path);
     const listLevel = readClearableNonNegativeInteger(value, "listLevel", path);
+    const alignment = readClearableParagraphAlignment(value, "alignment", path);
     return {
       ...operationMeta,
       id,
@@ -811,6 +841,7 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
       blockId,
       text: readString(value, "text", path),
       ...(inheritFormatting !== undefined && { inheritFormatting }),
+      ...(alignment !== undefined && { alignment }),
       ...(listLevel !== undefined && { listLevel }),
       ...(moveId !== undefined && { moveId }),
       ...(pageBreakBefore !== undefined && { pageBreakBefore }),
@@ -821,7 +852,7 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
 
   if (type === "replaceBlock") {
     const preserveFormatting = readOptionalBoolean(value, "preserveFormatting", path);
-    const styleId = readOptionalString(value, "styleId", path);
+    const styleId = value["styleId"] === null ? null : readOptionalString(value, "styleId", path);
     return {
       ...operationMeta,
       id,

@@ -119,6 +119,12 @@ import {
 } from "../attrs";
 import { autospacingMatchesBase, hasAutospacingBaseSide } from "../autospacingBase";
 import { directionToBidi } from "../paragraphDirection";
+import { directParagraphAlignment } from "../paragraphAlignment";
+import {
+  paragraphRejectAttrPatch,
+  paragraphRejectOriginalFormatting,
+  removeParagraphPropertyChanges,
+} from "../commands/propertyChangeScope";
 import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
 import { cascadeStyleTextFormatting } from "../styles/styleToggleCascade";
 import { applyRunFormattingOverrideAttrs } from "../extensions/marks/RunFormattingOverrideExtension";
@@ -456,6 +462,39 @@ function stripSuggestedInlineMarks(marks: readonly Mark[]): readonly Mark[] {
  */
 function stripSuggestedNodeAttrs(node: PMNode): Record<string, unknown> | null {
   const name = node.type.name;
+  if (name === "paragraph") {
+    const attrs = expectParagraphAttrs(node);
+    const propertyChanges = attrs._propertyChanges;
+    if (!Array.isArray(propertyChanges)) {
+      return null;
+    }
+    if (!propertyChanges.some(({ info }) => info.provenance === "suggested")) {
+      return null;
+    }
+    const removal = removeParagraphPropertyChanges(
+      propertyChanges,
+      ({ info }) => info.provenance === "suggested",
+    );
+    if (removal.type === "unchanged") {
+      return null;
+    }
+    const nextAttrs: Record<string, unknown> = {
+      ...node.attrs,
+      _propertyChanges: removal.remaining.length > 0 ? removal.remaining : null,
+    };
+    // Only a trailing run of suggestions determines the live pPr. Suggested
+    // changes before a retained tracked entry instead rewrite that entry's
+    // previous snapshot above, so removing the proposal cannot overwrite the
+    // later authored state.
+    if (removal.type === "restore-previous") {
+      Object.assign(nextAttrs, paragraphRejectAttrPatch(removal.previousFormatting));
+      nextAttrs["_originalFormatting"] = paragraphRejectOriginalFormatting(
+        removal.previousFormatting,
+        nextAttrs["_originalFormatting"],
+      );
+    }
+    return nextAttrs;
+  }
   if (name === "tableRow") {
     const rowAttrs = expectTableRowAttrs(node);
     if (rowAttrs.trDel?.provenance === "suggested") {
@@ -1201,9 +1240,15 @@ function convertPMParagraph(
 }
 
 const propertyChangeFromAttrs = (change: ParagraphPropertyChangeAttrs): ParagraphPropertyChange => {
-  const { previousFormatting, currentFormatting, ...info } = change;
+  const { previousFormatting, currentFormatting, info, ...changeInfo } = change;
+  const serializedInfo = { ...info };
+  Reflect.deleteProperty(serializedInfo, "provenance");
+  Reflect.deleteProperty(serializedInfo, "suggestionId");
+  const normalizedChangeInfo = { ...changeInfo, info: serializedInfo };
   if (previousFormatting === undefined) {
-    return currentFormatting === undefined ? info : { ...info, currentFormatting };
+    return currentFormatting === undefined
+      ? normalizedChangeInfo
+      : { ...normalizedChangeInfo, currentFormatting };
   }
   const { numPr, ...previousWithoutNumPr } = previousFormatting;
   const normalizedPrevious =
@@ -1211,7 +1256,7 @@ const propertyChangeFromAttrs = (change: ParagraphPropertyChangeAttrs): Paragrap
       ? previousWithoutNumPr
       : { ...previousWithoutNumPr, numPr };
   return {
-    ...info,
+    ...normalizedChangeInfo,
     previousFormatting: normalizedPrevious,
     ...(currentFormatting !== undefined && { currentFormatting }),
   };
@@ -1268,6 +1313,7 @@ function assignBooleanToggle(
 }
 
 function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting | undefined {
+  const directAlignment = directParagraphAlignment(attrs);
   // If we have the original inline formatting from the DOCX, use it as a base
   // for lossless round-trip. This preserves properties like contextualSpacing,
   // widowControl, beforeAutospacing, runProperties, etc. that aren't tracked
@@ -1341,14 +1387,12 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
       }
     }
 
-    // Override properties that user may have changed via editor commands.
-    // Only override if the PM attr differs from the original value.
-    if (attrs.alignment !== (orig.alignment ?? undefined)) {
-      if (attrs.alignment) {
-        result.alignment = attrs.alignment;
-      } else {
-        delete result.alignment;
-      }
+    // The effective value stays available for layout, but only the separately
+    // tracked direct value belongs in `w:pPr/w:jc`.
+    if (directAlignment === undefined) {
+      Reflect.deleteProperty(result, "alignment");
+    } else {
+      result.alignment = directAlignment;
     }
     if (isStyleSourcedNumPr(attrs)) {
       // The numbering still comes verbatim from the paragraph style — don't
@@ -1403,8 +1447,9 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
   // newly created paragraphs that don't have _originalFormatting)
   const outlineLevel = Reflect.get(attrs, "outlineLevel");
   const bidi = directionToBidi(attrs.direction);
+  const hasDirectAlignment = directAlignment !== undefined;
   const hasFormatting =
-    attrs.alignment ||
+    hasDirectAlignment ||
     shouldSerializeSpaceBefore ||
     shouldSerializeSpaceAfter ||
     beforeAutospacingEdited ||
@@ -1436,8 +1481,8 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
   }
 
   const f: ParagraphFormatting = {};
-  if (attrs.alignment) {
-    f.alignment = attrs.alignment;
+  if (directAlignment !== undefined) {
+    f.alignment = directAlignment;
   }
   if (shouldSerializeSpaceBefore) {
     f.spaceBefore = spaceBefore;

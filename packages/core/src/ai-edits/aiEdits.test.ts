@@ -1577,12 +1577,66 @@ describe("Folio AI edit operations", () => {
           styleId: "ClauseHeading1",
         },
       ],
+      revisionStamp: { idSeed: 1, date: "2026-09-08T00:00:00.000Z" },
     });
 
     expect(result.skipped).toEqual([]);
-    expect(result.applied[0]?.revisionIds).toHaveLength(2);
+    expect(result.applied[0]?.revisionIds).toEqual([1, 2, 4]);
     expect(view.state.doc.firstChild?.attrs["styleId"]).toBe("ClauseHeading1");
   });
+
+  test.each([
+    { label: "omits styleId", styleId: undefined },
+    { label: "keeps the existing styleId", styleId: "BodyText" },
+  ] as const)("replaceBlock $label without allocating a paragraph revision", ({ styleId }) => {
+    const view = makeView(makeState([{ styleId: "BodyText", text: "Intro paragraph." }]));
+    const snapshot = createFolioAIEditSnapshot(view.state.doc);
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot,
+      operations: [
+        {
+          id: "op-1",
+          type: "replaceBlock",
+          blockId: "seq-0001",
+          text: "Rewritten introduction.",
+          ...(styleId === undefined ? {} : { styleId }),
+        },
+      ],
+      revisionStamp: { idSeed: 1, date: "2026-09-08T00:00:00.000Z" },
+    });
+
+    expect(result.skipped).toEqual([]);
+    expect(result.applied[0]?.revisionIds).toEqual([1, 2]);
+    expect(result.nextRevisionId).toBe(4);
+  });
+
+  test.each(["direct", "tracked-changes"] as const)(
+    "replaceBlock clears styleId in %s mode",
+    (mode) => {
+      const view = makeView(makeState([{ styleId: "BodyText", text: "Intro paragraph." }]));
+      const snapshot = createFolioAIEditSnapshot(view.state.doc);
+
+      const result = applyFolioAIEditOperations({
+        view,
+        snapshot,
+        operations: [
+          {
+            id: "op-1",
+            type: "replaceBlock",
+            blockId: "seq-0001",
+            text: "Unstyled replacement.",
+            styleId: null,
+          },
+        ],
+        mode,
+      });
+
+      expect(result.skipped).toEqual([]);
+      expect(view.state.doc.firstChild?.attrs["styleId"]).toBeNull();
+    },
+  );
 
   test("replaceBlock marks only diverging tokens, leaves shared runs untouched", () => {
     // The engine should produce a minimal diff: when most words are

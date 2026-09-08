@@ -201,6 +201,7 @@ export type ParagraphAttrs = {
     paraId?: string;
     textId?: string;
     alignment?: import__stll_docx_core_model.ParagraphAlignment;
+    alignmentFromStyle?: import__stll_docx_core_model.ParagraphAlignment;
     kinsoku?: boolean;
     overflowPunctuation?: boolean;
     suppressAutoHyphens?: boolean;
@@ -288,7 +289,11 @@ export type ParagraphAttrs = {
 };
 
 // @public
-export type ParagraphPropertyChangeAttrs = Omit<import__stll_docx_core_model.ParagraphPropertyChange, "previousFormatting" | "currentFormatting"> & {
+export type ParagraphPropertyChangeAttrs = Omit<import__stll_docx_core_model.ParagraphPropertyChange, "info" | "previousFormatting" | "currentFormatting"> & {
+    info: import__stll_docx_core_model.ParagraphPropertyChange["info"] & {
+        provenance?: TrackedChangeProvenance;
+        suggestionId?: string | null;
+    };
     previousFormatting?: Omit<import__stll_docx_core_model.ParagraphFormatting, "numPr"> & {
         numPr?: import__stll_docx_core_model.ParagraphFormatting["numPr"] | null;
     } & Partial<Pick<ParagraphAttrs, "listIsBullet" | "listIsLegal" | "listNumFmt" | "listMarker" | "listMarkerHidden" | "listMarkerFormatting" | "listMarkerAlignment" | "listMarkerSuffix" | "listLevelNumFmts" | "listLevelStarts" | "listAbstractNumId" | "listStartOverride" | "lineSpacingExplicit" | "direction" | "_autospacingBase">>;

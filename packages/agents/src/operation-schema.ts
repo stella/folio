@@ -16,6 +16,7 @@
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   FOLIO_DOCUMENT_OPERATION_MODES,
+  FOLIO_PARAGRAPH_ALIGNMENT_VALUES,
   InvalidFolioDocumentOperationBatchError,
   parseFolioDocumentOperationBatch,
   UnsupportedFolioDocumentOperationVersionError,
@@ -153,6 +154,17 @@ const blockIdProperty = {
   description: "Id of the target block, from a prior document read.",
 } as const;
 
+export const FOLIO_CLEARABLE_PARAGRAPH_STYLE_ID_JSON_SCHEMA = {
+  oneOf: [{ type: "string" }, { type: "null" }],
+  description: "Paragraph style id; null clears the direct style.",
+} as const satisfies FolioJsonSchema;
+
+export const FOLIO_CLEARABLE_LIST_LEVEL_JSON_SCHEMA = {
+  oneOf: [{ type: "integer", minimum: 0 }, { type: "null" }],
+  description:
+    "`w:numPr/w:ilvl`, zero-based; a number retains the paragraph or anchor's numbering instance (`numId`), while null removes paragraph numbering.",
+} as const satisfies FolioJsonSchema;
+
 /**
  * JSON Schema (draft-07 compatible) for ONE document operation: the full
  * union accepted by `parseFolioDocumentOperationBatch` in
@@ -245,7 +257,8 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
           description:
             "The paragraph text to insert. A line break splits this into consecutive " +
             "paragraphs at the same anchor instead of one paragraph with embedded newlines " +
-            "— only the first paragraph gets `styleId` / `inheritFormatting`, later ones use " +
+            "— only the first paragraph gets `styleId` / `alignment` / `inheritFormatting`, " +
+            "later ones use " +
             "body formatting. Prefer one paragraph per operation; only rely on the split for " +
             "a heading immediately followed by its body text.",
         },
@@ -257,14 +270,11 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
           type: "boolean",
           description: "Start the inserted paragraph on a new page (`pageBreakBefore`).",
         },
-        styleId: {
-          type: "string",
-          description: 'Paragraph style id for the inserted block (e.g. "ClauseHeading1").',
-        },
-        listLevel: {
-          type: "integer",
-          minimum: 0,
-          description: "`w:numPr/w:ilvl` for the inserted block, keeping the anchor's list.",
+        styleId: FOLIO_CLEARABLE_PARAGRAPH_STYLE_ID_JSON_SCHEMA,
+        listLevel: FOLIO_CLEARABLE_LIST_LEVEL_JSON_SCHEMA,
+        alignment: {
+          oneOf: [{ type: "string", enum: FOLIO_PARAGRAPH_ALIGNMENT_VALUES }, { type: "null" }],
+          description: "Direct paragraph alignment; null restores style inheritance.",
         },
         moveId: {
           type: "string",
@@ -291,7 +301,8 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
           description:
             "The paragraph text to insert. A line break splits this into consecutive " +
             "paragraphs at the same anchor instead of one paragraph with embedded newlines " +
-            "— only the first paragraph gets `styleId` / `inheritFormatting`, later ones use " +
+            "— only the first paragraph gets `styleId` / `alignment` / `inheritFormatting`, " +
+            "later ones use " +
             "body formatting. Prefer one paragraph per operation; only rely on the split for " +
             "a heading immediately followed by its body text.",
         },
@@ -303,14 +314,11 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
           type: "boolean",
           description: "Start the inserted paragraph on a new page (`pageBreakBefore`).",
         },
-        styleId: {
-          type: "string",
-          description: 'Paragraph style id for the inserted block (e.g. "ClauseHeading1").',
-        },
-        listLevel: {
-          type: "integer",
-          minimum: 0,
-          description: "`w:numPr/w:ilvl` for the inserted block, keeping the anchor's list.",
+        styleId: FOLIO_CLEARABLE_PARAGRAPH_STYLE_ID_JSON_SCHEMA,
+        listLevel: FOLIO_CLEARABLE_LIST_LEVEL_JSON_SCHEMA,
+        alignment: {
+          oneOf: [{ type: "string", enum: FOLIO_PARAGRAPH_ALIGNMENT_VALUES }, { type: "null" }],
+          description: "Direct paragraph alignment; null restores style inheritance.",
         },
         moveId: {
           type: "string",
@@ -337,10 +345,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
           type: "boolean",
           description: "Keep the block's existing formatting for the replacement text.",
         },
-        styleId: {
-          type: "string",
-          description: "Paragraph style id to set on the replaced block.",
-        },
+        styleId: FOLIO_CLEARABLE_PARAGRAPH_STYLE_ID_JSON_SCHEMA,
         comment: commentJsonSchema,
       },
       required: ["id", "type", "blockId", "text"],
@@ -419,14 +424,11 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
           type: "object",
           description: "The paragraph properties to set; at least one.",
           properties: {
-            styleId: {
-              type: "string",
-              description: 'Paragraph style id (e.g. "ClauseHeading1").',
-            },
-            listLevel: {
-              type: "integer",
-              minimum: 0,
-              description: "`w:numPr/w:ilvl`, the zero-based list indent level.",
+            styleId: FOLIO_CLEARABLE_PARAGRAPH_STYLE_ID_JSON_SCHEMA,
+            listLevel: FOLIO_CLEARABLE_LIST_LEVEL_JSON_SCHEMA,
+            alignment: {
+              oneOf: [{ type: "string", enum: FOLIO_PARAGRAPH_ALIGNMENT_VALUES }, { type: "null" }],
+              description: "Direct paragraph alignment; null restores style inheritance.",
             },
           },
           minProperties: 1,

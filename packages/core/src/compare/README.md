@@ -132,8 +132,8 @@ say it went.
   target's, written as `w:pPrChange` — that is bookkeeping for the merge and
   adds no entry to the change list, which says what it should say: the
   paragraphs were removed. "Its properties" means the ones the comparison
-  compares at all, the paragraph style and the list level; a property outside
-  that set is not read on either side, so the carrier keeps its own, and a
+  compares at all: paragraph style, list level and direct alignment. A property
+  outside that set is not read on either side, so the carrier keeps its own, and a
   reader accepting the redline sees the carrier's alignment or spacing rather
   than the surviving paragraph's. A carrier with no words to lose is not
   deleted at all: the removal is entirely the marks in front of it, and an
@@ -204,11 +204,13 @@ block's text does, so it is reported as `numbering`. Differences in levels no
 paragraph references on either side are omitted from the change list.
 
 A paragraph property that moved without any word moving — a list item demoted
-a level, a paragraph restyled — is a `paragraph-format` change, written as
-`w:pPrChange` with the complete previous property set, which is what a reject
-restores. The self-check's projection carries the style and the list
-level alongside the text, so a redline that reproduces every word and leaves a
-list item at the wrong level fails instead of passing.
+a level, a paragraph restyled, or a direct alignment changed — is a
+`paragraph-format` change, written as `w:pPrChange` with the complete previous
+property set, which is what a reject restores. Alignment provenance is part of
+the comparison: an inherited value is not projected as direct `w:jc`, even
+when the two values are equal. The self-check's projection carries style, list
+level and direct alignment alongside the text, so a redline that reproduces
+every word and leaves one of those properties wrong fails instead of passing.
 
 ## Verification
 
@@ -242,8 +244,8 @@ if (result.isOk() && result.value.verification.status === "unverified") {
 `verification` is on every successful result, so a caller that never passes the
 option still sees `{ status: "verified" }` and can assert on it. `cause` is one
 of `invisible-structure`, `block-count`, `container`, `table-geometry`,
-`style`, `list-level`, `whitespace`, `text` — the projection field that
-diverged, which is what names the part of the pipeline that lost the
+`style`, `list-level`, `alignment`, `whitespace`, `text` — the projection field
+that diverged, which is what names the part of the pipeline that lost the
 difference. `table-geometry` is the one that no block carries: a second
 projection reads each table's `w:tblPr`, `w:trPr` and `w:tcPr` so a redline
 that reproduces every word and none of the widths, spans, merges, shading or

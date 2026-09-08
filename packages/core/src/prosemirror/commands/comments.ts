@@ -20,6 +20,7 @@ import { PARAGRAPH_MARK_CHANGE_KINDS, type ParagraphMarkChangeKind } from "@stll
 import { expectParagraphAttrs, expectRunPropertyChangeMarkAttrs } from "../attrs";
 import { textFormattingToMarks } from "../conversion/toProseDoc";
 import { markStructuralChange } from "../extensions/features/ParagraphChangeTrackerExtension";
+import { getDocumentStyleResolver } from "../plugins/documentStyles";
 import { paragraphEndsItsContainer } from "../containerFinalParagraph";
 import { holdsNoContent } from "../zeroWidthAnchors";
 import { getFolioNodeRevisionCarriers } from "../revisionCarriers";
@@ -34,6 +35,7 @@ import {
 import {
   paragraphRejectAttrPatch,
   paragraphRejectOriginalFormatting,
+  removeParagraphPropertyChanges,
   sectionRejectProperties,
   tableCellRejectAttrPatch,
   tableRejectAttrPatch,
@@ -113,6 +115,7 @@ function resolveChange(
   return (state, dispatch) => {
     const insertionType = state.schema.marks["insertion"];
     const deletionType = state.schema.marks["deletion"];
+    const styleResolver = getDocumentStyleResolver(state);
 
     const keepType = mode === "accept" ? insertionType : deletionType;
     const removeType = mode === "accept" ? deletionType : insertionType;
@@ -145,31 +148,46 @@ function resolveChange(
           const propertyChanges = expectParagraphAttrs(node)._propertyChanges;
 
           if (Array.isArray(propertyChanges) && propertyChanges.length > 0 && boundaryCovered) {
-            const matches = propertyChanges.filter(
-              (c) => revisionSet === null || (c.info && revisionSet.has(c.info.id)),
-            );
-            if (matches.length > 0) {
-              const remaining = propertyChanges.filter(
-                (c) => revisionSet !== null && (!c.info || !revisionSet.has(c.info.id)),
-              );
+            const matchesPropertyChange = (change: ParagraphPropertyChangeAttrs) =>
+              revisionSet === null || revisionSet.has(change.info.id);
+            if (propertyChanges.some(matchesPropertyChange)) {
+              const rejection =
+                mode === "reject"
+                  ? removeParagraphPropertyChanges(propertyChanges, matchesPropertyChange)
+                  : null;
+              const remaining =
+                rejection === null
+                  ? propertyChanges.filter((change) => !matchesPropertyChange(change))
+                  : rejection.type === "unchanged"
+                    ? propertyChanges
+                    : rejection.remaining;
               nextAttrs = {
                 ...node.attrs,
                 _propertyChanges: remaining.length > 0 ? remaining : null,
               };
-              if (mode === "reject") {
+              if (rejection?.type === "restore-previous") {
                 // Word stores the complete old pPr in the pPrChange, so a
                 // reject restores it WHOLESALE within CT_PPrBase scope: a
                 // property the change ADDED resets too. Out-of-scope attrs
-                // (inline sectPr, paragraph-mark rPr, identity) survive —
-                // see propertyChangeScope.ts. Iterating end → start makes
-                // the earliest change's stored pPr win for scoped keys.
-                for (const change of matches.toReversed()) {
-                  Object.assign(nextAttrs, paragraphRejectAttrPatch(change.previousFormatting));
-                  nextAttrs["_originalFormatting"] = paragraphRejectOriginalFormatting(
-                    change.previousFormatting,
-                    node.attrs["_originalFormatting"],
-                  );
-                }
+                // (inline sectPr, paragraph-mark rPr, identity) survive; see
+                // propertyChangeScope.ts. Earlier removed runs were folded
+                // into the next retained entry, so only a removed trailing
+                // run changes the live properties now.
+                const previousAlignmentFromStyle = styleResolver
+                  ? styleResolver.resolveParagraphStyle(rejection.previousFormatting?.styleId)
+                      .paragraphFormatting?.alignment
+                  : expectParagraphAttrs(node).alignmentFromStyle;
+                Object.assign(
+                  nextAttrs,
+                  paragraphRejectAttrPatch(
+                    rejection.previousFormatting,
+                    previousAlignmentFromStyle,
+                  ),
+                );
+                nextAttrs["_originalFormatting"] = paragraphRejectOriginalFormatting(
+                  rejection.previousFormatting,
+                  node.attrs["_originalFormatting"],
+                );
               }
             }
           }
@@ -1355,6 +1373,15 @@ const readSuggestedMarker = (
   return { suggestionId, revisionId };
 };
 
+const readSuggestedParagraphPropertyChange = (
+  change: ParagraphPropertyChangeAttrs,
+): { suggestionId: string; revisionId: number } | null => {
+  if (change.info.provenance !== "suggested" || typeof change.info.suggestionId !== "string") {
+    return null;
+  }
+  return { suggestionId: change.info.suggestionId, revisionId: change.info.id };
+};
+
 const readStructuralSuggestion = (node: PMNode): StructuralSuggestion | null => {
   const attrs = node.attrs;
   // `_suggestedInsert` only carries whole-node semantics for paragraphs
@@ -1439,6 +1466,21 @@ const collectSuggestions = (state: EditorState): Map<string, SuggestionAccumulat
       entry.segments.push({ from: pos, to: pos + node.nodeSize });
       entry.kinds.add(structural.kind);
       entry.revisionIds.add(structural.revisionId);
+    }
+    if (node.type.name === "paragraph") {
+      const propertyChanges = expectParagraphAttrs(node)._propertyChanges;
+      if (Array.isArray(propertyChanges)) {
+        for (const change of propertyChanges) {
+          const suggested = readSuggestedParagraphPropertyChange(change);
+          if (!suggested) {
+            continue;
+          }
+          const entry = entryFor(suggested.suggestionId);
+          entry.segments.push({ from: pos, to: pos + node.nodeSize });
+          entry.kinds.add("formatting");
+          entry.revisionIds.add(suggested.revisionId);
+        }
+      }
     }
     if (!node.isInline) {
       return undefined;
@@ -1662,6 +1704,47 @@ const convertStructuralSuggestionAttrs = (
   return null;
 };
 
+type ReauthorParagraphPropertySuggestionsOptions = {
+  node: PMNode;
+  matchesSuggestion: (suggestionId: string) => boolean;
+  author: string;
+  date: string;
+};
+
+const reauthorParagraphPropertySuggestions = ({
+  node,
+  matchesSuggestion,
+  author,
+  date,
+}: ReauthorParagraphPropertySuggestionsOptions): ParagraphPropertyChangeAttrs[] | null => {
+  if (node.type.name !== "paragraph") {
+    return null;
+  }
+  const propertyChanges = expectParagraphAttrs(node)._propertyChanges;
+  if (!Array.isArray(propertyChanges)) {
+    return null;
+  }
+  let changed = false;
+  const next = propertyChanges.map((change) => {
+    const suggested = readSuggestedParagraphPropertyChange(change);
+    if (!suggested || !matchesSuggestion(suggested.suggestionId)) {
+      return change;
+    }
+    changed = true;
+    return {
+      ...change,
+      info: {
+        ...change.info,
+        author,
+        date,
+        provenance: "user" as const,
+        suggestionId: null,
+      },
+    };
+  });
+  return changed ? next : null;
+};
+
 /**
  * Convert suggested marks AND block/table node revisions to normal (`"user"`)
  * tracked changes. `matchesSuggestion(id)` selects which suggestion to convert
@@ -1683,12 +1766,22 @@ const acceptSuggestions = (
     // read from `state.doc` stay valid across the accumulated steps.
     state.doc.descendants((node, pos) => {
       const structural = readStructuralSuggestion(node);
+      let nextAttrs: Record<string, unknown> | null = null;
       if (structural && matchesSuggestion(structural.suggestionId)) {
-        const nextAttrs = convertStructuralSuggestionAttrs(node, options.author, date);
-        if (nextAttrs) {
-          tr.setNodeMarkup(pos, undefined, nextAttrs);
-          changed = true;
-        }
+        nextAttrs = convertStructuralSuggestionAttrs(node, options.author, date);
+      }
+      const propertyChanges = reauthorParagraphPropertySuggestions({
+        node,
+        matchesSuggestion,
+        author: options.author,
+        date,
+      });
+      if (propertyChanges) {
+        nextAttrs = { ...(nextAttrs ?? node.attrs), _propertyChanges: propertyChanges };
+      }
+      if (nextAttrs) {
+        tr.setNodeMarkup(pos, undefined, nextAttrs);
+        changed = true;
       }
       if (!node.isInline) {
         return undefined;

@@ -8,6 +8,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { panic } from "better-result";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -223,6 +224,27 @@ describe("suggest_changes schema + capability description follow operationTypes"
     expect(itemSchema["required"]).toEqual(["type", "severity", "area"]);
   });
 
+  test("style and numbering clears remain representable in every paragraph-property shape", () => {
+    const itemSchema = operationItemSchemaOf(
+      suggestChangesDefinitionFor({
+        operationTypes: [
+          "insertAfterBlock",
+          "insertBeforeBlock",
+          "replaceBlock",
+          "setBlockParagraphProperties",
+        ],
+      }),
+    );
+    const paragraphProperties = propertyOf(itemSchema, "properties");
+    const clearableStyle = [{ type: "string" }, { type: "null" }];
+    const clearableListLevel = [{ type: "integer", minimum: 0 }, { type: "null" }];
+
+    expect(propertyOf(itemSchema, "styleId")["oneOf"]).toEqual(clearableStyle);
+    expect(propertyOf(itemSchema, "listLevel")["oneOf"]).toEqual(clearableListLevel);
+    expect(propertyOf(paragraphProperties, "styleId")["oneOf"]).toEqual(clearableStyle);
+    expect(propertyOf(paragraphProperties, "listLevel")["oneOf"]).toEqual(clearableListLevel);
+  });
+
   test("documentVersion pins a top-level enum and marks documentVersion required", () => {
     const definition = suggestChangesDefinitionFor({ documentVersion: { current: "v7" } });
     const documentVersionSchema = propertyOf(definition.inputSchema, "documentVersion");
@@ -246,6 +268,31 @@ describe("suggest_changes schema + capability description follow operationTypes"
 // ---------------------------------------------------------------------------
 
 describe("parseSuggestChangesInput follows suggestChanges options", () => {
+  test("passes an explicit replacement-style clear through to the operation parser", () => {
+    const result = parseSuggestChangesInput(
+      {
+        operations: [
+          {
+            type: "replaceBlock",
+            blockId: "b1",
+            text: "Unstyled replacement",
+            styleId: null,
+          },
+        ],
+      },
+      { operationTypes: ["replaceBlock"] },
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      panic("expected ok:true");
+    }
+    expect(result.operations.at(0)).toMatchObject({
+      type: "replaceBlock",
+      styleId: null,
+    });
+  });
+
   test("a type outside the configured subset is rejected, listing the allowed types", () => {
     const result = parseSuggestChangesInput(
       { operations: [{ type: "deleteBlock", blockId: "b1" }] },

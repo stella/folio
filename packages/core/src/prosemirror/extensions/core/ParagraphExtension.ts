@@ -21,11 +21,13 @@ import type {
   TabStopAlignment,
   TabLeader,
 } from "../../../types/document";
+import { PARAGRAPH_ALIGNMENT_VALUES } from "../../../types/documentEnumValues";
 import { paragraphToStyle } from "../../../utils/formatToStyle";
 import { collectHeadings } from "../../../utils/headingCollector";
 import { tableOfContentsStyleLevel } from "../../../utils/tableOfContentsStyle";
 import { expectParagraphAttrs } from "../../attrs";
 import { autospacingMatchesBase } from "../../autospacingBase";
+import { directParagraphAlignment } from "../../paragraphAlignment";
 import { directionIsRtl } from "../../paragraphDirection";
 import type { ParagraphDirection } from "../../paragraphDirection";
 import type { ParagraphAttrs } from "../../schema/nodes";
@@ -191,6 +193,9 @@ function cssTextAlignToAlignment(value: string): ParagraphAlignment | undefined 
   }
 }
 
+const parseParagraphAlignment = (value: string | undefined): ParagraphAlignment | undefined =>
+  PARAGRAPH_ALIGNMENT_VALUES.find((alignment) => alignment === value);
+
 /**
  * Parse CSS line-height to twips.
  * - Unitless multiplier (e.g. "1.5"): 240 twips * multiplier (single=240)
@@ -322,6 +327,7 @@ const paragraphNodeSpec: NodeSpec = {
     paraId: { default: null },
     textId: { default: null },
     alignment: { default: null },
+    alignmentFromStyle: { default: undefined },
     kinsoku: { default: null },
     overflowPunctuation: { default: null },
     suppressAutoHyphens: { default: null },
@@ -398,7 +404,9 @@ const paragraphNodeSpec: NodeSpec = {
 
         // Start with data-attribute values (from our own editor's copy/paste)
         const paraId = element.dataset["paraId"];
-        const alignment = element.dataset["alignment"] as ParagraphAlignment | undefined;
+        const alignment = parseParagraphAlignment(element.dataset["alignment"]);
+        const authoredAlignment = parseParagraphAlignment(element.dataset["directAlignment"]);
+        const alignmentFromStyle = parseParagraphAlignment(element.dataset["alignmentFromStyle"]);
         const styleId = element.dataset["styleId"];
         const tableOfContentsLevel = Number(element.dataset["tableOfContentsLevel"]);
         const sectionBreakType = element.dataset["sectionBreak"] as
@@ -407,6 +415,7 @@ const paragraphNodeSpec: NodeSpec = {
         const attrs: ParagraphAttrs = {
           ...(paraId ? { paraId } : {}),
           ...(alignment ? { alignment } : {}),
+          ...(alignmentFromStyle ? { alignmentFromStyle } : {}),
           ...(styleId ? { styleId } : {}),
           ...(Number.isSafeInteger(tableOfContentsLevel) && tableOfContentsLevel > 0
             ? { _tableOfContentsLevel: tableOfContentsLevel }
@@ -420,11 +429,21 @@ const paragraphNodeSpec: NodeSpec = {
 
         // Merge: data-attributes take precedence over CSS-extracted values
         const mergedAlignment = attrs.alignment || styleAttrs.alignment;
+        const mergedDirectAlignment =
+          authoredAlignment ??
+          (attrs.alignmentFromStyle === undefined ? mergedAlignment : undefined);
+        const originalFormatting: ParagraphFormatting = {
+          ...(styleId ? { styleId } : {}),
+          ...(mergedDirectAlignment ? { alignment: mergedDirectAlignment } : {}),
+        };
         return {
           ...styleAttrs,
           ...attrs,
           // For alignment, prefer data-attribute if present, otherwise use CSS
           ...(mergedAlignment !== undefined ? { alignment: mergedAlignment } : {}),
+          ...(Object.keys(originalFormatting).length > 0
+            ? { _originalFormatting: originalFormatting }
+            : {}),
         };
       },
     },
@@ -438,6 +457,9 @@ const paragraphNodeSpec: NodeSpec = {
 
         return {
           ...styleAttrs,
+          ...(styleAttrs.alignment
+            ? { _originalFormatting: { alignment: styleAttrs.alignment } }
+            : {}),
           styleId: `Heading${level}`,
           outlineLevel: level - 1,
         };
@@ -465,6 +487,15 @@ const paragraphNodeSpec: NodeSpec = {
 
     if (attrs.alignment) {
       domAttrs["data-alignment"] = attrs.alignment;
+    }
+
+    const directAlignment = directParagraphAlignment(attrs);
+    if (directAlignment) {
+      domAttrs["data-direct-alignment"] = directAlignment;
+    }
+
+    if (attrs.alignmentFromStyle) {
+      domAttrs["data-alignment-from-style"] = attrs.alignmentFromStyle;
     }
 
     if (attrs.styleId) {
@@ -603,7 +634,30 @@ export type ResolvedStyleAttrs = {
 // ============================================================================
 
 function makeSetAlignment(alignment: ParagraphAlignment): Command {
-  return (state, dispatch) => setParagraphAttr("alignment", alignment)(state, dispatch);
+  return (state, dispatch) => {
+    const { $from, $to } = state.selection;
+    if (!dispatch) {
+      return true;
+    }
+
+    let tr = state.tr;
+    const seen = new Set<number>();
+    state.doc.nodesBetween($from.pos, $to.pos, (node, pos) => {
+      if (node.type.name !== "paragraph" || seen.has(pos)) {
+        return;
+      }
+      seen.add(pos);
+      const attrs = expectParagraphAttrs(node);
+      tr = tr.setNodeMarkup(pos, undefined, {
+        ...node.attrs,
+        alignment,
+        _originalFormatting: { ...attrs._originalFormatting, alignment },
+      });
+    });
+
+    dispatch(tr.scrollIntoView());
+    return true;
+  };
 }
 
 function makeSetLineSpacing(value: number, rule: LineSpacingRule = "auto"): Command {
@@ -769,6 +823,15 @@ function makeApplyStyle(schema: Schema) {
                 ...(resolvedAttrs.styleName ? { styleName: resolvedAttrs.styleName } : {}),
               }),
             );
+            const originalFormatting = expectParagraphAttrs(node)._originalFormatting;
+            if (originalFormatting?.alignment !== undefined) {
+              const formattingWithoutDirectAlignment = { ...originalFormatting };
+              Reflect.deleteProperty(formattingWithoutDirectAlignment, "alignment");
+              newAttrs["_originalFormatting"] =
+                Object.keys(formattingWithoutDirectAlignment).length > 0
+                  ? formattingWithoutDirectAlignment
+                  : null;
+            }
             // A style with `w:numPr` attaches its numbering (numPr + marker
             // attrs). A style without numbering leaves existing list attrs
             // untouched — direct numbering survives a style switch in Word.

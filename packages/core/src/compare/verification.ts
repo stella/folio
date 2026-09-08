@@ -3,10 +3,10 @@
  *
  * The check compares two block projections: what accepting the generated
  * revisions leaves against the target, and what rejecting them leaves against
- * the base. A projection carries each block's container, style, list level and
- * text, so WHICH field diverged names which part of the pipeline lost the
- * difference — and that is worth reporting as a typed cause rather than as one
- * opaque "did not reproduce".
+ * the base. A projection carries each block's container, style, list level,
+ * direct alignment and text, so WHICH field diverged names which part of the
+ * pipeline lost the difference — and that is worth reporting as a typed cause
+ * rather than as one opaque "did not reproduce".
  *
  * Every `detail` string here is structural: counts, offsets, container kinds.
  * Never a phrase of either document, because a caller may log it, put it in a
@@ -57,6 +57,7 @@ export const COMPARE_VERIFICATION_CAUSES = Object.freeze([
   "table-geometry",
   "style",
   "list-level",
+  "alignment",
   "inline-formatting",
   "whitespace",
   "text",
@@ -131,13 +132,14 @@ export const projectSupportedInlineFormatting = ({ text, previewRuns }: FolioAIB
 
 /**
  * One block of a projection. `projectStory` writes
- * `container|styleId|listLevel|text`, so the text is everything after the
- * third separator and may itself contain one.
+ * `container|styleId|listLevel|directAlignment|text`, so the text is
+ * everything after the fourth separator and may itself contain one.
  */
 type ProjectedBlock = {
   container: string;
   styleId: string;
   listLevel: string;
+  directAlignment: string;
   text: string;
 };
 
@@ -145,14 +147,16 @@ const parseProjection = (entry: string): ProjectedBlock => {
   const first = entry.indexOf("|");
   const second = entry.indexOf("|", first + 1);
   const third = entry.indexOf("|", second + 1);
-  if (first === -1 || second === -1 || third === -1) {
-    return { container: "", styleId: "", listLevel: "", text: entry };
+  const fourth = entry.indexOf("|", third + 1);
+  if (first === -1 || second === -1 || third === -1 || fourth === -1) {
+    return { container: "", styleId: "", listLevel: "", directAlignment: "", text: entry };
   }
   return {
     container: entry.slice(0, first),
     styleId: entry.slice(first + 1, second),
     listLevel: entry.slice(second + 1, third),
-    text: entry.slice(third + 1),
+    directAlignment: entry.slice(third + 1, fourth),
+    text: entry.slice(fourth + 1),
   };
 };
 
@@ -324,6 +328,9 @@ export const classifyProjectionMismatch = ({
   }
   if (left.text === right.text && left.listLevel !== right.listLevel) {
     return failure("list-level", `the list level did not move ${at} (${counts})`);
+  }
+  if (left.text === right.text && left.directAlignment !== right.directAlignment) {
+    return failure("alignment", `the direct paragraph alignment did not move ${at} (${counts})`);
   }
   if (collapseWhitespace(left.text) === collapseWhitespace(right.text)) {
     return failure("whitespace", `a block's text differs only in whitespace ${at} (${counts})`);

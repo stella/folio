@@ -55,6 +55,7 @@ import {
   hasStructuralChanges,
   hasUntrackedChanges,
 } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
+import { createDocumentStylesPlugin } from "../prosemirror/plugins/documentStyles";
 import { schema, singletonManager } from "../prosemirror/schema";
 import type { Comment } from "../types/content";
 import type { Document, Endnote, Footnote, HeaderFooter } from "../types/document";
@@ -609,7 +610,10 @@ export class FolioDocxReviewer {
     // selective-save key set, and the paraId allocator hands freshly inserted
     // paragraphs a stable `w14:paraId`. No plugin `view()` runs headlessly, so
     // the DOM-facing halves stay dormant.
-    const plugins: Plugin[] = singletonManager.getPlugins();
+    const plugins: Plugin[] = [
+      ...singletonManager.getPlugins(),
+      createDocumentStylesPlugin(baseDocument.package.styles),
+    ];
     // Allocate paraIds up front (the editor does this on load) so every block
     // anchors on a stable id and the selective-save path can key changed
     // paragraphs by paraId. Deterministic (not random) allocation so a
@@ -1424,7 +1428,10 @@ export class FolioDocxReviewer {
       EditorState.create({
         schema,
         doc: ensureDeterministicParaIdsInDoc(storyDoc),
-        plugins: singletonManager.getPlugins(),
+        plugins: [
+          ...singletonManager.getPlugins(),
+          createDocumentStylesPlugin(this.baseDocument.package.styles),
+        ],
       }),
     );
     this.secondaryStoryStates.set(key, { handle: story, initialState: state, state });

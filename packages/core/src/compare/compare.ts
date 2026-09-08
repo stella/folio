@@ -132,14 +132,14 @@ const existingRevisionsOf = (reviewer: FolioDocxReviewer): ExistingRevisions => 
  * paragraph that landed beside a table instead of inside it.
  */
 const projectBlocks = (blocks: readonly FolioAIBlock[]): string[] => {
-  return blocks.map(({ text, table, styleId, listLevel }) => {
+  return blocks.map(({ text, table, styleId, listLevel, directAlignment }) => {
     const container = table
       ? `t${String(table.tableIndex)}r${String(table.rowIndex)}c${String(table.cellIndex)}g${String(table.gridColumnIndex)}x${String(table.columnSpan)}y${String(table.rowSpan)}p${String(table.paragraphIndex)}`
       : "body";
     // The properties the comparison claims to compare are in the projection
     // too, or the self-check would pass a redline that reproduces every word
-    // and leaves a list item at the wrong level.
-    return `${container}|${styleId ?? ""}|${listLevel ?? ""}|${text}`;
+    // and leaves paragraph formatting at the wrong value or provenance.
+    return `${container}|${styleId ?? ""}|${listLevel ?? ""}|${directAlignment ?? ""}|${text}`;
   });
 };
 

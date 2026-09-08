@@ -9,7 +9,7 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { revisedFinalParagraphMarks } from "./verification";
+import { classifyProjectionMismatch, revisedFinalParagraphMarks } from "./verification";
 
 const revision = { id: 1, author: "compare", date: "2024-03-01T00:00:00.000Z" };
 
@@ -107,5 +107,24 @@ describe("revisedFinalParagraphMarks", () => {
         document: { content: [table([[paragraph("cell")]]), paragraph("last")] },
       }),
     ).toEqual([]);
+  });
+});
+
+describe("classifyProjectionMismatch", () => {
+  test("reports a direct alignment mismatch separately from text and style", () => {
+    expect(
+      classifyProjectionMismatch({
+        invariant: "accepted-target",
+        story: { type: "main" },
+        actual: ["body|Body||left|same text"],
+        expected: ["body|Body||right|same text"],
+      }),
+    ).toEqual({
+      invariant: "accepted-target",
+      cause: "alignment",
+      story: { type: "main" },
+      detail:
+        "the direct paragraph alignment did not move at block 0/1 (1 blocks against 1)",
+    });
   });
 });

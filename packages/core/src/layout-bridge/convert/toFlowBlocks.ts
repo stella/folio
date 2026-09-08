@@ -91,7 +91,13 @@ import {
   type ListCounterStreams,
 } from "../../prosemirror/listMarker";
 import { resolveNumberedRefFields } from "../../prosemirror/numberedRefFields";
-import type { ColorValue, Theme, SectionProperties, TextFormatting } from "../../types/document";
+import type {
+  ColorValue,
+  ParagraphAlignment,
+  Theme,
+  SectionProperties,
+  TextFormatting,
+} from "../../types/document";
 import { normalizeShapeTextAnchor } from "../../types/documentEnumValues";
 import { resolveColor, resolveHighlightToCss } from "../../utils/colorResolver";
 import { resolveThemeFont } from "../../utils/fontResolver";
@@ -1468,27 +1474,26 @@ type ConvertParagraphAttrsOptions = {
   defaultTabStopTwips: number | undefined;
 };
 
+const FLOW_ALIGNMENT_BY_PARAGRAPH_ALIGNMENT = {
+  left: "left",
+  center: "center",
+  right: "right",
+  both: "justify",
+  distribute: "justify",
+  mediumKashida: "justify",
+  highKashida: "justify",
+  lowKashida: "justify",
+  thaiDistribute: "justify",
+} as const satisfies Record<ParagraphAlignment, NonNullable<ParagraphAttrs["alignment"]>>;
+
 function convertParagraphAttrs(
   pmAttrs: PMParagraphAttrs,
   { theme, fontAlternates, listCounterStreams, defaultTabStopTwips }: ConvertParagraphAttrsOptions,
 ): ParagraphAttrs {
   const attrs: ParagraphAttrs = {};
 
-  // Alignment - map DOCX values to CSS-compatible values
-  // DOCX uses 'both' for justify, 'distribute' for distributed justify
   if (pmAttrs.alignment) {
-    const align = pmAttrs.alignment;
-    if (align === "both" || align === "distribute") {
-      attrs.alignment = "justify";
-    } else if (align === "left") {
-      attrs.alignment = "left";
-    } else if (align === "center") {
-      attrs.alignment = "center";
-    } else if (align === "right") {
-      attrs.alignment = "right";
-    }
-    // Other DOCX alignments (mediumKashida, highKashida, lowKashida, thaiDistribute, justify)
-    // default to no alignment set (inherits from style or defaults to left)
+    attrs.alignment = FLOW_ALIGNMENT_BY_PARAGRAPH_ALIGNMENT[pmAttrs.alignment];
   }
 
   if (typeof pmAttrs.outlineLevel === "number") {

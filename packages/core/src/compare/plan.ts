@@ -1042,9 +1042,9 @@ const columnCellTexts = (blocks: readonly FolioAIBlock[]): string[] => {
 
 /**
  * The paragraph properties that differ, or `null` when they agree. Only the
- * ones a block projection can see and an operation can set: a list level and
- * a paragraph style, the two edits that move no words and are invisible in a
- * text diff.
+ * ones a block projection can see and an operation can set: a list level, a
+ * paragraph style, and direct alignment. These edits move no words and are
+ * invisible in a text diff.
  */
 const changedParagraphProperties = (
   baseBlock: FolioAIBlock,
@@ -1059,6 +1059,9 @@ const changedParagraphProperties = (
   // level left the difference unreported and the round trip unsatisfiable.
   if (baseBlock.listLevel !== targetBlock.listLevel) {
     properties.listLevel = targetBlock.listLevel ?? null;
+  }
+  if (baseBlock.directAlignment !== targetBlock.directAlignment) {
+    properties.alignment = targetBlock.directAlignment ?? null;
   }
   return Object.keys(properties).length > 0 ? properties : null;
 };
@@ -1299,6 +1302,7 @@ const withTrailingDeletionRules = ({
           ...(insert.moveId !== undefined && { moveId: insert.moveId }),
           styleId: insert.styleId ?? null,
           listLevel: insert.listLevel ?? null,
+          alignment: insert.alignment ?? null,
         };
       }
     }
@@ -1448,15 +1452,16 @@ export const planStoryCompare = ({
 
   const pushInsertOperation = (block: FolioAIBlock, anchorId: string | null): void => {
     const moveSourceId = moveSourceByTargetBlockId.get(block.id);
-    // Both always explicit, `null` included: an inserted paragraph that says
-    // nothing about its style or its list level takes the anchor's, and the
-    // anchor is whichever block happened to follow it. A new paragraph beside
-    // a list item is not a list item.
+    // All three always explicit, `null` included: an inserted paragraph that
+    // says nothing takes the anchor's paragraph properties, and the anchor is
+    // whichever block happened to follow it. A new ordinary paragraph beside
+    // a styled, aligned list item is not implicitly the same kind of paragraph.
     const shared = {
       text: block.text,
       ...(moveSourceId !== undefined && { moveId: moveIdOf(moveSourceId) }),
       styleId: block.styleId ?? null,
       listLevel: block.listLevel ?? null,
+      alignment: block.directAlignment ?? null,
     };
     if (anchorId !== null) {
       operations.push({

@@ -285,6 +285,7 @@ export type ParagraphAttrs = {
     paraId?: string;
     textId?: string;
     alignment?: import__stll_docx_core_model.ParagraphAlignment;
+    alignmentFromStyle?: import__stll_docx_core_model.ParagraphAlignment;
     kinsoku?: boolean;
     overflowPunctuation?: boolean;
     suppressAutoHyphens?: boolean;

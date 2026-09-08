@@ -292,6 +292,8 @@ const admits = (schema: JsonSchemaNode, value: unknown): boolean => {
       );
     case "boolean":
       return typeof value === "boolean";
+    case "null":
+      return value === null;
     case "array": {
       if (!Array.isArray(value)) {
         return false;
@@ -362,6 +364,7 @@ const CONTRACT_OPERATION_FIXTURES: Record<FolioDocumentOperationType, Record<str
     blockId: "0304003A",
     text: "New paragraph.",
     inheritFormatting: true,
+    alignment: "both",
     listLevel: 1,
     moveId: "move-1",
     pageBreakBefore: true,
@@ -392,7 +395,7 @@ const CONTRACT_OPERATION_FIXTURES: Record<FolioDocumentOperationType, Record<str
     id: "op-set-paragraph-properties",
     type: "setBlockParagraphProperties",
     blockId: "0304003A",
-    properties: { styleId: "ClauseHeading1", listLevel: 1 },
+    properties: { styleId: "ClauseHeading1", listLevel: 1, alignment: "both" },
   },
   splitBlock: {
     id: "op-split-block",
@@ -501,6 +504,61 @@ describe("document operation contract JSON schema conformance", () => {
       expect(admits(OPERATION_SCHEMA, operation), type).toBe(true);
       expect(admits(BATCH_SCHEMA, batch), type).toBe(true);
     }
+  });
+
+  test.each([
+    {
+      label: "insertAfterBlock",
+      operation: {
+        id: "clear-after",
+        type: "insertAfterBlock",
+        blockId: "0304003A",
+        text: "Ordinary paragraph",
+        styleId: null,
+        listLevel: null,
+      },
+    },
+    {
+      label: "insertBeforeBlock",
+      operation: {
+        id: "clear-before",
+        type: "insertBeforeBlock",
+        blockId: "0304003A",
+        text: "Ordinary paragraph",
+        styleId: null,
+        listLevel: null,
+      },
+    },
+    {
+      label: "setBlockParagraphProperties",
+      operation: {
+        id: "clear-properties",
+        type: "setBlockParagraphProperties",
+        blockId: "0304003A",
+        properties: { styleId: null, listLevel: null },
+      },
+    },
+    {
+      label: "replaceBlock",
+      operation: {
+        id: "clear-replacement-style",
+        type: "replaceBlock",
+        blockId: "0304003A",
+        text: "Unstyled replacement",
+        styleId: null,
+      },
+    },
+  ] as const)("admits explicit style and numbering clears for $label", ({ operation }) => {
+    const batch = {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      operations: [operation],
+      mode: "direct" as const,
+      atomic: true,
+      dryRun: true,
+    };
+    expect(parseFolioDocumentOperationBatch(batch)).toEqual(batch);
+    expect(admits(OPERATION_SCHEMA, operation)).toBe(true);
+    expect(admits(BATCH_SCHEMA, batch)).toBe(true);
   });
 
   test("cell merge targeting admits exactly one endpoint form", () => {

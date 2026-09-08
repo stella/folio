@@ -36,6 +36,7 @@ export function paragraphAttrsFromResolvedStyle(
 
   return {
     alignment: ppr?.alignment ?? null,
+    alignmentFromStyle: ppr?.alignment,
     spaceBefore: ppr?.spaceBefore ?? null,
     spaceAfter: ppr?.spaceAfter ?? null,
     lineSpacing: ppr?.lineSpacing ?? null,
