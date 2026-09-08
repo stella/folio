@@ -9,6 +9,8 @@ test("publish preparation preserves private exceptions to wildcard exports", asy
     await mkdir(path.join(packageRoot, "dist"));
     await writeFile(path.join(packageRoot, "dist/index.js"), "export {};\n");
     await writeFile(path.join(packageRoot, "dist/index.d.ts"), "export {};\n");
+    await writeFile(path.join(packageRoot, "dist/documentClone.js"), "export {};\n");
+    await writeFile(path.join(packageRoot, "dist/documentClone.d.ts"), "export {};\n");
     await writeFile(
       path.join(packageRoot, "package.json"),
       `${JSON.stringify(
@@ -17,6 +19,7 @@ test("publish preparation preserves private exceptions to wildcard exports", asy
           version: "1.0.0",
           exports: {
             ".": "./src/index.ts",
+            "./document-clone": "./src/documentClone.ts",
             "./private": null,
             "./*": "./src/*.ts",
           },
@@ -34,6 +37,10 @@ test("publish preparation preserves private exceptions to wildcard exports", asy
     const manifest = await Bun.file(path.join(packageRoot, "package.json")).json();
 
     expect(manifest.exports["./private"]).toBeNull();
+    expect(manifest.exports["./document-clone"]).toEqual({
+      types: "./dist/documentClone.d.ts",
+      import: "./dist/documentClone.js",
+    });
     expect(manifest.exports["./*"]).toEqual({
       types: "./dist/*.d.ts",
       import: "./dist/*.js",

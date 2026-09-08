@@ -11,6 +11,7 @@
  */
 
 import { onBeforeUnmount, onMounted, ref, shallowRef, type Ref, type ShallowRef } from "vue";
+import type { Node as PMNode } from "prosemirror-model";
 import { TextSelection, NodeSelection, type Command } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import type { Document } from "@stll/folio-core/types/document";
@@ -125,6 +126,61 @@ export type UsePagesPointerReturn = {
   clearTableInsertTimer: () => void;
   handleHfSave: () => void;
   handleHfRemove: () => void;
+};
+
+type SaveAndCloseHeaderFooterEditOptions = {
+  editState: ShallowRef<HfEditState | null>;
+  getDocument: () => Document | null;
+  getHfPmView: (rId: string) => { readonly state: { readonly doc: PMNode } } | null;
+  onDocumentChange: (document: Document) => void;
+  reLayout: () => void;
+  setDocument: (document: Document) => void;
+  syncHfPMs: () => void;
+};
+
+export const saveAndCloseHeaderFooterEdit = ({
+  editState,
+  getDocument,
+  getHfPmView,
+  onDocumentChange,
+  reLayout,
+  setDocument,
+  syncHfPMs,
+}: SaveAndCloseHeaderFooterEditOptions): void => {
+  const edit = editState.value;
+  const document = getDocument();
+  if (!document?.package || !edit?.rId) {
+    editState.value = null;
+    return;
+  }
+  const view = getHfPmView(edit.rId);
+  if (!view) {
+    editState.value = null;
+    return;
+  }
+  const source =
+    edit.position === "header"
+      ? document.package.headers?.get(edit.rId)
+      : document.package.footers?.get(edit.rId);
+  if (!source) {
+    editState.value = null;
+    return;
+  }
+  const updated = saveHeaderFooterContent({
+    document,
+    position: edit.position,
+    isFirstPage: edit.isFirstPage,
+    activeRId: edit.rId,
+    blocks: proseDocToBlocks(view.state.doc, source.content),
+  });
+  editState.value = null;
+  if (!updated) {
+    return;
+  }
+  setDocument(updated);
+  syncHfPMs();
+  reLayout();
+  onDocumentChange(updated);
 };
 
 export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerReturn {
@@ -448,24 +504,15 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
   }
 
   function handleHfSave() {
-    const doc = opts.getDocument();
-    const edit = hfEdit.value;
-    if (!doc?.package || !edit?.rId) return;
-    const view = opts.getHfPmView(edit.rId);
-    if (!view) return;
-    const updated = saveHeaderFooterContent({
-      document: doc,
-      position: edit.position,
-      isFirstPage: edit.isFirstPage,
-      activeRId: edit.rId,
-      blocks: proseDocToBlocks(view.state.doc),
+    saveAndCloseHeaderFooterEdit({
+      editState: hfEdit,
+      getDocument: opts.getDocument,
+      getHfPmView: opts.getHfPmView,
+      onDocumentChange: opts.onDocumentChange,
+      reLayout: opts.reLayout,
+      setDocument: opts.setDocument,
+      syncHfPMs: opts.syncHfPMs,
     });
-    if (!updated) return;
-    hfEdit.value = null;
-    opts.setDocument(updated);
-    opts.syncHfPMs();
-    opts.reLayout();
-    opts.onDocumentChange(updated);
   }
 
   function handleHfRemove() {
