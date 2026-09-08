@@ -129,7 +129,7 @@ const SECONDARY_ALIGNMENT_TRANSITIONS = [
 }[];
 
 const SECONDARY_ALIGNMENT_CASES = SECONDARY_ALIGNMENT_STORIES.flatMap((story) =>
-  SECONDARY_ALIGNMENT_TRANSITIONS.map((transition) => ({ ...story, ...transition })),
+  SECONDARY_ALIGNMENT_TRANSITIONS.map((transition) => Object.assign({}, story, transition)),
 );
 
 const alignedStoryParagraph = (

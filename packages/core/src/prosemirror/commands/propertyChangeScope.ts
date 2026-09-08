@@ -25,6 +25,8 @@
  * Both shapes normalize here; per key, an attr-shaped value wins when present.
  */
 
+import type { Node as PMNode } from "prosemirror-model";
+
 import type {
   BorderSpec,
   CellMargins,
@@ -34,7 +36,10 @@ import type {
   TableFormatting,
   TableRowFormatting,
 } from "../../types/document";
+
+import { expectParagraphAttrs } from "../attrs";
 import { setAutospacingBaseValue } from "../autospacingBase";
+import { directParagraphAlignment } from "../paragraphAlignment";
 import { directionFromBidi } from "../paragraphDirection";
 import type { ParagraphAttrs, ParagraphPropertyChangeAttrs } from "../schema/nodes";
 
@@ -151,6 +156,33 @@ export const PPR_CHANGE_SCOPED_ATTR_KEYS = [
 ] as const satisfies readonly (keyof ParagraphAttrs)[];
 
 const PPR_CHANGE_SCOPED_ATTR_KEY_SET: ReadonlySet<string> = new Set(PPR_CHANGE_SCOPED_ATTR_KEYS);
+
+/** The in-scope paragraph properties as they stand, for a `w:pPrChange` record. */
+export const paragraphPropertiesSnapshot = (node: PMNode): ParagraphPropertySnapshot => {
+  const attrs = expectParagraphAttrs(node);
+  const snapshot: Record<string, unknown> = {};
+  for (const key of PPR_CHANGE_SCOPED_ATTR_KEYS) {
+    if (key === "alignment") {
+      continue;
+    }
+    const value: unknown = attrs[key];
+    if (
+      key === "hangingIndent" &&
+      value === false &&
+      attrs._originalFormatting?.hangingIndent === undefined
+    ) {
+      continue;
+    }
+    if (value !== null && value !== undefined) {
+      snapshot[key] = value;
+    }
+  }
+  const directAlignment = directParagraphAlignment(attrs);
+  if (directAlignment !== undefined) {
+    snapshot["alignment"] = directAlignment;
+  }
+  return snapshot;
+};
 
 /**
  * Parser-shaped `ParagraphFormatting` keys that must NOT merge through to

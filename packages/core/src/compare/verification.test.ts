@@ -113,13 +113,13 @@ describe("revisedFinalParagraphMarks", () => {
 
 describe("classifyProjectionMismatch", () => {
   const projectedBlock = (
-    table: FolioAIBlockTableLocation | undefined,
+    tableLocation: FolioAIBlockTableLocation | undefined,
     text: string,
   ): FolioAIBlock => ({
     id: "projected-block",
     kind: "paragraph",
     text,
-    ...(table ? { table } : {}),
+    ...(tableLocation ? { table: tableLocation } : {}),
   });
 
   test("names table-cell containers from the complete projected coordinate", () => {

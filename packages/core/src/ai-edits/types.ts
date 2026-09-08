@@ -564,6 +564,8 @@ export type FolioAIEditAppliedOperation = {
    * fromProseDoc serialises a single id carrying both as a Word
    * "moveTo/moveFrom" pair, not an ins/del — so the two sides must
    * be distinct ids in the doc but conceptually one operation here.
+   * The list also includes a paragraph-property revision synthesized
+   * when an inserted final paragraph mark rotates to its carrier.
    * Use this list when you need to accept or reject every mark
    * belonging to this op.
    */

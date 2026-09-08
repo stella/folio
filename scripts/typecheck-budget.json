@@ -13,15 +13,15 @@
   },
   "agents": {
     "types": 75294,
-    "instantiations": 64268
+    "instantiations": 69447
   },
   "vue": {
     "types": 170053,
     "instantiations": 832018
   },
   "nuxt": {
-    "types": 109531,
-    "instantiations": 113559
+    "types": 109241,
+    "instantiations": 113090
   },
   "playground": {
     "types": 140764,

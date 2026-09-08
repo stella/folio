@@ -402,11 +402,17 @@ const readClearableNonNegativeInteger = (
   return candidate === null ? null : readNonNegativeInteger(value, key, path);
 };
 
-const readClearableParagraphAlignment = (
-  value: Record<string, unknown>,
-  key: string,
-  path: string,
-): ParagraphAlignment | null | undefined => {
+type ReadClearableParagraphAlignmentParams = {
+  value: Record<string, unknown>;
+  key: string;
+  path: string;
+};
+
+const readClearableParagraphAlignment = ({
+  value,
+  key,
+  path,
+}: ReadClearableParagraphAlignmentParams): ParagraphAlignment | null | undefined => {
   const candidate = value[key];
   if (candidate === undefined || candidate === null) {
     return candidate;
@@ -471,7 +477,11 @@ const readParagraphProperties = (
   const styleId =
     rawStyleId === null ? null : readOptionalString(candidate, "styleId", propertiesPath);
   const listLevel = readClearableNonNegativeInteger(candidate, "listLevel", propertiesPath);
-  const alignment = readClearableParagraphAlignment(candidate, "alignment", propertiesPath);
+  const alignment = readClearableParagraphAlignment({
+    value: candidate,
+    key: "alignment",
+    path: propertiesPath,
+  });
   if (styleId === undefined && listLevel === undefined && alignment === undefined) {
     return invalidBatch(propertiesPath, "expected at least one property to set");
   }
@@ -833,7 +843,7 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
     const styleId = value["styleId"] === null ? null : readOptionalString(value, "styleId", path);
     const moveId = readOptionalString(value, "moveId", path);
     const listLevel = readClearableNonNegativeInteger(value, "listLevel", path);
-    const alignment = readClearableParagraphAlignment(value, "alignment", path);
+    const alignment = readClearableParagraphAlignment({ value, key: "alignment", path });
     return {
       ...operationMeta,
       id,

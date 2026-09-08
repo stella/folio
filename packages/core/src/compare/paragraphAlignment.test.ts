@@ -160,6 +160,28 @@ const REPLACEMENT_STYLE_TRANSITION_CASES = [
   inheritedAlignment: ParagraphAlignment | undefined;
 }[];
 
+const ALIGNMENT_CLEAR_STYLE_RESOLUTION_CASES = [
+  {
+    label: "the current style",
+    styleId: STYLE_ID,
+    reopenedAlignment: "right",
+  },
+  {
+    label: "a new style",
+    styleId: NEXT_STYLE_ID,
+    reopenedAlignment: "both",
+  },
+  {
+    label: "a cleared style",
+    styleId: null,
+    reopenedAlignment: undefined,
+  },
+] as const satisfies readonly {
+  label: string;
+  styleId: string | null;
+  reopenedAlignment: ParagraphAlignment | undefined;
+}[];
+
 type TrackedReplacementStyleCase = {
   label: string;
   beforeDirect: ParagraphAlignment | undefined;
@@ -2592,6 +2614,140 @@ describe("paragraph alignment provenance in editor state", () => {
       _originalFormatting: { styleId: STYLE_ID },
     });
   });
+
+  test.each(
+    [true, false].flatMap((withResolver) =>
+      ALIGNMENT_CLEAR_STYLE_RESOLUTION_CASES.map(({ label, reopenedAlignment, styleId }) => ({
+        label,
+        reopenedAlignment,
+        resolverLabel: withResolver ? "with a style resolver" : "without a style resolver",
+        styleId,
+        withResolver,
+      })),
+    ),
+  )(
+    "clears direct alignment under $label $resolverLabel",
+    async ({ styleId, reopenedAlignment, withResolver }) => {
+      const source = alignmentDocumentModel({
+        directAlignment: "center",
+        inheritedAlignment: "right",
+      });
+      const applyClear = () => {
+        const view = {
+          state: EditorState.create({
+            doc: toProseDoc(source),
+            plugins: withResolver ? [createDocumentStylesPlugin(source.package.styles)] : [],
+          }),
+          dispatch(transaction: Transaction) {
+            view.state = view.state.apply(transaction);
+          },
+        };
+        const snapshot = createFolioAIEditSnapshot(view.state.doc);
+        const block = snapshot.blocks.at(0);
+        if (!block) {
+          panic("expected a paragraph for style-aware alignment clearing");
+        }
+        const outcome = applyFolioAIEditOperations({
+          view,
+          snapshot,
+          operations: [
+            {
+              id: "clear-direct-alignment",
+              type: "setBlockParagraphProperties",
+              blockId: block.id,
+              properties: { styleId, alignment: null },
+            },
+          ],
+          mode: "tracked-changes",
+          author: OPTIONS.author,
+          revisionStamp: REVISION_STAMP,
+        });
+        expect(outcome.skipped).toEqual([]);
+        expect(outcome.applied).toEqual([
+          { id: "clear-direct-alignment", revisionId: 1, revisionIds: [1] },
+        ]);
+        const pending = view.state.doc.firstChild;
+        if (!pending) {
+          panic("expected the pending paragraph after alignment clearing");
+        }
+        const pendingAttrs = expectParagraphAttrs(pending);
+        const immediateInherited =
+          withResolver || styleId === STYLE_ID ? reopenedAlignment : undefined;
+        expect(pendingAttrs.styleId ?? null).toBe(styleId);
+        expect(pendingAttrs.alignmentFromStyle).toBe(immediateInherited);
+        expect(pendingAttrs.alignment ?? null).toBe(immediateInherited ?? null);
+        expect(pendingAttrs._originalFormatting ?? null).toEqual(
+          styleId === null ? null : { styleId },
+        );
+        expect(pendingAttrs._propertyChanges).toEqual([
+          expect.objectContaining({
+            previousFormatting: { styleId: STYLE_ID, alignment: "center" },
+          }),
+        ]);
+        expect(
+          createFolioAIEditSnapshot(view.state.doc).blocks.at(0)?.directAlignment,
+        ).toBeUndefined();
+        return view;
+      };
+
+      const accepting = applyClear();
+      expect(acceptAllChanges()(accepting.state, accepting.dispatch)).toBe(true);
+      const accepted = accepting.state.doc.firstChild;
+      if (!accepted) {
+        panic("expected the accepted paragraph after alignment clearing");
+      }
+      expect(expectParagraphAttrs(accepted)._propertyChanges).toBeUndefined();
+      const acceptedBuffer = await createDocx(fromProseDoc(accepting.state.doc, source));
+      const acceptedXml = firstParagraphXml(await mainDocumentXml(acceptedBuffer));
+      expect(acceptedXml).not.toContain("<w:pPrChange");
+      expect(untrackedParagraphPropertiesOrEmpty(acceptedXml)).toBe(
+        expectedParagraphProperties(undefined, styleId),
+      );
+      const reopened = await FolioDocxReviewer.fromBuffer(acceptedBuffer);
+      expectDirectAlignmentModel(reopened, undefined, styleId);
+      const reopenedParagraph = toProseDoc(reopened.toDocument()).firstChild;
+      if (!reopenedParagraph) {
+        panic("expected the reopened paragraph after alignment clearing");
+      }
+      const reopenedAttrs = expectParagraphAttrs(reopenedParagraph);
+      expect(reopenedAttrs.alignmentFromStyle).toBe(reopenedAlignment);
+      expect(reopenedAttrs.alignment ?? null).toBe(reopenedAlignment ?? null);
+
+      const rejecting = applyClear();
+      expect(rejectAllChanges()(rejecting.state, rejecting.dispatch)).toBe(true);
+      const rejected = rejecting.state.doc.firstChild;
+      if (!rejected) {
+        panic("expected the rejected paragraph after alignment clearing");
+      }
+      expect(expectParagraphAttrs(rejected)).toMatchObject({
+        styleId: STYLE_ID,
+        alignment: "center",
+        _originalFormatting: { styleId: STYLE_ID, alignment: "center" },
+      });
+      expect(expectParagraphAttrs(rejected).alignmentFromStyle).toBe(
+        withResolver || styleId === STYLE_ID ? "right" : undefined,
+      );
+      expect(expectParagraphAttrs(rejected)._propertyChanges).toBeUndefined();
+      const rejectedBuffer = await createDocx(fromProseDoc(rejecting.state.doc, source));
+      const rejectedXml = firstParagraphXml(await mainDocumentXml(rejectedBuffer));
+      expect(rejectedXml).not.toContain("<w:pPrChange");
+      expect(untrackedParagraphPropertiesOrEmpty(rejectedXml)).toBe(
+        expectedParagraphProperties("center", STYLE_ID),
+      );
+      const reopenedRejected = await FolioDocxReviewer.fromBuffer(rejectedBuffer);
+      expectDirectAlignmentModel(reopenedRejected, "center", STYLE_ID);
+      const reopenedRejectedParagraph = toProseDoc(reopenedRejected.toDocument()).firstChild;
+      if (!reopenedRejectedParagraph) {
+        panic("expected the reopened rejected paragraph after alignment clearing");
+      }
+      expect(expectParagraphAttrs(reopenedRejectedParagraph)).toMatchObject({
+        styleId: STYLE_ID,
+        alignment: "center",
+        alignmentFromStyle: "right",
+        _originalFormatting: { styleId: STYLE_ID, alignment: "center" },
+      });
+    },
+  );
 
   test("accept and reject immediately restore the correct effective and direct values", () => {
     const source = alignmentDocumentModel({

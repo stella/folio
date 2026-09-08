@@ -9,7 +9,7 @@ import {
   expectRunFormattingOverrideMarkAttrs,
   expectRunPropertyChangeMarkAttrs,
 } from "../prosemirror/attrs";
-import { PPR_CHANGE_SCOPED_ATTR_KEYS } from "../prosemirror/commands/propertyChangeScope";
+import { paragraphPropertiesSnapshot } from "../prosemirror/commands/propertyChangeScope";
 import { directParagraphAlignment } from "../prosemirror/paragraphAlignment";
 import { getDocumentStyleResolver } from "../prosemirror/plugins/documentStyles";
 import type { ParagraphPropertyChangeAttrs } from "../prosemirror/schema/nodes";
@@ -440,35 +440,6 @@ const undeletedContentAtomRanges = (
   return ranges;
 };
 
-/** The in-scope paragraph properties as they stand, for a `w:pPrChange` record. */
-const paragraphPropertiesSnapshot = (
-  node: PMNode,
-): NonNullable<ParagraphPropertyChangeAttrs["previousFormatting"]> => {
-  const attrs = expectParagraphAttrs(node);
-  const snapshot: Record<string, unknown> = {};
-  for (const key of PPR_CHANGE_SCOPED_ATTR_KEYS) {
-    if (key === "alignment") {
-      continue;
-    }
-    const value: unknown = attrs[key];
-    if (
-      key === "hangingIndent" &&
-      value === false &&
-      attrs._originalFormatting?.hangingIndent === undefined
-    ) {
-      continue;
-    }
-    if (value !== null && value !== undefined) {
-      snapshot[key] = value;
-    }
-  }
-  const directAlignment = directParagraphAlignment(attrs);
-  if (directAlignment !== undefined) {
-    snapshot["alignment"] = directAlignment;
-  }
-  return snapshot;
-};
-
 /** The carrier pPr before this batch changed it, for final-mark rotation. */
 const paragraphPropertiesBeforeBatch = (
   node: PMNode,
@@ -484,6 +455,20 @@ const paragraphPropertiesBeforeBatch = (
   }
   return earliestBatchChange.previousFormatting ?? {};
 };
+
+type ResolveAlignmentFromStyleOptions = {
+  attrs: ReturnType<typeof expectParagraphAttrs>;
+  styleId: string | null | undefined;
+  styleResolver: ReturnType<typeof getDocumentStyleResolver>;
+};
+
+const resolveAlignmentFromStyle = ({
+  attrs,
+  styleId,
+  styleResolver,
+}: ResolveAlignmentFromStyleOptions): ParagraphAlignment | undefined =>
+  styleResolver?.resolveParagraphStyle(styleId).paragraphFormatting?.alignment ??
+  ((styleId ?? undefined) === (attrs.styleId ?? undefined) ? attrs.alignmentFromStyle : undefined);
 
 type ApplyReplaceBlockStyleIdResult = {
   tr: Transaction;
@@ -514,11 +499,11 @@ const applyReplaceBlockStyleId = ({
   }
 
   const attrs = expectParagraphAttrs(block);
-  const resolvedAlignmentFromStyle =
-    styleResolver?.resolveParagraphStyle(item.operation.styleId).paragraphFormatting?.alignment ??
-    ((item.operation.styleId ?? undefined) === (attrs.styleId ?? undefined)
-      ? attrs.alignmentFromStyle
-      : undefined);
+  const resolvedAlignmentFromStyle = resolveAlignmentFromStyle({
+    attrs,
+    styleId: item.operation.styleId,
+    styleResolver,
+  });
   const patch = paragraphPropertiesPatch({
     node: block,
     properties: { styleId: item.operation.styleId },
@@ -1326,6 +1311,10 @@ type RotateAddedFinalBreaksOptions = {
 type RotatedAddedFinalBreaks = {
   transaction: Transaction;
   nextRevisionId: number;
+  synthesizedRevisions: {
+    ownerRevisionId: number;
+    revisionId: number;
+  }[];
 };
 
 /**
@@ -1361,24 +1350,27 @@ const withRotatedAddedFinalBreaks = ({
   initials,
 }: RotateAddedFinalBreaksOptions): RotatedAddedFinalBreaks => {
   const paragraphTypeName = tr.doc.type.schema.nodes["paragraph"]?.name ?? "paragraph";
-  const rotations = finalParagraphsOf(tr.doc, paragraphTypeName).filter(({ node }) => {
+  const rotations = finalParagraphsOf(tr.doc, paragraphTypeName).flatMap(({ node, position }) => {
     const mark: unknown = node.attrs["pPrMark"];
     if (typeof mark !== "object" || mark === null || !("kind" in mark)) {
-      return false;
+      return [];
     }
     if (mark.kind !== "ins" && mark.kind !== "moveTo") {
-      return false;
+      return [];
     }
     const info: unknown = "info" in mark ? mark.info : undefined;
     const revisionId =
       typeof info === "object" && info !== null && "id" in info ? info.id : undefined;
-    return typeof revisionId === "number" && batchRevisionIds.has(revisionId);
+    return typeof revisionId === "number" && batchRevisionIds.has(revisionId)
+      ? [{ node, ownerRevisionId: revisionId, position }]
+      : [];
   });
 
   let next = tr;
   let nextRevisionId = revisionSeed;
+  const synthesizedRevisions: RotatedAddedFinalBreaks["synthesizedRevisions"] = [];
   // Attribute writes do not move anything, so the positions stay valid.
-  for (const { position: finalPosition, node: final } of rotations) {
+  for (const { position: finalPosition, node: final, ownerRevisionId } of rotations) {
     const carrier = addedBreakCarrierBefore(next.doc.resolve(finalPosition), final.type.name);
     if (!carrier) {
       // Nothing to hand the break to. Writing it would be worse than losing
@@ -1395,6 +1387,7 @@ const withRotatedAddedFinalBreaks = ({
       continue;
     }
     const existing = expectParagraphAttrs(final)._propertyChanges;
+    const revisionId = nextRevisionId++;
     next = next.setNodeMarkup(finalPosition, undefined, {
       ...final.attrs,
       pPrMark: null,
@@ -1402,13 +1395,14 @@ const withRotatedAddedFinalBreaks = ({
         ...(Array.isArray(existing) ? existing : []),
         {
           type: "paragraphPropertyChange",
-          info: { id: nextRevisionId++, author, date, ...(initials ? { initials } : {}) },
+          info: { id: revisionId, author, date, ...(initials ? { initials } : {}) },
           previousFormatting,
         } satisfies ParagraphPropertyChangeAttrs,
       ],
     });
+    synthesizedRevisions.push({ ownerRevisionId, revisionId });
   }
-  return { transaction: next, nextRevisionId };
+  return { transaction: next, nextRevisionId, synthesizedRevisions };
 };
 
 const buildInsertedParagraphs = ({
@@ -1585,18 +1579,11 @@ const applyFolioAIEditOperationsInternal = ({
       return undefined;
     }
     const anchorAttrs = expectParagraphAttrs(item.blockNode);
+    const inheritedStyleId =
+      item.operation.inheritFormatting === false ? null : anchorAttrs.styleId;
     const styleId =
-      item.operation.styleId !== undefined
-        ? item.operation.styleId
-        : item.operation.inheritFormatting === false
-          ? null
-          : anchorAttrs.styleId;
-    return (
-      styleResolver?.resolveParagraphStyle(styleId).paragraphFormatting?.alignment ??
-      ((styleId ?? undefined) === (anchorAttrs.styleId ?? undefined)
-        ? anchorAttrs.alignmentFromStyle
-        : undefined)
-    );
+      item.operation.styleId !== undefined ? item.operation.styleId : inheritedStyleId;
+    return resolveAlignmentFromStyle({ attrs: anchorAttrs, styleId, styleResolver });
   };
   const claimedTableRows = new Set<string>();
   const claimedTableColumns = new Set<string>();
@@ -2566,11 +2553,15 @@ const applyFolioAIEditOperationsInternal = ({
         // properties applied, the merge silently did not.
         const blockPosition = tr.mapping.map(item.blockFrom);
         const liveBlock = tr.doc.nodeAt(blockPosition) ?? item.blockNode;
+        const liveAttrs = expectParagraphAttrs(liveBlock);
         const resolvedAlignmentFromStyle =
           item.operation.properties.styleId === undefined
             ? undefined
-            : styleResolver?.resolveParagraphStyle(item.operation.properties.styleId)
-                .paragraphFormatting?.alignment;
+            : resolveAlignmentFromStyle({
+                attrs: liveAttrs,
+                styleId: item.operation.properties.styleId,
+                styleResolver,
+              });
         const patch = paragraphPropertiesPatch({
           node: liveBlock,
           properties: item.operation.properties,
@@ -2717,6 +2708,26 @@ const applyFolioAIEditOperationsInternal = ({
     });
     tr = rotated.transaction;
     revisionSeed = rotated.nextRevisionId;
+    const receiptIndexByRevisionId = new Map<number, number>();
+    for (const [receiptIndex, receipt] of applied.entries()) {
+      for (const revisionId of receipt.revisionIds ?? []) {
+        receiptIndexByRevisionId.set(revisionId, receiptIndex);
+      }
+    }
+    for (const { ownerRevisionId, revisionId } of rotated.synthesizedRevisions) {
+      const receiptIndex = receiptIndexByRevisionId.get(ownerRevisionId);
+      const receipt = receiptIndex === undefined ? undefined : applied.at(receiptIndex);
+      if (receiptIndex === undefined || !receipt?.revisionIds) {
+        panic("A synthesized final-mark revision lost its operation receipt", {
+          ownerRevisionId,
+          revisionId,
+        });
+      }
+      applied[receiptIndex] = {
+        ...receipt,
+        revisionIds: [...receipt.revisionIds, revisionId],
+      };
+    }
     if (revisionStamp) {
       // Paragraphs this batch creates get their `w14:paraId` from the
       // allocator plugin, which is random by default. A stamped batch has
