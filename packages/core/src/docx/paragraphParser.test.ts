@@ -768,6 +768,94 @@ describe("parseParagraph complex field formatting (#909)", () => {
   });
 });
 
+describe("parseParagraph legacy form checkboxes", () => {
+  test.each([
+    {
+      name: "unchecked default",
+      properties: '<w:sizeAuto/><w:default w:val="0"/>',
+      expected: "☐",
+      expectedFontSize: 20,
+    },
+    {
+      name: "checked default",
+      properties: '<w:sizeAuto/><w:default w:val="1"/>',
+      expected: "☒",
+      expectedFontSize: 20,
+    },
+    {
+      name: "checked current state",
+      properties: '<w:sizeAuto/><w:default w:val="0"/><w:checked/>',
+      expected: "☒",
+      expectedFontSize: 20,
+    },
+    {
+      name: "unchecked current state",
+      properties: '<w:sizeAuto/><w:default w:val="1"/><w:checked w:val="0"/>',
+      expected: "☐",
+      expectedFontSize: 20,
+    },
+    {
+      name: "explicit checkbox size",
+      properties: '<w:size w:val="24"/><w:default w:val="0"/>',
+      expected: "☐",
+      expectedFontSize: 24,
+    },
+  ])(
+    "synthesizes the $name when the field has no cached result",
+    ({ properties, expected, expectedFontSize }) => {
+      const paragraph = parseParagraphXml(`
+        <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+          <w:r>
+            <w:rPr><w:sz w:val="20"/></w:rPr>
+            <w:fldChar w:fldCharType="begin">
+              <w:ffData><w:checkBox>${properties}</w:checkBox></w:ffData>
+            </w:fldChar>
+          </w:r>
+          <w:r><w:instrText xml:space="preserve"> FORMCHECKBOX </w:instrText></w:r>
+          <w:r><w:fldChar w:fldCharType="separate"/></w:r>
+          <w:r><w:fldChar w:fldCharType="end"/></w:r>
+        </w:p>
+      `);
+
+      const field = paragraph.content.find((content) => content.type === "complexField");
+      expect(field?.type).toBe("complexField");
+      if (field?.type !== "complexField") {
+        return;
+      }
+      expect(field.fieldResult).toEqual([
+        {
+          type: "run",
+          formatting: { fontSize: expectedFontSize },
+          content: [{ type: "text", text: expected }],
+        },
+      ]);
+      expect(serializeParagraph(paragraph)).toContain(`<w:t>${expected}</w:t>`);
+    },
+  );
+
+  test("ignores checkbox metadata on a different field instruction", () => {
+    const paragraph = parseParagraphXml(`
+      <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:r>
+          <w:fldChar w:fldCharType="begin">
+            <w:ffData><w:checkBox><w:checked/></w:checkBox></w:ffData>
+          </w:fldChar>
+        </w:r>
+        <w:r><w:instrText xml:space="preserve"> FORMTEXT </w:instrText></w:r>
+        <w:r><w:fldChar w:fldCharType="separate"/></w:r>
+        <w:r><w:fldChar w:fldCharType="end"/></w:r>
+      </w:p>
+    `);
+
+    const field = paragraph.content.find((content) => content.type === "complexField");
+    expect(field?.type).toBe("complexField");
+    if (field?.type !== "complexField") {
+      return;
+    }
+    expect(field.fieldResult).toEqual([]);
+  });
+});
+
 describe("parseParagraph smartTag wrapper", () => {
   test("recurses into w:smartTag instead of dropping wrapped runs", () => {
     const paragraph = parseParagraphXml(`
