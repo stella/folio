@@ -945,17 +945,21 @@ const nextRevisionSeed = (revisionIdCount: number): number => {
  * `insertAfterBlock` / `insertBeforeBlock` (`text` split on line breaks,
  * see `splitInsertParagraphTexts`) allocates one id per paragraph in
  * tracked-changes mode plus one for each paragraph MARK it brings, so it
- * needs more than four once split into more than two paragraphs — reserving
- * less than that would let a later `nextRevisionSeed` call reuse an id this
- * operation already stamped on the document.
+ * needs more than four once split into more than two paragraphs. Rotating an
+ * inserted final mark can add one paragraph-property revision as well;
+ * reserving less than that would let a later `nextRevisionSeed` call reuse an
+ * id this operation already stamped on the document.
  */
 const REVISION_IDS_PER_OPERATION = 4;
 /** Ids one inserted paragraph allocates: its runs, and its paragraph mark. */
 const REVISION_IDS_PER_INSERTED_PARAGRAPH = 2;
+/** A final-mark rotation may add one paragraph-property revision per insertion. */
+const REVISION_IDS_PER_INSERTION_ROTATION = 1;
 const estimateRevisionIdReservation = (item: ResolvedOperation): number => {
   if (item.operation.type === "insertAfterBlock" || item.operation.type === "insertBeforeBlock") {
     return Math.max(
-      (item.insertTexts?.length ?? 1) * REVISION_IDS_PER_INSERTED_PARAGRAPH,
+      (item.insertTexts?.length ?? 1) * REVISION_IDS_PER_INSERTED_PARAGRAPH +
+        REVISION_IDS_PER_INSERTION_ROTATION,
       REVISION_IDS_PER_OPERATION,
     );
   }
