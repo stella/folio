@@ -5,14 +5,14 @@
   },
   "core": {
     "types": 123527,
-    "instantiations": 97474
+    "instantiations": 102576
   },
   "react": {
     "types": 139563,
     "instantiations": 289321
   },
   "agents": {
-    "types": 71655,
+    "types": 75294,
     "instantiations": 61574
   },
   "vue": {
@@ -21,7 +21,7 @@
   },
   "nuxt": {
     "types": 104025,
-    "instantiations": 107671
+    "instantiations": 113090
   },
   "playground": {
     "types": 139479,
