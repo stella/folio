@@ -1,5 +1,33 @@
 # @stll/folio-react
 
+## 0.18.0
+
+### Minor Changes
+
+- [#771](https://github.com/stella/folio/pull/771) [`9d63dfe`](https://github.com/stella/folio/commit/9d63dfec2846df376084e6dd756b0e0d7982d909) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Template directives follow the docxtpl dialect of Jinja.
+
+  `@stll/folio-core` now scans markers with `@stll/template-conditions` 0.4:
+  `{{ path | filter(...) }}`, `{% if %}` / `{% elif %}` / `{% else %}` /
+  `{% endif %}`, `{% for alias in path %}` / `{% endfor %}`,
+  `{{ clause("Name") }}`, `{{ num("key") }}`, `{{ ref("key") }}`, and the
+  `{{ loop.* }}` counters.
+
+  `DirectiveKind` renames accordingly (`each` → `for`, `endeach` → `endfor`,
+  `elseif` → `elif`, `index`/`count` → the single `loop` kind). A `for`
+  `DirectiveRange` carries the iterated array path in `expr` and the loop alias in
+  the new optional `alias` field.
+
+  The React and Vue overlays rename the kind-derived class suffixes to match:
+  `--each` → `--for`, `--endeach` → `--endfor`, `--elseif` → `--elif` on
+  `.folio-template-directive`, `--each` → `--for` on `.folio-template-band-rail`,
+  plus a new `.folio-template-directive--loop`. Closer hover hints read
+  `endif · <opener expression>` / `endfor · <opener expression>`.
+
+### Patch Changes
+
+- Updated dependencies [[`a9edc21`](https://github.com/stella/folio/commit/a9edc218902b265527c54c735f2ed4bca16566ce), [`9d63dfe`](https://github.com/stella/folio/commit/9d63dfec2846df376084e6dd756b0e0d7982d909)]:
+  - @stll/folio-core@0.35.0
+
 ## 0.17.1
 
 ### Patch Changes
