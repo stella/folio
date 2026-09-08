@@ -5,15 +5,17 @@ import type { Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 import { ReplaceStep } from "prosemirror-transform";
 
+import { applyFolioDocumentOperations } from "../document-operations";
 import {
   acceptAIEditRevision,
   acceptAllChanges,
   rejectAIEditRevision,
   rejectAllChanges,
 } from "../prosemirror/commands/comments";
-import { applyFolioAIEditOperations } from "./apply";
+import { applyFolioAIEditOperations, type FolioWordDiffOptions } from "./apply";
 import { getTrackedChangesFromDoc } from "./read";
 import { createFolioAIEditSnapshot, createFolioAITextRangeHandle } from "./snapshot";
+import { createScopedWordDiffOptions } from "./word-diff";
 
 const schema = new Schema({
   nodes: {
@@ -1678,6 +1680,142 @@ describe("Folio AI edit operations", () => {
     expect(marksByText[" must"]).toContain("insertion");
     expect(marksByText[" thirty"]).toContain("deletion");
     expect(marksByText[" sixty"]).toContain("insertion");
+  });
+
+  test("replacement operations share one bounded inline-diff allowance per batch", () => {
+    const alternating = (first: string, second: string): string =>
+      Array.from({ length: 2000 }, (_unused, index) => (index % 2 === 0 ? first : second)).join(
+        " ",
+      );
+    const before = alternating("a", "b");
+    const after = alternating("b", "a");
+
+    const applyBatch = () => {
+      const view = makeView(makeState([before, before, before]));
+      const snapshot = createFolioAIEditSnapshot(view.state.doc);
+      const operations = snapshot.blocks.map(({ id }, index) => ({
+        id: `replace-${String(index)}`,
+        type: "replaceBlock" as const,
+        blockId: id,
+        text: after,
+      }));
+      const result = applyFolioAIEditOperations({
+        view,
+        snapshot,
+        operations,
+        revisionStamp: { date: "2026-09-08T12:00:00.000Z", idSeed: 100 },
+      });
+      expect(result.skipped).toEqual([]);
+      return view.state.doc;
+    };
+
+    const first = applyBatch();
+    const hasUnmarkedText = (blockIndex: number): boolean => {
+      let found = false;
+      first.child(blockIndex).descendants((node) => {
+        if (node.isText && node.marks.length === 0) {
+          found = true;
+        }
+      });
+      return found;
+    };
+
+    // Operations execute from the end of the document. The first replacement
+    // spends the 4M-cell allowance; later replacements deterministically use
+    // one coarse deletion/insertion pair.
+    expect(hasUnmarkedText(2)).toBe(true);
+    expect(hasUnmarkedText(1)).toBe(false);
+    expect(hasUnmarkedText(0)).toBe(false);
+    expect(applyBatch().toJSON()).toEqual(first.toJSON());
+  });
+
+  test("atomic preflight cannot spend the committed batch's inline-diff allowance", () => {
+    const alternating = (first: string, second: string): string =>
+      Array.from({ length: 2000 }, (_unused, index) => (index % 2 === 0 ? first : second)).join(
+        " ",
+      );
+    const before = alternating("a", "b");
+    const after = alternating("b", "a");
+    const applyBatch = ({
+      batchMode,
+      wordDiff,
+    }: {
+      batchMode: "atomic" | "best-effort";
+      wordDiff: FolioWordDiffOptions;
+    }) => {
+      const view = makeView(makeState([before, before, before]));
+      const snapshot = createFolioAIEditSnapshot(view.state.doc);
+      const result = applyFolioDocumentOperations({
+        view,
+        snapshot,
+        batch: {
+          version: 1,
+          mode: "tracked-changes",
+          ...(batchMode === "atomic" && { atomic: true }),
+          operations: snapshot.blocks.map(({ id }, index) => ({
+            id: `replace-${String(index)}`,
+            type: "replaceBlock" as const,
+            blockId: id,
+            text: after,
+          })),
+        },
+        wordDiff,
+        revisionStamp: { date: "2026-09-08T12:00:00.000Z", idSeed: 100 },
+      });
+      expect(result.status).toBe("committed");
+      expect(result.skipped).toEqual([]);
+      return view.state.doc;
+    };
+
+    const bestEffort = applyBatch({
+      batchMode: "best-effort",
+      wordDiff: createScopedWordDiffOptions({}),
+    });
+    const atomic = applyBatch({
+      batchMode: "atomic",
+      wordDiff: createScopedWordDiffOptions({}),
+    });
+    expect(atomic.toJSON()).toEqual(bestEffort.toJSON());
+
+    let granularityReads = 0;
+    applyBatch({
+      batchMode: "atomic",
+      wordDiff: {
+        get granularity() {
+          granularityReads++;
+          return "word" as const;
+        },
+      },
+    });
+    expect(granularityReads).toBe(1);
+  });
+
+  test("coarse atomic preflight keeps emphasis-stripped replacements as no-ops", () => {
+    const view = makeView(makeState(["Date"]));
+    const snapshot = createFolioAIEditSnapshot(view.state.doc);
+    const before = view.state.doc.toJSON();
+
+    const result = applyFolioDocumentOperations({
+      view,
+      snapshot,
+      batch: {
+        version: 1,
+        atomic: true,
+        mode: "tracked-changes",
+        operations: [
+          {
+            id: "markers-only",
+            type: "replaceBlock",
+            blockId: snapshot.blocks[0]?.id ?? "missing",
+            text: "**Date**",
+          },
+        ],
+      },
+    });
+
+    expect(result.status).toBe("rejected");
+    expect(result.skipped).toEqual([{ id: "markers-only", reason: "noopOperation" }]);
+    expect(view.state.doc.toJSON()).toEqual(before);
   });
 
   test("snapshot and apply ignore existing tracked-change marks", () => {

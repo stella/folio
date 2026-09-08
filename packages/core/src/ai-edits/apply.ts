@@ -82,7 +82,11 @@ import type {
   FolioAIEditSkippedOperation,
   FolioAISignatureParty,
 } from "./types";
-import { diffWordSegments, type WordDiffGranularity } from "./word-diff";
+import {
+  createWordDiffSession,
+  type WordDiffGranularity,
+  wordDiffSessionFromOptions,
+} from "./word-diff";
 
 /**
  * The only editor surface the apply logic touches: a current `state`
@@ -144,6 +148,23 @@ type ApplyFolioAIEditOperationsOptions = {
 
 type ApplyFolioAIEditOperationsInternalOptions = ApplyFolioAIEditOperationsOptions & {
   revisionIdSeed?: number;
+  wordDiffMode?: "bounded" | "coarse";
+};
+
+const coarseWordDiff: ReturnType<typeof createWordDiffSession>["diff"] = (before, after) => {
+  if (before === after) {
+    return before.length === 0 ? [] : [{ type: "equal", text: before }];
+  }
+  if (before.length === 0) {
+    return [{ type: "ins", text: after }];
+  }
+  if (after.length === 0) {
+    return [{ type: "del", text: before }];
+  }
+  return [
+    { type: "del", text: before },
+    { type: "ins", text: after },
+  ];
 };
 
 /**
@@ -1625,6 +1646,7 @@ const applyFolioAIEditOperationsInternal = ({
   revisionStamp,
   revisionIdSeed,
   wordDiff,
+  wordDiffMode = "bounded",
   tableTemplates,
 }: ApplyFolioAIEditOperationsInternalOptions): FolioAIEditApplyOutcome => {
   const applied: FolioAIEditAppliedOperation[] = [];
@@ -1648,6 +1670,8 @@ const applyFolioAIEditOperationsInternal = ({
   };
   const claimedTableRows = new Set<string>();
   const claimedTableColumns = new Set<string>();
+  const diffText: ReturnType<typeof createWordDiffSession>["diff"] =
+    wordDiffMode === "coarse" ? coarseWordDiff : wordDiffSessionFromOptions(wordDiff).diff;
 
   // `"suggested"` is `"tracked-changes"` plus a provenance stamp, so every
   // tracked-change code path below keys off this rather than an exact
@@ -2000,7 +2024,7 @@ const applyFolioAIEditOperationsInternal = ({
           commentMark,
           suggestionId,
           initials,
-          granularity: wordDiff?.granularity ?? "word",
+          diffText,
         });
         if (producesTrackedChanges) {
           appliedRevisionIds = [
@@ -2122,7 +2146,7 @@ const applyFolioAIEditOperationsInternal = ({
             commentMark,
             suggestionId,
             initials,
-            granularity: wordDiff?.granularity ?? "word",
+            diffText,
           });
         }
         const styleResult = applyReplaceBlockStyleId({
@@ -2829,6 +2853,7 @@ export const previewFolioAIEditOperations = (
       createCommentId: () => previewCommentId--,
     }),
     revisionIdSeed: -1_000_000_000,
+    wordDiffMode: "coarse",
   });
   return {
     applied: result.applied.map(({ id }) => ({ id })),
@@ -2862,8 +2887,8 @@ type TextReplacementOptions = {
   suggestionId?: string | null;
   /** Optional author initials stamped on the produced marks. */
   initials?: string | undefined;
-  /** Token size the redline is cut at. */
-  granularity: WordDiffGranularity;
+  /** Shares the batch's bounded inline-diff work allowance. */
+  diffText: ReturnType<typeof createWordDiffSession>["diff"];
 };
 
 const applyTextReplacement = ({
@@ -2877,7 +2902,7 @@ const applyTextReplacement = ({
   commentMark,
   suggestionId = null,
   initials,
-  granularity,
+  diffText,
 }: TextReplacementOptions): Transaction => {
   let nextTr = tr;
   const replacement = stripInlineEmphasisMarkers(
@@ -2972,7 +2997,7 @@ const applyTextReplacement = ({
   }
 
   if (sourceText !== null && cleanBlock !== null) {
-    const segments = diffWordSegments(sourceText, replacement, { granularity });
+    const segments = diffText(sourceText, replacement);
     const offsets = cleanBlock.offsets;
     const offsetAt = (cleanOffset: number): number | null => offsets[cleanOffset] ?? null;
 

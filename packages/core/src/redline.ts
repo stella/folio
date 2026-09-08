@@ -26,6 +26,7 @@ import type {
   FolioAIEditSkippedOperation,
   FolioAIEditSnapshot,
 } from "./ai-edits/types";
+import { createScopedWordDiffOptions } from "./ai-edits/word-diff";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "./document-operations";
 import { pairFolioDocumentStories } from "./document-stories";
 import {
@@ -269,6 +270,7 @@ export const generateRedlineDocx = async (
   const applied: FolioAIEditAppliedOperation[] = [];
   const skipped: FolioAIEditSkippedOperation[] = [];
   const unprocessedStories: GenerateRedlineUnprocessedStory[] = [];
+  const wordDiff = createScopedWordDiffOptions({});
   let operationSequence = 0;
   const nextOperationId = () => {
     if (operationSequence >= MAX_GENERATED_REDLINE_OPERATIONS) {
@@ -318,6 +320,7 @@ export const generateRedlineDocx = async (
         mode: "tracked-changes",
         operations,
       },
+      wordDiff,
     });
     applied.push(...result.applied);
     skipped.push(...result.skipped);

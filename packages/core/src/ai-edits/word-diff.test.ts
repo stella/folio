@@ -13,7 +13,7 @@ import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
 import { propertyConfig } from "../../../../test/property-testing";
-import { diffWordSegments, type WordDiffSegment } from "./word-diff";
+import { createWordDiffSession, diffWordSegments, type WordDiffSegment } from "./word-diff";
 
 const rebuildBefore = (segments: readonly WordDiffSegment[]): string =>
   segments
@@ -74,6 +74,46 @@ describe("diffWordSegments", () => {
         },
       ),
       propertyConfig({ numRuns: 200 }),
+    );
+  });
+
+  test("a token-subsequence edit never invents the opposite change direction", () => {
+    const tokenSequence = fc.array(fc.tuple(fc.constantFrom("a", "b", "c"), fc.boolean()), {
+      maxLength: 9,
+    });
+    fc.assert(
+      fc.property(tokenSequence, (entries) => {
+        const whole = entries.map(([token]) => token).join("");
+        const subsequence = entries
+          .filter(([, retained]) => retained)
+          .map(([token]) => token)
+          .join("");
+
+        const insertion = diffWordSegments(subsequence, whole, { granularity: "character" });
+        expect(insertion.some(({ type }) => type === "del")).toBe(false);
+        expect(rebuildBefore(insertion)).toBe(subsequence);
+        expect(rebuildAfter(insertion)).toBe(whole);
+
+        const deletion = diffWordSegments(whole, subsequence, { granularity: "character" });
+        expect(deletion.some(({ type }) => type === "ins")).toBe(false);
+        expect(rebuildBefore(deletion)).toBe(whole);
+        expect(rebuildAfter(deletion)).toBe(subsequence);
+
+        const wholeWords = ["anchor", ...entries.map(([token]) => token)].join(" ");
+        const subsequenceWords = [
+          "anchor",
+          ...entries.filter(([, retained]) => retained).map(([token]) => token),
+        ].join(" ");
+        const wordInsertion = diffWordSegments(subsequenceWords, wholeWords);
+        expect(wordInsertion.some(({ type }) => type === "del")).toBe(false);
+        expect(rebuildBefore(wordInsertion)).toBe(subsequenceWords);
+        expect(rebuildAfter(wordInsertion)).toBe(wholeWords);
+        const wordDeletion = diffWordSegments(wholeWords, subsequenceWords);
+        expect(wordDeletion.some(({ type }) => type === "ins")).toBe(false);
+        expect(rebuildBefore(wordDeletion)).toBe(wholeWords);
+        expect(rebuildAfter(wordDeletion)).toBe(subsequenceWords);
+      }),
+      propertyConfig({ numRuns: 500 }),
     );
   });
 
@@ -214,6 +254,20 @@ describe("diffWordSegments", () => {
     }
   });
 
+  test("preserves historical ties when a weak selected anchor would be discarded", () => {
+    expect(diffWordSegments("ab", "aaba", { granularity: "character" })).toEqual([
+      { type: "ins", text: "a" },
+      { type: "equal", text: "ab" },
+      { type: "ins", text: "a" },
+    ]);
+    expect(diffWordSegments("the the clause", "the the the clause the")).toEqual([
+      { type: "equal", text: "the" },
+      { type: "ins", text: " the" },
+      { type: "equal", text: " the clause" },
+      { type: "ins", text: " the" },
+    ]);
+  });
+
   test("character granularity marks the changed letters inside one word", () => {
     expect(diffWordSegments("clause 14.2", "clause 14.3", { granularity: "character" })).toEqual([
       { type: "equal", text: "clause 14." },
@@ -328,5 +382,101 @@ describe("diffWordSegments", () => {
         { type: "ins", text: characterAfter },
       ],
     );
+  });
+
+  test("does not normalize every token after an oversized residual is refused", () => {
+    let caseReads = 0;
+    const normalization = {
+      get case() {
+        caseReads++;
+        return true;
+      },
+    };
+    const before = "ab".repeat(20_000);
+    const after = "ba".repeat(20_000);
+
+    expect(diffWordSegments(before, after, { granularity: "character", normalization })).toEqual([
+      { type: "del", text: before },
+      { type: "ins", text: after },
+    ]);
+    expect(caseReads).toBeLessThanOrEqual(10);
+  });
+
+  test("applies the token-storage gate before a cell-cheap asymmetric residual", () => {
+    let caseReads = 0;
+    const normalization = {
+      get case() {
+        caseReads++;
+        return true;
+      },
+    };
+    const before = "z";
+    const after = "ab".repeat(10_000);
+
+    expect(diffWordSegments(before, after, { granularity: "character", normalization })).toEqual([
+      { type: "del", text: before },
+      { type: "ins", text: after },
+    ]);
+    // Subsequence classification may inspect the long side once. A whole
+    // comparison-key array would inspect every token a second time even
+    // though the combined residual is already above its storage ceiling.
+    expect(caseReads).toBeLessThanOrEqual(after.length + 10);
+  });
+
+  test("applies the code-unit gate before retaining normalized comparison keys", () => {
+    let caseReads = 0;
+    const normalization = {
+      get case() {
+        caseReads++;
+        return true;
+      },
+    };
+    const before = `${"a".repeat(600_000)}x`;
+    const after = `${"b".repeat(600_000)}y`;
+
+    expect(diffWordSegments(before, after, { normalization })).toEqual([
+      { type: "del", text: before },
+      { type: "ins", text: after },
+    ]);
+    // Prefix, suffix, and monotone classification compare the pair once each.
+    // Building either residual or whole-input key arrays would read again.
+    expect(caseReads).toBeLessThanOrEqual(6);
+  });
+
+  test("does not duplicate a capped residual's keys for the whole affixed input", () => {
+    let caseReads = 0;
+    const normalization = {
+      get case() {
+        caseReads++;
+        return true;
+      },
+    };
+    const before = "z";
+    const after = `z${"a".repeat(16_384)}`;
+
+    expect(diffWordSegments(before, after, { granularity: "character", normalization })).toEqual([
+      { type: "equal", text: before },
+      { type: "ins", text: after.slice(1) },
+    ]);
+    expect(caseReads).toBeLessThanOrEqual(16_400);
+  });
+
+  test("shares one dense-cell allowance across a comparison session", () => {
+    const alternating = (first: string, second: string): string =>
+      Array.from({ length: 2000 }, (_unused, index) => (index % 2 === 0 ? first : second)).join(
+        " ",
+      );
+    const before = alternating("a", "b");
+    const after = alternating("b", "a");
+    const session = createWordDiffSession();
+
+    const first = session.diff(before, after);
+    expect(first.some(({ type }) => type === "equal")).toBe(true);
+    expect(session.diff(before, after)).toEqual([
+      { type: "del", text: before },
+      { type: "ins", text: after },
+    ]);
+    // A standalone call owns a fresh allowance.
+    expect(diffWordSegments(before, after)).toEqual(first);
   });
 });

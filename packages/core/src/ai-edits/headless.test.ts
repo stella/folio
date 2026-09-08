@@ -1996,6 +1996,38 @@ describe("headless docx review round-trip", () => {
     );
   });
 
+  test("both headless apply entry points honor character-granularity redlines", async () => {
+    const baseline = await makeParaIdBaseline(readFixture());
+    for (const entryPoint of ["operations", "document-operations"] as const) {
+      const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
+      const target = findBlock(reviewer.snapshot().blocks, "Heading");
+      const operation = {
+        id: `character-${entryPoint}`,
+        type: "replaceInBlock" as const,
+        blockId: target.id,
+        find: "Heading",
+        replace: "Hearing",
+      };
+      const options = {
+        wordDiff: { granularity: "character" as const },
+        revisionStamp: { date: "2026-09-08T12:00:00.000Z", idSeed: 100 },
+      };
+
+      if (entryPoint === "operations") {
+        reviewer.applyOperations([operation], options);
+      } else {
+        reviewer.applyDocumentOperations(
+          { version: 1, mode: "tracked-changes", operations: [operation] },
+          options,
+        );
+      }
+
+      expect(reviewer.getContentAsText({ annotated: true })).toContain(
+        'Hea<del author="AI">d</del><ins author="AI">r</ins>ing paragraph.',
+      );
+    }
+  });
+
   test("applyDocumentOperations executes a versioned tracked-change batch", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "AI Reviewer" });

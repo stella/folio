@@ -342,6 +342,37 @@ describe("compareDocxVersions: document stories", () => {
       blockId: "51000001",
     });
   });
+
+  test("shares one inline-alignment allowance across every story", async () => {
+    const alternating = (first: string, second: string): string =>
+      Array.from({ length: 2000 }, (_unused, index) => (index % 2 === 0 ? first : second)).join(
+        " ",
+      );
+    const before = alternating("a", "b");
+    const after = alternating("b", "a");
+    const base = await buildStoryDocument({
+      bodyText: before,
+      headerText: before,
+      footnoteText: before,
+    });
+    const revised = await buildStoryDocument({
+      bodyText: after,
+      headerText: after,
+      footnoteText: after,
+    });
+
+    const diff = await compareDocxVersions(base, revised);
+    const modified = diff.stories.flatMap(({ changes }) =>
+      changes.filter(({ type }) => type === "modified"),
+    );
+    expect(modified).toHaveLength(3);
+    expect(
+      modified.filter(({ segments }) => segments.some(({ type }) => type === "equal")),
+    ).toHaveLength(1);
+    expect(
+      modified.filter(({ segments }) => segments.every(({ type }) => type !== "equal")),
+    ).toHaveLength(2);
+  });
 });
 
 describe("compareDocxVersions: deterministic fallback ids (no w14:paraId)", () => {

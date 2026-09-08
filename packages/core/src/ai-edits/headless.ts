@@ -839,6 +839,7 @@ export class FolioDocxReviewer {
       },
       ...(options.snapshot !== undefined && { snapshot: options.snapshot }),
       ...(options.revisionStamp !== undefined && { revisionStamp: options.revisionStamp }),
+      ...(options.wordDiff !== undefined && { wordDiff: options.wordDiff }),
       createUndoEntry: false,
     });
     return { applied, skipped };
@@ -859,6 +860,7 @@ export class FolioDocxReviewer {
       batch,
       ...(options.snapshot !== undefined && { snapshot: options.snapshot }),
       ...(options.revisionStamp !== undefined && { revisionStamp: options.revisionStamp }),
+      ...(options.wordDiff !== undefined && { wordDiff: options.wordDiff }),
       createUndoEntry: true,
     });
   }
