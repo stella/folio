@@ -1022,6 +1022,7 @@ function serializeParagraphAttrs(attrs: Record<string, unknown> | undefined): st
   const keys = [
     "alignment",
     "bidi",
+    "suppressEmptyParagraphHeight",
     "indent",
     "spacing",
     "styleId",
