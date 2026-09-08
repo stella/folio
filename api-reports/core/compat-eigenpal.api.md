@@ -554,6 +554,7 @@ export type DirectiveRange = {
     kind: DirectiveKind;
     expr: string;
     clauseVersion?: string;
+    alias?: string;
     block: boolean;
 };
 
