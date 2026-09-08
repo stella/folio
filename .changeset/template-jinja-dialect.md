@@ -20,5 +20,5 @@ the new optional `alias` field.
 The React and Vue overlays rename the kind-derived class suffixes to match:
 `--each` → `--for`, `--endeach` → `--endfor`, `--elseif` → `--elif` on
 `.folio-template-directive`, `--each` → `--for` on `.folio-template-band-rail`,
-plus a new `.folio-template-directive--loop`. Closer hover hints read `endif` /
-`endfor`.
+plus a new `.folio-template-directive--loop`. Closer hover hints read
+`endif · <opener expression>` / `endfor · <opener expression>`.
