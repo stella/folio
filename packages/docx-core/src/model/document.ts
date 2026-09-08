@@ -214,6 +214,11 @@ export type DocumentSettings = {
    */
   evenAndOddHeaders?: boolean;
   /**
+   * `w:adjustLineHeightInTable` (§17.15.3.1): apply the section line-grid
+   * pitch to paragraphs inside table cells.
+   */
+  adjustLineHeightInTable?: true;
+  /**
    * `w:updateFields` (§17.15.1.93) — ask the consuming application to
    * recompute every field when the document opens. Set by generators that
    * emit a TOC or cross-references without computed results.

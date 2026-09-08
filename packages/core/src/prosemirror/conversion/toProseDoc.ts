@@ -344,11 +344,7 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
 
   const finalSectionStart =
     document.package.document.sections?.at(-1)?.properties.sectionStart ?? null;
-  const settings = document.package.settings;
-  const adjustLineHeightInTable =
-    settings !== undefined &&
-    "adjustLineHeightInTable" in settings &&
-    settings.adjustLineHeightInTable === true;
+  const adjustLineHeightInTable = document.package.settings?.adjustLineHeightInTable === true;
   const pmDoc = stampNumberedRefFieldBaselines(
     schema.node(
       "doc",
