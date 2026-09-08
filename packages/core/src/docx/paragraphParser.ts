@@ -1433,7 +1433,7 @@ function getLegacyFormCheckboxDisplay(
   const text = isChecked
     ? LEGACY_FORM_CHECKBOX_GLYPHS.checked
     : LEGACY_FORM_CHECKBOX_GLYPHS.unchecked;
-  if (explicitSize === null) {
+  if (explicitSize === null || explicitSize === undefined) {
     return { text };
   }
 
