@@ -1682,52 +1682,77 @@ describe("Folio AI edit operations", () => {
     expect(marksByText[" sixty"]).toContain("insertion");
   });
 
-  test("replacement operations share one bounded inline-diff allowance per batch", () => {
-    const alternating = (first: string, second: string): string =>
-      Array.from({ length: 2000 }, (_unused, index) => (index % 2 === 0 ? first : second)).join(
-        " ",
+  test.each(["replaceBlock", "replaceInBlock", "mixed"] as const)(
+    "%s replacements share one bounded inline-diff allowance and remain reversible",
+    (operationKind) => {
+      const alternating = (first: string, second: string): string =>
+        Array.from({ length: 2000 }, (_unused, index) => (index % 2 === 0 ? first : second)).join(
+          " ",
+        );
+      const before = alternating("a", "b");
+      const after = alternating("b", "a");
+
+      const applyBatch = () => {
+        const view = makeView(makeState([before, before, before]));
+        const snapshot = createFolioAIEditSnapshot(view.state.doc);
+        const operations = snapshot.blocks.map(({ id }, index) => {
+          const replaceWholeBlock =
+            operationKind === "replaceBlock" || (operationKind === "mixed" && index % 2 === 0);
+          return replaceWholeBlock
+            ? {
+                id: `replace-${String(index)}`,
+                type: "replaceBlock" as const,
+                blockId: id,
+                text: after,
+              }
+            : {
+                id: `replace-${String(index)}`,
+                type: "replaceInBlock" as const,
+                blockId: id,
+                find: before,
+                replace: after,
+              };
+        });
+        const result = applyFolioAIEditOperations({
+          view,
+          snapshot,
+          operations,
+          revisionStamp: { date: "2026-09-08T12:00:00.000Z", idSeed: 100 },
+        });
+        expect(result.skipped).toEqual([]);
+        return view;
+      };
+
+      const first = applyBatch();
+      const hasUnmarkedText = (blockIndex: number): boolean => {
+        let found = false;
+        first.state.doc.child(blockIndex).descendants((node) => {
+          if (node.isText && node.marks.length === 0) {
+            found = true;
+          }
+        });
+        return found;
+      };
+
+      // Operations execute from the end of the document. The first replacement
+      // spends the 4M-cell allowance; later replacements deterministically use
+      // one coarse deletion/insertion pair.
+      expect(hasUnmarkedText(2)).toBe(true);
+      expect(hasUnmarkedText(1)).toBe(false);
+      expect(hasUnmarkedText(0)).toBe(false);
+      expect(applyBatch().state.doc.toJSON()).toEqual(first.state.doc.toJSON());
+
+      const accepting = makeView(first.state);
+      acceptAllChanges()(accepting.state, accepting.dispatch);
+      expect(accepting.state.doc.toJSON()).toEqual(makeState([after, after, after]).doc.toJSON());
+
+      const rejecting = makeView(first.state);
+      rejectAllChanges()(rejecting.state, rejecting.dispatch);
+      expect(rejecting.state.doc.toJSON()).toEqual(
+        makeState([before, before, before]).doc.toJSON(),
       );
-    const before = alternating("a", "b");
-    const after = alternating("b", "a");
-
-    const applyBatch = () => {
-      const view = makeView(makeState([before, before, before]));
-      const snapshot = createFolioAIEditSnapshot(view.state.doc);
-      const operations = snapshot.blocks.map(({ id }, index) => ({
-        id: `replace-${String(index)}`,
-        type: "replaceBlock" as const,
-        blockId: id,
-        text: after,
-      }));
-      const result = applyFolioAIEditOperations({
-        view,
-        snapshot,
-        operations,
-        revisionStamp: { date: "2026-09-08T12:00:00.000Z", idSeed: 100 },
-      });
-      expect(result.skipped).toEqual([]);
-      return view.state.doc;
-    };
-
-    const first = applyBatch();
-    const hasUnmarkedText = (blockIndex: number): boolean => {
-      let found = false;
-      first.child(blockIndex).descendants((node) => {
-        if (node.isText && node.marks.length === 0) {
-          found = true;
-        }
-      });
-      return found;
-    };
-
-    // Operations execute from the end of the document. The first replacement
-    // spends the 4M-cell allowance; later replacements deterministically use
-    // one coarse deletion/insertion pair.
-    expect(hasUnmarkedText(2)).toBe(true);
-    expect(hasUnmarkedText(1)).toBe(false);
-    expect(hasUnmarkedText(0)).toBe(false);
-    expect(applyBatch().toJSON()).toEqual(first.toJSON());
-  });
+    },
+  );
 
   test("atomic preflight cannot spend the committed batch's inline-diff allowance", () => {
     const alternating = (first: string, second: string): string =>
