@@ -47,6 +47,18 @@ describe("resolveEffectiveTableCellFormatting", () => {
     expect(result.background).toEqual({ type: "none", source: "direct" });
   });
 
+  test("resolves automatic percentage shading into a display background", () => {
+    const result = resolveFormatting({
+      directFormatting: { shading: { pattern: "pct12" } },
+    });
+
+    expect(result.background).toEqual({
+      type: "color",
+      source: "direct",
+      rgb: "DFDFDF",
+    });
+  });
+
   test("records whether width came from the authored cell or table grid", () => {
     const direct = resolveFormatting({
       directFormatting: { width: { value: 1440, type: "dxa" } },

@@ -475,6 +475,53 @@ export function borderToStyle(
   return style;
 }
 
+const HALF_STEP_SHADING_PATTERNS = new Set(["pct12", "pct37", "pct62", "pct87"]);
+const AUTO_PATTERN_COLOR = "000000";
+const AUTO_PATTERN_BACKGROUND = "FFFFFF";
+
+function percentageShadingRatio(pattern: ShadingProperties["pattern"]): number | undefined {
+  if (!pattern?.startsWith("pct")) {
+    return undefined;
+  }
+  const percentage = Number.parseInt(pattern.slice(3), 10);
+  if (!Number.isFinite(percentage)) {
+    return undefined;
+  }
+  return (percentage + (HALF_STEP_SHADING_PATTERNS.has(pattern) ? 0.5 : 0)) / 100;
+}
+
+type ResolvePatternHexOptions = {
+  color: ColorValue | undefined;
+  fallback: string;
+  theme: Theme | null | undefined;
+};
+
+function resolvePatternHex({ color, fallback, theme }: ResolvePatternHexOptions): string {
+  const resolved = resolveShadingColor(color, theme);
+  const match = /^#(?<hex>[0-9A-F]{6})$/iu.exec(resolved);
+  return match?.groups?.["hex"]?.toUpperCase() ?? fallback;
+}
+
+type BlendShadingColorsOptions = {
+  foreground: string;
+  background: string;
+  ratio: number;
+};
+
+function blendShadingColors({ foreground, background, ratio }: BlendShadingColorsOptions): string {
+  const channels: string[] = [];
+  for (let offset = 0; offset < 6; offset += 2) {
+    const foregroundChannel = Number.parseInt(foreground.slice(offset, offset + 2), 16);
+    const backgroundChannel = Number.parseInt(background.slice(offset, offset + 2), 16);
+    channels.push(
+      Math.round(foregroundChannel * ratio + backgroundChannel * (1 - ratio))
+        .toString(16)
+        .padStart(2, "0"),
+    );
+  }
+  return `#${channels.join("").toUpperCase()}`;
+}
+
 /**
  * Convert ShadingProperties to background color
  *
@@ -500,6 +547,23 @@ export function resolveShadingFill(
     return "";
   }
 
+  const percentageRatio = percentageShadingRatio(shading.pattern);
+  if (percentageRatio !== undefined) {
+    return blendShadingColors({
+      foreground: resolvePatternHex({
+        color: shading.color,
+        fallback: AUTO_PATTERN_COLOR,
+        theme,
+      }),
+      background: resolvePatternHex({
+        color: shading.fill,
+        fallback: AUTO_PATTERN_BACKGROUND,
+        theme,
+      }),
+      ratio: percentageRatio,
+    });
+  }
+
   // Check fill (background color)
   if (shading.fill) {
     // 'auto' fill means transparent
@@ -515,12 +579,6 @@ export function resolveShadingFill(
 
   // Pattern with solid typically uses the color field
   if (shading.pattern === "solid" && shading.color) {
-    return resolveShadingColor(shading.color, theme);
-  }
-
-  // For percentage patterns, blend color and fill
-  // This is a simplified handling - complex patterns would need more work
-  if (shading.pattern && shading.pattern.startsWith("pct") && shading.color) {
     return resolveShadingColor(shading.color, theme);
   }
 
