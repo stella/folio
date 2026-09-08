@@ -9,6 +9,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { panic } from "better-result";
 import JSZip from "jszip";
 import { EditorState } from "prosemirror-state";
 import { readFileSync } from "node:fs";
@@ -2713,6 +2714,256 @@ const readNotesFixture = async (): Promise<ArrayBuffer> => {
   );
   return zip.generateAsync({ type: "arraybuffer" });
 };
+
+const SECONDARY_STORY_PROPERTY_SOURCE =
+  '<w:pPr><w:ind w:left="720" w:leftChars="100"/><w:cnfStyle w:val="000000100000" w:oddHBand="1"/><w:rPr><w:bCs/><w:sz w:val="21"/><w:szCs w:val="22"/><w:noProof/></w:rPr></w:pPr>';
+
+const withSecondaryStoryPropertyParagraphs = async ({
+  source,
+  part,
+  originalText,
+  editedParaId,
+  untouchedParaId,
+  includeParaIds,
+}: {
+  source: ArrayBuffer;
+  part: string;
+  originalText: string;
+  editedParaId: string;
+  untouchedParaId: string;
+  includeParaIds: boolean;
+}): Promise<ArrayBuffer> => {
+  const zip = await JSZip.loadAsync(source);
+  const file = zip.file(part);
+  const xml = await file?.async("text");
+  if (!xml) {
+    panic(`fixture missing ${part}`);
+  }
+  const textPosition = xml.indexOf(`>${originalText}</w:t>`);
+  const paragraphStart = xml.lastIndexOf("<w:p", textPosition);
+  const paragraphEnd = xml.indexOf("</w:p>", textPosition);
+  if (textPosition === -1 || paragraphStart === -1 || paragraphEnd === -1) {
+    panic(`fixture missing story paragraph: ${originalText}`);
+  }
+  const editedId = includeParaIds ? ` w14:paraId="${editedParaId}"` : "";
+  const untouchedId = includeParaIds ? ` w14:paraId="${untouchedParaId}"` : "";
+  const replacement =
+    `<w:p${editedId}>${SECONDARY_STORY_PROPERTY_SOURCE}<w:r><w:t>${originalText}</w:t></w:r></w:p>` +
+    `<w:p${untouchedId}>${SECONDARY_STORY_PROPERTY_SOURCE}<w:r><w:t>${originalText} untouched</w:t></w:r></w:p>`;
+  zip.file(part, `${xml.slice(0, paragraphStart)}${replacement}${xml.slice(paragraphEnd + 6)}`);
+  return zip.generateAsync({ type: "arraybuffer" });
+};
+
+const secondaryStoryPropertyCases = [
+  {
+    story: { type: "header", relationshipId: HEADER_RELATIONSHIP_ID } as const,
+    part: "word/header1.xml",
+    source: makeHeaderFooterBaseline,
+    originalText: "Header text",
+    editedParaId: "21100001",
+    untouchedParaId: "21100002",
+  },
+  {
+    story: { type: "footer", relationshipId: FOOTER_RELATIONSHIP_ID } as const,
+    part: "word/footer1.xml",
+    source: makeHeaderFooterBaseline,
+    originalText: "Footer text",
+    editedParaId: "21200001",
+    untouchedParaId: "21200002",
+  },
+  {
+    story: { type: "footnote", noteId: 2 } as const,
+    part: "word/footnotes.xml",
+    source: readNotesFixture,
+    originalText: "Injected footnote body text.",
+    editedParaId: "32100001",
+    untouchedParaId: "32100002",
+  },
+  {
+    story: { type: "endnote", noteId: 3 } as const,
+    part: "word/endnotes.xml",
+    source: readNotesFixture,
+    originalText: "Injected endnote body text.",
+    editedParaId: "32200001",
+    untouchedParaId: "32200002",
+  },
+] as const;
+
+const secondaryStoryPropertyIdentityCases = secondaryStoryPropertyCases.flatMap((entry) => [
+  { ...entry, identity: "source paraIds", includeParaIds: true },
+  { ...entry, identity: "allocated paraIds", includeParaIds: false },
+]);
+
+const mainDocumentWithIdlessPropertyParagraphs = async (): Promise<ArrayBuffer> => {
+  const zip = await JSZip.loadAsync(await createEmptyDocx());
+  const documentFile = zip.file("word/document.xml");
+  const documentXml = await documentFile?.async("text");
+  if (!documentXml) {
+    panic("The generated package has no main document part.");
+  }
+  zip.file(
+    "word/document.xml",
+    documentXml.replace(
+      /<w:body>[\s\S]*<\/w:body>/u,
+      `<w:body><w:p>${SECONDARY_STORY_PROPERTY_SOURCE}<w:r><w:t>Main edited source</w:t></w:r></w:p>` +
+        `<w:p>${SECONDARY_STORY_PROPERTY_SOURCE}<w:r><w:t>Main untouched source</w:t></w:r></w:p>` +
+        "<w:sectPr/></w:body>",
+    ),
+  );
+  return zip.generateAsync({ type: "arraybuffer" });
+};
+
+test("preserves an id-less main paragraph source after a neighboring property edit", async () => {
+  const reviewer = await FolioDocxReviewer.fromBuffer(
+    await mainDocumentWithIdlessPropertyParagraphs(),
+    { author: "Reviewer" },
+  );
+  const snapshot = reviewer.snapshot();
+  const target = findBlock(snapshot.blocks, "Main edited source");
+  const result = reviewer.applyDocumentOperations(
+    {
+      version: 1,
+      mode: "direct",
+      operations: [
+        {
+          id: "main-replace",
+          type: "replaceInBlock",
+          blockId: target.id,
+          find: "Main edited source",
+          replace: "Main edited",
+        },
+        {
+          id: "main-properties",
+          type: "setBlockParagraphProperties",
+          blockId: target.id,
+          properties: { styleId: "StoryEdited" },
+        },
+      ],
+    },
+    { snapshot },
+  );
+  expect(result.status).toBe("committed");
+  expect(result.skipped).toEqual([]);
+
+  const saved = await reviewer.toBuffer();
+  const documentXml = await partText(saved, "word/document.xml");
+  const editedParagraph = paragraphContaining(documentXml, "Main edited");
+  const untouchedParagraph = paragraphContaining(documentXml, "Main untouched source");
+  expect(editedParagraph).toContain('<w:pStyle w:val="StoryEdited"/>');
+  expect(editedParagraph).not.toContain('w:leftChars="100"');
+  expect(untouchedParagraph).toContain(SECONDARY_STORY_PROPERTY_SOURCE);
+
+  const reopened = await FolioDocxReviewer.fromBuffer(saved);
+  expect(reopened.getContentAsText()).toContain("Main edited");
+  expect(await partBytes(await reopened.toBuffer(), "word/document.xml")).toEqual(
+    await partBytes(saved, "word/document.xml"),
+  );
+});
+
+test.each(secondaryStoryPropertyIdentityCases)(
+  "preserves untouched $story.type paragraph properties with $identity after a neighboring property edit",
+  async ({ story, part, source, originalText, editedParaId, untouchedParaId, includeParaIds }) => {
+    const baseline = await withSecondaryStoryPropertyParagraphs({
+      source: await source(),
+      part,
+      originalText,
+      editedParaId,
+      untouchedParaId,
+      includeParaIds,
+    });
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "Reviewer" });
+    const snapshot = reviewer.snapshotStory(story);
+    if (!snapshot) {
+      panic(`expected the ${story.type} story`);
+    }
+    const target = findBlock(snapshot.blocks, originalText);
+    const result = reviewer.applyDocumentOperationsToStory({
+      story,
+      snapshot,
+      batch: {
+        version: 1,
+        mode: "direct",
+        operations: [
+          {
+            id: `${story.type}-replace`,
+            type: "replaceInBlock",
+            blockId: target.id,
+            find: originalText,
+            replace: `${story.type} edited`,
+          },
+          {
+            id: `${story.type}-properties`,
+            type: "setBlockParagraphProperties",
+            blockId: target.id,
+            properties: { styleId: "StoryEdited" },
+          },
+        ],
+      },
+    });
+    expect(result.status).toBe("committed");
+    expect(result.skipped).toEqual([]);
+
+    const saved = await reviewer.toBuffer();
+    const savedPart = await partText(saved, part);
+    const editedParagraph = paragraphContaining(savedPart, `${story.type} edited`);
+    const untouchedParagraph = paragraphContaining(savedPart, `${originalText} untouched`);
+    expect(editedParagraph).toContain('<w:pStyle w:val="StoryEdited"/>');
+    expect(editedParagraph).not.toContain('w:leftChars="100"');
+    expect(untouchedParagraph).toContain(SECONDARY_STORY_PROPERTY_SOURCE);
+
+    const reopened = await FolioDocxReviewer.fromBuffer(saved);
+    expect(reopened.readStory(story)?.text).toContain(`${story.type} edited`);
+    expect(await partBytes(await reopened.toBuffer(), part)).toEqual(await partBytes(saved, part));
+  },
+);
+
+test.each(secondaryStoryPropertyCases)(
+  "preserves the edited id-less $story.type paragraph properties after a text-only edit",
+  async ({ story, part, source, originalText, editedParaId, untouchedParaId }) => {
+    const baseline = await withSecondaryStoryPropertyParagraphs({
+      source: await source(),
+      part,
+      originalText,
+      editedParaId,
+      untouchedParaId,
+      includeParaIds: false,
+    });
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "Reviewer" });
+    const snapshot = reviewer.snapshotStory(story);
+    if (!snapshot) {
+      panic(`expected the ${story.type} story`);
+    }
+    const target = findBlock(snapshot.blocks, originalText);
+    const editedText = `${story.type} text edited`;
+    const result = reviewer.applyDocumentOperationsToStory({
+      story,
+      snapshot,
+      batch: {
+        version: 1,
+        mode: "direct",
+        operations: [
+          {
+            id: `${story.type}-text-only-replace`,
+            type: "replaceInBlock",
+            blockId: target.id,
+            find: originalText,
+            replace: editedText,
+          },
+        ],
+      },
+    });
+    expect(result.status).toBe("committed");
+    expect(result.skipped).toEqual([]);
+
+    const saved = await reviewer.toBuffer();
+    const savedPart = await partText(saved, part);
+    expect(paragraphContaining(savedPart, editedText)).toContain(SECONDARY_STORY_PROPERTY_SOURCE);
+
+    const reopened = await FolioDocxReviewer.fromBuffer(saved);
+    expect(reopened.readStory(story)?.text).toContain(editedText);
+    expect(await partBytes(await reopened.toBuffer(), part)).toEqual(await partBytes(saved, part));
+  },
+);
 
 const readRichNotesFixture = async (): Promise<ArrayBuffer> => {
   const zip = await JSZip.loadAsync(await readNotesFixture());

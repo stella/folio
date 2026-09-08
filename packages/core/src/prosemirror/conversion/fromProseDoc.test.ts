@@ -351,6 +351,11 @@ describe("fromProseDoc", () => {
                       id: 71,
                       author: "Reviewer",
                       date: "2026-07-16T08:00:00.000Z",
+                      utcDate: {
+                        attribute: "alternate:dateUtc",
+                        value: "2026-07-16T08:00:01.000Z",
+                      },
+                      initials: "RV",
                     },
                   },
                   cells: [
@@ -380,11 +385,14 @@ describe("fromProseDoc", () => {
       },
     };
 
-    const pmDoc = toProseDoc(document);
+    const sourcePmDoc = toProseDoc(document);
+    const pmDoc = sourcePmDoc.type.schema.nodeFromJSON(sourcePmDoc.toJSON());
     expect(pmDoc.firstChild?.child(0).attrs["trIns"]).toEqual({
       revisionId: 71,
       author: "Reviewer",
       date: "2026-07-16T08:00:00.000Z",
+      utcDate: "2026-07-16T08:00:01.000Z",
+      initials: "RV",
     });
     expect(pmDoc.firstChild?.child(1).attrs["trDel"]).toEqual({
       revisionId: 72,
@@ -404,6 +412,11 @@ describe("fromProseDoc", () => {
           id: 71,
           author: "Reviewer",
           date: "2026-07-16T08:00:00.000Z",
+          utcDate: {
+            attribute: "w16du:dateUtc",
+            value: "2026-07-16T08:00:01.000Z",
+          },
+          initials: "RV",
         },
       },
       {
@@ -432,6 +445,11 @@ describe("fromProseDoc", () => {
                           id: 81,
                           author: "Reviewer",
                           date: "2026-07-16T09:00:00.000Z",
+                          utcDate: {
+                            attribute: "alternate:dateUtc",
+                            value: "2026-07-16T09:00:01.000Z",
+                          },
+                          initials: "RV",
                         },
                       },
                       content: [{ type: "paragraph", content: [] }],
@@ -453,7 +471,8 @@ describe("fromProseDoc", () => {
       },
     };
 
-    const pmDoc = toProseDoc(document);
+    const sourcePmDoc = toProseDoc(document);
+    const pmDoc = sourcePmDoc.type.schema.nodeFromJSON(sourcePmDoc.toJSON());
     const row = pmDoc.firstChild?.firstChild;
     expect(row?.child(0).attrs["cellMarker"]).toEqual({
       kind: "ins",
@@ -461,6 +480,8 @@ describe("fromProseDoc", () => {
         revisionId: 81,
         author: "Reviewer",
         date: "2026-07-16T09:00:00.000Z",
+        utcDate: "2026-07-16T09:00:01.000Z",
+        initials: "RV",
       },
     });
     expect(row?.child(1).attrs["cellMarker"]).toEqual({
@@ -484,6 +505,11 @@ describe("fromProseDoc", () => {
           id: 81,
           author: "Reviewer",
           date: "2026-07-16T09:00:00.000Z",
+          utcDate: {
+            attribute: "w16du:dateUtc",
+            value: "2026-07-16T09:00:01.000Z",
+          },
+          initials: "RV",
         },
       },
       {

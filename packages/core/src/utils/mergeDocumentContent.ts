@@ -16,6 +16,7 @@ import type {
   Paragraph,
   Table,
 } from "../types/document";
+import { cloneParagraphWithoutPropertySource } from "../docx/paragraphPropertySource";
 
 /**
  * Append `source`'s body content onto `target`'s. Both documents keep their
@@ -193,8 +194,7 @@ function remapParagraph(
     return paragraph;
   }
 
-  return {
-    ...paragraph,
+  return cloneParagraphWithoutPropertySource(paragraph, {
     formatting: {
       ...paragraph.formatting,
       numPr: { ...paragraph.formatting?.numPr, numId: remappedNumId },
@@ -202,7 +202,7 @@ function remapParagraph(
     ...(paragraph.listRendering && {
       listRendering: remapListRendering(paragraph.listRendering, remappedNumId, abstractNumIdRemap),
     }),
-  };
+  });
 }
 
 function remapListRendering(

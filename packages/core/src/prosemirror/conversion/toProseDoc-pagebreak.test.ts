@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
-import type { Document } from "../../types/document";
+import type { Document, Paragraph } from "../../types/document";
+import {
+  assignParagraphPropertySource,
+  getParagraphPropertySource,
+} from "../../docx/paragraphPropertySource";
+import { canonicalJson } from "../../utils/canonicalJson";
+import { fromProseDoc } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
 
 function childTypeNames(pmDoc: ReturnType<typeof toProseDoc>): string[] {
@@ -12,6 +18,37 @@ function childTypeNames(pmDoc: ReturnType<typeof toProseDoc>): string[] {
 }
 
 describe('toProseDoc — hard page break (`<w:br w:type="page"/>`)', () => {
+  test.each([
+    ["before", [{ type: "break", breakType: "page" }] as const],
+    [
+      "after",
+      [
+        { type: "text", text: "Before" },
+        { type: "break", breakType: "page" },
+      ] as const,
+    ],
+  ])("a %s carrier rebuild preserves its paragraph-property owner", (_position, content) => {
+    const paragraph: Paragraph = {
+      type: "paragraph",
+      content: [{ type: "run", content: [...content] }],
+    };
+    assignParagraphPropertySource(paragraph, {
+      formattingJson: canonicalJson({}),
+      xml:
+        '<w:pPr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ' +
+        'xmlns:x="urn:folio:test"><x:property/></w:pPr>',
+    });
+    const document: Document = { package: { document: { content: [paragraph] } } };
+
+    const restored = fromProseDoc(toProseDoc(document), document);
+    const restoredParagraph = restored.package.document.content.find(
+      (block): block is Paragraph => block.type === "paragraph",
+    );
+    expect(getParagraphPropertySource(restoredParagraph)).toEqual(
+      getParagraphPropertySource(paragraph),
+    );
+  });
+
   test("emits pageBreak for a paragraph whose only run content is a page break", () => {
     // <w:p><w:r><w:br w:type="page"/></w:r></w:p>
     const document: Document = {

@@ -39,6 +39,7 @@ import type {
   TableBorders,
   TableCell,
 } from "../../types/document";
+import { cloneParagraphWithoutPropertySource } from "../paragraphPropertySource";
 import { deterministicHexId } from "../../utils/hexId";
 
 export type BilingualRowKind = "paragraph" | "heading" | "listItem";
@@ -609,7 +610,6 @@ const cloneParagraphForTarget = (
   cloner: NumberingCloner,
   bookmarkIds: BookmarkIdMinter,
 ): Paragraph => {
-  const { textId: _textId, sectionProperties: _sectionProperties, ...rest } = paragraph;
   const formatting = paragraph.formatting;
   const nextFormatting: ParagraphFormatting | undefined = formatting && {
     ...formatting,
@@ -628,8 +628,7 @@ const cloneParagraphForTarget = (
         },
       }),
   };
-  return {
-    ...rest,
+  const cloned = cloneParagraphWithoutPropertySource(paragraph, {
     // Own content nodes: repacking assigns rIds to images and hyperlinks in
     // place, which must not hit one shared node graph twice.
     content: remapClonedBookmarkIds(structuredClone(paragraph.content), bookmarkIds),
@@ -638,7 +637,10 @@ const cloneParagraphForTarget = (
     ...(paragraph.listRendering && {
       listRendering: remapListRendering(paragraph.listRendering, cloner),
     }),
-  };
+  });
+  Reflect.deleteProperty(cloned, "textId");
+  Reflect.deleteProperty(cloned, "sectionProperties");
+  return cloned;
 };
 
 type BookmarkIdMinter = {
@@ -892,7 +894,7 @@ const projectParagraphIntoColumn = (
     }),
   };
 
-  return { ...paragraph, formatting };
+  return cloneParagraphWithoutPropertySource(paragraph, { formatting });
 };
 
 const projectSideIndent = (value: number | undefined, scale: number, maximum: number): number =>

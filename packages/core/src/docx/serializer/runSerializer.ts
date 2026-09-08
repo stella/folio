@@ -11,8 +11,6 @@
  */
 
 import { panic } from "better-result";
-import { normalizeRevisionId } from "@stll/docx-core/model";
-
 import type {
   Run,
   RunContent,
@@ -47,6 +45,7 @@ import { THEME_COLOR_TO_DRAWING_SCHEME } from "../drawingUtils";
 // oxlint-disable-next-line import/no-cycle -- OOXML model is mutually recursive: shape textboxes hold paragraphs, paragraphs hold runs
 import { serializeParagraph } from "./paragraphSerializer";
 import { serializeTable } from "./tableSerializer";
+import { serializeTrackedChangeAttributes } from "./trackedChangeAttributes";
 import { escapeXml, intAttr } from "./xmlUtils";
 
 // ============================================================================
@@ -457,22 +456,8 @@ function extractRPrInner(rPrXml: string): string {
 }
 
 function serializeRunPropertyChange(change: RunPropertyChange): string {
-  const normalizedId = normalizeRevisionId(change.info.id);
-  const authorCandidate = typeof change.info.author === "string" ? change.info.author.trim() : "";
-  const normalizedAuthor = authorCandidate.length > 0 ? authorCandidate : "Unknown";
-  const normalizedDate = typeof change.info.date === "string" ? change.info.date.trim() : undefined;
-  const normalizedRsid = typeof change.info.rsid === "string" ? change.info.rsid.trim() : undefined;
-  const attrs = [`w:id="${normalizedId}"`, `w:author="${escapeXml(normalizedAuthor)}"`];
-
-  if (normalizedDate) {
-    attrs.push(`w:date="${escapeXml(normalizedDate)}"`);
-  }
-  if (normalizedRsid) {
-    attrs.push(`w:rsid="${escapeXml(normalizedRsid)}"`);
-  }
-
   const previousRPrXml = serializeTextFormatting(change.previousFormatting) || "<w:rPr/>";
-  return `<w:rPrChange ${attrs.join(" ")}>${previousRPrXml}</w:rPrChange>`;
+  return `<w:rPrChange ${serializeTrackedChangeAttributes(change.info)}>${previousRPrXml}</w:rPrChange>`;
 }
 
 function serializeRunProperties(

@@ -5,6 +5,7 @@
  */
 
 import type { BlockContent, DocxPackage } from "../types/document";
+import { cloneParagraphWithoutPropertySource } from "../docx/paragraphPropertySource";
 import { renderParagraph } from "./renderParagraph";
 import { renderTable } from "./renderTable";
 import type { RenderContext } from "./types";
@@ -26,10 +27,16 @@ function mergeAcceptedParagraphBreaks(blocks: BlockContent[]): BlockContent[] {
     if (prev?.type === "paragraph" && prev.pPrMark?.kind === "del" && block.type === "paragraph") {
       // Drop the resolved deletion mark; inherit the next paragraph's mark so a
       // chain keeps merging.
-      const { pPrMark: _resolved, ...base } = prev;
       const next = block.pPrMark;
       const content = [...prev.content, ...block.content];
-      merged[merged.length - 1] = next ? { ...base, content, pPrMark: next } : { ...base, content };
+      const joined = cloneParagraphWithoutPropertySource(prev, {
+        content,
+        ...(next ? { pPrMark: next } : {}),
+      });
+      if (!next) {
+        Reflect.deleteProperty(joined, "pPrMark");
+      }
+      merged[merged.length - 1] = joined;
       continue;
     }
     merged.push(block);

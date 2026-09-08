@@ -455,6 +455,7 @@ export type TableCellAttrs = {
             revisionId: number;
             author: string;
             date?: string | null;
+            utcDate?: string | null;
             initials?: string | null;
             provenance?: TrackedChangeProvenance;
             suggestionId?: string | null;
@@ -465,6 +466,7 @@ export type TableCellAttrs = {
             revisionId: number;
             author: string;
             date?: string | null;
+            utcDate?: string | null;
             initials?: string | null;
         };
         verticalMerge?: "continue" | "rest";
@@ -488,6 +490,7 @@ export type TableRowAttrs = {
         revisionId: number;
         author: string;
         date?: string | null;
+        utcDate?: string | null;
         initials?: string | null;
         provenance?: TrackedChangeProvenance;
         suggestionId?: string | null;
@@ -499,6 +502,7 @@ export type TableRowAttrs = {
         revisionId: number;
         author: string;
         date?: string | null;
+        utcDate?: string | null;
         initials?: string | null;
         provenance?: TrackedChangeProvenance;
         suggestionId?: string | null;
@@ -570,6 +574,7 @@ export type TrackedChangeMarkAttrs = {
     revisionId: number;
     author: string;
     date?: string;
+    utcDate?: string;
     initials?: string;
     moveKind?: "moveTo" | "moveFrom";
     provenance: TrackedChangeProvenance;

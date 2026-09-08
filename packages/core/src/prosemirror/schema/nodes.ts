@@ -731,6 +731,7 @@ export type TableRowAttrs = {
         revisionId: number;
         author: string;
         date?: string | null;
+        utcDate?: string | null;
         initials?: string | null;
         provenance?: TrackedChangeProvenance;
         suggestionId?: string | null;
@@ -744,6 +745,7 @@ export type TableRowAttrs = {
         revisionId: number;
         author: string;
         date?: string | null;
+        utcDate?: string | null;
         initials?: string | null;
         provenance?: TrackedChangeProvenance;
         suggestionId?: string | null;
@@ -822,6 +824,7 @@ export type TableCellAttrs = {
           revisionId: number;
           author: string;
           date?: string | null;
+          utcDate?: string | null;
           initials?: string | null;
           /** `"suggested"` marks this as an AI proposal (stripped until accepted). */
           provenance?: TrackedChangeProvenance;
@@ -839,6 +842,7 @@ export type TableCellAttrs = {
           revisionId: number;
           author: string;
           date?: string | null;
+          utcDate?: string | null;
           initials?: string | null;
         };
         verticalMerge?: "continue" | "rest";

@@ -42,6 +42,7 @@ import { assignHeaderFooterVerbatimXml } from "./headerFooterVerbatim";
 import type { NumberingMap } from "./numberingParser";
 import type { StyleMap } from "./styleParser";
 import { parseWatermark } from "./watermarkParser";
+import { cloneParagraphWithPropertySource } from "./paragraphPropertySource";
 import { collectXmlnsDeclarations, parseXml } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
@@ -142,7 +143,9 @@ export function parseHeader(
       // The modeled watermark paints the detached VML / DrawingML. Retain only
       // the host paragraph's formatting here so header flow keeps its line box
       // without painting the same artwork a second time.
-      result.content[watermarkResult.blockIndex] = { ...host, content: [] };
+      result.content[watermarkResult.blockIndex] = cloneParagraphWithPropertySource(host, {
+        content: [],
+      });
     }
   }
 

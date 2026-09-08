@@ -6,9 +6,9 @@ import type {
   SectionPropertyChange,
   SectionProperties,
 } from "../../types/document";
-import { normalizeRevisionId } from "@stll/docx-core/model";
 import { getUnserializedSectionPropertyChildNames } from "../sectionParser";
 import { serializeBorder } from "./borderSerializer";
+import { serializeTrackedChangeAttributes } from "./trackedChangeAttributes";
 import { escapeXml, intAttr } from "./xmlUtils";
 
 const serializeHeaderReference = (ref: HeaderReference): string =>
@@ -316,21 +316,8 @@ function serializeOnOffElement(value: boolean | undefined, name: string): string
 }
 
 function serializeSectionPropertyChange(change: SectionPropertyChange): string {
-  const normalizedId = normalizeRevisionId(change.info.id);
-  const authorCandidate = typeof change.info.author === "string" ? change.info.author.trim() : "";
-  const normalizedAuthor = authorCandidate.length > 0 ? authorCandidate : "Unknown";
-  const normalizedDate = typeof change.info.date === "string" ? change.info.date.trim() : undefined;
-  const normalizedRsid = typeof change.info.rsid === "string" ? change.info.rsid.trim() : undefined;
-  const attrs = [`w:id="${normalizedId}"`, `w:author="${escapeXml(normalizedAuthor)}"`];
-  if (normalizedDate) {
-    attrs.push(`w:date="${escapeXml(normalizedDate)}"`);
-  }
-  if (normalizedRsid) {
-    attrs.push(`w:rsid="${escapeXml(normalizedRsid)}"`);
-  }
-
   const previousSectPrXml = serializeSectionProperties(change.previousProperties) || "<w:sectPr/>";
-  return `<w:sectPrChange ${attrs.join(" ")}>${previousSectPrXml}</w:sectPrChange>`;
+  return `<w:sectPrChange ${serializeTrackedChangeAttributes(change.info)}>${previousSectPrXml}</w:sectPrChange>`;
 }
 
 export function serializeSectionProperties(props: SectionProperties | undefined): string {

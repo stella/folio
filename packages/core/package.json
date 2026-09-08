@@ -44,6 +44,7 @@
     "./prosemirror/extensions": "./src/prosemirror/extensions/index.ts",
     "./prosemirror/schema": "./src/prosemirror/schema/index.ts",
     "./docx": "./src/docx/index.ts",
+    "./docx/paragraphPropertySource": null,
     "./*": "./src/*.ts"
   },
   "publishConfig": {

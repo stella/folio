@@ -16,6 +16,16 @@ import type { Node as PMNode, Mark } from "prosemirror-model";
 import { Fragment } from "prosemirror-model";
 
 import { numPrEqual } from "../../docx/numberingParser";
+import { visitDocxParagraphs } from "../../docx/paragraphTraversal";
+import { DATE_UTC_ATTRIBUTE } from "../../docx/trackedChangeInfo";
+import {
+  copyParagraphPropertySource,
+  getParagraphPropertySource,
+  getParagraphPropertySourceCandidate,
+  getParagraphPropertySourceTransferId,
+  linkParagraphPropertySourceCandidate,
+  recreateProseNodeWithParagraphPropertySource,
+} from "../../docx/paragraphPropertySource";
 import { canonicalJson } from "../../utils/canonicalJson";
 import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import { parseShapeGeometryAdjustments } from "../shapeGeometryAdjustments";
@@ -234,9 +244,110 @@ function textBoxWrapFromAttrs(attrs: TextBoxAttrs): ImageWrap | undefined {
   return wrap;
 }
 
-/**
- * Convert a ProseMirror document to our Document type
- */
+const assignUniqueParagraph = (
+  paragraphs: Map<string, Paragraph | null>,
+  paraId: string,
+  paragraph: Paragraph,
+): void => {
+  const existing = paragraphs.get(paraId);
+  if (!paragraphs.has(paraId) || existing === paragraph) {
+    paragraphs.set(paraId, paragraph);
+    return;
+  }
+  paragraphs.set(paraId, null);
+};
+
+const uniqueParagraphsById = (
+  content: BlockContent[],
+  includeTransferIds = false,
+): Map<string, Paragraph | null> => {
+  const paragraphs = new Map<string, Paragraph | null>();
+  visitDocxParagraphs({ documentBody: { content } }, (paragraph) => {
+    const { paraId } = paragraph;
+    if (paraId) {
+      assignUniqueParagraph(paragraphs, paraId, paragraph);
+    }
+    const transferId = includeTransferIds
+      ? getParagraphPropertySourceTransferId(paragraph)
+      : undefined;
+    if (transferId) {
+      assignUniqueParagraph(paragraphs, transferId, paragraph);
+    }
+  });
+  return paragraphs;
+};
+
+const restoreParagraphPropertySources = (
+  content: BlockContent[],
+  baseContent: BlockContent[],
+  linkedTargets: ReadonlySet<Paragraph>,
+  linkedSources: ReadonlySet<Paragraph>,
+): void => {
+  const baseParagraphs = uniqueParagraphsById(baseContent, true);
+  for (const [paraId, paragraph] of uniqueParagraphsById(content)) {
+    const baseParagraph = baseParagraphs.get(paraId);
+    if (
+      !paragraph ||
+      !baseParagraph ||
+      linkedTargets.has(paragraph) ||
+      linkedSources.has(baseParagraph) ||
+      !getParagraphPropertySource(baseParagraph)
+    ) {
+      continue;
+    }
+    copyParagraphPropertySource(paragraph, baseParagraph);
+
+    const baseFormatting = baseParagraph.formatting;
+    if (
+      !baseFormatting?.numPr ||
+      !baseFormatting.numPrFromStyle ||
+      !numPrEqual(baseFormatting.numPr, baseFormatting.numPrFromStyle)
+    ) {
+      continue;
+    }
+    const { numPr, numPrFromStyle, ...authoredFormatting } = baseFormatting;
+    if (canonicalJson(paragraph.formatting ?? {}) !== canonicalJson(authoredFormatting)) {
+      continue;
+    }
+    paragraph.formatting = { ...paragraph.formatting, numPr, numPrFromStyle };
+  }
+};
+
+type LinkedParagraphPropertySources = {
+  targets: ReadonlySet<Paragraph>;
+  sources: ReadonlySet<Paragraph>;
+};
+
+const restoreLinkedParagraphPropertySources = (
+  content: BlockContent[],
+): LinkedParagraphPropertySources => {
+  const targetsBySource = new Map<Paragraph, Paragraph[]>();
+  const linkedTargets = new Set<Paragraph>();
+  visitDocxParagraphs({ documentBody: { content } }, (paragraph) => {
+    const source = getParagraphPropertySourceCandidate(paragraph);
+    if (!source) {
+      return;
+    }
+    linkedTargets.add(paragraph);
+    const targets = targetsBySource.get(source);
+    if (targets) {
+      targets.push(paragraph);
+    } else {
+      targetsBySource.set(source, [paragraph]);
+    }
+  });
+  for (const [source, targets] of targetsBySource) {
+    if (targets.length === 1) {
+      const target = targets.at(0);
+      if (target) {
+        copyParagraphPropertySource(target, source);
+      }
+    }
+  }
+  return { targets: linkedTargets, sources: new Set(targetsBySource.keys()) };
+};
+
+/** Convert a ProseMirror document to the document model. */
 export function fromProseDoc(pmDoc: PMNode, baseDocument?: Document): Document {
   assertValidProseMirrorDocument(
     pmDoc,
@@ -244,6 +355,15 @@ export function fromProseDoc(pmDoc: PMNode, baseDocument?: Document): Document {
   );
 
   const blocks = extractBlocks(pmDoc);
+  const linkedSources = restoreLinkedParagraphPropertySources(blocks);
+  if (baseDocument) {
+    restoreParagraphPropertySources(
+      blocks,
+      baseDocument.package.document.content,
+      linkedSources.targets,
+      linkedSources.sources,
+    );
+  }
 
   // Preserve section properties (margins, headers, footers) from base document
   const documentBody: DocumentBody = { content: blocks };
@@ -414,7 +534,10 @@ function mapSuggestionStrippedNode(node: PMNode): PMNode | null {
     return node;
   }
   const content = Fragment.fromArray(children);
-  return nextAttrs === null ? node.copy(content) : node.type.create(nextAttrs, content, node.marks);
+  return recreateProseNodeWithParagraphPropertySource(node, {
+    ...(nextAttrs === null ? {} : { attrs: nextAttrs }),
+    content,
+  });
 }
 
 /**
@@ -441,7 +564,9 @@ function materializeNumberedRefValues(doc: PMNode): PMNode {
     if (node.type.name === "field" || node.type.name === "structuredField") {
       const displayText = results.get(node);
       if (displayText !== undefined) {
-        return node.type.create({ ...node.attrs, displayText }, node.content, node.marks);
+        return recreateProseNodeWithParagraphPropertySource(node, {
+          attrs: { ...node.attrs, displayText },
+        });
       }
       return node;
     }
@@ -456,7 +581,11 @@ function materializeNumberedRefValues(doc: PMNode): PMNode {
       children.push(mappedChild);
       changed ||= mappedChild !== child;
     });
-    return changed ? node.copy(Fragment.fromArray(children)) : node;
+    return changed
+      ? recreateProseNodeWithParagraphPropertySource(node, {
+          content: Fragment.fromArray(children),
+        })
+      : node;
   };
   return visit(doc);
 }
@@ -1067,6 +1196,7 @@ function convertPMParagraph(
     paragraph.pPrMark = attrs.pPrMark;
   }
 
+  linkParagraphPropertySourceCandidate(paragraph, node);
   return paragraph;
 }
 
@@ -1582,6 +1712,9 @@ function extractParagraphContent(
         id: changeAttrs.revisionId,
         author: changeAttrs.author || "Unknown",
         ...(changeAttrs.date ? { date: changeAttrs.date } : {}),
+        ...(changeAttrs.utcDate
+          ? { utcDate: { attribute: DATE_UTC_ATTRIBUTE, value: changeAttrs.utcDate } }
+          : {}),
         ...(changeAttrs.initials ? { initials: changeAttrs.initials } : {}),
       };
       if (insertionMark) {
@@ -1618,6 +1751,9 @@ function extractParagraphContent(
       };
       if (changeAttrs.date) {
         info.date = changeAttrs.date;
+      }
+      if (changeAttrs.utcDate) {
+        info.utcDate = { attribute: DATE_UTC_ATTRIBUTE, value: changeAttrs.utcDate };
       }
       if (changeAttrs.initials) {
         info.initials = changeAttrs.initials;
@@ -3461,6 +3597,9 @@ function convertPMTableRow(
         id: attrs.trIns.revisionId,
         author: attrs.trIns.author,
         ...(attrs.trIns.date != null && { date: attrs.trIns.date }),
+        ...(attrs.trIns.utcDate != null && {
+          utcDate: { attribute: DATE_UTC_ATTRIBUTE, value: attrs.trIns.utcDate },
+        }),
         ...(attrs.trIns.initials != null && { initials: attrs.trIns.initials }),
       },
     };
@@ -3471,6 +3610,9 @@ function convertPMTableRow(
         id: attrs.trDel.revisionId,
         author: attrs.trDel.author,
         ...(attrs.trDel.date != null && { date: attrs.trDel.date }),
+        ...(attrs.trDel.utcDate != null && {
+          utcDate: { attribute: DATE_UTC_ATTRIBUTE, value: attrs.trDel.utcDate },
+        }),
         ...(attrs.trDel.initials != null && { initials: attrs.trDel.initials }),
       },
     };
@@ -3601,6 +3743,9 @@ function convertPMTableCell(node: PMNode, documentCounts?: TrackedChangeCounts):
       id: attrs.cellMarker.info.revisionId,
       author: attrs.cellMarker.info.author,
       ...(attrs.cellMarker.info.date != null && { date: attrs.cellMarker.info.date }),
+      ...(attrs.cellMarker.info.utcDate != null && {
+        utcDate: { attribute: DATE_UTC_ATTRIBUTE, value: attrs.cellMarker.info.utcDate },
+      }),
       ...(attrs.cellMarker.info.initials != null && { initials: attrs.cellMarker.info.initials }),
     };
     if (attrs.cellMarker.kind === "merge") {
@@ -3888,6 +4033,16 @@ export function updateDocumentContent(originalDocument: Document, pmDoc: PMNode)
  * Used for converting edited header/footer PM content back to the document
  * model.
  */
-export function proseDocToBlocks(pmDoc: PMNode): BlockContent[] {
-  return extractBlocks(pmDoc);
+export function proseDocToBlocks(pmDoc: PMNode, baseContent?: BlockContent[]): BlockContent[] {
+  const blocks = extractBlocks(pmDoc);
+  const linkedSources = restoreLinkedParagraphPropertySources(blocks);
+  if (baseContent) {
+    restoreParagraphPropertySources(
+      blocks,
+      baseContent,
+      linkedSources.targets,
+      linkedSources.sources,
+    );
+  }
+  return blocks;
 }
