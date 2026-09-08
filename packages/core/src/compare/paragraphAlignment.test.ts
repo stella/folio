@@ -466,6 +466,12 @@ const expectedParagraphProperties = (
 ): string =>
   `${styleId === null ? "" : `<w:pStyle w:val="${styleId}"/>`}${alignment ? `<w:jc w:val="${alignment}"/>` : ""}`;
 
+/** The source `w:rPr` remains after its paragraph-mark revision is resolved. */
+const expectedPreservedParagraphProperties = (
+  alignment: ParagraphAlignment | undefined,
+  styleId: string | null = STYLE_ID,
+): string => `${expectedParagraphProperties(alignment, styleId)}<w:rPr/>`;
+
 const expectDirectAlignmentXml = (xml: string, expected: ParagraphAlignment | undefined): void => {
   expect(directAlignmentsIn(xml)).toEqual(expected === undefined ? [] : [expected]);
 };
@@ -768,7 +774,7 @@ describe("paragraph alignment comparison", () => {
       expect(rejectedXml).not.toContain("<w:pPrChange");
       expect(rejectedXml).not.toContain("w:hanging");
       expect(untrackedParagraphProperties(firstParagraphXml(rejectedXml))).toBe(
-        expectedParagraphProperties(undefined),
+        expectedPreservedParagraphProperties(undefined),
       );
       const reopenedRejected = await FolioDocxReviewer.fromBuffer(rejected);
       expect(
@@ -829,7 +835,7 @@ describe("paragraph alignment comparison", () => {
       const acceptedXml = await mainDocumentXml(accepted);
       expect(acceptedXml).not.toContain("<w:pPrChange");
       expect(paragraphXmls(acceptedXml).map(untrackedParagraphProperties)).toEqual([
-        expectedParagraphProperties(targetDirectAlignment),
+        expectedPreservedParagraphProperties(targetDirectAlignment),
         expectedParagraphProperties(targetDirectAlignment),
       ]);
       const reopenedAccepted = await FolioDocxReviewer.fromBuffer(accepted);
@@ -896,7 +902,7 @@ describe("paragraph alignment comparison", () => {
     ]);
     const rejected = await rejecting.toBuffer();
     expect(untrackedParagraphProperties(firstParagraphXml(await mainDocumentXml(rejected)))).toBe(
-      expectedParagraphProperties("center"),
+      expectedPreservedParagraphProperties("center"),
     );
     const reopenedRejected = await FolioDocxReviewer.fromBuffer(rejected);
     expect(
@@ -925,7 +931,11 @@ describe("paragraph alignment comparison", () => {
     ]);
     const pendingXml = await mainDocumentXml(result.value.buffer);
     expect(pendingXml).not.toContain("<w:pPrChange");
-    expectDirectAlignmentXml(paragraphXmls(pendingXml).at(0) ?? "", "left");
+    const pendingInsertedParagraph = paragraphXmls(pendingXml).at(0) ?? "";
+    expectDirectAlignmentXml(pendingInsertedParagraph, "left");
+    expect(untrackedParagraphProperties(pendingInsertedParagraph)).toBe(
+      `${expectedParagraphProperties("left")}<w:rPr><w:ins w:id="2" w:author="${OPTIONS.author}" w:date="${OPTIONS.timestamp}"/></w:rPr>`,
+    );
 
     const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
     expect(accepting.acceptAll()).toBeGreaterThan(0);
@@ -937,7 +947,7 @@ describe("paragraph alignment comparison", () => {
     const acceptedXml = await mainDocumentXml(accepted);
     expect(acceptedXml).not.toContain("<w:pPrChange");
     expect(untrackedParagraphProperties(paragraphXmls(acceptedXml).at(0) ?? "")).toBe(
-      expectedParagraphProperties("left"),
+      expectedPreservedParagraphProperties("left"),
     );
     const reopenedAccepted = await FolioDocxReviewer.fromBuffer(accepted);
     expect(
@@ -1049,7 +1059,7 @@ describe("paragraph alignment comparison", () => {
       const rejectedParagraph = firstParagraphXml(await mainDocumentXml(rejected));
       expect(rejectedParagraph).not.toContain("<w:pPrChange");
       expect(untrackedParagraphProperties(rejectedParagraph)).toBe(
-        expectedParagraphProperties("center"),
+        expectedPreservedParagraphProperties("center"),
       );
       const reopenedRejected = await FolioDocxReviewer.fromBuffer(rejected);
       expect(reopenedRejected.snapshot().blocks.at(0)).toEqual(
@@ -1218,7 +1228,7 @@ describe("paragraph alignment comparison", () => {
       const acceptedXml = await mainDocumentXml(accepted);
       expect(acceptedXml).not.toContain("<w:pPrChange");
       expect(untrackedParagraphProperties(paragraphXmls(acceptedXml).at(insertedIndex) ?? "")).toBe(
-        expectedParagraphProperties(insertedDirectAlignment),
+        expectedPreservedParagraphProperties(insertedDirectAlignment),
       );
       const reopenedAccepted = await FolioDocxReviewer.fromBuffer(accepted);
       expect(
