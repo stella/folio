@@ -445,7 +445,7 @@ checksum = "b9be42f50aa861c555654aa3a37f52f4b1074bacf4e48fe0ef7fa584e80f1f0f"
 
 [[package]]
 name = "stella-docx-kernel"
-version = "0.19.1"
+version = "0.19.2"
 dependencies = [
  "js-sys",
  "miniz_oxide 0.9.1",
@@ -460,7 +460,7 @@ dependencies = [
 
 [[package]]
 name = "stella-text-shaper"
-version = "0.19.1"
+version = "0.19.2"
 dependencies = [
  "miniz_oxide 0.9.1",
  "rustybuzz",

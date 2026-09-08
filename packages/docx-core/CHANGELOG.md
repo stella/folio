@@ -1,5 +1,11 @@
 # @stll/docx-core
 
+## 0.19.2
+
+### Patch Changes
+
+- [#751](https://github.com/stella/folio/pull/751) [`27e2717`](https://github.com/stella/folio/commit/27e2717fea8dbd367198fdc520ed5ab3364d9828) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Apply section line grids to table cells when the document compatibility setting requests it.
+
 ## 0.19.1
 
 ### Patch Changes
