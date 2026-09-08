@@ -178,6 +178,68 @@ describe("AI revision accept/reject scoping", () => {
   });
 });
 
+describe("bulk revision resolution cost", () => {
+  const paragraphCount = 3;
+  const stateWithFormattedInsertion = () => {
+    const revision = schema.marks["insertion"]!.create(REV_A_ATTRS);
+    const bold = schema.marks["bold"]!.create();
+    return EditorState.create({
+      schema,
+      doc: schema.node(
+        "doc",
+        null,
+        Array.from({ length: paragraphCount }, () =>
+          schema.node("paragraph", null, [
+            schema.text("plain", [revision]),
+            schema.text("bold", [revision, bold]),
+            schema.text("plain", [revision]),
+          ]),
+        ),
+      ),
+    });
+  };
+
+  test("bulk acceptance clears formatted revisions with one mark-removal step", () => {
+    const state = stateWithFormattedInsertion();
+    const dispatched: Transaction[] = [];
+
+    expect(
+      acceptAllChanges()(state, (transaction) => {
+        dispatched.push(transaction);
+      }),
+    ).toBe(true);
+
+    const transaction = dispatched.at(0);
+    expect(transaction).toBeDefined();
+    if (!transaction) {
+      return;
+    }
+    const resolvedState = state.apply(transaction);
+    expect(transaction.steps).toHaveLength(1);
+    expect(resolvedState.doc.textContent).toBe("plainboldplain".repeat(paragraphCount));
+    expect(insertionRevisionsAt(resolvedState)).toEqual([]);
+  });
+
+  test("bulk rejection coalesces formatted revisions within each paragraph", () => {
+    const state = stateWithFormattedInsertion();
+    const dispatched: Transaction[] = [];
+
+    expect(
+      rejectAllChanges()(state, (transaction) => {
+        dispatched.push(transaction);
+      }),
+    ).toBe(true);
+
+    const transaction = dispatched.at(0);
+    expect(transaction).toBeDefined();
+    if (!transaction) {
+      return;
+    }
+    expect(transaction.steps).toHaveLength(paragraphCount);
+    expect(state.apply(transaction).doc.textContent).toBe("");
+  });
+});
+
 describe("table row structural revision resolution", () => {
   const row = (
     text: string,
