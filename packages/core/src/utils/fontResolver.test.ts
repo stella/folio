@@ -52,6 +52,8 @@ describe("fontResolver — single-line ratios are derived from real hhea metrics
     ["constantia", 1.2207],
     ["corbel", 1.2075],
     ["dubai", 1.688],
+    ["frankruehl", 0.9297],
+    ["miriam", 1.0049],
   ];
 
   for (const [font, expectedRatio] of verifiedRatios) {
@@ -59,6 +61,20 @@ describe("fontResolver — single-line ratios are derived from real hhea metrics
       expect(resolveFontFamily(font).singleLineRatio).toBeCloseTo(expectedRatio, 4);
     });
   }
+});
+
+describe("fontResolver — Hebrew document faces", () => {
+  test.each([
+    ["FrankRuehl", "Frank Ruhl Libre", "serif"],
+    ["Miriam", "Miriam Libre", "sans-serif"],
+  ])("%s uses a script-compatible fallback", (font, googleFont, category) => {
+    const resolved = resolveFontFamily(font);
+
+    expect(resolved.googleFont).toBe(googleFont);
+    expect(parseFontFamilyList(resolved.cssFallback)).toEqual(
+      expect.arrayContaining([font, googleFont, category]),
+    );
+  });
 });
 
 describe("fontResolver — Aptos falls back to bundled Lato", () => {

@@ -1,9 +1,15 @@
+import { readdir } from "node:fs/promises";
+import { homedir } from "node:os";
 import path from "node:path";
 
 import type { LocalFontDefinition } from "./folioExtract";
 import type { ReferenceRendererId } from "./types";
 
 const WORD_FONT_DIR = "/Applications/Microsoft Word.app/Contents/Resources/DFonts";
+const WORD_CLOUD_FONT_DIR = path.join(
+  homedir(),
+  "Library/Group Containers/UBF8T346G9.Office/FontCache/4/CloudFonts",
+);
 
 type WordFontFace = Omit<LocalFontDefinition, "filePath"> & { fileName: string };
 
@@ -43,6 +49,11 @@ const HEBREW_FACES = [
 
 const WORD_FONT_FACES = [...APTOS_FACES, ...HEBREW_FACES];
 
+const CLOUD_FONT_FACES = [
+  { directory: "FrankRuehl", family: "FrankRuehl", weight: 400 },
+  { directory: "Miriam", family: "Miriam", weight: 400 },
+] as const satisfies ReadonlyArray<Omit<WordFontFace, "fileName"> & { directory: string }>;
+
 export const wordFontDefinitions = (fontDirectory: string): LocalFontDefinition[] =>
   WORD_FONT_FACES.map((face) => {
     const font: LocalFontDefinition = {
@@ -56,15 +67,50 @@ export const wordFontDefinitions = (fontDirectory: string): LocalFontDefinition[
     return font;
   });
 
+export const cloudFontDefinitions = (
+  fontDirectory: string,
+  filesByDirectory: Readonly<Record<string, readonly string[]>>,
+): LocalFontDefinition[] =>
+  CLOUD_FONT_FACES.flatMap((face) => {
+    const file = filesByDirectory[face.directory]
+      ?.filter((name) => name.toLowerCase().endsWith(".ttf"))
+      .toSorted()
+      .at(0);
+    return file === undefined
+      ? []
+      : [
+          {
+            family: face.family,
+            filePath: path.join(fontDirectory, face.directory, file),
+            weight: face.weight,
+          },
+        ];
+  });
+
+const getAvailableCloudFonts = async (): Promise<LocalFontDefinition[]> => {
+  const entries = await Promise.all(
+    CLOUD_FONT_FACES.map(async ({ directory }) => {
+      const files = await readdir(path.join(WORD_CLOUD_FONT_DIR, directory), {
+        withFileTypes: true,
+      }).catch(() => []);
+      return [directory, files.filter((file) => file.isFile()).map(({ name }) => name)] as const;
+    }),
+  );
+  return cloudFontDefinitions(WORD_CLOUD_FONT_DIR, Object.fromEntries(entries));
+};
+
 /** Fonts bundled with Word but not normally visible to Chromium. Missing
  * faces are skipped so an older Word installation remains usable. */
 export const getAvailableWordFonts = async (): Promise<LocalFontDefinition[]> => {
-  const available = await Promise.all(
-    wordFontDefinitions(WORD_FONT_DIR).map(async (font) =>
-      (await Bun.file(font.filePath).exists()) ? [font] : [],
+  const [bundled, cloud] = await Promise.all([
+    Promise.all(
+      wordFontDefinitions(WORD_FONT_DIR).map(async (font) =>
+        (await Bun.file(font.filePath).exists()) ? [font] : [],
+      ),
     ),
-  );
-  return available.flat();
+    getAvailableCloudFonts(),
+  ]);
+  return [...bundled.flat(), ...cloud];
 };
 
 type LoadWordFonts = () => Promise<LocalFontDefinition[]>;

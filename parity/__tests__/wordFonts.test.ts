@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { getReferenceLocalFonts, wordFontDefinitions } from "../wordFonts";
+import { cloudFontDefinitions, getReferenceLocalFonts, wordFontDefinitions } from "../wordFonts";
 
 describe("wordFontDefinitions", () => {
   test("maps Aptos regular, bold, and italic faces to explicit CSS descriptors", () => {
@@ -44,6 +44,28 @@ describe("wordFontDefinitions", () => {
   test("uses one unique source file for each declared face", () => {
     const paths = wordFontDefinitions("/word-fonts").map(({ filePath }) => filePath);
     expect(new Set(paths).size).toBe(paths.length);
+  });
+});
+
+describe("cloudFontDefinitions", () => {
+  test("discovers cached Hebrew faces without depending on generated filenames", () => {
+    expect(
+      cloudFontDefinitions("/cloud-fonts", {
+        FrankRuehl: ["metadata.json", "300.ttf", "200.ttf"],
+        Miriam: ["regular.TTF"],
+      }),
+    ).toEqual([
+      {
+        family: "FrankRuehl",
+        filePath: "/cloud-fonts/FrankRuehl/200.ttf",
+        weight: 400,
+      },
+      {
+        family: "Miriam",
+        filePath: "/cloud-fonts/Miriam/regular.TTF",
+        weight: 400,
+      },
+    ]);
   });
 });
 
