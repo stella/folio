@@ -70,6 +70,8 @@ import { emuToPixels, isFloatingImageRun, isTextWrappingFloatingImageRun } from 
 import type { RenderContext } from "./renderUtils";
 import { renderWatermarkLayer } from "./renderWatermark";
 
+const TEXT_BOX_ANCHOR_BLOCK_ID = Symbol.for("stll.textBoxAnchorBlockId");
+
 /**
  * Page-level floating image that has been extracted from paragraphs.
  * These are positioned absolutely within the page's content area.
@@ -1065,6 +1067,7 @@ function renderHeaderFooterContent(
   // RenderContext) know the HF caller is supplying its own top/left, rather
   // than the body case where the layout engine assigns fragment coordinates.
   const hfContext: RenderContext = { ...context, positioning: "absolute" };
+  const paragraphStartYByBlockId = new Map<ParagraphBlock["id"], number>();
 
   for (let i = 0; i < content.blocks.length; i++) {
     const block = content.blocks[i];
@@ -1079,6 +1082,7 @@ function renderHeaderFooterContent(
 
       // Track the Y position where this paragraph starts
       const paragraphStartY = cursorY;
+      paragraphStartYByBlockId.set(paragraphBlock.id, paragraphStartY);
 
       // Extract floating images and filter them from runs. Match the
       // body's classification (`isFloatingImageRun`) so images that are
@@ -1236,11 +1240,16 @@ function renderHeaderFooterContent(
         document: doc,
         renderTable: renderNestedTable,
       });
+      const anchorBlockId = Reflect.get(block, TEXT_BOX_ANCHOR_BLOCK_ID);
+      const paragraphY =
+        block.position?.vertical?.relativeTo === "paragraph" && typeof anchorBlockId === "string"
+          ? (paragraphStartYByBlockId.get(anchorBlockId) ?? cursorY)
+          : cursorY;
       const textBoxTop = block.position
         ? resolveHeaderFooterFloatTop(
             {
               height: measure.height,
-              paragraphY: cursorY,
+              paragraphY,
               position: block.position,
             },
             layout,
