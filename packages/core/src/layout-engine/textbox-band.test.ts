@@ -201,6 +201,27 @@ describe("topAndBottom band text box layout", () => {
     expect(paragraph?.y).toBe(MARGINS.top);
   });
 
+  test("paragraph-owned text box positions from its host paragraph", () => {
+    const host = para("host");
+    const anchored = verticalBanner({ relativeTo: "paragraph", posOffset: EMU_PER_INCH });
+    Reflect.set(anchored, Symbol.for("stll.textBoxAnchorBlockId"), host.id);
+    const frags = textBoxFragments([host, anchored], [paraMeasure, boxMeasure]);
+    const box = frags.find((fragment) => fragment.kind === "textBox");
+    const paragraph = frags.find((fragment) => fragment.kind === "paragraph");
+
+    expect(box?.y).toBe((paragraph?.y ?? 0) + 96);
+  });
+
+  test("does not reuse paragraph ownership for a line-relative text box", () => {
+    const host = para("host");
+    const anchored = verticalBanner({ relativeTo: "line", posOffset: EMU_PER_INCH });
+    Reflect.set(anchored, Symbol.for("stll.textBoxAnchorBlockId"), host.id);
+    const frags = textBoxFragments([host, anchored], [paraMeasure, boxMeasure]);
+    const box = frags.find((fragment) => fragment.kind === "textBox");
+
+    expect(box?.y).toBe(MARGINS.top + paraMeasure.totalHeight + 96);
+  });
+
   test("band uses the section top margin, not a page's first-page margin", () => {
     // On a title page the first-page top margin can differ from the section
     // margin. The measure pass reserves the band using the section margin, so

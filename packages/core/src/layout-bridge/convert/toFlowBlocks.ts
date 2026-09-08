@@ -72,6 +72,7 @@ import {
 import { autospacingMatchesBase } from "../../prosemirror/autospacingBase";
 import { runShadingAttrsToShading } from "../../prosemirror/conversion/runShadingMark";
 import { directionToBidi } from "../../prosemirror/paragraphDirection";
+import { expectTextBoxAnchorAttrs } from "../../prosemirror/textBoxAnchorAttrs";
 import { cascadeStyleTextFormatting } from "../../prosemirror/styles/styleToggleCascade";
 import { getPageNumbering } from "../../paged-layout/sectionGeometry";
 import type { RunFormattingOverrideAttrs } from "../../prosemirror/schema/marks";
@@ -165,9 +166,11 @@ export type ToFlowBlocksOptions = {
 type FlowConversionOptions = ToFlowBlocksOptions & {
   listCounterStreams: ListCounterStreams;
   numberedRefResults?: ReadonlyMap<PMNode, string>;
+  textBoxAnchorBlockIds: Map<string, ParagraphBlock["id"]>;
 };
 
 const DEFAULT_FONT = "Calibri";
+const TEXT_BOX_ANCHOR_BLOCK_ID = Symbol.for("stll.textBoxAnchorBlockId");
 const DEFAULT_TABLE_CELL_MARGIN_TWIPS = {
   top: 0,
   right: 108,
@@ -1961,6 +1964,13 @@ function convertParagraph(
       ...(frame.wrap !== undefined ? { wrap: frame.wrap } : {}),
     });
   }
+  node.descendants((child) => {
+    if (child.type.name !== "textBoxAnchor") {
+      return true;
+    }
+    options.textBoxAnchorBlockIds.set(expectTextBoxAnchorAttrs(child).anchorId, block.id);
+    return false;
+  });
   return block;
 }
 
@@ -2644,6 +2654,12 @@ function convertTextBoxNode(
   if (attrs._docxGroupId !== undefined) {
     setTextBoxGroupId(textBox, attrs._docxGroupId);
   }
+  const anchorBlockId = attrs._docxAnchorId
+    ? opts.textBoxAnchorBlockIds.get(attrs._docxAnchorId)
+    : undefined;
+  if (anchorBlockId !== undefined) {
+    Reflect.set(textBox, TEXT_BOX_ANCHOR_BLOCK_ID, anchorBlockId);
+  }
   return textBox;
 }
 
@@ -2699,6 +2715,7 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
       final: listCounterState,
       original: originalListCounterState,
     },
+    textBoxAnchorBlockIds: new Map(),
     numberedRefResults: resolveNumberedRefFields(doc, {
       listCounterState: cloneListCounterState(listCounterState),
       originalListCounterState: cloneListCounterState(originalListCounterState),
