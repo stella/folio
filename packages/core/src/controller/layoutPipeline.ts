@@ -414,7 +414,18 @@ export function runLayoutPipeline<THfPMs>(
     if (finalSectionDocumentGridLinePitchTwips !== undefined) {
       flowOpts.finalSectionDocumentGridLinePitchTwips = finalSectionDocumentGridLinePitchTwips;
     }
-    let newBlocks = toFlowBlocks(state.doc, flowOpts);
+    const flowDoc =
+      document === null
+        ? state.doc.type.create(
+            {
+              ...state.doc.attrs,
+              _finalSectionStart: sectionProperties?.sectionStart ?? null,
+            },
+            state.doc.content,
+            state.doc.marks,
+          )
+        : state.doc;
+    let newBlocks = toFlowBlocks(flowDoc, flowOpts);
     // Template fill preview: substitute each matched {{marker}} range
     // with its typed value at the flow-block level so the pages lay out
     // (wrap, paginate) as if the value were the document text. View-only:

@@ -509,9 +509,6 @@ function layoutDocumentPass(
         break;
 
       case "sectionBreak": {
-        // A section-break block carries the transition authored at that
-        // boundary. Looking ahead shifts every transition by one section,
-        // which moves odd/even filler pages to the wrong boundary.
         const nextSectionConfig = sectionConfigs[sectionIdx + 1] ?? initialConfig;
         const nextType = normalizeSectionBreakType(sectionBreakTypes[sectionIdx]);
         handleSectionBreak(
