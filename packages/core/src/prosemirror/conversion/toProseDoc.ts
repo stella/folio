@@ -2763,6 +2763,7 @@ function buildRunMarks(
   const marks = textFormattingToMarks(mergedFormatting, {
     overrideFormatting,
   });
+  addDirectFontProvenance(marks, runFormatting);
 
   if (styleId) {
     const styleRPr = characterStyleFormatting
@@ -2778,6 +2779,40 @@ function buildRunMarks(
 
   return { marks, mergedFormatting };
 }
+
+const addDirectFontProvenance = (
+  marks: ReturnType<typeof schema.mark>[],
+  directFormatting: TextFormatting | undefined,
+): void => {
+  const directFontProperties: ("fontFamily" | "fontSize" | "color")[] = [];
+  if (directFormatting?.fontFamily !== undefined) {
+    directFontProperties.push("fontFamily");
+  }
+  if (directFormatting?.fontSize !== undefined) {
+    directFontProperties.push("fontSize");
+  }
+  if (directFormatting?.color !== undefined) {
+    directFontProperties.push("color");
+  }
+  if (
+    !directFormatting ||
+    !Object.keys(directFormatting).some((property) => property !== "styleId")
+  ) {
+    return;
+  }
+
+  const index = marks.findIndex(({ type }) => type.name === "runFormattingOverride");
+  const existing = index >= 0 ? marks.at(index) : undefined;
+  const override = schema.mark("runFormattingOverride", {
+    ...existing?.attrs,
+    ...(directFontProperties.length > 0 && { directFontProperties }),
+  });
+  if (index >= 0) {
+    marks[index] = override;
+    return;
+  }
+  marks.push(override);
+};
 
 const ORDINARY_STYLE_TOGGLE_KEYS = [
   "bold",

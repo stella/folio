@@ -16,6 +16,30 @@ import { resolveColorToHex } from "../utils/colorResolver";
 const normalizeInlineFormattingColor = (color: string | undefined): string | undefined =>
   resolveColorToHex(color === undefined ? undefined : { rgb: color }, null);
 
+const changedStringValue = (
+  baseEffective: string | undefined,
+  targetEffective: string | undefined,
+  baseAuthored: string | null | undefined,
+  targetAuthored: string | null | undefined,
+): string | null | undefined => {
+  if (baseAuthored !== targetAuthored) {
+    return targetAuthored ?? null;
+  }
+  return baseEffective === targetEffective ? undefined : (targetEffective ?? null);
+};
+
+const changedNumberValue = (
+  baseEffective: number | undefined,
+  targetEffective: number | undefined,
+  baseAuthored: number | null | undefined,
+  targetAuthored: number | null | undefined,
+): number | null | undefined => {
+  if (baseAuthored !== targetAuthored) {
+    return targetAuthored ?? null;
+  }
+  return baseEffective === targetEffective ? undefined : (targetEffective ?? null);
+};
+
 /** One run of characters whose supported inline formatting differs. */
 export type InlineFormattingSegment = {
   /** Zero-based UTF-16 offset into the block's visible text. */
@@ -41,18 +65,6 @@ const changedSupportedFormatting = (
       ? undefined
       : Boolean(target[property]);
   };
-  const changedValue = <Value extends string | number>(
-    baseEffective: Value | undefined,
-    targetEffective: Value | undefined,
-    baseAuthored: Value | null | undefined,
-    targetAuthored: Value | null | undefined,
-  ): Value | null | undefined => {
-    if (baseAuthored !== targetAuthored) {
-      return targetAuthored ?? null;
-    }
-    return baseEffective === targetEffective ? undefined : (targetEffective ?? null);
-  };
-
   for (const property of ["bold", "italic", "underline", "strike"] as const) {
     const changed = changedBoolean(property);
     if (changed !== undefined) {
@@ -60,7 +72,7 @@ const changedSupportedFormatting = (
     }
   }
 
-  const fontFamily = changedValue(
+  const fontFamily = changedStringValue(
     base.fontFamily,
     target.fontFamily,
     baseDirect.fontFamily,
@@ -70,7 +82,7 @@ const changedSupportedFormatting = (
     formatting.fontFamily = fontFamily;
   }
 
-  const fontSizePt = changedValue(
+  const fontSizePt = changedNumberValue(
     base.fontSizePt,
     target.fontSizePt,
     baseDirect.fontSizePt,
@@ -80,7 +92,7 @@ const changedSupportedFormatting = (
     formatting.fontSizePt = fontSizePt;
   }
 
-  const color = changedValue(
+  const color = changedStringValue(
     normalizeInlineFormattingColor(base.color),
     normalizeInlineFormattingColor(target.color),
     normalizeInlineFormattingColor(baseDirect.color ?? undefined),

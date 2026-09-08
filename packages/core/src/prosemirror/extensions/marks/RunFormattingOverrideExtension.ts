@@ -143,6 +143,7 @@ export const RunFormattingOverrideExtension = createMarkExtension({
   schemaMarkName: "runFormattingOverride",
   markSpec: {
     attrs: {
+      directFontProperties: { default: null },
       bold: { default: null },
       italic: { default: null },
       underline: { default: null },

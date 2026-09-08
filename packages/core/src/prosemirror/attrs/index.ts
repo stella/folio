@@ -205,6 +205,8 @@ const RUN_FORMATTING_OVERRIDE_FALSE_KEYS = [
   "rtl",
 ] as const satisfies readonly (keyof RunFormattingOverrideAttrs)[];
 
+const RUN_FORMATTING_OVERRIDE_DIRECT_FONT_PROPERTIES = ["fontFamily", "fontSize", "color"] as const;
+
 const SECTION_ORIENTATIONS = ["portrait", "landscape"] as const;
 const SECTION_START_TYPES = [
   "continuous",
@@ -1188,6 +1190,23 @@ export const readRunFormattingOverrideMarkAttrs = (
   optionalNumber(attrs, "fontSizeCs", "runFormattingOverride.attrs.fontSizeCs", issues);
   optionalBoolean(attrs, "cs", "runFormattingOverride.attrs.cs", issues);
   optionalOneOf(attrs, "underline", "runFormattingOverride.attrs.underline", issues, ["none"]);
+  optionalOneOfArray(
+    attrs,
+    "directFontProperties",
+    "runFormattingOverride.attrs.directFontProperties",
+    issues,
+    RUN_FORMATTING_OVERRIDE_DIRECT_FONT_PROPERTIES,
+  );
+  const directFontProperties = attrs["directFontProperties"];
+  if (
+    Array.isArray(directFontProperties) &&
+    new Set(directFontProperties).size !== directFontProperties.length
+  ) {
+    issues.push({
+      path: "runFormattingOverride.attrs.directFontProperties",
+      message: "Expected unique direct font properties.",
+    });
+  }
 
   return attrsResult(attrs, issues);
 };

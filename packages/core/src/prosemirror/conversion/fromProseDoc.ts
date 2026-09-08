@@ -112,6 +112,7 @@ import { directionToBidi } from "../paragraphDirection";
 import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
 import { cascadeStyleTextFormatting } from "../styles/styleToggleCascade";
 import { applyRunFormattingOverrideAttrs } from "../extensions/marks/RunFormattingOverrideExtension";
+import type { RunFormattingOverrideAttrs } from "../schema/marks";
 import type {
   ParagraphAttrs,
   ParagraphPropertyChangeAttrs,
@@ -1427,12 +1428,14 @@ function extractParagraphContent(
   emptyHyperlinks?: NonNullable<ParagraphAttrs["_emptyHyperlinks"]>,
   textBoxAnchorMarkers?: Map<string, Run>,
   skipLeadingRenderedPageBreak = false,
+  inheritedFormattingOverride?: TextFormatting,
 ): ParagraphContent[] {
   const content: ParagraphContent[] = [];
   const inheritedFormatting =
-    paragraph.type.name === "paragraph"
+    inheritedFormattingOverride ??
+    (paragraph.type.name === "paragraph"
       ? (expectParagraphAttrs(paragraph).defaultTextFormatting ?? undefined)
-      : undefined;
+      : undefined);
   const sortedEmptyHyperlinks = (emptyHyperlinks ?? [])
     .map((attrs, order) => ({ attrs, order }))
     .toSorted((left, right) => left.attrs.offset - right.attrs.offset || left.order - right.order);
@@ -1811,7 +1814,7 @@ function extractParagraphContent(
     } else if (node.type.name === "sdt") {
       // SDT ends current run and emits an InlineSdt content item
       flushCurrentInline();
-      content.push(createInlineSdtFromNode(node, textBoxAnchorMarkers));
+      content.push(createInlineSdtFromNode(node, textBoxAnchorMarkers, inheritedFormatting));
     } else if (node.type.name === "math") {
       // Math ends current run and emits a MathEquation content item
       flushCurrentInline();
@@ -2421,7 +2424,11 @@ function createMathFromNode(node: PMNode): MathEquation {
 /**
  * Create an InlineSdt from a PM sdt node
  */
-function createInlineSdtFromNode(node: PMNode, textBoxAnchorMarkers?: Map<string, Run>): InlineSdt {
+function createInlineSdtFromNode(
+  node: PMNode,
+  textBoxAnchorMarkers?: Map<string, Run>,
+  inheritedFormatting?: TextFormatting,
+): InlineSdt {
   const attrs = expectSdtAttrs(node);
   const properties = sdtPropertiesFromAttrs(attrs);
 
@@ -2430,7 +2437,14 @@ function createInlineSdtFromNode(node: PMNode, textBoxAnchorMarkers?: Map<string
   // and math here. Keep all of them so docProps-bound fields and reviewed
   // template content survive a round-trip through the editor. Keep this
   // filter in sync with the exhaustive switch in `serializeInlineSdt`.
-  const sdtContent = extractParagraphContent(node, undefined, undefined, textBoxAnchorMarkers);
+  const sdtContent = extractParagraphContent(
+    node,
+    undefined,
+    undefined,
+    textBoxAnchorMarkers,
+    false,
+    inheritedFormatting,
+  );
   const content = sdtContent.filter(
     (c): c is InlineSdt["content"][number] =>
       c.type === "run" ||
@@ -2744,6 +2758,7 @@ export function marksToTextFormatting(
 ): TextFormatting {
   const formatting: TextFormatting = {};
   let directOverrideFormatting: TextFormatting | undefined;
+  let directFontProperties: RunFormattingOverrideAttrs["directFontProperties"];
   let characterStyleRPr: TextFormatting | undefined;
   let runFormattingOverrideMark: Mark | undefined;
 
@@ -2953,9 +2968,16 @@ export function marksToTextFormatting(
   // bold/font-size mark cannot overwrite their more specific OOXML values.
   if (runFormattingOverrideMark) {
     const overrideAttrs = expectRunFormattingOverrideMarkAttrs(runFormattingOverrideMark);
+    directFontProperties = overrideAttrs.directFontProperties;
     applyRunFormattingOverrideAttrs(formatting, overrideAttrs);
     directOverrideFormatting = {};
     applyRunFormattingOverrideAttrs(directOverrideFormatting, overrideAttrs);
+    for (const property of directFontProperties ?? []) {
+      const value = formatting[property];
+      if (value !== undefined) {
+        Reflect.set(directOverrideFormatting, property, value);
+      }
+    }
   }
 
   if (characterStyleRPr) {
@@ -2967,8 +2989,40 @@ export function marksToTextFormatting(
     });
   }
 
+  for (const property of ["fontFamily", "fontSize", "color"] as const) {
+    if (directFontProperties?.includes(property)) {
+      continue;
+    }
+    const value = formatting[property];
+    const inheritedValue = options?.inheritedFormatting?.[property];
+    const matchesInherited =
+      property === "fontFamily"
+        ? sameFontFamily(formatting.fontFamily, options?.inheritedFormatting?.fontFamily)
+        : JSON.stringify(value) === JSON.stringify(inheritedValue);
+    if (inheritedValue !== undefined && matchesInherited) {
+      Reflect.deleteProperty(formatting, property);
+    }
+  }
   return formatting;
 }
+
+const sameFontFamily = (
+  left: TextFormatting["fontFamily"],
+  right: TextFormatting["fontFamily"],
+): boolean =>
+  (
+    [
+      "ascii",
+      "hAnsi",
+      "eastAsia",
+      "hint",
+      "asciiTheme",
+      "hAnsiTheme",
+      "eastAsiaTheme",
+      "csTheme",
+    ] as const
+  ).every((property) => left?.[property] === right?.[property]) &&
+  (left?.cs ?? left?.ascii) === (right?.cs ?? right?.ascii);
 
 /**
  * Negatable boolean run-property keys whose serializer emits an explicit

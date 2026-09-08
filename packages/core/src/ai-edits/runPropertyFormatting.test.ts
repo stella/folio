@@ -33,6 +33,62 @@ const createFormattingBaseline = async ({
   return createDocx(document);
 };
 
+const createSameValuedDirectFormattingDocument = async (): Promise<ArrayBuffer> => {
+  const document = createEmptyDocument();
+  const formatting: TextFormatting = {
+    fontFamily: { ascii: "Georgia", hAnsi: "Georgia" },
+    fontSize: 21,
+    color: { rgb: "C00000" },
+  };
+  document.package.styles = {
+    ...document.package.styles,
+    docDefaults: { ...document.package.styles?.docDefaults, rPr: formatting },
+    styles: document.package.styles?.styles.map((style) =>
+      style.styleId === "Normal" ? { ...style, rPr: formatting } : style,
+    ),
+  };
+  document.package.document.content = [
+    {
+      type: "paragraph",
+      paraId: "A1000003",
+      content: [
+        { type: "run", content: [{ type: "text", text: "Inherited" }] },
+        {
+          type: "run",
+          formatting,
+          content: [{ type: "text", text: "Direct" }],
+        },
+      ],
+    },
+  ];
+  return createDocx(document);
+};
+
+const createParagraphFontWithDirectBoldDocument = async (): Promise<ArrayBuffer> => {
+  const document = createEmptyDocument();
+  document.package.document.content = [
+    {
+      type: "paragraph",
+      paraId: "A1000004",
+      formatting: {
+        runProperties: {
+          fontFamily: { ascii: "Arial", hAnsi: "Arial" },
+          fontSize: 21,
+          color: { rgb: "C00000" },
+        },
+      },
+      content: [
+        {
+          type: "run",
+          formatting: { bold: true },
+          content: [{ type: "text", text: "Direct bold" }],
+        },
+      ],
+    },
+  ];
+  return createDocx(document);
+};
+
 type ApplyTrackedFormattingOptions = {
   formatting: FolioAIInlineFormatting;
   baselineFormatting?: TextFormatting;
@@ -114,6 +170,42 @@ const applyTrackedBold = async (): Promise<ArrayBuffer> => {
 };
 
 describe("tracked run formatting", () => {
+  test("snapshot preserves same-valued direct font properties", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await createSameValuedDirectFormattingDocument(),
+    );
+
+    expect(reviewer.snapshot().blocks.at(0)?.previewRuns).toEqual([
+      {
+        text: "Inherited",
+        fontFamily: "Georgia",
+        fontSizePt: 10.5,
+        color: "#C00000",
+      },
+      {
+        text: "Direct",
+        fontFamily: "Georgia",
+        fontSizePt: 10.5,
+        color: "#C00000",
+        directFormatting: {
+          fontFamily: "Georgia",
+          fontSizePt: 10.5,
+          color: "#C00000",
+        },
+      },
+    ]);
+  });
+
+  test("snapshot does not promote paragraph font properties beside direct bold", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await createParagraphFontWithDirectBoldDocument(),
+    );
+
+    expect(reviewer.snapshot().blocks.at(0)?.previewRuns?.at(0)?.directFormatting).toEqual({
+      bold: true,
+    });
+  });
+
   test("saves, reopens, accepts, and rejects a formatting revision", async () => {
     const tracked = await applyTrackedBold();
     const trackedXml = await documentXml(tracked);

@@ -156,6 +156,7 @@ describe("complex-script formatting pipeline", () => {
     const roundTripped = toProseDoc(fromProseDoc(source));
     const text = roundTripped.firstChild?.firstChild;
 
-    expect(text?.marks.some((mark) => mark.type.name === "runFormattingOverride")).toBe(false);
+    const override = text?.marks.find((mark) => mark.type.name === "runFormattingOverride");
+    expect(override?.attrs["fontSizeCs"]).toBeFalsy();
   });
 });

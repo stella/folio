@@ -1,6 +1,7 @@
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import { TableMap } from "prosemirror-tables";
 
+import { expectRunFormattingOverrideMarkAttrs } from "../prosemirror/attrs";
 import { deriveBlankBlockId, deriveBlockId, type FolioBlockId } from "../types/block-id";
 import { buildCleanBlockText } from "./clean-text";
 import type {
@@ -10,6 +11,7 @@ import type {
   FolioAIBlockPreviewRun,
   FolioAIBlockTableLocation,
   FolioAIEditSnapshot,
+  FolioAIInlineFormatting,
   FolioAITextRangeHandle,
 } from "./types";
 
@@ -400,7 +402,15 @@ const getStyleId = (node: PMNode): string | undefined => {
   return typeof styleId === "string" && styleId.length > 0 ? styleId : undefined;
 };
 
-type PreviewRunStyle = Omit<FolioAIBlockPreviewRun, "text" | "directFormatting">;
+type PreviewRunStyle = {
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strike?: boolean;
+  fontFamily?: string;
+  fontSizePt?: number;
+  color?: string;
+};
 
 const DELETION_MARK = "deletion";
 
@@ -514,6 +524,12 @@ const getDirectPreviewRunStyle = (
 ): PreviewRunStyle => {
   const markedStyle = getPreviewRunStyle(marks, {});
   const directStyle: PreviewRunStyle = {};
+  const overrideMark = marks.find(({ type }) => type.name === "runFormattingOverride");
+  const hasFormattingProvenance =
+    overrideMark !== undefined || marks.some(({ type }) => type.name === "characterStyle");
+  const directFontProperties = overrideMark
+    ? expectRunFormattingOverrideMarkAttrs(overrideMark).directFontProperties
+    : undefined;
 
   for (const property of ["bold", "italic", "underline", "strike"] as const) {
     if (Boolean(markedStyle[property]) !== Boolean(inheritedStyle[property])) {
@@ -522,17 +538,26 @@ const getDirectPreviewRunStyle = (
   }
   if (
     markedStyle.fontFamily !== undefined &&
-    markedStyle.fontFamily !== inheritedStyle.fontFamily
+    (hasFormattingProvenance
+      ? directFontProperties?.includes("fontFamily")
+      : markedStyle.fontFamily !== inheritedStyle.fontFamily)
   ) {
     directStyle.fontFamily = markedStyle.fontFamily;
   }
   if (
     markedStyle.fontSizePt !== undefined &&
-    markedStyle.fontSizePt !== inheritedStyle.fontSizePt
+    (hasFormattingProvenance
+      ? directFontProperties?.includes("fontSize")
+      : markedStyle.fontSizePt !== inheritedStyle.fontSizePt)
   ) {
     directStyle.fontSizePt = markedStyle.fontSizePt;
   }
-  if (markedStyle.color !== undefined && markedStyle.color !== inheritedStyle.color) {
+  if (
+    markedStyle.color !== undefined &&
+    (hasFormattingProvenance
+      ? directFontProperties?.includes("color")
+      : markedStyle.color !== inheritedStyle.color)
+  ) {
     directStyle.color = markedStyle.color;
   }
 
@@ -644,7 +669,7 @@ const isEmptyPreviewRunStyle = ({
   color === undefined;
 
 const sameDirectFormatting = (
-  left: FolioAIBlockPreviewRun["directFormatting"],
+  left: FolioAIInlineFormatting | undefined,
   right: PreviewRunStyle,
 ): boolean =>
   (left === undefined && isEmptyPreviewRunStyle(right)) ||

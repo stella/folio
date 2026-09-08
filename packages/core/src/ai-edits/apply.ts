@@ -4,7 +4,11 @@ import { TableMap } from "prosemirror-tables";
 import { canJoin, canSplit } from "prosemirror-transform";
 import { panic } from "better-result";
 
-import { expectParagraphAttrs, expectRunPropertyChangeMarkAttrs } from "../prosemirror/attrs";
+import {
+  expectParagraphAttrs,
+  expectRunFormattingOverrideMarkAttrs,
+  expectRunPropertyChangeMarkAttrs,
+} from "../prosemirror/attrs";
 import { PPR_CHANGE_SCOPED_ATTR_KEYS } from "../prosemirror/commands/propertyChangeScope";
 import type { ParagraphPropertyChangeAttrs } from "../prosemirror/schema/nodes";
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
@@ -390,7 +394,7 @@ const REPLACEMENT_BACKGROUND_CLEAR_FORMATTING = {
 } as const;
 
 type InlineFormattingPatch =
-  | Extract<FolioAIEditOperation, { type: "formatRange" }>["formatting"]
+  | FolioAIInlineFormatting
   | typeof REPLACEMENT_BACKGROUND_CLEAR_FORMATTING;
 
 const INLINE_FORMATTING_MARK_NAMES = {
@@ -403,10 +407,9 @@ const INLINE_FORMATTING_MARK_NAMES = {
   color: "textColor",
   highlight: "highlight",
   runShading: "runShading",
-} as const satisfies Record<
-  keyof FolioAIInlineFormatting | keyof typeof REPLACEMENT_BACKGROUND_CLEAR_FORMATTING,
-  string
->;
+} as const;
+
+const DIRECT_FONT_PROPERTIES = ["fontFamily", "fontSize", "color"] as const;
 
 const formattingMarkName = (property: string): string | null => {
   if (!Object.hasOwn(INLINE_FORMATTING_MARK_NAMES, property)) {
@@ -456,7 +459,65 @@ const applyInlineFormatting = ({
     }
     tr.removeMark(from, to, markType);
   }
+  applyDirectFontProvenance({ tr, schema, from, to, formatting });
   return tr;
+};
+
+const applyDirectFontProvenance = ({
+  tr,
+  schema,
+  from,
+  to,
+  formatting,
+}: ApplyInlineFormattingOptions): void => {
+  if ("highlight" in formatting) {
+    return;
+  }
+  const updates = [
+    ["fontFamily", formatting.fontFamily],
+    ["fontSize", formatting.fontSizePt],
+    ["color", formatting.color],
+  ] as const;
+  const changed = updates.filter(([, value]) => value !== undefined);
+  const markType = schema.marks["runFormattingOverride"];
+  if (!markType || changed.length === 0) {
+    return;
+  }
+
+  tr.doc.nodesBetween(from, to, (node, pos) => {
+    if (!node.isText) {
+      return;
+    }
+    const segmentFrom = Math.max(from, pos);
+    const segmentTo = Math.min(to, pos + node.nodeSize);
+    const existing = node.marks.find((mark) => mark.type === markType);
+    const attrs = existing ? expectRunFormattingOverrideMarkAttrs(existing) : {};
+    const directFontProperties = new Set(attrs.directFontProperties);
+    for (const [property, value] of changed) {
+      if (value === null) {
+        directFontProperties.delete(property);
+      } else {
+        directFontProperties.add(property);
+      }
+    }
+
+    tr.removeMark(segmentFrom, segmentTo, markType);
+    const nextAttrs = {
+      ...attrs,
+      directFontProperties: DIRECT_FONT_PROPERTIES.filter((property) =>
+        directFontProperties.has(property),
+      ),
+    };
+    if (
+      Object.entries(nextAttrs).some(([key, value]) =>
+        key === "directFontProperties"
+          ? Array.isArray(value) && value.length > 0
+          : value !== null && value !== undefined,
+      )
+    ) {
+      tr.addMark(segmentFrom, segmentTo, markType.create(nextAttrs));
+    }
+  });
 };
 
 const formattingWouldChange = (
