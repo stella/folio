@@ -1202,10 +1202,10 @@ describe("Folio AI edit operations", () => {
       expect(result.skipped).toEqual([]);
       expect(result.applied.map(({ id }) => id)).toEqual(["second", "first"]);
       expect(result.applied.map(({ revisionIds }) => revisionIds)).toEqual([
-        [100, 101, 102, 103, 106],
-        [104, 105],
+        [100, 101, 102, 103, 106, 107],
+        [104, 105, 108],
       ]);
-      expect(result.nextRevisionId).toBe(107);
+      expect(result.nextRevisionId).toBe(109);
       expect(view.state.doc.childCount).toBe(4);
       expect(view.state.doc.child(1).attrs["styleId"]).toBe("Heading1");
       expect(view.state.doc.child(2).attrs["styleId"]).toBe(null);

@@ -5,6 +5,7 @@ import type { Mark, Node as PMNode } from "prosemirror-model";
 import { EditorState, type Transaction } from "prosemirror-state";
 
 import { FolioDocxReviewer } from "../../ai-edits/headless";
+import { getTrackedChangesFromDoc } from "../../ai-edits/read";
 import { createDocx } from "../../docx/rezip";
 import { revisedFinalParagraphMarks } from "../../compare/verification";
 import { expectParagraphAttrs } from "../attrs";
@@ -34,6 +35,14 @@ const FIRST_ADJACENT_SUGGESTION = "first-adjacent-tail";
 const SECOND_ADJACENT_SUGGESTION = "second-adjacent-tail";
 const FIRST_ADJACENT_TEXT = "First adjacent proposal.";
 const SECOND_ADJACENT_TEXT = "Second adjacent proposal.";
+const THIRD_ADJACENT_ID = 803;
+const THIRD_ADJACENT_SUGGESTION = "third-adjacent-tail";
+const THIRD_ADJACENT_TEXT = "Third adjacent proposal.";
+const EMPTY_CARRIER_FORMATTING = {
+  styleId: "Heading2",
+  numPr: { numId: 1, ilvl: 1 },
+  alignment: "both",
+} as const;
 
 type ContainerKind = "body" | "table cell";
 type SuggestionAcceptance = "targeted" | "all";
@@ -53,7 +62,7 @@ const table = (cell: PMNode): PMNode =>
 
 const alignedParagraph = (
   text: string,
-  alignment: "center" | "right",
+  alignment: "center" | "right" | "both",
   attrs: Record<string, unknown> = {},
   marks: readonly Mark[] = [],
 ): PMNode =>
@@ -97,7 +106,7 @@ const suggestedParagraph = ({
   suggestionId,
 }: {
   text: string;
-  alignment: "center" | "right";
+  alignment: "center" | "right" | "both";
   revisionId: number;
   suggestionId: string;
 }): PMNode => {
@@ -131,6 +140,42 @@ const makeAdjacentSuggestedTailState = (containerKind: ContainerKind): EditorSta
       alignment: "center",
       revisionId: SECOND_ADJACENT_ID,
       suggestionId: SECOND_ADJACENT_SUGGESTION,
+    }),
+  ];
+  const blocks =
+    containerKind === "body" ? paragraphs : [table(tableCell(paragraphs)), paragraph("")];
+  return EditorState.create({ schema, doc: schema.node("doc", null, blocks) });
+};
+
+const emptyFormattedCarrier = (): PMNode =>
+  paragraph("", {
+    ...EMPTY_CARRIER_FORMATTING,
+    _originalFormatting: EMPTY_CARRIER_FORMATTING,
+  });
+
+const makeThreeSuggestedTailState = (
+  containerKind: ContainerKind,
+  carrier = alignedParagraph(CARRIER_TEXT, "center"),
+): EditorState => {
+  const paragraphs = [
+    carrier,
+    suggestedParagraph({
+      text: FIRST_ADJACENT_TEXT,
+      alignment: "right",
+      revisionId: FIRST_ADJACENT_ID,
+      suggestionId: FIRST_ADJACENT_SUGGESTION,
+    }),
+    suggestedParagraph({
+      text: SECOND_ADJACENT_TEXT,
+      alignment: "center",
+      revisionId: SECOND_ADJACENT_ID,
+      suggestionId: SECOND_ADJACENT_SUGGESTION,
+    }),
+    suggestedParagraph({
+      text: THIRD_ADJACENT_TEXT,
+      alignment: "both",
+      revisionId: THIRD_ADJACENT_ID,
+      suggestionId: THIRD_ADJACENT_SUGGESTION,
     }),
   ];
   const blocks =
@@ -228,6 +273,120 @@ const TRACKED_RESOLUTIONS = [
 
 type AdjacentSuggestionDecision = "accept" | "reject";
 type AdjacentSuggestionId = typeof FIRST_ADJACENT_SUGGESTION | typeof SECOND_ADJACENT_SUGGESTION;
+type ThreeSuggestionId = AdjacentSuggestionId | typeof THIRD_ADJACENT_SUGGESTION;
+
+const THREE_SUGGESTION_ORDERS = [
+  [FIRST_ADJACENT_SUGGESTION, SECOND_ADJACENT_SUGGESTION, THIRD_ADJACENT_SUGGESTION],
+  [FIRST_ADJACENT_SUGGESTION, THIRD_ADJACENT_SUGGESTION, SECOND_ADJACENT_SUGGESTION],
+  [SECOND_ADJACENT_SUGGESTION, FIRST_ADJACENT_SUGGESTION, THIRD_ADJACENT_SUGGESTION],
+  [SECOND_ADJACENT_SUGGESTION, THIRD_ADJACENT_SUGGESTION, FIRST_ADJACENT_SUGGESTION],
+  [THIRD_ADJACENT_SUGGESTION, FIRST_ADJACENT_SUGGESTION, SECOND_ADJACENT_SUGGESTION],
+  [THIRD_ADJACENT_SUGGESTION, SECOND_ADJACENT_SUGGESTION, FIRST_ADJACENT_SUGGESTION],
+] as const satisfies readonly (readonly ThreeSuggestionId[])[];
+
+const THREE_SUGGESTION_DECISIONS = [
+  ["reject", "reject", "reject"],
+  ["accept", "reject", "reject"],
+  ["reject", "accept", "reject"],
+  ["reject", "reject", "accept"],
+  ["accept", "accept", "reject"],
+  ["accept", "reject", "accept"],
+  ["reject", "accept", "accept"],
+  ["accept", "accept", "accept"],
+] as const satisfies readonly (readonly AdjacentSuggestionDecision[])[];
+
+const threeSuggestionDecision = (
+  suggestionId: ThreeSuggestionId,
+  decisions: (typeof THREE_SUGGESTION_DECISIONS)[number],
+): AdjacentSuggestionDecision => {
+  switch (suggestionId) {
+    case FIRST_ADJACENT_SUGGESTION:
+      return decisions[0];
+    case SECOND_ADJACENT_SUGGESTION:
+      return decisions[1];
+    case THIRD_ADJACENT_SUGGESTION:
+      return decisions[2];
+  }
+};
+
+const acceptedThreeSuggestionDetails = (decisions: (typeof THREE_SUGGESTION_DECISIONS)[number]) =>
+  [
+    {
+      text: FIRST_ADJACENT_TEXT,
+      alignment: "right",
+      revisionId: FIRST_ADJACENT_ID,
+      decision: decisions[0],
+    },
+    {
+      text: SECOND_ADJACENT_TEXT,
+      alignment: "center",
+      revisionId: SECOND_ADJACENT_ID,
+      decision: decisions[1],
+    },
+    {
+      text: THIRD_ADJACENT_TEXT,
+      alignment: "both",
+      revisionId: THIRD_ADJACENT_ID,
+      decision: decisions[2],
+    },
+  ].filter(({ decision }) => decision === "accept");
+
+const terminalChainState = (state: EditorState, containerKind: ContainerKind) =>
+  paragraphsInChangedContainer(state, containerKind).map((node) => {
+    const attrs = expectParagraphAttrs(node);
+    const mark = attrs.pPrMark;
+    const propertyChanges = attrs._propertyChanges;
+    return {
+      text: node.textContent,
+      alignment: attrs.alignment,
+      markId: isPPrMarkWithId(mark) ? mark.info.id : null,
+      propertyChanges: Array.isArray(propertyChanges)
+        ? propertyChanges.map(({ info, previousFormatting }) => ({
+            revisionId: info.id,
+            previousAlignment: previousFormatting?.alignment ?? null,
+          }))
+        : [],
+    };
+  });
+
+const terminalChainFormattingState = (state: EditorState, containerKind: ContainerKind) =>
+  terminalChainState(state, containerKind).map(({ text, alignment, markId, propertyChanges }) => ({
+    text,
+    alignment,
+    markId,
+    previousAlignments: propertyChanges.map(({ previousAlignment }) => previousAlignment),
+  }));
+
+const isPPrMarkWithId = (value: unknown): value is { info: { id: number } } => {
+  if (typeof value !== "object" || value === null || !("info" in value)) {
+    return false;
+  }
+  const info = value.info;
+  return typeof info === "object" && info !== null && "id" in info && typeof info.id === "number";
+};
+
+const expectedTerminalChainState = (decisions: (typeof THREE_SUGGESTION_DECISIONS)[number]) => {
+  const accepted = acceptedThreeSuggestionDetails(decisions);
+  return [
+    {
+      text: CARRIER_TEXT,
+      alignment: "center",
+      markId: accepted.at(0)?.revisionId ?? null,
+      propertyChanges: [],
+    },
+    ...accepted.map(({ text, alignment, revisionId }, index) => ({
+      text,
+      alignment,
+      markId: accepted.at(index + 1)?.revisionId ?? null,
+      propertyChanges: [
+        {
+          revisionId,
+          previousAlignment: "center",
+        },
+      ],
+    })),
+  ];
+};
 
 const ADJACENT_DECISION_CASES = (["body", "table cell"] as const).flatMap((containerKind) =>
   (["accept", "reject"] as const).flatMap((firstDecision) =>
@@ -262,11 +421,7 @@ const resolveAdjacentSuggestions = (
       deferred.push(suggestionId);
     }
   }
-  expect(deferred).toEqual(
-    order[0] === SECOND_ADJACENT_SUGGESTION && decisions[SECOND_ADJACENT_SUGGESTION] === "accept"
-      ? [SECOND_ADJACENT_SUGGESTION]
-      : [],
-  );
+  expect(deferred).toEqual([]);
   for (const suggestionId of deferred) {
     const decision = decisions[suggestionId];
     expect(applySuggestionDecision(view, suggestionId, decision)).toBe(true);
@@ -277,6 +432,214 @@ const resolveAdjacentSuggestions = (
 };
 
 describe("accepted suggested container-final paragraphs", () => {
+  test.each(["body", "table cell"] as const)(
+    "resolves every three-suggestion terminal decision in every order in the %s",
+    (containerKind) => {
+      for (const decisions of THREE_SUGGESTION_DECISIONS) {
+        let canonical: unknown;
+        for (const order of THREE_SUGGESTION_ORDERS) {
+          const view = dispatcher(makeThreeSuggestedTailState(containerKind));
+          for (const suggestionId of order) {
+            expect(
+              applySuggestionDecision(
+                view,
+                suggestionId,
+                threeSuggestionDecision(suggestionId, decisions),
+              ),
+            ).toBe(true);
+          }
+          expect(getSuggestions(view.state)).toEqual([]);
+          expect(revisedFinalParagraphMarks(fromProseDoc(view.state.doc))).toEqual([]);
+          expect(terminalChainState(view.state, containerKind)).toEqual(
+            expectedTerminalChainState(decisions),
+          );
+          if (canonical === undefined) {
+            canonical = view.state.doc.toJSON();
+          } else {
+            expect(view.state.doc.toJSON()).toEqual(canonical);
+          }
+        }
+      }
+    },
+  );
+
+  test.each(["body", "table cell"] as const)(
+    "an empty formatted %s carrier resolves every suggestion decision in every order",
+    (containerKind) => {
+      for (const decisions of THREE_SUGGESTION_DECISIONS) {
+        let canonical: unknown;
+        for (const order of THREE_SUGGESTION_ORDERS) {
+          const view = dispatcher(
+            makeThreeSuggestedTailState(containerKind, emptyFormattedCarrier()),
+          );
+          for (const suggestionId of order) {
+            expect(
+              applySuggestionDecision(
+                view,
+                suggestionId,
+                threeSuggestionDecision(suggestionId, decisions),
+              ),
+            ).toBe(true);
+          }
+
+          expect(getSuggestions(view.state)).toEqual([]);
+          const accepted = acceptedThreeSuggestionDetails(decisions);
+          const paragraphs = paragraphsInChangedContainer(view.state, containerKind);
+          expect(paragraphs.map((node) => node.textContent)).toEqual([
+            "",
+            ...accepted.map(({ text }) => text),
+          ]);
+          expect(
+            expectParagraphAttrs(paragraphs[0] ?? panic("expected the carrier")),
+          ).toMatchObject({
+            ...EMPTY_CARRIER_FORMATTING,
+            _originalFormatting: EMPTY_CARRIER_FORMATTING,
+          });
+          for (const [index, { revisionId }] of accepted.entries()) {
+            const left = paragraphs[index] ?? panic("expected the preceding paragraph");
+            const right = paragraphs[index + 1] ?? panic("expected the inserted paragraph");
+            expect(expectParagraphAttrs(left).pPrMark).toMatchObject({ info: { id: revisionId } });
+            expect(expectParagraphAttrs(right)._propertyChanges).toEqual([
+              expect.objectContaining({
+                info: expect.objectContaining({ id: revisionId }),
+                previousFormatting: expect.objectContaining(EMPTY_CARRIER_FORMATTING),
+              }),
+            ]);
+          }
+          expect(
+            expectParagraphAttrs(paragraphs.at(-1) ?? panic("expected a final paragraph"))
+              .pPrMark ?? null,
+          ).toBeNull();
+          expect(revisedFinalParagraphMarks(fromProseDoc(view.state.doc))).toEqual([]);
+
+          if (canonical === undefined) {
+            canonical = view.state.doc.toJSON();
+          } else {
+            expect(view.state.doc.toJSON()).toEqual(canonical);
+          }
+
+          if (accepted.length > 0) {
+            expect(rejectAllChanges()(view.state, view.dispatch)).toBe(true);
+          }
+          const rejected = paragraphsInChangedContainer(view.state, containerKind);
+          expect(rejected).toHaveLength(1);
+          expect(rejected[0]?.textContent).toBe("");
+          const rejectedAttrs = expectParagraphAttrs(
+            rejected[0] ?? panic("expected the restored carrier"),
+          );
+          expect(rejectedAttrs).toMatchObject({
+            ...EMPTY_CARRIER_FORMATTING,
+            _originalFormatting: EMPTY_CARRIER_FORMATTING,
+          });
+          expect(rejectedAttrs.pPrMark ?? null).toBeNull();
+          expect(rejectedAttrs._propertyChanges ?? null).toBeNull();
+        }
+      }
+    },
+  );
+
+  test.each(["body", "table cell"] as const)(
+    "resolves each tracked owner in every order after accepting a three-suggestion %s chain",
+    async (containerKind) => {
+      for (const order of THREE_SUGGESTION_ORDERS) {
+        const view = dispatcher(makeThreeSuggestedTailState(containerKind));
+        expect(
+          acceptAllSuggestions({ author: "Reviewer", date: DATE })(view.state, view.dispatch),
+        ).toBe(true);
+        for (const suggestionId of order) {
+          const revisionId = (() => {
+            switch (suggestionId) {
+              case FIRST_ADJACENT_SUGGESTION:
+                return FIRST_ADJACENT_ID;
+              case SECOND_ADJACENT_SUGGESTION:
+                return SECOND_ADJACENT_ID;
+              case THIRD_ADJACENT_SUGGESTION:
+                return THIRD_ADJACENT_ID;
+            }
+          })();
+          const command =
+            suggestionId === SECOND_ADJACENT_SUGGESTION
+              ? rejectAIEditRevision
+              : acceptAIEditRevision;
+          expect(command(revisionId)(view.state, view.dispatch)).toBe(true);
+        }
+
+        expect(getTrackedChangesFromDoc(view.state.doc)).toEqual([]);
+        expect(revisedFinalParagraphMarks(fromProseDoc(view.state.doc))).toEqual([]);
+        expect(terminalChainState(view.state, containerKind)).toEqual([
+          {
+            text: CARRIER_TEXT,
+            alignment: "center",
+            markId: null,
+            propertyChanges: [],
+          },
+          {
+            text: FIRST_ADJACENT_TEXT,
+            alignment: "right",
+            markId: null,
+            propertyChanges: [],
+          },
+          {
+            text: THIRD_ADJACENT_TEXT,
+            alignment: "both",
+            markId: null,
+            propertyChanges: [],
+          },
+        ]);
+        const reopened = await reopenedState(view.state);
+        expect(terminalChainState(reopened, containerKind)).toEqual(
+          terminalChainState(view.state, containerKind),
+        );
+        expect(await documentXml(reopened)).not.toMatch(/<w:(?:ins|del|pPrChange)\b/u);
+      }
+    },
+  );
+
+  test.each(["body", "table cell"] as const)(
+    "accepts and rejects an entire three-suggestion terminal chain in the %s",
+    async (containerKind) => {
+      const tracked = dispatcher(makeThreeSuggestedTailState(containerKind));
+      expect(
+        acceptAllSuggestions({ author: "Reviewer", date: DATE })(tracked.state, tracked.dispatch),
+      ).toBe(true);
+      expect(terminalChainState(tracked.state, containerKind)).toEqual(
+        expectedTerminalChainState(["accept", "accept", "accept"]),
+      );
+      const reopenedTracked = await reopenedState(tracked.state);
+      expect(terminalChainFormattingState(reopenedTracked, containerKind)).toEqual(
+        terminalChainFormattingState(tracked.state, containerKind),
+      );
+      const reopenedChanges = getTrackedChangesFromDoc(reopenedTracked.doc);
+      expect(reopenedChanges).toHaveLength(9);
+      expect(new Set(reopenedChanges.map(({ id }) => id)).size).toBe(9);
+      expect(revisedFinalParagraphMarks(fromProseDoc(reopenedTracked.doc))).toEqual([]);
+
+      const accepting = dispatcher(EditorState.create({ schema, doc: reopenedTracked.doc }));
+      expect(acceptAllChanges()(accepting.state, accepting.dispatch)).toBe(true);
+      expect(getTrackedChangesFromDoc(accepting.state.doc)).toEqual([]);
+      expect(accepting.state.doc.textContent).toBe(
+        [CARRIER_TEXT, FIRST_ADJACENT_TEXT, SECOND_ADJACENT_TEXT, THIRD_ADJACENT_TEXT].join(""),
+      );
+
+      const rejecting = dispatcher(EditorState.create({ schema, doc: reopenedTracked.doc }));
+      expect(rejectAllChanges()(rejecting.state, rejecting.dispatch)).toBe(true);
+      expect(getTrackedChangesFromDoc(rejecting.state.doc)).toEqual([]);
+      expect(rejecting.state.doc.textContent).toBe(CARRIER_TEXT);
+
+      const suggestions = dispatcher(makeThreeSuggestedTailState(containerKind));
+      expect(rejectAllSuggestions()(suggestions.state, suggestions.dispatch)).toBe(true);
+      expect(getSuggestions(suggestions.state)).toEqual([]);
+      expect(suggestions.state.doc.textContent).toBe(CARRIER_TEXT);
+
+      for (const resolved of [accepting, rejecting, suggestions]) {
+        expect(revisedFinalParagraphMarks(fromProseDoc(resolved.state.doc))).toEqual([]);
+        const reopened = await reopenedState(resolved.state);
+        expect(reopened.doc.textContent).toBe(resolved.state.doc.textContent);
+        expect(revisedFinalParagraphMarks(fromProseDoc(reopened.doc))).toEqual([]);
+      }
+    },
+  );
+
   test.each(ACCEPTANCE_CASES)(
     "$acceptance suggestion acceptance rotates the $containerKind final mark and its formatting",
     async ({ acceptance, containerKind }) => {
@@ -525,6 +888,10 @@ describe("accepted suggested container-final paragraphs", () => {
           expect(getSuggestions(resolved.state)).toEqual([]);
           expect(revisedFinalParagraphMarks(fromProseDoc(resolved.state.doc))).toEqual([]);
           expect(await documentXml(resolved.state)).not.toMatch(/<w:(?:ins|del|pPrChange)\b/u);
+          const reopened = await reopenedState(resolved.state);
+          expect(getSuggestions(reopened)).toEqual([]);
+          expect(revisedFinalParagraphMarks(fromProseDoc(reopened.doc))).toEqual([]);
+          expect(reopened.doc.textContent).toBe(resolved.state.doc.textContent);
         }
       }
     },

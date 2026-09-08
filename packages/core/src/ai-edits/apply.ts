@@ -930,21 +930,21 @@ const nextRevisionSeed = (revisionIdCount: number): number => {
  * `insertAfterBlock` / `insertBeforeBlock` (`text` split on line breaks,
  * see `splitInsertParagraphTexts`) allocates one id per paragraph in
  * tracked-changes mode plus one for each paragraph MARK it brings, so it
- * needs more than four once split into more than two paragraphs. Rotating an
- * inserted final mark can add one paragraph-property revision as well;
+ * needs more than four once split into more than two paragraphs. Rotating a
+ * terminal run can add one paragraph-property revision per inserted paragraph;
  * reserving less than that would let a later `nextRevisionSeed` call reuse an
  * id this operation already stamped on the document.
  */
 const REVISION_IDS_PER_OPERATION = 4;
 /** Ids one inserted paragraph allocates: its runs, and its paragraph mark. */
 const REVISION_IDS_PER_INSERTED_PARAGRAPH = 2;
-/** A final-mark rotation may add one paragraph-property revision per insertion. */
+/** A final-mark rotation may add one paragraph-property revision per inserted paragraph. */
 const REVISION_IDS_PER_INSERTION_ROTATION = 1;
 const estimateRevisionIdReservation = (item: ResolvedOperation): number => {
   if (item.operation.type === "insertAfterBlock" || item.operation.type === "insertBeforeBlock") {
+    const paragraphCount = item.insertTexts?.length ?? 1;
     return Math.max(
-      (item.insertTexts?.length ?? 1) * REVISION_IDS_PER_INSERTED_PARAGRAPH +
-        REVISION_IDS_PER_INSERTION_ROTATION,
+      paragraphCount * (REVISION_IDS_PER_INSERTED_PARAGRAPH + REVISION_IDS_PER_INSERTION_ROTATION),
       REVISION_IDS_PER_OPERATION,
     );
   }
@@ -1317,6 +1317,20 @@ type RotatedAddedFinalBreaks = {
   }[];
 };
 
+const addedBreakRevisionId = (value: unknown): number | null => {
+  if (typeof value !== "object" || value === null || !("kind" in value) || !("info" in value)) {
+    return null;
+  }
+  if (value.kind !== "ins" && value.kind !== "moveTo") {
+    return null;
+  }
+  const info = value.info;
+  if (typeof info !== "object" || info === null || !("id" in info)) {
+    return null;
+  }
+  return typeof info.id === "number" ? info.id : null;
+};
+
 /**
  * Move an ADDED paragraph break off every paragraph its container ends with.
  *
@@ -1326,11 +1340,10 @@ type RotatedAddedFinalBreaks = {
  * revision neither accepting nor rejecting everything can clear.
  *
  * Appending at a container's end therefore rotates exactly as removing from it
- * does. The break that was added sits between the paragraph the run was
- * appended after and the first appended one, so THAT paragraph's mark is the
- * inserted one, each appended paragraph but the last keeps an inserted mark of
- * its own, and the paragraph the container now ends with takes the free mark
- * the run was appended after. Only which paragraph is left markless changes.
+ * does. The first inserted break moves onto the paragraph the run was appended
+ * after, every later break moves one paragraph left, and the paragraph the
+ * container now ends with takes the free mark. Only which paragraph is left
+ * markless changes; the order and ownership of the breaks do not.
  *
  * A paragraph's properties live on its mark, so the paragraph that inherits
  * the free one records the other's as `w:pPrChange` — what a rejection reads
@@ -1352,17 +1365,9 @@ const withRotatedAddedFinalBreaks = ({
   const paragraphTypeName = tr.doc.type.schema.nodes["paragraph"]?.name ?? "paragraph";
   const rotations = finalParagraphsOf(tr.doc, paragraphTypeName).flatMap(({ node, position }) => {
     const mark: unknown = node.attrs["pPrMark"];
-    if (typeof mark !== "object" || mark === null || !("kind" in mark)) {
-      return [];
-    }
-    if (mark.kind !== "ins" && mark.kind !== "moveTo") {
-      return [];
-    }
-    const info: unknown = "info" in mark ? mark.info : undefined;
-    const revisionId =
-      typeof info === "object" && info !== null && "id" in info ? info.id : undefined;
-    return typeof revisionId === "number" && batchRevisionIds.has(revisionId)
-      ? [{ node, ownerRevisionId: revisionId, position }]
+    const revisionId = addedBreakRevisionId(mark);
+    return revisionId !== null && batchRevisionIds.has(revisionId)
+      ? [{ mark, node, ownerRevisionId: revisionId, position }]
       : [];
   });
 
@@ -1370,37 +1375,93 @@ const withRotatedAddedFinalBreaks = ({
   let nextRevisionId = revisionSeed;
   const synthesizedRevisions: RotatedAddedFinalBreaks["synthesizedRevisions"] = [];
   // Attribute writes do not move anything, so the positions stay valid.
-  for (const { position: finalPosition, node: final, ownerRevisionId } of rotations) {
-    const carrier = addedBreakCarrierBefore(next.doc.resolve(finalPosition), final.type.name);
+  for (const { position: finalPosition, node: final, mark: finalMark } of rotations) {
+    const resolved = next.doc.resolve(finalPosition);
+    const carrier = addedBreakCarrierBefore(resolved, final.type.name);
     if (!carrier) {
       // Nothing to hand the break to. Writing it would be worse than losing
       // it: the redline would carry a revision no reader can resolve.
       next = next.setNodeAttribute(finalPosition, "pPrMark", null);
       continue;
     }
-    next = next.setNodeAttribute(carrier.position, "pPrMark", final.attrs["pPrMark"]);
-    const previousFormatting = paragraphPropertiesBeforeBatch(carrier.node, batchRevisionIds);
-    // Both snapshots are built by the same fixed walk over the in-scope keys,
-    // so comparing them serialized compares them key for key.
-    if (JSON.stringify(previousFormatting) === JSON.stringify(paragraphPropertiesSnapshot(final))) {
+
+    const path = [{ node: final, position: finalPosition }];
+    let position = finalPosition;
+    for (let index = resolved.index() - 1; index >= 0; index--) {
+      const sibling = resolved.parent.child(index);
+      position -= sibling.nodeSize;
+      if (sibling.type.name !== final.type.name) {
+        continue;
+      }
+      path.push({ node: sibling, position });
+      if (position === carrier.position) {
+        break;
+      }
+    }
+    if (path.at(-1)?.position !== carrier.position) {
       next = next.setNodeAttribute(finalPosition, "pPrMark", null);
       continue;
     }
-    const existing = expectParagraphAttrs(final)._propertyChanges;
-    const revisionId = nextRevisionId++;
-    next = next.setNodeMarkup(finalPosition, undefined, {
-      ...final.attrs,
-      pPrMark: null,
-      _propertyChanges: [
-        ...(Array.isArray(existing) ? existing : []),
-        {
-          type: "paragraphPropertyChange",
-          info: { id: revisionId, author, date, ...(initials ? { initials } : {}) },
-          previousFormatting,
-        } satisfies ParagraphPropertyChangeAttrs,
-      ],
-    });
-    synthesizedRevisions.push({ ownerRevisionId, revisionId });
+    if (
+      path.slice(0, -1).some(({ node }) => {
+        const revisionId = addedBreakRevisionId(node.attrs["pPrMark"]);
+        return revisionId === null || !batchRevisionIds.has(revisionId);
+      })
+    ) {
+      // A pre-existing pending boundary has no receipt this batch can extend.
+      // Leave that already-unresolved chain intact instead of reassigning it.
+      continue;
+    }
+
+    // Every boundary in the chain resolves back to this one pre-batch mark;
+    // local predecessor snapshots let right-to-left rejection overwrite it.
+    const previousFormatting = paragraphPropertiesBeforeBatch(carrier.node, batchRevisionIds);
+    next = next.setNodeAttribute(finalPosition, "pPrMark", null);
+    let carriedMark: unknown = finalMark;
+    for (let index = 1; index < path.length; index++) {
+      const current = path[index - 1];
+      const previous = path[index];
+      if (!current || !previous) {
+        panic("A final-mark rotation exceeded its paragraph path", { index });
+      }
+      const ownerRevisionId = addedBreakRevisionId(carriedMark);
+      if (ownerRevisionId === null || !batchRevisionIds.has(ownerRevisionId)) {
+        panic("A final-mark rotation crossed a break outside its operation batch", {
+          ownerRevisionId,
+        });
+      }
+      const displacedMark: unknown = previous.node.attrs["pPrMark"];
+      next = next.setNodeAttribute(previous.position, "pPrMark", carriedMark);
+
+      const currentFormatting = paragraphPropertiesSnapshot(current.node);
+      // Both snapshots are built by the same fixed walk over the in-scope keys,
+      // so comparing them serialized compares them key for key.
+      if (JSON.stringify(previousFormatting) !== JSON.stringify(currentFormatting)) {
+        const liveCurrent = next.doc.nodeAt(current.position);
+        if (!liveCurrent || liveCurrent.type.name !== final.type.name) {
+          panic("A final-mark rotation lost its paragraph", { position: current.position });
+        }
+        const existing = expectParagraphAttrs(liveCurrent)._propertyChanges;
+        const revisionId = nextRevisionId++;
+        next = next.setNodeMarkup(current.position, undefined, {
+          ...liveCurrent.attrs,
+          _propertyChanges: [
+            ...(Array.isArray(existing) ? existing : []),
+            {
+              type: "paragraphPropertyChange",
+              info: { id: revisionId, author, date, ...(initials ? { initials } : {}) },
+              previousFormatting,
+            } satisfies ParagraphPropertyChangeAttrs,
+          ],
+        });
+        synthesizedRevisions.push({ ownerRevisionId, revisionId });
+      }
+
+      if (displacedMark == null) {
+        break;
+      }
+      carriedMark = displacedMark;
+    }
   }
   return { transaction: next, nextRevisionId, synthesizedRevisions };
 };

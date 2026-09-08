@@ -1020,6 +1020,9 @@ function isPPrMarkAttr(value: unknown): value is {
 const paragraphMarkWasAdded = (kind: ParagraphMarkChangeKind): boolean =>
   kind === "ins" || kind === "moveTo";
 
+const isAddedPPrMarkAttr = (value: unknown): value is AddedParagraphMark =>
+  isPPrMarkAttr(value) && (value.kind === "ins" || value.kind === "moveTo");
+
 /**
  * Whether the paragraph's mark carries a section's properties.
  *
@@ -1624,6 +1627,43 @@ const normalizeAcceptDate = (date: string | undefined): string => {
   return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
 };
 
+type AddedParagraphMark = {
+  kind: "ins" | "moveTo";
+  info: {
+    id: number;
+    author?: unknown;
+    date?: unknown;
+    initials?: unknown;
+  };
+};
+
+const acceptedParagraphMark = (
+  node: PMNode,
+  author: string,
+  date: string,
+): AddedParagraphMark | null => {
+  if (node.type.name !== "paragraph") {
+    return null;
+  }
+  const marker: unknown = node.attrs["_suggestedInsert"];
+  if (typeof marker !== "object" || marker === null || !("revisionId" in marker)) {
+    return null;
+  }
+  if (typeof marker.revisionId !== "number") {
+    return null;
+  }
+  const initials = "initials" in marker ? marker.initials : undefined;
+  return {
+    kind: "ins",
+    info: {
+      id: marker.revisionId,
+      author,
+      date,
+      ...(typeof initials === "string" ? { initials } : {}),
+    },
+  };
+};
+
 /**
  * The node-attr patch that converts a suggested block/table revision into a
  * normal (`"user"`) one authored by the accepting user. Returns `null` when the
@@ -1658,7 +1698,6 @@ const convertStructuralSuggestionAttrs = (
     typeof insertMarker === "object" &&
     insertMarker !== null
   ) {
-    const marker = insertMarker as { revisionId?: unknown; initials?: unknown };
     if (name === "table") {
       // Whole inserted table has no OOXML tracked form → accept applies it
       // directly by clearing the suggestion marker (the table stays as content).
@@ -1666,20 +1705,15 @@ const convertStructuralSuggestionAttrs = (
     }
     // Inserted paragraph → real inserted-paragraph tracked change: mark the
     // paragraph break as `w:ins` (the inline runs are re-authored by the mark
-    // pass). Keeps the revision id so the halves stay paired.
-    if (typeof marker.revisionId === "number") {
+    // pass). An accepted following suggestion may already have rotated its
+    // own break onto this paragraph; keep that boundary while the caller
+    // places this paragraph's break on the preceding free carrier.
+    const paragraphMark = acceptedParagraphMark(node, author, date);
+    if (paragraphMark) {
       return {
         ...attrs,
         _suggestedInsert: null,
-        pPrMark: {
-          kind: "ins",
-          info: {
-            id: marker.revisionId,
-            author,
-            date,
-            ...(typeof marker.initials === "string" ? { initials: marker.initials } : {}),
-          },
-        },
+        pPrMark: attrs["pPrMark"] ?? paragraphMark,
       };
     }
   }
@@ -1758,6 +1792,51 @@ type FinalParagraphRotationOptions = {
   fallbackAuthor?: string;
 };
 
+type AppendRotatedParagraphPropertyChangeOptions = {
+  tr: Transaction;
+  currentPosition: number;
+  previous: PMNode;
+  mark: {
+    info: { id: number; author?: unknown; date?: unknown; initials?: unknown };
+  };
+  fallbackAuthor?: string;
+};
+
+const appendRotatedParagraphPropertyChange = ({
+  tr,
+  currentPosition,
+  previous,
+  mark,
+  fallbackAuthor,
+}: AppendRotatedParagraphPropertyChangeOptions): boolean => {
+  const current = tr.doc.nodeAt(currentPosition);
+  if (!current || current.type.name !== "paragraph") {
+    return false;
+  }
+  const author = typeof mark.info.author === "string" ? mark.info.author : fallbackAuthor;
+  if (author === undefined) {
+    return false;
+  }
+  const existing = expectParagraphAttrs(current)._propertyChanges;
+  tr.setNodeMarkup(currentPosition, undefined, {
+    ...current.attrs,
+    _propertyChanges: [
+      ...(Array.isArray(existing) ? existing : []),
+      {
+        type: "paragraphPropertyChange",
+        info: {
+          id: mark.info.id,
+          author,
+          ...(typeof mark.info.date === "string" ? { date: mark.info.date } : {}),
+          ...(typeof mark.info.initials === "string" ? { initials: mark.info.initials } : {}),
+        },
+        previousFormatting: paragraphPropertiesSnapshot(previous),
+      } satisfies ParagraphPropertyChangeAttrs,
+    ],
+  });
+  return true;
+};
+
 /**
  * Shift a final run of inserted paragraph marks one paragraph to the left.
  * The container-final paragraph stays markless, while every inserted
@@ -1777,87 +1856,250 @@ const rotateAddedFinalParagraphBreaks = ({
   for (const { position: finalPosition } of finals) {
     const final = tr.doc.nodeAt(finalPosition);
     const finalMark = final?.attrs["pPrMark"];
-    if (!final || !isPPrMarkAttr(finalMark) || !paragraphMarkWasAdded(finalMark.kind)) {
+    if (!final || !isAddedPPrMarkAttr(finalMark)) {
       continue;
     }
-    const resolved = tr.doc.resolve(finalPosition);
-    const carrier = addedBreakCarrierBefore(resolved, paragraphTypeName);
-    if (!carrier) {
-      return false;
-    }
-
-    const path = [{ node: final, position: finalPosition }];
-    let position = finalPosition;
-    for (let index = resolved.index() - 1; index >= 0; index--) {
-      const sibling = resolved.parent.child(index);
-      position -= sibling.nodeSize;
-      if (sibling.type.name !== paragraphTypeName) {
-        continue;
-      }
-      path.push({ node: sibling, position });
-      if (position === carrier.position) {
-        break;
-      }
-    }
-    if (path.at(-1)?.position !== carrier.position) {
-      return false;
-    }
-    // An unmatched suggested paragraph may still be rejected as a whole node;
-    // it cannot safely own another suggestion's paragraph mark.
-    if (path.slice(1).some(({ node }) => node.attrs["_suggestedInsert"] != null)) {
-      return false;
-    }
-
     tr.setNodeAttribute(finalPosition, "pPrMark", null);
-    let carriedMark = finalMark;
-    for (let index = 1; index < path.length; index++) {
-      const current = path[index - 1];
-      const previous = path[index];
-      if (!current || !previous) {
-        return false;
-      }
-      const displacedMark = previous.node.attrs["pPrMark"];
-      tr.setNodeAttribute(previous.position, "pPrMark", carriedMark);
-
-      const liveCurrent = tr.doc.nodeAt(current.position);
-      if (!liveCurrent) {
-        return false;
-      }
-      const existing = expectParagraphAttrs(liveCurrent)._propertyChanges;
-      const author =
-        typeof carriedMark.info.author === "string" ? carriedMark.info.author : fallbackAuthor;
-      if (author === undefined) {
-        return false;
-      }
-      tr.setNodeMarkup(current.position, undefined, {
-        ...liveCurrent.attrs,
-        _propertyChanges: [
-          ...(Array.isArray(existing) ? existing : []),
-          {
-            type: "paragraphPropertyChange",
-            info: {
-              id: carriedMark.info.id,
-              author,
-              ...(typeof carriedMark.info.date === "string" ? { date: carriedMark.info.date } : {}),
-              ...(typeof carriedMark.info.initials === "string"
-                ? { initials: carriedMark.info.initials }
-                : {}),
-            },
-            previousFormatting: paragraphPropertiesSnapshot(previous.node),
-          } satisfies ParagraphPropertyChangeAttrs,
-        ],
-      });
-
-      if (displacedMark == null) {
-        break;
-      }
-      if (!isPPrMarkAttr(displacedMark) || !paragraphMarkWasAdded(displacedMark.kind)) {
-        return false;
-      }
-      carriedMark = displacedMark;
+    if (
+      !shiftAddedParagraphBreakBefore({
+        tr,
+        paragraphPosition: finalPosition,
+        mark: finalMark,
+        ...(fallbackAuthor !== undefined && { fallbackAuthor }),
+      })
+    ) {
+      return false;
     }
   }
   return true;
+};
+
+type PlaceAcceptedParagraphBreakOptions = {
+  tr: Transaction;
+  paragraphPosition: number;
+  mark: AddedParagraphMark;
+  fallbackAuthor: string;
+};
+
+type FirstRotatedPropertyChange = { type: "append" } | { type: "rebase"; revisionId: number };
+
+type ShiftAddedParagraphBreakBeforeOptions = {
+  tr: Transaction;
+  paragraphPosition: number;
+  mark: AddedParagraphMark;
+  fallbackAuthor?: string;
+  firstPropertyChange?: FirstRotatedPropertyChange;
+};
+
+type RebaseRotatedParagraphPropertyChangeOptions = {
+  tr: Transaction;
+  currentPosition: number;
+  previous: PMNode;
+  revisionId: number;
+};
+
+const rebaseRotatedParagraphPropertyChange = ({
+  tr,
+  currentPosition,
+  previous,
+  revisionId,
+}: RebaseRotatedParagraphPropertyChangeOptions): boolean => {
+  const current = tr.doc.nodeAt(currentPosition);
+  if (!current || current.type.name !== "paragraph") {
+    return false;
+  }
+  const existing = expectParagraphAttrs(current)._propertyChanges;
+  if (!Array.isArray(existing)) {
+    return false;
+  }
+  const matching = existing.filter(({ info }) => info.id === revisionId);
+  if (matching.length !== 1) {
+    return false;
+  }
+  tr.setNodeMarkup(currentPosition, undefined, {
+    ...current.attrs,
+    _propertyChanges: existing.map((change) =>
+      change.info.id === revisionId
+        ? Object.assign({}, change, { previousFormatting: paragraphPropertiesSnapshot(previous) })
+        : change,
+    ),
+  });
+  return true;
+};
+
+type RebaseAddedParagraphBreakChainOptions = {
+  tr: Transaction;
+  carrierPosition: number;
+  previous: PMNode;
+};
+
+/**
+ * Rebase every property change in one rotated paragraph-break chain to the
+ * formatting of its original, leftmost carrier. A later targeted suggestion
+ * may extend an already-rotated chain, so normalizing only the newly shifted
+ * prefix would leave the serialized history dependent on acceptance order.
+ */
+const rebaseAddedParagraphBreakChain = ({
+  tr,
+  carrierPosition,
+  previous,
+}: RebaseAddedParagraphBreakChainOptions): boolean => {
+  const carrier = tr.doc.nodeAt(carrierPosition);
+  if (!carrier || carrier.type.name !== "paragraph") {
+    return false;
+  }
+  const resolved = tr.doc.resolve(carrierPosition);
+  let current = carrier;
+  let nextPosition = carrierPosition + carrier.nodeSize;
+
+  for (let index = resolved.index() + 1; index < resolved.parent.childCount; index++) {
+    const currentMark = current.attrs["pPrMark"];
+    if (!isAddedPPrMarkAttr(currentMark)) {
+      return true;
+    }
+    const sibling = resolved.parent.child(index);
+    if (sibling.type.name !== carrier.type.name) {
+      if (sibling.type.spec["tableRole"] === "table") {
+        return false;
+      }
+      nextPosition += sibling.nodeSize;
+      continue;
+    }
+
+    if (
+      !rebaseRotatedParagraphPropertyChange({
+        tr,
+        currentPosition: nextPosition,
+        previous,
+        revisionId: currentMark.info.id,
+      })
+    ) {
+      return false;
+    }
+    const next = tr.doc.nodeAt(nextPosition);
+    if (!next || next.type.name !== carrier.type.name) {
+      return false;
+    }
+    current = next;
+    nextPosition += sibling.nodeSize;
+  }
+
+  return !isAddedPPrMarkAttr(current.attrs["pPrMark"]);
+};
+
+/**
+ * Insert an added paragraph break immediately before `paragraphPosition`.
+ * Existing added marks shift left as one chain until the first free carrier;
+ * each shifted mark keeps a property snapshot on the paragraph to its right.
+ */
+const shiftAddedParagraphBreakBefore = ({
+  tr,
+  paragraphPosition,
+  mark,
+  fallbackAuthor,
+  firstPropertyChange = { type: "append" },
+}: ShiftAddedParagraphBreakBeforeOptions): boolean => {
+  const paragraph = tr.doc.nodeAt(paragraphPosition);
+  if (!paragraph || paragraph.type.name !== "paragraph") {
+    return false;
+  }
+  const resolved = tr.doc.resolve(paragraphPosition);
+  const carrier = addedBreakCarrierBefore(resolved, paragraph.type.name);
+  if (!carrier) {
+    return false;
+  }
+
+  const path = [{ node: paragraph, position: paragraphPosition }];
+  let position = paragraphPosition;
+  for (let index = resolved.index() - 1; index >= 0; index--) {
+    const sibling = resolved.parent.child(index);
+    position -= sibling.nodeSize;
+    if (sibling.type.name !== paragraph.type.name) {
+      if (sibling.type.spec["tableRole"] === "table") {
+        break;
+      }
+      continue;
+    }
+    path.push({ node: sibling, position });
+    if (position === carrier.position) {
+      break;
+    }
+  }
+  if (path.at(-1)?.position !== carrier.position) {
+    return false;
+  }
+
+  const propertyChangeBaseline = carrier.node;
+  let carriedMark = mark;
+  for (let index = 1; index < path.length; index++) {
+    const current = path[index - 1];
+    const previous = path[index];
+    if (!current || !previous) {
+      return false;
+    }
+    const displacedMark = previous.node.attrs["pPrMark"];
+    tr.setNodeAttribute(previous.position, "pPrMark", carriedMark);
+
+    const propertyChangeApplied =
+      index === 1 && firstPropertyChange.type === "rebase"
+        ? rebaseRotatedParagraphPropertyChange({
+            tr,
+            currentPosition: current.position,
+            previous: propertyChangeBaseline,
+            revisionId: firstPropertyChange.revisionId,
+          })
+        : appendRotatedParagraphPropertyChange({
+            tr,
+            currentPosition: current.position,
+            previous: propertyChangeBaseline,
+            mark: carriedMark,
+            ...(fallbackAuthor !== undefined && { fallbackAuthor }),
+          });
+    if (!propertyChangeApplied) {
+      return false;
+    }
+
+    if (displacedMark == null) {
+      return rebaseAddedParagraphBreakChain({
+        tr,
+        carrierPosition: carrier.position,
+        previous: propertyChangeBaseline,
+      });
+    }
+    if (!isAddedPPrMarkAttr(displacedMark)) {
+      return false;
+    }
+    carriedMark = displacedMark;
+  }
+  return false;
+};
+
+/**
+ * Place an accepted paragraph's break when a following accepted insertion has
+ * already rotated its own break onto that paragraph.
+ */
+const placeAcceptedParagraphBreakBefore = ({
+  tr,
+  paragraphPosition,
+  mark,
+  fallbackAuthor,
+}: PlaceAcceptedParagraphBreakOptions): boolean => {
+  const paragraph = tr.doc.nodeAt(paragraphPosition);
+  const displaced = paragraph?.attrs["pPrMark"];
+  if (
+    !paragraph ||
+    paragraph.type.name !== "paragraph" ||
+    !isPPrMarkAttr(displaced) ||
+    !paragraphMarkWasAdded(displaced.kind)
+  ) {
+    return false;
+  }
+  return shiftAddedParagraphBreakBefore({
+    tr,
+    paragraphPosition,
+    mark,
+    fallbackAuthor,
+  });
 };
 
 type AddedBreakRotationCandidate = {
@@ -1919,6 +2161,49 @@ const mappedRotationCandidatePredicate = ({
   };
 };
 
+type RemoveSuggestedInsertNodesOptions = {
+  tr: Transaction;
+  positions: readonly number[];
+  resolvedRevisionIds: ReadonlySet<number>;
+};
+
+/**
+ * Remove suggested nodes without deleting a following accepted insertion's
+ * paragraph break that has rotated onto one of them.
+ */
+const removeSuggestedInsertNodes = ({
+  tr,
+  positions,
+  resolvedRevisionIds,
+}: RemoveSuggestedInsertNodesOptions): boolean => {
+  for (const position of positions.toSorted((left, right) => right - left)) {
+    const node = tr.doc.nodeAt(position);
+    if (!node) {
+      continue;
+    }
+    const mark = node.attrs["pPrMark"];
+    const followingBreak =
+      node.type.name === "paragraph" &&
+      isAddedPPrMarkAttr(mark) &&
+      !resolvedRevisionIds.has(mark.info.id)
+        ? mark
+        : null;
+    tr.delete(position, position + node.nodeSize);
+    if (
+      followingBreak &&
+      !shiftAddedParagraphBreakBefore({
+        tr,
+        paragraphPosition: position,
+        mark: followingBreak,
+        firstPropertyChange: { type: "rebase", revisionId: followingBreak.info.id },
+      })
+    ) {
+      return false;
+    }
+  }
+  return true;
+};
+
 /**
  * Convert suggested marks AND block/table node revisions to normal (`"user"`)
  * tracked changes. `matchesSuggestion(id)` selects which suggestion to convert
@@ -1934,7 +2219,11 @@ const acceptSuggestions = (
     const runPropertyChangeType = state.schema.marks["runPropertyChange"];
     const date = normalizeAcceptDate(options.date);
     const tr = state.tr;
-    const acceptedParagraphPositions = new Set<number>();
+    const acceptedParagraphBreaks: {
+      position: number;
+      mark: AddedParagraphMark;
+      hadBreak: boolean;
+    }[] = [];
     let changed = false;
 
     // Mark steps AND setNodeAttribute do not shift positions, so the positions
@@ -1945,7 +2234,15 @@ const acceptSuggestions = (
       if (structural && matchesSuggestion(structural.suggestionId)) {
         nextAttrs = convertStructuralSuggestionAttrs(node, options.author, date);
         if (structural.kind === "insertBlock") {
-          acceptedParagraphPositions.add(pos);
+          const mark = acceptedParagraphMark(node, options.author, date);
+          if (!mark) {
+            return undefined;
+          }
+          acceptedParagraphBreaks.push({
+            position: pos,
+            mark,
+            hadBreak: node.attrs["pPrMark"] != null,
+          });
         }
       }
       const propertyChanges = reauthorParagraphPropertySuggestions({
@@ -2010,11 +2307,27 @@ const acceptSuggestions = (
       return undefined;
     });
 
+    for (const accepted of acceptedParagraphBreaks) {
+      if (
+        accepted.hadBreak &&
+        !placeAcceptedParagraphBreakBefore({
+          tr,
+          paragraphPosition: accepted.position,
+          mark: accepted.mark,
+          fallbackAuthor: options.author,
+        })
+      ) {
+        return false;
+      }
+    }
+    const directlyMarkedParagraphPositions = new Set(
+      acceptedParagraphBreaks.filter(({ hadBreak }) => !hadBreak).map(({ position }) => position),
+    );
     if (
-      acceptedParagraphPositions.size > 0 &&
+      directlyMarkedParagraphPositions.size > 0 &&
       !rotateAddedFinalParagraphBreaks({
         tr,
-        shouldRotate: (_node, position) => acceptedParagraphPositions.has(position),
+        shouldRotate: (_node, position) => directlyMarkedParagraphPositions.has(position),
         fallbackAuthor: options.author,
       })
     ) {
@@ -2095,11 +2408,14 @@ export function rejectSuggestion(suggestionId: string): Command {
       }
       return undefined;
     });
-    for (const pos of positions.toSorted((a, b) => b - a)) {
-      const node = workingTr.doc.nodeAt(pos);
-      if (node) {
-        workingTr.delete(pos, pos + node.nodeSize);
-      }
+    if (
+      !removeSuggestedInsertNodes({
+        tr: workingTr,
+        positions,
+        resolvedRevisionIds: entry.revisionIds,
+      })
+    ) {
+      return false;
     }
     if (
       positions.length > 0 &&
@@ -2164,11 +2480,14 @@ export function rejectAllSuggestions(): Command {
       }
       return undefined;
     });
-    for (const pos of positions.toSorted((a, b) => b - a)) {
-      const node = workingTr.doc.nodeAt(pos);
-      if (node) {
-        workingTr.delete(pos, pos + node.nodeSize);
-      }
+    if (
+      !removeSuggestedInsertNodes({
+        tr: workingTr,
+        positions,
+        resolvedRevisionIds: revisionIds,
+      })
+    ) {
+      return false;
     }
     if (
       positions.length > 0 &&

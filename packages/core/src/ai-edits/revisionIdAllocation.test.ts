@@ -1,12 +1,24 @@
 import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
+import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, type Transaction } from "prosemirror-state";
 
-import { acceptAIEditRevision, rejectAIEditRevision } from "../prosemirror/commands/comments";
+import { createDocx } from "../docx/rezip";
+import {
+  acceptAIEditRevision,
+  acceptAllChanges,
+  acceptSuggestion,
+  getSuggestions,
+  rejectAIEditRevision,
+  rejectAllChanges,
+} from "../prosemirror/commands/comments";
+import { expectParagraphAttrs } from "../prosemirror/attrs";
+import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { ParagraphFormatting } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { applyFolioAIEditOperations } from "./apply";
+import { FolioDocxReviewer } from "./headless";
 import { getTrackedChangesFromDoc } from "./read";
 import { createFolioAIEditSnapshot } from "./snapshot";
 
@@ -15,32 +27,50 @@ const INSERTION_RESERVATION_CASES = [
     label: "two aligned paragraphs",
     lines: ["Aligned heading", "Aligned body"],
     formatting: { alignment: "center" },
+    propertyChangeCount: 1,
   },
   {
     label: "three styled paragraphs",
     lines: ["Styled heading", "Styled body", "Styled conclusion"],
     formatting: { styleId: "Heading2" },
+    propertyChangeCount: 2,
   },
   {
     label: "four styled and aligned paragraphs",
     lines: ["First clause", "Second clause", "Third clause", "Fourth clause"],
     formatting: { styleId: "Heading3", alignment: "right" },
+    propertyChangeCount: 3,
   },
 ] as const satisfies readonly {
   label: string;
   lines: readonly string[];
   formatting: ParagraphFormatting;
+  propertyChangeCount: number;
 }[];
 
-const insertionView = (formatting: ParagraphFormatting) => {
+const insertionView = (formatting: ParagraphFormatting, text = "Anchor paragraph.") => {
   const document = createEmptyDocument();
+  if (formatting.numPr?.numId !== undefined) {
+    document.package.numbering = {
+      abstractNums: [
+        {
+          abstractNumId: 0,
+          levels: [
+            { ilvl: 0, start: 1, numFmt: "decimal", lvlText: "%1." },
+            { ilvl: 1, start: 1, numFmt: "lowerLetter", lvlText: "%2." },
+          ],
+        },
+      ],
+      nums: [{ numId: formatting.numPr.numId, abstractNumId: 0 }],
+    };
+  }
   document.package.document.content = [
     {
       type: "paragraph",
       paraId: "12345678",
       textId: "12345678",
       formatting,
-      content: [{ type: "run", content: [{ type: "text", text: "Anchor paragraph." }] }],
+      content: text.length > 0 ? [{ type: "run", content: [{ type: "text", text }] }] : [],
     },
   ];
   const view = {
@@ -52,10 +82,134 @@ const insertionView = (formatting: ParagraphFormatting) => {
   return view;
 };
 
+const viewFromDoc = (doc: PMNode) => {
+  const view = {
+    state: EditorState.create({ doc }),
+    dispatch(transaction: Transaction) {
+      view.state = view.state.apply(transaction);
+    },
+  };
+  return view;
+};
+
+const reopenedView = async (doc: PMNode) => {
+  const reviewer = await FolioDocxReviewer.fromBuffer(await createDocx(fromProseDoc(doc)));
+  return viewFromDoc(toProseDoc(reviewer.toDocument()));
+};
+
+const SAME_ANCHOR_INSERTIONS = [
+  { id: "first", text: "First inserted.", alignment: "center" },
+  { id: "second", text: "Second inserted.", alignment: "right" },
+  { id: "third", text: "Third inserted.", alignment: "both" },
+] as const;
+
+type SameAnchorOperationId = (typeof SAME_ANCHOR_INSERTIONS)[number]["id"];
+
+const SAME_ANCHOR_RESOLUTION_ORDERS = [
+  ["first", "second", "third"],
+  ["first", "third", "second"],
+  ["second", "first", "third"],
+  ["second", "third", "first"],
+  ["third", "first", "second"],
+  ["third", "second", "first"],
+] as const satisfies readonly (readonly SameAnchorOperationId[])[];
+
+const SAME_ANCHOR_RESOLUTION_DECISIONS = [
+  ["reject", "reject", "reject"],
+  ["accept", "reject", "reject"],
+  ["reject", "accept", "reject"],
+  ["reject", "reject", "accept"],
+  ["accept", "accept", "reject"],
+  ["accept", "reject", "accept"],
+  ["reject", "accept", "accept"],
+  ["accept", "accept", "accept"],
+] as const satisfies readonly (readonly ("accept" | "reject")[])[];
+
+const EMPTY_CARRIER_FORMATTING = {
+  styleId: "Heading2",
+  numPr: { numId: 1, ilvl: 1 },
+  alignment: "both",
+} as const satisfies ParagraphFormatting;
+
+type SameAnchorTrackedInsertionsOptions = {
+  anchorFormatting?: ParagraphFormatting;
+  anchorText?: string;
+};
+
+const sameAnchorTrackedInsertions = ({
+  anchorFormatting = { alignment: "left" },
+  anchorText,
+}: SameAnchorTrackedInsertionsOptions = {}) => {
+  const view = insertionView(anchorFormatting, anchorText);
+  const snapshot = createFolioAIEditSnapshot(view.state.doc);
+  const anchor = snapshot.blocks.at(0);
+  if (!anchor) {
+    return panic("expected the same-anchor insertion target");
+  }
+  const outcome = applyFolioAIEditOperations({
+    view,
+    snapshot,
+    operations: SAME_ANCHOR_INSERTIONS.map(({ id, text, alignment }) => ({
+      id,
+      type: "insertAfterBlock" as const,
+      blockId: anchor.id,
+      text,
+      inheritFormatting: false,
+      alignment,
+    })),
+    mode: "tracked-changes",
+    revisionStamp: { date: "2026-09-08T00:00:00.000Z", idSeed: 30 },
+  });
+  return { outcome, view };
+};
+
+const operationDecision = (
+  operationId: SameAnchorOperationId,
+  decisions: (typeof SAME_ANCHOR_RESOLUTION_DECISIONS)[number],
+) => {
+  switch (operationId) {
+    case "first":
+      return decisions[0];
+    case "second":
+      return decisions[1];
+    case "third":
+      return decisions[2];
+  }
+};
+
+const operationRevisionIds = (
+  outcome: ReturnType<typeof applyFolioAIEditOperations>,
+  operationId: string,
+): number[] => {
+  const ids = outcome.applied.find(({ id }) => id === operationId)?.revisionIds;
+  return ids ? [...ids] : panic(`expected revision ids for ${operationId}`);
+};
+
+const paragraphState = (doc: PMNode) =>
+  Array.from({ length: doc.childCount }, (_, index) => {
+    const node = doc.child(index);
+    const attrs = expectParagraphAttrs(node);
+    const mark: unknown = node.attrs["pPrMark"];
+    const info = typeof mark === "object" && mark !== null && "info" in mark ? mark.info : null;
+    const markId = typeof info === "object" && info !== null && "id" in info ? info.id : null;
+    const propertyChanges = attrs._propertyChanges;
+    return {
+      text: node.textContent,
+      alignment: attrs.alignment,
+      markId,
+      changes: Array.isArray(propertyChanges)
+        ? propertyChanges.map(({ info: changeInfo, previousFormatting }) => ({
+            revisionId: changeInfo.id,
+            previousFormatting,
+          }))
+        : null,
+    };
+  });
+
 describe("unstamped revision id allocation", () => {
   test.each(INSERTION_RESERVATION_CASES)(
     "reserves the synthetic final-mark revision for $label",
-    ({ lines, formatting }) => {
+    ({ lines, formatting, propertyChangeCount }) => {
       const view = insertionView(formatting);
       const firstSnapshot = createFolioAIEditSnapshot(view.state.doc);
       const firstAnchor = firstSnapshot.blocks.at(0);
@@ -82,7 +236,7 @@ describe("unstamped revision id allocation", () => {
       }
       const firstRevisionId = firstReceipt.revisionId;
       const expectedFirstIds = Array.from(
-        { length: lines.length * 2 + 1 },
+        { length: lines.length * 2 + propertyChangeCount },
         (_, index) => firstRevisionId + index,
       );
       expect(firstReceipt.revisionIds).toEqual(expectedFirstIds);
@@ -97,8 +251,11 @@ describe("unstamped revision id allocation", () => {
           type: "paragraphPropertiesChanged",
         }),
       );
+      expect(firstChanges.filter(({ type }) => type === "paragraphPropertiesChanged")).toHaveLength(
+        propertyChangeCount,
+      );
       const firstIds = new Set(firstChanges.map(({ id }) => id));
-      expect(firstIds.size).toBe(lines.length * 2 + 1);
+      expect(firstIds.size).toBe(lines.length * 2 + propertyChangeCount);
 
       const secondSnapshot = createFolioAIEditSnapshot(view.state.doc);
       const secondAnchor = secondSnapshot.blocks.at(0);
@@ -257,5 +414,264 @@ describe("unstamped revision id allocation", () => {
     expect(rejectAIEditRevision(tailReceipt.revisionIds)(view.state, view.dispatch)).toBe(true);
     expect(getTrackedChangesFromDoc(view.state.doc)).toEqual([]);
     expect(view.state.doc.textContent).toBe("First anchor.Accepted middle paragraph.Final anchor.");
+  });
+
+  test("rotates a same-anchor run one boundary left without changing operation ownership", async () => {
+    const { outcome, view } = sameAnchorTrackedInsertions();
+    const firstIds = operationRevisionIds(outcome, "first");
+    const secondIds = operationRevisionIds(outcome, "second");
+    const thirdIds = operationRevisionIds(outcome, "third");
+
+    expect([firstIds.length, secondIds.length, thirdIds.length]).toEqual([3, 3, 3]);
+    expect(firstIds.at(-1)).not.toBe(firstIds.at(1));
+    expect(secondIds.at(-1)).not.toBe(secondIds.at(1));
+    expect(thirdIds.at(-1)).not.toBe(thirdIds.at(1));
+
+    expect(paragraphState(view.state.doc)).toEqual([
+      {
+        text: "Anchor paragraph.",
+        alignment: "left",
+        markId: firstIds.at(1),
+        changes: null,
+      },
+      {
+        text: "First inserted.",
+        alignment: "center",
+        markId: secondIds.at(1),
+        changes: [
+          expect.objectContaining({
+            revisionId: firstIds.at(-1),
+            previousFormatting: expect.objectContaining({ alignment: "left" }),
+          }),
+        ],
+      },
+      {
+        text: "Second inserted.",
+        alignment: "right",
+        markId: thirdIds.at(1),
+        changes: [
+          expect.objectContaining({
+            revisionId: secondIds.at(-1),
+            previousFormatting: expect.objectContaining({ alignment: "left" }),
+          }),
+        ],
+      },
+      {
+        text: "Third inserted.",
+        alignment: "both",
+        markId: null,
+        changes: [
+          expect.objectContaining({
+            revisionId: thirdIds.at(-1),
+            previousFormatting: expect.objectContaining({ alignment: "left" }),
+          }),
+        ],
+      },
+    ]);
+    expect(outcome.nextRevisionId).toBe(39);
+    expect(new Set(outcome.applied.flatMap(({ revisionIds }) => revisionIds ?? [])).size).toBe(9);
+
+    const reopened = await reopenedView(view.state.doc);
+    expect(paragraphState(reopened.state.doc)).toEqual(paragraphState(view.state.doc));
+    expect(
+      getTrackedChangesFromDoc(reopened.state.doc)
+        .map(({ id }) => id)
+        .toSorted((left, right) => left - right),
+    ).toEqual(
+      outcome.applied
+        .flatMap(({ revisionIds }) => revisionIds ?? [])
+        .toSorted((left, right) => left - right),
+    );
+  });
+
+  test.each(SAME_ANCHOR_RESOLUTION_ORDERS.map((order) => ({ label: order.join(" then "), order })))(
+    "targeted same-anchor resolutions are independent in $label order",
+    async ({ order }) => {
+      const { outcome, view } = sameAnchorTrackedInsertions();
+      for (const operationId of order) {
+        const command = operationId === "second" ? rejectAIEditRevision : acceptAIEditRevision;
+        expect(command(operationRevisionIds(outcome, operationId))(view.state, view.dispatch)).toBe(
+          true,
+        );
+      }
+
+      expect(getTrackedChangesFromDoc(view.state.doc)).toEqual([]);
+      expect(
+        paragraphState(view.state.doc).map(({ text, alignment }) => ({ text, alignment })),
+      ).toEqual([
+        { text: "Anchor paragraph.", alignment: "left" },
+        { text: "First inserted.", alignment: "center" },
+        { text: "Third inserted.", alignment: "both" },
+      ]);
+      const reopened = await reopenedView(view.state.doc);
+      expect(getTrackedChangesFromDoc(reopened.state.doc)).toEqual([]);
+      expect(
+        paragraphState(reopened.state.doc).map(({ text, alignment, markId, changes }) => ({
+          text,
+          alignment,
+          markId,
+          changes,
+        })),
+      ).toEqual(
+        paragraphState(view.state.doc).map(({ text, alignment, markId, changes }) => ({
+          text,
+          alignment,
+          markId,
+          changes,
+        })),
+      );
+    },
+  );
+
+  test("an empty formatted carrier preserves every boundary owner and resolves in every order", () => {
+    for (const decisions of SAME_ANCHOR_RESOLUTION_DECISIONS) {
+      let canonical: unknown;
+      for (const order of SAME_ANCHOR_RESOLUTION_ORDERS) {
+        const { outcome, view } = sameAnchorTrackedInsertions({
+          anchorFormatting: EMPTY_CARRIER_FORMATTING,
+          anchorText: "",
+        });
+        const initial = paragraphState(view.state.doc);
+        for (const [index, insertion] of SAME_ANCHOR_INSERTIONS.entries()) {
+          const revisionIds = operationRevisionIds(outcome, insertion.id);
+          expect(initial[index]?.markId).toBe(revisionIds.at(1));
+          expect(initial[index + 1]?.changes).toEqual([
+            expect.objectContaining({
+              revisionId: revisionIds.at(-1),
+              previousFormatting: expect.objectContaining(EMPTY_CARRIER_FORMATTING),
+            }),
+          ]);
+        }
+
+        for (const operationId of order) {
+          const command =
+            operationDecision(operationId, decisions) === "accept"
+              ? acceptAIEditRevision
+              : rejectAIEditRevision;
+          expect(
+            command(operationRevisionIds(outcome, operationId))(view.state, view.dispatch),
+          ).toBe(true);
+        }
+
+        expect(getTrackedChangesFromDoc(view.state.doc)).toEqual([]);
+        const expectedInsertions = SAME_ANCHOR_INSERTIONS.filter(
+          (_insertion, index) => decisions[index] === "accept",
+        );
+        expect(
+          paragraphState(view.state.doc).map(({ text, alignment }) => ({ text, alignment })),
+        ).toEqual([
+          { text: "", alignment: EMPTY_CARRIER_FORMATTING.alignment },
+          ...expectedInsertions.map(({ text, alignment }) => ({ text, alignment })),
+        ]);
+        expect(expectParagraphAttrs(view.state.doc.child(0))).toMatchObject({
+          ...EMPTY_CARRIER_FORMATTING,
+          _originalFormatting: EMPTY_CARRIER_FORMATTING,
+        });
+
+        if (canonical === undefined) {
+          canonical = view.state.doc.toJSON();
+        } else {
+          expect(view.state.doc.toJSON()).toEqual(canonical);
+        }
+      }
+    }
+  });
+
+  test.each(["accept", "reject"] as const)(
+    "%s all resolves and reopens a same-anchor terminal chain",
+    async (resolution) => {
+      const { view } = sameAnchorTrackedInsertions();
+      const command = resolution === "accept" ? acceptAllChanges : rejectAllChanges;
+      expect(command()(view.state, view.dispatch)).toBe(true);
+      expect(getTrackedChangesFromDoc(view.state.doc)).toEqual([]);
+      expect(view.state.doc.textContent).toBe(
+        resolution === "accept"
+          ? "Anchor paragraph.First inserted.Second inserted.Third inserted."
+          : "Anchor paragraph.",
+      );
+
+      const reopened = await reopenedView(view.state.doc);
+      expect(getTrackedChangesFromDoc(reopened.state.doc)).toEqual([]);
+      expect(reopened.state.doc.textContent).toBe(view.state.doc.textContent);
+    },
+  );
+
+  test.each(["accept", "reject"] as const)(
+    "%s all preserves an empty formatted terminal carrier",
+    (resolution) => {
+      const { view } = sameAnchorTrackedInsertions({
+        anchorFormatting: EMPTY_CARRIER_FORMATTING,
+        anchorText: "",
+      });
+      const command = resolution === "accept" ? acceptAllChanges : rejectAllChanges;
+      expect(command()(view.state, view.dispatch)).toBe(true);
+      expect(getTrackedChangesFromDoc(view.state.doc)).toEqual([]);
+      expect(view.state.doc.textContent).toBe(
+        resolution === "accept" ? "First inserted.Second inserted.Third inserted." : "",
+      );
+      expect(expectParagraphAttrs(view.state.doc.child(0))).toMatchObject({
+        ...EMPTY_CARRIER_FORMATTING,
+        _originalFormatting: EMPTY_CARRIER_FORMATTING,
+      });
+    },
+  );
+
+  test("resolves same-anchor suggested insertions out of order after save and reopen", async () => {
+    const view = insertionView({ alignment: "left" });
+    const snapshot = createFolioAIEditSnapshot(view.state.doc);
+    const anchor = snapshot.blocks.at(0);
+    if (!anchor) {
+      return panic("expected the same-anchor suggestion target");
+    }
+    const outcome = applyFolioAIEditOperations({
+      view,
+      snapshot,
+      operations: SAME_ANCHOR_INSERTIONS.map(({ id, text, alignment }) => ({
+        id,
+        type: "insertAfterBlock" as const,
+        blockId: anchor.id,
+        text,
+        inheritFormatting: false,
+        alignment,
+      })),
+      mode: "suggested",
+      author: "Assistant",
+      revisionStamp: { date: "2026-09-08T00:00:00.000Z", idSeed: 50 },
+    });
+    expect(outcome.skipped).toEqual([]);
+    expect(
+      outcome.applied.map(({ id, suggestionId, revisionIds }) => ({
+        id,
+        suggestionId,
+        revisionIds,
+      })),
+    ).toEqual([
+      { id: "third", suggestionId: "third", revisionIds: [50] },
+      { id: "second", suggestionId: "second", revisionIds: [51] },
+      { id: "first", suggestionId: "first", revisionIds: [52] },
+    ]);
+
+    for (const suggestionId of ["first", "third", "second"]) {
+      expect(
+        acceptSuggestion(suggestionId, {
+          author: "Reviewer",
+          date: "2026-09-08T00:00:00.000Z",
+        })(view.state, view.dispatch),
+      ).toBe(true);
+    }
+    expect(getSuggestions(view.state)).toEqual([]);
+
+    const reopened = await reopenedView(view.state.doc);
+    const accepting = viewFromDoc(reopened.state.doc);
+    expect(acceptAllChanges()(accepting.state, accepting.dispatch)).toBe(true);
+    expect(getTrackedChangesFromDoc(accepting.state.doc)).toEqual([]);
+    expect(accepting.state.doc.textContent).toBe(
+      "Anchor paragraph.First inserted.Second inserted.Third inserted.",
+    );
+
+    const rejecting = viewFromDoc(reopened.state.doc);
+    expect(rejectAllChanges()(rejecting.state, rejecting.dispatch)).toBe(true);
+    expect(getTrackedChangesFromDoc(rejecting.state.doc)).toEqual([]);
+    expect(rejecting.state.doc.textContent).toBe("Anchor paragraph.");
   });
 });
