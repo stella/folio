@@ -78,6 +78,17 @@ import { toProseDoc } from "./prosemirror/conversion/toProseDoc";
 import { getDocumentWatermark } from "./watermark/index";
 import type { Document, HeaderFooter, Watermark } from "./types/document";
 
+const formatEndnoteTexts = (
+  numbers: ReadonlyMap<number, number>,
+  formatNumber: (displayNumber: number) => string,
+): ReadonlyMap<number, string> => {
+  const texts = new Map<number, string>();
+  for (const [id, displayNumber] of numbers) {
+    texts.set(id, formatNumber(displayNumber));
+  }
+  return texts;
+};
+
 /**
  * Constructs the painter takes from render options rather than from `Layout`.
  *
@@ -482,12 +493,8 @@ export const layoutDocxHeadless = async (
       collectEndnoteRefs(authored).map((ref) => ref.endnoteId),
     );
     const endnoteNumberFormat = finalSection?.endnotePr?.numFmt ?? "lowerRoman";
-    const endnoteTexts = new Map(
-      Array.from(
-        endnoteNumbers,
-        ([id, displayNumber]) =>
-          [id, formatOoxmlCounter(displayNumber, endnoteNumberFormat)] as const,
-      ),
+    const endnoteTexts = formatEndnoteTexts(endnoteNumbers, (displayNumber) =>
+      formatOoxmlCounter(displayNumber, endnoteNumberFormat),
     );
     const blocks = remapNoteMarkerText(authored, {
       footnoteNumbers,

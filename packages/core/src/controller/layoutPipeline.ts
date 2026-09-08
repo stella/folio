@@ -91,6 +91,17 @@ import type {
 import { getDocumentWatermark } from "../watermark";
 import type { LayoutArtifacts, LayoutSession, LayoutTemplatePreview } from "./layoutSession";
 
+const formatEndnoteTexts = (
+  numbers: ReadonlyMap<number, number>,
+  formatNumber: (displayNumber: number) => string,
+): ReadonlyMap<number, string> => {
+  const texts = new Map<number, string>();
+  for (const [id, displayNumber] of numbers) {
+    texts.set(id, formatNumber(displayNumber));
+  }
+  return texts;
+};
+
 export type LayoutRunOptions = {
   dirtyRange?: DirtyRange;
   forceFull?: boolean;
@@ -463,12 +474,8 @@ export function runLayoutPipeline<THfPMs>(
     const endnoteNumberFormat =
       document?.package.document.sections?.at(-1)?.properties.endnotePr?.numFmt ?? "lowerRoman";
     const endnoteTexts = endnoteDisplayNumbers
-      ? new Map(
-          Array.from(
-            endnoteDisplayNumbers,
-            ([id, displayNumber]) =>
-              [id, formatOoxmlCounter(displayNumber, endnoteNumberFormat)] as const,
-          ),
+      ? formatEndnoteTexts(endnoteDisplayNumbers, (displayNumber) =>
+          formatOoxmlCounter(displayNumber, endnoteNumberFormat),
         )
       : undefined;
     newBlocks = remapNoteMarkerText(newBlocks, {
