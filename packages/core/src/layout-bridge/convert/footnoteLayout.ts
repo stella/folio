@@ -6,6 +6,9 @@
  * per-page footnote area heights for layout space reservation.
  */
 
+import type { NumberFormat } from "@stll/docx-core/model";
+
+import { formatOoxmlCounter } from "../../docx/ooxmlCounterFormatter";
 import type {
   FlowBlock,
   Measure,
@@ -27,8 +30,7 @@ import {
   FOOTNOTE_SEPARATOR_HEIGHT,
 } from "../../layout-engine/types";
 import { footnoteToProseDoc } from "../../prosemirror/conversion/toProseDoc";
-import type { Footnote, NumberFormat, StyleDefinitions, Theme } from "../../types/document";
-import { formatOoxmlCounter } from "../../docx/ooxmlCounterFormatter";
+import type { Footnote, StyleDefinitions, Theme } from "../../types/document";
 import { measureParagraph } from "../engine/measuring";
 import { layoutTextBoxContent } from "../../layout-engine/measure/textBoxParagraphLayout";
 import { toFlowBlocks } from "./toFlowBlocks";
