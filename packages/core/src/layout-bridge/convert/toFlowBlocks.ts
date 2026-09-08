@@ -2026,6 +2026,9 @@ function isPaintlessTerminalParagraph(block: FlowBlock | undefined): block is Pa
   }
 
   const attrs = block.attrs;
+  if (attrs?.suppressEmptyParagraphHeight === false) {
+    return false;
+  }
   return !(
     (attrs?.listMarker !== undefined && !attrs.listMarkerHidden) ||
     attrs?.borders?.top ||

@@ -3648,6 +3648,7 @@ type ConvertParagraphWithTextBoxesOptions = {
   textBoxGroupId: string;
   context: TableConversionContext;
   extraRunFormatting?: TextFormatting;
+  preserveEmptyWrapper?: boolean;
   tableParagraphOverlay?: TableCellParagraphSpacingOverlay;
 };
 
@@ -3658,6 +3659,7 @@ function convertParagraphWithTextBoxes(
     textBoxGroupId,
     context,
     extraRunFormatting,
+    preserveEmptyWrapper,
     tableParagraphOverlay,
   }: ConvertParagraphWithTextBoxesOptions,
 ): PMNode[] {
@@ -3676,7 +3678,8 @@ function convertParagraphWithTextBoxes(
   const isEmptyAfterExtraction =
     textBoxes.length > 0 && !hasContentBesidesTextBoxAnchors(pmParagraph);
   const keepWrapperParagraph =
-    isEmptyAfterExtraction && hasParagraphBoundaryPayload(block, pmParagraph);
+    isEmptyAfterExtraction &&
+    (preserveEmptyWrapper === true || hasParagraphBoundaryPayload(block, pmParagraph));
   if (!isEmptyAfterExtraction || keepWrapperParagraph) {
     nodes.push(pmParagraph);
   }
@@ -4125,11 +4128,13 @@ export function headerFooterToProseDoc(
     const out: PMNode[] = [];
     for (const block of blocks) {
       if (block.type === "paragraph") {
+        const isDetachedWatermarkHost = Reflect.get(block, DETACHED_WATERMARK_HOST) === true;
         const paragraphNodes = convertParagraphWithTextBoxes(block, styleResolver, {
           textBoxGroupId: nextTextBoxGroupId(),
           context: conversionContext,
+          preserveEmptyWrapper: isDetachedWatermarkHost,
         });
-        if (Reflect.get(block, DETACHED_WATERMARK_HOST) === true) {
+        if (isDetachedWatermarkHost) {
           const paragraphNodeIndex = paragraphNodes.findIndex(
             ({ type }) => type.name === "paragraph",
           );

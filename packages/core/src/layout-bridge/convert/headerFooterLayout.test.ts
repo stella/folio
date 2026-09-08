@@ -1082,6 +1082,45 @@ describe("convertHeaderFooterPmDocToContent", () => {
     expect(fromContent?.marginPushBottom).toBe(12);
     expect(fromPmDoc?.marginPushBottom).toBe(12);
     expect(bare?.marginPushBottom).toBe(0);
+    expect(fromPmDoc?.textSig).not.toBe(bare?.textSig);
+  });
+
+  test("keeps detached watermark host clearance after a terminal table", () => {
+    const result = convertHeaderFooterToContent(
+      {
+        type: "header",
+        hdrFtrType: "default",
+        content: [
+          {
+            type: "table",
+            rows: [
+              {
+                type: "tableRow",
+                cells: [
+                  {
+                    type: "tableCell",
+                    content: [{ type: "paragraph", content: [] }],
+                  },
+                ],
+              },
+            ],
+          },
+          { type: "paragraph", content: [] },
+        ],
+        watermark: { kind: "text", text: "DRAFT" },
+        watermarkBlockIndex: 1,
+      },
+      456,
+      pmMetrics,
+      { measureBlocks },
+    );
+    const host = result?.blocks.at(-1);
+
+    expect(host?.kind).toBe("paragraph");
+    if (host?.kind !== "paragraph") {
+      return;
+    }
+    expect(host.attrs?.suppressEmptyParagraphHeight).toBe(false);
   });
 
   test("marks the indexed watermark host when another paragraph precedes it", () => {
@@ -1097,6 +1136,42 @@ describe("convertHeaderFooterPmDocToContent", () => {
 
     expect(pmDoc.child(0).attrs["_detachedWatermarkHost"]).toBeNull();
     expect(pmDoc.child(1).attrs["_detachedWatermarkHost"]).toBe(true);
+  });
+
+  test("retains a detached watermark host that only contains a text box", () => {
+    const pmDoc = headerFooterToProseDocWithDetachedWatermarkHost({
+      type: "header",
+      hdrFtrType: "default",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "run",
+              content: [
+                {
+                  type: "shape",
+                  shape: {
+                    type: "shape",
+                    shapeType: "textBox",
+                    size: { width: 914_400, height: 457_200 },
+                    textBody: {
+                      content: [{ type: "paragraph", content: [] }],
+                    },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      watermarkBlockIndex: 0,
+    });
+
+    expect(pmDoc.childCount).toBe(2);
+    expect(pmDoc.child(0).type.name).toBe("paragraph");
+    expect(pmDoc.child(0).attrs["_detachedWatermarkHost"]).toBe(true);
+    expect(pmDoc.child(1).type.name).toBe("textBox");
   });
 
   test("rejects malformed detached watermark host metadata with its attr path", () => {
