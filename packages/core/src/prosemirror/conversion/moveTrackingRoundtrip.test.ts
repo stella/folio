@@ -6,6 +6,7 @@ import { toProseDoc } from "./toProseDoc";
 
 const REVA = { id: 1, author: "Author A", date: "2026-05-15T12:00:00Z" };
 const REVB = { id: 2, author: "Author B", date: "2026-05-15T12:01:00Z" };
+const UTC_DATE = "2026-05-15T12:00:01Z";
 
 function paragraphWith(content: Paragraph["content"]): Paragraph {
   return {
@@ -99,6 +100,43 @@ describe("moveFrom / moveTo PM round-trip", () => {
 
     expect(p1.content[0]?.type).toBe("moveFrom");
     expect(p2.content[0]?.type).toBe("moveTo");
+  });
+
+  test.each([
+    { type: "insertion", mark: "insertion", moveKind: null },
+    { type: "deletion", mark: "deletion", moveKind: null },
+    { type: "moveFrom", mark: "deletion", moveKind: "moveFrom" },
+    { type: "moveTo", mark: "insertion", moveKind: "moveTo" },
+  ] as const)("keeps $type UTC metadata through an editable JSON round-trip", ({ type, mark }) => {
+    const change = {
+      type,
+      info: {
+        ...REVA,
+        utcDate: { attribute: "du:dateUtc", value: UTC_DATE },
+      },
+      content: [runText(type)],
+    } as Insertion | Deletion | MoveFrom | MoveTo;
+    const document = asDocument([paragraphWith([change])]);
+    const pmDoc = toProseDoc(document);
+    const cloned = pmDoc.type.schema.nodeFromJSON(pmDoc.toJSON());
+    const trackedMark = cloned.firstChild?.firstChild?.marks.find(
+      ({ type: markType }) => markType.name === mark,
+    );
+
+    expect(trackedMark?.attrs["utcDate"]).toBe(UTC_DATE);
+
+    const roundTripped = fromProseDoc(cloned);
+    const paragraph = roundTripped.package.document.content.at(0) as Paragraph;
+    const outputChange = paragraph.content.at(0);
+    expect(outputChange?.type).toBe(type);
+    expect(
+      outputChange?.type === "insertion" ||
+        outputChange?.type === "deletion" ||
+        outputChange?.type === "moveFrom" ||
+        outputChange?.type === "moveTo"
+        ? outputChange.info.utcDate
+        : null,
+    ).toEqual({ attribute: "w16du:dateUtc", value: UTC_DATE });
   });
 
   test("coincident revisionIds across plain ins+del don't fuse into a phantom move", () => {

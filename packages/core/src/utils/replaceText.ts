@@ -13,6 +13,7 @@ import type {
   ParagraphContent,
   TextFormatting,
 } from "../types/document";
+import { cloneDocumentWithParagraphPropertySources } from "../docx/paragraphPropertySource";
 
 type ReplaceRange = {
   start: { paragraphIndex: number; offset: number };
@@ -26,7 +27,7 @@ export function replaceTextInDocument(
   text: string,
   formatting?: TextFormatting,
 ): Document {
-  const newDoc = structuredClone(doc);
+  const newDoc = cloneDocumentWithParagraphPropertySources(doc);
   const body = newDoc.package.document;
   const { start, end } = range;
 

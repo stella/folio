@@ -34,6 +34,7 @@ import type { EditorState } from "prosemirror-state";
 import type { DirtyRange } from "../../../paged-layout/incrementalMeasure";
 import { getTransactionDirtyRange } from "../../../paged-layout/transactionDirtyRange";
 import { detectBaseDirection } from "../../../utils/baseDirection";
+import { setProseParagraphMarkupWithPropertySource } from "../../../docx/paragraphPropertySource";
 import { directionIsAutoManaged } from "../../paragraphDirection";
 import type { ParagraphDirection } from "../../paragraphDirection";
 import { createExtension } from "../create";
@@ -133,7 +134,12 @@ const collectBidiUpdatesInRange = (doc: PMNode, range: DirtyRange): BidiUpdate[]
 const applyBidiUpdates = (state: EditorState, updates: BidiUpdate[]): EditorState["tr"] => {
   const tr = state.tr;
   for (const update of updates) {
-    tr.setNodeMarkup(update.pos, undefined, update.attrs);
+    setProseParagraphMarkupWithPropertySource({
+      attrs: update.attrs,
+      ownership: "preserve",
+      pos: update.pos,
+      transaction: tr,
+    });
   }
   ignoreTrackedChanges(tr);
   tr.setMeta(autoBidiDetectionKey, "applied");

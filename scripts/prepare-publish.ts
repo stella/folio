@@ -63,9 +63,15 @@ const resolveDist = (subpath: string, srcPath: string, ext: string): string => {
   );
 };
 
-type ExportTarget = string | JsEntry;
+type ExportTarget = string | JsEntry | null;
 const distExports: Record<string, ExportTarget> = {};
 for (const [subpath, target] of Object.entries(pkg.exports)) {
+  // An exact null target blocks a private module that the package's wildcard
+  // export would otherwise expose. Keep that exception in the published map.
+  if (target === null) {
+    distExports[subpath] = null;
+    continue;
+  }
   if (typeof target !== "string" || !target.startsWith("./src/")) {
     panic(
       `${pkg.name}: expected source export "${subpath}" to be a ./src/* string, got ${JSON.stringify(target)}`,
@@ -98,7 +104,7 @@ for (const [subpath, target] of Object.entries(pkg.exports)) {
 }
 
 const root = distExports["."];
-if (typeof root !== "object") {
+if (typeof root !== "object" || root === null) {
   panic(`${pkg.name}: exports must include a JS "." entry`);
 }
 

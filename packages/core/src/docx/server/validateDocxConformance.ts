@@ -12,7 +12,7 @@ import {
   getNamespacePrefix,
   parseXmlDocument,
 } from "../xmlParser";
-import { getDocxXmlSafetyIssue } from "../xmlSafety";
+import { getDocxXmlSafetyIssue, type DocxXmlSafetyIssue } from "../xmlSafety";
 import type { DocxArchive, DocxArchiveOptions } from "./boundedArchive";
 import { DocxArchiveError, loadDocxArchive } from "./boundedArchive";
 
@@ -176,6 +176,24 @@ type XmlPartsResult = {
   contentTypesXml: string;
 };
 
+const XML_SAFETY_ISSUE = {
+  "doctype-forbidden": {
+    code: "xml-doctype-forbidden",
+    message: "XML package parts must not declare a document type.",
+  },
+  "entity-forbidden": {
+    code: "xml-not-well-formed",
+    message: "An XML package part contains an invalid entity reference.",
+  },
+  "not-well-formed": {
+    code: "xml-not-well-formed",
+    message: "An XML package part is not well formed.",
+  },
+} as const satisfies Record<
+  DocxXmlSafetyIssue,
+  Pick<FolioDocxConformanceIssue, "code" | "message">
+>;
+
 const validateXmlParts = async (
   archive: DocxArchive,
   report: MutableReport,
@@ -192,27 +210,16 @@ const validateXmlParts = async (
     xmlByPath.set(part, xml);
 
     const safetyIssue = getDocxXmlSafetyIssue(xml);
-    if (safetyIssue === "doctype-forbidden") {
+    if (safetyIssue !== null) {
       hasInvalidXml = true;
+      const issue = XML_SAFETY_ISSUE[safetyIssue];
       addIssue(report, {
         check: "xml-well-formedness",
-        code: "xml-doctype-forbidden",
-        message: "XML package parts must not declare a document type.",
+        ...issue,
         severity: "error",
         part,
       });
       continue;
-    }
-
-    if (safetyIssue === "not-well-formed") {
-      hasInvalidXml = true;
-      addIssue(report, {
-        check: "xml-well-formedness",
-        code: "xml-not-well-formed",
-        message: "An XML package part is not well formed.",
-        severity: "error",
-        part,
-      });
     }
   }
 

@@ -35,6 +35,7 @@ import type {
 } from "../../layout-engine/types";
 import { isFloatingImageRun, isFloatingTextBoxBlock } from "../../layout-engine/types";
 import { headerFooterToProseDoc } from "../../prosemirror/conversion/toProseDoc";
+import { cloneParagraphWithPropertySource } from "../../docx/paragraphPropertySource";
 import type { BlockContent, HeaderFooter, StyleDefinitions, Theme } from "../../types/document";
 import { emuToPixels } from "../../utils/units";
 import type { MeasureBlocksFn } from "./footnoteLayout";
@@ -51,7 +52,9 @@ const headerFooterToProseDocWithDetachedWatermarkHost = (
     if (blockIndex !== headerFooter.watermarkBlockIndex || block.type !== "paragraph") {
       return block;
     }
-    return { ...block, [DETACHED_WATERMARK_HOST]: true };
+    const marked = cloneParagraphWithPropertySource(block, {});
+    Reflect.set(marked, DETACHED_WATERMARK_HOST, true);
+    return marked;
   });
   return headerFooterToProseDoc(markedContent, options);
 };

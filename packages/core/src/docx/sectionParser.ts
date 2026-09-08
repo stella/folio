@@ -31,7 +31,6 @@ import type {
   BorderSpec,
   ColorValue,
 } from "../types/document";
-import { normalizeRevisionId } from "@stll/docx-core/model";
 import { parseHeaderReference, parseFooterReference } from "./headerFooterRefParser";
 import { parseFootnoteProperties, parseEndnoteProperties } from "./notePropertiesParser";
 import {
@@ -50,6 +49,7 @@ import {
   parseBooleanElement,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
+import { parsePropertyChangeInfo } from "./trackedChangeInfo";
 
 /**
  * Sanity cap on `w:cols/@w:num`. Word's column picker tops out well below
@@ -138,28 +138,6 @@ function parseColorValue(
   }
 
   return Object.keys(color).length > 0 ? color : undefined;
-}
-
-function parsePropertyChangeInfo(node: XmlElement): SectionPropertyChange["info"] {
-  const rawId = getAttribute(node, "w", "id");
-  const parsedId = rawId ? Number.parseInt(rawId, 10) : 0;
-  const author = (getAttribute(node, "w", "author") ?? "").trim();
-  const date = (getAttribute(node, "w", "date") ?? "").trim();
-  const rsid = (getAttribute(node, "w", "rsid") ?? "").trim();
-
-  const info: SectionPropertyChange["info"] = {
-    // `w:id` is attacker-controlled and unbounded in the schema; fold at the
-    // parse boundary (eigenpal #1093).
-    id: normalizeRevisionId(parsedId),
-    author: author.length > 0 ? author : "Unknown",
-  };
-  if (date.length > 0) {
-    info.date = date;
-  }
-  if (rsid.length > 0) {
-    info.rsid = rsid;
-  }
-  return info;
 }
 
 /**

@@ -56,6 +56,10 @@ import {
   mergeParagraphTabStops,
 } from "../../utils/paragraphFormattingMerge";
 import { resolveColorValueToHex } from "../../docx/drawingUtils";
+import {
+  linkProseParagraphPropertySource,
+  recreateProseNodeWithParagraphPropertySource,
+} from "../../docx/paragraphPropertySource";
 import { mergeTextFormatting } from "../../utils/textFormattingMerge";
 import { tableOfContentsStyleLevel } from "../../utils/tableOfContentsStyle";
 import { emuToPixels } from "../../utils/units";
@@ -300,20 +304,17 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
           document.package.settings?.splitPageBreakAndParagraphMark !== true
         ) {
           const paragraph = firstConverted;
-          converted[0] = paragraph.type.create(
-            { ...paragraph.attrs, _pageBreakCarrier: true },
-            paragraph.content,
-            paragraph.marks,
-          );
+          converted[0] = recreateProseNodeWithParagraphPropertySource(paragraph, {
+            attrs: { ...paragraph.attrs, _pageBreakCarrier: true },
+          });
         }
         if (pbPos === "after") {
           const paragraphIndex = converted.findIndex((node) => node.type.name === "paragraph");
           const trailingParagraph = paragraphIndex >= 0 ? converted.at(paragraphIndex) : undefined;
           if (trailingParagraph) {
-            converted[paragraphIndex] = trailingParagraph.type.create(
-              { ...trailingParagraph.attrs, _trailingPageBreak: true },
-              trailingParagraph.content,
-              trailingParagraph.marks,
+            converted[paragraphIndex] = recreateProseNodeWithParagraphPropertySource(
+              trailingParagraph,
+              { attrs: { ...trailingParagraph.attrs, _trailingPageBreak: true } },
             );
           }
         }
@@ -666,7 +667,9 @@ function convertParagraph(
     attrs._emptyHyperlinks = emptyHyperlinks;
   }
 
-  return schema.node("paragraph", attrs, inlineNodes);
+  const proseParagraph = schema.node("paragraph", attrs, inlineNodes);
+  linkProseParagraphPropertySource(proseParagraph, paragraph);
+  return proseParagraph;
 }
 
 const resolveParagraphStyleFontFamily = (
@@ -815,6 +818,7 @@ function convertTrackedChange(
     revisionId: change.info.id,
     author: change.info.author,
     date: change.info.date ?? null,
+    utcDate: change.info.utcDate?.value ?? null,
     initials: change.info.initials ?? null,
     moveKind,
   });
@@ -2046,6 +2050,12 @@ function convertTableRow(
         revisionId: row.structuralChange.info.id,
         author: row.structuralChange.info.author,
         date: row.structuralChange.info.date ?? null,
+        ...(row.structuralChange.info.utcDate
+          ? { utcDate: row.structuralChange.info.utcDate.value }
+          : {}),
+        ...(row.structuralChange.info.initials
+          ? { initials: row.structuralChange.info.initials }
+          : {}),
       },
     };
   } else if (row.structuralChange?.type === "tableRowDeletion") {
@@ -2055,6 +2065,12 @@ function convertTableRow(
         revisionId: row.structuralChange.info.id,
         author: row.structuralChange.info.author,
         date: row.structuralChange.info.date ?? null,
+        ...(row.structuralChange.info.utcDate
+          ? { utcDate: row.structuralChange.info.utcDate.value }
+          : {}),
+        ...(row.structuralChange.info.initials
+          ? { initials: row.structuralChange.info.initials }
+          : {}),
       },
     };
   }
@@ -2346,6 +2362,12 @@ function convertTableCell({
         revisionId: cell.structuralChange.info.id,
         author: cell.structuralChange.info.author,
         date: cell.structuralChange.info.date ?? null,
+        ...(cell.structuralChange.info.utcDate
+          ? { utcDate: cell.structuralChange.info.utcDate.value }
+          : {}),
+        ...(cell.structuralChange.info.initials
+          ? { initials: cell.structuralChange.info.initials }
+          : {}),
       },
     };
   } else if (cell.structuralChange?.type === "tableCellDeletion") {
@@ -2355,6 +2377,12 @@ function convertTableCell({
         revisionId: cell.structuralChange.info.id,
         author: cell.structuralChange.info.author,
         date: cell.structuralChange.info.date ?? null,
+        ...(cell.structuralChange.info.utcDate
+          ? { utcDate: cell.structuralChange.info.utcDate.value }
+          : {}),
+        ...(cell.structuralChange.info.initials
+          ? { initials: cell.structuralChange.info.initials }
+          : {}),
       },
     };
   } else if (cell.structuralChange?.type === "tableCellMerge") {
@@ -2364,6 +2392,12 @@ function convertTableCell({
         revisionId: cell.structuralChange.info.id,
         author: cell.structuralChange.info.author,
         date: cell.structuralChange.info.date ?? null,
+        ...(cell.structuralChange.info.utcDate
+          ? { utcDate: cell.structuralChange.info.utcDate.value }
+          : {}),
+        ...(cell.structuralChange.info.initials
+          ? { initials: cell.structuralChange.info.initials }
+          : {}),
       },
       ...(cell.structuralChange.verticalMerge !== undefined
         ? { verticalMerge: cell.structuralChange.verticalMerge }
@@ -4148,10 +4182,9 @@ export function headerFooterToProseDoc(
           );
           const paragraphNode = paragraphNodes[paragraphNodeIndex];
           if (paragraphNode) {
-            paragraphNodes[paragraphNodeIndex] = paragraphNode.type.create(
-              { ...paragraphNode.attrs, _detachedWatermarkHost: true },
-              paragraphNode.content,
-              paragraphNode.marks,
+            paragraphNodes[paragraphNodeIndex] = recreateProseNodeWithParagraphPropertySource(
+              paragraphNode,
+              { attrs: { ...paragraphNode.attrs, _detachedWatermarkHost: true } },
             );
           }
         }

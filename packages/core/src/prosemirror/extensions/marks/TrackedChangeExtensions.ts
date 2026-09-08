@@ -55,6 +55,7 @@ export const InsertionExtension = createMarkExtension({
       revisionId: { default: 0 },
       author: { default: "" },
       date: { default: null },
+      utcDate: { default: null },
       // `"moveTo"` distinguishes inserted text that originated as a
       // `w:moveTo` (the destination half of an OOXML move) from a
       // plain `w:ins`. Carried through PM so `fromProseDoc` can
@@ -125,6 +126,7 @@ export const DeletionExtension = createMarkExtension({
       revisionId: { default: 0 },
       author: { default: "" },
       date: { default: null },
+      utcDate: { default: null },
       // `"moveFrom"` distinguishes deleted text that originated as a
       // `w:moveFrom` (the source half of an OOXML move) from a plain
       // `w:del`. Carried through PM so `fromProseDoc` can re-emit

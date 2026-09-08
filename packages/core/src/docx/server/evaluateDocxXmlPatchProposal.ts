@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import { panic, TaggedError } from "better-result";
 
-import { getDocxXmlSafetyIssue } from "../xmlSafety";
+import { getDocxXmlSafetyIssue, type DocxXmlSafetyIssue } from "../xmlSafety";
 import type { DocxArchiveOptions } from "./boundedArchive";
 import { DocxArchiveError } from "./boundedArchive";
 import {
@@ -73,6 +73,24 @@ export type FolioDocxXmlPatchProposalIssue = {
   readonly proposalPath?: string;
   readonly part?: string;
 };
+
+const XML_SAFETY_ISSUE = {
+  "doctype-forbidden": {
+    code: "xml-doctype-forbidden",
+    message: "Replacement XML must not declare a document type.",
+  },
+  "entity-forbidden": {
+    code: "xml-not-well-formed",
+    message: "Replacement XML contains an invalid entity reference.",
+  },
+  "not-well-formed": {
+    code: "xml-not-well-formed",
+    message: "Replacement XML must be well formed.",
+  },
+} as const satisfies Record<
+  DocxXmlSafetyIssue,
+  Pick<FolioDocxXmlPatchProposalIssue, "code" | "message">
+>;
 
 export type FolioDocxPreparedXmlReplacement = {
   readonly path: string;
@@ -506,17 +524,10 @@ export const evaluateDocxXmlPatchProposal = async ({
     encodedByPath.set(replacement.path, replacementBytes);
 
     const safetyIssue = getDocxXmlSafetyIssue(replacement.replacementXml);
-    if (safetyIssue === "doctype-forbidden") {
+    if (safetyIssue !== null) {
+      const issue = XML_SAFETY_ISSUE[safetyIssue];
       issues.push({
-        code: "xml-doctype-forbidden",
-        message: "Replacement XML must not declare a document type.",
-        proposalPath: `${proposalPath}.replacementXml`,
-        part: replacement.path,
-      });
-    } else if (safetyIssue === "not-well-formed") {
-      issues.push({
-        code: "xml-not-well-formed",
-        message: "Replacement XML must be well formed.",
+        ...issue,
         proposalPath: `${proposalPath}.replacementXml`,
         part: replacement.path,
       });

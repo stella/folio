@@ -399,6 +399,23 @@ export function findChildByNamespaceUri(
   return null;
 }
 
+/** All direct children whose local name and resolved namespace both match. */
+export function findChildrenByNamespaceUri(
+  parent: XmlElement | null | undefined,
+  namespaceUris: ReadonlySet<string>,
+  localName: string,
+): XmlElement[] {
+  if (!parent?.elements) {
+    return [];
+  }
+  return parent.elements.filter(
+    (child) =>
+      child.type === "element" &&
+      hasLocalName(child.name, localName) &&
+      namespaceUris.has(child.namespaceUri ?? ""),
+  );
+}
+
 export type XmlAttributeMatch = {
   name: string;
   value: string;

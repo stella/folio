@@ -196,10 +196,50 @@ describe("evaluateDocxXmlPatchProposal", () => {
       },
       allowedParts: ["custom.xml"],
     });
+    const unknownEntity = await evaluateDocxXmlPatchProposal({
+      bytes: new Uint8Array(),
+      proposal: {
+        version: FOLIO_DOCX_XML_PATCH_PROPOSAL_VERSION,
+        replacements: [
+          {
+            path: "custom.xml",
+            baseSha256: "0".repeat(64),
+            replacementXml: "<root>&custom;</root>",
+          },
+        ],
+      },
+      allowedParts: ["custom.xml"],
+    });
+    const invalidNumericEntity = await evaluateDocxXmlPatchProposal({
+      bytes: new Uint8Array(),
+      proposal: {
+        version: FOLIO_DOCX_XML_PATCH_PROPOSAL_VERSION,
+        replacements: [
+          {
+            path: "custom.xml",
+            baseSha256: "0".repeat(64),
+            replacementXml: "<root>&#0;</root>",
+          },
+        ],
+      },
+      allowedParts: ["custom.xml"],
+    });
 
     expect(doctype.issues.map(({ code }) => code)).toEqual(["xml-doctype-forbidden"]);
     expect(malformed.issues.map(({ code }) => code)).toEqual(["xml-not-well-formed"]);
     expect(encodingMismatch.issues.map(({ code }) => code)).toEqual(["xml-encoding-mismatch"]);
+    expect(unknownEntity.issues).toContainEqual({
+      code: "xml-not-well-formed",
+      message: "Replacement XML contains an invalid entity reference.",
+      proposalPath: "$.replacements[0].replacementXml",
+      part: "custom.xml",
+    });
+    expect(invalidNumericEntity.issues).toContainEqual({
+      code: "xml-not-well-formed",
+      message: "Replacement XML contains an invalid entity reference.",
+      proposalPath: "$.replacements[0].replacementXml",
+      part: "custom.xml",
+    });
   });
 
   test("rejects replacement byte-limit violations without parsing oversized XML", async () => {

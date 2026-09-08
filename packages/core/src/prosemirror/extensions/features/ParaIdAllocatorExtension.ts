@@ -40,6 +40,11 @@ import { Plugin, PluginKey } from "prosemirror-state";
 import type { EditorState, Transaction } from "prosemirror-state";
 
 import { deterministicHexId, generateHexId } from "../../../utils/hexId";
+import {
+  recreateProseNodeWithParagraphPropertySource,
+  setProseParagraphMarkupWithPropertySource,
+  transferProseParagraphPropertySource,
+} from "../../../docx/paragraphPropertySource";
 import { createExtension } from "../create";
 import type { ExtensionRuntime } from "../types";
 import { ignoreTrackedChanges } from "./ParagraphChangeTrackerExtension";
@@ -229,14 +234,20 @@ const rewriteInitialParaIds = (parent: PMNode, taken: Set<string>, seen: Set<str
         }
         taken.add(newId);
         seen.add(newId);
-        next = child.type.create({ ...child.attrs, paraId: newId }, child.content, child.marks);
+        next = recreateProseNodeWithParagraphPropertySource(child, {
+          attrs: { ...child.attrs, paraId: newId },
+        });
       } else {
         seen.add(id);
+      }
+      const paraId = next.attrs["paraId"];
+      if (typeof paraId === "string") {
+        transferProseParagraphPropertySource(next, child, paraId);
       }
     } else if (child.childCount > 0) {
       const content = rewriteInitialParaIds(child, taken, seen);
       if (content !== child.content) {
-        next = child.copy(content);
+        next = recreateProseNodeWithParagraphPropertySource(child, { content });
       }
     }
     if (next !== child) {
@@ -260,7 +271,9 @@ export const ensureParaIdsInDoc = (doc: PMNode): PMNode => {
     return doc;
   }
 
-  return doc.copy(rewriteInitialParaIds(doc, taken, new Set()));
+  return recreateProseNodeWithParagraphPropertySource(doc, {
+    content: rewriteInitialParaIds(doc, taken, new Set()),
+  });
 };
 
 export const ensureParaIdsInState = (state: EditorState): EditorState => {
@@ -271,7 +284,12 @@ export const ensureParaIdsInState = (state: EditorState): EditorState => {
 
   const tr = state.tr;
   for (const update of updates) {
-    tr.setNodeMarkup(update.pos, undefined, update.attrs);
+    setProseParagraphMarkupWithPropertySource({
+      attrs: update.attrs,
+      ownership: "transfer-allocated-id",
+      pos: update.pos,
+      transaction: tr,
+    });
   }
   ignoreTrackedChanges(tr);
   tr.setMeta(paraIdAllocatorKey, "allocated");
@@ -301,7 +319,12 @@ const createParaIdAllocatorPlugin = (): Plugin =>
 
       const tr = newState.tr;
       for (const u of updates) {
-        tr.setNodeMarkup(u.pos, undefined, u.attrs);
+        setProseParagraphMarkupWithPropertySource({
+          attrs: u.attrs,
+          ownership: "transfer-allocated-id",
+          pos: u.pos,
+          transaction: tr,
+        });
       }
       // Allocation is bookkeeping, not a user edit: it must not mark
       // untouched paragraphs as changed (the user's own transaction

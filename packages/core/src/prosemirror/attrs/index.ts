@@ -1115,6 +1115,7 @@ export const readTrackedChangeMarkAttrs = (
   requiredNumber(attrs, "revisionId", `${mark.type.name}.attrs.revisionId`, issues);
   requiredString(attrs, "author", `${mark.type.name}.attrs.author`, issues);
   optionalString(attrs, "date", `${mark.type.name}.attrs.date`, issues);
+  optionalString(attrs, "utcDate", `${mark.type.name}.attrs.utcDate`, issues);
   optionalString(attrs, "initials", `${mark.type.name}.attrs.initials`, issues);
   optionalOneOf(
     attrs,
@@ -1741,6 +1742,7 @@ const optionalTableRowRevision = (
   requiredNumber(value, "revisionId", `${path}.revisionId`, issues);
   requiredString(value, "author", `${path}.author`, issues);
   optionalString(value, "date", `${path}.date`, issues);
+  optionalString(value, "utcDate", `${path}.utcDate`, issues);
   optionalString(value, "initials", `${path}.initials`, issues);
   optionalOneOf(
     value,
@@ -1774,6 +1776,7 @@ const optionalTableCellRevision = (
   requiredNumber(info, "revisionId", `${path}.info.revisionId`, issues);
   requiredString(info, "author", `${path}.info.author`, issues);
   optionalString(info, "date", `${path}.info.date`, issues);
+  optionalString(info, "utcDate", `${path}.info.utcDate`, issues);
   optionalString(info, "initials", `${path}.info.initials`, issues);
   if (value["kind"] === "merge") {
     // Merge markers never carry suggestion provenance: cell merge/split cannot
@@ -2469,6 +2472,15 @@ const validatePropertyChangeInfo = (
   requiredNumber(value, "id", `${path}.id`, issues);
   requiredString(value, "author", `${path}.author`, issues);
   optionalString(value, "date", `${path}.date`, issues);
+  const utcDate = value["utcDate"];
+  if (utcDate !== undefined) {
+    if (!isRecord(utcDate)) {
+      issues.push({ path: `${path}.utcDate`, message: "Expected an object." });
+    } else {
+      requiredString(utcDate, "attribute", `${path}.utcDate.attribute`, issues);
+      requiredString(utcDate, "value", `${path}.utcDate.value`, issues);
+    }
+  }
   optionalString(value, "rsid", `${path}.rsid`, issues);
 };
 

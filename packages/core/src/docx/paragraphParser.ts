@@ -37,10 +37,12 @@ import type {
   MathEquation,
   RunContent,
 } from "../types/document";
-import { normalizeRevisionId, PARAGRAPH_MARK_CHANGE_KINDS } from "@stll/docx-core/model";
+import { PARAGRAPH_MARK_CHANGE_KINDS } from "@stll/docx-core/model";
 import { panic } from "better-result";
 import { isValidHexId } from "../utils/hexId";
+import { canonicalJson } from "../utils/canonicalJson";
 import { paraIdInRange } from "./paraIdRangeNormalization";
+import { assignParagraphPropertySource } from "./paragraphPropertySource";
 import {
   parseBookmarkStart as parseBookmarkStartFromModule,
   parseBookmarkEnd as parseBookmarkEndFromModule,
@@ -70,9 +72,11 @@ import { isValidHexColor } from "../utils/colorResolver";
 import type { StyleMap } from "./styleParser";
 import { captureVerbatimXml } from "./verbatimCapture";
 import {
+  cloneElement,
   findChild,
   findChildByNamespaceUri,
   findChildren,
+  findChildrenByNamespaceUri,
   getAttribute,
   getChildElements,
   getLocalName,
@@ -84,6 +88,7 @@ import {
   WORDPROCESSINGML_NAMESPACE_URIS,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
+import { parsePropertyChangeInfo, parseTrackedChangeInfo } from "./trackedChangeInfo";
 
 /**
  * Extract plain text from a math element (recursive text content extraction)
@@ -796,6 +801,45 @@ export function parseParagraphProperties(
   return Object.keys(formatting).length > 0 ? formatting : undefined;
 }
 
+/**
+ * Capture the authored paragraph properties separately from structural and
+ * revision children, which have their own model fields and lifecycles.
+ */
+const captureParagraphPropertySource = (pPr: XmlElement): string =>
+  captureVerbatimXml(
+    cloneElement(pPr, {
+      elements: (pPr.elements ?? []).flatMap((child) => {
+        if (child.type !== "element") {
+          return [child];
+        }
+        const localName = getLocalName(child.name);
+        if (
+          WORDPROCESSINGML_NAMESPACE_URIS.has(child.namespaceUri ?? "") &&
+          (localName === "sectPr" || localName === "pPrChange")
+        ) {
+          return [];
+        }
+        if (localName !== "rPr" || !WORDPROCESSINGML_NAMESPACE_URIS.has(child.namespaceUri ?? "")) {
+          return [child];
+        }
+        return [
+          cloneElement(child, {
+            elements: (child.elements ?? []).filter((runProperty) => {
+              if (runProperty.type !== "element") {
+                return true;
+              }
+              const runPropertyName = getLocalName(runProperty.name);
+              return (
+                !WORDPROCESSINGML_NAMESPACE_URIS.has(runProperty.namespaceUri ?? "") ||
+                !PARAGRAPH_MARK_CHANGE_KINDS.some((kind) => kind === runPropertyName)
+              );
+            }),
+          }),
+        ];
+      }),
+    }),
+  );
+
 // ============================================================================
 // PARAGRAPH CONTENT PARSERS
 // ============================================================================
@@ -952,36 +996,6 @@ function normalizeDeletionContentElement(node: XmlElement): XmlElement {
   return result;
 }
 
-function parseTrackedChangeInfo(node: XmlElement): TrackedChangeInfo {
-  const rawId = getAttribute(node, "w", "id");
-  const parsedId = rawId ? Number.parseInt(rawId, 10) : 0;
-  const rawAuthor = getAttribute(node, "w", "author");
-  const rawDate = getAttribute(node, "w", "date");
-  const author = rawAuthor?.trim() ?? "";
-  const date = rawDate?.trim() ?? "";
-  const initials = (getAttribute(node, "w", "initials") ?? "").trim();
-
-  const info: TrackedChangeInfo = {
-    // `w:id` is attacker-controlled and unbounded in the schema; fold it into
-    // the range consumers accept at the parse boundary (eigenpal #1093).
-    id: normalizeRevisionId(parsedId),
-    author: author.length > 0 ? author : "Unknown",
-  };
-  if (date.length > 0) {
-    info.date = date;
-  }
-  if (initials.length > 0) {
-    info.initials = initials;
-  }
-  return info;
-}
-
-function parsePropertyChangeInfo(node: XmlElement): ParagraphPropertyChange["info"] {
-  const base = parseTrackedChangeInfo(node);
-  const rsid = (getAttribute(node, "w", "rsid") ?? "").trim();
-  return rsid.length > 0 ? { ...base, rsid } : base;
-}
-
 function parseParagraphPropertyChanges(
   pPr: XmlElement | null,
   theme: Theme | null,
@@ -992,9 +1006,13 @@ function parseParagraphPropertyChanges(
     return undefined;
   }
 
-  const changes = findChildren(pPr, "w", "pPrChange")
+  const changes = findChildrenByNamespaceUri(pPr, WORDPROCESSINGML_NAMESPACE_URIS, "pPrChange")
     .map((changeElement): ParagraphPropertyChange => {
-      const previousPPr = findChild(changeElement, "w", "pPr");
+      const previousPPr = findChildByNamespaceUri(
+        changeElement,
+        WORDPROCESSINGML_NAMESPACE_URIS,
+        "pPr",
+      );
       const previousFormatting = parseParagraphProperties(previousPPr, theme, styles ?? undefined);
       const change: ParagraphPropertyChange = {
         type: "paragraphPropertyChange",
@@ -1023,7 +1041,7 @@ function parseParagraphMarkChange(pPr: XmlElement | null): ParagraphMarkChange |
   if (!pPr) {
     return undefined;
   }
-  const rPr = findChild(pPr, "w", "rPr");
+  const rPr = findChildByNamespaceUri(pPr, WORDPROCESSINGML_NAMESPACE_URIS, "rPr");
   if (!rPr) {
     return undefined;
   }
@@ -2248,6 +2266,13 @@ export function parseParagraph(
         }
       }
     }
+  }
+
+  if (pPr) {
+    assignParagraphPropertySource(paragraph, {
+      xml: captureParagraphPropertySource(pPr),
+      formattingJson: canonicalJson(paragraph.formatting ?? {}),
+    });
   }
 
   return paragraph;

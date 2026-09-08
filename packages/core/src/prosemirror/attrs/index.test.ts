@@ -139,7 +139,11 @@ describe("ProseMirror attr readers", () => {
       _propertyChanges: [
         {
           type: "runPropertyChange",
-          info: { id: "1", author: 7 },
+          info: {
+            id: "1",
+            author: 7,
+            utcDate: { attribute: "w16du:dateUtc", value: 42 },
+          },
         },
       ],
     });
@@ -168,6 +172,7 @@ describe("ProseMirror attr readers", () => {
         "paragraph.attrs._propertyChanges[0].type",
         "paragraph.attrs._propertyChanges[0].info.id",
         "paragraph.attrs._propertyChanges[0].info.author",
+        "paragraph.attrs._propertyChanges[0].info.utcDate.value",
       ]),
     );
   });
@@ -258,6 +263,29 @@ describe("ProseMirror attr readers", () => {
       throw new Error("Expected table row attrs to be rejected");
     }
     expect(result.issues.map((issue) => issue.path)).toContain("tableRow.attrs.heightRule");
+  });
+
+  test("rejects malformed UTC metadata on structural table revisions", () => {
+    const row = schema.nodes.tableRow.create({
+      trIns: { revisionId: 7, author: "Reviewer", utcDate: 42 },
+    });
+    const cell = schema.nodes.tableCell.create({
+      colspan: 1,
+      rowspan: 1,
+      cellMarker: {
+        kind: "ins",
+        info: { revisionId: 8, author: "Reviewer", utcDate: 42 },
+      },
+    });
+    const rowResult = readTableRowAttrs(row);
+    const cellResult = readTableCellAttrs(cell);
+
+    expect(rowResult.ok ? [] : rowResult.issues.map(({ path }) => path)).toContain(
+      "tableRow.attrs.trIns.utcDate",
+    );
+    expect(cellResult.ok ? [] : cellResult.issues.map(({ path }) => path)).toContain(
+      "tableCell.attrs.cellMarker.info.utcDate",
+    );
   });
 
   test("accepts nullable ProseMirror table cell colwidth", () => {
@@ -620,6 +648,7 @@ describe("ProseMirror attr readers", () => {
     const insertion = schema.marks.insertion.create({
       revisionId: "42",
       author: 12,
+      utcDate: 42,
       moveKind: "moveAround",
     });
 
@@ -641,6 +670,9 @@ describe("ProseMirror attr readers", () => {
       expect(insertionResult.issues.map((issue) => issue.path)).toContain("insertion.attrs.author");
       expect(insertionResult.issues.map((issue) => issue.path)).toContain(
         "insertion.attrs.moveKind",
+      );
+      expect(insertionResult.issues.map((issue) => issue.path)).toContain(
+        "insertion.attrs.utcDate",
       );
     }
   });

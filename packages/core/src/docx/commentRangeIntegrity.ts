@@ -12,6 +12,7 @@ import type {
   TableCell,
   TableRow,
 } from "../types/document";
+import { cloneParagraphWithPropertySource } from "./paragraphPropertySource";
 
 type CommentMarker = Extract<
   ParagraphContent,
@@ -289,7 +290,7 @@ const withoutOrphanParagraphMarkers = (
   if (!changed) {
     return paragraph;
   }
-  return { ...paragraph, content };
+  return cloneParagraphWithPropertySource(paragraph, { content });
 };
 
 const isCommentMarker = (content: ParagraphContent): content is CommentMarker =>

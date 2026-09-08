@@ -60,6 +60,10 @@ import type { Comment } from "../types/content";
 import type { Document, Endnote, Footnote, HeaderFooter } from "../types/document";
 import { deterministicHexId } from "../utils/hexId";
 import {
+  recreateProseNodeWithParagraphPropertySource,
+  transferProseParagraphPropertySource,
+} from "../docx/paragraphPropertySource";
+import {
   applyFolioDocumentOperations,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   type FolioDocumentOperationBatch,
@@ -173,12 +177,18 @@ const ensureDeterministicParaIdsInDoc = (doc: PMNode): PMNode => {
             paraId = deterministicHexId(`${child.textContent}:${ordinal}:${salt}`);
           }
           seen.add(paraId);
-          next = child.type.create({ ...child.attrs, paraId }, child.content, child.marks);
+          next = recreateProseNodeWithParagraphPropertySource(child, {
+            attrs: { ...child.attrs, paraId },
+          });
+        }
+        const paraId = next.attrs["paraId"];
+        if (typeof paraId === "string") {
+          transferProseParagraphPropertySource(next, child, paraId);
         }
       } else if (child.childCount > 0) {
         const content = rewrite(child);
         if (content !== child.content) {
-          next = child.copy(content);
+          next = recreateProseNodeWithParagraphPropertySource(child, { content });
         }
       }
       if (next !== child) {
@@ -191,7 +201,9 @@ const ensureDeterministicParaIdsInDoc = (doc: PMNode): PMNode => {
   };
 
   const content = rewrite(doc);
-  return content === doc.content ? doc : doc.copy(content);
+  return content === doc.content
+    ? doc
+    : recreateProseNodeWithParagraphPropertySource(doc, { content });
 };
 
 /** Options for {@link FolioDocxReviewer.fromBuffer}. */
@@ -1494,7 +1506,10 @@ export class FolioDocxReviewer {
         if (!source) {
           continue;
         }
-        const edited = { ...source, content: proseDocToBlocks(entry.state.doc) };
+        const edited = {
+          ...source,
+          content: proseDocToBlocks(entry.state.doc, source.content),
+        };
         if (entry.handle.type === "header") {
           headers ??= new Map(document.package.headers);
           headers.set(entry.handle.relationshipId, edited);
@@ -1512,7 +1527,10 @@ export class FolioDocxReviewer {
         if (!source) {
           continue;
         }
-        const edited = { ...source, content: proseDocToBlocks(entry.state.doc) };
+        const edited = {
+          ...source,
+          content: proseDocToBlocks(entry.state.doc, source.content),
+        };
         footnotes ??= [...(document.package.footnotes ?? [])];
         const index = footnotes.findIndex((note) => note.id === noteId);
         if (index !== -1) {
@@ -1527,7 +1545,10 @@ export class FolioDocxReviewer {
       if (!source) {
         continue;
       }
-      const edited = { ...source, content: proseDocToBlocks(entry.state.doc) };
+      const edited = {
+        ...source,
+        content: proseDocToBlocks(entry.state.doc, source.content),
+      };
       endnotes ??= [...(document.package.endnotes ?? [])];
       const index = endnotes.findIndex((note) => note.id === noteId);
       if (index !== -1) {

@@ -26,6 +26,7 @@ import type {
   TextFormatting,
 } from "../types/document";
 import { parseParagraph } from "./paragraphParser";
+import { cloneParagraphWithPropertySource } from "./paragraphPropertySource";
 import { parseRunProperties } from "./runParser";
 import type { StyleMap } from "./styleParser";
 import {
@@ -79,7 +80,7 @@ const normalizeFirstCommentParagraph = (
   const firstParsedContent = paragraph.content.at(0);
   const normalizedParagraph =
     firstParsedContent?.type === "run" && firstParsedContent.content.length === 0
-      ? { ...paragraph, content: paragraph.content.slice(1) }
+      ? cloneParagraphWithPropertySource(paragraph, { content: paragraph.content.slice(1) })
       : paragraph;
 
   return {

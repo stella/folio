@@ -20,6 +20,7 @@ import type {
   Paragraph,
   Hyperlink,
 } from "../types/document";
+import { cloneParagraphWithPropertySource } from "./paragraphPropertySource";
 
 /**
  * Check if two TextFormatting objects are equivalent
@@ -439,10 +440,9 @@ export function consolidateParagraph(paragraph: Paragraph): Paragraph {
     return paragraph;
   }
 
-  return {
-    ...paragraph,
+  return cloneParagraphWithPropertySource(paragraph, {
     content: consolidateParagraphContent(paragraph.content),
-  };
+  });
 }
 
 /**

@@ -92,6 +92,7 @@ const distTypesFromExport = (target: unknown): string | null => {
 //   - subpath patterns (`./*`)    a wildcard passthrough to arbitrary internal
 //                                 modules, not a curated public surface; there
 //                                 is no single `.d.ts` to snapshot
+//   - explicit `null` targets     private exceptions to a wildcard export
 //   - non-JS assets (`*.css`)     stylesheet, carries no declarations
 const entriesFor = (pkg: PackageTarget): { entries: Entry[]; missing: string[] } => {
   const pkgJson = JSON.parse(readFileSync(path.join(pkg.root, "package.json"), "utf8")) as {
@@ -100,7 +101,7 @@ const entriesFor = (pkg: PackageTarget): { entries: Entry[]; missing: string[] }
   const entries: Entry[] = [];
   const missing: string[] = [];
   for (const [key, srcPath] of Object.entries(pkgJson.exports)) {
-    if (key === "./package.json" || key.includes("*")) continue;
+    if (key === "./package.json" || key.includes("*") || srcPath === null) continue;
 
     // Dist-shaped conditional-export object (@stll/folio-vue): the built .d.ts
     // is named directly in `types`, so snapshot it as-is.

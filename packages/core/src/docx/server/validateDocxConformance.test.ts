@@ -76,6 +76,28 @@ describe("validateDocxConformance", () => {
     });
   });
 
+  test.each(["<root>&custom;</root>", "<root>&#0;</root>"])(
+    "rejects invalid entity references in XML package parts: %s",
+    async (xml) => {
+      const bytes = await mutateEmptyPackage((zip) => {
+        zip.file("custom.xml", xml);
+      });
+
+      const report = await validateDocxConformance(bytes);
+
+      expect(report.status).toBe("invalid");
+      expect(checkStatus(report, "xml-well-formedness")).toBe("failed");
+      expect(checkStatus(report, "package-roots")).toBe("not-run");
+      expect(report.issues).toContainEqual({
+        check: "xml-well-formedness",
+        code: "xml-not-well-formed",
+        message: "An XML package part contains an invalid entity reference.",
+        severity: "error",
+        part: "custom.xml",
+      });
+    },
+  );
+
   test("fails missing required parts with their package paths", async () => {
     const bytes = await mutateEmptyPackage((zip) => {
       zip.remove("_rels/.rels");

@@ -49,7 +49,6 @@ import type {
   BookmarkEnd,
   BookmarkStart,
 } from "../types/document";
-import { normalizeRevisionId } from "@stll/docx-core/model";
 import { parseBookmarkEnd, parseBookmarkStart } from "./bookmarkParser";
 import {
   appendBookmarkMarkerToLastParagraphInBlocks,
@@ -86,6 +85,7 @@ import {
   parseBooleanElement,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
+import { parsePropertyChangeInfo, parseTrackedChangeInfo } from "./trackedChangeInfo";
 
 /**
  * Sanity cap on `w:gridSpan` (and the derived table column count). Word's
@@ -127,54 +127,6 @@ export function parseTableMeasurement(element: XmlElement | null): TableMeasurem
  */
 function parseWidth(element: XmlElement | null): TableMeasurement | undefined {
   return parseTableMeasurement(element);
-}
-
-function parseTrackedChangeInfo(node: XmlElement): TableStructuralChangeInfo["info"] {
-  const rawId = getAttribute(node, "w", "id");
-  const parsedId = rawId ? Number.parseInt(rawId, 10) : 0;
-  const author = (getAttribute(node, "w", "author") ?? "").trim();
-  const date = (getAttribute(node, "w", "date") ?? "").trim();
-  const initials = (getAttribute(node, "w", "initials") ?? "").trim();
-
-  const info: TableStructuralChangeInfo["info"] = {
-    // `w:id` is attacker-controlled and unbounded in the schema; fold at the
-    // parse boundary (eigenpal #1093).
-    id: normalizeRevisionId(parsedId),
-    author: author.length > 0 ? author : "Unknown",
-  };
-  if (date.length > 0) {
-    info.date = date;
-  }
-  if (initials.length > 0) {
-    info.initials = initials;
-  }
-  const utcDate = utcDateAttribute(node);
-  if (utcDate) {
-    info.utcDate = utcDate;
-  }
-  return info;
-}
-
-/** `w16du:dateUtc` under whatever prefix the document bound it to. */
-const utcDateAttribute = (node: XmlElement): { attribute: string; value: string } | null => {
-  for (const [attribute, value] of Object.entries(node.attributes ?? {})) {
-    if (typeof value !== "string" || getLocalName(attribute) !== "dateUtc") {
-      continue;
-    }
-    const trimmed = value.trim();
-    if (trimmed.length > 0) {
-      return { attribute, value: trimmed };
-    }
-  }
-  return null;
-};
-
-function parsePropertyChangeInfo(
-  node: XmlElement,
-): TablePropertyChange["info"] | TableRowPropertyChange["info"] | TableCellPropertyChange["info"] {
-  const base = parseTrackedChangeInfo(node);
-  const rsid = (getAttribute(node, "w", "rsid") ?? "").trim();
-  return rsid.length > 0 ? { ...base, rsid } : base;
 }
 
 // ============================================================================

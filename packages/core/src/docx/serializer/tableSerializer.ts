@@ -36,7 +36,6 @@ import type {
   ShadingProperties,
   Paragraph,
 } from "../../types/document";
-import { normalizeRevisionId } from "@stll/docx-core/model";
 import { canonicalJson } from "../../utils/canonicalJson";
 import { isValidHexColor } from "../../utils/colorResolver";
 import {
@@ -47,6 +46,7 @@ import {
 } from "../tableParser";
 import { OOXML_NAMESPACE_SCOPE, parseXml, type XmlElement } from "../xmlParser";
 import { serializeBorder } from "./borderSerializer";
+import { serializeTrackedChangeAttributes } from "./trackedChangeAttributes";
 import { escapeXml, intAttr } from "./xmlUtils";
 
 type ParagraphSerializer = (paragraph: Paragraph) => string;
@@ -145,46 +145,6 @@ const verifiedSourceXml = <TFormatting extends { sourceXml?: string }>(
     ? sourceXml
     : null;
 };
-
-type TrackedChangeAttributes = {
-  id: number;
-  author: string;
-  date?: string;
-  utcDate?: { attribute: string; value: string };
-};
-
-function normalizeTrackedChangeInfo(info: TrackedChangeAttributes): {
-  id: number;
-  author: string;
-  date?: string;
-} {
-  const normalizedId = normalizeRevisionId(info.id);
-  const authorCandidate = typeof info.author === "string" ? info.author.trim() : "";
-  const normalizedAuthor = authorCandidate.length > 0 ? authorCandidate : "Unknown";
-  const normalizedDate = typeof info.date === "string" ? info.date.trim() : undefined;
-
-  return {
-    id: normalizedId,
-    author: normalizedAuthor,
-    ...(normalizedDate !== undefined ? { date: normalizedDate } : {}),
-  };
-}
-
-function serializeTrackedChangeAttributes(info: TrackedChangeAttributes, rsid?: string): string {
-  // `w:initials` is intentionally NOT emitted (non-standard on CT_TrackChange).
-  const normalized = normalizeTrackedChangeInfo(info);
-  const attrs = [`w:id="${normalized.id}"`, `w:author="${escapeXml(normalized.author)}"`];
-  if (normalized.date) {
-    attrs.push(`w:date="${escapeXml(normalized.date)}"`);
-  }
-  if (info.utcDate) {
-    attrs.push(`${info.utcDate.attribute}="${escapeXml(info.utcDate.value)}"`);
-  }
-  if (rsid && rsid.trim().length > 0) {
-    attrs.push(`w:rsid="${escapeXml(rsid.trim())}"`);
-  }
-  return attrs.join(" ");
-}
 
 // ============================================================================
 // MEASUREMENT SERIALIZATION
@@ -573,7 +533,7 @@ function extractTblPrInner(tblPrXml: string): string {
 }
 
 function serializeTablePropertyChange(change: TablePropertyChange): string {
-  const attrs = serializeTrackedChangeAttributes(change.info, change.info.rsid);
+  const attrs = serializeTrackedChangeAttributes(change.info);
   const previousTblPrXml = serializeTableFormatting(change.previousFormatting) || "<w:tblPr/>";
   const previousTblPrInner = extractTblPrInner(previousTblPrXml);
   const normalizedPreviousTblPr =
@@ -685,7 +645,7 @@ function extractTrPrInner(trPrXml: string): string {
 }
 
 function serializeTableRowPropertyChange(change: TableRowPropertyChange): string {
-  const attrs = serializeTrackedChangeAttributes(change.info, change.info.rsid);
+  const attrs = serializeTrackedChangeAttributes(change.info);
   const previousTrPrXml = serializeTableRowFormatting(change.previousFormatting) || "<w:trPr/>";
   const previousTrPrInner = extractTrPrInner(previousTrPrXml);
   const normalizedPreviousTrPr =
@@ -851,7 +811,7 @@ function extractTcPrInner(tcPrXml: string): string {
 }
 
 function serializeTableCellPropertyChange(change: TableCellPropertyChange): string {
-  const attrs = serializeTrackedChangeAttributes(change.info, change.info.rsid);
+  const attrs = serializeTrackedChangeAttributes(change.info);
   const previousTcPrXml = serializeTableCellFormatting(change.previousFormatting) || "<w:tcPr/>";
   const previousTcPrInner = extractTcPrInner(previousTcPrXml);
   const normalizedPreviousTcPr =

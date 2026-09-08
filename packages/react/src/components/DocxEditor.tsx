@@ -57,6 +57,7 @@ import {
   type FolioGetDocxOptions,
 } from "@stll/folio-core/controller/folioEditor";
 import type { NoteStoryKey } from "@stll/folio-core/controller/noteEditorManager";
+import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { normalizeBaseDirection } from "@stll/folio-core/docx/normalizeBaseDirection";
 import { getCachedNumberingMap } from "@stll/folio-core/docx/numberingParser";
 import { updateScrollPageTotal } from "@stll/folio-core/paged-layout/scrollPageInfo";
@@ -184,6 +185,7 @@ import { templateSlashMenuPlugin } from "@stll/folio-core/prosemirror/plugins/te
 import type { Comment } from "@stll/folio-core/types/content";
 import type {
   Document,
+  HeaderFooter,
   SectionProperties,
   FootnoteProperties,
   EndnoteProperties,
@@ -1324,7 +1326,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       return null;
     }
 
-    let doc = structuredClone(history.state);
+    let doc = cloneDocumentWithParagraphPropertySources(history.state);
     const pmDoc = pagedEditorRef.current?.getDocument();
     if (pmDoc) {
       doc.package.document.content = pmDoc.package.document.content;
@@ -1346,26 +1348,27 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     // (Codex #487 P1: 20:18 review), so a "Save As .docx" called while the
     // chrome is still open would otherwise ship the pre-edit content for
     // every rId the user touched (Codex #487 P1 follow-up: 20:52 review).
-    // We walk the cloned headers / footers (structuredClone gave us fresh
-    // HF objects), look up the matching persistent view, and overwrite
-    // each rId's `.content` with `proseDocToBlocks(view.state.doc)`. The
+    // We walk the ownership-aware cloned headers / footers, look up the
+    // matching persistent view, and overwrite
+    // each rId's `.content` from the live view while retaining the cloned
+    // story as the paragraph-property source. The
     // original history.state remains untouched because every mutation
     // lands on the cloned Map / HF objects.
     const editor = pagedEditorRef.current;
     if (editor) {
-      const flushBag = (bag: Map<string, { content: unknown }> | undefined) => {
+      const flushBag = (bag: Map<string, HeaderFooter> | undefined) => {
         if (!bag) {
           return;
         }
         for (const [rId, hf] of bag) {
           const view = editor.getHfView(rId);
           if (view) {
-            hf.content = proseDocToBlocks(view.state.doc);
+            hf.content = proseDocToBlocks(view.state.doc, hf.content);
           }
         }
       };
-      flushBag(doc.package.headers as Map<string, { content: unknown }> | undefined);
-      flushBag(doc.package.footers as Map<string, { content: unknown }> | undefined);
+      flushBag(doc.package.headers);
+      flushBag(doc.package.footers);
     }
     // Drop comment threads whose anchor text has been edited away. The
     // in-memory `comments` array can outlive its in-body anchors (PM

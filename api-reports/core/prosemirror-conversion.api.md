@@ -23,7 +23,7 @@ export function fromProseDoc(pmDoc: Node_2, baseDocument?: import__stll_docx_cor
 export function headerFooterToProseDoc(content: import__stll_docx_core_model.BlockContent[], options?: ToProseDocOptions): Node_2;
 
 // @public
-export function proseDocToBlocks(pmDoc: Node_2): import__stll_docx_core_model.BlockContent[];
+export function proseDocToBlocks(pmDoc: Node_2, baseContent?: import__stll_docx_core_model.BlockContent[]): import__stll_docx_core_model.BlockContent[];
 
 // @public (undocumented)
 export type ProseMirrorDocumentValidationIssue = {

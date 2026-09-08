@@ -13,6 +13,7 @@ import type { EditorState as EditorStateT } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 
 import { clearHeaderFooterVerbatimXml } from "../docx/headerFooterVerbatim";
+import { cloneParagraphWithPropertySource } from "../docx/paragraphPropertySource";
 import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
 import { headerFooterToProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { ExtensionManager } from "../prosemirror/extensions/ExtensionManager";
@@ -83,7 +84,9 @@ const headerFooterToProseDocWithDetachedWatermarkHost = (
     if (blockIndex !== headerFooter.watermarkBlockIndex || block.type !== "paragraph") {
       return block;
     }
-    return { ...block, [DETACHED_WATERMARK_HOST]: true };
+    const marked = cloneParagraphWithPropertySource(block, {});
+    Reflect.set(marked, DETACHED_WATERMARK_HOST, true);
+    return marked;
   });
   return headerFooterToProseDoc(markedContent, options);
 };
@@ -295,7 +298,7 @@ export const createHeaderFooterEditorManager = (
         }
         const updated: HeaderFooter = {
           ...existing,
-          content: proseDocToBlocks(view.state.doc),
+          content: proseDocToBlocks(view.state.doc, existing.content),
         };
         clearHeaderFooterVerbatimXml(updated);
         if (kind === "header") {

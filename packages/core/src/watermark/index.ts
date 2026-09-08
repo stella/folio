@@ -15,6 +15,7 @@ import type {
   SectionProperties,
   Watermark,
 } from "../types/document";
+import { cloneParagraphWithPropertySource } from "../docx/paragraphPropertySource";
 import { isEmptyParagraph } from "../docx/paragraphParser";
 
 export type { Watermark, TextWatermark, PictureWatermark } from "../types/document";
@@ -260,10 +261,9 @@ export function ensureWatermarkHeaderCoverage(doc: Document, watermark: Watermar
       refs !== undefined &&
       refs.length > 0
     ) {
-      return {
-        ...block,
+      return cloneParagraphWithPropertySource(block, {
         sectionProperties: withRefs(block.sectionProperties, refs),
-      };
+      });
     }
     return block;
   });

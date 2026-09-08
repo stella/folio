@@ -41,7 +41,7 @@ import type {
   MediaFile,
   ShapeContent,
 } from "../types/document";
-import { DRAWING_RAW_XML_MODES, normalizeRevisionId } from "@stll/docx-core/model";
+import { DRAWING_RAW_XML_MODES } from "@stll/docx-core/model";
 import { parseGroupDrawing } from "./groupDrawingParser";
 import { parseImage } from "./imageParser";
 import {
@@ -81,6 +81,7 @@ import {
   parseNumericAttribute,
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
+import { parsePropertyChangeInfo } from "./trackedChangeInfo";
 
 /**
  * Sanity cap on `w:lang` `@w:val`/`@w:eastAsia`/`@w:bidi` tag length. BCP-47
@@ -663,29 +664,6 @@ export function parseRunProperties(
   }
 
   return Object.keys(formatting).length > 0 ? formatting : undefined;
-}
-
-function parsePropertyChangeInfo(changeElement: XmlElement): RunPropertyChange["info"] {
-  const rawId = getAttribute(changeElement, "w", "id");
-  const parsedId = rawId ? Number.parseInt(rawId, 10) : 0;
-  const author = (getAttribute(changeElement, "w", "author") ?? "").trim();
-  const date = (getAttribute(changeElement, "w", "date") ?? "").trim();
-  const rsid = (getAttribute(changeElement, "w", "rsid") ?? "").trim();
-
-  const info: RunPropertyChange["info"] = {
-    // `w:id` is attacker-controlled and unbounded in the schema; fold at the
-    // parse boundary (eigenpal #1093).
-    id: normalizeRevisionId(parsedId),
-    author: author.length > 0 ? author : "Unknown",
-  };
-  if (date.length > 0) {
-    info.date = date;
-  }
-  if (rsid.length > 0) {
-    info.rsid = rsid;
-  }
-
-  return info;
 }
 
 function parseRunPropertyChanges(

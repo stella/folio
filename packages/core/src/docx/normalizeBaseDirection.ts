@@ -26,6 +26,7 @@ import type {
   Run,
   Table,
 } from "../types/document";
+import { cloneParagraphWithoutPropertySource } from "./paragraphPropertySource";
 import { detectBaseDirection } from "../utils/baseDirection";
 
 const runText = (run: Run): string => {
@@ -97,10 +98,9 @@ const normalizeParagraph = (paragraph: Paragraph, styles: StyleResolver): Paragr
   if (detectBaseDirection(paragraphText(paragraph)) !== "rtl") {
     return paragraph;
   }
-  return {
-    ...paragraph,
+  return cloneParagraphWithoutPropertySource(paragraph, {
     formatting: { ...paragraph.formatting, bidi: true },
-  };
+  });
 };
 
 const normalizeTable = (table: Table, styles: StyleResolver): Table => ({

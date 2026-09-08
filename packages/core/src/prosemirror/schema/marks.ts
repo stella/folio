@@ -131,6 +131,8 @@ export type TrackedChangeMarkAttrs = {
   revisionId: number;
   author: string;
   date?: string;
+  /** UTC companion timestamp carried privately through the editable model. */
+  utcDate?: string;
   /** Optional author initials (w:initials) carried through the round-trip. */
   initials?: string;
   moveKind?: "moveTo" | "moveFrom";

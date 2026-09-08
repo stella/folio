@@ -34,16 +34,35 @@ import type {
   TabStop,
   ShadingProperties,
   TextFormatting,
-  TrackedChangeInfo,
 } from "../../types/document";
-import { normalizeRevisionId } from "@stll/docx-core/model";
+import { PARAGRAPH_MARK_CHANGE_KINDS } from "@stll/docx-core/model";
+import { panic } from "better-result";
 import { isValidHexColor } from "../../utils/colorResolver";
+import { canonicalJson } from "../../utils/canonicalJson";
 import { numPrEqual } from "../numberingParser";
+import { getParagraphPropertySource } from "../paragraphPropertySource";
 import { reconcileRawSdtPr } from "../sdtPropertiesPatch";
+import { DATE_UTC_ATTRIBUTE, DATE_UTC_NAMESPACE_URI } from "../trackedChangeInfo";
+import { toTransitionalNamespaceUri } from "../transitionalSpelling";
+import { captureVerbatimXml, sanitizeCapturedXmlElement } from "../verbatimCapture";
+import {
+  cloneElement,
+  getChildElements,
+  getLocalName,
+  NAMESPACES,
+  OOXML_NAMESPACE_SCOPE,
+  parseXml,
+  type XmlElement,
+  type XmlNamespaceScope,
+} from "../xmlParser";
 import { serializeBorder } from "./borderSerializer";
 // oxlint-disable-next-line import/no-cycle -- OOXML model is mutually recursive: paragraphs hold runs, shape-textbox runs hold paragraphs
 import { serializeRun, serializeTextFormatting } from "./runSerializer";
 import { serializeSectionProperties } from "./sectionPropertiesSerializer";
+import {
+  serializeTrackedChangeAttributes,
+  trackedChangeAttributeRecord,
+} from "./trackedChangeAttributes";
 import { escapeXml, intAttr, isSingleWellFormedElement } from "./xmlUtils";
 
 // ============================================================================
@@ -373,27 +392,381 @@ function serializeFrameProperties(frame: ParagraphFormatting["frame"]): string {
 /**
  * Serialize paragraph formatting properties to w:pPr XML
  */
-function serializeTrackedChangeAttrs(info: TrackedChangeInfo): string {
-  // NOTE: `w:initials` is intentionally NOT emitted — ECMA-376 CT_TrackChange
-  // defines only w:id/w:author/w:date. Initials are carried in-model for UI
-  // attribution only (w:comment is the sole standards-clean initials target).
-  // Bound `w:id` here so an overflowing id cannot reach the XML (eigenpal #1093).
-  const parts = [`w:id="${normalizeRevisionId(info.id)}"`, `w:author="${escapeXml(info.author)}"`];
-  if (info.date !== undefined) {
-    parts.push(`w:date="${escapeXml(info.date)}"`);
-  }
-  return parts.join(" ");
-}
-
 function serializeParagraphMarkChange(mark: ParagraphMarkChange): string {
-  const attrs = serializeTrackedChangeAttrs(mark.info);
+  const attrs = serializeTrackedChangeAttributes(mark.info);
   return `<w:${mark.kind} ${attrs}/>`;
 }
 
 type SerializeParagraphFormattingOptions = {
   propertyChanges?: ParagraphPropertyChange[] | undefined;
   paragraphMarkChange?: ParagraphMarkChange | undefined;
+  propertySource?: ParagraphPropertySource | undefined;
   sectionProperties?: SectionProperties | undefined;
+};
+
+type ParagraphPropertySource = NonNullable<ReturnType<typeof getParagraphPropertySource>>;
+
+const RESERVED_PARAGRAPH_PROPERTY_CHILDREN = new Set(["pPrChange", "sectPr"]);
+const RESERVED_PARAGRAPH_CAPTURE_CHILDREN: ReadonlySet<string> = new Set([
+  ...RESERVED_PARAGRAPH_PROPERTY_CHILDREN,
+  ...PARAGRAPH_MARK_CHANGE_KINDS,
+  "cellDel",
+  "cellIns",
+  "cellMerge",
+  "numberingChange",
+  "rPrChange",
+  "tblGridChange",
+  "tblPrChange",
+  "tcPrChange",
+  "trPrChange",
+]);
+const PARAGRAPH_PROPERTY_ROOT_NAME = new Set(["pPr"]);
+const WORDPROCESSINGML_NAMESPACE = new Set([NAMESPACES.w]);
+const PARAGRAPH_APPEND_PREFIXES = new Map([
+  ["w", NAMESPACES.w],
+  ["r", NAMESPACES.r],
+  ["w15", NAMESPACES.w15],
+]);
+const PARAGRAPH_PROPERTY_CHILD_ORDER = new Map(
+  [
+    "pStyle",
+    "keepNext",
+    "keepLines",
+    "pageBreakBefore",
+    "framePr",
+    "widowControl",
+    "numPr",
+    "suppressLineNumbers",
+    "pBdr",
+    "shd",
+    "tabs",
+    "suppressAutoHyphens",
+    "kinsoku",
+    "wordWrap",
+    "overflowPunct",
+    "topLinePunct",
+    "autoSpaceDE",
+    "autoSpaceDN",
+    "bidi",
+    "adjustRightInd",
+    "snapToGrid",
+    "spacing",
+    "ind",
+    "contextualSpacing",
+    "mirrorIndents",
+    "suppressOverlap",
+    "jc",
+    "textDirection",
+    "textAlignment",
+    "textboxTightWrap",
+    "outlineLvl",
+    "divId",
+    "cnfStyle",
+    "rPr",
+  ].map((name, index) => [name, index]),
+);
+const PARAGRAPH_MARK_BASE_CHILDREN: ReadonlySet<string> = new Set([
+  "rStyle",
+  "rFonts",
+  "b",
+  "bCs",
+  "i",
+  "iCs",
+  "caps",
+  "smallCaps",
+  "strike",
+  "dstrike",
+  "outline",
+  "shadow",
+  "emboss",
+  "imprint",
+  "snapToGrid",
+  "vanish",
+  "webHidden",
+  "color",
+  "spacing",
+  "w",
+  "kern",
+  "position",
+  "sz",
+  "szCs",
+  "noProof",
+  "highlight",
+  "u",
+  "effect",
+  "bdr",
+  "shd",
+  "fitText",
+  "vertAlign",
+  "rtl",
+  "cs",
+  "em",
+  "lang",
+  "eastAsianLayout",
+  "specVanish",
+  "oMath",
+]);
+const PARAGRAPH_NESTED_PROPERTY_CHILDREN: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+  ["numPr", new Set(["ilvl", "numId"])],
+  ["pBdr", new Set(["top", "left", "bottom", "right", "between", "bar"])],
+  ["tabs", new Set(["tab"])],
+  ["rPr", PARAGRAPH_MARK_BASE_CHILDREN],
+]);
+
+const resolveNamespaceBinding = (
+  scope: XmlNamespaceScope | undefined,
+  prefix: string,
+): string | undefined => {
+  for (let current = scope; current; current = current.parent) {
+    const value = current.bindings.get(prefix);
+    if (value !== undefined) {
+      return value;
+    }
+  }
+  return undefined;
+};
+
+const hasDescendantNamed = (
+  element: XmlElement,
+  namespaceUri: string,
+  localName: string,
+): boolean => {
+  const pending = [...getChildElements(element)];
+  while (pending.length > 0) {
+    const child = pending.pop();
+    if (!child) {
+      continue;
+    }
+    if (
+      getLocalName(child.name) === localName &&
+      toTransitionalNamespaceUri(child.namespaceUri ?? "") === namespaceUri
+    ) {
+      return true;
+    }
+    for (const descendant of getChildElements(child)) {
+      pending.push(descendant);
+    }
+  }
+  return false;
+};
+
+const hasInvalidParagraphPropertyRevision = (root: XmlElement): boolean => {
+  const pending = [...getChildElements(root)];
+  while (pending.length > 0) {
+    const element = pending.pop();
+    if (!element) {
+      continue;
+    }
+    if (toTransitionalNamespaceUri(element.namespaceUri ?? "") === NAMESPACES.w) {
+      const localName = getLocalName(element.name);
+      if (RESERVED_PARAGRAPH_CAPTURE_CHILDREN.has(localName)) {
+        return true;
+      }
+    }
+    for (const child of getChildElements(element)) {
+      pending.push(child);
+    }
+  }
+  return false;
+};
+
+const hasInvalidParagraphPropertyShape = (root: XmlElement): boolean => {
+  const pending = getChildElements(root).map((element) => ({ element, parent: root }));
+  if (
+    (root.elements ?? []).some(
+      (child) => child.type === "text" && String(child.text ?? "").trim() !== "",
+    )
+  ) {
+    return true;
+  }
+  while (pending.length > 0) {
+    const entry = pending.pop();
+    if (!entry) {
+      continue;
+    }
+    const { element, parent } = entry;
+    if (
+      (element.elements ?? []).some(
+        (child) => child.type === "text" && String(child.text ?? "").trim() !== "",
+      )
+    ) {
+      return true;
+    }
+    const isWordprocessingElement =
+      toTransitionalNamespaceUri(element.namespaceUri ?? "") === NAMESPACES.w;
+    if (isWordprocessingElement && parent !== root) {
+      if (toTransitionalNamespaceUri(parent.namespaceUri ?? "") !== NAMESPACES.w) {
+        return true;
+      }
+      const allowedChildren = PARAGRAPH_NESTED_PROPERTY_CHILDREN.get(getLocalName(parent.name));
+      if (!allowedChildren?.has(getLocalName(element.name))) {
+        return true;
+      }
+    }
+    for (const child of getChildElements(element)) {
+      pending.push({ element: child, parent: element });
+    }
+  }
+  return false;
+};
+
+const sourceShadowsDateUtcPrefix = (sourceXml: string): boolean => {
+  const root = parseXml(sourceXml, OOXML_NAMESPACE_SCOPE).elements?.at(0);
+  if (!root || root.type !== "element") {
+    return true;
+  }
+  const pending = [root];
+  while (pending.length > 0) {
+    const element = pending.pop();
+    if (!element) {
+      continue;
+    }
+    const resolved = resolveNamespaceBinding(element.namespaceScope, "w16du");
+    if (resolved !== undefined && resolved !== DATE_UTC_NAMESPACE_URI) {
+      return true;
+    }
+    for (const child of getChildElements(element)) {
+      pending.push(child);
+    }
+  }
+  return false;
+};
+
+const hasInvalidParagraphMarkProperties = (root: XmlElement): boolean => {
+  for (const child of getChildElements(root)) {
+    if (toTransitionalNamespaceUri(child.namespaceUri ?? "") !== NAMESPACES.w) {
+      continue;
+    }
+    const localName = getLocalName(child.name);
+    if (!PARAGRAPH_MARK_BASE_CHILDREN.has(localName)) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const replayableParagraphPropertySourceXml = (sourceXml: string): string | null => {
+  return sanitizeCapturedXmlElement(sourceXml, {
+    allowedLocalNames: PARAGRAPH_PROPERTY_ROOT_NAME,
+    allowedNamespaceUris: WORDPROCESSINGML_NAMESPACE,
+    inheritedNamespaceScope: OOXML_NAMESPACE_SCOPE,
+    requiredNamespaceBindings: PARAGRAPH_APPEND_PREFIXES,
+    validate: (root) => {
+      let paragraphMarkProperties: XmlElement | null = null;
+      const seenChildren = new Set<string>();
+      let previousChildOrder = -1;
+      for (const child of getChildElements(root)) {
+        const localName = getLocalName(child.name);
+        const isWordprocessingChild =
+          toTransitionalNamespaceUri(child.namespaceUri ?? "") === NAMESPACES.w;
+        if (isWordprocessingChild) {
+          if (RESERVED_PARAGRAPH_PROPERTY_CHILDREN.has(localName)) {
+            return false;
+          }
+          const childOrder = PARAGRAPH_PROPERTY_CHILD_ORDER.get(localName);
+          if (
+            childOrder === undefined ||
+            seenChildren.has(localName) ||
+            childOrder < previousChildOrder
+          ) {
+            return false;
+          }
+          seenChildren.add(localName);
+          previousChildOrder = childOrder;
+        }
+        if (localName !== "rPr" || !isWordprocessingChild) {
+          if (hasDescendantNamed(child, NAMESPACES.w, "rPr")) {
+            return false;
+          }
+          continue;
+        }
+        if (
+          paragraphMarkProperties !== null ||
+          toTransitionalNamespaceUri(resolveNamespaceBinding(child.namespaceScope, "w") ?? "") !==
+            NAMESPACES.w
+        ) {
+          return false;
+        }
+        paragraphMarkProperties = child;
+      }
+      return !(
+        (paragraphMarkProperties && hasInvalidParagraphMarkProperties(paragraphMarkProperties)) ||
+        hasInvalidParagraphPropertyShape(root) ||
+        hasInvalidParagraphPropertyRevision(root)
+      );
+    },
+  });
+};
+
+const verifiedParagraphPropertySource = (
+  formatting: ParagraphFormatting | undefined,
+  source: ParagraphPropertySource | undefined,
+): string | null => {
+  if (!source) {
+    return null;
+  }
+  const replayableSource = replayableParagraphPropertySourceXml(source.xml);
+  if (replayableSource === null) {
+    return null;
+  }
+  return canonicalJson(formatting ?? {}) === source.formattingJson ? replayableSource : null;
+};
+
+const withTrailingParagraphPropertyChildren = (
+  sourceXml: string,
+  children: readonly string[],
+): string => {
+  const written = children.join("");
+  if (written.length === 0) {
+    return sourceXml;
+  }
+  const selfClosing = /^<((?:[A-Za-z_][\w.-]*:)?pPr)\b([^>]*)\/>$/u.exec(sourceXml);
+  if (selfClosing) {
+    const [, name, attrs] = selfClosing;
+    return `<${name}${attrs}>${written}</${name}>`;
+  }
+  const close = sourceXml.lastIndexOf("</");
+  return close === -1
+    ? sourceXml
+    : `${sourceXml.slice(0, close)}${written}${sourceXml.slice(close)}`;
+};
+
+const withParagraphMarkChange = (sourceXml: string, mark: ParagraphMarkChange): string => {
+  const root = parseXml(sourceXml, OOXML_NAMESPACE_SCOPE).elements?.at(0);
+  if (!root || root.type !== "element") {
+    panic("A validated paragraph-property capture could not be parsed for composition");
+  }
+  const attributes = trackedChangeAttributeRecord(mark.info);
+  const markElement = cloneElement(root, {
+    name: `w:${mark.kind}`,
+    attributes,
+    elements: [],
+  });
+  const elements = [...(root.elements ?? [])];
+  const paragraphMarkIndex = elements.findIndex(
+    (child) =>
+      child.type === "element" &&
+      getLocalName(child.name) === "rPr" &&
+      toTransitionalNamespaceUri(child.namespaceUri ?? "") === NAMESPACES.w,
+  );
+  if (paragraphMarkIndex === -1) {
+    elements.push(
+      cloneElement(root, {
+        name: "w:rPr",
+        attributes: {},
+        elements: [markElement],
+      }),
+    );
+  } else {
+    const paragraphMarkProperties = elements[paragraphMarkIndex];
+    if (!paragraphMarkProperties || paragraphMarkProperties.type !== "element") {
+      panic("A validated paragraph-mark property node disappeared during composition");
+    }
+    elements[paragraphMarkIndex] = cloneElement(paragraphMarkProperties, {
+      elements: [markElement, ...(paragraphMarkProperties.elements ?? [])],
+    });
+  }
+  return captureVerbatimXml(cloneElement(root, { elements }));
 };
 
 const serializeParagraphFormattingWithOptions = (
@@ -401,9 +774,36 @@ const serializeParagraphFormattingWithOptions = (
   {
     propertyChanges,
     paragraphMarkChange,
+    propertySource,
     sectionProperties,
   }: SerializeParagraphFormattingOptions = {},
 ): string => {
+  const paragraphMarkXml = paragraphMarkChange
+    ? serializeParagraphMarkChange(paragraphMarkChange)
+    : "";
+  const sectionPropertiesXml = serializeSectionProperties(sectionProperties);
+  const propertyChangesXml = (propertyChanges ?? []).map((change) =>
+    serializeParagraphPropertyChange(change),
+  );
+  const composedChildrenUseDateUtc = [
+    paragraphMarkXml,
+    sectionPropertiesXml,
+    ...propertyChangesXml,
+  ].some((xml) => xml.includes(`${DATE_UTC_ATTRIBUTE}=`));
+  const verifiedSource = verifiedParagraphPropertySource(formatting, propertySource);
+  if (
+    verifiedSource !== null &&
+    (!composedChildrenUseDateUtc || !sourceShadowsDateUtcPrefix(verifiedSource))
+  ) {
+    const sourceWithMark = paragraphMarkChange
+      ? withParagraphMarkChange(verifiedSource, paragraphMarkChange)
+      : verifiedSource;
+    return withTrailingParagraphPropertyChildren(sourceWithMark, [
+      sectionPropertiesXml,
+      ...propertyChangesXml,
+    ]);
+  }
+
   const parts: string[] = [];
 
   // Emit a boolean toggle: a bare element for true, `w:val="0"` for an explicit
@@ -455,6 +855,9 @@ const serializeParagraphFormattingWithOptions = (
       parts.push(numPrXml);
     }
 
+    // Suppress line numbers precedes borders in CT_PPrBase.
+    pushToggle("suppressLineNumbers", formatting.suppressLineNumbers);
+
     // Paragraph borders
     const bordersXml = serializeParagraphBorders(formatting.borders);
     if (bordersXml) {
@@ -473,8 +876,7 @@ const serializeParagraphFormattingWithOptions = (
       parts.push(tabsXml);
     }
 
-    // Suppress line numbers / auto hyphens
-    pushToggle("suppressLineNumbers", formatting.suppressLineNumbers);
+    // Auto hyphens
     pushToggle("suppressAutoHyphens", formatting.suppressAutoHyphens);
     pushToggle("kinsoku", formatting.kinsoku);
     pushToggle("overflowPunct", formatting.overflowPunctuation);
@@ -521,9 +923,7 @@ const serializeParagraphFormattingWithOptions = (
     // <w:ins>/<w:del> FIRST inside the paragraph mark's rPr; strict
     // readers reject other orderings.
     if (paragraphMarkChange || formatting.runProperties || formatting.runInWithNext) {
-      const pPrMarkXml = paragraphMarkChange
-        ? serializeParagraphMarkChange(paragraphMarkChange)
-        : "";
+      const pPrMarkXml = paragraphMarkChange ? paragraphMarkXml : "";
       const innerRPr = formatting.runProperties
         ? extractRPrInner(serializeTextFormatting(formatting.runProperties))
         : "";
@@ -534,16 +934,16 @@ const serializeParagraphFormattingWithOptions = (
       }
     }
   } else if (paragraphMarkChange) {
-    parts.push(`<w:rPr>${serializeParagraphMarkChange(paragraphMarkChange)}</w:rPr>`);
+    parts.push(`<w:rPr>${paragraphMarkXml}</w:rPr>`);
   }
 
   // `CT_PPr` closes with `rPr`, `sectPr`, `pPrChange` in that order: a section
   // break sits between the mark's run properties and the recorded change, so
   // it is placed here rather than appended after the properties are built.
-  parts.push(serializeSectionProperties(sectionProperties));
+  parts.push(sectionPropertiesXml);
 
-  if (propertyChanges && propertyChanges.length > 0) {
-    parts.push(...propertyChanges.map((change) => serializeParagraphPropertyChange(change)));
+  if (propertyChangesXml.length > 0) {
+    parts.push(...propertyChangesXml);
   }
 
   const inner = parts.join("");
@@ -585,24 +985,11 @@ function extractRPrInner(rPrXml: string): string {
 }
 
 function serializeParagraphPropertyChange(change: ParagraphPropertyChange): string {
-  const normalizedId = normalizeRevisionId(change.info.id);
-  const authorCandidate = typeof change.info.author === "string" ? change.info.author.trim() : "";
-  const normalizedAuthor = authorCandidate.length > 0 ? authorCandidate : "Unknown";
-  const normalizedDate = typeof change.info.date === "string" ? change.info.date.trim() : undefined;
-  const normalizedRsid = typeof change.info.rsid === "string" ? change.info.rsid.trim() : undefined;
-  const attrs = [`w:id="${normalizedId}"`, `w:author="${escapeXml(normalizedAuthor)}"`];
-  if (normalizedDate) {
-    attrs.push(`w:date="${escapeXml(normalizedDate)}"`);
-  }
-  if (normalizedRsid) {
-    attrs.push(`w:rsid="${escapeXml(normalizedRsid)}"`);
-  }
-
   const previousPPrXml = serializeParagraphFormatting(change.previousFormatting) || "<w:pPr/>";
   const previousPPrInner = extractPPrInner(previousPPrXml);
   const normalizedPreviousPPr =
     previousPPrInner.length > 0 ? `<w:pPr>${previousPPrInner}</w:pPr>` : "<w:pPr/>";
-  return `<w:pPrChange ${attrs.join(" ")}>${normalizedPreviousPPr}</w:pPrChange>`;
+  return `<w:pPrChange ${serializeTrackedChangeAttributes(change.info)}>${normalizedPreviousPPr}</w:pPrChange>`;
 }
 
 // ============================================================================
@@ -985,16 +1372,7 @@ function serializeTrackedChange(
   tag: "ins" | "del" | "moveFrom" | "moveTo",
   change: Insertion | Deletion | MoveFrom | MoveTo,
 ): string {
-  const info = change.info;
-  const normalizedId = normalizeRevisionId(info.id);
-  const authorCandidate = typeof info.author === "string" ? info.author.trim() : "";
-  const normalizedAuthor = authorCandidate.length > 0 ? authorCandidate : "Unknown";
-  const normalizedDate = typeof info.date === "string" ? info.date.trim() : undefined;
-  // `w:initials` is intentionally NOT emitted (non-standard on CT_TrackChange).
-  const attrs = [`w:id="${normalizedId}"`, `w:author="${escapeXml(normalizedAuthor)}"`];
-  if (normalizedDate) {
-    attrs.push(`w:date="${escapeXml(normalizedDate)}"`);
-  }
+  const attrs = serializeTrackedChangeAttributes(change.info);
 
   const serializeDeletedRun = (run: Run): string => {
     const xml = serializeRun(run);
@@ -1054,7 +1432,7 @@ function serializeTrackedChange(
       : serializeBookmarkEnd(item);
   };
 
-  const open = `<w:${tag} ${attrs.join(" ")}>`;
+  const open = `<w:${tag} ${attrs}>`;
   const close = `</w:${tag}>`;
   const wrap = (inner: string): string => (inner.length === 0 ? "" : `${open}${inner}${close}`);
 
@@ -1192,6 +1570,7 @@ export function serializeParagraph(paragraph: Paragraph): string {
     serializeParagraphFormattingWithOptions(paragraph.formatting, {
       propertyChanges: paragraph.propertyChanges,
       paragraphMarkChange: paragraph.pPrMark,
+      propertySource: getParagraphPropertySource(paragraph),
       sectionProperties: paragraph.sectionProperties,
     }),
   );

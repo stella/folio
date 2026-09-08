@@ -11,6 +11,7 @@
 
 import { useCallback, useMemo, useRef, useState } from "react";
 
+import type { Node as PMNode } from "prosemirror-model";
 import type { EditorView } from "prosemirror-view";
 
 import { proseDocToBlocks } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
@@ -83,6 +84,49 @@ type UseHeaderFooterEditorReturn = {
   handleBodyClick: () => void;
   /** Remove the active header/footer from the document */
   handleRemoveHeaderFooter: () => void;
+};
+
+type SaveAndCloseHeaderFooterEditOptions = {
+  activeRId: string | null;
+  document: Document;
+  editPosition: "header" | "footer";
+  isFirstPage: boolean;
+  pushDocument: (document: Document) => Document;
+  setEditPosition: (position: "header" | "footer" | null) => void;
+  view: { readonly state: { readonly doc: PMNode } } | null;
+};
+
+export const saveAndCloseHeaderFooterEdit = ({
+  activeRId,
+  document,
+  editPosition,
+  isFirstPage,
+  pushDocument,
+  setEditPosition,
+  view,
+}: SaveAndCloseHeaderFooterEditOptions): void => {
+  if (!activeRId || !view) {
+    setEditPosition(null);
+    return;
+  }
+  const sourceParts =
+    editPosition === "header" ? document.package.headers : document.package.footers;
+  const source = sourceParts?.get(activeRId);
+  if (!source) {
+    setEditPosition(null);
+    return;
+  }
+  const newDocument = saveHeaderFooterContent({
+    document,
+    position: editPosition,
+    isFirstPage,
+    activeRId,
+    blocks: proseDocToBlocks(view.state.doc, source.content),
+  });
+  if (newDocument) {
+    pushDocument(newDocument);
+  }
+  setEditPosition(null);
 };
 
 // ---------------------------------------------------------------------------
@@ -191,23 +235,18 @@ export const useHeaderFooterEditor = ({
     // is the rendered rId, not finalSectionProperties' rId. Codex PR #258.
     const activeRId = pickActiveHeaderFooterRId(resolution, hfEditPosition, hfEditIsFirstPage);
     const view = activeRId ? getHfView(activeRId) : null;
-    if (activeRId && view) {
-      // Read fresh blocks from PM state — HiddenHeaderFooterPMs no longer
-      // mutates `existing.content` in place (Codex #487 P1 re-fixed), so the
-      // pre-edit snapshot stays intact and undo can step back to it.
-      const newDoc = saveHeaderFooterContent({
-        document: history.state,
-        position: hfEditPosition,
-        isFirstPage: hfEditIsFirstPage,
-        activeRId,
-        blocks: proseDocToBlocks(view.state.doc),
-      });
-      if (newDoc) {
-        pushDocument(newDoc);
-      }
-    }
-
-    setHfEditPosition(null);
+    // Read fresh blocks from PM state — HiddenHeaderFooterPMs no longer
+    // mutates `existing.content` in place (Codex #487 P1 re-fixed), so the
+    // pre-edit snapshot stays intact and undo can step back to it.
+    saveAndCloseHeaderFooterEdit({
+      activeRId,
+      document: history.state,
+      editPosition: hfEditPosition,
+      isFirstPage: hfEditIsFirstPage,
+      pushDocument,
+      setEditPosition: setHfEditPosition,
+      view,
+    });
   }, [hfEditPosition, hfEditIsFirstPage, resolution, history, pushDocument, getHfView]);
 
   const handleBodyClick = useCallback(() => {
