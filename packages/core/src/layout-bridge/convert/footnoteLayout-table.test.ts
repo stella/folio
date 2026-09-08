@@ -248,6 +248,45 @@ describe("footnote layout", () => {
     expect(content.height).toBe(36);
   });
 
+  test("preserves an authored terminal empty paragraph after a table", () => {
+    const content = convertFootnoteToContent(
+      {
+        ...footnoteWithTable,
+        content: [...footnoteWithTable.content, { type: "paragraph", content: [] }],
+      },
+      3,
+      400,
+      {
+        measureBlocks(blocks) {
+          return blocks.map((block) => {
+            if (block.kind === "table") {
+              return {
+                kind: "table",
+                rows: [],
+                columnWidths: [400],
+                totalWidth: 400,
+                totalHeight: 24,
+              };
+            }
+            return {
+              kind: "paragraph",
+              lines: [],
+              totalHeight: block.attrs?.suppressEmptyParagraphHeight ? 0 : 12,
+            };
+          });
+        },
+      },
+    );
+
+    const trailingParagraph = content.blocks.at(-1);
+    expect(trailingParagraph).toMatchObject({ kind: "paragraph", runs: [] });
+    if (trailingParagraph?.kind !== "paragraph") {
+      throw new Error("Expected a trailing paragraph");
+    }
+    expect(trailingParagraph.attrs?.suppressEmptyParagraphHeight).toBeUndefined();
+    expect(content.height).toBe(48);
+  });
+
   test("renders paragraphs nested inside footnote block SDTs", () => {
     const content = convertFootnoteToContent(footnoteWithBlockSdt, 10, 400, {
       measureBlocks(blocks) {
