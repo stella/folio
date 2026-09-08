@@ -94,6 +94,7 @@ import { normalizeShapeTextAnchor } from "../../types/documentEnumValues";
 import { resolveColor, resolveHighlightToCss } from "../../utils/colorResolver";
 import { resolveThemeFont } from "../../utils/fontResolver";
 import { resolveShadingFill } from "../../utils/formatToStyle";
+import { sanitizeImageSrc } from "../../utils/sanitizeImageSrc";
 import { decodeOoxmlSymbolCharacter } from "../../utils/ooxmlSymbol";
 import { tableOfContentsStyleLevel } from "../../utils/tableOfContentsStyle";
 import {
@@ -994,6 +995,19 @@ function buildImageRun(
   return run;
 }
 
+/** A package image whose bytes cannot paint still owns its authored line box. */
+const hasRelationshipBackedImageBox = (attrs: ImageAttrs): boolean =>
+  typeof attrs.rId === "string" &&
+  attrs.rId.trim().length > 0 &&
+  typeof attrs.width === "number" &&
+  Number.isFinite(attrs.width) &&
+  attrs.width >= 0 &&
+  typeof attrs.height === "number" &&
+  Number.isFinite(attrs.height) &&
+  attrs.height >= 0;
+
+const hasPaintableImageSource = (src: string): boolean => sanitizeImageSrc(src) !== undefined;
+
 /**
  * In TOC paragraphs, strip the resolved Hyperlink character-style colour and
  * underline so the painter's link fallback doesn't fire. The PM doc keeps the
@@ -1116,11 +1130,12 @@ function paragraphToRuns(node: PMNode, startPos: number, _options: FlowConversio
     }
     if (child.type.name === "image") {
       const attrs = expectImageAttrs(child);
-      if (!attrs.src) {
+      if (!hasPaintableImageSource(attrs.src) && !hasRelationshipBackedImageBox(attrs)) {
         // Unsupported DrawingML shapes can survive the parser as image nodes
-        // without a relationship target. They have no paintable payload; a
-        // 100x100 fallback box would render a broken image and incorrectly
-        // consume paragraph flow. Keep the host paragraph, but omit the run.
+        // without a relationship target or authored extent. They have no
+        // paintable payload; a 100x100 fallback box would incorrectly consume
+        // paragraph flow. Relationship-backed package images keep their real
+        // line box even when the browser cannot paint that image format.
         return;
       }
       const constrained = constrainImageToPage(
@@ -2476,8 +2491,15 @@ function convertTable(node: PMNode, startPos: number, options: FlowConversionOpt
 /**
  * Convert an image node to an ImageBlock.
  */
-function convertImage(node: PMNode, startPos: number, pageContentHeight?: number): ImageBlock {
+function convertImage(
+  node: PMNode,
+  startPos: number,
+  pageContentHeight?: number,
+): ImageBlock | undefined {
   const attrs = expectImageAttrs(node);
+  if (!hasPaintableImageSource(attrs.src) && !hasRelationshipBackedImageBox(attrs)) {
+    return undefined;
+  }
   const wrapType = attrs.wrapType;
 
   // Only anchor images with 'behind' or 'inFront' wrap types
@@ -3093,10 +3115,14 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
         trackedPush(convertTable(node, pos, opts));
         break;
 
-      case "image":
+      case "image": {
         // Standalone image block (if not inline)
-        trackedPush(convertImage(node, pos, opts.pageContentHeight));
+        const image = convertImage(node, pos, opts.pageContentHeight);
+        if (image !== undefined) {
+          trackedPush(image);
+        }
         break;
+      }
 
       case "textBox":
         trackedPush(convertTextBoxNode(node, pos, opts));

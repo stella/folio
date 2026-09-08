@@ -57,7 +57,7 @@ import { planCursiveJoiners, withCursiveJoiners } from "./cursiveJoiners";
 import { resolveFontFamily } from "../utils/fontResolver";
 import { DOCX_BOLD_FONT_WEIGHT } from "../utils/fontWeights";
 import { getHorizontalScaleFactor } from "../utils/horizontalScale";
-import { applySanitizedImageSrc } from "../utils/sanitizeImageSrc";
+import { sanitizeImageSrc } from "../utils/sanitizeImageSrc";
 import { sanitizeExternalUrl } from "../utils/urlSecurity";
 import {
   inlineImageBoundingBox,
@@ -95,6 +95,17 @@ export const PARAGRAPH_CLASS_NAMES = {
   tab: "layout-run-tab",
   image: "layout-run-image",
   lineBreak: "layout-run-linebreak",
+};
+
+const applyImageRunSource = (img: HTMLImageElement, src: string): void => {
+  const safeSrc = sanitizeImageSrc(src);
+  if (safeSrc === undefined) {
+    // Keep an authored image's layout box without showing the browser's broken
+    // image icon when its package format cannot be painted.
+    img.style.visibility = "hidden";
+    return;
+  }
+  img.src = safeSrc;
 };
 
 const LEFT_TO_RIGHT_DIRECTION = "ltr";
@@ -954,7 +965,7 @@ function renderInlineImageRun(run: ImageRun, doc: Document): HTMLElement {
   const img = doc.createElement("img");
   img.className = `${PARAGRAPH_CLASS_NAMES.run} ${PARAGRAPH_CLASS_NAMES.image}`;
 
-  applySanitizedImageSrc(img, run.src);
+  applyImageRunSource(img, run.src);
   img.width = run.width;
   img.height = run.height;
   img.style.width = `${run.width}px`;
@@ -1082,7 +1093,7 @@ function renderBlockImage(run: ImageRun, doc: Document): HTMLElement {
   container.style.marginBottom = `${run.distBottom ?? 6}px`;
 
   const img = doc.createElement("img");
-  applySanitizedImageSrc(img, run.src);
+  applyImageRunSource(img, run.src);
   img.width = run.width;
   img.height = run.height;
   if (run.alt) {
