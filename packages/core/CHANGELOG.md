@@ -1,5 +1,26 @@
 # @stll/folio-core
 
+## 0.36.0
+
+### Minor Changes
+
+- [#776](https://github.com/stella/folio/pull/776) [`6dcb318`](https://github.com/stella/folio/commit/6dcb3189516dd12728ec99c8b76f38b85f51cd14) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Compare and track direct paragraph alignment changes while preserving the distinction between direct formatting and style inheritance.
+  Paragraph replacement operations can now clear a direct paragraph style with `null`; paragraph insertion and property schemas expose their existing style and list clear values consistently.
+  Unstamped multi-paragraph insert batches now reserve revision IDs for synthesized paragraph-property changes, so later batches cannot reuse an existing ID.
+  Tracked paragraph insertion receipts include synthesized paragraph-property revisions, so targeted acceptance and rejection resolve the whole operation.
+  Accepting or independently resolving suggested paragraphs at the end of a container keeps every final paragraph mark resolvable.
+
+### Patch Changes
+
+- [#769](https://github.com/stella/folio/pull/769) [`607c7b0`](https://github.com/stella/folio/commit/607c7b061ecec6d3f15dc6d82fc0ec1334e81887) Thanks [@jan-kubica](https://github.com/jan-kubica)! - An unchanged paragraph now writes its `w:pPr` properties back as they arrived, preserving validated unmodeled non-revision attributes and children and avoiding direct overrides synthesized from style-sourced numbering. The source is used only while a canonical formatting snapshot still matches and its structure passes validation; current section properties and tracked revisions are composed around it without accepting duplicates from the source. Unmodeled run-property revisions are excluded from captured full-repack replay until their accept/reject lifecycle is represented. Tracked-change UTC metadata now survives parser, editor, and serializer round trips under a canonical namespace binding.
+
+- [#777](https://github.com/stella/folio/pull/777) [`4569d94`](https://github.com/stella/folio/commit/4569d94efb1ca031e6c2182fcc8af4d31338f388) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep unique terms aligned without inventing opposite-direction edits. Long
+  paragraphs factor common text and unique anchors before bounded LCS work, and
+  one compact work allowance now covers each document comparison or apply batch.
+  Atomic preflight preserves that allowance with a coarse zero-DP check.
+  Normalized comparison-key storage is capped before allocation. The generated
+  declaration budget rises by 15 lines for the internal shared-session helpers.
+
 ## 0.35.1
 
 ### Patch Changes
