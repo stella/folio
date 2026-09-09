@@ -839,7 +839,7 @@ function makeApplyStyle(schema: Schema) {
             newAttrs["spacingExplicit"] = null;
             // A style with `w:numPr` attaches its numbering (numPr + marker
             // attrs). A style without numbering leaves existing list attrs
-            // untouched — direct numbering survives a style switch in Word.
+            // untouched: direct numbering survives a style switch.
             const listAttrs = listAttrsFromResolvedStyle(resolvedAttrs, resolvedAttrs.numbering);
             if (listAttrs) {
               Object.assign(newAttrs, listAttrs);
