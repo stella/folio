@@ -6,15 +6,21 @@ The layout corpus provides three deterministic, generated fixtures:
 
 - `isolated-page-furniture.docx` isolates full-width wrapped header and footer
   artwork.
-- `pairwise-layout-interactions.docx` combines page-relative positioning,
-  expanded page furniture, continuous sections, cached page markers, and
-  keep-next flow.
+- `pairwise-layout-interactions.docx` is generated from a deterministic
+  strength-two covering array. Its cases combine section modes, anchor frames,
+  wrapping, pagination controls, table modes, and typography.
 - `layout-kitchen-sink.docx` adds tables, merged cells, fields, footnotes,
   numbering, tabs, bidirectional text, columns, page borders, and mixed run
   formatting.
 
 All text, links, identifiers, and numeric values are synthetic. The generator
 uses fixed ZIP timestamps, so committed fixtures are byte-for-byte stable.
+`layout-interaction-matrix.json` records every generated case and its
+content-addressed ID; the fixture prints that ID on the corresponding case page.
+
+The current matrix covers every valid pair from 6,500 valid Cartesian
+scenarios in 32 generated cases. Inline anchors pair only with inline wrapping;
+floating anchors pair only with floating wrap modes.
 
 ```sh
 bun run parity:build-layout-corpus

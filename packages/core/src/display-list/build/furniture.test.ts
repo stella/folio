@@ -435,6 +435,63 @@ describe("header and footer stories", () => {
     }, fakeMeasure);
   });
 
+  test("positions floating images from their own header and footer paragraph anchors", () => {
+    withFakeTextMeasure(() => {
+      const floatingStory = (id: string): HeaderFooterContent => {
+        const blocks: FlowBlock[] = [
+          {
+            kind: "paragraph",
+            id,
+            runs: [
+              {
+                kind: "image",
+                src: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+                width: 120,
+                height: 20,
+                wrapType: "square",
+                position: {
+                  horizontal: { relativeTo: "column", posOffset: 0 },
+                  vertical: { relativeTo: "paragraph", posOffset: 91_440 },
+                },
+              },
+            ],
+          },
+        ];
+        return storyBlocks(blocks);
+      };
+      const header = floatingStory("header-float");
+      const footer = floatingStory("footer-float");
+      const list = buildDisplayList({
+        ...buildLayout([para("body", "Body")], { sectionHeaderFooterRefs: SECTION_REFS }),
+        headerContentByRId: new Map([["rIdH", header]]),
+        footerContentByRId: new Map([["rIdF", footer]]),
+      });
+      const images = (list.pages.at(0)?.primitives ?? []).filter(
+        (primitive) => primitive.kind === "image",
+      );
+
+      expect(images).toHaveLength(2);
+      expect(images.at(0)?.kind).toBe("image");
+      expect(images.at(1)?.kind).toBe("image");
+      if (images.at(0)?.kind !== "image" || images.at(1)?.kind !== "image") {
+        return;
+      }
+      expect(images.at(0)?.rect).toEqual({
+        xPx: MARGINS.left,
+        yPx: (MARGINS.header ?? 48) + 10,
+        widthPx: 120,
+        heightPx: 20,
+      });
+      expect(images.at(1)?.rect).toEqual({
+        xPx: MARGINS.left,
+        yPx: PAGE_SIZE.h - (MARGINS.footer ?? 48) - footer.height + 10,
+        widthPx: 120,
+        heightPx: 20,
+      });
+      expect(constructsOf(list)).not.toContain(UNSUPPORTED_CONSTRUCT.headerFooterContent);
+    }, fakeMeasure);
+  });
+
   test("a page that names header parts nobody supplied reports them", () => {
     withFakeTextMeasure(() => {
       const list = buildDisplayList(

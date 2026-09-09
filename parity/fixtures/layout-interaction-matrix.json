@@ -1,0 +1,302 @@
+{
+  "version": 1,
+  "strength": 2,
+  "axes": {
+    "section": ["single", "continuous", "nextPage", "twoColumn"],
+    "anchorFrame": ["inline", "page", "margin", "column", "paragraph"],
+    "wrap": ["inline", "none", "square", "topBottom"],
+    "flow": ["normal", "keepNext", "keepLines", "hardPageBreak", "renderedPageBreak"],
+    "table": ["none", "fixed", "autofit", "merged", "splitRow"],
+    "typography": ["latin", "rtl", "cjk", "tabs", "numbering"]
+  },
+  "cases": [
+    {
+      "id": "mx-9ad4550514",
+      "section": "single",
+      "anchorFrame": "inline",
+      "wrap": "inline",
+      "flow": "normal",
+      "table": "none",
+      "typography": "latin"
+    },
+    {
+      "id": "mx-de40c20ea8",
+      "section": "single",
+      "anchorFrame": "page",
+      "wrap": "none",
+      "flow": "keepNext",
+      "table": "fixed",
+      "typography": "rtl"
+    },
+    {
+      "id": "mx-5a8bfcd7fe",
+      "section": "single",
+      "anchorFrame": "margin",
+      "wrap": "square",
+      "flow": "keepLines",
+      "table": "autofit",
+      "typography": "cjk"
+    },
+    {
+      "id": "mx-12d6b1c87a",
+      "section": "single",
+      "anchorFrame": "column",
+      "wrap": "topBottom",
+      "flow": "hardPageBreak",
+      "table": "merged",
+      "typography": "tabs"
+    },
+    {
+      "id": "mx-2583852240",
+      "section": "continuous",
+      "anchorFrame": "page",
+      "wrap": "square",
+      "flow": "normal",
+      "table": "merged",
+      "typography": "numbering"
+    },
+    {
+      "id": "mx-a1fe09058e",
+      "section": "continuous",
+      "anchorFrame": "margin",
+      "wrap": "none",
+      "flow": "hardPageBreak",
+      "table": "splitRow",
+      "typography": "latin"
+    },
+    {
+      "id": "mx-48f9a0d873",
+      "section": "continuous",
+      "anchorFrame": "paragraph",
+      "wrap": "topBottom",
+      "flow": "keepNext",
+      "table": "none",
+      "typography": "cjk"
+    },
+    {
+      "id": "mx-0bbd9105c2",
+      "section": "nextPage",
+      "anchorFrame": "page",
+      "wrap": "topBottom",
+      "flow": "renderedPageBreak",
+      "table": "autofit",
+      "typography": "latin"
+    },
+    {
+      "id": "mx-cf4de85087",
+      "section": "nextPage",
+      "anchorFrame": "column",
+      "wrap": "none",
+      "flow": "keepLines",
+      "table": "none",
+      "typography": "numbering"
+    },
+    {
+      "id": "mx-ea1c7f5b9f",
+      "section": "twoColumn",
+      "anchorFrame": "column",
+      "wrap": "square",
+      "flow": "renderedPageBreak",
+      "table": "splitRow",
+      "typography": "rtl"
+    },
+    {
+      "id": "mx-79d4cd6ba9",
+      "section": "twoColumn",
+      "anchorFrame": "paragraph",
+      "wrap": "none",
+      "flow": "normal",
+      "table": "autofit",
+      "typography": "tabs"
+    },
+    {
+      "id": "mx-79f3f1f251",
+      "section": "continuous",
+      "anchorFrame": "inline",
+      "wrap": "inline",
+      "flow": "keepLines",
+      "table": "fixed",
+      "typography": "tabs"
+    },
+    {
+      "id": "mx-ece1dc7d3d",
+      "section": "nextPage",
+      "anchorFrame": "inline",
+      "wrap": "inline",
+      "flow": "keepNext",
+      "table": "merged",
+      "typography": "rtl"
+    },
+    {
+      "id": "mx-ad5775bd24",
+      "section": "nextPage",
+      "anchorFrame": "paragraph",
+      "wrap": "square",
+      "flow": "hardPageBreak",
+      "table": "fixed",
+      "typography": "latin"
+    },
+    {
+      "id": "mx-00f4b754e9",
+      "section": "twoColumn",
+      "anchorFrame": "inline",
+      "wrap": "inline",
+      "flow": "hardPageBreak",
+      "table": "autofit",
+      "typography": "numbering"
+    },
+    {
+      "id": "mx-d372701dfe",
+      "section": "twoColumn",
+      "anchorFrame": "margin",
+      "wrap": "topBottom",
+      "flow": "normal",
+      "table": "fixed",
+      "typography": "rtl"
+    },
+    {
+      "id": "mx-c0dfd78678",
+      "section": "single",
+      "anchorFrame": "paragraph",
+      "wrap": "topBottom",
+      "flow": "keepLines",
+      "table": "splitRow",
+      "typography": "numbering"
+    },
+    {
+      "id": "mx-df8a92d599",
+      "section": "nextPage",
+      "anchorFrame": "inline",
+      "wrap": "inline",
+      "flow": "normal",
+      "table": "splitRow",
+      "typography": "cjk"
+    },
+    {
+      "id": "mx-73f4a8c0f8",
+      "section": "nextPage",
+      "anchorFrame": "margin",
+      "wrap": "square",
+      "flow": "keepNext",
+      "table": "none",
+      "typography": "tabs"
+    },
+    {
+      "id": "mx-8d1fd3b772",
+      "section": "twoColumn",
+      "anchorFrame": "page",
+      "wrap": "none",
+      "flow": "keepLines",
+      "table": "merged",
+      "typography": "cjk"
+    },
+    {
+      "id": "mx-edc69b3f27",
+      "section": "continuous",
+      "anchorFrame": "column",
+      "wrap": "none",
+      "flow": "renderedPageBreak",
+      "table": "fixed",
+      "typography": "cjk"
+    },
+    {
+      "id": "mx-402ce9ccd6",
+      "section": "twoColumn",
+      "anchorFrame": "column",
+      "wrap": "none",
+      "flow": "keepNext",
+      "table": "autofit",
+      "typography": "latin"
+    },
+    {
+      "id": "mx-5c5b2da68e",
+      "section": "single",
+      "anchorFrame": "margin",
+      "wrap": "none",
+      "flow": "renderedPageBreak",
+      "table": "merged",
+      "typography": "numbering"
+    },
+    {
+      "id": "mx-88c85fb64b",
+      "section": "continuous",
+      "anchorFrame": "page",
+      "wrap": "none",
+      "flow": "hardPageBreak",
+      "table": "none",
+      "typography": "rtl"
+    },
+    {
+      "id": "mx-103a38fdca",
+      "section": "twoColumn",
+      "anchorFrame": "inline",
+      "wrap": "inline",
+      "flow": "renderedPageBreak",
+      "table": "none",
+      "typography": "tabs"
+    },
+    {
+      "id": "mx-55f7c331a0",
+      "section": "single",
+      "anchorFrame": "page",
+      "wrap": "none",
+      "flow": "keepNext",
+      "table": "splitRow",
+      "typography": "tabs"
+    },
+    {
+      "id": "mx-52f5143977",
+      "section": "continuous",
+      "anchorFrame": "paragraph",
+      "wrap": "none",
+      "flow": "keepLines",
+      "table": "autofit",
+      "typography": "rtl"
+    },
+    {
+      "id": "mx-f805009bd2",
+      "section": "single",
+      "anchorFrame": "paragraph",
+      "wrap": "none",
+      "flow": "keepLines",
+      "table": "merged",
+      "typography": "latin"
+    },
+    {
+      "id": "mx-04f82217a2",
+      "section": "single",
+      "anchorFrame": "inline",
+      "wrap": "inline",
+      "flow": "keepNext",
+      "table": "fixed",
+      "typography": "numbering"
+    },
+    {
+      "id": "mx-cec5104309",
+      "section": "single",
+      "anchorFrame": "inline",
+      "wrap": "inline",
+      "flow": "hardPageBreak",
+      "table": "none",
+      "typography": "cjk"
+    },
+    {
+      "id": "mx-58b4222c26",
+      "section": "single",
+      "anchorFrame": "column",
+      "wrap": "none",
+      "flow": "normal",
+      "table": "none",
+      "typography": "latin"
+    },
+    {
+      "id": "mx-52c4c63721",
+      "section": "single",
+      "anchorFrame": "paragraph",
+      "wrap": "none",
+      "flow": "renderedPageBreak",
+      "table": "none",
+      "typography": "latin"
+    }
+  ]
+}

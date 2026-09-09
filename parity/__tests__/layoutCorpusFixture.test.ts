@@ -3,7 +3,11 @@ import path from "node:path";
 
 import JSZip from "jszip";
 
-import { buildLayoutCorpus } from "../fixtures/build-layout-corpus";
+import {
+  buildLayoutCorpus,
+  layoutInteractionMatrixManifest,
+} from "../fixtures/build-layout-corpus";
+import { buildLayoutInteractionMatrix } from "../fixtures/layout-interaction-matrix";
 
 const FIXTURES_DIR = path.join(import.meta.dir, "..", "fixtures");
 const FIXTURE_NAMES = [
@@ -27,6 +31,9 @@ describe("synthetic layout corpus", () => {
       }
       expect(Buffer.from(committed).equals(Buffer.from(expected))).toBeTrue();
     }
+    expect(await Bun.file(path.join(FIXTURES_DIR, "layout-interaction-matrix.json")).text()).toBe(
+      layoutInteractionMatrixManifest(),
+    );
   });
 
   test("keeps isolated, pairwise, and kitchen-sink coverage structurally distinct", async () => {
@@ -46,9 +53,35 @@ describe("synthetic layout corpus", () => {
 
     const pairwise = await loadFixture("pairwise-layout-interactions.docx");
     const pairwiseDocument = await pairwise.file("word/document.xml")!.async("text");
+    const scenarios = buildLayoutInteractionMatrix();
+    const authoredFlowBreaks = scenarios.filter(({ flow }) => flow === "hardPageBreak").length;
+    const interCaseBreaks = scenarios
+      .slice(1)
+      .filter((_, index) => scenarios[index]?.section !== "nextPage").length;
+    expect(pairwiseDocument.match(/<w:br w:type="page"\/>/g)).toHaveLength(
+      authoredFlowBreaks + interCaseBreaks,
+    );
     expect(pairwiseDocument).toContain("<w:lastRenderedPageBreak/>");
     expect(pairwiseDocument).toContain('<w:type w:val="continuous"/>');
     expect(pairwiseDocument).toContain('relativeFrom="page"');
+    expect(pairwiseDocument).toContain('relativeFrom="margin"');
+    expect(pairwiseDocument).toContain('relativeFrom="line"');
+    expect(pairwiseDocument).toContain("<wp:inline");
+    expect(pairwiseDocument).toContain("<wp:wrapNone");
+    expect(pairwiseDocument).toContain("<wp:wrapSquare");
+    expect(pairwiseDocument).toContain("<wp:wrapTopAndBottom");
+    expect(pairwiseDocument).toContain('<w:tblLayout w:type="fixed"');
+    expect(pairwiseDocument).toContain('<w:tblLayout w:type="autofit"');
+    expect(pairwiseDocument).toContain("<w:vMerge");
+    expect(pairwiseDocument).toContain('<w:lang w:eastAsia="ja-JP"');
+    expect(pairwiseDocument).toContain("<w:bidi");
+    expect(pairwiseDocument).toContain("<w:tab/>");
+    expect(pairwiseDocument).toContain("<w:numPr>");
+    expect(pairwiseDocument).toContain('<w:type w:val="nextPage"');
+    expect(pairwiseDocument).toContain("<w:cols");
+    for (const scenario of scenarios) {
+      expect(pairwiseDocument).toContain(scenario.id);
+    }
 
     const kitchenSink = await loadFixture("layout-kitchen-sink.docx");
     const kitchenDocument = await kitchenSink.file("word/document.xml")!.async("text");

@@ -19,16 +19,19 @@ import { isFloatingTextBoxBlock } from "../../layout-engine/types";
 import type {
   FlowBlock,
   ImageBlock,
+  ImageRun,
   Measure,
+  Page,
   ParagraphBlock,
   TableBlock,
   TextBoxBlock,
 } from "../../layout-engine/types";
 import { isFloatingImageRun } from "../../layout-painter/renderUtils";
+import { resolveAnchoredImagePosition } from "../../layout-painter/anchoredImagePosition";
 import type { BuildContext } from "./buildContext";
 import { blockRegion, type PageComposer } from "./regions";
 import { HIT_REGION_KINDS } from "../primitives";
-import { paintImageFragment } from "./imagePrimitives";
+import { paintImage, paintImageFragment } from "./imagePrimitives";
 import { paintParagraphFragment } from "./paragraphPrimitives";
 import { paintTableFragment } from "./tablePrimitives";
 import { paintTextBoxFragment } from "./textBoxPrimitives";
@@ -193,6 +196,66 @@ export type PaintStoryOptions = {
   readonly label: string;
 };
 
+type PaintHeaderFooterStoryOptions = PaintStoryOptions & {
+  readonly page: Page;
+};
+
+const paintHeaderFooterFloatingImage = ({
+  composer,
+  run,
+  block,
+  paragraphYPx,
+  page,
+  context,
+  label,
+}: {
+  composer: PageComposer;
+  run: ImageRun;
+  block: ParagraphBlock;
+  paragraphYPx: number;
+  page: Page;
+  context: BuildContext;
+  label: string;
+}): void => {
+  const contentWidth = page.size.w - page.margins.left - page.margins.right;
+  const geometry = {
+    pageWidth: page.size.w,
+    pageHeight: page.size.h,
+    marginLeft: page.margins.left,
+    marginTop: page.margins.top,
+    marginRight: page.margins.right,
+    marginBottom: page.margins.bottom,
+    ...(page.authoredMargins === undefined ? {} : { authoredMargins: page.authoredMargins }),
+    contentWidth,
+    contentHeight: page.size.h - page.margins.top - page.margins.bottom,
+  };
+  const position = resolveAnchoredImagePosition(run, paragraphYPx - page.margins.top, geometry);
+  const fragment = {
+    blockId: block.id,
+    x: page.margins.left + position.x,
+    y: page.margins.top + position.y,
+    width: run.width,
+    height: run.height,
+    ...(run.pmStart === undefined ? {} : { pmStart: run.pmStart }),
+    ...(run.pmEnd === undefined ? {} : { pmEnd: run.pmEnd }),
+  };
+  composer.region(blockRegion({ fragment, kind: HIT_REGION_KINDS.image, context }), () => {
+    composer.push(
+      paintImage({
+        source: run,
+        rect: {
+          xPx: fragment.x,
+          yPx: fragment.y,
+          widthPx: fragment.width,
+          heightPx: fragment.height,
+        },
+        context,
+        label: `${label} floating image`,
+      }),
+    );
+  });
+};
+
 /**
  * A footnote body: every block stacks by its measured height, which is the
  * height the paginator reserved the band from.
@@ -247,9 +310,10 @@ export const paintHeaderFooterBlocks = ({
   xPx,
   yPx,
   widthPx,
+  page,
   context,
   label,
-}: PaintStoryOptions): void => {
+}: PaintHeaderFooterStoryOptions): void => {
   let cursorYPx = yPx;
 
   const reportOutOfFlow = (detail: string): void => {
@@ -276,16 +340,6 @@ export const paintHeaderFooterBlocks = ({
         if (measure.kind !== "paragraph") {
           break;
         }
-        if (
-          block.runs.some(
-            (run) =>
-              run.kind === "image" && (isFloatingImageRun(run) || run.position !== undefined),
-          )
-        ) {
-          reportOutOfFlow(
-            `paragraph ${String(block.id)} anchors a floating picture, which resolves against page and margin anchors the display list does not carry`,
-          );
-        }
         paintStoryBlock({
           composer,
           block,
@@ -297,6 +351,26 @@ export const paintHeaderFooterBlocks = ({
           label,
           construct: UNSUPPORTED_CONSTRUCT.headerFooterContent,
         });
+        for (const run of block.runs) {
+          if (run.kind !== "image" || (!isFloatingImageRun(run) && run.position === undefined)) {
+            continue;
+          }
+          if (run.wrapType === "behind") {
+            reportOutOfFlow(
+              `paragraph ${String(block.id)} anchors a behind-text picture that requires the page-underlay paint phase`,
+            );
+            continue;
+          }
+          paintHeaderFooterFloatingImage({
+            composer,
+            run,
+            block,
+            paragraphYPx: cursorYPx,
+            page,
+            context,
+            label,
+          });
+        }
         cursorYPx += measure.totalHeight;
         continue;
       }
