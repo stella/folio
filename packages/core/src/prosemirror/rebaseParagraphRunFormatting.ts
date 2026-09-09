@@ -2,19 +2,17 @@ import { Mark } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 import { panic } from "better-result";
 
-import { mergeTextFormatting } from "../utils/textFormattingMerge";
-import { marksToTextFormatting } from "./conversion/fromProseDoc";
-import { textFormattingToMarks } from "./conversion/toProseDoc";
 import {
   expandRunFormattingCarrier,
   type RunFormattingCarrierRepresentation,
 } from "./runFormattingInlineCarriers";
 import { RUN_FORMATTING_MARK_NAMES } from "./runFormattingMarkNames";
 import {
-  getParagraphMarkSuppressionOverrides,
-  paragraphFormattingForRun,
+  readAuthoredRunFormatting,
+  reconcileRunFormattingMarks,
+} from "./runFormattingReconciliation";
+import {
   paragraphRunStyleContext,
-  resolveEffectiveRunStyleFormatting,
   type RunStyleResolver,
 } from "./runStyleFormatting";
 
@@ -59,42 +57,17 @@ export const setParagraphAttrsWithRebasedRunFormatting = ({
     node,
     position,
   }: RunFormattingCarrierRepresentation): void => {
-    const authoredFormatting = marksToTextFormatting(node.marks, {
-      baseParagraphFormatting: previousContext.baseParagraphFormatting,
-      inheritedFormatting: previousContext.paragraphFormatting,
-      paragraphMarkFormatting: previousContext.paragraphMarkFormatting,
-      paragraphMarkPrecedesStyle: previousContext.paragraphMarkPrecedesStyle,
-      styleResolver,
-    });
-    const paragraphFormatting = paragraphFormattingForRun(
-      node.marks,
-      nextContext,
-      authoredFormatting,
-    );
-    const inheritedFormatting = resolveEffectiveRunStyleFormatting({
+    const authoredFormatting = readAuthoredRunFormatting({
+      context: previousContext,
       marks: node.marks,
-      paragraphFormatting,
       styleResolver,
     });
-    const effectiveFormatting = mergeTextFormatting(inheritedFormatting, authoredFormatting);
-    const paragraphMarkOverrides = getParagraphMarkSuppressionOverrides({
-      directFormatting: authoredFormatting,
-      paragraphMarkFormatting: nextContext.paragraphMarkFormatting,
-      suppressedFormatting: paragraphFormatting,
+    const nextMarks = reconcileRunFormattingMarks({
+      authoredFormatting,
+      marks: node.marks,
+      context: nextContext,
+      styleResolver,
     });
-    const overrideFormatting = mergeTextFormatting(paragraphMarkOverrides, authoredFormatting);
-    const formattingMarks = textFormattingToMarks(effectiveFormatting, {
-      overrideFormatting,
-      directFormatting: authoredFormatting,
-    });
-    const characterStyle = node.marks.find(({ type }) => type.name === "characterStyle");
-    if (characterStyle) {
-      formattingMarks.push(characterStyle);
-    }
-    const nextMarks = Mark.setFrom([
-      ...node.marks.filter(({ type }) => !RUN_FORMATTING_MARK_NAMES.has(type.name)),
-      ...formattingMarks,
-    ]);
     if (Mark.sameSet(node.marks, nextMarks)) {
       return;
     }
