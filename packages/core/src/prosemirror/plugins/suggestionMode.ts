@@ -19,6 +19,7 @@ import type { EditorView } from "prosemirror-view";
 
 import type { TrackedChangeInfo } from "../../types/document";
 import { splitBlockClearBorders } from "../extensions/features/BaseKeymapExtension";
+import { canCarryTrackedRunMark } from "../trackedRunInlineAtoms";
 import { mintRevisionId, seedRevisionIdsFromDoc } from "./revisionIds";
 
 export const suggestionModeKey = new PluginKey<SuggestionModeState>("suggestionMode");
@@ -129,13 +130,7 @@ function markRangeAsDeleted(
   const ranges: { from: number; to: number; isOwnInsert: boolean }[] = [];
 
   doc.nodesBetween(from, to, (node, pos) => {
-    // Text AND inline atoms (image, shape) that accept the deletion mark go
-    // through the strike-through path so a selection that includes a picture
-    // marks it as deleted (or retracts an own-insert) like text. The text
-    // short-circuit stays because a leaf text node's own `markSet` is empty —
-    // `allowsMarkType` is false even though the paragraph permits the mark.
-    // eigenpal #641.
-    if (!node.isText && !(node.isInline && node.type.allowsMarkType(deletionType))) {
+    if (!canCarryTrackedRunMark(node)) {
       return;
     }
     const start = Math.max(pos, from);
@@ -176,12 +171,9 @@ function markRangeAsDeleted(
 }
 
 /**
- * Add the insertion mark to every inline node in `[from, to)` that can carry
- * it and does not already carry a tracked-change mark. Mirrors the catch-all's
- * node-by-node walk: a leaf text node's own `markSet` is empty so
- * `allowsMarkType` is false, hence the explicit `isText` arm; content already
- * carrying an insertion/deletion is left untouched so another author's revision
- * isn't overwritten. eigenpal/docx-editor#784.
+ * Add the insertion mark to every run carrier in `[from, to)` that does not
+ * already carry a tracked-change mark. Content already carrying a revision is
+ * left untouched so another author's attribution is not overwritten.
  */
 function markRangeAsInserted(
   tr: Transaction,
@@ -193,7 +185,7 @@ function markRangeAsInserted(
   attrs: MarkAttrs,
 ): void {
   doc.nodesBetween(from, to, (node, pos) => {
-    if (!node.isText && !(node.isInline && node.type.allowsMarkType(insertionType))) {
+    if (!canCarryTrackedRunMark(node)) {
       return;
     }
     if (node.marks.some((m) => m.type === insertionType || m.type === deletionType)) {
@@ -529,13 +521,9 @@ function handleSuggestionDelete(
   const nodeAfter = $deletePos.nodeAfter;
 
   // At a block boundary — let default behavior handle (e.g. join paragraphs).
-  // Text and inline atoms (image, shape) that accept the deletion mark fall
-  // through to the strike-through path; other inline nodes use the default
-  // delete. eigenpal #641.
-  if (
-    !nodeAfter ||
-    !(nodeAfter.isText || (nodeAfter.isInline && nodeAfter.type.allowsMarkType(deletionType)))
-  ) {
+  // Run carriers fall through to the strike-through path; structural inline
+  // nodes use the default delete behavior.
+  if (!nodeAfter || !canCarryTrackedRunMark(nodeAfter)) {
     return false;
   }
 
@@ -849,18 +837,10 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
         // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror StepMap.forEach
         stepMap.forEach((_oldFrom, _oldTo, newFrom, newTo) => {
           if (newTo > newFrom) {
-            // Mark text AND inline atoms (image, shape) that accept the
-            // insertion mark and don't already carry a tracked-change mark,
-            // so a pasted/dropped picture becomes a tracked insertion just
-            // like typed text. Marking the entire range would overwrite
-            // other authors' marks, so we go node by node and skip any the
-            // schema disallows marks on. eigenpal #641.
+            // Mark each run carrier separately. Marking the entire range
+            // would overwrite other authors' revisions.
             newState.doc.nodesBetween(newFrom, newTo, (node, pos) => {
-              // Text is the short-circuit: a leaf text node's own `markSet`
-              // is empty, so `allowsMarkType` is false even though the
-              // paragraph permits the mark — dropping the `isText` arm
-              // would silently stop tracking pasted text.
-              if (!node.isText && !(node.isInline && node.type.allowsMarkType(insertionType))) {
+              if (!canCarryTrackedRunMark(node)) {
                 return;
               }
               const hasTrackedMark = node.marks.some(

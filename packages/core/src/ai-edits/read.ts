@@ -292,10 +292,13 @@ export const getTrackedChangesFromDoc = (doc: PMNode): FolioReviewChange[] => {
       currentBlockId = blockStarts.get(pos) ?? null;
       return true;
     }
-    if (!node.isInline || node.text === undefined) {
+    if (!node.isInline) {
       return undefined;
     }
-    const text = node.text;
+    // Inline atoms own run-level revision marks just like text nodes. Their
+    // affected text is empty, but the revision still needs to be enumerable
+    // so headless accept/reject-all reports and resolves it.
+    const text = node.text ?? "";
     for (const mark of node.marks) {
       if (mark.type.name === "runPropertyChange") {
         const { changes } = expectRunPropertyChangeMarkAttrs(mark);

@@ -12,7 +12,7 @@
  * - Inline properties (highest priority)
  */
 
-import type { MarkType, Node as PMNode } from "prosemirror-model";
+import type { Node as PMNode } from "prosemirror-model";
 import { panic } from "better-result";
 
 import { createStyleEngine } from "../../style-engine";
@@ -80,6 +80,7 @@ import type {
 } from "../schema/nodes";
 import { assertValidProseMirrorDocument } from "../validation";
 import { stampNumberedRefFieldBaselines } from "../numberedRefFields";
+import { canCarryTrackedRunMark, trackedRunInlineAtomDisposition } from "../trackedRunInlineAtoms";
 import {
   resolveEffectiveTableCellFormatting,
   type TableCellMarginsAttrs,
@@ -831,33 +832,14 @@ function convertTrackedChange(
     if (node.marks.some(({ type }) => type.name === "insertion" || type.name === "deletion")) {
       return node;
     }
-    if (canCarryTrackedRunMark(node, mark.type)) {
+    if (trackedRunInlineAtomDisposition(node) === "outside-wrapper") {
+      panic(`Inline atom ${JSON.stringify(node.type.name)} cannot occur in a tracked-run wrapper`);
+    }
+    if (canCarryTrackedRunMark(node)) {
       return node.mark(mark.addToSet(node.marks));
     }
     return node;
   });
-}
-
-function canCarryTrackedRunMark(node: PMNode, markType: MarkType): boolean {
-  if (node.isText) {
-    return true;
-  }
-  if (!node.isInline) {
-    return false;
-  }
-  if (node.type.name === "field" || node.type.name === "structuredField") {
-    return true;
-  }
-  return (
-    node.type.allowsMarkType(markType) &&
-    (node.type.name === "image" ||
-      node.type.name === "shape" ||
-      node.type.name === "hardBreak" ||
-      node.type.name === "tab" ||
-      node.type.name === "symbol" ||
-      node.type.name === "bookmarkBoundary" ||
-      node.type.name === "textBoxAnchor")
-  );
 }
 
 /**
