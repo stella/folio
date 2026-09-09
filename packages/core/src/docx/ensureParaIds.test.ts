@@ -36,13 +36,14 @@ const documentXml = (body: string, extraRootAttrs = ""): string =>
   `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document ${W_NS}${extraRootAttrs}><w:body>${body}<w:sectPr/></w:body></w:document>`;
 
-const buildDocx = async (parts: Record<string, string>): Promise<Uint8Array> => {
+const buildDocx = async (parts: Record<string, string>, entryDate?: Date): Promise<Uint8Array> => {
   const zip = new JSZip();
-  zip.file("[Content_Types].xml", CONTENT_TYPES);
-  zip.file("_rels/.rels", ROOT_RELS);
-  zip.file("word/_rels/document.xml.rels", DOCUMENT_RELS);
+  const options = entryDate === undefined ? undefined : { date: entryDate };
+  zip.file("[Content_Types].xml", CONTENT_TYPES, options);
+  zip.file("_rels/.rels", ROOT_RELS, options);
+  zip.file("word/_rels/document.xml.rels", DOCUMENT_RELS, options);
   for (const [path, content] of Object.entries(parts)) {
-    zip.file(path, content);
+    zip.file(path, content, options);
   }
   return zip.generateAsync({ type: "uint8array" });
 };
@@ -161,13 +162,20 @@ describe("ensureParaIds", () => {
   });
 
   test("is deterministic: same input bytes produce identical output bytes", async () => {
-    const input = await buildDocx({
-      "word/document.xml": documentXml(`${PARA("One")}${PARA("Two")}`),
-    });
+    const entryDate = new Date("2001-02-03T04:05:06.000Z");
+    const input = await buildDocx(
+      {
+        "word/document.xml": documentXml(`${PARA("One")}${PARA("Two")}`),
+      },
+      entryDate,
+    );
 
     const first = await ensureParaIds(input);
     const second = await ensureParaIds(input);
     expect(first.docx).toEqual(second.docx);
+
+    const outputZip = await JSZip.loadAsync(first.docx);
+    expect(outputZip.file("word/document.xml")?.date).toEqual(entryDate);
   });
 
   test("is idempotent: a normalized document short-circuits to the input bytes", async () => {
