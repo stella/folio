@@ -225,6 +225,46 @@ describe("toFlowBlocks paragraph formatting", () => {
     ]);
   });
 
+  test("coalesces a trailing page break into an incoming continuous section", () => {
+    const doc = schema.node("doc", { _finalSectionStart: "continuous" }, [
+      schema.node(
+        "paragraph",
+        {
+          _sectionProperties: {},
+          _trailingPageBreak: true,
+        },
+        [schema.text("Synthetic section ending")],
+      ),
+      schema.node("pageBreak"),
+      schema.node("paragraph", null, [schema.text("Synthetic continuation")]),
+    ]);
+
+    expect(toFlowBlocks(doc).map((block) => block.kind)).toEqual([
+      "paragraph",
+      "sectionBreak",
+      "paragraph",
+    ]);
+  });
+
+  test("keeps the trailing page break when its paragraph mark moves", () => {
+    const doc = schema.node("doc", { _finalSectionStart: "continuous" }, [
+      schema.node(
+        "paragraph",
+        {
+          _sectionProperties: {},
+          _trailingPageBreak: true,
+        },
+        [schema.text("Synthetic section ending")],
+      ),
+      schema.node("pageBreak"),
+      schema.node("paragraph", null, [schema.text("Synthetic continuation")]),
+    ]);
+
+    expect(
+      toFlowBlocks(doc, { splitPageBreakAndParagraphMark: true }).map((block) => block.kind),
+    ).toEqual(["paragraph", "pageBreak", "paragraph", "sectionBreak", "paragraph"]);
+  });
+
   test("keeps text-box anchors out of paragraph layout", () => {
     const paragraph = toFlowBlocks(
       schema.node("doc", null, [

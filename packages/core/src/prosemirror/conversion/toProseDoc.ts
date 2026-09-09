@@ -478,7 +478,7 @@ function convertParagraph(
   // Paragraph-mark-only visual decorations (highlight, shading) paint the
   // paragraph glyph alone. Strip them from the body-run inheritance path.
   let inheritableParagraphRunFormatting: TextFormatting | undefined;
-  if (paragraphRunFormatting && !isTocParagraph) {
+  if (paragraphRunFormatting && !isTocParagraph && paragraph.formatting?.styleId === undefined) {
     inheritableParagraphRunFormatting =
       stripParagraphMarkFormattingForBodyRuns(paragraphRunFormatting);
   }
@@ -505,26 +505,22 @@ function convertParagraph(
       fontFamily: paragraphStyleFontFamily,
     });
   }
-  // With a named paragraph style, w:pPr/w:rPr formats the paragraph mark and
-  // only fills gaps in the style's body-run defaults. Style-less generated
-  // documents use the paragraph mark as their highest-precedence run default.
-  const paragraphMarkPrecedesStyle = paragraph.formatting?.styleId !== undefined;
-  const ordinaryDefaultRunFormatting = paragraphMarkPrecedesStyle
-    ? mergeTextFormatting(inheritableParagraphRunFormatting, baseRunFormatting)
-    : mergeTextFormatting(baseRunFormatting, inheritableParagraphRunFormatting);
-  const defaultToggleCascade = paragraphMarkPrecedesStyle
-    ? cascadeStyleTextFormatting([{ cascade: orderedToggleFormatting, type: "carried" }], {
-        ordinaryFormatting: ordinaryDefaultRunFormatting,
-      })
-    : cascadeStyleTextFormatting(
-        [
-          { cascade: orderedToggleFormatting, type: "carried" },
-          { formatting: inheritableParagraphRunFormatting, type: "direct" },
-        ],
-        {
-          ordinaryFormatting: ordinaryDefaultRunFormatting,
-        },
-      );
+  // w:pPr/w:rPr formats the paragraph mark, not the visible runs of a named
+  // paragraph style. Style-less generated documents historically use it as
+  // their highest-precedence run default.
+  const ordinaryDefaultRunFormatting = mergeTextFormatting(
+    baseRunFormatting,
+    inheritableParagraphRunFormatting,
+  );
+  const defaultToggleCascade = cascadeStyleTextFormatting(
+    [
+      { cascade: orderedToggleFormatting, type: "carried" },
+      { formatting: inheritableParagraphRunFormatting, type: "direct" },
+    ],
+    {
+      ordinaryFormatting: ordinaryDefaultRunFormatting,
+    },
+  );
   const defaultRunFormatting = defaultToggleCascade.formatting;
   const getInheritedRunFormatting = (
     formatting: TextFormatting | undefined,
@@ -547,7 +543,6 @@ function convertParagraph(
       baseRunFormatting,
       inheritableParagraphRunFormatting,
       formatting,
-      paragraphMarkPrecedesStyle,
     );
     const paragraphMarkOverrides = getParagraphMarkSuppressionOverrides({
       directFormatting: formatting,
@@ -1074,7 +1069,9 @@ function paragraphFormattingToAttrs(
     set(
       "defaultTextFormatting",
       resolveParagraphDefaultTextFormatting(styleId, formatting, styleResolver, {
-        includeParagraphMarkRunProperties: tableOfContentsLevel === undefined,
+        includeParagraphMarkRunProperties:
+          tableOfContentsLevel === undefined &&
+          (styleId === undefined || paragraph.content.length === 0),
       }),
     );
 
@@ -1405,16 +1402,12 @@ function suppressParagraphMarkFormatting(
   base: TextFormatting | undefined,
   paragraphMark: TextFormatting | undefined,
   direct: TextFormatting | undefined,
-  paragraphMarkPrecedesStyle = false,
 ): TextFormatting | undefined {
   if (!paragraphMark) {
     return base;
   }
 
-  const result =
-    (paragraphMarkPrecedesStyle
-      ? mergeTextFormatting(paragraphMark, base)
-      : mergeTextFormatting(base, paragraphMark)) ?? {};
+  const result = mergeTextFormatting(base, paragraphMark) ?? {};
   for (const key of PARAGRAPH_MARK_BOOLEAN_KEYS) {
     suppressBooleanParagraphMark(result, base, paragraphMark, direct, key);
   }
@@ -1589,11 +1582,6 @@ function resolveParagraphDefaultTextFormatting(
     },
   );
   const bodyRunDefaults = orderedBodyToggleFormatting.formatting;
-  if (styleId !== undefined) {
-    return cascadeStyleTextFormatting([{ cascade: orderedBodyToggleFormatting, type: "carried" }], {
-      ordinaryFormatting: mergeTextFormatting(paragraphRunProperties, bodyRunDefaults),
-    }).formatting;
-  }
   return cascadeStyleTextFormatting(
     [
       { cascade: orderedBodyToggleFormatting, type: "carried" },

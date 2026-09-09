@@ -144,6 +144,8 @@ export type ToFlowBlocksOptions = {
   fontAlternates?: FontAlternates;
   /** Page content height in pixels (pageHeight - marginTop - marginBottom). Images taller than this are scaled down to fit. */
   pageContentHeight?: number;
+  /** Whether a trailing page break moves its paragraph mark to the next page. */
+  splitPageBreakAndParagraphMark?: boolean;
   /** Shared list counters for nested containers. */
   listCounters?: Map<number, number[]>;
   /** Latest concrete counters by abstract numbering definition. */
@@ -1979,6 +1981,7 @@ function convertParagraph(
     attrs.shading !== undefined;
   if (runs.length === 0 && pmAttrs._pageBreakCarrier === true && !hasVisibleParagraphPayload) {
     attrs.suppressEmptyParagraphHeight = true;
+    attrs.paginationRole = "trailing-section-break-carrier";
   }
 
   const bookmarkNames = pmAttrs.bookmarks?.map((b) => b.name);
@@ -2769,6 +2772,45 @@ function applySectionStartsToBoundaries(
   return result;
 }
 
+/**
+ * A trailing page break belongs to its section-ending paragraph. When the
+ * paragraph mark stays on the current page, an immediately following
+ * continuous section resumes there too; the synthetic page and carrier are
+ * not physical layout boundaries.
+ */
+function coalesceTrailingPageBreakBeforeContinuousSection(
+  blocks: readonly FlowBlock[],
+  splitPageBreakAndParagraphMark: boolean,
+): FlowBlock[] {
+  if (splitPageBreakAndParagraphMark) {
+    return [...blocks];
+  }
+
+  const result: FlowBlock[] = [];
+  for (let index = 0; index < blocks.length; index += 1) {
+    const block = blocks[index];
+    const carrier = blocks[index + 1];
+    const section = blocks[index + 2];
+    const isGeneratedCarrier =
+      carrier?.kind === "paragraph" &&
+      carrier.runs.length === 0 &&
+      carrier.attrs?.paginationRole === "trailing-section-break-carrier";
+    if (
+      block?.kind === "pageBreak" &&
+      isGeneratedCarrier &&
+      section?.kind === "sectionBreak" &&
+      section.type === "continuous"
+    ) {
+      index += 1;
+      continue;
+    }
+    if (block) {
+      result.push(block);
+    }
+  }
+  return result;
+}
+
 function readFinalSectionStart(doc: PMNode): NonNullable<SectionBreakBlock["type"]> | undefined {
   const sectionStart = doc.attrs["_finalSectionStart"];
   switch (sectionStart) {
@@ -3055,6 +3097,7 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
                 delete carrierSpacing.before;
               }
               const carrierAttrs: ParagraphAttrs = {
+                paginationRole: "trailing-section-break-carrier",
                 ...(carrierSpacing ? { spacing: carrierSpacing } : {}),
                 ...(sourceAttrs?.automaticSpacing?.after === true
                   ? { automaticSpacing: { after: true } }
@@ -3207,7 +3250,11 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
     tableCellLinePitch,
   });
   const boundaryBlocks = applySectionStartsToBoundaries(griddedBlocks, readFinalSectionStart(doc));
-  return groupParagraphFrames(boundaryBlocks, nextBlockId);
+  const reconciledBlocks = coalesceTrailingPageBreakBeforeContinuousSection(
+    boundaryBlocks,
+    options.splitPageBreakAndParagraphMark === true,
+  );
+  return groupParagraphFrames(reconciledBlocks, nextBlockId);
 }
 
 type SectionDocumentGridOptions = {

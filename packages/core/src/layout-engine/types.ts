@@ -447,6 +447,8 @@ export type ListNumPr = {
  * Paragraph block attributes.
  */
 export type ParagraphAttrs = {
+  /** Internal structural role used while reconciling authored pagination. */
+  paginationRole?: "trailing-section-break-carrier";
   alignment?: "left" | "center" | "right" | "justify";
   /** Document-generation policy for justified line fitting. */
   justificationCompatibility?: { type: "legacy" };
