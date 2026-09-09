@@ -108,6 +108,7 @@ test("clipped table-row continuations keep editing regions", () => {
               {
                 id: "body-cell",
                 padding: { top: 0, right: 0, bottom: 0, left: 0 },
+                borders: { bottom: { width: 2, style: "solid", color: "#123456" } },
                 blocks: [
                   {
                     kind: "paragraph",
@@ -153,6 +154,20 @@ test("clipped table-row continuations keep editing regions", () => {
       if (clipPrimitive?.kind !== "clipGroup") {
         return;
       }
+      const fragmentBottomBorder = page.primitives.find(
+        (primitive) =>
+          primitive.kind === "line" &&
+          primitive.stroke.color.r === 0x12 &&
+          primitive.stroke.color.g === 0x34 &&
+          primitive.stroke.color.b === 0x56,
+      );
+      expect(fragmentBottomBorder).toMatchObject({
+        kind: "line",
+        x1Px: clipPrimitive.rect.xPx,
+        x2Px: clipPrimitive.rect.xPx + clipPrimitive.rect.widthPx,
+        y1Px: clipPrimitive.rect.yPx + clipPrimitive.rect.heightPx - 1,
+        y2Px: clipPrimitive.rect.yPx + clipPrimitive.rect.heightPx - 1,
+      });
 
       const pageRegions = flattenRegions(page.regions);
       const clipRegions = flattenRegions(clipPrimitive.regions);

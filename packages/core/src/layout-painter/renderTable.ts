@@ -50,6 +50,7 @@ import {
   resolveTableInlineOffset,
   resolveTableInlinePlacement,
 } from "../layout-engine/measure/tableInlinePlacement";
+import { tableFragmentBottomBorders } from "../layout-engine/measure/tableFragmentBorderGeometry";
 import { emuToPixels } from "../utils/units";
 import { applySanitizedImageSrc } from "../utils/sanitizeImageSrc";
 import { resolveAnchoredImagePosition, type PageGeometry } from "./anchoredImagePosition";
@@ -1257,6 +1258,26 @@ export function renderTableFragment(
 
     contentParent.append(rowEl);
     y += rowMeasure.height;
+  }
+
+  for (const { left, width, border } of tableFragmentBottomBorders({
+    fragment,
+    block,
+    measure,
+    placements: cellPlacements,
+  })) {
+    const borderEl = doc.createElement("div");
+    borderEl.className = CELL_BOTTOM_BORDER_CLASS;
+    borderEl.style.position = "absolute";
+    borderEl.style.left = `${left}px`;
+    borderEl.style.top = "0";
+    borderEl.style.width = `${width}px`;
+    borderEl.style.height = `${fragment.height}px`;
+    borderEl.style.boxSizing = "border-box";
+    borderEl.style.pointerEvents = "none";
+    borderEl.style.zIndex = "1";
+    applyBorder(borderEl, "bottom", border);
+    tableEl.append(borderEl);
   }
 
   // Add row resize handles at each row boundary (between consecutive rows)

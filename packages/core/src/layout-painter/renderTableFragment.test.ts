@@ -284,6 +284,57 @@ describe("renderTableFragment continuation row boundaries", () => {
 });
 
 describe("renderTableFragment split-row cell content", () => {
+  test("projects the split row bottom border onto the fragment edge", () => {
+    const block: TableBlock = {
+      kind: "table",
+      id: "synthetic-table",
+      rows: [
+        {
+          id: "synthetic-row",
+          cells: [
+            {
+              id: "synthetic-cell",
+              blocks: [],
+              borders: { bottom: { width: 2, style: "solid", color: "#123456" } },
+            },
+          ],
+        },
+      ],
+      columnWidths: [80],
+    };
+    const measure: TableMeasure = {
+      kind: "table",
+      rows: [{ cells: [{ blocks: [], width: 80, height: 100 }], height: 100 }],
+      columnWidths: [80],
+      totalWidth: 80,
+      totalHeight: 100,
+    };
+    const fragment: TableFragment = {
+      kind: "table",
+      blockId: "synthetic-table",
+      x: 0,
+      y: 0,
+      width: 80,
+      height: 30,
+      fromRow: 0,
+      toRow: 1,
+      bottomClip: 30,
+      continuesOnNext: true,
+    };
+
+    const table = renderTableFragment(fragment, block, measure, renderContext, {
+      document: fakeDocument,
+    }) as unknown as FakeElement;
+    const border = findByClass(table, "layout-table-cell-bottom-border").at(0);
+
+    expect(border?.style).toMatchObject({
+      left: "0px",
+      width: "80px",
+      height: "30px",
+    });
+    expect(border?.style["borderBottom"]).toContain("solid");
+  });
+
   test("clips ordinary cell content to each intersecting row slice", () => {
     const block: TableBlock = {
       kind: "table",
