@@ -7,8 +7,9 @@ import type { AISuggestion } from "./types";
 const schema = new Schema({
   nodes: {
     doc: { content: "block+" },
-    paragraph: { content: "text*", group: "block" },
-    text: {},
+    paragraph: { content: "inline*", group: "block" },
+    pageBreakRun: { group: "inline", inline: true, atom: true },
+    text: { group: "inline" },
   },
 });
 
@@ -105,6 +106,40 @@ describe("resolveSuggestionAnchor", () => {
     });
     const anchor = resolveSuggestionAnchor(doc, suggestion);
     expect(anchor).toEqual(directRange);
+  });
+
+  test("resolves adjacent text without selecting a page-break carrier", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [
+        schema.text("left"),
+        schema.node("pageBreakRun"),
+        schema.text("right"),
+      ]),
+    ]);
+    const suggestion = makeSuggestion({
+      originalText: "right",
+      contextBefore: "left",
+      contextAfter: "",
+    });
+
+    expect(resolveSuggestionAnchor(doc, suggestion)).toEqual({ from: 6, to: 11 });
+  });
+
+  test("refuses suggestion text that crosses a page-break carrier", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [
+        schema.text("left"),
+        schema.node("pageBreakRun"),
+        schema.text("right"),
+      ]),
+    ]);
+    const suggestion = makeSuggestion({
+      originalText: "leftright",
+      contextBefore: "",
+      contextAfter: "",
+    });
+
+    expect(resolveSuggestionAnchor(doc, suggestion)).toBeNull();
   });
 });
 

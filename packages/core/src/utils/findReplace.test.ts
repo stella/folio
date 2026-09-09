@@ -75,4 +75,67 @@ describe("findInDocument", () => {
       findInDocument(caseDocument, "stock", { matchCase: false, matchWholeWord: true }),
     ).toHaveLength(2);
   });
+
+  test("does not match text across an explicit page-break run", () => {
+    const pageBreakDocument: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "run",
+                  content: [
+                    { type: "text", text: "left" },
+                    { type: "break", breakType: "page" },
+                    { type: "text", text: "right" },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    expect(findInDocument(pageBreakDocument, "left", createDefaultFindOptions())).toHaveLength(1);
+    expect(findInDocument(pageBreakDocument, "right", createDefaultFindOptions())).toHaveLength(1);
+    expect(findInDocument(pageBreakDocument, "leftright", createDefaultFindOptions())).toEqual([]);
+  });
+
+  test.each([undefined, "textWrapping"] as const)(
+    "counts a %s line-break type in search offsets",
+    (breakType) => {
+      const lineBreakDocument: Document = {
+        package: {
+          document: {
+            content: [
+              {
+                type: "paragraph",
+                content: [
+                  {
+                    type: "run",
+                    content: [
+                      { type: "text", text: "A" },
+                      {
+                        type: "break",
+                        ...(breakType !== undefined ? { breakType } : {}),
+                      },
+                      { type: "text", text: "B" },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      };
+
+      expect(findInDocument(lineBreakDocument, "A\nB", createDefaultFindOptions())).toHaveLength(1);
+      expect(
+        findInDocument(lineBreakDocument, "B", createDefaultFindOptions()).at(0),
+      ).toMatchObject({ startOffset: 2 });
+    },
+  );
 });

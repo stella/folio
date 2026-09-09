@@ -8,6 +8,7 @@ export type RunFormattingInlineAtomDisposition =
   | "break-run"
   | "field-run"
   | "not-a-run"
+  | "page-break-carrier"
   | "structured-field"
   | "symbol-run"
   | "tab-run"
@@ -27,6 +28,7 @@ export const RUN_FORMATTING_INLINE_ATOM_DISPOSITIONS = Object.freeze({
   hardBreak: "break-run",
   image: "not-a-run",
   math: "not-a-run",
+  pageBreakRun: "page-break-carrier",
   renderedPageBreak: "not-a-run",
   shape: "not-a-run",
   structuredField: "structured-field",
@@ -141,8 +143,14 @@ export const selectRunFormattingCarrierRepresentations = ({
     if (!carrier) {
       return !node.isAtom;
     }
+    if (carrier.disposition === "page-break-carrier") {
+      return false;
+    }
 
     for (const representation of carrier.representations) {
+      if (runFormattingInlineAtomDisposition(representation.node) === "page-break-carrier") {
+        continue;
+      }
       const representationFrom = Math.max(from, representation.position);
       const representationTo = Math.min(to, representation.position + representation.node.nodeSize);
       if (representationFrom >= representationTo) {
@@ -177,6 +185,8 @@ export const runFormattingCarrierReviewText = (carrier: RunFormattingCarrier): s
       return "\t";
     case "break-run":
       return "\n";
+    case "page-break-carrier":
+      return "";
     case "symbol-run": {
       const { char } = expectSymbolAttrs(carrier.node);
       return decodeOoxmlSymbolCharacter(char) ?? "\uFFFD";

@@ -24,15 +24,27 @@ export type TextChunk = {
 
 /**
  * Collect every block-level node's text content as an array of
- * chunks (one per PM text node), grouped per block. Join a block's
- * chunk texts to scan it as a single string.
+ * chunks (one per PM text node), grouped per uninterrupted scan segment.
+ * An explicit page-break run ends a segment: it is zero-width in the joined
+ * text, but a text-shaped overlay must not select across that structural atom.
  */
 export const collectBlockChunks = (doc: PMNode): TextChunk[][] => {
   const blocks: TextChunk[][] = [];
   doc.descendants((node, pos) => {
     if (node.isTextblock) {
-      const chunks: TextChunk[] = [];
+      let chunks: TextChunk[] = [];
+      const flushSegment = (): void => {
+        if (chunks.length === 0) {
+          return;
+        }
+        blocks.push(chunks);
+        chunks = [];
+      };
       node.descendants((child, offset) => {
+        if (child.type.name === "pageBreakRun") {
+          flushSegment();
+          return false;
+        }
         if (child.isText && child.text !== undefined) {
           // pos is the textblock's PM position; +1 accounts for the
           // textblock's opening token, +offset is the position of
@@ -48,9 +60,7 @@ export const collectBlockChunks = (doc: PMNode): TextChunk[][] => {
         }
         return true;
       });
-      if (chunks.length > 0) {
-        blocks.push(chunks);
-      }
+      flushSegment();
       return false;
     }
     return true;

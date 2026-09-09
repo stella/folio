@@ -75,6 +75,7 @@ import {
 import { autospacingMatchesBase } from "../../prosemirror/autospacingBase";
 import { runShadingAttrsToShading } from "../../prosemirror/conversion/runShadingMark";
 import { directionToBidi } from "../../prosemirror/paragraphDirection";
+import { pageBreakRunParagraphProjectionDisposition } from "../../prosemirror/pageBreakRunProjection";
 import { expectTextBoxAnchorAttrs } from "../../prosemirror/textBoxAnchorAttrs";
 import {
   resolveEffectiveRunStyleFormatting,
@@ -1185,7 +1186,26 @@ function stripTocHyperlinkStyle(formatting: RunFormatting): void {
 /**
  * Convert a paragraph node to runs.
  */
-function paragraphToRuns(node: PMNode, startPos: number, _options: FlowConversionOptions): Run[] {
+type PageBreakRunProjection = {
+  pmStart: number;
+  pmEnd: number;
+  trackedChange?: Pick<
+    RunFormatting,
+    | "isInsertion"
+    | "changeAuthor"
+    | "changeDate"
+    | "changeRevisionId"
+    | "isSuggestion"
+    | "suggestionId"
+  >;
+};
+
+function paragraphToRuns(
+  node: PMNode,
+  startPos: number,
+  _options: FlowConversionOptions,
+  pageBreaks?: PageBreakRunProjection[],
+): Run[] {
   const runs: Run[] = [];
   const offset = startPos + 1; // +1 for opening tag
   const theme = _options.theme;
@@ -1204,7 +1224,11 @@ function paragraphToRuns(node: PMNode, startPos: number, _options: FlowConversio
   // SDT children — the previous SDT branch only handled text/hardBreak/
   // tab/image and silently dropped fields, math, and nested SDTs even
   // when the parser preserved them (see eigenpal #482).
-  function pushRunsForChild(child: PMNode, childPos: number): void {
+  function pushRunsForChild(
+    child: PMNode,
+    childPos: number,
+    inheritedTrackedMarks: readonly Mark[] = [],
+  ): void {
     if (child.type.name === "bookmarkBoundary") {
       return;
     }
@@ -1217,6 +1241,62 @@ function paragraphToRuns(node: PMNode, startPos: number, _options: FlowConversio
         kind: "renderedPageBreak",
         pmStart: childPos,
         pmEnd: childPos + child.nodeSize,
+      });
+      return;
+    }
+    if (child.type.name === "pageBreakRun") {
+      const ownTrackedMarks = child.marks.filter(
+        ({ type }) => type.name === "insertion" || type.name === "deletion",
+      );
+      const effectiveMarks =
+        ownTrackedMarks.length > 0 ? child.marks : [...child.marks, ...inheritedTrackedMarks];
+      const trackedChange = extractRunFormatting(effectiveMarks, theme, fontAlternates);
+      if (trackedChange.isDeletion) {
+        runs.push({
+          kind: "text",
+          text: "",
+          isDeletion: true,
+          ...(trackedChange.changeAuthor !== undefined
+            ? { changeAuthor: trackedChange.changeAuthor }
+            : {}),
+          ...(trackedChange.changeDate !== undefined
+            ? { changeDate: trackedChange.changeDate }
+            : {}),
+          ...(trackedChange.changeRevisionId !== undefined
+            ? { changeRevisionId: trackedChange.changeRevisionId }
+            : {}),
+          ...(trackedChange.isSuggestion === true ? { isSuggestion: true } : {}),
+          ...(trackedChange.suggestionId !== undefined
+            ? { suggestionId: trackedChange.suggestionId }
+            : {}),
+          pmStart: childPos,
+          pmEnd: childPos + child.nodeSize,
+        });
+        return;
+      }
+      pageBreaks?.push({
+        pmStart: childPos,
+        pmEnd: childPos + child.nodeSize,
+        ...(trackedChange.isInsertion
+          ? {
+              trackedChange: {
+                isInsertion: true,
+                ...(trackedChange.changeAuthor !== undefined
+                  ? { changeAuthor: trackedChange.changeAuthor }
+                  : {}),
+                ...(trackedChange.changeDate !== undefined
+                  ? { changeDate: trackedChange.changeDate }
+                  : {}),
+                ...(trackedChange.changeRevisionId !== undefined
+                  ? { changeRevisionId: trackedChange.changeRevisionId }
+                  : {}),
+                ...(trackedChange.isSuggestion === true ? { isSuggestion: true } : {}),
+                ...(trackedChange.suggestionId !== undefined
+                  ? { suggestionId: trackedChange.suggestionId }
+                  : {}),
+              },
+            }
+          : {}),
       });
       return;
     }
@@ -1392,9 +1472,16 @@ function paragraphToRuns(node: PMNode, startPos: number, _options: FlowConversio
     }
     if (child.type.name === "sdt") {
       const sdtInnerOffset = childPos + 1; // +1 for opening tag
+      const sdtTrackedMarks = child.marks.filter(
+        ({ type }) => type.name === "insertion" || type.name === "deletion",
+      );
       // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
       child.forEach((sdtChild, sdtChildOffset) => {
-        pushRunsForChild(sdtChild, sdtInnerOffset + sdtChildOffset);
+        pushRunsForChild(
+          sdtChild,
+          sdtInnerOffset + sdtChildOffset,
+          sdtTrackedMarks.length > 0 ? sdtTrackedMarks : inheritedTrackedMarks,
+        );
       });
     }
   }
@@ -2071,13 +2158,27 @@ function hasOnlyHiddenTextRuns(runs: Run[]): boolean {
   return runs.length > 0 && runs.every((run) => run.kind === "text" && run.hidden === true);
 }
 
+function hasVisibleParagraphPayload(attrs: ParagraphAttrs): boolean {
+  return (
+    (attrs.listMarker !== undefined && !attrs.listMarkerHidden) ||
+    attrs.borders?.top !== undefined ||
+    attrs.borders?.bottom !== undefined ||
+    attrs.borders?.left !== undefined ||
+    attrs.borders?.right !== undefined ||
+    attrs.borders?.between !== undefined ||
+    attrs.borders?.bar !== undefined ||
+    attrs.shading !== undefined
+  );
+}
+
 function convertParagraph(
   node: PMNode,
   startPos: number,
   options: FlowConversionOptions,
+  pageBreaks?: PageBreakRunProjection[],
 ): ParagraphBlock {
   const pmAttrs = expectParagraphAttrs(node);
-  const runs = paragraphToRuns(node, startPos, options);
+  const runs = paragraphToRuns(node, startPos, options, pageBreaks);
   const attrs = convertParagraphAttrs(pmAttrs, {
     theme: options.theme,
     fontAlternates: options.fontAlternates,
@@ -2135,16 +2236,11 @@ function convertParagraph(
   if (runs.length === 0 && expectDetachedWatermarkHostAttr(node.attrs)) {
     attrs.suppressEmptyParagraphHeight = false;
   }
-  const hasVisibleParagraphPayload =
-    (attrs.listMarker !== undefined && !attrs.listMarkerHidden) ||
-    attrs.borders?.top !== undefined ||
-    attrs.borders?.bottom !== undefined ||
-    attrs.borders?.left !== undefined ||
-    attrs.borders?.right !== undefined ||
-    attrs.borders?.between !== undefined ||
-    attrs.borders?.bar !== undefined ||
-    attrs.shading !== undefined;
-  if (runs.length === 0 && pmAttrs._pageBreakCarrier === true && !hasVisibleParagraphPayload) {
+  if (
+    runs.length === 0 &&
+    pmAttrs._pageBreakCarrier === true &&
+    !hasVisibleParagraphPayload(attrs)
+  ) {
     attrs.suppressEmptyParagraphHeight = true;
   }
 
@@ -2184,6 +2280,161 @@ function convertParagraph(
     return false;
   });
   return block;
+}
+
+function paragraphFragmentAttrs(
+  source: ParagraphAttrs | undefined,
+  index: number,
+  count: number,
+): ParagraphAttrs | undefined {
+  if (!source) {
+    return undefined;
+  }
+  const attrs: ParagraphAttrs = {
+    ...source,
+    ...(source.indent ? { indent: { ...source.indent } } : {}),
+    ...(source.spacing ? { spacing: { ...source.spacing } } : {}),
+    ...(source.automaticSpacing ? { automaticSpacing: { ...source.automaticSpacing } } : {}),
+    ...(source.spacingExplicit ? { spacingExplicit: { ...source.spacingExplicit } } : {}),
+  };
+  if (index > 0) {
+    delete attrs.listMarker;
+    delete attrs.listIsBullet;
+    delete attrs.listMarkerFormatting;
+    delete attrs.listMarkerHidden;
+    delete attrs.listMarkerAlignment;
+    delete attrs.listMarkerSuffix;
+    delete attrs.listMarkerRevision;
+    delete attrs.listMarkerSecondSlotOffsetTwips;
+    delete attrs.reserveEmptyOutlineHeight;
+    delete attrs.pageBreakBefore;
+    delete attrs.renderedPageBreakBefore;
+    if (attrs.indent) {
+      delete attrs.indent.firstLine;
+      delete attrs.indent.hanging;
+    }
+    if (attrs.spacing) {
+      delete attrs.spacing.before;
+    }
+    if (attrs.automaticSpacing) {
+      delete attrs.automaticSpacing.before;
+    }
+    if (attrs.spacingExplicit) {
+      delete attrs.spacingExplicit.before;
+    }
+  }
+  if (index < count - 1) {
+    delete attrs.keepNext;
+    delete attrs.runInWithNext;
+    delete attrs.listParagraphMarkFontSize;
+    if (attrs.spacing) {
+      delete attrs.spacing.after;
+    }
+    if (attrs.automaticSpacing) {
+      delete attrs.automaticSpacing.after;
+    }
+    if (attrs.spacingExplicit) {
+      delete attrs.spacingExplicit.after;
+    }
+  }
+  return attrs;
+}
+
+type SplitParagraphAtPageBreaksOptions = {
+  pageBreaks: readonly PageBreakRunProjection[];
+  paragraph: ParagraphBlock;
+  splitPageBreakAndParagraphMark: boolean;
+};
+
+function splitParagraphAtPageBreaks({
+  pageBreaks,
+  paragraph,
+  splitPageBreakAndParagraphMark,
+}: SplitParagraphAtPageBreaksOptions): (ParagraphBlock | PageBreakBlock)[] {
+  if (pageBreaks.length === 0) {
+    return [paragraph];
+  }
+
+  const result: (ParagraphBlock | PageBreakBlock)[] = [];
+  let remainingRuns = [...paragraph.runs];
+  let fragmentStart = paragraph.pmStart ?? pageBreaks[0]!.pmStart;
+  let emittedParagraph = false;
+
+  const appendParagraph = (runs: Run[], pmStart: number, pmEnd: number): void => {
+    const fragment: ParagraphBlock = {
+      ...paragraph,
+      id: emittedParagraph ? nextBlockId() : paragraph.id,
+      runs,
+      pmStart,
+      pmEnd,
+    };
+    if (emittedParagraph) {
+      delete fragment.bookmarks;
+    }
+    result.push(fragment);
+    emittedParagraph = true;
+  };
+
+  for (const pageBreak of pageBreaks) {
+    const before: Run[] = [];
+    const after: Run[] = [];
+    for (const run of remainingRuns) {
+      if (run.pmEnd !== undefined && run.pmEnd <= pageBreak.pmStart) {
+        before.push(run);
+        continue;
+      }
+      if (run.pmStart !== undefined && run.pmStart >= pageBreak.pmEnd) {
+        after.push(run);
+        continue;
+      }
+      panic("An inline layout run overlaps an explicit page-break carrier");
+    }
+    if (before.length > 0) {
+      appendParagraph(before, fragmentStart, pageBreak.pmStart);
+    }
+    result.push({
+      kind: "pageBreak",
+      id: nextBlockId(),
+      pmStart: pageBreak.pmStart,
+      pmEnd: pageBreak.pmEnd,
+      ...pageBreak.trackedChange,
+    });
+    remainingRuns = after;
+    fragmentStart = pageBreak.pmEnd;
+  }
+
+  if (remainingRuns.length > 0) {
+    appendParagraph(remainingRuns, fragmentStart, paragraph.pmEnd ?? fragmentStart);
+  } else if (
+    paragraph.runs.length === 0 ||
+    (splitPageBreakAndParagraphMark &&
+      pageBreaks.at(-1)?.pmEnd === (paragraph.pmEnd ?? fragmentStart) - 1)
+  ) {
+    appendParagraph([], fragmentStart, paragraph.pmEnd ?? fragmentStart);
+    const carrier = result.at(-1);
+    if (
+      carrier?.kind === "paragraph" &&
+      !splitPageBreakAndParagraphMark &&
+      !hasVisibleParagraphPayload(carrier.attrs ?? {})
+    ) {
+      carrier.attrs = { ...carrier.attrs, suppressEmptyParagraphHeight: true };
+    }
+  }
+
+  const fragments = result.filter((block): block is ParagraphBlock => block.kind === "paragraph");
+  for (let index = 0; index < fragments.length; index += 1) {
+    const fragment = fragments[index];
+    if (!fragment) {
+      continue;
+    }
+    const attrs = paragraphFragmentAttrs(fragment.attrs, index, fragments.length);
+    if (attrs) {
+      fragment.attrs = attrs;
+    } else {
+      delete fragment.attrs;
+    }
+  }
+  return result;
 }
 
 /**
@@ -2784,11 +3035,30 @@ function convertImage(
 /**
  * Convert a textBox PM node to a TextBoxBlock.
  */
+function explicitPageBreakRunPosition(node: PMNode, startPos: number): number | undefined {
+  let pageBreakPosition: number | undefined;
+  node.descendants((descendant, offset) => {
+    if (descendant.type.name === "pageBreakRun") {
+      pageBreakPosition = startPos + 1 + offset;
+      return false;
+    }
+    return pageBreakPosition === undefined;
+  });
+  return pageBreakPosition;
+}
+
 function convertTextBoxNode(
   node: PMNode,
   startPos: number,
   opts: FlowConversionOptions,
 ): TextBoxBlock {
+  const pageBreakPosition = explicitPageBreakRunPosition(node, startPos);
+  if (pageBreakPosition !== undefined) {
+    panic(
+      `An explicit page-break run at ${String(pageBreakPosition)} cannot be projected inside a text box`,
+    );
+  }
+
   const attrs = expectTextBoxAttrs(node);
   const contentBlocks: (ParagraphBlock | TableBlock)[] = [];
 
@@ -2939,8 +3209,9 @@ function applySectionStartsToBoundaries(
 /**
  * A trailing page break belongs to its section-ending paragraph. When the
  * paragraph mark stays on the current page, an immediately following
- * continuous section resumes there too; the synthetic page and carrier are
- * not physical layout boundaries.
+ * continuous section resumes there too. Accept both the legacy generated
+ * carrier and the inline atom's one-token paragraph-mark fragment; neither is
+ * a physical layout boundary.
  */
 function coalesceTrailingPageBreakBeforeContinuousSection(
   blocks: readonly FlowBlock[],
@@ -2955,16 +3226,33 @@ function coalesceTrailingPageBreakBeforeContinuousSection(
     const block = blocks[index];
     const carrier = blocks[index + 1];
     const section = blocks[index + 2];
-    const isGeneratedCarrier =
+    const isLegacyGeneratedCarrier =
       block?.kind === "pageBreak" &&
       carrier?.kind === "paragraph" &&
       carrier.runs.length === 0 &&
       block.pmStart !== undefined &&
       block.pmStart === carrier.pmStart &&
       carrier.pmStart === carrier.pmEnd;
+    const isInlineParagraphMarkCarrier =
+      block?.kind === "pageBreak" &&
+      carrier?.kind === "paragraph" &&
+      carrier.runs.length === 0 &&
+      block.pmEnd !== undefined &&
+      carrier.pmStart === block.pmEnd &&
+      carrier.pmEnd === block.pmEnd + 1;
+    const isUnresolvedInsertion = block?.kind === "pageBreak" && block.isInsertion === true;
     if (
       block?.kind === "pageBreak" &&
-      isGeneratedCarrier &&
+      !isUnresolvedInsertion &&
+      carrier?.kind === "sectionBreak" &&
+      carrier.type === "continuous"
+    ) {
+      continue;
+    }
+    if (
+      block?.kind === "pageBreak" &&
+      !isUnresolvedInsertion &&
+      (isLegacyGeneratedCarrier || isInlineParagraphMarkCarrier) &&
       section?.kind === "sectionBreak" &&
       section.type === "continuous"
     ) {
@@ -3077,6 +3365,37 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
   const trackedPush = (block: FlowBlock): void => {
     tagBlockWithSdtStack(block);
     blocks.push(block);
+  };
+
+  const pushParagraphProjection = (
+    node: PMNode,
+    pos: number,
+    stripLeadingLineBreak = false,
+  ): void => {
+    let hasPageBreakRun = false;
+    node.descendants((descendant) => {
+      hasPageBreakRun ||= descendant.type.name === "pageBreakRun";
+      return !hasPageBreakRun;
+    });
+    if (hasPageBreakRun) {
+      const disposition = pageBreakRunParagraphProjectionDisposition(node);
+      if (disposition.status === "unsupported") {
+        panic(disposition.message);
+      }
+    }
+
+    const pageBreaks: PageBreakRunProjection[] = [];
+    const paragraph = convertParagraph(node, pos, opts, pageBreaks);
+    if (stripLeadingLineBreak && paragraph.runs.at(0)?.kind === "lineBreak") {
+      paragraph.runs.shift();
+    }
+    for (const block of splitParagraphAtPageBreaks({
+      pageBreaks,
+      paragraph,
+      splitPageBreakAndParagraphMark: options.splitPageBreakAndParagraphMark === true,
+    })) {
+      trackedPush(block);
+    }
   };
 
   const trailingPageBreakSectionPositions = new Set<number>();
@@ -3239,16 +3558,12 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
           };
           trackedPush(columnBreak);
 
-          const paragraph = convertParagraph(node, pos, opts);
-          if (paragraph.runs.at(0)?.kind === "lineBreak") {
-            paragraph.runs.shift();
-          }
-          trackedPush(paragraph);
+          pushParagraphProjection(node, pos, true);
         } else if (node.content.size > 0 || hasListFormatting || !hasSectionBreak) {
           // An empty paragraph carrying w:sectPr is Word's structural section
           // marker; it does not paint an additional blank line. Text-bearing
           // section-ending paragraphs still participate in normal layout.
-          trackedPush(convertParagraph(node, pos, opts));
+          pushParagraphProjection(node, pos);
         }
 
         // Emit section break block if this paragraph ends a section

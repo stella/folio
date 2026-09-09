@@ -70,4 +70,23 @@ describe("field text extraction", () => {
     expect(doc.nodeAt(pageFrom)?.type.name).toBe("field");
     expect(pageTo).toBe(pageFrom + pageField.nodeSize);
   });
+
+  test("keeps adjacent text ranges outside a page-break carrier", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [
+        schema.text("left"),
+        schema.node("pageBreakRun"),
+        schema.text("right"),
+      ]),
+    ]);
+
+    expect(findTextInPmParagraph(doc, 0, doc.content.size, "left")).toEqual({ from: 1, to: 5 });
+    expect(findTextInPmParagraph(doc, 0, doc.content.size, "right")).toEqual({ from: 6, to: 11 });
+    expect(findTextInPmParagraph(doc, 0, doc.content.size, "leftright")).toBeNull();
+
+    const scanSegments = collectBlockChunks(doc);
+    expect(scanSegments.map(joinChunks)).toEqual(["left", "right"]);
+    expect(offsetToDocPos(scanSegments[0] ?? [], 4, "end")).toBe(5);
+    expect(offsetToDocPos(scanSegments[1] ?? [], 0)).toBe(6);
+  });
 });

@@ -84,8 +84,13 @@ export function findTextInPmParagraph(
 
   let fullText = "";
   const textPositions: TextPosition[] = [];
+  const structuralBoundaryOffsets: number[] = [];
 
   doc.nodesBetween(paragraphFrom, paragraphTo, (node, pos) => {
+    if (node.type.name === "pageBreakRun") {
+      structuralBoundaryOffsets.push(fullText.length);
+      return false;
+    }
     if (node.marks.some((m) => m.type.name === "insertion")) return false;
     if (node.isText && node.text) {
       textPositions.push({ text: node.text, pos, pmLength: node.text.length, atomic: false });
@@ -107,6 +112,9 @@ export function findTextInPmParagraph(
   if (secondMatch !== -1) return null;
 
   const matchEnd = firstMatch + searchText.length;
+  if (structuralBoundaryOffsets.some((offset) => offset > firstMatch && offset < matchEnd)) {
+    return null;
+  }
   let segmentStart = 0;
   for (const position of textPositions) {
     const segmentEnd = segmentStart + position.text.length;

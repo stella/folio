@@ -17,6 +17,7 @@ const schema = new Schema({
       content: "inline*",
       attrs: { paraId: { default: null } },
     },
+    pageBreakRun: { group: "inline", inline: true, atom: true },
     text: { group: "inline" },
   },
 });
@@ -194,6 +195,57 @@ describe("resolveFolioAITextRange", () => {
       }),
     ).toBeNull();
   });
+
+  test("maps either adjacent text range around an inline page-break carrier", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", { paraId: "AAAA0001" }, [
+        schema.text("A"),
+        schema.node("pageBreakRun"),
+        schema.text("B"),
+      ]),
+    ]);
+    const snapshot = createFolioAIEditSnapshot(doc);
+    const left = createFolioAITextRangeHandle({
+      blockId: "AAAA0001",
+      text: "AB",
+      startOffset: 0,
+      endOffset: 1,
+    });
+    const right = createFolioAITextRangeHandle({
+      blockId: "AAAA0001",
+      text: "AB",
+      startOffset: 1,
+      endOffset: 2,
+    });
+    if (left === null || right === null) {
+      throw new Error("Expected text range handles");
+    }
+
+    expect(resolveFolioAITextRange({ range: left, doc, snapshot })).toEqual({ from: 1, to: 2 });
+    expect(resolveFolioAITextRange({ range: right, doc, snapshot })).toEqual({ from: 3, to: 4 });
+  });
+
+  test("refuses a generic text range that crosses an inline page-break carrier", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", { paraId: "AAAA0001" }, [
+        schema.text("A"),
+        schema.node("pageBreakRun"),
+        schema.text("B"),
+      ]),
+    ]);
+    const snapshot = createFolioAIEditSnapshot(doc);
+    const range = createFolioAITextRangeHandle({
+      blockId: "AAAA0001",
+      text: "AB",
+      startOffset: 0,
+      endOffset: 2,
+    });
+    if (range === null) {
+      throw new Error("Expected text range handle");
+    }
+
+    expect(resolveFolioAITextRange({ range, doc, snapshot })).toBeNull();
+  });
 });
 
 // Schema with an inline mark so passage matches can span multiple styled runs
@@ -207,6 +259,7 @@ const richSchema = new Schema({
       content: "inline*",
       attrs: { paraId: { default: null } },
     },
+    pageBreakRun: { group: "inline", inline: true, atom: true },
     text: { group: "inline" },
   },
   marks: {
@@ -243,6 +296,26 @@ describe("resolvePassageRange", () => {
       throw new Error("Expected an exact match to resolve");
     }
     expect(doc.textBetween(range.from, range.to)).toBe("is due");
+  });
+
+  test("keeps an adjacent passage on its side of an inline page-break carrier", () => {
+    const doc = richSchema.node("doc", null, [
+      richSchema.node("paragraph", { paraId: "AAAA0001" }, [
+        richSchema.text("left"),
+        richSchema.node("pageBreakRun"),
+        richSchema.text("right"),
+      ]),
+    ]);
+
+    expect(resolvePassageRange({ blockId: "AAAA0001", text: "left", doc })).toEqual({
+      from: 1,
+      to: 5,
+    });
+    expect(resolvePassageRange({ blockId: "AAAA0001", text: "right", doc })).toEqual({
+      from: 6,
+      to: 11,
+    });
+    expect(resolvePassageRange({ blockId: "AAAA0001", text: "leftright", doc })).toBeNull();
   });
 
   test("matches across collapsed / extra whitespace between needle and document", () => {

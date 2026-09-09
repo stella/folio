@@ -1,4 +1,4 @@
-import type { ParagraphAlignment, ParagraphFormatting } from "../types/document";
+import type { BreakContent, ParagraphAlignment, ParagraphFormatting } from "../types/document";
 
 export type FolioAIBlockKind = "heading" | "listItem" | "paragraph";
 
@@ -32,6 +32,18 @@ export type FolioAIBlockPreviewRun = {
   color?: string;
   /** Authored run properties only; paragraph and character-style values stay inherited. */
   directFormatting?: FolioAIInlineFormatting;
+};
+
+/**
+ * A zero-width inline structure at one clean-text boundary. `pageBreak`
+ * always represents an authored `<w:br w:type="page"/>`; an omitted `clear`
+ * remains distinct from any explicit value even though it does not affect
+ * layout for this break type.
+ */
+export type FolioAIBlockStructuralBoundary = {
+  type: "pageBreak";
+  offset: number;
+  clear?: BreakContent["clear"];
 };
 
 /**
@@ -82,6 +94,7 @@ export type FolioAIBlock = {
    */
   listLevel?: number;
   previewRuns?: FolioAIBlockPreviewRun[];
+  structuralBoundaries?: FolioAIBlockStructuralBoundary[];
   table?: FolioAIBlockTableLocation;
 };
 
@@ -140,6 +153,8 @@ export type FolioAIBlockAnchor = {
   text: string;
   normalizedText: string;
   textHash: string;
+  /** Hash of zero-width structural boundaries in the clean block view. */
+  structuralBoundaryHash: string;
   hashOccurrenceCount: number;
 };
 

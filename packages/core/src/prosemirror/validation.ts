@@ -12,6 +12,8 @@ import {
   readFontSizeMarkAttrs,
   readFootnoteRefMarkAttrs,
   readHardBreakAttrs,
+  readPageBreakRunAttrs,
+  readPageBreakRunOwnerMarkAttrs,
   readHighlightMarkAttrs,
   readHyperlinkMarkAttrs,
   readImageAttrs,
@@ -313,6 +315,10 @@ const validateNodeAttrs = (
       appendAttrIssues(path, readHardBreakAttrs(node), issues);
       return;
 
+    case "pageBreakRun":
+      appendAttrIssues(path, readPageBreakRunAttrs(node), issues);
+      return;
+
     case "paragraph":
       appendAttrIssues(path, readParagraphAttrs(node), issues);
       return;
@@ -501,6 +507,10 @@ const validateMarks = (
 
       case "runPropertyChange":
         appendAttrIssues(markPath, readRunPropertyChangeMarkAttrs(mark), issues);
+        continue;
+
+      case "pageBreakRunOwner":
+        appendAttrIssues(markPath, readPageBreakRunOwnerMarkAttrs(mark), issues);
         continue;
 
       case "runFormattingOverride":

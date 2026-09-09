@@ -47,7 +47,6 @@ import type {
   DrawingContent,
   MoveFrom,
   MoveTo,
-  TrackedRunContent,
   MathEquation,
   ShapeTextBody,
   Theme,
@@ -143,6 +142,7 @@ const createTextBoxGroupIdFactory = (): (() => string) => {
 };
 
 type HyperlinkInstanceIndexAllocator = () => number;
+type PageBreakRunOwnerIdAllocator = () => number;
 
 /** Keep imported hyperlink identity unique across every nested conversion scope. */
 const createHyperlinkInstanceIndexAllocator = (): HyperlinkInstanceIndexAllocator => {
@@ -298,41 +298,12 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
     const out: PMNode[] = [];
     for (const block of blocks) {
       if (block.type === "paragraph") {
-        const pbPos = paragraphPageBreakPosition(block);
-        if (pbPos === "before") {
-          out.push(schema.node("pageBreak"));
-        }
-        const converted = convertParagraphWithTextBoxes(block, styleResolver, {
-          textBoxGroupId: nextTextBoxGroupId(),
-          context: conversionContext,
-        });
-        const firstConverted = converted.at(0);
-        if (
-          pbPos === "before" &&
-          converted.length === 1 &&
-          firstConverted?.type.name === "paragraph" &&
-          firstConverted.content.size === 0 &&
-          document.package.settings?.splitPageBreakAndParagraphMark !== true
-        ) {
-          const paragraph = firstConverted;
-          converted[0] = recreateProseNodeWithParagraphPropertySource(paragraph, {
-            attrs: { ...paragraph.attrs, _pageBreakCarrier: true },
-          });
-        }
-        if (pbPos === "after") {
-          const paragraphIndex = converted.findIndex((node) => node.type.name === "paragraph");
-          const trailingParagraph = paragraphIndex >= 0 ? converted.at(paragraphIndex) : undefined;
-          if (trailingParagraph) {
-            converted[paragraphIndex] = recreateProseNodeWithParagraphPropertySource(
-              trailingParagraph,
-              { attrs: { ...trailingParagraph.attrs, _trailingPageBreak: true } },
-            );
-          }
-        }
-        out.push(...converted);
-        if (pbPos === "after") {
-          out.push(schema.node("pageBreak"));
-        }
+        out.push(
+          ...convertParagraphWithTextBoxes(block, styleResolver, {
+            textBoxGroupId: nextTextBoxGroupId(),
+            context: conversionContext,
+          }),
+        );
       } else if (block.type === "table") {
         out.push(convertTable(block, styleResolver, conversionContext));
       } else {
@@ -436,6 +407,8 @@ function convertParagraph(
   tableParagraphOverlay?: TableCellParagraphSpacingOverlay,
   textBoxAnchors?: ReadonlyMap<Shape, string>,
 ): PMNode {
+  let pageBreakRunOwnerId = 0;
+  const nextPageBreakRunOwnerId = (): number => pageBreakRunOwnerId++;
   const attrs = paragraphFormattingToAttrs(paragraph, styleResolver, tableParagraphOverlay);
   const isTocParagraph = attrs._tableOfContentsLevel !== undefined;
   const inlineNodes: PMNode[] = [];
@@ -610,6 +583,7 @@ function convertParagraph(
         change,
         markType,
         nextHyperlinkInstanceIndex,
+        nextPageBreakRunOwnerId,
         getInheritedRunFormatting,
         styleResolver,
         moveKind,
@@ -630,6 +604,7 @@ function convertParagraph(
         convertRun(
           content,
           getInheritedRunFormatting(content.formatting),
+          nextPageBreakRunOwnerId,
           styleResolver,
           textBoxAnchors,
         ),
@@ -641,6 +616,7 @@ function convertParagraph(
         styleResolver,
         hyperlinkIndex: currentHyperlinkIndex,
         textBoxAnchors,
+        nextPageBreakRunOwnerId,
       });
       if (linkNodes.length === 0) {
         emptyHyperlinks ??= [];
@@ -660,6 +636,7 @@ function convertParagraph(
           getInheritedRunFormatting,
           styleResolver,
           nextHyperlinkInstanceIndex,
+          nextPageBreakRunOwnerId,
           textBoxAnchors,
         }),
       );
@@ -668,6 +645,7 @@ function convertParagraph(
         convertInlineSdt(
           content,
           nextHyperlinkInstanceIndex,
+          nextPageBreakRunOwnerId,
           getInheritedRunFormatting,
           styleResolver,
           textBoxAnchors,
@@ -780,6 +758,7 @@ function convertTrackedChange(
   change: Insertion | Deletion | MoveFrom | MoveTo,
   markType: "insertion" | "deletion",
   nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator,
+  nextPageBreakRunOwnerId: PageBreakRunOwnerIdAllocator,
   getInheritedRunFormatting: RunFormattingResolver,
   styleResolver?: StyleEngine | null,
   moveKind: "moveFrom" | "moveTo" | null = null,
@@ -792,6 +771,7 @@ function convertTrackedChange(
         ...convertRun(
           item,
           getInheritedRunFormatting(item.formatting),
+          nextPageBreakRunOwnerId,
           styleResolver,
           textBoxAnchors,
         ),
@@ -804,6 +784,7 @@ function convertTrackedChange(
           styleResolver,
           hyperlinkIndex: currentHyperlinkIndex,
           textBoxAnchors,
+          nextPageBreakRunOwnerId,
         }),
       );
     } else if (item.type === "simpleField" || item.type === "complexField") {
@@ -811,6 +792,7 @@ function convertTrackedChange(
         getInheritedRunFormatting,
         styleResolver,
         nextHyperlinkInstanceIndex,
+        nextPageBreakRunOwnerId,
         textBoxAnchors,
       });
       if (fieldNode) {
@@ -830,6 +812,7 @@ function convertTrackedChange(
           item,
           nestedMarkType,
           nextHyperlinkInstanceIndex,
+          nextPageBreakRunOwnerId,
           getInheritedRunFormatting,
           styleResolver,
           nestedMoveKind,
@@ -2340,6 +2323,7 @@ type ConvertFieldOptions = {
   getInheritedRunFormatting: RunFormattingResolver;
   styleResolver: StyleEngine | null | undefined;
   nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator;
+  nextPageBreakRunOwnerId: PageBreakRunOwnerIdAllocator;
   textBoxAnchors: ReadonlyMap<Shape, string> | undefined;
 };
 
@@ -2349,6 +2333,7 @@ function convertField(
     getInheritedRunFormatting,
     styleResolver,
     nextHyperlinkInstanceIndex,
+    nextPageBreakRunOwnerId,
     textBoxAnchors,
   }: ConvertFieldOptions,
 ): PMNode | null {
@@ -2375,6 +2360,7 @@ function convertField(
       ...convertRun(
         run,
         getInheritedRunFormatting(run.formatting, field.fieldType),
+        nextPageBreakRunOwnerId,
         styleResolver,
         textBoxAnchors,
       ),
@@ -2404,6 +2390,7 @@ function convertField(
           styleResolver,
           hyperlinkIndex: nextHyperlinkInstanceIndex(),
           textBoxAnchors,
+          nextPageBreakRunOwnerId,
         }),
       );
     }
@@ -2471,6 +2458,7 @@ function convertMathEquation(math: MathEquation): PMNode | null {
 function convertInlineSdt(
   sdt: InlineSdt,
   nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator,
+  nextPageBreakRunOwnerId: PageBreakRunOwnerIdAllocator,
   getInheritedRunFormatting: RunFormattingResolver,
   styleResolver?: StyleEngine | null,
   textBoxAnchors?: ReadonlyMap<Shape, string>,
@@ -2483,6 +2471,7 @@ function convertInlineSdt(
       const runNodes = convertRun(
         content,
         getInheritedRunFormatting(content.formatting),
+        nextPageBreakRunOwnerId,
         styleResolver,
         textBoxAnchors,
       );
@@ -2494,6 +2483,7 @@ function convertInlineSdt(
         styleResolver,
         hyperlinkIndex: currentHyperlinkIndex,
         textBoxAnchors,
+        nextPageBreakRunOwnerId,
       });
       inlineNodes.push(...linkNodes);
     } else if (content.type === "simpleField" || content.type === "complexField") {
@@ -2501,6 +2491,7 @@ function convertInlineSdt(
         getInheritedRunFormatting,
         styleResolver,
         nextHyperlinkInstanceIndex,
+        nextPageBreakRunOwnerId,
         textBoxAnchors,
       });
       if (fieldNode) {
@@ -2510,6 +2501,7 @@ function convertInlineSdt(
       const nestedSdt = convertInlineSdt(
         content,
         nextHyperlinkInstanceIndex,
+        nextPageBreakRunOwnerId,
         getInheritedRunFormatting,
         styleResolver,
         textBoxAnchors,
@@ -2523,6 +2515,7 @@ function convertInlineSdt(
           content,
           "insertion",
           nextHyperlinkInstanceIndex,
+          nextPageBreakRunOwnerId,
           getInheritedRunFormatting,
           styleResolver,
           null,
@@ -2535,6 +2528,7 @@ function convertInlineSdt(
           content,
           "deletion",
           nextHyperlinkInstanceIndex,
+          nextPageBreakRunOwnerId,
           getInheritedRunFormatting,
           styleResolver,
           null,
@@ -2547,6 +2541,7 @@ function convertInlineSdt(
           content,
           "insertion",
           nextHyperlinkInstanceIndex,
+          nextPageBreakRunOwnerId,
           getInheritedRunFormatting,
           styleResolver,
           "moveTo",
@@ -2559,6 +2554,7 @@ function convertInlineSdt(
           content,
           "deletion",
           nextHyperlinkInstanceIndex,
+          nextPageBreakRunOwnerId,
           getInheritedRunFormatting,
           styleResolver,
           "moveFrom",
@@ -2591,9 +2587,11 @@ function convertInlineSdt(
 function convertRun(
   run: Run,
   resolvedStyleFormatting: ResolvedRunFormatting,
+  nextPageBreakRunOwnerId: PageBreakRunOwnerIdAllocator,
   styleResolver?: StyleEngine | null,
   textBoxAnchors?: ReadonlyMap<Shape, string>,
 ): PMNode[] {
+  assertPageBreakSourceRunIsRepresentable(run);
   const nodes: PMNode[] = [];
   const { marks, mergedFormatting } = buildRunMarks(
     run.formatting,
@@ -2603,6 +2601,9 @@ function convertRun(
   if (run.propertyChanges && run.propertyChanges.length > 0) {
     marks.push(schema.mark("runPropertyChange", { changes: [...run.propertyChanges] }));
   }
+  if (run.content.some((content) => content.type === "break" && content.breakType === "page")) {
+    marks.push(schema.mark("pageBreakRunOwner", { id: nextPageBreakRunOwnerId() }));
+  }
 
   for (const content of run.content) {
     const contentNodes = convertRunContent(content, marks, mergedFormatting, textBoxAnchors);
@@ -2610,6 +2611,47 @@ function convertRun(
   }
 
   return nodes;
+}
+
+function assertPageBreakSourceRunIsRepresentable(run: Run): void {
+  const hasPageBreak = run.content.some(
+    (content) => content.type === "break" && content.breakType === "page",
+  );
+  if (!hasPageBreak) {
+    return;
+  }
+
+  for (const content of run.content) {
+    switch (content.type) {
+      case "break":
+      case "drawing":
+      case "endnoteRef":
+      case "footnoteRef":
+      case "renderedPageBreak":
+      case "symbol":
+      case "tab":
+      case "text":
+        continue;
+      case "shape":
+        if (content.shape.textBody) {
+          panic(
+            "A page-break-bearing run containing a text-box shape cannot be represented in the editor model",
+          );
+        }
+        continue;
+      case "fieldChar":
+      case "instrText":
+      case "noBreakHyphen":
+      case "softHyphen":
+        panic(
+          `A page-break-bearing run containing ${content.type} cannot be represented in the editor model`,
+        );
+      default: {
+        const unsupported: never = content;
+        panic(`Unsupported page-break-bearing run content: ${JSON.stringify(unsupported)}`);
+      }
+    }
+  }
 }
 
 /**
@@ -3064,13 +3106,27 @@ function convertRunContent(
 
     case "break":
       if (content.breakType === "textWrapping" || !content.breakType) {
-        return [schema.node("hardBreak").mark(marks)];
+        const attrs = {
+          ...(content.breakType !== undefined ? { breakType: content.breakType } : {}),
+          ...(content.clear !== undefined ? { clear: content.clear } : {}),
+        };
+        return [schema.node("hardBreak", attrs).mark(marks)];
       }
       if (content.breakType === "column") {
-        return [schema.node("hardBreak", { breakType: "column" }).mark(marks)];
+        return [
+          schema
+            .node("hardBreak", {
+              breakType: "column",
+              ...(content.clear !== undefined ? { clear: content.clear } : {}),
+            })
+            .mark(marks),
+        ];
       }
-      // Page breaks are represented as block separators by paragraphPageBreakPosition.
-      return [];
+      return [
+        schema
+          .node("pageBreakRun", content.clear === undefined ? undefined : { clear: content.clear })
+          .mark(marks),
+      ];
 
     case "renderedPageBreak":
       return [schema.node("renderedPageBreak").mark(marks)];
@@ -3086,7 +3142,7 @@ function convertRunContent(
 
     case "drawing":
       return [
-        withHyperlinkBoundaryMarks(
+        withRunBoundaryMarks(
           convertImage({
             image: content.image,
             rawXml: content.rawXml,
@@ -3104,7 +3160,7 @@ function convertRunContent(
         const anchorId = textBoxAnchors?.get(shp);
         return anchorId ? [schema.node("textBoxAnchor", { anchorId }).mark(marks)] : [];
       }
-      return [withHyperlinkBoundaryMarks(convertShape(shp), marks)];
+      return [withRunBoundaryMarks(convertShape(shp), marks)];
     }
 
     case "footnoteRef": {
@@ -3150,8 +3206,11 @@ function convertRunContent(
   }
 }
 
-function withHyperlinkBoundaryMarks(node: PMNode, marks: ReturnType<typeof schema.mark>[]): PMNode {
-  if (!marks.some((mark) => mark.type.name === "hyperlink")) {
+function withRunBoundaryMarks(node: PMNode, marks: ReturnType<typeof schema.mark>[]): PMNode {
+  const ownsWrapperOrSourceRun = marks.some(
+    ({ type }) => type.name === "hyperlink" || type.name === "pageBreakRunOwner",
+  );
+  if (!ownsWrapperOrSourceRun) {
     return node;
   }
 
@@ -3392,6 +3451,7 @@ type ConvertHyperlinkOptions = {
   styleResolver: StyleEngine | null | undefined;
   hyperlinkIndex: number;
   textBoxAnchors: ReadonlyMap<Shape, string> | undefined;
+  nextPageBreakRunOwnerId: PageBreakRunOwnerIdAllocator;
 };
 
 function convertHyperlink(
@@ -3401,6 +3461,7 @@ function convertHyperlink(
     styleResolver,
     hyperlinkIndex,
     textBoxAnchors,
+    nextPageBreakRunOwnerId,
   }: ConvertHyperlinkOptions,
 ): PMNode[] {
   const nodes: PMNode[] = [];
@@ -3439,6 +3500,7 @@ function convertHyperlink(
       continue;
     }
     if (child.type === "run") {
+      assertPageBreakSourceRunIsRepresentable(child);
       // Merge style formatting with run's inline formatting
       const inheritedFormatting = getInheritedRunFormatting(child.formatting);
       const { marks: runMarks, mergedFormatting } = buildRunMarks(
@@ -3446,11 +3508,16 @@ function convertHyperlink(
         inheritedFormatting,
         styleResolver,
       );
+      if (child.propertyChanges && child.propertyChanges.length > 0) {
+        runMarks.push(schema.mark("runPropertyChange", { changes: [...child.propertyChanges] }));
+      }
+      if (
+        child.content.some((content) => content.type === "break" && content.breakType === "page")
+      ) {
+        runMarks.push(schema.mark("pageBreakRunOwner", { id: nextPageBreakRunOwnerId() }));
+      }
       // Add link mark to run marks
       const allMarks = [...runMarks, linkMark];
-      if (child.propertyChanges && child.propertyChanges.length > 0) {
-        allMarks.push(schema.mark("runPropertyChange", { changes: [...child.propertyChanges] }));
-      }
 
       // Delegate to convertRunContent so tabs/breaks/fields/symbols inside
       // a hyperlink round-trip (eigenpal #566). The earlier text-only loop
@@ -4363,225 +4430,6 @@ export function headerFooterToProseDoc(
 
 export function footnoteToProseDoc(content: BlockContent[], options?: ToProseDocOptions): PMNode {
   return headerFooterToProseDoc(content, options);
-}
-
-/**
- * Determine where a page break appears inside a paragraph.
- *
- * Per ECMA-376 §17.3.3.1, `<w:br w:type="page"/>` is always a forced break,
- * including in a paragraph whose only content is the break itself. We previously
- * searched only top-level runs and missed breaks nested in hyperlinks, tracked
- * changes, or fields — so those paragraphs silently dropped their forced break
- * and the following content collapsed onto the previous page (common on legal
- * signature pages and exhibit covers).
- * See eigenpal docx-editor #409 (break-only page break sub-fix).
- *
- * Returns:
- *   "before" — the break appears before any visible content; the paragraph's
- *              content belongs on the NEXT page.
- *   "after"  — the break follows some visible content; the paragraph stays
- *              on the current page and the next block starts a new page.
- *   null     — no page break found.
- */
-function paragraphPageBreakPosition(paragraph: Paragraph): "before" | "after" | null {
-  if (!mayContainPageBreak(paragraph)) {
-    return null;
-  }
-
-  return findParagraphPageBreakPosition(paragraph);
-}
-
-function mayContainPageBreak(paragraph: Paragraph): boolean {
-  for (const item of paragraph.content) {
-    if (item.type === "run") {
-      for (const content of item.content) {
-        if (content.type === "break" && content.breakType === "page") {
-          return true;
-        }
-      }
-      continue;
-    }
-
-    if (
-      item.type === "hyperlink" ||
-      item.type === "simpleField" ||
-      item.type === "complexField" ||
-      item.type === "inlineSdt" ||
-      item.type === "insertion" ||
-      item.type === "deletion" ||
-      item.type === "moveFrom" ||
-      item.type === "moveTo"
-    ) {
-      return true;
-    }
-
-    if (
-      item.type === "bookmarkStart" ||
-      item.type === "bookmarkEnd" ||
-      item.type === "commentRangeStart" ||
-      item.type === "commentRangeEnd" ||
-      item.type === "commentReference" ||
-      item.type === "moveFromRangeStart" ||
-      item.type === "moveFromRangeEnd" ||
-      item.type === "moveToRangeStart" ||
-      item.type === "moveToRangeEnd" ||
-      item.type === "mathEquation"
-    ) {
-      continue;
-    }
-
-    item satisfies never;
-  }
-  return false;
-}
-
-function findParagraphPageBreakPosition(paragraph: Paragraph): "before" | "after" | null {
-  // Mutated by visitRun during traversal. oxlint flow analysis can't see
-  // closure mutations, so a plain `let` here trips no-unnecessary-condition;
-  // wrap in an object to keep the flag genuinely opaque to the linter.
-  const state = { seenVisibleContent: false };
-
-  function isPageBreak(content: RunContent): boolean {
-    return content.type === "break" && content.breakType === "page";
-  }
-
-  function isVisibleRunContent(content: RunContent): boolean {
-    return (
-      (content.type === "text" && content.text.length > 0) ||
-      content.type === "tab" ||
-      content.type === "drawing" ||
-      content.type === "shape" ||
-      content.type === "symbol" ||
-      content.type === "fieldChar" ||
-      content.type === "instrText" ||
-      content.type === "footnoteRef" ||
-      content.type === "endnoteRef" ||
-      content.type === "noBreakHyphen" ||
-      content.type === "softHyphen"
-    );
-  }
-
-  function visitRun(run: Run): boolean {
-    for (const content of run.content) {
-      if (isPageBreak(content)) {
-        return true;
-      }
-      if (isVisibleRunContent(content)) {
-        state.seenVisibleContent = true;
-      }
-    }
-    return false;
-  }
-
-  // Walk a hyperlink's children — runs (which may carry the break) plus
-  // bookmark markers we ignore. Mirrors the inner shape of `Hyperlink`.
-  function visitHyperlinkChildren(hyperlink: Hyperlink): boolean {
-    for (const child of hyperlink.children) {
-      if (child.type === "run" && visitRun(child)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  // Walk tracked-wrapper content recursively. We rely on visitRun to set
-  // state.seenVisibleContent when (and only when) it encounters visible run
-  // content; an empty wrapper must not be treated as visible — an empty
-  // bookmark-only hyperlink before a page break should still classify the
-  // break as "before".
-  function visitRunOrHyperlinkList(children: readonly TrackedRunContent[]): boolean {
-    for (const child of children) {
-      if (child.type === "run" && visitRun(child)) {
-        return true;
-      }
-      if (child.type === "hyperlink" && visitHyperlinkChildren(child)) {
-        return true;
-      }
-      if (child.type === "simpleField") {
-        for (const fieldChild of child.content) {
-          if (fieldChild.type === "run" && visitRun(fieldChild)) {
-            return true;
-          }
-          if (fieldChild.type === "hyperlink" && visitHyperlinkChildren(fieldChild)) {
-            return true;
-          }
-        }
-      }
-      if (child.type === "complexField") {
-        for (const run of child.fieldCode) {
-          if (visitRun(run)) {
-            return true;
-          }
-        }
-        for (const run of child.fieldResult) {
-          if (visitRun(run)) {
-            return true;
-          }
-        }
-      }
-      if (
-        (child.type === "insertion" ||
-          child.type === "deletion" ||
-          child.type === "moveFrom" ||
-          child.type === "moveTo") &&
-        visitRunOrHyperlinkList(child.content)
-      ) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  function visitItem(item: Paragraph["content"][number]): boolean {
-    if (item.type === "run") {
-      return visitRun(item);
-    }
-    if (item.type === "hyperlink") {
-      return visitHyperlinkChildren(item);
-    }
-    if (
-      item.type === "insertion" ||
-      item.type === "deletion" ||
-      item.type === "moveFrom" ||
-      item.type === "moveTo"
-    ) {
-      return visitRunOrHyperlinkList(item.content);
-    }
-    if (item.type === "simpleField") {
-      return visitRunOrHyperlinkList(item.content);
-    }
-    if (item.type === "complexField") {
-      for (const run of item.fieldResult) {
-        if (visitRun(run)) {
-          return true;
-        }
-      }
-      return false;
-    }
-    if (item.type === "inlineSdt") {
-      // SDT.content was widened in PR #508 to carry fields/math/nested SDTs;
-      // recurse via visitItem so each child uses its own visibility rule.
-      for (const child of item.content) {
-        if (visitItem(child)) {
-          return true;
-        }
-      }
-      return false;
-    }
-    if (item.type === "mathEquation") {
-      // OMML math is a visible inline node and cannot itself contain w:br.
-      state.seenVisibleContent = true;
-      return false;
-    }
-    return false;
-  }
-
-  for (const item of paragraph.content) {
-    if (visitItem(item)) {
-      return state.seenVisibleContent ? "after" : "before";
-    }
-  }
-  return null;
 }
 
 /**

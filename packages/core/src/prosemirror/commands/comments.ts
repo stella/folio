@@ -334,7 +334,7 @@ function resolveChange(
           }
           return true;
         }
-        // Text AND inline atoms (image, shape, hardBreak, tab) can carry
+        // Text and tracked run carriers (including zero-width structural atoms) can carry
         // tracked-change marks; widen the visitor so rejecting an inserted
         // picture removes it like inserted text. eigenpal #641.
         if (!node.isInline) {

@@ -26,6 +26,11 @@ export type PositionalText = {
    * preceding block.
    */
   pmPositionAt: (textIndex: number) => number;
+  /**
+   * Resolve a text span without absorbing an explicit zero-width structure.
+   * Returns `null` when the span crosses one.
+   */
+  pmRangeAt: (startTextIndex: number, endTextIndex: number) => { from: number; to: number } | null;
 };
 
 /**
@@ -40,11 +45,20 @@ export function buildPositionalText(
 ): PositionalText {
   const chunks: string[] = [];
   const offsets: number[] = [];
+  const structuralBoundaries: { textOffset: number; from: number; to: number }[] = [];
 
   let textLength = 0;
   let lastBlockEnd: number | null = null;
 
   doc.nodesBetween(from, to, (node, pos) => {
+    if (node.type.name === "pageBreakRun") {
+      structuralBoundaries.push({
+        textOffset: textLength,
+        from: pos,
+        to: pos + node.nodeSize,
+      });
+      return false;
+    }
     if (node.isText) {
       const text = node.text ?? "";
       const startInNode = Math.max(from, pos);
@@ -78,17 +92,39 @@ export function buildPositionalText(
   });
 
   const text = chunks.join("");
+  const pmPositionAt = (textIndex: number): number => {
+    if (textIndex < 0) {
+      return offsets[0] ?? from;
+    }
+    if (textIndex >= offsets.length) {
+      return (offsets.at(-1) ?? from) + 1;
+    }
+    const value = offsets[textIndex];
+    return value ?? from;
+  };
   return {
     text,
-    pmPositionAt: (textIndex: number): number => {
-      if (textIndex < 0) {
-        return offsets[0] ?? from;
+    pmPositionAt,
+    pmRangeAt: (startTextIndex, endTextIndex) => {
+      if (
+        !Number.isInteger(startTextIndex) ||
+        !Number.isInteger(endTextIndex) ||
+        startTextIndex < 0 ||
+        endTextIndex <= startTextIndex ||
+        endTextIndex > text.length ||
+        structuralBoundaries.some(
+          ({ textOffset }) => textOffset > startTextIndex && textOffset < endTextIndex,
+        )
+      ) {
+        return null;
       }
-      if (textIndex >= offsets.length) {
-        return (offsets.at(-1) ?? from) + 1;
+      const rangeFrom = pmPositionAt(startTextIndex);
+      const finalCharacter = offsets[endTextIndex - 1];
+      if (finalCharacter === undefined) {
+        return null;
       }
-      const value = offsets[textIndex];
-      return value ?? from;
+      const rangeTo = finalCharacter + 1;
+      return rangeFrom <= rangeTo ? { from: rangeFrom, to: rangeTo } : null;
     },
   };
 }

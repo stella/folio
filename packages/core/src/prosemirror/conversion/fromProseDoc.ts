@@ -101,6 +101,8 @@ import {
   expectHyperlinkMarkAttrs,
   expectImageAttrs,
   expectMathAttrs,
+  expectPageBreakRunAttrs,
+  expectPageBreakRunOwnerMarkAttrs,
   expectParagraphAttrs,
   expectRunFormattingOverrideMarkAttrs,
   expectRunPropertyChangeMarkAttrs,
@@ -1790,6 +1792,7 @@ function extractParagraphContent(
         hyperlinkKey: string;
       }
     | undefined;
+  const sourceRunOwners = new WeakMap<Run, number>();
   const openedComments = new Set<number>();
 
   // A single comment id must round-trip to a single contiguous comment range.
@@ -1817,6 +1820,45 @@ function extractParagraphContent(
       currentHyperlink = null;
       currentHyperlinkKey = null;
     }
+  };
+
+  const appendDirectRun = (node: PMNode, run: Run, coalescePlainText = false): void => {
+    const marksKey = getMarksKey(node.marks);
+    const ownerId = pageBreakRunOwnerId(node);
+    const currentOwnerId = currentRun ? sourceRunOwners.get(currentRun) : undefined;
+    const currentRunIsPlainText = currentRun?.content.every(
+      (runContent) => runContent.type === "text",
+    );
+    const joinsOwnedSourceRun =
+      ownerId !== undefined &&
+      ownerId === currentOwnerId &&
+      currentRun !== null &&
+      runsShareProperties(currentRun, run);
+    const joinsOrdinaryText =
+      coalescePlainText &&
+      ownerId === undefined &&
+      currentOwnerId === undefined &&
+      currentRunIsPlainText === true &&
+      currentMarksKey === marksKey;
+
+    if (currentRun && (joinsOwnedSourceRun || joinsOrdinaryText)) {
+      if (joinsOrdinaryText) {
+        for (const runContent of run.content) {
+          if (runContent.type === "text") {
+            appendTextToRun(currentRun, runContent.text);
+          }
+        }
+      } else {
+        currentRun.content.push(...run.content);
+      }
+      return;
+    }
+    if (currentRun) {
+      content.push(currentRun);
+    }
+    currentRun = run;
+    currentMarksKey = marksKey;
+    rememberSourceRunOwner(run, node, sourceRunOwners);
   };
 
   const syncCommentRanges = (node: PMNode, offset: number) => {
@@ -2000,6 +2042,7 @@ function extractParagraphContent(
             ...formattingContext,
             hyperlink: currentTrackedChange.hyperlink,
             node,
+            sourceRunOwners,
           });
           return;
         }
@@ -2010,7 +2053,7 @@ function extractParagraphContent(
           node,
         });
         if (run) {
-          currentTrackedChange.hyperlink.children.push(run);
+          appendRunToHyperlink(currentTrackedChange.hyperlink, run, node, sourceRunOwners);
         }
         return;
       }
@@ -2055,8 +2098,17 @@ function extractParagraphContent(
         node,
       });
       if (run) {
-        currentTrackedChange.wrapper.content.push(run);
+        appendRunToTrackedWrapper(currentTrackedChange.wrapper, run, node, sourceRunOwners);
       }
+      return;
+    }
+
+    const ownedRun =
+      linkMark || pageBreakRunOwnerId(node) === undefined
+        ? null
+        : createTrackedChangeRun({ ...formattingContext, marks: node.marks, node });
+    if (ownedRun) {
+      appendDirectRun(node, ownedRun, node.isText);
       return;
     }
 
@@ -2086,6 +2138,7 @@ function extractParagraphContent(
         ...formattingContext,
         hyperlink: currentHyperlink,
         node,
+        sourceRunOwners,
       });
       return;
     }
@@ -2111,30 +2164,32 @@ function extractParagraphContent(
         content.push({ type: "bookmarkEnd", id: attrs.id });
       }
     } else if (node.isText) {
-      const marksKey = getMarksKey(node.marks);
-
-      if (currentRun && currentMarksKey === marksKey) {
-        // Append to current run
-        appendTextToRun(currentRun, node.text || "");
-      } else {
-        // Start new run
-        if (currentRun) {
-          content.push(currentRun);
-        }
-        currentRun = createRunFromText({
+      appendDirectRun(
+        node,
+        createRunFromText({
           ...formattingContext,
           marks: node.marks,
           text: node.text || "",
-        });
-        currentMarksKey = marksKey;
-      }
+        }),
+        true,
+      );
+    } else if (node.type.name === "pageBreakRun") {
+      const { clear } = expectPageBreakRunAttrs(node);
+      appendDirectRun(
+        node,
+        createPageBreakCarrierRun({
+          ...formattingContext,
+          clear,
+          marks: node.marks,
+        }),
+      );
     } else if (node.type.name === "symbol") {
       flushCurrentInline();
       content.push(createSymbolRun(node, node.marks, formattingContext));
     } else if (node.type.name === "hardBreak") {
       // Hard break ends current run
       flushCurrentInline();
-      content.push(createBreakRun(readHardBreakType(node), node.marks, formattingContext));
+      content.push(createBreakRun(expectHardBreakAttrs(node), node.marks, formattingContext));
     } else if (node.type.name === "image") {
       // Image ends current run
       flushCurrentInline();
@@ -2230,69 +2285,57 @@ function createTrackedChangeRun({
   paragraphMarkPrecedesStyle,
   styleResolver,
 }: CreateTrackedChangeRunOptions): Run | null {
+  const formattingContext = {
+    baseParagraphFormatting,
+    inheritedFormatting,
+    paragraphMarkFormatting,
+    paragraphMarkPrecedesStyle,
+    styleResolver,
+  };
   const noteRefMark = marks.find((mark) => mark.type.name === "footnoteRef");
+  let run: Run | null = null;
   if (noteRefMark) {
-    return createNoteReferenceRun(noteRefMark, marks, {
-      baseParagraphFormatting,
-      inheritedFormatting,
-      paragraphMarkFormatting,
-      paragraphMarkPrecedesStyle,
-      styleResolver,
-    });
-  }
-  if (node.isText) {
-    const formatting = marksToTextFormatting(marks, {
-      baseParagraphFormatting,
-      inheritedFormatting,
-      paragraphMarkFormatting,
-      paragraphMarkPrecedesStyle,
-      styleResolver,
-    });
-    const run: Run = {
+    run = createNoteReferenceRun(noteRefMark, marks, formattingContext);
+  } else if (node.isText) {
+    const formatting = marksToTextFormatting(marks, formattingContext);
+    run = {
       type: "run",
       content: node.text ? [{ type: "text", text: node.text }] : [],
       ...(Object.keys(formatting).length > 0 ? { formatting } : {}),
     };
     restoreRunPropertyChanges(run, marks);
+  } else if (node.type.name === "symbol") {
+    run = createSymbolRun(node, marks, formattingContext);
+  } else if (node.type.name === "hardBreak") {
+    run = createBreakRun(expectHardBreakAttrs(node), marks, formattingContext);
+  } else if (node.type.name === "pageBreakRun") {
+    const { clear } = expectPageBreakRunAttrs(node);
+    run = createPageBreakCarrierRun({ ...formattingContext, clear, marks });
+  } else if (node.type.name === "image") {
+    run = createImageRun(node);
+  } else if (node.type.name === "shape") {
+    run = createShapeRun(node);
+  } else if (node.type.name === "tab") {
+    run = createTabRun(node, marks, formattingContext);
+  } else if (node.type.name === "renderedPageBreak") {
+    run = createRenderedPageBreakRun();
+  }
+
+  if (!run || pageBreakRunOwnerId(node) === undefined) {
     return run;
   }
-  if (node.type.name === "symbol") {
-    return createSymbolRun(node, marks, {
-      baseParagraphFormatting,
-      inheritedFormatting,
-      paragraphMarkFormatting,
-      paragraphMarkPrecedesStyle,
-      styleResolver,
-    });
+  if (
+    node.type.name === "image" ||
+    node.type.name === "shape" ||
+    node.type.name === "renderedPageBreak"
+  ) {
+    const formatting = getRunFormattingFromMarks(marks, formattingContext);
+    if (formatting) {
+      run.formatting = formatting;
+    }
+    restoreRunPropertyChanges(run, marks);
   }
-  if (node.type.name === "hardBreak") {
-    return createBreakRun(readHardBreakType(node), marks, {
-      baseParagraphFormatting,
-      inheritedFormatting,
-      paragraphMarkFormatting,
-      paragraphMarkPrecedesStyle,
-      styleResolver,
-    });
-  }
-  if (node.type.name === "image") {
-    return createImageRun(node);
-  }
-  if (node.type.name === "shape") {
-    return createShapeRun(node);
-  }
-  if (node.type.name === "tab") {
-    return createTabRun(node, marks, {
-      baseParagraphFormatting,
-      inheritedFormatting,
-      paragraphMarkFormatting,
-      paragraphMarkPrecedesStyle,
-      styleResolver,
-    });
-  }
-  if (node.type.name === "renderedPageBreak") {
-    return createRenderedPageBreakRun();
-  }
-  return null;
+  return run;
 }
 
 function createEmptyHyperlink(
@@ -2418,6 +2461,7 @@ function createHyperlink(linkMark: Mark): Hyperlink {
 type AddNodeToHyperlinkOptions = RunFormattingContext & {
   hyperlink: Hyperlink;
   node: PMNode;
+  sourceRunOwners: WeakMap<Run, number>;
 };
 
 function addNodeToHyperlink({
@@ -2427,6 +2471,7 @@ function addNodeToHyperlink({
   node,
   paragraphMarkFormatting,
   paragraphMarkPrecedesStyle,
+  sourceRunOwners,
   styleResolver,
 }: AddNodeToHyperlinkOptions): void {
   if (node.type.name === "bookmarkBoundary") {
@@ -2444,6 +2489,23 @@ function addNodeToHyperlink({
     }
     return;
   }
+  const formattingContext = {
+    baseParagraphFormatting,
+    inheritedFormatting,
+    paragraphMarkFormatting,
+    paragraphMarkPrecedesStyle,
+    styleResolver,
+  };
+  const nonLinkMarks = node.marks.filter((mark) => mark.type.name !== "hyperlink");
+  const ownedRun =
+    pageBreakRunOwnerId(node) === undefined
+      ? null
+      : createTrackedChangeRun({ ...formattingContext, marks: nonLinkMarks, node });
+  if (ownedRun) {
+    appendRunToHyperlink(hyperlink, ownedRun, node, sourceRunOwners);
+    return;
+  }
+
   const noteRefMark = node.marks.find((m) => m.type.name === "footnoteRef");
   if (noteRefMark) {
     hyperlink.children.push(
@@ -2458,7 +2520,6 @@ function addNodeToHyperlink({
     return;
   }
 
-  const nonLinkMarks = node.marks.filter((m) => m.type.name !== "hyperlink");
   if (node.isText && node.text) {
     const run = createRunFromText({
       baseParagraphFormatting,
@@ -2488,13 +2549,21 @@ function addNodeToHyperlink({
 
   if (node.type.name === "hardBreak") {
     hyperlink.children.push(
-      createBreakRun(readHardBreakType(node), nonLinkMarks, {
+      createBreakRun(expectHardBreakAttrs(node), nonLinkMarks, {
         baseParagraphFormatting,
         inheritedFormatting,
         paragraphMarkFormatting,
         paragraphMarkPrecedesStyle,
         styleResolver,
       }),
+    );
+    return;
+  }
+
+  if (node.type.name === "pageBreakRun") {
+    const { clear } = expectPageBreakRunAttrs(node);
+    hyperlink.children.push(
+      createPageBreakCarrierRun({ ...formattingContext, clear, marks: nonLinkMarks }),
     );
     return;
   }
@@ -2671,17 +2740,130 @@ function appendTextToRun(run: Run, text: string): void {
   }
 }
 
+function runsShareProperties(left: Run, right: Run): boolean {
+  return (
+    canonicalJson({
+      formatting: left.formatting,
+      propertyChanges: left.propertyChanges,
+    }) ===
+    canonicalJson({
+      formatting: right.formatting,
+      propertyChanges: right.propertyChanges,
+    })
+  );
+}
+
+function pageBreakRunOwnerId(node: PMNode): number | undefined {
+  const mark = node.marks.find(({ type }) => type.name === "pageBreakRunOwner");
+  return mark ? expectPageBreakRunOwnerMarkAttrs(mark).id : undefined;
+}
+
+function canJoinOwnedRuns(
+  previous: Run | undefined,
+  run: Run,
+  node: PMNode,
+  sourceRunOwners: WeakMap<Run, number>,
+): previous is Run {
+  if (!previous || !runsShareProperties(previous, run)) {
+    return false;
+  }
+  const ownerId = pageBreakRunOwnerId(node);
+  return ownerId !== undefined && sourceRunOwners.get(previous) === ownerId;
+}
+
+function rememberSourceRunOwner(
+  run: Run,
+  node: PMNode,
+  sourceRunOwners: WeakMap<Run, number>,
+): void {
+  const ownerId = pageBreakRunOwnerId(node);
+  if (ownerId !== undefined) {
+    sourceRunOwners.set(run, ownerId);
+  }
+}
+
+function appendRunToTrackedWrapper(
+  wrapper: TrackedRunWrapper,
+  run: Run,
+  node: PMNode,
+  sourceRunOwners: WeakMap<Run, number>,
+): void {
+  const previous = wrapper.content.at(-1);
+  if (previous?.type === "run" && canJoinOwnedRuns(previous, run, node, sourceRunOwners)) {
+    previous.content.push(...run.content);
+    return;
+  }
+  wrapper.content.push(run);
+  rememberSourceRunOwner(run, node, sourceRunOwners);
+}
+
+function appendRunToHyperlink(
+  hyperlink: Hyperlink,
+  run: Run,
+  node: PMNode,
+  sourceRunOwners: WeakMap<Run, number>,
+): void {
+  const previous = hyperlink.children.at(-1);
+  if (previous?.type === "run" && canJoinOwnedRuns(previous, run, node, sourceRunOwners)) {
+    previous.content.push(...run.content);
+    return;
+  }
+  hyperlink.children.push(run);
+  rememberSourceRunOwner(run, node, sourceRunOwners);
+}
+
+type CreatePageBreakCarrierRunOptions = RunFormattingContext & {
+  clear?: BreakContent["clear"];
+  marks?: readonly Mark[];
+};
+
+function createPageBreakCarrierRun({
+  baseParagraphFormatting,
+  clear,
+  inheritedFormatting,
+  marks,
+  paragraphMarkFormatting,
+  paragraphMarkPrecedesStyle,
+  styleResolver,
+}: CreatePageBreakCarrierRunOptions): Run {
+  const run: Run = {
+    type: "run",
+    content: [
+      {
+        type: "break",
+        breakType: "page",
+        ...(clear !== undefined ? { clear } : {}),
+      },
+    ],
+  };
+  const formatting = getAtomRunFormattingFromMarks(marks, {
+    baseParagraphFormatting,
+    inheritedFormatting,
+    paragraphMarkFormatting,
+    paragraphMarkPrecedesStyle,
+    styleResolver,
+  });
+  if (formatting) {
+    run.formatting = formatting;
+  }
+  if (marks) {
+    restoreRunPropertyChanges(run, marks);
+  }
+  return run;
+}
+
 /**
  * Create a Run containing a line break
  */
 function createBreakRun(
-  breakType: BreakContent["breakType"] = "textWrapping",
+  attrs: Pick<BreakContent, "breakType" | "clear">,
   marks?: readonly Mark[],
   formattingContext?: MarksToTextFormattingOptions,
 ): Run {
   const breakContent: BreakContent = {
     type: "break",
-    breakType,
+    ...(attrs.breakType !== undefined ? { breakType: attrs.breakType } : {}),
+    ...(attrs.clear !== undefined ? { clear: attrs.clear } : {}),
   };
 
   const run: Run = {
@@ -2703,10 +2885,6 @@ function createRenderedPageBreakRun(): Run {
     type: "run",
     content: [{ type: "renderedPageBreak" }],
   };
-}
-
-function readHardBreakType(node: PMNode): BreakContent["breakType"] {
-  return expectHardBreakAttrs(node).breakType ?? "textWrapping";
 }
 
 /**

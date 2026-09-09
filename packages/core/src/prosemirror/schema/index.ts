@@ -14,6 +14,7 @@ import { createStarterKit } from "../extensions/StarterKit";
 // Re-export type interfaces (used by toProseDoc, fromProseDoc, and other modules)
 export type {
   HardBreakAttrs,
+  PageBreakRunAttrs,
   TabAttrs,
   SymbolAttrs,
   BookmarkBoundaryAttrs,
@@ -47,6 +48,7 @@ export type {
   CommentAttrs,
   TrackedChangeMarkAttrs,
   RunPropertyChangeMarkAttrs,
+  PageBreakRunOwnerMarkAttrs,
   RunFormattingOverrideAttrs,
   RunShadingAttrs,
   HyperlinkAttrs,

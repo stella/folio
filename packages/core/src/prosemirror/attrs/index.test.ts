@@ -4,6 +4,8 @@ import {
   readFieldAttrs,
   expectParagraphAttrs,
   readHardBreakAttrs,
+  readPageBreakRunAttrs,
+  readPageBreakRunOwnerMarkAttrs,
   readCommentMarkAttrs,
   readCharacterSpacingMarkAttrs,
   readFontSizeMarkAttrs,
@@ -556,6 +558,7 @@ describe("ProseMirror attr readers", () => {
   test("rejects malformed hard break attrs", () => {
     const node = schema.nodes.hardBreak.create({
       breakType: "page",
+      clear: "both",
     });
 
     const result = readHardBreakAttrs(node);
@@ -565,6 +568,29 @@ describe("ProseMirror attr readers", () => {
       throw new Error("Expected hard break attrs to be rejected");
     }
     expect(result.issues.map((issue) => issue.path)).toContain("hardBreak.attrs.breakType");
+    expect(result.issues.map((issue) => issue.path)).toContain("hardBreak.attrs.clear");
+  });
+
+  test("rejects malformed page-break run attrs", () => {
+    const node = schema.nodes.pageBreakRun.create({ clear: "both" });
+
+    const result = readPageBreakRunAttrs(node);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.issues.map((issue) => issue.path)).toContain("pageBreakRun.attrs.clear");
+    }
+  });
+
+  test("rejects malformed page-break source-run ownership", () => {
+    const mark = schema.marks.pageBreakRunOwner.create({ id: -1 });
+
+    const result = readPageBreakRunOwnerMarkAttrs(mark);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.issues.map((issue) => issue.path)).toContain("pageBreakRunOwner.attrs.id");
+    }
   });
 
   test("rejects malformed SDT list item attrs", () => {

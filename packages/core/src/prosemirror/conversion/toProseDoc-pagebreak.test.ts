@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { Node as PMNode } from "prosemirror-model";
 
 import type { Document, Paragraph } from "../../types/document";
 import {
@@ -15,6 +16,16 @@ function childTypeNames(pmDoc: ReturnType<typeof toProseDoc>): string[] {
     names.push(pmDoc.child(i).type.name);
   }
   return names;
+}
+
+function descendantsOfType(pmDoc: ReturnType<typeof toProseDoc>, typeName: string) {
+  const nodes: PMNode[] = [];
+  pmDoc.descendants((node) => {
+    if (node.type.name === typeName) {
+      nodes.push(node);
+    }
+  });
+  return nodes;
 }
 
 describe('toProseDoc — hard page break (`<w:br w:type="page"/>`)', () => {
@@ -49,7 +60,7 @@ describe('toProseDoc — hard page break (`<w:br w:type="page"/>`)', () => {
     );
   });
 
-  test("emits pageBreak for a paragraph whose only run content is a page break", () => {
+  test("keeps a break-only run inside its paragraph", () => {
     // <w:p><w:r><w:br w:type="page"/></w:r></w:p>
     const document: Document = {
       package: {
@@ -88,8 +99,8 @@ describe('toProseDoc — hard page break (`<w:br w:type="page"/>`)', () => {
     };
 
     const pmDoc = toProseDoc(document);
-    expect(childTypeNames(pmDoc)).toEqual(["paragraph", "pageBreak", "paragraph", "paragraph"]);
-    expect(pmDoc.child(2).attrs["_pageBreakCarrier"]).toBe(true);
+    expect(childTypeNames(pmDoc)).toEqual(["paragraph", "paragraph", "paragraph"]);
+    expect(pmDoc.child(1).child(0).type.name).toBe("pageBreakRun");
   });
 
   test("keeps an enabled split break-only paragraph as authored page content", () => {
@@ -118,12 +129,13 @@ describe('toProseDoc — hard page break (`<w:br w:type="page"/>`)', () => {
 
     const pmDoc = toProseDoc(document);
 
-    expect(childTypeNames(pmDoc)).toEqual(["pageBreak", "paragraph", "paragraph"]);
+    expect(childTypeNames(pmDoc)).toEqual(["paragraph", "paragraph"]);
+    expect(pmDoc.child(0).child(0).type.name).toBe("pageBreakRun");
+    expect(pmDoc.child(0).attrs["_pageBreakCarrier"]).toBeNull();
     expect(pmDoc.child(1).attrs["_pageBreakCarrier"]).toBeNull();
-    expect(pmDoc.child(2).attrs["_pageBreakCarrier"]).toBeNull();
   });
 
-  test("does not classify a separate authored empty paragraph as a break carrier", () => {
+  test("does not tag a separate authored empty paragraph as a legacy break carrier", () => {
     const document: Document = {
       package: {
         document: {
@@ -145,11 +157,12 @@ describe('toProseDoc — hard page break (`<w:br w:type="page"/>`)', () => {
 
     const pmDoc = toProseDoc(document);
 
-    expect(pmDoc.child(1).attrs["_pageBreakCarrier"]).toBe(true);
-    expect(pmDoc.child(2).attrs["_pageBreakCarrier"]).toBeNull();
+    expect(pmDoc.child(0).child(0).type.name).toBe("pageBreakRun");
+    expect(pmDoc.child(0).attrs["_pageBreakCarrier"]).toBeNull();
+    expect(pmDoc.child(1).attrs["_pageBreakCarrier"]).toBeNull();
   });
 
-  test("emits pageBreak after text for a paragraph with text followed by a break", () => {
+  test("keeps a trailing page break after text in the same paragraph", () => {
     const document: Document = {
       package: {
         document: {
@@ -181,11 +194,13 @@ describe('toProseDoc — hard page break (`<w:br w:type="page"/>`)', () => {
     };
 
     const pmDoc = toProseDoc(document);
-    expect(childTypeNames(pmDoc)).toEqual(["paragraph", "pageBreak", "paragraph"]);
-    expect(pmDoc.child(0).attrs["_trailingPageBreak"]).toBe(true);
+    expect(childTypeNames(pmDoc)).toEqual(["paragraph", "paragraph"]);
+    expect(pmDoc.child(0).child(0).text).toBe("Before");
+    expect(pmDoc.child(0).child(1).type.name).toBe("pageBreakRun");
+    expect(pmDoc.child(0).attrs["_trailingPageBreak"]).toBeNull();
   });
 
-  test("emits pageBreak when the break sits inside a hyperlink wrapper", () => {
+  test("keeps the inline carrier inside a hyperlink wrapper", () => {
     // <w:p><w:hyperlink><w:r><w:br w:type="page"/></w:r></w:hyperlink></w:p>
     const document: Document = {
       package: {
@@ -230,10 +245,12 @@ describe('toProseDoc — hard page break (`<w:br w:type="page"/>`)', () => {
     };
 
     const pmDoc = toProseDoc(document);
-    expect(childTypeNames(pmDoc)).toContain("pageBreak");
+    const pageBreak = descendantsOfType(pmDoc, "pageBreakRun").at(0);
+    expect(pageBreak).toBeDefined();
+    expect(pageBreak?.marks.some((mark) => mark.type.name === "hyperlink")).toBe(true);
   });
 
-  test("emits pageBreak when the break sits inside an inlineSdt wrapper", () => {
+  test("keeps the inline carrier inside an inlineSdt wrapper", () => {
     // <w:p><w:sdt><w:sdtContent><w:r><w:br w:type="page"/></w:r></w:sdtContent></w:sdt></w:p>
     const document: Document = {
       package: {
@@ -278,13 +295,12 @@ describe('toProseDoc — hard page break (`<w:br w:type="page"/>`)', () => {
     };
 
     const pmDoc = toProseDoc(document);
-    expect(childTypeNames(pmDoc)).toContain("pageBreak");
+    expect(descendantsOfType(pmDoc, "pageBreakRun")).toHaveLength(1);
+    expect(descendantsOfType(pmDoc, "sdt")).toHaveLength(1);
   });
 
-  test('classifies a break after a softHyphen as "after"', () => {
+  test("fails closed when a page break shares its source run with a softHyphen", () => {
     // <w:p><w:r><w:softHyphen/><w:br w:type="page"/></w:r></w:p>
-    // The soft hyphen is visible run content, so the break belongs after the
-    // paragraph (paragraph stays on the current page, next block starts new).
     const document: Document = {
       package: {
         document: {
@@ -312,12 +328,12 @@ describe('toProseDoc — hard page break (`<w:br w:type="page"/>`)', () => {
       },
     };
 
-    const pmDoc = toProseDoc(document);
-    expect(childTypeNames(pmDoc)).toEqual(["paragraph", "pageBreak", "paragraph"]);
+    expect(() => toProseDoc(document)).toThrow(
+      "A page-break-bearing run containing softHyphen cannot be represented in the editor model",
+    );
   });
 
-  test('classifies a break after a mathEquation as "after"', () => {
-    // Math equation is visible inline content; a subsequent break sits "after".
+  test("keeps a break after a mathEquation in source order", () => {
     const document: Document = {
       package: {
         document: {
@@ -351,14 +367,14 @@ describe('toProseDoc — hard page break (`<w:br w:type="page"/>`)', () => {
     };
 
     const pmDoc = toProseDoc(document);
-    expect(childTypeNames(pmDoc)).toEqual(["paragraph", "pageBreak", "paragraph"]);
+    expect(childTypeNames(pmDoc)).toEqual(["paragraph", "paragraph"]);
+    expect(descendantsOfType(pmDoc, "pageBreakRun")).toHaveLength(1);
   });
 
-  test('classifies a break after an empty hyperlink as "before"', () => {
+  test("keeps a break after an empty hyperlink before following text", () => {
     // <w:p><w:hyperlink/><w:r><w:br w:type="page"/></w:r><w:r><w:t>x</w:t></w:r></w:p>
-    // Empty hyperlinks (bookmark-only or round-trip placeholders) carry no
-    // visible content, so the break must still classify as "before" and the
-    // following text belongs on the next page.
+    // Empty hyperlinks carry no inline node; the break still retains its exact
+    // position before the following text.
     const document: Document = {
       package: {
         document: {
@@ -396,16 +412,13 @@ describe('toProseDoc — hard page break (`<w:br w:type="page"/>`)', () => {
     };
 
     const pmDoc = toProseDoc(document);
-    const names = childTypeNames(pmDoc);
-    // pageBreak must appear BEFORE the paragraph containing "AfterBreak"
-    const pageBreakIndex = names.indexOf("pageBreak");
-    expect(pageBreakIndex).toBeGreaterThan(-1);
-    // The trailing paragraph (with "AfterBreak") must come after the break.
-    expect(pageBreakIndex).toBeLessThan(names.length - 1);
-    expect(names[pageBreakIndex + 1]).toBe("paragraph");
+    expect(childTypeNames(pmDoc)).toEqual(["paragraph", "paragraph"]);
+    const paragraph = pmDoc.child(1);
+    expect(paragraph.child(0).type.name).toBe("pageBreakRun");
+    expect(paragraph.child(1).text).toBe("AfterBreak");
   });
 
-  test("emits pageBreak when the break sits inside a tracked-change wrapper", () => {
+  test("keeps the inline carrier inside a tracked-change wrapper", () => {
     // <w:p><w:ins><w:r><w:br w:type="page"/></w:r></w:ins></w:p>
     const document: Document = {
       package: {
@@ -454,6 +467,8 @@ describe('toProseDoc — hard page break (`<w:br w:type="page"/>`)', () => {
     };
 
     const pmDoc = toProseDoc(document);
-    expect(childTypeNames(pmDoc)).toContain("pageBreak");
+    const pageBreak = descendantsOfType(pmDoc, "pageBreakRun").at(0);
+    expect(pageBreak).toBeDefined();
+    expect(pageBreak?.marks.some((mark) => mark.type.name === "insertion")).toBe(true);
   });
 });

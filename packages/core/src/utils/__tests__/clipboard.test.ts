@@ -233,6 +233,25 @@ describe("getClipboardImageFiles", () => {
 });
 
 describe("runsToClipboardContent", () => {
+  test.each([undefined, "textWrapping"] as const)(
+    "copies a %s line-break type as a newline",
+    (breakType) => {
+      const run: Run = {
+        type: "run",
+        content: [
+          { type: "text", text: "A" },
+          { type: "break", ...(breakType !== undefined ? { breakType } : {}) },
+          { type: "text", text: "B" },
+        ],
+      };
+
+      expect(runsToClipboardContent([run])).toMatchObject({
+        plainText: "A\nB",
+        html: "A\nB",
+      });
+    },
+  );
+
   test("escapes formatting fields before serializing clipboard HTML", () => {
     const scriptScheme = ["java", "script:"].join("");
     const run: Run = {

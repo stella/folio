@@ -21,6 +21,7 @@ describe("run-formatting inline carrier contract", () => {
       hardBreak: "break-run",
       image: "not-a-run",
       math: "not-a-run",
+      pageBreakRun: "page-break-carrier",
       renderedPageBreak: "not-a-run",
       shape: "not-a-run",
       structuredField: "structured-field",
@@ -35,6 +36,7 @@ describe("run-formatting inline carrier contract", () => {
     ["text-run", () => schema.text("x")],
     ["tab-run", () => schema.node("tab")],
     ["break-run", () => schema.node("hardBreak")],
+    ["page-break-carrier", () => schema.node("pageBreakRun")],
     ["symbol-run", () => schema.node("symbol", { font: "Wingdings", char: "F06F" })],
     [
       "field-run",
@@ -60,6 +62,19 @@ describe("run-formatting inline carrier contract", () => {
 
   test("does not expand an inline atom whose serialization has no run properties", () => {
     expect(expandRunFormattingCarrier(schema.node("renderedPageBreak"), 7)).toBeNull();
+  });
+
+  test("keeps a page-break carrier structural during generic formatting selection", () => {
+    const pageBreak = schema.node("pageBreakRun");
+    const doc = schema.node("doc", null, [schema.node("paragraph", null, [pageBreak])]);
+
+    expect(expandRunFormattingCarrier(pageBreak, 1)).toEqual({
+      disposition: "page-break-carrier",
+      node: pageBreak,
+      position: 1,
+      representations: [{ node: pageBreak, position: 1, role: "owner" }],
+    });
+    expect(selectRunFormattingCarrierRepresentations({ doc, from: 1, to: 2 })).toEqual([]);
   });
 
   test("expands a structured field once into only its serialized run representations", () => {

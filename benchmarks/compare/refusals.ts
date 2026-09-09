@@ -48,6 +48,8 @@ export const REFUSAL_BUCKETS = Object.freeze({
     "Every block is there, in order, at coordinates the block model cannot reach.",
   "round-trip-block-count": "The result holds a different number of blocks than expected.",
   "round-trip-container": "Every block's text matched, but one sits in the wrong container.",
+  "round-trip-inline-structure":
+    "A block's explicit inline structure differs from the expected result.",
   "round-trip-table-geometry":
     "Every block is where it should be, and a table's own properties are not.",
   "round-trip-style": "A block kept a paragraph style the other side changed.",

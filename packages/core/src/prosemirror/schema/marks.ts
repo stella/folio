@@ -154,6 +154,11 @@ export type RunPropertyChangeMarkAttrs = {
   suggestionId?: string;
 };
 
+/** Editor-only identity for one authored run that contains an explicit page break. */
+export type PageBreakRunOwnerMarkAttrs = {
+  id: number;
+};
+
 export const COMPLEX_SCRIPT_RUN_PROPERTY_KEYS = ["boldCs", "italicCs", "fontSizeCs"] as const;
 
 export type ComplexScriptRunPropertyKey = (typeof COMPLEX_SCRIPT_RUN_PROPERTY_KEYS)[number];

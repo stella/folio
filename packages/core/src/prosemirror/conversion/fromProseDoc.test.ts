@@ -2140,6 +2140,26 @@ describe("fromProseDoc", () => {
     expect(paragraphStartsWithPageBreak(secondBlock)).toBe(true);
   });
 
+  test("normalizes the legacy block boundary to the inline carrier at a fixed point", () => {
+    const legacy = schema.node("doc", null, [
+      schema.node("paragraph", null, [schema.text("Before")]),
+      schema.node("pageBreak"),
+      schema.node("paragraph", null, [schema.text("After")]),
+    ]);
+
+    const normalized = toProseDoc(fromProseDoc(legacy));
+    const normalizedAgain = toProseDoc(fromProseDoc(normalized));
+
+    expect(normalized.toJSON()).toEqual(normalizedAgain.toJSON());
+    expect(
+      Array.from(
+        { length: normalized.childCount },
+        (_, index) => normalized.child(index).type.name,
+      ),
+    ).toEqual(["paragraph", "paragraph"]);
+    expect(normalized.child(1).child(0).type.name).toBe("pageBreakRun");
+  });
+
   test("round-trips imported leading page breaks without inventing paragraphs", () => {
     const document: Document = {
       package: {
@@ -2258,7 +2278,7 @@ describe("fromProseDoc", () => {
     const firstBlock = roundTripped.package.document.content.at(0);
     const secondBlock = roundTripped.package.document.content.at(1);
 
-    expect(pmDoc.child(1).type.name).toBe("pageBreak");
+    expect(pmDoc.child(0).lastChild?.type.name).toBe("pageBreakRun");
     expect(roundTripped.package.document.content).toHaveLength(2);
     expect(firstBlock?.type).toBe("paragraph");
     expect(secondBlock?.type).toBe("table");
@@ -3323,7 +3343,8 @@ describe("fromProseDoc", () => {
     const block = roundTripped.package.document.content.at(0);
 
     expect(pmDoc.childCount).toBe(3);
-    expect(pmDoc.child(0).type.name).toBe("pageBreak");
+    expect(pmDoc.child(0).type.name).toBe("paragraph");
+    expect(pmDoc.child(0).firstChild?.type.name).toBe("pageBreakRun");
     expect(pmDoc.child(1).type.name).toBe("textBox");
     expect(pmDoc.child(2).type.name).toBe("textBox");
     expect(roundTripped.package.document.content).toHaveLength(1);

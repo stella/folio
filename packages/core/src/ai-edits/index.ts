@@ -58,6 +58,7 @@ export type {
   FolioAIBlockAnchor,
   FolioAIBlockKind,
   FolioAIBlockPreviewRun,
+  FolioAIBlockStructuralBoundary,
   FolioAIBlockTableLocation,
   FolioAIComment,
   FolioAIEditAppliedOperation,

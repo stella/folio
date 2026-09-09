@@ -161,8 +161,13 @@ function resolveTextRangeInParagraph({
 }: ResolveTextRangeInParagraphOptions): FindMatchRange | null {
   let textOffset = 0;
   const range = { from: null as number | null, to: null as number | null };
+  const pageBreakOffsets: number[] = [];
 
   paragraph.descendants((node, pos) => {
+    if (node.type.name === "pageBreakRun") {
+      pageBreakOffsets.push(textOffset);
+      return false;
+    }
     const tokenLength = getSearchTextTokenLength(node);
     if (tokenLength === 0) {
       return true;
@@ -172,10 +177,10 @@ function resolveTextRangeInParagraph({
     const textEnd = textStart + tokenLength;
     const nodeStart = paragraphPos + 1 + pos;
 
-    if (range.from === null && startOffset >= textStart && startOffset <= textEnd) {
+    if (range.from === null && startOffset >= textStart && startOffset < textEnd) {
       range.from = nodeStart + Math.min(startOffset - textStart, node.nodeSize);
     }
-    if (range.to === null && endOffset >= textStart && endOffset <= textEnd) {
+    if (range.to === null && endOffset > textStart && endOffset <= textEnd) {
       range.to = nodeStart + Math.min(endOffset - textStart, node.nodeSize);
     }
 
@@ -183,7 +188,12 @@ function resolveTextRangeInParagraph({
     return range.to === null;
   });
 
-  if (range.from === null || range.to === null || range.from >= range.to) {
+  if (
+    range.from === null ||
+    range.to === null ||
+    range.from >= range.to ||
+    pageBreakOffsets.some((offset) => offset > startOffset && offset < endOffset)
+  ) {
     return null;
   }
 

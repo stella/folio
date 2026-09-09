@@ -16,6 +16,7 @@ const schema = new Schema({
     blockSdt: { group: "block", content: "(paragraph | table | blockSdt)+" },
     tab: { group: "inline", inline: true },
     hardBreak: { group: "inline", inline: true },
+    pageBreakRun: { group: "inline", inline: true, atom: true },
     text: { group: "inline" },
   },
 });
@@ -72,6 +73,27 @@ describe("Folio find match selection", () => {
         endOffset: 9,
       }),
     ).toEqual({ from: 5, to: 10 });
+  });
+
+  test("keeps adjacent matches outside a page-break carrier and refuses a crossing match", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [
+        schema.text("left"),
+        schema.node("pageBreakRun"),
+        schema.text("right"),
+      ]),
+    ]);
+    const options = createDefaultFindOptions();
+
+    expect(findInProseMirrorDocument(doc, "left", options).at(0)).toMatchObject({
+      from: 1,
+      to: 5,
+    });
+    expect(findInProseMirrorDocument(doc, "right", options).at(0)).toMatchObject({
+      from: 6,
+      to: 11,
+    });
+    expect(findInProseMirrorDocument(doc, "leftright", options)).toEqual([]);
   });
 
   test("finds and resolves live ranges across body and table paragraphs", () => {
