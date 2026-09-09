@@ -602,6 +602,50 @@ describe("table cell structural revision resolution", () => {
     });
   }
 
+  test("removing a spanning cell splices every physical grid column it owned", () => {
+    const view = dispatcher(
+      EditorState.create({
+        schema: tableSchema,
+        doc: tableSchema.node("doc", null, [
+          tableSchema.node(
+            "table",
+            {
+              columnWidths: [900, 1100, 2400],
+              _originalFormatting: TABLE_GRID_FORMATTING,
+            },
+            [
+              tableSchema.node("tableRow", null, [
+                tableSchema.node(
+                  "tableCell",
+                  {
+                    colspan: 2,
+                    colwidth: [900, 1100],
+                    cellMarker: {
+                      kind: "del",
+                      info: { revisionId: 88, author: "Reviewer", date: "2026-07-16" },
+                    },
+                  },
+                  [tableSchema.node("paragraph", null, [tableSchema.text("Removed")])],
+                ),
+                cell("Survivor", undefined),
+              ]),
+            ],
+          ),
+        ]),
+      }),
+    );
+
+    expect(acceptAIEditRevision(88)(view.state, view.dispatch)).toBe(true);
+
+    const table = view.state.doc.firstChild;
+    if (!table) {
+      throw new Error("expected a table");
+    }
+    expect(table.attrs["columnWidths"]).toEqual([2400]);
+    expect(table.attrs["_originalFormatting"]).toEqual({ sourceXml: "<w:tblPr/>" });
+    expect(TableMap.get(table).width).toBe(1);
+  });
+
   test("an inconsistent authored grid is invalidated when topology changes", () => {
     const view = dispatcher(
       EditorState.create({
