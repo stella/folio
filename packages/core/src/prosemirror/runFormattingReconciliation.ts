@@ -1,12 +1,14 @@
-import { Mark } from "prosemirror-model";
+import { Mark, type Node as PMNode } from "prosemirror-model";
 
 import type { TextFormatting } from "../types/document";
 import { mergeTextFormatting } from "../utils/textFormattingMerge";
 import { marksToTextFormatting } from "./conversion/fromProseDoc";
 import { textFormattingToMarks } from "./conversion/toProseDoc";
+import { expectCharacterStyleMarkAttrs } from "./attrs";
 import { RUN_FORMATTING_MARK_NAMES } from "./runFormattingMarkNames";
 import {
   getParagraphMarkSuppressionOverrides,
+  hasDirectRunFormatting,
   paragraphFormattingForRun,
   resolveEffectiveRunStyleFormatting,
   type ParagraphRunStyleContext,
@@ -36,7 +38,7 @@ export const readAuthoredRunFormatting = ({
 type ReconcileRunFormattingMarksOptions = {
   authoredFormatting: TextFormatting;
   context: ParagraphRunStyleContext;
-  marks: readonly Mark[];
+  node: PMNode;
   styleResolver?: RunStyleResolver | null;
 };
 
@@ -48,12 +50,37 @@ type ReconcileRunFormattingMarksOptions = {
 export const reconcileRunFormattingMarks = ({
   authoredFormatting,
   context,
-  marks,
+  node,
   styleResolver,
 }: ReconcileRunFormattingMarksOptions): readonly Mark[] => {
-  const paragraphFormatting = paragraphFormattingForRun(marks, context, authoredFormatting);
+  const { marks } = node;
+  const currentCharacterStyle = marks.find(({ type }) => type.name === "characterStyle");
+  const currentCharacterStyleAttrs = currentCharacterStyle
+    ? expectCharacterStyleMarkAttrs(currentCharacterStyle)
+    : undefined;
+  const characterStyleType = node.type.schema.marks["characterStyle"];
+  const characterStyle =
+    authoredFormatting.styleId !== undefined && characterStyleType
+      ? characterStyleType.create(
+          currentCharacterStyleAttrs?.styleId === authoredFormatting.styleId
+            ? currentCharacterStyleAttrs
+            : { styleId: authoredFormatting.styleId },
+        )
+      : undefined;
+  const directCarrierType = node.type.schema.marks["runFormattingOverride"];
+  const styleResolutionMarks = [
+    ...(hasDirectRunFormatting(authoredFormatting) && directCarrierType
+      ? [directCarrierType.create()]
+      : []),
+    ...(characterStyle ? [characterStyle] : []),
+  ];
+  const paragraphFormatting = paragraphFormattingForRun(
+    styleResolutionMarks,
+    context,
+    authoredFormatting,
+  );
   const inheritedFormatting = resolveEffectiveRunStyleFormatting({
-    marks,
+    marks: styleResolutionMarks,
     paragraphFormatting,
     ...(styleResolver !== undefined ? { styleResolver } : {}),
   });
@@ -68,11 +95,10 @@ export const reconcileRunFormattingMarks = ({
     overrideFormatting,
     directFormatting: authoredFormatting,
   });
-  const characterStyleMarks = marks.filter(({ type }) => type.name === "characterStyle");
 
   return Mark.setFrom([
     ...marks.filter(({ type }) => !RUN_FORMATTING_MARK_NAMES.has(type.name)),
     ...formattingMarks,
-    ...characterStyleMarks,
+    ...(characterStyle ? [characterStyle] : []),
   ]);
 };

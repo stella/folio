@@ -1,15 +1,9 @@
 import type { Mark, Node as PMNode } from "prosemirror-model";
 
 import type { RunPropertyChange } from "../types/document";
-import { mergeTextFormatting } from "../utils/textFormattingMerge";
-import { expectCharacterStyleMarkAttrs } from "./attrs";
-import { textFormattingToMarks } from "./conversion/toProseDoc";
-import {
-  paragraphFormattingForRun,
-  type ParagraphRunStyleContext,
-  resolveEffectiveRunStyleFormatting,
-  type RunStyleResolver,
-} from "./runStyleFormatting";
+import { RUN_FORMATTING_MARK_NAMES } from "./runFormattingMarkNames";
+import { reconcileRunFormattingMarks } from "./runFormattingReconciliation";
+import { type ParagraphRunStyleContext, type RunStyleResolver } from "./runStyleFormatting";
 
 type ReconstructRejectedRunFormattingMarksOptions = {
   node: PMNode;
@@ -29,41 +23,11 @@ export const reconstructRejectedRunFormattingMarks = ({
   previousFormatting,
   styleResolver,
 }: ReconstructRejectedRunFormattingMarksOptions): readonly Mark[] => {
-  const characterStyleMark = node.marks.find(({ type }) => type.name === "characterStyle");
-  const characterStyleAttrs = characterStyleMark
-    ? expectCharacterStyleMarkAttrs(characterStyleMark)
-    : undefined;
-  const preservedCharacterStyleAttrs =
-    previousFormatting?.styleId !== undefined &&
-    characterStyleAttrs?.styleId === previousFormatting.styleId
-      ? characterStyleAttrs
-      : undefined;
-  const styleFormatting = preservedCharacterStyleAttrs
-    ? resolveEffectiveRunStyleFormatting({
-        marks: node.marks,
-        paragraphFormatting: paragraphFormattingForRun(
-          node.marks,
-          paragraphContext,
-          previousFormatting,
-        ),
-        ...(styleResolver !== undefined ? { styleResolver } : {}),
-      })
-    : paragraphFormattingForRun(node.marks, paragraphContext, previousFormatting);
-  const effectivePreviousFormatting = mergeTextFormatting(styleFormatting, previousFormatting);
-  let marks: readonly Mark[] = [];
-  for (const mark of textFormattingToMarks(effectivePreviousFormatting, {
-    overrideFormatting: previousFormatting,
-    directFormatting: previousFormatting,
-  })) {
-    marks = mark.addToSet(marks);
-  }
-  if (previousFormatting?.styleId) {
-    const characterStyle = node.type.schema.marks["characterStyle"];
-    if (characterStyle) {
-      marks = characterStyle
-        .create(preservedCharacterStyleAttrs ?? { styleId: previousFormatting.styleId })
-        .addToSet(marks);
-    }
-  }
-  return marks;
+  const marks = reconcileRunFormattingMarks({
+    authoredFormatting: previousFormatting ?? {},
+    context: paragraphContext,
+    node,
+    ...(styleResolver !== undefined ? { styleResolver } : {}),
+  });
+  return marks.filter(({ type }) => RUN_FORMATTING_MARK_NAMES.has(type.name));
 };

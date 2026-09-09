@@ -11,10 +11,7 @@ import {
   readAuthoredRunFormatting,
   reconcileRunFormattingMarks,
 } from "./runFormattingReconciliation";
-import {
-  paragraphRunStyleContext,
-  type RunStyleResolver,
-} from "./runStyleFormatting";
+import { paragraphRunStyleContext, type RunStyleResolver } from "./runStyleFormatting";
 
 type RebaseParagraphRunFormattingOptions = {
   nextAttrs: Record<string, unknown>;
@@ -64,8 +61,8 @@ export const setParagraphAttrsWithRebasedRunFormatting = ({
     });
     const nextMarks = reconcileRunFormattingMarks({
       authoredFormatting,
-      marks: node.marks,
       context: nextContext,
+      node,
       styleResolver,
     });
     if (Mark.sameSet(node.marks, nextMarks)) {

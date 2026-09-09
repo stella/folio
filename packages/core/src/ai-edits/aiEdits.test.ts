@@ -346,7 +346,16 @@ describe("Folio AI edit operations", () => {
 
     expect(result.applied.map(({ id }) => id).toSorted()).toEqual(["comment", "format"]);
     const target = view.state.doc.nodeAt(8);
-    expect(target?.marks.map((mark) => mark.type.name).toSorted()).toEqual(["bold", "comment"]);
+    expect(target?.marks.map((mark) => mark.type.name).toSorted()).toEqual([
+      "bold",
+      "comment",
+      "runFormattingOverride",
+    ]);
+    expect(
+      createFolioAIEditSnapshot(view.state.doc)
+        .blocks.at(0)
+        ?.previewRuns?.find(({ text }) => text === "target")?.directFormatting,
+    ).toEqual({ bold: true });
   });
 
   test("tracks range formatting and supports accepting or rejecting it", () => {
@@ -380,7 +389,7 @@ describe("Folio AI edit operations", () => {
 
     const accepting = applyFormatting();
     expect(collectMarksByText(accepting.view.state)).toEqual({
-      target: ["runPropertyChange", "italic"],
+      target: ["italic", "runPropertyChange", "runFormattingOverride"],
     });
     expect(getTrackedChangesFromDoc(accepting.view.state.doc)).toEqual([
       expect.objectContaining({
@@ -391,7 +400,13 @@ describe("Folio AI edit operations", () => {
       }),
     ]);
     acceptAIEditRevision(accepting.revisionId)(accepting.view.state, accepting.view.dispatch);
-    expect(collectMarksByText(accepting.view.state)).toEqual({ target: ["italic"] });
+    expect(collectMarksByText(accepting.view.state)).toEqual({
+      target: ["italic", "runFormattingOverride"],
+    });
+    expect(
+      createFolioAIEditSnapshot(accepting.view.state.doc).blocks.at(0)?.previewRuns?.at(0)
+        ?.directFormatting,
+    ).toEqual({ italic: true });
 
     const rejecting = applyFormatting();
     rejectAIEditRevision(rejecting.revisionId)(rejecting.view.state, rejecting.view.dispatch);
@@ -458,7 +473,9 @@ describe("Folio AI edit operations", () => {
 
     const accepting = applyFormatting();
     acceptAllChanges()(accepting.state, accepting.dispatch);
-    expect(collectMarksByText(accepting.state)).toEqual({ target: ["italic"] });
+    expect(collectMarksByText(accepting.state)).toEqual({
+      target: ["italic", "runFormattingOverride"],
+    });
 
     const rejecting = applyFormatting();
     rejectAllChanges()(rejecting.state, rejecting.dispatch);

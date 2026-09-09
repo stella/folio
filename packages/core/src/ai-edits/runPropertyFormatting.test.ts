@@ -558,6 +558,69 @@ describe("tracked run formatting", () => {
     expectSnapshotFormattingProvenance(reopened.snapshot());
   });
 
+  test("direct formatting authors off and clearing restores inherited formatting", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await createSnapshotFormattingProvenanceDocument(),
+    );
+    const inherited = reviewer
+      .snapshot()
+      .blocks.find(({ text }) => text === "paragraph style inherited");
+    if (!inherited) {
+      throw new Error("expected an inherited formatting block");
+    }
+    const range = createFolioAITextRangeHandle({
+      blockId: inherited.id,
+      text: inherited.text,
+      startOffset: 0,
+      endOffset: inherited.text.length,
+    });
+    if (!range) {
+      throw new Error("expected an inherited formatting range");
+    }
+
+    const authoredOff = reviewer.applyDocumentOperations({
+      version: 1,
+      mode: "direct",
+      operations: [{ id: "bold-off", type: "formatRange", range, formatting: { bold: false } }],
+    });
+    expect(authoredOff.skipped).toEqual([]);
+    const offBuffer = await reviewer.toBuffer();
+    const reopenedOff = await FolioDocxReviewer.fromBuffer(offBuffer);
+    const offBlock = reopenedOff
+      .snapshot()
+      .blocks.find(({ text }) => text === "paragraph style inherited");
+    expect(offBlock?.previewRuns?.at(0)).toMatchObject({ directFormatting: { bold: false } });
+    expect(offBlock?.previewRuns?.at(0)?.bold).toBeUndefined();
+
+    if (!offBlock) {
+      throw new Error("expected the reopened direct-off block");
+    }
+    const clearRange = createFolioAITextRangeHandle({
+      blockId: offBlock.id,
+      text: offBlock.text,
+      startOffset: 0,
+      endOffset: offBlock.text.length,
+    });
+    if (!clearRange) {
+      throw new Error("expected a direct-off formatting range");
+    }
+    const cleared = reopenedOff.applyDocumentOperations({
+      version: 1,
+      mode: "direct",
+      operations: [
+        { id: "bold-inherit", type: "formatRange", range: clearRange, formatting: { bold: null } },
+      ],
+    });
+    expect(cleared.skipped).toEqual([]);
+    const reopenedCleared = await FolioDocxReviewer.fromBuffer(await reopenedOff.toBuffer());
+    const clearedRun = reopenedCleared
+      .snapshot()
+      .blocks.find(({ text }) => text === "paragraph style inherited")
+      ?.previewRuns?.at(0);
+    expect(clearedRun?.bold).toBe(true);
+    expect(clearedRun?.directFormatting).toBeUndefined();
+  });
+
   test("snapshot preserves same-valued direct font properties", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await createSameValuedDirectFormattingDocument(),
