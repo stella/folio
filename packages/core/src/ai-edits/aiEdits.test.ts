@@ -15,6 +15,7 @@ import {
 import { applyFolioAIEditOperations, type FolioWordDiffOptions } from "./apply";
 import { getTrackedChangesFromDoc } from "./read";
 import { createFolioAIEditSnapshot, createFolioAITextRangeHandle } from "./snapshot";
+import type { FolioAIEditOperation } from "./types";
 import { createScopedWordDiffOptions } from "./word-diff";
 
 const schema = new Schema({
@@ -425,7 +426,7 @@ describe("Folio AI edit operations", () => {
     expect(result.skipped).toEqual([{ id: "format", reason: "noopOperation" }]);
   });
 
-  test("preserves stacked formatting revisions in one batch", () => {
+  test("refuses a second formatting owner instead of stacking run-property revisions", () => {
     const applyFormatting = () => {
       const view = makeView(makeState(["target"]));
       const snapshot = createFolioAIEditSnapshot(view.state.doc);
@@ -449,15 +450,15 @@ describe("Folio AI edit operations", () => {
           { id: "italic", type: "formatRange", range, formatting: { italic: true } },
         ],
       });
-      expect(result.skipped).toEqual([]);
-      expect(result.applied).toHaveLength(2);
-      expect(getTrackedChangesFromDoc(view.state.doc)).toHaveLength(2);
+      expect(result.applied.map(({ id }) => id)).toEqual(["italic"]);
+      expect(result.skipped).toEqual([{ id: "bold", reason: "pendingRunPropertyChange" }]);
+      expect(getTrackedChangesFromDoc(view.state.doc)).toHaveLength(1);
       return view;
     };
 
     const accepting = applyFormatting();
     acceptAllChanges()(accepting.state, accepting.dispatch);
-    expect(collectMarksByText(accepting.state)).toEqual({ target: ["bold", "italic"] });
+    expect(collectMarksByText(accepting.state)).toEqual({ target: ["italic"] });
 
     const rejecting = applyFormatting();
     rejectAllChanges()(rejecting.state, rejecting.dispatch);
@@ -1230,7 +1231,7 @@ describe("Folio AI edit operations", () => {
     expect(rejecting.state.doc.child(0).textContent).toBe("Anchor block.");
   });
 
-  test("preserves suggestion and comment attribution when a coalesced run includes a blank", () => {
+  test("refuses a comment on a blank insertion without allocating an orphan", () => {
     const view = makeView(makeState(["Anchor block."]));
     const snapshot = createFolioAIEditSnapshot(view.state.doc);
     let nextCommentId = 40;
@@ -1261,30 +1262,109 @@ describe("Folio AI edit operations", () => {
       revisionStamp: { date: "2026-01-02T03:04:05.000Z", idSeed: 200 },
     });
 
-    expect(result.skipped).toEqual([]);
+    expect(result.skipped).toEqual([{ id: "blank", reason: "unsupportedBlock" }]);
     expect(result.applied).toEqual([
-      {
-        id: "blank",
-        commentId: 41,
-        revisionId: 200,
-        revisionIds: [200],
-        suggestionId: "suggestion-blank",
-      },
       {
         id: "text",
         commentId: 40,
-        revisionId: 201,
-        revisionIds: [201],
+        revisionId: 200,
+        revisionIds: [200],
         suggestionId: "suggestion-text",
       },
     ]);
-    expect(view.state.doc.childCount).toBe(3);
+    expect(result.nextRevisionId).toBe(201);
+    expect(nextCommentId).toBe(41);
+    expect(view.state.doc.childCount).toBe(2);
     expect(view.state.doc.child(1).textContent).toBe("Commented text.");
-    expect(view.state.doc.child(2).textContent).toBe("");
     expect(view.state.doc.child(1).firstChild?.marks.map(({ type }) => type.name)).toEqual([
       "insertion",
       "comment",
     ]);
+  });
+
+  test("commented edits without a surviving inline anchor refuse transactionally", () => {
+    const cases = [
+      {
+        name: "blank insertion",
+        operation: (blockId: string): FolioAIEditOperation => ({
+          id: "blank-insert",
+          type: "insertAfterBlock",
+          blockId,
+          text: "",
+          comment: { text: "Blank insertion comment." },
+        }),
+      },
+      {
+        name: "empty direct replacement",
+        operation: (blockId: string): FolioAIEditOperation => ({
+          id: "empty-replace",
+          type: "replaceInBlock",
+          blockId,
+          find: "Anchor",
+          replace: "",
+          comment: { text: "Deleted text comment." },
+        }),
+      },
+      {
+        name: "empty direct block replacement",
+        operation: (blockId: string): FolioAIEditOperation => ({
+          id: "empty-block-replace",
+          type: "replaceBlock",
+          blockId,
+          text: "",
+          comment: { text: "Deleted block text comment." },
+        }),
+      },
+      {
+        name: "direct block deletion",
+        operation: (blockId: string): FolioAIEditOperation => ({
+          id: "delete",
+          type: "deleteBlock",
+          blockId,
+          comment: { text: "Deleted block comment." },
+        }),
+      },
+      {
+        name: "signature table without a table-comment anchor contract",
+        operation: (blockId: string): FolioAIEditOperation => ({
+          id: "signature",
+          type: "insertSignatureTable",
+          blockId,
+          parties: [{ name: "Buyer" }, { name: "Seller" }],
+          comment: { text: "Signature table comment." },
+        }),
+      },
+    ];
+
+    for (const { name, operation } of cases) {
+      const view = makeView(makeState(["Anchor"]));
+      const before = view.state.doc;
+      const snapshot = createFolioAIEditSnapshot(before);
+      const block = snapshot.blocks.at(0);
+      if (!block) {
+        throw new Error(`expected a block for ${name}`);
+      }
+      let allocations = 0;
+      const result = applyFolioAIEditOperations({
+        view,
+        snapshot,
+        operations: [operation(block.id)],
+        mode: "direct",
+        revisionStamp: { date: "2026-01-02T03:04:05.000Z", idSeed: 900 },
+        createCommentId: () => {
+          allocations += 1;
+          return 42;
+        },
+      });
+
+      expect(result.applied, name).toEqual([]);
+      expect(result.skipped, name).toEqual([
+        { id: operation(block.id).id, reason: "unsupportedBlock" },
+      ]);
+      expect(result.nextRevisionId, name).toBe(900);
+      expect(allocations, name).toBe(0);
+      expect(view.state.doc.eq(before), name).toBe(true);
+    }
   });
 
   test("splits multi-line insertAfterBlock text into consecutive paragraphs and reports a normalization", () => {

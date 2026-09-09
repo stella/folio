@@ -555,6 +555,8 @@ export type FolioAIEditSkipReason =
   | "emptyOperation"
   /** The paragraph already owns the one `w:pPrChange` OOXML permits. */
   | "pendingParagraphPropertyChange"
+  /** The affected run already owns the one `w:rPrChange` OOXML permits. */
+  | "pendingRunPropertyChange"
   /**
    * The operation would not change the document — find equals
    * replace, or replaceBlock's `text` matches the live block.

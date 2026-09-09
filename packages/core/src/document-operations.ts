@@ -1330,6 +1330,7 @@ const recoveryByReason = {
   staleRange: "refreshDocument",
   emptyOperation: "removeOperation",
   pendingParagraphPropertyChange: "resolveTrackedChange",
+  pendingRunPropertyChange: "resolveTrackedChange",
   noopOperation: "removeOperation",
   documentVersionMismatch: "refreshDocument",
   documentNotEditable: "retryLater",
@@ -1353,7 +1354,8 @@ export const getFolioDocumentOperationIssues = (
       retryable:
         reason !== "emptyOperation" &&
         reason !== "noopOperation" &&
-        reason !== "pendingParagraphPropertyChange",
+        reason !== "pendingParagraphPropertyChange" &&
+        reason !== "pendingRunPropertyChange",
       recovery: recoveryByReason[reason],
     };
   });

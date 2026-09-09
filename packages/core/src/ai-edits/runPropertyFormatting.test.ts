@@ -156,13 +156,17 @@ const createHeaderFormattingBaseline = async (): Promise<ArrayBuffer> => {
   return repackDocx(document, { updateModifiedDate: false });
 };
 
-const documentXml = async (buffer: ArrayBuffer): Promise<string> => {
+const packagePart = async (buffer: ArrayBuffer, path: string): Promise<string | null> => {
   const zip = await JSZip.loadAsync(buffer);
-  const part = zip.file("word/document.xml");
-  if (!part) {
+  return zip.file(path)?.async("text") ?? null;
+};
+
+const documentXml = async (buffer: ArrayBuffer): Promise<string> => {
+  const xml = await packagePart(buffer, "word/document.xml");
+  if (xml === null) {
     throw new Error("missing word/document.xml");
   }
-  return part.async("text");
+  return xml;
 };
 
 const applyTrackedBold = async (): Promise<ArrayBuffer> => {
@@ -311,6 +315,167 @@ describe("tracked run formatting", () => {
     const rejectedXml = await documentXml(await rejecting.toBuffer());
     expect(rejectedXml).not.toContain("<w:rPrChange ");
     expect(rejectedXml).not.toContain("<w:b/>");
+  });
+
+  test("never serializes two unresolved formatting revisions on one run", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(await createFormattingBaseline(), {
+      author: "Reviewer",
+    });
+    const block = reviewer.snapshot().blocks.at(0);
+    const range = block
+      ? createFolioAITextRangeHandle({
+          blockId: block.id,
+          text: block.text,
+          startOffset: 0,
+          endOffset: "Formatting".length,
+        })
+      : null;
+    if (!range) {
+      throw new Error("expected a formatting range");
+    }
+
+    const result = reviewer.applyOperations([
+      { id: "bold", type: "formatRange", range, formatting: { bold: true } },
+      { id: "italic", type: "formatRange", range, formatting: { italic: true } },
+    ]);
+    expect(result.applied.map(({ id }) => id)).toEqual(["italic"]);
+    expect(result.skipped).toEqual([{ id: "bold", reason: "pendingRunPropertyChange" }]);
+
+    const tracked = await reviewer.toBuffer();
+    const trackedXml = await documentXml(tracked);
+    expect(trackedXml.match(/<w:rPrChange /gu)).toHaveLength(1);
+    expect(trackedXml).toContain("<w:i/>");
+    expect(trackedXml).not.toContain("<w:b/>");
+
+    const accepting = await FolioDocxReviewer.fromBuffer(tracked);
+    accepting.acceptAll();
+    const acceptedXml = await documentXml(await accepting.toBuffer());
+    expect(acceptedXml).not.toContain("<w:rPrChange ");
+    expect(acceptedXml).toContain("<w:i/>");
+
+    const rejecting = await FolioDocxReviewer.fromBuffer(tracked);
+    rejecting.rejectAll();
+    const rejectedXml = await documentXml(await rejecting.toBuffer());
+    expect(rejectedXml).not.toContain("<w:rPrChange ");
+    expect(rejectedXml).not.toContain("<w:i/>");
+  });
+
+  test("a reopened formatting owner refuses replacement without side effects", async () => {
+    const baseline = await createFormattingBaseline({ formatting: { highlight: "yellow" } });
+    const first = await FolioDocxReviewer.fromBuffer(baseline, { author: "Reviewer" });
+    const firstBlock = first.snapshot().blocks.at(0);
+    const firstRange = firstBlock
+      ? createFolioAITextRangeHandle({
+          blockId: firstBlock.id,
+          text: firstBlock.text,
+          startOffset: 0,
+          endOffset: "Formatting".length,
+        })
+      : null;
+    if (!firstRange) {
+      throw new Error("expected an initial formatting range");
+    }
+    const firstResult = first.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "tracked-changes",
+        operations: [
+          { id: "bold", type: "formatRange", range: firstRange, formatting: { bold: true } },
+        ],
+      },
+      { revisionStamp: { date: "2026-01-02T03:04:05.000Z", idSeed: 700 } },
+    );
+    expect(firstResult.nextRevisionId).toBe(701);
+
+    const tracked = await first.toBuffer();
+    const reopened = await FolioDocxReviewer.fromBuffer(tracked, { author: "Reviewer" });
+    const beforeRefusal = await reopened.toBuffer();
+    const snapshotBeforeRefusal = reopened.snapshot();
+    const reopenedBlock = reopened.snapshot().blocks.at(0);
+    if (!reopenedBlock) {
+      throw new Error("expected a reopened formatting block");
+    }
+    const replacementResult = reopened.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "tracked-changes",
+        operations: [
+          {
+            id: "replace",
+            type: "replaceInBlock",
+            blockId: reopenedBlock.id,
+            find: "Formatting",
+            replace: "Changed",
+            comment: { text: "Explain this replacement." },
+          },
+        ],
+      },
+      { revisionStamp: { date: "2026-01-02T03:04:06.000Z", idSeed: 701 } },
+    );
+
+    expect(replacementResult.status).toBe("committed");
+    expect(replacementResult.applied).toEqual([]);
+    expect(replacementResult.skipped).toEqual([
+      { id: "replace", reason: "pendingRunPropertyChange" },
+    ]);
+    expect(replacementResult.nextRevisionId).toBe(701);
+    expect(reopened.getComments()).toEqual([]);
+    expect(reopened.snapshot()).toEqual(snapshotBeforeRefusal);
+    const afterRefusal = await reopened.toBuffer();
+    expect(await documentXml(afterRefusal)).toBe(await documentXml(beforeRefusal));
+    expect(await packagePart(afterRefusal, "word/comments.xml")).toBe(
+      await packagePart(beforeRefusal, "word/comments.xml"),
+    );
+
+    const followupBlock = reopened.snapshot().blocks.at(0);
+    const followupRange = followupBlock
+      ? createFolioAITextRangeHandle({
+          blockId: followupBlock.id,
+          text: followupBlock.text,
+          startOffset: "Formatting ".length,
+          endOffset: "Formatting target".length,
+        })
+      : null;
+    if (!followupRange) {
+      throw new Error("expected a follow-up formatting range");
+    }
+    const followupResult = reopened.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "tracked-changes",
+        operations: [
+          {
+            id: "italic",
+            type: "formatRange",
+            range: followupRange,
+            formatting: { italic: true },
+          },
+        ],
+      },
+      { revisionStamp: { date: "2026-01-02T03:04:07.000Z", idSeed: 701 } },
+    );
+    expect(followupResult.applied.at(0)?.revisionIds).toEqual([701]);
+    expect(followupResult.nextRevisionId).toBe(702);
+
+    const accepting = await FolioDocxReviewer.fromBuffer(await reopened.toBuffer());
+    accepting.acceptAll();
+    const acceptedBuffer = await accepting.toBuffer();
+    const accepted = await FolioDocxReviewer.fromBuffer(acceptedBuffer);
+    const acceptedXml = await documentXml(acceptedBuffer);
+    expect(acceptedXml).toContain("<w:b/>");
+    expect(acceptedXml).toContain("<w:i/>");
+    expect(acceptedXml).not.toContain("<w:rPrChange ");
+    expect(accepted.getChanges()).toEqual([]);
+
+    const rejecting = await FolioDocxReviewer.fromBuffer(await reopened.toBuffer());
+    rejecting.rejectAll();
+    const rejectedBuffer = await rejecting.toBuffer();
+    const rejected = await FolioDocxReviewer.fromBuffer(rejectedBuffer);
+    const rejectedXml = await documentXml(rejectedBuffer);
+    expect(rejectedXml).not.toContain("<w:b/>");
+    expect(rejectedXml).not.toContain("<w:i/>");
+    expect(rejectedXml).not.toContain("<w:rPrChange ");
+    expect(rejected.getChanges()).toEqual([]);
   });
 
   test("uses the same operation in a secondary document story", async () => {

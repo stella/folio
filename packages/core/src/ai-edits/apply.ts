@@ -1,4 +1,4 @@
-import type { Mark, Node as PMNode, Schema } from "prosemirror-model";
+import type { Mark, MarkType, Node as PMNode, Schema } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 import { canJoin, canSplit } from "prosemirror-transform";
@@ -178,6 +178,61 @@ const coarseWordDiff: ReturnType<typeof createWordDiffSession>["diff"] = (before
   ];
 };
 
+type CommentMarkRange = {
+  from: number;
+  to: number;
+  mark: Mark;
+};
+
+const commentMarkRanges = (
+  doc: PMNode,
+  commentType: MarkType,
+  commentId: number,
+): CommentMarkRange[] => {
+  const ranges: CommentMarkRange[] = [];
+  doc.descendants((node, position) => {
+    for (const mark of node.marks) {
+      if (mark.type === commentType && mark.attrs["commentId"] === commentId) {
+        ranges.push({ from: position, to: position + node.nodeSize, mark });
+      }
+    }
+  });
+  return ranges;
+};
+
+type CommitProvisionalCommentOptions = {
+  tr: Transaction;
+  commentType: MarkType;
+  provisionalId: number;
+  committedId: number;
+};
+
+/**
+ * Replace an operation-local comment id only after its edit has succeeded.
+ * The provisional mark lives solely in the undispatched transaction, so an
+ * operation that refuses or produces no anchor has no external comment side
+ * effect and cannot leave an orphan comments.xml entry behind.
+ */
+const commitProvisionalComment = ({
+  tr,
+  commentType,
+  provisionalId,
+  committedId,
+}: CommitProvisionalCommentOptions): Transaction => {
+  const ranges = commentMarkRanges(tr.doc, commentType, provisionalId);
+  if (ranges.length === 0) {
+    panic("A commented operation changed the document without producing a comment anchor");
+  }
+  if (provisionalId === committedId) {
+    return tr;
+  }
+  for (const { from, to, mark } of ranges) {
+    tr = tr.removeMark(from, to, mark);
+    tr = tr.addMark(from, to, commentType.create({ ...mark.attrs, commentId: committedId }));
+  }
+  return tr;
+};
+
 /**
  * How an apply batch cuts the redline for a replacement. Word-level by
  * default; character granularity marks the changed letters inside a token,
@@ -265,7 +320,12 @@ type ResolvedOperationFields = {
   tableCellSplit?: TableCellSplit;
   /** The table `deleteTable` removes, as it stood before the batch. */
   deletedTable?: { position: number; node: PMNode };
-  commentId?: number;
+  /**
+   * Comment content is carried through planning without allocating its package
+   * id. Allocation is an external side effect, so it happens only after the
+   * operation has proved that it changed the document and produced an anchor.
+   */
+  commentText?: string;
   /**
    * Position in the input `operations` array, used as a secondary
    * sort key so same-position operations preserve the AI's logical
@@ -296,9 +356,56 @@ type ResolvedOperation =
       replaceBlockImpact?: never;
     });
 
+type ResolvedBaseReplaceBlockOperation = Omit<
+  ResolvedReplaceBlockOperation,
+  "originalIndex" | "commentText"
+>;
+type ResolvedBaseNonReplaceBlockOperation = Omit<
+  Exclude<ResolvedOperation, ResolvedReplaceBlockOperation>,
+  "originalIndex" | "commentText"
+>;
+type ResolvedBase = ResolvedBaseReplaceBlockOperation | ResolvedBaseNonReplaceBlockOperation;
+
 const isResolvedReplaceBlockOperation = (
   item: ResolvedOperation,
 ): item is ResolvedReplaceBlockOperation => item.operation.type === "replaceBlock";
+
+const isResolvedBaseReplaceBlockOperation = (
+  item: ResolvedBase,
+): item is ResolvedBaseReplaceBlockOperation => item.operation.type === "replaceBlock";
+
+const hasRepresentableCommentAnchor = (item: ResolvedBase, mode: FolioAIEditApplyMode): boolean => {
+  switch (item.operation.type) {
+    case "insertAfterBlock":
+    case "insertBeforeBlock":
+      return (item.insertTexts ?? [""]).some((text) => stripInlineEmphasisMarkers(text).length > 0);
+    case "insertSignatureTable":
+      // A table-wide range would cross cell boundaries, while choosing one
+      // party silently changes the requested scope. The operation needs an
+      // explicit table-comment anchor contract before it can represent this.
+      return false;
+    case "replaceInBlock":
+    case "replaceRange": {
+      const replacement = stripInlineEmphasisMarkers(item.operation.replace);
+      return replacement.length > 0 || (mode !== "direct" && item.from < item.to);
+    }
+    case "replaceBlock": {
+      if (!isResolvedBaseReplaceBlockOperation(item)) {
+        panic("Resolved replaceBlock operation lost its impact discriminator");
+      }
+      const { changesText } = REPLACE_BLOCK_IMPACT[item.replaceBlockImpact];
+      if (!changesText) {
+        return item.from < item.to;
+      }
+      const replacement = stripInlineEmphasisMarkers(item.operation.text);
+      return replacement.length > 0 || (mode !== "direct" && item.from < item.to);
+    }
+    case "deleteBlock":
+      return mode !== "direct" && item.from < item.to;
+    default:
+      return item.from < item.to;
+  }
+};
 
 const writesParagraphPropertyChange = (item: ResolvedOperation): boolean =>
   item.operation.type === "setBlockParagraphProperties" ||
@@ -857,6 +964,10 @@ type ClearReplacementBackgroundOptions = {
   styleResolver?: ReturnType<typeof getDocumentStyleResolver>;
 };
 
+type TrackedInlineFormattingResult =
+  | { type: "applied"; transaction: Transaction }
+  | { type: "pendingRunPropertyChange"; transaction: Transaction };
+
 const clearReplacementBackground = ({
   tr,
   schema,
@@ -869,21 +980,24 @@ const clearReplacementBackground = ({
   initials,
   suggestionId = null,
   styleResolver,
-}: ClearReplacementBackgroundOptions): Transaction => {
+}: ClearReplacementBackgroundOptions): TrackedInlineFormattingResult => {
   const hasBackground = [schema.marks["highlight"], schema.marks["runShading"]].some(
     (markType) => markType !== undefined && tr.doc.rangeHasMark(from, to, markType),
   );
   if (!hasBackground) {
-    return tr;
+    return { type: "applied", transaction: tr };
   }
   if (mode === "direct") {
-    return applyInlineFormatting({
-      tr,
-      schema,
-      from,
-      to,
-      formatting: REPLACEMENT_BACKGROUND_CLEAR_FORMATTING,
-    });
+    return {
+      type: "applied",
+      transaction: applyInlineFormatting({
+        tr,
+        schema,
+        from,
+        to,
+        formatting: REPLACEMENT_BACKGROUND_CLEAR_FORMATTING,
+      }),
+    };
   }
   return applyTrackedInlineFormatting({
     tr,
@@ -914,18 +1028,19 @@ const applyTrackedInlineFormatting = ({
   initials,
   suggestionId = null,
   styleResolver,
-}: ApplyTrackedInlineFormattingOptions): Transaction => {
+}: ApplyTrackedInlineFormattingOptions): TrackedInlineFormattingResult => {
   const propertyChangeType = schema.marks["runPropertyChange"];
   if (!propertyChangeType) {
-    return tr;
+    return { type: "applied", transaction: tr };
   }
 
   const segments: {
     from: number;
     to: number;
     includedProperties: string[];
-    changes: RunPropertyChange[];
+    change: RunPropertyChange;
   }[] = [];
+  let hasPendingRunPropertyChange = false;
   doc.nodesBetween(from, to, (node, pos) => {
     if (!node.isText) {
       return;
@@ -936,6 +1051,14 @@ const applyTrackedInlineFormatting = ({
     }
     const segmentFrom = Math.max(from, pos);
     const segmentTo = Math.min(to, pos + node.nodeSize);
+    const existingMark = node.marks.find((mark) => mark.type === propertyChangeType);
+    // A run-property container has one revision slot. Appending would create
+    // invalid OOXML; merging would make two independently resolvable edits
+    // share one owner. Refuse the whole operation before mutating any segment.
+    if (existingMark && expectRunPropertyChangeMarkAttrs(existingMark).changes.length > 0) {
+      hasPendingRunPropertyChange = true;
+      return;
+    }
     const styleContext = paragraphRunStyleContextAt(doc, segmentFrom, styleResolver);
     const previousFormatting = marksToTextFormatting(node.marks, {
       baseParagraphFormatting: styleContext.baseParagraphFormatting,
@@ -944,10 +1067,6 @@ const applyTrackedInlineFormatting = ({
       paragraphMarkPrecedesStyle: styleContext.paragraphMarkPrecedesStyle,
       ...(styleResolver !== undefined ? { styleResolver } : {}),
     });
-    const existingMark = node.marks.find((mark) => mark.type === propertyChangeType);
-    const existingChanges = existingMark
-      ? expectRunPropertyChangeMarkAttrs(existingMark).changes
-      : [];
     const change: RunPropertyChange = {
       type: "runPropertyChange",
       info: { id: revisionId, author, date, ...(initials ? { initials } : {}) },
@@ -957,12 +1076,15 @@ const applyTrackedInlineFormatting = ({
       from: segmentFrom,
       to: segmentTo,
       includedProperties,
-      changes: [...existingChanges, change],
+      change,
     });
   });
 
+  if (hasPendingRunPropertyChange) {
+    return { type: "pendingRunPropertyChange", transaction: tr };
+  }
   if (segments.length === 0) {
-    return tr;
+    return { type: "applied", transaction: tr };
   }
   const suggestionAttrs = suggestionId === null ? {} : { provenance: "suggested", suggestionId };
   for (const segment of segments) {
@@ -977,10 +1099,10 @@ const applyTrackedInlineFormatting = ({
     tr.addMark(
       segment.from,
       segment.to,
-      propertyChangeType.create({ changes: segment.changes, ...suggestionAttrs }),
+      propertyChangeType.create({ changes: [segment.change], ...suggestionAttrs }),
     );
   }
-  return tr;
+  return { type: "applied", transaction: tr };
 };
 
 type LiveBlockEntry = { from: number; to: number; node: PMNode };
@@ -1378,6 +1500,12 @@ const isBatchableParagraphInsertion = (
   if (item.operation.type !== "insertAfterBlock" && item.operation.type !== "insertBeforeBlock") {
     return false;
   }
+  // A comment id is committed only after its operation has produced a real
+  // anchor. Keep commented insertions on the per-operation path so no batch
+  // can expose another operation's provisional anchor.
+  if (item.commentText !== undefined) {
+    return false;
+  }
   const insertTexts = item.insertTexts ?? [""];
   const isEmptyInsert = insertTexts.length === 1 && insertTexts[0]?.length === 0;
   return !(mode === "tracked-changes" && item.operation.pageBreakBefore === true && isEmptyInsert);
@@ -1758,6 +1886,41 @@ const applyFolioAIEditOperationsInternal = ({
   const insertionType = view.state.schema.marks["insertion"];
   const deletionType = view.state.schema.marks["deletion"];
   const commentType = view.state.schema.marks["comment"];
+  const occupiedCommentIds = new Set<number>();
+  if (commentType) {
+    view.state.doc.descendants((node) => {
+      for (const mark of node.marks) {
+        if (mark.type !== commentType) {
+          continue;
+        }
+        const commentId = mark.attrs["commentId"];
+        if (typeof commentId === "number") {
+          occupiedCommentIds.add(commentId);
+        }
+      }
+    });
+  }
+  let provisionalCommentIdCursor = Number.MIN_SAFE_INTEGER;
+  const reserveProvisionalCommentId = (): number => {
+    while (occupiedCommentIds.has(provisionalCommentIdCursor)) {
+      provisionalCommentIdCursor += 1;
+    }
+    const id = provisionalCommentIdCursor;
+    provisionalCommentIdCursor += 1;
+    occupiedCommentIds.add(id);
+    return id;
+  };
+  const allocateCommittedCommentId = (text: string): number => {
+    if (createCommentId === undefined) {
+      panic("A resolved comment operation lost its comment-id allocator");
+    }
+    const id = createCommentId(text);
+    if (!Number.isSafeInteger(id) || occupiedCommentIds.has(id)) {
+      panic("A comment-id allocator returned an invalid or duplicate id", { id });
+    }
+    occupiedCommentIds.add(id);
+    return id;
+  };
   const styleResolver = getDocumentStyleResolver(view.state);
   const formattingFromStyleForInsertion = (item: ResolvedOperation) => {
     if (item.operation.type !== "insertAfterBlock" && item.operation.type !== "insertBeforeBlock") {
@@ -1817,6 +1980,10 @@ const applyFolioAIEditOperationsInternal = ({
       skipped.push({ id: operation.id, reason: resolution.reason });
       continue;
     }
+    if (commentText !== undefined && !hasRepresentableCommentAnchor(resolution.operation, mode)) {
+      skipped.push({ id: operation.id, reason: "unsupportedBlock" });
+      continue;
+    }
 
     const deletion = resolution.operation.tableRowDeletion;
     if (deletion) {
@@ -1849,11 +2016,10 @@ const applyFolioAIEditOperationsInternal = ({
       });
     }
 
-    const commentId = commentText !== undefined ? createCommentId?.(commentText) : undefined;
     resolved.push({
       ...resolution.operation,
       originalIndex: index,
-      ...(commentId !== undefined && { commentId }),
+      ...(commentText !== undefined && { commentText }),
     });
   }
 
@@ -2019,10 +2185,6 @@ const applyFolioAIEditOperationsInternal = ({
           const insertionSuggestionId = isSuggested
             ? (insertion.operation.suggestionId ?? insertion.operation.id)
             : null;
-          const insertionCommentMark =
-            insertion.commentId !== undefined && commentType
-              ? commentType.create({ commentId: insertion.commentId })
-              : null;
           const built = buildInsertedParagraphs({
             item: insertion,
             schema: view.state.schema,
@@ -2031,7 +2193,7 @@ const applyFolioAIEditOperationsInternal = ({
             author,
             date,
             initials,
-            commentMark: insertionCommentMark,
+            commentMark: null,
             suggestionId: insertionSuggestionId,
             revisionSeed,
             isPairedMove,
@@ -2040,7 +2202,6 @@ const applyFolioAIEditOperationsInternal = ({
           nodeGroups.push(built.nodes);
           runApplied.push({
             id: insertion.operation.id,
-            ...(insertion.commentId !== undefined && { commentId: insertion.commentId }),
             ...(built.revisionIds[0] !== undefined && {
               revisionId: built.revisionIds[0],
               revisionIds: built.revisionIds,
@@ -2060,9 +2221,11 @@ const applyFolioAIEditOperationsInternal = ({
         continue;
       }
     }
+    const provisionalCommentId =
+      item.commentText !== undefined ? reserveProvisionalCommentId() : undefined;
     const commentMark =
-      item.commentId !== undefined && commentType
-        ? commentType.create({ commentId: item.commentId })
+      provisionalCommentId !== undefined && commentType
+        ? commentType.create({ commentId: provisionalCommentId })
         : null;
 
     // Snapshot the transaction's step count so we can detect when an
@@ -2100,21 +2263,29 @@ const applyFolioAIEditOperationsInternal = ({
       ...(initials ? { initials } : {}),
       ...(suggestionId !== null ? { provenance: "suggested" as const, suggestionId } : {}),
     };
-    // The structural revision a table op writes. Uses the current `revisionSeed`
-    // (each table branch consumes it with `revisionSeed++` after applying); one
-    // op runs per iteration, so no prior increment shifts this value.
+    // Revision allocation is operation-local until the edit commits. Every
+    // refusal path therefore discards its tentative ids by construction; a
+    // later story cannot observe gaps for revisions that were never written.
+    let operationRevisionSeed = revisionSeed;
     const structuralRevision: TableStructureRevision | null = producesTrackedChanges
-      ? { revisionId: revisionSeed, author, date, ...trackedRevisionExtras }
+      ? { revisionId: operationRevisionSeed, author, date, ...trackedRevisionExtras }
       : null;
 
     switch (item.operation.type) {
       case "replaceInBlock":
       case "replaceRange": {
-        const revisionIdDelete = revisionSeed++;
-        const revisionIdInsert = revisionSeed++;
-        const revisionIdBackground = revisionSeed++;
+        const revisionIdDelete = operationRevisionSeed;
+        const revisionIdInsert = producesTrackedChanges
+          ? operationRevisionSeed + 1
+          : operationRevisionSeed;
+        const revisionIdBackground = producesTrackedChanges
+          ? operationRevisionSeed + 2
+          : operationRevisionSeed;
+        if (producesTrackedChanges) {
+          operationRevisionSeed += 3;
+        }
         const stepsBeforeBackgroundClear = tr.steps.length;
-        tr = clearReplacementBackground({
+        const backgroundResult = clearReplacementBackground({
           tr,
           schema: view.state.schema,
           from: item.from,
@@ -2127,6 +2298,11 @@ const applyFolioAIEditOperationsInternal = ({
           suggestionId,
           styleResolver,
         });
+        if (backgroundResult.type === "pendingRunPropertyChange") {
+          skipped.push({ id: item.operation.id, reason: backgroundResult.type });
+          continue;
+        }
+        tr = backgroundResult.transaction;
         const clearedBackground = tr.steps.length > stepsBeforeBackgroundClear;
         tr = applyTextReplacement({
           tr,
@@ -2158,8 +2334,8 @@ const applyFolioAIEditOperationsInternal = ({
       }
       case "formatRange": {
         if (producesTrackedChanges) {
-          const revisionId = revisionSeed++;
-          tr = applyTrackedInlineFormatting({
+          const revisionId = operationRevisionSeed++;
+          const formattingResult = applyTrackedInlineFormatting({
             tr,
             schema: view.state.schema,
             doc: tr.doc,
@@ -2173,6 +2349,11 @@ const applyFolioAIEditOperationsInternal = ({
             suggestionId,
             styleResolver,
           });
+          if (formattingResult.type === "pendingRunPropertyChange") {
+            skipped.push({ id: item.operation.id, reason: formattingResult.type });
+            continue;
+          }
+          tr = formattingResult.transaction;
           appliedRevisionIds = [revisionId];
           break;
         }
@@ -2190,13 +2371,16 @@ const applyFolioAIEditOperationsInternal = ({
           panic("Resolved replaceBlock operation lost its impact discriminator");
         }
         const { changesStyle, changesText } = REPLACE_BLOCK_IMPACT[item.replaceBlockImpact];
-        const revisionIdDelete = revisionSeed;
-        const revisionIdInsert = changesText ? revisionSeed + 1 : revisionSeed;
-        const revisionIdBackground = changesText ? revisionSeed + 2 : revisionSeed;
-        if (changesText) {
-          revisionSeed += 3;
+        const revisionIdDelete = operationRevisionSeed;
+        const revisionIdInsert = changesText ? operationRevisionSeed + 1 : operationRevisionSeed;
+        const revisionIdBackground = changesText
+          ? operationRevisionSeed + 2
+          : operationRevisionSeed;
+        if (producesTrackedChanges && changesText) {
+          operationRevisionSeed += 3;
         }
-        const revisionIdParagraph = producesTrackedChanges && changesStyle ? revisionSeed++ : null;
+        const revisionIdParagraph =
+          producesTrackedChanges && changesStyle ? operationRevisionSeed++ : null;
         // Default to preserving formatting (existing behaviour);
         // when explicitly disabled and we're in direct mode, swap
         // the whole block node for a fresh paragraph that drops
@@ -2210,7 +2394,11 @@ const applyFolioAIEditOperationsInternal = ({
               null,
               replacement.length === 0
                 ? null
-                : buildEmphasisInlineContent(view.state.schema, replacement, []),
+                : buildEmphasisInlineContent(
+                    view.state.schema,
+                    replacement,
+                    commentMark ? [commentMark] : [],
+                  ),
             );
             tr = tr.replaceWith(item.blockFrom, item.blockTo, node);
             tr = applyReplaceBlockStyleId({ item, tr, styleResolver }).tr;
@@ -2238,7 +2426,7 @@ const applyFolioAIEditOperationsInternal = ({
         let clearedBackground = false;
         if (changesText) {
           const stepsBeforeBackgroundClear = tr.steps.length;
-          tr = clearReplacementBackground({
+          const backgroundResult = clearReplacementBackground({
             tr,
             schema: view.state.schema,
             from: item.from,
@@ -2251,6 +2439,11 @@ const applyFolioAIEditOperationsInternal = ({
             suggestionId,
             styleResolver,
           });
+          if (backgroundResult.type === "pendingRunPropertyChange") {
+            skipped.push({ id: item.operation.id, reason: backgroundResult.type });
+            continue;
+          }
+          tr = backgroundResult.transaction;
           clearedBackground = tr.steps.length > stepsBeforeBackgroundClear;
           tr = applyTextReplacement({
             tr,
@@ -2282,6 +2475,9 @@ const applyFolioAIEditOperationsInternal = ({
             : {}),
         });
         tr = styleResult.tr;
+        if (!changesText && commentMark) {
+          tr = tr.addMark(item.from, item.to, commentMark);
+        }
         if (producesTrackedChanges) {
           appliedRevisionIds = [
             ...(changesText ? [revisionIdDelete, revisionIdInsert] : []),
@@ -2316,10 +2512,10 @@ const applyFolioAIEditOperationsInternal = ({
           initials,
           commentMark,
           suggestionId,
-          revisionSeed,
+          revisionSeed: operationRevisionSeed,
           isPairedMove,
         });
-        revisionSeed = built.nextRevisionId;
+        operationRevisionSeed = built.nextRevisionId;
         if (built.revisionIds.length > 0) {
           appliedRevisionIds = built.revisionIds;
         }
@@ -2355,7 +2551,7 @@ const applyFolioAIEditOperationsInternal = ({
         // paragraph runs inside would double-up with the structural addition.
         let node = signatureTable;
         if (isSuggested && suggestionId !== null) {
-          const revisionId = revisionSeed++;
+          const revisionId = operationRevisionSeed++;
           node = signatureTable.type.create(
             {
               ...signatureTable.attrs,
@@ -2402,7 +2598,7 @@ const applyFolioAIEditOperationsInternal = ({
         }
         tr = result.transaction;
         if (result.revisionId !== null) {
-          revisionSeed++;
+          operationRevisionSeed++;
           appliedRevisionIds = [result.revisionId];
         }
         break;
@@ -2432,7 +2628,7 @@ const applyFolioAIEditOperationsInternal = ({
         }
         tr = result.transaction;
         if (result.revisionId !== null) {
-          revisionSeed++;
+          operationRevisionSeed++;
           appliedRevisionIds = [result.revisionId];
         }
         const columnKey = getTableColumnCoordinateKey(insertion);
@@ -2465,7 +2661,7 @@ const applyFolioAIEditOperationsInternal = ({
         }
         tr = result.transaction;
         if (result.revisionId !== null) {
-          revisionSeed++;
+          operationRevisionSeed++;
           appliedRevisionIds = [result.revisionId];
         }
         break;
@@ -2486,7 +2682,7 @@ const applyFolioAIEditOperationsInternal = ({
           });
           continue;
         }
-        const revisionId = mode === "tracked-changes" ? revisionSeed : null;
+        const revisionId = mode === "tracked-changes" ? operationRevisionSeed : null;
         const nextTr =
           revisionId === null
             ? mergeTableRectangle({ tr, tablePosition, table, rectangle: merge.rectangle })
@@ -2508,7 +2704,7 @@ const applyFolioAIEditOperationsInternal = ({
         }
         tr = nextTr;
         if (revisionId !== null) {
-          revisionSeed++;
+          operationRevisionSeed++;
           appliedRevisionIds = [revisionId];
         }
         break;
@@ -2529,7 +2725,7 @@ const applyFolioAIEditOperationsInternal = ({
           });
           continue;
         }
-        const revisionId = mode === "tracked-changes" ? revisionSeed : null;
+        const revisionId = mode === "tracked-changes" ? operationRevisionSeed : null;
         const nextTr =
           revisionId === null
             ? splitTableRectangle({ tr, tablePosition, table, rectangle: split.rectangle })
@@ -2551,7 +2747,7 @@ const applyFolioAIEditOperationsInternal = ({
         }
         tr = nextTr;
         if (revisionId !== null) {
-          revisionSeed++;
+          operationRevisionSeed++;
           appliedRevisionIds = [revisionId];
         }
         break;
@@ -2576,7 +2772,7 @@ const applyFolioAIEditOperationsInternal = ({
         }
         tr = result.transaction;
         if (result.revisionId !== null) {
-          revisionSeed++;
+          operationRevisionSeed++;
           appliedRevisionIds = [result.revisionId];
         }
         break;
@@ -2602,7 +2798,7 @@ const applyFolioAIEditOperationsInternal = ({
         }
 
         if (deletionType) {
-          const revisionId = revisionSeed++;
+          const revisionId = operationRevisionSeed++;
           const deletionMark = deletionType.create({
             revisionId,
             author,
@@ -2651,7 +2847,7 @@ const applyFolioAIEditOperationsInternal = ({
           const markPlace = tr.doc.resolve(markPosition);
           const endsItsContainer = paragraphEndsItsContainer(markPlace, item.blockNode.type.name);
           if (!endsItsContainer && tr.doc.nodeAt(markPosition)?.attrs["pPrMark"] == null) {
-            const markRevisionId = revisionSeed++;
+            const markRevisionId = operationRevisionSeed++;
             tr = tr.setNodeAttribute(markPosition, "pPrMark", {
               kind: isPairedMove(item.operation.moveId) ? "moveFrom" : "del",
               info: { id: markRevisionId, author, date, ...trackedRevisionExtras },
@@ -2667,7 +2863,12 @@ const applyFolioAIEditOperationsInternal = ({
         break;
       }
       case "insertTable": {
-        const revision = { revisionId: revisionSeed, author, date, ...trackedRevisionExtras };
+        const revision = {
+          revisionId: operationRevisionSeed,
+          author,
+          date,
+          ...trackedRevisionExtras,
+        };
         const template = tableTemplates?.get(item.operation.id);
         const table =
           (template === undefined
@@ -2687,7 +2888,7 @@ const applyFolioAIEditOperationsInternal = ({
           continue;
         }
         if (producesTrackedChanges) {
-          appliedRevisionIds = [revisionSeed++];
+          appliedRevisionIds = [operationRevisionSeed++];
         }
         tr = tr.insert(item.from, table);
         markStructuralChange(tr);
@@ -2720,7 +2921,12 @@ const applyFolioAIEditOperationsInternal = ({
           skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
           continue;
         }
-        const revision = { revisionId: revisionSeed++, author, date, ...trackedRevisionExtras };
+        const revision = {
+          revisionId: operationRevisionSeed++,
+          author,
+          date,
+          ...trackedRevisionExtras,
+        };
         const rowPositions: number[] = [];
         let rowOffset = livePosition + 1;
         liveTable.forEach((row) => {
@@ -2785,7 +2991,7 @@ const applyFolioAIEditOperationsInternal = ({
         // restores the properties wholesale within that scope. Storing only
         // the keys this operation touched would leave a reject unable to tell
         // "the change did not set this" from "the change cleared it".
-        const revisionId = revisionSeed++;
+        const revisionId = operationRevisionSeed++;
         const change: ParagraphPropertyChangeAttrs = {
           type: "paragraphPropertyChange",
           info: { id: revisionId, author, date, ...trackedRevisionExtras },
@@ -2808,11 +3014,11 @@ const applyFolioAIEditOperationsInternal = ({
           tr = tr.split(item.from);
           break;
         }
-        const revisionIdMark = revisionSeed++;
+        const revisionIdMark = operationRevisionSeed++;
         const info = { id: revisionIdMark, author, date, ...trackedRevisionExtras };
         appliedRevisionIds = [revisionIdMark];
         if (item.to > item.from && deletionType) {
-          const revisionIdSeparator = revisionSeed++;
+          const revisionIdSeparator = operationRevisionSeed++;
           tr = tr.addMark(
             item.from,
             item.to,
@@ -2842,10 +3048,10 @@ const applyFolioAIEditOperationsInternal = ({
           tr = tr.join(item.blockTo + separator.length);
           break;
         }
-        const revisionIdMark = revisionSeed++;
+        const revisionIdMark = operationRevisionSeed++;
         appliedRevisionIds = [revisionIdMark];
         if (separator.length > 0 && insertionType) {
-          const revisionIdSeparator = revisionSeed++;
+          const revisionIdSeparator = operationRevisionSeed++;
           tr = tr.insertText(separator, insertAt);
           tr = tr.addMark(
             insertAt,
@@ -2884,6 +3090,32 @@ const applyFolioAIEditOperationsInternal = ({
       continue;
     }
 
+    let committedCommentId: number | undefined;
+    if (item.commentText !== undefined) {
+      if (
+        commentType === undefined ||
+        provisionalCommentId === undefined ||
+        commentMarkRanges(tr.doc, commentType, provisionalCommentId).length === 0
+      ) {
+        // Planning accepts comments only for operations with a representable
+        // inline anchor. Reaching this branch means an operation implementation
+        // violated that contract. Nothing has been dispatched and no external
+        // id has been allocated, so fail the whole batch atomically.
+        panic("A commented operation changed the document without producing a comment anchor", {
+          operationId: item.operation.id,
+          operationType: item.operation.type,
+        });
+      }
+      committedCommentId = allocateCommittedCommentId(item.commentText);
+      tr = commitProvisionalComment({
+        tr,
+        commentType,
+        provisionalId: provisionalCommentId,
+        committedId: committedCommentId,
+      });
+    }
+    revisionSeed = operationRevisionSeed;
+
     // Surface the primary id (first one) on the legacy `revisionId`
     // field so callers that just need a stable scroll/visual
     // reference keep working. The full set is on `revisionIds` for
@@ -2891,7 +3123,7 @@ const applyFolioAIEditOperationsInternal = ({
     // this op.
     applied.push({
       id: item.operation.id,
-      ...(item.commentId !== undefined && { commentId: item.commentId }),
+      ...(committedCommentId !== undefined && { commentId: committedCommentId }),
       ...(appliedRevisionIds !== undefined &&
         appliedRevisionIds[0] !== undefined && {
           revisionId: appliedRevisionIds[0],
@@ -3202,11 +3434,6 @@ const applyTextReplacement = ({
 
   return nextTr;
 };
-
-type WithoutResolutionMetadata<T> = T extends ResolvedOperation
-  ? Omit<T, "originalIndex" | "commentId">
-  : never;
-type ResolvedBase = WithoutResolutionMetadata<ResolvedOperation>;
 
 type ResolveOperationArgs = {
   snapshot: FolioAIEditSnapshot;

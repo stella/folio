@@ -10,6 +10,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type { FolioAIBlock, FolioAIBlockTableLocation } from "../ai-edits/types";
+import { getCompareSkipDisposition } from "./compare";
 import { classifyProjectionMismatch, revisedFinalParagraphMarks } from "./verification";
 
 const revision = { id: 1, author: "compare", date: "2024-03-01T00:00:00.000Z" };
@@ -25,6 +26,10 @@ const cell = (content: unknown[]) => ({ type: "tableCell", content });
 const table = (cells: unknown[][]) => ({
   type: "table",
   rows: [{ type: "tableRow", cells: cells.map((content) => cell(content)) }],
+});
+
+test("a singular run-formatting ownership conflict is an unwritable comparison slice", () => {
+  expect(getCompareSkipDisposition("pendingRunPropertyChange")).toBe("unwritable");
 });
 
 describe("revisedFinalParagraphMarks", () => {
