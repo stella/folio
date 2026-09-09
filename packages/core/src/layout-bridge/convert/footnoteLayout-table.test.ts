@@ -2,6 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { panic } from "better-result";
 
 import {
+  EXPECTED_CANCELLED_STYLE_TOGGLES,
+  findStyleToggleRun,
+  makeStyleToggleDefinitions,
+  makeStyleToggleParagraph,
+} from "../../__tests__/styleToggleFlowFixture";
+import {
   fixedCharWidth,
   withFakeTextMeasure,
 } from "../../layout-engine/measure/__tests__/fakeTextMeasure";
@@ -206,6 +212,27 @@ const footnoteWithRowSpanTable: Footnote = {
 };
 
 describe("footnote layout", () => {
+  test("resolves the complete character-style toggle cascade", () => {
+    const styles = makeStyleToggleDefinitions();
+    const content = convertFootnoteToContent(
+      {
+        type: "footnote",
+        id: 12,
+        noteType: "normal",
+        content: [makeStyleToggleParagraph()],
+      },
+      1,
+      400,
+      {
+        styles,
+        measureBlocks: (blocks) =>
+          blocks.map(() => ({ kind: "paragraph" as const, lines: [], totalHeight: 12 })),
+      },
+    );
+
+    expect(findStyleToggleRun(content.blocks)).toMatchObject(EXPECTED_CANCELLED_STYLE_TOGGLES);
+  });
+
   test("applies document line-breaking policy to footnote paragraphs", () => {
     const content = convertFootnoteToContent(footnoteWithTable, 3, 400, {
       measureBlocks: (blocks) =>

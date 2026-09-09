@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
+import {
+  EXPECTED_CANCELLED_STYLE_TOGGLES,
+  findStyleToggleRun,
+  makeStyleToggleDefinitions,
+  makeStyleToggleParagraph,
+} from "../../__tests__/styleToggleFlowFixture";
 import type { FlowBlock, Measure, ParagraphBlock, TableBlock } from "../../layout-engine/types";
 import { headerFooterToProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import { schema } from "../../prosemirror/schema";
@@ -113,6 +119,56 @@ function measureBlocks(blocks: FlowBlock[]): Measure[] {
     };
   });
 }
+
+describe("header/footer character-style cascade", () => {
+  test.each(["header", "footer"] as const)(
+    "resolves every toggle for initial %s content",
+    (section) => {
+      const styles = makeStyleToggleDefinitions();
+      const headerFooter: HeaderFooter = {
+        type: section,
+        hdrFtrType: "default",
+        content: [makeStyleToggleParagraph()],
+      };
+      const result = convertHeaderFooterToContent(
+        headerFooter,
+        456,
+        { ...metrics, section },
+        {
+          styles,
+          measureBlocks,
+        },
+      );
+
+      expect(result).toBeDefined();
+      expect(findStyleToggleRun(result?.blocks ?? [])).toMatchObject(
+        EXPECTED_CANCELLED_STYLE_TOGGLES,
+      );
+    },
+  );
+
+  test.each(["header", "footer"] as const)(
+    "resolves every toggle for live %s ProseMirror content",
+    (section) => {
+      const styles = makeStyleToggleDefinitions();
+      const pmDoc = headerFooterToProseDoc([makeStyleToggleParagraph()], { styles });
+      const result = convertHeaderFooterPmDocToContent(
+        pmDoc,
+        456,
+        { ...metrics, section },
+        {
+          styles,
+          measureBlocks,
+        },
+      );
+
+      expect(result).toBeDefined();
+      expect(findStyleToggleRun(result?.blocks ?? [])).toMatchObject(
+        EXPECTED_CANCELLED_STYLE_TOGGLES,
+      );
+    },
+  );
+});
 
 describe("reserveHeaderFooterFullWidthWrapBands", () => {
   test.each(["header", "footer"] as const)(

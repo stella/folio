@@ -391,6 +391,7 @@ export function runLayoutPipeline<THfPMs>(
     const flowOpts: ToFlowBlocksOptions = {
       pageContentHeight,
       fontAlternates,
+      ...(styles ? { styles } : {}),
     };
     if (_theme !== undefined) {
       flowOpts.theme = _theme;
@@ -540,7 +541,7 @@ export function runLayoutPipeline<THfPMs>(
           buildHeaderFooterFieldValues(hfBlocks, pageCount, hfClock, fieldInputs),
         );
       return {
-        ...(styles ? { styles } : {}),
+        ...(flowOpts.styles ? { styles: flowOpts.styles } : {}),
         ...(_theme !== undefined ? { theme: _theme } : {}),
         fontAlternates,
         measureBlocks: hfMeasureBlocks,
@@ -790,8 +791,8 @@ export function runLayoutPipeline<THfPMs>(
         contentWidth,
         (() => {
           const footnoteOptions: Parameters<typeof buildFootnoteContentMap>[3] = { measureBlocks };
-          if (styles) {
-            footnoteOptions.styles = styles;
+          if (flowOpts.styles) {
+            footnoteOptions.styles = flowOpts.styles;
           }
           if (_theme !== undefined) {
             footnoteOptions.theme = _theme;

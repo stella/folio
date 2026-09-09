@@ -338,6 +338,9 @@ export function convertFootnoteToContent(
   }
   const pmDoc = footnoteToProseDoc(footnote.content, proseOptions);
   const flowOptions: Parameters<typeof toFlowBlocks>[1] = {};
+  if (options.styles) {
+    flowOptions.styles = options.styles;
+  }
   if (options.theme !== undefined) {
     flowOptions.theme = options.theme;
   }

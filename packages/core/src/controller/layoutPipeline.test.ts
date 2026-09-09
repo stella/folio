@@ -17,6 +17,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
 
+import {
+  EXPECTED_CANCELLED_STYLE_TOGGLES,
+  findStyleToggleRun,
+  makeStyleToggleDefinitions,
+  makeStyleToggleParagraph,
+} from "../__tests__/styleToggleFlowFixture";
 import type { LayoutInstrumentation } from "../layout-engine/layoutInstrumentation";
 import { clearAllCaches } from "../layout-engine/measure/cache";
 import type { FootnoteContent, HeaderFooterContent } from "../layout-engine/types";
@@ -24,6 +30,7 @@ import { resetCanvasContext } from "../layout-engine/measure/measureContainer";
 import { LayoutPainter } from "../layout-painter";
 import { LayoutSelectionGate } from "../paged-layout/LayoutSelectionGate";
 import { twipsToPixels } from "../paged-layout/sectionGeometry";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { schema } from "../prosemirror/schema";
 import type { Footnote } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
@@ -489,6 +496,23 @@ describe("runLayoutPipeline", () => {
     expect(session.artifacts).not.toBeNull();
     expect(session.lastEditorState).toBe(state);
     expect(layoutCompletes).toHaveLength(1);
+  });
+
+  test("resolves the complete character-style toggle cascade in body layout", () => {
+    const styles = makeStyleToggleDefinitions();
+    const document = createEmptyDocument();
+    document.package.styles = styles;
+    document.package.document.content = [makeStyleToggleParagraph()];
+    const state = EditorState.create({
+      doc: schema.nodeFromJSON(toProseDoc(document, { styles }).toJSON()),
+    });
+
+    const outcome = runLayoutPipeline(makeDeps(createLayoutSession(), { document, styles }), state);
+
+    expect(findStyleToggleRun(outcome.blocks ?? [])).toMatchObject(
+      EXPECTED_CANCELLED_STYLE_TOGGLES,
+    );
+    expect(layoutErrors).toHaveLength(0);
   });
 
   test("remaps body note markers to sequential reference-order display numbers", () => {

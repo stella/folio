@@ -197,6 +197,7 @@ const buildFlowOptions = (document: Document, pageContentHeight: number): ToFlow
   const options: ToFlowBlocksOptions = {
     pageContentHeight,
     fontAlternates: buildFontAlternates(document.package.fontTable),
+    ...(document.package.styles ? { styles: document.package.styles } : {}),
   };
   const theme = document.package.theme;
   if (theme) {
@@ -259,8 +260,8 @@ const buildBlockLookup = (
  */
 type StoryOptions = Omit<ConvertFootnoteOptions, "measureBlocks">;
 
-const buildStoryOptions = (document: Document, flowOptions: ToFlowBlocksOptions): StoryOptions => ({
-  ...(document.package.styles ? { styles: document.package.styles } : {}),
+const buildStoryOptions = (flowOptions: ToFlowBlocksOptions): StoryOptions => ({
+  ...(flowOptions.styles === undefined ? {} : { styles: flowOptions.styles }),
   ...(flowOptions.theme === undefined ? {} : { theme: flowOptions.theme }),
   ...(flowOptions.fontAlternates === undefined
     ? {}
@@ -479,7 +480,7 @@ export const layoutDocxHeadless = async (
   const pageContentHeight = pageSize.h - margins.top - margins.bottom;
 
   const flowOptions = buildFlowOptions(document, pageContentHeight);
-  const storyOptions = buildStoryOptions(document, flowOptions);
+  const storyOptions = buildStoryOptions(flowOptions);
 
   const laidOut = Result.try(() => {
     const authored = toFlowBlocks(projected.value, flowOptions);
