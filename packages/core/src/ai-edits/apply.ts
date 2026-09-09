@@ -4,6 +4,7 @@ import { TableMap } from "prosemirror-tables";
 import { canJoin, canSplit } from "prosemirror-transform";
 import { panic } from "better-result";
 
+import type { NumberingMap } from "../docx/numberingParser";
 import { expectParagraphAttrs, expectRunPropertyChangeMarkAttrs } from "../prosemirror/attrs";
 import {
   hasSerializableParagraphPropertyChange,
@@ -431,7 +432,7 @@ type ParagraphPropertiesPatchOptions = {
   node: PMNode;
   properties: FolioAIBlockParagraphProperties;
   resolvedFormattingFromStyle: ParagraphFormatting | undefined;
-  numbering?: ReturnType<typeof getDocumentNumbering>;
+  numbering?: NumberingMap | null;
 };
 
 const paragraphPropertiesPatch = ({
@@ -1533,7 +1534,7 @@ type BuildInsertedParagraphsOptions = {
   suggestionId: string | null;
   revisionSeed: number;
   isPairedMove: (moveId: string | undefined) => moveId is string;
-  numbering: ReturnType<typeof getDocumentNumbering>;
+  numbering: NumberingMap | null;
 };
 
 type BuiltInsertedParagraphs = {

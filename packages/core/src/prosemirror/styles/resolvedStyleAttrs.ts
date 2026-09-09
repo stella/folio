@@ -165,7 +165,7 @@ export function listAttrsFromNumbering(
 
 /** Recompute every level-dependent attr when a paragraph changes list level. */
 export function listLevelAttrPatch(
-  attrs: Pick<ParagraphAttrs, "listImplicitChildLevelAdvances">,
+  attrs: { listImplicitChildLevelAdvances?: number | null },
   numPr: { numId: number; ilvl: number },
   numbering: NumberingMap | null | undefined,
 ): Record<string, unknown> {

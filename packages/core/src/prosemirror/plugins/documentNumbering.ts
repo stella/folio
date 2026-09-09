@@ -5,13 +5,13 @@ import { Plugin, PluginKey, type EditorState } from "prosemirror-state";
 import { getCachedNumberingMap, type NumberingMap } from "../../docx/numberingParser";
 import type { NumberingDefinitions } from "../../types/document";
 
-export const documentNumberingKey = new PluginKey<NumberingMap | null>("documentNumbering");
+const documentNumberingKey = new PluginKey<NumberingMap | null>("documentNumbering");
 
 export const createDocumentNumberingPlugin = (
   definitions: NumberingDefinitions | null | undefined,
-): Plugin<NumberingMap | null> => {
+): Plugin => {
   const numbering = definitions ? getCachedNumberingMap(definitions) : null;
-  return new Plugin({
+  return new Plugin<NumberingMap | null>({
     key: documentNumberingKey,
     state: {
       init: () => numbering,
