@@ -12,7 +12,8 @@ import type {
 } from "../../types/document";
 import { createEmptyDocument } from "../../utils/createDocument";
 import { schema } from "../schema";
-import { TRACKED_RUN_INLINE_ATOM_DISPOSITIONS } from "./toProseDoc";
+import { fromProseDoc } from "./fromProseDoc";
+import { TRACKED_RUN_INLINE_ATOM_DISPOSITIONS, toProseDoc } from "./toProseDoc";
 
 const REVISION_INFO = {
   id: 91,
@@ -108,6 +109,9 @@ const elementCount = (xml: string, tag: AtomFixture["xmlTag"] | "fldSimple"): nu
 
 const hasUnderline = (xml: string): boolean => /<w:u(?:[\s/>])/u.test(xml);
 
+const roundTripThroughEditorModel = (document: Document): Promise<ArrayBuffer> =>
+  createDocx(fromProseDoc(toProseDoc(document), document));
+
 const resolveAll = async (
   buffer: ArrayBuffer,
   decision: "accept" | "reject",
@@ -163,6 +167,21 @@ describe("tracked run inline atom ownership", () => {
         const rejectedXml = await documentXml(await resolveAll(pending, "reject", type));
         expect(elementCount(acceptedXml, xmlTag)).toBe(type === "insertion" ? 1 : 0);
         expect(elementCount(rejectedXml, xmlTag)).toBe(type === "deletion" ? 1 : 0);
+      }
+    });
+
+    test(`keeps an unresolved tracked ${name} through the editor model`, async () => {
+      for (const type of ["insertion", "deletion"] as const) {
+        const pending = await roundTripThroughEditorModel(reviewedAtomDocument(content, type));
+        const pendingXml = await documentXml(pending);
+
+        expect(elementCount(pendingXml, xmlTag)).toBe(1);
+        expect(pendingXml).toContain(`<w:${type === "insertion" ? "ins" : "del"} `);
+
+        const reopened = await FolioDocxReviewer.fromBuffer(pending);
+        expect(reopened.getChanges()).toEqual([
+          expect.objectContaining({ id: REVISION_INFO.id, type, text: "" }),
+        ]);
       }
     });
 
