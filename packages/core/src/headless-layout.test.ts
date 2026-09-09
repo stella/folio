@@ -166,6 +166,66 @@ describe("layoutDocxHeadless", () => {
     expect(findStyleToggleRun(blocks)).toMatchObject(EXPECTED_CANCELLED_STYLE_TOGGLES);
   });
 
+  test("forwards styles through top-level header, footer, and footnote layout", async () => {
+    installFixedWidthProvider();
+    const styles = makeStyleToggleDefinitions();
+    const document = createEmptyDocument();
+    document.package.styles = styles;
+    document.package.document.content = [
+      {
+        type: "paragraph",
+        content: [
+          { type: "run", content: [{ type: "text", text: "Body" }] },
+          { type: "run", content: [{ type: "footnoteRef", id: 1 }] },
+        ],
+      },
+    ];
+    document.package.footnotes = [
+      {
+        type: "footnote",
+        id: 1,
+        noteType: "normal",
+        content: [makeStyleToggleParagraph()],
+      },
+    ];
+    document.package.headers = new Map([
+      [
+        "rIdHeader",
+        {
+          type: "header",
+          hdrFtrType: "default",
+          content: [makeStyleToggleParagraph()],
+        },
+      ],
+    ]);
+    document.package.footers = new Map([
+      [
+        "rIdFooter",
+        {
+          type: "footer",
+          hdrFtrType: "default",
+          content: [makeStyleToggleParagraph()],
+        },
+      ],
+    ]);
+
+    const result = await layoutDocxHeadless(await createDocx(document));
+
+    expect(result.isErr()).toBe(false);
+    if (result.isErr()) {
+      return;
+    }
+    expect(
+      findStyleToggleRun(result.value.furniture.headerContentByRId?.get("rIdHeader")?.blocks ?? []),
+    ).toMatchObject(EXPECTED_CANCELLED_STYLE_TOGGLES);
+    expect(
+      findStyleToggleRun(result.value.furniture.footerContentByRId?.get("rIdFooter")?.blocks ?? []),
+    ).toMatchObject(EXPECTED_CANCELLED_STYLE_TOGGLES);
+    expect(
+      findStyleToggleRun(result.value.furniture.footnoteContentById?.get(1)?.blocks ?? []),
+    ).toMatchObject(EXPECTED_CANCELLED_STYLE_TOGGLES);
+  });
+
   test("refuses to lay out when no measurement backend is installed", async () => {
     resetMeasureProvider();
     const bytes = await Bun.file(FIXTURE).arrayBuffer();

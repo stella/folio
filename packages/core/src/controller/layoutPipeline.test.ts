@@ -27,6 +27,7 @@ import type { LayoutInstrumentation } from "../layout-engine/layoutInstrumentati
 import { clearAllCaches } from "../layout-engine/measure/cache";
 import type { FootnoteContent, HeaderFooterContent } from "../layout-engine/types";
 import { resetCanvasContext } from "../layout-engine/measure/measureContainer";
+import { convertHeaderFooterToContent } from "../layout-bridge/convert/headerFooterLayout";
 import { LayoutPainter } from "../layout-painter";
 import { LayoutSelectionGate } from "../paged-layout/LayoutSelectionGate";
 import { twipsToPixels } from "../paged-layout/sectionGeometry";
@@ -510,6 +511,74 @@ describe("runLayoutPipeline", () => {
     const outcome = runLayoutPipeline(makeDeps(createLayoutSession(), { document, styles }), state);
 
     expect(findStyleToggleRun(outcome.blocks ?? [])).toMatchObject(
+      EXPECTED_CANCELLED_STYLE_TOGGLES,
+    );
+    expect(layoutErrors).toHaveLength(0);
+  });
+
+  test("forwards styles through top-level header, footer, and footnote layout", () => {
+    const styles = makeStyleToggleDefinitions();
+    const document = createEmptyDocument();
+    document.package.styles = styles;
+    document.package.footnotes = [
+      {
+        type: "footnote",
+        id: 1,
+        noteType: "normal",
+        content: [makeStyleToggleParagraph()],
+      },
+    ];
+    const footnoteRef = schema.mark("footnoteRef", { id: "1", noteType: "footnote" });
+    const state = EditorState.create({
+      doc: schema.node("doc", null, [
+        schema.node("paragraph", null, [schema.text("Body"), schema.text("1", [footnoteRef])]),
+      ]),
+    });
+    const preparedBySection = new Map<"header" | "footer", HeaderFooterContent>();
+    let capturedFootnotes: Map<number, FootnoteContent> | undefined;
+    const container = fakeDocument.createElement("div");
+
+    runLayoutPipeline(
+      makeDeps(createLayoutSession(), {
+        document,
+        styles,
+        headerContent: {
+          type: "header",
+          hdrFtrType: "default",
+          content: [makeStyleToggleParagraph()],
+        },
+        footerContent: {
+          type: "footer",
+          hdrFtrType: "default",
+          content: [makeStyleToggleParagraph()],
+        },
+        painter: new LayoutPainter(),
+        pagesContainer: asContainer(container),
+        renderHfFromContentOrPm: (content, _rId, _hfPMs, contentWidth, metrics, options) => {
+          if (!content) {
+            return undefined;
+          }
+          const prepared = convertHeaderFooterToContent(content, contentWidth, metrics, options);
+          if (prepared) {
+            preparedBySection.set(metrics.section, prepared);
+          }
+          return prepared;
+        },
+        buildFootnoteRenderItems: (_pageMap, contentMap) => {
+          capturedFootnotes = contentMap;
+          return new Map();
+        },
+      }),
+      state,
+    );
+
+    expect(findStyleToggleRun(preparedBySection.get("header")?.blocks ?? [])).toMatchObject(
+      EXPECTED_CANCELLED_STYLE_TOGGLES,
+    );
+    expect(findStyleToggleRun(preparedBySection.get("footer")?.blocks ?? [])).toMatchObject(
+      EXPECTED_CANCELLED_STYLE_TOGGLES,
+    );
+    expect(findStyleToggleRun(capturedFootnotes?.get(1)?.blocks ?? [])).toMatchObject(
       EXPECTED_CANCELLED_STYLE_TOGGLES,
     );
     expect(layoutErrors).toHaveLength(0);
