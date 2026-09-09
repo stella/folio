@@ -33,6 +33,10 @@ import { validateDocxPackage } from "@stll/docx-core";
 import { panic } from "better-result";
 import JSZip from "jszip";
 
+import {
+  consumeTrackedSectionEndpointRemoval,
+  type TrackedSectionEndpointRemoval,
+} from "../internal/sectionEndpointResolution";
 import type {
   BlockContent,
   Comment,
@@ -183,29 +187,68 @@ const hasParsedHeaderFooterPart = (doc: Document, ref: HeaderFooterReference): b
   return map?.has(ref.rId) ?? false;
 };
 
+const headerFooterReferenceKey = ({ element, type, rId }: HeaderFooterReference): string =>
+  `${element}:${type}:${rId}`;
+
+const incrementReferenceCount = (counts: Map<string, number>, key: string): void => {
+  counts.set(key, (counts.get(key) ?? 0) + 1);
+};
+
+const consumeReferenceCount = (counts: Map<string, number>, key: string): boolean => {
+  const count = counts.get(key) ?? 0;
+  if (count === 0) {
+    return false;
+  }
+  counts.set(key, count - 1);
+  return true;
+};
+
 function assertDocumentPackageFidelity(
   originalDocumentXml: string,
   serializedDocumentXml: string,
   doc: Document,
+  sectionEndpointRemoval?: TrackedSectionEndpointRemoval,
 ): void {
   const originalSectionCount = countDocumentSections(originalDocumentXml);
   const serializedSectionCount = countDocumentSections(serializedDocumentXml);
-  if (serializedSectionCount < originalSectionCount) {
+  const trackedRemovedSectionCount = sectionEndpointRemoval
+    ? sectionEndpointRemoval.sourceParagraphEndpointCount -
+      sectionEndpointRemoval.expectedParagraphEndpointCount
+    : 0;
+  const exactTrackedSectionRemoval =
+    trackedRemovedSectionCount > 0 &&
+    originalSectionCount - trackedRemovedSectionCount === serializedSectionCount &&
+    serializedSectionCount < originalSectionCount;
+  if (serializedSectionCount < originalSectionCount && !exactTrackedSectionRemoval) {
     throw new DocxPackageFidelityError(
       "Full DOCX repack would drop section properties. Use selective patching instead.",
     );
   }
 
-  const serializedRefs = new Set(
-    extractHeaderFooterReferences(serializedDocumentXml).map(
-      (ref) => `${ref.element}:${ref.type}:${ref.rId}`,
-    ),
-  );
-  const missingRefs = extractHeaderFooterReferences(originalDocumentXml).filter(
-    (ref) =>
-      hasParsedHeaderFooterPart(doc, ref) &&
-      !serializedRefs.has(`${ref.element}:${ref.type}:${ref.rId}`),
-  );
+  const serializedReferenceCounts = new Map<string, number>();
+  for (const reference of extractHeaderFooterReferences(serializedDocumentXml)) {
+    incrementReferenceCount(serializedReferenceCounts, headerFooterReferenceKey(reference));
+  }
+  const removedReferenceCounts = new Map<string, number>();
+  if (exactTrackedSectionRemoval && sectionEndpointRemoval) {
+    for (const { part, type, relationshipId } of sectionEndpointRemoval.removedReferences) {
+      incrementReferenceCount(removedReferenceCounts, `${part}Reference:${type}:${relationshipId}`);
+    }
+  }
+  const missingRefs: HeaderFooterReference[] = [];
+  for (const reference of extractHeaderFooterReferences(originalDocumentXml)) {
+    if (!hasParsedHeaderFooterPart(doc, reference)) {
+      continue;
+    }
+    const key = headerFooterReferenceKey(reference);
+    if (
+      consumeReferenceCount(serializedReferenceCounts, key) ||
+      consumeReferenceCount(removedReferenceCounts, key)
+    ) {
+      continue;
+    }
+    missingRefs.push(reference);
+  }
   if (missingRefs.length > 0) {
     throw new DocxPackageFidelityError(
       "Full DOCX repack would drop header/footer references. Use selective patching instead.",
@@ -897,6 +940,7 @@ type FinishRepackOptions = {
   updateModifiedDate: boolean;
   modifiedBy?: string;
   changedNoteParaIds?: ReadonlySet<string>;
+  sectionEndpointRemoval?: TrackedSectionEndpointRemoval;
 };
 
 const finishRepack = async ({
@@ -909,6 +953,7 @@ const finishRepack = async ({
   updateModifiedDate,
   modifiedBy,
   changedNoteParaIds,
+  sectionEndpointRemoval,
 }: FinishRepackOptions): Promise<ArrayBuffer> => {
   await materializeNewHeaderFooterParts(document, outputZip, compressionLevel);
 
@@ -925,7 +970,12 @@ const finishRepack = async ({
     originalDocumentXml === undefined ? undefined : readRootNamespaceBindings(originalDocumentXml),
   );
   if (originalDocumentXml) {
-    assertDocumentPackageFidelity(originalDocumentXml, documentXml, document);
+    assertDocumentPackageFidelity(
+      originalDocumentXml,
+      documentXml,
+      document,
+      sectionEndpointRemoval,
+    );
   }
   outputZip.file("word/document.xml", documentXml, {
     compression: "DEFLATE",
@@ -974,7 +1024,17 @@ const finishRepack = async ({
  * @returns Promise resolving to DOCX as ArrayBuffer
  * @throws {Error} if document has no original buffer for round-trip
  */
-export async function repackDocx(doc: Document, options: RepackOptions = {}): Promise<ArrayBuffer> {
+type RepackDocxInternalOptions = {
+  document: Document;
+  options: RepackOptions;
+  sectionEndpointRemoval?: TrackedSectionEndpointRemoval;
+};
+
+async function repackDocxWithSectionEndpointRemoval({
+  document: doc,
+  options,
+  sectionEndpointRemoval,
+}: RepackDocxInternalOptions): Promise<ArrayBuffer> {
   // Validate we have an original buffer to base on
   if (!doc.originalBuffer) {
     panic(
@@ -1011,6 +1071,16 @@ export async function repackDocx(doc: Document, options: RepackOptions = {}): Pr
     updateModifiedDate,
     ...(modifiedBy !== undefined ? { modifiedBy } : {}),
     ...(changedNoteParaIds !== undefined ? { changedNoteParaIds } : {}),
+    ...(sectionEndpointRemoval !== undefined ? { sectionEndpointRemoval } : {}),
+  });
+}
+
+export function repackDocx(doc: Document, options: RepackOptions = {}): Promise<ArrayBuffer> {
+  const sectionEndpointRemoval = consumeTrackedSectionEndpointRemoval(doc);
+  return repackDocxWithSectionEndpointRemoval({
+    document: doc,
+    options,
+    ...(sectionEndpointRemoval ? { sectionEndpointRemoval } : {}),
   });
 }
 

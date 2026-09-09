@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
+import {
+  type TrackedSectionEndpointRemoval,
+  withTrackedSectionEndpointRemoval,
+} from "../internal/sectionEndpointResolution";
 import type { Document, Image } from "../types/document";
 import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
@@ -14,6 +18,19 @@ const ONE_PIXEL_PNG_DATA_URL =
 
 const URI_ENCODED_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg"><rect width="10" height="10"/></svg>';
+
+const repackAfterTrackedSectionEndpointRemoval = ({
+  document,
+  resolution,
+}: {
+  document: Document;
+  resolution: TrackedSectionEndpointRemoval;
+}): Promise<ArrayBuffer> =>
+  withTrackedSectionEndpointRemoval({
+    document,
+    resolution,
+    repack: () => repackDocx(document, { updateModifiedDate: false }),
+  });
 
 async function createHeaderFixture(): Promise<ArrayBuffer> {
   const zip = new JSZip();
@@ -705,6 +722,158 @@ describe("repackDocx", () => {
     }
 
     throw new Error("Expected repackDocx to reject");
+  });
+
+  test("permits only a reference owned by the exactly resolved section endpoint", async () => {
+    const originalBuffer = await createMultiSectionFirstHeaderImageFixture();
+    const doc = await parseDocx(originalBuffer, { preloadFonts: false });
+    const firstParagraph = doc.package.document.content.find(
+      (block) => block.type === "paragraph" && block.sectionProperties,
+    );
+    if (!firstParagraph || firstParagraph.type !== "paragraph") {
+      throw new Error("Expected a section-ending paragraph");
+    }
+    delete firstParagraph.sectionProperties;
+
+    const resolution = {
+      type: "tracked-section-endpoint-removal",
+      sourceParagraphEndpointCount: 1,
+      expectedParagraphEndpointCount: 0,
+      sourceEndpointFingerprint: "source-endpoints",
+      expectedEndpointFingerprint: "resolved-endpoints",
+      removedReferences: [{ part: "header", type: "first", relationshipId: "rId11" }],
+    } as const satisfies TrackedSectionEndpointRemoval;
+    const saved = await repackAfterTrackedSectionEndpointRemoval({
+      document: doc,
+      resolution,
+    });
+    const savedZip = await JSZip.loadAsync(saved);
+    const savedXml = await savedZip.file("word/document.xml")?.async("text");
+
+    expect(savedXml).not.toContain("rId11");
+    expect(savedZip.file("word/header1.xml")).not.toBeNull();
+  });
+
+  test("consumes an internal section-removal allowance in one repack call", async () => {
+    const originalBuffer = await createMultiSectionFirstHeaderImageFixture();
+    const doc = await parseDocx(originalBuffer, { preloadFonts: false });
+    const firstParagraph = doc.package.document.content.find(
+      (block) => block.type === "paragraph" && block.sectionProperties,
+    );
+    if (!firstParagraph || firstParagraph.type !== "paragraph") {
+      throw new Error("Expected a section-ending paragraph");
+    }
+    delete firstParagraph.sectionProperties;
+
+    await expect(
+      withTrackedSectionEndpointRemoval({
+        document: doc,
+        resolution: {
+          type: "tracked-section-endpoint-removal",
+          sourceParagraphEndpointCount: 1,
+          expectedParagraphEndpointCount: 0,
+          sourceEndpointFingerprint: "source-endpoints",
+          expectedEndpointFingerprint: "resolved-endpoints",
+          removedReferences: [{ part: "header", type: "first", relationshipId: "rId11" }],
+        },
+        repack: async () => {
+          await repackDocx(doc, { updateModifiedDate: false });
+          return repackDocx(doc, { updateModifiedDate: false });
+        },
+      }),
+    ).rejects.toBeInstanceOf(DocxPackageFidelityError);
+
+    // The failed scope must not leave an allowance behind for an ordinary
+    // public repack of the same document object.
+    await expect(repackDocx(doc, { updateModifiedDate: false })).rejects.toBeInstanceOf(
+      DocxPackageFidelityError,
+    );
+
+    // Stable tracker evidence may authorize a later save, but that save gets a
+    // fresh one-call scope rather than reusing state from the failed call.
+    await expect(
+      repackAfterTrackedSectionEndpointRemoval({
+        document: doc,
+        resolution: {
+          type: "tracked-section-endpoint-removal",
+          sourceParagraphEndpointCount: 1,
+          expectedParagraphEndpointCount: 0,
+          sourceEndpointFingerprint: "source-endpoints",
+          expectedEndpointFingerprint: "resolved-endpoints",
+          removedReferences: [{ part: "header", type: "first", relationshipId: "rId11" }],
+        },
+      }),
+    ).resolves.toBeInstanceOf(ArrayBuffer);
+  });
+
+  test("fails closed when serialized section loss exceeds a tracked-resolution allowance", async () => {
+    const originalBuffer = await createMultiSectionFirstHeaderImageFixture();
+    const doc = await parseDocx(originalBuffer, { preloadFonts: false });
+    const firstParagraph = doc.package.document.content.find(
+      (block) => block.type === "paragraph" && block.sectionProperties,
+    );
+    if (!firstParagraph || firstParagraph.type !== "paragraph") {
+      throw new Error("Expected a section-ending paragraph");
+    }
+    delete firstParagraph.sectionProperties;
+    delete doc.package.document.finalSectionProperties;
+
+    await expect(
+      repackAfterTrackedSectionEndpointRemoval({
+        document: doc,
+        resolution: {
+          type: "tracked-section-endpoint-removal",
+          sourceParagraphEndpointCount: 1,
+          expectedParagraphEndpointCount: 0,
+          sourceEndpointFingerprint: "source-endpoints",
+          expectedEndpointFingerprint: "resolved-endpoints",
+          removedReferences: [{ part: "header", type: "first", relationshipId: "rId11" }],
+        },
+      }),
+    ).rejects.toBeInstanceOf(DocxPackageFidelityError);
+  });
+
+  test("does not let one removed endpoint excuse a shared reference on a surviving endpoint", async () => {
+    const originalBuffer = await createMultiSectionFirstHeaderImageFixture();
+    const originalZip = await JSZip.loadAsync(originalBuffer);
+    const originalXml = await originalZip.file("word/document.xml")?.async("text");
+    if (!originalXml) {
+      throw new Error("Expected document XML");
+    }
+    originalZip.file(
+      "word/document.xml",
+      originalXml.replace(
+        '<w:headerReference w:type="default" r:id="rId12"/>',
+        '<w:headerReference w:type="first" r:id="rId11"/>',
+      ),
+    );
+    const sharedReferenceBuffer = await originalZip.generateAsync({ type: "arraybuffer" });
+    const doc = await parseDocx(sharedReferenceBuffer, { preloadFonts: false });
+    const firstParagraph = doc.package.document.content.find(
+      (block) => block.type === "paragraph" && block.sectionProperties,
+    );
+    if (!firstParagraph || firstParagraph.type !== "paragraph") {
+      throw new Error("Expected a section-ending paragraph");
+    }
+    delete firstParagraph.sectionProperties;
+    if (!doc.package.document.finalSectionProperties) {
+      throw new Error("Expected final section properties");
+    }
+    delete doc.package.document.finalSectionProperties.headerReferences;
+
+    await expect(
+      repackAfterTrackedSectionEndpointRemoval({
+        document: doc,
+        resolution: {
+          type: "tracked-section-endpoint-removal",
+          sourceParagraphEndpointCount: 1,
+          expectedParagraphEndpointCount: 0,
+          sourceEndpointFingerprint: "source-endpoints",
+          expectedEndpointFingerprint: "resolved-endpoints",
+          removedReferences: [{ part: "header", type: "first", relationshipId: "rId11" }],
+        },
+      }),
+    ).rejects.toBeInstanceOf(DocxPackageFidelityError);
   });
 
   test("selective save preserves first-section header image references", async () => {

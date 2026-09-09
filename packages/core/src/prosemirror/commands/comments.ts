@@ -13,6 +13,7 @@ import {
   type HeadlessInlineChangeTracking,
 } from "../../internal/headlessRevisionResolution";
 import { stateAllowsHeadlessRevisionResolution } from "../../internal/headlessRevisionResolutionGuard";
+import type { RemovedSectionReference } from "../../internal/sectionEndpointResolution";
 import type {
   ParagraphFormatting,
   RunPropertyChange,
@@ -33,6 +34,7 @@ import { textFormattingToMarks } from "../conversion/toProseDoc";
 import {
   markChangedParagraphRanges,
   markStructuralChange,
+  markTrackedSectionEndpointRemoval,
 } from "../extensions/features/ParagraphChangeTrackerExtension";
 import { getDocumentStyleResolver } from "../plugins/documentStyles";
 import { holdsNoContent } from "../zeroWidthAnchors";
@@ -163,6 +165,8 @@ function resolveChange(
       const tableCellStructuralOps: TableCellStructuralOp[] = [];
       const deferredRunPropertyChanges: ResolveRunPropertyChangeOptions[] = [];
       let bulkInlineCarrierCount = 0;
+      let removedSectionEndpointCount = 0;
+      const removedSectionReferences: RemovedSectionReference[] = [];
 
       state.doc.nodesBetween(from, to, (node, pos): boolean => {
         if (node.type.name === "paragraph") {
@@ -426,9 +430,7 @@ function resolveChange(
         }
         const joinPos = mappedPos + paragraph.nodeSize;
         const nextNode = joinPos < tr.doc.content.size ? tr.doc.nodeAt(joinPos) : null;
-        const joinable =
-          nextNode?.type.name === paragraph.type.name &&
-          !(carriesSection(paragraph) && carriesSection(nextNode));
+        const joinable = nextNode?.type.name === paragraph.type.name;
         if (!joinable) {
           // Nothing to join with: the next sibling is a table, or the paragraph
           // ends its container — a body, a cell, a header, a note or a text box
@@ -452,32 +454,16 @@ function resolveChange(
           // A container must contain a paragraph either way, so its parent's
           // only child stays blank whatever its mark says.
           //
-          // A section's properties live on a paragraph mark, so the paragraph
-          // is where its section ENDS. It can still go, but the section cannot
-          // go with it: the content before it is still in that section, which
-          // now ends one paragraph earlier. There is no next paragraph here to
-          // hand the properties to, so they move back to the previous one —
-          // unless that paragraph ends a section of its own, in which case
-          // there is nowhere to put them and the paragraph stays.
+          // Section properties belong to the paragraph mark being resolved.
+          // Removing that mark removes its section endpoint; transferring the
+          // properties backward would retain the section the revision deleted.
           const resolved = tr.doc.resolve(mappedPos);
-          const previous = resolved.nodeBefore;
-          const sectionCanMoveBack =
-            !carriesSection(paragraph) ||
-            (previous?.type.name === paragraph.type.name && !carriesSection(previous));
           const endsItsContainer = paragraphEndsItsContainer(resolved, paragraph.type.name);
           const canGo = op.markWasAdded || !endsItsContainer;
-          if (
-            sectionCanMoveBack &&
-            holdsNoContent(paragraph) &&
-            canGo &&
-            resolved.parent.childCount > 1
-          ) {
-            if (carriesSection(paragraph) && previous) {
-              tr.setNodeMarkup(mappedPos - previous.nodeSize, undefined, {
-                ...previous.attrs,
-                sectionBreakType: paragraph.attrs["sectionBreakType"],
-                _sectionProperties: paragraph.attrs["_sectionProperties"],
-              });
+          if (holdsNoContent(paragraph) && canGo && resolved.parent.childCount > 1) {
+            if (ownsSectionEndpoint(paragraph)) {
+              removedSectionEndpointCount++;
+              removedSectionReferences.push(...sectionReferencesOf(paragraph));
             }
             tr.delete(mappedPos, mappedPos + paragraph.nodeSize);
             continue;
@@ -497,23 +483,23 @@ function resolveChange(
         // The next paragraph's own `pPrMark` travels with its attrs: it is a
         // different revision, and resolving this one must not resolve it.
         //
-        // A section's properties are the exception to "the next paragraph's
-        // properties win". They are not formatting the resolved paragraph
-        // owned; they are where a section ENDS, and the paragraph the join
-        // leaves behind is now that end. Dropping them merges two sections
-        // into one and takes the dropped one's page size, margins and
-        // header and footer references with it.
+        // Section properties live on the paragraph mark. Resolving that mark
+        // away removes its section endpoint, so the joined paragraph keeps
+        // only a section endpoint already owned by the following paragraph.
         const formattingOwner = emptyFirstParagraph ? nextNode : paragraph;
-        const sectionOwner = carriesSection(paragraph) ? paragraph : nextNode;
         const joinedAttrs = {
           ...formattingOwner.attrs,
           pPrMark: nextNode.attrs["pPrMark"],
-          sectionBreakType: sectionOwner.attrs["sectionBreakType"],
-          _sectionProperties: sectionOwner.attrs["_sectionProperties"],
+          sectionBreakType: nextNode.attrs["sectionBreakType"],
+          _sectionProperties: nextNode.attrs["_sectionProperties"],
         };
         try {
           tr.join(joinPos);
           tr.setNodeMarkup(mappedPos, undefined, joinedAttrs);
+          if (ownsSectionEndpoint(paragraph)) {
+            removedSectionEndpointCount++;
+            removedSectionReferences.push(...sectionReferencesOf(paragraph));
+          }
         } catch {
           // PM rejects the join if the two blocks aren't structurally
           // compatible (e.g. paragraph followed by a table). Leaving the
@@ -588,6 +574,14 @@ function resolveChange(
 
       if (bulkInlineChangeTracking) {
         markChangedParagraphRanges(tr, bulkInlineChangeTracking);
+      }
+
+      if (removedSectionEndpointCount > 0) {
+        markTrackedSectionEndpointRemoval(tr, {
+          sourceDoc: state.doc,
+          removedEndpointCount: removedSectionEndpointCount,
+          removedReferences: removedSectionReferences,
+        });
       }
 
       if (tr.steps.length > 0) {
@@ -1095,19 +1089,32 @@ function isPPrMarkAttr(value: unknown): value is {
 const paragraphMarkWasAdded = (kind: ParagraphMarkChangeKind): boolean =>
   kind === "ins" || kind === "moveTo";
 
+const ownsSectionEndpoint = (paragraph: PMNode): boolean => {
+  const attrs = expectParagraphAttrs(paragraph);
+  return attrs._sectionProperties !== undefined || attrs.sectionBreakType !== undefined;
+};
+
+const sectionReferencesOf = (paragraph: PMNode): RemovedSectionReference[] => {
+  const sectionProperties = expectParagraphAttrs(paragraph)._sectionProperties;
+  if (!sectionProperties) {
+    return [];
+  }
+  return [
+    ...(sectionProperties.headerReferences ?? []).map(({ type, rId }) => ({
+      part: "header" as const,
+      type,
+      relationshipId: rId,
+    })),
+    ...(sectionProperties.footerReferences ?? []).map(({ type, rId }) => ({
+      part: "footer" as const,
+      type,
+      relationshipId: rId,
+    })),
+  ];
+};
+
 const isAddedPPrMarkAttr = (value: unknown): value is AddedParagraphMark =>
   isPPrMarkAttr(value) && (value.kind === "ins" || value.kind === "moveTo");
-
-/**
- * Whether the paragraph's mark carries a section's properties.
- *
- * A section break lives on a paragraph mark, so the paragraph is where the
- * section ends. Removing it removes the section: a document that had two ends
- * up with one, and every setting the dropped section carried — page size,
- * margins, its header and footer references — goes with it.
- */
-const carriesSection = (paragraph: PMNode): boolean =>
-  paragraph.attrs["sectionBreakType"] != null || paragraph.attrs["_sectionProperties"] != null;
 
 function readRevisionInfo(info: RevisionInfoAttrs | undefined): {
   author?: string;

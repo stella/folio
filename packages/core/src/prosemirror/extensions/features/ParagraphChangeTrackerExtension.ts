@@ -6,6 +6,7 @@
  * Used by the selective save system to patch only changed paragraphs in document.xml.
  */
 
+import type { Node as PMNode } from "prosemirror-model";
 import { Plugin, PluginKey } from "prosemirror-state";
 import type { EditorState, Transaction } from "prosemirror-state";
 import {
@@ -17,6 +18,11 @@ import {
 } from "prosemirror-transform";
 import type { Mapping } from "prosemirror-transform";
 
+import type {
+  RemovedSectionReference,
+  TrackedSectionEndpointRemoval,
+} from "../../../internal/sectionEndpointResolution";
+import { canonicalJson } from "../../../utils/canonicalJson";
 import { createExtension } from "../create";
 import type { ExtensionRuntime } from "../types";
 
@@ -28,6 +34,7 @@ const CLEAR_META = "clear";
 const IGNORE_META = "ignore";
 const STRUCTURAL_META = "structural";
 const CHANGED_PARAGRAPH_RANGES_META = "folioChangedParagraphRanges";
+const SECTION_ENDPOINT_REMOVAL_META = "folioSectionEndpointRemoval";
 
 type ChangedParagraphRangeBatch = {
   ranges: readonly { from: number; to: number }[];
@@ -45,6 +52,52 @@ const isChangedParagraphRangesMeta = (value: unknown): value is ChangedParagraph
   "type" in value &&
   value.type === "changed-paragraph-ranges";
 
+const isRemovedSectionReference = (value: unknown): value is RemovedSectionReference =>
+  typeof value === "object" &&
+  value !== null &&
+  "part" in value &&
+  (value.part === "header" || value.part === "footer") &&
+  "type" in value &&
+  (value.type === "default" || value.type === "first" || value.type === "even") &&
+  "relationshipId" in value &&
+  typeof value.relationshipId === "string";
+
+const isTrackedSectionEndpointRemoval = (value: unknown): value is TrackedSectionEndpointRemoval =>
+  typeof value === "object" &&
+  value !== null &&
+  "type" in value &&
+  value.type === "tracked-section-endpoint-removal" &&
+  "sourceParagraphEndpointCount" in value &&
+  typeof value.sourceParagraphEndpointCount === "number" &&
+  Number.isSafeInteger(value.sourceParagraphEndpointCount) &&
+  "expectedParagraphEndpointCount" in value &&
+  typeof value.expectedParagraphEndpointCount === "number" &&
+  Number.isSafeInteger(value.expectedParagraphEndpointCount) &&
+  value.sourceParagraphEndpointCount > value.expectedParagraphEndpointCount &&
+  value.expectedParagraphEndpointCount >= 0 &&
+  "sourceEndpointFingerprint" in value &&
+  typeof value.sourceEndpointFingerprint === "string" &&
+  "expectedEndpointFingerprint" in value &&
+  typeof value.expectedEndpointFingerprint === "string" &&
+  "removedReferences" in value &&
+  Array.isArray(value.removedReferences) &&
+  value.removedReferences.every(isRemovedSectionReference);
+
+type TrackedSectionEndpointRemovalMeta = {
+  type: "tracked-section-endpoint-removal-meta";
+  authorization: TrackedSectionEndpointRemoval;
+};
+
+const isTrackedSectionEndpointRemovalMeta = (
+  value: unknown,
+): value is TrackedSectionEndpointRemovalMeta =>
+  typeof value === "object" &&
+  value !== null &&
+  "type" in value &&
+  value.type === "tracked-section-endpoint-removal-meta" &&
+  "authorization" in value &&
+  isTrackedSectionEndpointRemoval(value.authorization);
+
 export type ParagraphChangeTrackerState = {
   /** Set of paraIds that were modified since last clear */
   changedParaIds: Set<string>;
@@ -54,19 +107,57 @@ export type ParagraphChangeTrackerState = {
   hasUntrackedChanges: boolean;
   /** Cached paragraph count to avoid full doc traversal on every transaction */
   paragraphCount: number;
+  /** Cached section-endpoint count used to invalidate stale save authorization. */
+  sectionEndpointCount: number;
+  /** Exact endpoint owners and properties used to invalidate count-neutral changes. */
+  sectionEndpointFingerprint: string;
+  /** Exact tracked-resolution transition that may reduce the saved section count. */
+  sectionEndpointRemoval: TrackedSectionEndpointRemoval | null;
 };
 
-/**
- * Count paragraph nodes in a ProseMirror document
- */
-function countParagraphs(doc: EditorState["doc"]): number {
-  let count = 0;
-  doc.descendants((node) => {
-    if (node.type.name === "paragraph") {
-      count++;
-    }
-  });
-  return count;
+type DocumentStructureCounts = {
+  paragraphs: number;
+  sectionEndpoints: number;
+  sectionEndpointFingerprint: string;
+};
+
+/** Count the structural values the tracker compares for every transaction. */
+function countDocumentStructure(doc: PMNode): DocumentStructureCounts {
+  let paragraphs = 0;
+  let sectionEndpoints = 0;
+  const endpointRecords: {
+    path: string;
+    paraId: unknown;
+    sectionBreakType: unknown;
+    sectionProperties: unknown;
+  }[] = [];
+  const visit = (parent: PMNode, parentPath: string): void => {
+    parent.forEach((node, _offset, index) => {
+      if (node.type.name === "paragraph") {
+        paragraphs++;
+        if (node.attrs["_sectionProperties"] != null || node.attrs["sectionBreakType"] != null) {
+          sectionEndpoints++;
+          endpointRecords.push({
+            path: parentPath.length === 0 ? `${index}` : `${parentPath}.${index}`,
+            paraId: node.attrs["paraId"] ?? null,
+            sectionBreakType: node.attrs["sectionBreakType"] ?? null,
+            sectionProperties: node.attrs["_sectionProperties"] ?? null,
+          });
+        }
+        return;
+      }
+      if (node.childCount > 0) {
+        const path = parentPath.length === 0 ? `${index}` : `${parentPath}.${index}`;
+        visit(node, path);
+      }
+    });
+  };
+  visit(doc, "");
+  return {
+    paragraphs,
+    sectionEndpoints,
+    sectionEndpointFingerprint: canonicalJson(endpointRecords),
+  };
 }
 
 /**
@@ -142,30 +233,52 @@ function createParagraphChangeTrackerPlugin(): Plugin<ParagraphChangeTrackerStat
     key: paragraphChangeTrackerKey,
     state: {
       init(_config, state): ParagraphChangeTrackerState {
+        const counts = countDocumentStructure(state.doc);
         return {
           changedParaIds: new Set(),
           structuralChange: false,
           hasUntrackedChanges: false,
-          paragraphCount: countParagraphs(state.doc),
+          paragraphCount: counts.paragraphs,
+          sectionEndpointCount: counts.sectionEndpoints,
+          sectionEndpointFingerprint: counts.sectionEndpointFingerprint,
+          sectionEndpointRemoval: null,
         };
       },
       apply(tr: Transaction, prevState: ParagraphChangeTrackerState): ParagraphChangeTrackerState {
         const meta = tr.getMeta(paragraphChangeTrackerKey);
         const changedParagraphRangesMeta = tr.getMeta(CHANGED_PARAGRAPH_RANGES_META);
+        const sectionEndpointRemovalMeta = tr.getMeta(SECTION_ENDPOINT_REMOVAL_META);
         // Check for explicit clear meta
         if (meta === CLEAR_META) {
+          const counts = countDocumentStructure(tr.doc);
           return {
             changedParaIds: new Set(),
             structuralChange: false,
             hasUntrackedChanges: false,
-            paragraphCount: prevState.paragraphCount,
+            paragraphCount: counts.paragraphs,
+            sectionEndpointCount: counts.sectionEndpoints,
+            sectionEndpointFingerprint: counts.sectionEndpointFingerprint,
+            sectionEndpointRemoval: null,
           };
         }
 
         if (meta === IGNORE_META) {
+          const counts = tr.docChanged
+            ? countDocumentStructure(tr.doc)
+            : {
+                paragraphs: prevState.paragraphCount,
+                sectionEndpoints: prevState.sectionEndpointCount,
+                sectionEndpointFingerprint: prevState.sectionEndpointFingerprint,
+              };
           return {
             ...prevState,
-            paragraphCount: tr.docChanged ? countParagraphs(tr.doc) : prevState.paragraphCount,
+            paragraphCount: counts.paragraphs,
+            sectionEndpointCount: counts.sectionEndpoints,
+            sectionEndpointRemoval:
+              counts.sectionEndpointFingerprint === prevState.sectionEndpointFingerprint
+                ? prevState.sectionEndpointRemoval
+                : null,
+            sectionEndpointFingerprint: counts.sectionEndpointFingerprint,
           };
         }
 
@@ -175,7 +288,49 @@ function createParagraphChangeTrackerPlugin(): Plugin<ParagraphChangeTrackerStat
         }
 
         // Count paragraphs in new doc only (use cached count for old doc)
-        const newCount = countParagraphs(tr.doc);
+        const counts = countDocumentStructure(tr.doc);
+        const newCount = counts.paragraphs;
+        let sectionEndpointRemoval = prevState.sectionEndpointRemoval;
+        if (counts.sectionEndpointFingerprint !== prevState.sectionEndpointFingerprint) {
+          if (
+            isTrackedSectionEndpointRemovalMeta(sectionEndpointRemovalMeta) &&
+            sectionEndpointRemovalMeta.authorization.sourceEndpointFingerprint ===
+              prevState.sectionEndpointFingerprint &&
+            sectionEndpointRemovalMeta.authorization.expectedEndpointFingerprint ===
+              counts.sectionEndpointFingerprint &&
+            sectionEndpointRemovalMeta.authorization.sourceParagraphEndpointCount ===
+              prevState.sectionEndpointCount &&
+            sectionEndpointRemovalMeta.authorization.expectedParagraphEndpointCount ===
+              counts.sectionEndpoints &&
+            counts.sectionEndpoints < prevState.sectionEndpointCount
+          ) {
+            const authorization = sectionEndpointRemovalMeta.authorization;
+            sectionEndpointRemoval = {
+              type: "tracked-section-endpoint-removal",
+              sourceParagraphEndpointCount:
+                prevState.sectionEndpointRemoval?.expectedParagraphEndpointCount ===
+                authorization.sourceParagraphEndpointCount
+                  ? prevState.sectionEndpointRemoval.sourceParagraphEndpointCount
+                  : authorization.sourceParagraphEndpointCount,
+              expectedParagraphEndpointCount: authorization.expectedParagraphEndpointCount,
+              sourceEndpointFingerprint:
+                prevState.sectionEndpointRemoval?.expectedParagraphEndpointCount ===
+                authorization.sourceParagraphEndpointCount
+                  ? prevState.sectionEndpointRemoval.sourceEndpointFingerprint
+                  : authorization.sourceEndpointFingerprint,
+              expectedEndpointFingerprint: authorization.expectedEndpointFingerprint,
+              removedReferences: [
+                ...(prevState.sectionEndpointRemoval?.expectedParagraphEndpointCount ===
+                authorization.sourceParagraphEndpointCount
+                  ? prevState.sectionEndpointRemoval.removedReferences
+                  : []),
+                ...authorization.removedReferences,
+              ],
+            };
+          } else {
+            sectionEndpointRemoval = null;
+          }
+        }
 
         // Clone previous state
         const newState: ParagraphChangeTrackerState = {
@@ -183,6 +338,9 @@ function createParagraphChangeTrackerPlugin(): Plugin<ParagraphChangeTrackerStat
           structuralChange: prevState.structuralChange || meta === STRUCTURAL_META,
           hasUntrackedChanges: prevState.hasUntrackedChanges,
           paragraphCount: newCount,
+          sectionEndpointCount: counts.sectionEndpoints,
+          sectionEndpointFingerprint: counts.sectionEndpointFingerprint,
+          sectionEndpointRemoval,
         };
 
         if (isChangedParagraphRangesMeta(changedParagraphRangesMeta)) {
@@ -316,6 +474,44 @@ export function hasStructuralChanges(state: EditorState): boolean {
 export function hasUntrackedChanges(state: EditorState): boolean {
   const trackerState = getChangeTrackerState(state);
   return trackerState?.hasUntrackedChanges ?? false;
+}
+
+/** Exact section-count transition authorized by tracked paragraph-mark resolution. */
+export function getTrackedSectionEndpointRemoval(
+  state: EditorState,
+): TrackedSectionEndpointRemoval | null {
+  return getChangeTrackerState(state)?.sectionEndpointRemoval ?? null;
+}
+
+type MarkTrackedSectionEndpointRemovalOptions = {
+  sourceDoc: PMNode;
+  removedEndpointCount: number;
+  removedReferences: readonly RemovedSectionReference[];
+};
+
+/** Record only a complete, internally consistent endpoint-removal transition. */
+export function markTrackedSectionEndpointRemoval(
+  tr: Transaction,
+  { sourceDoc, removedEndpointCount, removedReferences }: MarkTrackedSectionEndpointRemovalOptions,
+): Transaction {
+  const sourceStructure = countDocumentStructure(sourceDoc);
+  const sourceParagraphEndpointCount = sourceStructure.sectionEndpoints;
+  const expectedStructure = countDocumentStructure(tr.doc);
+  const expectedParagraphEndpointCount = expectedStructure.sectionEndpoints;
+  if (sourceParagraphEndpointCount - expectedParagraphEndpointCount !== removedEndpointCount) {
+    return tr;
+  }
+  return tr.setMeta(SECTION_ENDPOINT_REMOVAL_META, {
+    type: "tracked-section-endpoint-removal-meta",
+    authorization: {
+      type: "tracked-section-endpoint-removal",
+      sourceParagraphEndpointCount,
+      expectedParagraphEndpointCount,
+      sourceEndpointFingerprint: sourceStructure.sectionEndpointFingerprint,
+      expectedEndpointFingerprint: expectedStructure.sectionEndpointFingerprint,
+      removedReferences,
+    },
+  } satisfies TrackedSectionEndpointRemovalMeta);
 }
 
 /**
