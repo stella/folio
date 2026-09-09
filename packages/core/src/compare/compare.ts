@@ -38,6 +38,7 @@ import { panic, Result } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 
 import {
+  comparisonSourceDocumentOf,
   FolioDocxReviewer,
   type FolioDocumentStoryHandle,
   type FolioNumberingLevel,
@@ -45,12 +46,30 @@ import {
 } from "../ai-edits/headless";
 import { projectTableGeometry } from "../ai-edits/table-geometry";
 import type { FolioTableTemplates } from "../ai-edits/table-template";
-import { numberingReferenceKeysOf } from "../ai-edits/snapshot";
+import {
+  recordParagraphMarkFormattingTemplates,
+  type FolioParagraphMarkFormattingTemplates,
+} from "../ai-edits/paragraph-mark-template";
+import {
+  numberingReferenceKeysOf,
+  paragraphMarkRunFormattingOf,
+  sameParagraphMarkRunFormatting,
+} from "../ai-edits/snapshot";
 import type { FolioAIBlock, FolioAIEditSkipReason, FolioAIEditSnapshot } from "../ai-edits/types";
 import { createScopedWordDiffOptions, type WordDiffGranularity } from "../ai-edits/word-diff";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { pairFolioDocumentStories } from "../document-stories";
-import { planStoryCompare, type CompareStoryPlan, type CompareTableTemplateRequest } from "./plan";
+import type { TextFormatting } from "../types/document";
+import {
+  paragraphMarkPackageDependencyFailures,
+  type ParagraphMarkPackageDependencyFailure,
+} from "./paragraph-mark-theme";
+import {
+  paragraphMarkFormattingRequestsOf,
+  planStoryCompare,
+  type CompareStoryPlan,
+  type CompareTableTemplateRequest,
+} from "./plan";
 import { withFixedPackageDates } from "./reproducible-package";
 import {
   CompareDocxApplyError,
@@ -133,6 +152,70 @@ type FormattingRoundTripFailureOptions = {
   actualBlocks: readonly FolioAIBlock[];
   expectedBlocks: readonly FolioAIBlock[];
   expectedBlockId: (change: Extract<CompareChange, { kind: "format" }>) => string;
+};
+
+type ParagraphMarkFormattingRoundTripFailureOptions = {
+  invariant: CompareVerificationFailure["invariant"];
+  story: FolioDocumentStoryHandle;
+  actual: FolioAIEditSnapshot;
+  expected: FolioAIEditSnapshot;
+};
+
+/** Verify exact direct formatting on each paragraph mark, which body runs do not expose. */
+const paragraphMarkFormattingRoundTripFailure = ({
+  invariant,
+  story,
+  actual,
+  expected,
+}: ParagraphMarkFormattingRoundTripFailureOptions): CompareVerificationFailure | null => {
+  const actualSignatures = paragraphMarkRunFormattingOf(actual);
+  const expectedSignatures = paragraphMarkRunFormattingOf(expected);
+  const shared = Math.min(actual.blocks.length, expected.blocks.length);
+  for (let index = 0; index < shared; index++) {
+    const actualBlock = actual.blocks[index];
+    const expectedBlock = expected.blocks[index];
+    if (!actualBlock || !expectedBlock) {
+      return {
+        invariant,
+        cause: "paragraph-mark-format",
+        story,
+        detail: `paragraph-mark run formatting could not be projected at block ${String(index)}/${String(expected.blocks.length)}`,
+      };
+    }
+    const hasActualSignature = actualSignatures.has(actualBlock.id);
+    const hasExpectedSignature = expectedSignatures.has(expectedBlock.id);
+    if (!hasActualSignature || !hasExpectedSignature) {
+      return {
+        invariant,
+        cause: "paragraph-mark-format",
+        story,
+        detail: `paragraph-mark run formatting could not be projected at block ${String(index)}/${String(expected.blocks.length)}`,
+      };
+    }
+    const actualSignature = actualSignatures.get(actualBlock.id);
+    const expectedSignature = expectedSignatures.get(expectedBlock.id);
+    if (
+      !actualSignature ||
+      !expectedSignature ||
+      !sameParagraphMarkRunFormatting(actualSignature, expectedSignature)
+    ) {
+      return {
+        invariant,
+        cause: "paragraph-mark-format",
+        story,
+        detail: `paragraph-mark run formatting differs at block ${String(index)}/${String(expected.blocks.length)}`,
+      };
+    }
+  }
+  if (actual.blocks.length !== expected.blocks.length) {
+    return {
+      invariant,
+      cause: "paragraph-mark-format",
+      story,
+      detail: `paragraph-mark run formatting could not be projected at block ${String(shared)}/${String(expected.blocks.length)}`,
+    };
+  }
+  return null;
 };
 
 /** Verify formatting only where the plan claims a text-equal formatting change. */
@@ -258,6 +341,8 @@ export type ParsedComparison = {
   pairs: readonly ComparedStoryPair[];
   /** Package-level numbering differences, which belong to no story. */
   numberingChanges: readonly CompareChange[];
+  /** Target paragraph-mark package dependencies the base package cannot preserve exactly. */
+  paragraphMarkPackageDependencyFailures: readonly ParagraphMarkPackageDependencyFailure[];
   unsupported: readonly CompareUnsupportedPart[];
 };
 
@@ -348,6 +433,12 @@ export const parseComparison = async (
     pairs.push({ baseStory, targetStory, baseSnapshot, targetSnapshot });
   }
 
+  const baseDocument = comparisonSourceDocumentOf(reviewer);
+  const targetDocument = comparisonSourceDocumentOf(targetReviewer);
+  if (!baseDocument || !targetDocument) {
+    return panic("A parsed comparison lost its source document");
+  }
+
   return Result.ok({
     granularity: options.granularity ?? "word",
     baseBuffer: base,
@@ -358,6 +449,13 @@ export const parseComparison = async (
     packageDate,
     pairs,
     numberingChanges: compareNumbering(reviewer, targetReviewer, referencedNumberingLevels),
+    paragraphMarkPackageDependencyFailures: paragraphMarkPackageDependencyFailures({
+      pairs,
+      baseTheme: baseDocument.package.theme,
+      targetTheme: targetDocument.package.theme,
+      baseStyles: baseDocument.package.styles,
+      targetStyles: targetDocument.package.styles,
+    }),
     unsupported,
   });
 };
@@ -469,6 +567,57 @@ const resolveTableTemplates = (
   return templates;
 };
 
+const resolveParagraphMarkFormattingTemplates = (
+  plan: CompareStoryPlan,
+  targetSnapshot: FolioAIEditSnapshot,
+): FolioParagraphMarkFormattingTemplates => {
+  const targetFormatting = paragraphMarkRunFormattingOf(targetSnapshot);
+  const paired = new Map<string, TextFormatting | undefined>();
+  const inserted = new Map<string, TextFormatting | undefined>();
+  for (const request of paragraphMarkFormattingRequestsOf(plan)) {
+    const projection = targetFormatting.get(request.targetBlockId);
+    if (!projection) {
+      panic("A paragraph-mark formatting request lost its target block", { request });
+    }
+    if (request.type === "paired") {
+      paired.set(request.baseBlockId, projection.formatting);
+    } else {
+      inserted.set(request.operationId, projection.formatting);
+    }
+  }
+  return { paired, inserted };
+};
+
+const unsupportedParagraphMarkFormattingFailure = (
+  story: FolioDocumentStoryHandle,
+  plan: CompareStoryPlan,
+  baseSnapshot: FolioAIEditSnapshot,
+  targetSnapshot: FolioAIEditSnapshot,
+): CompareVerificationFailure | null => {
+  const baseFormatting = paragraphMarkRunFormattingOf(baseSnapshot);
+  const targetFormatting = paragraphMarkRunFormattingOf(targetSnapshot);
+  const properties = new Set<"fontSize" | "styleId">();
+  for (const request of paragraphMarkFormattingRequestsOf(plan)) {
+    const before =
+      request.type === "paired" ? baseFormatting.get(request.baseBlockId)?.formatting : undefined;
+    const after = targetFormatting.get(request.targetBlockId)?.formatting;
+    for (const property of ["fontSize", "styleId"] as const) {
+      if (before?.[property] !== after?.[property]) {
+        properties.add(property);
+      }
+    }
+  }
+  if (properties.size === 0) {
+    return null;
+  }
+  return {
+    invariant: "accept-reproduces-target",
+    cause: "paragraph-mark-format",
+    story,
+    detail: `paragraph-mark ${[...properties].join("/")} cannot yet be separated from body-run formatting`,
+  };
+};
+
 /**
  * Stage 3: write the planned operations into the base document as tracked
  * changes, then check the work rather than trust it. Both directions of the
@@ -484,11 +633,26 @@ const resolveTableTemplates = (
  * are both legitimate asks and only the caller knows which one it is making.
  */
 export const applyComparison = (
-  { reviewer, targetReviewer, revisionStamp, granularity, numberingChanges }: ParsedComparison,
+  {
+    reviewer,
+    targetReviewer,
+    revisionStamp,
+    granularity,
+    numberingChanges,
+    paragraphMarkPackageDependencyFailures: packageDependencyFailures,
+  }: ParsedComparison,
   planned: readonly PlannedStoryComparison[],
 ): Result<AppliedComparison, CompareDocxApplyError> => {
   const changes: CompareChange[] = [...numberingChanges];
   const failures: CompareVerificationFailure[] = [];
+  failures.push(
+    ...packageDependencyFailures.map(({ story, detail }) => ({
+      invariant: "accept-reproduces-target" as const,
+      cause: "paragraph-mark-format" as const,
+      story,
+      detail,
+    })),
+  );
   // Each story gets the range that starts where the previous story's ended.
   // A revision `w:id` is scoped to the package, not the part, so two stories
   // seeded alike would let a reader resolving a header revision resolve a
@@ -498,7 +662,33 @@ export const applyComparison = (
   const wordDiff = createScopedWordDiffOptions({ granularity });
   for (const { pair, plan } of planned) {
     changes.push(...plan.changes);
-    if (plan.operations.length === 0 && plan.tableGeometryPairings.length === 0) {
+    const unsupportedParagraphMarkFailure = unsupportedParagraphMarkFormattingFailure(
+      pair.baseStory,
+      plan,
+      pair.baseSnapshot,
+      pair.targetSnapshot,
+    );
+    if (unsupportedParagraphMarkFailure) {
+      failures.push(unsupportedParagraphMarkFailure);
+    }
+    const paragraphMarkFormattingTemplates = resolveParagraphMarkFormattingTemplates(
+      plan,
+      pair.targetSnapshot,
+    );
+    if (
+      plan.operations.length === 0 &&
+      plan.tableGeometryPairings.length === 0 &&
+      paragraphMarkFormattingTemplates.paired.size === 0
+    ) {
+      const paragraphMarkFailure = paragraphMarkFormattingRoundTripFailure({
+        invariant: "accept-reproduces-target",
+        story: pair.baseStory,
+        actual: pair.baseSnapshot,
+        expected: pair.targetSnapshot,
+      });
+      if (paragraphMarkFailure) {
+        failures.push(paragraphMarkFailure);
+      }
       continue;
     }
 
@@ -530,21 +720,36 @@ export const applyComparison = (
     documentChanged ||= geometryChanged;
     idSeed = afterGeometry;
 
-    if (plan.operations.length === 0 && !geometryChanged) {
+    if (
+      plan.operations.length === 0 &&
+      !geometryChanged &&
+      paragraphMarkFormattingTemplates.paired.size === 0
+    ) {
+      const paragraphMarkFailure = paragraphMarkFormattingRoundTripFailure({
+        invariant: "accept-reproduces-target",
+        story: pair.baseStory,
+        actual: pair.baseSnapshot,
+        expected: pair.targetSnapshot,
+      });
+      if (paragraphMarkFailure) {
+        failures.push(paragraphMarkFailure);
+      }
       continue;
     }
 
-    if (plan.operations.length > 0) {
+    if (plan.operations.length > 0 || paragraphMarkFormattingTemplates.paired.size > 0) {
+      const batch = {
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "tracked-changes" as const,
+        operations: plan.operations,
+      };
+      recordParagraphMarkFormattingTemplates(batch, paragraphMarkFormattingTemplates);
       const { skipped, nextRevisionId } = reviewer.applyDocumentOperationsToStory({
         story: pair.baseStory,
         snapshot: pair.baseSnapshot,
         revisionStamp: { date: revisionStamp.date, idSeed },
         wordDiff,
-        batch: {
-          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-          mode: "tracked-changes",
-          operations: plan.operations,
-        },
+        batch,
         tableTemplates: resolveTableTemplates(targetTables, plan.tableTemplates),
       });
       if (nextRevisionId === undefined) {
@@ -569,10 +774,11 @@ export const applyComparison = (
     }
 
     const acceptedStory = reviewer.readReviewedStory({ story: pair.baseStory, view: "final" });
+    const acceptedSnapshot = acceptedStory?.snapshot;
     const acceptFailure = classifyProjectionMismatch({
       invariant: "accept-reproduces-target",
       story: pair.baseStory,
-      actual: acceptedStory?.snapshot.blocks ?? [],
+      actual: acceptedSnapshot?.blocks ?? [],
       expected: pair.targetSnapshot.blocks,
     });
     if (acceptFailure) {
@@ -582,19 +788,31 @@ export const applyComparison = (
         invariant: "accept-reproduces-target",
         story: pair.baseStory,
         changes: plan.changes,
-        actualBlocks: acceptedStory?.snapshot.blocks ?? [],
+        actualBlocks: acceptedSnapshot?.blocks ?? [],
         expectedBlocks: pair.targetSnapshot.blocks,
         expectedBlockId: ({ targetBlockId }) => targetBlockId,
       });
       if (formattingFailure) {
         failures.push(formattingFailure);
       }
+      if (acceptedSnapshot) {
+        const paragraphMarkFailure = paragraphMarkFormattingRoundTripFailure({
+          invariant: "accept-reproduces-target",
+          story: pair.baseStory,
+          actual: acceptedSnapshot,
+          expected: pair.targetSnapshot,
+        });
+        if (paragraphMarkFailure) {
+          failures.push(paragraphMarkFailure);
+        }
+      }
     }
     const rejectedStory = reviewer.readReviewedStory({ story: pair.baseStory, view: "original" });
+    const rejectedSnapshot = rejectedStory?.snapshot;
     const rejectFailure = classifyProjectionMismatch({
       invariant: "reject-reproduces-base",
       story: pair.baseStory,
-      actual: rejectedStory?.snapshot.blocks ?? [],
+      actual: rejectedSnapshot?.blocks ?? [],
       expected: baseBefore,
     });
     if (rejectFailure) {
@@ -604,12 +822,23 @@ export const applyComparison = (
         invariant: "reject-reproduces-base",
         story: pair.baseStory,
         changes: plan.changes,
-        actualBlocks: rejectedStory?.snapshot.blocks ?? [],
+        actualBlocks: rejectedSnapshot?.blocks ?? [],
         expectedBlocks: pair.baseSnapshot.blocks,
         expectedBlockId: ({ baseBlockId }) => baseBlockId,
       });
       if (formattingFailure) {
         failures.push(formattingFailure);
+      }
+      if (rejectedSnapshot) {
+        const paragraphMarkFailure = paragraphMarkFormattingRoundTripFailure({
+          invariant: "reject-reproduces-base",
+          story: pair.baseStory,
+          actual: rejectedSnapshot,
+          expected: pair.baseSnapshot,
+        });
+        if (paragraphMarkFailure) {
+          failures.push(paragraphMarkFailure);
+        }
       }
     }
     // The block projection says which cell every paragraph landed in and

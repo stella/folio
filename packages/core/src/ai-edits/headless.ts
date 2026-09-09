@@ -556,6 +556,12 @@ const paragraphPlainText = (paragraph: Comment["content"][number]): string => {
   return parts.join("");
 };
 
+const comparisonSourceDocuments = new WeakMap<FolioDocxReviewer, Document>();
+
+/** @internal Read the immutable package model that owns a comparison reviewer's sidecars. */
+export const comparisonSourceDocumentOf = (reviewer: FolioDocxReviewer): Document | undefined =>
+  comparisonSourceDocuments.get(reviewer);
+
 /**
  * Headless `.docx` reviewer. Parse a buffer, read blocks, apply
  * `FolioAIEditOperation`s against the document model, and write the reviewed
@@ -602,6 +608,7 @@ export class FolioDocxReviewer {
     this.originalBuffer = args.originalBuffer;
     this.state = args.state;
     this.author = args.author;
+    comparisonSourceDocuments.set(this, args.baseDocument);
     this.usedCommentIds = new Set(
       (args.baseDocument.package.document.comments ?? []).map(({ id }) => id),
     );

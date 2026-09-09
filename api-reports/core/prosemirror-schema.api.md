@@ -284,6 +284,7 @@ export type ParagraphAttrs = {
     };
     _sectionProperties?: import__stll_docx_core_model.SectionProperties;
     _propertyChanges?: ParagraphPropertyChangeAttrs[];
+    _runPropertyChanges?: import__stll_docx_core_model.RunPropertyChange[];
     pPrMark?: import__stll_docx_core_model.ParagraphMarkChange;
     _suggestedInsert?: SuggestedStructuralMarker | null;
 };

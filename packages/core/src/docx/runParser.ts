@@ -666,7 +666,8 @@ export function parseRunProperties(
   return Object.keys(formatting).length > 0 ? formatting : undefined;
 }
 
-function parseRunPropertyChanges(
+/** @internal Shared with the paragraph-mark `w:pPr/w:rPrChange` parser. */
+export function parseRunPropertyChanges(
   rPr: XmlElement | null,
   theme: Theme | null,
   styles: StyleMap | null,

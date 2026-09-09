@@ -16,6 +16,7 @@ import type { Node as PMNode, Mark } from "prosemirror-model";
 import { Fragment } from "prosemirror-model";
 
 import { numPrEqual } from "../../docx/numberingParser";
+import { assignParagraphMarkRunPropertyChanges } from "../../docx/paragraphMarkRunPropertyChanges";
 import { visitDocxParagraphs } from "../../docx/paragraphTraversal";
 import { DATE_UTC_ATTRIBUTE } from "../../docx/trackedChangeInfo";
 import {
@@ -1230,6 +1231,9 @@ function convertPMParagraph(
   // share a mutable reference with PM's attrs.
   if (attrs._propertyChanges && attrs._propertyChanges.length > 0) {
     paragraph.propertyChanges = attrs._propertyChanges.map(propertyChangeFromAttrs);
+  }
+  if (attrs._runPropertyChanges && attrs._runPropertyChanges.length > 0) {
+    assignParagraphMarkRunPropertyChanges(paragraph, attrs._runPropertyChanges);
   }
 
   if (attrs.pPrMark) {

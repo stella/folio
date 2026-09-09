@@ -99,6 +99,8 @@ const describeChange = (change: CompareChange): string => {
       return `merge   [${where}] ${change.text}`;
     case "paragraph-format":
       return `pformat [${where}] ${JSON.stringify(change.properties)}`;
+    case "paragraph-mark-format":
+      return `pmformat [${where}] ${JSON.stringify(change.properties)}`;
     case "numbering":
       return `numbering [${String(change.numId)}:${String(change.level)}]`;
     case "table-insert":

@@ -399,6 +399,13 @@ export const readParagraphAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Par
   optionalPropertyChanges(attrs, "_propertyChanges", "paragraph.attrs._propertyChanges", issues, [
     "paragraphPropertyChange",
   ]);
+  optionalPropertyChanges(
+    attrs,
+    "_runPropertyChanges",
+    "paragraph.attrs._runPropertyChanges",
+    issues,
+    ["runPropertyChange"],
+  );
 
   return attrsResult(attrs, issues);
 };

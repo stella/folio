@@ -56,6 +56,7 @@ import {
   mergeParagraphTabStops,
 } from "../../utils/paragraphFormattingMerge";
 import { resolveColorValueToHex } from "../../docx/drawingUtils";
+import { getParagraphMarkRunPropertyChanges } from "../../docx/paragraphMarkRunPropertyChanges";
 import {
   linkProseParagraphPropertySource,
   recreateProseNodeWithParagraphPropertySource,
@@ -961,6 +962,10 @@ function paragraphFormattingToAttrs(
   // through into PM attrs.
   if (paragraph.propertyChanges && paragraph.propertyChanges.length > 0) {
     attrs._propertyChanges = [...paragraph.propertyChanges];
+  }
+  const paragraphMarkRunPropertyChanges = getParagraphMarkRunPropertyChanges(paragraph);
+  if (paragraphMarkRunPropertyChanges !== undefined) {
+    attrs._runPropertyChanges = [...paragraphMarkRunPropertyChanges];
   }
   if (paragraph.pPrMark) {
     attrs.pPrMark = paragraph.pPrMark;

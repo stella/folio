@@ -255,7 +255,7 @@ export const clearTemplateSlashMenu: (tr: Transaction) => Transaction;
 export const COMPARE_UNSUPPORTED_REASONS: readonly ["story-missing-in-base", "story-missing-in-target", "story-not-editable"];
 
 // @public
-export const COMPARE_VERIFICATION_CAUSES: readonly ["invisible-structure", "block-count", "container", "table-geometry", "style", "list-level", "alignment", "spacing", "inline-formatting", "whitespace", "text"];
+export const COMPARE_VERIFICATION_CAUSES: readonly ["invisible-structure", "block-count", "container", "table-geometry", "style", "list-level", "alignment", "spacing", "paragraph-mark-format", "inline-formatting", "whitespace", "text"];
 
 // @public
 export const COMPARE_VERIFICATION_INVARIANTS: readonly ["accept-reproduces-target", "reject-reproduces-base"];
@@ -306,9 +306,8 @@ export type CompareChange = {
     text: string;
 } |
 /**
-* A paragraph property moved and no words did: a list item demoted a level,
-* a paragraph restyled. Written as `w:pPrChange`, so rejecting restores the
-* whole previous property set the way Word does.
+* A paragraph property moved: a list item demoted a level or a paragraph
+* was restyled. Rejecting restores the complete previous property set.
 */
     {
     kind: "paragraph-format";
@@ -316,6 +315,14 @@ export type CompareChange = {
     baseBlockId: string;
     targetBlockId: string;
     properties: FolioAIBlockParagraphProperties;
+} |
+/** The aligned paragraph mark's direct `w:pPr/w:rPr` formatting changed. */
+    {
+    kind: "paragraph-mark-format";
+    location: CompareChangeLocation;
+    baseBlockId: string;
+    targetBlockId: string;
+    properties: import__stll_docx_core_model.TextFormatting | null;
 } | {
     kind: "format";
     location: CompareChangeLocation;

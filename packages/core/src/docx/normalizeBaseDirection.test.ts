@@ -9,6 +9,10 @@ import { describe, expect, test } from "bun:test";
 
 import type { Document, Paragraph } from "../types/document";
 import { normalizeBaseDirection } from "./normalizeBaseDirection";
+import {
+  assignParagraphMarkRunPropertyChanges,
+  getParagraphMarkRunPropertyChanges,
+} from "./paragraphMarkRunPropertyChanges";
 
 const para = (text: string, bidi?: boolean): Paragraph => ({
   type: "paragraph",
@@ -31,6 +35,27 @@ const bidiOf = (doc: Document, index: number): boolean | undefined => {
 describe("normalizeBaseDirection", () => {
   test("sets bidi=true on an undecided Arabic-led paragraph", () => {
     expect(bidiOf(normalizeBaseDirection(docOf(para("هذا عقد"))), 0)).toBe(true);
+  });
+
+  test("preserves a pending paragraph-mark run-property revision while adding bidi", () => {
+    const paragraph = para("هذا عقد");
+    const changes = [
+      {
+        type: "runPropertyChange" as const,
+        info: { id: 7, author: "Reviewer", date: "2024-03-01T00:00:00.000Z" },
+        previousFormatting: { allCaps: true },
+      },
+    ];
+    assignParagraphMarkRunPropertyChanges(paragraph, changes);
+
+    const normalized = normalizeBaseDirection(docOf(paragraph));
+    const block = normalized.package.document.content.at(0);
+    if (block?.type !== "paragraph") {
+      throw new Error("expected a paragraph");
+    }
+
+    expect(block.formatting?.bidi).toBe(true);
+    expect(getParagraphMarkRunPropertyChanges(block)).toEqual(changes);
   });
 
   test("leaves a Latin-led paragraph undecided", () => {

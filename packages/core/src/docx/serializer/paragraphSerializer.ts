@@ -29,6 +29,7 @@ import type {
   MoveFromRangeStart,
   MoveToRangeStart,
   ParagraphPropertyChange,
+  RunPropertyChange,
   SectionProperties,
   SdtProperties,
   TabStop,
@@ -41,6 +42,7 @@ import { isValidHexColor } from "../../utils/colorResolver";
 import { canonicalJson } from "../../utils/canonicalJson";
 import { numPrEqual } from "../numberingParser";
 import { getParagraphPropertySource } from "../paragraphPropertySource";
+import { getParagraphMarkRunPropertyChanges } from "../paragraphMarkRunPropertyChanges";
 import { reconcileRawSdtPr } from "../sdtPropertiesPatch";
 import { DATE_UTC_ATTRIBUTE, DATE_UTC_NAMESPACE_URI } from "../trackedChangeInfo";
 import { toTransitionalNamespaceUri } from "../transitionalSpelling";
@@ -399,6 +401,7 @@ function serializeParagraphMarkChange(mark: ParagraphMarkChange): string {
 
 type SerializeParagraphFormattingOptions = {
   propertyChanges?: ParagraphPropertyChange[] | undefined;
+  paragraphMarkRunPropertyChanges?: readonly RunPropertyChange[] | undefined;
   paragraphMarkChange?: ParagraphMarkChange | undefined;
   propertySource?: ParagraphPropertySource | undefined;
   sectionProperties?: SectionProperties | undefined;
@@ -731,17 +734,32 @@ const withTrailingParagraphPropertyChildren = (
     : `${sourceXml.slice(0, close)}${written}${sourceXml.slice(close)}`;
 };
 
-const withParagraphMarkChange = (sourceXml: string, mark: ParagraphMarkChange): string => {
+type ParagraphMarkTrackedChanges = {
+  mark?: ParagraphMarkChange;
+  runPropertyChangeXml?: string;
+};
+
+const withParagraphMarkTrackedChanges = (
+  sourceXml: string,
+  { mark, runPropertyChangeXml }: ParagraphMarkTrackedChanges,
+): string => {
   const root = parseXml(sourceXml, OOXML_NAMESPACE_SCOPE).elements?.at(0);
   if (!root || root.type !== "element") {
     panic("A validated paragraph-property capture could not be parsed for composition");
   }
-  const attributes = trackedChangeAttributeRecord(mark.info);
-  const markElement = cloneElement(root, {
-    name: `w:${mark.kind}`,
-    attributes,
-    elements: [],
-  });
+  const markElement = mark
+    ? cloneElement(root, {
+        name: `w:${mark.kind}`,
+        attributes: trackedChangeAttributeRecord(mark.info),
+        elements: [],
+      })
+    : null;
+  const runPropertyChange = runPropertyChangeXml
+    ? parseXml(runPropertyChangeXml, OOXML_NAMESPACE_SCOPE).elements?.at(0)
+    : null;
+  if (runPropertyChangeXml && (!runPropertyChange || runPropertyChange.type !== "element")) {
+    panic("A serialized paragraph-mark run-property change could not be parsed for composition");
+  }
   const elements = [...(root.elements ?? [])];
   const paragraphMarkIndex = elements.findIndex(
     (child) =>
@@ -750,11 +768,15 @@ const withParagraphMarkChange = (sourceXml: string, mark: ParagraphMarkChange): 
       toTransitionalNamespaceUri(child.namespaceUri ?? "") === NAMESPACES.w,
   );
   if (paragraphMarkIndex === -1) {
+    const trackedChildren = [
+      ...(markElement ? [markElement] : []),
+      ...(runPropertyChange ? [runPropertyChange] : []),
+    ];
     elements.push(
       cloneElement(root, {
         name: "w:rPr",
         attributes: {},
-        elements: [markElement],
+        elements: trackedChildren,
       }),
     );
   } else {
@@ -763,16 +785,39 @@ const withParagraphMarkChange = (sourceXml: string, mark: ParagraphMarkChange): 
       panic("A validated paragraph-mark property node disappeared during composition");
     }
     elements[paragraphMarkIndex] = cloneElement(paragraphMarkProperties, {
-      elements: [markElement, ...(paragraphMarkProperties.elements ?? [])],
+      elements: [
+        ...(markElement ? [markElement] : []),
+        ...(paragraphMarkProperties.elements ?? []),
+        ...(runPropertyChange ? [runPropertyChange] : []),
+      ],
     });
   }
   return captureVerbatimXml(cloneElement(root, { elements }));
+};
+
+const serializeParagraphMarkRunPropertyChange = (
+  changes: readonly RunPropertyChange[] | undefined,
+): string => {
+  const count = changes?.length ?? 0;
+  if (count > 1) {
+    panic("A paragraph mark cannot serialize more than one w:rPrChange", {
+      elementName: "w:pPr/w:rPr/w:rPrChange",
+      propertyChangeCount: count,
+    });
+  }
+  const change = changes?.at(0);
+  if (!change) {
+    return "";
+  }
+  const previousRPrXml = serializeTextFormatting(change.previousFormatting) || "<w:rPr/>";
+  return `<w:rPrChange ${serializeTrackedChangeAttributes(change.info)}>${previousRPrXml}</w:rPrChange>`;
 };
 
 const serializeParagraphFormattingWithOptions = (
   formatting: ParagraphFormatting | undefined,
   {
     propertyChanges,
+    paragraphMarkRunPropertyChanges,
     paragraphMarkChange,
     propertySource,
     sectionProperties,
@@ -789,12 +834,16 @@ const serializeParagraphFormattingWithOptions = (
   const paragraphMarkXml = paragraphMarkChange
     ? serializeParagraphMarkChange(paragraphMarkChange)
     : "";
+  const paragraphMarkRunPropertyChangeXml = serializeParagraphMarkRunPropertyChange(
+    paragraphMarkRunPropertyChanges,
+  );
   const sectionPropertiesXml = serializeSectionProperties(sectionProperties);
   const propertyChangesXml = (propertyChanges ?? []).map((change) =>
     serializeParagraphPropertyChange(change),
   );
   const composedChildrenUseDateUtc = [
     paragraphMarkXml,
+    paragraphMarkRunPropertyChangeXml,
     sectionPropertiesXml,
     ...propertyChangesXml,
   ].some((xml) => xml.includes(`${DATE_UTC_ATTRIBUTE}=`));
@@ -803,9 +852,15 @@ const serializeParagraphFormattingWithOptions = (
     verifiedSource !== null &&
     (!composedChildrenUseDateUtc || !sourceShadowsDateUtcPrefix(verifiedSource))
   ) {
-    const sourceWithMark = paragraphMarkChange
-      ? withParagraphMarkChange(verifiedSource, paragraphMarkChange)
-      : verifiedSource;
+    const sourceWithMark =
+      paragraphMarkChange || paragraphMarkRunPropertyChangeXml
+        ? withParagraphMarkTrackedChanges(verifiedSource, {
+            ...(paragraphMarkChange ? { mark: paragraphMarkChange } : {}),
+            ...(paragraphMarkRunPropertyChangeXml
+              ? { runPropertyChangeXml: paragraphMarkRunPropertyChangeXml }
+              : {}),
+          })
+        : verifiedSource;
     return withTrailingParagraphPropertyChildren(sourceWithMark, [
       sectionPropertiesXml,
       ...propertyChangesXml,
@@ -930,19 +985,24 @@ const serializeParagraphFormattingWithOptions = (
     // EG_ParaRPrTrackChanges (ECMA-376 §17.13.5 / wml.xsd:1837) puts
     // <w:ins>/<w:del> FIRST inside the paragraph mark's rPr; strict
     // readers reject other orderings.
-    if (paragraphMarkChange || formatting.runProperties || formatting.runInWithNext) {
+    if (
+      paragraphMarkChange ||
+      formatting.runProperties ||
+      formatting.runInWithNext ||
+      paragraphMarkRunPropertyChangeXml
+    ) {
       const pPrMarkXml = paragraphMarkChange ? paragraphMarkXml : "";
       const innerRPr = formatting.runProperties
         ? extractRPrInner(serializeTextFormatting(formatting.runProperties))
         : "";
       const specVanishXml = formatting.runInWithNext ? "<w:specVanish/>" : "";
-      const fullInner = `${pPrMarkXml}${innerRPr}${specVanishXml}`;
+      const fullInner = `${pPrMarkXml}${innerRPr}${specVanishXml}${paragraphMarkRunPropertyChangeXml}`;
       if (fullInner.length > 0) {
         parts.push(`<w:rPr>${fullInner}</w:rPr>`);
       }
     }
-  } else if (paragraphMarkChange) {
-    parts.push(`<w:rPr>${paragraphMarkXml}</w:rPr>`);
+  } else if (paragraphMarkChange || paragraphMarkRunPropertyChangeXml) {
+    parts.push(`<w:rPr>${paragraphMarkXml}${paragraphMarkRunPropertyChangeXml}</w:rPr>`);
   }
 
   // `CT_PPr` closes with `rPr`, `sectPr`, `pPrChange` in that order: a section
@@ -1577,6 +1637,7 @@ export function serializeParagraph(paragraph: Paragraph): string {
   parts.push(
     serializeParagraphFormattingWithOptions(paragraph.formatting, {
       propertyChanges: paragraph.propertyChanges,
+      paragraphMarkRunPropertyChanges: getParagraphMarkRunPropertyChanges(paragraph),
       paragraphMarkChange: paragraph.pPrMark,
       propertySource: getParagraphPropertySource(paragraph),
       sectionProperties: paragraph.sectionProperties,

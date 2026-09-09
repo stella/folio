@@ -3,6 +3,7 @@ import type { Fragment, Mark, Node as PMNode } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 
 import type { Document, Paragraph } from "../types/document";
+import { copyParagraphMarkRunPropertyChanges } from "./paragraphMarkRunPropertyChanges";
 import { visitDocxParagraphs } from "./paragraphTraversal";
 
 type ParagraphPropertySource = {
@@ -53,6 +54,7 @@ export const cloneParagraphWithPropertySource = (
 ): Paragraph => {
   const cloned: Paragraph = { ...paragraph, ...overrides };
   copyParagraphPropertySource(cloned, paragraph);
+  copyParagraphMarkRunPropertyChanges(cloned, paragraph);
   return cloned;
 };
 
@@ -60,7 +62,11 @@ export const cloneParagraphWithPropertySource = (
 export const cloneParagraphWithoutPropertySource = (
   paragraph: Paragraph,
   overrides: ParagraphCloneOverrides,
-): Paragraph => ({ ...paragraph, ...overrides });
+): Paragraph => {
+  const cloned: Paragraph = { ...paragraph, ...overrides };
+  copyParagraphMarkRunPropertyChanges(cloned, paragraph);
+  return cloned;
+};
 
 const paragraphsIn = (document: Document): Paragraph[] => {
   const paragraphs: Paragraph[] = [];
@@ -95,6 +101,7 @@ export const cloneDocumentWithParagraphPropertySources = (document: Document): D
       panic("The cloned document lost a paragraph owner.");
     }
     copyParagraphPropertySource(target, source);
+    copyParagraphMarkRunPropertyChanges(target, source);
   }
   return cloned;
 };

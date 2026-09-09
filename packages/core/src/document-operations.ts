@@ -1,6 +1,7 @@
 import { TaggedError } from "better-result";
 
 import type { FolioTableTemplates } from "./ai-edits/table-template";
+import { paragraphMarkFormattingTemplatesOf } from "./ai-edits/paragraph-mark-template";
 import {
   applyFolioAIEditOperations,
   type FolioAIEditApplyOutcome,
@@ -1586,6 +1587,7 @@ export const applyFolioDocumentOperations = ({
   tableTemplates,
 }: ApplyFolioDocumentOperationsOptions): FolioDocumentOperationResult => {
   const parsedBatch = parseFolioDocumentOperationBatch(batch);
+  const paragraphMarkFormattingTemplates = paragraphMarkFormattingTemplatesOf(batch);
   const apply = ({
     targetView,
     targetCreateCommentId = createCommentId,
@@ -1602,6 +1604,9 @@ export const applyFolioDocumentOperations = ({
       ...(revisionStamp !== undefined && { revisionStamp }),
       ...(wordDiff !== undefined && { wordDiff }),
       ...(tableTemplates !== undefined && { tableTemplates }),
+      ...(paragraphMarkFormattingTemplates !== undefined && {
+        paragraphMarkFormattingTemplates,
+      }),
     });
   };
 

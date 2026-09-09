@@ -43,6 +43,7 @@ import { isValidHexId } from "../utils/hexId";
 import { canonicalJson } from "../utils/canonicalJson";
 import { paraIdInRange } from "./paraIdRangeNormalization";
 import { assignParagraphPropertySource } from "./paragraphPropertySource";
+import { assignParagraphMarkRunPropertyChanges } from "./paragraphMarkRunPropertyChanges";
 import {
   parseBookmarkStart as parseBookmarkStartFromModule,
   parseBookmarkEnd as parseBookmarkEndFromModule,
@@ -65,7 +66,7 @@ import {
   narrowEnum,
 } from "./parserEnums";
 import { consolidateParagraphContent } from "./runConsolidator";
-import { parseRun, parseRunProperties } from "./runParser";
+import { parseRun, parseRunProperties, parseRunPropertyChanges } from "./runParser";
 import { parseSdtProperties } from "./sdtProperties";
 import { parseSectionProperties } from "./sectionParser";
 import { isValidHexColor } from "../utils/colorResolver";
@@ -2024,6 +2025,21 @@ export function parseParagraph(
     );
     if (propertyChangesResult !== undefined) {
       paragraph.propertyChanges = propertyChangesResult;
+    }
+
+    const paragraphMarkProperties = findChildByNamespaceUri(
+      pPr,
+      WORDPROCESSINGML_NAMESPACE_URIS,
+      "rPr",
+    );
+    const paragraphMarkRunPropertyChanges = parseRunPropertyChanges(
+      paragraphMarkProperties,
+      theme,
+      styles,
+      paragraph.formatting?.runProperties,
+    );
+    if (paragraphMarkRunPropertyChanges !== undefined) {
+      assignParagraphMarkRunPropertyChanges(paragraph, paragraphMarkRunPropertyChanges);
     }
 
     const pPrMarkResult = parseParagraphMarkChange(pPr);

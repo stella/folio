@@ -391,6 +391,10 @@ const paragraphNodeSpec: NodeSpec = {
     _autospacingBase: { default: null },
     _sectionProperties: { default: null },
     _propertyChanges: { default: null },
+    // Keep the unused carrier out of serialized PM state. `undefined` is a
+    // real ProseMirror default but JSON.stringify omits it, so ordinary
+    // paragraphs pay no state-size cost.
+    _runPropertyChanges: { default: undefined },
     pPrMark: { default: null },
     _suggestedInsert: { default: null },
   },

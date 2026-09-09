@@ -24,6 +24,7 @@ import {
 import { getDocumentStyleResolver } from "../prosemirror/plugins/documentStyles";
 import type { ParagraphPropertyChangeAttrs } from "../prosemirror/schema/nodes";
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
+import { paragraphMarkRunPropertiesPatch } from "../prosemirror/paragraphMarkRunProperties";
 import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { requestDeterministicParaIds } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import {
@@ -33,15 +34,17 @@ import {
 } from "../prosemirror/containerFinalParagraph";
 import { isZeroWidthAnchor } from "../prosemirror/zeroWidthAnchors";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
-import type { ParagraphFormatting, RunPropertyChange } from "../types/document";
+import type { ParagraphFormatting, RunPropertyChange, TextFormatting } from "../types/document";
 import { stripBlockIdentityAttrs } from "./block-identity";
 import { buildCleanBlockText } from "./clean-text";
+import type { FolioParagraphMarkFormattingTemplates } from "./paragraph-mark-template";
 import {
   hasInlineEmphasis,
   parseInlineEmphasisRuns,
   stripInlineEmphasisMarkers,
 } from "./inline-emphasis";
 import { hashFolioAIBlockText, isHiddenTableRow, normalizeFolioAIBlockText } from "./snapshot";
+import { canonicalJson } from "../utils/canonicalJson";
 import {
   mergeTableRectangle,
   mergeTrackedVerticalTableCells,
@@ -154,6 +157,8 @@ type ApplyFolioAIEditOperationsOptions = {
    * still describes a table by its cell texts.
    */
   tableTemplates?: FolioTableTemplates;
+  /** @internal Exact paragraph-mark formatting supplied by document comparison. */
+  paragraphMarkFormattingTemplates?: FolioParagraphMarkFormattingTemplates;
 };
 
 type ApplyFolioAIEditOperationsInternalOptions = ApplyFolioAIEditOperationsOptions & {
@@ -515,6 +520,22 @@ const paragraphPropertiesBeforeBatch = (
     return paragraphPropertiesSnapshot(node);
   }
   return earliestBatchChange.previousFormatting ?? {};
+};
+
+/** The paragraph mark's direct rPr before this batch changed it. */
+const paragraphMarkRunPropertiesBeforeBatch = (
+  node: PMNode,
+  batchRevisionIds: ReadonlySet<number>,
+): TextFormatting | undefined => {
+  const attrs = expectParagraphAttrs(node);
+  const changes = attrs._runPropertyChanges;
+  if (Array.isArray(changes)) {
+    const earliestBatchChange = changes.find(({ info }) => batchRevisionIds.has(info.id));
+    if (earliestBatchChange) {
+      return earliestBatchChange.previousFormatting;
+    }
+  }
+  return attrs._originalFormatting?.runProperties;
 };
 
 type ResolveFormattingFromStyleOptions = {
@@ -1350,12 +1371,20 @@ type BuildInsertedParagraphsOptions = {
   suggestionId: string | null;
   revisionSeed: number;
   isPairedMove: (moveId: string | undefined) => moveId is string;
+  paragraphMarkFormattingTemplate: { runProperties: TextFormatting | undefined } | null;
 };
 
 type BuiltInsertedParagraphs = {
   nodes: PMNode[];
   revisionIds: number[];
   nextRevisionId: number;
+};
+
+type ResolvedParagraphMarkFormattingTemplate = {
+  blockId: string;
+  blockFrom: number;
+  previousFormatting: TextFormatting | undefined;
+  targetFormatting: TextFormatting | undefined;
 };
 
 const isBatchableParagraphInsertion = (
@@ -1488,6 +1517,10 @@ const withRotatedAddedFinalBreaks = ({
     // Every boundary in the chain resolves back to this one pre-batch mark;
     // local predecessor snapshots let right-to-left rejection overwrite it.
     const previousFormatting = paragraphPropertiesBeforeBatch(carrier.node, batchRevisionIds);
+    const previousRunProperties = paragraphMarkRunPropertiesBeforeBatch(
+      carrier.node,
+      batchRevisionIds,
+    );
     next = next.setNodeAttribute(finalPosition, "pPrMark", null);
     let carriedMark: unknown = finalMark;
     for (let index = 1; index < path.length; index++) {
@@ -1534,6 +1567,36 @@ const withRotatedAddedFinalBreaks = ({
         synthesizedRevisions.push({ ownerRevisionId, revisionId });
       }
 
+      const liveCurrent = next.doc.nodeAt(current.position);
+      if (!liveCurrent || liveCurrent.type.name !== final.type.name) {
+        panic("A final-mark rotation lost its paragraph", { position: current.position });
+      }
+      const currentRunProperties =
+        expectParagraphAttrs(liveCurrent)._originalFormatting?.runProperties;
+      if (
+        canonicalJson(previousRunProperties ?? {}) !== canonicalJson(currentRunProperties ?? {})
+      ) {
+        const existing = expectParagraphAttrs(liveCurrent)._runPropertyChanges;
+        const revisionId = nextRevisionId++;
+        next = next.setNodeMarkup(current.position, undefined, {
+          ...liveCurrent.attrs,
+          _runPropertyChanges: [
+            ...(Array.isArray(existing) ? existing : []),
+            {
+              type: "runPropertyChange",
+              info: { id: revisionId, author, date, ...(initials ? { initials } : {}) },
+              ...(previousRunProperties !== undefined && {
+                previousFormatting: structuredClone(previousRunProperties),
+              }),
+              ...(currentRunProperties !== undefined && {
+                currentFormatting: structuredClone(currentRunProperties),
+              }),
+            } satisfies RunPropertyChange,
+          ],
+        });
+        synthesizedRevisions.push({ ownerRevisionId, revisionId });
+      }
+
       if (displacedMark == null) {
         break;
       }
@@ -1555,6 +1618,7 @@ const buildInsertedParagraphs = ({
   suggestionId,
   revisionSeed,
   isPairedMove,
+  paragraphMarkFormattingTemplate,
 }: BuildInsertedParagraphsOptions): BuiltInsertedParagraphs => {
   const operation = item.operation;
   if (operation.type !== "insertAfterBlock" && operation.type !== "insertBeforeBlock") {
@@ -1607,6 +1671,10 @@ const buildInsertedParagraphs = ({
     }
     const content = text.length > 0 ? buildEmphasisInlineContent(schema, text, marks) : null;
     const attrs: Record<string, unknown> = isFirstParagraph ? { ...baseAttrs } : {};
+    let originalFormatting =
+      isFirstParagraph && operation.inheritFormatting !== false
+        ? expectParagraphAttrs(item.blockNode)._originalFormatting
+        : undefined;
     if (isFirstParagraph && operation.pageBreakBefore === true) {
       attrs["pageBreakBefore"] = true;
     }
@@ -1652,29 +1720,27 @@ const buildInsertedParagraphs = ({
         operation.spacing === undefined ? inheritedDirectSpacing : (operation.spacing ?? undefined);
       attrs["alignmentFromStyle"] = formattingFromStyle?.alignment;
       attrs["alignment"] = directAlignment ?? formattingFromStyle?.alignment ?? null;
-      const sourceFormatting = attrs["_originalFormatting"];
-      let originalFormatting: ParagraphFormatting | undefined =
-        typeof sourceFormatting === "object" && sourceFormatting !== null
-          ? { ...sourceFormatting }
-          : undefined;
+      let nextOriginalFormatting: ParagraphFormatting | undefined = originalFormatting
+        ? { ...originalFormatting }
+        : undefined;
       if (operation.styleId !== undefined) {
-        originalFormatting ??= {};
+        nextOriginalFormatting ??= {};
         if (operation.styleId === null) {
-          Reflect.deleteProperty(originalFormatting, "styleId");
+          Reflect.deleteProperty(nextOriginalFormatting, "styleId");
         } else {
-          originalFormatting.styleId = operation.styleId;
+          nextOriginalFormatting.styleId = operation.styleId;
         }
       }
       if (operation.alignment !== undefined || inheritedDirectAlignment !== undefined) {
-        originalFormatting ??= {};
+        nextOriginalFormatting ??= {};
         if (directAlignment === undefined) {
-          Reflect.deleteProperty(originalFormatting, "alignment");
+          Reflect.deleteProperty(nextOriginalFormatting, "alignment");
         } else {
-          originalFormatting.alignment = directAlignment;
+          nextOriginalFormatting.alignment = directAlignment;
         }
       }
       if (operation.spacing !== undefined) {
-        originalFormatting = withDirectParagraphSpacing(originalFormatting, directSpacing);
+        nextOriginalFormatting = withDirectParagraphSpacing(nextOriginalFormatting, directSpacing);
       }
       if (operation.styleId !== undefined || operation.spacing !== undefined) {
         Object.assign(
@@ -1685,10 +1751,19 @@ const buildInsertedParagraphs = ({
           }),
         );
       }
-      attrs["_originalFormatting"] =
-        originalFormatting && Object.keys(originalFormatting).length > 0
-          ? originalFormatting
-          : null;
+      originalFormatting =
+        nextOriginalFormatting && Object.keys(nextOriginalFormatting).length > 0
+          ? nextOriginalFormatting
+          : undefined;
+      attrs["_originalFormatting"] = originalFormatting ?? null;
+    }
+    if (isFirstParagraph && paragraphMarkFormattingTemplate !== null) {
+      const patch = paragraphMarkRunPropertiesPatch(
+        originalFormatting,
+        paragraphMarkFormattingTemplate.runProperties,
+      );
+      attrs["_originalFormatting"] = patch._originalFormatting;
+      originalFormatting = patch._originalFormatting ?? undefined;
     }
     if (isSuggested && suggestionId !== null && paragraphRevisionId !== null) {
       attrs["_suggestedInsert"] = {
@@ -1737,6 +1812,7 @@ const applyFolioAIEditOperationsInternal = ({
   wordDiff,
   wordDiffMode = "bounded",
   tableTemplates,
+  paragraphMarkFormattingTemplates,
 }: ApplyFolioAIEditOperationsInternalOptions): FolioAIEditApplyOutcome => {
   const applied: FolioAIEditAppliedOperation[] = [];
   const skipped: FolioAIEditSkippedOperation[] = [];
@@ -1756,6 +1832,12 @@ const applyFolioAIEditOperationsInternal = ({
     const styleId =
       item.operation.styleId !== undefined ? item.operation.styleId : inheritedStyleId;
     return resolveFormattingFromStyle({ attrs: anchorAttrs, styleId, styleResolver });
+  };
+  const paragraphMarkFormattingTemplateForInsertion = (
+    operationId: string,
+  ): { runProperties: TextFormatting | undefined } | null => {
+    const inserted = paragraphMarkFormattingTemplates?.inserted;
+    return inserted?.has(operationId) ? { runProperties: inserted.get(operationId) } : null;
   };
   const claimedTableRows = new Set<string>();
   const claimedTableColumns = new Set<string>();
@@ -1785,6 +1867,35 @@ const applyFolioAIEditOperationsInternal = ({
   // the fallback for ordinal-encoded snapshot ids.
   const liveBlocks = collectLiveBlocksByHash(view.state.doc);
   const liveBlocksByParaId = collectLiveBlocksByParaId(view.state.doc);
+  const resolvedParagraphMarkFormatting: ResolvedParagraphMarkFormattingTemplate[] = [];
+  for (const [blockId, targetFormatting] of paragraphMarkFormattingTemplates?.paired ?? []) {
+    const syntheticOperationId = `compare-paragraph-mark:${blockId}`;
+    if (mode !== "tracked-changes") {
+      skipped.push({ id: syntheticOperationId, reason: "unsupportedMode" });
+      continue;
+    }
+    const resolution = resolveStableBlock({
+      snapshot,
+      blockId,
+      liveBlocks,
+      liveBlocksByParaId,
+    });
+    if (resolution.type === "skip") {
+      skipped.push({ id: syntheticOperationId, reason: resolution.reason });
+      continue;
+    }
+    const attrs = expectParagraphAttrs(resolution.blockNode);
+    if (Array.isArray(attrs._runPropertyChanges) && attrs._runPropertyChanges.length > 0) {
+      skipped.push({ id: syntheticOperationId, reason: "unsupportedBlock" });
+      continue;
+    }
+    resolvedParagraphMarkFormatting.push({
+      blockId,
+      blockFrom: resolution.blockFrom,
+      previousFormatting: attrs._originalFormatting?.runProperties,
+      targetFormatting,
+    });
+  }
 
   for (const [index, operation] of operations.entries()) {
     const commentText = getOperationCommentText(operation);
@@ -1854,7 +1965,7 @@ const applyFolioAIEditOperationsInternal = ({
   skipped.push(...tablePlan.skipped);
   const executableResolved = tablePlan.executable;
 
-  if (executableResolved.length === 0) {
+  if (executableResolved.length === 0 && resolvedParagraphMarkFormatting.length === 0) {
     return {
       applied,
       skipped,
@@ -1908,7 +2019,7 @@ const applyFolioAIEditOperationsInternal = ({
   let tr = view.state.tr;
   const revisionIdReservation = executableResolved.reduce(
     (total, item) => total + estimateRevisionIdReservation(item),
-    0,
+    resolvedParagraphMarkFormatting.length,
   );
   let revisionSeed =
     revisionIdSeed ?? revisionStamp?.idSeed ?? nextRevisionSeed(revisionIdReservation);
@@ -2022,6 +2133,9 @@ const applyFolioAIEditOperationsInternal = ({
             suggestionId: insertionSuggestionId,
             revisionSeed,
             isPairedMove,
+            paragraphMarkFormattingTemplate: paragraphMarkFormattingTemplateForInsertion(
+              insertion.operation.id,
+            ),
           });
           revisionSeed = built.nextRevisionId;
           nodeGroups.push(built.nodes);
@@ -2302,6 +2416,9 @@ const applyFolioAIEditOperationsInternal = ({
           suggestionId,
           revisionSeed,
           isPairedMove,
+          paragraphMarkFormattingTemplate: paragraphMarkFormattingTemplateForInsertion(
+            item.operation.id,
+          ),
         });
         revisionSeed = built.nextRevisionId;
         if (built.revisionIds.length > 0) {
@@ -2885,8 +3002,53 @@ const applyFolioAIEditOperationsInternal = ({
     });
   }
 
+  const paragraphMarkRevisionIds = new Set<number>();
+  for (const template of resolvedParagraphMarkFormatting) {
+    // A target insertion can land immediately before this paired base block.
+    // Associate the mapped boundary with the original node on the right;
+    // `-1` selects the newly inserted paragraph and overwrites its distinct
+    // paragraph-mark formatting instead.
+    const position = tr.mapping.map(template.blockFrom, 1);
+    const paragraph = tr.doc.nodeAt(position);
+    if (!paragraph || paragraph.type.name !== "paragraph") {
+      skipped.push({
+        id: `compare-paragraph-mark:${template.blockId}`,
+        reason: "unsupportedBlock",
+      });
+      continue;
+    }
+    const attrs = expectParagraphAttrs(paragraph);
+    if (Array.isArray(attrs._runPropertyChanges) && attrs._runPropertyChanges.length > 0) {
+      skipped.push({
+        id: `compare-paragraph-mark:${template.blockId}`,
+        reason: "unsupportedBlock",
+      });
+      continue;
+    }
+    const revisionId = revisionSeed++;
+    paragraphMarkRevisionIds.add(revisionId);
+    const change: RunPropertyChange = {
+      type: "runPropertyChange",
+      info: { id: revisionId, author, date, ...(initials ? { initials } : {}) },
+      ...(template.previousFormatting !== undefined && {
+        previousFormatting: structuredClone(template.previousFormatting),
+      }),
+      ...(template.targetFormatting !== undefined && {
+        currentFormatting: structuredClone(template.targetFormatting),
+      }),
+    };
+    tr = tr.setNodeMarkup(position, undefined, {
+      ...paragraph.attrs,
+      ...paragraphMarkRunPropertiesPatch(attrs._originalFormatting, template.targetFormatting),
+      _runPropertyChanges: [change],
+    });
+  }
+
   if (tr.docChanged) {
-    const batchRevisionIds = new Set(applied.flatMap(({ revisionIds }) => revisionIds ?? []));
+    const batchRevisionIds = new Set([
+      ...applied.flatMap(({ revisionIds }) => revisionIds ?? []),
+      ...paragraphMarkRevisionIds,
+    ]);
     tr = withoutRevisionsOnZeroWidthAnchors(tr, batchRevisionIds);
     const rotated = withRotatedAddedFinalBreaks({
       tr,

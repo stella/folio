@@ -27,6 +27,7 @@ import {
 import { textFormattingToMarks } from "../conversion/toProseDoc";
 import { markStructuralChange } from "../extensions/features/ParagraphChangeTrackerExtension";
 import { getDocumentStyleResolver } from "../plugins/documentStyles";
+import { paragraphMarkRunPropertiesPatch } from "../paragraphMarkRunProperties";
 import { holdsNoContent } from "../zeroWidthAnchors";
 import { getFolioNodeRevisionCarriers } from "../revisionCarriers";
 import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
@@ -151,6 +152,36 @@ function resolveChange(
           const boundaryCovered = rangeCoversParagraphBoundary(from, to, pos, node);
           let nextAttrs: Record<string, unknown> | null = null;
 
+          // Resolve paragraph-mark run-property changes before the surrounding
+          // pPrChange. A pPr rejection rebuilds `_originalFormatting` within
+          // CT_PPrBase scope; feeding it the already-updated value keeps the
+          // independently restored paragraph-mark rPr intact.
+          const paragraphMarkRunPropertyChanges = expectParagraphAttrs(node)._runPropertyChanges;
+          if (
+            Array.isArray(paragraphMarkRunPropertyChanges) &&
+            paragraphMarkRunPropertyChanges.length > 0 &&
+            boundaryCovered
+          ) {
+            const matching = paragraphMarkRunPropertyChanges.filter(
+              (change) => revisionSet === null || revisionSet.has(change.info.id),
+            );
+            if (matching.length > 0) {
+              const remaining = paragraphMarkRunPropertyChanges.filter(
+                (change) => revisionSet !== null && !revisionSet.has(change.info.id),
+              );
+              nextAttrs = {
+                ...node.attrs,
+                _runPropertyChanges: remaining.length > 0 ? remaining : null,
+                ...(mode === "reject"
+                  ? paragraphMarkRunPropertiesPatch(
+                      expectParagraphAttrs(node)._originalFormatting,
+                      matching.at(0)?.previousFormatting,
+                    )
+                  : {}),
+              };
+            }
+          }
+
           // Process paragraph property changes (w:pPrChange)
           const propertyChanges = expectParagraphAttrs(node)._propertyChanges;
 
@@ -171,7 +202,7 @@ function resolveChange(
                 remaining = rejection.remaining;
               }
               nextAttrs = {
-                ...node.attrs,
+                ...(nextAttrs ?? node.attrs),
                 _propertyChanges: remaining.length > 0 ? remaining : null,
               };
               if (rejection?.type === "restore-previous") {
@@ -200,7 +231,7 @@ function resolveChange(
                 );
                 nextAttrs["_originalFormatting"] = paragraphRejectOriginalFormatting(
                   rejection.previousFormatting,
-                  node.attrs["_originalFormatting"],
+                  nextAttrs["_originalFormatting"],
                 );
               }
             }

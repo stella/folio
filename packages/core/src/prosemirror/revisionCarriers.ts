@@ -130,6 +130,14 @@ export const getFolioNodeRevisionCarriers = (
       from,
       to,
     });
+    appendPropertyCarriers({
+      carriers,
+      changes: paragraphAttrs._runPropertyChanges,
+      type: "paragraphPropertiesChanged",
+      node,
+      from,
+      to,
+    });
     const sectionProperties = node.attrs["_sectionProperties"];
     appendPropertyCarriers({
       carriers,

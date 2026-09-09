@@ -39,7 +39,12 @@
 import { panic } from "better-result";
 
 import type { FolioDocumentStoryHandle } from "../ai-edits/headless";
-import { createFolioAITextRangeHandle, trailingBodyBlockId } from "../ai-edits/snapshot";
+import {
+  createFolioAITextRangeHandle,
+  paragraphMarkRunFormattingOf,
+  sameParagraphMarkRunFormatting,
+  trailingBodyBlockId,
+} from "../ai-edits/snapshot";
 import type {
   FolioAIBlock,
   FolioAIBlockParagraphProperties,
@@ -1103,6 +1108,11 @@ type TrailingDeletionOptions = {
   nextOperationId: () => string;
 };
 
+type TrailingDeletionPlan = {
+  operations: FolioAIEditOperation[];
+  paragraphMarkCarriers: { baseBlockId: string; targetBlockId: string }[];
+};
+
 /**
  * Where the plan's inserts land for one container's trailing deleted run, and
  * which paragraph the merge chain starts from.
@@ -1156,8 +1166,9 @@ const withTrailingDeletionRules = ({
   targetSnapshot,
   operations,
   nextOperationId,
-}: TrailingDeletionOptions): FolioAIEditOperation[] => {
+}: TrailingDeletionOptions): TrailingDeletionPlan => {
   const plan = [...operations];
+  const paragraphMarkCarriers: TrailingDeletionPlan["paragraphMarkCarriers"] = [];
   const deletionIndexByBlockId = new Map<string, number>();
   const insertIndexesByAnchor = new Map<string, number[]>();
   const tableAnchorIds = new Set<string>();
@@ -1192,7 +1203,7 @@ const withTrailingDeletionRules = ({
     }
   }
   if (deletionIndexByBlockId.size === 0) {
-    return plan;
+    return { operations: plan, paragraphMarkCarriers };
   }
 
   const blocks = baseSnapshot.blocks;
@@ -1314,6 +1325,12 @@ const withTrailingDeletionRules = ({
     // The paragraph the carrier's mark now ends is the target's last one in
     // this container, so the carrier is where its properties have to be.
     const targetCarrier = targetLastByContainer.get(container);
+    if (targetCarrier) {
+      paragraphMarkCarriers.push({
+        baseBlockId: carrier.id,
+        targetBlockId: targetCarrier.id,
+      });
+    }
     const properties = targetCarrier && changedParagraphProperties(carrier, targetCarrier);
     if (properties) {
       appended.push({
@@ -1324,7 +1341,10 @@ const withTrailingDeletionRules = ({
       });
     }
   }
-  return [...plan.filter((_, index) => !dropped.has(index)), ...appended];
+  return {
+    operations: [...plan.filter((_, index) => !dropped.has(index)), ...appended],
+    paragraphMarkCarriers,
+  };
 };
 
 /**
@@ -1361,6 +1381,21 @@ export type CompareStoryPlan = {
    */
   tableGeometryPairings: TableGeometryPairing[];
 };
+
+export type CompareParagraphMarkFormattingRequest =
+  | { type: "paired"; baseBlockId: string; targetBlockId: string }
+  | { type: "inserted"; operationId: string; targetBlockId: string };
+
+const paragraphMarkFormattingRequestsByPlan = new WeakMap<
+  CompareStoryPlan,
+  readonly CompareParagraphMarkFormattingRequest[]
+>();
+
+/** @internal Exact paragraph-mark formatting the JSON operation vocabulary cannot carry. */
+export const paragraphMarkFormattingRequestsOf = (
+  plan: CompareStoryPlan,
+): readonly CompareParagraphMarkFormattingRequest[] =>
+  paragraphMarkFormattingRequestsByPlan.get(plan) ?? [];
 
 const cellCoordinate = ({
   tableIndex,
@@ -1428,6 +1463,30 @@ export const planStoryCompare = ({
   const changes: CompareChange[] = [];
   const operations: FolioAIEditOperation[] = [];
   const tableTemplates: CompareTableTemplateRequest[] = [];
+  const paragraphMarkFormattingRequests: CompareParagraphMarkFormattingRequest[] = [];
+  const baseParagraphMarkFormatting = paragraphMarkRunFormattingOf(baseSnapshot);
+  const targetParagraphMarkFormatting = paragraphMarkRunFormattingOf(targetSnapshot);
+  let paragraphMarkRevisionCount = 0;
+  const pairedParagraphMarkTargets = new Map<string, string>();
+  const requestPairedParagraphMarkFormatting = (
+    baseBlockId: string,
+    targetBlockId: string,
+  ): void => {
+    const existingTargetBlockId = pairedParagraphMarkTargets.get(baseBlockId);
+    if (existingTargetBlockId !== undefined) {
+      if (existingTargetBlockId !== targetBlockId) {
+        panic("A paragraph-mark formatting carrier was paired with two target blocks", {
+          baseBlockId,
+          existingTargetBlockId,
+          targetBlockId,
+        });
+      }
+      return;
+    }
+    pairedParagraphMarkTargets.set(baseBlockId, targetBlockId);
+    paragraphMarkFormattingRequests.push({ type: "paired", baseBlockId, targetBlockId });
+    paragraphMarkRevisionCount += 1;
+  };
   /**
    * The anchor everything past the base document's content hangs from: its
    * last BODY-LEVEL paragraph, which the format guarantees exists because a
@@ -1470,11 +1529,17 @@ export const planStoryCompare = ({
       spacing: block.directSpacing ?? null,
     };
     if (anchorId !== null) {
+      const operationId = nextOperationId();
       operations.push({
-        id: nextOperationId(),
+        id: operationId,
         type: "insertBeforeBlock",
         blockId: anchorId,
         ...shared,
+      });
+      paragraphMarkFormattingRequests.push({
+        type: "inserted",
+        operationId,
+        targetBlockId: block.id,
       });
       return;
     }
@@ -1483,11 +1548,17 @@ export const planStoryCompare = ({
       // insertions at all.
       return;
     }
+    const operationId = nextOperationId();
     operations.push({
-      id: nextOperationId(),
+      id: operationId,
       type: "insertAfterBlock",
       blockId: tailAnchorId,
       ...shared,
+    });
+    paragraphMarkFormattingRequests.push({
+      type: "inserted",
+      operationId,
+      targetBlockId: block.id,
     });
   };
 
@@ -1534,6 +1605,18 @@ export const planStoryCompare = ({
     switch (step.type) {
       case "pair": {
         const { baseBlock, targetBlock } = step;
+        const baseParagraphMark = baseParagraphMarkFormatting.get(baseBlock.id);
+        const targetParagraphMark = targetParagraphMarkFormatting.get(targetBlock.id);
+        if (!baseParagraphMark || !targetParagraphMark) {
+          panic("A paired block lost its paragraph-mark formatting projection");
+        }
+        const paragraphMarkFormattingChanged = !sameParagraphMarkRunFormatting(
+          baseParagraphMark,
+          targetParagraphMark,
+        );
+        if (paragraphMarkFormattingChanged) {
+          requestPairedParagraphMarkFormatting(baseBlock.id, targetBlock.id);
+        }
         const properties = changedParagraphProperties(baseBlock, targetBlock);
         if (properties) {
           changes.push({
@@ -1543,6 +1626,17 @@ export const planStoryCompare = ({
             targetBlockId: targetBlock.id,
             properties,
           });
+        }
+        if (paragraphMarkFormattingChanged) {
+          changes.push({
+            kind: "paragraph-mark-format",
+            location: locationOf(story, baseBlock),
+            baseBlockId: baseBlock.id,
+            targetBlockId: targetBlock.id,
+            properties: targetParagraphMark.formatting ?? null,
+          });
+        }
+        if (properties) {
           operations.push({
             id: nextOperationId(),
             type: "setBlockParagraphProperties",
@@ -1774,24 +1868,38 @@ export const planStoryCompare = ({
         panic("Unhandled compare step", { step: unreachable });
       }
     }
-    if (operations.length > maxOperations) {
+    if (operations.length + paragraphMarkRevisionCount > maxOperations) {
       return null;
     }
   }
 
-  const planned = withTrailingDeletionRules({
+  const trailing = withTrailingDeletionRules({
     baseSnapshot,
     targetSnapshot,
     operations,
     nextOperationId,
   });
 
-  return planned.length > maxOperations
-    ? null
-    : {
-        changes,
-        operations: planned,
-        tableTemplates,
-        tableGeometryPairings: tableGeometryPairingsOf(steps),
-      };
+  for (const { baseBlockId, targetBlockId } of trailing.paragraphMarkCarriers) {
+    const baseParagraphMark = baseParagraphMarkFormatting.get(baseBlockId);
+    const targetParagraphMark = targetParagraphMarkFormatting.get(targetBlockId);
+    if (!baseParagraphMark || !targetParagraphMark) {
+      panic("A trailing paragraph-mark carrier lost its formatting projection");
+    }
+    if (!sameParagraphMarkRunFormatting(baseParagraphMark, targetParagraphMark)) {
+      requestPairedParagraphMarkFormatting(baseBlockId, targetBlockId);
+    }
+  }
+
+  if (trailing.operations.length + paragraphMarkRevisionCount > maxOperations) {
+    return null;
+  }
+  const plan: CompareStoryPlan = {
+    changes,
+    operations: trailing.operations,
+    tableTemplates,
+    tableGeometryPairings: tableGeometryPairingsOf(steps),
+  };
+  paragraphMarkFormattingRequestsByPlan.set(plan, paragraphMarkFormattingRequests);
+  return plan;
 };

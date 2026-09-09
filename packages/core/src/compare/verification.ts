@@ -60,6 +60,7 @@ export const COMPARE_VERIFICATION_CAUSES = Object.freeze([
   "list-level",
   "alignment",
   "spacing",
+  "paragraph-mark-format",
   "inline-formatting",
   "whitespace",
   "text",

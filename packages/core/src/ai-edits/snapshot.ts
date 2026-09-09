@@ -6,6 +6,8 @@ import { expectParagraphAttrs, expectRunFormattingOverrideMarkAttrs } from "../p
 import { directParagraphAlignment } from "../prosemirror/paragraphAlignment";
 import { directParagraphSpacing } from "../prosemirror/paragraphSpacing";
 import { deriveBlankBlockId, deriveBlockId, type FolioBlockId } from "../types/block-id";
+import type { TextFormatting } from "../types/document";
+import { canonicalJson } from "../utils/canonicalJson";
 import { buildCleanBlockText } from "./clean-text";
 import type {
   FolioAIBlock,
@@ -19,6 +21,47 @@ import type {
 } from "./types";
 
 const numberingReferenceKeysBySnapshot = new WeakMap<FolioAIEditSnapshot, readonly string[]>();
+
+export type ParagraphMarkRunFormattingProjection = {
+  formatting?: TextFormatting;
+  /** Fast parser-order discriminator; canonical comparison resolves a rare ordering mismatch. */
+  orderedSignature: string;
+};
+
+type ParagraphMarkRunFormattingByBlock = ReadonlyMap<string, ParagraphMarkRunFormattingProjection>;
+
+const paragraphMarkRunFormattingBySnapshot = new WeakMap<
+  FolioAIEditSnapshot,
+  ParagraphMarkRunFormattingByBlock | (() => ParagraphMarkRunFormattingByBlock)
+>();
+
+/** @internal Exact direct `w:pPr/w:rPr` state for compare verification. */
+export const paragraphMarkRunFormattingOf = (
+  snapshot: FolioAIEditSnapshot,
+): ParagraphMarkRunFormattingByBlock => {
+  const stored = paragraphMarkRunFormattingBySnapshot.get(snapshot);
+  if (stored === undefined) {
+    // `planStoryCompare` is also a public pure planner over caller-authored
+    // snapshots. Those snapshots predate this private projection and cannot
+    // name paragraph-mark formatting, so their only truthful representable
+    // state is the empty direct property set.
+    return new Map(snapshot.blocks.map(({ id }) => [id, { orderedSignature: "{}" }] as const));
+  }
+  if (typeof stored !== "function") {
+    return stored;
+  }
+  const signatures = stored();
+  paragraphMarkRunFormattingBySnapshot.set(snapshot, signatures);
+  return signatures;
+};
+
+/** Exact modeled equality, independent of object-property insertion order. */
+export const sameParagraphMarkRunFormatting = (
+  left: ParagraphMarkRunFormattingProjection,
+  right: ParagraphMarkRunFormattingProjection,
+): boolean =>
+  left.orderedSignature === right.orderedSignature ||
+  canonicalJson(left.formatting ?? {}) === canonicalJson(right.formatting ?? {});
 
 /** @internal Numbering references collected during the snapshot's document walk. */
 export const numberingReferenceKeysOf = (snapshot: FolioAIEditSnapshot): readonly string[] =>
@@ -236,6 +279,7 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
   const draftBlocks: {
     block: FolioAIBlock;
     anchor: Omit<FolioAIBlockAnchor, "hashOccurrenceCount">;
+    paragraphMarkRunProperties: TextFormatting | undefined;
   }[] = [];
   const hashCounts = new Map<string, number>();
   const usedBlockIds = new Set<string>();
@@ -339,6 +383,7 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
         normalizedText,
         textHash,
       },
+      paragraphMarkRunProperties: expectParagraphAttrs(node)._originalFormatting?.runProperties,
     });
     return true;
   });
@@ -355,6 +400,18 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
 
   const snapshot = { blocks, anchors };
   numberingReferenceKeysBySnapshot.set(snapshot, [...numberingReferenceKeys]);
+  paragraphMarkRunFormattingBySnapshot.set(snapshot, () => {
+    const projections = new Map<string, ParagraphMarkRunFormattingProjection>();
+    for (const { block, paragraphMarkRunProperties } of draftBlocks) {
+      projections.set(block.id, {
+        orderedSignature: JSON.stringify(paragraphMarkRunProperties ?? {}),
+        ...(paragraphMarkRunProperties !== undefined && {
+          formatting: paragraphMarkRunProperties,
+        }),
+      });
+    }
+    return projections;
+  });
   return snapshot;
 };
 

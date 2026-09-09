@@ -17,7 +17,8 @@ if (result.isOk()) {
 The buffer opens as ordinary revisions in any OOXML consumer. `changes` is a
 discriminated union on `kind` (`insert`, `delete`, `replace`, `move`, `format`,
 `table-insert`, `table-delete`, `table-row-insert`, `table-row-delete`,
-`split`, `merge`, `paragraph-format`, `numbering`), for an agent that wants
+`split`, `merge`, `paragraph-format`, `paragraph-mark-format`, `numbering`),
+for an agent that wants
 the summary rather than the document. Every change carries the story it
 belongs to, so a caller can tell a body edit from a footnote edit — except
 `numbering`, which belongs to the package.
@@ -132,10 +133,10 @@ say it went.
   target's, written as `w:pPrChange` — that is bookkeeping for the merge and
   adds no entry to the change list, which says what it should say: the
   paragraphs were removed. "Its properties" means the ones the comparison
-  compares at all: paragraph style, list level and direct alignment. A property
-  outside that set is not read on either side, so the carrier keeps its own, and a
-  reader accepting the redline sees the carrier's alignment or spacing rather
-  than the surviving paragraph's. A carrier with no words to lose is not
+  compares at all: paragraph style, list level, direct alignment, direct
+  spacing, and the paragraph mark's direct run properties. A property outside
+  that set is not read on either side, so the carrier keeps its own. A carrier
+  with no words to lose is not
   deleted at all: the removal is entirely the marks in front of it, and an
   operation that would write no revision is left out of the plan.
 - **Paragraphs ADDED where the removed ones were land in the carrier.** The
@@ -203,14 +204,28 @@ itself changed is the opposite case: every label using that level moves and no
 block's text does, so it is reported as `numbering`. Differences in levels no
 paragraph references on either side are omitted from the change list.
 
-A paragraph property that moved without any word moving — a list item demoted
-a level, a paragraph restyled, or a direct alignment changed — is a
-`paragraph-format` change, written as `w:pPrChange` with the complete previous
-property set, which is what a reject restores. Alignment provenance is part of
-the comparison: an inherited value is not projected as direct `w:jc`, even
-when the two values are equal. The self-check's projection carries style, list
-level and direct alignment alongside the text, so a redline that reproduces
-every word and leaves one of those properties wrong fails instead of passing.
+A paragraph property that moved — a list item demoted a level, a paragraph
+restyled, or direct alignment or spacing changed — is a `paragraph-format`
+change written as `w:pPrChange`. Independently changed direct run properties
+on an aligned paragraph mark are a `paragraph-mark-format` change, written as
+the single `w:rPrChange` allowed beneath `w:pPr/w:rPr`. The change reports the
+target's exact direct paragraph-mark properties, with `null` meaning they were
+cleared. When both property sets changed, both change kinds are reported.
+Alignment provenance is likewise exact: an inherited value is not
+projected as direct `w:jc`, even when the two values are equal. The self-check
+carries all of these properties alongside the text, so a redline that
+reproduces every word and leaves one wrong fails instead of passing.
+
+Direct paragraph-mark run properties are carried for every modeled property.
+Two changes remain strict refusals: `fontSize`, whose paragraph-default effect
+cannot yet be separated from body-run formatting, and `styleId`, whose active
+character-style dependency is not transported by this carrier. Best-effort
+mode reports either as `paragraph-mark-format`. A target paragraph-mark theme
+reference is likewise refused when its referenced color or font slot resolves
+differently under the base package's theme; unrelated theme differences do not
+block the comparison. An unchanged character-style reference is also refused
+when its resolved target definition differs from the one retained in the base
+package.
 
 ## Verification
 
@@ -244,7 +259,8 @@ if (result.isOk() && result.value.verification.status === "unverified") {
 `verification` is on every successful result, so a caller that never passes the
 option still sees `{ status: "verified" }` and can assert on it. `cause` is one
 of `invisible-structure`, `block-count`, `container`, `table-geometry`,
-`style`, `list-level`, `alignment`, `inline-formatting`, `whitespace`, `text` —
+`style`, `list-level`, `alignment`, `spacing`, `paragraph-mark-format`,
+`inline-formatting`, `whitespace`, `text` —
 the projection field that diverged, which is what names the part of the
 pipeline that lost the difference. `table-geometry` is the one that no block carries: a second
 projection reads each table's `w:tblPr`, `w:trPr` and `w:tcPr` so a redline

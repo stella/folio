@@ -13,6 +13,7 @@ import type {
   FolioAIEditSkippedOperation,
   FolioAIInlineFormatting,
 } from "../ai-edits/types";
+import type { TextFormatting } from "../types/document";
 import type {
   CompareVerification,
   CompareVerificationCause,
@@ -133,9 +134,8 @@ export type CompareChange =
       text: string;
     }
   /**
-   * A paragraph property moved and no words did: a list item demoted a level,
-   * a paragraph restyled. Written as `w:pPrChange`, so rejecting restores the
-   * whole previous property set the way Word does.
+   * A paragraph property moved: a list item demoted a level or a paragraph
+   * was restyled. Rejecting restores the complete previous property set.
    */
   | {
       kind: "paragraph-format";
@@ -144,6 +144,15 @@ export type CompareChange =
       targetBlockId: string;
       /** Only the properties that differ, set to the target document's value. */
       properties: FolioAIBlockParagraphProperties;
+    }
+  /** The aligned paragraph mark's direct `w:pPr/w:rPr` formatting changed. */
+  | {
+      kind: "paragraph-mark-format";
+      location: CompareChangeLocation;
+      baseBlockId: string;
+      targetBlockId: string;
+      /** Exact target properties; `null` clears the direct paragraph-mark formatting. */
+      properties: TextFormatting | null;
     }
   | {
       kind: "format";
