@@ -44,7 +44,10 @@ import {
   type FolioRevisionStamp,
 } from "../ai-edits/headless";
 import { projectTableGeometry } from "../ai-edits/table-geometry";
-import type { FolioTableTemplates } from "../ai-edits/table-template";
+import {
+  tableTemplateCanCrossPackageLosslessly,
+  type FolioTableTemplates,
+} from "../ai-edits/table-template";
 import { numberingReferenceKeysOf } from "../ai-edits/snapshot";
 import type { FolioAIBlock, FolioAIEditSkipReason, FolioAIEditSnapshot } from "../ai-edits/types";
 import { createScopedWordDiffOptions, type WordDiffGranularity } from "../ai-edits/word-diff";
@@ -365,21 +368,47 @@ export const parseComparison = async (
 /** One story's plan, kept with the pair it belongs to. */
 export type PlannedStoryComparison = { pair: ComparedStoryPair; plan: CompareStoryPlan };
 
+const planCopiesNonPortableWholeTable = (
+  targetReviewer: FolioDocxReviewer,
+  pair: ComparedStoryPair,
+  plan: CompareStoryPlan,
+): boolean => {
+  const targetTables = new Map(
+    targetReviewer
+      .storyTables({ story: pair.targetStory })
+      .map(({ index, node }) => [index, node] as const),
+  );
+  return plan.tableTemplates.some(({ targetRowIndex, targetTableIndex }) => {
+    if (targetRowIndex !== undefined) {
+      return false;
+    }
+    const table = targetTables.get(targetTableIndex);
+    return table === undefined || !tableTemplateCanCrossPackageLosslessly(table);
+  });
+};
+
 /**
  * Stage 2: align every paired story and derive its operations. Pure — no
  * parsing, no serialization, no clock.
  */
 export const planComparison = ({
   pairs,
+  targetReviewer,
 }: ParsedComparison): Result<readonly PlannedStoryComparison[], CompareDocxOperationLimitError> => {
   const planned: PlannedStoryComparison[] = [];
   for (const pair of pairs) {
-    const plan = planStoryCompare({
-      story: pair.baseStory,
-      baseSnapshot: pair.baseSnapshot,
-      targetSnapshot: pair.targetSnapshot,
-      maxOperations: MAX_COMPARE_OPERATIONS,
-    });
+    const planPair = (wholeTableReplacement: "allow" | "avoid"): CompareStoryPlan | null =>
+      planStoryCompare({
+        story: pair.baseStory,
+        baseSnapshot: pair.baseSnapshot,
+        targetSnapshot: pair.targetSnapshot,
+        maxOperations: MAX_COMPARE_OPERATIONS,
+        wholeTableReplacement,
+      });
+    let plan = planPair("allow");
+    if (plan && planCopiesNonPortableWholeTable(targetReviewer, pair, plan)) {
+      plan = planPair("avoid");
+    }
     if (plan === null) {
       return Result.err(
         new CompareDocxOperationLimitError({

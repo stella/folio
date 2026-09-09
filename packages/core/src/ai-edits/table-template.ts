@@ -79,6 +79,59 @@ const CLEARED_TABLE_ATTRS = ["tblPrChange", "_suggestedInsert"] as const;
 const CLEARED_ROW_ATTRS = ["trIns", "trDel", "trPrChange"] as const;
 const CLEARED_CELL_ATTRS = ["cellMarker", "tcPrChange"] as const;
 
+const hasAuthoredValue = (value: unknown): boolean => {
+  if (value === null || value === undefined || value === false || value === "") {
+    return false;
+  }
+  return !Array.isArray(value) || value.length > 0;
+};
+
+const clearedAttrsOf = (node: PMNode): readonly string[] => {
+  switch (node.type.spec["tableRole"]) {
+    case "table":
+      return CLEARED_TABLE_ATTRS;
+    case "row":
+      return CLEARED_ROW_ATTRS;
+    case "cell":
+    case "header_cell":
+      return CLEARED_CELL_ATTRS;
+    default:
+      return node.isTextblock ? CLEARED_PARAGRAPH_ATTRS : [];
+  }
+};
+
+const losesAuthoredAttrs = (node: PMNode): boolean =>
+  clearedAttrsOf(node).some((name) => hasAuthoredValue(node.attrs[name]));
+
+/**
+ * Whether a target table can cross into the base package without semantic
+ * content being stripped from its template.
+ *
+ * Paragraph identities are deliberately excluded: they are regenerated in
+ * the receiving document. Package-owned relationships, annotations,
+ * bookmarks and unresolved revision metadata are not portable and therefore
+ * make a replacement unsafe. Callers can retain their granular plan instead.
+ */
+export const tableTemplateCanCrossPackageLosslessly = (template: PMNode): boolean => {
+  let portable = true;
+  const inspect = (node: PMNode): boolean => {
+    if (
+      PACKAGE_BOUND_NODE_NAMES.has(node.type.name) ||
+      node.marks.some(({ type }) => PACKAGE_BOUND_MARK_NAMES.has(type.name)) ||
+      losesAuthoredAttrs(node)
+    ) {
+      portable = false;
+      return false;
+    }
+    return true;
+  };
+  if (!inspect(template)) {
+    return false;
+  }
+  template.descendants(inspect);
+  return portable;
+};
+
 const withoutAttrs = (
   attrs: Record<string, unknown>,
   cleared: readonly string[],
@@ -142,22 +195,18 @@ const insertionMarkOf = (schema: Schema, revision: TableStructureRevision | null
 };
 
 const copiedAttrs = (node: PMNode, context: TemplateContext): Record<string, unknown> => {
+  const sourceAttrs = node.isTextblock ? stripBlockIdentityAttrs(node.attrs) : node.attrs;
+  const attrs = withoutAttrs(sourceAttrs, clearedAttrsOf(node));
   switch (node.type.spec["tableRole"]) {
     case "table":
-      return withoutAttrs(node.attrs, CLEARED_TABLE_ATTRS);
-    case "row": {
-      const attrs = withoutAttrs(node.attrs, CLEARED_ROW_ATTRS);
+      return attrs;
+    case "row":
       return context.revision ? { ...attrs, trIns: context.revision } : attrs;
-    }
     case "cell":
-    case "header_cell": {
-      const attrs = withoutAttrs(node.attrs, CLEARED_CELL_ATTRS);
+    case "header_cell":
       return context.clampRowSpan ? { ...attrs, rowspan: 1 } : attrs;
-    }
     default:
-      return node.isTextblock
-        ? withoutAttrs(stripBlockIdentityAttrs(node.attrs), CLEARED_PARAGRAPH_ATTRS)
-        : node.attrs;
+      return attrs;
   }
 };
 
