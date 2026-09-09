@@ -200,6 +200,14 @@ export const paragraphSpacingAttrPatch = ({
     ...(direct?.spaceBefore !== undefined ? { before: true } : {}),
     ...(direct?.spaceAfter !== undefined ? { after: true } : {}),
   };
+  const spacingFromStyle = {
+    ...(direct?.spaceBefore === undefined && inherited?.spaceBefore !== undefined
+      ? { before: true }
+      : {}),
+    ...(direct?.spaceAfter === undefined && inherited?.spaceAfter !== undefined
+      ? { after: true }
+      : {}),
+  };
   const autospacingBase: NonNullable<ParagraphAttrs["_autospacingBase"]> = {};
   if (effective.beforeAutospacing === true) {
     setAutospacingBaseValue(autospacingBase, "before", effective.spaceBefore);
@@ -214,6 +222,8 @@ export const paragraphSpacingAttrPatch = ({
     lineSpacingRule: effective.lineSpacingRule ?? null,
     lineSpacingExplicit: lineSpacingProvenanceFromSpacing(direct) ?? null,
     spacingExplicit: Object.keys(spacingExplicit).length > 0 ? spacingExplicit : null,
+    spacingFromImplicitDefaultStyle:
+      Object.keys(spacingFromStyle).length > 0 ? spacingFromStyle : null,
     _autospacingBase: Object.keys(autospacingBase).length > 0 ? autospacingBase : null,
   };
 };
