@@ -2139,6 +2139,7 @@ const applyFolioAIEditOperationsInternal = ({
     (total, item) => total + estimateRevisionIdReservation(item),
     0,
   );
+  const ownsSharedRevisionIdCursor = revisionIdSeed === undefined && revisionStamp === undefined;
   let revisionSeed =
     revisionIdSeed ?? revisionStamp?.idSeed ?? nextRevisionSeed(revisionIdReservation);
   const date = revisionStamp?.date ?? new Date().toISOString();
@@ -3216,6 +3217,14 @@ const applyFolioAIEditOperationsInternal = ({
         ...receipt,
         revisionIds: [...receipt.revisionIds, revisionId],
       };
+    }
+    if (ownsSharedRevisionIdCursor) {
+      // The estimate reserves enough for common operations before mutation,
+      // but formatting owns one revision per physical carrier and therefore
+      // has no fixed upper bound. Claim the measured high-water mark before
+      // dispatch, so a re-entrant or following batch cannot reuse an id that
+      // this transaction actually wrote.
+      revisionIdCursor = Math.max(revisionIdCursor, revisionSeed);
     }
     if (revisionStamp) {
       // Paragraphs this batch creates get their `w14:paraId` from the

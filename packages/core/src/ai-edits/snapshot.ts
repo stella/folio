@@ -472,6 +472,8 @@ type PreviewRunStyle = {
 };
 
 const DELETION_MARK = "deletion";
+const RUN_FORMATTING_OVERRIDE_MARK = "runFormattingOverride";
+const CHARACTER_STYLE_MARK = "characterStyle";
 
 const getPreviewRuns = (
   node: PMNode,
@@ -491,7 +493,8 @@ const getPreviewRuns = (
 
     const style = getPreviewRunStyle(child.marks, defaultStyle);
     const hasAuthorshipCarrier = child.marks.some(
-      ({ type }) => type.name === "runFormattingOverride" || type.name === "characterStyle",
+      ({ type }) =>
+        type.name === RUN_FORMATTING_OVERRIDE_MARK || type.name === CHARACTER_STYLE_MARK,
     );
     let directFormatting: PreviewRunStyle;
     if (!hasAuthorshipCarrier) {
@@ -594,7 +597,7 @@ const getPreviewRunStyle = (
     }
   }
 
-  const overrideMark = marks.find(({ type }) => type.name === "runFormattingOverride");
+  const overrideMark = marks.find(({ type }) => type.name === RUN_FORMATTING_OVERRIDE_MARK);
   if (!overrideMark) {
     return style;
   }
@@ -657,13 +660,13 @@ const getDirectPreviewRunStyle = (
 ): PreviewRunStyle => {
   let directFormatting = formatting;
   if (!styleResolver) {
-    const overrideMark = marks.find(({ type }) => type.name === "runFormattingOverride");
+    const overrideMark = marks.find(({ type }) => type.name === RUN_FORMATTING_OVERRIDE_MARK);
     const authoredFormatting = overrideMark
       ? authoredRunFormattingFromAttrs(expectRunFormattingOverrideMarkAttrs(overrideMark))
       : undefined;
     if (authoredFormatting !== undefined) {
       directFormatting = authoredFormatting;
-    } else if (marks.some(({ type }) => type.name === "characterStyle")) {
+    } else if (marks.some(({ type }) => type.name === CHARACTER_STYLE_MARK)) {
       directFormatting = {};
     }
   }

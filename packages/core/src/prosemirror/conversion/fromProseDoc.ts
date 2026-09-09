@@ -379,7 +379,7 @@ export function fromProseDoc(pmDoc: PMNode, baseDocument?: Document): Document {
   const blocks = extractBlocks(
     pmDoc,
     "resolve",
-    baseDocument ? createStyleEngine(baseDocument.package.styles) : null,
+    baseDocument?.package.styles ? createStyleEngine(baseDocument.package.styles) : null,
   );
   const linkedSources = restoreLinkedParagraphPropertySources(blocks);
   if (baseDocument) {

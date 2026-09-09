@@ -22,6 +22,31 @@ import { fromProseDoc, proseDocToBlocks } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
 
 describe("fromProseDoc", () => {
+  test("uses resolver-less run ownership when the base package has no styles", () => {
+    const characterStyle = schema.mark("characterStyle", { styleId: "MissingCharacterStyle" });
+    const directFormatting = schema.mark("runFormattingOverride", { bold: true });
+    const pmDoc = schema.node("doc", undefined, [
+      schema.node("paragraph", undefined, [
+        schema.text("Authored formatting", [characterStyle, directFormatting]),
+      ]),
+    ]);
+    const baseDocument: Document = { package: { document: { content: [] } } };
+
+    const expected = proseDocToBlocks(pmDoc);
+    const restored = fromProseDoc(pmDoc, baseDocument).package.document.content;
+
+    expect(expected.at(0)).toMatchObject({
+      type: "paragraph",
+      content: [
+        {
+          type: "run",
+          formatting: { bold: true, styleId: "MissingCharacterStyle" },
+        },
+      ],
+    });
+    expect(restored).toEqual(expected);
+  });
+
   test("round-trips naked bookmark boundaries through a JSON-cloned editor model", () => {
     const paragraph = {
       type: "paragraph",
