@@ -1153,6 +1153,62 @@ describe("table cell structural revision resolution", () => {
     expect(acceptingDeletion.state.doc.firstChild?.type.name).toBe("paragraph");
     expect(() => acceptingDeletion.state.doc.check()).not.toThrow();
   });
+
+  test("removing a final table cell cannot transfer its grid onto an adjacent table", () => {
+    const adjacentFormatting = {
+      sourceXml: '<w:tblPr><w:tblStyle w:val="Adjacent"/></w:tblPr>',
+      gridSourceXml: '<w:tblGrid><w:gridCol w:w="3000"/><w:gridCol w:w="7000"/></w:tblGrid>',
+    };
+    const view = dispatcher(
+      EditorState.create({
+        schema: tableSchema,
+        doc: tableSchema.node("doc", null, [
+          tableSchema.node(
+            "table",
+            {
+              columnWidths: [900, 1000, 1100],
+              _originalFormatting: TABLE_GRID_FORMATTING,
+            },
+            [
+              tableSchema.node("tableRow", null, [
+                tableSchema.node(
+                  "tableCell",
+                  {
+                    colspan: 3,
+                    colwidth: [900, 1000, 1100],
+                    cellMarker: {
+                      kind: "del",
+                      info: { revisionId: 89, author: "Reviewer", date: "2026-07-16" },
+                    },
+                  },
+                  [tableSchema.node("paragraph", null, [tableSchema.text("Removed table")])],
+                ),
+              ]),
+            ],
+          ),
+          tableSchema.node(
+            "table",
+            { columnWidths: [3000, 7000], _originalFormatting: adjacentFormatting },
+            [
+              tableSchema.node("tableRow", null, [
+                cell("Adjacent left", undefined),
+                cell("Adjacent right", undefined),
+              ]),
+            ],
+          ),
+        ]),
+      }),
+    );
+
+    expect(acceptAIEditRevision(89)(view.state, view.dispatch)).toBe(true);
+
+    const adjacentTable = view.state.doc.firstChild;
+    expect(adjacentTable?.type.name).toBe("table");
+    expect(adjacentTable?.textContent).toBe("Adjacent leftAdjacent right");
+    expect(adjacentTable?.attrs["columnWidths"]).toEqual([3000, 7000]);
+    expect(adjacentTable?.attrs["_originalFormatting"]).toEqual(adjacentFormatting);
+    expect(() => view.state.doc.check()).not.toThrow();
+  });
 });
 
 describe("findChangeAtPosition", () => {

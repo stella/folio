@@ -917,6 +917,10 @@ function deleteTableCellAt(tr: Transaction, cellPos: number): void {
     });
     return;
   }
+  if (table.childCount === 1) {
+    deleteTableRowAt(tr, resolved.start() - 1);
+    return;
+  }
   deleteTableRowAt(tr, resolved.start() - 1);
   reconcileTableGridAfterColumnRemoval({
     tr,
