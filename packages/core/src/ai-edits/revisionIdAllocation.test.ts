@@ -370,6 +370,82 @@ describe("unstamped revision id allocation", () => {
     },
   );
 
+  test("claims every physical formatting carrier before dispatch can re-enter", () => {
+    const primaryView = formattingReservationView();
+    const primarySnapshot = createFolioAIEditSnapshot(primaryView.state.doc);
+    const primaryBlock = primarySnapshot.blocks.at(0);
+    if (!primaryBlock) {
+      panic("expected the primary segmented formatting block");
+    }
+    const primaryRange = createFolioAITextRangeHandle({
+      blockId: primaryBlock.id,
+      text: primaryBlock.text,
+      startOffset: 0,
+      endOffset: primaryBlock.text.length,
+    });
+    if (!primaryRange) {
+      panic("expected the primary segmented formatting range");
+    }
+
+    const reentrantView = formattingReservationView();
+    const reentrantSnapshot = createFolioAIEditSnapshot(reentrantView.state.doc);
+    const reentrantBlock = reentrantSnapshot.blocks.at(1);
+    if (!reentrantBlock) {
+      panic("expected the re-entrant formatting block");
+    }
+    const reentrantRange = createFolioAITextRangeHandle({
+      blockId: reentrantBlock.id,
+      text: reentrantBlock.text,
+      startOffset: 0,
+      endOffset: reentrantBlock.text.length,
+    });
+    if (!reentrantRange) {
+      panic("expected the re-entrant formatting range");
+    }
+
+    let reentrantOutcome: ReturnType<typeof applyFolioAIEditOperations> | undefined;
+    const commitPrimary = primaryView.dispatch;
+    primaryView.dispatch = (transaction) => {
+      commitPrimary(transaction);
+      reentrantOutcome = applyFolioAIEditOperations({
+        view: reentrantView,
+        snapshot: reentrantSnapshot,
+        operations: [
+          {
+            id: "re-entrant-batch",
+            type: "formatRange",
+            range: reentrantRange,
+            formatting: { bold: true },
+          },
+        ],
+        mode: "tracked-changes",
+      });
+    };
+
+    const primaryOutcome = applyFolioAIEditOperations({
+      view: primaryView,
+      snapshot: primarySnapshot,
+      operations: [
+        {
+          id: "primary-many-carriers",
+          type: "formatRange",
+          range: primaryRange,
+          formatting: { color: "00AA00" },
+        },
+      ],
+      mode: "tracked-changes",
+    });
+    if (!reentrantOutcome) {
+      panic("expected dispatch to apply the re-entrant batch");
+    }
+
+    const primaryIds = operationRevisionIds(primaryOutcome, "primary-many-carriers");
+    const reentrantIds = operationRevisionIds(reentrantOutcome, "re-entrant-batch");
+    expect(primaryIds.length).toBeGreaterThan(4);
+    expect(Math.min(...reentrantIds)).toBeGreaterThanOrEqual(primaryOutcome.nextRevisionId);
+    expect(reentrantIds.some((id) => primaryIds.includes(id))).toBe(false);
+  });
+
   test.each(INSERTION_RESERVATION_CASES)(
     "reserves the synthetic final-mark revision for $label",
     ({ lines, formatting, propertyChangeCount }) => {
