@@ -391,14 +391,8 @@ export const buildLayoutInteractionCaseFixture = (
 ): Promise<Uint8Array> =>
   buildFixture({
     name: "pairwise-layout-interactions.docx",
-    body: matrixCaseContent(scenario, 0),
-    sectionProperties: `${headerFooterReferences}${
-      scenario.section === "continuous" || scenario.section === "twoColumn"
-        ? '<w:type w:val="continuous"/>'
-        : ""
-    }${pageProperties(
-      scenario.section === "twoColumn" ? '<w:cols w:num="2" w:space="720"/>' : "",
-    )}`,
+    body: `${matrixCaseContent(scenario, 0)}${matrixSectionBoundary(scenario)}<w:p><w:r><w:t>${scenario.id} post-boundary sentinel.</w:t></w:r></w:p>`,
+    sectionProperties: `${headerFooterReferences}${pageProperties()}`,
     parts: PAGE_FURNITURE_PARTS,
     relationships: MATRIX_RELATIONSHIPS,
     overrides: PAGE_FURNITURE_OVERRIDES,

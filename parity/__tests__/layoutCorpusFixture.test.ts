@@ -5,6 +5,7 @@ import JSZip from "jszip";
 
 import {
   buildLayoutCorpus,
+  buildLayoutInteractionCaseFixture,
   layoutInteractionMatrixManifest,
 } from "../fixtures/build-layout-corpus";
 import { buildLayoutInteractionMatrix } from "../fixtures/layout-interaction-matrix";
@@ -90,5 +91,20 @@ describe("synthetic layout corpus", () => {
     expect(kitchenDocument).toContain("<w:bidi/>");
     expect(kitchenDocument).toContain("<w:cols");
     expect(kitchenSink.file("word/footnotes.xml")).not.toBeNull();
+  });
+
+  test("isolates every matrix case with an observable section boundary", async () => {
+    for (const scenario of buildLayoutInteractionMatrix()) {
+      // oxlint-disable-next-line no-await-in-loop -- validates each bounded generated case independently
+      const zip = await JSZip.loadAsync(await buildLayoutInteractionCaseFixture(scenario));
+      // oxlint-disable-next-line no-await-in-loop -- JSZip exposes async part reads
+      const document = await zip.file("word/document.xml")!.async("text");
+      expect(document).toContain(`${scenario.id} post-boundary sentinel.`);
+      if (scenario.section === "single") {
+        expect(document).not.toContain("Section boundary");
+      } else {
+        expect(document).toContain("Section boundary");
+      }
+    }
   });
 });
