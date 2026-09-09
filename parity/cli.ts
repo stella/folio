@@ -93,6 +93,11 @@ type CliFlags = {
   paths: string[];
 };
 
+export type RunPipelineOptions = Pick<
+  CliFlags,
+  "refreshReference" | "referenceId" | "headed" | "reuseServer" | "maxPages"
+>;
+
 export const parseArgs = (argv: string[]): CliFlags => {
   const flags: CliFlags = {
     help: false,
@@ -226,10 +231,10 @@ const resolveCorpus = async (inputPaths: string[]): Promise<string[]> => {
 };
 
 /** Per-doc pipeline failure: any throw during reference/folio/compare/features. */
-type DocFailure = { file: string; error: Error };
+export type DocFailure = { file: string; error: Error };
 
 /** Result of running the full per-doc pipeline over the corpus. */
-type PipelineOutcome = {
+export type PipelineOutcome = {
   results: FeatureAttributedResult[];
   paragraphsByDoc: ParagraphFeatures[][];
   assets: Map<string, DocAssets>;
@@ -242,9 +247,9 @@ type PipelineOutcome = {
  * applications and the folio extractor shares one browser page, so documents
  * cannot be processed concurrently.
  */
-const runPipeline = async (
+export const runPipeline = async (
   docs: string[],
-  flags: CliFlags,
+  flags: RunPipelineOptions,
   referenceRenderer: ReferenceRenderer,
 ): Promise<PipelineOutcome> => {
   const results: FeatureAttributedResult[] = [];

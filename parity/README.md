@@ -26,6 +26,26 @@ bun parity/cli.ts some/dir --json
 bun parity/cli.ts --refresh-reference
 ```
 
+### Synthetic reference layout matrix
+
+Run every generated strength-two interaction case as its own document against
+an explicit reference renderer, then inspect the case-level JSON and visual report:
+
+```sh
+bun run parity:layout-matrix --reference libreoffice
+bun run parity:layout-matrix --reference word --refresh-reference
+```
+
+The command attributes required failures to axis pairs such as
+`section=continuous|anchorFrame=page`. It fails on missing pages, page-size
+mismatches, and reliable pagination or line-flow divergences. Direct raster
+differences and geometric drift remain advisory because glyph antialiasing and
+font environments can vary. Exports are cached by the deterministic fixture
+hash, so repeat runs reuse the reference render. The generated JSON is written
+to `parity/report/layout-matrix-<reference>.json`; the existing HTML report
+contains side-by-side pages and highlighted image diffs. Both outputs contain
+synthetic fixture data only and remain local.
+
 Requirements:
 
 - `libreoffice`: a local LibreOffice installation plus `mutool`; the adapter

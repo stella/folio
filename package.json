@@ -83,6 +83,7 @@
     "bench:cross-language": "bun benchmarks/cross-language/run.ts",
     "parity": "bun parity/cli.ts",
     "parity:line-endpoints": "bun parity/lineEndpointsCli.ts",
+    "parity:layout-matrix": "bun parity/layoutMatrixCli.ts",
     "parity:build-line-endpoint-fixtures": "bun parity/fixtures/build-word-line-endpoint-fixtures.ts",
     "parity:build-layout-corpus": "bun parity/fixtures/build-layout-corpus.ts",
     "parity:check-layout-corpus": "bun parity/fixtures/build-layout-corpus.ts --check",

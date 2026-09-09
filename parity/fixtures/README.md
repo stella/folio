@@ -25,7 +25,13 @@ floating anchors pair only with floating wrap modes.
 ```sh
 bun run parity:build-layout-corpus
 bun run parity:check-layout-corpus
+bun run parity:layout-matrix
 ```
+
+The matrix command generates one temporary DOCX per case. Isolating the cases
+makes failures attributable to a single axis combination and prevents a section
+transition in one case from changing a later case. The temporary documents and
+local reports contain synthetic values only.
 
 The isolated and pairwise fixtures should remain small enough to attribute a
 regression. Add a feature to the kitchen sink only after it has focused
