@@ -46,6 +46,7 @@
     "./docx": "./src/docx/index.ts",
     "./docx/document-clone": "./src/docx/documentClone.ts",
     "./docx/paragraphPropertySource": null,
+    "./internal/*": null,
     "./*": "./src/*.ts"
   },
   "publishConfig": {
