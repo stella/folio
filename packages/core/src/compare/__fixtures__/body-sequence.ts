@@ -247,10 +247,9 @@ const collectHrefs = (items: readonly BodyItem[], hrefs: string[]): void => {
 const EMPTY_PARAGRAPH = { kind: "paragraph", text: "" } as const satisfies BodyItem;
 
 /**
- * A container may not end with a table: the format requires a paragraph after
- * one, and a body's section properties do not supply it. One rule for both
- * containers, because a fixture that is well formed in a cell and malformed in
- * the body would be measuring two different things.
+ * Most fixtures add a paragraph after a table so later paragraph insertions
+ * have an explicit anchor. Tests for a schema-valid terminal table remove that
+ * convenience paragraph deliberately.
  */
 const closedSequence = (items: readonly BodyItem[]): readonly BodyItem[] => {
   const last = items.at(-1);

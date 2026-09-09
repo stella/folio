@@ -1207,6 +1207,7 @@ type TrailingDeletionOptions = {
   targetSnapshot: FolioAIEditSnapshot;
   /** The plan so far, rewritten around each container it empties. */
   operations: readonly FolioAIEditOperation[];
+  tableTemplates: readonly CompareTableTemplateRequest[];
   nextOperationId: () => string;
 };
 
@@ -1221,8 +1222,8 @@ type TrailingRun = {
   chainStart: FolioAIBlock | null;
   /** Indexes into the plan of the paragraph insertions placed in the run. */
   insertIndexes: readonly number[];
-  /** A table the plan places inside the run, which no rule here covers. */
-  holdsAnInsertedTable: boolean;
+  /** Indexes into the plan of tables placed inside the run. */
+  tableInsertIndexes: readonly number[];
 };
 
 /**
@@ -1262,12 +1263,13 @@ const withTrailingDeletionRules = ({
   baseSnapshot,
   targetSnapshot,
   operations,
+  tableTemplates,
   nextOperationId,
 }: TrailingDeletionOptions): FolioAIEditOperation[] => {
   const plan = [...operations];
   const deletionIndexByBlockId = new Map<string, number>();
   const insertIndexesByAnchor = new Map<string, number[]>();
-  const tableAnchorIds = new Set<string>();
+  const tableInsertIndexesByAnchor = new Map<string, number[]>();
   // A block whose own mark the plan already moves is not a chain start: a
   // split has put a second paragraph after it, and a merge has spent its mark.
   const markedBlockIds = new Set<string>();
@@ -1285,7 +1287,9 @@ const withTrailingDeletionRules = ({
         break;
       }
       case "insertTable": {
-        tableAnchorIds.add(operation.blockId);
+        const placed = tableInsertIndexesByAnchor.get(operation.blockId) ?? [];
+        placed.push(index);
+        tableInsertIndexesByAnchor.set(operation.blockId, placed);
         break;
       }
       case "splitBlock":
@@ -1313,8 +1317,8 @@ const withTrailingDeletionRules = ({
   const trailingRunOf = (container: string, carrier: FolioAIBlock): TrailingRun => {
     const blockIds: string[] = [];
     const insertIndexes: number[] = [];
+    const tableInsertIndexes: number[] = [];
     let chainStart: FolioAIBlock | null = null;
-    let holdsAnInsertedTable = false;
     let index =
       indexById.get(carrier.id) ??
       panic("A container's last block is not in the snapshot it came from", {
@@ -1331,7 +1335,7 @@ const withTrailingDeletionRules = ({
       }
       blockIds.push(block.id);
       insertIndexes.push(...(insertIndexesByAnchor.get(block.id) ?? []));
-      holdsAnInsertedTable ||= tableAnchorIds.has(block.id);
+      tableInsertIndexes.push(...(tableInsertIndexesByAnchor.get(block.id) ?? []));
     }
     // The plan emits operations in target order, so the plan's own order is
     // the order the inserted paragraphs have to end up in. Numerically: the
@@ -1341,11 +1345,15 @@ const withTrailingDeletionRules = ({
       blockIds,
       chainStart,
       insertIndexes: insertIndexes.toSorted((left, right) => left - right),
-      holdsAnInsertedTable,
+      tableInsertIndexes: tableInsertIndexes.toSorted((left, right) => left - right),
     };
   };
 
   const targetLastByContainer = lastBlockByContainer(targetSnapshot.blocks);
+  const terminalTargetTableIndex = targetSnapshot.blocks.at(-1)?.table?.outerTableIndex;
+  const targetTableIndexByOperationId = new Map(
+    tableTemplates.map(({ operationId, targetTableIndex }) => [operationId, targetTableIndex]),
+  );
   const dropped = new Set<number>();
   const appended: FolioAIEditOperation[] = [];
   for (const [container, carrier] of lastBlockByContainer(blocks)) {
@@ -1354,10 +1362,32 @@ const withTrailingDeletionRules = ({
       continue;
     }
     const run = trailingRunOf(container, carrier);
-    if (run.holdsAnInsertedTable) {
-      // A table between the chain and the carrier leaves a deleted mark with
-      // no paragraph to join, and the self-check reports what it could not
-      // prove rather than the plan guessing at a shape.
+    if (run.tableInsertIndexes.length > 0) {
+      const tableInsertIndex =
+        run.tableInsertIndexes.length === 1 ? run.tableInsertIndexes.at(0) : undefined;
+      const tableInsert = tableInsertIndex === undefined ? undefined : plan[tableInsertIndex];
+      if (
+        container !== "body" ||
+        !isEmptyParagraphNode(carrier, baseSnapshot) ||
+        tableInsertIndex === undefined ||
+        terminalTargetTableIndex === undefined ||
+        tableInsert?.type !== "insertTable" ||
+        targetTableIndexByOperationId.get(tableInsert.id) !== terminalTargetTableIndex
+      ) {
+        // A table within a trailing paragraph run otherwise interrupts the
+        // deletion chain. Keep the conservative plan and let verification
+        // report that its ownership could not be reproduced.
+        continue;
+      }
+      // The body schema permits the target table to precede `sectPr`
+      // directly. Put the base's otherwise-final carrier immediately before
+      // that table: its deleted mark can then remove the empty paragraph,
+      // while rejecting the table insertion restores the original ending.
+      plan[tableInsertIndex] = {
+        ...tableInsert,
+        blockId: carrier.id,
+        position: "after",
+      };
       continue;
     }
     const lastInsertIndex = run.insertIndexes.at(-1);
@@ -1540,11 +1570,10 @@ export const planStoryCompare = ({
   const tableTemplates: CompareTableTemplateRequest[] = [];
   /**
    * The anchor everything past the base document's content hangs from: its
-   * last BODY-LEVEL paragraph, which the format guarantees exists because a
-   * table may not be the last child of a body. Anchoring to the last block
-   * instead put the anchor inside a table whenever the story ended with one,
-   * and an insertion anchored there escapes to the table's boundary, where no
-   * paragraph mark can express the break it added.
+   * last BODY-LEVEL paragraph, when it has one. Anchoring to the last block
+   * instead puts the anchor inside a terminal table, and a paragraph insertion
+   * then escapes to the table's boundary where no paragraph mark can express
+   * the break it added.
    *
    * The applier orders insertions that resolve to one position by their order
    * in this array, so the tail is emitted where its step sits rather than
@@ -1893,6 +1922,7 @@ export const planStoryCompare = ({
     baseSnapshot,
     targetSnapshot,
     operations,
+    tableTemplates,
     nextOperationId,
   });
 

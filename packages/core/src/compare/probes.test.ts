@@ -114,6 +114,21 @@ const withNumberingFormats = async (
 const documentPartOf = async (buffer: ArrayBuffer): Promise<string> =>
   await partOf(buffer, "word/document.xml");
 
+const withoutTerminalBodyParagraph = async (buffer: ArrayBuffer): Promise<ArrayBuffer> => {
+  const zip = await JSZip.loadAsync(buffer);
+  const documentEntry = zip.file("word/document.xml");
+  if (!documentEntry) {
+    throw new Error("The fixture has no main document part.");
+  }
+  const documentXml = await documentEntry.async("string");
+  const withoutCarrier = documentXml.replace(/<w:p\b[^>]*><\/w:p>(?=<w:sectPr>)/u, "");
+  if (withoutCarrier === documentXml) {
+    throw new Error("The fixture has no terminal empty body paragraph.");
+  }
+  zip.file("word/document.xml", withoutCarrier);
+  return await zip.generateAsync({ type: "arraybuffer" });
+};
+
 /** Every `w:p` element of a document part, as raw XML. */
 const paragraphsOf = (documentXml: string): string[] =>
   documentXml.match(/<w:p[ >][\s\S]*?<\/w:p>/gu) ?? [];
@@ -881,6 +896,62 @@ describe("single-mutation probes", () => {
     expect(await projectView(result.value.buffer, "original")).toEqual(
       await projectView(base, "final"),
     );
+  });
+
+  test("replace_terminal_table: the base carrier owns the deletion before the target table", async () => {
+    const base = await buildBodySequenceDocx([
+      { kind: "table", rows: [["Source terminal table"]] },
+      { kind: "paragraph", text: "" },
+    ]);
+    const target = await withoutTerminalBodyParagraph(
+      await buildBodySequenceDocx([
+        {
+          kind: "table",
+          rows: [[{ content: "Target terminal table", gridSpan: 2 }]],
+        },
+      ]),
+    );
+    expect(await projectView(base, "final")).toHaveLength(2);
+    expect(await projectView(target, "final")).toHaveLength(1);
+    expect(await documentPartOf(target)).toMatch(/<\/w:tbl><w:sectPr>/u);
+
+    const result = await compareDocx(base, target, OPTIONS);
+    if (result.isErr()) {
+      throw result.error;
+    }
+
+    expect(result.value.changes.map(({ kind }) => kind)).toEqual([
+      "table-delete",
+      "table-insert",
+      "delete",
+    ]);
+    const pendingXml = await documentPartOf(result.value.buffer);
+    expect(pendingXml).toMatch(
+      /<w:tbl>[\s\S]*?<w:trPr><w:del\b[^>]*\/><\/w:trPr>[\s\S]*?Source terminal table/u,
+    );
+    expect(pendingXml).toMatch(
+      /Source terminal table[\s\S]*?<\/w:tbl><w:p\b[^>]*><w:pPr><w:rPr><w:del\b[\s\S]*?<\/w:p><w:tbl>[\s\S]*?Target terminal table/u,
+    );
+    expect(pendingXml).toMatch(
+      /<w:tbl>[\s\S]*?<w:trPr><w:ins\b[^>]*\/><\/w:trPr>[\s\S]*?Target terminal table/u,
+    );
+    expect(pendingXml).toMatch(/<\/w:tbl><w:sectPr>/u);
+
+    const acceptedReviewer = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+    acceptedReviewer.acceptAll();
+    const accepted = await acceptedReviewer.toBuffer();
+    const rejectedReviewer = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+    rejectedReviewer.rejectAll();
+    const rejected = await rejectedReviewer.toBuffer();
+
+    const acceptedReopened = await FolioDocxReviewer.fromBuffer(accepted);
+    const rejectedReopened = await FolioDocxReviewer.fromBuffer(rejected);
+    expect(acceptedReopened.readReviewedStory({ view: "current-markup" })?.changes).toEqual([]);
+    expect(rejectedReopened.readReviewedStory({ view: "current-markup" })?.changes).toEqual([]);
+    expect(await projectView(accepted, "final")).toEqual(await projectView(target, "final"));
+    expect(await projectView(rejected, "final")).toEqual(await projectView(base, "final"));
+    expect(await documentPartOf(accepted)).toMatch(/<\/w:tbl><w:sectPr>/u);
+    expect(await documentPartOf(rejected)).toMatch(/<\/w:p><w:sectPr>/u);
   });
 
   /**

@@ -157,6 +157,12 @@ say it went.
   needed: pairing the two ends where the chain does reach the carrier would
   trade a plain "this paragraph was removed" for a removal plus a rewrite that
   reads nothing like the edit.
+- **A replacement table at the story's end follows the carrier.** A body may
+  validly place a table immediately before its final section properties. When
+  an empty base carrier follows the table being replaced, the redline orders
+  the deleted source table, the carrier with its deleted paragraph mark, then
+  the inserted target table. Accepting removes the source and carrier;
+  rejecting removes the target and restores the carrier.
 - **An inserted mark at a container's end rotates the same way.** The break was
   ADDED, and rejecting an added break closes the paragraph it ends back over
   the NEXT one — which a container's last paragraph does not have, so the mark
