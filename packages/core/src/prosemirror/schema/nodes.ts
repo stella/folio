@@ -98,10 +98,12 @@ export type ParagraphAttrs = {
   spaceAfter?: number;
   lineSpacing?: number;
   lineSpacingRule?: LineSpacingRule;
-  /** Whether `lineSpacing` came from this paragraph's own `w:spacing/@w:line`. */
-  lineSpacingExplicit?: boolean;
-  /** Whether `lineSpacingRule` came from this paragraph's own `w:spacing/@w:lineRule`. */
-  lineSpacingRuleExplicit?: boolean;
+  /**
+   * Which line-spacing attributes came from this paragraph's own `w:spacing`.
+   * `true` is accepted for editor states written before provenance became
+   * field-specific; newly created state uses the exact discriminator.
+   */
+  lineSpacingExplicit?: boolean | "value" | "rule" | "both";
   snapToGrid?: boolean;
   spacingExplicit?: SpacingExplicit;
   /** Layout provenance: document defaults survive on empty paragraphs. */
@@ -320,7 +322,6 @@ export type ParagraphPropertyChangeAttrs = Omit<
         | "listAbstractNumId"
         | "listStartOverride"
         | "lineSpacingExplicit"
-        | "lineSpacingRuleExplicit"
         | "direction"
         | "_autospacingBase"
       >

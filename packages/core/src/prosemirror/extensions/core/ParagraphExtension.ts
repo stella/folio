@@ -296,8 +296,7 @@ function extractParagraphAttrsFromStyle(element: HTMLElement): Partial<Paragraph
     if (spacing) {
       attrs.lineSpacing = spacing.lineSpacing;
       attrs.lineSpacingRule = spacing.lineSpacingRule;
-      attrs.lineSpacingExplicit = true;
-      attrs.lineSpacingRuleExplicit = true;
+      attrs.lineSpacingExplicit = "both";
     }
   }
 
@@ -338,7 +337,6 @@ const paragraphNodeSpec: NodeSpec = {
     lineSpacing: { default: null },
     lineSpacingRule: { default: null },
     lineSpacingExplicit: { default: null },
-    lineSpacingRuleExplicit: { default: null },
     snapToGrid: { default: null },
     spacingExplicit: { default: null },
     spacingFromDocDefaults: { default: null },
@@ -668,8 +666,7 @@ function makeSetLineSpacing(value: number, rule: LineSpacingRule = "auto"): Comm
     setParagraphAttrsCmd({
       lineSpacing: value,
       lineSpacingRule: rule,
-      lineSpacingExplicit: true,
-      lineSpacingRuleExplicit: true,
+      lineSpacingExplicit: "both",
     })(state, dispatch);
 }
 

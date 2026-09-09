@@ -209,7 +209,7 @@ export type ParagraphAttrs = {
     spaceAfter?: number;
     lineSpacing?: number;
     lineSpacingRule?: import__stll_docx_core_model.LineSpacingRule;
-    lineSpacingExplicit?: boolean;
+    lineSpacingExplicit?: boolean | "value" | "rule" | "both";
     snapToGrid?: boolean;
     spacingExplicit?: SpacingExplicit;
     spacingFromDocDefaults?: SpacingExplicit;

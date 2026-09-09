@@ -19,6 +19,41 @@ export const DIRECT_PARAGRAPH_SPACING_KEYS = [
 
 export type DirectParagraphSpacing = FolioAIParagraphSpacing;
 
+type ExactLineSpacingProvenance = Exclude<
+  NonNullable<ParagraphAttrs["lineSpacingExplicit"]>,
+  boolean
+>;
+
+export const lineSpacingProvenanceFromSpacing = (
+  spacing: DirectParagraphSpacing | null | undefined,
+): ExactLineSpacingProvenance | undefined => {
+  const hasValue = spacing?.lineSpacing !== undefined;
+  const hasRule = spacing?.lineSpacingRule !== undefined;
+  if (hasValue && hasRule) {
+    return "both";
+  }
+  if (hasValue) {
+    return "value";
+  }
+  return hasRule ? "rule" : undefined;
+};
+
+/** Resolve exact provenance, including editor states written with the former boolean marker. */
+const lineSpacingProvenance = (attrs: ParagraphAttrs): ExactLineSpacingProvenance | undefined => {
+  if (typeof attrs.lineSpacingExplicit === "string") {
+    return attrs.lineSpacingExplicit;
+  }
+  const original = paragraphSpacingFromFormatting(attrs._originalFormatting);
+  const originalProvenance = lineSpacingProvenanceFromSpacing(original);
+  if (originalProvenance !== undefined || attrs.lineSpacingExplicit !== true) {
+    return originalProvenance;
+  }
+  return lineSpacingProvenanceFromSpacing({
+    ...(typeof attrs.lineSpacing === "number" ? { lineSpacing: attrs.lineSpacing } : {}),
+    ...(attrs.lineSpacingRule !== undefined ? { lineSpacingRule: attrs.lineSpacingRule } : {}),
+  });
+};
+
 /** Project only authored `w:spacing` attributes, preserving explicit zero and false. */
 export const paragraphSpacingFromFormatting = (
   formatting: DirectParagraphSpacing | null | undefined,
@@ -52,6 +87,7 @@ export const directParagraphSpacing = (
   attrs: ParagraphAttrs,
 ): DirectParagraphSpacing | undefined => {
   const spacing = paragraphSpacingFromFormatting(attrs._originalFormatting) ?? {};
+  const lineProvenance = lineSpacingProvenance(attrs);
   const spaceBefore: unknown = attrs.spaceBefore;
   const spaceAfter: unknown = attrs.spaceAfter;
   const beforeHasBase = hasAutospacingBaseSide(attrs._autospacingBase, "before");
@@ -93,19 +129,23 @@ export const directParagraphSpacing = (
       Reflect.deleteProperty(spacing, "spaceAfter");
     }
   }
-  if (attrs.lineSpacingExplicit === true || spacing.lineSpacing !== undefined) {
+  if (lineProvenance === "value" || lineProvenance === "both") {
     if (typeof attrs.lineSpacing === "number") {
       spacing.lineSpacing = attrs.lineSpacing;
     } else {
       Reflect.deleteProperty(spacing, "lineSpacing");
     }
+  } else {
+    Reflect.deleteProperty(spacing, "lineSpacing");
   }
-  if (attrs.lineSpacingRuleExplicit === true || spacing.lineSpacingRule !== undefined) {
+  if (lineProvenance === "rule" || lineProvenance === "both") {
     if (attrs.lineSpacingRule !== undefined) {
       spacing.lineSpacingRule = attrs.lineSpacingRule;
     } else {
       Reflect.deleteProperty(spacing, "lineSpacingRule");
     }
+  } else {
+    Reflect.deleteProperty(spacing, "lineSpacingRule");
   }
   return Object.keys(spacing).length > 0 ? spacing : undefined;
 };
@@ -172,8 +212,7 @@ export const paragraphSpacingAttrPatch = ({
     spaceAfter: effective.spaceAfter ?? null,
     lineSpacing: effective.lineSpacing ?? null,
     lineSpacingRule: effective.lineSpacingRule ?? null,
-    lineSpacingExplicit: direct?.lineSpacing !== undefined ? true : null,
-    lineSpacingRuleExplicit: direct?.lineSpacingRule !== undefined ? true : null,
+    lineSpacingExplicit: lineSpacingProvenanceFromSpacing(direct) ?? null,
     spacingExplicit: Object.keys(spacingExplicit).length > 0 ? spacingExplicit : null,
     _autospacingBase: Object.keys(autospacingBase).length > 0 ? autospacingBase : null,
   };

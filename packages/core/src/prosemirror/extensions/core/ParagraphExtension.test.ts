@@ -251,8 +251,7 @@ describe("ParagraphExtension", () => {
       state = state.apply(tr);
     });
 
-    expect(state.doc.firstChild?.attrs["lineSpacingExplicit"]).toBe(true);
-    expect(state.doc.firstChild?.attrs["lineSpacingRuleExplicit"]).toBe(true);
+    expect(state.doc.firstChild?.attrs["lineSpacingExplicit"]).toBe("both");
     const baseDocument: Document = { package: { document: { content: [] } } };
     const paragraph = fromProseDoc(state.doc, baseDocument).package.document.content.at(0);
     expect(paragraph?.type).toBe("paragraph");
@@ -280,8 +279,7 @@ describe("ParagraphExtension", () => {
       state = state.apply(tr);
     });
 
-    expect(state.doc.firstChild?.attrs["lineSpacingExplicit"]).toBe(true);
-    expect(state.doc.firstChild?.attrs["lineSpacingRuleExplicit"]).toBe(true);
+    expect(state.doc.firstChild?.attrs["lineSpacingExplicit"]).toBe("both");
     const baseDocument: Document = { package: { document: { content: [] } } };
     const paragraph = fromProseDoc(state.doc, baseDocument).package.document.content.at(0);
     expect(paragraph?.type).toBe("paragraph");
@@ -421,7 +419,6 @@ describe("ParagraphExtension", () => {
     });
 
     expect(state.doc.firstChild?.attrs["lineSpacingExplicit"]).toBeNull();
-    expect(state.doc.firstChild?.attrs["lineSpacingRuleExplicit"]).toBeNull();
     const saved = fromProseDoc(state.doc, source);
     const paragraph = saved.package.document.content.at(0);
     expect(paragraph?.type).toBe("paragraph");

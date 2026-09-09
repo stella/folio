@@ -67,6 +67,7 @@ import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import { setAutospacingBaseValue } from "../autospacingBase";
 import { buildRunFormattingOverrideAttrs } from "../extensions/marks/RunFormattingOverrideExtension";
 import { directionFromBidi } from "../paragraphDirection";
+import { lineSpacingProvenanceFromSpacing } from "../paragraphSpacing";
 import { schema } from "../schema";
 import { cascadeStyleTextFormatting } from "../styles/styleToggleCascade";
 import type {
@@ -991,8 +992,7 @@ function paragraphFormattingToAttrs(
     set("spaceAfter", formatting?.spaceAfter ?? stylePpr?.spaceAfter);
     set("lineSpacing", formatting?.lineSpacing ?? stylePpr?.lineSpacing);
     set("lineSpacingRule", formatting?.lineSpacingRule ?? stylePpr?.lineSpacingRule);
-    set("lineSpacingExplicit", formatting?.lineSpacing !== undefined ? true : undefined);
-    set("lineSpacingRuleExplicit", formatting?.lineSpacingRule !== undefined ? true : undefined);
+    set("lineSpacingExplicit", lineSpacingProvenanceFromSpacing(formatting));
     set("snapToGrid", formatting?.snapToGrid ?? stylePpr?.snapToGrid);
     set("spacingExplicit", formatting?.spacingExplicit);
     const paragraphStyle = styleId
@@ -1098,8 +1098,7 @@ function paragraphFormattingToAttrs(
     set("spaceAfter", formatting?.spaceAfter);
     set("lineSpacing", formatting?.lineSpacing);
     set("lineSpacingRule", formatting?.lineSpacingRule);
-    set("lineSpacingExplicit", formatting?.lineSpacing !== undefined ? true : undefined);
-    set("lineSpacingRuleExplicit", formatting?.lineSpacingRule !== undefined ? true : undefined);
+    set("lineSpacingExplicit", lineSpacingProvenanceFromSpacing(formatting));
     set("snapToGrid", formatting?.snapToGrid);
     set("spacingExplicit", formatting?.spacingExplicit);
     set("indentLeft", formatting?.indentLeft);

@@ -145,7 +145,6 @@ export const PPR_CHANGE_SCOPED_ATTR_KEYS = [
   "lineSpacing",
   "lineSpacingRule",
   "lineSpacingExplicit",
-  "lineSpacingRuleExplicit",
   "snapToGrid",
   "spacingExplicit",
   "indentLeft",
@@ -174,7 +173,6 @@ const PPR_SPACING_ATTR_KEYS: ReadonlySet<keyof ParagraphAttrs> = new Set([
   "lineSpacing",
   "lineSpacingRule",
   "lineSpacingExplicit",
-  "lineSpacingRuleExplicit",
   "spacingExplicit",
   "_autospacingBase",
 ]);

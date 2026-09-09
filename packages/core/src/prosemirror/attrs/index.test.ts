@@ -66,8 +66,7 @@ describe("ProseMirror attr readers", () => {
       numPr: { numId: 4, ilvl: 1 },
       bookmarks: [{ id: 7, name: "_Ref7" }],
       _autospacingBase: { before: 200, after: null },
-      lineSpacingExplicit: true,
-      lineSpacingRuleExplicit: true,
+      lineSpacingExplicit: "both",
       spacingFromImplicitDefaultStyle: { after: true },
       _sectionProperties: { sectionStart: "nextPage" },
       _propertyChanges: [],
@@ -85,10 +84,19 @@ describe("ProseMirror attr readers", () => {
     expect(result.value.bookmarks?.at(0)?.name).toBe("_Ref7");
     expect(result.value._autospacingBase?.before).toBe(200);
     expect(result.value._autospacingBase?.after).toBeNull();
-    expect(result.value.lineSpacingExplicit).toBe(true);
-    expect(result.value.lineSpacingRuleExplicit).toBe(true);
+    expect(result.value.lineSpacingExplicit).toBe("both");
     expect(result.value.spacingFromImplicitDefaultStyle?.after).toBe(true);
     expect(expectParagraphAttrs(node).paraId).toBe("para-1");
+  });
+
+  test("accepts the legacy boolean line-spacing provenance marker", () => {
+    const node = schema.nodes.paragraph.create({ lineSpacingExplicit: true });
+    const result = readParagraphAttrs(node);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.lineSpacingExplicit).toBe(true);
+    }
   });
 
   test("validates paragraph property change suggestion provenance", () => {
@@ -156,7 +164,7 @@ describe("ProseMirror attr readers", () => {
   test("rejects malformed paragraph attrs", () => {
     const node = schema.nodes.paragraph.create({
       alignmentFromStyle: "start",
-      lineSpacingRuleExplicit: "true",
+      lineSpacingExplicit: "invalid",
       numPr: { numId: "bad" },
       bookmarks: [{ id: "bad", name: 7 }],
       _emptyHyperlinks: [{ offset: -1, href: 42 }],
@@ -169,7 +177,7 @@ describe("ProseMirror attr readers", () => {
     expect(result.ok ? [] : result.issues.map((issue) => issue.path)).toEqual(
       expect.arrayContaining([
         "paragraph.attrs.alignmentFromStyle",
-        "paragraph.attrs.lineSpacingRuleExplicit",
+        "paragraph.attrs.lineSpacingExplicit",
         "paragraph.attrs._emptyHyperlinks[0].offset",
         "paragraph.attrs._emptyHyperlinks[0].href",
       ]),

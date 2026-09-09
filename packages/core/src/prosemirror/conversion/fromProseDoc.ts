@@ -120,6 +120,7 @@ import {
 import { autospacingMatchesBase, hasAutospacingBaseSide } from "../autospacingBase";
 import { directionToBidi } from "../paragraphDirection";
 import { directParagraphAlignment } from "../paragraphAlignment";
+import { directParagraphSpacing } from "../paragraphSpacing";
 import {
   paragraphRejectAttrPatch,
   paragraphRejectOriginalFormatting,
@@ -1314,6 +1315,7 @@ function assignBooleanToggle(
 
 function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting | undefined {
   const directAlignment = directParagraphAlignment(attrs);
+  const directSpacing = directParagraphSpacing(attrs);
   // If we have the original inline formatting from the DOCX, use it as a base
   // for lossless round-trip. This preserves properties like contextualSpacing,
   // widowControl, beforeAutospacing, runProperties, etc. that aren't tracked
@@ -1351,8 +1353,8 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
     (attrs.spacingExplicit?.after === true ||
       afterAutospacingEdited ||
       (!afterIsInherited && !afterHasAutospacingBase));
-  const hasDirectLineSpacing = attrs.lineSpacingExplicit === true;
-  const hasDirectLineSpacingRule = attrs.lineSpacingRuleExplicit === true;
+  const hasDirectLineSpacing = directSpacing?.lineSpacing !== undefined;
+  const hasDirectLineSpacingRule = directSpacing?.lineSpacingRule !== undefined;
 
   if (attrs._originalFormatting) {
     const orig = attrs._originalFormatting;
@@ -1478,6 +1480,7 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
     beforeAutospacingEdited ||
     afterAutospacingEdited ||
     hasDirectLineSpacing ||
+    hasDirectLineSpacingRule ||
     attrs.snapToGrid != null ||
     attrs.indentLeft ||
     attrs.indentRight ||
