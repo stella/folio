@@ -30,16 +30,19 @@ import {
   finalParagraphsOf,
   paragraphEndsItsContainer,
 } from "../containerFinalParagraph";
-import { textFormattingToMarks } from "../conversion/toProseDoc";
+import { resolveParagraphDefaultTextFormatting } from "../conversion/toProseDoc";
 import {
   markChangedParagraphRanges,
   markStructuralChange,
   markTrackedSectionEndpointRemoval,
 } from "../extensions/features/ParagraphChangeTrackerExtension";
 import { getDocumentStyleResolver } from "../plugins/documentStyles";
+import { paragraphRunStyleContextAt } from "../runStyleFormatting";
+import { reconstructRejectedRunFormattingMarks } from "../runPropertyChangeResolution";
 import { holdsNoContent } from "../zeroWidthAnchors";
 import { getFolioNodeRevisionCarriers } from "../revisionCarriers";
 import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
+import { setParagraphAttrsWithRebasedRunFormatting } from "../rebaseParagraphRunFormatting";
 import type { ParagraphPropertyChangeAttrs } from "../schema/nodes";
 import { getTableCellMergeChange } from "../tableCellMergeRevision";
 import {
@@ -225,10 +228,19 @@ function resolveChange(
                     previousFormattingFromStyle,
                   ),
                 );
-                nextAttrs["_originalFormatting"] = paragraphRejectOriginalFormatting(
+                const restoredFormatting = paragraphRejectOriginalFormatting(
                   rejection.previousFormatting,
                   node.attrs["_originalFormatting"],
                 );
+                nextAttrs["_originalFormatting"] = restoredFormatting;
+                if (styleResolver) {
+                  nextAttrs["defaultTextFormatting"] =
+                    resolveParagraphDefaultTextFormatting(
+                      rejection.previousFormatting?.styleId,
+                      restoredFormatting ?? undefined,
+                      styleResolver,
+                    ) ?? null;
+                }
               }
             }
           }
@@ -272,7 +284,17 @@ function resolveChange(
           }
 
           if (nextAttrs) {
-            tr.setNodeMarkup(pos, undefined, nextAttrs);
+            const styleChanged = nextAttrs["styleId"] !== node.attrs["styleId"];
+            if (styleChanged && styleResolver) {
+              setParagraphAttrsWithRebasedRunFormatting({
+                nextAttrs,
+                paragraphPosition: pos,
+                styleResolver,
+                tr,
+              });
+            } else {
+              tr.setNodeMarkup(pos, undefined, nextAttrs);
+            }
           }
 
           return true;
@@ -306,6 +328,7 @@ function resolveChange(
             );
             if (nextAttrs) {
               tr.setNodeMarkup(pos, undefined, nextAttrs);
+              markStructuralChange(tr);
             }
           }
           return true;
@@ -342,6 +365,7 @@ function resolveChange(
               mark: runPropertyChangeMark,
               mode,
               revisionSet,
+              styleResolver,
             });
           }
           if (removesNode) {
@@ -361,6 +385,7 @@ function resolveChange(
             mark: runPropertyChangeMark,
             mode,
             revisionSet,
+            styleResolver,
           });
         }
 
@@ -384,7 +409,13 @@ function resolveChange(
       const useBulkInlineResolution =
         canBulkInlineResolution && bulkInlineCarrierCount >= BULK_INLINE_RESOLUTION_THRESHOLD;
       if (useBulkInlineResolution) {
-        bulkInlineChangeTracking = appendHeadlessInlineResolution(tr, mode, keepType, removeType);
+        bulkInlineChangeTracking = appendHeadlessInlineResolution({
+          tr,
+          mode,
+          keepType,
+          removeType,
+          styleResolver,
+        });
       } else {
         for (const deferred of deferredRunPropertyChanges) {
           resolveRunPropertyChange(deferred);
@@ -600,6 +631,7 @@ type ResolveRunPropertyChangeOptions = {
   mark: Mark;
   mode: "accept" | "reject";
   revisionSet: Set<number> | null;
+  styleResolver: ReturnType<typeof getDocumentStyleResolver>;
 };
 
 const resolveRunPropertyChange = ({
@@ -610,6 +642,7 @@ const resolveRunPropertyChange = ({
   mark,
   mode,
   revisionSet,
+  styleResolver,
 }: ResolveRunPropertyChangeOptions): void => {
   const { changes } = expectRunPropertyChangeMarkAttrs(mark);
   const matches = changes.filter(
@@ -632,23 +665,19 @@ const resolveRunPropertyChange = ({
 
   const previousFormatting: RunPropertyChange["previousFormatting"] =
     matches.at(0)?.previousFormatting;
+  const styleContext = paragraphRunStyleContextAt({ doc: tr.doc, pos: from, styleResolver });
   for (const currentMark of node.marks) {
     if (RUN_FORMATTING_MARK_NAMES.has(currentMark.type.name)) {
       tr.removeMark(from, to, currentMark.type);
     }
   }
-  for (const previousMark of textFormattingToMarks(previousFormatting)) {
+  for (const previousMark of reconstructRejectedRunFormattingMarks({
+    node,
+    paragraphContext: styleContext,
+    previousFormatting,
+    styleResolver,
+  })) {
     tr.addMark(from, to, previousMark);
-  }
-  if (previousFormatting?.styleId) {
-    const characterStyle = node.type.schema.marks["characterStyle"];
-    if (characterStyle) {
-      tr.addMark(
-        from,
-        to,
-        characterStyle.create({ styleId: previousFormatting.styleId, _styleRPr: null }),
-      );
-    }
   }
 };
 

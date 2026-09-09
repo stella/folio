@@ -72,7 +72,12 @@ import type {
   TrackedChangeMarkAttrs,
   UnderlineAttrs,
 } from "../schema";
-import { TRACKED_CHANGE_PROVENANCE_VALUES } from "../schema/marks";
+import {
+  COMPLEX_SCRIPT_RUN_PROPERTY_KEYS,
+  RUN_FORMATTING_BOOLEAN_PROPERTIES,
+  RUN_FORMATTING_VALUE_PROPERTIES,
+  TRACKED_CHANGE_PROVENANCE_VALUES,
+} from "../schema/marks";
 
 export type ProseMirrorAttrIssue = {
   path: string;
@@ -204,6 +209,31 @@ const RUN_FORMATTING_OVERRIDE_FALSE_KEYS = [
   "doubleStrike",
   "rtl",
 ] as const satisfies readonly (keyof RunFormattingOverrideAttrs)[];
+
+const RUN_FORMATTING_OVERRIDE_STRING_SENTINELS = {
+  color: ["auto"],
+  effect: ["none"],
+  emphasisMark: ["none"],
+  highlight: ["none"],
+  underline: ["none"],
+  vertAlign: ["baseline"],
+} as const satisfies Record<
+  keyof Pick<
+    RunFormattingOverrideAttrs,
+    "color" | "effect" | "emphasisMark" | "highlight" | "underline" | "vertAlign"
+  >,
+  readonly string[]
+>;
+
+const RUN_FORMATTING_OVERRIDE_NUMBER_SENTINELS = {
+  kerning: 0,
+  position: 0,
+  scale: 100,
+  spacing: 0,
+} as const satisfies Record<
+  keyof Pick<RunFormattingOverrideAttrs, "kerning" | "position" | "scale" | "spacing">,
+  number
+>;
 
 const RUN_FORMATTING_OVERRIDE_DIRECT_FONT_PROPERTIES = ["fontFamily", "fontSize", "color"] as const;
 
@@ -949,7 +979,6 @@ export const readCharacterStyleMarkAttrs = (
   expectMarkType(mark, "characterStyle", issues);
 
   requiredString(attrs, "styleId", "characterStyle.attrs.styleId", issues);
-  optionalRecord(attrs, "_styleRPr", "characterStyle.attrs._styleRPr", issues);
 
   return attrsResult(attrs, issues);
 };
@@ -1202,7 +1231,23 @@ export const readRunFormattingOverrideMarkAttrs = (
   optionalBoolean(attrs, "italicCs", "runFormattingOverride.attrs.italicCs", issues);
   optionalNumber(attrs, "fontSizeCs", "runFormattingOverride.attrs.fontSizeCs", issues);
   optionalBoolean(attrs, "cs", "runFormattingOverride.attrs.cs", issues);
-  optionalOneOf(attrs, "underline", "runFormattingOverride.attrs.underline", issues, ["none"]);
+  optionalShading(attrs, "shading", "runFormattingOverride.attrs.shading", issues);
+  const shading = attrs["shading"];
+  if (isRecord(shading) && shading["pattern"] !== "nil") {
+    issues.push({
+      path: "runFormattingOverride.attrs.shading.pattern",
+      message: 'Expected "nil".',
+    });
+  }
+  for (const [key, values] of Object.entries(RUN_FORMATTING_OVERRIDE_STRING_SENTINELS)) {
+    optionalOneOf(attrs, key, `runFormattingOverride.attrs.${key}`, issues, values);
+  }
+  for (const [key, expected] of Object.entries(RUN_FORMATTING_OVERRIDE_NUMBER_SENTINELS)) {
+    const value = attrs[key];
+    if (value !== undefined && value !== null && value !== expected) {
+      issues.push({ path: `runFormattingOverride.attrs.${key}`, message: `Expected ${expected}.` });
+    }
+  }
   optionalOneOfArray(
     attrs,
     "directFontProperties",
@@ -1210,6 +1255,45 @@ export const readRunFormattingOverrideMarkAttrs = (
     issues,
     RUN_FORMATTING_OVERRIDE_DIRECT_FONT_PROPERTIES,
   );
+  optionalOneOfArray(
+    attrs,
+    "complexScriptPropertyAbsences",
+    "runFormattingOverride.attrs.complexScriptPropertyAbsences",
+    issues,
+    COMPLEX_SCRIPT_RUN_PROPERTY_KEYS,
+  );
+  optionalOneOfArray(
+    attrs,
+    "_authoredOn",
+    "runFormattingOverride.attrs._authoredOn",
+    issues,
+    RUN_FORMATTING_BOOLEAN_PROPERTIES,
+  );
+  optionalOneOfArray(
+    attrs,
+    "_authoredOff",
+    "runFormattingOverride.attrs._authoredOff",
+    issues,
+    RUN_FORMATTING_BOOLEAN_PROPERTIES,
+  );
+  optionalTextFormatting(
+    attrs,
+    "_authoredValues",
+    "runFormattingOverride.attrs._authoredValues",
+    issues,
+  );
+  const authoredValues = attrs["_authoredValues"];
+  if (isRecord(authoredValues)) {
+    const allowed = new Set<string>(RUN_FORMATTING_VALUE_PROPERTIES);
+    for (const property of Object.keys(authoredValues)) {
+      if (!allowed.has(property)) {
+        issues.push({
+          path: `runFormattingOverride.attrs._authoredValues.${property}`,
+          message: "Expected a non-boolean authored formatting property.",
+        });
+      }
+    }
+  }
   const directFontProperties = attrs["directFontProperties"];
   if (
     Array.isArray(directFontProperties) &&
@@ -1219,6 +1303,48 @@ export const readRunFormattingOverrideMarkAttrs = (
       path: "runFormattingOverride.attrs.directFontProperties",
       message: "Expected unique direct font properties.",
     });
+  }
+  const complexScriptPropertyAbsences = attrs["complexScriptPropertyAbsences"];
+  if (
+    Array.isArray(complexScriptPropertyAbsences) &&
+    new Set(complexScriptPropertyAbsences).size !== complexScriptPropertyAbsences.length
+  ) {
+    issues.push({
+      path: "runFormattingOverride.attrs.complexScriptPropertyAbsences",
+      message: "Expected unique complex-script property absences.",
+    });
+  }
+  if (Array.isArray(complexScriptPropertyAbsences)) {
+    for (const property of complexScriptPropertyAbsences) {
+      if (attrs[property] !== undefined && attrs[property] !== null) {
+        issues.push({
+          path: `runFormattingOverride.attrs.${property}`,
+          message: "Expected a property to be either present or explicitly absent, not both.",
+        });
+      }
+    }
+  }
+  for (const provenanceKey of ["_authoredOn", "_authoredOff"] as const) {
+    const properties = attrs[provenanceKey];
+    if (Array.isArray(properties) && new Set(properties).size !== properties.length) {
+      issues.push({
+        path: `runFormattingOverride.attrs.${provenanceKey}`,
+        message: "Expected unique authored formatting properties.",
+      });
+    }
+  }
+  const authoredOn = attrs["_authoredOn"];
+  const authoredOff = attrs["_authoredOff"];
+  if (Array.isArray(authoredOn) && Array.isArray(authoredOff)) {
+    const off = new Set(authoredOff);
+    for (const property of authoredOn) {
+      if (off.has(property)) {
+        issues.push({
+          path: "runFormattingOverride.attrs._authoredOff",
+          message: "Expected authored formatting to be either on or off, not both.",
+        });
+      }
+    }
   }
 
   return attrsResult(attrs, issues);

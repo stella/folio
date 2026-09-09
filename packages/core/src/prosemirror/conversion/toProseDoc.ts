@@ -24,6 +24,7 @@ import type {
   Paragraph,
   ParagraphFormatting,
   Run,
+  RunPropertyChange,
   TextFormatting,
   RunContent,
   Hyperlink,
@@ -68,7 +69,19 @@ import { setAutospacingBaseValue } from "../autospacingBase";
 import { buildRunFormattingOverrideAttrs } from "../extensions/marks/RunFormattingOverrideExtension";
 import { directionFromBidi } from "../paragraphDirection";
 import { lineSpacingProvenanceFromSpacing } from "../paragraphSpacing";
+import {
+  getParagraphMarkSuppressionOverrides,
+  hasDirectRunFormatting,
+  stripParagraphMarkFormattingForBodyRuns,
+  stripParagraphMarkOnlyFormatting,
+  suppressParagraphMarkFormatting,
+} from "../runStyleFormatting";
 import { schema } from "../schema";
+import {
+  COMPLEX_SCRIPT_RUN_PROPERTY_KEYS,
+  RUN_FORMATTING_PROPERTY_SPECS,
+  type ComplexScriptRunPropertyKey,
+} from "../schema/marks";
 import { cascadeStyleTextFormatting } from "../styles/styleToggleCascade";
 import type {
   ImagePositionAttrs,
@@ -86,11 +99,6 @@ import {
   type TableCellMarginsAttrs,
   type TableCellPosition,
 } from "./effectiveTableCellFormatting";
-// `toProseDoc` and `fromProseDoc` are the two halves of one round-trip and
-// reference each other's inverse converter at call time only (no init-order
-// hazard). See the matching suppression in `fromProseDoc.ts`.
-// oxlint-disable-next-line import/no-cycle
-import { marksToTextFormatting } from "./fromProseDoc";
 import { shadingToRunShadingAttrs } from "./runShadingMark";
 import { sdtAttrsFromProperties } from "./sdtAttrs";
 
@@ -108,6 +116,7 @@ export type ToProseDocOptions = {
 
 type ResolvedRunFormatting = {
   formatting: TextFormatting | undefined;
+  implicitCharacterStyleApplied?: true;
   paragraphMarkOverrides?: TextFormatting;
   toggleCascade: ReturnType<typeof cascadeStyleTextFormatting>;
 };
@@ -509,51 +518,86 @@ function convertParagraph(
   // w:pPr/w:rPr formats the paragraph mark, not the visible runs of a named
   // paragraph style. Style-less generated documents historically use it as
   // their highest-precedence run default.
-  const ordinaryDefaultRunFormatting = mergeTextFormatting(
+  const defaultCharacterFormatting = styleResolver?.getDefaultCharacterStyle()?.rPr;
+  const ordinaryBaseWithDefaultCharacter = mergeTextFormatting(
+    defaultCharacterFormatting,
     baseRunFormatting,
+  );
+  const defaultCharacterStyleCascade = cascadeStyleTextFormatting(
+    [
+      { cascade: orderedToggleFormatting, type: "carried" },
+      { formatting: defaultCharacterFormatting, type: "style" },
+    ],
+    { ordinaryFormatting: ordinaryBaseWithDefaultCharacter },
+  );
+  const ordinaryDefaultRunFormatting = mergeTextFormatting(
+    ordinaryBaseWithDefaultCharacter,
     inheritableParagraphRunFormatting,
   );
   const defaultToggleCascade = cascadeStyleTextFormatting(
     [
-      { cascade: orderedToggleFormatting, type: "carried" },
+      { cascade: defaultCharacterStyleCascade, type: "carried" },
       { formatting: inheritableParagraphRunFormatting, type: "direct" },
     ],
-    {
-      ordinaryFormatting: ordinaryDefaultRunFormatting,
-    },
+    { ordinaryFormatting: ordinaryDefaultRunFormatting },
   );
   const defaultRunFormatting = defaultToggleCascade.formatting;
+  if (extraRunFormatting !== undefined) {
+    if (defaultRunFormatting) {
+      attrs.defaultTextFormatting = defaultRunFormatting;
+    } else {
+      delete attrs.defaultTextFormatting;
+    }
+  }
   const getInheritedRunFormatting = (
     formatting: TextFormatting | undefined,
     fieldType?: string,
   ): ResolvedRunFormatting => {
+    const hasCharacterStyle = formatting?.styleId !== undefined;
+    const inheritedBaseFormatting = hasCharacterStyle
+      ? baseRunFormatting
+      : ordinaryBaseWithDefaultCharacter;
+    const inheritedToggleCascade = hasCharacterStyle
+      ? orderedToggleFormatting
+      : defaultCharacterStyleCascade;
     if (fieldType === "TOC") {
       return {
         formatting: hasDirectRunFormatting(formatting)
-          ? suppressParagraphMarkFormatting(baseRunFormatting, undefined, formatting)
-          : baseRunFormatting,
-        toggleCascade: orderedToggleFormatting,
+          ? suppressParagraphMarkFormatting({
+              baseFormatting: inheritedBaseFormatting,
+              directFormatting: formatting,
+              paragraphMarkFormatting: undefined,
+            })
+          : inheritedBaseFormatting,
+        ...(!hasCharacterStyle ? { implicitCharacterStyleApplied: true } : {}),
+        toggleCascade: inheritedToggleCascade,
       };
     }
     const hasExplicitRunFormatting =
       hasDirectRunFormatting(formatting) || formatting?.styleId !== undefined;
     if (!hasExplicitRunFormatting) {
-      return { formatting: defaultRunFormatting, toggleCascade: defaultToggleCascade };
+      return {
+        formatting: defaultRunFormatting,
+        implicitCharacterStyleApplied: true,
+        toggleCascade: defaultToggleCascade,
+      };
     }
-    const suppressedFormatting = suppressParagraphMarkFormatting(
-      baseRunFormatting,
-      inheritableParagraphRunFormatting,
-      formatting,
-    );
-    const paragraphMarkOverrides = getParagraphMarkSuppressionOverrides({
+    const suppressedFormatting = suppressParagraphMarkFormatting({
+      baseFormatting: inheritedBaseFormatting,
       directFormatting: formatting,
       paragraphMarkFormatting: inheritableParagraphRunFormatting,
-      suppressedFormatting,
     });
+    const paragraphMarkOverrides =
+      getParagraphMarkSuppressionOverrides({
+        directFormatting: formatting,
+        paragraphMarkFormatting: inheritableParagraphRunFormatting,
+        suppressedFormatting,
+      }) ?? (inheritableParagraphRunFormatting ? {} : undefined);
     return {
       formatting: suppressedFormatting,
+      ...(!hasCharacterStyle ? { implicitCharacterStyleApplied: true } : {}),
       ...(paragraphMarkOverrides ? { paragraphMarkOverrides } : {}),
-      toggleCascade: orderedToggleFormatting,
+      toggleCascade: inheritedToggleCascade,
     };
   };
   const emitTrackedChange = (
@@ -1324,168 +1368,6 @@ function mergeConditionalStyles(
   return merged;
 }
 
-function hasDirectRunFormatting(formatting: TextFormatting | undefined): boolean {
-  if (!formatting) {
-    return false;
-  }
-
-  for (const key in formatting) {
-    if (!Object.hasOwn(formatting, key)) {
-      continue;
-    }
-    const value = Reflect.get(formatting, key);
-    if (key !== "styleId" && value !== undefined) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function stripParagraphMarkOnlyFormatting(formatting: TextFormatting): TextFormatting | undefined {
-  const {
-    allCaps: _ac,
-    highlight: _h,
-    shading: _s,
-    smallCaps: _sc,
-    vertAlign: _va,
-    ...rest
-  } = formatting;
-  return Object.keys(rest).length > 0 ? rest : undefined;
-}
-
-function stripParagraphMarkFormattingForBodyRuns(
-  formatting: TextFormatting,
-): TextFormatting | undefined {
-  const paragraphMarkFormatting = stripParagraphMarkOnlyFormatting(formatting);
-  if (!paragraphMarkFormatting) {
-    return undefined;
-  }
-
-  const { fontFamily: _fontFamily, ...bodyRunFormatting } = paragraphMarkFormatting;
-  return Object.keys(bodyRunFormatting).length > 0 ? bodyRunFormatting : undefined;
-}
-
-const PARAGRAPH_MARK_BOOLEAN_KEYS = [
-  "bold",
-  "italic",
-  "strike",
-  "doubleStrike",
-  "allCaps",
-  "smallCaps",
-  "hidden",
-  "emboss",
-  "imprint",
-  "shadow",
-  "outline",
-  "rtl",
-] as const satisfies readonly (keyof TextFormatting)[];
-
-function suppressParagraphMarkFormatting(
-  base: TextFormatting | undefined,
-  paragraphMark: TextFormatting | undefined,
-  direct: TextFormatting | undefined,
-): TextFormatting | undefined {
-  if (!paragraphMark) {
-    return base;
-  }
-
-  const result = mergeTextFormatting(base, paragraphMark) ?? {};
-  for (const key of PARAGRAPH_MARK_BOOLEAN_KEYS) {
-    suppressBooleanParagraphMark(result, base, paragraphMark, direct, key);
-  }
-
-  // A direct run suppresses a size stored only on the paragraph mark. Restore
-  // the resolved paragraph-style size instead of letting the pilcrow size leak
-  // into visible text.
-  if (
-    paragraphMark.fontSize !== undefined &&
-    direct?.fontSize === undefined &&
-    base?.fontSize !== undefined
-  ) {
-    result.fontSize = base.fontSize;
-  }
-  if (
-    paragraphMark.fontSizeCs !== undefined &&
-    direct?.fontSizeCs === undefined &&
-    base?.fontSizeCs !== undefined
-  ) {
-    result.fontSizeCs = base.fontSizeCs;
-  }
-  if (paragraphMark.underline !== undefined && direct?.underline === undefined) {
-    result.underline = { style: "none" };
-  }
-  if (paragraphMark.spacing !== undefined && direct?.spacing === undefined) {
-    // A directly formatted run suppresses paragraph-mark character spacing in
-    // Word. Preserve any real style-level spacing; otherwise emit an explicit
-    // zero so the paragraph's defaultTextFormatting cannot leak back into the
-    // run when the PM document is converted to layout blocks.
-    result.spacing = 0;
-  }
-
-  return Object.keys(result).length > 0 ? result : undefined;
-}
-
-type GetParagraphMarkSuppressionOverridesOptions = {
-  directFormatting: TextFormatting | undefined;
-  paragraphMarkFormatting: TextFormatting | undefined;
-  suppressedFormatting: TextFormatting | undefined;
-};
-
-function getParagraphMarkSuppressionOverrides({
-  directFormatting,
-  paragraphMarkFormatting,
-  suppressedFormatting,
-}: GetParagraphMarkSuppressionOverridesOptions): TextFormatting | undefined {
-  if (!paragraphMarkFormatting) {
-    return undefined;
-  }
-  const overrides: TextFormatting = {};
-  for (const key of PARAGRAPH_MARK_BOOLEAN_KEYS) {
-    if (
-      paragraphMarkFormatting[key] !== undefined &&
-      directFormatting?.[key] === undefined &&
-      suppressedFormatting?.[key] === false
-    ) {
-      overrides[key] = false;
-    }
-  }
-  if (
-    paragraphMarkFormatting.underline !== undefined &&
-    directFormatting?.underline === undefined &&
-    suppressedFormatting?.underline?.style === "none"
-  ) {
-    overrides.underline = { style: "none" };
-  }
-  return Object.keys(overrides).length > 0 ? overrides : undefined;
-}
-
-function suppressBooleanParagraphMark(
-  result: TextFormatting,
-  base: TextFormatting | undefined,
-  paragraphMark: TextFormatting,
-  direct: TextFormatting | undefined,
-  key: keyof Pick<
-    TextFormatting,
-    | "bold"
-    | "italic"
-    | "strike"
-    | "doubleStrike"
-    | "allCaps"
-    | "smallCaps"
-    | "hidden"
-    | "emboss"
-    | "imprint"
-    | "shadow"
-    | "outline"
-    | "rtl"
-  >,
-): void {
-  if (paragraphMark[key] === undefined || direct?.[key] !== undefined) {
-    return;
-  }
-  result[key] = base?.[key] ?? false;
-}
-
 function resolveTextFormatting(
   formatting: TextFormatting | undefined,
   styleResolver: StyleEngine | null,
@@ -1506,9 +1388,18 @@ function resolveTextFormatting(
  * `docDefaults`. The caller already has the paragraph cascade, including
  * document defaults, and will layer these own properties over it.
  */
+type ParagraphDefaultFormattingResolver = Pick<
+  StyleEngine,
+  | "getStyle"
+  | "getDocDefaults"
+  | "getDefaultParagraphStyle"
+  | "getDefaultCharacterStyle"
+  | "getRunStyleOwnProperties"
+>;
+
 function resolveRunFormattingWithoutDefaults(
   formatting: TextFormatting | undefined,
-  styleResolver: StyleEngine | null,
+  styleResolver: ParagraphDefaultFormattingResolver | null,
 ): TextFormatting | undefined {
   if (!formatting || !styleResolver) {
     return formatting;
@@ -1523,10 +1414,11 @@ function resolveRunFormattingWithoutDefaults(
   ]).formatting;
 }
 
-function resolveParagraphDefaultTextFormatting(
+/** @internal Recompute a paragraph's inherited run defaults from authored package state. */
+export function resolveParagraphDefaultTextFormatting(
   styleId: string | undefined,
   formatting: Paragraph["formatting"] | undefined,
-  styleResolver: StyleEngine,
+  styleResolver: ParagraphDefaultFormattingResolver,
   options: { includeParagraphMarkRunProperties?: boolean } = {},
 ): TextFormatting | undefined {
   const style = styleId
@@ -2459,6 +2351,7 @@ function convertField(
   // Extract display text and formatting from field content/result
   let displayText = "";
   let fieldFormatting: TextFormatting | undefined;
+  let fieldPropertyChanges: readonly RunPropertyChange[] | undefined;
   const inlineNodes: PMNode[] = [];
   const hasStructuredSourceContent =
     field.type === "simpleField" && field.content.some((content) => content.type === "hyperlink");
@@ -2470,6 +2363,7 @@ function convertField(
     }
     // Use formatting from the first run that has it.
     fieldFormatting ??= run.formatting;
+    fieldPropertyChanges ??= run.propertyChanges;
     if (!hasStructuredSourceContent) {
       return;
     }
@@ -2496,6 +2390,7 @@ function convertField(
             }
           }
           fieldFormatting ??= child.formatting;
+          fieldPropertyChanges ??= child.propertyChanges;
         }
       }
       inlineNodes.push(
@@ -2537,6 +2432,9 @@ function convertField(
   );
 
   const createStructuredField = hasStructuredSourceContent && hasConvertedHyperlinkContent;
+  if (!createStructuredField && fieldPropertyChanges && fieldPropertyChanges.length > 0) {
+    marks.push(schema.mark("runPropertyChange", { changes: [...fieldPropertyChanges] }));
+  }
   return schema.node(
     createStructuredField ? "structuredField" : "field",
     {
@@ -2720,11 +2618,10 @@ function convertRun(
  * The inherited formatting already includes docDefaults from paragraph
  * style resolution, so we only need the character style's own properties.
  *
- * When the run references a character style, a `characterStyle` mark carries
- * the reference (plus a snapshot of the style's own properties in mark
- * normal form) so `fromProseDoc` re-serializes `w:rStyle` instead of baking
- * the style's formatting into the run. Unknown styleIds resolve to nothing:
- * no formatting is flattened, and the reference round-trips verbatim.
+ * When the run references a character style, a compact `characterStyle` mark
+ * carries its styleId so document-level style context can resolve it without
+ * copying the style onto every run. Unknown styleIds resolve to nothing: no
+ * formatting is flattened, and the reference round-trips verbatim.
  */
 type BuiltRunMarks = {
   marks: ReturnType<typeof schema.mark>[];
@@ -2735,15 +2632,242 @@ type BuiltRunMarks = {
   mergedFormatting: TextFormatting | undefined;
 };
 
+type AuthoredRunFormattingCarrier = "preserve" | "reconstruct";
+
+const RUN_FORMATTING_INFERENCE = {
+  bold: "ordinary-toggle",
+  boldCs: "structural",
+  italic: "ordinary-toggle",
+  italicCs: "structural",
+  underline: "underline",
+  strike: "visible-boolean",
+  doubleStrike: "double-strike",
+  vertAlign: "visible-value",
+  smallCaps: "visible-boolean",
+  allCaps: "visible-boolean",
+  hidden: "visible-boolean",
+  color: "color",
+  highlight: "visible-value",
+  shading: "preserve",
+  fontSize: "font-size",
+  fontSizeCs: "structural",
+  fontFamily: "font-family",
+  language: "nested-visible-value",
+  spacing: "visible-value",
+  position: "visible-value",
+  scale: "scale",
+  kerning: "visible-value",
+  effect: "visible-value",
+  emphasisMark: "visible-value",
+  emboss: "visible-boolean",
+  imprint: "visible-boolean",
+  outline: "visible-boolean",
+  shadow: "visible-boolean",
+  rtl: "visible-boolean",
+  cs: "structural",
+  styleId: "structural",
+} as const satisfies Record<
+  keyof typeof RUN_FORMATTING_PROPERTY_SPECS,
+  | "color"
+  | "double-strike"
+  | "font-family"
+  | "font-size"
+  | "nested-visible-value"
+  | "ordinary-toggle"
+  | "preserve"
+  | "scale"
+  | "structural"
+  | "underline"
+  | "visible-boolean"
+  | "visible-value"
+>;
+
+const sameFormattingValue = (left: unknown, right: unknown): boolean => {
+  if (left === right) {
+    return true;
+  }
+  if (typeof left !== "object" || left === null || typeof right !== "object" || right === null) {
+    return false;
+  }
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
+      return false;
+    }
+    return left.every((value, index) => sameFormattingValue(value, right.at(index)));
+  }
+  const leftEntries = Object.entries(left).filter(([, value]) => value !== undefined);
+  const rightEntries = Object.entries(right).filter(([, value]) => value !== undefined);
+  if (leftEntries.length !== rightEntries.length) {
+    return false;
+  }
+  return leftEntries.every(
+    ([property, value]) =>
+      Object.hasOwn(right, property) && sameFormattingValue(value, Reflect.get(right, property)),
+  );
+};
+
+const isReconstructibleFontFamily = (directValue: unknown, effectiveValue: unknown): boolean => {
+  if (
+    typeof directValue !== "object" ||
+    directValue === null ||
+    !sameFormattingValue(directValue, effectiveValue)
+  ) {
+    return false;
+  }
+  const properties = Object.keys(directValue).filter(
+    (property) => Reflect.get(directValue, property) !== undefined,
+  );
+  return (
+    properties.length === 2 &&
+    properties.includes("ascii") &&
+    properties.includes("hAnsi") &&
+    typeof Reflect.get(directValue, "ascii") === "string" &&
+    typeof Reflect.get(directValue, "hAnsi") === "string"
+  );
+};
+
+type CanReconstructAuthoredRunFormattingOptions = {
+  directFormatting: TextFormatting | undefined;
+  effectiveFormatting: TextFormatting | undefined;
+  inheritedFormatting: TextFormatting | undefined;
+  paragraphMarkOverrides: TextFormatting | undefined;
+};
+
+const canReconstructAuthoredRunFormatting = ({
+  directFormatting,
+  effectiveFormatting,
+  inheritedFormatting,
+  paragraphMarkOverrides,
+}: CanReconstructAuthoredRunFormattingOptions): boolean => {
+  if (paragraphMarkOverrides !== undefined) {
+    return false;
+  }
+  for (const property of Object.keys(directFormatting ?? {}) as (keyof TextFormatting)[]) {
+    const directValue = directFormatting?.[property];
+    if (directValue === undefined || property === "styleId") {
+      continue;
+    }
+    const inheritedValue = inheritedFormatting?.[property];
+    const effectiveValue = effectiveFormatting?.[property];
+    switch (RUN_FORMATTING_INFERENCE[property]) {
+      case "structural":
+        continue;
+      case "ordinary-toggle":
+        if (directValue !== true || inheritedValue !== true) {
+          continue;
+        }
+        return false;
+      case "visible-boolean":
+        if (directValue === false || (directValue === true && inheritedValue !== true)) {
+          continue;
+        }
+        return false;
+      case "font-size":
+        if (typeof directValue === "number" && Number.isFinite(directValue) && directValue > 0) {
+          continue;
+        }
+        return false;
+      case "font-family":
+        if (isReconstructibleFontFamily(directValue, effectiveValue)) {
+          continue;
+        }
+        return false;
+      case "color":
+        if (
+          typeof directValue === "object" &&
+          directValue !== null &&
+          Reflect.get(directValue, "auto") !== true &&
+          Reflect.get(directValue, "themeColor") === undefined &&
+          sameFormattingValue(directValue, effectiveValue)
+        ) {
+          continue;
+        }
+        return false;
+      case "underline":
+        if (
+          typeof directValue === "object" &&
+          directValue !== null &&
+          Reflect.get(directValue, "style") !== "none" &&
+          Reflect.get(directValue, "color") === undefined &&
+          sameFormattingValue(directValue, effectiveValue) &&
+          !sameFormattingValue(directValue, inheritedValue)
+        ) {
+          continue;
+        }
+        return false;
+      case "double-strike":
+        if (directValue === false) {
+          continue;
+        }
+        if (
+          directValue === true &&
+          inheritedFormatting?.strike !== true &&
+          inheritedFormatting?.doubleStrike !== true
+        ) {
+          continue;
+        }
+        return false;
+      case "scale":
+        if (
+          normalizeHorizontalScalePercent(
+            typeof directValue === "number" ? directValue : undefined,
+          ) === directValue &&
+          directValue !== inheritedValue
+        ) {
+          continue;
+        }
+        return false;
+      case "nested-visible-value":
+        if (
+          sameFormattingValue(directValue, effectiveValue) &&
+          !sameFormattingValue(directValue, inheritedValue)
+        ) {
+          continue;
+        }
+        return false;
+      case "visible-value":
+        if (
+          directValue !== "none" &&
+          directValue !== "baseline" &&
+          sameFormattingValue(directValue, effectiveValue) &&
+          !sameFormattingValue(directValue, inheritedValue)
+        ) {
+          continue;
+        }
+        return false;
+      case "preserve":
+        return false;
+    }
+  }
+  return true;
+};
+
 function buildRunMarks(
   runFormatting: TextFormatting | undefined,
   inherited: ResolvedRunFormatting,
   styleResolver: StyleEngine | null | undefined,
 ): BuiltRunMarks {
+  if (
+    runFormatting === undefined &&
+    inherited.implicitCharacterStyleApplied === true &&
+    inherited.paragraphMarkOverrides === undefined
+  ) {
+    return {
+      marks: textFormattingToMarks(inherited.formatting, {
+        overrideFormatting: undefined,
+        directFormatting: undefined,
+        authoredCarrier: "reconstruct",
+      }),
+      mergedFormatting: inherited.formatting,
+    };
+  }
   const styleId = runFormatting?.styleId;
-  const characterStyleFormatting = styleId
-    ? styleResolver?.getRunStyleOwnProperties(styleId)
-    : styleResolver?.getDefaultCharacterStyle()?.rPr;
+  let characterStyleFormatting: TextFormatting | undefined;
+  if (styleId) {
+    characterStyleFormatting = styleResolver?.getRunStyleOwnProperties(styleId);
+  } else if (!inherited.implicitCharacterStyleApplied) {
+    characterStyleFormatting = styleResolver?.getDefaultCharacterStyle()?.rPr;
+  }
   let ordinaryRunStyleFormatting = inherited.formatting ? { ...inherited.formatting } : {};
   if (styleId) {
     ordinaryRunStyleFormatting =
@@ -2765,27 +2889,36 @@ function buildRunMarks(
     { ordinaryFormatting: mergeTextFormatting(runStyleFormatting, runFormatting) },
   );
   const mergedFormatting = finalToggleFormatting.formatting;
+  const authoredCarrier: AuthoredRunFormattingCarrier = canReconstructAuthoredRunFormatting({
+    directFormatting: runFormatting,
+    effectiveFormatting: mergedFormatting,
+    inheritedFormatting: runStyleFormatting,
+    paragraphMarkOverrides: inherited.paragraphMarkOverrides,
+  })
+    ? "reconstruct"
+    : "preserve";
   const overrideFormatting = getRunFormattingOverrides({
     directFormatting: runFormatting,
     effectiveStyleFormatting: runStyleFormatting,
     hasCharacterStyle: styleId !== undefined,
     paragraphMarkOverrides: inherited.paragraphMarkOverrides,
   });
+  if (authoredCarrier === "reconstruct") {
+    if (overrideFormatting?.bold === true) {
+      delete overrideFormatting.bold;
+    }
+    if (overrideFormatting?.italic === true) {
+      delete overrideFormatting.italic;
+    }
+  }
   const marks = textFormattingToMarks(mergedFormatting, {
     overrideFormatting,
+    directFormatting: runFormatting,
+    authoredCarrier,
   });
-  addDirectFontProvenance(marks, runFormatting);
 
   if (styleId) {
-    const styleRPr = characterStyleFormatting
-      ? marksToTextFormatting(textFormattingToMarks(characterStyleFormatting))
-      : undefined;
-    marks.push(
-      schema.mark("characterStyle", {
-        styleId,
-        _styleRPr: styleRPr && Object.keys(styleRPr).length > 0 ? styleRPr : null,
-      }),
-    );
+    marks.push(schema.mark("characterStyle", { styleId }));
   }
 
   return { marks, mergedFormatting };
@@ -2805,10 +2938,7 @@ const addDirectFontProvenance = (
   if (directFormatting?.color !== undefined) {
     directFontProperties.push("color");
   }
-  if (
-    !directFormatting ||
-    !Object.keys(directFormatting).some((property) => property !== "styleId")
-  ) {
+  if (directFontProperties.length === 0) {
     return;
   }
 
@@ -2816,7 +2946,47 @@ const addDirectFontProvenance = (
   const existing = index >= 0 ? marks.at(index) : undefined;
   const override = schema.mark("runFormattingOverride", {
     ...existing?.attrs,
-    ...(directFontProperties.length > 0 && { directFontProperties }),
+    directFontProperties,
+  });
+  if (index >= 0) {
+    marks[index] = override;
+    return;
+  }
+  marks.push(override);
+};
+
+const COMPLEX_SCRIPT_MIRRORS = [
+  { ordinary: "bold", complex: "boldCs" },
+  { ordinary: "italic", complex: "italicCs" },
+  { ordinary: "fontSize", complex: "fontSizeCs" },
+] as const satisfies readonly {
+  ordinary: keyof TextFormatting;
+  complex: ComplexScriptRunPropertyKey;
+}[];
+
+const addComplexScriptAbsenceProvenance = (
+  marks: ReturnType<typeof schema.mark>[],
+  directFormatting: TextFormatting | undefined,
+): void => {
+  const absent = COMPLEX_SCRIPT_MIRRORS.filter(
+    ({ ordinary, complex }) =>
+      directFormatting?.[ordinary] !== undefined && directFormatting[complex] === undefined,
+  ).map(({ complex }) => complex);
+  if (absent.length === 0) {
+    return;
+  }
+
+  const index = marks.findIndex(({ type }) => type.name === "runFormattingOverride");
+  const existing = index >= 0 ? marks.at(index) : undefined;
+  const existingAbsences = new Set(existing?.attrs["complexScriptPropertyAbsences"] ?? []);
+  for (const property of absent) {
+    existingAbsences.add(property);
+  }
+  const override = schema.mark("runFormattingOverride", {
+    ...existing?.attrs,
+    complexScriptPropertyAbsences: COMPLEX_SCRIPT_RUN_PROPERTY_KEYS.filter((property) =>
+      existingAbsences.has(property),
+    ),
   });
   if (index >= 0) {
     marks[index] = override;
@@ -2826,8 +2996,6 @@ const addDirectFontProvenance = (
 };
 
 const ORDINARY_STYLE_TOGGLE_KEYS = [
-  "bold",
-  "italic",
   "strike",
   "allCaps",
   "smallCaps",
@@ -2859,6 +3027,9 @@ function getRunFormattingOverrides({
   // A positive PM mark already preserves direct formatting unless character-style
   // subtraction would mistake it for an inherited visual. Keep only that ambiguous
   // positive state in the structural override; negative state remains explicit.
+  // Bold and italic stay in the override too: their presence distinguishes a
+  // direct ordinary toggle from an inherited mark before deciding whether its
+  // complex-script partner was authored.
   for (const key of ORDINARY_STYLE_TOGGLE_KEYS) {
     if (
       directFormatting[key] === true &&
@@ -2866,21 +3037,6 @@ function getRunFormattingOverrides({
     ) {
       Reflect.deleteProperty(overrides, key);
     }
-  }
-
-  if (
-    directFormatting.boldCs === true &&
-    directFormatting.boldCs === directFormatting.bold &&
-    (!hasCharacterStyle || effectiveStyleFormatting?.boldCs === undefined)
-  ) {
-    Reflect.deleteProperty(overrides, "boldCs");
-  }
-  if (
-    directFormatting.italicCs === true &&
-    directFormatting.italicCs === directFormatting.italic &&
-    (!hasCharacterStyle || effectiveStyleFormatting?.italicCs === undefined)
-  ) {
-    Reflect.deleteProperty(overrides, "italicCs");
   }
 
   return overrides;
@@ -2904,12 +3060,10 @@ function convertRunContent(
 
     case "break":
       if (content.breakType === "textWrapping" || !content.breakType) {
-        return [withHyperlinkBoundaryMarks(schema.node("hardBreak"), marks)];
+        return [schema.node("hardBreak").mark(marks)];
       }
       if (content.breakType === "column") {
-        return [
-          withHyperlinkBoundaryMarks(schema.node("hardBreak", { breakType: "column" }), marks),
-        ];
+        return [schema.node("hardBreak", { breakType: "column" }).mark(marks)];
       }
       // Page breaks are represented as block separators by paragraphPageBreakPosition.
       return [];
@@ -3290,6 +3444,9 @@ function convertHyperlink(
       );
       // Add link mark to run marks
       const allMarks = [...runMarks, linkMark];
+      if (child.propertyChanges && child.propertyChanges.length > 0) {
+        allMarks.push(schema.mark("runPropertyChange", { changes: [...child.propertyChanges] }));
+      }
 
       // Delegate to convertRunContent so tabs/breaks/fields/symbols inside
       // a hyperlink round-trip (eigenpal #566). The earlier text-only loop
@@ -3309,6 +3466,10 @@ function convertHyperlink(
  */
 type TextFormattingToMarksOptions = {
   overrideFormatting: TextFormatting | undefined;
+  /** Direct standard font properties whose authored provenance must survive. */
+  directFormatting?: TextFormatting | undefined;
+  /** Whether direct authorship is reconstructible from structural marks and the style context. */
+  authoredCarrier?: AuthoredRunFormattingCarrier;
 };
 
 export function textFormattingToMarks(
@@ -3321,7 +3482,19 @@ export function textFormattingToMarks(
 
   const marks: ReturnType<typeof schema.mark>[] = [];
   const overrideFormatting = options ? options.overrideFormatting : formatting;
-  const overrideAttrs = buildRunFormattingOverrideAttrs(overrideFormatting);
+  let overrideAttrs: ReturnType<typeof buildRunFormattingOverrideAttrs>;
+  if (options?.authoredCarrier === "reconstruct") {
+    overrideAttrs = buildRunFormattingOverrideAttrs(overrideFormatting, {
+      type: "structural-only",
+    });
+  } else if (options) {
+    overrideAttrs = buildRunFormattingOverrideAttrs(overrideFormatting, {
+      type: "authored-baseline",
+      formatting: options.directFormatting,
+    });
+  } else {
+    overrideAttrs = buildRunFormattingOverrideAttrs(overrideFormatting);
+  }
 
   if (overrideAttrs) {
     marks.push(schema.mark("runFormattingOverride", overrideAttrs));
@@ -3487,6 +3660,11 @@ export function textFormattingToMarks(
   // eigenpal #424 (gap 11) — text effect animation (w:effect)
   if (formatting.effect && formatting.effect !== "none") {
     marks.push(schema.mark("textEffect", { effect: formatting.effect }));
+  }
+
+  addDirectFontProvenance(marks, options?.directFormatting);
+  if (options?.authoredCarrier === "preserve") {
+    addComplexScriptAbsenceProvenance(marks, options.directFormatting);
   }
 
   return marks;

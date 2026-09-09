@@ -27,7 +27,7 @@ import { createFolioAITextRangeHandle } from "../ai-edits/snapshot";
 import type {
   FolioAIBlock,
   FolioAIEditOperation,
-  FolioAIInlineFormatting,
+  FolioAIInlineFormattingPatch,
 } from "../ai-edits/types";
 import { CompareDocxParseError, CompareDocxSerializeError } from "./types";
 
@@ -52,7 +52,7 @@ export type EditScriptStep =
       blockIndex: number;
       startOffset: number;
       endOffset: number;
-      formatting: FolioAIInlineFormatting;
+      formatting: FolioAIInlineFormattingPatch;
     }
   | { type: "insertTableRow"; blockIndex: number; cellTexts: readonly string[] }
   | { type: "deleteTableRow"; blockIndex: number }

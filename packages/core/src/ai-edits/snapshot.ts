@@ -3,8 +3,12 @@ import type { Mark, Node as PMNode } from "prosemirror-model";
 import { TableMap } from "prosemirror-tables";
 
 import { expectParagraphAttrs, expectRunFormattingOverrideMarkAttrs } from "../prosemirror/attrs";
+import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
 import { directParagraphAlignment } from "../prosemirror/paragraphAlignment";
 import { directParagraphSpacing } from "../prosemirror/paragraphSpacing";
+import { paragraphRunStyleContext, type RunStyleResolver } from "../prosemirror/runStyleFormatting";
+import { authoredRunFormattingFromAttrs } from "../prosemirror/runFormattingProvenance";
+import type { TextFormatting } from "../types/document";
 import { deriveBlankBlockId, deriveBlockId, type FolioBlockId } from "../types/block-id";
 import { buildCleanBlockText } from "./clean-text";
 import type {
@@ -232,7 +236,10 @@ const getTableLocation = ({
   return undefined;
 };
 
-export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
+const createFolioAIEditSnapshotInternal = (
+  doc: PMNode,
+  styleResolver: RunStyleResolver | null,
+): FolioAIEditSnapshot => {
   const draftBlocks: {
     block: FolioAIBlock;
     anchor: Omit<FolioAIBlockAnchor, "hashOccurrenceCount">;
@@ -314,7 +321,7 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
     }
     const directAlignment = getDirectAlignment(node);
     const directSpacing = getDirectSpacing(node);
-    const previewRuns = getPreviewRuns(node);
+    const previewRuns = getPreviewRuns(node, styleResolver);
     const table = getTableLocation({ path, blockIndex: index, tableIndexByStart });
 
     draftBlocks.push({
@@ -357,6 +364,15 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
   numberingReferenceKeysBySnapshot.set(snapshot, [...numberingReferenceKeys]);
   return snapshot;
 };
+
+export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot =>
+  createFolioAIEditSnapshotInternal(doc, null);
+
+/** @internal Use for an EditorState that owns the document's style resolver. */
+export const createFolioAIEditSnapshotWithStyleResolver = (
+  doc: PMNode,
+  styleResolver: RunStyleResolver | null,
+): FolioAIEditSnapshot => createFolioAIEditSnapshotInternal(doc, styleResolver);
 
 const getBlockKind = (node: PMNode, headingLevel: number | undefined): FolioAIBlockKind => {
   const listMarker: unknown = node.attrs["listMarker"];
@@ -456,10 +472,16 @@ type PreviewRunStyle = {
 };
 
 const DELETION_MARK = "deletion";
+const RUN_FORMATTING_OVERRIDE_MARK = "runFormattingOverride";
+const CHARACTER_STYLE_MARK = "characterStyle";
 
-const getPreviewRuns = (node: PMNode): FolioAIBlockPreviewRun[] | undefined => {
+const getPreviewRuns = (
+  node: PMNode,
+  styleResolver: RunStyleResolver | null,
+): FolioAIBlockPreviewRun[] | undefined => {
   const runs: FolioAIBlockPreviewRun[] = [];
   const defaultStyle = getDefaultPreviewRunStyle(node);
+  let paragraphStyleContext: ReturnType<typeof paragraphRunStyleContext> | undefined;
 
   node.descendants((child) => {
     if (!child.isText || child.text === undefined) {
@@ -470,7 +492,24 @@ const getPreviewRuns = (node: PMNode): FolioAIBlockPreviewRun[] | undefined => {
     }
 
     const style = getPreviewRunStyle(child.marks, defaultStyle);
-    const directFormatting = getDirectPreviewRunStyle(child.marks, defaultStyle);
+    const hasAuthorshipCarrier = child.marks.some(
+      ({ type }) =>
+        type.name === RUN_FORMATTING_OVERRIDE_MARK || type.name === CHARACTER_STYLE_MARK,
+    );
+    let directFormatting: PreviewRunStyle;
+    if (!hasAuthorshipCarrier) {
+      directFormatting = getDirectPreviewRunStyleFromMarks(child.marks, defaultStyle);
+    } else {
+      paragraphStyleContext ??= paragraphRunStyleContext(node, styleResolver);
+      const directTextFormatting = marksToTextFormatting(child.marks, {
+        baseParagraphFormatting: paragraphStyleContext.baseParagraphFormatting,
+        inheritedFormatting: paragraphStyleContext.paragraphFormatting,
+        paragraphMarkFormatting: paragraphStyleContext.paragraphMarkFormatting,
+        paragraphMarkPrecedesStyle: paragraphStyleContext.paragraphMarkPrecedesStyle,
+        styleResolver,
+      });
+      directFormatting = getDirectPreviewRunStyle(child.marks, directTextFormatting, styleResolver);
+    }
     const previous = runs.at(-1);
     if (
       previous &&
@@ -558,22 +597,39 @@ const getPreviewRunStyle = (
     }
   }
 
+  const overrideMark = marks.find(({ type }) => type.name === RUN_FORMATTING_OVERRIDE_MARK);
+  if (!overrideMark) {
+    return style;
+  }
+  const overrides = expectRunFormattingOverrideMarkAttrs(overrideMark);
+  if (overrides.bold === false) {
+    delete style.bold;
+  }
+  if (overrides.italic === false) {
+    delete style.italic;
+  }
+  if (overrides.underline === "none") {
+    delete style.underline;
+  }
+  const hasDoubleStrike = marks.some(
+    (mark) => mark.type.name === "strike" && mark.attrs["double"] === true,
+  );
+  if (overrides.strike === false && !hasDoubleStrike) {
+    delete style.strike;
+  }
+  if (overrides.color === "auto") {
+    delete style.color;
+  }
+
   return style;
 };
 
-const getDirectPreviewRunStyle = (
+const getDirectPreviewRunStyleFromMarks = (
   marks: readonly Mark[],
   inheritedStyle: PreviewRunStyle,
 ): PreviewRunStyle => {
   const markedStyle = getPreviewRunStyle(marks, {});
   const directStyle: PreviewRunStyle = {};
-  const overrideMark = marks.find(({ type }) => type.name === "runFormattingOverride");
-  const hasFormattingProvenance =
-    overrideMark !== undefined || marks.some(({ type }) => type.name === "characterStyle");
-  const directFontProperties = overrideMark
-    ? expectRunFormattingOverrideMarkAttrs(overrideMark).directFontProperties
-    : undefined;
-
   for (const property of ["bold", "italic", "underline", "strike"] as const) {
     if (Boolean(markedStyle[property]) !== Boolean(inheritedStyle[property])) {
       directStyle[property] = Boolean(markedStyle[property]);
@@ -581,27 +637,67 @@ const getDirectPreviewRunStyle = (
   }
   if (
     markedStyle.fontFamily !== undefined &&
-    (hasFormattingProvenance
-      ? directFontProperties?.includes("fontFamily")
-      : markedStyle.fontFamily !== inheritedStyle.fontFamily)
+    markedStyle.fontFamily !== inheritedStyle.fontFamily
   ) {
     directStyle.fontFamily = markedStyle.fontFamily;
   }
   if (
     markedStyle.fontSizePt !== undefined &&
-    (hasFormattingProvenance
-      ? directFontProperties?.includes("fontSize")
-      : markedStyle.fontSizePt !== inheritedStyle.fontSizePt)
+    markedStyle.fontSizePt !== inheritedStyle.fontSizePt
   ) {
     directStyle.fontSizePt = markedStyle.fontSizePt;
   }
-  if (
-    markedStyle.color !== undefined &&
-    (hasFormattingProvenance
-      ? directFontProperties?.includes("color")
-      : markedStyle.color !== inheritedStyle.color)
-  ) {
+  if (markedStyle.color !== undefined && markedStyle.color !== inheritedStyle.color) {
     directStyle.color = markedStyle.color;
+  }
+  return directStyle;
+};
+
+const getDirectPreviewRunStyle = (
+  marks: readonly Mark[],
+  formatting: TextFormatting,
+  styleResolver: RunStyleResolver | null,
+): PreviewRunStyle => {
+  let directFormatting = formatting;
+  if (!styleResolver) {
+    const overrideMark = marks.find(({ type }) => type.name === RUN_FORMATTING_OVERRIDE_MARK);
+    const authoredFormatting = overrideMark
+      ? authoredRunFormattingFromAttrs(expectRunFormattingOverrideMarkAttrs(overrideMark))
+      : undefined;
+    if (authoredFormatting !== undefined) {
+      directFormatting = authoredFormatting;
+    } else if (marks.some(({ type }) => type.name === CHARACTER_STYLE_MARK)) {
+      directFormatting = {};
+    }
+  }
+
+  const directStyle: PreviewRunStyle = {};
+  for (const property of ["bold", "italic"] as const) {
+    if (directFormatting[property] !== undefined) {
+      directStyle[property] = directFormatting[property];
+    }
+  }
+  if (directFormatting.underline !== undefined) {
+    directStyle.underline = isUnderlineEnabled(directFormatting.underline);
+  }
+  if (directFormatting.strike !== undefined) {
+    directStyle.strike = directFormatting.strike;
+  } else if (directFormatting.doubleStrike === true) {
+    directStyle.strike = true;
+  }
+  const fontFamily = directFormatting.fontFamily
+    ? getFontFamilyFromAttrs(directFormatting.fontFamily)
+    : undefined;
+  if (fontFamily !== undefined) {
+    directStyle.fontFamily = fontFamily;
+  }
+  const fontSizePt = getFontSizeTextFormatting(directFormatting).fontSizePt;
+  if (fontSizePt !== undefined) {
+    directStyle.fontSizePt = fontSizePt;
+  }
+  const color = directFormatting.color ? getColorFromAttrs(directFormatting.color) : undefined;
+  if (color !== undefined) {
+    directStyle.color = color;
   }
 
   return directStyle;

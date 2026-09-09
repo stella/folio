@@ -20,7 +20,7 @@ import type {
   FolioAIEditSeverity,
   FolioAIEditSkippedOperation,
   FolioAIEditSnapshot,
-  FolioAIInlineFormatting,
+  FolioAIInlineFormattingPatch,
   FolioAIParagraphSpacing,
   FolioAITextRangeHandle,
 } from "./ai-edits/types";
@@ -310,6 +310,21 @@ const readOptionalBoolean = (
     return candidate;
   }
   return invalidBatch(`${path}.${key}`, "expected a boolean when provided");
+};
+
+const readClearableBoolean = (
+  value: Record<string, unknown>,
+  key: string,
+  path: string,
+): boolean | null | undefined => {
+  const candidate = value[key];
+  if (candidate === undefined || candidate === null) {
+    return candidate;
+  }
+  if (typeof candidate === "boolean") {
+    return candidate;
+  }
+  return invalidBatch(`${path}.${key}`, "expected a boolean or null when provided");
 };
 
 const readClearableNonEmptyString = (
@@ -632,7 +647,7 @@ const readTextRange = (value: Record<string, unknown>, path: string): FolioAITex
 const readInlineFormatting = (
   value: Record<string, unknown>,
   path: string,
-): FolioAIInlineFormatting => {
+): FolioAIInlineFormattingPatch => {
   const candidate = value["formatting"];
   const formattingPath = `${path}.formatting`;
   if (!isPlainObject(candidate)) {
@@ -647,10 +662,10 @@ const readInlineFormatting = (
     "fontSizePt",
     "color",
   ]);
-  const bold = readOptionalBoolean(candidate, "bold", formattingPath);
-  const italic = readOptionalBoolean(candidate, "italic", formattingPath);
-  const underline = readOptionalBoolean(candidate, "underline", formattingPath);
-  const strike = readOptionalBoolean(candidate, "strike", formattingPath);
+  const bold = readClearableBoolean(candidate, "bold", formattingPath);
+  const italic = readClearableBoolean(candidate, "italic", formattingPath);
+  const underline = readClearableBoolean(candidate, "underline", formattingPath);
+  const strike = readClearableBoolean(candidate, "strike", formattingPath);
   const fontFamily = readClearableNonEmptyString(candidate, "fontFamily", formattingPath);
   const fontSizePt = readClearableFontSize(candidate, "fontSizePt", formattingPath);
   const color = readClearableRgbColor(candidate, "color", formattingPath);
@@ -1330,6 +1345,7 @@ const recoveryByReason = {
   staleRange: "refreshDocument",
   emptyOperation: "removeOperation",
   pendingParagraphPropertyChange: "resolveTrackedChange",
+  pendingRunPropertyChange: "resolveTrackedChange",
   noopOperation: "removeOperation",
   documentVersionMismatch: "refreshDocument",
   documentNotEditable: "retryLater",
@@ -1353,7 +1369,8 @@ export const getFolioDocumentOperationIssues = (
       retryable:
         reason !== "emptyOperation" &&
         reason !== "noopOperation" &&
-        reason !== "pendingParagraphPropertyChange",
+        reason !== "pendingParagraphPropertyChange" &&
+        reason !== "pendingRunPropertyChange",
       recovery: recoveryByReason[reason],
     };
   });

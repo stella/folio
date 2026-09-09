@@ -201,7 +201,7 @@ const TRACKED_REPLACEMENT_STYLE_CASES = [
     afterInherited: "both",
     beforeText: TEXT,
     afterText: REPLACEMENT_TEXT,
-    revisionIds: [1, 2, 4],
+    revisionIds: [1, 2, 3],
   },
   {
     label: "clears a style without changing text",
@@ -1937,7 +1937,7 @@ describe("paragraph alignment provenance in editor state", () => {
         {
           id: "suggested-replacement-style",
           revisionId: 1,
-          revisionIds: [1, 2, 4],
+          revisionIds: [1, 2, 3],
           suggestionId: "suggested-replacement-style",
         },
       ]);
@@ -1954,7 +1954,7 @@ describe("paragraph alignment provenance in editor state", () => {
           {
             type: "paragraphPropertyChange",
             info: {
-              id: 4,
+              id: 3,
               author: "assistant",
               date: OPTIONS.timestamp,
               provenance: "suggested",
@@ -1999,7 +1999,7 @@ describe("paragraph alignment provenance in editor state", () => {
       {
         type: "paragraphPropertyChange",
         info: {
-          id: 4,
+          id: 3,
           author: "reviewer",
           date: OPTIONS.timestamp,
           provenance: "user",
@@ -2012,7 +2012,7 @@ describe("paragraph alignment provenance in editor state", () => {
     const acceptedSuggestionXml = await mainDocumentXml(acceptedSuggestionBuffer);
     expect(acceptedSuggestionXml).toContain('<w:ins w:id="2" w:author="reviewer"');
     expect(acceptedSuggestionXml).toContain('<w:del w:id="1" w:author="reviewer"');
-    expect(acceptedSuggestionXml).toContain('<w:pPrChange w:id="4" w:author="reviewer"');
+    expect(acceptedSuggestionXml).toContain('<w:pPrChange w:id="3" w:author="reviewer"');
     expect(trackedParagraphPropertyParts(acceptedSuggestionXml)).toEqual({
       current: expectedParagraphProperties("center", NEXT_STYLE_ID),
       previous: expectedParagraphProperties("center", STYLE_ID),

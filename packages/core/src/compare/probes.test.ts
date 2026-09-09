@@ -22,9 +22,9 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
-import type { FolioAIBlock } from "../ai-edits/types";
+import type { FolioAIBlock, FolioAIInlineBooleanProperty } from "../ai-edits/types";
 import { createDocx } from "../docx/rezip";
-import type { Table, TableCell } from "../types/document";
+import type { Table, TableCell, TextFormatting } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { buildBodySequenceDocx } from "./__fixtures__/body-sequence";
 import { buildNestedTableDocx } from "./__fixtures__/nested-table";
@@ -113,6 +113,89 @@ const withNumberingFormats = async (
 
 const documentPartOf = async (buffer: ArrayBuffer): Promise<string> =>
   await partOf(buffer, "word/document.xml");
+
+const DIRECT_BOOLEAN_STATES = ["absent", "on", "off"] as const;
+type DirectBooleanState = (typeof DIRECT_BOOLEAN_STATES)[number];
+
+const INLINE_BOOLEAN_PROPERTIES = [
+  "bold",
+  "italic",
+  "underline",
+  "strike",
+] as const satisfies readonly FolioAIInlineBooleanProperty[];
+
+const booleanTextFormatting = (
+  property: FolioAIInlineBooleanProperty,
+  value: boolean,
+): TextFormatting => {
+  switch (property) {
+    case "bold":
+      return { bold: value };
+    case "italic":
+      return { italic: value };
+    case "underline":
+      return { underline: { style: value ? "single" : "none" } };
+    case "strike":
+      return { strike: value };
+  }
+};
+
+const buildBooleanFormattingDocx = (
+  property: FolioAIInlineBooleanProperty,
+  inherited: boolean,
+  direct: DirectBooleanState,
+): Promise<ArrayBuffer> => {
+  const document = createEmptyDocument();
+  const docDefaults = document.package.styles?.docDefaults;
+  document.package.styles = {
+    ...document.package.styles,
+    docDefaults: {
+      ...docDefaults,
+      rPr: { ...docDefaults?.rPr, ...booleanTextFormatting(property, inherited) },
+    },
+  };
+  document.package.document.content = [
+    {
+      type: "paragraph",
+      paraId: "A10000B0",
+      content: [
+        {
+          type: "run",
+          ...(direct !== "absent" && {
+            formatting: booleanTextFormatting(property, direct === "on"),
+          }),
+          content: [{ type: "text", text: "Boolean formatting" }],
+        },
+      ],
+    },
+  ];
+  return createDocx(document);
+};
+
+type BooleanFormattingProjection = {
+  direct: DirectBooleanState;
+  effective: boolean;
+};
+
+const directBooleanState = (value: boolean | undefined): DirectBooleanState => {
+  if (value === undefined) {
+    return "absent";
+  }
+  return value ? "on" : "off";
+};
+
+const booleanFormattingProjection = async (
+  buffer: ArrayBuffer,
+  property: FolioAIInlineBooleanProperty,
+): Promise<BooleanFormattingProjection> => {
+  const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
+  const run = reviewer.snapshot().blocks.at(0)?.previewRuns?.at(0);
+  const direct = run?.directFormatting?.[property];
+  return {
+    direct: directBooleanState(direct),
+    effective: run?.[property] === true,
+  };
+};
 
 const withoutTerminalBodyParagraph = async (buffer: ArrayBuffer): Promise<ArrayBuffer> => {
   const zip = await JSZip.loadAsync(buffer);
@@ -507,6 +590,60 @@ describe("single-mutation probes", () => {
     const [change] = changes;
     expect(change?.kind === "format" && change.ranges.length).toBe(1);
   });
+
+  for (const property of INLINE_BOOLEAN_PROPERTIES) {
+    for (const inherited of [false, true]) {
+      for (const baseDirect of DIRECT_BOOLEAN_STATES) {
+        for (const targetDirect of DIRECT_BOOLEAN_STATES) {
+          if (baseDirect === targetDirect) {
+            continue;
+          }
+          test(`format_only_${property}: inherited ${String(inherited)}, direct ${baseDirect} -> ${targetDirect}`, async () => {
+            const base = await buildBooleanFormattingDocx(property, inherited, baseDirect);
+            const target = await buildBooleanFormattingDocx(property, inherited, targetDirect);
+            const result = await compareDocx(base, target, OPTIONS);
+            if (result.isErr()) {
+              throw result.error;
+            }
+
+            expect(result.value.verification).toEqual({ status: "verified" });
+            expect(result.value.changes).toEqual([
+              expect.objectContaining({
+                kind: "format",
+                ranges: [
+                  {
+                    startOffset: 0,
+                    endOffset: "Boolean formatting".length,
+                    formatting: {
+                      [property]: targetDirect === "absent" ? null : targetDirect === "on",
+                    },
+                  },
+                ],
+              }),
+            ]);
+
+            const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+            accepting.acceptAll();
+            const accepted = await accepting.toBuffer();
+            const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+            rejecting.rejectAll();
+            const rejected = await rejecting.toBuffer();
+
+            expect((await FolioDocxReviewer.fromBuffer(accepted)).getChanges()).toEqual([]);
+            expect((await FolioDocxReviewer.fromBuffer(rejected)).getChanges()).toEqual([]);
+            expect(await booleanFormattingProjection(accepted, property)).toEqual(
+              await booleanFormattingProjection(target, property),
+            );
+            expect(await booleanFormattingProjection(rejected, property)).toEqual(
+              await booleanFormattingProjection(base, property),
+            );
+            expect(await documentPartOf(accepted)).not.toContain("<w:rPrChange ");
+            expect(await documentPartOf(rejected)).not.toContain("<w:rPrChange ");
+          });
+        }
+      }
+    }
+  }
 
   test("format_only_strike: striking a phrase round-trips as tracked formatting", async () => {
     const blockIndex = wordyBlockIndex(PROSE_BLOCKS, 4);

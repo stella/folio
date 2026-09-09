@@ -5,8 +5,13 @@ import { ReplaceStep, StepMap, type Mappable } from "prosemirror-transform";
 
 import { recreateProseNodeWithParagraphPropertySource } from "../docx/paragraphPropertySource";
 import { expectRunPropertyChangeMarkAttrs } from "../prosemirror/attrs";
-import { textFormattingToMarks } from "../prosemirror/conversion/toProseDoc";
+import { reconstructRejectedRunFormattingMarks } from "../prosemirror/runPropertyChangeResolution";
 import { RUN_FORMATTING_MARK_NAMES } from "../prosemirror/runFormattingMarkNames";
+import {
+  paragraphRunStyleContext,
+  type ParagraphRunStyleContext,
+  type RunStyleResolver,
+} from "../prosemirror/runStyleFormatting";
 
 export type HeadlessRevisionResolutionMode = "accept" | "reject";
 
@@ -21,11 +26,35 @@ type HeadlessInlineContext = {
   removeType: MarkType | undefined;
   deleteRanges: HeadlessDeleteRange[];
   changedParagraphRanges: HeadlessDeleteRange[];
+  styleResolver: RunStyleResolver | null;
 };
 
 export type HeadlessInlineChangeTracking = {
   ranges: readonly HeadlessDeleteRange[];
   mappingFrom: number;
+};
+
+const EMPTY_PARAGRAPH_RUN_STYLE_CONTEXT: ParagraphRunStyleContext = {
+  baseParagraphFormatting: undefined,
+  paragraphFormatting: undefined,
+  paragraphMarkFormatting: undefined,
+  paragraphMarkPrecedesStyle: false,
+};
+
+type ParagraphRunStyleScope = {
+  paragraph: PMNode;
+  resolved?: ParagraphRunStyleContext;
+};
+
+const resolveParagraphRunStyleScope = (
+  scope: ParagraphRunStyleScope | undefined,
+  styleResolver: RunStyleResolver | null,
+): ParagraphRunStyleContext => {
+  if (!scope) {
+    return EMPTY_PARAGRAPH_RUN_STYLE_CONTEXT;
+  }
+  scope.resolved ??= paragraphRunStyleContext(scope.paragraph, styleResolver);
+  return scope.resolved;
 };
 
 /**
@@ -82,53 +111,71 @@ const rebuildNode = (
     marks,
   });
 
-const resolveInlineNode = (
-  node: PMNode,
-  mode: HeadlessRevisionResolutionMode,
-  keepType: MarkType | undefined,
-  removeType: MarkType | undefined,
-): PMNode | null => {
+type ResolveInlineNodeOptions = {
+  node: PMNode;
+  context: HeadlessInlineContext;
+  paragraphScope: ParagraphRunStyleScope | undefined;
+};
+
+const resolveInlineNode = ({
+  node,
+  context,
+  paragraphScope,
+}: ResolveInlineNodeOptions): PMNode | null => {
   let marks: readonly Mark[] = node.marks;
   const runPropertyChangeMark = marks.find((mark) => mark.type.name === "runPropertyChange");
   if (runPropertyChangeMark) {
     const { changes } = expectRunPropertyChangeMarkAttrs(runPropertyChangeMark);
     if (changes.length > 0) {
       marks = marks.filter((mark) => mark !== runPropertyChangeMark);
-      if (mode === "reject") {
+      if (context.mode === "reject") {
         marks = marks.filter((mark) => !RUN_FORMATTING_MARK_NAMES.has(mark.type.name));
         const previousFormatting = changes.at(0)?.previousFormatting;
-        for (const previousMark of textFormattingToMarks(previousFormatting)) {
+        for (const previousMark of reconstructRejectedRunFormattingMarks({
+          node,
+          paragraphContext: resolveParagraphRunStyleScope(paragraphScope, context.styleResolver),
+          previousFormatting,
+          styleResolver: context.styleResolver,
+        })) {
           marks = previousMark.addToSet(marks);
-        }
-        if (previousFormatting?.styleId) {
-          const characterStyle = node.type.schema.marks["characterStyle"];
-          if (characterStyle) {
-            marks = characterStyle
-              .create({ styleId: previousFormatting.styleId, _styleRPr: null })
-              .addToSet(marks);
-          }
         }
       }
     }
   }
 
-  if (removeType && node.marks.some((mark) => mark.type === removeType)) {
+  if (context.removeType && node.marks.some((mark) => mark.type === context.removeType)) {
     return null;
   }
-  if (keepType) {
-    marks = marks.filter((mark) => mark.type !== keepType);
+  if (context.keepType) {
+    marks = marks.filter((mark) => mark.type !== context.keepType);
   }
   return marksEqual(marks, node.marks) ? node : node.mark(marks);
 };
 
-const resolveInlineContent = (
-  node: PMNode,
-  position: number,
-  context: HeadlessInlineContext,
-): PMNode | null => {
+type ResolveInlineContentOptions = {
+  node: PMNode;
+  position: number;
+  context: HeadlessInlineContext;
+  inheritedParagraphScope?: ParagraphRunStyleScope;
+};
+
+const resolveInlineContent = ({
+  node,
+  position,
+  context,
+  inheritedParagraphScope,
+}: ResolveInlineContentOptions): PMNode | null => {
+  const paragraphScope =
+    node.type.name === "paragraph" && context.mode === "reject"
+      ? { paragraph: node }
+      : inheritedParagraphScope;
   let resolvedNode = node;
   if (node.isInline) {
-    const resolved = resolveInlineNode(node, context.mode, context.keepType, context.removeType);
+    const resolved = resolveInlineNode({
+      node,
+      context,
+      paragraphScope,
+    });
     if (resolved === null) {
       context.deleteRanges.push({ from: position, to: position + node.nodeSize });
       return null;
@@ -143,7 +190,12 @@ const resolveInlineContent = (
   const contentStart = resolvedNode.type.name === "doc" ? 0 : position + 1;
   let contentChanged = false;
   resolvedNode.forEach((child, offset) => {
-    const resolved = resolveInlineContent(child, contentStart + offset, context);
+    const resolved = resolveInlineContent({
+      node: child,
+      position: contentStart + offset,
+      context,
+      ...(paragraphScope !== undefined ? { inheritedParagraphScope: paragraphScope } : {}),
+    });
     if (resolved) {
       children.push(resolved);
       contentChanged ||= resolved !== child;
@@ -176,20 +228,30 @@ const coalesceDeleteRanges = (
   return coalesced;
 };
 
-export const appendHeadlessInlineResolution = (
-  tr: Transaction,
-  mode: HeadlessRevisionResolutionMode,
-  keepType: MarkType | undefined,
-  removeType: MarkType | undefined,
-): HeadlessInlineChangeTracking | null => {
+type AppendHeadlessInlineResolutionOptions = {
+  tr: Transaction;
+  mode: HeadlessRevisionResolutionMode;
+  keepType: MarkType | undefined;
+  removeType: MarkType | undefined;
+  styleResolver: RunStyleResolver | null;
+};
+
+export const appendHeadlessInlineResolution = ({
+  tr,
+  mode,
+  keepType,
+  removeType,
+  styleResolver,
+}: AppendHeadlessInlineResolutionOptions): HeadlessInlineChangeTracking | null => {
   const context: HeadlessInlineContext = {
     mode,
     keepType,
     removeType,
     deleteRanges: [],
     changedParagraphRanges: [],
+    styleResolver,
   };
-  const resolved = resolveInlineContent(tr.doc, -1, context);
+  const resolved = resolveInlineContent({ node: tr.doc, position: -1, context });
   if (!resolved || resolved.eq(tr.doc)) {
     return null;
   }

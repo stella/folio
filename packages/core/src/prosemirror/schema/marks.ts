@@ -154,29 +154,135 @@ export type RunPropertyChangeMarkAttrs = {
   suggestionId?: string;
 };
 
-export type RunFormattingOverrideAttrs = Partial<
-  Record<
-    | "bold"
-    | "boldCs"
-    | "cs"
-    | "italic"
-    | "italicCs"
-    | "strike"
-    | "allCaps"
-    | "smallCaps"
-    | "hidden"
-    | "emboss"
-    | "imprint"
-    | "shadow"
-    | "outline",
-    boolean
-  >
-> & {
+export const COMPLEX_SCRIPT_RUN_PROPERTY_KEYS = ["boldCs", "italicCs", "fontSizeCs"] as const;
+
+export type ComplexScriptRunPropertyKey = (typeof COMPLEX_SCRIPT_RUN_PROPERTY_KEYS)[number];
+
+export const RUN_FORMATTING_BOOLEAN_PROPERTIES = [
+  "bold",
+  "boldCs",
+  "italic",
+  "italicCs",
+  "strike",
+  "doubleStrike",
+  "smallCaps",
+  "allCaps",
+  "hidden",
+  "emboss",
+  "imprint",
+  "outline",
+  "shadow",
+  "rtl",
+  "cs",
+] as const;
+
+export const RUN_FORMATTING_VALUE_PROPERTIES = [
+  "underline",
+  "vertAlign",
+  "color",
+  "highlight",
+  "shading",
+  "fontSize",
+  "fontSizeCs",
+  "fontFamily",
+  "language",
+  "spacing",
+  "position",
+  "scale",
+  "kerning",
+  "effect",
+  "emphasisMark",
+] as const;
+
+export type RunFormattingBooleanProperty = (typeof RUN_FORMATTING_BOOLEAN_PROPERTIES)[number];
+export type RunFormattingValueProperty = (typeof RUN_FORMATTING_VALUE_PROPERTIES)[number];
+
+type RunFormattingPropertySpec =
+  Extract<RunFormattingBooleanProperty, RunFormattingValueProperty> extends never
+    ? {
+        [Property in keyof TextFormatting]: Property extends RunFormattingBooleanProperty
+          ? "boolean"
+          : Property extends RunFormattingValueProperty
+            ? "value"
+            : Property extends "styleId"
+              ? "style"
+              : never;
+      }
+    : never;
+
+export const RUN_FORMATTING_PROPERTY_SPECS = {
+  bold: "boolean",
+  boldCs: "boolean",
+  italic: "boolean",
+  italicCs: "boolean",
+  underline: "value",
+  strike: "boolean",
+  doubleStrike: "boolean",
+  vertAlign: "value",
+  smallCaps: "boolean",
+  allCaps: "boolean",
+  hidden: "boolean",
+  color: "value",
+  highlight: "value",
+  shading: "value",
+  fontSize: "value",
+  fontSizeCs: "value",
+  fontFamily: "value",
+  language: "value",
+  spacing: "value",
+  position: "value",
+  scale: "value",
+  kerning: "value",
+  effect: "value",
+  emphasisMark: "value",
+  emboss: "boolean",
+  imprint: "boolean",
+  outline: "boolean",
+  shadow: "boolean",
+  rtl: "boolean",
+  cs: "boolean",
+  styleId: "style",
+} as const satisfies RunFormattingPropertySpec;
+
+export type AuthoredRunFormattingValues = Partial<Pick<TextFormatting, RunFormattingValueProperty>>;
+
+export type RunFormattingOverrideAttrs = {
+  allCaps?: boolean;
+  bold?: boolean;
+  boldCs?: boolean;
+  cs?: boolean;
+  emboss?: boolean;
+  hidden?: boolean;
+  imprint?: boolean;
+  italic?: boolean;
+  italicCs?: boolean;
+  outline?: boolean;
+  shadow?: boolean;
+  smallCaps?: boolean;
+  strike?: boolean;
+  /** Imported/reconciled direct-positive baseline; current PM signals may diverge after edits. */
+  _authoredOn?: readonly RunFormattingBooleanProperty[];
+  /** Imported/reconciled direct-negative baseline; absence means the property was inherited. */
+  _authoredOff?: readonly RunFormattingBooleanProperty[];
+  /** Imported/reconciled direct value baseline, including nested slot identity and sentinels. */
+  _authoredValues?: AuthoredRunFormattingValues;
   directFontProperties?: readonly ("fontFamily" | "fontSize" | "color")[];
+  /** Current complex-script mirrors explicitly omitted by the run. */
+  complexScriptPropertyAbsences?: readonly ComplexScriptRunPropertyKey[];
+  color?: "auto";
   doubleStrike?: false;
+  effect?: "none";
+  emphasisMark?: "none";
+  highlight?: "none";
+  kerning?: 0;
+  position?: 0;
   rtl?: false;
+  scale?: 100;
+  shading?: ShadingProperties & { pattern: "nil" };
+  spacing?: 0;
   fontSizeCs?: number;
   underline?: "none";
+  vertAlign?: "baseline";
 };
 
 /**
@@ -184,16 +290,12 @@ export type RunFormattingOverrideAttrs = Partial<
  *
  * `styleId` is the OOXML character style reference, carried so a styled run
  * re-serializes as a style reference instead of losing the semantic link.
- * `_styleRPr` is the style's own run properties snapshotted at load in mark
- * normal form (the shape `marksToTextFormatting` produces); `fromProseDoc`
- * subtracts values equal to this snapshot so style-provided formatting is not
- * baked into the run as direct formatting on save. It is absent when the
- * style was unknown at load — nothing was resolved, so nothing is subtracted
- * and the reference round-trips verbatim.
+ * Style formatting is resolved once per document through the style engine;
+ * duplicating it on every styled run bloats collaborative state and becomes
+ * stale when a run moves between paragraph contexts.
  */
 export type CharacterStyleAttrs = {
   styleId: string;
-  _styleRPr?: TextFormatting;
 };
 
 /**

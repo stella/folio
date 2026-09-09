@@ -3,10 +3,9 @@
  */
 
 import { panic } from "better-result";
-import { toggleMark } from "prosemirror-commands";
-
 import { createMarkExtension } from "../create";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
+import { toggleMarkForAllScripts } from "./markUtils";
 
 export const ItalicExtension = createMarkExtension({
   name: "italic",
@@ -29,12 +28,13 @@ export const ItalicExtension = createMarkExtension({
     if (!italicType) {
       panic("Missing mark type: italic");
     }
+    const toggleItalic = toggleMarkForAllScripts(italicType, "italic");
     return {
       commands: {
-        toggleItalic: () => toggleMark(italicType),
+        toggleItalic: () => toggleItalic,
       },
       keyboardShortcuts: {
-        "Mod-i": toggleMark(italicType),
+        "Mod-i": toggleItalic,
       },
     };
   },

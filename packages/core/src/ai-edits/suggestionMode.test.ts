@@ -301,6 +301,115 @@ describe("suggested apply mode", () => {
     expect(xml).not.toContain("<w:b/>");
   });
 
+  test.each(["replaceInBlock", "replaceRange", "replaceBlock"] as const)(
+    "%s refuses an overlapping background revision before replacing content",
+    (operationType) => {
+      const originalText = "Penalty 2000 CZK";
+      const view = makeHighlightedView(originalText, "2000");
+      const initialSnapshot = createFolioAIEditSnapshot(view.state.doc);
+      const initialBlock = initialSnapshot.blocks.at(0);
+      const initialRange = initialBlock
+        ? createFolioAITextRangeHandle({
+            blockId: initialBlock.id,
+            text: initialBlock.text,
+            startOffset: "Penalty ".length,
+            endOffset: "Penalty 2000".length,
+          })
+        : null;
+      if (!initialBlock || !initialRange) {
+        throw new Error("expected the highlighted range");
+      }
+      const formattingResult = applyFolioAIEditOperations({
+        view,
+        snapshot: initialSnapshot,
+        operations: [
+          {
+            id: "format",
+            type: "formatRange",
+            range: initialRange,
+            formatting: { bold: true },
+          },
+        ],
+        mode: "suggested",
+        author: "AI",
+      });
+      expect(formattingResult.skipped).toEqual([]);
+
+      const replacementSnapshot = createFolioAIEditSnapshot(view.state.doc);
+      const replacementBlock = replacementSnapshot.blocks.at(0);
+      const replacementRange = replacementBlock
+        ? createFolioAITextRangeHandle({
+            blockId: replacementBlock.id,
+            text: replacementBlock.text,
+            startOffset: "Penalty ".length,
+            endOffset: "Penalty 2000".length,
+          })
+        : null;
+      if (!replacementBlock || !replacementRange) {
+        throw new Error("expected the replacement range");
+      }
+      const applyReplacement = () => {
+        if (operationType === "replaceInBlock") {
+          return applyFolioAIEditOperations({
+            view,
+            snapshot: replacementSnapshot,
+            operations: [
+              {
+                id: "replace",
+                type: "replaceInBlock",
+                blockId: replacementBlock.id,
+                find: "2000",
+                replace: "3000",
+              },
+            ],
+            mode: "suggested",
+            author: "AI",
+          });
+        }
+        if (operationType === "replaceRange") {
+          return applyFolioAIEditOperations({
+            view,
+            snapshot: replacementSnapshot,
+            operations: [
+              {
+                id: "replace",
+                type: "replaceRange",
+                range: replacementRange,
+                replace: "3000",
+              },
+            ],
+            mode: "suggested",
+            author: "AI",
+          });
+        }
+        return applyFolioAIEditOperations({
+          view,
+          snapshot: replacementSnapshot,
+          operations: [
+            {
+              id: "replace",
+              type: "replaceBlock",
+              blockId: replacementBlock.id,
+              text: "Penalty 3000 CZK",
+            },
+          ],
+          mode: "suggested",
+          author: "AI",
+        });
+      };
+
+      const replacementResult = applyReplacement();
+      expect(replacementResult.applied).toEqual([]);
+      expect(replacementResult.skipped).toEqual([
+        { id: "replace", reason: "pendingRunPropertyChange" },
+      ]);
+      expect(view.state.doc.textContent).toBe(originalText);
+      expect(
+        marksInDoc(view.state).filter((mark) => mark.type.name === "runPropertyChange"),
+      ).toHaveLength(1);
+    },
+  );
+
   test("suggested changes are stripped from serialized output until accepted", () => {
     const view = makeView("the quick brown fox");
     applySuggestedReplace(view, "quick", "swift");

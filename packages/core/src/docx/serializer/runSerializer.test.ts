@@ -531,6 +531,31 @@ describe("run formatting integer attributes (issue #417)", () => {
   });
 });
 
+describe("run property-change serialization", () => {
+  test("refuses more than one property revision on a run", () => {
+    const run: Run = {
+      type: "run",
+      propertyChanges: [
+        {
+          type: "runPropertyChange",
+          info: { id: 1, author: "Reviewer" },
+          previousFormatting: { bold: true },
+        },
+        {
+          type: "runPropertyChange",
+          info: { id: 2, author: "Reviewer" },
+          previousFormatting: { italic: true },
+        },
+      ],
+      content: [{ type: "text", text: "target" }],
+    };
+
+    expect(() => serializeRun(run)).toThrow(
+      "A run-property container cannot serialize more than one w:rPrChange",
+    );
+  });
+});
+
 describe("break clear serialization", () => {
   test.each(["none", "left", "right", "all"] as const)(
     "preserves %s clear behavior independently of the break type",

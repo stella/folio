@@ -776,6 +776,9 @@ export function convertHeaderFooterToContent(
       ? headerFooterToProseDoc(headerFooter.content, proseDocOptions)
       : headerFooterToProseDocWithDetachedWatermarkHost(headerFooter, proseDocOptions);
   const flowOptions: ToFlowBlocksOptions = {};
+  if (options.styles) {
+    flowOptions.styles = options.styles;
+  }
   if (options.theme !== undefined) {
     flowOptions.theme = options.theme;
   }
@@ -813,19 +816,22 @@ export function convertHeaderFooterToContent(
  *
  * The pmDoc is expected to be a body-shaped PM doc (the result of
  * `headerFooterToProseDoc` at mount, plus any user edits applied since).
- * Theme + styles do NOT need to be threaded again — they only matter for the
- * initial parse path; subsequent transformations are PM-internal.
+ * Theme and styles are threaded again because effective character-style
+ * toggles cannot all be represented by the flattened ProseMirror marks.
  */
 export function convertHeaderFooterPmDocToContent(
   pmDoc: PMNode | null | undefined,
   contentWidth: number,
   metrics: HeaderFooterMetrics,
-  options: Omit<ConvertHeaderFooterOptions, "styles">,
+  options: ConvertHeaderFooterOptions,
 ): HeaderFooterContent | undefined {
   if (!pmDoc || pmDoc.content.size === 0) {
     return undefined;
   }
   const flowOptions: ToFlowBlocksOptions = {};
+  if (options.styles) {
+    flowOptions.styles = options.styles;
+  }
   if (options.theme !== undefined) {
     flowOptions.theme = options.theme;
   }

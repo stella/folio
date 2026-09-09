@@ -5,13 +5,16 @@
  */
 
 import type { MarkType, Mark, Schema } from "prosemirror-model";
+import { toggleMark } from "prosemirror-commands";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 
 import type { TextFormatting, UnderlineStyle, ThemeColorSlot } from "../../../types/document";
 import { FONT_THEME_VALUES } from "../../../types/documentEnumValues";
 import { mergeFontFamily } from "../../../utils/fontFamilyMerge";
-import { expectFontFamilyMarkAttrs } from "../../attrs";
-import type { FontFamilyAttrs } from "../../schema/marks";
+import { expectFontFamilyMarkAttrs, expectRunFormattingOverrideMarkAttrs } from "../../attrs";
+import { selectRunFormattingCarrierRepresentations } from "../../runFormattingInlineCarriers";
+import { hasRunFormattingOverrideAttrs } from "../../runFormattingProvenance";
+import type { FontFamilyAttrs, RunFormattingOverrideAttrs } from "../../schema/marks";
 import {
   applyRunFormattingOverrideMark,
   buildRunFormattingOverrideAttrs,
@@ -300,6 +303,154 @@ export function setMark(markType: MarkType, attrs: MarkAttrs): Command {
     return true;
   };
 }
+
+type PairedToggleProperty = "bold" | "italic";
+const DIRECT_FONT_PROPERTIES = ["color", "fontFamily", "fontSize"] as const;
+
+const updatePairedToggleAttrs = (
+  attrs: RunFormattingOverrideAttrs,
+  property: PairedToggleProperty,
+  enabled: boolean,
+): RunFormattingOverrideAttrs => {
+  const next = { ...attrs };
+  const complexProperty = property === "bold" ? "boldCs" : "italicCs";
+  if (property === "bold") {
+    next.bold = enabled;
+    next.boldCs = enabled;
+  } else {
+    next.italic = enabled;
+    next.italicCs = enabled;
+  }
+  const absences = next.complexScriptPropertyAbsences?.filter(
+    (candidate) => candidate !== complexProperty,
+  );
+  if (absences && absences.length > 0) {
+    next.complexScriptPropertyAbsences = absences;
+  } else {
+    delete next.complexScriptPropertyAbsences;
+  }
+  return next;
+};
+
+const updateFontSizeCompanionAttrs = (
+  attrs: RunFormattingOverrideAttrs,
+  size: number | undefined,
+): RunFormattingOverrideAttrs => {
+  const next = { ...attrs };
+  const directFontProperties = new Set(next.directFontProperties ?? []);
+  if (size === undefined) {
+    delete next.fontSizeCs;
+    directFontProperties.delete("fontSize");
+  } else {
+    next.fontSizeCs = size;
+    directFontProperties.add("fontSize");
+  }
+  if (directFontProperties.size > 0) {
+    next.directFontProperties = DIRECT_FONT_PROPERTIES.filter((property) =>
+      directFontProperties.has(property),
+    );
+  } else {
+    delete next.directFontProperties;
+  }
+  const absences = next.complexScriptPropertyAbsences?.filter(
+    (candidate) => candidate !== "fontSizeCs",
+  );
+  if (absences && absences.length > 0) {
+    next.complexScriptPropertyAbsences = absences;
+  } else {
+    delete next.complexScriptPropertyAbsences;
+  }
+  return next;
+};
+
+type UpdateRunFormattingOverride = (
+  attrs: RunFormattingOverrideAttrs,
+) => RunFormattingOverrideAttrs;
+
+const updateRunFormattingOverrideMarks = (
+  marks: readonly Mark[],
+  overrideType: MarkType,
+  update: UpdateRunFormattingOverride,
+): readonly Mark[] => {
+  const existing = overrideType.isInSet(marks);
+  const attrs = update(existing ? expectRunFormattingOverrideMarkAttrs(existing) : {});
+  const withoutExisting = marks.filter((mark) => mark.type !== overrideType);
+  return hasRunFormattingOverrideAttrs(attrs)
+    ? overrideType.create(attrs).addToSet(withoutExisting)
+    : withoutExisting;
+};
+
+const updateRunFormattingOverride = (
+  state: EditorState,
+  tr: Transaction,
+  update: UpdateRunFormattingOverride,
+): Transaction => {
+  const overrideType = state.schema.marks["runFormattingOverride"];
+  if (!overrideType) {
+    return tr;
+  }
+  const { from, to, empty } = state.selection;
+  if (empty) {
+    const marks = updateRunFormattingOverrideMarks(
+      tr.storedMarks ?? state.storedMarks ?? state.selection.$from.marks(),
+      overrideType,
+      update,
+    );
+    saveStoredMarksToParagraph(state, tr, marks);
+    tr.setStoredMarks(marks);
+    return tr;
+  }
+
+  const representations = selectRunFormattingCarrierRepresentations({ doc: tr.doc, from, to });
+  for (const representation of representations) {
+    const { node, position } = representation;
+    const nextMarks = updateRunFormattingOverrideMarks(node.marks, overrideType, update);
+    if (node.isText) {
+      tr.removeMark(representation.from, representation.to, overrideType);
+      const nextOverride = overrideType.isInSet(nextMarks);
+      if (nextOverride) {
+        tr.addMark(representation.from, representation.to, nextOverride);
+      }
+      continue;
+    }
+    tr.setNodeMarkup(position, undefined, node.attrs, nextMarks);
+  }
+  return tr;
+};
+
+const withRunFormattingOverride =
+  (command: Command, update: UpdateRunFormattingOverride): Command =>
+  (state, dispatch) =>
+    command(
+      state,
+      dispatch
+        ? (tr) => {
+            dispatch(updateRunFormattingOverride(state, tr, update));
+          }
+        : undefined,
+    );
+
+/** UI toggle whose direct-formatting contract explicitly targets both script families. */
+export const toggleMarkForAllScripts =
+  (markType: MarkType, property: PairedToggleProperty): Command =>
+  (state, dispatch) => {
+    const enabled = !isMarkActive(state, markType);
+    return withRunFormattingOverride(toggleMark(markType), (attrs) =>
+      updatePairedToggleAttrs(attrs, property, enabled),
+    )(state, dispatch);
+  };
+
+/** UI size command whose direct-formatting contract explicitly targets both script families. */
+export const setFontSizeForAllScripts = (markType: MarkType, size: number): Command =>
+  withRunFormattingOverride(setMark(markType, { size }), (attrs) =>
+    updateFontSizeCompanionAttrs(attrs, size),
+  );
+
+/** Clears both ordinary and complex-script direct size through the UI command boundary. */
+export const clearFontSizeForAllScripts = (markType: MarkType): Command =>
+  withRunFormattingOverride(removeMark(markType), (attrs) =>
+    updateFontSizeCompanionAttrs(attrs, undefined),
+  );
 
 function selectionHasVisibleUnderline(state: EditorState, markType: MarkType): boolean {
   const { from, to, empty, $from } = state.selection;

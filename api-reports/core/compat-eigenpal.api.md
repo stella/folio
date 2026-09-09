@@ -452,7 +452,7 @@ export class CompareDocxSerializeError extends CompareDocxSerializeError_base<{
 export type CompareFormatRange = {
     startOffset: number;
     endOffset: number;
-    formatting: FolioAIInlineFormatting;
+    formatting: FolioAIInlineFormattingPatch;
 };
 
 // @public (undocumented)
@@ -877,7 +877,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     id: string;
     type: "formatRange";
     range: FolioAITextRangeHandle;
-    formatting: FolioAIInlineFormatting;
+    formatting: FolioAIInlineFormattingPatch;
 } | {
     id: string;
     type: "insertAfterBlock" | "insertBeforeBlock";
@@ -1054,6 +1054,8 @@ export type FolioAIEditSkippedOperation = {
 export type FolioAIEditSkipReason = "missingBlock" | "changedBlock" | "ambiguousFind" | "missingFind" | "unsupportedBlock" | "unsupportedMode" | "atomicBatchRejected" | "preconditionFailed" | "staleRange" | "emptyOperation" |
 /** The paragraph already owns the one `w:pPrChange` OOXML permits. */
 "pendingParagraphPropertyChange" |
+/** The affected run already owns the one `w:rPrChange` OOXML permits. */
+"pendingRunPropertyChange" |
 /**
 * The operation would not change the document — find equals
 * replace, or replaceBlock's `text` matches the live block.
@@ -1078,6 +1080,19 @@ export type FolioAIEditSnapshot = {
     blocks: FolioAIBlock[];
     anchors: Record<string, FolioAIBlockAnchor>;
 };
+
+// @public
+export type FolioAIInlineBooleanProperty = "bold" | "italic" | "underline" | "strike";
+
+// @public (undocumented)
+export type FolioAIInlineFormatting = Partial<Record<FolioAIInlineBooleanProperty, boolean>> & {
+    fontFamily?: string | null;
+    fontSizePt?: number | null;
+    color?: string | null;
+};
+
+// @public
+export type FolioAIInlineFormattingPatch = Omit<FolioAIInlineFormatting, FolioAIInlineBooleanProperty> & Partial<Record<FolioAIInlineBooleanProperty, boolean | null>>;
 
 // @public
 export type FolioAIParagraphSpacing = Pick<import__stll_docx_core_model.ParagraphFormatting, "spaceBefore" | "spaceAfter" | "lineSpacing" | "lineSpacingRule" | "beforeAutospacing" | "afterAutospacing">;

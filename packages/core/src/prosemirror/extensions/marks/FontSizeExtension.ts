@@ -7,7 +7,7 @@ import { panic } from "better-result";
 import { expectFontSizeMarkAttrs } from "../../attrs";
 import { createMarkExtension } from "../create";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
-import { setMark, removeMark } from "./markUtils";
+import { clearFontSizeForAllScripts, setFontSizeForAllScripts } from "./markUtils";
 
 export const FontSizeExtension = createMarkExtension({
   name: "fontSize",
@@ -52,8 +52,8 @@ export const FontSizeExtension = createMarkExtension({
     }
     return {
       commands: {
-        setFontSize: (size: number) => setMark(fontSizeType, { size }),
-        clearFontSize: () => removeMark(fontSizeType),
+        setFontSize: (size: number) => setFontSizeForAllScripts(fontSizeType, size),
+        clearFontSize: () => clearFontSizeForAllScripts(fontSizeType),
       },
     };
   },

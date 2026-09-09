@@ -9,7 +9,7 @@
 import type {
   FolioAIBlock,
   FolioAIBlockPreviewRun,
-  FolioAIInlineFormatting,
+  FolioAIInlineFormattingPatch,
 } from "../ai-edits/types";
 import { resolveColorToHex } from "../utils/colorResolver";
 
@@ -45,21 +45,21 @@ export type InlineFormattingSegment = {
   /** Zero-based UTF-16 offset into the block's visible text. */
   startOffset: number;
   endOffset: number;
-  /** Only the properties that differ, set to the target document's value. */
-  formatting: FolioAIInlineFormatting;
+  /** Differing properties set to the target value; null removes a direct property. */
+  formatting: FolioAIInlineFormattingPatch;
 };
 
 const changedSupportedFormatting = (
   base: FolioAIBlockPreviewRun,
   target: FolioAIBlockPreviewRun,
-): FolioAIInlineFormatting => {
+): FolioAIInlineFormattingPatch => {
   const baseDirect = base.directFormatting ?? {};
   const targetDirect = target.directFormatting ?? {};
-  const formatting: FolioAIInlineFormatting = {};
+  const formatting: FolioAIInlineFormattingPatch = {};
 
   const changedBoolean = (property: "bold" | "italic" | "underline" | "strike") => {
     if (baseDirect[property] !== targetDirect[property]) {
-      return targetDirect[property] === true;
+      return targetDirect[property] ?? null;
     }
     return Boolean(base[property]) === Boolean(target[property])
       ? undefined
@@ -106,8 +106,8 @@ const changedSupportedFormatting = (
 };
 
 const sameInlineFormatting = (
-  left: FolioAIInlineFormatting,
-  right: FolioAIInlineFormatting,
+  left: FolioAIInlineFormattingPatch,
+  right: FolioAIInlineFormattingPatch,
 ): boolean =>
   left.bold === right.bold &&
   left.italic === right.italic &&
@@ -117,7 +117,7 @@ const sameInlineFormatting = (
   left.fontSizePt === right.fontSizePt &&
   left.color === right.color;
 
-const hasInlineFormatting = (formatting: FolioAIInlineFormatting): boolean =>
+const hasInlineFormatting = (formatting: FolioAIInlineFormattingPatch): boolean =>
   formatting.bold !== undefined ||
   formatting.italic !== undefined ||
   formatting.underline !== undefined ||

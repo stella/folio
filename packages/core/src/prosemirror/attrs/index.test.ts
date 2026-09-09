@@ -13,6 +13,7 @@ import {
   readMathAttrs,
   mergeImageAttrs,
   readParagraphAttrs,
+  readRunFormattingOverrideMarkAttrs,
   readSdtAttrs,
   readShapeAttrs,
   readTextBoxAttrs,
@@ -24,6 +25,11 @@ import {
   readTableRowAttrs,
 } from ".";
 import { schema } from "../schema";
+import {
+  RUN_FORMATTING_BOOLEAN_PROPERTIES,
+  RUN_FORMATTING_PROPERTY_SPECS,
+  RUN_FORMATTING_VALUE_PROPERTIES,
+} from "../schema/marks";
 import { readTextBoxAnchorAttrs } from "../textBoxAnchorAttrs";
 
 const issueMessages = (result: ReturnType<typeof readParagraphAttrs>) => {
@@ -35,6 +41,22 @@ const issueMessages = (result: ReturnType<typeof readParagraphAttrs>) => {
 };
 
 describe("ProseMirror attr readers", () => {
+  test("run-formatting property classes are exhaustive, disjoint, and canonically ordered", () => {
+    const entries = Object.entries(RUN_FORMATTING_PROPERTY_SPECS);
+    const booleanProperties = entries
+      .filter(([, kind]) => kind === "boolean")
+      .map(([property]) => property);
+    const valueProperties = entries
+      .filter(([, kind]) => kind === "value")
+      .map(([property]) => property);
+
+    expect(RUN_FORMATTING_BOOLEAN_PROPERTIES).toEqual(booleanProperties);
+    expect(RUN_FORMATTING_VALUE_PROPERTIES).toEqual(valueProperties);
+    expect(new Set([...booleanProperties, ...valueProperties, "styleId"]).size).toBe(
+      entries.length,
+    );
+  });
+
   test.each([-50, 601, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
     "normalizes out-of-range character scale %p",
     (scale) => {
@@ -784,6 +806,46 @@ describe("ProseMirror attr readers", () => {
     }
   });
 
+  test("validates lossless run-formatting cancellation shading", () => {
+    const shading = {
+      pattern: "nil" as const,
+      color: { rgb: "112233" },
+      fill: { themeColor: "accent1" as const, themeShade: "80" },
+    };
+    const valid = readRunFormattingOverrideMarkAttrs(
+      schema.marks.runFormattingOverride.create({ shading }),
+    );
+    expect(valid).toEqual({ ok: true, value: expect.objectContaining({ shading }) });
+
+    const invalid = readRunFormattingOverrideMarkAttrs(
+      schema.marks.runFormattingOverride.create({
+        shading: { pattern: "not-a-pattern", fill: { rgb: 123 } },
+      }),
+    );
+    expect(invalid.ok).toBe(false);
+    if (!invalid.ok) {
+      expect(invalid.issues.map((issue) => issue.path)).toEqual(
+        expect.arrayContaining([
+          "runFormattingOverride.attrs.shading.pattern",
+          "runFormattingOverride.attrs.shading.fill.rgb",
+        ]),
+      );
+    }
+
+    const active = readRunFormattingOverrideMarkAttrs(
+      schema.marks.runFormattingOverride.create({
+        shading: { pattern: "clear", fill: { rgb: "AABBCC" } },
+      }),
+    );
+    expect(active.ok).toBe(false);
+    if (!active.ok) {
+      expect(active.issues).toContainEqual({
+        path: "runFormattingOverride.attrs.shading.pattern",
+        message: 'Expected "nil".',
+      });
+    }
+  });
+
   test("rejects an invalid tracked-change provenance", () => {
     const insertion = schema.marks.insertion.create({
       revisionId: 1,
@@ -794,6 +856,21 @@ describe("ProseMirror attr readers", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.issues.map((issue) => issue.path)).toContain("insertion.attrs.provenance");
+    }
+  });
+
+  test("accepts a current complex-script clear against an imported direct baseline", () => {
+    const result = readRunFormattingOverrideMarkAttrs(
+      schema.marks.runFormattingOverride.create({
+        _authoredOn: ["boldCs"],
+        complexScriptPropertyAbsences: ["boldCs"],
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value._authoredOn).toEqual(["boldCs"]);
+      expect(result.value.complexScriptPropertyAbsences).toEqual(["boldCs"]);
     }
   });
 });

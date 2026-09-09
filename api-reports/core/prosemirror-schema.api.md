@@ -57,7 +57,6 @@ export type CharacterSpacingAttrs = {
 // @public
 export type CharacterStyleAttrs = {
     styleId: string;
-    _styleRPr?: import__stll_docx_core_model.TextFormatting;
 };
 
 // @public (undocumented)
@@ -301,12 +300,41 @@ export type ParagraphPropertyChangeAttrs = Omit<import__stll_docx_core_model.Par
 };
 
 // @public (undocumented)
-export type RunFormattingOverrideAttrs = Partial<Record<"bold" | "boldCs" | "cs" | "italic" | "italicCs" | "strike" | "allCaps" | "smallCaps" | "hidden" | "emboss" | "imprint" | "shadow" | "outline", boolean>> & {
+export type RunFormattingOverrideAttrs = {
+    allCaps?: boolean;
+    bold?: boolean;
+    boldCs?: boolean;
+    cs?: boolean;
+    emboss?: boolean;
+    hidden?: boolean;
+    imprint?: boolean;
+    italic?: boolean;
+    italicCs?: boolean;
+    outline?: boolean;
+    shadow?: boolean;
+    smallCaps?: boolean;
+    strike?: boolean;
+    _authoredOn?: readonly RunFormattingBooleanProperty[];
+    _authoredOff?: readonly RunFormattingBooleanProperty[];
+    _authoredValues?: AuthoredRunFormattingValues;
     directFontProperties?: readonly ("fontFamily" | "fontSize" | "color")[];
+    complexScriptPropertyAbsences?: readonly ComplexScriptRunPropertyKey[];
+    color?: "auto";
     doubleStrike?: false;
+    effect?: "none";
+    emphasisMark?: "none";
+    highlight?: "none";
+    kerning?: 0;
+    position?: 0;
     rtl?: false;
+    scale?: 100;
+    shading?: ShadingProperties & {
+        pattern: "nil";
+    };
+    spacing?: 0;
     fontSizeCs?: number;
     underline?: "none";
+    vertAlign?: "baseline";
 };
 
 // @public

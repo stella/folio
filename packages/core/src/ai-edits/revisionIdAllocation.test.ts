@@ -20,7 +20,7 @@ import { createEmptyDocument } from "../utils/createDocument";
 import { applyFolioAIEditOperations } from "./apply";
 import { FolioDocxReviewer } from "./headless";
 import { getTrackedChangesFromDoc } from "./read";
-import { createFolioAIEditSnapshot } from "./snapshot";
+import { createFolioAIEditSnapshot, createFolioAITextRangeHandle } from "./snapshot";
 
 const INSERTION_RESERVATION_CASES = [
   {
@@ -80,6 +80,34 @@ const insertionView = (formatting: ParagraphFormatting, text = "Anchor paragraph
     },
   };
   return view;
+};
+
+const formattingReservationView = () => {
+  const document = createEmptyDocument();
+  document.package.document.content = [
+    {
+      type: "paragraph",
+      paraId: "12345678",
+      content: [
+        { bold: true },
+        { italic: true },
+        { underline: { style: "single" as const } },
+        { strike: true },
+        { fontSize: 24 },
+        { color: { rgb: "C00000" } },
+      ].map((formatting, index) => ({
+        type: "run" as const,
+        formatting: { ...formatting, highlight: "yellow" as const },
+        content: [{ type: "text" as const, text: String.fromCharCode(65 + index) }],
+      })),
+    },
+    {
+      type: "paragraph",
+      paraId: "23456789",
+      content: [{ type: "run", content: [{ type: "text", text: "following" }] }],
+    },
+  ];
+  return viewFromDoc(toProseDoc(document));
 };
 
 const viewFromDoc = (doc: PMNode) => {
@@ -207,6 +235,217 @@ const paragraphState = (doc: PMNode) =>
   });
 
 describe("unstamped revision id allocation", () => {
+  test.each([
+    { label: "without a background revision", highlight: undefined, expectedIds: [10, 11, 12] },
+    { label: "with a background revision", highlight: "yellow", expectedIds: [10, 11, 12, 13] },
+  ] as const)(
+    "a block replacement owns exactly its serialized revisions $label",
+    ({ highlight, expectedIds }) => {
+      const document = createEmptyDocument();
+      document.package.document.content = [
+        {
+          type: "paragraph",
+          paraId: "12345678",
+          formatting: { styleId: "BodyText" },
+          content: [
+            {
+              type: "run",
+              ...(highlight !== undefined && { formatting: { highlight } }),
+              content: [{ type: "text", text: "Original text." }],
+            },
+          ],
+        },
+      ];
+      const view = viewFromDoc(toProseDoc(document));
+      const snapshot = createFolioAIEditSnapshot(view.state.doc);
+      const block = snapshot.blocks.at(0);
+      if (!block) {
+        panic("expected a replacement block");
+      }
+
+      const outcome = applyFolioAIEditOperations({
+        view,
+        snapshot,
+        operations: [
+          {
+            id: "replacement",
+            type: "replaceBlock",
+            blockId: block.id,
+            text: "Replacement text.",
+            styleId: "Heading2",
+          },
+        ],
+        mode: "tracked-changes",
+        revisionStamp: { date: "2026-09-08T00:00:00.000Z", idSeed: 10 },
+      });
+      const receiptIds = outcome.applied.at(0)?.revisionIds;
+      const serializedChanges = getTrackedChangesFromDoc(view.state.doc);
+      const serializedIds = serializedChanges
+        .map(({ id }) => id)
+        .toSorted((left, right) => left - right);
+
+      expect(receiptIds).toEqual(expectedIds);
+      expect(serializedIds).toEqual(expectedIds);
+      expect(outcome.nextRevisionId).toBe((expectedIds.at(-1) ?? 9) + 1);
+      expect(serializedChanges.filter(({ type }) => type === "formatting")).toHaveLength(
+        highlight === undefined ? 0 : 1,
+      );
+    },
+  );
+
+  test.each(["formatRange", "replaceRange"] as const)(
+    "%s advances the shared cursor past every physical formatting carrier",
+    (operationType) => {
+      const view = formattingReservationView();
+      const snapshot = createFolioAIEditSnapshot(view.state.doc);
+      const firstBlock = snapshot.blocks.at(0);
+      if (!firstBlock) {
+        panic("expected the segmented formatting block");
+      }
+      const firstRange = createFolioAITextRangeHandle({
+        blockId: firstBlock.id,
+        text: firstBlock.text,
+        startOffset: 0,
+        endOffset: firstBlock.text.length,
+      });
+      if (!firstRange) {
+        panic("expected the segmented formatting range");
+      }
+      const operation =
+        operationType === "formatRange"
+          ? {
+              id: "many-carriers",
+              type: operationType,
+              range: firstRange,
+              formatting: { color: "00AA00" },
+            }
+          : {
+              id: "many-carriers",
+              type: operationType,
+              range: firstRange,
+              replace: "replacement",
+            };
+      const first = applyFolioAIEditOperations({
+        view,
+        snapshot,
+        operations: [operation],
+        mode: "tracked-changes",
+      });
+      const firstIds = operationRevisionIds(first, operation.id);
+      expect(firstIds.length).toBeGreaterThan(4);
+
+      const followingSnapshot = createFolioAIEditSnapshot(view.state.doc);
+      const followingBlock = followingSnapshot.blocks.at(1);
+      if (!followingBlock) {
+        panic("expected the following formatting block");
+      }
+      const followingRange = createFolioAITextRangeHandle({
+        blockId: followingBlock.id,
+        text: followingBlock.text,
+        startOffset: 0,
+        endOffset: followingBlock.text.length,
+      });
+      if (!followingRange) {
+        panic("expected the following formatting range");
+      }
+      const following = applyFolioAIEditOperations({
+        view,
+        snapshot: followingSnapshot,
+        operations: [
+          {
+            id: "following-batch",
+            type: "formatRange",
+            range: followingRange,
+            formatting: { bold: true },
+          },
+        ],
+        mode: "tracked-changes",
+      });
+      const followingIds = operationRevisionIds(following, "following-batch");
+      expect(Math.min(...followingIds)).toBeGreaterThanOrEqual(first.nextRevisionId);
+      expect(followingIds.some((id) => firstIds.includes(id))).toBe(false);
+
+      const allIds = getTrackedChangesFromDoc(view.state.doc).map(({ id }) => id);
+      expect(new Set(allIds).size).toBe(allIds.length);
+    },
+  );
+
+  test("claims every physical formatting carrier before dispatch can re-enter", () => {
+    const primaryView = formattingReservationView();
+    const primarySnapshot = createFolioAIEditSnapshot(primaryView.state.doc);
+    const primaryBlock = primarySnapshot.blocks.at(0);
+    if (!primaryBlock) {
+      panic("expected the primary segmented formatting block");
+    }
+    const primaryRange = createFolioAITextRangeHandle({
+      blockId: primaryBlock.id,
+      text: primaryBlock.text,
+      startOffset: 0,
+      endOffset: primaryBlock.text.length,
+    });
+    if (!primaryRange) {
+      panic("expected the primary segmented formatting range");
+    }
+
+    const reentrantView = formattingReservationView();
+    const reentrantSnapshot = createFolioAIEditSnapshot(reentrantView.state.doc);
+    const reentrantBlock = reentrantSnapshot.blocks.at(1);
+    if (!reentrantBlock) {
+      panic("expected the re-entrant formatting block");
+    }
+    const reentrantRange = createFolioAITextRangeHandle({
+      blockId: reentrantBlock.id,
+      text: reentrantBlock.text,
+      startOffset: 0,
+      endOffset: reentrantBlock.text.length,
+    });
+    if (!reentrantRange) {
+      panic("expected the re-entrant formatting range");
+    }
+
+    let reentrantOutcome: ReturnType<typeof applyFolioAIEditOperations> | undefined;
+    const commitPrimary = primaryView.dispatch;
+    primaryView.dispatch = (transaction) => {
+      commitPrimary(transaction);
+      reentrantOutcome = applyFolioAIEditOperations({
+        view: reentrantView,
+        snapshot: reentrantSnapshot,
+        operations: [
+          {
+            id: "re-entrant-batch",
+            type: "formatRange",
+            range: reentrantRange,
+            formatting: { bold: true },
+          },
+        ],
+        mode: "tracked-changes",
+      });
+    };
+
+    const primaryOutcome = applyFolioAIEditOperations({
+      view: primaryView,
+      snapshot: primarySnapshot,
+      operations: [
+        {
+          id: "primary-many-carriers",
+          type: "formatRange",
+          range: primaryRange,
+          formatting: { color: "00AA00" },
+        },
+      ],
+      mode: "tracked-changes",
+    });
+    if (!reentrantOutcome) {
+      panic("expected dispatch to apply the re-entrant batch");
+    }
+
+    const primaryIds = operationRevisionIds(primaryOutcome, "primary-many-carriers");
+    const reentrantIds = operationRevisionIds(reentrantOutcome, "re-entrant-batch");
+    expect(primaryIds.length).toBeGreaterThan(4);
+    expect(Math.min(...reentrantIds)).toBeGreaterThanOrEqual(primaryOutcome.nextRevisionId);
+    expect(reentrantIds.some((id) => primaryIds.includes(id))).toBe(false);
+  });
+
   test.each(INSERTION_RESERVATION_CASES)(
     "reserves the synthetic final-mark revision for $label",
     ({ lines, formatting, propertyChangeCount }) => {

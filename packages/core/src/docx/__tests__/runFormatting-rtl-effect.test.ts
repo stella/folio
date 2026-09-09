@@ -103,22 +103,12 @@ describe("w:effect text animation round-trip (eigenpal #424 gap 11)", () => {
   });
 
   for (const effect of expectedEffects) {
-    if (effect === "none") {
-      continue;
-    }
     test(`parses and re-emits <w:effect w:val="${effect}"/>`, () => {
       const { formatting, serialized } = roundTrip(`<w:effect w:val="${effect}"/>`);
       expect(formatting?.effect).toBe(effect);
       expect(serialized).toContain(`<w:effect w:val="${effect}"/>`);
     });
   }
-
-  test('drops <w:effect w:val="none"/> on serialize', () => {
-    // Upstream skips the no-op sentinel on emit; parser still recognises it.
-    const { formatting, serialized } = roundTrip('<w:effect w:val="none"/>');
-    expect(formatting?.effect).toBe("none");
-    expect(serialized).not.toContain("<w:effect");
-  });
 
   test("ignores unrecognised effect attribute values", () => {
     const { formatting, serialized } = roundTrip('<w:effect w:val="discoInferno"/>');

@@ -243,6 +243,41 @@ describe("document operation contract", () => {
     }
   });
 
+  test("distinguishes authoring boolean off from removing the direct property", () => {
+    const range = {
+      type: "textRange",
+      story: "main",
+      blockId: "paragraph-2",
+      startOffset: 0,
+      endOffset: 4,
+      selectedTextHash: "h123",
+    } as const;
+
+    for (const property of ["bold", "italic", "underline", "strike"] as const) {
+      for (const value of [true, false, null] as const) {
+        const batch = parseFolioDocumentOperationBatch({
+          version: 1,
+          operations: [
+            { id: "format", type: "formatRange", range, formatting: { [property]: value } },
+          ],
+        });
+        expect(batch.operations.at(0)).toMatchObject({ formatting: { [property]: value } });
+      }
+    }
+
+    expect(() =>
+      parseFolioDocumentOperationBatch({
+        version: 1,
+        operations: [{ id: "format", type: "formatRange", range, formatting: { bold: "inherit" } }],
+      }),
+    ).toThrow(
+      expect.objectContaining({
+        _tag: "InvalidFolioDocumentOperationBatchError",
+        path: "$.operations[0].formatting.bold",
+      }),
+    );
+  });
+
   test("validates every direct paragraph alignment and explicit inheritance", () => {
     for (const alignment of [...FOLIO_PARAGRAPH_ALIGNMENT_VALUES, null]) {
       const batch = parseFolioDocumentOperationBatch({

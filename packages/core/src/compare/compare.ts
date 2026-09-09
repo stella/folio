@@ -450,10 +450,14 @@ const COMPARE_SKIP_DISPOSITION = {
   staleRange: "fatal",
   emptyOperation: "unwritable",
   pendingParagraphPropertyChange: "unwritable",
+  pendingRunPropertyChange: "unwritable",
   noopOperation: "unwritable",
   documentVersionMismatch: "fatal",
   documentNotEditable: "fatal",
 } as const satisfies Record<FolioAIEditSkipReason, "fatal" | "unwritable">;
+
+export const getCompareSkipDisposition = (reason: FolioAIEditSkipReason): "fatal" | "unwritable" =>
+  COMPARE_SKIP_DISPOSITION[reason];
 
 /** What stage 3 produced: the change list, whether it was proven, and whether it wrote anything. */
 export type AppliedComparison = {
@@ -585,7 +589,7 @@ export const applyComparison = (
       }
       idSeed = nextRevisionId;
       documentChanged = true;
-      const refused = skipped.filter(({ reason }) => COMPARE_SKIP_DISPOSITION[reason] === "fatal");
+      const refused = skipped.filter(({ reason }) => getCompareSkipDisposition(reason) === "fatal");
       if (refused.length > 0) {
         return Result.err(
           new CompareDocxApplyError({

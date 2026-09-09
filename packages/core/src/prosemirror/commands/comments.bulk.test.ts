@@ -13,7 +13,15 @@ import {
   pluginsForHeadlessRevisionResolution,
   stateAllowsHeadlessRevisionResolution,
 } from "../../internal/headlessRevisionResolutionGuard";
-import type { HeaderFooter, TrackedRunChange } from "../../types/document";
+import type {
+  Document,
+  HeaderFooter,
+  Paragraph,
+  StyleDefinitions,
+  TextFormatting,
+  TrackedRunChange,
+} from "../../types/document";
+import { createEmptyDocument } from "../../utils/createDocument";
 import { fromProseDoc } from "../conversion/fromProseDoc";
 import { toProseDoc } from "../conversion/toProseDoc";
 import {
@@ -22,6 +30,7 @@ import {
   hasUntrackedChanges,
   ParagraphChangeTrackerExtension,
 } from "../extensions/features/ParagraphChangeTrackerExtension";
+import { createDocumentStylesPlugin } from "../plugins/documentStyles";
 import { schema } from "../schema";
 import {
   acceptChange,
@@ -315,6 +324,108 @@ const generatedDocument = (
   return schema.node("doc", null, blocks);
 };
 
+const BULK_RUN_PROPERTY_STYLES = {
+  styles: [
+    {
+      type: "paragraph",
+      styleId: "BulkParagraph",
+      rPr: { bold: true, fontFamily: { ascii: "Aptos", hAnsi: "Aptos" } },
+    },
+    {
+      type: "character",
+      styleId: "BulkCharacter",
+      rPr: { italic: true, fontSize: 28 },
+    },
+  ],
+} as const satisfies StyleDefinitions;
+
+type BulkRunPropertyFixtureKind = "styled" | "unstyled";
+
+type BulkRunPropertyFixture = {
+  document: Document;
+  expected: {
+    accept: TextFormatting;
+    reject: TextFormatting;
+  };
+};
+
+const bulkRunPropertyFixture = (
+  carrierCount: number,
+  kind: BulkRunPropertyFixtureKind,
+): BulkRunPropertyFixture => {
+  const document = createEmptyDocument();
+  const styled = kind === "styled";
+  const previousFormatting: TextFormatting = styled
+    ? { styleId: "BulkCharacter", color: { rgb: "008000" } }
+    : { bold: true };
+  const currentFormatting: TextFormatting = styled
+    ? { styleId: "BulkCharacter", color: { rgb: "800000" } }
+    : { italic: true };
+  const paragraphs = Array.from(
+    { length: carrierCount },
+    (_, index): Paragraph => ({
+      type: "paragraph",
+      ...(styled ? { formatting: { styleId: "BulkParagraph" } } : {}),
+      content: [
+        {
+          type: "run",
+          formatting: currentFormatting,
+          propertyChanges: [
+            {
+              type: "runPropertyChange",
+              info: { id: index + 1, author: AUTHOR, date: DATE },
+              previousFormatting,
+              currentFormatting,
+            },
+          ],
+          content: [{ type: "text", text: `carrier-${index}` }],
+        },
+      ],
+    }),
+  );
+  document.package.styles = styled ? BULK_RUN_PROPERTY_STYLES : { styles: [] };
+  document.package.document.content = paragraphs;
+  return {
+    document,
+    expected: { accept: currentFormatting, reject: previousFormatting },
+  };
+};
+
+const modelRunFormatting = (document: Document): (TextFormatting | undefined)[] =>
+  document.package.document.content.map((block) => {
+    if (block.type !== "paragraph") {
+      throw new Error("Expected a paragraph-only bulk run-property fixture.");
+    }
+    const run = block.content.at(0);
+    if (run?.type !== "run") {
+      throw new Error("Expected one run in each bulk run-property paragraph.");
+    }
+    return run.formatting;
+  });
+
+const modelRunPropertyChangeCount = (document: Document): number => {
+  let count = 0;
+  for (const block of document.package.document.content) {
+    if (block.type !== "paragraph") {
+      continue;
+    }
+    for (const child of block.content) {
+      if (child.type === "run") {
+        count += child.propertyChanges?.length ?? 0;
+      }
+    }
+  }
+  return count;
+};
+
+const pmRunPropertyChangeCount = (doc: PMNode): number => {
+  let count = 0;
+  doc.descendants((node) => {
+    count += node.marks.filter(({ type }) => type.name === "runPropertyChange").length;
+  });
+  return count;
+};
+
 const secondaryStoryBuffer = async (): Promise<ArrayBuffer> => {
   const document = await parseDocx(await createEmptyDocx(), {
     detectVariables: false,
@@ -375,6 +486,60 @@ describe("headless bulk revision resolution equivalence", () => {
       { seed: 2_609_090, numRuns: 24, verbose: true },
     );
   });
+
+  for (const kind of ["unstyled", "styled"] as const) {
+    for (const mode of ["accept", "reject"] as const) {
+      test.each([255, 256, 257])(
+        `${mode} matches the legacy run-property reconstruction for ${kind} inputs at %i carriers`,
+        async (carrierCount) => {
+          const fixture = bulkRunPropertyFixture(carrierCount, kind);
+          const doc = toProseDoc(fixture.document);
+          expect(pmRunPropertyChangeCount(doc)).toBe(carrierCount);
+          const state = EditorState.create({
+            schema,
+            doc,
+            plugins: [
+              ...pluginsForHeadlessRevisionResolution([changeTrackerPlugin, stepCountPlugin]),
+              createDocumentStylesPlugin(fixture.document.package.styles),
+            ],
+          });
+
+          const bulk = resolveAllChangesInHeadlessState(state, mode);
+          const legacy = apply(
+            state,
+            mode === "accept"
+              ? acceptChange(0, doc.content.size)
+              : rejectChange(0, doc.content.size),
+          ).state;
+
+          expect(bulk.doc.toJSON()).toEqual(legacy.doc.toJSON());
+          expect(pmRunPropertyChangeCount(bulk.doc)).toBe(0);
+          if (carrierCount < 256) {
+            expect(stepCountKey.getState(bulk)).toBeGreaterThan(1);
+          } else {
+            expect(stepCountKey.getState(bulk)).toBe(1);
+          }
+
+          const bulkModel = fromProseDoc(bulk.doc, fixture.document);
+          const legacyModel = fromProseDoc(legacy.doc, fixture.document);
+          expect(bulkModel.package.document.content).toEqual(legacyModel.package.document.content);
+          expect(modelRunPropertyChangeCount(bulkModel)).toBe(0);
+          expect(modelRunFormatting(bulkModel)).toEqual(
+            Array.from({ length: carrierCount }, () => fixture.expected[mode]),
+          );
+
+          const reopened = await parseDocx(await createDocx(bulkModel), {
+            detectVariables: false,
+            preloadFonts: false,
+          });
+          expect(modelRunPropertyChangeCount(reopened)).toBe(0);
+          expect(modelRunFormatting(reopened)).toEqual(
+            Array.from({ length: carrierCount }, () => fixture.expected[mode]),
+          );
+        },
+      );
+    }
+  }
 
   test("keeps the bulk transaction structurally bounded as the document grows", () => {
     const stepCounts = [4, 400, 4_000].map((paragraphCount) => {

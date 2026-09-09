@@ -2,79 +2,126 @@
  * Run formatting override mark.
  *
  * OOXML can explicitly set inherited boolean/defaultable run properties. Plain
- * PM marks cannot distinguish inherited visuals from authored direct values, so
- * this mark carries those direct toggle overrides.
+ * PM marks cannot distinguish inherited visuals from authored direct values. This
+ * mark carries current structural override signals plus the last reconciled direct
+ * baseline; the two may intentionally diverge between an edit and serialization.
  */
 
 import type { Mark } from "prosemirror-model";
 
 import type { TextFormatting } from "../../../types/document";
 import { expectRunFormattingOverrideMarkAttrs } from "../../attrs";
+import { withAuthoredRunFormatting } from "../../runFormattingProvenance";
 import type { RunFormattingOverrideAttrs } from "../../schema/marks";
 import { createMarkExtension } from "../create";
 
+type BuildRunFormattingOverrideAttrsOptions =
+  | { type: "authored-baseline"; formatting: TextFormatting | undefined }
+  | { type: "structural-only" };
+
 export function buildRunFormattingOverrideAttrs(
   formatting: TextFormatting | undefined,
+  options?: BuildRunFormattingOverrideAttrsOptions,
 ): RunFormattingOverrideAttrs | undefined {
-  if (!formatting) {
-    return undefined;
-  }
-
   const attrs: RunFormattingOverrideAttrs = {};
 
-  if (formatting.bold !== undefined) {
+  if (formatting?.bold !== undefined) {
     attrs.bold = formatting.bold;
   }
-  if (formatting.italic !== undefined) {
+  if (formatting?.italic !== undefined) {
     attrs.italic = formatting.italic;
   }
-  if (formatting.underline?.style === "none") {
+  if (formatting?.underline?.style === "none") {
     attrs.underline = "none";
   }
-  if (formatting.strike !== undefined) {
+  if (formatting?.color?.auto === true) {
+    attrs.color = "auto";
+  }
+  if (formatting?.highlight === "none") {
+    attrs.highlight = "none";
+  }
+  if (formatting?.shading?.pattern === "nil") {
+    attrs.shading = { ...formatting.shading, pattern: "nil" };
+  }
+  if (formatting?.strike !== undefined) {
     attrs.strike = formatting.strike;
   }
-  if (formatting.doubleStrike === false) {
+  if (formatting?.doubleStrike === false) {
     attrs.doubleStrike = false;
   }
-  if (formatting.allCaps !== undefined) {
+  if (formatting?.vertAlign === "baseline") {
+    attrs.vertAlign = "baseline";
+  }
+  if (formatting?.allCaps !== undefined) {
     attrs.allCaps = formatting.allCaps;
   }
-  if (formatting.smallCaps !== undefined) {
+  if (formatting?.smallCaps !== undefined) {
     attrs.smallCaps = formatting.smallCaps;
   }
-  if (formatting.hidden !== undefined) {
+  if (formatting?.hidden !== undefined) {
     attrs.hidden = formatting.hidden;
   }
-  if (formatting.emboss !== undefined) {
+  if (formatting?.emboss !== undefined) {
     attrs.emboss = formatting.emboss;
   }
-  if (formatting.imprint !== undefined) {
+  if (formatting?.imprint !== undefined) {
     attrs.imprint = formatting.imprint;
   }
-  if (formatting.shadow !== undefined) {
+  if (formatting?.shadow !== undefined) {
     attrs.shadow = formatting.shadow;
   }
-  if (formatting.outline !== undefined) {
+  if (formatting?.outline !== undefined) {
     attrs.outline = formatting.outline;
   }
-  if (formatting.rtl === false) {
+  if (formatting?.spacing === 0) {
+    attrs.spacing = 0;
+  }
+  if (formatting?.position === 0) {
+    attrs.position = 0;
+  }
+  if (formatting?.scale === 100) {
+    attrs.scale = 100;
+  }
+  if (formatting?.kerning === 0) {
+    attrs.kerning = 0;
+  }
+  if (formatting?.emphasisMark === "none") {
+    attrs.emphasisMark = "none";
+  }
+  if (formatting?.effect === "none") {
+    attrs.effect = "none";
+  }
+  if (formatting?.rtl === false) {
     attrs.rtl = false;
   }
-  if (formatting.boldCs !== undefined) {
+  if (formatting?.boldCs !== undefined) {
     attrs.boldCs = formatting.boldCs;
   }
-  if (formatting.italicCs !== undefined) {
+  if (formatting?.italicCs !== undefined) {
     attrs.italicCs = formatting.italicCs;
   }
-  if (formatting.fontSizeCs !== undefined && formatting.fontSizeCs !== formatting.fontSize) {
+  if (formatting?.fontSizeCs !== undefined) {
     attrs.fontSizeCs = formatting.fontSizeCs;
   }
-  if (formatting.cs !== undefined) {
+  if (formatting?.cs !== undefined) {
     attrs.cs = formatting.cs;
   }
 
-  return Object.keys(attrs).length > 0 ? attrs : undefined;
+  const provenance = options ?? { type: "authored-baseline", formatting };
+  if (provenance.type === "structural-only") {
+    return Object.keys(attrs).length > 0 ? attrs : undefined;
+  }
+
+  const authoredFormatting = provenance.formatting;
+  const hasAuthoredFormatting = Object.entries(authoredFormatting ?? {}).some(
+    ([property, value]) => property !== "styleId" && value !== undefined,
+  );
+  if (Object.keys(attrs).length === 0 && !hasAuthoredFormatting) {
+    return undefined;
+  }
+
+  const withProvenance = withAuthoredRunFormatting(attrs, authoredFormatting);
+  return Object.keys(withProvenance).length > 0 ? withProvenance : undefined;
 }
 
 export function applyRunFormattingOverrideAttrs(
@@ -90,11 +137,23 @@ export function applyRunFormattingOverrideAttrs(
   if (attrs.underline === "none") {
     formatting.underline = { style: "none" };
   }
+  if (attrs.color === "auto") {
+    formatting.color = { auto: true };
+  }
+  if (attrs.highlight === "none") {
+    formatting.highlight = "none";
+  }
+  if (attrs.shading?.pattern === "nil") {
+    formatting.shading = attrs.shading;
+  }
   if (attrs.strike !== undefined) {
     formatting.strike = attrs.strike;
   }
   if (attrs.doubleStrike === false) {
     formatting.doubleStrike = false;
+  }
+  if (attrs.vertAlign === "baseline") {
+    formatting.vertAlign = "baseline";
   }
   if (attrs.allCaps !== undefined) {
     formatting.allCaps = attrs.allCaps;
@@ -116,6 +175,24 @@ export function applyRunFormattingOverrideAttrs(
   }
   if (attrs.outline !== undefined) {
     formatting.outline = attrs.outline;
+  }
+  if (attrs.spacing === 0) {
+    formatting.spacing = 0;
+  }
+  if (attrs.position === 0) {
+    formatting.position = 0;
+  }
+  if (attrs.scale === 100) {
+    formatting.scale = 100;
+  }
+  if (attrs.kerning === 0) {
+    formatting.kerning = 0;
+  }
+  if (attrs.emphasisMark === "none") {
+    formatting.emphasisMark = "none";
+  }
+  if (attrs.effect === "none") {
+    formatting.effect = "none";
   }
   if (attrs.rtl === false) {
     formatting.rtl = false;
@@ -143,12 +220,22 @@ export const RunFormattingOverrideExtension = createMarkExtension({
   schemaMarkName: "runFormattingOverride",
   markSpec: {
     attrs: {
+      _authoredOn: { default: null },
+      _authoredOff: { default: null },
+      _authoredValues: { default: null },
       directFontProperties: { default: null },
+      complexScriptPropertyAbsences: { default: null },
+      color: { default: null },
       bold: { default: null },
       italic: { default: null },
       underline: { default: null },
       strike: { default: null },
       doubleStrike: { default: null },
+      effect: { default: null },
+      emphasisMark: { default: null },
+      highlight: { default: null },
+      kerning: { default: null },
+      position: { default: null },
       allCaps: { default: null },
       smallCaps: { default: null },
       hidden: { default: null },
@@ -157,10 +244,14 @@ export const RunFormattingOverrideExtension = createMarkExtension({
       shadow: { default: null },
       outline: { default: null },
       rtl: { default: null },
+      scale: { default: null },
+      shading: { default: null },
+      spacing: { default: null },
       boldCs: { default: null },
       italicCs: { default: null },
       fontSizeCs: { default: null },
       cs: { default: null },
+      vertAlign: { default: null },
     },
     toDOM(mark) {
       const attrs = expectRunFormattingOverrideMarkAttrs(mark);

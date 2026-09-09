@@ -11,7 +11,13 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 
+import type { RunPropertyChange } from "../types/document";
 import { expectRunPropertyChangeMarkAttrs } from "../prosemirror/attrs";
+import {
+  expandRunFormattingCarrier,
+  runFormattingCarrierReviewText,
+  runFormattingInlineAtomDisposition,
+} from "../prosemirror/runFormattingInlineCarriers";
 import {
   getFolioNodeRevisionCarriers,
   type FolioNodeRevisionKind,
@@ -159,6 +165,7 @@ export const getTrackedChangesFromDoc = (doc: PMNode): FolioReviewChange[] => {
   // Innermost enclosing marked row first: a table nested in a marked row can
   // carry a marked row of its own.
   const rowRevisionScopes: RowRevisionScope[] = [];
+  const derivedFormattingRepresentationPositions = new Set<number>();
   let currentBlockId: string | null = null;
 
   doc.descendants((node, pos) => {
@@ -295,29 +302,59 @@ export const getTrackedChangesFromDoc = (doc: PMNode): FolioReviewChange[] => {
     if (!node.isInline) {
       return undefined;
     }
-    // Inline atoms own run-level revision marks just like text nodes. Their
-    // affected text is empty, but the revision still needs to be enumerable
-    // so headless accept/reject-all reports and resolves it.
+    if (!derivedFormattingRepresentationPositions.has(pos)) {
+      const disposition = runFormattingInlineAtomDisposition(node);
+      const formattingCarrier =
+        disposition === "structured-field" ||
+        (disposition !== null &&
+          disposition !== "not-a-run" &&
+          node.marks.some((mark) => mark.type.name === "runPropertyChange"))
+          ? expandRunFormattingCarrier(node, pos)
+          : null;
+      if (formattingCarrier) {
+        let changesById: Map<number, RunPropertyChange> | undefined;
+        for (const representation of formattingCarrier.representations) {
+          if (representation.role === "serialized-result") {
+            derivedFormattingRepresentationPositions.add(representation.position);
+          }
+          const changeMark = representation.node.marks.find(
+            (mark) => mark.type.name === "runPropertyChange",
+          );
+          if (!changeMark) {
+            continue;
+          }
+          for (const change of expectRunPropertyChangeMarkAttrs(changeMark).changes) {
+            changesById ??= new Map();
+            if (!changesById.has(change.info.id)) {
+              changesById.set(change.info.id, change);
+            }
+          }
+        }
+        if (changesById) {
+          const text = runFormattingCarrierReviewText(formattingCarrier);
+          for (const change of changesById.values()) {
+            const key = `${currentBlockId ?? ""}:formatting:${String(change.info.id)}`;
+            const existing = grouped.get(key);
+            if (existing) {
+              existing.text += text;
+              continue;
+            }
+            grouped.set(key, {
+              id: change.info.id,
+              type: "formatting",
+              author: change.info.author,
+              date: change.info.date ?? null,
+              text,
+              blockId: currentBlockId,
+            });
+          }
+        }
+      }
+    }
+
     const text = node.text ?? "";
     for (const mark of node.marks) {
       if (mark.type.name === "runPropertyChange") {
-        const { changes } = expectRunPropertyChangeMarkAttrs(mark);
-        for (const change of changes) {
-          const key = `${currentBlockId ?? ""}:formatting:${String(change.info.id)}`;
-          const existing = grouped.get(key);
-          if (existing) {
-            existing.text += text;
-            continue;
-          }
-          grouped.set(key, {
-            id: change.info.id,
-            type: "formatting",
-            author: change.info.author,
-            date: change.info.date ?? null,
-            text,
-            blockId: currentBlockId,
-          });
-        }
         continue;
       }
       if (typeof mark.attrs["revisionId"] !== "number") {

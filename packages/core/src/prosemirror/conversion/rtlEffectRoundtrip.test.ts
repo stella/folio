@@ -3,6 +3,8 @@
 
 import { describe, expect, test } from "bun:test";
 
+import { parseDocx } from "../../docx/parser";
+import { createDocx } from "../../docx/rezip";
 import type { Document, Paragraph, Run, TextEffect } from "../../types/document";
 import { schema } from "../schema";
 import { fromProseDoc } from "./fromProseDoc";
@@ -129,14 +131,32 @@ describe("textEffect mark round-trip through ProseMirror", () => {
     });
   }
 
-  test("effect=none does not produce a textEffect mark", () => {
+  test("effect=none remains authored without producing a textEffect mark", async () => {
     const input = wrap(runText("plain", { effect: "none" }));
     const pmDoc = toProseDoc(input);
+    expect(pmDoc.firstChild?.firstChild?.marks.some(({ type }) => type.name === "textEffect")).toBe(
+      false,
+    );
+    expect(
+      pmDoc.firstChild?.firstChild?.marks.some(({ type }) => type.name === "runFormattingOverride"),
+    ).toBe(true);
     const out = fromProseDoc(pmDoc, input);
     const run = findRun(firstParagraph(out), "plain");
-    // round-trip should not have the textEffect mark and the resulting
-    // formatting.effect should be undefined (the "none" sentinel is dropped).
-    expect(run.formatting?.effect).toBeUndefined();
+    expect(run.formatting?.effect).toBe("none");
+
+    const firstBuffer = await createDocx(out);
+    const firstReopen = await parseDocx(firstBuffer, {
+      detectVariables: false,
+      preloadFonts: false,
+    });
+    expect(findRun(firstParagraph(firstReopen), "plain").formatting?.effect).toBe("none");
+
+    const secondBuffer = await createDocx(fromProseDoc(toProseDoc(firstReopen), firstReopen));
+    const secondReopen = await parseDocx(secondBuffer, {
+      detectVariables: false,
+      preloadFonts: false,
+    });
+    expect(findRun(firstParagraph(secondReopen), "plain").formatting?.effect).toBe("none");
   });
 
   test("parseDOM rejects spans without a recognised data-effect", () => {

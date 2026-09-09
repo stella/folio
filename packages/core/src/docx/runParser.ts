@@ -137,16 +137,20 @@ function parseShadingProperties(shd: XmlElement | null): ShadingProperties | und
 
   const props: ShadingProperties = {};
 
-  // `w:color` and `w:fill` are ST_HexColor: `auto` or hex digits. Both values
-  // are resolved straight into a rendered style declaration, so a value that is
-  // not a colour is dropped here rather than carried through the model.
+  // `w:color` and `w:fill` are ST_HexColor: `auto` or hex digits. Preserve the
+  // authored `auto` sentinel even though it does not produce a rendered color;
+  // it is distinct from an absent attribute when this run is saved again.
   const color = getAttribute(shd, "w", "color");
-  if (color && color !== "auto" && isValidHexColor(color)) {
+  if (color === "auto") {
+    props.color = { auto: true };
+  } else if (color && isValidHexColor(color)) {
     props.color = { rgb: color };
   }
 
   const fill = getAttribute(shd, "w", "fill");
-  if (fill && fill !== "auto" && isValidHexColor(fill)) {
+  if (fill === "auto") {
+    props.fill = { auto: true };
+  } else if (fill && isValidHexColor(fill)) {
     props.fill = { rgb: fill };
   }
 

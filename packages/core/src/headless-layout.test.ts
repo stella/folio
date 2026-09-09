@@ -8,8 +8,15 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
+import {
+  EXPECTED_CANCELLED_STYLE_TOGGLES,
+  findStyleToggleRun,
+  makeStyleToggleDefinitions,
+  makeStyleToggleParagraph,
+} from "./__tests__/styleToggleFlowFixture";
 import { buildDisplayList } from "./display-list/build/buildDisplayList";
 import type { DisplayPrimitive } from "./display-list/types";
+import { createDocx } from "./docx/rezip";
 import { installHeadlessMeasureProvider } from "./fonts/headlessMeasure";
 import { layoutDocxHeadless } from "./headless-layout";
 import {
@@ -19,6 +26,7 @@ import {
 } from "./layout-engine/measure/measureProvider";
 import { getPageTextFromLayout } from "./paged-layout/pageText";
 import { ptToPx } from "./layout-engine/measure/measureHelpers";
+import { createEmptyDocument } from "./utils/createDocument";
 
 const FIXTURE = new URL("../../../tests/visual/fixtures/sample.docx", import.meta.url);
 
@@ -139,6 +147,83 @@ describe("layoutDocxHeadless", () => {
     }
 
     expect(getPageTextFromLayout(layout, proseDoc, 1)?.length ?? 0).toBeGreaterThan(0);
+  });
+
+  test("resolves the complete character-style toggle cascade in body layout", async () => {
+    installFixedWidthProvider();
+    const styles = makeStyleToggleDefinitions();
+    const document = createEmptyDocument();
+    document.package.styles = styles;
+    document.package.document.content = [makeStyleToggleParagraph()];
+
+    const result = await layoutDocxHeadless(await createDocx(document));
+
+    expect(result.isErr()).toBe(false);
+    if (result.isErr()) {
+      return;
+    }
+    const blocks = [...result.value.blockLookup.values()].map(({ block }) => block);
+    expect(findStyleToggleRun(blocks)).toMatchObject(EXPECTED_CANCELLED_STYLE_TOGGLES);
+  });
+
+  test("forwards styles through top-level header, footer, and footnote layout", async () => {
+    installFixedWidthProvider();
+    const styles = makeStyleToggleDefinitions();
+    const document = createEmptyDocument();
+    document.package.styles = styles;
+    document.package.document.content = [
+      {
+        type: "paragraph",
+        content: [
+          { type: "run", content: [{ type: "text", text: "Body" }] },
+          { type: "run", content: [{ type: "footnoteRef", id: 1 }] },
+        ],
+      },
+    ];
+    document.package.footnotes = [
+      {
+        type: "footnote",
+        id: 1,
+        noteType: "normal",
+        content: [makeStyleToggleParagraph()],
+      },
+    ];
+    document.package.headers = new Map([
+      [
+        "rIdHeader",
+        {
+          type: "header",
+          hdrFtrType: "default",
+          content: [makeStyleToggleParagraph()],
+        },
+      ],
+    ]);
+    document.package.footers = new Map([
+      [
+        "rIdFooter",
+        {
+          type: "footer",
+          hdrFtrType: "default",
+          content: [makeStyleToggleParagraph()],
+        },
+      ],
+    ]);
+
+    const result = await layoutDocxHeadless(await createDocx(document));
+
+    expect(result.isErr()).toBe(false);
+    if (result.isErr()) {
+      return;
+    }
+    expect(
+      findStyleToggleRun(result.value.furniture.headerContentByRId?.get("rIdHeader")?.blocks ?? []),
+    ).toMatchObject(EXPECTED_CANCELLED_STYLE_TOGGLES);
+    expect(
+      findStyleToggleRun(result.value.furniture.footerContentByRId?.get("rIdFooter")?.blocks ?? []),
+    ).toMatchObject(EXPECTED_CANCELLED_STYLE_TOGGLES);
+    expect(
+      findStyleToggleRun(result.value.furniture.footnoteContentById?.get(1)?.blocks ?? []),
+    ).toMatchObject(EXPECTED_CANCELLED_STYLE_TOGGLES);
   });
 
   test("refuses to lay out when no measurement backend is installed", async () => {

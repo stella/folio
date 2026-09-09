@@ -4,16 +4,13 @@
  * Carries a run's character style reference through ProseMirror so semantic
  * styles (e.g. a house "DefinedTerm" style) survive the load → edit → save
  * round-trip. The style's resolved formatting is flattened into the regular
- * marks at load for rendering; this mark only preserves the reference plus a
- * private snapshot of the style's own run properties (`_styleRPr`) that the
- * serializer uses to avoid re-emitting style-provided values as direct
- * formatting.
+ * marks at load for rendering; this mark preserves only the reference. Style
+ * formatting resolves through the document's shared style engine so it does
+ * not become stale when a run moves between paragraph contexts.
  *
  * The mark renders as an unstyled span with a `data-character-style`
  * attribute. parseDOM restores the styleId (so copy/paste inside the editor
- * keeps the reference) but not the snapshot — pasted content then serializes
- * with the reference plus explicit formatting, which renders identically and
- * degrades gracefully.
+ * keeps the reference).
  */
 
 import { expectCharacterStyleMarkAttrs } from "../../attrs";
@@ -25,7 +22,6 @@ export const CharacterStyleExtension = createMarkExtension({
   markSpec: {
     attrs: {
       styleId: { default: "" },
-      _styleRPr: { default: null },
     },
     parseDOM: [
       {
