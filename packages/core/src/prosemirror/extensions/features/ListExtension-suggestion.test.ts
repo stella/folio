@@ -270,5 +270,6 @@ describe("ListExtension suggestion mode integration", () => {
     expect(dispatched).toBe(false);
     expect(state.doc.toJSON()).toEqual(pending);
     expect(state.doc.child(0).attrs._propertyChanges).toHaveLength(1);
+    expect(toggleBulletList(state)).toBe(false);
   });
 });

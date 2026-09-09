@@ -109,13 +109,6 @@ function toggleList(numId: number): Command {
     const currentNumPr = paragraph.attrs["numPr"];
     const isInSameList = currentNumPr?.numId === numId;
 
-    if (!dispatch) {
-      return true;
-    }
-
-    let tr = state.tr;
-    const seen = new Set<number>();
-
     const rev = makeRevisionInfo(state);
     if (rev) {
       let hasPendingChange = false;
@@ -133,6 +126,13 @@ function toggleList(numId: number): Command {
         return false;
       }
     }
+
+    if (!dispatch) {
+      return true;
+    }
+
+    let tr = state.tr;
+    const seen = new Set<number>();
 
     state.doc.nodesBetween($from.pos, $to.pos, (node, pos) => {
       if (node.type.name === "paragraph" && !seen.has(pos)) {

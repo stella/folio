@@ -1,6 +1,6 @@
 ---
 "@stll/folio-core": minor
-"@stll/folio-agents": patch
+"@stll/folio-agents": minor
 ---
 
 Compare, inspect, insert, and track the complete direct paragraph-spacing cluster while preserving absent attributes, explicit zero and false values, and style inheritance.

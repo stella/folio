@@ -539,6 +539,94 @@ describe("paragraph spacing comparison", () => {
     );
   });
 
+  test("checks a pending paragraph-property change after a same-anchor insertion", async () => {
+    const originalSpacing = { spaceBefore: 120, afterAutospacing: false } as const;
+    const firstTarget = { spaceAfter: 0, beforeAutospacing: false } as const;
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await spacingDocument({ directSpacing: originalSpacing }),
+    );
+    const blockId = reviewer.snapshot().blocks.at(0)?.id;
+    if (!blockId) {
+      panic("expected a paragraph block id");
+    }
+    expect(
+      reviewer.applyDocumentOperations({
+        version: 1,
+        mode: "tracked-changes",
+        operations: [
+          {
+            id: "first-spacing",
+            type: "setBlockParagraphProperties",
+            blockId,
+            properties: { spacing: firstTarget },
+          },
+        ],
+      }).skipped,
+    ).toEqual([]);
+
+    const mappedBatch = reviewer.applyDocumentOperations({
+      version: 1,
+      mode: "tracked-changes",
+      operations: [
+        {
+          id: "mapped-second-spacing",
+          type: "setBlockParagraphProperties",
+          blockId,
+          properties: { spacing: FULL_SPACING },
+        },
+        {
+          id: "mapped-second-replacement-style",
+          type: "replaceBlock",
+          blockId,
+          text: TEXT,
+          styleId: NEXT_STYLE_ID,
+        },
+        {
+          id: "insert-before-pending",
+          type: "insertBeforeBlock",
+          blockId,
+          text: INSERTED_TEXT,
+        },
+      ],
+    });
+    expect(mappedBatch.applied.map(({ id }) => id)).toEqual(["insert-before-pending"]);
+    expect(
+      mappedBatch.skipped.toSorted(({ id: left }, { id: right }) => left.localeCompare(right)),
+    ).toEqual([
+      {
+        id: "mapped-second-replacement-style",
+        reason: "pendingParagraphPropertyChange",
+      },
+      { id: "mapped-second-spacing", reason: "pendingParagraphPropertyChange" },
+    ]);
+
+    const pending = await reviewer.toBuffer();
+    const pendingXml = await mainDocumentXml(pending);
+    const pendingParagraphs = paragraphXmls(pendingXml);
+    expect(pendingParagraphs).toHaveLength(2);
+    expect(pendingXml.match(/<w:pPrChange\b/gu)).toHaveLength(1);
+    const originalPendingParagraph = pendingParagraphs.at(1);
+    if (!originalPendingParagraph) {
+      panic("expected the original pending paragraph after the insertion");
+    }
+    expect(trackedParagraphPropertyParts(originalPendingParagraph)).toEqual({
+      current: expectedParagraphProperties(firstTarget),
+      previous: expectedParagraphProperties(originalSpacing),
+    });
+
+    const accepting = await FolioDocxReviewer.fromBuffer(pending);
+    expect(accepting.acceptAll()).toBeGreaterThan(0);
+    const accepted = await FolioDocxReviewer.fromBuffer(await accepting.toBuffer());
+    expect(accepted.snapshot().blocks.map(({ text }) => text)).toEqual([INSERTED_TEXT, TEXT]);
+    expectDirectSpacing(accepted, firstTarget, 1);
+
+    const rejecting = await FolioDocxReviewer.fromBuffer(pending);
+    expect(rejecting.rejectAll()).toBeGreaterThan(0);
+    const rejected = await FolioDocxReviewer.fromBuffer(await rejecting.toBuffer());
+    expect(rejected.snapshot().blocks.map(({ text }) => text)).toEqual([TEXT]);
+    expectDirectSpacing(rejected, originalSpacing);
+  });
+
   test("does not copy a pending pPrChange into an inserted terminal paragraph", async () => {
     const originalSpacing = { spaceBefore: 120 } as const;
     const firstTarget = { spaceAfter: 240 } as const;

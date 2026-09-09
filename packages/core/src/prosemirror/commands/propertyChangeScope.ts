@@ -133,8 +133,8 @@ export const removeParagraphPropertyChanges = (
  *   `runInWithNext` (`w:specVanish` lives in that rPr)
  * - load-time style/numbering bookkeeping the command layer cannot recompute
  *   without a style resolver: `numPrFromStyle`, the `list*` rendering attrs,
- *   `alignmentFromStyle`, `spacingFromDocDefaults`,
- *   `spacingFromImplicitDefaultStyle`
+ *   `alignmentFromStyle`, `spacingFromDocDefaults`, and resolved style-spacing
+ *   provenance in `spacingFromImplicitDefaultStyle`
  */
 export const PPR_CHANGE_SCOPED_ATTR_KEYS = [
   "styleId",

@@ -1975,11 +1975,12 @@ const applyFolioAIEditOperationsInternal = ({
       panic("The operation execution index exceeded the resolved plan", { executionIndex });
     }
     if (mode === "tracked-changes" && writesParagraphPropertyChange(item)) {
-      const livePosition = tr.mapping.map(item.blockFrom, -1);
-      const liveBlock = tr.doc.nodeAt(livePosition);
-      const propertyChanges = liveBlock
-        ? expectParagraphAttrs(liveBlock)._propertyChanges
-        : undefined;
+      const livePosition = tr.mapping.map(item.blockFrom);
+      const liveBlock = tr.doc.nodeAt(livePosition) ?? item.blockNode;
+      const propertyChanges =
+        liveBlock.type.name === "paragraph"
+          ? expectParagraphAttrs(liveBlock)._propertyChanges
+          : undefined;
       if (hasSerializableParagraphPropertyChange(propertyChanges)) {
         skipped.push({ id: item.operation.id, reason: "pendingParagraphPropertyChange" });
         continue;

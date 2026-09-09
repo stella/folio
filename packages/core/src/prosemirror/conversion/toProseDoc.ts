@@ -999,25 +999,18 @@ function paragraphFormattingToAttrs(
       ? (styleResolver.getStyle(styleId) ?? styleResolver.getDefaultParagraphStyle())
       : styleResolver.getDefaultParagraphStyle();
     const docDefaultSpacing = styleResolver.getDocDefaults()?.pPr;
-    const spacingFromImplicitDefaultStyle: NonNullable<
-      ParagraphAttrs["spacingFromImplicitDefaultStyle"]
-    > = {};
-    if (
-      !styleId &&
-      formatting?.spaceBefore === undefined &&
-      paragraphStyle?.pPr?.spaceBefore !== undefined
-    ) {
-      spacingFromImplicitDefaultStyle.before = true;
+    // This existing provenance attribute covers every resolved style layer:
+    // default, named paragraph, and enclosing table styles. The direct
+    // `formatting` object still wins per field.
+    const spacingFromStyle: NonNullable<ParagraphAttrs["spacingFromImplicitDefaultStyle"]> = {};
+    if (formatting?.spaceBefore === undefined && stylePpr?.spaceBefore !== undefined) {
+      spacingFromStyle.before = true;
     }
-    if (
-      !styleId &&
-      formatting?.spaceAfter === undefined &&
-      paragraphStyle?.pPr?.spaceAfter !== undefined
-    ) {
-      spacingFromImplicitDefaultStyle.after = true;
+    if (formatting?.spaceAfter === undefined && stylePpr?.spaceAfter !== undefined) {
+      spacingFromStyle.after = true;
     }
-    if (spacingFromImplicitDefaultStyle.before || spacingFromImplicitDefaultStyle.after) {
-      attrs.spacingFromImplicitDefaultStyle = spacingFromImplicitDefaultStyle;
+    if (spacingFromStyle.before || spacingFromStyle.after) {
+      attrs.spacingFromImplicitDefaultStyle = spacingFromStyle;
     }
     const spacingFromDocDefaults: NonNullable<ParagraphAttrs["spacingFromDocDefaults"]> = {};
     if (
