@@ -207,6 +207,64 @@ const paragraphState = (doc: PMNode) =>
   });
 
 describe("unstamped revision id allocation", () => {
+  test.each([
+    { label: "without a background revision", highlight: undefined, expectedIds: [10, 11, 12] },
+    { label: "with a background revision", highlight: "yellow", expectedIds: [10, 11, 12, 13] },
+  ] as const)(
+    "a block replacement owns exactly its serialized revisions $label",
+    ({ highlight, expectedIds }) => {
+      const document = createEmptyDocument();
+      document.package.document.content = [
+        {
+          type: "paragraph",
+          paraId: "12345678",
+          formatting: { styleId: "BodyText" },
+          content: [
+            {
+              type: "run",
+              ...(highlight !== undefined && { formatting: { highlight } }),
+              content: [{ type: "text", text: "Original text." }],
+            },
+          ],
+        },
+      ];
+      const view = viewFromDoc(toProseDoc(document));
+      const snapshot = createFolioAIEditSnapshot(view.state.doc);
+      const block = snapshot.blocks.at(0);
+      if (!block) {
+        panic("expected a replacement block");
+      }
+
+      const outcome = applyFolioAIEditOperations({
+        view,
+        snapshot,
+        operations: [
+          {
+            id: "replacement",
+            type: "replaceBlock",
+            blockId: block.id,
+            text: "Replacement text.",
+            styleId: "Heading2",
+          },
+        ],
+        mode: "tracked-changes",
+        revisionStamp: { date: "2026-09-08T00:00:00.000Z", idSeed: 10 },
+      });
+      const receiptIds = outcome.applied.at(0)?.revisionIds;
+      const serializedChanges = getTrackedChangesFromDoc(view.state.doc);
+      const serializedIds = serializedChanges
+        .map(({ id }) => id)
+        .toSorted((left, right) => left - right);
+
+      expect(receiptIds).toEqual(expectedIds);
+      expect(serializedIds).toEqual(expectedIds);
+      expect(outcome.nextRevisionId).toBe((expectedIds.at(-1) ?? 9) + 1);
+      expect(serializedChanges.filter(({ type }) => type === "formatting")).toHaveLength(
+        highlight === undefined ? 0 : 1,
+      );
+    },
+  );
+
   test.each(INSERTION_RESERVATION_CASES)(
     "reserves the synthetic final-mark revision for $label",
     ({ lines, formatting, propertyChangeCount }) => {
