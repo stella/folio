@@ -23,6 +23,7 @@ import {
   buildTableCellGrid,
 } from "../../layout-engine/measure/tableCellGrid";
 import { resolveTableCellPadding } from "../../layout-engine/types";
+import { tableFragmentBottomBorders } from "../../layout-engine/measure/tableFragmentBorderGeometry";
 import type {
   FlowBlock,
   Measure,
@@ -531,6 +532,44 @@ const paintTableBody = ({
   }
 };
 
+type PaintFragmentBottomBordersOptions = {
+  readonly composer: PageComposer;
+  readonly fragment: TableFragment;
+  readonly block: TableBlock;
+  readonly measure: TableMeasure;
+  readonly context: BuildContext;
+};
+
+const paintFragmentBottomBorders = ({
+  composer,
+  fragment,
+  block,
+  measure,
+  context,
+}: PaintFragmentBottomBordersOptions): void => {
+  if (fragment.continuesOnNext !== true || fragment.bottomClip === undefined) return;
+
+  const primitives: DisplayPrimitive[] = [];
+  for (const { left, width, border } of tableFragmentBottomBorders({
+    fragment,
+    block,
+    measure,
+  })) {
+    const stroke = strokeFor(border, context, "table fragment bottom border");
+    if (!stroke) continue;
+    const yPx = fragment.y + fragment.height - stroke.thicknessPx / 2;
+    primitives.push({
+      kind: "line",
+      x1Px: fragment.x + left,
+      y1Px: yPx,
+      x2Px: fragment.x + left + width,
+      y2Px: yPx,
+      stroke,
+    });
+  }
+  composer.push(primitives);
+};
+
 export type TableBlockPaintOptions = {
   readonly composer: PageComposer;
   readonly block: TableBlock;
@@ -653,4 +692,5 @@ export const paintTableFragment = ({
       regions: [...clipped.regions()],
     },
   ]);
+  paintFragmentBottomBorders({ composer, fragment, block, measure, context });
 };
