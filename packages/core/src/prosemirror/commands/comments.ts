@@ -21,27 +21,39 @@ import type {
   TableCellFormatting,
   TableFormatting,
   TableRowFormatting,
-  TextFormatting,
 } from "../../types/document";
 import { mergeTextFormatting } from "../../utils/textFormattingMerge";
 import { PARAGRAPH_MARK_CHANGE_KINDS, type ParagraphMarkChangeKind } from "@stll/docx-core/model";
 
-import { expectParagraphAttrs, expectRunPropertyChangeMarkAttrs } from "../attrs";
+import {
+  expectCharacterStyleMarkAttrs,
+  expectParagraphAttrs,
+  expectRunPropertyChangeMarkAttrs,
+} from "../attrs";
 import {
   addedBreakCarrierBefore,
   finalParagraphsOf,
   paragraphEndsItsContainer,
 } from "../containerFinalParagraph";
-import { textFormattingToMarks } from "../conversion/toProseDoc";
+import {
+  resolveParagraphDefaultTextFormatting,
+  textFormattingToMarks,
+} from "../conversion/toProseDoc";
 import {
   markChangedParagraphRanges,
   markStructuralChange,
   markTrackedSectionEndpointRemoval,
 } from "../extensions/features/ParagraphChangeTrackerExtension";
 import { getDocumentStyleResolver } from "../plugins/documentStyles";
+import {
+  paragraphFormattingForRun,
+  paragraphRunStyleContextAt,
+  resolveEffectiveRunStyleFormatting,
+} from "../runStyleFormatting";
 import { holdsNoContent } from "../zeroWidthAnchors";
 import { getFolioNodeRevisionCarriers } from "../revisionCarriers";
 import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
+import { setParagraphAttrsWithRebasedRunFormatting } from "../rebaseParagraphRunFormatting";
 import type { ParagraphPropertyChangeAttrs } from "../schema/nodes";
 import { getTableCellMergeChange } from "../tableCellMergeRevision";
 import {
@@ -227,10 +239,19 @@ function resolveChange(
                     previousFormattingFromStyle,
                   ),
                 );
-                nextAttrs["_originalFormatting"] = paragraphRejectOriginalFormatting(
+                const restoredFormatting = paragraphRejectOriginalFormatting(
                   rejection.previousFormatting,
                   node.attrs["_originalFormatting"],
                 );
+                nextAttrs["_originalFormatting"] = restoredFormatting;
+                if (styleResolver) {
+                  nextAttrs["defaultTextFormatting"] =
+                    resolveParagraphDefaultTextFormatting(
+                      rejection.previousFormatting?.styleId,
+                      restoredFormatting ?? undefined,
+                      styleResolver,
+                    ) ?? null;
+                }
               }
             }
           }
@@ -274,7 +295,17 @@ function resolveChange(
           }
 
           if (nextAttrs) {
-            tr.setNodeMarkup(pos, undefined, nextAttrs);
+            const styleChanged = nextAttrs["styleId"] !== node.attrs["styleId"];
+            if (styleChanged && styleResolver) {
+              setParagraphAttrsWithRebasedRunFormatting({
+                nextAttrs,
+                paragraphPosition: pos,
+                styleResolver,
+                tr,
+              });
+            } else {
+              tr.setNodeMarkup(pos, undefined, nextAttrs);
+            }
           }
 
           return true;
@@ -308,6 +339,7 @@ function resolveChange(
             );
             if (nextAttrs) {
               tr.setNodeMarkup(pos, undefined, nextAttrs);
+              markStructuralChange(tr);
             }
           }
           return true;
@@ -344,6 +376,7 @@ function resolveChange(
               mark: runPropertyChangeMark,
               mode,
               revisionSet,
+              styleResolver,
             });
           }
           if (removesNode) {
@@ -363,6 +396,7 @@ function resolveChange(
             mark: runPropertyChangeMark,
             mode,
             revisionSet,
+            styleResolver,
           });
         }
 
@@ -602,17 +636,7 @@ type ResolveRunPropertyChangeOptions = {
   mark: Mark;
   mode: "accept" | "reject";
   revisionSet: Set<number> | null;
-};
-
-const inheritedRunFormattingAt = (doc: PMNode, pos: number): TextFormatting | undefined => {
-  const resolved = doc.resolve(pos);
-  for (let depth = resolved.depth; depth >= 0; depth--) {
-    const ancestor = resolved.node(depth);
-    if (ancestor.type.name === "paragraph") {
-      return expectParagraphAttrs(ancestor).defaultTextFormatting ?? undefined;
-    }
-  }
-  return undefined;
+  styleResolver: ReturnType<typeof getDocumentStyleResolver>;
 };
 
 const resolveRunPropertyChange = ({
@@ -623,6 +647,7 @@ const resolveRunPropertyChange = ({
   mark,
   mode,
   revisionSet,
+  styleResolver,
 }: ResolveRunPropertyChangeOptions): void => {
   const { changes } = expectRunPropertyChangeMarkAttrs(mark);
   const matches = changes.filter(
@@ -645,10 +670,28 @@ const resolveRunPropertyChange = ({
 
   const previousFormatting: RunPropertyChange["previousFormatting"] =
     matches.at(0)?.previousFormatting;
-  const effectivePreviousFormatting = mergeTextFormatting(
-    inheritedRunFormattingAt(tr.doc, from),
-    previousFormatting,
-  );
+  const characterStyleMark = node.marks.find(({ type }) => type.name === "characterStyle");
+  const characterStyleAttrs = characterStyleMark
+    ? expectCharacterStyleMarkAttrs(characterStyleMark)
+    : undefined;
+  const preservedCharacterStyleAttrs =
+    previousFormatting?.styleId !== undefined &&
+    characterStyleAttrs?.styleId === previousFormatting.styleId
+      ? characterStyleAttrs
+      : undefined;
+  const styleContext = paragraphRunStyleContextAt(tr.doc, from, styleResolver);
+  const styleFormatting = preservedCharacterStyleAttrs
+    ? resolveEffectiveRunStyleFormatting({
+        marks: node.marks,
+        paragraphFormatting: paragraphFormattingForRun(
+          node.marks,
+          styleContext,
+          previousFormatting,
+        ),
+        styleResolver,
+      })
+    : paragraphFormattingForRun(node.marks, styleContext, previousFormatting);
+  const effectivePreviousFormatting = mergeTextFormatting(styleFormatting, previousFormatting);
   for (const currentMark of node.marks) {
     if (RUN_FORMATTING_MARK_NAMES.has(currentMark.type.name)) {
       tr.removeMark(from, to, currentMark.type);
@@ -666,7 +709,9 @@ const resolveRunPropertyChange = ({
       tr.addMark(
         from,
         to,
-        characterStyle.create({ styleId: previousFormatting.styleId, _styleRPr: null }),
+        characterStyle.create(
+          preservedCharacterStyleAttrs ?? { styleId: previousFormatting.styleId },
+        ),
       );
     }
   }

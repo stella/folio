@@ -35,6 +35,7 @@ import type {
   TabStop,
   FloatingTablePosition,
 } from "../../layout-engine/types";
+import { createStyleEngine } from "../../style-engine";
 import { setHyperlinkInstanceIndex } from "../../layout-engine/measure/hyperlinkInstance";
 import { setTextBoxGroupId } from "../../layout-engine/textBoxGroup";
 import { setParagraphFrame } from "../../layout-engine/paragraphFrame";
@@ -75,6 +76,7 @@ import { runShadingAttrsToShading } from "../../prosemirror/conversion/runShadin
 import { directionToBidi } from "../../prosemirror/paragraphDirection";
 import { expectTextBoxAnchorAttrs } from "../../prosemirror/textBoxAnchorAttrs";
 import { cascadeStyleTextFormatting } from "../../prosemirror/styles/styleToggleCascade";
+import type { RunStyleResolver } from "../../prosemirror/runStyleFormatting";
 import { getPageNumbering } from "../../paged-layout/sectionGeometry";
 import type { RunFormattingOverrideAttrs } from "../../prosemirror/schema/marks";
 import type {
@@ -96,6 +98,7 @@ import type {
   ParagraphAlignment,
   Theme,
   SectionProperties,
+  StyleDefinitions,
   TextFormatting,
 } from "../../types/document";
 import { normalizeShapeTextAnchor } from "../../types/documentEnumValues";
@@ -140,6 +143,8 @@ export type ToFlowBlocksOptions = {
   defaultSize?: number;
   /** Theme for resolving theme colors. */
   theme?: Theme | null;
+  /** Document styles used to resolve character-style toggles without per-run copies. */
+  styles?: StyleDefinitions;
   /** Document-scoped OOXML primary-font to `w:altName` lookup. */
   fontAlternates?: FontAlternates;
   /** Page content height in pixels (pageHeight - marginTop - marginBottom). Images taller than this are scaled down to fit. */
@@ -192,6 +197,7 @@ type FlowConversionOptions = ToFlowBlocksOptions & {
   listCounterStreams: ListCounterStreams;
   numberedRefResults?: ReadonlyMap<PMNode, string>;
   textBoxAnchorBlockIds: Map<string, ParagraphBlock["id"]>;
+  styleResolver: RunStyleResolver;
 };
 
 const DEFAULT_FONT = "Calibri";
@@ -651,6 +657,7 @@ type ApplyCharacterStyleToggleFormattingOptions = {
   formatting: RunFormatting;
   marks: readonly Mark[];
   paraDefaults: RunFormatting;
+  styleResolver: RunStyleResolver;
 };
 
 /** Restore character-style toggle values that plain visual marks cannot represent. */
@@ -658,12 +665,14 @@ function applyCharacterStyleToggleFormatting({
   formatting,
   marks,
   paraDefaults,
+  styleResolver,
 }: ApplyCharacterStyleToggleFormattingOptions): void {
   const characterStyleMark = marks.find((mark) => mark.type.name === "characterStyle");
-  if (!characterStyleMark) {
-    return;
-  }
-  const styleRPr = expectCharacterStyleMarkAttrs(characterStyleMark)._styleRPr;
+  const styleRPr = characterStyleMark
+    ? styleResolver.getRunStyleOwnProperties(
+        expectCharacterStyleMarkAttrs(characterStyleMark).styleId,
+      )
+    : styleResolver.getDefaultCharacterStyle()?.rPr;
   if (!styleRPr) {
     return;
   }
@@ -1096,7 +1105,12 @@ function paragraphToRuns(node: PMNode, startPos: number, _options: FlowConversio
     }
     if (child.isText && child.text) {
       const formatting = extractRunFormatting(child.marks, theme, fontAlternates);
-      applyCharacterStyleToggleFormatting({ formatting, marks: child.marks, paraDefaults });
+      applyCharacterStyleToggleFormatting({
+        formatting,
+        marks: child.marks,
+        paraDefaults,
+        styleResolver: _options.styleResolver,
+      });
       if (inTocParagraph) {
         stripTocHyperlinkStyle(formatting);
       }
@@ -1117,7 +1131,12 @@ function paragraphToRuns(node: PMNode, startPos: number, _options: FlowConversio
         return;
       }
       const formatting = extractRunFormatting(child.marks, theme, fontAlternates);
-      applyCharacterStyleToggleFormatting({ formatting, marks: child.marks, paraDefaults });
+      applyCharacterStyleToggleFormatting({
+        formatting,
+        marks: child.marks,
+        paraDefaults,
+        styleResolver: _options.styleResolver,
+      });
       if (inTocParagraph) {
         stripTocHyperlinkStyle(formatting);
       }
@@ -1145,7 +1164,12 @@ function paragraphToRuns(node: PMNode, startPos: number, _options: FlowConversio
     }
     if (child.type.name === "tab") {
       const formatting = extractRunFormatting(child.marks, theme, fontAlternates);
-      applyCharacterStyleToggleFormatting({ formatting, marks: child.marks, paraDefaults });
+      applyCharacterStyleToggleFormatting({
+        formatting,
+        marks: child.marks,
+        paraDefaults,
+        styleResolver: _options.styleResolver,
+      });
       const run: TabRun = {
         kind: "tab",
         ...mergeRunFormatting(paraDefaults, formatting),
@@ -1209,6 +1233,7 @@ function paragraphToRuns(node: PMNode, startPos: number, _options: FlowConversio
         formatting: extractedFieldFormatting,
         marks: child.marks,
         paraDefaults,
+        styleResolver: _options.styleResolver,
       });
       if (inTocParagraph) {
         stripTocHyperlinkStyle(extractedFieldFormatting);
@@ -2871,6 +2896,7 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
       original: originalListCounterState,
     },
     textBoxAnchorBlockIds: new Map(),
+    styleResolver: createStyleEngine(options.styles),
     numberedRefResults: resolveNumberedRefFields(doc, {
       listCounterState: cloneListCounterState(listCounterState),
       originalListCounterState: cloneListCounterState(originalListCounterState),

@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 
+import { parseDocx } from "../../docx/parser";
+import { createDocx } from "../../docx/rezip";
 import type {
   Document,
   Paragraph,
@@ -1519,6 +1521,288 @@ describe("fromProseDoc", () => {
       return;
     }
     expect(trackedChange.content.at(0)?.content).toEqual([{ type: "footnoteRef", id: 7 }]);
+  });
+
+  test.each([
+    { noteType: "footnote", contentType: "footnoteRef", styleId: "FootnoteReference" },
+    { noteType: "endnote", contentType: "endnoteRef", styleId: "EndnoteReference" },
+  ] as const)(
+    "preserves the $noteType reference style through DOCX save and reopen",
+    async ({ contentType, styleId }) => {
+      const document: Document = {
+        package: {
+          styles: {
+            styles: [
+              {
+                styleId,
+                type: "character",
+                rPr: { vertAlign: "superscript" },
+              },
+            ],
+          },
+          document: {
+            content: [
+              {
+                type: "paragraph",
+                content: [
+                  {
+                    type: "run",
+                    formatting: { styleId },
+                    content: [{ type: contentType, id: 1 }],
+                  },
+                ],
+              },
+            ],
+          },
+          ...(contentType === "footnoteRef"
+            ? {
+                footnotes: [
+                  {
+                    type: "footnote" as const,
+                    id: 1,
+                    content: [{ type: "paragraph" as const, content: [] }],
+                  },
+                ],
+              }
+            : {
+                endnotes: [
+                  {
+                    type: "endnote" as const,
+                    id: 1,
+                    content: [{ type: "paragraph" as const, content: [] }],
+                  },
+                ],
+              }),
+        },
+      };
+
+      const saved = fromProseDoc(
+        toProseDoc(document, { styles: document.package.styles }),
+        document,
+      );
+      const reopened = await parseDocx(await createDocx(saved), {
+        detectVariables: false,
+        preloadFonts: false,
+      });
+      const paragraph = reopened.package.document.content.at(0);
+      const run = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+
+      expect(run?.type).toBe("run");
+      expect(run?.type === "run" ? run.formatting : undefined).toEqual({ styleId });
+      expect(run?.type === "run" ? run.content : undefined).toEqual([{ type: contentType, id: 1 }]);
+    },
+  );
+
+  test.each(
+    ["tab", "break", "symbol"].flatMap((atom) =>
+      ["plain", "hyperlink", "tracked"].map((container) => ({ atom, container })),
+    ),
+  )(
+    "does not materialize inherited formatting on a $container $atom atom",
+    async ({ atom, container }) => {
+      let runContent: Run["content"][number];
+      if (atom === "tab") {
+        runContent = { type: "tab" };
+      } else if (atom === "break") {
+        runContent = { type: "break", breakType: "textWrapping" };
+      } else {
+        runContent = { type: "symbol", font: "Wingdings", char: "F06F" };
+      }
+      const run: Run = { type: "run", content: [runContent] };
+      let paragraphContent: ParagraphContent;
+      if (container === "plain") {
+        paragraphContent = run;
+      } else if (container === "hyperlink") {
+        paragraphContent = {
+          type: "hyperlink",
+          href: "https://example.com",
+          children: [run],
+        };
+      } else {
+        paragraphContent = {
+          type: "insertion",
+          info: { id: 7, author: "Reviewer" },
+          content: [run],
+        };
+      }
+      const document: Document = {
+        package: {
+          document: {
+            content: [
+              {
+                type: "paragraph",
+                formatting: {
+                  runProperties: {
+                    fontFamily: { ascii: "Aptos", hAnsi: "Aptos" },
+                    fontSize: 22,
+                    language: { val: "en-US" },
+                  },
+                },
+                content: [paragraphContent],
+              },
+            ],
+          },
+        },
+      };
+
+      const saved = fromProseDoc(toProseDoc(document), document);
+      const reopened = await parseDocx(await createDocx(saved), {
+        detectVariables: false,
+        preloadFonts: false,
+      });
+      const paragraph = reopened.package.document.content.at(0);
+      if (paragraph?.type !== "paragraph") {
+        throw new Error("Expected a paragraph");
+      }
+      const content = paragraph.content.at(0);
+      let savedRun: Run | undefined;
+      if (content?.type === "run") {
+        savedRun = content;
+      } else if (content?.type === "hyperlink") {
+        savedRun = content.children.find((child) => child.type === "run");
+      } else if (content?.type === "insertion") {
+        savedRun = content.content.find((child) => child.type === "run");
+      }
+
+      expect(savedRun?.type).toBe("run");
+      expect(savedRun?.type === "run" ? savedRun.formatting : undefined).toBeUndefined();
+    },
+  );
+
+  test.each([
+    { name: "tab", content: { type: "tab" } },
+    { name: "hard break", content: { type: "break", breakType: "textWrapping" } },
+  ] as const)(
+    "preserves direct formatting on a $name through editor and package cycles",
+    async ({ content }) => {
+      const document: Document = {
+        package: {
+          document: {
+            content: [
+              {
+                type: "paragraph",
+                content: [
+                  {
+                    type: "run",
+                    formatting: { underline: { style: "single" } },
+                    content: [content],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      };
+      const imported = toProseDoc(document);
+      const atom = imported.firstChild?.firstChild;
+
+      expect(atom?.marks.some(({ type }) => type.name === "underline")).toBe(true);
+
+      const cloned = schema.nodeFromJSON(imported.toJSON());
+      const first = await parseDocx(await createDocx(fromProseDoc(cloned, document)), {
+        detectVariables: false,
+        preloadFonts: false,
+      });
+      const second = await parseDocx(await createDocx(fromProseDoc(toProseDoc(first), first)), {
+        detectVariables: false,
+        preloadFonts: false,
+      });
+
+      for (const reopened of [first, second]) {
+        const paragraph = reopened.package.document.content.at(0);
+        const run = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+        expect(run?.type === "run" ? run.formatting?.underline : undefined).toEqual({
+          style: "single",
+        });
+      }
+    },
+  );
+
+  test.each([
+    { name: "tab", content: { type: "tab" } },
+    { name: "hard break", content: { type: "break", breakType: "textWrapping" } },
+  ] as const)("a raw mark removal updates formatting on a $name", async ({ content }) => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "run",
+                  formatting: { underline: { style: "single" } },
+                  content: [content],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    const state = EditorState.create({ doc: toProseDoc(document) });
+    const underline = schema.marks["underline"];
+    if (!underline) {
+      throw new Error("Expected underline mark type");
+    }
+    const withoutUnderline = state.apply(state.tr.removeMark(1, 2, underline)).doc;
+    const reopened = await parseDocx(await createDocx(fromProseDoc(withoutUnderline, document)), {
+      detectVariables: false,
+      preloadFonts: false,
+    });
+    const paragraph = reopened.package.document.content.at(0);
+    const run = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+
+    expect(run?.type === "run" ? run.formatting : undefined).toBeUndefined();
+  });
+
+  test("preserves hyperlink ownership and direct formatting on a hard break", async () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "hyperlink",
+                  href: "https://example.com/terms",
+                  children: [
+                    {
+                      type: "run",
+                      formatting: { underline: { style: "single" } },
+                      content: [{ type: "break", breakType: "textWrapping" }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    const imported = toProseDoc(document);
+    const hardBreak = imported.firstChild?.firstChild;
+
+    expect(hardBreak?.marks.map(({ type }) => type.name)).toContainAllValues([
+      "hyperlink",
+      "underline",
+    ]);
+
+    const reopened = await parseDocx(
+      await createDocx(fromProseDoc(schema.nodeFromJSON(imported.toJSON()), document)),
+      { detectVariables: false, preloadFonts: false },
+    );
+    const paragraph = reopened.package.document.content.at(0);
+    const hyperlink = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+    const run = hyperlink?.type === "hyperlink" ? hyperlink.children.at(0) : undefined;
+
+    expect(hyperlink?.type === "hyperlink" ? hyperlink.href : undefined).toBe(
+      "https://example.com/terms",
+    );
+    expect(run?.type === "run" ? run.formatting?.underline : undefined).toEqual({
+      style: "single",
+    });
   });
 
   test("round-trips tracked-change image atoms", () => {

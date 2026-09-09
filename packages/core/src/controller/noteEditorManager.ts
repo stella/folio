@@ -267,7 +267,11 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
           }
           const updated: Footnote = {
             ...current,
-            content: proseDocToBlocks(story.view.state.doc, current.content),
+            content: proseDocToBlocks(
+              story.view.state.doc,
+              current.content,
+              document.package.styles,
+            ),
           };
           footnotes[index] = updated;
           story.appliedNote = updated;
@@ -289,7 +293,7 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
         }
         const updated: Endnote = {
           ...current,
-          content: proseDocToBlocks(story.view.state.doc, current.content),
+          content: proseDocToBlocks(story.view.state.doc, current.content, document.package.styles),
         };
         endnotes[index] = updated;
         story.appliedNote = updated;

@@ -295,10 +295,14 @@ describe("Shading colour narrowing", () => {
   });
 
   test("auto keeps its meaning", () => {
-    const { formatting } = roundTrip('<w:shd w:val="clear" w:color="auto" w:fill="auto"/>');
+    const { formatting, serialized } = roundTrip(
+      '<w:shd w:val="clear" w:color="auto" w:fill="auto"/>',
+    );
 
-    expect(formatting?.shading?.color).toBeUndefined();
-    expect(formatting?.shading?.fill).toBeUndefined();
+    expect(formatting?.shading?.color).toEqual({ auto: true });
+    expect(formatting?.shading?.fill).toEqual({ auto: true });
     expect(formatting?.shading?.pattern).toBe("clear");
+    expect(serialized).toContain('w:color="auto"');
+    expect(serialized).toContain('w:fill="auto"');
   });
 });

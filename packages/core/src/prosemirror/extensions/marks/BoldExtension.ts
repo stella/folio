@@ -3,10 +3,9 @@
  */
 
 import { panic } from "better-result";
-import { toggleMark } from "prosemirror-commands";
-
 import { createMarkExtension } from "../create";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
+import { toggleMarkForAllScripts } from "./markUtils";
 
 export const BoldExtension = createMarkExtension({
   name: "bold",
@@ -39,12 +38,13 @@ export const BoldExtension = createMarkExtension({
     if (!boldType) {
       panic("Missing mark type: bold");
     }
+    const toggleBold = toggleMarkForAllScripts(boldType, "bold");
     return {
       commands: {
-        toggleBold: () => toggleMark(boldType),
+        toggleBold: () => toggleBold,
       },
       keyboardShortcuts: {
-        "Mod-b": toggleMark(boldType),
+        "Mod-b": toggleBold,
       },
     };
   },

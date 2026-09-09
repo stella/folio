@@ -57,7 +57,6 @@ export type CharacterSpacingAttrs = {
 // @public
 export type CharacterStyleAttrs = {
     styleId: string;
-    _styleRPr?: import__stll_docx_core_model.TextFormatting;
 };
 
 // @public (undocumented)
@@ -302,7 +301,11 @@ export type ParagraphPropertyChangeAttrs = Omit<import__stll_docx_core_model.Par
 
 // @public (undocumented)
 export type RunFormattingOverrideAttrs = Partial<Record<"bold" | "boldCs" | "cs" | "italic" | "italicCs" | "strike" | "allCaps" | "smallCaps" | "hidden" | "emboss" | "imprint" | "shadow" | "outline", boolean>> & {
+    _authoredOn?: readonly RunFormattingBooleanProperty[];
+    _authoredOff?: readonly RunFormattingBooleanProperty[];
+    _authoredValues?: AuthoredRunFormattingValues;
     directFontProperties?: readonly ("fontFamily" | "fontSize" | "color")[];
+    complexScriptPropertyAbsences?: readonly ComplexScriptRunPropertyKey[];
     doubleStrike?: false;
     rtl?: false;
     fontSizeCs?: number;

@@ -214,6 +214,12 @@ function normalizeNode(node: PMNode): NormalizedNode {
   // Filter out marks where all attributes are null/default (e.g.,
   // characterSpacing with all-null attrs added by the parser).
   const meaningfulMarks = node.marks.filter((m) => {
+    // The importer adds this private carrier beside visible marks to retain
+    // exact authored presence, explicit-off values and complex-script slots.
+    // It is editor state, not an additional user-visible formatting mark.
+    if (m.type.name === "runFormattingOverride") {
+      return false;
+    }
     const spec = m.type.spec.attrs;
     if (!spec) {
       return true;

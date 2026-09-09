@@ -2,79 +2,96 @@
  * Run formatting override mark.
  *
  * OOXML can explicitly set inherited boolean/defaultable run properties. Plain
- * PM marks cannot distinguish inherited visuals from authored direct values, so
- * this mark carries those direct toggle overrides.
+ * PM marks cannot distinguish inherited visuals from authored direct values. This
+ * mark carries current structural override signals plus the last reconciled direct
+ * baseline; the two may intentionally diverge between an edit and serialization.
  */
 
 import type { Mark } from "prosemirror-model";
 
 import type { TextFormatting } from "../../../types/document";
 import { expectRunFormattingOverrideMarkAttrs } from "../../attrs";
+import { withAuthoredRunFormatting } from "../../runFormattingProvenance";
 import type { RunFormattingOverrideAttrs } from "../../schema/marks";
 import { createMarkExtension } from "../create";
 
+type BuildRunFormattingOverrideAttrsOptions =
+  | { type: "authored-baseline"; formatting: TextFormatting | undefined }
+  | { type: "structural-only" };
+
 export function buildRunFormattingOverrideAttrs(
   formatting: TextFormatting | undefined,
+  options?: BuildRunFormattingOverrideAttrsOptions,
 ): RunFormattingOverrideAttrs | undefined {
-  if (!formatting) {
-    return undefined;
-  }
-
   const attrs: RunFormattingOverrideAttrs = {};
 
-  if (formatting.bold !== undefined) {
+  if (formatting?.bold !== undefined) {
     attrs.bold = formatting.bold;
   }
-  if (formatting.italic !== undefined) {
+  if (formatting?.italic !== undefined) {
     attrs.italic = formatting.italic;
   }
-  if (formatting.underline?.style === "none") {
+  if (formatting?.underline?.style === "none") {
     attrs.underline = "none";
   }
-  if (formatting.strike !== undefined) {
+  if (formatting?.strike !== undefined) {
     attrs.strike = formatting.strike;
   }
-  if (formatting.doubleStrike === false) {
+  if (formatting?.doubleStrike === false) {
     attrs.doubleStrike = false;
   }
-  if (formatting.allCaps !== undefined) {
+  if (formatting?.allCaps !== undefined) {
     attrs.allCaps = formatting.allCaps;
   }
-  if (formatting.smallCaps !== undefined) {
+  if (formatting?.smallCaps !== undefined) {
     attrs.smallCaps = formatting.smallCaps;
   }
-  if (formatting.hidden !== undefined) {
+  if (formatting?.hidden !== undefined) {
     attrs.hidden = formatting.hidden;
   }
-  if (formatting.emboss !== undefined) {
+  if (formatting?.emboss !== undefined) {
     attrs.emboss = formatting.emboss;
   }
-  if (formatting.imprint !== undefined) {
+  if (formatting?.imprint !== undefined) {
     attrs.imprint = formatting.imprint;
   }
-  if (formatting.shadow !== undefined) {
+  if (formatting?.shadow !== undefined) {
     attrs.shadow = formatting.shadow;
   }
-  if (formatting.outline !== undefined) {
+  if (formatting?.outline !== undefined) {
     attrs.outline = formatting.outline;
   }
-  if (formatting.rtl === false) {
+  if (formatting?.rtl === false) {
     attrs.rtl = false;
   }
-  if (formatting.boldCs !== undefined) {
+  if (formatting?.boldCs !== undefined) {
     attrs.boldCs = formatting.boldCs;
   }
-  if (formatting.italicCs !== undefined) {
+  if (formatting?.italicCs !== undefined) {
     attrs.italicCs = formatting.italicCs;
   }
-  if (formatting.fontSizeCs !== undefined) {
+  if (formatting?.fontSizeCs !== undefined) {
     attrs.fontSizeCs = formatting.fontSizeCs;
   }
-  if (formatting.cs !== undefined) {
+  if (formatting?.cs !== undefined) {
     attrs.cs = formatting.cs;
   }
 
-  return Object.keys(attrs).length > 0 ? attrs : undefined;
+  const provenance = options ?? { type: "authored-baseline", formatting };
+  if (provenance.type === "structural-only") {
+    return Object.keys(attrs).length > 0 ? attrs : undefined;
+  }
+
+  const authoredFormatting = provenance.formatting;
+  const hasAuthoredFormatting = Object.entries(authoredFormatting ?? {}).some(
+    ([property, value]) => property !== "styleId" && value !== undefined,
+  );
+  if (Object.keys(attrs).length === 0 && !hasAuthoredFormatting) {
+    return undefined;
+  }
+
+  const withProvenance = withAuthoredRunFormatting(attrs, authoredFormatting);
+  return Object.keys(withProvenance).length > 0 ? withProvenance : undefined;
 }
 
 export function applyRunFormattingOverrideAttrs(
@@ -143,6 +160,9 @@ export const RunFormattingOverrideExtension = createMarkExtension({
   schemaMarkName: "runFormattingOverride",
   markSpec: {
     attrs: {
+      _authoredOn: { default: null },
+      _authoredOff: { default: null },
+      _authoredValues: { default: null },
       directFontProperties: { default: null },
       complexScriptPropertyAbsences: { default: null },
       bold: { default: null },

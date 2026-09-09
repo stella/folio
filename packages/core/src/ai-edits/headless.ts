@@ -1595,7 +1595,7 @@ export class FolioDocxReviewer {
         }
         const edited = {
           ...source,
-          content: proseDocToBlocks(entry.state.doc, source.content),
+          content: proseDocToBlocks(entry.state.doc, source.content, document.package.styles),
         };
         if (entry.handle.type === "header") {
           headers ??= new Map(document.package.headers);
@@ -1616,7 +1616,7 @@ export class FolioDocxReviewer {
         }
         const edited = {
           ...source,
-          content: proseDocToBlocks(entry.state.doc, source.content),
+          content: proseDocToBlocks(entry.state.doc, source.content, document.package.styles),
         };
         footnotes ??= [...(document.package.footnotes ?? [])];
         const index = footnotes.findIndex((note) => note.id === noteId);
@@ -1634,7 +1634,7 @@ export class FolioDocxReviewer {
       }
       const edited = {
         ...source,
-        content: proseDocToBlocks(entry.state.doc, source.content),
+        content: proseDocToBlocks(entry.state.doc, source.content, document.package.styles),
       };
       endnotes ??= [...(document.package.endnotes ?? [])];
       const index = endnotes.findIndex((note) => note.id === noteId);

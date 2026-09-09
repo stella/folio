@@ -76,6 +76,10 @@ import {
   COMPLEX_SCRIPT_RUN_PROPERTY_KEYS,
   TRACKED_CHANGE_PROVENANCE_VALUES,
 } from "../schema/marks";
+import {
+  RUN_FORMATTING_BOOLEAN_PROPERTIES,
+  RUN_FORMATTING_VALUE_PROPERTIES,
+} from "../runFormattingProvenance";
 
 export type ProseMirrorAttrIssue = {
   path: string;
@@ -952,7 +956,6 @@ export const readCharacterStyleMarkAttrs = (
   expectMarkType(mark, "characterStyle", issues);
 
   requiredString(attrs, "styleId", "characterStyle.attrs.styleId", issues);
-  optionalRecord(attrs, "_styleRPr", "characterStyle.attrs._styleRPr", issues);
 
   return attrsResult(attrs, issues);
 };
@@ -1220,6 +1223,38 @@ export const readRunFormattingOverrideMarkAttrs = (
     issues,
     COMPLEX_SCRIPT_RUN_PROPERTY_KEYS,
   );
+  optionalOneOfArray(
+    attrs,
+    "_authoredOn",
+    "runFormattingOverride.attrs._authoredOn",
+    issues,
+    RUN_FORMATTING_BOOLEAN_PROPERTIES,
+  );
+  optionalOneOfArray(
+    attrs,
+    "_authoredOff",
+    "runFormattingOverride.attrs._authoredOff",
+    issues,
+    RUN_FORMATTING_BOOLEAN_PROPERTIES,
+  );
+  optionalTextFormatting(
+    attrs,
+    "_authoredValues",
+    "runFormattingOverride.attrs._authoredValues",
+    issues,
+  );
+  const authoredValues = attrs["_authoredValues"];
+  if (isRecord(authoredValues)) {
+    const allowed = new Set<string>(RUN_FORMATTING_VALUE_PROPERTIES);
+    for (const property of Object.keys(authoredValues)) {
+      if (!allowed.has(property)) {
+        issues.push({
+          path: `runFormattingOverride.attrs._authoredValues.${property}`,
+          message: "Expected a non-boolean authored formatting property.",
+        });
+      }
+    }
+  }
   const directFontProperties = attrs["directFontProperties"];
   if (
     Array.isArray(directFontProperties) &&
@@ -1246,6 +1281,28 @@ export const readRunFormattingOverrideMarkAttrs = (
         issues.push({
           path: `runFormattingOverride.attrs.${property}`,
           message: "Expected a property to be either present or explicitly absent, not both.",
+        });
+      }
+    }
+  }
+  for (const provenanceKey of ["_authoredOn", "_authoredOff"] as const) {
+    const properties = attrs[provenanceKey];
+    if (Array.isArray(properties) && new Set(properties).size !== properties.length) {
+      issues.push({
+        path: `runFormattingOverride.attrs.${provenanceKey}`,
+        message: "Expected unique authored formatting properties.",
+      });
+    }
+  }
+  const authoredOn = attrs["_authoredOn"];
+  const authoredOff = attrs["_authoredOff"];
+  if (Array.isArray(authoredOn) && Array.isArray(authoredOff)) {
+    const off = new Set(authoredOff);
+    for (const property of authoredOn) {
+      if (off.has(property)) {
+        issues.push({
+          path: "runFormattingOverride.attrs._authoredOff",
+          message: "Expected authored formatting to be either on or off, not both.",
         });
       }
     }

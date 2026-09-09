@@ -45,7 +45,10 @@ import { THEME_COLOR_TO_DRAWING_SCHEME } from "../drawingUtils";
 // oxlint-disable-next-line import/no-cycle -- OOXML model is mutually recursive: shape textboxes hold paragraphs, paragraphs hold runs
 import { serializeParagraph } from "./paragraphSerializer";
 import { serializeTable } from "./tableSerializer";
-import { serializeTrackedChangeAttributes } from "./trackedChangeAttributes";
+import {
+  getSingularRunPropertyChange,
+  serializeTrackedChangeAttributes,
+} from "./trackedChangeAttributes";
 import { escapeXml, intAttr } from "./xmlUtils";
 
 // ============================================================================
@@ -390,7 +393,7 @@ export function serializeTextFormatting(formatting: TextFormatting | undefined):
   }
 
   // Effect
-  if (formatting.effect && formatting.effect !== "none") {
+  if (formatting.effect) {
     parts.push(`<w:effect w:val="${formatting.effect}"/>`);
   }
 
@@ -466,7 +469,8 @@ function serializeRunProperties(
 ): string {
   const currentRPrXml = serializeTextFormatting(formatting);
   const currentInner = currentRPrXml ? extractRPrInner(currentRPrXml) : "";
-  const propertyChangeXml = (propertyChanges ?? []).map(serializeRunPropertyChange).join("");
+  const propertyChange = getSingularRunPropertyChange(propertyChanges);
+  const propertyChangeXml = propertyChange ? serializeRunPropertyChange(propertyChange) : "";
   const combined = `${currentInner}${propertyChangeXml}`;
 
   if (!combined) {

@@ -1,10 +1,29 @@
 import { normalizeRevisionId } from "@stll/docx-core/model";
+import { panic } from "better-result";
 
-import type { PropertyChangeInfo, TrackedChangeInfo } from "../../types/document";
+import type {
+  PropertyChangeInfo,
+  RunPropertyChange,
+  TrackedChangeInfo,
+} from "../../types/document";
 import { DATE_UTC_ATTRIBUTE } from "../trackedChangeInfo";
 import { escapeXml } from "./xmlUtils";
 
 type SerializableTrackedChangeInfo = TrackedChangeInfo | PropertyChangeInfo;
+
+/** Enforces the singular `w:rPrChange` child in a run-property container. */
+export const getSingularRunPropertyChange = (
+  propertyChanges: readonly RunPropertyChange[] | undefined,
+): RunPropertyChange | undefined => {
+  const propertyChangeCount = propertyChanges?.length ?? 0;
+  if (propertyChangeCount > 1) {
+    panic("A run-property container cannot serialize more than one w:rPrChange", {
+      elementName: "w:rPrChange",
+      propertyChangeCount,
+    });
+  }
+  return propertyChanges?.at(0);
+};
 
 /** Normalized, unescaped attributes in schema order for an XML element or string serializer. */
 export const trackedChangeAttributeEntries = (

@@ -314,7 +314,7 @@ describe("toFlowBlocks style cascade", () => {
 
     const proseDoc = toProseDoc(makeDoc(paragraph, styles), { styles });
     const clonedProseDoc = schema.nodeFromJSON(proseDoc.toJSON());
-    const blocks = toFlowBlocks(clonedProseDoc, {});
+    const blocks = toFlowBlocks(clonedProseDoc, { styles });
 
     expect(firstRun(blocks)).toMatchObject({
       bold: false,
@@ -370,7 +370,7 @@ describe("toFlowBlocks style cascade", () => {
 
       const proseDoc = toProseDoc(makeDoc(paragraph, styles), { styles });
       const clonedProseDoc = schema.nodeFromJSON(proseDoc.toJSON());
-      const run = firstRun(toFlowBlocks(clonedProseDoc, {}));
+      const run = firstRun(toFlowBlocks(clonedProseDoc, { styles }));
 
       expect(run).toMatchObject({
         bold: true,

@@ -1,7 +1,7 @@
 import type { TextFormatting } from "../../types/document";
 import { mergeTextFormatting, STYLE_TOGGLE_KEYS } from "../../utils/textFormattingMerge";
 
-type StyleToggleKey = (typeof STYLE_TOGGLE_KEYS)[number];
+export type StyleToggleKey = (typeof STYLE_TOGGLE_KEYS)[number];
 
 type ToggleState = {
   value: boolean;
@@ -28,6 +28,39 @@ type StyleToggleLevel =
 type StyleToggleCascadeOptions = {
   /** Existing ordinary-property merge whose toggle fields this cascade replaces. */
   ordinaryFormatting: TextFormatting | undefined;
+};
+
+type CascadeStyleFromResolvedBaseOptions = {
+  baseFormatting: TextFormatting | undefined;
+  defaultsActiveProperties: readonly StyleToggleKey[] | undefined;
+  styleFormatting: TextFormatting | undefined;
+};
+
+/** Continue a style cascade from a compact resolved paragraph snapshot. */
+export const cascadeStyleFromResolvedBase = ({
+  baseFormatting,
+  defaultsActiveProperties,
+  styleFormatting,
+}: CascadeStyleFromResolvedBaseOptions): TextFormatting | undefined => {
+  const defaultsActive = new Set(defaultsActiveProperties);
+  const toggleStates = new Map<StyleToggleKey, ToggleState>();
+  for (const key of STYLE_TOGGLE_KEYS) {
+    const value = baseFormatting?.[key];
+    if (value !== undefined) {
+      toggleStates.set(key, { value, defaultsActive: defaultsActive.has(key) });
+    }
+  }
+  return cascadeStyleTextFormatting([
+    {
+      cascade: {
+        formatting: baseFormatting,
+        toggleStates,
+        type: "styleToggleCascade",
+      },
+      type: "carried",
+    },
+    { formatting: styleFormatting, type: "style" },
+  ]).formatting;
 };
 
 /**

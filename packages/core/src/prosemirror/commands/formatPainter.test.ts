@@ -104,11 +104,8 @@ describe("captureFormatMarks", () => {
     expect(override?.attrs["rtl"]).toBeNull();
   });
 
-  test("resolves paragraph defaults through an inline content control", () => {
-    const characterStyle = mark("characterStyle", {
-      styleId: "ComplexToggle",
-      _styleRPr: { boldCs: true },
-    });
+  test("does not synthesize a complex-script override through an inline content control", () => {
+    const characterStyle = mark("characterStyle", { styleId: "ComplexToggle" });
     const state = EditorState.create({
       schema,
       doc: schema.node("doc", null, [
@@ -120,7 +117,8 @@ describe("captureFormatMarks", () => {
 
     const captured = captureFormatMarks(select(state, 2, 8));
 
-    expect(findMark(captured, "runFormattingOverride")?.attrs["boldCs"]).toBe(false);
+    expect(findMark(captured, "characterStyle")?.attrs["styleId"]).toBe("ComplexToggle");
+    expect(findMark(captured, "runFormattingOverride")).toBeUndefined();
   });
 });
 

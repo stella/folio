@@ -13,6 +13,7 @@ import type { Transaction } from "prosemirror-state";
 import type {
   Document,
   Paragraph,
+  StyleDefinitions,
   Table,
   TableCellPropertyChange,
   TablePropertyChange,
@@ -20,6 +21,7 @@ import type {
 } from "../../types/document";
 import { fromProseDoc } from "../conversion/fromProseDoc";
 import { toProseDoc } from "../conversion/toProseDoc";
+import { createDocumentStylesPlugin } from "../plugins/documentStyles";
 import { acceptChange, rejectAIEditRevision, rejectChange } from "./comments";
 
 const CHANGE_INFO = { id: 42, author: "Reviewer", date: "2026-05-15T12:00:00Z" };
@@ -36,6 +38,15 @@ const makeDocument = (content: (Paragraph | Table)[]): Document =>
 
 const makeState = (content: (Paragraph | Table)[]): EditorState =>
   EditorState.create({ doc: toProseDoc(makeDocument(content)) });
+
+const makeStyledState = (paragraph: Paragraph, styles: StyleDefinitions): EditorState => {
+  const document = makeDocument([paragraph]);
+  document.package.styles = styles;
+  return EditorState.create({
+    doc: toProseDoc(document),
+    plugins: [createDocumentStylesPlugin(styles)],
+  });
+};
 
 const dispatcher = (state: EditorState) => {
   const view = {
@@ -113,6 +124,42 @@ describe("pPrChange accept/reject (real schema)", () => {
     expect(rejectChange(0, view.state.doc.content.size)(view.state, view.dispatch)).toBe(true);
 
     expect(view.state.doc.eq(before)).toBe(true);
+  });
+
+  test("reject recomputes inherited run defaults from the restored paragraph style", () => {
+    const styles = {
+      styles: [
+        { type: "paragraph", styleId: "Source", rPr: { bold: true } },
+        { type: "paragraph", styleId: "Target", rPr: { italic: true } },
+      ],
+    } as const satisfies StyleDefinitions;
+    const view = dispatcher(
+      makeStyledState(
+        {
+          type: "paragraph",
+          formatting: { styleId: "Target" },
+          propertyChanges: [
+            {
+              type: "paragraphPropertyChange",
+              info: CHANGE_INFO,
+              previousFormatting: { styleId: "Source" },
+            },
+          ],
+          content: paragraphText("body"),
+        },
+        styles,
+      ),
+    );
+    expect(view.state.doc.child(0).attrs["defaultTextFormatting"]).toMatchObject({
+      italic: true,
+    });
+
+    expect(rejectChange(0, view.state.doc.content.size)(view.state, view.dispatch)).toBe(true);
+
+    const attrs = view.state.doc.child(0).attrs;
+    expect(attrs["styleId"]).toBe("Source");
+    expect(attrs["defaultTextFormatting"]).toMatchObject({ bold: true });
+    expect(attrs["defaultTextFormatting"]).not.toMatchObject({ italic: true });
   });
 
   const REJECTION_ORDERS = [

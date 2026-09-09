@@ -22,6 +22,7 @@ import {
   withDirectParagraphSpacing,
 } from "../prosemirror/paragraphSpacing";
 import { getDocumentStyleResolver } from "../prosemirror/plugins/documentStyles";
+import { paragraphRunStyleContextAt } from "../prosemirror/runStyleFormatting";
 import type { ParagraphPropertyChangeAttrs } from "../prosemirror/schema/nodes";
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
 import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
@@ -839,6 +840,7 @@ type ApplyTrackedInlineFormattingOptions = ApplyInlineFormattingOptions & {
   initials?: string | undefined;
   /** Non-null stamps the produced `runPropertyChange` mark as a suggestion. */
   suggestionId?: string | null;
+  styleResolver?: ReturnType<typeof getDocumentStyleResolver>;
 };
 
 type ClearReplacementBackgroundOptions = {
@@ -852,6 +854,7 @@ type ClearReplacementBackgroundOptions = {
   date: string;
   initials?: string | undefined;
   suggestionId?: string | null;
+  styleResolver?: ReturnType<typeof getDocumentStyleResolver>;
 };
 
 const clearReplacementBackground = ({
@@ -865,6 +868,7 @@ const clearReplacementBackground = ({
   date,
   initials,
   suggestionId = null,
+  styleResolver,
 }: ClearReplacementBackgroundOptions): Transaction => {
   const hasBackground = [schema.marks["highlight"], schema.marks["runShading"]].some(
     (markType) => markType !== undefined && tr.doc.rangeHasMark(from, to, markType),
@@ -893,6 +897,7 @@ const clearReplacementBackground = ({
     date,
     initials,
     suggestionId,
+    ...(styleResolver !== undefined ? { styleResolver } : {}),
   });
 };
 
@@ -908,6 +913,7 @@ const applyTrackedInlineFormatting = ({
   date,
   initials,
   suggestionId = null,
+  styleResolver,
 }: ApplyTrackedInlineFormattingOptions): Transaction => {
   const propertyChangeType = schema.marks["runPropertyChange"];
   if (!propertyChangeType) {
@@ -930,7 +936,14 @@ const applyTrackedInlineFormatting = ({
     }
     const segmentFrom = Math.max(from, pos);
     const segmentTo = Math.min(to, pos + node.nodeSize);
-    const previousFormatting = marksToTextFormatting(node.marks);
+    const styleContext = paragraphRunStyleContextAt(doc, segmentFrom, styleResolver);
+    const previousFormatting = marksToTextFormatting(node.marks, {
+      baseParagraphFormatting: styleContext.baseParagraphFormatting,
+      inheritedFormatting: styleContext.paragraphFormatting,
+      paragraphMarkFormatting: styleContext.paragraphMarkFormatting,
+      paragraphMarkPrecedesStyle: styleContext.paragraphMarkPrecedesStyle,
+      ...(styleResolver !== undefined ? { styleResolver } : {}),
+    });
     const existingMark = node.marks.find((mark) => mark.type === propertyChangeType);
     const existingChanges = existingMark
       ? expectRunPropertyChangeMarkAttrs(existingMark).changes
@@ -2112,6 +2125,7 @@ const applyFolioAIEditOperationsInternal = ({
           date,
           initials,
           suggestionId,
+          styleResolver,
         });
         const clearedBackground = tr.steps.length > stepsBeforeBackgroundClear;
         tr = applyTextReplacement({
@@ -2157,6 +2171,7 @@ const applyFolioAIEditOperationsInternal = ({
             date,
             initials,
             suggestionId,
+            styleResolver,
           });
           appliedRevisionIds = [revisionId];
           break;
@@ -2234,6 +2249,7 @@ const applyFolioAIEditOperationsInternal = ({
             date,
             initials,
             suggestionId,
+            styleResolver,
           });
           clearedBackground = tr.steps.length > stepsBeforeBackgroundClear;
           tr = applyTextReplacement({

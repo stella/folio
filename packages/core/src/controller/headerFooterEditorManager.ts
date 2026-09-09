@@ -298,7 +298,7 @@ export const createHeaderFooterEditorManager = (
         }
         const updated: HeaderFooter = {
           ...existing,
-          content: proseDocToBlocks(view.state.doc, existing.content),
+          content: proseDocToBlocks(view.state.doc, existing.content, document.package.styles),
         };
         clearHeaderFooterVerbatimXml(updated);
         if (kind === "header") {

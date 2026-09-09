@@ -13,6 +13,7 @@ import {
   readMathAttrs,
   mergeImageAttrs,
   readParagraphAttrs,
+  readRunFormattingOverrideMarkAttrs,
   readSdtAttrs,
   readShapeAttrs,
   readTextBoxAttrs,
@@ -794,6 +795,21 @@ describe("ProseMirror attr readers", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.issues.map((issue) => issue.path)).toContain("insertion.attrs.provenance");
+    }
+  });
+
+  test("accepts a current complex-script clear against an imported direct baseline", () => {
+    const result = readRunFormattingOverrideMarkAttrs(
+      schema.marks.runFormattingOverride.create({
+        _authoredOn: ["boldCs"],
+        complexScriptPropertyAbsences: ["boldCs"],
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value._authoredOn).toEqual(["boldCs"]);
+      expect(result.value.complexScriptPropertyAbsences).toEqual(["boldCs"]);
     }
   });
 });

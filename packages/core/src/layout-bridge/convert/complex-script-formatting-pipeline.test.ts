@@ -145,18 +145,21 @@ describe("complex-script formatting pipeline", () => {
   });
 
   test.each([
-    ["bold", [schema.mark("bold")]],
-    ["italic", [schema.mark("italic")]],
-    ["italic and strike", [schema.mark("italic"), schema.mark("strike")]],
-    ["font size", [schema.mark("fontSize", { size: 24 })]],
-  ])("does not synthesize a CS override for ordinary %s marks", (_label, marks) => {
-    const source = schema.node("doc", null, [
-      schema.node("paragraph", null, [schema.text("!", marks)]),
-    ]);
-    const roundTripped = toProseDoc(fromProseDoc(source));
-    const text = roundTripped.firstChild?.firstChild;
+    ["bold", [schema.mark("bold")], "boldCs"],
+    ["italic", [schema.mark("italic")], "italicCs"],
+    ["italic and strike", [schema.mark("italic"), schema.mark("strike")], "italicCs"],
+    ["font size", [schema.mark("fontSize", { size: 24 })], "fontSizeCs"],
+  ])(
+    "does not synthesize complex-script provenance for ordinary %s marks",
+    (_label, marks, complexProperty) => {
+      const source = schema.node("doc", null, [
+        schema.node("paragraph", null, [schema.text("!", marks)]),
+      ]);
+      const roundTripped = toProseDoc(fromProseDoc(source));
+      const text = roundTripped.firstChild?.firstChild;
 
-    const override = text?.marks.find((mark) => mark.type.name === "runFormattingOverride");
-    expect(override?.attrs["fontSizeCs"]).toBeFalsy();
-  });
+      const override = text?.marks.find((mark) => mark.type.name === "runFormattingOverride");
+      expect(override?.attrs[complexProperty] ?? undefined).toBeUndefined();
+    },
+  );
 });

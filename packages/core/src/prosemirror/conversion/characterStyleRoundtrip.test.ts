@@ -3,14 +3,17 @@
  *
  * A run's character style reference must survive load → edit → save: the
  * style's formatting is resolved through the style chain for rendering
- * (flattened into regular marks), while a `characterStyle` mark carries the
- * reference plus a snapshot of the style's own properties so the serializer
- * re-emits `w:rStyle` instead of baking the style formatting into the run.
+ * (flattened into regular marks), while a compact `characterStyle` mark carries
+ * the reference so the serializer re-emits `w:rStyle`.
  */
 
 import { describe, expect, test } from "bun:test";
+import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 
+import { createFolioAIEditSnapshot } from "../../ai-edits/snapshot";
+import { parseDocx } from "../../docx/parser";
+import { createDocx } from "../../docx/rezip";
 import { toFlowBlocks } from "../../layout-bridge/convert/toFlowBlocks";
 import type { Document, Paragraph, Run, StyleDefinitions } from "../../types/document";
 import { schema } from "../schema";
@@ -97,6 +100,14 @@ const stylesWithDefaultCharacter: StyleDefinitions = {
   ),
 };
 
+const withStyles = (document: Document, styleDefinitions: StyleDefinitions = styles): Document => {
+  document.package.styles = styleDefinitions;
+  return document;
+};
+
+const reopenThroughDocx = async (document: Document): Promise<Document> =>
+  parseDocx(await createDocx(document), { detectVariables: false, preloadFonts: false });
+
 const firstParagraph = (document: Document): Paragraph => {
   const block = document.package.document.content.at(0);
   if (block?.type !== "paragraph") {
@@ -119,6 +130,26 @@ const findRun = (paragraph: Paragraph, text: string): Run => {
     }
   }
   throw new Error(`Expected run with text ${text}`);
+};
+
+const findTextNode = (doc: PMNode, text: string) => {
+  let found:
+    | {
+        from: number;
+        node: PMNode;
+        to: number;
+      }
+    | undefined;
+  doc.descendants((node, pos) => {
+    if (!found && node.isText && node.text === text) {
+      found = { from: pos, node, to: pos + node.nodeSize };
+    }
+    return found === undefined;
+  });
+  if (!found) {
+    throw new Error(`Expected PM text node ${text}`);
+  }
+  return found;
 };
 
 const markNames = (document: Document, text: string): string[] => {
@@ -148,6 +179,77 @@ describe("characterStyle mark schema registration", () => {
     expect(attrs).not.toContain("_directRPr");
     expect(attrs).not.toContain("_sourceStyleId");
   });
+});
+
+describe("resolver-less snapshots", () => {
+  test("keep effective character-style visuals without presenting them as direct formatting", () => {
+    const styleDefinitions: StyleDefinitions = {
+      styles: [
+        {
+          styleId: "SnapshotCharacter",
+          type: "character",
+          rPr: {
+            bold: true,
+            boldCs: true,
+            fontSize: 30,
+            fontSizeCs: 30,
+            color: { rgb: "FF0000" },
+          },
+        },
+      ],
+    };
+    const document = withStyles(
+      wrap(runText("Styled", { styleId: "SnapshotCharacter" })),
+      styleDefinitions,
+    );
+
+    const block = createFolioAIEditSnapshot(
+      toProseDoc(document, { styles: styleDefinitions }),
+    ).blocks.at(0);
+
+    expect(block?.previewRuns).toEqual([
+      {
+        text: "Styled",
+        bold: true,
+        fontSizePt: 15,
+        color: "#FF0000",
+      },
+    ]);
+  });
+
+  test.each([
+    {
+      label: "ordinary visual formatting",
+      marks: [schema.mark("characterStyle", { styleId: "Character" }), schema.mark("bold")],
+      expected: { bold: true, styleId: "Character" },
+    },
+    {
+      label: "an independent complex-script override",
+      marks: [
+        schema.mark("characterStyle", { styleId: "Character" }),
+        schema.mark("bold"),
+        schema.mark("runFormattingOverride", { boldCs: false }),
+      ],
+      expected: { bold: true, boldCs: false, styleId: "Character" },
+    },
+    {
+      label: "explicit ordinary off and complex-script on",
+      marks: [
+        schema.mark("characterStyle", { styleId: "Character" }),
+        schema.mark("runFormattingOverride", { bold: false, boldCs: true }),
+      ],
+      expected: { bold: false, boldCs: true, styleId: "Character" },
+    },
+  ])(
+    "conservatively saves $label on a character-styled run without a resolver",
+    ({ marks, expected }) => {
+      const pmDoc = schema.node("doc", null, [
+        schema.node("paragraph", null, [schema.text("Styled", marks)]),
+      ]);
+
+      expect(findRun(firstParagraph(fromProseDoc(pmDoc)), "Styled").formatting).toEqual(expected);
+    },
+  );
 });
 
 describe("character style rendering resolution", () => {
@@ -199,7 +301,7 @@ describe("character style rendering resolution", () => {
 
 describe("character style round-trip", () => {
   test("a pure style reference round-trips without baked direct formatting", () => {
-    const input = wrap(runText("Term", { styleId: "DefinedTerm" }));
+    const input = withStyles(wrap(runText("Term", { styleId: "DefinedTerm" })));
     const pmDoc = toProseDoc(input, { styles });
     const out = fromProseDoc(pmDoc, input);
     const run = findRun(firstParagraph(out), "Term");
@@ -207,7 +309,9 @@ describe("character style round-trip", () => {
   });
 
   test("direct overrides survive next to the style reference", () => {
-    const input = wrap(runText("Term", { styleId: "DefinedTerm", color: { rgb: "FF0000" } }));
+    const input = withStyles(
+      wrap(runText("Term", { styleId: "DefinedTerm", color: { rgb: "FF0000" } })),
+    );
     const pmDoc = toProseDoc(input, { styles });
     const out = fromProseDoc(pmDoc, input);
     const run = findRun(firstParagraph(out), "Term");
@@ -217,8 +321,41 @@ describe("character style round-trip", () => {
     expect(run.formatting?.italic).toBeUndefined();
   });
 
+  test("preserves an authored underline equal to its character style across DOCX reopen", async () => {
+    const underline = { style: "double", color: { rgb: "FF0000" } } as const;
+    const styleDefinitions: StyleDefinitions = {
+      styles: [
+        {
+          styleId: "DoubleUnderline",
+          type: "character",
+          rPr: { underline },
+        },
+      ],
+    };
+    const input = withStyles(
+      wrap(runText("Term", { styleId: "DoubleUnderline", underline })),
+      styleDefinitions,
+    );
+
+    const once = await reopenThroughDocx(
+      fromProseDoc(toProseDoc(input, { styles: styleDefinitions }), input),
+    );
+    const twice = await reopenThroughDocx(
+      fromProseDoc(toProseDoc(once, { styles: once.package.styles }), once),
+    );
+
+    expect(findRun(firstParagraph(once), "Term").formatting).toEqual({
+      styleId: "DoubleUnderline",
+      underline,
+    });
+    expect(findRun(firstParagraph(twice), "Term").formatting).toEqual({
+      styleId: "DoubleUnderline",
+      underline,
+    });
+  });
+
   test("round-trip is stable across a second load/save cycle", () => {
-    const input = wrap(runText("Term", { styleId: "DefinedTerm" }));
+    const input = withStyles(wrap(runText("Term", { styleId: "DefinedTerm" })));
     const once = fromProseDoc(toProseDoc(input, { styles }), input);
     const twice = fromProseDoc(toProseDoc(once, { styles }), once);
     expect(findRun(firstParagraph(twice), "Term").formatting).toEqual({
@@ -227,11 +364,13 @@ describe("character style round-trip", () => {
   });
 
   test("matching paragraph and explicit character toggles preserve only the style reference", () => {
-    const input = wrapParagraph({
-      type: "paragraph",
-      formatting: { styleId: "ToggleHeading" },
-      content: [runText("Term", { styleId: "StrongCharacter" })],
-    });
+    const input = withStyles(
+      wrapParagraph({
+        type: "paragraph",
+        formatting: { styleId: "ToggleHeading" },
+        content: [runText("Term", { styleId: "StrongCharacter" })],
+      }),
+    );
 
     const proseDoc = toProseDoc(input, { styles });
     const clonedProseDoc = schema.nodeFromJSON(proseDoc.toJSON());
@@ -243,7 +382,7 @@ describe("character style round-trip", () => {
   });
 
   test("independent complex-script style toggles survive a JSON clone without direct formatting", () => {
-    const input = wrap(runText("Term", { styleId: "LatinEmphasis" }));
+    const input = withStyles(wrap(runText("Term", { styleId: "LatinEmphasis" })));
 
     const proseDoc = toProseDoc(input, { styles });
     const clonedProseDoc = schema.nodeFromJSON(proseDoc.toJSON());
@@ -298,11 +437,14 @@ describe("character style round-trip", () => {
                       italic: direct,
                       italicCs: direct,
                     };
-              const input = wrapParagraph({
-                type: "paragraph",
-                formatting: { styleId: "P" },
-                content: [runText("Term", directFormatting)],
-              });
+              const input = withStyles(
+                wrapParagraph({
+                  type: "paragraph",
+                  formatting: { styleId: "P" },
+                  content: [runText("Term", directFormatting)],
+                }),
+                matrixStyles,
+              );
 
               const proseDoc = toProseDoc(input, { styles: matrixStyles });
               const clonedProseDoc = schema.nodeFromJSON(proseDoc.toJSON());
@@ -343,19 +485,22 @@ describe("character style round-trip", () => {
         },
       ],
     };
-    const input = wrapParagraph({
-      type: "paragraph",
-      formatting: { styleId: "P" },
-      content: [
-        runText("Term", {
-          styleId: "C",
-          bold: true,
-          boldCs: true,
-          italic: true,
-          italicCs: true,
-        }),
-      ],
-    });
+    const input = withStyles(
+      wrapParagraph({
+        type: "paragraph",
+        formatting: { styleId: "P" },
+        content: [
+          runText("Term", {
+            styleId: "C",
+            bold: true,
+            boldCs: true,
+            italic: true,
+            italicCs: true,
+          }),
+        ],
+      }),
+      initialStyles,
+    );
     const clonedProseDoc = schema.nodeFromJSON(
       toProseDoc(input, { styles: initialStyles }).toJSON(),
     );
@@ -400,11 +545,13 @@ describe("character style round-trip", () => {
   });
 
   test("an authored direct off survives when the style cascade is already off", () => {
-    const input = wrapParagraph({
-      type: "paragraph",
-      formatting: { styleId: "ToggleHeading" },
-      content: [runText("Term", { styleId: "StrongCharacter", bold: false })],
-    });
+    const input = withStyles(
+      wrapParagraph({
+        type: "paragraph",
+        formatting: { styleId: "ToggleHeading" },
+        content: [runText("Term", { styleId: "StrongCharacter", bold: false })],
+      }),
+    );
 
     const proseDoc = toProseDoc(input, { styles });
     const clonedProseDoc = schema.nodeFromJSON(proseDoc.toJSON());
@@ -417,11 +564,14 @@ describe("character style round-trip", () => {
   });
 
   test("matching paragraph and default character toggles add no direct formatting", () => {
-    const input = wrapParagraph({
-      type: "paragraph",
-      formatting: { styleId: "ToggleHeading" },
-      content: [runText("Term")],
-    });
+    const input = withStyles(
+      wrapParagraph({
+        type: "paragraph",
+        formatting: { styleId: "ToggleHeading" },
+        content: [runText("Term")],
+      }),
+      stylesWithDefaultCharacter,
+    );
 
     const proseDoc = toProseDoc(input, { styles: stylesWithDefaultCharacter });
     const clonedProseDoc = schema.nodeFromJSON(proseDoc.toJSON());
@@ -431,11 +581,13 @@ describe("character style round-trip", () => {
   });
 
   test("a later paragraph-style change is not masked by a synthesized direct off", () => {
-    const input = wrapParagraph({
-      type: "paragraph",
-      formatting: { styleId: "ToggleHeading" },
-      content: [runText("Term", { styleId: "StrongCharacter" })],
-    });
+    const input = withStyles(
+      wrapParagraph({
+        type: "paragraph",
+        formatting: { styleId: "ToggleHeading" },
+        content: [runText("Term", { styleId: "StrongCharacter" })],
+      }),
+    );
     const saved = fromProseDoc(toProseDoc(input, { styles }), input);
     const changedStyles: StyleDefinitions = {
       styles: styles.styles.map((style) =>
@@ -455,11 +607,14 @@ describe("character style round-trip", () => {
   });
 
   test("a later paragraph-style change still reaches the implicit default character style", () => {
-    const input = wrapParagraph({
-      type: "paragraph",
-      formatting: { styleId: "ToggleHeading" },
-      content: [runText("Term")],
-    });
+    const input = withStyles(
+      wrapParagraph({
+        type: "paragraph",
+        formatting: { styleId: "ToggleHeading" },
+        content: [runText("Term")],
+      }),
+      stylesWithDefaultCharacter,
+    );
     const saved = fromProseDoc(toProseDoc(input, { styles: stylesWithDefaultCharacter }), input);
     const changedStyles: StyleDefinitions = {
       styles: stylesWithDefaultCharacter.styles.map((style) =>
@@ -507,7 +662,7 @@ describe("character style round-trip", () => {
     expect(findRun(firstParagraph(saved), "Term 0").formatting).toBeUndefined();
   });
 
-  test("painting an effective off across paragraph styles saves a direct off", () => {
+  test("painting an effective off across paragraph styles saves a direct off", async () => {
     const input: Document = {
       package: {
         document: {
@@ -545,6 +700,148 @@ describe("character style round-trip", () => {
       styleId: "StrongCharacter",
       bold: false,
     });
+
+    const reopened = await reopenThroughDocx(saved);
+    const reopenedTarget = reopened.package.document.content.at(1);
+    if (reopenedTarget?.type !== "paragraph") {
+      throw new Error("Expected reopened target paragraph");
+    }
+    expect(findRun(reopenedTarget, "To").formatting).toEqual({
+      styleId: "StrongCharacter",
+      bold: false,
+    });
+  });
+
+  test("painting an effective on recomputes the character style in the target paragraph", async () => {
+    const input: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              formatting: { styleId: "PlainParagraph" },
+              content: [runText("From", { styleId: "StrongCharacter" })],
+            },
+            {
+              type: "paragraph",
+              formatting: { styleId: "ToggleHeading" },
+              content: [runText("To")],
+            },
+          ],
+        },
+        styles,
+      },
+    };
+    let state = EditorState.create({ doc: toProseDoc(input, { styles }) });
+    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 1, 5)));
+    const captured = captureFormatMarks(state);
+    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 7, 9)));
+    applyFormatMarks(captured)(state, (transaction) => {
+      state = state.apply(transaction);
+    });
+
+    const saved = fromProseDoc(state.doc, input);
+    const target = saved.package.document.content.at(1);
+    if (target?.type !== "paragraph") {
+      throw new Error("Expected target paragraph");
+    }
+    expect(findRun(target, "To").formatting).toEqual({
+      styleId: "StrongCharacter",
+      bold: true,
+    });
+
+    const reopened = await reopenThroughDocx(saved);
+    const reopenedTarget = reopened.package.document.content.at(1);
+    if (reopenedTarget?.type !== "paragraph") {
+      throw new Error("Expected reopened target paragraph");
+    }
+    expect(findRun(reopenedTarget, "To").formatting).toEqual({
+      styleId: "StrongCharacter",
+      bold: true,
+    });
+  });
+
+  test.each([
+    {
+      label: "plain into bold",
+      sourceStyleId: "PlainParagraph",
+      targetStyleId: "ToggleHeading",
+      expectedFormatting: { bold: false },
+    },
+    {
+      label: "bold into plain",
+      sourceStyleId: "ToggleHeading",
+      targetStyleId: "PlainParagraph",
+      expectedFormatting: { bold: true },
+    },
+  ] as const)(
+    "copying a visually $label paragraph preserves appearance after save and reopen",
+    async ({ sourceStyleId, targetStyleId, expectedFormatting }) => {
+      const input: Document = {
+        package: {
+          document: {
+            content: [
+              {
+                type: "paragraph",
+                formatting: { styleId: sourceStyleId },
+                content: [runText("Source")],
+              },
+              {
+                type: "paragraph",
+                formatting: { styleId: targetStyleId },
+                content: [runText("Target")],
+              },
+            ],
+          },
+          styles,
+        },
+      };
+      const state = EditorState.create({ doc: toProseDoc(input, { styles }) });
+      const source = findTextNode(state.doc, "Source");
+      const target = findTextNode(state.doc, "Target");
+      const copied = state.apply(
+        state.tr.replaceWith(
+          target.from,
+          target.to,
+          schema.text(source.node.text ?? "", source.node.marks),
+        ),
+      );
+
+      const saved = fromProseDoc(copied.doc, input);
+      const targetParagraph = saved.package.document.content.at(1);
+      if (targetParagraph?.type !== "paragraph") {
+        throw new Error("Expected target paragraph");
+      }
+      expect(findRun(targetParagraph, "Source").formatting).toEqual(expectedFormatting);
+
+      const reopened = await reopenThroughDocx(saved);
+      const reopenedTarget = reopened.package.document.content.at(1);
+      if (reopenedTarget?.type !== "paragraph") {
+        throw new Error("Expected reopened target paragraph");
+      }
+      expect(findRun(reopenedTarget, "Source").formatting).toEqual(expectedFormatting);
+    },
+  );
+
+  test("removing the only inherited toggle mark saves an explicit off", async () => {
+    const input = wrapParagraph({
+      type: "paragraph",
+      formatting: { styleId: "ToggleHeading" },
+      content: [runText("Term")],
+    });
+    const state = EditorState.create({ doc: toProseDoc(input, { styles }) });
+    const bold = schema.marks["bold"];
+    if (!bold) {
+      throw new Error("Expected bold mark type");
+    }
+    const term = findTextNode(state.doc, "Term");
+    const edited = state.apply(state.tr.removeMark(term.from, term.to, bold));
+
+    const saved = fromProseDoc(edited.doc, input);
+    expect(findRun(firstParagraph(saved), "Term").formatting).toEqual({ bold: false });
+
+    const reopened = await reopenThroughDocx(saved);
+    expect(findRun(firstParagraph(reopened), "Term").formatting).toEqual({ bold: false });
   });
 
   test("painting independent complex-script style toggles saves direct offs", () => {
@@ -581,11 +878,7 @@ describe("character style round-trip", () => {
       throw new Error("Expected target paragraph");
     }
 
-    expect(findRun(target, "To").formatting).toEqual({
-      styleId: "LatinEmphasis",
-      boldCs: false,
-      italicCs: false,
-    });
+    expect(findRun(target, "To").formatting).toEqual({ styleId: "LatinEmphasis" });
   });
 
   test("hyperlink child runs keep their character style", () => {
@@ -707,7 +1000,9 @@ describe("character style under editing", () => {
   });
 
   test("toggling off a style-provided italic emits an explicit negative override", () => {
-    const state = styledState();
+    const input = wrap(runText("Term", { styleId: "DefinedTerm" }));
+    input.package.styles = styles;
+    const state = EditorState.create({ doc: toProseDoc(input, { styles }) });
     const italic = schema.marks["italic"];
     if (!italic) {
       throw new Error("Expected italic mark type");
@@ -716,12 +1011,12 @@ describe("character style under editing", () => {
     // supplied, as the toolbar's italic toggle would.
     const tr = state.tr.removeMark(1, 5, italic);
     const edited = state.apply(tr);
-    const out = fromProseDoc(edited.doc, wrap());
+    const out = fromProseDoc(edited.doc, input);
     const run = findRun(firstParagraph(out), "Term");
     // The style reference survives, but the removed italic must serialize as
-    // an explicit negative so Word does not re-impose it from the style.
+    // an explicit negative so a consumer does not re-impose it from the style.
     expect(run.formatting?.styleId).toBe("DefinedTerm");
     expect(run.formatting?.italic).toBe(false);
-    expect(run.formatting?.italicCs).toBe(false);
+    expect(run.formatting?.italicCs).toBeUndefined();
   });
 });

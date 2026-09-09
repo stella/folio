@@ -12,6 +12,8 @@ import { describe, expect, test } from "bun:test";
 import { toFlowBlocks } from "../../layout-bridge/convert/toFlowBlocks";
 import type { FlowBlock, TextRun } from "../../layout-engine/types";
 import type { Document, Paragraph, Run, ShadingProperties } from "../../types/document";
+import { parseDocx } from "../../docx/parser";
+import { createDocx } from "../../docx/rezip";
 import { schema } from "../schema";
 import { fromProseDoc } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
@@ -68,12 +70,12 @@ describe("Issue #712 — run shading round-trips and renders", () => {
     expect(roundTripShading({ shading })?.fill?.rgb).toBe("FFFF00");
   });
 
-  test("the default `clear` pattern is dropped (renders solid, re-serializes to clear)", () => {
+  test("the default `clear` pattern remains authored while rendering as a solid fill", () => {
     const shading = { pattern: "clear" as const, fill: { rgb: "00B050" } };
     expect(renderedBackground({ shading })).toBe("#00B050");
     const out = roundTripShading({ shading });
     expect(out?.fill?.rgb).toBe("00B050");
-    expect(out?.pattern).toBeUndefined();
+    expect(out?.pattern).toBe("clear");
   });
 
   test("a non-clear pattern is carried for export fidelity", () => {
@@ -95,10 +97,10 @@ describe("Issue #712 — run shading round-trips and renders", () => {
 
   test("a solid pattern with a color but no fill renders and round-trips", () => {
     // `<w:shd w:val="solid" w:color="FF0000"/>` paints the color as a solid
-    // background; flatten it into the fill so it isn't dropped.
+    // background without changing which OOXML slot authored the value.
     const shading = { pattern: "solid" as const, color: { rgb: "FF0000" } };
     expect(renderedBackground({ shading })).toBe("#FF0000");
-    expect(roundTripShading({ shading })?.fill?.rgb).toBe("FF0000");
+    expect(roundTripShading({ shading })).toEqual(shading);
   });
 
   test("a solid pattern paints the color over the fill (color wins)", () => {
@@ -110,7 +112,7 @@ describe("Issue #712 — run shading round-trips and renders", () => {
       fill: { rgb: "00FF00" },
     };
     expect(renderedBackground({ shading })).toBe("#FF0000");
-    expect(roundTripShading({ shading })?.fill?.rgb).toBe("FF0000");
+    expect(roundTripShading({ shading })).toEqual(shading);
   });
 
   test("a theme-color fill round-trips (themeColor preserved)", () => {
@@ -141,12 +143,66 @@ describe("Issue #712 — run shading round-trips and renders", () => {
 
   test("an `auto` fill produces no shading background", () => {
     expect(renderedBackground({ shading: { fill: { auto: true } } })).toBe(undefined);
-    expect(roundTripShading({ shading: { fill: { auto: true } } })).toBeUndefined();
+    expect(roundTripShading({ shading: { fill: { auto: true } } })).toEqual({
+      fill: { auto: true },
+    });
   });
 
-  test("a fill-less shading (pattern only) produces no mark", () => {
-    expect(roundTripShading({ shading: { pattern: "pct25" } })).toBeUndefined();
+  test("a fill-less shading remains authored without producing a visible background", () => {
+    const formatting: Run["formatting"] = { shading: { pattern: "pct25" } };
+    expect(renderedBackground(formatting)).toBeUndefined();
+    expect(roundTripShading(formatting)).toEqual({ pattern: "pct25" });
   });
+
+  test.each([
+    {
+      authored: { pattern: "clear" as const, fill: { rgb: "00B050" } },
+      serialized: { pattern: "clear" as const, fill: { rgb: "00B050" } },
+    },
+    {
+      authored: { pattern: "solid" as const, color: { rgb: "FF0000" } },
+      serialized: { pattern: "solid" as const, color: { rgb: "FF0000" } },
+    },
+    {
+      authored: {
+        pattern: "solid" as const,
+        color: { rgb: "FF0000" },
+        fill: { rgb: "00FF00" },
+      },
+      serialized: {
+        pattern: "solid" as const,
+        color: { rgb: "FF0000" },
+        fill: { rgb: "00FF00" },
+      },
+    },
+    {
+      authored: { fill: { auto: true } },
+      // CT_Shd requires w:val, so the serializer supplies its canonical default.
+      serialized: { pattern: "clear" as const, fill: { auto: true } },
+    },
+    {
+      authored: { pattern: "pct25" as const },
+      serialized: { pattern: "pct25" as const },
+    },
+  ])(
+    "preserves an otherwise invisible authored shading shape through DOCX reopen",
+    async ({ authored, serialized }) => {
+      const input = wrap({ shading: authored });
+      const firstBuffer = await createDocx(fromProseDoc(toProseDoc(input), input));
+      const firstReopen = await parseDocx(firstBuffer, {
+        detectVariables: false,
+        preloadFonts: false,
+      });
+      expect(firstRunFormatting(firstReopen)?.shading).toEqual(serialized);
+
+      const secondBuffer = await createDocx(fromProseDoc(toProseDoc(firstReopen), firstReopen));
+      const secondReopen = await parseDocx(secondBuffer, {
+        detectVariables: false,
+        preloadFonts: false,
+      });
+      expect(firstRunFormatting(secondReopen)?.shading).toEqual(serialized);
+    },
+  );
 
   test("a run with no shading is unaffected", () => {
     expect(renderedBackground({ bold: true })).toBeUndefined();

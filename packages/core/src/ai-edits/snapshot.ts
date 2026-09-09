@@ -568,8 +568,11 @@ const getDirectPreviewRunStyle = (
   const markedStyle = getPreviewRunStyle(marks, {});
   const directStyle: PreviewRunStyle = {};
   const overrideMark = marks.find(({ type }) => type.name === "runFormattingOverride");
-  const hasFormattingProvenance =
-    overrideMark !== undefined || marks.some(({ type }) => type.name === "characterStyle");
+  const hasCharacterStyle = marks.some(({ type }) => type.name === "characterStyle");
+  if (hasCharacterStyle && overrideMark === undefined) {
+    return directStyle;
+  }
+  const hasFormattingProvenance = overrideMark !== undefined || hasCharacterStyle;
   const directFontProperties = overrideMark
     ? expectRunFormattingOverrideMarkAttrs(overrideMark).directFontProperties
     : undefined;
