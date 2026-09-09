@@ -13,8 +13,14 @@
 import { describe, expect, test } from "bun:test";
 import { type Node as PMNode, Schema } from "prosemirror-model";
 
+import type { RunStyleResolver } from "../prosemirror/runStyleFormatting";
+import { schema as folioSchema } from "../prosemirror/schema";
 import { resolveSequentialBlockAnchor } from "./blockRange";
-import { createFolioAIEditSnapshot, isFolioAIContentBlock } from "./snapshot";
+import {
+  createFolioAIEditSnapshot,
+  createFolioAIEditSnapshotWithStyleResolver,
+  isFolioAIContentBlock,
+} from "./snapshot";
 
 const schema = new Schema({
   nodes: {
@@ -187,6 +193,45 @@ describe("createFolioAIEditSnapshot", () => {
     );
 
     expect(createFolioAIEditSnapshot(doc).blocks).toHaveLength(480);
+  });
+
+  test("projects carrierless run marks without consulting the style package", () => {
+    const refuseStyleResolution = (): never => {
+      throw new Error("Carrierless run marks already own their effective formatting");
+    };
+    const styleResolver = {
+      getDefaultCharacterStyle: refuseStyleResolution,
+      getDocDefaults: refuseStyleResolution,
+      getRunStyleOwnProperties: refuseStyleResolution,
+      resolveParagraphStyle: refuseStyleResolution,
+    } satisfies RunStyleResolver;
+    const inheritedMarks = [folioSchema.mark("bold"), folioSchema.mark("fontSize", { size: 22 })];
+    const doc = folioSchema.node("doc", null, [
+      folioSchema.node(
+        "paragraph",
+        {
+          paraId: "A1000001",
+          defaultTextFormatting: { bold: true, fontSize: 22 },
+        },
+        [
+          folioSchema.text("Inherited", inheritedMarks),
+          folioSchema.text(" direct", [...inheritedMarks, folioSchema.mark("italic")]),
+        ],
+      ),
+    ]);
+
+    expect(
+      createFolioAIEditSnapshotWithStyleResolver(doc, styleResolver).blocks.at(0)?.previewRuns,
+    ).toEqual([
+      { text: "Inherited", bold: true, fontSizePt: 11 },
+      {
+        text: " direct",
+        bold: true,
+        italic: true,
+        fontSizePt: 11,
+        directFormatting: { italic: true },
+      },
+    ]);
   });
 
   test("the seq- ids are the same whether or not blank paragraphs are there", () => {

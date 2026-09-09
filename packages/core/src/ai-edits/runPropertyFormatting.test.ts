@@ -223,6 +223,34 @@ const SNAPSHOT_FORMATTING_PROVENANCE_CASES = [
       directFormatting: { italic: false },
     },
   },
+  {
+    label: "character style direct value resets",
+    formatting: {
+      styleId: "SnapshotCharacter",
+      underline: { style: "none" },
+      strike: false,
+      color: { auto: true },
+    },
+    expected: {
+      italic: true,
+      fontFamily: "Georgia",
+      fontSizePt: 13,
+      directFormatting: { underline: false, strike: false },
+    },
+  },
+  {
+    label: "character style double strike survives single strike reset",
+    formatting: { styleId: "SnapshotCharacter", strike: false, doubleStrike: true },
+    expected: {
+      italic: true,
+      underline: true,
+      strike: true,
+      fontFamily: "Georgia",
+      fontSizePt: 13,
+      color: "#C00000",
+      directFormatting: { strike: false },
+    },
+  },
 ] as const satisfies readonly SnapshotFormattingProvenanceCase[];
 
 const createSnapshotFormattingProvenanceDocument = async (): Promise<ArrayBuffer> => {
