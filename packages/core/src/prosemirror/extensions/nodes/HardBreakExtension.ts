@@ -13,7 +13,6 @@ export const HardBreakExtension = createNodeExtension({
   nodeSpec: {
     inline: true,
     group: "inline",
-    marks: "_",
     attrs: {
       breakType: { default: null },
     },

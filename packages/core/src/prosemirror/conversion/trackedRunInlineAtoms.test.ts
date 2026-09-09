@@ -137,18 +137,14 @@ describe("tracked run inline atom ownership", () => {
 
     expect(Object.keys(TRACKED_RUN_INLINE_ATOM_DISPOSITIONS).toSorted()).toEqual(schemaAtoms);
 
-    for (const [name, disposition] of Object.entries(TRACKED_RUN_INLINE_ATOM_DISPOSITIONS)) {
-      const node = schema.nodes[name];
-      if (!node) {
-        throw new Error(`missing classified inline atom ${name}`);
-      }
-      if (disposition !== "carry") {
-        continue;
-      }
-      expect(node.allowsMarkType(schema.marks["insertion"]!)).toBe(true);
-      expect(node.allowsMarkType(schema.marks["deletion"]!)).toBe(true);
+    expect(schema.nodes["paragraph"]!.allowsMarkType(schema.marks["insertion"]!)).toBe(true);
+    expect(schema.nodes["paragraph"]!.allowsMarkType(schema.marks["deletion"]!)).toBe(true);
+    // A leaf's mark set governs its nonexistent child content, not marks on the
+    // inline leaf itself. The enclosing paragraph owns that validity decision.
+    for (const name of ["hardBreak", "tab"] as const) {
+      expect(schema.nodes[name].allowsMarkType(schema.marks["insertion"]!)).toBe(false);
+      expect(schema.nodes[name].allowsMarkType(schema.marks["deletion"]!)).toBe(false);
     }
-
     expect(TRACKED_RUN_INLINE_ATOM_DISPOSITIONS.field).toBe("field-carrier");
     expect(schema.nodes["field"]!.allowsMarkType(schema.marks["insertion"]!)).toBe(false);
     expect(schema.nodes["field"]!.allowsMarkType(schema.marks["deletion"]!)).toBe(false);

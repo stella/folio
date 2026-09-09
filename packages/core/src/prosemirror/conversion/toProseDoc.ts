@@ -12,7 +12,7 @@
  * - Inline properties (highest priority)
  */
 
-import type { MarkType, Node as PMNode } from "prosemirror-model";
+import type { Node as PMNode } from "prosemirror-model";
 import { panic } from "better-result";
 
 import { createStyleEngine } from "../../style-engine";
@@ -131,7 +131,8 @@ type TrackedRunInlineAtomDisposition =
  * new atom requires deciding whether a wrapper owns it instead of silently
  * dropping its revision during import. `field` is explicit because a leaf
  * field carries a revision as a unit even though it cannot contain marked
- * children; ordinary carriers declare mark support on their node specs.
+ * children. Inline marks belong to the enclosing paragraph's content model,
+ * so leaf-node `marks` declarations are not used as an ownership proxy here.
  *
  * @internal
  */
@@ -871,14 +872,14 @@ function convertTrackedChange(
     if (node.marks.some(({ type }) => type.name === "insertion" || type.name === "deletion")) {
       return node;
     }
-    if (canCarryTrackedRunMark(node, mark.type)) {
+    if (canCarryTrackedRunMark(node)) {
       return node.mark(mark.addToSet(node.marks));
     }
     return node;
   });
 }
 
-function canCarryTrackedRunMark(node: PMNode, markType: MarkType): boolean {
+function canCarryTrackedRunMark(node: PMNode): boolean {
   if (!node.isInline || !node.isAtom) {
     return false;
   }
@@ -892,7 +893,7 @@ function canCarryTrackedRunMark(node: PMNode, markType: MarkType): boolean {
   if (disposition === "outside-wrapper") {
     panic(`Inline atom ${JSON.stringify(node.type.name)} cannot occur in a tracked-run wrapper`);
   }
-  return disposition === "carry" && node.type.allowsMarkType(markType);
+  return disposition === "carry";
 }
 
 /**
