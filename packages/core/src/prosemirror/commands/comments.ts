@@ -665,7 +665,7 @@ const resolveRunPropertyChange = ({
 
   const previousFormatting: RunPropertyChange["previousFormatting"] =
     matches.at(0)?.previousFormatting;
-  const styleContext = paragraphRunStyleContextAt(tr.doc, from, styleResolver);
+  const styleContext = paragraphRunStyleContextAt({ doc: tr.doc, pos: from, styleResolver });
   for (const currentMark of node.marks) {
     if (RUN_FORMATTING_MARK_NAMES.has(currentMark.type.name)) {
       tr.removeMark(from, to, currentMark.type);

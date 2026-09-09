@@ -832,7 +832,11 @@ const applyInlineFormatting = ({
 }: ApplyInlineFormattingOptions): Transaction => {
   const representations = selectRunFormattingCarrierRepresentations({ doc: tr.doc, from, to });
   for (const representation of representations) {
-    const styleContext = paragraphRunStyleContextAt(tr.doc, representation.from, styleResolver);
+    const styleContext = paragraphRunStyleContextAt({
+      doc: tr.doc,
+      pos: representation.from,
+      ...(styleResolver !== undefined ? { styleResolver } : {}),
+    });
     const authoredFormatting = readAuthoredRunFormatting({
       context: styleContext,
       marks: representation.node.marks,
@@ -1070,7 +1074,11 @@ const applyTrackedInlineFormatting = ({
   const representations = selectRunFormattingCarrierRepresentations({ doc, from, to });
   for (const representation of representations) {
     const { node } = representation;
-    const styleContext = paragraphRunStyleContextAt(doc, representation.from, styleResolver);
+    const styleContext = paragraphRunStyleContextAt({
+      doc,
+      pos: representation.from,
+      ...(styleResolver !== undefined ? { styleResolver } : {}),
+    });
     const previousFormatting = readAuthoredRunFormatting({
       context: styleContext,
       marks: node.marks,

@@ -74,11 +74,11 @@ export const reconcileRunFormattingMarks = ({
       : []),
     ...(characterStyle ? [characterStyle] : []),
   ];
-  const paragraphFormatting = paragraphFormattingForRun(
-    styleResolutionMarks,
+  const paragraphFormatting = paragraphFormattingForRun({
+    marks: styleResolutionMarks,
     context,
-    authoredFormatting,
-  );
+    directFormatting: authoredFormatting,
+  });
   const inheritedFormatting = resolveEffectiveRunStyleFormatting({
     marks: styleResolutionMarks,
     paragraphFormatting,

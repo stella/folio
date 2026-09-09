@@ -181,11 +181,17 @@ export const paragraphRunStyleContext = (
   };
 };
 
-export const paragraphFormattingForRun = (
-  marks: readonly Mark[],
-  context: ParagraphRunStyleContext,
-  directFormatting?: TextFormatting,
-): TextFormatting | undefined => {
+type ParagraphFormattingForRunOptions = {
+  context: ParagraphRunStyleContext;
+  directFormatting?: TextFormatting;
+  marks: readonly Mark[];
+};
+
+export const paragraphFormattingForRun = ({
+  context,
+  directFormatting,
+  marks,
+}: ParagraphFormattingForRunOptions): TextFormatting | undefined => {
   if (
     !marks.some(
       ({ type }) => type.name === "runFormattingOverride" || type.name === "characterStyle",
@@ -201,11 +207,17 @@ export const paragraphFormattingForRun = (
   });
 };
 
-export const paragraphRunStyleContextAt = (
-  doc: PMNode,
-  pos: number,
-  styleResolver?: RunStyleResolver | null,
-): ParagraphRunStyleContext => {
+type ParagraphRunStyleContextAtOptions = {
+  doc: PMNode;
+  pos: number;
+  styleResolver?: RunStyleResolver | null;
+};
+
+export const paragraphRunStyleContextAt = ({
+  doc,
+  pos,
+  styleResolver,
+}: ParagraphRunStyleContextAtOptions): ParagraphRunStyleContext => {
   const resolved = doc.resolve(pos);
   for (let depth = resolved.depth; depth >= 0; depth--) {
     const ancestor = resolved.node(depth);

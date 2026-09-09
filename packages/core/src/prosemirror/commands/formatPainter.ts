@@ -320,7 +320,11 @@ function resolveEffectiveFormatting({
   styleResolver,
 }: ResolveEffectiveFormattingOptions): PaintableFormatting {
   const authoredFormatting = readAuthoredRunFormatting({ context, marks, styleResolver });
-  const paragraphFormatting = paragraphFormattingForRun(marks, context, authoredFormatting);
+  const paragraphFormatting = paragraphFormattingForRun({
+    context,
+    directFormatting: authoredFormatting,
+    marks,
+  });
   const inheritedFormatting = resolveEffectiveRunStyleFormatting({
     marks,
     paragraphFormatting,
@@ -348,7 +352,7 @@ function resolveCopiedStyleFormatting({
   if (hasCharacterStyle && !styleResolver) {
     return null;
   }
-  const paragraphFormatting = paragraphFormattingForRun(marks, context);
+  const paragraphFormatting = paragraphFormattingForRun({ context, marks });
   return pickPaintableFormatting(
     resolveEffectiveRunStyleFormatting({ marks, paragraphFormatting, styleResolver }),
   );
@@ -557,11 +561,11 @@ export function captureFormatMarks(state: EditorState): CapturedTextFormatting {
     captured.push(mark);
   }
   const styleResolver = getDocumentStyleResolver(state);
-  const context = paragraphRunStyleContextAt(
-    state.doc,
-    (firstText?.position ?? $from).pos,
+  const context = paragraphRunStyleContextAt({
+    doc: state.doc,
+    pos: (firstText?.position ?? $from).pos,
     styleResolver,
-  );
+  });
   return {
     effectiveFormatting: resolveEffectiveFormatting({ context, marks: captured, styleResolver }),
     marks: captured,

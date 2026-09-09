@@ -477,16 +477,16 @@ function stripSuggestedInlineMarks(
       characterStyleAttrs?.styleId === previousFormatting.styleId
         ? characterStyleAttrs
         : undefined;
-    const paragraphFormatting = paragraphFormattingForRun(
+    const paragraphFormatting = paragraphFormattingForRun({
       marks,
-      {
+      context: {
         baseParagraphFormatting,
         paragraphFormatting: inheritedFormatting,
         paragraphMarkFormatting,
         paragraphMarkPrecedesStyle,
       },
-      previousFormatting,
-    );
+      ...(previousFormatting !== undefined ? { directFormatting: previousFormatting } : {}),
+    });
     const styleFormatting = preservedCharacterStyleAttrs
       ? resolveEffectiveRunStyleFormatting({
           marks,
@@ -4076,7 +4076,11 @@ export function marksToTextFormatting(
     paragraphMarkFormatting: options?.paragraphMarkFormatting,
     paragraphMarkPrecedesStyle: options?.paragraphMarkPrecedesStyle ?? false,
   };
-  const paragraphFormatting = paragraphFormattingForRun(marks, runContext, authoredFormatting);
+  const paragraphFormatting = paragraphFormattingForRun({
+    context: runContext,
+    directFormatting: authoredFormatting,
+    marks,
+  });
   const inheritedFormatting = resolveEffectiveRunStyleFormatting({
     marks,
     paragraphFormatting,
