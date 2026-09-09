@@ -158,6 +158,58 @@ export const COMPLEX_SCRIPT_RUN_PROPERTY_KEYS = ["boldCs", "italicCs", "fontSize
 
 export type ComplexScriptRunPropertyKey = (typeof COMPLEX_SCRIPT_RUN_PROPERTY_KEYS)[number];
 
+export const RUN_FORMATTING_BOOLEAN_PROPERTIES = [
+  "bold",
+  "boldCs",
+  "italic",
+  "italicCs",
+  "strike",
+  "doubleStrike",
+  "smallCaps",
+  "allCaps",
+  "hidden",
+  "emboss",
+  "imprint",
+  "outline",
+  "shadow",
+  "rtl",
+  "cs",
+] as const;
+
+export const RUN_FORMATTING_VALUE_PROPERTIES = [
+  "underline",
+  "vertAlign",
+  "color",
+  "highlight",
+  "shading",
+  "fontSize",
+  "fontSizeCs",
+  "fontFamily",
+  "language",
+  "spacing",
+  "position",
+  "scale",
+  "kerning",
+  "effect",
+  "emphasisMark",
+] as const;
+
+export type RunFormattingBooleanProperty = (typeof RUN_FORMATTING_BOOLEAN_PROPERTIES)[number];
+export type RunFormattingValueProperty = (typeof RUN_FORMATTING_VALUE_PROPERTIES)[number];
+
+type RunFormattingPropertySpec =
+  Extract<RunFormattingBooleanProperty, RunFormattingValueProperty> extends never
+    ? {
+        [Property in keyof TextFormatting]: Property extends RunFormattingBooleanProperty
+          ? "boolean"
+          : Property extends RunFormattingValueProperty
+            ? "value"
+            : Property extends "styleId"
+              ? "style"
+              : never;
+      }
+    : never;
+
 export const RUN_FORMATTING_PROPERTY_SPECS = {
   bold: "boolean",
   boldCs: "boolean",
@@ -190,40 +242,24 @@ export const RUN_FORMATTING_PROPERTY_SPECS = {
   rtl: "boolean",
   cs: "boolean",
   styleId: "style",
-} as const satisfies Record<keyof TextFormatting, "boolean" | "style" | "value">;
-
-export type RunFormattingBooleanProperty = {
-  [Property in keyof typeof RUN_FORMATTING_PROPERTY_SPECS]: (typeof RUN_FORMATTING_PROPERTY_SPECS)[Property] extends "boolean"
-    ? Property
-    : never;
-}[keyof typeof RUN_FORMATTING_PROPERTY_SPECS];
-
-export type RunFormattingValueProperty = {
-  [Property in keyof typeof RUN_FORMATTING_PROPERTY_SPECS]: (typeof RUN_FORMATTING_PROPERTY_SPECS)[Property] extends "value"
-    ? Property
-    : never;
-}[keyof typeof RUN_FORMATTING_PROPERTY_SPECS];
+} as const satisfies RunFormattingPropertySpec;
 
 export type AuthoredRunFormattingValues = Partial<Pick<TextFormatting, RunFormattingValueProperty>>;
 
-export type RunFormattingOverrideAttrs = Partial<
-  Record<
-    | "bold"
-    | "boldCs"
-    | "cs"
-    | "italic"
-    | "italicCs"
-    | "strike"
-    | "allCaps"
-    | "smallCaps"
-    | "hidden"
-    | "emboss"
-    | "imprint"
-    | "shadow"
-    | "outline",
-    boolean
-  >
-> & {
+export type RunFormattingOverrideAttrs = {
+  allCaps?: boolean;
+  bold?: boolean;
+  boldCs?: boolean;
+  cs?: boolean;
+  emboss?: boolean;
+  hidden?: boolean;
+  imprint?: boolean;
+  italic?: boolean;
+  italicCs?: boolean;
+  outline?: boolean;
+  shadow?: boolean;
+  smallCaps?: boolean;
+  strike?: boolean;
   /** Imported/reconciled direct-positive baseline; current PM signals may diverge after edits. */
   _authoredOn?: readonly RunFormattingBooleanProperty[];
   /** Imported/reconciled direct-negative baseline; absence means the property was inherited. */

@@ -1,29 +1,17 @@
 import type { TextFormatting } from "../types/document";
 import {
+  RUN_FORMATTING_BOOLEAN_PROPERTIES,
   RUN_FORMATTING_PROPERTY_SPECS,
+  RUN_FORMATTING_VALUE_PROPERTIES,
   type AuthoredRunFormattingValues,
   type RunFormattingBooleanProperty,
   type RunFormattingOverrideAttrs,
-  type RunFormattingValueProperty,
 } from "./schema/marks";
 
 const isRunFormattingProperty = (
   property: string,
 ): property is keyof typeof RUN_FORMATTING_PROPERTY_SPECS =>
   Object.hasOwn(RUN_FORMATTING_PROPERTY_SPECS, property);
-
-const formattingPropertyEntries = Object.entries(RUN_FORMATTING_PROPERTY_SPECS).filter(
-  (entry): entry is [keyof typeof RUN_FORMATTING_PROPERTY_SPECS, "boolean" | "style" | "value"] =>
-    isRunFormattingProperty(entry[0]),
-);
-
-export const RUN_FORMATTING_BOOLEAN_PROPERTIES = formattingPropertyEntries
-  .filter((entry): entry is [RunFormattingBooleanProperty, "boolean"] => entry[1] === "boolean")
-  .map(([property]) => property);
-
-export const RUN_FORMATTING_VALUE_PROPERTIES = formattingPropertyEntries
-  .filter((entry): entry is [RunFormattingValueProperty, "value"] => entry[1] === "value")
-  .map(([property]) => property);
 
 export const hasAuthoredRunFormattingProvenance = ({
   _authoredOff,

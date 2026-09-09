@@ -157,12 +157,7 @@ describe("applyFormatMarks", () => {
 
     expect(handled).toBe(true);
     const target = marksInRange(state, 8, 13);
-    expect(markNames(target)).toEqual([
-      "bold",
-      "fontFamily",
-      "fontSize",
-      "runFormattingOverride",
-    ]);
+    expect(markNames(target)).toEqual(["bold", "fontFamily", "fontSize", "runFormattingOverride"]);
     expect(findMark(target, "fontFamily")?.attrs["ascii"]).toBe("Georgia");
     expect(findMark(target, "fontSize")?.attrs["size"]).toBe(24);
     expect(findMark(target, "runFormattingOverride")?.attrs).toMatchObject({

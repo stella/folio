@@ -1108,10 +1108,9 @@ describe("character style round-trip", () => {
     expect(findRun(firstParagraph(reopened), "Defaults stay active").formatting).toEqual({
       styleId: "DefaultActiveCharacter",
     });
-    const afterReopen = toFlowBlocks(
-      toProseDoc(reopened, { styles: defaultsActiveStyles }),
-      { styles: defaultsActiveStyles },
-    )
+    const afterReopen = toFlowBlocks(toProseDoc(reopened, { styles: defaultsActiveStyles }), {
+      styles: defaultsActiveStyles,
+    })
       .flatMap((block) => (block.kind === "paragraph" ? block.runs : []))
       .find((run) => run.kind === "text");
     expect(afterReopen).toMatchObject({

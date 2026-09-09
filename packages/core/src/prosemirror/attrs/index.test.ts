@@ -25,6 +25,11 @@ import {
   readTableRowAttrs,
 } from ".";
 import { schema } from "../schema";
+import {
+  RUN_FORMATTING_BOOLEAN_PROPERTIES,
+  RUN_FORMATTING_PROPERTY_SPECS,
+  RUN_FORMATTING_VALUE_PROPERTIES,
+} from "../schema/marks";
 import { readTextBoxAnchorAttrs } from "../textBoxAnchorAttrs";
 
 const issueMessages = (result: ReturnType<typeof readParagraphAttrs>) => {
@@ -36,6 +41,22 @@ const issueMessages = (result: ReturnType<typeof readParagraphAttrs>) => {
 };
 
 describe("ProseMirror attr readers", () => {
+  test("run-formatting property classes are exhaustive, disjoint, and canonically ordered", () => {
+    const entries = Object.entries(RUN_FORMATTING_PROPERTY_SPECS);
+    const booleanProperties = entries
+      .filter(([, kind]) => kind === "boolean")
+      .map(([property]) => property);
+    const valueProperties = entries
+      .filter(([, kind]) => kind === "value")
+      .map(([property]) => property);
+
+    expect(RUN_FORMATTING_BOOLEAN_PROPERTIES).toEqual(booleanProperties);
+    expect(RUN_FORMATTING_VALUE_PROPERTIES).toEqual(valueProperties);
+    expect(new Set([...booleanProperties, ...valueProperties, "styleId"]).size).toBe(
+      entries.length,
+    );
+  });
+
   test.each([-50, 601, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
     "normalizes out-of-range character scale %p",
     (scale) => {

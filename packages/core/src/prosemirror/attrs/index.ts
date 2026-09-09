@@ -74,12 +74,10 @@ import type {
 } from "../schema";
 import {
   COMPLEX_SCRIPT_RUN_PROPERTY_KEYS,
-  TRACKED_CHANGE_PROVENANCE_VALUES,
-} from "../schema/marks";
-import {
   RUN_FORMATTING_BOOLEAN_PROPERTIES,
   RUN_FORMATTING_VALUE_PROPERTIES,
-} from "../runFormattingProvenance";
+  TRACKED_CHANGE_PROVENANCE_VALUES,
+} from "../schema/marks";
 
 export type ProseMirrorAttrIssue = {
   path: string;

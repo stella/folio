@@ -120,36 +120,35 @@ function sanitizeOverrideMark(mark: Mark): Mark | null {
   return mark.type.create(kept);
 }
 
-type PaintableFormatting = Pick<
-  TextFormatting,
-  | "allCaps"
-  | "bold"
-  | "boldCs"
-  | "color"
-  | "cs"
-  | "doubleStrike"
-  | "effect"
-  | "emboss"
-  | "emphasisMark"
-  | "fontFamily"
-  | "fontSize"
-  | "fontSizeCs"
-  | "highlight"
-  | "imprint"
-  | "italic"
-  | "italicCs"
-  | "kerning"
-  | "outline"
-  | "position"
-  | "scale"
-  | "shading"
-  | "shadow"
-  | "smallCaps"
-  | "spacing"
-  | "strike"
-  | "underline"
-  | "vertAlign"
->;
+type PaintableFormatting = {
+  allCaps?: TextFormatting["allCaps"];
+  bold?: TextFormatting["bold"];
+  boldCs?: TextFormatting["boldCs"];
+  color?: TextFormatting["color"];
+  cs?: TextFormatting["cs"];
+  doubleStrike?: TextFormatting["doubleStrike"];
+  effect?: TextFormatting["effect"];
+  emboss?: TextFormatting["emboss"];
+  emphasisMark?: TextFormatting["emphasisMark"];
+  fontFamily?: TextFormatting["fontFamily"];
+  fontSize?: TextFormatting["fontSize"];
+  fontSizeCs?: TextFormatting["fontSizeCs"];
+  highlight?: TextFormatting["highlight"];
+  imprint?: TextFormatting["imprint"];
+  italic?: TextFormatting["italic"];
+  italicCs?: TextFormatting["italicCs"];
+  kerning?: TextFormatting["kerning"];
+  outline?: TextFormatting["outline"];
+  position?: TextFormatting["position"];
+  scale?: TextFormatting["scale"];
+  shading?: TextFormatting["shading"];
+  shadow?: TextFormatting["shadow"];
+  smallCaps?: TextFormatting["smallCaps"];
+  spacing?: TextFormatting["spacing"];
+  strike?: TextFormatting["strike"];
+  underline?: TextFormatting["underline"];
+  vertAlign?: TextFormatting["vertAlign"];
+};
 
 type BooleanOverrideKey = keyof Pick<
   RunFormattingOverrideAttrs,
