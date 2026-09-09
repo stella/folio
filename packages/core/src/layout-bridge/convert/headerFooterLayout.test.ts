@@ -12,6 +12,7 @@ import {
   convertHeaderFooterPmDocToContent,
   convertHeaderFooterToContent,
   normalizeHeaderFooterMeasureBlocks,
+  reserveHeaderFooterFullWidthWrapBands,
 } from "./headerFooterLayout";
 
 const DETACHED_WATERMARK_HOST = Symbol.for("stll.detachedWatermarkHost");
@@ -112,6 +113,70 @@ function measureBlocks(blocks: FlowBlock[]): Measure[] {
     };
   });
 }
+
+describe("reserveHeaderFooterFullWidthWrapBands", () => {
+  test.each(["header", "footer"] as const)(
+    "advances past a paragraph-relative wrapping image that spans a %s story",
+    (section) => {
+      const blocks: FlowBlock[] = [
+        paragraph({
+          runs: [
+            {
+              kind: "image",
+              src: "synthetic.png",
+              width: 520,
+              height: 40,
+              wrapType: "square",
+              position: {
+                horizontal: { relativeTo: "column", posOffset: -100_000 },
+                vertical: { relativeTo: "paragraph", posOffset: 95_250 },
+              },
+            },
+          ],
+        }),
+      ];
+
+      const measures = reserveHeaderFooterFullWidthWrapBands({
+        blocks,
+        measures: [{ kind: "paragraph", lines: [], totalHeight: 12 }],
+        contentWidth: 456,
+        metrics: { ...metrics, section },
+      });
+
+      expect(measures[0]).toMatchObject({ kind: "paragraph", totalHeight: 62 });
+    },
+  );
+
+  test("does not reserve a band when story content can wrap beside the image", () => {
+    const blocks: FlowBlock[] = [
+      paragraph({
+        runs: [
+          {
+            kind: "image",
+            src: "synthetic.png",
+            width: 120,
+            height: 40,
+            wrapType: "square",
+            position: {
+              horizontal: { relativeTo: "column", posOffset: 0 },
+              vertical: { relativeTo: "paragraph", posOffset: 95_250 },
+            },
+          },
+        ],
+      }),
+    ];
+    const original = { kind: "paragraph" as const, lines: [], totalHeight: 12 };
+
+    expect(
+      reserveHeaderFooterFullWidthWrapBands({
+        blocks,
+        measures: [original],
+        contentWidth: 456,
+        metrics,
+      })[0],
+    ).toBe(original);
+  });
+});
 
 describe("calculateHeaderFooterVisualBounds", () => {
   test("accounts for page-anchored floating table bounds", () => {

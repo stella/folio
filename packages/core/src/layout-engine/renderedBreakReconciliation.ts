@@ -92,11 +92,13 @@ export const reconcileBreakBeforeBlock = ({
       (continuesNumberedSequence(previousBlock, block) ||
         continuesTabbedParagraphSequence(previousBlock, block)));
   // A keep-with-next paragraph carries the marker boundary into its linked
-  // content, so its own height is not enough to classify the marker as stale.
+  // content. The keep-next pass measures and moves that whole chain after
+  // reconciliation, so the cached marker remains advisory while it fits.
   const markerNeedsSnap =
     renderedBreakNeedsSnap ||
-    block.attrs?.keepNext === true ||
-    ((block.attrs?.spacing?.before ?? 0) > 0 && previousBlock?.kind !== "sectionBreak") ||
+    ((block.attrs?.spacing?.before ?? 0) > 0 &&
+      block.attrs?.keepNext !== true &&
+      previousBlock?.kind !== "sectionBreak") ||
     previousBlock?.kind === "table";
   const forcePageBreak =
     markerNeedsSnap && !markerAlreadySatisfied && pageHasVisibleBodyContent(page, blocksById);

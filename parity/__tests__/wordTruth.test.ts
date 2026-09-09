@@ -29,6 +29,10 @@ describe("Word automation scripts", () => {
     expect(script).toContain("set candidatePath to POSIX path of");
     expect(script).toContain("if candidatePath is stagedDocumentPath then");
     expect(script).toContain("set theDoc to contents of candidateDocument");
+    expect(script).toContain("set print revisions of theDoc to false");
+    expect(script).toContain("set documentView to view of active window of theDoc");
+    expect(script).toContain("set revisions view of documentView to revisions view final");
+    expect(script).toContain("set show revisions and comments of documentView to false");
     expect(script).not.toContain("active document");
   });
 

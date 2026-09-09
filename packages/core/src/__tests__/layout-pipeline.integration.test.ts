@@ -541,12 +541,16 @@ describe("Layout Engine - Page Production", () => {
       expect(layout.pages[0]?.fragments.map(({ blockId }) => blockId)).toEqual([0, 1]);
     });
 
-    test("rendered page break preserves a fitting keep-next heading boundary", () => {
+    test("a fitting keep-next chain ignores a stale rendered page break", () => {
       const blocks: FlowBlock[] = [
         makeParagraphBlock(0, "Before heading", 1),
         {
           ...makeParagraphBlock(1, "Kept heading", 16, { keepNext: true }),
-          attrs: { keepNext: true, renderedPageBreakBefore: true },
+          attrs: {
+            keepNext: true,
+            renderedPageBreakBefore: true,
+            spacing: { before: 24 },
+          },
         },
         makeParagraphBlock(2, "Kept body", 29),
       ];
@@ -558,9 +562,8 @@ describe("Layout Engine - Page Production", () => {
 
       const layout = layoutDocument(blocks, measures, makeLayoutOptions());
 
-      expect(layout.pages).toHaveLength(2);
-      expect(layout.pages[0]?.fragments.map(({ blockId }) => blockId)).toEqual([0]);
-      expect(layout.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual([1, 2]);
+      expect(layout.pages).toHaveLength(1);
+      expect(layout.pages[0]?.fragments.map(({ blockId }) => blockId)).toEqual([0, 1, 2]);
     });
 
     test("rendered page break moves a paragraph that would cross the current page", () => {

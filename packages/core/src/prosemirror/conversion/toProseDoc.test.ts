@@ -669,6 +669,53 @@ describe("toProseDoc", () => {
     );
   });
 
+  test("keeps named paragraph-mark emphasis and color off unformatted body text", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              formatting: {
+                styleId: "Body",
+                runProperties: {
+                  bold: true,
+                  color: { rgb: "E63946" },
+                },
+              },
+              content: [
+                {
+                  type: "run",
+                  formatting: {},
+                  content: [{ type: "text", text: "Synthetic clause text" }],
+                },
+              ],
+            },
+          ],
+        },
+        styles: {
+          styles: [
+            {
+              styleId: "Body",
+              type: "paragraph",
+              default: true,
+              rPr: { fontSize: 11 },
+            },
+          ],
+        },
+      },
+    };
+
+    const doc = toProseDoc(document, { styles: document.package.styles });
+    const paragraph = doc.firstChild;
+    const text = paragraph?.firstChild;
+
+    expect(text?.marks.some((mark) => mark.type.name === "bold")).toBe(false);
+    expect(text?.marks.some((mark) => mark.type.name === "textColor")).toBe(false);
+    expect(paragraph?.attrs.defaultTextFormatting?.bold).toBeUndefined();
+    expect(paragraph?.attrs.defaultTextFormatting?.color).toBeUndefined();
+  });
+
   test("does not inherit paragraph mark all-caps onto visible text", () => {
     const document: Document = {
       package: {

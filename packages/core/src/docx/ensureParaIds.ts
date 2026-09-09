@@ -570,7 +570,15 @@ const ensureParaIdsInternal = async (
   }
 
   for (const [partPath, content] of updates) {
-    zip.file(partPath, content, { compression: "DEFLATE", compressionOptions: { level: 6 } });
+    const sourceEntry = zip.file(partPath);
+    if (sourceEntry === null) {
+      throw createEnsureParaIdsError(`Package part disappeared during normalization: ${partPath}`);
+    }
+    zip.file(partPath, content, {
+      compression: "DEFLATE",
+      compressionOptions: { level: 6 },
+      date: sourceEntry.date,
+    });
   }
   const output = await zip.generateAsync({
     type: "uint8array",

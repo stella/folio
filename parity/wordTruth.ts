@@ -125,6 +125,10 @@ export const buildExportScript = ({ docxPath, pdfPath }: BuildExportScriptOption
 			delay 0.25
 		end repeat
 		if theDoc is missing value then error "Word did not expose the staged document after opening it"
+		set print revisions of theDoc to false
+		set documentView to view of active window of theDoc
+		set revisions view of documentView to revisions view final
+		set show revisions and comments of documentView to false
 		save as theDoc file name "${outFile}" file format format PDF
 	end tell
 end timeout`;

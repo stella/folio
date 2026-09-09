@@ -33,7 +33,11 @@ import type {
   TableBlock,
   TableMeasure,
 } from "../../layout-engine/types";
-import { isFloatingImageRun, isFloatingTextBoxBlock } from "../../layout-engine/types";
+import {
+  isFloatingImageRun,
+  isFloatingTextBoxBlock,
+  isTextWrappingFloatingImageRun,
+} from "../../layout-engine/types";
 import { headerFooterToProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import { cloneParagraphWithPropertySource } from "../../docx/paragraphPropertySource";
 import type { BlockContent, HeaderFooter, StyleDefinitions, Theme } from "../../types/document";
@@ -851,6 +855,83 @@ export function convertHeaderFooterPmDocToContent(
 // 6. Shared tail — blocks → HeaderFooterContent
 // =============================================================================
 
+type HorizontalImageLeftOptions = {
+  run: ImageRun;
+  contentWidth: number;
+  metrics: HeaderFooterMetrics;
+};
+
+function horizontalImageLeft({ run, contentWidth, metrics }: HorizontalImageLeftOptions): number {
+  const horizontal = run.position?.horizontal;
+  if (horizontal?.posOffset !== undefined) {
+    const frameLeft = horizontal.relativeTo === "page" ? -metrics.margins.left : 0;
+    return frameLeft + emuToPixels(horizontal.posOffset);
+  }
+
+  const alignment = getPositionAlignment(horizontal);
+  const frameWidth = horizontal?.relativeTo === "page" ? metrics.pageSize.w : contentWidth;
+  const frameLeft = horizontal?.relativeTo === "page" ? -metrics.margins.left : 0;
+  if (alignment === "center") {
+    return frameLeft + (frameWidth - run.width) / 2;
+  }
+  if (alignment === "right" || alignment === "outside") {
+    return frameLeft + frameWidth - run.width;
+  }
+  return frameLeft;
+}
+
+/**
+ * A paragraph-relative wrapping image that spans the whole story width leaves
+ * no side on which following content can flow. Retain the host paragraph's
+ * line box and reserve the complete anchored extent after it.
+ */
+type ReserveHeaderFooterFullWidthWrapBandsOptions = {
+  blocks: FlowBlock[];
+  measures: Measure[];
+  contentWidth: number;
+  metrics: HeaderFooterMetrics;
+};
+
+export function reserveHeaderFooterFullWidthWrapBands({
+  blocks,
+  measures,
+  contentWidth,
+  metrics,
+}: ReserveHeaderFooterFullWidthWrapBandsOptions): Measure[] {
+  return measures.map((measure, index) => {
+    const block = blocks[index];
+    if (block?.kind !== "paragraph" || measure.kind !== "paragraph") {
+      return measure;
+    }
+
+    let reservedHeight = 0;
+    for (const run of block.runs) {
+      if (run.kind !== "image" || !isTextWrappingFloatingImageRun(run)) {
+        continue;
+      }
+      const relativeTo = run.position?.vertical?.relativeTo;
+      if (relativeTo !== undefined && relativeTo !== "paragraph" && relativeTo !== "line") {
+        continue;
+      }
+      const distLeft = run.distLeft ?? 0;
+      const left = horizontalImageLeft({ run, contentWidth, metrics }) - distLeft;
+      const right = left + run.width + distLeft + (run.distRight ?? 0);
+      if (left > 0 || right < contentWidth) {
+        continue;
+      }
+      const offset = emuToPixels(run.position?.vertical?.posOffset ?? 0);
+      reservedHeight = Math.max(
+        reservedHeight,
+        Math.max(0, offset) + run.height + (run.distBottom ?? 0),
+      );
+    }
+
+    return reservedHeight > 0
+      ? { ...measure, totalHeight: measure.totalHeight + reservedHeight }
+      : measure;
+  });
+}
+
 function finalizeHeaderFooterContent(
   blocks: FlowBlock[],
   contentWidth: number,
@@ -862,7 +943,13 @@ function finalizeHeaderFooterContent(
   }
 
   const blocksForMeasure = normalizeHeaderFooterMeasureBlocks(blocks, metrics.section);
-  const measures = options.measureBlocks(blocksForMeasure, contentWidth);
+  const measuredBlocks = options.measureBlocks(blocksForMeasure, contentWidth);
+  const measures = reserveHeaderFooterFullWidthWrapBands({
+    blocks,
+    measures: measuredBlocks,
+    contentWidth,
+    metrics,
+  });
   let flowHeight = 0;
   for (let i = 0; i < measures.length; i++) {
     const m = measures[i];

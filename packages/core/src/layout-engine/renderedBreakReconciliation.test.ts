@@ -91,11 +91,15 @@ describe("rendered break reconciliation", () => {
     expect(decision.state).toEqual(INITIAL_RENDERED_BREAK_STATE);
   });
 
-  test("a fitting cached marker remains authoritative on a keep-next paragraph", () => {
+  test("a fitting cached marker remains advisory on a spaced keep-next paragraph", () => {
     const previous = paragraph(1);
     const decision = reconcileBreakBeforeBlock({
       state: INITIAL_RENDERED_BREAK_STATE,
-      block: paragraph(2, { keepNext: true, renderedPageBreakBefore: true }),
+      block: paragraph(2, {
+        keepNext: true,
+        renderedPageBreakBefore: true,
+        spacing: { before: 24 },
+      }),
       previousBlock: previous,
       page: page([paragraphFragment(1)]),
       blocksById: new Map([["1", previous]]),
@@ -103,7 +107,7 @@ describe("rendered break reconciliation", () => {
       renderedBreakNeedsSnap: false,
     });
 
-    expect(decision.pageAdvance).toBe("physical");
+    expect(decision.pageAdvance).toBe("none");
     expect(decision.state).toEqual(INITIAL_RENDERED_BREAK_STATE);
   });
 

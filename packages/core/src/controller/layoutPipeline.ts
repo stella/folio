@@ -402,6 +402,9 @@ export function runLayoutPipeline<THfPMs>(
     if (defaultTabStop !== undefined) {
       flowOpts.defaultTabStopTwips = defaultTabStop;
     }
+    if (document?.package.settings?.splitPageBreakAndParagraphMark === true) {
+      flowOpts.splitPageBreakAndParagraphMark = true;
+    }
     if (document?.package.settings?.lineBreakRules) {
       flowOpts.lineBreakRules = document.package.settings.lineBreakRules;
     }
