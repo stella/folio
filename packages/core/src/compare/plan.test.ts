@@ -42,6 +42,7 @@ const gridCell = (
   gridColumnIndex: number,
   columnSpan = 1,
   rowSpan = 1,
+  paragraphIndex = 0,
 ): FolioAIBlock => ({
   id,
   kind: "paragraph",
@@ -54,7 +55,7 @@ const gridCell = (
     gridColumnIndex,
     columnSpan,
     rowSpan,
-    paragraphIndex: 0,
+    paragraphIndex,
   },
 });
 
@@ -126,6 +127,88 @@ describe("table row pairing", () => {
       cell("b", "Delivery is due.", 1),
     ];
     expect(planOf(rows, rows).changes).toEqual([]);
+  });
+
+  test("a span change that cannot align by column replaces the whole table", () => {
+    const base = [
+      block("before", "Before the table."),
+      gridCell("a", "Shared", 0, 0, 0),
+      gridCell("b", "Shared", 0, 1, 1),
+      block("after", "After the table."),
+    ];
+    const target = [
+      block("before-target", "Before the table."),
+      gridCell("merged", "Shared", 0, 0, 0, 2),
+      block("after-target", "After the table."),
+    ];
+
+    const { changes, operations } = planOf(base, target);
+
+    expect(changes.map(({ kind }) => kind)).toEqual(["table-delete", "table-insert"]);
+    expect(operations).toEqual([
+      { id: "compare-1", type: "deleteTable", blockId: "a" },
+      {
+        id: "compare-2",
+        type: "insertTable",
+        blockId: "after",
+        position: "before",
+        rows: [["Shared"]],
+      },
+    ]);
+  });
+
+  test("a compatible row insertion remains one row insertion", () => {
+    const base = [
+      block("before", "Before the table."),
+      cell("kept", "Shared obligation", 0),
+      block("after", "After the table."),
+    ];
+    const target = [
+      block("before-target", "Before the table."),
+      cell("kept-target", "Shared obligation", 0),
+      cell("added", "Additional obligation", 1),
+      block("after-target", "After the table."),
+    ];
+
+    const { changes } = planOf(base, target);
+
+    expect(changes.map(({ kind }) => kind)).toEqual(["table-row-insert"]);
+  });
+
+  test("text-only rewrites in the same table shape stay cell-level", () => {
+    const base = [
+      block("before", "Before the table."),
+      cell("old", "Original obligation", 0),
+      block("after", "After the table."),
+    ];
+    const target = [
+      block("before-target", "Before the table."),
+      cell("new", "Entirely different language", 0),
+      block("after-target", "After the table."),
+    ];
+
+    const { changes } = planOf(base, target);
+
+    expect(changes.map(({ kind }) => kind)).toEqual(["replace"]);
+  });
+
+  test("paragraph-count changes inside one cell do not replace the table", () => {
+    const base = [
+      block("before", "Before the table."),
+      gridCell("kept", "Shared opening", 0, 0, 0),
+      gridCell("removed-a", "Removed middle", 0, 0, 0, 1, 1, 1),
+      gridCell("removed-b", "Removed ending", 0, 0, 0, 1, 1, 2),
+      block("after", "After the table."),
+    ];
+    const target = [
+      block("before-target", "Before the table."),
+      gridCell("kept-target", "Shared opening revised", 0, 0, 0),
+      block("after-target", "After the table."),
+    ];
+
+    const { changes } = planOf(base, target);
+
+    expect(changes.map(({ kind }) => kind)).toEqual(["replace", "delete", "delete"]);
   });
 });
 

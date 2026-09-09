@@ -420,6 +420,173 @@ const tableArbitrary = (): fc.Arbitrary<BodyItem> =>
   }));
 
 describe("table geometry round trip", () => {
+  test("replaces a table whose paired cell spans cannot be revised in place", async () => {
+    const baseTable = {
+      kind: "table",
+      columnWidths: [...COLUMN_WIDTHS],
+      properties: { width: { value: 6000, type: "dxa" }, borderSize: 4 },
+      rows: [
+        {
+          cells: [
+            buildCell(0, 1, "Shared", false),
+            buildCell(1, 1, "Shared", false),
+            buildCell(2, 1, "Shared", false),
+          ],
+        },
+      ],
+    } as const satisfies BodyItem;
+    const targetTable = {
+      ...baseTable,
+      rows: [
+        {
+          cells: [buildCell(0, 2, "Shared", false), buildCell(2, 1, "Shared", false)],
+        },
+      ],
+    } as const satisfies BodyItem;
+    const base = await buildBodySequenceDocx([INTRO, baseTable, OUTRO]);
+    const target = await buildBodySequenceDocx([INTRO, targetTable, OUTRO]);
+
+    const result = await compareDocx(base, target, OPTIONS);
+    if (result.isErr()) {
+      throw result.error;
+    }
+    expect(result.value.verification.status).toBe("verified");
+    expect(result.value.changes.map(({ kind }) => kind)).toEqual(["table-delete", "table-insert"]);
+
+    const compared = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+    expect(projectTableGeometry(compared.storyTables({ view: "final" }))).toEqual(
+      projectTableGeometry((await FolioDocxReviewer.fromBuffer(target)).storyTables()),
+    );
+    expect(projectTableGeometry(compared.storyTables({ view: "original" }))).toEqual(
+      projectTableGeometry((await FolioDocxReviewer.fromBuffer(base)).storyTables()),
+    );
+  });
+
+  test("replaces a table when inserted rows carry a vertical merge", async () => {
+    const kept = "The retained row identifies the same obligation on both sides.";
+    const baseTable = {
+      kind: "table",
+      columnWidths: [2400, 2400],
+      rows: [[kept, kept]],
+    } as const satisfies BodyItem;
+    const targetTable = {
+      ...baseTable,
+      rows: [
+        ...baseTable.rows,
+        [{ content: "New merged owner", verticalMerge: "restart" }, "Right upper cell"],
+        [{ content: "", verticalMerge: "continue" }, "Right lower cell"],
+      ],
+    } as const satisfies BodyItem;
+    const base = await buildBodySequenceDocx([INTRO, baseTable, OUTRO]);
+    const target = await buildBodySequenceDocx([INTRO, targetTable, OUTRO]);
+
+    const result = await compareDocx(base, target, OPTIONS);
+    if (result.isErr()) {
+      throw result.error;
+    }
+    expect(result.value.verification.status).toBe("verified");
+    expect(result.value.changes.map(({ kind }) => kind)).toEqual(["table-delete", "table-insert"]);
+
+    const compared = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+    expect(projectTableGeometry(compared.storyTables({ view: "final" }))).toEqual(
+      projectTableGeometry((await FolioDocxReviewer.fromBuffer(target)).storyTables()),
+    );
+    expect(projectTableGeometry(compared.storyTables({ view: "original" }))).toEqual(
+      projectTableGeometry((await FolioDocxReviewer.fromBuffer(base)).storyTables()),
+    );
+  });
+
+  test("keeps a representable long row addition granular", async () => {
+    const baseTable = {
+      kind: "table",
+      columnWidths: [2400, 2400],
+      rows: [["Alpha", "Beta"]],
+    } as const satisfies BodyItem;
+    const targetTable = {
+      ...baseTable,
+      rows: [
+        ...baseTable.rows,
+        ["one two three four five six seven eight nine ten", "Additional owner"],
+      ],
+    } as const satisfies BodyItem;
+    const base = await buildBodySequenceDocx([INTRO, baseTable, OUTRO]);
+    const target = await buildBodySequenceDocx([INTRO, targetTable, OUTRO]);
+
+    const result = await compareDocx(base, target, OPTIONS);
+    if (result.isErr()) {
+      throw result.error;
+    }
+    expect(result.value.verification.status).toBe("verified");
+    expect(result.value.changes.map(({ kind }) => kind)).toEqual(["table-row-insert"]);
+  });
+
+  test("does not replace a table when its template would lose a hyperlink", async () => {
+    const linkedParagraph = {
+      kind: "paragraph",
+      text: [{ text: "Shared", href: "https://example.com" }],
+    } as const satisfies BodyItem;
+    const baseTable = {
+      kind: "table",
+      columnWidths: [2400, 2400],
+      rows: [[{ content: [linkedParagraph] }, "Shared"]],
+    } as const satisfies BodyItem;
+    const targetTable = {
+      ...baseTable,
+      rows: [[{ content: [linkedParagraph], gridSpan: 2 }]],
+    } as const satisfies BodyItem;
+    const base = await buildBodySequenceDocx([INTRO, baseTable, OUTRO]);
+    const target = await buildBodySequenceDocx([INTRO, targetTable, OUTRO]);
+
+    const strict = await compareDocx(base, target, OPTIONS);
+    expect(strict.isErr()).toBe(true);
+    if (strict.isErr()) {
+      expect(strict.error._tag).toBe("CompareDocxRoundTripError");
+    }
+
+    const emitted = await compareDocx(base, target, { ...OPTIONS, onUnverified: "emit" });
+    if (emitted.isErr()) {
+      throw emitted.error;
+    }
+    expect(emitted.value.verification.status).toBe("unverified");
+    expect(emitted.value.changes.map(({ kind }) => kind)).not.toContain("table-insert");
+    expect(await documentXml(emitted.value.buffer)).toContain("<w:hyperlink ");
+  });
+
+  test("keeps a nested-table relocation explicitly unverified", async () => {
+    const nested = {
+      kind: "table",
+      columnWidths: [2400],
+      rows: [["Nested schedule"]],
+    } as const satisfies BodyItem;
+    const paragraph = (text: string) => ({ kind: "paragraph", text }) as const;
+    const baseTable = {
+      kind: "table",
+      columnWidths: [2400, 2400],
+      rows: [[{ content: [paragraph("Left"), nested, paragraph("After nested")] }, "Right"]],
+    } as const satisfies BodyItem;
+    const targetTable = {
+      ...baseTable,
+      rows: [["Left", { content: [paragraph("Right"), nested, paragraph("After nested")] }]],
+    } as const satisfies BodyItem;
+    const base = await buildBodySequenceDocx([INTRO, baseTable, OUTRO]);
+    const target = await buildBodySequenceDocx([INTRO, targetTable, OUTRO]);
+
+    const strict = await compareDocx(base, target, OPTIONS);
+    expect(strict.isErr()).toBe(true);
+    if (strict.isErr()) {
+      expect(strict.error._tag).toBe("CompareDocxRoundTripError");
+    }
+
+    const emitted = await compareDocx(base, target, { ...OPTIONS, onUnverified: "emit" });
+    if (emitted.isErr()) {
+      throw emitted.error;
+    }
+    expect(emitted.value.verification.status).toBe("unverified");
+    if (emitted.value.verification.status === "unverified") {
+      expect(emitted.value.verification.failures.map(({ cause }) => cause)).toContain("container");
+    }
+  });
+
   test(
     "accepting reproduces the target's table model and rejecting reproduces the base's",
     async () => {
@@ -427,19 +594,11 @@ describe("table geometry round trip", () => {
         fc.asyncProperty(tableArbitrary(), tableArbitrary(), async (baseTable, targetTable) => {
           const base = await buildBodySequenceDocx([INTRO, baseTable, OUTRO]);
           const target = await buildBodySequenceDocx([INTRO, targetTable, OUTRO]);
-          const result = await compareDocx(base, target, {
-            ...OPTIONS,
-            onUnverified: "emit",
-          });
+          const result = await compareDocx(base, target, OPTIONS);
           if (result.isErr()) {
             throw result.error;
           }
-          // An unproven redline is a separate finding the rest of the suite
-          // owns; what is asserted here is that whatever it did produce
-          // round-trips at the table model.
-          if (result.value.verification.status === "unverified") {
-            return;
-          }
+          expect(result.value.verification.status).toBe("verified");
           const compared = await FolioDocxReviewer.fromBuffer(result.value.buffer);
           expect(projectTableGeometry(compared.storyTables({ view: "final" }))).toEqual(
             projectTableGeometry((await FolioDocxReviewer.fromBuffer(target)).storyTables()),

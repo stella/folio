@@ -318,6 +318,15 @@ properties differ is rewritten to the target's and records the previous set as
 `w:tblPrChange` / `w:trPrChange` / `w:tcPrChange`, which is what a reject
 restores.
 
+Two tables are not forced into cell-level pairing when row and column
+operations cannot express their projected structure. The base table is then
+`table-delete` and the target is `table-insert`. Text edits and representable
+row or column changes remain granular; the whole-table fallback trades
+misleading cell edits for an exact accept/reject round trip. The fallback is
+not used when copying the target table would strip package-bound content: that
+case remains explicitly unverified instead of reporting a lossy replacement
+as exact.
+
 ## Limitations
 
 `benchmarks/compare` measures each of these; `benchmarks/compare/RESULTS.md`
@@ -341,18 +350,24 @@ carries the current numbers and the failing cases.
   drops them on any edited paragraph and the comparison cannot produce them. A
   consumer reading the runs sees the move; one that groups multi-paragraph
   moves by range name does not.
-- **Ambiguous column operations are refused** (2026-09-06). The comparison
-  emits `table-column-insert` / `table-column-delete` only when the unchanged
-  columns give one exact grid alignment. Grid coordinates and spans come from
-  `TableMap`; the snapshot's `cellIndex` remains a physical row-child index.
-  Repeated empty columns, edits that cut a horizontal span, and target columns
-  containing vertical spans stay unverified rather than being guessed.
-- **A table nested inside a cell cannot be added or removed** (2026-09-06). A
-  whole table added or removed at document level is `table-insert` /
-  `table-delete`; the same edit inside a cell would need `insertTable` to
-  place a table in a cell rather than as a document-level peer. A nested table
-  travels with the table that holds it, so one added or removed alongside its
-  parent keeps its own grid and properties.
+- **Ambiguous column operations are never guessed** (2026-09-06). The
+  comparison emits `table-column-insert` / `table-column-delete` only when the
+  unchanged columns give one exact grid alignment. Grid coordinates and spans
+  come from `TableMap`; the snapshot's `cellIndex` remains a physical
+  row-child index. When the table shape changed and a body-level insertion
+  anchor exists, an edit that cuts a span falls back to replacing the whole
+  table. A table-only story has no such anchor and remains unverified.
+- **A nested table is replaced with its outer table** (2026-09-09). There is
+  no operation that inserts a table directly inside a cell. When a nested
+  table was added or removed, the comparison therefore deletes and inserts
+  the whole outer table, preserving the nested table's grid and properties.
+  A table-only story cannot use that fallback because it has no body-level
+  insertion anchor.
+- **Moving a nested table between cells remains unverified** (2026-09-09).
+  The block snapshot identifies the innermost and outermost table but not the
+  full parent-cell path. Until it does, two nested tables in different parent
+  cells can align by document order without enough information to replace the
+  outer table safely.
 - **A paired table's grid is not moved** (2026-09-07). `w:tblGrid` changes are
   recorded with `w:tblGridChange`, which the editable model does not carry, so
   a table whose columns kept their text and changed their widths keeps the
@@ -367,8 +382,9 @@ carries the current numbers and the failing cases.
   document.
 - **`colspan` and `rowspan` are not moved on a paired cell** (2026-09-07). They
   shape the table's map, and changing one without restructuring the rows around
-  it leaves the map inconsistent with its own grid. A span that changed is a
-  row or column edit, not a property change.
+  it leaves the map inconsistent with its own grid. An unambiguous row or
+  column edit remains granular; otherwise the outer table is replaced as one
+  structural change when a body-level anchor is available.
 - **A numbering definition is reported, not represented** (2026-09-06). A list
   whose format, level template or start changed is a `numbering` change, and
   the redline cannot carry it: OOXML has no tracked-change grammar for

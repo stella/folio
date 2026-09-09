@@ -79,6 +79,63 @@ const CLEARED_TABLE_ATTRS = ["tblPrChange", "_suggestedInsert"] as const;
 const CLEARED_ROW_ATTRS = ["trIns", "trDel", "trPrChange"] as const;
 const CLEARED_CELL_ATTRS = ["cellMarker", "tcPrChange"] as const;
 
+const hasAuthoredValue = (value: unknown): boolean => {
+  if (value === null || value === undefined || value === false || value === "") {
+    return false;
+  }
+  return !Array.isArray(value) || value.length > 0;
+};
+
+const losesAuthoredAttrs = (node: PMNode): boolean => {
+  let cleared: readonly string[] = [];
+  switch (node.type.spec["tableRole"]) {
+    case "table":
+      cleared = CLEARED_TABLE_ATTRS;
+      break;
+    case "row":
+      cleared = CLEARED_ROW_ATTRS;
+      break;
+    case "cell":
+    case "header_cell":
+      cleared = CLEARED_CELL_ATTRS;
+      break;
+    default:
+      if (node.isTextblock) {
+        cleared = CLEARED_PARAGRAPH_ATTRS;
+      }
+  }
+  return cleared.some((name) => hasAuthoredValue(node.attrs[name]));
+};
+
+/**
+ * Whether a target table can cross into the base package without semantic
+ * content being stripped from its template.
+ *
+ * Paragraph identities are deliberately excluded: they are regenerated in
+ * the receiving document. Package-owned relationships, annotations,
+ * bookmarks and unresolved revision metadata are not portable and therefore
+ * make a replacement unsafe. Callers can retain their granular plan instead.
+ */
+export const tableTemplateCanCrossPackageLosslessly = (template: PMNode): boolean => {
+  let portable = true;
+  const inspect = (node: PMNode): boolean => {
+    if (
+      PACKAGE_BOUND_NODE_NAMES.has(node.type.name) ||
+      node.marks.some(({ type }) => PACKAGE_BOUND_MARK_NAMES.has(type.name)) ||
+      losesAuthoredAttrs(node)
+    ) {
+      portable = false;
+      return false;
+    }
+    return true;
+  };
+  if (!inspect(template)) {
+    return false;
+  }
+  template.descendants(inspect);
+  return portable;
+};
+
 const withoutAttrs = (
   attrs: Record<string, unknown>,
   cleared: readonly string[],

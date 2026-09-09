@@ -304,16 +304,24 @@ const groupTables = (blocks: readonly FolioAIBlock[]): FolioAIBlock[][] => {
  * whatever nests inside it — the nth nested table of one answers to the nth of
  * the other.
  */
-const buildTableSegmentSteps = (
+type TableStructurePlan = {
+  steps: CompareStep[];
+  representable: boolean;
+};
+
+const buildTableSegmentPlan = (
   baseBlocks: readonly FolioAIBlock[],
   targetBlocks: readonly FolioAIBlock[],
-): CompareStep[] => {
+): TableStructurePlan => {
   const baseTables = groupTables(baseBlocks);
   const targetTables = groupTables(targetBlocks);
   const steps: CompareStep[] = [];
   const paired = Math.min(baseTables.length, targetTables.length);
+  let representable = baseTables.length === targetTables.length;
   for (let index = 0; index < paired; index++) {
-    steps.push(...buildTableSteps(baseTables[index] ?? [], targetTables[index] ?? []));
+    const table = buildTablePlan(baseTables[index] ?? [], targetTables[index] ?? []);
+    steps.push(...table.steps);
+    representable &&= table.representable;
   }
   for (const blocks of baseTables.slice(paired)) {
     const location = blocks.at(0)?.table;
@@ -327,7 +335,7 @@ const buildTableSegmentSteps = (
       steps.push({ type: "targetTable", blocks, location });
     }
   }
-  return steps;
+  return { steps, representable };
 };
 
 /**
@@ -354,29 +362,21 @@ const rowSimilarity = (
   return rowCellTexts(base).length === rowCellTexts(target).length ? text : text / 2;
 };
 
-/**
- * Align one table's rows.
- *
- * Exact text first, then SIMILARITY rather than position. Positional fallback
- * is what made a deleted row plus a few cell edits report as a change in every
- * row of the table: each row was paired with the one below it, so every cell
- * differed. Pairing on similarity, and stepping one row on the side whose next
- * row matches better, keeps the deletion where it happened.
- */
-const alignTableRows = (
+type TableRowAlignment =
+  | {
+      type: "pair";
+      baseRow: readonly FolioAIBlock[];
+      targetRow: readonly FolioAIBlock[];
+    }
+  | { type: "baseOnly"; row: readonly FolioAIBlock[] }
+  | { type: "targetOnly"; row: readonly FolioAIBlock[] };
+
+/** Pair table rows once so planning and representability checks cannot drift. */
+const pairTableRows = (
   baseRows: readonly FolioAIBlock[][],
   targetRows: readonly FolioAIBlock[][],
-  baseColumnKeys?: ReadonlyMap<number, number>,
-  targetColumnKeys?: ReadonlyMap<number, number>,
-): CompareStep[] => {
-  const steps: CompareStep[] = [];
-  const pushRow = (row: readonly FolioAIBlock[], side: "base" | "target"): void => {
-    const location = rowLocation(row);
-    if (location) {
-      steps.push({ type: side === "base" ? "baseRow" : "targetRow", blocks: row, location });
-    }
-  };
-
+): TableRowAlignment[] => {
+  const aligned: TableRowAlignment[] = [];
   let baseCursor = 0;
   let targetCursor = 0;
   while (baseCursor < baseRows.length && targetCursor < targetRows.length) {
@@ -390,45 +390,122 @@ const alignTableRows = (
       const baseAhead = rowSimilarity(baseRows[baseCursor + 1], targetRow);
       const targetAhead = rowSimilarity(baseRow, targetRows[targetCursor + 1]);
       if (baseAhead >= ROW_PAIR_SIMILARITY && baseAhead > here && baseAhead >= targetAhead) {
-        pushRow(baseRow, "base");
+        aligned.push({ type: "baseOnly", row: baseRow });
         baseCursor += 1;
         continue;
       }
       if (targetAhead >= ROW_PAIR_SIMILARITY && targetAhead > here) {
-        pushRow(targetRow, "target");
+        aligned.push({ type: "targetOnly", row: targetRow });
         targetCursor += 1;
         continue;
       }
     }
-    steps.push(...alignRowCells(baseRow, targetRow, baseColumnKeys, targetColumnKeys));
+    aligned.push({ type: "pair", baseRow, targetRow });
     baseCursor += 1;
     targetCursor += 1;
   }
   for (const row of baseRows.slice(baseCursor)) {
-    pushRow(row, "base");
+    aligned.push({ type: "baseOnly", row });
   }
   for (const row of targetRows.slice(targetCursor)) {
-    pushRow(row, "target");
+    aligned.push({ type: "targetOnly", row });
+  }
+  return aligned;
+};
+
+/**
+ * Align one table's rows.
+ *
+ * Exact text first, then SIMILARITY rather than position. Positional fallback
+ * is what made a deleted row plus a few cell edits report as a change in every
+ * row of the table: each row was paired with the one below it, so every cell
+ * differed. Pairing on similarity, and stepping one row on the side whose next
+ * row matches better, keeps the deletion where it happened.
+ */
+const alignTableRows = (
+  rows: readonly TableRowAlignment[],
+  baseColumnKeys?: ReadonlyMap<number, number>,
+  targetColumnKeys?: ReadonlyMap<number, number>,
+): CompareStep[] => {
+  const steps: CompareStep[] = [];
+  const pushRow = (row: readonly FolioAIBlock[], side: "base" | "target"): void => {
+    const location = rowLocation(row);
+    if (location) {
+      steps.push({ type: side === "base" ? "baseRow" : "targetRow", blocks: row, location });
+    }
+  };
+
+  for (const alignment of rows) {
+    if (alignment.type === "baseOnly") {
+      pushRow(alignment.row, "base");
+      continue;
+    }
+    if (alignment.type === "targetOnly") {
+      pushRow(alignment.row, "target");
+      continue;
+    }
+    steps.push(
+      ...alignRowCells(alignment.baseRow, alignment.targetRow, baseColumnKeys, targetColumnKeys),
+    );
   }
   return steps;
 };
 
-const buildTableSteps = (
+const rowCellSpansEqual = (
+  baseRow: readonly FolioAIBlock[],
+  targetRow: readonly FolioAIBlock[],
+): boolean => {
+  const cells = (row: readonly FolioAIBlock[]): FolioAIBlockTableLocation[] => {
+    const byPhysicalIndex = new Map<number, FolioAIBlockTableLocation>();
+    for (const block of row) {
+      const table = block.table ?? panic("A table row contains a body block");
+      if (!byPhysicalIndex.has(table.cellIndex)) {
+        byPhysicalIndex.set(table.cellIndex, table);
+      }
+    }
+    return [...byPhysicalIndex.values()];
+  };
+  const baseCells = cells(baseRow);
+  const targetCells = cells(targetRow);
+  if (baseCells.length !== targetCells.length) {
+    return false;
+  }
+  return baseCells.every((base, index) => {
+    const target = targetCells[index];
+    return (
+      target !== undefined &&
+      base.gridColumnIndex === target.gridColumnIndex &&
+      base.columnSpan === target.columnSpan &&
+      base.rowSpan === target.rowSpan
+    );
+  });
+};
+
+const rowHasVerticalSpan = (row: readonly FolioAIBlock[]): boolean =>
+  row.some(({ table }) => table !== undefined && table.rowSpan > 1);
+
+const buildTablePlan = (
   baseBlocks: readonly FolioAIBlock[],
   targetBlocks: readonly FolioAIBlock[],
-): CompareStep[] => {
+): TableStructurePlan => {
   const columns = alignTableColumns(baseBlocks, targetBlocks);
-  return columns
-    ? [
-        ...columns.steps,
-        ...alignTableRows(
-          groupRows(columns.baseBlocks),
-          groupRows(columns.targetBlocks),
-          columns.baseColumnKeys,
-          columns.targetColumnKeys,
-        ),
-      ]
-    : alignTableRows(groupRows(baseBlocks), groupRows(targetBlocks));
+  const rows = pairTableRows(
+    groupRows(columns?.baseBlocks ?? baseBlocks),
+    groupRows(columns?.targetBlocks ?? targetBlocks),
+  );
+  const representable = rows.every((row) => {
+    if (row.type === "pair") {
+      return columns !== null || rowCellSpansEqual(row.baseRow, row.targetRow);
+    }
+    return !rowHasVerticalSpan(row.row);
+  });
+  return {
+    representable,
+    steps: [
+      ...(columns?.steps ?? []),
+      ...alignTableRows(rows, columns?.baseColumnKeys, columns?.targetColumnKeys),
+    ],
+  };
 };
 
 const buildBodySteps = (
@@ -473,6 +550,7 @@ const unpairedSegmentSteps = (segment: DocumentSegment, side: "base" | "target")
 type BuildStepsOptions = {
   baseSnapshot: FolioAIEditSnapshot;
   targetSnapshot: FolioAIEditSnapshot;
+  wholeTableReplacement: "allow" | "avoid";
 };
 
 /**
@@ -592,20 +670,29 @@ const alignedSteps = (
   baseBlocks: readonly FolioAIBlock[],
   targetBlocks: readonly FolioAIBlock[],
   terminalCarrierPair: TerminalCarrierPair | null,
+  wholeTableReplacement: BuildStepsOptions["wholeTableReplacement"],
 ): CompareStep[] => {
   const alignedBaseBlocks = terminalCarrierPair ? baseBlocks.slice(0, -1) : baseBlocks;
   const alignedTargetBlocks = terminalCarrierPair ? targetBlocks.slice(0, -1) : targetBlocks;
+  const canReplaceWholeTable =
+    wholeTableReplacement === "allow" && alignedBaseBlocks.some(({ table }) => table === undefined);
   const steps: CompareStep[] = [];
   for (const { baseSegment, targetSegment } of alignSegments(
     splitSegments(alignedBaseBlocks),
     splitSegments(alignedTargetBlocks),
   )) {
     if (baseSegment && targetSegment) {
-      steps.push(
-        ...(baseSegment.kind === "table"
-          ? buildTableSegmentSteps(baseSegment.blocks, targetSegment.blocks)
-          : buildBodySteps(baseSegment.blocks, targetSegment.blocks)),
-      );
+      if (baseSegment.kind !== "table") {
+        steps.push(...buildBodySteps(baseSegment.blocks, targetSegment.blocks));
+        continue;
+      }
+      const table = buildTableSegmentPlan(baseSegment.blocks, targetSegment.blocks);
+      if (canReplaceWholeTable && !table.representable) {
+        steps.push(...unpairedSegmentSteps(baseSegment, "base"));
+        steps.push(...unpairedSegmentSteps(targetSegment, "target"));
+        continue;
+      }
+      steps.push(...table.steps);
       continue;
     }
     if (baseSegment) {
@@ -695,7 +782,11 @@ const addedTerminalCarrierIsStranded = (
   );
 };
 
-const buildSteps = ({ baseSnapshot, targetSnapshot }: BuildStepsOptions): CompareStep[] => {
+const buildSteps = ({
+  baseSnapshot,
+  targetSnapshot,
+  wholeTableReplacement,
+}: BuildStepsOptions): CompareStep[] => {
   const baseBlocks = baseSnapshot.blocks;
   const targetBlocks = targetSnapshot.blocks;
   const baseLast = baseBlocks.at(-1);
@@ -712,7 +803,12 @@ const buildSteps = ({ baseSnapshot, targetSnapshot }: BuildStepsOptions): Compar
     carrierPair !== null &&
     isEmptyParagraphNode(carrierPair.baseBlock, baseSnapshot) &&
     isEmptyParagraphNode(carrierPair.targetBlock, targetSnapshot);
-  const steps = alignedSteps(baseBlocks, targetBlocks, bothStoriesEndBlank ? carrierPair : null);
+  const steps = alignedSteps(
+    baseBlocks,
+    targetBlocks,
+    bothStoriesEndBlank ? carrierPair : null,
+    wholeTableReplacement,
+  );
   // Otherwise the reservation is a repair, not a preference, and the alignment
   // is what says whether it is needed: pairing the two last paragraphs where
   // the ordinary alignment reaches the carrier would trade a plain "this
@@ -734,7 +830,7 @@ const buildSteps = ({ baseSnapshot, targetSnapshot }: BuildStepsOptions): Compar
   ) {
     return steps;
   }
-  return alignedSteps(baseBlocks, targetBlocks, carrierPair);
+  return alignedSteps(baseBlocks, targetBlocks, carrierPair, wholeTableReplacement);
 };
 
 /**
@@ -1401,6 +1497,8 @@ export type PlanStoryCompareOptions = {
   targetSnapshot: FolioAIEditSnapshot;
   /** Cap on generated operations; the caller turns `null` into its own error. */
   maxOperations: number;
+  /** Avoid structural fallback when copying the target table would lose package-bound content. */
+  wholeTableReplacement?: "allow" | "avoid";
 };
 
 /**
@@ -1412,8 +1510,9 @@ export const planStoryCompare = ({
   baseSnapshot,
   targetSnapshot,
   maxOperations,
+  wholeTableReplacement = "allow",
 }: PlanStoryCompareOptions): CompareStoryPlan | null => {
-  const steps = buildSteps({ baseSnapshot, targetSnapshot });
+  const steps = buildSteps({ baseSnapshot, targetSnapshot, wholeTableReplacement });
   const paragraphMarkPlans = detectParagraphMarkEdits(steps);
   // The step after each paragraph-mark plan is part of it, so neither the move
   // pass nor the main loop may claim it again.

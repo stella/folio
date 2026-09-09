@@ -1104,10 +1104,10 @@ describe("single-mutation probes", () => {
     );
   });
 
-  test("unrepresentable_difference: refused by default, emitted and named on request", async () => {
+  test("ambiguous_column_change: replaces the table instead of guessing a column", async () => {
     // Every column is empty, so there is no evidence for which of the three
     // target columns is new. Guessing would produce a plausible but misleading
-    // structural change; the conservative alignment leaves it unrepresented.
+    // column edit; replacing the table preserves both reviewed views exactly.
     const base = await buildBodySequenceDocx([
       { kind: "paragraph", text: "The schedule below records the agreed fees." },
       { kind: "table", rows: [["", ""]] },
@@ -1119,30 +1119,18 @@ describe("single-mutation probes", () => {
       { kind: "paragraph", text: "This agreement is governed by the stated law." },
     ]);
 
-    const refused = await compareDocx(base, target, OPTIONS);
-    expect(refused.isErr()).toBe(true);
-    if (refused.isErr()) {
-      const error = refused.error;
-      expect(error._tag).toBe("CompareDocxRoundTripError");
-      if (error._tag === "CompareDocxRoundTripError") {
-        expect(error.invariant).toBe("accept-reproduces-target");
-        expect(error.cause).toBe("container");
-        expect(error.failures.length).toBeGreaterThan(0);
-        // Structural facts only: nothing a document said.
-        expect(error.failures.at(0)?.detail).not.toContain("schedule below");
-      }
+    const result = await compareDocx(base, target, OPTIONS);
+    if (result.isErr()) {
+      throw result.error;
     }
-
-    const emitted = await compareDocx(base, target, { ...OPTIONS, onUnverified: "emit" });
-    if (emitted.isErr()) {
-      throw emitted.error;
-    }
-    expect(emitted.value.buffer.byteLength).toBeGreaterThan(0);
-    expect(emitted.value.changes.length).toBeGreaterThan(0);
-    expect(emitted.value.verification.status).toBe("unverified");
-    if (emitted.value.verification.status === "unverified") {
-      expect(emitted.value.verification.failures.map(({ cause }) => cause)).toContain("container");
-    }
+    expect(result.value.verification.status).toBe("verified");
+    expect(result.value.changes.map(({ kind }) => kind)).toEqual(["table-delete", "table-insert"]);
+    expect(await projectView(result.value.buffer, "final")).toEqual(
+      await projectView(target, "final"),
+    );
+    expect(await projectView(result.value.buffer, "original")).toEqual(
+      await projectView(base, "final"),
+    );
   });
 
   test("append_paragraph_then_table: additions past the last block keep target order", async () => {
