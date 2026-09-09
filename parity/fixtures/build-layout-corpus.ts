@@ -216,6 +216,7 @@ const matrixTypography = ({ typography, id }: LayoutInteractionCase): string => 
     case "numbering":
       return `<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>${id} numbered synthetic clause.</w:t></w:r></w:p>`;
   }
+  typography satisfies never;
 };
 
 const matrixTable = ({ table, id }: LayoutInteractionCase): string => {
@@ -249,13 +250,28 @@ const matrixCaseContent = (scenario: LayoutInteractionCase, index: number): stri
   return `<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>${label}</w:t></w:r></w:p>${matrixAnchor(scenario, index)}${matrixFlow(scenario)}${matrixTypography(scenario)}${matrixTable(scenario)}`;
 };
 
-const matrixCaseBody = (scenario: LayoutInteractionCase, index: number): string => {
-  const pageStart = index === 0 ? "" : '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
+type MatrixCaseBodyOptions = {
+  scenario: LayoutInteractionCase;
+  index: number;
+  previousScenario: LayoutInteractionCase | undefined;
+};
+
+const matrixCaseBody = ({ scenario, index, previousScenario }: MatrixCaseBodyOptions): string => {
+  const pageStart =
+    index === 0 || previousScenario?.section === "nextPage"
+      ? ""
+      : '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
   return `${pageStart}${matrixCaseContent(scenario, index)}${matrixSectionBoundary(scenario)}`;
 };
 
-const pairwiseMatrixBody = (): string =>
-  buildLayoutInteractionMatrix().map(matrixCaseBody).join("");
+const pairwiseMatrixBody = (): string => {
+  const scenarios = buildLayoutInteractionMatrix();
+  return scenarios
+    .map((scenario, index) =>
+      matrixCaseBody({ scenario, index, previousScenario: scenarios.at(index - 1) }),
+    )
+    .join("");
+};
 
 const indentJson = (value: unknown, spaces: number): string =>
   JSON.stringify(value, null, 2).replaceAll("\n", `\n${" ".repeat(spaces)}`);

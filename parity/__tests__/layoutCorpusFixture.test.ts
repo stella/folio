@@ -53,6 +53,14 @@ describe("synthetic layout corpus", () => {
 
     const pairwise = await loadFixture("pairwise-layout-interactions.docx");
     const pairwiseDocument = await pairwise.file("word/document.xml")!.async("text");
+    const scenarios = buildLayoutInteractionMatrix();
+    const authoredFlowBreaks = scenarios.filter(({ flow }) => flow === "hardPageBreak").length;
+    const interCaseBreaks = scenarios
+      .slice(1)
+      .filter((_, index) => scenarios[index]?.section !== "nextPage").length;
+    expect(pairwiseDocument.match(/<w:br w:type="page"\/>/g)).toHaveLength(
+      authoredFlowBreaks + interCaseBreaks,
+    );
     expect(pairwiseDocument).toContain("<w:lastRenderedPageBreak/>");
     expect(pairwiseDocument).toContain('<w:type w:val="continuous"/>');
     expect(pairwiseDocument).toContain('relativeFrom="page"');
@@ -71,7 +79,7 @@ describe("synthetic layout corpus", () => {
     expect(pairwiseDocument).toContain("<w:numPr>");
     expect(pairwiseDocument).toContain('<w:type w:val="nextPage"');
     expect(pairwiseDocument).toContain("<w:cols");
-    for (const scenario of buildLayoutInteractionMatrix()) {
+    for (const scenario of scenarios) {
       expect(pairwiseDocument).toContain(scenario.id);
     }
 
