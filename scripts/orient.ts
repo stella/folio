@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
 
 import { TaggedError } from "better-result";
@@ -133,6 +133,15 @@ const relativeInsideRepo = (repoRoot: string, candidate: string): string => {
   return relative.split(path.sep).join("/");
 };
 
+const canonicalPathInsideRepo = (canonicalRepoRoot: string, candidate: string): string => {
+  const canonical = realpathSync(candidate);
+  const relative = path.relative(canonicalRepoRoot, canonical);
+  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    throw new OrientError({ message: `Path resolves outside the repository: ${candidate}` });
+  }
+  return canonical;
+};
+
 type ResolveFilesOptions = {
   readonly repoRoot: string;
   readonly trackedFiles: readonly string[];
@@ -206,7 +215,8 @@ const packageFor = (repoRoot: string, file: string): PackageInfo | null => {
   if (directory === undefined) return null;
   const manifestPath = path.join(repoRoot, directory, "package.json");
   if (!existsSync(manifestPath)) return null;
-  const manifest: unknown = JSON.parse(readFileSync(manifestPath, "utf8"));
+  const canonicalManifestPath = canonicalPathInsideRepo(realpathSync(repoRoot), manifestPath);
+  const manifest: unknown = JSON.parse(readFileSync(canonicalManifestPath, "utf8"));
   if (typeof manifest !== "object" || manifest === null || !("name" in manifest)) return null;
   const name = Reflect.get(manifest, "name");
   const isPrivate = Reflect.get(manifest, "private");
@@ -259,11 +269,13 @@ export const buildImportGraph = (
 ): ImportGraph => {
   const sourceFiles = trackedFiles.filter((file) => SOURCE_EXTENSIONS.includes(path.extname(file)));
   const tracked = new Set(trackedFiles);
+  const canonicalRepoRoot = realpathSync(repoRoot);
   const imports = new Map<string, readonly string[]>();
   const reverse = new Map<string, string[]>();
 
   for (const file of sourceFiles) {
-    const source = readFileSync(path.join(repoRoot, file), "utf8");
+    const sourcePath = canonicalPathInsideRepo(canonicalRepoRoot, path.join(repoRoot, file));
+    const source = readFileSync(sourcePath, "utf8");
     const resolved = ts
       .preProcessFile(source, true, true)
       .importedFiles.map(({ fileName }) => resolveImport(file, fileName, tracked))

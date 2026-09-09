@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { buildReport, checksForFile, classifySeam, resolveFiles } from "./orient";
+import { buildImportGraph, buildReport, checksForFile, classifySeam, resolveFiles } from "./orient";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 
@@ -99,6 +101,23 @@ describe("repository orientation", () => {
         diffRef: "invalid-orientation-ref",
       }),
     ).toThrow("git diff");
+  });
+
+  test("rejects a tracked source symlink whose target is outside the repository", () => {
+    const repoRoot = mkdtempSync(path.join(tmpdir(), "folio-orient-repo-"));
+    const outsideRoot = mkdtempSync(path.join(tmpdir(), "folio-orient-outside-"));
+    try {
+      const outsideFile = path.join(outsideRoot, "outside.ts");
+      writeFileSync(outsideFile, "export const privateValue = true;\n");
+      symlinkSync(outsideFile, path.join(repoRoot, "tracked.ts"));
+
+      expect(() => buildImportGraph(repoRoot, ["tracked.ts"])).toThrow(
+        "Path resolves outside the repository",
+      );
+    } finally {
+      rmSync(repoRoot, { recursive: true });
+      rmSync(outsideRoot, { recursive: true });
+    }
   });
 
   test("report ordering and aggregate checks are deterministic", () => {
