@@ -12,13 +12,17 @@ import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 
 import { createFolioAIEditSnapshot } from "../../ai-edits/snapshot";
+import { parseDocumentBody } from "../../docx/documentParser";
 import { parseDocx } from "../../docx/parser";
 import { createDocx } from "../../docx/rezip";
+import { serializeDocument } from "../../docx/serializer/documentSerializer";
 import { toFlowBlocks } from "../../layout-bridge/convert/toFlowBlocks";
 import type { Document, Paragraph, Run, StyleDefinitions } from "../../types/document";
 import { schema } from "../schema";
+import { acceptAllChanges, rejectAllChanges } from "../commands/comments";
 import { applyFormatMarks, captureFormatMarks } from "../commands/formatPainter";
-import { fromProseDoc } from "./fromProseDoc";
+import { createDocumentStylesPlugin } from "../plugins/documentStyles";
+import { fromProseDoc, marksToTextFormatting } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
 
 const runText = (text: string, formatting?: Run["formatting"]): Run => {
@@ -152,6 +156,42 @@ const findTextNode = (doc: PMNode, text: string) => {
   return found;
 };
 
+const paragraphAt = (document: Document, index: number): Paragraph => {
+  const block = document.package.document.content.at(index);
+  if (block?.type !== "paragraph") {
+    throw new Error(`Expected paragraph ${index}`);
+  }
+  return block;
+};
+
+const selectText = (state: EditorState, text: string): EditorState => {
+  let range: { from: number; to: number } | null = null;
+  state.doc.descendants((node, position) => {
+    if (!range && node.isText && node.text === text) {
+      range = { from: position, to: position + node.nodeSize };
+    }
+  });
+  if (!range) {
+    throw new Error(`Expected PM text node ${text}`);
+  }
+  return state.apply(state.tr.setSelection(TextSelection.create(state.doc, range.from, range.to)));
+};
+
+const reopenSerializedBody = (document: Document): Document => ({
+  package: {
+    ...document.package,
+    document: parseDocumentBody(serializeDocument(document)),
+  },
+});
+
+const createStyledEditorState = (
+  document: Document,
+  styleDefinitions: StyleDefinitions,
+): EditorState =>
+  EditorState.create({
+    doc: toProseDoc(document, { styles: styleDefinitions }),
+    plugins: [createDocumentStylesPlugin(styleDefinitions)],
+  });
 const markNames = (document: Document, text: string): string[] => {
   const pmDoc = toProseDoc(document, { styles });
   let names: string[] | undefined;
@@ -682,7 +722,7 @@ describe("character style round-trip", () => {
         styles,
       },
     };
-    let state = EditorState.create({ doc: toProseDoc(input, { styles }) });
+    let state = createStyledEditorState(input, styles);
     state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 1, 5)));
     const captured = captureFormatMarks(state);
     state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 7, 9)));
@@ -732,7 +772,7 @@ describe("character style round-trip", () => {
         styles,
       },
     };
-    let state = EditorState.create({ doc: toProseDoc(input, { styles }) });
+    let state = createStyledEditorState(input, styles);
     state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 1, 5)));
     const captured = captureFormatMarks(state);
     state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 7, 9)));
@@ -844,7 +884,7 @@ describe("character style round-trip", () => {
     expect(findRun(firstParagraph(reopened), "Term").formatting).toEqual({ bold: false });
   });
 
-  test("painting independent complex-script style toggles saves direct offs", () => {
+  test("painting independent complex-script style toggles emits no redundant direct offs", () => {
     const input: Document = {
       package: {
         document: {
@@ -864,7 +904,7 @@ describe("character style round-trip", () => {
         styles,
       },
     };
-    let state = EditorState.create({ doc: toProseDoc(input, { styles }) });
+    let state = createStyledEditorState(input, styles);
     state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 1, 5)));
     const captured = captureFormatMarks(state);
     state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 7, 9)));
@@ -879,6 +919,467 @@ describe("character style round-trip", () => {
     }
 
     expect(findRun(target, "To").formatting).toEqual({ styleId: "LatinEmphasis" });
+  });
+
+  test("preserves effective ordinary and complex-script toggles across every style context", () => {
+    const togglePairs = [
+      { ordinary: false, complex: false },
+      { ordinary: false, complex: true },
+      { ordinary: true, complex: false },
+      { ordinary: true, complex: true },
+    ] as const;
+    for (const sourceParagraph of togglePairs) {
+      for (const sourceCharacter of togglePairs) {
+        for (const targetParagraph of togglePairs) {
+          for (const targetCharacter of togglePairs) {
+            const matrixStyles: StyleDefinitions = {
+              docDefaults: {
+                rPr: {
+                  bold: false,
+                  boldCs: false,
+                  fontFamily: { asciiTheme: "minorHAnsi", hAnsiTheme: "minorHAnsi" },
+                  fontSize: 22,
+                  fontSizeCs: 22,
+                  italic: false,
+                  italicCs: false,
+                },
+              },
+              styles: [
+                {
+                  styleId: "SourceParagraph",
+                  type: "paragraph",
+                  name: "Source Paragraph",
+                  rPr: {
+                    bold: sourceParagraph.ordinary,
+                    boldCs: sourceParagraph.complex,
+                    italic: sourceParagraph.ordinary,
+                    italicCs: sourceParagraph.complex,
+                  },
+                },
+                {
+                  styleId: "SourceCharacter",
+                  type: "character",
+                  name: "Source Character",
+                  rPr: {
+                    bold: sourceCharacter.ordinary,
+                    boldCs: sourceCharacter.complex,
+                    italic: sourceCharacter.ordinary,
+                    italicCs: sourceCharacter.complex,
+                  },
+                },
+                {
+                  styleId: "TargetParagraph",
+                  type: "paragraph",
+                  name: "Target Paragraph",
+                  rPr: {
+                    bold: targetParagraph.ordinary,
+                    boldCs: targetParagraph.complex,
+                    italic: targetParagraph.ordinary,
+                    italicCs: targetParagraph.complex,
+                  },
+                },
+                {
+                  styleId: "TargetCharacter",
+                  type: "character",
+                  name: "Target Character",
+                  rPr: {
+                    bold: targetCharacter.ordinary,
+                    boldCs: targetCharacter.complex,
+                    italic: targetCharacter.ordinary,
+                    italicCs: targetCharacter.complex,
+                  },
+                },
+              ],
+            };
+            const input: Document = {
+              package: {
+                document: {
+                  content: [
+                    {
+                      type: "paragraph",
+                      formatting: { styleId: "SourceParagraph" },
+                      content: [runText("From", { styleId: "SourceCharacter" })],
+                    },
+                    {
+                      type: "paragraph",
+                      formatting: { styleId: "TargetParagraph" },
+                      content: [runText("To", { styleId: "TargetCharacter" })],
+                    },
+                  ],
+                },
+                styles: matrixStyles,
+              },
+            };
+            let state = createStyledEditorState(input, matrixStyles);
+            state = selectText(state, "From");
+            const source = captureFormatMarks(state);
+            state = selectText(state, "To");
+            applyFormatMarks(source)(state, (transaction) => {
+              state = state.apply(transaction);
+            });
+
+            const saved = fromProseDoc(state.doc, input);
+            const reopened = reopenSerializedBody(saved);
+            let reopenedState = createStyledEditorState(reopened, matrixStyles);
+            reopenedState = selectText(reopenedState, "To");
+            const target = captureFormatMarks(reopenedState);
+            const matrixCase = [sourceParagraph, sourceCharacter, targetParagraph, targetCharacter]
+              .map(({ ordinary, complex }) => `${Number(ordinary)}${Number(complex)}`)
+              .join("/");
+
+            expect({
+              actual: {
+                bold: target.effectiveFormatting.bold ?? false,
+                boldCs: target.effectiveFormatting.boldCs ?? false,
+                italic: target.effectiveFormatting.italic ?? false,
+                italicCs: target.effectiveFormatting.italicCs ?? false,
+              },
+              matrixCase,
+            }).toEqual({
+              actual: {
+                bold: source.effectiveFormatting.bold ?? false,
+                boldCs: source.effectiveFormatting.boldCs ?? false,
+                italic: source.effectiveFormatting.italic ?? false,
+                italicCs: source.effectiveFormatting.italicCs ?? false,
+              },
+              matrixCase,
+            });
+            expect(findRun(paragraphAt(saved, 1), "To").formatting?.styleId).toBe(
+              "SourceCharacter",
+            );
+          }
+        }
+      }
+    }
+  });
+
+  test("doc-default-active character-style toggles stay active in layout after save and reopen", async () => {
+    const defaultsActiveStyles: StyleDefinitions = {
+      docDefaults: {
+        rPr: { bold: true, boldCs: true, italic: true, italicCs: true },
+      },
+      styles: [
+        {
+          styleId: "DefaultActiveParagraph",
+          type: "paragraph",
+          name: "Default Active Paragraph",
+          rPr: { bold: true, boldCs: true, italic: true, italicCs: true },
+        },
+        {
+          styleId: "DefaultActiveCharacter",
+          type: "character",
+          name: "Default Active Character",
+          rPr: { bold: true, boldCs: true, italic: true, italicCs: true },
+        },
+      ],
+    };
+    const input: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              formatting: { styleId: "DefaultActiveParagraph" },
+              content: [runText("Defaults stay active", { styleId: "DefaultActiveCharacter" })],
+            },
+          ],
+        },
+        styles: defaultsActiveStyles,
+      },
+    };
+    const proseDoc = toProseDoc(input, { styles: defaultsActiveStyles });
+    const beforeSave = toFlowBlocks(proseDoc, { styles: defaultsActiveStyles })
+      .flatMap((block) => (block.kind === "paragraph" ? block.runs : []))
+      .find((run) => run.kind === "text");
+
+    expect(beforeSave).toMatchObject({
+      bold: true,
+      complexScriptBold: true,
+      complexScriptItalic: true,
+      italic: true,
+    });
+
+    const saved = fromProseDoc(proseDoc, input);
+    expect(findRun(firstParagraph(saved), "Defaults stay active").formatting).toEqual({
+      styleId: "DefaultActiveCharacter",
+    });
+
+    const reopened = await reopenThroughDocx(saved);
+    expect(findRun(firstParagraph(reopened), "Defaults stay active").formatting).toEqual({
+      styleId: "DefaultActiveCharacter",
+    });
+    const afterReopen = toFlowBlocks(
+      toProseDoc(reopened, { styles: defaultsActiveStyles }),
+      { styles: defaultsActiveStyles },
+    )
+      .flatMap((block) => (block.kind === "paragraph" ? block.runs : []))
+      .find((run) => run.kind === "text");
+    expect(afterReopen).toMatchObject({
+      bold: true,
+      complexScriptBold: true,
+      complexScriptItalic: true,
+      italic: true,
+    });
+  });
+
+  test("keeps the complete safe target-relative cancellation set after serialize and reopen", () => {
+    const plainFormatting = {
+      allCaps: false,
+      bold: false,
+      boldCs: false,
+      color: { auto: true },
+      cs: false,
+      doubleStrike: false,
+      effect: "none" as const,
+      emboss: false,
+      emphasisMark: "none" as const,
+      fontFamily: { asciiTheme: "minorHAnsi" as const, hAnsiTheme: "minorHAnsi" },
+      fontSize: 22,
+      fontSizeCs: 22,
+      highlight: "none" as const,
+      imprint: false,
+      italic: false,
+      italicCs: false,
+      kerning: 0,
+      outline: false,
+      position: 0,
+      scale: 100,
+      shading: { pattern: "nil" as const },
+      shadow: false,
+      smallCaps: false,
+      spacing: 0,
+      strike: false,
+      underline: { style: "none" as const },
+      vertAlign: "baseline" as const,
+    };
+    const contextualFormatting = {
+      allCaps: true,
+      bold: true,
+      boldCs: true,
+      color: { rgb: "336699" },
+      cs: true,
+      doubleStrike: true,
+      effect: "shimmer" as const,
+      emboss: true,
+      emphasisMark: "dot" as const,
+      highlight: "yellow" as const,
+      imprint: true,
+      italic: true,
+      italicCs: true,
+      kerning: 8,
+      outline: true,
+      position: 4,
+      scale: 120,
+      shading: { pattern: "clear" as const, fill: { rgb: "00AA00" } },
+      shadow: true,
+      smallCaps: true,
+      spacing: 20,
+      strike: true,
+      underline: { style: "single" as const },
+      vertAlign: "superscript" as const,
+    };
+    const contextualStyles: StyleDefinitions = {
+      docDefaults: { rPr: plainFormatting },
+      styles: [
+        { styleId: "PlainParagraph", type: "paragraph", name: "Plain Paragraph" },
+        { styleId: "PlainCharacter", type: "character", name: "Plain Character" },
+        {
+          styleId: "ContextParagraph",
+          type: "paragraph",
+          name: "Context Paragraph",
+          rPr: contextualFormatting,
+        },
+        {
+          styleId: "ContextCharacter",
+          type: "character",
+          name: "Context Character",
+          rPr: { color: { rgb: "AA0000" }, fontSize: 30, underline: { style: "double" } },
+        },
+      ],
+    };
+    const input: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              formatting: { styleId: "PlainParagraph" },
+              content: [runText("From", { styleId: "PlainCharacter" })],
+            },
+            {
+              type: "paragraph",
+              formatting: { styleId: "ContextParagraph" },
+              content: [runText("To", { styleId: "ContextCharacter" })],
+            },
+          ],
+        },
+        styles: contextualStyles,
+      },
+    };
+    let state = createStyledEditorState(input, contextualStyles);
+    expect(state.doc.child(1).attrs["defaultTextFormatting"]?.shading).toEqual({
+      fill: { rgb: "00AA00" },
+      pattern: "clear",
+    });
+    state = selectText(state, "From");
+    const source = captureFormatMarks(state);
+    state = selectText(state, "To");
+    expect(
+      applyFormatMarks(source)(state, (transaction) => {
+        state = state.apply(transaction);
+      }),
+    ).toBe(true);
+
+    let targetMarks;
+    state.doc.descendants((node) => {
+      if (node.isText && node.text === "To") {
+        targetMarks = node.marks;
+      }
+    });
+    expect(targetMarks).toBeDefined();
+    expect(
+      targetMarks?.find((mark) => mark.type.name === "runFormattingOverride")?.attrs,
+    ).toMatchObject({ shading: { pattern: "nil" } });
+    expect(
+      marksToTextFormatting(targetMarks ?? [], { inheritedFormatting: contextualFormatting })
+        .shading,
+    ).toEqual({ pattern: "nil" });
+
+    const saved = fromProseDoc(state.doc, input);
+    expect(findRun(paragraphAt(saved, 1), "To").formatting?.shading).toEqual({ pattern: "nil" });
+    const xml = serializeDocument(saved);
+    expect(xml).toContain('<w:color w:val="auto"/>');
+    expect(xml).toContain('<w:highlight w:val="none"/>');
+    expect(xml).toContain('<w:shd w:val="nil"');
+    expect(xml).toContain('<w:vertAlign w:val="baseline"/>');
+    expect(xml).toContain('<w:effect w:val="none"/>');
+    const reopened = reopenSerializedBody(saved);
+    let reopenedState = createStyledEditorState(reopened, contextualStyles);
+    reopenedState = selectText(reopenedState, "To");
+    const target = captureFormatMarks(reopenedState);
+    const targetFlowRun = toFlowBlocks(reopenedState.doc, { styles: contextualStyles })
+      .flatMap((block) => (block.kind === "paragraph" ? block.runs : []))
+      .find((run) => run.kind === "text" && run.text === "To");
+
+    expect(target.effectiveFormatting).toEqual(source.effectiveFormatting);
+    expect(targetFlowRun).toMatchObject({
+      allCaps: false,
+      bold: false,
+      complexScriptBold: false,
+      complexScriptItalic: false,
+      emboss: false,
+      forceComplexScript: false,
+      horizontalScale: 100,
+      imprint: false,
+      italic: false,
+      kerningMinPt: 0,
+      positionPx: 0,
+      smallCaps: false,
+      strike: false,
+      subscript: false,
+      superscript: false,
+      textOutline: false,
+      textShadow: false,
+      underline: false,
+    });
+    expect(targetFlowRun?.color).toBeUndefined();
+    expect(targetFlowRun?.emphasisMark).toBeUndefined();
+    expect(targetFlowRun?.highlight).toBeUndefined();
+    expect(targetFlowRun?.letterSpacing).toBeUndefined();
+    expect(targetFlowRun?.shading).toBeUndefined();
+    expect(targetFlowRun?.textEffect).toBeUndefined();
+    expect(findRun(paragraphAt(reopened, 1), "To").formatting?.styleId).toBe("PlainCharacter");
+  });
+
+  test("preserves a target revision through paint and save before accept or reject", () => {
+    const revisionStyles: StyleDefinitions = {
+      docDefaults: {
+        rPr: {
+          fontFamily: { asciiTheme: "minorHAnsi", hAnsiTheme: "minorHAnsi" },
+          fontSize: 22,
+        },
+      },
+      styles: [
+        {
+          styleId: "SourceCharacter",
+          type: "character",
+          name: "Source Character",
+          rPr: { bold: true, color: { themeColor: "accent2", themeTint: "66" } },
+        },
+      ],
+    };
+    const input: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              content: [runText("From", { styleId: "SourceCharacter" })],
+            },
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "insertion",
+                  info: { id: 7, author: "Reviewer", date: "2026-09-09T08:00:00Z" },
+                  content: [runText("To")],
+                },
+              ],
+            },
+          ],
+        },
+        styles: revisionStyles,
+      },
+    };
+    let state = createStyledEditorState(input, revisionStyles);
+    state = selectText(state, "From");
+    const source = captureFormatMarks(state);
+    state = selectText(state, "To");
+    expect(
+      applyFormatMarks(source)(state, (transaction) => {
+        state = state.apply(transaction);
+      }),
+    ).toBe(true);
+
+    const saved = fromProseDoc(state.doc, input);
+    const reopened = reopenSerializedBody(saved);
+    const pendingState = createStyledEditorState(reopened, revisionStyles);
+    let pendingInsertionCount = 0;
+    pendingState.doc.descendants((node) => {
+      pendingInsertionCount += node.marks.filter((mark) => mark.type.name === "insertion").length;
+    });
+    expect(pendingInsertionCount).toBe(1);
+    const savedTarget = paragraphAt(saved, 1).content.at(0);
+    if (savedTarget?.type !== "insertion") {
+      throw new Error("Expected pending insertion after paint and save");
+    }
+    const savedTargetRun = savedTarget.content.at(0);
+    if (savedTargetRun?.type !== "run") {
+      throw new Error("Expected formatted run inside pending insertion");
+    }
+    expect(savedTargetRun.formatting?.styleId).toBe("SourceCharacter");
+    expect(savedTargetRun.formatting?.color).toBeUndefined();
+
+    let accepted = pendingState;
+    expect(
+      acceptAllChanges()(accepted, (transaction) => {
+        accepted = accepted.apply(transaction);
+      }),
+    ).toBe(true);
+    expect(accepted.doc.textContent).toBe("FromTo");
+    expect(JSON.stringify(accepted.doc.toJSON())).not.toContain("insertion");
+    const acceptedTarget = captureFormatMarks(selectText(accepted, "To"));
+    expect(acceptedTarget.effectiveFormatting.bold).toBe(source.effectiveFormatting.bold);
+    expect(acceptedTarget.effectiveFormatting.color).toEqual(source.effectiveFormatting.color);
+
+    let rejected = pendingState;
+    expect(
+      rejectAllChanges()(rejected, (transaction) => {
+        rejected = rejected.apply(transaction);
+      }),
+    ).toBe(true);
+    expect(rejected.doc.textContent).toBe("From");
+    expect(JSON.stringify(rejected.doc.toJSON())).not.toContain("insertion");
   });
 
   test("hyperlink child runs keep their character style", () => {

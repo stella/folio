@@ -137,6 +137,9 @@ describe("textEffect mark round-trip through ProseMirror", () => {
     expect(pmDoc.firstChild?.firstChild?.marks.some(({ type }) => type.name === "textEffect")).toBe(
       false,
     );
+    expect(
+      pmDoc.firstChild?.firstChild?.marks.some(({ type }) => type.name === "runFormattingOverride"),
+    ).toBe(true);
     const out = fromProseDoc(pmDoc, input);
     const run = findRun(firstParagraph(out), "plain");
     expect(run.formatting?.effect).toBe("none");

@@ -306,10 +306,22 @@ export type RunFormattingOverrideAttrs = Partial<Record<"bold" | "boldCs" | "cs"
     _authoredValues?: AuthoredRunFormattingValues;
     directFontProperties?: readonly ("fontFamily" | "fontSize" | "color")[];
     complexScriptPropertyAbsences?: readonly ComplexScriptRunPropertyKey[];
+    color?: "auto";
     doubleStrike?: false;
+    effect?: "none";
+    emphasisMark?: "none";
+    highlight?: "none";
+    kerning?: 0;
+    position?: 0;
     rtl?: false;
+    scale?: 100;
+    shading?: ShadingProperties & {
+        pattern: "nil";
+    };
+    spacing?: 0;
     fontSizeCs?: number;
     underline?: "none";
+    vertAlign?: "baseline";
 };
 
 // @public

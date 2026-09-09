@@ -785,6 +785,46 @@ describe("ProseMirror attr readers", () => {
     }
   });
 
+  test("validates lossless run-formatting cancellation shading", () => {
+    const shading = {
+      pattern: "nil" as const,
+      color: { rgb: "112233" },
+      fill: { themeColor: "accent1" as const, themeShade: "80" },
+    };
+    const valid = readRunFormattingOverrideMarkAttrs(
+      schema.marks.runFormattingOverride.create({ shading }),
+    );
+    expect(valid).toEqual({ ok: true, value: expect.objectContaining({ shading }) });
+
+    const invalid = readRunFormattingOverrideMarkAttrs(
+      schema.marks.runFormattingOverride.create({
+        shading: { pattern: "not-a-pattern", fill: { rgb: 123 } },
+      }),
+    );
+    expect(invalid.ok).toBe(false);
+    if (!invalid.ok) {
+      expect(invalid.issues.map((issue) => issue.path)).toEqual(
+        expect.arrayContaining([
+          "runFormattingOverride.attrs.shading.pattern",
+          "runFormattingOverride.attrs.shading.fill.rgb",
+        ]),
+      );
+    }
+
+    const active = readRunFormattingOverrideMarkAttrs(
+      schema.marks.runFormattingOverride.create({
+        shading: { pattern: "clear", fill: { rgb: "AABBCC" } },
+      }),
+    );
+    expect(active.ok).toBe(false);
+    if (!active.ok) {
+      expect(active.issues).toContainEqual({
+        path: "runFormattingOverride.attrs.shading.pattern",
+        message: 'Expected "nil".',
+      });
+    }
+  });
+
   test("rejects an invalid tracked-change provenance", () => {
     const insertion = schema.marks.insertion.create({
       revisionId: 1,

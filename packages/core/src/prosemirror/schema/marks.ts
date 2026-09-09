@@ -233,10 +233,20 @@ export type RunFormattingOverrideAttrs = Partial<
   directFontProperties?: readonly ("fontFamily" | "fontSize" | "color")[];
   /** Current complex-script mirrors explicitly omitted by the run. */
   complexScriptPropertyAbsences?: readonly ComplexScriptRunPropertyKey[];
+  color?: "auto";
   doubleStrike?: false;
+  effect?: "none";
+  emphasisMark?: "none";
+  highlight?: "none";
+  kerning?: 0;
+  position?: 0;
   rtl?: false;
+  scale?: 100;
+  shading?: ShadingProperties & { pattern: "nil" };
+  spacing?: 0;
   fontSizeCs?: number;
   underline?: "none";
+  vertAlign?: "baseline";
 };
 
 /**

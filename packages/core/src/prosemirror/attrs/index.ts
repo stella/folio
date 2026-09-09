@@ -212,6 +212,31 @@ const RUN_FORMATTING_OVERRIDE_FALSE_KEYS = [
   "rtl",
 ] as const satisfies readonly (keyof RunFormattingOverrideAttrs)[];
 
+const RUN_FORMATTING_OVERRIDE_STRING_SENTINELS = {
+  color: ["auto"],
+  effect: ["none"],
+  emphasisMark: ["none"],
+  highlight: ["none"],
+  underline: ["none"],
+  vertAlign: ["baseline"],
+} as const satisfies Record<
+  keyof Pick<
+    RunFormattingOverrideAttrs,
+    "color" | "effect" | "emphasisMark" | "highlight" | "underline" | "vertAlign"
+  >,
+  readonly string[]
+>;
+
+const RUN_FORMATTING_OVERRIDE_NUMBER_SENTINELS = {
+  kerning: 0,
+  position: 0,
+  scale: 100,
+  spacing: 0,
+} as const satisfies Record<
+  keyof Pick<RunFormattingOverrideAttrs, "kerning" | "position" | "scale" | "spacing">,
+  number
+>;
+
 const RUN_FORMATTING_OVERRIDE_DIRECT_FONT_PROPERTIES = ["fontFamily", "fontSize", "color"] as const;
 
 const SECTION_ORIENTATIONS = ["portrait", "landscape"] as const;
@@ -1208,7 +1233,23 @@ export const readRunFormattingOverrideMarkAttrs = (
   optionalBoolean(attrs, "italicCs", "runFormattingOverride.attrs.italicCs", issues);
   optionalNumber(attrs, "fontSizeCs", "runFormattingOverride.attrs.fontSizeCs", issues);
   optionalBoolean(attrs, "cs", "runFormattingOverride.attrs.cs", issues);
-  optionalOneOf(attrs, "underline", "runFormattingOverride.attrs.underline", issues, ["none"]);
+  optionalShading(attrs, "shading", "runFormattingOverride.attrs.shading", issues);
+  const shading = attrs["shading"];
+  if (isRecord(shading) && shading["pattern"] !== "nil") {
+    issues.push({
+      path: "runFormattingOverride.attrs.shading.pattern",
+      message: 'Expected "nil".',
+    });
+  }
+  for (const [key, values] of Object.entries(RUN_FORMATTING_OVERRIDE_STRING_SENTINELS)) {
+    optionalOneOf(attrs, key, `runFormattingOverride.attrs.${key}`, issues, values);
+  }
+  for (const [key, expected] of Object.entries(RUN_FORMATTING_OVERRIDE_NUMBER_SENTINELS)) {
+    const value = attrs[key];
+    if (value !== undefined && value !== null && value !== expected) {
+      issues.push({ path: `runFormattingOverride.attrs.${key}`, message: `Expected ${expected}.` });
+    }
+  }
   optionalOneOfArray(
     attrs,
     "directFontProperties",

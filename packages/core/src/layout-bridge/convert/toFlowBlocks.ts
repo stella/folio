@@ -41,6 +41,7 @@ import { setTextBoxGroupId } from "../../layout-engine/textBoxGroup";
 import { setParagraphFrame } from "../../layout-engine/paragraphFrame";
 import { DEFAULT_TEXTBOX_MARGINS, DEFAULT_TEXTBOX_WIDTH } from "../../layout-engine/types";
 import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
+import { STYLE_TOGGLE_KEYS } from "../../utils/textFormattingMerge";
 import { getColumns } from "../sectionColumns";
 import {
   expectBlockSdtAttrs,
@@ -75,8 +76,10 @@ import { autospacingMatchesBase } from "../../prosemirror/autospacingBase";
 import { runShadingAttrsToShading } from "../../prosemirror/conversion/runShadingMark";
 import { directionToBidi } from "../../prosemirror/paragraphDirection";
 import { expectTextBoxAnchorAttrs } from "../../prosemirror/textBoxAnchorAttrs";
-import { cascadeStyleTextFormatting } from "../../prosemirror/styles/styleToggleCascade";
-import type { RunStyleResolver } from "../../prosemirror/runStyleFormatting";
+import {
+  resolveEffectiveRunStyleFormatting,
+  type RunStyleResolver,
+} from "../../prosemirror/runStyleFormatting";
 import { getPageNumbering } from "../../paged-layout/sectionGeometry";
 import type { RunFormattingOverrideAttrs } from "../../prosemirror/schema/marks";
 import type {
@@ -285,6 +288,7 @@ function extractRunFormatting(
 ): RunFormatting {
   const formatting: RunFormatting = {};
   let hasNoteRef = false;
+  let runFormattingOverride: RunFormattingOverrideAttrs | undefined;
 
   for (const mark of marks) {
     switch (mark.type.name) {
@@ -461,7 +465,7 @@ function extractRunFormatting(
         break;
 
       case "runFormattingOverride":
-        applyRunFormattingOverrides(formatting, expectRunFormattingOverrideMarkAttrs(mark));
+        runFormattingOverride = expectRunFormattingOverrideMarkAttrs(mark);
         break;
 
       case "emphasisMark": {
@@ -554,6 +558,12 @@ function extractRunFormatting(
       default:
         break;
     }
+  }
+
+  if (runFormattingOverride) {
+    // ProseMirror orders marks by schema rank, not semantic ownership. Apply
+    // structural cancellations last so an inherited visual mark cannot win.
+    applyRunFormattingOverrides(formatting, runFormattingOverride);
   }
 
   if (hasNoteRef && formatting.subscript) {
@@ -656,15 +666,30 @@ function mergeRunFormatting(paraDefaults: RunFormatting, formatting: RunFormatti
 type ApplyCharacterStyleToggleFormattingOptions = {
   formatting: RunFormatting;
   marks: readonly Mark[];
-  paraDefaults: RunFormatting;
+  paragraphFormatting: TextFormatting | undefined;
   styleResolver: RunStyleResolver;
 };
+
+const CHARACTER_STYLE_TOGGLE_LAYOUT_PROPERTIES = {
+  allCaps: "allCaps",
+  bold: "bold",
+  boldCs: "complexScriptBold",
+  emboss: "emboss",
+  hidden: "hidden",
+  imprint: "imprint",
+  italic: "italic",
+  italicCs: "complexScriptItalic",
+  outline: "textOutline",
+  shadow: "textShadow",
+  smallCaps: "smallCaps",
+  strike: "strike",
+} as const satisfies Record<(typeof STYLE_TOGGLE_KEYS)[number], keyof RunFormatting>;
 
 /** Restore character-style toggle values that plain visual marks cannot represent. */
 function applyCharacterStyleToggleFormatting({
   formatting,
   marks,
-  paraDefaults,
+  paragraphFormatting,
   styleResolver,
 }: ApplyCharacterStyleToggleFormattingOptions): void {
   const characterStyleMark = marks.find((mark) => mark.type.name === "characterStyle");
@@ -677,108 +702,203 @@ function applyCharacterStyleToggleFormatting({
     return;
   }
 
-  const effectiveStyleFormatting = cascadeStyleTextFormatting([
-    {
-      formatting: {
-        bold: paraDefaults.bold ?? false,
-        boldCs: paraDefaults.complexScriptBold ?? false,
-        italic: paraDefaults.italic ?? false,
-        italicCs: paraDefaults.complexScriptItalic ?? false,
-      },
-      type: "direct",
-    },
-    { formatting: styleRPr, type: "style" },
-  ]).formatting;
-
-  if (styleRPr.bold !== undefined && formatting.bold === undefined) {
-    formatting.bold = effectiveStyleFormatting?.bold ?? false;
-  }
-  if (styleRPr.boldCs !== undefined && formatting.complexScriptBold === undefined) {
-    formatting.complexScriptBold = effectiveStyleFormatting?.boldCs ?? false;
-  }
-  if (styleRPr.italic !== undefined && formatting.italic === undefined) {
-    formatting.italic = effectiveStyleFormatting?.italic ?? false;
-  }
-  if (styleRPr.italicCs !== undefined && formatting.complexScriptItalic === undefined) {
-    formatting.complexScriptItalic = effectiveStyleFormatting?.italicCs ?? false;
-  }
-  if (styleRPr.allCaps === true && formatting.allCaps === undefined) {
-    formatting.allCaps = false;
-  }
-  if (styleRPr.emboss === true && formatting.emboss === undefined) {
-    formatting.emboss = false;
-  }
-  if (styleRPr.imprint === true && formatting.imprint === undefined) {
-    formatting.imprint = false;
-  }
-  if (styleRPr.outline === true && formatting.textOutline === undefined) {
-    formatting.textOutline = false;
-  }
-  if (styleRPr.shadow === true && formatting.textShadow === undefined) {
-    formatting.textShadow = false;
-  }
-  if (styleRPr.smallCaps === true && formatting.smallCaps === undefined) {
-    formatting.smallCaps = false;
-  }
-  if (styleRPr.strike === true && formatting.strike === undefined) {
-    formatting.strike = false;
-  }
-  if (styleRPr.hidden === true && formatting.hidden === undefined) {
-    formatting.hidden = false;
+  const effectiveStyleFormatting = resolveEffectiveRunStyleFormatting({
+    marks,
+    paragraphFormatting,
+    styleResolver,
+  });
+  for (const property of STYLE_TOGGLE_KEYS) {
+    if (styleRPr[property] === undefined) {
+      continue;
+    }
+    const layoutProperty = CHARACTER_STYLE_TOGGLE_LAYOUT_PROPERTIES[property];
+    if (formatting[layoutProperty] === undefined) {
+      Reflect.set(formatting, layoutProperty, effectiveStyleFormatting?.[property] ?? false);
+    }
   }
 }
+
+type RunFormattingOverrideHandler = (formatting: RunFormatting, value: unknown) => void;
+
+const suppressInheritedRunFormatting = (
+  formatting: RunFormatting,
+  property: keyof RunFormatting,
+): void => {
+  // The enumerable own property must survive the later object spread and
+  // replace the paragraph default with the property's neutral state.
+  Reflect.set(formatting, property, undefined);
+};
+
+/**
+ * Project every structural run-formatting override into layout. This total map
+ * keeps save/reopen semantics and the live layout in lockstep: adding a new
+ * override attr requires an explicit rendering decision here.
+ */
+const RUN_FORMATTING_OVERRIDE_HANDLERS = {
+  _authoredOff() {
+    // Serialization provenance; current rendering signals own layout.
+  },
+  _authoredOn() {
+    // Serialization provenance; current rendering signals own layout.
+  },
+  _authoredValues() {
+    // Serialization provenance; current rendering signals own layout.
+  },
+  allCaps(formatting, value) {
+    if (typeof value === "boolean") {
+      formatting.allCaps = value;
+    }
+  },
+  bold(formatting, value) {
+    if (typeof value === "boolean") {
+      formatting.bold = value;
+    }
+  },
+  boldCs(formatting, value) {
+    if (typeof value === "boolean") {
+      formatting.complexScriptBold = value;
+    }
+  },
+  color(formatting, value) {
+    if (value === "auto") {
+      suppressInheritedRunFormatting(formatting, "color");
+      suppressInheritedRunFormatting(formatting, "textColorSource");
+    }
+  },
+  complexScriptPropertyAbsences() {
+    // Serialization provenance; current rendering signals own layout.
+  },
+  cs(formatting, value) {
+    if (typeof value === "boolean") {
+      formatting.forceComplexScript = value;
+    }
+  },
+  directFontProperties() {
+    // Serialization provenance only; concrete font and color marks own layout.
+  },
+  doubleStrike(formatting, value) {
+    if (value === false && formatting.strike === undefined) {
+      // Layout currently paints single and double strike through one field. A
+      // copied single-strike mark wins; otherwise this cancels inherited strike.
+      formatting.strike = false;
+    }
+  },
+  effect(formatting, value) {
+    if (value === "none") {
+      suppressInheritedRunFormatting(formatting, "textEffect");
+    }
+  },
+  emboss(formatting, value) {
+    if (typeof value === "boolean") {
+      formatting.emboss = value;
+    }
+  },
+  emphasisMark(formatting, value) {
+    if (value === "none") {
+      suppressInheritedRunFormatting(formatting, "emphasisMark");
+    }
+  },
+  fontSizeCs(formatting, value) {
+    if (typeof value === "number") {
+      formatting.complexScriptFontSize = value / 2;
+    }
+  },
+  hidden(formatting, value) {
+    if (typeof value === "boolean") {
+      formatting.hidden = value;
+    }
+  },
+  highlight(formatting, value) {
+    if (value === "none") {
+      suppressInheritedRunFormatting(formatting, "highlight");
+    }
+  },
+  imprint(formatting, value) {
+    if (typeof value === "boolean") {
+      formatting.imprint = value;
+    }
+  },
+  italic(formatting, value) {
+    if (typeof value === "boolean") {
+      formatting.italic = value;
+    }
+  },
+  italicCs(formatting, value) {
+    if (typeof value === "boolean") {
+      formatting.complexScriptItalic = value;
+    }
+  },
+  kerning(formatting, value) {
+    if (value === 0) {
+      formatting.kerningMinPt = 0;
+    }
+  },
+  outline(formatting, value) {
+    if (typeof value === "boolean") {
+      formatting.textOutline = value;
+    }
+  },
+  position(formatting, value) {
+    if (value === 0) {
+      formatting.positionPx = 0;
+    }
+  },
+  rtl(formatting, value) {
+    if (value === false) {
+      formatting.rtl = false;
+    }
+  },
+  scale(formatting, value) {
+    if (value === 100) {
+      formatting.horizontalScale = 100;
+    }
+  },
+  shading(formatting, value) {
+    if (typeof value === "object" && value !== null && Reflect.get(value, "pattern") === "nil") {
+      suppressInheritedRunFormatting(formatting, "shading");
+    }
+  },
+  shadow(formatting, value) {
+    if (typeof value === "boolean") {
+      formatting.textShadow = value;
+    }
+  },
+  smallCaps(formatting, value) {
+    if (typeof value === "boolean") {
+      formatting.smallCaps = value;
+    }
+  },
+  spacing(formatting, value) {
+    if (value === 0) {
+      formatting.letterSpacing = 0;
+    }
+  },
+  strike(formatting, value) {
+    if (typeof value === "boolean") {
+      formatting.strike = value;
+    }
+  },
+  underline(formatting, value) {
+    if (value === "none") {
+      formatting.underline = false;
+    }
+  },
+  vertAlign(formatting, value) {
+    if (value === "baseline") {
+      formatting.superscript = false;
+      formatting.subscript = false;
+    }
+  },
+} satisfies Record<keyof RunFormattingOverrideAttrs, RunFormattingOverrideHandler>;
+
+const RUN_FORMATTING_OVERRIDE_HANDLER_ENTRIES = Object.entries(RUN_FORMATTING_OVERRIDE_HANDLERS);
 
 function applyRunFormattingOverrides(
   formatting: RunFormatting,
   attrs: RunFormattingOverrideAttrs,
 ): void {
-  if (attrs.bold !== undefined) {
-    formatting.bold = attrs.bold;
-  }
-  if (attrs.italic !== undefined) {
-    formatting.italic = attrs.italic;
-  }
-  if (attrs.underline === "none") {
-    formatting.underline = false;
-  }
-  if (attrs.strike !== undefined) {
-    formatting.strike = attrs.strike;
-  }
-  if (attrs.allCaps !== undefined) {
-    formatting.allCaps = attrs.allCaps;
-  }
-  if (attrs.smallCaps !== undefined) {
-    formatting.smallCaps = attrs.smallCaps;
-  }
-  if (attrs.hidden !== undefined) {
-    formatting.hidden = attrs.hidden;
-  }
-  if (attrs.emboss !== undefined) {
-    formatting.emboss = attrs.emboss;
-  }
-  if (attrs.imprint !== undefined) {
-    formatting.imprint = attrs.imprint;
-  }
-  if (attrs.shadow !== undefined) {
-    formatting.textShadow = attrs.shadow;
-  }
-  if (attrs.outline !== undefined) {
-    formatting.textOutline = attrs.outline;
-  }
-  if (attrs.rtl === false) {
-    formatting.rtl = false;
-  }
-  if (attrs.boldCs !== undefined) {
-    formatting.complexScriptBold = attrs.boldCs;
-  }
-  if (attrs.italicCs !== undefined) {
-    formatting.complexScriptItalic = attrs.italicCs;
-  }
-  if (attrs.fontSizeCs !== undefined) {
-    formatting.complexScriptFontSize = attrs.fontSizeCs / 2;
-  }
-  if (attrs.cs !== undefined) {
-    formatting.forceComplexScript = attrs.cs;
+  for (const [key, handler] of RUN_FORMATTING_OVERRIDE_HANDLER_ENTRIES) {
+    handler(formatting, Reflect.get(attrs, key));
   }
 }
 
@@ -1108,7 +1228,7 @@ function paragraphToRuns(node: PMNode, startPos: number, _options: FlowConversio
       applyCharacterStyleToggleFormatting({
         formatting,
         marks: child.marks,
-        paraDefaults,
+        paragraphFormatting: pmAttrs.defaultTextFormatting,
         styleResolver: _options.styleResolver,
       });
       if (inTocParagraph) {
@@ -1134,7 +1254,7 @@ function paragraphToRuns(node: PMNode, startPos: number, _options: FlowConversio
       applyCharacterStyleToggleFormatting({
         formatting,
         marks: child.marks,
-        paraDefaults,
+        paragraphFormatting: pmAttrs.defaultTextFormatting,
         styleResolver: _options.styleResolver,
       });
       if (inTocParagraph) {
@@ -1167,7 +1287,7 @@ function paragraphToRuns(node: PMNode, startPos: number, _options: FlowConversio
       applyCharacterStyleToggleFormatting({
         formatting,
         marks: child.marks,
-        paraDefaults,
+        paragraphFormatting: pmAttrs.defaultTextFormatting,
         styleResolver: _options.styleResolver,
       });
       const run: TabRun = {
@@ -1232,7 +1352,7 @@ function paragraphToRuns(node: PMNode, startPos: number, _options: FlowConversio
       applyCharacterStyleToggleFormatting({
         formatting: extractedFieldFormatting,
         marks: child.marks,
-        paraDefaults,
+        paragraphFormatting: pmAttrs.defaultTextFormatting,
         styleResolver: _options.styleResolver,
       });
       if (inTocParagraph) {

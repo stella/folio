@@ -23,7 +23,7 @@ import type { RunShadingAttrs } from "../schema/marks";
 export function shadingToRunShadingAttrs(
   shading: ShadingProperties | undefined,
 ): RunShadingAttrs | null {
-  if (!shading) {
+  if (!shading || shading.pattern === "nil") {
     return null;
   }
   // A `solid` pattern paints `w:color` over the whole cell, so the pattern
@@ -52,7 +52,7 @@ export function shadingToRunShadingAttrs(
   // `clear`/`nil`, nor the `solid` we just flattened into a plain fill. Keep the
   // pattern foreground color (`w:color`) too, so a pct*/stripe pattern's color
   // round-trips.
-  if (!isSolid && shading.pattern && shading.pattern !== "clear" && shading.pattern !== "nil") {
+  if (!isSolid && shading.pattern && shading.pattern !== "clear") {
     attrs.pattern = shading.pattern;
     if (shading.color?.rgb) {
       attrs.patternColor = shading.color.rgb;

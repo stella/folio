@@ -18,6 +18,38 @@ const schema = new Schema({
     text: { group: "inline" },
   },
   marks: {
+    runFormattingOverride: {
+      attrs: {
+        allCaps: { default: null },
+        bold: { default: null },
+        boldCs: { default: null },
+        color: { default: null },
+        cs: { default: null },
+        directFontProperties: { default: null },
+        doubleStrike: { default: null },
+        effect: { default: null },
+        emboss: { default: null },
+        emphasisMark: { default: null },
+        fontSizeCs: { default: null },
+        hidden: { default: null },
+        highlight: { default: null },
+        imprint: { default: null },
+        italic: { default: null },
+        italicCs: { default: null },
+        kerning: { default: null },
+        outline: { default: null },
+        position: { default: null },
+        rtl: { default: null },
+        scale: { default: null },
+        shading: { default: null },
+        shadow: { default: null },
+        smallCaps: { default: null },
+        spacing: { default: null },
+        strike: { default: null },
+        underline: { default: null },
+        vertAlign: { default: null },
+      },
+    },
     allCaps: {},
     smallCaps: {},
     emboss: {},
@@ -46,6 +78,19 @@ const schema = new Schema({
     },
     highlight: {
       attrs: { color: {} },
+    },
+    runShading: {
+      attrs: {
+        rgb: { default: null },
+        themeColor: { default: null },
+        themeTint: { default: null },
+        themeShade: { default: null },
+        pattern: { default: null },
+        patternColor: { default: null },
+      },
+    },
+    strike: {
+      attrs: { double: { default: false } },
     },
     rtl: {},
     language: {
@@ -313,6 +358,125 @@ describe("toFlowBlocks run-level OOXML marks", () => {
     ]);
 
     expect(firstRun(toFlowBlocks(doc, {})).letterSpacing).toBeUndefined();
+  });
+
+  test("projects every run-format cancellation after active and inherited formatting", () => {
+    const override = schema.marks.runFormattingOverride?.create({
+      allCaps: false,
+      bold: false,
+      boldCs: false,
+      color: "auto",
+      cs: false,
+      directFontProperties: ["color"],
+      doubleStrike: false,
+      effect: "none",
+      emboss: false,
+      emphasisMark: "none",
+      fontSizeCs: 18,
+      hidden: false,
+      highlight: "none",
+      imprint: false,
+      italic: false,
+      italicCs: false,
+      kerning: 0,
+      outline: false,
+      position: 0,
+      rtl: false,
+      scale: 100,
+      shading: { pattern: "nil" },
+      shadow: false,
+      smallCaps: false,
+      spacing: 0,
+      strike: false,
+      underline: "none",
+      vertAlign: "baseline",
+    });
+    const emphasis = schema.marks.emphasisMark?.create({ type: "dot" });
+    const shading = schema.marks.runShading?.create({ rgb: "00AA00" });
+    const effect = schema.marks.textEffect?.create({ effect: "shimmer" });
+    if (!override || !emphasis || !shading || !effect) {
+      throw new Error("Expected run formatting marks");
+    }
+    const doc = schema.node("doc", null, [
+      schema.node(
+        "paragraph",
+        {
+          defaultTextFormatting: {
+            allCaps: true,
+            bold: true,
+            boldCs: true,
+            color: { rgb: "AA0000" },
+            cs: true,
+            emboss: true,
+            emphasisMark: "comma",
+            fontSizeCs: 30,
+            hidden: true,
+            highlight: "yellow",
+            imprint: true,
+            italic: true,
+            italicCs: true,
+            kerning: 20,
+            outline: true,
+            position: 10,
+            rtl: true,
+            scale: 125,
+            shadow: true,
+            smallCaps: true,
+            spacing: 40,
+            strike: true,
+            underline: { style: "single" },
+            vertAlign: "superscript",
+          },
+        },
+        [schema.text("plain", [effect, emphasis, shading, override])],
+      ),
+    ]);
+
+    const run = firstRun(toFlowBlocks(doc, {}));
+
+    expect(run).toMatchObject({
+      allCaps: false,
+      bold: false,
+      complexScriptBold: false,
+      complexScriptFontSize: 9,
+      complexScriptItalic: false,
+      emboss: false,
+      forceComplexScript: false,
+      hidden: false,
+      horizontalScale: 100,
+      imprint: false,
+      italic: false,
+      kerningMinPt: 0,
+      positionPx: 0,
+      rtl: false,
+      smallCaps: false,
+      strike: false,
+      subscript: false,
+      superscript: false,
+      textOutline: false,
+      textShadow: false,
+      underline: false,
+    });
+    expect(run.color).toBeUndefined();
+    expect(run.emphasisMark).toBeUndefined();
+    expect(run.highlight).toBeUndefined();
+    expect(run.letterSpacing).toBeUndefined();
+    expect(run.shading).toBeUndefined();
+    expect(run.textColorSource).toBeUndefined();
+    expect(run.textEffect).toBeUndefined();
+  });
+
+  test("a double-strike cancellation does not clear a copied single strike", () => {
+    const strike = schema.marks.strike?.create({ double: false });
+    const override = schema.marks.runFormattingOverride?.create({ doubleStrike: false });
+    if (!strike || !override) {
+      throw new Error("Expected strike formatting marks");
+    }
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [schema.text("single", [strike, override])]),
+    ]);
+
+    expect(firstRun(toFlowBlocks(doc, {})).strike).toBe(true);
   });
 
   test("propagates rtl mark to run formatting", () => {

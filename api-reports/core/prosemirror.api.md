@@ -49,7 +49,7 @@ export const alignLeft: Command;
 export const alignRight: Command;
 
 // @public
-export function applyFormatMarks(marks: readonly Mark[]): Command;
+export function applyFormatMarks(captured: CapturedTextFormatting | null): Command;
 
 // @public (undocumented)
 export function applyStyle(styleId: string, resolvedAttrs?: ResolvedStyleAttrs): Command;
@@ -66,8 +66,15 @@ export function autoFitContents(): (state: EditorState, dispatch?: (tr: Transact
 // @public (undocumented)
 export type BorderPreset = "all" | "outside" | "inside" | "none";
 
+// @public (undocumented)
+export type CapturedTextFormatting = Readonly<{
+    effectiveFormatting: Readonly<PaintableFormatting>;
+    marks: readonly Mark[];
+    type: "capturedTextFormatting";
+}>;
+
 // @public
-export function captureFormatMarks(state: EditorState): Mark[];
+export function captureFormatMarks(state: EditorState): CapturedTextFormatting;
 
 // @public (undocumented)
 export const clearFontFamily: Command;

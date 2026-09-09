@@ -34,11 +34,23 @@ export function buildRunFormattingOverrideAttrs(
   if (formatting?.underline?.style === "none") {
     attrs.underline = "none";
   }
+  if (formatting?.color?.auto === true) {
+    attrs.color = "auto";
+  }
+  if (formatting?.highlight === "none") {
+    attrs.highlight = "none";
+  }
+  if (formatting?.shading?.pattern === "nil") {
+    attrs.shading = { ...formatting.shading, pattern: "nil" };
+  }
   if (formatting?.strike !== undefined) {
     attrs.strike = formatting.strike;
   }
   if (formatting?.doubleStrike === false) {
     attrs.doubleStrike = false;
+  }
+  if (formatting?.vertAlign === "baseline") {
+    attrs.vertAlign = "baseline";
   }
   if (formatting?.allCaps !== undefined) {
     attrs.allCaps = formatting.allCaps;
@@ -60,6 +72,24 @@ export function buildRunFormattingOverrideAttrs(
   }
   if (formatting?.outline !== undefined) {
     attrs.outline = formatting.outline;
+  }
+  if (formatting?.spacing === 0) {
+    attrs.spacing = 0;
+  }
+  if (formatting?.position === 0) {
+    attrs.position = 0;
+  }
+  if (formatting?.scale === 100) {
+    attrs.scale = 100;
+  }
+  if (formatting?.kerning === 0) {
+    attrs.kerning = 0;
+  }
+  if (formatting?.emphasisMark === "none") {
+    attrs.emphasisMark = "none";
+  }
+  if (formatting?.effect === "none") {
+    attrs.effect = "none";
   }
   if (formatting?.rtl === false) {
     attrs.rtl = false;
@@ -107,11 +137,23 @@ export function applyRunFormattingOverrideAttrs(
   if (attrs.underline === "none") {
     formatting.underline = { style: "none" };
   }
+  if (attrs.color === "auto") {
+    formatting.color = { auto: true };
+  }
+  if (attrs.highlight === "none") {
+    formatting.highlight = "none";
+  }
+  if (attrs.shading?.pattern === "nil") {
+    formatting.shading = attrs.shading;
+  }
   if (attrs.strike !== undefined) {
     formatting.strike = attrs.strike;
   }
   if (attrs.doubleStrike === false) {
     formatting.doubleStrike = false;
+  }
+  if (attrs.vertAlign === "baseline") {
+    formatting.vertAlign = "baseline";
   }
   if (attrs.allCaps !== undefined) {
     formatting.allCaps = attrs.allCaps;
@@ -133,6 +175,24 @@ export function applyRunFormattingOverrideAttrs(
   }
   if (attrs.outline !== undefined) {
     formatting.outline = attrs.outline;
+  }
+  if (attrs.spacing === 0) {
+    formatting.spacing = 0;
+  }
+  if (attrs.position === 0) {
+    formatting.position = 0;
+  }
+  if (attrs.scale === 100) {
+    formatting.scale = 100;
+  }
+  if (attrs.kerning === 0) {
+    formatting.kerning = 0;
+  }
+  if (attrs.emphasisMark === "none") {
+    formatting.emphasisMark = "none";
+  }
+  if (attrs.effect === "none") {
+    formatting.effect = "none";
   }
   if (attrs.rtl === false) {
     formatting.rtl = false;
@@ -165,11 +225,17 @@ export const RunFormattingOverrideExtension = createMarkExtension({
       _authoredValues: { default: null },
       directFontProperties: { default: null },
       complexScriptPropertyAbsences: { default: null },
+      color: { default: null },
       bold: { default: null },
       italic: { default: null },
       underline: { default: null },
       strike: { default: null },
       doubleStrike: { default: null },
+      effect: { default: null },
+      emphasisMark: { default: null },
+      highlight: { default: null },
+      kerning: { default: null },
+      position: { default: null },
       allCaps: { default: null },
       smallCaps: { default: null },
       hidden: { default: null },
@@ -178,10 +244,14 @@ export const RunFormattingOverrideExtension = createMarkExtension({
       shadow: { default: null },
       outline: { default: null },
       rtl: { default: null },
+      scale: { default: null },
+      shading: { default: null },
+      spacing: { default: null },
       boldCs: { default: null },
       italicCs: { default: null },
       fontSizeCs: { default: null },
       cs: { default: null },
+      vertAlign: { default: null },
     },
     toDOM(mark) {
       const attrs = expectRunFormattingOverrideMarkAttrs(mark);

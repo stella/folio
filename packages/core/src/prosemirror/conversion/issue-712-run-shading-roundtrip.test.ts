@@ -9,6 +9,8 @@
 
 import { describe, expect, test } from "bun:test";
 
+import { parseDocumentBody } from "../../docx/documentParser";
+import { serializeDocument } from "../../docx/serializer/documentSerializer";
 import { toFlowBlocks } from "../../layout-bridge/convert/toFlowBlocks";
 import type { FlowBlock, TextRun } from "../../layout-engine/types";
 import type { Document, Paragraph, Run, ShadingProperties } from "../../types/document";
@@ -51,6 +53,16 @@ const firstRunFormatting = (document: Document): Run["formatting"] => {
 // The runShading mark color, as it would round-trip out to the model on save.
 const roundTripShading = (formatting: Run["formatting"]): ShadingProperties | undefined =>
   firstRunFormatting(fromProseDoc(toProseDoc(wrap(formatting)), wrap(formatting)))?.shading;
+
+const saveAndReopenShading = (formatting: Run["formatting"]): ShadingProperties | undefined => {
+  const saved = fromProseDoc(toProseDoc(wrap(formatting)), wrap(formatting));
+  return firstRunFormatting({
+    package: {
+      ...saved.package,
+      document: parseDocumentBody(serializeDocument(saved)),
+    },
+  })?.shading;
+};
 
 // The resolved CSS background the painter receives for the run.
 const renderedBackground = (formatting: Run["formatting"]): string | undefined => {
@@ -120,6 +132,28 @@ describe("Issue #712 — run shading round-trips and renders", () => {
       shading: { fill: { themeColor: "accent1" } },
     };
     expect(roundTripShading(formatting)?.fill?.themeColor).toBe("accent1");
+  });
+
+  test("nil suppresses rendering without discarding authored shading provenance", () => {
+    const shading: ShadingProperties = {
+      pattern: "nil",
+      color: { rgb: "112233" },
+      fill: { themeColor: "accent1", themeShade: "80" },
+    };
+    const formatting = { shading };
+    const pmDocument = toProseDoc(wrap(formatting));
+    let markNames: string[] = [];
+    pmDocument.descendants((node) => {
+      if (node.isText) {
+        markNames = node.marks.map((mark) => mark.type.name);
+      }
+    });
+
+    expect(markNames).toContain("runFormattingOverride");
+    expect(markNames).not.toContain("runShading");
+    expect(renderedBackground(formatting)).toBeUndefined();
+    expect(roundTripShading(formatting)).toEqual(shading);
+    expect(saveAndReopenShading(formatting)).toEqual(shading);
   });
 
   test("highlight and shading both reach the flow run (painter resolves precedence)", () => {

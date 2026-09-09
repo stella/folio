@@ -34,7 +34,6 @@ import {
   XIcon,
 } from "lucide-react";
 // Paginated editor
-import type { Mark } from "prosemirror-model";
 import type { EditorView } from "prosemirror-view";
 import { closeHistory, undo as historyUndo } from "prosemirror-history";
 import { useTranslations } from "use-intl";
@@ -131,7 +130,11 @@ import {
   setTableBorderWidth,
   getSelectedText,
 } from "@stll/folio-core/prosemirror";
-import type { SelectionState, TableContextInfo } from "@stll/folio-core/prosemirror";
+import type {
+  CapturedTextFormatting,
+  SelectionState,
+  TableContextInfo,
+} from "@stll/folio-core/prosemirror";
 import {
   acceptChange,
   rejectChange,
@@ -879,7 +882,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     "off",
   );
   const formatPainterModeRef = useRef<"off" | "armed" | "sticky">("off");
-  const capturedFormatMarksRef = useRef<readonly Mark[]>([]);
+  const capturedFormatMarksRef = useRef<CapturedTextFormatting | null>(null);
   const setFormatPainterMode = useCallback((next: "off" | "armed" | "sticky") => {
     formatPainterModeRef.current = next;
     setFormatPainterModeState(next);
@@ -2241,7 +2244,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   // by the paint step (toolbar mouseup / Ctrl+Shift+V).
   const captureFormatPainter = useCallback(() => {
     const view = getActiveEditorView();
-    capturedFormatMarksRef.current = view ? captureFormatMarks(view.state) : [];
+    capturedFormatMarksRef.current = view ? captureFormatMarks(view.state) : null;
   }, [getActiveEditorView]);
 
   // Paint the captured formatting onto the current selection. Returns whether a
@@ -2263,7 +2266,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   const handleFormatPainter = useCallback(
     (sticky: boolean) => {
       if (formatPainterModeRef.current !== "off") {
-        capturedFormatMarksRef.current = [];
+        capturedFormatMarksRef.current = null;
         setFormatPainterMode("off");
         return;
       }
@@ -2307,7 +2310,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         const armed = formatPainterModeRef.current !== "off";
-        const hasCopiedFormat = capturedFormatMarksRef.current.length > 0;
+        const hasCopiedFormat = capturedFormatMarksRef.current !== null;
         // Nothing to cancel — let Esc bubble so it can close a parent modal etc.
         if (!armed && !hasCopiedFormat) {
           return;
@@ -2316,7 +2319,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         // keystroke does not also bubble up to close a parent modal or sidebar.
         event.preventDefault();
         event.stopPropagation();
-        capturedFormatMarksRef.current = [];
+        capturedFormatMarksRef.current = null;
         if (armed) {
           setFormatPainterMode("off");
         }
