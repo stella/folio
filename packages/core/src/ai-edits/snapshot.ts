@@ -84,23 +84,42 @@ export const hashFolioAIBlockText = (text: string): string => {
   return `h${hash.toString(36)}`;
 };
 
+const EMPTY_FOLIO_AI_BLOCK_STRUCTURAL_BOUNDARIES: readonly FolioAIBlockStructuralBoundary[] =
+  Object.freeze([]);
+const EMPTY_FOLIO_AI_BLOCK_STRUCTURAL_BOUNDARY_HASH = hashFolioAIBlockText(
+  JSON.stringify(EMPTY_FOLIO_AI_BLOCK_STRUCTURAL_BOUNDARIES),
+);
+
 /** Canonical public projection of the clean view's zero-width structure. */
 export const projectFolioAIBlockStructuralBoundaries = ({
   structuralBoundaries,
-}: Pick<CleanBlockText, "structuralBoundaries">): FolioAIBlockStructuralBoundary[] =>
-  structuralBoundaries
-    .filter(({ presentInCleanView }) => presentInCleanView)
-    .map(({ clear, offset }) => ({
+}: Pick<CleanBlockText, "structuralBoundaries">): readonly FolioAIBlockStructuralBoundary[] => {
+  let projected: FolioAIBlockStructuralBoundary[] | undefined;
+  for (const { clear, offset, presentInCleanView } of structuralBoundaries) {
+    if (!presentInCleanView) {
+      continue;
+    }
+    (projected ??= []).push({
       type: "pageBreak",
       offset,
       ...(clear !== undefined ? { clear } : {}),
-    }));
+    });
+  }
+  return projected ?? EMPTY_FOLIO_AI_BLOCK_STRUCTURAL_BOUNDARIES;
+};
+
+const hashFolioAIBlockStructuralBoundaryProjection = (
+  structuralBoundaries: readonly FolioAIBlockStructuralBoundary[],
+): string =>
+  structuralBoundaries.length === 0
+    ? EMPTY_FOLIO_AI_BLOCK_STRUCTURAL_BOUNDARY_HASH
+    : hashFolioAIBlockText(JSON.stringify(structuralBoundaries));
 
 /** Stable precondition fingerprint for a block's zero-width structure. */
 export const hashFolioAIBlockStructuralBoundaries = (
   cleanBlock: Pick<CleanBlockText, "structuralBoundaries">,
 ): string =>
-  hashFolioAIBlockText(JSON.stringify(projectFolioAIBlockStructuralBoundaries(cleanBlock)));
+  hashFolioAIBlockStructuralBoundaryProjection(projectFolioAIBlockStructuralBoundaries(cleanBlock));
 
 type CreateFolioAITextRangeHandleOptions = {
   blockId: string;
@@ -299,7 +318,8 @@ const createFolioAIEditSnapshotInternal = (
     const cleanBlock = buildCleanBlockText(node, pos);
     const { text } = cleanBlock;
     const structuralBoundaries = projectFolioAIBlockStructuralBoundaries(cleanBlock);
-    const structuralBoundaryHash = hashFolioAIBlockStructuralBoundaries(cleanBlock);
+    const structuralBoundaryHash =
+      hashFolioAIBlockStructuralBoundaryProjection(structuralBoundaries);
     const normalizedText = normalizeFolioAIBlockText(text);
     const textHash = hashFolioAIBlockText(normalizedText);
     hashCounts.set(textHash, (hashCounts.get(textHash) ?? 0) + 1);

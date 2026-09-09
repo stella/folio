@@ -33,7 +33,7 @@ export type CleanBlockText = {
    * resolve through {@link resolveCleanTextRange}; indexing `offsets`
    * directly can accidentally absorb the carrier into an adjacent range.
    */
-  structuralBoundaries: CleanTextStructuralBoundary[];
+  structuralBoundaries: readonly CleanTextStructuralBoundary[];
 };
 
 export type CleanTextStructuralBoundary = {
@@ -48,6 +48,9 @@ export type CleanTextStructuralBoundary = {
   /** Whether the post-tracked-changes projection retains this carrier. */
   presentInCleanView: boolean;
 };
+
+const EMPTY_CLEAN_TEXT_STRUCTURAL_BOUNDARIES: readonly CleanTextStructuralBoundary[] =
+  Object.freeze([]);
 
 type ResolveCleanTextRangeOptions = {
   cleanBlock: CleanBlockText;
@@ -83,20 +86,29 @@ export const resolveCleanTextRange = ({
     return null;
   }
 
-  if (
-    cleanBlock.structuralBoundaries.some(({ offset }) => offset > startOffset && offset < endOffset)
-  ) {
-    return null;
+  const { structuralBoundaries } = cleanBlock;
+  if (structuralBoundaries.length === 0) {
+    return baseFrom <= baseTo ? { from: baseFrom, to: baseTo } : null;
   }
 
-  const atStart = cleanBlock.structuralBoundaries.filter(({ offset }) => offset === startOffset);
-  const from = atStart.reduce((position, boundary) => Math.max(position, boundary.to), baseFrom);
+  let from = baseFrom;
+  let to = baseTo;
+  for (const boundary of structuralBoundaries) {
+    if (boundary.offset > startOffset && boundary.offset < endOffset) {
+      return null;
+    }
+    if (boundary.offset === startOffset) {
+      from = Math.max(from, boundary.to);
+    }
+    if (startOffset !== endOffset && boundary.offset === endOffset) {
+      to = Math.min(to, boundary.from);
+    }
+  }
+
   if (startOffset === endOffset) {
     return { from, to: from };
   }
 
-  const atEnd = cleanBlock.structuralBoundaries.filter(({ offset }) => offset === endOffset);
-  const to = atEnd.reduce((position, boundary) => Math.min(position, boundary.from), baseTo);
   return from <= to ? { from, to } : null;
 };
 
@@ -108,13 +120,13 @@ const HIDDEN_MARK = "hidden";
 export const buildCleanBlockText = (blockNode: PMNode, blockFrom: number): CleanBlockText => {
   let text = "";
   const offsets: number[] = [];
-  const structuralBoundaries: CleanTextStructuralBoundary[] = [];
+  let structuralBoundaries: CleanTextStructuralBoundary[] | undefined;
   let lastEnd = blockFrom + 1;
   blockNode.descendants((node, pos) => {
     if (node.type.name === "pageBreakRun") {
       const from = blockFrom + 1 + pos;
       const { clear } = expectPageBreakRunAttrs(node);
-      structuralBoundaries.push({
+      (structuralBoundaries ??= []).push({
         type: "pageBreakRun",
         offset: text.length,
         from,
@@ -145,7 +157,11 @@ export const buildCleanBlockText = (blockNode: PMNode, blockFrom: number): Clean
     return true;
   });
   offsets.push(lastEnd);
-  return { text, offsets, structuralBoundaries };
+  return {
+    text,
+    offsets,
+    structuralBoundaries: structuralBoundaries ?? EMPTY_CLEAN_TEXT_STRUCTURAL_BOUNDARIES,
+  };
 };
 
 /**

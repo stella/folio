@@ -16,10 +16,14 @@ import { type Node as PMNode, Schema } from "prosemirror-model";
 import type { RunStyleResolver } from "../prosemirror/runStyleFormatting";
 import { schema as folioSchema } from "../prosemirror/schema";
 import { resolveSequentialBlockAnchor } from "./blockRange";
+import type { CleanTextStructuralBoundary } from "./clean-text";
 import {
   createFolioAIEditSnapshot,
   createFolioAIEditSnapshotWithStyleResolver,
+  hashFolioAIBlockStructuralBoundaries,
+  hashFolioAIBlockText,
   isFolioAIContentBlock,
+  projectFolioAIBlockStructuralBoundaries,
 } from "./snapshot";
 
 const schema = new Schema({
@@ -73,6 +77,54 @@ const refusingToResolve = (doc: PMNode): PMNode => {
 };
 
 describe("createFolioAIEditSnapshot", () => {
+  test("keeps structural projection and hashing at the same fixed point", () => {
+    type BoundaryOptions = Pick<
+      CleanTextStructuralBoundary,
+      "clear" | "offset" | "presentInCleanView"
+    >;
+    const boundary = ({
+      offset,
+      presentInCleanView,
+      clear,
+    }: BoundaryOptions): CleanTextStructuralBoundary => ({
+      type: "pageBreakRun",
+      offset,
+      from: offset + 1,
+      to: offset + 2,
+      ...(clear !== undefined ? { clear } : {}),
+      presentInCleanView,
+    });
+    const emptyCleanProjection = { structuralBoundaries: [] };
+    const deletionOnlyCleanProjection = {
+      structuralBoundaries: [boundary({ offset: 1, presentInCleanView: false, clear: "all" })],
+    };
+    const cleanProjections = [
+      emptyCleanProjection,
+      deletionOnlyCleanProjection,
+      { structuralBoundaries: [boundary({ offset: 1, presentInCleanView: true })] },
+      {
+        structuralBoundaries: [
+          boundary({ offset: 1, presentInCleanView: true, clear: "none" }),
+          boundary({ offset: 1, presentInCleanView: false, clear: "left" }),
+          boundary({ offset: 4, presentInCleanView: true, clear: "right" }),
+        ],
+      },
+    ];
+
+    for (const cleanProjection of cleanProjections) {
+      const projected = projectFolioAIBlockStructuralBoundaries(cleanProjection);
+      expect(projectFolioAIBlockStructuralBoundaries(cleanProjection)).toEqual(projected);
+      expect(hashFolioAIBlockStructuralBoundaries(cleanProjection)).toBe(
+        hashFolioAIBlockText(JSON.stringify(projected)),
+      );
+    }
+
+    const empty = projectFolioAIBlockStructuralBoundaries(emptyCleanProjection);
+    const deletionOnly = projectFolioAIBlockStructuralBoundaries(deletionOnlyCleanProjection);
+    expect(empty).toBe(deletionOnly);
+    expect(Object.isFrozen(empty)).toBe(true);
+  });
+
   test("locates a block in a table inside a table", () => {
     const nested = table([row([cell([paragraph("nested first"), paragraph("nested second")])])]);
     const doc = schema.node("doc", null, [

@@ -94,7 +94,7 @@ export type FolioAIBlock = {
    */
   listLevel?: number;
   previewRuns?: FolioAIBlockPreviewRun[];
-  structuralBoundaries?: FolioAIBlockStructuralBoundary[];
+  structuralBoundaries?: readonly FolioAIBlockStructuralBoundary[];
   table?: FolioAIBlockTableLocation;
 };
 

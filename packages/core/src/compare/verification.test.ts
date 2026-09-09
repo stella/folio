@@ -269,6 +269,28 @@ describe("classifyProjectionMismatch", () => {
     });
   });
 
+  test("treats absent, empty, and equal inline-structure projections as equivalent", () => {
+    const leftBoundary = { type: "pageBreak" as const, offset: 4, clear: "left" as const };
+    const equivalentPairs = [
+      [undefined, undefined],
+      [undefined, []],
+      [[], undefined],
+      [[], []],
+      [[leftBoundary], [{ ...leftBoundary }]],
+    ] as const;
+
+    for (const [actual, expected] of equivalentPairs) {
+      expect(
+        classifyProjectionMismatch({
+          invariant: "accept-reproduces-target",
+          story: { type: "main" },
+          actual: [{ ...projectedBlock(undefined, "same text"), structuralBoundaries: actual }],
+          expected: [{ ...projectedBlock(undefined, "same text"), structuralBoundaries: expected }],
+        }),
+      ).toBeNull();
+    }
+  });
+
   test("reports a direct alignment mismatch separately from text and style", () => {
     expect(
       classifyProjectionMismatch({

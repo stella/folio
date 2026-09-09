@@ -170,20 +170,31 @@ const sameStructuralBoundaries = (
   left: FolioAIBlock["structuralBoundaries"],
   right: FolioAIBlock["structuralBoundaries"],
 ): boolean => {
-  const leftBoundaries = left ?? [];
-  const rightBoundaries = right ?? [];
-  return (
-    leftBoundaries.length === rightBoundaries.length &&
-    leftBoundaries.every((boundary, index) => {
-      const other = rightBoundaries[index];
-      return (
-        other !== undefined &&
-        boundary.type === other.type &&
-        boundary.offset === other.offset &&
-        boundary.clear === other.clear
-      );
-    })
-  );
+  const leftLength = left?.length ?? 0;
+  if (leftLength !== (right?.length ?? 0)) {
+    return false;
+  }
+  if (leftLength === 0) {
+    return true;
+  }
+  if (left === undefined || right === undefined) {
+    return false;
+  }
+
+  for (let index = 0; index < leftLength; index++) {
+    const boundary = left[index];
+    const other = right[index];
+    if (
+      boundary === undefined ||
+      other === undefined ||
+      boundary.type !== other.type ||
+      boundary.offset !== other.offset ||
+      boundary.clear !== other.clear
+    ) {
+      return false;
+    }
+  }
+  return true;
 };
 
 const sameProjectedBlock = (left: ProjectedBlock, right: ProjectedBlock): boolean =>
