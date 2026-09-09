@@ -1981,7 +1981,6 @@ function convertParagraph(
     attrs.shading !== undefined;
   if (runs.length === 0 && pmAttrs._pageBreakCarrier === true && !hasVisibleParagraphPayload) {
     attrs.suppressEmptyParagraphHeight = true;
-    attrs.paginationRole = "trailing-section-break-carrier";
   }
 
   const bookmarkNames = pmAttrs.bookmarks?.map((b) => b.name);
@@ -2792,9 +2791,12 @@ function coalesceTrailingPageBreakBeforeContinuousSection(
     const carrier = blocks[index + 1];
     const section = blocks[index + 2];
     const isGeneratedCarrier =
+      block?.kind === "pageBreak" &&
       carrier?.kind === "paragraph" &&
       carrier.runs.length === 0 &&
-      carrier.attrs?.paginationRole === "trailing-section-break-carrier";
+      block.pmStart !== undefined &&
+      block.pmStart === carrier.pmStart &&
+      carrier.pmStart === carrier.pmEnd;
     if (
       block?.kind === "pageBreak" &&
       isGeneratedCarrier &&
@@ -3097,7 +3099,6 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
                 delete carrierSpacing.before;
               }
               const carrierAttrs: ParagraphAttrs = {
-                paginationRole: "trailing-section-break-carrier",
                 ...(carrierSpacing ? { spacing: carrierSpacing } : {}),
                 ...(sourceAttrs?.automaticSpacing?.after === true
                   ? { automaticSpacing: { after: true } }
