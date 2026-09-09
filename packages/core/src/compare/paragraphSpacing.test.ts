@@ -5,6 +5,14 @@ import JSZip from "jszip";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import type { FolioAIParagraphSpacing } from "../ai-edits/types";
 import { createDocx } from "../docx/rezip";
+import {
+  elementToXml,
+  findChildByNamespaceUri,
+  findChildrenByNamespaceUri,
+  parseXmlDocument,
+  WORDPROCESSINGML_NAMESPACE_URIS,
+} from "../docx/xmlParser";
+import { paragraphRejectAttrPatch } from "../prosemirror/commands/propertyChangeScope";
 import type { Paragraph } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { compareDocx } from "./compare";
@@ -117,6 +125,18 @@ const paragraphModel = (
   content: [{ type: "run", content: [{ type: "text", text }] }],
 });
 
+const unstyledParagraphModel = (
+  text: string,
+  paraId: string,
+  directSpacing?: FolioAIParagraphSpacing,
+): Paragraph => ({
+  type: "paragraph",
+  paraId,
+  textId: paraId,
+  ...(directSpacing === undefined ? {} : { formatting: directSpacing }),
+  content: [{ type: "run", content: [{ type: "text", text }] }],
+});
+
 const spacingDocumentModel = ({
   directSpacing,
   inheritedSpacing,
@@ -218,6 +238,15 @@ const trackedParagraphPropertyParts = (
 const untrackedParagraphProperties = (paragraph: string): string =>
   paragraph.match(/<w:pPr>([\s\S]*?)<\/w:pPr>/u)?.at(1) ?? "";
 
+const directSpacingXml = (xml: string): string => {
+  const document = parseXmlDocument(xml);
+  const body = findChildByNamespaceUri(document, WORDPROCESSINGML_NAMESPACE_URIS, "body");
+  const paragraph = findChildrenByNamespaceUri(body, WORDPROCESSINGML_NAMESPACE_URIS, "p").at(0);
+  const properties = findChildByNamespaceUri(paragraph, WORDPROCESSINGML_NAMESPACE_URIS, "pPr");
+  const spacing = findChildByNamespaceUri(properties, WORDPROCESSINGML_NAMESPACE_URIS, "spacing");
+  return spacing ? elementToXml(spacing) : "";
+};
+
 const expectDirectSpacing = (
   reviewer: FolioDocxReviewer,
   expected: FolioAIParagraphSpacing | undefined,
@@ -284,6 +313,63 @@ const expectCompareRoundTrip = async ({
 };
 
 describe("paragraph spacing comparison", () => {
+  test.each([
+    {
+      label: "Transitional",
+      namespace: "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+      prefix: "x",
+    },
+    {
+      label: "Strict",
+      namespace: "http://purl.oclc.org/ooxml/wordprocessingml/main",
+      prefix: "strict",
+    },
+  ] as const)(
+    "finds direct spacing by the $label namespace rather than a fixed prefix",
+    ({ namespace, prefix }) => {
+      const xml =
+        `<${prefix}:document xmlns:${prefix}="${namespace}" xmlns:other="urn:not-wordprocessingml">` +
+        `<${prefix}:body><${prefix}:p><${prefix}:pPr>` +
+        `<other:spacing other:before="999"/>` +
+        `<${prefix}:spacing ${prefix}:before="200"/>` +
+        `</${prefix}:pPr></${prefix}:p></${prefix}:body></${prefix}:document>`;
+
+      expect(directSpacingXml(xml)).toBe(`<${prefix}:spacing ${prefix}:before="200"/>`);
+    },
+  );
+
+  test("keeps document-default spacing provenance when rebuilding rejected attrs", () => {
+    const attrs = {
+      spacingFromDocDefaults: { after: true },
+      ...paragraphRejectAttrPatch(undefined, { spaceAfter: 200 }),
+    };
+
+    expect(attrs.spacingFromDocDefaults).toEqual({ after: true });
+    expect(attrs.spacingFromImplicitDefaultStyle).toEqual({ after: true });
+  });
+
+  test("rejects direct spacing back to document defaults without serializing an override", async () => {
+    const source = spacingDocumentModel({});
+    const target = spacingDocumentModel({ directSpacing: { spaceAfter: 0 } });
+    for (const model of [source, target]) {
+      if (!model.package.styles) {
+        panic("expected document styles");
+      }
+      model.package.styles.docDefaults = { pPr: { spaceAfter: 200 } };
+    }
+
+    const result = await compareDocx(await createDocx(source), await createDocx(target), OPTIONS);
+    if (result.isErr()) {
+      throw result.error;
+    }
+    const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+    expect(rejecting.rejectAll()).toBeGreaterThan(0);
+    const rejectedBuffer = await rejecting.toBuffer();
+
+    expect(directSpacingXml(await mainDocumentXml(rejectedBuffer))).toBe("");
+    expectDirectSpacing(await FolioDocxReviewer.fromBuffer(rejectedBuffer), undefined);
+  });
+
   test.each(DIRECT_SPACING_MATRIX)(
     "round-trips every direct spacing state transition: $transition",
     async ({ before, after }) => {
@@ -385,6 +471,81 @@ describe("paragraph spacing comparison", () => {
     expect(result.value.changes).toEqual([]);
     expect(result.value.verification).toEqual({ status: "verified" });
   });
+
+  test.each([
+    { label: "before", inheritedSpacing: { spaceBefore: 200 }, directSpacing: undefined },
+    { label: "after", inheritedSpacing: { spaceAfter: 200 }, directSpacing: undefined },
+    {
+      label: "both",
+      inheritedSpacing: { spaceBefore: 120, spaceAfter: 200 },
+      directSpacing: undefined,
+    },
+    {
+      label: "after beside direct before",
+      inheritedSpacing: { spaceBefore: 120, spaceAfter: 200 },
+      directSpacing: { spaceBefore: 0 },
+    },
+    {
+      label: "before beside direct after",
+      inheritedSpacing: { spaceBefore: 120, spaceAfter: 200 },
+      directSpacing: { spaceAfter: 0 },
+    },
+  ] as const)(
+    "does not materialize inherited $label spacing on an inserted unstyled paragraph",
+    async ({ inheritedSpacing, directSpacing }) => {
+      const anchorDirectSpacing: FolioAIParagraphSpacing = {
+        ...(inheritedSpacing.spaceBefore === undefined ? {} : { spaceBefore: 0 }),
+        ...(inheritedSpacing.spaceAfter === undefined ? {} : { spaceAfter: 0 }),
+      };
+      const baseModel = spacingDocumentModel({ directSpacing: anchorDirectSpacing });
+      const targetModel = spacingDocumentModel({ directSpacing: anchorDirectSpacing });
+      for (const model of [baseModel, targetModel]) {
+        const defaultStyle = model.package.styles?.styles.find(
+          ({ default: isDefault }) => isDefault,
+        );
+        if (!defaultStyle) {
+          panic("expected a default paragraph style");
+        }
+        defaultStyle.pPr = inheritedSpacing;
+      }
+      targetModel.package.document.content.unshift(
+        unstyledParagraphModel(INSERTED_TEXT, "23456789", directSpacing),
+      );
+
+      const result = await compareDocx(
+        await createDocx(baseModel),
+        await createDocx(targetModel),
+        OPTIONS,
+      );
+      if (result.isErr()) {
+        throw result.error;
+      }
+
+      expect(result.value.verification).toEqual({ status: "verified" });
+      expect(result.value.unsupported).toEqual([]);
+      expect(result.value.changes).toEqual([
+        expect.objectContaining({ kind: "insert", after: INSERTED_TEXT }),
+      ]);
+      const pending = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+      expect(pending.snapshot().blocks.at(0)?.text).toBe(INSERTED_TEXT);
+      expect(pending.snapshot().blocks.at(0)?.directSpacing).toEqual(directSpacing);
+
+      expect(pending.acceptAll()).toBeGreaterThan(0);
+      const acceptedBuffer = await pending.toBuffer();
+      const accepted = await FolioDocxReviewer.fromBuffer(acceptedBuffer);
+      expect(accepted.snapshot().blocks.map(({ text }) => text)).toEqual([INSERTED_TEXT, TEXT]);
+      expectDirectSpacing(accepted, directSpacing);
+      expect(directSpacingXml(await mainDocumentXml(acceptedBuffer))).toBe(
+        spacingXml(directSpacing),
+      );
+
+      const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+      expect(rejecting.rejectAll()).toBeGreaterThan(0);
+      const rejected = await FolioDocxReviewer.fromBuffer(await rejecting.toBuffer());
+      expect(rejected.snapshot().blocks.map(({ text }) => text)).toEqual([TEXT]);
+      expectDirectSpacing(rejected, anchorDirectSpacing);
+    },
+  );
 
   test.each([
     { label: "line value only", directSpacing: { lineSpacing: 240 } },
