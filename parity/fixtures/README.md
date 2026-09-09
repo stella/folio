@@ -1,4 +1,32 @@
-# Word line-endpoint fixtures
+# Synthetic parity fixtures
+
+## Layout corpus
+
+The layout corpus provides three deterministic, generated fixtures:
+
+- `isolated-page-furniture.docx` isolates full-width wrapped header and footer
+  artwork.
+- `pairwise-layout-interactions.docx` combines page-relative positioning,
+  expanded page furniture, continuous sections, cached page markers, and
+  keep-next flow.
+- `layout-kitchen-sink.docx` adds tables, merged cells, fields, footnotes,
+  numbering, tabs, bidirectional text, columns, page borders, and mixed run
+  formatting.
+
+All text, links, identifiers, and numeric values are synthetic. The generator
+uses fixed ZIP timestamps, so committed fixtures are byte-for-byte stable.
+
+```sh
+bun run parity:build-layout-corpus
+bun run parity:check-layout-corpus
+```
+
+The isolated and pairwise fixtures should remain small enough to attribute a
+regression. Add a feature to the kitchen sink only after it has focused
+coverage; the combined file is a discovery tool, not a substitute for a
+minimal regression.
+
+## Line-endpoint fixtures
 
 `word-hyphenation-hanging.docx` is generated entirely from the hand-written
 OOXML in `build-word-line-endpoint-fixtures.ts`. It contains synthetic text
