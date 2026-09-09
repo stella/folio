@@ -12,6 +12,7 @@ import type { TextFormatting, UnderlineStyle, ThemeColorSlot } from "../../../ty
 import { FONT_THEME_VALUES } from "../../../types/documentEnumValues";
 import { mergeFontFamily } from "../../../utils/fontFamilyMerge";
 import { expectFontFamilyMarkAttrs, expectRunFormattingOverrideMarkAttrs } from "../../attrs";
+import { expandRunFormattingCarrier } from "../../runFormattingInlineCarriers";
 import type { FontFamilyAttrs, RunFormattingOverrideAttrs } from "../../schema/marks";
 import {
   applyRunFormattingOverrideMark,
@@ -404,19 +405,48 @@ const updateRunFormattingOverride = (
     return tr;
   }
 
+  const carriers: NonNullable<ReturnType<typeof expandRunFormattingCarrier>>[] = [];
   tr.doc.nodesBetween(from, to, (node, pos) => {
-    if (!node.isText) {
-      return;
+    if (!node.isInline) {
+      return true;
     }
-    const segmentFrom = Math.max(from, pos);
-    const segmentTo = Math.min(to, pos + node.nodeSize);
-    const existing = overrideType.isInSet(node.marks);
-    const attrs = update(existing ? expectRunFormattingOverrideMarkAttrs(existing) : {});
-    tr.removeMark(segmentFrom, segmentTo, overrideType);
-    if (hasRunFormattingOverride(attrs)) {
-      tr.addMark(segmentFrom, segmentTo, overrideType.create(attrs));
+    const carrier = expandRunFormattingCarrier(node, pos);
+    if (carrier) {
+      carriers.push(carrier);
+      return false;
     }
+    return !node.isAtom;
   });
+
+  for (const carrier of carriers) {
+    for (const representation of carrier.representations) {
+      const { node, position } = representation;
+      const segmentFrom = Math.max(from, position);
+      const segmentTo = Math.min(to, position + node.nodeSize);
+      if (segmentFrom >= segmentTo) {
+        continue;
+      }
+      // A mark step owns the outer structured atom only when the complete atom
+      // is selected. A nested text selection owns just the result runs.
+      if (
+        carrier.disposition === "structured-field" &&
+        representation.role === "owner" &&
+        (segmentFrom !== position || segmentTo !== position + node.nodeSize)
+      ) {
+        continue;
+      }
+      const nextMarks = updateRunFormattingOverrideMarks(node.marks, overrideType, update);
+      if (node.isText) {
+        tr.removeMark(segmentFrom, segmentTo, overrideType);
+        const nextOverride = overrideType.isInSet(nextMarks);
+        if (nextOverride) {
+          tr.addMark(segmentFrom, segmentTo, nextOverride);
+        }
+        continue;
+      }
+      tr.setNodeMarkup(position, undefined, node.attrs, nextMarks);
+    }
+  }
   return tr;
 };
 

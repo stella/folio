@@ -5,6 +5,10 @@ import { panic } from "better-result";
 import { mergeTextFormatting } from "../utils/textFormattingMerge";
 import { marksToTextFormatting } from "./conversion/fromProseDoc";
 import { textFormattingToMarks } from "./conversion/toProseDoc";
+import {
+  expandRunFormattingCarrier,
+  type RunFormattingCarrierRepresentation,
+} from "./runFormattingInlineCarriers";
 import { RUN_FORMATTING_MARK_NAMES } from "./runFormattingMarkNames";
 import {
   getParagraphMarkSuppressionOverrides,
@@ -43,16 +47,18 @@ export const setParagraphAttrsWithRebasedRunFormatting = ({
   const nextParagraph = paragraph.type.create(nextAttrs, paragraph.content, paragraph.marks);
   const nextContext = paragraphRunStyleContext(nextParagraph, styleResolver);
   const changes: {
+    attrs: Readonly<Record<string, unknown>>;
     currentFormattingMarks: readonly Mark[];
     from: number;
+    isText: boolean;
     marks: readonly Mark[];
     to: number;
   }[] = [];
 
-  paragraph.descendants((node, relativePosition) => {
-    if (!node.isInline || (!node.isText && !node.isLeaf)) {
-      return true;
-    }
+  const collectRebasedRepresentation = ({
+    node,
+    position,
+  }: RunFormattingCarrierRepresentation): void => {
     const authoredFormatting = marksToTextFormatting(node.marks, {
       baseParagraphFormatting: previousContext.baseParagraphFormatting,
       inheritedFormatting: previousContext.paragraphFormatting,
@@ -90,22 +96,40 @@ export const setParagraphAttrsWithRebasedRunFormatting = ({
       ...formattingMarks,
     ]);
     if (Mark.sameSet(node.marks, nextMarks)) {
-      return false;
+      return;
     }
-    const from = paragraphPosition + 1 + relativePosition;
     changes.push({
+      attrs: node.attrs,
       currentFormattingMarks: node.marks.filter(({ type }) =>
         RUN_FORMATTING_MARK_NAMES.has(type.name),
       ),
-      from,
+      from: position,
+      isText: node.isText,
       marks: nextMarks,
-      to: from + node.nodeSize,
+      to: position + node.nodeSize,
     });
+  };
+
+  paragraph.descendants((node, relativePosition) => {
+    if (!node.isInline) {
+      return true;
+    }
+    const carrier = expandRunFormattingCarrier(node, paragraphPosition + 1 + relativePosition);
+    if (!carrier) {
+      return !node.isAtom;
+    }
+    for (const representation of carrier.representations) {
+      collectRebasedRepresentation(representation);
+    }
     return false;
   });
 
   tr = tr.setNodeMarkup(paragraphPosition, undefined, nextAttrs);
-  for (const { currentFormattingMarks, from, marks, to } of changes) {
+  for (const { attrs, currentFormattingMarks, from, isText, marks, to } of changes) {
+    if (!isText) {
+      tr = tr.setNodeMarkup(from, undefined, attrs, marks);
+      continue;
+    }
     for (const mark of currentFormattingMarks) {
       tr = tr.removeMark(from, to, mark.type);
     }

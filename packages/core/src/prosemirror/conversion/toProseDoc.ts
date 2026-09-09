@@ -24,6 +24,7 @@ import type {
   Paragraph,
   ParagraphFormatting,
   Run,
+  RunPropertyChange,
   TextFormatting,
   RunContent,
   Hyperlink,
@@ -2350,6 +2351,7 @@ function convertField(
   // Extract display text and formatting from field content/result
   let displayText = "";
   let fieldFormatting: TextFormatting | undefined;
+  let fieldPropertyChanges: readonly RunPropertyChange[] | undefined;
   const inlineNodes: PMNode[] = [];
   const hasStructuredSourceContent =
     field.type === "simpleField" && field.content.some((content) => content.type === "hyperlink");
@@ -2361,6 +2363,7 @@ function convertField(
     }
     // Use formatting from the first run that has it.
     fieldFormatting ??= run.formatting;
+    fieldPropertyChanges ??= run.propertyChanges;
     if (!hasStructuredSourceContent) {
       return;
     }
@@ -2387,6 +2390,7 @@ function convertField(
             }
           }
           fieldFormatting ??= child.formatting;
+          fieldPropertyChanges ??= child.propertyChanges;
         }
       }
       inlineNodes.push(
@@ -2428,6 +2432,9 @@ function convertField(
   );
 
   const createStructuredField = hasStructuredSourceContent && hasConvertedHyperlinkContent;
+  if (!createStructuredField && fieldPropertyChanges && fieldPropertyChanges.length > 0) {
+    marks.push(schema.mark("runPropertyChange", { changes: [...fieldPropertyChanges] }));
+  }
   return schema.node(
     createStructuredField ? "structuredField" : "field",
     {
@@ -3437,6 +3444,9 @@ function convertHyperlink(
       );
       // Add link mark to run marks
       const allMarks = [...runMarks, linkMark];
+      if (child.propertyChanges && child.propertyChanges.length > 0) {
+        allMarks.push(schema.mark("runPropertyChange", { changes: [...child.propertyChanges] }));
+      }
 
       // Delegate to convertRunContent so tabs/breaks/fields/symbols inside
       // a hyperlink round-trip (eigenpal #566). The earlier text-only loop

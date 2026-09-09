@@ -1,11 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
+import { EditorState, type Transaction } from "prosemirror-state";
 
 import { parseDocx } from "../docx/parser";
 import { createDocx, repackDocx } from "../docx/rezip";
-import type { TextFormatting } from "../types/document";
+import { acceptAIEditRevision, rejectAIEditRevision } from "../prosemirror/commands/comments";
+import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
+import { schema } from "../prosemirror/schema";
+import type { Document, RunContent, RunPropertyChange, TextFormatting } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
+import { decodeOoxmlSymbolCharacter } from "../utils/ooxmlSymbol";
 import { FolioDocxReviewer } from "./headless";
+import { getTrackedChangesFromDoc } from "./read";
 import { createFolioAITextRangeHandle } from "./snapshot";
 import type { FolioAIInlineFormatting } from "./types";
 
@@ -171,6 +177,131 @@ const documentXml = async (buffer: ArrayBuffer): Promise<string> => {
 
 const applyTrackedBold = async (): Promise<ArrayBuffer> => {
   return applyTrackedFormatting({ formatting: { bold: true } });
+};
+
+const INLINE_CARRIER_CHANGE = {
+  type: "runPropertyChange",
+  info: {
+    id: 93,
+    author: "Reviewer",
+    date: "2026-09-09T00:00:00.000Z",
+  },
+  previousFormatting: {},
+  currentFormatting: { bold: true },
+} as const satisfies RunPropertyChange;
+
+const inlineCarrierChange = (id: number): RunPropertyChange => ({
+  ...INLINE_CARRIER_CHANGE,
+  info: { ...INLINE_CARRIER_CHANGE.info, id },
+});
+
+const changedInlineRun = (content: RunContent, revisionId: number) => ({
+  type: "run" as const,
+  formatting: { bold: true },
+  propertyChanges: [inlineCarrierChange(revisionId)],
+  content: [content],
+});
+
+const createMixedInlineCarrierFormattingDocument = (): Document => {
+  const document = createEmptyDocument();
+  document.package.document.content = [
+    {
+      type: "paragraph",
+      paraId: "A1000093",
+      content: [
+        changedInlineRun({ type: "text", text: "A" }, 93),
+        changedInlineRun({ type: "tab" }, 94),
+        changedInlineRun({ type: "break", breakType: "textWrapping" }, 95),
+        changedInlineRun({ type: "symbol", font: "Wingdings", char: "F06F" }, 96),
+        {
+          type: "simpleField",
+          instruction: " PAGE ",
+          fieldType: "PAGE",
+          content: [changedInlineRun({ type: "text", text: "1" }, 97)],
+        },
+        {
+          type: "simpleField",
+          instruction: " REF carrier ",
+          fieldType: "REF",
+          content: [
+            {
+              type: "hyperlink",
+              anchor: "carrier",
+              children: [changedInlineRun({ type: "text", text: "field" }, 98)],
+            },
+          ],
+        },
+      ],
+    },
+  ];
+  return document;
+};
+
+const createSameIdInlineCarrierState = (): EditorState => {
+  const change = schema.mark("runPropertyChange", { changes: [INLINE_CARRIER_CHANGE] });
+  const marks = [schema.mark("bold"), change];
+  const hyperlink = schema.mark("hyperlink", {
+    href: "#carrier",
+    _docxHyperlinkIndex: 0,
+  });
+  const fieldAttrs = {
+    fieldType: "PAGE",
+    instruction: " PAGE ",
+    displayText: "1",
+    fieldKind: "simple",
+    fldLock: false,
+    dirty: false,
+  };
+  return EditorState.create({
+    doc: schema.node("doc", null, [
+      schema.node("paragraph", { paraId: "A1000094" }, [
+        schema.text("A", marks),
+        schema.node("tab").mark(marks),
+        schema.node("hardBreak").mark(marks),
+        schema.node("symbol", { font: "Wingdings", char: "F06F" }).mark(marks),
+        schema.node("field", fieldAttrs).mark(marks),
+        schema
+          .node(
+            "structuredField",
+            {
+              ...fieldAttrs,
+              fieldType: "REF",
+              instruction: " REF carrier ",
+              displayText: "field",
+            },
+            [schema.text("field", [...marks, hyperlink])],
+          )
+          .mark(marks),
+      ]),
+    ]),
+  });
+};
+
+const applyRevisionDecision = (state: EditorState, mode: "accept" | "reject"): EditorState => {
+  let next = state;
+  const command =
+    mode === "accept"
+      ? acceptAIEditRevision(INLINE_CARRIER_CHANGE.info.id)
+      : rejectAIEditRevision(INLINE_CARRIER_CHANGE.info.id);
+  expect(
+    command(state, (transaction: Transaction) => {
+      next = state.apply(transaction);
+    }),
+  ).toBe(true);
+  return next;
+};
+
+const countXmlElements = (xml: string, localName: string): number =>
+  xml.match(new RegExp(`<w:${localName}(?:[\\s/>])`, "gu"))?.length ?? 0;
+
+const assertSingularRunPropertyChanges = (xml: string, expectedRunCount: number): void => {
+  const changedRuns = [...xml.matchAll(/<w:r(?:\s[^>]*)?>([\s\S]*?)<\/w:r>/gu)].filter(
+    ([, content]) => content?.includes("<w:rPrChange "),
+  );
+  expect(changedRuns).toHaveLength(expectedRunCount);
+  for (const [, content] of changedRuns) {
+    expect(countXmlElements(content ?? "", "rPrChange")).toBe(1);
+  }
 };
 
 describe("tracked run formatting", () => {
@@ -476,6 +607,62 @@ describe("tracked run formatting", () => {
     expect(rejectedXml).not.toContain("<w:i/>");
     expect(rejectedXml).not.toContain("<w:rPrChange ");
     expect(rejected.getChanges()).toEqual([]);
+  });
+
+  test("enumerates and resolves formatting revisions across mixed inline carriers", async () => {
+    const source = await createDocx(createMixedInlineCarrierFormattingDocument());
+    const reviewer = await FolioDocxReviewer.fromBuffer(source);
+    const symbol = decodeOoxmlSymbolCharacter("F06F");
+    if (!symbol) {
+      throw new Error("expected a decodable symbol fixture");
+    }
+    expect(reviewer.getChanges()).toEqual(
+      ["A", "\t", "\n", symbol, "1", "field"].map((text, index) =>
+        expect.objectContaining({ id: 93 + index, type: "formatting", text }),
+      ),
+    );
+
+    const saved = await reviewer.toBuffer();
+    assertSingularRunPropertyChanges(await documentXml(saved), 6);
+    expect((await FolioDocxReviewer.fromBuffer(saved)).getChanges()).toEqual(reviewer.getChanges());
+
+    for (const mode of ["accept", "reject"] as const) {
+      const resolving = await FolioDocxReviewer.fromBuffer(saved);
+      for (const { id } of resolving.getChanges()) {
+        expect(mode === "accept" ? resolving.acceptChange(id) : resolving.rejectChange(id)).toBe(
+          true,
+        );
+      }
+      const resolved = await resolving.toBuffer();
+      expect((await FolioDocxReviewer.fromBuffer(resolved)).getChanges()).toEqual([]);
+      const xml = await documentXml(resolved);
+      expect(xml).not.toContain("<w:rPrChange ");
+      expect(countXmlElements(xml, "b")).toBe(mode === "accept" ? 6 : 0);
+    }
+  });
+
+  test("treats mixed same-id carriers and a structured result as one review change", async () => {
+    const symbol = decodeOoxmlSymbolCharacter("F06F");
+    if (!symbol) {
+      throw new Error("expected a decodable symbol fixture");
+    }
+    const state = createSameIdInlineCarrierState();
+    expect(getTrackedChangesFromDoc(state.doc)).toEqual([
+      expect.objectContaining({
+        id: INLINE_CARRIER_CHANGE.info.id,
+        type: "formatting",
+        text: `A\t\n${symbol}1field`,
+      }),
+    ]);
+
+    for (const mode of ["accept", "reject"] as const) {
+      const resolvedState = applyRevisionDecision(createSameIdInlineCarrierState(), mode);
+      expect(getTrackedChangesFromDoc(resolvedState.doc)).toEqual([]);
+      const resolved = await createDocx(fromProseDoc(resolvedState.doc));
+      const reopened = await FolioDocxReviewer.fromBuffer(resolved);
+      expect(reopened.getChanges()).toEqual([]);
+      expect(countXmlElements(await documentXml(resolved), "b")).toBe(mode === "accept" ? 6 : 0);
+    }
   });
 
   test("uses the same operation in a secondary document story", async () => {

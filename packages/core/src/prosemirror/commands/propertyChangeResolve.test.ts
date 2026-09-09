@@ -162,6 +162,93 @@ describe("pPrChange accept/reject (real schema)", () => {
     expect(attrs["defaultTextFormatting"]).not.toMatchObject({ italic: true });
   });
 
+  test("reject rebases a structured field once across its outer carrier and result runs", () => {
+    const styles = {
+      styles: [
+        { type: "paragraph", styleId: "Source", rPr: { bold: true } },
+        { type: "paragraph", styleId: "Target", rPr: { italic: true } },
+      ],
+    } as const satisfies StyleDefinitions;
+    const view = dispatcher(
+      makeStyledState(
+        {
+          type: "paragraph",
+          formatting: { styleId: "Target" },
+          propertyChanges: [
+            {
+              type: "paragraphPropertyChange",
+              info: CHANGE_INFO,
+              previousFormatting: { styleId: "Source" },
+            },
+          ],
+          content: [
+            {
+              type: "simpleField",
+              instruction: " REF carrier ",
+              fieldType: "REF",
+              content: [
+                {
+                  type: "hyperlink",
+                  anchor: "carrier",
+                  children: [
+                    {
+                      type: "run",
+                      content: [
+                        { type: "text", text: "field" },
+                        { type: "tab" },
+                        { type: "break", breakType: "textWrapping" },
+                      ],
+                    },
+                    {
+                      type: "run",
+                      formatting: { underline: { style: "single" } },
+                      content: [{ type: "text", text: "direct" }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        styles,
+      ),
+    );
+    const before: { name: string; marks: string[] }[] = [];
+    view.state.doc.descendants((node) => {
+      if (node.isInline) {
+        before.push({ name: node.type.name, marks: node.marks.map(({ type }) => type.name) });
+      }
+      return true;
+    });
+    expect(before).toEqual([
+      { name: "structuredField", marks: expect.arrayContaining(["italic"]) },
+      { name: "text", marks: expect.arrayContaining(["italic"]) },
+      { name: "tab", marks: expect.arrayContaining(["italic"]) },
+      { name: "hardBreak", marks: expect.arrayContaining(["italic"]) },
+      { name: "text", marks: expect.arrayContaining(["italic", "underline"]) },
+    ]);
+
+    expect(rejectChange(0, view.state.doc.content.size)(view.state, view.dispatch)).toBe(true);
+
+    const after: { name: string; marks: string[] }[] = [];
+    view.state.doc.descendants((node) => {
+      if (node.isInline) {
+        after.push({ name: node.type.name, marks: node.marks.map(({ type }) => type.name) });
+      }
+      return true;
+    });
+    expect(after).toEqual([
+      { name: "structuredField", marks: expect.arrayContaining(["bold"]) },
+      { name: "text", marks: expect.arrayContaining(["bold"]) },
+      { name: "tab", marks: expect.arrayContaining(["bold"]) },
+      { name: "hardBreak", marks: expect.arrayContaining(["bold"]) },
+      { name: "text", marks: expect.arrayContaining(["bold", "underline"]) },
+    ]);
+    for (const { marks } of after) {
+      expect(marks).not.toContain("italic");
+    }
+  });
+
   const REJECTION_ORDERS = [
     [101, 102, 103],
     [101, 103, 102],

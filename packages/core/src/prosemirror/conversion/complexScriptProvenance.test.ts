@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { EditorState, TextSelection, type Command } from "prosemirror-state";
+import { EditorState, NodeSelection, TextSelection, type Command } from "prosemirror-state";
 
 import { createFolioAIEditSnapshot } from "../../ai-edits/snapshot";
 import { parseDocx } from "../../docx/parser";
@@ -184,6 +184,145 @@ describe("complex-script run-property provenance", () => {
       },
     ]);
     await assertTwoPackageCycles(authored, expected);
+  });
+
+  test.each([
+    ["text", () => schema.text("x")],
+    ["tab", () => schema.node("tab")],
+    ["hard break", () => schema.node("hardBreak")],
+    ["symbol", () => schema.node("symbol", { font: "Wingdings", char: "F06F" })],
+    [
+      "field",
+      () =>
+        schema.node("field", {
+          fieldType: "PAGE",
+          instruction: " PAGE ",
+          displayText: "1",
+          fieldKind: "simple",
+          fldLock: false,
+          dirty: false,
+        }),
+    ],
+    [
+      "structured field",
+      () =>
+        schema.node(
+          "structuredField",
+          {
+            fieldType: "REF",
+            instruction: " REF carrier ",
+            displayText: "field",
+            fieldKind: "simple",
+            fldLock: false,
+            dirty: false,
+          },
+          [schema.text("field")],
+        ),
+    ],
+  ] as const)("toolbar commands preserve companion provenance on a selected %s", (_, makeNode) => {
+    for (const command of [toggleBold, setFontSize(22)]) {
+      const carrier = makeNode();
+      const doc = schema.node("doc", null, [schema.node("paragraph", null, [carrier])]);
+      let state = EditorState.create({ doc });
+      state = state.apply(
+        state.tr.setSelection(
+          carrier.isText
+            ? TextSelection.create(state.doc, 1, 2)
+            : NodeSelection.create(state.doc, 1),
+        ),
+      );
+      state = applyCommand(state, command);
+
+      const formattedNodes: (typeof carrier)[] = [];
+      state.doc.firstChild?.descendants((node) => {
+        if (
+          node.isInline &&
+          (node.type.name !== "structuredField" || formattedNodes.length === 0)
+        ) {
+          formattedNodes.push(node);
+        }
+        return true;
+      });
+      for (const node of formattedNodes) {
+        const override = node.marks.find(({ type }) => type.name === "runFormattingOverride");
+        expect(override, `${node.type.name} must carry direct-formatting provenance`).toBeDefined();
+        if (command === toggleBold) {
+          expect(override?.attrs["bold"]).toBe(true);
+          expect(override?.attrs["boldCs"]).toBe(true);
+        } else {
+          expect(override?.attrs["directFontProperties"]).toContain("fontSize");
+          expect(override?.attrs["fontSizeCs"]).toBe(22);
+        }
+      }
+    }
+  });
+
+  test("collapsed toolbar formatting keeps companion provenance in stored marks", () => {
+    const doc = schema.node("doc", null, [schema.node("paragraph", null, [schema.text("x")])]);
+    let state = EditorState.create({ doc });
+    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 1)));
+    state = applyCommand(state, toggleBold);
+
+    const override = state.storedMarks?.find(({ type }) => type.name === "runFormattingOverride");
+    expect(override?.attrs["bold"]).toBe(true);
+    expect(override?.attrs["boldCs"]).toBe(true);
+  });
+
+  test("a nested field selection updates only the result text receiving visible formatting", () => {
+    const field = schema.node(
+      "structuredField",
+      {
+        fieldType: "REF",
+        instruction: " REF carrier ",
+        displayText: "AB",
+        fieldKind: "simple",
+        fldLock: false,
+        dirty: false,
+      },
+      [schema.text("AB")],
+    );
+    let state = EditorState.create({
+      doc: schema.node("doc", null, [schema.node("paragraph", null, [field])]),
+    });
+    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 2, 3)));
+    state = applyCommand(state, toggleBold);
+
+    const updatedField = state.doc.firstChild?.firstChild;
+    expect(updatedField?.marks.some(({ type }) => type.name === "bold")).toBe(false);
+    expect(updatedField?.marks.some(({ type }) => type.name === "runFormattingOverride")).toBe(
+      false,
+    );
+    expect(updatedField?.child(0).text).toBe("A");
+    expect(updatedField?.child(0).marks.map(({ type }) => type.name)).toEqual([
+      "bold",
+      "runFormattingOverride",
+    ]);
+    expect(updatedField?.child(1).text).toBe("B");
+    expect(updatedField?.child(1).marks).toEqual([]);
+  });
+
+  test.each([
+    [
+      "bookmark boundary",
+      () => schema.node("bookmarkBoundary", { type: "start", id: 1, name: "carrier" }),
+    ],
+    ["image", () => schema.node("image", { src: "data:image/png;base64," })],
+    ["math", () => schema.node("math")],
+    ["rendered page break", () => schema.node("renderedPageBreak")],
+    ["shape", () => schema.node("shape")],
+    ["text-box anchor", () => schema.node("textBoxAnchor", { anchorId: "carrier" })],
+  ] as const)("toolbar formatting leaves %s without run provenance", (_, makeNode) => {
+    const atom = makeNode();
+    const doc = schema.node("doc", null, [schema.node("paragraph", null, [atom])]);
+    let state = EditorState.create({ doc });
+    state = state.apply(state.tr.setSelection(NodeSelection.create(state.doc, 1)));
+    state = applyCommand(state, toggleBold);
+
+    expect(
+      state.doc.firstChild?.firstChild?.marks.some(
+        ({ type }) => type.name === "runFormattingOverride",
+      ),
+    ).toBe(false);
   });
 
   test.each([

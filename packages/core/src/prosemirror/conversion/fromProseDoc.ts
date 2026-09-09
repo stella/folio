@@ -2789,6 +2789,9 @@ function createFieldFromNode(
     content: [{ type: "text" as const, text: displayText }],
     ...(formatting && Object.keys(formatting).length > 0 ? { formatting } : {}),
   };
+  if (marks && node.type.name === "field") {
+    restoreRunPropertyChanges(displayRun, marks);
+  }
   const extractedContent = extractParagraphContent(
     node,
     undefined,
