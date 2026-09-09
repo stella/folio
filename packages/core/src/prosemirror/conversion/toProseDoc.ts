@@ -116,6 +116,46 @@ type RunFormattingResolver = (
   fieldType?: string,
 ) => ResolvedRunFormatting;
 
+type TrackedRunInlineAtomDisposition =
+  | "carry"
+  | "field-carrier"
+  | "outside-wrapper"
+  | "text-carrier"
+  | "transparent";
+
+/**
+ * How each inline atom in the editor schema participates in an OOXML
+ * run-level tracked-change wrapper.
+ *
+ * This table is intentionally total over the schema's inline atoms. Adding a
+ * new atom requires deciding whether a wrapper owns it instead of silently
+ * dropping its revision during import. `field` is explicit because a leaf
+ * field carries a revision as a unit even though it cannot contain marked
+ * children; ordinary carriers declare mark support on their node specs.
+ *
+ * @internal
+ */
+export const TRACKED_RUN_INLINE_ATOM_DISPOSITIONS: Readonly<
+  Record<string, TrackedRunInlineAtomDisposition>
+> = Object.freeze({
+  bookmarkBoundary: "carry",
+  field: "field-carrier",
+  hardBreak: "carry",
+  image: "carry",
+  math: "outside-wrapper",
+  renderedPageBreak: "transparent",
+  shape: "carry",
+  structuredField: "carry",
+  symbol: "carry",
+  tab: "carry",
+  text: "text-carrier",
+  textBoxAnchor: "carry",
+});
+
+const trackedRunInlineAtomDispositionsByName = new Map(
+  Object.entries(TRACKED_RUN_INLINE_ATOM_DISPOSITIONS),
+);
+
 /**
  * Build a `nextTextBoxGroupId()` generator salted with a random per-load
  * nonce, so minted text-box anchor ids (`<salt>:<group>:<index>`) are unique
@@ -839,25 +879,20 @@ function convertTrackedChange(
 }
 
 function canCarryTrackedRunMark(node: PMNode, markType: MarkType): boolean {
-  if (node.isText) {
-    return true;
-  }
-  if (!node.isInline) {
+  if (!node.isInline || !node.isAtom) {
     return false;
   }
-  if (node.type.name === "field" || node.type.name === "structuredField") {
+  const disposition = trackedRunInlineAtomDispositionsByName.get(node.type.name);
+  if (!disposition) {
+    panic(`Inline atom ${JSON.stringify(node.type.name)} has no tracked-run disposition`);
+  }
+  if (disposition === "text-carrier" || disposition === "field-carrier") {
     return true;
   }
-  return (
-    node.type.allowsMarkType(markType) &&
-    (node.type.name === "image" ||
-      node.type.name === "shape" ||
-      node.type.name === "hardBreak" ||
-      node.type.name === "tab" ||
-      node.type.name === "symbol" ||
-      node.type.name === "bookmarkBoundary" ||
-      node.type.name === "textBoxAnchor")
-  );
+  if (disposition === "outside-wrapper") {
+    panic(`Inline atom ${JSON.stringify(node.type.name)} cannot occur in a tracked-run wrapper`);
+  }
+  return disposition === "carry" && node.type.allowsMarkType(markType);
 }
 
 /**

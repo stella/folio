@@ -55,18 +55,14 @@ describe("convertHyperlink preserves non-text run content", () => {
         childTypes.push(paragraph.child(i).type.name);
       }
     }
-    // The tab node must survive into the PM doc — the bug was dropping it
-    // entirely. Text children on both sides must still carry the hyperlink
-    // mark (clickable title and page number). The tab node itself doesn't
-    // need the mark — PM tabs typically don't accept inline marks.
+    // The tab node must survive into the PM doc, and every run carrier must
+    // retain the hyperlink mark so the wrapper remains contiguous.
     expect(childTypes).toContain("tab");
     expect(childTypes.filter((n) => n === "text")).toHaveLength(2);
     if (paragraph) {
       for (let i = 0; i < paragraph.childCount; i++) {
         const child = paragraph.child(i);
-        if (child.type.name === "text") {
-          expect(child.marks.some((m) => m.type.name === "hyperlink")).toBe(true);
-        }
+        expect(child.marks.some((m) => m.type.name === "hyperlink")).toBe(true);
       }
     }
   });
@@ -145,6 +141,12 @@ describe("convertHyperlink preserves non-text run content", () => {
     }
     expect(childTypes).toContain("hardBreak");
     expect(childTypes.filter((n) => n === "text")).toHaveLength(2);
+    if (paragraph) {
+      for (let i = 0; i < paragraph.childCount; i++) {
+        const child = paragraph.child(i);
+        expect(child.marks.some((mark) => mark.type.name === "hyperlink")).toBe(true);
+      }
+    }
   });
 
   test("round-trips a w:br inside one hyperlink wrapper", () => {

@@ -12,6 +12,7 @@ export const TabExtension = createNodeExtension({
   nodeSpec: {
     inline: true,
     group: "inline",
+    marks: "_",
     attrs: {
       positional: { default: null },
     },
