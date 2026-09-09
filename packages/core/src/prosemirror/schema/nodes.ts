@@ -98,7 +98,10 @@ export type ParagraphAttrs = {
   spaceAfter?: number;
   lineSpacing?: number;
   lineSpacingRule?: LineSpacingRule;
+  /** Whether `lineSpacing` came from this paragraph's own `w:spacing/@w:line`. */
   lineSpacingExplicit?: boolean;
+  /** Whether `lineSpacingRule` came from this paragraph's own `w:spacing/@w:lineRule`. */
+  lineSpacingRuleExplicit?: boolean;
   snapToGrid?: boolean;
   spacingExplicit?: SpacingExplicit;
   /** Layout provenance: document defaults survive on empty paragraphs. */
@@ -317,6 +320,7 @@ export type ParagraphPropertyChangeAttrs = Omit<
         | "listAbstractNumId"
         | "listStartOverride"
         | "lineSpacingExplicit"
+        | "lineSpacingRuleExplicit"
         | "direction"
         | "_autospacingBase"
       >

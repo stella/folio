@@ -79,6 +79,31 @@ const FULL_SPACING = {
   afterAutospacing: true,
 } as const satisfies FolioAIParagraphSpacing;
 
+const INHERITED_LINE_SPACING = {
+  lineSpacing: 276,
+  lineSpacingRule: "exact",
+} as const satisfies FolioAIParagraphSpacing;
+
+const LINE_SPACING_PROVENANCE_STATES = [
+  { label: "neither value nor rule", spacing: undefined },
+  { label: "value only", spacing: { lineSpacing: 240 } },
+  { label: "rule only", spacing: { lineSpacingRule: "auto" } },
+  {
+    label: "both value and rule",
+    spacing: { lineSpacing: 240, lineSpacingRule: "auto" },
+  },
+] as const;
+
+const LINE_SPACING_PROVENANCE_TRANSITIONS = LINE_SPACING_PROVENANCE_STATES.flatMap((before) =>
+  LINE_SPACING_PROVENANCE_STATES.filter(
+    (after) => JSON.stringify(after.spacing) !== JSON.stringify(before.spacing),
+  ).map((after) => ({
+    after: after.spacing,
+    before: before.spacing,
+    transition: `${before.label} to ${after.label}`,
+  })),
+);
+
 const paragraphModel = (
   text: string,
   paraId: string,
@@ -116,9 +141,7 @@ const spacingDocumentModel = ({
       },
     ],
   };
-  document.package.document.content = [
-    paragraphModel(TEXT, "12345678", directSpacing, styleId),
-  ];
+  document.package.document.content = [paragraphModel(TEXT, "12345678", directSpacing, styleId)];
   return document;
 };
 
@@ -271,6 +294,16 @@ describe("paragraph spacing comparison", () => {
     },
   );
 
+  test.each(LINE_SPACING_PROVENANCE_TRANSITIONS)(
+    "round-trips independent line-spacing provenance: $transition",
+    async ({ before, after }) => {
+      await expectCompareRoundTrip({
+        before: { directSpacing: before, inheritedSpacing: INHERITED_LINE_SPACING },
+        after: { directSpacing: after, inheritedSpacing: INHERITED_LINE_SPACING },
+      });
+    },
+  );
+
   test.each(EXPLICIT_SPACING_STATES)(
     "distinguishes inherited spacing from equal direct spacing: $label",
     async ({ spacing }) => {
@@ -353,47 +386,62 @@ describe("paragraph spacing comparison", () => {
     expect(result.value.verification).toEqual({ status: "verified" });
   });
 
-  test("carries inserted direct spacing through accept and reject save-reopen", async () => {
-    const inheritedSpacing = { spaceAfter: 360, afterAutospacing: false } as const;
-    const baseModel = spacingDocumentModel({ inheritedSpacing });
-    const targetModel = spacingDocumentModel({ inheritedSpacing });
-    targetModel.package.document.content.push(
-      paragraphModel(INSERTED_TEXT, "23456789", FULL_SPACING),
-    );
-    const result = await compareDocx(
-      await createDocx(baseModel),
-      await createDocx(targetModel),
-      OPTIONS,
-    );
-    if (result.isErr()) {
-      throw result.error;
-    }
+  test.each([
+    { label: "line value only", directSpacing: { lineSpacing: 240 } },
+    { label: "line rule only", directSpacing: { lineSpacingRule: "auto" } },
+    {
+      label: "line value and rule",
+      directSpacing: { lineSpacing: 240, lineSpacingRule: "auto" },
+    },
+    { label: "complete cluster", directSpacing: FULL_SPACING },
+  ] as const)(
+    "carries inserted $label spacing through accept and reject save-reopen",
+    async ({ directSpacing }) => {
+      const inheritedSpacing = INHERITED_LINE_SPACING;
+      const baseModel = spacingDocumentModel({ inheritedSpacing });
+      const targetModel = spacingDocumentModel({ inheritedSpacing });
+      targetModel.package.document.content.push(
+        paragraphModel(INSERTED_TEXT, "23456789", directSpacing),
+      );
+      const result = await compareDocx(
+        await createDocx(baseModel),
+        await createDocx(targetModel),
+        OPTIONS,
+      );
+      if (result.isErr()) {
+        throw result.error;
+      }
 
-    expect(result.value.verification).toEqual({ status: "verified" });
-    expect(result.value.changes).toEqual([
-      expect.objectContaining({ kind: "insert", after: INSERTED_TEXT }),
-    ]);
-    const pendingXml = await mainDocumentXml(result.value.buffer);
-    expect(pendingXml.match(/<w:pPrChange\b/gu)).toHaveLength(1);
-    expectDirectSpacing(await FolioDocxReviewer.fromBuffer(result.value.buffer), FULL_SPACING, 1);
+      expect(result.value.verification).toEqual({ status: "verified" });
+      expect(result.value.changes).toEqual([
+        expect.objectContaining({ kind: "insert", after: INSERTED_TEXT }),
+      ]);
+      const pendingXml = await mainDocumentXml(result.value.buffer);
+      expect(pendingXml.match(/<w:pPrChange\b/gu)).toHaveLength(1);
+      expectDirectSpacing(
+        await FolioDocxReviewer.fromBuffer(result.value.buffer),
+        directSpacing,
+        1,
+      );
 
-    const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
-    expect(accepting.acceptAll()).toBeGreaterThan(0);
-    const accepted = await accepting.toBuffer();
-    const reopenedAccepted = await FolioDocxReviewer.fromBuffer(accepted);
-    expect(reopenedAccepted.snapshot().blocks.map(({ text }) => text)).toEqual([
-      TEXT,
-      INSERTED_TEXT,
-    ]);
-    expectDirectSpacing(reopenedAccepted, FULL_SPACING, 1);
+      const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+      expect(accepting.acceptAll()).toBeGreaterThan(0);
+      const accepted = await accepting.toBuffer();
+      const reopenedAccepted = await FolioDocxReviewer.fromBuffer(accepted);
+      expect(reopenedAccepted.snapshot().blocks.map(({ text }) => text)).toEqual([
+        TEXT,
+        INSERTED_TEXT,
+      ]);
+      expectDirectSpacing(reopenedAccepted, directSpacing, 1);
 
-    const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
-    expect(rejecting.rejectAll()).toBeGreaterThan(0);
-    const rejected = await rejecting.toBuffer();
-    const reopenedRejected = await FolioDocxReviewer.fromBuffer(rejected);
-    expect(reopenedRejected.snapshot().blocks.map(({ text }) => text)).toEqual([TEXT]);
-    expectDirectSpacing(reopenedRejected, undefined);
-  });
+      const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+      expect(rejecting.rejectAll()).toBeGreaterThan(0);
+      const rejected = await rejecting.toBuffer();
+      const reopenedRejected = await FolioDocxReviewer.fromBuffer(rejected);
+      expect(reopenedRejected.snapshot().blocks.map(({ text }) => text)).toEqual([TEXT]);
+      expectDirectSpacing(reopenedRejected, undefined);
+    },
+  );
 
   test("fails closed when a second tracked paragraph-format edit targets a pending pPrChange", async () => {
     const originalSpacing = { spaceBefore: 120, afterAutospacing: false } as const;

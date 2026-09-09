@@ -1352,6 +1352,7 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
       afterAutospacingEdited ||
       (!afterIsInherited && !afterHasAutospacingBase));
   const hasDirectLineSpacing = attrs.lineSpacingExplicit === true;
+  const hasDirectLineSpacingRule = attrs.lineSpacingRuleExplicit === true;
 
   if (attrs._originalFormatting) {
     const orig = attrs._originalFormatting;
@@ -1392,14 +1393,16 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
       }
     }
 
-    const originalHasDirectLineSpacing =
-      orig.lineSpacing !== undefined || orig.lineSpacingRule !== undefined;
+    const originalHasDirectLineSpacing = orig.lineSpacing !== undefined;
     if (hasDirectLineSpacing || originalHasDirectLineSpacing) {
       if (typeof attrs.lineSpacing === "number") {
         result.lineSpacing = attrs.lineSpacing;
       } else {
         Reflect.deleteProperty(result, "lineSpacing");
       }
+    }
+    const originalHasDirectLineSpacingRule = orig.lineSpacingRule !== undefined;
+    if (hasDirectLineSpacingRule || originalHasDirectLineSpacingRule) {
       if (attrs.lineSpacingRule) {
         result.lineSpacingRule = attrs.lineSpacingRule;
       } else {
@@ -1519,7 +1522,7 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
   if (hasDirectLineSpacing && typeof attrs.lineSpacing === "number") {
     f.lineSpacing = attrs.lineSpacing;
   }
-  if (hasDirectLineSpacing && attrs.lineSpacingRule) {
+  if (hasDirectLineSpacingRule && attrs.lineSpacingRule) {
     f.lineSpacingRule = attrs.lineSpacingRule;
   }
   if (attrs.snapToGrid != null) {

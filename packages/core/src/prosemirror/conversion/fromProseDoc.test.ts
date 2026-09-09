@@ -999,7 +999,12 @@ describe("fromProseDoc", () => {
     expect((block.formatting as Record<string, unknown>)["_autospacingBase"]).toBeUndefined();
   });
 
-  test("round-trips inherited line spacing without inlining the style value", () => {
+  test.each([
+    { label: "neither value nor rule", direct: undefined },
+    { label: "value only", direct: { lineSpacing: 240 } },
+    { label: "rule only", direct: { lineSpacingRule: "auto" } },
+    { label: "both value and rule", direct: { lineSpacing: 240, lineSpacingRule: "auto" } },
+  ] as const)("round-trips independent line-spacing provenance: $label", ({ direct }) => {
     const document: Document = {
       package: {
         styles: {
@@ -1008,7 +1013,7 @@ describe("fromProseDoc", () => {
               styleId: "Normal",
               type: "paragraph",
               default: true,
-              pPr: { lineSpacing: 240, lineSpacingRule: "auto" },
+              pPr: { lineSpacing: 276, lineSpacingRule: "exact" },
             },
           ],
         },
@@ -1016,11 +1021,11 @@ describe("fromProseDoc", () => {
           content: [
             {
               type: "paragraph",
-              formatting: { styleId: "Normal" },
+              formatting: { styleId: "Normal", ...direct },
               content: [
                 {
                   type: "run",
-                  content: [{ type: "text", text: "Inherited line spacing" }],
+                  content: [{ type: "text", text: "Independent line spacing" }],
                 },
               ],
             },
@@ -1034,16 +1039,20 @@ describe("fromProseDoc", () => {
     const roundTripped = fromProseDoc(pmDoc, document);
     const block = roundTripped.package.document.content.at(0);
 
-    expect(attrs.lineSpacing).toBe(240);
-    expect(attrs.lineSpacingRule).toBe("auto");
-    expect(attrs.lineSpacingExplicit).toBeUndefined();
+    expect(attrs.lineSpacing).toBe(direct?.lineSpacing ?? 276);
+    expect(attrs.lineSpacingRule).toBe(direct?.lineSpacingRule ?? "exact");
+    expect(attrs.lineSpacingExplicit).toBe(direct?.lineSpacing === undefined ? undefined : true);
+    expect(attrs.lineSpacingRuleExplicit).toBe(
+      direct?.lineSpacingRule === undefined ? undefined : true,
+    );
+    expect(directParagraphSpacing(attrs)).toEqual(direct);
     expect(block?.type).toBe("paragraph");
     if (block?.type !== "paragraph") {
       return;
     }
     expect(block.formatting?.styleId).toBe("Normal");
-    expect(block.formatting?.lineSpacing).toBeUndefined();
-    expect(block.formatting?.lineSpacingRule).toBeUndefined();
+    expect(block.formatting?.lineSpacing).toBe(direct?.lineSpacing);
+    expect(block.formatting?.lineSpacingRule).toBe(direct?.lineSpacingRule);
   });
 
   test("saves edited inherited auto spacing as direct spacing with auto disabled", () => {

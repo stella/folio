@@ -93,16 +93,14 @@ export const directParagraphSpacing = (
       Reflect.deleteProperty(spacing, "spaceAfter");
     }
   }
-  if (
-    attrs.lineSpacingExplicit === true ||
-    spacing.lineSpacing !== undefined ||
-    spacing.lineSpacingRule !== undefined
-  ) {
+  if (attrs.lineSpacingExplicit === true || spacing.lineSpacing !== undefined) {
     if (typeof attrs.lineSpacing === "number") {
       spacing.lineSpacing = attrs.lineSpacing;
     } else {
       Reflect.deleteProperty(spacing, "lineSpacing");
     }
+  }
+  if (attrs.lineSpacingRuleExplicit === true || spacing.lineSpacingRule !== undefined) {
     if (attrs.lineSpacingRule !== undefined) {
       spacing.lineSpacingRule = attrs.lineSpacingRule;
     } else {
@@ -174,8 +172,8 @@ export const paragraphSpacingAttrPatch = ({
     spaceAfter: effective.spaceAfter ?? null,
     lineSpacing: effective.lineSpacing ?? null,
     lineSpacingRule: effective.lineSpacingRule ?? null,
-    lineSpacingExplicit:
-      direct?.lineSpacing !== undefined || direct?.lineSpacingRule !== undefined ? true : null,
+    lineSpacingExplicit: direct?.lineSpacing !== undefined ? true : null,
+    lineSpacingRuleExplicit: direct?.lineSpacingRule !== undefined ? true : null,
     spacingExplicit: Object.keys(spacingExplicit).length > 0 ? spacingExplicit : null,
     _autospacingBase: Object.keys(autospacingBase).length > 0 ? autospacingBase : null,
   };

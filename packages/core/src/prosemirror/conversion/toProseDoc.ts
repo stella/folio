@@ -991,12 +991,8 @@ function paragraphFormattingToAttrs(
     set("spaceAfter", formatting?.spaceAfter ?? stylePpr?.spaceAfter);
     set("lineSpacing", formatting?.lineSpacing ?? stylePpr?.lineSpacing);
     set("lineSpacingRule", formatting?.lineSpacingRule ?? stylePpr?.lineSpacingRule);
-    set(
-      "lineSpacingExplicit",
-      formatting?.lineSpacing !== undefined || formatting?.lineSpacingRule !== undefined
-        ? true
-        : undefined,
-    );
+    set("lineSpacingExplicit", formatting?.lineSpacing !== undefined ? true : undefined);
+    set("lineSpacingRuleExplicit", formatting?.lineSpacingRule !== undefined ? true : undefined);
     set("snapToGrid", formatting?.snapToGrid ?? stylePpr?.snapToGrid);
     set("spacingExplicit", formatting?.spacingExplicit);
     const paragraphStyle = styleId
@@ -1102,6 +1098,8 @@ function paragraphFormattingToAttrs(
     set("spaceAfter", formatting?.spaceAfter);
     set("lineSpacing", formatting?.lineSpacing);
     set("lineSpacingRule", formatting?.lineSpacingRule);
+    set("lineSpacingExplicit", formatting?.lineSpacing !== undefined ? true : undefined);
+    set("lineSpacingRuleExplicit", formatting?.lineSpacingRule !== undefined ? true : undefined);
     set("snapToGrid", formatting?.snapToGrid);
     set("spacingExplicit", formatting?.spacingExplicit);
     set("indentLeft", formatting?.indentLeft);

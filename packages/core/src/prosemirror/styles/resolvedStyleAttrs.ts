@@ -42,6 +42,7 @@ export function paragraphAttrsFromResolvedStyle(
     lineSpacing: ppr?.lineSpacing ?? null,
     lineSpacingRule: ppr?.lineSpacingRule ?? null,
     lineSpacingExplicit: null,
+    lineSpacingRuleExplicit: null,
     snapToGrid: ppr?.snapToGrid ?? null,
     indentLeft: ppr?.indentLeft ?? null,
     indentRight: ppr?.indentRight ?? null,
