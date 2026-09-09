@@ -27,6 +27,23 @@ export const paragraphChangeTrackerKey = new PluginKey<ParagraphChangeTrackerSta
 const CLEAR_META = "clear";
 const IGNORE_META = "ignore";
 const STRUCTURAL_META = "structural";
+const CHANGED_PARAGRAPH_RANGES_META = "folioChangedParagraphRanges";
+
+type ChangedParagraphRangeBatch = {
+  ranges: readonly { from: number; to: number }[];
+  mappingFrom: number;
+};
+
+type ChangedParagraphRangesMeta = {
+  type: "changed-paragraph-ranges";
+  batches: readonly ChangedParagraphRangeBatch[];
+};
+
+const isChangedParagraphRangesMeta = (value: unknown): value is ChangedParagraphRangesMeta =>
+  typeof value === "object" &&
+  value !== null &&
+  "type" in value &&
+  value.type === "changed-paragraph-ranges";
 
 export type ParagraphChangeTrackerState = {
   /** Set of paraIds that were modified since last clear */
@@ -134,6 +151,7 @@ function createParagraphChangeTrackerPlugin(): Plugin<ParagraphChangeTrackerStat
       },
       apply(tr: Transaction, prevState: ParagraphChangeTrackerState): ParagraphChangeTrackerState {
         const meta = tr.getMeta(paragraphChangeTrackerKey);
+        const changedParagraphRangesMeta = tr.getMeta(CHANGED_PARAGRAPH_RANGES_META);
         // Check for explicit clear meta
         if (meta === CLEAR_META) {
           return {
@@ -166,6 +184,30 @@ function createParagraphChangeTrackerPlugin(): Plugin<ParagraphChangeTrackerStat
           hasUntrackedChanges: prevState.hasUntrackedChanges,
           paragraphCount: newCount,
         };
+
+        if (isChangedParagraphRangesMeta(changedParagraphRangesMeta)) {
+          for (const batch of changedParagraphRangesMeta.batches) {
+            const remap = tr.mapping.slice(batch.mappingFrom);
+            for (const range of batch.ranges) {
+              const from = mapStepPosition(remap, range.from, 1);
+              const to = mapStepPosition(remap, range.to, -1);
+              if (to <= from) {
+                continue;
+              }
+              const { ids, hasUntracked } = collectAffectedParaIdsFromMarkLikeStep(
+                tr.doc,
+                from,
+                to,
+              );
+              for (const id of ids) {
+                newState.changedParaIds.add(id);
+              }
+              if (hasUntracked) {
+                newState.hasUntrackedChanges = true;
+              }
+            }
+          }
+        }
 
         // Check for structural changes (paragraph count changed)
         if (prevState.paragraphCount !== newCount) {
@@ -289,6 +331,24 @@ export function ignoreTrackedChanges(tr: Transaction): Transaction {
 
 export function markStructuralChange(tr: Transaction): Transaction {
   return tr.setMeta(paragraphChangeTrackerKey, STRUCTURAL_META);
+}
+
+type MarkChangedParagraphRangesOptions = {
+  ranges: readonly { from: number; to: number }[];
+  mappingFrom: number;
+};
+
+/** Record mark-only paragraph changes whose replacement step has a granular map. */
+export function markChangedParagraphRanges(
+  tr: Transaction,
+  batch: MarkChangedParagraphRangesOptions,
+): Transaction {
+  const previous = tr.getMeta(CHANGED_PARAGRAPH_RANGES_META);
+  const batches = isChangedParagraphRangesMeta(previous) ? [...previous.batches, batch] : [batch];
+  return tr.setMeta(CHANGED_PARAGRAPH_RANGES_META, {
+    type: "changed-paragraph-ranges",
+    batches,
+  } satisfies ChangedParagraphRangesMeta);
 }
 
 export const ParagraphChangeTrackerExtension = createExtension({

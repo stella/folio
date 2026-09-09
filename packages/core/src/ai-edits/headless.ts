@@ -37,11 +37,11 @@ import {
 } from "../docx/footnoteParser";
 import { parseDocx } from "../docx/parser";
 import { repackDocx } from "../docx/rezip";
+import { pluginsForHeadlessRevisionResolution } from "../internal/headlessRevisionResolutionGuard";
 import {
   acceptAIEditRevision,
-  acceptAllChanges,
   rejectAIEditRevision,
-  rejectAllChanges,
+  resolveAllChangesInHeadlessState,
 } from "../prosemirror/commands/comments";
 import { proseDocToBlocks, updateDocumentContent } from "../prosemirror/conversion/fromProseDoc";
 import {
@@ -411,20 +411,17 @@ export const isFolioReviewedView = (value: unknown): value is FolioReviewedView 
 export const isFolioResolvedReviewedView = (value: unknown): value is FolioResolvedReviewedView =>
   FOLIO_RESOLVED_REVIEWED_VIEWS.some((view) => view === value);
 
-const applyCommandToState = (state: EditorState, command: Command): EditorState => {
-  let nextState = state;
-  command(state, (transaction) => {
-    nextState = nextState.apply(transaction);
-  });
-  return nextState;
-};
-
 const resolveReviewedState = (state: EditorState, view: FolioReviewedView): EditorState => {
   if (view === "current-markup") {
     return state;
   }
-  return applyCommandToState(state, view === "original" ? rejectAllChanges() : acceptAllChanges());
+  return resolveAllChangesInHeadlessState(state, view === "original" ? "reject" : "accept");
 };
+
+const createHeadlessPlugins = (styles: Document["package"]["styles"]): Plugin[] => [
+  ...pluginsForHeadlessRevisionResolution(singletonManager.getPlugins()),
+  createDocumentStylesPlugin(styles),
+];
 
 const formatStoryStateForLLM = (state: EditorState, annotated: boolean): string => {
   const snapshot = createFolioAIEditSnapshot(state.doc);
@@ -617,14 +614,11 @@ export class FolioDocxReviewer {
       preloadFonts: false,
       password: options.password,
     });
-    // Same plugin set the live editor mounts: the change tracker feeds the
-    // selective-save key set, and the paraId allocator hands freshly inserted
-    // paragraphs a stable `w14:paraId`. No plugin `view()` runs headlessly, so
-    // the DOM-facing halves stay dormant.
-    const plugins: Plugin[] = [
-      ...singletonManager.getPlugins(),
-      createDocumentStylesPlugin(baseDocument.package.styles),
-    ];
+    // The change tracker feeds selective save, and the paraId allocator hands
+    // inserted paragraphs stable ids. Editor history and collaboration are
+    // intentionally absent: reviewer undo stores complete state snapshots,
+    // and headless resolution consumes its replacement transaction locally.
+    const plugins = createHeadlessPlugins(baseDocument.package.styles);
     // Allocate paraIds up front (the editor does this on load) so every block
     // anchors on a stable id and the selective-save path can key changed
     // paragraphs by paraId. Deterministic (not random) allocation so a
@@ -1282,15 +1276,15 @@ export class FolioDocxReviewer {
    * document still carries a redline nobody can see from the body.
    */
   acceptAll(): number {
-    return this.resolveEveryStory(acceptAllChanges());
+    return this.resolveEveryStory("accept");
   }
 
   /** Reject every tracked change in the package. See {@link acceptAll}. */
   rejectAll(): number {
-    return this.resolveEveryStory(rejectAllChanges());
+    return this.resolveEveryStory("reject");
   }
 
-  private resolveEveryStory(command: Command): number {
+  private resolveEveryStory(mode: "accept" | "reject"): number {
     let count = 0;
     for (const { handle } of this.listStories()) {
       const state = this.getEditableStoryState(handle);
@@ -1298,7 +1292,7 @@ export class FolioDocxReviewer {
         continue;
       }
       count += getTrackedChangesFromDoc(state.doc).length;
-      this.runStoryCommand(command, handle);
+      this.setEditableStoryState(handle, resolveAllChangesInHeadlessState(state, mode));
     }
     return count;
   }
@@ -1455,10 +1449,7 @@ export class FolioDocxReviewer {
       EditorState.create({
         schema,
         doc: ensureDeterministicParaIdsInDoc(storyDoc),
-        plugins: [
-          ...singletonManager.getPlugins(),
-          createDocumentStylesPlugin(this.baseDocument.package.styles),
-        ],
+        plugins: createHeadlessPlugins(this.baseDocument.package.styles),
       }),
     );
     this.secondaryStoryStates.set(key, { handle: story, initialState: state, state });

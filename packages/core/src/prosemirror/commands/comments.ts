@@ -8,6 +8,11 @@ import type { Mark, MarkType, Node as PMNode } from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 import { removeRow, TableMap } from "prosemirror-tables";
 
+import {
+  appendHeadlessInlineResolution,
+  type HeadlessInlineChangeTracking,
+} from "../../internal/headlessRevisionResolution";
+import { stateAllowsHeadlessRevisionResolution } from "../../internal/headlessRevisionResolutionGuard";
 import type {
   ParagraphFormatting,
   RunPropertyChange,
@@ -25,7 +30,10 @@ import {
   paragraphEndsItsContainer,
 } from "../containerFinalParagraph";
 import { textFormattingToMarks } from "../conversion/toProseDoc";
-import { markStructuralChange } from "../extensions/features/ParagraphChangeTrackerExtension";
+import {
+  markChangedParagraphRanges,
+  markStructuralChange,
+} from "../extensions/features/ParagraphChangeTrackerExtension";
 import { getDocumentStyleResolver } from "../plugins/documentStyles";
 import { holdsNoContent } from "../zeroWidthAnchors";
 import { getFolioNodeRevisionCarriers } from "../revisionCarriers";
@@ -101,6 +109,12 @@ export function removeCommentMark(commentId: number): Command {
   };
 }
 
+type ResolveMode = "accept" | "reject";
+
+const BULK_INLINE_RESOLUTION_THRESHOLD = 256;
+
+type ResolveExecution = "legacy" | "headless-bulk-inline";
+
 /**
  * Resolve a tracked change: accept or reject.
  * - Accept: keep insertions (remove mark), delete deletions (remove text)
@@ -118,6 +132,7 @@ function resolveChange(
   to: number,
   mode: "accept" | "reject",
   revisionIds?: readonly number[],
+  execution: ResolveExecution = "legacy",
 ): Command {
   return (state, dispatch) => {
     const insertionType = state.schema.marks["insertion"];
@@ -130,6 +145,12 @@ function resolveChange(
     // A range-wide removal lets ProseMirror coalesce one revision split by
     // inline formatting. The id-scoped path must keep matching each mark.
     const removeKeptMarksInBulk = revisionSet === null && keepType !== undefined;
+    const canBulkInlineResolution =
+      execution === "headless-bulk-inline" &&
+      revisionSet === null &&
+      from === 0 &&
+      to === state.doc.content.size &&
+      stateAllowsHeadlessRevisionResolution(state);
     const matchesRevision = (mark: { attrs: Record<string, unknown> }) =>
       revisionSet === null ||
       (typeof mark.attrs["revisionId"] === "number" && revisionSet.has(mark.attrs["revisionId"]));
@@ -140,6 +161,8 @@ function resolveChange(
       const pPrMarkOps: PPrMarkOp[] = [];
       const tableRowStructuralOps: TableRowStructuralOp[] = [];
       const tableCellStructuralOps: TableCellStructuralOp[] = [];
+      const deferredRunPropertyChanges: ResolveRunPropertyChangeOptions[] = [];
+      let bulkInlineCarrierCount = 0;
 
       state.doc.nodesBetween(from, to, (node, pos): boolean => {
         if (node.type.name === "paragraph") {
@@ -296,6 +319,35 @@ function resolveChange(
         const runPropertyChangeMark = node.marks.find(
           (mark) => mark.type.name === "runPropertyChange",
         );
+        const resolvesRunPropertyChange =
+          runPropertyChangeMark !== undefined &&
+          expectRunPropertyChangeMarkAttrs(runPropertyChangeMark).changes.length > 0;
+        const removesNode =
+          removeType !== undefined &&
+          node.marks.some((mark) => mark.type === removeType && matchesRevision(mark));
+        const removesKeptMark =
+          keepType !== undefined &&
+          node.marks.some((mark) => mark.type === keepType && matchesRevision(mark));
+        if (canBulkInlineResolution) {
+          if (resolvesRunPropertyChange) {
+            deferredRunPropertyChanges.push({
+              tr,
+              node,
+              from: rangeFrom,
+              to: rangeTo,
+              mark: runPropertyChangeMark,
+              mode,
+              revisionSet,
+            });
+          }
+          if (removesNode) {
+            deleteRanges.push({ from: rangeFrom, to: rangeTo });
+          }
+          if (resolvesRunPropertyChange || removesNode || removesKeptMark) {
+            bulkInlineCarrierCount++;
+          }
+          return true;
+        }
         if (runPropertyChangeMark) {
           resolveRunPropertyChange({
             tr,
@@ -308,7 +360,7 @@ function resolveChange(
           });
         }
 
-        if (removeType && node.marks.some((m) => m.type === removeType && matchesRevision(m))) {
+        if (removesNode) {
           deleteRanges.push({ from: rangeFrom, to: rangeTo });
         }
 
@@ -322,27 +374,39 @@ function resolveChange(
         return true;
       });
 
-      if (removeKeptMarksInBulk) {
-        tr.removeMark(from, to, keepType);
-      }
-
-      let rangesToDelete = deleteRanges;
-      if (revisionSet === null) {
-        // Adjacent inline ranges have no paragraph boundary between them, so
-        // one replacement has the same mapping outside the deleted content.
-        const coalescedDeleteRanges: { from: number; to: number }[] = [];
-        for (const range of deleteRanges) {
-          const previous = coalescedDeleteRanges.at(-1);
-          if (previous && range.from <= previous.to) {
-            previous.to = Math.max(previous.to, range.to);
-            continue;
-          }
-          coalescedDeleteRanges.push({ from: range.from, to: range.to });
+      let bulkInlineChangeTracking: HeadlessInlineChangeTracking | null = null;
+      // The linear rewrite pays a fixed whole-document cost. The existing
+      // steps are faster for small batches and retain their compact slices.
+      const useBulkInlineResolution =
+        canBulkInlineResolution && bulkInlineCarrierCount >= BULK_INLINE_RESOLUTION_THRESHOLD;
+      if (useBulkInlineResolution) {
+        bulkInlineChangeTracking = appendHeadlessInlineResolution(tr, mode, keepType, removeType);
+      } else {
+        for (const deferred of deferredRunPropertyChanges) {
+          resolveRunPropertyChange(deferred);
         }
-        rangesToDelete = coalescedDeleteRanges;
-      }
-      for (const range of rangesToDelete.toReversed()) {
-        tr.delete(range.from, range.to);
+        if (removeKeptMarksInBulk) {
+          tr.removeMark(from, to, keepType);
+        }
+
+        let rangesToDelete = deleteRanges;
+        if (revisionSet === null) {
+          // Adjacent inline ranges have no paragraph boundary between them, so
+          // one replacement has the same mapping outside the deleted content.
+          const coalescedDeleteRanges: { from: number; to: number }[] = [];
+          for (const range of deleteRanges) {
+            const previous = coalescedDeleteRanges.at(-1);
+            if (previous && range.from <= previous.to) {
+              previous.to = Math.max(previous.to, range.to);
+              continue;
+            }
+            coalescedDeleteRanges.push({ from: range.from, to: range.to });
+          }
+          rangesToDelete = coalescedDeleteRanges;
+        }
+        for (const range of rangesToDelete.toReversed()) {
+          tr.delete(range.from, range.to);
+        }
       }
 
       // Process paragraph-mark ops from end → start so earlier positions stay
@@ -520,6 +584,10 @@ function resolveChange(
       }
       if (resolvedTableCellStructure) {
         markStructuralChange(tr);
+      }
+
+      if (bulkInlineChangeTracking) {
+        markChangedParagraphRanges(tr, bulkInlineChangeTracking);
       }
 
       if (tr.steps.length > 0) {
@@ -1179,6 +1247,30 @@ export function acceptAllChanges(): Command {
  */
 export function rejectAllChanges(): Command {
   return (state, dispatch) => rejectChange(0, state.doc.content.size)(state, dispatch);
+}
+
+/**
+ * Resolve a complete state synchronously for a headless reader or writer.
+ *
+ * @internal The replacement transaction is consumed here and never exposed:
+ * it is deliberately not an editor command and must not be transported or
+ * mapped through concurrent edits.
+ */
+export function resolveAllChangesInHeadlessState(
+  state: EditorState,
+  mode: ResolveMode,
+): EditorState {
+  let resolvedState = state;
+  resolveChange(
+    0,
+    state.doc.content.size,
+    mode,
+    undefined,
+    "headless-bulk-inline",
+  )(state, (transaction) => {
+    resolvedState = state.apply(transaction);
+  });
+  return resolvedState;
 }
 
 /**
