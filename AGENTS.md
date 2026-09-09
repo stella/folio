@@ -232,9 +232,14 @@ editing. Its published packages have explicit ownership boundaries:
 - `bun run test:e2e:vue`
 - `bun run test:e2e:parity`
 - `bun run test:differential`
+- `bun run orient -- path/to/file.ts` or `bun run orient -- --diff main`
 
 ### Working Rules
 
+- At the start of an unfamiliar change or regression, run `bun run orient` on the
+  suspected files or current diff. Use its seam, source relationships, focused tests,
+  required checks, and changeset report as the initial investigation route; verify
+  behavior in code before acting on any advisory result.
 - **Preserve upstream attribution.** folio is a fork of the Eigenpal docx-editor (see
   `NOTICE.md`). `NOTICE.md`, `LICENSE`, and the `eigenpal` / `docx-editor` attribution
   comments must stay verbatim; never scrub them.
