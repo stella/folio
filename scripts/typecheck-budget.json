@@ -1,38 +1,38 @@
 {
   "docx-core": {
-    "types": 8589,
-    "instantiations": 7249
+    "types": 8802,
+    "instantiations": 7584
   },
   "core": {
-    "types": 129877,
-    "instantiations": 102576
+    "types": 130758,
+    "instantiations": 106031
   },
   "react": {
-    "types": 147946,
-    "instantiations": 289321
+    "types": 148822,
+    "instantiations": 300017
   },
   "agents": {
-    "types": 75294,
-    "instantiations": 69447
+    "types": 78555,
+    "instantiations": 70500
   },
   "vue": {
-    "types": 170053,
-    "instantiations": 832018
+    "types": 178621,
+    "instantiations": 843149
   },
   "nuxt": {
-    "types": 109241,
-    "instantiations": 113090
+    "types": 111887,
+    "instantiations": 117134
   },
   "playground": {
-    "types": 147844,
-    "instantiations": 202129
+    "types": 148720,
+    "instantiations": 202837
   },
   "playground-vue": {
-    "types": 167733,
-    "instantiations": 822450
+    "types": 176305,
+    "instantiations": 833633
   },
   "parity": {
-    "types": 66281,
-    "instantiations": 52672
+    "types": 69047,
+    "instantiations": 55825
   }
 }

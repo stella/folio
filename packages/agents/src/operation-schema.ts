@@ -190,8 +190,7 @@ export const FOLIO_CLEARABLE_PARAGRAPH_SPACING_JSON_SCHEMA = {
           type: "integer",
           minimum: Number.MIN_SAFE_INTEGER,
           maximum: Number.MAX_SAFE_INTEGER,
-          description:
-            "Signed line spacing: 240ths of a line with the auto rule, otherwise twips.",
+          description: "Signed line spacing: 240ths of a line with the auto rule, otherwise twips.",
         },
         lineSpacingRule: {
           type: "string",
