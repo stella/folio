@@ -2,13 +2,24 @@ import type { ParagraphAlignment, ParagraphFormatting } from "../types/document"
 
 export type FolioAIBlockKind = "heading" | "listItem" | "paragraph";
 
-export type FolioAIInlineFormatting = Partial<
-  Record<"bold" | "italic" | "underline" | "strike", boolean>
-> & {
+/** Boolean run properties supported by snapshots and range-formatting mutations. */
+export type FolioAIInlineBooleanProperty = "bold" | "italic" | "underline" | "strike";
+
+export type FolioAIInlineFormatting = Partial<Record<FolioAIInlineBooleanProperty, boolean>> & {
   fontFamily?: string | null;
   fontSizePt?: number | null;
   color?: string | null;
 };
+
+/**
+ * A run-formatting mutation: `false` authors an explicit off value, while
+ * `null` removes the direct property so its inherited value becomes effective.
+ */
+export type FolioAIInlineFormattingPatch = Omit<
+  FolioAIInlineFormatting,
+  FolioAIInlineBooleanProperty
+> &
+  Partial<Record<FolioAIInlineBooleanProperty, boolean | null>>;
 
 export type FolioAIBlockPreviewRun = {
   text: string;
@@ -258,7 +269,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
         id: string;
         type: "formatRange";
         range: FolioAITextRangeHandle;
-        formatting: FolioAIInlineFormatting;
+        formatting: FolioAIInlineFormattingPatch;
       }
     | {
         id: string;

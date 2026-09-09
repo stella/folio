@@ -11,7 +11,7 @@ import type {
   FolioAIBlockParagraphProperties,
   FolioAIBlockTableLocation,
   FolioAIEditSkippedOperation,
-  FolioAIInlineFormatting,
+  FolioAIInlineFormattingPatch,
 } from "../ai-edits/types";
 import type {
   CompareVerification,
@@ -65,8 +65,8 @@ export type CompareChangeLocation = {
 export type CompareFormatRange = {
   startOffset: number;
   endOffset: number;
-  /** Only the properties that differ, set to the target document's value. */
-  formatting: FolioAIInlineFormatting;
+  /** Differing properties set to the target value; null removes a direct property. */
+  formatting: FolioAIInlineFormattingPatch;
 };
 
 /**

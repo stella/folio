@@ -590,7 +590,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     id: string;
     type: "formatRange";
     range: FolioAITextRangeHandle;
-    formatting: FolioAIInlineFormatting;
+    formatting: FolioAIInlineFormattingPatch;
 } | {
     id: string;
     type: "insertAfterBlock" | "insertBeforeBlock";
@@ -754,12 +754,18 @@ export type FolioAIEditSnapshot = {
     anchors: Record<string, FolioAIBlockAnchor>;
 };
 
+// @public
+export type FolioAIInlineBooleanProperty = "bold" | "italic" | "underline" | "strike";
+
 // @public (undocumented)
-export type FolioAIInlineFormatting = Partial<Record<"bold" | "italic" | "underline" | "strike", boolean>> & {
+export type FolioAIInlineFormatting = Partial<Record<FolioAIInlineBooleanProperty, boolean>> & {
     fontFamily?: string | null;
     fontSizePt?: number | null;
     color?: string | null;
 };
+
+// @public
+export type FolioAIInlineFormattingPatch = Omit<FolioAIInlineFormatting, FolioAIInlineBooleanProperty> & Partial<Record<FolioAIInlineBooleanProperty, boolean | null>>;
 
 // @public
 export type FolioAIParagraphSpacing = Pick<import__stll_docx_core_model.ParagraphFormatting, "spaceBefore" | "spaceAfter" | "lineSpacing" | "lineSpacingRule" | "beforeAutospacing" | "afterAutospacing">;
