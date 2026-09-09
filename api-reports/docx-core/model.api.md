@@ -543,6 +543,7 @@ export type ListMarkerFormatting = Pick<TextFormatting, "fontFamily" | "fontSize
 // @public
 export type ListRendering = {
     marker: string;
+    markerTemplate?: string;
     level: number;
     numId: number;
     isBullet: boolean;

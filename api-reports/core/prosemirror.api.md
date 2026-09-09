@@ -321,6 +321,7 @@ export type ParagraphAttrs = {
     listIsBullet?: boolean;
     listIsLegal?: boolean;
     listMarker?: string;
+    listMarkerTemplate?: string;
     listMarkerHidden?: boolean;
     listMarkerFormatting?: import__stll_docx_core_model.ListMarkerFormatting;
     listMarkerAlignment?: "left" | "center" | "right";

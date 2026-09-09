@@ -1195,6 +1195,7 @@ function listRenderingFromAttrs(attrs: ParagraphAttrs): Paragraph["listRendering
   }
   return {
     marker: attrs.listMarker ?? "",
+    ...(attrs.listMarkerTemplate != null && { markerTemplate: attrs.listMarkerTemplate }),
     level: attrs.numPr?.ilvl ?? 0,
     numId,
     isBullet: attrs.listIsBullet ?? false,

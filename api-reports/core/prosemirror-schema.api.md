@@ -229,6 +229,7 @@ export type ParagraphAttrs = {
     listIsBullet?: boolean;
     listIsLegal?: boolean;
     listMarker?: string;
+    listMarkerTemplate?: string;
     listMarkerHidden?: boolean;
     listMarkerFormatting?: import__stll_docx_core_model.ListMarkerFormatting;
     listMarkerAlignment?: "left" | "center" | "right";
@@ -295,7 +296,7 @@ export type ParagraphPropertyChangeAttrs = Omit<import__stll_docx_core_model.Par
     };
     previousFormatting?: Omit<import__stll_docx_core_model.ParagraphFormatting, "numPr"> & {
         numPr?: import__stll_docx_core_model.ParagraphFormatting["numPr"] | null;
-    } & Partial<Pick<ParagraphAttrs, "listIsBullet" | "listIsLegal" | "listNumFmt" | "listMarker" | "listMarkerHidden" | "listMarkerFormatting" | "listMarkerAlignment" | "listMarkerSuffix" | "listLevelNumFmts" | "listLevelStarts" | "listAbstractNumId" | "listStartOverride" | "lineSpacingExplicit" | "direction" | "_autospacingBase">>;
+    } & Partial<Pick<ParagraphAttrs, "listIsBullet" | "listIsLegal" | "listNumFmt" | "listMarker" | "listMarkerTemplate" | "listMarkerHidden" | "listMarkerFormatting" | "listMarkerAlignment" | "listMarkerSuffix" | "listMarkerAllCaps" | "listImplicitChildLevelAdvances" | "listMarkerSecondSlotOffsetTwips" | "listLevelNumFmts" | "listLevelStarts" | "listAbstractNumId" | "listStartOverride" | "lineSpacingExplicit" | "direction" | "_autospacingBase">>;
     currentFormatting?: import__stll_docx_core_model.ParagraphFormatting;
 };
 

@@ -2103,6 +2103,7 @@ export function parseParagraph(
           level: ilvl,
           numId,
           marker: level.lvlText,
+          markerTemplate: level.lvlText,
           isBullet: level.numFmt === "bullet",
           levelNumFmts,
           levelStarts,

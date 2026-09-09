@@ -14,12 +14,14 @@ import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/A
 import { ensureParaIdsInState } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import { createStarterKit } from "../prosemirror/extensions/StarterKit";
 import { createDocumentStylesPlugin } from "../prosemirror/plugins/documentStyles";
+import { createDocumentNumberingPlugin } from "../prosemirror/plugins/documentNumbering";
 import { schema } from "../prosemirror/schema";
 import type {
   BlockContent,
   Document,
   Endnote,
   Footnote,
+  NumberingDefinitions,
   StyleDefinitions,
   Theme,
 } from "../types/document";
@@ -59,6 +61,7 @@ const EMPTY_PLUGINS: Plugin[] = [];
 type MountedView = {
   appliedContent: BlockContent[];
   appliedNote: NoteStory;
+  appliedNumbering: NumberingDefinitions | null | undefined;
   appliedPlugins: Plugin[];
   appliedProseDocument: PMNode;
   appliedStyles: StyleDefinitions | null | undefined;
@@ -104,6 +107,7 @@ const noteToProseDocument = (
 const buildInitialState = (
   document: PMNode,
   styles: StyleDefinitions | null | undefined,
+  numbering: NumberingDefinitions | null | undefined,
   manager: ExtensionManager,
   externalPlugins: Plugin[],
 ): EditorStateT => {
@@ -112,7 +116,12 @@ const buildInitialState = (
       EditorState.create({
         doc: document,
         schema,
-        plugins: [...manager.getPlugins(), ...externalPlugins, createDocumentStylesPlugin(styles)],
+        plugins: [
+          ...manager.getPlugins(),
+          ...externalPlugins,
+          createDocumentStylesPlugin(styles),
+          createDocumentNumberingPlugin(numbering),
+        ],
       }),
     ),
   );
@@ -147,6 +156,7 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
     const document = deps.getDocument();
     const styles = deps.getStyles();
     const theme = deps.getTheme();
+    const numbering = document?.package.numbering;
     const externalPlugins = deps.getPlugins?.() ?? EMPTY_PLUGINS;
     const wanted = new Map(
       enumerateDocumentNoteStories(document).map((story) => [storyMapKey(story), story] as const),
@@ -170,6 +180,7 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
         const contextIsCurrent =
           existing.appliedStyles === styles &&
           existing.appliedTheme === theme &&
+          existing.appliedNumbering === numbering &&
           existing.appliedPlugins === externalPlugins;
         const referencesAreCurrent =
           existing.appliedNote === note && existing.appliedContent === note.content;
@@ -182,12 +193,19 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
           continue;
         }
         existing.view.updateState(
-          buildInitialState(nextProseDocument, styles, existing.manager, externalPlugins),
+          buildInitialState(
+            nextProseDocument,
+            styles,
+            numbering,
+            existing.manager,
+            externalPlugins,
+          ),
         );
         existing.appliedNote = note;
         existing.appliedContent = note.content;
         existing.appliedStyles = styles;
         existing.appliedTheme = theme;
+        existing.appliedNumbering = numbering;
         existing.appliedPlugins = externalPlugins;
         existing.appliedProseDocument = nextProseDocument;
         existing.dirty = false;
@@ -203,7 +221,7 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
       host.append(mountNode);
       const proseDocument = noteToProseDocument(note, styles, theme);
       const view = new EditorView(mountNode, {
-        state: buildInitialState(proseDocument, styles, manager, externalPlugins),
+        state: buildInitialState(proseDocument, styles, numbering, manager, externalPlugins),
         dispatchTransaction(transaction) {
           view.updateState(view.state.apply(transaction));
           const mountedStory = mounted.get(key);
@@ -219,6 +237,7 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
       mounted.set(key, {
         appliedContent: note.content,
         appliedNote: note,
+        appliedNumbering: numbering,
         appliedPlugins: externalPlugins,
         appliedProseDocument: proseDocument,
         appliedStyles: styles,
