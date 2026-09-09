@@ -80,6 +80,7 @@ import type {
 } from "../schema/nodes";
 import { assertValidProseMirrorDocument } from "../validation";
 import { stampNumberedRefFieldBaselines } from "../numberedRefFields";
+import { canCarryTrackedRunMark, trackedRunInlineAtomDisposition } from "../trackedRunInlineAtoms";
 import {
   resolveEffectiveTableCellFormatting,
   type TableCellMarginsAttrs,
@@ -115,47 +116,6 @@ type RunFormattingResolver = (
   formatting: TextFormatting | undefined,
   fieldType?: string,
 ) => ResolvedRunFormatting;
-
-type TrackedRunInlineAtomDisposition =
-  | "carry"
-  | "field-carrier"
-  | "outside-wrapper"
-  | "text-carrier"
-  | "transparent";
-
-/**
- * How each inline atom in the editor schema participates in an OOXML
- * run-level tracked-change wrapper.
- *
- * This table is intentionally total over the schema's inline atoms. Adding a
- * new atom requires deciding whether a wrapper owns it instead of silently
- * dropping its revision during import. `field` is explicit because a leaf
- * field carries a revision as a unit even though it cannot contain marked
- * children. Inline marks belong to the enclosing paragraph's content model,
- * so leaf-node `marks` declarations are not used as an ownership proxy here.
- *
- * @internal
- */
-export const TRACKED_RUN_INLINE_ATOM_DISPOSITIONS: Readonly<
-  Record<string, TrackedRunInlineAtomDisposition>
-> = Object.freeze({
-  bookmarkBoundary: "carry",
-  field: "field-carrier",
-  hardBreak: "carry",
-  image: "carry",
-  math: "outside-wrapper",
-  renderedPageBreak: "transparent",
-  shape: "carry",
-  structuredField: "carry",
-  symbol: "carry",
-  tab: "carry",
-  text: "text-carrier",
-  textBoxAnchor: "carry",
-});
-
-const trackedRunInlineAtomDispositionsByName = new Map(
-  Object.entries(TRACKED_RUN_INLINE_ATOM_DISPOSITIONS),
-);
 
 /**
  * Build a `nextTextBoxGroupId()` generator salted with a random per-load
@@ -872,28 +832,14 @@ function convertTrackedChange(
     if (node.marks.some(({ type }) => type.name === "insertion" || type.name === "deletion")) {
       return node;
     }
+    if (trackedRunInlineAtomDisposition(node) === "outside-wrapper") {
+      panic(`Inline atom ${JSON.stringify(node.type.name)} cannot occur in a tracked-run wrapper`);
+    }
     if (canCarryTrackedRunMark(node)) {
       return node.mark(mark.addToSet(node.marks));
     }
     return node;
   });
-}
-
-function canCarryTrackedRunMark(node: PMNode): boolean {
-  if (!node.isInline || !node.isAtom) {
-    return false;
-  }
-  const disposition = trackedRunInlineAtomDispositionsByName.get(node.type.name);
-  if (!disposition) {
-    panic(`Inline atom ${JSON.stringify(node.type.name)} has no tracked-run disposition`);
-  }
-  if (disposition === "text-carrier" || disposition === "field-carrier") {
-    return true;
-  }
-  if (disposition === "outside-wrapper") {
-    panic(`Inline atom ${JSON.stringify(node.type.name)} cannot occur in a tracked-run wrapper`);
-  }
-  return disposition === "carry";
 }
 
 /**

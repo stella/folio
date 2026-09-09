@@ -12,8 +12,9 @@ import type {
 } from "../../types/document";
 import { createEmptyDocument } from "../../utils/createDocument";
 import { schema } from "../schema";
+import { TRACKED_RUN_INLINE_ATOM_DISPOSITIONS } from "../trackedRunInlineAtoms";
 import { fromProseDoc } from "./fromProseDoc";
-import { TRACKED_RUN_INLINE_ATOM_DISPOSITIONS, toProseDoc } from "./toProseDoc";
+import { toProseDoc } from "./toProseDoc";
 
 const REVISION_INFO = {
   id: 91,
