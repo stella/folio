@@ -5,6 +5,7 @@ import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   FOLIO_DOCUMENT_OPERATION_BATCH_MODES,
   FOLIO_DOCUMENT_OPERATION_MODES_BY_TYPE,
+  FOLIO_LINE_SPACING_RULE_VALUES,
   FOLIO_PARAGRAPH_ALIGNMENT_VALUES,
   FOLIO_DOCUMENT_OPERATION_PRECONDITIONS,
   getFolioDocumentOperationCapabilities,
@@ -304,6 +305,90 @@ describe("document operation contract", () => {
         }),
       ).toThrow("$.operations[0].alignment");
     }
+  });
+
+  test("validates the complete direct paragraph-spacing cluster and explicit inheritance", () => {
+    const spacing = {
+      spaceBefore: 0,
+      spaceAfter: 360,
+      lineSpacing: -480,
+      lineSpacingRule: FOLIO_LINE_SPACING_RULE_VALUES[2],
+      beforeAutospacing: false,
+      afterAutospacing: true,
+    } as const;
+    for (const value of [spacing, null]) {
+      const batch = parseFolioDocumentOperationBatch({
+        version: 1,
+        operations: [
+          {
+            id: "spacing",
+            type: "setBlockParagraphProperties",
+            blockId: "paragraph-2",
+            properties: { spacing: value },
+          },
+        ],
+      });
+      expect(batch.operations.at(0)).toMatchObject({ properties: { spacing: value } });
+
+      for (const type of ["insertBeforeBlock", "insertAfterBlock"] as const) {
+        const insertBatch = parseFolioDocumentOperationBatch({
+          version: 1,
+          operations: [
+            {
+              id: "insert-spacing",
+              type,
+              blockId: "paragraph-2",
+              text: "Spaced paragraph",
+              spacing: value,
+            },
+          ],
+        });
+        expect(insertBatch.operations.at(0)).toMatchObject({ spacing: value, type });
+      }
+    }
+  });
+
+  test.each([
+    [{}, "spacing"],
+    [{ spaceBefore: -1 }, "spacing.spaceBefore"],
+    [{ spaceAfter: -1 }, "spacing.spaceAfter"],
+    [{ spaceBefore: 1e100 }, "spacing.spaceBefore"],
+    [{ lineSpacing: 1e100 }, "spacing.lineSpacing"],
+    [{ lineSpacing: 1.5 }, "spacing.lineSpacing"],
+    [{ lineSpacingRule: "minimum" }, "spacing.lineSpacingRule"],
+    [{ beforeAutospacing: 0 }, "spacing.beforeAutospacing"],
+    [{ afterAutospacing: "false" }, "spacing.afterAutospacing"],
+    [{ unknown: 1 }, "spacing.unknown"],
+  ] as const)("rejects invalid direct spacing at %s", (spacing, suffix) => {
+    expect(() =>
+      parseFolioDocumentOperationBatch({
+        version: 1,
+        operations: [
+          {
+            id: "spacing",
+            type: "setBlockParagraphProperties",
+            blockId: "paragraph-2",
+            properties: { spacing },
+          },
+        ],
+      }),
+    ).toThrow(`$.operations[0].properties.${suffix}`);
+  });
+
+  test("rejects unsafe integers through the shared non-negative integer boundary", () => {
+    expect(() =>
+      parseFolioDocumentOperationBatch({
+        version: 1,
+        operations: [
+          {
+            id: "list-level",
+            type: "setBlockParagraphProperties",
+            blockId: "paragraph-2",
+            properties: { listLevel: 1e100 },
+          },
+        ],
+      }),
+    ).toThrow("$.operations[0].properties.listLevel");
   });
 
   test("accepts null to clear the paragraph style on a block replacement", () => {

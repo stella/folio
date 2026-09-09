@@ -10,6 +10,7 @@ import { createDocx } from "../docx/rezip";
 import { expectParagraphAttrs } from "../prosemirror/attrs";
 import {
   acceptAllChanges,
+  acceptAllSuggestions,
   acceptSuggestion,
   getSuggestions,
   rejectAllChanges,
@@ -2496,8 +2497,83 @@ describe("paragraph alignment provenance in editor state", () => {
     expectDirectAlignmentModel(reopened, "center", STYLE_ID);
   });
 
+  test("fails closed instead of accepting multiple paragraph-property suggestions as sibling pPrChange elements", async () => {
+    const source = alignmentDocumentModel({
+      directAlignment: "center",
+      inheritedAlignment: "right",
+    });
+    const view = applyThreeAlignmentSuggestions(makeView(source));
+    const before = view.state.doc.toJSON();
+
+    expect(
+      acceptAllSuggestions({ author: "reviewer", date: OPTIONS.timestamp })(
+        view.state,
+        view.dispatch,
+      ),
+    ).toBe(false);
+    expect(view.state.doc.toJSON()).toEqual(before);
+
+    const saved = await createDocx(fromProseDoc(view.state.doc, source));
+    const xml = firstParagraphXml(await mainDocumentXml(saved));
+    expect(xml).not.toContain("<w:pPrChange");
+    const reopened = await FolioDocxReviewer.fromBuffer(saved);
+    expectDirectAlignmentModel(reopened, "center", STYLE_ID);
+  });
+
+  test("accepts one paragraph-property suggestion while later suggestions remain save-safe", async () => {
+    const source = alignmentDocumentModel({
+      directAlignment: "center",
+      inheritedAlignment: "right",
+    });
+    const view = applyThreeAlignmentSuggestions(makeView(source));
+
+    expect(
+      acceptSuggestion("suggestion-left", {
+        author: "reviewer",
+        date: OPTIONS.timestamp,
+      })(view.state, view.dispatch),
+    ).toBe(true);
+    expect(getSuggestions(view.state).map(({ suggestionId }) => suggestionId)).toEqual([
+      "suggestion-right",
+      "suggestion-both",
+    ]);
+    const onceAccepted = view.state.doc.toJSON();
+    expect(
+      acceptSuggestion("suggestion-right", {
+        author: "reviewer",
+        date: OPTIONS.timestamp,
+      })(view.state, view.dispatch),
+    ).toBe(false);
+    expect(view.state.doc.toJSON()).toEqual(onceAccepted);
+    expect(rejectAllSuggestions()(view.state, view.dispatch)).toBe(true);
+
+    const saved = await createDocx(fromProseDoc(view.state.doc, source));
+    const xml = firstParagraphXml(await mainDocumentXml(saved));
+    expect(xml.match(/<w:pPrChange\b/gu)).toHaveLength(1);
+    expect(trackedParagraphPropertyParts(xml)).toEqual({
+      current: expectedParagraphProperties("left", STYLE_ID),
+      previous: expectedParagraphProperties("center", STYLE_ID),
+    });
+
+    const accepting = await FolioDocxReviewer.fromBuffer(saved);
+    expect(accepting.acceptAll()).toBe(1);
+    expectDirectAlignmentModel(
+      await FolioDocxReviewer.fromBuffer(await accepting.toBuffer()),
+      "left",
+      STYLE_ID,
+    );
+
+    const rejecting = await FolioDocxReviewer.fromBuffer(saved);
+    expect(rejecting.rejectAll()).toBe(1);
+    expectDirectAlignmentModel(
+      await FolioDocxReviewer.fromBuffer(await rejecting.toBuffer()),
+      "center",
+      STYLE_ID,
+    );
+  });
+
   test.each(SUGGESTION_REJECTION_ORDERS)(
-    "rebases interleaved tracked paragraph changes when suggestions resolve $label",
+    "rebases mixed suggestions around one tracked paragraph change when suggestions resolve $label",
     async ({ ids }) => {
       const source = alignmentDocumentModel({
         directAlignment: "center",
@@ -2520,7 +2596,11 @@ describe("paragraph alignment provenance in editor state", () => {
           mode: edit.mode,
           idSeed: index + 1,
         });
-        expect(outcome.skipped).toEqual([]);
+        expect(outcome.skipped).toEqual(
+          edit.id === "tracked-both"
+            ? [{ id: "tracked-both", reason: "pendingParagraphPropertyChange" }]
+            : [],
+        );
       }
 
       for (const id of ids) {
@@ -2532,8 +2612,8 @@ describe("paragraph alignment provenance in editor state", () => {
       }
       const attrs = expectParagraphAttrs(paragraph);
       expect(attrs).toMatchObject({
-        alignment: "distribute",
-        _originalFormatting: { styleId: STYLE_ID, alignment: "distribute" },
+        alignment: "right",
+        _originalFormatting: { styleId: STYLE_ID, alignment: "right" },
       });
       expect(
         attrs._propertyChanges?.map((change) => ({
@@ -2541,10 +2621,7 @@ describe("paragraph alignment provenance in editor state", () => {
           provenance: change.info.provenance,
           previousAlignment: change.previousFormatting?.alignment,
         })),
-      ).toEqual([
-        { id: 2, provenance: undefined, previousAlignment: "center" },
-        { id: 4, provenance: undefined, previousAlignment: "right" },
-      ]);
+      ).toEqual([{ id: 2, provenance: undefined, previousAlignment: "center" }]);
 
       expect(rejectAllChanges()(view.state, view.dispatch)).toBe(true);
       const restored = view.state.doc.firstChild;

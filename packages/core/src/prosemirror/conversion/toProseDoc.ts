@@ -67,6 +67,7 @@ import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import { setAutospacingBaseValue } from "../autospacingBase";
 import { buildRunFormattingOverrideAttrs } from "../extensions/marks/RunFormattingOverrideExtension";
 import { directionFromBidi } from "../paragraphDirection";
+import { lineSpacingProvenanceFromSpacing } from "../paragraphSpacing";
 import { schema } from "../schema";
 import { cascadeStyleTextFormatting } from "../styles/styleToggleCascade";
 import type {
@@ -991,37 +992,25 @@ function paragraphFormattingToAttrs(
     set("spaceAfter", formatting?.spaceAfter ?? stylePpr?.spaceAfter);
     set("lineSpacing", formatting?.lineSpacing ?? stylePpr?.lineSpacing);
     set("lineSpacingRule", formatting?.lineSpacingRule ?? stylePpr?.lineSpacingRule);
-    set(
-      "lineSpacingExplicit",
-      formatting?.lineSpacing !== undefined || formatting?.lineSpacingRule !== undefined
-        ? true
-        : undefined,
-    );
+    set("lineSpacingExplicit", lineSpacingProvenanceFromSpacing(formatting));
     set("snapToGrid", formatting?.snapToGrid ?? stylePpr?.snapToGrid);
     set("spacingExplicit", formatting?.spacingExplicit);
     const paragraphStyle = styleId
       ? (styleResolver.getStyle(styleId) ?? styleResolver.getDefaultParagraphStyle())
       : styleResolver.getDefaultParagraphStyle();
     const docDefaultSpacing = styleResolver.getDocDefaults()?.pPr;
-    const spacingFromImplicitDefaultStyle: NonNullable<
-      ParagraphAttrs["spacingFromImplicitDefaultStyle"]
-    > = {};
-    if (
-      !styleId &&
-      formatting?.spaceBefore === undefined &&
-      paragraphStyle?.pPr?.spaceBefore !== undefined
-    ) {
-      spacingFromImplicitDefaultStyle.before = true;
+    // This existing provenance attribute covers every resolved style layer:
+    // default, named paragraph, and enclosing table styles. The direct
+    // `formatting` object still wins per field.
+    const spacingFromStyle: NonNullable<ParagraphAttrs["spacingFromImplicitDefaultStyle"]> = {};
+    if (formatting?.spaceBefore === undefined && stylePpr?.spaceBefore !== undefined) {
+      spacingFromStyle.before = true;
     }
-    if (
-      !styleId &&
-      formatting?.spaceAfter === undefined &&
-      paragraphStyle?.pPr?.spaceAfter !== undefined
-    ) {
-      spacingFromImplicitDefaultStyle.after = true;
+    if (formatting?.spaceAfter === undefined && stylePpr?.spaceAfter !== undefined) {
+      spacingFromStyle.after = true;
     }
-    if (spacingFromImplicitDefaultStyle.before || spacingFromImplicitDefaultStyle.after) {
-      attrs.spacingFromImplicitDefaultStyle = spacingFromImplicitDefaultStyle;
+    if (spacingFromStyle.before || spacingFromStyle.after) {
+      attrs.spacingFromImplicitDefaultStyle = spacingFromStyle;
     }
     const spacingFromDocDefaults: NonNullable<ParagraphAttrs["spacingFromDocDefaults"]> = {};
     if (
@@ -1102,6 +1091,7 @@ function paragraphFormattingToAttrs(
     set("spaceAfter", formatting?.spaceAfter);
     set("lineSpacing", formatting?.lineSpacing);
     set("lineSpacingRule", formatting?.lineSpacingRule);
+    set("lineSpacingExplicit", lineSpacingProvenanceFromSpacing(formatting));
     set("snapToGrid", formatting?.snapToGrid);
     set("spacingExplicit", formatting?.spacingExplicit);
     set("indentLeft", formatting?.indentLeft);

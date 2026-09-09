@@ -487,7 +487,13 @@ const inlineFormattingSignature = (block: FolioAIBlock): string =>
   ]);
 
 const paragraphFormattingSignature = (block: FolioAIBlock): string =>
-  JSON.stringify([block.text, block.styleId, block.listLevel, block.directAlignment]);
+  JSON.stringify([
+    block.text,
+    block.styleId,
+    block.listLevel,
+    block.directAlignment,
+    block.directSpacing,
+  ]);
 
 /** Every block a story holds, as signatures in an order-independent form. */
 const signaturesOf = (

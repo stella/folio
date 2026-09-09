@@ -280,7 +280,12 @@ export const readParagraphAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Par
   optionalNumber(attrs, "spaceBefore", "paragraph.attrs.spaceBefore", issues);
   optionalNumber(attrs, "spaceAfter", "paragraph.attrs.spaceAfter", issues);
   optionalNumber(attrs, "lineSpacing", "paragraph.attrs.lineSpacing", issues);
-  optionalBoolean(attrs, "lineSpacingExplicit", "paragraph.attrs.lineSpacingExplicit", issues);
+  optionalLineSpacingProvenance(
+    attrs,
+    "lineSpacingExplicit",
+    "paragraph.attrs.lineSpacingExplicit",
+    issues,
+  );
   optionalBoolean(attrs, "snapToGrid", "paragraph.attrs.snapToGrid", issues);
   optionalOneOf(
     attrs,
@@ -1613,6 +1618,21 @@ const optionalOneOf = (
   }
 };
 
+const LINE_SPACING_PROVENANCE_VALUES = ["value", "rule", "both"] as const;
+
+const optionalLineSpacingProvenance = (
+  attrs: Record<string, unknown>,
+  key: string,
+  path: string,
+  issues: ProseMirrorAttrIssue[],
+): void => {
+  const value = attrs[key];
+  if (value === undefined || value === null || typeof value === "boolean") {
+    return;
+  }
+  optionalOneOf(attrs, key, path, issues, LINE_SPACING_PROVENANCE_VALUES);
+};
+
 const optionalShapeLineEnd = (
   attrs: Record<string, unknown>,
   key: string,
@@ -2326,8 +2346,13 @@ const validateParagraphFormatting = (
   for (const key of PARAGRAPH_FORMATTING_BOOLEAN_KEYS) {
     optionalBoolean(value, key, `${path}.${key}`, issues);
   }
-  for (const key of [
+  optionalLineSpacingProvenance(
+    value,
     "lineSpacingExplicit",
+    `${path}.lineSpacingExplicit`,
+    issues,
+  );
+  for (const key of [
     "listIsBullet",
     "listIsLegal",
     "listMarkerHidden",

@@ -13,6 +13,7 @@ import {
 } from "./codecs";
 import {
   FOLIO_CLEARABLE_LIST_LEVEL_JSON_SCHEMA,
+  FOLIO_CLEARABLE_PARAGRAPH_SPACING_JSON_SCHEMA,
   FOLIO_CLEARABLE_PARAGRAPH_STYLE_ID_JSON_SCHEMA,
   FOLIO_PRECONDITION_JSON_SCHEMA,
 } from "./operation-schema";
@@ -54,14 +55,16 @@ const OPERATION_TYPE_SUMMARIES = {
   replaceRange: "replace the text covered by a `range` copied from find_text",
   commentOnRange: "attach a comment to a `range` copied from find_text",
   formatRange: "toggle bold, italic, or underline on a `range` copied from find_text",
-  insertAfterBlock: "insert a new paragraph after a block, with optional direct alignment",
-  insertBeforeBlock: "insert a new paragraph before a block, with optional direct alignment",
+  insertAfterBlock:
+    "insert a new paragraph after a block, with optional direct alignment and spacing",
+  insertBeforeBlock:
+    "insert a new paragraph before a block, with optional direct alignment and spacing",
   replaceBlock: "replace one block's entire text",
   deleteBlock: "delete one block",
   splitBlock: "break one block in two at `offset`, moving a paragraph mark and no words",
   mergeBlockWithNext: "join one block with the block after it in the same container",
   setBlockParagraphProperties:
-    "change one block's paragraph properties (list level, paragraph style, direct alignment) without touching its words",
+    "change one block's paragraph properties (list level, paragraph style, direct alignment or spacing) without touching its words",
   insertTable: "insert a whole table of `rows` next to the anchor block",
   deleteTable: "delete the whole table the anchor block sits in",
   commentOnBlock: "attach a comment to one block, optionally quoting text within it",
@@ -110,6 +113,7 @@ const OPERATION_PROPERTY_SCHEMAS = {
   rowCount: {
     type: "integer",
     minimum: 2,
+    maximum: Number.MAX_SAFE_INTEGER,
     description: "For vertical cell merging, the number of grid rows to merge downward.",
   },
   range: {
@@ -150,6 +154,7 @@ const OPERATION_PROPERTY_SCHEMAS = {
     oneOf: [{ type: "string", enum: FOLIO_PARAGRAPH_ALIGNMENT_VALUES }, { type: "null" }],
     description: "For inserts: direct paragraph alignment; null restores style inheritance.",
   },
+  spacing: FOLIO_CLEARABLE_PARAGRAPH_SPACING_JSON_SCHEMA,
   preserveFormatting: {
     type: "boolean",
     description:
@@ -211,6 +216,7 @@ const OPERATION_PROPERTY_SCHEMAS = {
         oneOf: [{ type: "string", enum: FOLIO_PARAGRAPH_ALIGNMENT_VALUES }, { type: "null" }],
         description: "Direct paragraph alignment; null restores style inheritance.",
       },
+      spacing: FOLIO_CLEARABLE_PARAGRAPH_SPACING_JSON_SCHEMA,
     },
     minProperties: 1,
     additionalProperties: false,
@@ -219,6 +225,7 @@ const OPERATION_PROPERTY_SCHEMAS = {
   offset: {
     type: "integer",
     minimum: 0,
+    maximum: Number.MAX_SAFE_INTEGER,
     description:
       "Required for `splitBlock`: character offset in the block's text where the paragraph break goes. Must fall strictly inside the text.",
   },
@@ -308,7 +315,7 @@ const describeResolvedCapabilities = (resolved: ResolvedFolioSuggestChangesOptio
       ? "set `pageBreakBefore: true` on an insert to start it on a new page; "
       : "";
     const insertAlignment = supportsInsert
-      ? " Inserts also accept direct `alignment`, with null restoring style inheritance."
+      ? " Inserts also accept direct `alignment` and `spacing`, with null restoring style inheritance."
       : "";
     lines.push(
       `Structural edits: ${pageBreak}set \`styleId\` on ${styleIdTargets.join(" or ")} to apply a paragraph style such as a clause heading.${insertAlignment} Never emit directive markers or markdown syntax as paragraph text.`,

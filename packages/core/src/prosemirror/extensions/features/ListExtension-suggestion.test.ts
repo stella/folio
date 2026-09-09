@@ -245,4 +245,31 @@ describe("ListExtension suggestion mode integration", () => {
       },
     ]);
   });
+
+  test("refuses a second list formatting change while w:pPrChange is pending", () => {
+    const plugin = createSuggestionModePlugin(true, "Jane");
+    let state = EditorState.create({
+      doc: schema.node("doc", null, [schema.node("paragraph", null, [schema.text("Hello")])]),
+      plugins: [plugin],
+    });
+    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 3)));
+
+    expect(
+      toggleBulletList(state, (tr) => {
+        state = state.apply(tr);
+      }),
+    ).toBe(true);
+    const pending = state.doc.toJSON();
+    let dispatched = false;
+    expect(
+      toggleBulletList(state, (tr) => {
+        dispatched = true;
+        state = state.apply(tr);
+      }),
+    ).toBe(false);
+    expect(dispatched).toBe(false);
+    expect(state.doc.toJSON()).toEqual(pending);
+    expect(state.doc.child(0).attrs._propertyChanges).toHaveLength(1);
+    expect(toggleBulletList(state)).toBe(false);
+  });
 });

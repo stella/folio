@@ -1413,6 +1413,7 @@ describe("table style paragraph spacing cascade (cell paragraphs)", () => {
     expect(paragraph.attrs["spaceAfter"]).toBe(0);
     expect(paragraph.attrs["lineSpacing"]).toBe(240);
     expect(paragraph.attrs["lineSpacingRule"]).toBe("auto");
+    expect(paragraph.attrs["spacingFromImplicitDefaultStyle"]).toEqual({ after: true });
   });
 
   test("an explicit paragraph style still wins over the table overlay", () => {
@@ -1425,6 +1426,7 @@ describe("table style paragraph spacing cascade (cell paragraphs)", () => {
     expect(paragraph.attrs["spaceAfter"]).toBe(100);
     // ...but the table overlay still supplies fields the style leaves unset.
     expect(paragraph.attrs["lineSpacing"]).toBe(240);
+    expect(paragraph.attrs["spacingFromImplicitDefaultStyle"]).toEqual({ after: true });
   });
 
   test("direct paragraph formatting wins over both the table overlay and any style", () => {
@@ -1442,5 +1444,30 @@ describe("table style paragraph spacing cascade (cell paragraphs)", () => {
 
     expect(baselineParagraph.attrs["spaceAfter"]).toBe(200);
     expect(baselineParagraph.attrs["lineSpacing"]).toBe(276);
+  });
+
+  test("keeps named and table-style spacing inherited after reconstruction", () => {
+    const document = buildDocument();
+    const pmDoc = toProseDoc(document, { styles });
+    const rebuiltTable = fromProseDoc(pmDoc, document).package.document.content.at(1);
+    if (rebuiltTable?.type !== "table") {
+      panic("expected a rebuilt table");
+    }
+
+    const paragraphs = rebuiltTable.rows[0]?.cells.map((cell) => cell.content.at(0));
+    const inheritedTableParagraph = paragraphs?.at(0);
+    const inheritedNamedParagraph = paragraphs?.at(1);
+    const directlyFormattedParagraph = paragraphs?.at(2);
+    if (
+      inheritedTableParagraph?.type !== "paragraph" ||
+      inheritedNamedParagraph?.type !== "paragraph" ||
+      directlyFormattedParagraph?.type !== "paragraph"
+    ) {
+      panic("expected rebuilt table-cell paragraphs");
+    }
+
+    expect(inheritedTableParagraph.formatting?.spaceAfter).toBeUndefined();
+    expect(inheritedNamedParagraph.formatting).toEqual({ styleId: "CellStyle" });
+    expect(directlyFormattedParagraph.formatting?.spaceAfter).toBe(50);
   });
 });

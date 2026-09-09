@@ -1539,8 +1539,8 @@ function convertParagraphAttrs(
       };
     }
     // Preserve spacing sides whose source Word renders on an empty paragraph:
-    // direct formatting, document defaults, the implicit default paragraph
-    // style, and automatic spacing. Layout consumes the combined provenance;
+    // direct formatting, document defaults, resolved paragraph/table styles,
+    // and automatic spacing. Layout consumes the combined provenance;
     // the authored PM attributes remain source-specific for serialization.
     const pmSpacingExplicit = pmAttrs.spacingExplicit as
       | { before?: boolean; after?: boolean }

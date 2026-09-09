@@ -8,7 +8,10 @@
 import type { Command, EditorState } from "prosemirror-state";
 
 import { expectParagraphAttrs } from "../../attrs";
-import { PPR_CHANGE_SCOPED_ATTR_KEYS } from "../../commands/propertyChangeScope";
+import {
+  hasSerializableParagraphPropertyChange,
+  PPR_CHANGE_SCOPED_ATTR_KEYS,
+} from "../../commands/propertyChangeScope";
 import { makeRevisionInfo, SUGGESTION_META } from "../../plugins/suggestionMode";
 import { createExtension } from "../create";
 import { goToNextCell, goToPrevCell } from "../nodes/TableExtension";
@@ -106,14 +109,30 @@ function toggleList(numId: number): Command {
     const currentNumPr = paragraph.attrs["numPr"];
     const isInSameList = currentNumPr?.numId === numId;
 
+    const rev = makeRevisionInfo(state);
+    if (rev) {
+      let hasPendingChange = false;
+      state.doc.nodesBetween($from.pos, $to.pos, (node) => {
+        if (
+          node.type.name === "paragraph" &&
+          hasSerializableParagraphPropertyChange(expectParagraphAttrs(node)._propertyChanges)
+        ) {
+          hasPendingChange = true;
+          return false;
+        }
+        return undefined;
+      });
+      if (hasPendingChange) {
+        return false;
+      }
+    }
+
     if (!dispatch) {
       return true;
     }
 
     let tr = state.tr;
     const seen = new Set<number>();
-
-    const rev = makeRevisionInfo(state);
 
     state.doc.nodesBetween($from.pos, $to.pos, (node, pos) => {
       if (node.type.name === "paragraph" && !seen.has(pos)) {
@@ -141,9 +160,10 @@ function toggleList(numId: number): Command {
         }
 
         if (rev) {
+          const existing = expectParagraphAttrs(node)._propertyChanges;
           nextAttrs = appendParagraphPropertyChange(
             nextAttrs,
-            expectParagraphAttrs(node)._propertyChanges,
+            existing,
             getPreviousListFormatting(node.attrs),
             rev,
           );

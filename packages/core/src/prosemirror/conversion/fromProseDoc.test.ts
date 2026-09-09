@@ -14,6 +14,7 @@ import type {
 } from "../../types/document";
 import { pixelsToEmu } from "../../utils/units";
 import { expectHardBreakAttrs, expectParagraphAttrs } from "../attrs";
+import { directParagraphSpacing } from "../paragraphSpacing";
 import { schema } from "../schema";
 import { fromProseDoc, proseDocToBlocks } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
@@ -998,51 +999,109 @@ describe("fromProseDoc", () => {
     expect((block.formatting as Record<string, unknown>)["_autospacingBase"]).toBeUndefined();
   });
 
-  test("round-trips inherited line spacing without inlining the style value", () => {
-    const document: Document = {
-      package: {
-        styles: {
-          styles: [
-            {
-              styleId: "Normal",
-              type: "paragraph",
-              default: true,
-              pPr: { lineSpacing: 240, lineSpacingRule: "auto" },
-            },
-          ],
+  test.each([
+    { label: "neither value nor rule", direct: undefined, provenance: undefined },
+    { label: "value only", direct: { lineSpacing: 240 }, provenance: "value" },
+    { label: "rule only", direct: { lineSpacingRule: "auto" }, provenance: "rule" },
+    {
+      label: "both value and rule",
+      direct: { lineSpacing: 240, lineSpacingRule: "auto" },
+      provenance: "both",
+    },
+  ] as const)(
+    "round-trips independent line-spacing provenance: $label",
+    ({ direct, provenance }) => {
+      const document: Document = {
+        package: {
+          styles: {
+            styles: [
+              {
+                styleId: "Normal",
+                type: "paragraph",
+                default: true,
+                pPr: { lineSpacing: 276, lineSpacingRule: "exact" },
+              },
+            ],
+          },
+          document: {
+            content: [
+              {
+                type: "paragraph",
+                formatting: { styleId: "Normal", ...direct },
+                content: [
+                  {
+                    type: "run",
+                    content: [{ type: "text", text: "Independent line spacing" }],
+                  },
+                ],
+              },
+            ],
+          },
         },
-        document: {
-          content: [
-            {
-              type: "paragraph",
-              formatting: { styleId: "Normal" },
-              content: [
-                {
-                  type: "run",
-                  content: [{ type: "text", text: "Inherited line spacing" }],
-                },
-              ],
-            },
-          ],
+      };
+
+      const pmDoc = toProseDoc(document, { styles: document.package.styles });
+      const attrs = expectParagraphAttrs(pmDoc.child(0));
+      const roundTripped = fromProseDoc(pmDoc, document);
+      const block = roundTripped.package.document.content.at(0);
+
+      expect(attrs.lineSpacing).toBe(direct?.lineSpacing ?? 276);
+      expect(attrs.lineSpacingRule).toBe(direct?.lineSpacingRule ?? "exact");
+      expect(attrs.lineSpacingExplicit).toBe(provenance);
+      expect(directParagraphSpacing(attrs)).toEqual(direct);
+      expect(block?.type).toBe("paragraph");
+      if (block?.type !== "paragraph") {
+        return;
+      }
+      expect(block.formatting?.styleId).toBe("Normal");
+      expect(block.formatting?.lineSpacing).toBe(direct?.lineSpacing);
+      expect(block.formatting?.lineSpacingRule).toBe(direct?.lineSpacingRule);
+    },
+  );
+
+  test("disambiguates the legacy line-spacing marker from imported direct formatting", () => {
+    const pmDoc = schema.node("doc", null, [
+      schema.node(
+        "paragraph",
+        {
+          styleId: "Normal",
+          lineSpacing: 240,
+          lineSpacingRule: "exact",
+          lineSpacingExplicit: true,
+          _originalFormatting: { styleId: "Normal", lineSpacing: 240 },
         },
-      },
-    };
+        [schema.text("Legacy provenance")],
+      ),
+    ]);
 
-    const pmDoc = toProseDoc(document, { styles: document.package.styles });
-    const attrs = expectParagraphAttrs(pmDoc.child(0));
-    const roundTripped = fromProseDoc(pmDoc, document);
-    const block = roundTripped.package.document.content.at(0);
-
-    expect(attrs.lineSpacing).toBe(240);
-    expect(attrs.lineSpacingRule).toBe("auto");
-    expect(attrs.lineSpacingExplicit).toBeUndefined();
-    expect(block?.type).toBe("paragraph");
-    if (block?.type !== "paragraph") {
-      return;
+    expect(directParagraphSpacing(expectParagraphAttrs(pmDoc.child(0)))).toEqual({
+      lineSpacing: 240,
+    });
+    const paragraph = fromProseDoc(pmDoc).package.document.content.at(0);
+    expect(paragraph?.type).toBe("paragraph");
+    if (paragraph?.type === "paragraph") {
+      expect(paragraph.formatting).toEqual({ styleId: "Normal", lineSpacing: 240 });
     }
-    expect(block.formatting?.styleId).toBe("Normal");
-    expect(block.formatting?.lineSpacing).toBeUndefined();
-    expect(block.formatting?.lineSpacingRule).toBeUndefined();
+  });
+
+  test("reconstructs a rule-only direct spacing value without imported formatting", () => {
+    const pmDoc = schema.node("doc", null, [
+      schema.node(
+        "paragraph",
+        {
+          lineSpacing: 276,
+          lineSpacingRule: "exact",
+          lineSpacingExplicit: "rule",
+        },
+        [schema.text("Rule provenance")],
+      ),
+    ]);
+
+    const paragraph = fromProseDoc(pmDoc).package.document.content.at(0);
+    expect(paragraph?.type).toBe("paragraph");
+    if (paragraph?.type === "paragraph") {
+      expect(paragraph.formatting).toEqual({ lineSpacingRule: "exact" });
+    }
   });
 
   test("saves edited inherited auto spacing as direct spacing with auto disabled", () => {
@@ -1086,6 +1145,10 @@ describe("fromProseDoc", () => {
       paragraph.content,
     );
     const editedPmDoc = schema.node("doc", null, [editedParagraph]);
+    expect(directParagraphSpacing(expectParagraphAttrs(editedParagraph))).toEqual({
+      spaceBefore: 240,
+      beforeAutospacing: false,
+    });
     const roundTripped = fromProseDoc(editedPmDoc, document);
     const block = roundTripped.package.document.content.at(0);
 
@@ -1224,6 +1287,10 @@ describe("fromProseDoc", () => {
       paragraph.content,
     );
     const editedPmDoc = schema.node("doc", null, [editedParagraph]);
+    expect(directParagraphSpacing(expectParagraphAttrs(editedParagraph))).toEqual({
+      spaceBefore: 240,
+      beforeAutospacing: false,
+    });
     const roundTripped = fromProseDoc(editedPmDoc, document);
     const block = roundTripped.package.document.content.at(0);
 
@@ -1269,6 +1336,48 @@ describe("fromProseDoc", () => {
     expect(block.formatting?.beforeAutospacing).toBe(true);
     expect(block.formatting?.spaceBefore).toBeUndefined();
   });
+
+  test.each([
+    { attr: "spaceBefore", formatting: { spaceBefore: 200 }, side: "before" },
+    { attr: "spaceAfter", formatting: { spaceAfter: 200 }, side: "after" },
+  ] as const)(
+    "does not restore cleared direct numeric $side spacing from imported provenance",
+    ({ attr, formatting }) => {
+      const document: Document = {
+        package: {
+          document: {
+            content: [
+              {
+                type: "paragraph",
+                formatting,
+                content: [{ type: "run", content: [{ type: "text", text: "Clear spacing" }] }],
+              },
+            ],
+          },
+        },
+      };
+
+      const pmDoc = toProseDoc(document);
+      const paragraph = pmDoc.child(0);
+      const cleared = paragraph.type.create(
+        { ...paragraph.attrs, [attr]: null },
+        paragraph.content,
+      );
+      const clearedPmDoc = schema.node("doc", null, [cleared]);
+
+      expect(directParagraphSpacing(expectParagraphAttrs(cleared))).toBeUndefined();
+      const clearedDocument = fromProseDoc(clearedPmDoc, document);
+      const block = clearedDocument.package.document.content.at(0);
+      expect(block?.type).toBe("paragraph");
+      if (block?.type !== "paragraph") {
+        return;
+      }
+      expect(block.formatting?.[attr]).toBeUndefined();
+      expect(
+        directParagraphSpacing(expectParagraphAttrs(toProseDoc(clearedDocument).child(0))),
+      ).toBeUndefined();
+    },
+  );
 
   test("saves a style reset from direct auto spacing with auto disabled", () => {
     const document: Document = {

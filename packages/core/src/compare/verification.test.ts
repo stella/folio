@@ -240,4 +240,22 @@ describe("classifyProjectionMismatch", () => {
       detail: "the direct paragraph alignment did not move at block 0/1 (1 blocks against 1)",
     });
   });
+
+  test("reports a direct spacing mismatch separately from text and style", () => {
+    expect(
+      classifyProjectionMismatch({
+        invariant: "accept-reproduces-target",
+        story: { type: "main" },
+        actual: [{ ...projectedBlock(undefined, "same text"), directSpacing: { spaceAfter: 0 } }],
+        expected: [
+          { ...projectedBlock(undefined, "same text"), directSpacing: { spaceAfter: 240 } },
+        ],
+      }),
+    ).toEqual({
+      invariant: "accept-reproduces-target",
+      cause: "spacing",
+      story: { type: "main" },
+      detail: "the direct paragraph spacing did not move at block 0/1 (1 blocks against 1)",
+    });
+  });
 });

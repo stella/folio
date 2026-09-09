@@ -98,12 +98,17 @@ export type ParagraphAttrs = {
   spaceAfter?: number;
   lineSpacing?: number;
   lineSpacingRule?: LineSpacingRule;
-  lineSpacingExplicit?: boolean;
+  /**
+   * Which line-spacing attributes came from this paragraph's own `w:spacing`.
+   * `true` is accepted for editor states written before provenance became
+   * field-specific; newly created state uses the exact discriminator.
+   */
+  lineSpacingExplicit?: boolean | "value" | "rule" | "both";
   snapToGrid?: boolean;
   spacingExplicit?: SpacingExplicit;
   /** Layout provenance: document defaults survive on empty paragraphs. */
   spacingFromDocDefaults?: SpacingExplicit;
-  /** Layout provenance: implicit default-style spacing survives on empty paragraphs. */
+  /** Layout provenance: resolved paragraph/table-style spacing survives on empty paragraphs. */
   spacingFromImplicitDefaultStyle?: SpacingExplicit;
 
   // Indentation (in twips)

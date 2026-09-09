@@ -9,8 +9,18 @@ import {
   expectRunFormattingOverrideMarkAttrs,
   expectRunPropertyChangeMarkAttrs,
 } from "../prosemirror/attrs";
-import { paragraphPropertiesSnapshot } from "../prosemirror/commands/propertyChangeScope";
+import {
+  hasSerializableParagraphPropertyChange,
+  paragraphPropertiesSnapshot,
+} from "../prosemirror/commands/propertyChangeScope";
 import { directParagraphAlignment } from "../prosemirror/paragraphAlignment";
+import {
+  directParagraphSpacing,
+  paragraphSpacingAttrPatch,
+  paragraphSpacingEqual,
+  paragraphSpacingFromFormatting,
+  withDirectParagraphSpacing,
+} from "../prosemirror/paragraphSpacing";
 import { getDocumentStyleResolver } from "../prosemirror/plugins/documentStyles";
 import type { ParagraphPropertyChangeAttrs } from "../prosemirror/schema/nodes";
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
@@ -23,7 +33,7 @@ import {
 } from "../prosemirror/containerFinalParagraph";
 import { isZeroWidthAnchor } from "../prosemirror/zeroWidthAnchors";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
-import type { ParagraphAlignment, ParagraphFormatting, RunPropertyChange } from "../types/document";
+import type { ParagraphFormatting, RunPropertyChange } from "../types/document";
 import { stripBlockIdentityAttrs } from "./block-identity";
 import { buildCleanBlockText } from "./clean-text";
 import {
@@ -289,6 +299,11 @@ const isResolvedReplaceBlockOperation = (
   item: ResolvedOperation,
 ): item is ResolvedReplaceBlockOperation => item.operation.type === "replaceBlock";
 
+const writesParagraphPropertyChange = (item: ResolvedOperation): boolean =>
+  item.operation.type === "setBlockParagraphProperties" ||
+  (isResolvedReplaceBlockOperation(item) &&
+    REPLACE_BLOCK_IMPACT[item.replaceBlockImpact].changesStyle);
+
 type ReplaceBlockImpactOptions = {
   changesText: boolean;
   changesStyle: boolean;
@@ -317,16 +332,18 @@ const resolveReplaceBlockImpact = ({
 type ParagraphPropertiesPatchOptions = {
   node: PMNode;
   properties: FolioAIBlockParagraphProperties;
-  resolvedAlignmentFromStyle: ParagraphAlignment | undefined;
+  resolvedFormattingFromStyle: ParagraphFormatting | undefined;
 };
 
 const paragraphPropertiesPatch = ({
   node,
   properties,
-  resolvedAlignmentFromStyle,
+  resolvedFormattingFromStyle,
 }: ParagraphPropertiesPatchOptions): Record<string, unknown> | null => {
   const attrs = expectParagraphAttrs(node);
   const currentDirectAlignment = directParagraphAlignment(attrs);
+  const currentDirectSpacing = directParagraphSpacing(attrs);
+  const resolvedSpacingFromStyle = paragraphSpacingFromFormatting(resolvedFormattingFromStyle);
   const patch: Record<string, unknown> = {};
   let originalFormatting =
     attrs._originalFormatting === undefined || attrs._originalFormatting === null
@@ -337,9 +354,18 @@ const paragraphPropertiesPatch = ({
   const styleChanged = nextStyleId !== undefined && (attrs.styleId ?? null) !== nextStyleId;
   if (styleChanged) {
     patch["styleId"] = nextStyleId;
-    patch["alignmentFromStyle"] = resolvedAlignmentFromStyle;
+    patch["alignmentFromStyle"] = resolvedFormattingFromStyle?.alignment;
     if (properties.alignment === undefined) {
-      patch["alignment"] = currentDirectAlignment ?? resolvedAlignmentFromStyle ?? null;
+      patch["alignment"] = currentDirectAlignment ?? resolvedFormattingFromStyle?.alignment ?? null;
+    }
+    if (properties.spacing === undefined) {
+      Object.assign(
+        patch,
+        paragraphSpacingAttrPatch({
+          direct: currentDirectSpacing,
+          inherited: resolvedSpacingFromStyle,
+        }),
+      );
     }
     originalFormatting ??= {};
     if (nextStyleId === null) {
@@ -381,13 +407,27 @@ const paragraphPropertiesPatch = ({
       originalFormatting.alignment = properties.alignment;
     }
     const alignmentFromStyle =
-      properties.styleId === undefined ? attrs.alignmentFromStyle : resolvedAlignmentFromStyle;
+      properties.styleId === undefined
+        ? attrs.alignmentFromStyle
+        : resolvedFormattingFromStyle?.alignment;
     patch["alignment"] = properties.alignment ?? alignmentFromStyle ?? null;
     originalFormattingChanged = true;
   }
-  if (originalFormattingChanged && originalFormatting !== undefined) {
+  if (
+    properties.spacing !== undefined &&
+    (styleChanged || !paragraphSpacingEqual(currentDirectSpacing, properties.spacing))
+  ) {
+    const directSpacing = properties.spacing ?? undefined;
+    originalFormatting = withDirectParagraphSpacing(originalFormatting, directSpacing);
+    Object.assign(
+      patch,
+      paragraphSpacingAttrPatch({ direct: directSpacing, inherited: resolvedSpacingFromStyle }),
+    );
+    originalFormattingChanged = true;
+  }
+  if (originalFormattingChanged) {
     patch["_originalFormatting"] =
-      Object.keys(originalFormatting).length > 0 ? originalFormatting : null;
+      originalFormatting && Object.keys(originalFormatting).length > 0 ? originalFormatting : null;
   }
   return Object.keys(patch).length > 0 ? patch : null;
 };
@@ -477,19 +517,30 @@ const paragraphPropertiesBeforeBatch = (
   return earliestBatchChange.previousFormatting ?? {};
 };
 
-type ResolveAlignmentFromStyleOptions = {
+type ResolveFormattingFromStyleOptions = {
   attrs: ReturnType<typeof expectParagraphAttrs>;
   styleId: string | null | undefined;
   styleResolver: ReturnType<typeof getDocumentStyleResolver>;
 };
 
-const resolveAlignmentFromStyle = ({
+const resolveFormattingFromStyle = ({
   attrs,
   styleId,
   styleResolver,
-}: ResolveAlignmentFromStyleOptions): ParagraphAlignment | undefined =>
-  styleResolver?.resolveParagraphStyle(styleId).paragraphFormatting?.alignment ??
-  ((styleId ?? undefined) === (attrs.styleId ?? undefined) ? attrs.alignmentFromStyle : undefined);
+}: ResolveFormattingFromStyleOptions): ParagraphFormatting | undefined => {
+  const resolved = styleResolver?.resolveParagraphStyle(styleId).paragraphFormatting;
+  if (resolved !== undefined) {
+    return resolved;
+  }
+  if ((styleId ?? undefined) !== (attrs.styleId ?? undefined)) {
+    return undefined;
+  }
+  const fallback: ParagraphFormatting = {};
+  if (attrs.alignmentFromStyle !== undefined) {
+    fallback.alignment = attrs.alignmentFromStyle;
+  }
+  return Object.keys(fallback).length > 0 ? fallback : undefined;
+};
 
 type ApplyReplaceBlockStyleIdResult = {
   tr: Transaction;
@@ -520,7 +571,7 @@ const applyReplaceBlockStyleId = ({
   }
 
   const attrs = expectParagraphAttrs(block);
-  const resolvedAlignmentFromStyle = resolveAlignmentFromStyle({
+  const resolvedFormattingFromStyle = resolveFormattingFromStyle({
     attrs,
     styleId: item.operation.styleId,
     styleResolver,
@@ -528,7 +579,7 @@ const applyReplaceBlockStyleId = ({
   const patch = paragraphPropertiesPatch({
     node: block,
     properties: { styleId: item.operation.styleId },
-    resolvedAlignmentFromStyle,
+    resolvedFormattingFromStyle,
   });
   if (patch === null) {
     return { tr, revisionId: null };
@@ -1290,7 +1341,7 @@ const buildEmphasisInlineContent = (
 type BuildInsertedParagraphsOptions = {
   item: ResolvedOperation;
   schema: Schema;
-  alignmentFromStyle: ParagraphAlignment | undefined;
+  formattingFromStyle: ParagraphFormatting | undefined;
   mode: FolioAIEditApplyMode;
   author: string;
   date: string;
@@ -1463,6 +1514,11 @@ const withRotatedAddedFinalBreaks = ({
           panic("A final-mark rotation lost its paragraph", { position: current.position });
         }
         const existing = expectParagraphAttrs(liveCurrent)._propertyChanges;
+        if (hasSerializableParagraphPropertyChange(existing)) {
+          panic("A final-mark rotation cannot append a second w:pPrChange", {
+            position: current.position,
+          });
+        }
         const revisionId = nextRevisionId++;
         next = next.setNodeMarkup(current.position, undefined, {
           ...liveCurrent.attrs,
@@ -1490,7 +1546,7 @@ const withRotatedAddedFinalBreaks = ({
 const buildInsertedParagraphs = ({
   item,
   schema,
-  alignmentFromStyle,
+  formattingFromStyle,
   mode,
   author,
   date,
@@ -1514,7 +1570,16 @@ const buildInsertedParagraphs = ({
   // Only the first paragraph split from one operation inherits the anchor's
   // formatting. Later lines are new body paragraphs, not anchor clones.
   const baseAttrs =
-    operation.inheritFormatting === false ? {} : stripBlockIdentityAttrs(item.blockNode.attrs);
+    operation.inheritFormatting === false
+      ? {}
+      : {
+          ...stripBlockIdentityAttrs(item.blockNode.attrs),
+          // A new paragraph inherits the anchor's formatting, not the
+          // revision carriers that explain how the anchor reached it.
+          _propertyChanges: null,
+          pPrMark: null,
+          _suggestedInsert: null,
+        };
   const insertTexts = item.insertTexts ?? [""];
   const revisionIds: number[] = [];
   const nodes: PMNode[] = [];
@@ -1549,7 +1614,7 @@ const buildInsertedParagraphs = ({
       attrs["numPr"] = null;
       Object.assign(attrs, CLEARED_LIST_MARKER_ATTRS);
     } else if (isFirstParagraph && operation.listLevel !== undefined) {
-      const anchorNumPr: unknown = baseAttrs["numPr"];
+      const anchorNumPr: unknown = Reflect.get(baseAttrs, "numPr");
       const numId =
         typeof anchorNumPr === "object" && anchorNumPr !== null && "numId" in anchorNumPr
           ? anchorNumPr.numId
@@ -1567,24 +1632,33 @@ const buildInsertedParagraphs = ({
     }
     if (
       isFirstParagraph &&
-      (operation.styleId !== undefined || operation.alignment !== undefined)
+      (operation.styleId !== undefined ||
+        operation.alignment !== undefined ||
+        operation.spacing !== undefined)
     ) {
       const inheritedDirectAlignment =
         operation.inheritFormatting === false
           ? undefined
           : directParagraphAlignment(expectParagraphAttrs(item.blockNode));
+      const inheritedDirectSpacing =
+        operation.inheritFormatting === false
+          ? undefined
+          : directParagraphSpacing(expectParagraphAttrs(item.blockNode));
       const directAlignment =
         operation.alignment === undefined
           ? inheritedDirectAlignment
           : (operation.alignment ?? undefined);
-      attrs["alignmentFromStyle"] = alignmentFromStyle;
-      attrs["alignment"] = directAlignment ?? alignmentFromStyle ?? null;
+      const directSpacing =
+        operation.spacing === undefined ? inheritedDirectSpacing : (operation.spacing ?? undefined);
+      attrs["alignmentFromStyle"] = formattingFromStyle?.alignment;
+      attrs["alignment"] = directAlignment ?? formattingFromStyle?.alignment ?? null;
       const sourceFormatting = attrs["_originalFormatting"];
-      const originalFormatting: ParagraphFormatting =
+      let originalFormatting: ParagraphFormatting | undefined =
         typeof sourceFormatting === "object" && sourceFormatting !== null
           ? { ...sourceFormatting }
-          : {};
+          : undefined;
       if (operation.styleId !== undefined) {
+        originalFormatting ??= {};
         if (operation.styleId === null) {
           Reflect.deleteProperty(originalFormatting, "styleId");
         } else {
@@ -1592,14 +1666,29 @@ const buildInsertedParagraphs = ({
         }
       }
       if (operation.alignment !== undefined || inheritedDirectAlignment !== undefined) {
+        originalFormatting ??= {};
         if (directAlignment === undefined) {
           Reflect.deleteProperty(originalFormatting, "alignment");
         } else {
           originalFormatting.alignment = directAlignment;
         }
       }
+      if (operation.spacing !== undefined) {
+        originalFormatting = withDirectParagraphSpacing(originalFormatting, directSpacing);
+      }
+      if (operation.styleId !== undefined || operation.spacing !== undefined) {
+        Object.assign(
+          attrs,
+          paragraphSpacingAttrPatch({
+            direct: directSpacing,
+            inherited: paragraphSpacingFromFormatting(formattingFromStyle),
+          }),
+        );
+      }
       attrs["_originalFormatting"] =
-        Object.keys(originalFormatting).length > 0 ? originalFormatting : null;
+        originalFormatting && Object.keys(originalFormatting).length > 0
+          ? originalFormatting
+          : null;
     }
     if (isSuggested && suggestionId !== null && paragraphRevisionId !== null) {
       attrs["_suggestedInsert"] = {
@@ -1657,7 +1746,7 @@ const applyFolioAIEditOperationsInternal = ({
   const deletionType = view.state.schema.marks["deletion"];
   const commentType = view.state.schema.marks["comment"];
   const styleResolver = getDocumentStyleResolver(view.state);
-  const alignmentFromStyleForInsertion = (item: ResolvedOperation) => {
+  const formattingFromStyleForInsertion = (item: ResolvedOperation) => {
     if (item.operation.type !== "insertAfterBlock" && item.operation.type !== "insertBeforeBlock") {
       return undefined;
     }
@@ -1666,7 +1755,7 @@ const applyFolioAIEditOperationsInternal = ({
       item.operation.inheritFormatting === false ? null : anchorAttrs.styleId;
     const styleId =
       item.operation.styleId !== undefined ? item.operation.styleId : inheritedStyleId;
-    return resolveAlignmentFromStyle({ attrs: anchorAttrs, styleId, styleResolver });
+    return resolveFormattingFromStyle({ attrs: anchorAttrs, styleId, styleResolver });
   };
   const claimedTableRows = new Set<string>();
   const claimedTableColumns = new Set<string>();
@@ -1885,6 +1974,18 @@ const applyFolioAIEditOperationsInternal = ({
     if (!item) {
       panic("The operation execution index exceeded the resolved plan", { executionIndex });
     }
+    if (mode === "tracked-changes" && writesParagraphPropertyChange(item)) {
+      const livePosition = tr.mapping.map(item.blockFrom);
+      const liveBlock = tr.doc.nodeAt(livePosition) ?? item.blockNode;
+      const propertyChanges =
+        liveBlock.type.name === "paragraph"
+          ? expectParagraphAttrs(liveBlock)._propertyChanges
+          : undefined;
+      if (hasSerializableParagraphPropertyChange(propertyChanges)) {
+        skipped.push({ id: item.operation.id, reason: "pendingParagraphPropertyChange" });
+        continue;
+      }
+    }
     if (isBatchableParagraphInsertion(item, mode)) {
       const insertionRun: ResolvedOperation[] = [item];
       for (let lookahead = executionIndex + 1; lookahead < executionOrder.length; lookahead++) {
@@ -1912,7 +2013,7 @@ const applyFolioAIEditOperationsInternal = ({
           const built = buildInsertedParagraphs({
             item: insertion,
             schema: view.state.schema,
-            alignmentFromStyle: alignmentFromStyleForInsertion(insertion),
+            formattingFromStyle: formattingFromStyleForInsertion(insertion),
             mode,
             author,
             date,
@@ -2192,7 +2293,7 @@ const applyFolioAIEditOperationsInternal = ({
         const built = buildInsertedParagraphs({
           item,
           schema: view.state.schema,
-          alignmentFromStyle: alignmentFromStyleForInsertion(item),
+          formattingFromStyle: formattingFromStyleForInsertion(item),
           mode,
           author,
           date,
@@ -2639,10 +2740,14 @@ const applyFolioAIEditOperationsInternal = ({
         const blockPosition = tr.mapping.map(item.blockFrom);
         const liveBlock = tr.doc.nodeAt(blockPosition) ?? item.blockNode;
         const liveAttrs = expectParagraphAttrs(liveBlock);
-        const resolvedAlignmentFromStyle =
+        const resolvedFormattingFromStyle =
           item.operation.properties.styleId === undefined
-            ? undefined
-            : resolveAlignmentFromStyle({
+            ? resolveFormattingFromStyle({
+                attrs: liveAttrs,
+                styleId: liveAttrs.styleId,
+                styleResolver,
+              })
+            : resolveFormattingFromStyle({
                 attrs: liveAttrs,
                 styleId: item.operation.properties.styleId,
                 styleResolver,
@@ -2650,7 +2755,7 @@ const applyFolioAIEditOperationsInternal = ({
         const patch = paragraphPropertiesPatch({
           node: liveBlock,
           properties: item.operation.properties,
-          resolvedAlignmentFromStyle,
+          resolvedFormattingFromStyle,
         });
         if (patch === null) {
           skipped.push({ id: item.operation.id, reason: "noopOperation" });

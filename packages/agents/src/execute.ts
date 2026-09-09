@@ -532,6 +532,9 @@ const explainSkipReason = (reason: string): string => {
   if (reason === "emptyOperation") {
     return "this operation has no effect; nothing to apply.";
   }
+  if (reason === "pendingParagraphPropertyChange") {
+    return "this paragraph already has an unresolved tracked formatting change; accept or reject that change before retrying.";
+  }
   if (reason === "noopOperation") {
     return "this operation would not change the document (the text already matches what you asked for).";
   }

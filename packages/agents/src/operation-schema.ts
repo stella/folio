@@ -16,6 +16,7 @@
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   FOLIO_DOCUMENT_OPERATION_MODES,
+  FOLIO_LINE_SPACING_RULE_VALUES,
   FOLIO_PARAGRAPH_ALIGNMENT_VALUES,
   InvalidFolioDocumentOperationBatchError,
   parseFolioDocumentOperationBatch,
@@ -29,6 +30,7 @@ export type FolioJsonSchema = {
   readonly description?: string;
   readonly enum?: readonly unknown[];
   readonly minimum?: number;
+  readonly maximum?: number;
   readonly minLength?: number;
   readonly minProperties?: number;
   readonly pattern?: string;
@@ -65,10 +67,11 @@ export const FOLIO_TEXT_RANGE_JSON_SCHEMA: FolioJsonSchema = {
     type: { type: "string", enum: ["textRange"] },
     story: { type: "string", enum: ["main"] },
     blockId: { type: "string", minLength: 1 },
-    startOffset: { type: "integer", minimum: 0 },
+    startOffset: { type: "integer", minimum: 0, maximum: Number.MAX_SAFE_INTEGER },
     endOffset: {
       type: "integer",
       minimum: 1,
+      maximum: Number.MAX_SAFE_INTEGER,
       description: "Exclusive end offset; must be greater than `startOffset`.",
     },
     selectedTextHash: {
@@ -160,9 +163,56 @@ export const FOLIO_CLEARABLE_PARAGRAPH_STYLE_ID_JSON_SCHEMA = {
 } as const satisfies FolioJsonSchema;
 
 export const FOLIO_CLEARABLE_LIST_LEVEL_JSON_SCHEMA = {
-  oneOf: [{ type: "integer", minimum: 0 }, { type: "null" }],
+  oneOf: [{ type: "integer", minimum: 0, maximum: Number.MAX_SAFE_INTEGER }, { type: "null" }],
   description:
     "`w:numPr/w:ilvl`, zero-based; a number retains the paragraph or anchor's numbering instance (`numId`), while null removes paragraph numbering.",
+} as const satisfies FolioJsonSchema;
+
+/** Complete direct `w:spacing` attributes, or null to restore style inheritance. */
+export const FOLIO_CLEARABLE_PARAGRAPH_SPACING_JSON_SCHEMA = {
+  oneOf: [
+    {
+      type: "object",
+      properties: {
+        spaceBefore: {
+          type: "integer",
+          minimum: 0,
+          maximum: Number.MAX_SAFE_INTEGER,
+          description: "Non-negative space before, in twips.",
+        },
+        spaceAfter: {
+          type: "integer",
+          minimum: 0,
+          maximum: Number.MAX_SAFE_INTEGER,
+          description: "Non-negative space after, in twips.",
+        },
+        lineSpacing: {
+          type: "integer",
+          minimum: Number.MIN_SAFE_INTEGER,
+          maximum: Number.MAX_SAFE_INTEGER,
+          description: "Signed line spacing: 240ths of a line with the auto rule, otherwise twips.",
+        },
+        lineSpacingRule: {
+          type: "string",
+          enum: FOLIO_LINE_SPACING_RULE_VALUES,
+          description: "How `lineSpacing` is interpreted.",
+        },
+        beforeAutospacing: {
+          type: "boolean",
+          description: "Whether the application determines spacing before automatically.",
+        },
+        afterAutospacing: {
+          type: "boolean",
+          description: "Whether the application determines spacing after automatically.",
+        },
+      },
+      minProperties: 1,
+      additionalProperties: false,
+    },
+    { type: "null" },
+  ],
+  description:
+    "Complete direct paragraph spacing (`w:spacing`); omitted attributes stay absent, while zero and false remain explicit. Null removes the direct spacing child and restores style inheritance.",
 } as const satisfies FolioJsonSchema;
 
 /**
@@ -257,7 +307,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
           description:
             "The paragraph text to insert. A line break splits this into consecutive " +
             "paragraphs at the same anchor instead of one paragraph with embedded newlines " +
-            "— only the first paragraph gets `styleId` / `alignment` / `inheritFormatting`, " +
+            "— only the first paragraph gets `styleId` / `alignment` / `spacing` / `inheritFormatting`, " +
             "later ones use " +
             "body formatting. Prefer one paragraph per operation; only rely on the split for " +
             "a heading immediately followed by its body text.",
@@ -276,6 +326,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
           oneOf: [{ type: "string", enum: FOLIO_PARAGRAPH_ALIGNMENT_VALUES }, { type: "null" }],
           description: "Direct paragraph alignment; null restores style inheritance.",
         },
+        spacing: FOLIO_CLEARABLE_PARAGRAPH_SPACING_JSON_SCHEMA,
         moveId: {
           type: "string",
           description:
@@ -301,7 +352,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
           description:
             "The paragraph text to insert. A line break splits this into consecutive " +
             "paragraphs at the same anchor instead of one paragraph with embedded newlines " +
-            "— only the first paragraph gets `styleId` / `alignment` / `inheritFormatting`, " +
+            "— only the first paragraph gets `styleId` / `alignment` / `spacing` / `inheritFormatting`, " +
             "later ones use " +
             "body formatting. Prefer one paragraph per operation; only rely on the split for " +
             "a heading immediately followed by its body text.",
@@ -320,6 +371,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
           oneOf: [{ type: "string", enum: FOLIO_PARAGRAPH_ALIGNMENT_VALUES }, { type: "null" }],
           description: "Direct paragraph alignment; null restores style inheritance.",
         },
+        spacing: FOLIO_CLEARABLE_PARAGRAPH_SPACING_JSON_SCHEMA,
         moveId: {
           type: "string",
           description:
@@ -383,6 +435,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
         offset: {
           type: "integer",
           minimum: 0,
+          maximum: Number.MAX_SAFE_INTEGER,
           description:
             "Character offset in the block's text where the break goes. Must fall strictly inside it.",
         },
@@ -430,6 +483,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
               oneOf: [{ type: "string", enum: FOLIO_PARAGRAPH_ALIGNMENT_VALUES }, { type: "null" }],
               description: "Direct paragraph alignment; null restores style inheritance.",
             },
+            spacing: FOLIO_CLEARABLE_PARAGRAPH_SPACING_JSON_SCHEMA,
           },
           minProperties: 1,
           additionalProperties: false,
@@ -609,6 +663,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
         rowCount: {
           type: "integer",
           minimum: 2,
+          maximum: Number.MAX_SAFE_INTEGER,
           description: "Number of grid rows to merge downward from the anchored cell.",
         },
       },

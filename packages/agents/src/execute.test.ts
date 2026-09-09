@@ -387,6 +387,52 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
     expect(result.skipped[0]?.reason).toContain("re-read the document");
   });
 
+  test("suggest_changes explains how to resolve a pending paragraph-format change", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
+    const bridge = createReviewerBridge(reviewer);
+    const block = reviewer.snapshot().blocks.at(0);
+    if (!block) {
+      throw new Error("expected a paragraph block");
+    }
+
+    const first = expectOk(
+      executeFolioToolCall(
+        FOLIO_AGENT_TOOL_NAMES.suggestChanges,
+        {
+          operations: [
+            {
+              id: "first-format",
+              type: "setBlockParagraphProperties",
+              blockId: block.id,
+              properties: { spacing: { spaceAfter: 240 } },
+            },
+          ],
+        },
+        bridge,
+      ),
+    ) as FolioAgentApplyOperationsSummary;
+    expect(first.applied).toHaveLength(1);
+
+    const second = expectOk(
+      executeFolioToolCall(
+        FOLIO_AGENT_TOOL_NAMES.suggestChanges,
+        {
+          operations: [
+            {
+              id: "second-format",
+              type: "setBlockParagraphProperties",
+              blockId: block.id,
+              properties: { alignment: "center" },
+            },
+          ],
+        },
+        bridge,
+      ),
+    ) as FolioAgentApplyOperationsSummary;
+    expect(second.applied).toEqual([]);
+    expect(second.skipped.at(0)?.reason).toContain("accept or reject that change");
+  });
+
   test("suggest_changes attaches a block-text precondition and explains a stale target", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(readFixture());
     const reviewerBridge = createReviewerBridge(reviewer);

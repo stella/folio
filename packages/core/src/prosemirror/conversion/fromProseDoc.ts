@@ -120,6 +120,7 @@ import {
 import { autospacingMatchesBase, hasAutospacingBaseSide } from "../autospacingBase";
 import { directionToBidi } from "../paragraphDirection";
 import { directParagraphAlignment } from "../paragraphAlignment";
+import { directParagraphSpacing } from "../paragraphSpacing";
 import {
   paragraphRejectAttrPatch,
   paragraphRejectOriginalFormatting,
@@ -1314,6 +1315,7 @@ function assignBooleanToggle(
 
 function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting | undefined {
   const directAlignment = directParagraphAlignment(attrs);
+  const directSpacing = directParagraphSpacing(attrs);
   // If we have the original inline formatting from the DOCX, use it as a base
   // for lossless round-trip. This preserves properties like contextualSpacing,
   // widowControl, beforeAutospacing, runProperties, etc. that aren't tracked
@@ -1335,11 +1337,24 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
   const afterAutospacingEdited = afterHasAutospacingBase
     ? !autospacingMatchesBase(attrs._autospacingBase, "after", spaceAfter)
     : afterOriginalAutospacing && attrs._autospacingBase == null;
+  const beforeIsInherited =
+    attrs.spacingFromDocDefaults?.before === true ||
+    attrs.spacingFromImplicitDefaultStyle?.before === true;
+  const afterIsInherited =
+    attrs.spacingFromDocDefaults?.after === true ||
+    attrs.spacingFromImplicitDefaultStyle?.after === true;
   const shouldSerializeSpaceBefore =
-    typeof spaceBefore === "number" && (!beforeHasAutospacingBase || beforeAutospacingEdited);
+    typeof spaceBefore === "number" &&
+    (attrs.spacingExplicit?.before === true ||
+      beforeAutospacingEdited ||
+      (!beforeIsInherited && !beforeHasAutospacingBase));
   const shouldSerializeSpaceAfter =
-    typeof spaceAfter === "number" && (!afterHasAutospacingBase || afterAutospacingEdited);
-  const hasDirectLineSpacing = attrs.lineSpacingExplicit === true;
+    typeof spaceAfter === "number" &&
+    (attrs.spacingExplicit?.after === true ||
+      afterAutospacingEdited ||
+      (!afterIsInherited && !afterHasAutospacingBase));
+  const hasDirectLineSpacing = directSpacing?.lineSpacing !== undefined;
+  const hasDirectLineSpacingRule = directSpacing?.lineSpacingRule !== undefined;
 
   if (attrs._originalFormatting) {
     const orig = attrs._originalFormatting;
@@ -1365,21 +1380,31 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
     // A spacing command is a direct override even when the imported value was
     // inherited from a style. Keep the explicit zero instead of dropping the
     // side and letting the style value reappear on the next load.
-    if (attrs.spacingExplicit?.before && typeof spaceBefore === "number") {
-      result.spaceBefore = spaceBefore;
+    if (orig.spaceBefore !== undefined || attrs.spacingExplicit?.before) {
+      if (typeof spaceBefore === "number") {
+        result.spaceBefore = spaceBefore;
+      } else {
+        Reflect.deleteProperty(result, "spaceBefore");
+      }
     }
-    if (attrs.spacingExplicit?.after && typeof spaceAfter === "number") {
-      result.spaceAfter = spaceAfter;
+    if (orig.spaceAfter !== undefined || attrs.spacingExplicit?.after) {
+      if (typeof spaceAfter === "number") {
+        result.spaceAfter = spaceAfter;
+      } else {
+        Reflect.deleteProperty(result, "spaceAfter");
+      }
     }
 
-    const originalHasDirectLineSpacing =
-      orig.lineSpacing !== undefined || orig.lineSpacingRule !== undefined;
+    const originalHasDirectLineSpacing = orig.lineSpacing !== undefined;
     if (hasDirectLineSpacing || originalHasDirectLineSpacing) {
       if (typeof attrs.lineSpacing === "number") {
         result.lineSpacing = attrs.lineSpacing;
       } else {
         Reflect.deleteProperty(result, "lineSpacing");
       }
+    }
+    const originalHasDirectLineSpacingRule = orig.lineSpacingRule !== undefined;
+    if (hasDirectLineSpacingRule || originalHasDirectLineSpacingRule) {
       if (attrs.lineSpacingRule) {
         result.lineSpacingRule = attrs.lineSpacingRule;
       } else {
@@ -1455,6 +1480,7 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
     beforeAutospacingEdited ||
     afterAutospacingEdited ||
     hasDirectLineSpacing ||
+    hasDirectLineSpacingRule ||
     attrs.snapToGrid != null ||
     attrs.indentLeft ||
     attrs.indentRight ||
@@ -1499,7 +1525,7 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
   if (hasDirectLineSpacing && typeof attrs.lineSpacing === "number") {
     f.lineSpacing = attrs.lineSpacing;
   }
-  if (hasDirectLineSpacing && attrs.lineSpacingRule) {
+  if (hasDirectLineSpacingRule && attrs.lineSpacingRule) {
     f.lineSpacingRule = attrs.lineSpacingRule;
   }
   if (attrs.snapToGrid != null) {

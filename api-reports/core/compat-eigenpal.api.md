@@ -255,7 +255,7 @@ export const clearTemplateSlashMenu: (tr: Transaction) => Transaction;
 export const COMPARE_UNSUPPORTED_REASONS: readonly ["story-missing-in-base", "story-missing-in-target", "story-not-editable"];
 
 // @public
-export const COMPARE_VERIFICATION_CAUSES: readonly ["invisible-structure", "block-count", "container", "table-geometry", "style", "list-level", "alignment", "inline-formatting", "whitespace", "text"];
+export const COMPARE_VERIFICATION_CAUSES: readonly ["invisible-structure", "block-count", "container", "table-geometry", "style", "list-level", "alignment", "spacing", "inline-formatting", "whitespace", "text"];
 
 // @public
 export const COMPARE_VERIFICATION_INVARIANTS: readonly ["accept-reproduces-target", "reject-reproduces-base"];
@@ -736,6 +736,9 @@ export const FOLIO_DOCUMENT_OPERATION_STORIES: readonly ["main", "header", "foot
 export const FOLIO_DOCUMENT_OPERATION_TYPES: readonly ["replaceInBlock", "replaceRange", "commentOnRange", "formatRange", "insertAfterBlock", "insertBeforeBlock", "replaceBlock", "deleteBlock", "splitBlock", "mergeBlockWithNext", "setBlockParagraphProperties", "insertTable", "deleteTable", "commentOnBlock", "insertSignatureTable", "insertTableRow", "deleteTableRow", "insertTableColumn", "deleteTableColumn", "mergeTableCells", "splitTableCell"];
 
 // @public
+export const FOLIO_LINE_SPACING_RULE_VALUES: readonly ("auto" | "exact" | "atLeast")[];
+
+// @public
 export const FOLIO_PARAGRAPH_ALIGNMENT_VALUES: readonly ("left" | "center" | "right" | "both" | "distribute" | "mediumKashida" | "highKashida" | "lowKashida" | "thaiDistribute")[];
 
 // @public (undocumented)
@@ -747,6 +750,7 @@ export type FolioAIBlock = {
     displayLabel?: string;
     styleId?: string;
     directAlignment?: import__stll_docx_core_model.ParagraphAlignment;
+    directSpacing?: FolioAIParagraphSpacing;
     listLevel?: number;
     previewRuns?: FolioAIBlockPreviewRun[];
     table?: FolioAIBlockTableLocation;
@@ -885,6 +889,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     styleId?: string | null;
     listLevel?: number | null;
     alignment?: import__stll_docx_core_model.ParagraphAlignment | null;
+    spacing?: FolioAIParagraphSpacing | null;
     comment?: FolioAIComment;
 } | {
     id: string;
@@ -1047,6 +1052,8 @@ export type FolioAIEditSkippedOperation = {
 
 // @public (undocumented)
 export type FolioAIEditSkipReason = "missingBlock" | "changedBlock" | "ambiguousFind" | "missingFind" | "unsupportedBlock" | "unsupportedMode" | "atomicBatchRejected" | "preconditionFailed" | "staleRange" | "emptyOperation" |
+/** The paragraph already owns the one `w:pPrChange` OOXML permits. */
+"pendingParagraphPropertyChange" |
 /**
 * The operation would not change the document — find equals
 * replace, or replaceBlock's `text` matches the live block.
@@ -1071,6 +1078,9 @@ export type FolioAIEditSnapshot = {
     blocks: FolioAIBlock[];
     anchors: Record<string, FolioAIBlockAnchor>;
 };
+
+// @public
+export type FolioAIParagraphSpacing = Pick<import__stll_docx_core_model.ParagraphFormatting, "spaceBefore" | "spaceAfter" | "lineSpacing" | "lineSpacingRule" | "beforeAutospacing" | "afterAutospacing">;
 
 // @public
 export type FolioAISignatureParty = {
@@ -1182,7 +1192,7 @@ export type FolioDocumentOperationReceipt = {
 };
 
 // @public (undocumented)
-export type FolioDocumentOperationRecovery = "refreshDocument" | "narrowMatch" | "changeMode" | "changeTarget" | "removeOperation" | "inspectBatch" | "retryLater";
+export type FolioDocumentOperationRecovery = "refreshDocument" | "narrowMatch" | "changeMode" | "changeTarget" | "removeOperation" | "inspectBatch" | "resolveTrackedChange" | "retryLater";
 
 // @public
 export type FolioDocumentOperationResult = (FolioDocumentOperationResultBase & {

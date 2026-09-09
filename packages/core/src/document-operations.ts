@@ -21,15 +21,19 @@ import type {
   FolioAIEditSkippedOperation,
   FolioAIEditSnapshot,
   FolioAIInlineFormatting,
+  FolioAIParagraphSpacing,
   FolioAITextRangeHandle,
 } from "./ai-edits/types";
-import type { ParagraphAlignment } from "./types/document";
-import { PARAGRAPH_ALIGNMENT_VALUES } from "./types/documentEnumValues";
+import type { LineSpacingRule, ParagraphAlignment } from "./types/document";
+import { LINE_SPACING_RULE_VALUES, PARAGRAPH_ALIGNMENT_VALUES } from "./types/documentEnumValues";
 
 export const FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION = 1 as const;
 
 /** Direct paragraph-alignment values accepted by the operation contract. */
 export const FOLIO_PARAGRAPH_ALIGNMENT_VALUES = Object.freeze([...PARAGRAPH_ALIGNMENT_VALUES]);
+
+/** `w:spacing/@w:lineRule` values accepted by the operation contract. */
+export const FOLIO_LINE_SPACING_RULE_VALUES = Object.freeze([...LINE_SPACING_RULE_VALUES]);
 
 export const FOLIO_DOCUMENT_OPERATION_TYPES = Object.freeze([
   "replaceInBlock",
@@ -379,10 +383,10 @@ const readNonNegativeInteger = (
   path: string,
 ): number => {
   const candidate = value[key];
-  if (typeof candidate === "number" && Number.isInteger(candidate) && candidate >= 0) {
+  if (typeof candidate === "number" && Number.isSafeInteger(candidate) && candidate >= 0) {
     return candidate;
   }
-  return invalidBatch(`${path}.${key}`, "expected a non-negative integer");
+  return invalidBatch(`${path}.${key}`, "expected a non-negative safe integer");
 };
 
 /**
@@ -426,6 +430,85 @@ const readClearableParagraphAlignment = ({
     `${path}.${key}`,
     `expected one of ${FOLIO_PARAGRAPH_ALIGNMENT_VALUES.join(", ")} or null when provided`,
   );
+};
+
+const PARAGRAPH_SPACING_KEYS = [
+  "spaceBefore",
+  "spaceAfter",
+  "lineSpacing",
+  "lineSpacingRule",
+  "beforeAutospacing",
+  "afterAutospacing",
+] as const satisfies readonly (keyof FolioAIParagraphSpacing)[];
+
+const isLineSpacingRule = (value: unknown): value is LineSpacingRule =>
+  FOLIO_LINE_SPACING_RULE_VALUES.some((rule) => value === rule);
+
+type ReadClearableParagraphSpacingParams = {
+  value: Record<string, unknown>;
+  key: string;
+  path: string;
+};
+
+/**
+ * Read one complete direct `w:spacing` cluster. Individual fields are
+ * optional so explicit zero and false survive; null removes the child.
+ */
+const readClearableParagraphSpacing = ({
+  value,
+  key,
+  path,
+}: ReadClearableParagraphSpacingParams): FolioAIParagraphSpacing | null | undefined => {
+  const candidate = value[key];
+  if (candidate === undefined || candidate === null) {
+    return candidate;
+  }
+  const spacingPath = `${path}.${key}`;
+  if (!isPlainObject(candidate)) {
+    return invalidBatch(spacingPath, "expected an object or null when provided");
+  }
+  assertAllowedKeys(candidate, spacingPath, PARAGRAPH_SPACING_KEYS);
+  if (Object.keys(candidate).length === 0) {
+    return invalidBatch(spacingPath, "expected at least one spacing property");
+  }
+
+  const spacing: FolioAIParagraphSpacing = {};
+  for (const unsignedKey of ["spaceBefore", "spaceAfter"] as const) {
+    if (candidate[unsignedKey] !== undefined) {
+      spacing[unsignedKey] = readNonNegativeInteger(candidate, unsignedKey, spacingPath);
+    }
+  }
+  const lineSpacing = candidate["lineSpacing"];
+  if (lineSpacing !== undefined) {
+    if (typeof lineSpacing !== "number" || !Number.isSafeInteger(lineSpacing)) {
+      return invalidBatch(
+        `${spacingPath}.lineSpacing`,
+        "expected a safe signed integer when provided",
+      );
+    }
+    spacing.lineSpacing = lineSpacing;
+  }
+  const lineSpacingRule = candidate["lineSpacingRule"];
+  if (lineSpacingRule !== undefined) {
+    if (!isLineSpacingRule(lineSpacingRule)) {
+      return invalidBatch(
+        `${spacingPath}.lineSpacingRule`,
+        `expected one of ${FOLIO_LINE_SPACING_RULE_VALUES.join(", ")} when provided`,
+      );
+    }
+    spacing.lineSpacingRule = lineSpacingRule;
+  }
+  for (const booleanKey of ["beforeAutospacing", "afterAutospacing"] as const) {
+    const booleanValue = candidate[booleanKey];
+    if (booleanValue === undefined) {
+      continue;
+    }
+    if (typeof booleanValue !== "boolean") {
+      return invalidBatch(`${spacingPath}.${booleanKey}`, "expected a boolean when provided");
+    }
+    spacing[booleanKey] = booleanValue;
+  }
+  return spacing;
 };
 
 /**
@@ -472,7 +555,7 @@ const readParagraphProperties = (
   if (!isPlainObject(candidate)) {
     return invalidBatch(propertiesPath, "expected an object");
   }
-  assertAllowedKeys(candidate, propertiesPath, ["styleId", "listLevel", "alignment"]);
+  assertAllowedKeys(candidate, propertiesPath, ["styleId", "listLevel", "alignment", "spacing"]);
   const rawStyleId = candidate["styleId"];
   const styleId =
     rawStyleId === null ? null : readOptionalString(candidate, "styleId", propertiesPath);
@@ -482,13 +565,24 @@ const readParagraphProperties = (
     key: "alignment",
     path: propertiesPath,
   });
-  if (styleId === undefined && listLevel === undefined && alignment === undefined) {
+  const spacing = readClearableParagraphSpacing({
+    value: candidate,
+    key: "spacing",
+    path: propertiesPath,
+  });
+  if (
+    styleId === undefined &&
+    listLevel === undefined &&
+    alignment === undefined &&
+    spacing === undefined
+  ) {
     return invalidBatch(propertiesPath, "expected at least one property to set");
   }
   return {
     ...(styleId !== undefined && { styleId }),
     ...(listLevel !== undefined && { listLevel }),
     ...(alignment !== undefined && { alignment }),
+    ...(spacing !== undefined && { spacing }),
   };
 };
 
@@ -663,6 +757,7 @@ export const FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE = Object.freeze({
     "text",
     "inheritFormatting",
     "alignment",
+    "spacing",
     "listLevel",
     "moveId",
     "pageBreakBefore",
@@ -674,6 +769,7 @@ export const FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE = Object.freeze({
     "text",
     "inheritFormatting",
     "alignment",
+    "spacing",
     "listLevel",
     "moveId",
     "pageBreakBefore",
@@ -844,6 +940,7 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
     const moveId = readOptionalString(value, "moveId", path);
     const listLevel = readClearableNonNegativeInteger(value, "listLevel", path);
     const alignment = readClearableParagraphAlignment({ value, key: "alignment", path });
+    const spacing = readClearableParagraphSpacing({ value, key: "spacing", path });
     return {
       ...operationMeta,
       id,
@@ -852,6 +949,7 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
       text: readString(value, "text", path),
       ...(inheritFormatting !== undefined && { inheritFormatting }),
       ...(alignment !== undefined && { alignment }),
+      ...(spacing !== undefined && { spacing }),
       ...(listLevel !== undefined && { listLevel }),
       ...(moveId !== undefined && { moveId }),
       ...(pageBreakBefore !== undefined && { pageBreakBefore }),
@@ -1068,6 +1166,7 @@ export type FolioDocumentOperationRecovery =
   | "changeTarget"
   | "removeOperation"
   | "inspectBatch"
+  | "resolveTrackedChange"
   | "retryLater";
 
 export type FolioDocumentOperationIssue = {
@@ -1230,6 +1329,7 @@ const recoveryByReason = {
   preconditionFailed: "refreshDocument",
   staleRange: "refreshDocument",
   emptyOperation: "removeOperation",
+  pendingParagraphPropertyChange: "resolveTrackedChange",
   noopOperation: "removeOperation",
   documentVersionMismatch: "refreshDocument",
   documentNotEditable: "retryLater",
@@ -1250,7 +1350,10 @@ export const getFolioDocumentOperationIssues = (
       operationIndex,
       path: `$.operations[${operationIndex}]`,
       code: reason,
-      retryable: reason !== "emptyOperation" && reason !== "noopOperation",
+      retryable:
+        reason !== "emptyOperation" &&
+        reason !== "noopOperation" &&
+        reason !== "pendingParagraphPropertyChange",
       recovery: recoveryByReason[reason],
     };
   });
