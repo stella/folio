@@ -45,6 +45,7 @@ import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
 import { setParagraphAttrsWithRebasedRunFormatting } from "../rebaseParagraphRunFormatting";
 import type { ParagraphPropertyChangeAttrs } from "../schema/nodes";
 import { getTableCellMergeChange } from "../tableCellMergeRevision";
+import { reconcileTableGridAfterColumnRemoval } from "../tableGridMutation";
 import {
   hasMatchingCollapsedTableCellMerge,
   resolveCollapsedTableCellMerge,
@@ -898,11 +899,31 @@ function deleteTableCellAt(tr: Transaction, cellPos: number): void {
   if (row.type.spec["tableRole"] !== "row") {
     return;
   }
+  const tableDepth = resolved.depth - 1;
+  const table = resolved.node(tableDepth);
+  if (table.type.spec["tableRole"] !== "table") {
+    return;
+  }
+  const tablePosition = resolved.before(tableDepth);
+  const cellOffset = cellPos - resolved.start(tableDepth);
+  const removedColumn = TableMap.get(table).findCell(cellOffset).left;
   if (row.childCount > 1) {
     tr.delete(cellPos, cellPos + cell.nodeSize);
+    reconcileTableGridAfterColumnRemoval({
+      tr,
+      tablePosition,
+      previousTable: table,
+      removedColumn,
+    });
     return;
   }
   deleteTableRowAt(tr, resolved.start() - 1);
+  reconcileTableGridAfterColumnRemoval({
+    tr,
+    tablePosition,
+    previousTable: table,
+    removedColumn,
+  });
 }
 
 function deleteTableRowAt(tr: Transaction, rowPos: number): void {
