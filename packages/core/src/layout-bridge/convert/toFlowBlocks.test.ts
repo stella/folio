@@ -2163,6 +2163,43 @@ describe("toFlowBlocks hyperlink identity", () => {
 });
 
 describe("toFlowBlocks table cell formatting", () => {
+  test.each([
+    { name: "ordinary", rowAttrs: null, cellAttrs: null, nested: false },
+    {
+      name: "cantSplit",
+      rowAttrs: { _originalFormatting: { cantSplit: true } },
+      cellAttrs: null,
+      nested: false,
+    },
+    { name: "vMerge restart", rowAttrs: null, cellAttrs: { _vMergeRestart: true }, nested: false },
+    { name: "nested table", rowAttrs: null, cellAttrs: null, nested: true },
+  ])("fails closed for a page-break run in a $name table-cell shape", (shape) => {
+    const breakParagraph = schema.node("paragraph", null, [
+      schema.text("A"),
+      schema.node("pageBreakRun"),
+      schema.text("B"),
+    ]);
+    const nestedContent = shape.nested
+      ? [
+          schema.node("table", null, [
+            schema.node("tableRow", null, [schema.node("tableCell", null, [breakParagraph])]),
+          ]),
+          schema.node("paragraph"),
+        ]
+      : [breakParagraph];
+    const doc = schema.node("doc", null, [
+      schema.node("table", null, [
+        schema.node("tableRow", shape.rowAttrs, [
+          schema.node("tableCell", shape.cellAttrs, nestedContent),
+        ]),
+      ]),
+    ]);
+    const before = doc.toJSON();
+
+    expect(() => toFlowBlocks(doc)).toThrow("cannot be projected inside a table cell");
+    expect(doc.toJSON()).toEqual(before);
+  });
+
   test("keeps explicit zero cell margins instead of restoring table defaults", () => {
     const doc = schema.node("doc", null, [
       schema.node("table", { cellMargins: { left: 180, right: 180 } }, [

@@ -2674,6 +2674,17 @@ function convertTableCell(
     right?: number;
   },
 ): TableCell {
+  const pageBreakPosition = explicitPageBreakRunPosition(node, startPos);
+  if (pageBreakPosition !== undefined) {
+    // An OOXML page break is forced at its exact run position, while a table
+    // row paginates across all of its cells. Cell-local flow cannot model that
+    // row-wide boundary without table-fragment ownership, so reject the shape
+    // instead of projecting a zero-height marker that would not paginate.
+    panic(
+      `An explicit page-break run at ${String(pageBreakPosition)} cannot be projected inside a table cell`,
+    );
+  }
+
   const blocks: FlowBlock[] = [];
   let offset = startPos + 1; // +1 for opening tag
 
