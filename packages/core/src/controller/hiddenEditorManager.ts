@@ -34,6 +34,7 @@ import {
   ensureParaIdsInState,
 } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import { createDocumentStylesPlugin } from "../prosemirror/plugins/documentStyles";
+import { createDocumentNumberingPlugin } from "../prosemirror/plugins/documentNumbering";
 import { schema } from "../prosemirror/schema";
 import type { Document, StyleDefinitions } from "../types/document";
 import type { RemoteSelection } from "../types/remote-selection";
@@ -260,10 +261,12 @@ export function createHiddenEditorState(options: CreateHiddenEditorStateOptions)
   // handler's `w:next` switch from heading to body text). Same resolver for
   // collab and non-collab paths.
   const styleResolverPlugin = createDocumentStylesPlugin(styles ?? document?.package.styles);
+  const numberingPlugin = createDocumentNumberingPlugin(document?.package.numbering);
   const plugins: Plugin[] = [
     ...externalPlugins,
     ...(manager?.getPlugins() ?? []),
     styleResolverPlugin,
+    numberingPlugin,
   ];
 
   if (collaboration) {

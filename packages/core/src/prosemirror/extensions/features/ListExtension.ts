@@ -5,6 +5,7 @@
  * Provides: toggle bullet/number, indent/outdent, enter/backspace handling.
  */
 
+import { panic } from "better-result";
 import type { Command, EditorState } from "prosemirror-state";
 
 import { expectParagraphAttrs } from "../../attrs";
@@ -14,11 +15,13 @@ import {
 } from "../../commands/propertyChangeScope";
 import { makeRevisionInfo, SUGGESTION_META } from "../../plugins/suggestionMode";
 import { CLEARED_LIST_RENDERING_ATTRS, LIST_RENDERING_ATTR_KEYS } from "../../listMarker";
+import { getDocumentNumbering } from "../../plugins/documentNumbering";
+import { listLevelAttrPatch } from "../../styles/resolvedStyleAttrs";
 import { createExtension } from "../create";
 import { goToNextCell, goToPrevCell } from "../nodes/TableExtension";
 import { Priority } from "../types";
 import type { ExtensionRuntime } from "../types";
-import type { ParagraphPropertyChangeAttrs } from "../../schema/nodes";
+import type { ParagraphAttrs, ParagraphPropertyChangeAttrs } from "../../schema/nodes";
 
 // ============================================================================
 // CHAIN COMMANDS HELPER
@@ -170,6 +173,21 @@ export const toggleBulletList: Command = (state, dispatch) => toggleList(1)(stat
 
 export const toggleNumberedList: Command = (state, dispatch) => toggleList(2)(state, dispatch);
 
+const attrsForListLevel = (
+  state: EditorState,
+  attrs: ParagraphAttrs,
+  level: number,
+): Record<string, unknown> => {
+  const numPr = attrs.numPr;
+  if (numPr?.numId === undefined) {
+    panic("Cannot change the level of a list without a numbering id");
+  }
+  return {
+    ...attrs,
+    ...listLevelAttrPatch(attrs, { numId: numPr.numId, ilvl: level }, getDocumentNumbering(state)),
+  };
+};
+
 const increaseListLevel: Command = (state, dispatch) => {
   const { $from } = state.selection;
   const paragraph = $from.parent;
@@ -195,12 +213,7 @@ const increaseListLevel: Command = (state, dispatch) => {
   dispatch(
     state.tr
       .setNodeMarkup(paragraphPos, undefined, {
-        ...paragraph.attrs,
-        numPr: { ...paragraph.attrs["numPr"], ilvl: currentLevel + 1 },
-        // Clear explicit indentation so layout engine computes from new level
-        indentLeft: null,
-        indentFirstLine: null,
-        hangingIndent: null,
+        ...attrsForListLevel(state, expectParagraphAttrs(paragraph), currentLevel + 1),
       })
       .scrollIntoView(),
   );
@@ -244,11 +257,7 @@ const decreaseListLevel: Command = (state, dispatch) => {
     dispatch(
       state.tr
         .setNodeMarkup(paragraphPos, undefined, {
-          ...paragraph.attrs,
-          numPr: { ...paragraph.attrs["numPr"], ilvl: currentLevel - 1 },
-          indentLeft: null,
-          indentFirstLine: null,
-          hangingIndent: null,
+          ...attrsForListLevel(state, expectParagraphAttrs(paragraph), currentLevel - 1),
         })
         .scrollIntoView(),
     );
@@ -422,12 +431,13 @@ function increaseListIndent(): Command {
     const { $from, $to } = state.selection;
 
     // Collect all list paragraphs in the selection range
-    const positions: { pos: number; attrs: Record<string, unknown> }[] = [];
+    const positions: { pos: number; attrs: ParagraphAttrs }[] = [];
     state.doc.nodesBetween($from.pos, $to.pos, (node, pos) => {
       if (node.type.name === "paragraph" && node.attrs["numPr"]) {
-        const currentLevel = (node.attrs["numPr"] as { ilvl?: number }).ilvl ?? 0;
+        const attrs = expectParagraphAttrs(node);
+        const currentLevel = attrs.numPr?.ilvl ?? 0;
         if (currentLevel < 8) {
-          positions.push({ pos, attrs: node.attrs as Record<string, unknown> });
+          positions.push({ pos, attrs });
         }
       }
     });
@@ -439,14 +449,11 @@ function increaseListIndent(): Command {
     if (dispatch) {
       let tr = state.tr;
       for (const { pos, attrs } of positions) {
-        const numPr = attrs["numPr"] as { ilvl?: number; numId?: number };
-        tr = tr.setNodeMarkup(pos, undefined, {
-          ...attrs,
-          numPr: { ...numPr, ilvl: (numPr.ilvl ?? 0) + 1 },
-          indentLeft: null,
-          indentFirstLine: null,
-          hangingIndent: null,
-        });
+        tr = tr.setNodeMarkup(
+          pos,
+          undefined,
+          attrsForListLevel(state, attrs, (attrs.numPr?.ilvl ?? 0) + 1),
+        );
       }
       dispatch(tr);
     }
@@ -459,10 +466,10 @@ function decreaseListIndent(): Command {
     const { $from, $to } = state.selection;
 
     // Collect all list paragraphs in the selection range
-    const positions: { pos: number; attrs: Record<string, unknown> }[] = [];
+    const positions: { pos: number; attrs: ParagraphAttrs }[] = [];
     state.doc.nodesBetween($from.pos, $to.pos, (node, pos) => {
       if (node.type.name === "paragraph" && node.attrs["numPr"]) {
-        positions.push({ pos, attrs: node.attrs as Record<string, unknown> });
+        positions.push({ pos, attrs: expectParagraphAttrs(node) });
       }
     });
 
@@ -473,8 +480,7 @@ function decreaseListIndent(): Command {
     if (dispatch) {
       let tr = state.tr;
       for (const { pos, attrs } of positions) {
-        const numPr = attrs["numPr"] as { ilvl?: number; numId?: number };
-        const currentLevel = numPr.ilvl ?? 0;
+        const currentLevel = attrs.numPr?.ilvl ?? 0;
         if (currentLevel <= 0) {
           tr = tr.setNodeMarkup(pos, undefined, {
             ...attrs,
@@ -486,11 +492,7 @@ function decreaseListIndent(): Command {
           });
         } else {
           tr = tr.setNodeMarkup(pos, undefined, {
-            ...attrs,
-            numPr: { ...numPr, ilvl: currentLevel - 1 },
-            indentLeft: null,
-            indentFirstLine: null,
-            hangingIndent: null,
+            ...attrsForListLevel(state, attrs, currentLevel - 1),
           });
         }
       }

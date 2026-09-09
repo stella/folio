@@ -64,9 +64,16 @@ import {
   createDocumentStylesPlugin,
   getDocumentStyleResolver,
 } from "../prosemirror/plugins/documentStyles";
+import { createDocumentNumberingPlugin } from "../prosemirror/plugins/documentNumbering";
 import { schema, singletonManager } from "../prosemirror/schema";
 import type { Comment } from "../types/content";
-import type { Document, Endnote, Footnote, HeaderFooter } from "../types/document";
+import type {
+  Document,
+  Endnote,
+  Footnote,
+  HeaderFooter,
+  NumberingDefinitions,
+} from "../types/document";
 import { deterministicHexId } from "../utils/hexId";
 import {
   recreateProseNodeWithParagraphPropertySource,
@@ -446,9 +453,13 @@ const resolveReviewedState = (state: EditorState, view: FolioReviewedView): Edit
   return resolveAllChangesInHeadlessState(state, view === "original" ? "reject" : "accept");
 };
 
-const createHeadlessPlugins = (styles: Document["package"]["styles"]): Plugin[] => [
+const createHeadlessPlugins = (
+  styles: Document["package"]["styles"],
+  numbering: NumberingDefinitions | null | undefined,
+): Plugin[] => [
   ...pluginsForHeadlessRevisionResolution(singletonManager.getPlugins()),
   createDocumentStylesPlugin(styles),
+  createDocumentNumberingPlugin(numbering),
 ];
 
 const createStateSnapshot = (state: EditorState): FolioAIEditSnapshot =>
@@ -649,7 +660,10 @@ export class FolioDocxReviewer {
     // inserted paragraphs stable ids. Editor history and collaboration are
     // intentionally absent: reviewer undo stores complete state snapshots,
     // and headless resolution consumes its replacement transaction locally.
-    const plugins = createHeadlessPlugins(baseDocument.package.styles);
+    const plugins = createHeadlessPlugins(
+      baseDocument.package.styles,
+      baseDocument.package.numbering,
+    );
     // Allocate paraIds up front (the editor does this on load) so every block
     // anchors on a stable id and the selective-save path can key changed
     // paragraphs by paraId. Deterministic (not random) allocation so a
@@ -1512,7 +1526,10 @@ export class FolioDocxReviewer {
       EditorState.create({
         schema,
         doc: ensureDeterministicParaIdsInDoc(storyDoc),
-        plugins: createHeadlessPlugins(this.baseDocument.package.styles),
+        plugins: createHeadlessPlugins(
+          this.baseDocument.package.styles,
+          this.baseDocument.package.numbering,
+        ),
       }),
     );
     this.secondaryStoryStates.set(key, { handle: story, initialState: state, state });

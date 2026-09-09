@@ -9,6 +9,7 @@ import {
   hasSerializableParagraphPropertyChange,
   paragraphPropertiesSnapshot,
 } from "../prosemirror/commands/propertyChangeScope";
+import { CLEARED_LIST_RENDERING_ATTRS } from "../prosemirror/listMarker";
 import { directParagraphAlignment } from "../prosemirror/paragraphAlignment";
 import {
   directParagraphSpacing,
@@ -18,6 +19,7 @@ import {
   withDirectParagraphSpacing,
 } from "../prosemirror/paragraphSpacing";
 import { getDocumentStyleResolver } from "../prosemirror/plugins/documentStyles";
+import { getDocumentNumbering } from "../prosemirror/plugins/documentNumbering";
 import {
   readAuthoredRunFormatting,
   reconcileRunFormattingMarks,
@@ -28,6 +30,7 @@ import {
   type SelectedRunFormattingCarrierRepresentation,
 } from "../prosemirror/runFormattingInlineCarriers";
 import type { ParagraphPropertyChangeAttrs } from "../prosemirror/schema/nodes";
+import { listLevelAttrPatch } from "../prosemirror/styles/resolvedStyleAttrs";
 import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { requestDeterministicParaIds } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import {
@@ -286,17 +289,6 @@ const SUGGESTED_SUPPORTED_OPERATION_TYPES: ReadonlySet<FolioAIEditOperation["typ
   "deleteTableColumn",
 ]);
 
-/** Derived list-marker attrs invalidated when paragraph context changes. */
-const CLEARED_LIST_MARKER_ATTRS = Object.freeze({
-  listMarker: null,
-  listMarkerTemplate: null,
-  listMarkerHidden: null,
-  listLevelNumFmts: null,
-  listLevelStarts: null,
-  listAbstractNumId: null,
-  listStartOverride: null,
-});
-
 type ResolvedOperationFields = {
   operation: FolioAIEditOperation;
   from: number;
@@ -439,12 +431,14 @@ type ParagraphPropertiesPatchOptions = {
   node: PMNode;
   properties: FolioAIBlockParagraphProperties;
   resolvedFormattingFromStyle: ParagraphFormatting | undefined;
+  numbering?: ReturnType<typeof getDocumentNumbering>;
 };
 
 const paragraphPropertiesPatch = ({
   node,
   properties,
   resolvedFormattingFromStyle,
+  numbering = null,
 }: ParagraphPropertiesPatchOptions): Record<string, unknown> | null => {
   const attrs = expectParagraphAttrs(node);
   const currentDirectAlignment = directParagraphAlignment(attrs);
@@ -486,20 +480,21 @@ const paragraphPropertiesPatch = ({
   }
   if (properties.listLevel !== undefined) {
     const numPr: unknown = node.attrs["numPr"];
-    const current =
-      typeof numPr === "object" && numPr !== null && "ilvl" in numPr ? numPr.ilvl : undefined;
     if (properties.listLevel === null) {
-      if (numPr !== null && numPr !== undefined) {
-        patch["numPr"] = null;
-        Object.assign(patch, CLEARED_LIST_MARKER_ATTRS);
-      }
-    } else if (current !== properties.listLevel) {
+      patch["numPr"] = null;
+      Object.assign(patch, CLEARED_LIST_RENDERING_ATTRS);
+    } else {
       const numId =
         typeof numPr === "object" && numPr !== null && "numId" in numPr ? numPr.numId : undefined;
-      patch["numPr"] = {
-        ...(typeof numId === "number" && { numId }),
-        ilvl: properties.listLevel,
-      };
+      if (typeof numId === "number") {
+        Object.assign(
+          patch,
+          listLevelAttrPatch(attrs, { numId, ilvl: properties.listLevel }, numbering),
+        );
+      } else {
+        patch["numPr"] = { ilvl: properties.listLevel };
+        Object.assign(patch, CLEARED_LIST_RENDERING_ATTRS);
+      }
     }
   }
   if (
@@ -1538,6 +1533,7 @@ type BuildInsertedParagraphsOptions = {
   suggestionId: string | null;
   revisionSeed: number;
   isPairedMove: (moveId: string | undefined) => moveId is string;
+  numbering: ReturnType<typeof getDocumentNumbering>;
 };
 
 type BuiltInsertedParagraphs = {
@@ -1749,6 +1745,7 @@ const buildInsertedParagraphs = ({
   suggestionId,
   revisionSeed,
   isPairedMove,
+  numbering,
 }: BuildInsertedParagraphsOptions): BuiltInsertedParagraphs => {
   const operation = item.operation;
   if (operation.type !== "insertAfterBlock" && operation.type !== "insertBeforeBlock") {
@@ -1804,24 +1801,34 @@ const buildInsertedParagraphs = ({
     if (isFirstParagraph && operation.pageBreakBefore === true) {
       attrs["pageBreakBefore"] = true;
     }
-    if (isFirstParagraph && operation.listLevel === null) {
+    const listLevel = operation.listLevel;
+    if (isFirstParagraph && listLevel === null) {
       attrs["numPr"] = null;
-      Object.assign(attrs, CLEARED_LIST_MARKER_ATTRS);
-    } else if (isFirstParagraph && operation.listLevel !== undefined) {
+      Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
+    } else if (isFirstParagraph && typeof listLevel === "number") {
       const anchorNumPr: unknown = Reflect.get(baseAttrs, "numPr");
       const numId =
         typeof anchorNumPr === "object" && anchorNumPr !== null && "numId" in anchorNumPr
           ? anchorNumPr.numId
           : undefined;
-      attrs["numPr"] = {
-        ...(typeof numId === "number" && { numId }),
-        ilvl: operation.listLevel,
-      };
+      if (typeof numId === "number") {
+        Object.assign(
+          attrs,
+          listLevelAttrPatch(
+            operation.inheritFormatting === false ? {} : expectParagraphAttrs(item.blockNode),
+            { numId, ilvl: listLevel },
+            numbering,
+          ),
+        );
+      } else {
+        attrs["numPr"] = { ilvl: listLevel };
+        Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
+      }
     }
     if (isFirstParagraph && operation.styleId !== undefined) {
       attrs["styleId"] = operation.styleId;
       if (operation.inheritFormatting !== false && operation.styleId !== null) {
-        Object.assign(attrs, CLEARED_LIST_MARKER_ATTRS);
+        Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
       }
     }
     if (
@@ -1975,6 +1982,7 @@ const applyFolioAIEditOperationsInternal = ({
     return id;
   };
   const styleResolver = getDocumentStyleResolver(view.state);
+  const numbering = getDocumentNumbering(view.state);
   const formattingFromStyleForInsertion = (item: ResolvedOperation) => {
     if (item.operation.type !== "insertAfterBlock" && item.operation.type !== "insertBeforeBlock") {
       return undefined;
@@ -2251,6 +2259,7 @@ const applyFolioAIEditOperationsInternal = ({
             suggestionId: insertionSuggestionId,
             revisionSeed,
             isPairedMove,
+            numbering,
           });
           revisionSeed = built.nextRevisionId;
           nodeGroups.push(built.nodes);
@@ -2569,6 +2578,7 @@ const applyFolioAIEditOperationsInternal = ({
           suggestionId,
           revisionSeed: operationRevisionSeed,
           isPairedMove,
+          numbering,
         });
         operationRevisionSeed = built.nextRevisionId;
         if (built.revisionIds.length > 0) {
@@ -3033,6 +3043,7 @@ const applyFolioAIEditOperationsInternal = ({
           node: liveBlock,
           properties: item.operation.properties,
           resolvedFormattingFromStyle,
+          numbering,
         });
         if (patch === null) {
           skipped.push({ id: item.operation.id, reason: "noopOperation" });

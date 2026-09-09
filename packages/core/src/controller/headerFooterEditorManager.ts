@@ -21,11 +21,13 @@ import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/A
 import { ensureParaIdsInState } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import { createStarterKit } from "../prosemirror/extensions/StarterKit";
 import { createDocumentStylesPlugin } from "../prosemirror/plugins/documentStyles";
+import { createDocumentNumberingPlugin } from "../prosemirror/plugins/documentNumbering";
 import { schema } from "../prosemirror/schema";
 import type {
   BlockContent,
   Document,
   HeaderFooter,
+  NumberingDefinitions,
   StyleDefinitions,
   Theme,
 } from "../types/document";
@@ -64,6 +66,7 @@ export type HeaderFooterEditorManager = {
 type MountedView = {
   appliedContent: BlockContent[];
   appliedHeaderFooter: HeaderFooter;
+  appliedNumbering: NumberingDefinitions | null | undefined;
   appliedStyles: StyleDefinitions | null | undefined;
   appliedTheme: Theme | null | undefined;
   dirty: boolean;
@@ -95,6 +98,7 @@ const buildInitialState = (
   headerFooter: HeaderFooter,
   styles: StyleDefinitions | null | undefined,
   theme: Theme | null | undefined,
+  numbering: NumberingDefinitions | null | undefined,
   manager: ExtensionManager,
 ): EditorStateT => {
   const proseDocOptions: { styles?: StyleDefinitions; theme?: Theme | null } = {};
@@ -113,7 +117,11 @@ const buildInitialState = (
       EditorState.create({
         doc: document,
         schema,
-        plugins: [...manager.getPlugins(), createDocumentStylesPlugin(styles)],
+        plugins: [
+          ...manager.getPlugins(),
+          createDocumentStylesPlugin(styles),
+          createDocumentNumberingPlugin(numbering),
+        ],
       }),
     ),
   );
@@ -189,6 +197,7 @@ export const createHeaderFooterEditorManager = (
     const document = deps.getDocument();
     const styles = deps.getStyles();
     const theme = deps.getTheme();
+    const numbering = document?.package.numbering;
     const wanted = new Map(
       enumerateDocumentHeaderFooterParts(document).map((part) => [part.rId, part] as const),
     );
@@ -216,16 +225,21 @@ export const createHeaderFooterEditorManager = (
           existing.appliedHeaderFooter === headerFooter &&
           existing.appliedContent === headerFooter.content;
         const contextIsCurrent =
-          existing.appliedStyles === styles && existing.appliedTheme === theme;
+          existing.appliedStyles === styles &&
+          existing.appliedTheme === theme &&
+          existing.appliedNumbering === numbering;
         if (contentIsCurrent && contextIsCurrent) {
           continue;
         }
 
-        existing.view.updateState(buildInitialState(headerFooter, styles, theme, existing.manager));
+        existing.view.updateState(
+          buildInitialState(headerFooter, styles, theme, numbering, existing.manager),
+        );
         existing.appliedHeaderFooter = headerFooter;
         existing.appliedContent = headerFooter.content;
         existing.appliedStyles = styles;
         existing.appliedTheme = theme;
+        existing.appliedNumbering = numbering;
         existing.dirty = false;
         continue;
       }
@@ -240,7 +254,7 @@ export const createHeaderFooterEditorManager = (
       host.append(mountNode);
 
       const view = new EditorView(mountNode, {
-        state: buildInitialState(headerFooter, styles, theme, manager),
+        state: buildInitialState(headerFooter, styles, theme, numbering, manager),
         dispatchTransaction(transaction) {
           const nextState = view.state.apply(transaction);
           view.updateState(nextState);
@@ -261,6 +275,7 @@ export const createHeaderFooterEditorManager = (
       mounted.set(part.rId, {
         appliedContent: headerFooter.content,
         appliedHeaderFooter: headerFooter,
+        appliedNumbering: numbering,
         appliedStyles: styles,
         appliedTheme: theme,
         dirty: false,

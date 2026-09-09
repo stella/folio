@@ -3,4 +3,4 @@
 "@stll/folio-core": patch
 ---
 
-Advance numbering when Enter inserts a sibling list paragraph.
+Preserve and recompute imported numbering across list structure edits.

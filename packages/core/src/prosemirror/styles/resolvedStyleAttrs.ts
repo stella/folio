@@ -12,6 +12,7 @@
 import { computeListRendering, type NumberingMap } from "../../docx/numberingParser";
 import { tableOfContentsStyleLevel } from "../../utils/tableOfContentsStyle";
 import { setAutospacingBaseValue } from "../autospacingBase";
+import { CLEARED_LIST_RENDERING_ATTRS } from "../listMarker";
 import type { ParagraphAttrs } from "../schema/nodes";
 import type { ResolvedParagraphStyle } from "./styleResolver";
 
@@ -106,31 +107,11 @@ export function listAttrsFromResolvedStyle(
     return null;
   }
 
-  const rendering = numbering ? computeListRendering(numPr, numbering) : null;
+  const attrs = listAttrsFromNumbering({ numId: numPr.numId, ilvl: numPr.ilvl ?? 0 }, numbering);
   const level = numbering?.getLevel(numPr.numId, numPr.ilvl ?? 0);
-
-  const attrs: Record<string, unknown> = {
-    numPr: { numId: numPr.numId, ilvl: numPr.ilvl ?? 0 },
-    // The numbering belongs to the style — mark it so a save doesn't
-    // materialize a direct <w:numPr> (see ParagraphAttrs.numPrFromStyle).
-    numPrFromStyle: { numId: numPr.numId, ilvl: numPr.ilvl ?? 0 },
-    listNumFmt: rendering?.numFmt ?? null,
-    listIsBullet: rendering?.isBullet ?? null,
-    listIsLegal: rendering?.isLegal ?? null,
-    listMarker: rendering?.marker ?? null,
-    listMarkerTemplate: rendering?.markerTemplate ?? null,
-    listMarkerHidden: rendering?.markerHidden ?? null,
-    listMarkerFormatting: rendering?.markerFormatting ?? null,
-    listMarkerAlignment: rendering?.markerAlignment ?? null,
-    listMarkerSuffix: rendering?.markerSuffix ?? null,
-    listMarkerAllCaps: rendering?.markerAllCaps ?? null,
-    listImplicitChildLevelAdvances: null,
-    listMarkerSecondSlotOffsetTwips: null,
-    listLevelNumFmts: rendering?.levelNumFmts ?? null,
-    listLevelStarts: rendering?.levelStarts ?? null,
-    listAbstractNumId: rendering?.abstractNumId ?? null,
-    listStartOverride: rendering?.startOverride ?? null,
-  };
+  // The numbering belongs to the style — mark it so a save doesn't
+  // materialize a direct <w:numPr> (see ParagraphAttrs.numPrFromStyle).
+  attrs["numPrFromStyle"] = { numId: numPr.numId, ilvl: numPr.ilvl ?? 0 };
 
   // The numbering level's own indents apply beneath the style's (ECMA-376
   // numbering pPr sits below the style in the cascade) — use them only where
@@ -153,4 +134,49 @@ export function listAttrsFromResolvedStyle(
   }
 
   return attrs;
+}
+
+/** Project one resolved numbering level into the complete editor attr group. */
+export function listAttrsFromNumbering(
+  numPr: { numId: number; ilvl: number },
+  numbering: NumberingMap | null | undefined,
+): Record<string, unknown> {
+  const targetNumPr = { numId: numPr.numId, ilvl: numPr.ilvl };
+  const rendering = numbering ? computeListRendering(targetNumPr, numbering) : null;
+  return {
+    ...CLEARED_LIST_RENDERING_ATTRS,
+    numPr: targetNumPr,
+    listNumFmt: rendering?.numFmt ?? null,
+    listIsBullet: rendering?.isBullet ?? null,
+    listIsLegal: rendering?.isLegal ?? null,
+    listMarker: rendering?.marker ?? null,
+    listMarkerTemplate: rendering?.markerTemplate ?? null,
+    listMarkerHidden: rendering?.markerHidden ?? null,
+    listMarkerFormatting: rendering?.markerFormatting ?? null,
+    listMarkerAlignment: rendering?.markerAlignment ?? null,
+    listMarkerSuffix: rendering?.markerSuffix ?? null,
+    listMarkerAllCaps: rendering?.markerAllCaps ?? null,
+    listLevelNumFmts: rendering?.levelNumFmts ?? null,
+    listLevelStarts: rendering?.levelStarts ?? null,
+    listAbstractNumId: rendering?.abstractNumId ?? null,
+    listStartOverride: rendering?.startOverride ?? null,
+  };
+}
+
+/** Recompute every level-dependent attr when a paragraph changes list level. */
+export function listLevelAttrPatch(
+  attrs: Pick<ParagraphAttrs, "listImplicitChildLevelAdvances">,
+  numPr: { numId: number; ilvl: number },
+  numbering: NumberingMap | null | undefined,
+): Record<string, unknown> {
+  const level = numbering?.getLevel(numPr.numId, numPr.ilvl);
+  return {
+    ...listAttrsFromNumbering(numPr, numbering),
+    // Inline LISTNUM fields still belong to this paragraph after a level
+    // change; their relative child-level advance moves with it.
+    listImplicitChildLevelAdvances: attrs.listImplicitChildLevelAdvances ?? null,
+    indentLeft: level?.pPr?.indentLeft ?? null,
+    indentFirstLine: level?.pPr?.indentFirstLine ?? null,
+    hangingIndent: level?.pPr?.hangingIndent ?? null,
+  };
 }
