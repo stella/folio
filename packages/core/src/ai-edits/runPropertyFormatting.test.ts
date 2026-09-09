@@ -7,13 +7,19 @@ import { createDocx, repackDocx } from "../docx/rezip";
 import { acceptAIEditRevision, rejectAIEditRevision } from "../prosemirror/commands/comments";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { schema } from "../prosemirror/schema";
-import type { Document, RunContent, RunPropertyChange, TextFormatting } from "../types/document";
+import type {
+  Document,
+  Paragraph,
+  RunContent,
+  RunPropertyChange,
+  TextFormatting,
+} from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { decodeOoxmlSymbolCharacter } from "../utils/ooxmlSymbol";
 import { FolioDocxReviewer } from "./headless";
 import { getTrackedChangesFromDoc } from "./read";
 import { createFolioAITextRangeHandle } from "./snapshot";
-import type { FolioAIInlineFormatting } from "./types";
+import type { FolioAIBlockPreviewRun, FolioAIInlineFormatting } from "./types";
 
 type CreateFormattingBaselineOptions = {
   formatting?: TextFormatting;
@@ -95,6 +101,185 @@ const createParagraphFontWithDirectBoldDocument = async (): Promise<ArrayBuffer>
   return createDocx(document);
 };
 
+type SnapshotFormattingProvenanceCase = {
+  label: string;
+  paragraphStyleId?: string;
+  formatting?: TextFormatting;
+  expected: Omit<FolioAIBlockPreviewRun, "text">;
+};
+
+const SNAPSHOT_FORMATTING_PROVENANCE_CASES = [
+  {
+    label: "unstyled inherited",
+    expected: { fontFamily: "Arial", fontSizePt: 11 },
+  },
+  {
+    label: "unstyled equal direct",
+    formatting: {
+      fontFamily: { ascii: "Arial", hAnsi: "Arial" },
+      fontSize: 22,
+    },
+    expected: {
+      fontFamily: "Arial",
+      fontSizePt: 11,
+      directFormatting: { fontFamily: "Arial", fontSizePt: 11 },
+    },
+  },
+  {
+    label: "unstyled direct",
+    formatting: { bold: true },
+    expected: {
+      bold: true,
+      fontFamily: "Arial",
+      fontSizePt: 11,
+      directFormatting: { bold: true },
+    },
+  },
+  {
+    label: "paragraph style inherited",
+    paragraphStyleId: "Heading1",
+    expected: { bold: true, fontFamily: "Arial", fontSizePt: 20 },
+  },
+  {
+    label: "paragraph style equal direct",
+    paragraphStyleId: "Heading1",
+    formatting: { bold: true, fontSize: 40 },
+    expected: {
+      bold: true,
+      fontFamily: "Arial",
+      fontSizePt: 20,
+      directFormatting: { bold: true, fontSizePt: 20 },
+    },
+  },
+  {
+    label: "paragraph style direct off",
+    paragraphStyleId: "Heading1",
+    formatting: { bold: false },
+    expected: {
+      fontFamily: "Arial",
+      fontSizePt: 20,
+      directFormatting: { bold: false },
+    },
+  },
+  {
+    label: "character style inherited",
+    formatting: { styleId: "SnapshotCharacter" },
+    expected: {
+      italic: true,
+      underline: true,
+      strike: true,
+      fontFamily: "Georgia",
+      fontSizePt: 13,
+      color: "#C00000",
+    },
+  },
+  {
+    label: "character style plus direct",
+    formatting: { styleId: "SnapshotCharacter", bold: true },
+    expected: {
+      bold: true,
+      italic: true,
+      underline: true,
+      strike: true,
+      fontFamily: "Georgia",
+      fontSizePt: 13,
+      color: "#C00000",
+      directFormatting: { bold: true },
+    },
+  },
+  {
+    label: "character style equal direct",
+    formatting: {
+      styleId: "SnapshotCharacter",
+      italic: true,
+      fontFamily: { ascii: "Georgia", hAnsi: "Georgia" },
+      fontSize: 26,
+      color: { rgb: "C00000" },
+    },
+    expected: {
+      italic: true,
+      underline: true,
+      strike: true,
+      fontFamily: "Georgia",
+      fontSizePt: 13,
+      color: "#C00000",
+      directFormatting: {
+        italic: true,
+        fontFamily: "Georgia",
+        fontSizePt: 13,
+        color: "#C00000",
+      },
+    },
+  },
+  {
+    label: "character style direct off",
+    formatting: { styleId: "SnapshotCharacter", italic: false },
+    expected: {
+      underline: true,
+      strike: true,
+      fontFamily: "Georgia",
+      fontSizePt: 13,
+      color: "#C00000",
+      directFormatting: { italic: false },
+    },
+  },
+] as const satisfies readonly SnapshotFormattingProvenanceCase[];
+
+const createSnapshotFormattingProvenanceDocument = async (): Promise<ArrayBuffer> => {
+  const document = createEmptyDocument();
+  document.package.styles = {
+    ...document.package.styles,
+    styles: [
+      ...(document.package.styles?.styles ?? []),
+      {
+        styleId: "SnapshotCharacter",
+        type: "character",
+        name: "Snapshot Character",
+        rPr: {
+          italic: true,
+          underline: { style: "single" },
+          strike: true,
+          fontFamily: { ascii: "Georgia", hAnsi: "Georgia" },
+          fontSize: 26,
+          color: { rgb: "C00000" },
+        },
+      },
+    ],
+  };
+  document.package.document.content = SNAPSHOT_FORMATTING_PROVENANCE_CASES.map(
+    ({ label, paragraphStyleId, formatting }, index): Paragraph => ({
+      type: "paragraph",
+      paraId: `B200${String(index).padStart(4, "0")}`,
+      ...(paragraphStyleId !== undefined && { formatting: { styleId: paragraphStyleId } }),
+      content: [
+        {
+          type: "run",
+          ...(formatting !== undefined && { formatting }),
+          content: [{ type: "text", text: label }],
+        },
+      ],
+    }),
+  );
+  return createDocx(document);
+};
+
+const expectSnapshotFormattingProvenance = (
+  snapshot: ReturnType<FolioDocxReviewer["snapshot"]>,
+): void => {
+  expect(snapshot.blocks.map(({ text }) => text)).toEqual(
+    SNAPSHOT_FORMATTING_PROVENANCE_CASES.map(({ label }) => label),
+  );
+  for (const [index, { label, expected }] of SNAPSHOT_FORMATTING_PROVENANCE_CASES.entries()) {
+    expect({
+      label,
+      previewRuns: snapshot.blocks.at(index)?.previewRuns,
+    }).toEqual({
+      label,
+      previewRuns: [{ text: label, ...expected }],
+    });
+  }
+};
+
 type ApplyTrackedFormattingOptions = {
   formatting: FolioAIInlineFormatting;
   baselineFormatting?: TextFormatting;
@@ -144,6 +329,7 @@ const createHeaderFormattingBaseline = async (): Promise<ArrayBuffer> => {
           {
             type: "paragraph" as const,
             paraId: "A1000002",
+            formatting: { styleId: "Heading1" },
             content: [
               {
                 type: "run" as const,
@@ -355,6 +541,23 @@ const assertSingularRunPropertyChanges = (xml: string, expectedRunCount: number)
 };
 
 describe("tracked run formatting", () => {
+  test("public snapshots distinguish direct formatting from paragraph and character styles", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await createSnapshotFormattingProvenanceDocument(),
+    );
+
+    expectSnapshotFormattingProvenance(reviewer.snapshot());
+  });
+
+  test("public snapshot formatting provenance survives save and reopen", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(
+      await createSnapshotFormattingProvenanceDocument(),
+    );
+    const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+
+    expectSnapshotFormattingProvenance(reopened.snapshot());
+  });
+
   test("snapshot preserves same-valued direct font properties", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await createSameValuedDirectFormattingDocument(),
@@ -859,6 +1062,14 @@ describe("tracked run formatting", () => {
     if (!snapshot || !range) {
       throw new Error("expected a header formatting range");
     }
+    expect(snapshot.blocks.at(0)?.previewRuns).toEqual([
+      {
+        text: "Header target",
+        bold: true,
+        fontFamily: "Arial",
+        fontSizePt: 20,
+      },
+    ]);
 
     const result = reviewer.applyDocumentOperationsToStory({
       story,
@@ -872,6 +1083,24 @@ describe("tracked run formatting", () => {
       snapshot,
     });
     expect(result.skipped).toEqual([]);
+    expect(
+      reviewer.readReviewedStory({ story, view: "final" })?.snapshot.blocks.at(0)?.previewRuns,
+    ).toEqual([
+      {
+        text: "Header",
+        bold: true,
+        italic: true,
+        fontFamily: "Arial",
+        fontSizePt: 20,
+        directFormatting: { italic: true },
+      },
+      {
+        text: " target",
+        bold: true,
+        fontFamily: "Arial",
+        fontSizePt: 20,
+      },
+    ]);
 
     const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
     expect(reopened.readReviewedStory({ story, view: "current-markup" })?.changes).toEqual([

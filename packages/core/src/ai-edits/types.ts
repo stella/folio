@@ -19,6 +19,7 @@ export type FolioAIBlockPreviewRun = {
   fontFamily?: string;
   fontSizePt?: number;
   color?: string;
+  /** Authored run properties only; paragraph and character-style values stay inherited. */
   directFormatting?: FolioAIInlineFormatting;
 };
 

@@ -3,9 +3,19 @@ import type { Mark, Node as PMNode } from "prosemirror-model";
 import { TableMap } from "prosemirror-tables";
 
 import { expectParagraphAttrs, expectRunFormattingOverrideMarkAttrs } from "../prosemirror/attrs";
+import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
 import { directParagraphAlignment } from "../prosemirror/paragraphAlignment";
 import { directParagraphSpacing } from "../prosemirror/paragraphSpacing";
+import {
+  paragraphFormattingForRun,
+  paragraphRunStyleContext,
+  resolveEffectiveRunStyleFormatting,
+  type RunStyleResolver,
+} from "../prosemirror/runStyleFormatting";
+import { authoredRunFormattingFromAttrs } from "../prosemirror/runFormattingProvenance";
+import type { TextFormatting } from "../types/document";
 import { deriveBlankBlockId, deriveBlockId, type FolioBlockId } from "../types/block-id";
+import { mergeTextFormatting } from "../utils/textFormattingMerge";
 import { buildCleanBlockText } from "./clean-text";
 import type {
   FolioAIBlock,
@@ -232,7 +242,10 @@ const getTableLocation = ({
   return undefined;
 };
 
-export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
+const createFolioAIEditSnapshotInternal = (
+  doc: PMNode,
+  styleResolver: RunStyleResolver | null,
+): FolioAIEditSnapshot => {
   const draftBlocks: {
     block: FolioAIBlock;
     anchor: Omit<FolioAIBlockAnchor, "hashOccurrenceCount">;
@@ -314,7 +327,7 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
     }
     const directAlignment = getDirectAlignment(node);
     const directSpacing = getDirectSpacing(node);
-    const previewRuns = getPreviewRuns(node);
+    const previewRuns = getPreviewRuns(node, styleResolver);
     const table = getTableLocation({ path, blockIndex: index, tableIndexByStart });
 
     draftBlocks.push({
@@ -357,6 +370,15 @@ export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot => {
   numberingReferenceKeysBySnapshot.set(snapshot, [...numberingReferenceKeys]);
   return snapshot;
 };
+
+export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot =>
+  createFolioAIEditSnapshotInternal(doc, null);
+
+/** @internal Use for an EditorState that owns the document's style resolver. */
+export const createFolioAIEditSnapshotWithStyleResolver = (
+  doc: PMNode,
+  styleResolver: RunStyleResolver | null,
+): FolioAIEditSnapshot => createFolioAIEditSnapshotInternal(doc, styleResolver);
 
 const getBlockKind = (node: PMNode, headingLevel: number | undefined): FolioAIBlockKind => {
   const listMarker: unknown = node.attrs["listMarker"];
@@ -457,9 +479,20 @@ type PreviewRunStyle = {
 
 const DELETION_MARK = "deletion";
 
-const getPreviewRuns = (node: PMNode): FolioAIBlockPreviewRun[] | undefined => {
+const getPreviewRuns = (
+  node: PMNode,
+  styleResolver: RunStyleResolver | null,
+): FolioAIBlockPreviewRun[] | undefined => {
   const runs: FolioAIBlockPreviewRun[] = [];
   const defaultStyle = getDefaultPreviewRunStyle(node);
+  const paragraphStyleContext = paragraphRunStyleContext(node, styleResolver);
+  const formattingOptions = {
+    baseParagraphFormatting: paragraphStyleContext.baseParagraphFormatting,
+    inheritedFormatting: paragraphStyleContext.paragraphFormatting,
+    paragraphMarkFormatting: paragraphStyleContext.paragraphMarkFormatting,
+    paragraphMarkPrecedesStyle: paragraphStyleContext.paragraphMarkPrecedesStyle,
+    styleResolver,
+  };
 
   node.descendants((child) => {
     if (!child.isText || child.text === undefined) {
@@ -469,8 +502,28 @@ const getPreviewRuns = (node: PMNode): FolioAIBlockPreviewRun[] | undefined => {
       return false;
     }
 
-    const style = getPreviewRunStyle(child.marks, defaultStyle);
-    const directFormatting = getDirectPreviewRunStyle(child.marks, defaultStyle);
+    const directTextFormatting = marksToTextFormatting(child.marks, formattingOptions);
+    const style = styleResolver
+      ? getPreviewRunStyleFromTextFormatting(
+          mergeTextFormatting(
+            resolveEffectiveRunStyleFormatting({
+              marks: child.marks,
+              paragraphFormatting: paragraphFormattingForRun(
+                child.marks,
+                paragraphStyleContext,
+                directTextFormatting,
+              ),
+              styleResolver,
+            }),
+            directTextFormatting,
+          ) ?? {},
+        )
+      : getPreviewRunStyle(child.marks, defaultStyle);
+    const directFormatting = getDirectPreviewRunStyle(
+      child.marks,
+      directTextFormatting,
+      styleResolver,
+    );
     const previous = runs.at(-1);
     if (
       previous &&
@@ -561,50 +614,59 @@ const getPreviewRunStyle = (
   return style;
 };
 
+const getPreviewRunStyleFromTextFormatting = (formatting: TextFormatting): PreviewRunStyle => ({
+  ...getBooleanTextFormatting(formatting),
+  ...(formatting.doubleStrike === true && { strike: true }),
+  ...getFontSizeTextFormatting(formatting),
+  ...getFontFamilyTextFormatting(formatting),
+  ...getColorTextFormatting(formatting),
+});
+
 const getDirectPreviewRunStyle = (
   marks: readonly Mark[],
-  inheritedStyle: PreviewRunStyle,
+  formatting: TextFormatting,
+  styleResolver: RunStyleResolver | null,
 ): PreviewRunStyle => {
-  const markedStyle = getPreviewRunStyle(marks, {});
-  const directStyle: PreviewRunStyle = {};
-  const overrideMark = marks.find(({ type }) => type.name === "runFormattingOverride");
-  const hasCharacterStyle = marks.some(({ type }) => type.name === "characterStyle");
-  if (hasCharacterStyle && overrideMark === undefined) {
-    return directStyle;
-  }
-  const hasFormattingProvenance = overrideMark !== undefined || hasCharacterStyle;
-  const directFontProperties = overrideMark
-    ? expectRunFormattingOverrideMarkAttrs(overrideMark).directFontProperties
-    : undefined;
-
-  for (const property of ["bold", "italic", "underline", "strike"] as const) {
-    if (Boolean(markedStyle[property]) !== Boolean(inheritedStyle[property])) {
-      directStyle[property] = Boolean(markedStyle[property]);
+  let directFormatting = formatting;
+  if (!styleResolver) {
+    const overrideMark = marks.find(({ type }) => type.name === "runFormattingOverride");
+    const authoredFormatting = overrideMark
+      ? authoredRunFormattingFromAttrs(expectRunFormattingOverrideMarkAttrs(overrideMark))
+      : undefined;
+    if (authoredFormatting !== undefined) {
+      directFormatting = authoredFormatting;
+    } else if (marks.some(({ type }) => type.name === "characterStyle")) {
+      directFormatting = {};
     }
   }
-  if (
-    markedStyle.fontFamily !== undefined &&
-    (hasFormattingProvenance
-      ? directFontProperties?.includes("fontFamily")
-      : markedStyle.fontFamily !== inheritedStyle.fontFamily)
-  ) {
-    directStyle.fontFamily = markedStyle.fontFamily;
+
+  const directStyle: PreviewRunStyle = {};
+  for (const property of ["bold", "italic"] as const) {
+    if (directFormatting[property] !== undefined) {
+      directStyle[property] = directFormatting[property];
+    }
   }
-  if (
-    markedStyle.fontSizePt !== undefined &&
-    (hasFormattingProvenance
-      ? directFontProperties?.includes("fontSize")
-      : markedStyle.fontSizePt !== inheritedStyle.fontSizePt)
-  ) {
-    directStyle.fontSizePt = markedStyle.fontSizePt;
+  if (directFormatting.underline !== undefined) {
+    directStyle.underline = isUnderlineEnabled(directFormatting.underline);
   }
-  if (
-    markedStyle.color !== undefined &&
-    (hasFormattingProvenance
-      ? directFontProperties?.includes("color")
-      : markedStyle.color !== inheritedStyle.color)
-  ) {
-    directStyle.color = markedStyle.color;
+  if (directFormatting.strike !== undefined) {
+    directStyle.strike = directFormatting.strike;
+  } else if (directFormatting.doubleStrike === true) {
+    directStyle.strike = true;
+  }
+  const fontFamily = directFormatting.fontFamily
+    ? getFontFamilyFromAttrs(directFormatting.fontFamily)
+    : undefined;
+  if (fontFamily !== undefined) {
+    directStyle.fontFamily = fontFamily;
+  }
+  const fontSizePt = getFontSizeTextFormatting(directFormatting).fontSizePt;
+  if (fontSizePt !== undefined) {
+    directStyle.fontSizePt = fontSizePt;
+  }
+  const color = directFormatting.color ? getColorFromAttrs(directFormatting.color) : undefined;
+  if (color !== undefined) {
+    directStyle.color = color;
   }
 
   return directStyle;

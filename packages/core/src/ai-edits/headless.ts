@@ -60,7 +60,10 @@ import {
   hasStructuralChanges,
   hasUntrackedChanges,
 } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
-import { createDocumentStylesPlugin } from "../prosemirror/plugins/documentStyles";
+import {
+  createDocumentStylesPlugin,
+  getDocumentStyleResolver,
+} from "../prosemirror/plugins/documentStyles";
 import { schema, singletonManager } from "../prosemirror/schema";
 import type { Comment } from "../types/content";
 import type { Document, Endnote, Footnote, HeaderFooter } from "../types/document";
@@ -86,7 +89,7 @@ import {
   type FolioReviewChangeKind,
 } from "./read";
 import {
-  createFolioAIEditSnapshot,
+  createFolioAIEditSnapshotWithStyleResolver,
   folioStoryTables,
   isFolioAIContentBlock,
   normalizeFolioAIBlockText,
@@ -448,8 +451,11 @@ const createHeadlessPlugins = (styles: Document["package"]["styles"]): Plugin[] 
   createDocumentStylesPlugin(styles),
 ];
 
+const createStateSnapshot = (state: EditorState): FolioAIEditSnapshot =>
+  createFolioAIEditSnapshotWithStyleResolver(state.doc, getDocumentStyleResolver(state));
+
 const formatStoryStateForLLM = (state: EditorState, annotated: boolean): string => {
-  const snapshot = createFolioAIEditSnapshot(state.doc);
+  const snapshot = createStateSnapshot(state);
   // A reading surface shows content. The snapshot also carries the document's
   // blank paragraphs, which are structure rather than something to read.
   const blocks = snapshot.blocks.filter(isFolioAIContentBlock);
@@ -675,7 +681,7 @@ export class FolioDocxReviewer {
    * the anchor map the apply layer resolves operations against.
    */
   snapshot(): FolioAIEditSnapshot {
-    return createFolioAIEditSnapshot(this.state.doc);
+    return createStateSnapshot(this.state);
   }
 
   /**
@@ -739,7 +745,7 @@ export class FolioDocxReviewer {
   /** Snapshot one editable story into stable, operation-ready blocks. */
   snapshotStory(story: FolioEditableDocumentStoryHandle): FolioAIEditSnapshot | null {
     const state = this.getEditableStoryState(story);
-    return state ? createFolioAIEditSnapshot(state.doc) : null;
+    return state ? createStateSnapshot(state) : null;
   }
 
   /**
@@ -823,7 +829,7 @@ export class FolioDocxReviewer {
     return {
       story,
       view,
-      snapshot: createFolioAIEditSnapshot(state.doc),
+      snapshot: createStateSnapshot(state),
       text: formatStoryStateForLLM(state, view === "current-markup"),
       changes: getTrackedChangesFromDoc(state.doc),
     };
@@ -846,7 +852,7 @@ export class FolioDocxReviewer {
     this.resolvedStoryExpectations.set(editableStoryKey(story), {
       story,
       text: formatStoryStateForLLM(resolvedState, false),
-      blocks: createFolioAIEditSnapshot(resolvedState.doc).blocks,
+      blocks: createStateSnapshot(resolvedState).blocks,
     });
     return true;
   }
@@ -935,7 +941,7 @@ export class FolioDocxReviewer {
 
     const result = applyFolioDocumentOperations({
       view,
-      snapshot: snapshot ?? createFolioAIEditSnapshot(beforeState.doc),
+      snapshot: snapshot ?? createStateSnapshot(beforeState),
       batch,
       story: story.type === "main" ? "main" : story,
       author: this.author,
@@ -1424,9 +1430,7 @@ export class FolioDocxReviewer {
       const serializedText = serializedState
         ? formatStoryStateForLLM(serializedState, false)
         : null;
-      const serializedBlocks = serializedState
-        ? createFolioAIEditSnapshot(serializedState.doc).blocks
-        : null;
+      const serializedBlocks = serializedState ? createStateSnapshot(serializedState).blocks : null;
       const mismatches: FolioResolvedStorySerializationMismatch[] = [];
       if (!serialized || !serializedState) {
         mismatches.push(FOLIO_RESOLVED_STORY_SERIALIZATION_MISMATCHES.storyMissing);
