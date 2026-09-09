@@ -237,6 +237,56 @@ const createMixedInlineCarrierFormattingDocument = (): Document => {
   return document;
 };
 
+const createUnformattedMixedInlineCarrierDocument = (): Document => {
+  const document = createEmptyDocument();
+  document.package.document.content = [
+    {
+      type: "paragraph",
+      paraId: "A1000095",
+      content: [
+        { type: "run", content: [{ type: "text", text: "A" }] },
+        { type: "run", content: [{ type: "tab" }] },
+        { type: "run", content: [{ type: "break", breakType: "textWrapping" }] },
+        {
+          type: "run",
+          content: [{ type: "symbol", font: "Wingdings", char: "F06F" }],
+        },
+        {
+          type: "simpleField",
+          instruction: " PAGE ",
+          fieldType: "PAGE",
+          content: [{ type: "run", content: [{ type: "text", text: "1" }] }],
+        },
+        {
+          type: "simpleField",
+          instruction: " REF carrier ",
+          fieldType: "REF",
+          content: [
+            {
+              type: "hyperlink",
+              anchor: "carrier",
+              children: [{ type: "run", content: [{ type: "text", text: "field" }] }],
+            },
+          ],
+        },
+      ],
+    },
+  ];
+  return document;
+};
+
+const createMixedInlineCarrierDocumentWithPendingTab = (): Document => {
+  const document = createUnformattedMixedInlineCarrierDocument();
+  const paragraph = document.package.document.content.at(0);
+  const tabRun = paragraph?.type === "paragraph" ? paragraph.content.at(1) : undefined;
+  if (tabRun?.type !== "run") {
+    throw new Error("expected a tab run fixture");
+  }
+  tabRun.formatting = { bold: true };
+  tabRun.propertyChanges = [inlineCarrierChange(899)];
+  return document;
+};
+
 const createSameIdInlineCarrierState = (): EditorState => {
   const change = schema.mark("runPropertyChange", { changes: [INLINE_CARRIER_CHANGE] });
   const marks = [schema.mark("bold"), change];
@@ -663,6 +713,132 @@ describe("tracked run formatting", () => {
       expect(reopened.getChanges()).toEqual([]);
       expect(countXmlElements(await documentXml(resolved), "b")).toBe(mode === "accept" ? 6 : 0);
     }
+  });
+
+  test.each(["direct", "tracked-changes"] as const)(
+    "%s formatting uses the serializer carrier contract for every supported inline run",
+    async (mode) => {
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        await createDocx(createUnformattedMixedInlineCarrierDocument()),
+        { author: "Reviewer" },
+      );
+      const block = reviewer.snapshot().blocks.at(0);
+      const range = block
+        ? createFolioAITextRangeHandle({
+            blockId: block.id,
+            text: block.text,
+            startOffset: 0,
+            endOffset: block.text.length,
+          })
+        : null;
+      if (!range) {
+        throw new Error("expected a mixed-carrier formatting range");
+      }
+
+      const result = reviewer.applyDocumentOperations(
+        {
+          version: 1,
+          mode,
+          operations: [
+            {
+              id: "format-carriers",
+              type: "formatRange",
+              range,
+              formatting: {
+                bold: true,
+                fontFamily: "Georgia",
+                fontSizePt: 10.5,
+                color: "C00000",
+              },
+            },
+          ],
+        },
+        { revisionStamp: { date: "2026-09-09T00:00:00.000Z", idSeed: 900 } },
+      );
+      expect(result.skipped).toEqual([]);
+      if (mode === "tracked-changes") {
+        expect(result.applied.at(0)?.revisionIds).toEqual([900, 901, 902, 903, 904, 905]);
+        expect(result.nextRevisionId).toBe(906);
+      }
+      const formatted = await reviewer.toBuffer();
+      const formattedXml = await documentXml(formatted);
+      expect(countXmlElements(formattedXml, "b")).toBe(6);
+      expect(countXmlElements(formattedXml, "rFonts")).toBe(6);
+      expect(countXmlElements(formattedXml, "sz")).toBe(6);
+      expect(countXmlElements(formattedXml, "color")).toBe(6);
+
+      if (mode === "direct") {
+        expect(formattedXml).not.toContain("<w:rPrChange ");
+        expect((await FolioDocxReviewer.fromBuffer(formatted)).getChanges()).toEqual([]);
+        return;
+      }
+
+      assertSingularRunPropertyChanges(formattedXml, 6);
+      const symbol = decodeOoxmlSymbolCharacter("F06F");
+      if (!symbol) {
+        throw new Error("expected a decodable symbol fixture");
+      }
+      expect((await FolioDocxReviewer.fromBuffer(formatted)).getChanges()).toEqual(
+        ["A", "\t", "\n", symbol, "1", "field"].map((text, index) =>
+          expect.objectContaining({ id: 900 + index, type: "formatting", text }),
+        ),
+      );
+      for (const decision of ["accept", "reject"] as const) {
+        const resolving = await FolioDocxReviewer.fromBuffer(formatted);
+        if (decision === "accept") {
+          resolving.acceptAll();
+        } else {
+          resolving.rejectAll();
+        }
+        const resolved = await resolving.toBuffer();
+        const resolvedXml = await documentXml(resolved);
+        expect(resolvedXml).not.toContain("<w:rPrChange ");
+        expect(countXmlElements(resolvedXml, "b")).toBe(decision === "accept" ? 6 : 0);
+        expect(countXmlElements(resolvedXml, "rFonts")).toBe(decision === "accept" ? 6 : 0);
+        expect(countXmlElements(resolvedXml, "sz")).toBe(decision === "accept" ? 6 : 0);
+        expect(countXmlElements(resolvedXml, "color")).toBe(decision === "accept" ? 6 : 0);
+        expect((await FolioDocxReviewer.fromBuffer(resolved)).getChanges()).toEqual([]);
+      }
+    },
+  );
+
+  test("a pending owner on one inline carrier refuses the whole formatting transaction", async () => {
+    const baseline = await createDocx(createMixedInlineCarrierDocumentWithPendingTab());
+    const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "Reviewer" });
+    const before = await reviewer.toBuffer();
+    const snapshot = reviewer.snapshot();
+    const block = snapshot.blocks.at(0);
+    const range = block
+      ? createFolioAITextRangeHandle({
+          blockId: block.id,
+          text: block.text,
+          startOffset: 0,
+          endOffset: block.text.length,
+        })
+      : null;
+    if (!range) {
+      throw new Error("expected a mixed-carrier formatting range");
+    }
+
+    const result = reviewer.applyDocumentOperations(
+      {
+        version: 1,
+        mode: "tracked-changes",
+        operations: [
+          { id: "format-carriers", type: "formatRange", range, formatting: { italic: true } },
+        ],
+      },
+      { revisionStamp: { date: "2026-09-09T00:00:00.000Z", idSeed: 900 } },
+    );
+
+    expect(result.applied).toEqual([]);
+    expect(result.skipped).toEqual([{ id: "format-carriers", reason: "pendingRunPropertyChange" }]);
+    expect(result.nextRevisionId).toBe(900);
+    expect(reviewer.snapshot()).toEqual(snapshot);
+    expect(await documentXml(await reviewer.toBuffer())).toBe(await documentXml(before));
+    expect(reviewer.getChanges()).toEqual([
+      expect.objectContaining({ id: 899, type: "formatting", text: "\t" }),
+    ]);
   });
 
   test("uses the same operation in a secondary document story", async () => {

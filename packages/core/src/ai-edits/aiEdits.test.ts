@@ -1664,7 +1664,8 @@ describe("Folio AI edit operations", () => {
     });
 
     expect(result.skipped).toEqual([]);
-    expect(result.applied[0]?.revisionIds).toEqual([1, 2, 4]);
+    expect(result.applied[0]?.revisionIds).toEqual([1, 2, 3]);
+    expect(result.nextRevisionId).toBe(4);
     expect(view.state.doc.firstChild?.attrs["styleId"]).toBe("ClauseHeading1");
   });
 
@@ -1692,7 +1693,7 @@ describe("Folio AI edit operations", () => {
 
     expect(result.skipped).toEqual([]);
     expect(result.applied[0]?.revisionIds).toEqual([1, 2]);
-    expect(result.nextRevisionId).toBe(4);
+    expect(result.nextRevisionId).toBe(3);
   });
 
   test.each(["direct", "tracked-changes"] as const)(

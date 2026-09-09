@@ -67,6 +67,12 @@ export type RunFormattingCarrier = {
   representations: readonly RunFormattingCarrierRepresentation[];
 };
 
+export type SelectedRunFormattingCarrierRepresentation = RunFormattingCarrierRepresentation & {
+  carrierDisposition: RunFormattingCarrier["disposition"];
+  from: number;
+  to: number;
+};
+
 /**
  * Expand one logical carrier into every editor node that materializes its run
  * properties. A structured field is owned by its outer atom, while its result
@@ -108,6 +114,58 @@ export const expandRunFormattingCarrier = (
     return false;
   });
   return { disposition, node, position, representations };
+};
+
+type SelectRunFormattingCarrierRepresentationsOptions = {
+  doc: PMNode;
+  from: number;
+  to: number;
+};
+
+/**
+ * Resolve a document range to the exact editor nodes that serialize run
+ * properties. The result is shared by every formatting mutation so preflight,
+ * direct edits, and tracked edits cannot disagree about ownership.
+ */
+export const selectRunFormattingCarrierRepresentations = ({
+  doc,
+  from,
+  to,
+}: SelectRunFormattingCarrierRepresentationsOptions): SelectedRunFormattingCarrierRepresentation[] => {
+  const selected: SelectedRunFormattingCarrierRepresentation[] = [];
+  doc.nodesBetween(from, to, (node, position) => {
+    if (!node.isInline) {
+      return true;
+    }
+    const carrier = expandRunFormattingCarrier(node, position);
+    if (!carrier) {
+      return !node.isAtom;
+    }
+
+    for (const representation of carrier.representations) {
+      const representationFrom = Math.max(from, representation.position);
+      const representationTo = Math.min(to, representation.position + representation.node.nodeSize);
+      if (representationFrom >= representationTo) {
+        continue;
+      }
+      if (
+        carrier.disposition === "structured-field" &&
+        representation.role === "owner" &&
+        (representationFrom !== representation.position ||
+          representationTo !== representation.position + representation.node.nodeSize)
+      ) {
+        continue;
+      }
+      selected.push({
+        ...representation,
+        carrierDisposition: carrier.disposition,
+        from: representationFrom,
+        to: representationTo,
+      });
+    }
+    return false;
+  });
+  return selected;
 };
 
 /** Deterministic visible text for one logical formatting revision carrier. */

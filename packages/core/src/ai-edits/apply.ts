@@ -1,4 +1,4 @@
-import type { Mark, MarkType, Node as PMNode, Schema } from "prosemirror-model";
+import { Mark, type MarkType, type Node as PMNode, type Schema } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 import { canJoin, canSplit } from "prosemirror-transform";
@@ -23,6 +23,11 @@ import {
 } from "../prosemirror/paragraphSpacing";
 import { getDocumentStyleResolver } from "../prosemirror/plugins/documentStyles";
 import { paragraphRunStyleContextAt } from "../prosemirror/runStyleFormatting";
+import {
+  selectRunFormattingCarrierRepresentations,
+  type SelectedRunFormattingCarrierRepresentation,
+} from "../prosemirror/runFormattingInlineCarriers";
+import { hasRunFormattingOverrideAttrs } from "../prosemirror/runFormattingProvenance";
 import type { ParagraphPropertyChangeAttrs } from "../prosemirror/schema/nodes";
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
 import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
@@ -34,7 +39,7 @@ import {
 } from "../prosemirror/containerFinalParagraph";
 import { isZeroWidthAnchor } from "../prosemirror/zeroWidthAnchors";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
-import type { ParagraphFormatting, RunPropertyChange } from "../types/document";
+import type { ParagraphFormatting, RunPropertyChange, TextFormatting } from "../types/document";
 import { stripBlockIdentityAttrs } from "./block-identity";
 import { buildCleanBlockText } from "./clean-text";
 import {
@@ -778,6 +783,33 @@ const applyInlineFormatting = ({
   formatting,
   includedProperties,
 }: ApplyInlineFormattingOptions): Transaction => {
+  const representations = selectRunFormattingCarrierRepresentations({ doc: tr.doc, from, to });
+  for (const representation of representations) {
+    const marks = updatedInlineFormattingMarks({
+      marks: representation.node.marks,
+      schema,
+      formatting,
+      ...(includedProperties ? { includedProperties } : {}),
+    });
+    applyMarksToRunFormattingRepresentation({ tr, representation, marks });
+  }
+  return tr;
+};
+
+type UpdatedInlineFormattingMarksOptions = Pick<
+  ApplyInlineFormattingOptions,
+  "formatting" | "includedProperties" | "schema"
+> & {
+  marks: readonly Mark[];
+};
+
+const updatedInlineFormattingMarks = ({
+  marks,
+  schema,
+  formatting,
+  includedProperties,
+}: UpdatedInlineFormattingMarksOptions): readonly Mark[] => {
+  let nextMarks: readonly Mark[] = [...marks];
   for (const [property, value] of Object.entries(formatting)) {
     if (includedProperties && !includedProperties.includes(property)) {
       continue;
@@ -787,37 +819,28 @@ const applyInlineFormatting = ({
     if (!markType) {
       continue;
     }
+    nextMarks = nextMarks.filter((mark) => mark.type !== markType);
     if (value !== false && value !== null) {
       const attrs = formattingMarkAttrs(property, value);
       if (attrs) {
-        tr.addMark(from, to, markType.create(attrs));
+        nextMarks = markType.create(attrs).addToSet(nextMarks);
       }
-      continue;
     }
-    tr.removeMark(from, to, markType);
   }
-  applyDirectFontProvenance({
-    tr,
+  return updatedDirectFontProvenanceMarks({
+    marks: nextMarks,
     schema,
-    from,
-    to,
     formatting,
     ...(includedProperties ? { includedProperties } : {}),
   });
-  return tr;
 };
 
-const applyDirectFontProvenance = ({
-  tr,
+const updatedDirectFontProvenanceMarks = ({
+  marks,
   schema,
-  from,
-  to,
   formatting,
   includedProperties,
-}: ApplyInlineFormattingOptions): void => {
-  if ("highlight" in formatting) {
-    return;
-  }
+}: UpdatedInlineFormattingMarksOptions): readonly Mark[] => {
   const updates = [
     ["fontFamily", "fontFamily", formatting.fontFamily],
     ["fontSize", "fontSizePt", formatting.fontSizePt],
@@ -829,43 +852,64 @@ const applyDirectFontProvenance = ({
   );
   const markType = schema.marks["runFormattingOverride"];
   if (!markType || changed.length === 0) {
-    return;
+    return marks;
   }
 
-  tr.doc.nodesBetween(from, to, (node, pos) => {
-    if (!node.isText) {
-      return;
+  const existing = marks.find((mark) => mark.type === markType);
+  const attrs = existing ? expectRunFormattingOverrideMarkAttrs(existing) : {};
+  const directFontProperties = new Set(attrs.directFontProperties);
+  for (const [property, , value] of changed) {
+    if (value === null) {
+      directFontProperties.delete(property);
+    } else {
+      directFontProperties.add(property);
     }
-    const segmentFrom = Math.max(from, pos);
-    const segmentTo = Math.min(to, pos + node.nodeSize);
-    const existing = node.marks.find((mark) => mark.type === markType);
-    const attrs = existing ? expectRunFormattingOverrideMarkAttrs(existing) : {};
-    const directFontProperties = new Set(attrs.directFontProperties);
-    for (const [property, , value] of changed) {
-      if (value === null) {
-        directFontProperties.delete(property);
-      } else {
-        directFontProperties.add(property);
-      }
-    }
+  }
 
-    tr.removeMark(segmentFrom, segmentTo, markType);
-    const nextAttrs = {
-      ...attrs,
-      directFontProperties: DIRECT_FONT_PROPERTIES.filter((property) =>
-        directFontProperties.has(property),
-      ),
-    };
-    if (
-      Object.entries(nextAttrs).some(([key, value]) =>
-        key === "directFontProperties"
-          ? Array.isArray(value) && value.length > 0
-          : value !== null && value !== undefined,
-      )
-    ) {
-      tr.addMark(segmentFrom, segmentTo, markType.create(nextAttrs));
+  const nextAttrs = { ...attrs };
+  const orderedDirectFontProperties = DIRECT_FONT_PROPERTIES.filter((property) =>
+    directFontProperties.has(property),
+  );
+  if (orderedDirectFontProperties.length > 0) {
+    nextAttrs.directFontProperties = orderedDirectFontProperties;
+  } else {
+    delete nextAttrs.directFontProperties;
+  }
+  const withoutExisting = marks.filter((mark) => mark.type !== markType);
+  return hasRunFormattingOverrideAttrs(nextAttrs)
+    ? markType.create(nextAttrs).addToSet(withoutExisting)
+    : withoutExisting;
+};
+
+type ApplyMarksToRunFormattingRepresentationOptions = {
+  tr: Transaction;
+  representation: SelectedRunFormattingCarrierRepresentation;
+  marks: readonly Mark[];
+};
+
+const applyMarksToRunFormattingRepresentation = ({
+  tr,
+  representation,
+  marks,
+}: ApplyMarksToRunFormattingRepresentationOptions): void => {
+  const { node, position, from, to } = representation;
+  if (Mark.sameSet(node.marks, marks)) {
+    return;
+  }
+  if (!node.isText) {
+    tr.setNodeMarkup(position, undefined, node.attrs, marks);
+    return;
+  }
+  for (const current of node.marks) {
+    if (!marks.some((candidate) => candidate.eq(current))) {
+      tr.removeMark(from, to, current.type);
     }
-  });
+  }
+  for (const next of marks) {
+    if (!node.marks.some((candidate) => candidate.eq(next))) {
+      tr.addMark(from, to, next);
+    }
+  }
 };
 
 const directFontPropertyForFormattingProperty = (
@@ -940,7 +984,7 @@ const formattingChangesForMarks = (
 
 type ApplyTrackedInlineFormattingOptions = ApplyInlineFormattingOptions & {
   doc: PMNode;
-  revisionId: number;
+  revisionIdSeed: number;
   author: string;
   date: string;
   /** Optional author initials (w:initials) stamped alongside the author. */
@@ -956,7 +1000,7 @@ type ClearReplacementBackgroundOptions = {
   from: number;
   to: number;
   mode: FolioAIEditApplyMode;
-  revisionId: number;
+  revisionIdSeed: number;
   author: string;
   date: string;
   initials?: string | undefined;
@@ -965,8 +1009,18 @@ type ClearReplacementBackgroundOptions = {
 };
 
 type TrackedInlineFormattingResult =
-  | { type: "applied"; transaction: Transaction }
-  | { type: "pendingRunPropertyChange"; transaction: Transaction };
+  | {
+      type: "applied";
+      transaction: Transaction;
+      revisionIds: readonly number[];
+      nextRevisionId: number;
+    }
+  | {
+      type: "pendingRunPropertyChange";
+      transaction: Transaction;
+      revisionIds: readonly [];
+      nextRevisionId: number;
+    };
 
 const clearReplacementBackground = ({
   tr,
@@ -974,7 +1028,7 @@ const clearReplacementBackground = ({
   from,
   to,
   mode,
-  revisionId,
+  revisionIdSeed,
   author,
   date,
   initials,
@@ -985,7 +1039,12 @@ const clearReplacementBackground = ({
     (markType) => markType !== undefined && tr.doc.rangeHasMark(from, to, markType),
   );
   if (!hasBackground) {
-    return { type: "applied", transaction: tr };
+    return {
+      type: "applied",
+      transaction: tr,
+      revisionIds: [],
+      nextRevisionId: revisionIdSeed,
+    };
   }
   if (mode === "direct") {
     return {
@@ -997,6 +1056,8 @@ const clearReplacementBackground = ({
         to,
         formatting: REPLACEMENT_BACKGROUND_CLEAR_FORMATTING,
       }),
+      revisionIds: [],
+      nextRevisionId: revisionIdSeed,
     };
   }
   return applyTrackedInlineFormatting({
@@ -1006,7 +1067,7 @@ const clearReplacementBackground = ({
     from,
     to,
     formatting: REPLACEMENT_BACKGROUND_CLEAR_FORMATTING,
-    revisionId,
+    revisionIdSeed,
     author,
     date,
     initials,
@@ -1022,7 +1083,7 @@ const applyTrackedInlineFormatting = ({
   from,
   to,
   formatting,
-  revisionId,
+  revisionIdSeed,
   author,
   date,
   initials,
@@ -1031,35 +1092,36 @@ const applyTrackedInlineFormatting = ({
 }: ApplyTrackedInlineFormattingOptions): TrackedInlineFormattingResult => {
   const propertyChangeType = schema.marks["runPropertyChange"];
   if (!propertyChangeType) {
-    return { type: "applied", transaction: tr };
+    return {
+      type: "applied",
+      transaction: tr,
+      revisionIds: [],
+      nextRevisionId: revisionIdSeed,
+    };
   }
 
   const segments: {
-    from: number;
-    to: number;
+    representation: SelectedRunFormattingCarrierRepresentation;
     includedProperties: string[];
-    change: RunPropertyChange;
+    previousFormatting: TextFormatting;
   }[] = [];
   let hasPendingRunPropertyChange = false;
-  doc.nodesBetween(from, to, (node, pos) => {
-    if (!node.isText) {
-      return;
-    }
+  const representations = selectRunFormattingCarrierRepresentations({ doc, from, to });
+  for (const representation of representations) {
+    const { node } = representation;
     const includedProperties = formattingChangesForMarks(node.marks, formatting);
     if (includedProperties.length === 0) {
-      return;
+      continue;
     }
-    const segmentFrom = Math.max(from, pos);
-    const segmentTo = Math.min(to, pos + node.nodeSize);
     const existingMark = node.marks.find((mark) => mark.type === propertyChangeType);
     // A run-property container has one revision slot. Appending would create
     // invalid OOXML; merging would make two independently resolvable edits
     // share one owner. Refuse the whole operation before mutating any segment.
     if (existingMark && expectRunPropertyChangeMarkAttrs(existingMark).changes.length > 0) {
       hasPendingRunPropertyChange = true;
-      return;
+      continue;
     }
-    const styleContext = paragraphRunStyleContextAt(doc, segmentFrom, styleResolver);
+    const styleContext = paragraphRunStyleContextAt(doc, representation.from, styleResolver);
     const previousFormatting = marksToTextFormatting(node.marks, {
       baseParagraphFormatting: styleContext.baseParagraphFormatting,
       inheritedFormatting: styleContext.paragraphFormatting,
@@ -1067,42 +1129,62 @@ const applyTrackedInlineFormatting = ({
       paragraphMarkPrecedesStyle: styleContext.paragraphMarkPrecedesStyle,
       ...(styleResolver !== undefined ? { styleResolver } : {}),
     });
+    segments.push({
+      representation,
+      includedProperties,
+      previousFormatting,
+    });
+  }
+
+  if (hasPendingRunPropertyChange) {
+    return {
+      type: "pendingRunPropertyChange",
+      transaction: tr,
+      revisionIds: [],
+      nextRevisionId: revisionIdSeed,
+    };
+  }
+  if (segments.length === 0) {
+    return {
+      type: "applied",
+      transaction: tr,
+      revisionIds: [],
+      nextRevisionId: revisionIdSeed,
+    };
+  }
+  const suggestionAttrs = suggestionId === null ? {} : { provenance: "suggested", suggestionId };
+  const revisionIds: number[] = [];
+  for (const segment of segments) {
+    const revisionId = revisionIdSeed + revisionIds.length;
+    revisionIds.push(revisionId);
     const change: RunPropertyChange = {
       type: "runPropertyChange",
       info: { id: revisionId, author, date, ...(initials ? { initials } : {}) },
-      ...(Object.keys(previousFormatting).length > 0 ? { previousFormatting } : {}),
+      ...(Object.keys(segment.previousFormatting).length > 0
+        ? { previousFormatting: segment.previousFormatting }
+        : {}),
     };
-    segments.push({
-      from: segmentFrom,
-      to: segmentTo,
-      includedProperties,
-      change,
-    });
-  });
-
-  if (hasPendingRunPropertyChange) {
-    return { type: "pendingRunPropertyChange", transaction: tr };
-  }
-  if (segments.length === 0) {
-    return { type: "applied", transaction: tr };
-  }
-  const suggestionAttrs = suggestionId === null ? {} : { provenance: "suggested", suggestionId };
-  for (const segment of segments) {
-    applyInlineFormatting({
-      tr,
+    const formattingMarks = updatedInlineFormattingMarks({
+      marks: segment.representation.node.marks,
       schema,
-      from: segment.from,
-      to: segment.to,
       formatting,
       includedProperties: segment.includedProperties,
     });
-    tr.addMark(
-      segment.from,
-      segment.to,
-      propertyChangeType.create({ changes: [segment.change], ...suggestionAttrs }),
-    );
+    const marks = propertyChangeType
+      .create({ changes: [change], ...suggestionAttrs })
+      .addToSet(formattingMarks);
+    applyMarksToRunFormattingRepresentation({
+      tr,
+      representation: segment.representation,
+      marks,
+    });
   }
-  return { type: "applied", transaction: tr };
+  return {
+    type: "applied",
+    transaction: tr,
+    revisionIds,
+    nextRevisionId: revisionIdSeed + revisionIds.length,
+  };
 };
 
 type LiveBlockEntry = { from: number; to: number; node: PMNode };
@@ -2278,12 +2360,9 @@ const applyFolioAIEditOperationsInternal = ({
         const revisionIdInsert = producesTrackedChanges
           ? operationRevisionSeed + 1
           : operationRevisionSeed;
-        const revisionIdBackground = producesTrackedChanges
+        const revisionIdBackgroundSeed = producesTrackedChanges
           ? operationRevisionSeed + 2
           : operationRevisionSeed;
-        if (producesTrackedChanges) {
-          operationRevisionSeed += 3;
-        }
         const stepsBeforeBackgroundClear = tr.steps.length;
         const backgroundResult = clearReplacementBackground({
           tr,
@@ -2291,7 +2370,7 @@ const applyFolioAIEditOperationsInternal = ({
           from: item.from,
           to: item.to,
           mode,
-          revisionId: revisionIdBackground,
+          revisionIdSeed: revisionIdBackgroundSeed,
           author,
           date,
           initials,
@@ -2303,6 +2382,7 @@ const applyFolioAIEditOperationsInternal = ({
           continue;
         }
         tr = backgroundResult.transaction;
+        operationRevisionSeed = backgroundResult.nextRevisionId;
         const clearedBackground = tr.steps.length > stepsBeforeBackgroundClear;
         tr = applyTextReplacement({
           tr,
@@ -2321,7 +2401,7 @@ const applyFolioAIEditOperationsInternal = ({
           appliedRevisionIds = [
             revisionIdDelete,
             revisionIdInsert,
-            ...(clearedBackground ? [revisionIdBackground] : []),
+            ...(clearedBackground ? backgroundResult.revisionIds : []),
           ];
         }
         break;
@@ -2334,7 +2414,6 @@ const applyFolioAIEditOperationsInternal = ({
       }
       case "formatRange": {
         if (producesTrackedChanges) {
-          const revisionId = operationRevisionSeed++;
           const formattingResult = applyTrackedInlineFormatting({
             tr,
             schema: view.state.schema,
@@ -2342,7 +2421,7 @@ const applyFolioAIEditOperationsInternal = ({
             from: item.from,
             to: item.to,
             formatting: item.operation.formatting,
-            revisionId,
+            revisionIdSeed: operationRevisionSeed,
             author,
             date,
             initials,
@@ -2354,7 +2433,8 @@ const applyFolioAIEditOperationsInternal = ({
             continue;
           }
           tr = formattingResult.transaction;
-          appliedRevisionIds = [revisionId];
+          operationRevisionSeed = formattingResult.nextRevisionId;
+          appliedRevisionIds = [...formattingResult.revisionIds];
           break;
         }
         tr = applyInlineFormatting({
@@ -2373,14 +2453,12 @@ const applyFolioAIEditOperationsInternal = ({
         const { changesStyle, changesText } = REPLACE_BLOCK_IMPACT[item.replaceBlockImpact];
         const revisionIdDelete = operationRevisionSeed;
         const revisionIdInsert = changesText ? operationRevisionSeed + 1 : operationRevisionSeed;
-        const revisionIdBackground = changesText
+        const revisionIdBackgroundSeed = changesText
           ? operationRevisionSeed + 2
           : operationRevisionSeed;
         if (producesTrackedChanges && changesText) {
-          operationRevisionSeed += 3;
+          operationRevisionSeed = revisionIdBackgroundSeed;
         }
-        const revisionIdParagraph =
-          producesTrackedChanges && changesStyle ? operationRevisionSeed++ : null;
         // Default to preserving formatting (existing behaviour);
         // when explicitly disabled and we're in direct mode, swap
         // the whole block node for a fresh paragraph that drops
@@ -2424,6 +2502,7 @@ const applyFolioAIEditOperationsInternal = ({
           break;
         }
         let clearedBackground = false;
+        let backgroundRevisionIds: readonly number[] = [];
         if (changesText) {
           const stepsBeforeBackgroundClear = tr.steps.length;
           const backgroundResult = clearReplacementBackground({
@@ -2432,7 +2511,7 @@ const applyFolioAIEditOperationsInternal = ({
             from: item.from,
             to: item.to,
             mode,
-            revisionId: revisionIdBackground,
+            revisionIdSeed: revisionIdBackgroundSeed,
             author,
             date,
             initials,
@@ -2444,7 +2523,9 @@ const applyFolioAIEditOperationsInternal = ({
             continue;
           }
           tr = backgroundResult.transaction;
+          operationRevisionSeed = backgroundResult.nextRevisionId;
           clearedBackground = tr.steps.length > stepsBeforeBackgroundClear;
+          backgroundRevisionIds = backgroundResult.revisionIds;
           tr = applyTextReplacement({
             tr,
             item,
@@ -2459,6 +2540,8 @@ const applyFolioAIEditOperationsInternal = ({
             diffText,
           });
         }
+        const revisionIdParagraph =
+          producesTrackedChanges && changesStyle ? operationRevisionSeed++ : null;
         const styleResult = applyReplaceBlockStyleId({
           item,
           tr,
@@ -2481,7 +2564,7 @@ const applyFolioAIEditOperationsInternal = ({
         if (producesTrackedChanges) {
           appliedRevisionIds = [
             ...(changesText ? [revisionIdDelete, revisionIdInsert] : []),
-            ...(clearedBackground ? [revisionIdBackground] : []),
+            ...(clearedBackground ? backgroundRevisionIds : []),
             ...(styleResult.revisionId === null ? [] : [styleResult.revisionId]),
           ];
         }

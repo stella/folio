@@ -12,7 +12,8 @@ import type { TextFormatting, UnderlineStyle, ThemeColorSlot } from "../../../ty
 import { FONT_THEME_VALUES } from "../../../types/documentEnumValues";
 import { mergeFontFamily } from "../../../utils/fontFamilyMerge";
 import { expectFontFamilyMarkAttrs, expectRunFormattingOverrideMarkAttrs } from "../../attrs";
-import { expandRunFormattingCarrier } from "../../runFormattingInlineCarriers";
+import { selectRunFormattingCarrierRepresentations } from "../../runFormattingInlineCarriers";
+import { hasRunFormattingOverrideAttrs } from "../../runFormattingProvenance";
 import type { FontFamilyAttrs, RunFormattingOverrideAttrs } from "../../schema/marks";
 import {
   applyRunFormattingOverrideMark,
@@ -306,11 +307,6 @@ export function setMark(markType: MarkType, attrs: MarkAttrs): Command {
 type PairedToggleProperty = "bold" | "italic";
 const DIRECT_FONT_PROPERTIES = ["color", "fontFamily", "fontSize"] as const;
 
-const hasRunFormattingOverride = (attrs: RunFormattingOverrideAttrs): boolean =>
-  Object.values(attrs).some((value) =>
-    Array.isArray(value) ? value.length > 0 : value !== null && value !== undefined,
-  );
-
 const updatePairedToggleAttrs = (
   attrs: RunFormattingOverrideAttrs,
   property: PairedToggleProperty,
@@ -379,7 +375,7 @@ const updateRunFormattingOverrideMarks = (
   const existing = overrideType.isInSet(marks);
   const attrs = update(existing ? expectRunFormattingOverrideMarkAttrs(existing) : {});
   const withoutExisting = marks.filter((mark) => mark.type !== overrideType);
-  return hasRunFormattingOverride(attrs)
+  return hasRunFormattingOverrideAttrs(attrs)
     ? overrideType.create(attrs).addToSet(withoutExisting)
     : withoutExisting;
 };
@@ -405,47 +401,19 @@ const updateRunFormattingOverride = (
     return tr;
   }
 
-  const carriers: NonNullable<ReturnType<typeof expandRunFormattingCarrier>>[] = [];
-  tr.doc.nodesBetween(from, to, (node, pos) => {
-    if (!node.isInline) {
-      return true;
-    }
-    const carrier = expandRunFormattingCarrier(node, pos);
-    if (carrier) {
-      carriers.push(carrier);
-      return false;
-    }
-    return !node.isAtom;
-  });
-
-  for (const carrier of carriers) {
-    for (const representation of carrier.representations) {
-      const { node, position } = representation;
-      const segmentFrom = Math.max(from, position);
-      const segmentTo = Math.min(to, position + node.nodeSize);
-      if (segmentFrom >= segmentTo) {
-        continue;
+  const representations = selectRunFormattingCarrierRepresentations({ doc: tr.doc, from, to });
+  for (const representation of representations) {
+    const { node, position } = representation;
+    const nextMarks = updateRunFormattingOverrideMarks(node.marks, overrideType, update);
+    if (node.isText) {
+      tr.removeMark(representation.from, representation.to, overrideType);
+      const nextOverride = overrideType.isInSet(nextMarks);
+      if (nextOverride) {
+        tr.addMark(representation.from, representation.to, nextOverride);
       }
-      // A mark step owns the outer structured atom only when the complete atom
-      // is selected. A nested text selection owns just the result runs.
-      if (
-        carrier.disposition === "structured-field" &&
-        representation.role === "owner" &&
-        (segmentFrom !== position || segmentTo !== position + node.nodeSize)
-      ) {
-        continue;
-      }
-      const nextMarks = updateRunFormattingOverrideMarks(node.marks, overrideType, update);
-      if (node.isText) {
-        tr.removeMark(segmentFrom, segmentTo, overrideType);
-        const nextOverride = overrideType.isInSet(nextMarks);
-        if (nextOverride) {
-          tr.addMark(segmentFrom, segmentTo, nextOverride);
-        }
-        continue;
-      }
-      tr.setNodeMarkup(position, undefined, node.attrs, nextMarks);
+      continue;
     }
+    tr.setNodeMarkup(position, undefined, node.attrs, nextMarks);
   }
   return tr;
 };

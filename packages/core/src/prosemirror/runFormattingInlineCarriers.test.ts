@@ -4,6 +4,7 @@ import { schema } from "./schema";
 import {
   expandRunFormattingCarrier,
   RUN_FORMATTING_INLINE_ATOM_DISPOSITIONS,
+  selectRunFormattingCarrierRepresentations,
 } from "./runFormattingInlineCarriers";
 
 describe("run-formatting inline carrier contract", () => {
@@ -89,5 +90,66 @@ describe("run-formatting inline carrier contract", () => {
       { name: "tab", position: 9, role: "serialized-result" },
       { name: "text", position: 11, role: "serialized-result" },
     ]);
+  });
+
+  test("selects the same physical carriers for a complete structured field", () => {
+    const field = schema.node(
+      "structuredField",
+      {
+        fieldType: "REF",
+        instruction: " REF carrier ",
+        displayText: "A\tB",
+        fieldKind: "simple",
+        fldLock: false,
+        dirty: false,
+      },
+      [schema.text("A"), schema.node("tab"), schema.node("renderedPageBreak"), schema.text("B")],
+    );
+    const doc = schema.node("doc", null, [schema.node("paragraph", null, [field])]);
+
+    expect(
+      selectRunFormattingCarrierRepresentations({ doc, from: 1, to: 7 }).map(
+        ({ node, position, role, from, to }) => ({
+          name: node.type.name,
+          position,
+          role,
+          from,
+          to,
+        }),
+      ),
+    ).toEqual([
+      { name: "structuredField", position: 1, role: "owner", from: 1, to: 7 },
+      { name: "text", position: 2, role: "serialized-result", from: 2, to: 3 },
+      { name: "tab", position: 3, role: "serialized-result", from: 3, to: 4 },
+      { name: "text", position: 5, role: "serialized-result", from: 5, to: 6 },
+    ]);
+  });
+
+  test("selects only result runs when a range covers part of a structured field", () => {
+    const field = schema.node(
+      "structuredField",
+      {
+        fieldType: "REF",
+        instruction: " REF carrier ",
+        displayText: "AB",
+        fieldKind: "simple",
+        fldLock: false,
+        dirty: false,
+      },
+      [schema.text("AB")],
+    );
+    const doc = schema.node("doc", null, [schema.node("paragraph", null, [field])]);
+
+    expect(
+      selectRunFormattingCarrierRepresentations({ doc, from: 2, to: 3 }).map(
+        ({ node, position, role, from, to }) => ({
+          name: node.type.name,
+          position,
+          role,
+          from,
+          to,
+        }),
+      ),
+    ).toEqual([{ name: "text", position: 2, role: "serialized-result", from: 2, to: 3 }]);
   });
 });

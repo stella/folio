@@ -34,6 +34,12 @@ export const hasAuthoredRunFormattingProvenance = ({
   Array.isArray(_authoredOff) ||
   (_authoredValues != null && Object.keys(_authoredValues).length > 0);
 
+/** Whether an override mark still carries any rendering or authorship signal. */
+export const hasRunFormattingOverrideAttrs = (attrs: RunFormattingOverrideAttrs): boolean =>
+  Object.values(attrs).some((value) =>
+    Array.isArray(value) ? value.length > 0 : value !== null && value !== undefined,
+  );
+
 /** Reconstruct the last imported/reconciled direct baseline; inherited values never enter here. */
 export const authoredRunFormattingFromAttrs = (
   attrs: RunFormattingOverrideAttrs,
