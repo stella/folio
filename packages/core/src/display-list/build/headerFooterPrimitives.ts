@@ -75,6 +75,7 @@ export const paintHeaderFooter = ({
         xPx: page.margins.left,
         yPx: originYPx,
         widthPx: page.size.w - page.margins.left - page.margins.right,
+        page,
         context: { ...context, story },
         label: content.rId === undefined ? section : `${section} ${content.rId}`,
       });

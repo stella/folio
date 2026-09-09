@@ -112,6 +112,7 @@ const STYLES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:styles xmlns:w="${W_NS}">
   <w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:eastAsia="Arial" w:cs="Arial"/><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="120" w:line="276" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>
   <w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style>
+  <w:style w:type="table" w:default="1" w:styleId="TableNormal"><w:name w:val="Normal Table"/><w:tblPr><w:tblInd w:w="0" w:type="dxa"/><w:tblCellMar><w:top w:w="0" w:type="dxa"/><w:left w:w="108" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/><w:right w:w="108" w:type="dxa"/></w:tblCellMar></w:tblPr></w:style>
   <w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:keepLines/><w:spacing w:before="240" w:after="120"/></w:pPr><w:rPr><w:b/><w:sz w:val="30"/></w:rPr></w:style>
   <w:style w:type="character" w:styleId="Emphasis"><w:name w:val="Emphasis"/><w:rPr><w:i/><w:color w:val="365F91"/></w:rPr></w:style>
 </w:styles>`;
@@ -243,10 +244,14 @@ const matrixSectionBoundary = ({ section }: LayoutInteractionCase): string => {
   return `<w:p><w:pPr><w:sectPr><w:type w:val="${type}"/>${pageProperties(columns)}</w:sectPr></w:pPr><w:r><w:t>Section boundary</w:t></w:r></w:p>`;
 };
 
+const matrixCaseContent = (scenario: LayoutInteractionCase, index: number): string => {
+  const label = `${scenario.id}: ${scenario.section}, ${scenario.anchorFrame}, ${scenario.wrap}, ${scenario.flow}, ${scenario.table}, ${scenario.typography}`;
+  return `<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>${label}</w:t></w:r></w:p>${matrixAnchor(scenario, index)}${matrixFlow(scenario)}${matrixTypography(scenario)}${matrixTable(scenario)}`;
+};
+
 const matrixCaseBody = (scenario: LayoutInteractionCase, index: number): string => {
   const pageStart = index === 0 ? "" : '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
-  const label = `${scenario.id}: ${scenario.section}, ${scenario.anchorFrame}, ${scenario.wrap}, ${scenario.flow}, ${scenario.table}, ${scenario.typography}`;
-  return `${pageStart}<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>${label}</w:t></w:r></w:p>${matrixAnchor(scenario, index)}${matrixFlow(scenario)}${matrixTypography(scenario)}${matrixTable(scenario)}${matrixSectionBoundary(scenario)}`;
+  return `${pageStart}${matrixCaseContent(scenario, index)}${matrixSectionBoundary(scenario)}`;
 };
 
 const pairwiseMatrixBody = (): string =>
@@ -364,6 +369,24 @@ const buildFixture = ({
     compressionOptions: { level: 9 },
   });
 };
+
+export const buildLayoutInteractionCaseFixture = (
+  scenario: LayoutInteractionCase,
+): Promise<Uint8Array> =>
+  buildFixture({
+    name: "pairwise-layout-interactions.docx",
+    body: matrixCaseContent(scenario, 0),
+    sectionProperties: `${headerFooterReferences}${
+      scenario.section === "continuous" || scenario.section === "twoColumn"
+        ? '<w:type w:val="continuous"/>'
+        : ""
+    }${pageProperties(
+      scenario.section === "twoColumn" ? '<w:cols w:num="2" w:space="720"/>' : "",
+    )}`,
+    parts: PAGE_FURNITURE_PARTS,
+    relationships: MATRIX_RELATIONSHIPS,
+    overrides: PAGE_FURNITURE_OVERRIDES,
+  });
 
 export const buildLayoutCorpus = async (
   outputDirectory = DEFAULT_OUTPUT_DIR,
