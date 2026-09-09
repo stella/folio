@@ -102,6 +102,10 @@ test("block parsing renders Arabic numbering formats through the shared formatte
   const markers = blocks.map((block) =>
     block.type === "paragraph" ? block.listRendering?.marker : undefined,
   );
+  const markerTemplates = blocks.map((block) =>
+    block.type === "paragraph" ? block.listRendering?.markerTemplate : undefined,
+  );
 
   expect(markers).toEqual(["ي\u200c.", "أأ\u200c.", "\u200cغ.", "\u200cأأ."]);
+  expect(markerTemplates).toEqual(["%1.", "%1.", "%1.", "%1."]);
 });

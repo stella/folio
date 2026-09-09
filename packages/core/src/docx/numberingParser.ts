@@ -871,6 +871,7 @@ export function computeListRendering(
     level: ilvl,
     numId,
     marker: level.lvlText,
+    markerTemplate: level.lvlText,
     isBullet: level.numFmt === "bullet",
     numFmt: level.isLgl ? "decimal" : level.numFmt,
     levelNumFmts,

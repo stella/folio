@@ -351,6 +351,7 @@ const paragraphNodeSpec: NodeSpec = {
     listIsBullet: { default: null },
     listIsLegal: { default: null },
     listMarker: { default: null },
+    listMarkerTemplate: { default: undefined },
     listMarkerHidden: { default: null },
     listMarkerFormatting: { default: null },
     listMarkerAlignment: { default: null },

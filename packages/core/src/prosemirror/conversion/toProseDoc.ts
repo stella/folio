@@ -934,6 +934,9 @@ function paragraphFormattingToAttrs(
   if (paragraph.listRendering?.marker) {
     attrs.listMarker = paragraph.listRendering.marker;
   }
+  if (paragraph.listRendering?.markerTemplate) {
+    attrs.listMarkerTemplate = paragraph.listRendering.markerTemplate;
+  }
   if (paragraph.listRendering?.markerHidden) {
     attrs.listMarkerHidden = paragraph.listRendering.markerHidden;
   }

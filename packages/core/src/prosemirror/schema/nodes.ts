@@ -142,6 +142,8 @@ export type ParagraphAttrs = {
   listIsLegal?: boolean;
   /** Computed list marker text (e.g., "1.", "1.1.", "•") */
   listMarker?: string;
+  /** Source numbering pattern used to compute markers for inserted list siblings. */
+  listMarkerTemplate?: string;
   /** Whether the list marker is hidden (w:vanish on numbering level rPr) */
   listMarkerHidden?: boolean;
   /** Canonical numbering-level marker typography, in OOXML units. */
@@ -313,10 +315,14 @@ export type ParagraphPropertyChangeAttrs = Omit<
         | "listIsLegal"
         | "listNumFmt"
         | "listMarker"
+        | "listMarkerTemplate"
         | "listMarkerHidden"
         | "listMarkerFormatting"
         | "listMarkerAlignment"
         | "listMarkerSuffix"
+        | "listMarkerAllCaps"
+        | "listImplicitChildLevelAdvances"
+        | "listMarkerSecondSlotOffsetTwips"
         | "listLevelNumFmts"
         | "listLevelStarts"
         | "listAbstractNumId"

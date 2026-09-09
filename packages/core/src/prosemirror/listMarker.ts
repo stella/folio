@@ -46,6 +46,44 @@ export type ResolvedListTemplate = {
 
 export const MAX_LIST_LEVEL = 8;
 
+export const LIST_RENDERING_ATTR_KEYS = [
+  "listIsBullet",
+  "listIsLegal",
+  "listNumFmt",
+  "listMarker",
+  "listMarkerTemplate",
+  "listMarkerHidden",
+  "listMarkerFormatting",
+  "listMarkerAlignment",
+  "listMarkerSuffix",
+  "listMarkerAllCaps",
+  "listImplicitChildLevelAdvances",
+  "listMarkerSecondSlotOffsetTwips",
+  "listLevelNumFmts",
+  "listLevelStarts",
+  "listAbstractNumId",
+  "listStartOverride",
+] as const satisfies readonly (keyof ParagraphAttrs)[];
+
+export const CLEARED_LIST_RENDERING_ATTRS = Object.freeze({
+  listIsBullet: null,
+  listIsLegal: null,
+  listNumFmt: null,
+  listMarker: null,
+  listMarkerTemplate: null,
+  listMarkerHidden: null,
+  listMarkerFormatting: null,
+  listMarkerAlignment: null,
+  listMarkerSuffix: null,
+  listMarkerAllCaps: null,
+  listImplicitChildLevelAdvances: null,
+  listMarkerSecondSlotOffsetTwips: null,
+  listLevelNumFmts: null,
+  listLevelStarts: null,
+  listAbstractNumId: null,
+  listStartOverride: null,
+});
+
 export function createListCounterState(): ListCounterState {
   return {
     counters: new Map(),
@@ -99,8 +137,29 @@ function previousListAttrs(attrs: ParagraphAttrs): ParagraphAttrs | null {
     ...(previous.listIsLegal !== undefined ? { listIsLegal: previous.listIsLegal } : {}),
     ...(previous.listNumFmt !== undefined ? { listNumFmt: previous.listNumFmt } : {}),
     ...(previous.listMarker !== undefined ? { listMarker: previous.listMarker } : {}),
+    ...(previous.listMarkerTemplate !== undefined
+      ? { listMarkerTemplate: previous.listMarkerTemplate }
+      : {}),
     ...(previous.listMarkerHidden !== undefined
       ? { listMarkerHidden: previous.listMarkerHidden }
+      : {}),
+    ...(previous.listMarkerFormatting !== undefined
+      ? { listMarkerFormatting: previous.listMarkerFormatting }
+      : {}),
+    ...(previous.listMarkerAlignment !== undefined
+      ? { listMarkerAlignment: previous.listMarkerAlignment }
+      : {}),
+    ...(previous.listMarkerSuffix !== undefined
+      ? { listMarkerSuffix: previous.listMarkerSuffix }
+      : {}),
+    ...(previous.listMarkerAllCaps !== undefined
+      ? { listMarkerAllCaps: previous.listMarkerAllCaps }
+      : {}),
+    ...(previous.listImplicitChildLevelAdvances !== undefined
+      ? { listImplicitChildLevelAdvances: previous.listImplicitChildLevelAdvances }
+      : {}),
+    ...(previous.listMarkerSecondSlotOffsetTwips !== undefined
+      ? { listMarkerSecondSlotOffsetTwips: previous.listMarkerSecondSlotOffsetTwips }
       : {}),
     ...(previous.listLevelNumFmts !== undefined
       ? { listLevelNumFmts: previous.listLevelNumFmts }
@@ -237,17 +296,18 @@ function formatNumberedMarker(counters: number[], level: number): string {
 }
 
 export function advanceListMarker(attrs: ParagraphAttrs, state: ListCounterState): string | null {
+  const markerTemplate = attrs.listMarkerTemplate ?? attrs.listMarker;
   const level = attrs.numPr?.ilvl ?? 0;
   if (!Number.isInteger(level) || level < 0 || level > MAX_LIST_LEVEL) {
     return null;
   }
   const numId = attrs.numPr?.numId;
   if (numId === undefined || numId === 0) {
-    if (attrs.listMarker?.includes("%") && !attrs.listIsBullet) {
+    if (markerTemplate?.includes("%") && !attrs.listIsBullet) {
       const counters = getLastListCounters(state);
       if (counters) {
         return resolveListTemplate({
-          template: attrs.listMarker,
+          template: markerTemplate,
           counters,
           levelFormats: attrs.listLevelNumFmts,
           forceDecimal: attrs.listIsLegal,
@@ -258,7 +318,7 @@ export function advanceListMarker(attrs: ParagraphAttrs, state: ListCounterState
   }
 
   if (attrs.listIsBullet) {
-    return convertBulletToUnicode(attrs.listMarker ?? "");
+    return convertBulletToUnicode(attrs.listMarker ?? markerTemplate ?? "");
   }
 
   const counters = state.counters.get(numId) ?? Array.from({ length: 9 }, () => Number.NaN);
@@ -307,9 +367,9 @@ export function advanceListMarker(attrs: ParagraphAttrs, state: ListCounterState
 
   const levelFormats =
     attrs.listLevelNumFmts ?? (attrs.listNumFmt ? [attrs.listNumFmt] : undefined);
-  if (attrs.listMarker?.includes("%")) {
+  if (markerTemplate?.includes("%")) {
     return resolveListTemplate({
-      template: attrs.listMarker,
+      template: markerTemplate,
       counters,
       levelFormats,
       forceDecimal: attrs.listIsLegal,

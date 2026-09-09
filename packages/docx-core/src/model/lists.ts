@@ -174,6 +174,8 @@ export type ListMarkerFormatting = Pick<
 export type ListRendering = {
   /** Computed marker text (e.g., "1.", "a)", "•") */
   marker: string;
+  /** Source `w:lvlText` pattern retained so newly inserted siblings can be numbered. */
+  markerTemplate?: string;
   /** List level (0-8) */
   level: number;
   /** Numbering ID */

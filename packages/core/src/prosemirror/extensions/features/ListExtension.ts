@@ -13,6 +13,7 @@ import {
   PPR_CHANGE_SCOPED_ATTR_KEYS,
 } from "../../commands/propertyChangeScope";
 import { makeRevisionInfo, SUGGESTION_META } from "../../plugins/suggestionMode";
+import { CLEARED_LIST_RENDERING_ATTRS, LIST_RENDERING_ATTR_KEYS } from "../../listMarker";
 import { createExtension } from "../create";
 import { goToNextCell, goToPrevCell } from "../nodes/TableExtension";
 import { Priority } from "../types";
@@ -57,22 +58,6 @@ function appendParagraphPropertyChange(
   };
 }
 
-const LIST_FORMATTING_ATTRS = [
-  "numPr",
-  "listIsBullet",
-  "listIsLegal",
-  "listNumFmt",
-  "listMarker",
-  "listMarkerHidden",
-  "listMarkerFormatting",
-  "listMarkerAlignment",
-  "listMarkerSuffix",
-  "listLevelNumFmts",
-  "listLevelStarts",
-  "listAbstractNumId",
-  "listStartOverride",
-] as const;
-
 function getPreviousListFormatting(attrs: Record<string, unknown>): Record<string, unknown> {
   const previousFormatting: Record<string, unknown> = {};
   // Rejecting a pPrChange restores the stored record WHOLESALE within the
@@ -87,7 +72,8 @@ function getPreviousListFormatting(attrs: Record<string, unknown>): Record<strin
   }
   // List-rendering bookkeeping snapshots with explicit nulls: these attrs are
   // outside the wholesale scope, so only recorded keys restore on reject.
-  for (const key of LIST_FORMATTING_ATTRS) {
+  previousFormatting["numPr"] = attrs["numPr"] ?? null;
+  for (const key of LIST_RENDERING_ATTR_KEYS) {
     previousFormatting[key] = attrs[key] ?? null;
   }
   return previousFormatting;
@@ -144,18 +130,16 @@ function toggleList(numId: number): Command {
           nextAttrs = {
             ...node.attrs,
             numPr: null,
-            listIsBullet: null,
-            listNumFmt: null,
-            listMarker: null,
+            ...CLEARED_LIST_RENDERING_ATTRS,
           };
         } else {
           const isBullet = numId === 1;
           nextAttrs = {
             ...node.attrs,
+            ...CLEARED_LIST_RENDERING_ATTRS,
             numPr: { numId, ilvl: node.attrs["numPr"]?.ilvl || 0 },
             listIsBullet: isBullet,
             listNumFmt: isBullet ? null : "decimal",
-            listMarker: null,
           };
         }
 
@@ -249,9 +233,7 @@ const decreaseListLevel: Command = (state, dispatch) => {
         .setNodeMarkup(paragraphPos, undefined, {
           ...paragraph.attrs,
           numPr: null,
-          listIsBullet: null,
-          listNumFmt: null,
-          listMarker: null,
+          ...CLEARED_LIST_RENDERING_ATTRS,
           indentLeft: null,
           indentFirstLine: null,
           hangingIndent: null,
@@ -291,9 +273,7 @@ const removeList: Command = (state, dispatch) => {
       tr = tr.setNodeMarkup(pos, undefined, {
         ...node.attrs,
         numPr: null,
-        listIsBullet: null,
-        listNumFmt: null,
-        listMarker: null,
+        ...CLEARED_LIST_RENDERING_ATTRS,
       });
     }
   });
@@ -362,9 +342,7 @@ function exitListOnEmptyEnter(): Command {
       const tr = state.tr.setNodeMarkup($from.before(), undefined, {
         ...paragraph.attrs,
         numPr: null,
-        listIsBullet: null,
-        listNumFmt: null,
-        listMarker: null,
+        ...CLEARED_LIST_RENDERING_ATTRS,
       });
       dispatch(tr);
     }
@@ -431,9 +409,7 @@ function backspaceExitList(): Command {
       const tr = state.tr.setNodeMarkup($from.before(), undefined, {
         ...paragraph.attrs,
         numPr: null,
-        listIsBullet: null,
-        listNumFmt: null,
-        listMarker: null,
+        ...CLEARED_LIST_RENDERING_ATTRS,
       });
       dispatch(tr);
     }
@@ -503,9 +479,7 @@ function decreaseListIndent(): Command {
           tr = tr.setNodeMarkup(pos, undefined, {
             ...attrs,
             numPr: null,
-            listIsBullet: null,
-            listNumFmt: null,
-            listMarker: null,
+            ...CLEARED_LIST_RENDERING_ATTRS,
             indentLeft: null,
             indentFirstLine: null,
             hangingIndent: null,

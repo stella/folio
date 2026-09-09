@@ -118,6 +118,7 @@ export function listAttrsFromResolvedStyle(
     listIsBullet: rendering?.isBullet ?? null,
     listIsLegal: rendering?.isLegal ?? null,
     listMarker: rendering?.marker ?? null,
+    listMarkerTemplate: rendering?.markerTemplate ?? null,
     listMarkerHidden: rendering?.markerHidden ?? null,
     listMarkerFormatting: rendering?.markerFormatting ?? null,
     listMarkerAlignment: rendering?.markerAlignment ?? null,

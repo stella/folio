@@ -286,15 +286,10 @@ const SUGGESTED_SUPPORTED_OPERATION_TYPES: ReadonlySet<FolioAIEditOperation["typ
   "deleteTableColumn",
 ]);
 
-/**
- * The attrs that render a list label, cleared together whenever a paragraph
- * stops being a list item. `w:numPr` alone is not enough: the marker attrs the
- * editor caches would keep drawing a label on a paragraph that is no longer in
- * the list. One frozen record rather than a list repeated at each call site,
- * because a list repeated is a list that drifts.
- */
+/** Derived list-marker attrs invalidated when paragraph context changes. */
 const CLEARED_LIST_MARKER_ATTRS = Object.freeze({
   listMarker: null,
+  listMarkerTemplate: null,
   listMarkerHidden: null,
   listLevelNumFmts: null,
   listLevelStarts: null,

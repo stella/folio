@@ -1502,6 +1502,11 @@ function toPreviousListAttrs(previousFormatting: ListPropertyFormatting): PMPara
     attrs.listMarker = listMarker;
   }
 
+  const listMarkerTemplate = previousFormatting.listMarkerTemplate;
+  if (listMarkerTemplate !== undefined) {
+    attrs.listMarkerTemplate = listMarkerTemplate;
+  }
+
   const listNumFmt = previousFormatting.listNumFmt;
   if (listNumFmt !== undefined) {
     attrs.listNumFmt = listNumFmt;
@@ -1545,6 +1550,21 @@ function toPreviousListAttrs(previousFormatting: ListPropertyFormatting): PMPara
   const listMarkerSuffix = previousFormatting.listMarkerSuffix;
   if (listMarkerSuffix !== undefined) {
     attrs.listMarkerSuffix = listMarkerSuffix;
+  }
+
+  const listMarkerAllCaps = previousFormatting.listMarkerAllCaps;
+  if (listMarkerAllCaps !== undefined) {
+    attrs.listMarkerAllCaps = listMarkerAllCaps;
+  }
+
+  const listImplicitChildLevelAdvances = previousFormatting.listImplicitChildLevelAdvances;
+  if (listImplicitChildLevelAdvances !== undefined) {
+    attrs.listImplicitChildLevelAdvances = listImplicitChildLevelAdvances;
+  }
+
+  const listMarkerSecondSlotOffsetTwips = previousFormatting.listMarkerSecondSlotOffsetTwips;
+  if (listMarkerSecondSlotOffsetTwips !== undefined) {
+    attrs.listMarkerSecondSlotOffsetTwips = listMarkerSecondSlotOffsetTwips;
   }
 
   return attrs;

@@ -333,6 +333,7 @@ export const readParagraphAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Par
   optionalBoolean(attrs, "listIsBullet", "paragraph.attrs.listIsBullet", issues);
   optionalBoolean(attrs, "listIsLegal", "paragraph.attrs.listIsLegal", issues);
   optionalString(attrs, "listMarker", "paragraph.attrs.listMarker", issues);
+  optionalString(attrs, "listMarkerTemplate", "paragraph.attrs.listMarkerTemplate", issues);
   optionalBoolean(attrs, "listMarkerHidden", "paragraph.attrs.listMarkerHidden", issues);
   optionalTextFormatting(
     attrs,
@@ -2507,6 +2508,7 @@ const validateParagraphFormatting = (
   optionalString(value, "styleId", `${path}.styleId`, issues);
   optionalOneOf(value, "listNumFmt", `${path}.listNumFmt`, issues, NUMBER_FORMAT_VALUES);
   optionalString(value, "listMarker", `${path}.listMarker`, issues);
+  optionalString(value, "listMarkerTemplate", `${path}.listMarkerTemplate`, issues);
   optionalTextFormatting(value, "listMarkerFormatting", `${path}.listMarkerFormatting`, issues);
   optionalOneOf(value, "listMarkerAlignment", `${path}.listMarkerAlignment`, issues, [
     "left",
