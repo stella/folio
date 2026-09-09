@@ -320,13 +320,24 @@ export class FolioDocumentStoryNotFoundError extends TaggedError(
   story: FolioEditableDocumentStoryHandle;
 }> {}
 
+const FOLIO_RESOLVED_STORY_SERIALIZATION_MISMATCHES = Object.freeze({
+  storyMissing: "story-missing",
+  revisionMarkupRemains: "revision-markup-remains",
+  textProjection: "text-projection",
+  blockProjection: "block-projection",
+} as const);
+
+type FolioResolvedStorySerializationMismatch =
+  (typeof FOLIO_RESOLVED_STORY_SERIALIZATION_MISMATCHES)[keyof typeof FOLIO_RESOLVED_STORY_SERIALIZATION_MISMATCHES];
+
 class FolioResolvedStorySerializationError extends TaggedError(
   "FolioResolvedStorySerializationError",
 )<{
   message: string;
   story: FolioEditableDocumentStoryHandle;
-  expectedText: string;
-  actualText: string | null;
+  mismatches: readonly FolioResolvedStorySerializationMismatch[];
+  expectedBlockCount: number;
+  actualBlockCount: number | null;
   remainingChangeCount: number | null;
 }> {}
 
@@ -1334,21 +1345,35 @@ export class FolioDocxReviewer {
     for (const { story, text, blocks } of this.resolvedStoryExpectations.values()) {
       const serialized = reopened.readReviewedStory({ story, view: "current-markup" });
       const serializedState = reopened.getEditableStoryState(story);
-      if (
-        serialized &&
-        serializedState &&
-        serialized.changes.length === 0 &&
-        formatStoryStateForLLM(serializedState, false) === text &&
-        JSON.stringify(createFolioAIEditSnapshot(serializedState.doc).blocks) ===
-          JSON.stringify(blocks)
-      ) {
+      const serializedText = serializedState
+        ? formatStoryStateForLLM(serializedState, false)
+        : null;
+      const serializedBlocks = serializedState
+        ? createFolioAIEditSnapshot(serializedState.doc).blocks
+        : null;
+      const mismatches: FolioResolvedStorySerializationMismatch[] = [];
+      if (!serialized || !serializedState) {
+        mismatches.push(FOLIO_RESOLVED_STORY_SERIALIZATION_MISMATCHES.storyMissing);
+      } else {
+        if (serialized.changes.length > 0) {
+          mismatches.push(FOLIO_RESOLVED_STORY_SERIALIZATION_MISMATCHES.revisionMarkupRemains);
+        }
+        if (serializedText !== text) {
+          mismatches.push(FOLIO_RESOLVED_STORY_SERIALIZATION_MISMATCHES.textProjection);
+        }
+        if (JSON.stringify(serializedBlocks) !== JSON.stringify(blocks)) {
+          mismatches.push(FOLIO_RESOLVED_STORY_SERIALIZATION_MISMATCHES.blockProjection);
+        }
+      }
+      if (mismatches.length === 0) {
         continue;
       }
       throw new FolioResolvedStorySerializationError({
         message: "Resolved document story did not persist to the serialized DOCX.",
         story,
-        expectedText: text,
-        actualText: serializedState ? formatStoryStateForLLM(serializedState, false) : null,
+        mismatches,
+        expectedBlockCount: blocks.length,
+        actualBlockCount: serializedBlocks?.length ?? null,
         remainingChangeCount: serialized?.changes.length ?? null,
       });
     }

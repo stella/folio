@@ -8,7 +8,7 @@
  * case; the copied-through package parts for the structural full-repack case).
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { panic } from "better-result";
 import JSZip from "jszip";
 import { EditorState } from "prosemirror-state";
@@ -2573,6 +2573,50 @@ const insertionChange = (reviewer: FolioDocxReviewer): FolioReviewChange => {
 };
 
 describe("headless docx review discovery + resolve", () => {
+  test("serialization mismatch errors never retain document text", async () => {
+    const makeBaseline = async (text: string, paraId: string) => {
+      const document = createEmptyDocument();
+      document.package.document.content = [
+        {
+          type: "paragraph",
+          paraId,
+          content: [{ type: "run", content: [{ type: "text", text }] }],
+        },
+      ];
+      return createDocx(document);
+    };
+    const sensitiveText = "privileged serialization expectation";
+    const actualSensitiveText = "different serialized content";
+    const expectedReviewer = await FolioDocxReviewer.fromBuffer(
+      await makeBaseline(sensitiveText, "21000010"),
+    );
+    const mismatchedReviewer = await FolioDocxReviewer.fromBuffer(
+      await makeBaseline(actualSensitiveText, "21000011"),
+    );
+    expect(expectedReviewer.resolveReviewedStory({ view: "final" })).toBe(true);
+
+    const reopen = spyOn(FolioDocxReviewer, "fromBuffer");
+    try {
+      reopen.mockResolvedValue(mismatchedReviewer);
+      const saving = expectedReviewer.toBuffer();
+      const rejection = await saving.then(
+        () => null,
+        (reason: unknown) => reason,
+      );
+      const serializedRejection = JSON.stringify(rejection);
+      expect(serializedRejection).not.toContain(sensitiveText);
+      expect(serializedRejection).not.toContain(actualSensitiveText);
+      expect(rejection).toMatchObject({
+        mismatches: ["text-projection", "block-projection"],
+        expectedBlockCount: 1,
+        actualBlockCount: 1,
+        remainingChangeCount: 0,
+      });
+    } finally {
+      reopen.mockRestore();
+    }
+  });
+
   test("getContentAsText labels every block with its stable id", async () => {
     const baseline = await makeParaIdBaseline(readFixture());
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
