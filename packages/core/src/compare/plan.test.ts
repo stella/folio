@@ -34,15 +34,26 @@ const cell = (id: string, text: string, rowIndex: number, tableIndex = 0): Folio
   },
 });
 
+type GridCellGeometry = {
+  rowIndex: number;
+  cellIndex: number;
+  gridColumnIndex: number;
+  columnSpan?: number;
+  rowSpan?: number;
+  paragraphIndex?: number;
+};
+
 const gridCell = (
   id: string,
   text: string,
-  rowIndex: number,
-  cellIndex: number,
-  gridColumnIndex: number,
-  columnSpan = 1,
-  rowSpan = 1,
-  paragraphIndex = 0,
+  {
+    rowIndex,
+    cellIndex,
+    gridColumnIndex,
+    columnSpan = 1,
+    rowSpan = 1,
+    paragraphIndex = 0,
+  }: GridCellGeometry,
 ): FolioAIBlock => ({
   id,
   kind: "paragraph",
@@ -132,13 +143,18 @@ describe("table row pairing", () => {
   test("a span change that cannot align by column replaces the whole table", () => {
     const base = [
       block("before", "Before the table."),
-      gridCell("a", "Shared", 0, 0, 0),
-      gridCell("b", "Shared", 0, 1, 1),
+      gridCell("a", "Shared", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
+      gridCell("b", "Shared", { rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 }),
       block("after", "After the table."),
     ];
     const target = [
       block("before-target", "Before the table."),
-      gridCell("merged", "Shared", 0, 0, 0, 2),
+      gridCell("merged", "Shared", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+        columnSpan: 2,
+      }),
       block("after-target", "After the table."),
     ];
 
@@ -195,14 +211,32 @@ describe("table row pairing", () => {
   test("paragraph-count changes inside one cell do not replace the table", () => {
     const base = [
       block("before", "Before the table."),
-      gridCell("kept", "Shared opening", 0, 0, 0),
-      gridCell("removed-a", "Removed middle", 0, 0, 0, 1, 1, 1),
-      gridCell("removed-b", "Removed ending", 0, 0, 0, 1, 1, 2),
+      gridCell("kept", "Shared opening", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      gridCell("removed-a", "Removed middle", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+        paragraphIndex: 1,
+      }),
+      gridCell("removed-b", "Removed ending", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+        paragraphIndex: 2,
+      }),
       block("after", "After the table."),
     ];
     const target = [
       block("before-target", "Before the table."),
-      gridCell("kept-target", "Shared opening revised", 0, 0, 0),
+      gridCell("kept-target", "Shared opening revised", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
       block("after-target", "After the table."),
     ];
 
@@ -310,13 +344,33 @@ describe("document-terminal paragraph carrier", () => {
     // that carrier and the rest go in front of it, which is what makes the
     // mark count work out without deleting a mark the format keeps.
     const base = [
-      gridCell("a0", "Alpha clause states the agreed position.", 0, 0, 0),
-      gridCell("b0", "Payment falls due within thirty days of invoice.", 0, 1, 1),
+      gridCell("a0", "Alpha clause states the agreed position.", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      gridCell("b0", "Payment falls due within thirty days of invoice.", {
+        rowIndex: 0,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+      }),
     ];
     const target = [
-      gridCell("ta", "Alpha clause states the agreed position.", 0, 0, 0),
-      gridCell("tb", "Notices travel to the address named above.", 0, 0, 0),
-      gridCell("tc", "Governing law is that of the named place.", 0, 0, 0),
+      gridCell("ta", "Alpha clause states the agreed position.", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      gridCell("tb", "Notices travel to the address named above.", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      gridCell("tc", "Governing law is that of the named place.", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
     ];
 
     const { operations } = planOf(base, target);
@@ -374,18 +428,18 @@ describe("document-terminal paragraph carrier", () => {
 describe("table column pairing", () => {
   test("an inserted middle column is one structural edit and leaves its neighbours paired", () => {
     const base = [
-      gridCell("a0", "Account", 0, 0, 0),
-      gridCell("b0", "Amount", 0, 1, 1),
-      gridCell("a1", "Fees", 1, 0, 0),
-      gridCell("b1", "100", 1, 1, 1),
+      gridCell("a0", "Account", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
+      gridCell("b0", "Amount", { rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 }),
+      gridCell("a1", "Fees", { rowIndex: 1, cellIndex: 0, gridColumnIndex: 0 }),
+      gridCell("b1", "100", { rowIndex: 1, cellIndex: 1, gridColumnIndex: 1 }),
     ];
     const target = [
-      gridCell("a0-target", "Account", 0, 0, 0),
-      gridCell("x0", "Currency", 0, 1, 1),
-      gridCell("b0-target", "Amount", 0, 2, 2),
-      gridCell("a1-target", "Fees", 1, 0, 0),
-      gridCell("x1", "EUR", 1, 1, 1),
-      gridCell("b1-target", "100", 1, 2, 2),
+      gridCell("a0-target", "Account", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
+      gridCell("x0", "Currency", { rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 }),
+      gridCell("b0-target", "Amount", { rowIndex: 0, cellIndex: 2, gridColumnIndex: 2 }),
+      gridCell("a1-target", "Fees", { rowIndex: 1, cellIndex: 0, gridColumnIndex: 0 }),
+      gridCell("x1", "EUR", { rowIndex: 1, cellIndex: 1, gridColumnIndex: 1 }),
+      gridCell("b1-target", "100", { rowIndex: 1, cellIndex: 2, gridColumnIndex: 2 }),
     ];
 
     const { changes, operations } = planOf(base, target);
@@ -404,17 +458,34 @@ describe("table column pairing", () => {
 
   test("a candidate column that cuts a merged cell is not guessed from physical indexes", () => {
     const base = [
-      gridCell("merged", "Account details", 0, 0, 0, 2),
-      gridCell("tail", "Status", 0, 1, 2),
-      gridCell("a1", "Fees", 1, 0, 0),
-      gridCell("removed", "EUR", 1, 1, 1),
-      gridCell("tail1", "Open", 1, 2, 2),
+      gridCell("merged", "Account details", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+        columnSpan: 2,
+      }),
+      gridCell("tail", "Status", { rowIndex: 0, cellIndex: 1, gridColumnIndex: 2 }),
+      gridCell("a1", "Fees", { rowIndex: 1, cellIndex: 0, gridColumnIndex: 0 }),
+      gridCell("removed", "EUR", { rowIndex: 1, cellIndex: 1, gridColumnIndex: 1 }),
+      gridCell("tail1", "Open", { rowIndex: 1, cellIndex: 2, gridColumnIndex: 2 }),
     ];
     const target = [
-      gridCell("a0-target", "Account details", 0, 0, 0),
-      gridCell("tail-target", "Status", 0, 1, 1),
-      gridCell("a1-target", "Fees", 1, 0, 0),
-      gridCell("tail1-target", "Open", 1, 1, 1),
+      gridCell("a0-target", "Account details", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      gridCell("tail-target", "Status", {
+        rowIndex: 0,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+      }),
+      gridCell("a1-target", "Fees", { rowIndex: 1, cellIndex: 0, gridColumnIndex: 0 }),
+      gridCell("tail1-target", "Open", {
+        rowIndex: 1,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+      }),
     ];
 
     const { changes } = planOf(base, target);
@@ -426,18 +497,18 @@ describe("table column pairing", () => {
 
   test("a deleted middle column uses a physical-cell anchor for its grid coordinate", () => {
     const base = [
-      gridCell("a0", "Account", 0, 0, 0),
-      gridCell("x0", "Currency", 0, 1, 1),
-      gridCell("b0", "Status", 0, 2, 2),
-      gridCell("a1", "Fees", 1, 0, 0),
-      gridCell("x1", "EUR", 1, 1, 1),
-      gridCell("b1", "Open", 1, 2, 2),
+      gridCell("a0", "Account", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
+      gridCell("x0", "Currency", { rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 }),
+      gridCell("b0", "Status", { rowIndex: 0, cellIndex: 2, gridColumnIndex: 2 }),
+      gridCell("a1", "Fees", { rowIndex: 1, cellIndex: 0, gridColumnIndex: 0 }),
+      gridCell("x1", "EUR", { rowIndex: 1, cellIndex: 1, gridColumnIndex: 1 }),
+      gridCell("b1", "Open", { rowIndex: 1, cellIndex: 2, gridColumnIndex: 2 }),
     ];
     const target = [
-      gridCell("a0-target", "Account", 0, 0, 0),
-      gridCell("b0-target", "Status", 0, 1, 1),
-      gridCell("a1-target", "Fees", 1, 0, 0),
-      gridCell("b1-target", "Open", 1, 1, 1),
+      gridCell("a0-target", "Account", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
+      gridCell("b0-target", "Status", { rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 }),
+      gridCell("a1-target", "Fees", { rowIndex: 1, cellIndex: 0, gridColumnIndex: 0 }),
+      gridCell("b1-target", "Open", { rowIndex: 1, cellIndex: 1, gridColumnIndex: 1 }),
     ];
 
     const { changes, operations } = planOf(base, target);
@@ -447,11 +518,14 @@ describe("table column pairing", () => {
   });
 
   test("repeated empty columns stay ambiguous", () => {
-    const base = [gridCell("a", "", 0, 0, 0), gridCell("b", "", 0, 1, 1)];
+    const base = [
+      gridCell("a", "", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
+      gridCell("b", "", { rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 }),
+    ];
     const target = [
-      gridCell("a-target", "", 0, 0, 0),
-      gridCell("x", "", 0, 1, 1),
-      gridCell("b-target", "", 0, 2, 2),
+      gridCell("a-target", "", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
+      gridCell("x", "", { rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 }),
+      gridCell("b-target", "", { rowIndex: 0, cellIndex: 2, gridColumnIndex: 2 }),
     ];
 
     expect(planOf(base, target).changes.some(({ kind }) => kind === "table-column-insert")).toBe(
@@ -460,12 +534,15 @@ describe("table column pairing", () => {
   });
 
   test("several inserted columns retain target order at one boundary", () => {
-    const base = [gridCell("a", "Account", 0, 0, 0), gridCell("b", "Status", 0, 1, 1)];
+    const base = [
+      gridCell("a", "Account", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
+      gridCell("b", "Status", { rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 }),
+    ];
     const target = [
-      gridCell("a-target", "Account", 0, 0, 0),
-      gridCell("x", "Currency", 0, 1, 1),
-      gridCell("y", "Region", 0, 2, 2),
-      gridCell("b-target", "Status", 0, 3, 3),
+      gridCell("a-target", "Account", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
+      gridCell("x", "Currency", { rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 }),
+      gridCell("y", "Region", { rowIndex: 0, cellIndex: 2, gridColumnIndex: 2 }),
+      gridCell("b-target", "Status", { rowIndex: 0, cellIndex: 3, gridColumnIndex: 3 }),
     ];
 
     expect(planOf(base, target).operations).toEqual([
@@ -488,14 +565,14 @@ describe("table column pairing", () => {
 
   test("several deleted columns use their own physical-cell anchors", () => {
     const base = [
-      gridCell("a", "Account", 0, 0, 0),
-      gridCell("x", "Currency", 0, 1, 1),
-      gridCell("y", "Region", 0, 2, 2),
-      gridCell("b", "Status", 0, 3, 3),
+      gridCell("a", "Account", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
+      gridCell("x", "Currency", { rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 }),
+      gridCell("y", "Region", { rowIndex: 0, cellIndex: 2, gridColumnIndex: 2 }),
+      gridCell("b", "Status", { rowIndex: 0, cellIndex: 3, gridColumnIndex: 3 }),
     ];
     const target = [
-      gridCell("a-target", "Account", 0, 0, 0),
-      gridCell("b-target", "Status", 0, 1, 1),
+      gridCell("a-target", "Account", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
+      gridCell("b-target", "Status", { rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 }),
     ];
 
     expect(planOf(base, target).operations).toEqual([

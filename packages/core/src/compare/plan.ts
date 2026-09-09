@@ -436,17 +436,28 @@ const alignTableRows = (
   };
 
   for (const alignment of rows) {
-    if (alignment.type === "baseOnly") {
-      pushRow(alignment.row, "base");
-      continue;
+    switch (alignment.type) {
+      case "baseOnly":
+        pushRow(alignment.row, "base");
+        break;
+      case "targetOnly":
+        pushRow(alignment.row, "target");
+        break;
+      case "pair":
+        steps.push(
+          ...alignRowCells(
+            alignment.baseRow,
+            alignment.targetRow,
+            baseColumnKeys,
+            targetColumnKeys,
+          ),
+        );
+        break;
+      default: {
+        const unreachable: never = alignment;
+        panic("Unhandled table row alignment", { alignment: unreachable });
+      }
     }
-    if (alignment.type === "targetOnly") {
-      pushRow(alignment.row, "target");
-      continue;
-    }
-    steps.push(
-      ...alignRowCells(alignment.baseRow, alignment.targetRow, baseColumnKeys, targetColumnKeys),
-    );
   }
   return steps;
 };

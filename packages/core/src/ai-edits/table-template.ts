@@ -86,26 +86,22 @@ const hasAuthoredValue = (value: unknown): boolean => {
   return !Array.isArray(value) || value.length > 0;
 };
 
-const losesAuthoredAttrs = (node: PMNode): boolean => {
-  let cleared: readonly string[] = [];
+const clearedAttrsOf = (node: PMNode): readonly string[] => {
   switch (node.type.spec["tableRole"]) {
     case "table":
-      cleared = CLEARED_TABLE_ATTRS;
-      break;
+      return CLEARED_TABLE_ATTRS;
     case "row":
-      cleared = CLEARED_ROW_ATTRS;
-      break;
+      return CLEARED_ROW_ATTRS;
     case "cell":
     case "header_cell":
-      cleared = CLEARED_CELL_ATTRS;
-      break;
+      return CLEARED_CELL_ATTRS;
     default:
-      if (node.isTextblock) {
-        cleared = CLEARED_PARAGRAPH_ATTRS;
-      }
+      return node.isTextblock ? CLEARED_PARAGRAPH_ATTRS : [];
   }
-  return cleared.some((name) => hasAuthoredValue(node.attrs[name]));
 };
+
+const losesAuthoredAttrs = (node: PMNode): boolean =>
+  clearedAttrsOf(node).some((name) => hasAuthoredValue(node.attrs[name]));
 
 /**
  * Whether a target table can cross into the base package without semantic
@@ -199,22 +195,18 @@ const insertionMarkOf = (schema: Schema, revision: TableStructureRevision | null
 };
 
 const copiedAttrs = (node: PMNode, context: TemplateContext): Record<string, unknown> => {
+  const sourceAttrs = node.isTextblock ? stripBlockIdentityAttrs(node.attrs) : node.attrs;
+  const attrs = withoutAttrs(sourceAttrs, clearedAttrsOf(node));
   switch (node.type.spec["tableRole"]) {
     case "table":
-      return withoutAttrs(node.attrs, CLEARED_TABLE_ATTRS);
-    case "row": {
-      const attrs = withoutAttrs(node.attrs, CLEARED_ROW_ATTRS);
+      return attrs;
+    case "row":
       return context.revision ? { ...attrs, trIns: context.revision } : attrs;
-    }
     case "cell":
-    case "header_cell": {
-      const attrs = withoutAttrs(node.attrs, CLEARED_CELL_ATTRS);
+    case "header_cell":
       return context.clampRowSpan ? { ...attrs, rowspan: 1 } : attrs;
-    }
     default:
-      return node.isTextblock
-        ? withoutAttrs(stripBlockIdentityAttrs(node.attrs), CLEARED_PARAGRAPH_ATTRS)
-        : node.attrs;
+      return attrs;
   }
 };
 

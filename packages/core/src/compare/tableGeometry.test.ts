@@ -360,7 +360,14 @@ type GeneratedCell = {
   shadingFill?: string;
 };
 
-const buildCell = (column: number, gridSpan: number, content: string, shaded: boolean) => {
+type BuildCellOptions = {
+  column: number;
+  gridSpan: number;
+  content: string;
+  shaded: boolean;
+};
+
+const buildCell = ({ column, gridSpan, content, shaded }: BuildCellOptions) => {
   const cell: GeneratedCell = {
     content,
     width: COLUMN_WIDTHS.slice(column, column + gridSpan).reduce((sum, width) => sum + width, 0),
@@ -381,7 +388,7 @@ const cellArbitrary = (column: number, spanAllowance: number): fc.Arbitrary<Gene
       gridSpan: fc.integer({ min: 1, max: Math.max(1, spanAllowance) }),
       shaded: fc.boolean(),
     })
-    .map(({ content, gridSpan, shaded }) => buildCell(column, gridSpan, content, shaded));
+    .map(({ content, gridSpan, shaded }) => buildCell({ column, gridSpan, content, shaded }));
 
 const buildRow = (cells: readonly GeneratedCell[], header: boolean, height: number | null) => {
   const row: { cells: readonly GeneratedCell[]; header?: boolean; height?: number } = { cells };
@@ -428,9 +435,9 @@ describe("table geometry round trip", () => {
       rows: [
         {
           cells: [
-            buildCell(0, 1, "Shared", false),
-            buildCell(1, 1, "Shared", false),
-            buildCell(2, 1, "Shared", false),
+            buildCell({ column: 0, gridSpan: 1, content: "Shared", shaded: false }),
+            buildCell({ column: 1, gridSpan: 1, content: "Shared", shaded: false }),
+            buildCell({ column: 2, gridSpan: 1, content: "Shared", shaded: false }),
           ],
         },
       ],
@@ -439,7 +446,10 @@ describe("table geometry round trip", () => {
       ...baseTable,
       rows: [
         {
-          cells: [buildCell(0, 2, "Shared", false), buildCell(2, 1, "Shared", false)],
+          cells: [
+            buildCell({ column: 0, gridSpan: 2, content: "Shared", shaded: false }),
+            buildCell({ column: 2, gridSpan: 1, content: "Shared", shaded: false }),
+          ],
         },
       ],
     } as const satisfies BodyItem;
