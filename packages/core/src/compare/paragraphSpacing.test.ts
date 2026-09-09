@@ -13,10 +13,12 @@ const OPTIONS = { author: "compare", timestamp: "2026-09-08T00:00:00.000Z" } as 
 const TEXT = "The agreement remains effective for the stated term.";
 const INSERTED_TEXT = "The renewal period starts after written notice.";
 const STYLE_ID = "SpacedBody";
+const NEXT_STYLE_ID = "TightBody";
 
 type SpacingDocumentOptions = {
   directSpacing?: FolioAIParagraphSpacing;
   inheritedSpacing?: FolioAIParagraphSpacing;
+  styleId?: string;
 };
 
 type SpacingState = {
@@ -81,15 +83,20 @@ const paragraphModel = (
   text: string,
   paraId: string,
   directSpacing?: FolioAIParagraphSpacing,
+  styleId = STYLE_ID,
 ): Paragraph => ({
   type: "paragraph",
   paraId,
   textId: paraId,
-  formatting: { styleId: STYLE_ID, ...directSpacing },
+  formatting: { styleId, ...directSpacing },
   content: [{ type: "run", content: [{ type: "text", text }] }],
 });
 
-const spacingDocumentModel = ({ directSpacing, inheritedSpacing }: SpacingDocumentOptions) => {
+const spacingDocumentModel = ({
+  directSpacing,
+  inheritedSpacing,
+  styleId,
+}: SpacingDocumentOptions) => {
   const document = createEmptyDocument();
   document.package.styles = {
     styles: [
@@ -101,9 +108,17 @@ const spacingDocumentModel = ({ directSpacing, inheritedSpacing }: SpacingDocume
         basedOn: "Normal",
         ...(inheritedSpacing === undefined ? {} : { pPr: inheritedSpacing }),
       },
+      {
+        type: "paragraph",
+        styleId: NEXT_STYLE_ID,
+        name: "Tight Body",
+        basedOn: "Normal",
+      },
     ],
   };
-  document.package.document.content = [paragraphModel(TEXT, "12345678", directSpacing)];
+  document.package.document.content = [
+    paragraphModel(TEXT, "12345678", directSpacing, styleId),
+  ];
   return document;
 };
 
@@ -158,8 +173,10 @@ const spacingXml = (spacing: FolioAIParagraphSpacing | undefined): string => {
   return `<w:spacing ${attributes.join(" ")}/>`;
 };
 
-const expectedParagraphProperties = (spacing: FolioAIParagraphSpacing | undefined): string =>
-  `<w:pStyle w:val="${STYLE_ID}"/>${spacingXml(spacing)}`;
+const expectedParagraphProperties = (
+  spacing: FolioAIParagraphSpacing | undefined,
+  styleId = STYLE_ID,
+): string => `<w:pStyle w:val="${styleId}"/>${spacingXml(spacing)}`;
 
 const trackedParagraphPropertyParts = (
   paragraph: string,
@@ -272,6 +289,48 @@ describe("paragraph spacing comparison", () => {
     await expectCompareRoundTrip({
       before: { directSpacing: { spaceBefore: 120, lineSpacingRule: "auto" } },
       after: { directSpacing: FULL_SPACING },
+    });
+  });
+
+  test("round-trips a combined style and spacing transition in one pPrChange", async () => {
+    const beforeSpacing = { spaceBefore: 120, lineSpacingRule: "auto" } as const;
+    const result = await compareDocx(
+      await spacingDocument({ directSpacing: beforeSpacing }),
+      await spacingDocument({ directSpacing: FULL_SPACING, styleId: NEXT_STYLE_ID }),
+      OPTIONS,
+    );
+    if (result.isErr()) {
+      throw result.error;
+    }
+
+    expect(result.value.verification).toEqual({ status: "verified" });
+    expect(result.value.changes).toEqual([
+      expect.objectContaining({
+        kind: "paragraph-format",
+        properties: { styleId: NEXT_STYLE_ID, spacing: FULL_SPACING },
+      }),
+    ]);
+    const pending = await mainDocumentXml(result.value.buffer);
+    expect(pending.match(/<w:pPrChange\b/gu)).toHaveLength(1);
+    expect(trackedParagraphPropertyParts(firstParagraphXml(pending))).toEqual({
+      current: expectedParagraphProperties(FULL_SPACING, NEXT_STYLE_ID),
+      previous: expectedParagraphProperties(beforeSpacing),
+    });
+
+    const accepting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+    expect(accepting.acceptAll()).toBe(1);
+    const accepted = await FolioDocxReviewer.fromBuffer(await accepting.toBuffer());
+    expect(accepted.snapshot().blocks.at(0)).toMatchObject({
+      styleId: NEXT_STYLE_ID,
+      directSpacing: FULL_SPACING,
+    });
+
+    const rejecting = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+    expect(rejecting.rejectAll()).toBe(1);
+    const rejected = await FolioDocxReviewer.fromBuffer(await rejecting.toBuffer());
+    expect(rejected.snapshot().blocks.at(0)).toMatchObject({
+      styleId: STYLE_ID,
+      directSpacing: beforeSpacing,
     });
   });
 
