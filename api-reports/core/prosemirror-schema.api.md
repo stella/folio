@@ -300,7 +300,20 @@ export type ParagraphPropertyChangeAttrs = Omit<import__stll_docx_core_model.Par
 };
 
 // @public (undocumented)
-export type RunFormattingOverrideAttrs = Partial<Record<"bold" | "boldCs" | "cs" | "italic" | "italicCs" | "strike" | "allCaps" | "smallCaps" | "hidden" | "emboss" | "imprint" | "shadow" | "outline", boolean>> & {
+export type RunFormattingOverrideAttrs = {
+    allCaps?: boolean;
+    bold?: boolean;
+    boldCs?: boolean;
+    cs?: boolean;
+    emboss?: boolean;
+    hidden?: boolean;
+    imprint?: boolean;
+    italic?: boolean;
+    italicCs?: boolean;
+    outline?: boolean;
+    shadow?: boolean;
+    smallCaps?: boolean;
+    strike?: boolean;
     _authoredOn?: readonly RunFormattingBooleanProperty[];
     _authoredOff?: readonly RunFormattingBooleanProperty[];
     _authoredValues?: AuthoredRunFormattingValues;
