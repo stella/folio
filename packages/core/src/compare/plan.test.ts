@@ -268,6 +268,40 @@ describe("document-terminal paragraph carrier", () => {
     ]);
   });
 
+  test("places a replacement terminal table after its deletable base carrier", () => {
+    const base = [
+      gridCell("source", "Source terminal table", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      block("base-carrier", ""),
+    ];
+    const target = [
+      gridCell("target", "Target terminal table", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+        columnSpan: 2,
+      }),
+    ];
+
+    const { changes, operations } = planOf(base, target);
+
+    expect(changes.map(({ kind }) => kind)).toEqual(["table-delete", "table-insert", "delete"]);
+    expect(operations).toEqual([
+      { id: "compare-1", type: "deleteTable", blockId: "source" },
+      {
+        id: "compare-2",
+        type: "insertTable",
+        blockId: "base-carrier",
+        position: "after",
+        rows: [["Target terminal table"]],
+      },
+      { id: "compare-3", type: "deleteBlock", blockId: "base-carrier" },
+    ]);
+  });
+
   test("still compares paragraph properties on the reserved carrier", () => {
     const baseCarrier = block("base-carrier", "");
     const targetCarrier = { ...block("target-carrier", ""), styleId: "CustomStyle" };

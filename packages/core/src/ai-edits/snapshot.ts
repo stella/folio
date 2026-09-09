@@ -56,10 +56,10 @@ export const isFolioAIContentBlock = ({ text }: Pick<FolioAIBlock, "text">): boo
  * container-edge rule then applies and the addition cannot be rejected
  * cleanly.
  *
- * A body always ends with a paragraph — a table may not be the last child of a
- * body or a cell, so a package that ends in a table carries a trailing, often
- * empty, paragraph after it — so this is only `null` for a story with no
- * body-level paragraph at all, which is a malformed document.
+ * A body may validly end with a table immediately before its final section
+ * properties. Such a story has no body paragraph to anchor to, so this returns
+ * `null`; callers that can place a peer beside the table use its outer boundary
+ * instead.
  */
 export const trailingBodyBlockId = ({ blocks }: FolioAIEditSnapshot): string | null => {
   for (let index = blocks.length - 1; index >= 0; index--) {
