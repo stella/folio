@@ -10,6 +10,7 @@ import {
 } from "prosemirror-tables";
 
 import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
+import { reconcileTableGridAfterColumnRemoval } from "../prosemirror/tableGridMutation";
 import { stripBlockIdentityAttrs } from "./block-identity";
 import { tableRowFromTemplate, type TableStructureRevision } from "./table-template";
 import {
@@ -354,6 +355,12 @@ export const applyTableColumnDeletion = ({
     },
     columnIndex,
   );
+  reconcileTableGridAfterColumnRemoval({
+    tr,
+    tablePosition,
+    previousTable: table,
+    removedColumn: columnIndex,
+  });
   return applied(tr, null);
 };
 

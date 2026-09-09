@@ -4,6 +4,7 @@ import { Schema } from "prosemirror-model";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 import type { Command, Transaction } from "prosemirror-state";
+import { TableMap } from "prosemirror-tables";
 
 import {
   acceptChange,
@@ -65,7 +66,15 @@ const tableSchema = new Schema({
     doc: { content: "block+" },
     paragraph: { content: "text*", group: "block" },
     text: { group: "inline" },
-    table: { content: "tableRow+", group: "block", tableRole: "table" },
+    table: {
+      content: "tableRow+",
+      group: "block",
+      tableRole: "table",
+      attrs: {
+        columnWidths: { default: null },
+        _originalFormatting: { default: null },
+      },
+    },
     tableRow: {
       content: "tableCell*",
       tableRole: "row",
@@ -105,6 +114,10 @@ const tableSchema = new Schema({
 
 const REV_A_ATTRS = { revisionId: 1, author: "AI", date: "2026-01-01" };
 const REV_B_ATTRS = { revisionId: 2, author: "AI", date: "2026-01-02" };
+const TABLE_GRID_FORMATTING = {
+  sourceXml: "<w:tblPr/>",
+  gridSourceXml: "<w:tblGrid/>",
+};
 
 const makeStateWithMarks = () => {
   // One paragraph with two NON-overlapping insertion spans —
@@ -400,12 +413,19 @@ describe("table cell structural revision resolution", () => {
     EditorState.create({
       schema: tableSchema,
       doc: tableSchema.node("doc", null, [
-        tableSchema.node("table", null, [
-          tableSchema.node("tableRow", null, [
-            cell("Original", undefined),
-            cell("Changed", marker),
-          ]),
-        ]),
+        tableSchema.node(
+          "table",
+          {
+            columnWidths: [1200, 1800],
+            _originalFormatting: TABLE_GRID_FORMATTING,
+          },
+          [
+            tableSchema.node("tableRow", null, [
+              cell("Original", undefined),
+              cell("Changed", marker),
+            ]),
+          ],
+        ),
       ]),
     });
 
@@ -420,9 +440,12 @@ describe("table cell structural revision resolution", () => {
     );
 
     expect(acceptAIEditRevision(71)(view.state, view.dispatch)).toBe(true);
-    const row = view.state.doc.firstChild?.firstChild;
+    const table = view.state.doc.firstChild;
+    const row = table?.firstChild;
     expect(row?.childCount).toBe(2);
     expect(row?.child(1).attrs["cellMarker"]).toBeNull();
+    expect(table?.attrs["columnWidths"]).toEqual([1200, 1800]);
+    expect(table?.attrs["_originalFormatting"]).toEqual(TABLE_GRID_FORMATTING);
   });
 
   test("reject removes an inserted cell without consuming another cell revision", () => {
@@ -471,13 +494,295 @@ describe("table cell structural revision resolution", () => {
     };
     const accepting = dispatcher(stateWithCells(marker));
     expect(acceptAIEditRevision(74)(accepting.state, accepting.dispatch)).toBe(true);
-    expect(accepting.state.doc.firstChild?.firstChild?.textContent).toBe("Original");
+    const acceptedTable = accepting.state.doc.firstChild;
+    expect(acceptedTable?.firstChild?.textContent).toBe("Original");
+    expect(acceptedTable?.attrs["columnWidths"]).toEqual([1200]);
+    expect(acceptedTable?.attrs["_originalFormatting"]).toEqual({ sourceXml: "<w:tblPr/>" });
 
     const rejecting = dispatcher(stateWithCells(marker));
     expect(rejectAIEditRevision(74)(rejecting.state, rejecting.dispatch)).toBe(true);
-    const row = rejecting.state.doc.firstChild?.firstChild;
+    const rejectedTable = rejecting.state.doc.firstChild;
+    const row = rejectedTable?.firstChild;
     expect(row?.textContent).toBe("OriginalChanged");
     expect(row?.child(1).attrs["cellMarker"]).toBeNull();
+    expect(rejectedTable?.attrs["columnWidths"]).toEqual([1200, 1800]);
+    expect(rejectedTable?.attrs["_originalFormatting"]).toEqual(TABLE_GRID_FORMATTING);
+    expect(TABLE_GRID_FORMATTING).toEqual({
+      sourceXml: "<w:tblPr/>",
+      gridSourceXml: "<w:tblGrid/>",
+    });
+  });
+
+  test("structural cell removal keeps the surviving column's grid provenance", () => {
+    const deletedCell = (text: string, revisionId: number) =>
+      cell(text, {
+        cellMarker: {
+          kind: "del",
+          info: { revisionId, author: "Reviewer", date: "2026-07-16" },
+        },
+      });
+    const view = dispatcher(
+      EditorState.create({
+        schema: tableSchema,
+        doc: tableSchema.node("doc", null, [
+          tableSchema.node(
+            "table",
+            {
+              columnWidths: [1200, 1800, 2400, 4680],
+              _originalFormatting: {
+                sourceXml: "<w:tblPr/>",
+                gridSourceXml: "<w:tblGrid>stale after a structural edit</w:tblGrid>",
+              },
+            },
+            [
+              tableSchema.node("tableRow", null, [
+                deletedCell("A", 81),
+                deletedCell("B", 82),
+                deletedCell("C", 83),
+                cell("Survivor", undefined),
+              ]),
+            ],
+          ),
+        ]),
+      }),
+    );
+
+    expect(acceptAllChanges()(view.state, view.dispatch)).toBe(true);
+
+    const table = view.state.doc.firstChild;
+    expect(table?.attrs["columnWidths"]).toEqual([4680]);
+    expect(table?.attrs["_originalFormatting"]).toEqual({ sourceXml: "<w:tblPr/>" });
+    expect(table?.firstChild?.textContent).toBe("Survivor");
+    expect(() => view.state.doc.check()).not.toThrow();
+  });
+
+  for (const { label, removedIndex, expectedWidths } of [
+    { label: "first", removedIndex: 0, expectedWidths: [1800, 2400] },
+    { label: "middle", removedIndex: 1, expectedWidths: [1200, 2400] },
+    { label: "last", removedIndex: 2, expectedWidths: [1200, 1800] },
+  ]) {
+    test(`removing the ${label} column splices that authored grid width`, () => {
+      const labels = ["First", "Middle", "Last"];
+      const marker = {
+        cellMarker: {
+          kind: "del" as const,
+          info: { revisionId: 84, author: "Reviewer", date: "2026-07-16" },
+        },
+      };
+      const view = dispatcher(
+        EditorState.create({
+          schema: tableSchema,
+          doc: tableSchema.node("doc", null, [
+            tableSchema.node(
+              "table",
+              {
+                columnWidths: [1200, 1800, 2400],
+                _originalFormatting: TABLE_GRID_FORMATTING,
+              },
+              [
+                tableSchema.node(
+                  "tableRow",
+                  null,
+                  labels.map((text, index) =>
+                    cell(text, index === removedIndex ? marker : undefined),
+                  ),
+                ),
+              ],
+            ),
+          ]),
+        }),
+      );
+
+      expect(acceptAIEditRevision(84)(view.state, view.dispatch)).toBe(true);
+
+      const table = view.state.doc.firstChild;
+      expect(table?.attrs["columnWidths"]).toEqual(expectedWidths);
+      expect(table?.attrs["_originalFormatting"]).toEqual({ sourceXml: "<w:tblPr/>" });
+      expect(table?.textContent).toBe(labels.filter((_, index) => index !== removedIndex).join(""));
+    });
+  }
+
+  test("removing a spanning cell splices every physical grid column it owned", () => {
+    const view = dispatcher(
+      EditorState.create({
+        schema: tableSchema,
+        doc: tableSchema.node("doc", null, [
+          tableSchema.node(
+            "table",
+            {
+              columnWidths: [900, 1100, 2400],
+              _originalFormatting: TABLE_GRID_FORMATTING,
+            },
+            [
+              tableSchema.node("tableRow", null, [
+                tableSchema.node(
+                  "tableCell",
+                  {
+                    colspan: 2,
+                    colwidth: [900, 1100],
+                    cellMarker: {
+                      kind: "del",
+                      info: { revisionId: 88, author: "Reviewer", date: "2026-07-16" },
+                    },
+                  },
+                  [tableSchema.node("paragraph", null, [tableSchema.text("Removed")])],
+                ),
+                cell("Survivor", undefined),
+              ]),
+            ],
+          ),
+        ]),
+      }),
+    );
+
+    expect(acceptAIEditRevision(88)(view.state, view.dispatch)).toBe(true);
+
+    const table = view.state.doc.firstChild;
+    if (!table) {
+      throw new Error("expected a table");
+    }
+    expect(table.attrs["columnWidths"]).toEqual([2400]);
+    expect(table.attrs["_originalFormatting"]).toEqual({ sourceXml: "<w:tblPr/>" });
+    expect(TableMap.get(table).width).toBe(1);
+  });
+
+  test("an inconsistent authored grid is invalidated when topology changes", () => {
+    const view = dispatcher(
+      EditorState.create({
+        schema: tableSchema,
+        doc: tableSchema.node("doc", null, [
+          tableSchema.node(
+            "table",
+            {
+              columnWidths: [1200, 1800],
+              _originalFormatting: TABLE_GRID_FORMATTING,
+            },
+            [
+              tableSchema.node("tableRow", null, [
+                cell("First", undefined),
+                cell("Removed", {
+                  cellMarker: {
+                    kind: "del",
+                    info: { revisionId: 85, author: "Reviewer", date: "2026-07-16" },
+                  },
+                }),
+                cell("Last", undefined),
+              ]),
+            ],
+          ),
+        ]),
+      }),
+    );
+
+    expect(acceptAIEditRevision(85)(view.state, view.dispatch)).toBe(true);
+
+    const table = view.state.doc.firstChild;
+    if (!table) {
+      throw new Error("expected a table");
+    }
+    expect(table?.attrs["columnWidths"]).toBeNull();
+    expect(table?.attrs["_originalFormatting"]).toEqual({ sourceXml: "<w:tblPr/>" });
+    expect(TableMap.get(table).width).toBe(2);
+  });
+
+  test("a cell removal that leaves the table width unchanged preserves grid provenance", () => {
+    const view = dispatcher(
+      EditorState.create({
+        schema: tableSchema,
+        doc: tableSchema.node("doc", null, [
+          tableSchema.node(
+            "table",
+            {
+              columnWidths: [1200, 1800, 2400],
+              _originalFormatting: TABLE_GRID_FORMATTING,
+            },
+            [
+              tableSchema.node("tableRow", null, [
+                cell("A", undefined),
+                cell("B", undefined),
+                cell("C", undefined),
+              ]),
+              tableSchema.node("tableRow", null, [
+                cell("D", undefined),
+                cell("Removed", {
+                  cellMarker: {
+                    kind: "del",
+                    info: { revisionId: 86, author: "Reviewer", date: "2026-07-16" },
+                  },
+                }),
+                cell("F", undefined),
+              ]),
+            ],
+          ),
+        ]),
+      }),
+    );
+
+    expect(acceptAIEditRevision(86)(view.state, view.dispatch)).toBe(true);
+
+    const table = view.state.doc.firstChild;
+    if (!table) {
+      throw new Error("expected a table");
+    }
+    expect(TableMap.get(table).width).toBe(3);
+    expect(table?.attrs["columnWidths"]).toEqual([1200, 1800, 2400]);
+    expect(table?.attrs["_originalFormatting"]).toEqual(TABLE_GRID_FORMATTING);
+  });
+
+  test("nested cell removal updates only the nested table grid", () => {
+    const nestedTable = tableSchema.node(
+      "table",
+      {
+        columnWidths: [1200, 1800, 2400],
+        _originalFormatting: TABLE_GRID_FORMATTING,
+      },
+      [
+        tableSchema.node("tableRow", null, [
+          cell("Nested first", undefined),
+          cell("Nested removed", {
+            cellMarker: {
+              kind: "del",
+              info: { revisionId: 87, author: "Reviewer", date: "2026-07-16" },
+            },
+          }),
+          cell("Nested last", undefined),
+        ]),
+      ],
+    );
+    const outerFormatting = {
+      sourceXml: '<w:tblPr><w:tblStyle w:val="Outer"/></w:tblPr>',
+      gridSourceXml: '<w:tblGrid><w:gridCol w:w="9000"/></w:tblGrid>',
+    };
+    const view = dispatcher(
+      EditorState.create({
+        schema: tableSchema,
+        doc: tableSchema.node("doc", null, [
+          tableSchema.node(
+            "table",
+            { columnWidths: [9000], _originalFormatting: outerFormatting },
+            [
+              tableSchema.node("tableRow", null, [
+                tableSchema.node("tableCell", null, [
+                  tableSchema.node("paragraph", null, [tableSchema.text("Outer")]),
+                  nestedTable,
+                ]),
+              ]),
+            ],
+          ),
+        ]),
+      }),
+    );
+
+    expect(acceptAIEditRevision(87)(view.state, view.dispatch)).toBe(true);
+
+    const outerTable = view.state.doc.firstChild;
+    const resolvedNestedTable = outerTable?.firstChild?.firstChild?.child(1);
+    expect(outerTable?.attrs["columnWidths"]).toEqual([9000]);
+    expect(outerTable?.attrs["_originalFormatting"]).toEqual(outerFormatting);
+    expect(resolvedNestedTable?.attrs["columnWidths"]).toEqual([1200, 2400]);
+    expect(resolvedNestedTable?.attrs["_originalFormatting"]).toEqual({
+      sourceXml: "<w:tblPr/>",
+    });
   });
 
   test("bulk accept and reject resolve inserted cells", () => {
@@ -508,16 +813,23 @@ describe("table cell structural revision resolution", () => {
       EditorState.create({
         schema: tableSchema,
         doc: tableSchema.node("doc", null, [
-          tableSchema.node("table", null, [
-            tableSchema.node("tableRow", null, [
-              cell("First", undefined),
-              markedCell("Pending first", 78),
-            ]),
-            tableSchema.node("tableRow", null, [
-              cell("Second", undefined),
-              markedCell("Pending second", 79),
-            ]),
-          ]),
+          tableSchema.node(
+            "table",
+            {
+              columnWidths: [1200, 1800],
+              _originalFormatting: TABLE_GRID_FORMATTING,
+            },
+            [
+              tableSchema.node("tableRow", null, [
+                cell("First", undefined),
+                markedCell("Pending first", 78),
+              ]),
+              tableSchema.node("tableRow", null, [
+                cell("Second", undefined),
+                markedCell("Pending second", 79),
+              ]),
+            ],
+          ),
         ]),
       }),
     );
@@ -526,6 +838,8 @@ describe("table cell structural revision resolution", () => {
     const table = view.state.doc.firstChild;
     expect(table?.child(0).textContent).toBe("First");
     expect(table?.child(1).textContent).toBe("Second");
+    expect(table?.attrs["columnWidths"]).toEqual([1200]);
+    expect(table?.attrs["_originalFormatting"]).toEqual({ sourceXml: "<w:tblPr/>" });
     expect(() => view.state.doc.check()).not.toThrow();
   });
 
@@ -838,6 +1152,62 @@ describe("table cell structural revision resolution", () => {
     );
     expect(acceptingDeletion.state.doc.firstChild?.type.name).toBe("paragraph");
     expect(() => acceptingDeletion.state.doc.check()).not.toThrow();
+  });
+
+  test("removing a final table cell cannot transfer its grid onto an adjacent table", () => {
+    const adjacentFormatting = {
+      sourceXml: '<w:tblPr><w:tblStyle w:val="Adjacent"/></w:tblPr>',
+      gridSourceXml: '<w:tblGrid><w:gridCol w:w="3000"/><w:gridCol w:w="7000"/></w:tblGrid>',
+    };
+    const view = dispatcher(
+      EditorState.create({
+        schema: tableSchema,
+        doc: tableSchema.node("doc", null, [
+          tableSchema.node(
+            "table",
+            {
+              columnWidths: [900, 1000, 1100],
+              _originalFormatting: TABLE_GRID_FORMATTING,
+            },
+            [
+              tableSchema.node("tableRow", null, [
+                tableSchema.node(
+                  "tableCell",
+                  {
+                    colspan: 3,
+                    colwidth: [900, 1000, 1100],
+                    cellMarker: {
+                      kind: "del",
+                      info: { revisionId: 89, author: "Reviewer", date: "2026-07-16" },
+                    },
+                  },
+                  [tableSchema.node("paragraph", null, [tableSchema.text("Removed table")])],
+                ),
+              ]),
+            ],
+          ),
+          tableSchema.node(
+            "table",
+            { columnWidths: [3000, 7000], _originalFormatting: adjacentFormatting },
+            [
+              tableSchema.node("tableRow", null, [
+                cell("Adjacent left", undefined),
+                cell("Adjacent right", undefined),
+              ]),
+            ],
+          ),
+        ]),
+      }),
+    );
+
+    expect(acceptAIEditRevision(89)(view.state, view.dispatch)).toBe(true);
+
+    const adjacentTable = view.state.doc.firstChild;
+    expect(adjacentTable?.type.name).toBe("table");
+    expect(adjacentTable?.textContent).toBe("Adjacent leftAdjacent right");
+    expect(adjacentTable?.attrs["columnWidths"]).toEqual([3000, 7000]);
+    expect(adjacentTable?.attrs["_originalFormatting"]).toEqual(adjacentFormatting);
+    expect(() => view.state.doc.check()).not.toThrow();
   });
 });
 

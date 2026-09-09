@@ -47,6 +47,10 @@ const schema = new Schema({
       content: "tableRow+",
       group: "block",
       tableRole: "table",
+      attrs: {
+        columnWidths: { default: null },
+        _originalFormatting: { default: null },
+      },
     },
     tableRow: {
       content: "tableCell*",
@@ -3517,7 +3521,19 @@ describe("Folio AI edit operations", () => {
     );
     const state = EditorState.create({
       schema,
-      doc: schema.node("doc", null, [schema.node("table", null, rows)]),
+      doc: schema.node("doc", null, [
+        schema.node(
+          "table",
+          {
+            columnWidths: [1200, 1800, 2400],
+            _originalFormatting: {
+              sourceXml: "<w:tblPr/>",
+              gridSourceXml: "<w:tblGrid/>",
+            },
+          },
+          rows,
+        ),
+      ]),
     });
     const view = makeView(state);
 
@@ -3538,6 +3554,71 @@ describe("Folio AI edit operations", () => {
     ]);
     expect(TableMap.get(view.state.doc.child(0)).width).toBe(1);
     expect(view.state.doc.child(0).textContent).toBe("AD");
+    expect(view.state.doc.child(0).attrs["columnWidths"]).toEqual([1200]);
+    expect(view.state.doc.child(0).attrs["_originalFormatting"]).toEqual({
+      sourceXml: "<w:tblPr/>",
+    });
+  });
+
+  test("direct deletion splices the first, middle, or last authored grid width", () => {
+    for (const { removedIndex, expectedWidths } of [
+      { removedIndex: 0, expectedWidths: [1800, 2400] },
+      { removedIndex: 1, expectedWidths: [1200, 2400] },
+      { removedIndex: 2, expectedWidths: [1200, 1800] },
+    ]) {
+      const rows = [
+        ["A", "B", "C"],
+        ["D", "E", "F"],
+      ].map((texts, rowIndex) =>
+        schema.node(
+          "tableRow",
+          null,
+          texts.map((text, columnIndex) =>
+            schema.node("tableCell", null, [
+              schema.node("paragraph", { paraId: `grid-${rowIndex}-${columnIndex}` }, [
+                schema.text(text),
+              ]),
+            ]),
+          ),
+        ),
+      );
+      const state = EditorState.create({
+        schema,
+        doc: schema.node("doc", null, [
+          schema.node(
+            "table",
+            {
+              columnWidths: [1200, 1800, 2400],
+              _originalFormatting: {
+                sourceXml: "<w:tblPr/>",
+                gridSourceXml: "<w:tblGrid/>",
+              },
+            },
+            rows,
+          ),
+        ]),
+      });
+      const view = makeView(state);
+
+      const result = applyFolioAIEditOperations({
+        view,
+        snapshot: createFolioAIEditSnapshot(state.doc),
+        operations: [
+          {
+            id: "delete-column",
+            type: "deleteTableColumn",
+            blockId: `grid-0-${removedIndex}`,
+          },
+        ],
+        mode: "direct",
+      });
+
+      expect(result.skipped).toEqual([]);
+      expect(view.state.doc.child(0).attrs["columnWidths"]).toEqual(expectedWidths);
+      expect(view.state.doc.child(0).attrs["_originalFormatting"]).toEqual({
+        sourceXml: "<w:tblPr/>",
+      });
+    }
   });
 
   test("keeps insertion and deletion targets stable at the same column boundary", () => {
