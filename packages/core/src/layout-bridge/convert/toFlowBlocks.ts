@@ -1408,6 +1408,31 @@ function paragraphToRuns(
       runs.push(run);
       return;
     }
+    if (child.type.name === "structuredField") {
+      let containsPageBreak = false;
+      child.descendants((descendant) => {
+        if (descendant.type.name === "pageBreakRun") {
+          containsPageBreak = true;
+          return false;
+        }
+        return true;
+      });
+      if (containsPageBreak) {
+        const fieldContentStart = childPos + 1;
+        const fieldTrackedMarks = child.marks.filter(
+          ({ type }) => type.name === "insertion" || type.name === "deletion",
+        );
+        // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
+        child.forEach((fieldChild, fieldChildOffset) => {
+          pushRunsForChild(
+            fieldChild,
+            fieldContentStart + fieldChildOffset,
+            fieldTrackedMarks.length > 0 ? fieldTrackedMarks : inheritedTrackedMarks,
+          );
+        });
+        return;
+      }
+    }
     if (child.type.name === "field" || child.type.name === "structuredField") {
       // Marks on the field node (bold/italic/underline applied to the
       // field result inside `<w:fldChar separate>...</w:fldChar end>`)

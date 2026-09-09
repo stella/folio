@@ -2342,8 +2342,27 @@ function convertField(
   let fieldFormatting: TextFormatting | undefined;
   let fieldPropertyChanges: readonly RunPropertyChange[] | undefined;
   const inlineNodes: PMNode[] = [];
+  const runHasPageBreak = (run: Run): boolean =>
+    run.content.some((content) => content.type === "break" && content.breakType === "page");
+  if (field.type === "complexField" && field.fieldCode.some(runHasPageBreak)) {
+    panic(
+      "A complex-field instruction containing an explicit page break cannot be represented in the editor model",
+    );
+  }
+  const hasPageBreakContent =
+    field.type === "simpleField"
+      ? field.content.some((content) =>
+          content.type === "run"
+            ? runHasPageBreak(content)
+            : content.children.some((child) => child.type === "run" && runHasPageBreak(child)),
+        )
+      : field.fieldResult.some(runHasPageBreak);
+  if (hasPageBreakContent) {
+    assertPageBreakFieldResultIsRepresentable(field);
+  }
   const hasStructuredSourceContent =
-    field.type === "simpleField" && field.content.some((content) => content.type === "hyperlink");
+    hasPageBreakContent ||
+    (field.type === "simpleField" && field.content.some((content) => content.type === "hyperlink"));
   const appendRun = (run: Run): void => {
     for (const content of run.content) {
       if (content.type === "text") {
@@ -2421,8 +2440,11 @@ function convertField(
   const hasConvertedHyperlinkContent = inlineNodes.some((node) =>
     node.marks.some((mark) => mark.type.name === "hyperlink"),
   );
-
-  const createStructuredField = hasStructuredSourceContent && hasConvertedHyperlinkContent;
+  const hasConvertedPageBreakContent = inlineNodes.some(
+    (node) => node.type.name === "pageBreakRun",
+  );
+  const createStructuredField =
+    hasConvertedPageBreakContent || (hasStructuredSourceContent && hasConvertedHyperlinkContent);
   if (!createStructuredField && fieldPropertyChanges && fieldPropertyChanges.length > 0) {
     marks.push(schema.mark("runPropertyChange", { changes: [...fieldPropertyChanges] }));
   }
@@ -2621,6 +2643,40 @@ function assertPageBreakSourceRunIsRepresentable(run: Run): void {
     return;
   }
 
+  assertRunContentIsRepresentableBesidePageBreak(run, "A page-break-bearing run");
+}
+
+function assertPageBreakFieldResultIsRepresentable(field: SimpleField | ComplexField): void {
+  if (field.type === "complexField") {
+    for (const run of field.fieldResult) {
+      assertRunContentIsRepresentableBesidePageBreak(
+        run,
+        "A field result with an explicit page break",
+      );
+    }
+    return;
+  }
+
+  for (const content of field.content) {
+    if (content.type === "run") {
+      assertRunContentIsRepresentableBesidePageBreak(
+        content,
+        "A field result with an explicit page break",
+      );
+      continue;
+    }
+    for (const child of content.children) {
+      if (child.type === "run") {
+        assertRunContentIsRepresentableBesidePageBreak(
+          child,
+          "A field result with an explicit page break",
+        );
+      }
+    }
+  }
+}
+
+function assertRunContentIsRepresentableBesidePageBreak(run: Run, ownerDescription: string): void {
   for (const content of run.content) {
     switch (content.type) {
       case "break":
@@ -2635,7 +2691,7 @@ function assertPageBreakSourceRunIsRepresentable(run: Run): void {
       case "shape":
         if (content.shape.textBody) {
           panic(
-            "A page-break-bearing run containing a text-box shape cannot be represented in the editor model",
+            `${ownerDescription} containing a text-box shape cannot be represented in the editor model`,
           );
         }
         continue;
@@ -2644,7 +2700,7 @@ function assertPageBreakSourceRunIsRepresentable(run: Run): void {
       case "noBreakHyphen":
       case "softHyphen":
         panic(
-          `A page-break-bearing run containing ${content.type} cannot be represented in the editor model`,
+          `${ownerDescription} containing ${content.type} cannot be represented in the editor model`,
         );
       default: {
         const unsupported: never = content;

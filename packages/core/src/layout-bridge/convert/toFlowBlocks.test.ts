@@ -589,6 +589,43 @@ describe("toFlowBlocks paragraph formatting", () => {
     ]);
   });
 
+  test("inherits a parent move-from onto a page break nested in a structured field", () => {
+    const moveFrom = schema.mark("deletion", {
+      author: "Reviewer",
+      revisionId: 42,
+      moveKind: "moveFrom",
+    });
+    const field = schema
+      .node(
+        "structuredField",
+        {
+          fieldType: "REF",
+          instruction: "REF target",
+          displayText: "",
+          fieldKind: "simple",
+        },
+        [schema.node("pageBreakRun")],
+      )
+      .mark([moveFrom]);
+    const doc = schema.node("doc", null, [schema.node("paragraph", null, [field])]);
+
+    const blocks = toFlowBlocks(doc);
+
+    expect(blocks.map((block) => block.kind)).toEqual(["paragraph"]);
+    const paragraph = blocks.at(0);
+    if (paragraph?.kind !== "paragraph") {
+      throw new Error("Expected paragraph");
+    }
+    expect(paragraph.runs).toEqual([
+      expect.objectContaining({
+        kind: "text",
+        text: "",
+        isDeletion: true,
+        changeRevisionId: 42,
+      }),
+    ]);
+  });
+
   test("keeps a break-only paragraph mark as a mapped layout carrier", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", null, [schema.node("pageBreakRun")]),

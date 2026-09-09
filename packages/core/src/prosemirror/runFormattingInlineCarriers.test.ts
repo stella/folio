@@ -167,4 +167,28 @@ describe("run-formatting inline carrier contract", () => {
       ),
     ).toEqual([{ name: "text", position: 2, role: "serialized-result", from: 2, to: 3 }]);
   });
+
+  test("does not select a page-break result representation as generic field text", () => {
+    const field = schema.node(
+      "structuredField",
+      {
+        fieldType: "REF",
+        instruction: "REF carrier",
+        displayText: "AB",
+        fieldKind: "simple",
+        fldLock: false,
+        dirty: false,
+      },
+      [schema.text("A"), schema.node("pageBreakRun"), schema.text("B")],
+    );
+    const doc = schema.node("doc", null, [schema.node("paragraph", null, [field])]);
+
+    const selected = selectRunFormattingCarrierRepresentations({
+      doc,
+      from: 1,
+      to: 6,
+    });
+
+    expect(selected.map(({ node }) => node.type.name)).toEqual(["structuredField", "text", "text"]);
+  });
 });

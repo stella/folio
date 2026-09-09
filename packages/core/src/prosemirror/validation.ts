@@ -358,12 +358,20 @@ const validateNodeAttrs = (
           const hasStructuredHyperlink = node.content.content.some((child) =>
             child.marks.some((mark) => mark.type.name === "hyperlink"),
           );
-          if (fieldAttrs.value.fieldKind === "complex") {
+          const hasPageBreakCarrier = node.content.content.some(
+            (child) => child.type.name === "pageBreakRun",
+          );
+          if (fieldAttrs.value.fieldKind === "complex" && !hasPageBreakCarrier) {
             issues.push({
               path: `${path}.content`,
               message: "Complex fields cannot contain structured result children.",
             });
-          } else if (!hasStructuredHyperlink) {
+          } else if (fieldAttrs.value.fieldKind === "complex" && hasStructuredHyperlink) {
+            issues.push({
+              path: `${path}.content`,
+              message: "Complex field results cannot contain hyperlink content.",
+            });
+          } else if (!hasStructuredHyperlink && !hasPageBreakCarrier) {
             issues.push({
               path: `${path}.content`,
               message: "Structured simple fields require hyperlink content.",
@@ -373,7 +381,20 @@ const validateNodeAttrs = (
           node.forEach((child, _offset, index) => {
             const childPath = `${path}.content[${index}]`;
             const hasHyperlink = child.marks.some((mark) => mark.type.name === "hyperlink");
-            if (child.type.name === "bookmarkBoundary" && !hasHyperlink) {
+            if (fieldAttrs.value.fieldKind === "complex" && child.type.name === "textBoxAnchor") {
+              issues.push({
+                path: childPath,
+                message: "Complex field results cannot contain text-box anchors.",
+              });
+            } else if (
+              fieldAttrs.value.fieldKind === "complex" &&
+              child.type.name === "bookmarkBoundary"
+            ) {
+              issues.push({
+                path: childPath,
+                message: "Complex field results cannot contain bookmark boundaries.",
+              });
+            } else if (child.type.name === "bookmarkBoundary" && !hasHyperlink) {
               issues.push({
                 path: childPath,
                 message: "Bookmark boundaries inside fields require a hyperlink parent.",

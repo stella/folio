@@ -2946,10 +2946,39 @@ function createFieldFromNode(
           styleResolver,
         })
       : undefined;
+  const fieldFormattingContext = {
+    baseParagraphFormatting,
+    inheritedFormatting,
+    paragraphMarkFormatting,
+    paragraphMarkPrecedesStyle: paragraphMarkPrecedesStyle ?? false,
+    styleResolver: styleResolver ?? null,
+  };
+  const extractedContent = extractParagraphContent(
+    node,
+    undefined,
+    undefined,
+    textBoxAnchorMarkers,
+    false,
+    fieldFormattingContext,
+  ).filter(
+    (content): content is Run | Hyperlink => content.type === "run" || content.type === "hyperlink",
+  );
+  const hasExplicitPageBreak = extractedContent.some((content) => {
+    const runs = content.type === "run" ? [content] : content.children;
+    return runs.some(
+      (run) =>
+        run.type === "run" &&
+        run.content.some(
+          (runContent) => runContent.type === "break" && runContent.breakType === "page",
+        ),
+    );
+  });
 
-  // Provide fallback display text for dynamic fields so <w:t> is never empty
+  // Dynamic fields need visible fallback text only when they have no authored
+  // structural result. A page-break-only result is complete despite having no
+  // glyphs; appending a space would mutate it on every save/reopen cycle.
   let displayText = attrs.displayText ?? "";
-  if (!displayText) {
+  if (!displayText && !hasExplicitPageBreak) {
     switch (attrs.fieldType) {
       case "PAGE":
         displayText = "1";
@@ -2971,22 +3000,6 @@ function createFieldFromNode(
   if (marks && node.type.name === "field") {
     restoreRunPropertyChanges(displayRun, marks);
   }
-  const extractedContent = extractParagraphContent(
-    node,
-    undefined,
-    undefined,
-    textBoxAnchorMarkers,
-    false,
-    {
-      baseParagraphFormatting,
-      inheritedFormatting,
-      paragraphMarkFormatting,
-      paragraphMarkPrecedesStyle: paragraphMarkPrecedesStyle ?? false,
-      styleResolver: styleResolver ?? null,
-    },
-  ).filter(
-    (content): content is Run | Hyperlink => content.type === "run" || content.type === "hyperlink",
-  );
   const fieldContent =
     extractedContent.length > 0
       ? synchronizeFieldDisplayText(extractedContent, displayText, displayRun)
