@@ -1652,7 +1652,10 @@ function layoutTextBox(
       kind: "textBox",
       blockId: block.id,
       x,
-      y: state.topMargin + bandTop,
+      y:
+        block.position?.vertical?.relativeTo === "page"
+          ? sectionMarginTop + bandTop
+          : state.topMargin + bandTop,
       width: measure.width,
       height: measure.height,
       isPositioned: true,
@@ -1686,15 +1689,27 @@ function layoutTextBox(
             (fragment) => fragment.kind === "paragraph" && fragment.blockId === anchorBlockId,
           )
         : undefined;
-    const y = isPageFrameRelativeAnchor(vertical?.relativeTo)
-      ? state.topMargin +
+    const bandGeometry = {
+      pageHeight: sectionPageHeight,
+      marginTop: sectionMarginTop,
+      marginBottom: sectionMarginBottom,
+      boxHeight: measure.height,
+    };
+    let y;
+    if (vertical?.relativeTo === "page") {
+      y = sectionMarginTop + bandTopContentY(vertical, bandGeometry);
+    } else if (isPageFrameRelativeAnchor(vertical?.relativeTo)) {
+      y =
+        state.topMargin +
         bandTopContentY(vertical, {
           pageHeight: sectionPageHeight,
           marginTop: sectionMarginTop,
           marginBottom: sectionMarginBottom,
           boxHeight: measure.height,
-        })
-      : (anchorParagraph?.y ?? state.cursorY) + emuToPixels(vertical?.posOffset ?? 0);
+        });
+    } else {
+      y = (anchorParagraph?.y ?? state.cursorY) + emuToPixels(vertical?.posOffset ?? 0);
+    }
     const fragment: TextBoxFragment = {
       kind: "textBox",
       blockId: block.id,
