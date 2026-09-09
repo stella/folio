@@ -2,4 +2,4 @@
 "@stll/folio-core": patch
 ---
 
-Preserve tracked insertions and deletions on inline breaks and tabs across document save and reload.
+Preserve and enumerate tracked insertions and deletions on inline atoms, including breaks and tabs, across document conversion, save, reload, and bulk resolution.
