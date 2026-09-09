@@ -22,34 +22,23 @@ import type {
   TableFormatting,
   TableRowFormatting,
 } from "../../types/document";
-import { mergeTextFormatting } from "../../utils/textFormattingMerge";
 import { PARAGRAPH_MARK_CHANGE_KINDS, type ParagraphMarkChangeKind } from "@stll/docx-core/model";
 
-import {
-  expectCharacterStyleMarkAttrs,
-  expectParagraphAttrs,
-  expectRunPropertyChangeMarkAttrs,
-} from "../attrs";
+import { expectParagraphAttrs, expectRunPropertyChangeMarkAttrs } from "../attrs";
 import {
   addedBreakCarrierBefore,
   finalParagraphsOf,
   paragraphEndsItsContainer,
 } from "../containerFinalParagraph";
-import {
-  resolveParagraphDefaultTextFormatting,
-  textFormattingToMarks,
-} from "../conversion/toProseDoc";
+import { resolveParagraphDefaultTextFormatting } from "../conversion/toProseDoc";
 import {
   markChangedParagraphRanges,
   markStructuralChange,
   markTrackedSectionEndpointRemoval,
 } from "../extensions/features/ParagraphChangeTrackerExtension";
 import { getDocumentStyleResolver } from "../plugins/documentStyles";
-import {
-  paragraphFormattingForRun,
-  paragraphRunStyleContextAt,
-  resolveEffectiveRunStyleFormatting,
-} from "../runStyleFormatting";
+import { paragraphRunStyleContextAt } from "../runStyleFormatting";
+import { reconstructRejectedRunFormattingMarks } from "../runPropertyChangeResolution";
 import { holdsNoContent } from "../zeroWidthAnchors";
 import { getFolioNodeRevisionCarriers } from "../revisionCarriers";
 import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
@@ -420,7 +409,13 @@ function resolveChange(
       const useBulkInlineResolution =
         canBulkInlineResolution && bulkInlineCarrierCount >= BULK_INLINE_RESOLUTION_THRESHOLD;
       if (useBulkInlineResolution) {
-        bulkInlineChangeTracking = appendHeadlessInlineResolution(tr, mode, keepType, removeType);
+        bulkInlineChangeTracking = appendHeadlessInlineResolution({
+          tr,
+          mode,
+          keepType,
+          removeType,
+          styleResolver,
+        });
       } else {
         for (const deferred of deferredRunPropertyChanges) {
           resolveRunPropertyChange(deferred);
@@ -670,50 +665,19 @@ const resolveRunPropertyChange = ({
 
   const previousFormatting: RunPropertyChange["previousFormatting"] =
     matches.at(0)?.previousFormatting;
-  const characterStyleMark = node.marks.find(({ type }) => type.name === "characterStyle");
-  const characterStyleAttrs = characterStyleMark
-    ? expectCharacterStyleMarkAttrs(characterStyleMark)
-    : undefined;
-  const preservedCharacterStyleAttrs =
-    previousFormatting?.styleId !== undefined &&
-    characterStyleAttrs?.styleId === previousFormatting.styleId
-      ? characterStyleAttrs
-      : undefined;
   const styleContext = paragraphRunStyleContextAt(tr.doc, from, styleResolver);
-  const styleFormatting = preservedCharacterStyleAttrs
-    ? resolveEffectiveRunStyleFormatting({
-        marks: node.marks,
-        paragraphFormatting: paragraphFormattingForRun(
-          node.marks,
-          styleContext,
-          previousFormatting,
-        ),
-        styleResolver,
-      })
-    : paragraphFormattingForRun(node.marks, styleContext, previousFormatting);
-  const effectivePreviousFormatting = mergeTextFormatting(styleFormatting, previousFormatting);
   for (const currentMark of node.marks) {
     if (RUN_FORMATTING_MARK_NAMES.has(currentMark.type.name)) {
       tr.removeMark(from, to, currentMark.type);
     }
   }
-  for (const previousMark of textFormattingToMarks(effectivePreviousFormatting, {
-    overrideFormatting: previousFormatting,
-    directFormatting: previousFormatting,
+  for (const previousMark of reconstructRejectedRunFormattingMarks({
+    node,
+    paragraphContext: styleContext,
+    previousFormatting,
+    styleResolver,
   })) {
     tr.addMark(from, to, previousMark);
-  }
-  if (previousFormatting?.styleId) {
-    const characterStyle = node.type.schema.marks["characterStyle"];
-    if (characterStyle) {
-      tr.addMark(
-        from,
-        to,
-        characterStyle.create(
-          preservedCharacterStyleAttrs ?? { styleId: previousFormatting.styleId },
-        ),
-      );
-    }
   }
 };
 
