@@ -39,6 +39,10 @@ import { parseDocx } from "../docx/parser";
 import { repackDocx } from "../docx/rezip";
 import { pluginsForHeadlessRevisionResolution } from "../internal/headlessRevisionResolutionGuard";
 import {
+  type TrackedSectionEndpointRemoval,
+  withTrackedSectionEndpointRemoval,
+} from "../internal/sectionEndpointResolution";
+import {
   acceptAIEditRevision,
   rejectAIEditRevision,
   resolveAllChangesInHeadlessState,
@@ -52,6 +56,7 @@ import {
 import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/AutoBidiDetectionExtension";
 import {
   getChangedParagraphIds,
+  getTrackedSectionEndpointRemoval,
   hasStructuralChanges,
   hasUntrackedChanges,
 } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
@@ -378,6 +383,26 @@ type FolioResolvedStoryExpectation = {
   story: FolioEditableDocumentStoryHandle;
   text: string;
   blocks: FolioAIBlock[];
+};
+
+type FolioReviewerStateSnapshot = {
+  mainState: EditorState;
+  secondaryStoryStates: readonly FolioSecondaryStoryState[];
+  createdComments: readonly Comment[];
+  resolvedOverrides: ReadonlyMap<number, boolean>;
+  resolvedStoryExpectations: readonly FolioResolvedStoryExpectation[];
+};
+
+type FolioSavePath =
+  | { type: "full-repack" }
+  | { type: "selective-first"; changedParaIds: Set<string> };
+
+type FolioSaveSnapshot = {
+  document: Document;
+  path: FolioSavePath;
+  changedNoteParaIds: ReadonlySet<string>;
+  sectionEndpointRemoval: TrackedSectionEndpointRemoval | null;
+  resolvedStoryExpectations: readonly FolioResolvedStoryExpectation[];
 };
 
 type ApplyDocumentOperationsInternalOptions = {
@@ -1299,15 +1324,62 @@ export class FolioDocxReviewer {
 
   /** The current document model with edits merged back in. */
   toDocument(): Document {
-    const document = updateDocumentContent(this.baseDocument, this.state.doc);
-    this.mergeEditedSecondaryStories(document);
-    if (this.createdComments.length > 0 || this.resolvedOverrides.size > 0) {
-      document.package.document.comments = this.withResolvedOverrides([
-        ...(document.package.document.comments ?? []),
-        ...this.createdComments,
-      ]);
+    return this.documentFromStateSnapshot(this.captureReviewerState());
+  }
+
+  private captureReviewerState(): FolioReviewerStateSnapshot {
+    const secondaryStoryStates: FolioSecondaryStoryState[] = [];
+    for (const { handle, initialState, state } of this.secondaryStoryStates.values()) {
+      secondaryStoryStates.push({ handle, initialState, state });
+    }
+    return {
+      mainState: this.state,
+      secondaryStoryStates,
+      createdComments: [...this.createdComments],
+      resolvedOverrides: new Map(this.resolvedOverrides),
+      resolvedStoryExpectations: [...this.resolvedStoryExpectations.values()],
+    };
+  }
+
+  private documentFromStateSnapshot(snapshot: FolioReviewerStateSnapshot): Document {
+    const document = updateDocumentContent(this.baseDocument, snapshot.mainState.doc);
+    this.mergeEditedSecondaryStories(document, snapshot.secondaryStoryStates);
+    if (snapshot.createdComments.length > 0 || snapshot.resolvedOverrides.size > 0) {
+      document.package.document.comments = this.withResolvedOverrides(
+        [...(document.package.document.comments ?? []), ...snapshot.createdComments],
+        snapshot.resolvedOverrides,
+      );
     }
     return document;
+  }
+
+  private captureSaveSnapshot(): FolioSaveSnapshot {
+    const snapshot = this.captureReviewerState();
+    const changedParaIds = new Set(getChangedParagraphIds(snapshot.mainState));
+    let structuralChange = hasStructuralChanges(snapshot.mainState);
+    let untrackedChanges = hasUntrackedChanges(snapshot.mainState);
+    const changedNoteParaIds = new Set<string>();
+    for (const entry of snapshot.secondaryStoryStates) {
+      if (entry.handle.type !== "footnote" && entry.handle.type !== "endnote") {
+        continue;
+      }
+      for (const paraId of getChangedParagraphIds(entry.state)) {
+        changedParaIds.add(paraId);
+        changedNoteParaIds.add(paraId);
+      }
+      structuralChange ||= hasStructuralChanges(entry.state);
+      untrackedChanges ||= hasUntrackedChanges(entry.state);
+    }
+    return {
+      document: this.documentFromStateSnapshot(snapshot),
+      path:
+        structuralChange || untrackedChanges
+          ? { type: "full-repack" }
+          : { type: "selective-first", changedParaIds },
+      changedNoteParaIds,
+      sectionEndpointRemoval: getTrackedSectionEndpointRemoval(snapshot.mainState),
+      resolvedStoryExpectations: snapshot.resolvedStoryExpectations,
+    };
   }
 
   /**
@@ -1317,26 +1389,36 @@ export class FolioDocxReviewer {
    * structural edits — the same two-tier path the editor's save uses.
    */
   async toBuffer(): Promise<ArrayBuffer> {
-    const document = this.toDocument();
-    const selective = await this.trySelectiveSave(document);
+    const save = this.captureSaveSnapshot();
+    const selective =
+      save.path.type === "selective-first"
+        ? await this.trySelectiveSave(save.document, save.path.changedParaIds)
+        : null;
     if (selective) {
-      await this.assertResolvedStoriesSerialized(selective);
+      await this.assertResolvedStoriesSerialized(selective, save.resolvedStoryExpectations);
       return selective;
     }
-    const buffer = await repackDocx(
-      { ...document, originalBuffer: this.originalBuffer },
-      { changedNoteParaIds: this.getChangedNoteParaIds() },
-    );
-    await this.assertResolvedStoriesSerialized(buffer);
+    const repackDocument = { ...save.document, originalBuffer: this.originalBuffer };
+    const buffer = save.sectionEndpointRemoval
+      ? await withTrackedSectionEndpointRemoval({
+          document: repackDocument,
+          resolution: save.sectionEndpointRemoval,
+          repack: () => repackDocx(repackDocument, { changedNoteParaIds: save.changedNoteParaIds }),
+        })
+      : await repackDocx(repackDocument, { changedNoteParaIds: save.changedNoteParaIds });
+    await this.assertResolvedStoriesSerialized(buffer, save.resolvedStoryExpectations);
     return buffer;
   }
 
-  private async assertResolvedStoriesSerialized(buffer: ArrayBuffer): Promise<void> {
-    if (this.resolvedStoryExpectations.size === 0) {
+  private async assertResolvedStoriesSerialized(
+    buffer: ArrayBuffer,
+    expectations: readonly FolioResolvedStoryExpectation[],
+  ): Promise<void> {
+    if (expectations.length === 0) {
       return;
     }
     const reopened = await FolioDocxReviewer.fromBuffer(buffer);
-    for (const { story, text, blocks } of this.resolvedStoryExpectations.values()) {
+    for (const { story, text, blocks } of expectations) {
       const serialized = reopened.readReviewedStory({ story, view: "current-markup" });
       const serializedState = reopened.getEditableStoryState(story);
       const serializedText = serializedState
@@ -1373,44 +1455,21 @@ export class FolioDocxReviewer {
     }
   }
 
-  private getChangedNoteParaIds(): Set<string> {
-    const changed = new Set<string>();
-    for (const entry of this.secondaryStoryStates.values()) {
-      if (entry.handle.type !== "footnote" && entry.handle.type !== "endnote") {
-        continue;
-      }
-      for (const paraId of getChangedParagraphIds(entry.state)) {
-        changed.add(paraId);
-      }
-    }
-    return changed;
-  }
-
   /**
    * Attempt the selective patch, treating a throw the same as a decline. Odd
    * source XML can make the paragraph diff throw rather than return `null`; a
    * full repack is the correct lossless fallback in both cases, so the fallback
    * is the graceful handling — no separate error surface is needed here.
    */
-  private async trySelectiveSave(document: Document): Promise<ArrayBuffer | null> {
-    const changedParaIds = new Set(getChangedParagraphIds(this.state));
-    let structuralChange = hasStructuralChanges(this.state);
-    let untrackedChanges = hasUntrackedChanges(this.state);
-    for (const entry of this.secondaryStoryStates.values()) {
-      if (entry.handle.type !== "footnote" && entry.handle.type !== "endnote") {
-        continue;
-      }
-      for (const paraId of getChangedParagraphIds(entry.state)) {
-        changedParaIds.add(paraId);
-      }
-      structuralChange ||= hasStructuralChanges(entry.state);
-      untrackedChanges ||= hasUntrackedChanges(entry.state);
-    }
+  private async trySelectiveSave(
+    document: Document,
+    changedParaIds: Set<string>,
+  ): Promise<ArrayBuffer | null> {
     try {
       return await attemptSelectiveSave(document, this.originalBuffer, {
         changedParaIds,
-        structuralChange,
-        hasUntrackedChanges: untrackedChanges,
+        structuralChange: false,
+        hasUntrackedChanges: false,
       });
     } catch {
       return null;
@@ -1517,12 +1576,15 @@ export class FolioDocxReviewer {
     return normalizeFolioAIBlockText(state?.doc.textContent ?? sourceText);
   }
 
-  private mergeEditedSecondaryStories(document: Document): void {
+  private mergeEditedSecondaryStories(
+    document: Document,
+    secondaryStoryStates: Iterable<FolioSecondaryStoryState> = this.secondaryStoryStates.values(),
+  ): void {
     let headers: Map<string, HeaderFooter> | undefined;
     let footers: Map<string, HeaderFooter> | undefined;
     let footnotes: Footnote[] | undefined;
     let endnotes: Endnote[] | undefined;
-    for (const entry of this.secondaryStoryStates.values()) {
+    for (const entry of secondaryStoryStates) {
       if (entry.state === entry.initialState) {
         continue;
       }
@@ -1595,12 +1657,15 @@ export class FolioDocxReviewer {
   }
 
   /** Apply any {@link resolveComment} overrides recorded for these comments. */
-  private withResolvedOverrides(comments: readonly Comment[]): Comment[] {
-    if (this.resolvedOverrides.size === 0) {
+  private withResolvedOverrides(
+    comments: readonly Comment[],
+    resolvedOverrides: ReadonlyMap<number, boolean> = this.resolvedOverrides,
+  ): Comment[] {
+    if (resolvedOverrides.size === 0) {
       return [...comments];
     }
     return comments.map((comment) => {
-      const override = this.resolvedOverrides.get(comment.id);
+      const override = resolvedOverrides.get(comment.id);
       return override === undefined ? comment : { ...comment, done: override };
     });
   }
