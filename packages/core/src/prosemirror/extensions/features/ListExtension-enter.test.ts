@@ -126,6 +126,8 @@ describe("ListExtension Enter numbering", () => {
     ).toBe(true);
 
     expect(listMarkers(state)).toEqual(["(a)", "(b)"]);
+    expect(state.selection.$from.parent).toBe(state.doc.lastChild);
+    expect(state.selection.$from.parentOffset).toBe(0);
   });
 
   test("does not retain an imported template after replacing the list", () => {

@@ -105,8 +105,18 @@ class FakeHTMLElement {
   }
 
   private matches(selector: string): boolean {
-    if (selector.includes(".layout-page-content")) {
+    if (selector === ".layout-page-content span[data-pm-start][data-pm-end]") {
       return this.classes.has("layout-run-text");
+    }
+    if (selector === ".layout-page-content .layout-paragraph" || selector === ".layout-paragraph") {
+      return this.classes.has("layout-paragraph");
+    }
+    if (selector === "span[data-pm-start][data-pm-end]") {
+      return (
+        this.classes.has("layout-run-text") &&
+        this.dataset["pmStart"] !== undefined &&
+        this.dataset["pmEnd"] !== undefined
+      );
     }
     if (selector === ".layout-page") {
       return this.classes.has("layout-page");
@@ -241,6 +251,40 @@ const buildCollapsedLeadingSpaceContainer = (): HTMLElement => {
   return container as unknown as HTMLElement;
 };
 
+const buildUnpaintedPrefixContainer = (): HTMLElement => {
+  const container = new FakeHTMLElement();
+  const page = new FakeHTMLElement(["layout-page"]);
+  page.dataset["pageNumber"] = "1";
+  const content = new FakeHTMLElement(["layout-page-content"]);
+  const paragraph = new FakeHTMLElement(
+    ["layout-paragraph"],
+    { left: 20, top: 30, right: 180, bottom: 48, width: 160, height: 18 },
+    18,
+  );
+  paragraph.dataset["pmStart"] = "10";
+  paragraph.dataset["pmEnd"] = "14";
+  const line = new FakeHTMLElement(
+    ["layout-line"],
+    { left: 20, top: 30, right: 180, bottom: 48, width: 160, height: 18 },
+    18,
+  );
+  const emptyTextSlot = new FakeHTMLElement(
+    ["layout-run-text"],
+    { left: 70, top: 30, right: 70, bottom: 48, width: 0, height: 18 },
+    18,
+  );
+  emptyTextSlot.dataset["pmStart"] = "12";
+  emptyTextSlot.dataset["pmEnd"] = "12";
+
+  container.append(page);
+  page.append(content);
+  content.append(paragraph);
+  paragraph.append(line);
+  line.append(emptyTextSlot);
+
+  return container as unknown as HTMLElement;
+};
+
 let originalHTMLElement: unknown;
 let originalNode: unknown;
 
@@ -269,6 +313,12 @@ describe("getCaretPositionFromDom caret height", () => {
     const caret = getCaretPositionFromDom(buildContainer(), 3, rect({}));
 
     expect(caret?.height).toBe(18);
+  });
+
+  test("anchors a caret after an unpainted inline prefix to the first painted text slot", () => {
+    const caret = getCaretPositionFromDom(buildUnpaintedPrefixContainer(), 11, rect({}));
+
+    expect(caret).toEqual({ x: 70, y: 30, height: 18, pageIndex: 0 });
   });
 
   test("falls back to line height when the range reports zero height", () => {

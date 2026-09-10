@@ -5,7 +5,10 @@
  */
 
 import { findBodyEmptyRuns, findBodyPmSpans } from "../layout-bridge/dom/findBodyPmSpans";
-import { findCollapsedLineEdgeCaretTarget } from "../layout-bridge/dom/clickToPositionDom";
+import {
+  findCollapsedLineEdgeCaretTarget,
+  findParagraphGapCaretTarget,
+} from "../layout-bridge/dom/clickToPositionDom";
 import {
   createTextStreamRange,
   descendantTextNodes,
@@ -96,6 +99,15 @@ export class RenderedDomContextImpl implements RenderedDomContext {
         x: (rangeRect.left - containerRect.left) / this.#zoom,
         y: (rangeRect.top - containerRect.top) / this.#zoom,
         height: lineHeightFor(span, this.#zoom),
+      };
+    }
+
+    const gapTarget = findParagraphGapCaretTarget(this.#pagesContainer, pmPos);
+    if (gapTarget) {
+      return {
+        x: (gapTarget.geometry.left - containerRect.left) / this.#zoom,
+        y: (gapTarget.geometry.top - containerRect.top) / this.#zoom,
+        height: gapTarget.geometry.height / this.#zoom,
       };
     }
 
