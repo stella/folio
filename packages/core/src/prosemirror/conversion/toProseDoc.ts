@@ -2792,7 +2792,7 @@ const PAGE_BREAK_OWNER_DESCRIPTIONS = {
   "field-result": "A field result with an explicit page break",
   "page-break-bearing-run": "A page-break-bearing run",
 } as const satisfies Record<
-  Exclude<UnsupportedDocxToProseMirrorOwner, "complex-field-instruction">,
+  Extract<UnsupportedDocxToProseMirrorOwner, "field-result" | "page-break-bearing-run">,
   string
 >;
 
