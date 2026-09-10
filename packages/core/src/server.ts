@@ -53,6 +53,10 @@ export {
   type FolioContentStructuralChange,
   type FolioContentTextSegment,
 } from "./compare/content";
+export {
+  WORD_DIFF_GRANULARITIES,
+  type WordDiffGranularity,
+} from "./ai-edits/word-diff";
 export type {
   FolioContentBlock,
   FolioContentContainerPathEntry,

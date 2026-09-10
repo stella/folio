@@ -1396,12 +1396,17 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlock>({
   let nextRelationId = 0;
   let nextStructuralId = 0;
   let remainingFormattingRanges = maxChanges;
+  let changeCount = 0;
 
   const addRelation = (
     event: FolioContentComparisonEvent<Block>,
     relationBaseBlocks: readonly Block[],
     relationRevisedBlocks: readonly Block[],
-  ): void => {
+  ): boolean => {
+    if (event.type !== "unchanged") {
+      changeCount++;
+      if (changeCount > maxChanges) return false;
+    }
     const relation = { id: nextRelationId++, baseBlocks: relationBaseBlocks, revisedBlocks: relationRevisedBlocks, event };
     relations.push(relation);
     for (const block of relationBaseBlocks) {
@@ -1416,7 +1421,18 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlock>({
       }
       revisedRelation.set(block.id, relation);
     }
+    return true;
   };
+
+  const changeLimitExceeded = (): Result<never, FolioContentComparisonLimitError> =>
+    Result.err(
+      limitExceeded({
+        input: "result",
+        limit: "changes",
+        maximum: maxChanges,
+        actual: maxChanges + 1,
+      }),
+    );
 
   for (const [stepIndex, step] of steps.entries()) {
     if (consumed.has(stepIndex)) continue;
@@ -1429,7 +1445,9 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlock>({
         offset: paragraphPlan.offset,
         separator: paragraphPlan.separator,
       } as const;
-      addRelation(event, event.baseBlocks, event.revisedBlocks);
+      if (!addRelation(event, event.baseBlocks, event.revisedBlocks)) {
+        return changeLimitExceeded();
+      }
       continue;
     }
     if (paragraphPlan?.type === "merge") {
@@ -1439,7 +1457,9 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlock>({
         revisedBlocks: [paragraphPlan.revisedBlock],
         separator: paragraphPlan.separator,
       } as const;
-      addRelation(event, event.baseBlocks, event.revisedBlocks);
+      if (!addRelation(event, event.baseBlocks, event.revisedBlocks)) {
+        return changeLimitExceeded();
+      }
       continue;
     }
 
@@ -1474,7 +1494,9 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlock>({
       } else {
         event = { type: "unchanged", baseBlocks: [base], revisedBlocks: [revised] };
       }
-      addRelation(event, [base], [revised]);
+      if (!addRelation(event, [base], [revised])) {
+        return changeLimitExceeded();
+      }
       continue;
     }
 
@@ -1483,7 +1505,9 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlock>({
       const event: FolioContentComparisonEvent<Block> = move
         ? { type: "movedFrom", baseBlocks: [step.block], revisedBlocks: [], moveId: move.moveId }
         : { type: "deleted", baseBlocks: [step.block], revisedBlocks: [] };
-      addRelation(event, [step.block], []);
+      if (!addRelation(event, [step.block], [])) {
+        return changeLimitExceeded();
+      }
       continue;
     }
     if (step.type === "revisedOnly") {
@@ -1517,7 +1541,9 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlock>({
             ...(moveFormatting && { formatting: moveFormatting }),
           }
         : { type: "inserted", baseBlocks: [], revisedBlocks: [step.block] };
-      addRelation(event, [], [step.block]);
+      if (!addRelation(event, [], [step.block])) {
+        return changeLimitExceeded();
+      }
       continue;
     }
 
@@ -1527,12 +1553,16 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlock>({
     if ("baseBlockIds" in structural) {
       for (const block of step.blocks) {
         const event = { type: "deleted", baseBlocks: [block], revisedBlocks: [], structuralChangeId: structural.id } as const;
-        addRelation(event, [block], []);
+        if (!addRelation(event, [block], [])) {
+          return changeLimitExceeded();
+        }
       }
     } else {
       for (const block of step.blocks) {
         const event = { type: "inserted", baseBlocks: [], revisedBlocks: [block], structuralChangeId: structural.id } as const;
-        addRelation(event, [], [block]);
+        if (!addRelation(event, [], [block])) {
+          return changeLimitExceeded();
+        }
       }
     }
   }
@@ -1577,17 +1607,6 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlock>({
     return panic("Content alignment left relations outside the ordered projection");
   }
 
-  const changeCount = ordered.reduce((count, event) => count + (event.type === "unchanged" ? 0 : 1), 0);
-  if (changeCount > maxChanges) {
-    return Result.err(
-      limitExceeded({
-        input: "result",
-        limit: "changes",
-        maximum: maxChanges,
-        actual: changeCount,
-      }),
-    );
-  }
   return Result.ok({ events: ordered, structuralChanges });
 };
 
