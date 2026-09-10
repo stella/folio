@@ -36,38 +36,6 @@ export {
   isFolioAIContentBlock,
   normalizeFolioAIBlockText,
 } from "./ai-edits/snapshot";
-export {
-  compareContent,
-  FOLIO_CONTENT_COMPARISON_LIMITS,
-  FolioContentComparisonLimitError,
-  InvalidFolioContentComparisonError,
-  type CompareContentOptions,
-  type FolioContentBlockProperty,
-  type FolioContentComparison,
-  type FolioContentComparisonError,
-  type FolioContentComparisonEvent,
-  type FolioContentComparisonLimit,
-  type FolioContentFormatRange,
-  type FolioContentFormattingChange,
-  type FolioContentParagraphFormattingPatch,
-  type FolioContentStructuralChange,
-  type FolioContentTextSegment,
-} from "./compare/content";
-export { WORD_DIFF_GRANULARITIES, type WordDiffGranularity } from "./ai-edits/word-diff";
-export type {
-  FolioContentBlock,
-  FolioContentContainerPathEntry,
-  FolioContentIdStability,
-  FolioContentInlineBooleanProperty,
-  FolioContentInlineFormatting,
-  FolioContentInlineFormattingPatch,
-  FolioContentLineSpacingRule,
-  FolioContentParagraphAlignment,
-  FolioContentParagraphSpacing,
-  FolioContentRun,
-  FolioContentSnapshot,
-  FolioContentTableLocation,
-} from "./compare/content-types";
 export { getFolioDocumentOutline, readFolioDocumentSection } from "./ai-edits/scoped-reading";
 export {
   deriveBlockId,
