@@ -14,8 +14,10 @@ import type {
 
 const HEX_COLOR = /^#?(?:[0-9A-Fa-f]{3}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$/u;
 
-const normalizeInlineFormattingColor = (color: string | undefined): string | undefined =>
-  color !== undefined && HEX_COLOR.test(color)
+const normalizeInlineFormattingColor = (
+  color: string | null | undefined,
+): string | null | undefined =>
+  typeof color === "string" && HEX_COLOR.test(color)
     ? color.replace(/^#/u, "").toUpperCase()
     : color;
 
@@ -98,8 +100,8 @@ const changedSupportedFormatting = (
   const color = changedStringValue(
     normalizeInlineFormattingColor(base.color),
     normalizeInlineFormattingColor(target.color),
-    normalizeInlineFormattingColor(baseDirect.color ?? undefined),
-    normalizeInlineFormattingColor(targetDirect.color ?? undefined),
+    normalizeInlineFormattingColor(baseDirect.color),
+    normalizeInlineFormattingColor(targetDirect.color),
   );
   if (color !== undefined) {
     formatting.color = color;
