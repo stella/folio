@@ -1,5 +1,3 @@
-import type { ParagraphAlignment, ParagraphFormatting } from "../types/document";
-
 /** How callers expect a block identifier to behave across document revisions. */
 export type FolioContentIdStability = "stable" | "positional";
 
@@ -69,19 +67,33 @@ export type FolioContentTableLocation = {
   paragraphIndex: number;
 };
 
+/** Direct paragraph alignment understood by the neutral comparison model. */
+export type FolioContentParagraphAlignment =
+  | "left"
+  | "center"
+  | "right"
+  | "both"
+  | "distribute"
+  | "mediumKashida"
+  | "highKashida"
+  | "lowKashida"
+  | "thaiDistribute";
+
+/** Line-height interpretation understood by the neutral comparison model. */
+export type FolioContentLineSpacingRule = "auto" | "exact" | "atLeast";
+
 /**
  * The complete modeled attribute set of direct paragraph spacing. Optional
  * fields distinguish an absent attribute from an explicit zero or false value.
  */
-export type FolioContentParagraphSpacing = Pick<
-  ParagraphFormatting,
-  | "spaceBefore"
-  | "spaceAfter"
-  | "lineSpacing"
-  | "lineSpacingRule"
-  | "beforeAutospacing"
-  | "afterAutospacing"
->;
+export type FolioContentParagraphSpacing = {
+  spaceBefore?: number;
+  spaceAfter?: number;
+  lineSpacing?: number;
+  lineSpacingRule?: FolioContentLineSpacingRule;
+  beforeAutospacing?: boolean;
+  afterAutospacing?: boolean;
+};
 
 /** A representation-neutral block in one ordered document story. */
 export type FolioContentBlock<Kind extends string = string> = {
@@ -94,7 +106,7 @@ export type FolioContentBlock<Kind extends string = string> = {
   displayLabel?: string;
   styleId?: string;
   /** Direct paragraph alignment; absent when alignment comes only from a style. */
-  directAlignment?: ParagraphAlignment;
+  directAlignment?: FolioContentParagraphAlignment;
   /** Direct paragraph spacing; absent when every spacing value is inherited. */
   directSpacing?: FolioContentParagraphSpacing;
   /** Zero-based list indent level when the block carries numbering. */

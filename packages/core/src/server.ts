@@ -60,6 +60,8 @@ export type {
   FolioContentInlineBooleanProperty,
   FolioContentInlineFormatting,
   FolioContentInlineFormattingPatch,
+  FolioContentLineSpacingRule,
+  FolioContentParagraphAlignment,
   FolioContentParagraphSpacing,
   FolioContentRun,
   FolioContentSnapshot,
