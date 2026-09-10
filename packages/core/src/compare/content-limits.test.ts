@@ -194,6 +194,33 @@ describe("neutral comparison resource boundaries", () => {
       input: "base",
       field: "blocks[0].table.outerTableIndex",
     });
+
+    const unsafeExtent = compareContent({
+      base: {
+        blocks: [
+          block("base", {
+            table: {
+              outerTableIndex: 0,
+              tableIndex: 0,
+              rowIndex: Number.MAX_SAFE_INTEGER,
+              cellIndex: 0,
+              gridColumnIndex: 0,
+              columnSpan: 1,
+              rowSpan: 1,
+              paragraphIndex: 0,
+            },
+          }),
+        ],
+      },
+      revised: { blocks: [] },
+    });
+    expect(unsafeExtent.isErr()).toBe(true);
+    if (!unsafeExtent.isErr()) return;
+    expect(unsafeExtent.error).toBeInstanceOf(InvalidFolioContentComparisonError);
+    expect(unsafeExtent.error).toMatchObject({
+      input: "base",
+      field: "blocks[0].table.rowSpan",
+    });
   });
 
   test("accepts readonly snapshots without copying caller arrays", () => {

@@ -497,6 +497,30 @@ const validateTableLocation = (
       return invalidInput(side, `blocks[${String(blockIndex)}].table.${field}`, "Table spans must be positive integers.", blockIndex);
     }
   }
+  const right =
+    typeof table.gridColumnIndex === "number" && typeof table.columnSpan === "number"
+      ? table.gridColumnIndex + table.columnSpan
+      : Number.NaN;
+  if (!Number.isSafeInteger(right)) {
+    return invalidInput(
+      side,
+      `blocks[${String(blockIndex)}].table.columnSpan`,
+      "A table cell's ending grid column must be a safe integer.",
+      blockIndex,
+    );
+  }
+  const bottom =
+    typeof table.rowIndex === "number" && typeof table.rowSpan === "number"
+      ? table.rowIndex + table.rowSpan
+      : Number.NaN;
+  if (!Number.isSafeInteger(bottom)) {
+    return invalidInput(
+      side,
+      `blocks[${String(blockIndex)}].table.rowSpan`,
+      "A table cell's ending row must be a safe integer.",
+      blockIndex,
+    );
+  }
   return null;
 };
 
