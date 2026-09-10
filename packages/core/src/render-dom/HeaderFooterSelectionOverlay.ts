@@ -3,11 +3,15 @@ import {
   findHfPmSpans,
   type HfSlotKind,
 } from "../layout-bridge/dom/findHfPmSpans";
+import {
+  createTextStreamRange,
+  descendantTextNodes,
+  totalTextLength,
+} from "../layout-bridge/dom/textStreamDom";
 
 const CARET_CLASS = "folio-hf-selection-caret";
 const RANGE_CLASS = "folio-hf-selection-rect";
 const OWNED_SELECTOR = `.${CARET_CLASS}, .${RANGE_CLASS}`;
-const TEXT_NODE_TYPE = 3;
 
 export type HeaderFooterSelection = {
   from: number;
@@ -64,24 +68,17 @@ export const resolveHeaderFooterSelectionGeometry = (
     let height = anchorRect.height || 16;
     const pmStart = Number.parseInt(hit.element.dataset["pmStart"] ?? "", 10);
     const pmEnd = Number.parseInt(hit.element.dataset["pmEnd"] ?? "", 10);
-    const textNode = hit.element.firstChild;
-    if (
-      textNode?.nodeType === TEXT_NODE_TYPE &&
-      Number.isFinite(pmStart) &&
-      Number.isFinite(pmEnd)
-    ) {
-      const offset = Math.min(
-        Math.max(0, selection.from - pmStart),
-        textNode.textContent?.length ?? 0,
-      );
-      const range = hit.element.ownerDocument.createRange();
-      range.setStart(textNode, offset);
-      range.setEnd(textNode, offset);
-      const rangeRect = range.getBoundingClientRect();
-      if (rangeRect.height > 0 || rangeRect.width > 0 || rangeRect.left > 0) {
-        left = rangeRect.left;
-        top = rangeRect.top;
-        height = rangeRect.height || height;
+    const textNodes = descendantTextNodes(hit.element);
+    if (textNodes.length > 0 && Number.isFinite(pmStart) && Number.isFinite(pmEnd)) {
+      const offset = Math.min(Math.max(0, selection.from - pmStart), totalTextLength(textNodes));
+      const range = createTextStreamRange(hit.element, offset, offset);
+      if (range) {
+        const rangeRect = range.getBoundingClientRect();
+        if (rangeRect.height > 0 || rangeRect.width > 0 || rangeRect.left > 0) {
+          left = rangeRect.left;
+          top = rangeRect.top;
+          height = rangeRect.height || height;
+        }
       }
     }
     return {
@@ -103,19 +100,19 @@ export const resolveHeaderFooterSelectionGeometry = (
     if (!Number.isFinite(spanStart) || !Number.isFinite(spanEnd)) continue;
     if (spanEnd <= from || spanStart >= to) continue;
 
-    const textNode = span.firstChild;
-    if (textNode?.nodeType === TEXT_NODE_TYPE) {
-      const length = textNode.textContent?.length ?? 0;
+    const textNodes = descendantTextNodes(span);
+    if (textNodes.length > 0) {
+      const length = totalTextLength(textNodes);
       const startOffset = Math.max(0, from - spanStart);
       const endOffset = Math.min(length, to - spanStart);
       if (startOffset < endOffset) {
-        const range = span.ownerDocument.createRange();
-        range.setStart(textNode, startOffset);
-        range.setEnd(textNode, endOffset);
-        for (const rect of Array.from(range.getClientRects())) {
-          ranges.push(relativeRect(rect, containerRect, zoomDivisor));
+        const range = createTextStreamRange(span, startOffset, endOffset);
+        if (range) {
+          for (const rect of Array.from(range.getClientRects())) {
+            ranges.push(relativeRect(rect, containerRect, zoomDivisor));
+          }
+          continue;
         }
-        continue;
       }
     }
     ranges.push(relativeRect(span.getBoundingClientRect(), containerRect, zoomDivisor));

@@ -14,6 +14,7 @@
 import type { EditorView } from "prosemirror-view";
 
 import { getCollapsedLineEdgeCaretGeometry } from "./dom/clickToPositionDom";
+import { createTextStreamRange, descendantTextNodes, totalTextLength } from "./dom/textStreamDom";
 
 // ============================================================================
 // HF DOM snapshot cache — shared by the caret + selection-rect computations
@@ -134,27 +135,13 @@ export function computeHfCaretRectFromView(
         };
       }
 
-      const range = host.ownerDocument.createRange();
-      const walker = host.ownerDocument.createTreeWalker(span, NodeFilter.SHOW_TEXT);
-      let remaining = pmPos - start;
-      let textNode = walker.nextNode() as Text | null;
-      while (textNode) {
-        const len = textNode.data.length;
-        if (remaining <= len) {
-          try {
-            range.setStart(textNode, remaining);
-            range.setEnd(textNode, remaining);
-            const rect = range.getClientRects()[0] ?? range.getBoundingClientRect();
-            if (rect && rect.height > 0) {
-              return { top: rect.top, left: rect.left, height: rect.height };
-            }
-          } catch {
-            // fall through
-          }
-          break;
+      const offset = Math.min(pmPos - start, totalTextLength(descendantTextNodes(span)));
+      const range = createTextStreamRange(span, offset, offset);
+      if (range) {
+        const rect = range.getClientRects()[0] ?? range.getBoundingClientRect();
+        if (rect && rect.height > 0) {
+          return { top: rect.top, left: rect.left, height: rect.height };
         }
-        remaining -= len;
-        textNode = walker.nextNode() as Text | null;
       }
       const spanRect = span.getBoundingClientRect();
       const ratio = (pmPos - start) / Math.max(1, end - start);
@@ -265,7 +252,7 @@ export function computeHfSelectionRectsFromView(
   // rects.
   const snapshot = getHfDomSnapshot(section, doc);
   if (!snapshot) return out;
-  const { host, spans } = snapshot;
+  const { spans } = snapshot;
   for (const spanEl of spans) {
     const pmStart = Number(spanEl.dataset["pmStart"]);
     const pmEnd = Number(spanEl.dataset["pmEnd"]);
@@ -279,25 +266,15 @@ export function computeHfSelectionRectsFromView(
       continue;
     }
 
-    let textNode: Text | null = null;
-    if (spanEl.firstChild?.nodeType === Node.TEXT_NODE) {
-      textNode = spanEl.firstChild as Text;
-    } else if (
-      spanEl.firstChild?.nodeType === Node.ELEMENT_NODE &&
-      (spanEl.firstChild as HTMLElement).tagName === "A" &&
-      spanEl.firstChild.firstChild?.nodeType === Node.TEXT_NODE
-    ) {
-      textNode = spanEl.firstChild.firstChild as Text;
-    }
-    if (!textNode) continue;
+    const textNodes = descendantTextNodes(spanEl);
+    if (textNodes.length === 0) continue;
 
     const startChar = Math.max(0, from - pmStart);
-    const endChar = Math.min(textNode.length, to - pmStart);
+    const endChar = Math.min(totalTextLength(textNodes), to - pmStart);
     if (startChar >= endChar) continue;
 
-    const range = host.ownerDocument.createRange();
-    range.setStart(textNode, startChar);
-    range.setEnd(textNode, endChar);
+    const range = createTextStreamRange(spanEl, startChar, endChar);
+    if (!range) continue;
     for (const rect of Array.from(range.getClientRects())) {
       out.push({ top: rect.top, left: rect.left, width: rect.width, height: rect.height });
     }

@@ -46,6 +46,68 @@ function firstTableCellAttrs(doc: Document): Record<string, unknown> {
 }
 
 describe("toProseDoc", () => {
+  test("merges a direct list level with the numbering identity from its style", () => {
+    const document: Document = {
+      package: {
+        styles: {
+          styles: [
+            {
+              styleId: "SectionStyle",
+              type: "paragraph",
+              pPr: { numPr: { numId: 23, ilvl: 0 } },
+            },
+          ],
+        },
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              formatting: {
+                styleId: "SectionStyle",
+                numPr: { ilvl: 1 },
+              },
+              content: [{ type: "run", content: [{ type: "text", text: "Section" }] }],
+            },
+          ],
+        },
+      },
+    };
+
+    expect(toProseDoc(document).firstChild?.attrs.numPr).toEqual({ numId: 23, ilvl: 1 });
+  });
+
+  test("keeps a direct numbering identity ahead of the style identity", () => {
+    const document: Document = {
+      package: {
+        styles: {
+          styles: [
+            {
+              styleId: "SectionStyle",
+              type: "paragraph",
+              pPr: { numPr: { numId: 23, ilvl: 0 } },
+            },
+          ],
+        },
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              formatting: {
+                styleId: "SectionStyle",
+                numPr: { numId: 7 },
+              },
+              content: [{ type: "run", content: [{ type: "text", text: "Section" }] }],
+            },
+          ],
+        },
+      },
+    };
+
+    const attrs = toProseDoc(document).firstChild?.attrs;
+    expect(attrs?.numPr).toEqual({ numId: 7 });
+    expect(attrs?.numPrFromStyle).toBeNull();
+  });
+
   test("keeps the final section start on the internal document node", () => {
     const document: Document = {
       package: {

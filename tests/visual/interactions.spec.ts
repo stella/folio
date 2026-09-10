@@ -102,6 +102,40 @@ async function openTableCellMenu(page: Page): Promise<Locator> {
   return menu;
 }
 
+test.describe("selection", () => {
+  test("select all repaints as virtualized pages enter the viewport", async ({ page }) => {
+    await mountFixture(page, "performance-1500-paragraphs.docx");
+    await page.locator(".layout-paragraph").first().click();
+    await page.keyboard.press(`${MOD}+a`);
+
+    const selection = await page.evaluate(() => {
+      const view = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView();
+      return view
+        ? {
+            from: view.state.selection.from,
+            to: view.state.selection.to,
+            size: view.state.doc.content.size,
+          }
+        : null;
+    });
+    expect(selection).toEqual({ from: 0, to: selection?.size, size: selection?.size });
+
+    const pageCount = await page.locator(".layout-page").count();
+    expect(pageCount).toBeGreaterThan(7);
+    await page.evaluate((targetPage) => {
+      globalThis.__folioPlayground?.getEditorRef()?.scrollToPage(targetPage);
+    }, pageCount);
+    await expect(
+      page.locator(`.layout-page[data-page-number="${pageCount}"] .layout-run`).first(),
+    ).toBeVisible();
+    await expect
+      .poll(() =>
+        page.locator(`[data-folio-selection-rect][data-page-index="${pageCount - 1}"]`).count(),
+      )
+      .toBeGreaterThan(0);
+  });
+});
+
 test.describe("typing + undo", () => {
   test("repeated trailing spaces advance the painted caret", async ({ page }) => {
     await mountFixture(page, "sample.docx");

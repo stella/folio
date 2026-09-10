@@ -14,6 +14,11 @@
 import { TextSelection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import { findVerticalScrollParent } from "../../utils/findVerticalScrollParent";
+import {
+  createTextStreamRange,
+  descendantTextNodes,
+  totalTextLength,
+} from "../../layout-bridge/dom/textStreamDom";
 
 const CONTENT_LINE_SELECTOR = ".layout-page-content .layout-line";
 
@@ -52,15 +57,11 @@ export function getCaretClientX(container: HTMLElement, pmPos: number): number |
       if (pmPos >= pmStart && pmPos < pmEnd) return spanEl.getBoundingClientRect().left;
       continue;
     }
-    if (pmPos >= pmStart && pmPos <= pmEnd && span.firstChild?.nodeType === Node.TEXT_NODE) {
-      const textNode = span.firstChild as Text;
-      const charIndex = Math.min(pmPos - pmStart, textNode.length);
-      const ownerDoc = spanEl.ownerDocument;
-      if (!ownerDoc) continue;
-      const range = ownerDoc.createRange();
-      range.setStart(textNode, charIndex);
-      range.setEnd(textNode, charIndex);
-      return range.getBoundingClientRect().left;
+    if (pmPos >= pmStart && pmPos <= pmEnd) {
+      const textNodes = descendantTextNodes(spanEl);
+      const charIndex = Math.min(pmPos - pmStart, totalTextLength(textNodes));
+      const range = createTextStreamRange(spanEl, charIndex, charIndex);
+      if (range) return range.getBoundingClientRect().left;
     }
   }
   const emptyRuns = container.querySelectorAll(".layout-empty-run");
@@ -125,29 +126,28 @@ export function findPositionOnLineAtClientX(lineEl: HTMLElement, clientX: number
       continue;
     }
     if (clientX >= rect.left && clientX <= rect.right) {
-      const textNode = spanEl.firstChild;
-      if (!textNode || textNode.nodeType !== Node.TEXT_NODE) return pmStart;
-      const text = textNode as Text;
-      const ownerDoc = spanEl.ownerDocument;
-      if (!ownerDoc) return pmStart;
+      const textNodes = descendantTextNodes(spanEl);
+      const textLength = totalTextLength(textNodes);
+      if (textLength === 0) return pmStart;
       let lo = 0;
-      let hi = text.length;
+      let hi = textLength;
       while (lo < hi) {
         const mid = Math.floor((lo + hi) / 2);
-        const r = ownerDoc.createRange();
-        r.setStart(text, mid);
-        r.setEnd(text, mid);
+        const r = createTextStreamRange(spanEl, mid, mid);
+        if (!r) return pmStart;
         if (clientX < r.getBoundingClientRect().left) hi = mid;
         else lo = mid + 1;
       }
-      if (lo > 0 && lo <= text.length) {
-        const r = ownerDoc.createRange();
-        r.setStart(text, lo - 1);
-        r.setEnd(text, lo - 1);
-        const leftX = r.getBoundingClientRect().left;
-        r.setStart(text, Math.min(lo, text.length));
-        r.setEnd(text, Math.min(lo, text.length));
-        const rightX = r.getBoundingClientRect().left;
+      if (lo > 0 && lo <= textLength) {
+        const left = createTextStreamRange(spanEl, lo - 1, lo - 1);
+        const right = createTextStreamRange(
+          spanEl,
+          Math.min(lo, textLength),
+          Math.min(lo, textLength),
+        );
+        if (!left || !right) return pmStart;
+        const leftX = left.getBoundingClientRect().left;
+        const rightX = right.getBoundingClientRect().left;
         if (Math.abs(clientX - leftX) < Math.abs(clientX - rightX)) {
           return pmStart + (lo - 1);
         }

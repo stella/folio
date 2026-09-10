@@ -12,13 +12,13 @@
  */
 
 import { findBodyPmSpans } from "../layout-bridge/dom/findBodyPmSpans";
+import {
+  createTextStreamRange,
+  descendantTextNodes,
+  totalTextLength,
+} from "../layout-bridge/dom/textStreamDom";
 import type { SelectionRect } from "../layout-bridge/engine/selectionRects";
 import type { FlowBlock, Layout, Measure } from "../layout-engine/types";
-
-// `nodeType === TEXT_NODE` does not narrow a ChildNode to Text in TS, so guard
-// instead of casting.
-const isTextNode = (node: ChildNode | null | undefined): node is Text =>
-  node?.nodeType === Node.TEXT_NODE;
 
 export type ProjectableRange = { from: number; to: number };
 
@@ -67,27 +67,17 @@ const domRectsForRange = (
       });
       continue;
     }
-    let textNode: Text | null = null;
-    if (isTextNode(spanEl.firstChild)) {
-      textNode = spanEl.firstChild;
-    } else if (
-      spanEl.firstChild instanceof HTMLElement &&
-      spanEl.firstChild.tagName === "A" &&
-      isTextNode(spanEl.firstChild.firstChild)
-    ) {
-      textNode = spanEl.firstChild.firstChild;
-    }
-    if (!textNode) {
+    const textNodes = descendantTextNodes(spanEl);
+    if (textNodes.length === 0) {
       continue;
     }
     const startChar = Math.max(0, from - pmStart);
-    const endChar = Math.min(textNode.length, to - pmStart);
+    const endChar = Math.min(totalTextLength(textNodes), to - pmStart);
     if (startChar >= endChar) {
       continue;
     }
-    const range = spanEl.ownerDocument.createRange();
-    range.setStart(textNode, startChar);
-    range.setEnd(textNode, endChar);
+    const range = createTextStreamRange(spanEl, startChar, endChar);
+    if (!range) continue;
     const pageIndex = pageIndexOf(spanEl);
     for (const rect of Array.from(range.getClientRects())) {
       rects.push({

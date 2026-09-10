@@ -71,21 +71,24 @@ import type {
 import { templatePreviewDirtyRange } from "@stll/folio-core/layout-bridge/convert/templatePreviewFlow";
 import {
   clickToPositionDom,
-  findCollapsedLineEdgeCaretTarget,
+  getCaretPositionFromDom,
+  getSelectionRectsFromDom,
 } from "@stll/folio-core/layout-bridge/dom/clickToPositionDom";
+import {
+  createTextStreamRange,
+  descendantTextNodes,
+  totalTextLength,
+} from "@stll/folio-core/layout-bridge/dom/textStreamDom";
 import {
   resetImeCaretAnchor,
   syncImeCaretAnchor,
 } from "@stll/folio-core/layout-bridge/dom/imeCaretAnchor";
 import {
-  findBodyEmptyRuns,
   findBodyPmAnchor,
   findBodyPmSpans,
 } from "@stll/folio-core/layout-bridge/dom/findBodyPmSpans";
 import {
   clickToPositionInHfSlot,
-  findHfCaretSpan,
-  findHfPmSpans,
   findHfSlotForTarget,
   findHfSlotKindForTarget,
 } from "@stll/folio-core/layout-bridge/dom/findHfPmSpans";
@@ -106,6 +109,7 @@ import type {
   CaretPosition,
 } from "@stll/folio-core/layout-bridge/engine/selectionRects";
 import type * as SelectionGeometry from "@stll/folio-core/layout-bridge/engine/selectionRects";
+import { resolveHeaderFooterSelectionGeometry } from "@stll/folio-core/render-dom/HeaderFooterSelectionOverlay";
 import { setEmbeddedFontFamilyMap } from "@stll/folio-core/utils/fontResolver";
 // Layout engine
 import { resolveSectionHeaderFooterRefs, type ColumnLayout } from "@stll/folio-core/layout-engine";
@@ -627,16 +631,6 @@ const getPageIndex = (el: Element): number => {
   return raw ? Number(raw) - 1 : 0;
 };
 
-/**
- * Get the line height for a node by climbing to its `.layout-line`
- * ancestor and reading `offsetHeight`. Returns `fallback` if no
- * ancestor is found.
- */
-const getLineHeight = (el: Element, fallback = 16): number => {
-  const lineEl = closestHtmlElement(el, ".layout-line");
-  return lineEl ? lineEl.offsetHeight : fallback;
-};
-
 // =============================================================================
 // STYLES
 // =============================================================================
@@ -732,144 +726,22 @@ function HfCaretOverlay({
     }
     const recompute = () => {
       const cr = pagesContainer.getBoundingClientRect();
-      // getBoundingClientRect reports post-transform viewport pixels;
-      // the caret divs live inside pagesContainer where CSS lengths
-      // get scaled by the viewport's `transform: scale(zoom)`. At
-      // 1.5× a 100px text offset would land at 150px on screen if
-      // written through unchanged, but writing it as CSS lets the
-      // parent transform scale it AGAIN to 225px — so divide every
-      // delta by zoom before passing to style (Codex #487 P2: 22:16).
       const zoomDivisor = zoom !== 0 ? zoom : 1;
-      // Scope every lookup to the specific painted page the user is
-      // editing. When a default HF rId is shared across N pages we'd
-      // otherwise paint the caret on the first matching slot (page 1)
-      // even if the user is typing on page 5 (Codex #487 P2: 21:28).
-      const pageScope: ParentNode = selection.pageNumber
-        ? (pagesContainer.querySelector(
-            `.layout-page[data-page-number="${selection.pageNumber}"]`,
-          ) ?? pagesContainer)
-        : pagesContainer;
-      const collapsed = selection.from === selection.to;
-      if (collapsed) {
-        // Use findHfCaretSpan so a caret at the end of a run / paragraph
-        // (selection.from == span's data-pm-end) still finds a span to
-        // anchor to — exact data-pm-start matching alone would lose the
-        // caret as soon as the user typed to the end of their text
-        // (Codex #487 P2: 20:32 review).
-        const hit = findHfCaretSpan(pageScope, selection.kind, selection.rId, selection.from);
-        if (!hit) {
-          syncImeCaretAnchor({ hiddenHost, editorView, visibleCaret: null });
-          setCaret(null);
-          setRangeRects([]);
-          return;
-        }
-        const ar = hit.element.getBoundingClientRect();
-        // Default fallback uses the span edge findHfCaretSpan returned —
-        // safe for atom spans (images, breaks) that lack a text node.
-        // For text-bearing spans, sample the *exact* visual position
-        // via a collapsed Range at (selection.from - pmStart) inside
-        // the text node. The Range API returns the caret rect in
-        // visual (direction-aware) coordinates so it lands on the
-        // correct side of the run in RTL / bidi headers / footers as
-        // well as the middle of mid-span LTR runs (Codex #487 P2:
-        // 22:38 + 22:58 reviews).
-        let absX = hit.edge === "right" ? ar.right : ar.left;
-        let absY = ar.top;
-        let absHeight = ar.height || 16;
-        const pmStartStr = hit.element.dataset["pmStart"];
-        const pmEndStr = hit.element.dataset["pmEnd"];
-        const pmStart = pmStartStr ? Number.parseInt(pmStartStr, 10) : Number.NaN;
-        const pmEnd = pmEndStr ? Number.parseInt(pmEndStr, 10) : Number.NaN;
-        const textNode = hit.element.firstChild;
-        if (
-          textNode &&
-          textNode.nodeType === Node.TEXT_NODE &&
-          Number.isFinite(pmStart) &&
-          Number.isFinite(pmEnd)
-        ) {
-          const textContent = textNode.textContent ?? "";
-          const charOffset = Math.min(Math.max(0, selection.from - pmStart), textContent.length);
-          const ownerDoc = hit.element.ownerDocument;
-          const range = ownerDoc.createRange();
-          range.setStart(textNode, charOffset);
-          range.setEnd(textNode, charOffset);
-          const rRect = range.getBoundingClientRect();
-          if (rRect.height > 0 || rRect.width > 0 || rRect.left > 0) {
-            absX = rRect.left;
-            absY = rRect.top;
-            absHeight = rRect.height || absHeight;
-          }
-        }
-        setCaret({
-          x: (absX - cr.left) / zoomDivisor,
-          y: (absY - cr.top) / zoomDivisor,
-          height: absHeight / zoomDivisor,
-        });
+      const geometry = resolveHeaderFooterSelectionGeometry(pagesContainer, selection, zoomDivisor);
+      setCaret(geometry.caret);
+      setRangeRects(geometry.ranges);
+      if (geometry.caret) {
         syncImeCaretAnchor({
           hiddenHost,
           editorView,
-          visibleCaret: { left: absX, top: absY },
+          visibleCaret: {
+            left: cr.left + geometry.caret.x * zoomDivisor,
+            top: cr.top + geometry.caret.y * zoomDivisor,
+          },
         });
-        setRangeRects([]);
         return;
       }
       syncImeCaretAnchor({ hiddenHost, editorView, visibleCaret: null });
-      // Range selection — walk every painted pm span inside the slot
-      // and project the union of those whose [pmStart,pmEnd] intersect
-      // [from,to). The painter emits one span per run so this is good
-      // enough for single-line and multi-line highlights without doing
-      // glyph-level math (Word's selection model is paragraph-line-based
-      // — same convention).
-      const spans = findHfPmSpans(pageScope, selection.kind, selection.rId);
-      const rects: { x: number; y: number; width: number; height: number }[] = [];
-      for (const span of spans) {
-        const spanStart = Number.parseInt(span.dataset["pmStart"] ?? "", 10);
-        const spanEnd = Number.parseInt(span.dataset["pmEnd"] ?? "", 10);
-        if (!Number.isFinite(spanStart) || !Number.isFinite(spanEnd)) {
-          continue;
-        }
-        if (spanEnd <= selection.from || spanStart >= selection.to) {
-          continue;
-        }
-        // For text-bearing spans, clip the highlight to the selected
-        // sub-range with the Range API instead of using the whole span
-        // bounding box. Without this a partial selection inside a run
-        // (double-clicking a word, dragging a few characters) painted
-        // the entire run as selected (Codex #487 P2: 22:38 review).
-        const textNode = span.firstChild;
-        if (textNode && textNode.nodeType === Node.TEXT_NODE) {
-          const textContent = textNode.textContent ?? "";
-          const startChar = Math.max(0, selection.from - spanStart);
-          const endChar = Math.min(textContent.length, selection.to - spanStart);
-          if (startChar < endChar) {
-            const ownerDoc = span.ownerDocument;
-            const range = ownerDoc.createRange();
-            range.setStart(textNode, startChar);
-            range.setEnd(textNode, endChar);
-            for (const cRect of Array.from(range.getClientRects())) {
-              rects.push({
-                x: (cRect.left - cr.left) / zoomDivisor,
-                y: (cRect.top - cr.top) / zoomDivisor,
-                width: cRect.width / zoomDivisor,
-                height: cRect.height / zoomDivisor,
-              });
-            }
-            continue;
-          }
-        }
-        // No text node (atom inline, image, etc.) — fall back to the
-        // span's full bounding rect; selection of the atom still paints
-        // visibly.
-        const r = span.getBoundingClientRect();
-        rects.push({
-          x: (r.left - cr.left) / zoomDivisor,
-          y: (r.top - cr.top) / zoomDivisor,
-          width: r.width / zoomDivisor,
-          height: r.height / zoomDivisor,
-        });
-      }
-      setRangeRects(rects);
-      setCaret(null);
     };
     recompute();
     const onPainted = () => recompute();
@@ -2190,124 +2062,22 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
      */
     const getCaretFromDom = useCallback(
       (pmPos: number, currentZoom: number = 1): CaretPosition | null => {
-        if (!pagesContainerRef.current) {
-          return null;
-        }
-
-        const overlay = pagesContainerRef.current.parentElement?.querySelector(
+        const pagesContainer = pagesContainerRef.current;
+        if (!pagesContainer) return null;
+        const overlay = pagesContainer.parentElement?.querySelector(
           '[data-testid="selection-overlay"]',
         );
-        if (!overlay) {
-          return null;
-        }
-
+        if (!overlay) return null;
         const overlayRect = overlay.getBoundingClientRect();
-
-        // Find spans with PM position data
-        const spans = findBodyPmSpans(pagesContainerRef.current);
-
-        const collapsedTarget = findCollapsedLineEdgeCaretTarget(spans, pmPos);
-        if (collapsedTarget) {
-          return {
-            x: (collapsedTarget.geometry.left - overlayRect.left) / currentZoom,
-            y: (collapsedTarget.geometry.top - overlayRect.top) / currentZoom,
-            height: getLineHeight(collapsedTarget.span),
-            pageIndex: getPageIndex(collapsedTarget.span),
-          };
-        }
-
-        for (const spanEl of spans) {
-          const pmStart = Number(spanEl.dataset["pmStart"]);
-          const pmEnd = Number(spanEl.dataset["pmEnd"]);
-
-          // Special handling for tab spans - use exclusive end to avoid boundary conflicts
-          // Tab at [5,6) means position 6 belongs to the next run, not the tab
-          if (spanEl.classList.contains("layout-run-tab")) {
-            if (pmPos >= pmStart && pmPos < pmEnd) {
-              const spanRect = spanEl.getBoundingClientRect();
-              return {
-                x: (spanRect.left - overlayRect.left) / currentZoom,
-                y: (spanRect.top - overlayRect.top) / currentZoom,
-                height: getLineHeight(spanEl),
-                pageIndex: getPageIndex(spanEl),
-              };
+        const caret = getCaretPositionFromDom(pagesContainer, pmPos, overlayRect);
+        return caret
+          ? {
+              x: caret.x / currentZoom,
+              y: caret.y / currentZoom,
+              height: caret.height / currentZoom,
+              pageIndex: caret.pageIndex,
             }
-            continue; // Skip to next span
-          }
-
-          if (spanEl.classList.contains("layout-empty-run") && pmPos >= pmStart && pmPos <= pmEnd) {
-            const spanRect = spanEl.getBoundingClientRect();
-            return {
-              x: (spanRect.left - overlayRect.left) / currentZoom,
-              y: (spanRect.top - overlayRect.top) / currentZoom,
-              height: getLineHeight(spanEl, Math.max(16, spanRect.height)),
-              pageIndex: getPageIndex(spanEl),
-            };
-          }
-
-          // For text runs, use inclusive range
-          if (
-            pmPos >= pmStart &&
-            pmPos <= pmEnd &&
-            spanEl.firstChild?.nodeType === Node.TEXT_NODE
-          ) {
-            const textNode = spanEl.firstChild as Text;
-            const charIndex = Math.min(pmPos - pmStart, textNode.length);
-
-            // Create a range at the exact character position
-            const ownerDoc = spanEl.ownerDocument;
-            const range = ownerDoc.createRange();
-            range.setStart(textNode, charIndex);
-            range.setEnd(textNode, charIndex);
-
-            const rangeRect = range.getBoundingClientRect();
-            const spanRect = spanEl.getBoundingClientRect();
-            const useSpanStart =
-              charIndex === 0 || (rangeRect.width === 0 && rangeRect.left < spanRect.left);
-            const caretLeft = useSpanStart ? spanRect.left : rangeRect.left;
-            const caretTop = rangeRect.height > 0 && !useSpanStart ? rangeRect.top : spanRect.top;
-
-            return {
-              x: (caretLeft - overlayRect.left) / currentZoom,
-              y: (caretTop - overlayRect.top) / currentZoom,
-              height: getLineHeight(spanEl),
-              pageIndex: getPageIndex(spanEl),
-            };
-          }
-
-          if (pmPos >= pmStart && pmPos <= pmEnd) {
-            const spanRect = spanEl.getBoundingClientRect();
-            return {
-              x: (spanRect.left - overlayRect.left) / currentZoom,
-              y: (spanRect.top - overlayRect.top) / currentZoom,
-              height: getLineHeight(spanEl, Math.max(16, spanRect.height)),
-              pageIndex: getPageIndex(spanEl),
-            };
-          }
-        }
-
-        // Fallback: try to find position in empty paragraphs (they have empty runs)
-        const emptyRuns = findBodyEmptyRuns(pagesContainerRef.current);
-        for (const emptyRun of emptyRuns) {
-          const paragraph = closestHtmlElement(emptyRun, ".layout-paragraph");
-          if (!paragraph) {
-            continue;
-          }
-          const pmStart = Number(paragraph.dataset["pmStart"]);
-          const pmEnd = Number(paragraph.dataset["pmEnd"]);
-
-          if (pmPos >= pmStart && pmPos <= pmEnd) {
-            const runRect = emptyRun.getBoundingClientRect();
-            return {
-              x: (runRect.left - overlayRect.left) / currentZoom,
-              y: (runRect.top - overlayRect.top) / currentZoom,
-              height: getLineHeight(emptyRun),
-              pageIndex: getPageIndex(paragraph),
-            };
-          }
-        }
-
-        return null;
+          : null;
       },
       [],
     );
@@ -2524,70 +2294,18 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
 
           if (overlay && pagesContainerRef.current) {
             const overlayRect = overlay.getBoundingClientRect();
-            const domRects: SelectionRect[] = [];
-
-            // Find spans that intersect with the selection range
-            const spans = findBodyPmSpans(pagesContainerRef.current);
-
-            for (const spanEl of spans) {
-              const pmStart = Number(spanEl.dataset["pmStart"]);
-              const pmEnd = Number(spanEl.dataset["pmEnd"]);
-
-              // Check if this span overlaps with selection
-              if (pmEnd > from && pmStart < to) {
-                // Special handling for tab spans - highlight the full visual width
-                if (spanEl.classList.contains("layout-run-tab")) {
-                  const spanRect = spanEl.getBoundingClientRect();
-                  domRects.push({
-                    x: (spanRect.left - overlayRect.left) / zoom,
-                    y: (spanRect.top - overlayRect.top) / zoom,
-                    width: spanRect.width / zoom,
-                    height: spanRect.height / zoom,
-                    pageIndex: getPageIndex(spanEl),
-                  });
-                  continue;
-                }
-
-                // Find the text node — may be a direct child or inside an <a> for hyperlinks
-                let textNode: Text | null = null;
-                if (spanEl.firstChild?.nodeType === Node.TEXT_NODE) {
-                  textNode = spanEl.firstChild as Text;
-                } else if (
-                  spanEl.firstChild instanceof HTMLElement &&
-                  spanEl.firstChild.tagName === "A" &&
-                  spanEl.firstChild.firstChild?.nodeType === Node.TEXT_NODE
-                ) {
-                  textNode = spanEl.firstChild.firstChild as Text;
-                }
-                if (!textNode) {
-                  continue;
-                }
-                const ownerDoc = spanEl.ownerDocument;
-
-                // Calculate the character range within this span
-                const startChar = Math.max(0, from - pmStart);
-                const endChar = Math.min(textNode.length, to - pmStart);
-
-                if (startChar < endChar) {
-                  const range = ownerDoc.createRange();
-                  range.setStart(textNode, startChar);
-                  range.setEnd(textNode, endChar);
-
-                  // Get all client rects for this range (handles line wraps)
-                  const clientRects = range.getClientRects();
-                  const pageIndex = getPageIndex(spanEl);
-                  for (const rect of Array.from(clientRects)) {
-                    domRects.push({
-                      x: (rect.left - overlayRect.left) / zoom,
-                      y: (rect.top - overlayRect.top) / zoom,
-                      width: rect.width / zoom,
-                      height: rect.height / zoom,
-                      pageIndex,
-                    });
-                  }
-                }
-              }
-            }
+            const domRects = getSelectionRectsFromDom(
+              pagesContainerRef.current,
+              from,
+              to,
+              overlayRect,
+            ).map((rect) => ({
+              pageIndex: rect.pageIndex,
+              x: rect.x / zoom,
+              y: rect.y / zoom,
+              width: rect.width / zoom,
+              height: rect.height / zoom,
+            }));
 
             if (domRects.length > 0) {
               setSelectionRects(domRects);
@@ -2638,6 +2356,26 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     );
     const updateSelectionOverlayRef = useRef(updateSelectionOverlay);
     updateSelectionOverlayRef.current = updateSelectionOverlay;
+
+    useEffect(() => {
+      const pagesContainer = pagesContainerRef.current;
+      if (!pagesContainer) return undefined;
+
+      let animationFrame: number | null = null;
+      const repaintSelection = () => {
+        if (animationFrame !== null) cancelAnimationFrame(animationFrame);
+        animationFrame = requestAnimationFrame(() => {
+          animationFrame = null;
+          const state = hiddenPMRef.current?.getState();
+          if (state) updateSelectionOverlayRef.current(state);
+        });
+      };
+      pagesContainer.addEventListener(PAINTER_PAINTED_EVENT, repaintSelection);
+      return () => {
+        if (animationFrame !== null) cancelAnimationFrame(animationFrame);
+        pagesContainer.removeEventListener(PAINTER_PAINTED_EVENT, repaintSelection);
+      };
+    }, []);
 
     // Project anonymization match ranges onto container-space
     // rectangles. Mirrors the SelectionOverlay flow: prefer real
@@ -2697,28 +2435,17 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             });
             continue;
           }
-          let textNode: Text | null = null;
-          if (spanEl.firstChild?.nodeType === Node.TEXT_NODE) {
-            textNode = spanEl.firstChild as Text;
-          } else if (
-            spanEl.firstChild instanceof HTMLElement &&
-            spanEl.firstChild.tagName === "A" &&
-            spanEl.firstChild.firstChild?.nodeType === Node.TEXT_NODE
-          ) {
-            textNode = spanEl.firstChild.firstChild as Text;
-          }
-          if (!textNode) {
+          const textNodes = descendantTextNodes(spanEl);
+          if (textNodes.length === 0) {
             continue;
           }
-          const ownerDoc = spanEl.ownerDocument;
           const startChar = Math.max(0, from - pmStart);
-          const endChar = Math.min(textNode.length, to - pmStart);
+          const endChar = Math.min(totalTextLength(textNodes), to - pmStart);
           if (startChar >= endChar) {
             continue;
           }
-          const range = ownerDoc.createRange();
-          range.setStart(textNode, startChar);
-          range.setEnd(textNode, endChar);
+          const range = createTextStreamRange(spanEl, startChar, endChar);
+          if (!range) continue;
           const pageIndex = getPageIndex(spanEl);
           for (const rect of Array.from(range.getClientRects())) {
             domRects.push({

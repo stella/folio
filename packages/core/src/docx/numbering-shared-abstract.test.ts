@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
+import { toFlowBlocks } from "../layout-bridge/convert/toFlowBlocks";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import type { Document, Paragraph, StyleDefinitions } from "../types/document";
 import { parseBlockContent } from "./blockContentParser";
 import { parseNumbering } from "./numberingParser";
 import { parseParagraph } from "./paragraphParser";
@@ -31,6 +34,18 @@ function parseParagraphXml(xml: string, numbering: ReturnType<typeof parseNumber
   }
   return parseParagraph(root, null, null, numbering, null, null);
 }
+
+const layoutMarkers = (
+  paragraphs: Paragraph[],
+  styles: StyleDefinitions,
+): Array<string | undefined> => {
+  const document: Document = {
+    package: { document: { content: paragraphs }, styles },
+  };
+  return toFlowBlocks(toProseDoc(document))
+    .filter((block) => block.kind === "paragraph")
+    .map((block) => block.attrs?.listMarker);
+};
 
 describe("paragraphParser exposes abstractNumId and startOverride for sharing", () => {
   const numbering = parseNumbering(NUMBERING_SHARED);
@@ -175,6 +190,7 @@ test("style numbering resumes the latest compatible restarted instance", () => {
       paragraph.type === "paragraph" ? paragraph.listRendering?.marker : undefined,
     ),
   ).toEqual(["(1)", "(1)", "(2)", "(3)"]);
+  expect(layoutMarkers(paragraphs, styles)).toEqual(["(1)", "(1)", "(2)", "(3)"]);
 });
 
 test("an adjacent base instance continues an explicit restart instance", () => {
