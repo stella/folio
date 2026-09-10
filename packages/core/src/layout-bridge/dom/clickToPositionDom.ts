@@ -568,6 +568,81 @@ export function findCollapsedLineEdgeCaretTarget(
   return null;
 }
 
+const getPaintedSpanCaretGeometry = (
+  span: HTMLElement,
+  pmPos: number,
+): CollapsedLineEdgeCaretGeometry => {
+  const collapsed = getCollapsedLineEdgeCaretGeometry(span, pmPos);
+  if (collapsed) return collapsed;
+
+  const spanRect = span.getBoundingClientRect();
+  const line = closestHtmlElement(span, ".layout-line");
+  const lineHeight = line?.getBoundingClientRect().height || spanRect.height || 16;
+  if (span.classList.contains("layout-run-tab")) {
+    const pmEnd = Number(span.dataset["pmEnd"]);
+    return {
+      left: pmPos >= pmEnd ? spanRect.right : spanRect.left,
+      top: spanRect.top,
+      height: lineHeight,
+    };
+  }
+
+  const textNodes = descendantTextNodes(span);
+  if (textNodes.length === 0) {
+    return { left: spanRect.left, top: spanRect.top, height: lineHeight };
+  }
+
+  const pmStart = Number(span.dataset["pmStart"]);
+  const charIndex = Math.min(Math.max(0, pmPos - pmStart), totalTextLength(textNodes));
+  const boundary = textBoundaryAt(textNodes, charIndex, "start");
+  if (!boundary) {
+    return { left: spanRect.left, top: spanRect.top, height: lineHeight };
+  }
+  const range = span.ownerDocument.createRange();
+  range.setStart(boundary.node, boundary.offset);
+  range.setEnd(boundary.node, boundary.offset);
+  const rangeRect = range.getBoundingClientRect();
+  return {
+    left: rangeRect.left,
+    top: rangeRect.top,
+    height: rangeRect.height || lineHeight,
+  };
+};
+
+/**
+ * Map an unpainted inline position inside a paragraph to the nearest painted
+ * span boundary. Inline metadata and folded fields occupy ProseMirror
+ * positions without emitting glyphs; their carets belong at the adjacent text
+ * slot, not at the paragraph box's physical edge.
+ */
+export function findParagraphGapCaretTarget(
+  container: ParentNode,
+  pmPos: number,
+): CollapsedLineEdgeCaretTarget | null {
+  let best: { span: HTMLElement; boundaryPos: number; distance: number } | undefined;
+  for (const paragraph of htmlQueryAll(container, ".layout-page-content .layout-paragraph")) {
+    const paragraphStart = Number(paragraph.dataset["pmStart"]);
+    const paragraphEnd = Number(paragraph.dataset["pmEnd"]);
+    if (!(pmPos > paragraphStart && pmPos < paragraphEnd)) continue;
+
+    for (const span of htmlQueryAll(paragraph, "span[data-pm-start][data-pm-end]")) {
+      const spanStart = Number(span.dataset["pmStart"]);
+      const spanEnd = Number(span.dataset["pmEnd"]);
+      if (!Number.isFinite(spanStart) || !Number.isFinite(spanEnd)) continue;
+      const boundaryPos = pmPos < spanStart ? spanStart : spanEnd;
+      const distance = Math.abs(boundaryPos - pmPos);
+      if (!best || distance < best.distance) {
+        best = { span, boundaryPos, distance };
+      }
+    }
+  }
+  if (!best) return null;
+  return {
+    span: best.span,
+    geometry: getPaintedSpanCaretGeometry(best.span, best.boundaryPos),
+  };
+}
+
 export function getCaretPositionFromDom(
   container: HTMLElement,
   pmPos: number,
@@ -662,6 +737,18 @@ export function getCaretPositionFromDom(
         pageIndex,
       };
     }
+  }
+
+  const gapTarget = findParagraphGapCaretTarget(container, pmPos);
+  if (gapTarget) {
+    const pageEl = closestHtmlElement(gapTarget.span, ".layout-page");
+    const pageIndex = pageEl ? Number(pageEl.dataset["pageNumber"] || 1) - 1 : 0;
+    return {
+      x: gapTarget.geometry.left - overlayRect.left,
+      y: gapTarget.geometry.top - overlayRect.top,
+      height: gapTarget.geometry.height,
+      pageIndex,
+    };
   }
 
   // Check empty paragraphs
