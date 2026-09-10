@@ -60,6 +60,7 @@ import {
   linkProseParagraphPropertySource,
   recreateProseNodeWithParagraphPropertySource,
 } from "../../docx/paragraphPropertySource";
+import { visitDocxParagraphs, visitParagraphRuns } from "../../docx/paragraphTraversal";
 import { mergeTextFormatting } from "../../utils/textFormattingMerge";
 import { tableOfContentsStyleLevel } from "../../utils/tableOfContentsStyle";
 import { emuToPixels } from "../../utils/units";
@@ -67,6 +68,10 @@ import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import { setAutospacingBaseValue } from "../autospacingBase";
 import { buildRunFormattingOverrideAttrs } from "../extensions/marks/RunFormattingOverrideExtension";
 import { directionFromBidi } from "../paragraphDirection";
+import {
+  pageBreakRunParagraphProjectionDispositionForFeatures,
+  type PageBreakRunParagraphProjectionReason,
+} from "../pageBreakRunProjection";
 import { lineSpacingProvenanceFromSpacing } from "../paragraphSpacing";
 import {
   getParagraphMarkSuppressionOverrides,
@@ -104,7 +109,13 @@ import { sdtAttrsFromProperties } from "./sdtAttrs";
 type UnsupportedDocxToProseMirrorOwner =
   | "complex-field-instruction"
   | "field-result"
-  | "page-break-bearing-run";
+  | "page-break-bearing-run"
+  | "paragraph-borders"
+  | "paragraph-frame"
+  | "paragraph-outline"
+  | "paragraph-text-box-anchor"
+  | "table-cell"
+  | "text-box";
 
 /** DOCX content that cannot be preserved by the editable ProseMirror model. */
 export class UnsupportedDocxToProseMirrorConversionError extends TaggedError(
@@ -424,6 +435,11 @@ function convertParagraph(
   let pageBreakRunOwnerId = 0;
   const nextPageBreakRunOwnerId = (): number => pageBreakRunOwnerId++;
   const attrs = paragraphFormattingToAttrs(paragraph, styleResolver, tableParagraphOverlay);
+  assertParagraphPageBreakCanBeProjected({
+    paragraph,
+    attrs,
+    hasTextBoxAnchor: (textBoxAnchors?.size ?? 0) > 0,
+  });
   const isTocParagraph = attrs._tableOfContentsLevel !== undefined;
   const inlineNodes: PMNode[] = [];
   let inlineOffset = 0;
@@ -2153,6 +2169,8 @@ function convertTableCell({
   vMergeContinuationCells,
   defaultCellMargins,
 }: ConvertTableCellOptions): PMNode {
+  assertSourceContainerHasNoPageBreakRun(cell.content, "table-cell");
+
   const formatting = cell.formatting;
 
   // Use the pre-calculated rowSpan from vMerge analysis
@@ -2661,6 +2679,92 @@ function assertPageBreakSourceRunIsRepresentable(run: Run): void {
   }
 
   assertRunContentIsRepresentableBesidePageBreak(run, "page-break-bearing-run");
+}
+
+const PAGE_BREAK_CONTAINER_DESCRIPTIONS = {
+  "table-cell": "A table cell containing an explicit page break",
+  "text-box": "A text box containing an explicit page break",
+} as const satisfies Record<"table-cell" | "text-box", string>;
+
+type PageBreakContainerOwner = keyof typeof PAGE_BREAK_CONTAINER_DESCRIPTIONS;
+
+const PAGE_BREAK_PARAGRAPH_OWNERS = {
+  borders: "paragraph-borders",
+  frame: "paragraph-frame",
+  outline: "paragraph-outline",
+  textBoxAnchor: "paragraph-text-box-anchor",
+} as const satisfies Record<
+  PageBreakRunParagraphProjectionReason,
+  Extract<
+    UnsupportedDocxToProseMirrorOwner,
+    | "paragraph-borders"
+    | "paragraph-frame"
+    | "paragraph-outline"
+    | "paragraph-text-box-anchor"
+  >
+>;
+
+const sourceRunHasPageBreak = (run: Run): boolean =>
+  run.content.some((content) => content.type === "break" && content.breakType === "page");
+
+function assertSourceContainerHasNoPageBreakRun(
+  content: BlockContent[],
+  owner: PageBreakContainerOwner,
+): void {
+  visitDocxParagraphs({ documentBody: { content } }, (paragraph) => {
+    visitParagraphRuns(paragraph, (run) => {
+      if (!sourceRunHasPageBreak(run)) {
+        return;
+      }
+      throw new UnsupportedDocxToProseMirrorConversionError({
+        message: `${PAGE_BREAK_CONTAINER_DESCRIPTIONS[owner]} cannot be represented in the editor model`,
+        owner,
+        contentType: "break",
+      });
+    });
+  });
+}
+
+type ParagraphPageBreakProjectionOptions = {
+  paragraph: Paragraph;
+  attrs: ParagraphAttrs;
+  hasTextBoxAnchor: boolean;
+};
+
+function assertParagraphPageBreakCanBeProjected({
+  paragraph,
+  attrs,
+  hasTextBoxAnchor,
+}: ParagraphPageBreakProjectionOptions): void {
+  let hasPageBreak = false;
+  let pageBreakSharesTextBoxShape = false;
+  visitParagraphRuns(paragraph, (run) => {
+    if (!sourceRunHasPageBreak(run)) {
+      return;
+    }
+    hasPageBreak = true;
+    pageBreakSharesTextBoxShape ||= run.content.some(
+      (content) => content.type === "shape" && content.shape.textBody !== undefined,
+    );
+  });
+  if (!hasPageBreak) {
+    return;
+  }
+
+  const disposition = pageBreakRunParagraphProjectionDispositionForFeatures({
+    attrs,
+    // Same-run shape ownership has a more specific typed refusal in
+    // assertPageBreakSourceRunIsRepresentable; preserve that diagnostic.
+    hasTextBoxAnchor: hasTextBoxAnchor && !pageBreakSharesTextBoxShape,
+  });
+  if (disposition.status === "supported") {
+    return;
+  }
+  throw new UnsupportedDocxToProseMirrorConversionError({
+    message: disposition.message,
+    owner: PAGE_BREAK_PARAGRAPH_OWNERS[disposition.reason],
+    contentType: "break",
+  });
 }
 
 function assertPageBreakFieldResultIsRepresentable(field: SimpleField | ComplexField): void {
@@ -4281,6 +4385,8 @@ function convertTextBox(
     inlineSdts: NonNullable<TextBoxAttrs["_docxInlineSdts"]>;
   },
 ): PMNode {
+  assertSourceContainerHasNoPageBreakRun(textBox.content, "text-box");
+
   const textBoxData: { size?: Partial<TextBox["size"]> } = textBox;
   const textBoxSize = textBoxData.size;
   const widthPx = textBoxSize?.width ? emuToPixels(textBoxSize.width) : 200;

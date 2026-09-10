@@ -11,6 +11,8 @@ import { panic } from "better-result";
 import { convertBulletToUnicode } from "../../docx/bulletMarkers";
 import { resolveDocumentGridLinePitch } from "../../docx/documentGrid";
 import { getFontAlternate, type FontAlternates } from "../../fonts/fontAlternates";
+import { buildPageBreakRunDescendantIndex } from "../../internal/pageBreakRunDescendantIndex";
+import { partitionRunsAtPageBreaks } from "../../internal/pageBreakRunPartition";
 import type {
   FlowBlock,
   ParagraphBlock,
@@ -198,6 +200,7 @@ export type ToFlowBlocksOptions = {
 };
 
 type FlowConversionOptions = ToFlowBlocksOptions & {
+  firstPageBreakRunPosition: (node: PMNode) => number | undefined;
   listCounterStreams: ListCounterStreams;
   numberedRefResults?: ReadonlyMap<PMNode, string>;
   textBoxAnchorBlockIds: Map<string, ParagraphBlock["id"]>;
@@ -2389,7 +2392,6 @@ function splitParagraphAtPageBreaks({
   }
 
   const result: (ParagraphBlock | PageBreakBlock)[] = [];
-  let nextRunIndex = 0;
   let fragmentStart = paragraph.pmStart ?? pageBreaks[0]!.pmStart;
   let emittedParagraph = false;
 
@@ -2408,23 +2410,11 @@ function splitParagraphAtPageBreaks({
     emittedParagraph = true;
   };
 
-  for (const pageBreak of pageBreaks) {
-    const before: Run[] = [];
-    while (nextRunIndex < paragraph.runs.length) {
-      const run = paragraph.runs[nextRunIndex];
-      if (!run) {
-        break;
-      }
-      if (run.pmEnd !== undefined && run.pmEnd <= pageBreak.pmStart) {
-        before.push(run);
-        nextRunIndex += 1;
-        continue;
-      }
-      if (run.pmStart !== undefined && run.pmStart >= pageBreak.pmEnd) {
-        break;
-      }
-      panic("An inline layout run overlaps an explicit page-break carrier");
-    }
+  const partitioned = partitionRunsAtPageBreaks(paragraph.runs, pageBreaks);
+  if (partitioned.type === "overlap") {
+    panic("An inline layout run overlaps an explicit page-break carrier");
+  }
+  for (const { before, pageBreak } of partitioned.partitions) {
     if (before.length > 0) {
       appendParagraph(before, fragmentStart, pageBreak.pmStart);
     }
@@ -2438,7 +2428,7 @@ function splitParagraphAtPageBreaks({
     fragmentStart = pageBreak.pmEnd;
   }
 
-  const remainingRuns = paragraph.runs.slice(nextRunIndex);
+  const remainingRuns = partitioned.remaining;
   if (remainingRuns.length > 0) {
     appendParagraph(remainingRuns, fragmentStart, paragraph.pmEnd ?? fragmentStart);
   } else if (
@@ -2685,7 +2675,7 @@ function convertTableCell(
     right?: number;
   },
 ): TableCell {
-  const pageBreakPosition = explicitPageBreakRunPosition(node, startPos);
+  const pageBreakPosition = options.firstPageBreakRunPosition(node);
   if (pageBreakPosition !== undefined) {
     // An OOXML page break is forced at its exact run position, while a table
     // row paginates across all of its cells. Cell-local flow cannot model that
@@ -3079,27 +3069,13 @@ function convertImage(
   return imgBlock;
 }
 
-/**
- * Convert a textBox PM node to a TextBoxBlock.
- */
-function explicitPageBreakRunPosition(node: PMNode, startPos: number): number | undefined {
-  let pageBreakPosition: number | undefined;
-  node.descendants((descendant, offset) => {
-    if (descendant.type.name === "pageBreakRun") {
-      pageBreakPosition = startPos + 1 + offset;
-      return false;
-    }
-    return pageBreakPosition === undefined;
-  });
-  return pageBreakPosition;
-}
-
+/** Convert a textBox PM node to a TextBoxBlock. */
 function convertTextBoxNode(
   node: PMNode,
   startPos: number,
   opts: FlowConversionOptions,
 ): TextBoxBlock {
-  const pageBreakPosition = explicitPageBreakRunPosition(node, startPos);
+  const pageBreakPosition = opts.firstPageBreakRunPosition(node);
   if (pageBreakPosition !== undefined) {
     panic(
       `An explicit page-break run at ${String(pageBreakPosition)} cannot be projected inside a text box`,
@@ -3360,6 +3336,8 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
       : {}),
   };
 
+  const { firstPageBreakRunPosition } = buildPageBreakRunDescendantIndex(doc);
+
   const opts: FlowConversionOptions = {
     ...options,
     defaultFont: options.defaultFont ?? DEFAULT_FONT,
@@ -3374,6 +3352,7 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
       final: listCounterState,
       original: originalListCounterState,
     },
+    firstPageBreakRunPosition,
     textBoxAnchorBlockIds: new Map(),
     styleResolver: createStyleEngine(options.styles),
     numberedRefResults: resolveNumberedRefFields(doc, {
@@ -3419,12 +3398,7 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
     pos: number,
     stripLeadingLineBreak = false,
   ): void => {
-    let hasPageBreakRun = false;
-    node.descendants((descendant) => {
-      hasPageBreakRun ||= descendant.type.name === "pageBreakRun";
-      return !hasPageBreakRun;
-    });
-    if (hasPageBreakRun) {
+    if (opts.firstPageBreakRunPosition(node) !== undefined) {
       const disposition = pageBreakRunParagraphProjectionDisposition(node);
       if (disposition.status === "unsupported") {
         panic(disposition.message);

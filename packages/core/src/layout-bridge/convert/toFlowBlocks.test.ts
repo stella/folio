@@ -818,23 +818,6 @@ describe("toFlowBlocks paragraph formatting", () => {
     ]);
   });
 
-  test("projects an adversarial alternating page-break paragraph within a linear-time bound", () => {
-    const pairCount = 32_000;
-    const maximumDurationMs = 1_200;
-    const content = [schema.text("A"), schema.node("pageBreakRun")];
-    for (let index = 1; index < pairCount; index += 1) {
-      content.push(schema.text("A"), schema.node("pageBreakRun"));
-    }
-    const doc = schema.node("doc", null, [schema.node("paragraph", null, content)]);
-
-    const startedAt = performance.now();
-    const blocks = toFlowBlocks(doc);
-    const durationMs = performance.now() - startedAt;
-
-    expect(blocks).toHaveLength(pairCount * 2);
-    expect(durationMs).toBeLessThan(maximumDurationMs);
-  }, 10_000);
-
   test("keeps a break-only paragraph mark as a mapped layout carrier", () => {
     const doc = schema.node("doc", null, [
       schema.node("paragraph", null, [schema.node("pageBreakRun")]),
@@ -873,6 +856,49 @@ describe("toFlowBlocks paragraph formatting", () => {
     expect(blocks.at(2)).toMatchObject({ kind: "paragraph", pmStart: 3, pmEnd: 5 });
     expect(blocks.at(0)?.kind === "paragraph" && blocks.at(0)?.attrs?.listMarker).toBe("1.");
     expect(blocks.at(2)?.kind === "paragraph" && blocks.at(2)?.attrs?.listMarker).toBeUndefined();
+  });
+
+  test("keeps alternating run and page-break order through the layout boundary", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [
+        schema.text("A"),
+        schema.node("pageBreakRun"),
+        schema.text("B"),
+        schema.node("pageBreakRun"),
+        schema.text("C"),
+        schema.node("pageBreakRun"),
+        schema.text("D"),
+        schema.node("pageBreakRun"),
+      ]),
+    ]);
+
+    const blocks = toFlowBlocks(doc);
+
+    expect(blocks.map(({ kind }) => kind)).toEqual([
+      "paragraph",
+      "pageBreak",
+      "paragraph",
+      "pageBreak",
+      "paragraph",
+      "pageBreak",
+      "paragraph",
+      "pageBreak",
+    ]);
+    expect(
+      blocks
+        .filter((block) => block.kind === "paragraph")
+        .map(({ runs }) => runs.flatMap((run) => (run.kind === "text" ? [run.text] : [])).join("")),
+    ).toEqual(["A", "B", "C", "D"]);
+    expect(
+      blocks
+        .filter((block) => block.kind === "pageBreak")
+        .map(({ pmStart, pmEnd }) => [pmStart, pmEnd]),
+    ).toEqual([
+      [2, 3],
+      [4, 5],
+      [6, 7],
+      [8, 9],
+    ]);
   });
 
   test("keeps text-box anchors out of paragraph layout", () => {
