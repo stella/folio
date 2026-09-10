@@ -519,6 +519,7 @@ type PreviewRunStyle = {
 };
 
 const DELETION_MARK = "deletion";
+const HIDDEN_MARK = "hidden";
 const RUN_FORMATTING_OVERRIDE_MARK = "runFormattingOverride";
 const CHARACTER_STYLE_MARK = "characterStyle";
 
@@ -534,7 +535,11 @@ const getPreviewRuns = (
     if (!child.isText || child.text === undefined) {
       return true;
     }
-    if (child.marks.some((mark) => mark.type.name === DELETION_MARK)) {
+    if (
+      child.marks.some(
+        (mark) => mark.type.name === DELETION_MARK || mark.type.name === HIDDEN_MARK,
+      )
+    ) {
       return false;
     }
 

@@ -13,6 +13,7 @@
 import { describe, expect, test } from "bun:test";
 import { type Node as PMNode, Schema } from "prosemirror-model";
 
+import { compareContent } from "../compare/content";
 import type { RunStyleResolver } from "../prosemirror/runStyleFormatting";
 import { schema as folioSchema } from "../prosemirror/schema";
 import { resolveSequentialBlockAnchor } from "./blockRange";
@@ -284,6 +285,27 @@ describe("createFolioAIEditSnapshot", () => {
         directFormatting: { italic: true },
       },
     ]);
+  });
+
+  test("projects styled hidden text out of both block text and preview runs", () => {
+    const bold = folioSchema.mark("bold");
+    const hidden = folioSchema.mark("hidden");
+    const doc = folioSchema.node("doc", null, [
+      folioSchema.node("paragraph", null, [
+        folioSchema.text("Shown ", [bold]),
+        folioSchema.text("secret", [bold, hidden]),
+      ]),
+    ]);
+
+    const snapshot = createFolioAIEditSnapshot(doc);
+    const block = snapshot.blocks.at(0);
+
+    expect(block?.text).toBe("Shown ");
+    expect(block?.previewRuns).toEqual([
+      { text: "Shown ", bold: true, directFormatting: { bold: true } },
+    ]);
+    expect(block?.previewRuns?.map(({ text }) => text).join("")).toBe(block?.text);
+    expect(compareContent({ base: snapshot, revised: snapshot }).isOk()).toBe(true);
   });
 
   test("the seq- ids are the same whether or not blank paragraphs are there", () => {
