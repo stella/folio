@@ -35,6 +35,7 @@
 
 import { panic } from "better-result";
 
+import { folioAIBlockIdStability } from "../ai-edits/block-identity";
 import type { FolioDocumentStoryHandle } from "../ai-edits/headless";
 import { createFolioAITextRangeHandle, trailingBodyBlockId } from "../ai-edits/snapshot";
 import type {
@@ -45,7 +46,6 @@ import type {
   FolioAIEditSnapshot,
 } from "../ai-edits/types";
 import type { TableCellCoordinate, TableGeometryPairing } from "../ai-edits/table-geometry";
-import { getFolioParaIdFromBlockId } from "../types/block-id";
 import {
   alignFolioContentStructure,
   contentBlocksShareContainer,
@@ -111,9 +111,6 @@ type BuildStepsOptions = {
   wholeTableReplacement: "allow" | "avoid";
   workSession: FolioContentAlignmentWorkSession;
 };
-
-const folioAIBlockIdStability = ({ id, idStability }: FolioAIBlock): "stable" | "positional" =>
-  idStability ?? (getFolioParaIdFromBlockId(id) === null ? "positional" : "stable");
 
 const toCompareStep = (step: FolioContentAlignmentStep<FolioAIBlock>): CompareStep => {
   switch (step.type) {

@@ -64,12 +64,14 @@
 
 import { panic, TaggedError } from "better-result";
 
+import { folioAIBlockIdStability } from "./ai-edits/block-identity";
 import { FolioDocxReviewer, type FolioDocumentStoryHandle } from "./ai-edits/headless";
 import type { FolioAIBlock } from "./ai-edits/types";
 import type { WordDiffSegment } from "./ai-edits/word-diff";
 import {
   compareAlignedFolioContent,
   createContentComparisonWorkSession,
+  type FolioContentComparisonEvent,
   type FolioContentComparisonWorkSession,
   type FolioContentFormattingChange,
 } from "./compare/content";
@@ -84,7 +86,6 @@ import {
   type FolioDocumentPrivacyReport,
   type FolioDocumentPrivacyTransform,
 } from "./docx/metadataPrivacy";
-import { getFolioParaIdFromBlockId } from "./types/block-id";
 import {
   alignFolioContentBlocks,
   alignFolioContentStructure,
@@ -260,9 +261,6 @@ const createLcsBudget = (): FolioVersionComparisonLcsBudget => {
 
 export type FolioAlignedBlockEvent = FolioContentAlignedBlockEvent<FolioAIBlock>;
 
-const folioAIBlockIdStability = ({ id, idStability }: FolioAIBlock): "stable" | "positional" =>
-  idStability ?? (getFolioParaIdFromBlockId(id) === null ? "positional" : "stable");
-
 /**
  * Compatibility adapter for the DOCX snapshot comparison surface.
  *
@@ -318,6 +316,36 @@ const addSummaryCounts = (
   target.moved += source.moved;
   target.metadataChanged += source.metadataChanged;
   target.unchanged += source.unchanged;
+};
+
+/**
+ * A disabled text scope reclassifies text-only comparison units as unchanged;
+ * it never removes them from the summary. Moves count once at their target,
+ * while a split or merge retains its legacy two-unit accounting.
+ */
+const excludedTextEventUnitCount = (
+  event: FolioContentComparisonEvent<FolioAIBlock>,
+): number | null => {
+  switch (event.type) {
+    case "unchanged":
+    case "formatting":
+    case "modified":
+      return null;
+    case "movedFrom":
+      return 0;
+    case "deleted":
+    case "inserted":
+    case "movedTo":
+      return 1;
+    case "split":
+      return event.revisedBlocks.length;
+    case "merge":
+      return event.baseBlocks.length;
+    default: {
+      const unreachable: never = event;
+      return panic("Unhandled scoped neutral comparison event", { event: unreachable });
+    }
+  }
 };
 
 type CompareStoryBlocksOptions = FolioDocumentStoryPair & {
@@ -442,6 +470,13 @@ const compareStoryBlocks = ({
   };
 
   for (const event of compared.value.events) {
+    if (!includeText) {
+      const excludedUnitCount = excludedTextEventUnitCount(event);
+      if (excludedUnitCount !== null) {
+        counts.unchanged += excludedUnitCount;
+        continue;
+      }
+    }
     switch (event.type) {
       case "unchanged":
         counts.unchanged++;
@@ -468,47 +503,37 @@ const compareStoryBlocks = ({
         break;
       }
       case "deleted":
-        if (includeText) {
-          addDeleted(event.baseBlocks[0]);
-        }
+        addDeleted(event.baseBlocks[0]);
         break;
       case "inserted":
-        if (includeText) {
-          addInserted(event.revisedBlocks[0]);
-        }
+        addInserted(event.revisedBlocks[0]);
         break;
-      case "movedFrom":
-        if (includeText) {
-          const block = event.baseBlocks[0];
-          changes.push({
-            type: "movedFrom",
-            blockId: block.id,
-            kind: block.kind,
-            text: block.text,
-            moveGroupId: firstMoveGroupId + event.moveId - 1,
-            baseHandle: baseHandle(block),
-          });
-        }
+      case "movedFrom": {
+        const block = event.baseBlocks[0];
+        changes.push({
+          type: "movedFrom",
+          blockId: block.id,
+          kind: block.kind,
+          text: block.text,
+          moveGroupId: firstMoveGroupId + event.moveId - 1,
+          baseHandle: baseHandle(block),
+        });
         break;
-      case "movedTo":
-        if (includeText) {
-          const block = event.revisedBlocks[0];
-          changes.push({
-            type: "movedTo",
-            blockId: block.id,
-            kind: block.kind,
-            text: block.text,
-            moveGroupId: firstMoveGroupId + event.moveId - 1,
-            revisedHandle: revisedHandle(block),
-          });
-          counts.moved++;
-        }
+      }
+      case "movedTo": {
+        const block = event.revisedBlocks[0];
+        changes.push({
+          type: "movedTo",
+          blockId: block.id,
+          kind: block.kind,
+          text: block.text,
+          moveGroupId: firstMoveGroupId + event.moveId - 1,
+          revisedHandle: revisedHandle(block),
+        });
+        counts.moved++;
         break;
+      }
       case "split": {
-        if (!includeText) {
-          counts.unchanged++;
-          break;
-        }
         const baseBlock = event.baseBlocks[0];
         const [firstRevised, secondRevised] = event.revisedBlocks;
         addModified({
@@ -520,10 +545,6 @@ const compareStoryBlocks = ({
         break;
       }
       case "merge": {
-        if (!includeText) {
-          counts.unchanged++;
-          break;
-        }
         const [firstBase, secondBase] = event.baseBlocks;
         const revisedBlock = event.revisedBlocks[0];
         addModified({

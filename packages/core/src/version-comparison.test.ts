@@ -558,6 +558,88 @@ describe("compareDocxVersions: selected scopes", () => {
     expect(formattingDiff.summaryCounts.unchanged).toBe(1);
   });
 
+  test("keeps summary cardinality when every text-only event is excluded", async () => {
+    const stable = { text: "Stable anchor text.", paraId: "00000001" };
+    const cases = [
+      {
+        name: "insert",
+        base: [stable],
+        revised: [stable, { text: "Inserted text.", paraId: "00000002" }],
+        changeTypes: ["added"],
+      },
+      {
+        name: "delete",
+        base: [stable, { text: "Deleted text.", paraId: "00000002" }],
+        revised: [stable],
+        changeTypes: ["deleted"],
+      },
+      {
+        name: "move",
+        base: [
+          { text: "Governing law shall be Czech law.", paraId: "00000001" },
+          { text: "Payment is due within thirty days.", paraId: "00000002" },
+          { text: "Notices must be delivered in writing.", paraId: "00000003" },
+        ],
+        revised: [
+          { text: "Notices must be delivered in writing.", paraId: "00000003" },
+          { text: "Governing law shall be Czech law.", paraId: "00000001" },
+          { text: "Payment is due within thirty days.", paraId: "00000002" },
+        ],
+        changeTypes: ["movedTo", "movedFrom"],
+      },
+      {
+        name: "split",
+        base: [{ text: "Alpha Beta", paraId: "00000001" }],
+        revised: [
+          { text: "Alpha", paraId: "00000001" },
+          { text: "Beta", paraId: "00000002" },
+        ],
+        changeTypes: ["modified", "added"],
+      },
+      {
+        name: "merge",
+        base: [
+          { text: "Alpha", paraId: "00000001" },
+          { text: "Beta", paraId: "00000002" },
+        ],
+        revised: [{ text: "Alpha Beta", paraId: "00000001" }],
+        changeTypes: ["modified", "deleted"],
+      },
+    ] as const;
+
+    for (const fixture of cases) {
+      const [base, revised] = await Promise.all([
+        buildDocxBuffer(fixture.base),
+        buildDocxBuffer(fixture.revised),
+      ]);
+      const textDiff = await compareDocxVersions(base, revised, { include: ["text"] });
+      expect(
+        textDiff.changes.map(({ type }) => type),
+        fixture.name,
+      ).toEqual(fixture.changeTypes);
+      const expectedUnits =
+        textDiff.summaryCounts.added +
+        textDiff.summaryCounts.deleted +
+        textDiff.summaryCounts.modified +
+        textDiff.summaryCounts.moved +
+        textDiff.summaryCounts.unchanged;
+
+      const formattingDiff = await compareDocxVersions(base, revised, {
+        include: ["formatting"],
+      });
+      expect(formattingDiff.changes, fixture.name).toEqual([]);
+      expect(formattingDiff.summaryCounts, fixture.name).toEqual({
+        added: 0,
+        deleted: 0,
+        modified: 0,
+        formatChanged: 0,
+        moved: 0,
+        metadataChanged: 0,
+        unchanged: expectedUnits,
+      });
+    }
+  });
+
   test("removes selected metadata values and reports each applied transform", async () => {
     const base = await withCoreProperties(
       await buildDocxBuffer([{ text: "Stable text.", paraId: "00000001" }]),
