@@ -340,6 +340,20 @@ export type ExtractedDocxText = {
     view: "accepted";
 };
 
+// @public
+export const FOLIO_CONTENT_COMPARISON_LIMITS: Readonly<{
+    readonly blocksPerSnapshot: 100000;
+    readonly changes: 10000;
+    readonly blockCodeUnits: 1048576;
+    readonly textCodeUnitsPerSnapshot: 8000000;
+    readonly previewRunsPerBlock: 65536;
+    readonly previewRunsPerSnapshot: 1000000;
+    readonly containerDepth: 64;
+    readonly containerEntriesPerSnapshot: 1000000;
+    readonly attributeCodeUnits: 16384;
+    readonly attributeCodeUnitsPerSnapshot: 8000000;
+}>;
+
 // @public (undocumented)
 export const FOLIO_DOCUMENT_METADATA_PROPERTIES: readonly ["title", "subject", "creator", "keywords", "description", "lastModifiedBy", "revision", "created", "modified"];
 
@@ -856,10 +870,10 @@ export type FolioContentBlock<Kind extends string = string> = {
     headingLevel?: number;
     displayLabel?: string;
     styleId?: string;
-    directAlignment?: import__stll_docx_core_model.ParagraphAlignment;
+    directAlignment?: FolioContentParagraphAlignment;
     directSpacing?: FolioContentParagraphSpacing;
     listLevel?: number;
-    previewRuns?: FolioContentRun[];
+    previewRuns?: readonly FolioContentRun[];
     table?: FolioContentTableLocation;
     containerPath?: readonly FolioContentContainerPathEntry[];
 };
@@ -917,11 +931,17 @@ export type FolioContentComparisonEvent<Block extends FolioContentBlock = FolioC
 };
 
 // @public (undocumented)
+export type FolioContentComparisonLimit = keyof typeof FOLIO_CONTENT_COMPARISON_LIMITS;
+
+// @public (undocumented)
 export class FolioContentComparisonLimitError extends FolioContentComparisonLimitError_base<{
     message: string;
-    limit: "base-blocks" | "revised-blocks" | "changes";
+    input: "base" | "revised" | "result";
+    limit: FolioContentComparisonLimit;
     maximum: number;
     actual: number;
+    blockIndex?: number;
+    field?: string;
 }> {}
 
 // @public
@@ -960,6 +980,12 @@ export type FolioContentInlineFormatting = Partial<Record<FolioContentInlineBool
 export type FolioContentInlineFormattingPatch = Omit<FolioContentInlineFormatting, FolioContentInlineBooleanProperty> & Partial<Record<FolioContentInlineBooleanProperty, boolean | null>>;
 
 // @public
+export type FolioContentLineSpacingRule = "auto" | "exact" | "atLeast";
+
+// @public
+export type FolioContentParagraphAlignment = "left" | "center" | "right" | "both" | "distribute" | "mediumKashida" | "highKashida" | "lowKashida" | "thaiDistribute";
+
+// @public
 export type FolioContentParagraphFormattingPatch = {
     styleId?: string | null;
     listLevel?: number | null;
@@ -968,7 +994,14 @@ export type FolioContentParagraphFormattingPatch = {
 };
 
 // @public
-export type FolioContentParagraphSpacing = Pick<import__stll_docx_core_model.ParagraphFormatting, "spaceBefore" | "spaceAfter" | "lineSpacing" | "lineSpacingRule" | "beforeAutospacing" | "afterAutospacing">;
+export type FolioContentParagraphSpacing = {
+    spaceBefore?: number;
+    spaceAfter?: number;
+    lineSpacing?: number;
+    lineSpacingRule?: FolioContentLineSpacingRule;
+    beforeAutospacing?: boolean;
+    afterAutospacing?: boolean;
+};
 
 // @public (undocumented)
 export type FolioContentRun = {
@@ -985,7 +1018,7 @@ export type FolioContentRun = {
 
 // @public
 export type FolioContentSnapshot<Block extends FolioContentBlock = FolioContentBlock> = {
-    blocks: Block[];
+    blocks: readonly Block[];
 };
 
 // @public
@@ -1880,12 +1913,6 @@ export type MaterializeYjsDocxOptions = {
     yjsUpdate: Uint8Array;
 };
 
-// @public
-export const MAX_FOLIO_CONTENT_BLOCKS = 100000;
-
-// @public
-export const MAX_FOLIO_CONTENT_CHANGES = 10000;
-
 // @public (undocumented)
 export const normalizeFolioAIBlockText: (text: string) => string;
 
@@ -1979,6 +2006,12 @@ export const validateDocxConformance: (bytes: ArrayBuffer | Uint8Array, options?
 export type ValidateDocxConformanceOptions = {
     readonly archive?: DocxArchiveOptions;
 };
+
+// @public
+export const WORD_DIFF_GRANULARITIES: readonly ["word", "character"];
+
+// @public (undocumented)
+export type WordDiffGranularity = (typeof WORD_DIFF_GRANULARITIES)[number];
 
 // (No @packageDocumentation comment for this package)
 
