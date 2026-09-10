@@ -8,7 +8,10 @@ import { createEmptyDocument } from "../../utils/createDocument";
 import { schema } from "../schema";
 import { validateProseMirrorDocument } from "../validation";
 import { fromProseDoc } from "./fromProseDoc";
-import { toProseDoc } from "./toProseDoc";
+import {
+  UnsupportedDocxToProseMirrorConversionError,
+  toProseDoc,
+} from "./toProseDoc";
 
 const REVISION = {
   id: 91,
@@ -36,6 +39,28 @@ const unrepresentableFieldResultMessage = (content: RunContent): string =>
   content.type === "shape"
     ? "A field result with an explicit page break containing a text-box shape cannot be represented in the editor model"
     : `A field result with an explicit page break containing ${content.type} cannot be represented in the editor model`;
+
+type ExpectedUnsupportedConversion = Pick<
+  UnsupportedDocxToProseMirrorConversionError,
+  "message" | "owner" | "contentType"
+>;
+
+const expectUnsupportedConversion = (
+  convert: () => unknown,
+  expected: ExpectedUnsupportedConversion,
+): void => {
+  try {
+    convert();
+  } catch (error) {
+    expect(error).toBeInstanceOf(UnsupportedDocxToProseMirrorConversionError);
+    if (!(error instanceof UnsupportedDocxToProseMirrorConversionError)) {
+      throw error;
+    }
+    expect(error).toMatchObject(expected);
+    return;
+  }
+  throw new Error("Expected DOCX-to-ProseMirror conversion to be rejected");
+};
 
 const documentXml = async (buffer: ArrayBuffer): Promise<string> => {
   const zip = await JSZip.loadAsync(buffer);
@@ -200,9 +225,11 @@ describe("page-break run field ownership", () => {
             },
           ];
 
-          expect(() => toProseDoc(source)).toThrow(
-            unrepresentableFieldResultMessage(unsupportedContent),
-          );
+          expectUnsupportedConversion(() => toProseDoc(source), {
+            message: unrepresentableFieldResultMessage(unsupportedContent),
+            owner: "field-result",
+            contentType: unsupportedContent.type,
+          });
         },
       );
     }
@@ -240,12 +267,44 @@ describe("page-break run field ownership", () => {
           },
         ];
 
-        expect(() => toProseDoc(source)).toThrow(
-          unrepresentableFieldResultMessage(unsupportedContent),
-        );
+        expectUnsupportedConversion(() => toProseDoc(source), {
+          message: unrepresentableFieldResultMessage(unsupportedContent),
+          owner: "field-result",
+          contentType: unsupportedContent.type,
+        });
       },
     );
   }
+
+  test.each(Object.entries(UNREPRESENTABLE_FIELD_RESULT_CONTENT))(
+    "reports a typed failure for an unrepresentable %s beside a top-level page break",
+    (_, unsupportedContent) => {
+      const source = createEmptyDocument();
+      source.package.document.content = [
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "run",
+              content: [
+                { type: "break", breakType: "page" },
+                unsupportedContent,
+              ],
+            },
+          ],
+        },
+      ];
+
+      expectUnsupportedConversion(() => toProseDoc(source), {
+        message:
+          unsupportedContent.type === "shape"
+            ? "A page-break-bearing run containing a text-box shape cannot be represented in the editor model"
+            : `A page-break-bearing run containing ${unsupportedContent.type} cannot be represented in the editor model`,
+        owner: "page-break-bearing-run",
+        contentType: unsupportedContent.type,
+      });
+    },
+  );
 
   test.each(["direct", "tracked"] as const)(
     "fails closed for a page break in a %s complex-field instruction",
@@ -273,9 +332,12 @@ describe("page-break run field ownership", () => {
         },
       ];
 
-      expect(() => toProseDoc(source)).toThrow(
-        "A complex-field instruction containing an explicit page break cannot be represented in the editor model",
-      );
+      expectUnsupportedConversion(() => toProseDoc(source), {
+        message:
+          "A complex-field instruction containing an explicit page break cannot be represented in the editor model",
+        owner: "complex-field-instruction",
+        contentType: "break",
+      });
     },
   );
 

@@ -10,18 +10,24 @@
 import { expectPageBreakRunOwnerMarkAttrs } from "../../attrs";
 import { createMarkExtension } from "../create";
 
+const CANONICAL_OWNER_ID = /^(?:0|[1-9]\d*)$/u;
+
 export const PageBreakRunOwnerExtension = createMarkExtension({
   name: "pageBreakRunOwner",
   schemaMarkName: "pageBreakRunOwner",
   markSpec: {
-    attrs: { id: { default: 0 } },
+    attrs: { id: {} },
     inclusive: false,
     parseDOM: [
       {
         tag: "span[data-docx-page-break-run-owner]",
         getAttrs(dom) {
-          const id = Number.parseInt(dom.dataset["docxPageBreakRunOwner"] ?? "", 10);
-          return Number.isInteger(id) && id >= 0 ? { id } : false;
+          const rawId = dom.dataset["docxPageBreakRunOwner"];
+          if (rawId === undefined || !CANONICAL_OWNER_ID.test(rawId)) {
+            return false;
+          }
+          const id = Number(rawId);
+          return Number.isSafeInteger(id) ? { id } : false;
         },
       },
     ],

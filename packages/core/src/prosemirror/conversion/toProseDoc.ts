@@ -13,7 +13,7 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
-import { panic } from "better-result";
+import { panic, TaggedError } from "better-result";
 
 import { createStyleEngine } from "../../style-engine";
 import type { StyleEngine, TableCellParagraphSpacingOverlay } from "../../style-engine";
@@ -100,6 +100,20 @@ import {
 } from "./effectiveTableCellFormatting";
 import { shadingToRunShadingAttrs } from "./runShadingMark";
 import { sdtAttrsFromProperties } from "./sdtAttrs";
+
+type UnsupportedDocxToProseMirrorOwner =
+  | "complex-field-instruction"
+  | "field-result"
+  | "page-break-bearing-run";
+
+/** DOCX content that cannot be preserved by the editable ProseMirror model. */
+export class UnsupportedDocxToProseMirrorConversionError extends TaggedError(
+  "UnsupportedDocxToProseMirrorConversionError",
+)<{
+  message: string;
+  owner: UnsupportedDocxToProseMirrorOwner;
+  contentType: RunContent["type"];
+}> {}
 
 const DETACHED_WATERMARK_HOST = Symbol.for("stll.detachedWatermarkHost");
 
@@ -2345,9 +2359,12 @@ function convertField(
   const runHasPageBreak = (run: Run): boolean =>
     run.content.some((content) => content.type === "break" && content.breakType === "page");
   if (field.type === "complexField" && field.fieldCode.some(runHasPageBreak)) {
-    panic(
-      "A complex-field instruction containing an explicit page break cannot be represented in the editor model",
-    );
+    throw new UnsupportedDocxToProseMirrorConversionError({
+      message:
+        "A complex-field instruction containing an explicit page break cannot be represented in the editor model",
+      owner: "complex-field-instruction",
+      contentType: "break",
+    });
   }
   const hasPageBreakContent =
     field.type === "simpleField"
@@ -2643,40 +2660,56 @@ function assertPageBreakSourceRunIsRepresentable(run: Run): void {
     return;
   }
 
-  assertRunContentIsRepresentableBesidePageBreak(run, "A page-break-bearing run");
+  assertRunContentIsRepresentableBesidePageBreak(run, "page-break-bearing-run");
 }
 
 function assertPageBreakFieldResultIsRepresentable(field: SimpleField | ComplexField): void {
   if (field.type === "complexField") {
     for (const run of field.fieldResult) {
-      assertRunContentIsRepresentableBesidePageBreak(
-        run,
-        "A field result with an explicit page break",
-      );
+      assertRunContentIsRepresentableBesidePageBreak(run, "field-result");
     }
     return;
   }
 
   for (const content of field.content) {
     if (content.type === "run") {
-      assertRunContentIsRepresentableBesidePageBreak(
-        content,
-        "A field result with an explicit page break",
-      );
+      assertRunContentIsRepresentableBesidePageBreak(content, "field-result");
       continue;
     }
     for (const child of content.children) {
       if (child.type === "run") {
-        assertRunContentIsRepresentableBesidePageBreak(
-          child,
-          "A field result with an explicit page break",
-        );
+        assertRunContentIsRepresentableBesidePageBreak(child, "field-result");
       }
     }
   }
 }
 
-function assertRunContentIsRepresentableBesidePageBreak(run: Run, ownerDescription: string): void {
+const PAGE_BREAK_OWNER_DESCRIPTIONS = {
+  "field-result": "A field result with an explicit page break",
+  "page-break-bearing-run": "A page-break-bearing run",
+} as const satisfies Record<
+  Exclude<UnsupportedDocxToProseMirrorOwner, "complex-field-instruction">,
+  string
+>;
+
+type PageBreakContentOwner = keyof typeof PAGE_BREAK_OWNER_DESCRIPTIONS;
+
+const unsupportedPageBreakContent = (
+  owner: PageBreakContentOwner,
+  contentType: RunContent["type"],
+): never => {
+  const description = contentType === "shape" ? "a text-box shape" : contentType;
+  throw new UnsupportedDocxToProseMirrorConversionError({
+    message: `${PAGE_BREAK_OWNER_DESCRIPTIONS[owner]} containing ${description} cannot be represented in the editor model`,
+    owner,
+    contentType,
+  });
+};
+
+function assertRunContentIsRepresentableBesidePageBreak(
+  run: Run,
+  owner: PageBreakContentOwner,
+): void {
   for (const content of run.content) {
     switch (content.type) {
       case "break":
@@ -2690,18 +2723,14 @@ function assertRunContentIsRepresentableBesidePageBreak(run: Run, ownerDescripti
         continue;
       case "shape":
         if (content.shape.textBody) {
-          panic(
-            `${ownerDescription} containing a text-box shape cannot be represented in the editor model`,
-          );
+          unsupportedPageBreakContent(owner, content.type);
         }
         continue;
       case "fieldChar":
       case "instrText":
       case "noBreakHyphen":
       case "softHyphen":
-        panic(
-          `${ownerDescription} containing ${content.type} cannot be represented in the editor model`,
-        );
+        unsupportedPageBreakContent(owner, content.type);
       default: {
         const unsupported: never = content;
         panic(`Unsupported page-break-bearing run content: ${JSON.stringify(unsupported)}`);

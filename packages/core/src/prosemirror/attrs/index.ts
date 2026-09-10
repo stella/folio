@@ -1253,7 +1253,13 @@ export const readPageBreakRunOwnerMarkAttrs = (
   const attrs = attrsRecord(mark.attrs);
   const issues: ProseMirrorAttrIssue[] = [];
   expectMarkType(mark, "pageBreakRunOwner", issues);
-  validateNonNegativeInteger(attrs["id"], "pageBreakRunOwner.attrs.id", issues);
+  const id = attrs["id"];
+  if (typeof id !== "number" || !Number.isSafeInteger(id) || id < 0) {
+    issues.push({
+      path: "pageBreakRunOwner.attrs.id",
+      message: "Expected a non-negative safe integer.",
+    });
+  }
   return attrsResult(attrs, issues);
 };
 

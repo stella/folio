@@ -1200,6 +1200,33 @@ type PageBreakRunProjection = {
   >;
 };
 
+const isTrackedRunMark = ({ type }: Mark): boolean =>
+  type.name === "insertion" || type.name === "deletion";
+
+/**
+ * Inline wrappers own marks that apply to every projected descendant. A
+ * descendant's mark of the same type is more specific, and any descendant
+ * revision replaces (rather than combines with) an inherited revision.
+ */
+const mergeProjectedInlineMarks = (
+  inheritedMarks: readonly Mark[],
+  ownMarks: readonly Mark[],
+): readonly Mark[] => {
+  if (inheritedMarks.length === 0) {
+    return ownMarks;
+  }
+
+  const ownMarkTypes = new Set(ownMarks.map(({ type }) => type));
+  const hasOwnTrackedMark = ownMarks.some(isTrackedRunMark);
+  return [
+    ...inheritedMarks.filter(
+      (mark) =>
+        !ownMarkTypes.has(mark.type) && !(hasOwnTrackedMark && isTrackedRunMark(mark)),
+    ),
+    ...ownMarks,
+  ];
+};
+
 function paragraphToRuns(
   node: PMNode,
   startPos: number,
@@ -1227,7 +1254,7 @@ function paragraphToRuns(
   function pushRunsForChild(
     child: PMNode,
     childPos: number,
-    inheritedTrackedMarks: readonly Mark[] = [],
+    inheritedMarks: readonly Mark[] = [],
   ): void {
     if (child.type.name === "bookmarkBoundary") {
       return;
@@ -1244,12 +1271,8 @@ function paragraphToRuns(
       });
       return;
     }
+    const effectiveMarks = mergeProjectedInlineMarks(inheritedMarks, child.marks);
     if (child.type.name === "pageBreakRun") {
-      const ownTrackedMarks = child.marks.filter(
-        ({ type }) => type.name === "insertion" || type.name === "deletion",
-      );
-      const effectiveMarks =
-        ownTrackedMarks.length > 0 ? child.marks : [...child.marks, ...inheritedTrackedMarks];
       const trackedChange = extractRunFormatting(effectiveMarks, theme, fontAlternates);
       if (trackedChange.isDeletion) {
         runs.push({
@@ -1304,10 +1327,10 @@ function paragraphToRuns(
       leadingRenderedPageBreakPending = false;
     }
     if (child.isText && child.text) {
-      const formatting = extractRunFormatting(child.marks, theme, fontAlternates);
+      const formatting = extractRunFormatting(effectiveMarks, theme, fontAlternates);
       applyCharacterStyleToggleFormatting({
         formatting,
-        marks: child.marks,
+        marks: effectiveMarks,
         paragraphFormatting: pmAttrs.defaultTextFormatting,
         styleResolver: _options.styleResolver,
       });
@@ -1330,10 +1353,10 @@ function paragraphToRuns(
       if (text === null) {
         return;
       }
-      const formatting = extractRunFormatting(child.marks, theme, fontAlternates);
+      const formatting = extractRunFormatting(effectiveMarks, theme, fontAlternates);
       applyCharacterStyleToggleFormatting({
         formatting,
-        marks: child.marks,
+        marks: effectiveMarks,
         paragraphFormatting: pmAttrs.defaultTextFormatting,
         styleResolver: _options.styleResolver,
       });
@@ -1363,10 +1386,10 @@ function paragraphToRuns(
       return;
     }
     if (child.type.name === "tab") {
-      const formatting = extractRunFormatting(child.marks, theme, fontAlternates);
+      const formatting = extractRunFormatting(effectiveMarks, theme, fontAlternates);
       applyCharacterStyleToggleFormatting({
         formatting,
-        marks: child.marks,
+        marks: effectiveMarks,
         paragraphFormatting: pmAttrs.defaultTextFormatting,
         styleResolver: _options.styleResolver,
       });
@@ -1397,7 +1420,7 @@ function paragraphToRuns(
       // Lift tracked-change marks off the image node so an inserted/deleted
       // picture paints in the revision colour and resolves with the rest of
       // the change. eigenpal #641.
-      const trackedFmt = extractRunFormatting(child.marks, theme, fontAlternates);
+      const trackedFmt = extractRunFormatting(effectiveMarks, theme, fontAlternates);
       const run = buildImageRun(
         attrs,
         constrained,
@@ -1419,16 +1442,9 @@ function paragraphToRuns(
       });
       if (containsPageBreak) {
         const fieldContentStart = childPos + 1;
-        const fieldTrackedMarks = child.marks.filter(
-          ({ type }) => type.name === "insertion" || type.name === "deletion",
-        );
         // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
         child.forEach((fieldChild, fieldChildOffset) => {
-          pushRunsForChild(
-            fieldChild,
-            fieldContentStart + fieldChildOffset,
-            fieldTrackedMarks.length > 0 ? fieldTrackedMarks : inheritedTrackedMarks,
-          );
+          pushRunsForChild(fieldChild, fieldContentStart + fieldChildOffset, effectiveMarks);
         });
         return;
       }
@@ -1453,10 +1469,14 @@ function paragraphToRuns(
       } else if (ft === "TIME") {
         mappedType = "TIME";
       }
-      const extractedFieldFormatting = extractRunFormatting(child.marks, theme, fontAlternates);
+      const extractedFieldFormatting = extractRunFormatting(
+        effectiveMarks,
+        theme,
+        fontAlternates,
+      );
       applyCharacterStyleToggleFormatting({
         formatting: extractedFieldFormatting,
-        marks: child.marks,
+        marks: effectiveMarks,
         paragraphFormatting: pmAttrs.defaultTextFormatting,
         styleResolver: _options.styleResolver,
       });
@@ -1497,16 +1517,9 @@ function paragraphToRuns(
     }
     if (child.type.name === "sdt") {
       const sdtInnerOffset = childPos + 1; // +1 for opening tag
-      const sdtTrackedMarks = child.marks.filter(
-        ({ type }) => type.name === "insertion" || type.name === "deletion",
-      );
       // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
       child.forEach((sdtChild, sdtChildOffset) => {
-        pushRunsForChild(
-          sdtChild,
-          sdtInnerOffset + sdtChildOffset,
-          sdtTrackedMarks.length > 0 ? sdtTrackedMarks : inheritedTrackedMarks,
-        );
+        pushRunsForChild(sdtChild, sdtInnerOffset + sdtChildOffset, effectiveMarks);
       });
     }
   }
@@ -2381,7 +2394,7 @@ function splitParagraphAtPageBreaks({
   }
 
   const result: (ParagraphBlock | PageBreakBlock)[] = [];
-  let remainingRuns = [...paragraph.runs];
+  let nextRunIndex = 0;
   let fragmentStart = paragraph.pmStart ?? pageBreaks[0]!.pmStart;
   let emittedParagraph = false;
 
@@ -2402,15 +2415,18 @@ function splitParagraphAtPageBreaks({
 
   for (const pageBreak of pageBreaks) {
     const before: Run[] = [];
-    const after: Run[] = [];
-    for (const run of remainingRuns) {
+    while (nextRunIndex < paragraph.runs.length) {
+      const run = paragraph.runs[nextRunIndex];
+      if (!run) {
+        break;
+      }
       if (run.pmEnd !== undefined && run.pmEnd <= pageBreak.pmStart) {
         before.push(run);
+        nextRunIndex += 1;
         continue;
       }
       if (run.pmStart !== undefined && run.pmStart >= pageBreak.pmEnd) {
-        after.push(run);
-        continue;
+        break;
       }
       panic("An inline layout run overlaps an explicit page-break carrier");
     }
@@ -2424,10 +2440,10 @@ function splitParagraphAtPageBreaks({
       pmEnd: pageBreak.pmEnd,
       ...pageBreak.trackedChange,
     });
-    remainingRuns = after;
     fragmentStart = pageBreak.pmEnd;
   }
 
+  const remainingRuns = paragraph.runs.slice(nextRunIndex);
   if (remainingRuns.length > 0) {
     appendParagraph(remainingRuns, fragmentStart, paragraph.pmEnd ?? fragmentStart);
   } else if (
