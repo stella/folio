@@ -134,23 +134,25 @@ describe("neutral comparison resource boundaries", () => {
     );
   });
 
-  test("bounds individual and aggregate metadata strings", () => {
+  test("bounds individual and aggregate comparison attributes", () => {
     expectLimit(
       compareContent({
         base: {
           blocks: [
-            block("x".repeat(FOLIO_CONTENT_COMPARISON_LIMITS.tokenCodeUnits + 1)),
+            block(
+              "x".repeat(FOLIO_CONTENT_COMPARISON_LIMITS.attributeCodeUnits + 1),
+            ),
           ],
         },
         revised: { blocks: [] },
       }),
-      { input: "base", limit: "tokenCodeUnits", blockIndex: 0 },
+      { input: "base", limit: "attributeCodeUnits", blockIndex: 0 },
     );
 
-    const styleId = "x".repeat(FOLIO_CONTENT_COMPARISON_LIMITS.tokenCodeUnits);
+    const styleId = "x".repeat(FOLIO_CONTENT_COMPARISON_LIMITS.attributeCodeUnits);
     const count =
       Math.floor(
-        FOLIO_CONTENT_COMPARISON_LIMITS.metadataCodeUnitsPerSnapshot /
+        FOLIO_CONTENT_COMPARISON_LIMITS.attributeCodeUnitsPerSnapshot /
           styleId.length,
       ) + 1;
     expectLimit(
@@ -162,7 +164,7 @@ describe("neutral comparison resource boundaries", () => {
         },
         revised: { blocks: [] },
       }),
-      { input: "base", limit: "metadataCodeUnitsPerSnapshot" },
+      { input: "base", limit: "attributeCodeUnitsPerSnapshot" },
     );
   });
 
@@ -220,6 +222,38 @@ describe("neutral comparison resource boundaries", () => {
     expect(unsafeExtent.error).toMatchObject({
       input: "base",
       field: "blocks[0].table.rowSpan",
+    });
+  });
+
+  test("rejects an outer table that reappears after its document position closes", () => {
+    const table = {
+      outerTableIndex: 0,
+      tableIndex: 0,
+      rowIndex: 0,
+      cellIndex: 0,
+      gridColumnIndex: 0,
+      columnSpan: 1,
+      rowSpan: 1,
+      paragraphIndex: 0,
+    } as const;
+    const result = compareContent({
+      base: {
+        blocks: [
+          block("table-before", { table }),
+          block("body"),
+          block("table-after", { table }),
+        ],
+      },
+      revised: { blocks: [] },
+    });
+
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) return;
+    expect(result.error).toBeInstanceOf(InvalidFolioContentComparisonError);
+    expect(result.error).toMatchObject({
+      input: "base",
+      blockIndex: 2,
+      field: "blocks[2].table",
     });
   });
 

@@ -41,8 +41,8 @@ export const FOLIO_CONTENT_COMPARISON_LIMITS = Object.freeze({
   previewRunsPerSnapshot: 1_000_000,
   containerDepth: 64,
   containerEntriesPerSnapshot: 1_000_000,
-  tokenCodeUnits: 16_384,
-  metadataCodeUnitsPerSnapshot: 8_000_000,
+  attributeCodeUnits: 16_384,
+  attributeCodeUnitsPerSnapshot: 8_000_000,
 } as const);
 
 export type FolioContentComparisonLimit = keyof typeof FOLIO_CONTENT_COMPARISON_LIMITS;
@@ -528,10 +528,10 @@ type SnapshotResourceUsage = {
   textCodeUnits: number;
   previewRuns: number;
   containerEntries: number;
-  metadataCodeUnits: number;
+  attributeCodeUnits: number;
 };
 
-const chargeMetadataString = ({
+const chargeAttributeString = ({
   value,
   side,
   blockIndex,
@@ -547,26 +547,26 @@ const chargeMetadataString = ({
   if (value === undefined || value === null) {
     return null;
   }
-  if (value.length > FOLIO_CONTENT_COMPARISON_LIMITS.tokenCodeUnits) {
+  if (value.length > FOLIO_CONTENT_COMPARISON_LIMITS.attributeCodeUnits) {
     return limitExceeded({
       input: side,
-      limit: "tokenCodeUnits",
-      maximum: FOLIO_CONTENT_COMPARISON_LIMITS.tokenCodeUnits,
+      limit: "attributeCodeUnits",
+      maximum: FOLIO_CONTENT_COMPARISON_LIMITS.attributeCodeUnits,
       actual: value.length,
       blockIndex,
       field,
     });
   }
-  usage.metadataCodeUnits += value.length;
+  usage.attributeCodeUnits += value.length;
   if (
-    usage.metadataCodeUnits >
-    FOLIO_CONTENT_COMPARISON_LIMITS.metadataCodeUnitsPerSnapshot
+    usage.attributeCodeUnits >
+    FOLIO_CONTENT_COMPARISON_LIMITS.attributeCodeUnitsPerSnapshot
   ) {
     return limitExceeded({
       input: side,
-      limit: "metadataCodeUnitsPerSnapshot",
-      maximum: FOLIO_CONTENT_COMPARISON_LIMITS.metadataCodeUnitsPerSnapshot,
-      actual: usage.metadataCodeUnits,
+      limit: "attributeCodeUnitsPerSnapshot",
+      maximum: FOLIO_CONTENT_COMPARISON_LIMITS.attributeCodeUnitsPerSnapshot,
+      actual: usage.attributeCodeUnits,
       blockIndex,
       field,
     });
@@ -594,12 +594,13 @@ const validateSnapshot = <Block extends FolioContentBlock>(
     textCodeUnits: 0,
     previewRuns: 0,
     containerEntries: 0,
-    metadataCodeUnits: 0,
+    attributeCodeUnits: 0,
   };
   const ids = new Set<string>();
   const lastCoordinateByTable = new Map<string, readonly [number, number, number]>();
   const geometryByCell = new Map<string, readonly [number, number, number]>();
   let lastOuterTableIndex = -1;
+  let activeOuterTableIndex: number | null = null;
   for (const [blockIndex, block] of snapshot.blocks.entries()) {
     if (!isRecord(block)) {
       return invalidInput(side, `blocks[${String(blockIndex)}]`, "Every content block must be an object.", blockIndex);
@@ -607,7 +608,7 @@ const validateSnapshot = <Block extends FolioContentBlock>(
     if (typeof block.id !== "string" || block.id.length === 0) {
       return invalidInput(side, `blocks[${String(blockIndex)}].id`, "Every content block needs a non-empty id.", blockIndex);
     }
-    const idLimit = chargeMetadataString({
+    const idLimit = chargeAttributeString({
       value: block.id,
       side,
       blockIndex,
@@ -622,7 +623,7 @@ const validateSnapshot = <Block extends FolioContentBlock>(
     if (typeof block.kind !== "string" || block.kind.length === 0) {
       return invalidInput(side, `blocks[${String(blockIndex)}].kind`, "Every content block needs a non-empty kind.", blockIndex);
     }
-    const kindLimit = chargeMetadataString({
+    const kindLimit = chargeAttributeString({
       value: block.kind,
       side,
       blockIndex,
@@ -702,7 +703,7 @@ const validateSnapshot = <Block extends FolioContentBlock>(
             [property, run[property]],
             [`directFormatting.${property}`, run.directFormatting?.[property]],
           ] as const) {
-            const formattingLimit = chargeMetadataString({
+            const formattingLimit = chargeAttributeString({
               value: typeof value === "string" ? value : undefined,
               side,
               blockIndex,
@@ -726,7 +727,7 @@ const validateSnapshot = <Block extends FolioContentBlock>(
       return runError;
     }
     for (const property of ["styleId", "displayLabel"] as const) {
-      const propertyLimit = chargeMetadataString({
+      const propertyLimit = chargeAttributeString({
         value: block[property],
         side,
         blockIndex,
@@ -774,7 +775,7 @@ const validateSnapshot = <Block extends FolioContentBlock>(
           return invalidInput(side, `blocks[${String(blockIndex)}].containerPath`, "Container paths require non-empty kind and id values.", blockIndex);
         }
         for (const property of ["kind", "id"] as const) {
-          const pathLimit = chargeMetadataString({
+          const pathLimit = chargeAttributeString({
             value: entry[property],
             side,
             blockIndex,
@@ -791,15 +792,20 @@ const validateSnapshot = <Block extends FolioContentBlock>(
         return error;
       }
       const table = block.table;
-      if (table.outerTableIndex < lastOuterTableIndex) {
+      if (
+        table.outerTableIndex < lastOuterTableIndex ||
+        (table.outerTableIndex === lastOuterTableIndex &&
+          activeOuterTableIndex !== table.outerTableIndex)
+      ) {
         return invalidInput(
           side,
           `blocks[${String(blockIndex)}].table`,
-          "Table blocks must follow document order.",
+          "Each outer table must occupy one contiguous position in document order.",
           blockIndex,
         );
       }
       lastOuterTableIndex = table.outerTableIndex;
+      activeOuterTableIndex = table.outerTableIndex;
       const tableKey = `${String(table.outerTableIndex)}:${String(table.tableIndex)}`;
       const cellKey = `${tableKey}:${String(table.rowIndex)}:${String(table.cellIndex)}`;
       const geometry = [
@@ -844,6 +850,8 @@ const validateSnapshot = <Block extends FolioContentBlock>(
         );
       }
       lastCoordinateByTable.set(tableKey, coordinate);
+    } else {
+      activeOuterTableIndex = null;
     }
   }
   return null;
