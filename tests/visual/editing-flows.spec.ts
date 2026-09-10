@@ -68,6 +68,15 @@ function bodyText(page: Page): Promise<string> {
   );
 }
 
+function paintedBodyTextLength(page: Page): Promise<number> {
+  return page.evaluate(() =>
+    [...document.querySelectorAll(".layout-page-content")].reduce(
+      (length, element) => length + (element.textContent?.length ?? 0),
+      0,
+    ),
+  );
+}
+
 /** Count body ProseMirror nodes by type name in the live document. */
 function countNodes(page: Page, typeName: string): Promise<number> {
   return page.evaluate((name) => {
@@ -359,6 +368,34 @@ test.describe("lists", () => {
     // Clicking the already-active numbered-list button clears list formatting.
     await clickToolbarButton(page, "Numbered List");
     await expect.poll(() => caretParagraphNumId(page)).toBeNull();
+  });
+
+  test("Backspace continues into text after exiting a style-numbered paragraph", async ({
+    page,
+  }) => {
+    await mountFixture(page, "sample.docx");
+    const marker = page.locator(".layout-list-marker").first();
+    await marker.click();
+    await page.keyboard.press("End");
+    await page.keyboard.press("Enter");
+    const inserted = "Synthetic deletion target";
+    await page.keyboard.type(inserted);
+    for (let index = 0; index < inserted.length; index += 1) {
+      await page.keyboard.press("Backspace");
+    }
+    await page.keyboard.press("Backspace");
+    await expect.poll(() => caretParagraphNumId(page)).toBe(0);
+
+    const modelLengthBeforeDelete = (await bodyText(page)).length;
+    const paintedLengthBeforeDelete = await paintedBodyTextLength(page);
+    for (let index = 0; index < 6; index += 1) {
+      await page.keyboard.press("Backspace");
+      if ((await bodyText(page)).length < modelLengthBeforeDelete) {
+        break;
+      }
+    }
+    await expect.poll(async () => (await bodyText(page)).length).toBe(modelLengthBeforeDelete - 1);
+    await expect.poll(() => paintedBodyTextLength(page)).toBeLessThan(paintedLengthBeforeDelete);
   });
 });
 

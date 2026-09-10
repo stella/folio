@@ -96,6 +96,14 @@ function clearListAttrs(attrs: ParagraphAttrs): Record<string, unknown> {
   };
 }
 
+type ActiveListParagraphAttrs = ParagraphAttrs & {
+  numPr: NonNullable<ParagraphAttrs["numPr"]> & { numId: number };
+};
+
+function hasActiveListNumbering(attrs: ParagraphAttrs): attrs is ActiveListParagraphAttrs {
+  return attrs.numPr?.numId !== undefined && attrs.numPr.numId !== 0;
+}
+
 // ============================================================================
 // LIST COMMANDS
 // ============================================================================
@@ -188,13 +196,16 @@ const attrsForListLevel = (
   attrs: ParagraphAttrs,
   level: number,
 ): Record<string, unknown> => {
-  const numPr = attrs.numPr;
-  if (numPr?.numId === undefined) {
+  if (!hasActiveListNumbering(attrs)) {
     panic("Cannot change the level of a list without a numbering id");
   }
   return {
     ...attrs,
-    ...listLevelAttrPatch(attrs, { numId: numPr.numId, ilvl: level }, getDocumentNumbering(state)),
+    ...listLevelAttrPatch(
+      attrs,
+      { numId: attrs.numPr.numId, ilvl: level },
+      getDocumentNumbering(state),
+    ),
   };
 };
 
@@ -205,11 +216,12 @@ const increaseListLevel: Command = (state, dispatch) => {
   if (paragraph.type.name !== "paragraph") {
     return false;
   }
-  if (!paragraph.attrs["numPr"]) {
+  const attrs = expectParagraphAttrs(paragraph);
+  if (!hasActiveListNumbering(attrs)) {
     return false;
   }
 
-  const currentLevel = paragraph.attrs["numPr"].ilvl || 0;
+  const currentLevel = attrs.numPr.ilvl || 0;
   if (currentLevel >= 8) {
     return false;
   }
@@ -223,7 +235,7 @@ const increaseListLevel: Command = (state, dispatch) => {
   dispatch(
     state.tr
       .setNodeMarkup(paragraphPos, undefined, {
-        ...attrsForListLevel(state, expectParagraphAttrs(paragraph), currentLevel + 1),
+        ...attrsForListLevel(state, attrs, currentLevel + 1),
       })
       .scrollIntoView(),
   );
@@ -238,11 +250,12 @@ const decreaseListLevel: Command = (state, dispatch) => {
   if (paragraph.type.name !== "paragraph") {
     return false;
   }
-  if (!paragraph.attrs["numPr"]) {
+  const attrs = expectParagraphAttrs(paragraph);
+  if (!hasActiveListNumbering(attrs)) {
     return false;
   }
 
-  const currentLevel = paragraph.attrs["numPr"].ilvl || 0;
+  const currentLevel = attrs.numPr.ilvl || 0;
 
   if (!dispatch) {
     return true;
@@ -254,7 +267,7 @@ const decreaseListLevel: Command = (state, dispatch) => {
     dispatch(
       state.tr
         .setNodeMarkup(paragraphPos, undefined, {
-          ...clearListAttrs(expectParagraphAttrs(paragraph)),
+          ...clearListAttrs(attrs),
           indentLeft: null,
           indentFirstLine: null,
           hangingIndent: null,
@@ -265,7 +278,7 @@ const decreaseListLevel: Command = (state, dispatch) => {
     dispatch(
       state.tr
         .setNodeMarkup(paragraphPos, undefined, {
-          ...attrsForListLevel(state, expectParagraphAttrs(paragraph), currentLevel - 1),
+          ...attrsForListLevel(state, attrs, currentLevel - 1),
         })
         .scrollIntoView(),
     );
@@ -285,7 +298,11 @@ const removeList: Command = (state, dispatch) => {
   const seen = new Set<number>();
 
   state.doc.nodesBetween($from.pos, $to.pos, (node, pos) => {
-    if (node.type.name === "paragraph" && node.attrs["numPr"] && !seen.has(pos)) {
+    if (
+      node.type.name === "paragraph" &&
+      hasActiveListNumbering(expectParagraphAttrs(node)) &&
+      !seen.has(pos)
+    ) {
       seen.add(pos);
       tr = tr.setNodeMarkup(pos, undefined, clearListAttrs(expectParagraphAttrs(node)));
     }
@@ -306,7 +323,7 @@ export function isInList(state: EditorState): boolean {
   if (paragraph.type.name !== "paragraph") {
     return false;
   }
-  return !!paragraph.attrs["numPr"]?.numId;
+  return hasActiveListNumbering(expectParagraphAttrs(paragraph));
 }
 
 export function getListInfo(state: EditorState): { numId: number; ilvl: number } | null {
@@ -316,13 +333,14 @@ export function getListInfo(state: EditorState): { numId: number; ilvl: number }
   if (paragraph.type.name !== "paragraph") {
     return null;
   }
-  if (!paragraph.attrs["numPr"]?.numId) {
+  const attrs = expectParagraphAttrs(paragraph);
+  if (!hasActiveListNumbering(attrs)) {
     return null;
   }
 
   return {
-    numId: paragraph.attrs["numPr"].numId,
-    ilvl: paragraph.attrs["numPr"].ilvl || 0,
+    numId: attrs.numPr.numId,
+    ilvl: attrs.numPr.ilvl || 0,
   };
 }
 
@@ -342,8 +360,8 @@ function exitListOnEmptyEnter(): Command {
       return false;
     }
 
-    const numPr = paragraph.attrs["numPr"];
-    if (!numPr) {
+    const attrs = expectParagraphAttrs(paragraph);
+    if (!hasActiveListNumbering(attrs)) {
       return false;
     }
 
@@ -352,11 +370,7 @@ function exitListOnEmptyEnter(): Command {
     }
 
     if (dispatch) {
-      const tr = state.tr.setNodeMarkup(
-        $from.before(),
-        undefined,
-        clearListAttrs(expectParagraphAttrs(paragraph)),
-      );
+      const tr = state.tr.setNodeMarkup($from.before(), undefined, clearListAttrs(attrs));
       dispatch(tr);
     }
     return true;
@@ -375,8 +389,8 @@ function splitListItem(): Command {
       return false;
     }
 
-    const numPr = paragraph.attrs["numPr"];
-    if (!numPr) {
+    const attrs = expectParagraphAttrs(paragraph);
+    if (!hasActiveListNumbering(attrs)) {
       return false;
     }
 
@@ -413,17 +427,13 @@ function backspaceExitList(): Command {
       return false;
     }
 
-    const numPr = paragraph.attrs["numPr"];
-    if (!numPr) {
+    const attrs = expectParagraphAttrs(paragraph);
+    if (!hasActiveListNumbering(attrs)) {
       return false;
     }
 
     if (dispatch) {
-      const tr = state.tr.setNodeMarkup(
-        $from.before(),
-        undefined,
-        clearListAttrs(expectParagraphAttrs(paragraph)),
-      );
+      const tr = state.tr.setNodeMarkup($from.before(), undefined, clearListAttrs(attrs));
       dispatch(tr);
     }
     return true;
@@ -437,8 +447,11 @@ function increaseListIndent(): Command {
     // Collect all list paragraphs in the selection range
     const positions: { pos: number; attrs: ParagraphAttrs }[] = [];
     state.doc.nodesBetween($from.pos, $to.pos, (node, pos) => {
-      if (node.type.name === "paragraph" && node.attrs["numPr"]) {
+      if (node.type.name === "paragraph") {
         const attrs = expectParagraphAttrs(node);
+        if (!hasActiveListNumbering(attrs)) {
+          return;
+        }
         const currentLevel = attrs.numPr?.ilvl ?? 0;
         if (currentLevel < 8) {
           positions.push({ pos, attrs });
@@ -472,8 +485,11 @@ function decreaseListIndent(): Command {
     // Collect all list paragraphs in the selection range
     const positions: { pos: number; attrs: ParagraphAttrs }[] = [];
     state.doc.nodesBetween($from.pos, $to.pos, (node, pos) => {
-      if (node.type.name === "paragraph" && node.attrs["numPr"]) {
-        positions.push({ pos, attrs: expectParagraphAttrs(node) });
+      if (node.type.name === "paragraph") {
+        const attrs = expectParagraphAttrs(node);
+        if (hasActiveListNumbering(attrs)) {
+          positions.push({ pos, attrs });
+        }
       }
     });
 

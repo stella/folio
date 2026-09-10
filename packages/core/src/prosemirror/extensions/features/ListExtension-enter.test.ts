@@ -185,13 +185,27 @@ describe("ListExtension Enter numbering", () => {
     });
 
     const refreshedDocument = fromProseDoc(state.doc, document);
-    const refreshedState = EditorState.create({
+    let refreshedState = EditorState.create({
       doc: toProseDoc(refreshedDocument, { styles: refreshedDocument.package.styles }),
       plugins: [createDocumentNumberingPlugin(MULTILEVEL_NUMBERING.definitions)],
     });
 
     expect(listMarkers(refreshedState)).toHaveLength(1);
     expect(refreshedState.doc.lastChild?.attrs["numPr"]).toEqual({ numId: 0, ilvl: 1 });
+    const lastParagraphStart = refreshedState.doc.firstChild?.nodeSize;
+    if (lastParagraphStart === undefined) {
+      return panic("Synthetic document lost its first paragraph");
+    }
+    refreshedState = refreshedState.apply(
+      refreshedState.tr.setSelection(
+        TextSelection.create(refreshedState.doc, lastParagraphStart + 1),
+      ),
+    );
+    expect(
+      backspace(refreshedState, (transaction) => {
+        refreshedState = refreshedState.apply(transaction);
+      }),
+    ).toBe(false);
   });
 
   test("does not retain an imported template after replacing the list", () => {
