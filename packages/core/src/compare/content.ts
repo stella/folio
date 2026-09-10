@@ -531,6 +531,75 @@ type SnapshotResourceUsage = {
   attributeCodeUnits: number;
 };
 
+type TableCellRectangle = {
+  blockIndex: number;
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+};
+
+const overlappingTableCellBlockIndex = (
+  cells: readonly TableCellRectangle[],
+): number | null => {
+  if (cells.length < 2) return null;
+  const columns = [
+    ...new Set(cells.flatMap(({ left, right }) => [left, right])),
+  ].toSorted((left, right) => left - right);
+  if (columns.length < 2) return null;
+  const columnIndex = new Map(columns.map((column, index) => [column, index] as const));
+  const intervalCount = columns.length - 1;
+  const maximum = new Int32Array(intervalCount * 4);
+  const pending = new Int32Array(intervalCount * 4);
+  const add = (
+    node: number,
+    nodeLeft: number,
+    nodeRight: number,
+    rangeLeft: number,
+    rangeRight: number,
+    amount: number,
+  ): void => {
+    if (rangeLeft <= nodeLeft && nodeRight <= rangeRight) {
+      maximum[node] = (maximum[node] ?? 0) + amount;
+      pending[node] = (pending[node] ?? 0) + amount;
+      return;
+    }
+    const middle = nodeLeft + Math.floor((nodeRight - nodeLeft) / 2);
+    if (rangeLeft <= middle) {
+      add(node * 2, nodeLeft, middle, rangeLeft, rangeRight, amount);
+    }
+    if (rangeRight > middle) {
+      add(node * 2 + 1, middle + 1, nodeRight, rangeLeft, rangeRight, amount);
+    }
+    maximum[node] =
+      (pending[node] ?? 0) +
+      Math.max(maximum[node * 2] ?? 0, maximum[node * 2 + 1] ?? 0);
+  };
+  const events = cells.flatMap((cell) => [
+    { row: cell.top, amount: 1, cell },
+    { row: cell.bottom, amount: -1, cell },
+  ]);
+  events.sort(
+    (left, right) =>
+      left.row - right.row ||
+      left.amount - right.amount ||
+      left.cell.left - right.cell.left ||
+      left.cell.blockIndex - right.cell.blockIndex,
+  );
+  for (const { amount, cell } of events) {
+    const left = columnIndex.get(cell.left);
+    const right = columnIndex.get(cell.right);
+    if (left === undefined || right === undefined || left >= right) {
+      return panic("A validated table cell has no coordinate-compression interval");
+    }
+    add(1, 0, intervalCount - 1, left, right - 1, amount);
+    if (amount > 0 && (maximum[1] ?? 0) > 1) {
+      return cell.blockIndex;
+    }
+  }
+  return null;
+};
+
 const chargeAttributeString = ({
   value,
   side,
@@ -599,6 +668,8 @@ const validateSnapshot = <Block extends FolioContentBlock>(
   const ids = new Set<string>();
   const lastCoordinateByTable = new Map<string, readonly [number, number, number]>();
   const geometryByCell = new Map<string, readonly [number, number, number]>();
+  const cellsByTable = new Map<string, TableCellRectangle[]>();
+  const outerTableByTableIndex = new Map<number, number>();
   let lastOuterTableIndex = -1;
   let activeOuterTableIndex: number | null = null;
   for (const [blockIndex, block] of snapshot.blocks.entries()) {
@@ -792,6 +863,27 @@ const validateSnapshot = <Block extends FolioContentBlock>(
         return error;
       }
       const table = block.table;
+      if (table.tableIndex < table.outerTableIndex) {
+        return invalidInput(
+          side,
+          `blocks[${String(blockIndex)}].table.tableIndex`,
+          "An inner table cannot precede its outer table in document order.",
+          blockIndex,
+        );
+      }
+      const knownOuterTableIndex = outerTableByTableIndex.get(table.tableIndex);
+      if (
+        knownOuterTableIndex !== undefined &&
+        knownOuterTableIndex !== table.outerTableIndex
+      ) {
+        return invalidInput(
+          side,
+          `blocks[${String(blockIndex)}].table.tableIndex`,
+          "A table index must identify only one outer table.",
+          blockIndex,
+        );
+      }
+      outerTableByTableIndex.set(table.tableIndex, table.outerTableIndex);
       if (
         table.outerTableIndex < lastOuterTableIndex ||
         (table.outerTableIndex === lastOuterTableIndex &&
@@ -828,6 +920,21 @@ const validateSnapshot = <Block extends FolioContentBlock>(
         );
       }
       geometryByCell.set(cellKey, geometry);
+      if (priorGeometry === undefined) {
+        const cells = cellsByTable.get(tableKey);
+        const rectangle = {
+          blockIndex,
+          left: table.gridColumnIndex,
+          right: table.gridColumnIndex + table.columnSpan,
+          top: table.rowIndex,
+          bottom: table.rowIndex + table.rowSpan,
+        };
+        if (cells) {
+          cells.push(rectangle);
+        } else {
+          cellsByTable.set(tableKey, [rectangle]);
+        }
+      }
       const coordinate = [
         table.rowIndex,
         table.cellIndex,
@@ -852,6 +959,17 @@ const validateSnapshot = <Block extends FolioContentBlock>(
       lastCoordinateByTable.set(tableKey, coordinate);
     } else {
       activeOuterTableIndex = null;
+    }
+  }
+  for (const cells of cellsByTable.values()) {
+    const overlappingBlockIndex = overlappingTableCellBlockIndex(cells);
+    if (overlappingBlockIndex !== null) {
+      return invalidInput(
+        side,
+        `blocks[${String(overlappingBlockIndex)}].table`,
+        "Physical table cells must not overlap.",
+        overlappingBlockIndex,
+      );
     }
   }
   return null;

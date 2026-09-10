@@ -257,6 +257,109 @@ describe("neutral comparison resource boundaries", () => {
     });
   });
 
+  test("rejects a table index reused under another outer table", () => {
+    const location = (outerTableIndex: number) => ({
+      outerTableIndex,
+      tableIndex: 1,
+      rowIndex: 0,
+      cellIndex: 0,
+      gridColumnIndex: 0,
+      columnSpan: 1,
+      rowSpan: 1,
+      paragraphIndex: 0,
+    });
+    const result = compareContent({
+      base: {
+        blocks: [
+          block("nested-first", { table: location(0) }),
+          block("outer-second", { table: location(1) }),
+        ],
+      },
+      revised: { blocks: [] },
+    });
+
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) return;
+    expect(result.error).toBeInstanceOf(InvalidFolioContentComparisonError);
+    expect(result.error).toMatchObject({
+      input: "base",
+      blockIndex: 1,
+      field: "blocks[1].table.tableIndex",
+    });
+
+    const precedingOuter = compareContent({
+      base: {
+        blocks: [
+          block("impossible-nesting", {
+            table: { ...location(1), tableIndex: 0 },
+          }),
+        ],
+      },
+      revised: { blocks: [] },
+    });
+    expect(precedingOuter.isErr()).toBe(true);
+    if (!precedingOuter.isErr()) return;
+    expect(precedingOuter.error).toBeInstanceOf(InvalidFolioContentComparisonError);
+    expect(precedingOuter.error).toMatchObject({
+      input: "base",
+      blockIndex: 0,
+      field: "blocks[0].table.tableIndex",
+    });
+  });
+
+  test("rejects overlapping horizontal and vertical table cells", () => {
+    const cell = ({
+      rowIndex,
+      cellIndex,
+      gridColumnIndex,
+      columnSpan = 1,
+      rowSpan = 1,
+    }: {
+      rowIndex: number;
+      cellIndex: number;
+      gridColumnIndex: number;
+      columnSpan?: number;
+      rowSpan?: number;
+    }) => ({
+      outerTableIndex: 0,
+      tableIndex: 0,
+      rowIndex,
+      cellIndex,
+      gridColumnIndex,
+      columnSpan,
+      rowSpan,
+      paragraphIndex: 0,
+    });
+    for (const blocks of [
+      [
+        block("wide", {
+          table: cell({ rowIndex: 0, cellIndex: 0, gridColumnIndex: 0, columnSpan: 2 }),
+        }),
+        block("inside-wide", {
+          table: cell({ rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 }),
+        }),
+      ],
+      [
+        block("tall", {
+          table: cell({ rowIndex: 0, cellIndex: 0, gridColumnIndex: 0, rowSpan: 2 }),
+        }),
+        block("inside-tall", {
+          table: cell({ rowIndex: 1, cellIndex: 0, gridColumnIndex: 0 }),
+        }),
+      ],
+    ]) {
+      const result = compareContent({ base: { blocks }, revised: { blocks: [] } });
+      expect(result.isErr()).toBe(true);
+      if (!result.isErr()) continue;
+      expect(result.error).toBeInstanceOf(InvalidFolioContentComparisonError);
+      expect(result.error).toMatchObject({
+        input: "base",
+        blockIndex: 1,
+        field: "blocks[1].table",
+      });
+    }
+  });
+
   test("accepts readonly snapshots without copying caller arrays", () => {
     const base = {
       blocks: [block("same", { text: "Same" })],
