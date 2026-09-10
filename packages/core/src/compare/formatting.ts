@@ -6,15 +6,18 @@
  * the same way in the generated tracked changes and in the change list.
  */
 
-import { resolveColorToHex } from "../utils/colorResolver";
 import type {
   FolioContentBlock,
   FolioContentInlineFormattingPatch,
   FolioContentRun,
 } from "./content-types";
 
+const HEX_COLOR = /^#?(?:[0-9A-Fa-f]{3}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$/u;
+
 const normalizeInlineFormattingColor = (color: string | undefined): string | undefined =>
-  resolveColorToHex(color === undefined ? undefined : { rgb: color }, null);
+  color !== undefined && HEX_COLOR.test(color)
+    ? color.replace(/^#/u, "").toUpperCase()
+    : color;
 
 const changedStringValue = (
   baseEffective: string | undefined,
