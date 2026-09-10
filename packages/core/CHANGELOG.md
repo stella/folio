@@ -1,5 +1,69 @@
 # @stll/folio-core
 
+## 0.37.0
+
+### Minor Changes
+
+- [#795](https://github.com/stella/folio/pull/795) [`b3cc1d4`](https://github.com/stella/folio/commit/b3cc1d48038747c3001df03cf1bc874944f2b3cf) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Change format-painter capture and apply to use a typed effective-formatting value that preserves paragraph and character-style context, explicit inherited-property cancellations, and pending revisions.
+
+- [#804](https://github.com/stella/folio/pull/804) [`a4c3df0`](https://github.com/stella/folio/commit/a4c3df0b0252babb700d75c09d8fbebb577a7d57) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add a pure, resource-bounded `compareContent` API for ordered representation-neutral blocks, including text and formatting segments, moves, split and merge events, container-safe structural changes, and exact base and revised projections.
+
+- [#799](https://github.com/stella/folio/pull/799) [`10ec72e`](https://github.com/stella/folio/commit/10ec72ea5d6742157f9683846ff95fd50ecfb0d0) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve explicit OOXML page-break run and field ownership across editor conversion, revision resolution, and DOCX round trips. Retain namespaces on nested run-property revisions and refuse page-break layouts that cannot be projected losslessly. AI edit snapshot anchors now require a structural-boundary fingerprint so edits cannot cross page-break topology changes.
+
+- [#782](https://github.com/stella/folio/pull/782) [`09e9521`](https://github.com/stella/folio/commit/09e952108f2b420b542b280f9ba64bafa02abcbd) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Compare, inspect, insert, and track the complete direct paragraph-spacing cluster while preserving absent attributes, explicit zero and false values, and style inheritance.
+  Line values and line rules retain independent direct-formatting provenance, so saving one no longer materializes an inherited counterpart.
+  Paragraph-format operations now refuse a second unresolved serializable `w:pPrChange`; editor-only suggestion histories remain independently rejectable and save to at most one such child per paragraph.
+
+### Patch Changes
+
+- [#800](https://github.com/stella/folio/pull/800) [`2951504`](https://github.com/stella/folio/commit/295150452f9580d7dfb9a3133c7cdf7e92d2f1c6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep text geometry continuous across nested fragments and preserve style-linked list continuations.
+
+- [#801](https://github.com/stella/folio/pull/801) [`975f804`](https://github.com/stella/folio/commit/975f8042b0128a8eee59fc623026ebf446dede53) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Anchor carets beside painted text when inline metadata has no visual span.
+
+- [#803](https://github.com/stella/folio/pull/803) [`92d9533`](https://github.com/stella/folio/commit/92d9533f29dd7eb63e442bb66661da6349015f57) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep list deletion, paired inline metadata, markerless indentation, and rendered updates synchronized.
+
+- [#779](https://github.com/stella/folio/pull/779) [`0aa34b2`](https://github.com/stella/folio/commit/0aa34b2e45efcb5a1eab9bdf3d2c356946057ea2) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Limit resolved-story serialization errors to structural mismatch counts.
+
+- [#787](https://github.com/stella/folio/pull/787) [`ea17fce`](https://github.com/stella/folio/commit/ea17fce2db901b24c0f2e7935ad8408478ff3d3c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve source part timestamps when normalizing paragraph identifiers so repeated normalization stays byte-deterministic.
+
+- [#798](https://github.com/stella/folio/pull/798) [`7be42eb`](https://github.com/stella/folio/commit/7be42ebdd36e0cff7b913633ac52caa9c033351e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep table-grid widths aligned when accepting or directly applying column removals.
+
+- [#795](https://github.com/stella/folio/pull/795) [`b3cc1d4`](https://github.com/stella/folio/commit/b3cc1d48038747c3001df03cf1bc874944f2b3cf) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Distinguish explicit off values from inherited boolean run formatting in comparison operations.
+
+- [#783](https://github.com/stella/folio/pull/783) [`00dcefb`](https://github.com/stella/folio/commit/00dcefb66e888a16d2e1aa9b1288f07e326b07a7) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Replace structurally incompatible table pairs as one deleted and one inserted table when their target template is lossless, preserving exact accept/reject round trips without sacrificing granular row edits or package-bound content.
+
+- [#792](https://github.com/stella/folio/pull/792) [`f2f7574`](https://github.com/stella/folio/commit/f2f75740af14e438851e765278e10e2313694583) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve terminal table replacements across tracked-change acceptance, rejection, and reopen.
+
+- [#804](https://github.com/stella/folio/pull/804) [`a4c3df0`](https://github.com/stella/folio/commit/a4c3df0b0252babb700d75c09d8fbebb577a7d57) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Retain and render word and formatting details on composite version changes, including edited moves and formatting-only scopes.
+
+- [#795](https://github.com/stella/folio/pull/795) [`b3cc1d4`](https://github.com/stella/folio/commit/b3cc1d48038747c3001df03cf1bc874944f2b3cf) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Resolve character-style toggle formatting consistently across body, header, footer, and footnote layout.
+
+- [#797](https://github.com/stella/folio/pull/797) [`e289686`](https://github.com/stella/folio/commit/e2896863f28be23473628966a77123573bba2e0b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve and recompute imported numbering across list structure edits.
+
+- [#785](https://github.com/stella/folio/pull/785) [`2461ede`](https://github.com/stella/folio/commit/2461ededca2031784776e5ecaed00b7b0b6d0cac) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve inherited paragraph spacing when inserted blocks are serialized, accepted, rejected, and reopened.
+
+- [#786](https://github.com/stella/folio/pull/786) [`4c01126`](https://github.com/stella/folio/commit/4c0112677adf974d8ae7991733ef47abec1cf9d7) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Bound the cost of resolving large tracked-change batches in synchronous headless review workflows.
+
+- [#795](https://github.com/stella/folio/pull/795) [`b3cc1d4`](https://github.com/stella/folio/commit/b3cc1d48038747c3001df03cf1bc874944f2b3cf) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Distinguish authored run formatting from paragraph and character-style inheritance in reviewer snapshots.
+
+- [#795](https://github.com/stella/folio/pull/795) [`b3cc1d4`](https://github.com/stella/folio/commit/b3cc1d48038747c3001df03cf1bc874944f2b3cf) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve direct run formatting, character-style inheritance, and formatted inline carriers (tabs, line breaks, symbols, and fields) across editor and DOCX round trips while keeping common run state compact and reviewable. Refuse a second independently owned run-property revision before mutation, and commit comment and revision ids only with the operation that writes them.
+
+- [#787](https://github.com/stella/folio/pull/787) [`ea17fce`](https://github.com/stella/folio/commit/ea17fce2db901b24c0f2e7935ad8408478ff3d3c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve intended pagination around continuous sections, cached page markers, positioned objects, page furniture, and paragraph-mark formatting.
+
+- [#794](https://github.com/stella/folio/pull/794) [`098cd24`](https://github.com/stella/folio/commit/098cd248c1f33f6849079360c1fb6f758927aa46) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Resolve tracked section endpoints under paragraph-mark ownership.
+
+- [#793](https://github.com/stella/folio/pull/793) [`8589725`](https://github.com/stella/folio/commit/8589725d71d29d77ca47f028188ac6787ed21055) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Paint floating page-furniture images at their authored positions.
+
+- [#802](https://github.com/stella/folio/pull/802) [`68511cf`](https://github.com/stella/folio/commit/68511cf46320acf56722b0344853a8c996121302) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep list removal effective for paragraphs whose numbering comes from a style.
+
+- [#788](https://github.com/stella/folio/pull/788) [`709ac7c`](https://github.com/stella/folio/commit/709ac7cad41fba216511fa1dbc678fda4e09fa43) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve and enumerate tracked insertions and deletions on inline atoms, including breaks and tabs, across document conversion, live suggestion editing, save, reload, and bulk resolution.
+
+- [#791](https://github.com/stella/folio/pull/791) [`57a8099`](https://github.com/stella/folio/commit/57a8099d25bcd991f3be479eca0d28997654b3f6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve visible cell borders where a table row continues across pages.
+
+- [#795](https://github.com/stella/folio/pull/795) [`b3cc1d4`](https://github.com/stella/folio/commit/b3cc1d48038747c3001df03cf1bc874944f2b3cf) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Restore rejected bulk run-property changes against their paragraph and character styles.
+- Updated dependencies [[`e289686`](https://github.com/stella/folio/commit/e2896863f28be23473628966a77123573bba2e0b)]:
+  - @stll/docx-core@0.19.3
+
 ## 0.36.0
 
 ### Minor Changes
