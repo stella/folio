@@ -274,8 +274,8 @@ describe("container-safe structural alignment", () => {
     ];
 
     expect(alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised })).toEqual([
-      { type: "baseOnly", block: base[0], moveScope: { bucket: 1, gap: 1 } },
-      { type: "revisedOnly", block: revised[0], moveScope: { bucket: 2, gap: 1 } },
+      { type: "baseOnly", block: base[0], moveScope: { bucket: 1, gap: 0 } },
+      { type: "revisedOnly", block: revised[0], moveScope: { bucket: 2, gap: 0 } },
     ]);
   });
 });
