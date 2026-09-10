@@ -32,6 +32,34 @@ export {
 // list. See `./compare/README.md` for the determinism contract and limitations.
 export { compareDocx, MAX_COMPARE_OPERATIONS } from "./compare/compare";
 export {
+  compareContent,
+  FolioContentComparisonLimitError,
+  InvalidFolioContentComparisonError,
+  MAX_FOLIO_CONTENT_BLOCKS,
+  MAX_FOLIO_CONTENT_CHANGES,
+  type CompareContentOptions,
+  type FolioContentBlockProperty,
+  type FolioContentComparison,
+  type FolioContentComparisonError,
+  type FolioContentComparisonEvent,
+  type FolioContentFormattingChange,
+  type FolioContentParagraphFormattingPatch,
+  type FolioContentStructuralChange,
+  type FolioContentTextSegment,
+} from "./compare/content";
+export type {
+  FolioContentBlock,
+  FolioContentContainerPathEntry,
+  FolioContentIdStability,
+  FolioContentInlineBooleanProperty,
+  FolioContentInlineFormatting,
+  FolioContentInlineFormattingPatch,
+  FolioContentParagraphSpacing,
+  FolioContentRun,
+  FolioContentSnapshot,
+  FolioContentTableLocation,
+} from "./compare/content-types";
+export {
   COMPARE_UNSUPPORTED_REASONS,
   CompareDocxApplyError,
   CompareDocxFinalParagraphMarkError,
