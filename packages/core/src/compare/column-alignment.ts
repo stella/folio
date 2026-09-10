@@ -19,6 +19,12 @@ type GridColumn<Block extends FolioContentBlock> = {
   ownedCells: readonly GridCell<Block>[];
 };
 
+type TableGrid<Block extends FolioContentBlock> = {
+  cells: readonly GridCell<Block>[];
+  width: number;
+  height: number;
+};
+
 export type TableColumnAlignmentStep<Block extends FolioContentBlock = FolioContentBlock> =
   | {
       type: "baseColumn";
@@ -42,9 +48,9 @@ export type TableColumnAlignment<Block extends FolioContentBlock = FolioContentB
   revisedColumnKeys: ReadonlyMap<number, number>;
 };
 
-const tableGridColumns = <Block extends FolioContentBlock>(
+const extractTableGrid = <Block extends FolioContentBlock>(
   blocks: readonly Block[],
-): GridColumn<Block>[] | null => {
+): TableGrid<Block> | null => {
   const cellsByPhysicalLocation = new Map<string, GridCell<Block>>();
   let width = 0;
   let height = 0;
@@ -62,6 +68,10 @@ const tableGridColumns = <Block extends FolioContentBlock>(
     const right = location.gridColumnIndex + location.columnSpan;
     const bottom = location.rowIndex + location.rowSpan;
     if (
+      !Number.isSafeInteger(location.gridColumnIndex) ||
+      !Number.isSafeInteger(location.rowIndex) ||
+      !Number.isSafeInteger(location.columnSpan) ||
+      !Number.isSafeInteger(location.rowSpan) ||
       location.gridColumnIndex < 0 ||
       location.rowIndex < 0 ||
       location.columnSpan < 1 ||
@@ -84,43 +94,74 @@ const tableGridColumns = <Block extends FolioContentBlock>(
     return null;
   }
 
-  const grid: (GridCell<Block> | undefined)[][] = Array.from({ length: height }, () =>
-    Array.from({ length: width }),
+  // The 63-column ceiling fits one bigint mask. A two-event sweep validates
+  // rectangle overlap in O(cells log cells) storage and never materializes
+  // empty rows in a sparse grid.
+  const occupancyEvents = [...cellsByPhysicalLocation.values()].flatMap((cell) => {
+    const mask = ((1n << BigInt(cell.columnSpan)) - 1n) << BigInt(cell.gridColumnIndex);
+    return [
+      { rowIndex: cell.rowIndex, type: "enter" as const, mask },
+      { rowIndex: cell.rowIndex + cell.rowSpan, type: "leave" as const, mask },
+    ];
+  });
+  occupancyEvents.sort(
+    (left, right) =>
+      left.rowIndex - right.rowIndex ||
+      (left.type === right.type ? 0 : left.type === "leave" ? -1 : 1),
   );
-  const ownedCellsByColumn: GridCell<Block>[][] = Array.from({ length: width }, () => []);
-  for (const cell of cellsByPhysicalLocation.values()) {
+  let occupiedColumns = 0n;
+  for (const event of occupancyEvents) {
+    if (event.type === "leave") {
+      occupiedColumns &= ~event.mask;
+      continue;
+    }
+    if ((occupiedColumns & event.mask) !== 0n) {
+      return null;
+    }
+    occupiedColumns |= event.mask;
+  }
+
+  return { cells: [...cellsByPhysicalLocation.values()], width, height };
+};
+
+const tableGridColumns = <Block extends FolioContentBlock>(
+  grid: TableGrid<Block>,
+  internText: (text: string) => number,
+): GridColumn<Block>[] => {
+  const coveringCellsByColumn: GridCell<Block>[][] = Array.from(
+    { length: grid.width },
+    () => [],
+  );
+  const ownedCellsByColumn: GridCell<Block>[][] = Array.from(
+    { length: grid.width },
+    () => [],
+  );
+  const textKeysByCell = new Map<GridCell<Block>, readonly number[]>();
+  for (const cell of grid.cells) {
+    textKeysByCell.set(cell, cell.blocks.map(({ text }) => internText(text)));
     ownedCellsByColumn[cell.gridColumnIndex]?.push(cell);
-    for (let row = cell.rowIndex; row < cell.rowIndex + cell.rowSpan; row++) {
-      for (
-        let column = cell.gridColumnIndex;
-        column < cell.gridColumnIndex + cell.columnSpan;
-        column++
-      ) {
-        const gridRow = grid[row];
-        if (!gridRow || gridRow[column] !== undefined) {
-          return null;
-        }
-        gridRow[column] = cell;
-      }
+    for (
+      let column = cell.gridColumnIndex;
+      column < cell.gridColumnIndex + cell.columnSpan;
+      column++
+    ) {
+      coveringCellsByColumn[column]?.push(cell);
     }
   }
 
-  return Array.from({ length: width }, (_unused, columnIndex) => {
-    const structuralRows = grid.map((row) => {
-      const cell = row[columnIndex];
-      return cell
-        ? [
-            columnIndex - cell.gridColumnIndex,
-            cell.columnSpan,
-            cell.rowIndex,
-            cell.rowSpan,
-            cell.blocks.map(({ text }) => text),
-          ]
-        : null;
-    });
+  return Array.from({ length: grid.width }, (_unused, columnIndex) => {
+    const structuralCells = [...(coveringCellsByColumn[columnIndex] ?? [])]
+      .toSorted((left, right) => left.rowIndex - right.rowIndex)
+      .map((cell) => [
+        columnIndex - cell.gridColumnIndex,
+        cell.columnSpan,
+        cell.rowIndex,
+        cell.rowSpan,
+        textKeysByCell.get(cell) ?? panic("A table cell has no interned text signature"),
+      ]);
     return {
       index: columnIndex,
-      signature: JSON.stringify(structuralRows),
+      signature: JSON.stringify([grid.height, structuralCells]),
       ownedCells: ownedCellsByColumn[columnIndex] ?? [],
     };
   });
@@ -189,11 +230,26 @@ export const alignTableColumns = <Block extends FolioContentBlock>(
   baseBlocks: readonly Block[],
   revisedBlocks: readonly Block[],
 ): TableColumnAlignment<Block> | null => {
-  const baseColumns = tableGridColumns(baseBlocks);
-  const revisedColumns = tableGridColumns(revisedBlocks);
-  if (!baseColumns || !revisedColumns || baseColumns.length === revisedColumns.length) {
+  const baseGrid = extractTableGrid(baseBlocks);
+  const revisedGrid = extractTableGrid(revisedBlocks);
+  if (!baseGrid || !revisedGrid || baseGrid.width === revisedGrid.width) {
     return null;
   }
+  // Shared numeric keys preserve cross-side text equality without copying a
+  // potentially long string into every column covered by a spanning cell.
+  const textKeys = new Map<string, number>();
+  let nextTextKey = 0;
+  const internText = (text: string): number => {
+    const existing = textKeys.get(text);
+    if (existing !== undefined) {
+      return existing;
+    }
+    const key = nextTextKey++;
+    textKeys.set(text, key);
+    return key;
+  };
+  const baseColumns = tableGridColumns(baseGrid, internText);
+  const revisedColumns = tableGridColumns(revisedGrid, internText);
   const revisedIsWider = revisedColumns.length > baseColumns.length;
   const mapping = uniqueColumnEmbedding(
     revisedIsWider ? baseColumns : revisedColumns,
