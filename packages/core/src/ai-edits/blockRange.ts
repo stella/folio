@@ -10,7 +10,7 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 
-import { buildCleanBlockText } from "./clean-text";
+import { buildCleanBlockText, resolveCleanTextRange } from "./clean-text";
 import { createFolioAIEditSnapshot, hashFolioAIBlockText, isFolioAIContentBlock } from "./snapshot";
 import type { FolioAIBlockAnchor, FolioAIEditSnapshot, FolioAITextRangeHandle } from "./types";
 import { findParagraphByParaId } from "../prosemirror/utils/findParagraphByParaId";
@@ -77,16 +77,19 @@ export const resolveFolioAITextRange = ({
   }
 
   const cleanBlock = buildCleanBlockText(blockNode, blockRange.from);
-  const from = cleanBlock.offsets[range.startOffset];
-  const to = cleanBlock.offsets[range.endOffset];
-  if (from === undefined || to === undefined) {
+  const resolved = resolveCleanTextRange({
+    cleanBlock,
+    startOffset: range.startOffset,
+    endOffset: range.endOffset,
+  });
+  if (resolved === null) {
     return null;
   }
   const selectedText = cleanBlock.text.slice(range.startOffset, range.endOffset);
   if (hashFolioAIBlockText(selectedText) !== range.selectedTextHash) {
     return null;
   }
-  return clampRangeToDocSize(doc.content.size, { from, to });
+  return clampRangeToDocSize(doc.content.size, resolved);
 };
 
 type ResolvePassageRangeOptions = {
@@ -137,12 +140,15 @@ export const resolvePassageRange = ({
     return null;
   }
 
-  const from = cleanBlock.offsets[match.start];
-  const to = cleanBlock.offsets[match.end];
-  if (from === undefined || to === undefined) {
+  const resolved = resolveCleanTextRange({
+    cleanBlock,
+    startOffset: match.start,
+    endOffset: match.end,
+  });
+  if (resolved === null) {
     return null;
   }
-  return clampRangeToDocSize(doc.content.size, { from, to });
+  return clampRangeToDocSize(doc.content.size, resolved);
 };
 
 /**

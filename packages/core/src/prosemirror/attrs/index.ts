@@ -52,6 +52,8 @@ import type {
   HighlightAttrs,
   HyperlinkAttrs,
   HardBreakAttrs,
+  PageBreakRunAttrs,
+  PageBreakRunOwnerMarkAttrs,
   TabAttrs,
   SymbolAttrs,
   ImageAttrs,
@@ -188,9 +190,16 @@ const TEXT_BOX_TRACKED_CHANGE_TYPES = [
   "moveTo",
 ] as const satisfies readonly NonNullable<TextBoxAttrs["_docxTrackedChange"]>["type"][];
 
-const HARD_BREAK_TYPES = ["column"] as const satisfies readonly NonNullable<
+const HARD_BREAK_TYPES = ["column", "textWrapping"] as const satisfies readonly NonNullable<
   HardBreakAttrs["breakType"]
 >[];
+
+const PAGE_BREAK_CLEAR_VALUES = [
+  "none",
+  "left",
+  "right",
+  "all",
+] as const satisfies readonly NonNullable<PageBreakRunAttrs["clear"]>[];
 
 const RUN_FORMATTING_OVERRIDE_BOOLEAN_KEYS = [
   "bold",
@@ -249,6 +258,7 @@ const SECTION_VERTICAL_ALIGNMENTS = ["top", "center", "both", "bottom"] as const
 
 const paragraphAttrsCache = new WeakMap<PMNode, ParagraphAttrs>();
 const hardBreakAttrsCache = new WeakMap<PMNode, HardBreakAttrs>();
+const pageBreakRunAttrsCache = new WeakMap<PMNode, PageBreakRunAttrs>();
 const tabAttrsCache = new WeakMap<PMNode, TabAttrs>();
 const symbolAttrsCache = new WeakMap<PMNode, SymbolAttrs>();
 const tableAttrsCache = new WeakMap<PMNode, TableAttrs>();
@@ -277,6 +287,7 @@ const footnoteRefAttrsCache = new WeakMap<Mark, FootnoteRefAttrs>();
 const commentAttrsCache = new WeakMap<Mark, CommentAttrs>();
 const trackedChangeAttrsCache = new WeakMap<Mark, TrackedChangeMarkAttrs>();
 const runPropertyChangeAttrsCache = new WeakMap<Mark, RunPropertyChangeMarkAttrs>();
+const pageBreakRunOwnerAttrsCache = new WeakMap<Mark, PageBreakRunOwnerMarkAttrs>();
 const runFormattingOverrideAttrsCache = new WeakMap<Mark, RunFormattingOverrideAttrs>();
 const hyperlinkAttrsCache = new WeakMap<Mark, HyperlinkAttrs>();
 
@@ -443,12 +454,33 @@ export const readHardBreakAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Har
   expectNodeType(node, "hardBreak", issues);
 
   optionalOneOf(attrs, "breakType", "hardBreak.attrs.breakType", issues, HARD_BREAK_TYPES);
+  optionalOneOf(attrs, "clear", "hardBreak.attrs.clear", issues, PAGE_BREAK_CLEAR_VALUES);
 
   return attrsResult(attrs, issues);
 };
 
 export const expectHardBreakAttrs = (node: PMNode): HardBreakAttrs =>
   expectCachedNodeAttrs(node, hardBreakAttrsCache, readHardBreakAttrs, "hard break attrs");
+
+export const readPageBreakRunAttrs = (
+  node: PMNode,
+): ReadProseMirrorAttrsResult<PageBreakRunAttrs> => {
+  const attrs = attrsRecord(node.attrs);
+  const issues: ProseMirrorAttrIssue[] = [];
+  expectNodeType(node, "pageBreakRun", issues);
+
+  optionalOneOf(attrs, "clear", "pageBreakRun.attrs.clear", issues, PAGE_BREAK_CLEAR_VALUES);
+
+  return attrsResult(attrs, issues);
+};
+
+export const expectPageBreakRunAttrs = (node: PMNode): PageBreakRunAttrs =>
+  expectCachedNodeAttrs(
+    node,
+    pageBreakRunAttrsCache,
+    readPageBreakRunAttrs,
+    "page break run attrs",
+  );
 
 export const readTabAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TabAttrs> => {
   const attrs = attrsRecord(node.attrs);
@@ -1213,6 +1245,30 @@ export const expectRunPropertyChangeMarkAttrs = (mark: Mark): RunPropertyChangeM
     runPropertyChangeAttrsCache,
     readRunPropertyChangeMarkAttrs,
     "run property change attrs",
+  );
+
+export const readPageBreakRunOwnerMarkAttrs = (
+  mark: Mark,
+): ReadProseMirrorAttrsResult<PageBreakRunOwnerMarkAttrs> => {
+  const attrs = attrsRecord(mark.attrs);
+  const issues: ProseMirrorAttrIssue[] = [];
+  expectMarkType(mark, "pageBreakRunOwner", issues);
+  const id = attrs["id"];
+  if (typeof id !== "number" || !Number.isSafeInteger(id) || id < 0) {
+    issues.push({
+      path: "pageBreakRunOwner.attrs.id",
+      message: "Expected a non-negative safe integer.",
+    });
+  }
+  return attrsResult(attrs, issues);
+};
+
+export const expectPageBreakRunOwnerMarkAttrs = (mark: Mark): PageBreakRunOwnerMarkAttrs =>
+  expectCachedMarkAttrs(
+    mark,
+    pageBreakRunOwnerAttrsCache,
+    readPageBreakRunOwnerMarkAttrs,
+    "page break run owner attrs",
   );
 
 export const readRunFormattingOverrideMarkAttrs = (

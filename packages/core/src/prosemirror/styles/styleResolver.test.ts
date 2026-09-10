@@ -241,6 +241,32 @@ describe("StyleResolver", () => {
     });
   });
 
+  describe("resolveParagraphStyleInTable", () => {
+    test("merges a table-owned frame below the paragraph style", () => {
+      const resolver = createStyleResolver({
+        docDefaults: { pPr: { frame: { hAnchor: "margin", width: 480 } } },
+        styles: [
+          {
+            styleId: "FramedCell",
+            type: "paragraph",
+            pPr: { frame: { width: 960, yAlign: "top" } },
+          },
+        ],
+      });
+
+      const result = resolver.resolveParagraphStyleInTable("FramedCell", {
+        frame: { hAnchor: "page", height: 720 },
+      });
+
+      expect(result.paragraphFormatting?.frame).toEqual({
+        hAnchor: "page",
+        width: 960,
+        height: 720,
+        yAlign: "top",
+      });
+    });
+  });
+
   describe("resolveRunStyle", () => {
     test("returns docDefaults when no styleId", () => {
       const styleDefinitions: StyleDefinitions = {

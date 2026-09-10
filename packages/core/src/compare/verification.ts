@@ -50,6 +50,8 @@ export const COMPARE_VERIFICATION_CAUSES = Object.freeze([
   "invisible-structure",
   "block-count",
   "container",
+  /** Explicit inline carriers differ in count, order, position, or semantics. */
+  "inline-structure",
   /**
    * Every block is where it should be and a table's own properties are not:
    * `w:tblPr`, the `w:tblGrid` widths, `w:trPr`, `w:tcPr`. No block carries
@@ -134,7 +136,13 @@ export const projectSupportedInlineFormatting = ({ text, previewRuns }: FolioAIB
 
 type ProjectedBlock = Pick<
   FolioAIBlock,
-  "text" | "table" | "styleId" | "listLevel" | "directAlignment" | "directSpacing"
+  | "text"
+  | "table"
+  | "styleId"
+  | "listLevel"
+  | "directAlignment"
+  | "directSpacing"
+  | "structuralBoundaries"
 >;
 
 type ProjectedTableContainer = NonNullable<ProjectedBlock["table"]>;
@@ -158,8 +166,40 @@ const sameContainer = (
   );
 };
 
+const sameStructuralBoundaries = (
+  left: FolioAIBlock["structuralBoundaries"],
+  right: FolioAIBlock["structuralBoundaries"],
+): boolean => {
+  const leftLength = left?.length ?? 0;
+  if (leftLength !== (right?.length ?? 0)) {
+    return false;
+  }
+  if (leftLength === 0) {
+    return true;
+  }
+  if (left === undefined || right === undefined) {
+    return false;
+  }
+
+  for (let index = 0; index < leftLength; index++) {
+    const boundary = left[index];
+    const other = right[index];
+    if (
+      boundary === undefined ||
+      other === undefined ||
+      boundary.type !== other.type ||
+      boundary.offset !== other.offset ||
+      boundary.clear !== other.clear
+    ) {
+      return false;
+    }
+  }
+  return true;
+};
+
 const sameProjectedBlock = (left: ProjectedBlock, right: ProjectedBlock): boolean =>
   sameContainer(left.table, right.table) &&
+  sameStructuralBoundaries(left.structuralBoundaries, right.structuralBoundaries) &&
   left.styleId === right.styleId &&
   left.listLevel === right.listLevel &&
   left.directAlignment === right.directAlignment &&
@@ -342,6 +382,12 @@ export const classifyProjectionMismatch = ({
     return failure(
       "container",
       `a block sits in a ${containerKind(left.table)} where it is expected in a ${containerKind(right.table)}, ${at} (${counts})`,
+    );
+  }
+  if (!sameStructuralBoundaries(left.structuralBoundaries, right.structuralBoundaries)) {
+    return failure(
+      "inline-structure",
+      `a block's zero-width inline structure does not match ${at} (${counts})`,
     );
   }
   if (left.text === right.text && left.styleId !== right.styleId) {

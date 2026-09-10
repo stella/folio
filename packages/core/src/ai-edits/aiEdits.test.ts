@@ -13,6 +13,7 @@ import {
   rejectAllChanges,
 } from "../prosemirror/commands/comments";
 import { applyFolioAIEditOperations, type FolioWordDiffOptions } from "./apply";
+import { resolveFolioAITextRange } from "./blockRange";
 import { getTrackedChangesFromDoc } from "./read";
 import { createFolioAIEditSnapshot, createFolioAITextRangeHandle } from "./snapshot";
 import type { FolioAIEditOperation } from "./types";
@@ -42,6 +43,12 @@ const schema = new Schema({
     // bookmark boundary is a zero-width anchor it must leave alone, because
     // the format cannot say one was deleted outside a hyperlink.
     image: { inline: true, group: "inline", atom: true, attrs: { src: { default: "" } } },
+    pageBreakRun: {
+      inline: true,
+      group: "inline",
+      atom: true,
+      attrs: { clear: { default: null } },
+    },
     bookmarkBoundary: { inline: true, group: "inline", atom: true },
     table: {
       content: "tableRow+",
@@ -177,6 +184,18 @@ const makeView = (state: EditorState) => {
   };
   return view;
 };
+
+const makePageBreakState = () =>
+  EditorState.create({
+    schema,
+    doc: schema.node("doc", null, [
+      schema.node("paragraph", { paraId: "AAAA0001" }, [
+        schema.text("A"),
+        schema.node("pageBreakRun", { clear: "all" }),
+        schema.text("B"),
+      ]),
+    ]),
+  });
 
 /**
  * Helpers for the boundary tests below: build a single-paragraph
@@ -318,6 +337,78 @@ describe("Folio AI edit operations", () => {
 
     expect(result.applied.map(({ id }) => id)).toEqual(["range-1"]);
     expect(view.state.doc.textContent).toBe("repeat done");
+  });
+
+  test("keeps one-sided text edits outside an adjacent page-break carrier", () => {
+    const view = makeView(makePageBreakState());
+    const snapshot = createFolioAIEditSnapshot(view.state.doc);
+    const range = createFolioAITextRangeHandle({
+      blockId: "AAAA0001",
+      text: "AB",
+      startOffset: 0,
+      endOffset: 1,
+    });
+    if (range === null) {
+      throw new Error("expected a range");
+    }
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot,
+      operations: [{ id: "left", type: "replaceRange", range, replace: "X" }],
+      mode: "direct",
+    });
+
+    expect(result.skipped).toEqual([]);
+    expect(view.state.doc.textContent).toBe("XB");
+    expect(view.state.doc.child(0).childCount).toBe(3);
+    expect(view.state.doc.child(0).child(1).type.name).toBe("pageBreakRun");
+    expect(view.state.doc.child(0).child(1).attrs["clear"]).toBe("all");
+  });
+
+  test("fails closed before generic text operations can cross a page-break carrier", () => {
+    const view = makeView(makePageBreakState());
+    const before = view.state.doc;
+    const snapshot = createFolioAIEditSnapshot(before);
+    const range = createFolioAITextRangeHandle({
+      blockId: "AAAA0001",
+      text: "AB",
+      startOffset: 0,
+      endOffset: 2,
+    });
+    if (range === null) {
+      throw new Error("expected a range");
+    }
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot,
+      operations: [
+        { id: "replace-range", type: "replaceRange", range, replace: "X" },
+        { id: "comment-range", type: "commentOnRange", range, comment: { text: "Review" } },
+        { id: "format-range", type: "formatRange", range, formatting: { bold: true } },
+        {
+          id: "replace-inline",
+          type: "replaceInBlock",
+          blockId: "AAAA0001",
+          find: "AB",
+          replace: "X",
+        },
+        { id: "replace-block", type: "replaceBlock", blockId: "AAAA0001", text: "X" },
+      ],
+      mode: "direct",
+      createCommentId: () => 42,
+    });
+
+    expect(result.applied).toEqual([]);
+    expect(result.skipped).toEqual([
+      { id: "replace-range", reason: "unsupportedBlock" },
+      { id: "comment-range", reason: "unsupportedBlock" },
+      { id: "format-range", reason: "unsupportedBlock" },
+      { id: "replace-inline", reason: "unsupportedBlock" },
+      { id: "replace-block", reason: "unsupportedBlock" },
+    ]);
+    expect(view.state.doc.eq(before)).toBe(true);
   });
 
   test("comments and formats an exact text range", () => {
@@ -533,6 +624,70 @@ describe("Folio AI edit operations", () => {
       },
     ]);
     expect(snapshot.anchors["seq-0001"]?.textHash).toMatch(/^h/u);
+  });
+
+  test("snapshots explicit page-break topology separately from clean text", () => {
+    const snapshot = createFolioAIEditSnapshot(makePageBreakState().doc);
+
+    expect(snapshot.blocks.at(0)).toMatchObject({
+      id: "AAAA0001",
+      text: "AB",
+      structuralBoundaries: [{ type: "pageBreak", offset: 1, clear: "all" }],
+    });
+    expect(snapshot.anchors["AAAA0001"]?.structuralBoundaryHash).toMatch(/^h/u);
+  });
+
+  test("omits a pending deletion from clean topology while retaining its mutation boundary", () => {
+    const deletion = schema.marks["deletion"].create({
+      revisionId: 44,
+      author: "Reviewer",
+      date: "2026-09-09T00:00:00.000Z",
+    });
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", { paraId: "AAAA0001" }, [
+        schema.text("A"),
+        schema.node("pageBreakRun").mark([deletion]),
+        schema.text("B"),
+      ]),
+    ]);
+    const snapshot = createFolioAIEditSnapshot(doc);
+    const range = createFolioAITextRangeHandle({
+      blockId: "AAAA0001",
+      text: "AB",
+      startOffset: 0,
+      endOffset: 2,
+    });
+    if (range === null) {
+      throw new Error("Expected text range handle");
+    }
+
+    expect(snapshot.blocks.at(0)?.structuralBoundaries).toBeUndefined();
+    expect(resolveFolioAITextRange({ range, doc, snapshot })).toBeNull();
+  });
+
+  test("treats changed page-break topology as a changed block before mutation", () => {
+    const original = makePageBreakState();
+    const snapshot = createFolioAIEditSnapshot(original.doc);
+    const view = makeView(makeState([{ paraId: "AAAA0001", text: "AB" }]));
+
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot,
+      operations: [
+        {
+          id: "replace",
+          type: "replaceInBlock",
+          blockId: "AAAA0001",
+          find: "A",
+          replace: "X",
+        },
+      ],
+      mode: "direct",
+    });
+
+    expect(result.applied).toEqual([]);
+    expect(result.skipped).toEqual([{ id: "replace", reason: "changedBlock" }]);
+    expect(view.state.doc.textContent).toBe("AB");
   });
 
   test("an entirely empty document is one blank block", () => {

@@ -4,12 +4,12 @@ import type {
   Endnote,
   Footnote,
   HeaderFooter,
-  Hyperlink,
+  InlineSdt,
   Paragraph,
   ParagraphContent,
   Run,
   Table,
-  TrackedRunChange,
+  TrackedRunContent,
 } from "../types/document";
 
 export type DocxParagraphSurfaces = {
@@ -22,61 +22,50 @@ export type DocxParagraphSurfaces = {
 
 /** Visit every run directly owned by a paragraph's inline-content tree. */
 export const visitParagraphRuns = (paragraph: Paragraph, visit: (run: Run) => void): void => {
-  const visitRun = (run: Run): void => {
-    visit(run);
-  };
+  type ParagraphRunTreeNode = ParagraphContent | TrackedRunContent | InlineSdt["content"][number];
 
-  const visitHyperlink = (hyperlink: Hyperlink): void => {
-    for (const child of hyperlink.children) {
-      if (child.type === "run") {
-        visitRun(child);
-      }
-    }
-  };
-
-  const visitInlineContent = (content: readonly TrackedRunChange["content"][number][]): void => {
-    for (const child of content) {
-      if (child.type === "run") {
-        visitRun(child);
-        continue;
-      }
-      if (child.type === "hyperlink") {
-        visitHyperlink(child);
-      }
-    }
-  };
-
-  const visitParagraphContent = (content: ParagraphContent): void => {
-    if (content.type === "run") {
-      visitRun(content);
-      return;
-    }
-    if (content.type === "hyperlink") {
-      visitHyperlink(content);
-      return;
-    }
-    if (
-      content.type === "simpleField" ||
-      content.type === "insertion" ||
-      content.type === "deletion" ||
-      content.type === "moveFrom" ||
-      content.type === "moveTo"
-    ) {
-      visitInlineContent(content.content);
-      return;
-    }
-    if (content.type === "inlineSdt") {
-      for (const child of content.content) {
-        visitParagraphContent(child);
-      }
-      return;
-    }
-    if (content.type === "complexField") {
-      for (const run of content.fieldCode) {
-        visitRun(run);
-      }
-      for (const run of content.fieldResult) {
-        visitRun(run);
+  const visitParagraphContent = (content: ParagraphRunTreeNode): void => {
+    switch (content.type) {
+      case "run":
+        visit(content);
+        return;
+      case "hyperlink":
+        for (const child of content.children) {
+          visitParagraphContent(child);
+        }
+        return;
+      case "simpleField":
+      case "insertion":
+      case "deletion":
+      case "moveFrom":
+      case "moveTo":
+      case "inlineSdt":
+        for (const child of content.content) {
+          visitParagraphContent(child);
+        }
+        return;
+      case "complexField":
+        for (const run of content.fieldCode) {
+          visit(run);
+        }
+        for (const run of content.fieldResult) {
+          visit(run);
+        }
+        return;
+      case "bookmarkStart":
+      case "bookmarkEnd":
+      case "commentRangeStart":
+      case "commentRangeEnd":
+      case "commentReference":
+      case "moveFromRangeStart":
+      case "moveFromRangeEnd":
+      case "moveToRangeStart":
+      case "moveToRangeEnd":
+      case "mathEquation":
+        return;
+      default: {
+        const unsupported: never = content;
+        return unsupported;
       }
     }
   };

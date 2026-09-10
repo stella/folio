@@ -49,7 +49,14 @@ import type { ParagraphDirection } from "../paragraphDirection";
 import type { TrackedChangeProvenance } from "./marks";
 
 export type HardBreakAttrs = {
-  breakType?: "column";
+  /** Absent means the source `w:br` omitted `w:type`. */
+  breakType?: "column" | "textWrapping";
+  clear?: "none" | "left" | "right" | "all";
+};
+
+/** Attributes preserved from an authored `<w:br w:type="page"/>`. */
+export type PageBreakRunAttrs = {
+  clear?: "none" | "left" | "right" | "all";
 };
 
 export type TabAttrs = {

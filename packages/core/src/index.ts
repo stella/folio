@@ -120,6 +120,7 @@ export {
   type FolioAIEditApplyOutcome,
   type FolioAIBlockKind,
   type FolioAIBlockPreviewRun,
+  type FolioAIBlockStructuralBoundary,
   type FolioAIComment,
   type FolioAIEditAppliedOperation,
   type FolioAIEditApplyMode,

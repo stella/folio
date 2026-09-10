@@ -2,56 +2,41 @@
  * Page Break Commands
  */
 
-import { Fragment } from "prosemirror-model";
 import type { Command } from "prosemirror-state";
-import { TextSelection } from "prosemirror-state";
+
+import { pageBreakRunParagraphProjectionDisposition } from "../pageBreakRunProjection";
+
+const UNSUPPORTED_PAGE_BREAK_RUN_ANCESTORS = new Set(["tableCell", "tableHeader", "textBox"]);
 
 /**
- * Insert a page break at the current cursor position.
- * Always ensures a paragraph follows the page break and places the cursor there.
+ * Insert a page-break run at the current text cursor.
+ *
+ * Keeping the atom inline preserves its authored run, revision marks, and exact
+ * position among neighbouring run content. Block-level `pageBreak` remains a
+ * legacy input boundary and is never emitted by this command.
  */
 export const insertPageBreak: Command = (state, dispatch) => {
   const { schema } = state;
-  const pageBreakType = schema.nodes["pageBreak"];
-  const paragraphType = schema.nodes["paragraph"];
-  if (!pageBreakType || !paragraphType) {
+  const pageBreakRunType = schema.nodes["pageBreakRun"];
+  const { $from } = state.selection;
+  if (!pageBreakRunType || !state.selection.empty || !$from.parent.isTextblock) {
+    return false;
+  }
+  for (let depth = $from.depth; depth >= 0; depth--) {
+    if (UNSUPPORTED_PAGE_BREAK_RUN_ANCESTORS.has($from.node(depth).type.name)) {
+      return false;
+    }
+  }
+  if (
+    $from.parent.type.name !== "paragraph" ||
+    pageBreakRunParagraphProjectionDisposition($from.parent).status === "unsupported"
+  ) {
     return false;
   }
 
   if (dispatch) {
-    const { $from } = state.selection;
-    const tr = state.tr;
-    const pbNode = pageBreakType.create();
-    const pbSize = pbNode.nodeSize;
-    let cursorPos: number;
-
-    if ($from.parent.isTextblock) {
-      if ($from.parentOffset > 0 && $from.parentOffset < $from.parent.content.size) {
-        // Mid-text: split paragraph, then insert pageBreak + empty paragraph between them
-        tr.split($from.pos);
-        const mappedPos = tr.mapping.map($from.pos);
-        tr.insert(mappedPos, Fragment.from([pbNode, paragraphType.create()]));
-        cursorPos = mappedPos + pbSize + 1;
-      } else if ($from.parentOffset === $from.parent.content.size) {
-        // End of text block: insert pageBreak + empty paragraph after this block
-        const after = $from.after();
-        tr.insert(after, Fragment.from([pbNode, paragraphType.create()]));
-        cursorPos = after + pbSize + 1;
-      } else {
-        // Start of text block: insert pageBreak before, current block remains after
-        const before = $from.before();
-        tr.insert(before, pbNode);
-        cursorPos = before + pbSize + 1;
-      }
-    } else {
-      // Not in a textblock — insert pageBreak + empty paragraph at current position
-      const pos = $from.pos;
-      tr.insert(pos, Fragment.from([pbNode, paragraphType.create()]));
-      cursorPos = pos + pbSize + 1;
-    }
-
-    tr.setSelection(TextSelection.create(tr.doc, cursorPos));
-    dispatch(tr.scrollIntoView());
+    const pageBreak = pageBreakRunType.create();
+    dispatch(state.tr.replaceSelectionWith(pageBreak).scrollIntoView());
   }
 
   return true;

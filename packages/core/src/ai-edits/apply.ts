@@ -43,13 +43,18 @@ import { isZeroWidthAnchor } from "../prosemirror/zeroWidthAnchors";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
 import type { ParagraphFormatting, RunPropertyChange, TextFormatting } from "../types/document";
 import { stripBlockIdentityAttrs } from "./block-identity";
-import { buildCleanBlockText } from "./clean-text";
+import { buildCleanBlockText, resolveCleanTextRange } from "./clean-text";
 import {
   hasInlineEmphasis,
   parseInlineEmphasisRuns,
   stripInlineEmphasisMarkers,
 } from "./inline-emphasis";
-import { hashFolioAIBlockText, isHiddenTableRow, normalizeFolioAIBlockText } from "./snapshot";
+import {
+  hashFolioAIBlockStructuralBoundaries,
+  hashFolioAIBlockText,
+  isHiddenTableRow,
+  normalizeFolioAIBlockText,
+} from "./snapshot";
 import {
   mergeTableRectangle,
   mergeTrackedVerticalTableCells,
@@ -3564,7 +3569,11 @@ const resolveStableBlock = ({
   const cleanBlock = buildCleanBlockText(live.node, live.from);
   const currentText = cleanBlock.text;
   const currentTextHash = hashFolioAIBlockText(normalizeFolioAIBlockText(currentText));
-  if (currentTextHash !== anchor.textHash) {
+  const structuralBoundaryHash = hashFolioAIBlockStructuralBoundaries(cleanBlock);
+  if (
+    currentTextHash !== anchor.textHash ||
+    structuralBoundaryHash !== anchor.structuralBoundaryHash
+  ) {
     return { type: "skip", reason: "changedBlock" };
   }
   return {
@@ -3616,14 +3625,19 @@ const resolveOperation = ({
     operation.type === "formatRange"
   ) {
     const { startOffset, endOffset, selectedTextHash } = operation.range;
-    const from = cleanBlock.offsets[startOffset];
-    const to = cleanBlock.offsets[endOffset];
-    if (from === undefined || to === undefined) {
+    if (
+      cleanBlock.offsets[startOffset] === undefined ||
+      cleanBlock.offsets[endOffset] === undefined
+    ) {
       return { type: "skip", reason: "staleRange" };
     }
     const selectedText = currentText.slice(startOffset, endOffset);
     if (hashFolioAIBlockText(selectedText) !== selectedTextHash) {
       return { type: "skip", reason: "staleRange" };
+    }
+    const range = resolveCleanTextRange({ cleanBlock, startOffset, endOffset });
+    if (range === null) {
+      return { type: "skip", reason: "unsupportedBlock" };
     }
     if (operation.type === "replaceRange" && selectedText === operation.replace) {
       return { type: "skip", reason: "noopOperation" };
@@ -3632,8 +3646,8 @@ const resolveOperation = ({
       type: "resolved",
       operation: {
         operation,
-        from,
-        to,
+        from: range.from,
+        to: range.to,
         blockFrom,
         blockTo,
         blockNode,
@@ -3955,8 +3969,10 @@ const resolveOperation = ({
     // A split at either end of the block moves no words and produces an empty
     // paragraph; the caller meant an insertion.
     const separator = operation.separator ?? "";
-    const at = cleanBlock.offsets[operation.offset];
-    const after = cleanBlock.offsets[operation.offset + separator.length];
+    const startOffset = operation.offset;
+    const endOffset = operation.offset + separator.length;
+    const at = cleanBlock.offsets[startOffset];
+    const after = cleanBlock.offsets[endOffset];
     if (
       at === undefined ||
       after === undefined ||
@@ -3968,12 +3984,20 @@ const resolveOperation = ({
     if (currentText.slice(operation.offset, operation.offset + separator.length) !== separator) {
       return { type: "skip", reason: "staleRange" };
     }
-    if (!canSplit(doc, at)) {
+    const range = resolveCleanTextRange({ cleanBlock, startOffset, endOffset });
+    if (range === null || !canSplit(doc, range.from)) {
       return { type: "skip", reason: "unsupportedBlock" };
     }
     return {
       type: "resolved",
-      operation: { operation, from: at, to: after, blockFrom, blockTo, blockNode },
+      operation: {
+        operation,
+        from: range.from,
+        to: range.to,
+        blockFrom,
+        blockTo,
+        blockNode,
+      },
     };
   }
 
@@ -3992,10 +4016,14 @@ const resolveOperation = ({
   }
 
   if (operation.type === "deleteBlock" || operation.type === "replaceBlock") {
+    const replaceChangesText = operation.type === "replaceBlock" && operation.text !== currentText;
     const replaceChangesStyle =
       operation.type === "replaceBlock" &&
       operation.styleId !== undefined &&
       operation.styleId !== (expectParagraphAttrs(blockNode).styleId ?? null);
+    if (replaceChangesText && cleanBlock.structuralBoundaries.length > 0) {
+      return { type: "skip", reason: "unsupportedBlock" };
+    }
     const range = getTextRangeFromCleanBlock(cleanBlock);
     if (!range) {
       const insertionPoint = cleanBlock.offsets.at(0);
@@ -4025,7 +4053,7 @@ const resolveOperation = ({
             blockTo,
             blockNode,
             replaceBlockImpact: resolveReplaceBlockImpact({
-              changesText: operation.text !== currentText,
+              changesText: replaceChangesText,
               changesStyle: replaceChangesStyle,
             }),
           },
@@ -4065,7 +4093,7 @@ const resolveOperation = ({
           blockTo,
           blockNode,
           replaceBlockImpact: resolveReplaceBlockImpact({
-            changesText: operation.text !== currentText,
+            changesText: replaceChangesText,
             changesStyle: replaceChangesStyle,
           }),
         },
@@ -4110,7 +4138,7 @@ const resolveOperation = ({
 type OperationResolutionSkip = { type: "skip"; reason: FolioAIEditSkipReason };
 
 const resolveTextInCleanBlock = (
-  cleanBlock: { text: string; offsets: number[] },
+  cleanBlock: ReturnType<typeof buildCleanBlockText>,
   find: string,
 ):
   | { type: "resolved"; from: number; to: number }
@@ -4119,7 +4147,7 @@ const resolveTextInCleanBlock = (
     return { type: "skip", reason: "emptyOperation" };
   }
 
-  const { text, offsets } = cleanBlock;
+  const { text } = cleanBlock;
   const firstIndex = text.indexOf(find);
   if (firstIndex === -1) {
     return { type: "skip", reason: "missingFind" };
@@ -4128,13 +4156,16 @@ const resolveTextInCleanBlock = (
     return { type: "skip", reason: "ambiguousFind" };
   }
 
-  const from = offsets[firstIndex];
-  const to = offsets[firstIndex + find.length];
-  if (from === undefined || to === undefined) {
+  const range = resolveCleanTextRange({
+    cleanBlock,
+    startOffset: firstIndex,
+    endOffset: firstIndex + find.length,
+  });
+  if (range === null) {
     return { type: "skip", reason: "unsupportedBlock" };
   }
 
-  return { type: "resolved", from, to };
+  return { type: "resolved", ...range };
 };
 
 const getTextRangeFromCleanBlock = (cleanBlock: {

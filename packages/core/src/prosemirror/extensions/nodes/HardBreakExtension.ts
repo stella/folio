@@ -4,6 +4,7 @@
 
 import { panic } from "better-result";
 
+import { expectHardBreakAttrs } from "../../attrs";
 import { createNodeExtension } from "../create";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
 
@@ -15,6 +16,7 @@ export const HardBreakExtension = createNodeExtension({
     group: "inline",
     attrs: {
       breakType: { default: null },
+      clear: { default: null },
     },
     selectable: false,
     parseDOM: [
@@ -25,15 +27,28 @@ export const HardBreakExtension = createNodeExtension({
             return null;
           }
           const breakType = node.dataset["docxBreakType"];
-          return breakType === "column" ? { breakType } : null;
+          const clear = node.dataset["docxBreakClear"];
+          const attrs: Record<string, string> = {};
+          if (breakType === "column" || breakType === "textWrapping") {
+            attrs["breakType"] = breakType;
+          }
+          if (clear === "none" || clear === "left" || clear === "right" || clear === "all") {
+            attrs["clear"] = clear;
+          }
+          return Object.keys(attrs).length > 0 ? attrs : null;
         },
       },
     ],
     toDOM(node) {
-      if (node.attrs["breakType"] === "column") {
-        return ["br", { "data-docx-break-type": "column" }];
+      const { breakType, clear } = expectHardBreakAttrs(node);
+      const attrs: Record<string, string> = {};
+      if (breakType !== undefined) {
+        attrs["data-docx-break-type"] = breakType;
       }
-      return ["br"];
+      if (clear !== undefined) {
+        attrs["data-docx-break-clear"] = clear;
+      }
+      return Object.keys(attrs).length > 0 ? ["br", attrs] : ["br"];
     },
   },
   onSchemaReady(ctx: ExtensionContext): ExtensionRuntime {

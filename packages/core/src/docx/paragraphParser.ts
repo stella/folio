@@ -986,14 +986,10 @@ function normalizeDeletionContentElement(node: XmlElement): XmlElement {
     mappedName = replaceLocalName(node.name, "instrText");
   }
 
-  const result: XmlElement = { ...node };
-  if (mappedName !== undefined) {
-    result.name = mappedName;
-  }
-  if (node.elements) {
-    result.elements = node.elements.map(normalizeDeletionContentElement);
-  }
-  return result;
+  return cloneElement(node, {
+    ...(mappedName !== undefined ? { name: mappedName } : {}),
+    ...(node.elements ? { elements: node.elements.map(normalizeDeletionContentElement) } : {}),
+  });
 }
 
 function parseParagraphPropertyChanges(

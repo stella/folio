@@ -116,7 +116,8 @@ export type FootnoteRefAttrs = {
 
 // @public (undocumented)
 export type HardBreakAttrs = {
-    breakType?: "column";
+    breakType?: "column" | "textWrapping";
+    clear?: "none" | "left" | "right" | "all";
 };
 
 // @public (undocumented)
@@ -193,6 +194,16 @@ export type MathAttrs = {
     display?: "inline" | "block";
     ommlXml: string;
     plainText?: string;
+};
+
+// @public
+export type PageBreakRunAttrs = {
+    clear?: "none" | "left" | "right" | "all";
+};
+
+// @public
+export type PageBreakRunOwnerMarkAttrs = {
+    id: number;
 };
 
 // @public

@@ -124,6 +124,46 @@ describe("parseParagraph tracked-change hardening", () => {
     expect(run.content[0].text).toBe(" MERGEFIELD name ");
   });
 
+  test.each(["del", "moveFrom"] as const)(
+    "keeps nested property-change namespace metadata while normalizing x:%s text",
+    (tag) => {
+      const paragraph = parseParagraphXml(`
+        <x:p xmlns:x="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+          <x:${tag} x:id="7" x:author="Reviewer">
+            <x:r>
+              <x:rPr>
+                <x:b/>
+                <x:rPrChange x:id="92" x:author="Formatter" x:date="2026-09-09T00:01:00Z">
+                  <x:rPr><x:i/></x:rPr>
+                </x:rPrChange>
+              </x:rPr>
+              <x:delText>removed</x:delText>
+            </x:r>
+          </x:${tag}>
+        </x:p>
+      `);
+      const change = paragraph.content.at(0);
+      if (change?.type !== "deletion" && change?.type !== "moveFrom") {
+        throw new Error("Expected deletion-side wrapper");
+      }
+      const run = change.content.at(0);
+      if (run?.type !== "run") {
+        throw new Error("Expected run");
+      }
+
+      expect(run.propertyChanges?.at(0)?.info).toEqual({
+        id: 92,
+        author: "Formatter",
+        date: "2026-09-09T00:01:00Z",
+      });
+      expect(run.propertyChanges?.at(0)?.previousFormatting?.italic).toBe(true);
+      expect(run.propertyChanges?.at(0)?.currentFormatting?.bold).toBe(true);
+      expect(serializeParagraph(paragraph)).toContain(
+        '<w:rPrChange w:id="92" w:author="Formatter" w:date="2026-09-09T00:01:00Z">',
+      );
+    },
+  );
+
   test("normalizes tracked-change metadata when attributes are invalid or blank", () => {
     const paragraph = parseParagraphXml(`
       <w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">

@@ -10,12 +10,13 @@ import { paragraphRunStyleContext, type RunStyleResolver } from "../prosemirror/
 import { authoredRunFormattingFromAttrs } from "../prosemirror/runFormattingProvenance";
 import type { TextFormatting } from "../types/document";
 import { deriveBlankBlockId, deriveBlockId, type FolioBlockId } from "../types/block-id";
-import { buildCleanBlockText } from "./clean-text";
+import { buildCleanBlockText, type CleanBlockText } from "./clean-text";
 import type {
   FolioAIBlock,
   FolioAIBlockAnchor,
   FolioAIBlockKind,
   FolioAIBlockPreviewRun,
+  FolioAIBlockStructuralBoundary,
   FolioAIBlockTableLocation,
   FolioAIEditSnapshot,
   FolioAIInlineFormatting,
@@ -82,6 +83,43 @@ export const hashFolioAIBlockText = (text: string): string => {
   }
   return `h${hash.toString(36)}`;
 };
+
+const EMPTY_FOLIO_AI_BLOCK_STRUCTURAL_BOUNDARIES: readonly FolioAIBlockStructuralBoundary[] =
+  Object.freeze([]);
+const EMPTY_FOLIO_AI_BLOCK_STRUCTURAL_BOUNDARY_HASH = hashFolioAIBlockText(
+  JSON.stringify(EMPTY_FOLIO_AI_BLOCK_STRUCTURAL_BOUNDARIES),
+);
+
+/** Canonical public projection of the clean view's zero-width structure. */
+export const projectFolioAIBlockStructuralBoundaries = ({
+  structuralBoundaries,
+}: Pick<CleanBlockText, "structuralBoundaries">): readonly FolioAIBlockStructuralBoundary[] => {
+  let projected: FolioAIBlockStructuralBoundary[] | undefined;
+  for (const { clear, offset, presentInCleanView } of structuralBoundaries) {
+    if (!presentInCleanView) {
+      continue;
+    }
+    (projected ??= []).push({
+      type: "pageBreak",
+      offset,
+      ...(clear !== undefined ? { clear } : {}),
+    });
+  }
+  return projected ?? EMPTY_FOLIO_AI_BLOCK_STRUCTURAL_BOUNDARIES;
+};
+
+const hashFolioAIBlockStructuralBoundaryProjection = (
+  structuralBoundaries: readonly FolioAIBlockStructuralBoundary[],
+): string =>
+  structuralBoundaries.length === 0
+    ? EMPTY_FOLIO_AI_BLOCK_STRUCTURAL_BOUNDARY_HASH
+    : hashFolioAIBlockText(JSON.stringify(structuralBoundaries));
+
+/** Stable precondition fingerprint for a block's zero-width structure. */
+export const hashFolioAIBlockStructuralBoundaries = (
+  cleanBlock: Pick<CleanBlockText, "structuralBoundaries">,
+): string =>
+  hashFolioAIBlockStructuralBoundaryProjection(projectFolioAIBlockStructuralBoundaries(cleanBlock));
 
 type CreateFolioAITextRangeHandleOptions = {
   blockId: string;
@@ -277,7 +315,11 @@ const createFolioAIEditSnapshotInternal = (
     // mid-edit and write find/replace operations against that
     // confused string. Apply uses the same clean view to resolve
     // operation positions, so the offsets stay consistent.
-    const { text } = buildCleanBlockText(node, pos);
+    const cleanBlock = buildCleanBlockText(node, pos);
+    const { text } = cleanBlock;
+    const structuralBoundaries = projectFolioAIBlockStructuralBoundaries(cleanBlock);
+    const structuralBoundaryHash =
+      hashFolioAIBlockStructuralBoundaryProjection(structuralBoundaries);
     const normalizedText = normalizeFolioAIBlockText(text);
     const textHash = hashFolioAIBlockText(normalizedText);
     hashCounts.set(textHash, (hashCounts.get(textHash) ?? 0) + 1);
@@ -336,6 +378,7 @@ const createFolioAIEditSnapshotInternal = (
         ...(directAlignment !== undefined && { directAlignment }),
         ...(directSpacing !== undefined && { directSpacing }),
         ...(previewRuns !== undefined && { previewRuns }),
+        ...(structuralBoundaries.length > 0 && { structuralBoundaries }),
         ...(table !== undefined && { table }),
       },
       anchor: {
@@ -345,6 +388,7 @@ const createFolioAIEditSnapshotInternal = (
         text,
         normalizedText,
         textHash,
+        structuralBoundaryHash,
       },
     });
     return true;

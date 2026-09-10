@@ -191,11 +191,13 @@ const runPackage = (pkg: PackageTarget, isLocal: boolean): RunResult => {
   if (missing.length > 0) {
     console.error(`\nMissing built .d.ts for ${missing.length} export(s) in ${pkg.name}:`);
     for (const m of missing) console.error(`  - ${m}`);
-    console.error(`\nFix: bun run build:${pkg.slug}`);
+    console.error(`\nFix: bun --filter '${pkg.name}' build`);
     process.exit(1);
   }
   if (entries.length === 0) {
-    console.error(`No snapshot entries for ${pkg.name}. Run \`bun run build:${pkg.slug}\` first.`);
+    console.error(
+      `No snapshot entries for ${pkg.name}. Run \`bun --filter '${pkg.name}' build\` first.`,
+    );
     process.exit(1);
   }
 

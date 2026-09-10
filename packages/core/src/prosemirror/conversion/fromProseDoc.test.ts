@@ -19,7 +19,7 @@ import { expectHardBreakAttrs, expectParagraphAttrs } from "../attrs";
 import { directParagraphSpacing } from "../paragraphSpacing";
 import { schema } from "../schema";
 import { fromProseDoc, proseDocToBlocks } from "./fromProseDoc";
-import { toProseDoc } from "./toProseDoc";
+import { UnsupportedDocxToProseMirrorConversionError, toProseDoc } from "./toProseDoc";
 
 describe("fromProseDoc", () => {
   test("uses resolver-less run ownership when the base package has no styles", () => {
@@ -2140,6 +2140,26 @@ describe("fromProseDoc", () => {
     expect(paragraphStartsWithPageBreak(secondBlock)).toBe(true);
   });
 
+  test("normalizes the legacy block boundary to the inline carrier at a fixed point", () => {
+    const legacy = schema.node("doc", null, [
+      schema.node("paragraph", null, [schema.text("Before")]),
+      schema.node("pageBreak"),
+      schema.node("paragraph", null, [schema.text("After")]),
+    ]);
+
+    const normalized = toProseDoc(fromProseDoc(legacy));
+    const normalizedAgain = toProseDoc(fromProseDoc(normalized));
+
+    expect(normalized.toJSON()).toEqual(normalizedAgain.toJSON());
+    expect(
+      Array.from(
+        { length: normalized.childCount },
+        (_, index) => normalized.child(index).type.name,
+      ),
+    ).toEqual(["paragraph", "paragraph"]);
+    expect(normalized.child(1).child(0).type.name).toBe("pageBreakRun");
+  });
+
   test("round-trips imported leading page breaks without inventing paragraphs", () => {
     const document: Document = {
       package: {
@@ -2258,7 +2278,7 @@ describe("fromProseDoc", () => {
     const firstBlock = roundTripped.package.document.content.at(0);
     const secondBlock = roundTripped.package.document.content.at(1);
 
-    expect(pmDoc.child(1).type.name).toBe("pageBreak");
+    expect(pmDoc.child(0).lastChild?.type.name).toBe("pageBreakRun");
     expect(roundTripped.package.document.content).toHaveLength(2);
     expect(firstBlock?.type).toBe("paragraph");
     expect(secondBlock?.type).toBe("table");
@@ -3311,28 +3331,29 @@ describe("fromProseDoc", () => {
     expect(runContents).toContainEqual({ type: "break", breakType: "column" });
   });
 
-  test("keeps imported page-break text-box-only paragraphs as one wrapper", () => {
+  test("rejects imported page-break text-box-only paragraphs before grouping", () => {
     const document = documentWithTextBoxParagraph({
       includeText: false,
       includePageBreak: true,
       textBoxCount: 2,
     });
-    const pmDoc = toProseDoc(document);
 
-    const roundTripped = fromProseDoc(pmDoc, document);
-    const block = roundTripped.package.document.content.at(0);
-
-    expect(pmDoc.childCount).toBe(3);
-    expect(pmDoc.child(0).type.name).toBe("pageBreak");
-    expect(pmDoc.child(1).type.name).toBe("textBox");
-    expect(pmDoc.child(2).type.name).toBe("textBox");
-    expect(roundTripped.package.document.content).toHaveLength(1);
-    expect(block?.type).toBe("paragraph");
-    if (block?.type !== "paragraph") {
+    try {
+      toProseDoc(document);
+    } catch (error) {
+      expect(error).toBeInstanceOf(UnsupportedDocxToProseMirrorConversionError);
+      if (!(error instanceof UnsupportedDocxToProseMirrorConversionError)) {
+        throw error;
+      }
+      expect(error).toMatchObject({
+        message:
+          "A paragraph containing both an explicit page-break run and a text-box anchor cannot be projected",
+        owner: "paragraph-text-box-anchor",
+        contentType: "break",
+      });
       return;
     }
-    expect(paragraphStartsWithPageBreak(block)).toBe(true);
-    expect(countShapes(block)).toBe(2);
+    throw new Error("Expected DOCX-to-ProseMirror conversion to be rejected");
   });
 
   test("keeps page breaks before grouped standalone text boxes", () => {

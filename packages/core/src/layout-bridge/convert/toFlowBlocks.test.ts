@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { EditorState, TextSelection } from "prosemirror-state";
 
+import { createFolioAIEditSnapshot } from "../../ai-edits/snapshot";
 import { getHyperlinkInstanceIndex } from "../../layout-engine/measure/hyperlinkInstance";
 import { getTextBoxGroupId } from "../../layout-engine/textBoxGroup";
+import { insertPageBreak } from "../../prosemirror/commands/pageBreak";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import { schema } from "../../prosemirror/schema";
 import type { Document, ParagraphAlignment } from "../../types/document";
@@ -265,6 +268,639 @@ describe("toFlowBlocks paragraph formatting", () => {
     ).toEqual(["paragraph", "pageBreak", "paragraph", "sectionBreak", "paragraph"]);
   });
 
+  test.each([
+    {
+      name: "break-only",
+      content: [schema.node("pageBreakRun")],
+      compact: ["sectionBreak", "paragraph"],
+      split: ["pageBreak", "paragraph", "sectionBreak", "paragraph"],
+    },
+    {
+      name: "text plus trailing break",
+      content: [schema.text("Section ending"), schema.node("pageBreakRun")],
+      compact: ["paragraph", "sectionBreak", "paragraph"],
+      split: ["paragraph", "pageBreak", "paragraph", "sectionBreak", "paragraph"],
+    },
+  ])(
+    "coalesces an inline $name before a continuous section only in compact paragraph-mark mode",
+    ({ content, compact, split }) => {
+      const doc = schema.node("doc", { _finalSectionStart: "continuous" }, [
+        schema.node("paragraph", { _sectionProperties: {} }, content),
+        schema.node("paragraph", null, [schema.text("Following section")]),
+      ]);
+
+      expect(toFlowBlocks(doc).map((block) => block.kind)).toEqual(compact);
+      expect(
+        toFlowBlocks(doc, { splitPageBreakAndParagraphMark: true }).map((block) => block.kind),
+      ).toEqual(split);
+    },
+  );
+
+  test("keeps an inserted trailing page-break boundary before a continuous section", () => {
+    const insertion = schema.mark("insertion", {
+      author: "Reviewer",
+      revisionId: 17,
+    });
+    const doc = schema.node("doc", { _finalSectionStart: "continuous" }, [
+      schema.node("paragraph", { _sectionProperties: {} }, [
+        schema.text("Section ending"),
+        schema.node("pageBreakRun", null, null, [insertion]),
+      ]),
+      schema.node("paragraph", null, [schema.text("Following section")]),
+    ]);
+
+    expect(toFlowBlocks(doc).map((block) => block.kind)).toEqual([
+      "paragraph",
+      "pageBreak",
+      "sectionBreak",
+      "paragraph",
+    ]);
+  });
+
+  test.each([
+    {
+      name: "leading",
+      content: [schema.node("pageBreakRun"), schema.text("A")],
+      kinds: ["pageBreak", "paragraph"],
+      text: ["A"],
+    },
+    {
+      name: "trailing",
+      content: [schema.text("A"), schema.node("pageBreakRun")],
+      kinds: ["paragraph", "pageBreak"],
+      text: ["A"],
+    },
+    {
+      name: "interior",
+      content: [schema.text("A"), schema.node("pageBreakRun"), schema.text("B")],
+      kinds: ["paragraph", "pageBreak", "paragraph"],
+      text: ["A", "B"],
+    },
+    {
+      name: "multiple",
+      content: [
+        schema.node("pageBreakRun"),
+        schema.text("A"),
+        schema.node("pageBreakRun"),
+        schema.text("B"),
+        schema.node("pageBreakRun"),
+      ],
+      kinds: ["pageBreak", "paragraph", "pageBreak", "paragraph", "pageBreak"],
+      text: ["A", "B"],
+    },
+  ])("projects every $name inline page break at its exact boundary", ({ content, kinds, text }) => {
+    const blocks = toFlowBlocks(
+      schema.node("doc", null, [schema.node("paragraph", null, content)]),
+    );
+
+    expect(blocks.map((block) => block.kind)).toEqual(kinds);
+    expect(
+      blocks.flatMap((block) =>
+        block.kind === "paragraph"
+          ? block.runs.flatMap((run) => (run.kind === "text" ? [run.text] : []))
+          : [],
+      ),
+    ).toEqual(text);
+  });
+
+  test("maps a trailing paragraph mark after its page break in split mode", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [schema.text("A"), schema.node("pageBreakRun")]),
+    ]);
+
+    const blocks = toFlowBlocks(doc, { splitPageBreakAndParagraphMark: true });
+
+    expect(blocks.map((block) => block.kind)).toEqual(["paragraph", "pageBreak", "paragraph"]);
+    expect(blocks.at(1)).toMatchObject({ pmStart: 2, pmEnd: 3 });
+    expect(blocks.at(2)).toMatchObject({ pmStart: 3, pmEnd: 4 });
+    expect(
+      blocks.at(2)?.kind === "paragraph" && blocks.at(2)?.attrs?.suppressEmptyParagraphHeight,
+    ).toBeFalsy();
+  });
+
+  test.each([
+    {
+      name: "first-line",
+      paragraphAttrs: { indentLeft: 720, indentFirstLine: 360 },
+      firstIndent: { left: 48, firstLine: 24 },
+    },
+    {
+      name: "hanging",
+      paragraphAttrs: { indentLeft: 720, indentFirstLine: -360, hangingIndent: true },
+      firstIndent: { left: 48, hanging: 24 },
+    },
+  ])("does not restart $name indentation after an interior page break", (shape) => {
+    const doc = schema.node("doc", null, [
+      schema.node(
+        "paragraph",
+        {
+          ...shape.paragraphAttrs,
+          pageBreakBefore: true,
+          renderedPageBreakBefore: true,
+        },
+        [schema.text("A"), schema.node("pageBreakRun"), schema.text("B")],
+      ),
+    ]);
+
+    const paragraphs = toFlowBlocks(doc).filter((block) => block.kind === "paragraph");
+
+    expect(paragraphs.at(0)?.attrs?.indent).toEqual(shape.firstIndent);
+    expect(paragraphs.at(1)?.attrs?.indent).toEqual({ left: 48 });
+    expect(paragraphs.at(0)?.attrs?.pageBreakBefore).toBe(true);
+    expect(paragraphs.at(1)?.attrs?.pageBreakBefore).toBeUndefined();
+    expect(paragraphs.at(1)?.attrs?.renderedPageBreakBefore).toBeUndefined();
+  });
+
+  test("keeps paragraph-end and paragraph-start ownership on the correct fragments", () => {
+    const doc = schema.node("doc", null, [
+      schema.node(
+        "paragraph",
+        {
+          bookmarks: [{ id: 7, name: "owned-start" }],
+          defaultTextFormatting: { fontSize: 24, fontSizeCs: 36 },
+          keepNext: true,
+          listMarker: "1.",
+          numPr: { numId: 1, ilvl: 0 },
+          runInWithNext: true,
+        },
+        [schema.text("A"), schema.node("pageBreakRun"), schema.text("B")],
+      ),
+    ]);
+
+    const paragraphs = toFlowBlocks(doc).filter((block) => block.kind === "paragraph");
+
+    expect(paragraphs.at(0)?.bookmarks).toEqual(["owned-start"]);
+    expect(paragraphs.at(1)?.bookmarks).toBeUndefined();
+    expect(paragraphs.at(0)?.attrs?.keepNext).toBeUndefined();
+    expect(paragraphs.at(0)?.attrs?.runInWithNext).toBeUndefined();
+    expect(paragraphs.at(0)?.attrs?.listParagraphMarkFontSize).toBeUndefined();
+    expect(paragraphs.at(1)?.attrs).toMatchObject({
+      keepNext: true,
+      runInWithNext: true,
+      listParagraphMarkFontSize: 18,
+    });
+  });
+
+  test.each([
+    {
+      name: "frame",
+      attrs: { _originalFormatting: { frame: { width: 720 } } },
+      message: "A framed paragraph containing an explicit page-break run cannot be projected",
+    },
+    {
+      name: "outline",
+      attrs: { outlineLevel: 0 },
+      message: "An outline paragraph containing an explicit page-break run cannot be projected",
+    },
+    {
+      name: "borders",
+      attrs: { borders: { bottom: { style: "single", size: 8 } } },
+      message: "A bordered paragraph containing an explicit page-break run cannot be projected",
+    },
+  ])("fails closed when a page-break split cannot preserve $name ownership", (shape) => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", shape.attrs, [
+        schema.text("A"),
+        schema.node("pageBreakRun"),
+        schema.text("B"),
+      ]),
+    ]);
+
+    expect(() => toFlowBlocks(doc)).toThrow(shape.message);
+  });
+
+  test.each(["before", "after"] as const)(
+    "fails closed when a text-box anchor occurs %s a page-break run",
+    (anchorSide) => {
+      const anchor = schema.node("textBoxAnchor", { anchorId: "paragraph:0" });
+      const pageBreak = schema.node("pageBreakRun");
+      const content =
+        anchorSide === "before"
+          ? [schema.text("A"), anchor, pageBreak, schema.text("B")]
+          : [schema.text("A"), pageBreak, anchor, schema.text("B")];
+      const doc = schema.node("doc", null, [schema.node("paragraph", null, content)]);
+
+      expect(() => toFlowBlocks(doc)).toThrow(
+        "A paragraph containing both an explicit page-break run and a text-box anchor cannot be projected",
+      );
+    },
+  );
+
+  test.each([
+    { name: "insertion", markName: "insertion", moveKind: null, paginates: true },
+    { name: "moveTo", markName: "insertion", moveKind: "moveTo", paginates: true },
+    { name: "deletion", markName: "deletion", moveKind: null, paginates: false },
+    { name: "moveFrom", markName: "deletion", moveKind: "moveFrom", paginates: false },
+  ] as const)("projects a $name page-break revision in review view", (shape) => {
+    const change = schema.mark(shape.markName, {
+      author: "Reviewer",
+      date: "2026-09-09T00:00:00.000Z",
+      revisionId: 31,
+      moveKind: shape.moveKind,
+    });
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [
+        schema.text("A"),
+        schema.node("pageBreakRun", null, null, [change]),
+        schema.text("B"),
+      ]),
+    ]);
+
+    const blocks = toFlowBlocks(doc);
+
+    if (shape.paginates) {
+      expect(blocks.map((block) => block.kind)).toEqual(["paragraph", "pageBreak", "paragraph"]);
+      expect(blocks.at(1)).toMatchObject({
+        kind: "pageBreak",
+        isInsertion: true,
+        changeAuthor: "Reviewer",
+        changeDate: "2026-09-09T00:00:00.000Z",
+        changeRevisionId: 31,
+        pmStart: 2,
+        pmEnd: 3,
+      });
+      return;
+    }
+
+    expect(blocks.map((block) => block.kind)).toEqual(["paragraph"]);
+    const paragraph = blocks.at(0);
+    if (paragraph?.kind !== "paragraph") {
+      throw new Error("Expected paragraph");
+    }
+    expect(paragraph.runs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "text",
+          text: "",
+          isDeletion: true,
+          changeAuthor: "Reviewer",
+          changeDate: "2026-09-09T00:00:00.000Z",
+          changeRevisionId: 31,
+          pmStart: 2,
+          pmEnd: 3,
+        }),
+      ]),
+    );
+  });
+
+  test("keeps a hidden page-break atom in package topology and pagination", () => {
+    const hidden = schema.mark("hidden");
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", { paraId: "AAAA0001" }, [
+        schema.text("A"),
+        schema.node("pageBreakRun").mark([hidden]),
+        schema.text("B"),
+      ]),
+    ]);
+
+    expect(createFolioAIEditSnapshot(doc).blocks.at(0)?.structuralBoundaries).toEqual([
+      { type: "pageBreak", offset: 1 },
+    ]);
+    expect(toFlowBlocks(doc).map(({ kind }) => kind)).toEqual([
+      "paragraph",
+      "pageBreak",
+      "paragraph",
+    ]);
+  });
+
+  test("inherits a parent deletion onto a page break nested in an inline content control", () => {
+    const deletion = schema.mark("deletion", {
+      author: "Reviewer",
+      revisionId: 41,
+      moveKind: "moveFrom",
+    });
+    const container = schema.node("sdt", null, [schema.node("pageBreakRun")]).mark([deletion]);
+    const doc = schema.node("doc", null, [schema.node("paragraph", null, [container])]);
+
+    const blocks = toFlowBlocks(doc);
+
+    expect(blocks.map((block) => block.kind)).toEqual(["paragraph"]);
+    const paragraph = blocks.at(0);
+    if (paragraph?.kind !== "paragraph") {
+      throw new Error("Expected paragraph");
+    }
+    expect(paragraph.runs).toEqual([
+      expect.objectContaining({
+        kind: "text",
+        text: "",
+        isDeletion: true,
+        changeRevisionId: 41,
+      }),
+    ]);
+  });
+
+  test("inherits a parent move-from onto a page break nested in a structured field", () => {
+    const moveFrom = schema.mark("deletion", {
+      author: "Reviewer",
+      revisionId: 42,
+      moveKind: "moveFrom",
+    });
+    const field = schema
+      .node(
+        "structuredField",
+        {
+          fieldType: "REF",
+          instruction: "REF target",
+          displayText: "",
+          fieldKind: "simple",
+        },
+        [schema.node("pageBreakRun")],
+      )
+      .mark([moveFrom]);
+    const doc = schema.node("doc", null, [schema.node("paragraph", null, [field])]);
+
+    const blocks = toFlowBlocks(doc);
+
+    expect(blocks.map((block) => block.kind)).toEqual(["paragraph"]);
+    const paragraph = blocks.at(0);
+    if (paragraph?.kind !== "paragraph") {
+      throw new Error("Expected paragraph");
+    }
+    expect(paragraph.runs).toEqual([
+      expect.objectContaining({
+        kind: "text",
+        text: "",
+        isDeletion: true,
+        changeRevisionId: 42,
+      }),
+    ]);
+  });
+
+  for (const wrapper of ["structured field", "inline content control"] as const) {
+    test(`projects formatting and insertion marks from ${wrapper} across its page break`, () => {
+      const insertion = schema.mark("insertion", {
+        author: "Reviewer",
+        date: "2026-09-10T00:00:00.000Z",
+        revisionId: 43,
+      });
+      const wrapperMarks = [schema.mark("bold"), schema.mark("underline"), insertion];
+      const children = [
+        schema.text("A", [schema.mark("italic")]),
+        schema.node("pageBreakRun"),
+        schema.text("B"),
+      ];
+      const carrier =
+        wrapper === "structured field"
+          ? schema
+              .node(
+                "structuredField",
+                {
+                  fieldType: "REF",
+                  instruction: "REF target",
+                  displayText: "AB",
+                  fieldKind: "simple",
+                },
+                children,
+              )
+              .mark(wrapperMarks)
+          : schema.node("sdt", null, children).mark(wrapperMarks);
+      const blocks = toFlowBlocks(
+        schema.node("doc", null, [schema.node("paragraph", null, [carrier])]),
+      );
+
+      expect(blocks.map((block) => block.kind)).toEqual(["paragraph", "pageBreak", "paragraph"]);
+      const textRuns = blocks.flatMap((block) =>
+        block.kind === "paragraph"
+          ? block.runs.filter((run) => run.kind === "text" && run.text.length > 0)
+          : [],
+      );
+      expect(textRuns).toEqual([
+        expect.objectContaining({
+          kind: "text",
+          text: "A",
+          bold: true,
+          italic: true,
+          underline: { style: "single" },
+          isInsertion: true,
+          changeAuthor: "Reviewer",
+          changeRevisionId: 43,
+        }),
+        expect.objectContaining({
+          kind: "text",
+          text: "B",
+          bold: true,
+          underline: { style: "single" },
+          isInsertion: true,
+          changeAuthor: "Reviewer",
+          changeRevisionId: 43,
+        }),
+      ]);
+      expect(blocks.at(1)).toMatchObject({
+        kind: "pageBreak",
+        isInsertion: true,
+        changeAuthor: "Reviewer",
+        changeRevisionId: 43,
+      });
+    });
+
+    test(`keeps ${wrapper} descendant revisions authoritative over inherited tracking`, () => {
+      const insertion = schema.mark("insertion", {
+        author: "Outer reviewer",
+        revisionId: 44,
+      });
+      const deletion = schema.mark("deletion", {
+        author: "Inner reviewer",
+        revisionId: 45,
+      });
+      const children = [schema.node("pageBreakRun").mark([deletion])];
+      const carrier =
+        wrapper === "structured field"
+          ? schema
+              .node(
+                "structuredField",
+                {
+                  fieldType: "REF",
+                  instruction: "REF target",
+                  displayText: "",
+                  fieldKind: "simple",
+                },
+                children,
+              )
+              .mark([insertion])
+          : schema.node("sdt", null, children).mark([insertion]);
+      const blocks = toFlowBlocks(
+        schema.node("doc", null, [schema.node("paragraph", null, [carrier])]),
+      );
+
+      expect(blocks.map((block) => block.kind)).toEqual(["paragraph"]);
+      const paragraph = blocks.at(0);
+      if (paragraph?.kind !== "paragraph") {
+        throw new Error("Expected paragraph");
+      }
+      expect(paragraph.runs).toEqual([
+        expect.objectContaining({
+          kind: "text",
+          text: "",
+          isDeletion: true,
+          changeAuthor: "Inner reviewer",
+          changeRevisionId: 45,
+        }),
+      ]);
+      expect(paragraph.runs.at(0)).not.toHaveProperty("isInsertion");
+    });
+  }
+
+  test("propagates structured-field marks through every formatting-aware child kind", () => {
+    const insertion = schema.mark("insertion", {
+      author: "Reviewer",
+      revisionId: 46,
+    });
+    const field = schema
+      .node(
+        "structuredField",
+        {
+          fieldType: "REF",
+          instruction: "REF target",
+          displayText: "A\uf06f1",
+          fieldKind: "simple",
+        },
+        [
+          schema.text("A"),
+          schema.node("symbol", { font: "Wingdings", char: "F06F" }),
+          schema.node("tab"),
+          schema.node("image", {
+            src: "data:image/png;base64,",
+            width: 1,
+            height: 1,
+          }),
+          schema.node("pageBreakRun"),
+        ],
+      )
+      .mark([schema.mark("bold"), insertion]);
+    const blocks = toFlowBlocks(
+      schema.node("doc", null, [schema.node("paragraph", null, [field])]),
+    );
+    const paragraph = blocks.at(0);
+    if (paragraph?.kind !== "paragraph") {
+      throw new Error("Expected paragraph before the page break");
+    }
+
+    expect(paragraph.runs.map(({ kind }) => kind)).toEqual(["text", "text", "tab", "image"]);
+    for (const run of paragraph.runs) {
+      expect(run).toMatchObject({
+        isInsertion: true,
+        changeAuthor: "Reviewer",
+        changeRevisionId: 46,
+      });
+    }
+    for (const run of paragraph.runs.slice(0, 3)) {
+      expect(run).toMatchObject({ bold: true });
+    }
+  });
+
+  test("propagates inline content-control marks into nested field runs", () => {
+    const insertion = schema.mark("insertion", {
+      author: "Reviewer",
+      revisionId: 47,
+    });
+    const field = schema.node("field", {
+      fieldType: "PAGE",
+      instruction: "PAGE",
+      displayText: "1",
+      fieldKind: "complex",
+    });
+    const contentControl = schema.node("sdt", null, [field]).mark([schema.mark("bold"), insertion]);
+    const paragraph = toFlowBlocks(
+      schema.node("doc", null, [schema.node("paragraph", null, [contentControl])]),
+    ).at(0);
+    if (paragraph?.kind !== "paragraph") {
+      throw new Error("Expected paragraph");
+    }
+
+    expect(paragraph.runs).toEqual([
+      expect.objectContaining({
+        kind: "field",
+        bold: true,
+        isInsertion: true,
+        changeAuthor: "Reviewer",
+        changeRevisionId: 47,
+      }),
+    ]);
+  });
+
+  test("keeps a break-only paragraph mark as a mapped layout carrier", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [schema.node("pageBreakRun")]),
+    ]);
+
+    const compact = toFlowBlocks(doc);
+    const split = toFlowBlocks(doc, { splitPageBreakAndParagraphMark: true });
+
+    expect(compact.map((block) => block.kind)).toEqual(["pageBreak", "paragraph"]);
+    expect(
+      compact.at(1)?.kind === "paragraph" && compact.at(1)?.attrs?.suppressEmptyParagraphHeight,
+    ).toBe(true);
+    expect(
+      split.at(1)?.kind === "paragraph" && split.at(1)?.attrs?.suppressEmptyParagraphHeight,
+    ).toBeFalsy();
+    expect(compact.at(0)).toMatchObject({ pmStart: 1, pmEnd: 2 });
+    expect(compact.at(1)).toMatchObject({ pmStart: 2, pmEnd: 3 });
+  });
+
+  test("maps a command-inserted page break between adjacent text positions", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", { listMarker: "1." }, [schema.text("AB")]),
+    ]);
+    let state = EditorState.create({ doc });
+    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 2)));
+    expect(
+      insertPageBreak(state, (transaction) => {
+        state = state.apply(transaction);
+      }),
+    ).toBe(true);
+
+    const blocks = toFlowBlocks(state.doc);
+    expect(blocks.map((block) => block.kind)).toEqual(["paragraph", "pageBreak", "paragraph"]);
+    expect(blocks.at(0)).toMatchObject({ kind: "paragraph", pmStart: 0, pmEnd: 2 });
+    expect(blocks.at(1)).toMatchObject({ kind: "pageBreak", pmStart: 2, pmEnd: 3 });
+    expect(blocks.at(2)).toMatchObject({ kind: "paragraph", pmStart: 3, pmEnd: 5 });
+    expect(blocks.at(0)?.kind === "paragraph" && blocks.at(0)?.attrs?.listMarker).toBe("1.");
+    expect(blocks.at(2)?.kind === "paragraph" && blocks.at(2)?.attrs?.listMarker).toBeUndefined();
+  });
+
+  test("keeps alternating run and page-break order through the layout boundary", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [
+        schema.text("A"),
+        schema.node("pageBreakRun"),
+        schema.text("B"),
+        schema.node("pageBreakRun"),
+        schema.text("C"),
+        schema.node("pageBreakRun"),
+        schema.text("D"),
+        schema.node("pageBreakRun"),
+      ]),
+    ]);
+
+    const blocks = toFlowBlocks(doc);
+
+    expect(blocks.map(({ kind }) => kind)).toEqual([
+      "paragraph",
+      "pageBreak",
+      "paragraph",
+      "pageBreak",
+      "paragraph",
+      "pageBreak",
+      "paragraph",
+      "pageBreak",
+    ]);
+    expect(
+      blocks
+        .filter((block) => block.kind === "paragraph")
+        .map(({ runs }) => runs.flatMap((run) => (run.kind === "text" ? [run.text] : [])).join("")),
+    ).toEqual(["A", "B", "C", "D"]);
+    expect(
+      blocks
+        .filter((block) => block.kind === "pageBreak")
+        .map(({ pmStart, pmEnd }) => [pmStart, pmEnd]),
+    ).toEqual([
+      [2, 3],
+      [4, 5],
+      [6, 7],
+      [8, 9],
+    ]);
+  });
+
   test("keeps text-box anchors out of paragraph layout", () => {
     const paragraph = toFlowBlocks(
       schema.node("doc", null, [
@@ -284,6 +920,22 @@ describe("toFlowBlocks paragraph formatting", () => {
       "Before",
       "After",
     ]);
+  });
+
+  test("fails closed when a text box contains an unprojectable page-break run", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("textBox", { width: 100 }, [
+        schema.node("paragraph", null, [
+          schema.text("Before"),
+          schema.node("pageBreakRun"),
+          schema.text("After"),
+        ]),
+      ]),
+    ]);
+
+    expect(() => toFlowBlocks(doc)).toThrow(
+      "An explicit page-break run at 8 cannot be projected inside a text box",
+    );
   });
 
   test("retains the exact host paragraph for an extracted text box", () => {
@@ -1746,6 +2398,43 @@ describe("toFlowBlocks hyperlink identity", () => {
 });
 
 describe("toFlowBlocks table cell formatting", () => {
+  test.each([
+    { name: "ordinary", rowAttrs: null, cellAttrs: null, nested: false },
+    {
+      name: "cantSplit",
+      rowAttrs: { _originalFormatting: { cantSplit: true } },
+      cellAttrs: null,
+      nested: false,
+    },
+    { name: "vMerge restart", rowAttrs: null, cellAttrs: { _vMergeRestart: true }, nested: false },
+    { name: "nested table", rowAttrs: null, cellAttrs: null, nested: true },
+  ])("fails closed for a page-break run in a $name table-cell shape", (shape) => {
+    const breakParagraph = schema.node("paragraph", null, [
+      schema.text("A"),
+      schema.node("pageBreakRun"),
+      schema.text("B"),
+    ]);
+    const nestedContent = shape.nested
+      ? [
+          schema.node("table", null, [
+            schema.node("tableRow", null, [schema.node("tableCell", null, [breakParagraph])]),
+          ]),
+          schema.node("paragraph"),
+        ]
+      : [breakParagraph];
+    const doc = schema.node("doc", null, [
+      schema.node("table", null, [
+        schema.node("tableRow", shape.rowAttrs, [
+          schema.node("tableCell", shape.cellAttrs, nestedContent),
+        ]),
+      ]),
+    ]);
+    const before = doc.toJSON();
+
+    expect(() => toFlowBlocks(doc)).toThrow("cannot be projected inside a table cell");
+    expect(doc.toJSON()).toEqual(before);
+  });
+
   test("keeps explicit zero cell margins instead of restoring table defaults", () => {
     const doc = schema.node("doc", null, [
       schema.node("table", { cellMargins: { left: 180, right: 180 } }, [

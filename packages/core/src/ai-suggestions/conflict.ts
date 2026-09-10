@@ -88,9 +88,7 @@ export function resolveSuggestionAnchor(
       const point = positional.pmPositionAt(originalTextStart);
       return { from: point, to: point };
     }
-    const anchorFrom = positional.pmPositionAt(originalTextStart);
-    const anchorTo = positional.pmPositionAt(originalTextEnd - 1) + 1;
-    return { from: anchorFrom, to: anchorTo };
+    return positional.pmRangeAt(originalTextStart, originalTextEnd);
   }
   return null;
 }

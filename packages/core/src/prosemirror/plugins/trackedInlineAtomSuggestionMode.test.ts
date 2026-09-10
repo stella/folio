@@ -19,6 +19,7 @@ type AtomFixture = {
 
 const ATOM_FIXTURES = [
   { name: "hard break", create: () => schema.node("hardBreak") },
+  { name: "page break", create: () => schema.node("pageBreakRun") },
   { name: "tab", create: () => schema.node("tab") },
 ] as const satisfies readonly AtomFixture[];
 

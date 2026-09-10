@@ -105,18 +105,23 @@ export const findInParagraph = (
   options: FindOptions,
   paragraphIndex: number,
 ): FindMatch[] => {
-  const paragraphText = getParagraphPlainText(paragraph);
-  if (!paragraphText) {
+  const projection = getParagraphSearchProjection(paragraph);
+  if (!projection.text) {
     return [];
   }
 
-  return findAllMatches(paragraphText, searchText, options).map(({ start, end }) => ({
-    paragraphIndex,
-    contentIndex: findContentIndexAtOffset(paragraph, start),
-    startOffset: start,
-    endOffset: end,
-    text: paragraphText.slice(start, end),
-  }));
+  return findAllMatches(projection.text, searchText, options)
+    .filter(
+      ({ start, end }) =>
+        !projection.pageBreakOffsets.some((offset) => offset > start && offset < end),
+    )
+    .map(({ start, end }) => ({
+      paragraphIndex,
+      contentIndex: findContentIndexAtOffset(paragraph, start),
+      startOffset: start,
+      endOffset: end,
+      text: projection.text.slice(start, end),
+    }));
 };
 
 type ParagraphVisitor = (paragraph: Paragraph, paragraphIndex: number) => void;
@@ -156,53 +161,76 @@ const forEachParagraph = (blocks: readonly BlockContent[], visit: ParagraphVisit
   walkBlocks(blocks);
 };
 
-const getRunText = (run: Run): string => {
+type SearchProjection = {
+  text: string;
+  pageBreakOffsets: number[];
+};
+
+const joinSearchProjections = (parts: readonly SearchProjection[]): SearchProjection => {
   let text = "";
+  const pageBreakOffsets: number[] = [];
+  for (const part of parts) {
+    const baseOffset = text.length;
+    text += part.text;
+    for (const offset of part.pageBreakOffsets) {
+      pageBreakOffsets.push(baseOffset + offset);
+    }
+  }
+  return { text, pageBreakOffsets };
+};
+
+const getRunSearchProjection = (run: Run): SearchProjection => {
+  let text = "";
+  const pageBreakOffsets: number[] = [];
   for (const item of run.content) {
     if (item.type === "text") {
       text += item.text;
     } else if (item.type === "tab") {
       text += "\t";
-    } else if (item.type === "break" && item.breakType === "textWrapping") {
+    } else if (
+      item.type === "break" &&
+      (item.breakType === undefined || item.breakType === "textWrapping")
+    ) {
       text += "\n";
+    } else if (item.type === "break" && item.breakType === "page") {
+      pageBreakOffsets.push(text.length);
     }
   }
-  return text;
+  return { text, pageBreakOffsets };
 };
 
-const getHyperlinkText = (hyperlink: Hyperlink): string => {
-  let text = "";
-  for (const child of hyperlink.children) {
-    if (child.type === "run") {
-      text += getRunText(child);
-    }
-  }
-  return text;
-};
+const getHyperlinkSearchProjection = (hyperlink: Hyperlink): SearchProjection =>
+  joinSearchProjections(
+    hyperlink.children.flatMap((child) =>
+      child.type === "run" ? [getRunSearchProjection(child)] : [],
+    ),
+  );
 
-const getParagraphContentText = (content: ParagraphContent): string => {
+const getParagraphContentSearchProjection = (content: ParagraphContent): SearchProjection => {
   if (content.type === "run") {
-    return getRunText(content);
+    return getRunSearchProjection(content);
   }
   if (content.type === "hyperlink") {
-    return getHyperlinkText(content);
+    return getHyperlinkSearchProjection(content);
   }
   if (content.type === "inlineSdt") {
-    return content.content.map(getParagraphContentText).join("");
+    return joinSearchProjections(content.content.map(getParagraphContentSearchProjection));
   }
   if (content.type === "simpleField") {
-    return content.content
-      .map((child) => (child.type === "run" ? getRunText(child) : getHyperlinkText(child)))
-      .join("");
+    return joinSearchProjections(
+      content.content.map((child) =>
+        child.type === "run" ? getRunSearchProjection(child) : getHyperlinkSearchProjection(child),
+      ),
+    );
   }
   if (content.type === "complexField") {
-    return content.fieldResult.map(getRunText).join("");
+    return joinSearchProjections(content.fieldResult.map(getRunSearchProjection));
   }
-  return "";
+  return { text: "", pageBreakOffsets: [] };
 };
 
-const getParagraphPlainText = (paragraph: Paragraph): string =>
-  paragraph.content.map(getParagraphContentText).join("");
+const getParagraphSearchProjection = (paragraph: Paragraph): SearchProjection =>
+  joinSearchProjections(paragraph.content.map(getParagraphContentSearchProjection));
 
 const findContentIndexAtOffset = (paragraph: Paragraph, offset: number): number => {
   let currentOffset = 0;
@@ -211,7 +239,7 @@ const findContentIndexAtOffset = (paragraph: Paragraph, offset: number): number 
     if (!item) {
       continue;
     }
-    const itemLength = getParagraphContentText(item).length;
+    const itemLength = getParagraphContentSearchProjection(item).text.length;
     if (currentOffset + itemLength > offset) {
       return contentIndex;
     }

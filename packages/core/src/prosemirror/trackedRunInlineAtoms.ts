@@ -5,6 +5,7 @@ export type TrackedRunInlineAtomDisposition =
   | "carry"
   | "field-carrier"
   | "outside-wrapper"
+  | "page-break-carrier"
   | "text-carrier"
   | "transparent";
 
@@ -22,6 +23,7 @@ export const TRACKED_RUN_INLINE_ATOM_DISPOSITIONS = Object.freeze({
   hardBreak: "carry",
   image: "carry",
   math: "outside-wrapper",
+  pageBreakRun: "page-break-carrier",
   renderedPageBreak: "transparent",
   shape: "carry",
   structuredField: "carry",
@@ -53,6 +55,9 @@ export const trackedRunInlineAtomDisposition = (
 export const canCarryTrackedRunMark = (node: PMNode): boolean => {
   const disposition = trackedRunInlineAtomDisposition(node);
   return (
-    disposition === "carry" || disposition === "field-carrier" || disposition === "text-carrier"
+    disposition === "carry" ||
+    disposition === "field-carrier" ||
+    disposition === "text-carrier" ||
+    disposition === "page-break-carrier"
   );
 };

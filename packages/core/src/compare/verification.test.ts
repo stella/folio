@@ -222,6 +222,75 @@ describe("classifyProjectionMismatch", () => {
     });
   });
 
+  test.each([
+    {
+      label: "count",
+      actual: [{ type: "pageBreak" as const, offset: 4 }],
+      expected: [
+        { type: "pageBreak" as const, offset: 4 },
+        { type: "pageBreak" as const, offset: 4 },
+      ],
+    },
+    {
+      label: "offset",
+      actual: [{ type: "pageBreak" as const, offset: 3 }],
+      expected: [{ type: "pageBreak" as const, offset: 4 }],
+    },
+    {
+      label: "order",
+      actual: [
+        { type: "pageBreak" as const, offset: 4, clear: "left" as const },
+        { type: "pageBreak" as const, offset: 4, clear: "right" as const },
+      ],
+      expected: [
+        { type: "pageBreak" as const, offset: 4, clear: "right" as const },
+        { type: "pageBreak" as const, offset: 4, clear: "left" as const },
+      ],
+    },
+    {
+      label: "preserved clear",
+      actual: [{ type: "pageBreak" as const, offset: 4, clear: "left" as const }],
+      expected: [{ type: "pageBreak" as const, offset: 4, clear: "right" as const }],
+    },
+  ])("reports an inline page-break $label mismatch", ({ actual, expected }) => {
+    expect(
+      classifyProjectionMismatch({
+        invariant: "accept-reproduces-target",
+        story: { type: "main" },
+        actual: [{ ...projectedBlock(undefined, "same text"), structuralBoundaries: actual }],
+        expected: [{ ...projectedBlock(undefined, "same text"), structuralBoundaries: expected }],
+      }),
+    ).toEqual({
+      invariant: "accept-reproduces-target",
+      cause: "inline-structure",
+      story: { type: "main" },
+      detail:
+        "a block's zero-width inline structure does not match at block 0/1 (1 blocks against 1)",
+    });
+  });
+
+  test("treats absent, empty, and equal inline-structure projections as equivalent", () => {
+    const leftBoundary = { type: "pageBreak" as const, offset: 4, clear: "left" as const };
+    const equivalentPairs = [
+      [undefined, undefined],
+      [undefined, []],
+      [[], undefined],
+      [[], []],
+      [[leftBoundary], [{ ...leftBoundary }]],
+    ] as const;
+
+    for (const [actual, expected] of equivalentPairs) {
+      expect(
+        classifyProjectionMismatch({
+          invariant: "accept-reproduces-target",
+          story: { type: "main" },
+          actual: [{ ...projectedBlock(undefined, "same text"), structuralBoundaries: actual }],
+          expected: [{ ...projectedBlock(undefined, "same text"), structuralBoundaries: expected }],
+        }),
+      ).toBeNull();
+    }
+  });
+
   test("reports a direct alignment mismatch separately from text and style", () => {
     expect(
       classifyProjectionMismatch({

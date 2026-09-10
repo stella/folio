@@ -1,5 +1,8 @@
 import type { Mark, Node as PMNode } from "prosemirror-model";
 
+import { expectPageBreakRunAttrs } from "../prosemirror/attrs";
+import type { PageBreakRunAttrs } from "../prosemirror/schema/nodes";
+
 /**
  * "Post-tracked-changes" view of a textblock: the string the user
  * would see if every existing tracked change were accepted.
@@ -21,6 +24,92 @@ import type { Mark, Node as PMNode } from "prosemirror-model";
 export type CleanBlockText = {
   text: string;
   offsets: number[];
+  /**
+   * Zero-width structural carriers projected at their clean-text boundary.
+   *
+   * A single clean offset cannot identify both sides of an atom: the PM
+   * position immediately after the preceding character is before the atom,
+   * while the next character starts after it. Callers that select text must
+   * resolve through {@link resolveCleanTextRange}; indexing `offsets`
+   * directly can accidentally absorb the carrier into an adjacent range.
+   */
+  structuralBoundaries: readonly CleanTextStructuralBoundary[];
+};
+
+export type CleanTextStructuralBoundary = {
+  type: "pageBreakRun";
+  /** Clean-text offset at which the zero-width carrier occurs. */
+  offset: number;
+  /** PM range owned by the carrier. */
+  from: number;
+  to: number;
+  /** Preserved even though `clear` does not alter page-break layout. */
+  clear?: PageBreakRunAttrs["clear"];
+  /** Whether the post-tracked-changes projection retains this carrier. */
+  presentInCleanView: boolean;
+};
+
+const EMPTY_CLEAN_TEXT_STRUCTURAL_BOUNDARIES: readonly CleanTextStructuralBoundary[] =
+  Object.freeze([]);
+
+type ResolveCleanTextRangeOptions = {
+  cleanBlock: CleanBlockText;
+  startOffset: number;
+  endOffset: number;
+};
+
+/**
+ * Resolve clean-text offsets without selecting a zero-width structural atom.
+ *
+ * A range wholly on one side of a boundary is biased away from the atom. A
+ * range spanning both sides is unrepresentable as a generic text selection
+ * and returns `null`; a structural operation must own that mutation instead.
+ */
+export const resolveCleanTextRange = ({
+  cleanBlock,
+  startOffset,
+  endOffset,
+}: ResolveCleanTextRangeOptions): { from: number; to: number } | null => {
+  if (
+    !Number.isInteger(startOffset) ||
+    !Number.isInteger(endOffset) ||
+    startOffset < 0 ||
+    endOffset < startOffset ||
+    endOffset > cleanBlock.text.length
+  ) {
+    return null;
+  }
+
+  const baseFrom = cleanBlock.offsets[startOffset];
+  const baseTo = cleanBlock.offsets[endOffset];
+  if (baseFrom === undefined || baseTo === undefined) {
+    return null;
+  }
+
+  const { structuralBoundaries } = cleanBlock;
+  if (structuralBoundaries.length === 0) {
+    return baseFrom <= baseTo ? { from: baseFrom, to: baseTo } : null;
+  }
+
+  let from = baseFrom;
+  let to = baseTo;
+  for (const boundary of structuralBoundaries) {
+    if (boundary.offset > startOffset && boundary.offset < endOffset) {
+      return null;
+    }
+    if (boundary.offset === startOffset) {
+      from = Math.max(from, boundary.to);
+    }
+    if (startOffset !== endOffset && boundary.offset === endOffset) {
+      to = Math.min(to, boundary.from);
+    }
+  }
+
+  if (startOffset === endOffset) {
+    return { from, to: from };
+  }
+
+  return from <= to ? { from, to } : null;
 };
 
 const DELETION_MARK = "deletion";
@@ -31,8 +120,22 @@ const HIDDEN_MARK = "hidden";
 export const buildCleanBlockText = (blockNode: PMNode, blockFrom: number): CleanBlockText => {
   let text = "";
   const offsets: number[] = [];
+  let structuralBoundaries: CleanTextStructuralBoundary[] | undefined;
   let lastEnd = blockFrom + 1;
   blockNode.descendants((node, pos) => {
+    if (node.type.name === "pageBreakRun") {
+      const from = blockFrom + 1 + pos;
+      const { clear } = expectPageBreakRunAttrs(node);
+      (structuralBoundaries ??= []).push({
+        type: "pageBreakRun",
+        offset: text.length,
+        from,
+        to: from + node.nodeSize,
+        ...(clear !== undefined ? { clear } : {}),
+        presentInCleanView: !node.marks.some(({ type }) => type.name === DELETION_MARK),
+      });
+      return false;
+    }
     if (!node.isText || node.text === undefined) {
       return true;
     }
@@ -54,7 +157,11 @@ export const buildCleanBlockText = (blockNode: PMNode, blockFrom: number): Clean
     return true;
   });
   offsets.push(lastEnd);
-  return { text, offsets };
+  return {
+    text,
+    offsets,
+    structuralBoundaries: structuralBoundaries ?? EMPTY_CLEAN_TEXT_STRUCTURAL_BOUNDARIES,
+  };
 };
 
 /**

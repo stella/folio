@@ -13,7 +13,7 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
-import { panic } from "better-result";
+import { panic, TaggedError } from "better-result";
 
 import { createStyleEngine } from "../../style-engine";
 import type { StyleEngine, TableCellParagraphSpacingOverlay } from "../../style-engine";
@@ -47,7 +47,6 @@ import type {
   DrawingContent,
   MoveFrom,
   MoveTo,
-  TrackedRunContent,
   MathEquation,
   ShapeTextBody,
   Theme,
@@ -61,6 +60,10 @@ import {
   linkProseParagraphPropertySource,
   recreateProseNodeWithParagraphPropertySource,
 } from "../../docx/paragraphPropertySource";
+import {
+  buildPageBreakRunSourceDescendantIndex,
+  type PageBreakRunSourceDescendantIndex,
+} from "../../internal/pageBreakRunSourceDescendantIndex";
 import { mergeTextFormatting } from "../../utils/textFormattingMerge";
 import { tableOfContentsStyleLevel } from "../../utils/tableOfContentsStyle";
 import { emuToPixels } from "../../utils/units";
@@ -68,6 +71,10 @@ import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import { setAutospacingBaseValue } from "../autospacingBase";
 import { buildRunFormattingOverrideAttrs } from "../extensions/marks/RunFormattingOverrideExtension";
 import { directionFromBidi } from "../paragraphDirection";
+import {
+  pageBreakRunParagraphProjectionDispositionForFeatures,
+  type PageBreakRunParagraphProjectionReason,
+} from "../pageBreakRunProjection";
 import { lineSpacingProvenanceFromSpacing } from "../paragraphSpacing";
 import {
   getParagraphMarkSuppressionOverrides,
@@ -101,6 +108,26 @@ import {
 } from "./effectiveTableCellFormatting";
 import { shadingToRunShadingAttrs } from "./runShadingMark";
 import { sdtAttrsFromProperties } from "./sdtAttrs";
+
+type UnsupportedDocxToProseMirrorOwner =
+  | "complex-field-instruction"
+  | "field-result"
+  | "page-break-bearing-run"
+  | "paragraph-borders"
+  | "paragraph-frame"
+  | "paragraph-outline"
+  | "paragraph-text-box-anchor"
+  | "table-cell"
+  | "text-box";
+
+/** DOCX content that cannot be preserved by the editable ProseMirror model. */
+export class UnsupportedDocxToProseMirrorConversionError extends TaggedError(
+  "UnsupportedDocxToProseMirrorConversionError",
+)<{
+  message: string;
+  owner: UnsupportedDocxToProseMirrorOwner;
+  contentType: RunContent["type"];
+}> {}
 
 const DETACHED_WATERMARK_HOST = Symbol.for("stll.detachedWatermarkHost");
 
@@ -143,6 +170,7 @@ const createTextBoxGroupIdFactory = (): (() => string) => {
 };
 
 type HyperlinkInstanceIndexAllocator = () => number;
+type PageBreakRunOwnerIdAllocator = () => number;
 
 /** Keep imported hyperlink identity unique across every nested conversion scope. */
 const createHyperlinkInstanceIndexAllocator = (): HyperlinkInstanceIndexAllocator => {
@@ -292,47 +320,19 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
     nextTextBoxGroupId,
     nextHyperlinkInstanceIndex,
     pairedBookmarkIds,
+    pageBreakRunSourceDescendants: buildPageBreakRunSourceDescendantIndex(paragraphs),
   };
 
   const convertBodyBlocks = (blocks: BlockContent[]): PMNode[] => {
     const out: PMNode[] = [];
     for (const block of blocks) {
       if (block.type === "paragraph") {
-        const pbPos = paragraphPageBreakPosition(block);
-        if (pbPos === "before") {
-          out.push(schema.node("pageBreak"));
-        }
-        const converted = convertParagraphWithTextBoxes(block, styleResolver, {
-          textBoxGroupId: nextTextBoxGroupId(),
-          context: conversionContext,
-        });
-        const firstConverted = converted.at(0);
-        if (
-          pbPos === "before" &&
-          converted.length === 1 &&
-          firstConverted?.type.name === "paragraph" &&
-          firstConverted.content.size === 0 &&
-          document.package.settings?.splitPageBreakAndParagraphMark !== true
-        ) {
-          const paragraph = firstConverted;
-          converted[0] = recreateProseNodeWithParagraphPropertySource(paragraph, {
-            attrs: { ...paragraph.attrs, _pageBreakCarrier: true },
-          });
-        }
-        if (pbPos === "after") {
-          const paragraphIndex = converted.findIndex((node) => node.type.name === "paragraph");
-          const trailingParagraph = paragraphIndex >= 0 ? converted.at(paragraphIndex) : undefined;
-          if (trailingParagraph) {
-            converted[paragraphIndex] = recreateProseNodeWithParagraphPropertySource(
-              trailingParagraph,
-              { attrs: { ...trailingParagraph.attrs, _trailingPageBreak: true } },
-            );
-          }
-        }
-        out.push(...converted);
-        if (pbPos === "after") {
-          out.push(schema.node("pageBreak"));
-        }
+        out.push(
+          ...convertParagraphWithTextBoxes(block, styleResolver, {
+            textBoxGroupId: nextTextBoxGroupId(),
+            context: conversionContext,
+          }),
+        );
       } else if (block.type === "table") {
         out.push(convertTable(block, styleResolver, conversionContext));
       } else {
@@ -429,14 +429,26 @@ function convertBlockSdt(
 function convertParagraph(
   paragraph: Paragraph,
   styleResolver: StyleEngine | null,
-  nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator,
-  pairedBookmarkIds: ReadonlySet<number>,
+  context: TableConversionContext,
   activeCommentIds?: Set<number>,
   extraRunFormatting?: TextFormatting,
   tableParagraphOverlay?: TableCellParagraphSpacingOverlay,
   textBoxAnchors?: ReadonlyMap<Shape, string>,
 ): PMNode {
-  const attrs = paragraphFormattingToAttrs(paragraph, styleResolver, tableParagraphOverlay);
+  const { nextHyperlinkInstanceIndex, pairedBookmarkIds, pageBreakRunSourceDescendants } = context;
+  let pageBreakRunOwnerId = 0;
+  const nextPageBreakRunOwnerId = (): number => pageBreakRunOwnerId++;
+  const { attrs, effectiveFrame } = paragraphFormattingToAttrs(
+    paragraph,
+    styleResolver,
+    tableParagraphOverlay,
+  );
+  assertParagraphPageBreakCanBeProjected({
+    paragraph,
+    attrs,
+    effectiveFrame,
+    sourceDescendants: pageBreakRunSourceDescendants,
+  });
   const isTocParagraph = attrs._tableOfContentsLevel !== undefined;
   const inlineNodes: PMNode[] = [];
   let inlineOffset = 0;
@@ -610,6 +622,7 @@ function convertParagraph(
         change,
         markType,
         nextHyperlinkInstanceIndex,
+        nextPageBreakRunOwnerId,
         getInheritedRunFormatting,
         styleResolver,
         moveKind,
@@ -630,6 +643,7 @@ function convertParagraph(
         convertRun(
           content,
           getInheritedRunFormatting(content.formatting),
+          nextPageBreakRunOwnerId,
           styleResolver,
           textBoxAnchors,
         ),
@@ -641,6 +655,7 @@ function convertParagraph(
         styleResolver,
         hyperlinkIndex: currentHyperlinkIndex,
         textBoxAnchors,
+        nextPageBreakRunOwnerId,
       });
       if (linkNodes.length === 0) {
         emptyHyperlinks ??= [];
@@ -660,6 +675,7 @@ function convertParagraph(
           getInheritedRunFormatting,
           styleResolver,
           nextHyperlinkInstanceIndex,
+          nextPageBreakRunOwnerId,
           textBoxAnchors,
         }),
       );
@@ -668,6 +684,7 @@ function convertParagraph(
         convertInlineSdt(
           content,
           nextHyperlinkInstanceIndex,
+          nextPageBreakRunOwnerId,
           getInheritedRunFormatting,
           styleResolver,
           textBoxAnchors,
@@ -780,6 +797,7 @@ function convertTrackedChange(
   change: Insertion | Deletion | MoveFrom | MoveTo,
   markType: "insertion" | "deletion",
   nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator,
+  nextPageBreakRunOwnerId: PageBreakRunOwnerIdAllocator,
   getInheritedRunFormatting: RunFormattingResolver,
   styleResolver?: StyleEngine | null,
   moveKind: "moveFrom" | "moveTo" | null = null,
@@ -792,6 +810,7 @@ function convertTrackedChange(
         ...convertRun(
           item,
           getInheritedRunFormatting(item.formatting),
+          nextPageBreakRunOwnerId,
           styleResolver,
           textBoxAnchors,
         ),
@@ -804,6 +823,7 @@ function convertTrackedChange(
           styleResolver,
           hyperlinkIndex: currentHyperlinkIndex,
           textBoxAnchors,
+          nextPageBreakRunOwnerId,
         }),
       );
     } else if (item.type === "simpleField" || item.type === "complexField") {
@@ -811,6 +831,7 @@ function convertTrackedChange(
         getInheritedRunFormatting,
         styleResolver,
         nextHyperlinkInstanceIndex,
+        nextPageBreakRunOwnerId,
         textBoxAnchors,
       });
       if (fieldNode) {
@@ -830,6 +851,7 @@ function convertTrackedChange(
           item,
           nestedMarkType,
           nextHyperlinkInstanceIndex,
+          nextPageBreakRunOwnerId,
           getInheritedRunFormatting,
           styleResolver,
           nestedMoveKind,
@@ -887,11 +909,16 @@ function convertTrackedChange(
  * If a styleResolver is provided, resolves style-based formatting and merges
  * with inline formatting. Inline formatting takes precedence.
  */
+type ParagraphFormattingProjection = {
+  attrs: ParagraphAttrs;
+  effectiveFrame: ParagraphFormatting["frame"];
+};
+
 function paragraphFormattingToAttrs(
   paragraph: Paragraph,
   styleResolver: StyleEngine | null,
   tableParagraphOverlay?: TableCellParagraphSpacingOverlay,
-): ParagraphAttrs {
+): ParagraphFormattingProjection {
   const formatting = paragraph.formatting;
   const styleId = formatting?.styleId;
   const styleName = styleId ? styleResolver?.getStyle(styleId)?.name : undefined;
@@ -1002,7 +1029,7 @@ function paragraphFormattingToAttrs(
 
   // If we have a style resolver, resolve the style and get base properties.
   // Cell paragraphs (`tableParagraphOverlay` set) layer the enclosing table
-  // style's paragraph-spacing fields in between docDefaults and this
+  // style's modeled paragraph fields in between docDefaults and this
   // paragraph's own style chain — see resolveParagraphStyleInTable.
   let stylePpr: Paragraph["formatting"] | undefined;
   if (styleResolver) {
@@ -1179,7 +1206,13 @@ function paragraphFormattingToAttrs(
     attrs._autospacingBase = base;
   }
 
-  return attrs;
+  return {
+    attrs,
+    effectiveFrame:
+      formatting?.frame === undefined
+        ? stylePpr?.frame
+        : { ...stylePpr?.frame, ...formatting.frame },
+  };
 }
 
 // ============================================================================
@@ -1188,9 +1221,8 @@ function paragraphFormattingToAttrs(
 
 /**
  * A table style's (or one of its `w:tblStylePr` conditional regions')
- * contribution to cell formatting: cell properties, run defaults, and — for
- * the table-row-height fix — the paragraph-spacing overlay described on
- * {@link TableCellParagraphSpacingOverlay}.
+ * contribution to cell formatting: cell properties, run defaults, and the
+ * modeled paragraph overlay described on {@link TableCellParagraphSpacingOverlay}.
  */
 type TableConditionalStyle = {
   tcPr?: TableCellFormatting;
@@ -1199,12 +1231,10 @@ type TableConditionalStyle = {
 };
 
 /**
- * Pick the paragraph-spacing fields out of a table style's (or conditional
- * region's) `w:pPr` for use as the cell-paragraph cascade overlay. Narrower
- * than the full `ParagraphFormatting` bag — see
- * {@link TableCellParagraphSpacingOverlay}.
+ * Pick the modeled paragraph fields out of a table style's (or conditional
+ * region's) `w:pPr` for use as the cell-paragraph cascade overlay.
  */
-function extractTableParagraphSpacingOverlay(
+function extractTableParagraphOverlay(
   pPr: ParagraphFormatting | undefined,
 ): TableCellParagraphSpacingOverlay | undefined {
   if (!pPr) {
@@ -1225,6 +1255,9 @@ function extractTableParagraphSpacingOverlay(
   }
   if (pPr.contextualSpacing !== undefined) {
     overlay.contextualSpacing = pPr.contextualSpacing;
+  }
+  if (pPr.frame !== undefined) {
+    overlay.frame = pPr.frame;
   }
   return Object.keys(overlay).length > 0 ? overlay : undefined;
 }
@@ -1258,7 +1291,7 @@ function resolveTableStyleConditional(
     ? resolveRunFormattingWithoutDefaults(conditional.rPr, styleResolver)
     : undefined;
   const mergedRunProps = mergeTextFormatting(runPropsFromPpr, resolvedRpr);
-  const paragraphSpacingOverlay = extractTableParagraphSpacingOverlay(conditional.pPr);
+  const paragraphOverlay = extractTableParagraphOverlay(conditional.pPr);
 
   const result: TableConditionalStyle = {};
   if (conditional.tcPr) {
@@ -1267,8 +1300,8 @@ function resolveTableStyleConditional(
   if (mergedRunProps) {
     result.rPr = mergedRunProps;
   }
-  if (paragraphSpacingOverlay) {
-    result.pPr = paragraphSpacingOverlay;
+  if (paragraphOverlay) {
+    result.pPr = paragraphOverlay;
   }
   return result;
 }
@@ -1293,7 +1326,7 @@ function resolveTableBaseStyle(
     ? resolveRunFormattingWithoutDefaults(style.rPr, styleResolver)
     : undefined;
   const mergedRunProps = mergeTextFormatting(runPropsFromPpr, resolvedRpr);
-  const paragraphSpacingOverlay = extractTableParagraphSpacingOverlay(style.pPr);
+  const paragraphOverlay = extractTableParagraphOverlay(style.pPr);
 
   const result: TableConditionalStyle = {};
   if (style.tcPr) {
@@ -1302,8 +1335,8 @@ function resolveTableBaseStyle(
   if (mergedRunProps) {
     result.rPr = mergedRunProps;
   }
-  if (paragraphSpacingOverlay) {
-    result.pPr = paragraphSpacingOverlay;
+  if (paragraphOverlay) {
+    result.pPr = paragraphOverlay;
   }
   return result.tcPr || result.rPr || result.pPr ? result : undefined;
 }
@@ -1363,7 +1396,7 @@ function mergeConditionalStyles(
 
   // `override` (a more specific conditional region, e.g. firstRow) wins per
   // field over `base` (e.g. the table's wholeTable region or base style),
-  // matching the tcPr/rPr merges above — see extractTableParagraphSpacingOverlay.
+  // matching the tcPr/rPr merges above — see extractTableParagraphOverlay.
   const mergedPPr = mergeParagraphFormatting(base.pPr, override.pPr);
   if (mergedPPr) {
     merged.pPr = mergedPPr;
@@ -1618,6 +1651,7 @@ type TableConversionContext = {
   nextTextBoxGroupId: () => string;
   nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator;
   pairedBookmarkIds: ReadonlySet<number>;
+  pageBreakRunSourceDescendants: PageBreakRunSourceDescendantIndex;
 };
 
 function convertTable(
@@ -1625,6 +1659,16 @@ function convertTable(
   styleResolver: StyleEngine | null,
   context: TableConversionContext,
 ): PMNode {
+  for (const row of table.rows) {
+    for (const cell of row.cells) {
+      assertSourceContainerHasNoPageBreakRun(
+        cell.content,
+        "table-cell",
+        context.pageBreakRunSourceDescendants,
+      );
+    }
+  }
+
   // Calculate rowSpan values from vMerge
   const rowSpanMap = calculateRowSpans(table);
 
@@ -1947,7 +1991,10 @@ function convertTableRow(
   if (effectiveCells.length === 0) {
     const fallback: TableCell = {
       type: "tableCell",
-      content: [{ type: "paragraph", content: [] }],
+      // convertTableCell supplies the PM-required empty paragraph. Keeping
+      // this source-model placeholder empty avoids inventing authored nodes
+      // that cannot belong to the entrypoint's source ownership index.
+      content: [],
     };
     if (totalCols > 1) {
       fallback.formatting = { gridSpan: totalCols };
@@ -2309,6 +2356,8 @@ export function standaloneTableCellToProseMirror(
 ): PMNode {
   const nextTextBoxGroupId = createTextBoxGroupIdFactory();
   const nextHyperlinkInstanceIndex = createHyperlinkInstanceIndexAllocator();
+  const pageBreakRunSourceDescendants = buildPageBreakRunSourceDescendantIndex(cell.content);
+  assertSourceContainerHasNoPageBreakRun(cell.content, "table-cell", pageBreakRunSourceDescendants);
   return convertTableCell({
     cell,
     styleResolver: null,
@@ -2317,6 +2366,7 @@ export function standaloneTableCellToProseMirror(
       nextTextBoxGroupId,
       nextHyperlinkInstanceIndex,
       pairedBookmarkIds: collectPairedBookmarkIds(cell.content),
+      pageBreakRunSourceDescendants,
     },
     isHeader: nodeType === "tableHeader",
     gridWidthPercent: undefined,
@@ -2340,6 +2390,7 @@ type ConvertFieldOptions = {
   getInheritedRunFormatting: RunFormattingResolver;
   styleResolver: StyleEngine | null | undefined;
   nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator;
+  nextPageBreakRunOwnerId: PageBreakRunOwnerIdAllocator;
   textBoxAnchors: ReadonlyMap<Shape, string> | undefined;
 };
 
@@ -2349,6 +2400,7 @@ function convertField(
     getInheritedRunFormatting,
     styleResolver,
     nextHyperlinkInstanceIndex,
+    nextPageBreakRunOwnerId,
     textBoxAnchors,
   }: ConvertFieldOptions,
 ): PMNode | null {
@@ -2357,8 +2409,30 @@ function convertField(
   let fieldFormatting: TextFormatting | undefined;
   let fieldPropertyChanges: readonly RunPropertyChange[] | undefined;
   const inlineNodes: PMNode[] = [];
+  const runHasPageBreak = (run: Run): boolean =>
+    run.content.some((content) => content.type === "break" && content.breakType === "page");
+  if (field.type === "complexField" && field.fieldCode.some(runHasPageBreak)) {
+    throw new UnsupportedDocxToProseMirrorConversionError({
+      message:
+        "A complex-field instruction containing an explicit page break cannot be represented in the editor model",
+      owner: "complex-field-instruction",
+      contentType: "break",
+    });
+  }
+  const hasPageBreakContent =
+    field.type === "simpleField"
+      ? field.content.some((content) =>
+          content.type === "run"
+            ? runHasPageBreak(content)
+            : content.children.some((child) => child.type === "run" && runHasPageBreak(child)),
+        )
+      : field.fieldResult.some(runHasPageBreak);
+  if (hasPageBreakContent) {
+    assertPageBreakFieldResultIsRepresentable(field);
+  }
   const hasStructuredSourceContent =
-    field.type === "simpleField" && field.content.some((content) => content.type === "hyperlink");
+    hasPageBreakContent ||
+    (field.type === "simpleField" && field.content.some((content) => content.type === "hyperlink"));
   const appendRun = (run: Run): void => {
     for (const content of run.content) {
       if (content.type === "text") {
@@ -2375,6 +2449,7 @@ function convertField(
       ...convertRun(
         run,
         getInheritedRunFormatting(run.formatting, field.fieldType),
+        nextPageBreakRunOwnerId,
         styleResolver,
         textBoxAnchors,
       ),
@@ -2404,6 +2479,7 @@ function convertField(
           styleResolver,
           hyperlinkIndex: nextHyperlinkInstanceIndex(),
           textBoxAnchors,
+          nextPageBreakRunOwnerId,
         }),
       );
     }
@@ -2434,8 +2510,11 @@ function convertField(
   const hasConvertedHyperlinkContent = inlineNodes.some((node) =>
     node.marks.some((mark) => mark.type.name === "hyperlink"),
   );
-
-  const createStructuredField = hasStructuredSourceContent && hasConvertedHyperlinkContent;
+  const hasConvertedPageBreakContent = inlineNodes.some(
+    (node) => node.type.name === "pageBreakRun",
+  );
+  const createStructuredField =
+    hasConvertedPageBreakContent || (hasStructuredSourceContent && hasConvertedHyperlinkContent);
   if (!createStructuredField && fieldPropertyChanges && fieldPropertyChanges.length > 0) {
     marks.push(schema.mark("runPropertyChange", { changes: [...fieldPropertyChanges] }));
   }
@@ -2471,6 +2550,7 @@ function convertMathEquation(math: MathEquation): PMNode | null {
 function convertInlineSdt(
   sdt: InlineSdt,
   nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator,
+  nextPageBreakRunOwnerId: PageBreakRunOwnerIdAllocator,
   getInheritedRunFormatting: RunFormattingResolver,
   styleResolver?: StyleEngine | null,
   textBoxAnchors?: ReadonlyMap<Shape, string>,
@@ -2483,6 +2563,7 @@ function convertInlineSdt(
       const runNodes = convertRun(
         content,
         getInheritedRunFormatting(content.formatting),
+        nextPageBreakRunOwnerId,
         styleResolver,
         textBoxAnchors,
       );
@@ -2494,6 +2575,7 @@ function convertInlineSdt(
         styleResolver,
         hyperlinkIndex: currentHyperlinkIndex,
         textBoxAnchors,
+        nextPageBreakRunOwnerId,
       });
       inlineNodes.push(...linkNodes);
     } else if (content.type === "simpleField" || content.type === "complexField") {
@@ -2501,6 +2583,7 @@ function convertInlineSdt(
         getInheritedRunFormatting,
         styleResolver,
         nextHyperlinkInstanceIndex,
+        nextPageBreakRunOwnerId,
         textBoxAnchors,
       });
       if (fieldNode) {
@@ -2510,6 +2593,7 @@ function convertInlineSdt(
       const nestedSdt = convertInlineSdt(
         content,
         nextHyperlinkInstanceIndex,
+        nextPageBreakRunOwnerId,
         getInheritedRunFormatting,
         styleResolver,
         textBoxAnchors,
@@ -2523,6 +2607,7 @@ function convertInlineSdt(
           content,
           "insertion",
           nextHyperlinkInstanceIndex,
+          nextPageBreakRunOwnerId,
           getInheritedRunFormatting,
           styleResolver,
           null,
@@ -2535,6 +2620,7 @@ function convertInlineSdt(
           content,
           "deletion",
           nextHyperlinkInstanceIndex,
+          nextPageBreakRunOwnerId,
           getInheritedRunFormatting,
           styleResolver,
           null,
@@ -2547,6 +2633,7 @@ function convertInlineSdt(
           content,
           "insertion",
           nextHyperlinkInstanceIndex,
+          nextPageBreakRunOwnerId,
           getInheritedRunFormatting,
           styleResolver,
           "moveTo",
@@ -2559,6 +2646,7 @@ function convertInlineSdt(
           content,
           "deletion",
           nextHyperlinkInstanceIndex,
+          nextPageBreakRunOwnerId,
           getInheritedRunFormatting,
           styleResolver,
           "moveFrom",
@@ -2591,9 +2679,11 @@ function convertInlineSdt(
 function convertRun(
   run: Run,
   resolvedStyleFormatting: ResolvedRunFormatting,
+  nextPageBreakRunOwnerId: PageBreakRunOwnerIdAllocator,
   styleResolver?: StyleEngine | null,
   textBoxAnchors?: ReadonlyMap<Shape, string>,
 ): PMNode[] {
+  assertPageBreakSourceRunIsRepresentable(run);
   const nodes: PMNode[] = [];
   const { marks, mergedFormatting } = buildRunMarks(
     run.formatting,
@@ -2603,6 +2693,9 @@ function convertRun(
   if (run.propertyChanges && run.propertyChanges.length > 0) {
     marks.push(schema.mark("runPropertyChange", { changes: [...run.propertyChanges] }));
   }
+  if (run.content.some((content) => content.type === "break" && content.breakType === "page")) {
+    marks.push(schema.mark("pageBreakRunOwner", { id: nextPageBreakRunOwnerId() }));
+  }
 
   for (const content of run.content) {
     const contentNodes = convertRunContent(content, marks, mergedFormatting, textBoxAnchors);
@@ -2610,6 +2703,163 @@ function convertRun(
   }
 
   return nodes;
+}
+
+function assertPageBreakSourceRunIsRepresentable(run: Run): void {
+  const hasPageBreak = run.content.some(
+    (content) => content.type === "break" && content.breakType === "page",
+  );
+  if (!hasPageBreak) {
+    return;
+  }
+
+  assertRunContentIsRepresentableBesidePageBreak(run, "page-break-bearing-run");
+}
+
+const PAGE_BREAK_CONTAINER_DESCRIPTIONS = {
+  "table-cell": "A table cell containing an explicit page break",
+  "text-box": "A text box containing an explicit page break",
+} as const satisfies Record<"table-cell" | "text-box", string>;
+
+type PageBreakContainerOwner = keyof typeof PAGE_BREAK_CONTAINER_DESCRIPTIONS;
+
+const PAGE_BREAK_PARAGRAPH_OWNERS = {
+  borders: "paragraph-borders",
+  frame: "paragraph-frame",
+  outline: "paragraph-outline",
+  textBoxAnchor: "paragraph-text-box-anchor",
+} as const satisfies Record<
+  PageBreakRunParagraphProjectionReason,
+  Extract<
+    UnsupportedDocxToProseMirrorOwner,
+    "paragraph-borders" | "paragraph-frame" | "paragraph-outline" | "paragraph-text-box-anchor"
+  >
+>;
+
+function assertSourceContainerHasNoPageBreakRun(
+  content: BlockContent[],
+  owner: PageBreakContainerOwner,
+  sourceDescendants: PageBreakRunSourceDescendantIndex,
+): void {
+  if (!sourceDescendants.containsPageBreakRun(content)) {
+    return;
+  }
+  throw new UnsupportedDocxToProseMirrorConversionError({
+    message: `${PAGE_BREAK_CONTAINER_DESCRIPTIONS[owner]} cannot be represented in the editor model`,
+    owner,
+    contentType: "break",
+  });
+}
+
+type ParagraphPageBreakProjectionOptions = {
+  paragraph: Paragraph;
+  attrs: ParagraphAttrs;
+  effectiveFrame: ParagraphFormatting["frame"];
+  sourceDescendants: PageBreakRunSourceDescendantIndex;
+};
+
+function assertParagraphPageBreakCanBeProjected({
+  paragraph,
+  attrs,
+  effectiveFrame,
+  sourceDescendants,
+}: ParagraphPageBreakProjectionOptions): void {
+  const sourceFeatures = sourceDescendants.paragraphFeatures(paragraph);
+  if (!sourceFeatures.hasPageBreakRun) {
+    return;
+  }
+
+  const disposition = pageBreakRunParagraphProjectionDispositionForFeatures({
+    attrs,
+    effectiveFrame,
+    // A shape sharing the page-break-bearing run or field result has a more
+    // specific typed refusal; preserve that content-owner diagnostic.
+    hasTextBoxAnchor: sourceFeatures.hasTextBoxShape && !sourceFeatures.pageBreakSharesTextBoxShape,
+  });
+  if (disposition.status === "supported") {
+    return;
+  }
+  throw new UnsupportedDocxToProseMirrorConversionError({
+    message: disposition.message,
+    owner: PAGE_BREAK_PARAGRAPH_OWNERS[disposition.reason],
+    contentType: "break",
+  });
+}
+
+function assertPageBreakFieldResultIsRepresentable(field: SimpleField | ComplexField): void {
+  if (field.type === "complexField") {
+    for (const run of field.fieldResult) {
+      assertRunContentIsRepresentableBesidePageBreak(run, "field-result");
+    }
+    return;
+  }
+
+  for (const content of field.content) {
+    if (content.type === "run") {
+      assertRunContentIsRepresentableBesidePageBreak(content, "field-result");
+      continue;
+    }
+    for (const child of content.children) {
+      if (child.type === "run") {
+        assertRunContentIsRepresentableBesidePageBreak(child, "field-result");
+      }
+    }
+  }
+}
+
+const PAGE_BREAK_OWNER_DESCRIPTIONS = {
+  "field-result": "A field result with an explicit page break",
+  "page-break-bearing-run": "A page-break-bearing run",
+} as const satisfies Record<
+  Extract<UnsupportedDocxToProseMirrorOwner, "field-result" | "page-break-bearing-run">,
+  string
+>;
+
+type PageBreakContentOwner = keyof typeof PAGE_BREAK_OWNER_DESCRIPTIONS;
+
+const unsupportedPageBreakContent = (
+  owner: PageBreakContentOwner,
+  contentType: RunContent["type"],
+): never => {
+  const description = contentType === "shape" ? "a text-box shape" : contentType;
+  throw new UnsupportedDocxToProseMirrorConversionError({
+    message: `${PAGE_BREAK_OWNER_DESCRIPTIONS[owner]} containing ${description} cannot be represented in the editor model`,
+    owner,
+    contentType,
+  });
+};
+
+function assertRunContentIsRepresentableBesidePageBreak(
+  run: Run,
+  owner: PageBreakContentOwner,
+): void {
+  for (const content of run.content) {
+    switch (content.type) {
+      case "break":
+      case "drawing":
+      case "endnoteRef":
+      case "footnoteRef":
+      case "renderedPageBreak":
+      case "symbol":
+      case "tab":
+      case "text":
+        continue;
+      case "shape":
+        if (content.shape.textBody) {
+          unsupportedPageBreakContent(owner, content.type);
+        }
+        continue;
+      case "fieldChar":
+      case "instrText":
+      case "noBreakHyphen":
+      case "softHyphen":
+        return unsupportedPageBreakContent(owner, content.type);
+      default: {
+        const unsupported: never = content;
+        panic(`Unsupported page-break-bearing run content: ${JSON.stringify(unsupported)}`);
+      }
+    }
+  }
 }
 
 /**
@@ -3064,13 +3314,27 @@ function convertRunContent(
 
     case "break":
       if (content.breakType === "textWrapping" || !content.breakType) {
-        return [schema.node("hardBreak").mark(marks)];
+        const attrs = {
+          ...(content.breakType !== undefined ? { breakType: content.breakType } : {}),
+          ...(content.clear !== undefined ? { clear: content.clear } : {}),
+        };
+        return [schema.node("hardBreak", attrs).mark(marks)];
       }
       if (content.breakType === "column") {
-        return [schema.node("hardBreak", { breakType: "column" }).mark(marks)];
+        return [
+          schema
+            .node("hardBreak", {
+              breakType: "column",
+              ...(content.clear !== undefined ? { clear: content.clear } : {}),
+            })
+            .mark(marks),
+        ];
       }
-      // Page breaks are represented as block separators by paragraphPageBreakPosition.
-      return [];
+      return [
+        schema
+          .node("pageBreakRun", content.clear === undefined ? undefined : { clear: content.clear })
+          .mark(marks),
+      ];
 
     case "renderedPageBreak":
       return [schema.node("renderedPageBreak").mark(marks)];
@@ -3086,7 +3350,7 @@ function convertRunContent(
 
     case "drawing":
       return [
-        withHyperlinkBoundaryMarks(
+        withRunBoundaryMarks(
           convertImage({
             image: content.image,
             rawXml: content.rawXml,
@@ -3104,7 +3368,7 @@ function convertRunContent(
         const anchorId = textBoxAnchors?.get(shp);
         return anchorId ? [schema.node("textBoxAnchor", { anchorId }).mark(marks)] : [];
       }
-      return [withHyperlinkBoundaryMarks(convertShape(shp), marks)];
+      return [withRunBoundaryMarks(convertShape(shp), marks)];
     }
 
     case "footnoteRef": {
@@ -3150,8 +3414,11 @@ function convertRunContent(
   }
 }
 
-function withHyperlinkBoundaryMarks(node: PMNode, marks: ReturnType<typeof schema.mark>[]): PMNode {
-  if (!marks.some((mark) => mark.type.name === "hyperlink")) {
+function withRunBoundaryMarks(node: PMNode, marks: ReturnType<typeof schema.mark>[]): PMNode {
+  const ownsWrapperOrSourceRun = marks.some(
+    ({ type }) => type.name === "hyperlink" || type.name === "pageBreakRunOwner",
+  );
+  if (!ownsWrapperOrSourceRun) {
     return node;
   }
 
@@ -3392,6 +3659,7 @@ type ConvertHyperlinkOptions = {
   styleResolver: StyleEngine | null | undefined;
   hyperlinkIndex: number;
   textBoxAnchors: ReadonlyMap<Shape, string> | undefined;
+  nextPageBreakRunOwnerId: PageBreakRunOwnerIdAllocator;
 };
 
 function convertHyperlink(
@@ -3401,6 +3669,7 @@ function convertHyperlink(
     styleResolver,
     hyperlinkIndex,
     textBoxAnchors,
+    nextPageBreakRunOwnerId,
   }: ConvertHyperlinkOptions,
 ): PMNode[] {
   const nodes: PMNode[] = [];
@@ -3439,6 +3708,7 @@ function convertHyperlink(
       continue;
     }
     if (child.type === "run") {
+      assertPageBreakSourceRunIsRepresentable(child);
       // Merge style formatting with run's inline formatting
       const inheritedFormatting = getInheritedRunFormatting(child.formatting);
       const { marks: runMarks, mergedFormatting } = buildRunMarks(
@@ -3446,11 +3716,16 @@ function convertHyperlink(
         inheritedFormatting,
         styleResolver,
       );
+      if (child.propertyChanges && child.propertyChanges.length > 0) {
+        runMarks.push(schema.mark("runPropertyChange", { changes: [...child.propertyChanges] }));
+      }
+      if (
+        child.content.some((content) => content.type === "break" && content.breakType === "page")
+      ) {
+        runMarks.push(schema.mark("pageBreakRunOwner", { id: nextPageBreakRunOwnerId() }));
+      }
       // Add link mark to run marks
       const allMarks = [...runMarks, linkMark];
-      if (child.propertyChanges && child.propertyChanges.length > 0) {
-        allMarks.push(schema.mark("runPropertyChange", { changes: [...child.propertyChanges] }));
-      }
 
       // Delegate to convertRunContent so tabs/breaks/fields/symbols inside
       // a hyperlink round-trip (eigenpal #566). The earlier text-only loop
@@ -3852,8 +4127,7 @@ function convertParagraphWithTextBoxes(
   const pmParagraph = convertParagraph(
     block,
     styleResolver,
-    context.nextHyperlinkInstanceIndex,
-    context.pairedBookmarkIds,
+    context,
     undefined,
     extraRunFormatting,
     tableParagraphOverlay,
@@ -4129,6 +4403,12 @@ function convertTextBox(
     inlineSdts: NonNullable<TextBoxAttrs["_docxInlineSdts"]>;
   },
 ): PMNode {
+  assertSourceContainerHasNoPageBreakRun(
+    textBox.content,
+    "text-box",
+    options.context.pageBreakRunSourceDescendants,
+  );
+
   const textBoxData: { size?: Partial<TextBox["size"]> } = textBox;
   const textBoxSize = textBoxData.size;
   const widthPx = textBoxSize?.width ? emuToPixels(textBoxSize.width) : 200;
@@ -4307,6 +4587,7 @@ export function headerFooterToProseDoc(
     nextTextBoxGroupId,
     nextHyperlinkInstanceIndex,
     pairedBookmarkIds,
+    pageBreakRunSourceDescendants: buildPageBreakRunSourceDescendantIndex(content),
   };
 
   const convertBlocks = (blocks: BlockContent[]): PMNode[] => {
@@ -4363,225 +4644,6 @@ export function headerFooterToProseDoc(
 
 export function footnoteToProseDoc(content: BlockContent[], options?: ToProseDocOptions): PMNode {
   return headerFooterToProseDoc(content, options);
-}
-
-/**
- * Determine where a page break appears inside a paragraph.
- *
- * Per ECMA-376 §17.3.3.1, `<w:br w:type="page"/>` is always a forced break,
- * including in a paragraph whose only content is the break itself. We previously
- * searched only top-level runs and missed breaks nested in hyperlinks, tracked
- * changes, or fields — so those paragraphs silently dropped their forced break
- * and the following content collapsed onto the previous page (common on legal
- * signature pages and exhibit covers).
- * See eigenpal docx-editor #409 (break-only page break sub-fix).
- *
- * Returns:
- *   "before" — the break appears before any visible content; the paragraph's
- *              content belongs on the NEXT page.
- *   "after"  — the break follows some visible content; the paragraph stays
- *              on the current page and the next block starts a new page.
- *   null     — no page break found.
- */
-function paragraphPageBreakPosition(paragraph: Paragraph): "before" | "after" | null {
-  if (!mayContainPageBreak(paragraph)) {
-    return null;
-  }
-
-  return findParagraphPageBreakPosition(paragraph);
-}
-
-function mayContainPageBreak(paragraph: Paragraph): boolean {
-  for (const item of paragraph.content) {
-    if (item.type === "run") {
-      for (const content of item.content) {
-        if (content.type === "break" && content.breakType === "page") {
-          return true;
-        }
-      }
-      continue;
-    }
-
-    if (
-      item.type === "hyperlink" ||
-      item.type === "simpleField" ||
-      item.type === "complexField" ||
-      item.type === "inlineSdt" ||
-      item.type === "insertion" ||
-      item.type === "deletion" ||
-      item.type === "moveFrom" ||
-      item.type === "moveTo"
-    ) {
-      return true;
-    }
-
-    if (
-      item.type === "bookmarkStart" ||
-      item.type === "bookmarkEnd" ||
-      item.type === "commentRangeStart" ||
-      item.type === "commentRangeEnd" ||
-      item.type === "commentReference" ||
-      item.type === "moveFromRangeStart" ||
-      item.type === "moveFromRangeEnd" ||
-      item.type === "moveToRangeStart" ||
-      item.type === "moveToRangeEnd" ||
-      item.type === "mathEquation"
-    ) {
-      continue;
-    }
-
-    item satisfies never;
-  }
-  return false;
-}
-
-function findParagraphPageBreakPosition(paragraph: Paragraph): "before" | "after" | null {
-  // Mutated by visitRun during traversal. oxlint flow analysis can't see
-  // closure mutations, so a plain `let` here trips no-unnecessary-condition;
-  // wrap in an object to keep the flag genuinely opaque to the linter.
-  const state = { seenVisibleContent: false };
-
-  function isPageBreak(content: RunContent): boolean {
-    return content.type === "break" && content.breakType === "page";
-  }
-
-  function isVisibleRunContent(content: RunContent): boolean {
-    return (
-      (content.type === "text" && content.text.length > 0) ||
-      content.type === "tab" ||
-      content.type === "drawing" ||
-      content.type === "shape" ||
-      content.type === "symbol" ||
-      content.type === "fieldChar" ||
-      content.type === "instrText" ||
-      content.type === "footnoteRef" ||
-      content.type === "endnoteRef" ||
-      content.type === "noBreakHyphen" ||
-      content.type === "softHyphen"
-    );
-  }
-
-  function visitRun(run: Run): boolean {
-    for (const content of run.content) {
-      if (isPageBreak(content)) {
-        return true;
-      }
-      if (isVisibleRunContent(content)) {
-        state.seenVisibleContent = true;
-      }
-    }
-    return false;
-  }
-
-  // Walk a hyperlink's children — runs (which may carry the break) plus
-  // bookmark markers we ignore. Mirrors the inner shape of `Hyperlink`.
-  function visitHyperlinkChildren(hyperlink: Hyperlink): boolean {
-    for (const child of hyperlink.children) {
-      if (child.type === "run" && visitRun(child)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  // Walk tracked-wrapper content recursively. We rely on visitRun to set
-  // state.seenVisibleContent when (and only when) it encounters visible run
-  // content; an empty wrapper must not be treated as visible — an empty
-  // bookmark-only hyperlink before a page break should still classify the
-  // break as "before".
-  function visitRunOrHyperlinkList(children: readonly TrackedRunContent[]): boolean {
-    for (const child of children) {
-      if (child.type === "run" && visitRun(child)) {
-        return true;
-      }
-      if (child.type === "hyperlink" && visitHyperlinkChildren(child)) {
-        return true;
-      }
-      if (child.type === "simpleField") {
-        for (const fieldChild of child.content) {
-          if (fieldChild.type === "run" && visitRun(fieldChild)) {
-            return true;
-          }
-          if (fieldChild.type === "hyperlink" && visitHyperlinkChildren(fieldChild)) {
-            return true;
-          }
-        }
-      }
-      if (child.type === "complexField") {
-        for (const run of child.fieldCode) {
-          if (visitRun(run)) {
-            return true;
-          }
-        }
-        for (const run of child.fieldResult) {
-          if (visitRun(run)) {
-            return true;
-          }
-        }
-      }
-      if (
-        (child.type === "insertion" ||
-          child.type === "deletion" ||
-          child.type === "moveFrom" ||
-          child.type === "moveTo") &&
-        visitRunOrHyperlinkList(child.content)
-      ) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  function visitItem(item: Paragraph["content"][number]): boolean {
-    if (item.type === "run") {
-      return visitRun(item);
-    }
-    if (item.type === "hyperlink") {
-      return visitHyperlinkChildren(item);
-    }
-    if (
-      item.type === "insertion" ||
-      item.type === "deletion" ||
-      item.type === "moveFrom" ||
-      item.type === "moveTo"
-    ) {
-      return visitRunOrHyperlinkList(item.content);
-    }
-    if (item.type === "simpleField") {
-      return visitRunOrHyperlinkList(item.content);
-    }
-    if (item.type === "complexField") {
-      for (const run of item.fieldResult) {
-        if (visitRun(run)) {
-          return true;
-        }
-      }
-      return false;
-    }
-    if (item.type === "inlineSdt") {
-      // SDT.content was widened in PR #508 to carry fields/math/nested SDTs;
-      // recurse via visitItem so each child uses its own visibility rule.
-      for (const child of item.content) {
-        if (visitItem(child)) {
-          return true;
-        }
-      }
-      return false;
-    }
-    if (item.type === "mathEquation") {
-      // OMML math is a visible inline node and cannot itself contain w:br.
-      state.seenVisibleContent = true;
-      return false;
-    }
-    return false;
-  }
-
-  for (const item of paragraph.content) {
-    if (visitItem(item)) {
-      return state.seenVisibleContent ? "after" : "before";
-    }
-  }
-  return null;
 }
 
 /**

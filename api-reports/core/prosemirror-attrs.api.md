@@ -56,6 +56,12 @@ export const expectLanguageMarkAttrs: (mark: Mark) => LanguageAttrs;
 export const expectMathAttrs: (node: Node_2) => MathAttrs;
 
 // @public (undocumented)
+export const expectPageBreakRunAttrs: (node: Node_2) => PageBreakRunAttrs;
+
+// @public (undocumented)
+export const expectPageBreakRunOwnerMarkAttrs: (mark: Mark) => PageBreakRunOwnerMarkAttrs;
+
+// @public (undocumented)
 export const expectParagraphAttrs: (node: Node_2) => ParagraphAttrs;
 
 // @public (undocumented)
@@ -171,6 +177,12 @@ export const readLanguageMarkAttrs: (mark: Mark) => ReadProseMirrorAttrsResult<L
 
 // @public (undocumented)
 export const readMathAttrs: (node: Node_2) => ReadProseMirrorAttrsResult<MathAttrs>;
+
+// @public (undocumented)
+export const readPageBreakRunAttrs: (node: Node_2) => ReadProseMirrorAttrsResult<PageBreakRunAttrs>;
+
+// @public (undocumented)
+export const readPageBreakRunOwnerMarkAttrs: (mark: Mark) => ReadProseMirrorAttrsResult<PageBreakRunOwnerMarkAttrs>;
 
 // @public (undocumented)
 export const readParagraphAttrs: (node: Node_2) => ReadProseMirrorAttrsResult<ParagraphAttrs>;

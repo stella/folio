@@ -823,6 +823,13 @@ export type PageHeaderFooterRefs = {
 export type PageBreakBlock = {
   kind: "pageBreak";
   id: BlockId;
+  /** Revision metadata when the structural boundary is newly authored. */
+  isInsertion?: boolean;
+  changeAuthor?: string;
+  changeDate?: string;
+  changeRevisionId?: number;
+  isSuggestion?: boolean;
+  suggestionId?: string;
   pmStart?: number;
   pmEnd?: number;
 };

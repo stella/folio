@@ -850,7 +850,7 @@ function getRunText(run: Run): string {
         return "\t";
       }
       if (content.type === "break") {
-        return content.breakType === "textWrapping" ? "\n" : "";
+        return content.breakType === undefined || content.breakType === "textWrapping" ? "\n" : "";
       }
       return "";
     })

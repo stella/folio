@@ -30,6 +30,7 @@ type AtomFixture = {
   name: string;
   content: RunContent;
   xmlTag: "br" | "tab";
+  xmlAttribute?: string;
 };
 
 const ATOM_FIXTURES = [
@@ -37,6 +38,12 @@ const ATOM_FIXTURES = [
     name: "hard break",
     content: { type: "break", breakType: "textWrapping" },
     xmlTag: "br",
+  },
+  {
+    name: "page break",
+    content: { type: "break", breakType: "page" },
+    xmlTag: "br",
+    xmlAttribute: 'w:type="page"',
   },
   {
     name: "tab",
@@ -147,16 +154,20 @@ describe("tracked run inline atom ownership", () => {
       expect(schema.nodes[name].allowsMarkType(schema.marks["deletion"]!)).toBe(false);
     }
     expect(TRACKED_RUN_INLINE_ATOM_DISPOSITIONS.field).toBe("field-carrier");
+    expect(TRACKED_RUN_INLINE_ATOM_DISPOSITIONS.pageBreakRun).toBe("page-break-carrier");
     expect(schema.nodes["field"]!.allowsMarkType(schema.marks["insertion"]!)).toBe(false);
     expect(schema.nodes["field"]!.allowsMarkType(schema.marks["deletion"]!)).toBe(false);
   });
 
-  for (const { name, content, xmlTag } of ATOM_FIXTURES) {
+  for (const { name, content, xmlTag, xmlAttribute } of ATOM_FIXTURES) {
     test(`accepts and rejects a formatted tracked ${name} after serialize and reopen`, async () => {
       for (const type of ["insertion", "deletion"] as const) {
         const pending = await createDocx(reviewedAtomDocument(content, type));
         const pendingXml = await documentXml(pending);
         expect(elementCount(pendingXml, xmlTag)).toBe(1);
+        if (xmlAttribute) {
+          expect(pendingXml).toContain(xmlAttribute);
+        }
         expect(pendingXml).toContain(`<w:${type === "insertion" ? "ins" : "del"} `);
         expect(hasUnderline(pendingXml)).toBe(true);
 
@@ -173,6 +184,9 @@ describe("tracked run inline atom ownership", () => {
         const pendingXml = await documentXml(pending);
 
         expect(elementCount(pendingXml, xmlTag)).toBe(1);
+        if (xmlAttribute) {
+          expect(pendingXml).toContain(xmlAttribute);
+        }
         expect(pendingXml).toContain(`<w:${type === "insertion" ? "ins" : "del"} `);
 
         const reopened = await FolioDocxReviewer.fromBuffer(pending);
@@ -189,6 +203,9 @@ describe("tracked run inline atom ownership", () => {
         expect(reviewer.getChanges()).toHaveLength(0);
         const savedXml = await documentXml(await reviewer.toBuffer());
         expect(elementCount(savedXml, xmlTag)).toBe(1);
+        if (xmlAttribute) {
+          expect(savedXml).toContain(xmlAttribute);
+        }
         expect(hasUnderline(savedXml)).toBe(formatting !== undefined);
         expect(savedXml).not.toMatch(/<w:(?:ins|del)\b/u);
       }

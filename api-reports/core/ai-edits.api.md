@@ -121,6 +121,7 @@ export type FolioAIBlock = {
     directSpacing?: FolioAIParagraphSpacing;
     listLevel?: number;
     previewRuns?: FolioAIBlockPreviewRun[];
+    structuralBoundaries?: readonly FolioAIBlockStructuralBoundary[];
     table?: FolioAIBlockTableLocation;
 };
 
@@ -132,6 +133,7 @@ export type FolioAIBlockAnchor = {
     text: string;
     normalizedText: string;
     textHash: string;
+    structuralBoundaryHash: string;
     hashOccurrenceCount: number;
 };
 
@@ -149,6 +151,13 @@ export type FolioAIBlockPreviewRun = {
     fontSizePt?: number;
     color?: string;
     directFormatting?: FolioAIInlineFormatting;
+};
+
+// @public
+export type FolioAIBlockStructuralBoundary = {
+    type: "pageBreak";
+    offset: number;
+    clear?: import__stll_docx_core_model.BreakContent["clear"];
 };
 
 // @public
