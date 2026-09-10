@@ -6,12 +6,12 @@
  * the same way in the generated tracked changes and in the change list.
  */
 
-import type {
-  FolioAIBlock,
-  FolioAIBlockPreviewRun,
-  FolioAIInlineFormattingPatch,
-} from "../ai-edits/types";
 import { resolveColorToHex } from "../utils/colorResolver";
+import type {
+  FolioContentBlock,
+  FolioContentInlineFormattingPatch,
+  FolioContentRun,
+} from "./content-types";
 
 const normalizeInlineFormattingColor = (color: string | undefined): string | undefined =>
   resolveColorToHex(color === undefined ? undefined : { rgb: color }, null);
@@ -46,16 +46,16 @@ export type InlineFormattingSegment = {
   startOffset: number;
   endOffset: number;
   /** Differing properties set to the target value; null removes a direct property. */
-  formatting: FolioAIInlineFormattingPatch;
+  formatting: FolioContentInlineFormattingPatch;
 };
 
 const changedSupportedFormatting = (
-  base: FolioAIBlockPreviewRun,
-  target: FolioAIBlockPreviewRun,
-): FolioAIInlineFormattingPatch => {
+  base: FolioContentRun,
+  target: FolioContentRun,
+): FolioContentInlineFormattingPatch => {
   const baseDirect = base.directFormatting ?? {};
   const targetDirect = target.directFormatting ?? {};
-  const formatting: FolioAIInlineFormattingPatch = {};
+  const formatting: FolioContentInlineFormattingPatch = {};
 
   const changedBoolean = (property: "bold" | "italic" | "underline" | "strike") => {
     if (baseDirect[property] !== targetDirect[property]) {
@@ -106,8 +106,8 @@ const changedSupportedFormatting = (
 };
 
 const sameInlineFormatting = (
-  left: FolioAIInlineFormattingPatch,
-  right: FolioAIInlineFormattingPatch,
+  left: FolioContentInlineFormattingPatch,
+  right: FolioContentInlineFormattingPatch,
 ): boolean =>
   left.bold === right.bold &&
   left.italic === right.italic &&
@@ -117,7 +117,7 @@ const sameInlineFormatting = (
   left.fontSizePt === right.fontSizePt &&
   left.color === right.color;
 
-const hasInlineFormatting = (formatting: FolioAIInlineFormattingPatch): boolean =>
+const hasInlineFormatting = (formatting: FolioContentInlineFormattingPatch): boolean =>
   formatting.bold !== undefined ||
   formatting.italic !== undefined ||
   formatting.underline !== undefined ||
@@ -132,14 +132,14 @@ const hasInlineFormatting = (formatting: FolioAIInlineFormattingPatch): boolean 
  * shorter than the block text; attributing formatting by offset would then
  * point at the wrong characters, so the caller must back off instead.
  */
-const previewRunsForBlock = (block: FolioAIBlock): readonly FolioAIBlockPreviewRun[] | null => {
+const previewRunsForBlock = (block: FolioContentBlock): readonly FolioContentRun[] | null => {
   const runs = block.previewRuns ?? [{ text: block.text }];
   return runs.map(({ text }) => text).join("") === block.text ? runs : null;
 };
 
 type InlineFormattingSegmentsOptions = {
-  baseBlock: FolioAIBlock;
-  targetBlock: FolioAIBlock;
+  baseBlock: FolioContentBlock;
+  targetBlock: FolioContentBlock;
   /** Refuse (return `null`) rather than build more segments than this. */
   maxSegments: number;
 };
