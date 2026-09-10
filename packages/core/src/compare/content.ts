@@ -718,9 +718,14 @@ type MovePair<Block extends FolioContentBlock> = {
   revisedBlock: Block;
 };
 
-type MoveCandidateQueue<Block extends FolioContentBlock> = {
-  blocks: Block[];
-  head: number;
+const contentBlocksCanMoveTogether = (
+  baseBlock: FolioContentBlock,
+  revisedBlock: FolioContentBlock,
+): boolean => {
+  if (baseBlock.table === undefined && revisedBlock.table === undefined) {
+    return true;
+  }
+  return contentBlocksShareContainer(baseBlock, revisedBlock);
 };
 
 export const detectFolioContentMoves = <Block extends FolioContentBlock>({
@@ -737,7 +742,7 @@ export const detectFolioContentMoves = <Block extends FolioContentBlock>({
   const baseOnly: Block[] = [];
   const stableBaseById = new Map<string, Block>();
   const profiles = new Map<string, TokenProfile>();
-  const candidatesByText = new Map<string, MoveCandidateQueue<Block>>();
+  const candidatesByText = new Map<string, Block[]>();
   for (const [index, step] of steps.entries()) {
     if (consumedStepIndexes.has(index) || step.type !== "baseOnly") continue;
     if (idStability(step.block) === "stable") {
@@ -749,35 +754,62 @@ export const detectFolioContentMoves = <Block extends FolioContentBlock>({
     profiles.set(step.block.id, profile);
     const queue = candidatesByText.get(step.block.text);
     if (!queue) {
-      candidatesByText.set(step.block.text, { blocks: [step.block], head: 0 });
-    } else if (queue.blocks.length < MAX_MOVE_CANDIDATES_PER_TEXT) {
-      queue.blocks.push(step.block);
+      candidatesByText.set(step.block.text, [step.block]);
+    } else if (queue.length < MAX_MOVE_CANDIDATES_PER_TEXT) {
+      queue.push(step.block);
     }
   }
 
   const taken = new Set<string>();
+  const takenRevised = new Set<string>();
   const moves: MovePair<Block>[] = [];
+
+  // Stable identity is stronger than either text heuristic. Claim every such
+  // counterpart before walking revised blocks in order, so an earlier
+  // positional candidate cannot steal its source through equal or similar text.
   for (const [index, step] of steps.entries()) {
     if (consumedStepIndexes.has(index) || step.type !== "revisedOnly") continue;
     const stable =
       idStability(step.block) === "stable" ? stableBaseById.get(step.block.id) : undefined;
-    if (stable && !taken.has(stable.id)) {
-      taken.add(stable.id);
+    if (!stable || taken.has(stable.id)) continue;
+    taken.add(stable.id);
+    takenRevised.add(step.block.id);
+    if (contentBlocksCanMoveTogether(stable, step.block)) {
       moves.push({ baseBlock: stable, revisedBlock: step.block });
+    }
+  }
+
+  // Exact text wins over edited similarity across the whole stream for the
+  // same reason: a merely similar earlier candidate must not consume the only
+  // exact source of a later one.
+  for (const [index, step] of steps.entries()) {
+    if (
+      consumedStepIndexes.has(index) ||
+      step.type !== "revisedOnly" ||
+      takenRevised.has(step.block.id)
+    ) {
       continue;
     }
     const exactQueue = candidatesByText.get(step.block.text);
-    let exact: Block | undefined;
-    while (!exact && exactQueue && exactQueue.head < exactQueue.blocks.length) {
-      const candidate = exactQueue.blocks[exactQueue.head++];
-      if (candidate && !taken.has(candidate.id)) exact = candidate;
-    }
+    const exact = exactQueue?.find(
+      (candidate) =>
+        !taken.has(candidate.id) && contentBlocksCanMoveTogether(candidate, step.block),
+    );
     if (exact) {
       taken.add(exact.id);
+      takenRevised.add(step.block.id);
       moves.push({ baseBlock: exact, revisedBlock: step.block });
+    }
+  }
+
+  for (const [index, step] of steps.entries()) {
+    if (
+      consumedStepIndexes.has(index) ||
+      step.type !== "revisedOnly" ||
+      takenRevised.has(step.block.id)
+    ) {
       continue;
     }
-
     const revisedProfile = tokenProfile(step.block.text);
     if (!revisedProfile) continue;
     let best: { block: Block; similarity: number } | null = null;
@@ -785,6 +817,7 @@ export const detectFolioContentMoves = <Block extends FolioContentBlock>({
       if (workSession.remainingMoveComparisons <= 0) break;
       if (taken.has(candidate.id)) continue;
       workSession.remainingMoveComparisons--;
+      if (!contentBlocksCanMoveTogether(candidate, step.block)) continue;
       const baseProfile = profiles.get(candidate.id);
       if (!baseProfile) return panic("An eligible move candidate has no token profile");
       const similarity = tokenSimilarity(baseProfile, revisedProfile);
@@ -794,6 +827,7 @@ export const detectFolioContentMoves = <Block extends FolioContentBlock>({
     }
     if (best) {
       taken.add(best.block.id);
+      takenRevised.add(step.block.id);
       moves.push({ baseBlock: best.block, revisedBlock: step.block });
     }
   }
