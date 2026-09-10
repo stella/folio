@@ -646,6 +646,87 @@ describe("representation-neutral comparison stream", () => {
 });
 
 describe("container-aware comparison", () => {
+  test("table-cell coordinates remain authoritative when blocks share outer ancestry", () => {
+    const containerPath = [{ kind: "section", id: "schedule" }] as const;
+    const base = tableBlock({
+      id: "joined",
+      text: "Alpha Beta",
+      rowIndex: 0,
+      cellIndex: 0,
+    });
+    const firstRevised = tableBlock({
+      id: "joined",
+      text: "Alpha",
+      rowIndex: 0,
+      cellIndex: 0,
+    });
+    const secondRevised = tableBlock({
+      id: "separate-cell",
+      text: "Beta",
+      rowIndex: 0,
+      cellIndex: 1,
+    });
+    base.containerPath = containerPath;
+    firstRevised.containerPath = containerPath;
+    secondRevised.containerPath = containerPath;
+
+    const comparison = successfulComparison({
+      base: [base],
+      revised: [firstRevised, secondRevised],
+    });
+
+    expect(eventTypes(comparison)).not.toContain("split");
+    expect(baseProjection(comparison)).toEqual([base]);
+    expect(revisedProjection(comparison)).toEqual([firstRevised, secondRevised]);
+  });
+
+  test("an all-table snapshot preserves an unrepresentable span change", () => {
+    const base = tableBlock({
+      id: "base-cell",
+      text: "Clause",
+      rowIndex: 0,
+      cellIndex: 0,
+    });
+    const revised = tableBlock({
+      id: "revised-cell",
+      text: "Clause",
+      rowIndex: 0,
+      cellIndex: 0,
+      columnSpan: 2,
+    });
+
+    const comparison = successfulComparison({ base: [base], revised: [revised] });
+
+    expect(comparison.events).toEqual([
+      {
+        type: "deleted",
+        baseBlocks: [base],
+        revisedBlocks: [],
+        structuralChangeId: 1,
+      },
+      {
+        type: "inserted",
+        baseBlocks: [],
+        revisedBlocks: [revised],
+        structuralChangeId: 2,
+      },
+    ]);
+    expect(comparison.structuralChanges).toEqual([
+      {
+        id: 1,
+        type: "table-delete",
+        tableIndex: 0,
+        baseBlockIds: ["base-cell"],
+      },
+      {
+        id: 2,
+        type: "table-insert",
+        tableIndex: 0,
+        revisedBlockIds: ["revised-cell"],
+      },
+    ]);
+  });
+
   test("stable identities never pair blocks across table cells", () => {
     const base = [
       tableBlock({ id: "left", text: "Alpha", rowIndex: 0, cellIndex: 0 }),
