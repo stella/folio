@@ -14,12 +14,20 @@ import type {
 
 const HEX_COLOR = /^#?(?:[0-9A-Fa-f]{3}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$/u;
 
-const normalizeInlineFormattingColor = (
-  color: string | null | undefined,
-): string | null | undefined =>
-  typeof color === "string" && HEX_COLOR.test(color)
+const normalizeInlineFormattingColor = (color: string): string =>
+  HEX_COLOR.test(color)
     ? color.replace(/^#/u, "").toUpperCase()
     : color;
+
+const normalizeEffectiveInlineFormattingColor = (
+  color: string | undefined,
+): string | undefined =>
+  color === undefined ? undefined : normalizeInlineFormattingColor(color);
+
+const normalizeDirectInlineFormattingColor = (
+  color: string | null | undefined,
+): string | null | undefined =>
+  color === null || color === undefined ? color : normalizeInlineFormattingColor(color);
 
 const changedStringValue = (
   baseEffective: string | undefined,
@@ -98,10 +106,10 @@ const changedSupportedFormatting = (
   }
 
   const color = changedStringValue(
-    normalizeInlineFormattingColor(base.color),
-    normalizeInlineFormattingColor(target.color),
-    normalizeInlineFormattingColor(baseDirect.color),
-    normalizeInlineFormattingColor(targetDirect.color),
+    normalizeEffectiveInlineFormattingColor(base.color),
+    normalizeEffectiveInlineFormattingColor(target.color),
+    normalizeDirectInlineFormattingColor(baseDirect.color),
+    normalizeDirectInlineFormattingColor(targetDirect.color),
   );
   if (color !== undefined) {
     formatting.color = color;

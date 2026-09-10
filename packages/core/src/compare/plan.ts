@@ -39,6 +39,7 @@ import type { FolioDocumentStoryHandle } from "../ai-edits/headless";
 import { createFolioAITextRangeHandle, trailingBodyBlockId } from "../ai-edits/snapshot";
 import type {
   FolioAIBlock,
+  FolioAIBlockParagraphProperties,
   FolioAIBlockTableLocation,
   FolioAIEditOperation,
   FolioAIEditSnapshot,
@@ -60,6 +61,7 @@ import {
   detectFolioContentMoves,
   detectFolioContentParagraphMarkPlans,
   type FolioContentComparisonWorkSession,
+  type FolioContentParagraphFormattingPatch,
 } from "./content";
 import type { CompareChange, CompareChangeLocation } from "./types";
 
@@ -371,6 +373,16 @@ const buildSteps = ({
 const shareAContainer = (left: FolioAIBlock, right: FolioAIBlock): boolean => {
   return contentBlocksShareContainer(left, right);
 };
+
+/** Narrow the neutral patch to the operation contract without explicit undefined fields. */
+const toFolioAIBlockParagraphProperties = (
+  properties: FolioContentParagraphFormattingPatch,
+): FolioAIBlockParagraphProperties => ({
+  ...(properties.styleId !== undefined && { styleId: properties.styleId }),
+  ...(properties.listLevel !== undefined && { listLevel: properties.listLevel }),
+  ...(properties.alignment !== undefined && { alignment: properties.alignment }),
+  ...(properties.spacing !== undefined && { spacing: properties.spacing }),
+});
 
 /**
  * For each step, the id of the next base block at or after it — the anchor a
@@ -769,9 +781,10 @@ const withTrailingDeletionRules = ({
     // The paragraph the carrier's mark now ends is the target's last one in
     // this container, so the carrier is where its properties have to be.
     const targetCarrier = targetLastByContainer.get(container);
-    const properties =
+    const contentProperties =
       targetCarrier && changedFolioContentParagraphFormatting(carrier, targetCarrier);
-    if (properties) {
+    if (contentProperties) {
+      const properties = toFolioAIBlockParagraphProperties(contentProperties);
       appended.push({
         id: nextOperationId(),
         type: "setBlockParagraphProperties",
@@ -1014,8 +1027,9 @@ export const planStoryCompare = ({
     switch (step.type) {
       case "pair": {
         const { baseBlock, targetBlock } = step;
-        const properties = changedFolioContentParagraphFormatting(baseBlock, targetBlock);
-        if (properties) {
+        const contentProperties = changedFolioContentParagraphFormatting(baseBlock, targetBlock);
+        if (contentProperties) {
+          const properties = toFolioAIBlockParagraphProperties(contentProperties);
           changes.push({
             kind: "paragraph-format",
             location: locationOf(story, baseBlock),
