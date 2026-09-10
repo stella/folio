@@ -806,6 +806,40 @@ describe("representation-neutral comparison stream", () => {
     ]);
   });
 
+  test("an explicit direct-color removal remains distinct from an absent property", () => {
+    const base = contentBlock({
+      id: "clause",
+      text: "Payment",
+      previewRuns: [{ text: "Payment", color: "red", directFormatting: {} }],
+    });
+    const revised = contentBlock({
+      id: "clause",
+      text: "Payment",
+      previewRuns: [
+        { text: "Payment", color: "red", directFormatting: { color: null } },
+      ],
+    });
+
+    const comparison = successfulComparison({ base: [base], revised: [revised] });
+
+    expect(comparison.events).toEqual([
+      {
+        type: "formatting",
+        baseBlocks: [base],
+        revisedBlocks: [revised],
+        formatting: {
+          ranges: [
+            {
+              startOffset: 0,
+              endOffset: 7,
+              formatting: { color: null },
+            },
+          ],
+        },
+      },
+    ]);
+  });
+
   test("text segment offsets use UTF-16 boundaries compatible with string slicing", () => {
     const base = contentBlock({ id: "unicode", text: "A😀B" });
     const revised = contentBlock({ id: "unicode", text: "A😀XB" });
