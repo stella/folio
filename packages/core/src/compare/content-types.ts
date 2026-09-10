@@ -111,7 +111,7 @@ export type FolioContentBlock<Kind extends string = string> = {
   directSpacing?: FolioContentParagraphSpacing;
   /** Zero-based list indent level when the block carries numbering. */
   listLevel?: number;
-  previewRuns?: FolioContentRun[];
+  previewRuns?: readonly FolioContentRun[];
   table?: FolioContentTableLocation;
   /** Structural ancestry, ordered from the outermost to the innermost container. */
   containerPath?: readonly FolioContentContainerPathEntry[];
@@ -121,5 +121,5 @@ export type FolioContentBlock<Kind extends string = string> = {
 export type FolioContentSnapshot<
   Block extends FolioContentBlock = FolioContentBlock,
 > = {
-  blocks: Block[];
+  blocks: readonly Block[];
 };

@@ -31,11 +31,21 @@ import type {
   FolioContentSnapshot,
 } from "./content-types";
 
-/** Maximum blocks accepted on either side of one comparison. */
-export const MAX_FOLIO_CONTENT_BLOCKS = 100_000;
+/** Hard resource ceilings for one representation-neutral comparison. */
+export const FOLIO_CONTENT_COMPARISON_LIMITS = Object.freeze({
+  blocksPerSnapshot: 100_000,
+  changes: 10_000,
+  blockCodeUnits: 1_048_576,
+  textCodeUnitsPerSnapshot: 8_000_000,
+  previewRunsPerBlock: 65_536,
+  previewRunsPerSnapshot: 1_000_000,
+  containerDepth: 64,
+  containerEntriesPerSnapshot: 1_000_000,
+  tokenCodeUnits: 16_384,
+  metadataCodeUnitsPerSnapshot: 8_000_000,
+} as const);
 
-/** Maximum non-unchanged events returned by one comparison. */
-export const MAX_FOLIO_CONTENT_CHANGES = 10_000;
+export type FolioContentComparisonLimit = keyof typeof FOLIO_CONTENT_COMPARISON_LIMITS;
 
 /** Words a one-sided block needs before it may be classified as a move. */
 const MOVE_MINIMUM_WORD_COUNT = 3;
@@ -45,6 +55,9 @@ const MAX_MOVE_CANDIDATES_PER_TEXT = 64;
 
 /** Pairwise comparisons allowed for edited-move discovery. */
 const MAX_MOVE_SIMILARITY_COMPARISONS = 20_000;
+
+/** Map lookups allowed across edited-move similarity scoring. */
+const MAX_MOVE_SIMILARITY_TOKEN_LOOKUPS = 4_000_000;
 
 /** Minimum multiset Dice similarity for an edited relocation. */
 const MOVE_SIMILARITY_THRESHOLD = 0.8;
@@ -68,9 +81,12 @@ export class FolioContentComparisonLimitError extends TaggedError(
   "FolioContentComparisonLimitError",
 )<{
   message: string;
-  limit: "base-blocks" | "revised-blocks" | "changes";
+  input: "base" | "revised" | "result";
+  limit: FolioContentComparisonLimit;
   maximum: number;
   actual: number;
+  blockIndex?: number;
+  field?: string;
 }> {}
 
 /** Errors returned by {@link compareContent}. */
@@ -207,6 +223,7 @@ export type CompareContentOptions<
 export type FolioContentComparisonWorkSession = {
   alignment: FolioContentAlignmentWorkSession;
   remainingMoveComparisons: number;
+  remainingMoveTokenLookups: number;
   diffText: ReturnType<typeof createWordDiffSession>["diff"];
 };
 
@@ -215,6 +232,7 @@ export const createContentComparisonWorkSession = (
 ): FolioContentComparisonWorkSession => ({
   alignment: createFolioContentAlignmentWorkSession(),
   remainingMoveComparisons: MAX_MOVE_SIMILARITY_COMPARISONS,
+  remainingMoveTokenLookups: MAX_MOVE_SIMILARITY_TOKEN_LOOKUPS,
   diffText: createWordDiffSession({ ...(granularity && { granularity }) }).diff,
 });
 
@@ -231,8 +249,33 @@ const invalidInput = (
     ...(blockIndex !== undefined && { blockIndex }),
   });
 
+const limitExceeded = ({
+  input,
+  limit,
+  maximum,
+  actual,
+  blockIndex,
+  field,
+}: {
+  input: "base" | "revised" | "result";
+  limit: FolioContentComparisonLimit;
+  maximum: number;
+  actual: number;
+  blockIndex?: number;
+  field?: string;
+}): FolioContentComparisonLimitError =>
+  new FolioContentComparisonLimitError({
+    message: `The ${input} content exceeds the ${limit} comparison limit.`,
+    input,
+    limit,
+    maximum,
+    actual,
+    ...(blockIndex !== undefined && { blockIndex }),
+    ...(field !== undefined && { field }),
+  });
+
 const isFiniteInteger = (value: unknown): value is number =>
-  typeof value === "number" && Number.isFinite(value) && Number.isInteger(value);
+  typeof value === "number" && Number.isSafeInteger(value);
 
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
@@ -457,6 +500,56 @@ const validateTableLocation = (
   return null;
 };
 
+type SnapshotResourceUsage = {
+  textCodeUnits: number;
+  previewRuns: number;
+  containerEntries: number;
+  metadataCodeUnits: number;
+};
+
+const chargeMetadataString = ({
+  value,
+  side,
+  blockIndex,
+  field,
+  usage,
+}: {
+  value: string | null | undefined;
+  side: "base" | "revised";
+  blockIndex: number;
+  field: string;
+  usage: SnapshotResourceUsage;
+}): FolioContentComparisonLimitError | null => {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  if (value.length > FOLIO_CONTENT_COMPARISON_LIMITS.tokenCodeUnits) {
+    return limitExceeded({
+      input: side,
+      limit: "tokenCodeUnits",
+      maximum: FOLIO_CONTENT_COMPARISON_LIMITS.tokenCodeUnits,
+      actual: value.length,
+      blockIndex,
+      field,
+    });
+  }
+  usage.metadataCodeUnits += value.length;
+  if (
+    usage.metadataCodeUnits >
+    FOLIO_CONTENT_COMPARISON_LIMITS.metadataCodeUnitsPerSnapshot
+  ) {
+    return limitExceeded({
+      input: side,
+      limit: "metadataCodeUnitsPerSnapshot",
+      maximum: FOLIO_CONTENT_COMPARISON_LIMITS.metadataCodeUnitsPerSnapshot,
+      actual: usage.metadataCodeUnits,
+      blockIndex,
+      field,
+    });
+  }
+  return null;
+};
+
 const validateSnapshot = <Block extends FolioContentBlock>(
   snapshot: FolioContentSnapshot<Block>,
   side: "base" | "revised",
@@ -464,26 +557,40 @@ const validateSnapshot = <Block extends FolioContentBlock>(
   if (!snapshot || !Array.isArray(snapshot.blocks)) {
     return invalidInput(side, "blocks", "A content snapshot must contain an ordered blocks array.");
   }
-  if (snapshot.blocks.length > MAX_FOLIO_CONTENT_BLOCKS) {
-    return new FolioContentComparisonLimitError({
-      message: `The ${side} snapshot contains more blocks than one comparison accepts.`,
-      limit: `${side}-blocks`,
-      maximum: MAX_FOLIO_CONTENT_BLOCKS,
+  if (snapshot.blocks.length > FOLIO_CONTENT_COMPARISON_LIMITS.blocksPerSnapshot) {
+    return limitExceeded({
+      input: side,
+      limit: "blocksPerSnapshot",
+      maximum: FOLIO_CONTENT_COMPARISON_LIMITS.blocksPerSnapshot,
       actual: snapshot.blocks.length,
     });
   }
 
+  const usage: SnapshotResourceUsage = {
+    textCodeUnits: 0,
+    previewRuns: 0,
+    containerEntries: 0,
+    metadataCodeUnits: 0,
+  };
   const ids = new Set<string>();
   const lastCoordinateByTable = new Map<string, readonly [number, number, number]>();
   const geometryByCell = new Map<string, readonly [number, number, number]>();
   let lastOuterTableIndex = -1;
   for (const [blockIndex, block] of snapshot.blocks.entries()) {
-    if (!block || typeof block !== "object") {
+    if (!isRecord(block)) {
       return invalidInput(side, `blocks[${String(blockIndex)}]`, "Every content block must be an object.", blockIndex);
     }
     if (typeof block.id !== "string" || block.id.length === 0) {
       return invalidInput(side, `blocks[${String(blockIndex)}].id`, "Every content block needs a non-empty id.", blockIndex);
     }
+    const idLimit = chargeMetadataString({
+      value: block.id,
+      side,
+      blockIndex,
+      field: `blocks[${String(blockIndex)}].id`,
+      usage,
+    });
+    if (idLimit) return idLimit;
     if (ids.has(block.id)) {
       return invalidInput(side, `blocks[${String(blockIndex)}].id`, "Content block ids must be unique within a snapshot.", blockIndex);
     }
@@ -491,17 +598,98 @@ const validateSnapshot = <Block extends FolioContentBlock>(
     if (typeof block.kind !== "string" || block.kind.length === 0) {
       return invalidInput(side, `blocks[${String(blockIndex)}].kind`, "Every content block needs a non-empty kind.", blockIndex);
     }
+    const kindLimit = chargeMetadataString({
+      value: block.kind,
+      side,
+      blockIndex,
+      field: `blocks[${String(blockIndex)}].kind`,
+      usage,
+    });
+    if (kindLimit) return kindLimit;
     if (typeof block.text !== "string") {
       return invalidInput(side, `blocks[${String(blockIndex)}].text`, "Content block text must be a string.", blockIndex);
+    }
+    if (block.text.length > FOLIO_CONTENT_COMPARISON_LIMITS.blockCodeUnits) {
+      return limitExceeded({
+        input: side,
+        limit: "blockCodeUnits",
+        maximum: FOLIO_CONTENT_COMPARISON_LIMITS.blockCodeUnits,
+        actual: block.text.length,
+        blockIndex,
+        field: `blocks[${String(blockIndex)}].text`,
+      });
+    }
+    usage.textCodeUnits += block.text.length;
+    if (usage.textCodeUnits > FOLIO_CONTENT_COMPARISON_LIMITS.textCodeUnitsPerSnapshot) {
+      return limitExceeded({
+        input: side,
+        limit: "textCodeUnitsPerSnapshot",
+        maximum: FOLIO_CONTENT_COMPARISON_LIMITS.textCodeUnitsPerSnapshot,
+        actual: usage.textCodeUnits,
+        blockIndex,
+        field: `blocks[${String(blockIndex)}].text`,
+      });
     }
     if (block.idStability !== undefined && block.idStability !== "stable" && block.idStability !== "positional") {
       return invalidInput(side, `blocks[${String(blockIndex)}].idStability`, "Block id stability must be stable or positional.", blockIndex);
     }
     if (block.previewRuns !== undefined) {
-      if (!Array.isArray(block.previewRuns) || block.previewRuns.some((run) => !run || typeof run.text !== "string")) {
+      if (!Array.isArray(block.previewRuns)) {
         return invalidInput(side, `blocks[${String(blockIndex)}].previewRuns`, "Preview runs must be an array of text runs.", blockIndex);
       }
-      if (block.previewRuns.map(({ text }) => text).join("") !== block.text) {
+      if (
+        block.previewRuns.length >
+        FOLIO_CONTENT_COMPARISON_LIMITS.previewRunsPerBlock
+      ) {
+        return limitExceeded({
+          input: side,
+          limit: "previewRunsPerBlock",
+          maximum: FOLIO_CONTENT_COMPARISON_LIMITS.previewRunsPerBlock,
+          actual: block.previewRuns.length,
+          blockIndex,
+          field: `blocks[${String(blockIndex)}].previewRuns`,
+        });
+      }
+      usage.previewRuns += block.previewRuns.length;
+      if (
+        usage.previewRuns >
+        FOLIO_CONTENT_COMPARISON_LIMITS.previewRunsPerSnapshot
+      ) {
+        return limitExceeded({
+          input: side,
+          limit: "previewRunsPerSnapshot",
+          maximum: FOLIO_CONTENT_COMPARISON_LIMITS.previewRunsPerSnapshot,
+          actual: usage.previewRuns,
+          blockIndex,
+          field: `blocks[${String(blockIndex)}].previewRuns`,
+        });
+      }
+      let runTextOffset = 0;
+      for (const [runIndex, run] of block.previewRuns.entries()) {
+        if (!isRecord(run) || typeof run.text !== "string") {
+          return invalidInput(side, `blocks[${String(blockIndex)}].previewRuns`, "Preview runs must be an array of text runs.", blockIndex);
+        }
+        if (!block.text.startsWith(run.text, runTextOffset)) {
+          return invalidInput(side, `blocks[${String(blockIndex)}].previewRuns`, "Preview-run text must reconstruct the block text exactly.", blockIndex);
+        }
+        runTextOffset += run.text.length;
+        for (const property of ["fontFamily", "color"] as const) {
+          for (const [suffix, value] of [
+            [property, run[property]],
+            [`directFormatting.${property}`, run.directFormatting?.[property]],
+          ] as const) {
+            const formattingLimit = chargeMetadataString({
+              value: typeof value === "string" ? value : undefined,
+              side,
+              blockIndex,
+              field: `blocks[${String(blockIndex)}].previewRuns[${String(runIndex)}].${suffix}`,
+              usage,
+            });
+            if (formattingLimit) return formattingLimit;
+          }
+        }
+      }
+      if (runTextOffset !== block.text.length) {
         return invalidInput(side, `blocks[${String(blockIndex)}].previewRuns`, "Preview-run text must reconstruct the block text exactly.", blockIndex);
       }
     }
@@ -513,19 +701,64 @@ const validateSnapshot = <Block extends FolioContentBlock>(
     if (runError) {
       return runError;
     }
+    for (const property of ["styleId", "displayLabel"] as const) {
+      const propertyLimit = chargeMetadataString({
+        value: block[property],
+        side,
+        blockIndex,
+        field: `blocks[${String(blockIndex)}].${property}`,
+        usage,
+      });
+      if (propertyLimit) return propertyLimit;
+    }
     if (block.containerPath !== undefined) {
-      if (
-        !Array.isArray(block.containerPath) ||
-        block.containerPath.some(
-          (entry) =>
-            !entry ||
-            typeof entry.kind !== "string" ||
-            entry.kind.length === 0 ||
-            typeof entry.id !== "string" ||
-            entry.id.length === 0,
-        )
-      ) {
+      if (!Array.isArray(block.containerPath)) {
         return invalidInput(side, `blocks[${String(blockIndex)}].containerPath`, "Container paths require non-empty kind and id values.", blockIndex);
+      }
+      if (block.containerPath.length > FOLIO_CONTENT_COMPARISON_LIMITS.containerDepth) {
+        return limitExceeded({
+          input: side,
+          limit: "containerDepth",
+          maximum: FOLIO_CONTENT_COMPARISON_LIMITS.containerDepth,
+          actual: block.containerPath.length,
+          blockIndex,
+          field: `blocks[${String(blockIndex)}].containerPath`,
+        });
+      }
+      usage.containerEntries += block.containerPath.length;
+      if (
+        usage.containerEntries >
+        FOLIO_CONTENT_COMPARISON_LIMITS.containerEntriesPerSnapshot
+      ) {
+        return limitExceeded({
+          input: side,
+          limit: "containerEntriesPerSnapshot",
+          maximum: FOLIO_CONTENT_COMPARISON_LIMITS.containerEntriesPerSnapshot,
+          actual: usage.containerEntries,
+          blockIndex,
+          field: `blocks[${String(blockIndex)}].containerPath`,
+        });
+      }
+      for (const [pathIndex, entry] of block.containerPath.entries()) {
+        if (
+          !isRecord(entry) ||
+          typeof entry.kind !== "string" ||
+          entry.kind.length === 0 ||
+          typeof entry.id !== "string" ||
+          entry.id.length === 0
+        ) {
+          return invalidInput(side, `blocks[${String(blockIndex)}].containerPath`, "Container paths require non-empty kind and id values.", blockIndex);
+        }
+        for (const property of ["kind", "id"] as const) {
+          const pathLimit = chargeMetadataString({
+            value: entry[property],
+            side,
+            blockIndex,
+            field: `blocks[${String(blockIndex)}].containerPath[${String(pathIndex)}].${property}`,
+            usage,
+          });
+          if (pathLimit) return pathLimit;
+        }
       }
     }
     if (block.table !== undefined) {
@@ -729,12 +962,26 @@ const tokenProfile = (text: string): TokenProfile | null => {
   return count >= MOVE_MINIMUM_WORD_COUNT ? { count, occurrences } : null;
 };
 
-const tokenSimilarity = (base: TokenProfile, revised: TokenProfile): number => {
-  let shared = 0;
-  for (const [token, revisedCount] of revised.occurrences) {
-    shared += Math.min(base.occurrences.get(token) ?? 0, revisedCount);
+const tokenSimilarity = (
+  base: TokenProfile,
+  revised: TokenProfile,
+  maximumLookups: number,
+): { similarity: number; lookups: number } | null => {
+  const [smaller, larger] =
+    base.occurrences.size <= revised.occurrences.size
+      ? [base.occurrences, revised.occurrences]
+      : [revised.occurrences, base.occurrences];
+  if (smaller.size > maximumLookups) {
+    return null;
   }
-  return (2 * shared) / (base.count + revised.count);
+  let shared = 0;
+  for (const [token, count] of smaller) {
+    shared += Math.min(larger.get(token) ?? 0, count);
+  }
+  return {
+    similarity: (2 * shared) / (base.count + revised.count),
+    lookups: smaller.size,
+  };
 };
 
 type MovePair<Block extends FolioContentBlock> = {
@@ -890,7 +1137,14 @@ export const detectFolioContentMoves = <Block extends FolioContentBlock>({
       for (const candidate of candidates.values()) {
         if (workSession.remainingMoveComparisons <= 0) break candidateGroups;
         workSession.remainingMoveComparisons--;
-        const similarity = tokenSimilarity(candidate.profile, revisedProfile);
+        const scored = tokenSimilarity(
+          candidate.profile,
+          revisedProfile,
+          workSession.remainingMoveTokenLookups,
+        );
+        if (!scored) continue;
+        workSession.remainingMoveTokenLookups -= scored.lookups;
+        const { similarity } = scored;
         if (
           similarity >= MOVE_SIMILARITY_THRESHOLD &&
           (best === null ||
@@ -1045,7 +1299,14 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlock>({
       const properties = changedBlockProperties(base, revised);
       const formatting = formattingChange(base, revised, remainingFormattingRanges);
       if (formatting === "limit") {
-        return Result.err(new FolioContentComparisonLimitError({ message: "The comparison contains more formatting ranges than it returns.", limit: "changes", maximum: maxChanges, actual: maxChanges + 1 }));
+        return Result.err(
+          limitExceeded({
+            input: "result",
+            limit: "changes",
+            maximum: maxChanges,
+            actual: maxChanges + 1,
+          }),
+        );
       }
       remainingFormattingRanges -= formatting?.ranges.length ?? 0;
       let event: FolioContentComparisonEvent<Block>;
@@ -1082,8 +1343,8 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlock>({
         : null;
       if (moveFormatting === "limit") {
         return Result.err(
-          new FolioContentComparisonLimitError({
-            message: "The comparison contains more formatting ranges than it returns.",
+          limitExceeded({
+            input: "result",
             limit: "changes",
             maximum: maxChanges,
             actual: maxChanges + 1,
@@ -1168,12 +1429,14 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlock>({
 
   const changeCount = ordered.reduce((count, event) => count + (event.type === "unchanged" ? 0 : 1), 0);
   if (changeCount > maxChanges) {
-    return Result.err(new FolioContentComparisonLimitError({
-      message: "The comparison contains more changes than one result returns.",
-      limit: "changes",
-      maximum: maxChanges,
-      actual: changeCount,
-    }));
+    return Result.err(
+      limitExceeded({
+        input: "result",
+        limit: "changes",
+        maximum: maxChanges,
+        actual: changeCount,
+      }),
+    );
   }
   return Result.ok({ events: ordered, structuralChanges });
 };
@@ -1218,6 +1481,6 @@ export const compareContent = <Block extends FolioContentBlock = FolioContentBlo
     revisedBlocks: revised.blocks,
     steps,
     workSession,
-    maxChanges: MAX_FOLIO_CONTENT_CHANGES,
+    maxChanges: FOLIO_CONTENT_COMPARISON_LIMITS.changes,
   });
 };

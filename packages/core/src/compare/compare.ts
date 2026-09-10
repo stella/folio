@@ -411,12 +411,14 @@ export const planComparison = ({
       });
     const remainingLcsCells = workSession.alignment.remainingLcsCells;
     const remainingMoveComparisons = workSession.remainingMoveComparisons;
+    const remainingMoveTokenLookups = workSession.remainingMoveTokenLookups;
     let plan = planPair("allow");
     if (plan && planCopiesNonPortableWholeTable(targetReviewer, pair, plan)) {
       // The first plan was speculative. Re-run the chosen fallback against
       // the same package-wide comparison allowance rather than charging both.
       workSession.alignment.remainingLcsCells = remainingLcsCells;
       workSession.remainingMoveComparisons = remainingMoveComparisons;
+      workSession.remainingMoveTokenLookups = remainingMoveTokenLookups;
       plan = planPair("avoid");
     }
     if (plan === null) {

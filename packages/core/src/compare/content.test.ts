@@ -4,10 +4,9 @@ import fc from "fast-check";
 import { propertyConfig } from "../../../../test/property-testing";
 import {
   compareContent,
+  FOLIO_CONTENT_COMPARISON_LIMITS,
   FolioContentComparisonLimitError,
   InvalidFolioContentComparisonError,
-  MAX_FOLIO_CONTENT_BLOCKS,
-  MAX_FOLIO_CONTENT_CHANGES,
   type FolioContentComparison,
   type FolioContentComparisonEvent,
   type FolioContentTextSegment,
@@ -1518,7 +1517,7 @@ describe("identity semantics and input boundaries", () => {
   test("public block and change caps return typed limit errors", () => {
     const oneBlock = contentBlock({ id: "same", text: "Text" });
     const tooManyBaseBlocks = Array.from(
-      { length: MAX_FOLIO_CONTENT_BLOCKS + 1 },
+      { length: FOLIO_CONTENT_COMPARISON_LIMITS.blocksPerSnapshot + 1 },
       () => oneBlock,
     );
     const blockLimit = compareContent({
@@ -1532,13 +1531,14 @@ describe("identity semantics and input boundaries", () => {
     }
     expect(blockLimit.error).toBeInstanceOf(FolioContentComparisonLimitError);
     expect(blockLimit.error).toMatchObject({
-      limit: "base-blocks",
-      maximum: MAX_FOLIO_CONTENT_BLOCKS,
-      actual: MAX_FOLIO_CONTENT_BLOCKS + 1,
+      input: "base",
+      limit: "blocksPerSnapshot",
+      maximum: FOLIO_CONTENT_COMPARISON_LIMITS.blocksPerSnapshot,
+      actual: FOLIO_CONTENT_COMPARISON_LIMITS.blocksPerSnapshot + 1,
     });
 
     const tooManyChanges = Array.from(
-      { length: MAX_FOLIO_CONTENT_CHANGES + 1 },
+      { length: FOLIO_CONTENT_COMPARISON_LIMITS.changes + 1 },
       (_unused, index) => contentBlock({ id: `inserted-${String(index)}`, text: "Text" }),
     );
     const changeLimit = compareContent({
@@ -1552,9 +1552,10 @@ describe("identity semantics and input boundaries", () => {
     }
     expect(changeLimit.error).toBeInstanceOf(FolioContentComparisonLimitError);
     expect(changeLimit.error).toMatchObject({
+      input: "result",
       limit: "changes",
-      maximum: MAX_FOLIO_CONTENT_CHANGES,
-      actual: MAX_FOLIO_CONTENT_CHANGES + 1,
+      maximum: FOLIO_CONTENT_COMPARISON_LIMITS.changes,
+      actual: FOLIO_CONTENT_COMPARISON_LIMITS.changes + 1,
     });
   });
 

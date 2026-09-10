@@ -38,15 +38,15 @@ export {
 } from "./ai-edits/snapshot";
 export {
   compareContent,
+  FOLIO_CONTENT_COMPARISON_LIMITS,
   FolioContentComparisonLimitError,
   InvalidFolioContentComparisonError,
-  MAX_FOLIO_CONTENT_BLOCKS,
-  MAX_FOLIO_CONTENT_CHANGES,
   type CompareContentOptions,
   type FolioContentBlockProperty,
   type FolioContentComparison,
   type FolioContentComparisonError,
   type FolioContentComparisonEvent,
+  type FolioContentComparisonLimit,
   type FolioContentFormatRange,
   type FolioContentFormattingChange,
   type FolioContentParagraphFormattingPatch,
