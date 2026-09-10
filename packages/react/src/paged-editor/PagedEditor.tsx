@@ -44,6 +44,7 @@ import { createFolioAIEditSnapshot } from "@stll/folio-core/ai-edits/snapshot";
 import { createFolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type { FolioEditor, FolioEditorDocumentIO } from "@stll/folio-core/controller/folioEditor";
 import { createFolioEditorEmitter } from "@stll/folio-core/controller/folioEditorEvents";
+import type { HiddenEditorTransactionUpdate } from "@stll/folio-core/controller/hiddenEditorManager";
 import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
 import { suggestionModeKey } from "@stll/folio-core/prosemirror/plugins/suggestionMode";
 import { createLatestRequestGate } from "@stll/folio-core/controller/latestRequestGate";
@@ -167,7 +168,7 @@ import {
 } from "@stll/folio-core/paged-layout/sectionGeometry";
 import { resizeColumnPair } from "@stll/folio-core/paged-layout/tableColumnResize";
 import { tableInsertButtonOffset } from "@stll/folio-core/paged-layout/tableInsertButtonGeometry";
-import { getTransactionDirtyRange } from "@stll/folio-core/paged-layout/transactionDirtyRange";
+import { getTransactionsDirtyRange } from "@stll/folio-core/paged-layout/transactionDirtyRange";
 // Table commands (for quick-action insert buttons)
 import { addRowBelow, addColumnRight } from "@stll/folio-core/prosemirror";
 import { findStartPosForParaId } from "@stll/folio-core/prosemirror/utils/findParagraphByParaId";
@@ -2751,7 +2752,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
      * Handle PM transaction - re-layout on content/selection change.
      */
     const handleTransaction = useCallback(
-      (transaction: Transaction, newState: EditorState) => {
+      ({ transactions, newState, docChanged }: HiddenEditorTransactionUpdate) => {
         // Keep the anonymization match list mirrored in a ref so the
         // overlay recompute reads the latest set without depending on
         // a state setter inside its useCallback closure. We pull off
@@ -2786,7 +2787,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           // the settled layout — the same deferral the selection overlay uses.
           // Only project inline when ranges change without a doc change (no
           // reflow pending, so the current layout is already correct).
-          if (!transaction.docChanged) {
+          if (!docChanged) {
             updateDirectivesOverlay();
           }
         }
@@ -2809,7 +2810,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             entries: nextPreviewEntries,
             mode: nextPreviewMode,
           };
-          if (!transaction.docChanged) {
+          if (!docChanged) {
             if (nextPreviewMode !== previousPreview.mode) {
               scheduleLayout(newState, null);
             } else {
@@ -2837,12 +2838,12 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             suggestions: nextAiSuggestions,
             focusedId: nextAiFocusedId,
           };
-          if (!transaction.docChanged) {
+          if (!docChanged) {
             updateAISuggestionsOverlay();
           }
         }
 
-        if (transaction.docChanged) {
+        if (docChanged) {
           // Increment state sequence to signal document changed
           syncCoordinator.incrementStateSeq();
 
@@ -2858,7 +2859,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           hideSelectionOverlayDuringInput(newState);
 
           // Content changed - schedule layout (coalesced via rAF)
-          scheduleLayout(newState, getTransactionDirtyRange(transaction));
+          scheduleLayout(newState, getTransactionsDirtyRange(transactions));
 
           // Convert back to the Folio document model off the keypress path.
           scheduleDocumentChangeNotification();
@@ -2871,7 +2872,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         // (e.g. arrow keys, clicks). For doc changes, the overlay will be updated
         // after layout completes via the useEffect([layout]) hook, avoiding cursor
         // flicker from stale DOM positions.
-        if (!transaction.docChanged) {
+        if (!docChanged) {
           updateSelectionOverlay(newState);
         }
       },

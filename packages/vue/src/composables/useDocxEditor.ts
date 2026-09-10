@@ -27,7 +27,7 @@
 import { onScopeDispose, ref, shallowRef, toValue, watch } from "vue";
 import type { MaybeRefOrGetter, Ref } from "vue";
 
-import type { EditorState, Plugin, Transaction } from "prosemirror-state";
+import type { EditorState, Plugin } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
 import {
@@ -58,6 +58,7 @@ import {
 import type {
   CollaborationModules,
   HiddenEditorManager,
+  HiddenEditorTransactionUpdate,
   HiddenProseMirrorCollaboration,
   HiddenProseMirrorRemoteSelection,
 } from "@stll/folio-core/controller/hiddenEditorManager";
@@ -94,7 +95,7 @@ import {
   getPageSize,
   twipsToPixels,
 } from "@stll/folio-core/paged-layout/sectionGeometry";
-import { getTransactionDirtyRange } from "@stll/folio-core/paged-layout/transactionDirtyRange";
+import { getTransactionsDirtyRange } from "@stll/folio-core/paged-layout/transactionDirtyRange";
 import { fromProseDoc } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
 import { ExtensionManager } from "@stll/folio-core/prosemirror/extensions/ExtensionManager";
 import {
@@ -895,12 +896,16 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     { flush: "post" },
   );
 
-  function handleTransaction(transaction: Transaction, newState: EditorState): void {
+  function handleTransaction({
+    transactions,
+    newState,
+    docChanged,
+  }: HiddenEditorTransactionUpdate): void {
     editorState.value = newState;
-    if (transaction.docChanged) {
+    if (docChanged) {
       isDirty.value = true;
       syncCoordinator.incrementStateSeq();
-      scheduler.schedule(newState, getTransactionDirtyRange(transaction));
+      scheduler.schedule(newState, getTransactionsDirtyRange(transactions));
       scheduleDocumentChangeNotification();
     }
     syncCoordinator.requestRender();

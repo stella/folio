@@ -23,6 +23,10 @@ import { Fragment, Slice, type Node as PMNode } from "prosemirror-model";
 import { htmlCommentEnd } from "../../../utils/htmlComments";
 import { stripXmlDeclarations } from "../../../utils/stripXmlDeclarations";
 import { readBookmarkBoundaryAttrs } from "../../bookmarkBoundaryAttrs";
+import {
+  findInvalidBookmarkBoundaryIds,
+  type BookmarkBoundaryOccurrence,
+} from "../../bookmarkBoundaryIntegrity";
 
 /**
  * Remove every HTML comment, including downlevel conditional comments
@@ -290,16 +294,9 @@ export function cleanPastedHtml(html: string, options: CleanPastedHtmlOptions = 
   }
 }
 
-type BoundaryCounts = {
-  starts: number;
-  ends: number;
-  firstStart?: number;
-  firstEnd?: number;
-};
-
 /** Remove incomplete or duplicate bookmark pairs at copied slice edges. */
 export function removeUnpairedBookmarkBoundaries(slice: Slice): Slice {
-  const counts = new Map<number, BoundaryCounts>();
+  const boundaries: BookmarkBoundaryOccurrence[] = [];
   let boundaryIndex = 0;
   slice.content.descendants((node) => {
     if (node.type.name !== "bookmarkBoundary") {
@@ -310,29 +307,11 @@ export function removeUnpairedBookmarkBoundaries(slice: Slice): Slice {
       return false;
     }
     const attrs = result.value;
-    const count = counts.get(attrs.id) ?? { starts: 0, ends: 0 };
-    if (attrs.type === "start") {
-      count.starts += 1;
-      count.firstStart ??= boundaryIndex;
-    } else {
-      count.ends += 1;
-      count.firstEnd ??= boundaryIndex;
-    }
+    boundaries.push({ id: attrs.id, type: attrs.type, position: boundaryIndex });
     boundaryIndex += 1;
-    counts.set(attrs.id, count);
     return false;
   });
-  const pairedIds = new Set(
-    [...counts].flatMap(([id, count]) =>
-      count.starts === 1 &&
-      count.ends === 1 &&
-      count.firstStart !== undefined &&
-      count.firstEnd !== undefined &&
-      count.firstStart < count.firstEnd
-        ? [id]
-        : [],
-    ),
-  );
+  const invalidIds = findInvalidBookmarkBoundaryIds(boundaries);
 
   const filterFragment = (fragment: Fragment): Fragment => {
     const children: PMNode[] = [];
@@ -340,7 +319,7 @@ export function removeUnpairedBookmarkBoundaries(slice: Slice): Slice {
     fragment.forEach((node) => {
       if (node.type.name === "bookmarkBoundary") {
         const result = readBookmarkBoundaryAttrs(node);
-        if (result.ok && pairedIds.has(result.value.id)) {
+        if (result.ok && !invalidIds.has(result.value.id)) {
           children.push(node);
         }
         return;

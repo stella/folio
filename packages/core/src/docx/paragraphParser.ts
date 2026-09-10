@@ -49,7 +49,7 @@ import {
 } from "./bookmarkParser";
 import { parseFieldType } from "./fieldParser";
 import { parseHyperlinkChild, parseHyperlink as parseHyperlinkFromModule } from "./hyperlinkParser";
-import { markerFormattingFromLevel } from "./numberingParser";
+import { markerFormattingFromLevel, numberingLevelHasMarkerSlot } from "./numberingParser";
 import type { NumberingMap } from "./numberingParser";
 import {
   BorderStyleSchema,
@@ -2252,7 +2252,11 @@ export function parseParagraph(
           if (!hasDirectLeft && !chainInd.left && level.pPr.indentLeft !== undefined) {
             paragraph.formatting.indentLeft = level.pPr.indentLeft;
           }
-          if (!hasDirectFirstLineOrHanging && !chainInd.firstLine) {
+          if (
+            !hasDirectFirstLineOrHanging &&
+            !chainInd.firstLine &&
+            numberingLevelHasMarkerSlot(level)
+          ) {
             if (level.pPr.indentFirstLine !== undefined) {
               paragraph.formatting.indentFirstLine = level.pPr.indentFirstLine;
             }

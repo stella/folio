@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { createNumberingMap, parseNumbering } from "../../docx/numberingParser";
-import { listAttrsFromResolvedStyle } from "./resolvedStyleAttrs";
+import { listAttrsFromResolvedStyle, listLevelAttrPatch } from "./resolvedStyleAttrs";
 
 const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 const MC = 'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"';
@@ -31,8 +31,17 @@ const NUMBERING_CUSTOM = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?
       <w:pPr><w:ind w:left="360" w:hanging="360"/></w:pPr>
     </w:lvl>
   </w:abstractNum>
+  <w:abstractNum w:abstractNumId="11">
+    <w:lvl w:ilvl="0">
+      <w:start w:val="1"/>
+      <w:numFmt w:val="none"/>
+      <w:lvlText w:val=""/>
+      <w:pPr><w:ind w:left="700" w:hanging="700"/></w:pPr>
+    </w:lvl>
+  </w:abstractNum>
   <w:num w:numId="1"><w:abstractNumId w:val="6"/></w:num>
   <w:num w:numId="2"><w:abstractNumId w:val="10"/></w:num>
+  <w:num w:numId="3"><w:abstractNumId w:val="11"/></w:num>
 </w:numbering>`;
 
 describe("listAttrsFromResolvedStyle (#765 applyStyle)", () => {
@@ -87,5 +96,22 @@ describe("listAttrsFromResolvedStyle (#765 applyStyle)", () => {
     );
     expect(attrs?.["numPr"]).toEqual({ numId: 2, ilvl: 0 });
     expect(attrs?.["listMarker"]).toBeNull();
+  });
+
+  test("keeps markerless level indentation without an empty hanging slot", () => {
+    const attrs = listAttrsFromResolvedStyle({ paragraphFormatting: { numPr: { numId: 3 } } }, map);
+
+    expect(attrs?.["listNumFmt"]).toBe("none");
+    expect(attrs?.["indentLeft"]).toBe(700);
+    expect(attrs?.["indentFirstLine"]).toBeUndefined();
+    expect(attrs?.["hangingIndent"]).toBeUndefined();
+  });
+
+  test("clears the hanging slot when a list command targets a markerless level", () => {
+    const attrs = listLevelAttrPatch({}, { numId: 3, ilvl: 0 }, map);
+
+    expect(attrs["indentLeft"]).toBe(700);
+    expect(attrs["indentFirstLine"]).toBeNull();
+    expect(attrs["hangingIndent"]).toBeNull();
   });
 });

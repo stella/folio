@@ -35,6 +35,7 @@ import {
   createHiddenEditorManager,
   type CollaborationModules,
   type HiddenEditorManager,
+  type HiddenEditorTransactionUpdate,
   type HiddenProseMirrorCollaboration,
   type HiddenProseMirrorRemoteSelection,
 } from "@stll/folio-core/controller/hiddenEditorManager";
@@ -75,7 +76,7 @@ export type HiddenProseMirrorProps = {
   /** Whether the editor is read-only */
   readOnly?: boolean;
   /** Callback when document changes via transaction */
-  onTransaction?: (transaction: Transaction, newState: EditorState) => void;
+  onTransaction?: (update: HiddenEditorTransactionUpdate) => void;
   /** Callback when selection changes */
   onSelectionChange?: (state: EditorState) => void;
   /** External ProseMirror plugins */
@@ -289,7 +290,7 @@ export const HiddenProseMirror = forwardRef<HiddenProseMirrorRef, HiddenProseMir
         getReadOnly: () => readOnlyRef.current,
         getDocumentIdentity: () => documentIdentityRef.current,
         getDocumentContext: () => documentRef.current,
-        onTransaction: (transaction, newState) => onTransactionRef.current?.(transaction, newState),
+        onTransaction: (update) => onTransactionRef.current?.(update),
         onSelectionChange: (state) => onSelectionChangeRef.current?.(state),
         onKeyDown: (view, event) => onKeyDownRef.current?.(view, event) ?? false,
         onCopy: () => onCopyRef.current?.(),

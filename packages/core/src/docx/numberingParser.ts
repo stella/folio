@@ -989,3 +989,7 @@ export function getBulletCharacter(level: ListLevel): string {
 export function isBulletLevel(level: ListLevel): boolean {
   return level.numFmt === "bullet" || level.numFmt === "none";
 }
+
+/** Whether a numbering level reserves horizontal space for a visible marker. */
+export const numberingLevelHasMarkerSlot = (level: Pick<ListLevel, "numFmt">): boolean =>
+  level.numFmt !== "none";

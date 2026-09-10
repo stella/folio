@@ -68,6 +68,25 @@ function bodyText(page: Page): Promise<string> {
   );
 }
 
+function bodyDocumentFingerprint(page: Page): Promise<string> {
+  return page.evaluate(() =>
+    JSON.stringify(
+      globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView()?.state.doc.toJSON() ??
+        null,
+    ),
+  );
+}
+
+function paintedBodyContains(page: Page, text: string): Promise<boolean> {
+  return page.evaluate(
+    (expected) =>
+      [...document.querySelectorAll(".layout-page-content")].some((element) =>
+        element.textContent?.includes(expected),
+      ),
+    text,
+  );
+}
+
 /** Count body ProseMirror nodes by type name in the live document. */
 function countNodes(page: Page, typeName: string): Promise<number> {
   return page.evaluate((name) => {
@@ -359,6 +378,87 @@ test.describe("lists", () => {
     // Clicking the already-active numbered-list button clears list formatting.
     await clickToolbarButton(page, "Numbered List");
     await expect.poll(() => caretParagraphNumId(page)).toBeNull();
+  });
+
+  test("Backspace continues into text after exiting a style-numbered paragraph", async ({
+    page,
+  }) => {
+    await mountFixture(page, "sample.docx");
+    const marker = page.locator(".layout-list-marker").first();
+    await marker.click();
+    await page.keyboard.press("End");
+    await page.keyboard.press("Enter");
+    const inserted = "Synthetic paired deletion target";
+    await page.keyboard.type(inserted);
+
+    await page.evaluate((expected) => {
+      const view = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView();
+      if (!view) throw new Error("Editor view is unavailable");
+      const boundary = view.state.schema.nodes.bookmarkBoundary;
+      if (!boundary) throw new Error("Bookmark boundary node is unavailable");
+      let targetStart: number | null = null;
+      view.state.doc.descendants((node, position) => {
+        const matchIndex = node.text?.indexOf(expected) ?? -1;
+        if (matchIndex >= 0) {
+          targetStart = position + matchIndex;
+          return false;
+        }
+        return true;
+      });
+      if (targetStart === null) throw new Error("Synthetic target is unavailable");
+      const targetEnd = targetStart + expected.length;
+      const transaction = view.state.tr
+        .insert(targetEnd, boundary.create({ type: "end", id: 707 }))
+        .insert(targetStart, boundary.create({ type: "start", id: 707, name: "synthetic-range" }));
+      view.dispatch(transaction);
+      view.focus();
+    }, inserted);
+
+    // One edit removes visible text and one invisible endpoint. Its partner
+    // must disappear atomically, and paint must consume the full transaction
+    // batch rather than only the initiating edit.
+    await page.evaluate(() => {
+      const view = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView();
+      if (!view) throw new Error("Editor view is unavailable");
+      let endPosition: number | null = null;
+      view.state.doc.descendants((node, position) => {
+        if (node.type.name === "bookmarkBoundary" && node.attrs.type === "end") {
+          endPosition = position;
+          return false;
+        }
+        return true;
+      });
+      if (endPosition === null) throw new Error("Synthetic endpoint is unavailable");
+      view.dispatch(view.state.tr.delete(endPosition - 1, endPosition + 1));
+      view.focus();
+    });
+    await expect.poll(() => countNodes(page, "bookmarkBoundary")).toBe(0);
+    await expect.poll(async () => (await bodyText(page)).includes(inserted)).toBe(false);
+    await expect.poll(() => paintedBodyContains(page, inserted)).toBe(false);
+
+    for (let index = 0; index < inserted.length - 1; index += 1) {
+      await page.keyboard.press("Backspace");
+    }
+    await page.keyboard.press("Backspace");
+    await expect.poll(() => caretParagraphNumId(page)).toBe(0);
+
+    // Backspace at a paragraph start may clear indentation or join a block
+    // before it reaches visible text. Every keypress must still mutate the
+    // document; none may be swallowed while those structural steps complete.
+    const modelLengthBeforeDelete = (await bodyText(page)).length;
+    let deletedText = false;
+    for (let index = 0; index < 6; index += 1) {
+      const documentBeforeKey = await bodyDocumentFingerprint(page);
+      await page.keyboard.press("Backspace");
+      await expect.poll(() => bodyDocumentFingerprint(page)).not.toBe(documentBeforeKey);
+      const currentLength = (await bodyText(page)).length;
+      if (currentLength < modelLengthBeforeDelete) {
+        expect(currentLength).toBe(modelLengthBeforeDelete - 1);
+        deletedText = true;
+        break;
+      }
+    }
+    expect(deletedText).toBe(true);
   });
 });
 
