@@ -44,7 +44,21 @@ const tableBlock = ({
 const tableSequence = (
   entries: readonly Omit<TableBlockOptions, "outerTableIndex">[],
 ): FolioContentBlock[] =>
-  entries.map((entry, outerTableIndex) => tableBlock({ ...entry, outerTableIndex }));
+  entries.map(
+    (
+      { id, text, tableIndex, rowIndex, paragraphIndex, idStability },
+      outerTableIndex,
+    ) =>
+      tableBlock({
+        id,
+        text,
+        outerTableIndex,
+        tableIndex,
+        rowIndex,
+        paragraphIndex,
+        idStability,
+      }),
+  );
 
 const pairIds = (
   steps: ReturnType<typeof alignFolioContentStructure>,

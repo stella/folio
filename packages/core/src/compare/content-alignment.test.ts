@@ -55,6 +55,16 @@ describe("longestIncreasingFolioContentPairs", () => {
     expect(longestIncreasingFolioContentPairs(pairs)).toEqual(expected);
     expect(longestIncreasingFolioContentPairs(pairs)).toEqual(expected);
   });
+
+  test("selects at most one candidate for each base coordinate", () => {
+    const pairs = [
+      { baseIndex: 0, revisedIndex: 0 },
+      { baseIndex: 0, revisedIndex: 1 },
+      { baseIndex: 1, revisedIndex: 1 },
+    ];
+
+    expect(longestIncreasingFolioContentPairs(pairs)).toEqual([pairs[0], pairs[2]]);
+  });
 });
 
 describe("shared content-alignment LCS work", () => {
@@ -84,8 +94,18 @@ describe("shared content-alignment LCS work", () => {
 
   test("threads one aggregate allowance through body segments separated by a table", () => {
     const workSession = createFolioContentAlignmentWorkSession({ lcsCells: 10 });
-    const firstBase = base.map((entry) => ({ ...entry, id: `first-${entry.id}` }));
-    const firstRevised = revised.map((entry) => ({ ...entry, id: `first-${entry.id}` }));
+    const firstBase = base.map(({ id, kind, text, idStability }) => ({
+      id: `first-${id}`,
+      kind,
+      text,
+      idStability,
+    }));
+    const firstRevised = revised.map(({ id, kind, text, idStability }) => ({
+      id: `first-${id}`,
+      kind,
+      text,
+      idStability,
+    }));
     const secondBase = [
       block("second-base-delta", "Delta", { idStability: "positional" }),
       block("second-base-zeta", "Zeta", { idStability: "positional" }),
@@ -278,6 +298,43 @@ describe("container-safe structural alignment", () => {
       { type: "revisedOnly", block: revised[0], moveScope: { bucket: 2, gap: 0 } },
     ]);
   });
+
+  test("multiple stable blocks cannot pair one body segment to two revised segments", () => {
+    const baseTable = cell("separator", "Table separator", {
+      rowIndex: 0,
+      cellIndex: 0,
+      gridColumnIndex: 0,
+    });
+    const revisedTable = cell("separator", "Table separator", {
+      rowIndex: 0,
+      cellIndex: 0,
+      gridColumnIndex: 0,
+    });
+    const base = [
+      block("anchor-a", "First body anchor"),
+      block("relocated", "Relocated body content"),
+      baseTable,
+      block("anchor-b", "Second body anchor"),
+    ];
+    const revised = [
+      block("anchor-a", "First body anchor"),
+      revisedTable,
+      block("anchor-b", "Second body anchor"),
+      block("relocated", "Relocated body content"),
+    ];
+
+    const steps = alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised });
+
+    expect(
+      steps.flatMap((step) =>
+        step.type === "pair" ? [[step.baseBlock.id, step.revisedBlock.id]] : [],
+      ),
+    ).toEqual([
+      ["anchor-a", "anchor-a"],
+      ["separator", "separator"],
+      ["anchor-b", "anchor-b"],
+    ]);
+  });
 });
 
 describe("table row and column structural alignment", () => {
@@ -401,9 +458,10 @@ describe("table row and column structural alignment", () => {
       cell("b1-revised", "100", { rowIndex: 1, cellIndex: 2, gridColumnIndex: 2 }),
     ];
 
-    const insertedColumn = alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised })
-      .filter((step) => step.type === "revisedColumn")
-      .at(0);
+    const insertedColumn = alignFolioContentStructure({
+      baseBlocks: base,
+      revisedBlocks: revised,
+    }).find((step) => step.type === "revisedColumn");
 
     expect(insertedColumn?.blocks.map(({ id }) => id)).toEqual(["x0", "x1"]);
   });

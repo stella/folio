@@ -128,39 +128,58 @@ export const longestIncreasingFolioContentPairs = (
     (leftLength === rightLength && leftLength > 0 && leftIndex < rightIndex);
 
   let bestEnd = 0;
-  for (let pairIndex = 0; pairIndex < pairs.length; pairIndex++) {
-    const pair = pairs[pairIndex];
-    const rank = pair === undefined ? undefined : rankByCoordinate.get(pair.revisedIndex);
-    if (rank === undefined) {
-      continue;
+  let groupStart = 0;
+  while (groupStart < pairs.length) {
+    const baseIndex = pairs[groupStart]?.baseIndex;
+    let groupEnd = groupStart + 1;
+    while (groupEnd < pairs.length && pairs[groupEnd]?.baseIndex === baseIndex) {
+      groupEnd += 1;
     }
 
-    let predecessorLength = 0;
-    let predecessorIndex = -1;
-    for (let cursor = rank - 1; cursor > 0; cursor -= cursor & -cursor) {
-      const candidateLength = treeLengths[cursor] ?? 0;
-      const candidateIndex = treeIndexes[cursor] ?? -1;
-      if (
-        earlier(candidateLength, candidateIndex, predecessorLength, predecessorIndex)
-      ) {
-        predecessorLength = candidateLength;
-        predecessorIndex = candidateIndex;
+    // Delay tree updates until the whole base-index group is scored. Otherwise two
+    // candidates for one base container can become predecessor and successor.
+    for (let pairIndex = groupStart; pairIndex < groupEnd; pairIndex++) {
+      const pair = pairs[pairIndex];
+      const rank = pair === undefined ? undefined : rankByCoordinate.get(pair.revisedIndex);
+      if (rank === undefined) {
+        continue;
       }
-    }
-    lengths[pairIndex] = predecessorLength + 1;
-    predecessors[pairIndex] = predecessorIndex;
 
-    for (let cursor = rank; cursor < treeLengths.length; cursor += cursor & -cursor) {
-      const currentLength = treeLengths[cursor] ?? 0;
-      const currentIndex = treeIndexes[cursor] ?? -1;
-      if (earlier(lengths[pairIndex] ?? 0, pairIndex, currentLength, currentIndex)) {
-        treeLengths[cursor] = lengths[pairIndex] ?? 0;
-        treeIndexes[cursor] = pairIndex;
+      let predecessorLength = 0;
+      let predecessorIndex = -1;
+      for (let cursor = rank - 1; cursor > 0; cursor -= cursor & -cursor) {
+        const candidateLength = treeLengths[cursor] ?? 0;
+        const candidateIndex = treeIndexes[cursor] ?? -1;
+        if (
+          earlier(candidateLength, candidateIndex, predecessorLength, predecessorIndex)
+        ) {
+          predecessorLength = candidateLength;
+          predecessorIndex = candidateIndex;
+        }
+      }
+      lengths[pairIndex] = predecessorLength + 1;
+      predecessors[pairIndex] = predecessorIndex;
+      if ((lengths[pairIndex] ?? 0) > (lengths[bestEnd] ?? 0)) {
+        bestEnd = pairIndex;
       }
     }
-    if ((lengths[pairIndex] ?? 0) > (lengths[bestEnd] ?? 0)) {
-      bestEnd = pairIndex;
+
+    for (let pairIndex = groupStart; pairIndex < groupEnd; pairIndex++) {
+      const pair = pairs[pairIndex];
+      const rank = pair === undefined ? undefined : rankByCoordinate.get(pair.revisedIndex);
+      if (rank === undefined) {
+        continue;
+      }
+      for (let cursor = rank; cursor < treeLengths.length; cursor += cursor & -cursor) {
+        const currentLength = treeLengths[cursor] ?? 0;
+        const currentIndex = treeIndexes[cursor] ?? -1;
+        if (earlier(lengths[pairIndex] ?? 0, pairIndex, currentLength, currentIndex)) {
+          treeLengths[cursor] = lengths[pairIndex] ?? 0;
+          treeIndexes[cursor] = pairIndex;
+        }
+      }
     }
+    groupStart = groupEnd;
   }
 
   const ordered: FolioContentBlockPair[] = [];
