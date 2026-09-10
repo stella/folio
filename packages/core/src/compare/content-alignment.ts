@@ -1749,7 +1749,9 @@ const segmentGaps = <Block extends FolioContentBlock>(
   segments: readonly DocumentSegment<Block>[],
   anchors: readonly BodyDocumentSegment<Block>[],
 ): ReadonlyMap<DocumentSegment<Block>, number> => {
-  const anchorIndexes = new Map(anchors.map((anchor, index) => [anchor, index] as const));
+  const anchorIndexes = new Map<DocumentSegment<Block>, number>(
+    anchors.map((anchor, index) => [anchor, index] as const),
+  );
   const gaps = new Map<DocumentSegment<Block>, number>();
   let gap = 0;
   for (const segment of segments) {
