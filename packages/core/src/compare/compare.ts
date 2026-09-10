@@ -400,21 +400,19 @@ export const planComparison = ({
   const workSession = createContentComparisonWorkSession();
   let remainingOperations = MAX_COMPARE_OPERATIONS;
   for (const pair of pairs) {
-    const planPair = (wholeTableReplacement: "allow" | "avoid"): CompareStoryPlan | null =>
-      planStoryCompare({
-        story: pair.baseStory,
-        baseSnapshot: pair.baseSnapshot,
-        targetSnapshot: pair.targetSnapshot,
-        maxOperations: remainingOperations,
-        wholeTableReplacement,
-        workSession,
-      });
     const remainingLcsCells = workSession.alignment.remainingLcsCells;
     const remainingStructuralTokenLookups =
       workSession.alignment.remainingStructuralTokenLookups;
     const remainingMoveComparisons = workSession.remainingMoveComparisons;
     const remainingMoveTokenLookups = workSession.remainingMoveTokenLookups;
-    let plan = planPair("allow");
+    let plan = planStoryCompare({
+      story: pair.baseStory,
+      baseSnapshot: pair.baseSnapshot,
+      targetSnapshot: pair.targetSnapshot,
+      maxOperations: remainingOperations,
+      wholeTableReplacement: "allow",
+      workSession,
+    });
     if (plan && planCopiesNonPortableWholeTable(targetReviewer, pair, plan)) {
       // The first plan was speculative. Re-run the chosen fallback against
       // the same package-wide comparison allowance rather than charging both.
@@ -423,7 +421,14 @@ export const planComparison = ({
         remainingStructuralTokenLookups;
       workSession.remainingMoveComparisons = remainingMoveComparisons;
       workSession.remainingMoveTokenLookups = remainingMoveTokenLookups;
-      plan = planPair("avoid");
+      plan = planStoryCompare({
+        story: pair.baseStory,
+        baseSnapshot: pair.baseSnapshot,
+        targetSnapshot: pair.targetSnapshot,
+        maxOperations: remainingOperations,
+        wholeTableReplacement: "avoid",
+        workSession,
+      });
     }
     if (plan === null) {
       return Result.err(

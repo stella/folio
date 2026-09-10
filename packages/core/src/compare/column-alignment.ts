@@ -106,11 +106,13 @@ const extractTableGrid = <Block extends FolioContentBlock>(
       { rowIndex: cell.rowIndex + cell.rowSpan, type: "leave" as const, mask },
     ];
   });
-  occupancyEvents.sort(
-    (left, right) =>
-      left.rowIndex - right.rowIndex ||
-      (left.type === right.type ? 0 : left.type === "leave" ? -1 : 1),
-  );
+  occupancyEvents.sort((left, right) => {
+    const rowOrder = left.rowIndex - right.rowIndex;
+    if (rowOrder !== 0 || left.type === right.type) {
+      return rowOrder;
+    }
+    return left.type === "leave" ? -1 : 1;
+  });
   let occupiedColumns = 0n;
   for (const event of occupancyEvents) {
     if (event.type === "leave") {
