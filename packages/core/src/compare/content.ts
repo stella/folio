@@ -475,6 +475,7 @@ const validateSnapshot = <Block extends FolioContentBlock>(
 
   const ids = new Set<string>();
   const lastCoordinateByTable = new Map<string, readonly [number, number, number]>();
+  const geometryByCell = new Map<string, readonly [number, number, number]>();
   let lastOuterTableIndex = -1;
   for (const [blockIndex, block] of snapshot.blocks.entries()) {
     if (!block || typeof block !== "object") {
@@ -543,6 +544,27 @@ const validateSnapshot = <Block extends FolioContentBlock>(
       }
       lastOuterTableIndex = table.outerTableIndex;
       const tableKey = `${String(table.outerTableIndex)}:${String(table.tableIndex)}`;
+      const cellKey = `${tableKey}:${String(table.rowIndex)}:${String(table.cellIndex)}`;
+      const geometry = [
+        table.gridColumnIndex,
+        table.columnSpan,
+        table.rowSpan,
+      ] as const;
+      const priorGeometry = geometryByCell.get(cellKey);
+      if (
+        priorGeometry !== undefined &&
+        (geometry[0] !== priorGeometry[0] ||
+          geometry[1] !== priorGeometry[1] ||
+          geometry[2] !== priorGeometry[2])
+      ) {
+        return invalidInput(
+          side,
+          `blocks[${String(blockIndex)}].table`,
+          "Every block in one physical table cell must carry the same geometry.",
+          blockIndex,
+        );
+      }
+      geometryByCell.set(cellKey, geometry);
       const coordinate = [
         table.rowIndex,
         table.cellIndex,
