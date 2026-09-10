@@ -342,6 +342,8 @@ const createFolioAIEditSnapshotInternal = (
     // sequence rather than consuming a position in it.
     const paraIdAttr: unknown = node.attrs["paraId"];
     const paraId = typeof paraIdAttr === "string" && paraIdAttr.length > 0 ? paraIdAttr : null;
+    const idStabilityAttr: unknown = node.attrs["idStability"];
+    const idStability = idStabilityAttr === "positional" ? "positional" : undefined;
     const isBlank = normalizedText.length === 0;
     let id: FolioBlockId;
     if (isBlank) {
@@ -371,6 +373,7 @@ const createFolioAIEditSnapshotInternal = (
         id,
         kind,
         text,
+        ...(idStability !== undefined && { idStability }),
         ...(headingLevel !== undefined && { headingLevel }),
         ...(displayLabel !== undefined && { displayLabel }),
         ...(styleId !== undefined && { styleId }),

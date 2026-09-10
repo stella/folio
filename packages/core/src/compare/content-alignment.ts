@@ -162,6 +162,7 @@ const pairByExactText = <Block extends FolioContentBlock>(
   base: readonly IndexedBlock<Block>[],
   revised: readonly IndexedBlock<Block>[],
   workSession: FolioContentAlignmentWorkSession,
+  idStability: (block: Block) => FolioContentIdStability,
 ): FolioContentBlockPair[] => {
   const baseCount = base.length;
   const revisedCount = revised.length;
@@ -178,6 +179,18 @@ const pairByExactText = <Block extends FolioContentBlock>(
 
   const baseTexts = base.map(({ block }) => block.text);
   const revisedTexts = revised.map(({ block }) => block.text);
+  const entriesCanPair = (baseIndex: number, revisedIndex: number): boolean => {
+    const baseBlock = base[baseIndex]?.block;
+    const revisedBlock = revised[revisedIndex]?.block;
+    if (!baseBlock || !revisedBlock || baseBlock.text !== revisedBlock.text) {
+      return false;
+    }
+    return !(
+      idStability(baseBlock) === "stable" &&
+      idStability(revisedBlock) === "stable" &&
+      baseBlock.id !== revisedBlock.id
+    );
+  };
   const stride = revisedCount + 1;
   const lengths = new Int32Array((baseCount + 1) * stride);
   for (let baseIndex = baseCount - 1; baseIndex >= 0; baseIndex--) {
@@ -185,7 +198,7 @@ const pairByExactText = <Block extends FolioContentBlock>(
     const nextRowOffset = (baseIndex + 1) * stride;
     for (let revisedIndex = revisedCount - 1; revisedIndex >= 0; revisedIndex--) {
       lengths[rowOffset + revisedIndex] =
-        baseTexts[baseIndex] === revisedTexts[revisedIndex]
+        entriesCanPair(baseIndex, revisedIndex)
           ? (lengths[nextRowOffset + revisedIndex + 1] ?? 0) + 1
           : Math.max(
               lengths[nextRowOffset + revisedIndex] ?? 0,
@@ -203,7 +216,7 @@ const pairByExactText = <Block extends FolioContentBlock>(
     if (!baseEntry || !revisedEntry) {
       break;
     }
-    if (baseTexts[baseIndex] === revisedTexts[revisedIndex]) {
+    if (entriesCanPair(baseIndex, revisedIndex)) {
       pairs.push({ baseIndex: baseEntry.index, revisedIndex: revisedEntry.index });
       baseIndex += 1;
       revisedIndex += 1;
@@ -250,7 +263,12 @@ export const alignFolioContentBlocks = <Block extends FolioContentBlock>(
   const revisedRemaining = revisedBlocks.flatMap((block, index) =>
     usedRevisedIndexes.has(index) ? [] : [{ block, index }],
   );
-  const exactTextAnchors = pairByExactText(baseRemaining, revisedRemaining, workSession);
+  const exactTextAnchors = pairByExactText(
+    baseRemaining,
+    revisedRemaining,
+    workSession,
+    idStability,
+  );
   const anchors = longestIncreasingFolioContentPairs(
     [...stableIdAnchors, ...exactTextAnchors].toSorted(
       (left, right) => left.baseIndex - right.baseIndex,
@@ -269,7 +287,16 @@ export const alignFolioContentBlocks = <Block extends FolioContentBlock>(
       const baseBlock = baseBlocks[baseFrom + offset];
       const revisedBlock = revisedBlocks[revisedFrom + offset];
       if (baseBlock && revisedBlock) {
-        events.push({ type: "pair", baseBlock, revisedBlock });
+        const differentStableIdentities =
+          idStability(baseBlock) === "stable" &&
+          idStability(revisedBlock) === "stable" &&
+          baseBlock.id !== revisedBlock.id;
+        if (differentStableIdentities) {
+          events.push({ type: "baseOnly", block: baseBlock });
+          events.push({ type: "revisedOnly", block: revisedBlock });
+        } else {
+          events.push({ type: "pair", baseBlock, revisedBlock });
+        }
       }
     }
     for (let index = baseFrom + pairedCount; index < baseTo; index++) {

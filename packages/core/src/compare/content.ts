@@ -11,6 +11,7 @@ import { panic, Result, TaggedError } from "better-result";
 
 import {
   createWordDiffSession,
+  WORD_DIFF_GRANULARITIES,
   type WordDiffGranularity,
   type WordDiffSegment,
 } from "../ai-edits/word-diff";
@@ -24,10 +25,10 @@ import {
 } from "./content-alignment";
 import type {
   FolioContentBlock,
+  FolioContentIdStability,
   FolioContentInlineFormattingPatch,
   FolioContentParagraphSpacing,
   FolioContentSnapshot,
-  FolioContentTableLocation,
 } from "./content-types";
 
 /** Maximum blocks accepted on either side of one comparison. */
@@ -58,7 +59,7 @@ export class InvalidFolioContentComparisonError extends TaggedError(
   "InvalidFolioContentComparisonError",
 )<{
   message: string;
-  side: "base" | "revised";
+  input: "options" | "base" | "revised";
   blockIndex?: number;
   field: string;
 }> {}
@@ -216,14 +217,14 @@ export const createContentComparisonWorkSession = (
 });
 
 const invalidInput = (
-  side: "base" | "revised",
+  input: "options" | "base" | "revised",
   field: string,
   message: string,
   blockIndex?: number,
 ): InvalidFolioContentComparisonError =>
   new InvalidFolioContentComparisonError({
     message,
-    side,
+    input,
     field,
     ...(blockIndex !== undefined && { blockIndex }),
   });
@@ -233,6 +234,9 @@ const isFiniteInteger = (value: unknown): value is number =>
 
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
 
 const PARAGRAPH_ALIGNMENTS = new Set([
   "left",
@@ -252,6 +256,14 @@ const validateRunFormatting = (
   blockIndex: number,
 ): InvalidFolioContentComparisonError | null => {
   for (const [runIndex, run] of (block.previewRuns ?? []).entries()) {
+    if (run.directFormatting !== undefined && !isRecord(run.directFormatting)) {
+      return invalidInput(
+        side,
+        `blocks[${String(blockIndex)}].previewRuns[${String(runIndex)}].directFormatting`,
+        "Direct inline formatting must be an object.",
+        blockIndex,
+      );
+    }
     for (const property of ["bold", "italic", "underline", "strike"] as const) {
       if (run[property] !== undefined && typeof run[property] !== "boolean") {
         return invalidInput(
@@ -324,6 +336,16 @@ const validateParagraphFormatting = (
   side: "base" | "revised",
   blockIndex: number,
 ): InvalidFolioContentComparisonError | null => {
+  for (const property of ["styleId", "displayLabel"] as const) {
+    if (block[property] !== undefined && typeof block[property] !== "string") {
+      return invalidInput(
+        side,
+        `blocks[${String(blockIndex)}].${property}`,
+        "Optional block labels and style ids must be strings.",
+        blockIndex,
+      );
+    }
+  }
   if (
     block.headingLevel !== undefined &&
     (!isFiniteInteger(block.headingLevel) || block.headingLevel < 1)
@@ -355,7 +377,15 @@ const validateParagraphFormatting = (
     );
   }
   const spacing = block.directSpacing;
-  if (!spacing) return null;
+  if (spacing === undefined) return null;
+  if (!isRecord(spacing)) {
+    return invalidInput(
+      side,
+      `blocks[${String(blockIndex)}].directSpacing`,
+      "Direct paragraph spacing must be an object.",
+      blockIndex,
+    );
+  }
   for (const property of ["spaceBefore", "spaceAfter", "lineSpacing"] as const) {
     if (spacing[property] !== undefined && !isFiniteNumber(spacing[property])) {
       return invalidInput(
@@ -393,10 +423,18 @@ const validateParagraphFormatting = (
 };
 
 const validateTableLocation = (
-  table: FolioContentTableLocation,
+  table: unknown,
   side: "base" | "revised",
   blockIndex: number,
 ): InvalidFolioContentComparisonError | null => {
+  if (!isRecord(table)) {
+    return invalidInput(
+      side,
+      `blocks[${String(blockIndex)}].table`,
+      "A table location must be an object.",
+      blockIndex,
+    );
+  }
   for (const field of [
     "outerTableIndex",
     "tableIndex",
@@ -434,6 +472,8 @@ const validateSnapshot = <Kind extends string>(
   }
 
   const ids = new Set<string>();
+  const lastCoordinateByTable = new Map<string, readonly [number, number, number]>();
+  let lastOuterTableIndex = -1;
   for (const [blockIndex, block] of snapshot.blocks.entries()) {
     if (!block || typeof block !== "object") {
       return invalidInput(side, `blocks[${String(blockIndex)}]`, "Every content block must be an object.", blockIndex);
@@ -485,11 +525,44 @@ const validateSnapshot = <Kind extends string>(
         return invalidInput(side, `blocks[${String(blockIndex)}].containerPath`, "Container paths require non-empty kind and id values.", blockIndex);
       }
     }
-    if (block.table) {
+    if (block.table !== undefined) {
       const error = validateTableLocation(block.table, side, blockIndex);
       if (error) {
         return error;
       }
+      const table = block.table;
+      if (table.outerTableIndex < lastOuterTableIndex) {
+        return invalidInput(
+          side,
+          `blocks[${String(blockIndex)}].table`,
+          "Table blocks must follow document order.",
+          blockIndex,
+        );
+      }
+      lastOuterTableIndex = table.outerTableIndex;
+      const tableKey = `${String(table.outerTableIndex)}:${String(table.tableIndex)}`;
+      const coordinate = [
+        table.rowIndex,
+        table.cellIndex,
+        table.paragraphIndex,
+      ] as const;
+      const previous = lastCoordinateByTable.get(tableKey);
+      if (
+        previous &&
+        (coordinate[0] < previous[0] ||
+          (coordinate[0] === previous[0] && coordinate[1] < previous[1]) ||
+          (coordinate[0] === previous[0] &&
+            coordinate[1] === previous[1] &&
+            coordinate[2] <= previous[2]))
+      ) {
+        return invalidInput(
+          side,
+          `blocks[${String(blockIndex)}].table`,
+          "Blocks in one table must use row-major coordinates.",
+          blockIndex,
+        );
+      }
+      lastCoordinateByTable.set(tableKey, coordinate);
     }
   }
   return null;
@@ -654,16 +727,22 @@ export const detectFolioContentMoves = <Block extends FolioContentBlock>({
   steps,
   consumedStepIndexes,
   workSession,
+  idStability = (block): FolioContentIdStability => block.idStability ?? "stable",
 }: {
   steps: readonly FolioContentAlignmentStep<Block>[];
   consumedStepIndexes: ReadonlySet<number>;
   workSession: FolioContentComparisonWorkSession;
+  idStability?: (block: Block) => FolioContentIdStability;
 }): readonly MovePair<Block>[] => {
   const baseOnly: Block[] = [];
+  const stableBaseById = new Map<string, Block>();
   const profiles = new Map<string, TokenProfile>();
   const candidatesByText = new Map<string, MoveCandidateQueue<Block>>();
   for (const [index, step] of steps.entries()) {
     if (consumedStepIndexes.has(index) || step.type !== "baseOnly") continue;
+    if (idStability(step.block) === "stable") {
+      stableBaseById.set(step.block.id, step.block);
+    }
     const profile = tokenProfile(step.block.text);
     if (!profile) continue;
     baseOnly.push(step.block);
@@ -680,6 +759,13 @@ export const detectFolioContentMoves = <Block extends FolioContentBlock>({
   const moves: MovePair<Block>[] = [];
   for (const [index, step] of steps.entries()) {
     if (consumedStepIndexes.has(index) || step.type !== "revisedOnly") continue;
+    const stable =
+      idStability(step.block) === "stable" ? stableBaseById.get(step.block.id) : undefined;
+    if (stable && !taken.has(stable.id)) {
+      taken.add(stable.id);
+      moves.push({ baseBlock: stable, revisedBlock: step.block });
+      continue;
+    }
     const exactQueue = candidatesByText.get(step.block.text);
     let exact: Block | undefined;
     while (!exact && exactQueue && exactQueue.head < exactQueue.blocks.length) {
@@ -763,6 +849,7 @@ type CompareAlignedContentOptions<Block extends FolioContentBlock> = {
   steps: readonly FolioContentAlignmentStep<Block>[];
   workSession: FolioContentComparisonWorkSession;
   maxChanges: number;
+  idStability?: (block: Block) => FolioContentIdStability;
 };
 
 export const compareAlignedFolioContent = <Block extends FolioContentBlock>({
@@ -771,13 +858,19 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlock>({
   steps,
   workSession,
   maxChanges,
+  idStability,
 }: CompareAlignedContentOptions<Block>): Result<
   FolioContentComparison<Block>,
   FolioContentComparisonLimitError
 > => {
   const paragraphPlans = detectFolioContentParagraphMarkPlans(steps);
   const consumed = new Set([...paragraphPlans.keys()].map((index) => index + 1));
-  const moves = detectFolioContentMoves({ steps, consumedStepIndexes: consumed, workSession });
+  const moves = detectFolioContentMoves({
+    steps,
+    consumedStepIndexes: consumed,
+    workSession,
+    idStability,
+  });
   const moveByBaseId = new Map(moves.map((move, index) => [move.baseBlock.id, { ...move, moveId: index + 1 }] as const));
   const moveByRevisedId = new Map(moves.map((move, index) => [move.revisedBlock.id, { ...move, moveId: index + 1 }] as const));
   const { diffText } = workSession;
@@ -975,14 +1068,30 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlock>({
 };
 
 /** Compare two representation-neutral ordered content snapshots. */
-export const compareContent = <Kind extends string = string>({
-  base,
-  revised,
-  granularity,
-}: CompareContentOptions<Kind>): Result<
+export const compareContent = <Kind extends string = string>(
+  options: CompareContentOptions<Kind>,
+): Result<
   FolioContentComparison<FolioContentBlock<Kind>>,
   FolioContentComparisonError
 > => {
+  if (!isRecord(options)) {
+    return Result.err(
+      invalidInput("options", "options", "Comparison options must be an object."),
+    );
+  }
+  const { base, revised, granularity } = options;
+  if (
+    granularity !== undefined &&
+    !WORD_DIFF_GRANULARITIES.some((candidate) => candidate === granularity)
+  ) {
+    return Result.err(
+      invalidInput(
+        "options",
+        "granularity",
+        "Comparison granularity must be word or character.",
+      ),
+    );
+  }
   const baseError = validateSnapshot(base, "base");
   if (baseError) return Result.err(baseError);
   const revisedError = validateSnapshot(revised, "revised");

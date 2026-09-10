@@ -194,7 +194,7 @@ const ensureDeterministicParaIdsInDoc = (doc: PMNode): PMNode => {
           }
           seen.add(paraId);
           next = recreateProseNodeWithParagraphPropertySource(child, {
-            attrs: { ...child.attrs, paraId },
+            attrs: { ...child.attrs, paraId, idStability: "positional" },
           });
         }
         const paraId = next.attrs["paraId"];
