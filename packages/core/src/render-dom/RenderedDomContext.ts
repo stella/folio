@@ -9,6 +9,7 @@ import { findCollapsedLineEdgeCaretTarget } from "../layout-bridge/dom/clickToPo
 import {
   createTextStreamRange,
   descendantTextNodes,
+  measurePaintedSpanRange,
   totalTextLength,
 } from "../layout-bridge/dom/textStreamDom";
 import { closestHtmlElement } from "../utils/domGuards";
@@ -133,30 +134,10 @@ export class RenderedDomContextImpl implements RenderedDomContext {
       if (!(element instanceof HTMLElement)) {
         continue;
       }
-      const pmStart = Number(element.dataset["pmStart"]);
-      if (element.classList.contains("layout-run-tab")) {
-        const rect = element.getBoundingClientRect();
-        rects.push({
-          x: (rect.left - containerRect.left) / this.#zoom,
-          y: (rect.top - containerRect.top) / this.#zoom,
-          width: rect.width / this.#zoom,
-          height: rect.height / this.#zoom,
-        });
-        continue;
-      }
-
-      const textNodes = descendantTextNodes(element);
-      if (textNodes.length === 0) {
-        continue;
-      }
-      const startChar = Math.max(0, from - pmStart);
-      const endChar = Math.min(totalTextLength(textNodes), to - pmStart);
-      if (startChar >= endChar) {
-        continue;
-      }
-      const range = createTextStreamRange(element, startChar, endChar);
-      if (!range) continue;
-      for (const rect of Array.from(range.getClientRects())) {
+      const measurement = measurePaintedSpanRange(element, from, to);
+      if (measurement.type === "outside") continue;
+      const measuredRects = measurement.type === "element" ? [measurement.rect] : measurement.rects;
+      for (const rect of measuredRects) {
         rects.push({
           x: (rect.left - containerRect.left) / this.#zoom,
           y: (rect.top - containerRect.top) / this.#zoom,

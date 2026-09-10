@@ -35,10 +35,7 @@ function parseParagraphXml(xml: string, numbering: ReturnType<typeof parseNumber
   return parseParagraph(root, null, null, numbering, null, null);
 }
 
-const layoutMarkers = (
-  paragraphs: Paragraph[],
-  styles: StyleDefinitions,
-): Array<string | undefined> => {
+const layoutMarkers = (paragraphs: Paragraph[], styles: StyleDefinitions) => {
   const document: Document = {
     package: { document: { content: paragraphs }, styles },
   };

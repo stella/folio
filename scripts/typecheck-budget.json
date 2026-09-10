@@ -4,32 +4,32 @@
     "instantiations": 7584
   },
   "core": {
-    "types": 133249,
-    "instantiations": 111574
+    "types": 133315,
+    "instantiations": 111611
   },
   "react": {
-    "types": 151284,
-    "instantiations": 305518
+    "types": 151490,
+    "instantiations": 305848
   },
   "agents": {
     "types": 80563,
     "instantiations": 74561
   },
   "vue": {
-    "types": 181408,
-    "instantiations": 848992
+    "types": 181473,
+    "instantiations": 849029
   },
   "nuxt": {
     "types": 114576,
     "instantiations": 122528
   },
   "playground": {
-    "types": 151182,
-    "instantiations": 208338
+    "types": 151388,
+    "instantiations": 208668
   },
   "playground-vue": {
-    "types": 179090,
-    "instantiations": 839478
+    "types": 179192,
+    "instantiations": 839558
   },
   "parity": {
     "types": 70209,

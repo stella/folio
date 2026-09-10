@@ -13,6 +13,7 @@
  */
 import { TextSelection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
+import { findBodyEmptyRuns, findBodyPmSpans } from "../../layout-bridge/dom/findBodyPmSpans";
 import { findVerticalScrollParent } from "../../utils/findVerticalScrollParent";
 import {
   createTextStreamRange,
@@ -48,9 +49,7 @@ function scrollIntoViewIfNeeded(el: HTMLElement): void {
 
 /** @internal */
 export function getCaretClientX(container: HTMLElement, pmPos: number): number | null {
-  const spans = container.querySelectorAll("span[data-pm-start][data-pm-end]");
-  for (const span of Array.from(spans)) {
-    const spanEl = span as HTMLElement;
+  for (const spanEl of findBodyPmSpans(container)) {
     const pmStart = Number(spanEl.dataset["pmStart"]);
     const pmEnd = Number(spanEl.dataset["pmEnd"]);
     if (spanEl.classList.contains("layout-run-tab")) {
@@ -64,8 +63,7 @@ export function getCaretClientX(container: HTMLElement, pmPos: number): number |
       if (range) return range.getBoundingClientRect().left;
     }
   }
-  const emptyRuns = container.querySelectorAll(".layout-empty-run");
-  for (const emptyRun of Array.from(emptyRuns)) {
+  for (const emptyRun of findBodyEmptyRuns(container)) {
     const paragraph = emptyRun.closest(".layout-paragraph") as HTMLElement;
     if (!paragraph) continue;
     const pmStart = Number(paragraph.dataset["pmStart"]);
@@ -108,6 +106,15 @@ export function findLineElementAtPosition(
 /** @internal */
 export function findPositionOnLineAtClientX(lineEl: HTMLElement, clientX: number): number | null {
   const spans = lineEl.querySelectorAll("span[data-pm-start][data-pm-end]");
+  const emptyRun = lineEl.querySelector<HTMLElement>(".layout-empty-run");
+  if (emptyRun) {
+    const emptyRunStart = emptyRun.dataset["pmStart"];
+    if (emptyRunStart !== undefined) return Number(emptyRunStart);
+
+    const paragraph = emptyRun.closest<HTMLElement>(".layout-paragraph");
+    const paragraphStart = paragraph?.dataset["pmStart"];
+    return paragraphStart === undefined ? null : Number(paragraphStart) + 1;
+  }
   if (spans.length === 0) {
     const paragraph = lineEl.closest(".layout-paragraph") as HTMLElement;
     if (paragraph?.dataset["pmStart"]) return Number(paragraph.dataset["pmStart"]) + 1;

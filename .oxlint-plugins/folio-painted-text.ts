@@ -12,8 +12,16 @@ const identifierName = (node: unknown): string | null =>
     ? node["name"]
     : null;
 
+const literalName = (node: unknown): string | null =>
+  isAstNode(node) && node.type === "Literal" && typeof node["value"] === "string"
+    ? node["value"]
+    : null;
+
+const propertyName = (node: AstNode): string | null =>
+  node["computed"] === true ? literalName(node.property) : identifierName(node.property);
+
 const isForbiddenMember = (node: AstNode): boolean => {
-  const property = identifierName(node.property);
+  const property = propertyName(node);
   if (property === "firstChild") return true;
 
   const object = identifierName(node.object);

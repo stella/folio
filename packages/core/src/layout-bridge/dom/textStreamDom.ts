@@ -1,5 +1,10 @@
 export type TextBoundary = { node: Text; offset: number };
 
+export type PaintedSpanRangeMeasurement =
+  | { type: "outside" }
+  | { type: "element"; rect: DOMRect }
+  | { type: "text"; rects: DOMRect[] };
+
 const TEXT_NODE_TYPE = 3;
 
 const isTextNode = (node: Node): node is Text => node.nodeType === TEXT_NODE_TYPE;
@@ -74,4 +79,28 @@ export const createTextStreamRange = (
   range.setStart(start.node, start.offset);
   range.setEnd(end.node, end.offset);
   return range;
+};
+
+/** Measure the intersecting portion of one painted position span. */
+export const measurePaintedSpanRange = (
+  element: HTMLElement,
+  from: number,
+  to: number,
+): PaintedSpanRangeMeasurement => {
+  const pmStart = Number(element.dataset["pmStart"]);
+  const pmEnd = Number(element.dataset["pmEnd"]);
+  if (!Number.isFinite(pmStart) || !Number.isFinite(pmEnd) || pmEnd <= from || pmStart >= to) {
+    return { type: "outside" };
+  }
+  if (element.classList.contains("layout-run-tab")) {
+    return { type: "element", rect: element.getBoundingClientRect() };
+  }
+
+  const textNodes = descendantTextNodes(element);
+  const startOffset = Math.max(0, from - pmStart);
+  const endOffset = Math.min(totalTextLength(textNodes), to - pmStart);
+  if (startOffset >= endOffset) return { type: "outside" };
+
+  const range = createTextStreamRange(element, startOffset, endOffset);
+  return range ? { type: "text", rects: Array.from(range.getClientRects()) } : { type: "outside" };
 };

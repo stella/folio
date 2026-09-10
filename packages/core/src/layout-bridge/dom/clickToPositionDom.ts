@@ -16,9 +16,9 @@ import {
   queryHtmlElement,
 } from "../../utils/domGuards";
 import {
-  createTextStreamRange,
   descendantTextNodes,
   logicalTextOffset,
+  measurePaintedSpanRange,
   textBoundaryAt,
   totalTextLength,
 } from "./textStreamDom";
@@ -443,55 +443,12 @@ export function getSelectionRectsFromDom(
   const spans = htmlQueryAll(container, ".layout-page-content span[data-pm-start][data-pm-end]");
 
   for (const spanEl of spans) {
-    const pmStart = Number(spanEl.dataset["pmStart"]);
-    const pmEnd = Number(spanEl.dataset["pmEnd"]);
-
-    // Check if span overlaps with selection
-    if (pmEnd <= from || pmStart >= to) {
-      continue;
-    }
-
-    if (spanEl.classList.contains("layout-run-tab")) {
-      const clientRect = spanEl.getBoundingClientRect();
-      const pageEl = closestHtmlElement(spanEl, ".layout-page");
-      const pageIndex = pageEl ? Number(pageEl.dataset["pageNumber"] || 1) - 1 : 0;
-      rects.push({
-        x: clientRect.left - overlayRect.left,
-        y: clientRect.top - overlayRect.top,
-        width: clientRect.width,
-        height: clientRect.height,
-        pageIndex,
-      });
-      continue;
-    }
-
-    const textNodes = descendantTextNodes(spanEl);
-    if (textNodes.length === 0) {
-      continue;
-    }
-    const textLength = totalTextLength(textNodes);
-
-    // Calculate character range within this span
-    const startChar = Math.max(0, from - pmStart);
-    const endChar = Math.min(textLength, to - pmStart);
-
-    if (startChar >= endChar) {
-      continue;
-    }
-
-    const range = createTextStreamRange(spanEl, startChar, endChar);
-    if (!range) {
-      continue;
-    }
-
-    // Get all client rects (handles line wraps)
-    const clientRects = range.getClientRects();
-
-    // Find page index
+    const measurement = measurePaintedSpanRange(spanEl, from, to);
+    if (measurement.type === "outside") continue;
     const pageEl = closestHtmlElement(spanEl, ".layout-page");
     const pageIndex = pageEl ? Number(pageEl.dataset["pageNumber"] || 1) - 1 : 0;
-
-    for (const clientRect of Array.from(clientRects)) {
+    const clientRects = measurement.type === "element" ? [measurement.rect] : measurement.rects;
+    for (const clientRect of clientRects) {
       rects.push({
         x: clientRect.left - overlayRect.left,
         y: clientRect.top - overlayRect.top,

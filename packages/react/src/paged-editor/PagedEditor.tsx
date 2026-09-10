@@ -74,11 +74,7 @@ import {
   getCaretPositionFromDom,
   getSelectionRectsFromDom,
 } from "@stll/folio-core/layout-bridge/dom/clickToPositionDom";
-import {
-  createTextStreamRange,
-  descendantTextNodes,
-  totalTextLength,
-} from "@stll/folio-core/layout-bridge/dom/textStreamDom";
+import { measurePaintedSpanRange } from "@stll/folio-core/layout-bridge/dom/textStreamDom";
 import {
   resetImeCaretAnchor,
   syncImeCaretAnchor,
@@ -2419,35 +2415,12 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       ): AnonymizationRectGroup["rects"] => {
         const domRects: AnonymizationRectGroup["rects"] = [];
         for (const spanEl of pmSpans) {
-          const pmStart = Number(spanEl.dataset["pmStart"]);
-          const pmEnd = Number(spanEl.dataset["pmEnd"]);
-          if (!(pmEnd > from && pmStart < to)) {
-            continue;
-          }
-          if (spanEl.classList.contains("layout-run-tab")) {
-            const spanRect = spanEl.getBoundingClientRect();
-            domRects.push({
-              x: (spanRect.left - overlayRect.left) / zoom,
-              y: (spanRect.top - overlayRect.top) / zoom,
-              width: spanRect.width / zoom,
-              height: spanRect.height / zoom,
-              pageIndex: getPageIndex(spanEl),
-            });
-            continue;
-          }
-          const textNodes = descendantTextNodes(spanEl);
-          if (textNodes.length === 0) {
-            continue;
-          }
-          const startChar = Math.max(0, from - pmStart);
-          const endChar = Math.min(totalTextLength(textNodes), to - pmStart);
-          if (startChar >= endChar) {
-            continue;
-          }
-          const range = createTextStreamRange(spanEl, startChar, endChar);
-          if (!range) continue;
+          const measurement = measurePaintedSpanRange(spanEl, from, to);
+          if (measurement.type === "outside") continue;
           const pageIndex = getPageIndex(spanEl);
-          for (const rect of Array.from(range.getClientRects())) {
+          const measuredRects =
+            measurement.type === "element" ? [measurement.rect] : measurement.rects;
+          for (const rect of measuredRects) {
             domRects.push({
               x: (rect.left - overlayRect.left) / zoom,
               y: (rect.top - overlayRect.top) / zoom,
