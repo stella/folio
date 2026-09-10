@@ -997,8 +997,7 @@ const monotoneContentSequencePairs = (
 ): FolioContentBlockPair[] =>
   longestIncreasingFolioContentPairs(
     candidates.toSorted(
-      (left, right) =>
-        left.baseIndex - right.baseIndex || left.revisedIndex - right.revisedIndex,
+      (left, right) => left.baseIndex - right.baseIndex || left.revisedIndex - right.revisedIndex,
     ),
   );
 
@@ -1209,10 +1208,7 @@ const alignProfiledContentSequence = <Item>({
       baseKeys: baseExactSignatureKeys,
       revisedKeys: revisedExactSignatureKeys,
     });
-    const canPairIndexes = ({
-      baseIndex,
-      revisedIndex,
-    }: FolioContentBlockPair): boolean => {
+    const canPairIndexes = ({ baseIndex, revisedIndex }: FolioContentBlockPair): boolean => {
       const baseItem = base[baseIndex];
       const revisedItem = revised[revisedIndex];
       return baseItem !== undefined && revisedItem !== undefined && canPair(baseItem, revisedItem);

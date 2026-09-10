@@ -742,9 +742,9 @@ describe("bulk revision lifecycle", () => {
       const actual = reopened.readReviewedStory({ view: "current-markup" });
 
       expect(actual?.changes).toEqual([]);
-      expect(expected?.snapshot.blocks.some(({ idStability }) => idStability === "positional")).toBe(
-        true,
-      );
+      expect(
+        expected?.snapshot.blocks.some(({ idStability }) => idStability === "positional"),
+      ).toBe(true);
       expect(actual?.snapshot.blocks.every(({ idStability }) => idStability === undefined)).toBe(
         true,
       );

@@ -624,11 +624,7 @@ describe("table row and column structural alignment", () => {
       textPrefix: string;
       idStability: FolioContentBlock["idStability"];
     };
-    const row = ({
-      rowIndex,
-      textPrefix,
-      idStability,
-    }: OversizedRowOptions): FolioContentBlock[] =>
+    const row = ({ rowIndex, textPrefix, idStability }: OversizedRowOptions): FolioContentBlock[] =>
       Array.from({ length: oversizedRowLength }, (_, paragraphIndex) =>
         cell(
           `persisted-${String(paragraphIndex)}`,
