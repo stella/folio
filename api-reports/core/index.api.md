@@ -255,7 +255,7 @@ export const clearTemplateSlashMenu: (tr: Transaction) => Transaction;
 export const COMPARE_UNSUPPORTED_REASONS: readonly ["story-missing-in-base", "story-missing-in-target", "story-not-editable"];
 
 // @public
-export const COMPARE_VERIFICATION_CAUSES: readonly ["invisible-structure", "block-count", "container", "table-geometry", "style", "list-level", "alignment", "spacing", "inline-formatting", "whitespace", "text"];
+export const COMPARE_VERIFICATION_CAUSES: readonly ["invisible-structure", "block-count", "container", "inline-structure", "table-geometry", "style", "list-level", "alignment", "spacing", "inline-formatting", "whitespace", "text"];
 
 // @public
 export const COMPARE_VERIFICATION_INVARIANTS: readonly ["accept-reproduces-target", "reject-reproduces-base"];
@@ -753,6 +753,7 @@ export type FolioAIBlock = {
     directSpacing?: FolioAIParagraphSpacing;
     listLevel?: number;
     previewRuns?: FolioAIBlockPreviewRun[];
+    structuralBoundaries?: readonly FolioAIBlockStructuralBoundary[];
     table?: FolioAIBlockTableLocation;
 };
 
@@ -764,6 +765,7 @@ export type FolioAIBlockAnchor = {
     text: string;
     normalizedText: string;
     textHash: string;
+    structuralBoundaryHash: string;
     hashOccurrenceCount: number;
 };
 
@@ -781,6 +783,13 @@ export type FolioAIBlockPreviewRun = {
     fontSizePt?: number;
     color?: string;
     directFormatting?: FolioAIInlineFormatting;
+};
+
+// @public
+export type FolioAIBlockStructuralBoundary = {
+    type: "pageBreak";
+    offset: number;
+    clear?: import__stll_docx_core_model.BreakContent["clear"];
 };
 
 // @public
@@ -1423,6 +1432,10 @@ export const parseFolioDocumentOperationBatch: (value: unknown) => FolioDocument
 export type PositionalText = {
     text: string;
     pmPositionAt: (textIndex: number) => number;
+    pmRangeAt: (startTextIndex: number, endTextIndex: number) => {
+        from: number;
+        to: number;
+    } | null;
 };
 
 // @public

@@ -524,6 +524,12 @@ export type Page = {
 export type PageBreakBlock = {
     kind: "pageBreak";
     id: BlockId;
+    isInsertion?: boolean;
+    changeAuthor?: string;
+    changeDate?: string;
+    changeRevisionId?: number;
+    isSuggestion?: boolean;
+    suggestionId?: string;
     pmStart?: number;
     pmEnd?: number;
 };
