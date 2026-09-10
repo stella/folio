@@ -287,16 +287,16 @@ describe("page-break run field ownership", () => {
         _docxHyperlinkIndex: 1,
       });
       const pageBreak = schema.node("pageBreakRun", { clear: null });
-      const children =
-        unsupportedChild === "hyperlink"
-          ? [pageBreak.mark([hyperlink])]
-          : unsupportedChild === "bookmark"
-            ? [
-                schema.node("bookmarkBoundary", { type: "start", id: 4, name: "field" }),
-                pageBreak,
-                schema.node("bookmarkBoundary", { type: "end", id: 4 }),
-              ]
-            : [pageBreak, schema.node("textBoxAnchor", { anchorId: "field:0" })];
+      let children = [pageBreak, schema.node("textBoxAnchor", { anchorId: "field:0" })];
+      if (unsupportedChild === "hyperlink") {
+        children = [pageBreak.mark([hyperlink])];
+      } else if (unsupportedChild === "bookmark") {
+        children = [
+          schema.node("bookmarkBoundary", { type: "start", id: 4, name: "field" }),
+          pageBreak,
+          schema.node("bookmarkBoundary", { type: "end", id: 4 }),
+        ];
+      }
       const structuredField = schema.node(
         "structuredField",
         {
@@ -311,13 +311,13 @@ describe("page-break run field ownership", () => {
 
       const validation = validateProseMirrorDocument(prose);
       expect(validation.valid).toBe(false);
-      expect(validation.issues.map(({ message }) => message)).toContain(
-        unsupportedChild === "hyperlink"
-          ? "Complex field results cannot contain hyperlink content."
-          : unsupportedChild === "bookmark"
-            ? "Complex field results cannot contain bookmark boundaries."
-            : "Complex field results cannot contain text-box anchors.",
-      );
+      let expectedMessage = "Complex field results cannot contain text-box anchors.";
+      if (unsupportedChild === "hyperlink") {
+        expectedMessage = "Complex field results cannot contain hyperlink content.";
+      } else if (unsupportedChild === "bookmark") {
+        expectedMessage = "Complex field results cannot contain bookmark boundaries.";
+      }
+      expect(validation.issues.map(({ message }) => message)).toContain(expectedMessage);
       expect(() => fromProseDoc(prose)).toThrow(
         "Cannot convert invalid ProseMirror document to DOCX model",
       );

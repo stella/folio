@@ -660,14 +660,14 @@ describe("page-break run ownership", () => {
     const source = trackedDocument(type, SHAPES.interior);
     const pending = await createDocx(fromProseDoc(toProseDoc(source), source));
     const pendingXml = await documentXml(pending);
-    const wrapperTag =
-      type === "moveFrom"
-        ? "moveFrom"
-        : type === "moveTo"
-          ? "moveTo"
-          : type === "insertion"
-            ? "ins"
-            : "del";
+    let wrapperTag = "del";
+    if (type === "moveFrom") {
+      wrapperTag = "moveFrom";
+    } else if (type === "moveTo") {
+      wrapperTag = "moveTo";
+    } else if (type === "insertion") {
+      wrapperTag = "ins";
+    }
     expect(pendingXml).toContain(`<w:${wrapperTag} `);
     expect(pendingXml).toContain('<w:br w:type="page" w:clear="all"/>');
     expect(pendingXml).toContain("<w:rPrChange ");
