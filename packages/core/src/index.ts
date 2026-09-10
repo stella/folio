@@ -42,6 +42,7 @@ export {
   type FolioContentComparison,
   type FolioContentComparisonError,
   type FolioContentComparisonEvent,
+  type FolioContentFormatRange,
   type FolioContentFormattingChange,
   type FolioContentParagraphFormattingPatch,
   type FolioContentStructuralChange,
