@@ -9,7 +9,11 @@
  * identical paragraph attrs.
  */
 
-import { computeListRendering, type NumberingMap } from "../../docx/numberingParser";
+import {
+  computeListRendering,
+  numberingLevelHasMarkerSlot,
+  type NumberingMap,
+} from "../../docx/numberingParser";
 import { tableOfContentsStyleLevel } from "../../utils/tableOfContentsStyle";
 import { setAutospacingBaseValue } from "../autospacingBase";
 import { CLEARED_LIST_RENDERING_ATTRS } from "../listMarker";
@@ -123,7 +127,7 @@ export function listAttrsFromResolvedStyle(
     }
     const styleHasFirstLine =
       ppr?.indentFirstLine !== undefined || ppr?.hangingIndent !== undefined;
-    if (!styleHasFirstLine) {
+    if (!styleHasFirstLine && numberingLevelHasMarkerSlot(level)) {
       if (level.pPr.indentFirstLine !== undefined) {
         attrs["indentFirstLine"] = level.pPr.indentFirstLine;
       }
@@ -170,13 +174,14 @@ export function listLevelAttrPatch(
   numbering: NumberingMap | null | undefined,
 ): Record<string, unknown> {
   const level = numbering?.getLevel(numPr.numId, numPr.ilvl);
+  const hasMarkerSlot = level ? numberingLevelHasMarkerSlot(level) : false;
   return {
     ...listAttrsFromNumbering(numPr, numbering),
     // Inline LISTNUM fields still belong to this paragraph after a level
     // change; their relative child-level advance moves with it.
     listImplicitChildLevelAdvances: attrs.listImplicitChildLevelAdvances ?? null,
     indentLeft: level?.pPr?.indentLeft ?? null,
-    indentFirstLine: level?.pPr?.indentFirstLine ?? null,
-    hangingIndent: level?.pPr?.hangingIndent ?? null,
+    indentFirstLine: hasMarkerSlot ? (level?.pPr?.indentFirstLine ?? null) : null,
+    hangingIndent: hasMarkerSlot ? (level?.pPr?.hangingIndent ?? null) : null,
   };
 }

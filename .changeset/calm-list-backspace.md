@@ -4,4 +4,4 @@
 "@stll/folio-vue": patch
 ---
 
-Keep list deletion, paired inline metadata, and rendered updates synchronized.
+Keep list deletion, paired inline metadata, markerless indentation, and rendered updates synchronized.

@@ -68,6 +68,15 @@ function bodyText(page: Page): Promise<string> {
   );
 }
 
+function bodyDocumentFingerprint(page: Page): Promise<string> {
+  return page.evaluate(() =>
+    JSON.stringify(
+      globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView()?.state.doc.toJSON() ??
+        null,
+    ),
+  );
+}
+
 function paintedBodyContains(page: Page, text: string): Promise<boolean> {
   return page.evaluate(
     (expected) =>
@@ -433,14 +442,23 @@ test.describe("lists", () => {
     await page.keyboard.press("Backspace");
     await expect.poll(() => caretParagraphNumId(page)).toBe(0);
 
+    // Backspace at a paragraph start may clear indentation or join a block
+    // before it reaches visible text. Every keypress must still mutate the
+    // document; none may be swallowed while those structural steps complete.
     const modelLengthBeforeDelete = (await bodyText(page)).length;
+    let deletedText = false;
     for (let index = 0; index < 6; index += 1) {
+      const documentBeforeKey = await bodyDocumentFingerprint(page);
       await page.keyboard.press("Backspace");
-      if ((await bodyText(page)).length < modelLengthBeforeDelete) {
+      await expect.poll(() => bodyDocumentFingerprint(page)).not.toBe(documentBeforeKey);
+      const currentLength = (await bodyText(page)).length;
+      if (currentLength < modelLengthBeforeDelete) {
+        expect(currentLength).toBe(modelLengthBeforeDelete - 1);
+        deletedText = true;
         break;
       }
     }
-    await expect.poll(async () => (await bodyText(page)).length).toBe(modelLengthBeforeDelete - 1);
+    expect(deletedText).toBe(true);
   });
 });
 

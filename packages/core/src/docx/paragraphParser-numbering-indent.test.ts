@@ -21,6 +21,19 @@ const NUMBERING_WITH_HANGING = `<?xml version="1.0" encoding="UTF-8" standalone=
   <w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>
 </w:numbering>`;
 
+const NUMBERING_WITHOUT_MARKER = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:abstractNum w:abstractNumId="4">
+    <w:lvl w:ilvl="0">
+      <w:start w:val="1"/>
+      <w:numFmt w:val="none"/>
+      <w:lvlText w:val=""/>
+      <w:pPr><w:ind w:left="700" w:hanging="700"/></w:pPr>
+    </w:lvl>
+  </w:abstractNum>
+  <w:num w:numId="5"><w:abstractNumId w:val="4"/></w:num>
+</w:numbering>`;
+
 function parseParagraphXml(xml: string, numbering: ReturnType<typeof parseNumbering>) {
   const root = parseXmlDocument(xml) as XmlElement | null;
   if (!root) {
@@ -93,6 +106,41 @@ describe("paragraphParser direct ind vs numbering level indent", () => {
           <w:ind w:hanging="180"/>
         </w:pPr>
         <w:r><w:t>Item</w:t></w:r>
+      </w:p>`,
+      numbering,
+    );
+
+    expect(paragraph.formatting?.indentFirstLine).toBe(-180);
+    expect(paragraph.formatting?.hangingIndent).toBe(true);
+  });
+});
+
+describe("markerless numbering indentation", () => {
+  const numbering = parseNumbering(NUMBERING_WITHOUT_MARKER);
+
+  test("keeps the level left indent without creating an empty hanging slot", () => {
+    const paragraph = parseParagraphXml(
+      `<w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="5"/></w:numPr></w:pPr>
+        <w:r><w:t>Synthetic paragraph content.</w:t></w:r>
+      </w:p>`,
+      numbering,
+    );
+
+    expect(paragraph.listRendering?.numFmt).toBe("none");
+    expect(paragraph.formatting?.indentLeft).toBe(700);
+    expect(paragraph.formatting?.indentFirstLine).toBeUndefined();
+    expect(paragraph.formatting?.hangingIndent).toBeUndefined();
+  });
+
+  test("preserves an explicitly authored hanging indent", () => {
+    const paragraph = parseParagraphXml(
+      `<w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:pPr>
+          <w:numPr><w:ilvl w:val="0"/><w:numId w:val="5"/></w:numPr>
+          <w:ind w:hanging="180"/>
+        </w:pPr>
+        <w:r><w:t>Synthetic paragraph content.</w:t></w:r>
       </w:p>`,
       numbering,
     );
