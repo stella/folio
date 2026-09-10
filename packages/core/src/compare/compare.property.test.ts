@@ -812,7 +812,6 @@ describe("compareDocx", () => {
     // Each inserted row is one structural change. Exact row evidence keeps the
     // pre-existing rows paired even when several insertions shift their indexes.
     const base = readFixture("upstream-with-tables.docx");
-    const baseBlocks = await blocksOf(base);
     const script: EditScript = [
       { type: "insertTableRow", blockIndex: 1, cellTexts: ["one", "two", "three"] },
       { type: "insertTableRow", blockIndex: 3, cellTexts: ["four", "five", "six"] },
