@@ -45,19 +45,12 @@ describe("page-break run owner identity", () => {
     expect(result.ok).toBe(false);
   });
 
-  test.each([-1, 1.5, Number.MAX_SAFE_INTEGER + 1])(
-    "rejects non-safe model owner ID %p",
-    (id) => {
-      const result = readPageBreakRunOwnerMarkAttrs(
-        schema.marks.pageBreakRunOwner.create({ id }),
-      );
+  test.each([-1, 1.5, Number.MAX_SAFE_INTEGER + 1])("rejects non-safe model owner ID %p", (id) => {
+    const result = readPageBreakRunOwnerMarkAttrs(schema.marks.pageBreakRunOwner.create({ id }));
 
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.issues.map((issue) => issue.path)).toContain(
-          "pageBreakRunOwner.attrs.id",
-        );
-      }
-    },
-  );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.issues.map((issue) => issue.path)).toContain("pageBreakRunOwner.attrs.id");
+    }
+  });
 });

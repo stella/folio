@@ -1220,8 +1220,7 @@ const mergeProjectedInlineMarks = (
   const hasOwnTrackedMark = ownMarks.some(isTrackedRunMark);
   return [
     ...inheritedMarks.filter(
-      (mark) =>
-        !ownMarkTypes.has(mark.type) && !(hasOwnTrackedMark && isTrackedRunMark(mark)),
+      (mark) => !ownMarkTypes.has(mark.type) && !(hasOwnTrackedMark && isTrackedRunMark(mark)),
     ),
     ...ownMarks,
   ];
@@ -1469,11 +1468,7 @@ function paragraphToRuns(
       } else if (ft === "TIME") {
         mappedType = "TIME";
       }
-      const extractedFieldFormatting = extractRunFormatting(
-        effectiveMarks,
-        theme,
-        fontAlternates,
-      );
+      const extractedFieldFormatting = extractRunFormatting(effectiveMarks, theme, fontAlternates);
       applyCharacterStyleToggleFormatting({
         formatting: extractedFieldFormatting,
         marks: effectiveMarks,

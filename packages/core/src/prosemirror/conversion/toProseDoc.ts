@@ -2730,7 +2730,7 @@ function assertRunContentIsRepresentableBesidePageBreak(
       case "instrText":
       case "noBreakHyphen":
       case "softHyphen":
-        unsupportedPageBreakContent(owner, content.type);
+        return unsupportedPageBreakContent(owner, content.type);
       default: {
         const unsupported: never = content;
         panic(`Unsupported page-break-bearing run content: ${JSON.stringify(unsupported)}`);

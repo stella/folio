@@ -658,11 +658,7 @@ describe("toFlowBlocks paragraph formatting", () => {
         schema.node("doc", null, [schema.node("paragraph", null, [carrier])]),
       );
 
-      expect(blocks.map((block) => block.kind)).toEqual([
-        "paragraph",
-        "pageBreak",
-        "paragraph",
-      ]);
+      expect(blocks.map((block) => block.kind)).toEqual(["paragraph", "pageBreak", "paragraph"]);
       const textRuns = blocks.flatMap((block) =>
         block.kind === "paragraph"
           ? block.runs.filter((run) => run.kind === "text" && run.text.length > 0)
@@ -803,9 +799,7 @@ describe("toFlowBlocks paragraph formatting", () => {
       displayText: "1",
       fieldKind: "complex",
     });
-    const contentControl = schema
-      .node("sdt", null, [field])
-      .mark([schema.mark("bold"), insertion]);
+    const contentControl = schema.node("sdt", null, [field]).mark([schema.mark("bold"), insertion]);
     const paragraph = toFlowBlocks(
       schema.node("doc", null, [schema.node("paragraph", null, [contentControl])]),
     ).at(0);
@@ -824,26 +818,22 @@ describe("toFlowBlocks paragraph formatting", () => {
     ]);
   });
 
-  test(
-    "projects an adversarial alternating page-break paragraph within a linear-time bound",
-    () => {
-      const pairCount = 32_000;
-      const maximumDurationMs = 1_200;
-      const content = [schema.text("A"), schema.node("pageBreakRun")];
-      for (let index = 1; index < pairCount; index += 1) {
-        content.push(schema.text("A"), schema.node("pageBreakRun"));
-      }
-      const doc = schema.node("doc", null, [schema.node("paragraph", null, content)]);
+  test("projects an adversarial alternating page-break paragraph within a linear-time bound", () => {
+    const pairCount = 32_000;
+    const maximumDurationMs = 1_200;
+    const content = [schema.text("A"), schema.node("pageBreakRun")];
+    for (let index = 1; index < pairCount; index += 1) {
+      content.push(schema.text("A"), schema.node("pageBreakRun"));
+    }
+    const doc = schema.node("doc", null, [schema.node("paragraph", null, content)]);
 
-      const startedAt = performance.now();
-      const blocks = toFlowBlocks(doc);
-      const durationMs = performance.now() - startedAt;
+    const startedAt = performance.now();
+    const blocks = toFlowBlocks(doc);
+    const durationMs = performance.now() - startedAt;
 
-      expect(blocks).toHaveLength(pairCount * 2);
-      expect(durationMs).toBeLessThan(maximumDurationMs);
-    },
-    10_000,
-  );
+    expect(blocks).toHaveLength(pairCount * 2);
+    expect(durationMs).toBeLessThan(maximumDurationMs);
+  }, 10_000);
 
   test("keeps a break-only paragraph mark as a mapped layout carrier", () => {
     const doc = schema.node("doc", null, [

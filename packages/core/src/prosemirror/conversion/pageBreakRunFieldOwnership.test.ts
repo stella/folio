@@ -8,10 +8,7 @@ import { createEmptyDocument } from "../../utils/createDocument";
 import { schema } from "../schema";
 import { validateProseMirrorDocument } from "../validation";
 import { fromProseDoc } from "./fromProseDoc";
-import {
-  UnsupportedDocxToProseMirrorConversionError,
-  toProseDoc,
-} from "./toProseDoc";
+import { UnsupportedDocxToProseMirrorConversionError, toProseDoc } from "./toProseDoc";
 
 const REVISION = {
   id: 91,
@@ -286,10 +283,7 @@ describe("page-break run field ownership", () => {
           content: [
             {
               type: "run",
-              content: [
-                { type: "break", breakType: "page" },
-                unsupportedContent,
-              ],
+              content: [{ type: "break", breakType: "page" }, unsupportedContent],
             },
           ],
         },
