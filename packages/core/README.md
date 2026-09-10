@@ -125,7 +125,9 @@ Events retain the caller's complete block subtype, including custom metadata,
 and are already in full-document render order. Modified and edited-move segments
 use UTF-16 offsets compatible with JavaScript string slicing; move halves share
 a `moveId`, and table row or column events reference their grouped entry in
-`structuralChanges`.
+`structuralChanges`. `FOLIO_CONTENT_COMPARISON_LIMITS` publishes the block,
+text, metadata, container, run, and result ceilings; exceeding one returns a
+typed `FolioContentComparisonLimitError` without beginning the comparison.
 
 ## Native Word redlines
 
