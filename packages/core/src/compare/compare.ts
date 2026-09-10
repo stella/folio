@@ -53,6 +53,7 @@ import type { FolioAIBlock, FolioAIEditSkipReason, FolioAIEditSnapshot } from ".
 import { createScopedWordDiffOptions, type WordDiffGranularity } from "../ai-edits/word-diff";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { pairFolioDocumentStories } from "../document-stories";
+import { createContentComparisonWorkSession } from "./content";
 import { planStoryCompare, type CompareStoryPlan, type CompareTableTemplateRequest } from "./plan";
 import { withFixedPackageDates } from "./reproducible-package";
 import {
@@ -396,17 +397,26 @@ export const planComparison = ({
   targetReviewer,
 }: ParsedComparison): Result<readonly PlannedStoryComparison[], CompareDocxOperationLimitError> => {
   const planned: PlannedStoryComparison[] = [];
+  const workSession = createContentComparisonWorkSession();
+  let remainingOperations = MAX_COMPARE_OPERATIONS;
   for (const pair of pairs) {
     const planPair = (wholeTableReplacement: "allow" | "avoid"): CompareStoryPlan | null =>
       planStoryCompare({
         story: pair.baseStory,
         baseSnapshot: pair.baseSnapshot,
         targetSnapshot: pair.targetSnapshot,
-        maxOperations: MAX_COMPARE_OPERATIONS,
+        maxOperations: remainingOperations,
         wholeTableReplacement,
+        workSession,
       });
+    const remainingLcsCells = workSession.alignment.remainingLcsCells;
+    const remainingMoveComparisons = workSession.remainingMoveComparisons;
     let plan = planPair("allow");
     if (plan && planCopiesNonPortableWholeTable(targetReviewer, pair, plan)) {
+      // The first plan was speculative. Re-run the chosen fallback against
+      // the same package-wide comparison allowance rather than charging both.
+      workSession.alignment.remainingLcsCells = remainingLcsCells;
+      workSession.remainingMoveComparisons = remainingMoveComparisons;
       plan = planPair("avoid");
     }
     if (plan === null) {
@@ -418,6 +428,7 @@ export const planComparison = ({
       );
     }
     planned.push({ pair, plan });
+    remainingOperations -= plan.operations.length;
   }
   return Result.ok(planned);
 };

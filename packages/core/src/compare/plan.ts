@@ -28,12 +28,9 @@
  *
  * ## Move detection
  *
- * A base-only and a target-only block with identical text and at least
- * {@link MOVE_MINIMUM_WORD_COUNT} words are one relocation. The operations stay
- * a delete plus an insert — the tracked-change grammar Word round-trips has no
- * durable "moved from here" mark on this path — but the change list reports a
- * single `move` so the relocation is not read as unrelated churn. The word
- * floor keeps boilerplate one-liners from pairing as spurious moves.
+ * Move, split/merge, and formatting classification come from the same neutral
+ * comparison core used by non-DOCX callers. The operations remain specific to
+ * the tracked-change format, but the meaning of the comparison does not fork.
  */
 
 import { panic } from "better-result";
@@ -42,13 +39,11 @@ import type { FolioDocumentStoryHandle } from "../ai-edits/headless";
 import { createFolioAITextRangeHandle, trailingBodyBlockId } from "../ai-edits/snapshot";
 import type {
   FolioAIBlock,
-  FolioAIBlockParagraphProperties,
   FolioAIBlockTableLocation,
   FolioAIEditOperation,
   FolioAIEditSnapshot,
 } from "../ai-edits/types";
 import type { TableCellCoordinate, TableGeometryPairing } from "../ai-edits/table-geometry";
-import { paragraphSpacingEqual } from "../prosemirror/paragraphSpacing";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
 import {
   alignFolioContentStructure,
@@ -59,68 +54,14 @@ import {
   type FolioContentAlignmentWorkSession,
 } from "./content-alignment";
 import { inlineFormattingSegments } from "./formatting";
+import {
+  changedFolioContentParagraphFormatting,
+  createContentComparisonWorkSession,
+  detectFolioContentMoves,
+  detectFolioContentParagraphMarkPlans,
+  type FolioContentComparisonWorkSession,
+} from "./content";
 import type { CompareChange, CompareChangeLocation } from "./types";
-
-/** Words a relocated block needs before the move pass will pair it. */
-const MOVE_MINIMUM_WORD_COUNT = 3;
-
-/**
- * Cap on same-text base-only blocks the move pass keeps per text. Without it a
- * document repeating one paragraph thousands of times would make the pass
- * quadratic on attacker-controlled input.
- */
-const MAX_MOVE_CANDIDATES_PER_TEXT = 64;
-
-/**
- * How much of a relocated paragraph must survive the relocation for it still
- * to read as one. Below it the two paragraphs are a deletion and an unrelated
- * insertion, and calling them a move would tell the reader the wrong story
- * about where the text came from.
- */
-const MOVE_SIMILARITY_THRESHOLD = 0.8;
-
-/**
- * Total pair comparisons the similarity pass may make in one story. Exact text
- * matches are found by lookup; only what is left pays this, and it is capped
- * so two documents of unmatched paragraphs cannot make the pass quadratic.
- */
-const MAX_MOVE_SIMILARITY_COMPARISONS = 20_000;
-
-/**
- * Dice coefficient over word tokens: twice the shared tokens over the two
- * token counts. Multiset rather than set, so a paragraph repeating a word does
- * not match one that says it once.
- */
-const tokenSimilarity = (left: string, right: string): number => {
-  const leftTokens = left.split(/\s+/u).filter((token) => token.length > 0);
-  const rightTokens = right.split(/\s+/u).filter((token) => token.length > 0);
-  if (leftTokens.length === 0 || rightTokens.length === 0) {
-    return 0;
-  }
-  const remaining = new Map<string, number>();
-  for (const token of leftTokens) {
-    remaining.set(token, (remaining.get(token) ?? 0) + 1);
-  }
-  let shared = 0;
-  for (const token of rightTokens) {
-    const count = remaining.get(token) ?? 0;
-    if (count > 0) {
-      remaining.set(token, count - 1);
-      shared += 1;
-    }
-  }
-  return (2 * shared) / (leftTokens.length + rightTokens.length);
-};
-
-const wordCountReaches = (text: string, minimum: number): boolean => {
-  let count = 0;
-  for (const word of text.split(/\s+/u)) {
-    if (word.length > 0 && ++count >= minimum) {
-      return true;
-    }
-  }
-  return false;
-};
 
 /**
  * One step of the interpreted alignment. The DOCX planner retains its
@@ -152,10 +93,14 @@ type BuildStepsOptions = {
   baseSnapshot: FolioAIEditSnapshot;
   targetSnapshot: FolioAIEditSnapshot;
   wholeTableReplacement: "allow" | "avoid";
+  workSession: FolioContentAlignmentWorkSession;
 };
 
-const folioAIBlockIdStability = ({ id }: FolioAIBlock): "stable" | "positional" =>
-  getFolioParaIdFromBlockId(id) === null ? "positional" : "stable";
+const folioAIBlockIdStability = ({
+  id,
+  idStability,
+}: FolioAIBlock): "stable" | "positional" =>
+  idStability ?? (getFolioParaIdFromBlockId(id) === null ? "positional" : "stable");
 
 const toCompareStep = (
   step: FolioContentAlignmentStep<FolioAIBlock>,
@@ -193,6 +138,39 @@ const toCompareStep = (
     default: {
       const unreachable: never = step;
       return panic("Unhandled content alignment step", { step: unreachable });
+    }
+  }
+};
+
+const toContentAlignmentStep = (
+  step: CompareStep,
+): FolioContentAlignmentStep<FolioAIBlock> => {
+  switch (step.type) {
+    case "pair":
+      return { type: "pair", baseBlock: step.baseBlock, revisedBlock: step.targetBlock };
+    case "baseOnly":
+      return step;
+    case "targetOnly":
+      return { type: "revisedOnly", block: step.block };
+    case "baseRow":
+    case "baseTable":
+    case "baseColumn":
+      return step;
+    case "targetRow":
+      return { type: "revisedRow", blocks: step.blocks, location: step.location };
+    case "targetTable":
+      return { type: "revisedTable", blocks: step.blocks, location: step.location };
+    case "targetColumn":
+      return {
+        type: "revisedColumn",
+        blocks: step.blocks,
+        location: step.location,
+        columnIndex: step.columnIndex,
+        anchor: step.anchor,
+      };
+    default: {
+      const unreachable: never = step;
+      return panic("Unhandled compare step", { step: unreachable });
     }
   }
 };
@@ -306,6 +284,7 @@ const buildSteps = ({
   baseSnapshot,
   targetSnapshot,
   wholeTableReplacement,
+  workSession,
 }: BuildStepsOptions): CompareStep[] => {
   const baseBlocks = baseSnapshot.blocks;
   const targetBlocks = targetSnapshot.blocks;
@@ -323,11 +302,13 @@ const buildSteps = ({
     carrierPair !== null &&
     isEmptyParagraphNode(carrierPair.baseBlock, baseSnapshot) &&
     isEmptyParagraphNode(carrierPair.targetBlock, targetSnapshot);
+  const alignmentBudgetBeforeAttempt = workSession.remainingLcsCells;
   const steps = alignedSteps(
     baseBlocks,
     targetBlocks,
     bothStoriesEndBlank ? carrierPair : null,
     wholeTableReplacement,
+    workSession,
   );
   // Otherwise the reservation is a repair, not a preference, and the alignment
   // is what says whether it is needed: pairing the two last paragraphs where
@@ -350,7 +331,16 @@ const buildSteps = ({
   ) {
     return steps;
   }
-  return alignedSteps(baseBlocks, targetBlocks, carrierPair, wholeTableReplacement);
+  // The first alignment was only a probe for the terminal-carrier repair.
+  // Charge the shared package budget for the plan we keep, not both attempts.
+  workSession.remainingLcsCells = alignmentBudgetBeforeAttempt;
+  return alignedSteps(
+    baseBlocks,
+    targetBlocks,
+    carrierPair,
+    wholeTableReplacement,
+    workSession,
+  );
 };
 
 /**
@@ -361,170 +351,6 @@ const buildSteps = ({
  */
 const shareAContainer = (left: FolioAIBlock, right: FolioAIBlock): boolean => {
   return contentBlocksShareContainer(left, right);
-};
-
-/**
- * The text between `head` and `tail` inside `whole`, when `whole` is exactly
- * the two joined by whitespace (or by nothing). `null` when it is not: any
- * other difference is a rewrite, not a moved paragraph mark.
- */
-const separatorBetween = (whole: string, head: string, tail: string): string | null => {
-  if (head.length === 0 || tail.length === 0 || whole.length < head.length + tail.length) {
-    return null;
-  }
-  if (!whole.startsWith(head) || !whole.endsWith(tail)) {
-    return null;
-  }
-  const separator = whole.slice(head.length, whole.length - tail.length);
-  return separator.length === 0 || /^\s+$/u.test(separator) ? separator : null;
-};
-
-/** A split or a merge, and the step it consumed alongside the paired one. */
-type ParagraphMarkPlan =
-  | {
-      type: "split";
-      baseBlock: FolioAIBlock;
-      targetBlocks: readonly [FolioAIBlock, FolioAIBlock];
-      offset: number;
-      separator: string;
-    }
-  | {
-      type: "merge";
-      baseBlocks: readonly [FolioAIBlock, FolioAIBlock];
-      targetBlock: FolioAIBlock;
-      separator: string;
-    };
-
-/**
- * Where the alignment produced a rewrite plus an insertion or a deletion that
- * is really one paragraph mark moving, by step index of the PAIR step. The
- * step after it is consumed with it.
- *
- * The alignment cannot see this: it pairs the base paragraph with the target
- * half that still matches it and leaves the other half unpaired, which is a
- * correct alignment and a misleading redline.
- */
-const detectParagraphMarkEdits = (
-  steps: readonly CompareStep[],
-): ReadonlyMap<number, ParagraphMarkPlan> => {
-  const plans = new Map<number, ParagraphMarkPlan>();
-  for (const [index, step] of steps.entries()) {
-    const next = steps[index + 1];
-    if (step.type !== "pair" || next === undefined) {
-      continue;
-    }
-    if (next.type === "targetOnly") {
-      const separator = separatorBetween(
-        step.baseBlock.text,
-        step.targetBlock.text,
-        next.block.text,
-      );
-      if (separator !== null && shareAContainer(step.targetBlock, next.block)) {
-        plans.set(index, {
-          type: "split",
-          baseBlock: step.baseBlock,
-          targetBlocks: [step.targetBlock, next.block],
-          offset: step.targetBlock.text.length,
-          separator,
-        });
-      }
-      continue;
-    }
-    if (next.type !== "baseOnly") {
-      continue;
-    }
-    const separator = separatorBetween(step.targetBlock.text, step.baseBlock.text, next.block.text);
-    if (separator !== null && shareAContainer(step.baseBlock, next.block)) {
-      plans.set(index, {
-        type: "merge",
-        baseBlocks: [step.baseBlock, next.block],
-        targetBlock: step.targetBlock,
-        separator,
-      });
-    }
-  }
-  return plans;
-};
-
-/** Base block id -> target block id for every relocation the move pass found. */
-const detectMoves = (
-  steps: readonly CompareStep[],
-  consumed: ReadonlySet<number>,
-): ReadonlyMap<string, string> => {
-  const candidatesByText = new Map<string, string[]>();
-  for (const [index, step] of steps.entries()) {
-    if (
-      consumed.has(index) ||
-      step.type !== "baseOnly" ||
-      !wordCountReaches(step.block.text, MOVE_MINIMUM_WORD_COUNT)
-    ) {
-      continue;
-    }
-    const queue = candidatesByText.get(step.block.text);
-    if (!queue) {
-      candidatesByText.set(step.block.text, [step.block.id]);
-      continue;
-    }
-    if (queue.length < MAX_MOVE_CANDIDATES_PER_TEXT) {
-      queue.push(step.block.id);
-    }
-  }
-
-  const unmatched: FolioAIBlock[] = [];
-  for (const [index, step] of steps.entries()) {
-    if (
-      consumed.has(index) ||
-      step.type !== "baseOnly" ||
-      !wordCountReaches(step.block.text, MOVE_MINIMUM_WORD_COUNT)
-    ) {
-      continue;
-    }
-    unmatched.push(step.block);
-  }
-
-  const movesByBaseBlockId = new Map<string, string>();
-  const takenBaseBlockIds = new Set<string>();
-  let comparisonBudget = MAX_MOVE_SIMILARITY_COMPARISONS;
-  for (const [index, step] of steps.entries()) {
-    if (consumed.has(index) || step.type !== "targetOnly") {
-      continue;
-    }
-    const exact = candidatesByText.get(step.block.text)?.shift();
-    if (exact !== undefined) {
-      takenBaseBlockIds.add(exact);
-      movesByBaseBlockId.set(exact, step.block.id);
-      continue;
-    }
-    // A relocated paragraph is often edited on the way. Exact text is the
-    // fast path; everything else pays a bounded similarity pass, because a
-    // document repeating one paragraph thousands of times would otherwise
-    // make this quadratic on attacker-controlled input.
-    if (!wordCountReaches(step.block.text, MOVE_MINIMUM_WORD_COUNT)) {
-      continue;
-    }
-    let best: { block: FolioAIBlock; similarity: number } | null = null;
-    for (const candidate of unmatched) {
-      if (comparisonBudget <= 0) {
-        break;
-      }
-      if (takenBaseBlockIds.has(candidate.id)) {
-        continue;
-      }
-      comparisonBudget -= 1;
-      const similarity = tokenSimilarity(candidate.text, step.block.text);
-      if (
-        similarity >= MOVE_SIMILARITY_THRESHOLD &&
-        (best === null || similarity > best.similarity)
-      ) {
-        best = { block: candidate, similarity };
-      }
-    }
-    if (best) {
-      takenBaseBlockIds.add(best.block.id);
-      movesByBaseBlockId.set(best.block.id, step.block.id);
-    }
-  }
-  return movesByBaseBlockId;
 };
 
 /**
@@ -648,35 +474,6 @@ const columnCellTexts = (blocks: readonly FolioAIBlock[]): string[] => {
     byCell.set(key, existing === undefined ? block.text : `${existing}\n${block.text}`);
   }
   return [...byCell.values()];
-};
-
-/**
- * The paragraph properties that differ, or `null` when they agree. Only the
- * ones a block projection can see and an operation can set: a list level, a
- * paragraph style, direct alignment, and direct spacing. These edits move no
- * words and are invisible in a text diff.
- */
-const changedParagraphProperties = (
-  baseBlock: FolioAIBlock,
-  targetBlock: FolioAIBlock,
-): FolioAIBlockParagraphProperties | null => {
-  const properties: FolioAIBlockParagraphProperties = {};
-  if ((baseBlock.styleId ?? null) !== (targetBlock.styleId ?? null)) {
-    properties.styleId = targetBlock.styleId ?? null;
-  }
-  // `null` when the target's paragraph carries no numbering at all: a list
-  // item that stopped being one moves no words, and reading only the target's
-  // level left the difference unreported and the round trip unsatisfiable.
-  if (baseBlock.listLevel !== targetBlock.listLevel) {
-    properties.listLevel = targetBlock.listLevel ?? null;
-  }
-  if (baseBlock.directAlignment !== targetBlock.directAlignment) {
-    properties.alignment = targetBlock.directAlignment ?? null;
-  }
-  if (!paragraphSpacingEqual(baseBlock.directSpacing, targetBlock.directSpacing)) {
-    properties.spacing = targetBlock.directSpacing ?? null;
-  }
-  return Object.keys(properties).length > 0 ? properties : null;
 };
 
 const locationOf = (story: FolioDocumentStoryHandle, block: FolioAIBlock): CompareChangeLocation =>
@@ -953,7 +750,8 @@ const withTrailingDeletionRules = ({
     // The paragraph the carrier's mark now ends is the target's last one in
     // this container, so the carrier is where its properties have to be.
     const targetCarrier = targetLastByContainer.get(container);
-    const properties = targetCarrier && changedParagraphProperties(carrier, targetCarrier);
+    const properties =
+      targetCarrier && changedFolioContentParagraphFormatting(carrier, targetCarrier);
     if (properties) {
       appended.push({
         id: nextOperationId(),
@@ -1042,6 +840,8 @@ export type PlanStoryCompareOptions = {
   maxOperations: number;
   /** Avoid structural fallback when copying the target table would lose package-bound content. */
   wholeTableReplacement?: "allow" | "avoid";
+  /** Shared comparison budget across every story in one package. */
+  workSession?: FolioContentComparisonWorkSession;
 };
 
 /**
@@ -1054,13 +854,27 @@ export const planStoryCompare = ({
   targetSnapshot,
   maxOperations,
   wholeTableReplacement = "allow",
+  workSession = createContentComparisonWorkSession(),
 }: PlanStoryCompareOptions): CompareStoryPlan | null => {
-  const steps = buildSteps({ baseSnapshot, targetSnapshot, wholeTableReplacement });
-  const paragraphMarkPlans = detectParagraphMarkEdits(steps);
+  const steps = buildSteps({
+    baseSnapshot,
+    targetSnapshot,
+    wholeTableReplacement,
+    workSession: workSession.alignment,
+  });
+  const contentSteps = steps.map(toContentAlignmentStep);
+  const paragraphMarkPlans = detectFolioContentParagraphMarkPlans(contentSteps);
   // The step after each paragraph-mark plan is part of it, so neither the move
   // pass nor the main loop may claim it again.
   const consumedSteps = new Set([...paragraphMarkPlans.keys()].map((index) => index + 1));
-  const movesByBaseBlockId = detectMoves(steps, consumedSteps);
+  const movesByBaseBlockId = new Map(
+    detectFolioContentMoves({
+      steps: contentSteps,
+      consumedStepIndexes: consumedSteps,
+      workSession,
+      idStability: folioAIBlockIdStability,
+    }).map(({ baseBlock, revisedBlock }) => [baseBlock.id, revisedBlock.id] as const),
+  );
   const moveSourceByTargetBlockId = new Map<string, string>();
   for (const [baseBlockId, targetBlockId] of movesByBaseBlockId) {
     moveSourceByTargetBlockId.set(targetBlockId, baseBlockId);
@@ -1138,7 +952,7 @@ export const planStoryCompare = ({
     }
     const paragraphMarkPlan = paragraphMarkPlans.get(stepIndex);
     if (paragraphMarkPlan?.type === "split") {
-      const { baseBlock, targetBlocks: splitInto, offset, separator } = paragraphMarkPlan;
+      const { baseBlock, revisedBlocks: splitInto, offset, separator } = paragraphMarkPlan;
       changes.push({
         kind: "split",
         location: locationOf(story, baseBlock),
@@ -1156,7 +970,7 @@ export const planStoryCompare = ({
       continue;
     }
     if (paragraphMarkPlan?.type === "merge") {
-      const { baseBlocks, targetBlock, separator } = paragraphMarkPlan;
+      const { baseBlocks, revisedBlock: targetBlock, separator } = paragraphMarkPlan;
       changes.push({
         kind: "merge",
         location: locationOf(story, baseBlocks[0]),
@@ -1175,7 +989,7 @@ export const planStoryCompare = ({
     switch (step.type) {
       case "pair": {
         const { baseBlock, targetBlock } = step;
-        const properties = changedParagraphProperties(baseBlock, targetBlock);
+        const properties = changedFolioContentParagraphFormatting(baseBlock, targetBlock);
         if (properties) {
           changes.push({
             kind: "paragraph-format",
