@@ -88,16 +88,21 @@ type SourceBlock = {
   sectionId: string;
 };
 
+type ComparableSourceBlock = FolioContentBlock<SourceBlock["type"]> & {
+  source: SourceBlock;
+};
+
 const toFolioBlocks = (blocks: readonly SourceBlock[]) =>
   blocks.map(
-    ({ anchorId, type, text, sectionId }) =>
+    (source) =>
       ({
-        id: anchorId,
+        id: source.anchorId,
         idStability: "stable",
-        kind: type,
-        text,
-        containerPath: [{ kind: "section", id: sectionId }],
-      }) satisfies FolioContentBlock<SourceBlock["type"]>,
+        kind: source.type,
+        text: source.text,
+        containerPath: [{ kind: "section", id: source.sectionId }],
+        source,
+      }) satisfies ComparableSourceBlock,
   );
 
 const result = compareContent({
@@ -106,16 +111,21 @@ const result = compareContent({
 });
 if (result.isErr()) throw result.error;
 
-for (const event of result.value.events) renderComparisonEvent(event);
+for (const event of result.value.events) {
+  renderComparisonEvent(event);
+  const revisedSource = event.revisedBlocks.at(0)?.source;
+  if (revisedSource) persistSourceAnchor(revisedSource.anchorId);
+}
 
 const rejectedBlocks = result.value.events.flatMap(({ baseBlocks }) => baseBlocks);
 const acceptedBlocks = result.value.events.flatMap(({ revisedBlocks }) => revisedBlocks);
 ```
 
-Events are already in full-document render order. Modified and edited-move
-segments use UTF-16 offsets compatible with JavaScript string slicing; move
-halves share a `moveId`, and table row or column events reference their grouped
-entry in `structuralChanges`.
+Events retain the caller's complete block subtype, including custom metadata,
+and are already in full-document render order. Modified and edited-move segments
+use UTF-16 offsets compatible with JavaScript string slicing; move halves share
+a `moveId`, and table row or column events reference their grouped entry in
+`structuralChanges`.
 
 ## Native Word redlines
 

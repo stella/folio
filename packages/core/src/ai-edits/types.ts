@@ -86,7 +86,7 @@ export type FolioAIBlockParagraphProperties = {
  * document for a person or a model wants only the paragraphs that carry text,
  * and says so with `isFolioAIContentBlock`.
  */
-export type FolioAIEditSnapshot = FolioContentSnapshot<FolioAIBlockKind> & {
+export type FolioAIEditSnapshot = FolioContentSnapshot<FolioAIBlock> & {
   anchors: Record<string, FolioAIBlockAnchor>;
 };
 

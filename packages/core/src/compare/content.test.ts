@@ -16,6 +16,9 @@ import type { FolioContentBlock, FolioContentSnapshot } from "./content-types";
 
 type TestBlockKind = "heading" | "paragraph";
 type TestBlock = FolioContentBlock<TestBlockKind>;
+type AnchoredTestBlock = TestBlock & {
+  sourceAnchor: { id: string; ordinal: number };
+};
 
 type TestBlockOptions = Omit<Partial<TestBlock>, "id" | "kind" | "text"> & {
   id: string;
@@ -39,6 +42,7 @@ type TableBlockOptions = {
   tableIndex?: number;
   columnSpan?: number;
   rowSpan?: number;
+  paragraphIndex?: number;
 };
 
 const tableBlock = ({
@@ -50,6 +54,7 @@ const tableBlock = ({
   tableIndex = 0,
   columnSpan = 1,
   rowSpan = 1,
+  paragraphIndex = 0,
 }: TableBlockOptions): TestBlock =>
   contentBlock({
     id,
@@ -62,7 +67,7 @@ const tableBlock = ({
       gridColumnIndex,
       columnSpan,
       rowSpan,
-      paragraphIndex: 0,
+      paragraphIndex,
     },
   });
 
@@ -161,6 +166,36 @@ const stableAnchors = (): { base: TestBlock[]; revised: TestBlock[] } => ({
 });
 
 describe("representation-neutral comparison stream", () => {
+  test("consumer block metadata remains typed and intact in every event projection", () => {
+    const base = {
+      ...contentBlock({ id: "clause", text: "Original clause" }),
+      sourceAnchor: { id: "source-clause", ordinal: 4 },
+    } satisfies AnchoredTestBlock;
+    const revised = {
+      ...contentBlock({ id: "clause", text: "Revised clause" }),
+      sourceAnchor: { id: "source-clause", ordinal: 4 },
+    } satisfies AnchoredTestBlock;
+    const baseSnapshot = {
+      blocks: [base],
+    } satisfies FolioContentSnapshot<AnchoredTestBlock>;
+    const revisedSnapshot = {
+      blocks: [revised],
+    } satisfies FolioContentSnapshot<AnchoredTestBlock>;
+
+    const result = compareContent({
+      base: baseSnapshot,
+      revised: revisedSnapshot,
+    });
+    expect(result.isErr()).toBe(false);
+    if (result.isErr()) {
+      throw result.error;
+    }
+
+    const event = result.value.events.at(0);
+    expect(event?.baseBlocks.at(0)?.sourceAnchor).toBe(base.sourceAnchor);
+    expect(event?.revisedBlocks.at(0)?.sourceAnchor).toBe(revised.sourceAnchor);
+  });
+
   test("equal content and presentation produce only unchanged events", () => {
     const base = [
       contentBlock({
@@ -1281,7 +1316,7 @@ describe("identity semantics and input boundaries", () => {
   });
 
   test("comparison is deterministic and does not mutate frozen inputs", () => {
-    const base: FolioContentSnapshot<TestBlockKind> = {
+    const base: FolioContentSnapshot<TestBlock> = {
       blocks: [
         contentBlock({
           id: "a",
@@ -1291,7 +1326,7 @@ describe("identity semantics and input boundaries", () => {
         }),
       ],
     };
-    const revised: FolioContentSnapshot<TestBlockKind> = {
+    const revised: FolioContentSnapshot<TestBlock> = {
       blocks: [
         contentBlock({
           id: "a",

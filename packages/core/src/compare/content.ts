@@ -195,9 +195,11 @@ export type FolioContentComparison<Block extends FolioContentBlock = FolioConten
 };
 
 /** Inputs to {@link compareContent}. */
-export type CompareContentOptions<Kind extends string = string> = {
-  base: FolioContentSnapshot<Kind>;
-  revised: FolioContentSnapshot<Kind>;
+export type CompareContentOptions<
+  Block extends FolioContentBlock = FolioContentBlock,
+> = {
+  base: FolioContentSnapshot<Block>;
+  revised: FolioContentSnapshot<Block>;
   /** Token size for modified-block segments; defaults to `"word"`. */
   granularity?: WordDiffGranularity;
 };
@@ -455,8 +457,8 @@ const validateTableLocation = (
   return null;
 };
 
-const validateSnapshot = <Kind extends string>(
-  snapshot: FolioContentSnapshot<Kind>,
+const validateSnapshot = <Block extends FolioContentBlock>(
+  snapshot: FolioContentSnapshot<Block>,
   side: "base" | "revised",
 ): InvalidFolioContentComparisonError | FolioContentComparisonLimitError | null => {
   if (!snapshot || !Array.isArray(snapshot.blocks)) {
@@ -1102,10 +1104,10 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlock>({
 };
 
 /** Compare two representation-neutral ordered content snapshots. */
-export const compareContent = <Kind extends string = string>(
-  options: CompareContentOptions<Kind>,
+export const compareContent = <Block extends FolioContentBlock = FolioContentBlock>(
+  options: CompareContentOptions<Block>,
 ): Result<
-  FolioContentComparison<FolioContentBlock<Kind>>,
+  FolioContentComparison<Block>,
   FolioContentComparisonError
 > => {
   if (!isRecord(options)) {
