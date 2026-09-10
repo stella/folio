@@ -8,7 +8,6 @@ export type ListCounterState = {
   abstractCounters: Map<number, number[]>;
   seenLevels: Set<string>;
   restartedNumIds?: Set<number>;
-  siblingNumIdsByAbstractNumId?: Map<number, Set<number>>;
   previousList?: {
     abstractNumId: number | null;
     fromStyle: boolean;
@@ -97,31 +96,32 @@ export function createListCounterState(): ListCounterState {
     abstractCounters: new Map(),
     seenLevels: new Set(),
     restartedNumIds: new Set(),
-    siblingNumIdsByAbstractNumId: new Map(),
     previousList: { abstractNumId: null, fromStyle: false, numId: null },
   };
 }
 
 export function cloneListCounterState(state: ListCounterState): ListCounterState {
+  const clonedArrays = new Map<number[], number[]>();
+  const cloneCounters = (source: number[]): number[] => {
+    const existing = clonedArrays.get(source);
+    if (existing) return existing;
+    const cloned = [...source];
+    clonedArrays.set(source, cloned);
+    return cloned;
+  };
   const counters = new Map<number, number[]>();
   for (const [numId, values] of state.counters) {
-    counters.set(numId, [...values]);
+    counters.set(numId, cloneCounters(values));
   }
   const abstractCounters = new Map<number, number[]>();
   for (const [abstractNumId, values] of state.abstractCounters) {
-    abstractCounters.set(abstractNumId, [...values]);
+    abstractCounters.set(abstractNumId, cloneCounters(values));
   }
   return {
     counters,
     abstractCounters,
     seenLevels: new Set(state.seenLevels),
     restartedNumIds: new Set(state.restartedNumIds ?? []),
-    siblingNumIdsByAbstractNumId: new Map(
-      [...(state.siblingNumIdsByAbstractNumId ?? [])].map(([abstractNumId, numIds]) => [
-        abstractNumId,
-        new Set(numIds),
-      ]),
-    ),
     previousList: {
       ...(state.previousList ?? { abstractNumId: null, fromStyle: false, numId: null }),
     },
@@ -345,7 +345,7 @@ export function advanceListMarker(attrs: ParagraphAttrs, state: ListCounterState
   }
 
   const firstInstanceEncounter = !state.counters.has(numId);
-  const counters = state.counters.get(numId) ?? Array.from({ length: 9 }, () => Number.NaN);
+  let counters = state.counters.get(numId) ?? Array.from({ length: 9 }, () => Number.NaN);
   const abstractNumId = attrs.listAbstractNumId;
   const previousList = state.previousList ?? {
     abstractNumId: null,
@@ -353,14 +353,8 @@ export function advanceListMarker(attrs: ParagraphAttrs, state: ListCounterState
     numId: null,
   };
   const restartedNumIds = (state.restartedNumIds ??= new Set());
-  const siblingNumIdsByAbstractNumId = (state.siblingNumIdsByAbstractNumId ??= new Map());
   const latestAbstractCounters =
     abstractNumId === undefined ? undefined : state.abstractCounters.get(abstractNumId);
-  if (firstInstanceEncounter && abstractNumId !== undefined) {
-    const siblingNumIds = siblingNumIdsByAbstractNumId.get(abstractNumId) ?? new Set();
-    siblingNumIds.add(numId);
-    siblingNumIdsByAbstractNumId.set(abstractNumId, siblingNumIds);
-  }
   const styleNumbering = attrs.numPrFromStyle;
   const resumesRestartedInstance =
     firstInstanceEncounter &&
@@ -377,15 +371,11 @@ export function advanceListMarker(attrs: ParagraphAttrs, state: ListCounterState
     abstractNumId !== undefined &&
     previousList.abstractNumId === abstractNumId &&
     previousList.fromStyle;
-  let resumedAbstractCounters: number[] | undefined;
   if (
     latestAbstractCounters &&
     (styleNumbering || resumesRestartedInstance || resumesStyleInstance)
   ) {
-    for (let index = 0; index < counters.length; index += 1) {
-      counters[index] = latestAbstractCounters[index] ?? Number.NaN;
-    }
-    resumedAbstractCounters = latestAbstractCounters;
+    counters = latestAbstractCounters;
   }
   if (
     attrs.listStartOverride != null ||
@@ -432,23 +422,7 @@ export function advanceListMarker(attrs: ParagraphAttrs, state: ListCounterState
   state.counters.set(numId, counters);
   state.lastAdvancedNumId = numId;
   if (abstractNumId !== undefined) {
-    if (resumedAbstractCounters) {
-      const siblingNumIds = siblingNumIdsByAbstractNumId.get(abstractNumId);
-      for (const otherNumId of siblingNumIds ?? []) {
-        const otherCounters = state.counters.get(otherNumId);
-        if (
-          otherNumId === numId ||
-          !otherCounters ||
-          !otherCounters.every((value, index) => Object.is(value, resumedAbstractCounters[index]))
-        ) {
-          continue;
-        }
-        for (let index = 0; index < otherCounters.length; index += 1) {
-          otherCounters[index] = counters[index] ?? Number.NaN;
-        }
-      }
-    }
-    state.abstractCounters.set(abstractNumId, [...counters]);
+    state.abstractCounters.set(abstractNumId, counters);
   }
   state.previousList = {
     abstractNumId: abstractNumId ?? null,

@@ -207,5 +207,14 @@ describe("toFlowBlocks counter sharing by abstractNumId", () => {
         state,
       ),
     ).toBe("(1.2)");
+
+    const firstCounters = state.counters.get(1);
+    expect(firstCounters).toBe(state.counters.get(2));
+    expect(firstCounters).toBe(state.abstractCounters.get(4));
+
+    const cloned = cloneListCounterState(state);
+    expect(cloned.counters.get(1)).toBe(cloned.counters.get(2));
+    expect(cloned.counters.get(1)).toBe(cloned.abstractCounters.get(4));
+    expect(cloned.counters.get(1)).not.toBe(firstCounters);
   });
 });

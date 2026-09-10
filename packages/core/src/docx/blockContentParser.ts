@@ -59,12 +59,6 @@ type ComputeListMarkerOptions = {
   abstractCounters: Map<number, number[]>;
   restartedNumIds: Set<number>;
   previousList: PreviousListState;
-  /**
-   * `numId`s sharing each `abstractNumId`, populated as each `numId` is
-   * first seen. Lets resume-propagation below look up sibling instances
-   * directly instead of scanning every `numId` ever seen in the document.
-   */
-  siblingNumIdsByAbstractNumId: Map<number, Set<number>>;
 };
 
 const computeListMarker = (
@@ -75,7 +69,6 @@ const computeListMarker = (
     abstractCounters,
     restartedNumIds,
     previousList,
-    siblingNumIdsByAbstractNumId,
   }: ComputeListMarkerOptions,
 ): void => {
   const listRendering = paragraph.listRendering;
@@ -99,22 +92,13 @@ const computeListMarker = (
     listCounters.set(numId, Array.from<number>({ length: 9 }).fill(Number.NaN));
   }
 
-  const counters = listCounters.get(numId);
+  let counters = listCounters.get(numId);
   if (!counters) {
     return;
   }
 
   const abstractNumId = numbering.getAbstractNumId(numId);
-  if (firstEncounter && abstractNumId !== null) {
-    let siblingNumIds = siblingNumIdsByAbstractNumId.get(abstractNumId);
-    if (!siblingNumIds) {
-      siblingNumIds = new Set();
-      siblingNumIdsByAbstractNumId.set(abstractNumId, siblingNumIds);
-    }
-    siblingNumIds.add(numId);
-  }
   const styleNumbering = paragraph.formatting?.numPrFromStyle;
-  let resumedAbstractCounters: number[] | undefined;
   const resumesRestartedInstance =
     firstEncounter &&
     listRendering.startOverride === undefined &&
@@ -141,10 +125,8 @@ const computeListMarker = (
       // starts a fresh w:num (with a startOverride) and later paragraphs fall
       // back to the style's original w:num: the style continues the attachment
       // sequence instead of reviving its stale counters from earlier content.
-      for (let i = 0; i < counters.length; i += 1) {
-        counters[i] = latestAbstractCounters[i] ?? Number.NaN;
-      }
-      resumedAbstractCounters = latestAbstractCounters;
+      counters = latestAbstractCounters;
+      listCounters.set(numId, counters);
     }
   }
   if (
@@ -190,23 +172,7 @@ const computeListMarker = (
   }
 
   if (abstractNumId !== null) {
-    if (resumedAbstractCounters) {
-      const siblingNumIds = siblingNumIdsByAbstractNumId.get(abstractNumId);
-      for (const otherNumId of siblingNumIds ?? []) {
-        const otherCounters = listCounters.get(otherNumId);
-        if (
-          otherNumId === numId ||
-          !otherCounters ||
-          !otherCounters.every((value, index) => Object.is(value, resumedAbstractCounters[index]))
-        ) {
-          continue;
-        }
-        for (let i = 0; i < otherCounters.length; i += 1) {
-          otherCounters[i] = counters[i] ?? Number.NaN;
-        }
-      }
-    }
-    abstractCounters.set(abstractNumId, [...counters]);
+    abstractCounters.set(abstractNumId, counters);
   }
   previousList.abstractNumId = abstractNumId;
   previousList.fromStyle = Boolean(styleNumbering);
@@ -247,7 +213,6 @@ type ParseBlockContentState = {
   abstractCounters: Map<number, number[]>;
   restartedNumIds: Set<number>;
   previousList: PreviousListState;
-  siblingNumIdsByAbstractNumId: Map<number, Set<number>>;
   options: ParseBlockContentOptions | undefined;
 };
 
@@ -265,7 +230,6 @@ export const parseBlockContent = (
     abstractCounters: new Map(),
     restartedNumIds: new Set(),
     previousList: { abstractNumId: null, fromStyle: false, numId: null },
-    siblingNumIdsByAbstractNumId: new Map(),
     // Accumulate the container's own xmlns onto the inherited in-scope set so a
     // captured VML `w:pict` replay resolves prefixes scoped on this level too.
     options: {
@@ -301,7 +265,6 @@ const parseBlockContentWithState = (
         abstractCounters: state.abstractCounters,
         restartedNumIds: state.restartedNumIds,
         previousList: state.previousList,
-        siblingNumIdsByAbstractNumId: state.siblingNumIdsByAbstractNumId,
       });
       content.push(paragraph);
       continue;

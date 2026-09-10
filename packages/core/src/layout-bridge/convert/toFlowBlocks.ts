@@ -3011,7 +3011,6 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
     abstractCounters: options.listAbstractCounters ?? new Map<number, number[]>(),
     seenLevels: options.listSeenNumIds ?? new Set<string>(),
     restartedNumIds: new Set(),
-    siblingNumIdsByAbstractNumId: new Map(),
     previousList: { abstractNumId: null, fromStyle: false, numId: null },
     ...(lastAdvancedNumId !== undefined ? { lastAdvancedNumId } : {}),
   };
@@ -3020,7 +3019,6 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
     abstractCounters: options.originalListAbstractCounters ?? new Map<number, number[]>(),
     seenLevels: options.originalListSeenNumIds ?? new Set<string>(),
     restartedNumIds: new Set(),
-    siblingNumIdsByAbstractNumId: new Map(),
     previousList: { abstractNumId: null, fromStyle: false, numId: null },
     ...(lastAdvancedOriginalNumId !== undefined
       ? { lastAdvancedNumId: lastAdvancedOriginalNumId }
