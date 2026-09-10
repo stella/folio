@@ -511,6 +511,78 @@ describe("representation-neutral comparison stream", () => {
     ]);
   });
 
+  test("a stable move source is reserved for its stable revised block", () => {
+    const movedText = "This clause has enough words";
+    const movedBase = contentBlock({ id: "stable-move", text: movedText });
+    const anchors = stableAnchors();
+    const positionalCopy = contentBlock({
+      id: "positional-copy",
+      idStability: "positional",
+      text: movedText,
+    });
+    const movedRevised = contentBlock({ id: "stable-move", text: movedText });
+
+    const comparison = successfulComparison({
+      base: [movedBase, ...anchors.base],
+      revised: [...anchors.revised, positionalCopy, movedRevised],
+    });
+
+    expect(eventTypes(comparison)).toEqual([
+      "movedFrom",
+      "unchanged",
+      "unchanged",
+      "unchanged",
+      "inserted",
+      "movedTo",
+    ]);
+    const movedTo = comparison.events.find(({ type }) => type === "movedTo");
+    expect(movedTo).toMatchObject({
+      moveId: 1,
+      baseBlockId: "stable-move",
+      revisedBlocks: [movedRevised],
+    });
+  });
+
+  test("an exact move source is reserved from an earlier edited candidate", () => {
+    const exactText = "alpha beta gamma delta epsilon";
+    const movedBase = contentBlock({
+      id: "source",
+      idStability: "positional",
+      text: exactText,
+    });
+    const anchors = stableAnchors();
+    const editedCandidate = contentBlock({
+      id: "edited",
+      idStability: "positional",
+      text: "alpha beta gamma delta zeta",
+    });
+    const exactRevised = contentBlock({
+      id: "exact",
+      idStability: "positional",
+      text: exactText,
+    });
+
+    const comparison = successfulComparison({
+      base: [movedBase, ...anchors.base],
+      revised: [...anchors.revised, editedCandidate, exactRevised],
+    });
+
+    expect(eventTypes(comparison)).toEqual([
+      "movedFrom",
+      "unchanged",
+      "unchanged",
+      "unchanged",
+      "inserted",
+      "movedTo",
+    ]);
+    const movedTo = comparison.events.find(({ type }) => type === "movedTo");
+    expect(movedTo).toMatchObject({
+      moveId: 1,
+      baseBlockId: "source",
+      revisedBlocks: [exactRevised],
+    });
+  });
+
   test("short relocated boilerplate is not reported as a move", () => {
     const shortBase = contentBlock({ id: "short-base", text: "standard terms" });
     const shortRevised = contentBlock({ id: "short-revised", text: "standard terms" });
