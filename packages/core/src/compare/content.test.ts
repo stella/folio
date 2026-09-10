@@ -4,7 +4,10 @@ import fc from "fast-check";
 import { propertyConfig } from "../../../../test/property-testing";
 import {
   compareContent,
+  FolioContentComparisonLimitError,
   InvalidFolioContentComparisonError,
+  MAX_FOLIO_CONTENT_BLOCKS,
+  MAX_FOLIO_CONTENT_CHANGES,
   type FolioContentComparison,
   type FolioContentComparisonEvent,
   type FolioContentTextSegment,
@@ -110,6 +113,39 @@ const textAfter = (segments: readonly FolioContentTextSegment[]): string =>
     .filter(({ type }) => type !== "del")
     .map(({ text }) => text)
     .join("");
+
+type SegmentOffsetExpectation = {
+  segments: readonly FolioContentTextSegment[];
+  base: string;
+  revised: string;
+};
+
+const expectSegmentOffsets = ({
+  segments,
+  base,
+  revised,
+}: SegmentOffsetExpectation): void => {
+  let baseOffset = 0;
+  let revisedOffset = 0;
+  for (const segment of segments) {
+    expect(segment.baseStart).toBe(baseOffset);
+    expect(segment.revisedStart).toBe(revisedOffset);
+    if (segment.type === "ins") {
+      expect(segment.baseEnd).toBe(baseOffset);
+    } else {
+      expect(base.slice(segment.baseStart, segment.baseEnd)).toBe(segment.text);
+      baseOffset = segment.baseEnd;
+    }
+    if (segment.type === "del") {
+      expect(segment.revisedEnd).toBe(revisedOffset);
+    } else {
+      expect(revised.slice(segment.revisedStart, segment.revisedEnd)).toBe(segment.text);
+      revisedOffset = segment.revisedEnd;
+    }
+  }
+  expect(baseOffset).toBe(base.length);
+  expect(revisedOffset).toBe(revised.length);
+};
 
 const stableAnchors = (): { base: TestBlock[]; revised: TestBlock[] } => ({
   base: [
@@ -374,6 +410,83 @@ describe("representation-neutral comparison stream", () => {
     ]);
   });
 
+  test("stable IDs classify short exact and edited relocations without a text heuristic", () => {
+    const exactBase = contentBlock({ id: "short-exact", text: "Title" });
+    const editedBase = contentBlock({ id: "short-edited", text: "Old" });
+    const anchors = stableAnchors();
+    const exactRevised = contentBlock({ id: "short-exact", text: "Title" });
+    const editedRevised = contentBlock({ id: "short-edited", text: "New" });
+
+    const comparison = successfulComparison({
+      base: [exactBase, editedBase, ...anchors.base],
+      revised: [...anchors.revised, exactRevised, editedRevised],
+      granularity: "character",
+    });
+    const movedFrom = comparison.events.filter(({ type }) => type === "movedFrom");
+    const movedTo = comparison.events.filter(({ type }) => type === "movedTo");
+
+    expect(eventTypes(comparison)).toEqual([
+      "movedFrom",
+      "movedFrom",
+      "unchanged",
+      "unchanged",
+      "unchanged",
+      "movedTo",
+      "movedTo",
+    ]);
+    expect(
+      movedFrom.map(({ moveId, baseBlocks }) => [moveId, baseBlocks[0].id]),
+    ).toEqual([
+      [1, "short-exact"],
+      [2, "short-edited"],
+    ]);
+    expect(
+      movedTo.map(({ moveId, baseBlockId, revisedBlocks }) => [
+        moveId,
+        baseBlockId,
+        revisedBlocks[0].id,
+      ]),
+    ).toEqual([
+      [1, "short-exact", "short-exact"],
+      [2, "short-edited", "short-edited"],
+    ]);
+    expect(movedTo[0]?.segments).toBeUndefined();
+    const editedSegments = movedTo[1]?.segments;
+    expect(editedSegments).toBeDefined();
+    if (editedSegments) {
+      expect(textBefore(editedSegments)).toBe("Old");
+      expect(textAfter(editedSegments)).toBe("New");
+      expectSegmentOffsets({ segments: editedSegments, base: "Old", revised: "New" });
+    }
+  });
+
+  test("a positional short ID match remains a deletion and insertion", () => {
+    const movedBase = contentBlock({
+      id: "position-0",
+      text: "Title",
+      idStability: "positional",
+    });
+    const movedRevised = contentBlock({
+      id: "position-0",
+      text: "Title",
+      idStability: "positional",
+    });
+    const anchors = stableAnchors();
+
+    const comparison = successfulComparison({
+      base: [movedBase, ...anchors.base],
+      revised: [...anchors.revised, movedRevised],
+    });
+
+    expect(eventTypes(comparison)).toEqual([
+      "deleted",
+      "unchanged",
+      "unchanged",
+      "unchanged",
+      "inserted",
+    ]);
+  });
+
   test("repeated move candidates pair FIFO", () => {
     const repeatedText = "standard terms apply equally here";
     const firstBase = contentBlock({ id: "first-base", text: repeatedText });
@@ -528,14 +641,7 @@ describe("representation-neutral comparison stream", () => {
         revisedEnd: 5,
       },
     ]);
-    for (const segment of event.segments) {
-      if (segment.type !== "ins") {
-        expect(base.text.slice(segment.baseStart, segment.baseEnd)).toBe(segment.text);
-      }
-      if (segment.type !== "del") {
-        expect(revised.text.slice(segment.revisedStart, segment.revisedEnd)).toBe(segment.text);
-      }
-    }
+    expectSegmentOffsets({ segments: event.segments, base: base.text, revised: revised.text });
   });
 });
 
@@ -701,7 +807,61 @@ describe("container-aware comparison", () => {
     ).toEqual([1, 1]);
   });
 
-  test("a generic container-path change cannot become an unchanged pair", () => {
+  test("stable identity does not turn a table insertion into a cross-structure move", () => {
+    const base = contentBlock({ id: "shared", text: "Clause" });
+    const revised = tableBlock({
+      id: "shared",
+      text: "Clause",
+      rowIndex: 0,
+      cellIndex: 0,
+    });
+
+    const comparison = successfulComparison({ base: [base], revised: [revised] });
+
+    expect(comparison.events).toEqual([
+      { type: "deleted", baseBlocks: [base], revisedBlocks: [] },
+      {
+        type: "inserted",
+        baseBlocks: [],
+        revisedBlocks: [revised],
+        structuralChangeId: 1,
+      },
+    ]);
+    expect(comparison.structuralChanges).toEqual([
+      {
+        id: 1,
+        type: "table-insert",
+        tableIndex: 0,
+        revisedBlockIds: ["shared"],
+      },
+    ]);
+  });
+
+  test("malformed table coordinate order returns an input error instead of panicking", () => {
+    const base = [
+      tableBlock({ id: "right", text: "Right", rowIndex: 0, cellIndex: 1 }),
+      tableBlock({ id: "left", text: "Left", rowIndex: 0, cellIndex: 0 }),
+    ];
+    const revised = [
+      tableBlock({ id: "left", text: "Left", rowIndex: 0, cellIndex: 0 }),
+      tableBlock({ id: "right", text: "Right", rowIndex: 0, cellIndex: 1 }),
+    ];
+
+    const result = compareContent({ base: { blocks: base }, revised: { blocks: revised } });
+
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) {
+      return;
+    }
+    expect(result.error).toBeInstanceOf(InvalidFolioContentComparisonError);
+    expect(result.error).toMatchObject({
+      input: "base",
+      blockIndex: 1,
+      field: "blocks[1].table",
+    });
+  });
+
+  test("a stable block relocated across generic containers is an explicit move", () => {
     const base = contentBlock({
       id: "clause",
       text: "Clause",
@@ -716,8 +876,14 @@ describe("container-aware comparison", () => {
     const comparison = successfulComparison({ base: [base], revised: [revised] });
 
     expect(comparison.events).toEqual([
-      { type: "deleted", baseBlocks: [base], revisedBlocks: [] },
-      { type: "inserted", baseBlocks: [], revisedBlocks: [revised] },
+      { type: "movedFrom", baseBlocks: [base], revisedBlocks: [], moveId: 1 },
+      {
+        type: "movedTo",
+        baseBlocks: [],
+        revisedBlocks: [revised],
+        moveId: 1,
+        baseBlockId: "clause",
+      },
     ]);
   });
 });
@@ -792,7 +958,7 @@ describe("identity semantics and input boundaries", () => {
     }
     expect(result.error).toBeInstanceOf(InvalidFolioContentComparisonError);
     expect(result.error).toMatchObject({
-      side: "base",
+      input: "base",
       blockIndex: 1,
       field: "blocks[1].id",
     });
@@ -841,8 +1007,124 @@ describe("identity semantics and input boundaries", () => {
         continue;
       }
       expect(result.error).toBeInstanceOf(InvalidFolioContentComparisonError);
-      expect(result.error).toMatchObject({ side: "base", blockIndex: 0, field });
+      expect(result.error).toMatchObject({ input: "base", blockIndex: 0, field });
     }
+  });
+
+  test("malformed runtime metadata is rejected instead of treated as absent", () => {
+    const invalidStyle = contentBlock({ id: "style", text: "Text" });
+    Reflect.set(invalidStyle, "styleId", 42);
+    const invalidLabel = contentBlock({ id: "label", text: "Text" });
+    Reflect.set(invalidLabel, "displayLabel", false);
+    const invalidSpacing = contentBlock({ id: "spacing", text: "Text" });
+    Reflect.set(invalidSpacing, "directSpacing", "120");
+    const invalidDirectFormatting = contentBlock({
+      id: "formatting",
+      text: "Text",
+      previewRuns: [{ text: "Text" }],
+    });
+    const run = invalidDirectFormatting.previewRuns?.[0];
+    if (!run) {
+      throw new Error("The malformed-formatting fixture must contain one preview run.");
+    }
+    Reflect.set(run, "directFormatting", "bold");
+    const invalidTable = contentBlock({ id: "table", text: "Text" });
+    Reflect.set(invalidTable, "table", null);
+    const cases = [
+      { block: invalidStyle, field: "blocks[0].styleId" },
+      { block: invalidLabel, field: "blocks[0].displayLabel" },
+      { block: invalidSpacing, field: "blocks[0].directSpacing" },
+      {
+        block: invalidDirectFormatting,
+        field: "blocks[0].previewRuns[0].directFormatting",
+      },
+      { block: invalidTable, field: "blocks[0].table" },
+    ];
+
+    for (const { block, field } of cases) {
+      const result = compareContent({
+        base: { blocks: [block] },
+        revised: { blocks: [] },
+      });
+      if (!result.isErr()) {
+        throw new Error(`Expected malformed ${field} to return a comparison error.`);
+      }
+      expect(result.error).toBeInstanceOf(InvalidFolioContentComparisonError);
+      expect(result.error).toMatchObject({ input: "base", blockIndex: 0, field });
+    }
+  });
+
+  test("an unsupported runtime granularity returns an option error", () => {
+    const baseBlocks: TestBlock[] = [];
+    const revisedBlocks: TestBlock[] = [];
+    const options = {
+      base: { blocks: baseBlocks },
+      revised: { blocks: revisedBlocks },
+    };
+    Reflect.set(options, "granularity", "byte");
+
+    const result = compareContent(options);
+
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) {
+      return;
+    }
+    expect(result.error).toBeInstanceOf(InvalidFolioContentComparisonError);
+    expect(result.error).toMatchObject({ input: "options", field: "granularity" });
+  });
+
+  test("a malformed options value returns a typed error instead of throwing", () => {
+    const result = Reflect.apply(compareContent, undefined, [null]);
+
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) {
+      return;
+    }
+    expect(result.error).toBeInstanceOf(InvalidFolioContentComparisonError);
+    expect(result.error).toMatchObject({ input: "options", field: "options" });
+  });
+
+  test("public block and change caps return typed limit errors", () => {
+    const oneBlock = contentBlock({ id: "same", text: "Text" });
+    const tooManyBaseBlocks = Array.from(
+      { length: MAX_FOLIO_CONTENT_BLOCKS + 1 },
+      () => oneBlock,
+    );
+    const blockLimit = compareContent({
+      base: { blocks: tooManyBaseBlocks },
+      revised: { blocks: [] },
+    });
+
+    expect(blockLimit.isErr()).toBe(true);
+    if (!blockLimit.isErr()) {
+      return;
+    }
+    expect(blockLimit.error).toBeInstanceOf(FolioContentComparisonLimitError);
+    expect(blockLimit.error).toMatchObject({
+      limit: "base-blocks",
+      maximum: MAX_FOLIO_CONTENT_BLOCKS,
+      actual: MAX_FOLIO_CONTENT_BLOCKS + 1,
+    });
+
+    const tooManyChanges = Array.from(
+      { length: MAX_FOLIO_CONTENT_CHANGES + 1 },
+      (_unused, index) => contentBlock({ id: `inserted-${String(index)}`, text: "Text" }),
+    );
+    const changeLimit = compareContent({
+      base: { blocks: [] },
+      revised: { blocks: tooManyChanges },
+    });
+
+    expect(changeLimit.isErr()).toBe(true);
+    if (!changeLimit.isErr()) {
+      return;
+    }
+    expect(changeLimit.error).toBeInstanceOf(FolioContentComparisonLimitError);
+    expect(changeLimit.error).toMatchObject({
+      limit: "changes",
+      maximum: MAX_FOLIO_CONTENT_CHANGES,
+      actual: MAX_FOLIO_CONTENT_CHANGES + 1,
+    });
   });
 
   test("comparison is deterministic and does not mutate frozen inputs", () => {
@@ -909,6 +1191,11 @@ const generatedBlocks = fc.array(
   { maxLength: 14 },
 );
 
+const stablePermutation = fc.shuffledSubarray(
+  ["stable-a", "stable-b", "stable-c", "stable-d", "stable-e", "stable-f"],
+  { minLength: 6, maxLength: 6 },
+);
+
 describe("comparison projection invariants", () => {
   test("every generated stream reconstructs both ordered inputs exactly", () => {
     fc.assert(
@@ -954,16 +1241,70 @@ describe("comparison projection invariants", () => {
           if (event.type === "modified") {
             expect(textBefore(event.segments)).toBe(event.baseBlocks[0].text);
             expect(textAfter(event.segments)).toBe(event.revisedBlocks[0].text);
+            expectSegmentOffsets({
+              segments: event.segments,
+              base: event.baseBlocks[0].text,
+              revised: event.revisedBlocks[0].text,
+            });
           }
           if (event.type === "movedTo" && event.segments) {
             const source = base.find(({ id }) => id === event.baseBlockId);
             expect(source).toBeDefined();
             expect(textBefore(event.segments)).toBe(source?.text);
             expect(textAfter(event.segments)).toBe(event.revisedBlocks[0].text);
+            if (source) {
+              expectSegmentOffsets({
+                segments: event.segments,
+                base: source.text,
+                revised: event.revisedBlocks[0].text,
+              });
+            }
           }
         }
       }),
       propertyConfig({ numRuns: 200 }),
+    );
+  });
+
+  test("permutations of short stable blocks preserve projections and move identity", () => {
+    fc.assert(
+      fc.property(stablePermutation, (revisedIds) => {
+        const baseIds = [
+          "stable-a",
+          "stable-b",
+          "stable-c",
+          "stable-d",
+          "stable-e",
+          "stable-f",
+        ];
+        const base = baseIds.map((id) => contentBlock({ id, text: id.at(-1) ?? id }));
+        const revised = revisedIds.map((id) =>
+          contentBlock({ id, text: id.at(-1) ?? id }),
+        );
+
+        const comparison = successfulComparison({ base, revised });
+
+        expect(baseProjection(comparison)).toEqual(base);
+        expect(revisedProjection(comparison)).toEqual(revised);
+        expect(
+          comparison.events.every(
+            ({ type }) => type === "unchanged" || type === "movedFrom" || type === "movedTo",
+          ),
+        ).toBe(true);
+        const sourceByMoveId = new Map<number, string>();
+        const targetByMoveId = new Map<number, string>();
+        for (const event of comparison.events) {
+          if (event.type === "movedFrom") {
+            sourceByMoveId.set(event.moveId, event.baseBlocks[0].id);
+          }
+          if (event.type === "movedTo") {
+            expect(event.baseBlockId).toBe(event.revisedBlocks[0].id);
+            targetByMoveId.set(event.moveId, event.baseBlockId);
+          }
+        }
+        expect(targetByMoveId).toEqual(sourceByMoveId);
+      }),
+      propertyConfig({ numRuns: 100 }),
     );
   });
 });
