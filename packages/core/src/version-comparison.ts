@@ -278,7 +278,9 @@ export const alignFolioBlocks = (
   revisedBlocks: readonly FolioAIBlock[],
   lcsBudget: FolioVersionComparisonLcsBudget = createLcsBudget(),
 ): FolioAlignedBlockEvent[] => {
-  const workSession = { remainingLcsCells: lcsBudget.remainingCells };
+  const workSession = createFolioContentAlignmentWorkSession({
+    lcsCells: lcsBudget.remainingCells,
+  });
   const events = alignFolioContentBlocks(baseBlocks, revisedBlocks, {
     workSession,
     stableIdMismatch: "pair",

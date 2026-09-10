@@ -318,6 +318,8 @@ const buildSteps = ({
     isEmptyParagraphNode(carrierPair.baseBlock, baseSnapshot) &&
     isEmptyParagraphNode(carrierPair.targetBlock, targetSnapshot);
   const alignmentBudgetBeforeAttempt = workSession.remainingLcsCells;
+  const structuralTokenBudgetBeforeAttempt =
+    workSession.remainingStructuralTokenLookups;
   const steps = alignedSteps(
     baseBlocks,
     targetBlocks,
@@ -349,6 +351,8 @@ const buildSteps = ({
   // The first alignment was only a probe for the terminal-carrier repair.
   // Charge the shared package budget for the plan we keep, not both attempts.
   workSession.remainingLcsCells = alignmentBudgetBeforeAttempt;
+  workSession.remainingStructuralTokenLookups =
+    structuralTokenBudgetBeforeAttempt;
   return alignedSteps(
     baseBlocks,
     targetBlocks,

@@ -410,6 +410,8 @@ export const planComparison = ({
         workSession,
       });
     const remainingLcsCells = workSession.alignment.remainingLcsCells;
+    const remainingStructuralTokenLookups =
+      workSession.alignment.remainingStructuralTokenLookups;
     const remainingMoveComparisons = workSession.remainingMoveComparisons;
     const remainingMoveTokenLookups = workSession.remainingMoveTokenLookups;
     let plan = planPair("allow");
@@ -417,6 +419,8 @@ export const planComparison = ({
       // The first plan was speculative. Re-run the chosen fallback against
       // the same package-wide comparison allowance rather than charging both.
       workSession.alignment.remainingLcsCells = remainingLcsCells;
+      workSession.alignment.remainingStructuralTokenLookups =
+        remainingStructuralTokenLookups;
       workSession.remainingMoveComparisons = remainingMoveComparisons;
       workSession.remainingMoveTokenLookups = remainingMoveTokenLookups;
       plan = planPair("avoid");

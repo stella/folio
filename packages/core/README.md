@@ -126,8 +126,9 @@ and are already in full-document render order. Modified and edited-move segments
 use UTF-16 offsets compatible with JavaScript string slicing; move halves share
 a `moveId`, and table row or column events reference their grouped entry in
 `structuralChanges`. `FOLIO_CONTENT_COMPARISON_LIMITS` publishes the block,
-text, attribute, container, run, and result ceilings; exceeding one returns a
-typed `FolioContentComparisonLimitError` without beginning the comparison.
+text, attribute, container, run, and result ceilings. Input ceilings are
+checked before alignment; the result ceiling returns the same typed
+`FolioContentComparisonLimitError` while constructing the ordered stream.
 
 ## Native Word redlines
 
