@@ -82,6 +82,20 @@ function getPreviousListFormatting(attrs: Record<string, unknown>): Record<strin
   return previousFormatting;
 }
 
+function clearListAttrs(attrs: ParagraphAttrs): Record<string, unknown> {
+  const styleNumPr = attrs.numPrFromStyle;
+  const numPr =
+    styleNumPr?.numId !== undefined && styleNumPr.numId !== 0
+      ? { numId: 0, ilvl: attrs.numPr?.ilvl ?? styleNumPr.ilvl ?? 0 }
+      : null;
+
+  return {
+    ...attrs,
+    numPr,
+    ...CLEARED_LIST_RENDERING_ATTRS,
+  };
+}
+
 // ============================================================================
 // LIST COMMANDS
 // ============================================================================
@@ -130,11 +144,7 @@ function toggleList(numId: number): Command {
         let nextAttrs: Record<string, unknown>;
 
         if (isInSameList) {
-          nextAttrs = {
-            ...node.attrs,
-            numPr: null,
-            ...CLEARED_LIST_RENDERING_ATTRS,
-          };
+          nextAttrs = clearListAttrs(expectParagraphAttrs(node));
         } else {
           const isBullet = numId === 1;
           nextAttrs = {
@@ -244,9 +254,7 @@ const decreaseListLevel: Command = (state, dispatch) => {
     dispatch(
       state.tr
         .setNodeMarkup(paragraphPos, undefined, {
-          ...paragraph.attrs,
-          numPr: null,
-          ...CLEARED_LIST_RENDERING_ATTRS,
+          ...clearListAttrs(expectParagraphAttrs(paragraph)),
           indentLeft: null,
           indentFirstLine: null,
           hangingIndent: null,
@@ -279,11 +287,7 @@ const removeList: Command = (state, dispatch) => {
   state.doc.nodesBetween($from.pos, $to.pos, (node, pos) => {
     if (node.type.name === "paragraph" && node.attrs["numPr"] && !seen.has(pos)) {
       seen.add(pos);
-      tr = tr.setNodeMarkup(pos, undefined, {
-        ...node.attrs,
-        numPr: null,
-        ...CLEARED_LIST_RENDERING_ATTRS,
-      });
+      tr = tr.setNodeMarkup(pos, undefined, clearListAttrs(expectParagraphAttrs(node)));
     }
   });
 
@@ -348,11 +352,11 @@ function exitListOnEmptyEnter(): Command {
     }
 
     if (dispatch) {
-      const tr = state.tr.setNodeMarkup($from.before(), undefined, {
-        ...paragraph.attrs,
-        numPr: null,
-        ...CLEARED_LIST_RENDERING_ATTRS,
-      });
+      const tr = state.tr.setNodeMarkup(
+        $from.before(),
+        undefined,
+        clearListAttrs(expectParagraphAttrs(paragraph)),
+      );
       dispatch(tr);
     }
     return true;
@@ -415,11 +419,11 @@ function backspaceExitList(): Command {
     }
 
     if (dispatch) {
-      const tr = state.tr.setNodeMarkup($from.before(), undefined, {
-        ...paragraph.attrs,
-        numPr: null,
-        ...CLEARED_LIST_RENDERING_ATTRS,
-      });
+      const tr = state.tr.setNodeMarkup(
+        $from.before(),
+        undefined,
+        clearListAttrs(expectParagraphAttrs(paragraph)),
+      );
       dispatch(tr);
     }
     return true;
@@ -483,9 +487,7 @@ function decreaseListIndent(): Command {
         const currentLevel = attrs.numPr?.ilvl ?? 0;
         if (currentLevel <= 0) {
           tr = tr.setNodeMarkup(pos, undefined, {
-            ...attrs,
-            numPr: null,
-            ...CLEARED_LIST_RENDERING_ATTRS,
+            ...clearListAttrs(attrs),
             indentLeft: null,
             indentFirstLine: null,
             hangingIndent: null,
