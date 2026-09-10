@@ -742,14 +742,14 @@ type MovePair<Block extends FolioContentBlock> = {
   revisedBlock: Block;
 };
 
-const contentBlocksCanMoveTogether = (
-  baseBlock: FolioContentBlock,
-  revisedBlock: FolioContentBlock,
-): boolean => {
-  if (baseBlock.table === undefined && revisedBlock.table === undefined) {
-    return true;
-  }
-  return contentBlocksShareContainer(baseBlock, revisedBlock);
+type MoveCandidate<Block extends FolioContentBlock> = {
+  block: Block;
+  moveScope: Extract<
+    FolioContentAlignmentStep<Block>,
+    { type: "baseOnly" }
+  >["moveScope"];
+  profile: TokenProfile;
+  order: number;
 };
 
 export const detectFolioContentMoves = <Block extends FolioContentBlock>({
@@ -763,43 +763,87 @@ export const detectFolioContentMoves = <Block extends FolioContentBlock>({
   workSession: FolioContentComparisonWorkSession;
   idStability?: (block: Block) => FolioContentIdStability;
 }): readonly MovePair<Block>[] => {
-  const baseOnly: Block[] = [];
-  const stableBaseById = new Map<string, Block>();
-  const profiles = new Map<string, TokenProfile>();
-  const candidatesByText = new Map<string, Block[]>();
+  const stableBaseById = new Map<
+    string,
+    Pick<MoveCandidate<Block>, "block" | "moveScope">
+  >();
+  const exactCandidatesByBucket = new Map<number, Map<string, MoveCandidate<Block>[]>>();
+  const similarityCandidatesByBucket = new Map<
+    number,
+    Map<number, Map<string, MoveCandidate<Block>>>
+  >();
+  let candidateOrder = 0;
   for (const [index, step] of steps.entries()) {
     if (consumedStepIndexes.has(index) || step.type !== "baseOnly") continue;
     if (idStability(step.block) === "stable") {
-      stableBaseById.set(step.block.id, step.block);
+      stableBaseById.set(step.block.id, {
+        block: step.block,
+        moveScope: step.moveScope,
+      });
     }
     const profile = tokenProfile(step.block.text);
     if (!profile) continue;
-    baseOnly.push(step.block);
-    profiles.set(step.block.id, profile);
+    const candidate = {
+      block: step.block,
+      moveScope: step.moveScope,
+      profile,
+      order: candidateOrder++,
+    };
+    let candidatesByText = exactCandidatesByBucket.get(step.moveScope.bucket);
+    if (!candidatesByText) {
+      candidatesByText = new Map();
+      exactCandidatesByBucket.set(step.moveScope.bucket, candidatesByText);
+    }
     const queue = candidatesByText.get(step.block.text);
     if (!queue) {
-      candidatesByText.set(step.block.text, [step.block]);
+      candidatesByText.set(step.block.text, [candidate]);
     } else if (queue.length < MAX_MOVE_CANDIDATES_PER_TEXT) {
-      queue.push(step.block);
+      queue.push(candidate);
     }
+    let candidatesByGap = similarityCandidatesByBucket.get(step.moveScope.bucket);
+    if (!candidatesByGap) {
+      candidatesByGap = new Map();
+      similarityCandidatesByBucket.set(step.moveScope.bucket, candidatesByGap);
+    }
+    let gapCandidates = candidatesByGap.get(step.moveScope.gap);
+    if (!gapCandidates) {
+      gapCandidates = new Map();
+      candidatesByGap.set(step.moveScope.gap, gapCandidates);
+    }
+    gapCandidates.set(step.block.id, candidate);
   }
 
   const taken = new Set<string>();
   const takenRevised = new Set<string>();
   const moves: MovePair<Block>[] = [];
+  const removeSimilarityCandidate = (candidate: {
+    block: Block;
+    moveScope: MoveCandidate<Block>["moveScope"];
+  }): void => {
+    const candidatesByGap = similarityCandidatesByBucket.get(candidate.moveScope.bucket);
+    const gapCandidates = candidatesByGap?.get(candidate.moveScope.gap);
+    gapCandidates?.delete(candidate.block.id);
+    if (gapCandidates?.size === 0) {
+      candidatesByGap?.delete(candidate.moveScope.gap);
+    }
+    if (candidatesByGap?.size === 0) {
+      similarityCandidatesByBucket.delete(candidate.moveScope.bucket);
+    }
+  };
 
   // Stable identity is stronger than either text heuristic. Claim every such
   // counterpart before walking revised blocks in order, so an earlier
   // positional candidate cannot steal its source through equal or similar text.
   for (const [index, step] of steps.entries()) {
     if (consumedStepIndexes.has(index) || step.type !== "revisedOnly") continue;
-    const stable =
+    const candidate =
       idStability(step.block) === "stable" ? stableBaseById.get(step.block.id) : undefined;
-    if (!stable || taken.has(stable.id)) continue;
-    taken.add(stable.id);
+    if (!candidate || taken.has(candidate.block.id)) continue;
+    taken.add(candidate.block.id);
     takenRevised.add(step.block.id);
-    if (contentBlocksCanMoveTogether(stable, step.block)) {
-      moves.push({ baseBlock: stable, revisedBlock: step.block });
+    removeSimilarityCandidate(candidate);
+    if (candidate.moveScope.bucket === step.moveScope.bucket) {
+      moves.push({ baseBlock: candidate.block, revisedBlock: step.block });
     }
   }
 
@@ -814,15 +858,18 @@ export const detectFolioContentMoves = <Block extends FolioContentBlock>({
     ) {
       continue;
     }
-    const exactQueue = candidatesByText.get(step.block.text);
+    const exactQueue = exactCandidatesByBucket
+      .get(step.moveScope.bucket)
+      ?.get(step.block.text);
     const exact = exactQueue?.find(
       (candidate) =>
-        !taken.has(candidate.id) && contentBlocksCanMoveTogether(candidate, step.block),
+        !taken.has(candidate.block.id) && candidate.moveScope.gap !== step.moveScope.gap,
     );
     if (exact) {
-      taken.add(exact.id);
+      taken.add(exact.block.id);
       takenRevised.add(step.block.id);
-      moves.push({ baseBlock: exact, revisedBlock: step.block });
+      removeSimilarityCandidate(exact);
+      moves.push({ baseBlock: exact.block, revisedBlock: step.block });
     }
   }
 
@@ -836,23 +883,29 @@ export const detectFolioContentMoves = <Block extends FolioContentBlock>({
     }
     const revisedProfile = tokenProfile(step.block.text);
     if (!revisedProfile) continue;
-    let best: { block: Block; similarity: number } | null = null;
-    for (const candidate of baseOnly) {
-      if (workSession.remainingMoveComparisons <= 0) break;
-      if (taken.has(candidate.id)) continue;
-      workSession.remainingMoveComparisons--;
-      if (!contentBlocksCanMoveTogether(candidate, step.block)) continue;
-      const baseProfile = profiles.get(candidate.id);
-      if (!baseProfile) return panic("An eligible move candidate has no token profile");
-      const similarity = tokenSimilarity(baseProfile, revisedProfile);
-      if (similarity >= MOVE_SIMILARITY_THRESHOLD && (best === null || similarity > best.similarity)) {
-        best = { block: candidate, similarity };
+    let best: { candidate: MoveCandidate<Block>; similarity: number } | null = null;
+    const candidatesByGap = similarityCandidatesByBucket.get(step.moveScope.bucket);
+    candidateGroups: for (const [gap, candidates] of candidatesByGap ?? []) {
+      if (gap === step.moveScope.gap) continue;
+      for (const candidate of candidates.values()) {
+        if (workSession.remainingMoveComparisons <= 0) break candidateGroups;
+        workSession.remainingMoveComparisons--;
+        const similarity = tokenSimilarity(candidate.profile, revisedProfile);
+        if (
+          similarity >= MOVE_SIMILARITY_THRESHOLD &&
+          (best === null ||
+            similarity > best.similarity ||
+            (similarity === best.similarity && candidate.order < best.candidate.order))
+        ) {
+          best = { candidate, similarity };
+        }
       }
     }
     if (best) {
-      taken.add(best.block.id);
+      taken.add(best.candidate.block.id);
       takenRevised.add(step.block.id);
-      moves.push({ baseBlock: best.block, revisedBlock: step.block });
+      removeSimilarityCandidate(best.candidate);
+      moves.push({ baseBlock: best.candidate.block, revisedBlock: step.block });
     }
   }
   return moves;

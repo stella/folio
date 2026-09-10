@@ -69,8 +69,22 @@ import type { CompareChange, CompareChangeLocation } from "./types";
  */
 type CompareStep =
   | { type: "pair"; baseBlock: FolioAIBlock; targetBlock: FolioAIBlock }
-  | { type: "baseOnly"; block: FolioAIBlock }
-  | { type: "targetOnly"; block: FolioAIBlock }
+  | {
+      type: "baseOnly";
+      block: FolioAIBlock;
+      moveScope: Extract<
+        FolioContentAlignmentStep<FolioAIBlock>,
+        { type: "baseOnly" }
+      >["moveScope"];
+    }
+  | {
+      type: "targetOnly";
+      block: FolioAIBlock;
+      moveScope: Extract<
+        FolioContentAlignmentStep<FolioAIBlock>,
+        { type: "revisedOnly" }
+      >["moveScope"];
+    }
   | { type: "baseRow"; blocks: readonly FolioAIBlock[]; location: FolioAIBlockTableLocation }
   | { type: "targetRow"; blocks: readonly FolioAIBlock[]; location: FolioAIBlockTableLocation }
   | { type: "baseTable"; blocks: readonly FolioAIBlock[]; location: FolioAIBlockTableLocation }
@@ -109,9 +123,9 @@ const toCompareStep = (
     case "pair":
       return { type: "pair", baseBlock: step.baseBlock, targetBlock: step.revisedBlock };
     case "baseOnly":
-      return { type: "baseOnly", block: step.block };
+      return { type: "baseOnly", block: step.block, moveScope: step.moveScope };
     case "revisedOnly":
-      return { type: "targetOnly", block: step.block };
+      return { type: "targetOnly", block: step.block, moveScope: step.moveScope };
     case "baseRow":
       return { type: "baseRow", blocks: step.blocks, location: step.location };
     case "revisedRow":
@@ -151,7 +165,7 @@ const toContentAlignmentStep = (
     case "baseOnly":
       return step;
     case "targetOnly":
-      return { type: "revisedOnly", block: step.block };
+      return { type: "revisedOnly", block: step.block, moveScope: step.moveScope };
     case "baseRow":
     case "baseTable":
     case "baseColumn":
@@ -199,6 +213,7 @@ const alignedSteps = (
     revisedBlocks: alignedTargetBlocks,
     wholeTableReplacement,
     workSession,
+    stableIdMismatch: "pair",
     idStability: folioAIBlockIdStability,
   }).map(toCompareStep);
   if (terminalCarrierPair) {

@@ -281,6 +281,7 @@ export const alignFolioBlocks = (
   const workSession = { remainingLcsCells: lcsBudget.remainingCells };
   const events = alignFolioContentBlocks(baseBlocks, revisedBlocks, {
     workSession,
+    stableIdMismatch: "pair",
     idStability: folioAIBlockIdStability,
   });
   lcsBudget.remainingCells = workSession.remainingLcsCells;
@@ -344,6 +345,7 @@ const compareStoryBlocks = ({
     baseBlocks,
     revisedBlocks,
     workSession: workSession.alignment,
+    stableIdMismatch: "pair",
     idStability: folioAIBlockIdStability,
   });
   const compared = compareAlignedFolioContent({

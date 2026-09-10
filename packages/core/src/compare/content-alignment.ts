@@ -341,13 +341,47 @@ export type FolioContentAlignmentStep<
   Block extends FolioContentBlock = FolioContentBlock,
 > =
   | { type: "pair"; baseBlock: Block; revisedBlock: Block }
-  | { type: "baseOnly"; block: Block }
-  | { type: "revisedOnly"; block: Block }
+  | { type: "baseOnly"; block: Block; moveScope: FolioContentMoveScope }
+  | { type: "revisedOnly"; block: Block; moveScope: FolioContentMoveScope }
   | { type: "baseRow"; blocks: readonly Block[]; location: FolioContentTableLocation }
   | { type: "revisedRow"; blocks: readonly Block[]; location: FolioContentTableLocation }
   | { type: "baseTable"; blocks: readonly Block[]; location: FolioContentTableLocation }
   | { type: "revisedTable"; blocks: readonly Block[]; location: FolioContentTableLocation }
   | TableColumnAlignmentStep<Block>;
+
+/** @internal Legal move bucket and alignment gap for one unpaired block. */
+export type FolioContentMoveScope = {
+  readonly bucket: number;
+  readonly gap: number;
+};
+
+type MoveScopeContext = {
+  nextTableCellBucket: number;
+  nextGap: number;
+};
+
+const BODY_MOVE_BUCKET = 0;
+
+const scopedAlignmentSteps = <Block extends FolioContentBlock>(
+  events: readonly FolioContentAlignedBlockEvent<Block>[],
+  context: MoveScopeContext,
+  bucketForBlock: (block: Block) => number,
+): FolioContentAlignmentStep<Block>[] => {
+  const steps: FolioContentAlignmentStep<Block>[] = [];
+  let gap = context.nextGap++;
+  for (const event of events) {
+    if (event.type === "pair") {
+      steps.push(event);
+      gap = context.nextGap++;
+      continue;
+    }
+    steps.push({
+      ...event,
+      moveScope: { bucket: bucketForBlock(event.block), gap },
+    });
+  }
+  return steps;
+};
 
 type DocumentSegment<Block extends FolioContentBlock> =
   | { kind: "body"; blocks: Block[]; containerPathKey: string | null }
@@ -472,6 +506,8 @@ type AlignRowCellsOptions<Block extends FolioContentBlock> = {
   baseRow: readonly Block[];
   revisedRow: readonly Block[];
   workSession: FolioContentAlignmentWorkSession;
+  moveScopeContext: MoveScopeContext;
+  stableIdMismatch: "pair" | "separate";
   idStability?: ((block: Block) => FolioContentIdStability) | undefined;
   baseColumnKeys?: ReadonlyMap<number, number> | undefined;
   revisedColumnKeys?: ReadonlyMap<number, number> | undefined;
@@ -481,6 +517,8 @@ const alignRowCells = <Block extends FolioContentBlock>({
   baseRow,
   revisedRow,
   workSession,
+  moveScopeContext,
+  stableIdMismatch,
   idStability,
   baseColumnKeys,
   revisedColumnKeys,
@@ -521,21 +559,34 @@ const alignRowCells = <Block extends FolioContentBlock>({
   for (const cellIndex of cellIndexes) {
     const baseBlocks = baseCells.get(cellIndex) ?? [];
     const revisedBlocks = revisedCells.get(cellIndex) ?? [];
-    for (const event of alignFolioContentBlocks(baseBlocks, revisedBlocks, {
+    const aligned = alignFolioContentBlocks(baseBlocks, revisedBlocks, {
       workSession,
       idStability,
-      stableIdMismatch: "pair",
-    })) {
+      stableIdMismatch,
+    }).flatMap((event): FolioContentAlignedBlockEvent<Block>[] => {
       if (
         event.type === "pair" &&
         !contentBlocksShareContainerPath(event.baseBlock, event.revisedBlock)
       ) {
-        steps.push({ type: "baseOnly", block: event.baseBlock });
-        steps.push({ type: "revisedOnly", block: event.revisedBlock });
-      } else {
-        steps.push(event);
+        return [
+          { type: "baseOnly", block: event.baseBlock },
+          { type: "revisedOnly", block: event.revisedBlock },
+        ];
       }
-    }
+      return [event];
+    });
+    const bucketByContainerPath = new Map<string | null, number>();
+    const bucketForBlock = (block: Block): number => {
+      const path = containerPathKeyOf(block);
+      const existing = bucketByContainerPath.get(path);
+      if (existing !== undefined) {
+        return existing;
+      }
+      const bucket = moveScopeContext.nextTableCellBucket++;
+      bucketByContainerPath.set(path, bucket);
+      return bucket;
+    };
+    steps.push(...scopedAlignmentSteps(aligned, moveScopeContext, bucketForBlock));
   }
   return steps;
 };
@@ -601,6 +652,8 @@ const pairTableRows = <Block extends FolioContentBlock>(
 type AlignTableRowsOptions<Block extends FolioContentBlock> = {
   rows: readonly TableRowAlignment<Block>[];
   workSession: FolioContentAlignmentWorkSession;
+  moveScopeContext: MoveScopeContext;
+  stableIdMismatch: "pair" | "separate";
   idStability?: ((block: Block) => FolioContentIdStability) | undefined;
   baseColumnKeys?: ReadonlyMap<number, number> | undefined;
   revisedColumnKeys?: ReadonlyMap<number, number> | undefined;
@@ -609,6 +662,8 @@ type AlignTableRowsOptions<Block extends FolioContentBlock> = {
 const alignTableRows = <Block extends FolioContentBlock>({
   rows,
   workSession,
+  moveScopeContext,
+  stableIdMismatch,
   idStability,
   baseColumnKeys,
   revisedColumnKeys,
@@ -633,6 +688,8 @@ const alignTableRows = <Block extends FolioContentBlock>({
           baseRow: alignment.baseRow,
           revisedRow: alignment.revisedRow,
           workSession,
+          moveScopeContext,
+          stableIdMismatch,
           idStability,
           baseColumnKeys,
           revisedColumnKeys,
@@ -689,6 +746,8 @@ type BuildTablePlanOptions<Block extends FolioContentBlock> = {
   baseBlocks: readonly Block[];
   revisedBlocks: readonly Block[];
   workSession: FolioContentAlignmentWorkSession;
+  moveScopeContext: MoveScopeContext;
+  stableIdMismatch: "pair" | "separate";
   idStability?: ((block: Block) => FolioContentIdStability) | undefined;
 };
 
@@ -696,6 +755,8 @@ const buildTablePlan = <Block extends FolioContentBlock>({
   baseBlocks,
   revisedBlocks,
   workSession,
+  moveScopeContext,
+  stableIdMismatch,
   idStability,
 }: BuildTablePlanOptions<Block>): TableStructurePlan<Block> => {
   const columns = alignTableColumns(baseBlocks, revisedBlocks);
@@ -716,6 +777,8 @@ const buildTablePlan = <Block extends FolioContentBlock>({
       ...alignTableRows({
         rows,
         workSession,
+        moveScopeContext,
+        stableIdMismatch,
         idStability,
         baseColumnKeys: columns?.baseColumnKeys,
         revisedColumnKeys: columns?.revisedColumnKeys,
@@ -728,6 +791,8 @@ type BuildTableSegmentPlanOptions<Block extends FolioContentBlock> = {
   baseBlocks: readonly Block[];
   revisedBlocks: readonly Block[];
   workSession: FolioContentAlignmentWorkSession;
+  moveScopeContext: MoveScopeContext;
+  stableIdMismatch: "pair" | "separate";
   idStability?: ((block: Block) => FolioContentIdStability) | undefined;
 };
 
@@ -735,6 +800,8 @@ const buildTableSegmentPlan = <Block extends FolioContentBlock>({
   baseBlocks,
   revisedBlocks,
   workSession,
+  moveScopeContext,
+  stableIdMismatch,
   idStability,
 }: BuildTableSegmentPlanOptions<Block>): TableStructurePlan<Block> => {
   const baseTables = groupTables(baseBlocks);
@@ -747,6 +814,8 @@ const buildTableSegmentPlan = <Block extends FolioContentBlock>({
       baseBlocks: baseTables[index] ?? [],
       revisedBlocks: revisedTables[index] ?? [],
       workSession,
+      moveScopeContext,
+      stableIdMismatch,
       idStability,
     });
     steps.push(...table.steps);
@@ -906,10 +975,14 @@ const alignSegments = <Block extends FolioContentBlock>(
 const unpairedSegmentSteps = <Block extends FolioContentBlock>(
   segment: DocumentSegment<Block>,
   side: "base" | "revised",
+  moveScopeContext: MoveScopeContext,
 ): FolioContentAlignmentStep<Block>[] => {
   if (segment.kind !== "table") {
+    const gap = moveScopeContext.nextGap++;
     return segment.blocks.map((block) =>
-      side === "base" ? { type: "baseOnly", block } : { type: "revisedOnly", block },
+      side === "base"
+        ? { type: "baseOnly", block, moveScope: { bucket: BODY_MOVE_BUCKET, gap } }
+        : { type: "revisedOnly", block, moveScope: { bucket: BODY_MOVE_BUCKET, gap } },
     );
   }
   const location = segment.blocks.at(0)?.table;
@@ -926,6 +999,8 @@ export type AlignFolioContentStructureOptions<Block extends FolioContentBlock> =
   revisedBlocks: readonly Block[];
   workSession?: FolioContentAlignmentWorkSession;
   wholeTableReplacement?: "allow" | "avoid";
+  /** Let a structurally aligned slot outrank different stable identifiers. */
+  stableIdMismatch?: "pair" | "separate";
   /** @internal Compatibility hook for adapters whose source model predates `idStability`. */
   idStability?: ((block: Block) => FolioContentIdStability) | undefined;
 };
@@ -935,9 +1010,14 @@ export const alignFolioContentStructure = <Block extends FolioContentBlock>({
   revisedBlocks,
   workSession = createFolioContentAlignmentWorkSession(),
   wholeTableReplacement = "allow",
+  stableIdMismatch = "separate",
   idStability,
 }: AlignFolioContentStructureOptions<Block>): FolioContentAlignmentStep<Block>[] => {
   const canReplaceWholeTable = wholeTableReplacement === "allow";
+  const moveScopeContext: MoveScopeContext = {
+    nextTableCellBucket: BODY_MOVE_BUCKET + 1,
+    nextGap: 0,
+  };
   const steps: FolioContentAlignmentStep<Block>[] = [];
   for (const { baseSegment, revisedSegment } of alignSegments(
     splitSegments(baseBlocks),
@@ -946,10 +1026,15 @@ export const alignFolioContentStructure = <Block extends FolioContentBlock>({
     if (baseSegment && revisedSegment) {
       if (baseSegment.kind !== "table") {
         steps.push(
-          ...alignFolioContentBlocks(baseSegment.blocks, revisedSegment.blocks, {
-            workSession,
-            idStability,
-          }),
+          ...scopedAlignmentSteps(
+            alignFolioContentBlocks(baseSegment.blocks, revisedSegment.blocks, {
+              workSession,
+              stableIdMismatch,
+              idStability,
+            }),
+            moveScopeContext,
+            () => BODY_MOVE_BUCKET,
+          ),
         );
         continue;
       }
@@ -958,23 +1043,25 @@ export const alignFolioContentStructure = <Block extends FolioContentBlock>({
         baseBlocks: baseSegment.blocks,
         revisedBlocks: revisedSegment.blocks,
         workSession,
+        moveScopeContext,
+        stableIdMismatch,
         idStability,
       });
       if (canReplaceWholeTable && !table.representable) {
         workSession.remainingLcsCells = remainingLcsCells;
-        steps.push(...unpairedSegmentSteps(baseSegment, "base"));
-        steps.push(...unpairedSegmentSteps(revisedSegment, "revised"));
+        steps.push(...unpairedSegmentSteps(baseSegment, "base", moveScopeContext));
+        steps.push(...unpairedSegmentSteps(revisedSegment, "revised", moveScopeContext));
         continue;
       }
       steps.push(...table.steps);
       continue;
     }
     if (baseSegment) {
-      steps.push(...unpairedSegmentSteps(baseSegment, "base"));
+      steps.push(...unpairedSegmentSteps(baseSegment, "base", moveScopeContext));
       continue;
     }
     if (revisedSegment) {
-      steps.push(...unpairedSegmentSteps(revisedSegment, "revised"));
+      steps.push(...unpairedSegmentSteps(revisedSegment, "revised", moveScopeContext));
     }
   }
   return steps;

@@ -99,11 +99,13 @@ describe("shared content-alignment LCS work", () => {
       "base-table",
       "Table boundary",
       { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 },
+      { idStability: "positional" },
     );
     const revisedTable = cell(
       "revised-table",
       "Table boundary",
       { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 },
+      { idStability: "positional" },
     );
 
     const steps = alignFolioContentStructure({
@@ -254,8 +256,8 @@ describe("container-safe structural alignment", () => {
     ];
 
     expect(alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised })).toEqual([
-      { type: "baseOnly", block: base[0] },
-      { type: "revisedOnly", block: revised[0] },
+      { type: "baseOnly", block: base[0], moveScope: { bucket: 0, gap: 0 } },
+      { type: "revisedOnly", block: revised[0], moveScope: { bucket: 0, gap: 1 } },
     ]);
   });
 
@@ -272,8 +274,8 @@ describe("container-safe structural alignment", () => {
     ];
 
     expect(alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised })).toEqual([
-      { type: "baseOnly", block: base[0] },
-      { type: "revisedOnly", block: revised[0] },
+      { type: "baseOnly", block: base[0], moveScope: { bucket: 1, gap: 1 } },
+      { type: "revisedOnly", block: revised[0], moveScope: { bucket: 2, gap: 1 } },
     ]);
   });
 });
@@ -310,7 +312,11 @@ describe("table row and column structural alignment", () => {
       }),
     ];
 
-    const steps = alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised });
+    const steps = alignFolioContentStructure({
+      baseBlocks: base,
+      revisedBlocks: revised,
+      stableIdMismatch: "pair",
+    });
     const pairs = steps.filter((step) => step.type === "pair");
 
     expect(steps.map(({ type }) => type)).toEqual(["revisedRow", "pair", "pair"]);
@@ -358,7 +364,11 @@ describe("table row and column structural alignment", () => {
       }),
     ];
 
-    const steps = alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised });
+    const steps = alignFolioContentStructure({
+      baseBlocks: base,
+      revisedBlocks: revised,
+      stableIdMismatch: "pair",
+    });
     const pairs = steps.filter((step) => step.type === "pair");
 
     expect(steps.map(({ type }) => type)).toEqual(["revisedColumn", "pair", "pair"]);

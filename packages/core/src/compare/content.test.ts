@@ -979,25 +979,14 @@ describe("container-aware comparison", () => {
 
     const comparison = successfulComparison({ base, revised });
 
-    expect(eventTypes(comparison)).toEqual(["modified", "modified"]);
-    expect(
-      comparison.events.map(({ baseBlocks, revisedBlocks }) => [
-        baseBlocks[0]?.table?.cellIndex,
-        revisedBlocks[0]?.table?.cellIndex,
-      ]),
-    ).toEqual([
-      [0, 0],
-      [1, 1],
+    expect(eventTypes(comparison)).toEqual([
+      "deleted",
+      "deleted",
+      "inserted",
+      "inserted",
     ]);
-    expect(
-      comparison.events.map(({ baseBlocks, revisedBlocks }) => [
-        baseBlocks[0]?.id,
-        revisedBlocks[0]?.id,
-      ]),
-    ).toEqual([
-      ["left", "right"],
-      ["right", "left"],
-    ]);
+    expect(baseProjection(comparison)).toEqual(base);
+    expect(revisedProjection(comparison)).toEqual(revised);
     expect(comparison.structuralChanges).toEqual([]);
   });
 
