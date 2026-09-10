@@ -577,7 +577,7 @@ const getPaintedSpanCaretGeometry = (
 
   const spanRect = span.getBoundingClientRect();
   const line = closestHtmlElement(span, ".layout-line");
-  const lineHeight = line?.offsetHeight || spanRect.height || 16;
+  const lineHeight = line?.getBoundingClientRect().height || spanRect.height || 16;
   if (span.classList.contains("layout-run-tab")) {
     const pmEnd = Number(span.dataset["pmEnd"]);
     return {
