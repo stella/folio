@@ -1,5 +1,11 @@
 # @stll/docx-core
 
+## 0.19.3
+
+### Patch Changes
+
+- [#797](https://github.com/stella/folio/pull/797) [`e289686`](https://github.com/stella/folio/commit/e2896863f28be23473628966a77123573bba2e0b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve and recompute imported numbering across list structure edits.
+
 ## 0.19.2
 
 ### Patch Changes
