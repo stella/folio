@@ -30,6 +30,7 @@ describe("formatVersionDiffForLLM", () => {
             { type: "del", text: "paragraph." },
             { type: "ins", text: "clause." },
           ],
+          changedProperties: ["alignment"],
           baseHandle: mainHandle("00000002"),
           revisedHandle: mainHandle("00000002"),
         },
@@ -68,8 +69,14 @@ describe("formatVersionDiffForLLM", () => {
           type: "movedTo",
           blockId: "00000008",
           kind: "paragraph",
-          text: "Zeta paragraph moved somewhere else.",
+          text: "Zeta paragraph moved and edited.",
           moveGroupId: 1,
+          segments: [
+            { type: "equal", text: "Zeta paragraph moved " },
+            { type: "del", text: "somewhere else." },
+            { type: "ins", text: "and edited." },
+          ],
+          changedProperties: ["styleId", "alignment"],
           revisedHandle: mainHandle("00000008"),
         },
       ],
@@ -77,12 +84,12 @@ describe("formatVersionDiffForLLM", () => {
 
     expect(formatVersionDiffForLLM(diff).split("\n")).toEqual([
       "Version diff: 1 added, 1 deleted, 1 modified, 1 format-changed, 1 moved, 2 unchanged",
-      "~ [00000002] modified: Beta [-paragraph.-]{+clause.+}",
+      "~ [00000002] modified (alignment): Beta [-paragraph.-]{+clause.+}",
       "- [00000003] deleted: Gamma paragraph.",
       "+ [00000006] added: Epsilon paragraph.",
       "~ [00000007] format changed (bold, color): Delta paragraph.",
       "< [00000008] moved away (move 1): Zeta paragraph moved somewhere else.",
-      "> [00000008] moved here (move 1): Zeta paragraph moved somewhere else.",
+      "> [00000008] moved here (move 1; changed: styleId, alignment): Zeta paragraph moved [-somewhere else.-]{+and edited.+}",
     ]);
   });
 

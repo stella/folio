@@ -799,6 +799,7 @@ export type FolioBlockDiff = {
     blockId: string;
     kind: string;
     segments: FolioVersionDiffSegment[];
+    changedProperties?: FolioVersionChangeProperty[];
     baseHandle: FolioVersionBlockHandle;
     revisedHandle: FolioVersionBlockHandle;
 } | {
@@ -822,6 +823,8 @@ export type FolioBlockDiff = {
     kind: string;
     text: string;
     moveGroupId: number;
+    segments?: FolioVersionDiffSegment[];
+    changedProperties?: FolioVersionChangeProperty[];
     revisedHandle: FolioVersionBlockHandle;
 };
 
@@ -829,6 +832,9 @@ export type FolioBlockDiff = {
 export type FolioBlockId = string & {
     readonly __brand: "folio.blockId";
 };
+
+// @public
+export type FolioBlockProperty = keyof typeof BLOCK_PROPERTIES;
 
 // @public (undocumented)
 export type FolioCompareDocxVersionsOptions = {
@@ -1362,7 +1368,7 @@ export type FolioDocxXmlReplacement = {
 export type FolioEditableDocumentStoryHandle = FolioDocumentStoryHandle;
 
 // @public
-export type FolioFormatProperty = (typeof FORMAT_PROPERTIES)[number];
+export type FolioFormatProperty = keyof typeof INLINE_FORMAT_PROPERTIES | keyof typeof PARAGRAPH_FORMAT_PROPERTIES;
 
 // @public (undocumented)
 export type FolioMetadataDiff = {
@@ -1463,6 +1469,9 @@ export type FolioVersionBlockHandle = {
     story: FolioDocumentStoryHandle;
     blockId: string;
 };
+
+// @public
+export type FolioVersionChangeProperty = FolioBlockProperty | FolioFormatProperty;
 
 // @public (undocumented)
 export type FolioVersionComparisonPrivacyTransform = FolioDocumentPrivacyTransform;

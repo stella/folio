@@ -20,7 +20,7 @@ import { compareContent } from "./compare/content";
 import { parseDocx } from "./docx/parser";
 import { createDocx } from "./docx/rezip";
 import { repackDocx } from "./docx/rezip";
-import type { HeaderFooter, Paragraph, Table } from "./types/document";
+import type { HeaderFooter, Paragraph, ParagraphAlignment, Table } from "./types/document";
 import { createEmptyDocument } from "./utils/createDocument";
 import {
   alignFolioBlocks,
@@ -35,6 +35,8 @@ type ParagraphSpec = {
   text: string;
   paraId?: string;
   formatting?: { bold?: boolean; italic?: boolean };
+  paragraphAlignment?: ParagraphAlignment;
+  paragraphStyleId?: string;
 };
 
 const buildDocxBuffer = (paragraphs: readonly ParagraphSpec[]): Promise<ArrayBuffer> => {
@@ -45,17 +47,25 @@ const buildDocxBuffer = (paragraphs: readonly ParagraphSpec[]): Promise<ArrayBuf
       ...template.package,
       document: {
         ...template.package.document,
-        content: paragraphs.map(({ text, paraId, formatting }) => ({
-          type: "paragraph",
-          content: [
-            {
-              type: "run",
-              ...(formatting !== undefined && { formatting }),
-              content: [{ type: "text", text }],
-            },
-          ],
-          ...(paraId !== undefined && { paraId }),
-        })),
+        content: paragraphs.map(
+          ({ text, paraId, formatting, paragraphAlignment, paragraphStyleId }) => ({
+            type: "paragraph",
+            content: [
+              {
+                type: "run",
+                ...(formatting !== undefined && { formatting }),
+                content: [{ type: "text", text }],
+              },
+            ],
+            ...((paragraphAlignment !== undefined || paragraphStyleId !== undefined) && {
+              formatting: {
+                ...(paragraphAlignment !== undefined && { alignment: paragraphAlignment }),
+                ...(paragraphStyleId !== undefined && { styleId: paragraphStyleId }),
+              },
+            }),
+            ...(paraId !== undefined && { paraId }),
+          }),
+        ),
       },
     },
   });
@@ -640,6 +650,44 @@ describe("compareDocxVersions: selected scopes", () => {
     }
   });
 
+  test("retains formatting when a modified block's text scope is excluded", async () => {
+    const base = await buildDocxBuffer([
+      {
+        text: "Baseline clause text.",
+        paraId: "00000001",
+        paragraphAlignment: "left",
+      },
+    ]);
+    const revised = await buildDocxBuffer([
+      {
+        text: "Revised clause text.",
+        paraId: "00000001",
+        paragraphAlignment: "right",
+      },
+    ]);
+
+    const combined = await compareDocxVersions(base, revised);
+    expect(combined.changes).toEqual([
+      expect.objectContaining({
+        type: "modified",
+        changedProperties: ["alignment"],
+      }),
+    ]);
+
+    const formatting = await compareDocxVersions(base, revised, { include: ["formatting"] });
+    expect(formatting.changes).toEqual([
+      expect.objectContaining({
+        type: "formatChanged",
+        changedProperties: ["alignment"],
+      }),
+    ]);
+    expect(formatting.summaryCounts).toMatchObject({
+      modified: 0,
+      formatChanged: 1,
+      unchanged: 0,
+    });
+  });
+
   test("removes selected metadata values and reports each applied transform", async () => {
     const base = await withCoreProperties(
       await buildDocxBuffer([{ text: "Stable text.", paraId: "00000001" }]),
@@ -817,7 +865,12 @@ describe("compareDocxVersions: move detection", () => {
 
   test("uses the neutral core's edited-move classification", async () => {
     const base = await buildDocxBuffer([
-      { text: "alpha beta gamma delta epsilon", paraId: "00000001" },
+      {
+        text: "alpha beta gamma delta epsilon",
+        paraId: "00000001",
+        paragraphAlignment: "left",
+        paragraphStyleId: "Normal",
+      },
       { text: "First durable anchor text", paraId: "00000002" },
       { text: "Second durable anchor text", paraId: "00000003" },
       { text: "Third durable anchor text", paraId: "00000004" },
@@ -826,7 +879,12 @@ describe("compareDocxVersions: move detection", () => {
       { text: "First durable anchor text", paraId: "00000002" },
       { text: "Second durable anchor text", paraId: "00000003" },
       { text: "Third durable anchor text", paraId: "00000004" },
-      { text: "alpha beta gamma delta zeta", paraId: "00000001" },
+      {
+        text: "alpha beta gamma delta zeta",
+        paraId: "00000001",
+        paragraphAlignment: "right",
+        paragraphStyleId: "Heading2",
+      },
     ]);
     const [baseReviewer, revisedReviewer] = await Promise.all([
       FolioDocxReviewer.fromBuffer(base),
@@ -846,10 +904,51 @@ describe("compareDocxVersions: move detection", () => {
     expect(neutralChanges).toEqual(["movedFrom", "movedTo"]);
     const versionDiff = await compareDocxVersions(base, revised);
     expect(versionDiff.changes.map(({ type }) => type)).toEqual(neutralChanges);
+    const neutralMovedTo = neutral.value.events.find(({ type }) => type === "movedTo");
+    const versionMovedTo = versionDiff.changes.find(({ type }) => type === "movedTo");
+    expect(neutralMovedTo).toMatchObject({
+      type: "movedTo",
+      segments: [
+        { type: "equal", text: "alpha beta gamma delta" },
+        { type: "del", text: " epsilon" },
+        { type: "ins", text: " zeta" },
+      ],
+      changedProperties: ["kind", "headingLevel", "displayLabel"],
+      formatting: {
+        paragraph: { styleId: "Heading2", alignment: "right" },
+        ranges: [],
+      },
+    });
+    expect(versionMovedTo).toMatchObject({
+      type: "movedTo",
+      segments: [
+        { type: "equal", text: "alpha beta gamma delta" },
+        { type: "del", text: " epsilon" },
+        { type: "ins", text: " zeta" },
+      ],
+      changedProperties: ["kind", "headingLevel", "displayLabel", "styleId", "alignment"],
+    });
     expect(versionDiff.summaryCounts).toMatchObject({
       added: 0,
       deleted: 0,
       moved: 1,
+    });
+
+    const formattingDiff = await compareDocxVersions(base, revised, {
+      include: ["formatting"],
+    });
+    expect(formattingDiff.changes).toEqual([
+      expect.objectContaining({
+        type: "formatChanged",
+        blockId: "00000001",
+        changedProperties: ["styleId", "alignment"],
+      }),
+    ]);
+    expect(formattingDiff.summaryCounts).toMatchObject({
+      modified: 0,
+      formatChanged: 1,
+      moved: 0,
+      unchanged: 3,
     });
   });
 

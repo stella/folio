@@ -71,10 +71,13 @@ import type { WordDiffSegment } from "./ai-edits/word-diff";
 import {
   compareAlignedFolioContent,
   createContentComparisonWorkSession,
+  type FolioContentBlockProperty,
   type FolioContentComparisonEvent,
   type FolioContentComparisonWorkSession,
   type FolioContentFormattingChange,
+  type FolioContentParagraphFormattingPatch,
 } from "./compare/content";
+import type { FolioContentInlineFormattingPatch } from "./compare/content-types";
 import { pairFolioDocumentStories, type FolioDocumentStoryPair } from "./document-stories";
 import {
   FOLIO_DOCUMENT_METADATA_PROPERTIES,
@@ -148,19 +151,40 @@ export type FolioVersionDiffPrivacyOptions = FolioDocumentPrivacyOptions;
 
 export type FolioVersionDiffPrivacyReport = FolioDocumentPrivacyReport;
 
-/** Run-level formatting properties compared for `formatChanged` detection. */
-const FORMAT_PROPERTIES = [
-  "bold",
-  "italic",
-  "underline",
-  "strike",
-  "fontFamily",
-  "fontSizePt",
-  "color",
-] as const;
+/** Inline formatting properties compared for `formatChanged` detection. */
+const INLINE_FORMAT_PROPERTIES = {
+  bold: true,
+  italic: true,
+  underline: true,
+  strike: true,
+  fontFamily: true,
+  fontSizePt: true,
+  color: true,
+} as const satisfies Record<keyof FolioContentInlineFormattingPatch, true>;
 
-/** A run-level formatting property that can differ in a `formatChanged` block. */
-export type FolioFormatProperty = (typeof FORMAT_PROPERTIES)[number];
+const PARAGRAPH_FORMAT_PROPERTIES = {
+  styleId: true,
+  listLevel: true,
+  alignment: true,
+  spacing: true,
+} as const satisfies Record<keyof FolioContentParagraphFormattingPatch, true>;
+
+const BLOCK_PROPERTIES = {
+  kind: true,
+  headingLevel: true,
+  displayLabel: true,
+} as const satisfies Record<FolioContentBlockProperty, true>;
+
+/** A presentation property that can differ in a `formatChanged` block. */
+export type FolioFormatProperty =
+  | keyof typeof INLINE_FORMAT_PROPERTIES
+  | keyof typeof PARAGRAPH_FORMAT_PROPERTIES;
+
+/** A non-presentation block property retained on composite content changes. */
+export type FolioBlockProperty = keyof typeof BLOCK_PROPERTIES;
+
+/** One content or presentation property attached to a modified or moved block. */
+export type FolioVersionChangeProperty = FolioBlockProperty | FolioFormatProperty;
 
 /** Stable location of one compared block within its source document. */
 export type FolioVersionBlockHandle = {
@@ -189,6 +213,7 @@ export type FolioBlockDiff =
       blockId: string;
       kind: string;
       segments: FolioVersionDiffSegment[];
+      changedProperties?: FolioVersionChangeProperty[];
       baseHandle: FolioVersionBlockHandle;
       revisedHandle: FolioVersionBlockHandle;
     }
@@ -215,6 +240,8 @@ export type FolioBlockDiff =
       kind: string;
       text: string;
       moveGroupId: number;
+      segments?: FolioVersionDiffSegment[];
+      changedProperties?: FolioVersionChangeProperty[];
       revisedHandle: FolioVersionBlockHandle;
     };
 
@@ -288,12 +315,40 @@ export const alignFolioBlocks = (
 const legacySegments = (segments: readonly WordDiffSegment[]): FolioVersionDiffSegment[] =>
   segments.map(({ type, text }) => ({ type, text }));
 
+const ownStringKeys = <Value extends object>(value: Value): Extract<keyof Value, string>[] =>
+  // SAFETY: Object.keys returns exactly the own enumerable string keys of these object literals.
+  Object.keys(value) as Extract<keyof Value, string>[];
+
 const legacyFormattingProperties = (
   formatting: FolioContentFormattingChange,
-): FolioFormatProperty[] =>
-  FORMAT_PROPERTIES.filter((property) =>
-    formatting.ranges.some(({ formatting: range }) => range[property] !== undefined),
-  );
+): FolioFormatProperty[] => {
+  const properties: FolioFormatProperty[] = [];
+  for (const property of ownStringKeys(PARAGRAPH_FORMAT_PROPERTIES)) {
+    if (formatting.paragraph?.[property] !== undefined) {
+      properties.push(property);
+    }
+  }
+  for (const property of ownStringKeys(INLINE_FORMAT_PROPERTIES)) {
+    if (formatting.ranges.some(({ formatting: range }) => range[property] !== undefined)) {
+      properties.push(property);
+    }
+  }
+  return properties;
+};
+
+const legacyVersionChangeProperties = ({
+  blockProperties,
+  formatting,
+}: {
+  blockProperties: readonly FolioContentBlockProperty[];
+  formatting: FolioContentFormattingChange | undefined;
+}): FolioVersionChangeProperty[] => {
+  const properties: FolioVersionChangeProperty[] = [...blockProperties];
+  if (formatting) {
+    properties.push(...legacyFormattingProperties(formatting));
+  }
+  return properties;
+};
 
 const createSummaryCounts = (): FolioVersionDiffSummaryCounts => ({
   added: 0,
@@ -391,6 +446,12 @@ const compareStoryBlocks = ({
 
   const changes: FolioBlockDiff[] = [];
   const counts = createSummaryCounts();
+  const baseBlockById = new Map<string, FolioAIBlock>();
+  if (!includeText && includeFormatting) {
+    for (const block of baseBlocks) {
+      baseBlockById.set(block.id, block);
+    }
+  }
   const baseHandle = (block: FolioAIBlock): FolioVersionBlockHandle => {
     if (!baseStory) {
       return panic("A neutral comparison event requires a base story handle");
@@ -407,17 +468,26 @@ const compareStoryBlocks = ({
     baseBlock,
     revisedBlock,
     segments,
+    blockProperties,
+    formatting,
   }: {
     baseBlock: FolioAIBlock;
     revisedBlock: FolioAIBlock;
     segments: readonly WordDiffSegment[];
+    blockProperties: readonly FolioContentBlockProperty[];
+    formatting: FolioContentFormattingChange | undefined;
   }): void => {
+    const changedProperties = legacyVersionChangeProperties({
+      blockProperties,
+      formatting: includeFormatting ? formatting : undefined,
+    });
     counts.modified++;
     changes.push({
       type: "modified",
       blockId: revisedBlock.id,
       kind: revisedBlock.kind,
       segments: legacySegments(segments),
+      ...(changedProperties.length > 0 && { changedProperties }),
       baseHandle: baseHandle(baseBlock),
       revisedHandle: revisedHandle(revisedBlock),
     });
@@ -470,6 +540,20 @@ const compareStoryBlocks = ({
   };
 
   for (const event of compared.value.events) {
+    if (!includeText && includeFormatting && event.type === "movedTo" && event.formatting) {
+      const baseBlock = baseBlockById.get(event.baseBlockId);
+      if (!baseBlock) {
+        return panic("A moved comparison event requires its base block", {
+          blockId: event.baseBlockId,
+        });
+      }
+      addFormattingOrUnchanged({
+        baseBlock,
+        revisedBlock: event.revisedBlocks[0],
+        formatting: event.formatting,
+      });
+      continue;
+    }
     if (!includeText) {
       const excludedUnitCount = excludedTextEventUnitCount(event);
       if (excludedUnitCount !== null) {
@@ -491,12 +575,17 @@ const compareStoryBlocks = ({
       case "modified": {
         const baseBlock = event.baseBlocks[0];
         const revisedBlock = event.revisedBlocks[0];
-        if (baseBlock.text !== revisedBlock.text) {
-          if (includeText) {
-            addModified({ baseBlock, revisedBlock, segments: event.segments });
-          } else {
-            counts.unchanged++;
-          }
+        if (
+          includeText &&
+          (baseBlock.text !== revisedBlock.text || event.changedProperties.length)
+        ) {
+          addModified({
+            baseBlock,
+            revisedBlock,
+            segments: event.segments,
+            blockProperties: event.changedProperties,
+            formatting: event.formatting,
+          });
           break;
         }
         addFormattingOrUnchanged({ baseBlock, revisedBlock, formatting: event.formatting });
@@ -522,12 +611,18 @@ const compareStoryBlocks = ({
       }
       case "movedTo": {
         const block = event.revisedBlocks[0];
+        const changedProperties = legacyVersionChangeProperties({
+          blockProperties: event.changedProperties ?? [],
+          formatting: includeFormatting ? event.formatting : undefined,
+        });
         changes.push({
           type: "movedTo",
           blockId: block.id,
           kind: block.kind,
           text: block.text,
           moveGroupId: firstMoveGroupId + event.moveId - 1,
+          ...(event.segments && { segments: legacySegments(event.segments) }),
+          ...(changedProperties.length > 0 && { changedProperties }),
           revisedHandle: revisedHandle(block),
         });
         counts.moved++;
@@ -540,6 +635,8 @@ const compareStoryBlocks = ({
           baseBlock,
           revisedBlock: firstRevised,
           segments: workSession.diffText(baseBlock.text, firstRevised.text),
+          blockProperties: [],
+          formatting: undefined,
         });
         addInserted(secondRevised);
         break;
@@ -551,6 +648,8 @@ const compareStoryBlocks = ({
           baseBlock: firstBase,
           revisedBlock,
           segments: workSession.diffText(firstBase.text, revisedBlock.text),
+          blockProperties: [],
+          formatting: undefined,
         });
         addDeleted(secondBase);
         break;
