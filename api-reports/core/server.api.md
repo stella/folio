@@ -351,8 +351,8 @@ export const FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE: Readonly<{
     readonly insertBeforeBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "text", "inheritFormatting", "alignment", "spacing", "listLevel", "moveId", "pageBreakBefore", "styleId", "comment"];
     readonly replaceBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "text", "preserveFormatting", "styleId", "comment"];
     readonly deleteBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "moveId", "comment"];
-    readonly splitBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "offset", "separator"];
-    readonly mergeBlockWithNext: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "separator"];
+    readonly splitBlock: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "offset", "separator", "firstParagraphProperties", "secondParagraphProperties"];
+    readonly mergeBlockWithNext: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "separator", "mergedParagraphProperties"];
     readonly setBlockParagraphProperties: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "properties"];
     readonly insertTable: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId", "position", "rows"];
     readonly deleteTable: readonly ["id", "type", "blockId", "severity", "area", "precondition", "suggestionId"];
@@ -633,6 +633,8 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     offset: number;
     separator?: string;
     blockId: string;
+    firstParagraphProperties?: FolioAIBlockParagraphProperties;
+    secondParagraphProperties?: FolioAIBlockParagraphProperties;
 } |
 /**
 * Add a whole table next to the anchor block, its rows marked inserted in
@@ -682,6 +684,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     type: "mergeBlockWithNext";
     separator?: string;
     blockId: string;
+    mergedParagraphProperties?: FolioAIBlockParagraphProperties;
 } | {
     id: string;
     type: "commentOnBlock";

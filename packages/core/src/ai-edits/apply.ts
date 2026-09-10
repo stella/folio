@@ -403,10 +403,24 @@ const hasRepresentableCommentAnchor = (item: ResolvedBase, mode: FolioAIEditAppl
   }
 };
 
-const writesParagraphPropertyChange = (item: ResolvedOperation): boolean =>
-  item.operation.type === "setBlockParagraphProperties" ||
-  (isResolvedReplaceBlockOperation(item) &&
-    REPLACE_BLOCK_IMPACT[item.replaceBlockImpact].changesStyle);
+const writesParagraphPropertyChange = (item: ResolvedOperation): boolean => {
+  if (item.operation.type === "setBlockParagraphProperties") {
+    return true;
+  }
+  if (item.operation.type === "splitBlock") {
+    return (
+      item.operation.firstParagraphProperties !== undefined ||
+      item.operation.secondParagraphProperties !== undefined
+    );
+  }
+  if (item.operation.type === "mergeBlockWithNext") {
+    return item.operation.mergedParagraphProperties !== undefined;
+  }
+  return (
+    isResolvedReplaceBlockOperation(item) &&
+    REPLACE_BLOCK_IMPACT[item.replaceBlockImpact].changesStyle
+  );
+};
 
 type ReplaceBlockImpactOptions = {
   changesText: boolean;
@@ -647,6 +661,72 @@ const resolveFormattingFromStyle = ({
     fallback.alignment = attrs.alignmentFromStyle;
   }
   return Object.keys(fallback).length > 0 ? fallback : undefined;
+};
+
+type ApplyBlockParagraphPropertiesOptions = {
+  tr: Transaction;
+  position: number;
+  node: PMNode;
+  properties: FolioAIBlockParagraphProperties;
+  styleResolver: ReturnType<typeof getDocumentStyleResolver>;
+  numbering?: NumberingMap | null;
+  revisionInfo?: () => ParagraphPropertyChangeAttrs["info"];
+};
+
+type ApplyBlockParagraphPropertiesResult = {
+  tr: Transaction;
+  changed: boolean;
+  revisionId: number | null;
+};
+
+/**
+ * Apply one paragraph-property patch to a live node. A tracked patch stores
+ * the complete previous pPr: a partial snapshot cannot distinguish a property
+ * the change left alone from one it explicitly cleared when rejecting it.
+ */
+const applyBlockParagraphProperties = ({
+  tr,
+  position,
+  node,
+  properties,
+  styleResolver,
+  numbering = null,
+  revisionInfo,
+}: ApplyBlockParagraphPropertiesOptions): ApplyBlockParagraphPropertiesResult => {
+  const attrs = expectParagraphAttrs(node);
+  const resolvedFormattingFromStyle =
+    properties.styleId === undefined
+      ? resolveFormattingFromStyle({ attrs, styleId: attrs.styleId, styleResolver })
+      : resolveFormattingFromStyle({ attrs, styleId: properties.styleId, styleResolver });
+  const patch = paragraphPropertiesPatch({
+    node,
+    properties,
+    resolvedFormattingFromStyle,
+    numbering,
+  });
+  if (patch === null) {
+    return { tr, changed: false, revisionId: null };
+  }
+  const changeInfo = revisionInfo?.();
+  const change: ParagraphPropertyChangeAttrs | null = changeInfo
+    ? {
+        type: "paragraphPropertyChange",
+        info: changeInfo,
+        previousFormatting: paragraphPropertiesSnapshot(node),
+      }
+    : null;
+  const existing = attrs._propertyChanges;
+  return {
+    tr: tr.setNodeMarkup(position, undefined, {
+      ...node.attrs,
+      ...patch,
+      ...(change
+        ? { _propertyChanges: [...(Array.isArray(existing) ? existing : []), change] }
+        : {}),
+    }),
+    changed: true,
+    revisionId: change?.info.id ?? null,
+  };
 };
 
 type ApplyReplaceBlockStyleIdResult = {
@@ -2305,7 +2385,7 @@ const applyFolioAIEditOperationsInternal = ({
     // text and the diff produced no marks; the panel said "accepted"
     // but the doc was untouched.
     const stepsBefore = tr.steps.length;
-    let appliedRevisionIds: number[] | undefined;
+    let appliedRevisionIds: number[] = [];
 
     // Suggested mode covers the inline text/format operations plus the block and
     // table row/column structural operations (see
@@ -3032,50 +3112,32 @@ const applyFolioAIEditOperationsInternal = ({
         // properties applied, the merge silently did not.
         const blockPosition = tr.mapping.map(item.blockFrom);
         const liveBlock = tr.doc.nodeAt(blockPosition) ?? item.blockNode;
-        const liveAttrs = expectParagraphAttrs(liveBlock);
-        const resolvedFormattingFromStyle =
-          item.operation.properties.styleId === undefined
-            ? resolveFormattingFromStyle({
-                attrs: liveAttrs,
-                styleId: liveAttrs.styleId,
-                styleResolver,
-              })
-            : resolveFormattingFromStyle({
-                attrs: liveAttrs,
-                styleId: item.operation.properties.styleId,
-                styleResolver,
-              });
-        const patch = paragraphPropertiesPatch({
+        const appliedProperties = applyBlockParagraphProperties({
+          tr,
+          position: blockPosition,
           node: liveBlock,
           properties: item.operation.properties,
-          resolvedFormattingFromStyle,
+          styleResolver,
           numbering,
+          ...(mode === "direct"
+            ? {}
+            : {
+                revisionInfo: () => ({
+                  id: operationRevisionSeed++,
+                  author,
+                  date,
+                  ...trackedRevisionExtras,
+                }),
+              }),
         });
-        if (patch === null) {
+        if (!appliedProperties.changed) {
           skipped.push({ id: item.operation.id, reason: "noopOperation" });
           continue;
         }
-        if (mode === "direct") {
-          tr = tr.setNodeMarkup(blockPosition, undefined, { ...liveBlock.attrs, ...patch });
-          break;
+        tr = appliedProperties.tr;
+        if (appliedProperties.revisionId !== null) {
+          appliedRevisionIds = [appliedProperties.revisionId];
         }
-        // Word stores the COMPLETE old pPr inside `w:pPrChange`, so rejecting
-        // restores the properties wholesale within that scope. Storing only
-        // the keys this operation touched would leave a reject unable to tell
-        // "the change did not set this" from "the change cleared it".
-        const revisionId = operationRevisionSeed++;
-        const change: ParagraphPropertyChangeAttrs = {
-          type: "paragraphPropertyChange",
-          info: { id: revisionId, author, date, ...trackedRevisionExtras },
-          previousFormatting: paragraphPropertiesSnapshot(liveBlock),
-        };
-        const existing = expectParagraphAttrs(liveBlock)._propertyChanges;
-        tr = tr.setNodeMarkup(blockPosition, undefined, {
-          ...liveBlock.attrs,
-          ...patch,
-          _propertyChanges: [...(Array.isArray(existing) ? existing : []), change],
-        });
-        appliedRevisionIds = [revisionId];
         break;
       }
       case "splitBlock": {
@@ -3084,30 +3146,71 @@ const applyFolioAIEditOperationsInternal = ({
             tr = tr.delete(item.from, item.to);
           }
           tr = tr.split(item.from);
-          break;
+        } else {
+          const revisionIdMark = operationRevisionSeed++;
+          const info = { id: revisionIdMark, author, date, ...trackedRevisionExtras };
+          appliedRevisionIds = [revisionIdMark];
+          if (item.to > item.from && deletionType) {
+            const revisionIdSeparator = operationRevisionSeed++;
+            tr = tr.addMark(
+              item.from,
+              item.to,
+              deletionType.create({
+                revisionId: revisionIdSeparator,
+                author,
+                date,
+                ...trackedRevisionExtras,
+              }),
+            );
+            appliedRevisionIds.push(revisionIdSeparator);
+          }
+          tr = tr.split(item.from);
+          // The mark goes on the FIRST half: the break belongs to the paragraph
+          // it now ends, and a reader rejecting it closes that paragraph back
+          // over the second half.
+          tr = tr.setNodeAttribute(item.blockFrom, "pPrMark", { kind: "ins", info });
         }
-        const revisionIdMark = operationRevisionSeed++;
-        const info = { id: revisionIdMark, author, date, ...trackedRevisionExtras };
-        appliedRevisionIds = [revisionIdMark];
-        if (item.to > item.from && deletionType) {
-          const revisionIdSeparator = operationRevisionSeed++;
-          tr = tr.addMark(
-            item.from,
-            item.to,
-            deletionType.create({
-              revisionId: revisionIdSeparator,
-              author,
-              date,
-              ...trackedRevisionExtras,
-            }),
-          );
-          appliedRevisionIds = [revisionIdMark, revisionIdSeparator];
+
+        const allocateSplitParagraphPropertyRevisionInfo = () => ({
+          id: operationRevisionSeed++,
+          author,
+          date,
+          ...trackedRevisionExtras,
+        });
+        const paragraphPropertyTargets = [
+          {
+            position: item.blockFrom,
+            properties: item.operation.firstParagraphProperties,
+          },
+          {
+            position: item.from + 1,
+            properties: item.operation.secondParagraphProperties,
+          },
+        ] as const;
+        for (const { position, properties } of paragraphPropertyTargets) {
+          if (!properties) {
+            continue;
+          }
+          const paragraph = tr.doc.nodeAt(position);
+          if (!paragraph) {
+            panic("A resolved split did not produce two paragraphs");
+          }
+          const appliedProperties = applyBlockParagraphProperties({
+            tr,
+            position,
+            node: paragraph,
+            properties,
+            styleResolver,
+            numbering,
+            ...(mode === "direct"
+              ? {}
+              : { revisionInfo: allocateSplitParagraphPropertyRevisionInfo }),
+          });
+          tr = appliedProperties.tr;
+          if (appliedProperties.revisionId !== null) {
+            appliedRevisionIds.push(appliedProperties.revisionId);
+          }
         }
-        tr = tr.split(item.from);
-        // The mark goes on the FIRST half: the break belongs to the paragraph
-        // it now ends, and a reader rejecting it closes that paragraph back
-        // over the second half.
-        tr = tr.setNodeAttribute(item.blockFrom, "pPrMark", { kind: "ins", info });
         break;
       }
       case "mergeBlockWithNext": {
@@ -3118,29 +3221,58 @@ const applyFolioAIEditOperationsInternal = ({
             tr = tr.insertText(separator, insertAt);
           }
           tr = tr.join(item.blockTo + separator.length);
-          break;
+        } else {
+          const revisionIdMark = operationRevisionSeed++;
+          appliedRevisionIds = [revisionIdMark];
+          if (separator.length > 0 && insertionType) {
+            const revisionIdSeparator = operationRevisionSeed++;
+            tr = tr.insertText(separator, insertAt);
+            tr = tr.addMark(
+              insertAt,
+              insertAt + separator.length,
+              insertionType.create({
+                revisionId: revisionIdSeparator,
+                author,
+                date,
+                ...trackedRevisionExtras,
+              }),
+            );
+            appliedRevisionIds.push(revisionIdSeparator);
+          }
+          tr = tr.setNodeAttribute(item.blockFrom, "pPrMark", {
+            kind: "del",
+            info: { id: revisionIdMark, author, date, ...trackedRevisionExtras },
+          });
         }
-        const revisionIdMark = operationRevisionSeed++;
-        appliedRevisionIds = [revisionIdMark];
-        if (separator.length > 0 && insertionType) {
-          const revisionIdSeparator = operationRevisionSeed++;
-          tr = tr.insertText(separator, insertAt);
-          tr = tr.addMark(
-            insertAt,
-            insertAt + separator.length,
-            insertionType.create({
-              revisionId: revisionIdSeparator,
-              author,
-              date,
-              ...trackedRevisionExtras,
-            }),
-          );
-          appliedRevisionIds = [revisionIdMark, revisionIdSeparator];
+
+        if (item.operation.mergedParagraphProperties) {
+          const mergedParagraph = tr.doc.nodeAt(item.blockFrom);
+          if (!mergedParagraph) {
+            panic("A resolved merge did not produce a paragraph");
+          }
+          const appliedProperties = applyBlockParagraphProperties({
+            tr,
+            position: item.blockFrom,
+            node: mergedParagraph,
+            properties: item.operation.mergedParagraphProperties,
+            styleResolver,
+            numbering,
+            ...(mode === "direct"
+              ? {}
+              : {
+                  revisionInfo: () => ({
+                    id: operationRevisionSeed++,
+                    author,
+                    date,
+                    ...trackedRevisionExtras,
+                  }),
+                }),
+          });
+          tr = appliedProperties.tr;
+          if (appliedProperties.revisionId !== null) {
+            appliedRevisionIds.push(appliedProperties.revisionId);
+          }
         }
-        tr = tr.setNodeAttribute(item.blockFrom, "pPrMark", {
-          kind: "del",
-          info: { id: revisionIdMark, author, date, ...trackedRevisionExtras },
-        });
         break;
       }
       case "commentOnBlock": {
@@ -3196,11 +3328,10 @@ const applyFolioAIEditOperationsInternal = ({
     applied.push({
       id: item.operation.id,
       ...(committedCommentId !== undefined && { commentId: committedCommentId }),
-      ...(appliedRevisionIds !== undefined &&
-        appliedRevisionIds[0] !== undefined && {
-          revisionId: appliedRevisionIds[0],
-          revisionIds: appliedRevisionIds,
-        }),
+      ...(appliedRevisionIds[0] !== undefined && {
+        revisionId: appliedRevisionIds[0],
+        revisionIds: appliedRevisionIds,
+      }),
       ...(suggestionId !== null && { suggestionId }),
     });
   }

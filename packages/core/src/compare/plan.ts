@@ -973,6 +973,20 @@ export const planStoryCompare = ({
     const paragraphMarkPlan = paragraphMarkPlans.get(stepIndex);
     if (paragraphMarkPlan?.type === "split") {
       const { baseBlock, revisedBlocks: splitInto, offset, separator } = paragraphMarkPlan;
+      const firstParagraphFormatting = changedFolioContentParagraphFormatting(
+        baseBlock,
+        splitInto[0],
+      );
+      const secondParagraphFormatting = changedFolioContentParagraphFormatting(
+        baseBlock,
+        splitInto[1],
+      );
+      const firstParagraphProperties = firstParagraphFormatting
+        ? toFolioAIBlockParagraphProperties(firstParagraphFormatting)
+        : undefined;
+      const secondParagraphProperties = secondParagraphFormatting
+        ? toFolioAIBlockParagraphProperties(secondParagraphFormatting)
+        : undefined;
       changes.push({
         kind: "split",
         location: locationOf(story, baseBlock),
@@ -980,17 +994,44 @@ export const planStoryCompare = ({
         targetBlockIds: splitInto.map(({ id }) => id),
         text: baseBlock.text,
       });
+      if (firstParagraphProperties) {
+        changes.push({
+          kind: "paragraph-format",
+          location: locationOf(story, baseBlock),
+          baseBlockId: baseBlock.id,
+          targetBlockId: splitInto[0].id,
+          properties: firstParagraphProperties,
+        });
+      }
+      if (secondParagraphProperties) {
+        changes.push({
+          kind: "paragraph-format",
+          location: locationOf(story, baseBlock),
+          baseBlockId: baseBlock.id,
+          targetBlockId: splitInto[1].id,
+          properties: secondParagraphProperties,
+        });
+      }
       operations.push({
         id: nextOperationId(),
         type: "splitBlock",
         blockId: baseBlock.id,
         offset,
         ...(separator.length > 0 && { separator }),
+        ...(firstParagraphProperties && { firstParagraphProperties }),
+        ...(secondParagraphProperties && { secondParagraphProperties }),
       });
       continue;
     }
     if (paragraphMarkPlan?.type === "merge") {
       const { baseBlocks, revisedBlock: targetBlock, separator } = paragraphMarkPlan;
+      const mergedParagraphFormatting = changedFolioContentParagraphFormatting(
+        baseBlocks[0],
+        targetBlock,
+      );
+      const mergedParagraphProperties = mergedParagraphFormatting
+        ? toFolioAIBlockParagraphProperties(mergedParagraphFormatting)
+        : undefined;
       changes.push({
         kind: "merge",
         location: locationOf(story, baseBlocks[0]),
@@ -998,11 +1039,21 @@ export const planStoryCompare = ({
         targetBlockId: targetBlock.id,
         text: targetBlock.text,
       });
+      if (mergedParagraphProperties) {
+        changes.push({
+          kind: "paragraph-format",
+          location: locationOf(story, baseBlocks[0]),
+          baseBlockId: baseBlocks[0].id,
+          targetBlockId: targetBlock.id,
+          properties: mergedParagraphProperties,
+        });
+      }
       operations.push({
         id: nextOperationId(),
         type: "mergeBlockWithNext",
         blockId: baseBlocks[0].id,
         ...(separator.length > 0 && { separator }),
+        ...(mergedParagraphProperties && { mergedParagraphProperties }),
       });
       continue;
     }

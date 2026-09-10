@@ -231,11 +231,18 @@ describe("suggest_changes schema + capability description follow operationTypes"
           "insertAfterBlock",
           "insertBeforeBlock",
           "replaceBlock",
+          "splitBlock",
+          "mergeBlockWithNext",
           "setBlockParagraphProperties",
         ],
       }),
     );
-    const paragraphProperties = propertyOf(itemSchema, "properties");
+    const paragraphPropertyShapes = [
+      propertyOf(itemSchema, "properties"),
+      propertyOf(itemSchema, "firstParagraphProperties"),
+      propertyOf(itemSchema, "secondParagraphProperties"),
+      propertyOf(itemSchema, "mergedParagraphProperties"),
+    ];
     const clearableStyle = [{ type: "string" }, { type: "null" }];
     const clearableListLevel = [
       { type: "integer", minimum: 0, maximum: Number.MAX_SAFE_INTEGER },
@@ -244,8 +251,10 @@ describe("suggest_changes schema + capability description follow operationTypes"
 
     expect(propertyOf(itemSchema, "styleId")["oneOf"]).toEqual(clearableStyle);
     expect(propertyOf(itemSchema, "listLevel")["oneOf"]).toEqual(clearableListLevel);
-    expect(propertyOf(paragraphProperties, "styleId")["oneOf"]).toEqual(clearableStyle);
-    expect(propertyOf(paragraphProperties, "listLevel")["oneOf"]).toEqual(clearableListLevel);
+    for (const paragraphProperties of paragraphPropertyShapes) {
+      expect(propertyOf(paragraphProperties, "styleId")["oneOf"]).toEqual(clearableStyle);
+      expect(propertyOf(paragraphProperties, "listLevel")["oneOf"]).toEqual(clearableListLevel);
+    }
   });
 
   test("documentVersion pins a top-level enum and marks documentVersion required", () => {

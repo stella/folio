@@ -411,12 +411,27 @@ const CONTRACT_OPERATION_FIXTURES: Record<FolioDocumentOperationType, Record<str
     blockId: "0304003A",
     offset: 12,
     separator: " ",
+    firstParagraphProperties: {
+      styleId: "OpeningBody",
+      alignment: "center",
+      spacing: { spaceBefore: 240 },
+    },
+    secondParagraphProperties: {
+      styleId: "ClosingBody",
+      alignment: "right",
+      spacing: { spaceAfter: 360 },
+    },
   },
   mergeBlockWithNext: {
     id: "op-merge-block-with-next",
     type: "mergeBlockWithNext",
     blockId: "0304003A",
     separator: " ",
+    mergedParagraphProperties: {
+      styleId: "JoinedBody",
+      alignment: "both",
+      spacing: { lineSpacing: 480, lineSpacingRule: "exact" },
+    },
   },
   insertTable: {
     id: "op-insert-table",

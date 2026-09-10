@@ -345,6 +345,16 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
          */
         separator?: string;
         blockId: string;
+        /**
+         * Paragraph properties for the first result. Omitted properties keep
+         * the source paragraph's value.
+         */
+        firstParagraphProperties?: FolioAIBlockParagraphProperties;
+        /**
+         * Paragraph properties for the second result. Omitted properties keep
+         * the source paragraph's value.
+         */
+        secondParagraphProperties?: FolioAIBlockParagraphProperties;
       }
     /**
      * Add a whole table next to the anchor block, its rows marked inserted in
@@ -410,6 +420,11 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
          */
         separator?: string;
         blockId: string;
+        /**
+         * Paragraph properties for the joined result. Omitted properties keep
+         * the first paragraph's value.
+         */
+        mergedParagraphProperties?: FolioAIBlockParagraphProperties;
       }
     | {
         id: string;
