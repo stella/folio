@@ -217,6 +217,81 @@ const pairByStableId = <Block extends FolioContentBlock>(
   return longestIncreasingFolioContentPairs(candidates);
 };
 
+type PairByResidualIdContinuityOptions<Block extends FolioContentBlock> = {
+  baseBlocks: readonly Block[];
+  revisedBlocks: readonly Block[];
+  baseFrom: number;
+  baseTo: number;
+  revisedFrom: number;
+  revisedTo: number;
+  idStability: (block: Block) => FolioContentIdStability;
+};
+
+/**
+ * Pair ids that became stable when one side was serialized and reopened.
+ *
+ * An adapter can mark a synthesized id positional in the live snapshot that
+ * minted it, then stable after that same id is persisted. This evidence is
+ * deliberately weaker than a stable id: it is considered only inside a gap
+ * already bounded by stable/exact anchors, so it cannot turn a positional id
+ * into a move or pull a block across an established correspondence.
+ */
+const pairByResidualIdContinuity = <Block extends FolioContentBlock>({
+  baseBlocks,
+  revisedBlocks,
+  baseFrom,
+  baseTo,
+  revisedFrom,
+  revisedTo,
+  idStability,
+}: PairByResidualIdContinuityOptions<Block>): FolioContentBlockPair[] => {
+  const uniqueIndexesById = ({
+    blocks,
+    from,
+    to,
+  }: {
+    blocks: readonly Block[];
+    from: number;
+    to: number;
+  }): ReadonlyMap<string, number | null> => {
+    const indexes = new Map<string, number | null>();
+    for (let index = from; index < to; index++) {
+      const id = blocks[index]?.id;
+      if (id === undefined) {
+        continue;
+      }
+      indexes.set(id, indexes.has(id) ? null : index);
+    }
+    return indexes;
+  };
+
+  const baseIndexes = uniqueIndexesById({ blocks: baseBlocks, from: baseFrom, to: baseTo });
+  const revisedIndexes = uniqueIndexesById({
+    blocks: revisedBlocks,
+    from: revisedFrom,
+    to: revisedTo,
+  });
+  const candidates: FolioContentBlockPair[] = [];
+  for (const [id, baseIndex] of baseIndexes) {
+    const revisedIndex = revisedIndexes.get(id);
+    if (baseIndex === null || revisedIndex === undefined || revisedIndex === null) {
+      continue;
+    }
+    const baseBlock = baseBlocks[baseIndex];
+    const revisedBlock = revisedBlocks[revisedIndex];
+    if (!baseBlock || !revisedBlock) {
+      continue;
+    }
+    const baseStability = idStability(baseBlock);
+    const revisedStability = idStability(revisedBlock);
+    if (baseStability === revisedStability) {
+      continue;
+    }
+    candidates.push({ baseIndex, revisedIndex });
+  }
+  return longestIncreasingFolioContentPairs(candidates);
+};
+
 const pairByExactText = <Block extends FolioContentBlock>(
   base: readonly IndexedBlock<Block>[],
   revised: readonly IndexedBlock<Block>[],
@@ -353,7 +428,7 @@ export const alignFolioContentBlocks = <Block extends FolioContentBlock>(
   );
   const events: FolioContentAlignedBlockEvent<Block>[] = [];
 
-  const emitGap = (
+  const emitPositionalGap = (
     baseFrom: number,
     baseTo: number,
     revisedFrom: number,
@@ -388,6 +463,40 @@ export const alignFolioContentBlocks = <Block extends FolioContentBlock>(
         events.push({ type: "revisedOnly", block });
       }
     }
+  };
+
+  const emitGap = (
+    baseFrom: number,
+    baseTo: number,
+    revisedFrom: number,
+    revisedTo: number,
+  ): void => {
+    if (baseFrom === baseTo || revisedFrom === revisedTo) {
+      emitPositionalGap(baseFrom, baseTo, revisedFrom, revisedTo);
+      return;
+    }
+    const continuityPairs = pairByResidualIdContinuity({
+      baseBlocks,
+      revisedBlocks,
+      baseFrom,
+      baseTo,
+      revisedFrom,
+      revisedTo,
+      idStability,
+    });
+    let baseCursor = baseFrom;
+    let revisedCursor = revisedFrom;
+    for (const pair of continuityPairs) {
+      emitPositionalGap(baseCursor, pair.baseIndex, revisedCursor, pair.revisedIndex);
+      const baseBlock = baseBlocks[pair.baseIndex];
+      const revisedBlock = revisedBlocks[pair.revisedIndex];
+      if (baseBlock && revisedBlock) {
+        events.push({ type: "pair", baseBlock, revisedBlock });
+      }
+      baseCursor = pair.baseIndex + 1;
+      revisedCursor = pair.revisedIndex + 1;
+    }
+    emitPositionalGap(baseCursor, baseTo, revisedCursor, revisedTo);
   };
 
   let baseCursor = 0;
@@ -556,6 +665,7 @@ type ContentStructureAtom = string | number | null;
 
 type ContentStructureProfile = {
   anchorTexts: readonly string[];
+  blockIds: readonly string[];
   exactSignature: string | null;
   physicalCellCount: number | null;
   stableIds: readonly string[];
@@ -577,16 +687,21 @@ const createContentStructureProfile = <Block extends FolioContentBlock>({
   physicalCellCount,
 }: CreateContentStructureProfileOptions<Block>): ContentStructureProfile => {
   const profiledBlockCount = Math.min(blocks.length, MAX_CONTENT_STRUCTURE_PROFILE_BLOCKS);
+  const blockIds: string[] = [];
   const stableIds: string[] = [];
   for (let index = 0; index < profiledBlockCount; index++) {
     const block = blocks[index];
-    if (block && idStability(block) === "stable") {
-      stableIds.push(block.id);
+    if (block) {
+      blockIds.push(block.id);
+      if (idStability(block) === "stable") {
+        stableIds.push(block.id);
+      }
     }
   }
   if (blocks.length > MAX_CONTENT_STRUCTURE_PROFILE_BLOCKS) {
     return {
       anchorTexts: [],
+      blockIds,
       exactSignature: null,
       physicalCellCount: physicalCellCount ?? null,
       stableIds,
@@ -603,6 +718,7 @@ const createContentStructureProfile = <Block extends FolioContentBlock>({
     ) {
       return {
         anchorTexts: [],
+        blockIds,
         exactSignature: null,
         physicalCellCount: physicalCellCount ?? null,
         stableIds,
@@ -643,6 +759,7 @@ const createContentStructureProfile = <Block extends FolioContentBlock>({
   }
   return {
     anchorTexts: [...anchorTexts],
+    blockIds,
     exactSignature: JSON.stringify(signature),
     physicalCellCount: physicalCellCount ?? null,
     stableIds,
@@ -833,6 +950,29 @@ const alignProfiledContentSequence = <Item>({
   }
 
   const stablePairs = stableContentSequencePairs(base, revised);
+  const provenanceTransitionAtSamePosition = new Uint8Array(
+    Math.min(base.length, revised.length),
+  );
+  for (let index = 0; index < provenanceTransitionAtSamePosition.length; index++) {
+    const baseProfile = base[index]?.profile;
+    const revisedProfile = revised[index]?.profile;
+    if (!baseProfile || !revisedProfile) {
+      continue;
+    }
+    const revisedIds = new Set(revisedProfile.blockIds);
+    const baseStableIds = new Set(baseProfile.stableIds);
+    const revisedStableIds = new Set(revisedProfile.stableIds);
+    // The profile itself is representation-neutral; stableIds records only
+    // the stable half of the observed positional-to-stable transition.
+    if (
+      baseProfile.blockIds.some(
+        (id) =>
+          revisedIds.has(id) && baseStableIds.has(id) !== revisedStableIds.has(id),
+      )
+    ) {
+      provenanceTransitionAtSamePosition[index] = 1;
+    }
+  }
   const exactSignatureKeys = new Map<string, number>();
   let nextExactSignatureKey = 0;
   const internExactSignature = (signature: string | null): number => {
@@ -854,8 +994,13 @@ const alignProfiledContentSequence = <Item>({
     internExactSignature(profile.exactSignature),
   );
   const maxPairs = Math.min(base.length, revised.length);
-  const secondaryWeight = maxPairs * CONTENT_STRUCTURE_SIMILARITY_SCALE + 1;
-  const primaryWeight = maxPairs * (secondaryWeight + CONTENT_STRUCTURE_SIMILARITY_SCALE) + 1;
+  const continuityBonus = 1;
+  const secondaryWeight =
+    maxPairs * (CONTENT_STRUCTURE_SIMILARITY_SCALE + continuityBonus) + 1;
+  const primaryWeight =
+    maxPairs *
+      (secondaryWeight + CONTENT_STRUCTURE_SIMILARITY_SCALE + continuityBonus) +
+    1;
   const stableWeight = primaryEvidence === "stable" ? primaryWeight : secondaryWeight;
   const exactWeight = primaryEvidence === "exact" ? primaryWeight : secondaryWeight;
   const pairScores = new Float64Array(base.length * revised.length);
@@ -889,11 +1034,14 @@ const alignProfiledContentSequence = <Item>({
         Math.min(1, profileSimilarity * similarityFactor(baseItem, revisedItem)),
       );
       const stableAtSamePosition = stable && baseIndex === revisedIndex;
+      const persistedAtSamePosition =
+        baseIndex === revisedIndex && provenanceTransitionAtSamePosition[baseIndex] === 1;
       const soleStructuralSlot =
         pairSoleStructuralSlot && base.length === 1 && revised.length === 1;
       if (
         !exact &&
         !stableAtSamePosition &&
+        !persistedAtSamePosition &&
         !soleStructuralSlot &&
         similar < CONTENT_STRUCTURE_PAIR_SIMILARITY
       ) {
@@ -902,6 +1050,7 @@ const alignProfiledContentSequence = <Item>({
       pairScores[pairIndex] =
         (stable ? stableWeight : 0) +
         (exact ? exactWeight : 0) +
+        (persistedAtSamePosition ? continuityBonus : 0) +
         Math.round(similar * CONTENT_STRUCTURE_SIMILARITY_SCALE) +
         (soleStructuralSlot ? 1 : 0);
     }
@@ -1516,14 +1665,20 @@ const profileBodySegments = <Block extends FolioContentBlock>(
   segments: readonly DocumentSegment<Block>[],
   idStability: (block: Block) => FolioContentIdStability,
 ): readonly ProfiledContentSequenceItem<BodyDocumentSegment<Block>>[] =>
-  segments.filter(isBodyDocumentSegment).map((segment) => ({
-    item: segment,
-    profile: createContentStructureProfile({
-      blocks: segment.blocks,
-      idStability,
-      blockStructure: () => [segment.containerPathKey],
-    }),
-  }));
+  segments.flatMap((segment) =>
+    isBodyDocumentSegment(segment)
+      ? [
+          {
+            item: segment,
+            profile: createContentStructureProfile({
+              blocks: segment.blocks,
+              idStability,
+              blockStructure: () => [segment.containerPathKey],
+            }),
+          },
+        ]
+      : [],
+  );
 
 type TrustedBodyPair<Block extends FolioContentBlock> = {
   base: BodyDocumentSegment<Block>;

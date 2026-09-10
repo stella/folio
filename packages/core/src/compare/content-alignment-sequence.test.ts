@@ -155,6 +155,25 @@ describe("bounded table sequence alignment", () => {
     ]);
   });
 
+  test("exact table identity outranks same-position persisted-id continuity", () => {
+    const base = tableSequence([
+      {
+        id: "persisted",
+        text: "Exact substantive table wording",
+        idStability: "positional",
+      },
+    ]);
+    const revised = tableSequence([
+      { id: "persisted", text: "Unrelated replacement wording" },
+      { id: "exact", text: "Exact substantive table wording" },
+    ]);
+
+    const steps = alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised });
+
+    expect(steps.map(({ type }) => type)).toEqual(["revisedTable", "pair"]);
+    expect(pairIds(steps)).toEqual([["persisted", "exact"]]);
+  });
+
   test("pairs an edited table only above the similarity confidence floor", () => {
     const base = tableSequence([
       {

@@ -262,6 +262,89 @@ describe("shared content-alignment LCS work", () => {
   });
 });
 
+describe("residual identity continuity", () => {
+  test("keeps a persisted positional block paired past a new sibling", () => {
+    const base = [
+      block("before", "Before anchor"),
+      block("persisted", "Centered paragraph.", { idStability: "positional" }),
+      block("after", "After anchor"),
+    ];
+    const revised = [
+      block("before", "Before anchor"),
+      block("inserted", "New unrelated paragraph"),
+      block("persisted", "Changed paragraph."),
+      block("after", "After anchor"),
+    ];
+
+    expect(
+      alignFolioContentBlocks(base, revised).map((event) =>
+        event.type === "pair"
+          ? [event.type, event.baseBlock.id, event.revisedBlock.id]
+          : [event.type, event.block.id],
+      ),
+    ).toEqual([
+      ["pair", "before", "before"],
+      ["revisedOnly", "inserted"],
+      ["pair", "persisted", "persisted"],
+      ["pair", "after", "after"],
+    ]);
+  });
+
+  test("does not promote equality between two positional ids to identity", () => {
+    const base = [
+      block("0", "Before anchor"),
+      block("1", "Original paragraph", { idStability: "positional" }),
+      block("after", "After anchor"),
+    ];
+    const revised = [
+      block("0", "Before anchor"),
+      block("1", "Inserted paragraph", { idStability: "positional" }),
+      block("2", "Original paragraph", { idStability: "positional" }),
+      block("after", "After anchor"),
+    ];
+
+    expect(
+      alignFolioContentBlocks(base, revised).map((event) =>
+        event.type === "pair"
+          ? [event.type, event.baseBlock.id, event.revisedBlock.id]
+          : [event.type, event.block.id],
+      ),
+    ).toEqual([
+      ["pair", "0", "0"],
+      ["revisedOnly", "1"],
+      ["pair", "1", "2"],
+      ["pair", "after", "after"],
+    ]);
+  });
+
+  test("lets shifted exact text outrank an asymmetric id coincidence", () => {
+    const base = [
+      block("before", "Before anchor"),
+      block("0", "Original paragraph", { idStability: "positional" }),
+      block("after", "After anchor"),
+    ];
+    const revised = [
+      block("before", "Before anchor"),
+      block("0", "New preceding paragraph"),
+      block("survivor", "Original paragraph"),
+      block("after", "After anchor"),
+    ];
+
+    expect(
+      alignFolioContentBlocks(base, revised).map((event) =>
+        event.type === "pair"
+          ? [event.type, event.baseBlock.id, event.revisedBlock.id]
+          : [event.type, event.block.id],
+      ),
+    ).toEqual([
+      ["pair", "before", "before"],
+      ["revisedOnly", "0"],
+      ["pair", "0", "survivor"],
+      ["pair", "after", "after"],
+    ]);
+  });
+});
+
 describe("container-safe structural alignment", () => {
   test("does not pair equal blocks across distinct generic container paths", () => {
     const base = [
@@ -338,6 +421,58 @@ describe("container-safe structural alignment", () => {
 });
 
 describe("table row and column structural alignment", () => {
+  test("keeps a same-position persisted row paired through a full cell rewrite", () => {
+    const base = [
+      cell(
+        "persisted-cell",
+        "A1",
+        { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 },
+        { idStability: "positional" },
+      ),
+      cell(
+        "second-cell",
+        "B1",
+        { rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 },
+        { idStability: "positional" },
+      ),
+      cell(
+        "third-cell",
+        "C1",
+        { rowIndex: 0, cellIndex: 2, gridColumnIndex: 2 },
+        { idStability: "positional" },
+      ),
+      cell("next-row", "A2", { rowIndex: 1, cellIndex: 0, gridColumnIndex: 0 }),
+    ];
+    const revised = [
+      cell("persisted-cell", "Entirely rewritten cell text", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      cell("second-cell", "B1", { rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 }),
+      cell("third-cell", "C1", { rowIndex: 0, cellIndex: 2, gridColumnIndex: 2 }),
+      cell("next-row", "A2", { rowIndex: 1, cellIndex: 0, gridColumnIndex: 0 }),
+    ];
+
+    const steps = alignFolioContentStructure({
+      baseBlocks: base,
+      revisedBlocks: revised,
+      stableIdMismatch: "pair",
+    });
+
+    expect(steps.map(({ type }) => type)).toEqual(["pair", "pair", "pair", "pair"]);
+    expect(
+      steps.flatMap((step) =>
+        step.type === "pair" ? [[step.baseBlock.id, step.revisedBlock.id]] : [],
+      ),
+    ).toEqual([
+      ["persisted-cell", "persisted-cell"],
+      ["second-cell", "second-cell"],
+      ["third-cell", "third-cell"],
+      ["next-row", "next-row"],
+    ]);
+  });
+
   test("keeps shifted rows paired by logical row before considering stable ids", () => {
     const base = [
       cell("first-id", "First logical row phrase", {
