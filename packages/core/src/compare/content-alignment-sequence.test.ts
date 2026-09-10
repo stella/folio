@@ -44,25 +44,19 @@ const tableBlock = ({
 const tableSequence = (
   entries: readonly Omit<TableBlockOptions, "outerTableIndex">[],
 ): FolioContentBlock[] =>
-  entries.map(
-    (
-      { id, text, tableIndex, rowIndex, paragraphIndex, idStability },
+  entries.map(({ id, text, tableIndex, rowIndex, paragraphIndex, idStability }, outerTableIndex) =>
+    tableBlock({
+      id,
+      text,
       outerTableIndex,
-    ) =>
-      tableBlock({
-        id,
-        text,
-        outerTableIndex,
-        tableIndex,
-        rowIndex,
-        paragraphIndex,
-        idStability,
-      }),
+      tableIndex,
+      rowIndex,
+      paragraphIndex,
+      idStability,
+    }),
   );
 
-const pairIds = (
-  steps: ReturnType<typeof alignFolioContentStructure>,
-): [string, string][] =>
+const pairIds = (steps: ReturnType<typeof alignFolioContentStructure>): [string, string][] =>
   steps.flatMap((step) =>
     step.type === "pair" ? [[step.baseBlock.id, step.revisedBlock.id]] : [],
   );
@@ -82,12 +76,7 @@ describe("bounded table sequence alignment", () => {
 
     const steps = alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised });
 
-    expect(steps.map(({ type }) => type)).toEqual([
-      "revisedTable",
-      "revisedTable",
-      "pair",
-      "pair",
-    ]);
+    expect(steps.map(({ type }) => type)).toEqual(["revisedTable", "revisedTable", "pair", "pair"]);
     expect(pairIds(steps)).toEqual([
       ["table-a", "table-a"],
       ["table-b", "table-b"],
@@ -365,27 +354,30 @@ describe("bounded table sequence alignment", () => {
       revisedOrder: ["leading", "table", "trailing"],
       unmatchedType: "revisedOnly",
     },
-  ] as const)("keeps a table paired across $label", ({ baseOrder, revisedOrder, unmatchedType }) => {
-    const blocks = {
-      leading: { id: "leading", kind: "paragraph", text: "Leading body paragraph" },
-      table: tableBlock({ id: "table", text: "Preserved schedule", outerTableIndex: 0 }),
-      trailing: { id: "trailing", kind: "paragraph", text: "Trailing body paragraph" },
-    } satisfies Record<string, FolioContentBlock>;
-    const materialize = (
-      order: readonly ("leading" | "table" | "trailing")[],
-    ): FolioContentBlock[] => order.map((id) => blocks[id]);
+  ] as const)(
+    "keeps a table paired across $label",
+    ({ baseOrder, revisedOrder, unmatchedType }) => {
+      const blocks = {
+        leading: { id: "leading", kind: "paragraph", text: "Leading body paragraph" },
+        table: tableBlock({ id: "table", text: "Preserved schedule", outerTableIndex: 0 }),
+        trailing: { id: "trailing", kind: "paragraph", text: "Trailing body paragraph" },
+      } satisfies Record<string, FolioContentBlock>;
+      const materialize = (
+        order: readonly ("leading" | "table" | "trailing")[],
+      ): FolioContentBlock[] => order.map((id) => blocks[id]);
 
-    const steps = alignFolioContentStructure({
-      baseBlocks: materialize(baseOrder),
-      revisedBlocks: materialize(revisedOrder),
-    });
+      const steps = alignFolioContentStructure({
+        baseBlocks: materialize(baseOrder),
+        revisedBlocks: materialize(revisedOrder),
+      });
 
-    expect(steps.map(({ type }) => type)).toEqual([unmatchedType, "pair", "pair"]);
-    expect(pairIds(steps)).toEqual([
-      ["table", "table"],
-      ["trailing", "trailing"],
-    ]);
-  });
+      expect(steps.map(({ type }) => type)).toEqual([unmatchedType, "pair", "pair"]);
+      expect(pairIds(steps)).toEqual([
+        ["table", "table"],
+        ["trailing", "trailing"],
+      ]);
+    },
+  );
 
   test("reserves a later table identity before aligning an earlier singleton run", () => {
     const body = (id: string): FolioContentBlock => ({
@@ -569,12 +561,7 @@ describe("bounded table row sequence alignment", () => {
 
     const steps = alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised });
 
-    expect(steps.map(({ type }) => type)).toEqual([
-      "revisedRow",
-      "revisedRow",
-      "pair",
-      "pair",
-    ]);
+    expect(steps.map(({ type }) => type)).toEqual(["revisedRow", "revisedRow", "pair", "pair"]);
     expect(pairIds(steps)).toEqual([
       ["row-a", "row-a"],
       ["row-b", "row-b"],

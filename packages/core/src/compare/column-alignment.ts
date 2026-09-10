@@ -132,17 +132,14 @@ const tableGridColumns = <Block extends FolioContentBlock>(
   grid: TableGrid<Block>,
   internText: (text: string) => number,
 ): GridColumn<Block>[] => {
-  const coveringCellsByColumn: GridCell<Block>[][] = Array.from(
-    { length: grid.width },
-    () => [],
-  );
-  const ownedCellsByColumn: GridCell<Block>[][] = Array.from(
-    { length: grid.width },
-    () => [],
-  );
+  const coveringCellsByColumn: GridCell<Block>[][] = Array.from({ length: grid.width }, () => []);
+  const ownedCellsByColumn: GridCell<Block>[][] = Array.from({ length: grid.width }, () => []);
   const textKeysByCell = new Map<GridCell<Block>, readonly number[]>();
   for (const cell of grid.cells) {
-    textKeysByCell.set(cell, cell.blocks.map(({ text }) => internText(text)));
+    textKeysByCell.set(
+      cell,
+      cell.blocks.map(({ text }) => internText(text)),
+    );
     ownedCellsByColumn[cell.gridColumnIndex]?.push(cell);
     for (
       let column = cell.gridColumnIndex;

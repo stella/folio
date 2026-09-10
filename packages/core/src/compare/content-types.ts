@@ -118,8 +118,6 @@ export type FolioContentBlock<Kind extends string = string> = {
 };
 
 /** Every block of one story, in document order. */
-export type FolioContentSnapshot<
-  Block extends FolioContentBlock = FolioContentBlock,
-> = {
+export type FolioContentSnapshot<Block extends FolioContentBlock = FolioContentBlock> = {
   blocks: readonly Block[];
 };

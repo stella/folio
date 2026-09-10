@@ -15,13 +15,9 @@ import type {
 const HEX_COLOR = /^#?(?:[0-9A-Fa-f]{3}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$/u;
 
 const normalizeInlineFormattingColor = (color: string): string =>
-  HEX_COLOR.test(color)
-    ? color.replace(/^#/u, "").toUpperCase()
-    : color;
+  HEX_COLOR.test(color) ? color.replace(/^#/u, "").toUpperCase() : color;
 
-const normalizeEffectiveInlineFormattingColor = (
-  color: string | undefined,
-): string | undefined =>
+const normalizeEffectiveInlineFormattingColor = (color: string | undefined): string | undefined =>
   color === undefined ? undefined : normalizeInlineFormattingColor(color);
 
 const normalizeDirectInlineFormattingColor = (

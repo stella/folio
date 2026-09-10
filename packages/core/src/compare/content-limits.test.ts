@@ -11,10 +11,12 @@ import {
 import type { FolioContentAlignmentStep } from "./content-alignment";
 import type { FolioContentBlock } from "./content-types";
 
-const block = (
-  id: string,
-  overrides: Partial<FolioContentBlock> = {},
-): FolioContentBlock => ({ id, kind: "paragraph", text: "", ...overrides });
+const block = (id: string, overrides: Partial<FolioContentBlock> = {}): FolioContentBlock => ({
+  id,
+  kind: "paragraph",
+  text: "",
+  ...overrides,
+});
 
 const expectLimit = (
   result: ReturnType<typeof compareContent>,
@@ -46,8 +48,7 @@ describe("neutral comparison resource boundaries", () => {
   test("shares one cumulative text allowance across every block on a side", () => {
     const text = "x".repeat(FOLIO_CONTENT_COMPARISON_LIMITS.blockCodeUnits);
     const count =
-      Math.floor(FOLIO_CONTENT_COMPARISON_LIMITS.textCodeUnitsPerSnapshot / text.length) +
-      1;
+      Math.floor(FOLIO_CONTENT_COMPARISON_LIMITS.textCodeUnitsPerSnapshot / text.length) + 1;
 
     expectLimit(
       compareContent({
@@ -81,10 +82,7 @@ describe("neutral comparison resource boundaries", () => {
       () => emptyRun,
     );
     const count =
-      Math.floor(
-        FOLIO_CONTENT_COMPARISON_LIMITS.previewRunsPerSnapshot /
-          maximumRuns.length,
-      ) + 1;
+      Math.floor(FOLIO_CONTENT_COMPARISON_LIMITS.previewRunsPerSnapshot / maximumRuns.length) + 1;
     expectLimit(
       compareContent({
         base: {
@@ -118,8 +116,7 @@ describe("neutral comparison resource boundaries", () => {
     );
     const count =
       Math.floor(
-        FOLIO_CONTENT_COMPARISON_LIMITS.containerEntriesPerSnapshot /
-          maximumDepth.length,
+        FOLIO_CONTENT_COMPARISON_LIMITS.containerEntriesPerSnapshot / maximumDepth.length,
       ) + 1;
     expectLimit(
       compareContent({
@@ -138,11 +135,7 @@ describe("neutral comparison resource boundaries", () => {
     expectLimit(
       compareContent({
         base: {
-          blocks: [
-            block(
-              "x".repeat(FOLIO_CONTENT_COMPARISON_LIMITS.attributeCodeUnits + 1),
-            ),
-          ],
+          blocks: [block("x".repeat(FOLIO_CONTENT_COMPARISON_LIMITS.attributeCodeUnits + 1))],
         },
         revised: { blocks: [] },
       }),
@@ -151,10 +144,8 @@ describe("neutral comparison resource boundaries", () => {
 
     const styleId = "x".repeat(FOLIO_CONTENT_COMPARISON_LIMITS.attributeCodeUnits);
     const count =
-      Math.floor(
-        FOLIO_CONTENT_COMPARISON_LIMITS.attributeCodeUnitsPerSnapshot /
-          styleId.length,
-      ) + 1;
+      Math.floor(FOLIO_CONTENT_COMPARISON_LIMITS.attributeCodeUnitsPerSnapshot / styleId.length) +
+      1;
     expectLimit(
       compareContent({
         base: {
@@ -238,11 +229,7 @@ describe("neutral comparison resource boundaries", () => {
     } as const;
     const result = compareContent({
       base: {
-        blocks: [
-          block("table-before", { table }),
-          block("body"),
-          block("table-after", { table }),
-        ],
+        blocks: [block("table-before", { table }), block("body"), block("table-after", { table })],
       },
       revised: { blocks: [] },
     });

@@ -81,14 +81,14 @@ describe("shared content-alignment LCS work", () => {
   test("refuses a later matrix that exceeds the aggregate remainder without underflowing it", () => {
     const workSession = createFolioContentAlignmentWorkSession({ lcsCells: 10 });
 
-    expect(
-      alignFolioContentBlocks(base, revised, { workSession }).map(({ type }) => type),
-    ).toEqual(["pair", "revisedOnly", "pair"]);
+    expect(alignFolioContentBlocks(base, revised, { workSession }).map(({ type }) => type)).toEqual(
+      ["pair", "revisedOnly", "pair"],
+    );
     expect(workSession.remainingLcsCells).toBe(4);
 
-    expect(
-      alignFolioContentBlocks(base, revised, { workSession }).map(({ type }) => type),
-    ).toEqual(["pair", "pair", "revisedOnly"]);
+    expect(alignFolioContentBlocks(base, revised, { workSession }).map(({ type }) => type)).toEqual(
+      ["pair", "pair", "revisedOnly"],
+    );
     expect(workSession.remainingLcsCells).toBe(4);
   });
 
@@ -255,10 +255,10 @@ describe("shared content-alignment LCS work", () => {
     if (secondCellFallback?.type !== "pair") {
       throw new Error("Expected the second table cell to use positional fallback.");
     }
-    expect([
-      secondCellFallback.baseBlock.text,
-      secondCellFallback.revisedBlock.text,
-    ]).toEqual(["Zeta", "Eta"]);
+    expect([secondCellFallback.baseBlock.text, secondCellFallback.revisedBlock.text]).toEqual([
+      "Zeta",
+      "Eta",
+    ]);
   });
 });
 
@@ -366,14 +366,24 @@ describe("container-safe structural alignment", () => {
 
   test("does not pair equal blocks across distinct table-cell containers", () => {
     const base = [
-      cell("shared", "Same text", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }, {
-        containerPath: [{ kind: "cell", id: "base-cell" }],
-      }),
+      cell(
+        "shared",
+        "Same text",
+        { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 },
+        {
+          containerPath: [{ kind: "cell", id: "base-cell" }],
+        },
+      ),
     ];
     const revised = [
-      cell("shared", "Same text", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }, {
-        containerPath: [{ kind: "cell", id: "revised-cell" }],
-      }),
+      cell(
+        "shared",
+        "Same text",
+        { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 },
+        {
+          containerPath: [{ kind: "cell", id: "revised-cell" }],
+        },
+      ),
     ];
 
     expect(alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised })).toEqual([

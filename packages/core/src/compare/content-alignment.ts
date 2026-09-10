@@ -61,10 +61,7 @@ export const createFolioContentAlignmentWorkSession = (
   };
 };
 
-export const exceedsFolioContentLcsBudget = (
-  baseCount: number,
-  revisedCount: number,
-): boolean =>
+export const exceedsFolioContentLcsBudget = (baseCount: number, revisedCount: number): boolean =>
   baseCount > 0 &&
   revisedCount > 0 &&
   baseCount > Math.floor(MAX_CONTENT_ALIGNMENT_LCS_CELLS / revisedCount);
@@ -150,9 +147,7 @@ export const longestIncreasingFolioContentPairs = (
       for (let cursor = rank - 1; cursor > 0; cursor -= cursor & -cursor) {
         const candidateLength = treeLengths[cursor] ?? 0;
         const candidateIndex = treeIndexes[cursor] ?? -1;
-        if (
-          earlier(candidateLength, candidateIndex, predecessorLength, predecessorIndex)
-        ) {
+        if (earlier(candidateLength, candidateIndex, predecessorLength, predecessorIndex)) {
           predecessorLength = candidateLength;
           predecessorIndex = candidateIndex;
         }
@@ -324,11 +319,7 @@ const pairByExactText = <Block extends FolioContentBlock>(
   const entriesCanPair = (baseIndex: number, revisedIndex: number): boolean => {
     const baseBlock = base[baseIndex]?.block;
     const revisedBlock = revised[revisedIndex]?.block;
-    if (
-      !baseBlock ||
-      !revisedBlock ||
-      baseTextKeys[baseIndex] !== revisedTextKeys[revisedIndex]
-    ) {
+    if (!baseBlock || !revisedBlock || baseTextKeys[baseIndex] !== revisedTextKeys[revisedIndex]) {
       return false;
     }
     return (
@@ -346,13 +337,12 @@ const pairByExactText = <Block extends FolioContentBlock>(
     const rowOffset = baseIndex * stride;
     const nextRowOffset = (baseIndex + 1) * stride;
     for (let revisedIndex = revisedCount - 1; revisedIndex >= 0; revisedIndex--) {
-      lengths[rowOffset + revisedIndex] =
-        entriesCanPair(baseIndex, revisedIndex)
-          ? (lengths[nextRowOffset + revisedIndex + 1] ?? 0) + 1
-          : Math.max(
-              lengths[nextRowOffset + revisedIndex] ?? 0,
-              lengths[rowOffset + revisedIndex + 1] ?? 0,
-            );
+      lengths[rowOffset + revisedIndex] = entriesCanPair(baseIndex, revisedIndex)
+        ? (lengths[nextRowOffset + revisedIndex + 1] ?? 0) + 1
+        : Math.max(
+            lengths[nextRowOffset + revisedIndex] ?? 0,
+            lengths[rowOffset + revisedIndex + 1] ?? 0,
+          );
     }
   }
 
@@ -382,9 +372,7 @@ const pairByExactText = <Block extends FolioContentBlock>(
   return pairs;
 };
 
-export type FolioContentAlignedBlockEvent<
-  Block extends FolioContentBlock = FolioContentBlock,
-> =
+export type FolioContentAlignedBlockEvent<Block extends FolioContentBlock = FolioContentBlock> =
   | { type: "pair"; baseBlock: Block; revisedBlock: Block }
   | { type: "baseOnly"; block: Block }
   | { type: "revisedOnly"; block: Block };
@@ -515,9 +503,7 @@ export const alignFolioContentBlocks = <Block extends FolioContentBlock>(
   return events;
 };
 
-export type FolioContentAlignmentStep<
-  Block extends FolioContentBlock = FolioContentBlock,
-> =
+export type FolioContentAlignmentStep<Block extends FolioContentBlock = FolioContentBlock> =
   | { type: "pair"; baseBlock: Block; revisedBlock: Block }
   | { type: "baseOnly"; block: Block; moveScope: FolioContentMoveScope }
   | { type: "revisedOnly"; block: Block; moveScope: FolioContentMoveScope }
@@ -733,11 +719,7 @@ const createContentStructureProfile = <Block extends FolioContentBlock>({
   const anchorTexts = new Set<string>();
   let tokenCount = 0;
   let tokensComplete = true;
-  const signature = blocks.map((block) => [
-    ...blockStructure(block),
-    block.kind,
-    block.text,
-  ]);
+  const signature = blocks.map((block) => [...blockStructure(block), block.kind, block.text]);
   for (const block of blocks) {
     let blockWordCount = 0;
     for (const match of block.text.matchAll(/\S+/gu)) {
@@ -950,9 +932,7 @@ const alignProfiledContentSequence = <Item>({
   }
 
   const stablePairs = stableContentSequencePairs(base, revised);
-  const provenanceTransitionAtSamePosition = new Uint8Array(
-    Math.min(base.length, revised.length),
-  );
+  const provenanceTransitionAtSamePosition = new Uint8Array(Math.min(base.length, revised.length));
   for (let index = 0; index < provenanceTransitionAtSamePosition.length; index++) {
     const baseProfile = base[index]?.profile;
     const revisedProfile = revised[index]?.profile;
@@ -966,8 +946,7 @@ const alignProfiledContentSequence = <Item>({
     // the stable half of the observed positional-to-stable transition.
     if (
       baseProfile.blockIds.some(
-        (id) =>
-          revisedIds.has(id) && baseStableIds.has(id) !== revisedStableIds.has(id),
+        (id) => revisedIds.has(id) && baseStableIds.has(id) !== revisedStableIds.has(id),
       )
     ) {
       provenanceTransitionAtSamePosition[index] = 1;
@@ -995,12 +974,9 @@ const alignProfiledContentSequence = <Item>({
   );
   const maxPairs = Math.min(base.length, revised.length);
   const continuityBonus = 1;
-  const secondaryWeight =
-    maxPairs * (CONTENT_STRUCTURE_SIMILARITY_SCALE + continuityBonus) + 1;
+  const secondaryWeight = maxPairs * (CONTENT_STRUCTURE_SIMILARITY_SCALE + continuityBonus) + 1;
   const primaryWeight =
-    maxPairs *
-      (secondaryWeight + CONTENT_STRUCTURE_SIMILARITY_SCALE + continuityBonus) +
-    1;
+    maxPairs * (secondaryWeight + CONTENT_STRUCTURE_SIMILARITY_SCALE + continuityBonus) + 1;
   const stableWeight = primaryEvidence === "stable" ? primaryWeight : secondaryWeight;
   const exactWeight = primaryEvidence === "exact" ? primaryWeight : secondaryWeight;
   const pairScores = new Float64Array(base.length * revised.length);
@@ -1024,11 +1000,7 @@ const alignProfiledContentSequence = <Item>({
       const stable = stablePairs.has(pairIndex);
       const profileSimilarity = exact
         ? 1
-        : contentStructureProfileSimilarity(
-            baseItem.profile,
-            revisedItem.profile,
-            workSession,
-          );
+        : contentStructureProfileSimilarity(baseItem.profile, revisedItem.profile, workSession);
       const similar = Math.max(
         0,
         Math.min(1, profileSimilarity * similarityFactor(baseItem, revisedItem)),
@@ -1329,16 +1301,18 @@ const alignTableRows = <Block extends FolioContentBlock>({
         pushRow(alignment.row, "revised");
         break;
       case "pair":
-        steps.push(...alignRowCells({
-          baseRow: alignment.baseRow,
-          revisedRow: alignment.revisedRow,
-          workSession,
-          moveScopeContext,
-          stableIdMismatch,
-          idStability,
-          baseColumnKeys,
-          revisedColumnKeys,
-        }));
+        steps.push(
+          ...alignRowCells({
+            baseRow: alignment.baseRow,
+            revisedRow: alignment.revisedRow,
+            workSession,
+            moveScopeContext,
+            stableIdMismatch,
+            idStability,
+            baseColumnKeys,
+            revisedColumnKeys,
+          }),
+        );
         break;
       default: {
         const unreachable: never = alignment;
@@ -1550,9 +1524,7 @@ const contentStructureEvidenceIndexes = <Item>(
   const exactKeys = new Map<string, number>();
   const exactKeyByProfile = new Map<ContentStructureProfile, number>();
   let nextExactKey = 0;
-  const internExactSignatures = (
-    items: readonly ProfiledContentSequenceItem<Item>[],
-  ): void => {
+  const internExactSignatures = (items: readonly ProfiledContentSequenceItem<Item>[]): void => {
     for (const { profile } of items) {
       if (profile.exactSignature === null) {
         continue;
@@ -1616,8 +1588,7 @@ const sortedIndexesLeaveRange = (
   start: number,
   end: number,
 ): boolean =>
-  indexes !== undefined &&
-  ((indexes.at(0) ?? start) < start || (indexes.at(-1) ?? end - 1) >= end);
+  indexes !== undefined && ((indexes.at(0) ?? start) < start || (indexes.at(-1) ?? end - 1) >= end);
 
 const profileHasEvidenceOutsideRange = (
   profile: ContentStructureProfile,
@@ -1721,8 +1692,7 @@ const exactBodyPairsInRange = <Block extends FolioContentBlock>(
   }
   return longestIncreasingFolioContentPairs(
     candidates.toSorted(
-      (left, right) =>
-        left.baseIndex - right.baseIndex || left.revisedIndex - right.revisedIndex,
+      (left, right) => left.baseIndex - right.baseIndex || left.revisedIndex - right.revisedIndex,
     ),
   );
 };
@@ -1733,18 +1703,18 @@ const trustedBodyPairs = <Block extends FolioContentBlock>(
 ): TrustedBodyPair<Block>[] => {
   const evidence = contentStructureEvidenceIndexes(base, revised);
   const stableCandidates = [...stableContentSequencePairs(base, revised)]
-    .map((pairIndex): FolioContentBlockPair => ({
-      baseIndex: Math.floor(pairIndex / revised.length),
-      revisedIndex: pairIndex % revised.length,
-    }))
+    .map(
+      (pairIndex): FolioContentBlockPair => ({
+        baseIndex: Math.floor(pairIndex / revised.length),
+        revisedIndex: pairIndex % revised.length,
+      }),
+    )
     .filter(
       ({ baseIndex, revisedIndex }) =>
-        base[baseIndex]?.item.containerPathKey ===
-        revised[revisedIndex]?.item.containerPathKey,
+        base[baseIndex]?.item.containerPathKey === revised[revisedIndex]?.item.containerPathKey,
     )
     .toSorted(
-      (left, right) =>
-        left.baseIndex - right.baseIndex || left.revisedIndex - right.revisedIndex,
+      (left, right) => left.baseIndex - right.baseIndex || left.revisedIndex - right.revisedIndex,
     );
   const stablePairs = longestIncreasingFolioContentPairs(stableCandidates);
   const pairs = [...stablePairs];
@@ -1767,8 +1737,7 @@ const trustedBodyPairs = <Block extends FolioContentBlock>(
   }
   return pairs
     .toSorted(
-      (left, right) =>
-        left.baseIndex - right.baseIndex || left.revisedIndex - right.revisedIndex,
+      (left, right) => left.baseIndex - right.baseIndex || left.revisedIndex - right.revisedIndex,
     )
     .map(({ baseIndex, revisedIndex }) => ({
       base: base[baseIndex]?.item ?? panic("A trusted base body segment is missing"),
@@ -1818,10 +1787,7 @@ const pairTableSegmentsInGaps = <Block extends FolioContentBlock>({
     items: readonly ProfiledContentSequenceItem<TableDocumentSegment<Block>>[],
     gaps: ReadonlyMap<DocumentSegment<Block>, number>,
   ): ReadonlyMap<number, readonly ProfiledContentSequenceItem<TableDocumentSegment<Block>>[]> => {
-    const grouped = new Map<
-      number,
-      ProfiledContentSequenceItem<TableDocumentSegment<Block>>[]
-    >();
+    const grouped = new Map<number, ProfiledContentSequenceItem<TableDocumentSegment<Block>>[]>();
     for (const item of items) {
       const gap = gaps.get(item.item) ?? panic("A table segment has no structural gap");
       const entries = grouped.get(gap);
@@ -1836,14 +1802,8 @@ const pairTableSegmentsInGaps = <Block extends FolioContentBlock>({
   const baseByGap = groupByGap(base.items, baseGaps);
   const revisedByGap = groupByGap(revised.items, revisedGaps);
   const evidence = contentStructureEvidenceIndexes(base.items, revised.items);
-  const baseToRevised = new Map<
-    TableDocumentSegment<Block>,
-    TableDocumentSegment<Block>
-  >();
-  const revisedToBase = new Map<
-    TableDocumentSegment<Block>,
-    TableDocumentSegment<Block>
-  >();
+  const baseToRevised = new Map<TableDocumentSegment<Block>, TableDocumentSegment<Block>>();
+  const revisedToBase = new Map<TableDocumentSegment<Block>, TableDocumentSegment<Block>>();
   for (let gap = 0; gap <= trustedBodyPairCount; gap++) {
     const baseItems = baseByGap.get(gap) ?? [];
     const revisedItems = revisedByGap.get(gap) ?? [];
@@ -1863,12 +1823,7 @@ const pairTableSegmentsInGaps = <Block extends FolioContentBlock>({
     const baseHasExternalEvidence = new Set(
       baseItems
         .filter(({ profile }) =>
-          profileHasEvidenceOutsideRange(
-            profile,
-            evidence.revised,
-            revisedStart,
-            revisedEnd,
-          ),
+          profileHasEvidenceOutsideRange(profile, evidence.revised, revisedStart, revisedEnd),
         )
         .map(({ item }) => item),
     );

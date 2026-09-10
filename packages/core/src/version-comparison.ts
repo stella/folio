@@ -260,10 +260,7 @@ const createLcsBudget = (): FolioVersionComparisonLcsBudget => {
 
 export type FolioAlignedBlockEvent = FolioContentAlignedBlockEvent<FolioAIBlock>;
 
-const folioAIBlockIdStability = ({
-  id,
-  idStability,
-}: FolioAIBlock): "stable" | "positional" =>
+const folioAIBlockIdStability = ({ id, idStability }: FolioAIBlock): "stable" | "positional" =>
   idStability ?? (getFolioParaIdFromBlockId(id) === null ? "positional" : "stable");
 
 /**
@@ -290,9 +287,8 @@ export const alignFolioBlocks = (
   return events;
 };
 
-const legacySegments = (
-  segments: readonly WordDiffSegment[],
-): FolioVersionDiffSegment[] => segments.map(({ type, text }) => ({ type, text }));
+const legacySegments = (segments: readonly WordDiffSegment[]): FolioVersionDiffSegment[] =>
+  segments.map(({ type, text }) => ({ type, text }));
 
 const legacyFormattingProperties = (
   formatting: FolioContentFormattingChange,

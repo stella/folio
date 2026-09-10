@@ -401,8 +401,7 @@ export const planComparison = ({
   let remainingOperations = MAX_COMPARE_OPERATIONS;
   for (const pair of pairs) {
     const remainingLcsCells = workSession.alignment.remainingLcsCells;
-    const remainingStructuralTokenLookups =
-      workSession.alignment.remainingStructuralTokenLookups;
+    const remainingStructuralTokenLookups = workSession.alignment.remainingStructuralTokenLookups;
     const remainingMoveComparisons = workSession.remainingMoveComparisons;
     const remainingMoveTokenLookups = workSession.remainingMoveTokenLookups;
     let plan = planStoryCompare({
@@ -417,8 +416,7 @@ export const planComparison = ({
       // The first plan was speculative. Re-run the chosen fallback against
       // the same package-wide comparison allowance rather than charging both.
       workSession.alignment.remainingLcsCells = remainingLcsCells;
-      workSession.alignment.remainingStructuralTokenLookups =
-        remainingStructuralTokenLookups;
+      workSession.alignment.remainingStructuralTokenLookups = remainingStructuralTokenLookups;
       workSession.remainingMoveComparisons = remainingMoveComparisons;
       workSession.remainingMoveTokenLookups = remainingMoveTokenLookups;
       plan = planStoryCompare({

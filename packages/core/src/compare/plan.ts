@@ -112,15 +112,10 @@ type BuildStepsOptions = {
   workSession: FolioContentAlignmentWorkSession;
 };
 
-const folioAIBlockIdStability = ({
-  id,
-  idStability,
-}: FolioAIBlock): "stable" | "positional" =>
+const folioAIBlockIdStability = ({ id, idStability }: FolioAIBlock): "stable" | "positional" =>
   idStability ?? (getFolioParaIdFromBlockId(id) === null ? "positional" : "stable");
 
-const toCompareStep = (
-  step: FolioContentAlignmentStep<FolioAIBlock>,
-): CompareStep => {
+const toCompareStep = (step: FolioContentAlignmentStep<FolioAIBlock>): CompareStep => {
   switch (step.type) {
     case "pair":
       return { type: "pair", baseBlock: step.baseBlock, targetBlock: step.revisedBlock };
@@ -158,9 +153,7 @@ const toCompareStep = (
   }
 };
 
-const toContentAlignmentStep = (
-  step: CompareStep,
-): FolioContentAlignmentStep<FolioAIBlock> => {
+const toContentAlignmentStep = (step: CompareStep): FolioContentAlignmentStep<FolioAIBlock> => {
   switch (step.type) {
     case "pair":
       return { type: "pair", baseBlock: step.baseBlock, revisedBlock: step.targetBlock };
@@ -320,8 +313,7 @@ const buildSteps = ({
     isEmptyParagraphNode(carrierPair.baseBlock, baseSnapshot) &&
     isEmptyParagraphNode(carrierPair.targetBlock, targetSnapshot);
   const alignmentBudgetBeforeAttempt = workSession.remainingLcsCells;
-  const structuralTokenBudgetBeforeAttempt =
-    workSession.remainingStructuralTokenLookups;
+  const structuralTokenBudgetBeforeAttempt = workSession.remainingStructuralTokenLookups;
   const steps = alignedSteps(
     baseBlocks,
     targetBlocks,
@@ -353,15 +345,8 @@ const buildSteps = ({
   // The first alignment was only a probe for the terminal-carrier repair.
   // Charge the shared package budget for the plan we keep, not both attempts.
   workSession.remainingLcsCells = alignmentBudgetBeforeAttempt;
-  workSession.remainingStructuralTokenLookups =
-    structuralTokenBudgetBeforeAttempt;
-  return alignedSteps(
-    baseBlocks,
-    targetBlocks,
-    carrierPair,
-    wholeTableReplacement,
-    workSession,
-  );
+  workSession.remainingStructuralTokenLookups = structuralTokenBudgetBeforeAttempt;
+  return alignedSteps(baseBlocks, targetBlocks, carrierPair, wholeTableReplacement, workSession);
 };
 
 /**

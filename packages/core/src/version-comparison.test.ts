@@ -793,9 +793,7 @@ describe("compareDocxVersions: move detection", () => {
     const baseBlocks = baseReviewer.snapshot().blocks;
     const revisedBlocks = revisedReviewer.snapshot().blocks;
     expect(
-      [...baseBlocks, ...revisedBlocks].every(
-        ({ idStability }) => idStability === "positional",
-      ),
+      [...baseBlocks, ...revisedBlocks].every(({ idStability }) => idStability === "positional"),
     ).toBe(true);
     const neutral = compareContent({
       base: { blocks: baseBlocks },

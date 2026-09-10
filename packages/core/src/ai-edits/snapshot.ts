@@ -536,9 +536,7 @@ const getPreviewRuns = (
       return true;
     }
     if (
-      child.marks.some(
-        (mark) => mark.type.name === DELETION_MARK || mark.type.name === HIDDEN_MARK,
-      )
+      child.marks.some((mark) => mark.type.name === DELETION_MARK || mark.type.name === HIDDEN_MARK)
     ) {
       return false;
     }

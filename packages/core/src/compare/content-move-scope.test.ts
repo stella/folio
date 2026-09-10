@@ -48,10 +48,7 @@ const tableBlock = ({
   },
 });
 
-const successfulComparison = (
-  base: FolioContentBlock[],
-  revised: FolioContentBlock[],
-) => {
+const successfulComparison = (base: FolioContentBlock[], revised: FolioContentBlock[]) => {
   const result = compareContent({ base: { blocks: base }, revised: { blocks: revised } });
   if (result.isErr()) {
     throw result.error;
@@ -71,20 +68,20 @@ describe("neutral move scope", () => {
       baseText: "alpha beta gamma delta epsilon",
       revisedText: "alpha beta gamma delta zeta",
     },
-  ])("a same-slot stable-id replacement with $label is not a relocation", ({
-    baseText,
-    revisedText,
-  }) => {
-    const base = block("old-stable-id", baseText);
-    const revised = block("new-stable-id", revisedText);
+  ])(
+    "a same-slot stable-id replacement with $label is not a relocation",
+    ({ baseText, revisedText }) => {
+      const base = block("old-stable-id", baseText);
+      const revised = block("new-stable-id", revisedText);
 
-    const comparison = successfulComparison([base], [revised]);
+      const comparison = successfulComparison([base], [revised]);
 
-    expect(comparison.events).toEqual([
-      { type: "deleted", baseBlocks: [base], revisedBlocks: [] },
-      { type: "inserted", baseBlocks: [], revisedBlocks: [revised] },
-    ]);
-  });
+      expect(comparison.events).toEqual([
+        { type: "deleted", baseBlocks: [base], revisedBlocks: [] },
+        { type: "inserted", baseBlocks: [], revisedBlocks: [revised] },
+      ]);
+    },
+  );
 
   test("a stable paragraph relocation survives raw row-coordinate shifts", () => {
     const baseMoved = tableBlock({

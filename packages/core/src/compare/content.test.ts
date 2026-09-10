@@ -95,16 +95,13 @@ const successfulComparison = ({
 
 const eventTypes = (
   comparison: FolioContentComparison<TestBlock>,
-): FolioContentComparisonEvent<TestBlock>["type"][] =>
-  comparison.events.map(({ type }) => type);
+): FolioContentComparisonEvent<TestBlock>["type"][] => comparison.events.map(({ type }) => type);
 
-const baseProjection = (
-  comparison: FolioContentComparison<TestBlock>,
-): TestBlock[] => comparison.events.flatMap(({ baseBlocks }) => [...baseBlocks]);
+const baseProjection = (comparison: FolioContentComparison<TestBlock>): TestBlock[] =>
+  comparison.events.flatMap(({ baseBlocks }) => [...baseBlocks]);
 
-const revisedProjection = (
-  comparison: FolioContentComparison<TestBlock>,
-): TestBlock[] => comparison.events.flatMap(({ revisedBlocks }) => [...revisedBlocks]);
+const revisedProjection = (comparison: FolioContentComparison<TestBlock>): TestBlock[] =>
+  comparison.events.flatMap(({ revisedBlocks }) => [...revisedBlocks]);
 
 const textBefore = (segments: readonly FolioContentTextSegment[]): string =>
   segments
@@ -124,11 +121,7 @@ type SegmentOffsetExpectation = {
   revised: string;
 };
 
-const expectSegmentOffsets = ({
-  segments,
-  base,
-  revised,
-}: SegmentOffsetExpectation): void => {
+const expectSegmentOffsets = ({ segments, base, revised }: SegmentOffsetExpectation): void => {
   let baseOffset = 0;
   let revisedOffset = 0;
   for (const segment of segments) {
@@ -468,9 +461,7 @@ describe("representation-neutral comparison stream", () => {
       "movedTo",
       "movedTo",
     ]);
-    expect(
-      movedFrom.map(({ moveId, baseBlocks }) => [moveId, baseBlocks[0].id]),
-    ).toEqual([
+    expect(movedFrom.map(({ moveId, baseBlocks }) => [moveId, baseBlocks[0].id])).toEqual([
       [1, "short-exact"],
       [2, "short-edited"],
     ]);
@@ -555,8 +546,7 @@ describe("representation-neutral comparison stream", () => {
     });
     expect(
       comparison.events.find(
-        ({ type, revisedBlocks }) =>
-          type === "inserted" && revisedBlocks[0]?.id === "edited-decoy",
+        ({ type, revisedBlocks }) => type === "inserted" && revisedBlocks[0]?.id === "edited-decoy",
       ),
     ).toBeDefined();
   });
@@ -602,10 +592,7 @@ describe("representation-neutral comparison stream", () => {
     });
     const movedTo = comparison.events.filter(({ type }) => type === "movedTo");
 
-    expect(movedTo.map(({ baseBlockId }) => baseBlockId)).toEqual([
-      "first-base",
-      "second-base",
-    ]);
+    expect(movedTo.map(({ baseBlockId }) => baseBlockId)).toEqual(["first-base", "second-base"]);
     expect(movedTo.map(({ revisedBlocks }) => revisedBlocks[0].id)).toEqual([
       "first-revised",
       "second-revised",
@@ -814,9 +801,7 @@ describe("representation-neutral comparison stream", () => {
     const revised = contentBlock({
       id: "clause",
       text: "Payment",
-      previewRuns: [
-        { text: "Payment", color: "red", directFormatting: { color: null } },
-      ],
+      previewRuns: [{ text: "Payment", color: "red", directFormatting: { color: null } }],
     });
 
     const comparison = successfulComparison({ base: [base], revised: [revised] });
@@ -978,12 +963,7 @@ describe("container-aware comparison", () => {
 
     const comparison = successfulComparison({ base, revised });
 
-    expect(eventTypes(comparison)).toEqual([
-      "deleted",
-      "deleted",
-      "inserted",
-      "inserted",
-    ]);
+    expect(eventTypes(comparison)).toEqual(["deleted", "deleted", "inserted", "inserted"]);
     expect(baseProjection(comparison)).toEqual(base);
     expect(revisedProjection(comparison)).toEqual(revised);
     expect(comparison.structuralChanges).toEqual([]);
@@ -1011,66 +991,64 @@ describe("container-aware comparison", () => {
       baseText: "payment is due within thirty days",
       revisedText: "payment is due within forty days",
     },
-  ])("keeps $label relocation across table cells separate", ({
-    baseId,
-    revisedId,
-    baseText,
-    revisedText,
-  }) => {
-    const base = [
-      tableBlock({
-        id: baseId,
-        text: baseText,
-        rowIndex: 0,
-        cellIndex: 0,
-        paragraphIndex: 0,
-      }),
-      tableBlock({
-        id: "left-anchor",
-        text: "Left cell durable anchor",
-        rowIndex: 0,
-        cellIndex: 0,
-        paragraphIndex: 1,
-      }),
-      tableBlock({
-        id: "right-anchor",
-        text: "Right cell durable anchor",
-        rowIndex: 0,
-        cellIndex: 1,
-        paragraphIndex: 0,
-      }),
-    ];
-    const revised = [
-      tableBlock({
-        id: "left-anchor",
-        text: "Left cell durable anchor",
-        rowIndex: 0,
-        cellIndex: 0,
-        paragraphIndex: 0,
-      }),
-      tableBlock({
-        id: "right-anchor",
-        text: "Right cell durable anchor",
-        rowIndex: 0,
-        cellIndex: 1,
-        paragraphIndex: 0,
-      }),
-      tableBlock({
-        id: revisedId,
-        text: revisedText,
-        rowIndex: 0,
-        cellIndex: 1,
-        paragraphIndex: 1,
-      }),
-    ];
+  ])(
+    "keeps $label relocation across table cells separate",
+    ({ baseId, revisedId, baseText, revisedText }) => {
+      const base = [
+        tableBlock({
+          id: baseId,
+          text: baseText,
+          rowIndex: 0,
+          cellIndex: 0,
+          paragraphIndex: 0,
+        }),
+        tableBlock({
+          id: "left-anchor",
+          text: "Left cell durable anchor",
+          rowIndex: 0,
+          cellIndex: 0,
+          paragraphIndex: 1,
+        }),
+        tableBlock({
+          id: "right-anchor",
+          text: "Right cell durable anchor",
+          rowIndex: 0,
+          cellIndex: 1,
+          paragraphIndex: 0,
+        }),
+      ];
+      const revised = [
+        tableBlock({
+          id: "left-anchor",
+          text: "Left cell durable anchor",
+          rowIndex: 0,
+          cellIndex: 0,
+          paragraphIndex: 0,
+        }),
+        tableBlock({
+          id: "right-anchor",
+          text: "Right cell durable anchor",
+          rowIndex: 0,
+          cellIndex: 1,
+          paragraphIndex: 0,
+        }),
+        tableBlock({
+          id: revisedId,
+          text: revisedText,
+          rowIndex: 0,
+          cellIndex: 1,
+          paragraphIndex: 1,
+        }),
+      ];
 
-    const comparison = successfulComparison({ base, revised });
+      const comparison = successfulComparison({ base, revised });
 
-    expect(eventTypes(comparison)).toEqual(["deleted", "unchanged", "unchanged", "inserted"]);
-    expect(baseProjection(comparison)).toEqual(base);
-    expect(revisedProjection(comparison)).toEqual(revised);
-    expect(comparison.structuralChanges).toEqual([]);
-  });
+      expect(eventTypes(comparison)).toEqual(["deleted", "unchanged", "unchanged", "inserted"]);
+      expect(baseProjection(comparison)).toEqual(base);
+      expect(revisedProjection(comparison)).toEqual(revised);
+      expect(comparison.structuralChanges).toEqual([]);
+    },
+  );
 
   test("an inserted table row is one structural change with row-major events", () => {
     const base = [
@@ -1119,9 +1097,9 @@ describe("container-aware comparison", () => {
       "unchanged",
       "unchanged",
     ]);
-    expect(
-      comparison.events.map(({ revisedBlocks }) => revisedBlocks[0]?.id),
-    ).toEqual(revised.map(({ id }) => id));
+    expect(comparison.events.map(({ revisedBlocks }) => revisedBlocks[0]?.id)).toEqual(
+      revised.map(({ id }) => id),
+    );
     expect(
       comparison.events
         .filter(({ type }) => type === "inserted")
@@ -1701,18 +1679,9 @@ describe("comparison projection invariants", () => {
   test("permutations of short stable blocks preserve projections and move identity", () => {
     fc.assert(
       fc.property(stablePermutation, (revisedIds) => {
-        const baseIds = [
-          "stable-a",
-          "stable-b",
-          "stable-c",
-          "stable-d",
-          "stable-e",
-          "stable-f",
-        ];
+        const baseIds = ["stable-a", "stable-b", "stable-c", "stable-d", "stable-e", "stable-f"];
         const base = baseIds.map((id) => contentBlock({ id, text: id.at(-1) ?? id }));
-        const revised = revisedIds.map((id) =>
-          contentBlock({ id, text: id.at(-1) ?? id }),
-        );
+        const revised = revisedIds.map((id) => contentBlock({ id, text: id.at(-1) ?? id }));
 
         const comparison = successfulComparison({ base, revised });
 
