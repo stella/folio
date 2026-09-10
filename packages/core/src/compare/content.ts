@@ -283,6 +283,10 @@ const isFiniteNumber = (value: unknown): value is number =>
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
+// Runtime validation must not replace an already typed generic block with the
+// narrower Record<string, unknown> view produced by a type predicate.
+const hasRecordShape = (value: unknown): boolean => isRecord(value);
+
 const PARAGRAPH_ALIGNMENTS = new Set([
   "left",
   "center",
@@ -497,9 +501,11 @@ const validateTableLocation = (
       return invalidInput(side, `blocks[${String(blockIndex)}].table.${field}`, "Table spans must be positive integers.", blockIndex);
     }
   }
+  const gridColumnIndex = table["gridColumnIndex"];
+  const columnSpan = table["columnSpan"];
   const right =
-    typeof table.gridColumnIndex === "number" && typeof table.columnSpan === "number"
-      ? table.gridColumnIndex + table.columnSpan
+    typeof gridColumnIndex === "number" && typeof columnSpan === "number"
+      ? gridColumnIndex + columnSpan
       : Number.NaN;
   if (!Number.isSafeInteger(right)) {
     return invalidInput(
@@ -509,9 +515,11 @@ const validateTableLocation = (
       blockIndex,
     );
   }
+  const rowIndex = table["rowIndex"];
+  const rowSpan = table["rowSpan"];
   const bottom =
-    typeof table.rowIndex === "number" && typeof table.rowSpan === "number"
-      ? table.rowIndex + table.rowSpan
+    typeof rowIndex === "number" && typeof rowSpan === "number"
+      ? rowIndex + rowSpan
       : Number.NaN;
   if (!Number.isSafeInteger(bottom)) {
     return invalidInput(
@@ -673,7 +681,7 @@ const validateSnapshot = <Block extends FolioContentBlock>(
   let lastOuterTableIndex = -1;
   let activeOuterTableIndex: number | null = null;
   for (const [blockIndex, block] of snapshot.blocks.entries()) {
-    if (!isRecord(block)) {
+    if (!hasRecordShape(block)) {
       return invalidInput(side, `blocks[${String(blockIndex)}]`, "Every content block must be an object.", blockIndex);
     }
     if (typeof block.id !== "string" || block.id.length === 0) {
@@ -762,7 +770,7 @@ const validateSnapshot = <Block extends FolioContentBlock>(
       }
       let runTextOffset = 0;
       for (const [runIndex, run] of block.previewRuns.entries()) {
-        if (!isRecord(run) || typeof run.text !== "string") {
+        if (!hasRecordShape(run) || typeof run.text !== "string") {
           return invalidInput(side, `blocks[${String(blockIndex)}].previewRuns`, "Preview runs must be an array of text runs.", blockIndex);
         }
         if (!block.text.startsWith(run.text, runTextOffset)) {
@@ -837,7 +845,7 @@ const validateSnapshot = <Block extends FolioContentBlock>(
       }
       for (const [pathIndex, entry] of block.containerPath.entries()) {
         if (
-          !isRecord(entry) ||
+          !hasRecordShape(entry) ||
           typeof entry.kind !== "string" ||
           entry.kind.length === 0 ||
           typeof entry.id !== "string" ||
@@ -1384,7 +1392,7 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlock>({
     steps,
     consumedStepIndexes: consumed,
     workSession,
-    idStability,
+    ...(idStability && { idStability }),
   });
   const moveByBaseId = new Map(moves.map((move, index) => [move.baseBlock.id, { ...move, moveId: index + 1 }] as const));
   const moveByRevisedId = new Map(moves.map((move, index) => [move.revisedBlock.id, { ...move, moveId: index + 1 }] as const));
@@ -1584,14 +1592,14 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlock>({
       revisedIndex++;
       continue;
     }
-    const relation =
-      fromBase && fromRevised && fromBase.id === fromRevised.id
-        ? fromBase
-        : fromBase?.revisedBlocks.length === 0
-          ? fromBase
-          : fromRevised?.baseBlocks.length === 0
-            ? fromRevised
-            : undefined;
+    let relation: Relation<Block> | undefined;
+    if (fromBase && fromRevised && fromBase.id === fromRevised.id) {
+      relation = fromBase;
+    } else if (fromBase?.revisedBlocks.length === 0) {
+      relation = fromBase;
+    } else if (fromRevised?.baseBlocks.length === 0) {
+      relation = fromRevised;
+    }
     if (!relation) {
       return panic("Content alignment did not produce one monotone projection", {
         baseBlockId: base?.id,
