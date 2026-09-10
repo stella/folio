@@ -342,6 +342,8 @@ const createFolioAIEditSnapshotInternal = (
     // sequence rather than consuming a position in it.
     const paraIdAttr: unknown = node.attrs["paraId"];
     const paraId = typeof paraIdAttr === "string" && paraIdAttr.length > 0 ? paraIdAttr : null;
+    const idStabilityAttr: unknown = node.attrs["idStability"];
+    const idStability = idStabilityAttr === "positional" ? "positional" : undefined;
     const isBlank = normalizedText.length === 0;
     let id: FolioBlockId;
     if (isBlank) {
@@ -371,6 +373,7 @@ const createFolioAIEditSnapshotInternal = (
         id,
         kind,
         text,
+        ...(idStability !== undefined && { idStability }),
         ...(headingLevel !== undefined && { headingLevel }),
         ...(displayLabel !== undefined && { displayLabel }),
         ...(styleId !== undefined && { styleId }),
@@ -516,6 +519,7 @@ type PreviewRunStyle = {
 };
 
 const DELETION_MARK = "deletion";
+const HIDDEN_MARK = "hidden";
 const RUN_FORMATTING_OVERRIDE_MARK = "runFormattingOverride";
 const CHARACTER_STYLE_MARK = "characterStyle";
 
@@ -531,7 +535,9 @@ const getPreviewRuns = (
     if (!child.isText || child.text === undefined) {
       return true;
     }
-    if (child.marks.some((mark) => mark.type.name === DELETION_MARK)) {
+    if (
+      child.marks.some((mark) => mark.type.name === DELETION_MARK || mark.type.name === HIDDEN_MARK)
+    ) {
       return false;
     }
 

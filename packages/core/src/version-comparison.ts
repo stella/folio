@@ -12,25 +12,17 @@
  *
  * ## Alignment
  *
- * Blocks are paired across the two snapshots in three passes, each only
- * considering blocks the previous pass left unpaired:
+ * Compatible body and table/container segments are aligned by the neutral
+ * comparison core. Within each compatible segment, blocks are paired in
+ * three passes, each only considering blocks the previous pass left unpaired:
  *
- * 1. **Stable-id pairing.** Blocks whose ids are equal AND not a `seq-NNNN`
- *    positional fallback ({@link getFolioParaIdFromBlockId} returns non-null)
- *    are paired directly. This covers both id shapes a snapshot can carry:
- *    - A real Word `w14:paraId`: stable identity, independent of text — an
- *      equal-id pair with different text is a genuine edit (`modified`).
- *    - `FolioDocxReviewer`'s deterministic fallback id (assigned when the
- *      source paragraph has no `w14:paraId`), which hashes the paragraph's
- *      TEXT plus its document ordinal. It is structurally indistinguishable
- *      from a real paraId ({@link getFolioParaIdFromBlockId} can't tell them
- *      apart), but pairing on equality is still safe: two equal deterministic
- *      ids necessarily came from identical text at an identical ordinal, so
- *      the pair is always text-equal (`unchanged`) — never a false
- *      `modified`. What it can't do is FIND a paragraph whose ordinal shifted
- *      (an insertion/deletion earlier in the document) even though its text
- *      is unchanged: that pair has two different fallback ids and falls
- *      through to pass 2.
+ * 1. **Stable-id pairing.** Blocks whose ids are equal and whose snapshot
+ *    provenance marks those ids stable are paired directly. A source
+ *    `w14:paraId` is stable identity independent of text, so an equal-id pair
+ *    with different text is a genuine edit (`modified`). Deterministically
+ *    synthesized ids and `seq-NNNN` fallbacks are positional instead: the
+ *    adapter preserves that provenance so an ordinal shift falls through to
+ *    exact-text alignment rather than becoming a false identity match.
  * 2. **Exact-text pairing.** An order-preserving LCS over remaining blocks,
  *    matched by exact text equality. This is what recovers same-text blocks
  *    that pass 1 missed because a fallback id shifted with the ordinal. Its
@@ -54,13 +46,10 @@
  *
  * Relocated content would otherwise report as an unrelated `deleted` +
  * `added` pair (both order-preserving passes drop crossing matches by
- * design). A post-pass re-classifies such pairs: an `added` and a `deleted`
- * block with identical text and at least {@link MOVE_MINIMUM_WORD_COUNT}
- * words become `movedFrom` / `movedTo` entries sharing a `moveGroupId`. The
- * word-count floor keeps boilerplate one-liners ("Confidential", empty
- * headings) from pairing as spurious moves. Blocks a positional zip already
- * mis-paired as `modified` are out of this pass's reach — a known limitation
- * of the gap fallback, not of the move pass.
+ * design). The neutral comparison core re-classifies eligible exact and
+ * closely edited pairs as `movedFrom` / `movedTo` entries sharing a
+ * `moveGroupId`. Candidate counts and similarity work share bounded budgets
+ * across every story in the package comparison.
  *
  * ## Format-only changes
  *
@@ -75,9 +64,20 @@
 
 import { panic, TaggedError } from "better-result";
 
+import { folioAIBlockIdStability } from "./ai-edits/block-identity";
 import { FolioDocxReviewer, type FolioDocumentStoryHandle } from "./ai-edits/headless";
-import type { FolioAIBlock, FolioAIBlockPreviewRun } from "./ai-edits/types";
-import { createWordDiffSession, type WordDiffSegment } from "./ai-edits/word-diff";
+import type { FolioAIBlock } from "./ai-edits/types";
+import type { WordDiffSegment } from "./ai-edits/word-diff";
+import {
+  compareAlignedFolioContent,
+  createContentComparisonWorkSession,
+  type FolioContentBlockProperty,
+  type FolioContentComparisonEvent,
+  type FolioContentComparisonWorkSession,
+  type FolioContentFormattingChange,
+  type FolioContentParagraphFormattingPatch,
+} from "./compare/content";
+import type { FolioContentInlineFormattingPatch } from "./compare/content-types";
 import { pairFolioDocumentStories, type FolioDocumentStoryPair } from "./document-stories";
 import {
   FOLIO_DOCUMENT_METADATA_PROPERTIES,
@@ -89,7 +89,13 @@ import {
   type FolioDocumentPrivacyReport,
   type FolioDocumentPrivacyTransform,
 } from "./docx/metadataPrivacy";
-import { getFolioParaIdFromBlockId } from "./types/block-id";
+import {
+  alignFolioContentBlocks,
+  alignFolioContentStructure,
+  createFolioContentAlignmentWorkSession,
+  exceedsFolioContentLcsBudget,
+  type FolioContentAlignedBlockEvent,
+} from "./compare/content-alignment";
 
 /** One word-level diff segment within a `modified` block. Mirrors {@link WordDiffSegment}. */
 export type FolioVersionDiffSegment = WordDiffSegment;
@@ -145,19 +151,40 @@ export type FolioVersionDiffPrivacyOptions = FolioDocumentPrivacyOptions;
 
 export type FolioVersionDiffPrivacyReport = FolioDocumentPrivacyReport;
 
-/** Run-level formatting properties compared for `formatChanged` detection. */
-const FORMAT_PROPERTIES = [
-  "bold",
-  "italic",
-  "underline",
-  "strike",
-  "fontFamily",
-  "fontSizePt",
-  "color",
-] as const;
+/** Inline formatting properties compared for `formatChanged` detection. */
+const INLINE_FORMAT_PROPERTIES = {
+  bold: true,
+  italic: true,
+  underline: true,
+  strike: true,
+  fontFamily: true,
+  fontSizePt: true,
+  color: true,
+} as const satisfies Record<keyof FolioContentInlineFormattingPatch, true>;
 
-/** A run-level formatting property that can differ in a `formatChanged` block. */
-export type FolioFormatProperty = (typeof FORMAT_PROPERTIES)[number];
+const PARAGRAPH_FORMAT_PROPERTIES = {
+  styleId: true,
+  listLevel: true,
+  alignment: true,
+  spacing: true,
+} as const satisfies Record<keyof FolioContentParagraphFormattingPatch, true>;
+
+const BLOCK_PROPERTIES = {
+  kind: true,
+  headingLevel: true,
+  displayLabel: true,
+} as const satisfies Record<FolioContentBlockProperty, true>;
+
+/** A presentation property that can differ in a `formatChanged` block. */
+export type FolioFormatProperty =
+  | keyof typeof INLINE_FORMAT_PROPERTIES
+  | keyof typeof PARAGRAPH_FORMAT_PROPERTIES;
+
+/** A non-presentation block property retained on composite content changes. */
+export type FolioBlockProperty = keyof typeof BLOCK_PROPERTIES;
+
+/** One content or presentation property attached to a modified or moved block. */
+export type FolioVersionChangeProperty = FolioBlockProperty | FolioFormatProperty;
 
 /** Stable location of one compared block within its source document. */
 export type FolioVersionBlockHandle = {
@@ -186,6 +213,7 @@ export type FolioBlockDiff =
       blockId: string;
       kind: string;
       segments: FolioVersionDiffSegment[];
+      changedProperties?: FolioVersionChangeProperty[];
       baseHandle: FolioVersionBlockHandle;
       revisedHandle: FolioVersionBlockHandle;
     }
@@ -212,6 +240,8 @@ export type FolioBlockDiff =
       kind: string;
       text: string;
       moveGroupId: number;
+      segments?: FolioVersionDiffSegment[];
+      changedProperties?: FolioVersionChangeProperty[];
       revisedHandle: FolioVersionBlockHandle;
     };
 
@@ -247,451 +277,77 @@ export type FolioVersionDiff = {
   summaryCounts: FolioVersionDiffSummaryCounts;
 };
 
-type BlockPair = { baseIndex: number; revisedIndex: number };
-type IndexedBlock = { block: FolioAIBlock; index: number };
+export const exceedsLcsBudget = exceedsFolioContentLcsBudget;
 
-const isStableBlockId = (id: string): boolean => getFolioParaIdFromBlockId(id) !== null;
-
-/**
- * Longest increasing subsequence by `revisedIndex`, assuming `pairs` is
- * already sorted by `baseIndex` ascending. Drops any pair that would make
- * the alignment walk backward in the revised document — the guard against
- * both id collisions (pass 1) and any crossing match (pass 1 + 2 combined).
- */
-const longestIncreasingByRevisedIndex = (pairs: readonly BlockPair[]): BlockPair[] => {
-  if (pairs.length === 0) {
-    return [];
-  }
-  const lengths = new Int32Array(pairs.length).fill(1);
-  const predecessors = new Int32Array(pairs.length).fill(-1);
-  let bestEnd = 0;
-  for (let i = 0; i < pairs.length; i++) {
-    for (let j = 0; j < i; j++) {
-      const current = pairs[j];
-      const candidate = pairs[i];
-      if (!current || !candidate) {
-        continue;
-      }
-      if (
-        current.revisedIndex < candidate.revisedIndex &&
-        (lengths[j] ?? 0) + 1 > (lengths[i] ?? 0)
-      ) {
-        lengths[i] = (lengths[j] ?? 0) + 1;
-        predecessors[i] = j;
-      }
-    }
-    if ((lengths[i] ?? 0) > (lengths[bestEnd] ?? 0)) {
-      bestEnd = i;
-    }
-  }
-  const ordered: BlockPair[] = [];
-  for (let cursor = bestEnd; cursor !== -1; cursor = predecessors[cursor] ?? -1) {
-    const pair = pairs[cursor];
-    if (pair) {
-      ordered.push(pair);
-    }
-  }
-  return ordered.toReversed();
-};
-
-/** Pass 1: pair blocks with equal, non-`seq-NNNN` ids. See the module doc comment. */
-const pairByStableId = (
-  base: readonly FolioAIBlock[],
-  revised: readonly FolioAIBlock[],
-): BlockPair[] => {
-  const revisedIndexById = new Map<string, number>();
-  revised.forEach((block, revisedIndex) => {
-    if (isStableBlockId(block.id)) {
-      revisedIndexById.set(block.id, revisedIndex);
-    }
-  });
-
-  const candidates: BlockPair[] = [];
-  base.forEach((block, baseIndex) => {
-    if (!isStableBlockId(block.id)) {
-      return;
-    }
-    const revisedIndex = revisedIndexById.get(block.id);
-    if (revisedIndex !== undefined) {
-      candidates.push({ baseIndex, revisedIndex });
-    }
-  });
-  return longestIncreasingByRevisedIndex(candidates);
-};
-
-/**
- * Cell budget for pass 2's O(m·n) exact-text LCS table (`dp` below allocates
- * `(m + 1) * (n + 1)` numbers). A document with no `w14:paraId`s — or an
- * adversarial one crafted to defeat pass 1 — can leave thousands of blocks
- * unpaired on both sides; without a cap, `pairByExactText` would allocate a
- * quadratic-sized table for it. Past this budget, {@link exceedsLcsBudget}
- * makes pass 2 back off entirely so alignment falls through to pass 3's
- * linear positional zip instead — pairing is less precise for these
- * degenerate inputs, but memory use stays bounded.
- */
-const MAX_LCS_CELLS = 4_000_000;
-
-/** True when an `unpairedBaseCount * unpairedRevisedCount` LCS table would exceed {@link MAX_LCS_CELLS}. */
-export const exceedsLcsBudget = (
-  unpairedBaseCount: number,
-  unpairedRevisedCount: number,
-): boolean => unpairedBaseCount * unpairedRevisedCount > MAX_LCS_CELLS;
-
-/**
- * Mutable cell budget SHARED across every story pair one {@link compareDocxVersions}
- * call compares. {@link exceedsLcsBudget} alone only bounds a single pass 2
- * call's own table; without an aggregate budget, a document with many
- * attacker-controlled stories (footnotes/endnotes) could still force a fresh
- * near-{@link MAX_LCS_CELLS}-sized allocation for EVERY story pair. Each
- * `pairByExactText` call that actually runs pass 2 decrements
- * `remainingCells` by its own `m * n`; once exhausted, every subsequent
- * story's pass 2 is refused regardless of that story's own size, falling
- * through to pass 3's linear positional zip.
- */
 export type FolioVersionComparisonLcsBudget = { remainingCells: number };
 
-const createLcsBudget = (): FolioVersionComparisonLcsBudget => ({ remainingCells: MAX_LCS_CELLS });
-
-/** Pass 2: order-preserving LCS by exact text equality over the blocks pass 1 left unpaired. */
-const pairByExactText = (
-  base: readonly IndexedBlock[],
-  revised: readonly IndexedBlock[],
-  lcsBudget: FolioVersionComparisonLcsBudget,
-): BlockPair[] => {
-  const m = base.length;
-  const n = revised.length;
-  if (m === 0 || n === 0) {
-    return [];
-  }
-  if (exceedsLcsBudget(m, n) || lcsBudget.remainingCells <= 0) {
-    return [];
-  }
-  lcsBudget.remainingCells -= m * n;
-  const baseTexts = base.map(({ block }) => block.text);
-  const revisedTexts = revised.map(({ block }) => block.text);
-  // A single flat Int32Array (indexed `i * (n + 1) + j`) instead of `m + 1`
-  // separately-allocated rows: one contiguous allocation instead of thousands
-  // of small ones, which matters once `m` and `n` approach the budget above.
-  const stride = n + 1;
-  const dp = new Int32Array((m + 1) * stride);
-  for (let i = m - 1; i >= 0; i--) {
-    const rowOffset = i * stride;
-    const nextRowOffset = (i + 1) * stride;
-    const baseText = baseTexts[i];
-    for (let j = n - 1; j >= 0; j--) {
-      const revisedText = revisedTexts[j];
-      dp[rowOffset + j] =
-        baseText === revisedText
-          ? (dp[nextRowOffset + j + 1] ?? 0) + 1
-          : Math.max(dp[nextRowOffset + j] ?? 0, dp[rowOffset + j + 1] ?? 0);
-    }
-  }
-
-  const pairs: BlockPair[] = [];
-  let i = 0;
-  let j = 0;
-  while (i < m && j < n) {
-    const baseEntry = base[i];
-    const revisedEntry = revised[j];
-    if (!baseEntry || !revisedEntry) {
-      break;
-    }
-    if (baseTexts[i] === revisedTexts[j]) {
-      pairs.push({ baseIndex: baseEntry.index, revisedIndex: revisedEntry.index });
-      i++;
-      j++;
-      continue;
-    }
-    const down = dp[(i + 1) * stride + j] ?? 0;
-    const right = dp[i * stride + j + 1] ?? 0;
-    if (down >= right) {
-      i++;
-    } else {
-      j++;
-    }
-  }
-  return pairs;
+const createLcsBudget = (): FolioVersionComparisonLcsBudget => {
+  const session = createFolioContentAlignmentWorkSession();
+  return { remainingCells: session.remainingLcsCells };
 };
 
-/**
- * One step of a completed alignment, in revised-side document order with
- * base-only blocks slotted where they sat. `pair` events cover pass 1/2
- * anchors and pass 3's positional zip alike; whether the pair is unchanged,
- * modified, or format-changed is the consumer's call.
- */
-export type FolioAlignedBlockEvent =
-  | { type: "pair"; baseBlock: FolioAIBlock; revisedBlock: FolioAIBlock }
-  | { type: "baseOnly"; block: FolioAIBlock }
-  | { type: "revisedOnly"; block: FolioAIBlock };
+export type FolioAlignedBlockEvent = FolioContentAlignedBlockEvent<FolioAIBlock>;
 
 /**
- * Run the three-pass alignment (see the module doc comment) over two block
- * snapshots and flatten it into an ordered event stream. Shared by
- * {@link compareDocxVersions} and the redline generator so both interpret
- * one document walk instead of re-deriving it.
+ * Compatibility adapter for the DOCX snapshot comparison surface.
  *
- * `lcsBudget` defaults to a fresh, single-call budget so a caller comparing
- * one block pair in isolation (the redline generator) behaves exactly as
- * before. {@link compareDocxVersions} passes one budget object shared across
- * every story pair instead, so pass 2's cell allowance is aggregate across
- * the whole comparison rather than reset per story.
+ * Older snapshots encode id stability in the id shape, so the adapter resolves
+ * that policy while the representation-neutral core can treat caller ids as
+ * stable by default.
  */
 export const alignFolioBlocks = (
   baseBlocks: readonly FolioAIBlock[],
   revisedBlocks: readonly FolioAIBlock[],
   lcsBudget: FolioVersionComparisonLcsBudget = createLcsBudget(),
 ): FolioAlignedBlockEvent[] => {
-  const stableIdAnchors = pairByStableId(baseBlocks, revisedBlocks);
-  const usedBaseIndexes = new Set(stableIdAnchors.map((anchor) => anchor.baseIndex));
-  const usedRevisedIndexes = new Set(stableIdAnchors.map((anchor) => anchor.revisedIndex));
-
-  const baseRemaining: IndexedBlock[] = [];
-  baseBlocks.forEach((block, blockIndex) => {
-    if (!usedBaseIndexes.has(blockIndex)) {
-      baseRemaining.push({ block, index: blockIndex });
-    }
+  const workSession = createFolioContentAlignmentWorkSession({
+    lcsCells: lcsBudget.remainingCells,
   });
-  const revisedRemaining: IndexedBlock[] = [];
-  revisedBlocks.forEach((block, blockIndex) => {
-    if (!usedRevisedIndexes.has(blockIndex)) {
-      revisedRemaining.push({ block, index: blockIndex });
-    }
+  const events = alignFolioContentBlocks(baseBlocks, revisedBlocks, {
+    workSession,
+    stableIdMismatch: "pair",
+    idStability: folioAIBlockIdStability,
   });
-  const exactTextAnchors = pairByExactText(baseRemaining, revisedRemaining, lcsBudget);
-
-  const anchors = longestIncreasingByRevisedIndex(
-    [...stableIdAnchors, ...exactTextAnchors].toSorted((a, b) => a.baseIndex - b.baseIndex),
-  );
-
-  const events: FolioAlignedBlockEvent[] = [];
-
-  /** Pass 3: positionally zip the leftover blocks in one gap between anchors. */
-  const emitGap = (
-    baseFrom: number,
-    baseTo: number,
-    revisedFrom: number,
-    revisedTo: number,
-  ): void => {
-    const pairedCount = Math.min(baseTo - baseFrom, revisedTo - revisedFrom);
-    for (let k = 0; k < pairedCount; k++) {
-      const baseBlock = baseBlocks[baseFrom + k];
-      const revisedBlock = revisedBlocks[revisedFrom + k];
-      if (baseBlock && revisedBlock) {
-        events.push({ type: "pair", baseBlock, revisedBlock });
-      }
-    }
-    for (let k = baseFrom + pairedCount; k < baseTo; k++) {
-      const block = baseBlocks[k];
-      if (block) {
-        events.push({ type: "baseOnly", block });
-      }
-    }
-    for (let k = revisedFrom + pairedCount; k < revisedTo; k++) {
-      const block = revisedBlocks[k];
-      if (block) {
-        events.push({ type: "revisedOnly", block });
-      }
-    }
-  };
-
-  let baseCursor = 0;
-  let revisedCursor = 0;
-  for (const anchor of anchors) {
-    emitGap(baseCursor, anchor.baseIndex, revisedCursor, anchor.revisedIndex);
-    const baseBlock = baseBlocks[anchor.baseIndex];
-    const revisedBlock = revisedBlocks[anchor.revisedIndex];
-    if (baseBlock && revisedBlock) {
-      events.push({ type: "pair", baseBlock, revisedBlock });
-    }
-    baseCursor = anchor.baseIndex + 1;
-    revisedCursor = anchor.revisedIndex + 1;
-  }
-  emitGap(baseCursor, baseBlocks.length, revisedCursor, revisedBlocks.length);
-
+  lcsBudget.remainingCells = workSession.remainingLcsCells;
   return events;
 };
 
-const previewRunsText = (runs: readonly FolioAIBlockPreviewRun[]): string =>
-  runs.map((run) => run.text).join("");
+const legacySegments = (segments: readonly WordDiffSegment[]): FolioVersionDiffSegment[] =>
+  segments.map(({ type, text }) => ({ type, text }));
 
-/**
- * Character-aligned formatting diff of two text-equal blocks. Walks both
- * blocks' preview runs in parallel and collects every property whose value
- * differs anywhere in the overlap. A side with `previewRuns === undefined`
- * (the snapshot omits them when every run is unstyled) counts as one
- * unstyled run spanning the whole text. When both sides carry runs but
- * their concatenated texts disagree (non-text inline content can make the
- * preview text drift from the block text), positions can't be aligned, so
- * detection backs off and reports no change.
- */
-const diffPreviewRunFormatting = (
-  base: FolioAIBlock,
-  revised: FolioAIBlock,
+const ownStringKeys = <Value extends object>(value: Value): Extract<keyof Value, string>[] =>
+  // SAFETY: Object.keys returns exactly the own enumerable string keys of these object literals.
+  Object.keys(value) as Extract<keyof Value, string>[];
+
+const legacyFormattingProperties = (
+  formatting: FolioContentFormattingChange,
 ): FolioFormatProperty[] => {
-  if (base.previewRuns === undefined && revised.previewRuns === undefined) {
-    return [];
-  }
-  const baseText = base.previewRuns === undefined ? null : previewRunsText(base.previewRuns);
-  const revisedText =
-    revised.previewRuns === undefined ? null : previewRunsText(revised.previewRuns);
-  if (baseText !== null && revisedText !== null && baseText !== revisedText) {
-    return [];
-  }
-  const text = baseText ?? revisedText;
-  if (text === null || text.length === 0) {
-    return [];
-  }
-  const baseRuns: readonly FolioAIBlockPreviewRun[] = base.previewRuns ?? [{ text }];
-  const revisedRuns: readonly FolioAIBlockPreviewRun[] = revised.previewRuns ?? [{ text }];
-
-  const changed = new Set<FolioFormatProperty>();
-  let baseRunIndex = 0;
-  let revisedRunIndex = 0;
-  let baseOffset = 0;
-  let revisedOffset = 0;
-  while (baseRunIndex < baseRuns.length && revisedRunIndex < revisedRuns.length) {
-    const baseRun = baseRuns[baseRunIndex];
-    const revisedRun = revisedRuns[revisedRunIndex];
-    if (!baseRun || !revisedRun) {
-      break;
-    }
-    const step = Math.min(baseRun.text.length - baseOffset, revisedRun.text.length - revisedOffset);
-    if (step > 0) {
-      for (const property of FORMAT_PROPERTIES) {
-        if (baseRun[property] !== revisedRun[property]) {
-          changed.add(property);
-        }
-      }
-    }
-    baseOffset += step;
-    revisedOffset += step;
-    if (baseOffset >= baseRun.text.length) {
-      baseRunIndex++;
-      baseOffset = 0;
-    }
-    if (revisedOffset >= revisedRun.text.length) {
-      revisedRunIndex++;
-      revisedOffset = 0;
+  const properties: FolioFormatProperty[] = [];
+  for (const property of ownStringKeys(PARAGRAPH_FORMAT_PROPERTIES)) {
+    if (formatting.paragraph?.[property] !== undefined) {
+      properties.push(property);
     }
   }
-  // Report in the stable FORMAT_PROPERTIES order, not set-insertion order.
-  return FORMAT_PROPERTIES.filter((property) => changed.has(property));
+  for (const property of ownStringKeys(INLINE_FORMAT_PROPERTIES)) {
+    if (formatting.ranges.some(({ formatting: range }) => range[property] !== undefined)) {
+      properties.push(property);
+    }
+  }
+  return properties;
 };
 
-/**
- * Floor for move detection: an added/deleted text must hold at least this
- * many whitespace-separated words before an identical pair re-classifies as
- * a move. Short boilerplate ("Confidential", a bare heading word) recurs
- * throughout real documents and would otherwise pair as spurious moves.
- */
-const MOVE_MINIMUM_WORD_COUNT = 3;
-
-const meetsMoveWordCount = (text: string): boolean => {
-  // Iterate matches instead of split(): a large block would otherwise
-  // allocate its entire token array just to count to the floor.
-  const words = text.matchAll(/\S+/gu);
-  let count = 0;
-  while (!words.next().done) {
-    if (++count >= MOVE_MINIMUM_WORD_COUNT) {
-      return true;
-    }
+const legacyVersionChangeProperties = ({
+  blockProperties,
+  formatting,
+}: {
+  blockProperties: readonly FolioContentBlockProperty[];
+  formatting: FolioContentFormattingChange | undefined;
+}): FolioVersionChangeProperty[] => {
+  const properties: FolioVersionChangeProperty[] = [...blockProperties];
+  if (formatting) {
+    properties.push(...legacyFormattingProperties(formatting));
   }
-  return false;
-};
-
-/**
- * Cap on how many same-text `deleted` candidates {@link detectMoves} queues
- * per distinct text. Duplicated boilerplate at or above the word floor
- * (e.g. a repeated long clause) could otherwise grow one text's candidate
- * list without bound; past this cap, further same-text deletions are simply
- * left as `deleted` (never matched to a move) instead of queued.
- */
-const MAX_MOVE_CANDIDATES_PER_TEXT = 10_000;
-
-/**
- * FIFO queue of `changes` indexes for one deleted text. `shift()` on a plain
- * array is O(k); a head cursor makes dequeue O(1) so `detectMoves` stays
- * linear in the number of added/deleted blocks instead of quadratic when a
- * document repeats the same text many times.
- */
-type DeletedIndexQueue = { items: number[]; head: number };
-
-const dequeueDeletedIndex = (queue: DeletedIndexQueue | undefined): number | undefined => {
-  if (!queue || queue.head >= queue.items.length) {
-    return undefined;
-  }
-  const index = queue.items[queue.head];
-  queue.head += 1;
-  return index;
-};
-
-/**
- * Re-classify `deleted` + `added` pairs with identical text as
- * `movedFrom` / `movedTo` entries sharing a `moveGroupId`, in place, so each
- * side keeps its slot in the revised-side document order. Matching is FIFO
- * per text, so duplicated boilerplate above the word floor pairs
- * first-to-first rather than fanning out.
- */
-const detectMoves = (
-  changes: FolioBlockDiff[],
-  counts: FolioVersionDiffSummaryCounts,
-  firstMoveGroupId: number,
-): void => {
-  const deletedIndexesByText = new Map<string, DeletedIndexQueue>();
-  changes.forEach((change, index) => {
-    if (change.type !== "deleted" || !meetsMoveWordCount(change.text)) {
-      return;
-    }
-    const queue = deletedIndexesByText.get(change.text);
-    if (!queue) {
-      deletedIndexesByText.set(change.text, { items: [index], head: 0 });
-      return;
-    }
-    // This build pass runs to completion before any dequeue below, so `head`
-    // is always 0 here; comparing against the cap directly is equivalent to
-    // (and simpler than) tracking the unconsumed remainder.
-    if (queue.items.length < MAX_MOVE_CANDIDATES_PER_TEXT) {
-      queue.items.push(index);
-    }
-  });
-  if (deletedIndexesByText.size === 0) {
-    return;
-  }
-
-  let moveGroupId = firstMoveGroupId - 1;
-  changes.forEach((change, index) => {
-    if (change.type !== "added") {
-      return;
-    }
-    const deletedIndex = dequeueDeletedIndex(deletedIndexesByText.get(change.text));
-    if (deletedIndex === undefined) {
-      return;
-    }
-    const deleted = changes[deletedIndex];
-    if (!deleted || deleted.type !== "deleted") {
-      return;
-    }
-    moveGroupId++;
-    changes[deletedIndex] = {
-      type: "movedFrom",
-      blockId: deleted.blockId,
-      kind: deleted.kind,
-      text: deleted.text,
-      moveGroupId,
-      baseHandle: deleted.baseHandle,
-    };
-    changes[index] = {
-      type: "movedTo",
-      blockId: change.blockId,
-      kind: change.kind,
-      text: change.text,
-      moveGroupId,
-      revisedHandle: change.revisedHandle,
-    };
-    counts.deleted--;
-    counts.added--;
-    counts.moved++;
-  });
+  return properties;
 };
 
 const createSummaryCounts = (): FolioVersionDiffSummaryCounts => ({
@@ -717,14 +373,43 @@ const addSummaryCounts = (
   target.unchanged += source.unchanged;
 };
 
+/**
+ * A disabled text scope reclassifies text-only comparison units as unchanged;
+ * it never removes them from the summary. Moves count once at their target,
+ * while a split or merge retains its legacy two-unit accounting.
+ */
+const excludedTextEventUnitCount = (
+  event: FolioContentComparisonEvent<FolioAIBlock>,
+): number | null => {
+  switch (event.type) {
+    case "unchanged":
+    case "formatting":
+    case "modified":
+      return null;
+    case "movedFrom":
+      return 0;
+    case "deleted":
+    case "inserted":
+    case "movedTo":
+      return 1;
+    case "split":
+      return event.revisedBlocks.length;
+    case "merge":
+      return event.baseBlocks.length;
+    default: {
+      const unreachable: never = event;
+      return panic("Unhandled scoped neutral comparison event", { event: unreachable });
+    }
+  }
+};
+
 type CompareStoryBlocksOptions = FolioDocumentStoryPair & {
   baseBlocks: readonly FolioAIBlock[];
   revisedBlocks: readonly FolioAIBlock[];
   firstMoveGroupId: number;
   includeText: boolean;
   includeFormatting: boolean;
-  lcsBudget: FolioVersionComparisonLcsBudget;
-  diffText: ReturnType<typeof createWordDiffSession>["diff"];
+  workSession: FolioContentComparisonWorkSession;
 };
 
 const compareStoryBlocks = ({
@@ -735,89 +420,247 @@ const compareStoryBlocks = ({
   firstMoveGroupId,
   includeText,
   includeFormatting,
-  lcsBudget,
-  diffText,
+  workSession,
 }: CompareStoryBlocksOptions): FolioStoryDiff => {
+  const steps = alignFolioContentStructure({
+    baseBlocks,
+    revisedBlocks,
+    workSession: workSession.alignment,
+    stableIdMismatch: "pair",
+    idStability: folioAIBlockIdStability,
+  });
+  const compared = compareAlignedFolioContent({
+    baseBlocks,
+    revisedBlocks,
+    steps,
+    workSession,
+    idStability: folioAIBlockIdStability,
+    // The legacy version-diff surface has no result-size error in its contract.
+    maxChanges: Number.MAX_SAFE_INTEGER,
+  });
+  if (compared.isErr()) {
+    return panic("A version comparison exceeded an unreachable internal result limit", {
+      cause: compared.error,
+    });
+  }
+
   const changes: FolioBlockDiff[] = [];
   const counts = createSummaryCounts();
-
-  for (const event of alignFolioBlocks(baseBlocks, revisedBlocks, lcsBudget)) {
-    if (event.type === "pair") {
-      if (!baseStory || !revisedStory) {
-        panic("A paired comparison event requires both story handles");
-      }
-      const { baseBlock, revisedBlock } = event;
-      const baseHandle = { story: baseStory, blockId: baseBlock.id };
-      const revisedHandle = { story: revisedStory, blockId: revisedBlock.id };
-      if (baseBlock.text !== revisedBlock.text) {
-        if (!includeText) {
-          counts.unchanged++;
-          continue;
-        }
-        counts.modified++;
-        changes.push({
-          type: "modified",
-          blockId: revisedBlock.id,
-          kind: revisedBlock.kind,
-          segments: diffText(baseBlock.text, revisedBlock.text),
-          baseHandle,
-          revisedHandle,
-        });
-        continue;
-      }
-      const changedProperties = includeFormatting
-        ? diffPreviewRunFormatting(baseBlock, revisedBlock)
-        : [];
-      if (changedProperties.length > 0) {
-        counts.formatChanged++;
-        changes.push({
-          type: "formatChanged",
-          blockId: revisedBlock.id,
-          kind: revisedBlock.kind,
-          text: revisedBlock.text,
-          changedProperties,
-          baseHandle,
-          revisedHandle,
-        });
-        continue;
-      }
-      counts.unchanged++;
-      continue;
+  const baseBlockById = new Map<string, FolioAIBlock>();
+  if (!includeText && includeFormatting) {
+    for (const block of baseBlocks) {
+      baseBlockById.set(block.id, block);
     }
-    if (event.type === "baseOnly") {
-      if (!includeText) {
-        continue;
+  }
+  const baseHandle = (block: FolioAIBlock): FolioVersionBlockHandle => {
+    if (!baseStory) {
+      return panic("A neutral comparison event requires a base story handle");
+    }
+    return { story: baseStory, blockId: block.id };
+  };
+  const revisedHandle = (block: FolioAIBlock): FolioVersionBlockHandle => {
+    if (!revisedStory) {
+      return panic("A neutral comparison event requires a revised story handle");
+    }
+    return { story: revisedStory, blockId: block.id };
+  };
+  const addModified = ({
+    baseBlock,
+    revisedBlock,
+    segments,
+    blockProperties,
+    formatting,
+  }: {
+    baseBlock: FolioAIBlock;
+    revisedBlock: FolioAIBlock;
+    segments: readonly WordDiffSegment[];
+    blockProperties: readonly FolioContentBlockProperty[];
+    formatting: FolioContentFormattingChange | undefined;
+  }): void => {
+    const changedProperties = legacyVersionChangeProperties({
+      blockProperties,
+      formatting: includeFormatting ? formatting : undefined,
+    });
+    counts.modified++;
+    changes.push({
+      type: "modified",
+      blockId: revisedBlock.id,
+      kind: revisedBlock.kind,
+      segments: legacySegments(segments),
+      ...(changedProperties.length > 0 && { changedProperties }),
+      baseHandle: baseHandle(baseBlock),
+      revisedHandle: revisedHandle(revisedBlock),
+    });
+  };
+  const addFormattingOrUnchanged = ({
+    baseBlock,
+    revisedBlock,
+    formatting,
+  }: {
+    baseBlock: FolioAIBlock;
+    revisedBlock: FolioAIBlock;
+    formatting: FolioContentFormattingChange | undefined;
+  }): void => {
+    const changedProperties =
+      includeFormatting && formatting ? legacyFormattingProperties(formatting) : [];
+    if (changedProperties.length === 0) {
+      counts.unchanged++;
+      return;
+    }
+    counts.formatChanged++;
+    changes.push({
+      type: "formatChanged",
+      blockId: revisedBlock.id,
+      kind: revisedBlock.kind,
+      text: revisedBlock.text,
+      changedProperties,
+      baseHandle: baseHandle(baseBlock),
+      revisedHandle: revisedHandle(revisedBlock),
+    });
+  };
+  const addDeleted = (block: FolioAIBlock): void => {
+    counts.deleted++;
+    changes.push({
+      type: "deleted",
+      blockId: block.id,
+      kind: block.kind,
+      text: block.text,
+      baseHandle: baseHandle(block),
+    });
+  };
+  const addInserted = (block: FolioAIBlock): void => {
+    counts.added++;
+    changes.push({
+      type: "added",
+      blockId: block.id,
+      kind: block.kind,
+      text: block.text,
+      revisedHandle: revisedHandle(block),
+    });
+  };
+
+  for (const event of compared.value.events) {
+    if (!includeText && includeFormatting && event.type === "movedTo" && event.formatting) {
+      const baseBlock = baseBlockById.get(event.baseBlockId);
+      if (!baseBlock) {
+        return panic("A moved comparison event requires its base block", {
+          blockId: event.baseBlockId,
+        });
       }
-      if (!baseStory) {
-        panic("A base-only comparison event requires a base story handle");
-      }
-      counts.deleted++;
-      changes.push({
-        type: "deleted",
-        blockId: event.block.id,
-        kind: event.block.kind,
-        text: event.block.text,
-        baseHandle: { story: baseStory, blockId: event.block.id },
+      addFormattingOrUnchanged({
+        baseBlock,
+        revisedBlock: event.revisedBlocks[0],
+        formatting: event.formatting,
       });
       continue;
     }
     if (!includeText) {
-      continue;
+      const excludedUnitCount = excludedTextEventUnitCount(event);
+      if (excludedUnitCount !== null) {
+        counts.unchanged += excludedUnitCount;
+        continue;
+      }
     }
-    if (!revisedStory) {
-      panic("A revised-only comparison event requires a revised story handle");
+    switch (event.type) {
+      case "unchanged":
+        counts.unchanged++;
+        break;
+      case "formatting":
+        addFormattingOrUnchanged({
+          baseBlock: event.baseBlocks[0],
+          revisedBlock: event.revisedBlocks[0],
+          formatting: event.formatting,
+        });
+        break;
+      case "modified": {
+        const baseBlock = event.baseBlocks[0];
+        const revisedBlock = event.revisedBlocks[0];
+        if (
+          includeText &&
+          (baseBlock.text !== revisedBlock.text || event.changedProperties.length)
+        ) {
+          addModified({
+            baseBlock,
+            revisedBlock,
+            segments: event.segments,
+            blockProperties: event.changedProperties,
+            formatting: event.formatting,
+          });
+          break;
+        }
+        addFormattingOrUnchanged({ baseBlock, revisedBlock, formatting: event.formatting });
+        break;
+      }
+      case "deleted":
+        addDeleted(event.baseBlocks[0]);
+        break;
+      case "inserted":
+        addInserted(event.revisedBlocks[0]);
+        break;
+      case "movedFrom": {
+        const block = event.baseBlocks[0];
+        changes.push({
+          type: "movedFrom",
+          blockId: block.id,
+          kind: block.kind,
+          text: block.text,
+          moveGroupId: firstMoveGroupId + event.moveId - 1,
+          baseHandle: baseHandle(block),
+        });
+        break;
+      }
+      case "movedTo": {
+        const block = event.revisedBlocks[0];
+        const changedProperties = legacyVersionChangeProperties({
+          blockProperties: event.changedProperties ?? [],
+          formatting: includeFormatting ? event.formatting : undefined,
+        });
+        changes.push({
+          type: "movedTo",
+          blockId: block.id,
+          kind: block.kind,
+          text: block.text,
+          moveGroupId: firstMoveGroupId + event.moveId - 1,
+          ...(event.segments && { segments: legacySegments(event.segments) }),
+          ...(changedProperties.length > 0 && { changedProperties }),
+          revisedHandle: revisedHandle(block),
+        });
+        counts.moved++;
+        break;
+      }
+      case "split": {
+        const baseBlock = event.baseBlocks[0];
+        const [firstRevised, secondRevised] = event.revisedBlocks;
+        addModified({
+          baseBlock,
+          revisedBlock: firstRevised,
+          segments: workSession.diffText(baseBlock.text, firstRevised.text),
+          blockProperties: [],
+          formatting: undefined,
+        });
+        addInserted(secondRevised);
+        break;
+      }
+      case "merge": {
+        const [firstBase, secondBase] = event.baseBlocks;
+        const revisedBlock = event.revisedBlocks[0];
+        addModified({
+          baseBlock: firstBase,
+          revisedBlock,
+          segments: workSession.diffText(firstBase.text, revisedBlock.text),
+          blockProperties: [],
+          formatting: undefined,
+        });
+        addDeleted(secondBase);
+        break;
+      }
+      default: {
+        const unreachable: never = event;
+        panic("Unhandled neutral content comparison event", { event: unreachable });
+      }
     }
-    counts.added++;
-    changes.push({
-      type: "added",
-      blockId: event.block.id,
-      kind: event.block.kind,
-      text: event.block.text,
-      revisedHandle: { story: revisedStory, blockId: event.block.id },
-    });
   }
 
-  detectMoves(changes, counts, firstMoveGroupId);
   return { baseStory, revisedStory, changes, summaryCounts: counts };
 };
 
@@ -946,12 +789,9 @@ export const compareDocxVersions = async (
   const baseStories = baseReviewer.listStories().map(({ handle }) => handle);
   const revisedStories = revisedReviewer.listStories().map(({ handle }) => handle);
   let nextMoveGroupId = 1;
-  // Shared across every story pair below (not one per story) so an
-  // attacker-controlled story count (many footnotes/endnotes) can't force a
-  // fresh near-MAX_LCS_CELLS allocation per story. See
-  // FolioVersionComparisonLcsBudget's doc comment.
-  const lcsBudget = createLcsBudget();
-  const wordDiffSession = createWordDiffSession();
+  // One neutral comparison session owns the aggregate alignment, word-diff,
+  // and move allowances across every story in this package comparison.
+  const comparisonWorkSession = createContentComparisonWorkSession();
 
   for (const pair of pairFolioDocumentStories(baseStories, revisedStories)) {
     const baseBlocks = pair.baseStory
@@ -969,8 +809,7 @@ export const compareDocxVersions = async (
       firstMoveGroupId: nextMoveGroupId,
       includeText: scopes.has("text"),
       includeFormatting: scopes.has("formatting"),
-      lcsBudget,
-      diffText: wordDiffSession.diff,
+      workSession: comparisonWorkSession,
     });
     stories.push(storyDiff);
     for (const change of storyDiff.changes) {

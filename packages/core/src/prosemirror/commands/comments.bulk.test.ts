@@ -7,6 +7,7 @@ import { ySyncPlugin, yUndoPlugin } from "y-prosemirror";
 import * as Y from "yjs";
 
 import { FolioDocxReviewer } from "../../ai-edits/headless";
+import type { FolioAIBlock } from "../../ai-edits/types";
 import { parseDocx } from "../../docx/parser";
 import { createDocx, createEmptyDocx, repackDocx } from "../../docx/rezip";
 import {
@@ -43,6 +44,16 @@ import {
 const AUTHOR = "Reviewer";
 const DATE = "2026-09-09T00:00:00.000Z";
 const HEADER_RELATIONSHIP_ID = "rIdBulkResolutionHeader";
+
+const persistedBlockProjection = (block: FolioAIBlock): Omit<FolioAIBlock, "idStability"> => {
+  const persisted = { ...block };
+  delete persisted.idStability;
+  return persisted;
+};
+
+const persistedSnapshotProjection = (blocks: readonly FolioAIBlock[] | undefined) =>
+  blocks?.map(persistedBlockProjection);
+
 const trackerExtension = ParagraphChangeTrackerExtension();
 const changeTrackerPlugin = trackerExtension.onSchemaReady({ schema }).plugins?.at(0);
 if (!changeTrackerPlugin) {
@@ -731,7 +742,15 @@ describe("bulk revision lifecycle", () => {
       const actual = reopened.readReviewedStory({ view: "current-markup" });
 
       expect(actual?.changes).toEqual([]);
-      expect(actual?.snapshot.blocks).toEqual(expected?.snapshot.blocks);
+      expect(
+        expected?.snapshot.blocks.some(({ idStability }) => idStability === "positional"),
+      ).toBe(true);
+      expect(actual?.snapshot.blocks.every(({ idStability }) => idStability === undefined)).toBe(
+        true,
+      );
+      expect(persistedSnapshotProjection(actual?.snapshot.blocks)).toEqual(
+        persistedSnapshotProjection(expected?.snapshot.blocks),
+      );
       expect(actual?.text).toBe(expected?.text);
     },
   );

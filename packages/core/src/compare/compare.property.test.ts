@@ -550,63 +550,18 @@ type TouchedBlockBudgetOptions = {
  * the word floor, or it landed where the alignment can still walk forward).
  *
  * A relocation that also dropped formatting is budgeted one extra change for
- * each independently reported formatting projection, because it made two
- * structural differences and the alignment picks which one it names.
- * Swapping a block past a SINGLE neighbour reads equally well from either side
- * ("this one moved down" and "that one moved up" match the same number of
- * blocks), and the alignment breaks that tie by position, not by which side the
- * script meant. When it relocates the neighbour, the moved block pairs where it
- * always was and reports the formatting its plain re-insertion lost, on top of
- * the neighbour's two ends. Both readings accept back to the target; this one
- * costs one change more. A move that kept its formatting stays budgeted at two,
- * so an engine that reports a plain relocation more granularly than that is
- * still caught.
- *
- * A table whose row COUNT changed is budgeted at every cell it holds in the
- * base, plus one for each row the script added or removed. Rows pair on exact
- * text first and positionally after that, so once the counts differ the
- * surviving rows can line up one row off and every cell in the table reports as
- * changed; the rows left with nothing to pair against are reported whole, one
- * change each, on top of that. The result still accepts back to the target —
- * that is a separate property — but it is more granular than the script was.
- * Bounding it at the table plus its row edits keeps the real guarantee: the
- * comparison never invents work beyond the content the script disturbed.
- *
- * That budget covers the steps that stay inside the table, which is every step
- * anchored in one of its cells EXCEPT an insertion: no operation places a
- * paragraph in a cell, so an insertion anchored in one writes its paragraph
- * beside the table instead. It is a body change wherever it was anchored, so it
- * is budgeted like any other paragraph step.
+ * each independently reported formatting projection. Every other script step,
+ * including a whole row insertion or deletion, is one logical change. The
+ * monotone row matcher keeps surviving cells paired instead of charging their
+ * contents again when the table grows or shrinks.
  */
 const touchedBlockBudget = async ({
   base,
   applied,
   baseBlocks,
 }: TouchedBlockBudgetOptions): Promise<number> => {
-  const rowEditsByTable = new Map<number, number>();
-  for (const step of applied) {
-    if (step.type !== "insertTableRow" && step.type !== "deleteTableRow") {
-      continue;
-    }
-    const tableIndex = baseBlocks[step.blockIndex]?.table?.tableIndex;
-    if (tableIndex !== undefined) {
-      rowEditsByTable.set(tableIndex, (rowEditsByTable.get(tableIndex) ?? 0) + 1);
-    }
-  }
   let budget = 0;
-  for (const [tableIndex, rowEdits] of rowEditsByTable) {
-    budget +=
-      baseBlocks.filter((block) => block.table?.tableIndex === tableIndex).length + rowEdits;
-  }
   for (const step of applied) {
-    const tableIndex = baseBlocks[step.blockIndex]?.table?.tableIndex;
-    const staysInsideChangedTable =
-      tableIndex !== undefined &&
-      rowEditsByTable.has(tableIndex) &&
-      step.type !== "insertParagraphAfter";
-    if (staysInsideChangedTable) {
-      continue;
-    }
     if (step.type !== "moveParagraph") {
       budget += 1;
       continue;
@@ -776,13 +731,10 @@ describe("compareDocx", () => {
     }
   }
 
-  test("a relocation past one neighbour may be reported from the neighbour's side", async () => {
-    // The counterexample the change-count property found. Pinned so the shape
-    // is covered on every run rather than on the draw that happens to reach it:
-    // the styled paragraph swaps past exactly one neighbour, so both readings
-    // of the swap match the same number of blocks, and the alignment names the
-    // neighbour. The moved paragraph then pairs where it always was and reports
-    // the direct formatting its plain re-insertion could not carry.
+  test("a relocation past one neighbour reports the intended moved block", async () => {
+    // Stable identity resolves the otherwise symmetric one-neighbour swap, so
+    // the change list reports the scripted deletion and relocation rather than
+    // describing both ends of the surviving neighbour as unrelated edits.
     const base = readFixture("upstream-styled-content.docx");
     const baseBlocks = await blocksOf(base);
     const move = { type: "moveParagraph", blockIndex: 1, beforeBlockIndex: 4 } as const;
@@ -798,8 +750,6 @@ describe("compareDocx", () => {
       "Centered paragraph.",
       "Right-aligned paragraph.",
     ]);
-    expect(await relocationDroppedFormattingCount(base, baseBlocks, move)).toBe(2);
-
     const scripted = await applyEditScript(base, script);
     if (scripted.isErr()) {
       throw scripted.error;
@@ -807,16 +757,14 @@ describe("compareDocx", () => {
     expect(scripted.value.unresolved).toEqual([]);
 
     const { changes } = await compareOrThrow(base, scripted.value.buffer);
-    expect(kindsOf(changes).toSorted()).toEqual([
-      "delete",
-      "delete",
-      "format",
-      "insert",
-      "paragraph-format",
-    ]);
-    expect(changes.length).toBe(
-      await touchedBlockBudget({ base, applied: scripted.value.applied, baseBlocks }),
-    );
+    expect(kindsOf(changes).toSorted()).toEqual(["delete", "move"]);
+    expect(changes.find(({ kind }) => kind === "delete")).toMatchObject({
+      baseBlockId: baseBlocks[2]?.id,
+    });
+    expect(changes.find(({ kind }) => kind === "move")).toMatchObject({
+      baseBlockId: baseBlocks[1]?.id,
+      text: baseBlocks[1]?.text,
+    });
   });
 
   test("a paragraph inserted on a cell anchor lands beside the table it grew", async () => {
@@ -860,14 +808,10 @@ describe("compareDocx", () => {
     );
   });
 
-  test("added rows are reported on top of the cells that report as changed", async () => {
-    // The third counterexample the change-count property found. Rows added past
-    // the count the base table holds have nothing to pair against, so each is
-    // reported whole, over and above the cells that report as changed. A table's
-    // own size does not bound that.
+  test("added rows do not make surviving cells report as changed", async () => {
+    // Each inserted row is one structural change. Exact row evidence keeps the
+    // pre-existing rows paired even when several insertions shift their indexes.
     const base = readFixture("upstream-with-tables.docx");
-    const baseBlocks = await blocksOf(base);
-    const cells = baseBlocks.filter(({ table }) => table?.tableIndex === 0);
     const script: EditScript = [
       { type: "insertTableRow", blockIndex: 1, cellTexts: ["one", "two", "three"] },
       { type: "insertTableRow", blockIndex: 3, cellTexts: ["four", "five", "six"] },
@@ -882,11 +826,13 @@ describe("compareDocx", () => {
     expect(scripted.value.unresolved).toEqual([]);
 
     const { changes } = await compareOrThrow(base, scripted.value.buffer);
-    expect(kindsOf(changes).filter((kind) => kind === "table-row-insert")).toHaveLength(4);
-    expect(changes.length).toBeGreaterThan(cells.length);
-    expect(changes.length).toBeLessThanOrEqual(
-      await touchedBlockBudget({ base, applied: scripted.value.applied, baseBlocks }),
-    );
+    expect(kindsOf(changes)).toEqual([
+      "table-row-insert",
+      "table-row-insert",
+      "table-row-insert",
+      "table-row-insert",
+    ]);
+    expect(changes).toHaveLength(scripted.value.applied.length);
   });
 
   for (const { name, buffer: base, blocks: baseBlocks } of BASE_CASES) {

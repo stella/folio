@@ -66,6 +66,9 @@ const renderSegment = (segment: FolioVersionDiffSegment): string => {
   }
 };
 
+const renderChangedProperties = (properties: readonly string[] | undefined): string =>
+  properties && properties.length > 0 ? ` (${properties.join(", ")})` : "";
+
 const formatChangeLine = (change: FolioBlockDiff): string => {
   switch (change.type) {
     case "added":
@@ -73,13 +76,20 @@ const formatChangeLine = (change: FolioBlockDiff): string => {
     case "deleted":
       return `- [${change.blockId}] deleted: ${change.text}`;
     case "modified":
-      return `~ [${change.blockId}] modified: ${change.segments.map(renderSegment).join("")}`;
+      return `~ [${change.blockId}] modified${renderChangedProperties(change.changedProperties)}: ${change.segments.map(renderSegment).join("")}`;
     case "formatChanged":
       return `~ [${change.blockId}] format changed (${change.changedProperties.join(", ")}): ${truncateUnchangedRun(change.text)}`;
     case "movedFrom":
       return `< [${change.blockId}] moved away (move ${change.moveGroupId}): ${truncateUnchangedRun(change.text)}`;
-    case "movedTo":
-      return `> [${change.blockId}] moved here (move ${change.moveGroupId}): ${truncateUnchangedRun(change.text)}`;
+    case "movedTo": {
+      const changedProperties = change.changedProperties?.length
+        ? `; changed: ${change.changedProperties.join(", ")}`
+        : "";
+      const content = change.segments
+        ? change.segments.map(renderSegment).join("")
+        : truncateUnchangedRun(change.text);
+      return `> [${change.blockId}] moved here (move ${change.moveGroupId}${changedProperties}): ${content}`;
+    }
     default:
       return "";
   }

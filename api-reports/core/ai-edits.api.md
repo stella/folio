@@ -110,19 +110,8 @@ export const FOLIO_RESOLVED_REVIEWED_VIEWS: readonly ["original", "final"];
 export const FOLIO_REVIEWED_VIEWS: readonly ["original", "current-markup", "final"];
 
 // @public (undocumented)
-export type FolioAIBlock = {
-    id: string;
-    kind: FolioAIBlockKind;
-    text: string;
-    headingLevel?: number;
-    displayLabel?: string;
-    styleId?: string;
-    directAlignment?: import__stll_docx_core_model.ParagraphAlignment;
-    directSpacing?: FolioAIParagraphSpacing;
-    listLevel?: number;
-    previewRuns?: FolioAIBlockPreviewRun[];
+export type FolioAIBlock = FolioContentBlock<FolioAIBlockKind> & {
     structuralBoundaries?: readonly FolioAIBlockStructuralBoundary[];
-    table?: FolioAIBlockTableLocation;
 };
 
 // @public (undocumented)
@@ -141,17 +130,7 @@ export type FolioAIBlockAnchor = {
 export type FolioAIBlockKind = "heading" | "listItem" | "paragraph";
 
 // @public (undocumented)
-export type FolioAIBlockPreviewRun = {
-    text: string;
-    bold?: boolean;
-    italic?: boolean;
-    underline?: boolean;
-    strike?: boolean;
-    fontFamily?: string;
-    fontSizePt?: number;
-    color?: string;
-    directFormatting?: FolioAIInlineFormatting;
-};
+export type FolioAIBlockPreviewRun = FolioContentRun;
 
 // @public
 export type FolioAIBlockStructuralBoundary = {
@@ -161,16 +140,7 @@ export type FolioAIBlockStructuralBoundary = {
 };
 
 // @public
-export type FolioAIBlockTableLocation = {
-    outerTableIndex: number;
-    tableIndex: number;
-    rowIndex: number;
-    cellIndex: number;
-    gridColumnIndex: number;
-    columnSpan: number;
-    rowSpan: number;
-    paragraphIndex: number;
-};
+export type FolioAIBlockTableLocation = FolioContentTableLocation;
 
 // @public (undocumented)
 export type FolioAIComment = {
@@ -453,8 +423,7 @@ export type FolioAIEditSkipReason = "missingBlock" | "changedBlock" | "ambiguous
 "documentNotEditable";
 
 // @public
-export type FolioAIEditSnapshot = {
-    blocks: FolioAIBlock[];
+export type FolioAIEditSnapshot = FolioContentSnapshot<FolioAIBlock> & {
     anchors: Record<string, FolioAIBlockAnchor>;
 };
 
@@ -465,20 +434,16 @@ export type FolioAIEditView = {
 };
 
 // @public
-export type FolioAIInlineBooleanProperty = "bold" | "italic" | "underline" | "strike";
+export type FolioAIInlineBooleanProperty = FolioContentInlineBooleanProperty;
 
 // @public (undocumented)
-export type FolioAIInlineFormatting = Partial<Record<FolioAIInlineBooleanProperty, boolean>> & {
-    fontFamily?: string | null;
-    fontSizePt?: number | null;
-    color?: string | null;
-};
+export type FolioAIInlineFormatting = FolioContentInlineFormatting;
 
 // @public
-export type FolioAIInlineFormattingPatch = Omit<FolioAIInlineFormatting, FolioAIInlineBooleanProperty> & Partial<Record<FolioAIInlineBooleanProperty, boolean | null>>;
+export type FolioAIInlineFormattingPatch = FolioContentInlineFormattingPatch;
 
 // @public
-export type FolioAIParagraphSpacing = Pick<import__stll_docx_core_model.ParagraphFormatting, "spaceBefore" | "spaceAfter" | "lineSpacing" | "lineSpacingRule" | "beforeAutospacing" | "afterAutospacing">;
+export type FolioAIParagraphSpacing = FolioContentParagraphSpacing;
 
 // @public
 export type FolioAISignatureParty = {

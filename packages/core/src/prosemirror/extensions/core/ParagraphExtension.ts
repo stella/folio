@@ -326,6 +326,9 @@ const paragraphNodeSpec: NodeSpec = {
   group: "block",
   attrs: {
     paraId: { default: null },
+    // Internal provenance for comparison alignment. It is intentionally not
+    // parsed from or rendered to HTML/OOXML.
+    idStability: { default: undefined },
     textId: { default: null },
     alignment: { default: null },
     alignmentFromStyle: { default: undefined },

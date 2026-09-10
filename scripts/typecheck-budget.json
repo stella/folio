@@ -4,16 +4,16 @@
     "instantiations": 7584
   },
   "core": {
-    "types": 133315,
-    "instantiations": 111611
+    "types": 138411,
+    "instantiations": 119309
   },
   "react": {
     "types": 151490,
     "instantiations": 305848
   },
   "agents": {
-    "types": 80563,
-    "instantiations": 74561
+    "types": 86166,
+    "instantiations": 83527
   },
   "vue": {
     "types": 181473,

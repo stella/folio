@@ -194,7 +194,7 @@ const ensureDeterministicParaIdsInDoc = (doc: PMNode): PMNode => {
           }
           seen.add(paraId);
           next = recreateProseNodeWithParagraphPropertySource(child, {
-            attrs: { ...child.attrs, paraId },
+            attrs: { ...child.attrs, paraId, idStability: "positional" },
           });
         }
         const paraId = next.attrs["paraId"];
@@ -389,10 +389,24 @@ type FolioSecondaryStoryState = {
   state: EditorState;
 };
 
+type FolioResolvedStoryBlock = Omit<FolioAIBlock, "idStability">;
+
+/**
+ * `idStability` records how an id entered the current snapshot. A synthesized
+ * paraId is positional until save writes it into the package, then becomes an
+ * authored stable id when reopened. Compare the persisted block projection
+ * without changing that live snapshot identity contract.
+ */
+const resolvedStoryBlockProjection = (block: FolioAIBlock): FolioResolvedStoryBlock => {
+  const persisted = { ...block };
+  delete persisted.idStability;
+  return persisted;
+};
+
 type FolioResolvedStoryExpectation = {
   story: FolioEditableDocumentStoryHandle;
   text: string;
-  blocks: FolioAIBlock[];
+  blocks: readonly FolioResolvedStoryBlock[];
 };
 
 type FolioReviewerStateSnapshot = {
@@ -866,7 +880,7 @@ export class FolioDocxReviewer {
     this.resolvedStoryExpectations.set(editableStoryKey(story), {
       story,
       text: formatStoryStateForLLM(resolvedState, false),
-      blocks: createStateSnapshot(resolvedState).blocks,
+      blocks: createStateSnapshot(resolvedState).blocks.map(resolvedStoryBlockProjection),
     });
     return true;
   }
@@ -1026,7 +1040,7 @@ export class FolioDocxReviewer {
    * feed straight back into {@link applyOperations} and accept / reject.
    */
   getContent(): FolioAIBlock[] {
-    return this.snapshot().blocks;
+    return [...this.snapshot().blocks];
   }
 
   /**
@@ -1444,7 +1458,9 @@ export class FolioDocxReviewer {
       const serializedText = serializedState
         ? formatStoryStateForLLM(serializedState, false)
         : null;
-      const serializedBlocks = serializedState ? createStateSnapshot(serializedState).blocks : null;
+      const serializedBlocks = serializedState
+        ? createStateSnapshot(serializedState).blocks.map(resolvedStoryBlockProjection)
+        : null;
       const mismatches: FolioResolvedStorySerializationMismatch[] = [];
       if (!serialized || !serializedState) {
         mismatches.push(FOLIO_RESOLVED_STORY_SERIALIZATION_MISMATCHES.storyMissing);

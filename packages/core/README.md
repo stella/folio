@@ -27,7 +27,7 @@ bun add @stll/folio-core
 
 | Import                      | What it is                                                                                                                                                         |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `@stll/folio-core`          | the headless public API — `createEmptyDocument`, `createDocx`, the document model, AI-suggestion primitives, ProseMirror plugins                                   |
+| `@stll/folio-core`          | the headless public API — document creation, representation-neutral comparison, the document model, AI-suggestion primitives, and ProseMirror plugins              |
 | `@stll/folio-core/markdown` | DOCX ↔ Markdown conversion                                                                                                                                         |
 | `@stll/folio-core/server`   | DOM-free document review, explicit tracked edits, comparison, creation, and package helpers                                                                        |
 | `@stll/folio-core/redline`  | Compare two `.docx` buffers and generate a native Word redline                                                                                                     |
@@ -71,6 +71,64 @@ const document = createEmptyDocument({ styleSet });
 Extraction excludes document content, metadata, relationships, media, comments,
 and revision data. It keeps only the selected styles and the numbering, theme,
 font-table, and settings data required to reproduce their formatting.
+
+## Representation-neutral comparison
+
+`compareContent` compares ordered blocks from any document model without first
+serializing them to another format. Map durable source anchors to stable block
+IDs and include structural ancestry when blocks live in containers:
+
+```ts
+import { compareContent, type FolioContentBlock } from "@stll/folio-core";
+
+type SourceBlock = {
+  anchorId: string;
+  type: "clause" | "heading";
+  text: string;
+  sectionId: string;
+};
+
+type ComparableSourceBlock = FolioContentBlock<SourceBlock["type"]> & {
+  source: SourceBlock;
+};
+
+const toFolioBlocks = (blocks: readonly SourceBlock[]) =>
+  blocks.map(
+    (source) =>
+      ({
+        id: source.anchorId,
+        idStability: "stable",
+        kind: source.type,
+        text: source.text,
+        containerPath: [{ kind: "section", id: source.sectionId }],
+        source,
+      }) satisfies ComparableSourceBlock,
+  );
+
+const result = compareContent({
+  base: { blocks: toFolioBlocks(baseRevision) },
+  revised: { blocks: toFolioBlocks(revisedRevision) },
+});
+if (result.isErr()) throw result.error;
+
+for (const event of result.value.events) {
+  renderComparisonEvent(event);
+  const revisedSource = event.revisedBlocks.at(0)?.source;
+  if (revisedSource) persistSourceAnchor(revisedSource.anchorId);
+}
+
+const rejectedBlocks = result.value.events.flatMap(({ baseBlocks }) => baseBlocks);
+const acceptedBlocks = result.value.events.flatMap(({ revisedBlocks }) => revisedBlocks);
+```
+
+Events retain the caller's complete block subtype, including custom metadata,
+and are already in full-document render order. Modified and edited-move segments
+use UTF-16 offsets compatible with JavaScript string slicing; move halves share
+a `moveId`, and table row or column events reference their grouped entry in
+`structuralChanges`. `FOLIO_CONTENT_COMPARISON_LIMITS` publishes the block,
+text, attribute, container, run, and result ceilings. Input ceilings are
+checked before alignment; the result ceiling returns the same typed
+`FolioContentComparisonLimitError` while constructing the ordered stream.
 
 ## Native Word redlines
 

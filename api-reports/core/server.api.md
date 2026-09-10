@@ -481,19 +481,8 @@ export const FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME = "prosemirror";
 export const FOLIO_YJS_UPDATE_MAX_BYTES: number;
 
 // @public (undocumented)
-export type FolioAIBlock = {
-    id: string;
-    kind: FolioAIBlockKind;
-    text: string;
-    headingLevel?: number;
-    displayLabel?: string;
-    styleId?: string;
-    directAlignment?: import__stll_docx_core_model.ParagraphAlignment;
-    directSpacing?: FolioAIParagraphSpacing;
-    listLevel?: number;
-    previewRuns?: FolioAIBlockPreviewRun[];
+export type FolioAIBlock = FolioContentBlock<FolioAIBlockKind> & {
     structuralBoundaries?: readonly FolioAIBlockStructuralBoundary[];
-    table?: FolioAIBlockTableLocation;
 };
 
 // @public (undocumented)
@@ -512,17 +501,7 @@ export type FolioAIBlockAnchor = {
 export type FolioAIBlockKind = "heading" | "listItem" | "paragraph";
 
 // @public (undocumented)
-export type FolioAIBlockPreviewRun = {
-    text: string;
-    bold?: boolean;
-    italic?: boolean;
-    underline?: boolean;
-    strike?: boolean;
-    fontFamily?: string;
-    fontSizePt?: number;
-    color?: string;
-    directFormatting?: FolioAIInlineFormatting;
-};
+export type FolioAIBlockPreviewRun = FolioContentRun;
 
 // @public
 export type FolioAIBlockStructuralBoundary = {
@@ -758,26 +737,21 @@ export type FolioAIEditPrecondition = {
 };
 
 // @public
-export type FolioAIEditSnapshot = {
-    blocks: FolioAIBlock[];
+export type FolioAIEditSnapshot = FolioContentSnapshot<FolioAIBlock> & {
     anchors: Record<string, FolioAIBlockAnchor>;
 };
 
 // @public
-export type FolioAIInlineBooleanProperty = "bold" | "italic" | "underline" | "strike";
+export type FolioAIInlineBooleanProperty = FolioContentInlineBooleanProperty;
 
 // @public (undocumented)
-export type FolioAIInlineFormatting = Partial<Record<FolioAIInlineBooleanProperty, boolean>> & {
-    fontFamily?: string | null;
-    fontSizePt?: number | null;
-    color?: string | null;
-};
+export type FolioAIInlineFormatting = FolioContentInlineFormatting;
 
 // @public
-export type FolioAIInlineFormattingPatch = Omit<FolioAIInlineFormatting, FolioAIInlineBooleanProperty> & Partial<Record<FolioAIInlineBooleanProperty, boolean | null>>;
+export type FolioAIInlineFormattingPatch = FolioContentInlineFormattingPatch;
 
 // @public
-export type FolioAIParagraphSpacing = Pick<import__stll_docx_core_model.ParagraphFormatting, "spaceBefore" | "spaceAfter" | "lineSpacing" | "lineSpacingRule" | "beforeAutospacing" | "afterAutospacing">;
+export type FolioAIParagraphSpacing = FolioContentParagraphSpacing;
 
 // @public
 export type FolioAITextRangeHandle = {
@@ -825,6 +799,7 @@ export type FolioBlockDiff = {
     blockId: string;
     kind: string;
     segments: FolioVersionDiffSegment[];
+    changedProperties?: FolioVersionChangeProperty[];
     baseHandle: FolioVersionBlockHandle;
     revisedHandle: FolioVersionBlockHandle;
 } | {
@@ -848,6 +823,8 @@ export type FolioBlockDiff = {
     kind: string;
     text: string;
     moveGroupId: number;
+    segments?: FolioVersionDiffSegment[];
+    changedProperties?: FolioVersionChangeProperty[];
     revisedHandle: FolioVersionBlockHandle;
 };
 
@@ -855,6 +832,9 @@ export type FolioBlockDiff = {
 export type FolioBlockId = string & {
     readonly __brand: "folio.blockId";
 };
+
+// @public
+export type FolioBlockProperty = keyof typeof BLOCK_PROPERTIES;
 
 // @public (undocumented)
 export type FolioCompareDocxVersionsOptions = {
@@ -1388,7 +1368,7 @@ export type FolioDocxXmlReplacement = {
 export type FolioEditableDocumentStoryHandle = FolioDocumentStoryHandle;
 
 // @public
-export type FolioFormatProperty = (typeof FORMAT_PROPERTIES)[number];
+export type FolioFormatProperty = keyof typeof INLINE_FORMAT_PROPERTIES | keyof typeof PARAGRAPH_FORMAT_PROPERTIES;
 
 // @public (undocumented)
 export type FolioMetadataDiff = {
@@ -1489,6 +1469,9 @@ export type FolioVersionBlockHandle = {
     story: FolioDocumentStoryHandle;
     blockId: string;
 };
+
+// @public
+export type FolioVersionChangeProperty = FolioBlockProperty | FolioFormatProperty;
 
 // @public (undocumented)
 export type FolioVersionComparisonPrivacyTransform = FolioDocumentPrivacyTransform;

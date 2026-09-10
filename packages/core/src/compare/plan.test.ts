@@ -15,13 +15,19 @@ import { planStoryCompare } from "./plan";
 
 const MAIN_STORY = { type: "main" } as const;
 
-const block = (id: string, text: string): FolioAIBlock => ({ id, kind: "paragraph", text });
+const block = (id: string, text: string): FolioAIBlock => ({
+  id,
+  kind: "paragraph",
+  text,
+  idStability: "positional",
+});
 
 /** One single-cell row of a table, as the snapshot would project it. */
 const cell = (id: string, text: string, rowIndex: number, tableIndex = 0): FolioAIBlock => ({
   id,
   kind: "paragraph",
   text,
+  idStability: "positional",
   table: {
     outerTableIndex: tableIndex,
     tableIndex,
@@ -58,6 +64,7 @@ const gridCell = (
   id,
   kind: "paragraph",
   text,
+  idStability: "positional",
   table: {
     outerTableIndex: 0,
     tableIndex: 0,

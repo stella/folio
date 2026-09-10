@@ -2874,6 +2874,7 @@ describe("headless docx review discovery + resolve", () => {
     // snapshot resolve against the second rather than skipping as missingBlock.
     const first = await FolioDocxReviewer.fromBuffer(readFixture());
     const snapshot = first.snapshot();
+    expect(snapshot.blocks.every(({ idStability }) => idStability === "positional")).toBe(true);
     const target = findBlock(snapshot.blocks, "Heading");
 
     const second = await FolioDocxReviewer.fromBuffer(readFixture());

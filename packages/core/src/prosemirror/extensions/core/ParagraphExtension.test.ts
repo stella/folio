@@ -59,6 +59,14 @@ const parseParagraphDomAttrs = (dataset: Record<string, string>) => {
 };
 
 describe("ParagraphExtension", () => {
+  test.each(["idStability", "alignmentFromStyle", "listMarkerTemplate"] as const)(
+    "omits absent optional paragraph attribute %s from serialized state",
+    (attribute) => {
+      expect(schema.nodes.paragraph.spec.attrs?.[attribute]?.default).toBeUndefined();
+      expect(JSON.stringify(schema.node("paragraph").toJSON())).not.toContain(`"${attribute}"`);
+    },
+  );
+
   test("carries an imported TOC level through editor DOM", () => {
     expect(paragraphDomAttrs({ _tableOfContentsLevel: 2 })).toMatchObject({
       "data-table-of-contents-level": "2",

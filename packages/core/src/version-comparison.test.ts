@@ -16,10 +16,11 @@ import JSZip from "jszip";
 import { buildTextBoxTableDocument } from "./__tests__/textBoxTableDocument";
 import { FolioDocxReviewer } from "./ai-edits/headless";
 import type { FolioAIBlock } from "./ai-edits/types";
+import { compareContent } from "./compare/content";
 import { parseDocx } from "./docx/parser";
 import { createDocx } from "./docx/rezip";
 import { repackDocx } from "./docx/rezip";
-import type { HeaderFooter, Paragraph } from "./types/document";
+import type { HeaderFooter, Paragraph, ParagraphAlignment, Table } from "./types/document";
 import { createEmptyDocument } from "./utils/createDocument";
 import {
   alignFolioBlocks,
@@ -34,6 +35,8 @@ type ParagraphSpec = {
   text: string;
   paraId?: string;
   formatting?: { bold?: boolean; italic?: boolean };
+  paragraphAlignment?: ParagraphAlignment;
+  paragraphStyleId?: string;
 };
 
 const buildDocxBuffer = (paragraphs: readonly ParagraphSpec[]): Promise<ArrayBuffer> => {
@@ -44,17 +47,25 @@ const buildDocxBuffer = (paragraphs: readonly ParagraphSpec[]): Promise<ArrayBuf
       ...template.package,
       document: {
         ...template.package.document,
-        content: paragraphs.map(({ text, paraId, formatting }) => ({
-          type: "paragraph",
-          content: [
-            {
-              type: "run",
-              ...(formatting !== undefined && { formatting }),
-              content: [{ type: "text", text }],
-            },
-          ],
-          ...(paraId !== undefined && { paraId }),
-        })),
+        content: paragraphs.map(
+          ({ text, paraId, formatting, paragraphAlignment, paragraphStyleId }) => ({
+            type: "paragraph",
+            content: [
+              {
+                type: "run",
+                ...(formatting !== undefined && { formatting }),
+                content: [{ type: "text", text }],
+              },
+            ],
+            ...((paragraphAlignment !== undefined || paragraphStyleId !== undefined) && {
+              formatting: {
+                ...(paragraphAlignment !== undefined && { alignment: paragraphAlignment }),
+                ...(paragraphStyleId !== undefined && { styleId: paragraphStyleId }),
+              },
+            }),
+            ...(paraId !== undefined && { paraId }),
+          }),
+        ),
       },
     },
   });
@@ -122,6 +133,34 @@ const storyParagraph = (text: string, paraId: string): Paragraph => ({
   paraId,
   content: [{ type: "run", content: [{ type: "text", text }] }],
 });
+
+const buildTableCellDocxBuffer = (text: string): Promise<ArrayBuffer> => {
+  const template = createEmptyDocument();
+  const table: Table = {
+    type: "table",
+    rows: [
+      {
+        type: "tableRow",
+        cells: [
+          {
+            type: "tableCell",
+            content: [storyParagraph(text, "00000001")],
+          },
+        ],
+      },
+    ],
+  };
+  return createDocx({
+    ...template,
+    package: {
+      ...template.package,
+      document: {
+        ...template.package.document,
+        content: [table],
+      },
+    },
+  });
+};
 
 const headerFooterStory = (
   type: "header" | "footer",
@@ -377,13 +416,11 @@ describe("compareDocxVersions: document stories", () => {
 
 describe("compareDocxVersions: deterministic fallback ids (no w14:paraId)", () => {
   test("a same-text block whose ordinal shifted still pairs as unchanged via the text-LCS pass", async () => {
-    // Neither buffer carries a w14:paraId, so FolioDocxReviewer assigns each
-    // block a deterministic fallback id derived from hash(text + ordinal). The
-    // "Epsilon" paragraph inserted before "Gamma" shifts Gamma's ordinal (3rd
-    // -> 4th), which changes its fallback id even though its text is
-    // untouched. Pass 1 (stable-id pairing) therefore CANNOT pair Gamma across
-    // versions; only the text-LCS pass (pass 2) recovers it as unchanged. This
-    // is the regression guard for the deterministic-id pitfall.
+    // Neither source carries a w14:paraId, so FolioDocxReviewer assigns each
+    // block a deterministic id derived from text plus ordinal and marks its
+    // provenance positional. The "Epsilon" insertion shifts Gamma from third
+    // to fourth, changing that id even though its text is untouched. Stable-id
+    // pairing must ignore these ids; only exact-text alignment recovers Gamma.
     const base = await buildDocxBuffer([
       { text: "Alpha paragraph." },
       { text: "Beta paragraph." },
@@ -395,6 +432,16 @@ describe("compareDocxVersions: deterministic fallback ids (no w14:paraId)", () =
       { text: "Epsilon paragraph." },
       { text: "Gamma paragraph." },
     ]);
+
+    const [baseReviewer, revisedReviewer] = await Promise.all([
+      FolioDocxReviewer.fromBuffer(base),
+      FolioDocxReviewer.fromBuffer(revised),
+    ]);
+    expect(
+      [...baseReviewer.snapshot().blocks, ...revisedReviewer.snapshot().blocks].every(
+        ({ idStability }) => idStability === "positional",
+      ),
+    ).toBe(true);
 
     const diff = await compareDocxVersions(base, revised);
 
@@ -519,6 +566,126 @@ describe("compareDocxVersions: selected scopes", () => {
     expect(formattingDiff.summaryCounts.modified).toBe(0);
     expect(formattingDiff.summaryCounts.formatChanged).toBe(1);
     expect(formattingDiff.summaryCounts.unchanged).toBe(1);
+  });
+
+  test("keeps summary cardinality when every text-only event is excluded", async () => {
+    const stable = { text: "Stable anchor text.", paraId: "00000001" };
+    const cases = [
+      {
+        name: "insert",
+        base: [stable],
+        revised: [stable, { text: "Inserted text.", paraId: "00000002" }],
+        changeTypes: ["added"],
+      },
+      {
+        name: "delete",
+        base: [stable, { text: "Deleted text.", paraId: "00000002" }],
+        revised: [stable],
+        changeTypes: ["deleted"],
+      },
+      {
+        name: "move",
+        base: [
+          { text: "Governing law shall be Czech law.", paraId: "00000001" },
+          { text: "Payment is due within thirty days.", paraId: "00000002" },
+          { text: "Notices must be delivered in writing.", paraId: "00000003" },
+        ],
+        revised: [
+          { text: "Notices must be delivered in writing.", paraId: "00000003" },
+          { text: "Governing law shall be Czech law.", paraId: "00000001" },
+          { text: "Payment is due within thirty days.", paraId: "00000002" },
+        ],
+        changeTypes: ["movedTo", "movedFrom"],
+      },
+      {
+        name: "split",
+        base: [{ text: "Alpha Beta", paraId: "00000001" }],
+        revised: [
+          { text: "Alpha", paraId: "00000001" },
+          { text: "Beta", paraId: "00000002" },
+        ],
+        changeTypes: ["modified", "added"],
+      },
+      {
+        name: "merge",
+        base: [
+          { text: "Alpha", paraId: "00000001" },
+          { text: "Beta", paraId: "00000002" },
+        ],
+        revised: [{ text: "Alpha Beta", paraId: "00000001" }],
+        changeTypes: ["modified", "deleted"],
+      },
+    ] as const;
+
+    for (const fixture of cases) {
+      const [base, revised] = await Promise.all([
+        buildDocxBuffer(fixture.base),
+        buildDocxBuffer(fixture.revised),
+      ]);
+      const textDiff = await compareDocxVersions(base, revised, { include: ["text"] });
+      expect(
+        textDiff.changes.map(({ type }) => type),
+        fixture.name,
+      ).toEqual(fixture.changeTypes);
+      const expectedUnits =
+        textDiff.summaryCounts.added +
+        textDiff.summaryCounts.deleted +
+        textDiff.summaryCounts.modified +
+        textDiff.summaryCounts.moved +
+        textDiff.summaryCounts.unchanged;
+
+      const formattingDiff = await compareDocxVersions(base, revised, {
+        include: ["formatting"],
+      });
+      expect(formattingDiff.changes, fixture.name).toEqual([]);
+      expect(formattingDiff.summaryCounts, fixture.name).toEqual({
+        added: 0,
+        deleted: 0,
+        modified: 0,
+        formatChanged: 0,
+        moved: 0,
+        metadataChanged: 0,
+        unchanged: expectedUnits,
+      });
+    }
+  });
+
+  test("retains formatting when a modified block's text scope is excluded", async () => {
+    const base = await buildDocxBuffer([
+      {
+        text: "Baseline clause text.",
+        paraId: "00000001",
+        paragraphAlignment: "left",
+      },
+    ]);
+    const revised = await buildDocxBuffer([
+      {
+        text: "Revised clause text.",
+        paraId: "00000001",
+        paragraphAlignment: "right",
+      },
+    ]);
+
+    const combined = await compareDocxVersions(base, revised);
+    expect(combined.changes).toEqual([
+      expect.objectContaining({
+        type: "modified",
+        changedProperties: ["alignment"],
+      }),
+    ]);
+
+    const formatting = await compareDocxVersions(base, revised, { include: ["formatting"] });
+    expect(formatting.changes).toEqual([
+      expect.objectContaining({
+        type: "formatChanged",
+        changedProperties: ["alignment"],
+      }),
+    ]);
+    expect(formatting.summaryCounts).toMatchObject({
+      modified: 0,
+      formatChanged: 1,
+      unchanged: 0,
+    });
   });
 
   test("removes selected metadata values and reports each applied transform", async () => {
@@ -649,14 +816,9 @@ describe("compareDocxVersions: move detection", () => {
   });
 
   test("two simultaneous relocations pair independently, exercising the per-text FIFO queue for two keys", async () => {
-    // Regression guard for detectMoves' O(k)-per-shift() -> O(1) head-cursor
-    // refactor (a plain array `.shift()` per matched `added` block became a
-    // `{ items, head }` queue keyed by text). Both "Notices" and
-    // "Confidentiality" are relocated ahead of "Governing"/"Payment" (which
-    // stay a valid monotonic stable-id pair and count as unchanged); this
-    // exercises `deletedIndexesByText` with two live keys at once so the
-    // Map-based rewrite resolves each text's own queue independently instead
-    // of cross-contaminating.
+    // The neutral move core retains a bounded FIFO queue per exact text.
+    // "Notices" and "Confidentiality" relocate ahead of the two monotonic
+    // anchors, exercising two live queue keys without cross-contamination.
     const base = await buildDocxBuffer([
       { text: "Governing law shall be Czech law.", paraId: "00000001" },
       { text: "Payment is due within thirty days.", paraId: "00000002" },
@@ -699,6 +861,173 @@ describe("compareDocxVersions: move detection", () => {
       }
       expect(to.text).toBe(from.text);
     }
+  });
+
+  test("uses the neutral core's edited-move classification", async () => {
+    const base = await buildDocxBuffer([
+      {
+        text: "alpha beta gamma delta epsilon",
+        paraId: "00000001",
+        paragraphAlignment: "left",
+        paragraphStyleId: "Normal",
+      },
+      { text: "First durable anchor text", paraId: "00000002" },
+      { text: "Second durable anchor text", paraId: "00000003" },
+      { text: "Third durable anchor text", paraId: "00000004" },
+    ]);
+    const revised = await buildDocxBuffer([
+      { text: "First durable anchor text", paraId: "00000002" },
+      { text: "Second durable anchor text", paraId: "00000003" },
+      { text: "Third durable anchor text", paraId: "00000004" },
+      {
+        text: "alpha beta gamma delta zeta",
+        paraId: "00000001",
+        paragraphAlignment: "right",
+        paragraphStyleId: "Heading2",
+      },
+    ]);
+    const [baseReviewer, revisedReviewer] = await Promise.all([
+      FolioDocxReviewer.fromBuffer(base),
+      FolioDocxReviewer.fromBuffer(revised),
+    ]);
+    const neutral = compareContent({
+      base: { blocks: baseReviewer.snapshot().blocks },
+      revised: { blocks: revisedReviewer.snapshot().blocks },
+    });
+    if (neutral.isErr()) {
+      throw neutral.error;
+    }
+    const neutralChanges = neutral.value.events
+      .filter(({ type }) => type !== "unchanged")
+      .map(({ type }) => type);
+
+    expect(neutralChanges).toEqual(["movedFrom", "movedTo"]);
+    const versionDiff = await compareDocxVersions(base, revised);
+    expect(versionDiff.changes.map(({ type }) => type)).toEqual(neutralChanges);
+    const neutralMovedTo = neutral.value.events.find(({ type }) => type === "movedTo");
+    const versionMovedTo = versionDiff.changes.find(({ type }) => type === "movedTo");
+    expect(neutralMovedTo).toMatchObject({
+      type: "movedTo",
+      segments: [
+        { type: "equal", text: "alpha beta gamma delta" },
+        { type: "del", text: " epsilon" },
+        { type: "ins", text: " zeta" },
+      ],
+      changedProperties: ["kind", "headingLevel", "displayLabel"],
+      formatting: {
+        paragraph: { styleId: "Heading2", alignment: "right" },
+        ranges: [],
+      },
+    });
+    expect(versionMovedTo).toMatchObject({
+      type: "movedTo",
+      segments: [
+        { type: "equal", text: "alpha beta gamma delta" },
+        { type: "del", text: " epsilon" },
+        { type: "ins", text: " zeta" },
+      ],
+      changedProperties: ["kind", "headingLevel", "displayLabel", "styleId", "alignment"],
+    });
+    expect(versionDiff.summaryCounts).toMatchObject({
+      added: 0,
+      deleted: 0,
+      moved: 1,
+    });
+
+    const formattingDiff = await compareDocxVersions(base, revised, {
+      include: ["formatting"],
+    });
+    expect(formattingDiff.changes).toEqual([
+      expect.objectContaining({
+        type: "formatChanged",
+        blockId: "00000001",
+        changedProperties: ["styleId", "alignment"],
+      }),
+    ]);
+    expect(formattingDiff.summaryCounts).toMatchObject({
+      modified: 0,
+      formatChanged: 1,
+      moved: 0,
+      unchanged: 3,
+    });
+  });
+
+  test("preserves positional fallback ids when delegating move classification", async () => {
+    const [base, revised] = await Promise.all([
+      buildDocxBuffer([
+        { text: "alpha beta gamma" },
+        { text: "bravo charlie delta" },
+        { text: "echo foxtrot golf" },
+        { text: "hotel india juliet" },
+      ]),
+      buildDocxBuffer([
+        { text: "bravo charlie delta" },
+        { text: "hotel india juliet" },
+        { text: "alpha beta gamma" },
+        { text: "echo foxtrot golf" },
+      ]),
+    ]);
+    const [baseReviewer, revisedReviewer] = await Promise.all([
+      FolioDocxReviewer.fromBuffer(base),
+      FolioDocxReviewer.fromBuffer(revised),
+    ]);
+    const baseBlocks = baseReviewer.snapshot().blocks;
+    const revisedBlocks = revisedReviewer.snapshot().blocks;
+    expect(
+      [...baseBlocks, ...revisedBlocks].every(({ idStability }) => idStability === "positional"),
+    ).toBe(true);
+    const neutral = compareContent({
+      base: { blocks: baseBlocks },
+      revised: { blocks: revisedBlocks },
+    });
+    if (neutral.isErr()) {
+      throw neutral.error;
+    }
+    const neutralChanges = neutral.value.events
+      .filter(({ type }) => type !== "unchanged")
+      .map(({ type }) => type);
+
+    expect(neutralChanges).toEqual(["movedFrom", "movedFrom", "movedTo", "movedTo"]);
+    const versionDiff = await compareDocxVersions(base, revised);
+    expect(versionDiff.changes.map(({ type }) => type)).toEqual(neutralChanges);
+    expect(versionDiff.summaryCounts).toMatchObject({
+      added: 0,
+      deleted: 0,
+      moved: 2,
+    });
+  });
+});
+
+describe("compareDocxVersions: neutral structural classification", () => {
+  test("does not pair identical stable-id text across body and table containers", async () => {
+    const text = "Payment is due within thirty days.";
+    const [base, revised] = await Promise.all([
+      buildDocxBuffer([{ text, paraId: "00000001" }]),
+      buildTableCellDocxBuffer(text),
+    ]);
+    const [baseReviewer, revisedReviewer] = await Promise.all([
+      FolioDocxReviewer.fromBuffer(base),
+      FolioDocxReviewer.fromBuffer(revised),
+    ]);
+    const neutral = compareContent({
+      base: { blocks: baseReviewer.snapshot().blocks },
+      revised: { blocks: revisedReviewer.snapshot().blocks },
+    });
+    if (neutral.isErr()) {
+      throw neutral.error;
+    }
+    const neutralChanges = neutral.value.events
+      .filter(({ type }) => type !== "unchanged")
+      .map(({ type }) => (type === "inserted" ? "added" : type));
+
+    expect(neutralChanges).toEqual(["deleted", "added"]);
+    const versionDiff = await compareDocxVersions(base, revised);
+    expect(versionDiff.changes.map(({ type }) => type)).toEqual(neutralChanges);
+    expect(versionDiff.summaryCounts).toMatchObject({
+      added: 1,
+      deleted: 1,
+      unchanged: 0,
+    });
   });
 });
 
@@ -759,12 +1088,9 @@ describe("alignFolioBlocks: shared LCS budget across pass 2 calls", () => {
   // Neither side carries a stable (non-`seq-NNNN`) block id, so pass 1
   // cannot pair anything; only pass 2 (exact-text LCS) can recover the
   // position-shifted "Gamma paragraph." match. compareDocxVersions threads
-  // ONE budget object across every story pair (see
-  // FolioVersionComparisonLcsBudget); this exercises that same threading
-  // point directly by passing a pre-exhausted budget to alignFolioBlocks
-  // (the function compareStoryBlocks calls per story) instead of the
-  // default fresh one, which is what a story pair sees once an earlier
-  // story in the same compareDocxVersions call has used up the budget.
+  // one neutral work session across every story pair. This exercises the
+  // compatibility adapter's equivalent budget threading directly by passing
+  // a pre-exhausted budget to alignFolioBlocks.
   const base: FolioAIBlock[] = [
     { id: "seq-0001", kind: "paragraph", text: "Alpha paragraph." },
     { id: "seq-0002", kind: "paragraph", text: "Gamma paragraph." },
