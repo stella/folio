@@ -8,6 +8,7 @@ import { applyFolioAIEditOperations } from "../../../ai-edits/apply";
 import { createFolioAIEditSnapshot } from "../../../ai-edits/snapshot";
 import { toFlowBlocks } from "../../../layout-bridge/convert/toFlowBlocks";
 import type { Document } from "../../../types/document";
+import { fromProseDoc } from "../../conversion/fromProseDoc";
 import { toProseDoc } from "../../conversion/toProseDoc";
 import { LIST_RENDERING_ATTR_KEYS } from "../../listMarker";
 import { createDocumentNumberingPlugin } from "../../plugins/documentNumbering";
@@ -98,6 +99,35 @@ const multilevelState = (level: number): EditorState =>
     plugins: [createDocumentNumberingPlugin(MULTILEVEL_NUMBERING.definitions)],
   });
 
+const styleNumberedDocument = (): Document => ({
+  package: {
+    numbering: MULTILEVEL_NUMBERING.definitions,
+    styles: {
+      styles: [
+        {
+          styleId: "SyntheticClause",
+          type: "paragraph",
+          pPr: { numPr: { numId: 23, ilvl: 1 } },
+        },
+      ],
+    },
+    document: {
+      content: [
+        {
+          type: "paragraph",
+          formatting: { styleId: "SyntheticClause" },
+          content: [
+            {
+              type: "run",
+              content: [{ type: "text", text: "Synthetic styled clause" }],
+            },
+          ],
+        },
+      ],
+    },
+  },
+});
+
 const listMarkers = (state: EditorState): string[] =>
   toFlowBlocks(state.doc).flatMap((block) =>
     block.kind === "paragraph" && block.attrs?.listMarker ? [block.attrs.listMarker] : [],
@@ -128,6 +158,40 @@ describe("ListExtension Enter numbering", () => {
     expect(listMarkers(state)).toEqual(["(a)", "(b)"]);
     expect(state.selection.$from.parent).toBe(state.doc.lastChild);
     expect(state.selection.$from.parentOffset).toBe(0);
+  });
+
+  test("Backspace keeps a style-numbered list exit after the document model refreshes", () => {
+    const document = styleNumberedDocument();
+    let state = EditorState.create({
+      doc: toProseDoc(document, { styles: document.package.styles }),
+      plugins: [createDocumentNumberingPlugin(MULTILEVEL_NUMBERING.definitions)],
+    });
+    const runtime = ListExtension().onSchemaReady({ schema });
+    const enter = runtime.keyboardShortcuts?.["Enter"];
+    const backspace = runtime.keyboardShortcuts?.["Backspace"];
+    if (!enter || !backspace) {
+      return panic("List extension did not register Enter and Backspace");
+    }
+    const first = state.doc.firstChild;
+    if (!first) {
+      return panic("Synthetic document did not contain its paragraph");
+    }
+    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, first.nodeSize - 1)));
+    enter(state, (transaction) => {
+      state = state.apply(transaction);
+    });
+    backspace(state, (transaction) => {
+      state = state.apply(transaction);
+    });
+
+    const refreshedDocument = fromProseDoc(state.doc, document);
+    const refreshedState = EditorState.create({
+      doc: toProseDoc(refreshedDocument, { styles: refreshedDocument.package.styles }),
+      plugins: [createDocumentNumberingPlugin(MULTILEVEL_NUMBERING.definitions)],
+    });
+
+    expect(listMarkers(refreshedState)).toHaveLength(1);
+    expect(refreshedState.doc.lastChild?.attrs["numPr"]).toEqual({ numId: 0, ilvl: 1 });
   });
 
   test("does not retain an imported template after replacing the list", () => {
