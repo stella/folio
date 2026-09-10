@@ -431,6 +431,244 @@ describe("container-safe structural alignment", () => {
 });
 
 describe("table row and column structural alignment", () => {
+  test("keeps an edited persisted row paired after an inserted row", () => {
+    const base = [
+      cell(
+        "anchor-a",
+        "A1",
+        { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 },
+        { idStability: "positional" },
+      ),
+      cell(
+        "anchor-b",
+        "B1",
+        { rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 },
+        { idStability: "positional" },
+      ),
+      cell(
+        "persisted-a",
+        "A2",
+        { rowIndex: 1, cellIndex: 0, gridColumnIndex: 0 },
+        { idStability: "positional" },
+      ),
+      cell(
+        "persisted-b",
+        "B2",
+        { rowIndex: 1, cellIndex: 1, gridColumnIndex: 1 },
+        { idStability: "positional" },
+      ),
+      cell(
+        "tail-a",
+        "A3",
+        { rowIndex: 2, cellIndex: 0, gridColumnIndex: 0 },
+        { idStability: "positional" },
+      ),
+      cell(
+        "tail-b",
+        "B3",
+        { rowIndex: 2, cellIndex: 1, gridColumnIndex: 1 },
+        { idStability: "positional" },
+      ),
+    ];
+    const revised = [
+      cell("anchor-a", "A1", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
+      cell("anchor-b", "B1", { rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 }),
+      cell("inserted-a", "New A", { rowIndex: 1, cellIndex: 0, gridColumnIndex: 0 }),
+      cell("inserted-b", "New B", { rowIndex: 1, cellIndex: 1, gridColumnIndex: 1 }),
+      cell("persisted-a", "A2", { rowIndex: 2, cellIndex: 0, gridColumnIndex: 0 }),
+      cell("persisted-b", "Entirely different wording", {
+        rowIndex: 2,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+      }),
+      cell("tail-a", "A3", { rowIndex: 3, cellIndex: 0, gridColumnIndex: 0 }),
+      cell("tail-b", "B3", { rowIndex: 3, cellIndex: 1, gridColumnIndex: 1 }),
+    ];
+
+    const steps = alignFolioContentStructure({
+      baseBlocks: base,
+      revisedBlocks: revised,
+      stableIdMismatch: "pair",
+    });
+
+    expect(
+      steps.flatMap((step) =>
+        step.type === "baseRow" || step.type === "revisedRow"
+          ? [[step.type, step.blocks.map(({ id }) => id)]]
+          : [],
+      ),
+    ).toEqual([["revisedRow", ["inserted-a", "inserted-b"]]]);
+    expect(
+      steps.flatMap((step) =>
+        step.type === "pair" ? [[step.baseBlock.id, step.revisedBlock.id]] : [],
+      ),
+    ).toContainEqual(["persisted-b", "persisted-b"]);
+  });
+
+  test("prefers a rewritten persisted row over a similar inserted row", () => {
+    const base = [
+      cell("before", "Before", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
+      cell(
+        "persisted-a",
+        "Payment shall be made within thirty calendar days",
+        { rowIndex: 1, cellIndex: 0, gridColumnIndex: 0 },
+        { idStability: "positional" },
+      ),
+      cell(
+        "persisted-b",
+        "Written notice must be delivered to the address",
+        { rowIndex: 1, cellIndex: 1, gridColumnIndex: 1 },
+        { idStability: "positional" },
+      ),
+      cell("after", "After", { rowIndex: 2, cellIndex: 0, gridColumnIndex: 0 }),
+    ];
+    const revised = [
+      cell("before", "Before", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
+      cell("inserted-a", "Payment shall be made within forty calendar days", {
+        rowIndex: 1,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      cell("inserted-b", "Written notice must be delivered to the address", {
+        rowIndex: 1,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+      }),
+      cell("persisted-a", "Completely rewritten first cell", {
+        rowIndex: 2,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      cell("persisted-b", "Entirely different second cell", {
+        rowIndex: 2,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+      }),
+      cell("after", "After", { rowIndex: 3, cellIndex: 0, gridColumnIndex: 0 }),
+    ];
+
+    const steps = alignFolioContentStructure({
+      baseBlocks: base,
+      revisedBlocks: revised,
+      stableIdMismatch: "pair",
+    });
+
+    expect(
+      steps.flatMap((step) =>
+        step.type === "baseRow" || step.type === "revisedRow"
+          ? [[step.type, step.blocks.map(({ id }) => id)]]
+          : [],
+      ),
+    ).toEqual([["revisedRow", ["inserted-a", "inserted-b"]]]);
+    expect(
+      steps.flatMap((step) =>
+        step.type === "pair" ? [[step.baseBlock.id, step.revisedBlock.id]] : [],
+      ),
+    ).toContainEqual(["persisted-a", "persisted-a"]);
+  });
+
+  test("does not pair rows from a partial persisted id overlap", () => {
+    const base = [
+      cell("before", "Before", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
+      cell(
+        "shared",
+        "Original A",
+        { rowIndex: 1, cellIndex: 0, gridColumnIndex: 0 },
+        { idStability: "positional" },
+      ),
+      cell(
+        "base-only",
+        "Original B",
+        { rowIndex: 1, cellIndex: 1, gridColumnIndex: 1 },
+        { idStability: "positional" },
+      ),
+      cell("after", "After", { rowIndex: 2, cellIndex: 0, gridColumnIndex: 0 }),
+    ];
+    const revised = [
+      cell("before", "Before", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
+      cell("shared", "Different X", {
+        rowIndex: 1,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      cell("revised-only", "Different Y", {
+        rowIndex: 1,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+      }),
+      cell("after", "After", { rowIndex: 2, cellIndex: 0, gridColumnIndex: 0 }),
+    ];
+
+    const steps = alignFolioContentStructure({
+      baseBlocks: base,
+      revisedBlocks: revised,
+      stableIdMismatch: "pair",
+    });
+
+    expect(
+      steps.flatMap((step) =>
+        step.type === "baseRow" || step.type === "revisedRow"
+          ? [[step.type, step.blocks.map(({ id }) => id)]]
+          : [],
+      ),
+    ).toEqual([
+      ["baseRow", ["shared", "base-only"]],
+      ["revisedRow", ["shared", "revised-only"]],
+    ]);
+  });
+
+  test("does not use persisted row identity beyond the bounded profile", () => {
+    const oversizedRowLength = 129;
+    type OversizedRowOptions = {
+      rowIndex: number;
+      textPrefix: string;
+      idStability: FolioContentBlock["idStability"];
+    };
+    const row = ({
+      rowIndex,
+      textPrefix,
+      idStability,
+    }: OversizedRowOptions): FolioContentBlock[] =>
+      Array.from({ length: oversizedRowLength }, (_, paragraphIndex) =>
+        cell(
+          `persisted-${String(paragraphIndex)}`,
+          `${textPrefix}-${String(paragraphIndex)}`,
+          { rowIndex, cellIndex: 0, gridColumnIndex: 0, paragraphIndex },
+          { idStability },
+        ),
+      );
+    const base = [
+      cell("before", "Before", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
+      ...row({ rowIndex: 1, textPrefix: "original", idStability: "positional" }),
+      cell("after", "After", { rowIndex: 2, cellIndex: 0, gridColumnIndex: 0 }),
+    ];
+    const revised = [
+      cell("before", "Before", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),
+      cell("inserted", "Inserted", { rowIndex: 1, cellIndex: 0, gridColumnIndex: 0 }),
+      ...row({ rowIndex: 2, textPrefix: "replacement", idStability: "stable" }),
+      cell("after", "After", { rowIndex: 3, cellIndex: 0, gridColumnIndex: 0 }),
+    ];
+
+    const steps = alignFolioContentStructure({
+      baseBlocks: base,
+      revisedBlocks: revised,
+      stableIdMismatch: "pair",
+    });
+
+    expect(
+      steps.flatMap((step) =>
+        step.type === "pair" && step.baseBlock.id.startsWith("persisted-")
+          ? [[step.baseBlock.id, step.revisedBlock.id]]
+          : [],
+      ),
+    ).toEqual([]);
+    expect(
+      steps.flatMap((step) =>
+        step.type === "baseRow" || step.type === "revisedRow" ? [step.type] : [],
+      ),
+    ).toEqual(["baseRow", "revisedRow", "revisedRow"]);
+  });
+
   test("keeps a same-position persisted row paired through a full cell rewrite", () => {
     const base = [
       cell(
