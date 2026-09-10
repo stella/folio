@@ -18,13 +18,11 @@ export type PageBreakRunPartitionResult<TRun, TPageBreak> =
       type: "partitioned";
       partitions: PageBreakRunPartition<TRun, TPageBreak>[];
       remaining: TRun[];
-      runVisits: number;
     }
   | {
       type: "overlap";
       pageBreak: TPageBreak;
       run: TRun;
-      runVisits: number;
     };
 
 /** Partition ordered runs with one monotonic cursor; each run is consumed once and peeked once. */
@@ -37,7 +35,6 @@ export const partitionRunsAtPageBreaks = <
 ): PageBreakRunPartitionResult<TRun, TPageBreak> => {
   const partitions: PageBreakRunPartition<TRun, TPageBreak>[] = [];
   let nextRunIndex = 0;
-  let runVisits = 0;
 
   for (const pageBreak of pageBreaks) {
     const before: TRun[] = [];
@@ -46,7 +43,6 @@ export const partitionRunsAtPageBreaks = <
       if (!run) {
         break;
       }
-      runVisits += 1;
       if (run.pmEnd !== undefined && run.pmEnd <= pageBreak.pmStart) {
         before.push(run);
         nextRunIndex += 1;
@@ -55,7 +51,7 @@ export const partitionRunsAtPageBreaks = <
       if (run.pmStart !== undefined && run.pmStart >= pageBreak.pmEnd) {
         break;
       }
-      return { type: "overlap", pageBreak, run, runVisits };
+      return { type: "overlap", pageBreak, run };
     }
     partitions.push({ before, pageBreak });
   }
@@ -64,6 +60,5 @@ export const partitionRunsAtPageBreaks = <
     type: "partitioned",
     partitions,
     remaining: runs.slice(nextRunIndex),
-    runVisits,
   };
 };

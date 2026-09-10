@@ -13,6 +13,7 @@ import { createEmptyDocument } from "../../utils/createDocument";
 import {
   footnoteToProseDoc,
   headerFooterToProseDoc,
+  standaloneTableCellToProseMirror,
   UnsupportedDocxToProseMirrorConversionError,
   toProseDoc,
 } from "./toProseDoc";
@@ -49,6 +50,8 @@ const pageBreakRun = (content: readonly RunContent[] = []): Run => ({
   type: "run",
   content: [...content, { type: "break", breakType: "page" }],
 });
+
+const pageBreakParagraph = (): Paragraph => ({ type: "paragraph", content: [pageBreakRun()] });
 
 type InlineWrapper = {
   name: string;
@@ -132,24 +135,24 @@ const tableWithParagraph = (paragraph: Paragraph, header = false): Table => ({
   ],
 });
 
-const textBoxHost = (content: (Paragraph | Table)[]): Paragraph => ({
-  type: "paragraph",
+const textBoxRun = (content: (Paragraph | Table)[]): Run => ({
+  type: "run",
   content: [
     {
-      type: "run",
-      content: [
-        {
-          type: "shape",
-          shape: {
-            type: "shape",
-            shapeType: "rect",
-            size: { width: 914_400, height: 457_200 },
-            textBody: { content },
-          },
-        },
-      ],
+      type: "shape",
+      shape: {
+        type: "shape",
+        shapeType: "rect",
+        size: { width: 914_400, height: 457_200 },
+        textBody: { content },
+      },
     },
   ],
+});
+
+const textBoxHost = (content: (Paragraph | Table)[]): Paragraph => ({
+  type: "paragraph",
+  content: [textBoxRun(content)],
 });
 
 const documentWithContent = (content: BlockContent[]): Document => {
@@ -214,8 +217,10 @@ const CONTAINER_CONTEXTS = [
 ] as const satisfies readonly ContainerContext[];
 
 const CONTAINER_MESSAGES = {
-  "table-cell": "A table cell containing an explicit page break cannot be represented in the editor model",
-  "text-box": "A text box containing an explicit page break cannot be represented in the editor model",
+  "table-cell":
+    "A table cell containing an explicit page break cannot be represented in the editor model",
+  "text-box":
+    "A text box containing an explicit page break cannot be represented in the editor model",
 } as const satisfies Record<ContainerContext["owner"], string>;
 
 describe("page-break run source-container ownership", () => {
@@ -270,7 +275,10 @@ describe("page-break run source-container ownership", () => {
     "rejects a $name authored page break regardless of its run position",
     ({ content }) => {
       const source = documentWithContent([
-        tableWithParagraph({ type: "paragraph", content: [{ type: "run", content: [...content] }] }),
+        tableWithParagraph({
+          type: "paragraph",
+          content: [{ type: "run", content: [...content] }],
+        }),
       ]);
 
       expectUnsupportedConversion(() => toProseDoc(source), {
@@ -297,7 +305,10 @@ describe("page-break run source-container ownership", () => {
     "does not confuse rendered or non-page breaks with an authored page break",
     ({ content }) => {
       const source = documentWithContent([
-        tableWithParagraph({ type: "paragraph", content: [{ type: "run", content: [...content] }] }),
+        tableWithParagraph({
+          type: "paragraph",
+          content: [{ type: "run", content: [...content] }],
+        }),
       ]);
       const before = structuredClone(source.package.document.content);
 
@@ -305,6 +316,94 @@ describe("page-break run source-container ownership", () => {
       expect(source.package.document.content).toEqual(before);
     },
   );
+
+  test.each([
+    {
+      name: "standalone table-cell conversion",
+      convert: (paragraph: Paragraph) =>
+        standaloneTableCellToProseMirror({ type: "tableCell", content: [paragraph] }, "tableCell"),
+    },
+    {
+      name: "header or footer conversion",
+      convert: (paragraph: Paragraph) => headerFooterToProseDoc([tableWithParagraph(paragraph)]),
+    },
+    {
+      name: "footnote or endnote conversion",
+      convert: (paragraph: Paragraph) => footnoteToProseDoc([tableWithParagraph(paragraph)]),
+    },
+  ])("builds source ownership for $name", ({ convert }) => {
+    expectUnsupportedConversion(() => convert(pageBreakParagraph()), {
+      message: CONTAINER_MESSAGES["table-cell"],
+      owner: "table-cell",
+      contentType: "break",
+    });
+  });
+
+  test.each([
+    {
+      name: "table cell around a text box",
+      source: () => documentWithContent([tableWithParagraph(textBoxHost([pageBreakParagraph()]))]),
+      owner: "table-cell" as const,
+    },
+    {
+      name: "text box around a table cell",
+      source: () => documentWithContent([textBoxHost([tableWithParagraph(pageBreakParagraph())])]),
+      owner: "text-box" as const,
+    },
+  ])("reports the outermost $name owner", ({ source, owner }) => {
+    expectUnsupportedConversion(() => toProseDoc(source()), {
+      message: CONTAINER_MESSAGES[owner],
+      owner,
+      contentType: "break",
+    });
+  });
+
+  test("does not query synthesized cells outside the source index", () => {
+    const source = documentWithContent([
+      {
+        type: "table",
+        rows: [{ type: "tableRow", cells: [] }],
+      },
+    ]);
+
+    expect(() => toProseDoc(source)).not.toThrow();
+  });
+
+  test("rejects a page break in a skipped vertical-merge continuation cell", () => {
+    const source = documentWithContent([
+      {
+        type: "table",
+        rows: [
+          {
+            type: "tableRow",
+            cells: [
+              {
+                type: "tableCell",
+                formatting: { vMerge: "restart" },
+                content: [{ type: "paragraph", content: [] }],
+              },
+            ],
+          },
+          {
+            type: "tableRow",
+            cells: [
+              {
+                type: "tableCell",
+                formatting: { vMerge: "continue" },
+                content: [pageBreakParagraph()],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    expectUnsupportedConversion(() => toProseDoc(source), {
+      message: CONTAINER_MESSAGES["table-cell"],
+      owner: "table-cell",
+      contentType: "break",
+    });
+  });
 });
 
 const PARAGRAPH_DISPOSITIONS = [
@@ -368,10 +467,7 @@ describe("page-break run source-paragraph ownership", () => {
   test("rejects a page break sharing a paragraph with a text-box anchor", () => {
     const paragraph: Paragraph = {
       type: "paragraph",
-      content: [
-        pageBreakRun(),
-        ...textBoxHost([{ type: "paragraph", content: [] }]).content,
-      ],
+      content: [pageBreakRun(), ...textBoxHost([{ type: "paragraph", content: [] }]).content],
     };
 
     expectUnsupportedConversion(() => toProseDoc(documentWithContent([paragraph])), {
@@ -381,6 +477,23 @@ describe("page-break run source-paragraph ownership", () => {
       contentType: "break",
     });
   });
+
+  test.each(INLINE_WRAPPERS)(
+    "finds a text-box shape through $name from source truth",
+    ({ wrap }) => {
+      const paragraph: Paragraph = {
+        type: "paragraph",
+        content: [pageBreakRun(), wrap(textBoxRun([{ type: "paragraph", content: [] }]))],
+      };
+
+      expectUnsupportedConversion(() => toProseDoc(documentWithContent([paragraph])), {
+        message:
+          "A paragraph containing both an explicit page-break run and a text-box anchor cannot be projected",
+        owner: "paragraph-text-box-anchor",
+        contentType: "break",
+      });
+    },
+  );
 
   test("uses resolved paragraph attrs for style-owned projection constraints", () => {
     const source = documentWithContent([
@@ -397,6 +510,40 @@ describe("page-break run source-paragraph ownership", () => {
     expectUnsupportedConversion(() => toProseDoc(source), {
       message: "An outline paragraph containing an explicit page-break run cannot be projected",
       owner: "paragraph-outline",
+      contentType: "break",
+    });
+  });
+
+  test("rejects a page break in a paragraph-style-owned frame", () => {
+    const source = documentWithContent([
+      {
+        type: "paragraph",
+        formatting: { styleId: "Framed" },
+        content: [pageBreakRun()],
+      },
+    ]);
+    source.package.styles = {
+      styles: [{ styleId: "Framed", type: "paragraph", pPr: { frame: { width: 720 } } }],
+    };
+
+    expectUnsupportedConversion(() => toProseDoc(source), {
+      message: "A framed paragraph containing an explicit page-break run cannot be projected",
+      owner: "paragraph-frame",
+      contentType: "break",
+    });
+  });
+
+  test("keeps outer table-cell ownership ahead of a table-style-owned frame", () => {
+    const table = tableWithParagraph(pageBreakParagraph());
+    table.formatting = { styleId: "FramedTable" };
+    const source = documentWithContent([table]);
+    source.package.styles = {
+      styles: [{ styleId: "FramedTable", type: "table", pPr: { frame: { width: 720 } } }],
+    };
+
+    expectUnsupportedConversion(() => toProseDoc(source), {
+      message: CONTAINER_MESSAGES["table-cell"],
+      owner: "table-cell",
       contentType: "break",
     });
   });

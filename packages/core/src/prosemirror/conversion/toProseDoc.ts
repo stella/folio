@@ -60,7 +60,10 @@ import {
   linkProseParagraphPropertySource,
   recreateProseNodeWithParagraphPropertySource,
 } from "../../docx/paragraphPropertySource";
-import { visitDocxParagraphs, visitParagraphRuns } from "../../docx/paragraphTraversal";
+import {
+  buildPageBreakRunSourceDescendantIndex,
+  type PageBreakRunSourceDescendantIndex,
+} from "../../internal/pageBreakRunSourceDescendantIndex";
 import { mergeTextFormatting } from "../../utils/textFormattingMerge";
 import { tableOfContentsStyleLevel } from "../../utils/tableOfContentsStyle";
 import { emuToPixels } from "../../utils/units";
@@ -317,6 +320,7 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
     nextTextBoxGroupId,
     nextHyperlinkInstanceIndex,
     pairedBookmarkIds,
+    pageBreakRunSourceDescendants: buildPageBreakRunSourceDescendantIndex(paragraphs),
   };
 
   const convertBodyBlocks = (blocks: BlockContent[]): PMNode[] => {
@@ -425,20 +429,25 @@ function convertBlockSdt(
 function convertParagraph(
   paragraph: Paragraph,
   styleResolver: StyleEngine | null,
-  nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator,
-  pairedBookmarkIds: ReadonlySet<number>,
+  context: TableConversionContext,
   activeCommentIds?: Set<number>,
   extraRunFormatting?: TextFormatting,
   tableParagraphOverlay?: TableCellParagraphSpacingOverlay,
   textBoxAnchors?: ReadonlyMap<Shape, string>,
 ): PMNode {
+  const { nextHyperlinkInstanceIndex, pairedBookmarkIds, pageBreakRunSourceDescendants } = context;
   let pageBreakRunOwnerId = 0;
   const nextPageBreakRunOwnerId = (): number => pageBreakRunOwnerId++;
-  const attrs = paragraphFormattingToAttrs(paragraph, styleResolver, tableParagraphOverlay);
+  const { attrs, effectiveFrame } = paragraphFormattingToAttrs(
+    paragraph,
+    styleResolver,
+    tableParagraphOverlay,
+  );
   assertParagraphPageBreakCanBeProjected({
     paragraph,
     attrs,
-    hasTextBoxAnchor: (textBoxAnchors?.size ?? 0) > 0,
+    effectiveFrame,
+    sourceDescendants: pageBreakRunSourceDescendants,
   });
   const isTocParagraph = attrs._tableOfContentsLevel !== undefined;
   const inlineNodes: PMNode[] = [];
@@ -900,11 +909,16 @@ function convertTrackedChange(
  * If a styleResolver is provided, resolves style-based formatting and merges
  * with inline formatting. Inline formatting takes precedence.
  */
+type ParagraphFormattingProjection = {
+  attrs: ParagraphAttrs;
+  effectiveFrame: ParagraphFormatting["frame"];
+};
+
 function paragraphFormattingToAttrs(
   paragraph: Paragraph,
   styleResolver: StyleEngine | null,
   tableParagraphOverlay?: TableCellParagraphSpacingOverlay,
-): ParagraphAttrs {
+): ParagraphFormattingProjection {
   const formatting = paragraph.formatting;
   const styleId = formatting?.styleId;
   const styleName = styleId ? styleResolver?.getStyle(styleId)?.name : undefined;
@@ -1015,7 +1029,7 @@ function paragraphFormattingToAttrs(
 
   // If we have a style resolver, resolve the style and get base properties.
   // Cell paragraphs (`tableParagraphOverlay` set) layer the enclosing table
-  // style's paragraph-spacing fields in between docDefaults and this
+  // style's modeled paragraph fields in between docDefaults and this
   // paragraph's own style chain — see resolveParagraphStyleInTable.
   let stylePpr: Paragraph["formatting"] | undefined;
   if (styleResolver) {
@@ -1192,7 +1206,13 @@ function paragraphFormattingToAttrs(
     attrs._autospacingBase = base;
   }
 
-  return attrs;
+  return {
+    attrs,
+    effectiveFrame:
+      formatting?.frame === undefined
+        ? stylePpr?.frame
+        : { ...stylePpr?.frame, ...formatting.frame },
+  };
 }
 
 // ============================================================================
@@ -1201,9 +1221,8 @@ function paragraphFormattingToAttrs(
 
 /**
  * A table style's (or one of its `w:tblStylePr` conditional regions')
- * contribution to cell formatting: cell properties, run defaults, and — for
- * the table-row-height fix — the paragraph-spacing overlay described on
- * {@link TableCellParagraphSpacingOverlay}.
+ * contribution to cell formatting: cell properties, run defaults, and the
+ * modeled paragraph overlay described on {@link TableCellParagraphSpacingOverlay}.
  */
 type TableConditionalStyle = {
   tcPr?: TableCellFormatting;
@@ -1212,12 +1231,10 @@ type TableConditionalStyle = {
 };
 
 /**
- * Pick the paragraph-spacing fields out of a table style's (or conditional
- * region's) `w:pPr` for use as the cell-paragraph cascade overlay. Narrower
- * than the full `ParagraphFormatting` bag — see
- * {@link TableCellParagraphSpacingOverlay}.
+ * Pick the modeled paragraph fields out of a table style's (or conditional
+ * region's) `w:pPr` for use as the cell-paragraph cascade overlay.
  */
-function extractTableParagraphSpacingOverlay(
+function extractTableParagraphOverlay(
   pPr: ParagraphFormatting | undefined,
 ): TableCellParagraphSpacingOverlay | undefined {
   if (!pPr) {
@@ -1238,6 +1255,9 @@ function extractTableParagraphSpacingOverlay(
   }
   if (pPr.contextualSpacing !== undefined) {
     overlay.contextualSpacing = pPr.contextualSpacing;
+  }
+  if (pPr.frame !== undefined) {
+    overlay.frame = pPr.frame;
   }
   return Object.keys(overlay).length > 0 ? overlay : undefined;
 }
@@ -1271,7 +1291,7 @@ function resolveTableStyleConditional(
     ? resolveRunFormattingWithoutDefaults(conditional.rPr, styleResolver)
     : undefined;
   const mergedRunProps = mergeTextFormatting(runPropsFromPpr, resolvedRpr);
-  const paragraphSpacingOverlay = extractTableParagraphSpacingOverlay(conditional.pPr);
+  const paragraphOverlay = extractTableParagraphOverlay(conditional.pPr);
 
   const result: TableConditionalStyle = {};
   if (conditional.tcPr) {
@@ -1280,8 +1300,8 @@ function resolveTableStyleConditional(
   if (mergedRunProps) {
     result.rPr = mergedRunProps;
   }
-  if (paragraphSpacingOverlay) {
-    result.pPr = paragraphSpacingOverlay;
+  if (paragraphOverlay) {
+    result.pPr = paragraphOverlay;
   }
   return result;
 }
@@ -1306,7 +1326,7 @@ function resolveTableBaseStyle(
     ? resolveRunFormattingWithoutDefaults(style.rPr, styleResolver)
     : undefined;
   const mergedRunProps = mergeTextFormatting(runPropsFromPpr, resolvedRpr);
-  const paragraphSpacingOverlay = extractTableParagraphSpacingOverlay(style.pPr);
+  const paragraphOverlay = extractTableParagraphOverlay(style.pPr);
 
   const result: TableConditionalStyle = {};
   if (style.tcPr) {
@@ -1315,8 +1335,8 @@ function resolveTableBaseStyle(
   if (mergedRunProps) {
     result.rPr = mergedRunProps;
   }
-  if (paragraphSpacingOverlay) {
-    result.pPr = paragraphSpacingOverlay;
+  if (paragraphOverlay) {
+    result.pPr = paragraphOverlay;
   }
   return result.tcPr || result.rPr || result.pPr ? result : undefined;
 }
@@ -1376,7 +1396,7 @@ function mergeConditionalStyles(
 
   // `override` (a more specific conditional region, e.g. firstRow) wins per
   // field over `base` (e.g. the table's wholeTable region or base style),
-  // matching the tcPr/rPr merges above — see extractTableParagraphSpacingOverlay.
+  // matching the tcPr/rPr merges above — see extractTableParagraphOverlay.
   const mergedPPr = mergeParagraphFormatting(base.pPr, override.pPr);
   if (mergedPPr) {
     merged.pPr = mergedPPr;
@@ -1631,6 +1651,7 @@ type TableConversionContext = {
   nextTextBoxGroupId: () => string;
   nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator;
   pairedBookmarkIds: ReadonlySet<number>;
+  pageBreakRunSourceDescendants: PageBreakRunSourceDescendantIndex;
 };
 
 function convertTable(
@@ -1638,6 +1659,16 @@ function convertTable(
   styleResolver: StyleEngine | null,
   context: TableConversionContext,
 ): PMNode {
+  for (const row of table.rows) {
+    for (const cell of row.cells) {
+      assertSourceContainerHasNoPageBreakRun(
+        cell.content,
+        "table-cell",
+        context.pageBreakRunSourceDescendants,
+      );
+    }
+  }
+
   // Calculate rowSpan values from vMerge
   const rowSpanMap = calculateRowSpans(table);
 
@@ -1960,7 +1991,10 @@ function convertTableRow(
   if (effectiveCells.length === 0) {
     const fallback: TableCell = {
       type: "tableCell",
-      content: [{ type: "paragraph", content: [] }],
+      // convertTableCell supplies the PM-required empty paragraph. Keeping
+      // this source-model placeholder empty avoids inventing authored nodes
+      // that cannot belong to the entrypoint's source ownership index.
+      content: [],
     };
     if (totalCols > 1) {
       fallback.formatting = { gridSpan: totalCols };
@@ -2169,8 +2203,6 @@ function convertTableCell({
   vMergeContinuationCells,
   defaultCellMargins,
 }: ConvertTableCellOptions): PMNode {
-  assertSourceContainerHasNoPageBreakRun(cell.content, "table-cell");
-
   const formatting = cell.formatting;
 
   // Use the pre-calculated rowSpan from vMerge analysis
@@ -2324,6 +2356,8 @@ export function standaloneTableCellToProseMirror(
 ): PMNode {
   const nextTextBoxGroupId = createTextBoxGroupIdFactory();
   const nextHyperlinkInstanceIndex = createHyperlinkInstanceIndexAllocator();
+  const pageBreakRunSourceDescendants = buildPageBreakRunSourceDescendantIndex(cell.content);
+  assertSourceContainerHasNoPageBreakRun(cell.content, "table-cell", pageBreakRunSourceDescendants);
   return convertTableCell({
     cell,
     styleResolver: null,
@@ -2332,6 +2366,7 @@ export function standaloneTableCellToProseMirror(
       nextTextBoxGroupId,
       nextHyperlinkInstanceIndex,
       pairedBookmarkIds: collectPairedBookmarkIds(cell.content),
+      pageBreakRunSourceDescendants,
     },
     isHeader: nodeType === "tableHeader",
     gridWidthPercent: undefined,
@@ -2697,65 +2732,49 @@ const PAGE_BREAK_PARAGRAPH_OWNERS = {
   PageBreakRunParagraphProjectionReason,
   Extract<
     UnsupportedDocxToProseMirrorOwner,
-    | "paragraph-borders"
-    | "paragraph-frame"
-    | "paragraph-outline"
-    | "paragraph-text-box-anchor"
+    "paragraph-borders" | "paragraph-frame" | "paragraph-outline" | "paragraph-text-box-anchor"
   >
 >;
-
-const sourceRunHasPageBreak = (run: Run): boolean =>
-  run.content.some((content) => content.type === "break" && content.breakType === "page");
 
 function assertSourceContainerHasNoPageBreakRun(
   content: BlockContent[],
   owner: PageBreakContainerOwner,
+  sourceDescendants: PageBreakRunSourceDescendantIndex,
 ): void {
-  visitDocxParagraphs({ documentBody: { content } }, (paragraph) => {
-    visitParagraphRuns(paragraph, (run) => {
-      if (!sourceRunHasPageBreak(run)) {
-        return;
-      }
-      throw new UnsupportedDocxToProseMirrorConversionError({
-        message: `${PAGE_BREAK_CONTAINER_DESCRIPTIONS[owner]} cannot be represented in the editor model`,
-        owner,
-        contentType: "break",
-      });
-    });
+  if (!sourceDescendants.containsPageBreakRun(content)) {
+    return;
+  }
+  throw new UnsupportedDocxToProseMirrorConversionError({
+    message: `${PAGE_BREAK_CONTAINER_DESCRIPTIONS[owner]} cannot be represented in the editor model`,
+    owner,
+    contentType: "break",
   });
 }
 
 type ParagraphPageBreakProjectionOptions = {
   paragraph: Paragraph;
   attrs: ParagraphAttrs;
-  hasTextBoxAnchor: boolean;
+  effectiveFrame: ParagraphFormatting["frame"];
+  sourceDescendants: PageBreakRunSourceDescendantIndex;
 };
 
 function assertParagraphPageBreakCanBeProjected({
   paragraph,
   attrs,
-  hasTextBoxAnchor,
+  effectiveFrame,
+  sourceDescendants,
 }: ParagraphPageBreakProjectionOptions): void {
-  let hasPageBreak = false;
-  let pageBreakSharesTextBoxShape = false;
-  visitParagraphRuns(paragraph, (run) => {
-    if (!sourceRunHasPageBreak(run)) {
-      return;
-    }
-    hasPageBreak = true;
-    pageBreakSharesTextBoxShape ||= run.content.some(
-      (content) => content.type === "shape" && content.shape.textBody !== undefined,
-    );
-  });
-  if (!hasPageBreak) {
+  const sourceFeatures = sourceDescendants.paragraphFeatures(paragraph);
+  if (!sourceFeatures.hasPageBreakRun) {
     return;
   }
 
   const disposition = pageBreakRunParagraphProjectionDispositionForFeatures({
     attrs,
-    // Same-run shape ownership has a more specific typed refusal in
-    // assertPageBreakSourceRunIsRepresentable; preserve that diagnostic.
-    hasTextBoxAnchor: hasTextBoxAnchor && !pageBreakSharesTextBoxShape,
+    effectiveFrame,
+    // A shape sharing the page-break-bearing run or field result has a more
+    // specific typed refusal; preserve that content-owner diagnostic.
+    hasTextBoxAnchor: sourceFeatures.hasTextBoxShape && !sourceFeatures.pageBreakSharesTextBoxShape,
   });
   if (disposition.status === "supported") {
     return;
@@ -4108,8 +4127,7 @@ function convertParagraphWithTextBoxes(
   const pmParagraph = convertParagraph(
     block,
     styleResolver,
-    context.nextHyperlinkInstanceIndex,
-    context.pairedBookmarkIds,
+    context,
     undefined,
     extraRunFormatting,
     tableParagraphOverlay,
@@ -4385,7 +4403,11 @@ function convertTextBox(
     inlineSdts: NonNullable<TextBoxAttrs["_docxInlineSdts"]>;
   },
 ): PMNode {
-  assertSourceContainerHasNoPageBreakRun(textBox.content, "text-box");
+  assertSourceContainerHasNoPageBreakRun(
+    textBox.content,
+    "text-box",
+    options.context.pageBreakRunSourceDescendants,
+  );
 
   const textBoxData: { size?: Partial<TextBox["size"]> } = textBox;
   const textBoxSize = textBoxData.size;
@@ -4565,6 +4587,7 @@ export function headerFooterToProseDoc(
     nextTextBoxGroupId,
     nextHyperlinkInstanceIndex,
     pairedBookmarkIds,
+    pageBreakRunSourceDescendants: buildPageBreakRunSourceDescendantIndex(content),
   };
 
   const convertBlocks = (blocks: BlockContent[]): PMNode[] => {

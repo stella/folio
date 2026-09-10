@@ -91,7 +91,7 @@ export type StyleEngine = {
   resolveParagraphStyle: (styleId: string | undefined | null) => ResolvedParagraphStyle;
   /**
    * Resolve the paragraph cascade for a paragraph inside a table cell,
-   * layering the enclosing table style's paragraph-spacing fields between
+   * layering the modeled enclosing-table paragraph fields between
    * docDefaults and the paragraph's own style chain — see
    * {@link StyleResolver.resolveParagraphStyleInTable}.
    *

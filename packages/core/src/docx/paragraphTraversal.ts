@@ -22,10 +22,7 @@ export type DocxParagraphSurfaces = {
 
 /** Visit every run directly owned by a paragraph's inline-content tree. */
 export const visitParagraphRuns = (paragraph: Paragraph, visit: (run: Run) => void): void => {
-  type ParagraphRunTreeNode =
-    | ParagraphContent
-    | TrackedRunContent
-    | InlineSdt["content"][number];
+  type ParagraphRunTreeNode = ParagraphContent | TrackedRunContent | InlineSdt["content"][number];
 
   const visitParagraphContent = (content: ParagraphRunTreeNode): void => {
     switch (content.type) {

@@ -13,25 +13,43 @@ const alternatingRanges = (count: number) => {
   return { runs, pageBreaks };
 };
 
+const observeRunReads = <T>(runs: T[]) => {
+  const readsByIndex = new Map<number, number>();
+  const observed = new Proxy(runs, {
+    get: (target, property, receiver) => {
+      if (typeof property === "string") {
+        const index = Number(property);
+        if (Number.isInteger(index) && index >= 0) {
+          readsByIndex.set(index, (readsByIndex.get(index) ?? 0) + 1);
+        }
+      }
+      return Reflect.get(target, property, receiver);
+    },
+  });
+  return { observed, readsByIndex };
+};
+
 describe("page-break run partitioning", () => {
   test.each([16_000, 32_000])(
     "visits each run at most once plus one boundary peek across %i alternating pairs",
     (pairCount) => {
       const { runs, pageBreaks } = alternatingRanges(pairCount);
-      const result = partitionRunsAtPageBreaks(runs, pageBreaks);
+      const { observed, readsByIndex } = observeRunReads(runs);
+      const result = partitionRunsAtPageBreaks(observed, pageBreaks);
 
       expect(result.type).toBe("partitioned");
       if (result.type !== "partitioned") {
         throw new Error("Expected ordered alternating ranges to partition");
       }
-      expect(result.runVisits).toBe(pairCount * 2 - 1);
+      expect([...readsByIndex.values()].reduce((sum, count) => sum + count, 0)).toBe(
+        pairCount * 2 - 1,
+      );
+      expect([...readsByIndex.values()].every((count) => count <= 2)).toBe(true);
       expect(result.partitions).toHaveLength(pairCount);
       expect(
         result.partitions.every(
           ({ before, pageBreak }, index) =>
-            before.length === 1 &&
-            before[0] === runs[index] &&
-            pageBreak === pageBreaks[index],
+            before.length === 1 && before[0] === runs[index] && pageBreak === pageBreaks[index],
         ),
       ).toBe(true);
       expect(result.partitions.at(0)?.before.at(0)).toBe(runs.at(0));
@@ -48,7 +66,6 @@ describe("page-break run partitioning", () => {
       type: "overlap",
       pageBreak,
       run: overlappingRun,
-      runVisits: 1,
     });
   });
 });

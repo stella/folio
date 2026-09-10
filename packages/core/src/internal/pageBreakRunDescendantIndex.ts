@@ -1,9 +1,5 @@
 import type { Node as PMNode } from "prosemirror-model";
 
-type BuildPageBreakRunDescendantIndexOptions = {
-  onNodeVisited?: (node: PMNode) => void;
-};
-
 export type PageBreakRunDescendantIndex = {
   firstPageBreakRunPosition: (node: PMNode) => number | undefined;
 };
@@ -21,14 +17,10 @@ const indexesPageBreakDescendants = (node: PMNode): boolean => {
 };
 
 /** Build one identity-scoped index for a single layout conversion. */
-export const buildPageBreakRunDescendantIndex = (
-  doc: PMNode,
-  options: BuildPageBreakRunDescendantIndexOptions = {},
-): PageBreakRunDescendantIndex => {
+export const buildPageBreakRunDescendantIndex = (doc: PMNode): PageBreakRunDescendantIndex => {
   const positions = new WeakMap<PMNode, number>();
 
   const visitNode = (node: PMNode, startPos: number): number | undefined => {
-    options.onNodeVisited?.(node);
     let firstPosition = node.type.name === "pageBreakRun" ? startPos : undefined;
 
     // Visit every child even after finding the first break. Ancestor answers

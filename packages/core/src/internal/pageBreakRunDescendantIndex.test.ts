@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test";
-import type { Node as PMNode } from "prosemirror-model";
+import { describe, expect, spyOn, test } from "bun:test";
+import { Node as PMNode } from "prosemirror-model";
 
 import { schema } from "../prosemirror/schema";
 import { buildPageBreakRunDescendantIndex } from "./pageBreakRunDescendantIndex";
@@ -49,26 +49,30 @@ const absolutePositionOf = (doc: PMNode, target: PMNode): number => {
 
 const measureIndexBuild = (depth: number): number => {
   const { doc, owners, pageBreak, unrelatedParagraph } = nestedPageBreakDocument(depth);
-  const visitCounts = new Map<PMNode, number>();
-  const index = buildPageBreakRunDescendantIndex(doc, {
-    onNodeVisited: (node) => {
-      visitCounts.set(node, (visitCounts.get(node) ?? 0) + 1);
-    },
-  });
+  const { index, visitCount } = (() => {
+    const forEach = spyOn(PMNode.prototype, "forEach");
+    try {
+      return {
+        index: buildPageBreakRunDescendantIndex(doc),
+        visitCount: forEach.mock.calls.length,
+      };
+    } finally {
+      forEach.mockRestore();
+    }
+  })();
 
   let nodeCount = 1;
   doc.descendants(() => {
     nodeCount += 1;
   });
-  expect(visitCounts.size).toBe(nodeCount);
-  expect([...visitCounts.values()].every((count) => count === 1)).toBe(true);
+  expect(visitCount).toBe(nodeCount);
 
   const pageBreakPosition = absolutePositionOf(doc, pageBreak);
-  expect(owners.every((owner) => index.firstPageBreakRunPosition(owner) === pageBreakPosition)).toBe(
-    true,
-  );
+  expect(
+    owners.every((owner) => index.firstPageBreakRunPosition(owner) === pageBreakPosition),
+  ).toBe(true);
   expect(index.firstPageBreakRunPosition(unrelatedParagraph)).toBeUndefined();
-  return visitCounts.size;
+  return visitCount;
 };
 
 describe("page-break descendant index", () => {
@@ -86,9 +90,7 @@ describe("page-break descendant index", () => {
     const laterBreak = schema.node("pageBreakRun");
     const laterParagraph = schema.node("paragraph", null, [laterBreak]);
     const laterCell = schema.node("tableCell", null, [laterParagraph]);
-    const laterTable = schema.node("table", null, [
-      schema.node("tableRow", null, [laterCell]),
-    ]);
+    const laterTable = schema.node("table", null, [schema.node("tableRow", null, [laterCell])]);
     const textBox = schema.node("textBox", { width: 100 }, [firstParagraph, laterTable]);
     const doc = schema.node("doc", null, [textBox]);
 

@@ -1,5 +1,6 @@
 import type { Node as PMNode } from "prosemirror-model";
 
+import type { ParagraphFormatting } from "../types/document";
 import { expectParagraphAttrs } from "./attrs";
 import type { ParagraphAttrs } from "./schema/nodes";
 
@@ -24,16 +25,21 @@ export type PageBreakRunParagraphProjectionDisposition =
 
 type PageBreakRunParagraphFeatures = {
   attrs: ParagraphAttrs;
+  effectiveFrame: ParagraphFormatting["frame"];
   hasTextBoxAnchor: boolean;
 };
 
 /** Keep source-import and ProseMirror-layout ownership decisions on one predicate. */
 export const pageBreakRunParagraphProjectionDispositionForFeatures = ({
   attrs,
+  effectiveFrame,
   hasTextBoxAnchor,
 }: PageBreakRunParagraphFeatures): PageBreakRunParagraphProjectionDisposition => {
-  const frame = attrs._originalFormatting?.frame;
-  if (frame !== undefined && frame.dropCap !== "drop" && frame.dropCap !== "margin") {
+  if (
+    effectiveFrame !== undefined &&
+    effectiveFrame.dropCap !== "drop" &&
+    effectiveFrame.dropCap !== "margin"
+  ) {
     return {
       status: "unsupported",
       reason: "frame",
@@ -76,5 +82,9 @@ export const pageBreakRunParagraphProjectionDisposition = (
     hasTextBoxAnchor ||= descendant.type.name === "textBoxAnchor";
     return !hasTextBoxAnchor;
   });
-  return pageBreakRunParagraphProjectionDispositionForFeatures({ attrs, hasTextBoxAnchor });
+  return pageBreakRunParagraphProjectionDispositionForFeatures({
+    attrs,
+    effectiveFrame: attrs._originalFormatting?.frame,
+    hasTextBoxAnchor,
+  });
 };
