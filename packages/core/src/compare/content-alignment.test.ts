@@ -18,12 +18,13 @@ type CellOptions = {
   rowIndex: number;
   cellIndex: number;
   gridColumnIndex: number;
+  paragraphIndex?: number;
 };
 
 const cell = (
   id: string,
   text: string,
-  { rowIndex, cellIndex, gridColumnIndex }: CellOptions,
+  { rowIndex, cellIndex, gridColumnIndex, paragraphIndex = 0 }: CellOptions,
   options: Partial<FolioContentBlock> = {},
 ): FolioContentBlock => ({
   id,
@@ -38,7 +39,7 @@ const cell = (
     gridColumnIndex,
     columnSpan: 1,
     rowSpan: 1,
-    paragraphIndex: 0,
+    paragraphIndex,
   },
 });
 
@@ -120,7 +121,8 @@ describe("shared content-alignment LCS work", () => {
       "pair",
       "revisedOnly",
     ]);
-    expect(workSession.remainingLcsCells).toBe(4);
+    // The table cell's 1x1 exact-text matrix shares the same allowance.
+    expect(workSession.remainingLcsCells).toBe(3);
     const secondFallback = steps.at(-2);
     expect(secondFallback?.type).toBe("pair");
     if (secondFallback?.type !== "pair") {
@@ -130,6 +132,111 @@ describe("shared content-alignment LCS work", () => {
       "Zeta",
       "Eta",
     ]);
+  });
+
+  test("shares one aggregate allowance across table-cell text matrices", () => {
+    const workSession = createFolioContentAlignmentWorkSession({ lcsCells: 10 });
+    const tableParagraph = ({
+      id,
+      text,
+      cellIndex,
+      paragraphIndex,
+    }: {
+      id: string;
+      text: string;
+      cellIndex: number;
+      paragraphIndex: number;
+    }): FolioContentBlock =>
+      cell(
+        id,
+        text,
+        { rowIndex: 0, cellIndex, gridColumnIndex: cellIndex, paragraphIndex },
+        { idStability: "positional" },
+      );
+    const baseBlocks = [
+      tableParagraph({
+        id: "base-alpha",
+        text: "Alpha",
+        cellIndex: 0,
+        paragraphIndex: 0,
+      }),
+      tableParagraph({
+        id: "base-gamma",
+        text: "Gamma",
+        cellIndex: 0,
+        paragraphIndex: 1,
+      }),
+      tableParagraph({
+        id: "base-delta",
+        text: "Delta",
+        cellIndex: 1,
+        paragraphIndex: 0,
+      }),
+      tableParagraph({
+        id: "base-zeta",
+        text: "Zeta",
+        cellIndex: 1,
+        paragraphIndex: 1,
+      }),
+    ];
+    const revisedBlocks = [
+      tableParagraph({
+        id: "revised-alpha",
+        text: "Alpha",
+        cellIndex: 0,
+        paragraphIndex: 0,
+      }),
+      tableParagraph({
+        id: "revised-epsilon",
+        text: "Epsilon",
+        cellIndex: 0,
+        paragraphIndex: 1,
+      }),
+      tableParagraph({
+        id: "revised-gamma",
+        text: "Gamma",
+        cellIndex: 0,
+        paragraphIndex: 2,
+      }),
+      tableParagraph({
+        id: "revised-delta",
+        text: "Delta",
+        cellIndex: 1,
+        paragraphIndex: 0,
+      }),
+      tableParagraph({
+        id: "revised-eta",
+        text: "Eta",
+        cellIndex: 1,
+        paragraphIndex: 1,
+      }),
+      tableParagraph({
+        id: "revised-zeta",
+        text: "Zeta",
+        cellIndex: 1,
+        paragraphIndex: 2,
+      }),
+    ];
+
+    const steps = alignFolioContentStructure({ baseBlocks, revisedBlocks, workSession });
+
+    expect(steps.map(({ type }) => type)).toEqual([
+      "pair",
+      "revisedOnly",
+      "pair",
+      "pair",
+      "pair",
+      "revisedOnly",
+    ]);
+    expect(workSession.remainingLcsCells).toBe(4);
+    const secondCellFallback = steps.at(-2);
+    if (secondCellFallback?.type !== "pair") {
+      throw new Error("Expected the second table cell to use positional fallback.");
+    }
+    expect([
+      secondCellFallback.baseBlock.text,
+      secondCellFallback.revisedBlock.text,
+    ]).toEqual(["Zeta", "Eta"]);
   });
 });
 
@@ -171,7 +278,103 @@ describe("container-safe structural alignment", () => {
   });
 });
 
-describe("table column structural alignment", () => {
+describe("table row and column structural alignment", () => {
+  test("keeps shifted rows paired by logical row before considering stable ids", () => {
+    const base = [
+      cell("first-id", "First logical row phrase", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      cell("second-id", "Second logical row phrase", {
+        rowIndex: 1,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+    ];
+    const revised = [
+      cell("inserted-id", "Inserted unrelated row", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      cell("second-id", "First logical row phrase", {
+        rowIndex: 1,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      cell("first-id", "Second logical row phrase", {
+        rowIndex: 2,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+    ];
+
+    const steps = alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised });
+    const pairs = steps.filter((step) => step.type === "pair");
+
+    expect(steps.map(({ type }) => type)).toEqual(["revisedRow", "pair", "pair"]);
+    expect(
+      pairs.map(({ baseBlock, revisedBlock }) => [
+        baseBlock.table?.rowIndex,
+        revisedBlock.table?.rowIndex,
+        baseBlock.text,
+        revisedBlock.text,
+      ]),
+    ).toEqual([
+      [0, 1, "First logical row phrase", "First logical row phrase"],
+      [1, 2, "Second logical row phrase", "Second logical row phrase"],
+    ]);
+  });
+
+  test("keeps shifted columns paired by logical column before considering stable ids", () => {
+    const base = [
+      cell("left-id", "Account owner", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      cell("right-id", "Amount payable", {
+        rowIndex: 0,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+      }),
+    ];
+    const revised = [
+      cell("inserted-id", "Currency code", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      cell("right-id", "Account owner", {
+        rowIndex: 0,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+      }),
+      cell("left-id", "Amount payable", {
+        rowIndex: 0,
+        cellIndex: 2,
+        gridColumnIndex: 2,
+      }),
+    ];
+
+    const steps = alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised });
+    const pairs = steps.filter((step) => step.type === "pair");
+
+    expect(steps.map(({ type }) => type)).toEqual(["revisedColumn", "pair", "pair"]);
+    expect(
+      pairs.map(({ baseBlock, revisedBlock }) => [
+        baseBlock.table?.gridColumnIndex,
+        revisedBlock.table?.gridColumnIndex,
+        baseBlock.text,
+        revisedBlock.text,
+      ]),
+    ).toEqual([
+      [0, 1, "Account owner", "Account owner"],
+      [1, 2, "Amount payable", "Amount payable"],
+    ]);
+  });
+
   test("keeps an inserted column's members in document row order", () => {
     const base = [
       cell("a0", "Account", { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 }),

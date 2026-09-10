@@ -495,6 +495,73 @@ describe("representation-neutral comparison stream", () => {
     }
   });
 
+  test("stable move identity takes precedence over an earlier exact-text candidate", () => {
+    const source = contentBlock({
+      id: "stable-source",
+      text: "alpha beta gamma delta epsilon",
+    });
+    const decoy = contentBlock({
+      id: "exact-decoy",
+      text: "alpha beta gamma delta epsilon",
+    });
+    const stableTarget = contentBlock({
+      id: "stable-source",
+      text: "alpha beta gamma delta zeta",
+    });
+    const anchors = stableAnchors();
+
+    const comparison = successfulComparison({
+      base: [source, ...anchors.base],
+      revised: [...anchors.revised, decoy, stableTarget],
+    });
+    const movedTo = comparison.events.find(({ type }) => type === "movedTo");
+
+    expect(movedTo).toMatchObject({
+      type: "movedTo",
+      baseBlockId: "stable-source",
+      revisedBlocks: [{ id: "stable-source" }],
+    });
+    expect(
+      comparison.events.find(
+        ({ type, revisedBlocks }) => type === "inserted" && revisedBlocks[0]?.id === "exact-decoy",
+      ),
+    ).toBeDefined();
+  });
+
+  test("an exact move takes precedence over an earlier edited candidate", () => {
+    const source = contentBlock({
+      id: "exact-source",
+      text: "alpha beta gamma delta epsilon",
+    });
+    const editedDecoy = contentBlock({
+      id: "edited-decoy",
+      text: "alpha beta gamma delta zeta",
+    });
+    const exactTarget = contentBlock({
+      id: "exact-target",
+      text: "alpha beta gamma delta epsilon",
+    });
+    const anchors = stableAnchors();
+
+    const comparison = successfulComparison({
+      base: [source, ...anchors.base],
+      revised: [...anchors.revised, editedDecoy, exactTarget],
+    });
+    const movedTo = comparison.events.find(({ type }) => type === "movedTo");
+
+    expect(movedTo).toMatchObject({
+      type: "movedTo",
+      baseBlockId: "exact-source",
+      revisedBlocks: [{ id: "exact-target" }],
+    });
+    expect(
+      comparison.events.find(
+        ({ type, revisedBlocks }) =>
+          type === "inserted" && revisedBlocks[0]?.id === "edited-decoy",
+      ),
+    ).toBeDefined();
+  });
+
   test("a positional short ID match remains a deletion and insertion", () => {
     const movedBase = contentBlock({
       id: "position-0",
@@ -865,6 +932,89 @@ describe("container-aware comparison", () => {
       ["left", "right"],
       ["right", "left"],
     ]);
+    expect(comparison.structuralChanges).toEqual([]);
+  });
+
+  test.each([
+    {
+      label: "stable-id",
+      baseId: "relocated",
+      revisedId: "relocated",
+      baseText: "Title",
+      revisedText: "Updated",
+    },
+    {
+      label: "exact-text",
+      baseId: "exact-base",
+      revisedId: "exact-revised",
+      baseText: "payment is due within thirty days",
+      revisedText: "payment is due within thirty days",
+    },
+    {
+      label: "edited-text",
+      baseId: "edited-base",
+      revisedId: "edited-revised",
+      baseText: "payment is due within thirty days",
+      revisedText: "payment is due within forty days",
+    },
+  ])("keeps $label relocation across table cells separate", ({
+    baseId,
+    revisedId,
+    baseText,
+    revisedText,
+  }) => {
+    const base = [
+      tableBlock({
+        id: baseId,
+        text: baseText,
+        rowIndex: 0,
+        cellIndex: 0,
+        paragraphIndex: 0,
+      }),
+      tableBlock({
+        id: "left-anchor",
+        text: "Left cell durable anchor",
+        rowIndex: 0,
+        cellIndex: 0,
+        paragraphIndex: 1,
+      }),
+      tableBlock({
+        id: "right-anchor",
+        text: "Right cell durable anchor",
+        rowIndex: 0,
+        cellIndex: 1,
+        paragraphIndex: 0,
+      }),
+    ];
+    const revised = [
+      tableBlock({
+        id: "left-anchor",
+        text: "Left cell durable anchor",
+        rowIndex: 0,
+        cellIndex: 0,
+        paragraphIndex: 0,
+      }),
+      tableBlock({
+        id: "right-anchor",
+        text: "Right cell durable anchor",
+        rowIndex: 0,
+        cellIndex: 1,
+        paragraphIndex: 0,
+      }),
+      tableBlock({
+        id: revisedId,
+        text: revisedText,
+        rowIndex: 0,
+        cellIndex: 1,
+        paragraphIndex: 1,
+      }),
+    ];
+
+    const comparison = successfulComparison({ base, revised });
+
+    expect(eventTypes(comparison)).toEqual(["deleted", "unchanged", "unchanged", "inserted"]);
+    expect(baseProjection(comparison)).toEqual(base);
+    expect(revisedProjection(comparison)).toEqual(revised);
     expect(comparison.structuralChanges).toEqual([]);
   });
 
