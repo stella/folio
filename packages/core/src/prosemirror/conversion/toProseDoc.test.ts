@@ -1823,6 +1823,7 @@ describe("toProseDoc", () => {
                   type: "complexField",
                   fieldType: "TOC",
                   instruction: ' TOC \\o "1-1" ',
+                  fieldCode: [],
                   fieldResult: [
                     {
                       type: "run",
