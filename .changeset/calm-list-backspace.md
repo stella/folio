@@ -1,5 +1,7 @@
 ---
 "@stll/folio-core": patch
+"@stll/folio-react": patch
+"@stll/folio-vue": patch
 ---
 
-Allow deletion to continue after exiting style-inherited numbering.
+Keep list deletion, paired inline metadata, and rendered updates synchronized.

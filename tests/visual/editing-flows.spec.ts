@@ -68,12 +68,13 @@ function bodyText(page: Page): Promise<string> {
   );
 }
 
-function paintedBodyTextLength(page: Page): Promise<number> {
-  return page.evaluate(() =>
-    [...document.querySelectorAll(".layout-page-content")].reduce(
-      (length, element) => length + (element.textContent?.length ?? 0),
-      0,
-    ),
+function paintedBodyContains(page: Page, text: string): Promise<boolean> {
+  return page.evaluate(
+    (expected) =>
+      [...document.querySelectorAll(".layout-page-content")].some((element) =>
+        element.textContent?.includes(expected),
+      ),
+    text,
   );
 }
 
@@ -378,16 +379,61 @@ test.describe("lists", () => {
     await marker.click();
     await page.keyboard.press("End");
     await page.keyboard.press("Enter");
-    const inserted = "Synthetic deletion target";
+    const inserted = "Synthetic paired deletion target";
     await page.keyboard.type(inserted);
-    for (let index = 0; index < inserted.length; index += 1) {
+
+    await page.evaluate((expected) => {
+      const view = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView();
+      if (!view) throw new Error("Editor view is unavailable");
+      const boundary = view.state.schema.nodes.bookmarkBoundary;
+      if (!boundary) throw new Error("Bookmark boundary node is unavailable");
+      let targetStart: number | null = null;
+      view.state.doc.descendants((node, position) => {
+        const matchIndex = node.text?.indexOf(expected) ?? -1;
+        if (matchIndex >= 0) {
+          targetStart = position + matchIndex;
+          return false;
+        }
+        return true;
+      });
+      if (targetStart === null) throw new Error("Synthetic target is unavailable");
+      const targetEnd = targetStart + expected.length;
+      const transaction = view.state.tr
+        .insert(targetEnd, boundary.create({ type: "end", id: 707 }))
+        .insert(targetStart, boundary.create({ type: "start", id: 707, name: "synthetic-range" }));
+      view.dispatch(transaction);
+      view.focus();
+    }, inserted);
+
+    // One edit removes visible text and one invisible endpoint. Its partner
+    // must disappear atomically, and paint must consume the full transaction
+    // batch rather than only the initiating edit.
+    await page.evaluate(() => {
+      const view = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView();
+      if (!view) throw new Error("Editor view is unavailable");
+      let endPosition: number | null = null;
+      view.state.doc.descendants((node, position) => {
+        if (node.type.name === "bookmarkBoundary" && node.attrs.type === "end") {
+          endPosition = position;
+          return false;
+        }
+        return true;
+      });
+      if (endPosition === null) throw new Error("Synthetic endpoint is unavailable");
+      view.dispatch(view.state.tr.delete(endPosition - 1, endPosition + 1));
+      view.focus();
+    });
+    await expect.poll(() => countNodes(page, "bookmarkBoundary")).toBe(0);
+    await expect.poll(async () => (await bodyText(page)).includes(inserted)).toBe(false);
+    await expect.poll(() => paintedBodyContains(page, inserted)).toBe(false);
+
+    for (let index = 0; index < inserted.length - 1; index += 1) {
       await page.keyboard.press("Backspace");
     }
     await page.keyboard.press("Backspace");
     await expect.poll(() => caretParagraphNumId(page)).toBe(0);
 
     const modelLengthBeforeDelete = (await bodyText(page)).length;
-    const paintedLengthBeforeDelete = await paintedBodyTextLength(page);
     for (let index = 0; index < 6; index += 1) {
       await page.keyboard.press("Backspace");
       if ((await bodyText(page)).length < modelLengthBeforeDelete) {
@@ -395,7 +441,6 @@ test.describe("lists", () => {
       }
     }
     await expect.poll(async () => (await bodyText(page)).length).toBe(modelLengthBeforeDelete - 1);
-    await expect.poll(() => paintedBodyTextLength(page)).toBeLessThan(paintedLengthBeforeDelete);
   });
 });
 

@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import fc from "fast-check";
+import { EditorState, type Plugin } from "prosemirror-state";
 
 import { schema } from "../../schema";
+import { validateProseMirrorDocument } from "../../validation";
+import { BookmarkBoundaryExtension } from "./BookmarkBoundaryExtension";
 
 class FakeHTMLElement {
   constructor(private readonly attrs: Readonly<Record<string, string>>) {}
@@ -16,6 +20,32 @@ const parseBookmarkBoundary = (attrs: Readonly<Record<string, string>>) => {
     throw new Error("BookmarkBoundaryExtension must define parseDOM[0].getAttrs");
   }
   return getAttrs(new FakeHTMLElement(attrs) as unknown as HTMLElement);
+};
+
+const getBoundaryIntegrityPlugin = (): Plugin => {
+  const plugin = BookmarkBoundaryExtension().onSchemaReady({ schema }).plugins?.at(0);
+  if (!plugin) {
+    throw new Error("BookmarkBoundaryExtension must enforce boundary integrity");
+  }
+  return plugin;
+};
+
+const createBoundaryDocument = () =>
+  schema.node("doc", null, [
+    schema.node("paragraph", null, [
+      schema.node("bookmarkBoundary", { type: "start", id: 101, name: "range-a" }),
+      schema.text("alpha"),
+      schema.node("bookmarkBoundary", { type: "start", id: 202, name: "range-b" }),
+      schema.text("beta"),
+      schema.node("bookmarkBoundary", { type: "end", id: 101 }),
+      schema.text("gamma"),
+      schema.node("bookmarkBoundary", { type: "end", id: 202 }),
+    ]),
+  ]);
+
+const expectValidBoundaryStructure = (state: EditorState): void => {
+  const result = validateProseMirrorDocument(state.doc);
+  expect(result.issues.filter(({ message }) => message.includes("Bookmark"))).toEqual([]);
 };
 
 describe("BookmarkBoundaryExtension DOM round-trip", () => {
@@ -91,6 +121,92 @@ describe("BookmarkBoundaryExtension DOM round-trip", () => {
     expect(boundaryDom[1]["data-docx-internal-clipboard"]).toBeTruthy();
     expect(anchorDom[1]["data-docx-internal-clipboard"]).toBe(
       boundaryDom[1]["data-docx-internal-clipboard"],
+    );
+  });
+});
+
+describe("BookmarkBoundaryExtension editing integrity", () => {
+  test("removes the surviving endpoint when an edit deletes its pair", () => {
+    const state = EditorState.create({
+      doc: createBoundaryDocument(),
+      plugins: [getBoundaryIntegrityPlugin()],
+    });
+
+    const applied = state.applyTransaction(state.tr.delete(1, 2));
+
+    expect(applied.transactions).toHaveLength(2);
+    expectValidBoundaryStructure(applied.state);
+    expect(applied.state.doc.textContent).toBe("alphabetagamma");
+  });
+
+  test("preserves complete crossing pairs after ordinary text edits", () => {
+    const state = EditorState.create({
+      doc: createBoundaryDocument(),
+      plugins: [getBoundaryIntegrityPlugin()],
+    });
+
+    const applied = state.applyTransaction(state.tr.insertText("x", 3));
+
+    expect(applied.transactions).toHaveLength(1);
+    expectValidBoundaryStructure(applied.state);
+    let boundaryCount = 0;
+    applied.state.doc.descendants((node) => {
+      if (node.type.name === "bookmarkBoundary") {
+        boundaryCount += 1;
+      }
+      return true;
+    });
+    expect(boundaryCount).toBe(4);
+  });
+
+  test("removes ambiguous node pairs that collide with paragraph bookmark ids", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", { bookmarks: [{ id: 303, name: "paragraph-range" }] }, [
+        schema.node("bookmarkBoundary", { type: "start", id: 303, name: "node-range" }),
+        schema.text("synthetic"),
+        schema.node("bookmarkBoundary", { type: "end", id: 303 }),
+      ]),
+    ]);
+    const state = EditorState.create({ doc, plugins: [getBoundaryIntegrityPlugin()] });
+
+    const applied = state.applyTransaction(state.tr.insertText("x", 3));
+
+    expect(applied.transactions).toHaveLength(2);
+    expectValidBoundaryStructure(applied.state);
+    let boundaryCount = 0;
+    applied.state.doc.descendants((node) => {
+      if (node.type.name === "bookmarkBoundary") {
+        boundaryCount += 1;
+      }
+      return true;
+    });
+    expect(boundaryCount).toBe(0);
+  });
+
+  test("preserves paired-boundary validity under arbitrary deletion sequences", () => {
+    fc.assert(
+      fc.property(
+        fc.array(fc.tuple(fc.nat(), fc.nat()), { minLength: 1, maxLength: 20 }),
+        (deletions) => {
+          let state = EditorState.create({
+            doc: createBoundaryDocument(),
+            plugins: [getBoundaryIntegrityPlugin()],
+          });
+
+          for (const [first, second] of deletions) {
+            const paragraph = state.doc.firstChild;
+            if (!paragraph) {
+              throw new Error("Synthetic document must retain its paragraph");
+            }
+            const boundary = paragraph.content.size + 1;
+            const from = 1 + (Math.min(first, second) % boundary);
+            const to = 1 + (Math.max(first, second) % boundary);
+            const applied = state.applyTransaction(state.tr.delete(from, to));
+            state = applied.state;
+            expectValidBoundaryStructure(state);
+          }
+        },
+      ),
     );
   });
 });

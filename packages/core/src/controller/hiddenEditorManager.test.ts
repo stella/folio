@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { EditorState, Transaction } from "prosemirror-state";
+import type { EditorState } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
 import {
@@ -46,7 +46,7 @@ const makeDeps = (
     getReadOnly: () => false,
     getDocumentIdentity: () => "0",
     getDocumentContext: () => null,
-    onTransaction: (_transaction: Transaction, _newState: EditorState) => {
+    onTransaction: () => {
       spies["onTransaction"].calls += 1;
     },
     onSelectionChange: (_state: EditorState) => {

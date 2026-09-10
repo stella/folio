@@ -362,7 +362,7 @@ export type HiddenEditorManagerDeps = {
   getDocumentIdentity: () => string;
   /** Document context for the API's `getDocument` (PM state -> Document). */
   getDocumentContext: () => Document | null;
-  onTransaction: (transaction: Transaction, newState: EditorState) => void;
+  onTransaction: (update: HiddenEditorTransactionUpdate) => void;
   onSelectionChange: (state: EditorState) => void;
   onKeyDown: (view: EditorView, event: KeyboardEvent) => boolean;
   onCopy?: () => void;
@@ -372,6 +372,12 @@ export type HiddenEditorManagerDeps = {
   onEditorViewReady: (view: EditorView) => void;
   onEditorViewDestroy: () => void;
   onRemoteSelectionsChange: (selections: HiddenProseMirrorRemoteSelection[]) => void;
+};
+
+export type HiddenEditorTransactionUpdate = {
+  transactions: readonly Transaction[];
+  newState: EditorState;
+  docChanged: boolean;
 };
 
 type PreventableDomEvent = { preventDefault: () => void };
@@ -480,15 +486,26 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
           return;
         }
 
-        const newState = view.state.apply(transaction);
-        view.updateState(newState);
+        const applied = view.state.applyTransaction(transaction);
+        view.updateState(applied.state);
+
+        const docChanged = applied.transactions.some(
+          (appliedTransaction) => appliedTransaction.docChanged,
+        );
+        const selectionChanged = applied.transactions.some(
+          (appliedTransaction) => appliedTransaction.selectionSet || appliedTransaction.docChanged,
+        );
 
         // Notify about transaction.
-        deps.onTransaction(transaction, newState);
+        deps.onTransaction({
+          transactions: applied.transactions,
+          newState: applied.state,
+          docChanged,
+        });
 
         // Notify about selection changes.
-        if (transaction.selectionSet || transaction.docChanged) {
-          deps.onSelectionChange(newState);
+        if (selectionChanged) {
+          deps.onSelectionChange(applied.state);
         }
 
         const currentCollaboration = deps.getCollaboration();
@@ -496,7 +513,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
         if (currentCollaboration?.awareness && currentCollaborationModules) {
           deps.onRemoteSelectionsChange(
             collectRemoteSelections(
-              newState,
+              applied.state,
               currentCollaboration.awareness,
               currentCollaborationModules,
             ),

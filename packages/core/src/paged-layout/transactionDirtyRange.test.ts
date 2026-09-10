@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
 
 import { schema } from "../prosemirror/schema";
-import { getTransactionDirtyRange } from "./transactionDirtyRange";
+import { getTransactionDirtyRange, getTransactionsDirtyRange } from "./transactionDirtyRange";
 
 describe("getTransactionDirtyRange", () => {
   test("maps changed ranges from multi-step transactions into final document coordinates", () => {
@@ -52,5 +52,22 @@ describe("getTransactionDirtyRange", () => {
     const dirtyRange = getTransactionDirtyRange(transaction);
 
     expect(dirtyRange).toEqual({ from: 2, to: 7 });
+  });
+});
+
+describe("getTransactionsDirtyRange", () => {
+  test("includes appended transactions and maps every range into final coordinates", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, [schema.text("abcdefghijklmnopqrstuvwxyz".repeat(6))]),
+    ]);
+    const state = EditorState.create({ doc });
+    const firstTransaction = state.tr.insertText("A", 100);
+    const intermediateState = state.apply(firstTransaction);
+    const appendedTransaction = intermediateState.tr.insertText("prefix", 2);
+
+    expect(getTransactionsDirtyRange([firstTransaction, appendedTransaction])).toEqual({
+      from: 2,
+      to: 107,
+    });
   });
 });

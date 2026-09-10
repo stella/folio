@@ -1,7 +1,7 @@
 import type { Transaction } from "prosemirror-state";
 import { AddMarkStep, RemoveMarkStep } from "prosemirror-transform";
 
-import type { DirtyRange } from "./incrementalMeasure";
+import { mergeDirtyRanges, type DirtyRange } from "./incrementalMeasure";
 
 type DirtyRangeAccumulator = {
   from: number;
@@ -23,6 +23,34 @@ export function getTransactionDirtyRange(transaction: Transaction): DirtyRange |
   }
 
   return dirtyRange;
+}
+
+/** Collect every transaction in an applied batch in the final document's coordinates. */
+export function getTransactionsDirtyRange(transactions: readonly Transaction[]): DirtyRange | null {
+  let combinedRange: DirtyRange | null = null;
+
+  for (let index = 0; index < transactions.length; index += 1) {
+    const transaction = transactions[index];
+    if (!transaction) {
+      continue;
+    }
+    const range = getTransactionDirtyRange(transaction);
+    if (!range) {
+      continue;
+    }
+
+    let from = range.from;
+    let to = range.to;
+    for (const followingTransaction of transactions.slice(index + 1)) {
+      // oxlint-disable-next-line unicorn/no-array-method-this-argument -- ProseMirror Mapping.map(pos, assoc) API
+      from = followingTransaction.mapping.map(from, -1);
+      // oxlint-disable-next-line unicorn/no-array-method-this-argument -- ProseMirror Mapping.map(pos, assoc) API
+      to = followingTransaction.mapping.map(to, 1);
+    }
+    combinedRange = mergeDirtyRanges(combinedRange, { from, to });
+  }
+
+  return combinedRange;
 }
 
 function includeStepDirtyRange(
