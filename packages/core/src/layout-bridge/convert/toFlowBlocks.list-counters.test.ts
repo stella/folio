@@ -168,4 +168,53 @@ describe("toFlowBlocks counter sharing by abstractNumId", () => {
 
     expect(markersOf(toFlowBlocks(toProseDoc(doc), {}))).toEqual(["(1)", "(1)"]);
   });
+
+  test("style-sourced instances continue the shared abstract level", () => {
+    const state = createListCounterState();
+
+    expect(
+      advanceListMarker(
+        {
+          numPr: { numId: 1, ilvl: 0 },
+          listMarker: "(%1)",
+          listAbstractNumId: 4,
+          listLevelNumFmts: ["decimal"],
+        },
+        state,
+      ),
+    ).toBe("(1)");
+    expect(
+      advanceListMarker(
+        {
+          numPr: { numId: 1, ilvl: 1 },
+          listMarker: "(%1.%2)",
+          listAbstractNumId: 4,
+          listLevelNumFmts: ["decimal", "decimal"],
+        },
+        state,
+      ),
+    ).toBe("(1.1)");
+
+    expect(
+      advanceListMarker(
+        {
+          numPr: { numId: 2, ilvl: 1 },
+          numPrFromStyle: { numId: 2, ilvl: 1 },
+          listMarker: "(%1.%2)",
+          listAbstractNumId: 4,
+          listLevelNumFmts: ["decimal", "decimal"],
+        },
+        state,
+      ),
+    ).toBe("(1.2)");
+
+    const firstCounters = state.counters.get(1);
+    expect(firstCounters).toBe(state.counters.get(2));
+    expect(firstCounters).toBe(state.abstractCounters.get(4));
+
+    const cloned = cloneListCounterState(state);
+    expect(cloned.counters.get(1)).toBe(cloned.counters.get(2));
+    expect(cloned.counters.get(1)).toBe(cloned.abstractCounters.get(4));
+    expect(cloned.counters.get(1)).not.toBe(firstCounters);
+  });
 });

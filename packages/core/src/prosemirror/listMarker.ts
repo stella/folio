@@ -7,6 +7,12 @@ export type ListCounterState = {
   counters: Map<number, number[]>;
   abstractCounters: Map<number, number[]>;
   seenLevels: Set<string>;
+  restartedNumIds?: Set<number>;
+  previousList?: {
+    abstractNumId: number | null;
+    fromStyle: boolean;
+    numId: number | null;
+  };
   lastAdvancedNumId?: number;
 };
 
@@ -89,22 +95,36 @@ export function createListCounterState(): ListCounterState {
     counters: new Map(),
     abstractCounters: new Map(),
     seenLevels: new Set(),
+    restartedNumIds: new Set(),
+    previousList: { abstractNumId: null, fromStyle: false, numId: null },
   };
 }
 
 export function cloneListCounterState(state: ListCounterState): ListCounterState {
+  const clonedArrays = new Map<number[], number[]>();
+  const cloneCounters = (source: number[]): number[] => {
+    const existing = clonedArrays.get(source);
+    if (existing) return existing;
+    const cloned = [...source];
+    clonedArrays.set(source, cloned);
+    return cloned;
+  };
   const counters = new Map<number, number[]>();
   for (const [numId, values] of state.counters) {
-    counters.set(numId, [...values]);
+    counters.set(numId, cloneCounters(values));
   }
   const abstractCounters = new Map<number, number[]>();
   for (const [abstractNumId, values] of state.abstractCounters) {
-    abstractCounters.set(abstractNumId, [...values]);
+    abstractCounters.set(abstractNumId, cloneCounters(values));
   }
   return {
     counters,
     abstractCounters,
     seenLevels: new Set(state.seenLevels),
+    restartedNumIds: new Set(state.restartedNumIds ?? []),
+    previousList: {
+      ...(state.previousList ?? { abstractNumId: null, fromStyle: false, numId: null }),
+    },
     ...(state.lastAdvancedNumId !== undefined
       ? { lastAdvancedNumId: state.lastAdvancedNumId }
       : {}),
@@ -303,10 +323,11 @@ export function advanceListMarker(attrs: ParagraphAttrs, state: ListCounterState
   }
   const numId = attrs.numPr?.numId;
   if (numId === undefined || numId === 0) {
+    let marker: string | null = null;
     if (markerTemplate?.includes("%") && !attrs.listIsBullet) {
       const counters = getLastListCounters(state);
       if (counters) {
-        return resolveListTemplate({
+        marker = resolveListTemplate({
           template: markerTemplate,
           counters,
           levelFormats: attrs.listLevelNumFmts,
@@ -314,18 +335,56 @@ export function advanceListMarker(attrs: ParagraphAttrs, state: ListCounterState
         });
       }
     }
-    return null;
+    state.previousList = { abstractNumId: null, fromStyle: false, numId: null };
+    return marker;
   }
 
   if (attrs.listIsBullet) {
+    state.previousList = { abstractNumId: null, fromStyle: false, numId: null };
     return convertBulletToUnicode(attrs.listMarker ?? markerTemplate ?? "");
   }
 
-  const counters = state.counters.get(numId) ?? Array.from({ length: 9 }, () => Number.NaN);
+  const firstInstanceEncounter = !state.counters.has(numId);
+  let counters = state.counters.get(numId) ?? Array.from({ length: 9 }, () => Number.NaN);
   const abstractNumId = attrs.listAbstractNumId;
+  const previousList = state.previousList ?? {
+    abstractNumId: null,
+    fromStyle: false,
+    numId: null,
+  };
+  const restartedNumIds = (state.restartedNumIds ??= new Set());
+  const latestAbstractCounters =
+    abstractNumId === undefined ? undefined : state.abstractCounters.get(abstractNumId);
+  const styleNumbering = attrs.numPrFromStyle;
+  const resumesRestartedInstance =
+    firstInstanceEncounter &&
+    attrs.listStartOverride == null &&
+    abstractNumId !== undefined &&
+    previousList.abstractNumId === abstractNumId &&
+    previousList.numId !== null &&
+    previousList.numId !== numId &&
+    restartedNumIds.has(previousList.numId);
+  const resumesStyleInstance =
+    firstInstanceEncounter &&
+    !styleNumbering &&
+    attrs.listStartOverride == null &&
+    abstractNumId !== undefined &&
+    previousList.abstractNumId === abstractNumId &&
+    previousList.fromStyle;
+  if (
+    latestAbstractCounters &&
+    (styleNumbering || resumesRestartedInstance || resumesStyleInstance)
+  ) {
+    counters = latestAbstractCounters;
+  }
+  if (
+    attrs.listStartOverride != null ||
+    resumesRestartedInstance ||
+    (previousList.numId === numId && restartedNumIds.has(numId))
+  ) {
+    restartedNumIds.add(numId);
+  }
   if (level > 0) {
-    const latestAbstractCounters =
-      abstractNumId === undefined ? undefined : state.abstractCounters.get(abstractNumId);
     if (counters.slice(0, level).every((counter) => !Number.isFinite(counter))) {
       for (let index = 0; index < level; index += 1) {
         const latestCounter = latestAbstractCounters?.[index];
@@ -338,7 +397,8 @@ export function advanceListMarker(attrs: ParagraphAttrs, state: ListCounterState
   }
 
   const seenKey = `${numId}:${level}`;
-  if (!state.seenLevels.has(seenKey)) {
+  const firstEncounter = !state.seenLevels.has(seenKey);
+  if (firstEncounter) {
     state.seenLevels.add(seenKey);
     if (attrs.listStartOverride != null) {
       counters[level] = attrs.listStartOverride - 1;
@@ -362,8 +422,13 @@ export function advanceListMarker(attrs: ParagraphAttrs, state: ListCounterState
   state.counters.set(numId, counters);
   state.lastAdvancedNumId = numId;
   if (abstractNumId !== undefined) {
-    state.abstractCounters.set(abstractNumId, [...counters]);
+    state.abstractCounters.set(abstractNumId, counters);
   }
+  state.previousList = {
+    abstractNumId: abstractNumId ?? null,
+    fromStyle: Boolean(styleNumbering),
+    numId,
+  };
 
   const levelFormats =
     attrs.listLevelNumFmts ?? (attrs.listNumFmt ? [attrs.listNumFmt] : undefined);

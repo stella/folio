@@ -1104,10 +1104,11 @@ function paragraphFormattingToAttrs(
       }),
     );
 
-    // If style defines numPr but inline doesn't, use style's numPr
-    // numId === 0 means "no numbering" per OOXML spec — skip it
-    if (!formatting?.numPr && stylePpr?.numPr && stylePpr.numPr.numId !== 0) {
-      attrs.numPr = stylePpr.numPr;
+    // A direct numPr may carry only ilvl while the style supplies numId.
+    // Merge the two fields so the effective list keeps the style's numbering
+    // identity. A direct numId (including 0) is authoritative.
+    if (stylePpr?.numPr && formatting?.numPr?.numId === undefined && stylePpr.numPr.numId !== 0) {
+      attrs.numPr = { ...stylePpr.numPr, ...formatting?.numPr };
       attrs.numPrFromStyle = stylePpr.numPr;
     }
   } else {

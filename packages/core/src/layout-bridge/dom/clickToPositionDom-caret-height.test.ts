@@ -4,7 +4,8 @@ import { getCaretPositionFromDom } from "./clickToPositionDom";
 
 class FakeHTMLElement {
   dataset: Record<string, string> = {};
-  firstChild: unknown;
+  readonly childNodes: unknown[] = [];
+  private first: unknown;
   private readonly rect: Partial<DOMRect>;
   private readonly height: number;
   readonly classList = {
@@ -20,6 +21,15 @@ class FakeHTMLElement {
     for (const className of classes) {
       this.classes.add(className);
     }
+  }
+
+  get firstChild(): unknown {
+    return this.first;
+  }
+
+  set firstChild(value: unknown) {
+    this.first = value;
+    if (value !== undefined && this.childNodes.length === 0) this.childNodes.push(value);
   }
 
   get offsetHeight(): number {
@@ -50,6 +60,7 @@ class FakeHTMLElement {
     for (const child of children) {
       child.parent = this;
       this.children.push(child);
+      this.childNodes.push(child);
     }
   }
 

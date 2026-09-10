@@ -15,6 +15,13 @@ import {
   htmlQueryAll,
   queryHtmlElement,
 } from "../../utils/domGuards";
+import {
+  descendantTextNodes,
+  logicalTextOffset,
+  measurePaintedSpanRange,
+  textBoundaryAt,
+  totalTextLength,
+} from "./textStreamDom";
 
 /**
  * Find ProseMirror position from a click using DOM-based detection.
@@ -118,21 +125,20 @@ export function findPositionInSpan(
     return clientX < midpoint ? pmStart : pmEnd;
   }
 
-  const textNode = spanEl.firstChild;
-  if (!textNode || textNode.nodeType !== Node.TEXT_NODE) {
+  const textNodes = descendantTextNodes(spanEl);
+  if (textNodes.length === 0) {
     // No text content - return start position
     return pmStart;
   }
 
-  const text = textNode as Text;
-  const textLength = text.length;
+  const textLength = totalTextLength(textNodes);
 
   if (textLength === 0) {
     return pmStart;
   }
 
   const ownerDoc = spanEl.ownerDocument;
-  const native = caretOffsetFromPoint(ownerDoc, text, clientX, clientY);
+  const native = caretOffsetFromPoint(ownerDoc, textNodes, clientX, clientY);
   if (native !== null) {
     return pmStart + Math.min(native, pmEnd - pmStart);
   }
@@ -158,22 +164,26 @@ export function findPositionInSpan(
   const range = ownerDoc.createRange();
   let bestOffset = 0;
   let bestDistance = Number.POSITIVE_INFINITY;
-  for (let i = 0; i < textLength; i++) {
-    range.setStart(text, i);
-    range.setEnd(text, i + 1);
-    const rect = range.getBoundingClientRect();
-    if (rect.width === 0 && rect.height === 0) {
-      continue;
+  let charsProcessed = 0;
+  for (const text of textNodes) {
+    for (let i = 0; i < text.length; i++) {
+      range.setStart(text, i);
+      range.setEnd(text, i + 1);
+      const rect = range.getBoundingClientRect();
+      if (rect.width === 0 && rect.height === 0) {
+        continue;
+      }
+      const midpoint = rect.left + rect.width / 2;
+      const distance = Math.abs(clientX - midpoint);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        // Click lands in the right half of glyph `i` →
+        // caret should sit AFTER the glyph (offset i+1);
+        // left half → caret BEFORE (offset i).
+        bestOffset = charsProcessed + (clientX < midpoint ? i : i + 1);
+      }
     }
-    const midpoint = rect.left + rect.width / 2;
-    const distance = Math.abs(clientX - midpoint);
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      // Click lands in the right half of glyph `i` →
-      // caret should sit AFTER the glyph (offset i+1);
-      // left half → caret BEFORE (offset i).
-      bestOffset = clientX < midpoint ? i : i + 1;
-    }
+    charsProcessed += text.length;
   }
   return pmStart + Math.min(bestOffset, pmEnd - pmStart);
 }
@@ -187,7 +197,7 @@ export function findPositionInSpan(
  */
 function caretOffsetFromPoint(
   ownerDoc: Document,
-  text: Text,
+  textNodes: readonly Text[],
   clientX: number,
   clientY: number,
 ): number | null {
@@ -201,14 +211,16 @@ function caretOffsetFromPoint(
   const doc: LegacyDocument = ownerDoc;
   if (typeof doc.caretPositionFromPoint === "function") {
     const pos = doc.caretPositionFromPoint(clientX, clientY);
-    if (pos && pos.offsetNode === text) {
-      return pos.offset;
+    if (pos) {
+      const offset = logicalTextOffset(textNodes, pos.offsetNode, pos.offset);
+      if (offset !== null) return offset;
     }
   }
   if (typeof doc.caretRangeFromPoint === "function") {
     const range = doc.caretRangeFromPoint(clientX, clientY);
-    if (range && range.startContainer === text) {
-      return range.startOffset;
+    if (range) {
+      const offset = logicalTextOffset(textNodes, range.startContainer, range.startOffset);
+      if (offset !== null) return offset;
     }
   }
   return null;
@@ -431,43 +443,12 @@ export function getSelectionRectsFromDom(
   const spans = htmlQueryAll(container, ".layout-page-content span[data-pm-start][data-pm-end]");
 
   for (const spanEl of spans) {
-    const pmStart = Number(spanEl.dataset["pmStart"]);
-    const pmEnd = Number(spanEl.dataset["pmEnd"]);
-
-    // Check if span overlaps with selection
-    if (pmEnd <= from || pmStart >= to) {
-      continue;
-    }
-
-    const textNode = spanEl.firstChild;
-    if (!textNode || textNode.nodeType !== Node.TEXT_NODE) {
-      continue;
-    }
-
-    const text = textNode as Text;
-    const ownerDoc = spanEl.ownerDocument;
-
-    // Calculate character range within this span
-    const startChar = Math.max(0, from - pmStart);
-    const endChar = Math.min(text.length, to - pmStart);
-
-    if (startChar >= endChar) {
-      continue;
-    }
-
-    // Create range for the selected text
-    const range = ownerDoc.createRange();
-    range.setStart(text, startChar);
-    range.setEnd(text, endChar);
-
-    // Get all client rects (handles line wraps)
-    const clientRects = range.getClientRects();
-
-    // Find page index
+    const measurement = measurePaintedSpanRange(spanEl, from, to);
+    if (measurement.type === "outside") continue;
     const pageEl = closestHtmlElement(spanEl, ".layout-page");
     const pageIndex = pageEl ? Number(pageEl.dataset["pageNumber"] || 1) - 1 : 0;
-
-    for (const clientRect of Array.from(clientRects)) {
+    const clientRects = measurement.type === "element" ? [measurement.rect] : measurement.rects;
+    for (const clientRect of clientRects) {
       rects.push({
         x: clientRect.left - overlayRect.left,
         y: clientRect.top - overlayRect.top,
@@ -639,8 +620,8 @@ export function getCaretPositionFromDom(
 
     // For text runs, use inclusive range
     if (pmPos >= pmStart && pmPos <= pmEnd) {
-      const textNode = spanEl.firstChild;
-      if (!textNode || textNode.nodeType !== Node.TEXT_NODE) {
+      const textNodes = descendantTextNodes(spanEl);
+      if (textNodes.length === 0) {
         // No text - use span bounds
         const spanRect = spanEl.getBoundingClientRect();
         const pageEl = closestHtmlElement(spanEl, ".layout-page");
@@ -656,14 +637,17 @@ export function getCaretPositionFromDom(
         };
       }
 
-      const text = textNode as Text;
-      const charIndex = Math.min(pmPos - pmStart, text.length);
+      const charIndex = Math.min(pmPos - pmStart, totalTextLength(textNodes));
+      const boundary = textBoundaryAt(textNodes, charIndex, "start");
+      if (!boundary) {
+        continue;
+      }
 
       const ownerDoc = spanEl.ownerDocument;
 
       const range = ownerDoc.createRange();
-      range.setStart(text, charIndex);
-      range.setEnd(text, charIndex);
+      range.setStart(boundary.node, boundary.offset);
+      range.setEnd(boundary.node, boundary.offset);
 
       const rangeRect = range.getBoundingClientRect();
       const pageEl = closestHtmlElement(spanEl, ".layout-page");

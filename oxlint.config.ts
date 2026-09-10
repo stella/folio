@@ -66,6 +66,7 @@ export default library({
     "./.oxlint-plugins/folio-layer-boundaries.ts",
     "./.oxlint-plugins/folio-asset-urls.ts",
     "./.oxlint-plugins/folio-fragment-ownership.ts",
+    "./.oxlint-plugins/folio-painted-text.ts",
     "./.oxlint-plugins/folio-verbatim-capture.ts",
     "./.oxlint-plugins/no-untranslated-jsx-literal.ts",
   ],
@@ -116,6 +117,22 @@ export default library({
         "typescript/no-unsafe-argument": "off",
         "typescript/strict-boolean-expressions": "off",
         "typescript/no-redundant-type-constituents": "off",
+      },
+    },
+    {
+      files: [
+        "packages/core/src/layout-bridge/dom/clickToPositionDom.ts",
+        "packages/core/src/layout-bridge/headerFooterLayout.ts",
+        "packages/core/src/paged-layout/rangeProjection.ts",
+        "packages/core/src/prosemirror/utils/visualLineNavigation.ts",
+        "packages/core/src/render-dom/HeaderFooterSelectionOverlay.ts",
+        "packages/core/src/render-dom/RenderedDomContext.ts",
+        "packages/react/src/paged-editor/PagedEditor.tsx",
+        "packages/react/src/paged-editor/useVisualLineNavigation.ts",
+        "test/__fixtures__/painted-text.*.ts",
+      ],
+      rules: {
+        "folio-painted-text/no-direct-text-shape": "error",
       },
     },
     {

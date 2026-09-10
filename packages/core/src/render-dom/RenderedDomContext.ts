@@ -6,6 +6,12 @@
 
 import { findBodyEmptyRuns, findBodyPmSpans } from "../layout-bridge/dom/findBodyPmSpans";
 import { findCollapsedLineEdgeCaretTarget } from "../layout-bridge/dom/clickToPositionDom";
+import {
+  createTextStreamRange,
+  descendantTextNodes,
+  measurePaintedSpanRange,
+  totalTextLength,
+} from "../layout-bridge/dom/textStreamDom";
 import { closestHtmlElement } from "../utils/domGuards";
 
 export type RenderedDomPoint = {
@@ -26,23 +32,6 @@ export type RenderedDomContext = {
   findElementsForRange(from: number, to: number): Element[];
   getRectsForRange(from: number, to: number): RenderedDomRect[];
   getContainerOffset(): { x: number; y: number };
-};
-
-const isTextNode = (node: ChildNode | null): node is Text => node?.nodeType === Node.TEXT_NODE;
-
-const textNodeForSpan = (span: HTMLElement): Text | null => {
-  const firstChild = span.firstChild;
-  if (isTextNode(firstChild)) {
-    return firstChild;
-  }
-  if (
-    firstChild instanceof HTMLElement &&
-    firstChild.tagName === "A" &&
-    isTextNode(firstChild.firstChild)
-  ) {
-    return firstChild.firstChild;
-  }
-  return null;
 };
 
 const lineHeightFor = (element: Element, zoom: number): number => {
@@ -90,8 +79,8 @@ export class RenderedDomContextImpl implements RenderedDomContext {
         };
       }
 
-      const textNode = textNodeForSpan(span);
-      if (!textNode) {
+      const textNodes = descendantTextNodes(span);
+      if (textNodes.length === 0) {
         return {
           x: (spanRect.left - containerRect.left) / this.#zoom,
           y: (spanRect.top - containerRect.top) / this.#zoom,
@@ -99,10 +88,9 @@ export class RenderedDomContextImpl implements RenderedDomContext {
         };
       }
 
-      const charIndex = Math.min(Math.max(0, pmPos - pmStart), textNode.length);
-      const range = span.ownerDocument.createRange();
-      range.setStart(textNode, charIndex);
-      range.setEnd(textNode, charIndex);
+      const charIndex = Math.min(Math.max(0, pmPos - pmStart), totalTextLength(textNodes));
+      const range = createTextStreamRange(span, charIndex, charIndex);
+      if (!range) continue;
       const rangeRect = range.getBoundingClientRect();
       return {
         x: (rangeRect.left - containerRect.left) / this.#zoom,
@@ -146,31 +134,10 @@ export class RenderedDomContextImpl implements RenderedDomContext {
       if (!(element instanceof HTMLElement)) {
         continue;
       }
-      const pmStart = Number(element.dataset["pmStart"]);
-      if (element.classList.contains("layout-run-tab")) {
-        const rect = element.getBoundingClientRect();
-        rects.push({
-          x: (rect.left - containerRect.left) / this.#zoom,
-          y: (rect.top - containerRect.top) / this.#zoom,
-          width: rect.width / this.#zoom,
-          height: rect.height / this.#zoom,
-        });
-        continue;
-      }
-
-      const textNode = textNodeForSpan(element);
-      if (!textNode) {
-        continue;
-      }
-      const startChar = Math.max(0, from - pmStart);
-      const endChar = Math.min(textNode.length, to - pmStart);
-      if (startChar >= endChar) {
-        continue;
-      }
-      const range = element.ownerDocument.createRange();
-      range.setStart(textNode, startChar);
-      range.setEnd(textNode, endChar);
-      for (const rect of Array.from(range.getClientRects())) {
+      const measurement = measurePaintedSpanRange(element, from, to);
+      if (measurement.type === "outside") continue;
+      const measuredRects = measurement.type === "element" ? [measurement.rect] : measurement.rects;
+      for (const rect of measuredRects) {
         rects.push({
           x: (rect.left - containerRect.left) / this.#zoom,
           y: (rect.top - containerRect.top) / this.#zoom,
