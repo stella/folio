@@ -90,6 +90,12 @@ import {
   type FolioDocumentPrivacyTransform,
 } from "./docx/metadataPrivacy";
 import { getFolioParaIdFromBlockId } from "./types/block-id";
+import {
+  alignFolioContentBlocks,
+  createFolioContentAlignmentWorkSession,
+  exceedsFolioContentLcsBudget,
+  type FolioContentAlignedBlockEvent,
+} from "./compare/content-alignment";
 
 /** One word-level diff segment within a `modified` block. Mirrors {@link WordDiffSegment}. */
 export type FolioVersionDiffSegment = WordDiffSegment;
@@ -247,267 +253,35 @@ export type FolioVersionDiff = {
   summaryCounts: FolioVersionDiffSummaryCounts;
 };
 
-type BlockPair = { baseIndex: number; revisedIndex: number };
-type IndexedBlock = { block: FolioAIBlock; index: number };
+export const exceedsLcsBudget = exceedsFolioContentLcsBudget;
 
-const isStableBlockId = (id: string): boolean => getFolioParaIdFromBlockId(id) !== null;
-
-/**
- * Longest increasing subsequence by `revisedIndex`, assuming `pairs` is
- * already sorted by `baseIndex` ascending. Drops any pair that would make
- * the alignment walk backward in the revised document — the guard against
- * both id collisions (pass 1) and any crossing match (pass 1 + 2 combined).
- */
-const longestIncreasingByRevisedIndex = (pairs: readonly BlockPair[]): BlockPair[] => {
-  if (pairs.length === 0) {
-    return [];
-  }
-  const lengths = new Int32Array(pairs.length).fill(1);
-  const predecessors = new Int32Array(pairs.length).fill(-1);
-  let bestEnd = 0;
-  for (let i = 0; i < pairs.length; i++) {
-    for (let j = 0; j < i; j++) {
-      const current = pairs[j];
-      const candidate = pairs[i];
-      if (!current || !candidate) {
-        continue;
-      }
-      if (
-        current.revisedIndex < candidate.revisedIndex &&
-        (lengths[j] ?? 0) + 1 > (lengths[i] ?? 0)
-      ) {
-        lengths[i] = (lengths[j] ?? 0) + 1;
-        predecessors[i] = j;
-      }
-    }
-    if ((lengths[i] ?? 0) > (lengths[bestEnd] ?? 0)) {
-      bestEnd = i;
-    }
-  }
-  const ordered: BlockPair[] = [];
-  for (let cursor = bestEnd; cursor !== -1; cursor = predecessors[cursor] ?? -1) {
-    const pair = pairs[cursor];
-    if (pair) {
-      ordered.push(pair);
-    }
-  }
-  return ordered.toReversed();
-};
-
-/** Pass 1: pair blocks with equal, non-`seq-NNNN` ids. See the module doc comment. */
-const pairByStableId = (
-  base: readonly FolioAIBlock[],
-  revised: readonly FolioAIBlock[],
-): BlockPair[] => {
-  const revisedIndexById = new Map<string, number>();
-  revised.forEach((block, revisedIndex) => {
-    if (isStableBlockId(block.id)) {
-      revisedIndexById.set(block.id, revisedIndex);
-    }
-  });
-
-  const candidates: BlockPair[] = [];
-  base.forEach((block, baseIndex) => {
-    if (!isStableBlockId(block.id)) {
-      return;
-    }
-    const revisedIndex = revisedIndexById.get(block.id);
-    if (revisedIndex !== undefined) {
-      candidates.push({ baseIndex, revisedIndex });
-    }
-  });
-  return longestIncreasingByRevisedIndex(candidates);
-};
-
-/**
- * Cell budget for pass 2's O(m·n) exact-text LCS table (`dp` below allocates
- * `(m + 1) * (n + 1)` numbers). A document with no `w14:paraId`s — or an
- * adversarial one crafted to defeat pass 1 — can leave thousands of blocks
- * unpaired on both sides; without a cap, `pairByExactText` would allocate a
- * quadratic-sized table for it. Past this budget, {@link exceedsLcsBudget}
- * makes pass 2 back off entirely so alignment falls through to pass 3's
- * linear positional zip instead — pairing is less precise for these
- * degenerate inputs, but memory use stays bounded.
- */
-const MAX_LCS_CELLS = 4_000_000;
-
-/** True when an `unpairedBaseCount * unpairedRevisedCount` LCS table would exceed {@link MAX_LCS_CELLS}. */
-export const exceedsLcsBudget = (
-  unpairedBaseCount: number,
-  unpairedRevisedCount: number,
-): boolean => unpairedBaseCount * unpairedRevisedCount > MAX_LCS_CELLS;
-
-/**
- * Mutable cell budget SHARED across every story pair one {@link compareDocxVersions}
- * call compares. {@link exceedsLcsBudget} alone only bounds a single pass 2
- * call's own table; without an aggregate budget, a document with many
- * attacker-controlled stories (footnotes/endnotes) could still force a fresh
- * near-{@link MAX_LCS_CELLS}-sized allocation for EVERY story pair. Each
- * `pairByExactText` call that actually runs pass 2 decrements
- * `remainingCells` by its own `m * n`; once exhausted, every subsequent
- * story's pass 2 is refused regardless of that story's own size, falling
- * through to pass 3's linear positional zip.
- */
 export type FolioVersionComparisonLcsBudget = { remainingCells: number };
 
-const createLcsBudget = (): FolioVersionComparisonLcsBudget => ({ remainingCells: MAX_LCS_CELLS });
-
-/** Pass 2: order-preserving LCS by exact text equality over the blocks pass 1 left unpaired. */
-const pairByExactText = (
-  base: readonly IndexedBlock[],
-  revised: readonly IndexedBlock[],
-  lcsBudget: FolioVersionComparisonLcsBudget,
-): BlockPair[] => {
-  const m = base.length;
-  const n = revised.length;
-  if (m === 0 || n === 0) {
-    return [];
-  }
-  if (exceedsLcsBudget(m, n) || lcsBudget.remainingCells <= 0) {
-    return [];
-  }
-  lcsBudget.remainingCells -= m * n;
-  const baseTexts = base.map(({ block }) => block.text);
-  const revisedTexts = revised.map(({ block }) => block.text);
-  // A single flat Int32Array (indexed `i * (n + 1) + j`) instead of `m + 1`
-  // separately-allocated rows: one contiguous allocation instead of thousands
-  // of small ones, which matters once `m` and `n` approach the budget above.
-  const stride = n + 1;
-  const dp = new Int32Array((m + 1) * stride);
-  for (let i = m - 1; i >= 0; i--) {
-    const rowOffset = i * stride;
-    const nextRowOffset = (i + 1) * stride;
-    const baseText = baseTexts[i];
-    for (let j = n - 1; j >= 0; j--) {
-      const revisedText = revisedTexts[j];
-      dp[rowOffset + j] =
-        baseText === revisedText
-          ? (dp[nextRowOffset + j + 1] ?? 0) + 1
-          : Math.max(dp[nextRowOffset + j] ?? 0, dp[rowOffset + j + 1] ?? 0);
-    }
-  }
-
-  const pairs: BlockPair[] = [];
-  let i = 0;
-  let j = 0;
-  while (i < m && j < n) {
-    const baseEntry = base[i];
-    const revisedEntry = revised[j];
-    if (!baseEntry || !revisedEntry) {
-      break;
-    }
-    if (baseTexts[i] === revisedTexts[j]) {
-      pairs.push({ baseIndex: baseEntry.index, revisedIndex: revisedEntry.index });
-      i++;
-      j++;
-      continue;
-    }
-    const down = dp[(i + 1) * stride + j] ?? 0;
-    const right = dp[i * stride + j + 1] ?? 0;
-    if (down >= right) {
-      i++;
-    } else {
-      j++;
-    }
-  }
-  return pairs;
+const createLcsBudget = (): FolioVersionComparisonLcsBudget => {
+  const session = createFolioContentAlignmentWorkSession();
+  return { remainingCells: session.remainingLcsCells };
 };
 
-/**
- * One step of a completed alignment, in revised-side document order with
- * base-only blocks slotted where they sat. `pair` events cover pass 1/2
- * anchors and pass 3's positional zip alike; whether the pair is unchanged,
- * modified, or format-changed is the consumer's call.
- */
-export type FolioAlignedBlockEvent =
-  | { type: "pair"; baseBlock: FolioAIBlock; revisedBlock: FolioAIBlock }
-  | { type: "baseOnly"; block: FolioAIBlock }
-  | { type: "revisedOnly"; block: FolioAIBlock };
+export type FolioAlignedBlockEvent = FolioContentAlignedBlockEvent<FolioAIBlock>;
 
 /**
- * Run the three-pass alignment (see the module doc comment) over two block
- * snapshots and flatten it into an ordered event stream. Shared by
- * {@link compareDocxVersions} and the redline generator so both interpret
- * one document walk instead of re-deriving it.
+ * Compatibility adapter for the DOCX snapshot comparison surface.
  *
- * `lcsBudget` defaults to a fresh, single-call budget so a caller comparing
- * one block pair in isolation (the redline generator) behaves exactly as
- * before. {@link compareDocxVersions} passes one budget object shared across
- * every story pair instead, so pass 2's cell allowance is aggregate across
- * the whole comparison rather than reset per story.
+ * Older snapshots encode id stability in the id shape, so the adapter resolves
+ * that policy while the representation-neutral core can treat caller ids as
+ * stable by default.
  */
 export const alignFolioBlocks = (
   baseBlocks: readonly FolioAIBlock[],
   revisedBlocks: readonly FolioAIBlock[],
   lcsBudget: FolioVersionComparisonLcsBudget = createLcsBudget(),
 ): FolioAlignedBlockEvent[] => {
-  const stableIdAnchors = pairByStableId(baseBlocks, revisedBlocks);
-  const usedBaseIndexes = new Set(stableIdAnchors.map((anchor) => anchor.baseIndex));
-  const usedRevisedIndexes = new Set(stableIdAnchors.map((anchor) => anchor.revisedIndex));
-
-  const baseRemaining: IndexedBlock[] = [];
-  baseBlocks.forEach((block, blockIndex) => {
-    if (!usedBaseIndexes.has(blockIndex)) {
-      baseRemaining.push({ block, index: blockIndex });
-    }
+  const workSession = { remainingLcsCells: lcsBudget.remainingCells };
+  const events = alignFolioContentBlocks(baseBlocks, revisedBlocks, {
+    workSession,
+    idStability: ({ id }) => (getFolioParaIdFromBlockId(id) === null ? "positional" : "stable"),
   });
-  const revisedRemaining: IndexedBlock[] = [];
-  revisedBlocks.forEach((block, blockIndex) => {
-    if (!usedRevisedIndexes.has(blockIndex)) {
-      revisedRemaining.push({ block, index: blockIndex });
-    }
-  });
-  const exactTextAnchors = pairByExactText(baseRemaining, revisedRemaining, lcsBudget);
-
-  const anchors = longestIncreasingByRevisedIndex(
-    [...stableIdAnchors, ...exactTextAnchors].toSorted((a, b) => a.baseIndex - b.baseIndex),
-  );
-
-  const events: FolioAlignedBlockEvent[] = [];
-
-  /** Pass 3: positionally zip the leftover blocks in one gap between anchors. */
-  const emitGap = (
-    baseFrom: number,
-    baseTo: number,
-    revisedFrom: number,
-    revisedTo: number,
-  ): void => {
-    const pairedCount = Math.min(baseTo - baseFrom, revisedTo - revisedFrom);
-    for (let k = 0; k < pairedCount; k++) {
-      const baseBlock = baseBlocks[baseFrom + k];
-      const revisedBlock = revisedBlocks[revisedFrom + k];
-      if (baseBlock && revisedBlock) {
-        events.push({ type: "pair", baseBlock, revisedBlock });
-      }
-    }
-    for (let k = baseFrom + pairedCount; k < baseTo; k++) {
-      const block = baseBlocks[k];
-      if (block) {
-        events.push({ type: "baseOnly", block });
-      }
-    }
-    for (let k = revisedFrom + pairedCount; k < revisedTo; k++) {
-      const block = revisedBlocks[k];
-      if (block) {
-        events.push({ type: "revisedOnly", block });
-      }
-    }
-  };
-
-  let baseCursor = 0;
-  let revisedCursor = 0;
-  for (const anchor of anchors) {
-    emitGap(baseCursor, anchor.baseIndex, revisedCursor, anchor.revisedIndex);
-    const baseBlock = baseBlocks[anchor.baseIndex];
-    const revisedBlock = revisedBlocks[anchor.revisedIndex];
-    if (baseBlock && revisedBlock) {
-      events.push({ type: "pair", baseBlock, revisedBlock });
-    }
-    baseCursor = anchor.baseIndex + 1;
-    revisedCursor = anchor.revisedIndex + 1;
-  }
-  emitGap(baseCursor, baseBlocks.length, revisedCursor, revisedBlocks.length);
-
+  lcsBudget.remainingCells = workSession.remainingLcsCells;
   return events;
 };
 

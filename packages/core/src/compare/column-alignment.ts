@@ -1,45 +1,51 @@
 import { panic } from "better-result";
 
-import type { FolioAIBlock, FolioAIBlockTableLocation } from "../ai-edits/types";
+import type { FolioContentBlock, FolioContentTableLocation } from "./content-types";
 
 const MAX_TABLE_GRID_COLUMNS = 63;
 const MAX_TABLE_GRID_AREA = 1_000_000;
 
-type GridCell = {
-  blocks: FolioAIBlock[];
+type GridCell<Block extends FolioContentBlock> = {
+  blocks: Block[];
   rowIndex: number;
   gridColumnIndex: number;
   columnSpan: number;
   rowSpan: number;
 };
 
-type GridColumn = { index: number; signature: string; ownedCells: readonly GridCell[] };
+type GridColumn<Block extends FolioContentBlock> = {
+  index: number;
+  signature: string;
+  ownedCells: readonly GridCell<Block>[];
+};
 
-export type TableColumnAlignmentStep =
+export type TableColumnAlignmentStep<Block extends FolioContentBlock = FolioContentBlock> =
   | {
       type: "baseColumn";
-      blocks: readonly FolioAIBlock[];
-      location: FolioAIBlockTableLocation;
+      blocks: readonly Block[];
+      location: FolioContentTableLocation;
       columnIndex: number;
     }
   | {
-      type: "targetColumn";
-      blocks: readonly FolioAIBlock[];
-      location: FolioAIBlockTableLocation;
+      type: "revisedColumn";
+      blocks: readonly Block[];
+      location: FolioContentTableLocation;
       columnIndex: number;
       anchor: { blockId: string; position: "after" | "before" };
     };
 
-export type TableColumnAlignment = {
-  steps: TableColumnAlignmentStep[];
-  baseBlocks: FolioAIBlock[];
-  targetBlocks: FolioAIBlock[];
+export type TableColumnAlignment<Block extends FolioContentBlock = FolioContentBlock> = {
+  steps: TableColumnAlignmentStep<Block>[];
+  baseBlocks: Block[];
+  revisedBlocks: Block[];
   baseColumnKeys: ReadonlyMap<number, number>;
-  targetColumnKeys: ReadonlyMap<number, number>;
+  revisedColumnKeys: ReadonlyMap<number, number>;
 };
 
-const tableGridColumns = (blocks: readonly FolioAIBlock[]): GridColumn[] | null => {
-  const cellsByPhysicalLocation = new Map<string, GridCell>();
+const tableGridColumns = <Block extends FolioContentBlock>(
+  blocks: readonly Block[],
+): GridColumn<Block>[] | null => {
+  const cellsByPhysicalLocation = new Map<string, GridCell<Block>>();
   let width = 0;
   let height = 0;
   for (const block of blocks) {
@@ -78,10 +84,10 @@ const tableGridColumns = (blocks: readonly FolioAIBlock[]): GridColumn[] | null 
     return null;
   }
 
-  const grid: (GridCell | undefined)[][] = Array.from({ length: height }, () =>
+  const grid: (GridCell<Block> | undefined)[][] = Array.from({ length: height }, () =>
     Array.from({ length: width }),
   );
-  const ownedCellsByColumn: GridCell[][] = Array.from({ length: width }, () => []);
+  const ownedCellsByColumn: GridCell<Block>[][] = Array.from({ length: width }, () => []);
   for (const cell of cellsByPhysicalLocation.values()) {
     ownedCellsByColumn[cell.gridColumnIndex]?.push(cell);
     for (let row = cell.rowIndex; row < cell.rowIndex + cell.rowSpan; row++) {
@@ -121,9 +127,9 @@ const tableGridColumns = (blocks: readonly FolioAIBlock[]): GridColumn[] | null 
 };
 
 /** The sole exact ordered embedding of `shorter` in `wider`, or null when ambiguous. */
-const uniqueColumnEmbedding = (
-  shorter: readonly GridColumn[],
-  wider: readonly GridColumn[],
+const uniqueColumnEmbedding = <Block extends FolioContentBlock>(
+  shorter: readonly GridColumn<Block>[],
+  wider: readonly GridColumn<Block>[],
 ): number[] | null => {
   const counts = Array.from({ length: shorter.length + 1 }, () =>
     Array.from({ length: wider.length + 1 }, () => 0),
@@ -170,34 +176,36 @@ const uniqueColumnEmbedding = (
   return mapping;
 };
 
-const columnOwnedBlocks = ({ ownedCells }: GridColumn): FolioAIBlock[] | null => {
+const columnOwnedBlocks = <Block extends FolioContentBlock>({
+  ownedCells,
+}: GridColumn<Block>): Block[] | null => {
   if (ownedCells.length === 0 || ownedCells.some(({ columnSpan }) => columnSpan !== 1)) {
     return null;
   }
   return ownedCells.flatMap(({ blocks }) => blocks);
 };
 
-export const alignTableColumns = (
-  baseBlocks: readonly FolioAIBlock[],
-  targetBlocks: readonly FolioAIBlock[],
-): TableColumnAlignment | null => {
+export const alignTableColumns = <Block extends FolioContentBlock>(
+  baseBlocks: readonly Block[],
+  revisedBlocks: readonly Block[],
+): TableColumnAlignment<Block> | null => {
   const baseColumns = tableGridColumns(baseBlocks);
-  const targetColumns = tableGridColumns(targetBlocks);
-  if (!baseColumns || !targetColumns || baseColumns.length === targetColumns.length) {
+  const revisedColumns = tableGridColumns(revisedBlocks);
+  if (!baseColumns || !revisedColumns || baseColumns.length === revisedColumns.length) {
     return null;
   }
-  const targetIsWider = targetColumns.length > baseColumns.length;
+  const revisedIsWider = revisedColumns.length > baseColumns.length;
   const mapping = uniqueColumnEmbedding(
-    targetIsWider ? baseColumns : targetColumns,
-    targetIsWider ? targetColumns : baseColumns,
+    revisedIsWider ? baseColumns : revisedColumns,
+    revisedIsWider ? revisedColumns : baseColumns,
   );
   if (!mapping) {
     return null;
   }
-  const widerColumns = targetIsWider ? targetColumns : baseColumns;
+  const widerColumns = revisedIsWider ? revisedColumns : baseColumns;
   const mapped = new Set(mapping);
   const unmatchedColumns = widerColumns.filter((_column, index) => !mapped.has(index));
-  const ownedColumns: { column: GridColumn; blocks: FolioAIBlock[] }[] = [];
+  const ownedColumns: { column: GridColumn<Block>; blocks: Block[] }[] = [];
   for (const column of unmatchedColumns) {
     const blocks = columnOwnedBlocks(column);
     if (!blocks) {
@@ -207,7 +215,7 @@ export const alignTableColumns = (
   }
   if (
     ownedColumns.length === 0 ||
-    (targetIsWider &&
+    (revisedIsWider &&
       unmatchedColumns.some(({ ownedCells }) => ownedCells.some(({ rowSpan }) => rowSpan !== 1)))
   ) {
     return null;
@@ -215,19 +223,19 @@ export const alignTableColumns = (
 
   const unmatchedIds = new Set(ownedColumns.flatMap(({ blocks }) => blocks.map(({ id }) => id)));
   const baseColumnKeys = new Map<number, number>();
-  const targetColumnKeys = new Map<number, number>();
+  const revisedColumnKeys = new Map<number, number>();
   mapping.forEach((wideIndex, shortIndex) => {
-    if (targetIsWider) {
+    if (revisedIsWider) {
       baseColumnKeys.set(shortIndex, shortIndex);
-      targetColumnKeys.set(wideIndex, shortIndex);
+      revisedColumnKeys.set(wideIndex, shortIndex);
     } else {
       baseColumnKeys.set(wideIndex, shortIndex);
-      targetColumnKeys.set(shortIndex, shortIndex);
+      revisedColumnKeys.set(shortIndex, shortIndex);
     }
   });
 
-  const steps: TableColumnAlignmentStep[] = [];
-  if (!targetIsWider) {
+  const steps: TableColumnAlignmentStep<Block>[] = [];
+  if (!revisedIsWider) {
     for (const { column, blocks } of ownedColumns) {
       const location = blocks.at(0)?.table;
       if (!location) {
@@ -247,7 +255,7 @@ export const alignTableColumns = (
         return null;
       }
       steps.push({
-        type: "targetColumn",
+        type: "revisedColumn",
         blocks,
         location,
         columnIndex: column.index,
@@ -257,9 +265,9 @@ export const alignTableColumns = (
   }
   return {
     steps,
-    baseBlocks: baseBlocks.filter(({ id }) => targetIsWider || !unmatchedIds.has(id)),
-    targetBlocks: targetBlocks.filter(({ id }) => !targetIsWider || !unmatchedIds.has(id)),
+    baseBlocks: baseBlocks.filter(({ id }) => revisedIsWider || !unmatchedIds.has(id)),
+    revisedBlocks: revisedBlocks.filter(({ id }) => !revisedIsWider || !unmatchedIds.has(id)),
     baseColumnKeys,
-    targetColumnKeys,
+    revisedColumnKeys,
   };
 };
