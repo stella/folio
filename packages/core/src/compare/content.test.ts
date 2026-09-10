@@ -774,6 +774,38 @@ describe("representation-neutral comparison stream", () => {
     ]);
   });
 
+  test("non-hex color tokens remain representation-neutral formatting values", () => {
+    const base = contentBlock({
+      id: "clause",
+      text: "Payment",
+      previewRuns: [{ text: "Payment", color: "red" }],
+    });
+    const revised = contentBlock({
+      id: "clause",
+      text: "Payment",
+      previewRuns: [{ text: "Payment", color: "blue" }],
+    });
+
+    const comparison = successfulComparison({ base: [base], revised: [revised] });
+
+    expect(comparison.events).toEqual([
+      {
+        type: "formatting",
+        baseBlocks: [base],
+        revisedBlocks: [revised],
+        formatting: {
+          ranges: [
+            {
+              startOffset: 0,
+              endOffset: 7,
+              formatting: { color: "blue" },
+            },
+          ],
+        },
+      },
+    ]);
+  });
+
   test("text segment offsets use UTF-16 boundaries compatible with string slicing", () => {
     const base = contentBlock({ id: "unicode", text: "A😀B" });
     const revised = contentBlock({ id: "unicode", text: "A😀XB" });
@@ -1186,6 +1218,44 @@ describe("container-aware comparison", () => {
     ];
 
     const result = compareContent({ base: { blocks: base }, revised: { blocks: revised } });
+
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) {
+      return;
+    }
+    expect(result.error).toBeInstanceOf(InvalidFolioContentComparisonError);
+    expect(result.error).toMatchObject({
+      input: "base",
+      blockIndex: 1,
+      field: "blocks[1].table",
+    });
+  });
+
+  test.each([
+    { field: "gridColumnIndex", value: 1 },
+    { field: "columnSpan", value: 2 },
+    { field: "rowSpan", value: 2 },
+  ] as const)("rejects inconsistent $field values within one physical cell", ({ field, value }) => {
+    const first = tableBlock({
+      id: "first",
+      text: "First",
+      rowIndex: 0,
+      cellIndex: 0,
+      paragraphIndex: 0,
+    });
+    const second = tableBlock({
+      id: "second",
+      text: "Second",
+      rowIndex: 0,
+      cellIndex: 0,
+      paragraphIndex: 1,
+      [field]: value,
+    });
+
+    const result = compareContent({
+      base: { blocks: [first, second] },
+      revised: { blocks: [] },
+    });
 
     expect(result.isErr()).toBe(true);
     if (!result.isErr()) {
