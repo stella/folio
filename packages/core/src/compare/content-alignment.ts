@@ -163,6 +163,7 @@ const pairByExactText = <Block extends FolioContentBlock>(
   revised: readonly IndexedBlock<Block>[],
   workSession: FolioContentAlignmentWorkSession,
   idStability: (block: Block) => FolioContentIdStability,
+  stableIdMismatch: "pair" | "separate",
 ): FolioContentBlockPair[] => {
   const baseCount = base.length;
   const revisedCount = revised.length;
@@ -185,10 +186,13 @@ const pairByExactText = <Block extends FolioContentBlock>(
     if (!baseBlock || !revisedBlock || baseBlock.text !== revisedBlock.text) {
       return false;
     }
-    return !(
-      idStability(baseBlock) === "stable" &&
-      idStability(revisedBlock) === "stable" &&
-      baseBlock.id !== revisedBlock.id
+    return (
+      stableIdMismatch === "pair" ||
+      !(
+        idStability(baseBlock) === "stable" &&
+        idStability(revisedBlock) === "stable" &&
+        baseBlock.id !== revisedBlock.id
+      )
     );
   };
   const stride = revisedCount + 1;
@@ -242,6 +246,8 @@ export type FolioContentAlignedBlockEvent<
 
 export type AlignFolioContentBlocksOptions<Block extends FolioContentBlock> = {
   workSession?: FolioContentAlignmentWorkSession;
+  /** Let an already-aligned structural slot outrank differing authored IDs. */
+  stableIdMismatch?: "pair" | "separate";
   /** @internal Compatibility hook for adapters whose source model predates `idStability`. */
   idStability?: ((block: Block) => FolioContentIdStability) | undefined;
 };
@@ -252,6 +258,7 @@ export const alignFolioContentBlocks = <Block extends FolioContentBlock>(
   options: AlignFolioContentBlocksOptions<Block> = {},
 ): FolioContentAlignedBlockEvent<Block>[] => {
   const workSession = options.workSession ?? createFolioContentAlignmentWorkSession();
+  const stableIdMismatch = options.stableIdMismatch ?? "separate";
   const idStability =
     options.idStability ?? ((block: Block): FolioContentIdStability => block.idStability ?? "stable");
   const stableIdAnchors = pairByStableId(baseBlocks, revisedBlocks, idStability);
@@ -268,6 +275,7 @@ export const alignFolioContentBlocks = <Block extends FolioContentBlock>(
     revisedRemaining,
     workSession,
     idStability,
+    stableIdMismatch,
   );
   const anchors = longestIncreasingFolioContentPairs(
     [...stableIdAnchors, ...exactTextAnchors].toSorted(
@@ -291,7 +299,7 @@ export const alignFolioContentBlocks = <Block extends FolioContentBlock>(
           idStability(baseBlock) === "stable" &&
           idStability(revisedBlock) === "stable" &&
           baseBlock.id !== revisedBlock.id;
-        if (differentStableIdentities) {
+        if (differentStableIdentities && stableIdMismatch === "separate") {
           events.push({ type: "baseOnly", block: baseBlock });
           events.push({ type: "revisedOnly", block: revisedBlock });
         } else {
@@ -346,9 +354,14 @@ type DocumentSegment<Block extends FolioContentBlock> =
   | { kind: "table"; blocks: Block[]; containerPathKey: null };
 
 const containerPathKeyOf = (block: FolioContentBlock): string | null =>
-  block.containerPath === undefined
+  block.containerPath === undefined || block.containerPath.length === 0
     ? null
     : JSON.stringify(block.containerPath.map(({ kind, id }) => [kind, id]));
+
+const contentBlocksShareContainerPath = (
+  left: FolioContentBlock,
+  right: FolioContentBlock,
+): boolean => containerPathKeyOf(left) === containerPathKeyOf(right);
 
 const splitSegments = <Block extends FolioContentBlock>(
   blocks: readonly Block[],
@@ -455,12 +468,23 @@ const rowPhysicalCellCount = <Block extends FolioContentBlock>(row: readonly Blo
   return count;
 };
 
-const alignRowCells = <Block extends FolioContentBlock>(
-  baseRow: readonly Block[],
-  revisedRow: readonly Block[],
-  baseColumnKeys?: ReadonlyMap<number, number>,
-  revisedColumnKeys?: ReadonlyMap<number, number>,
-): FolioContentAlignmentStep<Block>[] => {
+type AlignRowCellsOptions<Block extends FolioContentBlock> = {
+  baseRow: readonly Block[];
+  revisedRow: readonly Block[];
+  workSession: FolioContentAlignmentWorkSession;
+  idStability?: ((block: Block) => FolioContentIdStability) | undefined;
+  baseColumnKeys?: ReadonlyMap<number, number> | undefined;
+  revisedColumnKeys?: ReadonlyMap<number, number> | undefined;
+};
+
+const alignRowCells = <Block extends FolioContentBlock>({
+  baseRow,
+  revisedRow,
+  workSession,
+  idStability,
+  baseColumnKeys,
+  revisedColumnKeys,
+}: AlignRowCellsOptions<Block>): FolioContentAlignmentStep<Block>[] => {
   const byCell = (
     row: readonly Block[],
     columnKeys: ReadonlyMap<number, number> | undefined,
@@ -497,27 +521,20 @@ const alignRowCells = <Block extends FolioContentBlock>(
   for (const cellIndex of cellIndexes) {
     const baseBlocks = baseCells.get(cellIndex) ?? [];
     const revisedBlocks = revisedCells.get(cellIndex) ?? [];
-    const paired = Math.min(baseBlocks.length, revisedBlocks.length);
-    for (let index = 0; index < paired; index++) {
-      const baseBlock = baseBlocks[index];
-      const revisedBlock = revisedBlocks[index];
-      if (baseBlock && revisedBlock) {
-        if (
-          (baseBlock.containerPath === undefined && revisedBlock.containerPath === undefined) ||
-          contentBlocksShareContainer(baseBlock, revisedBlock)
-        ) {
-          steps.push({ type: "pair", baseBlock, revisedBlock });
-        } else {
-          steps.push({ type: "baseOnly", block: baseBlock });
-          steps.push({ type: "revisedOnly", block: revisedBlock });
-        }
+    for (const event of alignFolioContentBlocks(baseBlocks, revisedBlocks, {
+      workSession,
+      idStability,
+      stableIdMismatch: "pair",
+    })) {
+      if (
+        event.type === "pair" &&
+        !contentBlocksShareContainerPath(event.baseBlock, event.revisedBlock)
+      ) {
+        steps.push({ type: "baseOnly", block: event.baseBlock });
+        steps.push({ type: "revisedOnly", block: event.revisedBlock });
+      } else {
+        steps.push(event);
       }
-    }
-    for (const block of baseBlocks.slice(paired)) {
-      steps.push({ type: "baseOnly", block });
-    }
-    for (const block of revisedBlocks.slice(paired)) {
-      steps.push({ type: "revisedOnly", block });
     }
   }
   return steps;
@@ -581,11 +598,21 @@ const pairTableRows = <Block extends FolioContentBlock>(
   return aligned;
 };
 
-const alignTableRows = <Block extends FolioContentBlock>(
-  rows: readonly TableRowAlignment<Block>[],
-  baseColumnKeys?: ReadonlyMap<number, number>,
-  revisedColumnKeys?: ReadonlyMap<number, number>,
-): FolioContentAlignmentStep<Block>[] => {
+type AlignTableRowsOptions<Block extends FolioContentBlock> = {
+  rows: readonly TableRowAlignment<Block>[];
+  workSession: FolioContentAlignmentWorkSession;
+  idStability?: ((block: Block) => FolioContentIdStability) | undefined;
+  baseColumnKeys?: ReadonlyMap<number, number> | undefined;
+  revisedColumnKeys?: ReadonlyMap<number, number> | undefined;
+};
+
+const alignTableRows = <Block extends FolioContentBlock>({
+  rows,
+  workSession,
+  idStability,
+  baseColumnKeys,
+  revisedColumnKeys,
+}: AlignTableRowsOptions<Block>): FolioContentAlignmentStep<Block>[] => {
   const steps: FolioContentAlignmentStep<Block>[] = [];
   const pushRow = (row: readonly Block[], side: "base" | "revised"): void => {
     const location = rowLocation(row);
@@ -602,14 +629,14 @@ const alignTableRows = <Block extends FolioContentBlock>(
         pushRow(alignment.row, "revised");
         break;
       case "pair":
-        steps.push(
-          ...alignRowCells(
-            alignment.baseRow,
-            alignment.revisedRow,
-            baseColumnKeys,
-            revisedColumnKeys,
-          ),
-        );
+        steps.push(...alignRowCells({
+          baseRow: alignment.baseRow,
+          revisedRow: alignment.revisedRow,
+          workSession,
+          idStability,
+          baseColumnKeys,
+          revisedColumnKeys,
+        }));
         break;
       default: {
         const unreachable: never = alignment;
@@ -658,10 +685,19 @@ type TableStructurePlan<Block extends FolioContentBlock> = {
   representable: boolean;
 };
 
-const buildTablePlan = <Block extends FolioContentBlock>(
-  baseBlocks: readonly Block[],
-  revisedBlocks: readonly Block[],
-): TableStructurePlan<Block> => {
+type BuildTablePlanOptions<Block extends FolioContentBlock> = {
+  baseBlocks: readonly Block[];
+  revisedBlocks: readonly Block[];
+  workSession: FolioContentAlignmentWorkSession;
+  idStability?: ((block: Block) => FolioContentIdStability) | undefined;
+};
+
+const buildTablePlan = <Block extends FolioContentBlock>({
+  baseBlocks,
+  revisedBlocks,
+  workSession,
+  idStability,
+}: BuildTablePlanOptions<Block>): TableStructurePlan<Block> => {
   const columns = alignTableColumns(baseBlocks, revisedBlocks);
   const rows = pairTableRows(
     groupFolioContentTableRows(columns?.baseBlocks ?? baseBlocks),
@@ -677,22 +713,42 @@ const buildTablePlan = <Block extends FolioContentBlock>(
     representable,
     steps: [
       ...(columns?.steps ?? []),
-      ...alignTableRows(rows, columns?.baseColumnKeys, columns?.revisedColumnKeys),
+      ...alignTableRows({
+        rows,
+        workSession,
+        idStability,
+        baseColumnKeys: columns?.baseColumnKeys,
+        revisedColumnKeys: columns?.revisedColumnKeys,
+      }),
     ],
   };
 };
 
-const buildTableSegmentPlan = <Block extends FolioContentBlock>(
-  baseBlocks: readonly Block[],
-  revisedBlocks: readonly Block[],
-): TableStructurePlan<Block> => {
+type BuildTableSegmentPlanOptions<Block extends FolioContentBlock> = {
+  baseBlocks: readonly Block[];
+  revisedBlocks: readonly Block[];
+  workSession: FolioContentAlignmentWorkSession;
+  idStability?: ((block: Block) => FolioContentIdStability) | undefined;
+};
+
+const buildTableSegmentPlan = <Block extends FolioContentBlock>({
+  baseBlocks,
+  revisedBlocks,
+  workSession,
+  idStability,
+}: BuildTableSegmentPlanOptions<Block>): TableStructurePlan<Block> => {
   const baseTables = groupTables(baseBlocks);
   const revisedTables = groupTables(revisedBlocks);
   const steps: FolioContentAlignmentStep<Block>[] = [];
   const paired = Math.min(baseTables.length, revisedTables.length);
   let representable = baseTables.length === revisedTables.length;
   for (let index = 0; index < paired; index++) {
-    const table = buildTablePlan(baseTables[index] ?? [], revisedTables[index] ?? []);
+    const table = buildTablePlan({
+      baseBlocks: baseTables[index] ?? [],
+      revisedBlocks: revisedTables[index] ?? [],
+      workSession,
+      idStability,
+    });
     steps.push(...table.steps);
     representable &&= table.representable;
   }
@@ -881,8 +937,7 @@ export const alignFolioContentStructure = <Block extends FolioContentBlock>({
   wholeTableReplacement = "allow",
   idStability,
 }: AlignFolioContentStructureOptions<Block>): FolioContentAlignmentStep<Block>[] => {
-  const canReplaceWholeTable =
-    wholeTableReplacement === "allow" && baseBlocks.some(({ table }) => table === undefined);
+  const canReplaceWholeTable = wholeTableReplacement === "allow";
   const steps: FolioContentAlignmentStep<Block>[] = [];
   for (const { baseSegment, revisedSegment } of alignSegments(
     splitSegments(baseBlocks),
@@ -898,8 +953,15 @@ export const alignFolioContentStructure = <Block extends FolioContentBlock>({
         );
         continue;
       }
-      const table = buildTableSegmentPlan(baseSegment.blocks, revisedSegment.blocks);
+      const remainingLcsCells = workSession.remainingLcsCells;
+      const table = buildTableSegmentPlan({
+        baseBlocks: baseSegment.blocks,
+        revisedBlocks: revisedSegment.blocks,
+        workSession,
+        idStability,
+      });
       if (canReplaceWholeTable && !table.representable) {
+        workSession.remainingLcsCells = remainingLcsCells;
         steps.push(...unpairedSegmentSteps(baseSegment, "base"));
         steps.push(...unpairedSegmentSteps(revisedSegment, "revised"));
         continue;
@@ -922,17 +984,8 @@ export const contentBlocksShareContainer = (
   left: FolioContentBlock,
   right: FolioContentBlock,
 ): boolean => {
-  if (left.containerPath !== undefined || right.containerPath !== undefined) {
-    if (left.containerPath === undefined || right.containerPath === undefined) {
-      return false;
-    }
-    return (
-      left.containerPath.length === right.containerPath.length &&
-      left.containerPath.every((entry, index) => {
-        const candidate = right.containerPath?.[index];
-        return candidate?.kind === entry.kind && candidate.id === entry.id;
-      })
-    );
+  if (!contentBlocksShareContainerPath(left, right)) {
+    return false;
   }
   if (!left.table || !right.table) {
     return left.table === undefined && right.table === undefined;

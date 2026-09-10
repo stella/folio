@@ -856,10 +856,16 @@ export const planStoryCompare = ({
   wholeTableReplacement = "allow",
   workSession = createContentComparisonWorkSession(),
 }: PlanStoryCompareOptions): CompareStoryPlan | null => {
+  // A tracked table insertion needs a surviving body paragraph as its anchor.
+  // This is an application constraint, not a neutral alignment constraint.
+  const effectiveWholeTableReplacement =
+    wholeTableReplacement === "allow" && trailingBodyBlockId(baseSnapshot) === null
+      ? "avoid"
+      : wholeTableReplacement;
   const steps = buildSteps({
     baseSnapshot,
     targetSnapshot,
-    wholeTableReplacement,
+    wholeTableReplacement: effectiveWholeTableReplacement,
     workSession: workSession.alignment,
   });
   const contentSteps = steps.map(toContentAlignmentStep);
