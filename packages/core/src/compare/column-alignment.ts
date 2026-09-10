@@ -72,6 +72,8 @@ const extractTableGrid = <Block extends FolioContentBlock>(
       !Number.isSafeInteger(location.rowIndex) ||
       !Number.isSafeInteger(location.columnSpan) ||
       !Number.isSafeInteger(location.rowSpan) ||
+      !Number.isSafeInteger(right) ||
+      !Number.isSafeInteger(bottom) ||
       location.gridColumnIndex < 0 ||
       location.rowIndex < 0 ||
       location.columnSpan < 1 ||

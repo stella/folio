@@ -87,4 +87,29 @@ describe("bounded table-column alignment", () => {
     expect(base.reads()).toBe(0);
     expect(revised.reads()).toBe(0);
   });
+
+  test("an unsafe derived row boundary is rejected", () => {
+    const rowIndex = Number.MAX_SAFE_INTEGER;
+    const rowSpan = 1;
+    const block = {
+      id: "unsafe-row-end",
+      kind: "paragraph",
+      text: "Unsafe row boundary",
+      table: {
+        outerTableIndex: 0,
+        tableIndex: 0,
+        rowIndex,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+        columnSpan: 1,
+        rowSpan,
+        paragraphIndex: 0,
+      },
+    } satisfies FolioContentBlock;
+
+    expect(Number.isSafeInteger(rowIndex)).toBe(true);
+    expect(Number.isSafeInteger(rowSpan)).toBe(true);
+    expect(Number.isSafeInteger(rowIndex + rowSpan)).toBe(false);
+    expect(alignTableColumns([block], [block])).toBeNull();
+  });
 });
