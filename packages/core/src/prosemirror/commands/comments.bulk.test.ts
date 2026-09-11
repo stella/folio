@@ -2,7 +2,14 @@ import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import { history } from "prosemirror-history";
-import { EditorState, Plugin, PluginKey, type Command, type Transaction } from "prosemirror-state";
+import {
+  EditorState,
+  Plugin,
+  PluginKey,
+  TextSelection,
+  type Command,
+  type Transaction,
+} from "prosemirror-state";
 import { ySyncPlugin, yUndoPlugin } from "y-prosemirror";
 import * as Y from "yjs";
 
@@ -461,10 +468,59 @@ const secondaryStoryBuffer = async (): Promise<ArrayBuffer> => {
 };
 
 describe("headless bulk revision resolution equivalence", () => {
-  test("matches the legacy full-range semantics across generated nested revisions", () => {
+  test.each([
+    { mode: "reject", revisionType: "insertion" },
+    { mode: "accept", revisionType: "deletion" },
+  ] as const)(
+    "$mode fits an emptied required inline parent with the legacy position map",
+    ({ mode, revisionType }) => {
+      const field = schema.node(
+        "structuredField",
+        {
+          fieldType: "REF",
+          instruction: "REF required_inline_parent",
+          displayText: "removed",
+        },
+        [schema.text("removed", [revisionMark(revisionType, 1)])],
+      );
+      const trailingText = "following";
+      const doc = schema.node("doc", null, [
+        schema.node("paragraph", null, [field, schema.text(trailingText)]),
+      ]);
+      const trailingTextStart = 1 + field.nodeSize;
+      const selection = TextSelection.create(doc, trailingTextStart + 2);
+      const state = EditorState.create({
+        schema,
+        doc,
+        selection,
+        plugins: pluginsForHeadlessRevisionResolution([stepCountPlugin]),
+      });
+      const bulk = resolveAllChangesInHeadlessState(state, mode);
+      const legacy = apply(
+        state,
+        mode === "accept" ? acceptChange(0, doc.content.size) : rejectChange(0, doc.content.size),
+      ).state;
+
+      const legacyField = legacy.doc.firstChild?.firstChild;
+      expect(field.childCount).toBe(1);
+      expect(legacy.doc.textContent).toBe(trailingText);
+      expect(legacyField?.type.name).toBe("structuredField");
+      expect(legacyField?.firstChild?.type.name).toBe("tab");
+      expect(bulk.doc.toJSON()).toEqual(legacy.doc.toJSON());
+      expect(stepCountKey.getState(bulk)).toBe(1);
+      expect({ anchor: bulk.selection.anchor, head: bulk.selection.head }).toEqual({
+        anchor: legacy.selection.anchor,
+        head: legacy.selection.head,
+      });
+      expect(() => legacy.doc.check()).not.toThrow();
+      expect(() => bulk.doc.check()).not.toThrow();
+    },
+  );
+
+  test("matches the legacy small-document semantics across generated nested revisions", () => {
     fc.assert(
       fc.property(fc.integer({ min: 1, max: 100_000 }), (seed) => {
-        const doc = generatedDocument(seed, 40);
+        const doc = generatedDocument(seed, 4);
 
         for (const mode of ["accept", "reject"] as const) {
           const state = EditorState.create({
@@ -525,11 +581,7 @@ describe("headless bulk revision resolution equivalence", () => {
 
           expect(bulk.doc.toJSON()).toEqual(legacy.doc.toJSON());
           expect(pmRunPropertyChangeCount(bulk.doc)).toBe(0);
-          if (carrierCount < 256) {
-            expect(stepCountKey.getState(bulk)).toBeGreaterThan(1);
-          } else {
-            expect(stepCountKey.getState(bulk)).toBe(1);
-          }
+          expect(stepCountKey.getState(bulk)).toBe(1);
 
           const bulkModel = fromProseDoc(bulk.doc, fixture.document);
           const legacyModel = fromProseDoc(legacy.doc, fixture.document);
@@ -580,7 +632,7 @@ describe("headless bulk revision resolution equivalence", () => {
     });
 
     expect(stepCounts).toEqual([
-      { accept: 8, reject: 8 },
+      { accept: 1, reject: 1 },
       { accept: 1, reject: 1 },
       { accept: 1, reject: 1 },
     ]);

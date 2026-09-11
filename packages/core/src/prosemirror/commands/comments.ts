@@ -117,8 +117,6 @@ export function removeCommentMark(commentId: number): Command {
 
 type ResolveMode = "accept" | "reject";
 
-const BULK_INLINE_RESOLUTION_THRESHOLD = 256;
-
 type ResolveExecution = "legacy" | "headless-bulk-inline";
 
 /**
@@ -167,8 +165,6 @@ function resolveChange(
       const pPrMarkOps: PPrMarkOp[] = [];
       const tableRowStructuralOps: TableRowStructuralOp[] = [];
       const tableCellStructuralOps: TableCellStructuralOp[] = [];
-      const deferredRunPropertyChanges: ResolveRunPropertyChangeOptions[] = [];
-      let bulkInlineCarrierCount = 0;
       let removedSectionEndpointCount = 0;
       const removedSectionReferences: RemovedSectionReference[] = [];
 
@@ -340,6 +336,9 @@ function resolveChange(
         if (!node.isInline) {
           return true;
         }
+        if (canBulkInlineResolution) {
+          return true;
+        }
         const nodeEnd = pos + node.nodeSize;
         const rangeFrom = Math.max(from, pos);
         const rangeTo = Math.min(to, nodeEnd);
@@ -347,36 +346,9 @@ function resolveChange(
         const runPropertyChangeMark = node.marks.find(
           (mark) => mark.type.name === "runPropertyChange",
         );
-        const resolvesRunPropertyChange =
-          runPropertyChangeMark !== undefined &&
-          expectRunPropertyChangeMarkAttrs(runPropertyChangeMark).changes.length > 0;
         const removesNode =
           removeType !== undefined &&
           node.marks.some((mark) => mark.type === removeType && matchesRevision(mark));
-        const removesKeptMark =
-          keepType !== undefined &&
-          node.marks.some((mark) => mark.type === keepType && matchesRevision(mark));
-        if (canBulkInlineResolution) {
-          if (resolvesRunPropertyChange) {
-            deferredRunPropertyChanges.push({
-              tr,
-              node,
-              from: rangeFrom,
-              to: rangeTo,
-              mark: runPropertyChangeMark,
-              mode,
-              revisionSet,
-              styleResolver,
-            });
-          }
-          if (removesNode) {
-            deleteRanges.push({ from: rangeFrom, to: rangeTo });
-          }
-          if (resolvesRunPropertyChange || removesNode || removesKeptMark) {
-            bulkInlineCarrierCount++;
-          }
-          return true;
-        }
         if (runPropertyChangeMark) {
           resolveRunPropertyChange({
             tr,
@@ -405,11 +377,9 @@ function resolveChange(
       });
 
       let bulkInlineChangeTracking: HeadlessInlineChangeTracking | null = null;
-      // The linear rewrite pays a fixed whole-document cost. The existing
-      // steps are faster for small batches and retain their compact slices.
-      const useBulkInlineResolution =
-        canBulkInlineResolution && bulkInlineCarrierCount >= BULK_INLINE_RESOLUTION_THRESHOLD;
-      if (useBulkInlineResolution) {
+      // Whole-document headless resolution rewrites inline carriers in one
+      // linear pass. Interactive commands retain granular, serializable steps.
+      if (canBulkInlineResolution) {
         bulkInlineChangeTracking = appendHeadlessInlineResolution({
           tr,
           mode,
@@ -418,9 +388,6 @@ function resolveChange(
           styleResolver,
         });
       } else {
-        for (const deferred of deferredRunPropertyChanges) {
-          resolveRunPropertyChange(deferred);
-        }
         if (removeKeptMarksInBulk) {
           tr.removeMark(from, to, keepType);
         }
