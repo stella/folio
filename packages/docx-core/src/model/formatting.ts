@@ -14,42 +14,91 @@ import type { ColorValue, BorderSpec, ShadingProperties } from "./colors";
 /**
  * Underline style options
  */
-export type UnderlineStyle =
-  | "none"
-  | "single"
-  | "words"
-  | "double"
-  | "thick"
-  | "dotted"
-  | "dottedHeavy"
-  | "dash"
-  | "dashedHeavy"
-  | "dashLong"
-  | "dashLongHeavy"
-  | "dotDash"
-  | "dashDotHeavy"
-  | "dotDotDash"
-  | "dashDotDotHeavy"
-  | "wave"
-  | "wavyHeavy"
-  | "wavyDouble";
+export const UNDERLINE_STYLES = Object.freeze([
+  "none",
+  "single",
+  "words",
+  "double",
+  "thick",
+  "dotted",
+  "dottedHeavy",
+  "dash",
+  "dashedHeavy",
+  "dashLong",
+  "dashLongHeavy",
+  "dotDash",
+  "dashDotHeavy",
+  "dotDotDash",
+  "dashDotDotHeavy",
+  "wave",
+  "wavyHeavy",
+  "wavyDouble",
+] as const);
+
+export type UnderlineStyle = (typeof UNDERLINE_STYLES)[number];
 
 /**
  * Text effect animations
  */
-export type TextEffect =
-  | "none"
-  | "blinkBackground"
-  | "lights"
-  | "antsBlack"
-  | "antsRed"
-  | "shimmer"
-  | "sparkle";
+export const TEXT_EFFECTS = Object.freeze([
+  "none",
+  "blinkBackground",
+  "lights",
+  "antsBlack",
+  "antsRed",
+  "shimmer",
+  "sparkle",
+] as const);
+
+export type TextEffect = (typeof TEXT_EFFECTS)[number];
 
 /**
  * Emphasis mark type
  */
-export type EmphasisMark = "none" | "dot" | "comma" | "circle" | "underDot";
+export const EMPHASIS_MARKS = Object.freeze([
+  "none",
+  "dot",
+  "comma",
+  "circle",
+  "underDot",
+] as const);
+
+export type EmphasisMark = (typeof EMPHASIS_MARKS)[number];
+
+export const VERTICAL_ALIGNMENTS = Object.freeze(["baseline", "superscript", "subscript"] as const);
+
+export const HIGHLIGHT_COLORS = Object.freeze([
+  "black",
+  "blue",
+  "cyan",
+  "darkBlue",
+  "darkCyan",
+  "darkGray",
+  "darkGreen",
+  "darkMagenta",
+  "darkRed",
+  "darkYellow",
+  "green",
+  "lightGray",
+  "magenta",
+  "none",
+  "red",
+  "white",
+  "yellow",
+] as const);
+
+export const FONT_HINTS = Object.freeze(["default", "eastAsia", "cs"] as const);
+
+export const ASCII_THEME_FONTS = Object.freeze([
+  "majorAscii",
+  "majorHAnsi",
+  "majorEastAsia",
+  "majorBidi",
+  "minorAscii",
+  "minorHAnsi",
+  "minorEastAsia",
+  "minorBidi",
+] as const);
 
 /**
  * Complete text formatting properties (w:rPr)
@@ -78,7 +127,7 @@ export type TextFormatting = {
 
   // Vertical alignment
   /** Superscript/subscript (w:vertAlign) */
-  vertAlign?: "baseline" | "superscript" | "subscript";
+  vertAlign?: (typeof VERTICAL_ALIGNMENTS)[number];
 
   // Capitalization
   /** Small caps (w:smallCaps) */
@@ -94,24 +143,7 @@ export type TextFormatting = {
   /** Text color (w:color) */
   color?: ColorValue;
   /** Highlight/background color (w:highlight) */
-  highlight?:
-    | "black"
-    | "blue"
-    | "cyan"
-    | "darkBlue"
-    | "darkCyan"
-    | "darkGray"
-    | "darkGreen"
-    | "darkMagenta"
-    | "darkRed"
-    | "darkYellow"
-    | "green"
-    | "lightGray"
-    | "magenta"
-    | "none"
-    | "red"
-    | "white"
-    | "yellow";
+  highlight?: (typeof HIGHLIGHT_COLORS)[number];
   /** Character shading (w:shd) */
   shading?: ShadingProperties;
 
@@ -127,17 +159,9 @@ export type TextFormatting = {
     eastAsia?: string;
     cs?: string;
     /** Script slot Word should prefer when selecting a glyph font (w:hint). */
-    hint?: "default" | "eastAsia" | "cs";
+    hint?: (typeof FONT_HINTS)[number];
     /** Theme font reference */
-    asciiTheme?:
-      | "majorAscii"
-      | "majorHAnsi"
-      | "majorEastAsia"
-      | "majorBidi"
-      | "minorAscii"
-      | "minorHAnsi"
-      | "minorEastAsia"
-      | "minorBidi";
+    asciiTheme?: (typeof ASCII_THEME_FONTS)[number];
     hAnsiTheme?: string;
     eastAsiaTheme?: string;
     csTheme?: string;
@@ -183,6 +207,283 @@ export type TextFormatting = {
   /** Character style ID (w:rStyle) */
   styleId?: string;
 };
+
+type SelfDescribingFieldMap<Value, Descriptor> = {
+  [Field in keyof Value]-?: Descriptor & { field: Field };
+};
+
+type TextFormattingPropertyDescriptor = {
+  comparison: "exact";
+  validation:
+    | "boolean"
+    | "color"
+    | "effect"
+    | "emphasis"
+    | "finite-number"
+    | "font-family"
+    | "highlight"
+    | "language"
+    | "nonnegative-number"
+    | "shading"
+    | "string"
+    | "underline"
+    | "vertical-alignment";
+  visualGroup: string | null;
+  fastPath: "character-style" | "structural" | "visual";
+};
+
+/** Total semantic descriptor for every modeled run-formatting property. */
+export const TEXT_FORMATTING_PROPERTY_DESCRIPTORS = {
+  bold: {
+    field: "bold",
+    comparison: "exact",
+    validation: "boolean",
+    visualGroup: "bold",
+    fastPath: "visual",
+  },
+  boldCs: {
+    field: "boldCs",
+    comparison: "exact",
+    validation: "boolean",
+    visualGroup: null,
+    fastPath: "structural",
+  },
+  italic: {
+    field: "italic",
+    comparison: "exact",
+    validation: "boolean",
+    visualGroup: "italic",
+    fastPath: "visual",
+  },
+  italicCs: {
+    field: "italicCs",
+    comparison: "exact",
+    validation: "boolean",
+    visualGroup: null,
+    fastPath: "structural",
+  },
+  underline: {
+    field: "underline",
+    comparison: "exact",
+    validation: "underline",
+    visualGroup: "underline",
+    fastPath: "visual",
+  },
+  strike: {
+    field: "strike",
+    comparison: "exact",
+    validation: "boolean",
+    visualGroup: "strike",
+    fastPath: "visual",
+  },
+  doubleStrike: {
+    field: "doubleStrike",
+    comparison: "exact",
+    validation: "boolean",
+    visualGroup: "strike",
+    fastPath: "visual",
+  },
+  vertAlign: {
+    field: "vertAlign",
+    comparison: "exact",
+    validation: "vertical-alignment",
+    visualGroup: "vertAlign",
+    fastPath: "visual",
+  },
+  smallCaps: {
+    field: "smallCaps",
+    comparison: "exact",
+    validation: "boolean",
+    visualGroup: "smallCaps",
+    fastPath: "visual",
+  },
+  allCaps: {
+    field: "allCaps",
+    comparison: "exact",
+    validation: "boolean",
+    visualGroup: "allCaps",
+    fastPath: "visual",
+  },
+  hidden: {
+    field: "hidden",
+    comparison: "exact",
+    validation: "boolean",
+    visualGroup: "hidden",
+    fastPath: "visual",
+  },
+  color: {
+    field: "color",
+    comparison: "exact",
+    validation: "color",
+    visualGroup: "color",
+    fastPath: "visual",
+  },
+  highlight: {
+    field: "highlight",
+    comparison: "exact",
+    validation: "highlight",
+    visualGroup: "highlight",
+    fastPath: "visual",
+  },
+  shading: {
+    field: "shading",
+    comparison: "exact",
+    validation: "shading",
+    visualGroup: "shading",
+    fastPath: "visual",
+  },
+  fontSize: {
+    field: "fontSize",
+    comparison: "exact",
+    validation: "nonnegative-number",
+    visualGroup: "fontSize",
+    fastPath: "visual",
+  },
+  fontSizeCs: {
+    field: "fontSizeCs",
+    comparison: "exact",
+    validation: "nonnegative-number",
+    visualGroup: null,
+    fastPath: "structural",
+  },
+  fontFamily: {
+    field: "fontFamily",
+    comparison: "exact",
+    validation: "font-family",
+    visualGroup: "fontFamily",
+    fastPath: "visual",
+  },
+  language: {
+    field: "language",
+    comparison: "exact",
+    validation: "language",
+    visualGroup: "language",
+    fastPath: "visual",
+  },
+  spacing: {
+    field: "spacing",
+    comparison: "exact",
+    validation: "finite-number",
+    visualGroup: "characterSpacing",
+    fastPath: "visual",
+  },
+  position: {
+    field: "position",
+    comparison: "exact",
+    validation: "finite-number",
+    visualGroup: "characterSpacing",
+    fastPath: "visual",
+  },
+  scale: {
+    field: "scale",
+    comparison: "exact",
+    validation: "finite-number",
+    visualGroup: "characterSpacing",
+    fastPath: "visual",
+  },
+  kerning: {
+    field: "kerning",
+    comparison: "exact",
+    validation: "nonnegative-number",
+    visualGroup: "characterSpacing",
+    fastPath: "visual",
+  },
+  effect: {
+    field: "effect",
+    comparison: "exact",
+    validation: "effect",
+    visualGroup: "effect",
+    fastPath: "visual",
+  },
+  emphasisMark: {
+    field: "emphasisMark",
+    comparison: "exact",
+    validation: "emphasis",
+    visualGroup: "emphasisMark",
+    fastPath: "visual",
+  },
+  emboss: {
+    field: "emboss",
+    comparison: "exact",
+    validation: "boolean",
+    visualGroup: "emboss",
+    fastPath: "visual",
+  },
+  imprint: {
+    field: "imprint",
+    comparison: "exact",
+    validation: "boolean",
+    visualGroup: "imprint",
+    fastPath: "visual",
+  },
+  outline: {
+    field: "outline",
+    comparison: "exact",
+    validation: "boolean",
+    visualGroup: "outline",
+    fastPath: "visual",
+  },
+  shadow: {
+    field: "shadow",
+    comparison: "exact",
+    validation: "boolean",
+    visualGroup: "shadow",
+    fastPath: "visual",
+  },
+  rtl: {
+    field: "rtl",
+    comparison: "exact",
+    validation: "boolean",
+    visualGroup: "rtl",
+    fastPath: "visual",
+  },
+  cs: {
+    field: "cs",
+    comparison: "exact",
+    validation: "boolean",
+    visualGroup: null,
+    fastPath: "structural",
+  },
+  styleId: {
+    field: "styleId",
+    comparison: "exact",
+    validation: "string",
+    visualGroup: null,
+    fastPath: "character-style",
+  },
+} as const satisfies SelfDescribingFieldMap<TextFormatting, TextFormattingPropertyDescriptor>;
+
+export const TEXT_FORMATTING_FONT_FAMILY_FIELD_DESCRIPTORS = {
+  ascii: { field: "ascii", validation: "string" },
+  hAnsi: { field: "hAnsi", validation: "string" },
+  eastAsia: { field: "eastAsia", validation: "string" },
+  cs: { field: "cs", validation: "string" },
+  hint: { field: "hint", validation: "font-hint" },
+  asciiTheme: { field: "asciiTheme", validation: "ascii-theme" },
+  hAnsiTheme: { field: "hAnsiTheme", validation: "string" },
+  eastAsiaTheme: { field: "eastAsiaTheme", validation: "string" },
+  csTheme: { field: "csTheme", validation: "string" },
+} as const satisfies SelfDescribingFieldMap<
+  NonNullable<TextFormatting["fontFamily"]>,
+  { validation: "ascii-theme" | "font-hint" | "string" }
+>;
+
+export const TEXT_FORMATTING_LANGUAGE_FIELD_DESCRIPTORS = {
+  val: { field: "val", validation: "string" },
+  eastAsia: { field: "eastAsia", validation: "string" },
+  bidi: { field: "bidi", validation: "string" },
+} as const satisfies SelfDescribingFieldMap<
+  NonNullable<TextFormatting["language"]>,
+  { validation: "string" }
+>;
+
+export const TEXT_FORMATTING_UNDERLINE_FIELD_DESCRIPTORS = {
+  style: { field: "style", validation: "underline-style" },
+  color: { field: "color", validation: "color" },
+} as const satisfies SelfDescribingFieldMap<
+  NonNullable<TextFormatting["underline"]>,
+  { validation: "color" | "underline-style" }
+>;
 
 // ============================================================================
 // PARAGRAPH FORMATTING (Paragraph Properties - pPr)

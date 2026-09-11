@@ -14,6 +14,9 @@ export type AbstractNumbering = {
     name?: string;
 };
 
+// @public (undocumented)
+export const ASCII_THEME_FONTS: readonly ["majorAscii", "majorHAnsi", "majorEastAsia", "majorBidi", "minorAscii", "minorHAnsi", "minorEastAsia", "minorBidi"];
+
 // @public
 export type BlockContent = Paragraph | Table | BlockSdt;
 
@@ -67,6 +70,30 @@ export type CellMargins = {
     bottom?: TableMeasurement;
     left?: TableMeasurement;
     right?: TableMeasurement;
+};
+
+// @public (undocumented)
+export const COLOR_VALUE_PROPERTY_DESCRIPTORS: {
+    readonly rgb: {
+        readonly field: "rgb";
+        readonly validation: "hex";
+    };
+    readonly themeColor: {
+        readonly field: "themeColor";
+        readonly validation: "theme-color";
+    };
+    readonly themeTint: {
+        readonly field: "themeTint";
+        readonly validation: "hex";
+    };
+    readonly themeShade: {
+        readonly field: "themeShade";
+        readonly validation: "hex";
+    };
+    readonly auto: {
+        readonly field: "auto";
+        readonly validation: "boolean";
+    };
 };
 
 // @public
@@ -263,7 +290,10 @@ export type DrawingContent = {
 export type DrawingRawXmlMode = (typeof DRAWING_RAW_XML_MODES)[keyof typeof DRAWING_RAW_XML_MODES];
 
 // @public
-export type EmphasisMark = "none" | "dot" | "comma" | "circle" | "underDot";
+export const EMPHASIS_MARKS: readonly ["none", "dot", "comma", "circle", "underDot"];
+
+// @public (undocumented)
+export type EmphasisMark = (typeof EMPHASIS_MARKS)[number];
 
 // @public
 export type Endnote = {
@@ -312,6 +342,9 @@ export type FloatingTableProperties = {
     leftFromText?: number;
     rightFromText?: number;
 };
+
+// @public (undocumented)
+export const FONT_HINTS: readonly ["default", "eastAsia", "cs"];
 
 // @public
 export type FontInfo = {
@@ -383,6 +416,9 @@ export type HeaderReference = {
     type: HeaderFooterType;
     rId: string;
 };
+
+// @public (undocumented)
+export const HIGHLIGHT_COLORS: readonly ["black", "blue", "cyan", "darkBlue", "darkCyan", "darkGray", "darkGreen", "darkMagenta", "darkRed", "darkYellow", "green", "lightGray", "magenta", "none", "red", "white", "yellow"];
 
 // @public
 export type Hyperlink = {
@@ -938,10 +974,29 @@ export type SectionPropertyChange = {
 export type SectionStart = "continuous" | "nextPage" | "oddPage" | "evenPage" | "nextColumn";
 
 // @public
+export const SHADING_PATTERNS: readonly ["clear", "solid", "horzStripe", "vertStripe", "reverseDiagStripe", "diagStripe", "horzCross", "diagCross", "thinHorzStripe", "thinVertStripe", "thinReverseDiagStripe", "thinDiagStripe", "thinHorzCross", "thinDiagCross", "pct5", "pct10", "pct12", "pct15", "pct20", "pct25", "pct30", "pct35", "pct37", "pct40", "pct45", "pct50", "pct55", "pct60", "pct62", "pct65", "pct70", "pct75", "pct80", "pct85", "pct87", "pct90", "pct95", "nil"];
+
+// @public (undocumented)
+export const SHADING_PROPERTY_DESCRIPTORS: {
+    readonly color: {
+        readonly field: "color";
+        readonly validation: "color";
+    };
+    readonly fill: {
+        readonly field: "fill";
+        readonly validation: "color";
+    };
+    readonly pattern: {
+        readonly field: "pattern";
+        readonly validation: "pattern";
+    };
+};
+
+// @public (undocumented)
 export type ShadingProperties = {
     color?: ColorValue;
     fill?: ColorValue;
-    pattern?: "clear" | "solid" | "horzStripe" | "vertStripe" | "reverseDiagStripe" | "diagStripe" | "horzCross" | "diagCross" | "thinHorzStripe" | "thinVertStripe" | "thinReverseDiagStripe" | "thinDiagStripe" | "thinHorzCross" | "thinDiagCross" | "pct5" | "pct10" | "pct12" | "pct15" | "pct20" | "pct25" | "pct30" | "pct35" | "pct37" | "pct40" | "pct45" | "pct50" | "pct55" | "pct60" | "pct62" | "pct65" | "pct70" | "pct75" | "pct80" | "pct85" | "pct87" | "pct90" | "pct95" | "nil";
+    pattern?: (typeof SHADING_PATTERNS)[number];
 };
 
 // @public
@@ -1272,6 +1327,298 @@ export type TabStop = {
 export type TabStopAlignment = "left" | "center" | "right" | "decimal" | "bar" | "clear" | "num";
 
 // @public
+export const TEXT_EFFECTS: readonly ["none", "blinkBackground", "lights", "antsBlack", "antsRed", "shimmer", "sparkle"];
+
+// @public (undocumented)
+export const TEXT_FORMATTING_FONT_FAMILY_FIELD_DESCRIPTORS: {
+    readonly ascii: {
+        readonly field: "ascii";
+        readonly validation: "string";
+    };
+    readonly hAnsi: {
+        readonly field: "hAnsi";
+        readonly validation: "string";
+    };
+    readonly eastAsia: {
+        readonly field: "eastAsia";
+        readonly validation: "string";
+    };
+    readonly cs: {
+        readonly field: "cs";
+        readonly validation: "string";
+    };
+    readonly hint: {
+        readonly field: "hint";
+        readonly validation: "font-hint";
+    };
+    readonly asciiTheme: {
+        readonly field: "asciiTheme";
+        readonly validation: "ascii-theme";
+    };
+    readonly hAnsiTheme: {
+        readonly field: "hAnsiTheme";
+        readonly validation: "string";
+    };
+    readonly eastAsiaTheme: {
+        readonly field: "eastAsiaTheme";
+        readonly validation: "string";
+    };
+    readonly csTheme: {
+        readonly field: "csTheme";
+        readonly validation: "string";
+    };
+};
+
+// @public (undocumented)
+export const TEXT_FORMATTING_LANGUAGE_FIELD_DESCRIPTORS: {
+    readonly val: {
+        readonly field: "val";
+        readonly validation: "string";
+    };
+    readonly eastAsia: {
+        readonly field: "eastAsia";
+        readonly validation: "string";
+    };
+    readonly bidi: {
+        readonly field: "bidi";
+        readonly validation: "string";
+    };
+};
+
+// @public
+export const TEXT_FORMATTING_PROPERTY_DESCRIPTORS: {
+    readonly bold: {
+        readonly field: "bold";
+        readonly comparison: "exact";
+        readonly validation: "boolean";
+        readonly visualGroup: "bold";
+        readonly fastPath: "visual";
+    };
+    readonly boldCs: {
+        readonly field: "boldCs";
+        readonly comparison: "exact";
+        readonly validation: "boolean";
+        readonly visualGroup: null;
+        readonly fastPath: "structural";
+    };
+    readonly italic: {
+        readonly field: "italic";
+        readonly comparison: "exact";
+        readonly validation: "boolean";
+        readonly visualGroup: "italic";
+        readonly fastPath: "visual";
+    };
+    readonly italicCs: {
+        readonly field: "italicCs";
+        readonly comparison: "exact";
+        readonly validation: "boolean";
+        readonly visualGroup: null;
+        readonly fastPath: "structural";
+    };
+    readonly underline: {
+        readonly field: "underline";
+        readonly comparison: "exact";
+        readonly validation: "underline";
+        readonly visualGroup: "underline";
+        readonly fastPath: "visual";
+    };
+    readonly strike: {
+        readonly field: "strike";
+        readonly comparison: "exact";
+        readonly validation: "boolean";
+        readonly visualGroup: "strike";
+        readonly fastPath: "visual";
+    };
+    readonly doubleStrike: {
+        readonly field: "doubleStrike";
+        readonly comparison: "exact";
+        readonly validation: "boolean";
+        readonly visualGroup: "strike";
+        readonly fastPath: "visual";
+    };
+    readonly vertAlign: {
+        readonly field: "vertAlign";
+        readonly comparison: "exact";
+        readonly validation: "vertical-alignment";
+        readonly visualGroup: "vertAlign";
+        readonly fastPath: "visual";
+    };
+    readonly smallCaps: {
+        readonly field: "smallCaps";
+        readonly comparison: "exact";
+        readonly validation: "boolean";
+        readonly visualGroup: "smallCaps";
+        readonly fastPath: "visual";
+    };
+    readonly allCaps: {
+        readonly field: "allCaps";
+        readonly comparison: "exact";
+        readonly validation: "boolean";
+        readonly visualGroup: "allCaps";
+        readonly fastPath: "visual";
+    };
+    readonly hidden: {
+        readonly field: "hidden";
+        readonly comparison: "exact";
+        readonly validation: "boolean";
+        readonly visualGroup: "hidden";
+        readonly fastPath: "visual";
+    };
+    readonly color: {
+        readonly field: "color";
+        readonly comparison: "exact";
+        readonly validation: "color";
+        readonly visualGroup: "color";
+        readonly fastPath: "visual";
+    };
+    readonly highlight: {
+        readonly field: "highlight";
+        readonly comparison: "exact";
+        readonly validation: "highlight";
+        readonly visualGroup: "highlight";
+        readonly fastPath: "visual";
+    };
+    readonly shading: {
+        readonly field: "shading";
+        readonly comparison: "exact";
+        readonly validation: "shading";
+        readonly visualGroup: "shading";
+        readonly fastPath: "visual";
+    };
+    readonly fontSize: {
+        readonly field: "fontSize";
+        readonly comparison: "exact";
+        readonly validation: "nonnegative-number";
+        readonly visualGroup: "fontSize";
+        readonly fastPath: "visual";
+    };
+    readonly fontSizeCs: {
+        readonly field: "fontSizeCs";
+        readonly comparison: "exact";
+        readonly validation: "nonnegative-number";
+        readonly visualGroup: null;
+        readonly fastPath: "structural";
+    };
+    readonly fontFamily: {
+        readonly field: "fontFamily";
+        readonly comparison: "exact";
+        readonly validation: "font-family";
+        readonly visualGroup: "fontFamily";
+        readonly fastPath: "visual";
+    };
+    readonly language: {
+        readonly field: "language";
+        readonly comparison: "exact";
+        readonly validation: "language";
+        readonly visualGroup: "language";
+        readonly fastPath: "visual";
+    };
+    readonly spacing: {
+        readonly field: "spacing";
+        readonly comparison: "exact";
+        readonly validation: "finite-number";
+        readonly visualGroup: "characterSpacing";
+        readonly fastPath: "visual";
+    };
+    readonly position: {
+        readonly field: "position";
+        readonly comparison: "exact";
+        readonly validation: "finite-number";
+        readonly visualGroup: "characterSpacing";
+        readonly fastPath: "visual";
+    };
+    readonly scale: {
+        readonly field: "scale";
+        readonly comparison: "exact";
+        readonly validation: "finite-number";
+        readonly visualGroup: "characterSpacing";
+        readonly fastPath: "visual";
+    };
+    readonly kerning: {
+        readonly field: "kerning";
+        readonly comparison: "exact";
+        readonly validation: "nonnegative-number";
+        readonly visualGroup: "characterSpacing";
+        readonly fastPath: "visual";
+    };
+    readonly effect: {
+        readonly field: "effect";
+        readonly comparison: "exact";
+        readonly validation: "effect";
+        readonly visualGroup: "effect";
+        readonly fastPath: "visual";
+    };
+    readonly emphasisMark: {
+        readonly field: "emphasisMark";
+        readonly comparison: "exact";
+        readonly validation: "emphasis";
+        readonly visualGroup: "emphasisMark";
+        readonly fastPath: "visual";
+    };
+    readonly emboss: {
+        readonly field: "emboss";
+        readonly comparison: "exact";
+        readonly validation: "boolean";
+        readonly visualGroup: "emboss";
+        readonly fastPath: "visual";
+    };
+    readonly imprint: {
+        readonly field: "imprint";
+        readonly comparison: "exact";
+        readonly validation: "boolean";
+        readonly visualGroup: "imprint";
+        readonly fastPath: "visual";
+    };
+    readonly outline: {
+        readonly field: "outline";
+        readonly comparison: "exact";
+        readonly validation: "boolean";
+        readonly visualGroup: "outline";
+        readonly fastPath: "visual";
+    };
+    readonly shadow: {
+        readonly field: "shadow";
+        readonly comparison: "exact";
+        readonly validation: "boolean";
+        readonly visualGroup: "shadow";
+        readonly fastPath: "visual";
+    };
+    readonly rtl: {
+        readonly field: "rtl";
+        readonly comparison: "exact";
+        readonly validation: "boolean";
+        readonly visualGroup: "rtl";
+        readonly fastPath: "visual";
+    };
+    readonly cs: {
+        readonly field: "cs";
+        readonly comparison: "exact";
+        readonly validation: "boolean";
+        readonly visualGroup: null;
+        readonly fastPath: "structural";
+    };
+    readonly styleId: {
+        readonly field: "styleId";
+        readonly comparison: "exact";
+        readonly validation: "string";
+        readonly visualGroup: null;
+        readonly fastPath: "character-style";
+    };
+};
+
+// @public (undocumented)
+export const TEXT_FORMATTING_UNDERLINE_FIELD_DESCRIPTORS: {
+    readonly style: {
+        readonly field: "style";
+        readonly validation: "underline-style";
+    };
+    readonly color: {
+        readonly field: "color";
+        readonly validation: "color";
+    };
+};
+
+// @public
 export type TextBox = {
     type: "textBox";
     id?: string;
@@ -1300,8 +1647,8 @@ export type TextContent = {
     preserveSpace?: boolean;
 };
 
-// @public
-export type TextEffect = "none" | "blinkBackground" | "lights" | "antsBlack" | "antsRed" | "shimmer" | "sparkle";
+// @public (undocumented)
+export type TextEffect = (typeof TEXT_EFFECTS)[number];
 
 // @public
 export type TextFormatting = {
@@ -1315,12 +1662,12 @@ export type TextFormatting = {
     };
     strike?: boolean;
     doubleStrike?: boolean;
-    vertAlign?: "baseline" | "superscript" | "subscript";
+    vertAlign?: (typeof VERTICAL_ALIGNMENTS)[number];
     smallCaps?: boolean;
     allCaps?: boolean;
     hidden?: boolean;
     color?: ColorValue;
-    highlight?: "black" | "blue" | "cyan" | "darkBlue" | "darkCyan" | "darkGray" | "darkGreen" | "darkMagenta" | "darkRed" | "darkYellow" | "green" | "lightGray" | "magenta" | "none" | "red" | "white" | "yellow";
+    highlight?: (typeof HIGHLIGHT_COLORS)[number];
     shading?: ShadingProperties;
     fontSize?: number;
     fontSizeCs?: number;
@@ -1329,8 +1676,8 @@ export type TextFormatting = {
         hAnsi?: string;
         eastAsia?: string;
         cs?: string;
-        hint?: "default" | "eastAsia" | "cs";
-        asciiTheme?: "majorAscii" | "majorHAnsi" | "majorEastAsia" | "majorBidi" | "minorAscii" | "minorHAnsi" | "minorEastAsia" | "minorBidi";
+        hint?: (typeof FONT_HINTS)[number];
+        asciiTheme?: (typeof ASCII_THEME_FONTS)[number];
         hAnsiTheme?: string;
         eastAsiaTheme?: string;
         csTheme?: string;
@@ -1376,6 +1723,9 @@ export type Theme = {
 };
 
 // @public
+export const THEME_COLOR_SLOTS: readonly ["dk1", "lt1", "dk2", "lt2", "accent1", "accent2", "accent3", "accent4", "accent5", "accent6", "hlink", "folHlink", "background1", "text1", "background2", "text2"];
+
+// @public
 export type ThemeColorScheme = {
     dk1?: string;
     lt1?: string;
@@ -1391,8 +1741,8 @@ export type ThemeColorScheme = {
     folHlink?: string;
 };
 
-// @public
-export type ThemeColorSlot = "dk1" | "lt1" | "dk2" | "lt2" | "accent1" | "accent2" | "accent3" | "accent4" | "accent5" | "accent6" | "hlink" | "folHlink" | "background1" | "text1" | "background2" | "text2";
+// @public (undocumented)
+export type ThemeColorSlot = (typeof THEME_COLOR_SLOTS)[number];
 
 // @public
 export type ThemeFont = {
@@ -1427,7 +1777,13 @@ export type TrackedRunChange = Insertion | Deletion | MoveFrom | MoveTo;
 export type TrackedRunContent = Run | Hyperlink | BookmarkStart | BookmarkEnd | SimpleField | ComplexField | TrackedRunChange;
 
 // @public
-export type UnderlineStyle = "none" | "single" | "words" | "double" | "thick" | "dotted" | "dottedHeavy" | "dash" | "dashedHeavy" | "dashLong" | "dashLongHeavy" | "dotDash" | "dashDotHeavy" | "dotDotDash" | "dashDotDotHeavy" | "wave" | "wavyHeavy" | "wavyDouble";
+export const UNDERLINE_STYLES: readonly ["none", "single", "words", "double", "thick", "dotted", "dottedHeavy", "dash", "dashedHeavy", "dashLong", "dashLongHeavy", "dotDash", "dashDotHeavy", "dotDotDash", "dashDotDotHeavy", "wave", "wavyHeavy", "wavyDouble"];
+
+// @public (undocumented)
+export type UnderlineStyle = (typeof UNDERLINE_STYLES)[number];
+
+// @public (undocumented)
+export const VERTICAL_ALIGNMENTS: readonly ["baseline", "superscript", "subscript"];
 
 // @public
 export type VerticalAlign = "top" | "center" | "both" | "bottom";
