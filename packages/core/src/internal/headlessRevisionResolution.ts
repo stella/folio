@@ -15,22 +15,26 @@ import {
 
 export type HeadlessRevisionResolutionMode = "accept" | "reject";
 
-type HeadlessDeleteRange = {
+type HeadlessRange = {
   from: number;
   to: number;
+};
+
+type HeadlessReplacementRange = HeadlessRange & {
+  newSize: number;
 };
 
 type HeadlessInlineContext = {
   mode: HeadlessRevisionResolutionMode;
   keepType: MarkType | undefined;
   removeType: MarkType | undefined;
-  deleteRanges: HeadlessDeleteRange[];
-  changedParagraphRanges: HeadlessDeleteRange[];
+  replacementRanges: HeadlessReplacementRange[];
+  changedParagraphRanges: HeadlessRange[];
   styleResolver: RunStyleResolver | null;
 };
 
 export type HeadlessInlineChangeTracking = {
-  ranges: readonly HeadlessDeleteRange[];
+  ranges: readonly HeadlessRange[];
   mappingFrom: number;
 };
 
@@ -169,6 +173,7 @@ const resolveInlineContent = ({
     node.type.name === "paragraph" && context.mode === "reject"
       ? { paragraph: node }
       : inheritedParagraphScope;
+  const replacementRangeStart = context.replacementRanges.length;
   let resolvedNode = node;
   if (node.isInline) {
     const resolved = resolveInlineNode({
@@ -177,7 +182,11 @@ const resolveInlineContent = ({
       paragraphScope,
     });
     if (resolved === null) {
-      context.deleteRanges.push({ from: position, to: position + node.nodeSize });
+      context.replacementRanges.push({
+        from: position,
+        to: position + node.nodeSize,
+        newSize: 0,
+      });
       return null;
     }
     resolvedNode = resolved;
@@ -207,19 +216,56 @@ const resolveInlineContent = ({
   if (!contentChanged) {
     return resolvedNode;
   }
+  let resolvedContent = Fragment.fromArray(children);
+  if (!resolvedNode.type.validContent(resolvedContent)) {
+    // A required-content parent may need a generated child after resolution
+    // removes its last carrier. Let the schema choose that filler instead of
+    // constructing an invalid node.
+    const fitted = resolvedNode.type.createAndFill(
+      resolvedNode.attrs,
+      resolvedContent,
+      resolvedNode.marks,
+    );
+    if (!fitted || !resolvedNode.type.validContent(fitted.content)) {
+      if (!resolvedNode.isInline) {
+        return panic(`Headless inline resolution invalidated ${resolvedNode.type.name} content`);
+      }
+      context.replacementRanges.splice(
+        replacementRangeStart,
+        context.replacementRanges.length - replacementRangeStart,
+        { from: position, to: position + node.nodeSize, newSize: 0 },
+      );
+      return null;
+    }
+    // The fitted content is larger than the deletion-only reconstruction.
+    // Replace its nested maps with the actual content-size transition so a
+    // selection after the parent moves by the same distance as the slice.
+    context.replacementRanges.splice(
+      replacementRangeStart,
+      context.replacementRanges.length - replacementRangeStart,
+      {
+        from: contentStart,
+        to: contentStart + node.content.size,
+        newSize: fitted.content.size,
+      },
+    );
+    resolvedContent = fitted.content;
+  }
   if (resolvedNode.type.name === "paragraph") {
     context.changedParagraphRanges.push({ from: position, to: position + resolvedNode.nodeSize });
   }
-  return rebuildNode(node, resolvedNode.attrs, Fragment.fromArray(children), resolvedNode.marks);
+  // Rebuild through the provenance-aware owner so a filled paragraph keeps
+  // its captured property source.
+  return rebuildNode(node, resolvedNode.attrs, resolvedContent, resolvedNode.marks);
 };
 
-const coalesceDeleteRanges = (
-  deleteRanges: readonly HeadlessDeleteRange[],
-): HeadlessDeleteRange[] => {
-  const coalesced: HeadlessDeleteRange[] = [];
-  for (const range of deleteRanges) {
+const coalesceReplacementRanges = (
+  replacementRanges: readonly HeadlessReplacementRange[],
+): HeadlessReplacementRange[] => {
+  const coalesced: HeadlessReplacementRange[] = [];
+  for (const range of replacementRanges) {
     const previous = coalesced.at(-1);
-    if (previous && range.from <= previous.to) {
+    if (previous && previous.newSize === 0 && range.newSize === 0 && range.from <= previous.to) {
       previous.to = Math.max(previous.to, range.to);
     } else {
       coalesced.push({ ...range });
@@ -247,7 +293,7 @@ export const appendHeadlessInlineResolution = ({
     mode,
     keepType,
     removeType,
-    deleteRanges: [],
+    replacementRanges: [],
     changedParagraphRanges: [],
     styleResolver,
   };
@@ -255,8 +301,10 @@ export const appendHeadlessInlineResolution = ({
   if (!resolved || resolved.eq(tr.doc)) {
     return null;
   }
-  const deleteRanges = coalesceDeleteRanges(context.deleteRanges);
-  const positionMap = new StepMap(deleteRanges.flatMap(({ from, to }) => [from, to - from, 0]));
+  const replacementRanges = coalesceReplacementRanges(context.replacementRanges);
+  const positionMap = new StepMap(
+    replacementRanges.flatMap(({ from, to, newSize }) => [from, to - from, newSize]),
+  );
   const mappingFrom = tr.steps.length;
   tr.step(
     new HeadlessInlineResolutionStep(
