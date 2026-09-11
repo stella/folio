@@ -1,5 +1,13 @@
 # @stll/folio-react
 
+## 0.18.3
+
+### Patch Changes
+
+- [#808](https://github.com/stella/folio/pull/808) [`a0f7d50`](https://github.com/stella/folio/commit/a0f7d50b042061e87cf8b90dfd5cc6cfc0435ef5) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Persist native comment mutations (add, reply, resolve, delete) across host rerenders and exports, and notify `onCommentsChange` for each of them.
+- Updated dependencies [[`d094731`](https://github.com/stella/folio/commit/d094731b2c2cda733376cf0961ea10d13a3d4d8f), [`aad2282`](https://github.com/stella/folio/commit/aad2282f11be2cae739737b3d1d97cae239a205e)]:
+  - @stll/folio-core@0.37.1
+
 ## 0.18.2
 
 ### Patch Changes

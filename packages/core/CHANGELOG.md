@@ -1,5 +1,13 @@
 # @stll/folio-core
 
+## 0.37.1
+
+### Patch Changes
+
+- [#809](https://github.com/stella/folio/pull/809) [`d094731`](https://github.com/stella/folio/commit/d094731b2c2cda733376cf0961ea10d13a3d4d8f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Resolve full-document inline changes in one bounded headless transform.
+
+- [#805](https://github.com/stella/folio/pull/805) [`aad2282`](https://github.com/stella/folio/commit/aad2282f11be2cae739737b3d1d97cae239a205e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve paragraph formatting when a comparison splits or merges paragraphs.
+
 ## 0.37.0
 
 ### Minor Changes
