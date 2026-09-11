@@ -3,13 +3,8 @@ import type {
   FolioCompareDocxVersionsOptions,
   FolioVersionDiff,
   FolioVersionDiffSegment,
-  GenerateRedlineDocxOptions,
-  GenerateRedlineDocxResult,
 } from "@stll/folio-core/server";
-import {
-  compareDocxVersions as compareDocxVersionsCore,
-  generateRedlineDocx as generateRedlineDocxCore,
-} from "@stll/folio-core/server";
+import { compareDocxVersions as compareDocxVersionsCore } from "@stll/folio-core/server";
 
 /** Backward-compatible name for a core word-level version-diff segment. */
 export type FolioAgentVersionDiffSegment = FolioVersionDiffSegment;
@@ -23,25 +18,12 @@ export type FolioAgentVersionDiff = FolioVersionDiff;
 /** Backward-compatible name for core comparison options. */
 export type FolioAgentCompareDocxVersionsOptions = FolioCompareDocxVersionsOptions;
 
-/** Agent-facing name for core redline-generation options. */
-export type FolioAgentGenerateRedlineDocxOptions = GenerateRedlineDocxOptions;
-
-/** Agent-facing name for the core redline-generation result. */
-export type FolioAgentGenerateRedlineDocxResult = GenerateRedlineDocxResult;
-
 /** Compare two `.docx` buffers using folio-core's version comparison semantics. */
 export const compareDocxVersions = (
   base: ArrayBuffer,
   revised: ArrayBuffer,
   options: FolioAgentCompareDocxVersionsOptions = {},
 ): Promise<FolioAgentVersionDiff> => compareDocxVersionsCore(base, revised, options);
-
-/** Generate a reviewed package from two `.docx` buffers. */
-export const generateRedlineDocx = (
-  base: ArrayBuffer,
-  revised: ArrayBuffer,
-  options: FolioAgentGenerateRedlineDocxOptions = {},
-): Promise<FolioAgentGenerateRedlineDocxResult> => generateRedlineDocxCore(base, revised, options);
 
 const ELLIPSIS = "…";
 const UNCHANGED_EDGE_CHARS = 30;

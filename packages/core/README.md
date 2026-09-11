@@ -30,7 +30,6 @@ bun add @stll/folio-core
 | `@stll/folio-core`          | the headless public API — document creation, representation-neutral comparison, the document model, AI-suggestion primitives, and ProseMirror plugins              |
 | `@stll/folio-core/markdown` | DOCX ↔ Markdown conversion                                                                                                                                         |
 | `@stll/folio-core/server`   | DOM-free document review, explicit tracked edits, comparison, creation, and package helpers                                                                        |
-| `@stll/folio-core/redline`  | Compare two `.docx` buffers and generate a native Word redline                                                                                                     |
 | `@stll/folio-core/*`        | the source-mirrored module tree (e.g. `@stll/folio-core/types/document`, `@stll/folio-core/prosemirror/schema`) for adapters that need lower-level building blocks |
 
 ## New documents and reusable style sets
@@ -130,20 +129,22 @@ text, attribute, container, run, and result ceilings. Input ceilings are
 checked before alignment; the result ceiling returns the same typed
 `FolioContentComparisonLimitError` while constructing the ordered stream.
 
-## Native Word redlines
+## Native DOCX redlines
 
 Generate a reviewable `.docx` whose text and supported inline-formatting
 differences are native tracked changes:
 
 ```ts
-import { generateRedlineDocx } from "@stll/folio-core/redline";
+import { compareDocx } from "@stll/folio-core";
 
-const result = await generateRedlineDocx(originalDocx, revisedDocx, {
+const result = await compareDocx(originalDocx, revisedDocx, {
   author: "Reviewer",
+  timestamp: "2024-03-01T00:00:00.000Z",
 });
+if (result.isErr()) throw result.error;
 
-await store(result.buffer);
-console.log(result.applied, result.skipped, result.unprocessedStories);
+await store(result.value.buffer);
+console.log(result.value.changes, result.value.verification, result.value.unsupported);
 ```
 
 For deterministic operations against one document, use `FolioDocxReviewer`

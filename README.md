@@ -112,22 +112,24 @@ Install the Vue editor with `bun add @stll/folio-vue vue`, the Nuxt module with
 `bun add @stll/folio-nuxt`, or the framework-neutral engine with
 `bun add @stll/folio-core`.
 
-## Create a Word redline without an editor
+## Create a DOCX redline without an editor
 
-Compare two DOCX files and write their differences as native tracked changes:
+Compare two DOCX files and write their differences as tracked changes:
 
 ```ts
-import { generateRedlineDocx } from "@stll/folio-core/redline";
+import { compareDocx } from "@stll/folio-core";
 
-const result = await generateRedlineDocx(originalDocx, revisedDocx, {
+const result = await compareDocx(originalDocx, revisedDocx, {
   author: "Reviewer",
+  timestamp: "2024-03-01T00:00:00.000Z",
 });
+if (result.isErr()) throw result.error;
 
-await store(result.buffer);
+await store(result.value.buffer);
 ```
 
 For deterministic changes to one document, use `FolioDocxReviewer`. See the
-[`folio-core` review APIs](./packages/core/README.md#native-word-redlines).
+[`folio-core` review APIs](./packages/core/README.md#native-docx-redlines).
 
 ## Integration notes
 

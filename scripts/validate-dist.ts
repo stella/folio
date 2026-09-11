@@ -271,7 +271,7 @@ const runtimeExpect: Record<string, Record<string, string[]>> = {
     ],
   },
   core: {
-    "@stll/folio-core": ["createEmptyDocument", "createDocx", "deriveBlockId"],
+    "@stll/folio-core": ["compareDocx", "createEmptyDocument", "createDocx", "deriveBlockId"],
     "@stll/folio-core/markdown": ["toMarkdown", "fromMarkdown", "toMarkdownResult"],
     "@stll/folio-core/server": [
       "deriveBlockId",
@@ -282,7 +282,6 @@ const runtimeExpect: Record<string, Record<string, string[]>> = {
       "FolioDocxReviewer",
       "applyFolioAIEditsToBuffer",
     ],
-    "@stll/folio-core/redline": ["generateRedlineDocx"],
     "@stll/folio-core/types/block-id": ["deriveBlockId", "isFolioBlockId"],
   },
   react: {
@@ -414,14 +413,13 @@ export const used = [
 export type Surface = [Document, Paragraph, Run, DocxProjectionWire, DocxPackageProjectionWire];
 `,
   core: `
-import { createEmptyDocument, createDocx, type Document } from "@stll/folio-core";
+import { compareDocx, createEmptyDocument, createDocx, type CompareResult, type Document } from "@stll/folio-core";
 import { fromMarkdown, toMarkdown, type MarkdownOptions } from "@stll/folio-core/markdown";
-import { generateRedlineDocx, type GenerateRedlineDocxResult } from "@stll/folio-core/redline";
 import { deriveBlockId, type FolioBlockId } from "@stll/folio-core/server";
 import { isFolioBlockId } from "@stll/folio-core/types/block-id";
 
-export const used = [createEmptyDocument, createDocx, fromMarkdown, toMarkdown, generateRedlineDocx, deriveBlockId, isFolioBlockId];
-export type Surface = [Document, MarkdownOptions, GenerateRedlineDocxResult, FolioBlockId];
+export const used = [compareDocx, createEmptyDocument, createDocx, fromMarkdown, toMarkdown, deriveBlockId, isFolioBlockId];
+export type Surface = [CompareResult, Document, MarkdownOptions, FolioBlockId];
 `,
   react: `
 import { DocxEditor, FolioUIProvider, createDocx, type DocxEditorProps } from "@stll/folio-react";

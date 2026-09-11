@@ -33,8 +33,6 @@ import { FolioReviewChange } from '@stll/folio-core/ai-edits';
 import { FolioReviewChange as FolioReviewChange_2 } from '@stll/folio-core/server';
 import { FolioVersionDiff } from '@stll/folio-core/server';
 import { FolioVersionDiffSegment } from '@stll/folio-core/server';
-import { GenerateRedlineDocxOptions } from '@stll/folio-core/server';
-import { GenerateRedlineDocxResult } from '@stll/folio-core/server';
 import { TaggedErrorClass } from 'better-result';
 
 // @public
@@ -228,12 +226,6 @@ export type FolioAgentEditorRefLike = {
 };
 
 // @public
-export type FolioAgentGenerateRedlineDocxOptions = GenerateRedlineDocxOptions;
-
-// @public
-export type FolioAgentGenerateRedlineDocxResult = GenerateRedlineDocxResult;
-
-// @public
 export type FolioAgentInputNormalization = {
     path: string;
     message: string;
@@ -333,9 +325,6 @@ export type FolioToolCallResult<TResult = unknown> = {
 
 // @public
 export const formatVersionDiffForLLM: (diff: FolioAgentVersionDiff) => string;
-
-// @public
-export const generateRedlineDocx: (base: ArrayBuffer, revised: ArrayBuffer, options?: FolioAgentGenerateRedlineDocxOptions) => Promise<FolioAgentGenerateRedlineDocxResult>;
 
 // @public
 export const getFolioToolDefinitions: (options?: FolioAgentToolOptions) => FolioAgentToolDefinition[];

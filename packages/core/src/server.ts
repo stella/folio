@@ -153,13 +153,6 @@ export {
   type FolioVersionDiffSummaryCounts,
   type FolioVersionDiffSegment,
 } from "./version-comparison";
-export {
-  generateRedlineDocx,
-  InvalidGenerateRedlineDocxOptionsError,
-  type GenerateRedlineDocxOptions,
-  type GenerateRedlineDocxResult,
-  type GenerateRedlineUnprocessedStory,
-} from "./redline";
 export type {
   FolioAIComment,
   FolioAIEditApplyMode,

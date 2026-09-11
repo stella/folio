@@ -1550,33 +1550,6 @@ export class FolioYjsDocxMaterializationError extends FolioYjsDocxMaterializatio
 // @public
 export type FolioYjsDocxMaterializationErrorCode = (typeof FOLIO_YJS_DOCX_MATERIALIZATION_ERROR_CODES)[number];
 
-// @public
-export const generateRedlineDocx: (base: ArrayBuffer, revised: ArrayBuffer, options?: GenerateRedlineDocxOptions) => Promise<GenerateRedlineDocxResult>;
-
-// @public
-export type GenerateRedlineDocxOptions = {
-    author?: string;
-    baseView?: FolioResolvedReviewedView;
-    revisedView?: FolioResolvedReviewedView;
-    privacy?: FolioDocumentPrivacyOptions;
-};
-
-// @public
-export type GenerateRedlineDocxResult = {
-    buffer: ArrayBuffer;
-    applied: FolioAIEditAppliedOperation[];
-    skipped: FolioAIEditSkippedOperation[];
-    unprocessedStories: GenerateRedlineUnprocessedStory[];
-    privacyReport: FolioDocumentPrivacyReport;
-};
-
-// @public
-export type GenerateRedlineUnprocessedStory = {
-    baseStory: FolioDocumentStoryHandle | null;
-    revisedStory: FolioDocumentStoryHandle | null;
-    reason: "missing-base-story" | "missing-revised-story";
-};
-
 // @public (undocumented)
 export const getFolioDocumentOperationCapabilities: () => FolioDocumentOperationCapabilities;
 
@@ -1665,13 +1638,6 @@ export class InvalidFolioReportBuilderOptionsError extends InvalidFolioReportBui
 export class InvalidFolioVersionComparisonOptionsError extends InvalidFolioVersionComparisonOptionsError_base<{
     message: string;
     option: "include" | "privacy.transforms";
-    receivedValue: unknown;
-}> {}
-
-// @public
-export class InvalidGenerateRedlineDocxOptionsError extends InvalidGenerateRedlineDocxOptionsError_base<{
-    message: string;
-    option: "baseView" | "revisedView";
     receivedValue: unknown;
 }> {}
 
