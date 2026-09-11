@@ -20,8 +20,16 @@ import {
   FolioDocxReviewer,
   type FolioReviewComment,
   type FolioReviewCommentReply,
+  getFolioDocxComparisonAccess,
 } from "./headless";
-import { FOLIO_REVIEW_CHANGE_KINDS, getTrackedChangesFromDoc } from "./read";
+import {
+  FOLIO_REVIEW_CHANGE_KINDS,
+  getTrackedChangeStatsFromDoc,
+  getTrackedChangesFromDoc,
+  getTrackedChangesFromSnapshot,
+} from "./read";
+import { storyTablesOf } from "./snapshot";
+import type { FolioAIEditSnapshot } from "./types";
 
 const AUTHOR = "Reviewer";
 const DATE = "2026-08-16T10:00:00Z";
@@ -561,7 +569,28 @@ const MATRIX_CASES = FOLIO_RESOLVED_REVIEWED_VIEWS.flatMap((view) =>
 
 describe("body revision enumeration", () => {
   test("enumerates every property and paragraph-mark carrier the resolver supports", () => {
-    const changes = getTrackedChangesFromDoc(toProseDoc(revisionDocument()));
+    const doc = toProseDoc(revisionDocument());
+    const walk = doc.descendants.bind(doc);
+    let statsWalks = 0;
+    Object.defineProperty(doc, "descendants", {
+      configurable: true,
+      value: (callback: Parameters<typeof doc.descendants>[0]) => {
+        statsWalks += 1;
+        return walk(callback);
+      },
+    });
+    const stats = getTrackedChangeStatsFromDoc(doc);
+    expect(statsWalks).toBe(1);
+    expect(stats).toEqual({
+      highestId: Math.max(...expectedChanges.map(({ id }) => id)),
+      present: true,
+    });
+    expect(getTrackedChangeStatsFromDoc(toProseDoc(createEmptyDocument()))).toEqual({
+      highestId: 0,
+      present: false,
+    });
+
+    const changes = getTrackedChangesFromDoc(doc);
 
     expect(changes.map(({ id, type, text }) => ({ id, type, text }))).toEqual(expectedChanges);
     expect(
@@ -618,6 +647,80 @@ describe("body revision enumeration", () => {
 });
 
 describe("resolved story serialization structural matrix", () => {
+  test("keeps each story projection bound to its own state across resolution and mutation", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(await makeRevisionMatrixDocx("with"), {
+      author: AUTHOR,
+    });
+    const comparisonAccess = getFolioDocxComparisonAccess(reviewer);
+    const arrivingByStory = new Map<
+      string,
+      {
+        snapshot: FolioAIEditSnapshot;
+        changes: ReturnType<typeof getTrackedChangesFromSnapshot>;
+      }
+    >();
+
+    for (const story of REVIEW_STORIES) {
+      const arriving = comparisonAccess.snapshotReviewedStory({ story, view: "current-markup" });
+      if (!arriving) {
+        throw new Error(`revision matrix is missing ${storyKey(story)}`);
+      }
+      const arrivingChanges = getTrackedChangesFromSnapshot(arriving);
+      expect(arrivingChanges).not.toHaveLength(0);
+      arrivingByStory.set(storyKey(story), { snapshot: arriving, changes: arrivingChanges });
+    }
+
+    const projection = comparisonAccess.projectStories("with-revision-census");
+    expect(projection.stories.map(({ handle }) => handle)).toEqual(REVIEW_STORIES);
+    expect(projection.revisions).toEqual({
+      highestId: Math.max(...expectedChanges.map(({ id }) => id)),
+      present: true,
+    });
+
+    for (const { handle: story, snapshot: resolved } of projection.stories) {
+      if (!resolved) {
+        throw new Error(`revision matrix could not resolve ${storyKey(story)}`);
+      }
+      expect(getTrackedChangesFromSnapshot(resolved)).toEqual([]);
+      const target = resolved.blocks.find(({ text }) => text === "Cell");
+      if (!target) {
+        throw new Error(`revision matrix is missing the table cell in ${storyKey(story)}`);
+      }
+      const mutationText = `${story.type} mutation`;
+      const result = reviewer.applyDocumentOperationsToStory({
+        story,
+        snapshot: resolved,
+        batch: {
+          version: 1,
+          mode: "direct",
+          operations: [
+            {
+              id: `${story.type}-snapshot-freshness`,
+              type: "replaceInBlock",
+              blockId: target.id,
+              find: "Cell",
+              replace: mutationText,
+            },
+          ],
+        },
+      });
+      expect(result.status).toBe("committed");
+
+      const mutated = comparisonAccess.snapshotReviewedStory({ story, view: "current-markup" });
+      if (!mutated) {
+        throw new Error(`revision matrix lost ${storyKey(story)} after mutation`);
+      }
+      expect(storyTablesOf(resolved).at(0)?.node.textContent).toContain("Cell");
+      expect(storyTablesOf(resolved).at(0)?.node.textContent).not.toContain(mutationText);
+      expect(storyTablesOf(mutated).at(0)?.node.textContent).toContain(mutationText);
+      const arriving = arrivingByStory.get(storyKey(story));
+      expect(arriving).toBeDefined();
+      if (arriving) {
+        expect(getTrackedChangesFromSnapshot(arriving.snapshot)).toEqual(arriving.changes);
+      }
+    }
+  });
+
   test.each(WORDPROCESSINGML_NAMESPACES)(
     "recognizes comment anchors in the %s namespace independent of prefix",
     (namespace) => {

@@ -18,7 +18,7 @@
  * Scope: main, header, footer, footnote, and endnote blocks.
  */
 
-import { TaggedError } from "better-result";
+import { panic, TaggedError } from "better-result";
 import { Fragment } from "prosemirror-model";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
@@ -91,7 +91,9 @@ import type { FolioRevisionStamp, FolioWordDiffOptions } from "./apply";
 import { buildAnnotatedBlockText } from "./clean-text";
 import {
   getCommentAnchorsFromDoc,
+  getTrackedChangeStatsFromDoc,
   getTrackedChangesFromDoc,
+  getTrackedChangesFromSnapshot,
   type FolioReviewChange,
   type FolioReviewChangeKind,
 } from "./read";
@@ -100,6 +102,7 @@ import {
   folioStoryTables,
   isFolioAIContentBlock,
   normalizeFolioAIBlockText,
+  sourceDocumentOf,
   type FolioStoryTable,
 } from "./snapshot";
 import { matchTableGeometry, type TableGeometryPairing } from "./table-geometry";
@@ -439,6 +442,28 @@ type ApplyDocumentOperationsInternalOptions = {
   createUndoEntry: boolean;
 };
 
+type FolioDocxComparisonProjectionMode = "with-revision-census" | "without-revision-census";
+
+type FolioDocxComparisonStoryProjection = {
+  handle: FolioDocumentStoryHandle;
+  snapshot: FolioAIEditSnapshot | null;
+};
+
+type FolioDocxComparisonProjection = {
+  stories: readonly FolioDocxComparisonStoryProjection[];
+  revisions: {
+    highestId: number;
+    present: boolean;
+  };
+};
+
+type FolioDocxComparisonAccess = {
+  projectStories: (mode: FolioDocxComparisonProjectionMode) => FolioDocxComparisonProjection;
+  snapshotReviewedStory: (options?: FolioReadReviewedStoryOptions) => FolioAIEditSnapshot | null;
+};
+
+const comparisonAccessByReviewer = new WeakMap<FolioDocxReviewer, FolioDocxComparisonAccess>();
+
 const MAIN_STORY = Object.freeze({ type: "main" } as const);
 
 const headerFooterStoryKey = ({ type, relationshipId }: FolioHeaderFooterStoryHandle): string =>
@@ -479,8 +504,7 @@ const createHeadlessPlugins = (
 const createStateSnapshot = (state: EditorState): FolioAIEditSnapshot =>
   createFolioAIEditSnapshotWithStyleResolver(state.doc, getDocumentStyleResolver(state));
 
-const formatStoryStateForLLM = (state: EditorState, annotated: boolean): string => {
-  const snapshot = createStateSnapshot(state);
+const formatStorySnapshotForLLM = (snapshot: FolioAIEditSnapshot, annotated: boolean): string => {
   // A reading surface shows content. The snapshot also carries the document's
   // blank paragraphs, which are structure rather than something to read.
   const blocks = snapshot.blocks.filter(isFolioAIContentBlock);
@@ -491,7 +515,7 @@ const formatStoryStateForLLM = (state: EditorState, annotated: boolean): string 
   // root and scans each level's fragment from index 0, so looking every block
   // up costs O(blocks^2) on a flat document.
   const nodeByStart = new Map<number, PMNode>();
-  state.doc.descendants((node, pos) => {
+  sourceDocumentOf(snapshot).descendants((node, pos) => {
     if (!node.isTextblock) {
       return true;
     }
@@ -658,6 +682,13 @@ export class FolioDocxReviewer {
     this.usedCommentIds = new Set(
       (args.baseDocument.package.document.comments ?? []).map(({ id }) => id),
     );
+    comparisonAccessByReviewer.set(
+      this,
+      Object.freeze({
+        projectStories: (mode) => this.projectComparisonStoriesInternal(mode),
+        snapshotReviewedStory: (options) => this.snapshotReviewedStoryInternal(options),
+      }),
+    );
   }
 
   /** Parse a `.docx` buffer into a reviewer. */
@@ -776,6 +807,52 @@ export class FolioDocxReviewer {
     return state ? createStateSnapshot(state) : null;
   }
 
+  private snapshotReviewedStoryInternal(
+    options: FolioReadReviewedStoryOptions = {},
+  ): FolioAIEditSnapshot | null {
+    const story = options.story ?? MAIN_STORY;
+    const view = options.view ?? "final";
+    if (!isFolioReviewedView(view)) {
+      throw new UnsupportedFolioReviewedViewError({
+        message: "Unsupported reviewed document view.",
+        receivedView: view,
+      });
+    }
+    const sourceState = this.getEditableStoryState(story);
+    return sourceState ? createStateSnapshot(resolveReviewedState(sourceState, view)) : null;
+  }
+
+  private projectComparisonStoriesInternal(
+    mode: FolioDocxComparisonProjectionMode,
+  ): FolioDocxComparisonProjection {
+    const handles = this.listStoryHandlesInternal();
+    let highestId = 0;
+    let present = false;
+    if (mode === "with-revision-census") {
+      // Census every arriving story before resolution mutates any reviewer
+      // state. The shared interpreter omits block ids, so this costs one
+      // carrier walk per story without constructing a throwaway snapshot.
+      for (const handle of handles) {
+        const state = this.getEditableStoryState(handle);
+        if (!state) {
+          continue;
+        }
+        const stats = getTrackedChangeStatsFromDoc(state.doc);
+        highestId = Math.max(highestId, stats.highestId);
+        present ||= stats.present;
+      }
+    }
+
+    const stories: FolioDocxComparisonStoryProjection[] = [];
+    for (const handle of handles) {
+      stories.push({
+        handle,
+        snapshot: this.resolveReviewedStorySnapshotInternal({ story: handle, view: "final" }),
+      });
+    }
+    return { stories, revisions: { highestId, present } };
+  }
+
   /**
    * One story's tables, in the document order {@link snapshotStory} numbers
    * them with, read through a reviewed view.
@@ -843,28 +920,28 @@ export class FolioDocxReviewer {
   readReviewedStory(options: FolioReadReviewedStoryOptions = {}): FolioReviewedStory | null {
     const story = options.story ?? MAIN_STORY;
     const view = options.view ?? "final";
-    if (!isFolioReviewedView(view)) {
-      throw new UnsupportedFolioReviewedViewError({
-        message: "Unsupported reviewed document view.",
-        receivedView: view,
-      });
-    }
-    const sourceState = this.getEditableStoryState(story);
-    if (!sourceState) {
+    const snapshot = this.snapshotReviewedStoryInternal({ story, view });
+    if (!snapshot) {
       return null;
     }
-    const state = resolveReviewedState(sourceState, view);
     return {
       story,
       view,
-      snapshot: createStateSnapshot(state),
-      text: formatStoryStateForLLM(state, view === "current-markup"),
-      changes: getTrackedChangesFromDoc(state.doc),
+      snapshot,
+      text: formatStorySnapshotForLLM(snapshot, view === "current-markup"),
+      changes: getTrackedChangesFromSnapshot(snapshot),
     };
   }
 
   /** Resolve one editable story to its original or final state. */
   resolveReviewedStory({ story = MAIN_STORY, view }: FolioResolveReviewedStoryOptions): boolean {
+    return this.resolveReviewedStorySnapshotInternal({ story, view }) !== null;
+  }
+
+  private resolveReviewedStorySnapshotInternal({
+    story = MAIN_STORY,
+    view,
+  }: FolioResolveReviewedStoryOptions): FolioAIEditSnapshot | null {
     if (!isFolioResolvedReviewedView(view)) {
       throw new UnsupportedFolioReviewedViewError({
         message: "Only original and final views can replace editable story state.",
@@ -873,16 +950,17 @@ export class FolioDocxReviewer {
     }
     const sourceState = this.getEditableStoryState(story);
     if (!sourceState) {
-      return false;
+      return null;
     }
     const resolvedState = resolveReviewedState(sourceState, view);
     this.setEditableStoryState(story, resolvedState);
+    const snapshot = createStateSnapshot(resolvedState);
     this.resolvedStoryExpectations.set(editableStoryKey(story), {
       story,
-      text: formatStoryStateForLLM(resolvedState, false),
-      blocks: createStateSnapshot(resolvedState).blocks.map(resolvedStoryBlockProjection),
+      text: formatStorySnapshotForLLM(snapshot, false),
+      blocks: snapshot.blocks.map(resolvedStoryBlockProjection),
     });
-    return true;
+    return snapshot;
   }
 
   /**
@@ -1055,7 +1133,7 @@ export class FolioDocxReviewer {
    * (clean) output flattens tracked changes and is unchanged.
    */
   getContentAsText(options: FolioGetContentAsTextOptions = {}): string {
-    return formatStoryStateForLLM(this.state, options.annotated === true);
+    return formatStorySnapshotForLLM(this.snapshot(), options.annotated === true);
   }
 
   /**
@@ -1111,45 +1189,34 @@ export class FolioDocxReviewer {
     return lines.join("\n");
   }
 
-  /** Discover every readable document story through a typed, serializable handle. */
-  listStories(): FolioDocumentStory[] {
+  private listStoryHandlesInternal(): FolioDocumentStoryHandle[] {
     const pkg = this.baseDocument.package;
-    const stories: FolioDocumentStory[] = [
-      { handle: { type: "main" }, text: this.getContentAsText() },
-    ];
-    for (const [relationshipId, header] of pkg.headers ?? []) {
-      const handle = { type: "header", relationshipId } as const;
-      stories.push({
-        handle,
-        text: this.getHeaderFooterStoryText(handle, header),
-      });
+    const handles: FolioDocumentStoryHandle[] = [{ type: "main" }];
+    for (const relationshipId of pkg.headers?.keys() ?? []) {
+      handles.push({ type: "header", relationshipId });
     }
-    for (const [relationshipId, footer] of pkg.footers ?? []) {
-      const handle = { type: "footer", relationshipId } as const;
-      stories.push({
-        handle,
-        text: this.getHeaderFooterStoryText(handle, footer),
-      });
+    for (const relationshipId of pkg.footers?.keys() ?? []) {
+      handles.push({ type: "footer", relationshipId });
     }
     for (const footnote of pkg.footnotes ?? []) {
       if (!isSeparatorFootnote(footnote)) {
-        const handle = { type: "footnote", noteId: footnote.id } as const;
-        stories.push({
-          handle,
-          text: this.getNoteStoryText(handle, footnote),
-        });
+        handles.push({ type: "footnote", noteId: footnote.id });
       }
     }
     for (const endnote of pkg.endnotes ?? []) {
       if (!isSeparatorEndnote(endnote)) {
-        const handle = { type: "endnote", noteId: endnote.id } as const;
-        stories.push({
-          handle,
-          text: this.getNoteStoryText(handle, endnote),
-        });
+        handles.push({ type: "endnote", noteId: endnote.id });
       }
     }
-    return stories;
+    return handles;
+  }
+
+  /** Discover every readable document story through a typed, serializable handle. */
+  listStories(): FolioDocumentStory[] {
+    return this.listStoryHandlesInternal().map((handle) => ({
+      handle,
+      text: this.getStoryText(handle),
+    }));
   }
 
   /** Read one discovered story; returns null when its handle is no longer present. */
@@ -1454,15 +1521,14 @@ export class FolioDocxReviewer {
     const reopened = await FolioDocxReviewer.fromBuffer(buffer);
     for (const { story, text, blocks } of expectations) {
       const serialized = reopened.readReviewedStory({ story, view: "current-markup" });
-      const serializedState = reopened.getEditableStoryState(story);
-      const serializedText = serializedState
-        ? formatStoryStateForLLM(serializedState, false)
+      const serializedText = serialized
+        ? formatStorySnapshotForLLM(serialized.snapshot, false)
         : null;
-      const serializedBlocks = serializedState
-        ? createStateSnapshot(serializedState).blocks.map(resolvedStoryBlockProjection)
+      const serializedBlocks = serialized
+        ? serialized.snapshot.blocks.map(resolvedStoryBlockProjection)
         : null;
       const mismatches: FolioResolvedStorySerializationMismatch[] = [];
-      if (!serialized || !serializedState) {
+      if (!serialized) {
         mismatches.push(FOLIO_RESOLVED_STORY_SERIALIZATION_MISMATCHES.storyMissing);
       } else {
         if (serialized.changes.length > 0) {
@@ -1613,6 +1679,24 @@ export class FolioDocxReviewer {
     return normalizeFolioAIBlockText(state?.doc.textContent ?? sourceText);
   }
 
+  private getStoryText(story: FolioDocumentStoryHandle): string {
+    if (story.type === "main") {
+      return this.getContentAsText();
+    }
+    if (story.type === "header" || story.type === "footer") {
+      const source = this.getHeaderFooterStory(story);
+      if (!source) {
+        return panic("A listed document story no longer exists", { story });
+      }
+      return this.getHeaderFooterStoryText(story, source);
+    }
+    const source = this.getNoteStory(story);
+    if (!source) {
+      return panic("A listed document story no longer exists", { story });
+    }
+    return this.getNoteStoryText(story, source);
+  }
+
   private mergeEditedSecondaryStories(
     document: Document,
     secondaryStoryStates: Iterable<FolioSecondaryStoryState> = this.secondaryStoryStates.values(),
@@ -1751,6 +1835,13 @@ export class FolioDocxReviewer {
     return handled;
   }
 }
+
+/** @internal Comparison-only access to atomic and fresh reviewer projections. */
+export const getFolioDocxComparisonAccess = (
+  reviewer: FolioDocxReviewer,
+): FolioDocxComparisonAccess =>
+  comparisonAccessByReviewer.get(reviewer) ??
+  panic("Comparison access was requested for an uninitialized DOCX reviewer");
 
 /** Options for {@link applyFolioAIEditsToBuffer}. */
 export type ApplyFolioAIEditsToBufferOptions = {

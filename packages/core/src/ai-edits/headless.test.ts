@@ -34,9 +34,11 @@ import {
   FolioDocxReviewer,
   UnsupportedFolioReviewedViewError,
   applyFolioAIEditsToBuffer,
+  getFolioDocxComparisonAccess,
 } from "./headless";
 import type { FolioReviewChange } from "./headless";
-import { isFolioAIContentBlock } from "./snapshot";
+import { getTrackedChangesFromSnapshot } from "./read";
+import { isFolioAIContentBlock, storyTablesOf } from "./snapshot";
 import type { FolioAIBlock } from "./types";
 
 const FIXTURE = path.join(
@@ -403,6 +405,45 @@ const findBlock = (blocks: FolioAIBlock[], needle: string): FolioAIBlock => {
 };
 
 describe("headless docx review round-trip", () => {
+  test("keeps text-box table projections isolated across tracked review views", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(await buildTextBoxTableDocument(), {
+      author: "Reviewer",
+    });
+    const before = reviewer.snapshot();
+    const target = findBlock(before.blocks, "Cell value");
+
+    const result = reviewer.applyOperations(
+      [
+        {
+          id: "replace-projected-shape-table-cell",
+          type: "replaceInBlock",
+          blockId: target.id,
+          find: "Cell value",
+          replace: "Updated projection",
+        },
+      ],
+      { mode: "tracked-changes", snapshot: before },
+    );
+    expect(result.skipped).toEqual([]);
+
+    const comparisonAccess = getFolioDocxComparisonAccess(reviewer);
+    const markup = comparisonAccess.snapshotReviewedStory({ view: "current-markup" });
+    const accepted = comparisonAccess.snapshotReviewedStory({ view: "final" });
+    const rejected = comparisonAccess.snapshotReviewedStory({ view: "original" });
+    if (!markup || !accepted || !rejected) {
+      throw new Error("expected every main-story review view");
+    }
+
+    expect(
+      getTrackedChangesFromSnapshot(markup)
+        .map(({ type }) => type)
+        .toSorted(),
+    ).toEqual(["deletion", "insertion"]);
+    expect(storyTablesOf(before).at(0)?.node.textContent).toBe("Cell value");
+    expect(storyTablesOf(accepted).at(0)?.node.textContent).toBe("Updated projection");
+    expect(storyTablesOf(rejected).at(0)?.node.textContent).toBe("Cell value");
+  });
+
   test("edits a table cell inside shape text and preserves its container", async () => {
     const baseline = await buildTextBoxTableDocument();
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline);

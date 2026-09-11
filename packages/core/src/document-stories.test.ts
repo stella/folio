@@ -6,6 +6,20 @@ const header = (relationshipId: string) => ({ type: "header", relationshipId }) 
 const footer = (relationshipId: string) => ({ type: "footer", relationshipId }) as const;
 
 describe("pairFolioDocumentStories", () => {
+  test("returns the exact input handles after pairing", () => {
+    const baseMain = { type: "main" } as const;
+    const baseHeader = header("rId3");
+    const revisedMain = { type: "main" } as const;
+    const revisedHeader = header("rId8");
+
+    const pairs = pairFolioDocumentStories([baseMain, baseHeader], [revisedMain, revisedHeader]);
+
+    expect(pairs[0]?.baseStory).toBe(baseMain);
+    expect(pairs[0]?.revisedStory).toBe(revisedMain);
+    expect(pairs[1]?.baseStory).toBe(baseHeader);
+    expect(pairs[1]?.revisedStory).toBe(revisedHeader);
+  });
+
   test("pairs a header with the one carrying the same relationship id", () => {
     // Two revisions of one file carry their part ids forward, and matching on
     // them pairs the right header however the parts are ordered.
