@@ -106,7 +106,12 @@ exactly that: `splitBlock` writes an inserted mark on the paragraph the break
 now ends, `mergeBlockWithNext` a deleted one, and the change list says `split`
 or `merge`. The space the break stands in for travels with the operation as
 `separator`, so accepting reproduces the target's spacing and rejecting
-restores the base's.
+restores the base's. When the resulting paragraphs also differ in style,
+alignment, list level or direct spacing, the structural operation carries the
+properties of each split result or the merged result. They are written as
+`w:pPrChange` and reported as `paragraph-format` entries beside the structural
+change; accepting and rejecting therefore restore both the paragraph boundary
+and its formatting.
 
 ### Which paragraph mark changed
 

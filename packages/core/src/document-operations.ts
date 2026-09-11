@@ -561,12 +561,23 @@ const readTableRows = (
   return parsed;
 };
 
-const readParagraphProperties = (
-  value: Record<string, unknown>,
-  path: string,
-): FolioAIBlockParagraphProperties => {
-  const candidate = value["properties"];
-  const propertiesPath = `${path}.properties`;
+type ReadParagraphPropertiesOptions = {
+  value: Record<string, unknown>;
+  key:
+    | "properties"
+    | "firstParagraphProperties"
+    | "secondParagraphProperties"
+    | "mergedParagraphProperties";
+  path: string;
+};
+
+const readParagraphProperties = ({
+  value,
+  key,
+  path,
+}: ReadParagraphPropertiesOptions): FolioAIBlockParagraphProperties => {
+  const candidate = value[key];
+  const propertiesPath = `${path}.${key}`;
   if (!isPlainObject(candidate)) {
     return invalidBatch(propertiesPath, "expected an object");
   }
@@ -793,8 +804,14 @@ export const FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE = Object.freeze({
   ],
   replaceBlock: [...COMMON_OPERATION_KEYS, "text", "preserveFormatting", "styleId", "comment"],
   deleteBlock: [...COMMON_OPERATION_KEYS, "moveId", "comment"],
-  splitBlock: [...COMMON_OPERATION_KEYS, "offset", "separator"],
-  mergeBlockWithNext: [...COMMON_OPERATION_KEYS, "separator"],
+  splitBlock: [
+    ...COMMON_OPERATION_KEYS,
+    "offset",
+    "separator",
+    "firstParagraphProperties",
+    "secondParagraphProperties",
+  ],
+  mergeBlockWithNext: [...COMMON_OPERATION_KEYS, "separator", "mergedParagraphProperties"],
   setBlockParagraphProperties: [...COMMON_OPERATION_KEYS, "properties"],
   insertTable: [...COMMON_OPERATION_KEYS, "position", "rows"],
   deleteTable: COMMON_OPERATION_KEYS,
@@ -917,15 +934,34 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
       id,
       type,
       blockId,
-      properties: readParagraphProperties(value, path),
+      properties: readParagraphProperties({ value, key: "properties", path }),
     };
   }
 
   if (type === "splitBlock" || type === "mergeBlockWithNext") {
     const separator = readOptionalString(value, "separator", path);
     if (type === "mergeBlockWithNext") {
-      return { ...operationMeta, id, type, blockId, ...(separator !== undefined && { separator }) };
+      const mergedParagraphProperties =
+        value["mergedParagraphProperties"] === undefined
+          ? undefined
+          : readParagraphProperties({ value, key: "mergedParagraphProperties", path });
+      return {
+        ...operationMeta,
+        id,
+        type,
+        blockId,
+        ...(separator !== undefined && { separator }),
+        ...(mergedParagraphProperties !== undefined && { mergedParagraphProperties }),
+      };
     }
+    const firstParagraphProperties =
+      value["firstParagraphProperties"] === undefined
+        ? undefined
+        : readParagraphProperties({ value, key: "firstParagraphProperties", path });
+    const secondParagraphProperties =
+      value["secondParagraphProperties"] === undefined
+        ? undefined
+        : readParagraphProperties({ value, key: "secondParagraphProperties", path });
     return {
       ...operationMeta,
       id,
@@ -933,6 +969,8 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
       blockId,
       offset: readNonNegativeInteger(value, "offset", path),
       ...(separator !== undefined && { separator }),
+      ...(firstParagraphProperties !== undefined && { firstParagraphProperties }),
+      ...(secondParagraphProperties !== undefined && { secondParagraphProperties }),
     };
   }
 

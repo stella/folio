@@ -215,6 +215,22 @@ export const FOLIO_CLEARABLE_PARAGRAPH_SPACING_JSON_SCHEMA = {
     "Complete direct paragraph spacing (`w:spacing`); omitted attributes stay absent, while zero and false remain explicit. Null removes the direct spacing child and restores style inheritance.",
 } as const satisfies FolioJsonSchema;
 
+export const FOLIO_BLOCK_PARAGRAPH_PROPERTIES_JSON_SCHEMA = {
+  type: "object",
+  description: "The paragraph properties to set; at least one.",
+  properties: {
+    styleId: FOLIO_CLEARABLE_PARAGRAPH_STYLE_ID_JSON_SCHEMA,
+    listLevel: FOLIO_CLEARABLE_LIST_LEVEL_JSON_SCHEMA,
+    alignment: {
+      oneOf: [{ type: "string", enum: FOLIO_PARAGRAPH_ALIGNMENT_VALUES }, { type: "null" }],
+      description: "Direct paragraph alignment; null restores style inheritance.",
+    },
+    spacing: FOLIO_CLEARABLE_PARAGRAPH_SPACING_JSON_SCHEMA,
+  },
+  minProperties: 1,
+  additionalProperties: false,
+} as const satisfies FolioJsonSchema;
+
 /**
  * JSON Schema (draft-07 compatible) for ONE document operation: the full
  * union accepted by `parseFolioDocumentOperationBatch` in
@@ -443,6 +459,16 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
           type: "string",
           description: "Text at `offset` the break replaces, usually the space between the halves.",
         },
+        firstParagraphProperties: {
+          ...FOLIO_BLOCK_PARAGRAPH_PROPERTIES_JSON_SCHEMA,
+          description:
+            "Properties for the first result; omitted properties keep the source paragraph's value.",
+        },
+        secondParagraphProperties: {
+          ...FOLIO_BLOCK_PARAGRAPH_PROPERTIES_JSON_SCHEMA,
+          description:
+            "Properties for the second result; omitted properties keep the source paragraph's value.",
+        },
       },
       required: ["id", "type", "blockId", "offset"],
       additionalProperties: false,
@@ -460,6 +486,11 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
           type: "string",
           description: "Text the join inserts between the two halves, usually a space.",
         },
+        mergedParagraphProperties: {
+          ...FOLIO_BLOCK_PARAGRAPH_PROPERTIES_JSON_SCHEMA,
+          description:
+            "Properties for the joined result; omitted properties keep the first paragraph's value.",
+        },
       },
       required: ["id", "type", "blockId"],
       additionalProperties: false,
@@ -473,21 +504,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
         ...suggestionIdProperty,
         type: { type: "string", enum: ["setBlockParagraphProperties"] },
         blockId: blockIdProperty,
-        properties: {
-          type: "object",
-          description: "The paragraph properties to set; at least one.",
-          properties: {
-            styleId: FOLIO_CLEARABLE_PARAGRAPH_STYLE_ID_JSON_SCHEMA,
-            listLevel: FOLIO_CLEARABLE_LIST_LEVEL_JSON_SCHEMA,
-            alignment: {
-              oneOf: [{ type: "string", enum: FOLIO_PARAGRAPH_ALIGNMENT_VALUES }, { type: "null" }],
-              description: "Direct paragraph alignment; null restores style inheritance.",
-            },
-            spacing: FOLIO_CLEARABLE_PARAGRAPH_SPACING_JSON_SCHEMA,
-          },
-          minProperties: 1,
-          additionalProperties: false,
-        },
+        properties: FOLIO_BLOCK_PARAGRAPH_PROPERTIES_JSON_SCHEMA,
       },
       required: ["id", "type", "blockId", "properties"],
       additionalProperties: false,

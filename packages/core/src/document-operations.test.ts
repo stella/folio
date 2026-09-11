@@ -383,6 +383,60 @@ describe("document operation contract", () => {
     }
   });
 
+  test("preserves paragraph properties carried by split and merge operations", () => {
+    const firstParagraphProperties = {
+      styleId: "OpeningBody",
+      alignment: "center",
+      spacing: { spaceBefore: 240 },
+    } as const;
+    const secondParagraphProperties = {
+      styleId: "ClosingBody",
+      alignment: "right",
+      spacing: { spaceAfter: 360 },
+    } as const;
+    const mergedParagraphProperties = {
+      styleId: "JoinedBody",
+      alignment: "both",
+      spacing: { lineSpacing: 480, lineSpacingRule: "exact" },
+    } as const;
+    const batch = parseFolioDocumentOperationBatch({
+      version: 1,
+      operations: [
+        {
+          id: "split",
+          type: "splitBlock",
+          blockId: "paragraph-1",
+          offset: 5,
+          firstParagraphProperties,
+          secondParagraphProperties,
+        },
+        {
+          id: "merge",
+          type: "mergeBlockWithNext",
+          blockId: "paragraph-2",
+          mergedParagraphProperties,
+        },
+      ],
+    });
+
+    expect(batch.operations).toEqual([
+      {
+        id: "split",
+        type: "splitBlock",
+        blockId: "paragraph-1",
+        offset: 5,
+        firstParagraphProperties,
+        secondParagraphProperties,
+      },
+      {
+        id: "merge",
+        type: "mergeBlockWithNext",
+        blockId: "paragraph-2",
+        mergedParagraphProperties,
+      },
+    ]);
+  });
+
   test.each([
     [{}, "spacing"],
     [{ spaceBefore: -1 }, "spacing.spaceBefore"],

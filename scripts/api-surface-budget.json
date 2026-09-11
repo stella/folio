@@ -20,8 +20,8 @@
   "agents": {
     "reportBytes": 13171,
     "reportLines": 393,
-    "declarationBytes": 54007,
-    "declarationLines": 1116
+    "declarationBytes": 59761,
+    "declarationLines": 1194
   },
   "vue": {
     "reportBytes": 54675,

@@ -12,6 +12,7 @@ import {
   FOLIO_TEXT_RANGE_JSON_SCHEMA,
 } from "./codecs";
 import {
+  FOLIO_BLOCK_PARAGRAPH_PROPERTIES_JSON_SCHEMA,
   FOLIO_CLEARABLE_LIST_LEVEL_JSON_SCHEMA,
   FOLIO_CLEARABLE_PARAGRAPH_SPACING_JSON_SCHEMA,
   FOLIO_CLEARABLE_PARAGRAPH_STYLE_ID_JSON_SCHEMA,
@@ -206,20 +207,24 @@ const OPERATION_PROPERTY_SCHEMAS = {
     additionalProperties: false,
   },
   properties: {
-    type: "object",
+    ...FOLIO_BLOCK_PARAGRAPH_PROPERTIES_JSON_SCHEMA,
     description:
       "Required for `setBlockParagraphProperties`: the paragraph properties to set. Null clears a direct property.",
-    properties: {
-      styleId: FOLIO_CLEARABLE_PARAGRAPH_STYLE_ID_JSON_SCHEMA,
-      listLevel: FOLIO_CLEARABLE_LIST_LEVEL_JSON_SCHEMA,
-      alignment: {
-        oneOf: [{ type: "string", enum: FOLIO_PARAGRAPH_ALIGNMENT_VALUES }, { type: "null" }],
-        description: "Direct paragraph alignment; null restores style inheritance.",
-      },
-      spacing: FOLIO_CLEARABLE_PARAGRAPH_SPACING_JSON_SCHEMA,
-    },
-    minProperties: 1,
-    additionalProperties: false,
+  },
+  firstParagraphProperties: {
+    ...FOLIO_BLOCK_PARAGRAPH_PROPERTIES_JSON_SCHEMA,
+    description:
+      "For `splitBlock`, properties for the first result; omitted properties keep the source paragraph's value.",
+  },
+  secondParagraphProperties: {
+    ...FOLIO_BLOCK_PARAGRAPH_PROPERTIES_JSON_SCHEMA,
+    description:
+      "For `splitBlock`, properties for the second result; omitted properties keep the source paragraph's value.",
+  },
+  mergedParagraphProperties: {
+    ...FOLIO_BLOCK_PARAGRAPH_PROPERTIES_JSON_SCHEMA,
+    description:
+      "For `mergeBlockWithNext`, properties for the joined result; omitted properties keep the first paragraph's value.",
   },
   listLevel: FOLIO_CLEARABLE_LIST_LEVEL_JSON_SCHEMA,
   offset: {

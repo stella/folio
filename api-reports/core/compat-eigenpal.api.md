@@ -935,6 +935,8 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     offset: number;
     separator?: string;
     blockId: string;
+    firstParagraphProperties?: FolioAIBlockParagraphProperties;
+    secondParagraphProperties?: FolioAIBlockParagraphProperties;
 } |
 /**
 * Add a whole table next to the anchor block, its rows marked inserted in
@@ -984,6 +986,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     type: "mergeBlockWithNext";
     separator?: string;
     blockId: string;
+    mergedParagraphProperties?: FolioAIBlockParagraphProperties;
 } | {
     id: string;
     type: "commentOnBlock";
