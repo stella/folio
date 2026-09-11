@@ -527,71 +527,74 @@ describe("table row and column structural alignment", () => {
       identity: "partial",
       revisedSecondIds: ["second-revised-only", "first-revised-only"],
     },
-  ] as const)("does not cross-pair reordered rows with $identity persisted identity", ({
-    revisedSecondIds,
-  }) => {
-    const base = [
-      cell(
-        "first-shared",
-        "Original first A",
-        { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 },
-        { idStability: "positional" },
-      ),
-      cell(
-        "first-base-only",
-        "Original first B",
-        { rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 },
-        { idStability: "positional" },
-      ),
-      cell(
-        "second-shared",
-        "Original second A",
-        { rowIndex: 1, cellIndex: 0, gridColumnIndex: 0 },
-        { idStability: "positional" },
-      ),
-      cell(
-        "second-base-only",
-        "Original second B",
-        { rowIndex: 1, cellIndex: 1, gridColumnIndex: 1 },
-        { idStability: "positional" },
-      ),
-    ];
-    const revised = [
-      cell("second-shared", "Unrelated replacement A", {
-        rowIndex: 0,
-        cellIndex: 0,
-        gridColumnIndex: 0,
-      }),
-      cell(revisedSecondIds[0], "Unrelated replacement B", {
-        rowIndex: 0,
-        cellIndex: 1,
-        gridColumnIndex: 1,
-      }),
-      cell("first-shared", "Different replacement A", {
-        rowIndex: 1,
-        cellIndex: 0,
-        gridColumnIndex: 0,
-      }),
-      cell(revisedSecondIds[1], "Different replacement B", {
-        rowIndex: 1,
-        cellIndex: 1,
-        gridColumnIndex: 1,
-      }),
-    ];
+  ] as const)(
+    "does not cross-pair reordered rows with $identity persisted identity",
+    ({ revisedSecondIds }) => {
+      const base = [
+        cell(
+          "first-shared",
+          "Original first A",
+          { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 },
+          { idStability: "positional" },
+        ),
+        cell(
+          "first-base-only",
+          "Original first B",
+          { rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 },
+          { idStability: "positional" },
+        ),
+        cell(
+          "second-shared",
+          "Original second A",
+          { rowIndex: 1, cellIndex: 0, gridColumnIndex: 0 },
+          { idStability: "positional" },
+        ),
+        cell(
+          "second-base-only",
+          "Original second B",
+          { rowIndex: 1, cellIndex: 1, gridColumnIndex: 1 },
+          { idStability: "positional" },
+        ),
+      ];
+      const revised = [
+        cell("second-shared", "Unrelated replacement A", {
+          rowIndex: 0,
+          cellIndex: 0,
+          gridColumnIndex: 0,
+        }),
+        cell(revisedSecondIds[0], "Unrelated replacement B", {
+          rowIndex: 0,
+          cellIndex: 1,
+          gridColumnIndex: 1,
+        }),
+        cell("first-shared", "Different replacement A", {
+          rowIndex: 1,
+          cellIndex: 0,
+          gridColumnIndex: 0,
+        }),
+        cell(revisedSecondIds[1], "Different replacement B", {
+          rowIndex: 1,
+          cellIndex: 1,
+          gridColumnIndex: 1,
+        }),
+      ];
 
-    const steps = alignFolioContentStructure({
-      baseBlocks: base,
-      revisedBlocks: revised,
-      stableIdMismatch: "pair",
-    });
+      const steps = alignFolioContentStructure({
+        baseBlocks: base,
+        revisedBlocks: revised,
+        stableIdMismatch: "pair",
+      });
 
-    expect(steps.filter(({ type }) => type === "pair")).toEqual([]);
-    expect(
-      steps.flatMap((step) =>
-        step.type === "baseRow" || step.type === "revisedRow" ? [step.type] : [],
-      ).toSorted(),
-    ).toEqual(["baseRow", "baseRow", "revisedRow", "revisedRow"]);
-  });
+      expect(steps.filter(({ type }) => type === "pair")).toEqual([]);
+      expect(
+        steps
+          .flatMap((step) =>
+            step.type === "baseRow" || step.type === "revisedRow" ? [step.type] : [],
+          )
+          .toSorted(),
+      ).toEqual(["baseRow", "baseRow", "revisedRow", "revisedRow"]);
+    },
+  );
 
   test("keeps an edited persisted row paired after an inserted row", () => {
     const base = [
