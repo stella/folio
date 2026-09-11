@@ -2,15 +2,27 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 GlobalRegistrator.register();
 
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import type { Comment } from "@stll/folio-core/types/content";
 import { act, useState } from "react";
-import { createRoot } from "react-dom/client";
+import { createRoot, type Root } from "react-dom/client";
 
 import { useFolioComments } from "./useFolioComments";
 
 // React only silences its "not wrapped in act" warning when this flag is set.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+// Unmount every root so the hook's effect cleanup cancels its pending frame
+// and timer; otherwise that work outlives the test that scheduled it.
+const roots: Root[] = [];
+
+afterEach(() => {
+  act(() => {
+    for (const root of roots.splice(0)) {
+      root.unmount();
+    }
+  });
+});
 
 afterAll(() => {
   GlobalRegistrator.unregister();
@@ -53,6 +65,7 @@ const mount = ({ commentsProp, onCommentsChange }: MountOptions = {}): Harness =
     return null;
   };
   const root = createRoot(document.createElement("div"));
+  roots.push(root);
   act(() => root.render(<Host />));
   return {
     get hook() {
