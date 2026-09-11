@@ -55,7 +55,11 @@ import { emuToPixels } from "../utils/units";
 import { applySanitizedImageSrc } from "../utils/sanitizeImageSrc";
 import { resolveAnchoredImagePosition, type PageGeometry } from "./anchoredImagePosition";
 import { borderStrokeToCss, resolveCssBorderStroke } from "./borderStroke";
-import { getAutomaticTextColorForBackground } from "./documentColors";
+import {
+  getAutomaticTextColorForBackground,
+  setAuthoredBackgroundColor,
+  setAuthoredTextColor,
+} from "./documentColors";
 import { applyImageVisualAttrs, hasImageCrop, hasImageVisualAttrs } from "./renderImage";
 import { renderParagraphFragment } from "./renderParagraph";
 import { renderTextBoxFragment } from "./renderTextBox";
@@ -701,10 +705,10 @@ function renderTableCell({
 
   // Background color
   if (cell.background) {
-    cellEl.style.backgroundColor = cell.background;
+    setAuthoredBackgroundColor(cellEl.style, cell.background);
     const automaticTextColor = getAutomaticTextColorForBackground(cell.background);
     if (automaticTextColor) {
-      cellEl.style.color = automaticTextColor;
+      setAuthoredTextColor(cellEl.style, automaticTextColor);
     }
   }
 

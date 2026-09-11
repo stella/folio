@@ -508,8 +508,10 @@ describe("renderLine text styling", () => {
 
     expect(textEl?.style.backgroundColor).toBe(TEST_HIGHLIGHT_COLOR);
     expect(textEl?.style.color).toBe("#000000");
-    expect(textEl?.className).toContain("docx-run-background-text");
-    expect(textEl?.style.getPropertyValue("--doc-run-background-text-color")).toBe("#000000");
+    expect(textEl?.style.getPropertyValue("--doc-run-color")).toBe("#000000");
+    expect(textEl?.style.getPropertyValue("--doc-authored-background-color")).toBe(
+      TEST_HIGHLIGHT_COLOR,
+    );
   });
 
   test("keeps automatic text readable on dark DOCX highlights", () => {
@@ -540,7 +542,9 @@ describe("renderLine text styling", () => {
 
     expect(textEl?.style.backgroundColor).toBe(TEST_DARK_HIGHLIGHT_COLOR);
     expect(textEl?.style.color).toBe("#FFFFFF");
-    expect(textEl?.style.getPropertyValue("--doc-run-background-text-color")).toBe("#FFFFFF");
+    expect(textEl?.style.getPropertyValue("--doc-authored-background-color")).toBe(
+      TEST_DARK_HIGHLIGHT_COLOR,
+    );
   });
 
   test("keeps inherited default-black text readable on dark DOCX highlights", () => {
@@ -606,7 +610,6 @@ describe("renderLine text styling", () => {
     expect(textEl?.style.backgroundColor).toBe(TEST_DARK_HIGHLIGHT_COLOR);
     expect(textEl?.style.color).toBe("#FFFFFF");
     expect(anchorEl?.style.color).toBe("#FFFFFF");
-    expect(anchorEl?.style.getPropertyValue("--doc-run-background-text-color")).toBe("#FFFFFF");
   });
 
   test("keeps inherited default-black hyperlink text readable on dark DOCX highlights", () => {
@@ -642,7 +645,6 @@ describe("renderLine text styling", () => {
     expect(textEl?.style.backgroundColor).toBe(TEST_DARK_HIGHLIGHT_COLOR);
     expect(textEl?.style.color).toBe("#FFFFFF");
     expect(anchorEl?.style.color).toBe("#FFFFFF");
-    expect(anchorEl?.style.getPropertyValue("--doc-run-background-text-color")).toBe("#FFFFFF");
   });
 
   test("preserves direct black hyperlink text without DOCX highlights", () => {
@@ -805,8 +807,8 @@ describe("renderLine text styling", () => {
 
     expect(textEl?.style.backgroundColor).toBe(TEST_HIGHLIGHT_COLOR);
     expect(textEl?.style.color).toBe(TEST_EXPLICIT_TEXT_COLOR);
-    expect(textEl?.style.getPropertyValue("--doc-run-background-text-color")).toBe(
-      TEST_EXPLICIT_TEXT_COLOR,
+    expect(textEl?.style.getPropertyValue("--doc-authored-background-color")).toBe(
+      TEST_HIGHLIGHT_COLOR,
     );
   });
 
@@ -839,8 +841,8 @@ describe("renderLine text styling", () => {
     const textEl = lineEl.children[0] as HTMLElement | undefined;
 
     expect(textEl?.style.color).toBe(TEST_EXPLICIT_TEXT_COLOR);
-    expect(textEl?.style.getPropertyValue("--doc-run-background-text-color")).toBe(
-      TEST_EXPLICIT_TEXT_COLOR,
+    expect(textEl?.style.getPropertyValue("--doc-authored-background-color")).toBe(
+      TEST_HIGHLIGHT_COLOR,
     );
   });
 
@@ -899,7 +901,9 @@ describe("renderLine text styling", () => {
 
     expect(textEl?.style.backgroundColor).toBe(TEST_DARK_HIGHLIGHT_COLOR);
     expect(textEl?.style.color).toBe("#000000");
-    expect(textEl?.style.getPropertyValue("--doc-run-background-text-color")).toBe("#000000");
+    expect(textEl?.style.getPropertyValue("--doc-authored-background-color")).toBe(
+      TEST_DARK_HIGHLIGHT_COLOR,
+    );
   });
 
   test("preserves tracked-change author colors on DOCX highlights", () => {
@@ -993,6 +997,52 @@ describe("renderLine tab tracking", () => {
 });
 
 describe("renderParagraphFragment indentation handling", () => {
+  test("exposes automatic shading contrast for dark-mode adaptation", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "p1",
+      runs: [{ kind: "text", text: "Shaded" }],
+      attrs: { shading: "#F8F2EB" },
+    };
+    const measure: ParagraphMeasure = {
+      kind: "paragraph",
+      lines: [
+        {
+          fromRun: 0,
+          fromChar: 0,
+          toRun: 0,
+          toChar: 6,
+          width: 42,
+          ascent: 10,
+          descent: 2,
+          lineHeight: 12,
+        },
+      ],
+      totalHeight: 12,
+    };
+    const fragment: ParagraphFragment = {
+      kind: "paragraph",
+      blockId: "p1",
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 12,
+      fromLine: 0,
+      toLine: 1,
+    };
+
+    const fragmentEl = renderParagraphFragment(
+      fragment,
+      block,
+      measure,
+      { pageNumber: 1, totalPages: 1, section: "body" },
+      { document: fakeDocument },
+    );
+
+    expect(fragmentEl.style.color).toBe("#000000");
+    expect(fragmentEl.style.getPropertyValue("--doc-run-color")).toBe("#000000");
+  });
+
   test("renders list marker revisions with tracked-change classes", () => {
     resetAuthorColors();
     const block: ParagraphBlock = {

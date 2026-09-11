@@ -12,10 +12,31 @@ import type { PageGeometry } from "./anchoredImagePosition";
 import { renderTableFragment, TABLE_CLASS_NAMES } from "./renderTable";
 import type { RenderContext } from "./renderUtils";
 
+function createFakeStyle(): Record<string, string> {
+  const store: Record<string, string> = {};
+  return new Proxy(store, {
+    get(target, prop: string) {
+      if (prop === "setProperty") {
+        return (key: string, value: string) => {
+          target[key] = value;
+        };
+      }
+      if (prop === "getPropertyValue") {
+        return (key: string) => target[key] ?? "";
+      }
+      return target[prop];
+    },
+    set(target, prop: string, value: string) {
+      target[prop] = value;
+      return true;
+    },
+  }) as unknown as Record<string, string>;
+}
+
 class FakeElement {
   className = "";
   dataset: Record<string, string> = {};
-  style: Record<string, string> = {};
+  style: Record<string, string> = createFakeStyle();
   children: FakeElement[] = [];
   private ownText = "";
   readonly tagName: string;
@@ -200,6 +221,65 @@ function buildHeaderContinuation(): {
   };
   return { fragment, block, measure };
 }
+
+describe("renderTableFragment authored backgrounds", () => {
+  test("exposes a cell fill for dark-mode adaptation", () => {
+    const block: TableBlock = {
+      kind: "table",
+      id: "tbl",
+      rows: [
+        {
+          id: "row",
+          cells: [
+            {
+              id: "cell",
+              background: "#F8F2EB",
+              blocks: [{ kind: "paragraph", id: "paragraph", runs: [] }],
+            },
+          ],
+        },
+      ],
+      columnWidths: [100],
+    };
+    const measure: TableMeasure = {
+      kind: "table",
+      rows: [
+        {
+          cells: [
+            {
+              blocks: [{ kind: "paragraph", lines: [], totalHeight: 20 }],
+              width: 100,
+              height: 20,
+            },
+          ],
+          height: 20,
+        },
+      ],
+      columnWidths: [100],
+      totalWidth: 100,
+      totalHeight: 20,
+    };
+    const fragment: TableFragment = {
+      kind: "table",
+      blockId: "tbl",
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 20,
+      fromRow: 0,
+      toRow: 1,
+    };
+
+    const table = renderTableFragment(fragment, block, measure, renderContext, {
+      document: fakeDocument,
+    }) as unknown as FakeElement;
+    const cell = findByClass(table, TABLE_CLASS_NAMES.cell).at(0);
+
+    expect(cell?.style["backgroundColor"]).toBe("#F8F2EB");
+    expect(cell?.style["--doc-authored-background-color"]).toBe("#F8F2EB");
+    expect(cell?.style["--doc-run-color"]).toBe("#000000");
+  });
+});
 
 describe("renderTableFragment clipped header continuations", () => {
   test("keeps repeated headers pinned while clipping the body row", () => {

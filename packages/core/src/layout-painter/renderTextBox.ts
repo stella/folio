@@ -18,6 +18,7 @@ import type {
   TextBoxBlock,
   TextBoxMeasure,
 } from "../layout-engine/types";
+import { setAuthoredBackgroundColor } from "./documentColors";
 import { layoutTextBoxContent } from "../layout-engine/measure/textBoxParagraphLayout";
 import { renderParagraphFragment } from "./renderParagraph";
 import type { RenderContext } from "./renderUtils";
@@ -67,7 +68,7 @@ export function renderTextBoxFragment(
 
   // Fill color
   if (block.fillColor) {
-    containerEl.style.backgroundColor = block.fillColor;
+    setAuthoredBackgroundColor(containerEl.style, block.fillColor);
   }
 
   // Border/outline

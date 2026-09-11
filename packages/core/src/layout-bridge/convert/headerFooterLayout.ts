@@ -37,6 +37,7 @@ import {
   isFloatingImageRun,
   isFloatingTextBoxBlock,
   isTextWrappingFloatingImageRun,
+  tableColumnsArePinned,
 } from "../../layout-engine/types";
 import { headerFooterToProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import { cloneParagraphWithPropertySource } from "../../docx/paragraphPropertySource";
@@ -151,6 +152,35 @@ export function normalizeHeaderFooterMeasureBlocks(
   section: HeaderFooterMetrics["section"] = "header",
 ): FlowBlock[] {
   return normalizeFlowBlockArray(blocks, { suppressTrailingEmptyAfterTable: section === "header" });
+}
+
+/**
+ * Header/footer auto-fit tables use `w:tblGrid` as a provisional ratio, not a
+ * license to paint beyond the page furniture frame. Scale an oversized grid
+ * for measurement while leaving the authored block untouched for round trips.
+ */
+export function fitHeaderFooterTablesToContentWidth(
+  blocks: FlowBlock[],
+  contentWidth: number,
+): FlowBlock[] {
+  return blocks.map((block) => {
+    if (
+      block.kind !== "table" ||
+      block.floating !== undefined ||
+      tableColumnsArePinned(block) ||
+      block.columnWidths === undefined
+    ) {
+      return block;
+    }
+
+    const totalWidth = block.columnWidths.reduce((sum, width) => sum + width, 0);
+    if (totalWidth <= contentWidth || totalWidth <= 0) {
+      return block;
+    }
+
+    const scale = contentWidth / totalWidth;
+    return { ...block, columnWidths: block.columnWidths.map((width) => width * scale) };
+  });
 }
 
 type HeaderFooterMeasureNormalization = {
@@ -948,7 +978,8 @@ function finalizeHeaderFooterContent(
     return undefined;
   }
 
-  const blocksForMeasure = normalizeHeaderFooterMeasureBlocks(blocks, metrics.section);
+  const normalizedBlocks = normalizeHeaderFooterMeasureBlocks(blocks, metrics.section);
+  const blocksForMeasure = fitHeaderFooterTablesToContentWidth(normalizedBlocks, contentWidth);
   const measuredBlocks = options.measureBlocks(blocksForMeasure, contentWidth);
   const measures = reserveHeaderFooterFullWidthWrapBands({
     blocks,

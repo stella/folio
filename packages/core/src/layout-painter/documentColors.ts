@@ -5,6 +5,24 @@ const BLACK_LUMINANCE = 0;
 const WHITE_LUMINANCE = 1;
 const CONTRAST_OFFSET = 0.05;
 
+export const AUTHORED_BACKGROUND_COLOR_VAR = "--doc-authored-background-color";
+export const AUTHORED_TEXT_COLOR_VAR = "--doc-run-color";
+
+/** Paint a document text color and expose it to the dark-mode color transform. */
+export const setAuthoredTextColor = (style: CSSStyleDeclaration, color: string): void => {
+  style.color = color;
+  style.setProperty(AUTHORED_TEXT_COLOR_VAR, color);
+};
+
+/**
+ * Paint an OOXML background and retain its authored color for dark-mode adaptation.
+ * The custom property is presentation-only; serialization still uses the model value.
+ */
+export const setAuthoredBackgroundColor = (style: CSSStyleDeclaration, color: string): void => {
+  style.backgroundColor = color;
+  style.setProperty(AUTHORED_BACKGROUND_COLOR_VAR, color);
+};
+
 function normalizeHexColor(color: string): string | null {
   const trimmed = color.trim();
   if (!HEX_COLOR_RE.test(trimmed)) {

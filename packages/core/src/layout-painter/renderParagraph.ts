@@ -72,7 +72,11 @@ import {
   type ScriptClass,
 } from "../utils/scriptSegments";
 import { borderStrokeToCss, resolveParagraphBorderHorizontalOutsets } from "./borderStroke";
-import { getAutomaticTextColorForBackground } from "./documentColors";
+import {
+  getAutomaticTextColorForBackground,
+  setAuthoredBackgroundColor,
+  setAuthoredTextColor,
+} from "./documentColors";
 import {
   applyImageBorder,
   applyImageVisualAttrs,
@@ -241,19 +245,6 @@ const SUGGESTION_TINT_CSS = "var(--suggestion-bg, color-mix(in oklch, #6d3bd6 12
 // painted via background-color earlier in applyRunStyles — stay visible
 // underneath the proposal wash instead of being replaced by it.
 const SUGGESTION_TINT_LAYER_CSS = `linear-gradient(${SUGGESTION_TINT_CSS}, ${SUGGESTION_TINT_CSS})`;
-const RUN_BACKGROUND_TEXT_COLOR_VAR = "--doc-run-background-text-color";
-
-const setRunBackgroundTextColor = (element: HTMLElement, color: string): void => {
-  element.classList.add("docx-run-background-text");
-  element.style.setProperty(RUN_BACKGROUND_TEXT_COLOR_VAR, color);
-};
-
-const hasRunBackgroundTextSurface = (run: TextRun | TabRun): boolean =>
-  Boolean(run.highlight ?? run.shading) &&
-  !run.isInsertion &&
-  !run.isDeletion &&
-  !(run.commentIds !== undefined && run.commentIds.length > 0);
-
 function normalizeTextColorValue(color: string): string {
   return color.trim().toLowerCase().replace(/^#/u, "");
 }
@@ -362,11 +353,10 @@ function applyRunStyles(element: HTMLElement, run: TextRun | TabRun): void {
   let hasExplicitTextColor = false;
   const textColor = getRenderableTextColor(run);
   if (textColor) {
-    element.style.color = textColor;
     // Also expose the authored color so dark mode can invert its lightness
     // (hue/chroma preserved) via relative-color CSS. The dark rule overrides
     // this inline color with !important; light mode keeps it verbatim.
-    element.style.setProperty("--doc-run-color", textColor);
+    setAuthoredTextColor(element.style, textColor);
     hasExplicitTextColor = true;
   }
 
@@ -456,7 +446,7 @@ function applyRunStyles(element: HTMLElement, run: TextRun | TabRun): void {
   // they fall outside the OOXML named-highlight palette. eigenpal #722 (#712).
   const runBackground = run.highlight ?? run.shading;
   if (runBackground) {
-    element.style.backgroundColor = runBackground;
+    setAuthoredBackgroundColor(element.style, runBackground);
     const hasTrackedChangeColor = run.isInsertion || run.isDeletion;
     const hasCommentHighlight = run.commentIds !== undefined && run.commentIds.length > 0;
     const automaticTextColor =
@@ -464,16 +454,7 @@ function applyRunStyles(element: HTMLElement, run: TextRun | TabRun): void {
         ? undefined
         : getAutomaticTextColorForBackground(runBackground);
     if (automaticTextColor) {
-      element.style.color = automaticTextColor;
-    }
-    const backgroundTextColor = hasExplicitTextColor ? textColor : automaticTextColor;
-    if (backgroundTextColor && hasRunBackgroundTextSurface(run)) {
-      // Dark-mode canvas rules deliberately invert ordinary run colors, but an
-      // authored highlight/shading is its own local color surface. Preserve the
-      // foreground chosen for that surface so a bright yellow highlight does
-      // not turn direct/theme black (or automatic contrast black) into white.
-      // The CSS custom property is presentation-only; saved OOXML is untouched.
-      setRunBackgroundTextColor(element, backgroundTextColor);
+      setAuthoredTextColor(element.style, automaticTextColor);
     }
   }
 
@@ -783,22 +764,14 @@ function renderTextRun(run: TextRun, doc: Document, options?: RenderTextRunOptio
     if (!run.hyperlink.noDefaultStyle) {
       // Default Word hyperlink color is blue (#0563c1)
       const hyperlinkColor = getHyperlinkTextColor(run, span.style.color);
-      anchor.style.color = hyperlinkColor;
+      setAuthoredTextColor(anchor.style, hyperlinkColor);
       anchor.style.textDecoration = "underline";
       // Override span color to match anchor (prevents color mismatch in selection)
-      span.style.color = hyperlinkColor;
+      setAuthoredTextColor(span.style, hyperlinkColor);
       // Expose the link colour on the anchor (which paints over the span) so
       // dark mode inverts its lightness via the same --doc-run-color rule.
       // `noDefaultStyle` (e.g. TOC) anchors set no colour and keep inheriting
       // the paragraph's inverted colour.
-      anchor.style.setProperty("--doc-run-color", hyperlinkColor);
-      span.style.setProperty("--doc-run-color", hyperlinkColor);
-      if (hasRunBackgroundTextSurface(run)) {
-        // The anchor paints over the run span, so it must carry the same local
-        // surface foreground contract as the span after hyperlink styling wins.
-        setRunBackgroundTextColor(span, hyperlinkColor);
-        setRunBackgroundTextColor(anchor, hyperlinkColor);
-      }
     }
     span.append(anchor);
   } else {
@@ -3091,10 +3064,10 @@ export function renderParagraphFragment(
 
   // Apply shading (background color)
   if (block.attrs?.shading) {
-    fragmentEl.style.backgroundColor = block.attrs.shading;
+    setAuthoredBackgroundColor(fragmentEl.style, block.attrs.shading);
     const automaticTextColor = getAutomaticTextColorForBackground(block.attrs.shading);
     if (automaticTextColor) {
-      fragmentEl.style.color = automaticTextColor;
+      setAuthoredTextColor(fragmentEl.style, automaticTextColor);
     }
   }
 
