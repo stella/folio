@@ -36,7 +36,7 @@ export const PARAGRAPH_FORMATTING_PROPERTY_ATTRS = {
   indentRight: ["indentRight"],
   indentFirstLine: ["indentFirstLine"],
   hangingIndent: ["hangingIndent"],
-  numberingLevelIndent: ["_numberingLevelIndent"],
+  numberingLevelIndent: [],
   borders: ["borders"],
   shading: ["shading"],
   tabs: ["tabs"],
@@ -75,7 +75,7 @@ const propertyAttrs = (
       attrs.add(attr);
     }
   }
-  return [...attrs];
+  return Object.freeze([...attrs]);
 };
 
 /** Paragraph attrs governed by a `w:pPrChange` CT_PPrBase payload. */
@@ -95,13 +95,19 @@ export const PARAGRAPH_MARK_ATTR_KEYS = propertyAttrs(
   ({ owner }) => owner === PARAGRAPH_PROPERTY_OWNER.paragraphMark,
 );
 
-export const PPR_SPACING_ATTR_KEYS: ReadonlySet<keyof ParagraphAttrs> = new Set(
+export const PPR_SPACING_ATTR_KEY_LIST = Object.freeze(
   propertyAttrs(({ projection }) => projection === PARAGRAPH_PROPERTY_PROJECTION.spacing),
 );
+const PPR_SPACING_ATTR_KEY_SET = new Set<keyof ParagraphAttrs>(PPR_SPACING_ATTR_KEY_LIST);
+export const isPprSpacingAttr = (key: keyof ParagraphAttrs): boolean =>
+  PPR_SPACING_ATTR_KEY_SET.has(key);
 
-export const PPR_INDENT_ATTR_KEYS: ReadonlySet<keyof ParagraphAttrs> = new Set(
+export const PPR_INDENT_ATTR_KEY_LIST = Object.freeze(
   propertyAttrs(({ projection }) => projection === PARAGRAPH_PROPERTY_PROJECTION.indentation),
 );
+const PPR_INDENT_ATTR_KEY_SET = new Set<keyof ParagraphAttrs>(PPR_INDENT_ATTR_KEY_LIST);
+export const isPprIndentAttr = (key: keyof ParagraphAttrs): boolean =>
+  PPR_INDENT_ATTR_KEY_SET.has(key);
 
 export const PPR_STYLE_REPLACED_ATTR_KEYS = propertyAttrs(
   ({ styleTransition }) => styleTransition === PARAGRAPH_STYLE_TRANSITION.replace,

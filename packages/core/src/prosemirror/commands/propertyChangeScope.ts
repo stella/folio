@@ -44,7 +44,17 @@ import {
   paragraphSpacingAttrPatch,
   paragraphSpacingFromFormatting,
 } from "../paragraphSpacing";
-import { directionFromBidi } from "../paragraphDirection";
+import { directionFromBidi, directionToBidi } from "../paragraphDirection";
+import {
+  isParagraphFormattingPropertyKey,
+  isPprIndentAttr,
+  isPprSpacingAttr,
+  PPR_CHANGE_BOOLEAN_ATTR_KEYS,
+  PPR_CHANGE_SCOPED_ATTR_KEYS,
+  PPR_CHANGE_SCOPED_FORMATTING_KEYS,
+  PPR_OPAQUE_FORMATTING_KEYS,
+  PPR_PARAGRAPH_MARK_FORMATTING_KEYS,
+} from "../paragraphPropertyProjection";
 import type { ParagraphAttrs, ParagraphPropertyChangeAttrs } from "../schema/nodes";
 
 /** Editor-only suggestions are rebased away before save; every other entry emits `w:pPrChange`. */
@@ -182,7 +192,7 @@ export const paragraphPropertiesSnapshot = (node: PMNode): ParagraphPropertySnap
   const attrs = expectParagraphAttrs(node);
   const snapshot: Record<string, unknown> = {};
   for (const key of PPR_CHANGE_SCOPED_ATTR_KEYS) {
-    if (key === "alignment" || PPR_SPACING_ATTR_KEYS.has(key)) {
+    if (key === "alignment" || isPprSpacingAttr(key) || isPprIndentAttr(key)) {
       continue;
     }
     const value: unknown = attrs[key];
@@ -293,7 +303,10 @@ export function paragraphRejectAttrPatch(
     patch["direction"] = directionFromBidi(prev.bidi);
   }
   for (const [key, value] of Object.entries(prev)) {
-    if (PPR_CHANGE_SCOPED_ATTR_KEY_SET.has(key) || PPR_PARSER_ONLY_KEYS.has(key)) {
+    if (
+      PPR_CHANGE_SCOPED_ATTR_KEY_SET.has(key) ||
+      isParagraphFormattingPropertyKey(key)
+    ) {
       continue;
     }
     patch[key] = value ?? null;

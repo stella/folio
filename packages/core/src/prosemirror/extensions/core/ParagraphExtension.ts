@@ -32,7 +32,14 @@ import { autospacingMatchesBase } from "../../autospacingBase";
 import { directParagraphAlignment } from "../../paragraphAlignment";
 import { directionIsRtl } from "../../paragraphDirection";
 import { EMPTY_EDITOR_PARAGRAPH_PROPERTY_STATE } from "../../paragraphPropertyState";
-import { paragraphAttrsFromExternalDomImport } from "../../paragraphPropertyMutation";
+import {
+  paragraphDomGetAttrs,
+  paragraphPropertiesFromExternalDomImport,
+} from "../../paragraphPropertyMutation";
+import {
+  attrsWithParagraphIndentationTransition,
+  type ParagraphIndentationTransition,
+} from "../../paragraphIndentation";
 import { withDirectParagraphSpacing } from "../../paragraphSpacing";
 import type { ParagraphDirection } from "../../paragraphDirection";
 import type { ParagraphAttrs } from "../../schema/nodes";
@@ -399,9 +406,6 @@ const paragraphNodeSpec: NodeSpec = {
     bookmarks: { default: null },
     _emptyHyperlinks: { default: null },
     _paragraphPropertyState: { default: EMPTY_EDITOR_PARAGRAPH_PROPERTY_STATE },
-    _paragraphPropertyInheritance: { default: EMPTY_EDITOR_PARAGRAPH_PROPERTY_STATE.authoredPPr },
-    _paragraphMarkFormatting: { default: EMPTY_EDITOR_PARAGRAPH_PROPERTY_STATE.authoredPPr },
-    _numberingLevelIndent: { default: null },
     _autospacingBase: { default: null },
     _sectionProperties: { default: null },
     _propertyChanges: { default: null },
@@ -411,7 +415,7 @@ const paragraphNodeSpec: NodeSpec = {
   parseDOM: [
     {
       tag: "p",
-      getAttrs(dom) {
+      getAttrs: paragraphDomGetAttrs((dom) => {
         if (!(dom instanceof HTMLElement)) {
           return false;
         }
@@ -453,7 +457,7 @@ const paragraphNodeSpec: NodeSpec = {
           // For alignment, prefer data-attribute if present, otherwise use CSS
           ...(mergedAlignment !== undefined ? { alignment: mergedAlignment } : {}),
         };
-        return paragraphAttrsFromExternalDomImport({
+        return paragraphPropertiesFromExternalDomImport({
           effectiveAttrs,
           authoredAttrs: {
             ...effectiveAttrs,
@@ -464,24 +468,24 @@ const paragraphNodeSpec: NodeSpec = {
           inheritedPPr:
             alignmentFromStyle === undefined ? {} : { alignment: alignmentFromStyle },
         });
-      },
+      }),
     },
     // Heading tags (h1-h6) — pasted from Google Docs, Word Online, etc.
     // Map to paragraphs with appropriate styleId and formatting extracted from CSS.
     ...(["h1", "h2", "h3", "h4", "h5", "h6"] as const).map((tag) => ({
       tag,
-      getAttrs(dom: HTMLElement) {
+      getAttrs: paragraphDomGetAttrs((dom: HTMLElement) => {
         const level = Number.parseInt(tag.charAt(1), 10);
         const styleAttrs = extractParagraphAttrsFromStyle(dom);
 
-        return paragraphAttrsFromExternalDomImport({
+        return paragraphPropertiesFromExternalDomImport({
           effectiveAttrs: {
             ...styleAttrs,
             styleId: `Heading${level}`,
             outlineLevel: level - 1,
           },
         });
-      },
+      }),
     })),
   ],
   toDOM(node) {

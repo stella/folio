@@ -18,10 +18,10 @@ import {
   authoredParagraphPropertiesFromFormatting,
   createEditorParagraphPropertyState,
   expectParagraphPropertyState,
-  readAuthoredParagraphProperties,
-  serializeParagraphPropertyState,
+  paragraphPropertyStateAttribute,
   serializePersistableParagraphPropertyState,
   transitionParagraphPropertyState,
+  type ParagraphPropertyProjectionContext,
   type ParagraphPropertyState,
   type ParagraphPropertyStateTransition,
 } from "./paragraphPropertyState";
@@ -50,7 +50,10 @@ class ParagraphPropertyProjectionCapsule {
   readonly #attrs: ParagraphAttrs;
 
   private constructor(attrs: ParagraphAttrs) {
-    this.#attrs = deepFreezeProjectionValue(structuredClone(attrs)) as ParagraphAttrs;
+    const state = attrs._paragraphPropertyState;
+    const cloned = structuredClone({ ...attrs, _paragraphPropertyState: undefined });
+    cloned._paragraphPropertyState = state;
+    this.#attrs = deepFreezeProjectionValue(cloned) as ParagraphAttrs;
     Object.freeze(this);
   }
 
@@ -65,27 +68,14 @@ class ParagraphPropertyProjectionCapsule {
 
 export type ParagraphPropertyProjection = ParagraphPropertyProjectionCapsule;
 
-export type ParagraphPropertyProjectionContext = {
-  inheritedPPr: AuthoredParagraphProperties;
-  numberingLevelIndent: ParagraphFormatting["numberingLevelIndent"] | null;
-  numPrFromStyle: ParagraphFormatting["numPr"] | null;
-};
-
-export type ParagraphPropertyContextTransition =
-  | { type: "preserve" }
-  | ({ type: "replace" } & ParagraphPropertyProjectionContext);
-
 type TransitionParagraphPropertiesOptions = {
   attrs: ParagraphAttrs;
   state: ParagraphPropertyStateTransition;
-  context: ParagraphPropertyContextTransition;
 };
 
 type CreateParagraphPropertiesOptions = {
   attrs?: Readonly<Record<string, unknown>>;
   state: ParagraphPropertyState;
-  context: ParagraphPropertyProjectionContext;
-  paragraphMarkFormatting?: ParagraphAttrs["_paragraphMarkFormatting"];
 };
 
 type CreateEditorParagraphPropertiesOptions = Omit<
@@ -93,13 +83,11 @@ type CreateEditorParagraphPropertiesOptions = Omit<
   "state"
 > & {
   authoredPPr: AuthoredParagraphProperties;
+  context?: ParagraphPropertyProjectionContext;
 };
 
 const PROJECTION_CONTEXT_ATTR_KEYS = [
   "_paragraphPropertyState",
-  "_paragraphPropertyInheritance",
-  "_paragraphMarkFormatting",
-  "_numberingLevelIndent",
   "numPrFromStyle",
   "alignmentFromStyle",
   "_sourceIndentation",
@@ -108,11 +96,18 @@ const PROJECTION_CONTEXT_ATTR_KEYS = [
   "spacingFromImplicitDefaultStyle",
 ] as const satisfies readonly (keyof ParagraphAttrs)[];
 
-export const GOVERNED_PARAGRAPH_ATTR_KEYS: ReadonlySet<keyof ParagraphAttrs> = new Set([
-  ...PPR_CHANGE_SCOPED_ATTR_KEYS,
-  ...PARAGRAPH_MARK_ATTR_KEYS,
-  ...PROJECTION_CONTEXT_ATTR_KEYS,
+export const GOVERNED_PARAGRAPH_ATTR_KEY_LIST = Object.freeze([
+  ...new Set<keyof ParagraphAttrs>([
+    ...PPR_CHANGE_SCOPED_ATTR_KEYS,
+    ...PARAGRAPH_MARK_ATTR_KEYS,
+    ...PROJECTION_CONTEXT_ATTR_KEYS,
+  ]),
 ]);
+const GOVERNED_PARAGRAPH_ATTR_KEY_SET = new Set<keyof ParagraphAttrs>(
+  GOVERNED_PARAGRAPH_ATTR_KEY_LIST,
+);
+export const isGovernedParagraphAttr = (key: string): key is keyof ParagraphAttrs =>
+  GOVERNED_PARAGRAPH_ATTR_KEY_SET.has(key as keyof ParagraphAttrs);
 
 /** Select exact authored pPr from editor attrs through the total descriptor. */
 const authoredParagraphPropertiesFromExternalDomAttrs = (
@@ -193,7 +188,7 @@ const nonGovernedAttrs = (
 ): Readonly<Record<string, unknown>> => {
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(attrs)) {
-    if (!GOVERNED_PARAGRAPH_ATTR_KEYS.has(key as keyof ParagraphAttrs)) {
+    if (!isGovernedParagraphAttr(key)) {
       result[key] = value;
     }
   }
@@ -214,8 +209,30 @@ const createEditorParagraphPropertiesFromExternalDomAttrs = ({
   createEditorParagraphProperties({
     attrs: nonGovernedAttrs(effectiveAttrs),
     authoredPPr: authoredParagraphPropertiesFromExternalDomAttrs(authoredAttrs),
-    context: { inheritedPPr, numberingLevelIndent: null, numPrFromStyle: null },
-    paragraphMarkFormatting: effectiveAttrs._paragraphMarkFormatting ?? {},
+    context: {
+      inheritedPPr,
+      numberingLevelIndent: null,
+      numPrFromStyle: null,
+      paragraphMark: {
+        authored: {
+          ...(authoredAttrs.defaultTextFormatting == null
+            ? {}
+            : { runProperties: authoredAttrs.defaultTextFormatting }),
+          ...(authoredAttrs.runInWithNext == null
+            ? {}
+            : { runInWithNext: authoredAttrs.runInWithNext }),
+        },
+        effective: {
+          ...(effectiveAttrs.defaultTextFormatting == null
+            ? {}
+            : { defaultTextFormatting: effectiveAttrs.defaultTextFormatting }),
+          ...(effectiveAttrs.runInWithNext == null
+            ? {}
+            : { runInWithNext: effectiveAttrs.runInWithNext }),
+        },
+      },
+      spacingInheritance: {},
+    },
   });
 
 const cloneFormatting = (formatting: Readonly<AuthoredParagraphProperties>): ParagraphFormatting =>
@@ -262,35 +279,11 @@ const numberingIndentFormatting = (
   };
 };
 
-const projectionContext = (
-  attrs: ParagraphAttrs,
-  transition: ParagraphPropertyContextTransition,
-): ParagraphPropertyProjectionContext => {
-  switch (transition.type) {
-    case "preserve":
-      return {
-        inheritedPPr: attrs._paragraphPropertyInheritance,
-        numberingLevelIndent: attrs._numberingLevelIndent ?? null,
-        numPrFromStyle: attrs.numPrFromStyle ?? null,
-      };
-    case "replace":
-      return {
-        inheritedPPr: authoredParagraphPropertiesFromFormatting(transition.inheritedPPr),
-        numberingLevelIndent: transition.numberingLevelIndent,
-        numPrFromStyle: transition.numPrFromStyle,
-      };
-    default: {
-      const exhaustive: never = transition;
-      return exhaustive;
-    }
-  }
-};
-
 const projectAttrs = (
   attrs: ParagraphAttrs,
   state: ParagraphPropertyState,
-  context: ParagraphPropertyProjectionContext,
 ): ParagraphAttrs => {
+  const { context } = state;
   const authoredPPr = cloneFormatting(state.authoredPPr);
   const inheritedPPr = cloneFormatting(context.inheritedPPr);
   const inheritedOverNumbering = mergeParagraphFormatting(
@@ -300,17 +293,22 @@ const projectAttrs = (
   const effective = mergeParagraphFormatting(inheritedOverNumbering, authoredPPr) ?? {};
   const next: ParagraphAttrs = {
     ...attrs,
-    _paragraphPropertyState: serializeParagraphPropertyState(state),
-    _paragraphPropertyInheritance: authoredParagraphPropertiesFromFormatting(inheritedPPr),
+    _paragraphPropertyState: paragraphPropertyStateAttribute(state),
   };
-  Reflect.set(next, "_numberingLevelIndent", context.numberingLevelIndent ?? null);
   Reflect.set(next, "numPrFromStyle", context.numPrFromStyle ?? null);
+  Reflect.set(
+    next,
+    "defaultTextFormatting",
+    context.paragraphMark.effective.defaultTextFormatting ?? null,
+  );
+  Reflect.set(next, "runInWithNext", context.paragraphMark.effective.runInWithNext ?? null);
 
   Object.assign(
     next,
     paragraphSpacingAttrPatch({
       direct: paragraphSpacingFromFormatting(authoredPPr),
       inherited: paragraphSpacingFromFormatting(inheritedPPr),
+      inheritance: context.spacingInheritance,
     }),
   );
   if (authoredPPr.spacingExplicit !== undefined) {
@@ -365,45 +363,36 @@ const proveParagraphPropertyProjection = (
 export const transitionParagraphProperties = ({
   attrs,
   state: transition,
-  context: contextTransition,
 }: TransitionParagraphPropertiesOptions): ParagraphPropertyProjection => {
   const current = expectParagraphPropertyState(attrs._paragraphPropertyState);
   const state = transitionParagraphPropertyState(current, transition);
-  const context = projectionContext(attrs, contextTransition);
-  return proveParagraphPropertyProjection(projectAttrs(attrs, state, context));
+  return proveParagraphPropertyProjection(projectAttrs(attrs, state));
 };
 
 export const createParagraphProperties = ({
   attrs = {},
   state,
-  context,
-  paragraphMarkFormatting = {},
 }: CreateParagraphPropertiesOptions): ParagraphPropertyProjection => {
   for (const key of Object.keys(attrs)) {
-    if (GOVERNED_PARAGRAPH_ATTR_KEYS.has(key as keyof ParagraphAttrs)) {
+    if (isGovernedParagraphAttr(key)) {
       panic(`Editor paragraph creation supplied governed attr directly: ${key}`);
     }
   }
   const seed = {
     ...attrs,
-    _paragraphPropertyState: serializeParagraphPropertyState(state),
-    _paragraphPropertyInheritance: context.inheritedPPr,
-    _paragraphMarkFormatting: paragraphMarkFormatting,
+    _paragraphPropertyState: paragraphPropertyStateAttribute(state),
   } as ParagraphAttrs;
-  return proveParagraphPropertyProjection(projectAttrs(seed, state, context));
+  return proveParagraphPropertyProjection(projectAttrs(seed, state));
 };
 
 export const createEditorParagraphProperties = ({
   attrs,
   authoredPPr,
   context,
-  paragraphMarkFormatting,
 }: CreateEditorParagraphPropertiesOptions): ParagraphPropertyProjection =>
   createParagraphProperties({
     attrs,
-    state: createEditorParagraphPropertyState(authoredPPr),
-    context,
-    paragraphMarkFormatting,
+    state: createEditorParagraphPropertyState({ authoredPPr, context }),
   });
 
 const valuesEqual = (left: unknown, right: unknown): boolean => {
@@ -447,16 +436,8 @@ export const assertParagraphPropertyInvariant = (
   if (boundary.type === "persistence") {
     serializePersistableParagraphPropertyState(state);
   }
-  const inheritance = readAuthoredParagraphProperties(attrs._paragraphPropertyInheritance);
-  if (inheritance.status !== "valid") {
-    panic("Paragraph-property inheritance must be a valid authored-property projection");
-  }
-  const expected = projectAttrs(attrs, state, {
-    inheritedPPr: inheritance.value,
-    numberingLevelIndent: attrs._numberingLevelIndent ?? null,
-    numPrFromStyle: attrs.numPrFromStyle ?? null,
-  });
-  for (const key of GOVERNED_PARAGRAPH_ATTR_KEYS) {
+  const expected = projectAttrs(attrs, state);
+  for (const key of GOVERNED_PARAGRAPH_ATTR_KEY_LIST) {
     if (!valuesEqual(attrs[key], expected[key])) {
       panic(`Paragraph-property projection invariant failed for attr: ${String(key)}`);
     }
@@ -470,7 +451,7 @@ export const preserveParagraphProperties = (
   patch: Readonly<Record<string, unknown>>,
 ): ParagraphPropertyProjection => {
   const next = { ...attrs, ...patch } as ParagraphAttrs;
-  for (const key of GOVERNED_PARAGRAPH_ATTR_KEYS) {
+  for (const key of GOVERNED_PARAGRAPH_ATTR_KEY_LIST) {
     if (!valuesEqual(attrs[key], next[key])) {
       panic(`Non-governed paragraph mutation changed governed attr: ${String(key)}`);
     }
@@ -552,15 +533,22 @@ export const applyNonParagraphMarkup = ({
 };
 
 /** Explicit external-DOM import boundary used by the paragraph NodeSpec parser. */
-export const paragraphAttrsFromExternalDomImport = ({
+export const paragraphPropertiesFromExternalDomImport = ({
   effectiveAttrs,
   authoredAttrs = effectiveAttrs,
   inheritedPPr = {},
-}: CreateEditorParagraphPropertiesFromAttrsOptions): ParagraphAttrs => {
-  const projection = createEditorParagraphPropertiesFromExternalDomAttrs({
+}: CreateEditorParagraphPropertiesFromAttrsOptions): ParagraphPropertyProjection =>
+  createEditorParagraphPropertiesFromExternalDomAttrs({
     effectiveAttrs,
     authoredAttrs,
     inheritedPPr,
   });
-  return ParagraphPropertyProjectionCapsule.attrs(projection);
-};
+
+/** Bind the sole raw-attr unwrap to a paragraph NodeSpec `getAttrs` callback. */
+export const paragraphDomGetAttrs = <Dom>(
+  project: (dom: Dom) => ParagraphPropertyProjection | false,
+): ((dom: Dom) => ParagraphAttrs | false) =>
+  (dom) => {
+    const projection = project(dom);
+    return projection === false ? false : ParagraphPropertyProjectionCapsule.attrs(projection);
+  };

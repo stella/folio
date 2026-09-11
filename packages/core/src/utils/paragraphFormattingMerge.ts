@@ -1,48 +1,14 @@
+import { panic } from "better-result";
+
 import type { ParagraphFormatting, TabStop } from "../types/document";
+import {
+  PARAGRAPH_FORMATTING_PROPERTY_DESCRIPTOR,
+  PARAGRAPH_FORMATTING_PROPERTY_KEY_LIST,
+} from "../docx/paragraphPropertyDescriptor";
 import { mergeTextFormatting } from "./textFormattingMerge";
 
-const PARAGRAPH_REPLACE_KEYS = [
-  "alignment",
-  "bidi",
-  "kinsoku",
-  "overflowPunctuation",
-  "spaceBefore",
-  "spaceAfter",
-  "lineSpacing",
-  "lineSpacingRule",
-  "snapToGrid",
-  "beforeAutospacing",
-  "afterAutospacing",
-  "spacingExplicit",
-  "indentLeft",
-  "indentRight",
-  "indentFirstLine",
-  "hangingIndent",
-  "shading",
-  "keepNext",
-  "keepLines",
-  "widowControl",
-  "pageBreakBefore",
-  "contextualSpacing",
-  "outlineLevel",
-  "styleId",
-  "suppressLineNumbers",
-  "suppressAutoHyphens",
-  "runInWithNext",
-] as const satisfies readonly (keyof ParagraphFormatting)[];
-
-type ParagraphReplaceKey = (typeof PARAGRAPH_REPLACE_KEYS)[number];
-
-const copyDefinedParagraphProperty = <K extends ParagraphReplaceKey>(
-  target: Pick<ParagraphFormatting, K>,
-  source: Pick<ParagraphFormatting, K>,
-  key: K,
-): void => {
-  const value = source[key];
-  if (value !== undefined) {
-    target[key] = value;
-  }
-};
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
 
 /**
  * Merge custom tab stops across OOXML paragraph-property layers.
@@ -95,40 +61,48 @@ export function mergeParagraphFormatting(
   if (!source) {
     return target;
   }
-  if (!target) {
-    const result = { ...source };
-    if (source.tabs !== undefined) {
-      result.tabs = [...source.tabs];
-    }
-    return result;
-  }
 
   const result: ParagraphFormatting = { ...target };
-
-  for (const key of PARAGRAPH_REPLACE_KEYS) {
-    copyDefinedParagraphProperty(result, source, key);
-  }
-
-  if (source.indentFirstLine !== undefined) {
-    result.hangingIndent = source.hangingIndent === true;
-  }
-
-  const mergedRunProperties = mergeTextFormatting(result.runProperties, source.runProperties);
-  if (mergedRunProperties) {
-    result.runProperties = mergedRunProperties;
-  }
-
-  if (source.borders !== undefined) {
-    result.borders = { ...result.borders, ...source.borders };
-  }
-  if (source.numPr !== undefined) {
-    result.numPr = { ...result.numPr, ...source.numPr };
-  }
-  if (source.frame !== undefined) {
-    result.frame = { ...result.frame, ...source.frame };
-  }
-  if (source.tabs !== undefined) {
-    result.tabs = mergeParagraphTabStops(result.tabs, source.tabs);
+  for (const key of PARAGRAPH_FORMATTING_PROPERTY_KEY_LIST) {
+    const sourceValue = source[key];
+    if (sourceValue === undefined) {
+      continue;
+    }
+    const { cascade } = PARAGRAPH_FORMATTING_PROPERTY_DESCRIPTOR[key];
+    switch (cascade) {
+      case "replace":
+        Reflect.set(result, key, sourceValue);
+        break;
+      case "first-line":
+        result.indentFirstLine = source.indentFirstLine;
+        result.hangingIndent = source.hangingIndent === true;
+        break;
+      case "fieldwise":
+        if (!isRecord(sourceValue)) {
+          return panic(`Paragraph property ${key} requires a fieldwise record`);
+        }
+        Reflect.set(result, key, {
+          ...(isRecord(result[key]) ? result[key] : {}),
+          ...sourceValue,
+        });
+        break;
+      case "run-properties": {
+        const merged = mergeTextFormatting(result.runProperties, source.runProperties);
+        if (merged) {
+          result.runProperties = merged;
+        }
+        break;
+      }
+      case "tab-stops":
+        result.tabs = mergeParagraphTabStops(result.tabs, source.tabs);
+        break;
+      case "preserve-derived":
+        break;
+      default: {
+        const exhaustive: never = cascade;
+        return exhaustive;
+      }
+    }
   }
 
   return result;

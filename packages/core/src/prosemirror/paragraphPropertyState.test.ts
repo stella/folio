@@ -8,6 +8,7 @@ import {
 import {
   canonicalParagraphPropertySourceFingerprintJson,
   PARAGRAPH_FORMATTING_PROPERTY_DESCRIPTOR,
+  paragraphFormattingWithPropertySourceFingerprint,
   paragraphPropertySourceFingerprintFromFormatting,
   paragraphPropertySourceFingerprintFromParts,
   type AuthoredParagraphProperties,
@@ -17,9 +18,9 @@ import {
   createImportedParagraphPropertyState,
   createTransientTemplateParagraphPropertyState,
   joinParagraphPropertyStates,
+  paragraphPropertyStateAttribute,
   readPersistableParagraphPropertyState,
   readParagraphPropertyState,
-  serializeParagraphPropertyState,
   serializePersistableParagraphPropertyState,
   splitParagraphPropertyState,
   transitionParagraphPropertyState,
@@ -27,7 +28,8 @@ import {
 import {
   assertParagraphPropertyInvariant,
   createEditorParagraphProperties,
-  paragraphAttrsFromExternalDomImport,
+  paragraphDomGetAttrs,
+  paragraphPropertiesFromExternalDomImport,
   preserveParagraphProperties,
 } from "./paragraphPropertyMutation";
 import type { ParagraphAttrs } from "./schema/nodes";
@@ -74,6 +76,26 @@ const token = (): ParagraphPropertySourceToken =>
     0,
   );
 
+const EMPTY_CONTEXT = {
+  inheritedPPr: {},
+  numberingLevelIndent: null,
+  numPrFromStyle: null,
+  paragraphMark: { authored: {}, effective: {} },
+  spacingInheritance: {},
+} as const;
+
+type ExternalImportOptions = Parameters<typeof paragraphPropertiesFromExternalDomImport>[0];
+const attrsFromExternalDom = (options: ExternalImportOptions): ParagraphAttrs => {
+  const getAttrs = paragraphDomGetAttrs(() =>
+    paragraphPropertiesFromExternalDomImport(options),
+  );
+  const attrs = getAttrs(undefined);
+  if (attrs === false) {
+    throw new Error("Expected projected paragraph attrs");
+  }
+  return attrs;
+};
+
 describe("mandatory paragraph property state", () => {
   test("the exhaustive authored fixture covers every descriptor-owned pPr property", () => {
     const descriptorKeys = Object.entries(PARAGRAPH_FORMATTING_PROPERTY_DESCRIPTOR)
@@ -115,6 +137,36 @@ describe("mandatory paragraph property state", () => {
         }),
       ),
     );
+    expect(
+      paragraphFormattingWithPropertySourceFingerprint(
+        {
+          alignment: "right",
+          kinsoku: true,
+          numberingLevelIndent: {
+            type: "latent",
+            numId: 4,
+            ilvl: 1,
+            baseline: { indentLeft: 720 },
+          },
+          runProperties: { italic: true },
+        },
+        paragraphPropertySourceFingerprintFromParts(
+          { alignment: "center", kinsoku: false },
+          { runProperties: { bold: false }, runInWithNext: false },
+        ),
+      ),
+    ).toEqual({
+      alignment: "center",
+      kinsoku: false,
+      numberingLevelIndent: {
+        type: "latent",
+        numId: 4,
+        ilvl: 1,
+        baseline: { indentLeft: 720 },
+      },
+      runProperties: { bold: false },
+      runInWithNext: false,
+    });
   });
 
   test("reifies wire state into nominal, deeply immutable trusted state", () => {
@@ -122,6 +174,7 @@ describe("mandatory paragraph property state", () => {
       type: "imported",
       token: token().serialized,
       authoredPPr: ALL_AUTHORED_PROPERTIES,
+      context: EMPTY_CONTEXT,
     };
 
     const result = readParagraphPropertyState(serialized);
@@ -136,17 +189,18 @@ describe("mandatory paragraph property state", () => {
     expect(Object.isFrozen(result.value.authoredPPr.borders?.bottom)).toBe(true);
     expect(result.value.authoredPPr.kinsoku).toBe(false);
     expect(result.value.authoredPPr.numPr).toEqual({ ilvl: 2 });
-    expect(serializeParagraphPropertyState(result.value)).toEqual(serialized);
+    expect(serializePersistableParagraphPropertyState(result.value)).toEqual(serialized);
   });
 
   test("keeps empty authored pPr distinct from missing or invalid state", () => {
     expect(readParagraphPropertyState(undefined)).toEqual({ status: "absent" });
     expect(readParagraphPropertyState({ type: "editor-created" }).status).toBe("invalid");
 
-    const state = createEditorParagraphPropertyState({});
+    const state = createEditorParagraphPropertyState();
     expect(serializePersistableParagraphPropertyState(state)).toEqual({
       type: "editor-created",
       authoredPPr: {},
+      context: EMPTY_CONTEXT,
     });
   });
 
@@ -160,14 +214,19 @@ describe("mandatory paragraph property state", () => {
       { tabs: [{ position: 720, alignment: "invented" }] },
       { kinsoku: null },
     ]) {
-      expect(readParagraphPropertyState({ type: "editor-created", authoredPPr }).status).toBe(
-        "invalid",
-      );
+      expect(
+        readParagraphPropertyState({
+          type: "editor-created",
+          authoredPPr,
+          context: EMPTY_CONTEXT,
+        }).status,
+      ).toBe("invalid");
     }
     expect(
       readParagraphPropertyState({
         type: "editor-created",
         authoredPPr: {},
+        context: EMPTY_CONTEXT,
         token: token().serialized,
       }).status,
     ).toBe("invalid");
@@ -175,19 +234,27 @@ describe("mandatory paragraph property state", () => {
 
   test("patches exact authored values without losing imported identity", () => {
     const sourceToken = token();
-    const initial = createImportedParagraphPropertyState(sourceToken, {
-      kinsoku: false,
-      overflowPunctuation: true,
-      numPr: { ilvl: 4 },
+    const initial = createImportedParagraphPropertyState({
+      token: sourceToken,
+      authoredPPr: {
+        kinsoku: false,
+        overflowPunctuation: true,
+        numPr: { ilvl: 4 },
+      },
+      context: EMPTY_CONTEXT,
     });
 
     const next = transitionParagraphPropertyState(initial, {
-      type: "mutate-authored",
-      mutations: [
-        { key: "kinsoku", mutation: { type: "set", value: true } },
-        { key: "overflowPunctuation", mutation: { type: "remove" } },
-        { key: "numPr", mutation: { type: "set", value: { numId: 8 } } },
-      ],
+      type: "update",
+      authored: {
+        type: "mutate",
+        mutations: [
+          { key: "kinsoku", mutation: { type: "set", value: true } },
+          { key: "overflowPunctuation", mutation: { type: "remove" } },
+          { key: "numPr", mutation: { type: "set", value: { numId: 8 } } },
+        ],
+      },
+      context: { type: "preserve" },
     });
 
     expect(next.type).toBe("imported");
@@ -198,17 +265,25 @@ describe("mandatory paragraph property state", () => {
     expect(next.authoredPPr).toEqual({ kinsoku: true, numPr: { numId: 8 } });
     expect(() =>
       transitionParagraphPropertyState(initial, {
-        type: "mutate-authored",
-        mutations: [
-          { key: "kinsoku", mutation: { type: "remove" } },
-          { key: "kinsoku", mutation: { type: "set", value: true } },
-        ],
+        type: "update",
+        authored: {
+          type: "mutate",
+          mutations: [
+            { key: "kinsoku", mutation: { type: "remove" } },
+            { key: "kinsoku", mutation: { type: "set", value: true } },
+          ],
+        },
+        context: { type: "preserve" },
       }),
     ).toThrow("Paragraph-property mutation batch contains duplicate key: kinsoku");
   });
 
   test("models split, copy, join, and transient persistence boundaries explicitly", () => {
-    const imported = createImportedParagraphPropertyState(token(), { keepNext: false });
+    const imported = createImportedParagraphPropertyState({
+      token: token(),
+      authoredPPr: { keepNext: false },
+      context: EMPTY_CONTEXT,
+    });
     const split = splitParagraphPropertyState(imported, {
       type: "split-left-created-right-retains",
     });
@@ -235,27 +310,104 @@ describe("mandatory paragraph property state", () => {
       }),
     ).toBe(imported);
 
-    const transient = createTransientTemplateParagraphPropertyState(
-      ParagraphPropertyTransientTemplateHandle.forOrdinal(0),
-      {},
-    );
-    expect(serializeParagraphPropertyState(transient)).toEqual({
-      type: "transient-template",
-      handle: "folio-ppr-template-v1:0",
+    const transient = createTransientTemplateParagraphPropertyState({
+      handle: ParagraphPropertyTransientTemplateHandle.forOrdinal(0),
       authoredPPr: {},
+      context: EMPTY_CONTEXT,
     });
+    expect(paragraphPropertyStateAttribute(transient)).toBe(transient);
     expect(() => serializePersistableParagraphPropertyState(transient)).toThrow(
       "Transient paragraph-property state cannot cross a persistence boundary",
     );
+    expect(() => JSON.stringify(paragraphPropertyStateAttribute(transient))).toThrow(
+      "Transient paragraph-property state cannot cross a persistence boundary",
+    );
+    expect(readPersistableParagraphPropertyState(transient).status).toBe("invalid");
     expect(
-      readPersistableParagraphPropertyState(serializeParagraphPropertyState(transient)).status,
+      readParagraphPropertyState({
+        type: "transient-template",
+        handle: transient.handle.serialized,
+        authoredPPr: {},
+        context: EMPTY_CONTEXT,
+      }).status,
     ).toBe("invalid");
+  });
+
+  test("rejects malformed context and numbering provenance that can self-prove cache drift", () => {
+    const validContext = {
+      ...EMPTY_CONTEXT,
+      inheritedPPr: { numPr: { numId: 7, ilvl: 0 }, spaceBefore: 120 },
+      numberingLevelIndent: {
+        type: "owned",
+        numId: 7,
+        ilvl: 2,
+        baseline: { indentLeft: 720 },
+        owned: { indentLeft: 720 },
+      },
+      spacingInheritance: { before: "style" },
+    } as const;
+    expect(
+      readParagraphPropertyState({
+        type: "editor-created",
+        authoredPPr: { numPr: { ilvl: 2 } },
+        context: validContext,
+      }).status,
+    ).toBe("valid");
+    expect(
+      readParagraphPropertyState({
+        type: "editor-created",
+        authoredPPr: { numPr: { ilvl: 3 } },
+        context: validContext,
+      }).status,
+    ).toBe("invalid");
+    expect(
+      readParagraphPropertyState({
+        type: "editor-created",
+        authoredPPr: {},
+        context: { ...EMPTY_CONTEXT, spacingInheritance: { before: "style" } },
+      }).status,
+    ).toBe("invalid");
+  });
+
+  test("mutates authored and effective paragraph-mark values explicitly", () => {
+    const initial = createEditorParagraphPropertyState({
+      context: {
+        ...EMPTY_CONTEXT,
+        paragraphMark: {
+          authored: { runProperties: { bold: false }, runInWithNext: false },
+          effective: { defaultTextFormatting: { bold: true }, runInWithNext: false },
+        },
+      },
+    });
+    const next = transitionParagraphPropertyState(initial, {
+      type: "update",
+      authored: { type: "preserve" },
+      context: {
+        type: "mutate-paragraph-mark",
+        authored: [
+          { key: "runProperties", mutation: { type: "set", value: { italic: true } } },
+          { key: "runInWithNext", mutation: { type: "remove" } },
+        ],
+        effective: [
+          {
+            key: "defaultTextFormatting",
+            mutation: { type: "set", value: { italic: true } },
+          },
+          { key: "runInWithNext", mutation: { type: "set", value: true } },
+        ],
+      },
+    });
+
+    expect(next.context.paragraphMark).toEqual({
+      authored: { runProperties: { italic: true } },
+      effective: { defaultTextFormatting: { italic: true }, runInWithNext: true },
+    });
   });
 });
 
 describe("paragraph property projection proof", () => {
   test("keeps exact authored partial numbering separate from fieldwise effective numbering", () => {
-    const attrs = paragraphAttrsFromExternalDomImport({
+    const attrs = attrsFromExternalDom({
       effectiveAttrs: { numPr: { numId: 7, ilvl: 2 }, kinsoku: true },
       authoredAttrs: { numPr: { ilvl: 2 }, kinsoku: false },
       inheritedPPr: { numPr: { numId: 7, ilvl: 0 }, kinsoku: true },
@@ -270,11 +422,20 @@ describe("paragraph property projection proof", () => {
   test("capsules expose no attrs and the preserve path rejects governed drift", () => {
     const projection = createEditorParagraphProperties({
       authoredPPr: { alignment: "center" },
-      context: { inheritedPPr: {}, numberingLevelIndent: null, numPrFromStyle: null },
+      context: {
+        inheritedPPr: {},
+        numberingLevelIndent: null,
+        numPrFromStyle: null,
+        paragraphMark: {
+          authored: { runProperties: { bold: false }, runInWithNext: true },
+          effective: { defaultTextFormatting: { bold: true }, runInWithNext: true },
+        },
+        spacingInheritance: {},
+      },
     });
     expect(Object.keys(projection)).toEqual([]);
 
-    const attrs = paragraphAttrsFromExternalDomImport({
+    const attrs = attrsFromExternalDom({
       effectiveAttrs: { alignment: "center" },
     });
     expect(() => preserveParagraphProperties(attrs, { alignment: "right" })).toThrow(
@@ -286,5 +447,37 @@ describe("paragraph property projection proof", () => {
         { type: "internal" },
       ),
     ).toThrow("Paragraph-property projection invariant failed for attr: alignment");
+  });
+
+  test("projects paragraph-mark source and effective run context without spread-through", () => {
+    const attrs = attrsFromExternalDom({
+      effectiveAttrs: {
+        defaultTextFormatting: { bold: true },
+        runInWithNext: true,
+      },
+      authoredAttrs: {
+        defaultTextFormatting: { bold: false },
+        runInWithNext: false,
+      },
+    });
+
+    const mark = assertParagraphPropertyInvariant(attrs, { type: "internal" }).context
+      .paragraphMark;
+    expect(mark.authored).toEqual({
+      runProperties: { bold: false },
+      runInWithNext: false,
+    });
+    expect(mark.effective).toEqual({
+      defaultTextFormatting: { bold: true },
+      runInWithNext: true,
+    });
+    expect(attrs.defaultTextFormatting).toEqual({ bold: true });
+    expect(attrs.runInWithNext).toBe(true);
+    expect(() =>
+      assertParagraphPropertyInvariant(
+        { ...attrs, defaultTextFormatting: { bold: false } } as ParagraphAttrs,
+        { type: "internal" },
+      ),
+    ).toThrow("Paragraph-property projection invariant failed for attr: defaultTextFormatting");
   });
 });

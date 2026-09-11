@@ -1,18 +1,13 @@
 import type { ParagraphAlignment } from "../types/document";
+import { expectParagraphPropertyState } from "./paragraphPropertyState";
 import type { ParagraphAttrs } from "./schema/nodes";
 
 /**
  * Read the authored paragraph-level `w:jc`, independently of the effective
- * alignment used for layout. Imported and command-authored paragraphs carry
- * explicit provenance; the final branch covers PM-created content whose
- * effective value is observably different from its style.
+ * alignment used for layout. Mandatory authored state is the sole source;
+ * effective attrs never acquire authorship merely because they differ from a
+ * style.
  */
 export const directParagraphAlignment = (attrs: ParagraphAttrs): ParagraphAlignment | undefined => {
-  if (attrs._originalFormatting?.alignment != null) {
-    return attrs._originalFormatting.alignment;
-  }
-  if (attrs.alignment != null && attrs.alignment !== attrs.alignmentFromStyle) {
-    return attrs.alignment;
-  }
-  return undefined;
+  return expectParagraphPropertyState(attrs._paragraphPropertyState).authoredPPr.alignment;
 };

@@ -45,12 +45,8 @@ import type {
 } from "../../types/document";
 import type { OutlineStyleAttr } from "../../types/documentEnumValues";
 import type { SpacingExplicit } from "../../types/formatting";
-import type {
-  AuthoredParagraphProperties,
-  ParagraphMarkProperties,
-} from "../../docx/paragraphPropertyDescriptor";
 import type { ParagraphDirection } from "../paragraphDirection";
-import type { SerializedParagraphPropertyState } from "../paragraphPropertyState";
+import type { ParagraphPropertyStateAttribute } from "../paragraphPropertyState";
 import type { TrackedChangeProvenance } from "./marks";
 
 export type HardBreakAttrs = {
@@ -274,17 +270,8 @@ export type ParagraphAttrs = {
    */
   runInWithNext?: boolean;
 
-  /** Mandatory authored CT_PPrBase state; effective/layout attrs stay separate. */
-  _paragraphPropertyState: SerializedParagraphPropertyState;
-
-  /** Effective style/table/default pPr layer beneath the authored payload. */
-  _paragraphPropertyInheritance: AuthoredParagraphProperties;
-
-  /** Paragraph-mark properties (`w:pPr/w:rPr`), outside CT_PPrBase provenance. */
-  _paragraphMarkFormatting: ParagraphMarkProperties;
-
-  /** Numbering indentation provenance, derived from the active numbering level. */
-  _numberingLevelIndent?: ParagraphFormatting["numberingLevelIndent"];
+  /** Mandatory validated source, authored, inheritance, numbering, and mark state. */
+  _paragraphPropertyState: ParagraphPropertyStateAttribute;
 
   /** Import-effective spacing baseline for HTML auto-spacing detection.
    *  PM-only; never serialized back into DOCX formatting. */

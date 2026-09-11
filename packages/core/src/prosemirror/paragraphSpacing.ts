@@ -1,10 +1,8 @@
 import type { ParagraphFormatting } from "../types/document";
 import type { FolioAIParagraphSpacing } from "../ai-edits/types";
-import {
-  autospacingMatchesBase,
-  hasAutospacingBaseSide,
-  setAutospacingBaseValue,
-} from "./autospacingBase";
+import { setAutospacingBaseValue } from "./autospacingBase";
+import type { ParagraphSpacingInheritance } from "./paragraphPropertyContext";
+import { expectParagraphPropertyState } from "./paragraphPropertyState";
 import type { ParagraphAttrs } from "./schema/nodes";
 
 /** The complete modeled attribute set of one direct `w:pPr/w:spacing`. */
@@ -38,22 +36,6 @@ export const lineSpacingProvenanceFromSpacing = (
   return hasRule ? "rule" : undefined;
 };
 
-/** Resolve exact provenance, including editor states written with the former boolean marker. */
-const lineSpacingProvenance = (attrs: ParagraphAttrs): ExactLineSpacingProvenance | undefined => {
-  if (typeof attrs.lineSpacingExplicit === "string") {
-    return attrs.lineSpacingExplicit;
-  }
-  const original = paragraphSpacingFromFormatting(attrs._originalFormatting);
-  const originalProvenance = lineSpacingProvenanceFromSpacing(original);
-  if (originalProvenance !== undefined || attrs.lineSpacingExplicit !== true) {
-    return originalProvenance;
-  }
-  return lineSpacingProvenanceFromSpacing({
-    ...(typeof attrs.lineSpacing === "number" ? { lineSpacing: attrs.lineSpacing } : {}),
-    ...(attrs.lineSpacingRule !== undefined ? { lineSpacingRule: attrs.lineSpacingRule } : {}),
-  });
-};
-
 /** Project only authored `w:spacing` attributes, preserving explicit zero and false. */
 export const paragraphSpacingFromFormatting = (
   formatting: DirectParagraphSpacing | null | undefined,
@@ -80,75 +62,15 @@ export const paragraphSpacingFromFormatting = (
 
 /**
  * Read direct spacing independently of the effective values used for layout.
- * Imported and command-authored paragraphs keep their source in
- * `_originalFormatting`; explicit PM attrs cover newly created content.
+ * Mandatory authored state is the sole source. Effective spacing and its
+ * auto-spacing baseline are projections, never fallback provenance.
  */
 export const directParagraphSpacing = (
   attrs: ParagraphAttrs,
-): DirectParagraphSpacing | undefined => {
-  const spacing = paragraphSpacingFromFormatting(attrs._originalFormatting) ?? {};
-  const lineProvenance = lineSpacingProvenance(attrs);
-  const spaceBefore: unknown = attrs.spaceBefore;
-  const spaceAfter: unknown = attrs.spaceAfter;
-  const beforeHasBase = hasAutospacingBaseSide(attrs._autospacingBase, "before");
-  const afterHasBase = hasAutospacingBaseSide(attrs._autospacingBase, "after");
-  const beforeAutospacingEdited = beforeHasBase
-    ? !autospacingMatchesBase(attrs._autospacingBase, "before", spaceBefore)
-    : spacing.beforeAutospacing === true && attrs._autospacingBase == null;
-  const afterAutospacingEdited = afterHasBase
-    ? !autospacingMatchesBase(attrs._autospacingBase, "after", spaceAfter)
-    : spacing.afterAutospacing === true && attrs._autospacingBase == null;
-
-  if (beforeAutospacingEdited) {
-    spacing.beforeAutospacing = false;
-    if (typeof spaceBefore === "number") {
-      spacing.spaceBefore = spaceBefore;
-    } else {
-      Reflect.deleteProperty(spacing, "spaceBefore");
-    }
-  }
-  if (afterAutospacingEdited) {
-    spacing.afterAutospacing = false;
-    if (typeof spaceAfter === "number") {
-      spacing.spaceAfter = spaceAfter;
-    } else {
-      Reflect.deleteProperty(spacing, "spaceAfter");
-    }
-  }
-  if (spacing.spaceBefore !== undefined || attrs.spacingExplicit?.before === true) {
-    if (typeof spaceBefore === "number") {
-      spacing.spaceBefore = spaceBefore;
-    } else {
-      Reflect.deleteProperty(spacing, "spaceBefore");
-    }
-  }
-  if (spacing.spaceAfter !== undefined || attrs.spacingExplicit?.after === true) {
-    if (typeof spaceAfter === "number") {
-      spacing.spaceAfter = spaceAfter;
-    } else {
-      Reflect.deleteProperty(spacing, "spaceAfter");
-    }
-  }
-  if (lineProvenance === "value" || lineProvenance === "both") {
-    if (typeof attrs.lineSpacing === "number") {
-      spacing.lineSpacing = attrs.lineSpacing;
-    } else {
-      Reflect.deleteProperty(spacing, "lineSpacing");
-    }
-  } else {
-    Reflect.deleteProperty(spacing, "lineSpacing");
-  }
-  if (lineProvenance === "rule" || lineProvenance === "both") {
-    if (attrs.lineSpacingRule !== undefined) {
-      spacing.lineSpacingRule = attrs.lineSpacingRule;
-    } else {
-      Reflect.deleteProperty(spacing, "lineSpacingRule");
-    }
-  } else {
-    Reflect.deleteProperty(spacing, "lineSpacingRule");
-  }
-  return Object.keys(spacing).length > 0 ? spacing : undefined;
-};
+): DirectParagraphSpacing | undefined =>
+  paragraphSpacingFromFormatting(
+    expectParagraphPropertyState(attrs._paragraphPropertyState).authoredPPr,
+  );
 
 /** Structural equality for the canonical, fixed-order spacing projection. */
 export const paragraphSpacingEqual = (
@@ -188,23 +110,33 @@ export const withDirectParagraphSpacing = (
 type ParagraphSpacingAttrPatchOptions = {
   direct: DirectParagraphSpacing | null | undefined;
   inherited: DirectParagraphSpacing | null | undefined;
+  inheritance: ParagraphSpacingInheritance;
 };
 
 /** Project direct-over-inherited spacing into the attrs consumed by layout. */
 export const paragraphSpacingAttrPatch = ({
   direct,
   inherited,
+  inheritance,
 }: ParagraphSpacingAttrPatchOptions): Record<string, unknown> => {
   const effective = { ...inherited, ...direct };
   const spacingExplicit = {
     ...(direct?.spaceBefore !== undefined ? { before: true } : {}),
     ...(direct?.spaceAfter !== undefined ? { after: true } : {}),
   };
-  const spacingFromStyle = {
-    ...(direct?.spaceBefore === undefined && inherited?.spaceBefore !== undefined
+  const spacingFromDocDefaults = {
+    ...(direct?.spaceBefore === undefined && inheritance.before === "document-default"
       ? { before: true }
       : {}),
-    ...(direct?.spaceAfter === undefined && inherited?.spaceAfter !== undefined
+    ...(direct?.spaceAfter === undefined && inheritance.after === "document-default"
+      ? { after: true }
+      : {}),
+  };
+  const spacingFromImplicitDefaultStyle = {
+    ...(direct?.spaceBefore === undefined && inheritance.before === "implicit-default-style"
+      ? { before: true }
+      : {}),
+    ...(direct?.spaceAfter === undefined && inheritance.after === "implicit-default-style"
       ? { after: true }
       : {}),
   };
@@ -222,8 +154,12 @@ export const paragraphSpacingAttrPatch = ({
     lineSpacingRule: effective.lineSpacingRule ?? null,
     lineSpacingExplicit: lineSpacingProvenanceFromSpacing(direct) ?? null,
     spacingExplicit: Object.keys(spacingExplicit).length > 0 ? spacingExplicit : null,
+    spacingFromDocDefaults:
+      Object.keys(spacingFromDocDefaults).length > 0 ? spacingFromDocDefaults : null,
     spacingFromImplicitDefaultStyle:
-      Object.keys(spacingFromStyle).length > 0 ? spacingFromStyle : null,
+      Object.keys(spacingFromImplicitDefaultStyle).length > 0
+        ? spacingFromImplicitDefaultStyle
+        : null,
     _autospacingBase: Object.keys(autospacingBase).length > 0 ? autospacingBase : null,
   };
 };
