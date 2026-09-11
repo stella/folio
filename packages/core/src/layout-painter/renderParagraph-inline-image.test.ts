@@ -508,8 +508,9 @@ describe("renderLine text styling", () => {
 
     expect(textEl?.style.backgroundColor).toBe(TEST_HIGHLIGHT_COLOR);
     expect(textEl?.style.color).toBe("#000000");
-    expect(textEl?.className).toContain("docx-run-background-text");
-    expect(textEl?.style.getPropertyValue("--doc-run-background-text-color")).toBe("#000000");
+    expect(textEl?.style.getPropertyValue("--doc-authored-background-color")).toBe(
+      TEST_HIGHLIGHT_COLOR,
+    );
   });
 
   test("keeps automatic text readable on dark DOCX highlights", () => {
@@ -540,7 +541,9 @@ describe("renderLine text styling", () => {
 
     expect(textEl?.style.backgroundColor).toBe(TEST_DARK_HIGHLIGHT_COLOR);
     expect(textEl?.style.color).toBe("#FFFFFF");
-    expect(textEl?.style.getPropertyValue("--doc-run-background-text-color")).toBe("#FFFFFF");
+    expect(textEl?.style.getPropertyValue("--doc-authored-background-color")).toBe(
+      TEST_DARK_HIGHLIGHT_COLOR,
+    );
   });
 
   test("keeps inherited default-black text readable on dark DOCX highlights", () => {
@@ -606,7 +609,6 @@ describe("renderLine text styling", () => {
     expect(textEl?.style.backgroundColor).toBe(TEST_DARK_HIGHLIGHT_COLOR);
     expect(textEl?.style.color).toBe("#FFFFFF");
     expect(anchorEl?.style.color).toBe("#FFFFFF");
-    expect(anchorEl?.style.getPropertyValue("--doc-run-background-text-color")).toBe("#FFFFFF");
   });
 
   test("keeps inherited default-black hyperlink text readable on dark DOCX highlights", () => {
@@ -642,7 +644,6 @@ describe("renderLine text styling", () => {
     expect(textEl?.style.backgroundColor).toBe(TEST_DARK_HIGHLIGHT_COLOR);
     expect(textEl?.style.color).toBe("#FFFFFF");
     expect(anchorEl?.style.color).toBe("#FFFFFF");
-    expect(anchorEl?.style.getPropertyValue("--doc-run-background-text-color")).toBe("#FFFFFF");
   });
 
   test("preserves direct black hyperlink text without DOCX highlights", () => {
@@ -805,8 +806,8 @@ describe("renderLine text styling", () => {
 
     expect(textEl?.style.backgroundColor).toBe(TEST_HIGHLIGHT_COLOR);
     expect(textEl?.style.color).toBe(TEST_EXPLICIT_TEXT_COLOR);
-    expect(textEl?.style.getPropertyValue("--doc-run-background-text-color")).toBe(
-      TEST_EXPLICIT_TEXT_COLOR,
+    expect(textEl?.style.getPropertyValue("--doc-authored-background-color")).toBe(
+      TEST_HIGHLIGHT_COLOR,
     );
   });
 
@@ -839,8 +840,8 @@ describe("renderLine text styling", () => {
     const textEl = lineEl.children[0] as HTMLElement | undefined;
 
     expect(textEl?.style.color).toBe(TEST_EXPLICIT_TEXT_COLOR);
-    expect(textEl?.style.getPropertyValue("--doc-run-background-text-color")).toBe(
-      TEST_EXPLICIT_TEXT_COLOR,
+    expect(textEl?.style.getPropertyValue("--doc-authored-background-color")).toBe(
+      TEST_HIGHLIGHT_COLOR,
     );
   });
 
@@ -899,7 +900,9 @@ describe("renderLine text styling", () => {
 
     expect(textEl?.style.backgroundColor).toBe(TEST_DARK_HIGHLIGHT_COLOR);
     expect(textEl?.style.color).toBe("#000000");
-    expect(textEl?.style.getPropertyValue("--doc-run-background-text-color")).toBe("#000000");
+    expect(textEl?.style.getPropertyValue("--doc-authored-background-color")).toBe(
+      TEST_DARK_HIGHLIGHT_COLOR,
+    );
   });
 
   test("preserves tracked-change author colors on DOCX highlights", () => {

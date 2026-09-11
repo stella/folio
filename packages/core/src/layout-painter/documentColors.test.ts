@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { getAutomaticTextColorForBackground } from "./documentColors";
+import {
+  AUTHORED_BACKGROUND_COLOR_VAR,
+  getAutomaticTextColorForBackground,
+  setAuthoredBackgroundColor,
+} from "./documentColors";
 
 describe("document automatic text color", () => {
   test("uses black automatic text on explicit white document shading", () => {
@@ -18,5 +22,22 @@ describe("document automatic text color", () => {
   test("leaves automatic text theme-adaptive when shading is not a concrete color", () => {
     expect(getAutomaticTextColorForBackground("auto")).toBeUndefined();
     expect(getAutomaticTextColorForBackground(undefined)).toBeUndefined();
+  });
+});
+
+describe("authored document backgrounds", () => {
+  test("retains the source color for stylesheet dark-mode adaptation", () => {
+    const values: Record<string, string> = {};
+    const style = {
+      backgroundColor: "",
+      setProperty: (name: string, value: string) => {
+        values[name] = value;
+      },
+    } as CSSStyleDeclaration;
+
+    setAuthoredBackgroundColor(style, "#F8F2EB");
+
+    expect(style.backgroundColor).toBe("#F8F2EB");
+    expect(values[AUTHORED_BACKGROUND_COLOR_VAR]).toBe("#F8F2EB");
   });
 });

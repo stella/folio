@@ -10,10 +10,28 @@ import { TEXTBOX_CLASS_NAMES } from "../../renderTextBox";
 import type { RenderContext } from "../../renderUtils";
 import { textBoxModule } from "./textBox";
 
+function createFakeStyle(): Record<string, string> {
+  const store: Record<string, string> = {};
+  return new Proxy(store, {
+    get(target, prop: string) {
+      if (prop === "setProperty") {
+        return (key: string, value: string) => {
+          target[key] = value;
+        };
+      }
+      return target[prop];
+    },
+    set(target, prop: string, value: string) {
+      target[prop] = value;
+      return true;
+    },
+  }) as unknown as Record<string, string>;
+}
+
 class FakeElement {
   className = "";
   dataset: Record<string, string> = {};
-  style: Record<string, string> = {};
+  style: Record<string, string> = createFakeStyle();
   children: FakeElement[] = [];
   classList = {
     add: (...tokens: string[]) => {

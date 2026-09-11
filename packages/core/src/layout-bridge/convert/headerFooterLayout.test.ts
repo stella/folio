@@ -17,6 +17,7 @@ import {
   calculateHeaderFooterVisualBounds,
   convertHeaderFooterPmDocToContent,
   convertHeaderFooterToContent,
+  fitHeaderFooterTablesToContentWidth,
   normalizeHeaderFooterMeasureBlocks,
   reserveHeaderFooterFullWidthWrapBands,
 } from "./headerFooterLayout";
@@ -882,6 +883,26 @@ describe("header/footer layout conversion", () => {
 
     expect(calibri?.height).toBe(cambria?.height);
     expect(calibri?.textSig).not.toBe(cambria?.textSig);
+  });
+
+  test("fits an oversized auto-width furniture table inside the content frame", () => {
+    const oversized = table();
+    oversized.width = 0;
+    oversized.widthType = "auto";
+    oversized.columnWidths = [360, 180, 360];
+
+    const [fitted] = fitHeaderFooterTablesToContentWidth([oversized], 600);
+
+    expect(fitted).toMatchObject({ columnWidths: [240, 120, 240] });
+    expect(oversized.columnWidths).toEqual([360, 180, 360]);
+  });
+
+  test("does not resize a fixed-width furniture table", () => {
+    const fixed = table();
+    fixed.layout = "fixed";
+    fixed.columnWidths = [700];
+
+    expect(fitHeaderFooterTablesToContentWidth([fixed], 600)[0]).toBe(fixed);
   });
 
   test("normalizes inherited spacing inside table-cell paragraphs", () => {
