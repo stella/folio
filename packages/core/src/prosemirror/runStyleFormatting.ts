@@ -1,9 +1,15 @@
 import type { Mark, Node as PMNode } from "prosemirror-model";
+import type { ParagraphMarkProperties } from "@stll/docx-core/model";
 
 import type { StyleEngine } from "../style-engine";
 import type { TextFormatting } from "../types/document";
-import { mergeTextFormatting, STYLE_TOGGLE_KEYS } from "../utils/textFormattingMerge";
+import {
+  mergeStyleTextFormatting,
+  mergeTextFormatting,
+  STYLE_TOGGLE_KEYS,
+} from "../utils/textFormattingMerge";
 import { expectCharacterStyleMarkAttrs, expectParagraphAttrs } from "./attrs";
+import { expectParagraphPropertyState } from "./paragraphPropertyState";
 import {
   cascadeStyleFromResolvedBase,
   cascadeStyleTextFormatting,
@@ -152,17 +158,171 @@ export type ParagraphRunStyleContext = {
 export type RunStyleResolver = Pick<
   StyleEngine,
   | "getDefaultCharacterStyle"
+  | "getDefaultParagraphStyle"
   | "getDocDefaults"
+  | "getStyle"
   | "getRunStyleOwnProperties"
   | "resolveParagraphStyle"
 >;
 
+export const resolveRunFormattingWithoutDefaults = (
+  formatting: TextFormatting | undefined,
+  styleResolver: Pick<StyleEngine, "getRunStyleOwnProperties"> | null,
+): TextFormatting | undefined => {
+  if (!formatting || !styleResolver) {
+    return formatting;
+  }
+  const characterStyleFormatting = formatting.styleId
+    ? styleResolver.getRunStyleOwnProperties(formatting.styleId)
+    : undefined;
+  return cascadeStyleTextFormatting([
+    { formatting: characterStyleFormatting, type: "style" },
+    { formatting, type: "direct" },
+  ]).formatting;
+};
+
+const resolveParagraphStyleRunFormatting = (
+  styleId: string | undefined,
+  styleResolver: RunStyleResolver,
+): TextFormatting | undefined => {
+  let style = styleId ? styleResolver.getStyle(styleId) : styleResolver.getDefaultParagraphStyle();
+  const visited = new Set<string>();
+  const chain: TextFormatting[] = [];
+  while (style?.type === "paragraph" && !visited.has(style.styleId)) {
+    visited.add(style.styleId);
+    if (style.rPr) {
+      chain.push(style.rPr);
+    }
+    style = style.basedOn ? styleResolver.getStyle(style.basedOn) : undefined;
+  }
+  let formatting: TextFormatting | undefined;
+  for (const inherited of chain.reverse()) {
+    formatting = mergeStyleTextFormatting(formatting, inherited);
+  }
+  return formatting;
+};
+
+export const resolveParagraphRunStyleBase = (
+  styleId: string | undefined,
+  styleResolver: RunStyleResolver | null | undefined,
+  tableRunFormatting?: TextFormatting,
+): ReturnType<typeof cascadeStyleTextFormatting> => {
+  const paragraphStyleRunFormatting = styleResolver
+    ? resolveParagraphStyleRunFormatting(styleId, styleResolver)
+    : undefined;
+  const styleRunFormatting = cascadeStyleTextFormatting([
+    { formatting: styleResolver?.getDocDefaults()?.rPr, type: "defaults" },
+    { formatting: paragraphStyleRunFormatting, type: "style" },
+  ]).formatting;
+  const ordinaryStyleFormatting =
+    styleId === undefined
+      ? mergeTextFormatting(styleRunFormatting, tableRunFormatting)
+      : mergeTextFormatting(tableRunFormatting, styleRunFormatting);
+  const cascade = cascadeStyleTextFormatting(
+    [
+      { formatting: styleResolver?.getDocDefaults()?.rPr, type: "defaults" },
+      { formatting: tableRunFormatting, type: "style" },
+      { formatting: paragraphStyleRunFormatting, type: "style" },
+    ],
+    { ordinaryFormatting: ordinaryStyleFormatting },
+  );
+  const paragraphStyleFontFamily = paragraphStyleRunFormatting?.fontFamily;
+  if (!paragraphStyleFontFamily) {
+    return cascade;
+  }
+  return {
+    ...cascade,
+    formatting: mergeTextFormatting(cascade.formatting, {
+      fontFamily: paragraphStyleFontFamily,
+    }),
+  };
+};
+
+type ResolveParagraphRunStyleFormattingOptions = {
+  styleId: string | undefined;
+  styleResolver: RunStyleResolver | null | undefined;
+  tableRunFormatting: TextFormatting | undefined;
+  inheritableParagraphMarkFormatting: TextFormatting | undefined;
+};
+
+export const resolveParagraphRunStyleFormatting = ({
+  styleId,
+  styleResolver,
+  tableRunFormatting,
+  inheritableParagraphMarkFormatting,
+}: ResolveParagraphRunStyleFormattingOptions) => {
+  const baseStyleCascade = resolveParagraphRunStyleBase(styleId, styleResolver, tableRunFormatting);
+  const defaultCharacterFormatting = styleResolver?.getDefaultCharacterStyle()?.rPr;
+  const baseWithDefaultCharacter = mergeTextFormatting(
+    defaultCharacterFormatting,
+    baseStyleCascade.formatting,
+  );
+  const defaultCharacterStyleCascade = cascadeStyleTextFormatting(
+    [
+      { cascade: baseStyleCascade, type: "carried" },
+      { formatting: defaultCharacterFormatting, type: "style" },
+    ],
+    { ordinaryFormatting: baseWithDefaultCharacter },
+  );
+  const defaultRunFormatting = mergeTextFormatting(
+    baseWithDefaultCharacter,
+    inheritableParagraphMarkFormatting,
+  );
+  const defaultRunCascade = cascadeStyleTextFormatting(
+    [
+      { cascade: defaultCharacterStyleCascade, type: "carried" },
+      { formatting: inheritableParagraphMarkFormatting, type: "direct" },
+    ],
+    { ordinaryFormatting: defaultRunFormatting },
+  );
+  return {
+    baseStyleCascade,
+    baseWithDefaultCharacter,
+    defaultCharacterStyleCascade,
+    defaultRunCascade,
+  };
+};
+
+type ResolveEffectiveParagraphMarkFormattingOptions = {
+  authored: ParagraphMarkProperties;
+  styleId: string | undefined;
+  styleResolver: RunStyleResolver | null | undefined;
+  tableRunFormatting: TextFormatting | undefined;
+};
+
+/** Resolve authored paragraph-mark rPr over the complete inherited run cascade. */
+export const resolveEffectiveParagraphMarkFormatting = ({
+  authored,
+  styleId,
+  styleResolver,
+  tableRunFormatting,
+}: ResolveEffectiveParagraphMarkFormattingOptions): TextFormatting | undefined => {
+  const characterStyleFormatting = authored.runProperties?.styleId
+    ? styleResolver?.getRunStyleOwnProperties(authored.runProperties.styleId)
+    : undefined;
+  const resolvedParagraphMarkFormatting = cascadeStyleTextFormatting([
+    { formatting: characterStyleFormatting, type: "style" },
+    { formatting: authored.runProperties, type: "direct" },
+  ]).formatting;
+  const inheritableParagraphMarkFormatting = resolvedParagraphMarkFormatting
+    ? stripParagraphMarkFormattingForBodyRuns(resolvedParagraphMarkFormatting)
+    : undefined;
+  return resolveParagraphRunStyleFormatting({
+    styleId,
+    styleResolver,
+    tableRunFormatting,
+    inheritableParagraphMarkFormatting,
+  }).defaultRunCascade.formatting;
+};
+
 export const paragraphRunStyleContext = (
   paragraph: PMNode,
   styleResolver?: RunStyleResolver | null,
+  tableRunFormatting?: TextFormatting | null,
 ): ParagraphRunStyleContext => {
   const attrs = expectParagraphAttrs(paragraph);
-  const paragraphMarkFormatting = attrs._originalFormatting?.runProperties;
+  const propertyState = expectParagraphPropertyState(attrs._paragraphPropertyState);
+  const paragraphMarkFormatting = propertyState.context.paragraphMark.authored.runProperties;
   const characterStyleFormatting = paragraphMarkFormatting?.styleId
     ? styleResolver?.getRunStyleOwnProperties(paragraphMarkFormatting.styleId)
     : undefined;
@@ -173,9 +333,25 @@ export const paragraphRunStyleContext = (
   const inheritableParagraphMarkFormatting = resolvedParagraphMarkFormatting
     ? stripParagraphMarkFormattingForBodyRuns(resolvedParagraphMarkFormatting)
     : undefined;
+  const tableStyleContext =
+    tableRunFormatting === undefined
+      ? undefined
+      : resolveParagraphRunStyleFormatting({
+          styleId: attrs.styleId,
+          styleResolver,
+          tableRunFormatting: tableRunFormatting ?? undefined,
+          inheritableParagraphMarkFormatting:
+            attrs.styleId === undefined && attrs._tableOfContentsLevel === undefined
+              ? inheritableParagraphMarkFormatting
+              : undefined,
+        });
   return {
-    baseParagraphFormatting: styleResolver?.resolveParagraphStyle(attrs.styleId).runFormatting,
-    paragraphFormatting: attrs.defaultTextFormatting ?? undefined,
+    baseParagraphFormatting:
+      tableStyleContext === undefined
+        ? resolveParagraphRunStyleBase(attrs.styleId, styleResolver).formatting
+        : tableStyleContext.baseStyleCascade.formatting,
+    paragraphFormatting:
+      propertyState.context.paragraphMark.effective.defaultTextFormatting ?? undefined,
     paragraphMarkFormatting: inheritableParagraphMarkFormatting,
     paragraphMarkPrecedesStyle: attrs.styleId !== undefined,
   };

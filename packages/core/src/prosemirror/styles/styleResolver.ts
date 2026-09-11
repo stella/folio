@@ -25,6 +25,11 @@ import type {
 } from "../../types/document";
 import { mergeParagraphFormatting } from "../../utils/paragraphFormattingMerge";
 import { cascadeStyleTextFormatting } from "./styleToggleCascade";
+import {
+  PARAGRAPH_SPACING_INHERITANCE_SOURCE,
+  type ParagraphSpacingInheritance,
+  type ParagraphSpacingInheritanceSource,
+} from "../paragraphPropertyContext";
 
 /**
  * Resolved style properties ready for rendering
@@ -34,6 +39,23 @@ export type ResolvedParagraphStyle = {
   paragraphFormatting?: ParagraphFormatting;
   /** Default run formatting from the style */
   runFormatting?: TextFormatting;
+  /** Exact source tier for inherited before/after spacing. */
+  spacingInheritance?: ParagraphSpacingInheritance;
+};
+
+const recordSpacingInheritance = (
+  result: ResolvedParagraphStyle,
+  formatting: ParagraphFormatting | undefined,
+  source: ParagraphSpacingInheritanceSource,
+): void => {
+  if (formatting?.spaceBefore === undefined && formatting?.spaceAfter === undefined) {
+    return;
+  }
+  result.spacingInheritance = {
+    ...result.spacingInheritance,
+    ...(formatting.spaceBefore === undefined ? {} : { before: source }),
+    ...(formatting.spaceAfter === undefined ? {} : { after: source }),
+  };
 };
 
 /**
@@ -185,6 +207,11 @@ export class StyleResolver {
     // Layer 1: document defaults
     if (this.docDefaults?.pPr) {
       result.paragraphFormatting = { ...this.docDefaults.pPr };
+      recordSpacingInheritance(
+        result,
+        this.docDefaults.pPr,
+        PARAGRAPH_SPACING_INHERITANCE_SOURCE.documentDefault,
+      );
     }
     // Layer 2: modeled enclosing-table paragraph fields (cell paragraphs only;
     // undefined for everything else, a no-op here).
@@ -193,6 +220,11 @@ export class StyleResolver {
       if (merged !== undefined) {
         result.paragraphFormatting = merged;
       }
+      recordSpacingInheritance(
+        result,
+        tableParagraphOverlay,
+        PARAGRAPH_SPACING_INHERITANCE_SOURCE.style,
+      );
     }
 
     // Layer 3: the paragraph's own style chain (Normal when absent or unknown).
@@ -204,6 +236,13 @@ export class StyleResolver {
       if (merged) {
         result.paragraphFormatting = merged;
       }
+      recordSpacingInheritance(
+        result,
+        style.pPr,
+        styleId
+          ? PARAGRAPH_SPACING_INHERITANCE_SOURCE.style
+          : PARAGRAPH_SPACING_INHERITANCE_SOURCE.implicitDefaultStyle,
+      );
     }
     const runFormatting = cascadeStyleTextFormatting([
       { formatting: this.docDefaults?.rPr, type: "defaults" },

@@ -7,12 +7,11 @@
  */
 
 import { Fragment } from "prosemirror-model";
-import type { Mark, Node as PMNode, NodeSpec, Schema } from "prosemirror-model";
+import type { Node as PMNode, NodeSpec, Schema } from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 
-import { PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR } from "../../../docx/paragraphPropertySource";
-
 import type { NumberingMap } from "../../../docx/numberingParser";
+import { setProseParagraphMarkupWithPropertySource } from "../../../docx/paragraphPropertySource";
 import type {
   ParagraphAlignment,
   LineSpacingRule,
@@ -26,13 +25,13 @@ import type {
 import { PARAGRAPH_ALIGNMENT_VALUES } from "../../../types/documentEnumValues";
 import { paragraphToStyle } from "../../../utils/formatToStyle";
 import { collectHeadings } from "../../../utils/headingCollector";
-import { tableOfContentsStyleLevel } from "../../../utils/tableOfContentsStyle";
 import { expectParagraphAttrs } from "../../attrs";
 import { autospacingMatchesBase } from "../../autospacingBase";
 import { directParagraphAlignment } from "../../paragraphAlignment";
 import { directionIsRtl } from "../../paragraphDirection";
 import { EMPTY_EDITOR_PARAGRAPH_PROPERTY_STATE } from "../../paragraphPropertyState";
 import {
+  createParagraphNodeFromProjection,
   paragraphDomGetAttrs,
   paragraphPropertiesFromExternalDomImport,
 } from "../../paragraphPropertyMutation";
@@ -41,12 +40,16 @@ import {
   type ParagraphIndentationTransition,
 } from "../../paragraphIndentation";
 import { withDirectParagraphSpacing } from "../../paragraphSpacing";
+import { getDocumentStyleResolver } from "../../plugins/documentStyles";
+import { getDocumentNumbering } from "../../plugins/documentNumbering";
+import {
+  inheritedParagraphRunFormatting,
+  setParagraphPropertiesWithRebasedRunFormatting,
+} from "../../rebaseParagraphRunFormatting";
 import type { ParagraphDirection } from "../../paragraphDirection";
 import type { ParagraphAttrs } from "../../schema/nodes";
-import {
-  paragraphAttrsFromResolvedStyle,
-  listAttrsFromResolvedStyle,
-} from "../../styles/resolvedStyleAttrs";
+import { paragraphPropertiesForStyleTransition } from "../../styles/resolvedStyleAttrs";
+import { tableParagraphStyleContextAtPositions } from "../../tableConditionalFormatting";
 import { createNodeExtension } from "../create";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
 
@@ -337,7 +340,6 @@ const paragraphNodeSpec: NodeSpec = {
   group: "block",
   attrs: {
     paraId: { default: null },
-    [PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR]: { default: null },
     // Internal provenance for comparison alignment. It is intentionally not
     // parsed from or rendered to HTML/OOXML.
     idStability: { default: undefined },
@@ -361,6 +363,7 @@ const paragraphNodeSpec: NodeSpec = {
     indentRight: { default: null },
     indentFirstLine: { default: null },
     hangingIndent: { default: false },
+    _sourceIndentation: { default: null },
     numPr: { default: null },
     numPrFromStyle: { default: null },
     listNumFmt: { default: null },
@@ -632,6 +635,49 @@ function setParagraphAttrsCmd(attrs: Record<string, unknown>): Command {
   };
 }
 
+const mutateParagraphIndentation =
+  (transitionFor: (attrs: ParagraphAttrs) => ParagraphIndentationTransition): Command =>
+  (state, dispatch) => {
+    const { $from, $to } = state.selection;
+    const seen = new Set<number>();
+    const updates: { pos: number; attrs: ParagraphAttrs }[] = [];
+    let unsupported = false;
+    state.doc.nodesBetween($from.pos, $to.pos, (node, pos) => {
+      if (node.type.name !== "paragraph" || seen.has(pos)) {
+        return;
+      }
+      seen.add(pos);
+      const attrs = expectParagraphAttrs(node);
+      const result = attrsWithParagraphIndentationTransition(attrs, transitionFor(attrs));
+      if (result.type === "unsupported") {
+        unsupported = true;
+        return;
+      }
+      updates.push({ pos, attrs: result.attrs });
+    });
+
+    if (unsupported) {
+      return false;
+    }
+    if (!dispatch) {
+      return true;
+    }
+    const transaction = state.tr;
+    for (const update of updates) {
+      setProseParagraphMarkupWithPropertySource({
+        attrs: update.attrs,
+        ownership: "preserve",
+        pos: update.pos,
+        transaction,
+      });
+    }
+    dispatch(transaction.scrollIntoView());
+    return true;
+  };
+
+const setParagraphIndentation = (transition: ParagraphIndentationTransition): Command =>
+  mutateParagraphIndentation(() => transition);
+
 // ============================================================================
 // RESOLVED STYLE ATTRS (for applyStyle)
 // ============================================================================
@@ -692,62 +738,23 @@ function makeSetLineSpacing(value: number, rule: LineSpacingRule = "auto"): Comm
 }
 
 function makeIncreaseIndent(amount: number = 720): Command {
-  return (state, dispatch) => {
-    const { $from, $to } = state.selection;
-
-    if (!dispatch) {
-      return true;
-    }
-
-    let tr = state.tr;
-    const seen = new Set<number>();
-
-    state.doc.nodesBetween($from.pos, $to.pos, (node, pos) => {
-      if (node.type.name === "paragraph" && !seen.has(pos)) {
-        seen.add(pos);
-        const currentIndent = node.attrs["indentLeft"] || 0;
-        tr = tr.setNodeMarkup(pos, undefined, {
-          ...node.attrs,
-          indentLeft: currentIndent + amount,
-        });
-      }
-    });
-
-    dispatch(tr.scrollIntoView());
-    return true;
-  };
+  return mutateParagraphIndentation((attrs) => ({
+    type: "set-direct",
+    values: { indentLeft: (attrs.indentLeft ?? 0) + amount },
+  }));
 }
 
 function makeDecreaseIndent(amount: number = 720): Command {
-  return (state, dispatch) => {
-    const { $from, $to } = state.selection;
-
-    if (!dispatch) {
-      return true;
-    }
-
-    let tr = state.tr;
-    const seen = new Set<number>();
-
-    state.doc.nodesBetween($from.pos, $to.pos, (node, pos) => {
-      if (node.type.name === "paragraph" && !seen.has(pos)) {
-        seen.add(pos);
-        const currentIndent = node.attrs["indentLeft"] || 0;
-        const newIndent = Math.max(0, currentIndent - amount);
-        tr = tr.setNodeMarkup(pos, undefined, {
-          ...node.attrs,
-          indentLeft: newIndent > 0 ? newIndent : null,
-        });
-      }
-    });
-
-    dispatch(tr.scrollIntoView());
-    return true;
-  };
+  return mutateParagraphIndentation((attrs) => {
+    const newIndent = Math.max(0, (attrs.indentLeft ?? 0) - amount);
+    return newIndent === 0
+      ? { type: "force-visible-zero", sides: ["left"] }
+      : { type: "set-direct", values: { indentLeft: newIndent } };
+  });
 }
 
-function makeApplyStyle(schema: Schema) {
-  return (styleId: string, resolvedAttrs?: ResolvedStyleAttrs): Command =>
+function makeStyleTransition(transition: "preserve-direct" | "replace-style") {
+  return (styleId: string | null, resolvedAttrs?: ResolvedStyleAttrs): Command =>
     (state, dispatch) => {
       const { $from, $to } = state.selection;
 
@@ -757,139 +764,63 @@ function makeApplyStyle(schema: Schema) {
 
       let tr = state.tr;
       const seen = new Set<number>();
-
-      // Build marks from run formatting if provided
-      const styleMarks: Mark[] = [];
-      if (resolvedAttrs?.runFormatting) {
-        const rpr = resolvedAttrs.runFormatting;
-
-        if (rpr.bold && schema.marks["bold"]) {
-          styleMarks.push(schema.marks["bold"].create());
-        }
-        if (rpr.italic && schema.marks["italic"]) {
-          styleMarks.push(schema.marks["italic"].create());
-        }
-        if (rpr.fontSize && schema.marks["fontSize"]) {
-          styleMarks.push(schema.marks["fontSize"].create({ size: rpr.fontSize }));
-        }
-        if (rpr.fontFamily && schema.marks["fontFamily"]) {
-          styleMarks.push(
-            schema.marks["fontFamily"].create({
-              ascii: rpr.fontFamily.ascii,
-              hAnsi: rpr.fontFamily.hAnsi,
-              asciiTheme: rpr.fontFamily.asciiTheme,
-            }),
-          );
-        }
-        if (rpr.color && !rpr.color.auto && schema.marks["textColor"]) {
-          styleMarks.push(
-            schema.marks["textColor"].create({
-              rgb: rpr.color.rgb,
-              themeColor: rpr.color.themeColor,
-              themeTint: rpr.color.themeTint,
-              themeShade: rpr.color.themeShade,
-            }),
-          );
-        }
-        if (rpr.underline && rpr.underline.style !== "none" && schema.marks["underline"]) {
-          styleMarks.push(
-            schema.marks["underline"].create({
-              style: rpr.underline.style,
-              color: rpr.underline.color,
-            }),
-          );
-        }
-        if ((rpr.strike || rpr.doubleStrike) && schema.marks["strike"]) {
-          styleMarks.push(
-            schema.marks["strike"].create({
-              double: rpr.doubleStrike || false,
-            }),
-          );
-        }
-      }
-
-      // Mark types that are controlled by style definitions
-      const styleControlledMarks = [
-        schema.marks["bold"],
-        schema.marks["italic"],
-        schema.marks["fontSize"],
-        schema.marks["fontFamily"],
-        schema.marks["textColor"],
-        schema.marks["underline"],
-        schema.marks["strike"],
-      ].filter(Boolean);
+      const styleResolver = getDocumentStyleResolver(state);
+      const numbering = resolvedAttrs?.numbering ?? getDocumentNumbering(state);
+      const tableContextByPosition = tableParagraphStyleContextAtPositions(
+        state.doc,
+        styleResolver,
+      );
+      let storedMarks: readonly Mark[] | undefined;
 
       state.doc.nodesBetween($from.pos, $to.pos, (node, pos) => {
         if (node.type.name === "paragraph" && !seen.has(pos)) {
           seen.add(pos);
-
-          const newAttrs: Record<string, unknown> = {
-            ...node.attrs,
-            styleId,
-            _tableOfContentsLevel: tableOfContentsStyleLevel({ styleId }) ?? null,
-          };
-
-          if (resolvedAttrs) {
-            // When applying a style, explicitly reset all style-controlled
-            // paragraph attrs to the new style's values (or null to clear).
-            // This prevents old style properties (e.g. heading line spacing)
-            // from persisting when switching to a different style. The same
-            // projection drives the Enter handler's next-style switch, so
-            // both paths produce identical paragraph attrs — and the resulting
-            // `defaultTextFormatting` lets EmptyParagraphFormatExtension keep
-            // typed text styled after the style picker steals focus.
-            Object.assign(
-              newAttrs,
-              paragraphAttrsFromResolvedStyle(resolvedAttrs, {
-                styleId,
-                ...(resolvedAttrs.styleName ? { styleName: resolvedAttrs.styleName } : {}),
-              }),
-            );
-            const originalFormatting = {
-              ...expectParagraphAttrs(node)._originalFormatting,
-              styleId,
-            };
-            Reflect.deleteProperty(originalFormatting, "alignment");
-            newAttrs["_originalFormatting"] = withDirectParagraphSpacing(
-              originalFormatting,
-              undefined,
-            );
-            newAttrs["spacingExplicit"] = null;
-            // A style with `w:numPr` attaches its numbering (numPr + marker
-            // attrs). A style without numbering leaves existing list attrs
-            // untouched: direct numbering survives a style switch.
-            const listAttrs = listAttrsFromResolvedStyle(resolvedAttrs, resolvedAttrs.numbering);
-            if (listAttrs) {
-              Object.assign(newAttrs, listAttrs);
-            }
-          }
-
-          tr = tr.setNodeMarkup(pos, undefined, newAttrs);
-
-          // Only modify marks when we have resolved style attrs
-          // (fallback path without resolvedAttrs just sets styleId)
-          if (resolvedAttrs) {
-            const paragraphStart = pos + 1;
-            const paragraphEnd = pos + node.nodeSize - 1;
-
-            if (paragraphEnd > paragraphStart) {
-              // Clear old style-controlled marks first
-              for (const markType of styleControlledMarks) {
-                tr = tr.removeMark(paragraphStart, paragraphEnd, markType);
-              }
-              // Then add the new style's marks
-              for (const mark of styleMarks) {
-                tr = tr.addMark(paragraphStart, paragraphEnd, mark);
-              }
-            }
+          const tableContext = tableContextByPosition.get(pos);
+          const resolved = styleResolver
+            ? styleResolver.resolveParagraphStyleInTable(styleId, tableContext?.pPr)
+            : (resolvedAttrs ?? {});
+          const styleName =
+            styleId === null
+              ? undefined
+              : (resolvedAttrs?.styleName ?? styleResolver?.getStyle(styleId)?.name);
+          const projection = paragraphPropertiesForStyleTransition({
+            attrs: expectParagraphAttrs(node),
+            identity: { styleId, ...(styleName ? { styleName } : {}) },
+            numbering,
+            resolved,
+            styleResolver,
+            ...(tableContext?.rPr ? { tableRunFormatting: tableContext.rPr } : {}),
+            transition: { type: transition },
+          });
+          const projectedParagraph = createParagraphNodeFromProjection({
+            type: node.type,
+            projection,
+            content: node.content,
+            marks: node.marks,
+          });
+          const inherited = inheritedParagraphRunFormatting({
+            paragraph: projectedParagraph,
+            styleResolver,
+            tableRunFormatting:
+              styleResolver === null ? undefined : (tableContext?.rPr ?? null),
+          });
+          tr = setParagraphPropertiesWithRebasedRunFormatting({
+            projection,
+            paragraphPosition: pos,
+            styleResolver,
+            tableRunFormatting:
+              styleResolver === null ? undefined : (tableContext?.rPr ?? null),
+            tr,
+          });
+          if ($from.sameParent($to) && $from.parent === node && node.content.size === 0) {
+            storedMarks = inherited.marks;
           }
         }
       });
 
-      if (styleMarks.length > 0) {
-        tr = tr.setStoredMarks(styleMarks);
+      if (storedMarks !== undefined) {
+        tr.setStoredMarks(storedMarks);
       }
-
       dispatch(tr.scrollIntoView());
       return true;
     };
@@ -948,7 +879,8 @@ export const ParagraphExtension = createNodeExtension({
   schemaNodeName: "paragraph",
   nodeSpec: paragraphNodeSpec,
   onSchemaReady(ctx: ExtensionContext): ExtensionRuntime {
-    const applyStyleFn = makeApplyStyle(ctx.schema);
+    const applyStyleFn = makeStyleTransition("replace-style");
+    const clearStyleFn = makeStyleTransition("preserve-direct");
 
     return {
       commands: {
@@ -965,17 +897,36 @@ export const ParagraphExtension = createNodeExtension({
         setSpaceAfter: (twips: number) => setParagraphSpacingAttr("after", twips),
         increaseIndent: (amount?: number) => makeIncreaseIndent(amount),
         decreaseIndent: (amount?: number) => makeDecreaseIndent(amount),
-        setIndentLeft: (twips: number) => setParagraphAttr("indentLeft", twips > 0 ? twips : null),
+        setIndentLeft: (twips: number) =>
+          setParagraphIndentation(
+            twips === 0
+              ? { type: "force-visible-zero", sides: ["left"] }
+              : { type: "set-direct", values: { indentLeft: twips } },
+          ),
         setIndentRight: (twips: number) =>
-          setParagraphAttr("indentRight", twips > 0 ? twips : null),
-        setIndentFirstLine: (twips: number, hanging?: boolean) =>
-          setParagraphAttrsCmd({
-            indentFirstLine: twips > 0 ? twips : null,
-            hangingIndent: hanging ?? false,
-          }),
+          setParagraphIndentation(
+            twips === 0
+              ? { type: "force-visible-zero", sides: ["right"] }
+              : { type: "set-direct", values: { indentRight: twips } },
+          ),
+        setIndentFirstLine: (twips: number, hanging?: boolean) => {
+          const hangingIndent = hanging ?? twips < 0;
+          const magnitude = Math.abs(twips);
+          return setParagraphIndentation(
+            magnitude === 0
+              ? { type: "force-visible-zero", sides: ["firstLine"] }
+              : {
+                  type: "set-direct",
+                  values: {
+                    indentFirstLine: hangingIndent ? -magnitude : magnitude,
+                    hangingIndent,
+                  },
+                },
+          );
+        },
         applyStyle: (styleId: string, resolvedAttrs?: ResolvedStyleAttrs) =>
           applyStyleFn(styleId, resolvedAttrs),
-        clearStyle: () => setParagraphAttrsCmd({ styleId: null, _tableOfContentsLevel: null }),
+        clearStyle: () => clearStyleFn(null),
         insertSectionBreak: (breakType: "nextPage" | "continuous" | "oddPage" | "evenPage") =>
           setParagraphAttr("sectionBreakType", breakType),
         removeSectionBreak: () => setParagraphAttr("sectionBreakType", null),

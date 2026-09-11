@@ -18,7 +18,13 @@ import type { EditorState, Transaction } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
 import type { TrackedChangeInfo } from "../../types/document";
+import { expectParagraphAttrs } from "../attrs";
 import { splitBlockClearBorders } from "../extensions/features/BaseKeymapExtension";
+import {
+  applyParagraphPropertyProjection,
+  joinParagraphsWithProperties,
+  preserveParagraphProperties,
+} from "../paragraphPropertyMutation";
 import { canCarryTrackedRunMark } from "../trackedRunInlineAtoms";
 import { mintRevisionId, seedRevisionIdsFromDoc } from "./revisionIds";
 
@@ -434,8 +440,21 @@ function applyPPrDel(
     tr.setMeta(SUGGESTION_META, true);
     const joinPos = targetParagraphPos + targetNode.nodeSize;
     try {
-      tr.join(joinPos);
-      tr.setNodeAttribute(targetParagraphPos, "pPrMark", null);
+      joinParagraphsWithProperties({
+        transaction: tr,
+        joinPos,
+        transition: { type: "join-right-paragraph-mark-retains" },
+      });
+      const joined = tr.doc.nodeAt(targetParagraphPos);
+      if (joined?.type.name !== "paragraph") {
+        return false;
+      }
+      applyParagraphPropertyProjection({
+        transaction: tr,
+        pos: targetParagraphPos,
+        projection: preserveParagraphProperties(expectParagraphAttrs(joined), { pPrMark: null }),
+        source: { type: "preserve" },
+      });
       view.dispatch(tr.scrollIntoView());
     } catch {
       return true;

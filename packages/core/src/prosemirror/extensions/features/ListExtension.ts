@@ -6,17 +6,28 @@
  */
 
 import { panic } from "better-result";
+import type { Node as PMNode } from "prosemirror-model";
 import type { Command, EditorState } from "prosemirror-state";
 
 import { expectParagraphAttrs } from "../../attrs";
 import {
   hasSerializableParagraphPropertyChange,
-  PPR_CHANGE_SCOPED_ATTR_KEYS,
+  paragraphPropertiesSnapshot,
 } from "../../commands/propertyChangeScope";
+import { attrsWithParagraphIndentationTransition } from "../../paragraphIndentation";
+import {
+  applyParagraphPropertyProjection,
+  patchParagraphPropertyProjection,
+  splitParagraphWithProperties,
+  type ParagraphPropertyProjection,
+} from "../../paragraphPropertyMutation";
 import { makeRevisionInfo, SUGGESTION_META } from "../../plugins/suggestionMode";
-import { CLEARED_LIST_RENDERING_ATTRS, LIST_RENDERING_ATTR_KEYS } from "../../listMarker";
+import { LIST_RENDERING_ATTR_KEYS } from "../../listMarker";
 import { getDocumentNumbering } from "../../plugins/documentNumbering";
-import { listLevelAttrPatch } from "../../styles/resolvedStyleAttrs";
+import {
+  paragraphPropertiesForListLevelTransition,
+  paragraphPropertiesForListRemoval,
+} from "../../styles/resolvedStyleAttrs";
 import { createExtension } from "../create";
 import { goToNextCell, goToPrevCell } from "../nodes/TableExtension";
 import { Priority } from "../types";
@@ -42,14 +53,12 @@ function chainCommands(...commands: Command[]): Command {
 // TRACKED PARAGRAPH-PROPERTY CHANGE (suggesting mode)
 // ============================================================================
 
-function appendParagraphPropertyChange(
-  attrs: Record<string, unknown>,
+function paragraphPropertyChangePatch(
   existing: ParagraphPropertyChangeAttrs[] | undefined,
   previousFormatting: Record<string, unknown>,
   rev: { id: number; author: string; date: string },
 ): Record<string, unknown> {
   return {
-    ...attrs,
     _propertyChanges: [
       ...(existing ?? []),
       {
@@ -61,39 +70,15 @@ function appendParagraphPropertyChange(
   };
 }
 
-function getPreviousListFormatting(attrs: Record<string, unknown>): Record<string, unknown> {
-  const previousFormatting: Record<string, unknown> = {};
-  // Rejecting a pPrChange restores the stored record WHOLESALE within the
-  // CT_PPrBase scope (a scoped key absent from the record resets to null —
-  // see propertyChangeScope.ts). Snapshot every non-null in-scope attr so a
-  // reject cannot wipe formatting the list toggle never touched.
-  for (const key of PPR_CHANGE_SCOPED_ATTR_KEYS) {
-    const value = attrs[key];
-    if (value != null) {
-      previousFormatting[key] = value;
-    }
-  }
+function getPreviousListFormatting(node: PMNode): Record<string, unknown> {
+  const previousFormatting: Record<string, unknown> = paragraphPropertiesSnapshot(node);
+  const attrs = node.attrs;
   // List-rendering bookkeeping snapshots with explicit nulls: these attrs are
   // outside the wholesale scope, so only recorded keys restore on reject.
-  previousFormatting["numPr"] = attrs["numPr"] ?? null;
   for (const key of LIST_RENDERING_ATTR_KEYS) {
     previousFormatting[key] = attrs[key] ?? null;
   }
   return previousFormatting;
-}
-
-function clearListAttrs(attrs: ParagraphAttrs): Record<string, unknown> {
-  const styleNumPr = attrs.numPrFromStyle;
-  const numPr =
-    styleNumPr?.numId !== undefined && styleNumPr.numId !== 0
-      ? { numId: 0, ilvl: attrs.numPr?.ilvl ?? styleNumPr.ilvl ?? 0 }
-      : null;
-
-  return {
-    ...attrs,
-    numPr,
-    ...CLEARED_LIST_RENDERING_ATTRS,
-  };
 }
 
 type ActiveListParagraphAttrs = ParagraphAttrs & {
@@ -149,32 +134,32 @@ function toggleList(numId: number): Command {
       if (node.type.name === "paragraph" && !seen.has(pos)) {
         seen.add(pos);
 
-        let nextAttrs: Record<string, unknown>;
-
-        if (isInSameList) {
-          nextAttrs = clearListAttrs(expectParagraphAttrs(node));
-        } else {
-          const isBullet = numId === 1;
-          nextAttrs = {
-            ...node.attrs,
-            ...CLEARED_LIST_RENDERING_ATTRS,
-            numPr: { numId, ilvl: node.attrs["numPr"]?.ilvl || 0 },
-            listIsBullet: isBullet,
-            listNumFmt: isBullet ? null : "decimal",
-          };
-        }
+        const attrs = expectParagraphAttrs(node);
+        let projection = isInSameList
+          ? paragraphPropertiesForListRemoval(attrs)
+          : paragraphPropertiesForListLevelTransition({
+              attrs,
+              numPr: { numId, ilvl: attrs.numPr?.ilvl ?? 0 },
+              numbering: getDocumentNumbering(state),
+            });
 
         if (rev) {
-          const existing = expectParagraphAttrs(node)._propertyChanges;
-          nextAttrs = appendParagraphPropertyChange(
-            nextAttrs,
-            existing,
-            getPreviousListFormatting(node.attrs),
-            rev,
-          );
+          projection = patchParagraphPropertyProjection({
+            projection,
+            patch: paragraphPropertyChangePatch(
+              attrs._propertyChanges,
+              getPreviousListFormatting(node),
+              rev,
+            ),
+          });
         }
 
-        tr = tr.setNodeMarkup(pos, undefined, nextAttrs);
+        applyParagraphPropertyProjection({
+          transaction: tr,
+          pos,
+          projection,
+          source: { type: "preserve" },
+        });
       }
     });
 
@@ -191,22 +176,19 @@ export const toggleBulletList: Command = (state, dispatch) => toggleList(1)(stat
 
 export const toggleNumberedList: Command = (state, dispatch) => toggleList(2)(state, dispatch);
 
-const attrsForListLevel = (
+const propertiesForListLevel = (
   state: EditorState,
   attrs: ParagraphAttrs,
   level: number,
-): Record<string, unknown> => {
+): ParagraphPropertyProjection => {
   if (!hasActiveListNumbering(attrs)) {
     panic("Cannot change the level of a list without a numbering id");
   }
-  return {
-    ...attrs,
-    ...listLevelAttrPatch(
-      attrs,
-      { numId: attrs.numPr.numId, ilvl: level },
-      getDocumentNumbering(state),
-    ),
-  };
+  return paragraphPropertiesForListLevelTransition({
+    attrs,
+    numPr: { numId: attrs.numPr.numId, ilvl: level },
+    numbering: getDocumentNumbering(state),
+  });
 };
 
 const increaseListLevel: Command = (state, dispatch) => {
@@ -232,13 +214,14 @@ const increaseListLevel: Command = (state, dispatch) => {
 
   const paragraphPos = $from.before($from.depth);
 
-  dispatch(
-    state.tr
-      .setNodeMarkup(paragraphPos, undefined, {
-        ...attrsForListLevel(state, attrs, currentLevel + 1),
-      })
-      .scrollIntoView(),
-  );
+  const tr = state.tr;
+  applyParagraphPropertyProjection({
+    transaction: tr,
+    pos: paragraphPos,
+    projection: propertiesForListLevel(state, attrs, currentLevel + 1),
+    source: { type: "preserve" },
+  });
+  dispatch(tr.scrollIntoView());
 
   return true;
 };
@@ -264,24 +247,40 @@ const decreaseListLevel: Command = (state, dispatch) => {
   const paragraphPos = $from.before($from.depth);
 
   if (currentLevel <= 0) {
-    dispatch(
-      state.tr
-        .setNodeMarkup(paragraphPos, undefined, {
-          ...clearListAttrs(attrs),
-          indentLeft: null,
-          indentFirstLine: null,
-          hangingIndent: null,
-        })
-        .scrollIntoView(),
-    );
+    const tr = state.tr;
+    applyParagraphPropertyProjection({
+      transaction: tr,
+      pos: paragraphPos,
+      projection: paragraphPropertiesForListRemoval(attrs),
+      source: { type: "preserve" },
+    });
+    const cleared = tr.doc.nodeAt(paragraphPos);
+    if (cleared?.type.name !== "paragraph") {
+      panic("Clearing list properties lost the paragraph");
+    }
+    const transition = attrsWithParagraphIndentationTransition(expectParagraphAttrs(cleared), {
+      type: "force-visible-zero",
+      sides: ["left", "firstLine"],
+    });
+    if (transition.type === "unsupported") {
+      panic("Clearing paragraph numbering left an active numbering-indent owner.");
+    }
+    applyParagraphPropertyProjection({
+      projection: transition.projection,
+      source: { type: "preserve" },
+      pos: paragraphPos,
+      transaction: tr,
+    });
+    dispatch(tr.scrollIntoView());
   } else {
-    dispatch(
-      state.tr
-        .setNodeMarkup(paragraphPos, undefined, {
-          ...attrsForListLevel(state, attrs, currentLevel - 1),
-        })
-        .scrollIntoView(),
-    );
+    const tr = state.tr;
+    applyParagraphPropertyProjection({
+      transaction: tr,
+      pos: paragraphPos,
+      projection: propertiesForListLevel(state, attrs, currentLevel - 1),
+      source: { type: "preserve" },
+    });
+    dispatch(tr.scrollIntoView());
   }
 
   return true;
@@ -304,7 +303,12 @@ const removeList: Command = (state, dispatch) => {
       !seen.has(pos)
     ) {
       seen.add(pos);
-      tr = tr.setNodeMarkup(pos, undefined, clearListAttrs(expectParagraphAttrs(node)));
+      applyParagraphPropertyProjection({
+        transaction: tr,
+        pos,
+        projection: paragraphPropertiesForListRemoval(expectParagraphAttrs(node)),
+        source: { type: "preserve" },
+      });
     }
   });
 
@@ -370,7 +374,13 @@ function exitListOnEmptyEnter(): Command {
     }
 
     if (dispatch) {
-      const tr = state.tr.setNodeMarkup($from.before(), undefined, clearListAttrs(attrs));
+      const tr = state.tr;
+      applyParagraphPropertyProjection({
+        transaction: tr,
+        pos: $from.before(),
+        projection: paragraphPropertiesForListRemoval(attrs),
+        source: { type: "preserve" },
+      });
       dispatch(tr);
     }
     return true;
@@ -398,12 +408,17 @@ function splitListItem(): Command {
       const { tr } = state;
       const pos = $from.pos;
 
-      tr.split(pos, 1, [
-        {
-          type: state.schema.nodes["paragraph"]!,
-          attrs: { ...paragraph.attrs },
-        },
-      ]);
+      splitParagraphWithProperties({
+        transaction: tr,
+        pos,
+        transition: { type: "split-left-created-right-retains" },
+        typesAfter: [
+          {
+            type: state.schema.nodes["paragraph"]!,
+            attrs: { ...paragraph.attrs },
+          },
+        ],
+      });
 
       dispatch(tr.scrollIntoView());
     }
@@ -433,7 +448,13 @@ function backspaceExitList(): Command {
     }
 
     if (dispatch) {
-      const tr = state.tr.setNodeMarkup($from.before(), undefined, clearListAttrs(attrs));
+      const tr = state.tr;
+      applyParagraphPropertyProjection({
+        transaction: tr,
+        pos: $from.before(),
+        projection: paragraphPropertiesForListRemoval(attrs),
+        source: { type: "preserve" },
+      });
       dispatch(tr);
     }
     return true;
@@ -466,11 +487,12 @@ function increaseListIndent(): Command {
     if (dispatch) {
       let tr = state.tr;
       for (const { pos, attrs } of positions) {
-        tr = tr.setNodeMarkup(
+        applyParagraphPropertyProjection({
+          transaction: tr,
           pos,
-          undefined,
-          attrsForListLevel(state, attrs, (attrs.numPr?.ilvl ?? 0) + 1),
-        );
+          projection: propertiesForListLevel(state, attrs, (attrs.numPr?.ilvl ?? 0) + 1),
+          source: { type: "preserve" },
+        });
       }
       dispatch(tr);
     }
@@ -502,15 +524,35 @@ function decreaseListIndent(): Command {
       for (const { pos, attrs } of positions) {
         const currentLevel = attrs.numPr?.ilvl ?? 0;
         if (currentLevel <= 0) {
-          tr = tr.setNodeMarkup(pos, undefined, {
-            ...clearListAttrs(attrs),
-            indentLeft: null,
-            indentFirstLine: null,
-            hangingIndent: null,
+          applyParagraphPropertyProjection({
+            transaction: tr,
+            pos,
+            projection: paragraphPropertiesForListRemoval(attrs),
+            source: { type: "preserve" },
+          });
+          const cleared = tr.doc.nodeAt(pos);
+          if (cleared?.type.name !== "paragraph") {
+            panic("Clearing list properties lost the paragraph");
+          }
+          const transition = attrsWithParagraphIndentationTransition(expectParagraphAttrs(cleared), {
+            type: "force-visible-zero",
+            sides: ["left", "firstLine"],
+          });
+          if (transition.type === "unsupported") {
+            panic("Clearing paragraph numbering left an active numbering-indent owner.");
+          }
+          applyParagraphPropertyProjection({
+            projection: transition.projection,
+            source: { type: "preserve" },
+            pos,
+            transaction: tr,
           });
         } else {
-          tr = tr.setNodeMarkup(pos, undefined, {
-            ...attrsForListLevel(state, attrs, currentLevel - 1),
+          applyParagraphPropertyProjection({
+            transaction: tr,
+            pos,
+            projection: propertiesForListLevel(state, attrs, currentLevel - 1),
+            source: { type: "preserve" },
           });
         }
       }

@@ -1,10 +1,10 @@
 import { panic } from "better-result";
-
-import type { ParagraphFormatting, TabStop } from "../types/document";
 import {
   PARAGRAPH_FORMATTING_PROPERTY_DESCRIPTOR,
   PARAGRAPH_FORMATTING_PROPERTY_KEY_LIST,
-} from "../docx/paragraphPropertyDescriptor";
+} from "@stll/docx-core/model";
+
+import type { ParagraphFormatting, TabStop } from "../types/document";
 import { mergeTextFormatting } from "./textFormattingMerge";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>

@@ -7,6 +7,15 @@
 import type { Command } from "prosemirror-state";
 import { TextSelection } from "prosemirror-state";
 
+import { expectParagraphAttrs } from "../attrs";
+import {
+  applyParagraphPropertyProjection,
+  createEditorParagraphProperties,
+  createParagraphNodeFromProjection,
+  preserveParagraphProperties,
+  splitParagraphWithProperties,
+} from "../paragraphPropertyMutation";
+
 type InsertableSectionBreak = "nextPage" | "continuous";
 
 /**
@@ -42,12 +51,20 @@ function insertSectionBreakAtCursor(breakType: InsertableSectionBreak): Command 
         // Position of the paragraph node the cursor sits in. Unaffected by the
         // split below, since the split happens at a later position.
         const paraPos = $from.before();
-        tr.split($from.pos);
+        splitParagraphWithProperties({
+          transaction: tr,
+          pos: $from.pos,
+          transition: { type: "split-left-created-right-retains" },
+        });
         const firstPara = tr.doc.nodeAt(paraPos);
-        if (firstPara) {
-          tr.setNodeMarkup(paraPos, undefined, {
-            ...firstPara.attrs,
-            sectionBreakType: breakType,
+        if (firstPara?.type.name === "paragraph") {
+          applyParagraphPropertyProjection({
+            transaction: tr,
+            pos: paraPos,
+            projection: preserveParagraphProperties(expectParagraphAttrs(firstPara), {
+              sectionBreakType: breakType,
+            }),
+            source: { type: "preserve" },
           });
         }
         // The split position maps to the start of the second paragraph's
@@ -59,7 +76,16 @@ function insertSectionBreakAtCursor(breakType: InsertableSectionBreak): Command 
         // `$from.pos` would land on a block boundary, which is not a valid
         // `TextSelection` position and would throw.
         const pos = $from.pos;
-        tr.insert(pos, paragraphType.create({ sectionBreakType: breakType }));
+        tr.insert(
+          pos,
+          createParagraphNodeFromProjection({
+            type: paragraphType,
+            projection: createEditorParagraphProperties({
+              attrs: { sectionBreakType: breakType },
+              authoredPPr: {},
+            }),
+          }),
+        );
         cursorPos = pos + 1;
       }
 

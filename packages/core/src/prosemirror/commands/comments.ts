@@ -7,8 +7,7 @@
 import type { Mark, MarkType, Node as PMNode } from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 import { removeRow, TableMap } from "prosemirror-tables";
-
-import { joinProseParagraphsWithRightPropertySource } from "../../docx/paragraphPropertySource";
+import { panic } from "better-result";
 
 import {
   appendHeadlessInlineResolution,
@@ -32,20 +31,29 @@ import {
   finalParagraphsOf,
   paragraphEndsItsContainer,
 } from "../containerFinalParagraph";
-import { resolveParagraphDefaultTextFormatting } from "../conversion/toProseDoc";
 import {
   markChangedParagraphRanges,
   markStructuralChange,
   markTrackedSectionEndpointRemoval,
 } from "../extensions/features/ParagraphChangeTrackerExtension";
 import { getDocumentStyleResolver } from "../plugins/documentStyles";
+import { getDocumentNumbering } from "../plugins/documentNumbering";
+import {
+  applyParagraphPropertyProjection,
+  joinParagraphsWithProperties,
+  patchParagraphPropertyProjection,
+  preserveParagraphProperties,
+  type ParagraphPropertyProjection,
+} from "../paragraphPropertyMutation";
 import { paragraphRunStyleContextAt } from "../runStyleFormatting";
 import { reconstructRejectedRunFormattingMarks } from "../runPropertyChangeResolution";
 import { holdsNoContent } from "../zeroWidthAnchors";
 import { getFolioNodeRevisionCarriers } from "../revisionCarriers";
 import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
-import { setParagraphAttrsWithRebasedRunFormatting } from "../rebaseParagraphRunFormatting";
+import { setParagraphPropertiesWithRebasedRunFormatting } from "../rebaseParagraphRunFormatting";
 import type { ParagraphPropertyChangeAttrs } from "../schema/nodes";
+import { paragraphPropertiesForStyleTransition } from "../styles/resolvedStyleAttrs";
+import { tableParagraphStyleContextAtPositions } from "../tableConditionalFormatting";
 import { getTableCellMergeChange } from "../tableCellMergeRevision";
 import { reconcileTableGridAfterColumnRemoval } from "../tableGridMutation";
 import {
@@ -55,9 +63,8 @@ import {
 } from "./tableCellMergeResolution";
 import {
   hasSerializableParagraphPropertyChange,
-  paragraphRejectAttrPatch,
-  paragraphRejectOriginalFormatting,
   paragraphPropertiesSnapshot,
+  projectParagraphPropertyRejection,
   removeParagraphPropertyChanges,
   sectionRejectProperties,
   tableCellRejectAttrPatch,
@@ -144,6 +151,10 @@ function resolveChange(
     const insertionType = state.schema.marks["insertion"];
     const deletionType = state.schema.marks["deletion"];
     const styleResolver = getDocumentStyleResolver(state);
+    const numbering = getDocumentNumbering(state);
+    const tableContextByPosition = styleResolver
+      ? tableParagraphStyleContextAtPositions(state.doc, styleResolver)
+      : new Map();
 
     const keepType = mode === "accept" ? insertionType : deletionType;
     const removeType = mode === "accept" ? deletionType : insertionType;
@@ -178,10 +189,12 @@ function resolveChange(
           }
 
           const boundaryCovered = rangeCoversParagraphBoundary(from, to, pos, node);
-          let nextAttrs: Record<string, unknown> | null = null;
+          const attrs = expectParagraphAttrs(node);
+          let projection: ParagraphPropertyProjection | null = null;
+          let restoredParagraphProperties = false;
 
           // Process paragraph property changes (w:pPrChange)
-          const propertyChanges = expectParagraphAttrs(node)._propertyChanges;
+          const propertyChanges = attrs._propertyChanges;
 
           if (Array.isArray(propertyChanges) && propertyChanges.length > 0 && boundaryCovered) {
             const matchesPropertyChange = (change: ParagraphPropertyChangeAttrs) =>
@@ -199,8 +212,7 @@ function resolveChange(
               } else {
                 remaining = rejection.remaining;
               }
-              nextAttrs = {
-                ...node.attrs,
+              const propertyChangePatch = {
                 _propertyChanges: remaining.length > 0 ? remaining : null,
               };
               if (rejection?.type === "restore-previous") {
@@ -211,35 +223,43 @@ function resolveChange(
                 // propertyChangeScope.ts. Earlier removed runs were folded
                 // into the next retained entry, so only a removed trailing
                 // run changes the live properties now.
-                const inheritedAlignment = expectParagraphAttrs(node).alignmentFromStyle;
-                let previousFormattingFromStyle: ParagraphFormatting | undefined;
+                const tableContext = tableContextByPosition.get(pos);
+                let resolvedStyle:
+                  | ReturnType<NonNullable<typeof styleResolver>["resolveParagraphStyleInTable"]>
+                  | undefined;
                 if (styleResolver) {
-                  previousFormattingFromStyle = styleResolver.resolveParagraphStyle(
+                  resolvedStyle = styleResolver.resolveParagraphStyleInTable(
                     rejection.previousFormatting?.styleId,
-                  ).paragraphFormatting;
-                } else if (inheritedAlignment !== undefined) {
-                  previousFormattingFromStyle = { alignment: inheritedAlignment };
+                    tableContext?.pPr,
+                  );
                 }
-                Object.assign(
-                  nextAttrs,
-                  paragraphRejectAttrPatch(
-                    rejection.previousFormatting,
-                    previousFormattingFromStyle,
-                  ),
-                );
-                const restoredFormatting = paragraphRejectOriginalFormatting(
-                  rejection.previousFormatting,
-                  node.attrs["_originalFormatting"],
-                );
-                nextAttrs["_originalFormatting"] = restoredFormatting;
-                if (styleResolver) {
-                  nextAttrs["defaultTextFormatting"] =
-                    resolveParagraphDefaultTextFormatting(
-                      rejection.previousFormatting?.styleId,
-                      restoredFormatting ?? undefined,
-                      styleResolver,
-                    ) ?? null;
+                if (styleResolver && resolvedStyle) {
+                  const styleId = rejection.previousFormatting?.styleId ?? null;
+                  const styleName = styleId ? styleResolver.getStyle(styleId)?.name : undefined;
+                  projection = paragraphPropertiesForStyleTransition({
+                    attrs: { ...attrs, ...propertyChangePatch },
+                    identity: {
+                      styleId,
+                      ...(styleName ? { styleName } : {}),
+                    },
+                    numbering,
+                    resolved: resolvedStyle,
+                    transition: {
+                      type: "restore-authored",
+                      formatting: rejection.previousFormatting,
+                    },
+                    styleResolver,
+                    ...(tableContext?.rPr ? { tableRunFormatting: tableContext.rPr } : {}),
+                  });
+                } else {
+                  projection = projectParagraphPropertyRejection({
+                    attrs: { ...attrs, ...propertyChangePatch },
+                    previousFormatting: rejection.previousFormatting,
+                  });
                 }
+                restoredParagraphProperties = true;
+              } else {
+                projection = preserveParagraphProperties(attrs, propertyChangePatch);
               }
             }
           }
@@ -274,25 +294,33 @@ function resolveChange(
               if (remaining.length > 0) {
                 restored.propertyChanges = remaining;
               }
-              nextAttrs = nextAttrs ?? { ...node.attrs };
-              nextAttrs["_sectionProperties"] = restored;
-              nextAttrs["sectionBreakType"] = sectionBreakTypeFromSectionStart(
-                restored.sectionStart,
-              );
+              const patch = {
+                _sectionProperties: restored,
+                sectionBreakType: sectionBreakTypeFromSectionStart(restored.sectionStart),
+              };
+              projection = projection
+                ? patchParagraphPropertyProjection({ projection, patch })
+                : preserveParagraphProperties(attrs, patch);
             }
           }
 
-          if (nextAttrs) {
-            const styleChanged = nextAttrs["styleId"] !== node.attrs["styleId"];
-            if (styleChanged && styleResolver) {
-              setParagraphAttrsWithRebasedRunFormatting({
-                nextAttrs,
+          if (projection) {
+            if (restoredParagraphProperties && styleResolver) {
+              const tableContext = tableContextByPosition.get(pos);
+              setParagraphPropertiesWithRebasedRunFormatting({
+                projection,
                 paragraphPosition: pos,
                 styleResolver,
+                tableRunFormatting: tableContext?.rPr ?? null,
                 tr,
               });
             } else {
-              tr.setNodeMarkup(pos, undefined, nextAttrs);
+              applyParagraphPropertyProjection({
+                transaction: tr,
+                pos,
+                projection,
+                source: { type: "preserve" },
+              });
             }
           }
 
@@ -487,24 +515,33 @@ function resolveChange(
         // Section properties live on the paragraph mark. Resolving that mark
         // away removes its section endpoint, so the joined paragraph keeps
         // only a section endpoint already owned by the following paragraph.
-        const formattingOwner = emptyFirstParagraph ? nextNode : paragraph;
-        const joinedAttrs = {
-          ...formattingOwner.attrs,
-          pPrMark: nextNode.attrs["pPrMark"],
-          sectionBreakType: nextNode.attrs["sectionBreakType"],
-          _sectionProperties: nextNode.attrs["_sectionProperties"],
-        };
         try {
-          if (emptyFirstParagraph) {
-            joinProseParagraphsWithRightPropertySource({
-              attrs: joinedAttrs,
-              pos: joinPos,
-              transaction: tr,
-            });
-          } else {
-            tr.join(joinPos);
-            tr.setNodeMarkup(mappedPos, undefined, joinedAttrs);
+          joinParagraphsWithProperties({
+            transaction: tr,
+            joinPos,
+            transition: { type: "join-right-paragraph-mark-retains" },
+          });
+          const joined = tr.doc.nodeAt(mappedPos);
+          if (joined?.type.name !== "paragraph") {
+            panic("Resolving a paragraph mark lost the joined paragraph");
           }
+          const joinedAttrs = expectParagraphAttrs(joined);
+          const restored = preserveParagraphProperties(
+            joinedAttrs,
+            emptyFirstParagraph
+              ? nextNode.attrs
+              : {
+                  pPrMark: nextNode.attrs["pPrMark"],
+                  sectionBreakType: nextNode.attrs["sectionBreakType"],
+                  _sectionProperties: nextNode.attrs["_sectionProperties"],
+                },
+          );
+          applyParagraphPropertyProjection({
+            transaction: tr,
+            pos: mappedPos,
+            projection: restored,
+            source: { type: "preserve" },
+          });
           if (ownsSectionEndpoint(paragraph)) {
             removedSectionEndpointCount++;
             removedSectionReferences.push(...sectionReferencesOf(paragraph));

@@ -58,10 +58,15 @@ import {
 import { resolveColorValueToHex } from "../../docx/drawingUtils";
 import {
   PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
-  createProseParagraphWithPropertySource,
   getDocumentParagraphPropertySourceContract,
-  recreateProseNodeWithParagraphPropertySource,
+  getParagraphPropertySourceFingerprint,
+  getParagraphPropertySourceToken,
 } from "../../docx/paragraphPropertySource";
+import {
+  selectAuthoredParagraphProperties,
+  selectParagraphMarkProperties,
+  type AuthoredParagraphProperties,
+} from "@stll/docx-core/model";
 import {
   buildPageBreakRunSourceDescendantIndex,
   type PageBreakRunSourceDescendantIndex,
@@ -78,6 +83,20 @@ import {
   type PageBreakRunParagraphProjectionReason,
 } from "../pageBreakRunProjection";
 import { lineSpacingProvenanceFromSpacing } from "../paragraphSpacing";
+import { recreateProseNode } from "../recreateNode";
+import {
+  createParagraphNodeFromProjection,
+  createParagraphProperties,
+  GOVERNED_PARAGRAPH_ATTR_KEY_LIST,
+} from "../paragraphPropertyMutation";
+import {
+  createEditorParagraphPropertyState,
+  createImportedParagraphPropertyState,
+} from "../paragraphPropertyState";
+import type {
+  ParagraphSpacingInheritance,
+  SerializedParagraphPropertyProjectionContext,
+} from "../paragraphPropertyContext";
 import {
   getParagraphMarkSuppressionOverrides,
   hasDirectRunFormatting,
@@ -442,7 +461,7 @@ function convertParagraph(
   const { nextHyperlinkInstanceIndex, pairedBookmarkIds, pageBreakRunSourceDescendants } = context;
   let pageBreakRunOwnerId = 0;
   const nextPageBreakRunOwnerId = (): number => pageBreakRunOwnerId++;
-  const { attrs, effectiveFrame } = paragraphFormattingToAttrs(
+  const { attrs, effectiveFrame, inheritedPPr, spacingInheritance } = paragraphFormattingToAttrs(
     paragraph,
     styleResolver,
     tableParagraphOverlay,
@@ -736,8 +755,44 @@ function convertParagraph(
     attrs._emptyHyperlinks = emptyHyperlinks;
   }
 
-  return createProseParagraphWithPropertySource(schema.nodes["paragraph"], paragraph, {
-    attrs,
+  const fingerprint = getParagraphPropertySourceFingerprint(paragraph);
+  const authoredPPr = fingerprint?.pPrBase ?? selectAuthoredParagraphProperties(paragraph.formatting);
+  const paragraphMark =
+    fingerprint?.paragraphMark ?? selectParagraphMarkProperties(paragraph.formatting);
+  const propertyContext: SerializedParagraphPropertyProjectionContext = {
+    inheritedPPr,
+    numberingLevelIndent: paragraph.formatting?.numberingLevelIndent ?? null,
+    numPrFromStyle: paragraph.formatting?.numPrFromStyle ?? null,
+    paragraphMark: {
+      authored: paragraphMark,
+      effective: {
+        ...(attrs.defaultTextFormatting === undefined
+          ? {}
+          : { defaultTextFormatting: attrs.defaultTextFormatting }),
+        ...(attrs.runInWithNext === undefined ? {} : { runInWithNext: attrs.runInWithNext }),
+      },
+    },
+    spacingInheritance,
+  };
+  const token = getParagraphPropertySourceToken(paragraph);
+  const state = token
+    ? createImportedParagraphPropertyState({
+        token: token.serialized,
+        authoredPPr,
+        context: propertyContext,
+      })
+    : createEditorParagraphPropertyState({ authoredPPr, context: propertyContext });
+  const nonPropertyAttrs: Record<string, unknown> = { ...attrs };
+  for (const key of GOVERNED_PARAGRAPH_ATTR_KEY_LIST) {
+    Reflect.deleteProperty(nonPropertyAttrs, key);
+  }
+  const paragraphType = schema.nodes["paragraph"];
+  if (!paragraphType) {
+    return panic("The document schema does not define paragraph nodes");
+  }
+  return createParagraphNodeFromProjection({
+    type: paragraphType,
+    projection: createParagraphProperties({ attrs: nonPropertyAttrs, state }),
     content: inlineNodes,
   });
 }
@@ -937,6 +992,8 @@ function convertTrackedChange(
 type ParagraphFormattingProjection = {
   attrs: ParagraphAttrs;
   effectiveFrame: ParagraphFormatting["frame"];
+  inheritedPPr: AuthoredParagraphProperties;
+  spacingInheritance: ParagraphSpacingInheritance;
 };
 
 function paragraphFormattingToAttrs(
@@ -1025,10 +1082,6 @@ function paragraphFormattingToAttrs(
   if (paragraph.listRendering?.startOverride !== undefined) {
     attrs.listStartOverride = paragraph.listRendering.startOverride;
   }
-  // Store original inline formatting for lossless serialization round-trip
-  if (formatting) {
-    attrs._originalFormatting = formatting;
-  }
   // Carry `w:pPrChange` (paragraph-property-change tracking) opaquely
   // through ProseMirror. Without this, every edit strips the entries
   // off the paragraph because nothing in PM's schema represents them.
@@ -1057,9 +1110,11 @@ function paragraphFormattingToAttrs(
   // style's modeled paragraph fields in between docDefaults and this
   // paragraph's own style chain — see resolveParagraphStyleInTable.
   let stylePpr: Paragraph["formatting"] | undefined;
+  let spacingInheritance: ParagraphSpacingInheritance = {};
   if (styleResolver) {
     const resolved = styleResolver.resolveParagraphStyleInTable(styleId, tableParagraphOverlay);
     stylePpr = resolved.paragraphFormatting;
+    spacingInheritance = resolved.spacingInheritance ?? {};
 
     // Apply style-based values as defaults (inline overrides)
     set("alignment", formatting?.alignment ?? stylePpr?.alignment);
@@ -1233,6 +1288,8 @@ function paragraphFormattingToAttrs(
 
   return {
     attrs,
+    inheritedPPr: selectAuthoredParagraphProperties(stylePpr),
+    spacingInheritance,
     effectiveFrame:
       formatting?.frame === undefined
         ? stylePpr?.frame
@@ -4747,7 +4804,7 @@ export function headerFooterToProseDoc(
           );
           const paragraphNode = paragraphNodes[paragraphNodeIndex];
           if (paragraphNode) {
-            paragraphNodes[paragraphNodeIndex] = recreateProseNodeWithParagraphPropertySource(
+            paragraphNodes[paragraphNodeIndex] = recreateProseNode(
               paragraphNode,
               { attrs: { ...paragraphNode.attrs, _detachedWatermarkHost: true } },
             );

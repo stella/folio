@@ -42,23 +42,30 @@ import type { EditorState, Transaction } from "prosemirror-state";
 
 import { deterministicHexId, generateHexId } from "../../../utils/hexId";
 import {
-  PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR,
+  type ParagraphPropertySourceContract,
+  ParagraphPropertySourceValidationError,
   getExplicitParagraphPropertySourceTransfers,
-  getProseDocumentParagraphPropertySourceContract,
-  getProseParagraphPropertySourceToken,
-  paragraphPropertySourceTokenMatchesContract,
-  recreateProseNodeWithParagraphPropertySource,
+  readProseDocumentParagraphPropertySourceContract,
   setProseParagraphMarkupWithPropertySource,
-  transferProseParagraphPropertySource,
 } from "../../../docx/paragraphPropertySource";
+import { recreateProseNode } from "../../recreateNode";
+import {
+  readParagraphPropertyState,
+  paragraphPropertyStateAttribute,
+  transitionParagraphPropertyState,
+  type ParagraphPropertyState,
+} from "../../paragraphPropertyState";
 import { createExtension } from "../create";
 import type { ExtensionRuntime } from "../types";
 import { ignoreTrackedChanges } from "./ParagraphChangeTrackerExtension";
 
-type ParagraphPropertySourceSeed = {
-  contract: string | null;
-  tokens: ReadonlySet<string>;
-};
+type ParagraphPropertySourceSeed =
+  | { type: "unbound" }
+  | {
+      contract: ParagraphPropertySourceContract;
+      tokens: ReadonlySet<string>;
+      type: "bound";
+    };
 
 export const paraIdAllocatorKey = new PluginKey<ParagraphPropertySourceSeed>("paraIdAllocator");
 
@@ -112,25 +119,74 @@ type ParagraphOccurrence = {
 const isUsableParaId = (value: unknown): value is string =>
   typeof value === "string" && value.length > 0 && value !== "00000000";
 
+const paragraphPropertyStateOf = (node: PMNode): ParagraphPropertyState => {
+  const state = readParagraphPropertyState(node.attrs["_paragraphPropertyState"]);
+  if (state.status !== "valid") {
+    throw new ParagraphPropertySourceValidationError({
+      code: "invalid_state",
+      message: "A paragraph contains invalid paragraph-property state.",
+      ...(state.status === "invalid" ? { token: state.raw } : {}),
+    });
+  }
+  return state.value;
+};
+
+const importedTokenOf = (state: ParagraphPropertyState): string | null =>
+  state.type === "imported" ? state.token : null;
+
+const contractAcceptsWireToken = (
+  contract: ParagraphPropertySourceContract,
+  token: string,
+): boolean => contract.readToken(token).status === "valid";
+
 const collectParagraphPropertySourceSeed = (doc: PMNode): ParagraphPropertySourceSeed => {
-  const contract = getProseDocumentParagraphPropertySourceContract(doc);
-  if (!contract) {
-    return { contract: null, tokens: new Set() };
+  const contract = readProseDocumentParagraphPropertySourceContract(doc);
+  if (contract.status === "invalid") {
+    throw new ParagraphPropertySourceValidationError({
+      code: "contract_mismatch",
+      message: "The ProseMirror document contains an invalid paragraph-property source contract.",
+    });
+  }
+  if (contract.status === "absent") {
+    doc.descendants((node) => {
+      if (node.type.name !== "paragraph") {
+        return true;
+      }
+      const state = paragraphPropertyStateOf(node);
+      if (state.type === "imported") {
+        throw new ParagraphPropertySourceValidationError({
+          code: "contract_mismatch",
+          message: "An imported paragraph-property state requires its source contract.",
+          token: state.token,
+        });
+      }
+      return false;
+    });
+    return { type: "unbound" };
   }
   const counts = new Map<string, number>();
   doc.descendants((node) => {
     if (node.type.name !== "paragraph") {
       return true;
     }
-    const token = getProseParagraphPropertySourceToken(node);
-    if (paragraphPropertySourceTokenMatchesContract(token, contract)) {
-      counts.set(token, (counts.get(token) ?? 0) + 1);
+    const state = paragraphPropertyStateOf(node);
+    if (state.type === "imported" && !contractAcceptsWireToken(contract.value, state.token)) {
+      throw new ParagraphPropertySourceValidationError({
+        code: "unknown_token",
+        message: "A paragraph-property token belongs to a different source document.",
+        token: state.token,
+      });
+    }
+    if (state.type === "imported") {
+      const serialized = state.token;
+      counts.set(serialized, (counts.get(serialized) ?? 0) + 1);
     }
     return false;
   });
   return {
-    contract,
+    contract: contract.value,
     tokens: new Set([...counts].filter(([, count]) => count === 1).map(([token]) => token)),
+    type: "bound",
   };
 };
 
@@ -155,9 +211,15 @@ const mapParagraphKeepers = (
       return true;
     }
     const id = node.attrs["paraId"];
-    const token = getProseParagraphPropertySourceToken(node);
+    const token = importedTokenOf(paragraphPropertyStateOf(node));
     const mapsParaId = isUsableParaId(id) && !paraIds.has(id);
-    const mapsSourceToken = typeof token === "string" && sourceSeed.tokens.has(token);
+    const sourceToken =
+      sourceSeed.type === "bound" &&
+      token !== null &&
+      sourceSeed.tokens.has(token)
+        ? token
+        : null;
+    const mapsSourceToken = sourceToken !== null;
     if (!mapsParaId && !mapsSourceToken) {
       return false;
     }
@@ -177,8 +239,8 @@ const mapParagraphKeepers = (
     }
     if (mapsSourceToken) {
       sourceTokens.set(
-        token,
-        sourceTokens.has(token)
+        sourceToken,
+        sourceTokens.has(sourceToken)
           ? { status: "ambiguous" }
           : { pos: mapped, status: deleted ? "deleted" : "mapped" },
       );
@@ -189,9 +251,8 @@ const mapParagraphKeepers = (
 };
 
 type ParagraphCensus = {
-  invalidSourceTokens: ParagraphOccurrence[];
+  detachedSourceStates: ParagraphOccurrence[];
   missingParaIds: ParagraphOccurrence[];
-  paragraphs: Map<number, ParagraphOccurrence>;
   paraIds: Map<string, ParagraphOccurrence[]>;
   sourceTokens: Map<string, ParagraphOccurrence[]>;
 };
@@ -201,23 +262,22 @@ const collectParagraphCensus = (
   sourceSeed?: ParagraphPropertySourceSeed,
 ): ParagraphCensus => {
   const census: ParagraphCensus = {
-    invalidSourceTokens: [],
+    detachedSourceStates: [],
     missingParaIds: [],
-    paragraphs: new Map(),
     paraIds: new Map(),
     sourceTokens: new Map(),
   };
+  const contract = readProseDocumentParagraphPropertySourceContract(doc);
   const contractMatchesSeed =
-    sourceSeed?.contract !== null &&
-    sourceSeed?.contract !== undefined &&
-    getProseDocumentParagraphPropertySourceContract(doc) === sourceSeed.contract;
+    sourceSeed?.type === "bound" &&
+    contract.status === "valid" &&
+    contract.value.serialized === sourceSeed.contract.serialized;
 
   doc.descendants((node, pos) => {
     if (node.type.name !== "paragraph") {
       return true;
     }
     const occurrence = { pos, attrs: node.attrs };
-    census.paragraphs.set(pos, occurrence);
     const id = node.attrs["paraId"];
     if (isUsableParaId(id)) {
       const occurrences = census.paraIds.get(id) ?? [];
@@ -228,20 +288,20 @@ const collectParagraphCensus = (
     }
 
     if (sourceSeed) {
-      const token = getProseParagraphPropertySourceToken(node);
-      if (token !== null && token !== undefined) {
+      const state = paragraphPropertyStateOf(node);
+      if (state.type === "imported") {
         if (
-          typeof token !== "string" ||
           !contractMatchesSeed ||
-          !sourceSeed.contract ||
-          !sourceSeed.tokens.has(token) ||
-          !paragraphPropertySourceTokenMatchesContract(token, sourceSeed.contract)
+          sourceSeed.type !== "bound" ||
+          !sourceSeed.tokens.has(state.token) ||
+          !contractAcceptsWireToken(sourceSeed.contract, state.token)
         ) {
-          census.invalidSourceTokens.push(occurrence);
+          census.detachedSourceStates.push(occurrence);
         } else {
-          const occurrences = census.sourceTokens.get(token) ?? [];
+          const serialized = state.token;
+          const occurrences = census.sourceTokens.get(serialized) ?? [];
           occurrences.push(occurrence);
-          census.sourceTokens.set(token, occurrences);
+          census.sourceTokens.set(serialized, occurrences);
         }
       }
     }
@@ -285,7 +345,7 @@ const collectParaIdUpdates = (doc: PMNode): ParaIdUpdate[] =>
 
 type ParagraphPropertySourceUpdate = {
   pos: number;
-  token: string | null;
+  state: ParagraphPropertyState;
 };
 
 const collectParagraphPropertySourceUpdates = (
@@ -293,9 +353,13 @@ const collectParagraphPropertySourceUpdates = (
   keeperPositions: ReadonlyMap<string, ParagraphPropertySourceKeeper>,
   transactions: readonly Transaction[],
 ): ParagraphPropertySourceUpdate[] => {
-  const updates = new Map<number, string | null>();
-  for (const { pos } of census.invalidSourceTokens) {
-    updates.set(pos, null);
+  const updates = new Map<number, ParagraphPropertyState>();
+  for (const { attrs, pos } of census.detachedSourceStates) {
+    const state = readParagraphPropertyState(attrs["_paragraphPropertyState"]);
+    if (state.status !== "valid") {
+      panic("Validated paragraph-property state became malformed during allocation");
+    }
+    updates.set(pos, transitionParagraphPropertyState(state.value, { type: "editor-copy" }));
   }
   const explicitTransfers = transactions.flatMap((transaction) => [
     ...getExplicitParagraphPropertySourceTransfers(transaction),
@@ -305,13 +369,6 @@ const collectParagraphPropertySourceUpdates = (
       .map(({ selectedToken }) => selectedToken)
       .filter((token): token is string => token !== null),
   );
-  const explicitlyDisplaced = new Set(
-    explicitTransfers
-      .map(({ displacedToken }) => displacedToken)
-      .filter((token): token is string => token !== null),
-  );
-  const keptPositions = new Set<number>();
-  const keptTokens = new Set<string>();
   for (const [token, occurrences] of census.sourceTokens) {
     const mappedOwner = keeperPositions.get(token);
     const mappedKeeper =
@@ -331,36 +388,22 @@ const collectParagraphPropertySourceUpdates = (
         ? occurrences.at(0)
         : undefined;
     const keeper = mappedKeeper ?? transferredKeeper ?? detachedKeeper;
-    if (keeper) {
-      keptPositions.add(keeper.pos);
-      keptTokens.add(token);
-    }
     for (const occurrence of occurrences) {
       if (occurrence !== keeper) {
-        updates.set(occurrence.pos, null);
+        const state = readParagraphPropertyState(occurrence.attrs["_paragraphPropertyState"]);
+        if (state.status !== "valid") {
+          panic("Validated paragraph-property state became malformed during allocation");
+        }
+        updates.set(
+          occurrence.pos,
+          transitionParagraphPropertyState(state.value, { type: "editor-copy" }),
+        );
       }
     }
   }
 
-  // Attribute-only node replacement preserves the paragraph's content gap but
-  // callers may accidentally omit its private token. Restore only the mapped
-  // surviving owner. Whole-paragraph deletion marks the interior boundary as
-  // deleted-across, so a replacement paragraph cannot borrow the old source.
-  for (const [token, mappedOwner] of keeperPositions) {
-    if (
-      mappedOwner.status !== "mapped" ||
-      keptTokens.has(token) ||
-      explicitlyDisplaced.has(token) ||
-      keptPositions.has(mappedOwner.pos) ||
-      !census.paragraphs.has(mappedOwner.pos)
-    ) {
-      continue;
-    }
-    updates.set(mappedOwner.pos, token);
-  }
-
   return [...updates]
-    .map(([pos, token]) => ({ pos, token }))
+    .map(([pos, state]) => ({ pos, state }))
     .sort((left, right) => left.pos - right.pos);
 };
 
@@ -402,20 +445,16 @@ const rewriteInitialParaIds = (parent: PMNode, taken: Set<string>, seen: Set<str
         }
         taken.add(newId);
         seen.add(newId);
-        next = recreateProseNodeWithParagraphPropertySource(child, {
+        next = recreateProseNode(child, {
           attrs: { ...child.attrs, paraId: newId },
         });
       } else {
         seen.add(id);
       }
-      const paraId = next.attrs["paraId"];
-      if (typeof paraId === "string") {
-        transferProseParagraphPropertySource(next, child, paraId);
-      }
     } else if (child.childCount > 0) {
       const content = rewriteInitialParaIds(child, taken, seen);
       if (content !== child.content) {
-        next = recreateProseNodeWithParagraphPropertySource(child, { content });
+        next = recreateProseNode(child, { content });
       }
     }
     if (next !== child) {
@@ -439,7 +478,7 @@ export const ensureParaIdsInDoc = (doc: PMNode): PMNode => {
     return doc;
   }
 
-  return recreateProseNodeWithParagraphPropertySource(doc, {
+  return recreateProseNode(doc, {
     content: rewriteInitialParaIds(doc, taken, new Set()),
   });
 };
@@ -512,13 +551,16 @@ const createParaIdAllocatorPlugin = (): Plugin<ParagraphPropertySourceSeed> =>
           transaction: tr,
         });
       }
-      for (const { pos, token } of paragraphSourceUpdates) {
+      for (const { pos, state } of paragraphSourceUpdates) {
         const paragraph = tr.doc.nodeAt(pos);
         if (!paragraph || paragraph.type.name !== "paragraph") {
           panic("Paragraph-property token update lost its paragraph");
         }
         setProseParagraphMarkupWithPropertySource({
-          attrs: { ...paragraph.attrs, [PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR]: token },
+          attrs: {
+            ...paragraph.attrs,
+            _paragraphPropertyState: paragraphPropertyStateAttribute(state),
+          },
           ownership: "preserve",
           pos,
           transaction: tr,

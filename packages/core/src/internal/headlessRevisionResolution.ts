@@ -3,7 +3,7 @@ import { Fragment, Slice, type Mark, type MarkType, type Node as PMNode } from "
 import type { Transaction } from "prosemirror-state";
 import { ReplaceStep, StepMap, type Mappable } from "prosemirror-transform";
 
-import { recreateProseNodeWithParagraphPropertySource } from "../docx/paragraphPropertySource";
+import { recreateProseNode } from "../prosemirror/recreateNode";
 import { expectRunPropertyChangeMarkAttrs } from "../prosemirror/attrs";
 import { reconstructRejectedRunFormattingMarks } from "../prosemirror/runPropertyChangeResolution";
 import { RUN_FORMATTING_MARK_NAMES } from "../prosemirror/runFormattingMarkNames";
@@ -109,7 +109,7 @@ const rebuildNode = (
   content: Fragment,
   marks: readonly Mark[] = source.marks,
 ): PMNode =>
-  recreateProseNodeWithParagraphPropertySource(source, {
+  recreateProseNode(source, {
     attrs,
     content,
     marks,

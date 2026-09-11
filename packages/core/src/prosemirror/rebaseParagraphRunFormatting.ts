@@ -1,7 +1,8 @@
-import { Mark } from "prosemirror-model";
+import { Mark, type Schema } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 import { panic } from "better-result";
 
+import type { TextFormatting } from "../types/document";
 import {
   expandRunFormattingCarrier,
   type RunFormattingCarrierRepresentation,
@@ -12,22 +13,88 @@ import {
   reconcileRunFormattingMarks,
 } from "./runFormattingReconciliation";
 import { paragraphRunStyleContext, type RunStyleResolver } from "./runStyleFormatting";
+import {
+  applyNonParagraphMarkup,
+  applyParagraphPropertyProjection,
+  createParagraphNodeFromProjection,
+  type ParagraphPropertyProjection,
+} from "./paragraphPropertyMutation";
 
 type RebaseParagraphRunFormattingOptions = {
-  nextAttrs: Record<string, unknown>;
   paragraphPosition: number;
-  styleResolver: RunStyleResolver;
+  projection: ParagraphPropertyProjection;
+  previousTableRunFormatting?: TextFormatting | null;
+  styleResolver?: RunStyleResolver | null;
+  tableRunFormatting?: TextFormatting | null;
   tr: Transaction;
+};
+
+type InheritedParagraphRunFormattingOptions = {
+  paragraph: Parameters<typeof paragraphRunStyleContext>[0];
+  styleResolver?: RunStyleResolver | null;
+  tableRunFormatting?: TextFormatting | null;
+};
+
+const markInheritedFormattingAsKnownEmpty = (
+  marks: readonly Mark[],
+  schema: Schema,
+): readonly Mark[] => {
+  const override = schema.marks["runFormattingOverride"];
+  if (!override || marks.length === 0) {
+    return marks;
+  }
+  return override.create({ _authoredOn: [] }).addToSet(marks);
+};
+
+/** Build physical inherited marks with an explicit known-empty direct baseline. */
+export const inheritedRunFormattingMarks = (
+  formatting: TextFormatting,
+  schema: Schema,
+): readonly Mark[] => {
+  const carrier = schema.text("projection");
+  const marks = reconcileRunFormattingMarks({
+    authoredFormatting: {},
+    context: {
+      baseParagraphFormatting: formatting,
+      paragraphFormatting: formatting,
+      paragraphMarkFormatting: undefined,
+      paragraphMarkPrecedesStyle: false,
+    },
+    node: carrier,
+  }).filter(({ type }) => RUN_FORMATTING_MARK_NAMES.has(type.name));
+  return markInheritedFormattingAsKnownEmpty(marks, schema);
+};
+
+/** Resolve inherited-only live marks/defaults for an existing or empty paragraph. */
+export const inheritedParagraphRunFormatting = ({
+  paragraph,
+  styleResolver,
+  tableRunFormatting,
+}: InheritedParagraphRunFormattingOptions) => {
+  const context = paragraphRunStyleContext(paragraph, styleResolver, tableRunFormatting);
+  const carrier = paragraph.type.schema.text("projection");
+  const marks = reconcileRunFormattingMarks({
+    authoredFormatting: {},
+    context,
+    node: carrier,
+    styleResolver,
+  }).filter(({ type }) => RUN_FORMATTING_MARK_NAMES.has(type.name));
+  return {
+    formatting: context.paragraphFormatting,
+    marks: markInheritedFormattingAsKnownEmpty(marks, paragraph.type.schema),
+  };
 };
 
 /**
  * Change paragraph attrs and re-resolve inherited run marks in the new style
  * context without turning the old rendered style into direct run formatting.
  */
-export const setParagraphAttrsWithRebasedRunFormatting = ({
-  nextAttrs,
+export const setParagraphPropertiesWithRebasedRunFormatting = ({
   paragraphPosition,
+  projection,
+  previousTableRunFormatting,
   styleResolver,
+  tableRunFormatting,
   tr,
 }: RebaseParagraphRunFormattingOptions): Transaction => {
   const paragraph = tr.doc.nodeAt(paragraphPosition);
@@ -38,9 +105,24 @@ export const setParagraphAttrsWithRebasedRunFormatting = ({
     });
   }
 
-  const previousContext = paragraphRunStyleContext(paragraph, styleResolver);
-  const nextParagraph = paragraph.type.create(nextAttrs, paragraph.content, paragraph.marks);
-  const nextContext = paragraphRunStyleContext(nextParagraph, styleResolver);
+  const previousContext = paragraphRunStyleContext(
+    paragraph,
+    styleResolver,
+    previousTableRunFormatting === undefined
+      ? tableRunFormatting
+      : previousTableRunFormatting,
+  );
+  const nextParagraph = createParagraphNodeFromProjection({
+    type: paragraph.type,
+    projection,
+    content: paragraph.content,
+    marks: paragraph.marks,
+  });
+  const nextContext = paragraphRunStyleContext(
+    nextParagraph,
+    styleResolver,
+    tableRunFormatting,
+  );
   const changes: {
     attrs: Readonly<Record<string, unknown>>;
     currentFormattingMarks: readonly Mark[];
@@ -94,10 +176,15 @@ export const setParagraphAttrsWithRebasedRunFormatting = ({
     return false;
   });
 
-  tr = tr.setNodeMarkup(paragraphPosition, undefined, nextAttrs);
+  applyParagraphPropertyProjection({
+    transaction: tr,
+    pos: paragraphPosition,
+    projection,
+    source: { type: "preserve" },
+  });
   for (const { attrs, currentFormattingMarks, from, isText, marks, to } of changes) {
     if (!isText) {
-      tr = tr.setNodeMarkup(from, undefined, attrs, marks);
+      applyNonParagraphMarkup({ transaction: tr, pos: from, attrs, marks });
       continue;
     }
     for (const mark of currentFormattingMarks) {

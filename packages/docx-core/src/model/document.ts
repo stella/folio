@@ -56,6 +56,9 @@ export type {
   LineSpacingRule,
   ParagraphAlignment,
   ParagraphFormatting,
+  NumberingLevelIndentGeometry,
+  NonEmptyNumberingLevelIndentGeometry,
+  NumberingLevelIndentProvenance,
   SpacingExplicit,
   TableWidthType,
   TableMeasurement,
@@ -69,6 +72,40 @@ export type {
   ConditionalFormatStyle,
   TableCellFormatting,
 } from "./formatting";
+
+export {
+  canonicalParagraphPropertySourceFingerprintJson,
+  isParagraphFormattingPropertyKey,
+  paragraphFormattingWithPropertySourceFingerprint,
+  paragraphPropertySourceDelta,
+  paragraphPropertySourceFingerprintFromFormatting,
+  paragraphPropertySourceFingerprintFromParts,
+  ParagraphPropertySourceDelta,
+  PARAGRAPH_FORMATTING_PROPERTY_DESCRIPTOR,
+  PARAGRAPH_FORMATTING_PROPERTY_KEY_LIST,
+  PARAGRAPH_PROPERTY_CASCADE,
+  PARAGRAPH_PROPERTY_OWNER,
+  PARAGRAPH_PROPERTY_PROJECTION,
+  PARAGRAPH_PROPERTY_SOURCE_XML_GROUP,
+  PARAGRAPH_STYLE_TRANSITION,
+  PPR_CHANGE_SCOPED_FORMATTING_KEYS,
+  PPR_OPAQUE_FORMATTING_KEYS,
+  PPR_PARAGRAPH_MARK_FORMATTING_KEYS,
+  PPR_STYLE_REPLACED_FORMATTING_KEYS,
+  selectAuthoredParagraphProperties,
+  selectParagraphMarkProperties,
+} from "./paragraphProperties";
+export type {
+  AuthoredParagraphProperties,
+  AuthoredParagraphPropertyKey,
+  DerivedParagraphProperties,
+  DerivedParagraphPropertyKey,
+  ParagraphMarkProperties,
+  ParagraphMarkPropertyKey,
+  ParagraphPropertyDescriptor,
+  ParagraphPropertySourceFingerprint,
+  ParagraphPropertySourceXmlGroup,
+} from "./paragraphProperties";
 
 // Lists & Numbering
 export type {
@@ -205,6 +242,16 @@ export type {
   RelationshipMap,
   MediaFile,
 } from "./styles";
+export {
+  createParagraphStyleNumberingResolver,
+  isNonEmptyNumberingLevelIndentGeometry,
+  numberingIdentityEqual,
+  verifiedNumberingLevelIndent,
+} from "./styleNumbering";
+export type {
+  NumberingIdentity,
+  ParagraphStyleNumberingResolver,
+} from "./styleNumbering";
 
 // ============================================================================
 // DOCX PACKAGE & TOP-LEVEL DOCUMENT

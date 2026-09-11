@@ -9,7 +9,7 @@ import {
   paragraphPropertySourceFingerprintFromParts,
   type AuthoredParagraphProperties,
   type ParagraphPropertySourceFingerprint,
-} from "./paragraphPropertyDescriptor";
+} from "@stll/docx-core/model";
 import {
   ParagraphPropertySourceContract,
   ParagraphPropertySourceToken,

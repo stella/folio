@@ -1,27 +1,34 @@
 import { panic } from "better-result";
+import {
+  PARAGRAPH_FORMATTING_PROPERTY_DESCRIPTOR,
+  PARAGRAPH_FORMATTING_PROPERTY_KEY_LIST,
+  type AuthoredParagraphProperties,
+} from "@stll/docx-core/model";
 import type { Fragment, Mark, Node as PMNode, NodeType } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 
 import { setProseParagraphMarkupWithPropertySource } from "../docx/paragraphPropertySource";
 import type { ParagraphFormatting } from "../types/document";
 import { mergeParagraphFormatting } from "../utils/paragraphFormattingMerge";
+import { expectParagraphAttrs } from "./attrs";
 import { directionFromBidi, directionToBidi } from "./paragraphDirection";
 import {
-  PARAGRAPH_FORMATTING_PROPERTY_DESCRIPTOR,
   PARAGRAPH_FORMATTING_PROPERTY_ATTRS,
-  PARAGRAPH_FORMATTING_PROPERTY_KEY_LIST,
-  PARAGRAPH_MARK_ATTR_KEYS,
-  PPR_CHANGE_SCOPED_ATTR_KEYS,
-  type AuthoredParagraphProperties,
+  PARAGRAPH_PROPERTY_PROJECTED_ATTR_KEY_LIST,
+  isParagraphPropertyProjectedAttr,
 } from "./paragraphPropertyProjection";
 import {
   authoredParagraphPropertiesFromFormatting,
   createEditorParagraphPropertyState,
   expectParagraphPropertyState,
+  joinParagraphPropertyStates,
   paragraphPropertyStateAttribute,
   serializePersistableParagraphPropertyState,
+  splitParagraphPropertyState,
   transitionParagraphPropertyState,
+  type ParagraphPropertyJoinTransition,
   type ParagraphPropertyProjectionContext,
+  type ParagraphPropertySplitTransition,
   type ParagraphPropertyState,
   type ParagraphPropertyStateTransition,
 } from "./paragraphPropertyState";
@@ -86,28 +93,9 @@ type CreateEditorParagraphPropertiesOptions = Omit<
   context?: ParagraphPropertyProjectionContext;
 };
 
-const PROJECTION_CONTEXT_ATTR_KEYS = [
-  "_paragraphPropertyState",
-  "numPrFromStyle",
-  "alignmentFromStyle",
-  "_sourceIndentation",
-  "_autospacingBase",
-  "spacingFromDocDefaults",
-  "spacingFromImplicitDefaultStyle",
-] as const satisfies readonly (keyof ParagraphAttrs)[];
-
-export const GOVERNED_PARAGRAPH_ATTR_KEY_LIST = Object.freeze([
-  ...new Set<keyof ParagraphAttrs>([
-    ...PPR_CHANGE_SCOPED_ATTR_KEYS,
-    ...PARAGRAPH_MARK_ATTR_KEYS,
-    ...PROJECTION_CONTEXT_ATTR_KEYS,
-  ]),
-]);
-const GOVERNED_PARAGRAPH_ATTR_KEY_SET = new Set<keyof ParagraphAttrs>(
-  GOVERNED_PARAGRAPH_ATTR_KEY_LIST,
-);
+export const GOVERNED_PARAGRAPH_ATTR_KEY_LIST = PARAGRAPH_PROPERTY_PROJECTED_ATTR_KEY_LIST;
 export const isGovernedParagraphAttr = (key: string): key is keyof ParagraphAttrs =>
-  GOVERNED_PARAGRAPH_ATTR_KEY_SET.has(key as keyof ParagraphAttrs);
+  isParagraphPropertyProjectedAttr(key);
 
 /** Select exact authored pPr from editor attrs through the total descriptor. */
 const authoredParagraphPropertiesFromExternalDomAttrs = (
@@ -385,6 +373,160 @@ export const createParagraphProperties = ({
   return proveParagraphPropertyProjection(projectAttrs(seed, state));
 };
 
+type RebindParagraphPropertiesOptions = {
+  attrs: ParagraphAttrs;
+  state: ParagraphPropertyState;
+};
+
+/** Replace source/state identity while reprojecting every governed cache. */
+export const rebindParagraphProperties = ({
+  attrs,
+  state,
+}: RebindParagraphPropertiesOptions): ParagraphPropertyProjection =>
+  proveParagraphPropertyProjection(projectAttrs(attrs, state));
+
+type RebindSplitParagraphPropertiesOptions = {
+  transaction: Transaction;
+  leftPosition: number;
+  rightPosition: number;
+  sourceState: ParagraphPropertyState;
+  transition: ParagraphPropertySplitTransition;
+};
+
+/** Restore paragraph-mark ownership after a structural split. */
+export const rebindSplitParagraphProperties = ({
+  transaction,
+  leftPosition,
+  rightPosition,
+  sourceState,
+  transition,
+}: RebindSplitParagraphPropertiesOptions): void => {
+  const left = transaction.doc.nodeAt(leftPosition);
+  const right = transaction.doc.nodeAt(rightPosition);
+  if (left?.type.name !== "paragraph" || right?.type.name !== "paragraph") {
+    panic("A paragraph split did not produce two paragraph nodes");
+  }
+  const split = splitParagraphPropertyState(sourceState, transition);
+  applyParagraphPropertyProjection({
+    transaction,
+    pos: leftPosition,
+    projection: rebindParagraphProperties({ attrs: expectParagraphAttrs(left), state: split.left }),
+    source: { type: "preserve" },
+  });
+  applyParagraphPropertyProjection({
+    transaction,
+    pos: rightPosition,
+    projection: rebindParagraphProperties({
+      attrs: expectParagraphAttrs(right),
+      state: split.right,
+    }),
+    source: { type: "preserve" },
+  });
+};
+
+type SplitParagraphWithPropertiesOptions = {
+  transaction: Transaction;
+  pos: number;
+  typesAfter?: Parameters<Transaction["split"]>[2];
+  transition: ParagraphPropertySplitTransition;
+};
+
+/** Split a paragraph and update both property-source branches atomically. */
+export const splitParagraphWithProperties = ({
+  transaction,
+  pos,
+  typesAfter,
+  transition,
+}: SplitParagraphWithPropertiesOptions): { leftPosition: number; rightPosition: number } => {
+  const $pos = transaction.doc.resolve(pos);
+  if ($pos.parent.type.name !== "paragraph") {
+    panic("Paragraph-property split requires a position inside a paragraph");
+  }
+  const leftPosition = $pos.before();
+  const sourceState = expectParagraphPropertyState(
+    expectParagraphAttrs($pos.parent)._paragraphPropertyState,
+  );
+  transaction.split(pos, 1, typesAfter);
+  const left = transaction.doc.nodeAt(leftPosition);
+  if (left?.type.name !== "paragraph") {
+    panic("A paragraph split lost its left paragraph");
+  }
+  const rightPosition = leftPosition + left.nodeSize;
+  rebindSplitParagraphProperties({
+    transaction,
+    leftPosition,
+    rightPosition,
+    sourceState,
+    transition,
+  });
+  return { leftPosition, rightPosition };
+};
+
+type JoinParagraphsWithPropertiesOptions = {
+  transaction: Transaction;
+  joinPos: number;
+  transition: ParagraphPropertyJoinTransition;
+};
+
+type RebindJoinedParagraphPropertiesOptions = {
+  transaction: Transaction;
+  joinedPosition: number;
+  leftState: ParagraphPropertyState;
+  rightState: ParagraphPropertyState;
+  transition: ParagraphPropertyJoinTransition;
+};
+
+/** Restore the paragraph-mark property owner after another command performs a join. */
+export const rebindJoinedParagraphProperties = ({
+  transaction,
+  joinedPosition,
+  leftState,
+  rightState,
+  transition,
+}: RebindJoinedParagraphPropertiesOptions): void => {
+  const joined = transaction.doc.nodeAt(joinedPosition);
+  if (joined?.type.name !== "paragraph") {
+    panic("A paragraph join did not produce a paragraph node");
+  }
+  const state = joinParagraphPropertyStates(leftState, rightState, transition);
+  applyParagraphPropertyProjection({
+    transaction,
+    pos: joinedPosition,
+    projection: rebindParagraphProperties({ attrs: expectParagraphAttrs(joined), state }),
+    source: { type: "preserve" },
+  });
+};
+
+/** Join adjacent paragraphs and retain the selected paragraph-mark property owner. */
+export const joinParagraphsWithProperties = ({
+  transaction,
+  joinPos,
+  transition,
+}: JoinParagraphsWithPropertiesOptions): number => {
+  const $join = transaction.doc.resolve(joinPos);
+  const left = $join.nodeBefore;
+  const right = $join.nodeAfter;
+  if (left?.type.name !== "paragraph" || right?.type.name !== "paragraph") {
+    panic("Paragraph-property join requires two adjacent paragraphs");
+  }
+  const leftPosition = joinPos - left.nodeSize;
+  const leftState = expectParagraphPropertyState(
+    expectParagraphAttrs(left)._paragraphPropertyState,
+  );
+  const rightState = expectParagraphPropertyState(
+    expectParagraphAttrs(right)._paragraphPropertyState,
+  );
+  transaction.join(joinPos);
+  rebindJoinedParagraphProperties({
+    transaction,
+    joinedPosition: leftPosition,
+    leftState,
+    rightState,
+    transition,
+  });
+  return leftPosition;
+};
+
 export const createEditorParagraphProperties = ({
   attrs,
   authoredPPr,
@@ -393,6 +535,29 @@ export const createEditorParagraphProperties = ({
   createParagraphProperties({
     attrs,
     state: createEditorParagraphPropertyState({ authoredPPr, context }),
+  });
+
+type CreateEditorParagraphPropertiesFromExistingOptions = {
+  sourceAttrs: ParagraphAttrs;
+  authoredPPr: AuthoredParagraphProperties;
+  destinationContext: ParagraphPropertyProjectionContext;
+  nonPropertyPatch?: Readonly<Record<string, unknown>>;
+};
+
+/**
+ * Create an editor-owned paragraph from an existing paragraph while requiring
+ * the caller to supply the destination cascade explicitly.
+ */
+export const createEditorParagraphPropertiesFromExisting = ({
+  sourceAttrs,
+  authoredPPr,
+  destinationContext,
+  nonPropertyPatch = {},
+}: CreateEditorParagraphPropertiesFromExistingOptions): ParagraphPropertyProjection =>
+  createEditorParagraphProperties({
+    attrs: { ...nonGovernedAttrs(sourceAttrs), ...nonPropertyPatch },
+    authoredPPr,
+    context: destinationContext,
   });
 
 const valuesEqual = (left: unknown, right: unknown): boolean => {
@@ -459,6 +624,18 @@ export const preserveParagraphProperties = (
   expectParagraphPropertyState(next._paragraphPropertyState);
   return proveParagraphPropertyProjection(next);
 };
+
+type PatchParagraphPropertyProjectionOptions = {
+  projection: ParagraphPropertyProjection;
+  patch: Readonly<Record<string, unknown>>;
+};
+
+/** Add non-property attrs to an existing projection without exposing its raw attrs. */
+export const patchParagraphPropertyProjection = ({
+  projection,
+  patch,
+}: PatchParagraphPropertyProjectionOptions): ParagraphPropertyProjection =>
+  preserveParagraphProperties(ParagraphPropertyProjectionCapsule.attrs(projection), patch);
 
 type ApplyParagraphPropertyProjectionOptions = {
   transaction: Transaction;

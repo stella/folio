@@ -1,4 +1,4 @@
-import type { ParagraphFormatting } from "../types/document";
+import type { ParagraphFormatting } from "./formatting";
 
 export const PARAGRAPH_PROPERTY_OWNER = {
   pPrBase: "pPr-base",
@@ -257,6 +257,48 @@ export const PARAGRAPH_FORMATTING_PROPERTY_DESCRIPTOR = {
   },
 } as const satisfies Record<keyof ParagraphFormatting, ParagraphPropertyDescriptor>;
 
+export const PARAGRAPH_PROPERTY_SOURCE_XML_GROUP = {
+  alignment: "jc",
+  bidi: "bidi",
+  kinsoku: "kinsoku",
+  overflowPunctuation: "overflowPunct",
+  spaceBefore: "spacing",
+  spaceAfter: "spacing",
+  lineSpacing: "spacing",
+  lineSpacingRule: "spacing",
+  snapToGrid: "snapToGrid",
+  beforeAutospacing: "spacing",
+  afterAutospacing: "spacing",
+  spacingExplicit: "spacing",
+  indentLeft: "ind",
+  indentRight: "ind",
+  indentFirstLine: "ind",
+  hangingIndent: "ind",
+  numberingLevelIndent: null,
+  borders: "pBdr",
+  shading: "shd",
+  tabs: "tabs",
+  keepNext: "keepNext",
+  keepLines: "keepLines",
+  widowControl: "widowControl",
+  pageBreakBefore: "pageBreakBefore",
+  contextualSpacing: "contextualSpacing",
+  numPr: "numPr",
+  numPrFromStyle: null,
+  outlineLevel: "outlineLvl",
+  styleId: "pStyle",
+  frame: "framePr",
+  suppressLineNumbers: "suppressLineNumbers",
+  suppressAutoHyphens: "suppressAutoHyphens",
+  runProperties: "rPr",
+  runInWithNext: "rPr",
+} as const satisfies Record<keyof ParagraphFormatting, string | null>;
+
+export type ParagraphPropertySourceXmlGroup = Exclude<
+  (typeof PARAGRAPH_PROPERTY_SOURCE_XML_GROUP)[keyof typeof PARAGRAPH_PROPERTY_SOURCE_XML_GROUP],
+  null
+>;
+
 // SAFETY: `Object.keys` erases keys that the total descriptor establishes.
 export const PARAGRAPH_FORMATTING_PROPERTY_KEY_LIST = Object.freeze(
   Object.keys(PARAGRAPH_FORMATTING_PROPERTY_DESCRIPTOR) as (
@@ -397,6 +439,100 @@ export const canonicalParagraphPropertySourceFingerprintJson = (
   fingerprint: ParagraphPropertySourceFingerprint,
 ): string => JSON.stringify(canonicalJsonValue(fingerprint));
 
+const canonicalPropertyValueEqual = (left: unknown, right: unknown): boolean =>
+  JSON.stringify(canonicalJsonValue(left)) === JSON.stringify(canonicalJsonValue(right));
+
+/**
+ * Immutable proof of the modeled raw-property groups changed since capture.
+ * Serializers use the groups to replace only owned OOXML children and retain
+ * every unknown child from the imported `w:pPr`.
+ */
+export class ParagraphPropertySourceDelta {
+  readonly #changedParagraphMarkKeys: readonly ParagraphMarkPropertyKey[];
+  readonly #changedPPrBaseKeys: readonly AuthoredParagraphPropertyKey[];
+  readonly #changedXmlGroups: readonly ParagraphPropertySourceXmlGroup[];
+
+  private constructor({
+    changedParagraphMarkKeys,
+    changedPPrBaseKeys,
+    changedXmlGroups,
+  }: {
+    changedParagraphMarkKeys: ParagraphMarkPropertyKey[];
+    changedPPrBaseKeys: AuthoredParagraphPropertyKey[];
+    changedXmlGroups: ParagraphPropertySourceXmlGroup[];
+  }) {
+    this.#changedParagraphMarkKeys = Object.freeze(changedParagraphMarkKeys);
+    this.#changedPPrBaseKeys = Object.freeze(changedPPrBaseKeys);
+    this.#changedXmlGroups = Object.freeze(changedXmlGroups);
+    Object.freeze(this);
+  }
+
+  static between(
+    before: ParagraphPropertySourceFingerprint,
+    after: ParagraphPropertySourceFingerprint,
+  ): ParagraphPropertySourceDelta {
+    const changedParagraphMarkKeys: ParagraphMarkPropertyKey[] = [];
+    const changedPPrBaseKeys: AuthoredParagraphPropertyKey[] = [];
+    const changedXmlGroups: ParagraphPropertySourceXmlGroup[] = [];
+    const seenGroups = new Set<ParagraphPropertySourceXmlGroup>();
+    for (const key of PARAGRAPH_FORMATTING_PROPERTY_KEY_LIST) {
+      const descriptor = PARAGRAPH_FORMATTING_PROPERTY_DESCRIPTOR[key];
+      if (descriptor.owner === PARAGRAPH_PROPERTY_OWNER.derived) {
+        continue;
+      }
+      const beforeOwner =
+        descriptor.owner === PARAGRAPH_PROPERTY_OWNER.pPrBase
+          ? before.pPrBase
+          : before.paragraphMark;
+      const afterOwner =
+        descriptor.owner === PARAGRAPH_PROPERTY_OWNER.pPrBase
+          ? after.pPrBase
+          : after.paragraphMark;
+      if (canonicalPropertyValueEqual(Reflect.get(beforeOwner, key), Reflect.get(afterOwner, key))) {
+        continue;
+      }
+      if (descriptor.owner === PARAGRAPH_PROPERTY_OWNER.pPrBase) {
+        // SAFETY: the descriptor owner narrows the key to CT_PPrBase ownership.
+        changedPPrBaseKeys.push(key as AuthoredParagraphPropertyKey);
+      } else {
+        // SAFETY: the only remaining descriptor owner is the paragraph mark.
+        changedParagraphMarkKeys.push(key as ParagraphMarkPropertyKey);
+      }
+      const group = PARAGRAPH_PROPERTY_SOURCE_XML_GROUP[key];
+      if (group !== null && !seenGroups.has(group)) {
+        seenGroups.add(group);
+        changedXmlGroups.push(group);
+      }
+    }
+    return new ParagraphPropertySourceDelta({
+      changedParagraphMarkKeys,
+      changedPPrBaseKeys,
+      changedXmlGroups,
+    });
+  }
+
+  get changedParagraphMarkKeys(): readonly ParagraphMarkPropertyKey[] {
+    return this.#changedParagraphMarkKeys;
+  }
+
+  get changedPPrBaseKeys(): readonly AuthoredParagraphPropertyKey[] {
+    return this.#changedPPrBaseKeys;
+  }
+
+  get changedXmlGroups(): readonly ParagraphPropertySourceXmlGroup[] {
+    return this.#changedXmlGroups;
+  }
+
+  get isEmpty(): boolean {
+    return this.#changedXmlGroups.length === 0;
+  }
+}
+
+export const paragraphPropertySourceDelta = (
+  before: ParagraphPropertySourceFingerprint,
+  after: ParagraphPropertySourceFingerprint,
+): ParagraphPropertySourceDelta => ParagraphPropertySourceDelta.between(before, after);
+
 const formattingKeys = (
   predicate: (descriptor: ParagraphPropertyDescriptor) => boolean,
 ): readonly string[] =>
@@ -432,3 +568,4 @@ export const isParagraphFormattingPropertyKey = (
   key: string,
 ): key is keyof typeof PARAGRAPH_FORMATTING_PROPERTY_DESCRIPTOR =>
   PARAGRAPH_FORMATTING_PROPERTY_KEY_SET.has(key);
+

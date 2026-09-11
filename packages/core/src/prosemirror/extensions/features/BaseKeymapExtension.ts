@@ -13,16 +13,30 @@ import {
   selectAll,
   selectParentNode,
 } from "prosemirror-commands";
-import type { Mark, Node as PMNode } from "prosemirror-model";
+import { panic } from "better-result";
+import type { Node as PMNode } from "prosemirror-model";
 import type { Command, Transaction } from "prosemirror-state";
 
-import type { TextFormatting } from "../../../types/document";
-import { mergeFontFamily } from "../../../utils/fontFamilyMerge";
+import { expectParagraphAttrs } from "../../attrs";
+import { attrsWithParagraphIndentationTransition } from "../../paragraphIndentation";
+import {
+  applyParagraphPropertyProjection,
+  createParagraphNodeFromProjection,
+  rebindJoinedParagraphProperties,
+  rebindSplitParagraphProperties,
+  transitionParagraphProperties,
+} from "../../paragraphPropertyMutation";
+import { expectParagraphPropertyState } from "../../paragraphPropertyState";
+import { getDocumentNumbering } from "../../plugins/documentNumbering";
 import { getDocumentStyleResolver } from "../../plugins/documentStyles";
-import { paragraphAttrsFromResolvedStyle } from "../../styles/resolvedStyleAttrs";
+import { inheritedParagraphRunFormatting } from "../../rebaseParagraphRunFormatting";
+import { paragraphPropertiesForStyleTransition } from "../../styles/resolvedStyleAttrs";
 import type { StyleResolver } from "../../styles/styleResolver";
+import {
+  tableParagraphStyleContextAtPositions,
+  type TableParagraphStyleContext,
+} from "../../tableConditionalFormatting";
 import { createExtension } from "../create";
-import { textFormattingToMarks } from "../marks/markUtils";
 import { Priority } from "../types";
 import type { ExtensionRuntime, ExtensionContext } from "../types";
 
@@ -72,93 +86,205 @@ const clearIndentOnBackspace: Command = (state, dispatch) => {
     return false;
   }
 
+  const transition = attrsWithParagraphIndentationTransition(
+    expectParagraphAttrs($cursor.parent as PMNode),
+    { type: "force-visible-zero", sides: ["left", "firstLine"] },
+  );
+  if (transition.type === "unsupported") {
+    return false;
+  }
+
   if (dispatch) {
     const pos = $cursor.before();
-    const tr = state.tr.setNodeMarkup(pos, undefined, {
-      ...attrs,
-      indentFirstLine: null,
-      hangingIndent: null,
-      indentLeft: null,
+    const tr = state.tr;
+    applyParagraphPropertyProjection({
+      projection: transition.projection,
+      source: { type: "preserve" },
+      pos,
+      transaction: tr,
     });
     dispatch(tr.scrollIntoView());
   }
   return true;
 };
 
-/**
- * Custom Enter handler: splits the block, inherits style-related attrs,
- * clears paragraph borders, and preserves font marks on the new paragraph.
- *
- * splitBlock creates a new paragraph with default attrs (all null),
- * so we must manually copy style-related attrs from the source paragraph.
- * Word does NOT propagate paragraph borders (w:pBdr) on Enter.
- */
-const INHERITED_PARA_ATTRS = [
-  "defaultTextFormatting",
-  "styleId",
-  "_tableOfContentsLevel",
-  "lineSpacing",
-  "lineSpacingRule",
-  "snapToGrid",
-  "spaceAfter",
-  "spaceBefore",
-  "contextualSpacing",
-] as const;
+type ParagraphJoinCandidate = {
+  leftContentSize: number;
+  leftPosition: number;
+  leftState: ReturnType<typeof expectParagraphPropertyState>;
+  rightContentSize: number;
+  rightState: ReturnType<typeof expectParagraphPropertyState>;
+};
 
-/** Mark types that represent style-inherited formatting (font, size, color). */
-const STYLE_MARK_NAMES = new Set(["fontFamily", "fontSize", "textColor"]);
-
-/**
- * If `sourcePara`'s style defines a `w:next`, replace the empty `newPara`
- * with that style's resolved attrs and seed stored marks from its run
- * formatting. Returns true when a switch happened (caller should dispatch
- * the transaction as-is), false when the source style has no `w:next` and
- * the caller should fall back to the regular inheritance path.
- */
-function applyNextParagraphStyle(
-  tr: Transaction,
-  sourcePara: PMNode,
-  newPara: PMNode,
-  resolver: StyleResolver,
-): boolean {
-  const nextStyleId = resolver.getNextStyleId(
-    sourcePara.attrs["styleId"] as string | null | undefined,
-  );
-  if (!nextStyleId) {
-    return false;
+const paragraphJoinCandidate = (
+  state: Parameters<Command>[0],
+  direction: "backward" | "forward",
+): ParagraphJoinCandidate | null => {
+  const { $cursor } = state.selection as {
+    $cursor?: {
+      before: () => number;
+      parent: PMNode;
+      parentOffset: number;
+    };
+  };
+  if (!$cursor || $cursor.parent.type.name !== "paragraph") {
+    return null;
   }
+  const current = $cursor.parent;
+  const currentPosition = $cursor.before();
+  let left: PMNode | null;
+  let right: PMNode | null;
+  let leftPosition: number;
+  if (direction === "backward") {
+    if ($cursor.parentOffset !== 0) {
+      return null;
+    }
+    right = current;
+    left = state.doc.resolve(currentPosition).nodeBefore;
+    leftPosition = left ? currentPosition - left.nodeSize : -1;
+  } else {
+    if ($cursor.parentOffset !== current.content.size) {
+      return null;
+    }
+    left = current;
+    leftPosition = currentPosition;
+    right = state.doc.resolve(currentPosition + current.nodeSize).nodeAfter;
+  }
+  if (left?.type.name !== "paragraph" || right?.type.name !== "paragraph") {
+    return null;
+  }
+  return {
+    leftContentSize: left.content.size,
+    leftPosition,
+    leftState: expectParagraphPropertyState(expectParagraphAttrs(left)._paragraphPropertyState),
+    rightContentSize: right.content.size,
+    rightState: expectParagraphPropertyState(expectParagraphAttrs(right)._paragraphPropertyState),
+  };
+};
 
-  const resolved = resolver.resolveParagraphStyle(nextStyleId);
-  const styleName = resolver.getStyle(nextStyleId)?.name;
-  const { $from } = tr.selection;
-  // `paragraphAttrsFromResolvedStyle` already projects the next style's
-  // borders (or null), which both clears the source paragraph's leftover
-  // border and applies a bordered next style (callouts, etc.).
-  tr.setNodeMarkup($from.before(), undefined, {
-    ...newPara.attrs,
-    styleId: nextStyleId,
-    ...paragraphAttrsFromResolvedStyle(resolved, {
-      styleId: nextStyleId,
-      ...(styleName ? { styleName } : {}),
-    }),
+const withParagraphJoinOwnership = (
+  command: Command,
+  direction: "backward" | "forward",
+): Command =>
+  (state, dispatch, view) => {
+    if (!dispatch) {
+      return command(state, undefined, view);
+    }
+    const candidate = paragraphJoinCandidate(state, direction);
+    let captured: Transaction | null = null;
+    const handled = command(
+      state,
+      (transaction) => {
+        if (captured !== null) {
+          panic("A base join command dispatched more than one transaction");
+        }
+        captured = transaction;
+      },
+      view,
+    );
+    if (!handled) {
+      return false;
+    }
+    if (captured === null) {
+      return true;
+    }
+    const transaction = captured;
+    if (candidate) {
+      const joinedPosition = transaction.mapping.map(candidate.leftPosition, -1);
+      const joined = transaction.doc.nodeAt(joinedPosition);
+      if (
+        joined?.type.name === "paragraph" &&
+        joined.content.size === candidate.leftContentSize + candidate.rightContentSize
+      ) {
+        rebindJoinedParagraphProperties({
+          transaction,
+          joinedPosition,
+          leftState: candidate.leftState,
+          rightState: candidate.rightState,
+          transition: { type: "join-right-paragraph-mark-retains" },
+        });
+      }
+    }
+    dispatch(transaction);
+    return true;
+  };
+
+/**
+ * Project the empty paragraph created by Enter from the complete inherited
+ * cascade at its table occurrence. A `w:next` style replaces the source
+ * style; otherwise the new paragraph keeps the source style while dropping
+ * direct paragraph formatting such as borders and indentation.
+ */
+type ProjectSplitParagraphOptions = {
+  context: TableParagraphStyleContext | null | undefined;
+  newPara: PMNode;
+  resolver: StyleResolver;
+  sourcePara: PMNode;
+  state: Parameters<Command>[0];
+  tr: Transaction;
+  useNextStyle: boolean;
+};
+
+const projectSplitParagraph = ({
+  context,
+  resolver,
+  sourcePara,
+  state,
+  tr,
+  newPara,
+  useNextStyle,
+}: ProjectSplitParagraphOptions): Transaction => {
+  const sourceStyleId = sourcePara.attrs["styleId"] as string | null | undefined;
+  const styleId = useNextStyle
+    ? (resolver.getNextStyleId(sourceStyleId) ?? sourceStyleId)
+    : sourceStyleId;
+  const resolved = resolver.resolveParagraphStyleInTable(styleId, context?.pPr);
+  const styleName = styleId ? resolver.getStyle(styleId)?.name : undefined;
+  const projection = paragraphPropertiesForStyleTransition({
+    attrs: expectParagraphAttrs(newPara),
+    identity: { styleId: styleId ?? null, ...(styleName ? { styleName } : {}) },
+    numbering: getDocumentNumbering(state),
+    resolved,
+    styleResolver: resolver,
+    ...(context?.rPr ? { tableRunFormatting: context.rPr } : {}),
+    transition: { type: "replace-style" },
   });
-
-  // setStoredMarks MUST come after setNodeMarkup — every step clears it.
-  tr.setStoredMarks(
-    resolved.runFormatting ? textFormattingToMarks(resolved.runFormatting, tr.doc.type.schema) : [],
-  );
-  return true;
-}
+  const projected = createParagraphNodeFromProjection({
+    type: newPara.type,
+    projection,
+    content: newPara.content,
+    marks: newPara.marks,
+  });
+  const inherited = inheritedParagraphRunFormatting({
+    paragraph: projected,
+    styleResolver: resolver,
+    tableRunFormatting: context?.rPr ?? null,
+  });
+  const { $from } = tr.selection;
+  applyParagraphPropertyProjection({
+    transaction: tr,
+    pos: $from.before(),
+    projection,
+    source: { type: "preserve" },
+  });
+  tr.setStoredMarks(inherited.marks);
+  return tr;
+};
 
 export const splitBlockClearBorders: Command = (state, dispatch, view) => {
   // Capture source paragraph info BEFORE split (splitBlock resets everything)
   const { $from: preSplitFrom } = state.selection;
   const sourcePara = preSplitFrom.parent.type.name === "paragraph" ? preSplitFrom.parent : null;
+  const sourcePropertyState = sourcePara
+    ? expectParagraphPropertyState(expectParagraphAttrs(sourcePara)._paragraphPropertyState)
+    : null;
 
-  // Collect style marks from the cursor position before splitting.
-  // Use storedMarks if set, otherwise resolve from the position.
-  const preMarks = state.storedMarks || preSplitFrom.marks();
-  const styleMarks = preMarks.filter((m) => STYLE_MARK_NAMES.has(m.type.name));
+  const sourcePosition = sourcePara ? preSplitFrom.before() : null;
+  const resolver = getDocumentStyleResolver(state);
+  const sourceTableContext =
+    resolver && sourcePosition !== null
+      ? tableParagraphStyleContextAtPositions(state.doc, resolver).get(sourcePosition)
+      : undefined;
 
   // Intercept splitBlock's transaction so we can modify it before dispatch.
   // This ensures attrs + stored marks are set in a single transaction,
@@ -182,6 +308,26 @@ export const splitBlockClearBorders: Command = (state, dispatch, view) => {
     const newPara = $from.parent;
 
     if (newPara.type.name === "paragraph") {
+      let projectedNewParagraph = newPara;
+      if (sourcePara && sourcePropertyState && sourcePosition !== null) {
+        const rightPosition = $from.before();
+        const leftParagraph = tr.doc.resolve(rightPosition).nodeBefore;
+        if (leftParagraph?.type.name !== "paragraph") {
+          panic("A block split lost its left paragraph");
+        }
+        rebindSplitParagraphProperties({
+          transaction: tr,
+          leftPosition: rightPosition - leftParagraph.nodeSize,
+          rightPosition,
+          sourceState: sourcePropertyState,
+          transition: { type: "split-left-created-right-retains" },
+        });
+        const rebound = tr.doc.nodeAt(rightPosition);
+        if (rebound?.type.name !== "paragraph") {
+          panic("A block split lost its right paragraph");
+        }
+        projectedNewParagraph = rebound;
+      }
       // Word's `w:next`: pressing Enter at the end of a paragraph (the new
       // paragraph is empty) switches it to the style's follow-on style — e.g.
       // a heading drops to body text. Only applies to an empty trailing
@@ -189,93 +335,42 @@ export const splitBlockClearBorders: Command = (state, dispatch, view) => {
       // Use `content.size === 0` rather than `textContent.length` so a
       // mid-paragraph split before an inline atom (image, equation, field,
       // sdt, shape) is not mistaken for an empty trailing paragraph.
-      const resolver = getDocumentStyleResolver(state);
-      if (
-        resolver !== null &&
-        sourcePara !== null &&
-        newPara.content.size === 0 &&
-        applyNextParagraphStyle(tr, sourcePara, newPara, resolver)
-      ) {
+      if (resolver !== null && sourcePara !== null && newPara.content.size === 0) {
+        const nextStyleId = resolver.getNextStyleId(
+          sourcePara.attrs["styleId"] as string | null | undefined,
+        );
+        projectSplitParagraph({
+          context: sourceTableContext,
+          resolver,
+          sourcePara,
+          state,
+          tr,
+          newPara: projectedNewParagraph,
+          useNextStyle: nextStyleId !== null,
+        });
         dispatch(tr.scrollIntoView());
         return true;
       }
 
-      const newAttrs = { ...newPara.attrs };
-      let attrsChanged = false;
-
-      // Copy inherited attrs from source paragraph
-      if (sourcePara) {
-        for (const key of INHERITED_PARA_ATTRS) {
-          const srcVal = sourcePara.attrs[key];
-          if (srcVal !== null && newAttrs[key] === null) {
-            newAttrs[key] = srcVal;
-            attrsChanged = true;
-          }
-        }
-      }
-
-      // Clear borders (Word does not propagate paragraph borders on Enter)
-      if (newAttrs["borders"]) {
-        newAttrs["borders"] = null;
-        attrsChanged = true;
-      }
-
-      if (attrsChanged) {
-        tr.setNodeMarkup($from.before(), undefined, newAttrs);
-      }
-
-      // For empty paragraphs (Enter at end of line), set stored marks so typed text
-      // inherits font family, font size, and text color. We skip bold/italic/etc —
-      // Word doesn't carry direct formatting to new paragraphs.
-      if (newPara.textContent.length === 0) {
-        // Determine effective style marks. When text has explicit marks (e.g. user
-        // applied a font override), use those. When text inherits formatting from
-        // the paragraph style chain (no explicit marks), derive marks from the
-        // source paragraph's defaultTextFormatting.
-        let effectiveMarks: Mark[] = styleMarks;
-
-        if (effectiveMarks.length === 0 && sourcePara) {
-          const dtf = sourcePara.attrs["defaultTextFormatting"] as TextFormatting | undefined;
-          if (dtf) {
-            const allMarks = textFormattingToMarks(dtf, state.schema);
-            effectiveMarks = allMarks.filter((m) => STYLE_MARK_NAMES.has(m.type.name));
-          }
-        }
-
-        if (effectiveMarks.length > 0) {
-          // Sync defaultTextFormatting with the actual cursor marks so the empty
-          // paragraph measurement (used for caret height) matches the stored marks.
-          const dtf = { ...newAttrs["defaultTextFormatting"] };
-          let dtfChanged = false;
-          for (const m of effectiveMarks) {
-            if (m.type.name === "fontSize" && m.attrs["size"] !== dtf.fontSize) {
-              dtf.fontSize = m.attrs["size"];
-              dtfChanged = true;
-            }
-            if (m.type.name === "fontFamily") {
-              const ascii = m.attrs["ascii"] as string | undefined;
-              if (ascii && (!dtf.fontFamily || dtf.fontFamily.ascii !== ascii)) {
-                const nextFontFamily: NonNullable<TextFormatting["fontFamily"]> = { ascii };
-                const hAnsi = m.attrs["hAnsi"] as string | undefined;
-                if (hAnsi !== undefined) {
-                  nextFontFamily.hAnsi = hAnsi;
-                }
-                dtf.fontFamily = mergeFontFamily(dtf.fontFamily, nextFontFamily);
-                dtfChanged = true;
-              }
-            }
-          }
-          if (dtfChanged) {
-            tr.setNodeMarkup($from.before(), undefined, {
-              ...newAttrs,
-              defaultTextFormatting: dtf,
-            });
-          }
-
-          // IMPORTANT: setStoredMarks MUST be called AFTER all setNodeMarkup calls.
-          // setNodeMarkup adds a ReplaceStep which clears storedMarks on the transaction.
-          tr.setStoredMarks(effectiveMarks);
-        }
+      const projectedAttrs = expectParagraphAttrs(projectedNewParagraph);
+      const propertyState = expectParagraphPropertyState(projectedAttrs._paragraphPropertyState);
+      if (propertyState.authoredPPr.borders !== undefined) {
+        applyParagraphPropertyProjection({
+          transaction: tr,
+          pos: $from.before(),
+          projection: transitionParagraphProperties({
+            attrs: projectedAttrs,
+            state: {
+              type: "update",
+              authored: {
+                type: "mutate",
+                mutations: [{ key: "borders", mutation: { type: "remove" } }],
+              },
+              context: { type: "preserve" },
+            },
+          }),
+          source: { type: "preserve" },
+        });
       }
     }
 
@@ -295,8 +390,15 @@ export const BaseKeymapExtension = createExtension({
         ...baseKeymap,
         // Override some keys with better defaults
         Enter: splitBlockClearBorders,
-        Backspace: chainCommands(deleteSelection, clearIndentOnBackspace, joinBackward),
-        Delete: chainCommands(deleteSelection, joinForward),
+        Backspace: chainCommands(
+          deleteSelection,
+          clearIndentOnBackspace,
+          withParagraphJoinOwnership(joinBackward, "backward"),
+        ),
+        Delete: chainCommands(
+          deleteSelection,
+          withParagraphJoinOwnership(joinForward, "forward"),
+        ),
         "Mod-a": selectAll,
         Escape: selectParentNode,
       },

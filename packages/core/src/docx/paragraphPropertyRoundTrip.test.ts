@@ -16,10 +16,8 @@ import { DATE_UTC_NAMESPACE_URI } from "./trackedChangeInfo";
 import {
   ParagraphPropertySourceValidationError,
   assignParagraphPropertySource,
-  getParagraphPropertySourceCandidate,
   getParagraphPropertySource,
   getParagraphPropertySourceToken,
-  transferProseParagraphPropertySource,
 } from "./paragraphPropertySource";
 import { createEmptyDocx, repackDocx } from "./rezip";
 import { consolidateParagraph } from "./runConsolidator";
@@ -210,12 +208,16 @@ describe("paragraph properties survive a no-edit full repack", () => {
 
     const restored = fromProseDoc(toProseDoc(parsed), parsed);
     const restoredParagraph = firstParagraph(restored);
-    expect(getParagraphPropertySourceCandidate(restoredParagraph)).toBe(sourceParagraph);
+    expect(getParagraphPropertySource(restoredParagraph)).toEqual(
+      getParagraphPropertySource(sourceParagraph),
+    );
 
     const cleaned = withoutOrphanCommentRanges(restored);
     const cleanedParagraph = firstParagraph(cleaned);
     expect(cleanedParagraph).not.toBe(restoredParagraph);
-    expect(getParagraphPropertySourceCandidate(cleanedParagraph)).toBe(sourceParagraph);
+    expect(getParagraphPropertySource(cleanedParagraph)).toEqual(
+      getParagraphPropertySource(sourceParagraph),
+    );
     expect(getParagraphPropertySource(cleanedParagraph)).toEqual(
       getParagraphPropertySource(sourceParagraph),
     );
@@ -432,7 +434,7 @@ describe("paragraph properties survive a no-edit full repack", () => {
     second.paraId = "22222222";
     const proseDoc = toProseDoc(parsed);
     const firstProseParagraph = proseDoc.child(0);
-    transferProseParagraphPropertySource(firstProseParagraph, firstProseParagraph, "22222222");
+    expect(firstProseParagraph.attrs["paraId"]).toBe("11111111");
 
     const detached = proseDoc.type.create(
       proseDoc.attrs,
@@ -480,7 +482,6 @@ describe("paragraph properties survive a no-edit full repack", () => {
       paragraph.content,
       paragraph.marks,
     );
-    transferProseParagraphPropertySource(copied, paragraph, "87654321");
     const copiedSlice = new Slice(Fragment.fromArray([paragraph, copied]), 0, 0);
     const duplicated = proseDoc.type.create(proseDoc.attrs, copiedSlice.content);
     expect(() => fromProseDoc(duplicated, parsed)).toThrow(ParagraphPropertySourceValidationError);

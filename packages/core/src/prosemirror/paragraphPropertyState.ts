@@ -1,12 +1,18 @@
 import { panic } from "better-result";
 import type {
+  AuthoredParagraphProperties,
+  AuthoredParagraphPropertyKey,
   NonEmptyNumberingLevelIndentGeometry,
   NumberingLevelIndentGeometry,
   NumberingLevelIndentProvenance,
+  ParagraphMarkProperties,
+} from "@stll/docx-core/model";
+import {
+  PARAGRAPH_FORMATTING_PROPERTY_DESCRIPTOR,
+  selectAuthoredParagraphProperties,
 } from "@stll/docx-core/model";
 
 import {
-  ParagraphPropertySourceToken,
   ParagraphPropertyTransientTemplateHandle,
   type ParagraphPropertySourceAttribute,
 } from "../docx/paragraphPropertySourceIdentity";
@@ -27,13 +33,6 @@ import {
   THEME_COLOR_SLOT_VALUES,
   UNDERLINE_STYLE_VALUES,
 } from "../types/documentEnumValues";
-import {
-  PARAGRAPH_FORMATTING_PROPERTY_DESCRIPTOR,
-  selectAuthoredParagraphProperties,
-  type AuthoredParagraphProperties,
-  type AuthoredParagraphPropertyKey,
-  type ParagraphMarkProperties,
-} from "../docx/paragraphPropertyDescriptor";
 import type {
   BorderSpec,
   ColorValue,
@@ -92,7 +91,7 @@ type TrustedParagraphPropertyState = {
 export type PersistableParagraphPropertyState = (
   | {
       readonly type: "imported";
-      readonly token: ParagraphPropertySourceToken;
+      readonly token: string;
     }
   | {
       readonly type: "editor-created";
@@ -153,13 +152,11 @@ export type ParagraphMarkEffectivePropertyMutation =
       mutation: { type: "remove" } | { type: "set"; value: boolean };
     };
 
-export type ParagraphPropertyStateTransition =
-  | {
-      type: "update";
-      authored: ParagraphPropertyAuthoredTransition;
-      context: ParagraphPropertyContextTransition;
-    }
-  | { type: "editor-copy" };
+export type ParagraphPropertyStateTransition = {
+  type: "update";
+  authored: ParagraphPropertyAuthoredTransition;
+  context: ParagraphPropertyContextTransition;
+};
 
 export type ParagraphPropertySplitTransition = {
   type: "split-left-created-right-retains";
@@ -1147,7 +1144,7 @@ const IMPORTED_STATE_KEYS = new Set<string>(["type", "token", "authoredPPr", "co
 const EDITOR_STATE_KEYS = new Set<string>(["type", "authoredPPr", "context"]);
 
 type CreateImportedParagraphPropertyStateOptions = {
-  token: ParagraphPropertySourceToken;
+  token: string;
   authoredPPr: AuthoredParagraphProperties;
   context: SerializedParagraphPropertyProjectionContext;
 };
@@ -1235,12 +1232,9 @@ export const readParagraphPropertyState = (
   }
   switch (type) {
     case "imported": {
-      const token = ParagraphPropertySourceToken.read(raw["token"]);
-      return token.status === "valid"
-        ? {
-            status: "valid",
-            value: trustParagraphPropertyState({ type, token: token.value, authoredPPr, context }),
-          }
+      const token = raw["token"];
+      return typeof token === "string" && token.length > 0
+        ? { status: "valid", value: trustParagraphPropertyState({ type, token, authoredPPr, context }) }
         : { raw, status: "invalid" };
     }
     case "editor-created":
@@ -1283,7 +1277,7 @@ export const serializePersistableParagraphPropertyState = (
     case "imported":
       return {
         type: "imported",
-        token: state.token.serialized,
+        token: state.token,
         authoredPPr: cloneAuthoredParagraphProperties(state.authoredPPr),
         context: cloneJsonValue(state.context) as SerializedParagraphPropertyProjectionContext,
       };
@@ -1316,12 +1310,6 @@ export const transitionParagraphPropertyState = (
   state: ParagraphPropertyState,
   transition: ParagraphPropertyStateTransition,
 ): ParagraphPropertyState => {
-  if (transition.type === "editor-copy") {
-    return createEditorParagraphPropertyState({
-      authoredPPr: state.authoredPPr,
-      context: state.context,
-    });
-  }
   const authoredPPr = applyAuthoredTransition(state.authoredPPr, transition.authored);
   const context = applyContextTransition(state.context, transition.context);
   assertParagraphPropertyStatePayload(authoredPPr, context);

@@ -1,7 +1,4 @@
-import type {
-  AuthoredParagraphProperties,
-  ParagraphMarkProperties,
-} from "../docx/paragraphPropertyDescriptor";
+import type { AuthoredParagraphProperties, ParagraphMarkProperties } from "@stll/docx-core/model";
 import type { ParagraphFormatting, TextFormatting } from "../types/document";
 
 export const PARAGRAPH_SPACING_INHERITANCE_SOURCE = {

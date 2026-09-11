@@ -1,10 +1,4 @@
 import { describe, expect, test } from "bun:test";
-
-import {
-  ParagraphPropertySourceContract,
-  ParagraphPropertySourceToken,
-  ParagraphPropertyTransientTemplateHandle,
-} from "../docx/paragraphPropertySourceIdentity";
 import {
   canonicalParagraphPropertySourceFingerprintJson,
   PARAGRAPH_FORMATTING_PROPERTY_DESCRIPTOR,
@@ -12,7 +6,11 @@ import {
   paragraphPropertySourceFingerprintFromFormatting,
   paragraphPropertySourceFingerprintFromParts,
   type AuthoredParagraphProperties,
-} from "../docx/paragraphPropertyDescriptor";
+} from "@stll/docx-core/model";
+
+import {
+  ParagraphPropertyTransientTemplateStore,
+} from "../docx/paragraphPropertySourceIdentity";
 import {
   createEditorParagraphPropertyState,
   createImportedParagraphPropertyState,
@@ -69,12 +67,7 @@ const ALL_AUTHORED_PROPERTIES = {
   suppressAutoHyphens: true,
 } satisfies Required<AuthoredParagraphProperties>;
 
-const token = (): ParagraphPropertySourceToken =>
-  ParagraphPropertySourceToken.forOrdinal(
-    ParagraphPropertySourceContract.fromDigest("a".repeat(64)),
-    { type: "document" },
-    0,
-  );
+const SOURCE_TOKEN = "p2s:document::0";
 
 const EMPTY_CONTEXT = {
   inheritedPPr: {},
@@ -172,7 +165,7 @@ describe("mandatory paragraph property state", () => {
   test("reifies wire state into nominal, deeply immutable trusted state", () => {
     const serialized = {
       type: "imported",
-      token: token().serialized,
+      token: SOURCE_TOKEN,
       authoredPPr: ALL_AUTHORED_PROPERTIES,
       context: EMPTY_CONTEXT,
     };
@@ -227,13 +220,13 @@ describe("mandatory paragraph property state", () => {
         type: "editor-created",
         authoredPPr: {},
         context: EMPTY_CONTEXT,
-        token: token().serialized,
+        token: SOURCE_TOKEN,
       }).status,
     ).toBe("invalid");
   });
 
   test("patches exact authored values without losing imported identity", () => {
-    const sourceToken = token();
+    const sourceToken = SOURCE_TOKEN;
     const initial = createImportedParagraphPropertyState({
       token: sourceToken,
       authoredPPr: {
@@ -278,9 +271,9 @@ describe("mandatory paragraph property state", () => {
     ).toThrow("Paragraph-property mutation batch contains duplicate key: kinsoku");
   });
 
-  test("models split, copy, join, and transient persistence boundaries explicitly", () => {
+  test("models split, join, and transient persistence boundaries explicitly", () => {
     const imported = createImportedParagraphPropertyState({
-      token: token(),
+      token: SOURCE_TOKEN,
       authoredPPr: { keepNext: false },
       context: EMPTY_CONTEXT,
     });
@@ -297,7 +290,10 @@ describe("mandatory paragraph property state", () => {
     }
     expect(split.right.token).toBe(imported.token);
 
-    const copied = transitionParagraphPropertyState(imported, { type: "editor-copy" });
+    const copied = createEditorParagraphPropertyState({
+      authoredPPr: imported.authoredPPr,
+      context: imported.context,
+    });
     expect(copied.type).toBe("editor-created");
     expect(
       joinParagraphPropertyStates(imported, copied, {
@@ -310,8 +306,13 @@ describe("mandatory paragraph property state", () => {
       }),
     ).toBe(imported);
 
+    const templateStore = new ParagraphPropertyTransientTemplateStore<string>(1);
+    const handle = templateStore.registerAll(["capture"]).at(0);
+    if (!handle) {
+      throw new Error("Expected one transient template handle");
+    }
     const transient = createTransientTemplateParagraphPropertyState({
-      handle: ParagraphPropertyTransientTemplateHandle.forOrdinal(0),
+      handle,
       authoredPPr: {},
       context: EMPTY_CONTEXT,
     });
@@ -326,7 +327,7 @@ describe("mandatory paragraph property state", () => {
     expect(
       readParagraphPropertyState({
         type: "transient-template",
-        handle: transient.handle.serialized,
+        handle: "forged-handle",
         authoredPPr: {},
         context: EMPTY_CONTEXT,
       }).status,

@@ -23,8 +23,8 @@ import type { Schema } from "prosemirror-model";
 import { Plugin, PluginKey } from "prosemirror-state";
 
 import type { TextFormatting } from "../../../types/document";
+import { inheritedRunFormattingMarks } from "../../rebaseParagraphRunFormatting";
 import { createExtension } from "../create";
-import { textFormattingToMarks } from "../marks/markUtils";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
 
 export const emptyParagraphFormatKey = new PluginKey("emptyParagraphFormat");
@@ -81,7 +81,7 @@ function createEmptyParagraphFormatPlugin(schema: Schema): Plugin {
         return null;
       }
 
-      const marks = textFormattingToMarks(dtf, schema);
+      const marks = inheritedRunFormattingMarks(dtf, schema);
       if (marks.length === 0) {
         return null;
       }

@@ -35,10 +35,13 @@ import type {
   ShadingProperties,
   TextFormatting,
 } from "../../types/document";
-import { PARAGRAPH_MARK_CHANGE_KINDS } from "@stll/docx-core/model";
+import {
+  canonicalParagraphPropertySourceFingerprintJson,
+  PARAGRAPH_MARK_CHANGE_KINDS,
+  paragraphPropertySourceFingerprintFromFormatting,
+} from "@stll/docx-core/model";
 import { panic } from "better-result";
 import { isValidHexColor } from "../../utils/colorResolver";
-import { canonicalJson } from "../../utils/canonicalJson";
 import { numPrEqual } from "../numberingParser";
 import { getParagraphPropertySource } from "../paragraphPropertySource";
 import { reconcileRawSdtPr } from "../sdtPropertiesPatch";
@@ -709,7 +712,11 @@ const verifiedParagraphPropertySource = (
   if (replayableSource === null) {
     return null;
   }
-  return canonicalJson(formatting ?? {}) === source.formattingJson ? replayableSource : null;
+  return canonicalParagraphPropertySourceFingerprintJson(
+    paragraphPropertySourceFingerprintFromFormatting(formatting),
+  ) === source.fingerprintJson
+    ? replayableSource
+    : null;
 };
 
 const withTrailingParagraphPropertyChildren = (

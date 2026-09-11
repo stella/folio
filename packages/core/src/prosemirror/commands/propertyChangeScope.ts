@@ -11,26 +11,16 @@
  * sectPr on a paragraph, header/footer references inside a sectPr, the
  * paragraph-mark rPr) are separately modeled and must survive a reject.
  *
- * This module is the single place that maps stored "previous" records onto
- * ProseMirror node attrs. Records come in two shapes:
- *
- * - parser-shaped: `parseParagraphPropertyChanges` (docx/paragraphParser.ts)
- *   stores a `ParagraphFormatting`, whose keys mostly match paragraph attr
- *   names except `bidi` (attr `direction`) and the autospacing flags (attr
- *   `_autospacingBase`); table records store `TableFormatting` /
- *   `TableRowFormatting` / `TableCellFormatting`.
- * - attr-shaped: editor-created suggestions (ListExtension) snapshot the
- *   paragraph attrs directly (including list-rendering bookkeeping attrs).
- *
- * Both shapes normalize here; per key, an attr-shaped value wins when present.
+ * Paragraph records use the canonical authored-property state. Table records
+ * retain their table-specific formatting models below.
  */
 
 import type { Node as PMNode } from "prosemirror-model";
+import { isParagraphFormattingPropertyKey } from "@stll/docx-core/model";
 
 import type {
   BorderSpec,
   CellMargins,
-  ParagraphFormatting,
   SectionProperties,
   TableCellFormatting,
   TableFormatting,
@@ -38,23 +28,16 @@ import type {
 } from "../../types/document";
 
 import { expectParagraphAttrs } from "../attrs";
-import { directParagraphAlignment } from "../paragraphAlignment";
 import {
-  directParagraphSpacing,
-  paragraphSpacingAttrPatch,
-  paragraphSpacingFromFormatting,
-} from "../paragraphSpacing";
-import { directionFromBidi, directionToBidi } from "../paragraphDirection";
+  isGovernedParagraphAttr,
+  transitionParagraphProperties,
+  type ParagraphPropertyProjection,
+} from "../paragraphPropertyMutation";
 import {
-  isParagraphFormattingPropertyKey,
-  isPprIndentAttr,
-  isPprSpacingAttr,
-  PPR_CHANGE_BOOLEAN_ATTR_KEYS,
-  PPR_CHANGE_SCOPED_ATTR_KEYS,
-  PPR_CHANGE_SCOPED_FORMATTING_KEYS,
-  PPR_OPAQUE_FORMATTING_KEYS,
-  PPR_PARAGRAPH_MARK_FORMATTING_KEYS,
-} from "../paragraphPropertyProjection";
+  authoredParagraphPropertiesFromFormatting,
+  expectParagraphPropertyState,
+  type ParagraphPropertyProjectionContext,
+} from "../paragraphPropertyState";
 import type { ParagraphAttrs, ParagraphPropertyChangeAttrs } from "../schema/nodes";
 
 /** Editor-only suggestions are rebased away before save; every other entry emits `w:pPrChange`. */
@@ -127,227 +110,46 @@ export const removeParagraphPropertyChanges = (
   return { type: "restore-previous", remaining, previousFormatting: removedPrevious };
 };
 
-/**
- * Paragraph attrs governed by a `w:pPrChange` — the attrs
- * `paragraphFormattingToAttrs` (conversion/toProseDoc.ts) can produce from a
- * parsed `CT_PPrBase` (ECMA-376 §17.13.5.29). Rejecting a pPrChange restores
- * the stored old pPr wholesale for exactly these keys: a key absent from the
- * stored record resets to the schema default (`null`).
- *
- * Deliberately OUT of scope (preserved across a reject):
- * - identity/structure: `paraId`, `textId`, `sectionBreakType`,
- *   `_sectionProperties`, `_propertyChanges`, `pPrMark`, `bookmarks`,
- *   `_emptyHyperlinks`, `renderedPageBreakBefore`
- * - paragraph-mark run properties — `pPr/rPr` is CT_PPr-only, not part of the
- *   CT_PPrBase payload a pPrChange stores: `defaultTextFormatting`,
- *   `runInWithNext` (`w:specVanish` lives in that rPr)
- * - load-time style/numbering bookkeeping the command layer cannot recompute
- *   without a style resolver: `numPrFromStyle`, the `list*` rendering attrs,
- *   `alignmentFromStyle`, `spacingFromDocDefaults`, and resolved style-spacing
- *   provenance in `spacingFromImplicitDefaultStyle`
- */
-export const PPR_CHANGE_SCOPED_ATTR_KEYS = [
-  "styleId",
-  "numPr",
-  "alignment",
-  "spaceBefore",
-  "spaceAfter",
-  "lineSpacing",
-  "lineSpacingRule",
-  "lineSpacingExplicit",
-  "snapToGrid",
-  "spacingExplicit",
-  "indentLeft",
-  "indentRight",
-  "indentFirstLine",
-  "hangingIndent",
-  "borders",
-  "shading",
-  "tabs",
-  "pageBreakBefore",
-  "keepNext",
-  "keepLines",
-  "widowControl",
-  "contextualSpacing",
-  "outlineLevel",
-  "direction",
-  "_autospacingBase",
-] as const satisfies readonly (keyof ParagraphAttrs)[];
-
-const PPR_CHANGE_SCOPED_ATTR_KEY_SET: ReadonlySet<string> = new Set(PPR_CHANGE_SCOPED_ATTR_KEYS);
-
-/** Effective/bookkeeping attrs whose tracked snapshot must use direct provenance instead. */
-const PPR_SPACING_ATTR_KEYS: ReadonlySet<keyof ParagraphAttrs> = new Set([
-  "spaceBefore",
-  "spaceAfter",
-  "lineSpacing",
-  "lineSpacingRule",
-  "lineSpacingExplicit",
-  "spacingExplicit",
-  "_autospacingBase",
-]);
-
 /** The in-scope paragraph properties as they stand, for a `w:pPrChange` record. */
 export const paragraphPropertiesSnapshot = (node: PMNode): ParagraphPropertySnapshot => {
   const attrs = expectParagraphAttrs(node);
-  const snapshot: Record<string, unknown> = {};
-  for (const key of PPR_CHANGE_SCOPED_ATTR_KEYS) {
-    if (key === "alignment" || isPprSpacingAttr(key) || isPprIndentAttr(key)) {
-      continue;
-    }
-    const value: unknown = attrs[key];
-    if (
-      key === "hangingIndent" &&
-      value === false &&
-      attrs._originalFormatting?.hangingIndent === undefined
-    ) {
-      continue;
-    }
-    if (value !== null && value !== undefined) {
-      snapshot[key] = value;
-    }
-  }
-  const directAlignment = directParagraphAlignment(attrs);
-  if (directAlignment !== undefined) {
-    snapshot["alignment"] = directAlignment;
-  }
-  Object.assign(snapshot, directParagraphSpacing(attrs));
-  return snapshot;
+  return structuredClone(
+    expectParagraphPropertyState(attrs._paragraphPropertyState).authoredPPr,
+  );
 };
 
-/**
- * Parser-shaped `ParagraphFormatting` keys that must NOT merge through to
- * attrs verbatim: they either normalize to a differently named attr
- * (`bidi` → `direction`, autospacing flags → `_autospacingBase`), have no
- * attr representation and round-trip via `_originalFormatting` only
- * (`frame`, `suppressLineNumbers`, `suppressAutoHyphens`), or sit outside
- * the CT_PPrBase scope entirely (`runProperties`, `runInWithNext` — the
- * paragraph-mark rPr) and so must never overwrite the live value on reject.
- */
-const PPR_PARSER_ONLY_KEYS: ReadonlySet<string> = new Set([
-  "bidi",
-  "beforeAutospacing",
-  "afterAutospacing",
-  "runProperties",
-  "runInWithNext",
-  "frame",
-  "suppressLineNumbers",
-  "suppressAutoHyphens",
-  "numPrFromStyle",
-]);
+type ParagraphPropertyRejectionProjectionOptions = {
+  attrs: ParagraphAttrs;
+  previousFormatting: ParagraphPropertySnapshot | null | undefined;
+  context?: ParagraphPropertyProjectionContext;
+};
 
-/**
- * `ParagraphFormatting` keys inside the CT_PPrBase scope, used to rebuild
- * `_originalFormatting` after a reject (old pPr wholesale within scope,
- * paragraph-mark rPr fields preserved from the live original).
- */
-const PPR_CHANGE_SCOPED_FORMATTING_KEYS = [
-  "styleId",
-  "numPr",
-  "alignment",
-  "bidi",
-  "spaceBefore",
-  "spaceAfter",
-  "lineSpacing",
-  "lineSpacingRule",
-  "beforeAutospacing",
-  "afterAutospacing",
-  "spacingExplicit",
-  "indentLeft",
-  "indentRight",
-  "indentFirstLine",
-  "hangingIndent",
-  "borders",
-  "shading",
-  "tabs",
-  "pageBreakBefore",
-  "keepNext",
-  "keepLines",
-  "widowControl",
-  "contextualSpacing",
-  "outlineLevel",
-  "frame",
-  "suppressLineNumbers",
-  "suppressAutoHyphens",
-] as const satisfies readonly (keyof ParagraphFormatting)[];
-
-/**
- * Build the attr patch that rejecting one pPrChange applies to a paragraph:
- * every in-scope key set to the stored previous value, or reset to `null`
- * when the stored old pPr does not carry it. Keys the record captured beyond
- * the scoped set (editor-created list suggestions snapshot list-rendering
- * bookkeeping attrs) merge through 1:1 so their pre-change values restore too.
- */
-export function paragraphRejectAttrPatch(
-  previousFormatting: ParagraphPropertySnapshot | null | undefined,
-  inheritedFormatting?: ParagraphFormatting,
-): AttrPatch {
-  const prev: ParagraphPropertySnapshot = previousFormatting ?? {};
-  const patch: AttrPatch = {};
-  for (const key of PPR_CHANGE_SCOPED_ATTR_KEYS) {
-    patch[key] = Object.hasOwn(prev, key) ? (prev[key] ?? null) : null;
-  }
-  if (!Object.hasOwn(prev, "alignment")) {
-    patch["alignment"] = inheritedFormatting?.alignment ?? null;
-  }
-  patch["alignmentFromStyle"] = inheritedFormatting?.alignment;
-  const directSpacing = paragraphSpacingFromFormatting(prev);
-  const inheritedSpacing = paragraphSpacingFromFormatting(inheritedFormatting);
-  Object.assign(
-    patch,
-    paragraphSpacingAttrPatch({ direct: directSpacing, inherited: inheritedSpacing }),
-  );
-  // Parser-shaped fallbacks for the two renamed attrs (attr-shaped records
-  // carrying `direction` / `_autospacingBase` already won above).
-  if (!Object.hasOwn(prev, "direction")) {
-    patch["direction"] = directionFromBidi(prev.bidi);
-  }
-  for (const [key, value] of Object.entries(prev)) {
-    if (
-      PPR_CHANGE_SCOPED_ATTR_KEY_SET.has(key) ||
-      isParagraphFormattingPropertyKey(key)
-    ) {
+/** Canonical accepted/rejected-view projection for a removed `w:pPrChange`. */
+export const projectParagraphPropertyRejection = ({
+  attrs,
+  previousFormatting,
+  context,
+}: ParagraphPropertyRejectionProjectionOptions): ParagraphPropertyProjection => {
+  const previous = previousFormatting ?? {};
+  const nextAttrs = { ...attrs };
+  for (const [key, value] of Object.entries(previous)) {
+    if (isParagraphFormattingPropertyKey(key) || isGovernedParagraphAttr(key)) {
       continue;
     }
-    patch[key] = value ?? null;
+    Reflect.set(nextAttrs, key, value ?? null);
   }
-  return patch;
-}
-
-/**
- * Rebuild the paragraph's `_originalFormatting` (the serializer's pPr source)
- * after a reject: the stored old pPr wholesale within CT_PPrBase scope, with
- * the paragraph-mark rPr fields (`runProperties`, `runInWithNext`) preserved
- * from the live original — a pPrChange cannot store them, so a reject must
- * not drop them.
- */
-export function paragraphRejectOriginalFormatting(
-  previousFormatting: ParagraphPropertySnapshot | null | undefined,
-  liveOriginal: unknown,
-): ParagraphFormatting | null {
-  const prev: ParagraphPropertySnapshot = previousFormatting ?? {};
-  const result: Partial<ParagraphFormatting> = {};
-  for (const key of PPR_CHANGE_SCOPED_FORMATTING_KEYS) {
-    const value = Object.hasOwn(prev, key) ? prev[key] : undefined;
-    if (value != null) {
-      Object.assign(result, { [key]: value });
-    }
-  }
-  const live = isRecord(liveOriginal) ? liveOriginal : {};
-  if (live["runProperties"] != null) {
-    Object.assign(result, { runProperties: live["runProperties"] });
-  }
-  if (live["runInWithNext"] != null) {
-    Object.assign(result, { runInWithNext: live["runInWithNext"] });
-  }
-  if (Object.keys(result).length === 0) {
-    return null;
-  }
-  // SAFETY: every key written above is a ParagraphFormatting key; values come
-  // from a stored ParagraphFormatting (or an attr-shaped snapshot whose
-  // overlapping keys share the same value shapes).
-  return result;
-}
+  return transitionParagraphProperties({
+    attrs: nextAttrs,
+    state: {
+      type: "update",
+      authored: {
+        type: "replace",
+        authoredPPr: authoredParagraphPropertiesFromFormatting(previous),
+      },
+      context: context === undefined ? { type: "preserve" } : { type: "replace", context },
+    },
+  });
+};
 
 /**
  * Rejected section properties: the stored old sectPr wholesale, preserving
@@ -481,8 +283,4 @@ function cellBordersToAttr(borders: NonNullable<TableCellFormatting["borders"]>)
     result.right = borders.right;
   }
   return result;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

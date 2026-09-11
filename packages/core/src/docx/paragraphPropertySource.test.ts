@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 
 import type { BlockContent, Document, Paragraph } from "../types/document";
 import { parseDocx } from "./parser";
-import { paragraphPropertySourceFingerprintFromParts } from "./paragraphPropertyDescriptor";
+import { paragraphPropertySourceFingerprintFromParts } from "@stll/docx-core/model";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
 import {
   assignAbsentParagraphPropertySource,

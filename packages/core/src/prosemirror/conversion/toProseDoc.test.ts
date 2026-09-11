@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { toFlowBlocks } from "../../layout-bridge/convert/toFlowBlocks";
 import { parseSettings } from "../../docx/settingsParser";
 import type { Document, ShadingProperties, TableCell, Theme } from "../../types/document";
+import { expectParagraphPropertyState } from "../paragraphPropertyState";
 import { fromProseDoc } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
 
@@ -104,8 +105,11 @@ describe("toProseDoc", () => {
     };
 
     const attrs = toProseDoc(document).firstChild?.attrs;
-    expect(attrs?.numPr).toEqual({ numId: 7 });
+    expect(attrs?.numPr).toEqual({ numId: 7, ilvl: 0 });
     expect(attrs?.numPrFromStyle).toBeNull();
+    expect(expectParagraphPropertyState(attrs?._paragraphPropertyState).authoredPPr.numPr).toEqual({
+      numId: 7,
+    });
   });
 
   test("keeps the final section start on the internal document node", () => {
@@ -1031,7 +1035,10 @@ describe("toProseDoc", () => {
       (mark) => mark.type.name === "runFormattingOverride",
     );
 
-    expect(paragraph?.attrs._originalFormatting.runProperties).toMatchObject({
+    expect(
+      expectParagraphPropertyState(paragraph?.attrs._paragraphPropertyState).context.paragraphMark
+        .authored.runProperties,
+    ).toMatchObject({
       bold: true,
       italic: true,
     });

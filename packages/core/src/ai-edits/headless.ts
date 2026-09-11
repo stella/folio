@@ -75,10 +75,7 @@ import type {
   NumberingDefinitions,
 } from "../types/document";
 import { deterministicHexId } from "../utils/hexId";
-import {
-  recreateProseNodeWithParagraphPropertySource,
-  transferProseParagraphPropertySource,
-} from "../docx/paragraphPropertySource";
+import { recreateProseNode } from "../prosemirror/recreateNode";
 import {
   applyFolioDocumentOperations,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -196,18 +193,17 @@ const ensureDeterministicParaIdsInDoc = (doc: PMNode): PMNode => {
             paraId = deterministicHexId(`${child.textContent}:${ordinal}:${salt}`);
           }
           seen.add(paraId);
-          next = recreateProseNodeWithParagraphPropertySource(child, {
+          next = recreateProseNode(child, {
             attrs: { ...child.attrs, paraId, idStability: "positional" },
           });
         }
         const paraId = next.attrs["paraId"];
         if (typeof paraId === "string") {
-          transferProseParagraphPropertySource(next, child, paraId);
         }
       } else if (child.childCount > 0) {
         const content = rewrite(child);
         if (content !== child.content) {
-          next = recreateProseNodeWithParagraphPropertySource(child, { content });
+          next = recreateProseNode(child, { content });
         }
       }
       if (next !== child) {
@@ -222,7 +218,7 @@ const ensureDeterministicParaIdsInDoc = (doc: PMNode): PMNode => {
   const content = rewrite(doc);
   return content === doc.content
     ? doc
-    : recreateProseNodeWithParagraphPropertySource(doc, { content });
+    : recreateProseNode(doc, { content });
 };
 
 /** Options for {@link FolioDocxReviewer.fromBuffer}. */

@@ -11,7 +11,11 @@
  */
 
 import { panic } from "better-result";
-import { DRAWING_RAW_XML_MODES } from "@stll/docx-core/model";
+import {
+  DRAWING_RAW_XML_MODES,
+  paragraphFormattingWithPropertySourceFingerprint,
+  paragraphPropertySourceFingerprintFromParts,
+} from "@stll/docx-core/model";
 import type { Node as PMNode, Mark } from "prosemirror-model";
 import { Fragment } from "prosemirror-model";
 
@@ -22,6 +26,7 @@ import {
   ParagraphPropertySourceValidationError,
   type ParagraphPropertySourceValidationCode,
   ParagraphPropertyStorySource,
+  type ParagraphPropertySourceToken,
   type ParagraphPropertyTemplateResolutionRegistry,
   type ParagraphPropertyTemplateStore,
   assignEditorCreatedParagraphPropertySource,
@@ -29,7 +34,6 @@ import {
   copyParagraphPropertySource,
   getDocumentParagraphPropertySourceContract,
   readProseDocumentParagraphPropertySourceContract,
-  recreateProseNodeWithParagraphPropertySource,
 } from "../../docx/paragraphPropertySource";
 import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import { parseShapeGeometryAdjustments } from "../shapeGeometryAdjustments";
@@ -123,13 +127,8 @@ import {
   expectTrackedChangeMarkAttrs,
   expectUnderlineMarkAttrs,
 } from "../attrs";
-import { autospacingMatchesBase, hasAutospacingBaseSide } from "../autospacingBase";
-import { directionToBidi } from "../paragraphDirection";
-import { directParagraphAlignment } from "../paragraphAlignment";
-import { directParagraphSpacing } from "../paragraphSpacing";
 import {
-  paragraphRejectAttrPatch,
-  paragraphRejectOriginalFormatting,
+  projectParagraphPropertyRejection,
   removeParagraphPropertyChanges,
 } from "../commands/propertyChangeScope";
 import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
@@ -159,8 +158,16 @@ import type {
   TextBoxAttrs,
 } from "../schema/nodes";
 import { assertValidProseMirrorDocument } from "../validation";
+import { recreateProseNode } from "../recreateNode";
 import { resolveNumberedRefFields } from "../numberedRefFields";
-import { readParagraphPropertyState } from "../paragraphPropertyState";
+import {
+  expectParagraphPropertyState,
+  readParagraphPropertyState,
+} from "../paragraphPropertyState";
+import {
+  createParagraphNodeFromProjection,
+  type ParagraphPropertyProjection,
+} from "../paragraphPropertyMutation";
 import { expectTextBoxAnchorAttrs } from "../textBoxAnchorAttrs";
 import { runShadingAttrsToShading, shadingToRunShadingAttrs } from "./runShadingMark";
 import { mergeTextFormatting } from "../../utils/textFormattingMerge";
@@ -286,6 +293,7 @@ const sourceValidationError = (
 type ValidatedParagraphPropertySources = {
   source?: ParagraphPropertyStorySource;
   templateRegistry?: ParagraphPropertyTemplateResolutionRegistry;
+  tokens: ReadonlyMap<PMNode, ParagraphPropertySourceToken>;
 };
 
 const validateParagraphPropertySourceStates = (
@@ -294,6 +302,7 @@ const validateParagraphPropertySourceStates = (
   templateStore?: ParagraphPropertyTemplateStore,
 ): ValidatedParagraphPropertySources => {
   const seen = new Set<string>();
+  const tokens = new Map<PMNode, ParagraphPropertySourceToken>();
   const templateHandles = [];
   pmDoc.descendants((node) => {
     if (node.type.name !== "paragraph") {
@@ -320,33 +329,32 @@ const validateParagraphPropertySourceStates = (
       templateHandles.push(state.value.handle);
       return false;
     }
-    const token = state.value.token;
+    const rawToken = state.value.token;
     if (!source) {
       throw sourceValidationError(
         "contract_mismatch",
         "An imported paragraph-property state requires its explicit source story.",
-        token.serialized,
+        rawToken,
       );
     }
-    if (!source.owns(token)) {
-      throw sourceValidationError(
-        "unknown_token",
-        "A paragraph-property token belongs to a different source document.",
-        token.serialized,
-      );
-    }
-    if (seen.has(token.serialized)) {
+    const token = source.readToken(rawToken);
+    if (seen.has(rawToken)) {
       throw sourceValidationError(
         "duplicate_token",
         "A paragraph-property token is attached to more than one paragraph.",
-        token.serialized,
+        rawToken,
       );
     }
-    seen.add(token.serialized);
+    seen.add(rawToken);
+    tokens.set(node, token);
     return false;
   });
   const templateRegistry = templateStore?.beginResolution(templateHandles);
-  return { ...(source ? { source } : {}), ...(templateRegistry ? { templateRegistry } : {}) };
+  return {
+    tokens,
+    ...(source ? { source } : {}),
+    ...(templateRegistry ? { templateRegistry } : {}),
+  };
 };
 
 const paragraphPropertySourceResolver = (
@@ -365,7 +373,11 @@ const paragraphPropertySourceResolver = (
         if (!sources.source) {
           panic("Validated paragraph-property token lost its source owner");
         }
-        sources.source.bindImportedParagraph(paragraph, state.value.token);
+        const token = sources.tokens.get(source);
+        if (!token) {
+          panic("Validated paragraph-property token lost its source-bound identity");
+        }
+        sources.source.bindImportedParagraph(paragraph, token);
         return;
       }
       case "transient-template":
@@ -567,7 +579,11 @@ function stripSuggestedInlineMarks(
  *
  * Reads go through the typed attr readers (adapter-boundary convention).
  */
-function stripSuggestedNodeAttrs(node: PMNode): Record<string, unknown> | null {
+type SuggestedNodePropertyProjection =
+  | { type: "attrs"; attrs: Record<string, unknown> }
+  | { type: "paragraph-properties"; projection: ParagraphPropertyProjection };
+
+function stripSuggestedNodeAttrs(node: PMNode): SuggestedNodePropertyProjection | null {
   const name = node.type.name;
   if (name === "paragraph") {
     const attrs = expectParagraphAttrs(node);
@@ -585,7 +601,7 @@ function stripSuggestedNodeAttrs(node: PMNode): Record<string, unknown> | null {
     if (removal.type === "unchanged") {
       return null;
     }
-    const nextAttrs: Record<string, unknown> = {
+    const nextAttrs = {
       ...node.attrs,
       _propertyChanges: removal.remaining.length > 0 ? removal.remaining : null,
     };
@@ -594,18 +610,20 @@ function stripSuggestedNodeAttrs(node: PMNode): Record<string, unknown> | null {
     // previous snapshot above, so removing the proposal cannot overwrite the
     // later authored state.
     if (removal.type === "restore-previous") {
-      Object.assign(nextAttrs, paragraphRejectAttrPatch(removal.previousFormatting));
-      nextAttrs["_originalFormatting"] = paragraphRejectOriginalFormatting(
-        removal.previousFormatting,
-        nextAttrs["_originalFormatting"],
-      );
+      return {
+        type: "paragraph-properties",
+        projection: projectParagraphPropertyRejection({
+          attrs: expectParagraphAttrs(node),
+          previousFormatting: removal.previousFormatting,
+        }),
+      };
     }
-    return nextAttrs;
+    return { type: "attrs", attrs: nextAttrs };
   }
   if (name === "tableRow") {
     const rowAttrs = expectTableRowAttrs(node);
     if (rowAttrs.trDel?.provenance === "suggested") {
-      return { ...rowAttrs, trDel: null };
+      return { type: "attrs", attrs: { ...rowAttrs, trDel: null } };
     }
     return null;
   }
@@ -613,7 +631,7 @@ function stripSuggestedNodeAttrs(node: PMNode): Record<string, unknown> | null {
     const cellAttrs = expectTableCellAttrs(node);
     const marker = cellAttrs.cellMarker;
     if (marker && marker.kind !== "merge" && marker.info.provenance === "suggested") {
-      return { ...cellAttrs, cellMarker: null };
+      return { type: "attrs", attrs: { ...cellAttrs, cellMarker: null } };
     }
   }
   return null;
@@ -702,8 +720,16 @@ function mapSuggestionStrippedNode(
     return node;
   }
   const content = Fragment.fromArray(children);
-  return recreateProseNodeWithParagraphPropertySource(node, {
-    ...(nextAttrs === null ? {} : { attrs: nextAttrs }),
+  if (nextAttrs?.type === "paragraph-properties") {
+    return createParagraphNodeFromProjection({
+      type: node.type,
+      projection: nextAttrs.projection,
+      content,
+      marks: node.marks,
+    });
+  }
+  return recreateProseNode(node, {
+    ...(nextAttrs === null ? {} : { attrs: nextAttrs.attrs }),
     content,
   });
 }
@@ -741,7 +767,7 @@ function materializeNumberedRefValues(doc: PMNode): PMNode {
     if (node.type.name === "field" || node.type.name === "structuredField") {
       const displayText = results.get(node);
       if (displayText !== undefined) {
-        return recreateProseNodeWithParagraphPropertySource(node, {
+        return recreateProseNode(node, {
           attrs: { ...node.attrs, displayText },
         });
       }
@@ -759,7 +785,7 @@ function materializeNumberedRefValues(doc: PMNode): PMNode {
       changed ||= mappedChild !== child;
     });
     return changed
-      ? recreateProseNodeWithParagraphPropertySource(node, {
+      ? recreateProseNode(node, {
           content: Fragment.fromArray(children),
         })
       : node;
@@ -1438,331 +1464,22 @@ const propertyChangeFromAttrs = (change: ParagraphPropertyChangeAttrs): Paragrap
   };
 };
 
-/**
- * Whether the paragraph's numbering still comes verbatim from its style —
- * serialize no direct `<w:numPr>` then. The moment a list command changes
- * `numPr` the values diverge and the numbering serializes as direct
- * formatting, so a stale provenance value can never swallow a user edit.
- */
-function isStyleSourcedNumPr(attrs: ParagraphAttrs): boolean {
-  return (
-    attrs.numPrFromStyle != null &&
-    attrs.numPr != null &&
-    numPrEqual(attrs.numPr, attrs.numPrFromStyle)
-  );
-}
-
-// OOXML boolean paragraph toggles are tri-state: `true` (on), `false` (explicit
-// off, serialized as `w:val="0"`), and `null`/`undefined` (inherit). A
-// truthiness check (`if (attrs.key)`) silently collapses explicit `false` into
-// "inherit", dropping the user's decision on save. Branch on `== null` so every
-// toggle routed through here preserves `false`. (Direction is handled
-// separately via the `direction` discriminated union, not this helper.)
-type BooleanToggleKey =
-  | "pageBreakBefore"
-  | "widowControl"
-  | "snapToGrid"
-  | "kinsoku"
-  | "overflowPunctuation"
-  | "suppressAutoHyphens";
-
-function assignBooleanToggle(
-  result: ParagraphFormatting,
-  attrs: ParagraphAttrs,
-  orig: ParagraphFormatting,
-  key: BooleanToggleKey,
-): void {
-  // Tri-state: `true`/`false` are explicit decisions to keep; `null`/`undefined`
-  // is "undecided" and clears the toggle. `exactOptionalPropertyTypes` forbids
-  // assigning `undefined`, and `no-dynamic-delete` forbids `delete result[key]`,
-  // so the undecided branch clears via `Reflect.deleteProperty`. This preserves
-  // an explicit `false` that a truthiness check would have dropped.
-  const value = attrs[key] ?? undefined;
-  if (value === (orig[key] ?? undefined)) {
-    return;
-  }
-  if (value === undefined) {
-    Reflect.deleteProperty(result, key);
-  } else {
-    result[key] = value;
-  }
-}
-
 function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting | undefined {
-  const directAlignment = directParagraphAlignment(attrs);
-  const directSpacing = directParagraphSpacing(attrs);
-  // If we have the original inline formatting from the DOCX, use it as a base
-  // for lossless round-trip. This preserves properties like contextualSpacing,
-  // widowControl, beforeAutospacing, runProperties, etc. that aren't tracked
-  // as individual PM attrs. It also avoids "inlining" style-inherited values
-  // (spacing, indentation, numPr) which would override style definitions
-  // and break rendering in Word/Pages/Google Docs.
-  //
-  // We then apply overrides for any properties the user may have changed
-  // via editor commands (alignment, list toggle, etc.).
-  const spaceBefore = Reflect.get(attrs, "spaceBefore");
-  const spaceAfter = Reflect.get(attrs, "spaceAfter");
-  const beforeHasAutospacingBase = hasAutospacingBaseSide(attrs._autospacingBase, "before");
-  const afterHasAutospacingBase = hasAutospacingBaseSide(attrs._autospacingBase, "after");
-  const beforeOriginalAutospacing = attrs._originalFormatting?.beforeAutospacing === true;
-  const afterOriginalAutospacing = attrs._originalFormatting?.afterAutospacing === true;
-  const beforeAutospacingEdited = beforeHasAutospacingBase
-    ? !autospacingMatchesBase(attrs._autospacingBase, "before", spaceBefore)
-    : beforeOriginalAutospacing && attrs._autospacingBase == null;
-  const afterAutospacingEdited = afterHasAutospacingBase
-    ? !autospacingMatchesBase(attrs._autospacingBase, "after", spaceAfter)
-    : afterOriginalAutospacing && attrs._autospacingBase == null;
-  const beforeIsInherited =
-    attrs.spacingFromDocDefaults?.before === true ||
-    attrs.spacingFromImplicitDefaultStyle?.before === true;
-  const afterIsInherited =
-    attrs.spacingFromDocDefaults?.after === true ||
-    attrs.spacingFromImplicitDefaultStyle?.after === true;
-  const shouldSerializeSpaceBefore =
-    typeof spaceBefore === "number" &&
-    (attrs.spacingExplicit?.before === true ||
-      beforeAutospacingEdited ||
-      (!beforeIsInherited && !beforeHasAutospacingBase));
-  const shouldSerializeSpaceAfter =
-    typeof spaceAfter === "number" &&
-    (attrs.spacingExplicit?.after === true ||
-      afterAutospacingEdited ||
-      (!afterIsInherited && !afterHasAutospacingBase));
-  const hasDirectLineSpacing = directSpacing?.lineSpacing !== undefined;
-  const hasDirectLineSpacingRule = directSpacing?.lineSpacingRule !== undefined;
-
-  if (attrs._originalFormatting) {
-    const orig = attrs._originalFormatting;
-    const result = { ...orig };
-
-    if (beforeAutospacingEdited) {
-      result.beforeAutospacing = false;
-      if (typeof spaceBefore === "number") {
-        result.spaceBefore = spaceBefore;
-      } else {
-        delete result.spaceBefore;
-      }
-    }
-    if (afterAutospacingEdited) {
-      result.afterAutospacing = false;
-      if (typeof spaceAfter === "number") {
-        result.spaceAfter = spaceAfter;
-      } else {
-        delete result.spaceAfter;
-      }
-    }
-
-    // A spacing command is a direct override even when the imported value was
-    // inherited from a style. Keep the explicit zero instead of dropping the
-    // side and letting the style value reappear on the next load.
-    if (orig.spaceBefore !== undefined || attrs.spacingExplicit?.before) {
-      if (typeof spaceBefore === "number") {
-        result.spaceBefore = spaceBefore;
-      } else {
-        Reflect.deleteProperty(result, "spaceBefore");
-      }
-    }
-    if (orig.spaceAfter !== undefined || attrs.spacingExplicit?.after) {
-      if (typeof spaceAfter === "number") {
-        result.spaceAfter = spaceAfter;
-      } else {
-        Reflect.deleteProperty(result, "spaceAfter");
-      }
-    }
-
-    const originalHasDirectLineSpacing = orig.lineSpacing !== undefined;
-    if (hasDirectLineSpacing || originalHasDirectLineSpacing) {
-      if (typeof attrs.lineSpacing === "number") {
-        result.lineSpacing = attrs.lineSpacing;
-      } else {
-        Reflect.deleteProperty(result, "lineSpacing");
-      }
-    }
-    const originalHasDirectLineSpacingRule = orig.lineSpacingRule !== undefined;
-    if (hasDirectLineSpacingRule || originalHasDirectLineSpacingRule) {
-      if (attrs.lineSpacingRule) {
-        result.lineSpacingRule = attrs.lineSpacingRule;
-      } else {
-        Reflect.deleteProperty(result, "lineSpacingRule");
-      }
-    }
-
-    // The effective value stays available for layout, but only the separately
-    // tracked direct value belongs in `w:pPr/w:jc`.
-    if (directAlignment === undefined) {
-      Reflect.deleteProperty(result, "alignment");
-    } else {
-      result.alignment = directAlignment;
-    }
-    if (isStyleSourcedNumPr(attrs)) {
-      // The numbering still comes verbatim from the paragraph style — don't
-      // materialize it as direct formatting (see ParagraphAttrs.numPrFromStyle).
-      delete result.numPr;
-      delete result.numPrFromStyle;
-    } else if (attrs.numPr !== orig.numPr && !numPrEqual(attrs.numPr, orig.numPr)) {
-      if (attrs.numPr) {
-        result.numPr = attrs.numPr;
-      } else {
-        delete result.numPr;
-      }
-      delete result.numPrFromStyle;
-    }
-    if (attrs.styleId !== (orig.styleId ?? undefined)) {
-      if (attrs.styleId) {
-        result.styleId = attrs.styleId;
-      } else {
-        delete result.styleId;
-      }
-    }
-    assignBooleanToggle(result, attrs, orig, "pageBreakBefore");
-    assignBooleanToggle(result, attrs, orig, "widowControl");
-    assignBooleanToggle(result, attrs, orig, "snapToGrid");
-    assignBooleanToggle(result, attrs, orig, "kinsoku");
-    assignBooleanToggle(result, attrs, orig, "overflowPunctuation");
-    assignBooleanToggle(result, attrs, orig, "suppressAutoHyphens");
-    if (attrs.spacingExplicit !== orig.spacingExplicit) {
-      if (attrs.spacingExplicit) {
-        result.spacingExplicit = attrs.spacingExplicit;
-      } else {
-        delete result.spacingExplicit;
-      }
-    }
-    // Resolve the paragraph direction to the OOXML `w:bidi` tri-state. An
-    // explicit `false` (forced LTR) is preserved so it serializes as
-    // `<w:bidi w:val="0"/>` and survives save/reload; `undefined` (undecided)
-    // clears it.
-    const bidi = directionToBidi(attrs.direction);
-    if (bidi !== (orig.bidi ?? undefined)) {
-      if (bidi === undefined) {
-        delete result.bidi;
-      } else {
-        result.bidi = bidi;
-      }
-    }
-
-    return result;
-  }
-
-  // Fallback: reconstruct formatting from individual attrs (e.g. for
-  // newly created paragraphs that don't have _originalFormatting)
-  const outlineLevel = Reflect.get(attrs, "outlineLevel");
-  const bidi = directionToBidi(attrs.direction);
-  const hasDirectAlignment = directAlignment !== undefined;
-  const hasFormatting =
-    hasDirectAlignment ||
-    shouldSerializeSpaceBefore ||
-    shouldSerializeSpaceAfter ||
-    beforeAutospacingEdited ||
-    afterAutospacingEdited ||
-    hasDirectLineSpacing ||
-    hasDirectLineSpacingRule ||
-    attrs.snapToGrid != null ||
-    attrs.indentLeft ||
-    attrs.indentRight ||
-    attrs.indentFirstLine ||
-    attrs.numPr ||
-    attrs.styleId ||
-    attrs.borders ||
-    attrs.shading ||
-    attrs.tabs ||
-    typeof outlineLevel === "number" ||
-    attrs.contextualSpacing ||
-    attrs.spacingExplicit ||
-    // Tri-state toggles: an explicit `false` is meaningful formatting and must
-    // keep the paragraph from short-circuiting to "no formatting".
-    bidi != null ||
-    attrs.pageBreakBefore != null ||
-    attrs.widowControl != null ||
-    attrs.kinsoku != null ||
-    attrs.overflowPunctuation != null ||
-    attrs.suppressAutoHyphens != null;
-
-  if (!hasFormatting) {
-    return undefined;
-  }
-
-  const f: ParagraphFormatting = {};
-  if (directAlignment !== undefined) {
-    f.alignment = directAlignment;
-  }
-  if (shouldSerializeSpaceBefore) {
-    f.spaceBefore = spaceBefore;
-  }
-  if (beforeAutospacingEdited) {
-    f.beforeAutospacing = false;
-  }
-  if (shouldSerializeSpaceAfter) {
-    f.spaceAfter = spaceAfter;
-  }
-  if (afterAutospacingEdited) {
-    f.afterAutospacing = false;
-  }
-  if (hasDirectLineSpacing && typeof attrs.lineSpacing === "number") {
-    f.lineSpacing = attrs.lineSpacing;
-  }
-  if (hasDirectLineSpacingRule && attrs.lineSpacingRule) {
-    f.lineSpacingRule = attrs.lineSpacingRule;
-  }
-  if (attrs.snapToGrid != null) {
-    f.snapToGrid = attrs.snapToGrid;
-  }
-  if (attrs.spacingExplicit) {
-    f.spacingExplicit = attrs.spacingExplicit;
-  }
-  if (attrs.indentLeft) {
-    f.indentLeft = attrs.indentLeft;
-  }
-  if (attrs.indentRight) {
-    f.indentRight = attrs.indentRight;
-  }
-  if (attrs.indentFirstLine) {
-    f.indentFirstLine = attrs.indentFirstLine;
-  }
-  if (attrs.hangingIndent) {
-    f.hangingIndent = attrs.hangingIndent;
-  }
-  if (attrs.numPr && !isStyleSourcedNumPr(attrs)) {
-    f.numPr = attrs.numPr;
-  }
-  if (attrs.styleId) {
-    f.styleId = attrs.styleId;
-  }
-  if (attrs.borders) {
-    f.borders = attrs.borders;
-  }
-  if (attrs.shading) {
-    f.shading = attrs.shading;
-  }
-  if (attrs.tabs) {
-    f.tabs = attrs.tabs;
-  }
-  if (typeof outlineLevel === "number") {
-    f.outlineLevel = outlineLevel;
-  }
-  if (attrs.contextualSpacing) {
-    f.contextualSpacing = attrs.contextualSpacing;
-  }
-  // Preserve explicit tri-state decisions, including `false` (which serializes
-  // as `w:val="0"`); only undecided `null` is omitted.
-  if (bidi != null) {
-    f.bidi = bidi;
-  }
-  if (attrs.pageBreakBefore != null) {
-    f.pageBreakBefore = attrs.pageBreakBefore;
-  }
-  if (attrs.widowControl != null) {
-    f.widowControl = attrs.widowControl;
-  }
-  if (attrs.kinsoku != null) {
-    f.kinsoku = attrs.kinsoku;
-  }
-  if (attrs.overflowPunctuation != null) {
-    f.overflowPunctuation = attrs.overflowPunctuation;
-  }
-  if (attrs.suppressAutoHyphens != null) {
-    f.suppressAutoHyphens = attrs.suppressAutoHyphens;
-  }
-  return f;
+  const state = expectParagraphPropertyState(attrs._paragraphPropertyState);
+  return paragraphFormattingWithPropertySourceFingerprint(
+    {
+      ...(state.context.numberingLevelIndent === null
+        ? {}
+        : { numberingLevelIndent: state.context.numberingLevelIndent }),
+      ...(state.context.numPrFromStyle === null
+        ? {}
+        : { numPrFromStyle: state.context.numPrFromStyle }),
+    },
+    paragraphPropertySourceFingerprintFromParts(
+      state.authoredPPr,
+      state.context.paragraphMark.authored,
+    ),
+  );
 }
 
 /**

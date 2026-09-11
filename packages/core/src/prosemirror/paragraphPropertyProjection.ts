@@ -5,12 +5,75 @@ import {
   PARAGRAPH_PROPERTY_PROJECTION,
   PARAGRAPH_STYLE_TRANSITION,
   type ParagraphPropertyDescriptor,
-} from "../docx/paragraphPropertyDescriptor";
-import type { ParagraphAttrs } from "./schema/nodes";
-
-export * from "../docx/paragraphPropertyDescriptor";
+} from "@stll/docx-core/model";
+import type { ParagraphAttrs, ParagraphPropertyProjectedAttrs } from "./schema/nodes";
 
 type ParagraphFormattingPropertyKey = keyof typeof PARAGRAPH_FORMATTING_PROPERTY_DESCRIPTOR;
+
+export const PARAGRAPH_PROPERTY_PROJECTED_ATTR_ROLE = {
+  state: "state",
+  effective: "effective",
+  provenance: "provenance",
+} as const;
+
+/** Total ownership decision for every attr derived from paragraph-property state. */
+export const PARAGRAPH_PROPERTY_PROJECTED_ATTR_DESCRIPTOR = {
+  _paragraphPropertyState: "state",
+  alignment: "effective",
+  alignmentFromStyle: "provenance",
+  kinsoku: "effective",
+  overflowPunctuation: "effective",
+  suppressAutoHyphens: "effective",
+  suppressLineNumbers: "effective",
+  spaceBefore: "effective",
+  spaceAfter: "effective",
+  lineSpacing: "effective",
+  lineSpacingRule: "effective",
+  lineSpacingExplicit: "provenance",
+  snapToGrid: "effective",
+  spacingExplicit: "provenance",
+  spacingFromDocDefaults: "provenance",
+  spacingFromImplicitDefaultStyle: "provenance",
+  indentLeft: "effective",
+  indentRight: "effective",
+  indentFirstLine: "effective",
+  hangingIndent: "effective",
+  _sourceIndentation: "provenance",
+  numPr: "effective",
+  numPrFromStyle: "provenance",
+  styleId: "effective",
+  borders: "effective",
+  shading: "effective",
+  tabs: "effective",
+  pageBreakBefore: "effective",
+  keepNext: "effective",
+  keepLines: "effective",
+  widowControl: "effective",
+  contextualSpacing: "effective",
+  defaultTextFormatting: "effective",
+  runInWithNext: "effective",
+  direction: "effective",
+  outlineLevel: "effective",
+  frame: "effective",
+  _autospacingBase: "provenance",
+} as const satisfies Record<
+  keyof ParagraphPropertyProjectedAttrs,
+  (typeof PARAGRAPH_PROPERTY_PROJECTED_ATTR_ROLE)[keyof typeof PARAGRAPH_PROPERTY_PROJECTED_ATTR_ROLE]
+>;
+
+// SAFETY: the total map establishes the exact projected-attr key union.
+export const PARAGRAPH_PROPERTY_PROJECTED_ATTR_KEY_LIST = Object.freeze(
+  Object.keys(PARAGRAPH_PROPERTY_PROJECTED_ATTR_DESCRIPTOR) as (
+    keyof ParagraphPropertyProjectedAttrs
+  )[],
+);
+const PARAGRAPH_PROPERTY_PROJECTED_ATTR_KEY_SET = new Set<string>(
+  PARAGRAPH_PROPERTY_PROJECTED_ATTR_KEY_LIST,
+);
+export const isParagraphPropertyProjectedAttr = (
+  key: string,
+): key is keyof ParagraphPropertyProjectedAttrs =>
+  PARAGRAPH_PROPERTY_PROJECTED_ATTR_KEY_SET.has(key);
 
 /**
  * Total ProseMirror projection of the representation-neutral formatting model.

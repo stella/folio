@@ -45,7 +45,7 @@ import {
   paragraphPropertySourceFingerprintFromParts,
   selectAuthoredParagraphProperties,
   selectParagraphMarkProperties,
-} from "./paragraphPropertyDescriptor";
+} from "@stll/docx-core/model";
 import {
   assignAbsentParagraphPropertySource,
   assignParagraphPropertySource,
