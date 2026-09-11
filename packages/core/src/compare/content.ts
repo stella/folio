@@ -1305,22 +1305,27 @@ const captureParagraphFormatting = (
   path: string,
   context: CaptureContext,
 ): Result<FolioContentParagraphFormatting, FolioContentComparisonError> => {
-  const record = captureKnownDataRecord(
-    input,
-    Object.values(FOLIO_CONTENT_PARAGRAPH_FORMATTING_FIELD_DESCRIPTORS).map(
-      ({ field }) => field,
-    ),
-    path,
-    context,
+  const fields = Object.values(FOLIO_CONTENT_PARAGRAPH_FORMATTING_FIELD_DESCRIPTORS).map(
+    ({ field }) => field,
   );
+  const record = captureKnownDataRecord(input, fields, path, context);
   if (record.isErr()) return Result.err(record.error);
+  if (!recordHasExactly(record.value, fields)) {
+    return Result.err(
+      invalidInput(
+        context.side,
+        path,
+        "Paragraph formatting requires both authored and effective property sets.",
+        context.blockIndex,
+      ),
+    );
+  }
   let effective = EMPTY_PROPERTY_SET;
   let authored = EMPTY_PROPERTY_SET;
   for (const descriptor of Object.values(
     FOLIO_CONTENT_PARAGRAPH_FORMATTING_FIELD_DESCRIPTORS,
   )) {
     const value = record.value.get(descriptor.field);
-    if (value === undefined) continue;
     const captured = capturePropertySet(value, `${path}.${descriptor.field}`, context);
     if (captured.isErr()) return Result.err(captured.error);
     if (descriptor.role === "effective-format") {

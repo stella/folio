@@ -10,7 +10,16 @@ export {
   type StyleEngineCacheStats,
   type StyleEngineOptions,
 } from "./styleEngine";
-export type {
-  ResolvedParagraphStyle,
-  TableCellParagraphSpacingOverlay,
-} from "../prosemirror/styles/styleResolver";
+export {
+  PARAGRAPH_FORMATTING_PROJECTION_DISPOSITIONS,
+  mergeTableParagraphPresentations,
+  projectTableParagraphPresentation,
+  resolveEffectiveParagraphPresentation,
+  type EffectiveParagraphPresentation,
+  type ParagraphFormattingProjectionDisposition,
+  type ParagraphPresentationUnsupportedProperty,
+  type ResolvedEffectiveParagraphPresentation,
+  type TableParagraphPresentationOverlay,
+  type TableParagraphPresentationProjection,
+} from "./paragraphPresentation";
+export type { ResolvedParagraphStyle } from "../prosemirror/styles/styleResolver";

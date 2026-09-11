@@ -386,6 +386,75 @@ describe("toProseDoc", () => {
     ]);
   });
 
+  test("imports direct presentation through the shared resolver without a styles part", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              formatting: {
+                afterAutospacing: true,
+                bidi: false,
+                contextualSpacing: true,
+                spaceAfter: 240,
+              },
+              content: [],
+            },
+          ],
+        },
+      },
+    };
+
+    const paragraph = toProseDoc(document).firstChild;
+
+    expect(paragraph?.attrs.contextualSpacing).toBe(true);
+    expect(paragraph?.attrs.direction).toEqual({ source: "manual", value: "ltr" });
+    expect(paragraph?.attrs._autospacingBase).toEqual({ after: 240 });
+  });
+
+  test("imports only the modeled paragraph layer from a conditional table style", () => {
+    const document: Document = {
+      package: {
+        styles: {
+          styles: [
+            {
+              styleId: "ClauseTable",
+              type: "table",
+              pPr: { alignment: "right", spaceBefore: 80 },
+              tblStylePr: [
+                {
+                  type: "firstRow",
+                  pPr: { alignment: "center", contextualSpacing: true, spaceBefore: 120 },
+                },
+              ],
+            },
+          ],
+        },
+        document: {
+          content: [
+            {
+              type: "table",
+              formatting: { styleId: "ClauseTable", look: { firstRow: true } },
+              rows: [
+                {
+                  cells: [{ content: [{ type: "paragraph", content: [] }] }],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const paragraph = toProseDoc(document, { styles: document.package.styles }).firstChild
+      ?.firstChild?.firstChild?.firstChild;
+
+    expect(paragraph?.attrs.spaceBefore).toBe(120);
+    expect(paragraph?.attrs.contextualSpacing).toBe(true);
+    expect(paragraph?.attrs.alignment).toBeNull();
+  });
+
   test("applies paragraph-mark defaults to otherwise unformatted visible text", () => {
     const document: Document = {
       package: {

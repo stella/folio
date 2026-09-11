@@ -128,9 +128,9 @@ export type FolioContentInputRun = {
 /** Caller paragraph presentation with authored provenance kept separate from inheritance. */
 export type FolioContentInputParagraphFormatting = {
   /** Fully resolved paragraph presentation, for renderers only. */
-  readonly effective?: FolioContentPropertyInput;
+  readonly effective: FolioContentPropertyInput;
   /** Authored paragraph properties only; inherited values stay out of this set. */
-  readonly authored?: FolioContentPropertyInput;
+  readonly authored: FolioContentPropertyInput;
 };
 
 /** Captured paragraph presentation whose two property sets are canonical and immutable. */
