@@ -63,6 +63,8 @@ export const COMPARE_VERIFICATION_CAUSES = Object.freeze([
   "alignment",
   "spacing",
   "inline-formatting",
+  /** A known semantic difference has no supported transport instruction. */
+  "unsupported",
   "whitespace",
   "text",
 ] as const);
@@ -82,7 +84,7 @@ export type CompareVerificationFailure = {
  * Whether the redline was proven to round-trip.
  *
  * `unverified` is only ever returned when the caller asked for it with
- * `onUnverified: "emit"`; the default refuses instead, because a redline that
+ * `mode: "bestEffort"`; the default refuses instead, because a redline that
  * reads plausibly and is wrong is worse than no redline.
  */
 export type CompareVerification =

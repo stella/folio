@@ -18,7 +18,7 @@ import JSZip from "jszip";
 import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
-import { projectTableGeometry } from "../ai-edits/table-geometry";
+import { projectTableGeometry } from "../internal/compare/table-geometry-program";
 import { buildBodySequenceDocx, type BodyItem, type TableRow } from "./__fixtures__/body-sequence";
 import { compareDocx } from "./compare";
 

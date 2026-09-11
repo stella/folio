@@ -127,7 +127,7 @@ export class FolioVersionComparisonLimitError extends TaggedError(
   "FolioVersionComparisonLimitError",
 )<{
   message: string;
-  input: "base" | "revised" | "result";
+  input: FolioContentComparisonLimitError["input"];
   limit: FolioContentComparisonLimit;
   maximum: number;
   actual: number;

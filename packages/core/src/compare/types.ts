@@ -7,11 +7,7 @@ import { TaggedError } from "better-result";
 
 import type { FolioDocumentStoryHandle, FolioNumberingLevel } from "../ai-edits/headless";
 import type { WordDiffGranularity } from "./text-diff";
-import type {
-  FolioAIBlockParagraphProperties,
-  FolioAIBlockTableLocation,
-  FolioAIEditSkippedOperation,
-} from "../ai-edits/types";
+import type { FolioAIBlockParagraphProperties, FolioAIBlockTableLocation } from "../ai-edits/types";
 import type { FolioContentInlineFormattingChange } from "./content-types";
 import type { FolioContentComparisonError } from "./content";
 import type {
@@ -33,16 +29,8 @@ export type CompareDocxOptions = {
    * fixed epoch.
    */
   timestamp: string;
-  /**
-   * What to do when the round-trip self-check cannot prove the result.
-   *
-   * `"refuse"` (default) returns a {@link CompareDocxRoundTripError}: a
-   * redline that reads plausibly and is wrong is worse than no redline.
-   * `"emit"` returns the redline anyway, with `verification` naming every
-   * invariant that did not hold, for a caller that would rather show its best
-   * attempt and say what is missing.
-   */
-  onUnverified?: "refuse" | "emit";
+  /** Strict refuses any unsupported or unverified difference; it is the default. */
+  mode?: "strict" | "bestEffort";
   /**
    * Token size a changed paragraph's redline is cut at: `"word"` (default)
    * marks whole words, `"character"` marks the changed letters inside one.
@@ -239,6 +227,24 @@ export const COMPARE_UNSUPPORTED_REASONS = Object.freeze([
   "story-missing-in-target",
   /** The story is present on both sides but carries no editable state. */
   "story-not-editable",
+  /** A modeled block property has no tracked-document encoding. */
+  "block-semantics",
+  /** The block changed structural container without a lossless relocation encoding. */
+  "container-change",
+  /** A zero-width inline structural boundary cannot be transported losslessly. */
+  "structural-boundary-change",
+  /** Resolved paragraph presentation changed without an authored property change. */
+  "effective-paragraph-formatting",
+  /** Resolved run presentation changed without an authored property change. */
+  "effective-inline-formatting",
+  /** A complete target table cannot be copied losslessly into the base package. */
+  "nonportable-table-template",
+  /** A table-column insertion carries content the column operation cannot preserve. */
+  "table-column-content",
+  /** A referenced numbering definition changed but has no tracked-change grammar. */
+  "numbering-definition",
+  /** A canonical event could not be resolved into a proved tracked-document instruction. */
+  "transport-preflight",
 ] as const);
 
 export type CompareUnsupportedReason = (typeof COMPARE_UNSUPPORTED_REASONS)[number];
@@ -247,20 +253,77 @@ export type CompareUnsupportedReason = (typeof COMPARE_UNSUPPORTED_REASONS)[numb
  * A package part the comparison did not cover. Reported rather than dropped so
  * a caller can tell "no differences" from "not looked at".
  */
-export type CompareUnsupportedPart = {
-  reason: CompareUnsupportedReason;
-  baseStory: FolioDocumentStoryHandle | null;
-  targetStory: FolioDocumentStoryHandle | null;
-};
+type CompareUnsupportedStoryReason = Extract<
+  CompareUnsupportedReason,
+  "story-missing-in-base" | "story-missing-in-target" | "story-not-editable"
+>;
+
+type CompareUnsupportedContentReason = Exclude<
+  CompareUnsupportedReason,
+  CompareUnsupportedStoryReason | "numbering-definition" | "transport-preflight"
+>;
+
+/** Every bounded preflight disposition for a canonical DOCX instruction. */
+export const COMPARE_DOCX_PREFLIGHT_REASONS = Object.freeze([
+  "missing-block",
+  "changed-block",
+  "source-expectation-mismatch",
+  "missing-anchor",
+  "pending-paragraph-change",
+  "pending-run-change",
+  "source-formatting-mismatch",
+  "unrepresentable-text-range",
+  "unrepresentable-paragraph-boundary",
+  "unrepresentable-table-geometry",
+  "unresolved-table-instruction",
+] as const);
+
+export type CompareDocxPreflightReason = (typeof COMPARE_DOCX_PREFLIGHT_REASONS)[number];
+
+export type CompareUnsupportedPart =
+  | {
+      readonly reason: CompareUnsupportedStoryReason;
+      readonly baseStory: FolioDocumentStoryHandle | null;
+      readonly targetStory: FolioDocumentStoryHandle | null;
+    }
+  | {
+      readonly reason: CompareUnsupportedContentReason;
+      readonly story: FolioDocumentStoryHandle;
+      readonly eventType:
+        | "modified"
+        | "formatting"
+        | "inserted"
+        | "deleted"
+        | "moved"
+        | "split"
+        | "merge"
+        | "tableReplacement"
+        | "structural";
+      readonly field?: string;
+      readonly baseBlockId?: string;
+      readonly targetBlockId?: string;
+      readonly tableIndex?: number;
+    }
+  | {
+      readonly reason: "numbering-definition";
+      readonly numId: number;
+      readonly level: number;
+    }
+  | {
+      readonly reason: "transport-preflight";
+      readonly story: FolioDocumentStoryHandle;
+      readonly instructionIndex: number;
+      readonly detail: CompareDocxPreflightReason;
+      readonly blockId?: string;
+    };
 
 export type CompareResult = {
   /** The base package carrying the generated tracked changes. */
   buffer: ArrayBuffer;
   changes: readonly CompareChange[];
   /**
-   * Whether the round trip was proven. Always `verified` unless the call asked
-   * for `onUnverified: "emit"`, which is the only way an unproven redline is
-   * returned at all.
+   * Whether the round trip was proven. Always `verified` in strict mode;
+   * best-effort mode may return an unverified but explicitly bounded result.
    */
   verification: CompareVerification;
   unsupported: readonly CompareUnsupportedPart[];
@@ -287,14 +350,19 @@ export class CompareDocxContentComparisonError extends TaggedError(
   cause: FolioContentComparisonError;
 }> {}
 
-/**
- * The applier refused at least one derived operation, so accepting the result
- * would not reproduce the target. Reported instead of returning a package that
- * silently under-represents the difference.
- */
+export const COMPARE_DOCX_EXECUTION_REASONS = Object.freeze([
+  "stale-preflight",
+  "invalid-revision-stamp",
+  "table-geometry-execution",
+] as const);
+
+export type CompareDocxExecutionReason = (typeof COMPARE_DOCX_EXECUTION_REASONS)[number];
+
+/** A preflighted story could not complete its atomic comparison transaction. */
 export class CompareDocxApplyError extends TaggedError("CompareDocxApplyError")<{
   message: string;
-  skipped: readonly FolioAIEditSkippedOperation[];
+  story: FolioDocumentStoryHandle;
+  reason: CompareDocxExecutionReason;
 }> {}
 
 /**
@@ -322,6 +390,12 @@ export class CompareDocxRoundTripError extends TaggedError("CompareDocxRoundTrip
 export class CompareDocxOperationLimitError extends TaggedError("CompareDocxOperationLimitError")<{
   message: string;
   limit: number;
+}> {}
+
+/** Strict mode found differences with no proved tracked-document lowering. */
+export class CompareDocxUnsupportedError extends TaggedError("CompareDocxUnsupportedError")<{
+  message: string;
+  unsupported: readonly CompareUnsupportedPart[];
 }> {}
 
 export const COMPARE_DOCX_LOWERING_REASONS = Object.freeze([
@@ -358,7 +432,7 @@ export class CompareDocxSerializeError extends TaggedError("CompareDocxSerialize
  * one", an inserted one means the break was added and rejecting it closes the
  * paragraph back over the next one, and a container's last paragraph has no
  * following one either way. Checked before the package is written, and fatal
- * under either `onUnverified` setting: there is no redline to emit when a
+ * in either comparison mode: there is no redline to emit when a
  * consumer refuses the file.
  */
 export class CompareDocxFinalParagraphMarkError extends TaggedError(
@@ -378,4 +452,5 @@ export type CompareDocxError =
   | CompareDocxParseError
   | CompareDocxRoundTripError
   | CompareDocxSerializeError
+  | CompareDocxUnsupportedError
   | InvalidCompareDocxOptionsError;

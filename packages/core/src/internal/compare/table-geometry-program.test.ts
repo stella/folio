@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, type Transaction } from "prosemirror-state";
 
-import { matchTableGeometry } from "../../ai-edits/table-geometry";
 import { folioStoryTables } from "../../ai-edits/snapshot";
 import { resolveAllChangesInHeadlessState } from "../../prosemirror/commands/comments";
 import { schema } from "../../prosemirror/schema";
@@ -370,39 +369,6 @@ describe("table geometry refusal boundaries", () => {
       scope: "table",
       property: "column-widths",
     });
-  });
-
-  test("the existing composition throws before mutating an unsupported transaction", () => {
-    const base = documentWith(
-      table([
-        row([
-          cell("same", {
-            noWrap: true,
-          }),
-        ]),
-      ]),
-    );
-    const target = documentWith(
-      table([
-        row([
-          cell("same"),
-        ]),
-      ]),
-    );
-    const state = EditorState.create({ schema, doc: base });
-    const transaction = state.tr;
-
-    expect(() =>
-      matchTableGeometry({
-        tr: transaction,
-        baseTables: folioStoryTables(base),
-        targetTables: targetTablesOf(target),
-        pairings: [pairing()],
-        revision: REVISION,
-      }),
-    ).toThrow("The paired table geometry cannot be represented exactly.");
-    expect(transaction.steps).toHaveLength(0);
-    expect(transaction.doc.eq(base)).toBe(true);
   });
 
   test("bounds pairings, visited nodes, changes, and captured payload", () => {

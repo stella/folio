@@ -21,7 +21,7 @@ import type {
   FolioContentPropertyValue,
   FolioContentTableLocation,
 } from "./content-types";
-import type { DocxAuthoredRun } from "./docx-operation-plan";
+import type { DocxAuthoredRun } from "../internal/compare/docx-program";
 
 type DocxBlockFieldDisposition =
   | "identity"
@@ -502,8 +502,8 @@ export const docxBlockToContentInput = (block: FolioAIBlock): FolioContentInputB
   blockProperties: blockProperties(block),
   paragraphFormatting: {
     authored: paragraphProperties(block),
-    // The current DOCX snapshot exposes authored paragraph properties. It does
-    // not claim style-resolved values as authored presentation.
+    // Resolved paragraph presentation is supplied by the story-level DOCX
+    // comparison snapshot rather than guessed from stale block attributes.
     effective: [],
   },
   runs: block.previewRuns?.map(previewRunToContentRun) ?? [],

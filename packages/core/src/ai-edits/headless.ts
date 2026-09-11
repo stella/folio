@@ -39,6 +39,13 @@ import { parseDocx } from "../docx/parser";
 import { repackDocx } from "../docx/rezip";
 import { pluginsForHeadlessRevisionResolution } from "../internal/headlessRevisionResolutionGuard";
 import {
+  executePreflightedDocxComparison,
+  preflightDocxComparisonProgram,
+  type DocxComparisonExecutionResult,
+  type PreparedDocxComparison,
+} from "../internal/compare/docx-executor";
+import type { DocxComparisonProgram } from "../internal/compare/docx-program";
+import {
   type TrackedSectionEndpointRemoval,
   withTrackedSectionEndpointRemoval,
 } from "../internal/sectionEndpointResolution";
@@ -75,7 +82,6 @@ import type {
   NumberingDefinitions,
 } from "../types/document";
 import { deterministicHexId } from "../utils/hexId";
-import type { DocxComparisonOperationBatch } from "../compare/docx-operation-plan";
 import {
   recreateProseNodeWithParagraphPropertySource,
   transferProseParagraphPropertySource,
@@ -88,12 +94,7 @@ import {
   type FolioDocumentOperationUndoHandle,
   type FolioDocumentOperationUndoResult,
 } from "../document-operations";
-import {
-  applyFolioComparisonOperations,
-  type FolioAIEditApplyOutcome,
-  type FolioRevisionStamp,
-  type FolioWordDiffOptions,
-} from "./apply";
+import type { FolioRevisionStamp, FolioWordDiffOptions } from "./apply";
 import { buildAnnotatedBlockText } from "./clean-text";
 import {
   getCommentAnchorsFromDoc,
@@ -111,7 +112,6 @@ import {
   sourceDocumentOf,
   type FolioStoryTable,
 } from "./snapshot";
-import { matchTableGeometry, type TableGeometryPairing } from "./table-geometry";
 import type { FolioTableTemplates } from "./table-template";
 import type {
   FolioAIBlock,
@@ -307,16 +307,6 @@ export type FolioReadReviewedStoryOptions = {
   view?: FolioReviewedView;
 };
 
-/** What {@link FolioDocxReviewer.matchStoryTableGeometry} needs to move a table's properties. */
-export type FolioMatchStoryTableGeometryOptions = {
-  story?: FolioEditableDocumentStoryHandle;
-  /** The other document's tables, by the index its snapshot numbers them with. */
-  targetTables: ReadonlyMap<number, PMNode>;
-  /** Base cells and the target cells they were aligned with. */
-  pairings: readonly TableGeometryPairing[];
-  revisionStamp: FolioRevisionStamp;
-};
-
 export type FolioResolveReviewedStoryOptions = {
   story?: FolioEditableDocumentStoryHandle;
   view: FolioResolvedReviewedView;
@@ -463,18 +453,24 @@ type FolioDocxComparisonProjection = {
   };
 };
 
-type FolioDocxComparisonApplyOptions = {
+type FolioPrepareDocxComparisonOptions = {
   readonly story: FolioEditableDocumentStoryHandle;
   readonly snapshot: FolioAIEditSnapshot;
+  readonly targetTables: ReadonlyMap<number, PMNode>;
+  readonly program: DocxComparisonProgram;
+};
+
+type FolioCommitDocxComparisonOptions = {
+  readonly story: FolioEditableDocumentStoryHandle;
+  readonly prepared: PreparedDocxComparison;
   readonly revisionStamp: FolioRevisionStamp;
-  readonly operationBatch: DocxComparisonOperationBatch;
-  readonly tableTemplates?: FolioTableTemplates;
 };
 
 type FolioDocxComparisonAccess = {
   projectStories: (mode: FolioDocxComparisonProjectionMode) => FolioDocxComparisonProjection;
   snapshotReviewedStory: (options?: FolioReadReviewedStoryOptions) => FolioAIEditSnapshot | null;
-  applyOperations: (options: FolioDocxComparisonApplyOptions) => FolioAIEditApplyOutcome;
+  prepareStoryProgram: (options: FolioPrepareDocxComparisonOptions) => PreparedDocxComparison;
+  commitStoryProgram: (options: FolioCommitDocxComparisonOptions) => DocxComparisonExecutionResult;
 };
 
 const comparisonAccessByReviewer = new WeakMap<FolioDocxReviewer, FolioDocxComparisonAccess>();
@@ -702,7 +698,8 @@ export class FolioDocxReviewer {
       Object.freeze({
         projectStories: (mode) => this.projectComparisonStoriesInternal(mode),
         snapshotReviewedStory: (options) => this.snapshotReviewedStoryInternal(options),
-        applyOperations: (options) => this.applyComparisonOperationsInternal(options),
+        prepareStoryProgram: (options) => this.prepareComparisonStoryInternal(options),
+        commitStoryProgram: (options) => this.commitComparisonStoryInternal(options),
       }),
     );
   }
@@ -869,6 +866,34 @@ export class FolioDocxReviewer {
     return { stories, revisions: { highestId, present } };
   }
 
+  private prepareComparisonStoryInternal({
+    story,
+    snapshot,
+    targetTables,
+    program,
+  }: FolioPrepareDocxComparisonOptions): PreparedDocxComparison {
+    const state = this.requireEditableStoryState(story);
+    return preflightDocxComparisonProgram({ state, snapshot, targetTables, program });
+  }
+
+  private commitComparisonStoryInternal({
+    story,
+    prepared,
+    revisionStamp,
+  }: FolioCommitDocxComparisonOptions): DocxComparisonExecutionResult {
+    const state = this.requireEditableStoryState(story);
+    const result = executePreflightedDocxComparison({
+      state,
+      prepared,
+      revisionStamp,
+      author: this.author,
+    });
+    if (result.status === "executed" && result.receipt.transaction.docChanged) {
+      this.setEditableStoryState(story, state.apply(result.receipt.transaction));
+    }
+    return result;
+  }
+
   /**
    * One story's tables, in the document order {@link snapshotStory} numbers
    * them with, read through a reviewed view.
@@ -891,45 +916,6 @@ export class FolioDocxReviewer {
     }
     const sourceState = this.getEditableStoryState(story);
     return sourceState ? folioStoryTables(resolveReviewedState(sourceState, view).doc) : [];
-  }
-
-  /**
-   * Move the paired tables' own properties onto this story's tables, as
-   * tracked property changes.
-   *
-   * `w:tblPr`, `w:trPr` and `w:tcPr` belong to no block, so no block operation
-   * can carry them: a table that stayed in place while its widths, shading,
-   * borders or header row changed reads as unedited. Each difference is
-   * written as the target's property set plus a `w:tblPrChange` /
-   * `w:trPrChange` / `w:tcPrChange` holding the previous one, which is what a
-   * reject restores. A set that already agrees produces no revision.
-   */
-  matchStoryTableGeometry({
-    story = MAIN_STORY,
-    targetTables,
-    pairings,
-    revisionStamp,
-  }: FolioMatchStoryTableGeometryOptions): number {
-    const state = this.getEditableStoryState(story);
-    if (!state || pairings.length === 0) {
-      return revisionStamp.idSeed;
-    }
-    const transaction = state.tr;
-    const { nextRevisionId } = matchTableGeometry({
-      tr: transaction,
-      baseTables: folioStoryTables(state.doc),
-      targetTables,
-      pairings,
-      revision: {
-        author: this.author,
-        date: revisionStamp.date,
-        idSeed: revisionStamp.idSeed,
-      },
-    });
-    if (transaction.docChanged) {
-      this.setEditableStoryState(story, state.apply(transaction));
-    }
-    return nextRevisionId;
   }
 
   /** Read one story through an immutable reviewed-view projection. */
@@ -1041,33 +1027,6 @@ export class FolioDocxReviewer {
       ...(tableTemplates !== undefined && { tableTemplates }),
       createUndoEntry: true,
     });
-  }
-
-  private applyComparisonOperationsInternal({
-    story,
-    snapshot,
-    revisionStamp,
-    operationBatch,
-    tableTemplates,
-  }: FolioDocxComparisonApplyOptions): FolioAIEditApplyOutcome {
-    const beforeState = this.requireEditableStoryState(story);
-    const view = {
-      state: beforeState,
-      dispatch: (transaction: Transaction) => {
-        view.state = view.state.apply(transaction);
-      },
-    };
-    const result = applyFolioComparisonOperations({
-      view,
-      snapshot,
-      mode: "tracked-changes",
-      author: this.author,
-      revisionStamp,
-      comparisonOperationBatch: operationBatch,
-      ...(tableTemplates !== undefined && { tableTemplates }),
-    });
-    this.setEditableStoryState(story, view.state);
-    return result;
   }
 
   private applyDocumentOperationsInternal({
