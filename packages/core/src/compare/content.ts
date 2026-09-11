@@ -75,6 +75,18 @@ export const FOLIO_CONTENT_COMPARISON_LIMITS = Object.freeze({
 
 export type FolioContentComparisonLimit = keyof typeof FOLIO_CONTENT_COMPARISON_LIMITS;
 
+const DENSE_ARRAY_CAPTURE_LIMITS = Object.freeze({
+  blocksPerSnapshot: FOLIO_CONTENT_COMPARISON_LIMITS.blocksPerSnapshot,
+  runsPerBlock: FOLIO_CONTENT_COMPARISON_LIMITS.runsPerBlock,
+  structuralBoundariesPerBlock:
+    FOLIO_CONTENT_COMPARISON_LIMITS.structuralBoundariesPerBlock,
+  containerDepth: FOLIO_CONTENT_COMPARISON_LIMITS.containerDepth,
+  propertyEntriesPerContainer:
+    FOLIO_CONTENT_COMPARISON_LIMITS.propertyEntriesPerContainer,
+} as const);
+
+type DenseArrayCaptureLimit = keyof typeof DENSE_ARRAY_CAPTURE_LIMITS;
+
 /** Words a one-sided block needs before it may be classified as a move. */
 const MOVE_MINIMUM_WORD_COUNT = 3;
 
@@ -596,6 +608,10 @@ export class FolioContentComparisonWorkSession {
         }),
       );
     }
+    // Capture itself performs bounded work. Charge the attempt before touching
+    // caller data so repeated invalid or near-limit stories cannot bypass the
+    // aggregate session ceiling.
+    this.#resourceUsage.stories = storyCount;
     const registry = createCaptureRegistry();
     const capturedBase = captureContentSnapshot(base, "base", registry);
     if (capturedBase.isErr()) return Result.err(capturedBase.error);
@@ -607,8 +623,6 @@ export class FolioContentComparisonWorkSession {
       capturedRevised.value.usage,
     );
     if (aggregateError) return Result.err(aggregateError);
-    this.#resourceUsage.stories = storyCount;
-
     const captured = Object.freeze({
       base: capturedBase.value.snapshot,
       revised: capturedRevised.value.snapshot,
@@ -836,7 +850,8 @@ const captureArrayIdentity = (
  * Validation and all later reads use the returned descriptor values, never
  * the caller object. Unrelated fields are deliberately ignored: JavaScript has
  * no bounded key-enumeration primitive, so rejecting arbitrary extra keys
- * would let an adversarial object force unbounded work before a size check.
+ * would let an adversarial object force unbounded result allocation before a
+ * size check.
  */
 const captureKnownDataRecord = <const Field extends string>(
   input: unknown,
@@ -884,24 +899,22 @@ const captureBoundedDenseArray = (
   input: unknown,
   path: string,
   location: CaptureContext,
-  maximum: {
-    readonly limit: FolioContentComparisonLimit;
-    readonly value: number;
-  },
+  limit: DenseArrayCaptureLimit,
 ): Result<
   readonly unknown[],
   InvalidFolioContentComparisonError | FolioContentComparisonLimitError
 > => {
   const { side, blockIndex, registry } = location;
+  const maximum = DENSE_ARRAY_CAPTURE_LIMITS[limit];
   if (typeof input === "object" && input !== null) {
     const retained = registry.denseArrays.get(input);
     if (retained) {
-      if (retained.length > maximum.value) {
+      if (retained.length > maximum) {
         return Result.err(
           limitExceeded({
             input: side,
-            limit: maximum.limit,
-            maximum: maximum.value,
+            limit,
+            maximum,
             actual: retained.length,
             ...(blockIndex !== undefined && { blockIndex }),
             field: path,
@@ -933,12 +946,12 @@ const captureBoundedDenseArray = (
     );
   }
   const length: number = lengthDescriptor.value;
-  if (length > maximum.value) {
+  if (length > maximum) {
     return Result.err(
       limitExceeded({
         input: side,
-        limit: maximum.limit,
-        maximum: maximum.value,
+        limit,
+        maximum,
         actual: length,
         ...(blockIndex !== undefined && { blockIndex }),
         field: path,
@@ -1173,10 +1186,12 @@ const capturePropertyValue = (
         ),
       );
     }
-    const items = captureBoundedDenseArray(record.value.get("items"), `${path}.items`, context, {
-      limit: "propertyEntriesPerContainer",
-      value: FOLIO_CONTENT_COMPARISON_LIMITS.propertyEntriesPerContainer,
-    });
+    const items = captureBoundedDenseArray(
+      record.value.get("items"),
+      `${path}.items`,
+      context,
+      "propertyEntriesPerContainer",
+    );
     if (items.isErr()) return Result.err(items.error);
     const capturedItems: FolioContentPropertyValue[] = [];
     for (let index = 0; index < items.value.length; index++) {
@@ -1227,10 +1242,12 @@ const capturePropertySet = (
   context: CaptureContext,
   depth = 0,
 ): Result<FolioContentPropertySet, FolioContentComparisonError> => {
-  const entries = captureBoundedDenseArray(input, path, context, {
-    limit: "propertyEntriesPerContainer",
-    value: FOLIO_CONTENT_COMPARISON_LIMITS.propertyEntriesPerContainer,
-  });
+  const entries = captureBoundedDenseArray(
+    input,
+    path,
+    context,
+    "propertyEntriesPerContainer",
+  );
   if (entries.isErr()) return Result.err(entries.error);
   const keys = new Set<string>();
   const captured: { key: string; value: FolioContentPropertyValue }[] = [];
@@ -1447,10 +1464,7 @@ const captureContainerPath = (
   path: string,
   context: CaptureContext,
 ): Result<NonNullable<FolioContentBlock["containerPath"]>, FolioContentComparisonError> => {
-  const entries = captureBoundedDenseArray(input, path, context, {
-    limit: "containerDepth",
-    value: FOLIO_CONTENT_COMPARISON_LIMITS.containerDepth,
-  });
+  const entries = captureBoundedDenseArray(input, path, context, "containerDepth");
   if (entries.isErr()) return Result.err(entries.error);
   context.usage.containerEntries += entries.value.length;
   if (context.usage.containerEntries > FOLIO_CONTENT_COMPARISON_LIMITS.containerEntriesPerSnapshot) {
@@ -1508,10 +1522,12 @@ const captureStructuralBoundaries = (
   path: string,
   context: CaptureContext,
 ): Result<NonNullable<FolioContentBlock["structuralBoundaries"]>, FolioContentComparisonError> => {
-  const entries = captureBoundedDenseArray(input, path, context, {
-    limit: "structuralBoundariesPerBlock",
-    value: FOLIO_CONTENT_COMPARISON_LIMITS.structuralBoundariesPerBlock,
-  });
+  const entries = captureBoundedDenseArray(
+    input,
+    path,
+    context,
+    "structuralBoundariesPerBlock",
+  );
   if (entries.isErr()) return Result.err(entries.error);
   context.usage.structuralBoundaries += entries.value.length;
   if (
@@ -1580,10 +1596,7 @@ const captureRuns = (
   path: string,
   context: CaptureContext,
 ): Result<NonNullable<FolioContentBlock["runs"]>, FolioContentComparisonError> => {
-  const entries = captureBoundedDenseArray(input, path, context, {
-    limit: "runsPerBlock",
-    value: FOLIO_CONTENT_COMPARISON_LIMITS.runsPerBlock,
-  });
+  const entries = captureBoundedDenseArray(input, path, context, "runsPerBlock");
   if (entries.isErr()) return Result.err(entries.error);
   context.usage.runs += entries.value.length;
   if (context.usage.runs > FOLIO_CONTENT_COMPARISON_LIMITS.runsPerSnapshot) {
@@ -1836,10 +1849,12 @@ const captureValidatedSnapshotInto = (
     snapshotContext,
   );
   if (record.isErr()) return record.error;
-  const blocks = captureBoundedDenseArray(record.value.get("blocks"), `${side}.blocks`, snapshotContext, {
-    limit: "blocksPerSnapshot",
-    value: FOLIO_CONTENT_COMPARISON_LIMITS.blocksPerSnapshot,
-  });
+  const blocks = captureBoundedDenseArray(
+    record.value.get("blocks"),
+    `${side}.blocks`,
+    snapshotContext,
+    "blocksPerSnapshot",
+  );
   if (blocks.isErr()) return blocks.error;
   const inputBlocks = blocks.value;
 
@@ -3441,8 +3456,9 @@ const executeCapturedContentComparison = ({
  * Compare two representation-neutral ordered content snapshots.
  *
  * Folio captures only the fields declared by the public input types. Additional
- * caller metadata is ignored rather than enumerated, which keeps the capture
- * boundary bounded even when inputs are proxy-backed.
+ * caller metadata is ignored rather than enumerated, bounding the properties
+ * Folio requests. As with every synchronous JavaScript API, caller-defined
+ * proxy traps remain caller-executed code.
  */
 export const compareContent = (
   options: CompareContentOptions,

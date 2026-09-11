@@ -195,6 +195,28 @@ describe("neutral comparison resource boundaries", () => {
     });
   });
 
+  test("charges failed capture attempts against the aggregate story ceiling", () => {
+    const workSession = createContentComparisonWorkSession();
+    const empty = { blocks: [] } as const;
+    for (let index = 0; index < FOLIO_CONTENT_COMPARISON_LIMITS.storiesPerSession; index++) {
+      const rejected = workSession.captureComparison({ base: null, revised: empty });
+      expect(rejected.isErr()).toBe(true);
+      if (!rejected.isErr()) continue;
+      expect(rejected.error).toBeInstanceOf(InvalidFolioContentComparisonError);
+    }
+
+    const exceeded = workSession.captureComparison({ base: null, revised: empty });
+    expect(exceeded.isErr()).toBe(true);
+    if (!exceeded.isErr()) return;
+    expect(exceeded.error).toBeInstanceOf(FolioContentComparisonLimitError);
+    expect(exceeded.error).toMatchObject({
+      input: "session",
+      limit: "storiesPerSession",
+      maximum: FOLIO_CONTENT_COMPARISON_LIMITS.storiesPerSession,
+      actual: FOLIO_CONTENT_COMPARISON_LIMITS.storiesPerSession + 1,
+    });
+  });
+
   test("charges aggregate input usage across captured story pairs atomically", () => {
     const text = "x".repeat(1_000_000);
     const story = (prefix: string, count: number) => ({

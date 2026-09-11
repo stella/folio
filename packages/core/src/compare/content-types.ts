@@ -49,17 +49,26 @@ export type FolioContentPropertyInput = readonly {
 export const FOLIO_CONTENT_PROPERTY_ENTRY_FIELD_DESCRIPTORS = Object.freeze({
   key: Object.freeze({ field: "key" }),
   value: Object.freeze({ field: "value" }),
-} as const);
+} as const satisfies SelfDescribingFieldMap<
+  FolioContentPropertyInput[number],
+  Record<never, never>
+>);
 
 export const FOLIO_CONTENT_PROPERTY_ARRAY_FIELD_DESCRIPTORS = Object.freeze({
   type: Object.freeze({ field: "type" }),
   items: Object.freeze({ field: "items" }),
-} as const);
+} as const satisfies SelfDescribingFieldMap<
+  Extract<FolioContentPropertyInputValue, { readonly type: "array" }>,
+  Record<never, never>
+>);
 
 export const FOLIO_CONTENT_PROPERTY_OBJECT_FIELD_DESCRIPTORS = Object.freeze({
   type: Object.freeze({ field: "type" }),
   entries: Object.freeze({ field: "entries" }),
-} as const);
+} as const satisfies SelfDescribingFieldMap<
+  Extract<FolioContentPropertyInputValue, { readonly type: "object" }>,
+  Record<never, never>
+>);
 
 /** Canonical owned property value used by comparison results. */
 export type FolioContentPropertyValue =
