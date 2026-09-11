@@ -625,10 +625,24 @@ describe("neutral comparison resource boundaries", () => {
         throw new Error("oversized blocks must not be traversed");
       },
     });
+    let oversizedOwnKeys = 0;
+    let oversizedIndexDescriptors = 0;
+    const oversizedBlocksProxy = new Proxy(oversizedBlocks, {
+      ownKeys: (target) => {
+        oversizedOwnKeys++;
+        return Reflect.ownKeys(target);
+      },
+      getOwnPropertyDescriptor: (target, field) => {
+        if (field === "0") oversizedIndexDescriptors++;
+        return Reflect.getOwnPropertyDescriptor(target, field);
+      },
+    });
     expectLimit(
-      compareContent({ base: { blocks: oversizedBlocks }, revised: { blocks: [] } }),
+      compareContent({ base: { blocks: oversizedBlocksProxy }, revised: { blocks: [] } }),
       { input: "base", limit: "blocksPerSnapshot" },
     );
+    expect(oversizedOwnKeys).toBe(0);
+    expect(oversizedIndexDescriptors).toBe(0);
 
     const oversizedRuns = new Array<FolioContentInputRun>(
       FOLIO_CONTENT_COMPARISON_LIMITS.runsPerBlock + 1,
@@ -738,6 +752,8 @@ describe("neutral comparison resource boundaries", () => {
     const blocksTarget = [blockProxy];
     let arrayOwnKeys = 0;
     let arrayValueReads = 0;
+    let arrayLengthDescriptors = 0;
+    let arrayIndexDescriptors = 0;
     const blocksProxy = new Proxy(blocksTarget, {
       get: () => {
         arrayValueReads++;
@@ -746,6 +762,11 @@ describe("neutral comparison resource boundaries", () => {
       ownKeys: (target) => {
         arrayOwnKeys++;
         return Reflect.ownKeys(target);
+      },
+      getOwnPropertyDescriptor: (target, field) => {
+        if (field === "length") arrayLengthDescriptors++;
+        if (field === "0") arrayIndexDescriptors++;
+        return Reflect.getOwnPropertyDescriptor(target, field);
       },
     });
 
@@ -760,9 +781,11 @@ describe("neutral comparison resource boundaries", () => {
     if (event?.type !== "unchanged") return;
     expect(event.relation.base.block.text).toBe("Before");
     expect(event.relation.revised.block.text).toBe("Before");
-    expect(blockOwnKeys).toBe(1);
+    expect(blockOwnKeys).toBe(0);
     expect(blockTextDescriptors).toBe(1);
-    expect(arrayOwnKeys).toBe(1);
+    expect(arrayOwnKeys).toBe(0);
+    expect(arrayLengthDescriptors).toBe(1);
+    expect(arrayIndexDescriptors).toBe(1);
     expect(blockValueReads).toBe(0);
     expect(arrayValueReads).toBe(0);
     expect(prototypeReads).toBe(0);
@@ -778,7 +801,92 @@ describe("neutral comparison resource boundaries", () => {
     expect(result.isOk()).toBe(true);
   });
 
-  test("rejects misspelled, hidden, symbol, and accessor fields at every record boundary", () => {
+  test("rejects missing required fields and accessors at every record boundary", () => {
+    const records = [
+      { path: [] as const, required: ["base", "revised"] },
+      { path: ["base"] as const, required: ["blocks"] },
+      {
+        path: ["base", "blocks", 0] as const,
+        required: ["identity", "kind", "text"],
+      },
+      { path: ["base", "blocks", 0, "identity"] as const, required: ["type", "id"] },
+      {
+        path: ["base", "blocks", 0, "table"] as const,
+        required: [
+          "outerTableIdentity",
+          "tableIdentity",
+          "rowIdentity",
+          "cellIdentity",
+          "outerTableIndex",
+          "tableIndex",
+          "rowIndex",
+          "cellIndex",
+          "gridColumnIndex",
+          "columnSpan",
+          "rowSpan",
+          "paragraphIndex",
+        ],
+      },
+      {
+        path: ["base", "blocks", 0, "containerPath", 0] as const,
+        required: ["kind", "identity"],
+      },
+      { path: ["base", "blocks", 0, "runs", 0] as const, required: ["text"] },
+      {
+        path: ["base", "blocks", 0, "structuralBoundaries", 0] as const,
+        required: ["type", "offset"],
+      },
+      {
+        path: ["base", "blocks", 0, "blockProperties", 0] as const,
+        required: ["key", "value"],
+      },
+      {
+        path: ["base", "blocks", 0, "blockProperties", 0, "value"] as const,
+        required: ["type", "items"],
+      },
+      {
+        path: ["base", "blocks", 0, "blockProperties", 1, "value"] as const,
+        required: ["type", "entries"],
+      },
+      {
+        path: ["base", "blocks", 0, "blockProperties", 1, "value", "entries", 0] as const,
+        required: ["key", "value"],
+      },
+    ];
+
+    for (const { path, required } of records) {
+      for (const field of required) {
+        const input = richComparisonInput();
+        const target = objectAtPath(input, path);
+        const descriptor = Object.getOwnPropertyDescriptor(target, field);
+        if (!descriptor) throw new Error(`Fixture field ${field} has no descriptor.`);
+        Reflect.deleteProperty(target, field);
+        Object.defineProperty(target, `${field}Typo`, descriptor);
+        expectInvalidComparisonInput(input);
+      }
+
+      const fields = Reflect.ownKeys(objectAtPath(richComparisonInput(), path)).filter(
+        (key): key is string => typeof key === "string",
+      );
+      for (const field of fields) {
+        const input = richComparisonInput();
+        const target = objectAtPath(input, path);
+        let getterCalls = 0;
+        Object.defineProperty(target, field, {
+          configurable: true,
+          enumerable: true,
+          get: () => {
+            getterCalls++;
+            throw new Error("comparison validation must not invoke accessors");
+          },
+        });
+        expectInvalidComparisonInput(input);
+        expect(getterCalls).toBe(0);
+      }
+    }
+  });
+
+  test("ignores unrelated record fields without enumerating arbitrary keys", () => {
     const recordPaths = [
       [] as const,
       ["base"] as const,
@@ -795,19 +903,6 @@ describe("neutral comparison resource boundaries", () => {
     ];
 
     for (const path of recordPaths) {
-      const fields = Reflect.ownKeys(objectAtPath(richComparisonInput(), path)).filter(
-        (key): key is string => typeof key === "string",
-      );
-      for (const field of fields) {
-        const input = richComparisonInput();
-        const target = objectAtPath(input, path);
-        const descriptor = Object.getOwnPropertyDescriptor(target, field);
-        if (!descriptor) throw new Error(`Fixture field ${field} has no descriptor.`);
-        Reflect.deleteProperty(target, field);
-        Object.defineProperty(target, `${field}Typo`, descriptor);
-        expectInvalidComparisonInput(input);
-      }
-
       for (const extra of ["hidden", "symbol"] as const) {
         const input = richComparisonInput();
         const target = objectAtPath(input, path);
@@ -816,28 +911,12 @@ describe("neutral comparison resource boundaries", () => {
         } else {
           Object.defineProperty(target, Symbol("unexpected"), { value: true });
         }
-        expectInvalidComparisonInput(input);
+        expect(compareContent(input).isOk()).toBe(true);
       }
-
-      const input = richComparisonInput();
-      const target = objectAtPath(input, path);
-      const field = fields.at(0);
-      if (!field) throw new Error("A record-boundary fixture must contain one field.");
-      let getterCalls = 0;
-      Object.defineProperty(target, field, {
-        configurable: true,
-        enumerable: true,
-        get: () => {
-          getterCalls++;
-          throw new Error("comparison validation must not invoke accessors");
-        },
-      });
-      expectInvalidComparisonInput(input);
-      expect(getterCalls).toBe(0);
     }
   });
 
-  test("rejects holes, accessors, symbols, and non-index fields on every input array", () => {
+  test("rejects holes and accessors on every input array", () => {
     const arrayPaths = [
       ["base", "blocks"] as const,
       ["base", "blocks", 0, "runs"] as const,
@@ -849,7 +928,7 @@ describe("neutral comparison resource boundaries", () => {
     ];
 
     for (const path of arrayPaths) {
-      for (const mutation of ["hole", "accessor", "symbol", "non-index"] as const) {
+      for (const mutation of ["hole", "accessor"] as const) {
         const input = richComparisonInput();
         const target = objectAtPath(input, path);
         let getterCalls = 0;
@@ -867,12 +946,6 @@ describe("neutral comparison resource boundaries", () => {
               },
             });
             break;
-          case "symbol":
-            Object.defineProperty(target, Symbol("unexpected"), { value: true });
-            break;
-          case "non-index":
-            Object.defineProperty(target, "unexpected", { value: true });
-            break;
           default: {
             const unreachable: never = mutation;
             throw new Error(`Unhandled mutation ${unreachable}`);
@@ -882,6 +955,45 @@ describe("neutral comparison resource boundaries", () => {
         expect(getterCalls).toBe(0);
       }
     }
+  });
+
+  test("ignores unrelated array fields without enumerating arbitrary keys", () => {
+    const arrayPaths = [
+      ["base", "blocks"] as const,
+      ["base", "blocks", 0, "runs"] as const,
+      ["base", "blocks", 0, "containerPath"] as const,
+      ["base", "blocks", 0, "structuralBoundaries"] as const,
+      ["base", "blocks", 0, "blockProperties"] as const,
+      ["base", "blocks", 0, "blockProperties", 0, "value", "items"] as const,
+      ["base", "blocks", 0, "blockProperties", 1, "value", "entries"] as const,
+    ];
+
+    for (const path of arrayPaths) {
+      for (const extra of ["symbol", "non-index"] as const) {
+        const input = richComparisonInput();
+        const target = objectAtPath(input, path);
+        if (extra === "symbol") {
+          Object.defineProperty(target, Symbol("unexpected"), { value: true });
+        } else {
+          Object.defineProperty(target, "unexpected", { value: true });
+        }
+        expect(compareContent(input).isOk()).toBe(true);
+      }
+    }
+  });
+
+  test("contains revoked proxy classification inside the typed input boundary", () => {
+    const revocable = Proxy.revocable({}, {});
+    revocable.revoke();
+    const input = { base: { blocks: [] }, revised: { blocks: [] } };
+    Reflect.set(input, "base", revocable.proxy);
+
+    const result = compareContent(input);
+
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) return;
+    expect(result.error).toBeInstanceOf(InvalidFolioContentComparisonError);
+    expect(result.error).toMatchObject({ input: "base", field: "base" });
   });
 
   test("canonicalizes property ordering and negative zero without losing explicit null", () => {

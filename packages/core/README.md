@@ -78,7 +78,7 @@ serializing them to another format. Map durable source anchors to stable block
 IDs and include structural ancestry when blocks live in containers:
 
 ```ts
-import { compareContent, type FolioContentBlock } from "@stll/folio-core";
+import { compareContent, type FolioContentInputBlock } from "@stll/folio-core";
 
 type SourceBlock = {
   anchorId: string;
@@ -87,21 +87,20 @@ type SourceBlock = {
   sectionId: string;
 };
 
-type ComparableSourceBlock = FolioContentBlock<SourceBlock["type"]> & {
-  source: SourceBlock;
-};
-
 const toFolioBlocks = (blocks: readonly SourceBlock[]) =>
   blocks.map(
     (source) =>
       ({
-        id: source.anchorId,
-        idStability: "stable",
+        identity: { type: "authoritative", id: source.anchorId },
         kind: source.type,
         text: source.text,
-        containerPath: [{ kind: "section", id: source.sectionId }],
-        source,
-      }) satisfies ComparableSourceBlock,
+        containerPath: [
+          {
+            kind: "section",
+            identity: { type: "authoritative", id: source.sectionId },
+          },
+        ],
+      }) satisfies FolioContentInputBlock<SourceBlock["type"]>,
   );
 
 const result = compareContent({
@@ -110,23 +109,17 @@ const result = compareContent({
 });
 if (result.isErr()) throw result.error;
 
-for (const event of result.value.events) {
-  renderComparisonEvent(event);
-  const revisedSource = event.revisedBlocks.at(0)?.source;
-  if (revisedSource) persistSourceAnchor(revisedSource.anchorId);
-}
-
-const rejectedBlocks = result.value.events.flatMap(({ baseBlocks }) => baseBlocks);
-const acceptedBlocks = result.value.events.flatMap(({ revisedBlocks }) => revisedBlocks);
+for (const event of result.value.events) renderComparisonEvent(event);
 ```
 
-Events retain the caller's complete block subtype, including custom metadata,
-and are already in full-document render order. Modified and edited-move segments
-use UTF-16 offsets compatible with JavaScript string slicing; move halves share
-a `moveId`, and table row or column events reference their grouped entry in
-`structuralChanges`. `FOLIO_CONTENT_COMPARISON_LIMITS` publishes the block,
-text, attribute, container, run, and result ceilings. Input ceilings are
-checked before alignment; the result ceiling returns the same typed
+Events contain an owned canonical projection of the declared input fields and
+are already in full-document render order. Additional caller metadata is not
+enumerated; use the returned stable identity to look it up in the source model.
+Modified and edited-move segments use UTF-16 offsets compatible with JavaScript
+string slicing; move halves share one `move` object, and every table row or
+column event references its shared `change`. `FOLIO_CONTENT_COMPARISON_LIMITS`
+publishes the block, text, attribute, container, run, and result ceilings. Input
+ceilings are checked before alignment; the result ceiling returns the same typed
 `FolioContentComparisonLimitError` while constructing the ordered stream.
 
 ## Native DOCX redlines

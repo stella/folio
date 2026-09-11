@@ -490,7 +490,7 @@ const stableAnchors = (): { base: TestBlock[]; revised: TestBlock[] } => ({
 });
 
 describe("representation-neutral comparison stream", () => {
-  test("rejects consumer metadata outside canonical property sets", () => {
+  test("ignores consumer metadata outside canonical property sets", () => {
     const base = {
       ...contentBlock({ id: "clause", text: "Original clause" }),
       sourceAnchor: { id: "source-clause", ordinal: 4 },
@@ -500,10 +500,12 @@ describe("representation-neutral comparison stream", () => {
       base: { blocks: [base] },
       revised: { blocks: [] },
     });
-    expect(result.isErr()).toBe(true);
-    if (!result.isErr()) return;
-    expect(result.error).toBeInstanceOf(InvalidFolioContentComparisonError);
-    expect(result.error).toMatchObject({ input: "base", blockIndex: 0, field: "blocks[0]" });
+    expect(result.isOk()).toBe(true);
+    if (!result.isOk()) return;
+    const event = result.value.events.at(0);
+    expect(event?.type).toBe("deleted");
+    if (event?.type !== "deleted") return;
+    expect(Reflect.has(event.block, "sourceAnchor")).toBe(false);
   });
 
   test("equal content and presentation produce only unchanged events", () => {
@@ -2308,47 +2310,25 @@ describe("identity semantics and input boundaries", () => {
     }
   });
 
-  test("malformed runtime metadata is rejected instead of treated as absent", () => {
-    const invalidStyle = contentBlock({ id: "style", text: "Text" });
-    Reflect.set(invalidStyle, "styleId", 42);
-    const invalidLabel = contentBlock({ id: "label", text: "Text" });
-    Reflect.set(invalidLabel, "displayLabel", false);
-    const invalidSpacing = contentBlock({ id: "spacing", text: "Text" });
-    Reflect.set(invalidSpacing, "directSpacing", "120");
-    const invalidDirectFormatting = contentBlock({
+  test("unrecognized runtime metadata cannot masquerade as declared formatting", () => {
+    const base = contentBlock({
       id: "formatting",
       text: "Text",
       runs: [{ text: "Text" }],
     });
-    const run = invalidDirectFormatting.runs?.[0];
+    Reflect.set(base, "styleId", 42);
+    Reflect.set(base, "displayLabel", false);
+    Reflect.set(base, "directSpacing", "120");
+    const run = base.runs.at(0);
     if (!run) {
       throw new Error("The malformed-formatting fixture must contain one preview run.");
     }
     Reflect.set(run, "directFormatting", "bold");
-    const invalidTable = contentBlock({ id: "table", text: "Text" });
-    Reflect.set(invalidTable, "table", null);
-    const cases = [
-      { block: invalidStyle, field: "blocks[0]" },
-      { block: invalidLabel, field: "blocks[0]" },
-      { block: invalidSpacing, field: "blocks[0]" },
-      {
-        block: invalidDirectFormatting,
-        field: "blocks[0].runs[0]",
-      },
-      { block: invalidTable, field: "blocks[0].table" },
-    ];
+    const revised = contentBlock({ id: "formatting", text: "Text", runs: [{ text: "Text" }] });
 
-    for (const { block, field } of cases) {
-      const result = compareContent({
-        base: { blocks: [block] },
-        revised: { blocks: [] },
-      });
-      if (!result.isErr()) {
-        throw new Error(`Expected malformed ${field} to return a comparison error.`);
-      }
-      expect(result.error).toBeInstanceOf(InvalidFolioContentComparisonError);
-      expect(result.error).toMatchObject({ input: "base", blockIndex: 0, field });
-    }
+    const comparison = successfulComparison({ base: [base], revised: [revised] });
+
+    expect(eventTypes(comparison)).toEqual(["unchanged"]);
   });
 
   test("an unsupported runtime granularity returns an option error", () => {

@@ -1,12 +1,29 @@
 import { describe, expect, test } from "bun:test";
 
 import { compareContent } from "./content";
-import type { FolioContentInputBlock } from "./content-types";
+import type {
+  FolioContentIdentitySemantics,
+  FolioContentInputBlock,
+} from "./content-types";
 
-const block = (id: string, text: string): FolioContentInputBlock => ({
-  identity: { type: "authoritative", id },
+type BlockOptions = {
+  readonly containerId?: string;
+  readonly identityType?: FolioContentIdentitySemantics;
+};
+
+const block = (
+  id: string,
+  text: string,
+  { containerId, identityType = "authoritative" }: BlockOptions = {},
+): FolioContentInputBlock => ({
+  identity: { type: identityType, id },
   kind: "paragraph",
   text,
+  ...(containerId !== undefined && {
+    containerPath: [
+      { kind: "schedule", identity: { type: "authoritative", id: containerId } },
+    ],
+  }),
 });
 
 const tableBlock = ({
@@ -185,5 +202,84 @@ describe("neutral move scope", () => {
         blocks: [{ identity: { id: "inserted-row" } }],
       },
     });
+  });
+
+  test.each([
+    {
+      label: "exact text",
+      revisedText: "alpha beta gamma delta epsilon",
+    },
+    {
+      label: "edited text",
+      revisedText: "alpha beta gamma delta zeta",
+    },
+  ])(
+    "a heuristic $label match cannot cross conflicting authoritative containers",
+    ({ revisedText }) => {
+      const baseCandidate = block("base-candidate", "alpha beta gamma delta epsilon", {
+        containerId: "schedule-a",
+        identityType: "positional",
+      });
+      const revisedCandidate = block("revised-candidate", revisedText, {
+        containerId: "schedule-b",
+        identityType: "positional",
+      });
+      const anchors = [
+        block("anchor-a", "First durable anchor text"),
+        block("anchor-b", "Second durable anchor text"),
+        block("anchor-c", "Third durable anchor text"),
+      ];
+
+      const comparison = successfulComparison(
+        [baseCandidate, ...anchors],
+        [...anchors, revisedCandidate],
+      );
+
+      expect(comparison.events.some(({ type }) => type === "movedFrom")).toBe(false);
+      expect(comparison.events.some(({ type }) => type === "movedTo")).toBe(false);
+      expect(comparison.events).toContainEqual(
+        expect.objectContaining({
+          type: "deleted",
+          block: expect.objectContaining({ identity: baseCandidate.identity }),
+        }),
+      );
+      expect(comparison.events).toContainEqual(
+        expect.objectContaining({
+          type: "inserted",
+          block: expect.objectContaining({ identity: revisedCandidate.identity }),
+        }),
+      );
+    },
+  );
+
+  test("the same authoritative block identity may explicitly relocate across containers", () => {
+    const baseCandidate = block("relocated", "alpha beta gamma delta epsilon", {
+      containerId: "schedule-a",
+    });
+    const revisedCandidate = block("relocated", "alpha beta gamma delta zeta", {
+      containerId: "schedule-b",
+    });
+    const anchors = [
+      block("anchor-a", "First durable anchor text"),
+      block("anchor-b", "Second durable anchor text"),
+      block("anchor-c", "Third durable anchor text"),
+    ];
+
+    const comparison = successfulComparison(
+      [baseCandidate, ...anchors],
+      [...anchors, revisedCandidate],
+    );
+    const movedFrom = comparison.events.find(({ type }) => type === "movedFrom");
+    const movedTo = comparison.events.find(({ type }) => type === "movedTo");
+
+    expect(movedFrom?.type === "movedFrom" ? movedFrom.move.relation.base.block : null).toMatchObject(
+      { identity: baseCandidate.identity, containerPath: baseCandidate.containerPath },
+    );
+    expect(movedTo?.type === "movedTo" ? movedTo.move.relation.revised.block : null).toMatchObject(
+      { identity: revisedCandidate.identity, containerPath: revisedCandidate.containerPath },
+    );
+    expect(movedTo?.type === "movedTo" ? movedTo.move : null).toBe(
+      movedFrom?.type === "movedFrom" ? movedFrom.move : null,
+    );
   });
 });

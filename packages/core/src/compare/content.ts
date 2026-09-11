@@ -755,15 +755,18 @@ const isFiniteNumber = (value: unknown): value is number =>
 const IDENTITY_SEMANTICS = new Set(FOLIO_CONTENT_IDENTITY_SEMANTICS);
 
 type CapturedDataRecord = ReadonlyMap<string, unknown>;
-type CapturedPropertyDescriptors = ReturnType<typeof Object.getOwnPropertyDescriptors>;
+type CapturedOwnProperty = Readonly<PropertyDescriptor> | null;
+type CapturedPropertyDescriptors = Map<PropertyKey, CapturedOwnProperty>;
 type CaptureRegistry = {
   readonly descriptors: WeakMap<object, CapturedPropertyDescriptors>;
-  readonly denseArrays: WeakMap<readonly unknown[], readonly unknown[]>;
+  readonly denseArrays: WeakMap<object, readonly unknown[]>;
+  readonly arrayIdentity: WeakMap<object, boolean>;
 };
 
 const createCaptureRegistry = (): CaptureRegistry => ({
   descriptors: new WeakMap(),
   denseArrays: new WeakMap(),
+  arrayIdentity: new WeakMap(),
 });
 
 type CaptureLocation = {
@@ -772,15 +775,23 @@ type CaptureLocation = {
   readonly registry?: CaptureRegistry;
 };
 
-const capturePropertyDescriptors = (
+type CaptureContext = {
+  side: "base" | "revised";
+  blockIndex?: number;
+  usage: SnapshotResourceUsage;
+  registry: CaptureRegistry;
+};
+
+const captureOwnProperty = (
   input: object,
+  key: PropertyKey,
   path: string,
   { side, blockIndex, registry }: CaptureLocation,
-): Result<CapturedPropertyDescriptors, InvalidFolioContentComparisonError> => {
-  const retained = registry?.descriptors.get(input);
-  if (retained) return Result.ok(retained);
+): Result<CapturedOwnProperty, InvalidFolioContentComparisonError> => {
+  let retained = registry?.descriptors.get(input);
+  if (retained?.has(key)) return Result.ok(retained.get(key) ?? null);
   const captured = Result.try({
-    try: () => Object.getOwnPropertyDescriptors(input),
+    try: () => Object.getOwnPropertyDescriptor(input, key),
     catch: () =>
       invalidInput(
         side,
@@ -789,44 +800,71 @@ const capturePropertyDescriptors = (
         blockIndex,
       ),
   });
-  if (captured.isOk()) registry?.descriptors.set(input, captured.value);
+  if (captured.isErr()) return Result.err(captured.error);
+  const descriptor = captured.value === undefined ? null : Object.freeze(captured.value);
+  if (registry) {
+    retained ??= new Map();
+    retained.set(key, descriptor);
+    registry.descriptors.set(input, retained);
+  }
+  return Result.ok(descriptor);
+};
+
+const captureArrayIdentity = (
+  input: object,
+  path: string,
+  { side, blockIndex, registry }: CaptureLocation,
+): Result<boolean, InvalidFolioContentComparisonError> => {
+  const retained = registry?.arrayIdentity;
+  if (retained?.has(input)) return Result.ok(retained.get(input) ?? false);
+  const captured = Result.try({
+    try: () => Array.isArray(input),
+    catch: () =>
+      invalidInput(
+        side,
+        path,
+        "Content comparison values must expose a stable array identity.",
+        blockIndex,
+      ),
+  });
+  if (captured.isOk()) retained?.set(input, captured.value);
   return captured;
 };
 
 /**
- * Capture an object once at the untrusted-input boundary. Validation and all
- * later reads use the returned descriptor values, never the caller object.
+ * Capture the known fields of an object once at the untrusted-input boundary.
+ * Validation and all later reads use the returned descriptor values, never
+ * the caller object. Unrelated fields are deliberately ignored: JavaScript has
+ * no bounded key-enumeration primitive, so rejecting arbitrary extra keys
+ * would let an adversarial object force unbounded work before a size check.
  */
-const captureExactDataRecord = (
+const captureKnownDataRecord = (
   input: unknown,
   fields: readonly string[],
   path: string,
   location: CaptureLocation,
 ): Result<CapturedDataRecord, InvalidFolioContentComparisonError> => {
   const { side, blockIndex } = location;
-  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+  if (typeof input !== "object" || input === null) {
     return Result.err(
       invalidInput(side, path, "Content comparison records must be objects.", blockIndex),
     );
   }
-  const capturedDescriptors = capturePropertyDescriptors(input, path, location);
-  if (capturedDescriptors.isErr()) return Result.err(capturedDescriptors.error);
+  const arrayIdentity = captureArrayIdentity(input, path, location);
+  if (arrayIdentity.isErr()) return Result.err(arrayIdentity.error);
+  if (arrayIdentity.value) {
+    return Result.err(
+      invalidInput(side, path, "Content comparison records must be objects.", blockIndex),
+    );
+  }
 
-  const allowed = new Set(fields);
   const values = new Map<string, unknown>();
-  for (const key of Reflect.ownKeys(capturedDescriptors.value)) {
-    if (typeof key !== "string" || !allowed.has(key)) {
-      return Result.err(
-        invalidInput(
-          side,
-          path,
-          "Content comparison records cannot contain unknown fields or symbols.",
-          blockIndex,
-        ),
-      );
-    }
-    const descriptor = capturedDescriptors.value[key];
-    if (!descriptor || !("value" in descriptor)) {
+  for (const key of fields) {
+    const captured = captureOwnProperty(input, key, `${path}.${key}`, location);
+    if (captured.isErr()) return Result.err(captured.error);
+    const descriptor = captured.value;
+    if (descriptor === null) continue;
+    if (!("value" in descriptor)) {
       return Result.err(
         invalidInput(
           side,
@@ -841,12 +879,12 @@ const captureExactDataRecord = (
   return Result.ok(values);
 };
 
-/** Capture one dense array from one descriptor snapshot. */
-const captureExactDenseArray = (
+/** Capture one dense array after checking its declared length against the cap. */
+const captureBoundedDenseArray = (
   input: unknown,
   path: string,
-  location: CaptureLocation,
-  maximum?: {
+  location: CaptureContext,
+  maximum: {
     readonly limit: FolioContentComparisonLimit;
     readonly value: number;
   },
@@ -855,33 +893,35 @@ const captureExactDenseArray = (
   InvalidFolioContentComparisonError | FolioContentComparisonLimitError
 > => {
   const { side, blockIndex, registry } = location;
-  if (!Array.isArray(input)) {
+  if (typeof input === "object" && input !== null) {
+    const retained = registry.denseArrays.get(input);
+    if (retained) {
+      if (retained.length > maximum.value) {
+        return Result.err(
+          limitExceeded({
+            input: side,
+            limit: maximum.limit,
+            maximum: maximum.value,
+            actual: retained.length,
+            ...(blockIndex !== undefined && { blockIndex }),
+            field: path,
+          }),
+        );
+      }
+      return Result.ok(retained);
+    }
+  }
+  if (typeof input !== "object" || input === null) {
     return Result.err(invalidInput(side, path, "Content comparison value must be an array.", blockIndex));
   }
-  const retained = registry?.denseArrays.get(input);
-  if (retained) {
-    if (maximum && retained.length > maximum.value) {
-      if (side === "options") {
-        return panic("An options array cannot consume a snapshot resource limit");
-      }
-      return Result.err(
-        limitExceeded({
-          input: side,
-          limit: maximum.limit,
-          maximum: maximum.value,
-          actual: retained.length,
-          ...(blockIndex !== undefined && { blockIndex }),
-          field: path,
-        }),
-      );
-    }
-    return Result.ok(retained);
+  const arrayIdentity = captureArrayIdentity(input, path, location);
+  if (arrayIdentity.isErr()) return Result.err(arrayIdentity.error);
+  if (!arrayIdentity.value) {
+    return Result.err(invalidInput(side, path, "Content comparison value must be an array.", blockIndex));
   }
-  const capturedDescriptors = capturePropertyDescriptors(input, path, location);
-  if (capturedDescriptors.isErr()) return Result.err(capturedDescriptors.error);
-
-  const descriptors = capturedDescriptors.value;
-  const lengthDescriptor = descriptors.length;
+  const capturedLength = captureOwnProperty(input, "length", `${path}.length`, location);
+  if (capturedLength.isErr()) return Result.err(capturedLength.error);
+  const lengthDescriptor = capturedLength.value;
   if (
     !lengthDescriptor ||
     !("value" in lengthDescriptor) ||
@@ -893,10 +933,7 @@ const captureExactDenseArray = (
     );
   }
   const length: number = lengthDescriptor.value;
-  if (maximum && length > maximum.value) {
-    if (side === "options") {
-      return panic("An options array cannot consume a snapshot resource limit");
-    }
+  if (length > maximum.value) {
     return Result.err(
       limitExceeded({
         input: side,
@@ -908,32 +945,12 @@ const captureExactDenseArray = (
       }),
     );
   }
-  const keys = Reflect.ownKeys(descriptors);
-  if (keys.length !== length + 1) {
-    return Result.err(
-      invalidInput(
-        side,
-        path,
-        "Content comparison arrays must be dense and cannot contain extra fields or symbols.",
-        blockIndex,
-      ),
-    );
-  }
-  const values: unknown[] = [];
-  for (const key of keys) {
-    if (key === "length") continue;
-    if (typeof key !== "string") {
-      return Result.err(
-        invalidInput(side, path, "Content comparison arrays cannot contain symbol fields.", blockIndex),
-      );
-    }
-    const index = Number(key);
-    if (!Number.isSafeInteger(index) || index < 0 || index >= length || String(index) !== key) {
-      return Result.err(
-        invalidInput(side, path, "Content comparison arrays cannot contain non-index fields.", blockIndex),
-      );
-    }
-    const descriptor = descriptors[key];
+  const values = new Array<unknown>(length);
+  for (let index = 0; index < length; index++) {
+    const key = String(index);
+    const captured = captureOwnProperty(input, key, `${path}[${key}]`, location);
+    if (captured.isErr()) return Result.err(captured.error);
+    const descriptor = captured.value;
     if (!descriptor || !("value" in descriptor)) {
       return Result.err(
         invalidInput(
@@ -947,7 +964,7 @@ const captureExactDenseArray = (
     values[index] = descriptor.value;
   }
   const captured = Object.freeze(values);
-  registry?.denseArrays.set(input, captured);
+  registry.denseArrays.set(input, captured);
   return Result.ok(captured);
 };
 
@@ -1065,13 +1082,6 @@ const chargeAttributeString = ({
   return null;
 };
 
-type CaptureContext = {
-  side: "base" | "revised";
-  blockIndex?: number;
-  usage: SnapshotResourceUsage;
-  registry: CaptureRegistry;
-};
-
 const chargeCapturedString = (
   value: string,
   path: string,
@@ -1135,7 +1145,7 @@ const capturePropertyValue = (
     const limit = chargeCapturedString(input, path, context);
     return limit ? Result.err(limit) : Result.ok(input);
   }
-  const record = captureExactDataRecord(
+  const record = captureKnownDataRecord(
     input,
     [
       ...Object.values(FOLIO_CONTENT_PROPERTY_ARRAY_FIELD_DESCRIPTORS).map(({ field }) => field),
@@ -1160,7 +1170,7 @@ const capturePropertyValue = (
         ),
       );
     }
-    const items = captureExactDenseArray(record.value.get("items"), `${path}.items`, context, {
+    const items = captureBoundedDenseArray(record.value.get("items"), `${path}.items`, context, {
       limit: "propertyEntriesPerContainer",
       value: FOLIO_CONTENT_COMPARISON_LIMITS.propertyEntriesPerContainer,
     });
@@ -1214,7 +1224,7 @@ const capturePropertySet = (
   context: CaptureContext,
   depth = 0,
 ): Result<FolioContentPropertySet, FolioContentComparisonError> => {
-  const entries = captureExactDenseArray(input, path, context, {
+  const entries = captureBoundedDenseArray(input, path, context, {
     limit: "propertyEntriesPerContainer",
     value: FOLIO_CONTENT_COMPARISON_LIMITS.propertyEntriesPerContainer,
   });
@@ -1223,7 +1233,7 @@ const capturePropertySet = (
   const captured: { key: string; value: FolioContentPropertyValue }[] = [];
   for (let index = 0; index < entries.value.length; index++) {
     const entryPath = `${path}[${String(index)}]`;
-    const entry = captureExactDataRecord(
+    const entry = captureKnownDataRecord(
       entries.value[index],
       Object.values(FOLIO_CONTENT_PROPERTY_ENTRY_FIELD_DESCRIPTORS).map(({ field }) => field),
       entryPath,
@@ -1275,7 +1285,7 @@ const captureParagraphFormatting = (
   path: string,
   context: CaptureContext,
 ): Result<FolioContentParagraphFormatting, FolioContentComparisonError> => {
-  const record = captureExactDataRecord(
+  const record = captureKnownDataRecord(
     input,
     Object.values(FOLIO_CONTENT_PARAGRAPH_FORMATTING_FIELD_DESCRIPTORS).map(
       ({ field }) => field,
@@ -1307,7 +1317,7 @@ const captureContentRun = (
   path: string,
   context: CaptureContext,
 ): Result<FolioContentRun, FolioContentComparisonError> => {
-  const record = captureExactDataRecord(
+  const record = captureKnownDataRecord(
     input,
     Object.values(FOLIO_CONTENT_RUN_FIELD_DESCRIPTORS).map(({ field }) => field),
     path,
@@ -1352,7 +1362,7 @@ const captureTableLocation = (
   path: string,
   context: CaptureContext,
 ): Result<NonNullable<FolioContentBlock["table"]>, FolioContentComparisonError> => {
-  const record = captureExactDataRecord(
+  const record = captureKnownDataRecord(
     input,
     Object.values(FOLIO_CONTENT_TABLE_FIELD_DESCRIPTORS).map(({ field }) => field),
     path,
@@ -1434,7 +1444,7 @@ const captureContainerPath = (
   path: string,
   context: CaptureContext,
 ): Result<NonNullable<FolioContentBlock["containerPath"]>, FolioContentComparisonError> => {
-  const entries = captureExactDenseArray(input, path, context, {
+  const entries = captureBoundedDenseArray(input, path, context, {
     limit: "containerDepth",
     value: FOLIO_CONTENT_COMPARISON_LIMITS.containerDepth,
   });
@@ -1455,7 +1465,7 @@ const captureContainerPath = (
   const captured: { kind: string; identity: FolioContentBlock["identity"] }[] = [];
   for (let pathIndex = 0; pathIndex < entries.value.length; pathIndex++) {
     const entryPath = `${path}[${String(pathIndex)}]`;
-    const item = captureExactDataRecord(
+    const item = captureKnownDataRecord(
       entries.value[pathIndex],
       Object.values(FOLIO_CONTENT_CONTAINER_FIELD_DESCRIPTORS).map(({ field }) => field),
       entryPath,
@@ -1495,7 +1505,7 @@ const captureStructuralBoundaries = (
   path: string,
   context: CaptureContext,
 ): Result<NonNullable<FolioContentBlock["structuralBoundaries"]>, FolioContentComparisonError> => {
-  const entries = captureExactDenseArray(input, path, context, {
+  const entries = captureBoundedDenseArray(input, path, context, {
     limit: "structuralBoundariesPerBlock",
     value: FOLIO_CONTENT_COMPARISON_LIMITS.structuralBoundariesPerBlock,
   });
@@ -1520,7 +1530,7 @@ const captureStructuralBoundaries = (
   let priorOffset = -1;
   for (let boundaryIndex = 0; boundaryIndex < entries.value.length; boundaryIndex++) {
     const boundaryPath = `${path}[${String(boundaryIndex)}]`;
-    const item = captureExactDataRecord(
+    const item = captureKnownDataRecord(
       entries.value[boundaryIndex],
       Object.values(FOLIO_CONTENT_STRUCTURAL_BOUNDARY_FIELD_DESCRIPTORS).map(
         ({ field }) => field,
@@ -1567,7 +1577,7 @@ const captureRuns = (
   path: string,
   context: CaptureContext,
 ): Result<NonNullable<FolioContentBlock["runs"]>, FolioContentComparisonError> => {
-  const entries = captureExactDenseArray(input, path, context, {
+  const entries = captureBoundedDenseArray(input, path, context, {
     limit: "runsPerBlock",
     value: FOLIO_CONTENT_COMPARISON_LIMITS.runsPerBlock,
   });
@@ -1615,7 +1625,7 @@ const captureContentIdentity = (
   path: string,
   context: CaptureContext,
 ): Result<FolioContentBlock["identity"], FolioContentComparisonError> => {
-  const record = captureExactDataRecord(
+  const record = captureKnownDataRecord(
     input,
     Object.values(FOLIO_CONTENT_IDENTITY_FIELD_DESCRIPTORS).map(({ field }) => field),
     path,
@@ -1657,7 +1667,7 @@ const captureContentBlock = (
 ): Result<FolioContentBlock, FolioContentComparisonError> => {
   const path = `blocks[${String(blockIndex)}]`;
   const context = { side, blockIndex, usage, registry } satisfies CaptureContext;
-  const record = captureExactDataRecord(
+  const record = captureKnownDataRecord(
     input,
     Object.values(FOLIO_CONTENT_BLOCK_FIELD_DESCRIPTORS).map(({ field }) => field),
     path,
@@ -1816,14 +1826,14 @@ const captureValidatedSnapshotInto = (
   registry: CaptureRegistry,
 ): FolioContentComparisonError | null => {
   const snapshotContext = { side, usage, registry } satisfies CaptureContext;
-  const record = captureExactDataRecord(
+  const record = captureKnownDataRecord(
     snapshot,
     Object.values(FOLIO_CONTENT_SNAPSHOT_FIELD_DESCRIPTORS).map(({ field }) => field),
     side,
     snapshotContext,
   );
   if (record.isErr()) return record.error;
-  const blocks = captureExactDenseArray(record.value.get("blocks"), `${side}.blocks`, snapshotContext, {
+  const blocks = captureBoundedDenseArray(record.value.get("blocks"), `${side}.blocks`, snapshotContext, {
     limit: "blocksPerSnapshot",
     value: FOLIO_CONTENT_COMPARISON_LIMITS.blocksPerSnapshot,
   });
@@ -2540,6 +2550,7 @@ const detectFolioContentMoves = <Block extends FolioContentBlock>({
       (candidate) =>
         !taken.has(candidate.block.identity.id) &&
         candidate.moveScope.gap !== step.moveScope.gap &&
+        contentBlocksShareContainer(candidate.block, step.block) &&
         folioContentIdentityPairDisposition(candidate.block.identity, step.block.identity) !==
           "forbid",
     );
@@ -2567,6 +2578,7 @@ const detectFolioContentMoves = <Block extends FolioContentBlock>({
       if (gap === step.moveScope.gap) continue;
       for (const candidate of candidates.values()) {
         if (
+          !contentBlocksShareContainer(candidate.block, step.block) ||
           folioContentIdentityPairDisposition(candidate.block.identity, step.block.identity) ===
           "forbid"
         ) {
@@ -3422,11 +3434,17 @@ const executeCapturedContentComparison = ({
   });
 };
 
-/** Compare two representation-neutral ordered content snapshots. */
+/**
+ * Compare two representation-neutral ordered content snapshots.
+ *
+ * Folio captures only the fields declared by the public input types. Additional
+ * caller metadata is ignored rather than enumerated, which keeps the capture
+ * boundary bounded even when inputs are proxy-backed.
+ */
 export const compareContent = (
   options: CompareContentOptions,
 ): Result<FolioContentComparison, FolioContentComparisonError> => {
-  const capturedOptions = captureExactDataRecord(
+  const capturedOptions = captureKnownDataRecord(
     options,
     Object.values(COMPARE_CONTENT_OPTION_FIELD_DESCRIPTORS).map(({ field }) => field),
     "options",
