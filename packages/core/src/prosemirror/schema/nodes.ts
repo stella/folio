@@ -45,7 +45,12 @@ import type {
 } from "../../types/document";
 import type { OutlineStyleAttr } from "../../types/documentEnumValues";
 import type { SpacingExplicit } from "../../types/formatting";
+import type {
+  AuthoredParagraphProperties,
+  ParagraphMarkProperties,
+} from "../../docx/paragraphPropertyDescriptor";
 import type { ParagraphDirection } from "../paragraphDirection";
+import type { SerializedParagraphPropertyState } from "../paragraphPropertyState";
 import type { TrackedChangeProvenance } from "./marks";
 
 export type HardBreakAttrs = {
@@ -101,6 +106,8 @@ export type ParagraphAttrs = {
   overflowPunctuation?: boolean;
   /** Effective paragraph opt-out from document automatic hyphenation. */
   suppressAutoHyphens?: boolean;
+  /** Effective paragraph opt-out from section line numbering. */
+  suppressLineNumbers?: boolean;
 
   // Spacing (in twips)
   spaceBefore?: number;
@@ -241,6 +248,9 @@ export type ParagraphAttrs = {
   // Outline level for TOC (0-9)
   outlineLevel?: number;
 
+  /** Effective frame properties after inherited and authored resolution. */
+  frame?: ParagraphFormatting["frame"];
+
   // Bookmarks on this paragraph (for TOC anchors, cross-references)
   bookmarks?: { id: number; name: string }[];
 
@@ -264,9 +274,17 @@ export type ParagraphAttrs = {
    */
   runInWithNext?: boolean;
 
-  /** Original inline paragraph formatting from DOCX (pre-style-resolution).
-   *  Used by fromProseDoc for lossless round-trip serialization. */
-  _originalFormatting?: ParagraphFormatting;
+  /** Mandatory authored CT_PPrBase state; effective/layout attrs stay separate. */
+  _paragraphPropertyState: SerializedParagraphPropertyState;
+
+  /** Effective style/table/default pPr layer beneath the authored payload. */
+  _paragraphPropertyInheritance: AuthoredParagraphProperties;
+
+  /** Paragraph-mark properties (`w:pPr/w:rPr`), outside CT_PPrBase provenance. */
+  _paragraphMarkFormatting: ParagraphMarkProperties;
+
+  /** Numbering indentation provenance, derived from the active numbering level. */
+  _numberingLevelIndent?: ParagraphFormatting["numberingLevelIndent"];
 
   /** Import-effective spacing baseline for HTML auto-spacing detection.
    *  PM-only; never serialized back into DOCX formatting. */

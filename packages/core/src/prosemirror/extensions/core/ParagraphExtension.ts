@@ -31,6 +31,8 @@ import { expectParagraphAttrs } from "../../attrs";
 import { autospacingMatchesBase } from "../../autospacingBase";
 import { directParagraphAlignment } from "../../paragraphAlignment";
 import { directionIsRtl } from "../../paragraphDirection";
+import { EMPTY_EDITOR_PARAGRAPH_PROPERTY_STATE } from "../../paragraphPropertyState";
+import { paragraphAttrsFromExternalDomImport } from "../../paragraphPropertyMutation";
 import { withDirectParagraphSpacing } from "../../paragraphSpacing";
 import type { ParagraphDirection } from "../../paragraphDirection";
 import type { ParagraphAttrs } from "../../schema/nodes";
@@ -338,6 +340,7 @@ const paragraphNodeSpec: NodeSpec = {
     kinsoku: { default: null },
     overflowPunctuation: { default: null },
     suppressAutoHyphens: { default: null },
+    suppressLineNumbers: { default: null },
     spaceBefore: { default: null },
     spaceAfter: { default: null },
     lineSpacing: { default: null },
@@ -392,9 +395,13 @@ const paragraphNodeSpec: NodeSpec = {
     // (`w:bidi`) or reaches the DOM (`dir`).
     direction: { default: null },
     outlineLevel: { default: null },
+    frame: { default: null },
     bookmarks: { default: null },
     _emptyHyperlinks: { default: null },
-    _originalFormatting: { default: null },
+    _paragraphPropertyState: { default: EMPTY_EDITOR_PARAGRAPH_PROPERTY_STATE },
+    _paragraphPropertyInheritance: { default: EMPTY_EDITOR_PARAGRAPH_PROPERTY_STATE.authoredPPr },
+    _paragraphMarkFormatting: { default: EMPTY_EDITOR_PARAGRAPH_PROPERTY_STATE.authoredPPr },
+    _numberingLevelIndent: { default: null },
     _autospacingBase: { default: null },
     _sectionProperties: { default: null },
     _propertyChanges: { default: null },
@@ -404,7 +411,7 @@ const paragraphNodeSpec: NodeSpec = {
   parseDOM: [
     {
       tag: "p",
-      getAttrs(dom): ParagraphAttrs | false {
+      getAttrs(dom) {
         if (!(dom instanceof HTMLElement)) {
           return false;
         }
@@ -420,7 +427,7 @@ const paragraphNodeSpec: NodeSpec = {
         const sectionBreakType = element.dataset["sectionBreak"] as
           | NonNullable<ParagraphAttrs["sectionBreakType"]>
           | undefined;
-        const attrs: ParagraphAttrs = {
+        const attrs: Partial<ParagraphAttrs> = {
           ...(paraId ? { paraId } : {}),
           ...(alignment ? { alignment } : {}),
           ...(alignmentFromStyle ? { alignmentFromStyle } : {}),
@@ -440,37 +447,40 @@ const paragraphNodeSpec: NodeSpec = {
         const mergedDirectAlignment =
           authoredAlignment ??
           (attrs.alignmentFromStyle === undefined ? mergedAlignment : undefined);
-        const originalFormatting: ParagraphFormatting = {
-          ...(styleId ? { styleId } : {}),
-          ...(mergedDirectAlignment ? { alignment: mergedDirectAlignment } : {}),
-        };
-        return {
+        const effectiveAttrs = {
           ...styleAttrs,
           ...attrs,
           // For alignment, prefer data-attribute if present, otherwise use CSS
           ...(mergedAlignment !== undefined ? { alignment: mergedAlignment } : {}),
-          ...(Object.keys(originalFormatting).length > 0
-            ? { _originalFormatting: originalFormatting }
-            : {}),
         };
+        return paragraphAttrsFromExternalDomImport({
+          effectiveAttrs,
+          authoredAttrs: {
+            ...effectiveAttrs,
+            ...(mergedDirectAlignment === undefined
+              ? { alignment: undefined }
+              : { alignment: mergedDirectAlignment }),
+          },
+          inheritedPPr:
+            alignmentFromStyle === undefined ? {} : { alignment: alignmentFromStyle },
+        });
       },
     },
     // Heading tags (h1-h6) — pasted from Google Docs, Word Online, etc.
     // Map to paragraphs with appropriate styleId and formatting extracted from CSS.
     ...(["h1", "h2", "h3", "h4", "h5", "h6"] as const).map((tag) => ({
       tag,
-      getAttrs(dom: HTMLElement): ParagraphAttrs {
+      getAttrs(dom: HTMLElement) {
         const level = Number.parseInt(tag.charAt(1), 10);
         const styleAttrs = extractParagraphAttrsFromStyle(dom);
 
-        return {
-          ...styleAttrs,
-          ...(styleAttrs.alignment
-            ? { _originalFormatting: { alignment: styleAttrs.alignment } }
-            : {}),
-          styleId: `Heading${level}`,
-          outlineLevel: level - 1,
-        };
+        return paragraphAttrsFromExternalDomImport({
+          effectiveAttrs: {
+            ...styleAttrs,
+            styleId: `Heading${level}`,
+            outlineLevel: level - 1,
+          },
+        });
       },
     })),
   ],

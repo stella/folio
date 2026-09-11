@@ -38,6 +38,10 @@ import type { ParagraphFormatting } from "../../types/document";
 import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import { DRAWING_RAW_XML_MODES, isOoxmlSymbolCharacter } from "@stll/docx-core/model";
 import { isParagraphDirection } from "../paragraphDirection";
+import {
+  readAuthoredParagraphProperties,
+  readParagraphPropertyState,
+} from "../paragraphPropertyState";
 import type {
   BlockSdtAttrs,
   CharacterSpacingAttrs,
@@ -437,8 +441,71 @@ export const readParagraphAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Par
     "paragraph.attrs.defaultTextFormatting",
     issues,
   );
+  const paragraphPropertyState = readParagraphPropertyState(attrs["_paragraphPropertyState"]);
+  if (paragraphPropertyState.status !== "valid") {
+    issues.push({
+      path: "paragraph.attrs._paragraphPropertyState",
+      message: "Expected mandatory validated paragraph-property state.",
+    });
+  }
+  const paragraphPropertyInheritance = readAuthoredParagraphProperties(
+    attrs["_paragraphPropertyInheritance"],
+  );
+  if (paragraphPropertyInheritance.status !== "valid") {
+    issues.push({
+      path: "paragraph.attrs._paragraphPropertyInheritance",
+      message: "Expected mandatory inherited paragraph-property object.",
+    });
+  }
+  const paragraphMarkFormatting = attrs["_paragraphMarkFormatting"];
+  if (!isRecord(paragraphMarkFormatting)) {
+    issues.push({
+      path: "paragraph.attrs._paragraphMarkFormatting",
+      message: "Expected mandatory paragraph-mark formatting object.",
+    });
+  } else {
+    const paragraphMarkKeys = new Set(["runProperties", "runInWithNext"]);
+    for (const key of Object.keys(paragraphMarkFormatting)) {
+      if (!paragraphMarkKeys.has(key)) {
+        issues.push({
+          path: `paragraph.attrs._paragraphMarkFormatting.${key}`,
+          message: "Expected a paragraph-mark property.",
+        });
+      }
+    }
+    optionalNestedRecord(
+      paragraphMarkFormatting,
+      "runProperties",
+      "paragraph.attrs._paragraphMarkFormatting.runProperties",
+      issues,
+      validateTextFormatting,
+    );
+    optionalBoolean(
+      paragraphMarkFormatting,
+      "runInWithNext",
+      "paragraph.attrs._paragraphMarkFormatting.runInWithNext",
+      issues,
+    );
+  }
   optionalRecord(attrs, "numPr", "paragraph.attrs.numPr", issues);
   validateNumPr(attrs["numPr"], issues);
+  optionalRecord(attrs, "numPrFromStyle", "paragraph.attrs.numPrFromStyle", issues);
+  validateNumPr(attrs["numPrFromStyle"], issues);
+  const numberingLevelIndent = attrs["_numberingLevelIndent"];
+  if (numberingLevelIndent !== undefined && numberingLevelIndent !== null) {
+    if (!isRecord(numberingLevelIndent)) {
+      issues.push({
+        path: "paragraph.attrs._numberingLevelIndent",
+        message: "Expected an object.",
+      });
+    } else {
+      validateParagraphFormatting(
+        { numPr: attrs["numPr"], numberingLevelIndent },
+        "paragraph.attrs",
+        issues,
+      );
+    }
+  }
   optionalBookmarkArray(attrs["bookmarks"], issues);
   optionalEmptyHyperlinkArray(attrs["_emptyHyperlinks"], issues);
   optionalAutospacingBase(attrs, "paragraph.attrs._autospacingBase", issues);
