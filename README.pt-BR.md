@@ -19,6 +19,7 @@
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@stll/folio-core"><img src="https://img.shields.io/npm/v/@stll/folio-core?label=%40stll%2Ffolio-core" alt="versão no npm" /></a>
+  <a href="https://www.npmjs.com/package/@stll/folio-core"><img src="https://img.shields.io/npm/dm/%40stll%2Ffolio-core" alt="downloads mensais no npm" /></a>
   <a href="https://github.com/stella/folio/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="licença" /></a>
   <a href="https://github.com/stella/folio/issues"><img src="https://img.shields.io/github/issues/stella/folio" alt="issues" /></a>
   <a href="https://discord.gg/8dZjmVFjTK"><img src="https://img.shields.io/badge/discord-join%20chat-5865F2?logo=discord&logoColor=white" alt="Discord" /></a>
@@ -26,194 +27,115 @@
 
 # folio
 
-Editor para navegador e mecanismo independente de framework para arquivos `.docx`.
-Ele abre, edita e grava documentos OOXML, preservando paginação, tabelas, cabeçalhos
-e rodapés, controle de alterações e notas de rodapé.
+Folio é um editor de documentos do Word incorporável em aplicações web. Passe
+um `.docx` como `File`, `Blob`, `ArrayBuffer` ou `Uint8Array`; ele renderiza
+conteúdo paginado e editável no navegador e retorna um `.docx` quando o usuário salva.
 
-O pacote principal é independente de framework. Os pacotes para React, Vue, Nuxt e
-revisão de documentos são construídos sobre ele.
+Use o editor para React, Vue ou Nuxt em uma aplicação, ou use `folio-core`
+diretamente para analisar, editar, paginar e revisar documentos sem interface gráfica.
 
-Parte do [stella](https://github.com/stella/stella), um workspace jurídico de código aberto.
-
-Consulte os [limites da plataforma DOCX](./docs/docx-platform.md) para saber o que pertence
-ao folio e como editores, ferramentas headless, agentes e hosts compartilham o mesmo modelo
-de documento e contrato de operações.
-
-## Interoperabilidade orientada por padrões
-
-O Folio busca um comportamento OOXML interoperável por meio de padrões publicados,
-análise diferencial, testes de ida e volta e de interação, além de comparações de layout
-reproduzíveis entre implementações independentes.
-
-Os relatórios de comparação registram a implementação de referência, a versão e o ambiente
-de renderização relevante para que os resultados permaneçam explícitos e reproduzíveis.
-
-Consulte as [referências de interoperabilidade](./docs/interoperability.md) para ver a
-metodologia de testes completa e a matriz de referências.
-
-## Pacotes
-
-Este é um workspace [Bun](https://bun.sh) com os seguintes pacotes publicados:
-
-| Pacote                                    | Uso                                                                                 |
-| ----------------------------------------- | ----------------------------------------------------------------------------------- |
-| [`@stll/folio-core`](./packages/core)     | Análise OOXML, redlines nativas do Word, revisão, ProseMirror e layout de página    |
-| [`@stll/folio-react`](./packages/react)   | Interface de edição em React criada sobre o `@stll/folio-core`                      |
-| [`@stll/folio-vue`](./packages/vue)       | Editor para Vue 3 e composables                                                     |
-| [`@stll/folio-nuxt`](./packages/nuxt)     | Registro do editor Vue para Nuxt 3/4                                                |
-| [`@stll/folio-agents`](./packages/agents) | Ferramentas de LLM que leem `.docx` e propõem comentários ou alterações controladas |
+<p align="center">
+  <img src=".github/assets/folio-showcase.gif" alt="Folio editando um DOCX de cinco páginas com tabelas, gráfico, comentários e controle de alterações" width="100%" />
+</p>
 
 ## Instalação
 
 ```sh
-# editor React (instala também o @stll/folio-core)
 bun add @stll/folio-react react react-dom use-intl
-
-# editor Vue
-bun add @stll/folio-vue vue
-
-# integração com Nuxt
-bun add @stll/folio-nuxt
-
-# ferramentas de agente/revisão
-bun add @stll/folio-agents
-
-# ou apenas o mecanismo headless
-bun add @stll/folio-core
 ```
 
-## Início rápido
+`@stll/folio-core` é instalado junto com o editor React.
+
+## Início rápido com React
 
 ```tsx
-import { DocxEditor } from "@stll/folio-react";
-import "@stll/folio-react/standalone.css";
-
-export function Editor({ docx }: { docx: ArrayBuffer }) {
-  return <DocxEditor documentBuffer={docx} onSave={(out) => download(out)} />;
-}
-```
-
-Em aplicações com SSR, carregue o editor somente no cliente ou por meio de uma importação dinâmica.
-
-## Redlines nativas do Word
-
-O Folio grava alterações controladas OOXML que o Microsoft Word pode revisar,
-aceitar ou rejeitar. Aplique operações explícitas ou compare duas versões salvas
-para produzir um `.docx` com redline:
-
-```ts
-import { FolioDocxReviewer } from "@stll/folio-core/server";
-import { generateRedlineDocx } from "@stll/folio-core/redline";
-
-const reviewer = await FolioDocxReviewer.fromBuffer(sourceDocx, {
-  author: "Reviewer",
-});
-const block = reviewer.snapshot().blocks.at(0);
-if (!block) throw new Error("The document has no editable blocks");
-
-const result = reviewer.applyOperations([
-  {
-    id: "replace-term",
-    type: "replaceInBlock",
-    blockId: block.id,
-    find: "Supplier",
-    replace: "Provider",
-  },
-]);
-if (result.skipped.length > 0) throw new Error(JSON.stringify(result.skipped));
-const reviewedDocx = await reviewer.toBuffer();
-
-const { buffer: comparisonRedline } = await generateRedlineDocx(sourceDocx, reviewedDocx, {
-  author: "Reviewer",
-});
-```
-
-`applyOperations` usa alterações controladas nativas por padrão. Use `getChanges()`,
-`acceptChange()`, `rejectChange()`, `acceptAll()` e `rejectAll()` para gerenciar
-revisões pendentes. O censo inclui edições em linha, formatação, marcas de parágrafo
-e alterações de propriedades de parágrafo, seção, tabela, linha e célula. Para
-ferramentas de revisão voltadas a modelos, consulte
-[`@stll/folio-agents`](./packages/agents).
-
-## Estilos
-
-Escolha uma folha de estilos.
-
-Use `standalone.css` quando sua aplicação não utilizar Tailwind ou quando quiser manter os
-estilos do folio isolados:
-
-```tsx
-import "@stll/folio-react/standalone.css";
-```
-
-Sobrescreva os tokens em `.folio-root`:
-
-```css
-.folio-root {
-  --background: #fdfdfc;
-  --foreground: #1c1c1a;
-  --primary: #3b5bdb;
-  /* ...apenas os tokens que você quiser alterar... */
-}
-```
-
-Para o modo escuro, adicione `.dark` a um elemento ancestral, como `<html>`.
-
-Use `editor.css` quando sua aplicação já utilizar Tailwind. Adicione o JavaScript distribuído
-pelo folio às fontes verificadas pelo Tailwind e, em seguida, importe a folha de estilos:
-
-```css
-/* arquivo de entrada do Tailwind na sua aplicação */
-@import "tailwindcss";
-@source "../node_modules/@stll/folio-react/dist/**/*.js";
-```
-
-```tsx
-import "@stll/folio-react/editor.css";
-```
-
-Não importe as duas folhas de estilos. `standalone.css` já inclui tudo o que existe em `editor.css`.
-
-## Internacionalização
-
-O editor usa [`use-intl`](https://github.com/amannn/use-intl). Envolva-o em um `IntlProvider`
-e passe as mensagens incluídas no folio:
-
-```tsx
+import { useState } from "react";
 import { IntlProvider } from "use-intl";
 import { DocxEditor } from "@stll/folio-react";
-import { FOLIO_LOCALES, getFolioMessages } from "@stll/folio-react/messages";
-import "@stll/folio-react/editor.css";
+import { getFolioMessages } from "@stll/folio-react/messages";
+import "@stll/folio-react/standalone.css";
 
-export function Editor({ docx, locale }: { docx: ArrayBuffer; locale: string }) {
+const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+const downloadDocx = (buffer: ArrayBuffer) => {
+  const url = URL.createObjectURL(new Blob([buffer], { type: DOCX_MIME }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "edited.docx";
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+};
+
+export function Editor() {
+  const [file, setFile] = useState<File | null>(null);
+
   return (
-    <IntlProvider locale={locale} messages={getFolioMessages(locale)}>
-      <DocxEditor documentBuffer={docx} />
+    <IntlProvider locale="en" messages={getFolioMessages("en")}>
+      <input
+        type="file"
+        accept=".docx"
+        onChange={(event) => setFile(event.currentTarget.files?.[0] ?? null)}
+      />
+      {file && <DocxEditor documentBuffer={file} author="Editor" onSave={downloadDocx} />}
     </IntlProvider>
   );
 }
 ```
 
-`@stll/folio-react/messages` exporta:
+A barra de ferramentas chama `onSave` com os bytes atualizados do DOCX. Também
+é possível manter um `DocxEditorRef` e chamar `await editorRef.current?.save()`.
 
-- `getFolioMessages(locale: string): FolioMessages`
-- `FOLIO_LOCALES`
-- `FolioLocale`
-- `isFolioLocale(locale: string): locale is FolioLocale`
+## O que ele oferece
 
-Locales incluídos: `en`, `de`, `fr`, `es`, `cs`, `ar`, `et`, `he`, `hi`, `hu`,
-`lt`, `lv`, `pl`, `pt-BR`, `sk`, `tr`, `zh-CN`. Árabe (`ar`) e hebraico (`he`)
-são escritos da direita para a esquerda; defina `dir="rtl"` em um contêiner ao redor
-do editor para esses locales.
+- Texto paginado, formatação, listas, tabelas, imagens, seções, cabeçalhos e rodapés
+- Comentários, notas de rodapé e alterações controladas que o Microsoft Word pode revisar, aceitar ou rejeitar
+- Ciclos de leitura e gravação de DOCX que preservam partes intactas do pacote e OOXML não suportado
+- Modos de edição, busca, configuração de página, estrutura do documento e callbacks de salvamento
+- Mensagens incluídas para 17 localidades, incluindo interfaces da direita para a esquerda
 
-Para combinar as mensagens do folio com as mensagens da aplicação, mantenha o folio em seu
-próprio namespace `folio.*`:
+## Escolha um pacote
 
-```tsx
-const messages = { ...getFolioMessages(locale), ...appMessages[locale] };
+| Pacote                                    | Use quando precisar de                                                     |
+| ----------------------------------------- | -------------------------------------------------------------------------- |
+| [`@stll/folio-react`](./packages/react)   | Editor completo como componente React                                      |
+| [`@stll/folio-vue`](./packages/vue)       | Editor completo como componente Vue 3                                      |
+| [`@stll/folio-nuxt`](./packages/nuxt)     | Registro do editor Vue compatível com SSR no Nuxt 3 ou 4                   |
+| [`@stll/folio-core`](./packages/core)     | Análise de DOCX, edição ProseMirror, paginação, revisão ou APIs de redline |
+| [`@stll/docx-core`](./packages/docx-core) | Modelo OOXML tipado, validação, serialização e mecanismo de projeção       |
+| [`@stll/folio-agents`](./packages/agents) | Ferramentas que leem documentos e propõem comentários ou alterações        |
+
+Instale o editor Vue com `bun add @stll/folio-vue vue`, o módulo Nuxt com
+`bun add @stll/folio-nuxt` ou o mecanismo independente de framework com
+`bun add @stll/folio-core`.
+
+## Crie uma redline do Word sem um editor
+
+Compare dois arquivos DOCX e grave as diferenças como alterações controladas nativas:
+
+```ts
+import { generateRedlineDocx } from "@stll/folio-core/redline";
+
+const result = await generateRedlineDocx(originalDocx, revisedDocx, {
+  author: "Reviewer",
+});
+
+await store(result.buffer);
 ```
 
-Não copie as chaves `folio.*` do folio para o catálogo da sua aplicação.
+Para alterações determinísticas em um só documento, use `FolioDocxReviewer`.
+Consulte as [APIs de revisão do `folio-core`](./packages/core/README.md#native-word-redlines).
+
+## Notas de integração
+
+- Use apenas `standalone.css`. Aplicações que já usam Tailwind podem seguir a
+  [configuração de `editor.css`](./packages/react/README.md#exports).
+- O editor requer o DOM. Em uma aplicação com SSR, carregue-o em um componente
+  somente de cliente ou por importação dinâmica; usuários de Nuxt podem usar `@stll/folio-nuxt`.
+- A arquitetura e a metodologia de testes estão nos documentos sobre os
+  [limites da plataforma DOCX](./docs/docx-platform.md) e a
+  [interoperabilidade](./docs/interoperability.md).
 
 ## Desenvolvimento
 
@@ -226,34 +148,16 @@ bun run lint
 bun run validate-dist
 ```
 
-## Publicação
-
-As publicações usam [Changesets](https://github.com/changesets/changesets). Adicione um changeset
-a todo PR que editar o código-fonte de um pacote publicado em
-`packages/{core,react,agents,vue,nuxt}/src`:
-
-```sh
-bunx changeset
-```
-
-Para uma alteração no código-fonte que não precise de uma nova versão, use:
-
-```sh
-bunx changeset --empty
-```
-
-O CI verifica isso pelo workflow changeset-policy. O merge do PR **Version Packages** gerado
-publica os pacotes alterados por meio de `publish.yml`.
+Alterações no código-fonte de pacotes publicados exigem um [Changeset](https://github.com/changesets/changesets).
 
 ## Agradecimentos
 
-O folio começou como um fork privado do
-[docx-editor](https://github.com/eigenpal/docx-editor), da [Eigenpal](https://eigenpal.com),
-criado por [Jedr Blaszyk](https://github.com/jedrazb). Desde então, o código foi ampliado,
-principalmente para atender às necessidades do [stella](https://github.com/stella/stella).
-Depois que o repositório original foi retirado do ar, passamos a publicar o fork folio como uma
-continuação mantida de forma independente. A licença e os direitos autorais originais foram
-preservados em [`NOTICE.md`](./NOTICE.md).
+O Folio se originou como um fork do
+[docx-editor](https://github.com/eigenpal/docx-editor) da
+[Eigenpal](https://eigenpal.com), criado por
+[Jedr Blaszyk](https://github.com/jedrazb), e é mantido de forma independente
+como parte do [stella](https://github.com/stella/stella). A licença e os direitos
+autorais originais são preservados em [`NOTICE.md`](./NOTICE.md).
 
 ## Licença
 
