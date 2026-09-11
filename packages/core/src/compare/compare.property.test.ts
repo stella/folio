@@ -21,7 +21,12 @@ import { propertyConfig, propertyTestTimeout } from "../../../../test/property-t
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import type { FolioAIBlock } from "../ai-edits/types";
 import { compareDocx } from "./compare";
-import { applyEditScript, type EditScript, type EditScriptStep } from "./scenario";
+import {
+  applyEditScript,
+  EDIT_SCRIPT_TABLE_ROW_POSITION,
+  type EditScript,
+  type EditScriptStep,
+} from "./scenario";
 import type { CompareChange, CompareResult } from "./types";
 import { revisedFinalParagraphMarks } from "./verification";
 
@@ -897,7 +902,10 @@ describe("compareDocx", () => {
             {
               type: "insertTableRow",
               blockIndex: insertedRow === 0 ? 1 : 1 + (insertedRow - 1) * 3,
-              position: insertedRow === 0 ? "before" : "after",
+              position:
+                insertedRow === 0
+                  ? EDIT_SCRIPT_TABLE_ROW_POSITION.before
+                  : EDIT_SCRIPT_TABLE_ROW_POSITION.after,
               cellTexts: [rewrittenText, rewrittenText, rewrittenText],
             },
           ];

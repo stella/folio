@@ -31,6 +31,14 @@ import type {
 } from "../ai-edits/types";
 import { CompareDocxParseError, CompareDocxSerializeError } from "./types";
 
+type InsertTableRowOperation = Extract<FolioAIEditOperation, { type: "insertTableRow" }>;
+type TableRowPosition = NonNullable<InsertTableRowOperation["position"]>;
+
+export const EDIT_SCRIPT_TABLE_ROW_POSITION = {
+  after: "after",
+  before: "before",
+} as const satisfies Record<TableRowPosition, TableRowPosition>;
+
 export type EditScriptStep =
   | { type: "insertParagraphAfter"; blockIndex: number; text: string }
   | { type: "deleteParagraph"; blockIndex: number }
@@ -57,7 +65,7 @@ export type EditScriptStep =
   | {
       type: "insertTableRow";
       blockIndex: number;
-      position?: "after" | "before";
+      position?: TableRowPosition;
       cellTexts: readonly string[];
     }
   | { type: "deleteTableRow"; blockIndex: number }
@@ -230,7 +238,7 @@ const planStep = ({ step, blocks, nextOperationId }: PlanStepOptions): StepPlan 
                 id: nextOperationId(),
                 type: "insertTableRow",
                 blockId: block.id,
-                position: step.position ?? "after",
+                position: step.position ?? EDIT_SCRIPT_TABLE_ROW_POSITION.after,
                 cellTexts: [...step.cellTexts],
               },
             ],
