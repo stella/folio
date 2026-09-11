@@ -329,6 +329,20 @@ export type ExtractedDocxText = {
     view: "accepted";
 };
 
+// @public
+export const FOLIO_CONTENT_COMPARISON_LIMITS: Readonly<{
+    readonly blocksPerSnapshot: 100000;
+    readonly changes: 10000;
+    readonly blockCodeUnits: 1048576;
+    readonly textCodeUnitsPerSnapshot: 8000000;
+    readonly previewRunsPerBlock: 65536;
+    readonly previewRunsPerSnapshot: 1000000;
+    readonly containerDepth: 64;
+    readonly containerEntriesPerSnapshot: 1000000;
+    readonly attributeCodeUnits: 16384;
+    readonly attributeCodeUnitsPerSnapshot: 8000000;
+}>;
+
 // @public (undocumented)
 export const FOLIO_DOCUMENT_METADATA_PROPERTIES: readonly ["title", "subject", "creator", "keywords", "description", "lastModifiedBy", "revision", "created", "modified"];
 
@@ -844,6 +858,9 @@ export type FolioCompareDocxVersionsOptions = {
     include?: readonly FolioVersionComparisonScope[];
     privacy?: FolioVersionDiffPrivacyOptions;
 };
+
+// @public (undocumented)
+export type FolioContentComparisonLimit = keyof typeof FOLIO_CONTENT_COMPARISON_LIMITS;
 
 // @public (undocumented)
 export type FolioDocumentMetadataProperty = (typeof FOLIO_DOCUMENT_METADATA_PROPERTIES)[number];
@@ -1475,6 +1492,18 @@ export type FolioVersionBlockHandle = {
 
 // @public
 export type FolioVersionChangeProperty = FolioBlockProperty | FolioFormatProperty;
+
+// @public
+export class FolioVersionComparisonLimitError extends FolioVersionComparisonLimitError_base<{
+    message: string;
+    input: "base" | "revised" | "result";
+    limit: FolioContentComparisonLimit;
+    maximum: number;
+    actual: number;
+    storyIndex: number;
+    blockIndex?: number;
+    field?: string;
+}> {}
 
 // @public (undocumented)
 export type FolioVersionComparisonPrivacyTransform = FolioDocumentPrivacyTransform;

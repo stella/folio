@@ -69,10 +69,13 @@ import { FolioDocxReviewer, type FolioDocumentStoryHandle } from "./ai-edits/hea
 import type { FolioAIBlock } from "./ai-edits/types";
 import type { WordDiffSegment } from "./ai-edits/word-diff";
 import {
-  compareAlignedFolioContent,
+  compareContentWithPolicy,
   createContentComparisonWorkSession,
+  FolioContentComparisonLimitError,
+  prepareContentComparison,
   type FolioContentBlockProperty,
-  type FolioContentComparisonEvent,
+  type FolioContentComparison,
+  type FolioContentComparisonLimit,
   type FolioContentComparisonWorkSession,
   type FolioContentFormattingChange,
   type FolioContentParagraphFormattingPatch,
@@ -91,7 +94,6 @@ import {
 } from "./docx/metadataPrivacy";
 import {
   alignFolioContentBlocks,
-  alignFolioContentStructure,
   createFolioContentAlignmentWorkSession,
   exceedsFolioContentLcsBudget,
   type FolioContentAlignedBlockEvent,
@@ -127,6 +129,20 @@ export class InvalidFolioVersionComparisonOptionsError extends TaggedError(
   message: string;
   option: "include" | "privacy.transforms";
   receivedValue: unknown;
+}> {}
+
+/** Aggregate content limit exceeded while comparing all stories in two packages. */
+export class FolioVersionComparisonLimitError extends TaggedError(
+  "FolioVersionComparisonLimitError",
+)<{
+  message: string;
+  input: "base" | "revised" | "result";
+  limit: FolioContentComparisonLimit;
+  maximum: number;
+  actual: number;
+  storyIndex: number;
+  blockIndex?: number;
+  field?: string;
 }> {}
 
 export { FOLIO_DOCUMENT_METADATA_PROPERTIES };
@@ -312,14 +328,14 @@ export const alignFolioBlocks = (
   return events;
 };
 
-const legacySegments = (segments: readonly WordDiffSegment[]): FolioVersionDiffSegment[] =>
+const projectVersionSegments = (segments: readonly WordDiffSegment[]): FolioVersionDiffSegment[] =>
   segments.map(({ type, text }) => ({ type, text }));
 
 const ownStringKeys = <Value extends object>(value: Value): Extract<keyof Value, string>[] =>
   // SAFETY: Object.keys returns exactly the own enumerable string keys of these object literals.
   Object.keys(value) as Extract<keyof Value, string>[];
 
-const legacyFormattingProperties = (
+const projectVersionFormattingProperties = (
   formatting: FolioContentFormattingChange,
 ): FolioFormatProperty[] => {
   const properties: FolioFormatProperty[] = [];
@@ -336,7 +352,7 @@ const legacyFormattingProperties = (
   return properties;
 };
 
-const legacyVersionChangeProperties = ({
+const projectVersionChangeProperties = ({
   blockProperties,
   formatting,
 }: {
@@ -345,7 +361,7 @@ const legacyVersionChangeProperties = ({
 }): FolioVersionChangeProperty[] => {
   const properties: FolioVersionChangeProperty[] = [...blockProperties];
   if (formatting) {
-    properties.push(...legacyFormattingProperties(formatting));
+    properties.push(...projectVersionFormattingProperties(formatting));
   }
   return properties;
 };
@@ -373,83 +389,59 @@ const addSummaryCounts = (
   target.unchanged += source.unchanged;
 };
 
-/**
- * A disabled text scope reclassifies text-only comparison units as unchanged;
- * it never removes them from the summary. Moves count once at their target,
- * while a split or merge retains its legacy two-unit accounting.
- */
-const excludedTextEventUnitCount = (
-  event: FolioContentComparisonEvent<FolioAIBlock>,
-): number | null => {
-  switch (event.type) {
-    case "unchanged":
-    case "formatting":
-    case "modified":
-      return null;
-    case "movedFrom":
-      return 0;
-    case "deleted":
-    case "inserted":
-    case "movedTo":
-      return 1;
-    case "split":
-      return event.revisedBlocks.length;
-    case "merge":
-      return event.baseBlocks.length;
-    default: {
-      const unreachable: never = event;
-      return panic("Unhandled scoped neutral comparison event", { event: unreachable });
-    }
-  }
-};
+const paragraphFormattingChange = (
+  paragraph: FolioContentParagraphFormattingPatch | null,
+): FolioContentFormattingChange | undefined => (paragraph ? { paragraph, ranges: [] } : undefined);
 
 type CompareStoryBlocksOptions = FolioDocumentStoryPair & {
   baseBlocks: readonly FolioAIBlock[];
   revisedBlocks: readonly FolioAIBlock[];
+  storyIndex: number;
   firstMoveGroupId: number;
   includeText: boolean;
   includeFormatting: boolean;
   workSession: FolioContentComparisonWorkSession;
 };
 
-const compareStoryBlocks = ({
+type ProjectFolioContentComparisonOptions = FolioDocumentStoryPair & {
+  comparison: FolioContentComparison<FolioAIBlock>;
+  firstMoveGroupId: number;
+  includeText: boolean;
+  includeFormatting: boolean;
+};
+
+const versionComparisonLimitError = (
+  cause: FolioContentComparisonLimitError,
+  storyIndex: number,
+): FolioVersionComparisonLimitError =>
+  new FolioVersionComparisonLimitError({
+    message: `Document version comparison exceeds the aggregate ${cause.limit} limit.`,
+    input: cause.input,
+    limit: cause.limit,
+    maximum: cause.maximum,
+    actual: cause.actual,
+    storyIndex,
+    ...(cause.blockIndex !== undefined && { blockIndex: cause.blockIndex }),
+    ...(cause.field !== undefined && { field: cause.field }),
+  });
+
+/** Project the canonical neutral event stream into the structured version-diff surface. @internal */
+export const projectFolioContentComparisonToStory = ({
   baseStory,
   revisedStory,
-  baseBlocks,
-  revisedBlocks,
+  comparison,
   firstMoveGroupId,
   includeText,
   includeFormatting,
-  workSession,
-}: CompareStoryBlocksOptions): FolioStoryDiff => {
-  const steps = alignFolioContentStructure({
-    baseBlocks,
-    revisedBlocks,
-    workSession: workSession.alignment,
-    stableIdMismatch: "pair",
-    idStability: folioAIBlockIdStability,
-  });
-  const compared = compareAlignedFolioContent({
-    baseBlocks,
-    revisedBlocks,
-    steps,
-    workSession,
-    idStability: folioAIBlockIdStability,
-    // The legacy version-diff surface has no result-size error in its contract.
-    maxChanges: Number.MAX_SAFE_INTEGER,
-  });
-  if (compared.isErr()) {
-    return panic("A version comparison exceeded an unreachable internal result limit", {
-      cause: compared.error,
-    });
-  }
-
+}: ProjectFolioContentComparisonOptions): FolioStoryDiff => {
   const changes: FolioBlockDiff[] = [];
   const counts = createSummaryCounts();
   const baseBlockById = new Map<string, FolioAIBlock>();
   if (!includeText && includeFormatting) {
-    for (const block of baseBlocks) {
-      baseBlockById.set(block.id, block);
+    for (const event of comparison.events) {
+      for (const block of event.baseBlocks) {
+        baseBlockById.set(block.id, block);
+      }
     }
   }
   const baseHandle = (block: FolioAIBlock): FolioVersionBlockHandle => {
@@ -477,7 +469,7 @@ const compareStoryBlocks = ({
     blockProperties: readonly FolioContentBlockProperty[];
     formatting: FolioContentFormattingChange | undefined;
   }): void => {
-    const changedProperties = legacyVersionChangeProperties({
+    const changedProperties = projectVersionChangeProperties({
       blockProperties,
       formatting: includeFormatting ? formatting : undefined,
     });
@@ -486,7 +478,7 @@ const compareStoryBlocks = ({
       type: "modified",
       blockId: revisedBlock.id,
       kind: revisedBlock.kind,
-      segments: legacySegments(segments),
+      segments: projectVersionSegments(segments),
       ...(changedProperties.length > 0 && { changedProperties }),
       baseHandle: baseHandle(baseBlock),
       revisedHandle: revisedHandle(revisedBlock),
@@ -502,7 +494,7 @@ const compareStoryBlocks = ({
     formatting: FolioContentFormattingChange | undefined;
   }): void => {
     const changedProperties =
-      includeFormatting && formatting ? legacyFormattingProperties(formatting) : [];
+      includeFormatting && formatting ? projectVersionFormattingProperties(formatting) : [];
     if (changedProperties.length === 0) {
       counts.unchanged++;
       return;
@@ -539,28 +531,7 @@ const compareStoryBlocks = ({
     });
   };
 
-  for (const event of compared.value.events) {
-    if (!includeText && includeFormatting && event.type === "movedTo" && event.formatting) {
-      const baseBlock = baseBlockById.get(event.baseBlockId);
-      if (!baseBlock) {
-        return panic("A moved comparison event requires its base block", {
-          blockId: event.baseBlockId,
-        });
-      }
-      addFormattingOrUnchanged({
-        baseBlock,
-        revisedBlock: event.revisedBlocks[0],
-        formatting: event.formatting,
-      });
-      continue;
-    }
-    if (!includeText) {
-      const excludedUnitCount = excludedTextEventUnitCount(event);
-      if (excludedUnitCount !== null) {
-        counts.unchanged += excludedUnitCount;
-        continue;
-      }
-    }
+  for (const event of comparison.events) {
     switch (event.type) {
       case "unchanged":
         counts.unchanged++;
@@ -592,12 +563,21 @@ const compareStoryBlocks = ({
         break;
       }
       case "deleted":
-        addDeleted(event.baseBlocks[0]);
+        if (includeText) {
+          addDeleted(event.baseBlocks[0]);
+        } else {
+          counts.unchanged++;
+        }
         break;
       case "inserted":
-        addInserted(event.revisedBlocks[0]);
+        if (includeText) {
+          addInserted(event.revisedBlocks[0]);
+        } else {
+          counts.unchanged++;
+        }
         break;
       case "movedFrom": {
+        if (!includeText) break;
         const block = event.baseBlocks[0];
         changes.push({
           type: "movedFrom",
@@ -611,7 +591,25 @@ const compareStoryBlocks = ({
       }
       case "movedTo": {
         const block = event.revisedBlocks[0];
-        const changedProperties = legacyVersionChangeProperties({
+        if (!includeText) {
+          if (!includeFormatting || !event.formatting) {
+            counts.unchanged++;
+            break;
+          }
+          const baseBlock = baseBlockById.get(event.baseBlockId);
+          if (!baseBlock) {
+            return panic("A moved comparison event requires its base block", {
+              blockId: event.baseBlockId,
+            });
+          }
+          addFormattingOrUnchanged({
+            baseBlock,
+            revisedBlock: block,
+            formatting: event.formatting,
+          });
+          break;
+        }
+        const changedProperties = projectVersionChangeProperties({
           blockProperties: event.changedProperties ?? [],
           formatting: includeFormatting ? event.formatting : undefined,
         });
@@ -621,7 +619,7 @@ const compareStoryBlocks = ({
           kind: block.kind,
           text: block.text,
           moveGroupId: firstMoveGroupId + event.moveId - 1,
-          ...(event.segments && { segments: legacySegments(event.segments) }),
+          ...(event.segments && { segments: projectVersionSegments(event.segments) }),
           ...(changedProperties.length > 0 && { changedProperties }),
           revisedHandle: revisedHandle(block),
         });
@@ -631,27 +629,52 @@ const compareStoryBlocks = ({
       case "split": {
         const baseBlock = event.baseBlocks[0];
         const [firstRevised, secondRevised] = event.revisedBlocks;
-        addModified({
+        if (includeText) {
+          addModified({
+            baseBlock,
+            revisedBlock: firstRevised,
+            segments: event.segments,
+            blockProperties: [],
+            formatting: paragraphFormattingChange(event.paragraphFormatting[0]),
+          });
+          // The second paragraph is target content in the combined scope, so
+          // its formatting is intrinsic to the added block. Formatting-only
+          // projection compares both revised siblings to their shared source.
+          addInserted(secondRevised);
+          break;
+        }
+        addFormattingOrUnchanged({
           baseBlock,
           revisedBlock: firstRevised,
-          segments: workSession.diffText(baseBlock.text, firstRevised.text),
-          blockProperties: [],
-          formatting: undefined,
+          formatting: paragraphFormattingChange(event.paragraphFormatting[0]),
         });
-        addInserted(secondRevised);
+        addFormattingOrUnchanged({
+          baseBlock,
+          revisedBlock: secondRevised,
+          formatting: paragraphFormattingChange(event.paragraphFormatting[1]),
+        });
         break;
       }
       case "merge": {
         const [firstBase, secondBase] = event.baseBlocks;
         const revisedBlock = event.revisedBlocks[0];
-        addModified({
+        if (includeText) {
+          addModified({
+            baseBlock: firstBase,
+            revisedBlock,
+            segments: event.segments,
+            blockProperties: [],
+            formatting: paragraphFormattingChange(event.paragraphFormatting),
+          });
+          addDeleted(secondBase);
+          break;
+        }
+        addFormattingOrUnchanged({
           baseBlock: firstBase,
           revisedBlock,
-          segments: workSession.diffText(firstBase.text, revisedBlock.text),
-          blockProperties: [],
-          formatting: undefined,
+          formatting: paragraphFormattingChange(event.paragraphFormatting),
         });
-        addDeleted(secondBase);
+        counts.unchanged++;
         break;
       }
       default: {
@@ -662,6 +685,49 @@ const compareStoryBlocks = ({
   }
 
   return { baseStory, revisedStory, changes, summaryCounts: counts };
+};
+
+const compareStoryBlocks = ({
+  baseStory,
+  revisedStory,
+  baseBlocks,
+  revisedBlocks,
+  storyIndex,
+  firstMoveGroupId,
+  includeText,
+  includeFormatting,
+  workSession,
+}: CompareStoryBlocksOptions): FolioStoryDiff => {
+  const prepared = prepareContentComparison({
+    base: { blocks: baseBlocks },
+    revised: { blocks: revisedBlocks },
+    workSession,
+  });
+  if (prepared.isErr()) {
+    if (prepared.error instanceof FolioContentComparisonLimitError) {
+      throw versionComparisonLimitError(prepared.error, storyIndex);
+    }
+    return panic("A reviewed story produced an invalid content snapshot", {
+      cause: prepared.error,
+      storyIndex,
+    });
+  }
+  const compared = compareContentWithPolicy({
+    prepared: prepared.value,
+    stableIdMismatch: "pair",
+    idStability: folioAIBlockIdStability,
+  });
+  if (compared.isErr()) {
+    throw versionComparisonLimitError(compared.error, storyIndex);
+  }
+  return projectFolioContentComparisonToStory({
+    baseStory,
+    revisedStory,
+    comparison: compared.value,
+    firstMoveGroupId,
+    includeText,
+    includeFormatting,
+  });
 };
 
 const DEFAULT_COMPARISON_SCOPES = Object.freeze([
@@ -793,7 +859,10 @@ export const compareDocxVersions = async (
   // and move allowances across every story in this package comparison.
   const comparisonWorkSession = createContentComparisonWorkSession();
 
-  for (const pair of pairFolioDocumentStories(baseStories, revisedStories)) {
+  for (const [storyIndex, pair] of pairFolioDocumentStories(
+    baseStories,
+    revisedStories,
+  ).entries()) {
     const baseBlocks = pair.baseStory
       ? (baseReviewer.readReviewedStory({ story: pair.baseStory, view: "final" })?.snapshot
           .blocks ?? [])
@@ -806,6 +875,7 @@ export const compareDocxVersions = async (
       ...pair,
       baseBlocks,
       revisedBlocks,
+      storyIndex,
       firstMoveGroupId: nextMoveGroupId,
       includeText: scopes.has("text"),
       includeFormatting: scopes.has("formatting"),

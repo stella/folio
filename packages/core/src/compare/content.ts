@@ -31,7 +31,7 @@ import type {
   FolioContentSnapshot,
 } from "./content-types";
 
-/** Hard resource ceilings for one representation-neutral comparison. */
+/** Hard resource ceilings for one representation-neutral comparison work session. */
 export const FOLIO_CONTENT_COMPARISON_LIMITS = Object.freeze({
   blocksPerSnapshot: 100_000,
   changes: 10_000,
@@ -171,6 +171,13 @@ export type FolioContentComparisonEvent<Block extends FolioContentBlock = FolioC
       type: "split";
       baseBlocks: readonly [Block];
       revisedBlocks: readonly [Block, Block];
+      /** Canonical UTF-16-offset segments from the base block to the first revised block. */
+      segments: readonly FolioContentTextSegment[];
+      /** Paragraph-format patches from the base block to each revised block, in tuple order. */
+      paragraphFormatting: readonly [
+        FolioContentParagraphFormattingPatch | null,
+        FolioContentParagraphFormattingPatch | null,
+      ];
       offset: number;
       separator: string;
     }
@@ -178,6 +185,10 @@ export type FolioContentComparisonEvent<Block extends FolioContentBlock = FolioC
       type: "merge";
       baseBlocks: readonly [Block, Block];
       revisedBlocks: readonly [Block];
+      /** Canonical UTF-16-offset segments from the first base block to the revised block. */
+      segments: readonly FolioContentTextSegment[];
+      /** Paragraph-format patch from the first base block to the revised block. */
+      paragraphFormatting: FolioContentParagraphFormattingPatch | null;
       separator: string;
     };
 
@@ -222,11 +233,41 @@ export type CompareContentOptions<Block extends FolioContentBlock = FolioContent
   granularity?: WordDiffGranularity;
 };
 
+const SNAPSHOT_RESOURCE_DESCRIPTORS = [
+  { resource: "blocks", limit: "blocksPerSnapshot" },
+  { resource: "textCodeUnits", limit: "textCodeUnitsPerSnapshot" },
+  { resource: "previewRuns", limit: "previewRunsPerSnapshot" },
+  { resource: "containerEntries", limit: "containerEntriesPerSnapshot" },
+  { resource: "attributeCodeUnits", limit: "attributeCodeUnitsPerSnapshot" },
+] as const satisfies readonly {
+  resource: string;
+  limit: FolioContentComparisonLimit;
+}[];
+
+type SnapshotResource = (typeof SNAPSHOT_RESOURCE_DESCRIPTORS)[number]["resource"];
+type SnapshotResourceUsage = Record<SnapshotResource, number>;
+
+type ContentComparisonResourceUsage = {
+  base: SnapshotResourceUsage;
+  revised: SnapshotResourceUsage;
+  changes: number;
+  formattingRanges: number;
+};
+
+const emptySnapshotResourceUsage = (): SnapshotResourceUsage => ({
+  blocks: 0,
+  textCodeUnits: 0,
+  previewRuns: 0,
+  containerEntries: 0,
+  attributeCodeUnits: 0,
+});
+
 export type FolioContentComparisonWorkSession = {
   alignment: FolioContentAlignmentWorkSession;
   remainingMoveComparisons: number;
   remainingMoveTokenLookups: number;
   diffText: ReturnType<typeof createWordDiffSession>["diff"];
+  resourceUsage: ContentComparisonResourceUsage;
 };
 
 export const createContentComparisonWorkSession = (
@@ -236,6 +277,12 @@ export const createContentComparisonWorkSession = (
   remainingMoveComparisons: MAX_MOVE_SIMILARITY_COMPARISONS,
   remainingMoveTokenLookups: MAX_MOVE_SIMILARITY_TOKEN_LOOKUPS,
   diffText: createWordDiffSession({ ...(granularity && { granularity }) }).diff,
+  resourceUsage: {
+    base: emptySnapshotResourceUsage(),
+    revised: emptySnapshotResourceUsage(),
+    changes: 0,
+    formattingRanges: 0,
+  },
 });
 
 const invalidInput = (
@@ -536,13 +583,6 @@ const validateTableLocation = (
   return null;
 };
 
-type SnapshotResourceUsage = {
-  textCodeUnits: number;
-  previewRuns: number;
-  containerEntries: number;
-  attributeCodeUnits: number;
-};
-
 type TableCellRectangle = {
   blockIndex: number;
   left: number;
@@ -652,6 +692,7 @@ const chargeAttributeString = ({
 const validateSnapshot = <Block extends FolioContentBlock>(
   snapshot: FolioContentSnapshot<Block>,
   side: "base" | "revised",
+  usage: SnapshotResourceUsage,
 ): InvalidFolioContentComparisonError | FolioContentComparisonLimitError | null => {
   if (!snapshot || !Array.isArray(snapshot.blocks)) {
     return invalidInput(side, "blocks", "A content snapshot must contain an ordered blocks array.");
@@ -665,12 +706,7 @@ const validateSnapshot = <Block extends FolioContentBlock>(
     });
   }
 
-  const usage: SnapshotResourceUsage = {
-    textCodeUnits: 0,
-    previewRuns: 0,
-    containerEntries: 0,
-    attributeCodeUnits: 0,
-  };
+  usage.blocks = snapshot.blocks.length;
   const ids = new Set<string>();
   const lastCoordinateByTable = new Map<string, readonly [number, number, number]>();
   const geometryByCell = new Map<string, readonly [number, number, number]>();
@@ -1023,6 +1059,93 @@ const validateSnapshot = <Block extends FolioContentBlock>(
     }
   }
   return null;
+};
+
+const aggregateSnapshotLimitError = (
+  side: "base" | "revised",
+  retained: SnapshotResourceUsage,
+  incoming: SnapshotResourceUsage,
+): FolioContentComparisonLimitError | null => {
+  for (const { resource, limit } of SNAPSHOT_RESOURCE_DESCRIPTORS) {
+    const maximum = FOLIO_CONTENT_COMPARISON_LIMITS[limit];
+    const actual = retained[resource] + incoming[resource];
+    if (actual > maximum) {
+      return limitExceeded({ input: side, limit, maximum, actual });
+    }
+  }
+  return null;
+};
+
+const claimSnapshotPairResources = (
+  resourceUsage: ContentComparisonResourceUsage,
+  base: SnapshotResourceUsage,
+  revised: SnapshotResourceUsage,
+): FolioContentComparisonLimitError | null => {
+  const baseError = aggregateSnapshotLimitError("base", resourceUsage.base, base);
+  if (baseError) return baseError;
+  const revisedError = aggregateSnapshotLimitError("revised", resourceUsage.revised, revised);
+  if (revisedError) return revisedError;
+  for (const { resource } of SNAPSHOT_RESOURCE_DESCRIPTORS) {
+    resourceUsage.base[resource] += base[resource];
+    resourceUsage.revised[resource] += revised[resource];
+  }
+  return null;
+};
+
+const PREPARED_CONTENT_COMPARISON = Symbol("prepared-content-comparison");
+
+class PreparedContentComparison<Block extends FolioContentBlock> {
+  readonly #preparationToken = PREPARED_CONTENT_COMPARISON;
+
+  private constructor(
+    readonly base: FolioContentSnapshot<Block>,
+    readonly revised: FolioContentSnapshot<Block>,
+    readonly workSession: FolioContentComparisonWorkSession,
+  ) {}
+
+  static create<Block extends FolioContentBlock>({
+    base,
+    revised,
+    workSession,
+  }: PrepareContentComparisonOptions<Block>): PreparedContentComparison<Block> {
+    return new PreparedContentComparison(base, revised, workSession);
+  }
+
+  assertPrepared(): void {
+    if (this.#preparationToken !== PREPARED_CONTENT_COMPARISON) {
+      panic("Content comparison input was not prepared by Folio");
+    }
+  }
+}
+
+type PrepareContentComparisonOptions<Block extends FolioContentBlock> = {
+  base: FolioContentSnapshot<Block>;
+  revised: FolioContentSnapshot<Block>;
+  workSession: FolioContentComparisonWorkSession;
+};
+
+/** Validate and atomically charge one snapshot pair to a shared comparison scope. @internal */
+export const prepareContentComparison = <Block extends FolioContentBlock>({
+  base,
+  revised,
+  workSession,
+}: PrepareContentComparisonOptions<Block>): Result<
+  PreparedContentComparison<Block>,
+  FolioContentComparisonError
+> => {
+  const baseUsage = emptySnapshotResourceUsage();
+  const baseError = validateSnapshot(base, "base", baseUsage);
+  if (baseError) return Result.err(baseError);
+  const revisedUsage = emptySnapshotResourceUsage();
+  const revisedError = validateSnapshot(revised, "revised", revisedUsage);
+  if (revisedError) return Result.err(revisedError);
+  const aggregateError = claimSnapshotPairResources(
+    workSession.resourceUsage,
+    baseUsage,
+    revisedUsage,
+  );
+  if (aggregateError) return Result.err(aggregateError);
+  return Result.ok(PreparedContentComparison.create({ base, revised, workSession }));
 };
 
 const withTextOffsets = (segments: readonly WordDiffSegment[]): FolioContentTextSegment[] => {
@@ -1443,25 +1566,28 @@ const formattingChange = <Block extends FolioContentBlock>(
 };
 
 type CompareAlignedContentOptions<Block extends FolioContentBlock> = {
-  baseBlocks: readonly Block[];
-  revisedBlocks: readonly Block[];
+  prepared: PreparedContentComparison<Block>;
   steps: readonly FolioContentAlignmentStep<Block>[];
-  workSession: FolioContentComparisonWorkSession;
-  maxChanges: number;
   idStability?: (block: Block) => FolioContentIdStability;
 };
 
-export const compareAlignedFolioContent = <Block extends FolioContentBlock>({
-  baseBlocks,
-  revisedBlocks,
+type CompareContentWithPolicyOptions<Block extends FolioContentBlock> = {
+  prepared: PreparedContentComparison<Block>;
+  stableIdMismatch?: "pair" | "separate";
+  idStability?: (block: Block) => FolioContentIdStability;
+};
+
+const compareAlignedFolioContent = <Block extends FolioContentBlock>({
+  prepared,
   steps,
-  workSession,
-  maxChanges,
   idStability,
 }: CompareAlignedContentOptions<Block>): Result<
   FolioContentComparison<Block>,
   FolioContentComparisonLimitError
 > => {
+  const { base, revised, workSession } = prepared;
+  const baseBlocks = base.blocks;
+  const revisedBlocks = revised.blocks;
   const paragraphPlans = detectFolioContentParagraphMarkPlans(steps);
   const consumed = new Set([...paragraphPlans.keys()].map((index) => index + 1));
   const moves = detectFolioContentMoves({
@@ -1483,7 +1609,9 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlock>({
   const structuralChanges: FolioContentStructuralChange[] = [];
   let nextRelationId = 0;
   let nextStructuralId = 0;
-  let remainingFormattingRanges = maxChanges;
+  let remainingFormattingRanges =
+    FOLIO_CONTENT_COMPARISON_LIMITS.changes - workSession.resourceUsage.formattingRanges;
+  let formattingRangeCount = 0;
   let changeCount = 0;
 
   const addRelation = (
@@ -1493,7 +1621,12 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlock>({
   ): boolean => {
     if (event.type !== "unchanged") {
       changeCount++;
-      if (changeCount > maxChanges) return false;
+      if (
+        workSession.resourceUsage.changes + changeCount >
+        FOLIO_CONTENT_COMPARISON_LIMITS.changes
+      ) {
+        return false;
+      }
     }
     const relation = {
       id: nextRelationId++,
@@ -1522,8 +1655,18 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlock>({
       limitExceeded({
         input: "result",
         limit: "changes",
-        maximum: maxChanges,
-        actual: maxChanges + 1,
+        maximum: FOLIO_CONTENT_COMPARISON_LIMITS.changes,
+        actual: workSession.resourceUsage.changes + changeCount,
+      }),
+    );
+
+  const formattingRangeLimitExceeded = (): Result<never, FolioContentComparisonLimitError> =>
+    Result.err(
+      limitExceeded({
+        input: "result",
+        limit: "changes",
+        maximum: FOLIO_CONTENT_COMPARISON_LIMITS.changes,
+        actual: FOLIO_CONTENT_COMPARISON_LIMITS.changes + 1,
       }),
     );
 
@@ -1531,10 +1674,16 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlock>({
     if (consumed.has(stepIndex)) continue;
     const paragraphPlan = paragraphPlans.get(stepIndex);
     if (paragraphPlan?.type === "split") {
+      const [firstRevised, secondRevised] = paragraphPlan.revisedBlocks;
       const event = {
         type: "split",
         baseBlocks: [paragraphPlan.baseBlock],
         revisedBlocks: paragraphPlan.revisedBlocks,
+        segments: withTextOffsets(diffText(paragraphPlan.baseBlock.text, firstRevised.text)),
+        paragraphFormatting: [
+          changedFolioContentParagraphFormatting(paragraphPlan.baseBlock, firstRevised),
+          changedFolioContentParagraphFormatting(paragraphPlan.baseBlock, secondRevised),
+        ],
         offset: paragraphPlan.offset,
         separator: paragraphPlan.separator,
       } as const;
@@ -1544,10 +1693,16 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlock>({
       continue;
     }
     if (paragraphPlan?.type === "merge") {
+      const firstBase = paragraphPlan.baseBlocks[0];
       const event = {
         type: "merge",
         baseBlocks: paragraphPlan.baseBlocks,
         revisedBlocks: [paragraphPlan.revisedBlock],
+        segments: withTextOffsets(diffText(firstBase.text, paragraphPlan.revisedBlock.text)),
+        paragraphFormatting: changedFolioContentParagraphFormatting(
+          firstBase,
+          paragraphPlan.revisedBlock,
+        ),
         separator: paragraphPlan.separator,
       } as const;
       if (!addRelation(event, event.baseBlocks, event.revisedBlocks)) {
@@ -1562,16 +1717,10 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlock>({
       const properties = changedBlockProperties(base, revised);
       const formatting = formattingChange(base, revised, remainingFormattingRanges);
       if (formatting === "limit") {
-        return Result.err(
-          limitExceeded({
-            input: "result",
-            limit: "changes",
-            maximum: maxChanges,
-            actual: maxChanges + 1,
-          }),
-        );
+        return formattingRangeLimitExceeded();
       }
       remainingFormattingRanges -= formatting?.ranges.length ?? 0;
+      formattingRangeCount += formatting?.ranges.length ?? 0;
       let event: FolioContentComparisonEvent<Block>;
       if (base.text !== revised.text || properties.length > 0) {
         event = {
@@ -1609,16 +1758,10 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlock>({
         ? formattingChange(move.baseBlock, step.block, remainingFormattingRanges)
         : null;
       if (moveFormatting === "limit") {
-        return Result.err(
-          limitExceeded({
-            input: "result",
-            limit: "changes",
-            maximum: maxChanges,
-            actual: maxChanges + 1,
-          }),
-        );
+        return formattingRangeLimitExceeded();
       }
       remainingFormattingRanges -= moveFormatting?.ranges.length ?? 0;
+      formattingRangeCount += moveFormatting?.ranges.length ?? 0;
       const moveProperties = move ? changedBlockProperties(move.baseBlock, step.block) : [];
       const event: FolioContentComparisonEvent<Block> = move
         ? {
@@ -1710,7 +1853,39 @@ export const compareAlignedFolioContent = <Block extends FolioContentBlock>({
     return panic("Content alignment left relations outside the ordered projection");
   }
 
+  workSession.resourceUsage.changes += changeCount;
+  workSession.resourceUsage.formattingRanges += formattingRangeCount;
   return Result.ok({ events: ordered, structuralChanges });
+};
+
+/**
+ * Compare a validated, budget-charged snapshot pair with an adapter-specific
+ * identity policy. Ordinary snapshots cannot enter semantic comparison.
+ *
+ * @internal
+ */
+export const compareContentWithPolicy = <Block extends FolioContentBlock>({
+  prepared,
+  stableIdMismatch = "separate",
+  idStability,
+}: CompareContentWithPolicyOptions<Block>): Result<
+  FolioContentComparison<Block>,
+  FolioContentComparisonLimitError
+> => {
+  prepared.assertPrepared();
+  const { base, revised, workSession } = prepared;
+  const steps = alignFolioContentStructure({
+    baseBlocks: base.blocks,
+    revisedBlocks: revised.blocks,
+    workSession: workSession.alignment,
+    stableIdMismatch,
+    ...(idStability && { idStability }),
+  });
+  return compareAlignedFolioContent({
+    prepared,
+    steps,
+    ...(idStability && { idStability }),
+  });
 };
 
 /** Compare two representation-neutral ordered content snapshots. */
@@ -1729,21 +1904,10 @@ export const compareContent = <Block extends FolioContentBlock = FolioContentBlo
       invalidInput("options", "granularity", "Comparison granularity must be word or character."),
     );
   }
-  const baseError = validateSnapshot(base, "base");
-  if (baseError) return Result.err(baseError);
-  const revisedError = validateSnapshot(revised, "revised");
-  if (revisedError) return Result.err(revisedError);
   const workSession = createContentComparisonWorkSession(granularity);
-  const steps = alignFolioContentStructure({
-    baseBlocks: base.blocks,
-    revisedBlocks: revised.blocks,
-    workSession: workSession.alignment,
-  });
-  return compareAlignedFolioContent({
-    baseBlocks: base.blocks,
-    revisedBlocks: revised.blocks,
-    steps,
-    workSession,
-    maxChanges: FOLIO_CONTENT_COMPARISON_LIMITS.changes,
+  const prepared = prepareContentComparison({ base, revised, workSession });
+  if (prepared.isErr()) return Result.err(prepared.error);
+  return compareContentWithPolicy({
+    prepared: prepared.value,
   });
 };

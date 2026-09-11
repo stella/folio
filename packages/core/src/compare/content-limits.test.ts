@@ -2,11 +2,13 @@ import { describe, expect, test } from "bun:test";
 
 import {
   compareContent,
+  compareContentWithPolicy,
   createContentComparisonWorkSession,
   detectFolioContentMoves,
   FOLIO_CONTENT_COMPARISON_LIMITS,
   FolioContentComparisonLimitError,
   InvalidFolioContentComparisonError,
+  prepareContentComparison,
 } from "./content";
 import type { FolioContentAlignmentStep } from "./content-alignment";
 import type { FolioContentBlock } from "./content-types";
@@ -33,6 +35,97 @@ const expectLimit = (
 };
 
 describe("neutral comparison resource boundaries", () => {
+  test("charges aggregate input usage across prepared story pairs atomically", () => {
+    const text = "x".repeat(1_000_000);
+    const story = (prefix: string, count: number) => ({
+      blocks: Array.from({ length: count }, (_unused, index) =>
+        block(`${prefix}-${String(index)}`, { text }),
+      ),
+    });
+    for (const side of ["base", "revised"] as const) {
+      const workSession = createContentComparisonWorkSession();
+      const empty = { blocks: [] } as const;
+      const firstStory = story(`${side}-first`, 4);
+      const secondStory = story(`${side}-second`, 5);
+      const first = prepareContentComparison({
+        base: side === "base" ? firstStory : empty,
+        revised: side === "revised" ? firstStory : empty,
+        workSession,
+      });
+      expect(first.isOk()).toBe(true);
+
+      const second = prepareContentComparison({
+        base: side === "base" ? secondStory : empty,
+        revised: side === "revised" ? secondStory : empty,
+        workSession,
+      });
+      expect(second.isErr()).toBe(true);
+      if (!second.isErr()) continue;
+      expect(second.error).toBeInstanceOf(FolioContentComparisonLimitError);
+      expect(second.error).toMatchObject({
+        input: side,
+        limit: "textCodeUnitsPerSnapshot",
+        maximum: FOLIO_CONTENT_COMPARISON_LIMITS.textCodeUnitsPerSnapshot,
+        actual: 9_000_000,
+      });
+      expect(workSession.resourceUsage[side].textCodeUnits).toBe(4_000_000);
+    }
+
+    const workSession = createContentComparisonWorkSession();
+    const firstPair = prepareContentComparison({
+      base: story("atomic-base-first", 1),
+      revised: story("atomic-revised-first", 4),
+      workSession,
+    });
+    expect(firstPair.isOk()).toBe(true);
+    const rejectedPair = prepareContentComparison({
+      base: story("atomic-base-second", 2),
+      revised: story("atomic-revised-second", 5),
+      workSession,
+    });
+    expect(rejectedPair.isErr()).toBe(true);
+    if (rejectedPair.isErr()) {
+      expect(rejectedPair.error).toMatchObject({
+        input: "revised",
+        limit: "textCodeUnitsPerSnapshot",
+        actual: 9_000_000,
+      });
+    }
+    expect(workSession.resourceUsage.base.textCodeUnits).toBe(1_000_000);
+    expect(workSession.resourceUsage.revised.textCodeUnits).toBe(4_000_000);
+  });
+
+  test("charges one aggregate change budget across prepared story pairs", () => {
+    const workSession = createContentComparisonWorkSession();
+    const compareInsertedStory = (prefix: string, count: number) => {
+      const prepared = prepareContentComparison({
+        base: { blocks: [] },
+        revised: {
+          blocks: Array.from({ length: count }, (_unused, index) =>
+            block(`${prefix}-${String(index)}`),
+          ),
+        },
+        workSession,
+      });
+      if (prepared.isErr()) {
+        throw prepared.error;
+      }
+      return compareContentWithPolicy({ prepared: prepared.value });
+    };
+
+    expect(compareInsertedStory("first", 6_000).isOk()).toBe(true);
+    const second = compareInsertedStory("second", 4_001);
+    expect(second.isErr()).toBe(true);
+    if (!second.isErr()) return;
+    expect(second.error).toMatchObject({
+      input: "result",
+      limit: "changes",
+      maximum: FOLIO_CONTENT_COMPARISON_LIMITS.changes,
+      actual: FOLIO_CONTENT_COMPARISON_LIMITS.changes + 1,
+    });
+    expect(workSession.resourceUsage.changes).toBe(6_000);
+  });
+
   test("rejects a block before tokenizing more text than one diff may retain", () => {
     const text = "x".repeat(FOLIO_CONTENT_COMPARISON_LIMITS.blockCodeUnits + 1);
 

@@ -4,9 +4,12 @@ import fc from "fast-check";
 import { propertyConfig } from "../../../../test/property-testing";
 import {
   compareContent,
+  compareContentWithPolicy,
+  createContentComparisonWorkSession,
   FOLIO_CONTENT_COMPARISON_LIMITS,
   FolioContentComparisonLimitError,
   InvalidFolioContentComparisonError,
+  prepareContentComparison,
   type FolioContentComparison,
   type FolioContentComparisonEvent,
   type FolioContentTextSegment,
@@ -332,6 +335,25 @@ describe("representation-neutral comparison stream", () => {
         type: "split",
         baseBlocks: [joinedBase],
         revisedBlocks: [firstRevised, secondRevised],
+        segments: [
+          {
+            type: "equal",
+            text: "Alpha",
+            baseStart: 0,
+            baseEnd: 5,
+            revisedStart: 0,
+            revisedEnd: 5,
+          },
+          {
+            type: "del",
+            text: " Beta",
+            baseStart: 5,
+            baseEnd: 10,
+            revisedStart: 5,
+            revisedEnd: 5,
+          },
+        ],
+        paragraphFormatting: [null, null],
         offset: 5,
         separator: " ",
       },
@@ -349,9 +371,185 @@ describe("representation-neutral comparison stream", () => {
         type: "merge",
         baseBlocks: [firstBase, secondBase],
         revisedBlocks: [joinedRevised],
+        segments: [
+          {
+            type: "equal",
+            text: "Alpha",
+            baseStart: 0,
+            baseEnd: 5,
+            revisedStart: 0,
+            revisedEnd: 5,
+          },
+          {
+            type: "ins",
+            text: " Beta",
+            baseStart: 5,
+            baseEnd: 5,
+            revisedStart: 5,
+            revisedEnd: 10,
+          },
+        ],
+        paragraphFormatting: null,
         separator: " ",
       },
     ]);
+  });
+
+  test("split and merge segments use JavaScript UTF-16 offsets", () => {
+    const joined = contentBlock({ id: "first", text: "A😀 B" });
+    const first = contentBlock({ id: "first", text: "A😀" });
+    const second = contentBlock({ id: "second", text: "B" });
+
+    const split = successfulComparison({
+      base: [joined],
+      revised: [first, second],
+      granularity: "character",
+    }).events.at(0);
+    expect(split?.type).toBe("split");
+    if (split?.type !== "split") {
+      throw new Error("expected a split event");
+    }
+    expect(split.offset).toBe(3);
+    expect(textBefore(split.segments)).toBe(joined.text);
+    expect(textAfter(split.segments)).toBe(first.text);
+    expectSegmentOffsets({ segments: split.segments, base: joined.text, revised: first.text });
+
+    const merge = successfulComparison({
+      base: [first, second],
+      revised: [joined],
+      granularity: "character",
+    }).events.at(0);
+    expect(merge?.type).toBe("merge");
+    if (merge?.type !== "merge") {
+      throw new Error("expected a merge event");
+    }
+    expect(textBefore(merge.segments)).toBe(first.text);
+    expect(textAfter(merge.segments)).toBe(joined.text);
+    expectSegmentOffsets({ segments: merge.segments, base: first.text, revised: joined.text });
+  });
+
+  test("the neutral core computes split and merge segments exactly once", () => {
+    const fixtures = [
+      {
+        eventType: "split",
+        base: [contentBlock({ id: "first", text: "A😀 B" })],
+        revised: [
+          contentBlock({ id: "first", text: "A😀" }),
+          contentBlock({ id: "second", text: "B" }),
+        ],
+        expectedPair: ["A😀 B", "A😀"],
+      },
+      {
+        eventType: "merge",
+        base: [
+          contentBlock({ id: "first", text: "A😀" }),
+          contentBlock({ id: "second", text: "B" }),
+        ],
+        revised: [contentBlock({ id: "first", text: "A😀 B" })],
+        expectedPair: ["A😀", "A😀 B"],
+      },
+    ] as const;
+
+    for (const fixture of fixtures) {
+      const calls: [string, string][] = [];
+      const workSession = createContentComparisonWorkSession();
+      workSession.diffText = (base, revised) => {
+        calls.push([base, revised]);
+        return [
+          { type: "del", text: base },
+          { type: "ins", text: revised },
+        ];
+      };
+      const prepared = prepareContentComparison({
+        base: { blocks: fixture.base },
+        revised: { blocks: fixture.revised },
+        workSession,
+      });
+      if (prepared.isErr()) {
+        throw prepared.error;
+      }
+      const comparison = compareContentWithPolicy({ prepared: prepared.value });
+      if (comparison.isErr()) {
+        throw comparison.error;
+      }
+      expect(calls, fixture.eventType).toEqual([fixture.expectedPair]);
+      const event = comparison.value.events.at(0);
+      expect(event?.type).toBe(fixture.eventType);
+      if (event?.type !== "split" && event?.type !== "merge") {
+        throw new Error(`expected a ${fixture.eventType} event`);
+      }
+      expect(
+        event.segments.map(({ type, text }) => ({ type, text })),
+        fixture.eventType,
+      ).toEqual([
+        { type: "del", text: fixture.expectedPair[0] },
+        { type: "ins", text: fixture.expectedPair[1] },
+      ]);
+    }
+  });
+
+  test("split and merge events carry paragraph formatting for their paired blocks", () => {
+    const baseFormatting = {
+      styleId: "Base",
+      listLevel: 0,
+      directAlignment: "left",
+      directSpacing: { spaceAfter: 120 },
+    } as const;
+    const joinedBase = contentBlock({ id: "first", text: "Alpha Beta", ...baseFormatting });
+    const firstRevised = contentBlock({
+      id: "first",
+      text: "Alpha",
+    });
+    const secondRevised = contentBlock({
+      id: "second",
+      text: "Beta",
+      styleId: "Second",
+      listLevel: 2,
+      directAlignment: "right",
+      directSpacing: { lineSpacing: 240, lineSpacingRule: "exact" },
+    });
+
+    const split = successfulComparison({
+      base: [joinedBase],
+      revised: [firstRevised, secondRevised],
+    }).events.at(0);
+    expect(split?.type).toBe("split");
+    if (split?.type !== "split") {
+      throw new Error("expected a split event");
+    }
+    expect(split.paragraphFormatting).toEqual([
+      {
+        styleId: null,
+        listLevel: null,
+        alignment: null,
+        spacing: null,
+      },
+      {
+        styleId: "Second",
+        listLevel: 2,
+        alignment: "right",
+        spacing: { lineSpacing: 240, lineSpacingRule: "exact" },
+      },
+    ]);
+
+    const joinedRevised = contentBlock({ id: "first", text: "Alpha Beta" });
+    const merge = successfulComparison({
+      base: [
+        contentBlock({ id: "first", text: "Alpha", ...baseFormatting }),
+        contentBlock({ id: "second", text: "Beta" }),
+      ],
+      revised: [joinedRevised],
+    }).events.at(0);
+    expect(merge?.type).toBe("merge");
+    if (merge?.type !== "merge") {
+      throw new Error("expected a merge event");
+    }
+    expect(merge.paragraphFormatting).toEqual({
+      styleId: null,
+      listLevel: null,
+      alignment: null,
+      spacing: null,
+    });
   });
 
   test("exact and edited moves share one identity between their two stream positions", () => {
@@ -1297,6 +1495,35 @@ describe("container-aware comparison", () => {
 });
 
 describe("identity semantics and input boundaries", () => {
+  test("trusted adapter comparisons retain an explicit finite result bound", () => {
+    const workSession = createContentComparisonWorkSession();
+    const prepared = prepareContentComparison({
+      base: { blocks: [contentBlock({ id: "same", text: "Before" })] },
+      revised: { blocks: [contentBlock({ id: "same", text: "After" })] },
+      workSession,
+    });
+    if (prepared.isErr()) {
+      throw prepared.error;
+    }
+    workSession.resourceUsage.changes = FOLIO_CONTENT_COMPARISON_LIMITS.changes;
+    const result = compareContentWithPolicy({
+      prepared: prepared.value,
+      stableIdMismatch: "pair",
+    });
+
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) {
+      return;
+    }
+    expect(result.error).toBeInstanceOf(FolioContentComparisonLimitError);
+    expect(result.error).toMatchObject({
+      input: "result",
+      limit: "changes",
+      maximum: FOLIO_CONTENT_COMPARISON_LIMITS.changes,
+      actual: FOLIO_CONTENT_COMPARISON_LIMITS.changes + 1,
+    });
+  });
+
   test("stable IDs survive a shift while positional IDs follow their content", () => {
     const stableBase = [
       contentBlock({ id: "a", text: "Repeated" }),
@@ -1649,6 +1876,24 @@ describe("comparison projection invariants", () => {
             expectedCardinality[event.type],
           );
           if (event.type === "modified") {
+            expect(textBefore(event.segments)).toBe(event.baseBlocks[0].text);
+            expect(textAfter(event.segments)).toBe(event.revisedBlocks[0].text);
+            expectSegmentOffsets({
+              segments: event.segments,
+              base: event.baseBlocks[0].text,
+              revised: event.revisedBlocks[0].text,
+            });
+          }
+          if (event.type === "split") {
+            expect(textBefore(event.segments)).toBe(event.baseBlocks[0].text);
+            expect(textAfter(event.segments)).toBe(event.revisedBlocks[0].text);
+            expectSegmentOffsets({
+              segments: event.segments,
+              base: event.baseBlocks[0].text,
+              revised: event.revisedBlocks[0].text,
+            });
+          }
+          if (event.type === "merge") {
             expect(textBefore(event.segments)).toBe(event.baseBlocks[0].text);
             expect(textAfter(event.segments)).toBe(event.revisedBlocks[0].text);
             expectSegmentOffsets({

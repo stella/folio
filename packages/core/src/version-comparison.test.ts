@@ -16,7 +16,11 @@ import JSZip from "jszip";
 import { buildTextBoxTableDocument } from "./__tests__/textBoxTableDocument";
 import { FolioDocxReviewer } from "./ai-edits/headless";
 import type { FolioAIBlock } from "./ai-edits/types";
-import { compareContent } from "./compare/content";
+import {
+  compareContent,
+  FOLIO_CONTENT_COMPARISON_LIMITS,
+  type FolioContentComparison,
+} from "./compare/content";
 import { parseDocx } from "./docx/parser";
 import { createDocx } from "./docx/rezip";
 import { repackDocx } from "./docx/rezip";
@@ -27,6 +31,8 @@ import {
   applyFolioVersionDiffPrivacy,
   compareDocxVersions,
   exceedsLcsBudget,
+  FolioVersionComparisonLimitError,
+  projectFolioContentComparisonToStory,
 } from "./version-comparison";
 import { InvalidFolioVersionComparisonOptionsError } from "./version-comparison";
 import type { FolioBlockDiff } from "./version-comparison";
@@ -747,6 +753,28 @@ describe("compareDocxVersions: selected scopes", () => {
       InvalidFolioVersionComparisonOptionsError,
     );
   });
+
+  test("surfaces content resource limits with the package story position", async () => {
+    const base = await buildDocxBuffer([
+      {
+        text: "x".repeat(FOLIO_CONTENT_COMPARISON_LIMITS.blockCodeUnits + 1),
+        paraId: "00000001",
+      },
+    ]);
+    const revised = await buildDocxBuffer([]);
+
+    const comparison = compareDocxVersions(base, revised);
+    await expect(comparison).rejects.toMatchObject({
+      input: "base",
+      limit: "blockCodeUnits",
+      maximum: FOLIO_CONTENT_COMPARISON_LIMITS.blockCodeUnits,
+      actual: FOLIO_CONTENT_COMPARISON_LIMITS.blockCodeUnits + 1,
+      storyIndex: 0,
+      blockIndex: 0,
+      field: "blocks[0].text",
+    });
+    await expect(comparison).rejects.toBeInstanceOf(FolioVersionComparisonLimitError);
+  });
 });
 
 describe("compareDocxVersions: move detection", () => {
@@ -996,6 +1024,196 @@ describe("compareDocxVersions: move detection", () => {
       moved: 2,
     });
   });
+});
+
+describe("compareDocxVersions: neutral split and merge projection", () => {
+  test("projects paragraph formatting removals and both split siblings by scope", async () => {
+    const [splitBase, splitRevised] = await Promise.all([
+      buildDocxBuffer([
+        {
+          text: "Alpha Beta",
+          paraId: "00000001",
+          paragraphStyleId: "Heading1",
+          paragraphAlignment: "left",
+        },
+      ]),
+      buildDocxBuffer([
+        { text: "Alpha", paraId: "00000001" },
+        {
+          text: "Beta",
+          paraId: "00000002",
+          paragraphStyleId: "Heading1",
+          paragraphAlignment: "right",
+        },
+      ]),
+    ]);
+
+    const splitCombined = await compareDocxVersions(splitBase, splitRevised);
+    expect(splitCombined.changes).toEqual([
+      expect.objectContaining({
+        type: "modified",
+        blockId: "00000001",
+        changedProperties: ["styleId", "alignment"],
+      }),
+      expect.objectContaining({ type: "added", blockId: "00000002" }),
+    ]);
+    const splitFormatting = await compareDocxVersions(splitBase, splitRevised, {
+      include: ["formatting"],
+    });
+    expect(splitFormatting.changes).toEqual([
+      expect.objectContaining({
+        type: "formatChanged",
+        blockId: "00000001",
+        changedProperties: ["styleId", "alignment"],
+      }),
+      expect.objectContaining({
+        type: "formatChanged",
+        blockId: "00000002",
+        changedProperties: ["alignment"],
+      }),
+    ]);
+    expect(splitFormatting.summaryCounts).toMatchObject({
+      modified: 0,
+      formatChanged: 2,
+      unchanged: 0,
+    });
+
+    const [mergeBase, mergeRevised] = await Promise.all([
+      buildDocxBuffer([
+        {
+          text: "Alpha",
+          paraId: "00000001",
+          paragraphStyleId: "Heading1",
+          paragraphAlignment: "left",
+        },
+        { text: "Beta", paraId: "00000002" },
+      ]),
+      buildDocxBuffer([{ text: "Alpha Beta", paraId: "00000001" }]),
+    ]);
+    const mergeCombined = await compareDocxVersions(mergeBase, mergeRevised);
+    expect(mergeCombined.changes).toEqual([
+      expect.objectContaining({
+        type: "modified",
+        blockId: "00000001",
+        changedProperties: ["styleId", "alignment"],
+      }),
+      expect.objectContaining({ type: "deleted", blockId: "00000002" }),
+    ]);
+    const mergeFormatting = await compareDocxVersions(mergeBase, mergeRevised, {
+      include: ["formatting"],
+    });
+    expect(mergeFormatting.changes).toEqual([
+      expect.objectContaining({
+        type: "formatChanged",
+        blockId: "00000001",
+        changedProperties: ["styleId", "alignment"],
+      }),
+    ]);
+    expect(mergeFormatting.summaryCounts).toMatchObject({
+      modified: 0,
+      formatChanged: 1,
+      unchanged: 1,
+    });
+  });
+
+  test.each([
+    {
+      name: "split",
+      base: [{ text: "A😀 B", paraId: "00000001" }],
+      revised: [
+        { text: "A😀", paraId: "00000001" },
+        { text: "B", paraId: "00000002" },
+      ],
+      eventType: "split",
+      changeTypes: ["modified", "added"],
+    },
+    {
+      name: "merge",
+      base: [
+        { text: "A😀", paraId: "00000001" },
+        { text: "B", paraId: "00000002" },
+      ],
+      revised: [{ text: "A😀 B", paraId: "00000001" }],
+      eventType: "merge",
+      changeTypes: ["modified", "deleted"],
+    },
+  ] as const)(
+    "reuses the neutral $name segments without changing structured output order",
+    async (fixture) => {
+      const [base, revised] = await Promise.all([
+        buildDocxBuffer(fixture.base),
+        buildDocxBuffer(fixture.revised),
+      ]);
+      const [baseReviewer, revisedReviewer] = await Promise.all([
+        FolioDocxReviewer.fromBuffer(base),
+        FolioDocxReviewer.fromBuffer(revised),
+      ]);
+      const neutral = compareContent({
+        base: { blocks: baseReviewer.snapshot().blocks },
+        revised: { blocks: revisedReviewer.snapshot().blocks },
+      });
+      if (neutral.isErr()) {
+        throw neutral.error;
+      }
+      const event = neutral.value.events.find(({ type }) => type === fixture.eventType);
+      if (event?.type !== "split" && event?.type !== "merge") {
+        throw new Error(`expected a ${fixture.eventType} event`);
+      }
+
+      const eventBase = event.baseBlocks[0];
+      const eventRevised = event.revisedBlocks[0];
+      const controlledSegments = [
+        {
+          type: "del",
+          text: eventBase.text,
+          baseStart: 0,
+          baseEnd: eventBase.text.length,
+          revisedStart: 0,
+          revisedEnd: 0,
+        },
+        {
+          type: "ins",
+          text: eventRevised.text,
+          baseStart: eventBase.text.length,
+          baseEnd: eventBase.text.length,
+          revisedStart: 0,
+          revisedEnd: eventRevised.text.length,
+        },
+      ] as const;
+      const controlledComparison: FolioContentComparison<FolioAIBlock> = {
+        structuralChanges: neutral.value.structuralChanges,
+        events: neutral.value.events.map((candidate) =>
+          candidate === event ? { ...event, segments: controlledSegments } : candidate,
+        ),
+      };
+      const baseStory = baseReviewer.listStories().at(0)?.handle;
+      const revisedStory = revisedReviewer.listStories().at(0)?.handle;
+      if (!baseStory || !revisedStory) {
+        throw new Error("expected body story handles");
+      }
+      const controlledProjection = projectFolioContentComparisonToStory({
+        baseStory,
+        revisedStory,
+        comparison: controlledComparison,
+        firstMoveGroupId: 1,
+        includeText: true,
+        includeFormatting: true,
+      });
+      expect(controlledProjection.changes.at(0)).toMatchObject({
+        type: "modified",
+        segments: controlledSegments.map(({ type, text }) => ({ type, text })),
+      });
+
+      const version = await compareDocxVersions(base, revised);
+      expect(version.changes.map(({ type }) => type)).toEqual(fixture.changeTypes);
+      const modified = version.changes.at(0);
+      expect(modified?.type).toBe("modified");
+      if (modified?.type !== "modified") {
+        throw new Error("expected the paired split or merge block to remain modified");
+      }
+      expect(modified.segments).toEqual(event.segments.map(({ type, text }) => ({ type, text })));
+    },
+  );
 });
 
 describe("compareDocxVersions: neutral structural classification", () => {
