@@ -40,6 +40,10 @@ See [DOCX platform boundary](./docs/docx-platform.md) for what belongs in folio
 and how editors, headless tools, agents, and hosts share one document model and
 operation contract.
 
+<p align="center">
+  <img src=".github/assets/folio-showcase.gif" alt="Folio editing a five-page DOCX with tables, a chart, comments, and tracked changes" width="100%" />
+</p>
+
 ## Standards-first interoperability
 
 Folio targets interoperable OOXML behavior through published standards,
