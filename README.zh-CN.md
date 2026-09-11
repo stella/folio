@@ -27,182 +27,105 @@
 
 # folio
 
-用于 `.docx` 文件的浏览器编辑器和框架无关引擎。它可以打开、编辑和写入
-OOXML 文档，同时保留分页、表格、页眉和页脚、修订以及脚注。
+Folio 是可嵌入 Web 应用的 Word 文档编辑器。传入 `File`、`Blob`、`ArrayBuffer` 或 `Uint8Array` 格式的
+`.docx`，即可在浏览器中渲染可编辑的分页内容，并在用户保存时返回 `.docx`。
 
-核心包与框架无关。React、Vue、Nuxt 和文档审阅包均构建于其上。
+在应用中使用 React、Vue 或 Nuxt 编辑器，也可以直接使用 `folio-core`，在没有 UI 的情况下完成解析、编辑、布局和文档审阅。
 
-本项目是开源法律工作区 [stella](https://github.com/stella/stella) 的一部分。
-
-请参阅 [DOCX 平台边界](./docs/docx-platform.md)，了解 folio 的职责范围，以及编辑器、
-无头工具、agent 和宿主如何共享同一套文档模型和操作约定。
-
-## 标准优先的互操作性
-
-Folio 通过已发布的标准、差异解析、往返测试、交互测试，以及不同独立实现之间可复现的
-布局比较，来实现可互操作的 OOXML 行为。
-
-比较报告会记录参考实现、版本和相关渲染环境，使结果保持明确且可复现。
-
-完整的测试方法和参考矩阵请参阅[互操作性参考](./docs/interoperability.md)。
-
-## 软件包
-
-这是一个使用 [Bun](https://bun.sh) 的工作区，包含以下已发布软件包：
-
-| 软件包                                    | 用途                                                        |
-| ----------------------------------------- | ----------------------------------------------------------- |
-| [`@stll/folio-core`](./packages/core)     | OOXML 解析、Word 原生修订、文档审阅、ProseMirror 和页面布局 |
-| [`@stll/folio-react`](./packages/react)   | 基于 `@stll/folio-core` 构建的 React 编辑器 UI              |
-| [`@stll/folio-vue`](./packages/vue)       | Vue 3 编辑器和组合式函数                                    |
-| [`@stll/folio-nuxt`](./packages/nuxt)     | 为 Vue 编辑器提供 Nuxt 3/4 注册                             |
-| [`@stll/folio-agents`](./packages/agents) | 用于读取 `.docx` 文件并提出批注或修订建议的 LLM 工具        |
+<p align="center">
+  <img src=".github/assets/folio-showcase.gif" alt="Folio 编辑包含表格、图表、批注和修订的五页 DOCX 文档" width="100%" />
+</p>
 
 ## 安装
 
 ```sh
-# React 编辑器（会安装 @stll/folio-core）
 bun add @stll/folio-react react react-dom use-intl
-
-# Vue 编辑器
-bun add @stll/folio-vue vue
-
-# Nuxt 集成
-bun add @stll/folio-nuxt
-
-# agent/审阅工具
-bun add @stll/folio-agents
-
-# 或仅安装无头引擎
-bun add @stll/folio-core
 ```
 
-## 快速开始
+`@stll/folio-core` 会随 React 编辑器一同安装。
+
+## React 快速开始
 
 ```tsx
-import { DocxEditor } from "@stll/folio-react";
-import "@stll/folio-react/standalone.css";
-
-export function Editor({ docx }: { docx: ArrayBuffer }) {
-  return <DocxEditor documentBuffer={docx} onSave={(out) => download(out)} />;
-}
-```
-
-在 SSR 应用中，请通过仅客户端加载或动态导入来加载编辑器。
-
-## Word 原生修订
-
-Folio 写入 Microsoft Word 可以审阅、接受或拒绝的 OOXML 修订。可以应用明确的操作，
-也可以比较两个已保存的版本来生成带修订的 `.docx`：
-
-```ts
-import { FolioDocxReviewer } from "@stll/folio-core/server";
-import { generateRedlineDocx } from "@stll/folio-core/redline";
-
-const reviewer = await FolioDocxReviewer.fromBuffer(sourceDocx, {
-  author: "Reviewer",
-});
-const block = reviewer.snapshot().blocks.at(0);
-if (!block) throw new Error("The document has no editable blocks");
-
-const result = reviewer.applyOperations([
-  {
-    id: "replace-term",
-    type: "replaceInBlock",
-    blockId: block.id,
-    find: "Supplier",
-    replace: "Provider",
-  },
-]);
-if (result.skipped.length > 0) throw new Error(JSON.stringify(result.skipped));
-const reviewedDocx = await reviewer.toBuffer();
-
-const { buffer: comparisonRedline } = await generateRedlineDocx(sourceDocx, reviewedDocx, {
-  author: "Reviewer",
-});
-```
-
-`applyOperations` 默认生成 Word 原生修订。使用 `getChanges()`、`acceptChange()`、
-`rejectChange()`、`acceptAll()` 和 `rejectAll()` 管理待审阅的修改。修订清单包括行内编辑、
-格式、段落标记，以及段落、节、表格、行和单元格属性变更。面向模型的审阅工具请参阅
-[`@stll/folio-agents`](./packages/agents)。
-
-## 样式
-
-请选择一种样式表。
-
-如果应用未使用 Tailwind，或者希望隔离 folio 的样式，请使用 `standalone.css`：
-
-```tsx
-import "@stll/folio-react/standalone.css";
-```
-
-可以在 `.folio-root` 上覆盖设计令牌：
-
-```css
-.folio-root {
-  --background: #fdfdfc;
-  --foreground: #1c1c1a;
-  --primary: #3b5bdb;
-  /* ……只覆盖需要修改的令牌…… */
-}
-```
-
-如需深色模式，请为 `<html>` 等祖先元素添加 `.dark`。
-
-如果应用已经使用 Tailwind，请使用 `editor.css`。先将 folio 发布的 JavaScript 文件添加到
-Tailwind 的扫描源中，然后导入样式表：
-
-```css
-/* 应用的 Tailwind 入口文件 */
-@import "tailwindcss";
-@source "../node_modules/@stll/folio-react/dist/**/*.js";
-```
-
-```tsx
-import "@stll/folio-react/editor.css";
-```
-
-请勿同时导入这两种样式表。`standalone.css` 已经包含 `editor.css` 的全部内容。
-
-## 国际化
-
-编辑器使用 [`use-intl`](https://github.com/amannn/use-intl)。请将编辑器包装在
-`IntlProvider` 中，并传入 folio 内置的消息：
-
-```tsx
+import { useState } from "react";
 import { IntlProvider } from "use-intl";
 import { DocxEditor } from "@stll/folio-react";
-import { FOLIO_LOCALES, getFolioMessages } from "@stll/folio-react/messages";
-import "@stll/folio-react/editor.css";
+import { getFolioMessages } from "@stll/folio-react/messages";
+import "@stll/folio-react/standalone.css";
 
-export function Editor({ docx, locale }: { docx: ArrayBuffer; locale: string }) {
+const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+const downloadDocx = (buffer: ArrayBuffer) => {
+  const url = URL.createObjectURL(new Blob([buffer], { type: DOCX_MIME }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "edited.docx";
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+};
+
+export function Editor() {
+  const [file, setFile] = useState<File | null>(null);
+
   return (
-    <IntlProvider locale={locale} messages={getFolioMessages(locale)}>
-      <DocxEditor documentBuffer={docx} />
+    <IntlProvider locale="en" messages={getFolioMessages("en")}>
+      <input
+        type="file"
+        accept=".docx"
+        onChange={(event) => setFile(event.currentTarget.files?.[0] ?? null)}
+      />
+      {file && <DocxEditor documentBuffer={file} author="Editor" onSave={downloadDocx} />}
     </IntlProvider>
   );
 }
 ```
 
-`@stll/folio-react/messages` 导出以下内容：
+编辑器工具栏会通过 `onSave` 提供更新后的 DOCX 字节。也可以持有 `DocxEditorRef`，自行调用 `await editorRef.current?.save()`。
 
-- `getFolioMessages(locale: string): FolioMessages`
-- `FOLIO_LOCALES`
-- `FolioLocale`
-- `isFolioLocale(locale: string): locale is FolioLocale`
+## 支持的功能
 
-内置区域设置：`en`、`de`、`fr`、`es`、`cs`、`ar`、`et`、`he`、`hi`、`hu`、
-`lt`、`lv`、`pl`、`pt-BR`、`sk`、`tr`、`zh-CN`。阿拉伯语（`ar`）和希伯来语
-（`he`）从右向左书写；请在编辑器外层容器上设置 `dir="rtl"`。
+- 分页文本、格式、列表、表格、图片、节、页眉和页脚
+- Microsoft Word 可以审阅、接受或拒绝的批注、脚注和修订
+- 保留未修改文档部分和不支持 OOXML 的 DOCX 往返处理
+- 编辑模式、查找、页面设置、文档大纲和保存钩子
+- 内置 17 种语言的消息，包括从右向左的编辑器界面
 
-如需将 folio 消息与应用消息合并，请将 folio 保留在自己的 `folio.*` 命名空间中：
+## 选择软件包
 
-```tsx
-const messages = { ...getFolioMessages(locale), ...appMessages[locale] };
+| 软件包                                    | 适用场景                                              |
+| ----------------------------------------- | ----------------------------------------------------- |
+| [`@stll/folio-react`](./packages/react)   | 完整的 React 编辑器组件                               |
+| [`@stll/folio-vue`](./packages/vue)       | 完整的 Vue 3 编辑器组件                               |
+| [`@stll/folio-nuxt`](./packages/nuxt)     | 在 Nuxt 3 或 4 中以 SSR 安全方式注册 Vue 编辑器       |
+| [`@stll/folio-core`](./packages/core)     | DOCX 解析、ProseMirror 编辑、页面布局、审阅或修订 API |
+| [`@stll/docx-core`](./packages/docx-core) | 类型化 OOXML 模型、验证、序列化和投影内核             |
+| [`@stll/folio-agents`](./packages/agents) | 读取文档并提出批注或修订建议的工具                    |
+
+使用 `bun add @stll/folio-vue vue` 安装 Vue 编辑器，使用 `bun add @stll/folio-nuxt` 安装 Nuxt 模块，或使用 `bun add @stll/folio-core` 安装框架无关引擎。
+
+## 无需编辑器即可创建 Word 修订
+
+比较两个 DOCX 文件，并将差异写入原生修订：
+
+```ts
+import { generateRedlineDocx } from "@stll/folio-core/redline";
+
+const result = await generateRedlineDocx(originalDocx, revisedDocx, {
+  author: "Reviewer",
+});
+
+await store(result.buffer);
 ```
 
-请勿将 folio 的 `folio.*` 键复制到应用的消息目录中。
+如需对单个文档执行确定性修改，请使用 `FolioDocxReviewer`。参阅 [`folio-core` 审阅 API](./packages/core/README.md#native-word-redlines)。
+
+## 集成说明
+
+- 单独使用 `standalone.css`。已使用 Tailwind 的应用可以改用 [`editor.css` 配置](./packages/react/README.md#exports)。
+- 编辑器需要 DOM。在 SSR 应用中，请从仅客户端组件或动态导入中加载；Nuxt 用户可以使用 `@stll/folio-nuxt`。
+- 架构和测试方法请参阅 [DOCX 平台边界](./docs/docx-platform.md) 与 [互操作性指南](./docs/interoperability.md)。
 
 ## 开发
 
@@ -215,32 +138,13 @@ bun run lint
 bun run validate-dist
 ```
 
-## 发布
-
-发布流程使用 [Changesets](https://github.com/changesets/changesets)。凡是修改了已发布软件包
-`packages/{core,react,agents,vue,nuxt}/src` 下源代码的 PR，都应添加一个 changeset：
-
-```sh
-bunx changeset
-```
-
-对于无需发布版本的源代码修改，请运行：
-
-```sh
-bunx changeset --empty
-```
-
-CI 会通过 changeset-policy 工作流检查此项。合并自动生成的 **Version Packages** PR
-后，`publish.yml` 会发布有变更的软件包。
+发布软件包源代码的修改需要添加 [Changeset](https://github.com/changesets/changesets)。
 
 ## 致谢
 
-folio 最初是 [Eigenpal](https://eigenpal.com) 的
-[docx-editor](https://github.com/eigenpal/docx-editor) 的私有分支，原作者为
-[Jedr Blaszyk](https://github.com/jedrazb)。此后，该代码得到扩展，主要用于满足
-[stella](https://github.com/stella/stella) 的需求。上游仓库下线后，我们将 folio 分支
-作为一个独立维护的延续版本公开发布。原始许可证和版权声明保留在
-[`NOTICE.md`](./NOTICE.md) 中。
+Folio 源自 [Eigenpal](https://eigenpal.com) 的 [docx-editor](https://github.com/eigenpal/docx-editor)，原作者为
+[Jedr Blaszyk](https://github.com/jedrazb)，现作为 [stella](https://github.com/stella/stella) 的一部分独立维护。
+原始许可证和版权声明保留在 [`NOTICE.md`](./NOTICE.md) 中。
 
 ## 许可证
 
