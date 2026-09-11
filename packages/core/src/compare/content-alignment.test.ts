@@ -431,6 +431,168 @@ describe("container-safe structural alignment", () => {
 });
 
 describe("table row and column structural alignment", () => {
+  test("keeps several shifted persisted rows paired without textual anchors", () => {
+    const base = [
+      cell(
+        "removed-a",
+        "A1",
+        { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 },
+        { idStability: "positional" },
+      ),
+      cell(
+        "removed-b",
+        "B1",
+        { rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 },
+        { idStability: "positional" },
+      ),
+      cell(
+        "first-a",
+        "A2",
+        { rowIndex: 1, cellIndex: 0, gridColumnIndex: 0 },
+        { idStability: "positional" },
+      ),
+      cell(
+        "first-b",
+        "B2",
+        { rowIndex: 1, cellIndex: 1, gridColumnIndex: 1 },
+        { idStability: "positional" },
+      ),
+      cell(
+        "second-a",
+        "A3",
+        { rowIndex: 2, cellIndex: 0, gridColumnIndex: 0 },
+        { idStability: "positional" },
+      ),
+      cell(
+        "second-b",
+        "B3",
+        { rowIndex: 2, cellIndex: 1, gridColumnIndex: 1 },
+        { idStability: "positional" },
+      ),
+    ];
+    const revised = [
+      cell("first-a", "Repeated rewritten value", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      cell("first-b", "Repeated rewritten value", {
+        rowIndex: 0,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+      }),
+      cell("second-a", "Repeated rewritten value", {
+        rowIndex: 1,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      cell("second-b", "Repeated rewritten value", {
+        rowIndex: 1,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+      }),
+    ];
+
+    const steps = alignFolioContentStructure({
+      baseBlocks: base,
+      revisedBlocks: revised,
+      stableIdMismatch: "pair",
+    });
+
+    expect(
+      steps.flatMap((step) =>
+        step.type === "baseRow" || step.type === "revisedRow"
+          ? [[step.type, step.blocks.map(({ id }) => id)]]
+          : [],
+      ),
+    ).toEqual([["baseRow", ["removed-a", "removed-b"]]]);
+    expect(
+      steps.flatMap((step) =>
+        step.type === "pair" ? [[step.baseBlock.id, step.revisedBlock.id]] : [],
+      ),
+    ).toEqual([
+      ["first-a", "first-a"],
+      ["first-b", "first-b"],
+      ["second-a", "second-a"],
+      ["second-b", "second-b"],
+    ]);
+  });
+
+  test.each([
+    {
+      identity: "complete",
+      revisedSecondIds: ["second-base-only", "first-base-only"],
+    },
+    {
+      identity: "partial",
+      revisedSecondIds: ["second-revised-only", "first-revised-only"],
+    },
+  ] as const)("does not cross-pair reordered rows with $identity persisted identity", ({
+    revisedSecondIds,
+  }) => {
+    const base = [
+      cell(
+        "first-shared",
+        "Original first A",
+        { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 },
+        { idStability: "positional" },
+      ),
+      cell(
+        "first-base-only",
+        "Original first B",
+        { rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 },
+        { idStability: "positional" },
+      ),
+      cell(
+        "second-shared",
+        "Original second A",
+        { rowIndex: 1, cellIndex: 0, gridColumnIndex: 0 },
+        { idStability: "positional" },
+      ),
+      cell(
+        "second-base-only",
+        "Original second B",
+        { rowIndex: 1, cellIndex: 1, gridColumnIndex: 1 },
+        { idStability: "positional" },
+      ),
+    ];
+    const revised = [
+      cell("second-shared", "Unrelated replacement A", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      cell(revisedSecondIds[0], "Unrelated replacement B", {
+        rowIndex: 0,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+      }),
+      cell("first-shared", "Different replacement A", {
+        rowIndex: 1,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      cell(revisedSecondIds[1], "Different replacement B", {
+        rowIndex: 1,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+      }),
+    ];
+
+    const steps = alignFolioContentStructure({
+      baseBlocks: base,
+      revisedBlocks: revised,
+      stableIdMismatch: "pair",
+    });
+
+    expect(steps.filter(({ type }) => type === "pair")).toEqual([]);
+    expect(
+      steps.flatMap((step) =>
+        step.type === "baseRow" || step.type === "revisedRow" ? [step.type] : [],
+      ).toSorted(),
+    ).toEqual(["baseRow", "baseRow", "revisedRow", "revisedRow"]);
+  });
+
   test("keeps an edited persisted row paired after an inserted row", () => {
     const base = [
       cell(

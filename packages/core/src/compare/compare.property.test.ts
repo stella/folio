@@ -240,6 +240,9 @@ const wordArb = fc.stringMatching(/^[A-Za-z]{3,9}$/u);
 const sentenceArb = fc
   .array(wordArb, { minLength: 3, maxLength: 6 })
   .map((words) => words.join(" "));
+const rowRewriteArb = fc
+  .array(wordArb, { minLength: 4, maxLength: 6 })
+  .map((words) => words.join(" "));
 
 /** A word already present in some block, so `replaceWords` resolves. */
 const findableWordArb = (blocks: readonly FolioAIBlock[]) => {
@@ -834,6 +837,88 @@ describe("compareDocx", () => {
     ]);
     expect(changes).toHaveLength(scripted.value.applied.length);
   });
+
+  test.each([0, 1, 2] as const)(
+    "deleting row %i keeps fully rewritten surviving rows at cell level",
+    async (deletedRow) => {
+      const base = readFixture("upstream-with-tables.docx");
+      await fc.assert(
+        fc.asyncProperty(rowRewriteArb, async (rewrittenText) => {
+          const survivingRows = [0, 1, 2].filter((rowIndex) => rowIndex !== deletedRow);
+          const script: EditScript = [
+            ...survivingRows.flatMap((rowIndex) =>
+              [0, 1, 2].map(
+                (columnIndex): EditScriptStep => ({
+                  type: "editTableCell",
+                  blockIndex: 1 + rowIndex * 3 + columnIndex,
+                  text: rewrittenText,
+                }),
+              ),
+            ),
+            { type: "deleteTableRow", blockIndex: 1 + deletedRow * 3 },
+          ];
+
+          const scripted = await applyEditScript(base, script);
+          if (scripted.isErr()) {
+            throw scripted.error;
+          }
+          expect(scripted.value.unresolved).toEqual([]);
+
+          const { changes } = await compareOrThrow(base, scripted.value.buffer);
+          expect(kindsOf(changes).toSorted()).toEqual([
+            "replace",
+            "replace",
+            "replace",
+            "replace",
+            "replace",
+            "replace",
+            "table-row-delete",
+          ]);
+          expect(changes).toHaveLength(scripted.value.applied.length);
+        }),
+        propertyConfig({ numRuns: 4 }),
+      );
+    },
+    propertyTestTimeout(120_000),
+  );
+
+  test.each([0, 1, 2, 3] as const)(
+    "inserting row at position %i keeps fully rewritten existing rows at cell level",
+    async (insertedRow) => {
+      const base = readFixture("upstream-with-tables.docx");
+      await fc.assert(
+        fc.asyncProperty(rowRewriteArb, async (rewrittenText) => {
+          const script: EditScript = [
+            ...Array.from({ length: 9 }, (_unused, blockOffset) => ({
+              type: "editTableCell" as const,
+              blockIndex: 1 + blockOffset,
+              text: rewrittenText,
+            })),
+            {
+              type: "insertTableRow",
+              blockIndex: insertedRow === 0 ? 1 : 1 + (insertedRow - 1) * 3,
+              position: insertedRow === 0 ? "before" : "after",
+              cellTexts: [rewrittenText, rewrittenText, rewrittenText],
+            },
+          ];
+
+          const scripted = await applyEditScript(base, script);
+          if (scripted.isErr()) {
+            throw scripted.error;
+          }
+          expect(scripted.value.unresolved).toEqual([]);
+
+          const { changes } = await compareOrThrow(base, scripted.value.buffer);
+          const kinds = kindsOf(changes);
+          expect(kinds.filter((kind) => kind === "replace")).toHaveLength(9);
+          expect(kinds.filter((kind) => kind !== "replace")).toEqual(["table-row-insert"]);
+          expect(changes).toHaveLength(scripted.value.applied.length);
+        }),
+        propertyConfig({ numRuns: 4 }),
+      );
+    },
+    propertyTestTimeout(120_000),
+  );
 
   for (const { name, buffer: base, blocks: baseBlocks } of BASE_CASES) {
     test(

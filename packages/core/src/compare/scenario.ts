@@ -54,7 +54,12 @@ export type EditScriptStep =
       endOffset: number;
       formatting: FolioAIInlineFormattingPatch;
     }
-  | { type: "insertTableRow"; blockIndex: number; cellTexts: readonly string[] }
+  | {
+      type: "insertTableRow";
+      blockIndex: number;
+      position?: "after" | "before";
+      cellTexts: readonly string[];
+    }
   | { type: "deleteTableRow"; blockIndex: number }
   | { type: "editTableCell"; blockIndex: number; text: string };
 
@@ -225,7 +230,7 @@ const planStep = ({ step, blocks, nextOperationId }: PlanStepOptions): StepPlan 
                 id: nextOperationId(),
                 type: "insertTableRow",
                 blockId: block.id,
-                position: "after",
+                position: step.position ?? "after",
                 cellTexts: [...step.cellTexts],
               },
             ],
