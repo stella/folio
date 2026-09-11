@@ -39,6 +39,7 @@ import type { Node as PMNode } from "prosemirror-model";
 
 import {
   FolioDocxReviewer,
+  getFolioDocxComparisonAccess,
   type FolioDocumentStoryHandle,
   type FolioNumberingLevel,
   type FolioRevisionStamp,
@@ -48,7 +49,7 @@ import {
   tableTemplateCanCrossPackageLosslessly,
   type FolioTableTemplates,
 } from "../ai-edits/table-template";
-import { numberingReferenceKeysOf } from "../ai-edits/snapshot";
+import { numberingReferenceKeysOf, storyTablesOf } from "../ai-edits/snapshot";
 import type { FolioAIBlock, FolioAIEditSkipReason, FolioAIEditSnapshot } from "../ai-edits/types";
 import { createScopedWordDiffOptions, type WordDiffGranularity } from "../ai-edits/word-diff";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
@@ -99,36 +100,6 @@ const parseSide = async (
         cause,
       }),
   });
-
-type ExistingRevisions = {
-  /**
-   * One past the highest revision id the base package already uses, across
-   * every story. Seeding there keeps generated ids from colliding with
-   * revisions the base already carries, while staying a pure function of the
-   * base bytes.
-   */
-  idSeed: number;
-  /**
-   * Whether the base arrived carrying unresolved revisions. When it did, the
-   * compared base is its accepted view rather than the package as stored, and
-   * the result must be serialized even if nothing else changed.
-   */
-  present: boolean;
-};
-
-/** Read before either side is resolved, so it describes the package as it arrived. */
-const existingRevisionsOf = (reviewer: FolioDocxReviewer): ExistingRevisions => {
-  let highest = 0;
-  let present = false;
-  for (const { handle } of reviewer.listStories()) {
-    const story = reviewer.readReviewedStory({ story: handle, view: "current-markup" });
-    for (const change of story?.changes ?? []) {
-      highest = Math.max(highest, change.id);
-      present = true;
-    }
-  }
-  return { idSeed: highest + 1, present };
-};
 
 type FormattingRoundTripFailureOptions = {
   invariant: CompareVerificationFailure["invariant"];
@@ -256,7 +227,6 @@ export type ParsedComparison = {
   baseBuffer: ArrayBuffer;
   baseCarriedRevisions: boolean;
   reviewer: FolioDocxReviewer;
-  targetReviewer: FolioDocxReviewer;
   revisionStamp: FolioRevisionStamp;
   packageDate: Date;
   pairs: readonly ComparedStoryPair[];
@@ -293,7 +263,6 @@ export const parseComparison = async (
 
   const reviewer = baseParse.value;
   const targetReviewer = targetParse.value;
-  const existing = existingRevisionsOf(reviewer);
   // Compare the accepted view of both sides. An input that already carries
   // revisions otherwise makes the result unreadable: the redline would layer
   // this comparison's marks on top of someone else's, and rejecting them all
@@ -306,16 +275,26 @@ export const parseComparison = async (
   // still ships in the result, so it ships accepted like the rest -- and an
   // unresolvable mark it carried, on the paragraph a note ends with, would
   // otherwise fail the structural guard on bytes this comparison never wrote.
-  for (const { handle } of reviewer.listStories()) {
-    reviewer.resolveReviewedStory({ story: handle, view: "final" });
+  const baseProjection =
+    getFolioDocxComparisonAccess(reviewer).projectStories("with-revision-census");
+  const targetProjection =
+    getFolioDocxComparisonAccess(targetReviewer).projectStories("without-revision-census");
+  const baseStories: FolioDocumentStoryHandle[] = [];
+  const targetStories: FolioDocumentStoryHandle[] = [];
+  const baseSnapshots = new Map<FolioDocumentStoryHandle, FolioAIEditSnapshot | null>();
+  const targetSnapshots = new Map<FolioDocumentStoryHandle, FolioAIEditSnapshot | null>();
+  for (const { handle, snapshot } of baseProjection.stories) {
+    baseStories.push(handle);
+    baseSnapshots.set(handle, snapshot);
   }
-  for (const { handle } of targetReviewer.listStories()) {
-    targetReviewer.resolveReviewedStory({ story: handle, view: "final" });
+  for (const { handle, snapshot } of targetProjection.stories) {
+    targetStories.push(handle);
+    targetSnapshots.set(handle, snapshot);
   }
   const pairs: ComparedStoryPair[] = [];
   const unsupported: CompareUnsupportedPart[] = [];
   const referencedNumberingLevels = new Set<string>();
-  const collectNumberingReferences = (snapshot: FolioAIEditSnapshot | null): void => {
+  const collectNumberingReferences = (snapshot: FolioAIEditSnapshot | null | undefined): void => {
     if (!snapshot) {
       return;
     }
@@ -325,24 +304,24 @@ export const parseComparison = async (
   };
 
   for (const { baseStory, revisedStory: targetStory } of pairFolioDocumentStories(
-    reviewer.listStories().map(({ handle }) => handle),
-    targetReviewer.listStories().map(({ handle }) => handle),
+    baseStories,
+    targetStories,
   )) {
     if (!baseStory) {
       if (!targetStory) {
         panic("A story pair contained neither a base nor a target story");
       }
-      collectNumberingReferences(targetReviewer.snapshotStory(targetStory));
+      collectNumberingReferences(targetSnapshots.get(targetStory));
       unsupported.push({ reason: "story-missing-in-base", baseStory: null, targetStory });
       continue;
     }
     if (!targetStory) {
-      collectNumberingReferences(reviewer.snapshotStory(baseStory));
+      collectNumberingReferences(baseSnapshots.get(baseStory));
       unsupported.push({ reason: "story-missing-in-target", baseStory, targetStory: null });
       continue;
     }
-    const baseSnapshot = reviewer.snapshotStory(baseStory);
-    const targetSnapshot = targetReviewer.snapshotStory(targetStory);
+    const baseSnapshot = baseSnapshots.get(baseStory);
+    const targetSnapshot = targetSnapshots.get(targetStory);
     collectNumberingReferences(baseSnapshot);
     collectNumberingReferences(targetSnapshot);
     if (!baseSnapshot || !targetSnapshot) {
@@ -355,10 +334,12 @@ export const parseComparison = async (
   return Result.ok({
     granularity: options.granularity ?? "word",
     baseBuffer: base,
-    baseCarriedRevisions: existing.present,
+    baseCarriedRevisions: baseProjection.revisions.present,
     reviewer,
-    targetReviewer,
-    revisionStamp: { date: options.timestamp, idSeed: existing.idSeed },
+    revisionStamp: {
+      date: options.timestamp,
+      idSeed: baseProjection.revisions.highestId + 1,
+    },
     packageDate,
     pairs,
     numberingChanges: compareNumbering(reviewer, targetReviewer, referencedNumberingLevels),
@@ -370,14 +351,11 @@ export const parseComparison = async (
 export type PlannedStoryComparison = { pair: ComparedStoryPair; plan: CompareStoryPlan };
 
 const planCopiesNonPortableWholeTable = (
-  targetReviewer: FolioDocxReviewer,
   pair: ComparedStoryPair,
   plan: CompareStoryPlan,
 ): boolean => {
   const targetTables = new Map(
-    targetReviewer
-      .storyTables({ story: pair.targetStory })
-      .map(({ index, node }) => [index, node] as const),
+    storyTablesOf(pair.targetSnapshot).map(({ index, node }) => [index, node] as const),
   );
   return plan.tableTemplates.some(({ targetRowIndex, targetTableIndex }) => {
     if (targetRowIndex !== undefined) {
@@ -394,7 +372,6 @@ const planCopiesNonPortableWholeTable = (
  */
 export const planComparison = ({
   pairs,
-  targetReviewer,
 }: ParsedComparison): Result<readonly PlannedStoryComparison[], CompareDocxOperationLimitError> => {
   const planned: PlannedStoryComparison[] = [];
   const workSession = createContentComparisonWorkSession();
@@ -412,7 +389,7 @@ export const planComparison = ({
       wholeTableReplacement: "allow",
       workSession,
     });
-    if (plan && planCopiesNonPortableWholeTable(targetReviewer, pair, plan)) {
+    if (plan && planCopiesNonPortableWholeTable(pair, plan)) {
       // The first plan was speculative. Re-run the chosen fallback against
       // the same package-wide comparison allowance rather than charging both.
       workSession.alignment.remainingLcsCells = remainingLcsCells;
@@ -537,9 +514,10 @@ const resolveTableTemplates = (
  * are both legitimate asks and only the caller knows which one it is making.
  */
 export const applyComparison = (
-  { reviewer, targetReviewer, revisionStamp, granularity, numberingChanges }: ParsedComparison,
+  { reviewer, revisionStamp, granularity, numberingChanges }: ParsedComparison,
   planned: readonly PlannedStoryComparison[],
 ): Result<AppliedComparison, CompareDocxApplyError> => {
+  const comparisonAccess = getFolioDocxComparisonAccess(reviewer);
   const changes: CompareChange[] = [...numberingChanges];
   const failures: CompareVerificationFailure[] = [];
   // Each story gets the range that starts where the previous story's ended.
@@ -555,18 +533,12 @@ export const applyComparison = (
       continue;
     }
 
-    // Read before anything lands: this is the document the redline is written
-    // against, and rejecting every revision has to return to it.
-    const baseBeforeBlocks =
-      reviewer.readReviewedStory({ story: pair.baseStory, view: "final" })?.snapshot.blocks ?? [];
-    const baseBefore = baseBeforeBlocks;
-    const baseBeforeGeometry = projectTableGeometry(
-      reviewer.storyTables({ story: pair.baseStory }),
-    );
+    // Retained before anything lands: this is the document the redline is
+    // written against, and rejecting every revision has to return to it.
+    const baseBefore = pair.baseSnapshot.blocks;
+    const baseBeforeGeometry = projectTableGeometry(storyTablesOf(pair.baseSnapshot));
     const targetTables = new Map(
-      targetReviewer
-        .storyTables({ story: pair.targetStory })
-        .map(({ index, node }) => [index, node] as const),
+      storyTablesOf(pair.targetSnapshot).map(({ index, node }) => [index, node] as const),
     );
 
     // Table properties first, while the base's table indices still describe
@@ -621,11 +593,14 @@ export const applyComparison = (
       }
     }
 
-    const acceptedStory = reviewer.readReviewedStory({ story: pair.baseStory, view: "final" });
+    const acceptedSnapshot = comparisonAccess.snapshotReviewedStory({
+      story: pair.baseStory,
+      view: "final",
+    });
     const acceptFailure = classifyProjectionMismatch({
       invariant: "accept-reproduces-target",
       story: pair.baseStory,
-      actual: acceptedStory?.snapshot.blocks ?? [],
+      actual: acceptedSnapshot?.blocks ?? [],
       expected: pair.targetSnapshot.blocks,
     });
     if (acceptFailure) {
@@ -635,7 +610,7 @@ export const applyComparison = (
         invariant: "accept-reproduces-target",
         story: pair.baseStory,
         changes: plan.changes,
-        actualBlocks: acceptedStory?.snapshot.blocks ?? [],
+        actualBlocks: acceptedSnapshot?.blocks ?? [],
         expectedBlocks: pair.targetSnapshot.blocks,
         expectedBlockId: ({ targetBlockId }) => targetBlockId,
       });
@@ -643,11 +618,14 @@ export const applyComparison = (
         failures.push(formattingFailure);
       }
     }
-    const rejectedStory = reviewer.readReviewedStory({ story: pair.baseStory, view: "original" });
+    const rejectedSnapshot = comparisonAccess.snapshotReviewedStory({
+      story: pair.baseStory,
+      view: "original",
+    });
     const rejectFailure = classifyProjectionMismatch({
       invariant: "reject-reproduces-base",
       story: pair.baseStory,
-      actual: rejectedStory?.snapshot.blocks ?? [],
+      actual: rejectedSnapshot?.blocks ?? [],
       expected: baseBefore,
     });
     if (rejectFailure) {
@@ -657,7 +635,7 @@ export const applyComparison = (
         invariant: "reject-reproduces-base",
         story: pair.baseStory,
         changes: plan.changes,
-        actualBlocks: rejectedStory?.snapshot.blocks ?? [],
+        actualBlocks: rejectedSnapshot?.blocks ?? [],
         expectedBlocks: pair.baseSnapshot.blocks,
         expectedBlockId: ({ baseBlockId }) => baseBlockId,
       });
@@ -674,8 +652,8 @@ export const applyComparison = (
     const geometryAcceptFailure = classifyGeometryMismatch({
       invariant: "accept-reproduces-target",
       story: pair.baseStory,
-      actual: projectTableGeometry(reviewer.storyTables({ story: pair.baseStory, view: "final" })),
-      expected: projectTableGeometry(targetReviewer.storyTables({ story: pair.targetStory })),
+      actual: projectTableGeometry(acceptedSnapshot ? storyTablesOf(acceptedSnapshot) : []),
+      expected: projectTableGeometry(storyTablesOf(pair.targetSnapshot)),
     });
     if (geometryAcceptFailure) {
       failures.push(geometryAcceptFailure);
@@ -683,9 +661,7 @@ export const applyComparison = (
     const geometryRejectFailure = classifyGeometryMismatch({
       invariant: "reject-reproduces-base",
       story: pair.baseStory,
-      actual: projectTableGeometry(
-        reviewer.storyTables({ story: pair.baseStory, view: "original" }),
-      ),
+      actual: projectTableGeometry(rejectedSnapshot ? storyTablesOf(rejectedSnapshot) : []),
       expected: baseBeforeGeometry,
     });
     if (geometryRejectFailure) {

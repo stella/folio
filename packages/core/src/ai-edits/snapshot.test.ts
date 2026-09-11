@@ -21,10 +21,12 @@ import type { CleanTextStructuralBoundary } from "./clean-text";
 import {
   createFolioAIEditSnapshot,
   createFolioAIEditSnapshotWithStyleResolver,
+  folioStoryTables,
   hashFolioAIBlockStructuralBoundaries,
   hashFolioAIBlockText,
   isFolioAIContentBlock,
   projectFolioAIBlockStructuralBoundaries,
+  storyTablesOf,
 } from "./snapshot";
 
 const schema = new Schema({
@@ -246,6 +248,74 @@ describe("createFolioAIEditSnapshot", () => {
     );
 
     expect(createFolioAIEditSnapshot(doc).blocks).toHaveLength(480);
+  });
+
+  test("collects blocks and tables in one whole-document walk", () => {
+    const doc = schema.node("doc", null, [
+      paragraph("opening"),
+      table([row([cell([paragraph("table cell")])])]),
+      paragraph("closing"),
+    ]);
+    const walk = doc.descendants.bind(doc);
+    let wholeDocumentWalks = 0;
+    Object.defineProperty(doc, "descendants", {
+      configurable: true,
+      value: (callback: Parameters<PMNode["descendants"]>[0]) => {
+        wholeDocumentWalks += 1;
+        return walk(callback);
+      },
+    });
+
+    const snapshot = createFolioAIEditSnapshot(doc);
+
+    expect(wholeDocumentWalks).toBe(1);
+    expect(
+      storyTablesOf(snapshot).map(({ index, node }) => ({ index, text: node.textContent })),
+    ).toEqual([{ index: 0, text: "table cell" }]);
+  });
+
+  test("keeps the direct and snapshot table censuses identical across nested and hidden rows", () => {
+    const visibleNested = table([row([cell([paragraph("visible nested")])])]);
+    const hiddenNested = table([row([cell([paragraph("hidden nested")])])]);
+    const doc = schema.node("doc", null, [
+      paragraph("opening"),
+      table([
+        row([cell([paragraph("outer visible"), visibleNested])]),
+        row([cell([paragraph("hidden"), hiddenNested])], true),
+        row([cell([paragraph("outer trailing")])]),
+      ]),
+      table([row([cell([paragraph("body trailing")])])]),
+    ]);
+
+    const direct = folioStoryTables(doc);
+    const projected = storyTablesOf(createFolioAIEditSnapshot(doc));
+
+    expect(projected.map(({ index, start }) => ({ index, start }))).toEqual(
+      direct.map(({ index, start }) => ({ index, start })),
+    );
+    expect(projected).toHaveLength(3);
+    for (const [index, tableProjection] of projected.entries()) {
+      expect(tableProjection.node).toBe(direct.at(index)?.node);
+    }
+  });
+
+  test("binds each table census to the immutable document that produced its snapshot", () => {
+    const before = schema.node("doc", null, [table([row([cell([paragraph("before mutation")])])])]);
+    const after = schema.node("doc", null, [
+      table([row([cell([paragraph("after mutation")])])]),
+      table([row([cell([paragraph("new table")])])]),
+    ]);
+
+    const beforeSnapshot = createFolioAIEditSnapshot(before);
+    const afterSnapshot = createFolioAIEditSnapshot(after);
+
+    expect(storyTablesOf(beforeSnapshot).map(({ node }) => node.textContent)).toEqual([
+      "before mutation",
+    ]);
+    expect(storyTablesOf(afterSnapshot).map(({ node }) => node.textContent)).toEqual([
+      "after mutation",
+      "new table",
+    ]);
   });
 
   test("projects carrierless run marks without consulting the style package", () => {

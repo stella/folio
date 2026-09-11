@@ -23,7 +23,8 @@ import {
   type FolioNodeRevisionKind,
 } from "../prosemirror/revisionCarriers";
 import { getTableCellMergeChange } from "../prosemirror/tableCellMergeRevision";
-import { createFolioAIEditSnapshot } from "./snapshot";
+import { createFolioAIEditSnapshot, sourceDocumentOf } from "./snapshot";
+import type { FolioAIEditSnapshot } from "./types";
 
 export type FolioReviewChangeKind =
   | "insertion"
@@ -95,8 +96,13 @@ export type FolioCommentAnchor = {
 
 /** Map each snapshot block's start position to its stable id. */
 const blockStartIdsFromDoc = (doc: PMNode): Map<number, string> => {
+  return blockStartIdsFromSnapshot(createFolioAIEditSnapshot(doc));
+};
+
+/** Map an existing snapshot's block starts without projecting its document again. */
+const blockStartIdsFromSnapshot = (snapshot: FolioAIEditSnapshot): Map<number, string> => {
   const starts = new Map<number, string>();
-  for (const anchor of Object.values(createFolioAIEditSnapshot(doc).anchors)) {
+  for (const anchor of Object.values(snapshot.anchors)) {
     starts.set(anchor.from, anchor.id);
   }
   return starts;
@@ -105,7 +111,7 @@ const blockStartIdsFromDoc = (doc: PMNode): Map<number, string> => {
 type FirstBlockIdWithinParams = {
   node: PMNode;
   nodePos: number;
-  blockStarts: ReadonlyMap<number, string>;
+  blockStarts: ReadonlyMap<number, string> | null;
 };
 
 const firstBlockIdWithin = ({
@@ -113,6 +119,9 @@ const firstBlockIdWithin = ({
   nodePos,
   blockStarts,
 }: FirstBlockIdWithinParams): string | null => {
+  if (!blockStarts) {
+    return null;
+  }
   let blockId: string | null = null;
   node.descendants((child, relativePos) => {
     if (blockId !== null || !child.isTextblock) {
@@ -147,19 +156,13 @@ const belongsToRowRevision = (
   revision.id === scope.change.id ||
   (revision.author === scope.change.author && revision.date === scope.change.date);
 
-/**
- * The tracked changes present in the body, read from inline marks and
- * structural node attributes. Runs of one inline revision within a block fold
- * into a single entry.
- *
- * A tracked row insertion or deletion marks the row AND every run in its
- * cells, the way Word writes it. Both halves are one change, so the run marks
- * fold into the row's entry rather than reporting a second time.
- */
-export const getTrackedChangesFromDoc = (doc: PMNode): FolioReviewChange[] => {
+/** Shared revision interpreter; a null block map omits unrelated block-id projection. */
+const getTrackedChangesFromProjectedDoc = (
+  doc: PMNode,
+  blockStarts: ReadonlyMap<number, string> | null,
+): FolioReviewChange[] => {
   const insertionType = doc.type.schema.marks["insertion"];
   const deletionType = doc.type.schema.marks["deletion"];
-  const blockStarts = blockStartIdsFromDoc(doc);
   const grouped = new Map<string, FolioReviewChange>();
   const structuralChangeCellPositions = new Map<string, Set<number>>();
   // Innermost enclosing marked row first: a table nested in a marked row can
@@ -175,7 +178,7 @@ export const getTrackedChangesFromDoc = (doc: PMNode): FolioReviewChange[] => {
     const nodeRevisionCarriers = getFolioNodeRevisionCarriers(node, pos);
     if (nodeRevisionCarriers.length > 0) {
       const blockId = node.isTextblock
-        ? (blockStarts.get(pos) ?? null)
+        ? (blockStarts?.get(pos) ?? null)
         : firstBlockIdWithin({ node, nodePos: pos, blockStarts });
       nodeRevisionCarriers.forEach((carrier, carrierIndex) => {
         grouped.set(
@@ -296,7 +299,7 @@ export const getTrackedChangesFromDoc = (doc: PMNode): FolioReviewChange[] => {
       }
     }
     if (node.isTextblock) {
-      currentBlockId = blockStarts.get(pos) ?? null;
+      currentBlockId = blockStarts?.get(pos) ?? null;
       return true;
     }
     if (!node.isInline) {
@@ -392,6 +395,37 @@ export const getTrackedChangesFromDoc = (doc: PMNode): FolioReviewChange[] => {
   });
 
   return [...grouped.values()];
+};
+
+/** Read revisions from the exact immutable document that produced a snapshot. */
+export const getTrackedChangesFromSnapshot = (snapshot: FolioAIEditSnapshot): FolioReviewChange[] =>
+  getTrackedChangesFromProjectedDoc(
+    sourceDocumentOf(snapshot),
+    blockStartIdsFromSnapshot(snapshot),
+  );
+
+/**
+ * The tracked changes present in the body, read from inline marks and
+ * structural node attributes. Runs of one inline revision within a block fold
+ * into a single entry.
+ *
+ * A tracked row insertion or deletion marks the row AND every run in its
+ * cells, the way Word writes it. Both halves are one change, so the run marks
+ * fold into the row's entry rather than reporting a second time.
+ */
+export const getTrackedChangesFromDoc = (doc: PMNode): FolioReviewChange[] =>
+  getTrackedChangesFromProjectedDoc(doc, blockStartIdsFromDoc(doc));
+
+/** @internal Read revision statistics without paying for an unrelated block projection. */
+export const getTrackedChangeStatsFromDoc = (
+  doc: PMNode,
+): { highestId: number; present: boolean } => {
+  let highestId = 0;
+  const changes = getTrackedChangesFromProjectedDoc(doc, null);
+  for (const change of changes) {
+    highestId = Math.max(highestId, change.id);
+  }
+  return { highestId, present: changes.length > 0 };
 };
 
 /**

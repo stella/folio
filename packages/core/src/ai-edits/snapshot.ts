@@ -23,12 +23,29 @@ import type {
   FolioAITextRangeHandle,
 } from "./types";
 
-const numberingReferenceKeysBySnapshot = new WeakMap<FolioAIEditSnapshot, readonly string[]>();
+type FolioAIEditSnapshotMetadata = {
+  numberingReferenceKeys: readonly string[];
+  sourceDocument: PMNode;
+  storyTables: readonly FolioStoryTable[];
+};
+
+const metadataBySnapshot = new WeakMap<FolioAIEditSnapshot, FolioAIEditSnapshotMetadata>();
+
+const metadataOf = (snapshot: FolioAIEditSnapshot): FolioAIEditSnapshotMetadata =>
+  metadataBySnapshot.get(snapshot) ??
+  panic("Metadata was requested for a snapshot that did not record it");
 
 /** @internal Numbering references collected during the snapshot's document walk. */
 export const numberingReferenceKeysOf = (snapshot: FolioAIEditSnapshot): readonly string[] =>
-  numberingReferenceKeysBySnapshot.get(snapshot) ??
-  panic("A numbering census was requested for a snapshot that did not record one");
+  metadataOf(snapshot).numberingReferenceKeys;
+
+/** @internal Tables collected during the snapshot's document walk. */
+export const storyTablesOf = (snapshot: FolioAIEditSnapshot): readonly FolioStoryTable[] =>
+  metadataOf(snapshot).storyTables;
+
+/** @internal The immutable ProseMirror document that produced this snapshot. */
+export const sourceDocumentOf = (snapshot: FolioAIEditSnapshot): PMNode =>
+  metadataOf(snapshot).sourceDocument;
 
 export const normalizeFolioAIBlockText = (text: string): string =>
   text.replace(/\s+/gu, " ").trim();
@@ -191,14 +208,29 @@ export type FolioStoryTable = {
   node: PMNode;
 };
 
+const STORY_TABLE_CONTAINER = "container";
+const STORY_TABLE_HIDDEN_SUBTREE = "hidden-subtree";
+const STORY_TABLE = "table";
+
+type StoryTableNodeDisposition =
+  | typeof STORY_TABLE_CONTAINER
+  | typeof STORY_TABLE_HIDDEN_SUBTREE
+  | typeof STORY_TABLE;
+
+/** Shared visibility and table-role rule for both story projection walks. */
+const classifyNonTextblockStoryTableNode = (node: PMNode): StoryTableNodeDisposition => {
+  if (isHiddenTableRow(node)) {
+    return STORY_TABLE_HIDDEN_SUBTREE;
+  }
+  return node.type.spec["tableRole"] === TABLE_ROLE_TABLE ? STORY_TABLE : STORY_TABLE_CONTAINER;
+};
+
 /**
  * Every table of one story in document order, nested tables included and
  * hidden rows' subtrees excluded.
  *
- * The single place a story's tables are numbered. `table.tableIndex` on a
- * block, the geometry a comparison copies out of the target and the geometry
- * it checks its own work against all read this list, so no second walk can
- * number the same document differently.
+ * Uses the same traversal classification as the snapshot's integrated census,
+ * so both surfaces skip and number the same nodes in the same order.
  */
 export const folioStoryTables = (doc: PMNode): FolioStoryTable[] => {
   const tables: FolioStoryTable[] = [];
@@ -206,10 +238,11 @@ export const folioStoryTables = (doc: PMNode): FolioStoryTable[] => {
     if (node.isTextblock) {
       return false;
     }
-    if (isHiddenTableRow(node)) {
+    const disposition = classifyNonTextblockStoryTableNode(node);
+    if (disposition === STORY_TABLE_HIDDEN_SUBTREE) {
       return false;
     }
-    if (node.type.spec["tableRole"] === TABLE_ROLE_TABLE) {
+    if (disposition === STORY_TABLE) {
       tables.push({ index: tables.length, start: pos, node });
     }
     return true;
@@ -285,9 +318,8 @@ const createFolioAIEditSnapshotInternal = (
   const hashCounts = new Map<string, number>();
   const usedBlockIds = new Set<string>();
   const numberingReferenceKeys = new Set<string>();
-  const tableIndexByStart = new Map(
-    folioStoryTables(doc).map(({ start, index }) => [start, index] as const),
-  );
+  const tables: FolioStoryTable[] = [];
+  const tableIndexByStart = new Map<number, number>();
   // The containers enclosing the node being visited, innermost last. Kept in
   // step with the walk so no block has to resolve its own position.
   const path: AncestorPathEntry[] = [];
@@ -299,8 +331,14 @@ const createFolioAIEditSnapshotInternal = (
       path.pop();
     }
     if (!node.isTextblock) {
-      if (isHiddenTableRow(node)) {
+      const disposition = classifyNonTextblockStoryTableNode(node);
+      if (disposition === STORY_TABLE_HIDDEN_SUBTREE) {
         return false;
+      }
+      if (disposition === STORY_TABLE) {
+        const tableIndex = tables.length;
+        tables.push({ index: tableIndex, start: pos, node });
+        tableIndexByStart.set(pos, tableIndex);
       }
       if (!node.isLeaf) {
         path.push({ node, start: pos, end: pos + node.nodeSize, index });
@@ -408,7 +446,11 @@ const createFolioAIEditSnapshotInternal = (
   }
 
   const snapshot = { blocks, anchors };
-  numberingReferenceKeysBySnapshot.set(snapshot, [...numberingReferenceKeys]);
+  metadataBySnapshot.set(snapshot, {
+    numberingReferenceKeys: [...numberingReferenceKeys],
+    sourceDocument: doc,
+    storyTables: tables,
+  });
   return snapshot;
 };
 
