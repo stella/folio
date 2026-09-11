@@ -1,5 +1,13 @@
 # @stll/folio-core
 
+## 0.37.2
+
+### Patch Changes
+
+- [#813](https://github.com/stella/folio/pull/813) [`fc9700b`](https://github.com/stella/folio/commit/fc9700bc835dd413e7359e043dfe8cc1b8baa21b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep edited table rows paired when another row is inserted or deleted.
+
+- [#811](https://github.com/stella/folio/pull/811) [`8e77125`](https://github.com/stella/folio/commit/8e771259439fdcba1592bf3c4a6de24c20e805cf) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Reuse immutable document story projections throughout DOCX comparison.
+
 ## 0.37.1
 
 ### Patch Changes
