@@ -19,6 +19,7 @@
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@stll/folio-core"><img src="https://img.shields.io/npm/v/@stll/folio-core?label=%40stll%2Ffolio-core" alt="npm version" /></a>
+  <a href="https://www.npmjs.com/package/@stll/folio-core"><img src="https://img.shields.io/npm/dm/%40stll%2Ffolio-core" alt="npm downloads per month" /></a>
   <a href="https://github.com/stella/folio/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License" /></a>
   <a href="https://github.com/stella/folio/issues"><img src="https://img.shields.io/github/issues/stella/folio" alt="Issues" /></a>
   <a href="https://discord.gg/8dZjmVFjTK"><img src="https://img.shields.io/badge/discord-join%20chat-5865F2?logo=discord&logoColor=white" alt="Discord" /></a>
