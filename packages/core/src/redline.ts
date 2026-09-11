@@ -18,6 +18,7 @@ import {
   type FolioDocumentStoryHandle,
   type FolioResolvedReviewedView,
 } from "./ai-edits/headless";
+import { folioAIBlockIdStability } from "./ai-edits/block-identity";
 import { createFolioAITextRangeHandle, trailingBodyBlockId } from "./ai-edits/snapshot";
 import type {
   FolioAIBlock,
@@ -26,7 +27,7 @@ import type {
   FolioAIEditSkippedOperation,
   FolioAIEditSnapshot,
 } from "./ai-edits/types";
-import { createScopedWordDiffOptions } from "./ai-edits/word-diff";
+import { createScopedWordDiffOptions } from "./compare/text-diff";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "./document-operations";
 import { pairFolioDocumentStories } from "./document-stories";
 import {
@@ -36,11 +37,12 @@ import {
   type FolioDocumentPrivacyReport,
 } from "./docx/metadataPrivacy";
 import { inlineFormattingSegments } from "./compare/formatting";
+import { createContentComparisonWorkSession } from "./compare/content";
+import type { FolioContentAlignedBlockEvent } from "./compare/content-alignment";
 import {
   GenerateRedlineDocxOperationLimitError,
   MAX_GENERATED_REDLINE_OPERATIONS,
 } from "./redlineOperationLimit";
-import { alignFolioBlocks, type FolioAlignedBlockEvent } from "./version-comparison";
 
 /** Options for {@link generateRedlineDocx}. */
 export type GenerateRedlineDocxOptions = {
@@ -87,7 +89,9 @@ export type GenerateRedlineDocxResult = {
   privacyReport: FolioDocumentPrivacyReport;
 };
 
-const nextBaseBlockIdByIndex = (events: readonly FolioAlignedBlockEvent[]): (string | null)[] => {
+const nextBaseBlockIdByIndex = (
+  events: readonly FolioContentAlignedBlockEvent<FolioAIBlock>[],
+): (string | null)[] => {
   const nextIds = Array.from<string | null>({ length: events.length });
   let nextId: string | null = null;
   for (let index = events.length - 1; index >= 0; index--) {
@@ -155,7 +159,11 @@ const buildRedlineOperations = ({
   revisedBlocks,
   nextOperationId,
 }: BuildRedlineOperationsOptions): FolioAIEditOperation[] => {
-  const events = alignFolioBlocks(baseSnapshot.blocks, revisedBlocks);
+  const events = createContentComparisonWorkSession().alignBlocks(
+    baseSnapshot.blocks,
+    revisedBlocks,
+    { stableIdMismatch: "pair", idStability: folioAIBlockIdStability },
+  );
   const anchorIds = nextBaseBlockIdByIndex(events);
   const operations: FolioAIEditOperation[] = [];
   const trailingAdditions: { text: string; styleId?: string }[] = [];

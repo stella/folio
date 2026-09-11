@@ -51,15 +51,25 @@ import {
 } from "../ai-edits/table-template";
 import { numberingReferenceKeysOf, storyTablesOf } from "../ai-edits/snapshot";
 import type { FolioAIBlock, FolioAIEditSkipReason, FolioAIEditSnapshot } from "../ai-edits/types";
-import { createScopedWordDiffOptions, type WordDiffGranularity } from "../ai-edits/word-diff";
-import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
+import type { WordDiffGranularity } from "./text-diff";
 import { pairFolioDocumentStories } from "../document-stories";
-import { createContentComparisonWorkSession } from "./content";
-import { planStoryCompare, type CompareStoryPlan, type CompareTableTemplateRequest } from "./plan";
+import {
+  compareContentStories,
+  createContentComparisonWorkSession,
+  type FolioContentComparison,
+  FolioContentComparisonSessionError,
+} from "./content";
+import { docxBlockToContentInput } from "./docx-content-adapter";
+import {
+  type DocxComparisonTableTemplateRequest,
+} from "./docx-operation-plan";
+import { planStoryCompare, type CompareStoryPlan } from "./plan";
 import { withFixedPackageDates } from "./reproducible-package";
 import {
   CompareDocxApplyError,
+  CompareDocxContentComparisonError,
   CompareDocxFinalParagraphMarkError,
+  CompareDocxLoweringError,
   CompareDocxOperationLimitError,
   CompareDocxParseError,
   CompareDocxRoundTripError,
@@ -347,8 +357,12 @@ export const parseComparison = async (
   });
 };
 
-/** One story's plan, kept with the pair it belongs to. */
-export type PlannedStoryComparison = { pair: ComparedStoryPair; plan: CompareStoryPlan };
+/** One story's canonical comparison and its transport lowering. */
+export type PlannedStoryComparison = {
+  pair: ComparedStoryPair;
+  comparison: FolioContentComparison;
+  plan: CompareStoryPlan;
+};
 
 const planCopiesNonPortableWholeTable = (
   pair: ComparedStoryPair,
@@ -357,7 +371,7 @@ const planCopiesNonPortableWholeTable = (
   const targetTables = new Map(
     storyTablesOf(pair.targetSnapshot).map(({ index, node }) => [index, node] as const),
   );
-  return plan.tableTemplates.some(({ targetRowIndex, targetTableIndex }) => {
+  return plan.operationBatch.tableTemplateRequests.some(({ targetRowIndex, targetTableIndex }) => {
     if (targetRowIndex !== undefined) {
       return false;
     }
@@ -372,49 +386,67 @@ const planCopiesNonPortableWholeTable = (
  */
 export const planComparison = ({
   pairs,
-}: ParsedComparison): Result<readonly PlannedStoryComparison[], CompareDocxOperationLimitError> => {
+  granularity,
+}: ParsedComparison): Result<
+  readonly PlannedStoryComparison[],
+  CompareDocxContentComparisonError | CompareDocxLoweringError | CompareDocxOperationLimitError
+> => {
   const planned: PlannedStoryComparison[] = [];
-  const workSession = createContentComparisonWorkSession();
+  const workSession = createContentComparisonWorkSession({ granularity });
+  const compared = compareContentStories({
+    workSession,
+    stories: pairs.map((pair) => ({
+      key: pair,
+      base: { blocks: pair.baseSnapshot.blocks.map(docxBlockToContentInput) },
+      revised: { blocks: pair.targetSnapshot.blocks.map(docxBlockToContentInput) },
+    })),
+  });
+  if (compared.isErr()) {
+    if (compared.error.cause instanceof FolioContentComparisonSessionError) {
+      return panic("The DOCX comparison misused its private content work session", {
+        cause: compared.error.cause,
+      });
+    }
+    const pair = pairs[compared.error.storyIndex];
+    if (!pair) {
+      return panic("A content comparison failure named a missing story pair", {
+        storyIndex: compared.error.storyIndex,
+      });
+    }
+    return Result.err(
+      new CompareDocxContentComparisonError({
+        message: "A DOCX story did not satisfy the bounded content comparison contract.",
+        story: pair.baseStory,
+        cause: compared.error.cause,
+      }),
+    );
+  }
   let remainingOperations = MAX_COMPARE_OPERATIONS;
-  for (const pair of pairs) {
-    const remainingLcsCells = workSession.alignment.remainingLcsCells;
-    const remainingStructuralTokenLookups = workSession.alignment.remainingStructuralTokenLookups;
-    const remainingMoveComparisons = workSession.remainingMoveComparisons;
-    const remainingMoveTokenLookups = workSession.remainingMoveTokenLookups;
-    let plan = planStoryCompare({
+  for (const { key: pair, comparison } of compared.value) {
+    const result = planStoryCompare({
       story: pair.baseStory,
       baseSnapshot: pair.baseSnapshot,
       targetSnapshot: pair.targetSnapshot,
+      comparison,
       maxOperations: remainingOperations,
-      wholeTableReplacement: "allow",
-      workSession,
     });
-    if (plan && planCopiesNonPortableWholeTable(pair, plan)) {
-      // The first plan was speculative. Re-run the chosen fallback against
-      // the same package-wide comparison allowance rather than charging both.
-      workSession.alignment.remainingLcsCells = remainingLcsCells;
-      workSession.alignment.remainingStructuralTokenLookups = remainingStructuralTokenLookups;
-      workSession.remainingMoveComparisons = remainingMoveComparisons;
-      workSession.remainingMoveTokenLookups = remainingMoveTokenLookups;
-      plan = planStoryCompare({
-        story: pair.baseStory,
-        baseSnapshot: pair.baseSnapshot,
-        targetSnapshot: pair.targetSnapshot,
-        maxOperations: remainingOperations,
-        wholeTableReplacement: "avoid",
-        workSession,
-      });
-    }
-    if (plan === null) {
+    if (result.isErr()) return Result.err(result.error);
+    const plan = result.value;
+    if (planCopiesNonPortableWholeTable(pair, plan)) {
+      const request = plan.operationBatch.tableTemplateRequests.find(
+        ({ targetRowIndex }) => targetRowIndex === undefined,
+      );
       return Result.err(
-        new CompareDocxOperationLimitError({
-          message: "The comparison needs more operations than the engine generates.",
-          limit: MAX_COMPARE_OPERATIONS,
+        new CompareDocxLoweringError({
+          message: "A target table cannot be copied between packages without losing content.",
+          reason: "nonportable-table-template",
+          story: pair.baseStory,
+          ...(request !== undefined && { tableIndex: request.targetTableIndex }),
         }),
       );
     }
-    planned.push({ pair, plan });
-    remainingOperations -= plan.operations.length;
+    planned.push({ pair, comparison, plan });
+    remainingOperations -= plan.operationBatch.operations.length;
   }
   return Result.ok(planned);
 };
@@ -479,7 +511,7 @@ export type AppliedComparison = {
  */
 const resolveTableTemplates = (
   targetTables: ReadonlyMap<number, PMNode>,
-  requests: readonly CompareTableTemplateRequest[],
+  requests: readonly DocxComparisonTableTemplateRequest[],
 ): FolioTableTemplates => {
   const templates = new Map<string, PMNode>();
   for (const { operationId, targetTableIndex, targetRowIndex } of requests) {
@@ -514,7 +546,7 @@ const resolveTableTemplates = (
  * are both legitimate asks and only the caller knows which one it is making.
  */
 export const applyComparison = (
-  { reviewer, revisionStamp, granularity, numberingChanges }: ParsedComparison,
+  { reviewer, revisionStamp, numberingChanges }: ParsedComparison,
   planned: readonly PlannedStoryComparison[],
 ): Result<AppliedComparison, CompareDocxApplyError> => {
   const comparisonAccess = getFolioDocxComparisonAccess(reviewer);
@@ -526,10 +558,9 @@ export const applyComparison = (
   // body revision with it.
   let idSeed = revisionStamp.idSeed;
   let documentChanged = false;
-  const wordDiff = createScopedWordDiffOptions({ granularity });
   for (const { pair, plan } of planned) {
     changes.push(...plan.changes);
-    if (plan.operations.length === 0 && plan.tableGeometryPairings.length === 0) {
+    if (plan.operationBatch.operations.length === 0 && plan.tableGeometryPairings.length === 0) {
       continue;
     }
 
@@ -555,22 +586,20 @@ export const applyComparison = (
     documentChanged ||= geometryChanged;
     idSeed = afterGeometry;
 
-    if (plan.operations.length === 0 && !geometryChanged) {
+    if (plan.operationBatch.operations.length === 0 && !geometryChanged) {
       continue;
     }
 
-    if (plan.operations.length > 0) {
-      const { skipped, nextRevisionId } = reviewer.applyDocumentOperationsToStory({
+    if (plan.operationBatch.operations.length > 0) {
+      const { skipped, nextRevisionId } = comparisonAccess.applyOperations({
         story: pair.baseStory,
         snapshot: pair.baseSnapshot,
         revisionStamp: { date: revisionStamp.date, idSeed },
-        wordDiff,
-        batch: {
-          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-          mode: "tracked-changes",
-          operations: plan.operations,
-        },
-        tableTemplates: resolveTableTemplates(targetTables, plan.tableTemplates),
+        operationBatch: plan.operationBatch,
+        tableTemplates: resolveTableTemplates(
+          targetTables,
+          plan.operationBatch.tableTemplateRequests,
+        ),
       });
       if (nextRevisionId === undefined) {
         // Only a host bridge that does not allocate ids itself omits this, and

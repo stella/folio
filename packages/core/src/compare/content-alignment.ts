@@ -551,6 +551,15 @@ export type FolioContentAlignmentStep<Block extends FolioContentBlock = FolioCon
   | { type: "revisedRow"; blocks: readonly Block[]; location: FolioContentTableLocation }
   | { type: "baseTable"; blocks: readonly Block[]; location: FolioContentTableLocation }
   | { type: "revisedTable"; blocks: readonly Block[]; location: FolioContentTableLocation }
+  | {
+      type: "tableReplacement";
+      baseBlocks: readonly Block[];
+      revisedBlocks: readonly Block[];
+      baseLocation: FolioContentTableLocation;
+      revisedLocation: FolioContentTableLocation;
+      /** One already-budgeted member alignment; consumers must never compare again. */
+      refinementSteps: readonly FolioContentAlignmentStep<Block>[];
+    }
   | TableColumnAlignmentStep<Block>;
 
 /** @internal Legal move bucket and alignment gap for one unpaired block. */
@@ -1777,10 +1786,15 @@ const rowCellSpansEqual = <Block extends FolioContentBlock>(
 const rowHasVerticalSpan = <Block extends FolioContentBlock>(row: readonly Block[]): boolean =>
   row.some(({ table }) => table !== undefined && table.rowSpan > 1);
 
-type TableStructurePlan<Block extends FolioContentBlock> = {
-  steps: FolioContentAlignmentStep<Block>[];
-  representable: boolean;
-};
+type TableStructurePlan<Block extends FolioContentBlock> =
+  | {
+      type: "representable";
+      steps: FolioContentAlignmentStep<Block>[];
+    }
+  | {
+      type: "requires-table-replacement";
+      steps: FolioContentAlignmentStep<Block>[];
+    };
 
 type BuildTablePlanOptions<Block extends FolioContentBlock> = {
   baseBlocks: readonly Block[];
@@ -1808,7 +1822,7 @@ const buildTablePlan = <Block extends FolioContentBlock>({
     return !rowHasVerticalSpan(row.row);
   });
   return {
-    representable,
+    type: representable ? "representable" : "requires-table-replacement",
     steps: [
       ...(columns?.steps ?? []),
       ...alignTableRows({
@@ -1860,7 +1874,7 @@ const buildTableSegmentPlan = <Block extends FolioContentBlock>({
           moveScopeContext,
         });
         steps.push(...table.steps);
-        representable &&= table.representable;
+        representable &&= table.type === "representable";
         break;
       }
       case "baseOnly":
@@ -1882,7 +1896,10 @@ const buildTableSegmentPlan = <Block extends FolioContentBlock>({
       }
     }
   }
-  return { steps, representable };
+  return {
+    type: representable ? "representable" : "requires-table-replacement",
+    steps,
+  };
 };
 
 type TableDocumentSegment<Block extends FolioContentBlock> = Extract<
@@ -2540,7 +2557,23 @@ export const alignFolioContentStructure = <Block extends FolioContentBlock>({
         workSession,
         moveScopeContext,
       });
-      steps.push(...table.steps);
+      if (table.type === "representable") {
+        steps.push(...table.steps);
+        continue;
+      }
+      const baseLocation = baseSegment.blocks.at(0)?.table;
+      const revisedLocation = revisedSegment.blocks.at(0)?.table;
+      if (!baseLocation || !revisedLocation) {
+        return panic("A paired table segment has no table location");
+      }
+      steps.push({
+        type: "tableReplacement",
+        baseBlocks: baseSegment.blocks,
+        revisedBlocks: revisedSegment.blocks,
+        baseLocation,
+        revisedLocation,
+        refinementSteps: table.steps,
+      });
       continue;
     }
     if (baseSegment) {

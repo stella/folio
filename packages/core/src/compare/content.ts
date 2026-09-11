@@ -285,6 +285,19 @@ export type FolioContentStructuralEvent = {
 };
 
 /**
+ * One structurally incompatible table pair. The nested comparison is computed
+ * in the same bounded semantic pass and is available only as a lowering
+ * refinement; the outer event remains the sole document-order occurrence.
+ */
+export type FolioContentTableReplacement = {
+  readonly baseBlocks: FolioContentBlockGroup;
+  readonly revisedBlocks: FolioContentBlockGroup;
+  readonly baseTableIndex: number;
+  readonly revisedTableIndex: number;
+  readonly refinement: FolioContentComparison;
+};
+
+/**
  * One item in the complete comparison stream. Every surviving pairing has
  * one canonical relation; one-sided events carry exactly one owned block.
  */
@@ -305,6 +318,10 @@ export type FolioContentComparisonEvent =
       readonly type: "merge";
       readonly relations: readonly [FolioContentRangePairRelation, FolioContentRangePairRelation];
       readonly separator: FolioContentSeparatorRelation;
+    }
+  | {
+      readonly type: "tableReplacement";
+      readonly replacement: FolioContentTableReplacement;
     }
   | FolioContentStructuralEvent;
 
@@ -2595,9 +2612,14 @@ const ownedBlockGroup = (
   return Object.freeze(group);
 };
 
+type FolioContentStructuralAlignmentStep<Block extends FolioContentBlock> = Extract<
+  FolioContentAlignmentStep<Block>,
+  { readonly type: "baseTable" | "revisedTable" | "baseRow" | "revisedRow" | "baseColumn" | "revisedColumn" }
+>;
+
 const structuralChangeForStep = <Block extends FolioContentBlock>(
-  step: FolioContentAlignmentStep<Block>,
-): FolioContentStructuralChange | null => {
+  step: FolioContentStructuralAlignmentStep<Block>,
+): FolioContentStructuralChange => {
   switch (step.type) {
     case "baseTable":
       return Object.freeze({
@@ -2640,8 +2662,10 @@ const structuralChangeForStep = <Block extends FolioContentBlock>(
         blocks: ownedBlockGroup(step.blocks),
         anchor: Object.freeze({ ...step.anchor }),
       });
-    default:
-      return null;
+    default: {
+      const unreachable: never = step;
+      return panic("Unhandled structural alignment step", { step: unreachable });
+    }
   }
 };
 
@@ -3162,8 +3186,55 @@ const compareAlignedFolioContent = ({
       continue;
     }
 
+    if (step.type === "tableReplacement") {
+      if (changeCount + 1 > maximumChanges) {
+        changeCount++;
+        return changeLimitExceeded();
+      }
+      if (eventCount + 1 > maximumEvents) {
+        eventCount++;
+        return eventLimitExceeded();
+      }
+      const refinement = compareAlignedFolioContent({
+        captured: {
+          base: Object.freeze({ blocks: Object.freeze([...step.baseBlocks]) }),
+          revised: Object.freeze({ blocks: Object.freeze([...step.revisedBlocks]) }),
+        },
+        steps: step.refinementSteps,
+        engine,
+        maximumChanges: maximumChanges - changeCount - 1,
+        maximumFormattingRanges: remainingFormattingRanges,
+        maximumStructuralMembers: maximumStructuralMembers - structuralMemberCount,
+        maximumEvents: maximumEvents - eventCount - 1,
+      });
+      if (refinement.isErr()) return refinement;
+      changeCount += refinement.value.changes;
+      formattingRangeCount += refinement.value.formattingRanges;
+      remainingFormattingRanges -= refinement.value.formattingRanges;
+      structuralMemberCount += refinement.value.structuralMembers;
+      eventCount += refinement.value.events;
+      const baseGroup = ownedBlockGroup(step.baseBlocks);
+      const revisedGroup = ownedBlockGroup(step.revisedBlocks);
+      const replacement = Object.freeze({
+        baseBlocks: baseGroup,
+        revisedBlocks: revisedGroup,
+        baseTableIndex: step.baseLocation.tableIndex,
+        revisedTableIndex: step.revisedLocation.tableIndex,
+        refinement: refinement.value.comparison,
+      });
+      if (
+        !addRelation(
+          { type: "tableReplacement", replacement },
+          baseGroup,
+          revisedGroup,
+        )
+      ) {
+        return relationLimitExceeded();
+      }
+      continue;
+    }
+
     const structural = structuralChangeForStep(step);
-    if (!structural) return panic("Unhandled content alignment step", { step });
     if (changeCount + 1 > maximumChanges) {
       changeCount++;
       return changeLimitExceeded();
@@ -3270,6 +3341,8 @@ const compareAlignedFolioContent = ({
       case "formatting":
       case "split":
       case "merge":
+        break;
+      case "tableReplacement":
         break;
       case "structural": {
         const members = structuralMembers.get(event.change);

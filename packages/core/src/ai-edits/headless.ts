@@ -75,6 +75,7 @@ import type {
   NumberingDefinitions,
 } from "../types/document";
 import { deterministicHexId } from "../utils/hexId";
+import type { DocxComparisonOperationBatch } from "../compare/docx-operation-plan";
 import {
   recreateProseNodeWithParagraphPropertySource,
   transferProseParagraphPropertySource,
@@ -87,7 +88,12 @@ import {
   type FolioDocumentOperationUndoHandle,
   type FolioDocumentOperationUndoResult,
 } from "../document-operations";
-import type { FolioRevisionStamp, FolioWordDiffOptions } from "./apply";
+import {
+  applyFolioComparisonOperations,
+  type FolioAIEditApplyOutcome,
+  type FolioRevisionStamp,
+  type FolioWordDiffOptions,
+} from "./apply";
 import { buildAnnotatedBlockText } from "./clean-text";
 import {
   getCommentAnchorsFromDoc,
@@ -457,9 +463,18 @@ type FolioDocxComparisonProjection = {
   };
 };
 
+type FolioDocxComparisonApplyOptions = {
+  readonly story: FolioEditableDocumentStoryHandle;
+  readonly snapshot: FolioAIEditSnapshot;
+  readonly revisionStamp: FolioRevisionStamp;
+  readonly operationBatch: DocxComparisonOperationBatch;
+  readonly tableTemplates?: FolioTableTemplates;
+};
+
 type FolioDocxComparisonAccess = {
   projectStories: (mode: FolioDocxComparisonProjectionMode) => FolioDocxComparisonProjection;
   snapshotReviewedStory: (options?: FolioReadReviewedStoryOptions) => FolioAIEditSnapshot | null;
+  applyOperations: (options: FolioDocxComparisonApplyOptions) => FolioAIEditApplyOutcome;
 };
 
 const comparisonAccessByReviewer = new WeakMap<FolioDocxReviewer, FolioDocxComparisonAccess>();
@@ -687,6 +702,7 @@ export class FolioDocxReviewer {
       Object.freeze({
         projectStories: (mode) => this.projectComparisonStoriesInternal(mode),
         snapshotReviewedStory: (options) => this.snapshotReviewedStoryInternal(options),
+        applyOperations: (options) => this.applyComparisonOperationsInternal(options),
       }),
     );
   }
@@ -1025,6 +1041,33 @@ export class FolioDocxReviewer {
       ...(tableTemplates !== undefined && { tableTemplates }),
       createUndoEntry: true,
     });
+  }
+
+  private applyComparisonOperationsInternal({
+    story,
+    snapshot,
+    revisionStamp,
+    operationBatch,
+    tableTemplates,
+  }: FolioDocxComparisonApplyOptions): FolioAIEditApplyOutcome {
+    const beforeState = this.requireEditableStoryState(story);
+    const view = {
+      state: beforeState,
+      dispatch: (transaction: Transaction) => {
+        view.state = view.state.apply(transaction);
+      },
+    };
+    const result = applyFolioComparisonOperations({
+      view,
+      snapshot,
+      mode: "tracked-changes",
+      author: this.author,
+      revisionStamp,
+      comparisonOperationBatch: operationBatch,
+      ...(tableTemplates !== undefined && { tableTemplates }),
+    });
+    this.setEditableStoryState(story, view.state);
+    return result;
   }
 
   private applyDocumentOperationsInternal({

@@ -11,6 +11,8 @@
 import { describe, expect, test } from "bun:test";
 
 import type { FolioAIBlock, FolioAIEditSnapshot } from "../ai-edits/types";
+import { compareContent } from "./content";
+import { docxBlockToContentInput } from "./docx-content-adapter";
 import { planStoryCompare } from "./plan";
 
 const MAIN_STORY = { type: "main" } as const;
@@ -96,16 +98,22 @@ const snapshotOf = (blocks: readonly FolioAIBlock[]): FolioAIEditSnapshot => ({
 });
 
 const planOf = (base: readonly FolioAIBlock[], target: readonly FolioAIBlock[]) => {
+  const baseSnapshot = snapshotOf(base);
+  const targetSnapshot = snapshotOf(target);
+  const comparison = compareContent({
+    base: { blocks: baseSnapshot.blocks.map(docxBlockToContentInput) },
+    revised: { blocks: targetSnapshot.blocks.map(docxBlockToContentInput) },
+  });
+  if (comparison.isErr()) throw comparison.error;
   const plan = planStoryCompare({
     story: MAIN_STORY,
-    baseSnapshot: snapshotOf(base),
-    targetSnapshot: snapshotOf(target),
+    baseSnapshot,
+    targetSnapshot,
+    comparison: comparison.value,
     maxOperations: 1000,
   });
-  if (plan === null) {
-    throw new Error("The plan exceeded its operation budget.");
-  }
-  return plan;
+  if (plan.isErr()) throw plan.error;
+  return plan.value;
 };
 
 const RELOCATED =
@@ -165,7 +173,9 @@ describe("table row pairing", () => {
       block("after-target", "After the table."),
     ];
 
-    const { changes, operations } = planOf(base, target);
+    const plan = planOf(base, target);
+    const { changes } = plan;
+    const { operations } = plan.operationBatch;
 
     expect(changes.map(({ kind }) => kind)).toEqual(["table-delete", "table-insert"]);
     expect(operations).toEqual([
@@ -263,7 +273,9 @@ describe("document-terminal paragraph carrier", () => {
     ];
     const target = [cell("kept-target", "Kept row", 0), block("target-carrier", "")];
 
-    const { changes, operations } = planOf(base, target);
+    const plan = planOf(base, target);
+    const { changes } = plan;
+    const { operations } = plan.operationBatch;
 
     expect(operations).not.toContainEqual(
       expect.objectContaining({ type: "deleteBlock", blockId: "base-carrier" }),
@@ -293,7 +305,9 @@ describe("document-terminal paragraph carrier", () => {
       }),
     ];
 
-    const { changes, operations } = planOf(base, target);
+    const plan = planOf(base, target);
+    const { changes } = plan;
+    const { operations } = plan.operationBatch;
 
     expect(changes.map(({ kind }) => kind)).toEqual(["table-delete", "table-insert", "delete"]);
     expect(operations).toEqual([
@@ -313,7 +327,9 @@ describe("document-terminal paragraph carrier", () => {
     const baseCarrier = block("base-carrier", "");
     const targetCarrier = { ...block("target-carrier", ""), styleId: "CustomStyle" };
 
-    const { changes, operations } = planOf([baseCarrier], [targetCarrier]);
+    const plan = planOf([baseCarrier], [targetCarrier]);
+    const { changes } = plan;
+    const { operations } = plan.operationBatch;
 
     expect(changes.map(({ kind }) => kind)).toEqual(["paragraph-format"]);
     expect(operations).toEqual([
@@ -341,7 +357,9 @@ describe("document-terminal paragraph carrier", () => {
     ];
 
     for (const { base, target, properties } of cases) {
-      const { changes, operations } = planOf([base], [target]);
+      const plan = planOf([base], [target]);
+      const { changes } = plan;
+      const { operations } = plan.operationBatch;
       expect(changes.map(({ kind }) => kind)).toEqual(["paragraph-format"]);
       expect(operations).toEqual([
         {
@@ -367,7 +385,9 @@ describe("document-terminal paragraph carrier", () => {
     ];
     const target = [block("alpha-target", RELOCATED), block("bravo-target", UNRELATED)];
 
-    const { changes, operations } = planOf(base, target);
+    const plan = planOf(base, target);
+    const { changes } = plan;
+    const { operations } = plan.operationBatch;
 
     expect(changes).toContainEqual(
       expect.objectContaining({ kind: "delete", baseBlockId: "charlie" }),
@@ -414,7 +434,7 @@ describe("document-terminal paragraph carrier", () => {
       }),
     ];
 
-    const { operations } = planOf(base, target);
+    const { operations } = planOf(base, target).operationBatch;
 
     expect(operations).toContainEqual(
       expect.objectContaining({
@@ -447,20 +467,26 @@ describe("document-terminal paragraph carrier", () => {
       block("base-carrier", ""),
     ];
     const target = [cell("kept-target", "Kept row", 0), block("target-carrier", "")];
+    const baseSnapshot = snapshotOf(base);
+    const targetSnapshot = snapshotOf(target);
+    const comparison = compareContent({
+      base: { blocks: baseSnapshot.blocks.map(docxBlockToContentInput) },
+      revised: { blocks: targetSnapshot.blocks.map(docxBlockToContentInput) },
+    });
+    if (comparison.isErr()) throw comparison.error;
     const plan = planStoryCompare({
       story: { type: "header", relationshipId: "rId1" },
-      baseSnapshot: snapshotOf(base),
-      targetSnapshot: snapshotOf(target),
+      baseSnapshot,
+      targetSnapshot,
+      comparison: comparison.value,
       maxOperations: 1000,
     });
-    if (plan === null) {
-      throw new Error("The plan exceeded its operation budget.");
-    }
+    if (plan.isErr()) throw plan.error;
 
-    expect(plan.changes).not.toContainEqual(
+    expect(plan.value.changes).not.toContainEqual(
       expect.objectContaining({ kind: "delete", baseBlockId: "base-carrier" }),
     );
-    expect(plan.operations).not.toContainEqual(
+    expect(plan.value.operationBatch.operations).not.toContainEqual(
       expect.objectContaining({ type: "deleteBlock", blockId: "base-carrier" }),
     );
   });
@@ -483,7 +509,9 @@ describe("table column pairing", () => {
       gridCell("b1-target", "100", { rowIndex: 1, cellIndex: 2, gridColumnIndex: 2 }),
     ];
 
-    const { changes, operations } = planOf(base, target);
+    const plan = planOf(base, target);
+    const { changes } = plan;
+    const { operations } = plan.operationBatch;
 
     expect(changes.map(({ kind }) => kind)).toEqual(["table-column-insert"]);
     expect(operations).toEqual([
@@ -552,7 +580,9 @@ describe("table column pairing", () => {
       gridCell("b1-target", "Open", { rowIndex: 1, cellIndex: 1, gridColumnIndex: 1 }),
     ];
 
-    const { changes, operations } = planOf(base, target);
+    const plan = planOf(base, target);
+    const { changes } = plan;
+    const { operations } = plan.operationBatch;
 
     expect(changes.map(({ kind }) => kind)).toEqual(["table-column-delete"]);
     expect(operations).toEqual([{ id: "compare-1", type: "deleteTableColumn", blockId: "x0" }]);
@@ -586,7 +616,7 @@ describe("table column pairing", () => {
       gridCell("b-target", "Status", { rowIndex: 0, cellIndex: 3, gridColumnIndex: 3 }),
     ];
 
-    expect(planOf(base, target).operations).toEqual([
+    expect(planOf(base, target).operationBatch.operations).toEqual([
       {
         id: "compare-1",
         type: "insertTableColumn",
@@ -616,7 +646,7 @@ describe("table column pairing", () => {
       gridCell("b-target", "Status", { rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 }),
     ];
 
-    expect(planOf(base, target).operations).toEqual([
+    expect(planOf(base, target).operationBatch.operations).toEqual([
       { id: "compare-1", type: "deleteTableColumn", blockId: "x" },
       { id: "compare-2", type: "deleteTableColumn", blockId: "y" },
     ]);
@@ -625,10 +655,12 @@ describe("table column pairing", () => {
 
 describe("move detection", () => {
   test("a relocated paragraph is a move even when a word changed on the way", () => {
-    const { changes, operations } = planOf(
+    const plan = planOf(
       [block("a", RELOCATED), block("b", "An unrelated closing paragraph.")],
       [block("b2", "An unrelated closing paragraph."), block("a2", RELOCATED_EDITED)],
     );
+    const { changes } = plan;
+    const { operations } = plan.operationBatch;
 
     expect(changes.map(({ kind }) => kind)).toEqual(["move"]);
     // Both halves of the pair carry the same link, so the applier writes
@@ -641,10 +673,12 @@ describe("move detection", () => {
   });
 
   test("a paragraph that only shares its opening is a deletion and an insertion", () => {
-    const { changes, operations } = planOf(
+    const plan = planOf(
       [block("a", RELOCATED), block("b", "An unrelated closing paragraph.")],
       [block("b2", "An unrelated closing paragraph."), block("a2", UNRELATED)],
     );
+    const { changes } = plan;
+    const { operations } = plan.operationBatch;
 
     expect(changes.map(({ kind }) => kind).toSorted()).toEqual(["delete", "insert"]);
     expect(operations.some((operation) => "moveId" in operation)).toBe(false);

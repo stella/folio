@@ -596,6 +596,18 @@ export const projectFolioContentComparisonToStory = ({
         addFormattingOrUnchanged(second);
         break;
       }
+      case "tableReplacement": {
+        if (!includeText) {
+          counts.unchanged += Math.max(
+            event.replacement.baseBlocks.length,
+            event.replacement.revisedBlocks.length,
+          );
+          break;
+        }
+        for (const block of event.replacement.baseBlocks) addDeleted(block);
+        for (const block of event.replacement.revisedBlocks) addInserted(block);
+        break;
+      }
       case "structural": {
         if (!includeText) {
           counts.unchanged++;

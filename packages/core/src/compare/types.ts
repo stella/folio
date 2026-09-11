@@ -6,13 +6,14 @@
 import { TaggedError } from "better-result";
 
 import type { FolioDocumentStoryHandle, FolioNumberingLevel } from "../ai-edits/headless";
-import type { WordDiffGranularity } from "../ai-edits/word-diff";
+import type { WordDiffGranularity } from "./text-diff";
 import type {
   FolioAIBlockParagraphProperties,
   FolioAIBlockTableLocation,
   FolioAIEditSkippedOperation,
-  FolioAIInlineFormattingPatch,
 } from "../ai-edits/types";
+import type { FolioContentInlineFormattingChange } from "./content-types";
+import type { FolioContentComparisonError } from "./content";
 import type {
   CompareVerification,
   CompareVerificationCause,
@@ -65,8 +66,8 @@ export type CompareChangeLocation = {
 export type CompareFormatRange = {
   startOffset: number;
   endOffset: number;
-  /** Differing properties set to the target value; null removes a direct property. */
-  formatting: FolioAIInlineFormattingPatch;
+  /** Exact authored and effective property deltas for this paired range. */
+  formatting: FolioContentInlineFormattingChange;
 };
 
 /**
@@ -277,6 +278,15 @@ export class CompareDocxParseError extends TaggedError("CompareDocxParseError")<
   cause: unknown;
 }> {}
 
+/** A paired story exceeded or violated the neutral comparison contract. */
+export class CompareDocxContentComparisonError extends TaggedError(
+  "CompareDocxContentComparisonError",
+)<{
+  message: string;
+  story: FolioDocumentStoryHandle;
+  cause: FolioContentComparisonError;
+}> {}
+
 /**
  * The applier refused at least one derived operation, so accepting the result
  * would not reproduce the target. Reported instead of returning a package that
@@ -314,6 +324,27 @@ export class CompareDocxOperationLimitError extends TaggedError("CompareDocxOper
   limit: number;
 }> {}
 
+export const COMPARE_DOCX_LOWERING_REASONS = Object.freeze([
+  "block-semantics",
+  "container-change",
+  "missing-insertion-anchor",
+  "nonportable-table-template",
+  "structural-boundary-change",
+  "table-row-anchor",
+] as const);
+
+export type CompareDocxLoweringReason = (typeof COMPARE_DOCX_LOWERING_REASONS)[number];
+
+/** A canonical content event has no lossless tracked-document encoding. */
+export class CompareDocxLoweringError extends TaggedError("CompareDocxLoweringError")<{
+  message: string;
+  reason: CompareDocxLoweringReason;
+  story: FolioDocumentStoryHandle;
+  baseBlockId?: string;
+  targetBlockId?: string;
+  tableIndex?: number;
+}> {}
+
 export class CompareDocxSerializeError extends TaggedError("CompareDocxSerializeError")<{
   message: string;
   cause: unknown;
@@ -340,7 +371,9 @@ export class CompareDocxFinalParagraphMarkError extends TaggedError(
 
 export type CompareDocxError =
   | CompareDocxApplyError
+  | CompareDocxContentComparisonError
   | CompareDocxFinalParagraphMarkError
+  | CompareDocxLoweringError
   | CompareDocxOperationLimitError
   | CompareDocxParseError
   | CompareDocxRoundTripError

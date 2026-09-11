@@ -109,7 +109,14 @@ import {
   createWordDiffSession,
   type WordDiffGranularity,
   wordDiffSessionFromOptions,
-} from "./word-diff";
+} from "../compare/text-diff";
+import type {
+  DocxAuthoredRun,
+  DocxComparisonEqualFragment,
+  DocxComparisonOperationClaim,
+  DocxComparisonOperationBatch,
+  DocxComparisonRangePlan,
+} from "../compare/docx-operation-plan";
 
 /**
  * The only editor surface the apply logic touches: a current `state`
@@ -172,6 +179,7 @@ type ApplyFolioAIEditOperationsOptions = {
 type ApplyFolioAIEditOperationsInternalOptions = ApplyFolioAIEditOperationsOptions & {
   revisionIdSeed?: number;
   wordDiffMode?: "bounded" | "coarse";
+  comparisonOperationBatch?: DocxComparisonOperationBatch;
 };
 
 const coarseWordDiff: ReturnType<typeof createWordDiffSession>["diff"] = (before, after) => {
@@ -1620,6 +1628,9 @@ type BuildInsertedParagraphsOptions = {
   revisionSeed: number;
   isPairedMove: (moveId: string | undefined) => moveId is string;
   numbering: NumberingMap | null;
+  comparisonPlan:
+    | Extract<DocxComparisonOperationClaim, { readonly type: "insertion" }>
+    | null;
 };
 
 type BuiltInsertedParagraphs = {
@@ -1832,6 +1843,7 @@ const buildInsertedParagraphs = ({
   revisionSeed,
   isPairedMove,
   numbering,
+  comparisonPlan,
 }: BuildInsertedParagraphsOptions): BuiltInsertedParagraphs => {
   const operation = item.operation;
   if (operation.type !== "insertAfterBlock" && operation.type !== "insertBeforeBlock") {
@@ -1882,7 +1894,12 @@ const buildInsertedParagraphs = ({
     if (commentMark) {
       marks.push(commentMark);
     }
-    const content = text.length > 0 ? buildEmphasisInlineContent(schema, text, marks) : null;
+    const content =
+      text.length === 0
+        ? null
+        : comparisonPlan
+          ? [schema.text(text, marks)]
+          : buildEmphasisInlineContent(schema, text, marks);
     const attrs: Record<string, unknown> = isFirstParagraph ? { ...baseAttrs } : {};
     if (isFirstParagraph && operation.pageBreakBefore === true) {
       attrs["pageBreakBefore"] = true;
@@ -2024,6 +2041,7 @@ const applyFolioAIEditOperationsInternal = ({
   wordDiff,
   wordDiffMode = "bounded",
   tableTemplates,
+  comparisonOperationBatch,
 }: ApplyFolioAIEditOperationsInternalOptions): FolioAIEditApplyOutcome => {
   const applied: FolioAIEditAppliedOperation[] = [];
   const skipped: FolioAIEditSkippedOperation[] = [];
@@ -2092,6 +2110,9 @@ const applyFolioAIEditOperationsInternal = ({
   const isSuggested = mode === "suggested";
 
   if (producesTrackedChanges && (!insertionType || !deletionType)) {
+    if (comparisonOperationBatch) {
+      return panic("The DOCX comparison schema cannot represent tracked text revisions");
+    }
     return {
       applied,
       skipped: operations.map((operation) => ({
@@ -2180,7 +2201,18 @@ const applyFolioAIEditOperationsInternal = ({
   skipped.push(...tablePlan.skipped);
   const executableResolved = tablePlan.executable;
 
+  if (comparisonOperationBatch && skipped.length > 0) {
+    comparisonOperationBatch.abandon();
+    return {
+      applied: [],
+      skipped,
+      ...(normalizations.length > 0 && { normalizations }),
+      nextRevisionId: revisionIdSeed ?? revisionStamp?.idSeed ?? revisionIdCursor,
+    };
+  }
+
   if (executableResolved.length === 0) {
+    comparisonOperationBatch?.finalize();
     return {
       applied,
       skipped,
@@ -2313,7 +2345,7 @@ const applyFolioAIEditOperationsInternal = ({
         continue;
       }
     }
-    if (isBatchableParagraphInsertion(item, mode)) {
+    if (comparisonOperationBatch === undefined && isBatchableParagraphInsertion(item, mode)) {
       const insertionRun: ResolvedOperation[] = [item];
       for (let lookahead = executionIndex + 1; lookahead < executionOrder.length; lookahead++) {
         const candidate = executionOrder[lookahead];
@@ -2346,6 +2378,7 @@ const applyFolioAIEditOperationsInternal = ({
             revisionSeed,
             isPairedMove,
             numbering,
+            comparisonPlan: null,
           });
           revisionSeed = built.nextRevisionId;
           nodeGroups.push(built.nodes);
@@ -2405,6 +2438,8 @@ const applyFolioAIEditOperationsInternal = ({
     const suggestionId: string | null = isSuggested
       ? (item.operation.suggestionId ?? item.operation.id)
       : null;
+    const comparisonBorrow = comparisonOperationBatch?.borrow(item.operation) ?? null;
+    const comparisonClaim = comparisonBorrow?.semantics ?? null;
 
     // Fields merged into every node-attr revision (trIns/trDel/cellMarker) and
     // whole-node `_suggestedInsert` marker this operation produces.
@@ -2427,6 +2462,41 @@ const applyFolioAIEditOperationsInternal = ({
         const revisionIdInsert = producesTrackedChanges
           ? operationRevisionSeed + 1
           : operationRevisionSeed;
+        if (comparisonClaim !== null) {
+          if (comparisonClaim.type !== "replacement" || mode !== "tracked-changes") {
+            return panic("A comparison replacement received the wrong exact operation plan", {
+              operationType: item.operation.type,
+              planType: comparisonClaim.type,
+            });
+          }
+          const exact = applyExactReplacement({
+            tr,
+            item,
+            range: comparisonClaim.range,
+            revisionIdDelete,
+            revisionIdInsert,
+            revisionIdFormattingSeed: operationRevisionSeed + 2,
+            author,
+            date,
+            initials,
+            suggestionId,
+            styleResolver,
+          });
+          if (exact.type !== "applied") {
+            skipped.push({
+              id: item.operation.id,
+              reason:
+                exact.type === "pendingRunPropertyChange"
+                  ? "pendingRunPropertyChange"
+                  : "unsupportedBlock",
+            });
+            continue;
+          }
+          tr = exact.transaction;
+          operationRevisionSeed = exact.nextRevisionId;
+          appliedRevisionIds = [...exact.revisionIds];
+          break;
+        }
         const revisionIdBackgroundSeed = producesTrackedChanges
           ? operationRevisionSeed + 2
           : operationRevisionSeed;
@@ -2480,6 +2550,39 @@ const applyFolioAIEditOperationsInternal = ({
         break;
       }
       case "formatRange": {
+        if (comparisonClaim !== null) {
+          if (comparisonClaim.type !== "format" || mode !== "tracked-changes") {
+            return panic("A comparison formatting operation received the wrong exact plan", {
+              planType: comparisonClaim.type,
+            });
+          }
+          const exact = applyExactRangeFormatting({
+            tr,
+            blockNode: item.blockNode,
+            blockFrom: item.blockFrom,
+            range: comparisonClaim.range,
+            sourceStartOffset: item.operation.range.startOffset,
+            revisionIdSeed: operationRevisionSeed,
+            author,
+            date,
+            initials,
+            suggestionId,
+            styleResolver,
+          });
+          if (exact.type !== "applied") {
+            skipped.push({
+              id: item.operation.id,
+              reason:
+                exact.type === "pendingRunPropertyChange"
+                  ? "pendingRunPropertyChange"
+                  : "unsupportedBlock",
+            });
+            continue;
+          }
+          operationRevisionSeed = exact.nextRevisionId;
+          appliedRevisionIds = [...exact.revisionIds];
+          break;
+        }
         if (producesTrackedChanges) {
           const formattingResult = applyTrackedInlineFormatting({
             tr,
@@ -2520,6 +2623,40 @@ const applyFolioAIEditOperationsInternal = ({
         const { changesStyle, changesText } = REPLACE_BLOCK_IMPACT[item.replaceBlockImpact];
         const revisionIdDelete = operationRevisionSeed;
         const revisionIdInsert = changesText ? operationRevisionSeed + 1 : operationRevisionSeed;
+        if (comparisonClaim !== null) {
+          if (comparisonClaim.type !== "replacement" || mode !== "tracked-changes") {
+            return panic("A comparison block replacement received the wrong exact plan", {
+              planType: comparisonClaim.type,
+            });
+          }
+          const exact = applyExactReplacement({
+            tr,
+            item,
+            range: comparisonClaim.range,
+            revisionIdDelete: operationRevisionSeed,
+            revisionIdInsert: operationRevisionSeed + 1,
+            revisionIdFormattingSeed: operationRevisionSeed + 2,
+            author,
+            date,
+            initials,
+            suggestionId,
+            styleResolver,
+          });
+          if (exact.type !== "applied") {
+            skipped.push({
+              id: item.operation.id,
+              reason:
+                exact.type === "pendingRunPropertyChange"
+                  ? "pendingRunPropertyChange"
+                  : "unsupportedBlock",
+            });
+            continue;
+          }
+          tr = exact.transaction;
+          operationRevisionSeed = exact.nextRevisionId;
+          appliedRevisionIds = [...exact.revisionIds];
+          break;
+        }
         const revisionIdBackgroundSeed = changesText
           ? operationRevisionSeed + 2
           : operationRevisionSeed;
@@ -2639,6 +2776,11 @@ const applyFolioAIEditOperationsInternal = ({
       }
       case "insertAfterBlock":
       case "insertBeforeBlock": {
+        if (comparisonClaim !== null && comparisonClaim.type !== "insertion") {
+          return panic("A comparison insertion received the wrong exact plan", {
+            planType: comparisonClaim.type,
+          });
+        }
         const insertTexts = item.insertTexts ?? [""];
         const isEmptyInsert = insertTexts.length === 1 && insertTexts[0]?.length === 0;
         if (
@@ -2665,12 +2807,33 @@ const applyFolioAIEditOperationsInternal = ({
           revisionSeed: operationRevisionSeed,
           isPairedMove,
           numbering,
+          comparisonPlan: comparisonClaim,
         });
         operationRevisionSeed = built.nextRevisionId;
         if (built.revisionIds.length > 0) {
           appliedRevisionIds = built.revisionIds;
         }
         tr = tr.insert(item.from, built.nodes);
+        if (comparisonClaim) {
+          if (
+            insertTexts.length !== 1 ||
+            insertTexts[0] !== comparisonClaim.targetText ||
+            item.operation.text !== comparisonClaim.targetText
+          ) {
+            return panic("A comparison insertion was normalized away from its canonical text", {
+              operationId: item.operation.id,
+            });
+          }
+          for (const run of comparisonClaim.targetRuns) {
+            applyExactDirectFormatting({
+              tr,
+              from: item.from + 1 + run.startOffset,
+              to: item.from + 1 + run.endOffset,
+              formatting: run.formatting,
+              styleResolver,
+            });
+          }
+        }
         break;
       }
       case "insertSignatureTable": {
@@ -3141,6 +3304,38 @@ const applyFolioAIEditOperationsInternal = ({
         break;
       }
       case "splitBlock": {
+        if (comparisonClaim !== null && comparisonClaim.type !== "split") {
+          return panic("A comparison split received the wrong exact plan", {
+            planType: comparisonClaim.type,
+          });
+        }
+        if (comparisonClaim) {
+          const separatorLength = (item.operation.separator ?? "").length;
+          const preflight = [
+            exactReplacementIsRepresentable({
+              tr,
+              blockNode: item.blockNode,
+              blockFrom: item.blockFrom,
+              range: comparisonClaim.first,
+              sourceStartOffset: 0,
+            }),
+            exactReplacementIsRepresentable({
+              tr,
+              blockNode: item.blockNode,
+              blockFrom: item.blockFrom,
+              range: comparisonClaim.second,
+              sourceStartOffset: comparisonClaim.first.sourceText.length + separatorLength,
+            }),
+          ];
+          if (preflight.includes("unrepresentable")) {
+            skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
+            continue;
+          }
+          if (preflight.includes("pendingRunPropertyChange")) {
+            skipped.push({ id: item.operation.id, reason: "pendingRunPropertyChange" });
+            continue;
+          }
+        }
         if (mode === "direct") {
           if (item.to > item.from) {
             tr = tr.delete(item.from, item.to);
@@ -3211,9 +3406,93 @@ const applyFolioAIEditOperationsInternal = ({
             appliedRevisionIds.push(appliedProperties.revisionId);
           }
         }
+        if (comparisonClaim) {
+          const secondPosition = item.from + 1;
+          const firstNode = tr.doc.nodeAt(item.blockFrom);
+          const secondNode = tr.doc.nodeAt(secondPosition);
+          if (!firstNode || !secondNode) {
+            return panic("An applied comparison split lost one of its result paragraphs");
+          }
+          // Apply the right paragraph first so editing the left one cannot move
+          // the already-resolved right-hand position. The separator at its start
+          // already carries a deletion mark and is therefore absent from the
+          // accepted-view offsets used by exact replacement.
+          for (const target of [
+            {
+              node: secondNode,
+              position: secondPosition,
+              range: comparisonClaim.second,
+              sourceStartOffset: 0,
+            },
+            {
+              node: firstNode,
+              position: item.blockFrom,
+              range: comparisonClaim.first,
+              sourceStartOffset: 0,
+            },
+          ]) {
+            const exact = applyExactBlockRangeReplacement({
+              tr,
+              blockNode: target.node,
+              blockFrom: target.position,
+              range: target.range,
+              sourceStartOffset: target.sourceStartOffset,
+              revisionIdDelete: operationRevisionSeed,
+              revisionIdInsert: operationRevisionSeed + 1,
+              revisionIdFormattingSeed: operationRevisionSeed + 2,
+              author,
+              date,
+              initials,
+              suggestionId,
+              styleResolver,
+            });
+            if (exact.type !== "applied") {
+              return panic("A preflighted comparison split became unrepresentable", {
+                reason: exact.type,
+              });
+            }
+            tr = exact.transaction;
+            operationRevisionSeed = exact.nextRevisionId;
+            appliedRevisionIds.push(...exact.revisionIds);
+          }
+        }
         break;
       }
       case "mergeBlockWithNext": {
+        if (comparisonClaim !== null && comparisonClaim.type !== "merge") {
+          return panic("A comparison merge received the wrong exact plan", {
+            planType: comparisonClaim.type,
+          });
+        }
+        if (comparisonClaim?.encoding === "semantic") {
+          const secondNode = tr.doc.nodeAt(item.blockTo);
+          const preflight = secondNode
+            ? [
+                exactReplacementIsRepresentable({
+                  tr,
+                  blockNode: item.blockNode,
+                  blockFrom: item.blockFrom,
+                  range: comparisonClaim.first,
+                  sourceStartOffset: 0,
+                }),
+                exactReplacementIsRepresentable({
+                  tr,
+                  blockNode: secondNode,
+                  blockFrom: item.blockTo,
+                  range: comparisonClaim.second,
+                  sourceStartOffset: 0,
+                }),
+              ]
+            : ["unrepresentable" as const];
+          if (preflight.includes("unrepresentable")) {
+            skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
+            continue;
+          }
+          if (preflight.includes("pendingRunPropertyChange")) {
+            skipped.push({ id: item.operation.id, reason: "pendingRunPropertyChange" });
+            continue;
+          }
+        }
         const separator = item.operation.separator ?? "";
         const insertAt = item.blockTo - 1;
         if (mode === "direct") {
@@ -3273,6 +3552,51 @@ const applyFolioAIEditOperationsInternal = ({
             appliedRevisionIds.push(appliedProperties.revisionId);
           }
         }
+        if (comparisonClaim?.encoding === "semantic") {
+          for (const run of comparisonClaim.separatorRuns) {
+            applyExactDirectFormatting({
+              tr,
+              from: insertAt + run.startOffset,
+              to: insertAt + run.endOffset,
+              formatting: run.formatting,
+              styleResolver,
+            });
+          }
+          const firstNode = tr.doc.nodeAt(item.blockFrom);
+          const secondPosition = tr.mapping.map(item.blockTo, 1);
+          const secondNode = tr.doc.nodeAt(secondPosition);
+          if (!firstNode || !secondNode) {
+            return panic("An applied comparison merge lost one of its source paragraphs");
+          }
+          for (const target of [
+            { node: secondNode, position: secondPosition, range: comparisonClaim.second },
+            { node: firstNode, position: item.blockFrom, range: comparisonClaim.first },
+          ]) {
+            const exact = applyExactBlockRangeReplacement({
+              tr,
+              blockNode: target.node,
+              blockFrom: target.position,
+              range: target.range,
+              sourceStartOffset: 0,
+              revisionIdDelete: operationRevisionSeed,
+              revisionIdInsert: operationRevisionSeed + 1,
+              revisionIdFormattingSeed: operationRevisionSeed + 2,
+              author,
+              date,
+              initials,
+              suggestionId,
+              styleResolver,
+            });
+            if (exact.type !== "applied") {
+              return panic("A preflighted comparison merge became unrepresentable", {
+                reason: exact.type,
+              });
+            }
+            tr = exact.transaction;
+            operationRevisionSeed = exact.nextRevisionId;
+            appliedRevisionIds.push(...exact.revisionIds);
+          }
+        }
         break;
       }
       case "commentOnBlock": {
@@ -3319,6 +3643,7 @@ const applyFolioAIEditOperationsInternal = ({
       });
     }
     revisionSeed = operationRevisionSeed;
+    comparisonBorrow?.commitApplied();
 
     // Surface the primary id (first one) on the legacy `revisionId`
     // field so callers that just need a stable scroll/visual
@@ -3336,6 +3661,16 @@ const applyFolioAIEditOperationsInternal = ({
     });
   }
 
+  if (comparisonOperationBatch && skipped.length > 0) {
+    comparisonOperationBatch.abandon();
+    return {
+      applied: [],
+      skipped,
+      ...(normalizations.length > 0 && { normalizations }),
+      nextRevisionId: revisionIdSeed ?? revisionStamp?.idSeed ?? revisionIdCursor,
+    };
+  }
+  comparisonOperationBatch?.finalize();
   if (tr.docChanged) {
     const batchRevisionIds = new Set(applied.flatMap(({ revisionIds }) => revisionIds ?? []));
     tr = withoutRevisionsOnZeroWidthAnchors(tr, batchRevisionIds);
@@ -3399,6 +3734,22 @@ export const applyFolioAIEditOperations = (
   options: ApplyFolioAIEditOperationsOptions,
 ): FolioAIEditApplyOutcome => applyFolioAIEditOperationsInternal(options);
 
+type ApplyFolioComparisonOperationsOptions = Omit<
+  ApplyFolioAIEditOperationsOptions,
+  "operations" | "wordDiff"
+> & {
+  comparisonOperationBatch: DocxComparisonOperationBatch;
+};
+
+/** Apply one comparison-owned batch without invoking the generic replacement diff. @internal */
+export const applyFolioComparisonOperations = (
+  options: ApplyFolioComparisonOperationsOptions,
+): FolioAIEditApplyOutcome =>
+  applyFolioAIEditOperationsInternal({
+    ...options,
+    operations: options.comparisonOperationBatch.operations,
+  });
+
 export const previewFolioAIEditOperations = (
   options: ApplyFolioAIEditOperationsOptions,
 ): FolioAIEditApplyOutcome => {
@@ -3427,6 +3778,449 @@ export const previewFolioAIEditOperations = (
     // next id is still the one the batch would have started from.
     nextRevisionId: options.revisionStamp?.idSeed ?? revisionIdCursor,
   };
+};
+
+type ExactFormattingMetadata = {
+  readonly author: string;
+  readonly date: string;
+  readonly initials?: string | undefined;
+  readonly suggestionId: string | null;
+};
+
+const hasPendingRunPropertyChange = (
+  doc: PMNode,
+  propertyChangeType: MarkType | undefined,
+  from: number,
+  to: number,
+): boolean =>
+  propertyChangeType !== undefined &&
+  selectRunFormattingCarrierRepresentations({ doc, from, to }).some(({ node }) => {
+    const existing = node.marks.find((mark) => mark.type === propertyChangeType);
+    return existing
+      ? expectRunPropertyChangeMarkAttrs(existing).changes.length > 0
+      : false;
+  });
+
+type ApplyExactDirectFormattingOptions = {
+  tr: Transaction;
+  from: number;
+  to: number;
+  formatting: Readonly<TextFormatting>;
+  styleResolver: ReturnType<typeof getDocumentStyleResolver>;
+};
+
+const applyExactDirectFormatting = ({
+  tr,
+  from,
+  to,
+  formatting,
+  styleResolver,
+}: ApplyExactDirectFormattingOptions): void => {
+  if (from >= to) return;
+  for (const representation of selectRunFormattingCarrierRepresentations({
+    doc: tr.doc,
+    from,
+    to,
+  })) {
+    const context = paragraphRunStyleContextAt({
+      doc: tr.doc,
+      pos: representation.from,
+      ...(styleResolver !== undefined && { styleResolver }),
+    });
+    const marks = reconcileRunFormattingMarks({
+      authoredFormatting: formatting,
+      context,
+      node: representation.node,
+      ...(styleResolver !== undefined && { styleResolver }),
+    });
+    applyMarksToRunFormattingRepresentation({ tr, representation, marks });
+  }
+};
+
+type ApplyExactTrackedFormattingOptions = ApplyExactDirectFormattingOptions &
+  ExactFormattingMetadata & {
+    previousFormatting: Readonly<TextFormatting>;
+    revisionIdSeed: number;
+  };
+
+const applyExactTrackedFormatting = ({
+  tr,
+  from,
+  to,
+  formatting,
+  previousFormatting,
+  revisionIdSeed,
+  author,
+  date,
+  initials,
+  suggestionId,
+  styleResolver,
+}: ApplyExactTrackedFormattingOptions): readonly number[] => {
+  if (from >= to) return [];
+  const propertyChangeType = tr.doc.type.schema.marks["runPropertyChange"];
+  if (!propertyChangeType) return [];
+  const revisionIds: number[] = [];
+  for (const representation of selectRunFormattingCarrierRepresentations({
+    doc: tr.doc,
+    from,
+    to,
+  })) {
+    const context = paragraphRunStyleContextAt({
+      doc: tr.doc,
+      pos: representation.from,
+      ...(styleResolver !== undefined && { styleResolver }),
+    });
+    const formattingMarks = reconcileRunFormattingMarks({
+      authoredFormatting: formatting,
+      context,
+      node: representation.node,
+      ...(styleResolver !== undefined && { styleResolver }),
+    });
+    const revisionId = revisionIdSeed + revisionIds.length;
+    revisionIds.push(revisionId);
+    const change: RunPropertyChange = {
+      type: "runPropertyChange",
+      info: { id: revisionId, author, date, ...(initials ? { initials } : {}) },
+      ...(Object.keys(previousFormatting).length > 0
+        ? { previousFormatting }
+        : {}),
+    };
+    const suggestionAttrs =
+      suggestionId === null ? {} : { provenance: "suggested", suggestionId };
+    const marks = propertyChangeType
+      .create({ changes: [change], ...suggestionAttrs })
+      .addToSet(formattingMarks);
+    applyMarksToRunFormattingRepresentation({ tr, representation, marks });
+  }
+  return revisionIds;
+};
+
+type ExactRangePosition = {
+  readonly type: "format";
+  readonly from: number;
+  readonly to: number;
+  readonly fragment: DocxComparisonEqualFragment;
+};
+
+const exactFormattingPositions = (
+  blockNode: PMNode,
+  blockFrom: number,
+  range: DocxComparisonRangePlan,
+  sourceStartOffset = 0,
+): readonly ExactRangePosition[] | null => {
+  const clean = buildCleanBlockText(blockNode, blockFrom);
+  if (
+    clean.text.slice(sourceStartOffset, sourceStartOffset + range.sourceText.length) !==
+    range.sourceText
+  ) {
+    return null;
+  }
+  const positions: ExactRangePosition[] = [];
+  for (const fragment of range.fragments) {
+    if (fragment.type !== "equal" || fragment.changedProperties.length === 0) continue;
+    const from = clean.offsets[sourceStartOffset + fragment.baseStart];
+    const to = clean.offsets[sourceStartOffset + fragment.baseEnd];
+    if (from === undefined || to === undefined) return null;
+    positions.push({ type: "format", from, to, fragment });
+  }
+  return positions;
+};
+
+type ApplyExactRangeFormattingOptions = ExactFormattingMetadata & {
+  tr: Transaction;
+  blockNode: PMNode;
+  blockFrom: number;
+  range: DocxComparisonRangePlan;
+  revisionIdSeed: number;
+  styleResolver: ReturnType<typeof getDocumentStyleResolver>;
+  sourceStartOffset?: number;
+};
+
+type ApplyExactRangeFormattingResult =
+  | {
+      readonly type: "applied";
+      readonly revisionIds: readonly number[];
+      readonly nextRevisionId: number;
+    }
+  | { readonly type: "pendingRunPropertyChange" | "unrepresentable" };
+
+const applyExactRangeFormatting = ({
+  tr,
+  blockNode,
+  blockFrom,
+  range,
+  revisionIdSeed,
+  author,
+  date,
+  initials,
+  suggestionId,
+  styleResolver,
+  sourceStartOffset = 0,
+}: ApplyExactRangeFormattingOptions): ApplyExactRangeFormattingResult => {
+  const positions = exactFormattingPositions(blockNode, blockFrom, range, sourceStartOffset);
+  if (!positions) return { type: "unrepresentable" };
+  const propertyChangeType = tr.doc.type.schema.marks["runPropertyChange"];
+  if (
+    positions.some(({ from, to }) =>
+      hasPendingRunPropertyChange(tr.doc, propertyChangeType, from, to),
+    )
+  ) {
+    return { type: "pendingRunPropertyChange" };
+  }
+  const revisionIds: number[] = [];
+  for (const { from, to, fragment } of positions.toReversed()) {
+    const applied = applyExactTrackedFormatting({
+      tr,
+      from,
+      to,
+      formatting: fragment.targetFormatting,
+      previousFormatting: fragment.sourceFormatting,
+      revisionIdSeed: revisionIdSeed + revisionIds.length,
+      author,
+      date,
+      initials,
+      suggestionId,
+      styleResolver,
+    });
+    revisionIds.push(...applied);
+  }
+  return {
+    type: "applied",
+    revisionIds,
+    nextRevisionId: revisionIdSeed + revisionIds.length,
+  };
+};
+
+type ApplyExactReplacementOptions = ExactFormattingMetadata & {
+  tr: Transaction;
+  item: ResolvedOperation;
+  range: DocxComparisonRangePlan;
+  revisionIdDelete: number;
+  revisionIdInsert: number;
+  revisionIdFormattingSeed: number;
+  styleResolver: ReturnType<typeof getDocumentStyleResolver>;
+};
+
+type ApplyExactBlockRangeReplacementOptions = ExactFormattingMetadata & {
+  tr: Transaction;
+  blockNode: PMNode;
+  blockFrom: number;
+  range: DocxComparisonRangePlan;
+  sourceStartOffset: number;
+  revisionIdDelete: number;
+  revisionIdInsert: number;
+  revisionIdFormattingSeed: number;
+  styleResolver: ReturnType<typeof getDocumentStyleResolver>;
+};
+
+type ApplyExactReplacementResult =
+  | {
+      readonly type: "applied";
+      readonly transaction: Transaction;
+      readonly revisionIds: readonly number[];
+      readonly nextRevisionId: number;
+    }
+  | { readonly type: "pendingRunPropertyChange" | "unrepresentable" };
+
+type ExactReplacementStep =
+  | { readonly type: "del"; readonly from: number; readonly to: number }
+  | {
+      readonly type: "ins";
+      readonly at: number;
+      readonly text: string;
+      readonly formatting: Readonly<TextFormatting>;
+    }
+  | ExactRangePosition;
+
+const exactReplacementSteps = ({
+  blockNode,
+  blockFrom,
+  range,
+  sourceStartOffset,
+}: Pick<
+  ApplyExactBlockRangeReplacementOptions,
+  "blockNode" | "blockFrom" | "range" | "sourceStartOffset"
+>): readonly ExactReplacementStep[] | null => {
+  if (blockNode.content.size !== blockNode.textContent.length) return null;
+  const clean = buildCleanBlockText(blockNode, blockFrom);
+  if (
+    sourceStartOffset < 0 ||
+    clean.text.slice(sourceStartOffset, sourceStartOffset + range.sourceText.length) !==
+      range.sourceText
+  ) {
+    return null;
+  }
+  const offsetAt = (offset: number): number | null =>
+    clean.offsets[sourceStartOffset + offset] ?? null;
+  const steps: ExactReplacementStep[] = [];
+  for (const fragment of range.fragments) {
+    if (fragment.type === "ins") {
+      const at = offsetAt(fragment.baseStart);
+      if (at === null) return null;
+      steps.push({ type: "ins", at, text: fragment.text, formatting: fragment.targetFormatting });
+      continue;
+    }
+    const from = offsetAt(fragment.baseStart);
+    const to = offsetAt(fragment.baseEnd);
+    if (from === null || to === null) return null;
+    if (fragment.type === "del") {
+      steps.push({ type: "del", from, to });
+    } else if (fragment.changedProperties.length > 0) {
+      steps.push({ type: "format", from, to, fragment });
+    }
+  }
+  return steps;
+};
+
+const exactReplacementIsRepresentable = ({
+  tr,
+  ...options
+}: Pick<
+  ApplyExactBlockRangeReplacementOptions,
+  "tr" | "blockNode" | "blockFrom" | "range" | "sourceStartOffset"
+>): "representable" | "pendingRunPropertyChange" | "unrepresentable" => {
+  const steps = exactReplacementSteps(options);
+  if (!steps) return "unrepresentable";
+  const propertyChangeType = tr.doc.type.schema.marks["runPropertyChange"];
+  return steps.some(
+    (step) =>
+      step.type === "format" &&
+      hasPendingRunPropertyChange(tr.doc, propertyChangeType, step.from, step.to),
+  )
+    ? "pendingRunPropertyChange"
+    : "representable";
+};
+
+const applyExactBlockRangeReplacement = ({
+  tr,
+  blockNode,
+  blockFrom,
+  range,
+  sourceStartOffset,
+  revisionIdDelete,
+  revisionIdInsert,
+  revisionIdFormattingSeed,
+  author,
+  date,
+  initials,
+  suggestionId,
+  styleResolver,
+}: ApplyExactBlockRangeReplacementOptions): ApplyExactReplacementResult => {
+  const steps = exactReplacementSteps({ blockNode, blockFrom, range, sourceStartOffset });
+  if (!steps) return { type: "unrepresentable" };
+  const propertyChangeType = tr.doc.type.schema.marks["runPropertyChange"];
+  if (
+    steps.some(
+      (step) =>
+        step.type === "format" &&
+        hasPendingRunPropertyChange(tr.doc, propertyChangeType, step.from, step.to),
+    )
+  ) {
+    return { type: "pendingRunPropertyChange" };
+  }
+  const insertionType = tr.doc.type.schema.marks["insertion"];
+  const deletionType = tr.doc.type.schema.marks["deletion"];
+  if (!insertionType || !deletionType) return { type: "unrepresentable" };
+  const suggestionAttrs = suggestionId === null ? {} : { provenance: "suggested", suggestionId };
+  const initialsAttr = initials ? { initials } : {};
+  const revisionIds = [revisionIdDelete, revisionIdInsert];
+  let formattingSeed = revisionIdFormattingSeed;
+  for (const step of steps.toReversed()) {
+    if (step.type !== "format") {
+      if (step.type === "del") {
+        tr.addMark(
+          step.from,
+          step.to,
+          deletionType.create({
+            revisionId: revisionIdDelete,
+            author,
+            date,
+            ...initialsAttr,
+            ...suggestionAttrs,
+          }),
+        );
+      } else {
+        tr.insertText(step.text, step.at);
+        tr.addMark(
+          step.at,
+          step.at + step.text.length,
+          insertionType.create({
+            revisionId: revisionIdInsert,
+            author,
+            date,
+            ...initialsAttr,
+            ...suggestionAttrs,
+          }),
+        );
+        applyExactDirectFormatting({
+          tr,
+          from: step.at,
+          to: step.at + step.text.length,
+          formatting: step.formatting,
+          styleResolver,
+        });
+      }
+      continue;
+    }
+    const formattingIds = applyExactTrackedFormatting({
+      tr,
+      from: step.from,
+      to: step.to,
+      formatting: step.fragment.targetFormatting,
+      previousFormatting: step.fragment.sourceFormatting,
+      revisionIdSeed: formattingSeed,
+      author,
+      date,
+      initials,
+      suggestionId,
+      styleResolver,
+    });
+    formattingSeed += formattingIds.length;
+    revisionIds.push(...formattingIds);
+  }
+  return {
+    type: "applied",
+    transaction: tr,
+    revisionIds,
+    nextRevisionId: formattingSeed,
+  };
+};
+
+const applyExactReplacement = ({
+  tr,
+  item,
+  range,
+  revisionIdDelete,
+  revisionIdInsert,
+  revisionIdFormattingSeed,
+  author,
+  date,
+  initials,
+  suggestionId,
+  styleResolver,
+}: ApplyExactReplacementOptions): ApplyExactReplacementResult => {
+  const clean = buildCleanBlockText(item.blockNode, item.blockFrom);
+  let sourceCleanStart = 0;
+  if (item.operation.type === "replaceInBlock") {
+    sourceCleanStart = clean.text.indexOf(item.operation.find);
+  } else if (item.operation.type === "replaceRange") {
+    sourceCleanStart = item.operation.range.startOffset;
+  }
+  return applyExactBlockRangeReplacement({
+    tr,
+    blockNode: item.blockNode,
+    blockFrom: item.blockFrom,
+    range,
+    sourceStartOffset: sourceCleanStart,
+    revisionIdDelete,
+    revisionIdInsert,
+    revisionIdFormattingSeed,
+    author,
+    date,
+    initials,
+    suggestionId,
+    styleResolver,
+  });
 };
 
 type TextReplacementOptions = {

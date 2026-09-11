@@ -17,7 +17,7 @@ import { resolveFolioAITextRange } from "./blockRange";
 import { getTrackedChangesFromDoc } from "./read";
 import { createFolioAIEditSnapshot, createFolioAITextRangeHandle } from "./snapshot";
 import type { FolioAIEditOperation } from "./types";
-import { createScopedWordDiffOptions } from "./word-diff";
+import { createScopedWordDiffOptions } from "../compare/text-diff";
 
 const schema = new Schema({
   nodes: {

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { alignTableColumns } from "./column-alignment";
+import { contentBlockFixture, tableLocationFixture } from "./content-test-fixtures";
 import type { FolioContentBlock } from "./content-types";
 
 type TableBlockOptions = {
@@ -21,14 +22,9 @@ const countedTableBlock = ({
   columnSpan = 1,
 }: TableBlockOptions): { block: FolioContentBlock; reads: () => number } => {
   let textReads = 0;
-  const block = {
-    id,
-    kind: "paragraph",
-    get text() {
-      textReads++;
-      return text;
-    },
-    table: {
+  const captured = contentBlockFixture(id, text, {
+    identityType: "persistent-hint",
+    table: tableLocationFixture({
       outerTableIndex: 0,
       tableIndex: 0,
       rowIndex,
@@ -37,6 +33,13 @@ const countedTableBlock = ({
       columnSpan,
       rowSpan: 1,
       paragraphIndex: 0,
+    }),
+  });
+  const block = {
+    ...captured,
+    get text() {
+      textReads++;
+      return text;
     },
   } satisfies FolioContentBlock;
   return { block, reads: () => textReads };
@@ -91,11 +94,9 @@ describe("bounded table-column alignment", () => {
   test("an unsafe derived row boundary is rejected", () => {
     const rowIndex = Number.MAX_SAFE_INTEGER;
     const rowSpan = 1;
-    const block = {
-      id: "unsafe-row-end",
-      kind: "paragraph",
-      text: "Unsafe row boundary",
-      table: {
+    const block = contentBlockFixture("unsafe-row-end", "Unsafe row boundary", {
+      identityType: "persistent-hint",
+      table: tableLocationFixture({
         outerTableIndex: 0,
         tableIndex: 0,
         rowIndex,
@@ -104,8 +105,8 @@ describe("bounded table-column alignment", () => {
         columnSpan: 1,
         rowSpan,
         paragraphIndex: 0,
-      },
-    } satisfies FolioContentBlock;
+      }),
+    });
 
     expect(Number.isSafeInteger(rowIndex)).toBe(true);
     expect(Number.isSafeInteger(rowSpan)).toBe(true);

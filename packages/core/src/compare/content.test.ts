@@ -249,6 +249,12 @@ const assertComparisonResultIsDeeplyReadonly = (comparison: FolioContentComparis
     // @ts-expect-error structural member tuples are readonly
     event.change.blocks[0] = event.change.blocks[0];
   }
+  if (event?.type === "tableReplacement") {
+    // @ts-expect-error replacement member tuples are readonly
+    event.replacement.baseBlocks[0] = event.replacement.baseBlocks[0];
+    // @ts-expect-error nested comparison events are readonly
+    event.replacement.refinement.events.push({});
+  }
 };
 void assertComparisonResultIsDeeplyReadonly;
 
@@ -270,6 +276,8 @@ const eventBaseBlocks = (event: FolioContentComparisonEvent): FolioContentBlock[
       return [event.relations[0].base.block];
     case "merge":
       return event.relations.map(({ base }) => base.block);
+    case "tableReplacement":
+      return [...event.replacement.baseBlocks];
     case "structural":
       return event.change.type === "table-delete" ||
         event.change.type === "table-row-delete" ||
@@ -300,6 +308,8 @@ const eventRevisedBlocks = (event: FolioContentComparisonEvent): FolioContentBlo
       return event.relations.map(({ revised }) => revised.block);
     case "merge":
       return [event.relations[0].revised.block];
+    case "tableReplacement":
+      return [...event.replacement.revisedBlocks];
     case "structural":
       return event.change.type === "table-insert" ||
         event.change.type === "table-row-insert" ||
@@ -398,7 +408,7 @@ const EXPECTED_EVENT_CARDINALITY = {
   split: [1, 2],
   merge: [2, 1],
 } as const satisfies Record<
-  Exclude<FolioContentComparisonEvent["type"], "structural">,
+  Exclude<FolioContentComparisonEvent["type"], "structural" | "tableReplacement">,
   readonly [number, number]
 >;
 
@@ -427,6 +437,11 @@ const expectEventRelationsReconstruct = (event: FolioContentComparisonEvent): vo
     case "deleted":
     case "structural":
       return;
+    case "tableReplacement":
+      for (const nested of event.replacement.refinement.events) {
+        expectEventRelationsReconstruct(nested);
+      }
+      return;
     default: {
       const unreachable: never = event;
       throw new Error(`Unhandled event ${JSON.stringify(unreachable)}`);
@@ -442,14 +457,22 @@ const expectComparisonReconstructs = (
   expect(baseProjection(comparison)).toEqual(base);
   expect(revisedProjection(comparison)).toEqual(revised);
   for (const event of comparison.events) {
-    const cardinality =
-      event.type === "structural"
+    const cardinality = event.type === "tableReplacement"
+      ? [event.replacement.baseBlocks.length, event.replacement.revisedBlocks.length]
+      : event.type === "structural"
         ? event.change.type.endsWith("-insert")
           ? ([0, 1] as const)
           : ([1, 0] as const)
         : EXPECTED_EVENT_CARDINALITY[event.type];
     expect([eventBaseBlocks(event).length, eventRevisedBlocks(event).length]).toEqual(cardinality);
     expectEventRelationsReconstruct(event);
+    if (event.type === "tableReplacement") {
+      expectComparisonReconstructs(
+        event.replacement.refinement,
+        event.replacement.baseBlocks,
+        event.replacement.revisedBlocks,
+      );
+    }
   }
 };
 
@@ -1650,7 +1673,12 @@ describe("container-aware comparison", () => {
 
     const comparison = successfulComparison({ base: [base], revised: [revised] });
 
-    expect(eventTypes(comparison)).toEqual(["inserted", "deleted"]);
+    expect(eventTypes(comparison)).toEqual(["tableReplacement"]);
+    const event = comparison.events.at(0);
+    if (event?.type !== "tableReplacement") {
+      throw new Error("Expected the incompatible table pair to own its refinement");
+    }
+    expect(eventTypes(event.replacement.refinement)).toEqual(["inserted", "deleted"]);
     expect(baseProjection(comparison)).toEqual([base]);
     expect(revisedProjection(comparison)).toEqual([revised]);
   });
