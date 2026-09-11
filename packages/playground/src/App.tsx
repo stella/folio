@@ -34,6 +34,8 @@ import { CollaborationApp } from "./CollaborationApp";
 
 const ZOOM_INITIAL = 1;
 const DEFAULT_LOCALE = "en";
+const SHOWCASE_FILE_NAME = "folio-showcase.docx";
+const SHOWCASE_URL = `/${SHOWCASE_FILE_NAME}`;
 // Only Arabic in the bundled set needs RTL; flip the shell so the editor chrome
 // (built on logical CSS properties) mirrors.
 const RTL_LOCALES = new Set<string>(["ar", "he"]);
@@ -50,6 +52,13 @@ const languageLabel = (locale: string): string => {
 
 const isCollaborationDemo = (): boolean =>
   new URLSearchParams(window.location.search).has("collaboration");
+
+type LoadDocumentOptions = {
+  fileName: string;
+  loadingStatus: string;
+  missingStatus: string;
+  url: string;
+};
 
 declare global {
   // Test hook: visual + interaction specs read live editor state through this.
@@ -594,30 +603,50 @@ export function App() {
     ? (query.get("pageRenderer") as PageRendererName)
     : undefined;
 
+  const loadDocument = useCallback(
+    async ({ fileName: nextFileName, loadingStatus, missingStatus, url }: LoadDocumentOptions) => {
+      try {
+        setStatus(loadingStatus);
+        const response = await fetch(url);
+        if (!response.ok) {
+          setStatus(missingStatus);
+          return;
+        }
+        const buffer = await response.arrayBuffer();
+        setCurrentDocument(null);
+        setDocumentBuffer(buffer);
+        setFileName(nextFileName);
+        setStatus("");
+      } catch {
+        setStatus(`Error loading ${nextFileName}`);
+      }
+    },
+    [],
+  );
+
   // Load fixture from ?file= query param (visual + interaction tests) or
-  // generate a body from ?paragraphs= (performance tests).
+  // the showcase from ?showcase (README recording), or generate a body from
+  // ?paragraphs= (performance tests).
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const fixtureFile = params.get("file");
     const paragraphCount = Number(params.get("paragraphs"));
     if (fixtureFile) {
-      void (async () => {
-        try {
-          setStatus("Loading fixture...");
-          const response = await fetch(`/fixtures/${fixtureFile}`);
-          if (!response.ok) {
-            setStatus(`Fixture not found: ${fixtureFile}`);
-            return;
-          }
-          const buffer = await response.arrayBuffer();
-          setCurrentDocument(null);
-          setDocumentBuffer(buffer);
-          setFileName(fixtureFile);
-          setStatus("");
-        } catch {
-          setStatus("Error loading fixture");
-        }
-      })();
+      void loadDocument({
+        fileName: fixtureFile,
+        loadingStatus: "Loading fixture...",
+        missingStatus: `Fixture not found: ${fixtureFile}`,
+        url: `/fixtures/${fixtureFile}`,
+      });
+      return;
+    }
+    if (params.has("showcase")) {
+      void loadDocument({
+        fileName: SHOWCASE_FILE_NAME,
+        loadingStatus: "Loading showcase...",
+        missingStatus: "Showcase document not found",
+        url: SHOWCASE_URL,
+      });
       return;
     }
     if (Number.isInteger(paragraphCount) && paragraphCount > 0) {
@@ -627,7 +656,7 @@ export function App() {
     }
     setCurrentDocument(createStellaStyleDocument());
     setFileName("Untitled.docx");
-  }, []);
+  }, [loadDocument]);
 
   const handleNewDocument = useCallback(() => {
     setCurrentDocument(createStellaStyleDocument());
@@ -665,6 +694,15 @@ export function App() {
     input.value = "";
     input.click();
   }, []);
+
+  const handleOpenShowcase = useCallback(() => {
+    void loadDocument({
+      fileName: SHOWCASE_FILE_NAME,
+      loadingStatus: "Loading showcase...",
+      missingStatus: "Showcase document not found",
+      url: SHOWCASE_URL,
+    });
+  }, [loadDocument]);
 
   const handleSave = useCallback(async () => {
     if (!editorRef.current) {
@@ -823,6 +861,9 @@ export function App() {
           />
           <button type="button" className="pg-button" onClick={handleNewDocument}>
             New
+          </button>
+          <button type="button" className="pg-button" onClick={handleOpenShowcase}>
+            Showcase
           </button>
           <button type="button" className="pg-button" onClick={() => void handleSave()}>
             Save

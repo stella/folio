@@ -87,6 +87,18 @@ function firstRowCellCount(page: Page): Promise<number> {
   });
 }
 
+test("showcase document loads from the recording URL and playground control", async ({ page }) => {
+  await page.goto("/?showcase");
+  await expect(page.locator(".pg-filename")).toHaveText("folio-showcase.docx");
+  await expect(page.getByRole("status")).toHaveText("1 of 5");
+  await expect(page.getByText("MASTER SERVICES AGREEMENT", { exact: true })).toBeVisible();
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Showcase", exact: true }).click();
+  await expect(page.locator(".pg-filename")).toHaveText("folio-showcase.docx");
+  await expect(page.getByRole("status")).toHaveText("1 of 5");
+});
+
 /** Place the caret inside the first painted table cell and open its menu. */
 async function openTableCellMenu(page: Page): Promise<Locator> {
   const cell = page.locator(".layout-table-cell").first();
