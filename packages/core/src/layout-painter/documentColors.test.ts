@@ -2,8 +2,10 @@ import { describe, expect, test } from "bun:test";
 
 import {
   AUTHORED_BACKGROUND_COLOR_VAR,
+  AUTHORED_TEXT_COLOR_VAR,
   getAutomaticTextColorForBackground,
   setAuthoredBackgroundColor,
+  setAuthoredTextColor,
 } from "./documentColors";
 
 describe("document automatic text color", () => {
@@ -39,5 +41,22 @@ describe("authored document backgrounds", () => {
 
     expect(style.backgroundColor).toBe("#F8F2EB");
     expect(values[AUTHORED_BACKGROUND_COLOR_VAR]).toBe("#F8F2EB");
+  });
+});
+
+describe("authored document text", () => {
+  test("retains the source color for stylesheet dark-mode adaptation", () => {
+    const values: Record<string, string> = {};
+    const style = {
+      color: "",
+      setProperty: (name: string, value: string) => {
+        values[name] = value;
+      },
+    } as CSSStyleDeclaration;
+
+    setAuthoredTextColor(style, "#000000");
+
+    expect(style.color).toBe("#000000");
+    expect(values[AUTHORED_TEXT_COLOR_VAR]).toBe("#000000");
   });
 });

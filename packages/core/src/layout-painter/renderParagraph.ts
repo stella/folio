@@ -72,7 +72,11 @@ import {
   type ScriptClass,
 } from "../utils/scriptSegments";
 import { borderStrokeToCss, resolveParagraphBorderHorizontalOutsets } from "./borderStroke";
-import { getAutomaticTextColorForBackground, setAuthoredBackgroundColor } from "./documentColors";
+import {
+  getAutomaticTextColorForBackground,
+  setAuthoredBackgroundColor,
+  setAuthoredTextColor,
+} from "./documentColors";
 import {
   applyImageBorder,
   applyImageVisualAttrs,
@@ -349,11 +353,10 @@ function applyRunStyles(element: HTMLElement, run: TextRun | TabRun): void {
   let hasExplicitTextColor = false;
   const textColor = getRenderableTextColor(run);
   if (textColor) {
-    element.style.color = textColor;
     // Also expose the authored color so dark mode can invert its lightness
     // (hue/chroma preserved) via relative-color CSS. The dark rule overrides
     // this inline color with !important; light mode keeps it verbatim.
-    element.style.setProperty("--doc-run-color", textColor);
+    setAuthoredTextColor(element.style, textColor);
     hasExplicitTextColor = true;
   }
 
@@ -451,7 +454,7 @@ function applyRunStyles(element: HTMLElement, run: TextRun | TabRun): void {
         ? undefined
         : getAutomaticTextColorForBackground(runBackground);
     if (automaticTextColor) {
-      element.style.color = automaticTextColor;
+      setAuthoredTextColor(element.style, automaticTextColor);
     }
   }
 
@@ -761,16 +764,14 @@ function renderTextRun(run: TextRun, doc: Document, options?: RenderTextRunOptio
     if (!run.hyperlink.noDefaultStyle) {
       // Default Word hyperlink color is blue (#0563c1)
       const hyperlinkColor = getHyperlinkTextColor(run, span.style.color);
-      anchor.style.color = hyperlinkColor;
+      setAuthoredTextColor(anchor.style, hyperlinkColor);
       anchor.style.textDecoration = "underline";
       // Override span color to match anchor (prevents color mismatch in selection)
-      span.style.color = hyperlinkColor;
+      setAuthoredTextColor(span.style, hyperlinkColor);
       // Expose the link colour on the anchor (which paints over the span) so
       // dark mode inverts its lightness via the same --doc-run-color rule.
       // `noDefaultStyle` (e.g. TOC) anchors set no colour and keep inheriting
       // the paragraph's inverted colour.
-      anchor.style.setProperty("--doc-run-color", hyperlinkColor);
-      span.style.setProperty("--doc-run-color", hyperlinkColor);
     }
     span.append(anchor);
   } else {
@@ -3066,7 +3067,7 @@ export function renderParagraphFragment(
     setAuthoredBackgroundColor(fragmentEl.style, block.attrs.shading);
     const automaticTextColor = getAutomaticTextColorForBackground(block.attrs.shading);
     if (automaticTextColor) {
-      fragmentEl.style.color = automaticTextColor;
+      setAuthoredTextColor(fragmentEl.style, automaticTextColor);
     }
   }
 

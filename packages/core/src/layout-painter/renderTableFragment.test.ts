@@ -277,6 +277,7 @@ describe("renderTableFragment authored backgrounds", () => {
 
     expect(cell?.style["backgroundColor"]).toBe("#F8F2EB");
     expect(cell?.style["--doc-authored-background-color"]).toBe("#F8F2EB");
+    expect(cell?.style["--doc-run-color"]).toBe("#000000");
   });
 });
 

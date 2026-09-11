@@ -508,6 +508,7 @@ describe("renderLine text styling", () => {
 
     expect(textEl?.style.backgroundColor).toBe(TEST_HIGHLIGHT_COLOR);
     expect(textEl?.style.color).toBe("#000000");
+    expect(textEl?.style.getPropertyValue("--doc-run-color")).toBe("#000000");
     expect(textEl?.style.getPropertyValue("--doc-authored-background-color")).toBe(
       TEST_HIGHLIGHT_COLOR,
     );
@@ -996,6 +997,52 @@ describe("renderLine tab tracking", () => {
 });
 
 describe("renderParagraphFragment indentation handling", () => {
+  test("exposes automatic shading contrast for dark-mode adaptation", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "p1",
+      runs: [{ kind: "text", text: "Shaded" }],
+      attrs: { shading: "#F8F2EB" },
+    };
+    const measure: ParagraphMeasure = {
+      kind: "paragraph",
+      lines: [
+        {
+          fromRun: 0,
+          fromChar: 0,
+          toRun: 0,
+          toChar: 6,
+          width: 42,
+          ascent: 10,
+          descent: 2,
+          lineHeight: 12,
+        },
+      ],
+      totalHeight: 12,
+    };
+    const fragment: ParagraphFragment = {
+      kind: "paragraph",
+      blockId: "p1",
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 12,
+      fromLine: 0,
+      toLine: 1,
+    };
+
+    const fragmentEl = renderParagraphFragment(
+      fragment,
+      block,
+      measure,
+      { pageNumber: 1, totalPages: 1, section: "body" },
+      { document: fakeDocument },
+    );
+
+    expect(fragmentEl.style.color).toBe("#000000");
+    expect(fragmentEl.style.getPropertyValue("--doc-run-color")).toBe("#000000");
+  });
+
   test("renders list marker revisions with tracked-change classes", () => {
     resetAuthorColors();
     const block: ParagraphBlock = {
