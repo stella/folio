@@ -68,6 +68,7 @@ export default library({
     "./.oxlint-plugins/folio-fragment-ownership.ts",
     "./.oxlint-plugins/folio-painted-text.ts",
     "./.oxlint-plugins/folio-verbatim-capture.ts",
+    "./.oxlint-plugins/folio-ref-mirrors.ts",
     "./.oxlint-plugins/no-untranslated-jsx-literal.ts",
   ],
   ignorePatterns: [
@@ -272,6 +273,16 @@ export default library({
         "react-perf/jsx-no-new-array-as-prop": ["error", { nativeAllowList: "all" }],
         "react-perf/jsx-no-new-function-as-prop": ["error", { nativeAllowList: "all" }],
         "react-perf/jsx-no-new-object-as-prop": ["error", { nativeAllowList: "all" }],
+      },
+    },
+    {
+      // A ref reassigned from render scope mirrors state; an imperative write
+      // elsewhere is overwritten by the next render and defeats identity
+      // checks against the ref. See `.oxlint-plugins/folio-ref-mirrors.ts`
+      // and the matching test at `scripts/ref-mirror-lint.test.ts`.
+      files: ["packages/react/src/**/*.{ts,tsx}", "test/__fixtures__/ref-mirror.*.ts"],
+      rules: {
+        "folio-ref-mirrors/no-write-to-render-mirrored-ref": "error",
       },
     },
     {
