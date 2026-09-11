@@ -1,111 +1,233 @@
-import { panic, TaggedError } from "better-result";
+import { panic } from "better-result";
 import type { Fragment, Mark, Node as PMNode, NodeType } from "prosemirror-model";
 import { PluginKey, type Transaction } from "prosemirror-state";
 
-import type { Document, Paragraph, TableCell } from "../types/document";
+import type { BlockContent, Document, Paragraph, TableCell } from "../types/document";
 import { visitDocxParagraphs } from "./paragraphTraversal";
+import {
+  canonicalParagraphPropertySourceFingerprintJson,
+  paragraphPropertySourceFingerprintFromParts,
+  type AuthoredParagraphProperties,
+  type ParagraphPropertySourceFingerprint,
+} from "./paragraphPropertyDescriptor";
+import {
+  ParagraphPropertySourceContract,
+  ParagraphPropertySourceToken,
+  ParagraphPropertyTransientTemplateResolution,
+  ParagraphPropertyTransientTemplateStore,
+  ParagraphPropertyTransientTemplateHandle,
+  ParagraphPropertySourceValidationError,
+  paragraphPropertySourceStoryKey,
+} from "./paragraphPropertySourceIdentity";
+import type {
+  ParagraphPropertySourceAttribute,
+  ParagraphPropertySourceStory,
+  ParagraphPropertySourceValidationCode,
+} from "./paragraphPropertySourceIdentity";
 
-type ParagraphPropertySource = {
+export {
+  PARAGRAPH_PROPERTY_SOURCE_VALIDATION_CODES,
+  ParagraphPropertySourceContract,
+  ParagraphPropertySourceToken,
+  ParagraphPropertyTransientTemplateHandle,
+  ParagraphPropertySourceValidationError,
+} from "./paragraphPropertySourceIdentity";
+export type {
+  ParagraphPropertySourceAttribute,
+  ParagraphPropertySourceStory,
+  ParagraphPropertySourceValidationCode,
+} from "./paragraphPropertySourceIdentity";
+
+export type ParagraphPropertySource = {
+  fingerprint: ParagraphPropertySourceFingerprint;
+  fingerprintJson: string;
+  type: "present";
   xml: string;
-  formattingJson: string;
 };
 
-const paragraphPropertySources = new WeakMap<Paragraph, ParagraphPropertySource>();
-const paragraphPropertySourceOwners = new WeakMap<Paragraph, Paragraph>();
-const proseParagraphSourceOwners = new WeakMap<PMNode, Paragraph>();
-const paragraphPropertySourceCandidates = new WeakMap<Paragraph, Paragraph>();
-const paragraphPropertySourceTransferIds = new WeakMap<Paragraph, string>();
-const paragraphPropertySourceTokens = new WeakMap<Paragraph, string>();
+type ParagraphPropertyCapture =
+  | { fingerprint: ParagraphPropertySourceFingerprint; fingerprintJson: string; type: "absent" }
+  | ParagraphPropertySource;
+
+type ParagraphPropertySourceBinding =
+  | { capture: ParagraphPropertyCapture; type: "captured-unbound" }
+  | { type: "editor-created" }
+  | {
+      capture: ParagraphPropertyCapture;
+      token: ParagraphPropertySourceToken;
+      type: "imported";
+    }
+  | { capture: ParagraphPropertyCapture; type: "resolved-template" };
+
 // Enumerable symbols follow ordinary immutable `{ ...document }` derivations,
 // while JSON and other string-key serialization cannot expose the contract.
 // `structuredClone` deliberately drops symbols, so the one sanctioned deep
 // clone path transfers this value explicitly below.
 const documentParagraphPropertySourceContract = Symbol("paragraphPropertySourceContract");
+// Enumerable so immutable `{ ...paragraph }` derivations retain the capture.
+// Symbols are excluded from JSON and OOXML serialization. Structured-clone
+// call sites must transfer this binding through the sanctioned helper below.
+const paragraphPropertySource = Symbol("paragraphPropertySource");
+
+const freezeDeep = (value: object): void => {
+  for (const key of Reflect.ownKeys(value)) {
+    const child = Reflect.get(value, key);
+    if (typeof child === "object" && child !== null && !Object.isFrozen(child)) {
+      freezeDeep(child);
+    }
+  }
+  Object.freeze(value);
+};
+
+const immutableFingerprint = (
+  fingerprint: ParagraphPropertySourceFingerprint,
+): ParagraphPropertySourceFingerprint => {
+  const cloned = structuredClone(fingerprint);
+  freezeDeep(cloned);
+  return cloned;
+};
+
+const isDeepFrozen = (value: object): boolean => {
+  if (!Object.isFrozen(value)) {
+    return false;
+  }
+  for (const key of Reflect.ownKeys(value)) {
+    const child = Reflect.get(value, key);
+    if (typeof child === "object" && child !== null && !isDeepFrozen(child)) {
+      return false;
+    }
+  }
+  return true;
+};
+
+const isParagraphPropertyCapture = (value: unknown): value is ParagraphPropertyCapture => {
+  if (typeof value !== "object" || value === null || !("type" in value)) {
+    return false;
+  }
+  if (value.type === "absent") {
+    return (
+      "fingerprint" in value &&
+      typeof value.fingerprint === "object" &&
+      value.fingerprint !== null &&
+      "fingerprintJson" in value &&
+      typeof value.fingerprintJson === "string" &&
+      isDeepFrozen(value.fingerprint) &&
+      canonicalParagraphPropertySourceFingerprintJson(value.fingerprint) ===
+        value.fingerprintJson &&
+      canonicalParagraphPropertySourceFingerprintJson(
+        paragraphPropertySourceFingerprintFromParts({}, {}),
+      ) === value.fingerprintJson &&
+      Object.isFrozen(value)
+    );
+  }
+  if (
+    value.type !== "present" ||
+    !("fingerprint" in value) ||
+    typeof value.fingerprint !== "object" ||
+    value.fingerprint === null ||
+    !("fingerprintJson" in value) ||
+    typeof value.fingerprintJson !== "string" ||
+    !("xml" in value) ||
+    typeof value.xml !== "string"
+  ) {
+    return false;
+  }
+  return (
+    Object.isFrozen(value) &&
+    isDeepFrozen(value.fingerprint) &&
+    canonicalParagraphPropertySourceFingerprintJson(value.fingerprint) === value.fingerprintJson
+  );
+};
+
+const isParagraphPropertySourceBinding = (
+  value: unknown,
+): value is ParagraphPropertySourceBinding => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !("type" in value) ||
+    !Object.isFrozen(value)
+  ) {
+    return false;
+  }
+  if (value.type === "editor-created") {
+    return Object.keys(value).length === 1;
+  }
+  if (!("capture" in value) || !isParagraphPropertyCapture(value.capture)) {
+    return false;
+  }
+  switch (value.type) {
+    case "captured-unbound":
+    case "resolved-template":
+      return true;
+    case "imported":
+      return "token" in value && value.token instanceof ParagraphPropertySourceToken;
+    default:
+      return false;
+  }
+};
 
 export const PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR = "_docxParagraphSourceToken";
 export const PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR = "_docxParagraphSourceContract";
 
-const PARAGRAPH_SOURCE_TOKEN_VERSION = "folio-ppr-v1";
-const PARAGRAPH_SOURCE_TOKEN_PREFIX = "p1d";
-const SHA256_HEX = /^[0-9a-f]{64}$/;
-const SOURCE_TOKEN = /^p1d:([0-9a-f]{32}):(0|[1-9a-z][0-9a-z]*)$/;
-
-export const PARAGRAPH_PROPERTY_SOURCE_VALIDATION_CODES = [
-  "contract_mismatch",
-  "duplicate_token",
-  "invalid_token",
-  "unknown_token",
-] as const;
-
-export type ParagraphPropertySourceValidationCode =
-  (typeof PARAGRAPH_PROPERTY_SOURCE_VALIDATION_CODES)[number];
-
-export class ParagraphPropertySourceValidationError extends TaggedError(
-  "ParagraphPropertySourceValidationError",
-)<{
-  code: ParagraphPropertySourceValidationCode;
-  message: string;
-  token?: unknown;
-}> {}
-
-const contractForDigest = (sourceDigest: string): string => {
-  if (!SHA256_HEX.test(sourceDigest)) {
-    panic("Paragraph-property source digest must be lowercase SHA-256 hex");
-  }
-  return `${PARAGRAPH_SOURCE_TOKEN_VERSION}:${sourceDigest}`;
-};
-
-const fingerprintFromContract = (contract: string): string | null => {
-  const prefix = `${PARAGRAPH_SOURCE_TOKEN_VERSION}:`;
-  const digest = contract.startsWith(prefix) ? contract.slice(prefix.length) : "";
-  return SHA256_HEX.test(digest) ? digest.slice(0, 32) : null;
-};
-
-const tokenForOrdinal = (contract: string, ordinal: number): string => {
-  const fingerprint = fingerprintFromContract(contract);
-  if (!fingerprint) {
-    panic("Cannot mint a paragraph-property token for an invalid source contract");
-  }
-  return `${PARAGRAPH_SOURCE_TOKEN_PREFIX}:${fingerprint}:${ordinal.toString(36)}`;
-};
-
-const setDocumentParagraphPropertySourceContract = (document: Document, contract: string): void => {
-  if (!fingerprintFromContract(contract)) {
-    panic("Cannot attach an invalid paragraph-property source contract");
-  }
+const setDocumentParagraphPropertySourceContract = (
+  document: Document,
+  contract: ParagraphPropertySourceContract,
+): void => {
   const existing = Object.hasOwn(document, documentParagraphPropertySourceContract)
     ? Reflect.get(document, documentParagraphPropertySourceContract)
     : undefined;
-  if (existing === contract) {
-    return;
-  }
   if (
     !Reflect.defineProperty(document, documentParagraphPropertySourceContract, {
+      configurable: false,
       enumerable: true,
       value: contract,
+      writable: false,
     })
   ) {
     panic("Cannot attach the paragraph-property source contract to the document");
   }
 };
 
-export const isParagraphPropertySourceToken = (token: unknown): token is string =>
-  typeof token === "string" && SOURCE_TOKEN.test(token);
-
-/** True only for a body-story token derived from the exact source contract. */
-export const paragraphPropertySourceTokenMatchesContract = (
-  token: unknown,
-  contract: string,
-): token is string => {
-  if (!isParagraphPropertySourceToken(token)) {
-    return false;
+const paragraphPropertySourceBinding = (
+  paragraph: Paragraph,
+): ParagraphPropertySourceBinding | undefined => {
+  if (!Object.hasOwn(paragraph, paragraphPropertySource)) {
+    return undefined;
   }
-  const match = SOURCE_TOKEN.exec(token);
-  const fingerprint = fingerprintFromContract(contract);
-  return match !== null && fingerprint !== null && match[1] === fingerprint;
+  const binding = Reflect.get(paragraph, paragraphPropertySource);
+  if (!isParagraphPropertySourceBinding(binding)) {
+    panic("A paragraph carries an invalid paragraph-property source binding");
+  }
+  const descriptor = Object.getOwnPropertyDescriptor(paragraph, paragraphPropertySource);
+  if (
+    !descriptor ||
+    descriptor.enumerable !== true ||
+    descriptor.writable === true ||
+    descriptor.configurable !== (binding.type === "captured-unbound")
+  ) {
+    panic("A paragraph carries a weakened paragraph-property source binding");
+  }
+  return binding;
 };
 
-/** Visit the v1 provenance scope in canonical OOXML body-story order. */
+const setParagraphPropertySourceBinding = (
+  paragraph: Paragraph,
+  binding: ParagraphPropertySourceBinding,
+): void => {
+  if (
+    !Reflect.defineProperty(paragraph, paragraphPropertySource, {
+      configurable: binding.type === "captured-unbound",
+      enumerable: true,
+      value: Object.freeze(binding),
+      writable: false,
+    })
+  ) {
+    panic("Cannot attach paragraph-property source provenance to a paragraph");
+  }
+};
+
+/** Visit one story in canonical OOXML paragraph order. */
 export const visitDocumentStoryParagraphs = (
   content: Document["package"]["document"]["content"],
   visit: (paragraph: Paragraph) => void,
@@ -115,79 +237,329 @@ export const visitDocumentStoryParagraphs = (
 
 export const assignParagraphPropertySource = (
   paragraph: Paragraph,
-  source: ParagraphPropertySource,
+  source: { fingerprint: ParagraphPropertySourceFingerprint; xml: string },
 ): void => {
-  paragraphPropertySources.set(paragraph, source);
-  paragraphPropertySourceOwners.set(paragraph, paragraph);
+  const existing = paragraphPropertySourceBinding(paragraph);
+  const fingerprint = immutableFingerprint(source.fingerprint);
+  const capture = Object.freeze({
+    fingerprint,
+    fingerprintJson: canonicalParagraphPropertySourceFingerprintJson(fingerprint),
+    type: "present",
+    xml: source.xml,
+  }) satisfies ParagraphPropertyCapture;
+  switch (existing?.type) {
+    case undefined:
+      setParagraphPropertySourceBinding(paragraph, {
+        capture,
+        type: "captured-unbound",
+      });
+      return;
+    case "captured-unbound":
+    case "editor-created":
+    case "imported":
+    case "resolved-template":
+      panic("A paragraph-property capture can only be assigned once");
+      return;
+    default: {
+      const exhaustive: never = existing;
+      return exhaustive;
+    }
+  }
+};
+
+/** Record that a parsed paragraph had no authored `w:pPr` element. */
+export const assignAbsentParagraphPropertySource = (paragraph: Paragraph): void => {
+  if (paragraphPropertySourceBinding(paragraph)) {
+    panic("A paragraph-property capture can only be assigned once");
+  }
+  const fingerprint = immutableFingerprint(
+    paragraphPropertySourceFingerprintFromParts({}, {}),
+  );
+  setParagraphPropertySourceBinding(paragraph, {
+    capture: Object.freeze({
+      fingerprint,
+      fingerprintJson: canonicalParagraphPropertySourceFingerprintJson(fingerprint),
+      type: "absent",
+    }),
+    type: "captured-unbound",
+  });
 };
 
 export const getParagraphPropertySource = (
   paragraph: Paragraph,
-): ParagraphPropertySource | undefined => paragraphPropertySources.get(paragraph);
+): ParagraphPropertySource | undefined => {
+  const binding = paragraphPropertySourceBinding(paragraph);
+  if (!binding || binding.type === "editor-created" || binding.capture.type === "absent") {
+    return undefined;
+  }
+  return binding.capture;
+};
+
+/** Authored `w:pPr` before style and numbering defaults are materialized. */
+export const getParagraphAuthoredPPr = (
+  paragraph: Paragraph,
+): AuthoredParagraphProperties | undefined => {
+  const binding = paragraphPropertySourceBinding(paragraph);
+  if (!binding || binding.type === "editor-created") {
+    return undefined;
+  }
+  return structuredClone(binding.capture.fingerprint.pPrBase);
+};
+
+/** Exact modeled properties captured from the paragraph's authored `w:pPr`. */
+export const getParagraphPropertySourceFingerprint = (
+  paragraph: Paragraph,
+): ParagraphPropertySourceFingerprint | undefined => {
+  const binding = paragraphPropertySourceBinding(paragraph);
+  return binding && binding.type !== "editor-created" ? binding.capture.fingerprint : undefined;
+};
+
+/** Mark a model paragraph as deliberately created outside the parsed source census. */
+export const assignEditorCreatedParagraphPropertySource = (paragraph: Paragraph): void => {
+  if (paragraphPropertySourceBinding(paragraph)) {
+    panic("Paragraph-property provenance can only be assigned once");
+  }
+  setParagraphPropertySourceBinding(paragraph, { type: "editor-created" });
+};
+
+const tokenFromBinding = (
+  binding: ParagraphPropertySourceBinding | undefined,
+): ParagraphPropertySourceToken | null => {
+  switch (binding?.type) {
+    case "imported":
+      return binding.token;
+    case "captured-unbound":
+    case "editor-created":
+    case "resolved-template":
+    case undefined:
+      return null;
+    default: {
+      const exhaustive: never = binding;
+      return exhaustive;
+    }
+  }
+};
 
 /** Copy the captured `w:pPr` without claiming the source paragraph's durable identity. */
 export const copyParagraphPropertyCapture = (target: Paragraph, source: Paragraph): void => {
-  const propertySource = paragraphPropertySources.get(source);
-  if (propertySource) {
-    paragraphPropertySources.set(target, { ...propertySource });
-    paragraphPropertySourceOwners.set(target, paragraphPropertySourceOwners.get(source) ?? source);
+  const sourceBinding = paragraphPropertySourceBinding(source);
+  if (!sourceBinding || sourceBinding.type === "editor-created") {
+    return;
   }
+  setParagraphPropertySourceBinding(target, {
+    capture: sourceBinding.capture,
+    type: "resolved-template",
+  });
 };
+
+export const PARAGRAPH_PROPERTY_TEMPLATE_STORE_MAX_CAPTURES = 100_000;
+
+const paragraphPropertyTemplateCaptureIssuer = Symbol("paragraphPropertyTemplateCaptureIssuer");
+type ParagraphPropertyTemplateCaptureIssuer = typeof paragraphPropertyTemplateCaptureIssuer;
+
+/** Immutable authority to transfer one parsed capture without exposing its paragraph owner. */
+export class ParagraphPropertyTemplateCapture {
+  readonly #capture: ParagraphPropertyCapture;
+
+  constructor(issuer: ParagraphPropertyTemplateCaptureIssuer, capture: ParagraphPropertyCapture) {
+    if (issuer !== paragraphPropertyTemplateCaptureIssuer) {
+      panic("Only a bound paragraph story may issue template capture capabilities");
+    }
+    this.#capture = capture;
+    Object.freeze(this);
+  }
+
+  capture(issuer: ParagraphPropertyTemplateCaptureIssuer): ParagraphPropertyCapture {
+    if (issuer !== paragraphPropertyTemplateCaptureIssuer) {
+      return panic("Only the paragraph-property source kernel may resolve a template capture");
+    }
+    return this.#capture;
+  }
+}
+
+export class ParagraphPropertyTemplateResolutionRegistry {
+  readonly #resolution: ParagraphPropertyTransientTemplateResolution<ParagraphPropertyCapture>;
+
+  constructor(
+    issuer: ParagraphPropertyTemplateCaptureIssuer,
+    resolution: ParagraphPropertyTransientTemplateResolution<ParagraphPropertyCapture>,
+  ) {
+    if (issuer !== paragraphPropertyTemplateCaptureIssuer) {
+      panic("Only a paragraph-property template store may create a resolution registry");
+    }
+    this.#resolution = resolution;
+    Object.freeze(this);
+  }
+
+  assertFullyConsumed(): void {
+    this.#resolution.assertFullyConsumed();
+  }
+
+  consume(handle: ParagraphPropertyTransientTemplateHandle, target: Paragraph): void {
+    if (paragraphPropertySourceBinding(target)) {
+      panic("A paragraph-property template target already has source provenance");
+    }
+    const capture = this.#resolution.consume(handle);
+    setParagraphPropertySourceBinding(target, { capture, type: "resolved-template" });
+  }
+}
+
+/** Bounded session owner for opaque captures retained by edit and undo history. */
+export class ParagraphPropertyTemplateStore {
+  readonly #store = new ParagraphPropertyTransientTemplateStore<ParagraphPropertyCapture>(
+    PARAGRAPH_PROPERTY_TEMPLATE_STORE_MAX_CAPTURES,
+  );
+
+  beginResolution(
+    handles: readonly ParagraphPropertyTransientTemplateHandle[],
+  ): ParagraphPropertyTemplateResolutionRegistry {
+    return new ParagraphPropertyTemplateResolutionRegistry(
+      paragraphPropertyTemplateCaptureIssuer,
+      this.#store.beginResolution(handles),
+    );
+  }
+
+  registerAll(
+    capabilities: readonly ParagraphPropertyTemplateCapture[],
+  ): readonly ParagraphPropertyTransientTemplateHandle[] {
+    return this.#store.registerAll(
+      capabilities.map((capability) =>
+        capability.capture(paragraphPropertyTemplateCaptureIssuer),
+      ),
+    );
+  }
+}
+
+export const createParagraphPropertyTemplateStore = (): ParagraphPropertyTemplateStore =>
+  new ParagraphPropertyTemplateStore();
 
 export const copyParagraphPropertySource = (target: Paragraph, source: Paragraph): void => {
-  copyParagraphPropertyCapture(target, source);
-  const transferId = paragraphPropertySourceTransferIds.get(source);
-  if (transferId) {
-    paragraphPropertySourceTransferIds.set(target, transferId);
+  const binding = paragraphPropertySourceBinding(source);
+  if (!binding) {
+    return;
   }
-  const candidate = paragraphPropertySourceCandidates.get(source);
-  if (candidate) {
-    paragraphPropertySourceCandidates.set(target, candidate);
-  }
-  const token = paragraphPropertySourceTokens.get(source);
-  if (token) {
-    paragraphPropertySourceTokens.set(target, token);
+  switch (binding.type) {
+    case "imported":
+      setParagraphPropertySourceBinding(target, binding);
+      return;
+    case "captured-unbound":
+      setParagraphPropertySourceBinding(target, binding);
+      return;
+    case "editor-created":
+      setParagraphPropertySourceBinding(target, binding);
+      return;
+    case "resolved-template":
+      setParagraphPropertySourceBinding(target, binding);
+      return;
+    default: {
+      const exhaustive: never = binding;
+      return exhaustive;
+    }
   }
 };
 
-/** Bind parsed body paragraphs to one exact source package. */
+/** Bind every parsed story paragraph to one exact source package. */
 export const assignDocumentParagraphPropertySourceContract = (
   document: Document,
   sourceDigest: string,
 ): void => {
-  const contract = contractForDigest(sourceDigest);
-  setDocumentParagraphPropertySourceContract(document, contract);
-  let ordinal = 0;
-  // The traversal is part of the v1 durable identity contract. Any ordering
+  if (Object.hasOwn(document, documentParagraphPropertySourceContract)) {
+    panic("A document paragraph-property source contract can only be assigned once");
+  }
+  const contract = ParagraphPropertySourceContract.fromDigest(sourceDigest);
+  const seenStories = new Set<string>();
+  const seenParagraphs = new WeakSet<Paragraph>();
+  const bodyParagraphs = new WeakSet<Paragraph>();
+  const census: {
+    capture: ParagraphPropertyCapture;
+    paragraph: Paragraph;
+    token: ParagraphPropertySourceToken;
+  }[] = [];
+  if (!Object.isExtensible(document)) {
+    panic("A document must be extensible before binding paragraph-property provenance");
+  }
+  // The traversal is part of the v2 durable identity contract. Any ordering
   // change requires a token-version bump and collaboration reseed.
-  visitDocumentStoryParagraphs(document.package.document.content, (paragraph) => {
-    paragraphPropertySourceTokens.set(paragraph, tokenForOrdinal(contract, ordinal));
-    ordinal += 1;
-  });
+  for (const { content, story } of documentSourceStories(document)) {
+    const storyKey = paragraphPropertySourceStoryKey(story);
+    if (seenStories.has(storyKey)) {
+      panic("A document contains duplicate paragraph-property story identity", { storyKey });
+    }
+    seenStories.add(storyKey);
+    const paragraphs: Paragraph[] = [];
+    visitDocumentStoryParagraphs(content, (paragraph) => paragraphs.push(paragraph));
+    const tokenCensus = contract.bindStoryCensus(story, paragraphs.length);
+    for (const [ordinal, paragraph] of paragraphs.entries()) {
+      if (seenParagraphs.has(paragraph)) {
+        panic("A paragraph cannot belong to more than one source story", { storyKey });
+      }
+      seenParagraphs.add(paragraph);
+      if (story.type === "document") {
+        bodyParagraphs.add(paragraph);
+      }
+      const binding = paragraphPropertySourceBinding(paragraph);
+      if (binding?.type !== "captured-unbound") {
+        panic("A document paragraph must have exactly one parsed property capture before binding");
+      }
+      const descriptor = Object.getOwnPropertyDescriptor(paragraph, paragraphPropertySource);
+      if (!descriptor?.configurable) {
+        panic("A parsed paragraph capture cannot transition to its durable source identity");
+      }
+      census.push({ capture: binding.capture, paragraph, token: tokenCensus.tokenAt(ordinal) });
+    }
+  }
+  for (const section of document.package.document.sections ?? []) {
+    visitDocumentStoryParagraphs(section.content, (paragraph) => {
+      if (!bodyParagraphs.has(paragraph)) {
+        panic("A derived document section must alias paragraphs from the body story");
+      }
+    });
+  }
+
+  setDocumentParagraphPropertySourceContract(document, contract);
+  for (const { capture, paragraph, token } of census) {
+    setParagraphPropertySourceBinding(paragraph, {
+      capture,
+      token,
+      type: "imported",
+    });
+  }
 };
 
 export const getDocumentParagraphPropertySourceContract = (
   document: Document,
-): string | undefined => {
+): ParagraphPropertySourceContract | undefined => {
   if (!Object.hasOwn(document, documentParagraphPropertySourceContract)) {
     return undefined;
   }
   const contract = Reflect.get(document, documentParagraphPropertySourceContract);
-  if (typeof contract !== "string" || !fingerprintFromContract(contract)) {
+  if (!(contract instanceof ParagraphPropertySourceContract)) {
     panic("The document carries an invalid paragraph-property source contract");
+  }
+  const descriptor = Object.getOwnPropertyDescriptor(
+    document,
+    documentParagraphPropertySourceContract,
+  );
+  if (
+    !descriptor ||
+    descriptor.enumerable !== true ||
+    descriptor.writable === true ||
+    descriptor.configurable === true
+  ) {
+    panic("The document carries a weakened paragraph-property source contract");
   }
   return contract;
 };
 
-export const getProseDocumentParagraphPropertySourceContract = (
+export const readProseDocumentParagraphPropertySourceContract = (
   document: PMNode,
-): string | null => {
-  const contract = document.attrs[PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR];
-  return typeof contract === "string" && fingerprintFromContract(contract) ? contract : null;
-};
+): ParagraphPropertySourceAttribute<ParagraphPropertySourceContract> =>
+  ParagraphPropertySourceContract.read(document.attrs[PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR]);
 
-export const getProseParagraphPropertySourceToken = (paragraph: PMNode): unknown =>
-  paragraph.attrs[PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR];
+export const readProseParagraphPropertySourceToken = (
+  paragraph: PMNode,
+): ParagraphPropertySourceAttribute<ParagraphPropertySourceToken> =>
+  ParagraphPropertySourceToken.read(paragraph.attrs[PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR]);
 
 export const copyDocumentParagraphPropertySourceContract = (
   target: Document,
@@ -199,8 +571,167 @@ export const copyDocumentParagraphPropertySourceContract = (
   }
 };
 
-export const getParagraphPropertySourceToken = (paragraph: Paragraph): string | undefined =>
-  paragraphPropertySourceTokens.get(paragraph);
+type DocumentDerivationOverrides = Partial<Document>;
+
+/** Shallow document derivation that re-hardens its private source contract. */
+export const deriveDocumentWithParagraphPropertySources = (
+  document: Document,
+  overrides: DocumentDerivationOverrides,
+): Document => {
+  const derived: Document = { ...document, ...overrides };
+  copyDocumentParagraphPropertySourceContract(derived, document);
+  return derived;
+};
+
+export const getParagraphPropertySourceToken = (
+  paragraph: Paragraph,
+): ParagraphPropertySourceToken | undefined => tokenFromBinding(paragraphPropertySourceBinding(paragraph)) ?? undefined;
+
+const indexParagraphPropertySources = (
+  content: BlockContent[],
+  story: ParagraphPropertySourceStory,
+  contract: ParagraphPropertySourceContract,
+): ReadonlyMap<string, ParagraphPropertyTemplateCapture> => {
+  const sources = new Map<string, ParagraphPropertyTemplateCapture>();
+  visitDocumentStoryParagraphs(content, (paragraph) => {
+    const binding = paragraphPropertySourceBinding(paragraph);
+    if (binding?.type === "editor-created") {
+      return;
+    }
+    const token = getParagraphPropertySourceToken(paragraph);
+    if (!token || !token.belongsToStory(story) || !contract.owns(token)) {
+      throw new ParagraphPropertySourceValidationError({
+        code: "invalid_token",
+        message: "The source story contains an invalid paragraph-property token.",
+        token,
+      });
+    }
+    if (sources.has(token.serialized)) {
+      throw new ParagraphPropertySourceValidationError({
+        code: "duplicate_token",
+        message: "The source story contains a duplicate paragraph-property token.",
+        token: token.serialized,
+      });
+    }
+    const capture = binding?.type === "imported" ? binding.capture : undefined;
+    if (!capture) {
+      panic("A validated imported paragraph lost its source capture");
+    }
+    sources.set(
+      token.serialized,
+      new ParagraphPropertyTemplateCapture(paragraphPropertyTemplateCaptureIssuer, capture),
+    );
+  });
+  return sources;
+};
+
+/** Bound source story whose content, identity, and package contract cannot diverge. */
+export class ParagraphPropertyStorySource {
+  readonly #contract: ParagraphPropertySourceContract;
+  readonly #captures: ReadonlyMap<string, ParagraphPropertyTemplateCapture>;
+  readonly #story: ParagraphPropertySourceStory;
+
+  private constructor(
+    contract: ParagraphPropertySourceContract,
+    story: ParagraphPropertySourceStory,
+    captures: ReadonlyMap<string, ParagraphPropertyTemplateCapture>,
+  ) {
+    this.#contract = contract;
+    this.#story = story;
+    this.#captures = captures;
+    Object.freeze(this);
+  }
+
+  static fromDocument(
+    document: Document,
+    requestedStory: ParagraphPropertySourceStory,
+  ): ParagraphPropertyStorySource {
+    const contract = getDocumentParagraphPropertySourceContract(document);
+    if (!contract) {
+      throw new ParagraphPropertySourceValidationError({
+        code: "contract_mismatch",
+        message: "A paragraph-property story source requires a bound document contract.",
+      });
+    }
+    const requestedKey = paragraphPropertySourceStoryKey(requestedStory);
+    const matches = documentSourceStories(document).filter(
+      ({ story }) => paragraphPropertySourceStoryKey(story) === requestedKey,
+    );
+    if (matches.length !== 1) {
+      throw new ParagraphPropertySourceValidationError({
+        code: "ambiguous_source",
+        message: "The document does not contain exactly one requested paragraph-property story.",
+      });
+    }
+    const match = matches.at(0);
+    if (!match) {
+      return panic("A unique paragraph-property story match disappeared");
+    }
+    return new ParagraphPropertyStorySource(
+      contract,
+      match.story,
+      indexParagraphPropertySources(match.content, match.story, contract),
+    );
+  }
+
+  owns(token: ParagraphPropertySourceToken): boolean {
+    return (
+      this.#contract.owns(token) &&
+      token.belongsToStory(this.#story) &&
+      this.#captures.has(token.serialized)
+    );
+  }
+
+  readToken(raw: unknown): ParagraphPropertySourceToken {
+    const token = this.#contract.readToken(raw);
+    if (token.status !== "valid") {
+      throw new ParagraphPropertySourceValidationError({
+        code: "invalid_token",
+        message: "A paragraph-property source token is malformed.",
+        token: token.status === "invalid" ? token.raw : raw,
+      });
+    }
+    if (!this.owns(token.value)) {
+      throw new ParagraphPropertySourceValidationError({
+        code: "unknown_token",
+        message: "A paragraph-property source token is not owned by this story.",
+        token: token.value.serialized,
+      });
+    }
+    return token.value;
+  }
+
+  bindImportedParagraph(target: Paragraph, token: ParagraphPropertySourceToken): void {
+    if (paragraphPropertySourceBinding(target)) {
+      panic("An imported paragraph target already has source provenance");
+    }
+    const capability = this.owns(token) ? this.#captures.get(token.serialized) : undefined;
+    if (!capability) {
+      throw new ParagraphPropertySourceValidationError({
+        code: "unknown_token",
+        message: "A paragraph-property token is not owned by this source story.",
+        token: token.serialized,
+      });
+    }
+    setParagraphPropertySourceBinding(target, {
+      capture: capability.capture(paragraphPropertyTemplateCaptureIssuer),
+      token,
+      type: "imported",
+    });
+  }
+
+  templateCapture(token: ParagraphPropertySourceToken): ParagraphPropertyTemplateCapture {
+    const capability = this.owns(token) ? this.#captures.get(token.serialized) : undefined;
+    if (!capability) {
+      throw new ParagraphPropertySourceValidationError({
+        code: "unknown_token",
+        message: "A paragraph-property token is not owned by this source story.",
+        token: token.serialized,
+      });
+    }
+    return capability;
+  }
+}
 
 type ParagraphCloneOverrides = Omit<Partial<Paragraph>, "type">;
 
@@ -218,20 +749,78 @@ export const cloneParagraphWithPropertySource = (
 export const cloneParagraphWithoutPropertySource = (
   paragraph: Paragraph,
   overrides: ParagraphCloneOverrides,
-): Paragraph => ({ ...paragraph, ...overrides });
+): Paragraph => {
+  const cloned: Paragraph = { ...paragraph, ...overrides };
+  if (!Reflect.deleteProperty(cloned, paragraphPropertySource)) {
+    panic("Cannot detach paragraph-property source provenance from a paragraph clone");
+  }
+  return cloned;
+};
+
+type DocumentSourceStory = {
+  content: Document["package"]["document"]["content"];
+  story: ParagraphPropertySourceStory;
+};
+
+const compareCanonicalStoryKeys = (left: string, right: string): number => {
+  if (left < right) {
+    return -1;
+  }
+  return left > right ? 1 : 0;
+};
+
+const documentSourceStories = (document: Document): DocumentSourceStory[] => {
+  const stories: DocumentSourceStory[] = [
+    { content: document.package.document.content, story: Object.freeze({ type: "document" }) },
+  ];
+  for (const [relationshipId, story] of [...(document.package.headers ?? [])].toSorted(
+    ([left], [right]) => compareCanonicalStoryKeys(left, right),
+  )) {
+    stories.push({
+      content: story.content,
+      story: Object.freeze({ relationshipId, type: "header" }),
+    });
+  }
+  for (const [relationshipId, story] of [...(document.package.footers ?? [])].toSorted(
+    ([left], [right]) => compareCanonicalStoryKeys(left, right),
+  )) {
+    stories.push({
+      content: story.content,
+      story: Object.freeze({ relationshipId, type: "footer" }),
+    });
+  }
+  for (const story of [...(document.package.footnotes ?? [])].toSorted(
+    (left, right) => left.id - right.id,
+  )) {
+    stories.push({
+      content: story.content,
+      story: Object.freeze({ noteId: story.id, type: "footnote" }),
+    });
+  }
+  for (const story of [...(document.package.endnotes ?? [])].toSorted(
+    (left, right) => left.id - right.id,
+  )) {
+    stories.push({
+      content: story.content,
+      story: Object.freeze({ noteId: story.id, type: "endnote" }),
+    });
+  }
+  for (const comment of [...(document.package.document.comments ?? [])].toSorted(
+    (left, right) => left.id - right.id,
+  )) {
+    stories.push({
+      content: comment.content,
+      story: Object.freeze({ commentId: comment.id, type: "comment" }),
+    });
+  }
+  return stories;
+};
 
 const paragraphsIn = (document: Document): Paragraph[] => {
   const paragraphs: Paragraph[] = [];
-  visitDocxParagraphs(
-    {
-      documentBody: document.package.document,
-      headers: document.package.headers,
-      footers: document.package.footers,
-      footnotes: document.package.footnotes,
-      endnotes: document.package.endnotes,
-    },
-    (paragraph) => paragraphs.push(paragraph),
-  );
+  for (const { content } of documentSourceStories(document)) {
+    visitDocumentStoryParagraphs(content, (paragraph) => paragraphs.push(paragraph));
+  }
   return paragraphs;
 };
 
@@ -289,18 +878,6 @@ export const cloneTableCellsWithParagraphPropertyCaptures = (cells: TableCell[])
   return cloned;
 };
 
-export const linkProseParagraphPropertySource = (
-  proseParagraph: PMNode,
-  sourceParagraph: Paragraph,
-): void => {
-  if (paragraphPropertySources.has(sourceParagraph)) {
-    proseParagraphSourceOwners.set(
-      proseParagraph,
-      paragraphPropertySourceOwners.get(sourceParagraph) ?? sourceParagraph,
-    );
-  }
-};
-
 type CreateProseParagraphOptions = {
   attrs?: PMNode["attrs"];
   content?: Fragment | PMNode | readonly PMNode[] | null;
@@ -316,17 +893,15 @@ export const createProseParagraphWithPropertySource = (
   if (!nodeType || nodeType.name !== "paragraph") {
     panic("Paragraph-property provenance can only seed a paragraph node");
   }
-  const paragraph = nodeType.create(
+  return nodeType.create(
     {
       ...options.attrs,
       [PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR]:
-        paragraphPropertySourceTokens.get(sourceParagraph) ?? null,
+        getParagraphPropertySourceToken(sourceParagraph)?.serialized ?? null,
     },
     options.content,
     options.marks,
   );
-  linkProseParagraphPropertySource(paragraph, sourceParagraph);
-  return paragraph;
 };
 
 type ParagraphPropertySourceTransfer = {
@@ -356,8 +931,15 @@ export const joinProseParagraphsWithRightPropertySource = ({
   if (!left || !right || left.type.name !== "paragraph" || right.type.name !== "paragraph") {
     panic("Paragraph-property ownership can only join adjacent paragraphs");
   }
-  const leftToken = getProseParagraphPropertySourceToken(left);
-  const rightToken = getProseParagraphPropertySourceToken(right);
+  const leftToken = readProseParagraphPropertySourceToken(left);
+  const rightToken = readProseParagraphPropertySourceToken(right);
+  if (leftToken.status === "invalid" || rightToken.status === "invalid") {
+    throw new ParagraphPropertySourceValidationError({
+      code: "invalid_token",
+      message: "Cannot join a paragraph carrying a malformed paragraph-property token.",
+      token: leftToken.status === "invalid" ? leftToken.raw : rightToken.raw,
+    });
+  }
   const leftPos = pos - left.nodeSize;
   transaction.join(pos);
   const joined = transaction.doc.nodeAt(leftPos);
@@ -367,15 +949,19 @@ export const joinProseParagraphsWithRightPropertySource = ({
   transaction.setNodeMarkup(
     leftPos,
     undefined,
-    { ...attrs, [PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR]: rightToken ?? null },
+    {
+      ...attrs,
+      [PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR]:
+        rightToken.status === "valid" ? rightToken.value.serialized : null,
+    },
     joined.marks,
   );
   const transfers = transaction.getMeta(paragraphPropertySourceTransfersKey) ?? [];
   transaction.setMeta(paragraphPropertySourceTransfersKey, [
     ...transfers,
     {
-      displacedToken: typeof leftToken === "string" ? leftToken : null,
-      selectedToken: typeof rightToken === "string" ? rightToken : null,
+      displacedToken: leftToken.status === "valid" ? leftToken.value.serialized : null,
+      selectedToken: rightToken.status === "valid" ? rightToken.value.serialized : null,
     },
   ]);
   return transaction;
@@ -385,17 +971,6 @@ export const getExplicitParagraphPropertySourceTransfers = (
   transaction: Transaction,
 ): readonly ParagraphPropertySourceTransfer[] =>
   transaction.getMeta(paragraphPropertySourceTransfersKey) ?? [];
-
-/** Carry a parser-linked paragraph owner across an immutable PM node rebuild. */
-const copyProseParagraphPropertySource = (target: PMNode, source: PMNode): void => {
-  if (target.type.name !== "paragraph" || source.type.name !== "paragraph") {
-    return;
-  }
-  const sourceOwner = proseParagraphSourceOwners.get(source);
-  if (sourceOwner) {
-    proseParagraphSourceOwners.set(target, sourceOwner);
-  }
-};
 
 type RecreateProseNodeOptions = {
   attrs?: PMNode["attrs"];
@@ -408,13 +983,11 @@ export const recreateProseNodeWithParagraphPropertySource = (
   source: PMNode,
   options: RecreateProseNodeOptions = {},
 ): PMNode => {
-  const target = source.type.create(
+  return source.type.create(
     options.attrs ?? source.attrs,
     options.content === undefined ? source.content : options.content,
     options.marks ?? source.marks,
   );
-  copyProseParagraphPropertySource(target, source);
-  return target;
 };
 
 /**
@@ -443,60 +1016,9 @@ type SetProseParagraphMarkupOptions = {
   transaction: Transaction;
 };
 
-/** Replace paragraph markup without losing its private parser-owner link. */
+/** Replace paragraph markup while retaining the caller's explicit attrs. */
 export const setProseParagraphMarkupWithPropertySource = ({
   attrs,
-  ownership,
   pos,
   transaction,
-}: SetProseParagraphMarkupOptions): void => {
-  const source = transaction.doc.nodeAt(pos);
-  transaction.setNodeMarkup(pos, undefined, attrs);
-  const target = transaction.doc.nodeAt(pos);
-  if (!source || !target) {
-    return;
-  }
-  if (ownership === "preserve") {
-    copyProseParagraphPropertySource(target, source);
-    return;
-  }
-  const paraId = target.attrs["paraId"];
-  if (typeof paraId === "string") {
-    transferProseParagraphPropertySource(target, source, paraId);
-  }
-};
-
-/**
- * Carry the parser-owned source identity across load-time paraId allocation.
- * The generated id is safe to use later because it was assigned while the
- * ProseMirror node still had an unambiguous source paragraph owner.
- */
-export const transferProseParagraphPropertySource = (
-  target: PMNode,
-  source: PMNode,
-  paraId: string,
-): void => {
-  const sourceOwner = proseParagraphSourceOwners.get(source);
-  if (!sourceOwner) {
-    return;
-  }
-  proseParagraphSourceOwners.set(target, sourceOwner);
-  paragraphPropertySourceTransferIds.set(sourceOwner, paraId);
-};
-
-export const linkParagraphPropertySourceCandidate = (target: Paragraph, source: PMNode): void => {
-  const token = source.attrs[PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR];
-  if (typeof token === "string") {
-    paragraphPropertySourceTokens.set(target, token);
-  }
-  const sourceOwner = proseParagraphSourceOwners.get(source);
-  if (sourceOwner) {
-    paragraphPropertySourceCandidates.set(target, sourceOwner);
-  }
-};
-
-export const getParagraphPropertySourceCandidate = (paragraph: Paragraph): Paragraph | undefined =>
-  paragraphPropertySourceCandidates.get(paragraph);
-
-export const getParagraphPropertySourceTransferId = (paragraph: Paragraph): string | undefined =>
-  paragraphPropertySourceTransferIds.get(paragraph);
+}: SetProseParagraphMarkupOptions): void => transaction.setNodeMarkup(pos, undefined, attrs);

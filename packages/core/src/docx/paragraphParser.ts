@@ -40,9 +40,16 @@ import type {
 import { PARAGRAPH_MARK_CHANGE_KINDS } from "@stll/docx-core/model";
 import { panic } from "better-result";
 import { isValidHexId } from "../utils/hexId";
-import { canonicalJson } from "../utils/canonicalJson";
 import { paraIdInRange } from "./paraIdRangeNormalization";
-import { assignParagraphPropertySource } from "./paragraphPropertySource";
+import {
+  paragraphPropertySourceFingerprintFromParts,
+  selectAuthoredParagraphProperties,
+  selectParagraphMarkProperties,
+} from "./paragraphPropertyDescriptor";
+import {
+  assignAbsentParagraphPropertySource,
+  assignParagraphPropertySource,
+} from "./paragraphPropertySource";
 import {
   parseBookmarkStart as parseBookmarkStartFromModule,
   parseBookmarkEnd as parseBookmarkEndFromModule,
@@ -2007,8 +2014,12 @@ export function parseParagraph(
 
   // Parse paragraph properties (w:pPr)
   const pPr = findChild(node, "w", "pPr");
+  let authoredPPr: ParagraphFormatting | undefined;
   if (pPr) {
     const formattingResult = parseParagraphProperties(pPr, theme, styles ?? undefined);
+    // Keep the authored shape before effective style/numbering values are
+    // materialized below. An empty w:pPr is distinct from no w:pPr.
+    authoredPPr = structuredClone(formattingResult ?? {});
     if (formattingResult !== undefined) {
       paragraph.formatting = formattingResult;
     }
@@ -2271,9 +2282,14 @@ export function parseParagraph(
 
   if (pPr) {
     assignParagraphPropertySource(paragraph, {
+      fingerprint: paragraphPropertySourceFingerprintFromParts(
+        selectAuthoredParagraphProperties(authoredPPr),
+        selectParagraphMarkProperties(authoredPPr),
+      ),
       xml: captureParagraphPropertySource(pPr),
-      formattingJson: canonicalJson(paragraph.formatting ?? {}),
     });
+  } else {
+    assignAbsentParagraphPropertySource(paragraph);
   }
 
   return paragraph;

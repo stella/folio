@@ -366,7 +366,7 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
       "doc",
       {
         [PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR]:
-          getDocumentParagraphPropertySourceContract(document) ?? null,
+          getDocumentParagraphPropertySourceContract(document)?.serialized ?? null,
         _finalSectionStart: finalSectionStart,
         _adjustLineHeightInTable: adjustLineHeightInTable,
       },

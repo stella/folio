@@ -15,31 +15,22 @@ import { DRAWING_RAW_XML_MODES } from "@stll/docx-core/model";
 import type { Node as PMNode, Mark } from "prosemirror-model";
 import { Fragment } from "prosemirror-model";
 
-import { numPrEqual } from "../../docx/numberingParser";
-import { visitDocxParagraphs } from "../../docx/paragraphTraversal";
 import { DATE_UTC_ATTRIBUTE } from "../../docx/trackedChangeInfo";
 import { createStyleEngine, type StyleEngine } from "../../style-engine";
 import {
   PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
   ParagraphPropertySourceValidationError,
   type ParagraphPropertySourceValidationCode,
+  ParagraphPropertyStorySource,
+  type ParagraphPropertyTemplateResolutionRegistry,
+  type ParagraphPropertyTemplateStore,
+  assignEditorCreatedParagraphPropertySource,
   copyDocumentParagraphPropertySourceContract,
-  copyParagraphPropertyCapture,
   copyParagraphPropertySource,
   getDocumentParagraphPropertySourceContract,
-  getParagraphPropertySource,
-  getParagraphPropertySourceCandidate,
-  getParagraphPropertySourceToken,
-  getParagraphPropertySourceTransferId,
-  getProseDocumentParagraphPropertySourceContract,
-  getProseParagraphPropertySourceToken,
-  isParagraphPropertySourceToken,
-  linkParagraphPropertySourceCandidate,
-  paragraphPropertySourceTokenMatchesContract,
+  readProseDocumentParagraphPropertySourceContract,
   recreateProseNodeWithParagraphPropertySource,
-  visitDocumentStoryParagraphs,
 } from "../../docx/paragraphPropertySource";
-import { canonicalJson } from "../../utils/canonicalJson";
 import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import { parseShapeGeometryAdjustments } from "../shapeGeometryAdjustments";
 import { narrowEnum, ShapeOutlineStyleSchema } from "../../docx/parserEnums";
@@ -169,6 +160,7 @@ import type {
 } from "../schema/nodes";
 import { assertValidProseMirrorDocument } from "../validation";
 import { resolveNumberedRefFields } from "../numberedRefFields";
+import { readParagraphPropertyState } from "../paragraphPropertyState";
 import { expectTextBoxAnchorAttrs } from "../textBoxAnchorAttrs";
 import { runShadingAttrsToShading, shadingToRunShadingAttrs } from "./runShadingMark";
 import { mergeTextFormatting } from "../../utils/textFormattingMerge";
@@ -280,79 +272,6 @@ function textBoxWrapFromAttrs(attrs: TextBoxAttrs): ImageWrap | undefined {
   return wrap;
 }
 
-const assignUniqueParagraph = (
-  paragraphs: Map<string, Paragraph | null>,
-  paraId: string,
-  paragraph: Paragraph,
-): void => {
-  const existing = paragraphs.get(paraId);
-  if (!paragraphs.has(paraId) || existing === paragraph) {
-    paragraphs.set(paraId, paragraph);
-    return;
-  }
-  paragraphs.set(paraId, null);
-};
-
-const uniqueParagraphsById = (
-  content: BlockContent[],
-  includeTransferIds = false,
-): Map<string, Paragraph | null> => {
-  const paragraphs = new Map<string, Paragraph | null>();
-  visitDocxParagraphs({ documentBody: { content } }, (paragraph) => {
-    const { paraId } = paragraph;
-    if (paraId) {
-      assignUniqueParagraph(paragraphs, paraId, paragraph);
-    }
-    const transferId = includeTransferIds
-      ? getParagraphPropertySourceTransferId(paragraph)
-      : undefined;
-    if (transferId) {
-      assignUniqueParagraph(paragraphs, transferId, paragraph);
-    }
-  });
-  return paragraphs;
-};
-
-const restoreParagraphPropertySource = (paragraph: Paragraph, baseParagraph: Paragraph): void => {
-  copyParagraphPropertySource(paragraph, baseParagraph);
-
-  const baseFormatting = baseParagraph.formatting;
-  if (
-    !baseFormatting?.numPr ||
-    !baseFormatting.numPrFromStyle ||
-    !numPrEqual(baseFormatting.numPr, baseFormatting.numPrFromStyle)
-  ) {
-    return;
-  }
-  const { numPr, numPrFromStyle, ...authoredFormatting } = baseFormatting;
-  if (canonicalJson(paragraph.formatting ?? {}) !== canonicalJson(authoredFormatting)) {
-    return;
-  }
-  paragraph.formatting = { ...paragraph.formatting, numPr, numPrFromStyle };
-};
-
-const restoreParagraphPropertySources = (
-  content: BlockContent[],
-  baseContent: BlockContent[],
-  linkedTargets: ReadonlySet<Paragraph>,
-  linkedSources: ReadonlySet<Paragraph>,
-): void => {
-  const baseParagraphs = uniqueParagraphsById(baseContent, true);
-  for (const [paraId, paragraph] of uniqueParagraphsById(content)) {
-    const baseParagraph = baseParagraphs.get(paraId);
-    if (
-      !paragraph ||
-      !baseParagraph ||
-      linkedTargets.has(paragraph) ||
-      linkedSources.has(baseParagraph) ||
-      !getParagraphPropertySource(baseParagraph)
-    ) {
-      continue;
-    }
-    restoreParagraphPropertySource(paragraph, baseParagraph);
-  }
-};
-
 const sourceValidationError = (
   code: ParagraphPropertySourceValidationCode,
   message: string,
@@ -364,127 +283,114 @@ const sourceValidationError = (
     ...(token !== undefined ? { token } : {}),
   });
 
-const validateParagraphPropertySourceTokens = (
-  pmDoc: PMNode,
-  baseContent: BlockContent[],
-  contract: string,
-): Map<string, Paragraph> => {
-  const baseParagraphs = new Map<string, Paragraph>();
-  visitDocumentStoryParagraphs(baseContent, (paragraph) => {
-    const token = getParagraphPropertySourceToken(paragraph);
-    if (!token || !paragraphPropertySourceTokenMatchesContract(token, contract)) {
-      throw sourceValidationError(
-        "invalid_token",
-        "The source document contains an invalid paragraph-property token.",
-        token,
-      );
-    }
-    if (baseParagraphs.has(token)) {
-      throw sourceValidationError(
-        "duplicate_token",
-        "The source document contains a duplicate paragraph-property token.",
-        token,
-      );
-    }
-    baseParagraphs.set(token, paragraph);
-  });
+type ValidatedParagraphPropertySources = {
+  source?: ParagraphPropertyStorySource;
+  templateRegistry?: ParagraphPropertyTemplateResolutionRegistry;
+};
 
+const validateParagraphPropertySourceStates = (
+  pmDoc: PMNode,
+  source?: ParagraphPropertyStorySource,
+  templateStore?: ParagraphPropertyTemplateStore,
+): ValidatedParagraphPropertySources => {
   const seen = new Set<string>();
+  const templateHandles = [];
   pmDoc.descendants((node) => {
     if (node.type.name !== "paragraph") {
       return true;
     }
-    const token = getProseParagraphPropertySourceToken(node);
-    if (token === null || token === undefined) {
-      return false;
-    }
-    if (!isParagraphPropertySourceToken(token)) {
+    const state = readParagraphPropertyState(node.attrs["_paragraphPropertyState"]);
+    if (state.status !== "valid") {
       throw sourceValidationError(
-        "invalid_token",
-        "A paragraph contains a malformed paragraph-property token.",
-        token,
+        "invalid_state",
+        "A paragraph contains invalid paragraph-property state.",
+        state.status === "invalid" ? state.raw : undefined,
       );
     }
-    if (!paragraphPropertySourceTokenMatchesContract(token, contract)) {
+    if (state.value.type === "editor-created") {
+      return false;
+    }
+    if (state.value.type === "transient-template") {
+      if (!templateStore) {
+        throw sourceValidationError(
+          "transient_state",
+          "A transient paragraph-property template requires its conversion registry.",
+        );
+      }
+      templateHandles.push(state.value.handle);
+      return false;
+    }
+    const token = state.value.token;
+    if (!source) {
+      throw sourceValidationError(
+        "contract_mismatch",
+        "An imported paragraph-property state requires its explicit source story.",
+        token.serialized,
+      );
+    }
+    if (!source.owns(token)) {
       throw sourceValidationError(
         "unknown_token",
         "A paragraph-property token belongs to a different source document.",
-        token,
+        token.serialized,
       );
     }
-    if (seen.has(token)) {
+    if (seen.has(token.serialized)) {
       throw sourceValidationError(
         "duplicate_token",
         "A paragraph-property token is attached to more than one paragraph.",
-        token,
+        token.serialized,
       );
     }
-    if (!baseParagraphs.has(token)) {
-      throw sourceValidationError(
-        "unknown_token",
-        "A paragraph-property token is not present in the source document.",
-        token,
-      );
-    }
-    seen.add(token);
+    seen.add(token.serialized);
     return false;
   });
-  return baseParagraphs;
+  const templateRegistry = templateStore?.beginResolution(templateHandles);
+  return { ...(source ? { source } : {}), ...(templateRegistry ? { templateRegistry } : {}) };
 };
 
-const restoreParagraphPropertySourcesByToken = (
-  content: BlockContent[],
-  baseParagraphs: ReadonlyMap<string, Paragraph>,
-): void => {
-  visitDocumentStoryParagraphs(content, (paragraph) => {
-    const token = getParagraphPropertySourceToken(paragraph);
-    if (!token) {
-      return;
+const paragraphPropertySourceResolver = (
+  sources: ValidatedParagraphPropertySources,
+): ParagraphPropertySourceResolver =>
+  (paragraph, source) => {
+    const state = readParagraphPropertyState(source.attrs["_paragraphPropertyState"]);
+    if (state.status !== "valid") {
+      panic("Validated paragraph-property state became malformed during conversion");
     }
-    const baseParagraph = baseParagraphs.get(token);
-    if (!baseParagraph) {
-      panic("Validated paragraph-property token lost its source owner");
-    }
-    restoreParagraphPropertySource(paragraph, baseParagraph);
-  });
-};
-
-type LinkedParagraphPropertySources = {
-  targets: ReadonlySet<Paragraph>;
-  sources: ReadonlySet<Paragraph>;
-};
-
-const restoreLinkedParagraphPropertySources = (
-  content: BlockContent[],
-): LinkedParagraphPropertySources => {
-  const targetsBySource = new Map<Paragraph, Paragraph[]>();
-  const linkedTargets = new Set<Paragraph>();
-  visitDocxParagraphs({ documentBody: { content } }, (paragraph) => {
-    const source = getParagraphPropertySourceCandidate(paragraph);
-    if (!source) {
-      return;
-    }
-    linkedTargets.add(paragraph);
-    const targets = targetsBySource.get(source);
-    if (targets) {
-      targets.push(paragraph);
-    } else {
-      targetsBySource.set(source, [paragraph]);
-    }
-  });
-  for (const [source, targets] of targetsBySource) {
-    if (targets.length === 1) {
-      const target = targets.at(0);
-      if (target) {
-        copyParagraphPropertyCapture(target, source);
+    switch (state.value.type) {
+      case "editor-created":
+        assignEditorCreatedParagraphPropertySource(paragraph);
+        return;
+      case "imported": {
+        if (!sources.source) {
+          panic("Validated paragraph-property token lost its source owner");
+        }
+        sources.source.bindImportedParagraph(paragraph, state.value.token);
+        return;
+      }
+      case "transient-template":
+        if (!sources.templateRegistry) {
+          panic("Validated transient paragraph-property state lost its registry");
+        }
+        sources.templateRegistry.consume(state.value.handle, paragraph);
+        return;
+      default: {
+        const exhaustive: never = state.value;
+        return exhaustive;
       }
     }
-  }
-  return { targets: linkedTargets, sources: new Set(targetsBySource.keys()) };
-};
+  };
 
 /** Convert a ProseMirror document to the document model. */
-export function fromProseDoc(pmDoc: PMNode, baseDocument?: Document): Document {
+type FromProseDocOptions = {
+  paragraphPropertyTemplates?: ParagraphPropertyTemplateStore;
+};
+
+export function fromProseDoc(
+  pmDoc: PMNode,
+  baseDocument?: Document,
+  options: FromProseDocOptions = {},
+): Document {
   assertValidProseMirrorDocument(
     pmDoc,
     "Cannot convert invalid ProseMirror document to DOCX model",
@@ -493,43 +399,35 @@ export function fromProseDoc(pmDoc: PMNode, baseDocument?: Document): Document {
   const baseContract = baseDocument
     ? getDocumentParagraphPropertySourceContract(baseDocument)
     : undefined;
-  const proseContractAttribute = pmDoc.attrs[PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR];
-  const proseContract = getProseDocumentParagraphPropertySourceContract(pmDoc);
-  const proseCarriesInvalidContract =
-    proseContractAttribute !== null &&
-    proseContractAttribute !== undefined &&
-    proseContract === null;
-  if (proseCarriesInvalidContract || (baseContract ?? null) !== proseContract) {
+  const proseContract = readProseDocumentParagraphPropertySourceContract(pmDoc);
+  if (
+    proseContract.status === "invalid" ||
+    (baseContract === undefined) !== (proseContract.status === "absent") ||
+    (baseContract !== undefined &&
+      proseContract.status === "valid" &&
+      baseContract.serialized !== proseContract.value.serialized)
+  ) {
     throw sourceValidationError(
       "contract_mismatch",
       "The ProseMirror document does not match its paragraph-property source document.",
     );
   }
-  const tokenSources =
-    baseContract && proseContract && baseDocument
-      ? validateParagraphPropertySourceTokens(
+  const paragraphPropertySources =
+    baseContract && proseContract.status === "valid" && baseDocument
+      ? validateParagraphPropertySourceStates(
           pmDoc,
-          baseDocument.package.document.content,
-          baseContract,
+          ParagraphPropertyStorySource.fromDocument(baseDocument, { type: "document" }),
+          options.paragraphPropertyTemplates,
         )
-      : null;
+      : validateParagraphPropertySourceStates(pmDoc, undefined, options.paragraphPropertyTemplates);
 
   const blocks = extractBlocks(
     pmDoc,
     "resolve",
     baseDocument?.package.styles ? createStyleEngine(baseDocument.package.styles) : null,
+    paragraphPropertySourceResolver(paragraphPropertySources),
   );
-  const linkedSources = restoreLinkedParagraphPropertySources(blocks);
-  if (tokenSources) {
-    restoreParagraphPropertySourcesByToken(blocks, tokenSources);
-  } else if (baseDocument) {
-    restoreParagraphPropertySources(
-      blocks,
-      baseDocument.package.document.content,
-      linkedSources.targets,
-      linkedSources.sources,
-    );
-  }
+  paragraphPropertySources.templateRegistry?.assertFullyConsumed();
 
   // Preserve section properties (margins, headers, footers) from base document
   const documentBody: DocumentBody = { content: blocks };
@@ -832,6 +730,7 @@ function stripSuggestedProvenance(doc: PMNode, styleResolver: StyleEngine | null
  * document.
  */
 type RefResolutionMode = "resolve" | "inherit";
+type ParagraphPropertySourceResolver = (paragraph: Paragraph, source: PMNode) => void;
 
 function materializeNumberedRefValues(doc: PMNode): PMNode {
   const results = resolveNumberedRefFields(doc);
@@ -872,6 +771,7 @@ function extractBlocks(
   inputDoc: PMNode,
   refResolution: RefResolutionMode = "resolve",
   styleResolver: StyleEngine | null = null,
+  resolveParagraphPropertySource?: ParagraphPropertySourceResolver,
 ): BlockContent[] {
   // CLASS GUARD: every serialization path (export, copy, header/footer
   // conversion, previews) funnels through `extractBlocks`. Stripping suggested
@@ -916,6 +816,7 @@ function extractBlocks(
         documentCounts,
         textBoxAnchorMarkers,
         styleResolver,
+        resolveParagraphPropertySource,
       );
       prependPageBreaks(paragraph, pendingPageBreaks);
       pendingPageBreaks = 0;
@@ -925,7 +826,9 @@ function extractBlocks(
       if (pendingPageBreaks > 0 && !appendPendingPageBreaksToPreviousParagraph()) {
         flushPendingPageBreaks();
       }
-      blocks.push(convertPMTable(node, documentCounts, styleResolver));
+      blocks.push(
+        convertPMTable(node, documentCounts, styleResolver, resolveParagraphPropertySource),
+      );
       previousStandaloneTextBox = null;
     } else if (node.type.name === "textBox") {
       previousStandaloneTextBox = appendTextBoxBlock(blocks, node, {
@@ -933,13 +836,14 @@ function extractBlocks(
         previousStandaloneTextBox,
         textBoxAnchorMarkers,
         styleResolver,
+        resolveParagraphPropertySource,
       });
       pendingPageBreaks = 0;
     } else if (node.type.name === "blockSdt") {
       if (pendingPageBreaks > 0 && !appendPendingPageBreaksToPreviousParagraph()) {
         flushPendingPageBreaks();
       }
-      blocks.push(convertPMBlockSdt(node, styleResolver));
+      blocks.push(convertPMBlockSdt(node, styleResolver, resolveParagraphPropertySource));
       previousStandaloneTextBox = null;
     }
   });
@@ -958,6 +862,7 @@ type AppendTextBoxBlockOptions = {
   previousStandaloneTextBox: PreviousStandaloneTextBox | null;
   textBoxAnchorMarkers: Map<string, Run>;
   styleResolver: StyleEngine | null;
+  resolveParagraphPropertySource?: ParagraphPropertySourceResolver;
 };
 
 type PreviousStandaloneTextBox = {
@@ -965,7 +870,11 @@ type PreviousStandaloneTextBox = {
   groupId: string;
 };
 
-function convertPMBlockSdt(node: PMNode, styleResolver: StyleEngine | null): BlockSdt {
+function convertPMBlockSdt(
+  node: PMNode,
+  styleResolver: StyleEngine | null,
+  resolveParagraphPropertySource?: ParagraphPropertySourceResolver,
+): BlockSdt {
   const attrs = expectBlockSdtAttrs(node);
   const properties: SdtProperties = { sdtType: attrs.sdtType };
   if (attrs.alias) {
@@ -1024,7 +933,12 @@ function convertPMBlockSdt(node: PMNode, styleResolver: StyleEngine | null): Blo
   // Recursively materialize children. PM `blockSdt` content is `block+`, so a
   // mini-doc node is a convenient way to reuse extractBlocks.
   const innerDoc = node.type.schema.node("doc", null, node.content);
-  const extracted = extractBlocks(innerDoc, "inherit", styleResolver);
+  const extracted = extractBlocks(
+    innerDoc,
+    "inherit",
+    styleResolver,
+    resolveParagraphPropertySource,
+  );
 
   // `toProseDoc` inserts a synthetic filler paragraph into any blockSdt
   // whose source had an empty `<w:sdtContent/>` and stamps the
@@ -1074,7 +988,11 @@ function appendTextBoxBlock(
   options: AppendTextBoxBlockOptions,
 ): PreviousStandaloneTextBox | null {
   const attrs = expectTextBoxAttrs(node);
-  const paragraph = convertPMTextBox(node, options.styleResolver);
+  const paragraph = convertPMTextBox(
+    node,
+    options.styleResolver,
+    options.resolveParagraphPropertySource,
+  );
   const previousBlock = blocks.at(-1);
   if (attrs._docxPlacement === "inlineWithPrevious" && previousBlock?.type === "paragraph") {
     appendPageBreaks(previousBlock, options.pendingPageBreaks);
@@ -1415,6 +1333,7 @@ function convertPMParagraph(
   documentCounts?: TrackedChangeCounts,
   textBoxAnchorMarkers?: Map<string, Run>,
   styleResolver: StyleEngine | null = null,
+  resolveParagraphPropertySource?: ParagraphPropertySourceResolver,
 ): Paragraph {
   const attrs = expectParagraphAttrs(node);
   const paragraphStyleContext = paragraphRunStyleContext(node, styleResolver);
@@ -1492,7 +1411,7 @@ function convertPMParagraph(
     paragraph.pPrMark = attrs.pPrMark;
   }
 
-  linkParagraphPropertySourceCandidate(paragraph, node);
+  resolveParagraphPropertySource?.(paragraph, node);
   return paragraph;
 }
 
@@ -4499,9 +4418,15 @@ function convertPMTable(
   node: PMNode,
   documentCounts?: TrackedChangeCounts,
   styleResolver: StyleEngine | null = null,
+  resolveParagraphPropertySource?: ParagraphPropertySourceResolver,
 ): Table {
   const attrs = expectTableAttrs(node);
-  const rows = convertPMTableRows(node, documentCounts, styleResolver);
+  const rows = convertPMTableRows(
+    node,
+    documentCounts,
+    styleResolver,
+    resolveParagraphPropertySource,
+  );
 
   const formatting = tableAttrsToFormatting(attrs) || undefined;
   if (!formatting?.borders) {
@@ -4558,6 +4483,7 @@ function convertPMTableRows(
   node: PMNode,
   documentCounts?: TrackedChangeCounts,
   styleResolver: StyleEngine | null = null,
+  resolveParagraphPropertySource?: ParagraphPropertySourceResolver,
 ): TableRow[] {
   const rows: TableRow[] = [];
   const activeVerticalMerges = new Map<number, ActiveVerticalMerge>();
@@ -4565,7 +4491,15 @@ function convertPMTableRows(
   // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
   node.forEach((rowNode) => {
     if (rowNode.type.name === "tableRow") {
-      rows.push(convertPMTableRow(rowNode, documentCounts, activeVerticalMerges, styleResolver));
+      rows.push(
+        convertPMTableRow(
+          rowNode,
+          documentCounts,
+          activeVerticalMerges,
+          styleResolver,
+          resolveParagraphPropertySource,
+        ),
+      );
     }
   });
 
@@ -4746,6 +4680,7 @@ function convertPMTableRow(
   documentCounts?: TrackedChangeCounts,
   activeVerticalMerges?: Map<number, ActiveVerticalMerge>,
   styleResolver: StyleEngine | null = null,
+  resolveParagraphPropertySource?: ParagraphPropertySourceResolver,
 ): TableRow {
   const attrs = expectTableRowAttrs(node);
   const cells: TableCell[] = [];
@@ -4775,7 +4710,14 @@ function convertPMTableRow(
     if (cellNode.type.name === "tableCell" || cellNode.type.name === "tableHeader") {
       const cellAttrs = expectTableCellAttrs(cellNode);
       const colspan = Math.max(cellAttrs.colspan, 1);
-      cells.push(convertPMTableCell(cellNode, documentCounts, styleResolver));
+      cells.push(
+        convertPMTableCell(
+          cellNode,
+          documentCounts,
+          styleResolver,
+          resolveParagraphPropertySource,
+        ),
+      );
       if (cellAttrs.rowspan > 1) {
         const continuationCells = cellAttrs._docxVMergeContinuationCells;
         activeVerticalMerges?.set(gridColumn, {
@@ -4915,6 +4857,7 @@ function convertPMTableCell(
   node: PMNode,
   documentCounts?: TrackedChangeCounts,
   styleResolver: StyleEngine | null = null,
+  resolveParagraphPropertySource?: ParagraphPropertySourceResolver,
 ): TableCell {
   const attrs = expectTableCellAttrs(node);
   const content: (Paragraph | Table)[] = [];
@@ -4926,11 +4869,24 @@ function convertPMTableCell(
   node.forEach((contentNode) => {
     if (contentNode.type.name === "paragraph") {
       content.push(
-        convertPMParagraph(contentNode, documentCounts, textBoxAnchorMarkers, styleResolver),
+        convertPMParagraph(
+          contentNode,
+          documentCounts,
+          textBoxAnchorMarkers,
+          styleResolver,
+          resolveParagraphPropertySource,
+        ),
       );
       previousStandaloneTextBox = null;
     } else if (contentNode.type.name === "table") {
-      content.push(convertPMTable(contentNode, documentCounts, styleResolver));
+      content.push(
+        convertPMTable(
+          contentNode,
+          documentCounts,
+          styleResolver,
+          resolveParagraphPropertySource,
+        ),
+      );
       previousStandaloneTextBox = null;
     } else if (contentNode.type.name === "textBox") {
       previousStandaloneTextBox = appendTextBoxBlock(content, contentNode, {
@@ -4938,6 +4894,7 @@ function convertPMTableCell(
         previousStandaloneTextBox,
         textBoxAnchorMarkers,
         styleResolver,
+        resolveParagraphPropertySource,
       });
     }
   });
@@ -5114,7 +5071,11 @@ export function tableCellAttrsToFormatting(attrs: TableCellAttrs): TableCellForm
  * Convert a ProseMirror textBox node back to a Paragraph wrapping a ShapeContent run.
  * The text box content becomes a Shape with textBody.
  */
-function convertPMTextBox(node: PMNode, styleResolver: StyleEngine | null = null): Paragraph {
+function convertPMTextBox(
+  node: PMNode,
+  styleResolver: StyleEngine | null = null,
+  resolveParagraphPropertySource?: ParagraphPropertySourceResolver,
+): Paragraph {
   const attrs = expectTextBoxAttrs(node);
   const verticalAlign = normalizeShapeTextAnchor(attrs.verticalAlign);
 
@@ -5123,9 +5084,19 @@ function convertPMTextBox(node: PMNode, styleResolver: StyleEngine | null = null
   // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
   node.forEach((child) => {
     if (child.type.name === "paragraph") {
-      childBlocks.push(convertPMParagraph(child, undefined, undefined, styleResolver));
+      childBlocks.push(
+        convertPMParagraph(
+          child,
+          undefined,
+          undefined,
+          styleResolver,
+          resolveParagraphPropertySource,
+        ),
+      );
     } else if (child.type.name === "table") {
-      childBlocks.push(convertPMTable(child, undefined, styleResolver));
+      childBlocks.push(
+        convertPMTable(child, undefined, styleResolver, resolveParagraphPropertySource),
+      );
     }
   });
 
@@ -5254,20 +5225,27 @@ export function updateDocumentContent(originalDocument: Document, pmDoc: PMNode)
  * Used for converting edited header/footer PM content back to the document
  * model.
  */
+type ProseDocToBlocksOptions = {
+  paragraphPropertyTemplates?: ParagraphPropertyTemplateStore;
+  source: ParagraphPropertyStorySource;
+  styles?: NonNullable<Document["package"]>["styles"];
+};
+
 export function proseDocToBlocks(
   pmDoc: PMNode,
-  baseContent?: BlockContent[],
-  styles?: NonNullable<Document["package"]>["styles"],
+  options?: ProseDocToBlocksOptions,
 ): BlockContent[] {
-  const blocks = extractBlocks(pmDoc, "resolve", styles ? createStyleEngine(styles) : null);
-  const linkedSources = restoreLinkedParagraphPropertySources(blocks);
-  if (baseContent) {
-    restoreParagraphPropertySources(
-      blocks,
-      baseContent,
-      linkedSources.targets,
-      linkedSources.sources,
-    );
-  }
+  const paragraphPropertySources = validateParagraphPropertySourceStates(
+    pmDoc,
+    options?.source,
+    options?.paragraphPropertyTemplates,
+  );
+  const blocks = extractBlocks(
+    pmDoc,
+    "resolve",
+    options?.styles ? createStyleEngine(options.styles) : null,
+    paragraphPropertySourceResolver(paragraphPropertySources),
+  );
+  paragraphPropertySources.templateRegistry?.assertFullyConsumed();
   return blocks;
 }
