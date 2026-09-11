@@ -116,6 +116,20 @@ export type FolioContentInputRun = {
   readonly authoredFormatting?: FolioContentPropertyInput;
 };
 
+/** Caller paragraph presentation with authored provenance kept separate from inheritance. */
+export type FolioContentInputParagraphFormatting = {
+  /** Fully resolved paragraph presentation, for renderers only. */
+  readonly effective?: FolioContentPropertyInput;
+  /** Authored paragraph properties only; inherited values stay out of this set. */
+  readonly authored?: FolioContentPropertyInput;
+};
+
+/** Captured paragraph presentation whose two property sets are canonical and immutable. */
+export type FolioContentParagraphFormatting = {
+  readonly effective: FolioContentPropertySet;
+  readonly authored: FolioContentPropertySet;
+};
+
 /** Captured run whose property sets have one canonical ordering and value algebra. */
 export type FolioContentRun = {
   readonly text: string;
@@ -156,7 +170,7 @@ export type FolioContentInputBlock<Kind extends string = string> = {
   readonly kind: Kind;
   readonly text: string;
   readonly blockProperties?: FolioContentPropertyInput;
-  readonly paragraphFormatting?: FolioContentPropertyInput;
+  readonly paragraphFormatting?: FolioContentInputParagraphFormatting;
   readonly runs?: readonly FolioContentInputRun[];
   readonly structuralBoundaries?: readonly FolioContentStructuralBoundary[];
   readonly table?: FolioContentTableLocation;
@@ -169,7 +183,7 @@ export type FolioContentBlock<Kind extends string = string> = {
   readonly kind: Kind;
   readonly text: string;
   readonly blockProperties: FolioContentPropertySet;
-  readonly paragraphFormatting: FolioContentPropertySet;
+  readonly paragraphFormatting: FolioContentParagraphFormatting;
   readonly runs: readonly FolioContentRun[];
   readonly structuralBoundaries: readonly FolioContentStructuralBoundary[];
   readonly table?: FolioContentTableLocation;
@@ -207,7 +221,7 @@ type FolioContentInputBlockFieldDescriptor =
     }
   | {
       readonly role: "block-property" | "paragraph-format";
-      readonly capture: "properties";
+      readonly capture: "properties" | "paragraph-formatting";
       readonly comparison: "properties" | "paragraph";
       readonly validation: "properties";
     }
@@ -257,7 +271,7 @@ export const FOLIO_CONTENT_BLOCK_FIELD_DESCRIPTORS = Object.freeze({
   paragraphFormatting: Object.freeze({
     field: "paragraphFormatting",
     role: "paragraph-format",
-    capture: "properties",
+    capture: "paragraph-formatting",
     comparison: "paragraph",
     validation: "properties",
   }),
@@ -292,6 +306,29 @@ export const FOLIO_CONTENT_BLOCK_FIELD_DESCRIPTORS = Object.freeze({
 } as const satisfies SelfDescribingFieldMap<
   FolioContentInputBlock,
   FolioContentInputBlockFieldDescriptor
+>);
+
+/** Total ownership map for authored and effective paragraph property sets. @internal */
+export const FOLIO_CONTENT_PARAGRAPH_FORMATTING_FIELD_DESCRIPTORS = Object.freeze({
+  effective: Object.freeze({
+    field: "effective",
+    role: "effective-format",
+    capture: "properties",
+    validation: "properties",
+  }),
+  authored: Object.freeze({
+    field: "authored",
+    role: "authored-format",
+    capture: "properties",
+    validation: "properties",
+  }),
+} as const satisfies SelfDescribingFieldMap<
+  FolioContentInputParagraphFormatting,
+  {
+    readonly role: "effective-format" | "authored-format";
+    readonly capture: "properties";
+    readonly validation: "properties";
+  }
 >);
 
 /** Total ownership map for every caller-supplied run field. @internal */

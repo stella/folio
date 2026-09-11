@@ -42,6 +42,9 @@ type TestBlockOptions = {
   listLevel?: number;
   directAlignment?: string;
   directSpacing?: Readonly<Record<string, FolioContentPropertyInputValue>>;
+  effectiveParagraphFormatting?: Readonly<
+    Record<string, FolioContentPropertyInputValue | undefined>
+  >;
   runs?: readonly LegacyTestRun[];
   structuralBoundaries?: TestBlock["structuralBoundaries"];
   table?: TestBlock["table"];
@@ -75,6 +78,7 @@ const contentBlock = ({
   listLevel,
   directAlignment,
   directSpacing,
+  effectiveParagraphFormatting,
   runs = [],
   structuralBoundaries = [],
   table,
@@ -84,12 +88,15 @@ const contentBlock = ({
   kind,
   text,
   blockProperties: propertySet({ headingLevel, displayLabel }),
-  paragraphFormatting: propertySet({
-    styleId,
-    listLevel,
-    directAlignment,
-    directSpacing: directSpacing === undefined ? undefined : objectProperty(directSpacing),
-  }),
+  paragraphFormatting: {
+    authored: propertySet({
+      styleId,
+      listLevel,
+      directAlignment,
+      directSpacing: directSpacing === undefined ? undefined : objectProperty(directSpacing),
+    }),
+    effective: propertySet(effectiveParagraphFormatting ?? {}),
+  },
   runs: runs.map(({ text: runText, directFormatting, ...effective }) => ({
     text: runText,
     effectiveFormatting: propertySet(effective),
@@ -380,6 +387,72 @@ const expectRelationReconstructs = (relation: FolioContentPairRelation): void =>
   expect(revisedOffset).toBe(relation.revised.endOffset);
 };
 
+const EXPECTED_EVENT_CARDINALITY = {
+  unchanged: [1, 1],
+  modified: [1, 1],
+  formatting: [1, 1],
+  inserted: [0, 1],
+  deleted: [1, 0],
+  movedFrom: [1, 0],
+  movedTo: [0, 1],
+  split: [1, 2],
+  merge: [2, 1],
+} as const satisfies Record<
+  Exclude<FolioContentComparisonEvent["type"], "structural">,
+  readonly [number, number]
+>;
+
+const expectEventRelationsReconstruct = (event: FolioContentComparisonEvent): void => {
+  switch (event.type) {
+    case "unchanged":
+    case "modified":
+    case "formatting":
+      expect(event.relation.relationType).toBe("whole");
+      expectRelationReconstructs(event.relation);
+      return;
+    case "movedFrom":
+    case "movedTo":
+      expect(event.move.relation.relationType).toBe("whole");
+      expectRelationReconstructs(event.move.relation);
+      return;
+    case "split":
+    case "merge":
+      expect(event.relations.every(({ relationType }) => relationType === "range")).toBe(true);
+      expect(event.separator.relationType).toBe("separator");
+      for (const relation of [...event.relations, event.separator]) {
+        expectRelationReconstructs(relation);
+      }
+      return;
+    case "inserted":
+    case "deleted":
+    case "structural":
+      return;
+    default: {
+      const unreachable: never = event;
+      throw new Error(`Unhandled event ${JSON.stringify(unreachable)}`);
+    }
+  }
+};
+
+const expectComparisonReconstructs = (
+  comparison: FolioContentComparison,
+  base: readonly FolioContentBlock[],
+  revised: readonly FolioContentBlock[],
+): void => {
+  expect(baseProjection(comparison)).toEqual(base);
+  expect(revisedProjection(comparison)).toEqual(revised);
+  for (const event of comparison.events) {
+    const cardinality =
+      event.type === "structural"
+        ? event.change.type.endsWith("-insert")
+          ? ([0, 1] as const)
+          : ([1, 0] as const)
+        : EXPECTED_EVENT_CARDINALITY[event.type];
+    expect([eventBaseBlocks(event).length, eventRevisedBlocks(event).length]).toEqual(cardinality);
+    expectEventRelationsReconstruct(event);
+  }
+};
+
 const stableAnchors = (): { base: TestBlock[]; revised: TestBlock[] } => ({
   base: [
     contentBlock({ id: "anchor-a", text: "First durable anchor text" }),
@@ -613,6 +686,32 @@ describe("representation-neutral comparison stream", () => {
     }
   });
 
+  test("split and merge classification is symmetric about the surviving block", () => {
+    const joinedBase = contentBlock({ id: "right", text: "Alpha Beta" });
+    const firstRevised = contentBlock({ id: "left", text: "Alpha" });
+    const secondRevised = contentBlock({ id: "right", text: "Beta" });
+    const split = successfulComparison({
+      base: [joinedBase],
+      revised: [firstRevised, secondRevised],
+    });
+
+    expect(split.events.map(({ type }) => type)).toEqual(["split"]);
+    expect(baseProjection(split)).toEqual([joinedBase]);
+    expect(revisedProjection(split)).toEqual([firstRevised, secondRevised]);
+
+    const firstBase = contentBlock({ id: "left", text: "Alpha" });
+    const secondBase = contentBlock({ id: "right", text: "Beta" });
+    const joinedRevised = contentBlock({ id: "right", text: "Alpha Beta" });
+    const merge = successfulComparison({
+      base: [firstBase, secondBase],
+      revised: [joinedRevised],
+    });
+
+    expect(merge.events.map(({ type }) => type)).toEqual(["merge"]);
+    expect(baseProjection(merge)).toEqual([firstBase, secondBase]);
+    expect(revisedProjection(merge)).toEqual([joinedRevised]);
+  });
+
   test("split and merge segments use JavaScript UTF-16 offsets", () => {
     const joined = contentBlock({ id: "first", text: "A😀 B" });
     const first = contentBlock({ id: "first", text: "A😀" });
@@ -770,7 +869,7 @@ describe("representation-neutral comparison stream", () => {
     ]);
     expect(
       split.relations.map(({ formatting }) =>
-        formatting?.paragraph.map(({ key, revised }) => ({ key, revised })),
+        formatting?.paragraph.authored.map(({ key, revised }) => ({ key, revised })),
       ),
     ).toEqual([
       [
@@ -848,7 +947,7 @@ describe("representation-neutral comparison stream", () => {
     ]);
     expect(
       merge.relations.map(({ formatting }) =>
-        formatting?.paragraph.map(({ key, revised }) => ({ key, revised })),
+        formatting?.paragraph.authored.map(({ key, revised }) => ({ key, revised })),
       ),
     ).toEqual([
       [
@@ -1288,7 +1387,7 @@ describe("representation-neutral comparison stream", () => {
     expect(event?.type).toBe("formatting");
     if (event?.type !== "formatting") throw new Error("expected formatting");
     expect(
-      event.relation.formatting?.paragraph.map(({ key, revised }) => ({ key, revised })),
+      event.relation.formatting?.paragraph.authored.map(({ key, revised }) => ({ key, revised })),
     ).toEqual([
       { key: "directAlignment", revised: { type: "present", value: "center" } },
       {
@@ -1302,6 +1401,33 @@ describe("representation-neutral comparison stream", () => {
       { key: "styleId", revised: { type: "present", value: "Clause" } },
     ]);
     expect(event.relation.formatting?.ranges).toEqual([]);
+  });
+
+  test("authored and effective paragraph changes remain separate", () => {
+    const base = contentBlock({
+      id: "clause",
+      text: "Payment is due.",
+      directAlignment: "left",
+      effectiveParagraphFormatting: { alignment: "left", fontSize: 11 },
+    });
+    const revised = contentBlock({
+      id: "clause",
+      text: "Payment is due.",
+      directAlignment: "center",
+      effectiveParagraphFormatting: { alignment: "center", fontSize: 12 },
+    });
+
+    const comparison = successfulComparison({ base: [base], revised: [revised] });
+    const event = comparison.events.at(0);
+    expect(event?.type).toBe("formatting");
+    if (event?.type !== "formatting" || event.relation.formatting === null) return;
+    expect(event.relation.formatting.paragraph.authored.map(({ key }) => key)).toEqual([
+      "directAlignment",
+    ]);
+    expect(event.relation.formatting.paragraph.effective.map(({ key }) => key)).toEqual([
+      "alignment",
+      "fontSize",
+    ]);
   });
 
   test("inline-only formatting changes carry UTF-16 range offsets", () => {
@@ -1322,7 +1448,7 @@ describe("representation-neutral comparison stream", () => {
     expect(event?.type).toBe("formatting");
     if (event?.type !== "formatting") throw new Error("expected formatting");
     expect(event.relation.formatting).toEqual({
-      paragraph: [],
+      paragraph: { authored: [], effective: [] },
       ranges: [
         {
           baseStart: 1,
@@ -1859,6 +1985,39 @@ describe("container-aware comparison", () => {
     expect(result.error).toBeInstanceOf(InvalidFolioContentComparisonError);
     expect(result.error).toMatchObject({
       input: "base",
+      blockIndex: 0,
+      field: "blocks[0].table",
+    });
+  });
+
+  test("physical table-cell order must agree with logical grid placement", () => {
+    const result = compareContent({
+      base: {
+        blocks: [
+          tableBlock({
+            id: "physical-first",
+            text: "First",
+            rowIndex: 0,
+            cellIndex: 0,
+            gridColumnIndex: 1,
+          }),
+          tableBlock({
+            id: "physical-second",
+            text: "Second",
+            rowIndex: 0,
+            cellIndex: 1,
+            gridColumnIndex: 0,
+          }),
+        ],
+      },
+      revised: { blocks: [] },
+    });
+
+    expect(result.isErr()).toBe(true);
+    if (!result.isErr()) return;
+    expect(result.error).toBeInstanceOf(InvalidFolioContentComparisonError);
+    expect(result.error).toMatchObject({
+      input: "base",
       blockIndex: 1,
       field: "blocks[1].table",
     });
@@ -2339,6 +2498,66 @@ const generatedBlocks = fc.array(
   { maxLength: 14 },
 );
 
+const generatedMutations = fc.array(
+  fc.record({
+    text: generatedText,
+    kind: fc.constantFrom<TestBlockKind>("paragraph", "heading"),
+    bold: fc.boolean(),
+    color: fc.constantFrom("112233", "445566", "theme-accent"),
+    styleId: fc.constantFrom("Body", "Quote", "Heading1"),
+    alignment: fc.constantFrom("left", "center", "start"),
+    boundary: fc.constantFrom<"end" | "none" | "start">("none", "start", "end"),
+    container: fc.option(fc.constantFrom("body", "schedule-a", "schedule-b"), {
+      nil: undefined,
+    }),
+    mutation: fc.constantFrom<
+      | "authored-paragraph"
+      | "block"
+      | "container"
+      | "delete"
+      | "effective-paragraph"
+      | "inline"
+      | "structure"
+      | "text"
+      | "unchanged"
+    >(
+      "unchanged",
+      "text",
+      "block",
+      "authored-paragraph",
+      "effective-paragraph",
+      "inline",
+      "structure",
+      "container",
+      "delete",
+    ),
+    insertAfter: fc.boolean(),
+    moveRank: fc.integer({ min: 0, max: 20 }),
+  }),
+  { maxLength: 12 },
+);
+
+const generatedTableRows = fc.array(fc.array(generatedText, { minLength: 1, maxLength: 3 }), {
+  maxLength: 3,
+});
+
+const generatedSplitPart = fc.constantFrom(
+  "alpha",
+  "defined term",
+  "§ 12",
+  "😀 clause",
+  "článek pět",
+  "بند قانوني",
+);
+
+const boundaryAt = (
+  placement: "end" | "none" | "start",
+  text: string,
+): TestBlock["structuralBoundaries"] =>
+  placement === "none"
+    ? []
+    : [{ type: "pageBreak", offset: placement === "start" ? 0 : text.length, clear: "none" }];
+
 const stablePermutation = fc.shuffledSubarray(
   ["stable-a", "stable-b", "stable-c", "stable-d", "stable-e", "stable-f"],
   { minLength: 6, maxLength: 6 },
@@ -2366,57 +2585,172 @@ describe("comparison projection invariants", () => {
         );
         const comparison = successfulComparison({ base, revised });
 
-        expect(baseProjection(comparison)).toEqual(base);
-        expect(revisedProjection(comparison)).toEqual(revised);
-        for (const event of comparison.events) {
-          const expectedCardinality = {
-            unchanged: [1, 1],
-            modified: [1, 1],
-            formatting: [1, 1],
-            inserted: [0, 1],
-            deleted: [1, 0],
-            movedFrom: [1, 0],
-            movedTo: [0, 1],
-            split: [1, 2],
-            merge: [2, 1],
-          } as const satisfies Record<
-            FolioContentComparisonEvent["type"],
-            readonly [number, number]
-          >;
-          expect([eventBaseBlocks(event).length, eventRevisedBlocks(event).length]).toEqual(
-            expectedCardinality[event.type],
-          );
-          switch (event.type) {
-            case "unchanged":
-            case "modified":
-            case "formatting":
-            case "movedTo":
-              expect(event.relation.relationType).toBe("whole");
-              expectRelationReconstructs(event.relation);
-              break;
-            case "split":
-            case "merge":
-              expect(event.relations.every(({ relationType }) => relationType === "range")).toBe(
-                true,
-              );
-              expect(event.separator.relationType).toBe("separator");
-              for (const relation of [...event.relations, event.separator]) {
-                expectRelationReconstructs(relation);
-              }
-              break;
-            case "inserted":
-            case "deleted":
-            case "movedFrom":
-            case "structural":
-              break;
-            default: {
-              const unreachable: never = event;
-              throw new Error(`Unhandled event ${JSON.stringify(unreachable)}`);
-            }
-          }
-        }
+        expectComparisonReconstructs(comparison, base, revised);
       }),
       propertyConfig({ numRuns: 200 }),
+    );
+  });
+
+  test("generated semantic mutations reconstruct text, formatting, structure, and identity", () => {
+    fc.assert(
+      fc.property(generatedMutations, (mutations) => {
+        const base = mutations.map(
+          ({ text, kind, bold, color, styleId, alignment, boundary, container }, index) =>
+            contentBlock({
+              id: `stable-${String(index)}`,
+              identitySemantics: "authoritative",
+              text,
+              kind,
+              headingLevel: kind === "heading" ? 1 : undefined,
+              styleId,
+              effectiveParagraphFormatting: { alignment },
+              runs:
+                text.length === 0
+                  ? []
+                  : [{ text, bold, directFormatting: { color } }],
+              structuralBoundaries: boundaryAt(boundary, text),
+              containerPath:
+                container === undefined ? [] : [{ kind: "section", id: container }],
+            }),
+        );
+        const revised = mutations
+          .map((entry, index) => {
+            const revisedText = entry.mutation === "text" ? `${entry.text} Δ` : entry.text;
+            const revisedKind =
+              entry.mutation === "block"
+                ? entry.kind === "heading"
+                  ? "paragraph"
+                  : "heading"
+                : entry.kind;
+            const survivor =
+              entry.mutation === "delete"
+                ? []
+                : [
+                    contentBlock({
+                      id: `stable-${String(index)}`,
+                      identitySemantics: "authoritative",
+                      text: revisedText,
+                      kind: revisedKind,
+                      headingLevel: revisedKind === "heading" ? 1 : undefined,
+                      styleId:
+                        entry.mutation === "authored-paragraph"
+                          ? `${entry.styleId}-revised`
+                          : entry.styleId,
+                      effectiveParagraphFormatting: {
+                        alignment:
+                          entry.mutation === "effective-paragraph"
+                            ? `${entry.alignment}-revised`
+                            : entry.alignment,
+                      },
+                      runs:
+                        revisedText.length === 0
+                          ? []
+                          : [
+                              {
+                                text: revisedText,
+                                bold: entry.mutation === "inline" ? !entry.bold : entry.bold,
+                                directFormatting: {
+                                  color:
+                                    entry.mutation === "inline"
+                                      ? `${entry.color}-revised`
+                                      : entry.color,
+                                },
+                              },
+                            ],
+                      structuralBoundaries: boundaryAt(
+                        entry.mutation === "structure"
+                          ? entry.boundary === "none"
+                            ? "start"
+                            : "none"
+                          : entry.boundary,
+                        revisedText,
+                      ),
+                      containerPath:
+                        entry.mutation === "container"
+                          ? [{ kind: "section", id: `${entry.container ?? "body"}-revised` }]
+                          : entry.container === undefined
+                            ? []
+                            : [{ kind: "section", id: entry.container }],
+                    }),
+                  ];
+            const inserted = entry.insertAfter
+              ? [
+                  contentBlock({
+                    id: `inserted-${String(index)}`,
+                    identitySemantics: "authoritative",
+                    text: `Inserted ${entry.text}`,
+                    runs: [{ text: `Inserted ${entry.text}`, italic: true }],
+                  }),
+                ]
+              : [];
+            return { rank: entry.moveRank, index, blocks: [...survivor, ...inserted] };
+          })
+          .toSorted((left, right) => left.rank - right.rank || left.index - right.index)
+          .flatMap(({ blocks }) => blocks);
+
+        const comparison = successfulComparison({ base, revised });
+
+        expectComparisonReconstructs(comparison, base, revised);
+      }),
+      propertyConfig({ numRuns: 160 }),
+    );
+  });
+
+  test("generated table stories reconstruct row-major structural members", () => {
+    fc.assert(
+      fc.property(generatedTableRows, generatedTableRows, (baseRows, revisedRows) => {
+        const toTableBlocks = (rows: readonly (readonly string[])[], side: string): TestBlock[] =>
+          rows.flatMap((cells, rowIndex) =>
+            cells.map((text, cellIndex) =>
+              tableBlock({
+                id: `${side}-${String(rowIndex)}-${String(cellIndex)}`,
+                text,
+                rowIndex,
+                cellIndex,
+              }),
+            ),
+          );
+        const base = toTableBlocks(baseRows, "base");
+        const revised = toTableBlocks(revisedRows, "revised");
+
+        const comparison = successfulComparison({ base, revised });
+
+        expectComparisonReconstructs(comparison, base, revised);
+      }),
+      propertyConfig({ numRuns: 100 }),
+    );
+  });
+
+  test("generated splits and merges reconstruct either stable survivor direction", () => {
+    fc.assert(
+      fc.property(
+        generatedSplitPart,
+        generatedSplitPart,
+        fc.constantFrom(" ", "\n", "\t", "\r\n"),
+        fc.boolean(),
+        (leftText, rightText, separator, rightSurvives) => {
+          const joinedId = rightSurvives ? "right" : "left";
+          const joinedText = `${leftText}${separator}${rightText}`;
+          const joinedBase = contentBlock({ id: joinedId, text: joinedText });
+          const splitRevised = [
+            contentBlock({ id: "left", text: leftText }),
+            contentBlock({ id: "right", text: rightText }),
+          ];
+          const split = successfulComparison({ base: [joinedBase], revised: splitRevised });
+          expect(eventTypes(split)).toEqual(["split"]);
+          expectComparisonReconstructs(split, [joinedBase], splitRevised);
+
+          const mergeBase = [
+            contentBlock({ id: "left", text: leftText }),
+            contentBlock({ id: "right", text: rightText }),
+          ];
+          const joinedRevised = contentBlock({ id: joinedId, text: joinedText });
+          const merge = successfulComparison({ base: mergeBase, revised: [joinedRevised] });
+          expect(eventTypes(merge)).toEqual(["merge"]);
+          expectComparisonReconstructs(merge, mergeBase, [joinedRevised]);
+        },
+      ),
+      propertyConfig({ numRuns: 100 }),
     );
   });
 

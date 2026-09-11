@@ -55,13 +55,15 @@ const block = (
   text,
   ...(runs !== undefined && { runs }),
   ...((styleId !== undefined || directSpacing !== undefined) && {
-    paragraphFormatting: propertySet({
-      styleId,
-      directSpacing:
-        directSpacing === undefined
-          ? undefined
-          : { type: "object", entries: propertySet(directSpacing) },
-    }),
+    paragraphFormatting: {
+      authored: propertySet({
+        styleId,
+        directSpacing:
+          directSpacing === undefined
+            ? undefined
+            : { type: "object", entries: propertySet(directSpacing) },
+      }),
+    },
   }),
   ...(table !== undefined && {
     table: {
@@ -87,7 +89,7 @@ const block = (
 const expectLimit = (
   result: ReturnType<typeof compareContent>,
   expected: {
-    input: "base" | "revised" | "result";
+    input: "base" | "revised" | "result" | "session";
     limit: keyof typeof FOLIO_CONTENT_COMPARISON_LIMITS;
     blockIndex?: number;
   },
@@ -171,6 +173,28 @@ const expectInvalidComparisonInput = (input: ReturnType<typeof richComparisonInp
 };
 
 describe("neutral comparison resource boundaries", () => {
+  test("bounds aggregate empty story comparisons", () => {
+    const workSession = createContentComparisonWorkSession();
+    const empty = { blocks: [] } as const;
+    for (let index = 0; index < FOLIO_CONTENT_COMPARISON_LIMITS.storiesPerSession; index++) {
+      const operation = workSession.captureComparison({ base: empty, revised: empty });
+      if (operation.isErr()) throw operation.error;
+      const comparison = operation.value.compare();
+      if (comparison.isErr()) throw comparison.error;
+    }
+
+    const exceeded = workSession.captureComparison({ base: empty, revised: empty });
+    expect(exceeded.isErr()).toBe(true);
+    if (!exceeded.isErr()) return;
+    expect(exceeded.error).toBeInstanceOf(FolioContentComparisonLimitError);
+    expect(exceeded.error).toMatchObject({
+      input: "session",
+      limit: "storiesPerSession",
+      maximum: FOLIO_CONTENT_COMPARISON_LIMITS.storiesPerSession,
+      actual: FOLIO_CONTENT_COMPARISON_LIMITS.storiesPerSession + 1,
+    });
+  });
+
   test("charges aggregate input usage across captured story pairs atomically", () => {
     const text = "x".repeat(1_000_000);
     const story = (prefix: string, count: number) => ({
@@ -673,7 +697,7 @@ describe("neutral comparison resource boundaries", () => {
     if (event?.type !== "modified") throw new Error("expected a modified event");
     expect(event.relation.base.block.text).toBe("Before");
     expect(event.relation.revised.block.text).toBe("After");
-    expect(event.relation.base.block.paragraphFormatting).toEqual([
+    expect(event.relation.base.block.paragraphFormatting.authored).toEqual([
       {
         key: "directSpacing",
         value: {
@@ -683,6 +707,65 @@ describe("neutral comparison resource boundaries", () => {
       },
     ]);
     expect(operation.value.compare().error).toMatchObject({ reason: "operation-consumed" });
+  });
+
+  test("captures shared proxy boundaries once across both sides without value reads", () => {
+    const source = block("proxy", { text: "Before" });
+    let blockOwnKeys = 0;
+    let blockTextDescriptors = 0;
+    let blockValueReads = 0;
+    let prototypeReads = 0;
+    const blockProxy = new Proxy(source, {
+      get: () => {
+        blockValueReads++;
+        throw new Error("capture must not read caller values");
+      },
+      getPrototypeOf: () => {
+        prototypeReads++;
+        throw new Error("capture must not inspect caller prototypes");
+      },
+      ownKeys: (target) => {
+        blockOwnKeys++;
+        return Reflect.ownKeys(target);
+      },
+      getOwnPropertyDescriptor: (target, field) => {
+        const descriptor = Reflect.getOwnPropertyDescriptor(target, field);
+        if (field !== "text" || !descriptor || !("value" in descriptor)) return descriptor;
+        blockTextDescriptors++;
+        return { ...descriptor, value: blockTextDescriptors === 1 ? "Before" : "Drifted" };
+      },
+    });
+    const blocksTarget = [blockProxy];
+    let arrayOwnKeys = 0;
+    let arrayValueReads = 0;
+    const blocksProxy = new Proxy(blocksTarget, {
+      get: () => {
+        arrayValueReads++;
+        throw new Error("capture must not read caller arrays");
+      },
+      ownKeys: (target) => {
+        arrayOwnKeys++;
+        return Reflect.ownKeys(target);
+      },
+    });
+
+    const result = compareContent({
+      base: { blocks: blocksProxy },
+      revised: { blocks: blocksProxy },
+    });
+
+    if (result.isErr()) throw result.error;
+    const event = result.value.events.at(0);
+    expect(event?.type).toBe("unchanged");
+    if (event?.type !== "unchanged") return;
+    expect(event.relation.base.block.text).toBe("Before");
+    expect(event.relation.revised.block.text).toBe("Before");
+    expect(blockOwnKeys).toBe(1);
+    expect(blockTextDescriptors).toBe(1);
+    expect(arrayOwnKeys).toBe(1);
+    expect(blockValueReads).toBe(0);
+    expect(arrayValueReads).toBe(0);
+    expect(prototypeReads).toBe(0);
   });
 
   test("accepts readonly snapshots without copying caller arrays", () => {

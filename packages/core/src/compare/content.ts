@@ -27,6 +27,7 @@ import type {
   FolioContentBlock,
   FolioContentIdentity,
   FolioContentInlineFormattingChange,
+  FolioContentParagraphFormatting,
   FolioContentPropertyChange,
   FolioContentPropertyInput,
   FolioContentPropertySet,
@@ -39,6 +40,7 @@ import {
   FOLIO_CONTENT_CONTAINER_FIELD_DESCRIPTORS,
   FOLIO_CONTENT_IDENTITY_FIELD_DESCRIPTORS,
   FOLIO_CONTENT_IDENTITY_SEMANTICS,
+  FOLIO_CONTENT_PARAGRAPH_FORMATTING_FIELD_DESCRIPTORS,
   FOLIO_CONTENT_PROPERTY_ARRAY_FIELD_DESCRIPTORS,
   FOLIO_CONTENT_PROPERTY_ENTRY_FIELD_DESCRIPTORS,
   FOLIO_CONTENT_PROPERTY_OBJECT_FIELD_DESCRIPTORS,
@@ -50,6 +52,7 @@ import {
 
 /** Hard resource ceilings for one representation-neutral comparison work session. */
 export const FOLIO_CONTENT_COMPARISON_LIMITS = Object.freeze({
+  storiesPerSession: 4_096,
   blocksPerSnapshot: 100_000,
   events: 200_000,
   changes: 10_000,
@@ -106,7 +109,7 @@ export class FolioContentComparisonLimitError extends TaggedError(
   "FolioContentComparisonLimitError",
 )<{
   message: string;
-  input: "base" | "revised" | "result";
+  input: "base" | "revised" | "result" | "session";
   limit: FolioContentComparisonLimit;
   maximum: number;
   actual: number;
@@ -145,9 +148,12 @@ export type FolioContentFormatRange = {
   readonly formatting: FolioContentInlineFormattingChange;
 };
 
+/** Authored and effective paragraph-property deltas for one paired block. */
+export type FolioContentParagraphFormattingChange = FolioContentInlineFormattingChange;
+
 /** Presentation differences for one text-aligned block pair. */
 export type FolioContentFormattingChange = {
-  readonly paragraph: readonly FolioContentPropertyChange[];
+  readonly paragraph: FolioContentParagraphFormattingChange;
   readonly ranges: readonly FolioContentFormatRange[];
 };
 
@@ -359,6 +365,7 @@ type SnapshotResourceUsage = Record<SnapshotResource, number>;
 type ContentComparisonResourceUsage = {
   base: SnapshotResourceUsage;
   revised: SnapshotResourceUsage;
+  stories: number;
   changes: number;
   formattingRanges: number;
   structuralMembers: number;
@@ -480,6 +487,7 @@ export class FolioContentComparisonWorkSession {
   #resourceUsage: ContentComparisonResourceUsage = {
     base: emptySnapshotResourceUsage(),
     revised: emptySnapshotResourceUsage(),
+    stories: 0,
     changes: 0,
     formattingRanges: 0,
     structuralMembers: 0,
@@ -560,9 +568,21 @@ export class FolioContentComparisonWorkSession {
         }),
       );
     }
-    const capturedBase = captureContentSnapshot(base, "base");
+    const storyCount = this.#resourceUsage.stories + 1;
+    if (storyCount > FOLIO_CONTENT_COMPARISON_LIMITS.storiesPerSession) {
+      return Result.err(
+        limitExceeded({
+          input: "session",
+          limit: "storiesPerSession",
+          maximum: FOLIO_CONTENT_COMPARISON_LIMITS.storiesPerSession,
+          actual: storyCount,
+        }),
+      );
+    }
+    const registry = createCaptureRegistry();
+    const capturedBase = captureContentSnapshot(base, "base", registry);
     if (capturedBase.isErr()) return Result.err(capturedBase.error);
-    const capturedRevised = captureContentSnapshot(revised, "revised");
+    const capturedRevised = captureContentSnapshot(revised, "revised", registry);
     if (capturedRevised.isErr()) return Result.err(capturedRevised.error);
     const aggregateError = claimSnapshotPairResources(
       this.#resourceUsage,
@@ -570,6 +590,7 @@ export class FolioContentComparisonWorkSession {
       capturedRevised.value.usage,
     );
     if (aggregateError) return Result.err(aggregateError);
+    this.#resourceUsage.stories = storyCount;
 
     const captured = Object.freeze({
       base: capturedBase.value.snapshot,
@@ -691,7 +712,7 @@ const limitExceeded = ({
   blockIndex,
   field,
 }: {
-  input: "base" | "revised" | "result";
+  input: "base" | "revised" | "result" | "session";
   limit: FolioContentComparisonLimit;
   maximum: number;
   actual: number;
@@ -714,28 +735,207 @@ const isFiniteInteger = (value: unknown): value is number =>
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
 const IDENTITY_SEMANTICS = new Set(FOLIO_CONTENT_IDENTITY_SEMANTICS);
 
-type OwnDataProperty =
-  | { readonly status: "absent" }
-  | { readonly status: "present"; readonly value: unknown }
-  | { readonly status: "accessor" };
-
-const ownDataProperty = (value: object, field: PropertyKey): OwnDataProperty => {
-  const descriptor = Object.getOwnPropertyDescriptor(value, field);
-  if (!descriptor) return { status: "absent" };
-  if (!("value" in descriptor)) return { status: "accessor" };
-  return { status: "present", value: descriptor.value };
+type CapturedDataRecord = ReadonlyMap<string, unknown>;
+type CapturedPropertyDescriptors = ReturnType<typeof Object.getOwnPropertyDescriptors>;
+type CaptureRegistry = {
+  readonly descriptors: WeakMap<object, CapturedPropertyDescriptors>;
+  readonly denseArrays: WeakMap<readonly unknown[], readonly unknown[]>;
 };
 
-const hasPlainObjectShape = (value: unknown): value is Record<string, unknown> => {
-  if (!isRecord(value)) return false;
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
+const createCaptureRegistry = (): CaptureRegistry => ({
+  descriptors: new WeakMap(),
+  denseArrays: new WeakMap(),
+});
+
+type CaptureLocation = {
+  readonly side: "options" | "base" | "revised";
+  readonly blockIndex?: number;
+  readonly registry?: CaptureRegistry;
 };
+
+const capturePropertyDescriptors = (
+  input: object,
+  path: string,
+  { side, blockIndex, registry }: CaptureLocation,
+): Result<CapturedPropertyDescriptors, InvalidFolioContentComparisonError> => {
+  const retained = registry?.descriptors.get(input);
+  if (retained) return Result.ok(retained);
+  const captured = Result.try({
+    try: () => Object.getOwnPropertyDescriptors(input),
+    catch: () =>
+      invalidInput(
+        side,
+        path,
+        "Content comparison values must expose stable own data properties.",
+        blockIndex,
+      ),
+  });
+  if (captured.isOk()) registry?.descriptors.set(input, captured.value);
+  return captured;
+};
+
+/**
+ * Capture an object once at the untrusted-input boundary. Validation and all
+ * later reads use the returned descriptor values, never the caller object.
+ */
+const captureExactDataRecord = (
+  input: unknown,
+  fields: readonly string[],
+  path: string,
+  location: CaptureLocation,
+): Result<CapturedDataRecord, InvalidFolioContentComparisonError> => {
+  const { side, blockIndex } = location;
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+    return Result.err(
+      invalidInput(side, path, "Content comparison records must be objects.", blockIndex),
+    );
+  }
+  const capturedDescriptors = capturePropertyDescriptors(input, path, location);
+  if (capturedDescriptors.isErr()) return Result.err(capturedDescriptors.error);
+
+  const allowed = new Set(fields);
+  const values = new Map<string, unknown>();
+  for (const key of Reflect.ownKeys(capturedDescriptors.value)) {
+    if (typeof key !== "string" || !allowed.has(key)) {
+      return Result.err(
+        invalidInput(
+          side,
+          path,
+          "Content comparison records cannot contain unknown fields or symbols.",
+          blockIndex,
+        ),
+      );
+    }
+    const descriptor = capturedDescriptors.value[key];
+    if (!descriptor || !("value" in descriptor)) {
+      return Result.err(
+        invalidInput(
+          side,
+          `${path}.${key}`,
+          "Content comparison inputs must contain own data properties.",
+          blockIndex,
+        ),
+      );
+    }
+    values.set(key, descriptor.value);
+  }
+  return Result.ok(values);
+};
+
+/** Capture one dense array from one descriptor snapshot. */
+const captureExactDenseArray = (
+  input: unknown,
+  path: string,
+  location: CaptureLocation,
+  maximum?: {
+    readonly limit: FolioContentComparisonLimit;
+    readonly value: number;
+  },
+): Result<
+  readonly unknown[],
+  InvalidFolioContentComparisonError | FolioContentComparisonLimitError
+> => {
+  const { side, blockIndex, registry } = location;
+  if (!Array.isArray(input)) {
+    return Result.err(invalidInput(side, path, "Content comparison value must be an array.", blockIndex));
+  }
+  const retained = registry?.denseArrays.get(input);
+  if (retained) {
+    if (maximum && retained.length > maximum.value) {
+      if (side === "options") {
+        return panic("An options array cannot consume a snapshot resource limit");
+      }
+      return Result.err(
+        limitExceeded({
+          input: side,
+          limit: maximum.limit,
+          maximum: maximum.value,
+          actual: retained.length,
+          ...(blockIndex !== undefined && { blockIndex }),
+          field: path,
+        }),
+      );
+    }
+    return Result.ok(retained);
+  }
+  const capturedDescriptors = capturePropertyDescriptors(input, path, location);
+  if (capturedDescriptors.isErr()) return Result.err(capturedDescriptors.error);
+
+  const descriptors = capturedDescriptors.value;
+  const lengthDescriptor = descriptors.length;
+  if (
+    !lengthDescriptor ||
+    !("value" in lengthDescriptor) ||
+    !Number.isSafeInteger(lengthDescriptor.value) ||
+    lengthDescriptor.value < 0
+  ) {
+    return Result.err(
+      invalidInput(side, path, "Content comparison arrays must have a valid data length.", blockIndex),
+    );
+  }
+  const length: number = lengthDescriptor.value;
+  if (maximum && length > maximum.value) {
+    if (side === "options") {
+      return panic("An options array cannot consume a snapshot resource limit");
+    }
+    return Result.err(
+      limitExceeded({
+        input: side,
+        limit: maximum.limit,
+        maximum: maximum.value,
+        actual: length,
+        ...(blockIndex !== undefined && { blockIndex }),
+        field: path,
+      }),
+    );
+  }
+  const keys = Reflect.ownKeys(descriptors);
+  if (keys.length !== length + 1) {
+    return Result.err(
+      invalidInput(
+        side,
+        path,
+        "Content comparison arrays must be dense and cannot contain extra fields or symbols.",
+        blockIndex,
+      ),
+    );
+  }
+  const values: unknown[] = [];
+  for (const key of keys) {
+    if (key === "length") continue;
+    if (typeof key !== "string") {
+      return Result.err(
+        invalidInput(side, path, "Content comparison arrays cannot contain symbol fields.", blockIndex),
+      );
+    }
+    const index = Number(key);
+    if (!Number.isSafeInteger(index) || index < 0 || index >= length || String(index) !== key) {
+      return Result.err(
+        invalidInput(side, path, "Content comparison arrays cannot contain non-index fields.", blockIndex),
+      );
+    }
+    const descriptor = descriptors[key];
+    if (!descriptor || !("value" in descriptor)) {
+      return Result.err(
+        invalidInput(
+          side,
+          `${path}[${key}]`,
+          "Content comparison arrays must contain own data items.",
+          blockIndex,
+        ),
+      );
+    }
+    values[index] = descriptor.value;
+  }
+  const captured = Object.freeze(values);
+  registry?.denseArrays.set(input, captured);
+  return Result.ok(captured);
+};
+
+const recordHasExactly = (record: CapturedDataRecord, fields: readonly string[]): boolean =>
+  record.size === fields.length && fields.every((field) => record.has(field));
 
 type TableCellRectangle = {
   blockIndex: number;
@@ -743,6 +943,11 @@ type TableCellRectangle = {
   right: number;
   top: number;
   bottom: number;
+};
+
+type TableRowCellPlacement = {
+  cellIndex: number;
+  gridEnd: number;
 };
 
 const overlappingTableCellBlockIndex = (cells: readonly TableCellRectangle[]): number | null => {
@@ -847,105 +1052,8 @@ type CaptureContext = {
   side: "base" | "revised";
   blockIndex?: number;
   usage: SnapshotResourceUsage;
+  registry: CaptureRegistry;
 };
-
-const validateExactObjectShape = (
-  source: object,
-  fields: readonly string[],
-  path: string,
-  { side, blockIndex }: CaptureContext,
-): InvalidFolioContentComparisonError | null => {
-  const allowed = new Set(fields);
-  for (const key of Reflect.ownKeys(source)) {
-    if (typeof key !== "string" || !allowed.has(key)) {
-      return invalidInput(
-        side,
-        path,
-        "Content comparison records cannot contain unknown fields or symbols.",
-        blockIndex,
-      );
-    }
-    const descriptor = Object.getOwnPropertyDescriptor(source, key);
-    if (!descriptor || !("value" in descriptor)) {
-      return invalidInput(
-        side,
-        `${path}.${key}`,
-        "Content comparison inputs must contain own data properties.",
-        blockIndex,
-      );
-    }
-  }
-  return null;
-};
-
-const validateExactDenseArray = (
-  source: readonly unknown[],
-  path: string,
-  { side, blockIndex }: CaptureContext,
-): InvalidFolioContentComparisonError | null => {
-  const keys = Reflect.ownKeys(source);
-  if (keys.length !== source.length + 1) {
-    return invalidInput(
-      side,
-      path,
-      "Content comparison arrays must be dense and cannot contain extra fields or symbols.",
-      blockIndex,
-    );
-  }
-  for (const key of keys) {
-    if (key === "length") continue;
-    if (typeof key !== "string") {
-      return invalidInput(
-        side,
-        path,
-        "Content comparison arrays cannot contain symbol fields.",
-        blockIndex,
-      );
-    }
-    const index = Number(key);
-    if (!Number.isSafeInteger(index) || index < 0 || index >= source.length || String(index) !== key) {
-      return invalidInput(
-        side,
-        path,
-        "Content comparison arrays cannot contain non-index fields.",
-        blockIndex,
-      );
-    }
-    const descriptor = Object.getOwnPropertyDescriptor(source, key);
-    if (!descriptor || !("value" in descriptor)) {
-      return invalidInput(
-        side,
-        `${path}[${key}]`,
-        "Content comparison arrays must contain own data items.",
-        blockIndex,
-      );
-    }
-  }
-  return null;
-};
-
-const readOwnValue = (
-  source: object,
-  field: PropertyKey,
-  path: string,
-  { side, blockIndex }: CaptureContext,
-): Result<unknown, InvalidFolioContentComparisonError> => {
-  const property = ownDataProperty(source, field);
-  if (property.status === "accessor") {
-    return Result.err(
-      invalidInput(side, path, "Content comparison inputs must contain own data properties.", blockIndex),
-    );
-  }
-  return Result.ok(property.status === "present" ? property.value : undefined);
-};
-
-const readArrayItem = (
-  source: readonly unknown[],
-  index: number,
-  path: string,
-  context: CaptureContext,
-): Result<unknown, InvalidFolioContentComparisonError> =>
-  readOwnValue(source, String(index), path, context);
 
 const chargeCapturedString = (
   value: string,
@@ -1010,69 +1118,65 @@ const capturePropertyValue = (
     const limit = chargeCapturedString(input, path, context);
     return limit ? Result.err(limit) : Result.ok(input);
   }
-  if (!hasPlainObjectShape(input)) {
-    return Result.err(
-      invalidInput(
-        context.side,
-        path,
-        "A property value must be a scalar or a plain discriminated container.",
-        context.blockIndex,
-      ),
+  const record = captureExactDataRecord(
+    input,
+    [
+      ...Object.values(FOLIO_CONTENT_PROPERTY_ARRAY_FIELD_DESCRIPTORS).map(({ field }) => field),
+      ...Object.values(FOLIO_CONTENT_PROPERTY_OBJECT_FIELD_DESCRIPTORS).map(({ field }) => field),
+    ],
+    path,
+    context,
+  );
+  if (record.isErr()) return Result.err(record.error);
+  const type = record.value.get("type");
+  if (type === "array") {
+    const fields = Object.values(FOLIO_CONTENT_PROPERTY_ARRAY_FIELD_DESCRIPTORS).map(
+      ({ field }) => field,
     );
-  }
-  const type = readOwnValue(input, "type", `${path}.type`, context);
-  if (type.isErr()) return Result.err(type.error);
-  if (type.value === "array") {
-    const shapeError = validateExactObjectShape(
-      input,
-      Object.values(FOLIO_CONTENT_PROPERTY_ARRAY_FIELD_DESCRIPTORS).map(({ field }) => field),
-      path,
-      context,
-    );
-    if (shapeError) return Result.err(shapeError);
-    const items = readOwnValue(input, "items", `${path}.items`, context);
+    if (!recordHasExactly(record.value, fields)) {
+      return Result.err(
+        invalidInput(
+          context.side,
+          path,
+          "Property arrays require exactly type and items.",
+          context.blockIndex,
+        ),
+      );
+    }
+    const items = captureExactDenseArray(record.value.get("items"), `${path}.items`, context, {
+      limit: "propertyEntriesPerContainer",
+      value: FOLIO_CONTENT_COMPARISON_LIMITS.propertyEntriesPerContainer,
+    });
     if (items.isErr()) return Result.err(items.error);
-    if (!Array.isArray(items.value)) {
-      return Result.err(
-        invalidInput(context.side, `${path}.items`, "Property array items must be an array.", context.blockIndex),
-      );
-    }
-    if (items.value.length > FOLIO_CONTENT_COMPARISON_LIMITS.propertyEntriesPerContainer) {
-      return Result.err(
-        limitExceeded({
-          input: context.side,
-          limit: "propertyEntriesPerContainer",
-          maximum: FOLIO_CONTENT_COMPARISON_LIMITS.propertyEntriesPerContainer,
-          actual: items.value.length,
-          blockIndex: context.blockIndex,
-          field: `${path}.items`,
-        }),
-      );
-    }
-    const arrayShapeError = validateExactDenseArray(items.value, `${path}.items`, context);
-    if (arrayShapeError) return Result.err(arrayShapeError);
     const capturedItems: FolioContentPropertyValue[] = [];
     for (let index = 0; index < items.value.length; index++) {
       const itemPath = `${path}.items[${String(index)}]`;
-      const item = readArrayItem(items.value, index, itemPath, context);
-      if (item.isErr()) return Result.err(item.error);
-      const captured = capturePropertyValue(item.value, itemPath, context, depth + 1);
+      const captured = capturePropertyValue(items.value[index], itemPath, context, depth + 1);
       if (captured.isErr()) return Result.err(captured.error);
       capturedItems.push(captured.value);
     }
     return Result.ok(Object.freeze({ type: "array", items: Object.freeze(capturedItems) }));
   }
-  if (type.value === "object") {
-    const shapeError = validateExactObjectShape(
-      input,
-      Object.values(FOLIO_CONTENT_PROPERTY_OBJECT_FIELD_DESCRIPTORS).map(({ field }) => field),
-      path,
-      context,
+  if (type === "object") {
+    const fields = Object.values(FOLIO_CONTENT_PROPERTY_OBJECT_FIELD_DESCRIPTORS).map(
+      ({ field }) => field,
     );
-    if (shapeError) return Result.err(shapeError);
-    const entries = readOwnValue(input, "entries", `${path}.entries`, context);
-    if (entries.isErr()) return Result.err(entries.error);
-    const captured = capturePropertySet(entries.value, `${path}.entries`, context, depth + 1);
+    if (!recordHasExactly(record.value, fields)) {
+      return Result.err(
+        invalidInput(
+          context.side,
+          path,
+          "Property objects require exactly type and entries.",
+          context.blockIndex,
+        ),
+      );
+    }
+    const captured = capturePropertySet(
+      record.value.get("entries"),
+      `${path}.entries`,
+      context,
+      depth + 1,
+    );
     return captured.isErr()
       ? Result.err(captured.error)
       : Result.ok(Object.freeze({ type: "object", entries: captured.value }));
@@ -1093,46 +1197,24 @@ const capturePropertySet = (
   context: CaptureContext,
   depth = 0,
 ): Result<FolioContentPropertySet, FolioContentComparisonError> => {
-  if (!Array.isArray(input)) {
-    return Result.err(
-      invalidInput(context.side, path, "A property set must be an entry array.", context.blockIndex),
-    );
-  }
-  if (input.length > FOLIO_CONTENT_COMPARISON_LIMITS.propertyEntriesPerContainer) {
-    return Result.err(
-      limitExceeded({
-        input: context.side,
-        limit: "propertyEntriesPerContainer",
-        maximum: FOLIO_CONTENT_COMPARISON_LIMITS.propertyEntriesPerContainer,
-        actual: input.length,
-        blockIndex: context.blockIndex,
-        field: path,
-      }),
-    );
-  }
-  const arrayShapeError = validateExactDenseArray(input, path, context);
-  if (arrayShapeError) return Result.err(arrayShapeError);
+  const entries = captureExactDenseArray(input, path, context, {
+    limit: "propertyEntriesPerContainer",
+    value: FOLIO_CONTENT_COMPARISON_LIMITS.propertyEntriesPerContainer,
+  });
+  if (entries.isErr()) return Result.err(entries.error);
   const keys = new Set<string>();
   const captured: { key: string; value: FolioContentPropertyValue }[] = [];
-  for (let index = 0; index < input.length; index++) {
+  for (let index = 0; index < entries.value.length; index++) {
     const entryPath = `${path}[${String(index)}]`;
-    const entry = readArrayItem(input, index, entryPath, context);
-    if (entry.isErr()) return Result.err(entry.error);
-    if (!hasPlainObjectShape(entry.value)) {
-      return Result.err(
-        invalidInput(context.side, entryPath, "A property entry must be a plain object.", context.blockIndex),
-      );
-    }
-    const shapeError = validateExactObjectShape(
-      entry.value,
+    const entry = captureExactDataRecord(
+      entries.value[index],
       Object.values(FOLIO_CONTENT_PROPERTY_ENTRY_FIELD_DESCRIPTORS).map(({ field }) => field),
       entryPath,
       context,
     );
-    if (shapeError) return Result.err(shapeError);
-    const key = readOwnValue(entry.value, "key", `${entryPath}.key`, context);
-    if (key.isErr()) return Result.err(key.error);
-    if (typeof key.value !== "string" || key.value.length === 0 || keys.has(key.value)) {
+    if (entry.isErr()) return Result.err(entry.error);
+    const key = entry.value.get("key");
+    if (typeof key !== "string" || key.length === 0 || keys.has(key)) {
       return Result.err(
         invalidInput(
           context.side,
@@ -1142,12 +1224,11 @@ const capturePropertySet = (
         ),
       );
     }
-    const keyLimit = chargeCapturedString(key.value, `${entryPath}.key`, context);
+    const keyLimit = chargeCapturedString(key, `${entryPath}.key`, context);
     if (keyLimit) return Result.err(keyLimit);
-    keys.add(key.value);
-    const value = readOwnValue(entry.value, "value", `${entryPath}.value`, context);
-    if (value.isErr()) return Result.err(value.error);
-    if (value.value === undefined) {
+    keys.add(key);
+    const value = entry.value.get("value");
+    if (value === undefined) {
       return Result.err(
         invalidInput(
           context.side,
@@ -1158,16 +1239,50 @@ const capturePropertySet = (
       );
     }
     const capturedValue = capturePropertyValue(
-      value.value,
+      value,
       `${entryPath}.value`,
       context,
       depth,
     );
     if (capturedValue.isErr()) return Result.err(capturedValue.error);
-    captured.push(Object.freeze({ key: key.value, value: capturedValue.value }));
+    captured.push(Object.freeze({ key, value: capturedValue.value }));
   }
   captured.sort(({ key: left }, { key: right }) => (left < right ? -1 : left > right ? 1 : 0));
   return Result.ok(Object.freeze(captured));
+};
+
+const EMPTY_PROPERTY_SET = Object.freeze([]) satisfies FolioContentPropertySet;
+
+const captureParagraphFormatting = (
+  input: unknown,
+  path: string,
+  context: CaptureContext,
+): Result<FolioContentParagraphFormatting, FolioContentComparisonError> => {
+  const record = captureExactDataRecord(
+    input,
+    Object.values(FOLIO_CONTENT_PARAGRAPH_FORMATTING_FIELD_DESCRIPTORS).map(
+      ({ field }) => field,
+    ),
+    path,
+    context,
+  );
+  if (record.isErr()) return Result.err(record.error);
+  let effective = EMPTY_PROPERTY_SET;
+  let authored = EMPTY_PROPERTY_SET;
+  for (const descriptor of Object.values(
+    FOLIO_CONTENT_PARAGRAPH_FORMATTING_FIELD_DESCRIPTORS,
+  )) {
+    const value = record.value.get(descriptor.field);
+    if (value === undefined) continue;
+    const captured = capturePropertySet(value, `${path}.${descriptor.field}`, context);
+    if (captured.isErr()) return Result.err(captured.error);
+    if (descriptor.role === "effective-format") {
+      effective = captured.value;
+    } else {
+      authored = captured.value;
+    }
+  }
+  return Result.ok(Object.freeze({ effective, authored }));
 };
 
 const captureContentRun = (
@@ -1175,18 +1290,13 @@ const captureContentRun = (
   path: string,
   context: CaptureContext,
 ): Result<FolioContentRun, FolioContentComparisonError> => {
-  if (!hasPlainObjectShape(input)) {
-    return Result.err(
-      invalidInput(context.side, path, "A preview run must be a plain object.", context.blockIndex),
-    );
-  }
-  const shapeError = validateExactObjectShape(
+  const record = captureExactDataRecord(
     input,
     Object.values(FOLIO_CONTENT_RUN_FIELD_DESCRIPTORS).map(({ field }) => field),
     path,
     context,
   );
-  if (shapeError) return Result.err(shapeError);
+  if (record.isErr()) return Result.err(record.error);
   const captured: {
     text: string;
     effectiveFormatting: FolioContentPropertySet;
@@ -1194,9 +1304,7 @@ const captureContentRun = (
   } = { text: "", effectiveFormatting: Object.freeze([]), authoredFormatting: Object.freeze([]) };
   for (const descriptor of Object.values(FOLIO_CONTENT_RUN_FIELD_DESCRIPTORS)) {
     const fieldPath = `${path}.${descriptor.field}`;
-    const property = readOwnValue(input, descriptor.field, fieldPath, context);
-    if (property.isErr()) return Result.err(property.error);
-    const value = property.value;
+    const value = record.value.get(descriptor.field);
     switch (descriptor.capture) {
       case "required-scalar":
         if (typeof value !== "string") {
@@ -1227,18 +1335,13 @@ const captureTableLocation = (
   path: string,
   context: CaptureContext,
 ): Result<NonNullable<FolioContentBlock["table"]>, FolioContentComparisonError> => {
-  if (!hasPlainObjectShape(input)) {
-    return Result.err(
-      invalidInput(context.side, path, "A table location must be a plain object.", context.blockIndex),
-    );
-  }
-  const shapeError = validateExactObjectShape(
+  const record = captureExactDataRecord(
     input,
     Object.values(FOLIO_CONTENT_TABLE_FIELD_DESCRIPTORS).map(({ field }) => field),
     path,
     context,
   );
-  if (shapeError) return Result.err(shapeError);
+  if (record.isErr()) return Result.err(record.error);
   const captured: {
     outerTableIdentity?: FolioContentBlock["identity"];
     tableIdentity?: FolioContentBlock["identity"];
@@ -1264,9 +1367,7 @@ const captureTableLocation = (
   };
   for (const descriptor of Object.values(FOLIO_CONTENT_TABLE_FIELD_DESCRIPTORS)) {
     const fieldPath = `${path}.${descriptor.field}`;
-    const property = readOwnValue(input, descriptor.field, fieldPath, context);
-    if (property.isErr()) return Result.err(property.error);
-    const value = property.value;
+    const value = record.value.get(descriptor.field);
     if (descriptor.validation === "identity") {
       const identity = captureContentIdentity(value, fieldPath, context);
       if (identity.isErr()) return Result.err(identity.error);
@@ -1316,26 +1417,12 @@ const captureContainerPath = (
   path: string,
   context: CaptureContext,
 ): Result<NonNullable<FolioContentBlock["containerPath"]>, FolioContentComparisonError> => {
-  if (!Array.isArray(input)) {
-    return Result.err(
-      invalidInput(context.side, path, "A container path must be an array.", context.blockIndex),
-    );
-  }
-  if (input.length > FOLIO_CONTENT_COMPARISON_LIMITS.containerDepth) {
-    return Result.err(
-      limitExceeded({
-        input: context.side,
-        limit: "containerDepth",
-        maximum: FOLIO_CONTENT_COMPARISON_LIMITS.containerDepth,
-        actual: input.length,
-        blockIndex: context.blockIndex,
-        field: path,
-      }),
-    );
-  }
-  const arrayShapeError = validateExactDenseArray(input, path, context);
-  if (arrayShapeError) return Result.err(arrayShapeError);
-  context.usage.containerEntries += input.length;
+  const entries = captureExactDenseArray(input, path, context, {
+    limit: "containerDepth",
+    value: FOLIO_CONTENT_COMPARISON_LIMITS.containerDepth,
+  });
+  if (entries.isErr()) return Result.err(entries.error);
+  context.usage.containerEntries += entries.value.length;
   if (context.usage.containerEntries > FOLIO_CONTENT_COMPARISON_LIMITS.containerEntriesPerSnapshot) {
     return Result.err(
       limitExceeded({
@@ -1349,41 +1436,33 @@ const captureContainerPath = (
     );
   }
   const captured: { kind: string; identity: FolioContentBlock["identity"] }[] = [];
-  for (let pathIndex = 0; pathIndex < input.length; pathIndex++) {
+  for (let pathIndex = 0; pathIndex < entries.value.length; pathIndex++) {
     const entryPath = `${path}[${String(pathIndex)}]`;
-    const item = readArrayItem(input, pathIndex, entryPath, context);
-    if (item.isErr()) return Result.err(item.error);
-    if (!hasPlainObjectShape(item.value)) {
-      return Result.err(
-        invalidInput(context.side, entryPath, "A container entry must be a plain object.", context.blockIndex),
-      );
-    }
-    const shapeError = validateExactObjectShape(
-      item.value,
+    const item = captureExactDataRecord(
+      entries.value[pathIndex],
       Object.values(FOLIO_CONTENT_CONTAINER_FIELD_DESCRIPTORS).map(({ field }) => field),
       entryPath,
       context,
     );
-    if (shapeError) return Result.err(shapeError);
+    if (item.isErr()) return Result.err(item.error);
     const entry: { kind: string; identity?: FolioContentBlock["identity"] } = { kind: "" };
     for (const descriptor of Object.values(FOLIO_CONTENT_CONTAINER_FIELD_DESCRIPTORS)) {
       const fieldPath = `${entryPath}.${descriptor.field}`;
-      const property = readOwnValue(item.value, descriptor.field, fieldPath, context);
-      if (property.isErr()) return Result.err(property.error);
+      const value = item.value.get(descriptor.field);
       if (descriptor.validation === "identity") {
-        const identity = captureContentIdentity(property.value, fieldPath, context);
+        const identity = captureContentIdentity(value, fieldPath, context);
         if (identity.isErr()) return Result.err(identity.error);
         entry.identity = identity.value;
         continue;
       }
-      if (typeof property.value !== "string" || property.value.length === 0) {
+      if (typeof value !== "string" || value.length === 0) {
         return Result.err(
           invalidInput(context.side, fieldPath, "Container fields must be non-empty strings.", context.blockIndex),
         );
       }
-      const limit = chargeCapturedString(property.value, fieldPath, context);
+      const limit = chargeCapturedString(value, fieldPath, context);
       if (limit) return Result.err(limit);
-      entry[descriptor.field] = property.value;
+      entry[descriptor.field] = value;
     }
     if (entry.identity === undefined) {
       return panic("The total container descriptor did not capture identity");
@@ -1399,26 +1478,12 @@ const captureStructuralBoundaries = (
   path: string,
   context: CaptureContext,
 ): Result<NonNullable<FolioContentBlock["structuralBoundaries"]>, FolioContentComparisonError> => {
-  if (!Array.isArray(input)) {
-    return Result.err(
-      invalidInput(context.side, path, "Structural boundaries must be an array.", context.blockIndex),
-    );
-  }
-  if (input.length > FOLIO_CONTENT_COMPARISON_LIMITS.structuralBoundariesPerBlock) {
-    return Result.err(
-      limitExceeded({
-        input: context.side,
-        limit: "structuralBoundariesPerBlock",
-        maximum: FOLIO_CONTENT_COMPARISON_LIMITS.structuralBoundariesPerBlock,
-        actual: input.length,
-        blockIndex: context.blockIndex,
-        field: path,
-      }),
-    );
-  }
-  const arrayShapeError = validateExactDenseArray(input, path, context);
-  if (arrayShapeError) return Result.err(arrayShapeError);
-  context.usage.structuralBoundaries += input.length;
+  const entries = captureExactDenseArray(input, path, context, {
+    limit: "structuralBoundariesPerBlock",
+    value: FOLIO_CONTENT_COMPARISON_LIMITS.structuralBoundariesPerBlock,
+  });
+  if (entries.isErr()) return Result.err(entries.error);
+  context.usage.structuralBoundaries += entries.value.length;
   if (
     context.usage.structuralBoundaries >
     FOLIO_CONTENT_COMPARISON_LIMITS.structuralBoundariesPerSnapshot
@@ -1436,33 +1501,24 @@ const captureStructuralBoundaries = (
   }
   const captured: { type: "pageBreak"; offset: number; clear?: "all" | "left" | "right" | "none" }[] = [];
   let priorOffset = -1;
-  for (let boundaryIndex = 0; boundaryIndex < input.length; boundaryIndex++) {
+  for (let boundaryIndex = 0; boundaryIndex < entries.value.length; boundaryIndex++) {
     const boundaryPath = `${path}[${String(boundaryIndex)}]`;
-    const item = readArrayItem(input, boundaryIndex, boundaryPath, context);
-    if (item.isErr()) return Result.err(item.error);
-    if (!hasPlainObjectShape(item.value)) {
-      return Result.err(
-        invalidInput(context.side, boundaryPath, "A structural boundary must be a plain object.", context.blockIndex),
-      );
-    }
-    const shapeError = validateExactObjectShape(
-      item.value,
+    const item = captureExactDataRecord(
+      entries.value[boundaryIndex],
       Object.values(FOLIO_CONTENT_STRUCTURAL_BOUNDARY_FIELD_DESCRIPTORS).map(
         ({ field }) => field,
       ),
       boundaryPath,
       context,
     );
-    if (shapeError) return Result.err(shapeError);
+    if (item.isErr()) return Result.err(item.error);
     const boundary: { type: "pageBreak"; offset: number; clear?: "all" | "left" | "right" | "none" } = {
       type: "pageBreak",
       offset: 0,
     };
     for (const descriptor of Object.values(FOLIO_CONTENT_STRUCTURAL_BOUNDARY_FIELD_DESCRIPTORS)) {
       const fieldPath = `${boundaryPath}.${descriptor.field}`;
-      const property = readOwnValue(item.value, descriptor.field, fieldPath, context);
-      if (property.isErr()) return Result.err(property.error);
-      const value = property.value;
+      const value = item.value.get(descriptor.field);
       if (descriptor.validation === "page-break") {
         if (value !== "pageBreak") {
           return Result.err(invalidInput(context.side, fieldPath, "Only page-break boundaries are supported.", context.blockIndex));
@@ -1494,24 +1550,12 @@ const captureRuns = (
   path: string,
   context: CaptureContext,
 ): Result<NonNullable<FolioContentBlock["runs"]>, FolioContentComparisonError> => {
-  if (!Array.isArray(input)) {
-    return Result.err(invalidInput(context.side, path, "Preview runs must be an array.", context.blockIndex));
-  }
-  if (input.length > FOLIO_CONTENT_COMPARISON_LIMITS.runsPerBlock) {
-    return Result.err(
-      limitExceeded({
-        input: context.side,
-        limit: "runsPerBlock",
-        maximum: FOLIO_CONTENT_COMPARISON_LIMITS.runsPerBlock,
-        actual: input.length,
-        blockIndex: context.blockIndex,
-        field: path,
-      }),
-    );
-  }
-  const arrayShapeError = validateExactDenseArray(input, path, context);
-  if (arrayShapeError) return Result.err(arrayShapeError);
-  context.usage.runs += input.length;
+  const entries = captureExactDenseArray(input, path, context, {
+    limit: "runsPerBlock",
+    value: FOLIO_CONTENT_COMPARISON_LIMITS.runsPerBlock,
+  });
+  if (entries.isErr()) return Result.err(entries.error);
+  context.usage.runs += entries.value.length;
   if (context.usage.runs > FOLIO_CONTENT_COMPARISON_LIMITS.runsPerSnapshot) {
     return Result.err(
       limitExceeded({
@@ -1524,16 +1568,14 @@ const captureRuns = (
       }),
     );
   }
-  if (input.length === 0) {
+  if (entries.value.length === 0) {
     return Result.ok(Object.freeze([]));
   }
   const captured: FolioContentRun[] = [];
   let offset = 0;
-  for (let runIndex = 0; runIndex < input.length; runIndex++) {
+  for (let runIndex = 0; runIndex < entries.value.length; runIndex++) {
     const runPath = `${path}[${String(runIndex)}]`;
-    const item = readArrayItem(input, runIndex, runPath, context);
-    if (item.isErr()) return Result.err(item.error);
-    const run = captureContentRun(item.value, runPath, context);
+    const run = captureContentRun(entries.value[runIndex], runPath, context);
     if (run.isErr()) return Result.err(run.error);
     if (!blockText.startsWith(run.value.text, offset)) {
       return Result.err(
@@ -1556,23 +1598,16 @@ const captureContentIdentity = (
   path: string,
   context: CaptureContext,
 ): Result<FolioContentBlock["identity"], FolioContentComparisonError> => {
-  if (!hasPlainObjectShape(input)) {
-    return Result.err(
-      invalidInput(context.side, path, "Block identity must be a plain object.", context.blockIndex),
-    );
-  }
-  const shapeError = validateExactObjectShape(
+  const record = captureExactDataRecord(
     input,
     Object.values(FOLIO_CONTENT_IDENTITY_FIELD_DESCRIPTORS).map(({ field }) => field),
     path,
     context,
   );
-  if (shapeError) return Result.err(shapeError);
-  const type = readOwnValue(input, "type", `${path}.type`, context);
-  if (type.isErr()) return Result.err(type.error);
-  const id = readOwnValue(input, "id", `${path}.id`, context);
-  if (id.isErr()) return Result.err(id.error);
-  if (!IDENTITY_SEMANTICS.has(type.value) || typeof id.value !== "string" || id.value.length === 0) {
+  if (record.isErr()) return Result.err(record.error);
+  const type = record.value.get("type");
+  const id = record.value.get("id");
+  if (!IDENTITY_SEMANTICS.has(type) || typeof id !== "string" || id.length === 0) {
     return Result.err(
       invalidInput(
         context.side,
@@ -1582,15 +1617,15 @@ const captureContentIdentity = (
       ),
     );
   }
-  const limit = chargeCapturedString(id.value, `${path}.id`, context);
+  const limit = chargeCapturedString(id, `${path}.id`, context);
   if (limit) return Result.err(limit);
-  switch (type.value) {
+  switch (type) {
     case "authoritative":
-      return Result.ok(Object.freeze({ type: "authoritative", id: id.value }));
+      return Result.ok(Object.freeze({ type: "authoritative", id }));
     case "persistent-hint":
-      return Result.ok(Object.freeze({ type: "persistent-hint", id: id.value }));
+      return Result.ok(Object.freeze({ type: "persistent-hint", id }));
     case "positional":
-      return Result.ok(Object.freeze({ type: "positional", id: id.value }));
+      return Result.ok(Object.freeze({ type: "positional", id }));
     default:
       return panic("Validated content identity has an unsupported type");
   }
@@ -1601,41 +1636,40 @@ const captureContentBlock = (
   side: "base" | "revised",
   blockIndex: number,
   usage: SnapshotResourceUsage,
+  registry: CaptureRegistry,
 ): Result<FolioContentBlock, FolioContentComparisonError> => {
   const path = `blocks[${String(blockIndex)}]`;
-  if (!hasPlainObjectShape(input)) {
-    return Result.err(invalidInput(side, path, "Every content block must be a plain object.", blockIndex));
-  }
-  const context = { side, blockIndex, usage } satisfies CaptureContext;
-  const shapeError = validateExactObjectShape(
+  const context = { side, blockIndex, usage, registry } satisfies CaptureContext;
+  const record = captureExactDataRecord(
     input,
     Object.values(FOLIO_CONTENT_BLOCK_FIELD_DESCRIPTORS).map(({ field }) => field),
     path,
     context,
   );
-  if (shapeError) return Result.err(shapeError);
+  if (record.isErr()) return Result.err(record.error);
   const captured: {
     identity?: FolioContentBlock["identity"];
     kind?: string;
     text?: string;
     blockProperties: FolioContentPropertySet;
-    paragraphFormatting: FolioContentPropertySet;
+    paragraphFormatting: FolioContentParagraphFormatting;
     runs: readonly FolioContentRun[];
     structuralBoundaries: FolioContentBlock["structuralBoundaries"];
     table?: FolioContentBlock["table"];
     containerPath: FolioContentBlock["containerPath"];
   } = {
     blockProperties: Object.freeze([]),
-    paragraphFormatting: Object.freeze([]),
+    paragraphFormatting: Object.freeze({
+      effective: EMPTY_PROPERTY_SET,
+      authored: EMPTY_PROPERTY_SET,
+    }),
     runs: Object.freeze([]),
     structuralBoundaries: Object.freeze([]),
     containerPath: Object.freeze([]),
   };
   for (const descriptor of Object.values(FOLIO_CONTENT_BLOCK_FIELD_DESCRIPTORS)) {
     const fieldPath = `${path}.${descriptor.field}`;
-    const property = readOwnValue(input, descriptor.field, fieldPath, context);
-    if (property.isErr()) return Result.err(property.error);
-    const value = property.value;
+    const value = record.value.get(descriptor.field);
     switch (descriptor.capture) {
       case "identity": {
         const identity = captureContentIdentity(value, fieldPath, context);
@@ -1690,6 +1724,13 @@ const captureContentBlock = (
         const properties = capturePropertySet(value, fieldPath, context);
         if (properties.isErr()) return Result.err(properties.error);
         Reflect.set(captured, descriptor.field, properties.value);
+        break;
+      }
+      case "paragraph-formatting": {
+        if (value === undefined) break;
+        const formatting = captureParagraphFormatting(value, fieldPath, context);
+        if (formatting.isErr()) return Result.err(formatting.error);
+        captured.paragraphFormatting = formatting.value;
         break;
       }
       case "runs": {
@@ -1755,40 +1796,27 @@ const captureValidatedSnapshotInto = (
   side: "base" | "revised",
   usage: SnapshotResourceUsage,
   capturedBlocks: FolioContentBlock[],
+  registry: CaptureRegistry,
 ): FolioContentComparisonError | null => {
-  if (!hasPlainObjectShape(snapshot)) {
-    return invalidInput(side, "blocks", "A content snapshot must contain an ordered blocks array.");
-  }
-  const snapshotContext = { side, usage } satisfies CaptureContext;
-  const shapeError = validateExactObjectShape(
+  const snapshotContext = { side, usage, registry } satisfies CaptureContext;
+  const record = captureExactDataRecord(
     snapshot,
     Object.values(FOLIO_CONTENT_SNAPSHOT_FIELD_DESCRIPTORS).map(({ field }) => field),
     side,
     snapshotContext,
   );
-  if (shapeError) return shapeError;
-  const blocksProperty = ownDataProperty(snapshot, "blocks");
-  if (blocksProperty.status === "accessor") {
-    return invalidInput(side, "blocks", "Content comparison inputs must contain own data properties.");
-  }
-  const inputBlocks = blocksProperty.status === "present" ? blocksProperty.value : undefined;
-  if (!Array.isArray(inputBlocks)) {
-    return invalidInput(side, "blocks", "A content snapshot must contain an ordered blocks array.");
-  }
-  if (inputBlocks.length > FOLIO_CONTENT_COMPARISON_LIMITS.blocksPerSnapshot) {
-    return limitExceeded({
-      input: side,
-      limit: "blocksPerSnapshot",
-      maximum: FOLIO_CONTENT_COMPARISON_LIMITS.blocksPerSnapshot,
-      actual: inputBlocks.length,
-    });
-  }
-  const arrayShapeError = validateExactDenseArray(inputBlocks, `${side}.blocks`, snapshotContext);
-  if (arrayShapeError) return arrayShapeError;
+  if (record.isErr()) return record.error;
+  const blocks = captureExactDenseArray(record.value.get("blocks"), `${side}.blocks`, snapshotContext, {
+    limit: "blocksPerSnapshot",
+    value: FOLIO_CONTENT_COMPARISON_LIMITS.blocksPerSnapshot,
+  });
+  if (blocks.isErr()) return blocks.error;
+  const inputBlocks = blocks.value;
 
   usage.blocks = inputBlocks.length;
   const ids = new Set<string>();
   const lastCoordinateByTable = new Map<string, readonly [number, number, number]>();
+  const placementByRow = new Map<string, TableRowCellPlacement>();
   const geometryByCell = new Map<string, readonly [number, number, number]>();
   const cellsByTable = new Map<string, TableCellRectangle[]>();
   const outerTableByTableIndex = new Map<number, number>();
@@ -1843,16 +1871,13 @@ const captureValidatedSnapshotInto = (
   let lastOuterTableIndex = -1;
   let activeOuterTableIndex: number | null = null;
   for (let blockIndex = 0; blockIndex < inputBlocks.length; blockIndex++) {
-    const blockProperty = ownDataProperty(inputBlocks, String(blockIndex));
-    if (blockProperty.status !== "present") {
-      return invalidInput(
-        side,
-        `blocks[${String(blockIndex)}]`,
-        "Every content block must be an own data property.",
-        blockIndex,
-      );
-    }
-    const capturedBlock = captureContentBlock(blockProperty.value, side, blockIndex, usage);
+    const capturedBlock = captureContentBlock(
+      inputBlocks[blockIndex],
+      side,
+      blockIndex,
+      usage,
+      registry,
+    );
     if (capturedBlock.isErr()) return capturedBlock.error;
     const block = capturedBlock.value;
     if (ids.has(block.identity.id)) {
@@ -1899,6 +1924,7 @@ const captureValidatedSnapshotInto = (
       lastOuterTableIndex = table.outerTableIndex;
       activeOuterTableIndex = table.outerTableIndex;
       const tableKey = `${String(table.outerTableIndex)}:${String(table.tableIndex)}`;
+      const rowKey = `${tableKey}:${String(table.rowIndex)}`;
       const cellKey = `${tableKey}:${String(table.rowIndex)}:${String(table.cellIndex)}`;
       const structuralIdentityError =
         claimStructuralIdentity({
@@ -1943,6 +1969,24 @@ const captureValidatedSnapshotInto = (
       }
       geometryByCell.set(cellKey, geometry);
       if (priorGeometry === undefined) {
+        const priorPlacement = placementByRow.get(rowKey);
+        if (
+          (priorPlacement === undefined && table.cellIndex !== 0) ||
+          (priorPlacement !== undefined &&
+            (table.cellIndex !== priorPlacement.cellIndex + 1 ||
+              table.gridColumnIndex < priorPlacement.gridEnd))
+        ) {
+          return invalidInput(
+            side,
+            `blocks[${String(blockIndex)}].table`,
+            "Physical cell order must agree with non-overlapping logical grid order.",
+            blockIndex,
+          );
+        }
+        placementByRow.set(rowKey, {
+          cellIndex: table.cellIndex,
+          gridEnd: table.gridColumnIndex + table.columnSpan,
+        });
         const cells = cellsByTable.get(tableKey);
         const rectangle = {
           blockIndex,
@@ -2002,10 +2046,11 @@ type CapturedSnapshot = {
 const captureContentSnapshot = (
   snapshot: unknown,
   side: "base" | "revised",
+  registry: CaptureRegistry,
 ): Result<CapturedSnapshot, FolioContentComparisonError> => {
   const usage = emptySnapshotResourceUsage();
   const blocks: FolioContentBlock[] = [];
-  const error = captureValidatedSnapshotInto(snapshot, side, usage, blocks);
+  const error = captureValidatedSnapshotInto(snapshot, side, usage, blocks, registry);
   if (error) return Result.err(error);
   return Result.ok({
     snapshot: Object.freeze({ blocks: Object.freeze(blocks) }),
@@ -2125,8 +2170,17 @@ const structuralBoundariesEqual = (
 export const changedFolioContentParagraphFormatting = (
   base: FolioContentBlock,
   revised: FolioContentBlock,
-): readonly FolioContentPropertyChange[] =>
-  changedFolioContentProperties(base.paragraphFormatting, revised.paragraphFormatting);
+): FolioContentParagraphFormattingChange =>
+  Object.freeze({
+    authored: changedFolioContentProperties(
+      base.paragraphFormatting.authored,
+      revised.paragraphFormatting.authored,
+    ),
+    effective: changedFolioContentProperties(
+      base.paragraphFormatting.effective,
+      revised.paragraphFormatting.effective,
+    ),
+  });
 
 const changedBlockProperties = (
   base: FolioContentBlock,
@@ -2229,10 +2283,12 @@ export const detectFolioContentParagraphMarkPlans = <Block extends FolioContentB
   steps: readonly FolioContentAlignmentStep<Block>[],
 ): ReadonlyMap<number, ParagraphMarkPlan<Block>> => {
   const plans = new Map<number, ParagraphMarkPlan<Block>>();
-  for (const [index, step] of steps.entries()) {
+  for (let index = 0; index < steps.length - 1; index++) {
+    const step = steps[index];
     const next = steps[index + 1];
-    if (step.type !== "pair" || next === undefined) continue;
-    if (next.type === "revisedOnly") {
+    if (step === undefined || next === undefined) continue;
+
+    if (step.type === "pair" && next.type === "revisedOnly") {
       const separator = separatorBetween(
         step.baseBlock.text,
         step.revisedBlock.text,
@@ -2246,22 +2302,63 @@ export const detectFolioContentParagraphMarkPlans = <Block extends FolioContentB
           offset: step.revisedBlock.text.length,
           separator,
         });
+        index++;
       }
       continue;
     }
-    if (next.type !== "baseOnly") continue;
-    const separator = separatorBetween(
-      step.revisedBlock.text,
-      step.baseBlock.text,
-      next.block.text,
-    );
-    if (separator !== null && contentBlocksShareContainer(step.baseBlock, next.block)) {
-      plans.set(index, {
-        type: "merge",
-        baseBlocks: [step.baseBlock, next.block],
-        revisedBlock: step.revisedBlock,
-        separator,
-      });
+
+    if (step.type === "revisedOnly" && next.type === "pair") {
+      const separator = separatorBetween(
+        next.baseBlock.text,
+        step.block.text,
+        next.revisedBlock.text,
+      );
+      if (separator !== null && contentBlocksShareContainer(step.block, next.revisedBlock)) {
+        plans.set(index, {
+          type: "split",
+          baseBlock: next.baseBlock,
+          revisedBlocks: [step.block, next.revisedBlock],
+          offset: step.block.text.length,
+          separator,
+        });
+        index++;
+      }
+      continue;
+    }
+
+    if (step.type === "pair" && next.type === "baseOnly") {
+      const separator = separatorBetween(
+        step.revisedBlock.text,
+        step.baseBlock.text,
+        next.block.text,
+      );
+      if (separator !== null && contentBlocksShareContainer(step.baseBlock, next.block)) {
+        plans.set(index, {
+          type: "merge",
+          baseBlocks: [step.baseBlock, next.block],
+          revisedBlock: step.revisedBlock,
+          separator,
+        });
+        index++;
+      }
+      continue;
+    }
+
+    if (step.type === "baseOnly" && next.type === "pair") {
+      const separator = separatorBetween(
+        next.revisedBlock.text,
+        step.block.text,
+        next.baseBlock.text,
+      );
+      if (separator !== null && contentBlocksShareContainer(step.block, next.baseBlock)) {
+        plans.set(index, {
+          type: "merge",
+          baseBlocks: [step.block, next.baseBlock],
+          revisedBlock: next.revisedBlock,
+          separator,
+        });
+        index++;
+      }
     }
   }
   return plans;
@@ -2600,9 +2697,12 @@ const relationFormattingChange = ({
     maxSegments: maxRanges,
   });
   if (ranges === null) return "limit";
-  return paragraph.length > 0 || ranges.length > 0
+  return paragraph.authored.length > 0 || paragraph.effective.length > 0 || ranges.length > 0
     ? Object.freeze({
-        paragraph,
+        paragraph: Object.freeze({
+          authored: paragraph.authored,
+          effective: paragraph.effective,
+        }),
         ranges: Object.freeze(
           ranges.map((range) =>
             Object.freeze({
@@ -3253,43 +3353,16 @@ const executeCapturedContentComparison = ({
 export const compareContent = (
   options: CompareContentOptions,
 ): Result<FolioContentComparison, FolioContentComparisonError> => {
-  if (!hasPlainObjectShape(options)) {
-    return Result.err(invalidInput("options", "options", "Comparison options must be an object."));
-  }
-  const allowedOptionFields = new Set(
+  const capturedOptions = captureExactDataRecord(
+    options,
     Object.values(COMPARE_CONTENT_OPTION_FIELD_DESCRIPTORS).map(({ field }) => field),
+    "options",
+    { side: "options" },
   );
-  for (const key of Reflect.ownKeys(options)) {
-    if (typeof key !== "string" || !allowedOptionFields.has(key)) {
-      return Result.err(
-        invalidInput(
-          "options",
-          "options",
-          "Comparison options cannot contain unknown fields or symbols.",
-        ),
-      );
-    }
-  }
-  const baseProperty = ownDataProperty(options, "base");
-  const revisedProperty = ownDataProperty(options, "revised");
-  const granularityProperty = ownDataProperty(options, "granularity");
-  if (
-    baseProperty.status === "accessor" ||
-    revisedProperty.status === "accessor" ||
-    granularityProperty.status === "accessor"
-  ) {
-    return Result.err(
-      invalidInput(
-        "options",
-        "options",
-        "Comparison options must contain own data properties.",
-      ),
-    );
-  }
-  const base = baseProperty.status === "present" ? baseProperty.value : undefined;
-  const revised = revisedProperty.status === "present" ? revisedProperty.value : undefined;
-  const granularity =
-    granularityProperty.status === "present" ? granularityProperty.value : undefined;
+  if (capturedOptions.isErr()) return Result.err(capturedOptions.error);
+  const base = capturedOptions.value.get("base");
+  const revised = capturedOptions.value.get("revised");
+  const granularity = capturedOptions.value.get("granularity");
   if (
     granularity !== undefined &&
     !WORD_DIFF_GRANULARITIES.some((candidate) => candidate === granularity)

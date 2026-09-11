@@ -100,7 +100,10 @@ export const docxBlockToContentInput = (block: FolioAIBlock): FolioContentInputB
   kind: block.kind,
   text: block.text,
   blockProperties: selectedProperties(block, "block-property"),
-  paragraphFormatting: selectedProperties(block, "paragraph-format"),
+  paragraphFormatting: {
+    authored: selectedProperties(block, "paragraph-format"),
+    effective: [],
+  },
   runs: block.previewRuns?.map(previewRunToContentRun) ?? [],
   structuralBoundaries: block.structuralBoundaries ?? [],
   ...(block.table !== undefined && {

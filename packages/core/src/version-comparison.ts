@@ -324,7 +324,8 @@ const projectVersionFormattingProperties = (
   formatting: FolioContentFormattingChange,
 ): FolioFormatProperty[] => {
   const properties = new Set<FolioFormatProperty>();
-  for (const { key } of formatting.paragraph) properties.add(key);
+  for (const { key } of formatting.paragraph.authored) properties.add(key);
+  for (const { key } of formatting.paragraph.effective) properties.add(key);
   for (const { formatting: range } of formatting.ranges) {
     for (const { key } of range.authored) properties.add(key);
     for (const { key } of range.effective) properties.add(key);

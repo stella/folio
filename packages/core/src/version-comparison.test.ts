@@ -948,10 +948,9 @@ describe("compareDocxVersions: move detection", () => {
         changes: [{ key: "displayLabel" }, { key: "headingLevel" }],
       },
     ]);
-    expect(neutralMovedTo.move.relation.formatting?.paragraph.map(({ key }) => key)).toEqual([
-      "directAlignment",
-      "styleId",
-    ]);
+    expect(
+      neutralMovedTo.move.relation.formatting?.paragraph.authored.map(({ key }) => key),
+    ).toEqual(["directAlignment", "styleId"]);
     expect(
       neutralMovedTo.move.relation.formatting?.ranges.flatMap(({ formatting }) =>
         formatting.effective.map(({ key }) => key),
