@@ -754,7 +754,7 @@ const isFiniteNumber = (value: unknown): value is number =>
 
 const IDENTITY_SEMANTICS = new Set(FOLIO_CONTENT_IDENTITY_SEMANTICS);
 
-type CapturedDataRecord = ReadonlyMap<string, unknown>;
+type CapturedDataRecord<Field extends string> = ReadonlyMap<Field, unknown>;
 type CapturedOwnProperty = Readonly<PropertyDescriptor> | null;
 type CapturedPropertyDescriptors = Map<PropertyKey, CapturedOwnProperty>;
 type CaptureRegistry = {
@@ -838,12 +838,12 @@ const captureArrayIdentity = (
  * no bounded key-enumeration primitive, so rejecting arbitrary extra keys
  * would let an adversarial object force unbounded work before a size check.
  */
-const captureKnownDataRecord = (
+const captureKnownDataRecord = <const Field extends string>(
   input: unknown,
-  fields: readonly string[],
+  fields: readonly Field[],
   path: string,
   location: CaptureLocation,
-): Result<CapturedDataRecord, InvalidFolioContentComparisonError> => {
+): Result<CapturedDataRecord<Field>, InvalidFolioContentComparisonError> => {
   const { side, blockIndex } = location;
   if (typeof input !== "object" || input === null) {
     return Result.err(
@@ -858,7 +858,7 @@ const captureKnownDataRecord = (
     );
   }
 
-  const values = new Map<string, unknown>();
+  const values = new Map<Field, unknown>();
   for (const key of fields) {
     const captured = captureOwnProperty(input, key, `${path}.${key}`, location);
     if (captured.isErr()) return Result.err(captured.error);
@@ -968,7 +968,10 @@ const captureBoundedDenseArray = (
   return Result.ok(captured);
 };
 
-const recordHasExactly = (record: CapturedDataRecord, fields: readonly string[]): boolean =>
+const recordHasExactly = <Field extends string>(
+  record: CapturedDataRecord<Field>,
+  fields: readonly Field[],
+): boolean =>
   record.size === fields.length && fields.every((field) => record.has(field));
 
 type TableCellRectangle = {
