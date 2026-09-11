@@ -1050,9 +1050,9 @@ const persistedContentSequencePairs = <Item>({
   anchors,
   canPair,
 }: PersistedContentSequencePairsOptions<Item>): ReadonlySet<number> => {
-  if (anchors.length === 0) {
-    return new Set();
-  }
+  // A complete positional-to-stable identity transition is evidence in its own right.
+  // Text and stable-id anchors constrain it when present; requiring an anchor first
+  // loses every surviving row when each one also contains an edit.
   const uniqueIndexesByFirstId = (
     items: readonly ProfiledContentSequenceItem<Item>[],
   ): ReadonlyMap<string, number | null> => {
