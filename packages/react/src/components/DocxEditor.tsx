@@ -1400,7 +1400,6 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   const replaceComments = useCallback(
     (nextComments: Comment[]) => {
       commentsDirtyRef.current = true;
-      commentsRef.current = nextComments;
       setComments(nextComments);
 
       const currentDocument = buildCurrentDocument();
@@ -1410,7 +1409,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
 
       onChange?.(currentDocument);
     },
-    [buildCurrentDocument, commentsDirtyRef, commentsRef, onChange, setComments],
+    [buildCurrentDocument, commentsDirtyRef, onChange, setComments],
   );
 
   const updateComments = useCallback(

@@ -1911,7 +1911,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           // Publish to the ref before emitting so layoutComplete handlers that
           // call folioEditor.getLayout() observe the layout that just completed
           // (setLayout is async; the ref mirror otherwise only refreshes on the
-          // next render).
+          // next render). Paired with the setLayout call above, so this is the
+          // owning write the mirror rule allows.
+          // eslint-disable-next-line folio-ref-mirrors/no-write-to-render-mirrored-ref
           layoutRef.current = outcome.layout;
           folioEmitterRef.current.emit("layoutComplete", outcome.layout);
         }
