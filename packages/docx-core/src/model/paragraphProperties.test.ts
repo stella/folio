@@ -1,11 +1,38 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  PARAGRAPH_FORMATTING_PROPERTY_DESCRIPTOR,
+  PARAGRAPH_PROPERTY_SOURCE_XML_GROUP,
   paragraphPropertySourceDelta,
   paragraphPropertySourceFingerprintFromParts,
 } from "./paragraphProperties";
+import { COLOR_VALUE_PROPERTY_DESCRIPTORS, SHADING_PROPERTY_DESCRIPTORS } from "./colors";
+import {
+  TEXT_FORMATTING_FONT_FAMILY_FIELD_DESCRIPTORS,
+  TEXT_FORMATTING_LANGUAGE_FIELD_DESCRIPTORS,
+  TEXT_FORMATTING_PROPERTY_DESCRIPTORS,
+  TEXT_FORMATTING_UNDERLINE_FIELD_DESCRIPTORS,
+} from "./formatting";
 
 describe("paragraph property source delta", () => {
+  test("published formatting descriptors are recursively immutable", () => {
+    for (const descriptor of [
+      COLOR_VALUE_PROPERTY_DESCRIPTORS,
+      SHADING_PROPERTY_DESCRIPTORS,
+      TEXT_FORMATTING_PROPERTY_DESCRIPTORS,
+      TEXT_FORMATTING_FONT_FAMILY_FIELD_DESCRIPTORS,
+      TEXT_FORMATTING_LANGUAGE_FIELD_DESCRIPTORS,
+      TEXT_FORMATTING_UNDERLINE_FIELD_DESCRIPTORS,
+      PARAGRAPH_FORMATTING_PROPERTY_DESCRIPTOR,
+    ]) {
+      expect(Object.isFrozen(descriptor)).toBe(true);
+      for (const entry of Object.values(descriptor)) {
+        expect(Object.isFrozen(entry)).toBe(true);
+      }
+    }
+    expect(Object.isFrozen(PARAGRAPH_PROPERTY_SOURCE_XML_GROUP)).toBe(true);
+  });
+
   test("is empty when authored pPr and paragraph-mark properties are unchanged", () => {
     const fingerprint = paragraphPropertySourceFingerprintFromParts(
       { kinsoku: false, numPr: { ilvl: 2 } },
@@ -32,11 +59,7 @@ describe("paragraph property source delta", () => {
 
     const delta = paragraphPropertySourceDelta(before, after);
 
-    expect(delta.changedPPrBaseKeys).toEqual([
-      "kinsoku",
-      "spaceBefore",
-      "beforeAutospacing",
-    ]);
+    expect(delta.changedPPrBaseKeys).toEqual(["kinsoku", "spaceBefore", "beforeAutospacing"]);
     expect(delta.changedParagraphMarkKeys).toEqual(["runProperties", "runInWithNext"]);
     expect(delta.changedXmlGroups).toEqual(["kinsoku", "spacing", "rPr"]);
     expect(delta.isEmpty).toBe(false);
@@ -56,4 +79,3 @@ describe("paragraph property source delta", () => {
     expect(delta.changedXmlGroups).toEqual(["numPr", "suppressAutoHyphens"]);
   });
 });
-

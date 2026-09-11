@@ -7,6 +7,13 @@
 /**
  * Theme color slots from theme1.xml
  */
+const freezeDescriptor = <const Value extends Record<string, object>>(value: Value): Value => {
+  for (const entry of Object.values(value)) {
+    Object.freeze(entry);
+  }
+  return Object.freeze(value);
+};
+
 export const THEME_COLOR_SLOTS = Object.freeze([
   "dk1",
   "lt1",
@@ -48,7 +55,7 @@ type SelfDescribingFieldMap<Value, Descriptor> = {
   [Field in keyof Value]-?: Descriptor & { field: Field };
 };
 
-export const COLOR_VALUE_PROPERTY_DESCRIPTORS = {
+export const COLOR_VALUE_PROPERTY_DESCRIPTORS = freezeDescriptor({
   rgb: { field: "rgb", validation: "hex" },
   themeColor: { field: "themeColor", validation: "theme-color" },
   themeTint: { field: "themeTint", validation: "hex" },
@@ -57,7 +64,7 @@ export const COLOR_VALUE_PROPERTY_DESCRIPTORS = {
 } as const satisfies SelfDescribingFieldMap<
   ColorValue,
   { validation: "boolean" | "hex" | "theme-color" }
->;
+>);
 
 export type KnownBorderStyle =
   | "none"
@@ -167,8 +174,11 @@ export type ShadingProperties = {
   pattern?: (typeof SHADING_PATTERNS)[number];
 };
 
-export const SHADING_PROPERTY_DESCRIPTORS = {
+export const SHADING_PROPERTY_DESCRIPTORS = freezeDescriptor({
   color: { field: "color", validation: "color" },
   fill: { field: "fill", validation: "color" },
   pattern: { field: "pattern", validation: "pattern" },
-} as const satisfies SelfDescribingFieldMap<ShadingProperties, { validation: "color" | "pattern" }>;
+} as const satisfies SelfDescribingFieldMap<
+  ShadingProperties,
+  { validation: "color" | "pattern" }
+>);

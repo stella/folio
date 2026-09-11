@@ -9,6 +9,7 @@ import {
 } from "@stll/docx-core/model";
 
 import {
+  ParagraphPropertySourceValidationError,
   ParagraphPropertyTransientTemplateStore,
 } from "../docx/paragraphPropertySourceIdentity";
 import {
@@ -67,7 +68,7 @@ const ALL_AUTHORED_PROPERTIES = {
   suppressAutoHyphens: true,
 } satisfies Required<AuthoredParagraphProperties>;
 
-const SOURCE_TOKEN = "p2s:document::0";
+const SOURCE_TOKEN = "p3s:document::0";
 
 const EMPTY_CONTEXT = {
   inheritedPPr: {},
@@ -79,9 +80,7 @@ const EMPTY_CONTEXT = {
 
 type ExternalImportOptions = Parameters<typeof paragraphPropertiesFromExternalDomImport>[0];
 const attrsFromExternalDom = (options: ExternalImportOptions): ParagraphAttrs => {
-  const getAttrs = paragraphDomGetAttrs(() =>
-    paragraphPropertiesFromExternalDomImport(options),
-  );
+  const getAttrs = paragraphDomGetAttrs(() => paragraphPropertiesFromExternalDomImport(options));
   const attrs = getAttrs(undefined);
   if (attrs === false) {
     throw new Error("Expected projected paragraph attrs");
@@ -223,6 +222,41 @@ describe("mandatory paragraph property state", () => {
         token: SOURCE_TOKEN,
       }).status,
     ).toBe("invalid");
+  });
+
+  test("bounds adversarial wire state before recursive validation or cloning", () => {
+    expect(() =>
+      readParagraphPropertyState({
+        type: "editor-created",
+        authoredPPr: { styleId: "x".repeat(16_385) },
+        context: EMPTY_CONTEXT,
+      }),
+    ).toThrow(ParagraphPropertySourceValidationError);
+
+    let nested: Record<string, unknown> = {};
+    for (let depth = 0; depth < 18; depth += 1) {
+      nested = { nested };
+    }
+    expect(() =>
+      readParagraphPropertyState({
+        type: "editor-created",
+        authoredPPr: nested,
+        context: EMPTY_CONTEXT,
+      }),
+    ).toThrow(ParagraphPropertySourceValidationError);
+
+    const withAccessor = {
+      type: "editor-created",
+      authoredPPr: {},
+      context: EMPTY_CONTEXT,
+    };
+    Object.defineProperty(withAccessor.authoredPPr, "styleId", {
+      enumerable: true,
+      get: () => "must-not-run",
+    });
+    expect(() => readParagraphPropertyState(withAccessor)).toThrow(
+      ParagraphPropertySourceValidationError,
+    );
   });
 
   test("patches exact authored values without losing imported identity", () => {
@@ -443,10 +477,9 @@ describe("paragraph property projection proof", () => {
       "Non-governed paragraph mutation changed governed attr: alignment",
     );
     expect(() =>
-      assertParagraphPropertyInvariant(
-        { ...attrs, alignment: "right" } as ParagraphAttrs,
-        { type: "internal" },
-      ),
+      assertParagraphPropertyInvariant({ ...attrs, alignment: "right" } as ParagraphAttrs, {
+        type: "internal",
+      }),
     ).toThrow("Paragraph-property projection invariant failed for attr: alignment");
   });
 

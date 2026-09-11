@@ -16,6 +16,7 @@ import { DATE_UTC_NAMESPACE_URI } from "./trackedChangeInfo";
 import {
   ParagraphPropertySourceValidationError,
   assignParagraphPropertySource,
+  deriveDocumentWithParagraphPropertySources,
   getParagraphPropertySource,
   getParagraphPropertySourceToken,
 } from "./paragraphPropertySource";
@@ -394,7 +395,9 @@ describe("paragraph properties survive a no-edit full repack", () => {
     const parsed = await parseDocx(await documentWithDuplicateParagraphIds(), {
       preloadFonts: false,
     });
-    const derived = { ...parsed, package: { ...parsed.package } };
+    const derived = deriveDocumentWithParagraphPropertySources(parsed, {
+      package: { ...parsed.package },
+    });
     const normalized = ensureParaIdsInDoc(toProseDoc(parsed));
     const reconstructed = normalized.type.schema.nodeFromJSON(normalized.toJSON());
     const restored = fromProseDoc(reconstructed, derived);
@@ -410,7 +413,9 @@ describe("paragraph properties survive a no-edit full repack", () => {
     const parsed = await parseDocx(await documentWithSourceProperties(SOURCE_PROPERTIES, null), {
       preloadFonts: false,
     });
-    const derived = { ...parsed, package: { ...parsed.package } };
+    const derived = deriveDocumentWithParagraphPropertySources(parsed, {
+      package: { ...parsed.package },
+    });
     const normalized = ensureParaIdsInDoc(toProseDoc(parsed));
     const reconstructed = normalized.type.schema.nodeFromJSON(normalized.toJSON());
     const restored = fromProseDoc(reconstructed, derived);

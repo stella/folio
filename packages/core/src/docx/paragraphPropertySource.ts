@@ -1,6 +1,6 @@
 import { panic } from "better-result";
-import type { Fragment, Mark, Node as PMNode, NodeType } from "prosemirror-model";
-import { PluginKey, type Transaction } from "prosemirror-state";
+import type { Fragment, Mark, Node as PMNode } from "prosemirror-model";
+import type { Transaction } from "prosemirror-state";
 
 import type { BlockContent, Document, Paragraph, TableCell } from "../types/document";
 import { visitDocxParagraphs } from "./paragraphTraversal";
@@ -12,11 +12,14 @@ import {
 } from "@stll/docx-core/model";
 import {
   ParagraphPropertySourceContract,
+  PARAGRAPH_PROPERTY_SOURCE_MAX_PARAGRAPHS,
+  PARAGRAPH_PROPERTY_SOURCE_MAX_STORIES,
   ParagraphPropertySourceToken,
   ParagraphPropertyTransientTemplateResolution,
   ParagraphPropertyTransientTemplateStore,
   ParagraphPropertyTransientTemplateHandle,
   ParagraphPropertySourceValidationError,
+  paragraphPropertySourceTokenWire,
   paragraphPropertySourceStoryKey,
 } from "./paragraphPropertySourceIdentity";
 import type {
@@ -49,15 +52,19 @@ type ParagraphPropertyCapture =
   | { fingerprint: ParagraphPropertySourceFingerprint; fingerprintJson: string; type: "absent" }
   | ParagraphPropertySource;
 
-type ParagraphPropertySourceBinding =
-  | { capture: ParagraphPropertyCapture; type: "captured-unbound" }
-  | { type: "editor-created" }
-  | {
-      capture: ParagraphPropertyCapture;
-      token: ParagraphPropertySourceToken;
-      type: "imported";
-    }
-  | { capture: ParagraphPropertyCapture; type: "resolved-template" };
+type ParagraphPropertyCaptureAxis =
+  | { type: "none" }
+  | { capture: ParagraphPropertyCapture; type: "captured" };
+
+type ParagraphPropertyOwnershipAxis =
+  | { type: "none" }
+  | { type: "parsed-unbound" }
+  | { token: ParagraphPropertySourceToken; type: "imported" };
+
+type ParagraphPropertySourceBinding = {
+  capture: ParagraphPropertyCaptureAxis;
+  ownership: ParagraphPropertyOwnershipAxis;
+};
 
 // Enumerable symbols follow ordinary immutable `{ ...document }` derivations,
 // while JSON and other string-key serialization cannot expose the contract.
@@ -145,27 +152,64 @@ const isParagraphPropertySourceBinding = (
   if (
     typeof value !== "object" ||
     value === null ||
-    !("type" in value) ||
+    !("capture" in value) ||
+    !("ownership" in value) ||
     !Object.isFrozen(value)
   ) {
     return false;
   }
-  if (value.type === "editor-created") {
-    return Object.keys(value).length === 1;
-  }
-  if (!("capture" in value) || !isParagraphPropertyCapture(value.capture)) {
+  const capture = value.capture;
+  const ownership = value.ownership;
+  if (
+    typeof capture !== "object" ||
+    capture === null ||
+    typeof ownership !== "object" ||
+    ownership === null ||
+    !("type" in capture) ||
+    !("type" in ownership) ||
+    !Object.isFrozen(capture) ||
+    !Object.isFrozen(ownership)
+  ) {
     return false;
   }
-  switch (value.type) {
-    case "captured-unbound":
-    case "resolved-template":
+  if (
+    capture.type !== "none" &&
+    (capture.type !== "captured" ||
+      !("capture" in capture) ||
+      !isParagraphPropertyCapture(capture.capture))
+  ) {
+    return false;
+  }
+  switch (ownership.type) {
+    case "none":
       return true;
+    case "parsed-unbound":
+      return capture.type === "captured";
     case "imported":
-      return "token" in value && value.token instanceof ParagraphPropertySourceToken;
+      return (
+        capture.type === "captured" &&
+        "token" in ownership &&
+        ownership.token instanceof ParagraphPropertySourceToken
+      );
     default:
       return false;
   }
 };
+
+const bindingWithCapture = (
+  capture: ParagraphPropertyCapture,
+  ownership: ParagraphPropertyOwnershipAxis,
+): ParagraphPropertySourceBinding =>
+  Object.freeze({
+    capture: Object.freeze({ capture, type: "captured" }),
+    ownership: Object.freeze(ownership),
+  });
+
+const editorCreatedBinding = (): ParagraphPropertySourceBinding =>
+  Object.freeze({
+    capture: Object.freeze({ type: "none" }),
+    ownership: Object.freeze({ type: "none" }),
+  });
 
 export const PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR = "_docxParagraphSourceToken";
 export const PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR = "_docxParagraphSourceContract";
@@ -204,7 +248,7 @@ const paragraphPropertySourceBinding = (
     !descriptor ||
     descriptor.enumerable !== true ||
     descriptor.writable === true ||
-    descriptor.configurable !== (binding.type === "captured-unbound")
+    descriptor.configurable !== (binding.ownership.type === "parsed-unbound")
   ) {
     panic("A paragraph carries a weakened paragraph-property source binding");
   }
@@ -217,7 +261,7 @@ const setParagraphPropertySourceBinding = (
 ): void => {
   if (
     !Reflect.defineProperty(paragraph, paragraphPropertySource, {
-      configurable: binding.type === "captured-unbound",
+      configurable: binding.ownership.type === "parsed-unbound",
       enumerable: true,
       value: Object.freeze(binding),
       writable: false,
@@ -247,24 +291,13 @@ export const assignParagraphPropertySource = (
     type: "present",
     xml: source.xml,
   }) satisfies ParagraphPropertyCapture;
-  switch (existing?.type) {
-    case undefined:
-      setParagraphPropertySourceBinding(paragraph, {
-        capture,
-        type: "captured-unbound",
-      });
-      return;
-    case "captured-unbound":
-    case "editor-created":
-    case "imported":
-    case "resolved-template":
-      panic("A paragraph-property capture can only be assigned once");
-      return;
-    default: {
-      const exhaustive: never = existing;
-      return exhaustive;
-    }
+  if (existing) {
+    panic("A paragraph-property capture can only be assigned once");
   }
+  setParagraphPropertySourceBinding(
+    paragraph,
+    bindingWithCapture(capture, { type: "parsed-unbound" }),
+  );
 };
 
 /** Record that a parsed paragraph had no authored `w:pPr` element. */
@@ -272,27 +305,26 @@ export const assignAbsentParagraphPropertySource = (paragraph: Paragraph): void 
   if (paragraphPropertySourceBinding(paragraph)) {
     panic("A paragraph-property capture can only be assigned once");
   }
-  const fingerprint = immutableFingerprint(
-    paragraphPropertySourceFingerprintFromParts({}, {}),
+  const fingerprint = immutableFingerprint(paragraphPropertySourceFingerprintFromParts({}, {}));
+  const capture = Object.freeze({
+    fingerprint,
+    fingerprintJson: canonicalParagraphPropertySourceFingerprintJson(fingerprint),
+    type: "absent",
+  }) satisfies ParagraphPropertyCapture;
+  setParagraphPropertySourceBinding(
+    paragraph,
+    bindingWithCapture(capture, { type: "parsed-unbound" }),
   );
-  setParagraphPropertySourceBinding(paragraph, {
-    capture: Object.freeze({
-      fingerprint,
-      fingerprintJson: canonicalParagraphPropertySourceFingerprintJson(fingerprint),
-      type: "absent",
-    }),
-    type: "captured-unbound",
-  });
 };
 
 export const getParagraphPropertySource = (
   paragraph: Paragraph,
 ): ParagraphPropertySource | undefined => {
   const binding = paragraphPropertySourceBinding(paragraph);
-  if (!binding || binding.type === "editor-created" || binding.capture.type === "absent") {
+  if (!binding || binding.capture.type === "none" || binding.capture.capture.type === "absent") {
     return undefined;
   }
-  return binding.capture;
+  return binding.capture.capture;
 };
 
 /** Authored `w:pPr` before style and numbering defaults are materialized. */
@@ -300,10 +332,10 @@ export const getParagraphAuthoredPPr = (
   paragraph: Paragraph,
 ): AuthoredParagraphProperties | undefined => {
   const binding = paragraphPropertySourceBinding(paragraph);
-  if (!binding || binding.type === "editor-created") {
+  if (!binding || binding.capture.type === "none") {
     return undefined;
   }
-  return structuredClone(binding.capture.fingerprint.pPrBase);
+  return structuredClone(binding.capture.capture.fingerprint.pPrBase);
 };
 
 /** Exact modeled properties captured from the paragraph's authored `w:pPr`. */
@@ -311,7 +343,7 @@ export const getParagraphPropertySourceFingerprint = (
   paragraph: Paragraph,
 ): ParagraphPropertySourceFingerprint | undefined => {
   const binding = paragraphPropertySourceBinding(paragraph);
-  return binding && binding.type !== "editor-created" ? binding.capture.fingerprint : undefined;
+  return binding?.capture.type === "captured" ? binding.capture.capture.fingerprint : undefined;
 };
 
 /** Mark a model paragraph as deliberately created outside the parsed source census. */
@@ -319,22 +351,21 @@ export const assignEditorCreatedParagraphPropertySource = (paragraph: Paragraph)
   if (paragraphPropertySourceBinding(paragraph)) {
     panic("Paragraph-property provenance can only be assigned once");
   }
-  setParagraphPropertySourceBinding(paragraph, { type: "editor-created" });
+  setParagraphPropertySourceBinding(paragraph, editorCreatedBinding());
 };
 
 const tokenFromBinding = (
   binding: ParagraphPropertySourceBinding | undefined,
 ): ParagraphPropertySourceToken | null => {
-  switch (binding?.type) {
+  switch (binding?.ownership.type) {
     case "imported":
-      return binding.token;
-    case "captured-unbound":
-    case "editor-created":
-    case "resolved-template":
+      return binding.ownership.token;
+    case "parsed-unbound":
+    case "none":
     case undefined:
       return null;
     default: {
-      const exhaustive: never = binding;
+      const exhaustive: never = binding.ownership;
       return exhaustive;
     }
   }
@@ -343,13 +374,13 @@ const tokenFromBinding = (
 /** Copy the captured `w:pPr` without claiming the source paragraph's durable identity. */
 export const copyParagraphPropertyCapture = (target: Paragraph, source: Paragraph): void => {
   const sourceBinding = paragraphPropertySourceBinding(source);
-  if (!sourceBinding || sourceBinding.type === "editor-created") {
+  if (!sourceBinding || sourceBinding.capture.type === "none") {
     return;
   }
-  setParagraphPropertySourceBinding(target, {
-    capture: sourceBinding.capture,
-    type: "resolved-template",
-  });
+  setParagraphPropertySourceBinding(
+    target,
+    bindingWithCapture(sourceBinding.capture.capture, { type: "none" }),
+  );
 };
 
 export const PARAGRAPH_PROPERTY_TEMPLATE_STORE_MAX_CAPTURES = 100_000;
@@ -400,7 +431,7 @@ export class ParagraphPropertyTemplateResolutionRegistry {
       panic("A paragraph-property template target already has source provenance");
     }
     const capture = this.#resolution.consume(handle);
-    setParagraphPropertySourceBinding(target, { capture, type: "resolved-template" });
+    setParagraphPropertySourceBinding(target, bindingWithCapture(capture, { type: "none" }));
   }
 }
 
@@ -423,9 +454,7 @@ export class ParagraphPropertyTemplateStore {
     capabilities: readonly ParagraphPropertyTemplateCapture[],
   ): readonly ParagraphPropertyTransientTemplateHandle[] {
     return this.#store.registerAll(
-      capabilities.map((capability) =>
-        capability.capture(paragraphPropertyTemplateCaptureIssuer),
-      ),
+      capabilities.map((capability) => capability.capture(paragraphPropertyTemplateCaptureIssuer)),
     );
   }
 }
@@ -438,24 +467,7 @@ export const copyParagraphPropertySource = (target: Paragraph, source: Paragraph
   if (!binding) {
     return;
   }
-  switch (binding.type) {
-    case "imported":
-      setParagraphPropertySourceBinding(target, binding);
-      return;
-    case "captured-unbound":
-      setParagraphPropertySourceBinding(target, binding);
-      return;
-    case "editor-created":
-      setParagraphPropertySourceBinding(target, binding);
-      return;
-    case "resolved-template":
-      setParagraphPropertySourceBinding(target, binding);
-      return;
-    default: {
-      const exhaustive: never = binding;
-      return exhaustive;
-    }
-  }
+  setParagraphPropertySourceBinding(target, binding);
 };
 
 /** Bind every parsed story paragraph to one exact source package. */
@@ -466,21 +478,29 @@ export const assignDocumentParagraphPropertySourceContract = (
   if (Object.hasOwn(document, documentParagraphPropertySourceContract)) {
     panic("A document paragraph-property source contract can only be assigned once");
   }
-  const contract = ParagraphPropertySourceContract.fromDigest(sourceDigest);
   const seenStories = new Set<string>();
   const seenParagraphs = new WeakSet<Paragraph>();
   const bodyParagraphs = new WeakSet<Paragraph>();
   const census: {
     capture: ParagraphPropertyCapture;
+    ordinal: number;
     paragraph: Paragraph;
-    token: ParagraphPropertySourceToken;
+    story: ParagraphPropertySourceStory;
   }[] = [];
+  const sourceCensus: { paragraphCount: number; story: ParagraphPropertySourceStory }[] = [];
+  let totalParagraphCount = 0;
   if (!Object.isExtensible(document)) {
     panic("A document must be extensible before binding paragraph-property provenance");
   }
-  // The traversal is part of the v2 durable identity contract. Any ordering
+  // The traversal is part of the v3 durable identity contract. Any ordering
   // change requires a token-version bump and collaboration reseed.
   for (const { content, story } of documentSourceStories(document)) {
+    if (seenStories.size >= PARAGRAPH_PROPERTY_SOURCE_MAX_STORIES) {
+      throw new ParagraphPropertySourceValidationError({
+        code: "source_capacity_exceeded",
+        message: "Paragraph-property source story capacity was exceeded.",
+      });
+    }
     const storyKey = paragraphPropertySourceStoryKey(story);
     if (seenStories.has(storyKey)) {
       panic("A document contains duplicate paragraph-property story identity", { storyKey });
@@ -488,7 +508,14 @@ export const assignDocumentParagraphPropertySourceContract = (
     seenStories.add(storyKey);
     const paragraphs: Paragraph[] = [];
     visitDocumentStoryParagraphs(content, (paragraph) => paragraphs.push(paragraph));
-    const tokenCensus = contract.bindStoryCensus(story, paragraphs.length);
+    totalParagraphCount += paragraphs.length;
+    if (totalParagraphCount > PARAGRAPH_PROPERTY_SOURCE_MAX_PARAGRAPHS) {
+      throw new ParagraphPropertySourceValidationError({
+        code: "source_capacity_exceeded",
+        message: "Paragraph-property source paragraph capacity was exceeded.",
+      });
+    }
+    sourceCensus.push({ paragraphCount: paragraphs.length, story });
     for (const [ordinal, paragraph] of paragraphs.entries()) {
       if (seenParagraphs.has(paragraph)) {
         panic("A paragraph cannot belong to more than one source story", { storyKey });
@@ -498,14 +525,19 @@ export const assignDocumentParagraphPropertySourceContract = (
         bodyParagraphs.add(paragraph);
       }
       const binding = paragraphPropertySourceBinding(paragraph);
-      if (binding?.type !== "captured-unbound") {
+      if (binding?.ownership.type !== "parsed-unbound" || binding.capture.type !== "captured") {
         panic("A document paragraph must have exactly one parsed property capture before binding");
       }
       const descriptor = Object.getOwnPropertyDescriptor(paragraph, paragraphPropertySource);
       if (!descriptor?.configurable) {
         panic("A parsed paragraph capture cannot transition to its durable source identity");
       }
-      census.push({ capture: binding.capture, paragraph, token: tokenCensus.tokenAt(ordinal) });
+      census.push({
+        capture: binding.capture.capture,
+        ordinal,
+        paragraph,
+        story,
+      });
     }
   }
   for (const section of document.package.document.sections ?? []) {
@@ -516,13 +548,20 @@ export const assignDocumentParagraphPropertySourceContract = (
     });
   }
 
+  const contract = ParagraphPropertySourceContract.fromSourceCensus(sourceDigest, sourceCensus);
+  const boundCensus = census.map(({ capture, ordinal, paragraph, story }) => {
+    const token = contract.readToken(paragraphPropertySourceTokenWire(story, ordinal));
+    if (token.status !== "valid") {
+      return panic("A canonical paragraph-property source token failed contract reification");
+    }
+    return { capture, paragraph, token: token.value };
+  });
   setDocumentParagraphPropertySourceContract(document, contract);
-  for (const { capture, paragraph, token } of census) {
-    setParagraphPropertySourceBinding(paragraph, {
-      capture,
-      token,
-      type: "imported",
-    });
+  for (const { capture, paragraph, token } of boundCensus) {
+    setParagraphPropertySourceBinding(
+      paragraph,
+      bindingWithCapture(capture, { token, type: "imported" }),
+    );
   }
 };
 
@@ -556,11 +595,6 @@ export const readProseDocumentParagraphPropertySourceContract = (
 ): ParagraphPropertySourceAttribute<ParagraphPropertySourceContract> =>
   ParagraphPropertySourceContract.read(document.attrs[PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR]);
 
-export const readProseParagraphPropertySourceToken = (
-  paragraph: PMNode,
-): ParagraphPropertySourceAttribute<ParagraphPropertySourceToken> =>
-  ParagraphPropertySourceToken.read(paragraph.attrs[PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR]);
-
 export const copyDocumentParagraphPropertySourceContract = (
   target: Document,
   source: Document,
@@ -585,7 +619,8 @@ export const deriveDocumentWithParagraphPropertySources = (
 
 export const getParagraphPropertySourceToken = (
   paragraph: Paragraph,
-): ParagraphPropertySourceToken | undefined => tokenFromBinding(paragraphPropertySourceBinding(paragraph)) ?? undefined;
+): ParagraphPropertySourceToken | undefined =>
+  tokenFromBinding(paragraphPropertySourceBinding(paragraph)) ?? undefined;
 
 const indexParagraphPropertySources = (
   content: BlockContent[],
@@ -595,8 +630,14 @@ const indexParagraphPropertySources = (
   const sources = new Map<string, ParagraphPropertyTemplateCapture>();
   visitDocumentStoryParagraphs(content, (paragraph) => {
     const binding = paragraphPropertySourceBinding(paragraph);
-    if (binding?.type === "editor-created") {
+    if (binding?.ownership.type === "none") {
       return;
+    }
+    if (binding?.ownership.type === "parsed-unbound") {
+      throw new ParagraphPropertySourceValidationError({
+        code: "invalid_token",
+        message: "A bound source story contains unbound parsed provenance.",
+      });
     }
     const token = getParagraphPropertySourceToken(paragraph);
     if (!token || !token.belongsToStory(story) || !contract.owns(token)) {
@@ -613,8 +654,8 @@ const indexParagraphPropertySources = (
         token: token.serialized,
       });
     }
-    const capture = binding?.type === "imported" ? binding.capture : undefined;
-    if (!capture) {
+    const capture = binding?.capture.type === "captured" ? binding.capture.capture : undefined;
+    if (!capture || binding.ownership.type !== "imported") {
       panic("A validated imported paragraph lost its source capture");
     }
     sources.set(
@@ -713,11 +754,13 @@ export class ParagraphPropertyStorySource {
         token: token.serialized,
       });
     }
-    setParagraphPropertySourceBinding(target, {
-      capture: capability.capture(paragraphPropertyTemplateCaptureIssuer),
-      token,
-      type: "imported",
-    });
+    setParagraphPropertySourceBinding(
+      target,
+      bindingWithCapture(capability.capture(paragraphPropertyTemplateCaptureIssuer), {
+        token,
+        type: "imported",
+      }),
+    );
   }
 
   templateCapture(token: ParagraphPropertySourceToken): ParagraphPropertyTemplateCapture {
@@ -877,100 +920,6 @@ export const cloneTableCellsWithParagraphPropertyCaptures = (cells: TableCell[])
   }
   return cloned;
 };
-
-type CreateProseParagraphOptions = {
-  attrs?: PMNode["attrs"];
-  content?: Fragment | PMNode | readonly PMNode[] | null;
-  marks?: readonly Mark[];
-};
-
-/** Create a parsed paragraph with both its same-process owner and durable body token. */
-export const createProseParagraphWithPropertySource = (
-  nodeType: NodeType | undefined,
-  sourceParagraph: Paragraph,
-  options: CreateProseParagraphOptions = {},
-): PMNode => {
-  if (!nodeType || nodeType.name !== "paragraph") {
-    panic("Paragraph-property provenance can only seed a paragraph node");
-  }
-  return nodeType.create(
-    {
-      ...options.attrs,
-      [PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR]:
-        getParagraphPropertySourceToken(sourceParagraph)?.serialized ?? null,
-    },
-    options.content,
-    options.marks,
-  );
-};
-
-type ParagraphPropertySourceTransfer = {
-  displacedToken: string | null;
-  selectedToken: string | null;
-};
-
-const paragraphPropertySourceTransfersKey = new PluginKey<
-  readonly ParagraphPropertySourceTransfer[]
->("paragraphPropertySourceTransfers");
-
-type JoinProseParagraphsWithRightPropertySourceOptions = {
-  attrs: PMNode["attrs"];
-  pos: number;
-  transaction: Transaction;
-};
-
-/** Join adjacent paragraphs when revision semantics deliberately select the right owner. */
-export const joinProseParagraphsWithRightPropertySource = ({
-  attrs,
-  pos,
-  transaction,
-}: JoinProseParagraphsWithRightPropertySourceOptions): Transaction => {
-  const $pos = transaction.doc.resolve(pos);
-  const left = $pos.nodeBefore;
-  const right = $pos.nodeAfter;
-  if (!left || !right || left.type.name !== "paragraph" || right.type.name !== "paragraph") {
-    panic("Paragraph-property ownership can only join adjacent paragraphs");
-  }
-  const leftToken = readProseParagraphPropertySourceToken(left);
-  const rightToken = readProseParagraphPropertySourceToken(right);
-  if (leftToken.status === "invalid" || rightToken.status === "invalid") {
-    throw new ParagraphPropertySourceValidationError({
-      code: "invalid_token",
-      message: "Cannot join a paragraph carrying a malformed paragraph-property token.",
-      token: leftToken.status === "invalid" ? leftToken.raw : rightToken.raw,
-    });
-  }
-  const leftPos = pos - left.nodeSize;
-  transaction.join(pos);
-  const joined = transaction.doc.nodeAt(leftPos);
-  if (!joined || joined.type.name !== "paragraph") {
-    panic("Joining paragraphs did not produce a paragraph");
-  }
-  transaction.setNodeMarkup(
-    leftPos,
-    undefined,
-    {
-      ...attrs,
-      [PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR]:
-        rightToken.status === "valid" ? rightToken.value.serialized : null,
-    },
-    joined.marks,
-  );
-  const transfers = transaction.getMeta(paragraphPropertySourceTransfersKey) ?? [];
-  transaction.setMeta(paragraphPropertySourceTransfersKey, [
-    ...transfers,
-    {
-      displacedToken: leftToken.status === "valid" ? leftToken.value.serialized : null,
-      selectedToken: rightToken.status === "valid" ? rightToken.value.serialized : null,
-    },
-  ]);
-  return transaction;
-};
-
-export const getExplicitParagraphPropertySourceTransfers = (
-  transaction: Transaction,
-): readonly ParagraphPropertySourceTransfer[] =>
-  transaction.getMeta(paragraphPropertySourceTransfersKey) ?? [];
 
 type RecreateProseNodeOptions = {
   attrs?: PMNode["attrs"];

@@ -11,6 +11,11 @@ import { setProseParagraphMarkupWithPropertySource } from "../docx/paragraphProp
 import type { ParagraphFormatting } from "../types/document";
 import { mergeParagraphFormatting } from "../utils/paragraphFormattingMerge";
 import { expectParagraphAttrs } from "./attrs";
+import {
+  recordJoinParagraphPropertyOwnershipProof,
+  recordReplaceSelectionThenSplitParagraphPropertyOwnershipProof,
+  recordSplitParagraphPropertyOwnershipProof,
+} from "./paragraphPropertyOwnership";
 import { directionFromBidi, directionToBidi } from "./paragraphDirection";
 import {
   PARAGRAPH_FORMATTING_PROPERTY_ATTRS,
@@ -85,10 +90,7 @@ type CreateParagraphPropertiesOptions = {
   state: ParagraphPropertyState;
 };
 
-type CreateEditorParagraphPropertiesOptions = Omit<
-  CreateParagraphPropertiesOptions,
-  "state"
-> & {
+type CreateEditorParagraphPropertiesOptions = Omit<CreateParagraphPropertiesOptions, "state"> & {
   authoredPPr: AuthoredParagraphProperties;
   context?: ParagraphPropertyProjectionContext;
 };
@@ -267,10 +269,7 @@ const numberingIndentFormatting = (
   };
 };
 
-const projectAttrs = (
-  attrs: ParagraphAttrs,
-  state: ParagraphPropertyState,
-): ParagraphAttrs => {
+const projectAttrs = (attrs: ParagraphAttrs, state: ParagraphPropertyState): ParagraphAttrs => {
   const { context } = state;
   const authoredPPr = cloneFormatting(state.authoredPPr);
   const inheritedPPr = cloneFormatting(context.inheritedPPr);
@@ -344,9 +343,8 @@ const projectAttrs = (
   return next;
 };
 
-const proveParagraphPropertyProjection = (
-  attrs: ParagraphAttrs,
-): ParagraphPropertyProjection => ParagraphPropertyProjectionCapsule.fromProjectedAttrs(attrs);
+const proveParagraphPropertyProjection = (attrs: ParagraphAttrs): ParagraphPropertyProjection =>
+  ParagraphPropertyProjectionCapsule.fromProjectedAttrs(attrs);
 
 export const transitionParagraphProperties = ({
   attrs,
@@ -431,8 +429,7 @@ type SplitParagraphWithPropertiesOptions = {
   transition: ParagraphPropertySplitTransition;
 };
 
-/** Split a paragraph and update both property-source branches atomically. */
-export const splitParagraphWithProperties = ({
+const splitAndRebindParagraphProperties = ({
   transaction,
   pos,
   typesAfter,
@@ -460,6 +457,44 @@ export const splitParagraphWithProperties = ({
     transition,
   });
   return { leftPosition, rightPosition };
+};
+
+/** Split a paragraph and update both property-source branches atomically. */
+export const splitParagraphWithProperties = ({
+  transaction,
+  pos,
+  typesAfter,
+  transition,
+}: SplitParagraphWithPropertiesOptions): { leftPosition: number; rightPosition: number } => {
+  recordSplitParagraphPropertyOwnershipProof({ transaction, pos });
+  return splitAndRebindParagraphProperties({ transaction, pos, typesAfter, transition });
+};
+
+type ReplaceSelectionThenSplitParagraphWithPropertiesOptions = {
+  transaction: Transaction;
+  transition: ParagraphPropertySplitTransition;
+};
+
+/** Delete a selection and split its source paragraph under one history-native proof. */
+export const replaceSelectionThenSplitParagraphWithProperties = ({
+  transaction,
+  transition,
+}: ReplaceSelectionThenSplitParagraphWithPropertiesOptions): {
+  leftPosition: number;
+  rightPosition: number;
+} => {
+  if (transaction.selection.empty || transaction.selection.$from.parent.type.name !== "paragraph") {
+    panic("Replace-and-split requires a non-empty selection starting in a paragraph");
+  }
+  recordReplaceSelectionThenSplitParagraphPropertyOwnershipProof({
+    transaction,
+  });
+  transaction.deleteSelection();
+  return splitAndRebindParagraphProperties({
+    transaction,
+    pos: transaction.selection.from,
+    transition,
+  });
 };
 
 type JoinParagraphsWithPropertiesOptions = {
@@ -516,6 +551,11 @@ export const joinParagraphsWithProperties = ({
   const rightState = expectParagraphPropertyState(
     expectParagraphAttrs(right)._paragraphPropertyState,
   );
+  recordJoinParagraphPropertyOwnershipProof({
+    transaction,
+    joinPos,
+    transition,
+  });
   transaction.join(joinPos);
   rebindJoinedParagraphProperties({
     transaction,
@@ -570,12 +610,7 @@ const valuesEqual = (left: unknown, right: unknown): boolean => {
     }
     return left.every((entry, index) => valuesEqual(entry, right[index]));
   }
-  if (
-    typeof left !== "object" ||
-    left === null ||
-    typeof right !== "object" ||
-    right === null
-  ) {
+  if (typeof left !== "object" || left === null || typeof right !== "object" || right === null) {
     return false;
   }
   const leftEntries = Object.entries(left);
@@ -588,9 +623,7 @@ const valuesEqual = (left: unknown, right: unknown): boolean => {
   );
 };
 
-export type ParagraphPropertyInvariantBoundary =
-  | { type: "internal" }
-  | { type: "persistence" };
+export type ParagraphPropertyInvariantBoundary = { type: "internal" } | { type: "persistence" };
 
 /** Prove state, context, and every descriptor-governed effective attr are a fixed point. */
 export const assertParagraphPropertyInvariant = (
@@ -722,9 +755,10 @@ export const paragraphPropertiesFromExternalDomImport = ({
   });
 
 /** Bind the sole raw-attr unwrap to a paragraph NodeSpec `getAttrs` callback. */
-export const paragraphDomGetAttrs = <Dom>(
-  project: (dom: Dom) => ParagraphPropertyProjection | false,
-): ((dom: Dom) => ParagraphAttrs | false) =>
+export const paragraphDomGetAttrs =
+  <Dom>(
+    project: (dom: Dom) => ParagraphPropertyProjection | false,
+  ): ((dom: Dom) => ParagraphAttrs | false) =>
   (dom) => {
     const projection = project(dom);
     return projection === false ? false : ParagraphPropertyProjectionCapsule.attrs(projection);

@@ -13,6 +13,7 @@ import {
 } from "@stll/docx-core/model";
 
 import {
+  ParagraphPropertySourceValidationError,
   ParagraphPropertyTransientTemplateHandle,
   type ParagraphPropertySourceAttribute,
 } from "../docx/paragraphPropertySourceIdentity";
@@ -74,13 +75,10 @@ type DeepReadonly<Value> = Value extends (...args: never[]) => unknown
       ? { readonly [Key in keyof Value]: DeepReadonly<Value[Key]> }
       : Value;
 
-export type ParagraphPropertyProjectionContext = DeepReadonly<
-  SerializedParagraphPropertyProjectionContext
->;
+export type ParagraphPropertyProjectionContext =
+  DeepReadonly<SerializedParagraphPropertyProjectionContext>;
 
-const TRUSTED_PARAGRAPH_PROPERTY_STATE: unique symbol = Symbol(
-  "trusted-paragraph-property-state",
-);
+const TRUSTED_PARAGRAPH_PROPERTY_STATE: unique symbol = Symbol("trusted-paragraph-property-state");
 
 type TrustedParagraphPropertyState = {
   readonly [TRUSTED_PARAGRAPH_PROPERTY_STATE]: true;
@@ -96,7 +94,8 @@ export type PersistableParagraphPropertyState = (
   | {
       readonly type: "editor-created";
     }
-  ) & TrustedParagraphPropertyState;
+) &
+  TrustedParagraphPropertyState;
 
 /** Trusted state used after the serialized PM/Yjs boundary has been validated. */
 export type ParagraphPropertyState =
@@ -170,6 +169,73 @@ type ValidationResult = { valid: true } | { valid: false };
 
 const INVALID: ValidationResult = { valid: false };
 const VALID: ValidationResult = { valid: true };
+
+const PARAGRAPH_PROPERTY_STATE_MAX_DEPTH = 16;
+const PARAGRAPH_PROPERTY_STATE_MAX_NODES = 4_096;
+const PARAGRAPH_PROPERTY_STATE_MAX_LIST_ENTRIES = 1_024;
+const PARAGRAPH_PROPERTY_STATE_MAX_STRING_CODE_UNITS = 16_384;
+
+const assertParagraphPropertyStateBudget = (raw: unknown): void => {
+  const pending: { depth: number; value: unknown }[] = [{ depth: 0, value: raw }];
+  const seen = new WeakSet<object>();
+  let nodeCount = 0;
+  while (pending.length > 0) {
+    const entry = pending.pop();
+    if (!entry) {
+      break;
+    }
+    nodeCount += 1;
+    if (
+      nodeCount > PARAGRAPH_PROPERTY_STATE_MAX_NODES ||
+      entry.depth > PARAGRAPH_PROPERTY_STATE_MAX_DEPTH
+    ) {
+      throw new ParagraphPropertySourceValidationError({
+        code: "state_capacity_exceeded",
+        message: "Paragraph-property state complexity capacity was exceeded.",
+      });
+    }
+    if (typeof entry.value === "string") {
+      if (entry.value.length > PARAGRAPH_PROPERTY_STATE_MAX_STRING_CODE_UNITS) {
+        throw new ParagraphPropertySourceValidationError({
+          code: "state_capacity_exceeded",
+          message: "Paragraph-property state string capacity was exceeded.",
+        });
+      }
+      continue;
+    }
+    if (typeof entry.value !== "object" || entry.value === null) {
+      continue;
+    }
+    if (seen.has(entry.value)) {
+      continue;
+    }
+    seen.add(entry.value);
+    const keys = Reflect.ownKeys(entry.value);
+    if (
+      keys.length > PARAGRAPH_PROPERTY_STATE_MAX_LIST_ENTRIES ||
+      keys.some((key) => typeof key !== "string")
+    ) {
+      throw new ParagraphPropertySourceValidationError({
+        code: "state_capacity_exceeded",
+        message: "Paragraph-property state collection capacity was exceeded.",
+      });
+    }
+    const descriptors = Object.getOwnPropertyDescriptors(entry.value);
+    for (const key of keys) {
+      if (typeof key !== "string") {
+        continue;
+      }
+      const descriptor = descriptors[key];
+      if (!descriptor || !("value" in descriptor)) {
+        throw new ParagraphPropertySourceValidationError({
+          code: "invalid_state",
+          message: "Paragraph-property state cannot contain accessors.",
+        });
+      }
+      pending.push({ depth: entry.depth + 1, value: descriptor.value });
+    }
+  }
+};
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -549,10 +615,7 @@ const validateTabs = (value: unknown): ValidationResult => {
       if (validation === "required-number" && !isFiniteNumber(property)) {
         return INVALID;
       }
-      if (
-        validation === "required-alignment" &&
-        !isOneOf(property, TAB_STOP_ALIGNMENT_VALUES)
-      ) {
+      if (validation === "required-alignment" && !isOneOf(property, TAB_STOP_ALIGNMENT_VALUES)) {
         return INVALID;
       }
       if (
@@ -635,16 +698,10 @@ const validateFrame = (value: unknown): ValidationResult => {
     if (validation === "drop-cap" && !isOneOf(property, ["none", "drop", "margin"])) {
       return INVALID;
     }
-    if (
-      validation === "horizontal-anchor" &&
-      !isOneOf(property, ["text", "margin", "page"])
-    ) {
+    if (validation === "horizontal-anchor" && !isOneOf(property, ["text", "margin", "page"])) {
       return INVALID;
     }
-    if (
-      validation === "vertical-anchor" &&
-      !isOneOf(property, ["text", "margin", "page"])
-    ) {
+    if (validation === "vertical-anchor" && !isOneOf(property, ["text", "margin", "page"])) {
       return INVALID;
     }
     if (validation === "horizontal-alignment" && !isOneOf(property, FRAME_X_ALIGN_VALUES)) {
@@ -832,9 +889,7 @@ const validateNumberingLevelIndentGeometry = (
   if (!isRecord(value) || !hasOnlyKeys(value, NUMBERING_LEVEL_INDENT_GEOMETRY_KEYS)) {
     return INVALID;
   }
-  for (const [key, validation] of Object.entries(
-    NUMBERING_LEVEL_INDENT_GEOMETRY_VALIDATION,
-  )) {
+  for (const [key, validation] of Object.entries(NUMBERING_LEVEL_INDENT_GEOMETRY_VALIDATION)) {
     const property = value[key];
     if (property === undefined) {
       continue;
@@ -917,10 +972,7 @@ const validateNumberingLevelIndent = (value: unknown): ValidationResult => {
 const PARAGRAPH_MARK_EFFECTIVE_VALIDATION = {
   defaultTextFormatting: "text-formatting",
   runInWithNext: "boolean",
-} as const satisfies Record<
-  keyof ParagraphMarkEffectiveProperties,
-  "boolean" | "text-formatting"
->;
+} as const satisfies Record<keyof ParagraphMarkEffectiveProperties, "boolean" | "text-formatting">;
 const PARAGRAPH_MARK_EFFECTIVE_KEYS = new Set<string>(
   Object.keys(PARAGRAPH_MARK_EFFECTIVE_VALIDATION),
 );
@@ -948,9 +1000,7 @@ const PARAGRAPH_MARK_CONTEXT_VALIDATION = {
   authored: "paragraph-mark",
   effective: "effective",
 } as const satisfies Record<keyof ParagraphMarkProjectionContext, "effective" | "paragraph-mark">;
-const PARAGRAPH_MARK_CONTEXT_KEYS = new Set<string>(
-  Object.keys(PARAGRAPH_MARK_CONTEXT_VALIDATION),
-);
+const PARAGRAPH_MARK_CONTEXT_KEYS = new Set<string>(Object.keys(PARAGRAPH_MARK_CONTEXT_VALIDATION));
 
 const validateParagraphMarkContext = (value: unknown): ValidationResult => {
   if (!isRecord(value) || !hasOnlyKeys(value, PARAGRAPH_MARK_CONTEXT_KEYS)) {
@@ -977,9 +1027,7 @@ const validateParagraphSpacingInheritance = (value: unknown): ValidationResult =
   if (!isRecord(value) || !hasOnlyKeys(value, PARAGRAPH_SPACING_INHERITANCE_KEYS)) {
     return INVALID;
   }
-  return Object.values(value).every((entry) =>
-    isOneOf(entry, PARAGRAPH_SPACING_INHERITANCE_VALUES),
-  )
+  return Object.values(value).every((entry) => isOneOf(entry, PARAGRAPH_SPACING_INHERITANCE_VALUES))
     ? VALID
     : INVALID;
 };
@@ -1007,10 +1055,7 @@ const validateParagraphPropertyProjectionContext = (value: unknown): ValidationR
     return INVALID;
   }
   const numberingLevelIndent = value["numberingLevelIndent"];
-  if (
-    numberingLevelIndent !== null &&
-    !validateNumberingLevelIndent(numberingLevelIndent).valid
-  ) {
+  if (numberingLevelIndent !== null && !validateNumberingLevelIndent(numberingLevelIndent).valid) {
     return INVALID;
   }
   const numPrFromStyle = value["numPrFromStyle"];
@@ -1089,7 +1134,7 @@ const trustedParagraphPropertyPayload = (
 type UntrustedStateBranch =
   | {
       type: "imported";
-      token: ParagraphPropertySourceToken;
+      token: string;
       authoredPPr: AuthoredParagraphProperties;
       context: ParagraphPropertyProjectionContext;
     }
@@ -1118,8 +1163,7 @@ const trustParagraphPropertyState = <Branch extends UntrustedStateBranch>(
     Object.defineProperty(state, "toJSON", {
       configurable: false,
       enumerable: false,
-      value: () =>
-        panic("Transient paragraph-property state cannot cross a persistence boundary"),
+      value: () => panic("Transient paragraph-property state cannot cross a persistence boundary"),
       writable: false,
     });
   }
@@ -1209,6 +1253,7 @@ export const readParagraphPropertyState = (
   if (isTrustedParagraphPropertyState(raw)) {
     return { status: "valid", value: raw };
   }
+  assertParagraphPropertyStateBudget(raw);
   if (!isRecord(raw) || typeof raw["type"] !== "string") {
     return { raw, status: "invalid" };
   }
@@ -1234,7 +1279,10 @@ export const readParagraphPropertyState = (
     case "imported": {
       const token = raw["token"];
       return typeof token === "string" && token.length > 0
-        ? { status: "valid", value: trustParagraphPropertyState({ type, token, authoredPPr, context }) }
+        ? {
+            status: "valid",
+            value: trustParagraphPropertyState({ type, token, authoredPPr, context }),
+          }
         : { raw, status: "invalid" };
     }
     case "editor-created":

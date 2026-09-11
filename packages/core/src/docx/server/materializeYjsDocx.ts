@@ -74,13 +74,13 @@ const readProseMirrorDocument = (yjsUpdate: Uint8Array) => {
         });
       }
       const contract = readYjsParagraphSourceContract(ydoc);
-      if (!contract) {
+      if (contract.status !== "valid") {
         throw new FolioYjsDocxMaterializationError({
           code: "source_mismatch",
           message: "Yjs update does not identify its paragraph-property source document.",
         });
       }
-      return withParagraphSourceContract(initProseMirrorDoc(fragment, schema).doc, contract);
+      return withParagraphSourceContract(initProseMirrorDoc(fragment, schema).doc, contract.value);
     },
     catch: (cause) =>
       cause instanceof FolioYjsDocxMaterializationError

@@ -7,6 +7,13 @@
 
 import type { ColorValue, BorderSpec, ShadingProperties } from "./colors";
 
+const freezeDescriptor = <const Value extends Record<string, object>>(value: Value): Value => {
+  for (const entry of Object.values(value)) {
+    Object.freeze(entry);
+  }
+  return Object.freeze(value);
+};
+
 // ============================================================================
 // TEXT FORMATTING (Run Properties - rPr)
 // ============================================================================
@@ -233,7 +240,7 @@ type TextFormattingPropertyDescriptor = {
 };
 
 /** Total semantic descriptor for every modeled run-formatting property. */
-export const TEXT_FORMATTING_PROPERTY_DESCRIPTORS = {
+export const TEXT_FORMATTING_PROPERTY_DESCRIPTORS = freezeDescriptor({
   bold: {
     field: "bold",
     comparison: "exact",
@@ -451,9 +458,9 @@ export const TEXT_FORMATTING_PROPERTY_DESCRIPTORS = {
     visualGroup: null,
     fastPath: "character-style",
   },
-} as const satisfies SelfDescribingFieldMap<TextFormatting, TextFormattingPropertyDescriptor>;
+} as const satisfies SelfDescribingFieldMap<TextFormatting, TextFormattingPropertyDescriptor>);
 
-export const TEXT_FORMATTING_FONT_FAMILY_FIELD_DESCRIPTORS = {
+export const TEXT_FORMATTING_FONT_FAMILY_FIELD_DESCRIPTORS = freezeDescriptor({
   ascii: { field: "ascii", validation: "string" },
   hAnsi: { field: "hAnsi", validation: "string" },
   eastAsia: { field: "eastAsia", validation: "string" },
@@ -466,24 +473,24 @@ export const TEXT_FORMATTING_FONT_FAMILY_FIELD_DESCRIPTORS = {
 } as const satisfies SelfDescribingFieldMap<
   NonNullable<TextFormatting["fontFamily"]>,
   { validation: "ascii-theme" | "font-hint" | "string" }
->;
+>);
 
-export const TEXT_FORMATTING_LANGUAGE_FIELD_DESCRIPTORS = {
+export const TEXT_FORMATTING_LANGUAGE_FIELD_DESCRIPTORS = freezeDescriptor({
   val: { field: "val", validation: "string" },
   eastAsia: { field: "eastAsia", validation: "string" },
   bidi: { field: "bidi", validation: "string" },
 } as const satisfies SelfDescribingFieldMap<
   NonNullable<TextFormatting["language"]>,
   { validation: "string" }
->;
+>);
 
-export const TEXT_FORMATTING_UNDERLINE_FIELD_DESCRIPTORS = {
+export const TEXT_FORMATTING_UNDERLINE_FIELD_DESCRIPTORS = freezeDescriptor({
   style: { field: "style", validation: "underline-style" },
   color: { field: "color", validation: "color" },
 } as const satisfies SelfDescribingFieldMap<
   NonNullable<TextFormatting["underline"]>,
   { validation: "color" | "underline-style" }
->;
+>);
 
 // ============================================================================
 // PARAGRAPH FORMATTING (Paragraph Properties - pPr)

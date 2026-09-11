@@ -1,5 +1,12 @@
 import type { ParagraphFormatting } from "./formatting";
 
+const freezeDescriptor = <const Value extends Record<string, object>>(value: Value): Value => {
+  for (const entry of Object.values(value)) {
+    Object.freeze(entry);
+  }
+  return Object.freeze(value);
+};
+
 export const PARAGRAPH_PROPERTY_OWNER = {
   pPrBase: "pPr-base",
   derived: "derived",
@@ -50,7 +57,7 @@ export type ParagraphPropertyDescriptor = {
  * serialization, and style transitions from silently growing different
  * interpretations of that boundary when `ParagraphFormatting` gains a field.
  */
-export const PARAGRAPH_FORMATTING_PROPERTY_DESCRIPTOR = {
+export const PARAGRAPH_FORMATTING_PROPERTY_DESCRIPTOR = freezeDescriptor({
   alignment: {
     owner: "pPr-base",
     projection: "alignment",
@@ -255,9 +262,9 @@ export const PARAGRAPH_FORMATTING_PROPERTY_DESCRIPTOR = {
     styleTransition: "preserve",
     cascade: "replace",
   },
-} as const satisfies Record<keyof ParagraphFormatting, ParagraphPropertyDescriptor>;
+} as const satisfies Record<keyof ParagraphFormatting, ParagraphPropertyDescriptor>);
 
-export const PARAGRAPH_PROPERTY_SOURCE_XML_GROUP = {
+export const PARAGRAPH_PROPERTY_SOURCE_XML_GROUP = Object.freeze({
   alignment: "jc",
   bidi: "bidi",
   kinsoku: "kinsoku",
@@ -292,7 +299,7 @@ export const PARAGRAPH_PROPERTY_SOURCE_XML_GROUP = {
   suppressAutoHyphens: "suppressAutoHyphens",
   runProperties: "rPr",
   runInWithNext: "rPr",
-} as const satisfies Record<keyof ParagraphFormatting, string | null>;
+} as const satisfies Record<keyof ParagraphFormatting, string | null>);
 
 export type ParagraphPropertySourceXmlGroup = Exclude<
   (typeof PARAGRAPH_PROPERTY_SOURCE_XML_GROUP)[keyof typeof PARAGRAPH_PROPERTY_SOURCE_XML_GROUP],
@@ -301,9 +308,9 @@ export type ParagraphPropertySourceXmlGroup = Exclude<
 
 // SAFETY: `Object.keys` erases keys that the total descriptor establishes.
 export const PARAGRAPH_FORMATTING_PROPERTY_KEY_LIST = Object.freeze(
-  Object.keys(PARAGRAPH_FORMATTING_PROPERTY_DESCRIPTOR) as (
-    keyof typeof PARAGRAPH_FORMATTING_PROPERTY_DESCRIPTOR
-  )[],
+  Object.keys(
+    PARAGRAPH_FORMATTING_PROPERTY_DESCRIPTOR,
+  ) as (keyof typeof PARAGRAPH_FORMATTING_PROPERTY_DESCRIPTOR)[],
 );
 
 type FormattingKeysOwnedBy<Owner extends ParagraphPropertyDescriptor["owner"]> = {
@@ -314,10 +321,7 @@ type FormattingKeysOwnedBy<Owner extends ParagraphPropertyDescriptor["owner"]> =
 
 /** Exact authored CT_PPrBase payload, before style or numbering resolution. */
 export type AuthoredParagraphPropertyKey = FormattingKeysOwnedBy<"pPr-base">;
-export type AuthoredParagraphProperties = Pick<
-  ParagraphFormatting,
-  AuthoredParagraphPropertyKey
->;
+export type AuthoredParagraphProperties = Pick<ParagraphFormatting, AuthoredParagraphPropertyKey>;
 
 /** Paragraph-mark properties intentionally kept outside CT_PPrBase provenance. */
 export type ParagraphMarkPropertyKey = FormattingKeysOwnedBy<"paragraph-mark">;
@@ -347,9 +351,7 @@ const clonePropertyValue = (value: unknown): unknown => {
   return value;
 };
 
-const selectParagraphPropertiesOwnedBy = <
-  Owner extends ParagraphPropertyDescriptor["owner"],
->(
+const selectParagraphPropertiesOwnedBy = <Owner extends ParagraphPropertyDescriptor["owner"]>(
   formatting: ParagraphFormatting | null | undefined,
   owner: Owner,
 ): Pick<ParagraphFormatting, FormattingKeysOwnedBy<Owner>> => {
@@ -485,10 +487,10 @@ export class ParagraphPropertySourceDelta {
           ? before.pPrBase
           : before.paragraphMark;
       const afterOwner =
-        descriptor.owner === PARAGRAPH_PROPERTY_OWNER.pPrBase
-          ? after.pPrBase
-          : after.paragraphMark;
-      if (canonicalPropertyValueEqual(Reflect.get(beforeOwner, key), Reflect.get(afterOwner, key))) {
+        descriptor.owner === PARAGRAPH_PROPERTY_OWNER.pPrBase ? after.pPrBase : after.paragraphMark;
+      if (
+        canonicalPropertyValueEqual(Reflect.get(beforeOwner, key), Reflect.get(afterOwner, key))
+      ) {
         continue;
       }
       if (descriptor.owner === PARAGRAPH_PROPERTY_OWNER.pPrBase) {
@@ -568,4 +570,3 @@ export const isParagraphFormattingPropertyKey = (
   key: string,
 ): key is keyof typeof PARAGRAPH_FORMATTING_PROPERTY_DESCRIPTOR =>
   PARAGRAPH_FORMATTING_PROPERTY_KEY_SET.has(key);
-

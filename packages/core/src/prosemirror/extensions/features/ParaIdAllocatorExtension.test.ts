@@ -16,13 +16,22 @@ import { describe, expect, spyOn, test } from "bun:test";
 import { history, redo, undo } from "prosemirror-history";
 import { Schema, Slice, Fragment } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
+import { TextSelection } from "prosemirror-state";
 import type { Command } from "prosemirror-state";
+import { ySyncPluginKey } from "y-prosemirror";
 
+import { PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR } from "../../../docx/paragraphPropertySource";
 import {
-  PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
-  PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR,
-  joinProseParagraphsWithRightPropertySource,
-} from "../../../docx/paragraphPropertySource";
+  ParagraphPropertySourceContract,
+  ParagraphPropertySourceValidationError,
+  paragraphPropertySourceTokenWire,
+} from "../../../docx/paragraphPropertySourceIdentity";
+import {
+  joinParagraphsWithProperties,
+  replaceSelectionThenSplitParagraphWithProperties,
+  splitParagraphWithProperties,
+} from "../../paragraphPropertyMutation";
+import { EMPTY_EDITOR_PARAGRAPH_PROPERTY_STATE } from "../../paragraphPropertyState";
 import {
   getChangedParagraphIds,
   ParagraphChangeTrackerExtension,
@@ -46,7 +55,7 @@ const schema = new Schema({
       attrs: {
         paraId: { default: null },
         textId: { default: null },
-        [PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR]: { default: null },
+        _paragraphPropertyState: { default: EMPTY_EDITOR_PARAGRAPH_PROPERTY_STATE },
       },
       toDOM: () => ["p", 0],
     },
@@ -73,13 +82,22 @@ const para = (text: string, paraId: string | null = null) =>
   schema.node("paragraph", { paraId }, text.length > 0 ? [schema.text(text)] : []);
 
 const SOURCE_DIGEST = "a".repeat(64);
-const SOURCE_CONTRACT = `folio-ppr-v1:${SOURCE_DIGEST}`;
-const sourceToken = (ordinal: number, fingerprint = SOURCE_DIGEST.slice(0, 32)) =>
-  `p1d:${fingerprint}:${ordinal.toString(36)}`;
+const SOURCE_CONTRACT = ParagraphPropertySourceContract.fromSourceCensus(SOURCE_DIGEST, [
+  { paragraphCount: 10, story: { type: "document" } },
+]).serialized;
+const sourceToken = (ordinal: number) =>
+  paragraphPropertySourceTokenWire({ type: "document" }, ordinal);
 const sourcedPara = (text: string, paraId: string, ordinal: number) =>
   schema.node(
     "paragraph",
-    { paraId, [PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR]: sourceToken(ordinal) },
+    {
+      paraId,
+      _paragraphPropertyState: {
+        ...EMPTY_EDITOR_PARAGRAPH_PROPERTY_STATE,
+        type: "imported",
+        token: sourceToken(ordinal),
+      },
+    },
     text.length > 0 ? [schema.text(text)] : [],
   );
 
@@ -104,6 +122,12 @@ const createTrackedState = (...paras: ReturnType<typeof para>[]) =>
 const createHistoryState = (...paras: ReturnType<typeof para>[]) =>
   EditorState.create({
     doc: schema.node("doc", null, paras),
+    plugins: [plugin, history()],
+  });
+
+const createSourcedHistoryState = (...paras: ReturnType<typeof sourcedPara>[]) =>
+  EditorState.create({
+    doc: schema.node("doc", { [PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR]: SOURCE_CONTRACT }, paras),
     plugins: [plugin, history()],
   });
 
@@ -133,8 +157,12 @@ const collectSourceTokens = (state: EditorState): (string | null)[] => {
   const out: (string | null)[] = [];
   state.doc.descendants((node) => {
     if (node.type.name === "paragraph") {
-      const token = node.attrs[PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR];
-      out.push(typeof token === "string" ? token : null);
+      const state = node.attrs["_paragraphPropertyState"];
+      out.push(
+        typeof state === "object" && state !== null && state.type === "imported"
+          ? state.token
+          : null,
+      );
       return false;
     }
     return true;
@@ -390,44 +418,93 @@ describe("ParaIdAllocatorExtension", () => {
   });
 
   test.each(["", "Hello"])(
-    "an attribute-only paragraph recreation restores an omitted seeded source token for %j",
+    "an attribute-only paragraph recreation cannot omit imported state for %j",
     (text) => {
       const initial = createSourcedState(sourcedPara(text, "AAAA1111", 0));
-      const next = initial.apply(
-        initial.tr.setNodeMarkup(0, undefined, {
-          paraId: "AAAA1111",
-          textId: "BBBB2222",
-        }),
-      );
-
-      expect(collectSourceTokens(next)).toEqual([sourceToken(0)]);
+      expect(() =>
+        initial.apply(
+          initial.tr.setNodeMarkup(0, undefined, {
+            paraId: "AAAA1111",
+            textId: "BBBB2222",
+          }),
+        ),
+      ).toThrow(ParagraphPropertySourceValidationError);
     },
   );
 
-  test("a nested paragraph recreation restores an omitted seeded source token", () => {
+  test("a nested paragraph recreation cannot omit imported state", () => {
     const initial = EditorState.create({
       doc: schema.node("doc", { [PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR]: SOURCE_CONTRACT }, [
         schema.node("blockquote", null, [sourcedPara("Nested", "AAAA1111", 0)]),
       ]),
       plugins: [plugin],
     });
-    const next = initial.apply(
-      initial.tr.setNodeMarkup(1, undefined, {
-        paraId: "AAAA1111",
-        textId: "BBBB2222",
-      }),
-    );
+    expect(() =>
+      initial.apply(
+        initial.tr.setNodeMarkup(1, undefined, {
+          paraId: "AAAA1111",
+          textId: "BBBB2222",
+        }),
+      ),
+    ).toThrow(ParagraphPropertySourceValidationError);
+  });
 
-    expect(collectSourceTokens(next)).toEqual([sourceToken(0)]);
+  test.each([0, 2, 5])("a raw split at offset %i cannot duplicate imported ownership", (offset) => {
+    const initial = createSourcedState(sourcedPara("Hello", "AAAA1111", 0));
+    expect(() => initial.apply(initial.tr.split(offset + 1))).toThrow(
+      ParagraphPropertySourceValidationError,
+    );
+  });
+
+  test("the ownership proof step survives split undo and redo", () => {
+    const initial = createSourcedHistoryState(sourcedPara("Hello", "AAAA1111", 0));
+    const transaction = initial.tr;
+    splitParagraphWithProperties({
+      transaction,
+      pos: 3,
+      transition: { type: "split-left-created-right-retains" },
+    });
+    const split = initial.apply(transaction);
+    const undone = applyCommand(split, undo);
+    const redone = applyCommand(undone, redo);
+
+    expect(collectSourceTokens(split)).toEqual([null, sourceToken(0)]);
+    expect(collectSourceTokens(undone)).toEqual([sourceToken(0)]);
+    expect(collectSourceTokens(redone)).toEqual([null, sourceToken(0)]);
+  });
+
+  test("replace-selection and split records ownership before either structural step", () => {
+    const initial = createSourcedHistoryState(
+      sourcedPara("First", "AAAA1111", 0),
+      sourcedPara("Second", "BBBB2222", 1),
+    );
+    const transaction = initial.tr.setSelection(TextSelection.create(initial.doc, 3, 10));
+    replaceSelectionThenSplitParagraphWithProperties({
+      transaction,
+      transition: { type: "split-left-created-right-retains" },
+    });
+    const changed = initial.apply(transaction);
+    const undone = applyCommand(changed, undo);
+    const redone = applyCommand(undone, redo);
+
+    expect(collectSourceTokens(changed)).toEqual([null, sourceToken(0)]);
+    expect(collectSourceTokens(undone)).toEqual([sourceToken(0), sourceToken(1)]);
+    expect(collectSourceTokens(redone)).toEqual([null, sourceToken(0)]);
   });
 
   test.each([0, 2, 5])(
-    "split at offset %i retains the token only on the mapped original half",
+    "the canonical split at offset %i carries an issuer proof and retains the right owner",
     (offset) => {
       const initial = createSourcedState(sourcedPara("Hello", "AAAA1111", 0));
-      const next = initial.apply(initial.tr.split(offset + 1));
+      const transaction = initial.tr;
+      splitParagraphWithProperties({
+        transaction,
+        pos: offset + 1,
+        transition: { type: "split-left-created-right-retains" },
+      });
+      const next = initial.apply(transaction);
 
-      expect(collectSourceTokens(next)).toEqual([sourceToken(0), null]);
+      expect(collectSourceTokens(next)).toEqual([null, sourceToken(0)]);
     },
   );
 
@@ -438,47 +515,198 @@ describe("ParaIdAllocatorExtension", () => {
       { ...original.attrs, paraId: "BBBB2222" },
       schema.text("Copy"),
     );
-    const next = initial.apply(initial.tr.replace(0, 0, new Slice(Fragment.from(copy), 0, 0)));
-
-    expect(collectSourceTokens(next)).toEqual([null, sourceToken(0)]);
+    expect(() =>
+      initial.apply(initial.tr.replace(0, 0, new Slice(Fragment.from(copy), 0, 0))),
+    ).toThrow(ParagraphPropertySourceValidationError);
   });
 
-  test("a token from a different source fingerprint is cleared", () => {
+  test("a contract-owned token cannot appear without an ownership transition", () => {
     const initial = createSourcedState(sourcedPara("Original", "AAAA1111", 0));
     const foreign = schema.node(
       "paragraph",
       {
         paraId: "BBBB2222",
-        [PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR]: sourceToken(0, "b".repeat(32)),
+        _paragraphPropertyState: {
+          ...EMPTY_EDITOR_PARAGRAPH_PROPERTY_STATE,
+          type: "imported",
+          token: sourceToken(9),
+        },
       },
       schema.text("Foreign"),
     );
-    const next = initial.apply(
-      initial.tr.replace(
-        initial.doc.content.size,
-        initial.doc.content.size,
-        new Slice(Fragment.from(foreign), 0, 0),
+    expect(() =>
+      initial.apply(
+        initial.tr.replace(
+          initial.doc.content.size,
+          initial.doc.content.size,
+          new Slice(Fragment.from(foreign), 0, 0),
+        ),
       ),
-    );
-
-    expect(collectSourceTokens(next)).toEqual([sourceToken(0), null]);
+    ).toThrow(ParagraphPropertySourceValidationError);
   });
 
-  test("a uniquely seeded token survives delete then paste", () => {
+  test("a valid-looking token outside the contract census is rejected", () => {
+    const initial = createSourcedState(sourcedPara("Original", "AAAA1111", 0));
+    const forged = schema.node(
+      "paragraph",
+      {
+        paraId: "BBBB2222",
+        _paragraphPropertyState: {
+          ...EMPTY_EDITOR_PARAGRAPH_PROPERTY_STATE,
+          type: "imported",
+          token: sourceToken(10),
+        },
+      },
+      schema.text("Forged"),
+    );
+
+    expect(() =>
+      initial.apply(
+        initial.tr.replace(
+          initial.doc.content.size,
+          initial.doc.content.size,
+          new Slice(Fragment.from(forged), 0, 0),
+        ),
+      ),
+    ).toThrow(ParagraphPropertySourceValidationError);
+  });
+
+  test("a token from another contract story cannot enter the editable body", () => {
+    const contract = ParagraphPropertySourceContract.fromSourceCensus(SOURCE_DIGEST, [
+      { paragraphCount: 1, story: { type: "document" } },
+      { paragraphCount: 1, story: { relationshipId: "rId1", type: "header" } },
+    ]);
+    const headerToken = paragraphPropertySourceTokenWire(
+      { relationshipId: "rId1", type: "header" },
+      0,
+    );
+    const headerOwned = schema.node(
+      "paragraph",
+      {
+        paraId: "AAAA1111",
+        _paragraphPropertyState: {
+          ...EMPTY_EDITOR_PARAGRAPH_PROPERTY_STATE,
+          type: "imported",
+          token: headerToken,
+        },
+      },
+      schema.text("Header"),
+    );
+
+    expect(() =>
+      EditorState.create({
+        doc: schema.node("doc", { [PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR]: contract.serialized }, [
+          headerOwned,
+        ]),
+        plugins: [plugin],
+      }),
+    ).toThrow(ParagraphPropertySourceValidationError);
+  });
+
+  test("a raw paragraph deletion cannot discard imported ownership", () => {
     const original = sourcedPara("Original", "AAAA1111", 0);
     const sibling = sourcedPara("Sibling", "BBBB2222", 1);
     const initial = createSourcedState(original, sibling);
-    const deleted = initial.apply(initial.tr.delete(0, original.nodeSize));
+    expect(() => initial.apply(initial.tr.delete(0, original.nodeSize))).toThrow(
+      ParagraphPropertySourceValidationError,
+    );
+  });
+
+  test("a remote deletion is accepted only when the mapping deletes the owner interior", () => {
+    const original = sourcedPara("Original", "AAAA1111", 0);
+    const sibling = sourcedPara("Sibling", "BBBB2222", 1);
+    const initial = createSourcedState(original, sibling);
+    const transaction = initial.tr
+      .delete(0, original.nodeSize)
+      .setMeta(ySyncPluginKey, { type: "synthetic-remote-boundary" });
+    const next = initial.apply(transaction);
+
+    expect(collectSourceTokens(next)).toEqual([sourceToken(1)]);
+  });
+
+  test("a remote undo can restore an exact previously observed deleted owner", () => {
+    const original = sourcedPara("Original", "AAAA1111", 0);
+    const sibling = sourcedPara("Sibling", "BBBB2222", 1);
+    const initial = createSourcedState(original, sibling);
+    const deleted = initial.apply(
+      initial.tr
+        .delete(0, original.nodeSize)
+        .setMeta(ySyncPluginKey, { type: "synthetic-remote-boundary" }),
+    );
     const restored = deleted.apply(
-      deleted.tr.replace(
-        deleted.doc.content.size,
-        deleted.doc.content.size,
-        new Slice(Fragment.from(original), 0, 0),
-      ),
+      deleted.tr
+        .replace(0, 0, new Slice(Fragment.from(original), 0, 0))
+        .setMeta(ySyncPluginKey, { type: "synthetic-remote-boundary" }),
     );
 
-    expect(collectSourceTokens(deleted)).toEqual([sourceToken(1)]);
-    expect(collectSourceTokens(restored)).toEqual([sourceToken(1), sourceToken(0)]);
+    expect(collectSourceTokens(restored)).toEqual([sourceToken(0), sourceToken(1)]);
+  });
+
+  test("a remote insertion cannot mint an unobserved contract-owned owner", () => {
+    const initial = createSourcedState(sourcedPara("Original", "AAAA1111", 0));
+    const unseen = sourcedPara("Unseen", "BBBB2222", 9);
+    const transaction = initial.tr
+      .replace(
+        initial.doc.content.size,
+        initial.doc.content.size,
+        new Slice(Fragment.from(unseen), 0, 0),
+      )
+      .setMeta(ySyncPluginKey, { type: "synthetic-remote-boundary" });
+
+    expect(() => initial.apply(transaction)).toThrow(ParagraphPropertySourceValidationError);
+  });
+
+  test("a remote split cannot reuse an imported owner without a structural proof", () => {
+    const initial = createSourcedState(sourcedPara("Original", "AAAA1111", 0));
+    const transaction = initial.tr
+      .split(4)
+      .setMeta(ySyncPluginKey, { type: "synthetic-remote-boundary" });
+
+    expect(() => initial.apply(transaction)).toThrow(ParagraphPropertySourceValidationError);
+  });
+
+  test("a remote split is reified from an exact content partition and owner transition", () => {
+    const initial = createSourcedState(sourcedPara("Original", "AAAA1111", 0));
+    const transaction = initial.tr.split(4);
+    const left = transaction.doc.child(0);
+    transaction.setNodeMarkup(0, undefined, {
+      ...left.attrs,
+      _paragraphPropertyState: EMPTY_EDITOR_PARAGRAPH_PROPERTY_STATE,
+    });
+    transaction.setMeta(ySyncPluginKey, { type: "synthetic-remote-boundary" });
+    const next = initial.apply(transaction);
+
+    expect(collectSourceTokens(next)).toEqual([null, sourceToken(0)]);
+  });
+
+  test("a remote owner relocation without an exact split or join topology is rejected", () => {
+    const initial = createSourcedState(sourcedPara("Original", "AAAA1111", 0));
+    const original = initial.doc.child(0);
+    const detached = original.type.create(
+      {
+        ...original.attrs,
+        _paragraphPropertyState: EMPTY_EDITOR_PARAGRAPH_PROPERTY_STATE,
+      },
+      original.content,
+      original.marks,
+    );
+    const forged = sourcedPara("Different", "BBBB2222", 0);
+    const transaction = initial.tr
+      .replaceWith(0, original.nodeSize, [detached, forged])
+      .setMeta(ySyncPluginKey, { type: "synthetic-remote-boundary" });
+
+    expect(() => initial.apply(transaction)).toThrow(ParagraphPropertySourceValidationError);
+  });
+
+  test("a remote whole-paragraph join is reified from adjacent exact content", () => {
+    const left = sourcedPara("Left", "AAAA1111", 0);
+    const initial = createSourcedState(left, sourcedPara("Right", "BBBB2222", 1));
+    const transaction = initial.tr
+      .join(left.nodeSize)
+      .setMeta(ySyncPluginKey, { type: "synthetic-remote-boundary" });
+    const next = initial.apply(transaction);
+
+    expect(collectSourceTokens(next)).toEqual([sourceToken(0)]);
   });
 
   test("the explicit revision join can select the right paragraph owner", () => {
@@ -487,10 +715,10 @@ describe("ParaIdAllocatorExtension", () => {
       sourcedPara("Right", "BBBB2222", 1),
     );
     const transaction = initial.tr;
-    joinProseParagraphsWithRightPropertySource({
-      attrs: transaction.doc.child(1).attrs,
-      pos: transaction.doc.child(0).nodeSize,
+    joinParagraphsWithProperties({
+      joinPos: transaction.doc.child(0).nodeSize,
       transaction,
+      transition: { type: "join-right-paragraph-mark-retains" },
     });
     const next = initial.apply(transaction);
 

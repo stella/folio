@@ -6,7 +6,6 @@ import * as Y from "yjs";
 
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import { writeYjsParagraphSourceContract } from "../../prosemirror/yjsParagraphSourceContract";
-import { PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR } from "../paragraphPropertySource";
 import { parseDocx } from "../parser";
 import { createDocx, createEmptyDocx } from "../rezip";
 import { createEmptyDocument } from "../../utils/createDocument";
@@ -110,6 +109,8 @@ describe("materializeYjsDocx", () => {
     expect(outputXml).not.toContain("_docxParagraphSource");
     expect(outputXml).not.toContain("folio-ppr-v1");
     expect(outputXml).not.toContain("p1d:");
+    expect(outputXml).not.toContain("folio-ppr-v3");
+    expect(outputXml).not.toContain("p3s:");
   });
 
   test("rejects a state update without Folio's document fragment", async () => {
@@ -177,10 +178,26 @@ describe("materializeYjsDocx", () => {
     if (!first || !second) {
       throw new Error("Source fixture lost a paragraph");
     }
+    const firstState = first.attrs["_paragraphPropertyState"];
+    const secondState = second.attrs["_paragraphPropertyState"];
+    if (
+      typeof firstState !== "object" ||
+      firstState === null ||
+      !("type" in firstState) ||
+      firstState.type !== "imported" ||
+      !("token" in firstState) ||
+      typeof firstState.token !== "string" ||
+      typeof secondState !== "object" ||
+      secondState === null ||
+      !("type" in secondState) ||
+      secondState.type !== "imported"
+    ) {
+      throw new Error("Source fixture paragraphs must carry imported property state");
+    }
     const duplicated = initialState.apply(
       initialState.tr.setNodeMarkup(secondPos, undefined, {
         ...second.attrs,
-        [PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR]: first.attrs[PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR],
+        _paragraphPropertyState: { ...secondState, token: firstState.token },
       }),
     );
     const yjsUpdate = encodeCollaborativeDocument(duplicated.doc);
@@ -196,15 +213,23 @@ describe("materializeYjsDocx", () => {
     const sourceDocument = await parseDocx(sourceDocx, { preloadFonts: false });
     const initialState = EditorState.create({ doc: toProseDoc(sourceDocument) });
     const first = initialState.doc.child(0);
-    const sourceToken = first.attrs[PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR];
-    if (typeof sourceToken !== "string") {
+    const firstState = first.attrs["_paragraphPropertyState"];
+    if (
+      typeof firstState !== "object" ||
+      firstState === null ||
+      !("type" in firstState) ||
+      firstState.type !== "imported" ||
+      !("token" in firstState) ||
+      typeof firstState.token !== "string"
+    ) {
       throw new Error("Source fixture paragraph must carry a source token");
     }
+    const sourceToken = firstState.token;
     const unknownToken = `${sourceToken.slice(0, sourceToken.lastIndexOf(":"))}:zz`;
     const spoofed = initialState.apply(
       initialState.tr.setNodeMarkup(0, undefined, {
         ...first.attrs,
-        [PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR]: unknownToken,
+        _paragraphPropertyState: { ...firstState, token: unknownToken },
       }),
     );
     const yjsUpdate = encodeCollaborativeDocument(spoofed.doc);

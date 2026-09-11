@@ -12,6 +12,7 @@ import {
   cloneDocumentWithParagraphPropertySources,
   cloneParagraphWithPropertySource,
   cloneParagraphWithoutPropertySource,
+  copyParagraphPropertyCapture,
   createParagraphPropertyTemplateStore,
   deriveDocumentWithParagraphPropertySources,
   getDocumentParagraphPropertySourceContract,
@@ -22,6 +23,12 @@ import {
 } from "./paragraphPropertySource";
 import {
   ParagraphPropertySourceContract,
+  PARAGRAPH_PROPERTY_SOURCE_MAX_CONTRACT_CODE_UNITS,
+  PARAGRAPH_PROPERTY_SOURCE_MAX_PARAGRAPHS,
+  PARAGRAPH_PROPERTY_SOURCE_MAX_STORIES,
+  PARAGRAPH_PROPERTY_SOURCE_MAX_STORY_IDENTIFIER_CODE_UNITS,
+  paragraphPropertySourceTokenWire,
+  ParagraphPropertySourceValidationError,
   ParagraphPropertySourceToken,
   ParagraphPropertyTransientTemplateHandle,
   ParagraphPropertyTransientTemplateStore,
@@ -39,10 +46,8 @@ const BLOCK_SDT_FIXTURE = new URL(
 const LAYOUT_DIGEST = "96aef5ba6161127dc9b85ec487101c934ca1bc93f63fbb8caa53dde196a5fd5b";
 const BLOCK_SDT_DIGEST = "2c4d3273683c5a7a059711c5d2a6ba2d040e914cb6b84d72fa809b7419b42e11";
 
-const token = (digest: string, story: ParagraphPropertySourceStory, ordinal: number) =>
-  ParagraphPropertySourceContract.fromDigest(digest)
-    .bindStoryCensus(story, ordinal + 1)
-    .tokenAt(ordinal).serialized;
+const token = (_digest: string, story: ParagraphPropertySourceStory, ordinal: number) =>
+  paragraphPropertySourceTokenWire(story, ordinal);
 
 const tokensIn = (content: BlockContent[]): string[] => {
   const tokens: string[] = [];
@@ -82,9 +87,15 @@ const firstParagraphIn = (content: BlockContent[]): Paragraph | undefined => {
 describe("paragraph-property source identity", () => {
   test("only canonical serialized values cross into frozen trusted identities", () => {
     const digest = "a".repeat(64);
-    const contract = ParagraphPropertySourceContract.fromDigest(digest);
     const story = { relationshipId: "rId:header/1", type: "header" } as const;
-    const sourceToken = contract.bindStoryCensus(story, 13).tokenAt(12);
+    const contract = ParagraphPropertySourceContract.fromSourceCensus(digest, [
+      { paragraphCount: 13, story },
+    ]);
+    const sourceTokenResult = contract.readToken(paragraphPropertySourceTokenWire(story, 12));
+    if (sourceTokenResult.status !== "valid") {
+      throw new Error("Canonical source token failed reification");
+    }
+    const sourceToken = sourceTokenResult.value;
 
     expect(Object.isFrozen(contract)).toBe(true);
     expect(Object.isFrozen(sourceToken)).toBe(true);
@@ -92,53 +103,174 @@ describe("paragraph-property source identity", () => {
       status: "valid",
       value: expect.any(ParagraphPropertySourceContract),
     });
-    expect(ParagraphPropertySourceContract.read(`folio-ppr-v2:${"A".repeat(64)}`)).toEqual({
-      raw: `folio-ppr-v2:${"A".repeat(64)}`,
+    expect(ParagraphPropertySourceContract.read(`folio-ppr-v3:${"A".repeat(64)}:[]`)).toEqual({
+      raw: `folio-ppr-v3:${"A".repeat(64)}:[]`,
       status: "invalid",
     });
     expect(contract.readToken(sourceToken.serialized)).toEqual({
       status: "valid",
       value: expect.any(ParagraphPropertySourceToken),
     });
-    expect(contract.readToken("p2s:bad:0")).toEqual({
-      raw: "p2s:bad:0",
+    expect(contract.readToken("p3s:bad:0")).toEqual({
+      raw: "p3s:bad:0",
       status: "invalid",
     });
+    expect(contract.readToken(paragraphPropertySourceTokenWire(story, 13)).status).toBe("invalid");
     expect(sourceToken.belongsTo(contract)).toBe(true);
     expect(sourceToken.belongsToStory({ relationshipId: "rId:header/1", type: "header" })).toBe(
       true,
     );
-    expect(
-      contract.readToken("p2s:header:%72Id%3Aheader%2F1:c").status,
-    ).toBe("invalid");
+    expect(contract.readToken("p3s:header:%72Id%3Aheader%2F1:c").status).toBe("invalid");
     expect(sourceToken.belongsToStory({ relationshipId: "other", type: "header" })).toBe(false);
+    const rereadContract = ParagraphPropertySourceContract.read(contract.serialized);
+    if (rereadContract.status !== "valid") {
+      throw new Error("Canonical source contract failed independent reification");
+    }
+    expect(rereadContract.value.serialized).toBe(contract.serialized);
+    expect(sourceToken.belongsTo(rereadContract.value)).toBe(false);
+    const rereadToken = rereadContract.value.readToken(sourceToken.serialized);
+    if (rereadToken.status !== "valid") {
+      throw new Error("Canonical source token failed independent contract reification");
+    }
+    expect(rereadToken.value.belongsTo(rereadContract.value)).toBe(true);
+    expect(rereadToken.value.belongsTo(contract)).toBe(false);
     expect(() =>
-      contract.bindStoryCensus({ relationshipId: "", type: "header" }, 1),
+      ParagraphPropertySourceContract.fromSourceCensus(digest, [
+        { paragraphCount: 1, story: { relationshipId: "", type: "header" } },
+      ]),
     ).toThrow();
     expect(() =>
-      contract.bindStoryCensus({ noteId: Number.NaN, type: "footnote" }, 1),
+      ParagraphPropertySourceContract.fromSourceCensus(digest, [
+        { paragraphCount: 1, story: { noteId: Number.NaN, type: "footnote" } },
+      ]),
     ).toThrow();
-    const collidingPrefixContract = ParagraphPropertySourceContract.fromDigest(
+    const collidingPrefixContract = ParagraphPropertySourceContract.fromSourceCensus(
       `${"a".repeat(32)}${"b".repeat(32)}`,
+      [{ paragraphCount: 13, story }],
     );
     expect(sourceToken.belongsTo(collidingPrefixContract)).toBe(false);
-    const sameLocalToken = collidingPrefixContract.bindStoryCensus(story, 13).tokenAt(12);
+    const sameLocalTokenResult = collidingPrefixContract.readToken(
+      paragraphPropertySourceTokenWire(story, 12),
+    );
+    if (sameLocalTokenResult.status !== "valid") {
+      throw new Error("Canonical colliding-prefix token failed reification");
+    }
+    const sameLocalToken = sameLocalTokenResult.value;
     expect(sameLocalToken.serialized).toBe(sourceToken.serialized);
     expect(sourceToken.belongsTo(collidingPrefixContract)).toBe(false);
     expect(sameLocalToken.belongsTo(contract)).toBe(false);
   });
 
   test("contract-local token construction and parsing agree over bounded story ordinals", () => {
-    const contract = ParagraphPropertySourceContract.fromDigest("b".repeat(64));
+    const story = { type: "document" } as const;
+    const contract = ParagraphPropertySourceContract.fromSourceCensus("b".repeat(64), [
+      { paragraphCount: 1025, story },
+    ]);
     for (const ordinal of [0, 1, 35, 36, 1024]) {
-      const sourceToken = contract.bindStoryCensus({ type: "document" }, ordinal + 1).tokenAt(ordinal);
-      const parsed = contract.readToken(sourceToken.serialized);
+      const parsed = contract.readToken(paragraphPropertySourceTokenWire(story, ordinal));
       expect(parsed.status).toBe("valid");
       if (parsed.status === "valid") {
         expect(parsed.value.ordinal).toBe(ordinal);
         expect(parsed.value.belongsTo(contract)).toBe(true);
       }
     }
+  });
+
+  test("serialized token parsing is bounded before story decoding or ordinal parsing", () => {
+    const contract = ParagraphPropertySourceContract.fromSourceCensus("b".repeat(64), [
+      { paragraphCount: 1, story: { type: "document" } },
+    ]);
+    const oversizedRelationshipId = "r".repeat(
+      PARAGRAPH_PROPERTY_SOURCE_MAX_STORY_IDENTIFIER_CODE_UNITS + 1,
+    );
+    const oversizedEncodedIdentifier = "%41".repeat(
+      PARAGRAPH_PROPERTY_SOURCE_MAX_STORY_IDENTIFIER_CODE_UNITS + 1,
+    );
+
+    expect(() =>
+      ParagraphPropertySourceContract.fromSourceCensus("b".repeat(64), [
+        { paragraphCount: 1, story: { relationshipId: oversizedRelationshipId, type: "header" } },
+      ]),
+    ).toThrow();
+    expect(contract.readToken(`p3s:header:${oversizedEncodedIdentifier}:0`).status).toBe("invalid");
+    expect(contract.readToken("p3s:document::10000").status).toBe("invalid");
+    expect(() =>
+      ParagraphPropertySourceContract.fromSourceCensus("b".repeat(64), [
+        {
+          paragraphCount: PARAGRAPH_PROPERTY_SOURCE_MAX_PARAGRAPHS + 1,
+          story: { type: "document" },
+        },
+      ]),
+    ).toThrow(ParagraphPropertySourceValidationError);
+  });
+
+  test("serialized contracts are canonical, census-bound, and length-bounded", () => {
+    const digest = "b".repeat(64);
+    const canonical = ParagraphPropertySourceContract.fromSourceCensus(digest, [
+      { paragraphCount: 2, story: { type: "document" } },
+      { paragraphCount: 1, story: { relationshipId: "rId1", type: "header" } },
+    ]);
+
+    expect(ParagraphPropertySourceContract.read(canonical.serialized).status).toBe("valid");
+    expect(
+      ParagraphPropertySourceContract.read(
+        `folio-ppr-v3:${digest}:[["header","rId1",1],["document","",2]]`,
+      ).status,
+    ).toBe("invalid");
+    expect(
+      ParagraphPropertySourceContract.read(
+        `folio-ppr-v3:${digest}:[["document","",1],["document","",1]]`,
+      ).status,
+    ).toBe("invalid");
+    expect(
+      ParagraphPropertySourceContract.read(
+        "x".repeat(PARAGRAPH_PROPERTY_SOURCE_MAX_CONTRACT_CODE_UNITS + 1),
+      ).status,
+    ).toBe("invalid");
+    expect(
+      canonical.readToken(paragraphPropertySourceTokenWire({ type: "document" }, 2)).status,
+    ).toBe("invalid");
+    expect(
+      canonical.readToken(
+        paragraphPropertySourceTokenWire({ relationshipId: "rId2", type: "header" }, 0),
+      ).status,
+    ).toBe("invalid");
+  });
+
+  test("document contract assignment bounds the complete story and paragraph census atomically", () => {
+    const tooManyParagraphs: Document = {
+      package: {
+        document: {
+          content: Array.from(
+            { length: PARAGRAPH_PROPERTY_SOURCE_MAX_PARAGRAPHS + 1 },
+            () => ({ content: [], type: "paragraph" }) satisfies Paragraph,
+          ),
+        },
+      },
+    };
+    expect(() =>
+      assignDocumentParagraphPropertySourceContract(tooManyParagraphs, "b".repeat(64)),
+    ).toThrow(ParagraphPropertySourceValidationError);
+    expect(getDocumentParagraphPropertySourceContract(tooManyParagraphs)).toBeUndefined();
+
+    const headers = new Map<
+      string,
+      NonNullable<Document["package"]["headers"]> extends Map<string, infer Header> ? Header : never
+    >();
+    for (let index = 0; index < PARAGRAPH_PROPERTY_SOURCE_MAX_STORIES; index += 1) {
+      headers.set(`r${index}`, {
+        content: [],
+        hdrFtrType: "default",
+        type: "header",
+      });
+    }
+    const tooManyStories: Document = {
+      package: { document: { content: [] }, headers },
+    };
+    expect(() =>
+      assignDocumentParagraphPropertySourceContract(tooManyStories, "c".repeat(64)),
+    ).toThrow(ParagraphPropertySourceValidationError);
+    expect(getDocumentParagraphPropertySourceContract(tooManyStories)).toBeUndefined();
   });
 
   test("the private contract follows immutable derivations without entering JSON", async () => {
@@ -152,7 +284,7 @@ describe("paragraph-property source identity", () => {
     expect(() => getDocumentParagraphPropertySourceContract(weakened)).toThrow();
     expect(getDocumentParagraphPropertySourceContract(derived)).toBe(contract);
     expect(JSON.stringify(derived)).not.toContain("paragraphPropertySourceContract");
-    expect(JSON.stringify(derived)).not.toContain("folio-ppr-v2");
+    expect(JSON.stringify(derived)).not.toContain("folio-ppr-v3");
   });
 
   test("the sanctioned structured clone explicitly transfers private source identity", async () => {
@@ -168,7 +300,9 @@ describe("paragraph-property source identity", () => {
       getDocumentParagraphPropertySourceContract(document),
     );
     expect(rawClonedParagraph && getParagraphPropertySource(rawClonedParagraph)).toBeUndefined();
-    expect(rawClonedParagraph && getParagraphPropertySourceToken(rawClonedParagraph)).toBeUndefined();
+    expect(
+      rawClonedParagraph && getParagraphPropertySourceToken(rawClonedParagraph),
+    ).toBeUndefined();
     expect(sourceParagraph && getParagraphPropertySource(sourceParagraph)).toEqual(
       clonedParagraph && getParagraphPropertySource(clonedParagraph),
     );
@@ -239,7 +373,7 @@ describe("paragraph-property source identity", () => {
     expect(Object.isFrozen(source)).toBe(true);
     expect(source && Object.isFrozen(source.fingerprint)).toBe(true);
     expect(source && Object.isFrozen(source.fingerprint.pPrBase)).toBe(true);
-    expect(JSON.stringify(derived)).not.toContain("p2s:");
+    expect(JSON.stringify(derived)).not.toContain("p3s:");
     expect(JSON.stringify(derived)).not.toContain("<w:pPr");
 
     const detached = cloneParagraphWithoutPropertySource(paragraph, {});
@@ -290,6 +424,48 @@ describe("paragraph-property source identity", () => {
     expect(handle).not.toBe(otherStore.registerAll([capture]).at(0));
   });
 
+  test("a template capture remains exact but outside the durable census on later saves", () => {
+    const imported: Paragraph = { content: [], type: "paragraph" };
+    assignAbsentParagraphPropertySource(imported);
+    const source: Document = { package: { document: { content: [imported] } } };
+    assignDocumentParagraphPropertySourceContract(source, "d".repeat(64));
+
+    const templateDerived: Paragraph = { content: [], type: "paragraph" };
+    copyParagraphPropertyCapture(templateDerived, imported);
+    const reused = deriveDocumentWithParagraphPropertySources(source, {
+      package: {
+        ...source.package,
+        document: {
+          ...source.package.document,
+          content: [imported, templateDerived],
+        },
+      },
+    });
+    const sourceStory = ParagraphPropertyStorySource.fromDocument(reused, {
+      type: "document",
+    });
+    const importedToken = getParagraphPropertySourceToken(imported);
+    if (!importedToken) {
+      throw new Error("Imported fixture lost its durable token");
+    }
+
+    expect(sourceStory.readToken(importedToken.serialized).serialized).toBe(
+      importedToken.serialized,
+    );
+    expect(getParagraphPropertySource(templateDerived)).toBe(getParagraphPropertySource(imported));
+    expect(getParagraphPropertySourceToken(templateDerived)).toBeUndefined();
+
+    const cloned = cloneDocumentWithParagraphPropertySources(reused);
+    expect(() =>
+      ParagraphPropertyStorySource.fromDocument(cloned, { type: "document" }),
+    ).not.toThrow();
+    const clonedTemplate = cloned.package.document.content.at(1);
+    expect(clonedTemplate?.type).toBe("paragraph");
+    expect(
+      clonedTemplate?.type === "paragraph" ? getParagraphPropertySource(clonedTemplate) : undefined,
+    ).toEqual(getParagraphPropertySource(imported));
+  });
+
   test("template capacity preflight is atomic", () => {
     const store = new ParagraphPropertyTransientTemplateStore(1);
 
@@ -305,15 +481,15 @@ describe("paragraph-property source identity", () => {
     registry.assertFullyConsumed();
   });
 
-  test("v2 traversal fixes body, text-box, and table ordinals across parse options", async () => {
+  test("v3 census fixes body, text-box, and table ordinals across parse options", async () => {
     const source = await readFile(LAYOUT_FIXTURE);
     const browser = await parseDocx(source, { preloadFonts: true });
     const materializer = await parseDocx(source, { preloadFonts: false });
     const browserTokens = tokensIn(browser.package.document.content);
     const materializerTokens = tokensIn(materializer.package.document.content);
 
-    expect(getDocumentParagraphPropertySourceContract(browser)?.serialized).toBe(
-      `folio-ppr-v2:${LAYOUT_DIGEST}`,
+    expect(getDocumentParagraphPropertySourceContract(browser)?.serialized).toStartWith(
+      `folio-ppr-v3:${LAYOUT_DIGEST}:`,
     );
     expect(browserTokens).toEqual(
       Array.from({ length: 41 }, (_, ordinal) =>
@@ -351,7 +527,7 @@ describe("paragraph-property source identity", () => {
     ).toBe(token(LAYOUT_DIGEST, { type: "document" }, 7));
   });
 
-  test("v2 traversal includes nested block content controls", async () => {
+  test("v3 census includes nested block content controls", async () => {
     const source = await readFile(BLOCK_SDT_FIXTURE);
     const document = await parseDocx(source, { preloadFonts: false });
     const paragraph = firstParagraphIn(document.package.document.content);
@@ -364,7 +540,7 @@ describe("paragraph-property source identity", () => {
     );
   });
 
-  test("v2 all-story ordinals ignore package map and note array order", () => {
+  test("v3 all-story ordinals ignore package map and note array order", () => {
     const paragraph = (text: string): Paragraph => ({
       type: "paragraph",
       content: [{ type: "run", content: [{ type: "text", text }] }],
@@ -473,20 +649,18 @@ describe("paragraph-property source identity", () => {
     };
 
     expect(makeDocument(true)).toEqual(makeDocument(false));
-    expect(makeDocument(false)).toEqual(
-      [
-        token("c".repeat(64), { type: "document" }, 0),
-        token("c".repeat(64), { relationshipId: "rIdA", type: "header" }, 0),
-        token("c".repeat(64), { relationshipId: "rIdB", type: "header" }, 0),
-        token("c".repeat(64), { relationshipId: "rIdC", type: "footer" }, 0),
-        token("c".repeat(64), { relationshipId: "rIdD", type: "footer" }, 0),
-        token("c".repeat(64), { noteId: 1, type: "footnote" }, 0),
-        token("c".repeat(64), { noteId: 2, type: "footnote" }, 0),
-        token("c".repeat(64), { noteId: 1, type: "endnote" }, 0),
-        token("c".repeat(64), { commentId: 1, type: "comment" }, 0),
-        token("c".repeat(64), { commentId: 2, type: "comment" }, 0),
-      ],
-    );
+    expect(makeDocument(false)).toEqual([
+      token("c".repeat(64), { type: "document" }, 0),
+      token("c".repeat(64), { relationshipId: "rIdA", type: "header" }, 0),
+      token("c".repeat(64), { relationshipId: "rIdB", type: "header" }, 0),
+      token("c".repeat(64), { relationshipId: "rIdC", type: "footer" }, 0),
+      token("c".repeat(64), { relationshipId: "rIdD", type: "footer" }, 0),
+      token("c".repeat(64), { noteId: 1, type: "footnote" }, 0),
+      token("c".repeat(64), { noteId: 2, type: "footnote" }, 0),
+      token("c".repeat(64), { noteId: 1, type: "endnote" }, 0),
+      token("c".repeat(64), { commentId: 1, type: "comment" }, 0),
+      token("c".repeat(64), { commentId: 2, type: "comment" }, 0),
+    ]);
   });
 
   test("contract assignment validates the whole story census before mutating provenance", () => {
@@ -496,9 +670,7 @@ describe("paragraph-property source identity", () => {
     const document: Document = {
       package: {
         document: { content: [body] },
-        headers: new Map([
-          ["z", { content: [lateHeader], hdrFtrType: "default", type: "header" }],
-        ]),
+        headers: new Map([["z", { content: [lateHeader], hdrFtrType: "default", type: "header" }]]),
       },
     };
 
@@ -526,9 +698,7 @@ describe("paragraph-property source identity", () => {
     const document: Document = {
       package: {
         document: { content: [body] },
-        headers: new Map([
-          ["z", { content: [lateHeader], hdrFtrType: "default", type: "header" }],
-        ]),
+        headers: new Map([["z", { content: [lateHeader], hdrFtrType: "default", type: "header" }]]),
       },
     };
 

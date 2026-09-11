@@ -7,7 +7,6 @@
 import {
   baseKeymap,
   splitBlock,
-  deleteSelection,
   joinBackward,
   joinForward,
   selectAll,
@@ -15,18 +14,22 @@ import {
 } from "prosemirror-commands";
 import { panic } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
-import type { Command, Transaction } from "prosemirror-state";
+import { TextSelection, type Command, type Transaction } from "prosemirror-state";
+import { canJoin, canSplit } from "prosemirror-transform";
 
 import { expectParagraphAttrs } from "../../attrs";
 import { attrsWithParagraphIndentationTransition } from "../../paragraphIndentation";
 import {
   applyParagraphPropertyProjection,
   createParagraphNodeFromProjection,
-  rebindJoinedParagraphProperties,
+  joinParagraphsWithProperties,
+  replaceSelectionThenSplitParagraphWithProperties,
   rebindSplitParagraphProperties,
+  splitParagraphWithProperties,
   transitionParagraphProperties,
 } from "../../paragraphPropertyMutation";
 import { expectParagraphPropertyState } from "../../paragraphPropertyState";
+import { recordDeleteParagraphPropertyOwnershipProof } from "../../paragraphPropertyOwnership";
 import { getDocumentNumbering } from "../../plugins/documentNumbering";
 import { getDocumentStyleResolver } from "../../plugins/documentStyles";
 import { inheritedParagraphRunFormatting } from "../../rebaseParagraphRunFormatting";
@@ -50,6 +53,19 @@ function chainCommands(...commands: Command[]): Command {
     return false;
   };
 }
+
+const deleteSelectionWithParagraphOwnership: Command = (state, dispatch) => {
+  if (state.selection.empty) {
+    return false;
+  }
+  if (!dispatch) {
+    return true;
+  }
+  const transaction = state.tr;
+  recordDeleteParagraphPropertyOwnershipProof(transaction);
+  dispatch(transaction.deleteSelection().scrollIntoView());
+  return true;
+};
 
 /**
  * Backspace at the start of a paragraph clears first-line indent / hanging indent
@@ -110,10 +126,7 @@ const clearIndentOnBackspace: Command = (state, dispatch) => {
 
 type ParagraphJoinCandidate = {
   leftContentSize: number;
-  leftPosition: number;
-  leftState: ReturnType<typeof expectParagraphPropertyState>;
-  rightContentSize: number;
-  rightState: ReturnType<typeof expectParagraphPropertyState>;
+  joinPosition: number;
 };
 
 const paragraphJoinCandidate = (
@@ -155,22 +168,30 @@ const paragraphJoinCandidate = (
   }
   return {
     leftContentSize: left.content.size,
-    leftPosition,
-    leftState: expectParagraphPropertyState(expectParagraphAttrs(left)._paragraphPropertyState),
-    rightContentSize: right.content.size,
-    rightState: expectParagraphPropertyState(expectParagraphAttrs(right)._paragraphPropertyState),
+    joinPosition: leftPosition + left.nodeSize,
   };
 };
 
-const withParagraphJoinOwnership = (
-  command: Command,
-  direction: "backward" | "forward",
-): Command =>
+const withParagraphJoinOwnership =
+  (command: Command, direction: "backward" | "forward"): Command =>
   (state, dispatch, view) => {
     if (!dispatch) {
       return command(state, undefined, view);
     }
     const candidate = paragraphJoinCandidate(state, direction);
+    if (candidate && canJoin(state.doc, candidate.joinPosition)) {
+      const transaction = state.tr;
+      const joinedPosition = joinParagraphsWithProperties({
+        transaction,
+        joinPos: candidate.joinPosition,
+        transition: { type: "join-right-paragraph-mark-retains" },
+      });
+      transaction.setSelection(
+        TextSelection.near(transaction.doc.resolve(joinedPosition + candidate.leftContentSize + 1)),
+      );
+      dispatch(transaction.scrollIntoView());
+      return true;
+    }
     let captured: Transaction | null = null;
     const handled = command(
       state,
@@ -188,24 +209,7 @@ const withParagraphJoinOwnership = (
     if (captured === null) {
       return true;
     }
-    const transaction = captured;
-    if (candidate) {
-      const joinedPosition = transaction.mapping.map(candidate.leftPosition, -1);
-      const joined = transaction.doc.nodeAt(joinedPosition);
-      if (
-        joined?.type.name === "paragraph" &&
-        joined.content.size === candidate.leftContentSize + candidate.rightContentSize
-      ) {
-        rebindJoinedParagraphProperties({
-          transaction,
-          joinedPosition,
-          leftState: candidate.leftState,
-          rightState: candidate.rightState,
-          transition: { type: "join-right-paragraph-mark-retains" },
-        });
-      }
-    }
-    dispatch(transaction);
+    dispatch(captured);
     return true;
   };
 
@@ -289,14 +293,34 @@ export const splitBlockClearBorders: Command = (state, dispatch, view) => {
   // Intercept splitBlock's transaction so we can modify it before dispatch.
   // This ensures attrs + stored marks are set in a single transaction,
   // avoiding a flash where the empty paragraph has no formatting.
-  const splitResult = { tr: null as Transaction | null };
+  const splitResult = { ownershipRebound: false, tr: null as Transaction | null };
   const capturingDispatch = dispatch
     ? (tr: Transaction) => {
         splitResult.tr = tr;
       }
     : undefined;
 
-  if (!splitBlock(state, capturingDispatch, view)) {
+  if (dispatch && sourcePara && sourcePropertyState && sourcePosition !== null) {
+    const transaction = state.tr;
+    const preflight = state.selection.empty ? transaction : state.tr.deleteSelection();
+    const splitPosition = preflight.selection.from;
+    if (!canSplit(preflight.doc, splitPosition)) {
+      return false;
+    }
+    const { rightPosition } = state.selection.empty
+      ? splitParagraphWithProperties({
+          transaction,
+          pos: splitPosition,
+          transition: { type: "split-left-created-right-retains" },
+        })
+      : replaceSelectionThenSplitParagraphWithProperties({
+          transaction,
+          transition: { type: "split-left-created-right-retains" },
+        });
+    transaction.setSelection(TextSelection.near(transaction.doc.resolve(rightPosition + 1), 1));
+    splitResult.tr = transaction;
+    splitResult.ownershipRebound = true;
+  } else if (!splitBlock(state, capturingDispatch, view)) {
     return false;
   }
 
@@ -309,7 +333,12 @@ export const splitBlockClearBorders: Command = (state, dispatch, view) => {
 
     if (newPara.type.name === "paragraph") {
       let projectedNewParagraph = newPara;
-      if (sourcePara && sourcePropertyState && sourcePosition !== null) {
+      if (
+        !splitResult.ownershipRebound &&
+        sourcePara &&
+        sourcePropertyState &&
+        sourcePosition !== null
+      ) {
         const rightPosition = $from.before();
         const leftParagraph = tr.doc.resolve(rightPosition).nodeBefore;
         if (leftParagraph?.type.name !== "paragraph") {
@@ -391,12 +420,12 @@ export const BaseKeymapExtension = createExtension({
         // Override some keys with better defaults
         Enter: splitBlockClearBorders,
         Backspace: chainCommands(
-          deleteSelection,
+          deleteSelectionWithParagraphOwnership,
           clearIndentOnBackspace,
           withParagraphJoinOwnership(joinBackward, "backward"),
         ),
         Delete: chainCommands(
-          deleteSelection,
+          deleteSelectionWithParagraphOwnership,
           withParagraphJoinOwnership(joinForward, "forward"),
         ),
         "Mod-a": selectAll,

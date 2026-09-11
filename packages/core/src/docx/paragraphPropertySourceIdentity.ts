@@ -1,10 +1,19 @@
 import { panic, TaggedError } from "better-result";
 
-const PARAGRAPH_SOURCE_TOKEN_VERSION = "folio-ppr-v2";
-const PARAGRAPH_SOURCE_TOKEN_PREFIX = "p2s";
+const PARAGRAPH_SOURCE_TOKEN_VERSION = "folio-ppr-v3";
+const PARAGRAPH_SOURCE_TOKEN_PREFIX = "p3s";
+export const PARAGRAPH_PROPERTY_SOURCE_MAX_PARAGRAPHS = 100_000;
+export const PARAGRAPH_PROPERTY_SOURCE_MAX_STORIES = 10_000;
+export const PARAGRAPH_PROPERTY_SOURCE_MAX_STORY_IDENTIFIER_CODE_UNITS = 1_024;
+export const PARAGRAPH_PROPERTY_SOURCE_MAX_CONTRACT_CODE_UNITS = 2_000_000;
+const PARAGRAPH_PROPERTY_SOURCE_MAX_SERIALIZED_TOKEN_CODE_UNITS =
+  PARAGRAPH_PROPERTY_SOURCE_MAX_STORY_IDENTIFIER_CODE_UNITS * 3 + 32;
+const PARAGRAPH_PROPERTY_SOURCE_MAX_SERIALIZED_ORDINAL_CODE_UNITS = (
+  PARAGRAPH_PROPERTY_SOURCE_MAX_PARAGRAPHS - 1
+).toString(36).length;
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 const SOURCE_TOKEN =
-  /^p2s:(comment|document|header|footer|footnote|endnote):([^:]*):(0|[1-9a-z][0-9a-z]*)$/;
+  /^p3s:(comment|document|header|footer|footnote|endnote):([^:]*):(0|[1-9a-z][0-9a-z]*)$/;
 
 /** Result of reifying serialized paragraph-source metadata at a trust boundary. */
 export type ParagraphPropertySourceAttribute<T> =
@@ -26,8 +35,15 @@ const serializedStoryIdentifier = (story: ParagraphPropertySourceStory): string 
     case "comment":
       return String(story.commentId);
     case "footer":
-    case "header":
+    case "header": {
+      if (
+        story.relationshipId.length === 0 ||
+        story.relationshipId.length > PARAGRAPH_PROPERTY_SOURCE_MAX_STORY_IDENTIFIER_CODE_UNITS
+      ) {
+        panic("Paragraph-property relationship identity exceeds its bounded wire contract");
+      }
       return encodeURIComponent(story.relationshipId);
+    }
     case "endnote":
     case "footnote":
       return String(story.noteId);
@@ -53,13 +69,23 @@ const readStory = (type: string, identifier: string): ParagraphPropertySourceSto
     }
     case "footer":
     case "header": {
+      if (
+        identifier.length === 0 ||
+        identifier.length > PARAGRAPH_PROPERTY_SOURCE_MAX_STORY_IDENTIFIER_CODE_UNITS * 3
+      ) {
+        return null;
+      }
       let relationshipId: string;
       try {
         relationshipId = decodeURIComponent(identifier);
       } catch {
         return null;
       }
-      if (!relationshipId || encodeURIComponent(relationshipId) !== identifier) {
+      if (
+        !relationshipId ||
+        relationshipId.length > PARAGRAPH_PROPERTY_SOURCE_MAX_STORY_IDENTIFIER_CODE_UNITS ||
+        encodeURIComponent(relationshipId) !== identifier
+      ) {
         return null;
       }
       return Object.freeze({ relationshipId, type });
@@ -90,9 +116,7 @@ export const canonicalParagraphPropertySourceStory = (
   return canonical;
 };
 
-export const paragraphPropertySourceStoryKey = (
-  story: ParagraphPropertySourceStory,
-): string => {
+export const paragraphPropertySourceStoryKey = (story: ParagraphPropertySourceStory): string => {
   const canonical = canonicalParagraphPropertySourceStory(story);
   return `${canonical.type}:${serializedStoryIdentifier(canonical)}`;
 };
@@ -122,42 +146,190 @@ export const paragraphPropertySourceStoriesEqual = (
   }
 };
 
+export const paragraphPropertySourceTokenWire = (
+  story: ParagraphPropertySourceStory,
+  ordinal: number,
+): string => {
+  if (
+    !Number.isSafeInteger(ordinal) ||
+    ordinal < 0 ||
+    ordinal >= PARAGRAPH_PROPERTY_SOURCE_MAX_PARAGRAPHS
+  ) {
+    panic("Paragraph-property source token ordinal is outside its bounded wire contract");
+  }
+  const canonicalStory = canonicalParagraphPropertySourceStory(story);
+  return `${PARAGRAPH_SOURCE_TOKEN_PREFIX}:${canonicalStory.type}:${serializedStoryIdentifier(canonicalStory)}:${ordinal.toString(36)}`;
+};
+
+type ParagraphPropertySourceCensusEntry = {
+  paragraphCount: number;
+  story: ParagraphPropertySourceStory;
+};
+
+type SerializedParagraphPropertySourceCensusEntry = readonly [
+  type: ParagraphPropertySourceStory["type"],
+  identifier: string,
+  paragraphCount: number,
+];
+
+const canonicalSourceCensus = (
+  entries: readonly ParagraphPropertySourceCensusEntry[],
+): readonly SerializedParagraphPropertySourceCensusEntry[] => {
+  if (entries.length > PARAGRAPH_PROPERTY_SOURCE_MAX_STORIES) {
+    throw new ParagraphPropertySourceValidationError({
+      code: "source_capacity_exceeded",
+      message: "Paragraph-property source story capacity was exceeded.",
+    });
+  }
+  let totalParagraphCount = 0;
+  const seen = new Set<string>();
+  const serialized: SerializedParagraphPropertySourceCensusEntry[] = [];
+  for (const { paragraphCount, story } of entries) {
+    if (
+      !Number.isSafeInteger(paragraphCount) ||
+      paragraphCount < 0 ||
+      paragraphCount > PARAGRAPH_PROPERTY_SOURCE_MAX_PARAGRAPHS
+    ) {
+      throw new ParagraphPropertySourceValidationError({
+        code: "source_capacity_exceeded",
+        message: "Paragraph-property source paragraph capacity was exceeded.",
+      });
+    }
+    totalParagraphCount += paragraphCount;
+    if (totalParagraphCount > PARAGRAPH_PROPERTY_SOURCE_MAX_PARAGRAPHS) {
+      throw new ParagraphPropertySourceValidationError({
+        code: "source_capacity_exceeded",
+        message: "Paragraph-property source paragraph capacity was exceeded.",
+      });
+    }
+    const canonicalStory = canonicalParagraphPropertySourceStory(story);
+    const key = paragraphPropertySourceStoryKey(canonicalStory);
+    if (seen.has(key)) {
+      throw new ParagraphPropertySourceValidationError({
+        code: "ambiguous_source",
+        message: "Paragraph-property source census contains duplicate story identity.",
+      });
+    }
+    seen.add(key);
+    serialized.push(
+      Object.freeze([
+        canonicalStory.type,
+        serializedStoryIdentifier(canonicalStory),
+        paragraphCount,
+      ]),
+    );
+  }
+  serialized.sort((left, right) => {
+    const leftKey = `${left[0]}:${left[1]}`;
+    const rightKey = `${right[0]}:${right[1]}`;
+    if (leftKey < rightKey) {
+      return -1;
+    }
+    return leftKey > rightKey ? 1 : 0;
+  });
+  return Object.freeze(serialized);
+};
+
+const censusCounts = (
+  entries: readonly SerializedParagraphPropertySourceCensusEntry[],
+): ReadonlyMap<string, number> => {
+  const counts = new Map<string, number>();
+  for (const [type, identifier, paragraphCount] of entries) {
+    const story = readStory(type, identifier);
+    if (!story) {
+      panic("Canonical paragraph-property source census became invalid");
+    }
+    counts.set(paragraphPropertySourceStoryKey(story), paragraphCount);
+  }
+  return counts;
+};
+
 /** A source-package contract that has passed the canonical grammar check. */
 export class ParagraphPropertySourceContract {
   readonly #validated = true;
+  readonly #storyParagraphCounts: ReadonlyMap<string, number>;
 
   private constructor(
     readonly serialized: string,
     readonly fingerprint: string,
+    entries: readonly SerializedParagraphPropertySourceCensusEntry[],
   ) {
+    this.#storyParagraphCounts = censusCounts(entries);
     Object.freeze(this);
   }
 
-  static fromDigest(sourceDigest: string): ParagraphPropertySourceContract {
+  static fromSourceCensus(
+    sourceDigest: string,
+    entries: readonly ParagraphPropertySourceCensusEntry[],
+  ): ParagraphPropertySourceContract {
     if (!SHA256_HEX.test(sourceDigest)) {
       panic("Paragraph-property source digest must be lowercase SHA-256 hex");
     }
-    return new ParagraphPropertySourceContract(
-      `${PARAGRAPH_SOURCE_TOKEN_VERSION}:${sourceDigest}`,
-      sourceDigest,
-    );
+    const census = canonicalSourceCensus(entries);
+    const serialized = `${PARAGRAPH_SOURCE_TOKEN_VERSION}:${sourceDigest}:${JSON.stringify(census)}`;
+    if (serialized.length > PARAGRAPH_PROPERTY_SOURCE_MAX_CONTRACT_CODE_UNITS) {
+      throw new ParagraphPropertySourceValidationError({
+        code: "source_capacity_exceeded",
+        message: "Paragraph-property source contract capacity was exceeded.",
+      });
+    }
+    return new ParagraphPropertySourceContract(serialized, sourceDigest, census);
   }
 
   static read(raw: unknown): ParagraphPropertySourceAttribute<ParagraphPropertySourceContract> {
     if (raw === null || raw === undefined) {
       return { status: "absent" };
     }
-    if (typeof raw !== "string") {
+    if (typeof raw !== "string" || raw.length > PARAGRAPH_PROPERTY_SOURCE_MAX_CONTRACT_CODE_UNITS) {
       return { raw, status: "invalid" };
     }
     const prefix = `${PARAGRAPH_SOURCE_TOKEN_VERSION}:`;
-    const digest = raw.startsWith(prefix) ? raw.slice(prefix.length) : "";
-    if (!SHA256_HEX.test(digest)) {
+    if (!raw.startsWith(prefix)) {
+      return { raw, status: "invalid" };
+    }
+    const digestStart = prefix.length;
+    const digest = raw.slice(digestStart, digestStart + 64);
+    if (!SHA256_HEX.test(digest) || raw.at(digestStart + 64) !== ":") {
+      return { raw, status: "invalid" };
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw.slice(digestStart + 65));
+    } catch {
+      return { raw, status: "invalid" };
+    }
+    if (!Array.isArray(parsed) || parsed.length > PARAGRAPH_PROPERTY_SOURCE_MAX_STORIES) {
+      return { raw, status: "invalid" };
+    }
+    const census: ParagraphPropertySourceCensusEntry[] = [];
+    for (const entry of parsed) {
+      if (
+        !Array.isArray(entry) ||
+        entry.length !== 3 ||
+        typeof entry[0] !== "string" ||
+        typeof entry[1] !== "string" ||
+        typeof entry[2] !== "number"
+      ) {
+        return { raw, status: "invalid" };
+      }
+      const story = readStory(entry[0], entry[1]);
+      if (!story) {
+        return { raw, status: "invalid" };
+      }
+      census.push({ paragraphCount: entry[2], story });
+    }
+    let canonical: readonly SerializedParagraphPropertySourceCensusEntry[];
+    try {
+      canonical = canonicalSourceCensus(census);
+    } catch {
+      return { raw, status: "invalid" };
+    }
+    if (`${prefix}${digest}:${JSON.stringify(canonical)}` !== raw) {
       return { raw, status: "invalid" };
     }
     return {
       status: "valid",
-      value: new ParagraphPropertySourceContract(raw, digest),
+      value: new ParagraphPropertySourceContract(raw, digest, canonical),
     };
   }
 
@@ -166,6 +338,9 @@ export class ParagraphPropertySourceContract {
       return { status: "absent" };
     }
     if (typeof raw !== "string") {
+      return { raw, status: "invalid" };
+    }
+    if (raw.length > PARAGRAPH_PROPERTY_SOURCE_MAX_SERIALIZED_TOKEN_CODE_UNITS) {
       return { raw, status: "invalid" };
     }
     const match = SOURCE_TOKEN.exec(raw);
@@ -178,16 +353,29 @@ export class ParagraphPropertySourceContract {
     if (!storyType || storyIdentifier === undefined || !serializedOrdinal) {
       return { raw, status: "invalid" };
     }
+    if (
+      storyIdentifier.length > PARAGRAPH_PROPERTY_SOURCE_MAX_STORY_IDENTIFIER_CODE_UNITS * 3 ||
+      serializedOrdinal.length > PARAGRAPH_PROPERTY_SOURCE_MAX_SERIALIZED_ORDINAL_CODE_UNITS
+    ) {
+      return { raw, status: "invalid" };
+    }
     const story = readStory(storyType, storyIdentifier);
     const ordinal = Number.parseInt(serializedOrdinal, 36);
-    if (!story || !Number.isSafeInteger(ordinal) || ordinal.toString(36) !== serializedOrdinal) {
+    if (
+      !story ||
+      !Number.isSafeInteger(ordinal) ||
+      ordinal < 0 ||
+      ordinal >= PARAGRAPH_PROPERTY_SOURCE_MAX_PARAGRAPHS ||
+      ordinal.toString(36) !== serializedOrdinal ||
+      ordinal >= (this.#storyParagraphCounts.get(paragraphPropertySourceStoryKey(story)) ?? 0)
+    ) {
       return { raw, status: "invalid" };
     }
     return {
       status: "valid",
       value: new ParagraphPropertySourceToken(
         paragraphPropertySourceTokenIssuer,
-        this.fingerprint,
+        this,
         raw,
         story,
         ordinal,
@@ -195,15 +383,8 @@ export class ParagraphPropertySourceContract {
     };
   }
 
-  bindStoryCensus(
-    story: ParagraphPropertySourceStory,
-    paragraphCount: number,
-  ): ParagraphPropertySourceTokenCensus {
-    return ParagraphPropertySourceTokenCensus.bind(this, story, paragraphCount);
-  }
-
   owns(token: ParagraphPropertySourceToken): boolean {
-    return this.#validated && token.belongsToContract(this.fingerprint);
+    return this.#validated && token.belongsTo(this);
   }
 }
 
@@ -213,11 +394,11 @@ type ParagraphPropertySourceTokenIssuer = typeof paragraphPropertySourceTokenIss
 /** A paragraph token whose syntax has passed the canonical grammar check. */
 export class ParagraphPropertySourceToken {
   readonly #validated = true;
-  readonly #contractFingerprint: string;
+  readonly #contract: ParagraphPropertySourceContract;
 
   constructor(
     issuer: ParagraphPropertySourceTokenIssuer,
-    contractFingerprint: string,
+    contract: ParagraphPropertySourceContract,
     readonly serialized: string,
     readonly story: ParagraphPropertySourceStory,
     readonly ordinal: number,
@@ -225,59 +406,16 @@ export class ParagraphPropertySourceToken {
     if (issuer !== paragraphPropertySourceTokenIssuer) {
       panic("Only a paragraph-property source census may issue tokens");
     }
-    this.#contractFingerprint = contractFingerprint;
+    this.#contract = contract;
     Object.freeze(this);
   }
 
   belongsTo(contract: ParagraphPropertySourceContract): boolean {
-    return this.#validated && contract.owns(this);
+    return this.#validated && this.#contract === contract;
   }
 
   belongsToStory(story: ParagraphPropertySourceStory): boolean {
     return this.#validated && paragraphPropertySourceStoriesEqual(this.story, story);
-  }
-
-  belongsToContract(fingerprint: string): boolean {
-    return this.#validated && this.#contractFingerprint === fingerprint;
-  }
-}
-
-/** The only token issuer: one complete, canonical story census. */
-class ParagraphPropertySourceTokenCensus {
-  readonly #tokens: readonly ParagraphPropertySourceToken[];
-
-  private constructor(tokens: readonly ParagraphPropertySourceToken[]) {
-    this.#tokens = Object.freeze(tokens);
-    Object.freeze(this);
-  }
-
-  static bind(
-    contract: ParagraphPropertySourceContract,
-    story: ParagraphPropertySourceStory,
-    paragraphCount: number,
-  ): ParagraphPropertySourceTokenCensus {
-    if (!Number.isSafeInteger(paragraphCount) || paragraphCount < 0) {
-      panic("A paragraph-property source census requires a non-negative safe paragraph count");
-    }
-    const canonicalStory = canonicalParagraphPropertySourceStory(story);
-    const tokens = Array.from({ length: paragraphCount }, (_, ordinal) =>
-      new ParagraphPropertySourceToken(
-        paragraphPropertySourceTokenIssuer,
-        contract.fingerprint,
-        `${PARAGRAPH_SOURCE_TOKEN_PREFIX}:${canonicalStory.type}:${serializedStoryIdentifier(canonicalStory)}:${ordinal.toString(36)}`,
-        canonicalStory,
-        ordinal,
-      ),
-    );
-    return new ParagraphPropertySourceTokenCensus(tokens);
-  }
-
-  tokenAt(ordinal: number): ParagraphPropertySourceToken {
-    const token = this.#tokens.at(ordinal);
-    if (!token) {
-      return panic("Paragraph-property source census ordinal is outside its bound story");
-    }
-    return token;
   }
 }
 
@@ -287,7 +425,11 @@ type TransientTemplateHandleIssuer = typeof transientTemplateHandleIssuer;
 export class ParagraphPropertyTransientTemplateHandle {
   readonly #owner: object;
 
-  constructor(issuer: TransientTemplateHandleIssuer, owner: object, readonly ordinal: number) {
+  constructor(
+    issuer: TransientTemplateHandleIssuer,
+    owner: object,
+    readonly ordinal: number,
+  ) {
     if (issuer !== transientTemplateHandleIssuer) {
       panic("Only a paragraph-property template store may issue transient handles");
     }
@@ -311,9 +453,12 @@ export const PARAGRAPH_PROPERTY_SOURCE_VALIDATION_CODES = [
   "duplicate_token",
   "invalid_state",
   "invalid_template_handle",
+  "ownership_transition_mismatch",
   "template_capacity_exceeded",
   "transient_state",
   "invalid_token",
+  "source_capacity_exceeded",
+  "state_capacity_exceeded",
   "unconsumed_template_handle",
   "unknown_template_handle",
   "unknown_token",
