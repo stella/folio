@@ -10,6 +10,8 @@ import { Fragment } from "prosemirror-model";
 import type { Mark, Node as PMNode, NodeSpec, Schema } from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 
+import { PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR } from "../../../docx/paragraphPropertySource";
+
 import type { NumberingMap } from "../../../docx/numberingParser";
 import type {
   ParagraphAlignment,
@@ -326,6 +328,7 @@ const paragraphNodeSpec: NodeSpec = {
   group: "block",
   attrs: {
     paraId: { default: null },
+    [PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR]: { default: null },
     // Internal provenance for comparison alignment. It is intentionally not
     // parsed from or rendered to HTML/OOXML.
     idStability: { default: undefined },

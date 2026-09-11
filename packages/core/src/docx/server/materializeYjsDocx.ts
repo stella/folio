@@ -4,7 +4,12 @@ import * as Y from "yjs";
 
 import { fromProseDoc } from "../../prosemirror/conversion/fromProseDoc";
 import { schema } from "../../prosemirror/schema";
+import {
+  readYjsParagraphSourceContract,
+  withParagraphSourceContract,
+} from "../../prosemirror/yjsParagraphSourceContract";
 import { parseDocx } from "../parser";
+import { ParagraphPropertySourceValidationError } from "../paragraphPropertySource";
 import { repackDocx } from "../rezip";
 
 /** Yjs fragment that stores Folio's canonical ProseMirror document. */
@@ -18,6 +23,7 @@ export const FOLIO_YJS_DOCX_MATERIALIZATION_ERROR_CODES = [
   "empty_update",
   "invalid_update",
   "missing_document",
+  "source_mismatch",
   "update_too_large",
 ] as const;
 
@@ -67,7 +73,14 @@ const readProseMirrorDocument = (yjsUpdate: Uint8Array) => {
           message: "Yjs update does not contain a Folio document.",
         });
       }
-      return initProseMirrorDoc(fragment, schema).doc;
+      const contract = readYjsParagraphSourceContract(ydoc);
+      if (!contract) {
+        throw new FolioYjsDocxMaterializationError({
+          code: "source_mismatch",
+          message: "Yjs update does not identify its paragraph-property source document.",
+        });
+      }
+      return withParagraphSourceContract(initProseMirrorDoc(fragment, schema).doc, contract);
     },
     catch: (cause) =>
       cause instanceof FolioYjsDocxMaterializationError
@@ -96,5 +109,19 @@ export const materializeYjsDocx = async ({
 }: MaterializeYjsDocxOptions): Promise<ArrayBuffer> => {
   const proseMirrorDocument = readProseMirrorDocument(yjsUpdate);
   const baseDocument = await parseDocx(sourceDocx, { preloadFonts: false });
-  return await repackDocx(fromProseDoc(proseMirrorDocument, baseDocument));
+  const converted = Result.try({
+    try: () => fromProseDoc(proseMirrorDocument, baseDocument),
+    catch: (cause) =>
+      cause instanceof ParagraphPropertySourceValidationError
+        ? new FolioYjsDocxMaterializationError({
+            code: "source_mismatch",
+            message: "The collaboration snapshot belongs to a different source document.",
+            cause,
+          })
+        : cause,
+  });
+  if (converted.isErr()) {
+    throw converted.error;
+  }
+  return await repackDocx(converted.value);
 };

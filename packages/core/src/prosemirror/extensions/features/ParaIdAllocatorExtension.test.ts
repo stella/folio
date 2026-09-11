@@ -19,6 +19,11 @@ import { EditorState } from "prosemirror-state";
 import type { Command } from "prosemirror-state";
 
 import {
+  PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
+  PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR,
+  joinProseParagraphsWithRightPropertySource,
+} from "../../../docx/paragraphPropertySource";
+import {
   getChangedParagraphIds,
   ParagraphChangeTrackerExtension,
 } from "./ParagraphChangeTrackerExtension";
@@ -30,7 +35,10 @@ import {
 
 const schema = new Schema({
   nodes: {
-    doc: { content: "block+" },
+    doc: {
+      content: "block+",
+      attrs: { [PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR]: { default: null } },
+    },
     blockquote: { group: "block", content: "block+" },
     paragraph: {
       group: "block",
@@ -38,11 +46,13 @@ const schema = new Schema({
       attrs: {
         paraId: { default: null },
         textId: { default: null },
+        [PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR]: { default: null },
       },
       toDOM: () => ["p", 0],
     },
     text: { group: "inline" },
   },
+  marks: { strong: {} },
 });
 
 const ext = ParaIdAllocatorExtension();
@@ -62,9 +72,26 @@ if (!changeTrackerPlugin) {
 const para = (text: string, paraId: string | null = null) =>
   schema.node("paragraph", { paraId }, text.length > 0 ? [schema.text(text)] : []);
 
+const SOURCE_DIGEST = "a".repeat(64);
+const SOURCE_CONTRACT = `folio-ppr-v1:${SOURCE_DIGEST}`;
+const sourceToken = (ordinal: number, fingerprint = SOURCE_DIGEST.slice(0, 32)) =>
+  `p1d:${fingerprint}:${ordinal.toString(36)}`;
+const sourcedPara = (text: string, paraId: string, ordinal: number) =>
+  schema.node(
+    "paragraph",
+    { paraId, [PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR]: sourceToken(ordinal) },
+    text.length > 0 ? [schema.text(text)] : [],
+  );
+
 const createState = (...paras: ReturnType<typeof para>[]) =>
   EditorState.create({
     doc: schema.node("doc", null, paras),
+    plugins: [plugin],
+  });
+
+const createSourcedState = (...paras: ReturnType<typeof sourcedPara>[]) =>
+  EditorState.create({
+    doc: schema.node("doc", { [PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR]: SOURCE_CONTRACT }, paras),
     plugins: [plugin],
   });
 
@@ -95,6 +122,19 @@ const collectParaIds = (state: EditorState): (string | null)[] => {
     if (node.type.name === "paragraph") {
       const id = node.attrs["paraId"];
       out.push(typeof id === "string" ? id : null);
+      return false;
+    }
+    return true;
+  });
+  return out;
+};
+
+const collectSourceTokens = (state: EditorState): (string | null)[] => {
+  const out: (string | null)[] = [];
+  state.doc.descendants((node) => {
+    if (node.type.name === "paragraph") {
+      const token = node.attrs[PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR];
+      out.push(typeof token === "string" ? token : null);
       return false;
     }
     return true;
@@ -331,5 +371,129 @@ describe("ParaIdAllocatorExtension", () => {
     expect(changed.has("ED17ED01")).toBe(true);
     // SAFETY: asserted 8-hex above
     expect(changed.has(ids[0]!)).toBe(false);
+  });
+
+  test("native text and mark mutations retain the seeded source token", () => {
+    const token = sourceToken(0);
+    const initial = createSourcedState(sourcedPara("Hello", "AAAA1111", 0));
+    const inserted = initial.apply(initial.tr.insertText("!", 3));
+    const marked = inserted.apply(
+      inserted.tr.addMark(1, inserted.doc.content.size - 1, schema.mark("strong")),
+    );
+    const unmarked = marked.apply(
+      marked.tr.removeMark(1, marked.doc.content.size - 1, schema.marks.strong),
+    );
+
+    expect(collectSourceTokens(inserted)).toEqual([token]);
+    expect(collectSourceTokens(marked)).toEqual([token]);
+    expect(collectSourceTokens(unmarked)).toEqual([token]);
+  });
+
+  test.each(["", "Hello"])(
+    "an attribute-only paragraph recreation restores an omitted seeded source token for %j",
+    (text) => {
+      const initial = createSourcedState(sourcedPara(text, "AAAA1111", 0));
+      const next = initial.apply(
+        initial.tr.setNodeMarkup(0, undefined, {
+          paraId: "AAAA1111",
+          textId: "BBBB2222",
+        }),
+      );
+
+      expect(collectSourceTokens(next)).toEqual([sourceToken(0)]);
+    },
+  );
+
+  test("a nested paragraph recreation restores an omitted seeded source token", () => {
+    const initial = EditorState.create({
+      doc: schema.node("doc", { [PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR]: SOURCE_CONTRACT }, [
+        schema.node("blockquote", null, [sourcedPara("Nested", "AAAA1111", 0)]),
+      ]),
+      plugins: [plugin],
+    });
+    const next = initial.apply(
+      initial.tr.setNodeMarkup(1, undefined, {
+        paraId: "AAAA1111",
+        textId: "BBBB2222",
+      }),
+    );
+
+    expect(collectSourceTokens(next)).toEqual([sourceToken(0)]);
+  });
+
+  test.each([0, 2, 5])(
+    "split at offset %i retains the token only on the mapped original half",
+    (offset) => {
+      const initial = createSourcedState(sourcedPara("Hello", "AAAA1111", 0));
+      const next = initial.apply(initial.tr.split(offset + 1));
+
+      expect(collectSourceTokens(next)).toEqual([sourceToken(0), null]);
+    },
+  );
+
+  test("pasting a duplicate above the source cannot steal its token", () => {
+    const original = sourcedPara("Original", "AAAA1111", 0);
+    const initial = createSourcedState(original);
+    const copy = original.type.create(
+      { ...original.attrs, paraId: "BBBB2222" },
+      schema.text("Copy"),
+    );
+    const next = initial.apply(initial.tr.replace(0, 0, new Slice(Fragment.from(copy), 0, 0)));
+
+    expect(collectSourceTokens(next)).toEqual([null, sourceToken(0)]);
+  });
+
+  test("a token from a different source fingerprint is cleared", () => {
+    const initial = createSourcedState(sourcedPara("Original", "AAAA1111", 0));
+    const foreign = schema.node(
+      "paragraph",
+      {
+        paraId: "BBBB2222",
+        [PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR]: sourceToken(0, "b".repeat(32)),
+      },
+      schema.text("Foreign"),
+    );
+    const next = initial.apply(
+      initial.tr.replace(
+        initial.doc.content.size,
+        initial.doc.content.size,
+        new Slice(Fragment.from(foreign), 0, 0),
+      ),
+    );
+
+    expect(collectSourceTokens(next)).toEqual([sourceToken(0), null]);
+  });
+
+  test("a uniquely seeded token survives delete then paste", () => {
+    const original = sourcedPara("Original", "AAAA1111", 0);
+    const sibling = sourcedPara("Sibling", "BBBB2222", 1);
+    const initial = createSourcedState(original, sibling);
+    const deleted = initial.apply(initial.tr.delete(0, original.nodeSize));
+    const restored = deleted.apply(
+      deleted.tr.replace(
+        deleted.doc.content.size,
+        deleted.doc.content.size,
+        new Slice(Fragment.from(original), 0, 0),
+      ),
+    );
+
+    expect(collectSourceTokens(deleted)).toEqual([sourceToken(1)]);
+    expect(collectSourceTokens(restored)).toEqual([sourceToken(1), sourceToken(0)]);
+  });
+
+  test("the explicit revision join can select the right paragraph owner", () => {
+    const initial = createSourcedState(
+      sourcedPara("", "AAAA1111", 0),
+      sourcedPara("Right", "BBBB2222", 1),
+    );
+    const transaction = initial.tr;
+    joinProseParagraphsWithRightPropertySource({
+      attrs: transaction.doc.child(1).attrs,
+      pos: transaction.doc.child(0).nodeSize,
+      transaction,
+    });
+    const next = initial.apply(transaction);
+
+    expect(collectSourceTokens(next)).toEqual([sourceToken(1)]);
   });
 });

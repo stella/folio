@@ -12,12 +12,27 @@ const TYPECHECK_CONFIGS = [
   "packages/react/tsconfig.build.json",
   "packages/vue/tsconfig.build.json",
 ] as const;
-const PM_PROVENANCE_FILES = new Set([
+const PM_PARAGRAPH_PROVENANCE_FILES = new Set([
   "packages/core/src/ai-edits/headless.ts",
   "packages/core/src/prosemirror/conversion/fromProseDoc.ts",
   "packages/core/src/prosemirror/conversion/toProseDoc.ts",
   "packages/core/src/prosemirror/extensions/features/AutoBidiDetectionExtension.ts",
   "packages/core/src/prosemirror/extensions/features/ParaIdAllocatorExtension.ts",
+]);
+const TOKEN_OWNER_FILES = new Set([
+  OWNER,
+  "packages/core/src/prosemirror/attrs/index.ts",
+  "packages/core/src/prosemirror/conversion/fromProseDoc.ts",
+  "packages/core/src/prosemirror/extensions/core/ParagraphExtension.ts",
+  "packages/core/src/prosemirror/extensions/features/ParaIdAllocatorExtension.ts",
+  "packages/core/src/prosemirror/schema/nodes.ts",
+]);
+const CONTRACT_OWNER_FILES = new Set([
+  OWNER,
+  "packages/core/src/prosemirror/conversion/fromProseDoc.ts",
+  "packages/core/src/prosemirror/conversion/toProseDoc.ts",
+  "packages/core/src/prosemirror/extensions/core/DocExtension.ts",
+  "packages/core/src/prosemirror/yjsParagraphSourceContract.ts",
 ]);
 
 const relativePath = (sourceFile: ts.SourceFile): string =>
@@ -35,21 +50,6 @@ const containsParagraph = (type: ts.Type, location: ts.Node, checker: ts.TypeChe
   return discriminatorType.isStringLiteral() && discriminatorType.value === "paragraph";
 };
 
-const calledMemberName = (node: ts.CallExpression): string | null => {
-  if (!ts.isPropertyAccessExpression(node.expression)) {
-    return null;
-  }
-  return node.expression.name.text;
-};
-
-const isPmNodeTypeCreate = (node: ts.CallExpression): boolean => {
-  if (!ts.isPropertyAccessExpression(node.expression) || node.expression.name.text !== "create") {
-    return false;
-  }
-  const owner = node.expression.expression;
-  return ts.isPropertyAccessExpression(owner) && owner.name.text === "type";
-};
-
 const containsDocument = (type: ts.Type, location: ts.Node, checker: ts.TypeChecker): boolean => {
   if (type.isUnionOrIntersection()) {
     return type.types.some((part) => containsDocument(part, location, checker));
@@ -65,8 +65,11 @@ const containsDocument = (type: ts.Type, location: ts.Node, checker: ts.TypeChec
 const isProductionSource = (file: string): boolean =>
   file.startsWith("packages/") &&
   file.includes("/src/") &&
+  !file.includes("/node_modules/") &&
   !file.endsWith(".test.ts") &&
   !file.endsWith(".test.tsx") &&
+  !file.endsWith(".spec.ts") &&
+  !file.endsWith(".spec.tsx") &&
   !file.includes("/__tests__/") &&
   !file.includes("/generated/");
 
@@ -193,25 +196,25 @@ const cloneOwnershipViolations = (): string[] => {
           const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
           violations.add(`${file}:${String(line + 1)} spreads a Paragraph`);
         }
-        if (ts.isCallExpression(node)) {
-          if (
-            ts.isIdentifier(node.expression) &&
-            node.expression.text === "structuredClone" &&
-            node.arguments.some((argument) =>
-              containsDocument(checker.getTypeAtLocation(argument), argument, checker),
-            )
-          ) {
-            const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
-            violations.add(`${file}:${String(line + 1)} calls structuredClone on a Document`);
-          }
-          const member = calledMemberName(node);
-          if (
-            PM_PROVENANCE_FILES.has(file) &&
-            (member === "copy" || member === "setNodeMarkup" || isPmNodeTypeCreate(node))
-          ) {
-            const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
-            violations.add(`${file}:${String(line + 1)} calls PM ${member ?? "clone"}`);
-          }
+        if (
+          ts.isCallExpression(node) &&
+          ts.isIdentifier(node.expression) &&
+          node.expression.text === "structuredClone" &&
+          node.arguments.some((argument) =>
+            containsDocument(checker.getTypeAtLocation(argument), argument, checker),
+          )
+        ) {
+          const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+          violations.add(`${file}:${String(line + 1)} calls structuredClone on a Document`);
+        }
+        if (
+          ts.isCallExpression(node) &&
+          ts.isPropertyAccessExpression(node.expression) &&
+          node.expression.name.text === "setNodeMarkup" &&
+          PM_PARAGRAPH_PROVENANCE_FILES.has(file)
+        ) {
+          const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+          violations.add(`${file}:${String(line + 1)} calls PM setNodeMarkup directly`);
         }
         ts.forEachChild(node, visit);
       };
@@ -221,6 +224,52 @@ const cloneOwnershipViolations = (): string[] => {
   return [...violations].toSorted();
 };
 
+const tokenOwnershipViolation = (file: string, sourceText: string): string | null => {
+  if (!isProductionSource(file) || TOKEN_OWNER_FILES.has(file)) {
+    return null;
+  }
+  return sourceText.includes("_docxParagraphSourceToken") ||
+    sourceText.includes("PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR")
+    ? `${file} references the private paragraph-source token`
+    : null;
+};
+
+const contractOwnershipViolation = (file: string, sourceText: string): string | null => {
+  if (!isProductionSource(file) || CONTRACT_OWNER_FILES.has(file)) {
+    return null;
+  }
+  return sourceText.includes("_docxParagraphSourceContract") ||
+    sourceText.includes("PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR")
+    ? `${file} references the private paragraph-source contract`
+    : null;
+};
+
+const scanPackageSources = (): { contract: string[]; token: string[] } => {
+  const contract: string[] = [];
+  const token: string[] = [];
+  const sourcePaths = ts.sys.readDirectory(path.join(REPO_ROOT, "packages"), [
+    ".ts",
+    ".tsx",
+    ".vue",
+  ]);
+  for (const sourcePath of sourcePaths) {
+    const file = path.relative(REPO_ROOT, sourcePath).replaceAll("\\", "/");
+    const sourceText = ts.sys.readFile(sourcePath);
+    if (sourceText === undefined) {
+      panic(`Cannot read ${file}.`);
+    }
+    const tokenViolation = tokenOwnershipViolation(file, sourceText);
+    if (tokenViolation) {
+      token.push(tokenViolation);
+    }
+    const contractViolation = contractOwnershipViolation(file, sourceText);
+    if (contractViolation) {
+      contract.push(contractViolation);
+    }
+  }
+  return { contract: contract.toSorted(), token: token.toSorted() };
+};
+
 setDefaultTimeout(30_000);
 
 describe("paragraph property source ownership", () => {
@@ -228,7 +277,37 @@ describe("paragraph property source ownership", () => {
     expect(proseConversionViolations()).toEqual([]);
   });
 
-  test("every typed clone keeps an explicit property-source owner", () => {
+  test("every typed clone and paragraph markup rebuild keeps an explicit source owner", () => {
     expect(cloneOwnershipViolations()).toEqual([]);
+  });
+
+  test("only the provenance kernel and lifecycle boundary can reference source metadata", () => {
+    const violations = scanPackageSources();
+    expect(violations.token).toEqual([]);
+    expect(violations.contract).toEqual([]);
+    expect(
+      tokenOwnershipViolation(
+        "packages/react/src/unsafe.ts",
+        'attrs["_docxParagraphSourceToken"] = copied;',
+      ),
+    ).toContain("private paragraph-source token");
+    expect(
+      tokenOwnershipViolation(
+        "packages/core/src/docx/paragraphPropertySource.ts",
+        'attrs["_docxParagraphSourceToken"] = seeded;',
+      ),
+    ).toBeNull();
+    expect(
+      contractOwnershipViolation(
+        "packages/react/src/unsafe.ts",
+        'attrs["_docxParagraphSourceContract"] = copied;',
+      ),
+    ).toContain("private paragraph-source contract");
+    expect(
+      contractOwnershipViolation(
+        "packages/core/src/prosemirror/yjsParagraphSourceContract.ts",
+        'attrs["_docxParagraphSourceContract"] = seeded;',
+      ),
+    ).toBeNull();
   });
 });

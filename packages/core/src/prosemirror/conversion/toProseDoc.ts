@@ -57,7 +57,9 @@ import {
 } from "../../utils/paragraphFormattingMerge";
 import { resolveColorValueToHex } from "../../docx/drawingUtils";
 import {
-  linkProseParagraphPropertySource,
+  PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
+  createProseParagraphWithPropertySource,
+  getDocumentParagraphPropertySourceContract,
   recreateProseNodeWithParagraphPropertySource,
 } from "../../docx/paragraphPropertySource";
 import {
@@ -363,6 +365,8 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
     schema.node(
       "doc",
       {
+        [PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR]:
+          getDocumentParagraphPropertySourceContract(document) ?? null,
         _finalSectionStart: finalSectionStart,
         _adjustLineHeightInTable: adjustLineHeightInTable,
       },
@@ -732,9 +736,10 @@ function convertParagraph(
     attrs._emptyHyperlinks = emptyHyperlinks;
   }
 
-  const proseParagraph = schema.node("paragraph", attrs, inlineNodes);
-  linkProseParagraphPropertySource(proseParagraph, paragraph);
-  return proseParagraph;
+  return createProseParagraphWithPropertySource(schema.nodes["paragraph"], paragraph, {
+    attrs,
+    content: inlineNodes,
+  });
 }
 
 const withoutFontFamily = (formatting: TextFormatting | undefined): TextFormatting | undefined => {

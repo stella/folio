@@ -6,6 +6,10 @@ import { EditorState, type Transaction } from "prosemirror-state";
 import { applyFolioAIEditOperations } from "../ai-edits/apply";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
+import {
+  PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
+  PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR,
+} from "../docx/paragraphPropertySource";
 import { createDocx } from "../docx/rezip";
 import { expectParagraphAttrs } from "../prosemirror/attrs";
 import {
@@ -36,6 +40,18 @@ const REPLACEMENT_TEXT = "The replacement paragraph keeps its intended style and
 const ORDINARY_PARAGRAPH_STATE_SIZE_BUDGET = 1_823_095;
 const STYLED_PARAGRAPH_STATE_SIZE_BUDGET = 1_610_095;
 const STYLED_ALIGNMENT_PROVENANCE_SIZE_BUDGET = 29_000;
+
+const serializeWithoutParagraphSource = (json: unknown, omitAlignment = false): string =>
+  JSON.stringify(json, (key, value) => {
+    if (
+      key === PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR ||
+      key === PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR ||
+      (omitAlignment && key === "alignmentFromStyle")
+    ) {
+      return undefined;
+    }
+    return value;
+  });
 
 const SUGGESTION_REJECTION_ORDERS = [
   { label: "oldest to newest", ids: ["suggestion-left", "suggestion-right", "suggestion-both"] },
@@ -3018,10 +3034,8 @@ describe("paragraph alignment provenance in editor state", () => {
       content: [{ type: "run" as const, content: [{ type: "text" as const, text: TEXT }] }],
     }));
     const json = toProseDoc(source).toJSON();
-    const serialized = JSON.stringify(json);
-    const withoutAlignmentProvenance = JSON.stringify(json, (key, value) =>
-      key === "alignmentFromStyle" ? undefined : value,
-    );
+    const serialized = serializeWithoutParagraphSource(json);
+    const withoutAlignmentProvenance = serializeWithoutParagraphSource(json, true);
 
     expect(json.content).toHaveLength(1_000);
     expect(serialized.length).toBeLessThanOrEqual(ORDINARY_PARAGRAPH_STATE_SIZE_BUDGET);
@@ -3039,10 +3053,8 @@ describe("paragraph alignment provenance in editor state", () => {
       paraId: index.toString(16).padStart(8, "0"),
     }));
     const json = toProseDoc(source).toJSON();
-    const serialized = JSON.stringify(json);
-    const withoutAlignmentProvenance = JSON.stringify(json, (key, value) =>
-      key === "alignmentFromStyle" ? undefined : value,
-    );
+    const serialized = serializeWithoutParagraphSource(json);
+    const withoutAlignmentProvenance = serializeWithoutParagraphSource(json, true);
 
     expect(json.content).toHaveLength(1_000);
     expect(serialized.length).toBeLessThanOrEqual(STYLED_PARAGRAPH_STATE_SIZE_BUDGET);

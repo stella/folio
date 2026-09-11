@@ -472,7 +472,7 @@ export const FOLIO_VERSION_COMPARISON_PRIVACY_TRANSFORMS: readonly ["remove-attr
 export const FOLIO_VERSION_COMPARISON_SCOPES: readonly ["text", "formatting", "metadata"];
 
 // @public
-export const FOLIO_YJS_DOCX_MATERIALIZATION_ERROR_CODES: readonly ["empty_update", "invalid_update", "missing_document", "update_too_large"];
+export const FOLIO_YJS_DOCX_MATERIALIZATION_ERROR_CODES: readonly ["empty_update", "invalid_update", "missing_document", "source_mismatch", "update_too_large"];
 
 // @public
 export const FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME = "prosemirror";

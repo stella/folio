@@ -301,6 +301,12 @@ export const readParagraphAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Par
   expectNodeType(node, "paragraph", issues);
 
   optionalString(attrs, "paraId", "paragraph.attrs.paraId", issues);
+  optionalString(
+    attrs,
+    "_docxParagraphSourceToken",
+    "paragraph.attrs._docxParagraphSourceToken",
+    issues,
+  );
   optionalString(attrs, "textId", "paragraph.attrs.textId", issues);
   optionalOneOf(
     attrs,
