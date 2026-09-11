@@ -1,46 +1,71 @@
 /**
  * Pure comparison of two ordered, representation-neutral content snapshots.
  *
- * Every event carries exact base and revised block tuples. Concatenating the
- * base tuples reconstructs the base snapshot; concatenating the revised tuples
- * reconstructs the revised snapshot. This remains true for moves, paragraph
- * splits/merges, and table-column changes whose cells are not contiguous.
+ * Every event carries owned blocks or canonical base/revised range relations.
+ * Projecting those discriminated events reconstructs either snapshot without
+ * another alignment, text diff, or formatting comparison.
  */
 
 import { panic, Result, TaggedError } from "better-result";
-
 import {
   createWordDiffSession,
   WORD_DIFF_GRANULARITIES,
   type WordDiffGranularity,
   type WordDiffSegment,
-} from "../ai-edits/word-diff";
-import { inlineFormattingSegments } from "./formatting";
+} from "./text-diff";
+import { pairedInlineFormattingSegments } from "./formatting";
+import { changedFolioContentProperties } from "./content-properties";
 import {
   alignFolioContentStructure,
   contentBlocksShareContainer,
   createFolioContentAlignmentWorkSession,
+  folioContentIdentityPairDisposition,
   type FolioContentAlignmentStep,
   type FolioContentAlignmentWorkSession,
 } from "./content-alignment";
 import type {
   FolioContentBlock,
-  FolioContentIdStability,
-  FolioContentInlineFormattingPatch,
-  FolioContentParagraphSpacing,
+  FolioContentIdentity,
+  FolioContentInlineFormattingChange,
+  FolioContentPropertyChange,
+  FolioContentPropertyInput,
+  FolioContentPropertySet,
+  FolioContentPropertyValue,
+  FolioContentRun,
   FolioContentSnapshot,
+} from "./content-types";
+import {
+  FOLIO_CONTENT_BLOCK_FIELD_DESCRIPTORS,
+  FOLIO_CONTENT_CONTAINER_FIELD_DESCRIPTORS,
+  FOLIO_CONTENT_IDENTITY_FIELD_DESCRIPTORS,
+  FOLIO_CONTENT_IDENTITY_SEMANTICS,
+  FOLIO_CONTENT_PROPERTY_ARRAY_FIELD_DESCRIPTORS,
+  FOLIO_CONTENT_PROPERTY_ENTRY_FIELD_DESCRIPTORS,
+  FOLIO_CONTENT_PROPERTY_OBJECT_FIELD_DESCRIPTORS,
+  FOLIO_CONTENT_RUN_FIELD_DESCRIPTORS,
+  FOLIO_CONTENT_SNAPSHOT_FIELD_DESCRIPTORS,
+  FOLIO_CONTENT_STRUCTURAL_BOUNDARY_FIELD_DESCRIPTORS,
+  FOLIO_CONTENT_TABLE_FIELD_DESCRIPTORS,
 } from "./content-types";
 
 /** Hard resource ceilings for one representation-neutral comparison work session. */
 export const FOLIO_CONTENT_COMPARISON_LIMITS = Object.freeze({
   blocksPerSnapshot: 100_000,
+  events: 200_000,
   changes: 10_000,
+  formattingRanges: 10_000,
+  structuralMembers: 100_000,
   blockCodeUnits: 1_048_576,
   textCodeUnitsPerSnapshot: 8_000_000,
-  previewRunsPerBlock: 65_536,
-  previewRunsPerSnapshot: 1_000_000,
+  runsPerBlock: 65_536,
+  runsPerSnapshot: 1_000_000,
+  structuralBoundariesPerBlock: 65_536,
+  structuralBoundariesPerSnapshot: 1_000_000,
   containerDepth: 64,
   containerEntriesPerSnapshot: 1_000_000,
+  propertyDepth: 32,
+  propertyEntriesPerContainer: 65_536,
+  propertyNodesPerSnapshot: 2_000_000,
   attributeCodeUnits: 16_384,
   attributeCodeUnitsPerSnapshot: 8_000_000,
 } as const);
@@ -89,6 +114,13 @@ export class FolioContentComparisonLimitError extends TaggedError(
   field?: string;
 }> {}
 
+export class FolioContentComparisonSessionError extends TaggedError(
+  "FolioContentComparisonSessionError",
+)<{
+  message: string;
+  reason: "operation-consumed" | "operation-active" | "session-poisoned";
+}> {}
+
 /** Errors returned by {@link compareContent}. */
 export type FolioContentComparisonError =
   | InvalidFolioContentComparisonError
@@ -96,148 +128,225 @@ export type FolioContentComparisonError =
 
 /** One Folio word-diff segment with JavaScript-slice-compatible offsets. */
 export type FolioContentTextSegment = {
-  type: "equal" | "del" | "ins";
-  text: string;
-  baseStart: number;
-  baseEnd: number;
-  revisedStart: number;
-  revisedEnd: number;
-};
-
-/** Target-side paragraph properties that differ from the base block. */
-export type FolioContentParagraphFormattingPatch = {
-  styleId?: string | null;
-  listLevel?: number | null;
-  alignment?: FolioContentBlock["directAlignment"] | null;
-  spacing?: FolioContentParagraphSpacing | null;
+  readonly type: "equal" | "del" | "ins";
+  readonly text: string;
+  readonly baseStart: number;
+  readonly baseEnd: number;
+  readonly revisedStart: number;
+  readonly revisedEnd: number;
 };
 
 /** Presentation differences for one text-aligned block pair. */
 export type FolioContentFormatRange = {
-  startOffset: number;
-  endOffset: number;
-  formatting: FolioContentInlineFormattingPatch;
+  readonly baseStart: number;
+  readonly baseEnd: number;
+  readonly revisedStart: number;
+  readonly revisedEnd: number;
+  readonly formatting: FolioContentInlineFormattingChange;
 };
 
 /** Presentation differences for one text-aligned block pair. */
 export type FolioContentFormattingChange = {
-  paragraph?: FolioContentParagraphFormattingPatch;
-  ranges: readonly FolioContentFormatRange[];
+  readonly paragraph: readonly FolioContentPropertyChange[];
+  readonly ranges: readonly FolioContentFormatRange[];
 };
 
-/** Non-presentation block fields that changed on a paired block. */
-export type FolioContentBlockProperty = "kind" | "headingLevel" | "displayLabel";
+type BlockFieldDescriptor =
+  (typeof FOLIO_CONTENT_BLOCK_FIELD_DESCRIPTORS)[keyof typeof FOLIO_CONTENT_BLOCK_FIELD_DESCRIPTORS];
 
-type PairedEvent<Block extends FolioContentBlock> = {
-  baseBlocks: readonly [Block];
-  revisedBlocks: readonly [Block];
+export type FolioContentBlockProperty = Extract<
+  BlockFieldDescriptor,
+  { role: "kind" | "block-property" | "structure" }
+>["field"];
+
+export type FolioContentValuePresence<Value> =
+  | { readonly type: "absent" }
+  | { readonly type: "present"; readonly value: Value };
+
+/** Exact non-presentation differences for one paired block relation. */
+export type FolioContentBlockChange =
+  | { readonly field: "kind"; readonly base: string; readonly revised: string }
+  | { readonly field: "blockProperties"; readonly changes: readonly FolioContentPropertyChange[] }
+  | {
+      readonly field: "structuralBoundaries";
+      readonly base: readonly FolioContentBlock["structuralBoundaries"][number][];
+      readonly revised: readonly FolioContentBlock["structuralBoundaries"][number][];
+    }
+  | {
+      readonly field: "table";
+      readonly base: FolioContentValuePresence<NonNullable<FolioContentBlock["table"]>>;
+      readonly revised: FolioContentValuePresence<NonNullable<FolioContentBlock["table"]>>;
+    }
+  | {
+      readonly field: "containerPath";
+      readonly base: FolioContentBlock["containerPath"];
+      readonly revised: FolioContentBlock["containerPath"];
+    };
+
+/** An owned absolute UTF-16 range within one compared block. */
+export type FolioContentBlockRange = {
+  readonly block: FolioContentBlock;
+  readonly startOffset: number;
+  readonly endOffset: number;
 };
 
-type BaseOnlyEvent<Block extends FolioContentBlock> = {
-  baseBlocks: readonly [Block];
-  revisedBlocks: readonly [];
+/** Complete semantics for one surviving base/revised block-range pairing. */
+type FolioContentPairRelationFields = {
+  readonly base: FolioContentBlockRange;
+  readonly revised: FolioContentBlockRange;
+  readonly segments: readonly FolioContentTextSegment[];
 };
 
-type RevisedOnlyEvent<Block extends FolioContentBlock> = {
-  baseBlocks: readonly [];
-  revisedBlocks: readonly [Block];
+type FolioContentSemanticPairRelationFields = FolioContentPairRelationFields & {
+  readonly blockChanges: readonly FolioContentBlockChange[];
+  readonly formatting: FolioContentFormattingChange | null;
+};
+
+/** A surviving pairing covering both complete blocks. */
+export type FolioContentWholePairRelation = FolioContentSemanticPairRelationFields & {
+  readonly relationType: "whole";
+};
+
+/** One surviving correspondence inside a split or merge. */
+export type FolioContentRangePairRelation = FolioContentSemanticPairRelationFields & {
+  readonly relationType: "range";
+};
+
+/** Text present only between split/merge survivors on one side. */
+export type FolioContentSeparatorRelation = FolioContentPairRelationFields & {
+  readonly relationType: "separator";
+  readonly blockChanges: readonly [];
+  readonly formatting: null;
+};
+
+export type FolioContentPairRelation =
+  | FolioContentWholePairRelation
+  | FolioContentRangePairRelation
+  | FolioContentSeparatorRelation;
+
+/** One relocation shared by its source and destination stream positions. */
+export type FolioContentMove = {
+  readonly id: number;
+  readonly relation: FolioContentWholePairRelation;
+};
+
+export type FolioContentBlockGroup = readonly [FolioContentBlock, ...FolioContentBlock[]];
+
+/** One structural change owning its non-empty ordered member set. */
+export type FolioContentStructuralChange =
+  | {
+      readonly type: "table-delete";
+      readonly tableIndex: number;
+      readonly blocks: FolioContentBlockGroup;
+    }
+  | {
+      readonly type: "table-insert";
+      readonly tableIndex: number;
+      readonly blocks: FolioContentBlockGroup;
+    }
+  | {
+      readonly type: "table-row-delete";
+      readonly tableIndex: number;
+      readonly rowIndex: number;
+      readonly blocks: FolioContentBlockGroup;
+    }
+  | {
+      readonly type: "table-row-insert";
+      readonly tableIndex: number;
+      readonly rowIndex: number;
+      readonly blocks: FolioContentBlockGroup;
+    }
+  | {
+      readonly type: "table-column-delete";
+      readonly tableIndex: number;
+      readonly columnIndex: number;
+      readonly blocks: FolioContentBlockGroup;
+    }
+  | {
+      readonly type: "table-column-insert";
+      readonly tableIndex: number;
+      readonly columnIndex: number;
+      readonly blocks: FolioContentBlockGroup;
+      readonly anchor: { readonly blockId: string; readonly position: "after" | "before" };
+    };
+
+/** One row-major stream position belonging to a shared structural change. */
+export type FolioContentStructuralEvent = {
+  readonly type: "structural";
+  readonly change: FolioContentStructuralChange;
+  /** Index into the change-owned member tuple at this row-major stream position. */
+  readonly memberIndex: number;
 };
 
 /**
- * One item in the complete comparison stream. Tuple cardinality is fixed by
- * the discriminator, making both document projections mechanically exact.
+ * One item in the complete comparison stream. Every surviving pairing has
+ * one canonical relation; one-sided events carry exactly one owned block.
  */
-export type FolioContentComparisonEvent<Block extends FolioContentBlock = FolioContentBlock> =
-  | ({ type: "unchanged" } & PairedEvent<Block>)
-  | ({
-      type: "modified";
-      segments: readonly FolioContentTextSegment[];
-      changedProperties: readonly FolioContentBlockProperty[];
-      formatting?: FolioContentFormattingChange;
-    } & PairedEvent<Block>)
-  | ({ type: "formatting"; formatting: FolioContentFormattingChange } & PairedEvent<Block>)
-  | ({ type: "inserted"; structuralChangeId?: number } & RevisedOnlyEvent<Block>)
-  | ({ type: "deleted"; structuralChangeId?: number } & BaseOnlyEvent<Block>)
-  | ({ type: "movedFrom"; moveId: number } & BaseOnlyEvent<Block>)
-  | ({
-      type: "movedTo";
-      moveId: number;
-      baseBlockId: string;
-      segments?: readonly FolioContentTextSegment[];
-      changedProperties?: readonly FolioContentBlockProperty[];
-      formatting?: FolioContentFormattingChange;
-    } & RevisedOnlyEvent<Block>)
+export type FolioContentComparisonEvent =
+  | { readonly type: "unchanged"; readonly relation: FolioContentWholePairRelation }
+  | { readonly type: "modified"; readonly relation: FolioContentWholePairRelation }
+  | { readonly type: "formatting"; readonly relation: FolioContentWholePairRelation }
+  | { readonly type: "inserted"; readonly block: FolioContentBlock }
+  | { readonly type: "deleted"; readonly block: FolioContentBlock }
+  | { readonly type: "movedFrom"; readonly move: FolioContentMove }
+  | { readonly type: "movedTo"; readonly move: FolioContentMove }
   | {
-      type: "split";
-      baseBlocks: readonly [Block];
-      revisedBlocks: readonly [Block, Block];
-      /** Canonical UTF-16-offset segments from the base block to the first revised block. */
-      segments: readonly FolioContentTextSegment[];
-      /** Paragraph-format patches from the base block to each revised block, in tuple order. */
-      paragraphFormatting: readonly [
-        FolioContentParagraphFormattingPatch | null,
-        FolioContentParagraphFormattingPatch | null,
-      ];
-      offset: number;
-      separator: string;
+      readonly type: "split";
+      readonly relations: readonly [FolioContentRangePairRelation, FolioContentRangePairRelation];
+      readonly separator: FolioContentSeparatorRelation;
     }
   | {
-      type: "merge";
-      baseBlocks: readonly [Block, Block];
-      revisedBlocks: readonly [Block];
-      /** Canonical UTF-16-offset segments from the first base block to the revised block. */
-      segments: readonly FolioContentTextSegment[];
-      /** Paragraph-format patch from the first base block to the revised block. */
-      paragraphFormatting: FolioContentParagraphFormattingPatch | null;
-      separator: string;
-    };
+      readonly type: "merge";
+      readonly relations: readonly [FolioContentRangePairRelation, FolioContentRangePairRelation];
+      readonly separator: FolioContentSeparatorRelation;
+    }
+  | FolioContentStructuralEvent;
 
-type BaseStructuralChange = {
-  id: number;
-  baseBlockIds: readonly string[];
-};
-
-type RevisedStructuralChange = {
-  id: number;
-  revisedBlockIds: readonly string[];
-};
-
-/** A grouped table operation referenced by its block-granular stream events. */
-export type FolioContentStructuralChange =
-  | ({ type: "table-delete"; tableIndex: number } & BaseStructuralChange)
-  | ({ type: "table-insert"; tableIndex: number } & RevisedStructuralChange)
-  | ({ type: "table-row-delete"; tableIndex: number; rowIndex: number } & BaseStructuralChange)
-  | ({ type: "table-row-insert"; tableIndex: number; rowIndex: number } & RevisedStructuralChange)
-  | ({
-      type: "table-column-delete";
-      tableIndex: number;
-      columnIndex: number;
-    } & BaseStructuralChange)
-  | ({
-      type: "table-column-insert";
-      tableIndex: number;
-      columnIndex: number;
-    } & RevisedStructuralChange);
+const FOLIO_CONTENT_COMPARISON_BRAND: unique symbol = Symbol("FolioContentComparison");
 
 /** Result of one representation-neutral story comparison. */
-export type FolioContentComparison<Block extends FolioContentBlock = FolioContentBlock> = {
-  events: readonly FolioContentComparisonEvent<Block>[];
-  structuralChanges: readonly FolioContentStructuralChange[];
+export type FolioContentComparison = {
+  readonly events: readonly FolioContentComparisonEvent[];
+  readonly [FOLIO_CONTENT_COMPARISON_BRAND]: true;
+};
+
+const completeContentComparison = (
+  events: readonly FolioContentComparisonEvent[],
+): FolioContentComparison => {
+  const comparison = { events };
+  Object.defineProperty(comparison, FOLIO_CONTENT_COMPARISON_BRAND, {
+    value: true,
+    enumerable: false,
+    writable: false,
+    configurable: false,
+  });
+  // SAFETY: defineProperty installs the private nominal brand immediately above.
+  return Object.freeze(comparison) as FolioContentComparison;
 };
 
 /** Inputs to {@link compareContent}. */
-export type CompareContentOptions<Block extends FolioContentBlock = FolioContentBlock> = {
-  base: FolioContentSnapshot<Block>;
-  revised: FolioContentSnapshot<Block>;
+export type CompareContentOptions = {
+  base: FolioContentSnapshot;
+  revised: FolioContentSnapshot;
   /** Token size for modified-block segments; defaults to `"word"`. */
   granularity?: WordDiffGranularity;
 };
 
+const COMPARE_CONTENT_OPTION_FIELD_DESCRIPTORS = Object.freeze({
+  base: Object.freeze({ field: "base" }),
+  revised: Object.freeze({ field: "revised" }),
+  granularity: Object.freeze({ field: "granularity" }),
+} as const satisfies {
+  [Field in keyof CompareContentOptions]-?: { readonly field: Field };
+});
+
 const SNAPSHOT_RESOURCE_DESCRIPTORS = [
   { resource: "blocks", limit: "blocksPerSnapshot" },
   { resource: "textCodeUnits", limit: "textCodeUnitsPerSnapshot" },
-  { resource: "previewRuns", limit: "previewRunsPerSnapshot" },
+  { resource: "runs", limit: "runsPerSnapshot" },
+  { resource: "structuralBoundaries", limit: "structuralBoundariesPerSnapshot" },
   { resource: "containerEntries", limit: "containerEntriesPerSnapshot" },
+  { resource: "propertyNodes", limit: "propertyNodesPerSnapshot" },
   { resource: "attributeCodeUnits", limit: "attributeCodeUnitsPerSnapshot" },
 ] as const satisfies readonly {
   resource: string;
@@ -252,38 +361,314 @@ type ContentComparisonResourceUsage = {
   revised: SnapshotResourceUsage;
   changes: number;
   formattingRanges: number;
+  structuralMembers: number;
+  events: number;
 };
 
 const emptySnapshotResourceUsage = (): SnapshotResourceUsage => ({
   blocks: 0,
   textCodeUnits: 0,
-  previewRuns: 0,
+  runs: 0,
+  structuralBoundaries: 0,
   containerEntries: 0,
+  propertyNodes: 0,
   attributeCodeUnits: 0,
 });
 
-export type FolioContentComparisonWorkSession = {
-  alignment: FolioContentAlignmentWorkSession;
-  remainingMoveComparisons: number;
-  remainingMoveTokenLookups: number;
-  diffText: ReturnType<typeof createWordDiffSession>["diff"];
-  resourceUsage: ContentComparisonResourceUsage;
+type CapturedContentComparison = {
+  readonly base: FolioContentSnapshot;
+  readonly revised: FolioContentSnapshot;
 };
 
-export const createContentComparisonWorkSession = (
-  granularity?: WordDiffGranularity,
-): FolioContentComparisonWorkSession => ({
-  alignment: createFolioContentAlignmentWorkSession(),
-  remainingMoveComparisons: MAX_MOVE_SIMILARITY_COMPARISONS,
-  remainingMoveTokenLookups: MAX_MOVE_SIMILARITY_TOKEN_LOOKUPS,
-  diffText: createWordDiffSession({ ...(granularity && { granularity }) }).diff,
-  resourceUsage: {
+type ContentComparisonExecution = {
+  readonly comparison: FolioContentComparison;
+  readonly changes: number;
+  readonly formattingRanges: number;
+  readonly structuralMembers: number;
+  readonly events: number;
+};
+
+type ContentComparisonOperationState =
+  | {
+      status: "ready";
+      run: () => Result<FolioContentComparison, FolioContentComparisonLimitError>;
+    }
+  | { status: "consumed" };
+
+class FolioContentComparisonOperation {
+  #state: ContentComparisonOperationState;
+
+  private constructor(
+    run: () => Result<FolioContentComparison, FolioContentComparisonLimitError>,
+  ) {
+    this.#state = { status: "ready", run };
+  }
+
+  static create(
+    run: () => Result<FolioContentComparison, FolioContentComparisonLimitError>,
+  ): FolioContentComparisonOperation {
+    return new FolioContentComparisonOperation(run);
+  }
+
+  compare(): Result<
+    FolioContentComparison,
+    FolioContentComparisonLimitError | FolioContentComparisonSessionError
+  > {
+    if (this.#state.status === "consumed") {
+      return Result.err(
+        new FolioContentComparisonSessionError({
+          message: "A content comparison operation can only be consumed once.",
+          reason: "operation-consumed",
+        }),
+      );
+    }
+    const { run } = this.#state;
+    this.#state = { status: "consumed" };
+    return run();
+  }
+}
+
+type ContentComparisonSessionState =
+  | { status: "ready" }
+  | { status: "captured"; operationId: symbol }
+  | { status: "poisoned" };
+
+type CaptureContentComparisonOptions = {
+  base: unknown;
+  revised: unknown;
+};
+
+type ContentComparisonWorkSessionOptions = {
+  granularity?: WordDiffGranularity;
+  /** @internal A controlled diff used by focused ownership/parity tests. */
+  diffText?: (base: string, revised: string) => WordDiffSegment[];
+  /** @internal Lower allowances used by focused boundary tests. */
+  moveComparisons?: number;
+  moveTokenLookups?: number;
+};
+
+type MoveSimilarityResult =
+  | { status: "exhausted" }
+  | { status: "unscored" }
+  | { status: "scored"; similarity: number };
+
+type ContentComparisonEngine = {
+  alignContentStructure: <Block extends FolioContentBlock>(
+    options: Omit<Parameters<typeof alignFolioContentStructure<Block>>[0], "workSession">,
+  ) => FolioContentAlignmentStep<Block>[];
+  diffText: (base: string, revised: string) => WordDiffSegment[];
+  scoreMoveSimilarity: (base: TokenProfile, revised: TokenProfile) => MoveSimilarityResult;
+};
+
+const boundedSessionAllowance = (value: number | undefined, maximum: number, field: string): number => {
+  const allowance = value ?? maximum;
+  if (!Number.isSafeInteger(allowance) || allowance < 0 || allowance > maximum) {
+    return panic("A content comparison allowance is outside the supported range", {
+      field,
+      allowance,
+      maximum,
+    });
+  }
+  return allowance;
+};
+
+export class FolioContentComparisonWorkSession {
+  readonly #alignment: FolioContentAlignmentWorkSession;
+  readonly #diffText: ReturnType<typeof createWordDiffSession>["diff"];
+  #remainingMoveComparisons: number;
+  #remainingMoveTokenLookups: number;
+  #resourceUsage: ContentComparisonResourceUsage = {
     base: emptySnapshotResourceUsage(),
     revised: emptySnapshotResourceUsage(),
     changes: 0,
     formattingRanges: 0,
-  },
-});
+    structuralMembers: 0,
+    events: 0,
+  };
+  #state: ContentComparisonSessionState = { status: "ready" };
+  #executing = false;
+
+  private constructor({
+    granularity,
+    diffText,
+    moveComparisons,
+    moveTokenLookups,
+  }: ContentComparisonWorkSessionOptions = {}) {
+    this.#alignment = createFolioContentAlignmentWorkSession();
+    this.#diffText = diffText ?? createWordDiffSession({ ...(granularity && { granularity }) }).diff;
+    this.#remainingMoveComparisons = boundedSessionAllowance(
+      moveComparisons,
+      MAX_MOVE_SIMILARITY_COMPARISONS,
+      "moveComparisons",
+    );
+    this.#remainingMoveTokenLookups = boundedSessionAllowance(
+      moveTokenLookups,
+      MAX_MOVE_SIMILARITY_TOKEN_LOOKUPS,
+      "moveTokenLookups",
+    );
+  }
+
+  static create(options: ContentComparisonWorkSessionOptions = {}): FolioContentComparisonWorkSession {
+    return new FolioContentComparisonWorkSession(options);
+  }
+
+  #assertBudgetUseAllowed(): void {
+    if (this.#state.status !== "ready" && !this.#executing) {
+      return panic("A content comparison session cannot perform work in its current state", {
+        status: this.#state.status,
+      });
+    }
+  }
+
+  #alignContentStructure<Block extends FolioContentBlock>(
+    options: Omit<Parameters<typeof alignFolioContentStructure<Block>>[0], "workSession">,
+  ): FolioContentAlignmentStep<Block>[] {
+    this.#assertBudgetUseAllowed();
+    return alignFolioContentStructure({ ...options, workSession: this.#alignment });
+  }
+
+  #diff(base: string, revised: string): WordDiffSegment[] {
+    this.#assertBudgetUseAllowed();
+    return this.#diffText(base, revised);
+  }
+
+  #scoreMoveSimilarity(base: TokenProfile, revised: TokenProfile): MoveSimilarityResult {
+    this.#assertBudgetUseAllowed();
+    if (this.#remainingMoveComparisons <= 0) return { status: "exhausted" };
+    this.#remainingMoveComparisons--;
+    const scored = tokenSimilarity(base, revised, this.#remainingMoveTokenLookups);
+    if (!scored) return { status: "unscored" };
+    this.#remainingMoveTokenLookups -= scored.lookups;
+    return { status: "scored", similarity: scored.similarity };
+  }
+
+  captureComparison({
+    base,
+    revised,
+  }: CaptureContentComparisonOptions): Result<
+    FolioContentComparisonOperation,
+    FolioContentComparisonError | FolioContentComparisonSessionError
+  > {
+    if (this.#state.status !== "ready") {
+      return Result.err(
+        new FolioContentComparisonSessionError({
+          message:
+            this.#state.status === "poisoned"
+              ? "A failed content comparison permanently closes its work session."
+              : "The active content comparison operation must be consumed first.",
+          reason: this.#state.status === "poisoned" ? "session-poisoned" : "operation-active",
+        }),
+      );
+    }
+    const capturedBase = captureContentSnapshot(base, "base");
+    if (capturedBase.isErr()) return Result.err(capturedBase.error);
+    const capturedRevised = captureContentSnapshot(revised, "revised");
+    if (capturedRevised.isErr()) return Result.err(capturedRevised.error);
+    const aggregateError = claimSnapshotPairResources(
+      this.#resourceUsage,
+      capturedBase.value.usage,
+      capturedRevised.value.usage,
+    );
+    if (aggregateError) return Result.err(aggregateError);
+
+    const captured = Object.freeze({
+      base: capturedBase.value.snapshot,
+      revised: capturedRevised.value.snapshot,
+    });
+    const operationId = Symbol("content-comparison-operation");
+    this.#state = { status: "captured", operationId };
+    return Result.ok(
+      FolioContentComparisonOperation.create(() => this.#consumeComparison(operationId, captured)),
+    );
+  }
+
+  #consumeComparison(
+    operationId: symbol,
+    captured: CapturedContentComparison,
+  ): Result<FolioContentComparison, FolioContentComparisonLimitError> {
+    if (this.#state.status !== "captured" || this.#state.operationId !== operationId) {
+      return panic("A content comparison operation does not own the active session capture");
+    }
+
+    const maximumChanges = FOLIO_CONTENT_COMPARISON_LIMITS.changes - this.#resourceUsage.changes;
+    const maximumFormattingRanges =
+      FOLIO_CONTENT_COMPARISON_LIMITS.formattingRanges - this.#resourceUsage.formattingRanges;
+    const maximumStructuralMembers =
+      FOLIO_CONTENT_COMPARISON_LIMITS.structuralMembers - this.#resourceUsage.structuralMembers;
+    const maximumEvents = FOLIO_CONTENT_COMPARISON_LIMITS.events - this.#resourceUsage.events;
+    // A claimed operation starts from a poisoned default. Only a complete,
+    // successful semantic pass reopens the session for another story.
+    this.#state = { status: "poisoned" };
+    this.#executing = true;
+    let executed: ReturnType<typeof executeCapturedContentComparison>;
+    try {
+      executed = executeCapturedContentComparison({
+        captured,
+        engine: {
+          alignContentStructure: (options) => this.#alignContentStructure(options),
+          diffText: (base, revised) => this.#diff(base, revised),
+          scoreMoveSimilarity: (base, revised) => this.#scoreMoveSimilarity(base, revised),
+        },
+        maximumChanges,
+        maximumFormattingRanges,
+        maximumStructuralMembers,
+        maximumEvents,
+      });
+    } finally {
+      this.#executing = false;
+    }
+    if (executed.isErr()) return Result.err(executed.error);
+    this.#resourceUsage.changes += executed.value.changes;
+    this.#resourceUsage.formattingRanges += executed.value.formattingRanges;
+    this.#resourceUsage.structuralMembers += executed.value.structuralMembers;
+    this.#resourceUsage.events += executed.value.events;
+    this.#state = { status: "ready" };
+    return Result.ok(executed.value.comparison);
+  }
+}
+
+export const createContentComparisonWorkSession = (
+  options: ContentComparisonWorkSessionOptions = {},
+): FolioContentComparisonWorkSession => FolioContentComparisonWorkSession.create(options);
+
+type PairedContentStory<Key> = {
+  readonly key: Key;
+  readonly base: FolioContentSnapshot;
+  readonly revised: FolioContentSnapshot;
+};
+
+type ComparedContentStory<Key> = {
+  readonly key: Key;
+  readonly comparison: FolioContentComparison;
+};
+
+type CompareContentStoriesError = {
+  readonly storyIndex: number;
+  readonly cause: FolioContentComparisonError | FolioContentComparisonSessionError;
+};
+
+/** Compare already-paired stories through one aggregate bounded work session. @internal */
+export const compareContentStories = <Key>({
+  stories,
+  workSession,
+}: {
+  stories: readonly PairedContentStory<Key>[];
+  workSession: FolioContentComparisonWorkSession;
+}): Result<readonly ComparedContentStory<Key>[], CompareContentStoriesError> => {
+  const compared: ComparedContentStory<Key>[] = [];
+  for (const [storyIndex, story] of stories.entries()) {
+    const operation = workSession.captureComparison({ base: story.base, revised: story.revised });
+    if (operation.isErr()) {
+      return Result.err({ storyIndex, cause: operation.error });
+    }
+    const result = operation.value.compare();
+    if (result.isErr()) {
+      return Result.err({ storyIndex, cause: result.error });
+    }
+    compared.push(Object.freeze({ key: story.key, comparison: result.value }));
+  }
+  return Result.ok(Object.freeze(compared));
+};
 
 const invalidInput = (
   input: "options" | "base" | "revised",
@@ -332,255 +717,24 @@ const isFiniteNumber = (value: unknown): value is number =>
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-// Runtime validation must not replace an already typed generic block with the
-// narrower Record<string, unknown> view produced by a type predicate.
-const hasRecordShape = (value: unknown): boolean => isRecord(value);
+const IDENTITY_SEMANTICS = new Set(FOLIO_CONTENT_IDENTITY_SEMANTICS);
 
-const PARAGRAPH_ALIGNMENTS = new Set([
-  "left",
-  "center",
-  "right",
-  "both",
-  "distribute",
-  "mediumKashida",
-  "highKashida",
-  "lowKashida",
-  "thaiDistribute",
-]);
+type OwnDataProperty =
+  | { readonly status: "absent" }
+  | { readonly status: "present"; readonly value: unknown }
+  | { readonly status: "accessor" };
 
-const validateRunFormatting = (
-  block: FolioContentBlock,
-  side: "base" | "revised",
-  blockIndex: number,
-): InvalidFolioContentComparisonError | null => {
-  for (const [runIndex, run] of (block.previewRuns ?? []).entries()) {
-    if (run.directFormatting !== undefined && !isRecord(run.directFormatting)) {
-      return invalidInput(
-        side,
-        `blocks[${String(blockIndex)}].previewRuns[${String(runIndex)}].directFormatting`,
-        "Direct inline formatting must be an object.",
-        blockIndex,
-      );
-    }
-    for (const property of ["bold", "italic", "underline", "strike"] as const) {
-      if (run[property] !== undefined && typeof run[property] !== "boolean") {
-        return invalidInput(
-          side,
-          `blocks[${String(blockIndex)}].previewRuns[${String(runIndex)}].${property}`,
-          "Inline boolean formatting must be boolean.",
-          blockIndex,
-        );
-      }
-      const direct = run.directFormatting?.[property];
-      if (direct !== undefined && typeof direct !== "boolean") {
-        return invalidInput(
-          side,
-          `blocks[${String(blockIndex)}].previewRuns[${String(runIndex)}].directFormatting.${property}`,
-          "Direct inline boolean formatting must be boolean.",
-          blockIndex,
-        );
-      }
-    }
-    for (const property of ["fontFamily", "color"] as const) {
-      const effective = run[property];
-      if (effective !== undefined && typeof effective !== "string") {
-        return invalidInput(
-          side,
-          `blocks[${String(blockIndex)}].previewRuns[${String(runIndex)}].${property}`,
-          "Inline string formatting must be a string.",
-          blockIndex,
-        );
-      }
-      const direct = run.directFormatting?.[property];
-      if (direct !== undefined && direct !== null && typeof direct !== "string") {
-        return invalidInput(
-          side,
-          `blocks[${String(blockIndex)}].previewRuns[${String(runIndex)}].directFormatting.${property}`,
-          "Direct inline string formatting must be a string or null.",
-          blockIndex,
-        );
-      }
-    }
-    if (run.fontSizePt !== undefined && (!isFiniteNumber(run.fontSizePt) || run.fontSizePt < 0)) {
-      return invalidInput(
-        side,
-        `blocks[${String(blockIndex)}].previewRuns[${String(runIndex)}].fontSizePt`,
-        "Inline font size must be a non-negative finite number.",
-        blockIndex,
-      );
-    }
-    const directSize = run.directFormatting?.fontSizePt;
-    if (
-      directSize !== undefined &&
-      directSize !== null &&
-      (!isFiniteNumber(directSize) || directSize < 0)
-    ) {
-      return invalidInput(
-        side,
-        `blocks[${String(blockIndex)}].previewRuns[${String(runIndex)}].directFormatting.fontSizePt`,
-        "Direct inline font size must be a non-negative finite number or null.",
-        blockIndex,
-      );
-    }
-  }
-  return null;
+const ownDataProperty = (value: object, field: PropertyKey): OwnDataProperty => {
+  const descriptor = Object.getOwnPropertyDescriptor(value, field);
+  if (!descriptor) return { status: "absent" };
+  if (!("value" in descriptor)) return { status: "accessor" };
+  return { status: "present", value: descriptor.value };
 };
 
-const validateParagraphFormatting = (
-  block: FolioContentBlock,
-  side: "base" | "revised",
-  blockIndex: number,
-): InvalidFolioContentComparisonError | null => {
-  for (const property of ["styleId", "displayLabel"] as const) {
-    if (block[property] !== undefined && typeof block[property] !== "string") {
-      return invalidInput(
-        side,
-        `blocks[${String(blockIndex)}].${property}`,
-        "Optional block labels and style ids must be strings.",
-        blockIndex,
-      );
-    }
-  }
-  if (
-    block.headingLevel !== undefined &&
-    (!isFiniteInteger(block.headingLevel) || block.headingLevel < 1)
-  ) {
-    return invalidInput(
-      side,
-      `blocks[${String(blockIndex)}].headingLevel`,
-      "Heading levels must be positive integers.",
-      blockIndex,
-    );
-  }
-  if (block.listLevel !== undefined && (!isFiniteInteger(block.listLevel) || block.listLevel < 0)) {
-    return invalidInput(
-      side,
-      `blocks[${String(blockIndex)}].listLevel`,
-      "List levels must be non-negative integers.",
-      blockIndex,
-    );
-  }
-  if (block.directAlignment !== undefined && !PARAGRAPH_ALIGNMENTS.has(block.directAlignment)) {
-    return invalidInput(
-      side,
-      `blocks[${String(blockIndex)}].directAlignment`,
-      "Paragraph alignment is not recognized.",
-      blockIndex,
-    );
-  }
-  const spacing = block.directSpacing;
-  if (spacing === undefined) return null;
-  if (!isRecord(spacing)) {
-    return invalidInput(
-      side,
-      `blocks[${String(blockIndex)}].directSpacing`,
-      "Direct paragraph spacing must be an object.",
-      blockIndex,
-    );
-  }
-  for (const property of ["spaceBefore", "spaceAfter", "lineSpacing"] as const) {
-    if (spacing[property] !== undefined && !isFiniteNumber(spacing[property])) {
-      return invalidInput(
-        side,
-        `blocks[${String(blockIndex)}].directSpacing.${property}`,
-        "Paragraph spacing values must be finite numbers.",
-        blockIndex,
-      );
-    }
-  }
-  for (const property of ["beforeAutospacing", "afterAutospacing"] as const) {
-    if (spacing[property] !== undefined && typeof spacing[property] !== "boolean") {
-      return invalidInput(
-        side,
-        `blocks[${String(blockIndex)}].directSpacing.${property}`,
-        "Paragraph auto-spacing values must be boolean.",
-        blockIndex,
-      );
-    }
-  }
-  if (
-    spacing.lineSpacingRule !== undefined &&
-    spacing.lineSpacingRule !== "auto" &&
-    spacing.lineSpacingRule !== "exact" &&
-    spacing.lineSpacingRule !== "atLeast"
-  ) {
-    return invalidInput(
-      side,
-      `blocks[${String(blockIndex)}].directSpacing.lineSpacingRule`,
-      "Paragraph line-spacing rule is not recognized.",
-      blockIndex,
-    );
-  }
-  return null;
-};
-
-const validateTableLocation = (
-  table: unknown,
-  side: "base" | "revised",
-  blockIndex: number,
-): InvalidFolioContentComparisonError | null => {
-  if (!isRecord(table)) {
-    return invalidInput(
-      side,
-      `blocks[${String(blockIndex)}].table`,
-      "A table location must be an object.",
-      blockIndex,
-    );
-  }
-  for (const field of [
-    "outerTableIndex",
-    "tableIndex",
-    "rowIndex",
-    "cellIndex",
-    "gridColumnIndex",
-    "paragraphIndex",
-  ] as const) {
-    if (!isFiniteInteger(table[field]) || table[field] < 0) {
-      return invalidInput(
-        side,
-        `blocks[${String(blockIndex)}].table.${field}`,
-        "Table indexes must be non-negative integers.",
-        blockIndex,
-      );
-    }
-  }
-  for (const field of ["columnSpan", "rowSpan"] as const) {
-    if (!isFiniteInteger(table[field]) || table[field] < 1) {
-      return invalidInput(
-        side,
-        `blocks[${String(blockIndex)}].table.${field}`,
-        "Table spans must be positive integers.",
-        blockIndex,
-      );
-    }
-  }
-  const gridColumnIndex = table["gridColumnIndex"];
-  const columnSpan = table["columnSpan"];
-  const right =
-    typeof gridColumnIndex === "number" && typeof columnSpan === "number"
-      ? gridColumnIndex + columnSpan
-      : Number.NaN;
-  if (!Number.isSafeInteger(right)) {
-    return invalidInput(
-      side,
-      `blocks[${String(blockIndex)}].table.columnSpan`,
-      "A table cell's ending grid column must be a safe integer.",
-      blockIndex,
-    );
-  }
-  const rowIndex = table["rowIndex"];
-  const rowSpan = table["rowSpan"];
-  const bottom =
-    typeof rowIndex === "number" && typeof rowSpan === "number" ? rowIndex + rowSpan : Number.NaN;
-  if (!Number.isSafeInteger(bottom)) {
-    return invalidInput(
-      side,
-      `blocks[${String(blockIndex)}].table.rowSpan`,
-      "A table cell's ending row must be a safe integer.",
-      blockIndex,
-    );
-  }
-  return null;
+const hasPlainObjectShape = (value: unknown): value is Record<string, unknown> => {
+  if (!isRecord(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 };
 
 type TableCellRectangle = {
@@ -689,276 +843,1028 @@ const chargeAttributeString = ({
   return null;
 };
 
-const validateSnapshot = <Block extends FolioContentBlock>(
-  snapshot: FolioContentSnapshot<Block>,
+type CaptureContext = {
+  side: "base" | "revised";
+  blockIndex?: number;
+  usage: SnapshotResourceUsage;
+};
+
+const validateExactObjectShape = (
+  source: object,
+  fields: readonly string[],
+  path: string,
+  { side, blockIndex }: CaptureContext,
+): InvalidFolioContentComparisonError | null => {
+  const allowed = new Set(fields);
+  for (const key of Reflect.ownKeys(source)) {
+    if (typeof key !== "string" || !allowed.has(key)) {
+      return invalidInput(
+        side,
+        path,
+        "Content comparison records cannot contain unknown fields or symbols.",
+        blockIndex,
+      );
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(source, key);
+    if (!descriptor || !("value" in descriptor)) {
+      return invalidInput(
+        side,
+        `${path}.${key}`,
+        "Content comparison inputs must contain own data properties.",
+        blockIndex,
+      );
+    }
+  }
+  return null;
+};
+
+const validateExactDenseArray = (
+  source: readonly unknown[],
+  path: string,
+  { side, blockIndex }: CaptureContext,
+): InvalidFolioContentComparisonError | null => {
+  const keys = Reflect.ownKeys(source);
+  if (keys.length !== source.length + 1) {
+    return invalidInput(
+      side,
+      path,
+      "Content comparison arrays must be dense and cannot contain extra fields or symbols.",
+      blockIndex,
+    );
+  }
+  for (const key of keys) {
+    if (key === "length") continue;
+    if (typeof key !== "string") {
+      return invalidInput(
+        side,
+        path,
+        "Content comparison arrays cannot contain symbol fields.",
+        blockIndex,
+      );
+    }
+    const index = Number(key);
+    if (!Number.isSafeInteger(index) || index < 0 || index >= source.length || String(index) !== key) {
+      return invalidInput(
+        side,
+        path,
+        "Content comparison arrays cannot contain non-index fields.",
+        blockIndex,
+      );
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(source, key);
+    if (!descriptor || !("value" in descriptor)) {
+      return invalidInput(
+        side,
+        `${path}[${key}]`,
+        "Content comparison arrays must contain own data items.",
+        blockIndex,
+      );
+    }
+  }
+  return null;
+};
+
+const readOwnValue = (
+  source: object,
+  field: PropertyKey,
+  path: string,
+  { side, blockIndex }: CaptureContext,
+): Result<unknown, InvalidFolioContentComparisonError> => {
+  const property = ownDataProperty(source, field);
+  if (property.status === "accessor") {
+    return Result.err(
+      invalidInput(side, path, "Content comparison inputs must contain own data properties.", blockIndex),
+    );
+  }
+  return Result.ok(property.status === "present" ? property.value : undefined);
+};
+
+const readArrayItem = (
+  source: readonly unknown[],
+  index: number,
+  path: string,
+  context: CaptureContext,
+): Result<unknown, InvalidFolioContentComparisonError> =>
+  readOwnValue(source, String(index), path, context);
+
+const chargeCapturedString = (
+  value: string,
+  path: string,
+  context: CaptureContext,
+): FolioContentComparisonLimitError | null =>
+  chargeAttributeString({
+    value,
+    side: context.side,
+    blockIndex: context.blockIndex,
+    field: path,
+    usage: context.usage,
+  });
+
+const claimPropertyNode = (
+  path: string,
+  context: CaptureContext,
+): FolioContentComparisonLimitError | null => {
+  context.usage.propertyNodes++;
+  return context.usage.propertyNodes > FOLIO_CONTENT_COMPARISON_LIMITS.propertyNodesPerSnapshot
+    ? limitExceeded({
+        input: context.side,
+        limit: "propertyNodesPerSnapshot",
+        maximum: FOLIO_CONTENT_COMPARISON_LIMITS.propertyNodesPerSnapshot,
+        actual: context.usage.propertyNodes,
+        blockIndex: context.blockIndex,
+        field: path,
+      })
+    : null;
+};
+
+const capturePropertyValue = (
+  input: unknown,
+  path: string,
+  context: CaptureContext,
+  depth: number,
+): Result<FolioContentPropertyValue, FolioContentComparisonError> => {
+  if (depth > FOLIO_CONTENT_COMPARISON_LIMITS.propertyDepth) {
+    return Result.err(
+      limitExceeded({
+        input: context.side,
+        limit: "propertyDepth",
+        maximum: FOLIO_CONTENT_COMPARISON_LIMITS.propertyDepth,
+        actual: depth,
+        blockIndex: context.blockIndex,
+        field: path,
+      }),
+    );
+  }
+  const nodeError = claimPropertyNode(path, context);
+  if (nodeError) return Result.err(nodeError);
+  if (input === null || typeof input === "boolean") return Result.ok(input);
+  if (typeof input === "number") {
+    if (!Number.isFinite(input)) {
+      return Result.err(
+        invalidInput(context.side, path, "Property numbers must be finite.", context.blockIndex),
+      );
+    }
+    return Result.ok(Object.is(input, -0) ? 0 : input);
+  }
+  if (typeof input === "string") {
+    const limit = chargeCapturedString(input, path, context);
+    return limit ? Result.err(limit) : Result.ok(input);
+  }
+  if (!hasPlainObjectShape(input)) {
+    return Result.err(
+      invalidInput(
+        context.side,
+        path,
+        "A property value must be a scalar or a plain discriminated container.",
+        context.blockIndex,
+      ),
+    );
+  }
+  const type = readOwnValue(input, "type", `${path}.type`, context);
+  if (type.isErr()) return Result.err(type.error);
+  if (type.value === "array") {
+    const shapeError = validateExactObjectShape(
+      input,
+      Object.values(FOLIO_CONTENT_PROPERTY_ARRAY_FIELD_DESCRIPTORS).map(({ field }) => field),
+      path,
+      context,
+    );
+    if (shapeError) return Result.err(shapeError);
+    const items = readOwnValue(input, "items", `${path}.items`, context);
+    if (items.isErr()) return Result.err(items.error);
+    if (!Array.isArray(items.value)) {
+      return Result.err(
+        invalidInput(context.side, `${path}.items`, "Property array items must be an array.", context.blockIndex),
+      );
+    }
+    if (items.value.length > FOLIO_CONTENT_COMPARISON_LIMITS.propertyEntriesPerContainer) {
+      return Result.err(
+        limitExceeded({
+          input: context.side,
+          limit: "propertyEntriesPerContainer",
+          maximum: FOLIO_CONTENT_COMPARISON_LIMITS.propertyEntriesPerContainer,
+          actual: items.value.length,
+          blockIndex: context.blockIndex,
+          field: `${path}.items`,
+        }),
+      );
+    }
+    const arrayShapeError = validateExactDenseArray(items.value, `${path}.items`, context);
+    if (arrayShapeError) return Result.err(arrayShapeError);
+    const capturedItems: FolioContentPropertyValue[] = [];
+    for (let index = 0; index < items.value.length; index++) {
+      const itemPath = `${path}.items[${String(index)}]`;
+      const item = readArrayItem(items.value, index, itemPath, context);
+      if (item.isErr()) return Result.err(item.error);
+      const captured = capturePropertyValue(item.value, itemPath, context, depth + 1);
+      if (captured.isErr()) return Result.err(captured.error);
+      capturedItems.push(captured.value);
+    }
+    return Result.ok(Object.freeze({ type: "array", items: Object.freeze(capturedItems) }));
+  }
+  if (type.value === "object") {
+    const shapeError = validateExactObjectShape(
+      input,
+      Object.values(FOLIO_CONTENT_PROPERTY_OBJECT_FIELD_DESCRIPTORS).map(({ field }) => field),
+      path,
+      context,
+    );
+    if (shapeError) return Result.err(shapeError);
+    const entries = readOwnValue(input, "entries", `${path}.entries`, context);
+    if (entries.isErr()) return Result.err(entries.error);
+    const captured = capturePropertySet(entries.value, `${path}.entries`, context, depth + 1);
+    return captured.isErr()
+      ? Result.err(captured.error)
+      : Result.ok(Object.freeze({ type: "object", entries: captured.value }));
+  }
+  return Result.err(
+    invalidInput(
+      context.side,
+      `${path}.type`,
+      "Property containers must declare type object or array.",
+      context.blockIndex,
+    ),
+  );
+};
+
+const capturePropertySet = (
+  input: unknown,
+  path: string,
+  context: CaptureContext,
+  depth = 0,
+): Result<FolioContentPropertySet, FolioContentComparisonError> => {
+  if (!Array.isArray(input)) {
+    return Result.err(
+      invalidInput(context.side, path, "A property set must be an entry array.", context.blockIndex),
+    );
+  }
+  if (input.length > FOLIO_CONTENT_COMPARISON_LIMITS.propertyEntriesPerContainer) {
+    return Result.err(
+      limitExceeded({
+        input: context.side,
+        limit: "propertyEntriesPerContainer",
+        maximum: FOLIO_CONTENT_COMPARISON_LIMITS.propertyEntriesPerContainer,
+        actual: input.length,
+        blockIndex: context.blockIndex,
+        field: path,
+      }),
+    );
+  }
+  const arrayShapeError = validateExactDenseArray(input, path, context);
+  if (arrayShapeError) return Result.err(arrayShapeError);
+  const keys = new Set<string>();
+  const captured: { key: string; value: FolioContentPropertyValue }[] = [];
+  for (let index = 0; index < input.length; index++) {
+    const entryPath = `${path}[${String(index)}]`;
+    const entry = readArrayItem(input, index, entryPath, context);
+    if (entry.isErr()) return Result.err(entry.error);
+    if (!hasPlainObjectShape(entry.value)) {
+      return Result.err(
+        invalidInput(context.side, entryPath, "A property entry must be a plain object.", context.blockIndex),
+      );
+    }
+    const shapeError = validateExactObjectShape(
+      entry.value,
+      Object.values(FOLIO_CONTENT_PROPERTY_ENTRY_FIELD_DESCRIPTORS).map(({ field }) => field),
+      entryPath,
+      context,
+    );
+    if (shapeError) return Result.err(shapeError);
+    const key = readOwnValue(entry.value, "key", `${entryPath}.key`, context);
+    if (key.isErr()) return Result.err(key.error);
+    if (typeof key.value !== "string" || key.value.length === 0 || keys.has(key.value)) {
+      return Result.err(
+        invalidInput(
+          context.side,
+          `${entryPath}.key`,
+          "Property keys must be unique non-empty strings.",
+          context.blockIndex,
+        ),
+      );
+    }
+    const keyLimit = chargeCapturedString(key.value, `${entryPath}.key`, context);
+    if (keyLimit) return Result.err(keyLimit);
+    keys.add(key.value);
+    const value = readOwnValue(entry.value, "value", `${entryPath}.value`, context);
+    if (value.isErr()) return Result.err(value.error);
+    if (value.value === undefined) {
+      return Result.err(
+        invalidInput(
+          context.side,
+          `${entryPath}.value`,
+          "Property values cannot be undefined.",
+          context.blockIndex,
+        ),
+      );
+    }
+    const capturedValue = capturePropertyValue(
+      value.value,
+      `${entryPath}.value`,
+      context,
+      depth,
+    );
+    if (capturedValue.isErr()) return Result.err(capturedValue.error);
+    captured.push(Object.freeze({ key: key.value, value: capturedValue.value }));
+  }
+  captured.sort(({ key: left }, { key: right }) => (left < right ? -1 : left > right ? 1 : 0));
+  return Result.ok(Object.freeze(captured));
+};
+
+const captureContentRun = (
+  input: unknown,
+  path: string,
+  context: CaptureContext,
+): Result<FolioContentRun, FolioContentComparisonError> => {
+  if (!hasPlainObjectShape(input)) {
+    return Result.err(
+      invalidInput(context.side, path, "A preview run must be a plain object.", context.blockIndex),
+    );
+  }
+  const shapeError = validateExactObjectShape(
+    input,
+    Object.values(FOLIO_CONTENT_RUN_FIELD_DESCRIPTORS).map(({ field }) => field),
+    path,
+    context,
+  );
+  if (shapeError) return Result.err(shapeError);
+  const captured: {
+    text: string;
+    effectiveFormatting: FolioContentPropertySet;
+    authoredFormatting: FolioContentPropertySet;
+  } = { text: "", effectiveFormatting: Object.freeze([]), authoredFormatting: Object.freeze([]) };
+  for (const descriptor of Object.values(FOLIO_CONTENT_RUN_FIELD_DESCRIPTORS)) {
+    const fieldPath = `${path}.${descriptor.field}`;
+    const property = readOwnValue(input, descriptor.field, fieldPath, context);
+    if (property.isErr()) return Result.err(property.error);
+    const value = property.value;
+    switch (descriptor.capture) {
+      case "required-scalar":
+        if (typeof value !== "string") {
+          return Result.err(
+            invalidInput(context.side, fieldPath, "Preview-run text must be a string.", context.blockIndex),
+          );
+        }
+        captured.text = value;
+        break;
+      case "properties": {
+        if (value === undefined) break;
+        const formatting = capturePropertySet(value, fieldPath, context);
+        if (formatting.isErr()) return Result.err(formatting.error);
+        Reflect.set(captured, descriptor.field, formatting.value);
+        break;
+      }
+      default: {
+        const unreachable: never = descriptor;
+        return panic("Unhandled preview-run capture", { descriptor: unreachable });
+      }
+    }
+  }
+  return Result.ok(Object.freeze(captured));
+};
+
+const captureTableLocation = (
+  input: unknown,
+  path: string,
+  context: CaptureContext,
+): Result<NonNullable<FolioContentBlock["table"]>, FolioContentComparisonError> => {
+  if (!hasPlainObjectShape(input)) {
+    return Result.err(
+      invalidInput(context.side, path, "A table location must be a plain object.", context.blockIndex),
+    );
+  }
+  const shapeError = validateExactObjectShape(
+    input,
+    Object.values(FOLIO_CONTENT_TABLE_FIELD_DESCRIPTORS).map(({ field }) => field),
+    path,
+    context,
+  );
+  if (shapeError) return Result.err(shapeError);
+  const captured: {
+    outerTableIdentity?: FolioContentBlock["identity"];
+    tableIdentity?: FolioContentBlock["identity"];
+    rowIdentity?: FolioContentBlock["identity"];
+    cellIdentity?: FolioContentBlock["identity"];
+    outerTableIndex: number;
+    tableIndex: number;
+    rowIndex: number;
+    cellIndex: number;
+    gridColumnIndex: number;
+    columnSpan: number;
+    rowSpan: number;
+    paragraphIndex: number;
+  } = {
+    outerTableIndex: 0,
+    tableIndex: 0,
+    rowIndex: 0,
+    cellIndex: 0,
+    gridColumnIndex: 0,
+    columnSpan: 0,
+    rowSpan: 0,
+    paragraphIndex: 0,
+  };
+  for (const descriptor of Object.values(FOLIO_CONTENT_TABLE_FIELD_DESCRIPTORS)) {
+    const fieldPath = `${path}.${descriptor.field}`;
+    const property = readOwnValue(input, descriptor.field, fieldPath, context);
+    if (property.isErr()) return Result.err(property.error);
+    const value = property.value;
+    if (descriptor.validation === "identity") {
+      const identity = captureContentIdentity(value, fieldPath, context);
+      if (identity.isErr()) return Result.err(identity.error);
+      Reflect.set(captured, descriptor.field, identity.value);
+      continue;
+    }
+    const minimum = descriptor.validation === "span" ? 1 : 0;
+    if (!isFiniteInteger(value) || value < minimum) {
+      return Result.err(
+        invalidInput(context.side, fieldPath, "Table coordinates must be supported integers.", context.blockIndex),
+      );
+    }
+    captured[descriptor.field] = value;
+  }
+  if (
+    captured.outerTableIdentity === undefined ||
+    captured.tableIdentity === undefined ||
+    captured.rowIdentity === undefined ||
+    captured.cellIdentity === undefined ||
+    !Number.isSafeInteger(captured.gridColumnIndex + captured.columnSpan) ||
+    !Number.isSafeInteger(captured.rowIndex + captured.rowSpan)
+  ) {
+    return Result.err(
+      invalidInput(context.side, path, "Table cell bounds must be safe integers.", context.blockIndex),
+    );
+  }
+  return Result.ok(
+    Object.freeze({
+      outerTableIdentity: captured.outerTableIdentity,
+      tableIdentity: captured.tableIdentity,
+      rowIdentity: captured.rowIdentity,
+      cellIdentity: captured.cellIdentity,
+      outerTableIndex: captured.outerTableIndex,
+      tableIndex: captured.tableIndex,
+      rowIndex: captured.rowIndex,
+      cellIndex: captured.cellIndex,
+      gridColumnIndex: captured.gridColumnIndex,
+      columnSpan: captured.columnSpan,
+      rowSpan: captured.rowSpan,
+      paragraphIndex: captured.paragraphIndex,
+    }),
+  );
+};
+
+const captureContainerPath = (
+  input: unknown,
+  path: string,
+  context: CaptureContext,
+): Result<NonNullable<FolioContentBlock["containerPath"]>, FolioContentComparisonError> => {
+  if (!Array.isArray(input)) {
+    return Result.err(
+      invalidInput(context.side, path, "A container path must be an array.", context.blockIndex),
+    );
+  }
+  if (input.length > FOLIO_CONTENT_COMPARISON_LIMITS.containerDepth) {
+    return Result.err(
+      limitExceeded({
+        input: context.side,
+        limit: "containerDepth",
+        maximum: FOLIO_CONTENT_COMPARISON_LIMITS.containerDepth,
+        actual: input.length,
+        blockIndex: context.blockIndex,
+        field: path,
+      }),
+    );
+  }
+  const arrayShapeError = validateExactDenseArray(input, path, context);
+  if (arrayShapeError) return Result.err(arrayShapeError);
+  context.usage.containerEntries += input.length;
+  if (context.usage.containerEntries > FOLIO_CONTENT_COMPARISON_LIMITS.containerEntriesPerSnapshot) {
+    return Result.err(
+      limitExceeded({
+        input: context.side,
+        limit: "containerEntriesPerSnapshot",
+        maximum: FOLIO_CONTENT_COMPARISON_LIMITS.containerEntriesPerSnapshot,
+        actual: context.usage.containerEntries,
+        blockIndex: context.blockIndex,
+        field: path,
+      }),
+    );
+  }
+  const captured: { kind: string; identity: FolioContentBlock["identity"] }[] = [];
+  for (let pathIndex = 0; pathIndex < input.length; pathIndex++) {
+    const entryPath = `${path}[${String(pathIndex)}]`;
+    const item = readArrayItem(input, pathIndex, entryPath, context);
+    if (item.isErr()) return Result.err(item.error);
+    if (!hasPlainObjectShape(item.value)) {
+      return Result.err(
+        invalidInput(context.side, entryPath, "A container entry must be a plain object.", context.blockIndex),
+      );
+    }
+    const shapeError = validateExactObjectShape(
+      item.value,
+      Object.values(FOLIO_CONTENT_CONTAINER_FIELD_DESCRIPTORS).map(({ field }) => field),
+      entryPath,
+      context,
+    );
+    if (shapeError) return Result.err(shapeError);
+    const entry: { kind: string; identity?: FolioContentBlock["identity"] } = { kind: "" };
+    for (const descriptor of Object.values(FOLIO_CONTENT_CONTAINER_FIELD_DESCRIPTORS)) {
+      const fieldPath = `${entryPath}.${descriptor.field}`;
+      const property = readOwnValue(item.value, descriptor.field, fieldPath, context);
+      if (property.isErr()) return Result.err(property.error);
+      if (descriptor.validation === "identity") {
+        const identity = captureContentIdentity(property.value, fieldPath, context);
+        if (identity.isErr()) return Result.err(identity.error);
+        entry.identity = identity.value;
+        continue;
+      }
+      if (typeof property.value !== "string" || property.value.length === 0) {
+        return Result.err(
+          invalidInput(context.side, fieldPath, "Container fields must be non-empty strings.", context.blockIndex),
+        );
+      }
+      const limit = chargeCapturedString(property.value, fieldPath, context);
+      if (limit) return Result.err(limit);
+      entry[descriptor.field] = property.value;
+    }
+    if (entry.identity === undefined) {
+      return panic("The total container descriptor did not capture identity");
+    }
+    captured.push(Object.freeze({ kind: entry.kind, identity: entry.identity }));
+  }
+  return Result.ok(Object.freeze(captured));
+};
+
+const captureStructuralBoundaries = (
+  input: unknown,
+  blockTextLength: number,
+  path: string,
+  context: CaptureContext,
+): Result<NonNullable<FolioContentBlock["structuralBoundaries"]>, FolioContentComparisonError> => {
+  if (!Array.isArray(input)) {
+    return Result.err(
+      invalidInput(context.side, path, "Structural boundaries must be an array.", context.blockIndex),
+    );
+  }
+  if (input.length > FOLIO_CONTENT_COMPARISON_LIMITS.structuralBoundariesPerBlock) {
+    return Result.err(
+      limitExceeded({
+        input: context.side,
+        limit: "structuralBoundariesPerBlock",
+        maximum: FOLIO_CONTENT_COMPARISON_LIMITS.structuralBoundariesPerBlock,
+        actual: input.length,
+        blockIndex: context.blockIndex,
+        field: path,
+      }),
+    );
+  }
+  const arrayShapeError = validateExactDenseArray(input, path, context);
+  if (arrayShapeError) return Result.err(arrayShapeError);
+  context.usage.structuralBoundaries += input.length;
+  if (
+    context.usage.structuralBoundaries >
+    FOLIO_CONTENT_COMPARISON_LIMITS.structuralBoundariesPerSnapshot
+  ) {
+    return Result.err(
+      limitExceeded({
+        input: context.side,
+        limit: "structuralBoundariesPerSnapshot",
+        maximum: FOLIO_CONTENT_COMPARISON_LIMITS.structuralBoundariesPerSnapshot,
+        actual: context.usage.structuralBoundaries,
+        blockIndex: context.blockIndex,
+        field: path,
+      }),
+    );
+  }
+  const captured: { type: "pageBreak"; offset: number; clear?: "all" | "left" | "right" | "none" }[] = [];
+  let priorOffset = -1;
+  for (let boundaryIndex = 0; boundaryIndex < input.length; boundaryIndex++) {
+    const boundaryPath = `${path}[${String(boundaryIndex)}]`;
+    const item = readArrayItem(input, boundaryIndex, boundaryPath, context);
+    if (item.isErr()) return Result.err(item.error);
+    if (!hasPlainObjectShape(item.value)) {
+      return Result.err(
+        invalidInput(context.side, boundaryPath, "A structural boundary must be a plain object.", context.blockIndex),
+      );
+    }
+    const shapeError = validateExactObjectShape(
+      item.value,
+      Object.values(FOLIO_CONTENT_STRUCTURAL_BOUNDARY_FIELD_DESCRIPTORS).map(
+        ({ field }) => field,
+      ),
+      boundaryPath,
+      context,
+    );
+    if (shapeError) return Result.err(shapeError);
+    const boundary: { type: "pageBreak"; offset: number; clear?: "all" | "left" | "right" | "none" } = {
+      type: "pageBreak",
+      offset: 0,
+    };
+    for (const descriptor of Object.values(FOLIO_CONTENT_STRUCTURAL_BOUNDARY_FIELD_DESCRIPTORS)) {
+      const fieldPath = `${boundaryPath}.${descriptor.field}`;
+      const property = readOwnValue(item.value, descriptor.field, fieldPath, context);
+      if (property.isErr()) return Result.err(property.error);
+      const value = property.value;
+      if (descriptor.validation === "page-break") {
+        if (value !== "pageBreak") {
+          return Result.err(invalidInput(context.side, fieldPath, "Only page-break boundaries are supported.", context.blockIndex));
+        }
+      } else if (descriptor.validation === "offset") {
+        if (!isFiniteInteger(value) || value < priorOffset || value > blockTextLength) {
+          return Result.err(invalidInput(context.side, fieldPath, "Boundary offsets must be monotone UTF-16 positions.", context.blockIndex));
+        }
+      } else if (
+        value !== undefined &&
+        value !== "all" &&
+        value !== "left" &&
+        value !== "right" &&
+        value !== "none"
+      ) {
+        return Result.err(invalidInput(context.side, fieldPath, "Page-break clear value is invalid.", context.blockIndex));
+      }
+      if (value !== undefined) Reflect.set(boundary, descriptor.field, value);
+    }
+    priorOffset = boundary.offset;
+    captured.push(Object.freeze(boundary));
+  }
+  return Result.ok(Object.freeze(captured));
+};
+
+const captureRuns = (
+  input: unknown,
+  blockText: string,
+  path: string,
+  context: CaptureContext,
+): Result<NonNullable<FolioContentBlock["runs"]>, FolioContentComparisonError> => {
+  if (!Array.isArray(input)) {
+    return Result.err(invalidInput(context.side, path, "Preview runs must be an array.", context.blockIndex));
+  }
+  if (input.length > FOLIO_CONTENT_COMPARISON_LIMITS.runsPerBlock) {
+    return Result.err(
+      limitExceeded({
+        input: context.side,
+        limit: "runsPerBlock",
+        maximum: FOLIO_CONTENT_COMPARISON_LIMITS.runsPerBlock,
+        actual: input.length,
+        blockIndex: context.blockIndex,
+        field: path,
+      }),
+    );
+  }
+  const arrayShapeError = validateExactDenseArray(input, path, context);
+  if (arrayShapeError) return Result.err(arrayShapeError);
+  context.usage.runs += input.length;
+  if (context.usage.runs > FOLIO_CONTENT_COMPARISON_LIMITS.runsPerSnapshot) {
+    return Result.err(
+      limitExceeded({
+        input: context.side,
+        limit: "runsPerSnapshot",
+        maximum: FOLIO_CONTENT_COMPARISON_LIMITS.runsPerSnapshot,
+        actual: context.usage.runs,
+        blockIndex: context.blockIndex,
+        field: path,
+      }),
+    );
+  }
+  if (input.length === 0) {
+    return Result.ok(Object.freeze([]));
+  }
+  const captured: FolioContentRun[] = [];
+  let offset = 0;
+  for (let runIndex = 0; runIndex < input.length; runIndex++) {
+    const runPath = `${path}[${String(runIndex)}]`;
+    const item = readArrayItem(input, runIndex, runPath, context);
+    if (item.isErr()) return Result.err(item.error);
+    const run = captureContentRun(item.value, runPath, context);
+    if (run.isErr()) return Result.err(run.error);
+    if (!blockText.startsWith(run.value.text, offset)) {
+      return Result.err(
+        invalidInput(context.side, path, "Preview-run text must reconstruct block text exactly.", context.blockIndex),
+      );
+    }
+    offset += run.value.text.length;
+    captured.push(run.value);
+  }
+  if (offset !== blockText.length) {
+    return Result.err(
+      invalidInput(context.side, path, "Preview-run text must reconstruct block text exactly.", context.blockIndex),
+    );
+  }
+  return Result.ok(Object.freeze(captured));
+};
+
+const captureContentIdentity = (
+  input: unknown,
+  path: string,
+  context: CaptureContext,
+): Result<FolioContentBlock["identity"], FolioContentComparisonError> => {
+  if (!hasPlainObjectShape(input)) {
+    return Result.err(
+      invalidInput(context.side, path, "Block identity must be a plain object.", context.blockIndex),
+    );
+  }
+  const shapeError = validateExactObjectShape(
+    input,
+    Object.values(FOLIO_CONTENT_IDENTITY_FIELD_DESCRIPTORS).map(({ field }) => field),
+    path,
+    context,
+  );
+  if (shapeError) return Result.err(shapeError);
+  const type = readOwnValue(input, "type", `${path}.type`, context);
+  if (type.isErr()) return Result.err(type.error);
+  const id = readOwnValue(input, "id", `${path}.id`, context);
+  if (id.isErr()) return Result.err(id.error);
+  if (!IDENTITY_SEMANTICS.has(type.value) || typeof id.value !== "string" || id.value.length === 0) {
+    return Result.err(
+      invalidInput(
+        context.side,
+        path,
+        "Block identity requires a supported type and a non-empty id.",
+        context.blockIndex,
+      ),
+    );
+  }
+  const limit = chargeCapturedString(id.value, `${path}.id`, context);
+  if (limit) return Result.err(limit);
+  switch (type.value) {
+    case "authoritative":
+      return Result.ok(Object.freeze({ type: "authoritative", id: id.value }));
+    case "persistent-hint":
+      return Result.ok(Object.freeze({ type: "persistent-hint", id: id.value }));
+    case "positional":
+      return Result.ok(Object.freeze({ type: "positional", id: id.value }));
+    default:
+      return panic("Validated content identity has an unsupported type");
+  }
+};
+
+const captureContentBlock = (
+  input: unknown,
+  side: "base" | "revised",
+  blockIndex: number,
+  usage: SnapshotResourceUsage,
+): Result<FolioContentBlock, FolioContentComparisonError> => {
+  const path = `blocks[${String(blockIndex)}]`;
+  if (!hasPlainObjectShape(input)) {
+    return Result.err(invalidInput(side, path, "Every content block must be a plain object.", blockIndex));
+  }
+  const context = { side, blockIndex, usage } satisfies CaptureContext;
+  const shapeError = validateExactObjectShape(
+    input,
+    Object.values(FOLIO_CONTENT_BLOCK_FIELD_DESCRIPTORS).map(({ field }) => field),
+    path,
+    context,
+  );
+  if (shapeError) return Result.err(shapeError);
+  const captured: {
+    identity?: FolioContentBlock["identity"];
+    kind?: string;
+    text?: string;
+    blockProperties: FolioContentPropertySet;
+    paragraphFormatting: FolioContentPropertySet;
+    runs: readonly FolioContentRun[];
+    structuralBoundaries: FolioContentBlock["structuralBoundaries"];
+    table?: FolioContentBlock["table"];
+    containerPath: FolioContentBlock["containerPath"];
+  } = {
+    blockProperties: Object.freeze([]),
+    paragraphFormatting: Object.freeze([]),
+    runs: Object.freeze([]),
+    structuralBoundaries: Object.freeze([]),
+    containerPath: Object.freeze([]),
+  };
+  for (const descriptor of Object.values(FOLIO_CONTENT_BLOCK_FIELD_DESCRIPTORS)) {
+    const fieldPath = `${path}.${descriptor.field}`;
+    const property = readOwnValue(input, descriptor.field, fieldPath, context);
+    if (property.isErr()) return Result.err(property.error);
+    const value = property.value;
+    switch (descriptor.capture) {
+      case "identity": {
+        const identity = captureContentIdentity(value, fieldPath, context);
+        if (identity.isErr()) return Result.err(identity.error);
+        captured.identity = identity.value;
+        break;
+      }
+      case "required-scalar": {
+        if (
+          typeof value !== "string" ||
+          (descriptor.validation === "nonempty-string" && value.length === 0)
+        ) {
+          return Result.err(
+            invalidInput(side, fieldPath, "Content block field is invalid.", blockIndex),
+          );
+        }
+        if (descriptor.validation === "text") {
+          if (value.length > FOLIO_CONTENT_COMPARISON_LIMITS.blockCodeUnits) {
+            return Result.err(
+              limitExceeded({
+                input: side,
+                limit: "blockCodeUnits",
+                maximum: FOLIO_CONTENT_COMPARISON_LIMITS.blockCodeUnits,
+                actual: value.length,
+                blockIndex,
+                field: fieldPath,
+              }),
+            );
+          }
+          usage.textCodeUnits += value.length;
+          if (usage.textCodeUnits > FOLIO_CONTENT_COMPARISON_LIMITS.textCodeUnitsPerSnapshot) {
+            return Result.err(
+              limitExceeded({
+                input: side,
+                limit: "textCodeUnitsPerSnapshot",
+                maximum: FOLIO_CONTENT_COMPARISON_LIMITS.textCodeUnitsPerSnapshot,
+                actual: usage.textCodeUnits,
+                blockIndex,
+                field: fieldPath,
+              }),
+            );
+          }
+        } else {
+          const limit = chargeCapturedString(value, fieldPath, context);
+          if (limit) return Result.err(limit);
+        }
+        Reflect.set(captured, descriptor.field, value);
+        break;
+      }
+      case "properties": {
+        if (value === undefined) break;
+        const properties = capturePropertySet(value, fieldPath, context);
+        if (properties.isErr()) return Result.err(properties.error);
+        Reflect.set(captured, descriptor.field, properties.value);
+        break;
+      }
+      case "runs": {
+        if (value === undefined) break;
+        if (captured.text === undefined) {
+          return panic("The total block descriptor must capture text before preview runs");
+        }
+        const runs = captureRuns(value, captured.text, fieldPath, context);
+        if (runs.isErr()) return Result.err(runs.error);
+        Reflect.set(captured, descriptor.field, runs.value);
+        break;
+      }
+      case "boundaries": {
+        if (value === undefined) break;
+        if (captured.text === undefined) {
+          return panic("The total block descriptor must capture text before structural boundaries");
+        }
+        const boundaries = captureStructuralBoundaries(value, captured.text.length, fieldPath, context);
+        if (boundaries.isErr()) return Result.err(boundaries.error);
+        Reflect.set(captured, descriptor.field, boundaries.value);
+        break;
+      }
+      case "table": {
+        if (value === undefined) break;
+        const table = captureTableLocation(value, fieldPath, context);
+        if (table.isErr()) return Result.err(table.error);
+        Reflect.set(captured, descriptor.field, table.value);
+        break;
+      }
+      case "container": {
+        if (value === undefined) break;
+        const container = captureContainerPath(value, fieldPath, context);
+        if (container.isErr()) return Result.err(container.error);
+        Reflect.set(captured, descriptor.field, container.value);
+        break;
+      }
+      default: {
+        const unreachable: never = descriptor;
+        return panic("Unhandled content block capture", { descriptor: unreachable });
+      }
+    }
+  }
+  if (captured.identity === undefined || captured.kind === undefined || captured.text === undefined) {
+    return panic("The total block descriptor did not capture required neutral fields");
+  }
+  return Result.ok(
+    Object.freeze({
+      identity: captured.identity,
+      kind: captured.kind,
+      text: captured.text,
+      blockProperties: captured.blockProperties,
+      paragraphFormatting: captured.paragraphFormatting,
+      runs: captured.runs,
+      structuralBoundaries: captured.structuralBoundaries,
+      ...(captured.table !== undefined && { table: captured.table }),
+      containerPath: captured.containerPath,
+    }),
+  );
+};
+
+const captureValidatedSnapshotInto = (
+  snapshot: unknown,
   side: "base" | "revised",
   usage: SnapshotResourceUsage,
-): InvalidFolioContentComparisonError | FolioContentComparisonLimitError | null => {
-  if (!snapshot || !Array.isArray(snapshot.blocks)) {
+  capturedBlocks: FolioContentBlock[],
+): FolioContentComparisonError | null => {
+  if (!hasPlainObjectShape(snapshot)) {
     return invalidInput(side, "blocks", "A content snapshot must contain an ordered blocks array.");
   }
-  if (snapshot.blocks.length > FOLIO_CONTENT_COMPARISON_LIMITS.blocksPerSnapshot) {
+  const snapshotContext = { side, usage } satisfies CaptureContext;
+  const shapeError = validateExactObjectShape(
+    snapshot,
+    Object.values(FOLIO_CONTENT_SNAPSHOT_FIELD_DESCRIPTORS).map(({ field }) => field),
+    side,
+    snapshotContext,
+  );
+  if (shapeError) return shapeError;
+  const blocksProperty = ownDataProperty(snapshot, "blocks");
+  if (blocksProperty.status === "accessor") {
+    return invalidInput(side, "blocks", "Content comparison inputs must contain own data properties.");
+  }
+  const inputBlocks = blocksProperty.status === "present" ? blocksProperty.value : undefined;
+  if (!Array.isArray(inputBlocks)) {
+    return invalidInput(side, "blocks", "A content snapshot must contain an ordered blocks array.");
+  }
+  if (inputBlocks.length > FOLIO_CONTENT_COMPARISON_LIMITS.blocksPerSnapshot) {
     return limitExceeded({
       input: side,
       limit: "blocksPerSnapshot",
       maximum: FOLIO_CONTENT_COMPARISON_LIMITS.blocksPerSnapshot,
-      actual: snapshot.blocks.length,
+      actual: inputBlocks.length,
     });
   }
+  const arrayShapeError = validateExactDenseArray(inputBlocks, `${side}.blocks`, snapshotContext);
+  if (arrayShapeError) return arrayShapeError;
 
-  usage.blocks = snapshot.blocks.length;
+  usage.blocks = inputBlocks.length;
   const ids = new Set<string>();
   const lastCoordinateByTable = new Map<string, readonly [number, number, number]>();
   const geometryByCell = new Map<string, readonly [number, number, number]>();
   const cellsByTable = new Map<string, TableCellRectangle[]>();
   const outerTableByTableIndex = new Map<number, number>();
+  const structuralIdentityIndexes = {
+    outerTable: {
+      identityByCoordinate: new Map<string, string>(),
+      coordinateByIdentity: new Map<string, string>(),
+    },
+    table: {
+      identityByCoordinate: new Map<string, string>(),
+      coordinateByIdentity: new Map<string, string>(),
+    },
+    row: {
+      identityByCoordinate: new Map<string, string>(),
+      coordinateByIdentity: new Map<string, string>(),
+    },
+    cell: {
+      identityByCoordinate: new Map<string, string>(),
+      coordinateByIdentity: new Map<string, string>(),
+    },
+  };
+  const claimStructuralIdentity = ({
+    level,
+    coordinate,
+    identity,
+    blockIndex,
+  }: {
+    level: keyof typeof structuralIdentityIndexes;
+    coordinate: string;
+    identity: FolioContentIdentity;
+    blockIndex: number;
+  }): InvalidFolioContentComparisonError | null => {
+    const index = structuralIdentityIndexes[level];
+    const identityKey = JSON.stringify([identity.type, identity.id]);
+    const priorIdentity = index.identityByCoordinate.get(coordinate);
+    const priorCoordinate = index.coordinateByIdentity.get(identityKey);
+    if (
+      (priorIdentity !== undefined && priorIdentity !== identityKey) ||
+      (priorCoordinate !== undefined && priorCoordinate !== coordinate)
+    ) {
+      return invalidInput(
+        side,
+        `blocks[${String(blockIndex)}].table.${level}Identity`,
+        "A structural identity must name exactly one table coordinate.",
+        blockIndex,
+      );
+    }
+    index.identityByCoordinate.set(coordinate, identityKey);
+    index.coordinateByIdentity.set(identityKey, coordinate);
+    return null;
+  };
   let lastOuterTableIndex = -1;
   let activeOuterTableIndex: number | null = null;
-  for (const [blockIndex, block] of snapshot.blocks.entries()) {
-    if (!hasRecordShape(block)) {
+  for (let blockIndex = 0; blockIndex < inputBlocks.length; blockIndex++) {
+    const blockProperty = ownDataProperty(inputBlocks, String(blockIndex));
+    if (blockProperty.status !== "present") {
       return invalidInput(
         side,
         `blocks[${String(blockIndex)}]`,
-        "Every content block must be an object.",
+        "Every content block must be an own data property.",
         blockIndex,
       );
     }
-    if (typeof block.id !== "string" || block.id.length === 0) {
+    const capturedBlock = captureContentBlock(blockProperty.value, side, blockIndex, usage);
+    if (capturedBlock.isErr()) return capturedBlock.error;
+    const block = capturedBlock.value;
+    if (ids.has(block.identity.id)) {
       return invalidInput(
         side,
-        `blocks[${String(blockIndex)}].id`,
-        "Every content block needs a non-empty id.",
-        blockIndex,
-      );
-    }
-    const idLimit = chargeAttributeString({
-      value: block.id,
-      side,
-      blockIndex,
-      field: `blocks[${String(blockIndex)}].id`,
-      usage,
-    });
-    if (idLimit) return idLimit;
-    if (ids.has(block.id)) {
-      return invalidInput(
-        side,
-        `blocks[${String(blockIndex)}].id`,
+        `blocks[${String(blockIndex)}].identity.id`,
         "Content block ids must be unique within a snapshot.",
         blockIndex,
       );
     }
-    ids.add(block.id);
-    if (typeof block.kind !== "string" || block.kind.length === 0) {
-      return invalidInput(
-        side,
-        `blocks[${String(blockIndex)}].kind`,
-        "Every content block needs a non-empty kind.",
-        blockIndex,
-      );
-    }
-    const kindLimit = chargeAttributeString({
-      value: block.kind,
-      side,
-      blockIndex,
-      field: `blocks[${String(blockIndex)}].kind`,
-      usage,
-    });
-    if (kindLimit) return kindLimit;
-    if (typeof block.text !== "string") {
-      return invalidInput(
-        side,
-        `blocks[${String(blockIndex)}].text`,
-        "Content block text must be a string.",
-        blockIndex,
-      );
-    }
-    if (block.text.length > FOLIO_CONTENT_COMPARISON_LIMITS.blockCodeUnits) {
-      return limitExceeded({
-        input: side,
-        limit: "blockCodeUnits",
-        maximum: FOLIO_CONTENT_COMPARISON_LIMITS.blockCodeUnits,
-        actual: block.text.length,
-        blockIndex,
-        field: `blocks[${String(blockIndex)}].text`,
-      });
-    }
-    usage.textCodeUnits += block.text.length;
-    if (usage.textCodeUnits > FOLIO_CONTENT_COMPARISON_LIMITS.textCodeUnitsPerSnapshot) {
-      return limitExceeded({
-        input: side,
-        limit: "textCodeUnitsPerSnapshot",
-        maximum: FOLIO_CONTENT_COMPARISON_LIMITS.textCodeUnitsPerSnapshot,
-        actual: usage.textCodeUnits,
-        blockIndex,
-        field: `blocks[${String(blockIndex)}].text`,
-      });
-    }
-    if (
-      block.idStability !== undefined &&
-      block.idStability !== "stable" &&
-      block.idStability !== "positional"
-    ) {
-      return invalidInput(
-        side,
-        `blocks[${String(blockIndex)}].idStability`,
-        "Block id stability must be stable or positional.",
-        blockIndex,
-      );
-    }
-    if (block.previewRuns !== undefined) {
-      if (!Array.isArray(block.previewRuns)) {
-        return invalidInput(
-          side,
-          `blocks[${String(blockIndex)}].previewRuns`,
-          "Preview runs must be an array of text runs.",
-          blockIndex,
-        );
-      }
-      if (block.previewRuns.length > FOLIO_CONTENT_COMPARISON_LIMITS.previewRunsPerBlock) {
-        return limitExceeded({
-          input: side,
-          limit: "previewRunsPerBlock",
-          maximum: FOLIO_CONTENT_COMPARISON_LIMITS.previewRunsPerBlock,
-          actual: block.previewRuns.length,
-          blockIndex,
-          field: `blocks[${String(blockIndex)}].previewRuns`,
-        });
-      }
-      usage.previewRuns += block.previewRuns.length;
-      if (usage.previewRuns > FOLIO_CONTENT_COMPARISON_LIMITS.previewRunsPerSnapshot) {
-        return limitExceeded({
-          input: side,
-          limit: "previewRunsPerSnapshot",
-          maximum: FOLIO_CONTENT_COMPARISON_LIMITS.previewRunsPerSnapshot,
-          actual: usage.previewRuns,
-          blockIndex,
-          field: `blocks[${String(blockIndex)}].previewRuns`,
-        });
-      }
-      let runTextOffset = 0;
-      for (const [runIndex, run] of block.previewRuns.entries()) {
-        if (!hasRecordShape(run) || typeof run.text !== "string") {
-          return invalidInput(
-            side,
-            `blocks[${String(blockIndex)}].previewRuns`,
-            "Preview runs must be an array of text runs.",
-            blockIndex,
-          );
-        }
-        if (!block.text.startsWith(run.text, runTextOffset)) {
-          return invalidInput(
-            side,
-            `blocks[${String(blockIndex)}].previewRuns`,
-            "Preview-run text must reconstruct the block text exactly.",
-            blockIndex,
-          );
-        }
-        runTextOffset += run.text.length;
-        for (const property of ["fontFamily", "color"] as const) {
-          for (const [suffix, value] of [
-            [property, run[property]],
-            [`directFormatting.${property}`, run.directFormatting?.[property]],
-          ] as const) {
-            const formattingLimit = chargeAttributeString({
-              value: typeof value === "string" ? value : undefined,
-              side,
-              blockIndex,
-              field: `blocks[${String(blockIndex)}].previewRuns[${String(runIndex)}].${suffix}`,
-              usage,
-            });
-            if (formattingLimit) return formattingLimit;
-          }
-        }
-      }
-      if (runTextOffset !== block.text.length) {
-        return invalidInput(
-          side,
-          `blocks[${String(blockIndex)}].previewRuns`,
-          "Preview-run text must reconstruct the block text exactly.",
-          blockIndex,
-        );
-      }
-    }
-    const paragraphError = validateParagraphFormatting(block, side, blockIndex);
-    if (paragraphError) {
-      return paragraphError;
-    }
-    const runError = validateRunFormatting(block, side, blockIndex);
-    if (runError) {
-      return runError;
-    }
-    for (const property of ["styleId", "displayLabel"] as const) {
-      const propertyLimit = chargeAttributeString({
-        value: block[property],
-        side,
-        blockIndex,
-        field: `blocks[${String(blockIndex)}].${property}`,
-        usage,
-      });
-      if (propertyLimit) return propertyLimit;
-    }
-    if (block.containerPath !== undefined) {
-      if (!Array.isArray(block.containerPath)) {
-        return invalidInput(
-          side,
-          `blocks[${String(blockIndex)}].containerPath`,
-          "Container paths require non-empty kind and id values.",
-          blockIndex,
-        );
-      }
-      if (block.containerPath.length > FOLIO_CONTENT_COMPARISON_LIMITS.containerDepth) {
-        return limitExceeded({
-          input: side,
-          limit: "containerDepth",
-          maximum: FOLIO_CONTENT_COMPARISON_LIMITS.containerDepth,
-          actual: block.containerPath.length,
-          blockIndex,
-          field: `blocks[${String(blockIndex)}].containerPath`,
-        });
-      }
-      usage.containerEntries += block.containerPath.length;
-      if (usage.containerEntries > FOLIO_CONTENT_COMPARISON_LIMITS.containerEntriesPerSnapshot) {
-        return limitExceeded({
-          input: side,
-          limit: "containerEntriesPerSnapshot",
-          maximum: FOLIO_CONTENT_COMPARISON_LIMITS.containerEntriesPerSnapshot,
-          actual: usage.containerEntries,
-          blockIndex,
-          field: `blocks[${String(blockIndex)}].containerPath`,
-        });
-      }
-      for (const [pathIndex, entry] of block.containerPath.entries()) {
-        if (
-          !hasRecordShape(entry) ||
-          typeof entry.kind !== "string" ||
-          entry.kind.length === 0 ||
-          typeof entry.id !== "string" ||
-          entry.id.length === 0
-        ) {
-          return invalidInput(
-            side,
-            `blocks[${String(blockIndex)}].containerPath`,
-            "Container paths require non-empty kind and id values.",
-            blockIndex,
-          );
-        }
-        for (const property of ["kind", "id"] as const) {
-          const pathLimit = chargeAttributeString({
-            value: entry[property],
-            side,
-            blockIndex,
-            field: `blocks[${String(blockIndex)}].containerPath[${String(pathIndex)}].${property}`,
-            usage,
-          });
-          if (pathLimit) return pathLimit;
-        }
-      }
-    }
+    ids.add(block.identity.id);
     if (block.table !== undefined) {
-      const error = validateTableLocation(block.table, side, blockIndex);
-      if (error) {
-        return error;
-      }
       const table = block.table;
       if (table.tableIndex < table.outerTableIndex) {
         return invalidInput(
@@ -994,6 +1900,32 @@ const validateSnapshot = <Block extends FolioContentBlock>(
       activeOuterTableIndex = table.outerTableIndex;
       const tableKey = `${String(table.outerTableIndex)}:${String(table.tableIndex)}`;
       const cellKey = `${tableKey}:${String(table.rowIndex)}:${String(table.cellIndex)}`;
+      const structuralIdentityError =
+        claimStructuralIdentity({
+          level: "outerTable",
+          coordinate: String(table.outerTableIndex),
+          identity: table.outerTableIdentity,
+          blockIndex,
+        }) ??
+        claimStructuralIdentity({
+          level: "table",
+          coordinate: tableKey,
+          identity: table.tableIdentity,
+          blockIndex,
+        }) ??
+        claimStructuralIdentity({
+          level: "row",
+          coordinate: `${tableKey}:${String(table.rowIndex)}`,
+          identity: table.rowIdentity,
+          blockIndex,
+        }) ??
+        claimStructuralIdentity({
+          level: "cell",
+          coordinate: cellKey,
+          identity: table.cellIdentity,
+          blockIndex,
+        });
+      if (structuralIdentityError) return structuralIdentityError;
       const geometry = [table.gridColumnIndex, table.columnSpan, table.rowSpan] as const;
       const priorGeometry = geometryByCell.get(cellKey);
       if (
@@ -1046,6 +1978,7 @@ const validateSnapshot = <Block extends FolioContentBlock>(
     } else {
       activeOuterTableIndex = null;
     }
+    capturedBlocks.push(block);
   }
   for (const cells of cellsByTable.values()) {
     const overlappingBlockIndex = overlappingTableCellBlockIndex(cells);
@@ -1059,6 +1992,25 @@ const validateSnapshot = <Block extends FolioContentBlock>(
     }
   }
   return null;
+};
+
+type CapturedSnapshot = {
+  snapshot: FolioContentSnapshot;
+  usage: SnapshotResourceUsage;
+};
+
+const captureContentSnapshot = (
+  snapshot: unknown,
+  side: "base" | "revised",
+): Result<CapturedSnapshot, FolioContentComparisonError> => {
+  const usage = emptySnapshotResourceUsage();
+  const blocks: FolioContentBlock[] = [];
+  const error = captureValidatedSnapshotInto(snapshot, side, usage, blocks);
+  if (error) return Result.err(error);
+  return Result.ok({
+    snapshot: Object.freeze({ blocks: Object.freeze(blocks) }),
+    usage,
+  });
 };
 
 const aggregateSnapshotLimitError = (
@@ -1092,122 +2044,159 @@ const claimSnapshotPairResources = (
   return null;
 };
 
-const PREPARED_CONTENT_COMPARISON = Symbol("prepared-content-comparison");
-
-class PreparedContentComparison<Block extends FolioContentBlock> {
-  readonly #preparationToken = PREPARED_CONTENT_COMPARISON;
-
-  private constructor(
-    readonly base: FolioContentSnapshot<Block>,
-    readonly revised: FolioContentSnapshot<Block>,
-    readonly workSession: FolioContentComparisonWorkSession,
-  ) {}
-
-  static create<Block extends FolioContentBlock>({
-    base,
-    revised,
-    workSession,
-  }: PrepareContentComparisonOptions<Block>): PreparedContentComparison<Block> {
-    return new PreparedContentComparison(base, revised, workSession);
-  }
-
-  assertPrepared(): void {
-    if (this.#preparationToken !== PREPARED_CONTENT_COMPARISON) {
-      panic("Content comparison input was not prepared by Folio");
-    }
-  }
-}
-
-type PrepareContentComparisonOptions<Block extends FolioContentBlock> = {
-  base: FolioContentSnapshot<Block>;
-  revised: FolioContentSnapshot<Block>;
-  workSession: FolioContentComparisonWorkSession;
-};
-
-/** Validate and atomically charge one snapshot pair to a shared comparison scope. @internal */
-export const prepareContentComparison = <Block extends FolioContentBlock>({
-  base,
-  revised,
-  workSession,
-}: PrepareContentComparisonOptions<Block>): Result<
-  PreparedContentComparison<Block>,
-  FolioContentComparisonError
-> => {
-  const baseUsage = emptySnapshotResourceUsage();
-  const baseError = validateSnapshot(base, "base", baseUsage);
-  if (baseError) return Result.err(baseError);
-  const revisedUsage = emptySnapshotResourceUsage();
-  const revisedError = validateSnapshot(revised, "revised", revisedUsage);
-  if (revisedError) return Result.err(revisedError);
-  const aggregateError = claimSnapshotPairResources(
-    workSession.resourceUsage,
-    baseUsage,
-    revisedUsage,
-  );
-  if (aggregateError) return Result.err(aggregateError);
-  return Result.ok(PreparedContentComparison.create({ base, revised, workSession }));
-};
-
-const withTextOffsets = (segments: readonly WordDiffSegment[]): FolioContentTextSegment[] => {
+const withTextOffsets = (
+  segments: readonly WordDiffSegment[],
+  baseStart = 0,
+  revisedStart = 0,
+): FolioContentTextSegment[] => {
   const positioned: FolioContentTextSegment[] = [];
-  let baseOffset = 0;
-  let revisedOffset = 0;
+  let baseOffset = baseStart;
+  let revisedOffset = revisedStart;
   for (const segment of segments) {
     const baseLength = segment.type === "ins" ? 0 : segment.text.length;
     const revisedLength = segment.type === "del" ? 0 : segment.text.length;
-    positioned.push({
-      ...segment,
-      baseStart: baseOffset,
-      baseEnd: baseOffset + baseLength,
-      revisedStart: revisedOffset,
-      revisedEnd: revisedOffset + revisedLength,
-    });
+    positioned.push(
+      Object.freeze({
+        ...segment,
+        baseStart: baseOffset,
+        baseEnd: baseOffset + baseLength,
+        revisedStart: revisedOffset,
+        revisedEnd: revisedOffset + revisedLength,
+      }),
+    );
     baseOffset += baseLength;
     revisedOffset += revisedLength;
   }
   return positioned;
 };
 
-const paragraphSpacingEqual = (
-  base: FolioContentParagraphSpacing | undefined,
-  revised: FolioContentParagraphSpacing | undefined,
-): boolean =>
-  base?.spaceBefore === revised?.spaceBefore &&
-  base?.spaceAfter === revised?.spaceAfter &&
-  base?.lineSpacing === revised?.lineSpacing &&
-  base?.lineSpacingRule === revised?.lineSpacingRule &&
-  base?.beforeAutospacing === revised?.beforeAutospacing &&
-  base?.afterAutospacing === revised?.afterAutospacing;
+const tableLocationEqual = (
+  base: FolioContentBlock["table"],
+  revised: FolioContentBlock["table"],
+): boolean => {
+  if (base === undefined || revised === undefined) return base === revised;
+  return Object.values(FOLIO_CONTENT_TABLE_FIELD_DESCRIPTORS).every(
+    ({ field, validation }) => {
+      if (validation !== "identity") return base[field] === revised[field];
+      const baseIdentity = base[field];
+      const revisedIdentity = revised[field];
+      return (
+        baseIdentity !== undefined &&
+        revisedIdentity !== undefined &&
+        baseIdentity.type === revisedIdentity.type &&
+        baseIdentity.id === revisedIdentity.id
+      );
+    },
+  );
+};
+
+const containerPathEqual = (
+  base: FolioContentBlock["containerPath"],
+  revised: FolioContentBlock["containerPath"],
+): boolean => {
+  if ((base?.length ?? 0) !== (revised?.length ?? 0)) return false;
+  return (base ?? []).every((entry, index) =>
+    Object.values(FOLIO_CONTENT_CONTAINER_FIELD_DESCRIPTORS).every(
+      ({ field, validation }) => {
+        const counterpart = revised?.[index];
+        if (counterpart === undefined) return false;
+        if (validation !== "identity") return entry[field] === counterpart[field];
+        return (
+          entry.identity.type === counterpart.identity.type &&
+          entry.identity.id === counterpart.identity.id
+        );
+      },
+    ),
+  );
+};
+
+const structuralBoundariesEqual = (
+  base: FolioContentBlock["structuralBoundaries"],
+  revised: FolioContentBlock["structuralBoundaries"],
+): boolean => {
+  if ((base?.length ?? 0) !== (revised?.length ?? 0)) return false;
+  return (base ?? []).every((boundary, index) =>
+    Object.values(FOLIO_CONTENT_STRUCTURAL_BOUNDARY_FIELD_DESCRIPTORS).every(
+      ({ field }) => boundary[field] === revised?.[index]?.[field],
+    ),
+  );
+};
 
 export const changedFolioContentParagraphFormatting = (
   base: FolioContentBlock,
   revised: FolioContentBlock,
-): FolioContentParagraphFormattingPatch | null => {
-  const patch: FolioContentParagraphFormattingPatch = {};
-  if ((base.styleId ?? null) !== (revised.styleId ?? null)) {
-    patch.styleId = revised.styleId ?? null;
-  }
-  if (base.listLevel !== revised.listLevel) {
-    patch.listLevel = revised.listLevel ?? null;
-  }
-  if (base.directAlignment !== revised.directAlignment) {
-    patch.alignment = revised.directAlignment ?? null;
-  }
-  if (!paragraphSpacingEqual(base.directSpacing, revised.directSpacing)) {
-    patch.spacing = revised.directSpacing ?? null;
-  }
-  return Object.keys(patch).length > 0 ? patch : null;
-};
+): readonly FolioContentPropertyChange[] =>
+  changedFolioContentProperties(base.paragraphFormatting, revised.paragraphFormatting);
 
 const changedBlockProperties = (
   base: FolioContentBlock,
   revised: FolioContentBlock,
-): FolioContentBlockProperty[] => {
-  const changed: FolioContentBlockProperty[] = [];
-  if (base.kind !== revised.kind) changed.push("kind");
-  if (base.headingLevel !== revised.headingLevel) changed.push("headingLevel");
-  if (base.displayLabel !== revised.displayLabel) changed.push("displayLabel");
-  return changed;
+): readonly FolioContentBlockChange[] => {
+  const changed: FolioContentBlockChange[] = [];
+  for (const descriptor of Object.values(FOLIO_CONTENT_BLOCK_FIELD_DESCRIPTORS)) {
+    switch (descriptor.comparison) {
+      case "none":
+      case "paragraph":
+      case "inline":
+        continue;
+      case "kind":
+        if (base.kind !== revised.kind) {
+          changed.push(Object.freeze({ field: "kind", base: base.kind, revised: revised.kind }));
+        }
+        break;
+      case "properties": {
+        const changes = changedFolioContentProperties(base.blockProperties, revised.blockProperties);
+        if (changes.length > 0) {
+          changed.push(Object.freeze({ field: "blockProperties", changes }));
+        }
+        break;
+      }
+      case "table":
+        if (!tableLocationEqual(base.table, revised.table)) {
+          changed.push(
+            Object.freeze({
+              field: "table",
+              base:
+                base.table === undefined
+                  ? Object.freeze({ type: "absent" })
+                  : Object.freeze({ type: "present", value: base.table }),
+              revised:
+                revised.table === undefined
+                  ? Object.freeze({ type: "absent" })
+                  : Object.freeze({ type: "present", value: revised.table }),
+            }),
+          );
+        }
+        break;
+      case "container":
+        if (!containerPathEqual(base.containerPath, revised.containerPath)) {
+          changed.push(
+            Object.freeze({
+              field: "containerPath",
+              base: base.containerPath,
+              revised: revised.containerPath,
+            }),
+          );
+        }
+        break;
+      case "structural-boundaries":
+        if (!structuralBoundariesEqual(base.structuralBoundaries, revised.structuralBoundaries)) {
+          changed.push(
+            Object.freeze({
+              field: "structuralBoundaries",
+              base: base.structuralBoundaries,
+              revised: revised.structuralBoundaries,
+            }),
+          );
+        }
+        break;
+      default: {
+        const unreachable: never = descriptor;
+        return panic("Unhandled block-property comparison", { descriptor: unreachable });
+      }
+    }
+  }
+  return Object.freeze(changed);
 };
 
 type ParagraphMarkPlan<Block extends FolioContentBlock> =
@@ -1327,16 +2316,14 @@ type MoveCandidate<Block extends FolioContentBlock> = {
   order: number;
 };
 
-export const detectFolioContentMoves = <Block extends FolioContentBlock>({
+const detectFolioContentMoves = <Block extends FolioContentBlock>({
   steps,
   consumedStepIndexes,
-  workSession,
-  idStability = (block): FolioContentIdStability => block.idStability ?? "stable",
+  engine,
 }: {
   steps: readonly FolioContentAlignmentStep<Block>[];
   consumedStepIndexes: ReadonlySet<number>;
-  workSession: FolioContentComparisonWorkSession;
-  idStability?: (block: Block) => FolioContentIdStability;
+  engine: Pick<ContentComparisonEngine, "scoreMoveSimilarity">;
 }): readonly MovePair<Block>[] => {
   const stableBaseById = new Map<string, Pick<MoveCandidate<Block>, "block" | "moveScope">>();
   const exactCandidatesByBucket = new Map<number, Map<string, MoveCandidate<Block>[]>>();
@@ -1347,8 +2334,8 @@ export const detectFolioContentMoves = <Block extends FolioContentBlock>({
   let candidateOrder = 0;
   for (const [index, step] of steps.entries()) {
     if (consumedStepIndexes.has(index) || step.type !== "baseOnly") continue;
-    if (idStability(step.block) === "stable") {
-      stableBaseById.set(step.block.id, {
+    if (folioContentIdentityPairDisposition(step.block.identity, step.block.identity) === "anchor") {
+      stableBaseById.set(step.block.identity.id, {
         block: step.block,
         moveScope: step.moveScope,
       });
@@ -1382,7 +2369,7 @@ export const detectFolioContentMoves = <Block extends FolioContentBlock>({
       gapCandidates = new Map();
       candidatesByGap.set(step.moveScope.gap, gapCandidates);
     }
-    gapCandidates.set(step.block.id, candidate);
+    gapCandidates.set(step.block.identity.id, candidate);
   }
 
   const taken = new Set<string>();
@@ -1394,7 +2381,7 @@ export const detectFolioContentMoves = <Block extends FolioContentBlock>({
   }): void => {
     const candidatesByGap = similarityCandidatesByBucket.get(candidate.moveScope.bucket);
     const gapCandidates = candidatesByGap?.get(candidate.moveScope.gap);
-    gapCandidates?.delete(candidate.block.id);
+    gapCandidates?.delete(candidate.block.identity.id);
     if (gapCandidates?.size === 0) {
       candidatesByGap?.delete(candidate.moveScope.gap);
     }
@@ -1408,11 +2395,15 @@ export const detectFolioContentMoves = <Block extends FolioContentBlock>({
   // positional candidate cannot steal its source through equal or similar text.
   for (const [index, step] of steps.entries()) {
     if (consumedStepIndexes.has(index) || step.type !== "revisedOnly") continue;
+    const byId = stableBaseById.get(step.block.identity.id);
     const candidate =
-      idStability(step.block) === "stable" ? stableBaseById.get(step.block.id) : undefined;
-    if (!candidate || taken.has(candidate.block.id)) continue;
-    taken.add(candidate.block.id);
-    takenRevised.add(step.block.id);
+      byId &&
+      folioContentIdentityPairDisposition(byId.block.identity, step.block.identity) === "anchor"
+        ? byId
+        : undefined;
+    if (!candidate || taken.has(candidate.block.identity.id)) continue;
+    taken.add(candidate.block.identity.id);
+    takenRevised.add(step.block.identity.id);
     removeSimilarityCandidate(candidate);
     if (candidate.moveScope.bucket === step.moveScope.bucket) {
       moves.push({ baseBlock: candidate.block, revisedBlock: step.block });
@@ -1426,18 +2417,21 @@ export const detectFolioContentMoves = <Block extends FolioContentBlock>({
     if (
       consumedStepIndexes.has(index) ||
       step.type !== "revisedOnly" ||
-      takenRevised.has(step.block.id)
+      takenRevised.has(step.block.identity.id)
     ) {
       continue;
     }
     const exactQueue = exactCandidatesByBucket.get(step.moveScope.bucket)?.get(step.block.text);
     const exact = exactQueue?.find(
       (candidate) =>
-        !taken.has(candidate.block.id) && candidate.moveScope.gap !== step.moveScope.gap,
+        !taken.has(candidate.block.identity.id) &&
+        candidate.moveScope.gap !== step.moveScope.gap &&
+        folioContentIdentityPairDisposition(candidate.block.identity, step.block.identity) !==
+          "forbid",
     );
     if (exact) {
-      taken.add(exact.block.id);
-      takenRevised.add(step.block.id);
+      taken.add(exact.block.identity.id);
+      takenRevised.add(step.block.identity.id);
       removeSimilarityCandidate(exact);
       moves.push({ baseBlock: exact.block, revisedBlock: step.block });
     }
@@ -1447,7 +2441,7 @@ export const detectFolioContentMoves = <Block extends FolioContentBlock>({
     if (
       consumedStepIndexes.has(index) ||
       step.type !== "revisedOnly" ||
-      takenRevised.has(step.block.id)
+      takenRevised.has(step.block.identity.id)
     ) {
       continue;
     }
@@ -1458,15 +2452,15 @@ export const detectFolioContentMoves = <Block extends FolioContentBlock>({
     candidateGroups: for (const [gap, candidates] of candidatesByGap ?? []) {
       if (gap === step.moveScope.gap) continue;
       for (const candidate of candidates.values()) {
-        if (workSession.remainingMoveComparisons <= 0) break candidateGroups;
-        workSession.remainingMoveComparisons--;
-        const scored = tokenSimilarity(
-          candidate.profile,
-          revisedProfile,
-          workSession.remainingMoveTokenLookups,
-        );
-        if (!scored) continue;
-        workSession.remainingMoveTokenLookups -= scored.lookups;
+        if (
+          folioContentIdentityPairDisposition(candidate.block.identity, step.block.identity) ===
+          "forbid"
+        ) {
+          continue;
+        }
+        const scored = engine.scoreMoveSimilarity(candidate.profile, revisedProfile);
+        if (scored.status === "exhausted") break candidateGroups;
+        if (scored.status === "unscored") continue;
         const { similarity } = scored;
         if (
           similarity >= MOVE_SIMILARITY_THRESHOLD &&
@@ -1479,8 +2473,8 @@ export const detectFolioContentMoves = <Block extends FolioContentBlock>({
       }
     }
     if (best) {
-      taken.add(best.candidate.block.id);
-      takenRevised.add(step.block.id);
+      taken.add(best.candidate.block.identity.id);
+      takenRevised.add(step.block.identity.id);
       removeSimilarityCandidate(best.candidate);
       moves.push({ baseBlock: best.candidate.block, revisedBlock: step.block });
     }
@@ -1488,164 +2482,338 @@ export const detectFolioContentMoves = <Block extends FolioContentBlock>({
   return moves;
 };
 
-type Relation<Block extends FolioContentBlock> = {
+type Relation = {
   id: number;
-  baseBlocks: readonly Block[];
-  revisedBlocks: readonly Block[];
-  event: FolioContentComparisonEvent<Block>;
+  baseBlocks: readonly FolioContentBlock[];
+  revisedBlocks: readonly FolioContentBlock[];
+  event: FolioContentComparisonEvent;
+};
+
+const ownedBlockGroup = (
+  blocks: readonly FolioContentBlock[],
+): FolioContentBlockGroup => {
+  const first = blocks.at(0);
+  if (!first) return panic("A structural alignment step must own at least one block");
+  const group: [FolioContentBlock, ...FolioContentBlock[]] = [first, ...blocks.slice(1)];
+  return Object.freeze(group);
 };
 
 const structuralChangeForStep = <Block extends FolioContentBlock>(
   step: FolioContentAlignmentStep<Block>,
-  id: number,
 ): FolioContentStructuralChange | null => {
   switch (step.type) {
     case "baseTable":
-      return {
-        id,
+      return Object.freeze({
         type: "table-delete",
         tableIndex: step.location.tableIndex,
-        baseBlockIds: step.blocks.map(({ id: blockId }) => blockId),
-      };
+        blocks: ownedBlockGroup(step.blocks),
+      });
     case "revisedTable":
-      return {
-        id,
+      return Object.freeze({
         type: "table-insert",
         tableIndex: step.location.tableIndex,
-        revisedBlockIds: step.blocks.map(({ id: blockId }) => blockId),
-      };
+        blocks: ownedBlockGroup(step.blocks),
+      });
     case "baseRow":
-      return {
-        id,
+      return Object.freeze({
         type: "table-row-delete",
         tableIndex: step.location.tableIndex,
         rowIndex: step.location.rowIndex,
-        baseBlockIds: step.blocks.map(({ id: blockId }) => blockId),
-      };
+        blocks: ownedBlockGroup(step.blocks),
+      });
     case "revisedRow":
-      return {
-        id,
+      return Object.freeze({
         type: "table-row-insert",
         tableIndex: step.location.tableIndex,
         rowIndex: step.location.rowIndex,
-        revisedBlockIds: step.blocks.map(({ id: blockId }) => blockId),
-      };
+        blocks: ownedBlockGroup(step.blocks),
+      });
     case "baseColumn":
-      return {
-        id,
+      return Object.freeze({
         type: "table-column-delete",
         tableIndex: step.location.tableIndex,
         columnIndex: step.columnIndex,
-        baseBlockIds: step.blocks.map(({ id: blockId }) => blockId),
-      };
+        blocks: ownedBlockGroup(step.blocks),
+      });
     case "revisedColumn":
-      return {
-        id,
+      return Object.freeze({
         type: "table-column-insert",
         tableIndex: step.location.tableIndex,
         columnIndex: step.columnIndex,
-        revisedBlockIds: step.blocks.map(({ id: blockId }) => blockId),
-      };
+        blocks: ownedBlockGroup(step.blocks),
+        anchor: Object.freeze({ ...step.anchor }),
+      });
     default:
       return null;
   }
 };
 
-const formattingChange = <Block extends FolioContentBlock>(
-  base: Block,
-  revised: Block,
-  maxRanges: number,
-): FolioContentFormattingChange | null | "limit" => {
-  const paragraph = changedFolioContentParagraphFormatting(base, revised);
-  const ranges =
-    base.text === revised.text
-      ? inlineFormattingSegments({ baseBlock: base, targetBlock: revised, maxSegments: maxRanges })
-      : [];
+const contentBlockRange = (
+  block: FolioContentBlock,
+  startOffset: number,
+  endOffset: number,
+): FolioContentBlockRange => {
+  if (
+    !Number.isSafeInteger(startOffset) ||
+    !Number.isSafeInteger(endOffset) ||
+    startOffset < 0 ||
+    endOffset < startOffset ||
+    endOffset > block.text.length
+  ) {
+    return panic("A comparison relation received an invalid block range", {
+      blockId: block.identity.id,
+      startOffset,
+      endOffset,
+      textLength: block.text.length,
+    });
+  }
+  return Object.freeze({
+    block,
+    startOffset,
+    endOffset,
+  });
+};
+
+const relationFormattingChange = ({
+  base,
+  revised,
+  segments,
+  maxRanges,
+}: {
+  base: FolioContentBlockRange;
+  revised: FolioContentBlockRange;
+  segments: readonly FolioContentTextSegment[];
+  maxRanges: number;
+}): FolioContentFormattingChange | null | "limit" => {
+  const paragraph = changedFolioContentParagraphFormatting(base.block, revised.block);
+  const ranges = pairedInlineFormattingSegments({
+    baseBlock: base.block,
+    revisedBlock: revised.block,
+    equalRanges: segments
+      .filter(({ type, text }) => type === "equal" && text.length > 0)
+      .map(({ baseStart, baseEnd, revisedStart, revisedEnd }) => ({
+        baseStart,
+        baseEnd,
+        revisedStart,
+        revisedEnd,
+      })),
+    maxSegments: maxRanges,
+  });
   if (ranges === null) return "limit";
-  return paragraph || ranges.length > 0 ? { ...(paragraph && { paragraph }), ranges } : null;
+  return paragraph.length > 0 || ranges.length > 0
+    ? Object.freeze({
+        paragraph,
+        ranges: Object.freeze(
+          ranges.map((range) =>
+            Object.freeze({
+              ...range,
+              formatting: Object.freeze({
+                authored: range.formatting.authored,
+                effective: range.formatting.effective,
+              }),
+            }),
+          ),
+        ),
+      })
+    : null;
 };
 
-type CompareAlignedContentOptions<Block extends FolioContentBlock> = {
-  prepared: PreparedContentComparison<Block>;
-  steps: readonly FolioContentAlignmentStep<Block>[];
-  idStability?: (block: Block) => FolioContentIdStability;
+type PairRelationResult<Relation extends FolioContentPairRelation = FolioContentPairRelation> = {
+  relation: Relation;
+  formattingRanges: number;
 };
 
-type CompareContentWithPolicyOptions<Block extends FolioContentBlock> = {
-  prepared: PreparedContentComparison<Block>;
-  stableIdMismatch?: "pair" | "separate";
-  idStability?: (block: Block) => FolioContentIdStability;
+type CreatePairRelationOptions = {
+  baseBlock: FolioContentBlock;
+  revisedBlock: FolioContentBlock;
+  baseStart: number;
+  baseEnd: number;
+  revisedStart: number;
+  revisedEnd: number;
+  diffText: ContentComparisonEngine["diffText"];
+  maxFormattingRanges: number;
 };
 
-const compareAlignedFolioContent = <Block extends FolioContentBlock>({
-  prepared,
+function createPairRelation(
+  options: CreatePairRelationOptions & { relationType: "whole" },
+): PairRelationResult<FolioContentWholePairRelation> | "limit";
+function createPairRelation(
+  options: CreatePairRelationOptions & { relationType: "range" },
+): PairRelationResult<FolioContentRangePairRelation> | "limit";
+function createPairRelation(
+  options: CreatePairRelationOptions & { relationType: "separator" },
+): PairRelationResult<FolioContentSeparatorRelation> | "limit";
+function createPairRelation({
+  baseBlock,
+  revisedBlock,
+  baseStart,
+  baseEnd,
+  revisedStart,
+  revisedEnd,
+  relationType,
+  diffText,
+  maxFormattingRanges,
+}: CreatePairRelationOptions & {
+  relationType: FolioContentPairRelation["relationType"];
+}): PairRelationResult | "limit" {
+  const base = contentBlockRange(baseBlock, baseStart, baseEnd);
+  const revised = contentBlockRange(revisedBlock, revisedStart, revisedEnd);
+  const baseText = base.block.text.slice(base.startOffset, base.endOffset);
+  const revisedText = revised.block.text.slice(revised.startOffset, revised.endOffset);
+  const segments = Object.freeze(
+    withTextOffsets(diffText(baseText, revisedText), base.startOffset, revised.startOffset),
+  );
+  let baseOffset = base.startOffset;
+  let revisedOffset = revised.startOffset;
+  for (const segment of segments) {
+    if (
+      segment.baseStart !== baseOffset ||
+      segment.revisedStart !== revisedOffset ||
+      (segment.type !== "ins" &&
+        !base.block.text.startsWith(segment.text, segment.baseStart)) ||
+      (segment.type !== "del" &&
+        !revised.block.text.startsWith(segment.text, segment.revisedStart))
+    ) {
+      return panic("A word diff did not reconstruct its owned comparison ranges");
+    }
+    baseOffset = segment.baseEnd;
+    revisedOffset = segment.revisedEnd;
+  }
+  if (baseOffset !== base.endOffset || revisedOffset !== revised.endOffset) {
+    return panic("A word diff did not consume its owned comparison ranges");
+  }
+  if (relationType === "separator") {
+    return {
+      relation: Object.freeze({
+        relationType,
+        base,
+        revised,
+        segments,
+        blockChanges: Object.freeze([] satisfies []),
+        formatting: null,
+      }),
+      formattingRanges: 0,
+    };
+  }
+  const formatting = relationFormattingChange({
+    base,
+    revised,
+    segments,
+    maxRanges: maxFormattingRanges,
+  });
+  if (formatting === "limit") return "limit";
+  const blockChanges = changedBlockProperties(baseBlock, revisedBlock);
+  const formattingRanges = formatting?.ranges.length ?? 0;
+  if (relationType === "whole") {
+    return {
+      relation: Object.freeze({
+        relationType,
+        base,
+        revised,
+        segments,
+        blockChanges,
+        formatting,
+      }),
+      formattingRanges,
+    };
+  }
+  return {
+    relation: Object.freeze({
+      relationType,
+      base,
+      revised,
+      segments,
+      blockChanges,
+      formatting,
+    }),
+    formattingRanges,
+  };
+}
+
+type CompareAlignedContentOptions = {
+  captured: CapturedContentComparison;
+  steps: readonly FolioContentAlignmentStep<FolioContentBlock>[];
+  engine: ContentComparisonEngine;
+  maximumChanges: number;
+  maximumFormattingRanges: number;
+  maximumStructuralMembers: number;
+  maximumEvents: number;
+};
+
+const compareAlignedFolioContent = ({
+  captured,
   steps,
-  idStability,
-}: CompareAlignedContentOptions<Block>): Result<
-  FolioContentComparison<Block>,
+  engine,
+  maximumChanges,
+  maximumFormattingRanges,
+  maximumStructuralMembers,
+  maximumEvents,
+}: CompareAlignedContentOptions): Result<
+  ContentComparisonExecution,
   FolioContentComparisonLimitError
 > => {
-  const { base, revised, workSession } = prepared;
+  const { base, revised } = captured;
   const baseBlocks = base.blocks;
   const revisedBlocks = revised.blocks;
   const paragraphPlans = detectFolioContentParagraphMarkPlans(steps);
   const consumed = new Set([...paragraphPlans.keys()].map((index) => index + 1));
-  const moves = detectFolioContentMoves({
+  const detectedMoves = detectFolioContentMoves({
     steps,
     consumedStepIndexes: consumed,
-    workSession,
-    ...(idStability && { idStability }),
+    engine,
   });
-  const moveByBaseId = new Map(
-    moves.map((move, index) => [move.baseBlock.id, { ...move, moveId: index + 1 }] as const),
-  );
-  const moveByRevisedId = new Map(
-    moves.map((move, index) => [move.revisedBlock.id, { ...move, moveId: index + 1 }] as const),
-  );
-  const { diffText } = workSession;
-  const relations: Relation<Block>[] = [];
-  const baseRelation = new Map<string, Relation<Block>>();
-  const revisedRelation = new Map<string, Relation<Block>>();
-  const structuralChanges: FolioContentStructuralChange[] = [];
+  const diffText = (baseText: string, revisedText: string): WordDiffSegment[] =>
+    engine.diffText(baseText, revisedText);
+  const relations: Relation[] = [];
+  const baseRelation = new Map<string, Relation>();
+  const revisedRelation = new Map<string, Relation>();
   let nextRelationId = 0;
-  let nextStructuralId = 0;
-  let remainingFormattingRanges =
-    FOLIO_CONTENT_COMPARISON_LIMITS.changes - workSession.resourceUsage.formattingRanges;
+  let remainingFormattingRanges = maximumFormattingRanges;
   let formattingRangeCount = 0;
   let changeCount = 0;
+  let structuralMemberCount = 0;
+  let eventCount = 0;
 
   const addRelation = (
-    event: FolioContentComparisonEvent<Block>,
-    relationBaseBlocks: readonly Block[],
-    relationRevisedBlocks: readonly Block[],
+    event: FolioContentComparisonEvent,
+    relationBaseBlocks: readonly FolioContentBlock[],
+    relationRevisedBlocks: readonly FolioContentBlock[],
+    semanticCharge: "change" | "occurrence" = "change",
   ): boolean => {
-    if (event.type !== "unchanged") {
-      changeCount++;
-      if (
-        workSession.resourceUsage.changes + changeCount >
-        FOLIO_CONTENT_COMPARISON_LIMITS.changes
-      ) {
-        return false;
-      }
+    eventCount++;
+    if (eventCount > maximumEvents) return false;
+    const changeWeight =
+      semanticCharge === "occurrence" || event.type === "unchanged" ? 0 : 1;
+    changeCount += changeWeight;
+    if (changeCount > maximumChanges) {
+      return false;
     }
+    if (event.type === "split" || event.type === "merge") {
+      Object.freeze(event.relations);
+    }
+    const ownedEvent = Object.freeze(event);
     const relation = {
       id: nextRelationId++,
       baseBlocks: relationBaseBlocks,
       revisedBlocks: relationRevisedBlocks,
-      event,
+      event: ownedEvent,
     };
     relations.push(relation);
     for (const block of relationBaseBlocks) {
-      if (baseRelation.has(block.id)) {
-        panic("Content alignment assigned one base block more than once", { blockId: block.id });
+      if (baseRelation.has(block.identity.id)) {
+        panic("Content alignment assigned one base block more than once", {
+          blockId: block.identity.id,
+        });
       }
-      baseRelation.set(block.id, relation);
+      baseRelation.set(block.identity.id, relation);
     }
     for (const block of relationRevisedBlocks) {
-      if (revisedRelation.has(block.id)) {
-        panic("Content alignment assigned one revised block more than once", { blockId: block.id });
+      if (revisedRelation.has(block.identity.id)) {
+        panic("Content alignment assigned one revised block more than once", {
+          blockId: block.identity.id,
+        });
       }
-      revisedRelation.set(block.id, relation);
+      revisedRelation.set(block.identity.id, relation);
     }
     return true;
   };
@@ -1656,7 +2824,7 @@ const compareAlignedFolioContent = <Block extends FolioContentBlock>({
         input: "result",
         limit: "changes",
         maximum: FOLIO_CONTENT_COMPARISON_LIMITS.changes,
-        actual: workSession.resourceUsage.changes + changeCount,
+        actual: FOLIO_CONTENT_COMPARISON_LIMITS.changes - maximumChanges + changeCount,
       }),
     );
 
@@ -1664,49 +2832,174 @@ const compareAlignedFolioContent = <Block extends FolioContentBlock>({
     Result.err(
       limitExceeded({
         input: "result",
-        limit: "changes",
-        maximum: FOLIO_CONTENT_COMPARISON_LIMITS.changes,
-        actual: FOLIO_CONTENT_COMPARISON_LIMITS.changes + 1,
+        limit: "formattingRanges",
+        maximum: FOLIO_CONTENT_COMPARISON_LIMITS.formattingRanges,
+        actual: FOLIO_CONTENT_COMPARISON_LIMITS.formattingRanges + 1,
       }),
     );
+
+  const structuralMemberLimitExceeded = (
+    actual: number,
+  ): Result<never, FolioContentComparisonLimitError> =>
+    Result.err(
+      limitExceeded({
+        input: "result",
+        limit: "structuralMembers",
+        maximum: FOLIO_CONTENT_COMPARISON_LIMITS.structuralMembers,
+        actual:
+          FOLIO_CONTENT_COMPARISON_LIMITS.structuralMembers - maximumStructuralMembers + actual,
+      }),
+    );
+
+  const eventLimitExceeded = (): Result<never, FolioContentComparisonLimitError> =>
+    Result.err(
+      limitExceeded({
+        input: "result",
+        limit: "events",
+        maximum: FOLIO_CONTENT_COMPARISON_LIMITS.events,
+        actual: FOLIO_CONTENT_COMPARISON_LIMITS.events - maximumEvents + eventCount,
+      }),
+    );
+
+  const relationLimitExceeded = (): Result<never, FolioContentComparisonLimitError> =>
+    eventCount > maximumEvents ? eventLimitExceeded() : changeLimitExceeded();
+
+  const claimPairRelation = <Relation extends FolioContentPairRelation>(
+    result: PairRelationResult<Relation> | "limit",
+  ): Relation | "limit" => {
+    if (result === "limit") return "limit";
+    remainingFormattingRanges -= result.formattingRanges;
+    formattingRangeCount += result.formattingRanges;
+    return result.relation;
+  };
+
+  const moves: FolioContentMove[] = [];
+  for (const [index, detected] of detectedMoves.entries()) {
+    const relation = claimPairRelation(createPairRelation({
+      baseBlock: detected.baseBlock,
+      revisedBlock: detected.revisedBlock,
+      baseStart: 0,
+      baseEnd: detected.baseBlock.text.length,
+      revisedStart: 0,
+      revisedEnd: detected.revisedBlock.text.length,
+      relationType: "whole",
+      diffText,
+      maxFormattingRanges: remainingFormattingRanges,
+    }));
+    if (relation === "limit") return formattingRangeLimitExceeded();
+    moves.push(Object.freeze({ id: index + 1, relation }));
+  }
+  const moveByBaseId = new Map(
+    moves.map((move) => [move.relation.base.block.identity.id, move] as const),
+  );
+  const moveByRevisedId = new Map(
+    moves.map((move) => [move.relation.revised.block.identity.id, move] as const),
+  );
 
   for (const [stepIndex, step] of steps.entries()) {
     if (consumed.has(stepIndex)) continue;
     const paragraphPlan = paragraphPlans.get(stepIndex);
     if (paragraphPlan?.type === "split") {
+      const baseBlock = paragraphPlan.baseBlock;
       const [firstRevised, secondRevised] = paragraphPlan.revisedBlocks;
+      const secondBaseStart = baseBlock.text.length - secondRevised.text.length;
+      const first = claimPairRelation(createPairRelation({
+        baseBlock,
+        revisedBlock: firstRevised,
+        baseStart: 0,
+        baseEnd: firstRevised.text.length,
+        revisedStart: 0,
+        revisedEnd: firstRevised.text.length,
+        relationType: "range",
+        diffText,
+        maxFormattingRanges: remainingFormattingRanges,
+      }));
+      if (first === "limit") return formattingRangeLimitExceeded();
+      const second = claimPairRelation(createPairRelation({
+        baseBlock,
+        revisedBlock: secondRevised,
+        baseStart: secondBaseStart,
+        baseEnd: baseBlock.text.length,
+        revisedStart: 0,
+        revisedEnd: secondRevised.text.length,
+        relationType: "range",
+        diffText,
+        maxFormattingRanges: remainingFormattingRanges,
+      }));
+      if (second === "limit") return formattingRangeLimitExceeded();
+      const separator = claimPairRelation(createPairRelation({
+        baseBlock,
+        revisedBlock: firstRevised,
+        baseStart: firstRevised.text.length,
+        baseEnd: secondBaseStart,
+        revisedStart: firstRevised.text.length,
+        revisedEnd: firstRevised.text.length,
+        relationType: "separator",
+        diffText,
+        maxFormattingRanges: remainingFormattingRanges,
+      }));
+      if (separator === "limit") {
+        return panic("A text-only separator relation exceeded a formatting limit");
+      }
       const event = {
         type: "split",
-        baseBlocks: [paragraphPlan.baseBlock],
-        revisedBlocks: paragraphPlan.revisedBlocks,
-        segments: withTextOffsets(diffText(paragraphPlan.baseBlock.text, firstRevised.text)),
-        paragraphFormatting: [
-          changedFolioContentParagraphFormatting(paragraphPlan.baseBlock, firstRevised),
-          changedFolioContentParagraphFormatting(paragraphPlan.baseBlock, secondRevised),
-        ],
-        offset: paragraphPlan.offset,
-        separator: paragraphPlan.separator,
+        relations: [first, second],
+        separator,
       } as const;
-      if (!addRelation(event, event.baseBlocks, event.revisedBlocks)) {
-        return changeLimitExceeded();
+      if (!addRelation(event, [baseBlock], paragraphPlan.revisedBlocks)) {
+        return relationLimitExceeded();
       }
       continue;
     }
     if (paragraphPlan?.type === "merge") {
-      const firstBase = paragraphPlan.baseBlocks[0];
+      const [firstBase, secondBase] = paragraphPlan.baseBlocks;
+      const revisedBlock = paragraphPlan.revisedBlock;
+      const secondRevisedStart = revisedBlock.text.length - secondBase.text.length;
+      const first = claimPairRelation(createPairRelation({
+        baseBlock: firstBase,
+        revisedBlock,
+        baseStart: 0,
+        baseEnd: firstBase.text.length,
+        revisedStart: 0,
+        revisedEnd: firstBase.text.length,
+        relationType: "range",
+        diffText,
+        maxFormattingRanges: remainingFormattingRanges,
+      }));
+      if (first === "limit") return formattingRangeLimitExceeded();
+      const second = claimPairRelation(createPairRelation({
+        baseBlock: secondBase,
+        revisedBlock,
+        baseStart: 0,
+        baseEnd: secondBase.text.length,
+        revisedStart: secondRevisedStart,
+        revisedEnd: revisedBlock.text.length,
+        relationType: "range",
+        diffText,
+        maxFormattingRanges: remainingFormattingRanges,
+      }));
+      if (second === "limit") return formattingRangeLimitExceeded();
+      const separator = claimPairRelation(createPairRelation({
+        baseBlock: firstBase,
+        revisedBlock,
+        baseStart: firstBase.text.length,
+        baseEnd: firstBase.text.length,
+        revisedStart: firstBase.text.length,
+        revisedEnd: secondRevisedStart,
+        relationType: "separator",
+        diffText,
+        maxFormattingRanges: remainingFormattingRanges,
+      }));
+      if (separator === "limit") {
+        return panic("A text-only separator relation exceeded a formatting limit");
+      }
       const event = {
         type: "merge",
-        baseBlocks: paragraphPlan.baseBlocks,
-        revisedBlocks: [paragraphPlan.revisedBlock],
-        segments: withTextOffsets(diffText(firstBase.text, paragraphPlan.revisedBlock.text)),
-        paragraphFormatting: changedFolioContentParagraphFormatting(
-          firstBase,
-          paragraphPlan.revisedBlock,
-        ),
-        separator: paragraphPlan.separator,
+        relations: [first, second],
+        separator,
       } as const;
-      if (!addRelation(event, event.baseBlocks, event.revisedBlocks)) {
-        return changeLimitExceeded();
+      if (!addRelation(event, paragraphPlan.baseBlocks, [revisedBlock])) {
+        return relationLimitExceeded();
       }
       continue;
     }
@@ -1714,114 +3007,114 @@ const compareAlignedFolioContent = <Block extends FolioContentBlock>({
     if (step.type === "pair") {
       const base = step.baseBlock;
       const revised = step.revisedBlock;
-      const properties = changedBlockProperties(base, revised);
-      const formatting = formattingChange(base, revised, remainingFormattingRanges);
-      if (formatting === "limit") {
+      const relation = claimPairRelation(createPairRelation({
+        baseBlock: base,
+        revisedBlock: revised,
+        baseStart: 0,
+        baseEnd: base.text.length,
+        revisedStart: 0,
+        revisedEnd: revised.text.length,
+        relationType: "whole",
+        diffText,
+        maxFormattingRanges: remainingFormattingRanges,
+      }));
+      if (relation === "limit") {
         return formattingRangeLimitExceeded();
       }
-      remainingFormattingRanges -= formatting?.ranges.length ?? 0;
-      formattingRangeCount += formatting?.ranges.length ?? 0;
-      let event: FolioContentComparisonEvent<Block>;
-      if (base.text !== revised.text || properties.length > 0) {
+      let event: FolioContentComparisonEvent;
+      if (
+        relation.segments.some(({ type }) => type !== "equal") ||
+        relation.blockChanges.length > 0
+      ) {
         event = {
           type: "modified",
-          baseBlocks: [base],
-          revisedBlocks: [revised],
-          segments: withTextOffsets(diffText(base.text, revised.text)),
-          changedProperties: properties,
-          ...(formatting && { formatting }),
+          relation,
         };
-      } else if (formatting) {
-        event = { type: "formatting", baseBlocks: [base], revisedBlocks: [revised], formatting };
+      } else if (relation.formatting) {
+        event = { type: "formatting", relation };
       } else {
-        event = { type: "unchanged", baseBlocks: [base], revisedBlocks: [revised] };
+        event = { type: "unchanged", relation };
       }
       if (!addRelation(event, [base], [revised])) {
-        return changeLimitExceeded();
+        return relationLimitExceeded();
       }
       continue;
     }
 
     if (step.type === "baseOnly") {
-      const move = moveByBaseId.get(step.block.id);
-      const event: FolioContentComparisonEvent<Block> = move
-        ? { type: "movedFrom", baseBlocks: [step.block], revisedBlocks: [], moveId: move.moveId }
-        : { type: "deleted", baseBlocks: [step.block], revisedBlocks: [] };
-      if (!addRelation(event, [step.block], [])) {
-        return changeLimitExceeded();
+      const move = moveByBaseId.get(step.block.identity.id);
+      const event: FolioContentComparisonEvent = move
+        ? { type: "movedFrom", move }
+        : { type: "deleted", block: step.block };
+      if (!addRelation(event, [step.block], [], move ? "occurrence" : "change")) {
+        return relationLimitExceeded();
       }
       continue;
     }
     if (step.type === "revisedOnly") {
-      const move = moveByRevisedId.get(step.block.id);
-      const moveFormatting = move
-        ? formattingChange(move.baseBlock, step.block, remainingFormattingRanges)
-        : null;
-      if (moveFormatting === "limit") {
-        return formattingRangeLimitExceeded();
-      }
-      remainingFormattingRanges -= moveFormatting?.ranges.length ?? 0;
-      formattingRangeCount += moveFormatting?.ranges.length ?? 0;
-      const moveProperties = move ? changedBlockProperties(move.baseBlock, step.block) : [];
-      const event: FolioContentComparisonEvent<Block> = move
-        ? {
-            type: "movedTo",
-            baseBlocks: [],
-            revisedBlocks: [step.block],
-            moveId: move.moveId,
-            baseBlockId: move.baseBlock.id,
-            ...(move.baseBlock.text !== step.block.text && {
-              segments: withTextOffsets(diffText(move.baseBlock.text, step.block.text)),
-            }),
-            ...(moveProperties.length > 0 && { changedProperties: moveProperties }),
-            ...(moveFormatting && { formatting: moveFormatting }),
-          }
-        : { type: "inserted", baseBlocks: [], revisedBlocks: [step.block] };
+      const move = moveByRevisedId.get(step.block.identity.id);
+      const event: FolioContentComparisonEvent = move
+        ? { type: "movedTo", move }
+        : { type: "inserted", block: step.block };
       if (!addRelation(event, [], [step.block])) {
-        return changeLimitExceeded();
+        return relationLimitExceeded();
       }
       continue;
     }
 
-    const structural = structuralChangeForStep(step, ++nextStructuralId);
+    const structural = structuralChangeForStep(step);
     if (!structural) return panic("Unhandled content alignment step", { step });
-    structuralChanges.push(structural);
-    if ("baseBlockIds" in structural) {
-      for (const block of step.blocks) {
-        const event = {
-          type: "deleted",
-          baseBlocks: [block],
-          revisedBlocks: [],
-          structuralChangeId: structural.id,
-        } as const;
-        if (!addRelation(event, [block], [])) {
-          return changeLimitExceeded();
+    if (changeCount + 1 > maximumChanges) {
+      changeCount++;
+      return changeLimitExceeded();
+    }
+    if (structuralMemberCount + structural.blocks.length > maximumStructuralMembers) {
+      return structuralMemberLimitExceeded(structuralMemberCount + structural.blocks.length);
+    }
+    changeCount++;
+    structuralMemberCount += structural.blocks.length;
+    if (
+      structural.type === "table-delete" ||
+      structural.type === "table-row-delete" ||
+      structural.type === "table-column-delete"
+    ) {
+      for (const [memberIndex, block] of structural.blocks.entries()) {
+        if (
+          !addRelation(
+            { type: "structural", change: structural, memberIndex },
+            [block],
+            [],
+            "occurrence",
+          )
+        ) {
+          return relationLimitExceeded();
         }
       }
     } else {
-      for (const block of step.blocks) {
-        const event = {
-          type: "inserted",
-          baseBlocks: [],
-          revisedBlocks: [block],
-          structuralChangeId: structural.id,
-        } as const;
-        if (!addRelation(event, [], [block])) {
-          return changeLimitExceeded();
+      for (const [memberIndex, block] of structural.blocks.entries()) {
+        if (
+          !addRelation(
+            { type: "structural", change: structural, memberIndex },
+            [],
+            [block],
+            "occurrence",
+          )
+        ) {
+          return relationLimitExceeded();
         }
       }
     }
   }
 
-  const ordered: FolioContentComparisonEvent<Block>[] = [];
+  const ordered: FolioContentComparisonEvent[] = [];
   const emitted = new Set<number>();
   let baseIndex = 0;
   let revisedIndex = 0;
   while (baseIndex < baseBlocks.length || revisedIndex < revisedBlocks.length) {
     const base = baseBlocks[baseIndex];
     const revised = revisedBlocks[revisedIndex];
-    const fromBase = base ? baseRelation.get(base.id) : undefined;
-    const fromRevised = revised ? revisedRelation.get(revised.id) : undefined;
+    const fromBase = base ? baseRelation.get(base.identity.id) : undefined;
+    const fromRevised = revised ? revisedRelation.get(revised.identity.id) : undefined;
     if (fromBase && emitted.has(fromBase.id)) {
       baseIndex++;
       continue;
@@ -1830,18 +3123,18 @@ const compareAlignedFolioContent = <Block extends FolioContentBlock>({
       revisedIndex++;
       continue;
     }
-    let relation: Relation<Block> | undefined;
+    let relation: Relation | undefined;
     if (fromBase && fromRevised && fromBase.id === fromRevised.id) {
-      relation = fromBase;
-    } else if (fromBase?.revisedBlocks.length === 0) {
       relation = fromBase;
     } else if (fromRevised?.baseBlocks.length === 0) {
       relation = fromRevised;
+    } else if (fromBase?.revisedBlocks.length === 0) {
+      relation = fromBase;
     }
     if (!relation) {
       return panic("Content alignment did not produce one monotone projection", {
-        baseBlockId: base?.id,
-        revisedBlockId: revised?.id,
+        baseBlockId: base?.identity.id,
+        revisedBlockId: revised?.identity.id,
       });
     }
     emitted.add(relation.id);
@@ -1853,49 +3146,150 @@ const compareAlignedFolioContent = <Block extends FolioContentBlock>({
     return panic("Content alignment left relations outside the ordered projection");
   }
 
-  workSession.resourceUsage.changes += changeCount;
-  workSession.resourceUsage.formattingRanges += formattingRangeCount;
-  return Result.ok({ events: ordered, structuralChanges });
+  const movedFrom = new Set<FolioContentMove>();
+  const movedTo = new Set<FolioContentMove>();
+  const structuralMembers = new Map<FolioContentStructuralChange, number[]>();
+  for (const event of ordered) {
+    switch (event.type) {
+      case "movedFrom":
+        if (movedFrom.has(event.move)) {
+          return panic("A move has more than one source event", { moveId: event.move.id });
+        }
+        movedFrom.add(event.move);
+        break;
+      case "movedTo":
+        if (movedTo.has(event.move)) {
+          return panic("A move has more than one destination event", { moveId: event.move.id });
+        }
+        movedTo.add(event.move);
+        break;
+      case "deleted":
+      case "inserted":
+      case "unchanged":
+      case "modified":
+      case "formatting":
+      case "split":
+      case "merge":
+        break;
+      case "structural": {
+        const members = structuralMembers.get(event.change);
+        if (members) {
+          members.push(event.memberIndex);
+        } else {
+          structuralMembers.set(event.change, [event.memberIndex]);
+        }
+        break;
+      }
+      default: {
+        const unreachable: never = event;
+        return panic("Unhandled comparison event cross-reference", { event: unreachable });
+      }
+    }
+  }
+  if (
+    movedFrom.size !== moves.length ||
+    movedTo.size !== moves.length ||
+    moves.some((move) => !movedFrom.has(move) || !movedTo.has(move))
+  ) {
+    return panic("Move stream positions do not share one canonical move record");
+  }
+  for (const [change, members] of structuralMembers) {
+    if (
+      members.length !== change.blocks.length ||
+      members.some((memberIndex, index) => memberIndex !== index)
+    ) {
+      return panic("Structural stream positions do not exhaust one canonical member set", {
+        type: change.type,
+      });
+    }
+  }
+
+  return Result.ok({
+    comparison: completeContentComparison(Object.freeze(ordered)),
+    changes: changeCount,
+    formattingRanges: formattingRangeCount,
+    structuralMembers: structuralMemberCount,
+    events: eventCount,
+  });
 };
 
-/**
- * Compare a validated, budget-charged snapshot pair with an adapter-specific
- * identity policy. Ordinary snapshots cannot enter semantic comparison.
- *
- * @internal
- */
-export const compareContentWithPolicy = <Block extends FolioContentBlock>({
-  prepared,
-  stableIdMismatch = "separate",
-  idStability,
-}: CompareContentWithPolicyOptions<Block>): Result<
-  FolioContentComparison<Block>,
+type ExecuteCapturedContentComparisonOptions = {
+  captured: CapturedContentComparison;
+  engine: ContentComparisonEngine;
+  maximumChanges: number;
+  maximumFormattingRanges: number;
+  maximumStructuralMembers: number;
+  maximumEvents: number;
+};
+
+const executeCapturedContentComparison = ({
+  captured,
+  engine,
+  maximumChanges,
+  maximumFormattingRanges,
+  maximumStructuralMembers,
+  maximumEvents,
+}: ExecuteCapturedContentComparisonOptions): Result<
+  ContentComparisonExecution,
   FolioContentComparisonLimitError
 > => {
-  prepared.assertPrepared();
-  const { base, revised, workSession } = prepared;
-  const steps = alignFolioContentStructure({
+  const { base, revised } = captured;
+  const steps = engine.alignContentStructure({
     baseBlocks: base.blocks,
     revisedBlocks: revised.blocks,
-    workSession: workSession.alignment,
-    stableIdMismatch,
-    ...(idStability && { idStability }),
   });
   return compareAlignedFolioContent({
-    prepared,
+    captured,
     steps,
-    ...(idStability && { idStability }),
+    engine,
+    maximumChanges,
+    maximumFormattingRanges,
+    maximumStructuralMembers,
+    maximumEvents,
   });
 };
 
 /** Compare two representation-neutral ordered content snapshots. */
-export const compareContent = <Block extends FolioContentBlock = FolioContentBlock>(
-  options: CompareContentOptions<Block>,
-): Result<FolioContentComparison<Block>, FolioContentComparisonError> => {
-  if (!isRecord(options)) {
+export const compareContent = (
+  options: CompareContentOptions,
+): Result<FolioContentComparison, FolioContentComparisonError> => {
+  if (!hasPlainObjectShape(options)) {
     return Result.err(invalidInput("options", "options", "Comparison options must be an object."));
   }
-  const { base, revised, granularity } = options;
+  const allowedOptionFields = new Set(
+    Object.values(COMPARE_CONTENT_OPTION_FIELD_DESCRIPTORS).map(({ field }) => field),
+  );
+  for (const key of Reflect.ownKeys(options)) {
+    if (typeof key !== "string" || !allowedOptionFields.has(key)) {
+      return Result.err(
+        invalidInput(
+          "options",
+          "options",
+          "Comparison options cannot contain unknown fields or symbols.",
+        ),
+      );
+    }
+  }
+  const baseProperty = ownDataProperty(options, "base");
+  const revisedProperty = ownDataProperty(options, "revised");
+  const granularityProperty = ownDataProperty(options, "granularity");
+  if (
+    baseProperty.status === "accessor" ||
+    revisedProperty.status === "accessor" ||
+    granularityProperty.status === "accessor"
+  ) {
+    return Result.err(
+      invalidInput(
+        "options",
+        "options",
+        "Comparison options must contain own data properties.",
+      ),
+    );
+  }
+  const base = baseProperty.status === "present" ? baseProperty.value : undefined;
+  const revised = revisedProperty.status === "present" ? revisedProperty.value : undefined;
+  const granularity =
+    granularityProperty.status === "present" ? granularityProperty.value : undefined;
   if (
     granularity !== undefined &&
     !WORD_DIFF_GRANULARITIES.some((candidate) => candidate === granularity)
@@ -1904,10 +3298,20 @@ export const compareContent = <Block extends FolioContentBlock = FolioContentBlo
       invalidInput("options", "granularity", "Comparison granularity must be word or character."),
     );
   }
-  const workSession = createContentComparisonWorkSession(granularity);
-  const prepared = prepareContentComparison({ base, revised, workSession });
-  if (prepared.isErr()) return Result.err(prepared.error);
-  return compareContentWithPolicy({
-    prepared: prepared.value,
-  });
+  const workSession = createContentComparisonWorkSession({ ...(granularity && { granularity }) });
+  const operation = workSession.captureComparison({ base, revised });
+  if (operation.isErr()) {
+    return operation.error instanceof FolioContentComparisonSessionError
+      ? panic("A fresh content comparison session rejected its first capture", {
+          cause: operation.error,
+        })
+      : Result.err(operation.error);
+  }
+  const compared = operation.value.compare();
+  if (compared.isErr() && compared.error instanceof FolioContentComparisonSessionError) {
+    return panic("A fresh content comparison operation failed its first consumption", {
+      cause: compared.error,
+    });
+  }
+  return compared;
 };

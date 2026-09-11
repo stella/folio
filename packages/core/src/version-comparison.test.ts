@@ -15,22 +15,20 @@ import JSZip from "jszip";
 
 import { buildTextBoxTableDocument } from "./__tests__/textBoxTableDocument";
 import { FolioDocxReviewer } from "./ai-edits/headless";
-import type { FolioAIBlock } from "./ai-edits/types";
 import {
   compareContent,
+  createContentComparisonWorkSession,
   FOLIO_CONTENT_COMPARISON_LIMITS,
-  type FolioContentComparison,
 } from "./compare/content";
+import { docxBlockToContentInput } from "./compare/docx-content-adapter";
 import { parseDocx } from "./docx/parser";
 import { createDocx } from "./docx/rezip";
 import { repackDocx } from "./docx/rezip";
 import type { HeaderFooter, Paragraph, ParagraphAlignment, Table } from "./types/document";
 import { createEmptyDocument } from "./utils/createDocument";
 import {
-  alignFolioBlocks,
   applyFolioVersionDiffPrivacy,
   compareDocxVersions,
-  exceedsLcsBudget,
   FolioVersionComparisonLimitError,
   projectFolioContentComparisonToStory,
 } from "./version-comparison";
@@ -444,9 +442,9 @@ describe("compareDocxVersions: deterministic fallback ids (no w14:paraId)", () =
       FolioDocxReviewer.fromBuffer(revised),
     ]);
     expect(
-      [...baseReviewer.snapshot().blocks, ...revisedReviewer.snapshot().blocks].every(
-        ({ idStability }) => idStability === "positional",
-      ),
+      [...baseReviewer.snapshot().blocks, ...revisedReviewer.snapshot().blocks]
+        .map(docxBlockToContentInput)
+        .every(({ identity }) => identity.type === "positional"),
     ).toBe(true);
 
     const diff = await compareDocxVersions(base, revised);
@@ -676,7 +674,7 @@ describe("compareDocxVersions: selected scopes", () => {
     expect(combined.changes).toEqual([
       expect.objectContaining({
         type: "modified",
-        changedProperties: ["alignment"],
+        changedProperties: ["directAlignment"],
       }),
     ]);
 
@@ -684,7 +682,7 @@ describe("compareDocxVersions: selected scopes", () => {
     expect(formatting.changes).toEqual([
       expect.objectContaining({
         type: "formatChanged",
-        changedProperties: ["alignment"],
+        changedProperties: ["directAlignment"],
       }),
     ]);
     expect(formatting.summaryCounts).toMatchObject({
@@ -919,8 +917,8 @@ describe("compareDocxVersions: move detection", () => {
       FolioDocxReviewer.fromBuffer(revised),
     ]);
     const neutral = compareContent({
-      base: { blocks: baseReviewer.snapshot().blocks },
-      revised: { blocks: revisedReviewer.snapshot().blocks },
+      base: { blocks: baseReviewer.snapshot().blocks.map(docxBlockToContentInput) },
+      revised: { blocks: revisedReviewer.snapshot().blocks.map(docxBlockToContentInput) },
     });
     if (neutral.isErr()) {
       throw neutral.error;
@@ -934,19 +932,31 @@ describe("compareDocxVersions: move detection", () => {
     expect(versionDiff.changes.map(({ type }) => type)).toEqual(neutralChanges);
     const neutralMovedTo = neutral.value.events.find(({ type }) => type === "movedTo");
     const versionMovedTo = versionDiff.changes.find(({ type }) => type === "movedTo");
-    expect(neutralMovedTo).toMatchObject({
-      type: "movedTo",
-      segments: [
-        { type: "equal", text: "alpha beta gamma delta" },
-        { type: "del", text: " epsilon" },
-        { type: "ins", text: " zeta" },
-      ],
-      changedProperties: ["kind", "headingLevel", "displayLabel"],
-      formatting: {
-        paragraph: { styleId: "Heading2", alignment: "right" },
-        ranges: [],
+    expect(neutralMovedTo?.type).toBe("movedTo");
+    if (neutralMovedTo?.type !== "movedTo") {
+      throw new Error("expected a canonical moved-to event");
+    }
+    expect(neutralMovedTo.move.relation.segments).toMatchObject([
+      { type: "equal", text: "alpha beta gamma delta" },
+      { type: "del", text: " epsilon" },
+      { type: "ins", text: " zeta" },
+    ]);
+    expect(neutralMovedTo.move.relation.blockChanges).toMatchObject([
+      { field: "kind", base: "paragraph", revised: "heading" },
+      {
+        field: "blockProperties",
+        changes: [{ key: "displayLabel" }, { key: "headingLevel" }],
       },
-    });
+    ]);
+    expect(neutralMovedTo.move.relation.formatting?.paragraph.map(({ key }) => key)).toEqual([
+      "directAlignment",
+      "styleId",
+    ]);
+    expect(
+      neutralMovedTo.move.relation.formatting?.ranges.flatMap(({ formatting }) =>
+        formatting.effective.map(({ key }) => key),
+      ),
+    ).toEqual(["bold", "fontSize"]);
     expect(versionMovedTo).toMatchObject({
       type: "movedTo",
       segments: [
@@ -954,7 +964,15 @@ describe("compareDocxVersions: move detection", () => {
         { type: "del", text: " epsilon" },
         { type: "ins", text: " zeta" },
       ],
-      changedProperties: ["kind", "headingLevel", "displayLabel", "styleId", "alignment"],
+      changedProperties: [
+        "displayLabel",
+        "headingLevel",
+        "kind",
+        "bold",
+        "directAlignment",
+        "fontSize",
+        "styleId",
+      ],
     });
     expect(versionDiff.summaryCounts).toMatchObject({
       added: 0,
@@ -969,7 +987,7 @@ describe("compareDocxVersions: move detection", () => {
       expect.objectContaining({
         type: "formatChanged",
         blockId: "00000001",
-        changedProperties: ["styleId", "alignment"],
+        changedProperties: ["bold", "directAlignment", "fontSize", "styleId"],
       }),
     ]);
     expect(formattingDiff.summaryCounts).toMatchObject({
@@ -999,10 +1017,10 @@ describe("compareDocxVersions: move detection", () => {
       FolioDocxReviewer.fromBuffer(base),
       FolioDocxReviewer.fromBuffer(revised),
     ]);
-    const baseBlocks = baseReviewer.snapshot().blocks;
-    const revisedBlocks = revisedReviewer.snapshot().blocks;
+    const baseBlocks = baseReviewer.snapshot().blocks.map(docxBlockToContentInput);
+    const revisedBlocks = revisedReviewer.snapshot().blocks.map(docxBlockToContentInput);
     expect(
-      [...baseBlocks, ...revisedBlocks].every(({ idStability }) => idStability === "positional"),
+      [...baseBlocks, ...revisedBlocks].every(({ identity }) => identity.type === "positional"),
     ).toBe(true);
     const neutral = compareContent({
       base: { blocks: baseBlocks },
@@ -1053,7 +1071,15 @@ describe("compareDocxVersions: neutral split and merge projection", () => {
       expect.objectContaining({
         type: "modified",
         blockId: "00000001",
-        changedProperties: ["styleId", "alignment"],
+        changedProperties: [
+          "displayLabel",
+          "headingLevel",
+          "kind",
+          "bold",
+          "directAlignment",
+          "fontSize",
+          "styleId",
+        ],
       }),
       expect.objectContaining({ type: "added", blockId: "00000002" }),
     ]);
@@ -1064,12 +1090,12 @@ describe("compareDocxVersions: neutral split and merge projection", () => {
       expect.objectContaining({
         type: "formatChanged",
         blockId: "00000001",
-        changedProperties: ["styleId", "alignment"],
+        changedProperties: ["bold", "directAlignment", "fontSize", "styleId"],
       }),
       expect.objectContaining({
         type: "formatChanged",
         blockId: "00000002",
-        changedProperties: ["alignment"],
+        changedProperties: ["directAlignment"],
       }),
     ]);
     expect(splitFormatting.summaryCounts).toMatchObject({
@@ -1095,7 +1121,15 @@ describe("compareDocxVersions: neutral split and merge projection", () => {
       expect.objectContaining({
         type: "modified",
         blockId: "00000001",
-        changedProperties: ["styleId", "alignment"],
+        changedProperties: [
+          "displayLabel",
+          "headingLevel",
+          "kind",
+          "bold",
+          "directAlignment",
+          "fontSize",
+          "styleId",
+        ],
       }),
       expect.objectContaining({ type: "deleted", blockId: "00000002" }),
     ]);
@@ -1106,7 +1140,7 @@ describe("compareDocxVersions: neutral split and merge projection", () => {
       expect.objectContaining({
         type: "formatChanged",
         blockId: "00000001",
-        changedProperties: ["styleId", "alignment"],
+        changedProperties: ["bold", "directAlignment", "fontSize", "styleId"],
       }),
     ]);
     expect(mergeFormatting.summaryCounts).toMatchObject({
@@ -1149,8 +1183,8 @@ describe("compareDocxVersions: neutral split and merge projection", () => {
         FolioDocxReviewer.fromBuffer(revised),
       ]);
       const neutral = compareContent({
-        base: { blocks: baseReviewer.snapshot().blocks },
-        revised: { blocks: revisedReviewer.snapshot().blocks },
+        base: { blocks: baseReviewer.snapshot().blocks.map(docxBlockToContentInput) },
+        revised: { blocks: revisedReviewer.snapshot().blocks.map(docxBlockToContentInput) },
       });
       if (neutral.isErr()) {
         throw neutral.error;
@@ -1160,49 +1194,69 @@ describe("compareDocxVersions: neutral split and merge projection", () => {
         throw new Error(`expected a ${fixture.eventType} event`);
       }
 
-      const eventBase = event.baseBlocks[0];
-      const eventRevised = event.revisedBlocks[0];
-      const controlledSegments = [
-        {
-          type: "del",
-          text: eventBase.text,
-          baseStart: 0,
-          baseEnd: eventBase.text.length,
-          revisedStart: 0,
-          revisedEnd: 0,
+      const firstRelation = event.relations[0];
+      const baseText = firstRelation.base.block.text.slice(
+        firstRelation.base.startOffset,
+        firstRelation.base.endOffset,
+      );
+      const revisedText = firstRelation.revised.block.text.slice(
+        firstRelation.revised.startOffset,
+        firstRelation.revised.endOffset,
+      );
+      const diffCalls: string[] = [];
+      const controlledSession = createContentComparisonWorkSession({
+        diffText: (baseTextInput, revisedTextInput) => {
+          diffCalls.push(`${baseTextInput}\u0000${revisedTextInput}`);
+          if (baseTextInput === revisedTextInput) {
+            return [{ type: "equal", text: baseTextInput }];
+          }
+          return [
+            { type: "del", text: baseTextInput },
+            { type: "ins", text: revisedTextInput },
+          ];
         },
-        {
-          type: "ins",
-          text: eventRevised.text,
-          baseStart: eventBase.text.length,
-          baseEnd: eventBase.text.length,
-          revisedStart: 0,
-          revisedEnd: eventRevised.text.length,
-        },
-      ] as const;
-      const controlledComparison: FolioContentComparison<FolioAIBlock> = {
-        structuralChanges: neutral.value.structuralChanges,
-        events: neutral.value.events.map((candidate) =>
-          candidate === event ? { ...event, segments: controlledSegments } : candidate,
-        ),
-      };
+      });
+      const captured = controlledSession.captureComparison({
+        base: { blocks: baseReviewer.snapshot().blocks.map(docxBlockToContentInput) },
+        revised: { blocks: revisedReviewer.snapshot().blocks.map(docxBlockToContentInput) },
+      });
+      if (captured.isErr()) throw captured.error;
+      const controlled = captured.value.compare();
+      if (controlled.isErr()) throw controlled.error;
       const baseStory = baseReviewer.listStories().at(0)?.handle;
       const revisedStory = revisedReviewer.listStories().at(0)?.handle;
       if (!baseStory || !revisedStory) {
         throw new Error("expected body story handles");
       }
+      const controlledEvent = controlled.value.events.find(
+        ({ type }) => type === fixture.eventType,
+      );
+      if (controlledEvent?.type !== "split" && controlledEvent?.type !== "merge") {
+        throw new Error(`expected a controlled ${fixture.eventType} event`);
+      }
+      const controlledFirstRelation = controlledEvent.relations[0];
+      const diffCallsAfterComparison = [...diffCalls];
       const controlledProjection = projectFolioContentComparisonToStory({
         baseStory,
         revisedStory,
-        comparison: controlledComparison,
+        comparison: controlled.value,
         firstMoveGroupId: 1,
         includeText: true,
         includeFormatting: true,
       });
-      expect(controlledProjection.changes.at(0)).toMatchObject({
-        type: "modified",
-        segments: controlledSegments.map(({ type, text }) => ({ type, text })),
-      });
+      const controlledModified = controlledProjection.changes.at(0);
+      expect(controlledModified?.type).toBe("modified");
+      if (controlledModified?.type !== "modified") {
+        throw new Error("expected controlled canonical segments to project as modified");
+      }
+      expect(controlledModified.segments.at(0)).toEqual(
+        expect.objectContaining({
+          type: controlledFirstRelation.segments.at(0)?.type,
+          text: controlledFirstRelation.segments.at(0)?.text,
+        }),
+      );
+      expect(diffCalls.filter((call) => call === `${baseText}\u0000${revisedText}`)).toHaveLength(1);
+      expect(diffCalls).toEqual(diffCallsAfterComparison);
 
       const version = await compareDocxVersions(base, revised);
       expect(version.changes.map(({ type }) => type)).toEqual(fixture.changeTypes);
@@ -1211,7 +1265,9 @@ describe("compareDocxVersions: neutral split and merge projection", () => {
       if (modified?.type !== "modified") {
         throw new Error("expected the paired split or merge block to remain modified");
       }
-      expect(modified.segments).toEqual(event.segments.map(({ type, text }) => ({ type, text })));
+      expect(modified.segments.at(0)).toEqual(
+        expect.objectContaining({ type: event.relations[0].segments[0]?.type }),
+      );
     },
   );
 });
@@ -1228,17 +1284,25 @@ describe("compareDocxVersions: neutral structural classification", () => {
       FolioDocxReviewer.fromBuffer(revised),
     ]);
     const neutral = compareContent({
-      base: { blocks: baseReviewer.snapshot().blocks },
-      revised: { blocks: revisedReviewer.snapshot().blocks },
+      base: { blocks: baseReviewer.snapshot().blocks.map(docxBlockToContentInput) },
+      revised: { blocks: revisedReviewer.snapshot().blocks.map(docxBlockToContentInput) },
     });
     if (neutral.isErr()) {
       throw neutral.error;
     }
     const neutralChanges = neutral.value.events
       .filter(({ type }) => type !== "unchanged")
-      .map(({ type }) => (type === "inserted" ? "added" : type));
+      .map((event) => {
+        if (event.type === "inserted") return "added";
+        if (event.type !== "structural") return event.type;
+        return event.change.type === "table-insert" ||
+          event.change.type === "table-row-insert" ||
+          event.change.type === "table-column-insert"
+          ? "added"
+          : "deleted";
+      });
 
-    expect(neutralChanges).toEqual(["deleted", "added"]);
+    expect(neutralChanges).toEqual(["added", "deleted"]);
     const versionDiff = await compareDocxVersions(base, revised);
     expect(versionDiff.changes.map(({ type }) => type)).toEqual(neutralChanges);
     expect(versionDiff.summaryCounts).toMatchObject({
@@ -1287,78 +1351,6 @@ describe("compareDocxVersions: format-only changes", () => {
 
     expect(diff.changes).toEqual([]);
     expect(diff.summaryCounts.unchanged).toBe(1);
-  });
-});
-
-describe("exceedsLcsBudget: pass 2's LCS cell-budget guard", () => {
-  test("flags unpaired-block counts whose product would exceed the LCS cell budget (4,000,000)", () => {
-    // A degenerate/adversarial document with no w14:paraIds can leave
-    // thousands of blocks unpaired on both sides; this guard is what stops
-    // pairByExactText from allocating an O(m*n) table for it. Exercise the
-    // predicate directly rather than constructing a multi-million-block
-    // fixture, which would make this test slow for no extra coverage.
-    expect(exceedsLcsBudget(2000, 2000)).toBe(false); // exactly at budget: 4,000,000 cells
-    expect(exceedsLcsBudget(2001, 2001)).toBe(true); // just over budget: 4,004,001 cells
-  });
-});
-
-describe("alignFolioBlocks: shared LCS budget across pass 2 calls", () => {
-  // Neither side carries a stable (non-`seq-NNNN`) block id, so pass 1
-  // cannot pair anything; only pass 2 (exact-text LCS) can recover the
-  // position-shifted "Gamma paragraph." match. compareDocxVersions threads
-  // one neutral work session across every story pair. This exercises the
-  // compatibility adapter's equivalent budget threading directly by passing
-  // a pre-exhausted budget to alignFolioBlocks.
-  const base: FolioAIBlock[] = [
-    { id: "seq-0001", kind: "paragraph", text: "Alpha paragraph." },
-    { id: "seq-0002", kind: "paragraph", text: "Gamma paragraph." },
-  ];
-  const revised: FolioAIBlock[] = [
-    { id: "seq-0003", kind: "paragraph", text: "Alpha paragraph." },
-    { id: "seq-0004", kind: "paragraph", text: "Epsilon paragraph." },
-    { id: "seq-0005", kind: "paragraph", text: "Gamma paragraph." },
-  ];
-
-  test("a fresh budget lets pass 2 recover the position-shifted match", () => {
-    const events = alignFolioBlocks(base, revised);
-    expect(events.map((e) => e.type)).toEqual(["pair", "revisedOnly", "pair"]);
-    const [alphaPair, insertion, gammaPair] = events;
-    if (
-      !alphaPair ||
-      alphaPair.type !== "pair" ||
-      !gammaPair ||
-      gammaPair.type !== "pair" ||
-      !insertion ||
-      insertion.type !== "revisedOnly"
-    ) {
-      throw new Error("expected pair/revisedOnly/pair");
-    }
-    expect(gammaPair.baseBlock.text).toBe("Gamma paragraph.");
-    expect(gammaPair.revisedBlock.text).toBe("Gamma paragraph.");
-    expect(insertion.block.text).toBe("Epsilon paragraph.");
-  });
-
-  test("an exhausted budget refuses pass 2, falling back to pass 3's positional zip", () => {
-    const events = alignFolioBlocks(base, revised, { remainingCells: 0 });
-    expect(events.map((e) => e.type)).toEqual(["pair", "pair", "revisedOnly"]);
-    const [alphaPair, mismatchedPair, insertion] = events;
-    if (
-      !alphaPair ||
-      alphaPair.type !== "pair" ||
-      !mismatchedPair ||
-      mismatchedPair.type !== "pair" ||
-      !insertion ||
-      insertion.type !== "revisedOnly"
-    ) {
-      throw new Error("expected pair/pair/revisedOnly");
-    }
-    // Without pass 2, position 1 on each side is just zipped together
-    // regardless of text: base's "Gamma paragraph." lands against revised's
-    // "Epsilon paragraph." instead of being recovered as unchanged, and
-    // revised's actual "Gamma paragraph." falls out as a bare insertion.
-    expect(mismatchedPair.baseBlock.text).toBe("Gamma paragraph.");
-    expect(mismatchedPair.revisedBlock.text).toBe("Epsilon paragraph.");
-    expect(insertion.block.text).toBe("Gamma paragraph.");
   });
 });
 

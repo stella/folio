@@ -278,7 +278,9 @@ export const alignTableColumns = <Block extends FolioContentBlock>(
     return null;
   }
 
-  const unmatchedIds = new Set(ownedColumns.flatMap(({ blocks }) => blocks.map(({ id }) => id)));
+  const unmatchedIds = new Set(
+    ownedColumns.flatMap(({ blocks }) => blocks.map(({ identity }) => identity.id)),
+  );
   const baseColumnKeys = new Map<number, number>();
   const revisedColumnKeys = new Map<number, number>();
   mapping.forEach((wideIndex, shortIndex) => {
@@ -316,14 +318,21 @@ export const alignTableColumns = <Block extends FolioContentBlock>(
         blocks,
         location,
         columnIndex: column.index,
-        anchor: { blockId: anchorBlock.id, position: rightBaseIndex >= 0 ? "before" : "after" },
+        anchor: {
+          blockId: anchorBlock.identity.id,
+          position: rightBaseIndex >= 0 ? "before" : "after",
+        },
       });
     }
   }
   return {
     steps,
-    baseBlocks: baseBlocks.filter(({ id }) => revisedIsWider || !unmatchedIds.has(id)),
-    revisedBlocks: revisedBlocks.filter(({ id }) => !revisedIsWider || !unmatchedIds.has(id)),
+    baseBlocks: baseBlocks.filter(
+      ({ identity }) => revisedIsWider || !unmatchedIds.has(identity.id),
+    ),
+    revisedBlocks: revisedBlocks.filter(
+      ({ identity }) => !revisedIsWider || !unmatchedIds.has(identity.id),
+    ),
     baseColumnKeys,
     revisedColumnKeys,
   };

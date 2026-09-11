@@ -49,14 +49,14 @@ type SelfDescribingFieldMap<Value, Descriptor> = {
 };
 
 export const COLOR_VALUE_PROPERTY_DESCRIPTORS = {
-  rgb: { field: "rgb", validation: "hex" },
+  rgb: { field: "rgb", validation: "rgb-hex" },
   themeColor: { field: "themeColor", validation: "theme-color" },
-  themeTint: { field: "themeTint", validation: "hex" },
-  themeShade: { field: "themeShade", validation: "hex" },
+  themeTint: { field: "themeTint", validation: "byte-hex" },
+  themeShade: { field: "themeShade", validation: "byte-hex" },
   auto: { field: "auto", validation: "boolean" },
 } as const satisfies SelfDescribingFieldMap<
   ColorValue,
-  { validation: "boolean" | "hex" | "theme-color" }
+  { validation: "boolean" | "byte-hex" | "rgb-hex" | "theme-color" }
 >;
 
 export type KnownBorderStyle =

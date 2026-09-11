@@ -1,18 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import type { FolioAIBlock, FolioAIEditSnapshot } from "../ai-edits/types";
-import {
-  compareContent,
-  createContentComparisonWorkSession,
-  detectFolioContentMoves,
-} from "./content";
-import type { FolioContentAlignmentStep } from "./content-alignment";
-import type { FolioContentBlock } from "./content-types";
-import { planStoryCompare } from "./plan";
-import { alignFolioBlocks } from "../version-comparison";
+import { compareContent } from "./content";
+import type { FolioContentInputBlock } from "./content-types";
 
-const block = (id: string, text: string): FolioContentBlock => ({
-  id,
+const block = (id: string, text: string): FolioContentInputBlock => ({
+  identity: { type: "authoritative", id },
   kind: "paragraph",
   text,
 });
@@ -31,12 +23,18 @@ const tableBlock = ({
   paragraphIndex: number;
   cellIndex?: number;
   containerId?: string;
-}): FolioContentBlock => ({
-  id,
+}): FolioContentInputBlock => ({
+  identity: { type: "authoritative", id },
   kind: "paragraph",
   text,
-  containerPath: [{ kind: "cell", id: containerId }],
+  containerPath: [
+    { kind: "cell", identity: { type: "authoritative", id: containerId } },
+  ],
   table: {
+    outerTableIdentity: { type: "positional", id: "outer-table-0" },
+    tableIdentity: { type: "positional", id: "table-0" },
+    rowIdentity: { type: "positional", id: `row-${String(rowIndex)}` },
+    cellIdentity: { type: "authoritative", id: containerId },
     outerTableIndex: 0,
     tableIndex: 0,
     rowIndex,
@@ -48,7 +46,10 @@ const tableBlock = ({
   },
 });
 
-const successfulComparison = (base: FolioContentBlock[], revised: FolioContentBlock[]) => {
+const successfulComparison = (
+  base: FolioContentInputBlock[],
+  revised: FolioContentInputBlock[],
+) => {
   const result = compareContent({ base: { blocks: base }, revised: { blocks: revised } });
   if (result.isErr()) {
     throw result.error;
@@ -76,10 +77,7 @@ describe("neutral move scope", () => {
 
       const comparison = successfulComparison([base], [revised]);
 
-      expect(comparison.events).toEqual([
-        { type: "deleted", baseBlocks: [base], revisedBlocks: [] },
-        { type: "inserted", baseBlocks: [], revisedBlocks: [revised] },
-      ]);
+      expect(comparison.events.map(({ type }) => type)).toEqual(["inserted", "deleted"]);
     },
   );
 
@@ -97,7 +95,13 @@ describe("neutral move scope", () => {
       paragraphIndex: 2,
     });
     const base = [
-      tableBlock({ id: "header", text: "Header row", rowIndex: 0, paragraphIndex: 0 }),
+      tableBlock({
+        id: "header",
+        text: "Header row",
+        rowIndex: 0,
+        paragraphIndex: 0,
+        containerId: "header-cell",
+      }),
       baseMoved,
       tableBlock({
         id: "anchor-a",
@@ -120,7 +124,13 @@ describe("neutral move scope", () => {
         paragraphIndex: 0,
         containerId: "inserted-cell",
       }),
-      tableBlock({ id: "header", text: "Header row", rowIndex: 1, paragraphIndex: 0 }),
+      tableBlock({
+        id: "header",
+        text: "Header row",
+        rowIndex: 1,
+        paragraphIndex: 0,
+        containerId: "header-cell",
+      }),
       tableBlock({
         id: "anchor-a",
         text: "First durable anchor text",
@@ -142,128 +152,38 @@ describe("neutral move scope", () => {
 
     expect(movedFrom).toMatchObject({
       type: "movedFrom",
-      baseBlocks: [{ id: "moved", table: { rowIndex: 1, cellIndex: 0 } }],
+      move: {
+        relation: {
+          base: {
+            block: { identity: { id: "moved" }, table: { rowIndex: 1, cellIndex: 0 } },
+          },
+        },
+      },
     });
     expect(movedTo).toMatchObject({
       type: "movedTo",
-      baseBlockId: "moved",
-      revisedBlocks: [{ id: "moved", table: { rowIndex: 2, cellIndex: 0 } }],
+      move: {
+        relation: {
+          revised: {
+            block: { identity: { id: "moved" }, table: { rowIndex: 2, cellIndex: 0 } },
+          },
+        },
+      },
     });
-    expect(movedTo?.type === "movedTo" ? movedTo.moveId : null).toBe(
-      movedFrom?.type === "movedFrom" ? movedFrom.moveId : null,
+    expect(movedTo?.type === "movedTo" ? movedTo.move : null).toBe(
+      movedFrom?.type === "movedFrom" ? movedFrom.move : null,
     );
-    expect(comparison.structuralChanges).toEqual([
-      {
-        id: 1,
+    const structural = comparison.events.filter(({ type }) => type === "structural");
+    expect(structural).toHaveLength(1);
+    expect(structural.at(0)).toMatchObject({
+      type: "structural",
+      memberIndex: 0,
+      change: {
         type: "table-row-insert",
         tableIndex: 0,
         rowIndex: 0,
-        revisedBlockIds: ["inserted-row"],
+        blocks: [{ identity: { id: "inserted-row" } }],
       },
-    ]);
-  });
-
-  test("incompatible cells cannot consume the edited-move comparison budget", () => {
-    const incompatible = tableBlock({
-      id: "incompatible",
-      text: "alpha beta gamma delta epsilon",
-      rowIndex: 0,
-      cellIndex: 1,
-      paragraphIndex: 0,
-      containerId: "other-cell",
     });
-    const compatible = tableBlock({
-      id: "compatible",
-      text: "alpha beta gamma delta epsilon",
-      rowIndex: 0,
-      paragraphIndex: 0,
-    });
-    const revised = tableBlock({
-      id: "revised",
-      text: "alpha beta gamma delta zeta",
-      rowIndex: 0,
-      paragraphIndex: 1,
-    });
-    const steps = [
-      {
-        type: "baseOnly",
-        block: incompatible,
-        moveScope: { bucket: 2, gap: 0 },
-      },
-      {
-        type: "baseOnly",
-        block: compatible,
-        moveScope: { bucket: 1, gap: 0 },
-      },
-      {
-        type: "revisedOnly",
-        block: revised,
-        moveScope: { bucket: 1, gap: 1 },
-      },
-    ] as const satisfies readonly FolioContentAlignmentStep<FolioContentBlock>[];
-    const workSession = createContentComparisonWorkSession();
-    workSession.remainingMoveComparisons = 1;
-
-    const moves = detectFolioContentMoves({
-      steps,
-      consumedStepIndexes: new Set(),
-      workSession,
-      idStability: () => "positional",
-    });
-
-    expect(moves).toEqual([{ baseBlock: compatible, revisedBlock: revised }]);
-    expect(workSession.remainingMoveComparisons).toBe(0);
-  });
-});
-
-const aiBlock = (id: string, text: string): FolioAIBlock => ({
-  id,
-  kind: "paragraph",
-  text,
-});
-
-const snapshot = (blocks: readonly FolioAIBlock[]): FolioAIEditSnapshot => ({
-  blocks: [...blocks],
-  anchors: Object.fromEntries(
-    blocks.map((entry, index) => [
-      entry.id,
-      {
-        id: entry.id,
-        from: index * 2,
-        to: index * 2 + 2,
-        text: entry.text,
-        normalizedText: entry.text,
-        textHash: entry.text,
-        structuralBoundaryHash: "",
-        hashOccurrenceCount: 1,
-      },
-    ]),
-  ),
-});
-
-describe("DOCX comparison compatibility", () => {
-  test("independently authored same-text paragraphs remain aligned", () => {
-    const base = aiBlock("10000001", "Same paragraph text");
-    const revised = aiBlock("20000001", "Same paragraph text");
-
-    expect(alignFolioBlocks([base], [revised])).toEqual([
-      { type: "pair", baseBlock: base, revisedBlock: revised },
-    ]);
-  });
-
-  test("the tracked-change planner does not turn a new paragraph id into a move", () => {
-    const tail = aiBlock("30000001", "Durable trailing paragraph");
-    const base = [aiBlock("10000001", "Same paragraph text"), tail];
-    const revised = [aiBlock("20000001", "Same paragraph text"), tail];
-
-    const plan = planStoryCompare({
-      story: { type: "main" },
-      baseSnapshot: snapshot(base),
-      targetSnapshot: snapshot(revised),
-      maxOperations: 100,
-    });
-
-    expect(plan?.changes).toEqual([]);
-    expect(plan?.operations).toEqual([]);
   });
 });

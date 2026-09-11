@@ -100,6 +100,33 @@ export const ASCII_THEME_FONTS = Object.freeze([
   "minorBidi",
 ] as const);
 
+export const TEXT_FORMATTING_VISUAL_GROUPS = Object.freeze([
+  "allCaps",
+  "bold",
+  "characterSpacing",
+  "color",
+  "effect",
+  "emboss",
+  "emphasisMark",
+  "fontFamily",
+  "fontSize",
+  "hidden",
+  "highlight",
+  "imprint",
+  "italic",
+  "language",
+  "outline",
+  "rtl",
+  "shading",
+  "shadow",
+  "smallCaps",
+  "strike",
+  "underline",
+  "vertAlign",
+] as const);
+
+export type TextFormattingVisualGroup = (typeof TEXT_FORMATTING_VISUAL_GROUPS)[number];
+
 /**
  * Complete text formatting properties (w:rPr)
  */
@@ -228,7 +255,7 @@ type TextFormattingPropertyDescriptor = {
     | "string"
     | "underline"
     | "vertical-alignment";
-  visualGroup: string | null;
+  visualGroup: TextFormattingVisualGroup | null;
   fastPath: "character-style" | "structural" | "visual";
 };
 
@@ -484,6 +511,32 @@ export const TEXT_FORMATTING_UNDERLINE_FIELD_DESCRIPTORS = {
   NonNullable<TextFormatting["underline"]>,
   { validation: "color" | "underline-style" }
 >;
+
+/** Structural equality for descriptor-owned text-formatting values. */
+export const sameTextFormattingValue = (left: unknown, right: unknown): boolean => {
+  if (left === right) return true;
+  if (typeof left !== "object" || left === null || typeof right !== "object" || right === null) {
+    return false;
+  }
+  if (Array.isArray(left) || Array.isArray(right)) return false;
+  const leftEntries = Object.entries(left);
+  const rightEntries = Object.entries(right);
+  if (leftEntries.length !== rightEntries.length) return false;
+  return leftEntries.every(
+    ([field, value]) =>
+      Object.prototype.hasOwnProperty.call(right, field) &&
+      sameTextFormattingValue(value, Reflect.get(right, field)),
+  );
+};
+
+/** Whether two complete modeled run-property records are structurally equal. */
+export const sameTextFormatting = (
+  left: TextFormatting | undefined,
+  right: TextFormatting | undefined,
+): boolean =>
+  Object.values(TEXT_FORMATTING_PROPERTY_DESCRIPTORS).every(({ field }) =>
+    sameTextFormattingValue(left?.[field], right?.[field]),
+  );
 
 // ============================================================================
 // PARAGRAPH FORMATTING (Paragraph Properties - pPr)
