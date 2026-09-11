@@ -103,8 +103,14 @@ export function useFolioComments({
   const comments = isControlledComments ? sanitizedCommentsProp : internalComments;
 
   const commentsDirtyRef = useRef(false);
+  // Render-level mirror of `comments`: reassigned from state on every render,
+  // so an imperative write anywhere else is overwritten by the next render and
+  // also defeats the identity check in `setComments` below. The hook keeps the
+  // writable handle private and exports a read-only view; mutate only through
+  // `setComments`.
   const commentsRef = useRef(comments);
   commentsRef.current = comments;
+  const readonlyCommentsRef: Readonly<RefObject<Comment[]>> = commentsRef;
   const onCommentsChangeRef = useRef(onCommentsChange);
   onCommentsChangeRef.current = onCommentsChange;
 
@@ -117,6 +123,10 @@ export function useFolioComments({
       if (resolved === commentsRef.current) {
         return;
       }
+      // The owning setter: the ref write is paired with the state update below
+      // (or, when controlled, with the host applying `onCommentsChange`), so
+      // same-tick readers and the next render agree.
+      // eslint-disable-next-line folio-ref-mirrors/no-write-to-render-mirrored-ref
       commentsRef.current = resolved;
       if (!isControlledComments) {
         setInternalComments(resolved);
@@ -276,7 +286,7 @@ export function useFolioComments({
     comments,
     setComments,
     isControlledComments,
-    commentsRef,
+    commentsRef: readonlyCommentsRef,
     commentsDirtyRef,
     commentsLoadedRef,
     showCommentsSidebar,
