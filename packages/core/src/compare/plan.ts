@@ -405,48 +405,55 @@ export const planStoryCompare = ({
           }
         }
       } else if (transition.type === "tableAppend") {
-        const table = resolvedDocxTableStructureOperandPayload(transition.operation, comparison);
-        if (table.type !== "insertTable") {
-          return panic("A terminal appended table lost its insertion role");
-        }
-        unavailable = recordUnavailableRuns(
-          "structural",
-          table.change.blocks.map((block) => ({
-            block,
-            snapshot: targetSnapshot,
-            side: "target" as const,
-          })),
-        );
-        const carrierBlock = transition.carrier.event.block;
-        if (carrierBlock.structuralBoundaries.length > 0) {
-          unsupported.push({
-            reason: "structural-boundary-change",
-            story,
-            eventType: "inserted",
-            field: "structuralBoundaries",
-            targetBlockId: carrierBlock.identity.id,
-          });
-          unavailable = true;
-        }
-        if (carrierBlock.containerPath.length > 0) {
-          unsupported.push({
-            reason: "container-change",
-            story,
-            eventType: "inserted",
-            field: "containerPath",
-            targetBlockId: carrierBlock.identity.id,
-          });
-          unavailable = true;
-        }
-        unavailable =
-          recordUnavailableRuns("inserted", [
-            {
-              block: carrierBlock,
-              snapshot: targetSnapshot,
-              side: "target",
-            },
-          ]) || unavailable;
-        for (const member of transition.targetMembers) {
+        for (const suffixMember of transition.targetSuffix) {
+          if (suffixMember.type === "terminalCarrier") {
+            const carrierBlock = suffixMember.occurrence.event.block;
+            if (carrierBlock.structuralBoundaries.length > 0) {
+              unsupported.push({
+                reason: "structural-boundary-change",
+                story,
+                eventType: "inserted",
+                field: "structuralBoundaries",
+                targetBlockId: carrierBlock.identity.id,
+              });
+              unavailable = true;
+            }
+            if (carrierBlock.containerPath.length > 0) {
+              unsupported.push({
+                reason: "container-change",
+                story,
+                eventType: "inserted",
+                field: "containerPath",
+                targetBlockId: carrierBlock.identity.id,
+              });
+              unavailable = true;
+            }
+            unavailable =
+              recordUnavailableRuns("inserted", [
+                { block: carrierBlock, snapshot: targetSnapshot, side: "target" },
+              ]) || unavailable;
+            continue;
+          }
+          if (suffixMember.type === "table") {
+            const table = resolvedDocxTableStructureOperandPayload(
+              suffixMember.operation,
+              comparison,
+            );
+            if (table.type !== "insertTable") {
+              return panic("A terminal target suffix lost its table insertion role");
+            }
+            unavailable =
+              recordUnavailableRuns(
+                "structural",
+                table.change.blocks.map((block) => ({
+                  block,
+                  snapshot: targetSnapshot,
+                  side: "target" as const,
+                })),
+              ) || unavailable;
+            continue;
+          }
+          const { member } = suffixMember;
           if (member.type === "inserted") {
             const inserted = member.occurrence.event;
             if (inserted.block.structuralBoundaries.length > 0) {

@@ -972,6 +972,175 @@ describe("the dedicated DOCX comparison executor", () => {
     expectResolvedViews(baseState, targetState, first.tracked);
   });
 
+  test("preserves every generated bounded terminal paragraph and table order", () => {
+    for (let suffixLength = 1; suffixLength <= 5; suffixLength++) {
+      for (let shape = 0; shape < 2 ** suffixLength; shape++) {
+        const kinds = Array.from({ length: suffixLength }, (_unused, index) =>
+          (shape & (1 << index)) === 0 ? ("paragraph" as const) : ("table" as const),
+        );
+        if (!kinds.includes("table")) continue;
+        const anchor = paragraphNode("A1000000", "Anchor");
+        const suffix = kinds.map((kind, index) =>
+          kind === "paragraph"
+            ? paragraphNode(`B100000${String(index)}`, `Paragraph ${String(index)}`)
+            : tableWithCellGrid([
+                [{ id: `C100000${String(index)}`, text: `Table ${String(index)}` }],
+              ]),
+        );
+        const baseState = stateWithBlocks(anchor);
+        const targetState = stateWithBlocks(anchor, ...suffix);
+        const { executed, tracked } = executePlannedComparison(baseState, targetState);
+        const physicalOrder: string[] = [];
+        tracked.doc.forEach((node) => physicalOrder.push(`${node.type.name}:${node.textContent}`));
+
+        expect(physicalOrder).toEqual([
+          "paragraph:Anchor",
+          ...suffix.map((node) => `${node.type.name}:${node.textContent}`),
+        ]);
+        expect(executed.receipt.instructions.map(({ instructionType }) => instructionType)).toEqual(
+          kinds.map((kind, index) => {
+            if (kind === "table") return "insertTable";
+            return index === kinds.length - 1 ? "insertTerminalCarrier" : "insertParagraph";
+          }),
+        );
+        expect(executed.receipt.changes.map(({ kind }) => kind)).toEqual(
+          kinds.map((kind) => (kind === "table" ? "table-insert" : "insert")),
+        );
+        expectResolvedViews(baseState, targetState, tracked);
+      }
+    }
+  });
+
+  test("reconstructs a target-only terminal table suffix without a surviving anchor", () => {
+    const baseState = stateWithBlocks(paragraphNode("A1000000", "Removed anchor"));
+    const targetState = stateWithBlocks(
+      paragraphNode("B1000000", "Added paragraph"),
+      tableWithCellGrid([[{ id: "C1000000", text: "Added table" }]]),
+    );
+    const { tracked } = executePlannedComparison(baseState, targetState);
+
+    expectResolvedViews(baseState, targetState, tracked);
+  });
+
+  test("preserves moved paragraphs inside an ordered terminal table suffix", () => {
+    const first = paragraphNode("A1000000", "First moved paragraph");
+    const second = paragraphNode("B1000000", "Second moved paragraph");
+    const anchor = paragraphNode("C1000000", "Anchor");
+    const firstTable = tableWithCellGrid([[{ id: "D1000000", text: "First table" }]]);
+    const secondTable = tableWithCellGrid([[{ id: "E1000000", text: "Second table" }]]);
+    const baseState = stateWithBlocks(first, second, anchor);
+    const targetState = stateWithBlocks(anchor, firstTable, first, second, secondTable);
+    const { executed, tracked } = executePlannedComparison(baseState, targetState);
+    const physicalOrder: string[] = [];
+    tracked.doc.forEach((node) => physicalOrder.push(`${node.type.name}:${node.textContent}`));
+
+    expect(physicalOrder).toEqual([
+      "paragraph:First moved paragraph",
+      "paragraph:Second moved paragraph",
+      "paragraph:Anchor",
+      "table:First table",
+      "paragraph:First moved paragraph",
+      "paragraph:Second moved paragraph",
+      "table:Second table",
+    ]);
+    expect(executed.receipt.instructions.map(({ instructionType }) => instructionType)).toEqual([
+      "insertTable",
+      "moveParagraph",
+      "moveParagraph",
+      "insertTable",
+    ]);
+    expectResolvedViews(baseState, targetState, tracked);
+  });
+
+  test("reports a terminal table suffix ending in a moved paragraph as unsupported", () => {
+    const moved = paragraphNode("A1000000", "Moved paragraph");
+    const anchor = paragraphNode("B1000000", "Anchor");
+    const baseState = stateWithBlocks(moved, anchor);
+    const targetState = stateWithBlocks(
+      anchor,
+      tableWithCellGrid([[{ id: "C1000000", text: "Table" }]]),
+      moved,
+    );
+    const baseSnapshot = resolvedSnapshotOf(baseState);
+    const targetSnapshot = resolvedSnapshotOf(targetState);
+    const planned = planStoryCompare({
+      comparison: comparisonOf(baseSnapshot, targetSnapshot),
+      maxOperations: 1_000,
+    });
+
+    if (planned.isErr()) throw planned.error;
+    expect(planned.value.program.size).toBe(1);
+    expect(planned.value.unsupported).toContainEqual(
+      expect.objectContaining({
+        reason: "missing-insertion-anchor",
+        targetBlockId: "A1000000",
+      }),
+    );
+  });
+
+  test("withholds every interleaved terminal suffix obligation when its carrier cannot execute", () => {
+    const baseState = stateFromCanonicalDocument(
+      schema.node("doc", null, [
+        schema.node(
+          "paragraph",
+          {
+            paraId: "A1000000",
+            _propertyChanges: [
+              {
+                type: "paragraphPropertyChange",
+                info: {
+                  id: 7,
+                  author: "Existing",
+                  date: "2026-09-01T00:00:00.000Z",
+                },
+                previousFormatting: { alignment: "right" },
+              },
+            ],
+          },
+          [schema.text("Anchor")],
+        ),
+      ]),
+    );
+    const targetState = stateWithBlocks(
+      paragraphNode("A1000000", "Anchor"),
+      paragraphNode("B1000000", "First paragraph"),
+      tableWithCellGrid([[{ id: "C1000000", text: "First table" }]]),
+      paragraphNode("D1000000", "Second paragraph"),
+      tableWithCellGrid([[{ id: "E1000000", text: "Second table" }]]),
+      paragraphNode("F1000000", "Closing paragraph"),
+    );
+    const before = baseState.doc.toJSON();
+    const prepared = preflightDocxComparisonProgram({
+      state: baseState,
+      program: plannedComparisonOf({ baseState, targetState }).program,
+    });
+
+    expect(prepared.supportedInstructionCount).toBe(0);
+    expect(prepared.supportedChangeCount).toBe(0);
+    expect(prepared.issues).toHaveLength(5);
+    expect(prepared.issues).toContainEqual(
+      expect.objectContaining({
+        instructionType: "insertTerminalCarrier",
+        reason: "pending-paragraph-change",
+        blockId: "A1000000",
+      }),
+    );
+    expect(
+      prepared.issues.filter(({ reason }) => reason === "semantic-group-incomplete"),
+    ).toHaveLength(4);
+    const executed = executePreflightedDocxComparison({
+      state: baseState,
+      prepared,
+      revisionStamp: { idSeed: 1_200, date: "2026-09-12T00:00:00.000Z" },
+      author: "Comparison",
+    });
+    if (executed.status !== "executed") throw new Error("Expected an atomic no-op execution.");
+    expect(executed.receipt.instructions).toEqual([]);
+    expect(executed.receipt.changes).toEqual([]);
+    expect(baseState.apply(executed.receipt.transaction).doc.eq(baseState.doc)).toBe(true);
+    expect(baseState.doc.toJSON()).toEqual(before);
+  });
+
   test("rewrites a closing paragraph through the carrier after its owned table deletion", () => {
     const baseState = stateWithBlocks(
       paragraphNode("A1000000", "Retained opening"),

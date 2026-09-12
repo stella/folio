@@ -1823,15 +1823,24 @@ const applyInsertionRun = ({
   }[] = [];
   for (const { instruction } of run.members) {
     if (instruction.type === "insertTerminalCarrier") {
+      const textRevisionId = instruction.target.text.length > 0 ? nextRevisionId++ : null;
       const breakRevisionId = nextRevisionId++;
+      const tracked = trackedParagraph(
+        tr,
+        instruction.boundary,
+        instruction.target,
+        textRevisionId,
+        breakRevisionId,
+        author,
+        date,
+      );
       prepared.push({
         instruction,
-        paragraph: instruction.boundary.node.type.create({
-          ...stripBlockIdentityAttrs(instruction.boundary.node.attrs),
-          pPrMark: null,
-          _propertyChanges: null,
-        }),
-        revisionIds: Object.freeze([breakRevisionId]),
+        paragraph: tracked.type.create({ ...tracked.attrs, pPrMark: null }, tracked.content),
+        revisionIds: Object.freeze([
+          ...(textRevisionId === null ? [] : [textRevisionId]),
+          breakRevisionId,
+        ]),
       });
       continue;
     }
@@ -1859,7 +1868,8 @@ const applyInsertionRun = ({
   );
   for (const member of prepared) {
     if (member.instruction.type !== "insertTerminalCarrier") continue;
-    const breakRevisionId = member.revisionIds[0] ?? panic("A terminal carrier lost its break id");
+    const breakRevisionId =
+      member.revisionIds.at(-1) ?? panic("A terminal carrier lost its break id");
     tr.setNodeAttribute(member.instruction.breakOwner.from, "pPrMark", {
       kind: "ins",
       info: { id: breakRevisionId, author, date },

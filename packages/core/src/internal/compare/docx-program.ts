@@ -1280,9 +1280,6 @@ const compileInstruction = (
       if (boundary.paragraph !== breakOwner || boundary.type !== "afterParagraph") {
         return panic("A terminal carrier must extend its exact source paragraph");
       }
-      if (target.text.length > 0) {
-        return panic("A terminal table carrier must be an empty paragraph");
-      }
       return Object.freeze({ type: "insertTerminalCarrier", boundary, breakOwner, target });
     }
     case "deleteParagraph":
@@ -2187,31 +2184,60 @@ const compileSemanticOperationInput = (
     case "terminalTransition": {
       const operation = resolvedDocxTerminalTransitionOperandPayload(input.operation, comparison);
       if (operation.type === "tableAppend") {
-        const payload = resolvedDocxTableStructureOperandPayload(operation.operation, comparison);
-        if (payload.type !== "insertTable") {
-          return panic("A terminal appended table lost its insertion role");
-        }
         const chainStart = resolvedDocxSourceOperandBlock(operation.chainStart, sourceSnapshot);
-        const anchor = resolvedDocxSourceOperandBlock(payload.anchor.source, sourceSnapshot);
-        if (chainStart !== anchor || payload.anchor.position !== "after") {
-          return panic("A terminal appended table lost its canonical source boundary");
-        }
         const boundary: DocxComparisonParagraphInsertionBoundary = Object.freeze({
           type: "afterParagraph",
-          paragraph: payload.anchor.source,
+          paragraph: operation.chainStart,
         });
-        const sharesBoundary = (candidate: FolioContentParagraphInsertionBoundary): boolean =>
-          candidate.type === "afterParagraph" &&
-          candidate.paragraph === chainStart &&
-          candidate.containerAlignment === operation.alignment;
         const reports: DocxComparisonReportInput[] = [];
         const instructions: DocxComparisonInstructionInput[] = [];
-        for (const member of operation.targetMembers) {
+        for (const suffixMember of operation.targetSuffix) {
+          if (suffixMember.type === "terminalCarrier") {
+            if (suffixMember.occurrence.event.block.text.length > 0) {
+              reports.push(
+                ownSemanticReport({
+                  sequence: reportSequence(suffixMember.occurrence.sequence, 0),
+                  change: {
+                    kind: "insert",
+                    location: reportLocation(story, suffixMember.occurrence.event.block),
+                    targetBlockId: suffixMember.occurrence.event.block.identity.id,
+                    after: suffixMember.occurrence.event.block.text,
+                  },
+                }),
+              );
+            }
+            instructions.push({
+              type: "insertTerminalCarrier",
+              boundary,
+              breakOwner: operation.chainStart,
+              target: resolvedDocxTargetBlockOperand(
+                comparison,
+                suffixMember.occurrence.event.block,
+              ),
+            });
+            continue;
+          }
+          if (suffixMember.type === "table") {
+            const payload = resolvedDocxTableStructureOperandPayload(
+              suffixMember.operation,
+              comparison,
+            );
+            if (
+              payload.type !== "insertTable" ||
+              resolvedDocxSourceOperandBlock(payload.anchor.source, sourceSnapshot) !==
+                chainStart ||
+              payload.anchor.position !== "after"
+            ) {
+              return panic("A terminal target suffix lost its canonical table boundary");
+            }
+            const table = compileTableStructureOperation(suffixMember.operation, comparison, story);
+            reports.push(...table.reports);
+            instructions.push(...table.instructions);
+            continue;
+          }
+          const { member } = suffixMember;
           if (member.type === "inserted") {
             const { event, sequence } = member.occurrence;
-            if (!sharesBoundary(event.boundary)) {
-              return panic("A terminal appended paragraph lost its canonical boundary");
-            }
             reports.push(
               ownSemanticReport({
                 sequence: reportSequence(sequence, 0),
@@ -2231,10 +2257,7 @@ const compileSemanticOperationInput = (
             continue;
           }
           const { event, sequence } = member.occurrence;
-          const { relation, sourceRemovalBoundary, destinationBoundary } = event.move;
-          if (!sharesBoundary(destinationBoundary)) {
-            return panic("A terminal appended-table move lost its canonical destination");
-          }
+          const { relation, sourceRemovalBoundary } = event.move;
           if (
             sourceRemovalBoundary.type === "terminalPredecessor" ||
             sourceRemovalBoundary.type === "unanchoredContainer"
@@ -2276,15 +2299,6 @@ const compileSemanticOperationInput = (
             target: resolvedDocxTargetBlockOperand(comparison, relation.revised.block),
           });
         }
-        const table = compileTableStructureOperation(operation.operation, comparison, story);
-        reports.push(...table.reports);
-        instructions.push(...table.instructions);
-        instructions.push({
-          type: "insertTerminalCarrier",
-          boundary,
-          breakOwner: operation.chainStart,
-          target: resolvedDocxTargetBlockOperand(comparison, operation.carrier.event.block),
-        });
         const firstInstruction = instructions.at(0);
         if (!firstInstruction) return panic("A terminal appended table has no instruction");
         return compiledSemanticOperation({

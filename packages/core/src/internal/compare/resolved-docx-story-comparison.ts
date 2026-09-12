@@ -21,7 +21,6 @@ import type {
   FolioContentBaseContainerAlignment,
   FolioContentBlock,
   FolioContentContainerAlignment,
-  FolioContentParagraphInsertionBoundary,
   FolioContentPairedContainerAlignment,
   FolioContentRevisedContainerAlignment,
 } from "../../compare/content-types";
@@ -273,6 +272,23 @@ export type ResolvedDocxTerminalTargetMember =
       readonly source: ResolvedDocxEventOperandPayload<MovedFromEvent>;
     };
 
+export type ResolvedDocxTerminalTargetSuffixMember =
+  | {
+      readonly type: "paragraph";
+      readonly member: ResolvedDocxTerminalTargetMember;
+    }
+  | {
+      readonly type: "table";
+      readonly operation: Extract<
+        ResolvedDocxTableStructureOperand,
+        { readonly type: "insertTable" }
+      >;
+    }
+  | {
+      readonly type: "terminalCarrier";
+      readonly occurrence: ResolvedDocxEventOperandPayload<InsertedEvent>;
+    };
+
 /** One whole body table whose removal is part of the same terminal edge program. */
 export type ResolvedDocxTerminalDeletedTable = {
   readonly operation: Extract<ResolvedDocxTableStructureOperand, { readonly type: "deleteTable" }>;
@@ -310,9 +326,8 @@ export type ResolvedDocxTableAppendTerminalTransitionPayload = {
   readonly sequence: number;
   readonly alignment: FolioContentPairedContainerAlignment;
   readonly chainStart: ResolvedDocxSourceOperand;
-  readonly targetMembers: readonly ResolvedDocxTerminalTargetMember[];
-  readonly operation: Extract<ResolvedDocxTableStructureOperand, { readonly type: "insertTable" }>;
-  readonly carrier: ResolvedDocxEventOperandPayload<InsertedEvent>;
+  /** Exact target block order; it contains a table and any terminal carrier is last. */
+  readonly targetSuffix: NonEmptyReadonlyArray<ResolvedDocxTerminalTargetSuffixMember>;
 };
 
 export type ResolvedDocxTerminalTransitionOperandPayload =
@@ -1756,122 +1771,170 @@ const createComparisonIndex = (
       effect: Object.freeze({ type: "preserved-final" }),
     });
   }
-  for (const alignment of pairedContainerAlignments) {
-    if (alignment.base.type !== "body" || alignment.revised.type !== "body") continue;
-    const carrier = targetTerminalBlockByContainer.get(alignment);
-    const carrierEvent = carrier === undefined ? undefined : targetEventByBlock.get(carrier);
-    if (
-      !carrier ||
-      carrier.kind !== "paragraph" ||
-      carrier.table !== undefined ||
-      carrier.text.length !== 0 ||
-      carrierEvent?.type !== "inserted" ||
-      terminalTransitionByEvent.has(carrierEvent)
-    ) {
-      continue;
-    }
+  let targetSuffixPosition = targetBlocks.length - 1;
+  let targetCarrierOccurrence: ResolvedDocxEventOperandPayload<InsertedEvent> | null = null;
+  const terminalTargetBlock = targetBlocks[targetSuffixPosition];
+  const terminalTargetEvent =
+    terminalTargetBlock === undefined ? undefined : targetEventByBlock.get(terminalTargetBlock);
+  const canBeTerminalCarrier =
+    terminalInsertedBodyTableByLastPosition.size > 0 &&
+    terminalTargetBlock?.kind === "paragraph" &&
+    terminalTargetBlock.table === undefined &&
+    terminalTargetBlock.containerPath.length === 0 &&
+    terminalTargetEvent?.type === "inserted" &&
+    !terminalTransitionByEvent.has(terminalTargetEvent);
+  if (canBeTerminalCarrier) {
     work.terminalBoundaryVisits += 1;
-    const carrierPosition =
-      targetPositionByBlock.get(carrier) ?? panic("A target terminal carrier lost its position");
-    const insertedTable = terminalInsertedBodyTableByLastPosition.get(carrierPosition - 1);
-    if (!insertedTable) continue;
-    let targetPosition = insertedTable.firstPosition - 1;
-    const reversedTargetMembers: ResolvedDocxTerminalTargetMember[] = [];
-    for (; targetPosition >= 0; targetPosition--) {
-      work.terminalMemberVisits += 1;
-      const block = targetBlocks[targetPosition];
-      if (!block || targetContainerByBlock.get(block) !== alignment) break;
-      const member = targetMemberOf(block);
-      if (!member) break;
-      reversedTargetMembers.push(member);
-    }
-    const targetMembers = reversedTargetMembers.toReversed();
-    const targetPrefix = targetBlocks[targetPosition];
-    const chainStart = targetPrefix === undefined ? null : baseCounterpartOf(targetPrefix);
-    if (
-      !targetPrefix ||
-      !chainStart ||
-      targetContainerByBlock.get(targetPrefix) !== alignment ||
-      baseContainerByBlock.get(chainStart) !== alignment
-    ) {
+    const sequence = eventSequence.get(terminalTargetEvent);
+    if (sequence === undefined) return panic("A target terminal carrier lost its sequence");
+    targetCarrierOccurrence = Object.freeze({ event: terminalTargetEvent, sequence });
+    targetSuffixPosition--;
+  } else if (terminalInsertedBodyTableByLastPosition.has(targetSuffixPosition)) {
+    work.terminalBoundaryVisits += 1;
+  } else {
+    targetSuffixPosition = -1;
+  }
+  type TargetSuffixInput =
+    | { readonly type: "paragraph"; readonly member: ResolvedDocxTerminalTargetMember }
+    | { readonly type: "table"; readonly table: TerminalInsertedBodyTable };
+  const reversedTargetSuffix: TargetSuffixInput[] = [];
+  let containsTable = false;
+  for (; targetSuffixPosition >= 0; targetSuffixPosition--) {
+    work.terminalMemberVisits += 1;
+    const insertedTable = terminalInsertedBodyTableByLastPosition.get(targetSuffixPosition);
+    if (insertedTable) {
+      reversedTargetSuffix.push(Object.freeze({ type: "table", table: insertedTable }));
+      containsTable = true;
+      targetSuffixPosition = insertedTable.firstPosition;
       continue;
     }
-    const sharesAppendBoundary = (boundary: FolioContentParagraphInsertionBoundary): boolean =>
-      boundary.type === "afterParagraph" &&
-      boundary.paragraph === chainStart &&
-      boundary.containerAlignment === alignment;
-    if (
-      targetMembers.some(
-        (member) =>
-          !sharesAppendBoundary(
-            member.type === "inserted"
-              ? member.occurrence.event.boundary
-              : member.occurrence.event.move.destinationBoundary,
-          ),
-      )
-    ) {
-      continue;
-    }
-    const anchor = structuralInsertionBoundaryByChange.get(insertedTable.change);
-    if (
-      !anchor ||
-      anchor.position !== "after" ||
-      resolvedDocxSourceOperandBlock(anchor.source, payload.baseSnapshot) !== chainStart
-    ) {
-      continue;
-    }
-    const component = targetTableComponentMemberByTableIndex.get(insertedTable.change.tableIndex);
-    if (!component) return panic("A terminal appended table lost its component owner");
-    const issued = issueTableStructureOperandWithMembers(
-      owner,
-      { type: "insertTable", anchor, change: insertedTable.change },
-      [component],
-    );
-    if (issued.type !== "insertTable") {
-      return panic("A terminal appended table lost its insertion discriminator");
-    }
-    const ownedEvents = new Set<FolioContentComparisonEvent>([carrierEvent]);
-    for (const member of targetMembers) {
-      ownedEvents.add(member.occurrence.event);
-      if (member.type === "movedTo") ownedEvents.add(member.source.event);
-    }
-    const structuralIndexes = structuralEventIndexes.get(insertedTable.change);
-    if (!structuralIndexes) return panic("A terminal appended table lost its occurrences");
-    for (const index of structuralIndexes) {
-      const event = payload.comparison.events[index];
-      if (event?.type !== "structural" || event.change !== insertedTable.change) {
-        return panic("A terminal appended table occurrence lost its exact owner");
+    const block = targetBlocks[targetSuffixPosition];
+    if (!block || block.table !== undefined || block.containerPath.length > 0) break;
+    const member = targetMemberOf(block);
+    if (!member || terminalTransitionByEvent.has(member.occurrence.event)) break;
+    reversedTargetSuffix.push(Object.freeze({ type: "paragraph", member }));
+  }
+  const targetSuffixInputs = reversedTargetSuffix.toReversed();
+  const targetPrefix = targetBlocks[targetSuffixPosition];
+  const chainStart = targetPrefix === undefined ? null : baseCounterpartOf(targetPrefix);
+  const suffixAlignment = chainStart === null ? undefined : baseContainerByBlock.get(chainStart);
+  if (
+    containsTable &&
+    targetSuffixInputs.length > 0 &&
+    targetPrefix !== undefined &&
+    targetPrefix.table === undefined &&
+    targetPrefix.containerPath.length === 0 &&
+    chainStart !== null &&
+    chainStart.table === undefined &&
+    chainStart.containerPath.length === 0 &&
+    suffixAlignment?.type === "paired" &&
+    suffixAlignment.base.type === "body" &&
+    suffixAlignment.revised.type === "body"
+  ) {
+    const anchorSource = resolvedDocxSourceOperand(payload.baseSnapshot, chainStart);
+    let valid = true;
+    for (const input of targetSuffixInputs) {
+      if (input.type === "paragraph") {
+        const boundary =
+          input.member.type === "inserted"
+            ? input.member.occurrence.event.boundary
+            : input.member.occurrence.event.move.destinationBoundary;
+        if (
+          boundary.containerAlignment !== suffixAlignment ||
+          (boundary.type !== "unanchoredContainer" &&
+            (boundary.type !== "afterParagraph" || boundary.paragraph !== chainStart))
+        ) {
+          valid = false;
+          break;
+        }
+        continue;
       }
-      ownedEvents.add(event);
+      const anchor = structuralInsertionBoundaryByChange.get(input.table.change);
+      if (
+        !anchor ||
+        anchor.position !== "after" ||
+        resolvedDocxSourceOperandBlock(anchor.source, payload.baseSnapshot) !== chainStart
+      ) {
+        valid = false;
+        break;
+      }
+      const component = targetTableComponentMemberByTableIndex.get(input.table.change.tableIndex);
+      if (!component) return panic("A terminal appended table lost its component owner");
+      const structuralIndexes = structuralEventIndexes.get(input.table.change);
+      if (!structuralIndexes) return panic("A terminal appended table lost its occurrences");
+      for (const index of structuralIndexes) {
+        const event = payload.comparison.events[index];
+        if (event?.type !== "structural" || event.change !== input.table.change) {
+          return panic("A terminal appended table occurrence lost its exact owner");
+        }
+      }
     }
-    const sequence = Math.min(
-      ...[...ownedEvents].map(
-        (event) =>
-          eventSequence.get(event) ?? panic("A terminal appended table lost an event sequence"),
-      ),
-    );
-    const ownerEvent = payload.comparison.events[sequence];
-    if (!ownerEvent) return panic("A terminal appended table lost its owner event");
-    const carrierSequence = eventSequence.get(carrierEvent);
-    if (carrierSequence === undefined) {
-      return panic("A terminal appended table carrier lost its canonical sequence");
+    if (valid) {
+      const targetSuffix: ResolvedDocxTerminalTargetSuffixMember[] = [];
+      const ownedEvents = new Set<FolioContentComparisonEvent>();
+      for (const input of targetSuffixInputs) {
+        if (input.type === "paragraph") {
+          targetSuffix.push(Object.freeze({ type: "paragraph", member: input.member }));
+          ownedEvents.add(input.member.occurrence.event);
+          if (input.member.type === "movedTo") ownedEvents.add(input.member.source.event);
+          continue;
+        }
+        const component = targetTableComponentMemberByTableIndex.get(input.table.change.tableIndex);
+        if (!component) return panic("A terminal appended table lost its component owner");
+        const operation = issueTableStructureOperandWithMembers(
+          owner,
+          {
+            type: "insertTable",
+            anchor: { source: anchorSource, position: "after" },
+            change: input.table.change,
+          },
+          [component],
+        );
+        if (operation.type !== "insertTable") {
+          return panic("A terminal appended table lost its insertion discriminator");
+        }
+        targetSuffix.push(Object.freeze({ type: "table", operation }));
+        const structuralIndexes = structuralEventIndexes.get(input.table.change);
+        if (!structuralIndexes) return panic("A terminal appended table lost its occurrences");
+        for (const index of structuralIndexes) {
+          const event = payload.comparison.events[index];
+          if (!event) return panic("A terminal appended table occurrence disappeared");
+          ownedEvents.add(event);
+        }
+      }
+      if (targetCarrierOccurrence !== null) {
+        targetSuffix.push(
+          Object.freeze({ type: "terminalCarrier", occurrence: targetCarrierOccurrence }),
+        );
+        ownedEvents.add(targetCarrierOccurrence.event);
+      }
+      const firstTarget = targetSuffix.at(0);
+      if (!firstTarget) return panic("A terminal target suffix lost its first member");
+      const sequence = Math.min(
+        ...[...ownedEvents].map(
+          (event) =>
+            eventSequence.get(event) ?? panic("A terminal target suffix lost an event sequence"),
+        ),
+      );
+      const ownerEvent = payload.comparison.events[sequence];
+      if (!ownerEvent) return panic("A terminal target suffix lost its owner event");
+      const operand = issueTerminalTransitionOperand(owner, {
+        type: "tableAppend",
+        sequence,
+        alignment: suffixAlignment,
+        chainStart: anchorSource,
+        targetSuffix: Object.freeze([firstTarget, ...targetSuffix.slice(1)]),
+      });
+      for (const event of ownedEvents) claimTransitionEvent(event, operand);
+      terminalTransitionOwnerEvents.add(ownerEvent);
+      if (targetCarrierOccurrence !== null) {
+        claimTerminalEdge(chainStart, {
+          operation: operand,
+          terminalRole: "chain-start",
+          effect: Object.freeze({ type: "appended-carrier", kind: "ins" }),
+        });
+      }
     }
-    const operand = issueTerminalTransitionOperand(owner, {
-      type: "tableAppend",
-      sequence,
-      alignment,
-      chainStart: resolvedDocxSourceOperand(payload.baseSnapshot, chainStart),
-      targetMembers: Object.freeze(targetMembers),
-      operation: issued,
-      carrier: Object.freeze({ event: carrierEvent, sequence: carrierSequence }),
-    });
-    for (const event of ownedEvents) claimTransitionEvent(event, operand);
-    terminalTransitionOwnerEvents.add(ownerEvent);
-    claimTerminalEdge(chainStart, {
-      operation: operand,
-      terminalRole: "chain-start",
-      effect: Object.freeze({ type: "appended-carrier", kind: "ins" }),
-    });
   }
   const terminalTargetTableIndex = targetBlocks.at(-1)?.table?.outerTableIndex;
   if (terminalTargetTableIndex !== undefined) {
