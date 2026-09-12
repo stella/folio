@@ -4,7 +4,7 @@ import type { Document } from "../../types/document";
 import { fromProseDoc } from "../../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import { parseRunProperties } from "../runParser";
-import { serializeTextFormatting } from "../serializer/runSerializer";
+import { serializeTextFormatting } from "../serializer/textFormattingSerializer";
 import { parseXml } from "../xmlParser";
 import type { XmlElement } from "../xmlParser";
 

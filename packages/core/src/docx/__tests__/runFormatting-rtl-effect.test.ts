@@ -6,7 +6,7 @@ import { describe, expect, test } from "bun:test";
 
 import { TEXT_EFFECT_VALUES } from "../../types/documentEnumValues";
 import { parseRunProperties } from "../runParser";
-import { serializeTextFormatting } from "../serializer/runSerializer";
+import { serializeTextFormatting } from "../serializer/textFormattingSerializer";
 import { parseXml } from "../xmlParser";
 import type { XmlElement } from "../xmlParser";
 

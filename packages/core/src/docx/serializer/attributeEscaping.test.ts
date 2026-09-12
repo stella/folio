@@ -14,7 +14,7 @@ import type { SectionProperties, TextFormatting } from "../../types/document";
 import { parseRunProperties } from "../runParser";
 import { parseXmlDocument } from "../xmlParser";
 import type { XmlElement } from "../xmlParser";
-import { serializeTextFormatting } from "./runSerializer";
+import { serializeTextFormatting } from "./textFormattingSerializer";
 import { serializeSectionProperties } from "./sectionPropertiesSerializer";
 
 const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";

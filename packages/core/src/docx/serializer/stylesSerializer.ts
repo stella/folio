@@ -1,7 +1,7 @@
 import type { Style, StyleDefinitions } from "../../types/document";
 import { serializePartElement } from "./partNamespaces";
 import { serializeParagraphFormatting } from "./paragraphSerializer";
-import { serializeTextFormatting } from "./runSerializer";
+import { serializeTextFormatting } from "./textFormattingSerializer";
 import {
   serializeTableCellFormatting,
   serializeTableFormatting,

@@ -57,8 +57,9 @@ import {
 } from "../xmlParser";
 import { serializeBorder } from "./borderSerializer";
 // oxlint-disable-next-line import/no-cycle -- OOXML model is mutually recursive: paragraphs hold runs, shape-textbox runs hold paragraphs
-import { serializeRun, serializeTextFormatting } from "./runSerializer";
+import { serializeRun } from "./runSerializer";
 import { serializeSectionProperties } from "./sectionPropertiesSerializer";
+import { serializeTextFormatting } from "./textFormattingSerializer";
 import {
   serializeTrackedChangeAttributes,
   trackedChangeAttributeRecord,

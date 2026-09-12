@@ -1,7 +1,7 @@
 import { describe, test, expect } from "bun:test";
 
 import { parseRunProperties } from "../runParser";
-import { serializeTextFormatting } from "../serializer/runSerializer";
+import { serializeTextFormatting } from "../serializer/textFormattingSerializer";
 import { parseXml } from "../xmlParser";
 import type { XmlElement } from "../xmlParser";
 

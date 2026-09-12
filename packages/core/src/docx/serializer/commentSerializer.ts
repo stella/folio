@@ -9,7 +9,7 @@ import type { Comment, Paragraph } from "../../types/content";
 import type { TextFormatting } from "../../types/formatting";
 import { serializePartElement, type OoxmlNamespacePrefix } from "./partNamespaces";
 import { serializeParagraph } from "./paragraphSerializer";
-import { serializeTextFormatting } from "./runSerializer";
+import { serializeTextFormatting } from "./textFormattingSerializer";
 import { escapeXml } from "./xmlUtils";
 
 const DEFAULT_ANNOTATION_REFERENCE_PROPERTIES =

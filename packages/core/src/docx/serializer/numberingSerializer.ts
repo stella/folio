@@ -30,7 +30,7 @@ import type {
   ParagraphFormatting,
 } from "../../types/document";
 import { serializePartElement } from "./partNamespaces";
-import { serializeTextFormatting } from "./runSerializer";
+import { serializeTextFormatting } from "./textFormattingSerializer";
 import { escapeXml, intAttr } from "./xmlUtils";
 
 /**
