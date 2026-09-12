@@ -10,7 +10,6 @@
 
 import type JSZip from "jszip";
 
-import type { Run } from "../types/content";
 import type { Document, BlockContent, Comment } from "../types/document";
 import { parseCommentsExtended, type CommentExtendedInfo } from "./commentParser";
 import { withoutOrphanCommentRanges } from "./commentRangeIntegrity";
@@ -19,6 +18,7 @@ import { validateFolioDocumentModel } from "./modelValidation";
 import { isNewDataUrlDrawing } from "./newImage";
 import { parseNumbering } from "./numberingParser";
 import { isUnsafePackagePath } from "./packageParts";
+import { visitDocxParagraphs, visitParagraphInlineContent } from "./paragraphTraversal";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import {
   applyUpdatesToZip,
@@ -58,45 +58,21 @@ import { readRootNamespaceBindings } from "./serializer/partNamespaces";
  * to avoid walking the block tree twice.
  */
 function hasNewImagesOrHyperlinks(blocks: BlockContent[]): boolean {
-  const runHasNewImage = (run: Run): boolean => run.content.some(isNewDataUrlDrawing);
-
-  for (const block of blocks) {
-    if (block.type === "paragraph") {
-      for (const item of block.content) {
-        if (item.type === "run") {
-          if (runHasNewImage(item)) {
-            return true;
-          }
-        } else if (item.type === "hyperlink" && item.href && !item.rId && !item.anchor) {
-          return true;
-        } else if (
-          // A picture inserted/deleted/moved under track changes lives inside
-          // an ins/del/moveFrom/moveTo wrapper. Without descending into them,
-          // a freshly tracked image gets no rId allocated and the saved DOCX
-          // references missing media. eigenpal #641.
-          item.type === "insertion" ||
-          item.type === "deletion" ||
-          item.type === "moveFrom" ||
-          item.type === "moveTo"
-        ) {
-          for (const sub of item.content) {
-            if (sub.type === "run" && runHasNewImage(sub)) {
-              return true;
-            }
-          }
-        }
+  let found = false;
+  visitDocxParagraphs({ documentBody: { content: blocks } }, (paragraph) => {
+    if (found) return;
+    visitParagraphInlineContent(paragraph, (content) => {
+      if (found) return;
+      if (content.type === "run") {
+        found = content.content.some(isNewDataUrlDrawing);
+        return;
       }
-    } else if (block.type === "table") {
-      for (const row of block.rows) {
-        for (const cell of row.cells) {
-          if (hasNewImagesOrHyperlinks(cell.content)) {
-            return true;
-          }
-        }
+      if (content.type === "hyperlink") {
+        found = Boolean(content.href && !content.rId && !content.anchor);
       }
-    }
-  }
-  return false;
+    });
+  });
+  return found;
 }
 
 /**

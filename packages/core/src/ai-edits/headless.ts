@@ -65,6 +65,7 @@ import {
   headerFooterToProseDoc,
   toProseDoc,
 } from "../prosemirror/conversion/toProseDoc";
+import { canonicalizeHyperlinkOccurrenceIndexes } from "../prosemirror/hyperlinkOccurrence";
 import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/AutoBidiDetectionExtension";
 import {
   getChangedParagraphIds,
@@ -528,7 +529,12 @@ const resolveReviewedState = (state: EditorState, view: FolioReviewedView): Edit
   if (view === "current-markup") {
     return state;
   }
-  return resolveAllChangesInHeadlessState(state, view === "original" ? "reject" : "accept");
+  const resolved = resolveAllChangesInHeadlessState(
+    state,
+    view === "original" ? "reject" : "accept",
+  );
+  const canonical = canonicalizeHyperlinkOccurrenceIndexes(resolved.tr);
+  return canonical.docChanged ? resolved.apply(canonical) : resolved;
 };
 
 const createHeadlessPlugins = (
@@ -1528,7 +1534,10 @@ export class FolioDocxReviewer {
         continue;
       }
       count += getTrackedChangesFromDoc(state.doc).length;
-      this.setEditableStoryState(handle, resolveAllChangesInHeadlessState(state, mode));
+      this.setEditableStoryState(
+        handle,
+        resolveReviewedState(state, mode === "accept" ? "final" : "original"),
+      );
     }
     return count;
   }

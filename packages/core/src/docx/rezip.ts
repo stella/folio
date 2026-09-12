@@ -53,6 +53,7 @@ import { withoutOrphanCommentRanges } from "./commentRangeIntegrity";
 import { parseEndnotes, parseFootnotes } from "./footnoteParser";
 import { assertValidFolioDocumentModel } from "./modelValidation";
 import { isNewDataUrlDrawing } from "./newImage";
+import { visitDocxParagraphs, visitParagraphInlineContent } from "./paragraphTraversal";
 import { parseNumbering } from "./numberingParser";
 import { parseRelationships, RELATIONSHIP_TYPES, resolveRelativePath } from "./relsParser";
 import {
@@ -730,26 +731,15 @@ async function processNewImages(
  * Collect all hyperlinks that have an href but no rId from block content.
  * These are newly created hyperlinks that need relationship entries.
  */
-export function collectHyperlinksWithoutRId(blocks: BlockContent[]): Hyperlink[] {
+export function collectHyperlinksWithoutRId(blocks: readonly BlockContent[]): Hyperlink[] {
   const hyperlinks: Hyperlink[] = [];
-
-  for (const block of blocks) {
-    if (block.type === "paragraph") {
-      for (const item of block.content) {
-        if (item.type === "hyperlink" && item.href && !item.rId && !item.anchor) {
-          hyperlinks.push(item);
-        }
+  visitDocxParagraphs({ documentBody: { content: [...blocks] } }, (paragraph) => {
+    visitParagraphInlineContent(paragraph, (content) => {
+      if (content.type === "hyperlink" && content.href && !content.rId && !content.anchor) {
+        hyperlinks.push(content);
       }
-    } else if (block.type === "table") {
-      for (const row of block.rows) {
-        for (const cell of row.cells) {
-          hyperlinks.push(...collectHyperlinksWithoutRId(cell.content));
-        }
-      }
-    } else {
-      hyperlinks.push(...collectHyperlinksWithoutRId(block.content));
-    }
-  }
+    });
+  });
 
   return hyperlinks;
 }

@@ -120,6 +120,9 @@ export const HyperlinkExtension = createMarkExtension({
     attrs: {
       href: {},
       tooltip: { default: null },
+      target: { default: null },
+      history: { default: null },
+      docLocation: { default: null },
       rId: { default: null },
       _docxHyperlinkIndex: { default: null },
     },

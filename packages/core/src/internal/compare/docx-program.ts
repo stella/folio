@@ -30,6 +30,8 @@ import {
 import {
   resolvedDocxAuthoredRunsForBlock,
   resolvedDocxAuthoredRunsForRange,
+  resolvedDocxInlineOwnershipForBlock,
+  resolvedDocxInlineOwnershipForRange,
   resolvedDocxSourceOperand,
   resolvedDocxSourceOperandBlock,
   resolvedDocxSourceOperandSnapshot,
@@ -87,6 +89,33 @@ export type DocxAuthoredRun = {
   readonly formatting: Readonly<TextFormatting>;
 };
 
+/** One serializer-supported inline container, independent of package-local ids. */
+export type DocxInlineOccurrence = {
+  readonly blockId: string;
+  readonly index: number;
+};
+
+export const docxInlineOccurrenceKey = (occurrence: DocxInlineOccurrence): string =>
+  JSON.stringify(occurrence);
+
+export type DocxInlineContainer = {
+  readonly type: "hyperlink";
+  readonly href: string;
+  readonly tooltip?: string;
+  readonly target?: string;
+  readonly history?: boolean;
+  readonly docLocation?: string;
+  /** Distinguishes adjacent same-target container occurrences. */
+  readonly occurrence: DocxInlineOccurrence;
+};
+
+/** A total UTF-16 partition of text by its enclosing inline containers. */
+export type DocxInlineOwnershipRun = {
+  readonly startOffset: number;
+  readonly endOffset: number;
+  readonly containers: readonly DocxInlineContainer[];
+};
+
 export type DocxAuthoredChangeRange = {
   readonly baseStart: number;
   readonly baseEnd: number;
@@ -102,6 +131,7 @@ type DocxComparisonRangePlanInput = {
   readonly segments: readonly FolioContentTextSegment[];
   readonly sourceRuns: readonly DocxAuthoredRun[];
   readonly targetRuns: readonly DocxAuthoredRun[];
+  readonly targetInlineOwnership: readonly DocxInlineOwnershipRun[];
   readonly authoredChanges: readonly DocxAuthoredChangeRange[];
 };
 
@@ -274,6 +304,7 @@ export type DocxComparisonEqualFragment = {
   readonly revisedEnd: number;
   readonly sourceFormatting: Readonly<TextFormatting>;
   readonly targetFormatting: Readonly<TextFormatting>;
+  readonly targetInlineContainers: readonly DocxInlineContainer[];
   /** Empty means the canonical comparison says authorship is unchanged. */
   readonly changedProperties: readonly string[];
 };
@@ -296,6 +327,7 @@ export type DocxComparisonInsertedFragment = {
   readonly revisedStart: number;
   readonly revisedEnd: number;
   readonly targetFormatting: Readonly<TextFormatting>;
+  readonly targetInlineContainers: readonly DocxInlineContainer[];
 };
 
 export type DocxComparisonTextFragment =
@@ -312,6 +344,7 @@ export type DocxComparisonRangePlan = {
 export type DocxComparisonParagraphTarget = {
   readonly text: string;
   readonly runs: readonly DocxAuthoredRun[];
+  readonly inlineOwnership: readonly DocxInlineOwnershipRun[];
   readonly properties: Readonly<FolioAIBlockParagraphProperties>;
   readonly table?: Readonly<FolioAIBlockTableLocation>;
 };
@@ -380,6 +413,7 @@ type DocxComparisonInstructionPayload =
       readonly second: DocxComparisonRangePlan;
       readonly separatorText: string;
       readonly separatorRuns: readonly DocxAuthoredRun[];
+      readonly separatorInlineOwnership: readonly DocxInlineOwnershipRun[];
       readonly target: DocxComparisonParagraphTarget;
     }
   | {
@@ -488,7 +522,110 @@ const ownRuns = (text: string, runs: readonly DocxAuthoredRun[]): readonly DocxA
   return Object.freeze(owned);
 };
 
+const ownInlineContainers = (
+  containers: readonly DocxInlineContainer[],
+  occurrences: Map<
+    string,
+    { readonly signature: string; readonly occurrence: DocxInlineOccurrence }
+  >,
+): readonly DocxInlineContainer[] => {
+  if (containers.length > 1) {
+    return panic("A DOCX comparison text range has nested hyperlink ownership");
+  }
+  return Object.freeze(
+    containers.map((container) => {
+      switch (container.type) {
+        case "hyperlink": {
+          const occurrenceKey = docxInlineOccurrenceKey(container.occurrence);
+          if (
+            container.occurrence.blockId.length === 0 ||
+            !Number.isSafeInteger(container.occurrence.index) ||
+            container.occurrence.index < 0
+          ) {
+            return panic("A DOCX comparison hyperlink owner is invalid", { container });
+          }
+          const signature = JSON.stringify({
+            href: container.href,
+            tooltip: container.tooltip ?? null,
+            target: container.target ?? null,
+            history: container.history ?? null,
+            docLocation: container.docLocation ?? null,
+          });
+          const previous = occurrences.get(occurrenceKey);
+          if (previous !== undefined && previous.signature !== signature) {
+            return panic("A DOCX comparison hyperlink occurrence changes identity", {
+              occurrence: container.occurrence,
+            });
+          }
+          const occurrence = previous?.occurrence ?? Object.freeze({ ...container.occurrence });
+          occurrences.set(occurrenceKey, Object.freeze({ signature, occurrence }));
+          return Object.freeze({
+            type: container.type,
+            href: container.href,
+            ...(container.tooltip !== undefined && { tooltip: container.tooltip }),
+            ...(container.target !== undefined && { target: container.target }),
+            ...(container.history !== undefined && { history: container.history }),
+            ...(container.docLocation !== undefined && { docLocation: container.docLocation }),
+            occurrence,
+          });
+        }
+        default: {
+          const unreachable: never = container;
+          return panic("Unhandled DOCX inline container", { container: unreachable });
+        }
+      }
+    }),
+  );
+};
+
+const ownInlineOwnership = (
+  text: string,
+  runs: readonly DocxInlineOwnershipRun[],
+): readonly DocxInlineOwnershipRun[] => {
+  const owned: DocxInlineOwnershipRun[] = [];
+  const occurrences = new Map<
+    string,
+    { readonly signature: string; readonly occurrence: DocxInlineOccurrence }
+  >();
+  let offset = 0;
+  for (const run of runs) {
+    if (
+      run.startOffset !== offset ||
+      run.endOffset < run.startOffset ||
+      run.endOffset > text.length ||
+      (run.endOffset === run.startOffset && text.length > 0)
+    ) {
+      return panic("A DOCX inline-ownership plan is not contiguous", { offset, run });
+    }
+    owned.push(
+      Object.freeze({
+        startOffset: run.startOffset,
+        endOffset: run.endOffset,
+        containers: ownInlineContainers(run.containers, occurrences),
+      }),
+    );
+    offset = run.endOffset;
+  }
+  if (
+    offset !== text.length ||
+    runs.length === 0 ||
+    (text.length === 0 &&
+      (runs.length !== 1 || runs[0]?.startOffset !== 0 || runs[0]?.endOffset !== 0))
+  ) {
+    return panic("A DOCX inline-ownership plan does not reconstruct its text", {
+      expected: text.length,
+      actual: offset,
+    });
+  }
+  return Object.freeze(owned);
+};
+
 type RunCursor = { readonly runs: readonly DocxAuthoredRun[]; index: number };
+
+type InlineOwnershipCursor = {
+  readonly runs: readonly DocxInlineOwnershipRun[];
+  index: number;
+};
 
 const runAt = (cursor: RunCursor, offset: number, textLength: number): DocxAuthoredRun => {
   while (
@@ -504,6 +641,28 @@ const runAt = (cursor: RunCursor, offset: number, textLength: number): DocxAutho
     (offset === textLength && run.endOffset !== textLength)
   ) {
     return panic("A DOCX comparison range lost its authored run", { offset, textLength });
+  }
+  return run;
+};
+
+const inlineOwnershipAt = (
+  cursor: InlineOwnershipCursor,
+  offset: number,
+  textLength: number,
+): DocxInlineOwnershipRun => {
+  while (
+    cursor.index + 1 < cursor.runs.length &&
+    (cursor.runs[cursor.index]?.endOffset ?? 0) <= offset
+  ) {
+    cursor.index++;
+  }
+  const run = cursor.runs[cursor.index];
+  if (
+    !run ||
+    (offset < textLength && (offset < run.startOffset || offset >= run.endOffset)) ||
+    (offset === textLength && run.endOffset !== textLength)
+  ) {
+    return panic("A DOCX comparison range lost its inline ownership", { offset, textLength });
   }
   return run;
 };
@@ -669,6 +828,7 @@ const compileRange = (input: DocxComparisonRangePlanInput): DocxComparisonRangeP
   const segments = ownSegments(input.sourceText, input.targetText, input.segments);
   const sourceRuns = ownRuns(input.sourceText, input.sourceRuns);
   const targetRuns = ownRuns(input.targetText, input.targetRuns);
+  const targetInlineOwnership = ownInlineOwnership(input.targetText, input.targetInlineOwnership);
   const authoredChanges = ownAuthoredChanges(
     input.sourceText,
     input.targetText,
@@ -676,6 +836,10 @@ const compileRange = (input: DocxComparisonRangePlanInput): DocxComparisonRangeP
   );
   const sourceCursor: RunCursor = { runs: sourceRuns, index: 0 };
   const targetCursor: RunCursor = { runs: targetRuns, index: 0 };
+  const targetInlineCursor: InlineOwnershipCursor = {
+    runs: targetInlineOwnership,
+    index: 0,
+  };
   const fragments: DocxComparisonTextFragment[] = [];
   let changeIndex = 0;
 
@@ -709,7 +873,12 @@ const compileRange = (input: DocxComparisonRangePlanInput): DocxComparisonRangeP
       }
       if (segment.type === "ins") {
         const targetRun = runAt(targetCursor, revisedOffset, input.targetText.length);
-        const end = Math.min(segment.revisedEnd, targetRun.endOffset);
+        const targetInline = inlineOwnershipAt(
+          targetInlineCursor,
+          revisedOffset,
+          input.targetText.length,
+        );
+        const end = Math.min(segment.revisedEnd, targetRun.endOffset, targetInline.endOffset);
         fragments.push(
           Object.freeze({
             type: "ins",
@@ -719,6 +888,7 @@ const compileRange = (input: DocxComparisonRangePlanInput): DocxComparisonRangeP
             revisedStart: revisedOffset,
             revisedEnd: end,
             targetFormatting: targetRun.formatting,
+            targetInlineContainers: targetInline.containers,
           }),
         );
         revisedOffset = end;
@@ -727,6 +897,11 @@ const compileRange = (input: DocxComparisonRangePlanInput): DocxComparisonRangeP
 
       const sourceRun = runAt(sourceCursor, baseOffset, input.sourceText.length);
       const targetRun = runAt(targetCursor, revisedOffset, input.targetText.length);
+      const targetInline = inlineOwnershipAt(
+        targetInlineCursor,
+        revisedOffset,
+        input.targetText.length,
+      );
       const activeChange = changedRangeAt(authoredChanges, changeIndex, baseOffset, revisedOffset);
       const nextChange = authoredChanges[changeIndex];
       const changeBaseBoundary = activeChange
@@ -740,6 +915,7 @@ const compileRange = (input: DocxComparisonRangePlanInput): DocxComparisonRangeP
         segment.revisedEnd - revisedOffset,
         sourceRun.endOffset - baseOffset,
         targetRun.endOffset - revisedOffset,
+        targetInline.endOffset - revisedOffset,
         changeBaseBoundary - baseOffset,
         changeRevisedBoundary - revisedOffset,
       );
@@ -772,6 +948,7 @@ const compileRange = (input: DocxComparisonRangePlanInput): DocxComparisonRangeP
           revisedEnd: revisedOffset + length,
           sourceFormatting: sourceRun.formatting,
           targetFormatting: targetRun.formatting,
+          targetInlineContainers: targetInline.containers,
           changedProperties,
         }),
       );
@@ -925,6 +1102,10 @@ const ownParagraphTargetBlock = (
   Object.freeze({
     text: block.text,
     runs: ownRuns(block.text, resolvedDocxAuthoredRunsForBlock(targetSnapshot, block)),
+    inlineOwnership: ownInlineOwnership(
+      block.text,
+      resolvedDocxInlineOwnershipForBlock(targetSnapshot, block),
+    ),
     properties: ownParagraphProperties(docxParagraphPropertiesFromBlock(block)),
     ...(block.table !== undefined && {
       table: ownTableLocation(docxTableLocationFromContent(block.table)),
@@ -992,6 +1173,12 @@ const rangeInputForRelation = (
       relation.base.endOffset,
     ),
     targetRuns: resolvedDocxAuthoredRunsForRange(
+      targetSnapshot,
+      targetBlock,
+      relation.revised.startOffset,
+      relation.revised.endOffset,
+    ),
+    targetInlineOwnership: resolvedDocxInlineOwnershipForRange(
       targetSnapshot,
       targetBlock,
       relation.revised.startOffset,
@@ -1074,6 +1261,12 @@ const compileFormattingRangeOperand = (
       formattingRange.revisedStart,
       formattingRange.revisedEnd,
     ),
+    targetInlineOwnership: resolvedDocxInlineOwnershipForRange(
+      targetSnapshot,
+      relation.revised.block,
+      formattingRange.revisedStart,
+      formattingRange.revisedEnd,
+    ),
     authoredChanges: Object.freeze([
       Object.freeze({
         baseStart: 0,
@@ -1137,6 +1330,7 @@ const compileWholeBlockReplacement = (
     segments: wholeReplacementSegments(baseBlock.text, targetBlock.text),
     sourceRuns: resolvedDocxAuthoredRunsForBlock(sourceSnapshot, baseBlock),
     targetRuns: resolvedDocxAuthoredRunsForBlock(targetSnapshot, targetBlock),
+    targetInlineOwnership: resolvedDocxInlineOwnershipForBlock(targetSnapshot, targetBlock),
     authoredChanges: Object.freeze([]),
   });
   assertRangeMatchesSource(source, sourceSnapshot, 0, range);
@@ -1427,6 +1621,15 @@ const compileInstruction = (
           separatorRelation.revised.endOffset,
         ),
       );
+      const separatorInlineOwnership = ownInlineOwnership(
+        separatorText,
+        resolvedDocxInlineOwnershipForRange(
+          targetSnapshot,
+          separatorRelation.revised.block,
+          separatorRelation.revised.startOffset,
+          separatorRelation.revised.endOffset,
+        ),
+      );
       const target = ownParagraphTargetBlock(firstRelation.revised.block, targetSnapshot);
       const targetText = `${first.targetText}${separatorText}${second.targetText}`;
       if (
@@ -1475,6 +1678,7 @@ const compileInstruction = (
         second,
         separatorText,
         separatorRuns,
+        separatorInlineOwnership,
         target,
       });
     }

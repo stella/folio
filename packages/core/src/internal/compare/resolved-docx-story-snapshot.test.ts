@@ -10,6 +10,8 @@ import {
   resolvedDocxAuthoredRunsForBlock,
   resolvedDocxContentBlocks,
   resolvedDocxHasExactAuthoredRuns,
+  resolvedDocxInlineOwnershipForBlock,
+  resolvedDocxInlineOwnershipForRange,
   resolvedDocxOperationSnapshot,
   resolvedDocxSourceDocument,
   resolvedDocxTableNodes,
@@ -259,6 +261,112 @@ describe("owned live DOCX story projection", () => {
     if (!snapshot) throw new Error("main story projection missing");
 
     expect(resolvedDocxSourceDocument(snapshot)).toBe(sourceDocument);
+  });
+
+  test("partitions UTF-16 text by package-neutral inline ownership", () => {
+    const document = createEmptyDocument();
+    const href = "https://example.invalid/same";
+    document.package.document.content = [
+      {
+        type: "paragraph",
+        paraId: "A1000001",
+        content: [
+          { type: "run", content: [{ type: "text", text: "😀" }] },
+          {
+            type: "hyperlink",
+            rId: "rId7",
+            href,
+            tooltip: "first",
+            target: "_self",
+            history: false,
+            docLocation: "section-one",
+            children: [
+              { type: "run", content: [{ type: "text", text: "li" }] },
+              { type: "run", content: [{ type: "text", text: "nk" }] },
+            ],
+          },
+          { type: "run", content: [{ type: "text", text: "/" }] },
+          {
+            type: "hyperlink",
+            rId: "rId8",
+            href,
+            children: [{ type: "run", content: [{ type: "text", text: "again" }] }],
+          },
+          { type: "run", content: [{ type: "text", text: "Z" }] },
+        ],
+      },
+    ];
+    const snapshot = createResolvedDocxStorySnapshot({
+      document,
+      story: { type: "main" },
+      sourceDocument: toProseDoc(document),
+    });
+    if (!snapshot) throw new Error("main story projection missing");
+    const block = resolvedDocxContentBlocks(snapshot).at(0);
+    if (!block) throw new Error("projected paragraph missing");
+
+    expect(block.text).toBe("😀link/againZ");
+    expect(resolvedDocxInlineOwnershipForBlock(snapshot, block)).toEqual([
+      { startOffset: 0, endOffset: 2, containers: [] },
+      {
+        startOffset: 2,
+        endOffset: 6,
+        containers: [
+          {
+            type: "hyperlink",
+            href,
+            tooltip: "first",
+            target: "_self",
+            history: false,
+            docLocation: "section-one",
+            occurrence: { blockId: "A1000001", index: 0 },
+          },
+        ],
+      },
+      { startOffset: 6, endOffset: 7, containers: [] },
+      {
+        startOffset: 7,
+        endOffset: 12,
+        containers: [
+          {
+            type: "hyperlink",
+            href,
+            occurrence: { blockId: "A1000001", index: 1 },
+          },
+        ],
+      },
+      { startOffset: 12, endOffset: 13, containers: [] },
+    ]);
+    expect(resolvedDocxInlineOwnershipForRange(snapshot, block, 3, 10)).toEqual([
+      {
+        startOffset: 0,
+        endOffset: 3,
+        containers: [
+          {
+            type: "hyperlink",
+            href,
+            tooltip: "first",
+            target: "_self",
+            history: false,
+            docLocation: "section-one",
+            occurrence: { blockId: "A1000001", index: 0 },
+          },
+        ],
+      },
+      { startOffset: 3, endOffset: 4, containers: [] },
+      {
+        startOffset: 4,
+        endOffset: 7,
+        containers: [
+          {
+            type: "hyperlink",
+            href,
+            occurrence: { blockId: "A1000001", index: 1 },
+          },
+        ],
+      },
+    ]);
+    expect(Object.isFrozen(resolvedDocxInlineOwnershipForBlock(snapshot, block))).toBe(true);
   });
 
   test("retains live table ownership when a cell contains a text box", () => {

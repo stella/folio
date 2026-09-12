@@ -3334,6 +3334,9 @@ function convertHyperlink(
   const linkMark = schema.mark("hyperlink", {
     href,
     tooltip: hyperlink.tooltip,
+    target: hyperlink.target,
+    history: hyperlink.history,
+    docLocation: hyperlink.docLocation,
     rId: hyperlink.rId,
     _docxHyperlinkIndex: hyperlinkIndex,
   });

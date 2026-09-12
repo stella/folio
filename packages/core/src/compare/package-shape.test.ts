@@ -253,7 +253,9 @@ describe("hyperlink nesting", () => {
     },
   ])("$name keeps the revision inside the link", async ({ base, target }) => {
     const xml = await comparedDocumentXml(base, target);
-    for (const ancestors of hyperlinkAncestors(xml)) {
+    const links = hyperlinkAncestors(xml);
+    expect(links.length).toBeGreaterThan(0);
+    for (const ancestors of links) {
       expect(ancestors).not.toContain("w:ins");
       expect(ancestors).not.toContain("w:del");
       expect(ancestors).not.toContain("w:moveFrom");
@@ -268,6 +270,137 @@ describe("hyperlink nesting", () => {
     );
     expect(xml).toContain(`<w:hyperlink r:id="rId2"><w:del`);
     expect(/<w:hyperlink[^>]*><w:del\b[^>]*>(?:(?!<\/w:del>).)*<w:delText/su.test(xml)).toBe(true);
+  });
+
+  test("inserts text inside its target hyperlink owner", async () => {
+    const href = "https://example.invalid/section";
+    const xml = await comparedDocumentXml(
+      [{ kind: "paragraph", text: [{ text: "alpha gamma", href }] }],
+      [{ kind: "paragraph", text: [{ text: "alpha beta gamma", href }] }],
+    );
+
+    expect(xml).toMatch(
+      /<w:hyperlink\b[^>]*>(?:(?!<\/w:hyperlink>).)*<w:ins\b[^>]*>(?:(?!<\/w:ins>).)*<w:t xml:space="preserve"> beta<\/w:t>/su,
+    );
+  });
+
+  test("extends target hyperlink ownership over inserted boundary text", async () => {
+    const href = "https://example.invalid/section";
+    const xml = await comparedDocumentXml(
+      [{ kind: "paragraph", text: [{ text: "alpha", href }, " gamma"] }],
+      [{ kind: "paragraph", text: [{ text: "alpha beta", href }, " gamma"] }],
+    );
+
+    expect(xml).toMatch(
+      /<w:hyperlink\b[^>]*>(?:(?!<\/w:hyperlink>).)*<w:ins\b[^>]*>(?:(?!<\/w:ins>).)*<w:t xml:space="preserve"> beta<\/w:t>/su,
+    );
+  });
+
+  test("keeps adjacent same-target hyperlink occurrences distinct", async () => {
+    const href = "https://example.invalid/repeated";
+    const xml = await comparedDocumentXml(
+      [{ kind: "paragraph", text: "keep" }],
+      [
+        { kind: "paragraph", text: "keep" },
+        {
+          kind: "paragraph",
+          text: [
+            { text: "one", href },
+            { text: "two", href },
+          ],
+        },
+      ],
+    );
+
+    expect(hyperlinkAncestors(xml)).toHaveLength(2);
+  });
+
+  test("keeps a newly inserted same-target occurrence separate from its neighbor", async () => {
+    const href = "https://example.invalid/repeated";
+    const xml = await comparedDocumentXml(
+      [{ kind: "paragraph", text: [{ text: "old", href }] }],
+      [
+        {
+          kind: "paragraph",
+          text: [
+            { text: "new", href },
+            { text: "old", href },
+          ],
+        },
+      ],
+    );
+
+    const hyperlinks = [...xml.matchAll(/<w:hyperlink\b[^>]*>.*?<\/w:hyperlink>/gsu)].map(
+      ([markup]) => markup,
+    );
+    expect(hyperlinks).toHaveLength(3);
+    expect(hyperlinks.filter((markup) => markup.includes("<w:ins"))).toHaveLength(2);
+    expect(hyperlinks.filter((markup) => markup.includes("<w:del"))).toHaveLength(1);
+  });
+
+  test("remints target hyperlink relationships in the base package", async () => {
+    const oldLink = { text: "old", href: "https://example.invalid/old" } as const;
+    const newLink = { text: "new", href: "https://example.invalid/new" } as const;
+    const zip = await comparedPackage(
+      [
+        { kind: "paragraph", text: [oldLink] },
+        { kind: "paragraph", text: "keep" },
+      ],
+      [
+        { kind: "paragraph", text: [newLink] },
+        { kind: "paragraph", text: [oldLink] },
+        { kind: "paragraph", text: "keep" },
+      ],
+    );
+    const xml = (await zip.file("word/document.xml")?.async("text")) ?? "";
+    const relationships = (await zip.file("word/_rels/document.xml.rels")?.async("text")) ?? "";
+    const relationshipId = (href: string): string | undefined =>
+      new RegExp(`<Relationship\\b[^>]*\\bId="([^"]+)"[^>]*\\bTarget="${href}"`, "u").exec(
+        relationships,
+      )?.[1];
+    const oldId = relationshipId(oldLink.href);
+    const newId = relationshipId(newLink.href);
+
+    expect(oldId).toBeDefined();
+    expect(newId).toBeDefined();
+    expect(newId).not.toBe(oldId);
+    expect(xml).toContain(`r:id="${newId}"`);
+  });
+
+  test("reports an unresolved target hyperlink resource before lowering", async () => {
+    const targetZip = await JSZip.loadAsync(
+      await buildBodySequenceDocx([
+        { kind: "paragraph", text: "keep" },
+        {
+          kind: "paragraph",
+          text: [{ text: "link", href: "https://example.invalid/unresolved" }],
+        },
+      ]),
+    );
+    const relsPath = "word/_rels/document.xml.rels";
+    const relationships = (await targetZip.file(relsPath)?.async("text")) ?? "";
+    targetZip.file(
+      relsPath,
+      relationships.replace(/<Relationship\b(?=[^>]*\/relationships\/hyperlink)[^>]*\/>/u, ""),
+    );
+    const target = await targetZip.generateAsync({ type: "arraybuffer" });
+    const result = await compareDocx(
+      await buildBodySequenceDocx([{ kind: "paragraph", text: "keep" }]),
+      target,
+      OPTIONS,
+    );
+
+    expect(result.isErr()).toBe(true);
+    if (result.isOk()) return;
+    expect(result.error._tag).toBe("CompareDocxUnsupportedError");
+    if (result.error._tag !== "CompareDocxUnsupportedError") return;
+    expect(result.error.unsupported).toContainEqual(
+      expect.objectContaining({
+        reason: "block-semantics",
+        eventType: "inserted",
+        field: "inline.hyperlinkResource",
+      }),
+    );
   });
 });
 

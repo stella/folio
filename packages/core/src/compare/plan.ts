@@ -30,6 +30,7 @@ import {
 } from "../internal/compare/resolved-docx-story-comparison";
 import {
   resolvedDocxHasExactAuthoredRuns,
+  resolvedDocxUnsupportedProjectionFields,
   resolvedDocxSourceOperand,
   type ResolvedDocxStorySnapshot,
 } from "../internal/compare/resolved-docx-story-snapshot";
@@ -210,17 +211,28 @@ export const planStoryCompare = ({
   ): boolean => {
     let unavailable = false;
     for (const { block, snapshot, side } of blocks) {
-      if (resolvedDocxHasExactAuthoredRuns(snapshot, block)) continue;
-      unavailable = true;
-      unsupported.push({
-        reason: "block-semantics",
-        story,
-        eventType,
-        field: "runs.authoredProjection",
-        ...(side === "base"
-          ? { baseBlockId: block.identity.id }
-          : { targetBlockId: block.identity.id }),
-      });
+      const blockIdentity =
+        side === "base" ? { baseBlockId: block.identity.id } : { targetBlockId: block.identity.id };
+      if (!resolvedDocxHasExactAuthoredRuns(snapshot, block)) {
+        unavailable = true;
+        unsupported.push({
+          reason: "block-semantics",
+          story,
+          eventType,
+          field: "runs.authoredProjection",
+          ...blockIdentity,
+        });
+      }
+      for (const field of resolvedDocxUnsupportedProjectionFields(snapshot, block)) {
+        unavailable = true;
+        unsupported.push({
+          reason: "block-semantics",
+          story,
+          eventType,
+          field,
+          ...blockIdentity,
+        });
+      }
     }
     return unavailable;
   };

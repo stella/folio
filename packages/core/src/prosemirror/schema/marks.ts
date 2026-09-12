@@ -309,6 +309,9 @@ export type CharacterStyleAttrs = {
 export type HyperlinkAttrs = {
   href: string;
   tooltip?: string;
+  target?: string;
+  history?: boolean;
+  docLocation?: string;
   rId?: string;
   _docxHyperlinkIndex?: number;
 };

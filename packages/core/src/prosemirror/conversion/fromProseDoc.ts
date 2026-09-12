@@ -2533,9 +2533,15 @@ function buildDocumentTrackedChangeCounts(pmDoc: PMNode): TrackedChangeCounts {
  */
 function getLinkKey(mark: Mark): string {
   const attrs = expectHyperlinkMarkAttrs(mark);
-  return [attrs.href, attrs.rId ?? "", attrs.tooltip ?? "", attrs._docxHyperlinkIndex ?? ""].join(
-    "\u0000",
-  );
+  return [
+    attrs.href,
+    attrs.rId ?? "",
+    attrs.tooltip ?? "",
+    attrs.target ?? "",
+    attrs.history === undefined ? "" : String(attrs.history),
+    attrs.docLocation ?? "",
+    attrs._docxHyperlinkIndex ?? "",
+  ].join("\u0000");
 }
 
 /**
@@ -2566,8 +2572,17 @@ function createHyperlink(linkMark: Mark): Hyperlink {
       anchor: href.slice(1),
       children: [],
     };
-    if (attrs.tooltip) {
+    if (attrs.tooltip !== undefined) {
       hyperlink.tooltip = attrs.tooltip;
+    }
+    if (attrs.target !== undefined) {
+      hyperlink.target = attrs.target;
+    }
+    if (attrs.history !== undefined) {
+      hyperlink.history = attrs.history;
+    }
+    if (attrs.docLocation !== undefined) {
+      hyperlink.docLocation = attrs.docLocation;
     }
     return hyperlink;
   }
@@ -2576,8 +2591,17 @@ function createHyperlink(linkMark: Mark): Hyperlink {
     href,
     children: [],
   };
-  if (attrs.tooltip) {
+  if (attrs.tooltip !== undefined) {
     hyperlink.tooltip = attrs.tooltip;
+  }
+  if (attrs.target !== undefined) {
+    hyperlink.target = attrs.target;
+  }
+  if (attrs.history !== undefined) {
+    hyperlink.history = attrs.history;
+  }
+  if (attrs.docLocation !== undefined) {
+    hyperlink.docLocation = attrs.docLocation;
   }
   if (attrs.rId) {
     hyperlink.rId = attrs.rId;

@@ -61,7 +61,7 @@ import type {
   TextFormatting,
   TrackedRunContent,
 } from "../../types/document";
-import type { DocxAuthoredRun } from "./docx-program";
+import type { DocxAuthoredRun, DocxInlineContainer, DocxInlineOwnershipRun } from "./docx-program";
 import {
   docxCanonicalPropertyValue,
   docxParagraphFormattingProperties,
@@ -104,6 +104,7 @@ type ResolvedDocxStoryPayload = {
   readonly operationSnapshot: FolioAIEditSnapshot;
   readonly contentSnapshot: OwnedContentSnapshot;
   readonly authoredRunsByBlockId: ReadonlyMap<string, ResolvedDocxAuthoredRunProjection>;
+  readonly inlineOwnershipByBlockId: ReadonlyMap<string, ResolvedDocxInlineOwnershipProjection>;
   readonly unsupportedFieldsByBlockId: ReadonlyMap<string, readonly string[]>;
   readonly sourceOperandsByBlockId: ReadonlyMap<string, ResolvedDocxSourceOperand>;
   readonly tableNodes: ReadonlyMap<number, PMNode>;
@@ -112,6 +113,10 @@ type ResolvedDocxStoryPayload = {
 
 type ResolvedDocxAuthoredRunProjection =
   | { readonly status: "exact"; readonly runs: readonly DocxAuthoredRun[] }
+  | { readonly status: "unsupported"; readonly reason: "live-text-mismatch" };
+
+type ResolvedDocxInlineOwnershipProjection =
+  | { readonly status: "exact"; readonly runs: readonly DocxInlineOwnershipRun[] }
   | { readonly status: "unsupported"; readonly reason: "live-text-mismatch" };
 
 const payloadBySnapshot = new WeakMap<ResolvedDocxStorySnapshot, ResolvedDocxStoryPayload>();
@@ -200,6 +205,15 @@ type LiveAuthoredTextRun = {
   effectiveFormatting: Readonly<TextFormatting>;
 };
 
+type LiveInlineOwnershipRun = {
+  text: string;
+  readonly containers: readonly LiveInlineContainer[];
+};
+
+type LiveInlineContainer = Omit<DocxInlineContainer, "occurrence"> & {
+  readonly occurrence: number;
+};
+
 type EffectiveRunFormattingResolver = (
   formatting: TextFormatting | undefined,
   fieldType?: string,
@@ -207,11 +221,13 @@ type EffectiveRunFormattingResolver = (
 
 type InlineProjection = {
   readonly runs: LiveAuthoredTextRun[];
+  readonly inlineOwnership: LiveInlineOwnershipRun[];
   readonly structuralBoundaries: FolioContentStructuralBoundary[];
   readonly structure: unknown[];
   readonly textBoxes: Shape[];
   readonly unsupportedFields: Set<string>;
   textLength: number;
+  nextInlineOccurrence: number;
 };
 
 type InlineFieldDisposition = "nested" | "resource" | "semantic" | "transport" | "unsupported";
@@ -354,11 +370,33 @@ const descriptorSemanticProjection = (
 const samePropertySet = (left: FolioContentPropertySet, right: FolioContentPropertySet): boolean =>
   JSON.stringify(left) === JSON.stringify(right);
 
+const EMPTY_INLINE_CONTAINERS: readonly never[] = Object.freeze([]);
+
+const sameInlineContainers = (
+  left: readonly LiveInlineContainer[],
+  right: readonly LiveInlineContainer[],
+): boolean =>
+  left.length === right.length &&
+  left.every((container, index) => {
+    const counterpart = right[index];
+    return (
+      counterpart !== undefined &&
+      container.type === counterpart.type &&
+      container.href === counterpart.href &&
+      container.tooltip === counterpart.tooltip &&
+      container.target === counterpart.target &&
+      container.history === counterpart.history &&
+      container.docLocation === counterpart.docLocation &&
+      container.occurrence === counterpart.occurrence
+    );
+  });
+
 const appendRunText = (
   projection: InlineProjection,
   text: string,
   formatting: TextFormatting | undefined,
   effectiveFormatting: Readonly<TextFormatting>,
+  containers: readonly LiveInlineContainer[] = EMPTY_INLINE_CONTAINERS,
 ): void => {
   if (text.length === 0) return;
   const owned = ownFormatting(formatting);
@@ -377,6 +415,12 @@ const appendRunText = (
     previous.text += text;
   } else {
     projection.runs.push({ text, formatting: owned, effectiveFormatting });
+  }
+  const previousOwnership = projection.inlineOwnership.at(-1);
+  if (previousOwnership && sameInlineContainers(previousOwnership.containers, containers)) {
+    previousOwnership.text += text;
+  } else {
+    projection.inlineOwnership.push({ text, containers });
   }
   projection.textLength += text.length;
 };
@@ -413,20 +457,21 @@ const visitRunContent = (
   formatting: TextFormatting | undefined,
   effectiveFormatting: Readonly<TextFormatting>,
   projection: InlineProjection,
+  containers: readonly LiveInlineContainer[],
 ): void => {
   switch (content.type) {
     case "text":
-      appendRunText(projection, content.text, formatting, effectiveFormatting);
+      appendRunText(projection, content.text, formatting, effectiveFormatting, containers);
       return;
     case "softHyphen":
-      appendRunText(projection, "\u00ad", formatting, effectiveFormatting);
+      appendRunText(projection, "\u00ad", formatting, effectiveFormatting, containers);
       return;
     case "noBreakHyphen":
-      appendRunText(projection, "\u2011", formatting, effectiveFormatting);
+      appendRunText(projection, "\u2011", formatting, effectiveFormatting, containers);
       return;
     case "footnoteRef":
     case "endnoteRef":
-      appendRunText(projection, String(content.id), formatting, effectiveFormatting);
+      appendRunText(projection, String(content.id), formatting, effectiveFormatting, containers);
       return;
     case "break":
       if (content.breakType === "page") {
@@ -517,6 +562,7 @@ const visitRun = (
   projection: InlineProjection,
   resolveEffective: EffectiveRunFormattingResolver,
   fieldType?: string,
+  containers: readonly LiveInlineContainer[] = EMPTY_INLINE_CONTAINERS,
 ): void => {
   if (run.formatting?.hidden === true) {
     projection.unsupportedFields.add("inline.hiddenRun");
@@ -529,7 +575,7 @@ const visitRun = (
   }
   const effective = resolveEffective(run.formatting, fieldType);
   for (const content of run.content) {
-    visitRunContent(content, run.formatting, effective, projection);
+    visitRunContent(content, run.formatting, effective, projection, containers);
   }
 };
 
@@ -539,17 +585,30 @@ const visitHyperlink = (
   resolveEffective: EffectiveRunFormattingResolver,
   fieldType?: string,
 ): void => {
+  const container = Object.freeze({
+    type: "hyperlink" as const,
+    href: hyperlink.href ?? (hyperlink.anchor === undefined ? "" : `#${hyperlink.anchor}`),
+    ...(hyperlink.tooltip !== undefined && { tooltip: hyperlink.tooltip }),
+    ...(hyperlink.target !== undefined && { target: hyperlink.target }),
+    ...(hyperlink.history !== undefined && { history: hyperlink.history }),
+    ...(hyperlink.docLocation !== undefined && { docLocation: hyperlink.docLocation }),
+    occurrence: projection.nextInlineOccurrence++,
+  });
   projection.structure.push({
     type: "hyperlink",
     presentation: descriptorSemanticProjection(hyperlink, HYPERLINK_FIELD_DESCRIPTORS),
     offset: projection.textLength,
   });
-  if (hyperlink.rId !== undefined && hyperlink.href === undefined) {
+  if (
+    hyperlink.rId !== undefined &&
+    (hyperlink.href === undefined || hyperlink.href.length === 0) &&
+    hyperlink.anchor === undefined
+  ) {
     projection.unsupportedFields.add("inline.hyperlinkResource");
   }
   for (const child of hyperlink.children) {
     if (child.type === "run") {
-      visitRun(child, projection, resolveEffective, fieldType);
+      visitRun(child, projection, resolveEffective, fieldType, Object.freeze([container]));
     } else {
       projection.unsupportedFields.add("inline.bookmark");
       projection.structure.push(bookmarkStructureEntry(child, projection.textLength));
@@ -697,11 +756,13 @@ const projectParagraphInline = (
 ): InlineProjection => {
   const projection: InlineProjection = {
     runs: [],
+    inlineOwnership: [],
     structuralBoundaries: [],
     structure: [],
     textBoxes: [],
     unsupportedFields: new Set(),
     textLength: 0,
+    nextInlineOccurrence: 0,
   };
   for (const content of paragraph.content) {
     switch (content.type) {
@@ -868,6 +929,49 @@ const contentRuns = (
   };
 };
 
+const inlineOwnershipRuns = (
+  text: string,
+  ownership: readonly LiveInlineOwnershipRun[],
+  blockId: string,
+): ResolvedDocxInlineOwnershipProjection => {
+  if (ownership.map(({ text: runText }) => runText).join("") !== text) {
+    return Object.freeze({ status: "unsupported", reason: "live-text-mismatch" });
+  }
+  if (text.length === 0) {
+    return Object.freeze({
+      status: "exact",
+      runs: Object.freeze([
+        Object.freeze({
+          startOffset: 0,
+          endOffset: 0,
+          containers: EMPTY_INLINE_CONTAINERS,
+        }),
+      ]),
+    });
+  }
+  const runs: DocxInlineOwnershipRun[] = [];
+  let offset = 0;
+  for (const run of ownership) {
+    const startOffset = offset;
+    offset += run.text.length;
+    runs.push(
+      Object.freeze({
+        startOffset,
+        endOffset: offset,
+        containers: Object.freeze(
+          run.containers.map((container) =>
+            Object.freeze({
+              ...container,
+              occurrence: Object.freeze({ blockId, index: container.occurrence }),
+            }),
+          ),
+        ),
+      }),
+    );
+  }
+  return Object.freeze({ status: "exact", runs: Object.freeze(runs) });
+};
+
 const paragraphHeadingLevel = (
   paragraph: Paragraph,
   effective: ReturnType<typeof resolveEffectiveParagraphPresentation>["effective"],
@@ -921,6 +1025,7 @@ type ProjectionBuilder = {
   readonly bookmarkIdentities: Map<number, number>;
   readonly projected: FolioContentBlock[];
   readonly authoredRunsByBlockId: Map<string, ResolvedDocxAuthoredRunProjection>;
+  readonly inlineOwnershipByBlockId: Map<string, ResolvedDocxInlineOwnershipProjection>;
   readonly unsupportedFieldsByBlockId: Map<string, readonly string[]>;
   readonly consumedBlockIds: Set<string>;
   readonly styleEngine: ReturnType<typeof createStyleEngine>;
@@ -1031,6 +1136,7 @@ const projectLiveParagraph = (
   const unsupported = unsupportedPresentationProperty(presentation.unsupported);
   if (unsupported) blockProperties.push(unsupported);
   const runs = contentRuns(operationBlock.text, inline.runs);
+  const inlineOwnership = inlineOwnershipRuns(operationBlock.text, inline.inlineOwnership, id);
   const unsupportedFields = new Set(inline.unsupportedFields);
   for (const { source, field } of presentation.unsupported) {
     unsupportedFields.add(`paragraph.${source}.${field}`);
@@ -1080,6 +1186,7 @@ const projectLiveParagraph = (
     containerPath: context.containerPath,
   });
   builder.authoredRunsByBlockId.set(id, runs.authored);
+  builder.inlineOwnershipByBlockId.set(id, inlineOwnership);
   builder.unsupportedFieldsByBlockId.set(id, Object.freeze([...unsupportedFields].toSorted()));
   builder.consumedBlockIds.add(id);
   return inline.textBoxes;
@@ -1247,6 +1354,7 @@ export const createResolvedDocxStorySnapshot = ({
     bookmarkIdentities: new Map(),
     projected: [],
     authoredRunsByBlockId: new Map(),
+    inlineOwnershipByBlockId: new Map(),
     unsupportedFieldsByBlockId: new Map(),
     consumedBlockIds: new Set(),
     styleEngine: createStyleEngine(document.package.styles),
@@ -1286,6 +1394,7 @@ export const createResolvedDocxStorySnapshot = ({
     operationSnapshot,
     contentSnapshot,
     authoredRunsByBlockId: builder.authoredRunsByBlockId,
+    inlineOwnershipByBlockId: builder.inlineOwnershipByBlockId,
     unsupportedFieldsByBlockId: builder.unsupportedFieldsByBlockId,
     sourceOperandsByBlockId,
     tableNodes,
@@ -1386,6 +1495,72 @@ export const findResolvedDocxTableNode = (
 export const resolvedDocxNumberingReferenceKeys = (
   snapshot: ResolvedDocxStorySnapshot,
 ): readonly string[] => payloadOf(snapshot).numberingReferenceKeys;
+
+/** @internal Complete serializer-supported inline ownership for one canonical block. */
+export const resolvedDocxInlineOwnershipForBlock = (
+  snapshot: ResolvedDocxStorySnapshot,
+  block: FolioContentBlock,
+): readonly DocxInlineOwnershipRun[] => {
+  resolvedDocxSourceOperand(snapshot, block);
+  const projection = payloadOf(snapshot).inlineOwnershipByBlockId.get(block.identity.id);
+  if (!projection) {
+    return panic("A canonical DOCX block has no inline-ownership projection", {
+      blockId: block.identity.id,
+    });
+  }
+  if (projection.status === "unsupported") {
+    return panic("A lossy DOCX inline-ownership projection reached transport lowering", {
+      blockId: block.identity.id,
+      reason: projection.reason,
+    });
+  }
+  return projection.runs;
+};
+
+/** @internal Inline ownership rebased onto one canonical UTF-16 target range. */
+export const resolvedDocxInlineOwnershipForRange = (
+  snapshot: ResolvedDocxStorySnapshot,
+  block: FolioContentBlock,
+  startOffset: number,
+  endOffset: number,
+): readonly DocxInlineOwnershipRun[] => {
+  if (
+    !Number.isSafeInteger(startOffset) ||
+    !Number.isSafeInteger(endOffset) ||
+    startOffset < 0 ||
+    endOffset < startOffset ||
+    endOffset > block.text.length
+  ) {
+    return panic("A DOCX inline-ownership projection received an invalid range", {
+      blockId: block.identity.id,
+      startOffset,
+      endOffset,
+    });
+  }
+  if (startOffset === endOffset) {
+    return Object.freeze([
+      Object.freeze({
+        startOffset: 0,
+        endOffset: 0,
+        containers: EMPTY_INLINE_CONTAINERS,
+      }),
+    ]);
+  }
+  const projected: DocxInlineOwnershipRun[] = [];
+  for (const run of resolvedDocxInlineOwnershipForBlock(snapshot, block)) {
+    const from = Math.max(startOffset, run.startOffset);
+    const to = Math.min(endOffset, run.endOffset);
+    if (from >= to) continue;
+    projected.push(
+      Object.freeze({
+        startOffset: from - startOffset,
+        endOffset: to - startOffset,
+        containers: run.containers,
+      }),
+    );
+  }
+  return Object.freeze(projected);
+};
 
 /** @internal Authored run projection for one complete canonical block. */
 export const resolvedDocxAuthoredRunsForBlock = (

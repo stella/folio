@@ -4,7 +4,10 @@ import { panic } from "better-result";
 import { sameTextFormatting } from "@stll/docx-core/model";
 
 import { buildCleanBlockText } from "../../ai-edits/clean-text";
-import { expectRunPropertyChangeMarkAttrs } from "../../prosemirror/attrs";
+import {
+  expectHyperlinkMarkAttrs,
+  expectRunPropertyChangeMarkAttrs,
+} from "../../prosemirror/attrs";
 import { getDocumentStyleResolver } from "../../prosemirror/plugins/documentStyles";
 import {
   readAuthoredRunFormatting,
@@ -20,7 +23,9 @@ import type {
   DocxComparisonDeletedFragment,
   DocxComparisonEqualFragment,
   DocxComparisonRangePlan,
+  DocxInlineContainer,
 } from "./docx-program";
+import { docxInlineOccurrenceKey } from "./docx-program";
 
 type ExactFormattingMetadata = {
   readonly author: string;
@@ -73,8 +78,23 @@ type ExactReplacementStep =
       readonly at: number;
       readonly text: string;
       readonly formatting: Readonly<TextFormatting>;
+      readonly targetInlineContainers: readonly DocxInlineContainer[];
     }
   | ExactRangePosition;
+
+type TargetInlineReuse = {
+  readonly occurrenceKey: string;
+  readonly mark: Mark;
+};
+
+type ExactReplacementPlan = {
+  readonly steps: readonly ExactReplacementStep[];
+  readonly retained: readonly {
+    readonly from: number;
+    readonly to: number;
+    readonly targetInlineContainers: readonly DocxInlineContainer[];
+  }[];
+};
 
 export type DocxTextRangeTarget = {
   readonly blockNode: PMNode;
@@ -85,7 +105,11 @@ export type DocxTextRangeTarget = {
 };
 
 export type DocxTextRangePreflight =
-  | { readonly type: "ready"; readonly steps: readonly ExactReplacementStep[] }
+  | {
+      readonly type: "ready";
+      readonly steps: readonly ExactReplacementStep[];
+      readonly targetInlineReuse: readonly TargetInlineReuse[];
+    }
   | {
       readonly type: "unsupported";
       readonly reason: "source-mismatch" | "source-formatting-mismatch" | "pending-run-change";
@@ -108,7 +132,7 @@ const exactReplacementSteps = ({
   blockFrom,
   range,
   sourceStartOffset,
-}: DocxTextRangeTarget): readonly ExactReplacementStep[] | null => {
+}: DocxTextRangeTarget): ExactReplacementPlan | null => {
   if (blockNode.content.size !== blockNode.textContent.length) return null;
   const clean = buildCleanBlockText(blockNode, blockFrom);
   if (
@@ -121,11 +145,18 @@ const exactReplacementSteps = ({
   const offsetAt = (offset: number): number | null =>
     clean.offsets[sourceStartOffset + offset] ?? null;
   const steps: ExactReplacementStep[] = [];
+  const retained: ExactReplacementPlan["retained"][number][] = [];
   for (const fragment of range.fragments) {
     if (fragment.type === "ins") {
       const at = offsetAt(fragment.baseStart);
       if (at === null) return null;
-      steps.push({ type: "ins", at, text: fragment.text, formatting: fragment.targetFormatting });
+      steps.push({
+        type: "ins",
+        at,
+        text: fragment.text,
+        formatting: fragment.targetFormatting,
+        targetInlineContainers: fragment.targetInlineContainers,
+      });
       continue;
     }
     const from = offsetAt(fragment.baseStart);
@@ -133,19 +164,76 @@ const exactReplacementSteps = ({
     if (from === null || to === null) return null;
     if (fragment.type === "del") {
       steps.push({ type: "del", from, to, fragment });
-    } else if (fragment.changedProperties.length > 0) {
+      continue;
+    }
+    retained.push({
+      from,
+      to,
+      targetInlineContainers: fragment.targetInlineContainers,
+    });
+    if (fragment.changedProperties.length > 0) {
       steps.push({ type: "format", from, to, fragment });
     }
   }
-  return Object.freeze(steps);
+  return Object.freeze({ steps: Object.freeze(steps), retained: Object.freeze(retained) });
+};
+
+const exactTargetInlineReuse = (
+  doc: PMNode,
+  retained: ExactReplacementPlan["retained"],
+): readonly TargetInlineReuse[] => {
+  const reusableByOccurrence = new Map<string, Mark>();
+  const conflictingOccurrences = new Set<string>();
+  for (const { from, to, targetInlineContainers } of retained) {
+    const target = targetInlineContainers.find(({ type }) => type === "hyperlink");
+    if (!target) continue;
+    let candidate: Mark | undefined;
+    let exact = true;
+    doc.nodesBetween(from, to, (node) => {
+      if (!node.isInline || !exact) return;
+      const hyperlink = node.marks.find(({ type }) => type.name === "hyperlink");
+      if (!hyperlink) {
+        exact = false;
+        return;
+      }
+      const attrs = expectHyperlinkMarkAttrs(hyperlink);
+      if (
+        attrs.href !== target.href ||
+        attrs.tooltip !== target.tooltip ||
+        attrs.target !== target.target ||
+        attrs.history !== target.history ||
+        attrs.docLocation !== target.docLocation ||
+        (candidate !== undefined && !candidate.eq(hyperlink))
+      ) {
+        exact = false;
+        return;
+      }
+      candidate = hyperlink;
+    });
+    if (!exact || !candidate) continue;
+    const occurrenceKey = docxInlineOccurrenceKey(target.occurrence);
+    const previous = reusableByOccurrence.get(occurrenceKey);
+    if (previous === undefined || previous.eq(candidate)) {
+      reusableByOccurrence.set(occurrenceKey, candidate);
+      continue;
+    }
+    reusableByOccurrence.delete(occurrenceKey);
+    conflictingOccurrences.add(occurrenceKey);
+  }
+  return Object.freeze(
+    [...reusableByOccurrence]
+      .filter(([occurrenceKey]) => !conflictingOccurrences.has(occurrenceKey))
+      .map(([occurrenceKey, mark]) => Object.freeze({ occurrenceKey, mark })),
+  );
 };
 
 export const preflightDocxTextRange = (
   doc: PMNode,
   target: DocxTextRangeTarget,
 ): DocxTextRangePreflight => {
-  const steps = exactReplacementSteps(target);
-  if (!steps) return { type: "unsupported", reason: "source-mismatch" };
+  const plan = exactReplacementSteps(target);
+  if (!plan) return { type: "unsupported", reason: "source-mismatch" };
+  const { steps } = plan;
   const propertyChangeType = doc.type.schema.marks["runPropertyChange"];
   if (
     steps.some(
@@ -183,7 +271,11 @@ export const preflightDocxTextRange = (
       }
     }
   }
-  return Object.freeze({ type: "ready", steps });
+  return Object.freeze({
+    type: "ready",
+    steps,
+    targetInlineReuse: exactTargetInlineReuse(doc, plan.retained),
+  });
 };
 
 type ApplyDirectFormattingOptions = {
@@ -219,6 +311,91 @@ export const applyExactDirectFormatting = ({
       ...(styleResolver !== undefined && { styleResolver }),
     });
     applyMarksToRunFormattingRepresentation({ tr, representation, marks });
+  }
+};
+
+type TargetInlineOccurrenceAllocation = {
+  readonly byOccurrence: Map<string, number>;
+  next: number;
+};
+
+const targetInlineOccurrences = new WeakMap<Transaction, TargetInlineOccurrenceAllocation>();
+
+const targetInlineOccurrence = (
+  tr: Transaction,
+  occurrence: DocxInlineContainer["occurrence"],
+): number => {
+  let allocation = targetInlineOccurrences.get(tr);
+  if (!allocation) {
+    let next = 0;
+    tr.doc.descendants((node) => {
+      const hyperlink = node.marks.find(({ type }) => type.name === "hyperlink");
+      if (!hyperlink) return;
+      const existing = expectHyperlinkMarkAttrs(hyperlink)._docxHyperlinkIndex;
+      if (existing !== undefined) next = Math.max(next, existing + 1);
+    });
+    allocation = { byOccurrence: new Map(), next };
+    targetInlineOccurrences.set(tr, allocation);
+  }
+  const occurrenceKey = docxInlineOccurrenceKey(occurrence);
+  const existing = allocation.byOccurrence.get(occurrenceKey);
+  if (existing !== undefined) return existing;
+  const allocated = allocation.next++;
+  allocation.byOccurrence.set(occurrenceKey, allocated);
+  return allocated;
+};
+
+/** Recreate target-owned inline containers without copying package-local relationship ids. */
+export const applyExactInlineOwnership = ({
+  tr,
+  from,
+  to,
+  containers,
+  targetInlineReuse = new Map(),
+}: {
+  readonly tr: Transaction;
+  readonly from: number;
+  readonly to: number;
+  readonly containers: readonly DocxInlineContainer[];
+  readonly targetInlineReuse?: ReadonlyMap<string, Mark>;
+}): void => {
+  if (from >= to) return;
+  const hyperlinkType = tr.doc.type.schema.marks["hyperlink"];
+  if (!hyperlinkType) {
+    return panic("A preflighted DOCX comparison lost hyperlink schema support");
+  }
+  // Inserted text can inherit an inclusive source mark. Clear the supported
+  // container family first so the target ownership partition is exact even
+  // when its branch deliberately has no owner.
+  tr.removeMark(from, to, hyperlinkType);
+  for (const container of containers) {
+    switch (container.type) {
+      case "hyperlink": {
+        const reusable = targetInlineReuse.get(docxInlineOccurrenceKey(container.occurrence));
+        tr.addMark(
+          from,
+          to,
+          reusable ??
+            hyperlinkType.create({
+              href: container.href,
+              ...(container.tooltip !== undefined && { tooltip: container.tooltip }),
+              ...(container.target !== undefined && { target: container.target }),
+              ...(container.history !== undefined && { history: container.history }),
+              ...(container.docLocation !== undefined && {
+                docLocation: container.docLocation,
+              }),
+              _docxHyperlinkIndex: targetInlineOccurrence(tr, container.occurrence),
+            }),
+        );
+        break;
+      }
+      default: {
+        const unreachable: never = container;
+        return panic("Unhandled DOCX inline container during execution", {
+          container: unreachable,
+        });
+      }
+    }
   }
 };
 
@@ -308,6 +485,9 @@ export const applyPreflightedDocxTextRange = ({
   const insertionRevisionId = application === "replace" ? nextRevisionId++ : null;
   let usedDeletion = false;
   let usedInsertion = false;
+  const targetInlineReuse = new Map(
+    preflight.targetInlineReuse.map(({ occurrenceKey, mark }) => [occurrenceKey, mark]),
+  );
   for (const step of preflight.steps.toReversed()) {
     if (step.type === "del") {
       if (deletionRevisionId === null) {
@@ -331,6 +511,13 @@ export const applyPreflightedDocxTextRange = ({
         step.at + step.text.length,
         insertionType.create({ revisionId: insertionRevisionId, author, date }),
       );
+      applyExactInlineOwnership({
+        tr,
+        from: step.at,
+        to: step.at + step.text.length,
+        containers: step.targetInlineContainers,
+        targetInlineReuse,
+      });
       applyExactDirectFormatting({
         tr,
         from: step.at,

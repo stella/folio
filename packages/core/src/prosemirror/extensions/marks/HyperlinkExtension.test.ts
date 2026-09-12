@@ -61,7 +61,15 @@ describe("HyperlinkExtension toDOM — defense-in-depth href sanitization", () =
     const executableHref = ["java", "script:alert(1)"].join("");
     const fakeMark = {
       type: { name: "hyperlink" },
-      attrs: { href: executableHref, tooltip: null, rId: null, _docxHyperlinkIndex: null },
+      attrs: {
+        href: executableHref,
+        tooltip: null,
+        target: null,
+        history: null,
+        docLocation: null,
+        rId: null,
+        _docxHyperlinkIndex: null,
+      },
     } as Parameters<typeof spec.toDOM>[0];
 
     const output = spec.toDOM(fakeMark, true);

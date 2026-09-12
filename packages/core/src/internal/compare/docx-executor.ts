@@ -29,6 +29,7 @@ import {
 } from "./docx-program";
 import {
   applyExactDirectFormatting,
+  applyExactInlineOwnership,
   applyPreflightedDocxTextRange,
   preflightDocxTextRange,
   type DocxTextRangePreflight,
@@ -1889,6 +1890,14 @@ const applyInsertionRun = ({
       styleResolver,
       numbering,
     }).tr;
+    for (const ownership of member.instruction.target.inlineOwnership) {
+      applyExactInlineOwnership({
+        tr,
+        from: position + 1 + ownership.startOffset,
+        to: position + 1 + ownership.endOffset,
+        containers: ownership.containers,
+      });
+    }
     for (const authoredRun of member.instruction.target.runs) {
       applyExactDirectFormatting({
         tr,
@@ -2349,6 +2358,14 @@ export const executePreflightedDocxComparison = ({
               date: revisionStamp.date,
             }),
           );
+          for (const ownership of instruction.semantic.separatorInlineOwnership) {
+            applyExactInlineOwnership({
+              tr,
+              from: insertAt + ownership.startOffset,
+              to: insertAt + ownership.endOffset,
+              containers: ownership.containers,
+            });
+          }
           for (const run of instruction.semantic.separatorRuns) {
             applyExactDirectFormatting({
               tr,
@@ -2480,6 +2497,14 @@ export const executePreflightedDocxComparison = ({
               }),
             }),
           );
+          for (const ownership of instruction.semantic.targetCarrier.inlineOwnership) {
+            applyExactInlineOwnership({
+              tr,
+              from: from + ownership.startOffset,
+              to: from + ownership.endOffset,
+              containers: ownership.containers,
+            });
+          }
           for (const run of instruction.semantic.targetCarrier.runs) {
             applyExactDirectFormatting({
               tr,

@@ -166,6 +166,9 @@ describe("fromProseDoc", () => {
           href: "https://example.com/terms",
           rId: "rId18",
           tooltip: "Terms",
+          target: "_self",
+          history: false,
+          docLocation: "definitions",
           children: [
             { type: "run", content: [{ type: "text", text: "Terms" }] },
             { type: "bookmarkEnd", id: 18 },
