@@ -1243,6 +1243,9 @@ export type FolioContentParagraphFormattingPatch = {
 };
 
 // @public
+export type FolioContentParagraphKind = "heading" | "listItem" | "paragraph";
+
+// @public
 export type FolioContentParagraphSpacing = {
     spaceBefore?: number;
     spaceAfter?: number;

@@ -845,6 +845,9 @@ export type FolioCompareDocxVersionsOptions = {
     privacy?: FolioVersionDiffPrivacyOptions;
 };
 
+// @public
+export type FolioContentParagraphKind = "heading" | "listItem" | "paragraph";
+
 // @public (undocumented)
 export type FolioDocumentMetadataProperty = (typeof FOLIO_DOCUMENT_METADATA_PROPERTIES)[number];
 

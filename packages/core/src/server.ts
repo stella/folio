@@ -9,6 +9,7 @@
  *
  * Anything DOM-dependent stays on the main `@stll/folio` entry.
  */
+export type { FolioContentParagraphKind } from "./compare/content-types";
 export type {
   FolioAIBlock,
   FolioAIBlockAnchor,

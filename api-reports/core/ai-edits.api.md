@@ -479,6 +479,9 @@ export type FolioCommentAnchor = {
     quote: string;
 };
 
+// @public
+export type FolioContentParagraphKind = "heading" | "listItem" | "paragraph";
+
 // @public (undocumented)
 export type FolioDocumentNavigationTarget = {
     type: "block";

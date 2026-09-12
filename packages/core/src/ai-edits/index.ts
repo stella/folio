@@ -5,6 +5,7 @@ export {
   type FolioWordDiffOptions,
   type FolioRevisionStamp,
 } from "./apply";
+export type { FolioContentParagraphKind } from "../compare/content-types";
 export {
   clampRangeToDocSize,
   resolveFolioAIBlockRange,

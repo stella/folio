@@ -57,6 +57,7 @@ export type {
   FolioContentInlineFormattingPatch,
   FolioContentLineSpacingRule,
   FolioContentParagraphAlignment,
+  FolioContentParagraphKind,
   FolioContentParagraphSpacing,
   FolioContentRun,
   FolioContentSnapshot,
