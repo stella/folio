@@ -1,5 +1,25 @@
 # @stll/folio-core
 
+## 0.37.3
+
+### Patch Changes
+
+- [#815](https://github.com/stella/folio/pull/815) [`5276e94`](https://github.com/stella/folio/commit/5276e94e46232546fdbb1f92eb927fbb4541f50e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Adapt authored document fills in dark mode and fit oversized header and footer tables to their content frame.
+
+- [#821](https://github.com/stella/folio/pull/821) [`c75a837`](https://github.com/stella/folio/commit/c75a837d2cac3557fbdd73017786c81dae6a9847) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Position and wrap column-relative text boxes within their active flow column.
+
+- [#820](https://github.com/stella/folio/pull/820) [`99987b0`](https://github.com/stella/folio/commit/99987b0f083949296f3295b6c2ce10061a48d172) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve leading page breaks in styled paragraphs and table rows, classify row boundaries from their projected revision view, and coalesce repeated structural section carriers in linear time.
+
+- [#819](https://github.com/stella/folio/pull/819) [`7385db9`](https://github.com/stella/folio/commit/7385db9807f293c57e1ca5eae072928bc45a93bf) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep table-style fonts ahead of document-default fonts in table cells.
+
+- [#819](https://github.com/stella/folio/pull/819) [`7385db9`](https://github.com/stella/folio/commit/7385db9807f293c57e1ca5eae072928bc45a93bf) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve and render DrawingML text-box rotation and flips across editor and PDF output.
+
+- [#814](https://github.com/stella/folio/pull/814) [`bcc1ee4`](https://github.com/stella/folio/commit/bcc1ee46fcb36498c53bbf8dae8be37170f3dd2b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve opaque paragraph properties through collaborative DOCX edits with missing or duplicate paragraph IDs, including collapsed vertical-merge continuation cells.
+
+- [#819](https://github.com/stella/folio/pull/819) [`7385db9`](https://github.com/stella/folio/commit/7385db9807f293c57e1ca5eae072928bc45a93bf) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Honor page-margin header tabs without changing body tab stops.
+- Updated dependencies [[`7385db9`](https://github.com/stella/folio/commit/7385db9807f293c57e1ca5eae072928bc45a93bf)]:
+  - @stll/docx-core@0.19.4
+
 ## 0.37.2
 
 ### Patch Changes

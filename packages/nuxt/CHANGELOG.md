@@ -1,5 +1,12 @@
 # @stll/folio-nuxt
 
+## 0.3.12
+
+### Patch Changes
+
+- Updated dependencies [[`411e081`](https://github.com/stella/folio/commit/411e081c0ed8ee19f8d69b470a7b90c21f57e188)]:
+  - @stll/folio-vue@0.16.0
+
 ## 0.3.11
 
 ### Patch Changes
