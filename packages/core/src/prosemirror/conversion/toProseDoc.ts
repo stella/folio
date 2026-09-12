@@ -77,6 +77,7 @@ import {
 import { emuToPixels } from "../../utils/units";
 import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import { setAutospacingBaseValue } from "../autospacingBase";
+import { applyListRenderingAttrs } from "../listRenderingProjection";
 import { buildRunFormattingOverrideAttrs } from "../extensions/marks/RunFormattingOverrideExtension";
 import { directionFromBidi } from "../paragraphDirection";
 import {
@@ -821,58 +822,7 @@ function paragraphFormattingToAttrs(
   if (formatting?.numPrFromStyle) {
     attrs.numPrFromStyle = formatting.numPrFromStyle;
   }
-  // List rendering info from parsed numbering definitions
-  if (paragraph.listRendering?.numFmt) {
-    attrs.listNumFmt = paragraph.listRendering.numFmt;
-  }
-  if (paragraph.listRendering?.isBullet) {
-    attrs.listIsBullet = paragraph.listRendering.isBullet;
-  }
-  if (paragraph.listRendering?.isLegal) {
-    attrs.listIsLegal = paragraph.listRendering.isLegal;
-  }
-  if (paragraph.listRendering?.marker) {
-    attrs.listMarker = paragraph.listRendering.marker;
-  }
-  if (paragraph.listRendering?.markerTemplate) {
-    attrs.listMarkerTemplate = paragraph.listRendering.markerTemplate;
-  }
-  if (paragraph.listRendering?.markerHidden) {
-    attrs.listMarkerHidden = paragraph.listRendering.markerHidden;
-  }
-  if (paragraph.listRendering?.markerFormatting) {
-    attrs.listMarkerFormatting = paragraph.listRendering.markerFormatting;
-  }
-  if (paragraph.listRendering?.markerAlignment) {
-    attrs.listMarkerAlignment = paragraph.listRendering.markerAlignment;
-  }
-  if (paragraph.listRendering?.markerSuffix) {
-    attrs.listMarkerSuffix = paragraph.listRendering.markerSuffix;
-  }
-  if (paragraph.listRendering?.markerAllCaps) {
-    attrs.listMarkerAllCaps = paragraph.listRendering.markerAllCaps;
-  }
-  if (paragraph.listRendering?.implicitChildLevelAdvances !== undefined) {
-    attrs.listImplicitChildLevelAdvances = paragraph.listRendering.implicitChildLevelAdvances;
-  }
-  if (paragraph.listRendering?.markerSecondSlotOffsetTwips !== undefined) {
-    attrs.listMarkerSecondSlotOffsetTwips = paragraph.listRendering.markerSecondSlotOffsetTwips;
-  }
-  if (paragraph.listRendering?.levelNumFmts) {
-    attrs.listLevelNumFmts = paragraph.listRendering.levelNumFmts;
-  }
-  if (paragraph.listRendering && "levelStarts" in paragraph.listRendering) {
-    const { levelStarts } = paragraph.listRendering;
-    if (Array.isArray(levelStarts) && levelStarts.every((value) => typeof value === "number")) {
-      attrs.listLevelStarts = levelStarts;
-    }
-  }
-  if (paragraph.listRendering?.abstractNumId !== undefined) {
-    attrs.listAbstractNumId = paragraph.listRendering.abstractNumId;
-  }
-  if (paragraph.listRendering?.startOverride !== undefined) {
-    attrs.listStartOverride = paragraph.listRendering.startOverride;
-  }
+  applyListRenderingAttrs(attrs, paragraph.listRendering);
   // Store original inline formatting for lossless serialization round-trip
   if (formatting) {
     attrs._originalFormatting = formatting;

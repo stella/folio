@@ -141,6 +141,7 @@ import {
 } from "../attrs";
 import { autospacingMatchesBase, hasAutospacingBaseSide } from "../autospacingBase";
 import { directionToBidi } from "../paragraphDirection";
+import { listRenderingFromAttrs } from "../listRenderingProjection";
 import { directParagraphAlignment } from "../paragraphAlignment";
 import { directParagraphSpacing } from "../paragraphSpacing";
 import {
@@ -1356,63 +1357,6 @@ function removeTextBoxAnchorFromBlocks(blocks: BlockContent[], marker: Run): boo
     }
   }
   return false;
-}
-
-/**
- * Inverse of toProseDoc's listRendering → list* attrs flattening. Markdown
- * export (`toMarkdown`) and re-layout of the rebuilt Document key off
- * `paragraph.listRendering`; without this, every edited document loses its
- * list markers on the way out of the editor.
- */
-function listRenderingFromAttrs(attrs: ParagraphAttrs): Paragraph["listRendering"] {
-  const numId = attrs.numPr?.numId;
-  if (numId === undefined || numId === 0) {
-    return undefined;
-  }
-  const hasRenderingInfo =
-    attrs.listMarker != null || attrs.listIsBullet || attrs.listNumFmt != null;
-  if (!hasRenderingInfo) {
-    return undefined;
-  }
-  return {
-    marker: attrs.listMarker ?? "",
-    ...(attrs.listMarkerTemplate != null && { markerTemplate: attrs.listMarkerTemplate }),
-    level: attrs.numPr?.ilvl ?? 0,
-    numId,
-    isBullet: attrs.listIsBullet ?? false,
-    ...(attrs.listIsLegal != null && { isLegal: attrs.listIsLegal }),
-    ...(attrs.listNumFmt != null && { numFmt: attrs.listNumFmt }),
-    ...(attrs.listMarkerHidden != null && {
-      markerHidden: attrs.listMarkerHidden,
-    }),
-    ...(attrs.listMarkerFormatting != null && {
-      markerFormatting: attrs.listMarkerFormatting,
-    }),
-    ...(attrs.listMarkerAlignment != null && {
-      markerAlignment: attrs.listMarkerAlignment,
-    }),
-    ...(attrs.listMarkerSuffix != null && {
-      markerSuffix: attrs.listMarkerSuffix,
-    }),
-    ...(attrs.listMarkerAllCaps != null && {
-      markerAllCaps: attrs.listMarkerAllCaps,
-    }),
-    ...(attrs.listImplicitChildLevelAdvances != null && {
-      implicitChildLevelAdvances: attrs.listImplicitChildLevelAdvances,
-    }),
-    ...(attrs.listMarkerSecondSlotOffsetTwips != null && {
-      markerSecondSlotOffsetTwips: attrs.listMarkerSecondSlotOffsetTwips,
-    }),
-    ...(attrs.listLevelNumFmts != null && {
-      levelNumFmts: attrs.listLevelNumFmts,
-    }),
-    ...(attrs.listAbstractNumId != null && {
-      abstractNumId: attrs.listAbstractNumId,
-    }),
-    ...(attrs.listStartOverride != null && {
-      startOverride: attrs.listStartOverride,
-    }),
-  };
 }
 
 /**

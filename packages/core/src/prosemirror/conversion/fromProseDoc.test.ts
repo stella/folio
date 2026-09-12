@@ -6,6 +6,7 @@ import { parseDocx } from "../../docx/parser";
 import { createDocx } from "../../docx/rezip";
 import type {
   Document,
+  ListRendering,
   Paragraph,
   ParagraphContent,
   Run,
@@ -22,6 +23,54 @@ import { fromProseDoc, proseDocToBlocks } from "./fromProseDoc";
 import { UnsupportedDocxToProseMirrorConversionError, toProseDoc } from "./toProseDoc";
 
 describe("fromProseDoc", () => {
+  test("round-trips the complete derived list presentation", () => {
+    const listRendering = {
+      marker: "3.(d)",
+      markerTemplate: "%1.(%2)",
+      level: 1,
+      numId: 42,
+      isBullet: false,
+      isLegal: true,
+      numFmt: "lowerLetter",
+      markerHidden: true,
+      markerFormatting: { bold: false, fontSize: 22 },
+      markerAlignment: "right",
+      markerAllCaps: true,
+      markerSuffix: "space",
+      levelNumFmts: ["decimal", "lowerLetter"],
+      levelStarts: [3, 4],
+      abstractNumId: 7,
+      startOverride: 4,
+      implicitChildLevelAdvances: 0,
+      markerSecondSlotOffsetTwips: 0,
+    } as const satisfies ListRendering;
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              formatting: { numPr: { numId: 42, ilvl: 1 } },
+              listRendering,
+              content: [{ type: "run", content: [{ type: "text", text: "Clause" }] }],
+            },
+          ],
+        },
+      },
+    };
+
+    const projected = toProseDoc(document);
+    const restored = fromProseDoc(projected, document);
+    const paragraph = restored.package.document.content.at(0);
+
+    expect(paragraph?.type).toBe("paragraph");
+    if (paragraph?.type !== "paragraph") {
+      throw new Error("Expected a paragraph");
+    }
+    expect(paragraph.listRendering).toEqual(listRendering);
+    expect(toProseDoc(restored).eq(projected)).toBe(true);
+  });
+
   test("uses resolver-less run ownership when the base package has no styles", () => {
     const characterStyle = schema.mark("characterStyle", { styleId: "MissingCharacterStyle" });
     const directFormatting = schema.mark("runFormattingOverride", { bold: true });
