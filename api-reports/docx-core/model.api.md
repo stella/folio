@@ -76,7 +76,7 @@ export type CellMargins = {
 export const COLOR_VALUE_PROPERTY_DESCRIPTORS: {
     readonly rgb: {
         readonly field: "rgb";
-        readonly validation: "hex";
+        readonly validation: "rgb-hex";
     };
     readonly themeColor: {
         readonly field: "themeColor";
@@ -84,11 +84,11 @@ export const COLOR_VALUE_PROPERTY_DESCRIPTORS: {
     };
     readonly themeTint: {
         readonly field: "themeTint";
-        readonly validation: "hex";
+        readonly validation: "byte-hex";
     };
     readonly themeShade: {
         readonly field: "themeShade";
-        readonly validation: "hex";
+        readonly validation: "byte-hex";
     };
     readonly auto: {
         readonly field: "auto";
@@ -591,6 +591,7 @@ export type ListRendering = {
     markerAllCaps?: boolean;
     markerSuffix?: LevelSuffix;
     levelNumFmts?: NumberFormat[];
+    levelStarts?: number[];
     abstractNumId?: number;
     startOverride?: number;
     implicitChildLevelAdvances?: number;
@@ -858,6 +859,12 @@ export type RunPropertyChange = {
     previousFormatting?: TextFormatting;
     currentFormatting?: TextFormatting;
 };
+
+// @public
+export const sameTextFormatting: (left: TextFormatting | undefined, right: TextFormatting | undefined) => boolean;
+
+// @public
+export const sameTextFormattingValue: (left: unknown, right: unknown) => boolean;
 
 // @public
 export type SdtProperties = {
@@ -1617,6 +1624,9 @@ export const TEXT_FORMATTING_UNDERLINE_FIELD_DESCRIPTORS: {
         readonly validation: "color";
     };
 };
+
+// @public (undocumented)
+export const TEXT_FORMATTING_VISUAL_GROUPS: readonly ["allCaps", "bold", "characterSpacing", "color", "effect", "emboss", "emphasisMark", "fontFamily", "fontSize", "hidden", "highlight", "imprint", "italic", "language", "outline", "rtl", "shading", "shadow", "smallCaps", "strike", "underline", "vertAlign"];
 
 // @public
 export type TextBox = {

@@ -110,8 +110,24 @@ export const FOLIO_RESOLVED_REVIEWED_VIEWS: readonly ["original", "final"];
 export const FOLIO_REVIEWED_VIEWS: readonly ["original", "current-markup", "final"];
 
 // @public (undocumented)
-export type FolioAIBlock = FolioContentBlock<FolioAIBlockKind> & {
+export type FolioAIBlock = {
+    id: string;
+    kind: FolioAIBlockKind;
+    text: string;
+    idStability?: "stable" | "positional";
+    headingLevel?: number;
+    displayLabel?: string;
+    styleId?: string;
+    directAlignment?: import__stll_docx_core_model.ParagraphAlignment;
+    directSpacing?: FolioAIParagraphSpacing;
+    listLevel?: number;
+    previewRuns?: readonly FolioAIBlockPreviewRun[];
     structuralBoundaries?: readonly FolioAIBlockStructuralBoundary[];
+    table?: FolioAIBlockTableLocation;
+    containerPath?: readonly {
+        kind: string;
+        id: string;
+    }[];
 };
 
 // @public (undocumented)
@@ -130,17 +146,26 @@ export type FolioAIBlockAnchor = {
 export type FolioAIBlockKind = "heading" | "listItem" | "paragraph";
 
 // @public (undocumented)
-export type FolioAIBlockPreviewRun = FolioContentRun;
-
-// @public
-export type FolioAIBlockStructuralBoundary = {
-    type: "pageBreak";
-    offset: number;
-    clear?: import__stll_docx_core_model.BreakContent["clear"];
+export type FolioAIBlockPreviewRun = {
+    text: string;
+    effectiveFormatting?: import__stll_docx_core_model.TextFormatting;
+    authoredFormatting?: import__stll_docx_core_model.TextFormatting;
 };
 
 // @public
-export type FolioAIBlockTableLocation = FolioContentTableLocation;
+export type FolioAIBlockStructuralBoundary = FolioContentStructuralBoundary;
+
+// @public
+export type FolioAIBlockTableLocation = {
+    outerTableIndex: number;
+    tableIndex: number;
+    rowIndex: number;
+    cellIndex: number;
+    gridColumnIndex: number;
+    columnSpan: number;
+    rowSpan: number;
+    paragraphIndex: number;
+};
 
 // @public (undocumented)
 export type FolioAIComment = {
@@ -426,7 +451,8 @@ export type FolioAIEditSkipReason = "missingBlock" | "changedBlock" | "ambiguous
 "documentNotEditable";
 
 // @public
-export type FolioAIEditSnapshot = FolioContentSnapshot<FolioAIBlock> & {
+export type FolioAIEditSnapshot = {
+    blocks: readonly FolioAIBlock[];
     anchors: Record<string, FolioAIBlockAnchor>;
 };
 
@@ -437,16 +463,27 @@ export type FolioAIEditView = {
 };
 
 // @public
-export type FolioAIInlineBooleanProperty = FolioContentInlineBooleanProperty;
+export type FolioAIInlineBooleanProperty = "bold" | "italic" | "underline" | "strike";
 
 // @public (undocumented)
-export type FolioAIInlineFormatting = FolioContentInlineFormatting;
+export type FolioAIInlineFormatting = Partial<Record<FolioAIInlineBooleanProperty, boolean>> & {
+    fontFamily?: string | null;
+    fontSizePt?: number | null;
+    color?: string | null;
+};
 
 // @public
-export type FolioAIInlineFormattingPatch = FolioContentInlineFormattingPatch;
+export type FolioAIInlineFormattingPatch = Omit<FolioAIInlineFormatting, FolioAIInlineBooleanProperty> & Partial<Record<FolioAIInlineBooleanProperty, boolean | null>>;
 
 // @public
-export type FolioAIParagraphSpacing = FolioContentParagraphSpacing;
+export type FolioAIParagraphSpacing = {
+    spaceBefore?: number;
+    spaceAfter?: number;
+    lineSpacing?: number;
+    lineSpacingRule?: "auto" | "exact" | "atLeast";
+    beforeAutospacing?: boolean;
+    afterAutospacing?: boolean;
+};
 
 // @public
 export type FolioAISignatureParty = {

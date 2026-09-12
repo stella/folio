@@ -129,6 +129,9 @@ export type HighlightAttrs = {
 export type HyperlinkAttrs = {
     href: string;
     tooltip?: string;
+    target?: string;
+    history?: boolean;
+    docLocation?: string;
     rId?: string;
     _docxHyperlinkIndex?: number;
 };

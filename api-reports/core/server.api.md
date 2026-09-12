@@ -331,14 +331,23 @@ export type ExtractedDocxText = {
 
 // @public
 export const FOLIO_CONTENT_COMPARISON_LIMITS: Readonly<{
+    readonly storiesPerSession: 4096;
     readonly blocksPerSnapshot: 100000;
+    readonly events: 200000;
     readonly changes: 10000;
+    readonly formattingRanges: 10000;
+    readonly structuralMembers: 100000;
     readonly blockCodeUnits: 1048576;
     readonly textCodeUnitsPerSnapshot: 8000000;
-    readonly previewRunsPerBlock: 65536;
-    readonly previewRunsPerSnapshot: 1000000;
+    readonly runsPerBlock: 65536;
+    readonly runsPerSnapshot: 1000000;
+    readonly structuralBoundariesPerBlock: 65536;
+    readonly structuralBoundariesPerSnapshot: 1000000;
     readonly containerDepth: 64;
     readonly containerEntriesPerSnapshot: 1000000;
+    readonly propertyDepth: 32;
+    readonly propertyEntriesPerContainer: 65536;
+    readonly propertyNodesPerSnapshot: 2000000;
     readonly attributeCodeUnits: 16384;
     readonly attributeCodeUnitsPerSnapshot: 8000000;
 }>;
@@ -495,8 +504,24 @@ export const FOLIO_YJS_PROSEMIRROR_FRAGMENT_NAME = "prosemirror";
 export const FOLIO_YJS_UPDATE_MAX_BYTES: number;
 
 // @public (undocumented)
-export type FolioAIBlock = FolioContentBlock<FolioAIBlockKind> & {
+export type FolioAIBlock = {
+    id: string;
+    kind: FolioAIBlockKind;
+    text: string;
+    idStability?: "stable" | "positional";
+    headingLevel?: number;
+    displayLabel?: string;
+    styleId?: string;
+    directAlignment?: import__stll_docx_core_model.ParagraphAlignment;
+    directSpacing?: FolioAIParagraphSpacing;
+    listLevel?: number;
+    previewRuns?: readonly FolioAIBlockPreviewRun[];
     structuralBoundaries?: readonly FolioAIBlockStructuralBoundary[];
+    table?: FolioAIBlockTableLocation;
+    containerPath?: readonly {
+        kind: string;
+        id: string;
+    }[];
 };
 
 // @public (undocumented)
@@ -515,14 +540,14 @@ export type FolioAIBlockAnchor = {
 export type FolioAIBlockKind = "heading" | "listItem" | "paragraph";
 
 // @public (undocumented)
-export type FolioAIBlockPreviewRun = FolioContentRun;
+export type FolioAIBlockPreviewRun = {
+    text: string;
+    effectiveFormatting?: import__stll_docx_core_model.TextFormatting;
+    authoredFormatting?: import__stll_docx_core_model.TextFormatting;
+};
 
 // @public
-export type FolioAIBlockStructuralBoundary = {
-    type: "pageBreak";
-    offset: number;
-    clear?: import__stll_docx_core_model.BreakContent["clear"];
-};
+export type FolioAIBlockStructuralBoundary = FolioContentStructuralBoundary;
 
 // @public (undocumented)
 export type FolioAIComment = {
@@ -754,21 +779,33 @@ export type FolioAIEditPrecondition = {
 };
 
 // @public
-export type FolioAIEditSnapshot = FolioContentSnapshot<FolioAIBlock> & {
+export type FolioAIEditSnapshot = {
+    blocks: readonly FolioAIBlock[];
     anchors: Record<string, FolioAIBlockAnchor>;
 };
 
 // @public
-export type FolioAIInlineBooleanProperty = FolioContentInlineBooleanProperty;
+export type FolioAIInlineBooleanProperty = "bold" | "italic" | "underline" | "strike";
 
 // @public (undocumented)
-export type FolioAIInlineFormatting = FolioContentInlineFormatting;
+export type FolioAIInlineFormatting = Partial<Record<FolioAIInlineBooleanProperty, boolean>> & {
+    fontFamily?: string | null;
+    fontSizePt?: number | null;
+    color?: string | null;
+};
 
 // @public
-export type FolioAIInlineFormattingPatch = FolioContentInlineFormattingPatch;
+export type FolioAIInlineFormattingPatch = Omit<FolioAIInlineFormatting, FolioAIInlineBooleanProperty> & Partial<Record<FolioAIInlineBooleanProperty, boolean | null>>;
 
 // @public
-export type FolioAIParagraphSpacing = FolioContentParagraphSpacing;
+export type FolioAIParagraphSpacing = {
+    spaceBefore?: number;
+    spaceAfter?: number;
+    lineSpacing?: number;
+    lineSpacingRule?: "auto" | "exact" | "atLeast";
+    beforeAutospacing?: boolean;
+    afterAutospacing?: boolean;
+};
 
 // @public
 export type FolioAITextRangeHandle = {
@@ -851,7 +888,7 @@ export type FolioBlockId = string & {
 };
 
 // @public
-export type FolioBlockProperty = keyof typeof BLOCK_PROPERTIES;
+export type FolioBlockProperty = string;
 
 // @public (undocumented)
 export type FolioCompareDocxVersionsOptions = {
@@ -1248,7 +1285,6 @@ export class FolioDocxReviewer {
     getDocumentProperties(): Readonly<NonNullable<import__stll_docx_core_model.Document["package"]["properties"]>> | null;
     getNotesAsText(): string;
     listStories(): FolioDocumentStory[];
-    matchStoryTableGeometry(input: FolioMatchStoryTableGeometryOptions): number;
     readNumberingDefinitions(): FolioNumberingLevel[];
     readReviewedStory(options?: FolioReadReviewedStoryOptions): FolioReviewedStory | null;
     readStory(handle: FolioDocumentStoryHandle): FolioDocumentStory | null;
@@ -1388,7 +1424,7 @@ export type FolioDocxXmlReplacement = {
 export type FolioEditableDocumentStoryHandle = FolioDocumentStoryHandle;
 
 // @public
-export type FolioFormatProperty = keyof typeof INLINE_FORMAT_PROPERTIES | keyof typeof PARAGRAPH_FORMAT_PROPERTIES;
+export type FolioFormatProperty = string;
 
 // @public (undocumented)
 export type FolioMetadataDiff = {
@@ -1496,7 +1532,7 @@ export type FolioVersionChangeProperty = FolioBlockProperty | FolioFormatPropert
 // @public
 export class FolioVersionComparisonLimitError extends FolioVersionComparisonLimitError_base<{
     message: string;
-    input: "base" | "revised" | "result";
+    input: FolioContentComparisonLimitError["input"];
     limit: FolioContentComparisonLimit;
     maximum: number;
     actual: number;
