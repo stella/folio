@@ -2675,17 +2675,6 @@ function convertTableCell(
     right?: number;
   },
 ): TableCell {
-  const pageBreakPosition = options.firstPageBreakRunPosition(node);
-  if (pageBreakPosition !== undefined) {
-    // An OOXML page break is forced at its exact run position, while a table
-    // row paginates across all of its cells. Cell-local flow cannot model that
-    // row-wide boundary without table-fragment ownership, so reject the shape
-    // instead of projecting a zero-height marker that would not paginate.
-    panic(
-      `An explicit page-break run at ${String(pageBreakPosition)} cannot be projected inside a table cell`,
-    );
-  }
-
   const blocks: FlowBlock[] = [];
   let offset = startPos + 1; // +1 for opening tag
 
@@ -2793,10 +2782,20 @@ function convertTableRow(
 ): TableRow {
   const cells: TableCell[] = [];
   let offset = startPos + 1; // +1 for opening tag
+  let breakBefore: TableRow["breakBefore"];
 
   // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
   node.forEach((child) => {
     if (child.type.name === "tableCell" || child.type.name === "tableHeader") {
+      const pageBreakPosition = options.firstPageBreakRunPosition(child);
+      if (pageBreakPosition !== undefined) {
+        if (!hasSingleLeadingTableCellPageBreak(child)) {
+          panic(
+            `An explicit page-break run at ${String(pageBreakPosition)} cannot be projected inside a table cell`,
+          );
+        }
+        breakBefore = "page";
+      }
       cells.push(convertTableCell(child, offset, options, tableCellMargins));
     }
     offset += child.nodeSize;
@@ -2825,6 +2824,9 @@ function convertTableRow(
   if (attrs._originalFormatting?.cantSplit) {
     row.cantSplit = true;
   }
+  if (breakBefore !== undefined) {
+    row.breakBefore = breakBefore;
+  }
   if (attrs.hidden) {
     row.hidden = attrs.hidden;
   }
@@ -2835,6 +2837,33 @@ function convertTableRow(
   }
   return row;
 }
+
+const hasSingleLeadingParagraphPageBreak = (paragraph: PMNode): boolean => {
+  let pageBreaks = 0;
+  let contentBeforeBreak = false;
+  paragraph.descendants((child) => {
+    if (child.type.name === "renderedPageBreak" || child.type.name === "bookmarkBoundary") {
+      return false;
+    }
+    if (child.type.name === "pageBreakRun") {
+      pageBreaks += 1;
+      return false;
+    }
+    if (child.childCount > 0) {
+      return true;
+    }
+    if (pageBreaks === 0) {
+      contentBeforeBreak = true;
+    }
+    return false;
+  });
+  return !contentBeforeBreak && pageBreaks === 1;
+};
+
+const hasSingleLeadingTableCellPageBreak = (cell: PMNode): boolean => {
+  const paragraph = cell.childCount === 1 ? cell.firstChild : undefined;
+  return paragraph?.type.name === "paragraph" && hasSingleLeadingParagraphPageBreak(paragraph);
+};
 
 /**
  * Convert a table node to a TableBlock.
@@ -3403,7 +3432,10 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
   ): void => {
     if (opts.firstPageBreakRunPosition(node) !== undefined) {
       const disposition = pageBreakRunParagraphProjectionDisposition(node);
-      if (disposition.status === "unsupported") {
+      if (
+        disposition.status === "unsupported" &&
+        (disposition.reason === "textBoxAnchor" || !hasSingleLeadingParagraphPageBreak(node))
+      ) {
         panic(disposition.message);
       }
     }

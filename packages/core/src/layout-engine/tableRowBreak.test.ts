@@ -1324,6 +1324,27 @@ describe("floating table placement", () => {
 });
 
 describe("oversized table row splits across pages (#570)", () => {
+  test("starts a row with an authored leading page break on a fresh page", () => {
+    const { block, measure } = tallTable(1);
+    const secondRow = structuredClone(block.rows[0]!);
+    secondRow.id = "r1";
+    secondRow.breakBefore = "page";
+    block.rows.push(secondRow);
+    measure.rows.push(structuredClone(measure.rows[0]!));
+    measure.totalHeight += LINE;
+
+    const layout = layoutDocument([block], [measure], OPTIONS);
+    const fragments = layout.pages
+      .flatMap((page) => page.fragments)
+      .filter((fragment): fragment is TableFragment => fragment.kind === "table");
+
+    expect(layout.pages).toHaveLength(2);
+    expect(fragments.map(({ fromRow, toRow }) => [fromRow, toRow])).toEqual([
+      [0, 1],
+      [1, 2],
+    ]);
+  });
+
   test("consumes empty-paragraph leading spacing when a split row resumes", () => {
     const block: TableBlock = {
       kind: "table",

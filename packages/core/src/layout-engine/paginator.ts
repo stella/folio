@@ -107,6 +107,11 @@ type StartSectionOptions = {
   placement?: SectionStartPlacement;
 };
 
+const pageHasNoVisiblePaginationContent = (page: Page): boolean =>
+  page.fragments.every(
+    (fragment) => fragment.kind === "paragraph" && fragment.paginationRole === "empty-carrier",
+  );
+
 /** Calculate active column widths, preferring authored unequal widths. */
 export function calculateColumnWidths(
   pageWidth: number,
@@ -566,7 +571,7 @@ export function createPaginator(options: PaginatorOptions) {
     if (
       breakOptions.coalesceBlankPage &&
       current &&
-      current.page.fragments.length === 0 &&
+      pageHasNoVisiblePaginationContent(current.page) &&
       current.cursorY === current.topMargin
     ) {
       if (current.page.sectionIndex !== currentSectionIndex) {
@@ -620,7 +625,11 @@ export function createPaginator(options: PaginatorOptions) {
 
   function retargetCurrentBlankPage(): boolean {
     const current = states.at(-1);
-    if (!current || current.page.fragments.length > 0 || current.cursorY !== current.topMargin) {
+    if (
+      !current ||
+      !pageHasNoVisiblePaginationContent(current.page) ||
+      current.cursorY !== current.topMargin
+    ) {
       return false;
     }
 
@@ -649,6 +658,9 @@ export function createPaginator(options: PaginatorOptions) {
 
     current.topMargin = topMargin;
     current.cursorY = topMargin;
+    for (const fragment of current.page.fragments) {
+      fragment.y = topMargin;
+    }
     current.columnIndex = 0;
     current.rawContentBottom = rawContentBottom;
     current.footnoteHeight = footnoteHeightFloor;

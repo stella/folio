@@ -697,6 +697,7 @@ export type ParagraphBorders = {
 // @public
 export type ParagraphFragment = FragmentBase & {
     kind: "paragraph";
+    paginationRole?: "empty-carrier";
     fromLine: number;
     toLine: number;
     height: number;
@@ -982,6 +983,7 @@ export type TableRow = {
     justification?: "left" | "center" | "right";
     isHeader?: boolean;
     cantSplit?: boolean;
+    breakBefore?: "page";
     hidden?: boolean;
 };
 

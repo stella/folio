@@ -10,6 +10,7 @@ import type {
   Table,
 } from "../../types/document";
 import { createEmptyDocument } from "../../utils/createDocument";
+import { fromProseDoc } from "./fromProseDoc";
 import {
   footnoteToProseDoc,
   headerFooterToProseDoc,
@@ -164,6 +165,7 @@ const documentWithContent = (content: BlockContent[]): Document => {
 type ContainerContext = {
   name: string;
   owner: "table-cell" | "text-box";
+  supportsLeadingBreak: boolean;
   build: (paragraph: Paragraph) => Document;
 };
 
@@ -171,16 +173,19 @@ const CONTAINER_CONTEXTS = [
   {
     name: "ordinary table cell",
     owner: "table-cell",
+    supportsLeadingBreak: true,
     build: (paragraph) => documentWithContent([tableWithParagraph(paragraph)]),
   },
   {
     name: "repeating-header table cell",
     owner: "table-cell",
+    supportsLeadingBreak: true,
     build: (paragraph) => documentWithContent([tableWithParagraph(paragraph, true)]),
   },
   {
     name: "nested table cell",
     owner: "table-cell",
+    supportsLeadingBreak: false,
     build: (paragraph) =>
       documentWithContent([
         {
@@ -202,16 +207,19 @@ const CONTAINER_CONTEXTS = [
   {
     name: "text box",
     owner: "text-box",
+    supportsLeadingBreak: false,
     build: (paragraph) => documentWithContent([textBoxHost([paragraph])]),
   },
   {
     name: "table nested in a text box",
     owner: "text-box",
+    supportsLeadingBreak: false,
     build: (paragraph) => documentWithContent([textBoxHost([tableWithParagraph(paragraph)])]),
   },
   {
     name: "text box nested in a table cell",
     owner: "table-cell",
+    supportsLeadingBreak: false,
     build: (paragraph) => documentWithContent([tableWithParagraph(textBoxHost([paragraph]))]),
   },
 ] as const satisfies readonly ContainerContext[];
@@ -226,11 +234,22 @@ const CONTAINER_MESSAGES = {
 describe("page-break run source-container ownership", () => {
   for (const context of CONTAINER_CONTEXTS) {
     test.each(INLINE_WRAPPERS)(
-      `rejects a page break in a ${context.name} through $name`,
+      `classifies a leading page break in a ${context.name} through $name`,
       ({ wrap }) => {
         const paragraph: Paragraph = { type: "paragraph", content: [wrap(pageBreakRun())] };
         const source = context.build(paragraph);
         const before = structuredClone(source.package.document.content);
+
+        if (context.supportsLeadingBreak) {
+          const prose = toProseDoc(source);
+          let pageBreaks = 0;
+          prose.descendants((node) => {
+            if (node.type.name === "pageBreakRun") pageBreaks += 1;
+          });
+          expect(pageBreaks).toBe(1);
+          expect(source.package.document.content).toEqual(before);
+          return;
+        }
 
         expectUnsupportedConversion(() => toProseDoc(source), {
           message: CONTAINER_MESSAGES[context.owner],
@@ -245,10 +264,12 @@ describe("page-break run source-container ownership", () => {
   test.each([
     {
       name: "only",
+      supported: true,
       content: [{ type: "break", breakType: "page" }],
     },
     {
       name: "leading",
+      supported: true,
       content: [
         { type: "break", breakType: "page" },
         { type: "text", text: "after" },
@@ -256,6 +277,7 @@ describe("page-break run source-container ownership", () => {
     },
     {
       name: "trailing",
+      supported: false,
       content: [
         { type: "text", text: "before" },
         { type: "break", breakType: "page" },
@@ -263,6 +285,7 @@ describe("page-break run source-container ownership", () => {
     },
     {
       name: "interleaved with rendered layout markers",
+      supported: false,
       content: [
         { type: "renderedPageBreak" },
         { type: "text", text: "before" },
@@ -271,23 +294,29 @@ describe("page-break run source-container ownership", () => {
         { type: "text", text: "after" },
       ],
     },
-  ] as const satisfies readonly { name: string; content: readonly RunContent[] }[])(
-    "rejects a $name authored page break regardless of its run position",
-    ({ content }) => {
-      const source = documentWithContent([
-        tableWithParagraph({
-          type: "paragraph",
-          content: [{ type: "run", content: [...content] }],
-        }),
-      ]);
+  ] as const satisfies readonly {
+    name: string;
+    supported: boolean;
+    content: readonly RunContent[];
+  }[])("classifies a $name authored page break by its run position", ({ content, supported }) => {
+    const source = documentWithContent([
+      tableWithParagraph({
+        type: "paragraph",
+        content: [{ type: "run", content: [...content] }],
+      }),
+    ]);
 
-      expectUnsupportedConversion(() => toProseDoc(source), {
-        message: CONTAINER_MESSAGES["table-cell"],
-        owner: "table-cell",
-        contentType: "break",
-      });
-    },
-  );
+    if (supported) {
+      expect(() => toProseDoc(source)).not.toThrow();
+      return;
+    }
+
+    expectUnsupportedConversion(() => toProseDoc(source), {
+      message: CONTAINER_MESSAGES["table-cell"],
+      owner: "table-cell",
+      contentType: "break",
+    });
+  });
 
   test.each([
     { content: [{ type: "renderedPageBreak" }] },
@@ -331,12 +360,31 @@ describe("page-break run source-container ownership", () => {
       name: "footnote or endnote conversion",
       convert: (paragraph: Paragraph) => footnoteToProseDoc([tableWithParagraph(paragraph)]),
     },
-  ])("builds source ownership for $name", ({ convert }) => {
-    expectUnsupportedConversion(() => convert(pageBreakParagraph()), {
-      message: CONTAINER_MESSAGES["table-cell"],
-      owner: "table-cell",
-      contentType: "break",
-    });
+  ])("supports a leading row boundary through $name", ({ convert }) => {
+    expect(() => convert(pageBreakParagraph())).not.toThrow();
+  });
+
+  test("round-trips a leading row boundary after a zero-width bookmark", () => {
+    const source = documentWithContent([
+      tableWithParagraph({
+        type: "paragraph",
+        content: [
+          { type: "bookmarkStart", id: 7, name: "boundary" },
+          {
+            type: "run",
+            content: [
+              { type: "break", breakType: "page" },
+              { type: "text", text: "after" },
+            ],
+          },
+          { type: "bookmarkEnd", id: 7 },
+        ],
+      }),
+    ]);
+
+    const restored = fromProseDoc(toProseDoc(source), source);
+
+    expect(restored.package.document.content).toEqual(source.package.document.content);
   });
 
   test.each([
@@ -445,12 +493,30 @@ const STORY_SURFACES = [
 describe("page-break run source-paragraph ownership", () => {
   for (const surface of STORY_SURFACES) {
     test.each(PARAGRAPH_DISPOSITIONS)(
-      `rejects a $name on the ${surface.name}`,
-      ({ formatting, owner, message }) => {
+      `supports a leading page break in a $name on the ${surface.name}`,
+      ({ formatting }) => {
         const paragraph: Paragraph = {
           type: "paragraph",
           formatting,
           content: [INLINE_WRAPPERS.at(-1)!.wrap(pageBreakRun())],
+        };
+        const before = structuredClone(paragraph);
+
+        expect(() => surface.convert(paragraph)).not.toThrow();
+        expect(paragraph).toEqual(before);
+      },
+    );
+
+    test.each(PARAGRAPH_DISPOSITIONS)(
+      `rejects an interior page break in a $name on the ${surface.name}`,
+      ({ formatting, owner, message }) => {
+        const paragraph: Paragraph = {
+          type: "paragraph",
+          formatting,
+          content: [
+            { type: "run", content: [{ type: "text", text: "before" }] },
+            INLINE_WRAPPERS.at(-1)!.wrap(pageBreakRun()),
+          ],
         };
         const before = structuredClone(paragraph);
 
@@ -495,7 +561,7 @@ describe("page-break run source-paragraph ownership", () => {
     },
   );
 
-  test("uses resolved paragraph attrs for style-owned projection constraints", () => {
+  test("supports a leading page break with a style-owned outline level", () => {
     const source = documentWithContent([
       {
         type: "paragraph",
@@ -507,14 +573,10 @@ describe("page-break run source-paragraph ownership", () => {
       styles: [{ styleId: "Outlined", type: "paragraph", pPr: { outlineLevel: 0 } }],
     };
 
-    expectUnsupportedConversion(() => toProseDoc(source), {
-      message: "An outline paragraph containing an explicit page-break run cannot be projected",
-      owner: "paragraph-outline",
-      contentType: "break",
-    });
+    expect(() => toProseDoc(source)).not.toThrow();
   });
 
-  test("rejects a page break in a paragraph-style-owned frame", () => {
+  test("supports a leading page break in a paragraph-style-owned frame", () => {
     const source = documentWithContent([
       {
         type: "paragraph",
@@ -526,14 +588,10 @@ describe("page-break run source-paragraph ownership", () => {
       styles: [{ styleId: "Framed", type: "paragraph", pPr: { frame: { width: 720 } } }],
     };
 
-    expectUnsupportedConversion(() => toProseDoc(source), {
-      message: "A framed paragraph containing an explicit page-break run cannot be projected",
-      owner: "paragraph-frame",
-      contentType: "break",
-    });
+    expect(() => toProseDoc(source)).not.toThrow();
   });
 
-  test("keeps outer table-cell ownership ahead of a table-style-owned frame", () => {
+  test("supports a leading table-row boundary with a table-style-owned frame", () => {
     const table = tableWithParagraph(pageBreakParagraph());
     table.formatting = { styleId: "FramedTable" };
     const source = documentWithContent([table]);
@@ -541,11 +599,7 @@ describe("page-break run source-paragraph ownership", () => {
       styles: [{ styleId: "FramedTable", type: "table", pPr: { frame: { width: 720 } } }],
     };
 
-    expectUnsupportedConversion(() => toProseDoc(source), {
-      message: CONTAINER_MESSAGES["table-cell"],
-      owner: "table-cell",
-      contentType: "break",
-    });
+    expect(() => toProseDoc(source)).not.toThrow();
   });
 
   test.each(["drop", "margin"] as const)(

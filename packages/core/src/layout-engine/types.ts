@@ -682,6 +682,8 @@ export type TableRow = {
   isHeader?: boolean;
   /** `w:cantSplit`: keep this row in one flow region. */
   cantSplit?: boolean;
+  /** A leading authored page break in a cell advances the whole row. */
+  breakBefore?: "page";
   hidden?: boolean;
 };
 
@@ -1135,6 +1137,8 @@ export type FragmentBase = {
  */
 export type ParagraphFragment = FragmentBase & {
   kind: "paragraph";
+  /** Structural PM carrier that must not make an otherwise blank page visible. */
+  paginationRole?: "empty-carrier";
   /** First line index (inclusive) from the measure. */
   fromLine: number;
   /** Last line index (exclusive) from the measure. */

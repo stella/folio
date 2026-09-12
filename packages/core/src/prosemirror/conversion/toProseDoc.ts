@@ -1681,6 +1681,16 @@ function convertTable(
 ): PMNode {
   for (const row of table.rows) {
     for (const cell of row.cells) {
+      if (
+        cell.formatting?.vMerge === "continue" &&
+        context.pageBreakRunSourceDescendants.containsPageBreakRun(cell.content)
+      ) {
+        throw new UnsupportedDocxToProseMirrorConversionError({
+          message: `${PAGE_BREAK_CONTAINER_DESCRIPTIONS["table-cell"]} cannot be represented in the editor model`,
+          owner: "table-cell",
+          contentType: "break",
+        });
+      }
       assertSourceContainerHasNoPageBreakRun(
         cell.content,
         "table-cell",
@@ -2764,12 +2774,94 @@ function assertSourceContainerHasNoPageBreakRun(
   if (!sourceDescendants.containsPageBreakRun(content)) {
     return;
   }
+  if (owner === "table-cell" && hasSingleLeadingTableCellPageBreak(content)) {
+    return;
+  }
   throw new UnsupportedDocxToProseMirrorConversionError({
     message: `${PAGE_BREAK_CONTAINER_DESCRIPTIONS[owner]} cannot be represented in the editor model`,
     owner,
     contentType: "break",
   });
 }
+
+/** A leading page-break run in a cell advances the whole row in Word. This
+ * narrow shape has a lossless PM representation and a row-wide layout
+ * projection; interior breaks still require table-fragment ownership. */
+function hasSingleLeadingTableCellPageBreak(content: BlockContent[]): boolean {
+  const paragraph =
+    content.length === 1 && content[0]?.type === "paragraph" ? content[0] : undefined;
+  return paragraph !== undefined && hasSingleLeadingParagraphPageBreak(paragraph);
+}
+
+type LeadingPageBreakScan = {
+  contentBeforeBreak: boolean;
+  pageBreaks: number;
+};
+
+const scanLeadingPageBreakRun = (run: Run, scan: LeadingPageBreakScan): void => {
+  for (const content of run.content) {
+    if (content.type === "renderedPageBreak") {
+      continue;
+    }
+    if (content.type === "break" && content.breakType === "page") {
+      scan.pageBreaks += 1;
+      continue;
+    }
+    if (scan.pageBreaks === 0) {
+      scan.contentBeforeBreak = true;
+    }
+  }
+};
+
+const scanLeadingPageBreakContent = (
+  content: Paragraph["content"][number],
+  scan: LeadingPageBreakScan,
+): void => {
+  switch (content.type) {
+    case "run":
+      scanLeadingPageBreakRun(content, scan);
+      return;
+    case "hyperlink":
+      for (const child of content.children) scanLeadingPageBreakContent(child, scan);
+      return;
+    case "insertion":
+    case "deletion":
+    case "moveFrom":
+    case "moveTo":
+    case "inlineSdt":
+      for (const child of content.content) scanLeadingPageBreakContent(child, scan);
+      return;
+    case "simpleField":
+      for (const child of content.content) scanLeadingPageBreakContent(child, scan);
+      return;
+    case "complexField":
+      for (const child of content.fieldResult) scanLeadingPageBreakRun(child, scan);
+      return;
+    case "bookmarkStart":
+    case "bookmarkEnd":
+    case "commentRangeStart":
+    case "commentRangeEnd":
+    case "moveFromRangeStart":
+    case "moveFromRangeEnd":
+    case "moveToRangeStart":
+    case "moveToRangeEnd":
+      return;
+    case "commentReference":
+    case "mathEquation":
+      if (scan.pageBreaks === 0) scan.contentBeforeBreak = true;
+      return;
+    default: {
+      const unsupported: never = content;
+      return unsupported;
+    }
+  }
+};
+
+const hasSingleLeadingParagraphPageBreak = (paragraph: Paragraph): boolean => {
+  const scan: LeadingPageBreakScan = { contentBeforeBreak: false, pageBreaks: 0 };
+  for (const content of paragraph.content) scanLeadingPageBreakContent(content, scan);
+  return !scan.contentBeforeBreak && scan.pageBreaks === 1;
+};
 
 type ParagraphPageBreakProjectionOptions = {
   paragraph: Paragraph;
@@ -2797,6 +2889,9 @@ function assertParagraphPageBreakCanBeProjected({
     hasTextBoxAnchor: sourceFeatures.hasTextBoxShape && !sourceFeatures.pageBreakSharesTextBoxShape,
   });
   if (disposition.status === "supported") {
+    return;
+  }
+  if (disposition.reason !== "textBoxAnchor" && hasSingleLeadingParagraphPageBreak(paragraph)) {
     return;
   }
   throw new UnsupportedDocxToProseMirrorConversionError({

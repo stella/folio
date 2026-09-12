@@ -278,6 +278,69 @@ describe("continuous section break geometry", () => {
     });
   });
 
+  test("a section boundary reuses a hard-break page containing only its empty carrier", () => {
+    const cover = paragraph("cover", 100);
+    const carrier = emptyParagraph({
+      id: "carrier",
+      attrs: { suppressEmptyParagraphHeight: true },
+      lineHeight: 0,
+    });
+    const body = paragraph("body", 100);
+    const result = layoutDocument(
+      [
+        cover.block,
+        { kind: "pageBreak", id: "cover-break" },
+        carrier.block,
+        { kind: "sectionBreak", id: "body-section" },
+        body.block,
+      ],
+      [
+        cover.measure,
+        { kind: "pageBreak" },
+        carrier.measure,
+        { kind: "sectionBreak" },
+        body.measure,
+      ],
+      {
+        pageSize: { w: 800, h: 1000 },
+        margins: { top: 50, right: 50, bottom: 50, left: 50 },
+      },
+    );
+
+    expect(result.pages).toHaveLength(2);
+    expect(result.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual(["carrier", "body"]);
+  });
+
+  test("an ordinary empty paragraph preserves a blank page before a section boundary", () => {
+    const cover = paragraph("cover", 100);
+    const visibleEmpty = emptyParagraph({ id: "visible-empty", lineHeight: 0 });
+    const body = paragraph("body", 100);
+    const result = layoutDocument(
+      [
+        cover.block,
+        { kind: "pageBreak", id: "cover-break" },
+        visibleEmpty.block,
+        { kind: "sectionBreak", id: "body-section" },
+        body.block,
+      ],
+      [
+        cover.measure,
+        { kind: "pageBreak" },
+        visibleEmpty.measure,
+        { kind: "sectionBreak" },
+        body.measure,
+      ],
+      {
+        pageSize: { w: 800, h: 1000 },
+        margins: { top: 50, right: 50, bottom: 50, left: 50 },
+      },
+    );
+
+    expect(result.pages).toHaveLength(3);
+    expect(result.pages[1]?.fragments.map(({ blockId }) => blockId)).toEqual(["visible-empty"]);
+    expect(result.pages[2]?.fragments.map(({ blockId }) => blockId)).toEqual(["body"]);
+  });
+
   test("pageBreakBefore advances ordinals on a page opened by a section boundary", () => {
     const cover = paragraph("cover", 100);
     const body = paragraph("body", 100);
