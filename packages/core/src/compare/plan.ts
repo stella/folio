@@ -873,6 +873,7 @@ export const planStoryCompare = ({
         const sourceRemovalBoundary = event.move.sourceRemovalBoundary;
         switch (sourceRemovalBoundary.type) {
           case "successorParagraph":
+          case "successorTable":
           case "terminalPredecessor":
             operations.push({
               type: "moveParagraph",

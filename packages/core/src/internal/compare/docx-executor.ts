@@ -139,7 +139,6 @@ type PreparedInstructionPayload =
   | {
       readonly type: "moveParagraph";
       readonly source: ResolvedBlock;
-      readonly successor: ResolvedBlock;
       readonly boundary: ResolvedParagraphBoundary;
       readonly target: DocxComparisonParagraphTarget;
       readonly originalIndex: number;
@@ -366,6 +365,25 @@ const executionTasks = (
         right.type === "insertionRun" ||
         (right.type === "tableStructure" && right.task.schedule.phase === "insertion");
       if (leftInsertion !== rightInsertion) {
+        // A paragraph inserted at a table's exact start would move the table's
+        // preflighted source coordinate. Execute that source first; insertion
+        // at a source range's end still executes first and preserves it.
+        if (
+          leftInsertion &&
+          right.type === "tableStructure" &&
+          right.task.schedule.phase === "source" &&
+          right.from === left.position
+        ) {
+          return 1;
+        }
+        if (
+          rightInsertion &&
+          left.type === "tableStructure" &&
+          left.task.schedule.phase === "source" &&
+          left.from === right.position
+        ) {
+          return -1;
+        }
         return leftInsertion ? -1 : 1;
       }
       const leftKey = executionTaskSortKey(left);
@@ -790,22 +808,10 @@ export const preflightDocxComparisonProgram = ({
       }
       case "moveParagraph": {
         const source = resolveSource(instruction.source);
-        const successor = resolveSource(instruction.successor);
         const boundary = resolveParagraphBoundary(snapshot, resolver, instruction.boundary);
         if (source.type === "unsupported") {
           issues.push(
             issue(instruction, instructionIndex, source.reason, sourceBlockId(instruction.source)),
-          );
-          break;
-        }
-        if (successor.type === "unsupported") {
-          issues.push(
-            issue(
-              instruction,
-              instructionIndex,
-              successor.reason,
-              sourceBlockId(instruction.successor),
-            ),
           );
           break;
         }
@@ -820,12 +826,64 @@ export const preflightDocxComparisonProgram = ({
           );
           break;
         }
+        const sourcePosition = state.doc.resolve(source.block.from);
+        let ownsRemovalBoundary = false;
+        let removalBoundaryFailed = false;
+        switch (instruction.removalBoundary.type) {
+          case "successorParagraph": {
+            const successor = resolveSource(instruction.removalBoundary.successor);
+            if (successor.type === "unsupported") {
+              issues.push(
+                issue(
+                  instruction,
+                  instructionIndex,
+                  successor.reason,
+                  sourceBlockId(instruction.removalBoundary.successor),
+                ),
+              );
+              removalBoundaryFailed = true;
+              break;
+            }
+            ownsRemovalBoundary = source.block.to === successor.block.from;
+            break;
+          }
+          case "successorTable": {
+            const firstTableBlock = resolveSource(instruction.removalBoundary.firstBlock);
+            if (firstTableBlock.type === "unsupported") {
+              issues.push(
+                issue(
+                  instruction,
+                  instructionIndex,
+                  firstTableBlock.reason,
+                  sourceBlockId(instruction.removalBoundary.firstBlock),
+                ),
+              );
+              removalBoundaryFailed = true;
+              break;
+            }
+            const tablePosition = state.doc.resolve(firstTableBlock.block.from);
+            for (let depth = 1; depth <= tablePosition.depth; depth++) {
+              if (
+                tablePosition.node(depth - 1) === sourcePosition.parent &&
+                tablePosition.node(depth).type.spec["tableRole"] === "table"
+              ) {
+                ownsRemovalBoundary = tablePosition.before(depth) === source.block.to;
+                break;
+              }
+            }
+            break;
+          }
+          default: {
+            const unreachable: never = instruction.removalBoundary;
+            return panic("Unhandled DOCX paragraph-removal boundary", {
+              boundary: unreachable,
+            });
+          }
+        }
+        if (removalBoundaryFailed) break;
         if (
-          source.block.to !== successor.block.from ||
-          paragraphEndsItsContainer(
-            state.doc.resolve(source.block.from),
-            source.block.node.type.name,
-          )
+          !ownsRemovalBoundary ||
+          paragraphEndsItsContainer(sourcePosition, source.block.node.type.name)
         ) {
           issues.push(
             issue(
@@ -841,7 +899,6 @@ export const preflightDocxComparisonProgram = ({
           Object.freeze({
             type: "moveParagraph",
             source: source.block,
-            successor: successor.block,
             boundary,
             target: instruction.target,
             originalIndex: instructionIndex,
@@ -886,17 +943,14 @@ export const preflightDocxComparisonProgram = ({
           );
           break;
         }
+        const predecessorPosition = state.doc.resolve(predecessor.block.from);
+        const sourcePosition = state.doc.resolve(source.block.from);
         if (
-          predecessor.block.to !== source.block.from ||
+          predecessor.block.from >= source.block.from ||
+          predecessorPosition.parent !== sourcePosition.parent ||
           !canJoin(state.doc, predecessor.block.to) ||
-          paragraphEndsItsContainer(
-            state.doc.resolve(predecessor.block.from),
-            predecessor.block.node.type.name,
-          ) ||
-          !paragraphEndsItsContainer(
-            state.doc.resolve(source.block.from),
-            source.block.node.type.name,
-          )
+          paragraphEndsItsContainer(predecessorPosition, predecessor.block.node.type.name) ||
+          !paragraphEndsItsContainer(sourcePosition, source.block.node.type.name)
         ) {
           issues.push(
             issue(

@@ -351,6 +351,27 @@ describe("residual identity continuity", () => {
       ["pair", "after", "after"],
     ]);
   });
+
+  test("does not invent a pair across incompatible weak structural evidence", () => {
+    const baseHeading = Object.freeze({
+      ...block("0", "Authored heading", { identityType: "positional", kind: "heading" }),
+      blockProperties: Object.freeze([{ key: "headingLevel", value: 2 }]),
+    });
+    const revisedParagraph = block("0", "New paragraph", { identityType: "positional" });
+
+    expect(
+      alignFolioContentBlocks([baseHeading], [revisedParagraph]).map((event) => event.type),
+    ).toEqual(["baseOnly", "revisedOnly"]);
+  });
+
+  test("keeps a text replacement paired when weak structural evidence agrees", () => {
+    const baseParagraph = block("base", "Original text", { identityType: "positional" });
+    const revisedParagraph = block("revised", "Revised text", { identityType: "positional" });
+
+    expect(
+      alignFolioContentBlocks([baseParagraph], [revisedParagraph]).map((event) => event.type),
+    ).toEqual(["pair"]);
+  });
 });
 
 describe("container-safe structural alignment", () => {
@@ -420,6 +441,94 @@ describe("container-safe structural alignment", () => {
     },
   );
 
+  test("shares one target boundary scope across reconciliation-only body cuts", () => {
+    const baseBefore = block("before", "Before");
+    const baseAfter = block("after", "After");
+    const revisedBefore = block("before", "Before");
+    const inserted = block("inserted", "Inserted where the removed table stood");
+    const revisedAfter = block("after", "After");
+    const steps = alignFolioContentStructure({
+      baseBlocks: [baseBefore, outerTableCell("removed-table", 0), baseAfter],
+      revisedBlocks: [revisedBefore, inserted, revisedAfter],
+    });
+    const before = steps.find(
+      (step) => step.type === "pair" && step.baseBlock.identity.id === "before",
+    );
+    const insertion = steps.find(
+      (step) => step.type === "revisedOnly" && step.block.identity.id === "inserted",
+    );
+    const after = steps.find(
+      (step) => step.type === "pair" && step.baseBlock.identity.id === "after",
+    );
+    if (before?.type !== "pair" || insertion?.type !== "revisedOnly" || after?.type !== "pair") {
+      throw new Error("Expected two surviving anchors and one insertion.");
+    }
+
+    expect([before.boundaryScope, insertion.moveScope.boundaryScope, after.boundaryScope]).toEqual([
+      before.boundaryScope,
+      before.boundaryScope,
+      before.boundaryScope,
+    ]);
+    expect(insertion.insertionBoundary).toEqual({
+      type: "beforeParagraph",
+      paragraph: baseAfter,
+      containerAlignment: after.containerAlignment,
+    });
+  });
+
+  test("keeps target boundary scopes apart across a real table occurrence", () => {
+    const baseBefore = block("before", "Before");
+    const baseAfter = block("after", "After");
+    const revisedBefore = block("before", "Before");
+    const insertedBefore = block("inserted-before", "Inserted before the table");
+    const insertedAfter = block("inserted-after", "Inserted after the table");
+    const revisedAfter = block("after", "After");
+    const steps = alignFolioContentStructure({
+      baseBlocks: [baseBefore, outerTableCell("table", 0), baseAfter],
+      revisedBlocks: [
+        revisedBefore,
+        insertedBefore,
+        outerTableCell("table", 0),
+        insertedAfter,
+        revisedAfter,
+      ],
+    });
+    const before = steps.find(
+      (step) => step.type === "pair" && step.baseBlock.identity.id === "before",
+    );
+    const after = steps.find(
+      (step) => step.type === "pair" && step.baseBlock.identity.id === "after",
+    );
+    const beforeInsertion = steps.find(
+      (step) => step.type === "revisedOnly" && step.block.identity.id === "inserted-before",
+    );
+    const afterInsertion = steps.find(
+      (step) => step.type === "revisedOnly" && step.block.identity.id === "inserted-after",
+    );
+    if (
+      before?.type !== "pair" ||
+      after?.type !== "pair" ||
+      beforeInsertion?.type !== "revisedOnly" ||
+      afterInsertion?.type !== "revisedOnly"
+    ) {
+      throw new Error("Expected paired anchors and one insertion on each side of the table.");
+    }
+
+    expect(before.boundaryScope).not.toBe(after.boundaryScope);
+    expect(beforeInsertion.moveScope.boundaryScope).toBe(before.boundaryScope);
+    expect(afterInsertion.moveScope.boundaryScope).toBe(after.boundaryScope);
+    expect(beforeInsertion.insertionBoundary).toEqual({
+      type: "afterParagraph",
+      paragraph: baseBefore,
+      containerAlignment: before.containerAlignment,
+    });
+    expect(afterInsertion.insertionBoundary).toEqual({
+      type: "beforeParagraph",
+      paragraph: baseAfter,
+      containerAlignment: after.containerAlignment,
+    });
+  });
+
   test("uses unique exact content when positional ids shift across a removed table", () => {
     const base = [
       block("base-before", "Exact paragraph before", { identityType: "positional" }),
@@ -487,6 +596,43 @@ describe("container-safe structural alignment", () => {
       targetCarrier: revisedBeta,
       containerAlignment: source.moveScope.containerAlignment,
     });
+  });
+
+  test("owns the surviving carrier when an adjacent terminal suffix also moves", () => {
+    const alpha = block("alpha", "Alpha");
+    const beta = block("beta", "Beta");
+    const gamma = block("gamma", "Gamma");
+    const revisedGamma = block("gamma", "Gamma");
+    const revisedBeta = block("beta", "Beta");
+    const revisedAlpha = block("alpha", "Alpha");
+
+    const steps = alignFolioContentStructure({
+      baseBlocks: [alpha, beta, gamma],
+      revisedBlocks: [revisedGamma, revisedBeta, revisedAlpha],
+    });
+    const source = steps.find(
+      (step) => step.type === "baseOnly" && step.block.identity.id === "gamma",
+    );
+    if (source?.type !== "baseOnly") throw new Error("Expected the moved terminal source.");
+
+    expect(source.removalBoundary).toEqual({
+      type: "terminalPredecessor",
+      predecessor: alpha,
+      targetCarrier: revisedAlpha,
+      containerAlignment: source.moveScope.containerAlignment,
+    });
+    const sourceEdgeOwners = steps.flatMap((step) => {
+      if (step.type !== "baseOnly" || step.removalBoundary.type === "unanchoredContainer") {
+        return [];
+      }
+      return [
+        step.removalBoundary.type === "terminalPredecessor"
+          ? step.removalBoundary.predecessor.identity.id
+          : step.block.identity.id,
+      ];
+    });
+    expect(sourceEdgeOwners.toSorted()).toEqual(["alpha", "beta"]);
+    expect(new Set(sourceEdgeOwners).size).toBe(sourceEdgeOwners.length);
   });
 
   test("owns an exact successor for a non-terminal paragraph removal", () => {
@@ -765,6 +911,38 @@ describe("container-safe structural alignment", () => {
     expect(bodyPair.containerAlignment).toBe(insertion.moveScope.containerAlignment);
     expect(bodyPair.containerAlignment.base.end).toBe("structuralSibling");
     expect(bodyPair.containerAlignment.revised.end).toBe("structuralSibling");
+  });
+
+  test("owns the exact table occurrence after a moved paragraph", () => {
+    const source = block("source", "Paragraph moved past a table");
+    const table = cell("table", "Table", {
+      rowIndex: 0,
+      cellIndex: 0,
+      gridColumnIndex: 0,
+    });
+    const tail = block("tail", "Tail paragraph");
+    const revisedSource = block("revised-source", "Paragraph moved past a table");
+    const revisedTable = cell("table", "Table", {
+      rowIndex: 0,
+      cellIndex: 0,
+      gridColumnIndex: 0,
+    });
+    const revisedTail = block("tail", "Tail paragraph");
+
+    const steps = alignFolioContentStructure({
+      baseBlocks: [source, table, tail],
+      revisedBlocks: [revisedTable, revisedSource, revisedTail],
+    });
+    const movedSource = steps.find(
+      (step) => step.type === "baseOnly" && step.block.identity.id === "source",
+    );
+    if (movedSource?.type !== "baseOnly") throw new Error("Expected a moved source.");
+
+    expect(movedSource.removalBoundary).toEqual({
+      type: "successorTable",
+      firstBlock: table,
+      containerAlignment: movedSource.moveScope.containerAlignment,
+    });
   });
 
   test("does not pair equal blocks across distinct generic container paths", () => {

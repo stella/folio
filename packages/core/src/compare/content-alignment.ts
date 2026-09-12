@@ -20,9 +20,11 @@ import type {
   FolioContentParagraphInsertionBoundary,
   FolioContentParagraphRemovalBoundary,
   FolioContentRevisedContainerAlignment,
+  FolioContentTableBlock,
   FolioContentTableLocation,
 } from "./content-types";
 import { alignTableColumns, type TableColumnAlignmentStep } from "./column-alignment";
+import { sameFolioContentPropertySet } from "./content-properties";
 
 const MAX_CONTENT_ALIGNMENT_LCS_CELLS = 4_000_000;
 const MAX_CONTENT_STRUCTURE_TOKEN_LOOKUPS = 4_000_000;
@@ -475,9 +477,18 @@ export const alignFolioContentBlocks = (
       const baseBlock = baseBlocks[baseFrom + offset];
       const revisedBlock = revisedBlocks[revisedFrom + offset];
       if (baseBlock && revisedBlock) {
+        const identityDisposition = folioContentIdentityPairDisposition(
+          baseBlock.identity,
+          revisedBlock.identity,
+        );
         if (
-          folioContentIdentityPairDisposition(baseBlock.identity, revisedBlock.identity) ===
-          "forbid"
+          identityDisposition === "forbid" ||
+          ((identityDisposition === "candidate" || identityDisposition === "position") &&
+            (baseBlock.kind !== revisedBlock.kind ||
+              !sameFolioContentPropertySet(
+                baseBlock.blockProperties,
+                revisedBlock.blockProperties,
+              )))
         ) {
           events.push({ type: "baseOnly", block: baseBlock });
           events.push({ type: "revisedOnly", block: revisedBlock });
@@ -555,6 +566,7 @@ export type FolioContentAlignmentStep =
       baseBlock: FolioContentBlock;
       revisedBlock: FolioContentBlock;
       containerAlignment: FolioContentPairedContainerAlignment;
+      boundaryScope: number;
     }
   | {
       type: "baseOnly";
@@ -599,6 +611,7 @@ export type FolioContentAlignmentStep =
 export type FolioContentMoveScope = {
   readonly bucket: number;
   readonly gap: number;
+  readonly boundaryScope: number;
   readonly containerAlignment: FolioContentContainerAlignment;
 };
 
@@ -614,12 +627,14 @@ type MoveScopeContext = {
   nextTableCellBucket: number;
   nextContainerAlignmentId: number;
   nextGap: number;
+  nextBoundaryScope: number;
   baseContainerAlignments: Map<string, FolioContentBaseContainerAlignment>;
   revisedContainerAlignments: Map<string, FolioContentRevisedContainerAlignment>;
   baseBodyContainerEnds: ReadonlyMap<string | null, "paragraph" | "structuralSibling">;
   revisedBodyContainerEnds: ReadonlyMap<string | null, "paragraph" | "structuralSibling">;
   baseParagraphTopology: ParagraphTopology;
   revisedParagraphTopology: ParagraphTopology;
+  baseStructuralFollowerByBlockId: ReadonlyMap<string, FolioContentTableBlock>;
 };
 
 type ParagraphTopology = {
@@ -811,6 +826,7 @@ const scopedAlignmentSteps = (
   context: MoveScopeContext,
   bucketForBlock: (block: FolioContentBlock) => number,
   defaultAlignment?: FolioContentContainerAlignment,
+  ownedBoundaryScope?: number,
 ): FolioContentAlignmentStep[] => {
   const baseAlignmentByOccurrence = context.baseContainerAlignments;
   const revisedAlignmentByOccurrence = context.revisedContainerAlignments;
@@ -923,176 +939,315 @@ const scopedAlignmentSteps = (
     }
   }
 
-  type BaseBoundary = {
-    readonly block: FolioContentBlock;
-    readonly alignment: FolioContentBaseContainerAlignment;
-  };
-  type PairedBaseBoundary = {
-    readonly block: FolioContentBlock;
-    readonly alignment: FolioContentPairedContainerAlignment;
-  };
-  const nextBaseByIndex: (BaseBoundary | null)[] = Array.from(
-    { length: aligned.length },
-    () => null,
-  );
-  const nextPairedBaseByIndex: (PairedBaseBoundary | null)[] = Array.from(
-    { length: aligned.length },
-    () => null,
-  );
-  const nextBaseByAlignment = new Map<FolioContentContainerAlignment, BaseBoundary>();
-  const nextPairedBaseByAlignment = new Map<
-    FolioContentPairedContainerAlignment,
-    PairedBaseBoundary
-  >();
-  const terminalRevisedByAlignment = new Map<
-    FolioContentContainerAlignment,
-    { readonly block: FolioContentBlock; readonly pairedBase: FolioContentBlock | null }
-  >();
-  for (let index = aligned.length - 1; index >= 0; index--) {
-    const entry = aligned[index];
-    if (!entry) continue;
-    nextBaseByIndex[index] = nextBaseByAlignment.get(entry.containerAlignment) ?? null;
-    nextPairedBaseByIndex[index] =
-      entry.containerAlignment.type === "paired"
-        ? (nextPairedBaseByAlignment.get(entry.containerAlignment) ?? null)
-        : null;
-    if (entry.type === "pair") {
-      const boundary = {
-        block: entry.baseBlock,
-        alignment: entry.containerAlignment,
-      };
-      nextBaseByAlignment.set(entry.containerAlignment, boundary);
-      nextPairedBaseByAlignment.set(entry.containerAlignment, boundary);
-      if (context.revisedParagraphTopology.terminalBlockIds.has(entry.revisedBlock.identity.id)) {
-        terminalRevisedByAlignment.set(entry.containerAlignment, {
-          block: entry.revisedBlock,
-          pairedBase: entry.baseBlock,
-        });
-      }
-    } else if (entry.type === "baseOnly") {
-      nextBaseByAlignment.set(entry.containerAlignment, {
-        block: entry.block,
-        alignment: entry.containerAlignment,
-      });
-    } else if (context.revisedParagraphTopology.terminalBlockIds.has(entry.block.identity.id)) {
-      terminalRevisedByAlignment.set(entry.containerAlignment, {
-        block: entry.block,
-        pairedBase: null,
-      });
-    }
-  }
-
   const steps: FolioContentAlignmentStep[] = [];
-  const previousBaseByAlignment = new Map<FolioContentContainerAlignment, BaseBoundary>();
-  const previousPairedBaseByAlignment = new Map<
-    FolioContentPairedContainerAlignment,
-    PairedBaseBoundary
-  >();
+  const boundaryScope = ownedBoundaryScope ?? context.nextBoundaryScope++;
   let gap = context.nextGap++;
-  for (const [index, entry] of aligned.entries()) {
+  for (const entry of aligned) {
     if (entry.type === "pair") {
-      const { containerAlignment } = entry;
-      steps.push(entry);
-      const boundary = {
-        block: entry.baseBlock,
-        alignment: containerAlignment,
-      };
-      previousBaseByAlignment.set(containerAlignment, boundary);
-      previousPairedBaseByAlignment.set(containerAlignment, boundary);
+      steps.push({ ...entry, boundaryScope });
       gap = context.nextGap++;
       continue;
     }
     if (entry.type === "baseOnly") {
       const { containerAlignment } = entry;
-      const nextBase = nextBaseByIndex[index] ?? null;
-      const previousBase = previousBaseByAlignment.get(containerAlignment) ?? null;
+      steps.push({
+        type: "baseOnly",
+        block: entry.block,
+        moveScope: {
+          bucket: bucketForBlock(entry.block),
+          gap,
+          boundaryScope,
+          containerAlignment,
+        },
+        removalBoundary: Object.freeze({ type: "unanchoredContainer", containerAlignment }),
+      });
+      continue;
+    }
+    const { containerAlignment } = entry;
+    steps.push({
+      type: "revisedOnly",
+      block: entry.block,
+      moveScope: {
+        bucket: bucketForBlock(entry.block),
+        gap,
+        boundaryScope,
+        containerAlignment,
+      },
+      insertionBoundary: Object.freeze({ type: "unanchoredContainer", containerAlignment }),
+    });
+  }
+  return steps;
+};
+
+type BaseParagraphBoundary = {
+  readonly block: FolioContentBlock;
+  readonly alignment: FolioContentBaseContainerAlignment;
+};
+
+type PairedBaseParagraphBoundary = {
+  readonly block: FolioContentBlock;
+  readonly alignment: FolioContentPairedContainerAlignment;
+};
+
+type TerminalRevisedParagraph = {
+  readonly block: FolioContentBlock;
+  readonly pairedBase: FolioContentBlock | null;
+};
+
+/**
+ * Resolve boundaries only after every structural segment is aligned. Removal
+ * follows story-wide source topology; insertion scans every one-sided event in
+ * its structural scope without crossing a table boundary.
+ */
+const withCanonicalParagraphBoundaries = (
+  unresolved: readonly FolioContentAlignmentStep[],
+  context: MoveScopeContext,
+): FolioContentAlignmentStep[] => {
+  const baseBoundaryByBlockId = new Map<string, BaseParagraphBoundary>();
+  const terminalRevisedByAlignment = new Map<
+    FolioContentContainerAlignment,
+    TerminalRevisedParagraph
+  >();
+  const registerBaseBoundary = (boundary: BaseParagraphBoundary): void => {
+    const blockId = boundary.block.identity.id;
+    const existing = baseBoundaryByBlockId.get(blockId);
+    if (
+      existing !== undefined &&
+      (existing.block !== boundary.block || existing.alignment !== boundary.alignment)
+    ) {
+      return panic("A base paragraph has two canonical alignment boundaries", { blockId });
+    }
+    baseBoundaryByBlockId.set(blockId, boundary);
+  };
+  const registerTerminalRevised = (
+    alignment: FolioContentRevisedContainerAlignment,
+    terminal: TerminalRevisedParagraph,
+  ): void => {
+    if (!context.revisedParagraphTopology.terminalBlockIds.has(terminal.block.identity.id)) return;
+    const existing = terminalRevisedByAlignment.get(alignment);
+    if (existing !== undefined && existing.block !== terminal.block) {
+      return panic("A container alignment has two canonical revised terminal paragraphs", {
+        firstBlockId: existing.block.identity.id,
+        secondBlockId: terminal.block.identity.id,
+      });
+    }
+    terminalRevisedByAlignment.set(alignment, terminal);
+  };
+
+  for (const step of unresolved) {
+    switch (step.type) {
+      case "pair":
+        registerBaseBoundary({ block: step.baseBlock, alignment: step.containerAlignment });
+        registerTerminalRevised(step.containerAlignment, {
+          block: step.revisedBlock,
+          pairedBase: step.baseBlock,
+        });
+        break;
+      case "baseOnly":
+        registerBaseBoundary({ block: step.block, alignment: step.moveScope.containerAlignment });
+        break;
+      case "revisedOnly":
+        registerTerminalRevised(step.moveScope.containerAlignment, {
+          block: step.block,
+          pairedBase: null,
+        });
+        break;
+      case "baseRow":
+      case "revisedRow":
+      case "baseTable":
+      case "revisedTable":
+      case "baseColumn":
+      case "revisedColumn":
+      case "tableReplacement":
+        break;
+      default: {
+        const unreachable: never = step;
+        return panic("Unhandled alignment step while indexing paragraph boundaries", {
+          step: unreachable,
+        });
+      }
+    }
+  }
+
+  const nextBaseByIndex: (BaseParagraphBoundary | null)[] = Array.from(
+    { length: unresolved.length },
+    () => null,
+  );
+  const nextPairedBaseByIndex: (PairedBaseParagraphBoundary | null)[] = Array.from(
+    { length: unresolved.length },
+    () => null,
+  );
+  const nextBaseByScope = new Map<number, BaseParagraphBoundary>();
+  const nextPairedBaseByScope = new Map<number, PairedBaseParagraphBoundary>();
+  for (let index = unresolved.length - 1; index >= 0; index--) {
+    const step = unresolved[index];
+    if (!step || step.type === "tableReplacement") continue;
+    if (step.type === "pair") {
+      nextBaseByIndex[index] = nextBaseByScope.get(step.boundaryScope) ?? null;
+      nextPairedBaseByIndex[index] = nextPairedBaseByScope.get(step.boundaryScope) ?? null;
+      const boundary = { block: step.baseBlock, alignment: step.containerAlignment };
+      nextBaseByScope.set(step.boundaryScope, boundary);
+      nextPairedBaseByScope.set(step.boundaryScope, boundary);
+      continue;
+    }
+    if (step.type === "baseOnly") {
+      const { containerAlignment } = step.moveScope;
+      nextBaseByIndex[index] = nextBaseByScope.get(step.moveScope.boundaryScope) ?? null;
+      nextPairedBaseByIndex[index] =
+        containerAlignment.type === "paired"
+          ? (nextPairedBaseByScope.get(step.moveScope.boundaryScope) ?? null)
+          : null;
+      nextBaseByScope.set(step.moveScope.boundaryScope, {
+        block: step.block,
+        alignment: containerAlignment,
+      });
+      continue;
+    }
+    if (step.type === "revisedOnly") {
+      const { containerAlignment } = step.moveScope;
+      nextBaseByIndex[index] = nextBaseByScope.get(step.moveScope.boundaryScope) ?? null;
+      nextPairedBaseByIndex[index] =
+        containerAlignment.type === "paired"
+          ? (nextPairedBaseByScope.get(step.moveScope.boundaryScope) ?? null)
+          : null;
+    }
+  }
+
+  const previousBaseByScope = new Map<number, BaseParagraphBoundary>();
+  const previousPairedBaseByScope = new Map<number, PairedBaseParagraphBoundary>();
+  const previousPairedBaseByAlignment = new Map<
+    FolioContentPairedContainerAlignment,
+    PairedBaseParagraphBoundary
+  >();
+  const resolved: FolioContentAlignmentStep[] = [];
+  for (const [index, step] of unresolved.entries()) {
+    if (step.type === "pair") {
+      resolved.push(step);
+      const boundary = { block: step.baseBlock, alignment: step.containerAlignment };
+      previousBaseByScope.set(step.boundaryScope, boundary);
+      previousPairedBaseByScope.set(step.boundaryScope, boundary);
+      previousPairedBaseByAlignment.set(step.containerAlignment, boundary);
+      continue;
+    }
+    if (step.type === "baseOnly") {
+      const { containerAlignment } = step.moveScope;
       const successorId = context.baseParagraphTopology.successorByBlockId.get(
-        entry.block.identity.id,
+        step.block.identity.id,
       );
+      const successor =
+        successorId === undefined ? undefined : baseBoundaryByBlockId.get(successorId);
+      if (successor !== undefined && successor.alignment !== containerAlignment) {
+        return panic("A base paragraph successor crossed its canonical container alignment", {
+          blockId: step.block.identity.id,
+          successorId,
+        });
+      }
       const predecessorId = context.baseParagraphTopology.predecessorByBlockId.get(
-        entry.block.identity.id,
+        step.block.identity.id,
       );
-      const targetCarrier = terminalRevisedByAlignment.get(containerAlignment) ?? null;
+      const predecessor =
+        predecessorId === undefined ? undefined : baseBoundaryByBlockId.get(predecessorId);
+      if (predecessor !== undefined && predecessor.alignment !== containerAlignment) {
+        return panic("A base paragraph predecessor crossed its canonical container alignment", {
+          blockId: step.block.identity.id,
+          predecessorId,
+        });
+      }
+      const targetCarrier = terminalRevisedByAlignment.get(containerAlignment);
+      const structuralFollower = context.baseStructuralFollowerByBlockId.get(
+        step.block.identity.id,
+      );
+      const previousPaired =
+        containerAlignment.type === "paired"
+          ? previousPairedBaseByAlignment.get(containerAlignment)
+          : undefined;
       let removalBoundary: FolioContentParagraphRemovalBoundary;
-      if (successorId !== undefined && nextBase?.block.identity.id === successorId) {
+      if (successor) {
         removalBoundary = Object.freeze({
           type: "successorParagraph",
-          successor: nextBase.block,
+          successor: successor.block,
+          containerAlignment,
+        });
+      } else if (structuralFollower !== undefined) {
+        removalBoundary = Object.freeze({
+          type: "successorTable",
+          firstBlock: structuralFollower,
           containerAlignment,
         });
       } else if (
-        context.baseParagraphTopology.terminalBlockIds.has(entry.block.identity.id) &&
+        context.baseParagraphTopology.terminalBlockIds.has(step.block.identity.id) &&
         containerAlignment.type === "paired" &&
-        predecessorId !== undefined &&
-        previousBase?.block.identity.id === predecessorId &&
-        targetCarrier?.pairedBase === previousBase.block
+        previousPaired !== undefined &&
+        targetCarrier !== undefined &&
+        (targetCarrier.pairedBase === previousPaired.block || targetCarrier.pairedBase === null)
       ) {
         removalBoundary = Object.freeze({
           type: "terminalPredecessor",
-          predecessor: previousBase.block,
+          predecessor: previousPaired.block,
           targetCarrier: targetCarrier.block,
           containerAlignment,
         });
       } else {
         removalBoundary = Object.freeze({ type: "unanchoredContainer", containerAlignment });
       }
-      steps.push({
-        type: "baseOnly",
-        block: entry.block,
-        moveScope: { bucket: bucketForBlock(entry.block), gap, containerAlignment },
-        removalBoundary,
-      });
-      previousBaseByAlignment.set(containerAlignment, {
-        block: entry.block,
+      resolved.push(Object.freeze({ ...step, removalBoundary }));
+      previousBaseByScope.set(step.moveScope.boundaryScope, {
+        block: step.block,
         alignment: containerAlignment,
       });
       continue;
     }
-    const { containerAlignment } = entry;
-    const nextPairedBase =
-      containerAlignment.type === "paired" ? (nextPairedBaseByIndex[index] ?? null) : null;
-    const previousPairedBase =
-      containerAlignment.type === "paired"
-        ? (previousPairedBaseByAlignment.get(containerAlignment) ?? null)
-        : null;
-    const fallbackNextBase = nextBaseByIndex[index] ?? null;
-    const fallbackPreviousBase = previousBaseByAlignment.get(containerAlignment) ?? null;
-    let insertionBoundary: FolioContentParagraphInsertionBoundary;
-    if (nextPairedBase) {
-      insertionBoundary = Object.freeze({
-        type: "beforeParagraph",
-        paragraph: nextPairedBase.block,
-        containerAlignment: nextPairedBase.alignment,
-      });
-    } else if (previousPairedBase) {
-      insertionBoundary = Object.freeze({
-        type: "afterParagraph",
-        paragraph: previousPairedBase.block,
-        containerAlignment: previousPairedBase.alignment,
-      });
-    } else if (fallbackNextBase?.alignment.type === "paired") {
-      insertionBoundary = Object.freeze({
-        type: "beforeParagraph",
-        paragraph: fallbackNextBase.block,
-        containerAlignment: fallbackNextBase.alignment,
-      });
-    } else if (fallbackPreviousBase?.alignment.type === "paired") {
-      insertionBoundary = Object.freeze({
-        type: "afterParagraph",
-        paragraph: fallbackPreviousBase.block,
-        containerAlignment: fallbackPreviousBase.alignment,
-      });
-    } else {
-      insertionBoundary = Object.freeze({ type: "unanchoredContainer", containerAlignment });
+    if (step.type === "revisedOnly") {
+      const { containerAlignment } = step.moveScope;
+      const nextPaired =
+        containerAlignment.type === "paired" ? (nextPairedBaseByIndex[index] ?? null) : null;
+      const previousPaired =
+        containerAlignment.type === "paired"
+          ? (previousPairedBaseByScope.get(step.moveScope.boundaryScope) ?? null)
+          : null;
+      const fallbackNext = nextBaseByIndex[index] ?? null;
+      const fallbackPrevious = previousBaseByScope.get(step.moveScope.boundaryScope) ?? null;
+      let insertionBoundary: FolioContentParagraphInsertionBoundary;
+      if (nextPaired) {
+        insertionBoundary = Object.freeze({
+          type: "beforeParagraph",
+          paragraph: nextPaired.block,
+          containerAlignment: nextPaired.alignment,
+        });
+      } else if (previousPaired) {
+        insertionBoundary = Object.freeze({
+          type: "afterParagraph",
+          paragraph: previousPaired.block,
+          containerAlignment: previousPaired.alignment,
+        });
+      } else if (fallbackNext?.alignment.type === "paired") {
+        insertionBoundary = Object.freeze({
+          type: "beforeParagraph",
+          paragraph: fallbackNext.block,
+          containerAlignment: fallbackNext.alignment,
+        });
+      } else if (fallbackPrevious?.alignment.type === "paired") {
+        insertionBoundary = Object.freeze({
+          type: "afterParagraph",
+          paragraph: fallbackPrevious.block,
+          containerAlignment: fallbackPrevious.alignment,
+        });
+      } else {
+        insertionBoundary = Object.freeze({ type: "unanchoredContainer", containerAlignment });
+      }
+      resolved.push(Object.freeze({ ...step, insertionBoundary }));
+      continue;
     }
-    steps.push({
-      type: "revisedOnly",
-      block: entry.block,
-      moveScope: { bucket: bucketForBlock(entry.block), gap, containerAlignment },
-      insertionBoundary,
-    });
+    if (step.type === "tableReplacement") {
+      resolved.push({
+        ...step,
+        refinementSteps: withCanonicalParagraphBoundaries(step.refinementSteps, context),
+      });
+      continue;
+    }
+    resolved.push(step);
   }
-  return steps;
+  return resolved;
 };
 
 type DocumentSegment =
@@ -1230,6 +1385,31 @@ const splitSegments = (blocks: readonly FolioContentBlock[]): DocumentSegment[] 
     currentTableIndex = tableIndex;
   }
   return segments;
+};
+
+/** Exact table occurrence following the last paragraph of each body run. */
+const structuralTableFollowers = (
+  segments: readonly DocumentSegment[],
+): ReadonlyMap<string, FolioContentTableBlock> => {
+  const followers = new Map<string, FolioContentTableBlock>();
+  for (let index = 0; index < segments.length - 1; index++) {
+    const segment = segments[index];
+    const next = segments[index + 1];
+    if (
+      segment?.kind !== "body" ||
+      next?.kind !== "table" ||
+      segment.containerPathKey !== next.containerPathKey
+    ) {
+      continue;
+    }
+    const paragraph = segment.blocks.at(-1);
+    const firstTableBlock = next.blocks.at(0);
+    if (!paragraph || !firstTableBlock?.table) {
+      return panic("A structural table segment has no canonical first member");
+    }
+    followers.set(paragraph.identity.id, firstTableBlock);
+  }
+  return followers;
 };
 
 const bodyContainerEnds = (
@@ -3312,8 +3492,11 @@ const unpairedSegmentSteps = (
   segment: DocumentSegment,
   side: "base" | "revised",
   moveScopeContext: MoveScopeContext,
+  boundaryScope?: number,
 ): FolioContentAlignmentStep[] => {
   if (segment.kind !== "table") {
+    const ownedBoundaryScope =
+      boundaryScope ?? panic("A body segment has no original physical boundary scope");
     const first = segment.blocks.at(0) ?? panic("A body segment has no blocks");
     const containerAlignment = registeredContainerAlignment(
       moveScopeContext,
@@ -3328,6 +3511,7 @@ const unpairedSegmentSteps = (
       moveScopeContext,
       () => BODY_MOVE_BUCKET,
       containerAlignment,
+      ownedBoundaryScope,
     );
   }
   const location = segment.blocks.at(0)?.table;
@@ -3355,9 +3539,11 @@ export const alignFolioContentStructure = ({
   revisedBlocks,
   workSession = createFolioContentAlignmentWorkSession(),
 }: AlignFolioContentStructureOptions): FolioContentAlignmentStep[] => {
+  const originalBaseSegments = splitSegments(baseBlocks);
+  const originalRevisedSegments = splitSegments(revisedBlocks);
   const segments = reconcileTableSeparatedBodySegments(
-    splitSegments(baseBlocks),
-    splitSegments(revisedBlocks),
+    originalBaseSegments,
+    originalRevisedSegments,
   );
   const baseSegments = segments.base;
   const revisedSegments = segments.revised;
@@ -3366,18 +3552,51 @@ export const alignFolioContentStructure = ({
     revisedSegments,
     workSession,
   });
-  const baseBodyContainerEnds = bodyContainerEnds(baseSegments);
-  const revisedBodyContainerEnds = bodyContainerEnds(revisedSegments);
+  const baseBodyContainerEnds = bodyContainerEnds(originalBaseSegments);
+  const revisedBodyContainerEnds = bodyContainerEnds(originalRevisedSegments);
+  const originalBaseBodyRunByBlock = new Map<FolioContentBlock, number>();
+  const originalRevisedBodyRunByBlock = new Map<FolioContentBlock, number>();
+  let nextOriginalBodyRun = 0;
+  for (const segment of originalBaseSegments) {
+    if (segment.kind !== "body") continue;
+    const bodyRun = nextOriginalBodyRun++;
+    for (const block of segment.blocks) originalBaseBodyRunByBlock.set(block, bodyRun);
+  }
+  for (const segment of originalRevisedSegments) {
+    if (segment.kind !== "body") continue;
+    const bodyRun = nextOriginalBodyRun++;
+    for (const block of segment.blocks) originalRevisedBodyRunByBlock.set(block, bodyRun);
+  }
   const moveScopeContext: MoveScopeContext = {
     nextTableCellBucket: BODY_MOVE_BUCKET + 1,
     nextContainerAlignmentId: 1,
     nextGap: 0,
+    nextBoundaryScope: nextOriginalBodyRun,
     baseContainerAlignments: new Map(),
     revisedContainerAlignments: new Map(),
     baseBodyContainerEnds,
     revisedBodyContainerEnds,
     baseParagraphTopology: paragraphTopology(baseBlocks, baseBodyContainerEnds),
     revisedParagraphTopology: paragraphTopology(revisedBlocks, revisedBodyContainerEnds),
+    baseStructuralFollowerByBlockId: structuralTableFollowers(originalBaseSegments),
+  };
+  const boundaryScopeFor = (
+    baseSegment: DocumentSegment | null,
+    revisedSegment: DocumentSegment | null,
+  ): number => {
+    const baseFirst = baseSegment?.kind === "body" ? baseSegment.blocks.at(0) : undefined;
+    const revisedFirst = revisedSegment?.kind === "body" ? revisedSegment.blocks.at(0) : undefined;
+    const baseRun = baseFirst ? originalBaseBodyRunByBlock.get(baseFirst) : undefined;
+    const revisedRun = revisedFirst ? originalRevisedBodyRunByBlock.get(revisedFirst) : undefined;
+    if (baseFirst && baseRun === undefined) {
+      return panic("A reconciled base body segment lost its physical run");
+    }
+    if (revisedFirst && revisedRun === undefined) {
+      return panic("A reconciled revised body segment lost its physical run");
+    }
+    return (
+      revisedRun ?? baseRun ?? panic("A body boundary scope must own one original physical run")
+    );
   };
   // Container correspondence belongs to the complete structural alignment,
   // not whichever table-separated body run happens to be visited first. Seed
@@ -3412,6 +3631,7 @@ export const alignFolioContentStructure = ({
             moveScopeContext,
             () => BODY_MOVE_BUCKET,
             containerAlignment,
+            boundaryScopeFor(baseSegment, revisedSegment),
           ),
         );
         continue;
@@ -3442,14 +3662,28 @@ export const alignFolioContentStructure = ({
       continue;
     }
     if (baseSegment) {
-      steps.push(...unpairedSegmentSteps(baseSegment, "base", moveScopeContext));
+      steps.push(
+        ...unpairedSegmentSteps(
+          baseSegment,
+          "base",
+          moveScopeContext,
+          baseSegment.kind === "body" ? boundaryScopeFor(baseSegment, null) : undefined,
+        ),
+      );
       continue;
     }
     if (revisedSegment) {
-      steps.push(...unpairedSegmentSteps(revisedSegment, "revised", moveScopeContext));
+      steps.push(
+        ...unpairedSegmentSteps(
+          revisedSegment,
+          "revised",
+          moveScopeContext,
+          revisedSegment.kind === "body" ? boundaryScopeFor(null, revisedSegment) : undefined,
+        ),
+      );
     }
   }
-  return steps;
+  return withCanonicalParagraphBoundaries(steps, moveScopeContext);
 };
 
 export const contentBlocksShareContainer = (

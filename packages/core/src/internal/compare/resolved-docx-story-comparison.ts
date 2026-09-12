@@ -1566,8 +1566,7 @@ export const resolvedDocxTerminalReplacementOperand = (
   const targetTerminal = index.targetTerminalBlockByContainer.get(baseContainer);
   if (
     baseTerminal !== deletedPayload.event.block ||
-    targetTerminal !== insertedPayload.event.block ||
-    deletedPayload.sequence >= insertedPayload.sequence
+    targetTerminal !== insertedPayload.event.block
   ) {
     return panic("A terminal DOCX replacement must own the exact terminal event pair");
   }

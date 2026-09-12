@@ -252,6 +252,11 @@ export type FolioContentBlock = {
   readonly containerPath: readonly FolioContentContainerPathEntry[];
 };
 
+/** A canonical paragraph member that proves one exact table occurrence. */
+export type FolioContentTableBlock = FolioContentBlock & {
+  readonly table: FolioContentTableLocation;
+};
+
 /**
  * A target-side paragraph boundary proved inside one alignment-owned
  * container. An unanchored container never borrows a paragraph elsewhere.
@@ -276,6 +281,12 @@ export type FolioContentParagraphRemovalBoundary =
   | {
       readonly type: "successorParagraph";
       readonly successor: FolioContentBlock;
+      readonly containerAlignment: FolioContentBaseContainerAlignment;
+    }
+  | {
+      /** The first canonical member of the table immediately after this paragraph. */
+      readonly type: "successorTable";
+      readonly firstBlock: FolioContentTableBlock;
       readonly containerAlignment: FolioContentBaseContainerAlignment;
     }
   | {

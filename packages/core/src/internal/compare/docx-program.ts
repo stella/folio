@@ -113,6 +113,16 @@ export type DocxComparisonParagraphInsertionBoundary = {
   readonly paragraph: DocxComparisonSourceOperand;
 };
 
+export type DocxComparisonParagraphRemovalBoundary =
+  | {
+      readonly type: "successorParagraph";
+      readonly successor: DocxComparisonSourceOperand;
+    }
+  | {
+      readonly type: "successorTable";
+      readonly firstBlock: DocxComparisonSourceOperand;
+    };
+
 /**
  * Closed transport vocabulary for one DOCX story. These are not generic edit
  * requests: each branch owns its source expectation and complete accepted
@@ -139,7 +149,7 @@ export type DocxComparisonInstructionInput =
   | {
       readonly type: "moveParagraph";
       readonly source: DocxComparisonSourceOperand;
-      readonly successor: DocxComparisonSourceOperand;
+      readonly removalBoundary: DocxComparisonParagraphRemovalBoundary;
       readonly boundary: DocxComparisonParagraphInsertionBoundary;
       readonly target: ResolvedDocxTargetBlockOperand;
     }
@@ -314,7 +324,7 @@ type DocxComparisonInstructionPayload =
   | {
       readonly type: "moveParagraph";
       readonly source: DocxComparisonSourceOperand;
-      readonly successor: DocxComparisonSourceOperand;
+      readonly removalBoundary: DocxComparisonParagraphRemovalBoundary;
       readonly boundary: DocxComparisonParagraphInsertionBoundary;
       readonly target: DocxComparisonParagraphTarget;
     }
@@ -810,6 +820,30 @@ const ownParagraphInsertionBoundary = (
   }
 };
 
+const ownParagraphRemovalBoundary = (
+  boundary: DocxComparisonParagraphRemovalBoundary,
+  snapshot: ResolvedDocxStorySnapshot,
+): DocxComparisonParagraphRemovalBoundary => {
+  switch (boundary.type) {
+    case "successorParagraph":
+      return Object.freeze({
+        type: boundary.type,
+        successor: ownSourceOperand(boundary.successor, snapshot),
+      });
+    case "successorTable":
+      return Object.freeze({
+        type: boundary.type,
+        firstBlock: ownSourceOperand(boundary.firstBlock, snapshot),
+      });
+    default: {
+      const unreachable: never = boundary;
+      return panic("A DOCX paragraph-removal boundary has an invalid type", {
+        boundary: unreachable,
+      });
+    }
+  }
+};
+
 const canonicalParagraphInsertionBoundary = (
   boundary: FolioContentParagraphInsertionBoundary,
   snapshot: ResolvedDocxStorySnapshot,
@@ -1215,7 +1249,7 @@ const compileInstruction = (
       return Object.freeze({
         type: "moveParagraph",
         source: ownSourceOperand(input.source, sourceSnapshot),
-        successor: ownSourceOperand(input.successor, sourceSnapshot),
+        removalBoundary: ownParagraphRemovalBoundary(input.removalBoundary, sourceSnapshot),
         boundary: ownParagraphInsertionBoundary(input.boundary, sourceSnapshot),
         target: ownParagraphTarget(input.target, comparison, targetSnapshot),
       });
@@ -1923,10 +1957,32 @@ const compileSemanticOperationInput = (
               {
                 type: "moveParagraph",
                 source: resolvedDocxSourceOperand(sourceSnapshot, relation.base.block),
-                successor: resolvedDocxSourceOperand(
-                  sourceSnapshot,
-                  sourceRemovalBoundary.successor,
-                ),
+                removalBoundary: Object.freeze({
+                  type: "successorParagraph",
+                  successor: resolvedDocxSourceOperand(
+                    sourceSnapshot,
+                    sourceRemovalBoundary.successor,
+                  ),
+                }),
+                boundary,
+                target: resolvedDocxTargetBlockOperand(comparison, relation.revised.block),
+              },
+            ]),
+          });
+        case "successorTable":
+          return compiledSemanticOperation({
+            reports: Object.freeze(reports),
+            instructions: Object.freeze([
+              {
+                type: "moveParagraph",
+                source: resolvedDocxSourceOperand(sourceSnapshot, relation.base.block),
+                removalBoundary: Object.freeze({
+                  type: "successorTable",
+                  firstBlock: resolvedDocxSourceOperand(
+                    sourceSnapshot,
+                    sourceRemovalBoundary.firstBlock,
+                  ),
+                }),
                 boundary,
                 target: resolvedDocxTargetBlockOperand(comparison, relation.revised.block),
               },
@@ -2170,6 +2226,64 @@ type CompileDocxComparisonProgramOptions = {
   readonly targetSnapshot: ResolvedDocxStorySnapshot;
 };
 
+/** Every source paragraph mark is one edge and has exactly one instruction owner. */
+const assertUniqueParagraphMarkOwnership = (
+  instructions: readonly DocxComparisonInstruction[],
+  sourceSnapshot: ResolvedDocxStorySnapshot,
+): void => {
+  const ownerByBlock = new Map<
+    FolioContentBlock,
+    { readonly instructionIndex: number; readonly instructionType: string }
+  >();
+  for (const [instructionIndex, instruction] of instructions.entries()) {
+    let owners: readonly DocxComparisonSourceOperand[];
+    switch (instruction.type) {
+      case "deleteParagraph":
+      case "moveParagraph":
+      case "splitParagraph":
+        owners = [instruction.source];
+        break;
+      case "moveTerminalParagraph":
+        owners = [instruction.predecessor];
+        break;
+      case "mergeParagraphs":
+        owners = [instruction.firstSource];
+        break;
+      case "deleteTrailingParagraphs":
+        owners = [instruction.chainStart, ...instruction.deleted.slice(0, -1)];
+        break;
+      case "replaceText":
+      case "formatText":
+      case "insertParagraph":
+      case "setParagraphProperties":
+      case "tableStructure":
+      case "tableFormat":
+        owners = [];
+        break;
+      default: {
+        const unreachable: never = instruction;
+        return panic("Unhandled instruction while proving paragraph-mark ownership", {
+          instruction: unreachable,
+        });
+      }
+    }
+    for (const owner of owners) {
+      const block = resolvedDocxSourceOperandBlock(owner, sourceSnapshot);
+      const existing = ownerByBlock.get(block);
+      if (existing !== undefined) {
+        return panic("A source paragraph edge has more than one comparison instruction owner", {
+          blockId: block.identity.id,
+          firstInstructionIndex: existing.instructionIndex,
+          firstInstructionType: existing.instructionType,
+          secondInstructionIndex: instructionIndex,
+          secondInstructionType: instruction.type,
+        });
+      }
+      ownerByBlock.set(block, { instructionIndex, instructionType: instruction.type });
+    }
+  }
+};
+
 const compileDocxComparisonProgram = ({
   comparison,
   inputs,
@@ -2211,6 +2325,7 @@ const compileDocxComparisonProgram = ({
       });
     }
   }
+  assertUniqueParagraphMarkOwnership(instructions, sourceSnapshot);
   return Object.freeze({
     instructions: Object.freeze(instructions),
     semanticGroups: Object.freeze(semanticGroups),
