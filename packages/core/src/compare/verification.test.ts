@@ -206,20 +206,22 @@ describe("complete canonical projection verification", () => {
       mutate: (block: FolioContentBlock) =>
         Reflect.set(block.structuralBoundaries[0]!, "offset", 3),
     },
-  ])("rejects a same-id/text $name mutation", ({ cause, mutate }) => {
+  ])("rejects a same-id/text $name mutation at the exact story scope", ({ cause, mutate }) => {
     const expected = canonicalBlock();
     const actual = structuredClone(expected);
+    const story = { type: "header", relationshipId: "rId7" } as const;
     mutate(actual);
     expect(actual.identity).toEqual(expected.identity);
     expect(actual.text).toBe(expected.text);
-    expect(
-      classifyContentProjectionMismatch({
-        invariant: "accept-reproduces-target",
-        story: { type: "main" },
-        actual: [actual],
-        expected: [expected],
-      }),
-    ).toMatchObject({ cause });
+    const failure = classifyContentProjectionMismatch({
+      invariant: "accept-reproduces-target",
+      story,
+      actual: [actual],
+      expected: [expected],
+    });
+    expect(failure).toMatchObject({ cause });
+    expect(failure?.scope).toEqual({ type: "story", story });
+    expect(failure).not.toHaveProperty("story");
   });
 
   test("treats package-local block and table ids as transport identity", () => {

@@ -5,7 +5,7 @@ import { propertyConfig } from "../../../../test/property-testing";
 import {
   ownContentSnapshot,
   requireOwnedContentSnapshotBlocks,
-} from "../internal/compare/owned-content-snapshot";
+} from "./owned-content-snapshot";
 import {
   compareContent,
   createContentComparisonWorkSession,

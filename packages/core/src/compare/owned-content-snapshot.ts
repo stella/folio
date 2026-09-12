@@ -1,6 +1,6 @@
 import { panic } from "better-result";
 
-import type { FolioContentBlock } from "../../compare/content-types";
+import type { FolioContentBlock } from "./content-types";
 
 const OWNED_CONTENT_SNAPSHOT_BRAND: unique symbol = Symbol("owned-content-snapshot");
 

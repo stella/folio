@@ -44,7 +44,7 @@ import type {
 import {
   ownedContentSnapshotBlocks,
   type OwnedContentSnapshot,
-} from "../internal/compare/owned-content-snapshot";
+} from "./owned-content-snapshot";
 import {
   FOLIO_CONTENT_BLOCK_FIELD_DESCRIPTORS,
   FOLIO_CONTENT_CONTAINER_FIELD_DESCRIPTORS,

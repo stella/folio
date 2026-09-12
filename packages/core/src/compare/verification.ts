@@ -577,7 +577,12 @@ export const classifyContentProjectionMismatch = ({
   const failure = (
     cause: CompareVerificationCause,
     detail: string,
-  ): CompareVerificationFailure => ({ invariant, cause, story, detail });
+  ): CompareVerificationFailure => ({
+    invariant,
+    cause,
+    scope: { type: "story", story },
+    detail,
+  });
   if (actual.length !== expected.length) {
     return failure(
       "block-count",

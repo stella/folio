@@ -68,7 +68,7 @@ import {
   ownContentSnapshot,
   requireOwnedContentSnapshotBlocks,
   type OwnedContentSnapshot,
-} from "./owned-content-snapshot";
+} from "../../compare/owned-content-snapshot";
 
 const RESOLVED_DOCX_STORY_SNAPSHOT_BRAND: unique symbol = Symbol("resolved-docx-story-snapshot");
 const RESOLVED_DOCX_SOURCE_OPERAND_BRAND: unique symbol = Symbol("resolved-docx-source-operand");
