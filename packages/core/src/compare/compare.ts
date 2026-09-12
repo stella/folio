@@ -200,7 +200,7 @@ export type ParsedComparison = {
   packageDate: Date;
   pairs: readonly ComparedStoryPair[];
   /** Package-level numbering differences, which belong to no story. */
-  numberingChanges: readonly CompareChange[];
+  numberingChanges: readonly NumberingChange[];
   unsupported: readonly CompareUnsupportedPart[];
 };
 
