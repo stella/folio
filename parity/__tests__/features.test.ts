@@ -697,6 +697,7 @@ describe("assessFontEnvironment", () => {
     expect(fontFamiliesMatch("ArialMT", "Arial")).toBe(true);
     expect(fontFamiliesMatch("ABCDEF+Calibri-BoldItalic", "Calibri")).toBe(true);
     expect(fontFamiliesMatch("TimesNewRomanPS-BoldItal", "Times New Roman")).toBe(true);
+    expect(fontFamiliesMatch("ArialMT-PSIt", "ArialMT")).toBe(true);
     expect(fontFamiliesMatch("Interstate-Bold", "Inter")).toBe(false);
   });
 

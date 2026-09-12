@@ -240,7 +240,7 @@ const shouldMergeRowBoxes = (current: LineBox, next: LineBox): boolean => {
  * shape; ordinary header/body content must remain separate. */
 const isHeaderLineNumberBodyPair = (a: LineBox, b: LineBox): boolean => {
   const isHeaderLineNumber = (line: LineBox): boolean =>
-    line.region === "header" && /^\d+$/u.test(normalizeLineText(line.text));
+    line.region === "header" && /^\p{Decimal_Number}+$/u.test(normalizeLineText(line.text));
   return (
     (isHeaderLineNumber(a) && b.region === "body") || (isHeaderLineNumber(b) && a.region === "body")
   );

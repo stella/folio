@@ -367,6 +367,7 @@ const PDF_FONT_STYLE_SUFFIXES = new Set([
   "bolditalicmt",
   "psboldmt",
   "psitalicmt",
+  "psit",
   "psital",
   "psbolditalicmt",
   "psboldital",

@@ -204,7 +204,7 @@ describe("compareGeoms", () => {
     const reference = makeDoc("word", [
       makePage({
         lines: [
-          makeLine({ text: "16", xPt: 81.7, yPt: 423.4, widthPt: 12, heightPt: 8.25 }),
+          makeLine({ text: "١٦", xPt: 81.7, yPt: 423.4, widthPt: 12, heightPt: 8.25 }),
           makeLine({
             text: "Application for Compensation",
             xPt: 108,
@@ -220,7 +220,7 @@ describe("compareGeoms", () => {
       makePage({
         lines: [
           makeLine({
-            text: "16",
+            text: "١٦",
             region: "header",
             xPt: 81.7,
             yPt: 423.4,
