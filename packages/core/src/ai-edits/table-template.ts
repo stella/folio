@@ -210,17 +210,22 @@ const copiedAttrs = (node: PMNode, context: TemplateContext): Record<string, unk
       return context.revision ? { ...attrs, trIns: context.revision } : attrs;
     case "cell":
     case "header_cell": {
+      if (context.clampRowSpan) {
+        return {
+          ...attrs,
+          rowspan: 1,
+          _docxVMergeContinuationCells: null,
+        };
+      }
       const continuationCells = expectTableCellAttrs(node)._docxVMergeContinuationCells;
-      const portableAttrs =
-        continuationCells !== undefined && continuationCells !== null
-          ? {
-              ...attrs,
-              _docxVMergeContinuationCells: cloneTableCellsWithParagraphPropertyCaptures(
-                decodeTableCellParagraphSourcePayload(continuationCells),
-              ),
-            }
-          : attrs;
-      return context.clampRowSpan ? { ...portableAttrs, rowspan: 1 } : portableAttrs;
+      return continuationCells !== undefined && continuationCells !== null
+        ? {
+            ...attrs,
+            _docxVMergeContinuationCells: cloneTableCellsWithParagraphPropertyCaptures(
+              decodeTableCellParagraphSourcePayload(continuationCells),
+            ),
+          }
+        : attrs;
     }
     default:
       return attrs;
