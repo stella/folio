@@ -24,6 +24,7 @@ import {
   ParagraphPropertySourceValidationError,
   type ParagraphPropertySourceValidationCode,
   copyDocumentParagraphPropertySourceContract,
+  copyDocumentParagraphPropertySources,
   copyParagraphPropertyCapture,
   copyParagraphPropertySource,
   getDocumentParagraphPropertySourceContract,
@@ -36,6 +37,7 @@ import {
   isParagraphPropertySourceToken,
   linkParagraphPropertySourceCandidate,
   paragraphPropertySourceTokenMatchesContract,
+  paragraphPropertySourceBelongsToDocument,
   recreateProseNodeWithParagraphPropertySource,
   visitDocumentStoryParagraphs,
 } from "../../docx/paragraphPropertySource";
@@ -366,27 +368,47 @@ const sourceValidationError = (
 
 const validateParagraphPropertySourceTokens = (
   pmDoc: PMNode,
-  baseContent: BlockContent[],
+  baseDocument: Document,
   contract: string,
 ): Map<string, Paragraph> => {
-  const baseParagraphs = new Map<string, Paragraph>();
-  visitDocumentStoryParagraphs(baseContent, (paragraph) => {
+  const sourceParagraphs = copyDocumentParagraphPropertySources(baseDocument);
+  if (!sourceParagraphs) {
+    panic("A paragraph-property source contract lost its source registry");
+  }
+  const currentTokens = new Set<string>();
+  visitDocumentStoryParagraphs(baseDocument.package.document.content, (paragraph) => {
     const token = getParagraphPropertySourceToken(paragraph);
-    if (!token || !paragraphPropertySourceTokenMatchesContract(token, contract)) {
+    if (!token) {
+      if (paragraphPropertySourceBelongsToDocument(paragraph, baseDocument)) {
+        throw sourceValidationError(
+          "invalid_token",
+          "A source-bound paragraph is missing its paragraph-property token.",
+        );
+      }
+      return;
+    }
+    if (!paragraphPropertySourceTokenMatchesContract(token, contract)) {
       throw sourceValidationError(
         "invalid_token",
         "The source document contains an invalid paragraph-property token.",
         token,
       );
     }
-    if (baseParagraphs.has(token)) {
+    if (!sourceParagraphs.has(token)) {
+      throw sourceValidationError(
+        "unknown_token",
+        "The source document contains an unknown paragraph-property token.",
+        token,
+      );
+    }
+    if (currentTokens.has(token)) {
       throw sourceValidationError(
         "duplicate_token",
         "The source document contains a duplicate paragraph-property token.",
         token,
       );
     }
-    baseParagraphs.set(token, paragraph);
+    currentTokens.add(token);
   });
 
   const seen = new Set<string>();
@@ -419,7 +441,7 @@ const validateParagraphPropertySourceTokens = (
         token,
       );
     }
-    if (!baseParagraphs.has(token)) {
+    if (!sourceParagraphs.has(token)) {
       throw sourceValidationError(
         "unknown_token",
         "A paragraph-property token is not present in the source document.",
@@ -429,7 +451,7 @@ const validateParagraphPropertySourceTokens = (
     seen.add(token);
     return false;
   });
-  return baseParagraphs;
+  return sourceParagraphs;
 };
 
 const restoreParagraphPropertySourcesByToken = (
@@ -507,11 +529,7 @@ export function fromProseDoc(pmDoc: PMNode, baseDocument?: Document): Document {
   }
   const tokenSources =
     baseContract && proseContract && baseDocument
-      ? validateParagraphPropertySourceTokens(
-          pmDoc,
-          baseDocument.package.document.content,
-          baseContract,
-        )
+      ? validateParagraphPropertySourceTokens(pmDoc, baseDocument, baseContract)
       : null;
 
   const blocks = extractBlocks(

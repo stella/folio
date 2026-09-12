@@ -16,11 +16,21 @@ const proseParagraphSourceOwners = new WeakMap<PMNode, Paragraph>();
 const paragraphPropertySourceCandidates = new WeakMap<Paragraph, Paragraph>();
 const paragraphPropertySourceTransferIds = new WeakMap<Paragraph, string>();
 const paragraphPropertySourceTokens = new WeakMap<Paragraph, string>();
+const documentParagraphPropertySourceBindingBrand = Symbol(
+  "documentParagraphPropertySourceBinding",
+);
 // Enumerable symbols follow ordinary immutable `{ ...document }` derivations,
 // while JSON and other string-key serialization cannot expose the contract.
 // `structuredClone` deliberately drops symbols, so the one sanctioned deep
 // clone path transfers this value explicitly below.
-const documentParagraphPropertySourceContract = Symbol("paragraphPropertySourceContract");
+const documentParagraphPropertySourceBinding = Symbol("paragraphPropertySourceBinding");
+
+type DocumentParagraphPropertySourceBinding = Readonly<{
+  [documentParagraphPropertySourceBindingBrand]: true;
+  contract: string;
+  sourceOwners: ReadonlySet<Paragraph>;
+  sources: ReadonlyMap<string, Paragraph>;
+}>;
 
 export const PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR = "_docxParagraphSourceToken";
 export const PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR = "_docxParagraphSourceContract";
@@ -69,20 +79,37 @@ const tokenForOrdinal = (contract: string, ordinal: number): string => {
   return `${PARAGRAPH_SOURCE_TOKEN_PREFIX}:${fingerprint}:${ordinal.toString(36)}`;
 };
 
-const setDocumentParagraphPropertySourceContract = (document: Document, contract: string): void => {
-  if (!fingerprintFromContract(contract)) {
+const isDocumentParagraphPropertySourceBinding = (
+  value: unknown,
+): value is DocumentParagraphPropertySourceBinding =>
+  typeof value === "object" &&
+  value !== null &&
+  documentParagraphPropertySourceBindingBrand in value &&
+  value[documentParagraphPropertySourceBindingBrand] === true &&
+  "contract" in value &&
+  typeof value.contract === "string" &&
+  "sourceOwners" in value &&
+  value.sourceOwners instanceof Set &&
+  "sources" in value &&
+  value.sources instanceof Map;
+
+const setDocumentParagraphPropertySourceBinding = (
+  document: Document,
+  binding: DocumentParagraphPropertySourceBinding,
+): void => {
+  if (!fingerprintFromContract(binding.contract)) {
     panic("Cannot attach an invalid paragraph-property source contract");
   }
-  const existing = Object.hasOwn(document, documentParagraphPropertySourceContract)
-    ? Reflect.get(document, documentParagraphPropertySourceContract)
+  const existing: unknown = Object.hasOwn(document, documentParagraphPropertySourceBinding)
+    ? Reflect.get(document, documentParagraphPropertySourceBinding)
     : undefined;
-  if (existing === contract) {
+  if (existing === binding) {
     return;
   }
   if (
-    !Reflect.defineProperty(document, documentParagraphPropertySourceContract, {
+    !Reflect.defineProperty(document, documentParagraphPropertySourceBinding, {
       enumerable: true,
-      value: contract,
+      value: binding,
     })
   ) {
     panic("Cannot attach the paragraph-property source contract to the document");
@@ -156,27 +183,61 @@ export const assignDocumentParagraphPropertySourceContract = (
   sourceDigest: string,
 ): void => {
   const contract = contractForDigest(sourceDigest);
-  setDocumentParagraphPropertySourceContract(document, contract);
+  const sources = new Map<string, Paragraph>();
   let ordinal = 0;
   // The traversal is part of the v1 durable identity contract. Any ordering
   // change requires a token-version bump and collaboration reseed.
   visitDocumentStoryParagraphs(document.package.document.content, (paragraph) => {
-    paragraphPropertySourceTokens.set(paragraph, tokenForOrdinal(contract, ordinal));
+    const token = tokenForOrdinal(contract, ordinal);
+    paragraphPropertySourceTokens.set(paragraph, token);
+    sources.set(token, paragraph);
     ordinal += 1;
   });
+  setDocumentParagraphPropertySourceBinding(
+    document,
+    Object.freeze({
+      [documentParagraphPropertySourceBindingBrand]: true,
+      contract,
+      sourceOwners: new Set(sources.values()),
+      sources,
+    }),
+  );
+};
+
+const getDocumentParagraphPropertySourceBinding = (
+  document: Document,
+): DocumentParagraphPropertySourceBinding | undefined => {
+  if (!Object.hasOwn(document, documentParagraphPropertySourceBinding)) {
+    return undefined;
+  }
+  const binding: unknown = Reflect.get(document, documentParagraphPropertySourceBinding);
+  if (
+    !isDocumentParagraphPropertySourceBinding(binding) ||
+    !fingerprintFromContract(binding.contract)
+  ) {
+    panic("The document carries an invalid paragraph-property source contract");
+  }
+  return binding;
 };
 
 export const getDocumentParagraphPropertySourceContract = (
   document: Document,
-): string | undefined => {
-  if (!Object.hasOwn(document, documentParagraphPropertySourceContract)) {
-    return undefined;
-  }
-  const contract = Reflect.get(document, documentParagraphPropertySourceContract);
-  if (typeof contract !== "string" || !fingerprintFromContract(contract)) {
-    panic("The document carries an invalid paragraph-property source contract");
-  }
-  return contract;
+): string | undefined => getDocumentParagraphPropertySourceBinding(document)?.contract;
+
+export const copyDocumentParagraphPropertySources = (
+  document: Document,
+): Map<string, Paragraph> | undefined => {
+  const sources = getDocumentParagraphPropertySourceBinding(document)?.sources;
+  return sources ? new Map(sources) : undefined;
+};
+
+export const paragraphPropertySourceBelongsToDocument = (
+  paragraph: Paragraph,
+  document: Document,
+): boolean => {
+  const owner = paragraphPropertySourceOwners.get(paragraph);
+  const binding = getDocumentParagraphPropertySourceBinding(document);
+  return owner !== undefined && binding !== undefined && binding.sourceOwners.has(owner);
 };
 
 export const getProseDocumentParagraphPropertySourceContract = (
@@ -193,9 +254,9 @@ export const copyDocumentParagraphPropertySourceContract = (
   target: Document,
   source: Document,
 ): void => {
-  const contract = getDocumentParagraphPropertySourceContract(source);
-  if (contract) {
-    setDocumentParagraphPropertySourceContract(target, contract);
+  const binding = getDocumentParagraphPropertySourceBinding(source);
+  if (binding) {
+    setDocumentParagraphPropertySourceBinding(target, binding);
   }
 };
 

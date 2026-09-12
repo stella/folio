@@ -16,6 +16,7 @@ import { DATE_UTC_NAMESPACE_URI } from "./trackedChangeInfo";
 import {
   ParagraphPropertySourceValidationError,
   assignParagraphPropertySource,
+  copyParagraphPropertyCapture,
   getParagraphPropertySourceCandidate,
   getParagraphPropertySource,
   getParagraphPropertySourceToken,
@@ -336,6 +337,45 @@ describe("paragraph properties survive a no-edit full repack", () => {
     expect(getParagraphPropertySourceToken(paragraph)).toBeUndefined();
   });
 
+  test("a foreign table paragraph stays unbound across repeated saves into a source-bound document", async () => {
+    const target = await parseDocx(await documentWithSourceProperties(), { preloadFonts: false });
+    const foreign = await parseDocx(
+      await documentWithSourceProperties(
+        SOURCE_PROPERTIES.replace('w:left="720"', 'w:left="1440"'),
+        "87654321",
+      ),
+      { preloadFonts: false },
+    );
+    const targetProseDoc = toProseDoc(target);
+    const foreignProseDoc = toProseDoc(foreign);
+    const schema = targetProseDoc.type.schema;
+    const template = schema.node("table", null, [
+      schema.node("tableRow", null, [schema.node("tableCell", null, [foreignProseDoc.child(0)])]),
+    ]);
+    const copied = tableFromTemplate({ schema, template });
+    if (!copied) {
+      panic("expected the foreign table template to cross the package boundary");
+    }
+    const edited = targetProseDoc.type.create(targetProseDoc.attrs, [
+      targetProseDoc.child(0),
+      copied,
+    ]);
+
+    const firstSave = fromProseDoc(edited, target);
+    const secondSave = fromProseDoc(toProseDoc(firstSave), firstSave);
+
+    for (const saved of [firstSave, secondSave]) {
+      const table = saved.package.document.content.at(1);
+      const paragraph =
+        table?.type === "table" ? table.rows.at(0)?.cells.at(0)?.content.at(0) : null;
+      if (paragraph?.type !== "paragraph") {
+        panic("expected the repeatedly saved foreign table paragraph");
+      }
+      expect(getParagraphPropertySource(paragraph)?.xml).toContain('w:left="1440"');
+      expect(getParagraphPropertySourceToken(paragraph)).toBeUndefined();
+    }
+  });
+
   test("a hidden vertical-merge cell crosses with its local properties but no durable token", async () => {
     const parsed = await parseDocx(await documentWithSourceProperties(), { preloadFonts: false });
     const sourceParagraph = firstParagraph(parsed);
@@ -416,6 +456,73 @@ describe("paragraph properties survive a no-edit full repack", () => {
     expect(getParagraphPropertySource(firstParagraph(restored))).toEqual(
       getParagraphPropertySource(firstParagraph(parsed)),
     );
+  });
+
+  test("an authored paragraph stays unbound across repeated saves", async () => {
+    const parsed = await parseDocx(await documentWithSourceProperties(), { preloadFonts: false });
+    const proseDoc = toProseDoc(parsed);
+    const authored = proseDoc.type.schema.node("paragraph", null, [
+      proseDoc.type.schema.text("Authored"),
+    ]);
+    const edited = proseDoc.type.create(proseDoc.attrs, [proseDoc.child(0), authored]);
+
+    const firstSave = fromProseDoc(edited, parsed);
+    const secondSave = fromProseDoc(toProseDoc(firstSave), firstSave);
+
+    for (const saved of [firstSave, secondSave]) {
+      const sourceParagraph = saved.package.document.content.at(0);
+      const authoredParagraph = saved.package.document.content.at(1);
+      if (sourceParagraph?.type !== "paragraph" || authoredParagraph?.type !== "paragraph") {
+        panic("expected the source and authored paragraphs");
+      }
+      expect(getParagraphPropertySource(sourceParagraph)?.xml).toContain('w:left="720"');
+      expect(getParagraphPropertySourceToken(sourceParagraph)).toBeDefined();
+      expect(getParagraphPropertySource(authoredParagraph)).toBeUndefined();
+      expect(getParagraphPropertySourceToken(authoredParagraph)).toBeUndefined();
+    }
+  });
+
+  test("a deleted source paragraph can return after an intervening save", async () => {
+    const parsed = await parseDocx(await documentWithDuplicateParagraphIds(), {
+      preloadFonts: false,
+    });
+    const original = toProseDoc(parsed);
+    const withoutFirst = original.type.create(original.attrs, [original.child(1)]);
+
+    const afterDeletion = fromProseDoc(withoutFirst, parsed);
+    const restored = fromProseDoc(original, afterDeletion);
+    const paragraphs = restored.package.document.content.filter(
+      (block): block is Paragraph => block.type === "paragraph",
+    );
+
+    expect(paragraphs).toHaveLength(2);
+    expect(getParagraphPropertySource(paragraphs[0])?.xml).toContain('w:left="720"');
+    expect(getParagraphPropertySource(paragraphs[1])?.xml).toContain('w:left="1440"');
+  });
+
+  test("a source-owned paragraph cannot lose its durable token", async () => {
+    const parsed = await parseDocx(await documentWithSourceProperties(), { preloadFonts: false });
+    const sourceParagraph = firstParagraph(parsed);
+    const detached = { ...sourceParagraph };
+    copyParagraphPropertyCapture(detached, sourceParagraph);
+    const corrupted = {
+      ...parsed,
+      package: {
+        ...parsed.package,
+        document: { ...parsed.package.document, content: [detached] },
+      },
+    };
+
+    try {
+      fromProseDoc(toProseDoc(parsed), corrupted);
+      panic("expected source validation to reject the missing token");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ParagraphPropertySourceValidationError);
+      expect(error).toMatchObject({
+        code: "invalid_token",
+        message: "A source-bound paragraph is missing its paragraph-property token.",
+      });
+    }
   });
 
   test("paragraph id transfer cannot change durable source ownership", async () => {

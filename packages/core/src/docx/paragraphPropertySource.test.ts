@@ -5,6 +5,7 @@ import type { BlockContent, Paragraph } from "../types/document";
 import { parseDocx } from "./parser";
 import {
   cloneDocumentWithParagraphPropertySources,
+  copyDocumentParagraphPropertySources,
   getDocumentParagraphPropertySourceContract,
   getParagraphPropertySource,
   getParagraphPropertySourceToken,
@@ -67,8 +68,20 @@ describe("paragraph-property source identity", () => {
     const derived = { ...document, package: { ...document.package } };
 
     expect(getDocumentParagraphPropertySourceContract(derived)).toBe(contract);
-    expect(JSON.stringify(derived)).not.toContain("paragraphPropertySourceContract");
+    expect(copyDocumentParagraphPropertySources(derived)?.size).toBe(41);
+    expect(JSON.stringify(derived)).not.toContain("paragraphPropertySourceBinding");
     expect(JSON.stringify(derived)).not.toContain("folio-ppr-v1");
+  });
+
+  test("callers receive an isolated copy of the private source registry", async () => {
+    const document = await parseDocx(await readFile(LAYOUT_FIXTURE), { preloadFonts: false });
+    const sources = copyDocumentParagraphPropertySources(document);
+    const sourceCount = sources?.size;
+
+    sources?.clear();
+
+    expect(sourceCount).toBe(41);
+    expect(copyDocumentParagraphPropertySources(document)?.size).toBe(sourceCount);
   });
 
   test("the sanctioned structured clone explicitly transfers private source identity", async () => {
@@ -79,9 +92,11 @@ describe("paragraph-property source identity", () => {
     const clonedParagraph = firstParagraphIn(ownedClone.package.document.content);
 
     expect(getDocumentParagraphPropertySourceContract(rawClone)).toBeUndefined();
+    expect(copyDocumentParagraphPropertySources(rawClone)).toBeUndefined();
     expect(getDocumentParagraphPropertySourceContract(ownedClone)).toBe(
       getDocumentParagraphPropertySourceContract(document),
     );
+    expect(copyDocumentParagraphPropertySources(ownedClone)?.size).toBe(41);
     expect(sourceParagraph && getParagraphPropertySource(sourceParagraph)).toEqual(
       clonedParagraph && getParagraphPropertySource(clonedParagraph),
     );
