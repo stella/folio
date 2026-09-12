@@ -15,11 +15,7 @@ import {
 } from "../prosemirror/runStyleFormatting";
 import type { TextFormatting } from "../types/document";
 import { mergeTextFormatting } from "../utils/textFormattingMerge";
-import {
-  deriveBlankBlockId,
-  deriveBlockId,
-  type FolioBlockId,
-} from "../types/block-id";
+import { deriveBlankBlockId, deriveBlockId, type FolioBlockId } from "../types/block-id";
 import { buildCleanBlockText, type CleanBlockText } from "./clean-text";
 import type {
   FolioAIBlock,
@@ -562,6 +558,8 @@ const getDirectSpacing = (node: PMNode) => directParagraphSpacing(expectParagrap
 
 const DELETION_MARK = "deletion";
 const HIDDEN_MARK = "hidden";
+const RUN_FORMATTING_OVERRIDE_MARK = "runFormattingOverride";
+const CHARACTER_STYLE_MARK = "characterStyle";
 
 const nonemptyTextFormatting = (
   formatting: TextFormatting | undefined,
@@ -580,7 +578,8 @@ const getPreviewRuns = (
   styleResolver: RunStyleResolver | null,
 ): FolioAIBlockPreviewRun[] | undefined => {
   const runs: FolioAIBlockPreviewRun[] = [];
-  const context = paragraphRunStyleContext(node, styleResolver);
+  const carrierlessContext = paragraphRunStyleContext(node, null);
+  let authoredContext: ReturnType<typeof paragraphRunStyleContext> | undefined;
 
   node.descendants((child) => {
     if (!child.isText || child.text === undefined) {
@@ -592,6 +591,14 @@ const getPreviewRuns = (
       return false;
     }
 
+    const hasAuthorshipCarrier = child.marks.some(
+      ({ type }) =>
+        type.name === RUN_FORMATTING_OVERRIDE_MARK || type.name === CHARACTER_STYLE_MARK,
+    );
+    const context = hasAuthorshipCarrier
+      ? (authoredContext ??= paragraphRunStyleContext(node, styleResolver))
+      : carrierlessContext;
+    const runStyleResolver = hasAuthorshipCarrier ? styleResolver : null;
     const observedFormatting = nonemptyTextFormatting(marksToTextFormatting(child.marks));
     const authoredFormatting = nonemptyTextFormatting(
       marksToTextFormatting(child.marks, {
@@ -599,18 +606,18 @@ const getPreviewRuns = (
         inheritedFormatting: context.paragraphFormatting,
         paragraphMarkFormatting: context.paragraphMarkFormatting,
         paragraphMarkPrecedesStyle: context.paragraphMarkPrecedesStyle,
-        styleResolver,
+        styleResolver: runStyleResolver,
       }),
     );
     const paragraphFormatting = paragraphFormattingForRun({
       context,
-      directFormatting: authoredFormatting,
+      ...(authoredFormatting !== undefined && { directFormatting: authoredFormatting }),
       marks: child.marks,
     });
     const inheritedFormatting = resolveEffectiveRunStyleFormatting({
       marks: child.marks,
       paragraphFormatting,
-      styleResolver,
+      styleResolver: runStyleResolver,
     });
     const effectiveFormatting = nonemptyTextFormatting(
       mergeTextFormatting(inheritedFormatting, observedFormatting),

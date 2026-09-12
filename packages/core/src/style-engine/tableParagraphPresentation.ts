@@ -48,15 +48,17 @@ const projectConditionalPresentation = (
   styleResolver: Pick<StyleEngine, "getRunStyleOwnProperties">,
 ): TableCellPresentationProjection | undefined => {
   const paragraph = projectTableParagraphPresentation(pPr);
-  const runFromParagraph = resolveRunFormattingWithoutDefaults(
-    pPr?.runProperties,
-    styleResolver,
-  );
+  const runFromParagraph = resolveRunFormattingWithoutDefaults(pPr?.runProperties, styleResolver);
   const runFormatting = mergeTextFormatting(
     runFromParagraph,
     resolveRunFormattingWithoutDefaults(rPr, styleResolver),
   );
-  return paragraph || runFormatting ? { paragraph, runFormatting } : undefined;
+  return paragraph || runFormatting
+    ? {
+        ...(paragraph !== undefined && { paragraph }),
+        ...(runFormatting !== undefined && { runFormatting }),
+      }
+    : undefined;
 };
 
 const mergeConditionalPresentation = (
@@ -67,7 +69,12 @@ const mergeConditionalPresentation = (
   if (!override) return base;
   const paragraph = mergeTableParagraphPresentations(base.paragraph, override.paragraph);
   const runFormatting = mergeTextFormatting(base.runFormatting, override.runFormatting);
-  return paragraph || runFormatting ? { paragraph, runFormatting } : undefined;
+  return paragraph || runFormatting
+    ? {
+        ...(paragraph !== undefined && { paragraph }),
+        ...(runFormatting !== undefined && { runFormatting }),
+      }
+    : undefined;
 };
 
 const countTableColumns = (rows: readonly TableRow[]): number => {
@@ -184,9 +191,7 @@ export const createTableCellPresentationResolver = ({
     const cellIsLastColumn = cellCnf?.lastColumn ?? isLastColumn;
 
     let projection = styles.wholeTable;
-    let horizontalBand:
-      | TableCellPresentationProjection
-      | undefined;
+    let horizontalBand: TableCellPresentationProjection | undefined;
     if (
       horizontalBanding &&
       !(isFirstRow && look?.firstRow === true) &&

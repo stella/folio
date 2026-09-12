@@ -145,7 +145,6 @@ export const folioContentIdentityPairDisposition = (
       return base.id === revised.id ? "continuity" : "candidate";
     case "same-position-else-candidate":
       return base.id === revised.id ? "position" : "candidate";
-    case "candidate":
     case "forbid":
       return rule;
     default: {
@@ -554,7 +553,7 @@ export type FolioContentAlignmentStep<Block extends FolioContentBlock = FolioCon
       type: "pair";
       baseBlock: Block;
       revisedBlock: Block;
-      containerAlignment: FolioContentContainerAlignment;
+      containerAlignment: FolioContentPairedContainerAlignment;
     }
   | {
       type: "baseOnly";
@@ -759,14 +758,18 @@ const registeredContainerAlignment = (
   }
   const existing = fromBase ?? fromRevised;
   if (existing) {
-    if (baseBlock && existing.type === "revisedOnly") {
-      return panic("A base occurrence collides with a revised-only container alignment");
+    if (baseKey !== null) {
+      if (existing.type === "revisedOnly") {
+        return panic("A base occurrence collides with a revised-only container alignment");
+      }
+      context.baseContainerAlignments.set(baseKey, existing);
     }
-    if (revisedBlock && existing.type === "baseOnly") {
-      return panic("A revised occurrence collides with a base-only container alignment");
+    if (revisedKey !== null) {
+      if (existing.type === "baseOnly") {
+        return panic("A revised occurrence collides with a base-only container alignment");
+      }
+      context.revisedContainerAlignments.set(revisedKey, existing);
     }
-    if (baseKey !== null) context.baseContainerAlignments.set(baseKey, existing);
-    if (revisedKey !== null) context.revisedContainerAlignments.set(revisedKey, existing);
     return existing;
   }
   const alignment = createContainerAlignment(context, baseBlock, revisedBlock);
@@ -798,20 +801,35 @@ const scopedAlignmentSteps = <Block extends FolioContentBlock>(
 ): FolioContentAlignmentStep<Block>[] => {
   const baseAlignmentByOccurrence = context.baseContainerAlignments;
   const revisedAlignmentByOccurrence = context.revisedContainerAlignments;
-  if (defaultAlignment?.base) {
-    if (defaultAlignment.type === "revisedOnly") {
-      return panic("A base container occurrence has a revised-only alignment");
+  if (defaultAlignment) {
+    switch (defaultAlignment.type) {
+      case "paired":
+        baseAlignmentByOccurrence.set(
+          containerOccurrenceKey(defaultAlignment.base),
+          defaultAlignment,
+        );
+        revisedAlignmentByOccurrence.set(
+          containerOccurrenceKey(defaultAlignment.revised),
+          defaultAlignment,
+        );
+        break;
+      case "baseOnly":
+        baseAlignmentByOccurrence.set(
+          containerOccurrenceKey(defaultAlignment.base),
+          defaultAlignment,
+        );
+        break;
+      case "revisedOnly":
+        revisedAlignmentByOccurrence.set(
+          containerOccurrenceKey(defaultAlignment.revised),
+          defaultAlignment,
+        );
+        break;
+      default: {
+        const unreachable: never = defaultAlignment;
+        return panic("Unhandled default container alignment", { alignment: unreachable });
+      }
     }
-    baseAlignmentByOccurrence.set(containerOccurrenceKey(defaultAlignment.base), defaultAlignment);
-  }
-  if (defaultAlignment?.revised) {
-    if (defaultAlignment.type === "baseOnly") {
-      return panic("A revised container occurrence has a base-only alignment");
-    }
-    revisedAlignmentByOccurrence.set(
-      containerOccurrenceKey(defaultAlignment.revised),
-      defaultAlignment,
-    );
   }
   for (const event of events) {
     if (event.type !== "pair") continue;
@@ -828,13 +846,31 @@ const scopedAlignmentSteps = <Block extends FolioContentBlock>(
       fromBase ??
       fromRevised ??
       registeredContainerAlignment(context, event.baseBlock, event.revisedBlock);
-    if (alignment.base === null || alignment.revised === null) {
+    if (alignment.type !== "paired") {
       return panic("A paired block event resolved to a one-sided container alignment");
     }
     baseAlignmentByOccurrence.set(baseKey, alignment);
     revisedAlignmentByOccurrence.set(revisedKey, alignment);
   }
-  const aligned = events.map((event) => {
+  type ScopedBlockAlignment =
+    | {
+        readonly type: "pair";
+        readonly baseBlock: Block;
+        readonly revisedBlock: Block;
+        readonly containerAlignment: FolioContentPairedContainerAlignment;
+      }
+    | {
+        readonly type: "baseOnly";
+        readonly block: Block;
+        readonly containerAlignment: FolioContentBaseContainerAlignment;
+      }
+    | {
+        readonly type: "revisedOnly";
+        readonly block: Block;
+        readonly containerAlignment: FolioContentRevisedContainerAlignment;
+      };
+  const aligned: ScopedBlockAlignment[] = [];
+  for (const event of events) {
     if (event.type === "pair") {
       const alignment = baseAlignmentByOccurrence.get(
         containerOccurrenceKey(containerOccurrenceOf(event.baseBlock, context, "base")),
@@ -842,35 +878,37 @@ const scopedAlignmentSteps = <Block extends FolioContentBlock>(
       if (!alignment || alignment.type !== "paired") {
         return panic("A paired block event has no paired container alignment");
       }
-      return { event, containerAlignment: alignment } as const;
+      aligned.push({
+        type: "pair",
+        baseBlock: event.baseBlock,
+        revisedBlock: event.revisedBlock,
+        containerAlignment: alignment,
+      });
+      continue;
     }
     const occurrenceKey = containerOccurrenceKey(
       containerOccurrenceOf(event.block, context, event.type === "baseOnly" ? "base" : "revised"),
     );
-    const byOccurrence =
-      event.type === "baseOnly"
-        ? baseAlignmentByOccurrence.get(occurrenceKey)
-        : revisedAlignmentByOccurrence.get(occurrenceKey);
-    const containerAlignment =
-      byOccurrence ??
-      registeredContainerAlignment(
-        context,
-        event.type === "baseOnly" ? event.block : null,
-        event.type === "revisedOnly" ? event.block : null,
-      );
     if (event.type === "baseOnly") {
+      const containerAlignment =
+        baseAlignmentByOccurrence.get(occurrenceKey) ??
+        registeredContainerAlignment(context, event.block, null);
       if (containerAlignment.type === "revisedOnly") {
         return panic("A base-only block resolved to a revised-only container alignment");
       }
       baseAlignmentByOccurrence.set(occurrenceKey, containerAlignment);
+      aligned.push({ type: "baseOnly", block: event.block, containerAlignment });
     } else {
+      const containerAlignment =
+        revisedAlignmentByOccurrence.get(occurrenceKey) ??
+        registeredContainerAlignment(context, null, event.block);
       if (containerAlignment.type === "baseOnly") {
         return panic("A revised-only block resolved to a base-only container alignment");
       }
       revisedAlignmentByOccurrence.set(occurrenceKey, containerAlignment);
+      aligned.push({ type: "revisedOnly", block: event.block, containerAlignment });
     }
-    return { event, containerAlignment } as const;
-  });
+  }
 
   type BaseBoundary = {
     readonly block: Block;
@@ -889,32 +927,25 @@ const scopedAlignmentSteps = <Block extends FolioContentBlock>(
     const entry = aligned[index];
     if (!entry) continue;
     nextBaseByIndex[index] = nextBaseByAlignment.get(entry.containerAlignment) ?? null;
-    if (entry.event.type === "pair") {
-      if (entry.containerAlignment.type !== "paired") {
-        return panic("A paired block has a one-sided container alignment");
-      }
+    if (entry.type === "pair") {
       nextBaseByAlignment.set(entry.containerAlignment, {
-        block: entry.event.baseBlock,
+        block: entry.baseBlock,
         alignment: entry.containerAlignment,
       });
-      if (
-        context.revisedParagraphTopology.terminalBlockIds.has(entry.event.revisedBlock.identity.id)
-      ) {
+      if (context.revisedParagraphTopology.terminalBlockIds.has(entry.revisedBlock.identity.id)) {
         terminalRevisedByAlignment.set(entry.containerAlignment, {
-          block: entry.event.revisedBlock,
-          pairedBase: entry.event.baseBlock,
+          block: entry.revisedBlock,
+          pairedBase: entry.baseBlock,
         });
       }
-    } else if (entry.event.type === "baseOnly") {
+    } else if (entry.type === "baseOnly") {
       nextBaseByAlignment.set(entry.containerAlignment, {
-        block: entry.event.block,
+        block: entry.block,
         alignment: entry.containerAlignment,
       });
-    } else if (
-      context.revisedParagraphTopology.terminalBlockIds.has(entry.event.block.identity.id)
-    ) {
+    } else if (context.revisedParagraphTopology.terminalBlockIds.has(entry.block.identity.id)) {
       terminalRevisedByAlignment.set(entry.containerAlignment, {
-        block: entry.event.block,
+        block: entry.block,
         pairedBase: null,
       });
     }
@@ -924,24 +955,24 @@ const scopedAlignmentSteps = <Block extends FolioContentBlock>(
   const previousBaseByAlignment = new Map<FolioContentContainerAlignment, BaseBoundary>();
   let gap = context.nextGap++;
   for (const [index, entry] of aligned.entries()) {
-    const { event, containerAlignment } = entry;
-    if (event.type === "pair") {
-      steps.push({ ...event, containerAlignment });
+    const { containerAlignment } = entry;
+    if (entry.type === "pair") {
+      steps.push(entry);
       previousBaseByAlignment.set(containerAlignment, {
-        block: event.baseBlock,
+        block: entry.baseBlock,
         alignment: containerAlignment,
       });
       gap = context.nextGap++;
       continue;
     }
-    if (event.type === "baseOnly") {
+    if (entry.type === "baseOnly") {
       const nextBase = nextBaseByIndex[index] ?? null;
       const previousBase = previousBaseByAlignment.get(containerAlignment) ?? null;
       const successorId = context.baseParagraphTopology.successorByBlockId.get(
-        event.block.identity.id,
+        entry.block.identity.id,
       );
       const predecessorId = context.baseParagraphTopology.predecessorByBlockId.get(
-        event.block.identity.id,
+        entry.block.identity.id,
       );
       const targetCarrier = terminalRevisedByAlignment.get(containerAlignment) ?? null;
       let removalBoundary: FolioContentParagraphRemovalBoundary<Block>;
@@ -952,7 +983,7 @@ const scopedAlignmentSteps = <Block extends FolioContentBlock>(
           containerAlignment,
         });
       } else if (
-        context.baseParagraphTopology.terminalBlockIds.has(event.block.identity.id) &&
+        context.baseParagraphTopology.terminalBlockIds.has(entry.block.identity.id) &&
         containerAlignment.type === "paired" &&
         predecessorId !== undefined &&
         previousBase?.block.identity.id === predecessorId &&
@@ -968,38 +999,39 @@ const scopedAlignmentSteps = <Block extends FolioContentBlock>(
         removalBoundary = Object.freeze({ type: "unanchoredContainer", containerAlignment });
       }
       steps.push({
-        ...event,
-        moveScope: { bucket: bucketForBlock(event.block), gap, containerAlignment },
+        type: "baseOnly",
+        block: entry.block,
+        moveScope: { bucket: bucketForBlock(entry.block), gap, containerAlignment },
         removalBoundary,
       });
       previousBaseByAlignment.set(containerAlignment, {
-        block: event.block,
+        block: entry.block,
         alignment: containerAlignment,
       });
       continue;
     }
-    if (containerAlignment.type === "baseOnly") {
-      return panic("A revised-only event has a base-only container alignment");
-    }
     const nextBase = nextBaseByIndex[index] ?? null;
     const previousBase = previousBaseByAlignment.get(containerAlignment) ?? null;
-    const insertionBoundary: FolioContentParagraphInsertionBoundary<Block> =
-      nextBase?.alignment.type === "paired"
-        ? Object.freeze({
-            type: "beforeParagraph",
-            paragraph: nextBase.block,
-            containerAlignment: nextBase.alignment,
-          })
-        : previousBase?.alignment.type === "paired"
-          ? Object.freeze({
-              type: "afterParagraph",
-              paragraph: previousBase.block,
-              containerAlignment: previousBase.alignment,
-            })
-          : Object.freeze({ type: "unanchoredContainer", containerAlignment });
+    let insertionBoundary: FolioContentParagraphInsertionBoundary<Block>;
+    if (nextBase?.alignment.type === "paired") {
+      insertionBoundary = Object.freeze({
+        type: "beforeParagraph",
+        paragraph: nextBase.block,
+        containerAlignment: nextBase.alignment,
+      });
+    } else if (previousBase?.alignment.type === "paired") {
+      insertionBoundary = Object.freeze({
+        type: "afterParagraph",
+        paragraph: previousBase.block,
+        containerAlignment: previousBase.alignment,
+      });
+    } else {
+      insertionBoundary = Object.freeze({ type: "unanchoredContainer", containerAlignment });
+    }
     steps.push({
-      ...event,
-      moveScope: { bucket: bucketForBlock(event.block), gap, containerAlignment },
+      type: "revisedOnly",
+      block: entry.block,
+      moveScope: { bucket: bucketForBlock(entry.block), gap, containerAlignment },
       insertionBoundary,
     });
   }
@@ -2493,22 +2525,20 @@ const isBodyDocumentSegment = <Block extends FolioContentBlock>(
 const profileBodySegments = <Block extends FolioContentBlock>(
   segments: readonly DocumentSegment<Block>[],
 ): readonly ProfiledContentSequenceItem<BodyDocumentSegment<Block>>[] =>
-  segments.flatMap((segment) =>
-    isBodyDocumentSegment(segment)
-      ? [
-          {
-            item: segment,
-            profile: createContentStructureProfile({
-              blocks: segment.blocks,
-              ...(segment.containerPath.at(-1)?.identity !== undefined && {
-                scopeIdentity: segment.containerPath.at(-1)?.identity,
-              }),
-              blockStructure: () => [segment.structuralKey],
-            }),
-          },
-        ]
-      : [],
-  );
+  segments.flatMap((segment) => {
+    if (!isBodyDocumentSegment(segment)) return [];
+    const scopeIdentity = segment.containerPath.at(-1)?.identity;
+    return [
+      {
+        item: segment,
+        profile: createContentStructureProfile({
+          blocks: segment.blocks,
+          ...(scopeIdentity !== undefined && { scopeIdentity }),
+          blockStructure: () => [segment.structuralKey],
+        }),
+      },
+    ];
+  });
 
 type TrustedBodyPair<Block extends FolioContentBlock> = {
   base: BodyDocumentSegment<Block>;

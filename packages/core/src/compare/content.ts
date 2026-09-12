@@ -7,12 +7,7 @@
  */
 
 import { panic, Result, TaggedError } from "better-result";
-import {
-  createWordDiffSession,
-  WORD_DIFF_GRANULARITIES,
-  type WordDiffGranularity,
-  type WordDiffSegment,
-} from "./text-diff";
+import { createWordDiffSession, type WordDiffGranularity, type WordDiffSegment } from "./text-diff";
 import { pairedInlineFormattingSegments } from "./formatting";
 import { changedFolioContentProperties } from "./content-properties";
 import {
@@ -3787,18 +3782,20 @@ export const compareContent = (
   const base = capturedOptions.value.get("base");
   const revised = capturedOptions.value.get("revised");
   const granularity = capturedOptions.value.get("granularity");
-  if (
-    granularity !== undefined &&
-    !WORD_DIFF_GRANULARITIES.some((candidate) => candidate === granularity)
-  ) {
-    return Result.err(
-      invalidInput("options", "granularity", "Comparison granularity must be word or character."),
-    );
+  let workSession: FolioContentComparisonWorkSession;
+  switch (granularity) {
+    case undefined:
+      workSession = createContentComparisonWorkSession();
+      break;
+    case "word":
+    case "character":
+      workSession = createContentComparisonWorkSession({ granularity });
+      break;
+    default:
+      return Result.err(
+        invalidInput("options", "granularity", "Comparison granularity must be word or character."),
+      );
   }
-  const workSession =
-    granularity === undefined
-      ? createContentComparisonWorkSession()
-      : createContentComparisonWorkSession({ granularity });
   const operation = workSession.captureComparison({ base, revised });
   if (operation.isErr()) {
     return operation.error instanceof FolioContentComparisonSessionError
