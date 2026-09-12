@@ -91,12 +91,10 @@ export type {
 } from "./compare/content-types";
 export {
   COMPARE_DOCX_EXECUTION_REASONS,
-  COMPARE_DOCX_LOWERING_REASONS,
   COMPARE_UNSUPPORTED_REASONS,
   CompareDocxApplyError,
   CompareDocxContentComparisonError,
   CompareDocxFinalParagraphMarkError,
-  CompareDocxLoweringError,
   CompareDocxOperationLimitError,
   CompareDocxParseError,
   CompareDocxRoundTripError,
@@ -107,7 +105,6 @@ export {
   type CompareChangeLocation,
   type CompareDocxError,
   type CompareDocxExecutionReason,
-  type CompareDocxLoweringReason,
   type CompareDocxOptions,
   type CompareFormatRange,
   type CompareResult,

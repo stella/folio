@@ -20,7 +20,7 @@ import { propertyConfig, propertyTestTimeout } from "../../../../test/property-t
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { projectTableGeometry } from "../internal/compare/table-geometry-program";
 import { buildBodySequenceDocx, type BodyItem, type TableRow } from "./__fixtures__/body-sequence";
-import { compareDocx } from "./compare";
+import { compareDocx, parseComparison, planComparison } from "./compare";
 
 const OPTIONS = { author: "compare", timestamp: "2024-03-01T00:00:00.000Z" } as const;
 
@@ -590,10 +590,40 @@ describe("table geometry round trip", () => {
     const base = await buildBodySequenceDocx([INTRO, baseTable, OUTRO]);
     const target = await buildBodySequenceDocx([INTRO, targetTable, OUTRO]);
 
+    const parsed = await parseComparison(base, target, OPTIONS);
+    if (parsed.isErr()) throw parsed.error;
+    const planned = planComparison(parsed.value);
+    if (planned.isErr()) throw planned.error;
+    expect(planned.value.flatMap(({ plan }) => plan.program.consume().instructions)).toEqual([]);
+    expect(planned.value.flatMap(({ plan }) => plan.unsupported)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ reason: "missing-insertion-anchor", eventType: "moved" }),
+        expect.objectContaining({ reason: "missing-removal-boundary", eventType: "moved" }),
+      ]),
+    );
+
     const strict = await compareDocx(base, target, OPTIONS);
     expect(strict.isErr()).toBe(true);
     if (strict.isErr()) {
-      expect(strict.error._tag).toBe("CompareDocxRoundTripError");
+      expect(strict.error).toMatchObject({
+        _tag: "CompareDocxUnsupportedError",
+        unsupported: expect.arrayContaining([
+          {
+            reason: "missing-insertion-anchor",
+            story: { type: "main" },
+            eventType: "moved",
+            baseBlockId: expect.any(String),
+            targetBlockId: expect.any(String),
+          },
+          {
+            reason: "missing-removal-boundary",
+            story: { type: "main" },
+            eventType: "moved",
+            baseBlockId: expect.any(String),
+            targetBlockId: expect.any(String),
+          },
+        ]),
+      });
     }
 
     const emitted = await compareDocx(base, target, { ...OPTIONS, mode: "bestEffort" });
@@ -601,8 +631,27 @@ describe("table geometry round trip", () => {
       throw emitted.error;
     }
     expect(emitted.value.verification.status).toBe("unverified");
+    expect(emitted.value.changes).toEqual([]);
+    expect(emitted.value.unsupported).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          reason: "missing-insertion-anchor",
+          eventType: "moved",
+        }),
+        expect.objectContaining({
+          reason: "missing-removal-boundary",
+          eventType: "moved",
+        }),
+      ]),
+    );
+    expect(emitted.value.changes).not.toContainEqual(
+      expect.objectContaining({ kind: "move", text: "Nested schedule" }),
+    );
     if (emitted.value.verification.status === "unverified") {
-      expect(emitted.value.verification.failures.map(({ cause }) => cause)).toContain("container");
+      const failures = emitted.value.verification.failures;
+      expect(failures.map(({ cause }) => cause)).toContain("unsupported");
+      expect(failures.map(({ cause }) => cause)).toContain("container");
+      expect(failures.some(({ invariant }) => invariant === "reject-reproduces-base")).toBe(false);
     }
   });
 

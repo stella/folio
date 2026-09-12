@@ -319,7 +319,7 @@ const RELOCATED_EDITED =
 const UNRELATED =
   "The Supplier shall not be liable for any indirect loss however it arises in contract.";
 
-test("unsupported live paragraph properties reach the typed lowering refusal", () => {
+test("unsupported live paragraph properties reach the typed comparison plan", () => {
   const baseDocument = documentOf([block("clause", "Stable clause")]);
   const targetDocument = documentOf([block("clause", "Stable clause")]);
   const baseParagraph = baseDocument.package.document.content.at(0);
@@ -474,6 +474,11 @@ describe("table row pairing", () => {
         target: { tableIndex: 0, rowIndex: 0, cellIndex: 1 },
       },
     ]);
+
+    const planned = planStoryCompare({ comparison, maxOperations: 1000 });
+    if (planned.isErr()) throw planned.error;
+    const plan = inspectPlan(planned.value, baseSnapshot);
+    expect(contentInstructionsOf(plan).map(({ type }) => type)).toContain("moveParagraph");
   });
 
   test("a deleted row plus edits in the rows below is one deleted row", () => {

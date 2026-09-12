@@ -41,7 +41,6 @@ export const REFUSAL_BUCKETS = Object.freeze({
   "parse-target": "The target package could not be read into an editor model.",
   "apply-refused": "The applier refused a derived operation.",
   "content-comparison": "A story violated the bounded neutral comparison contract.",
-  lowering: "A canonical content event had no lossless tracked-document instruction.",
   unsupported: "Strict comparison found an explicitly unsupported difference.",
   "operation-limit": "The difference needs more operations than the engine generates.",
   serialize: "The redlined package could not be written back out.",
@@ -119,8 +118,6 @@ export const classifyRefusal = (error: CompareDocxError): Refusal => {
         bucket: "content-comparison",
         shape: `${error.cause._tag}: ${messageShape(error.cause.message)}`,
       };
-    case "CompareDocxLoweringError":
-      return { bucket: "lowering", shape: error.reason };
     case "CompareDocxUnsupportedError": {
       const reasons = [...new Set(error.unsupported.map(({ reason }) => reason))].toSorted();
       return {

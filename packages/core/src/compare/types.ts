@@ -9,7 +9,7 @@ import type { FolioDocumentStoryHandle, FolioNumberingLevel } from "../ai-edits/
 import type { WordDiffGranularity } from "./text-diff";
 import type { FolioAIBlockParagraphProperties, FolioAIBlockTableLocation } from "../ai-edits/types";
 import type { FolioContentInlineFormattingChange } from "./content-types";
-import type { FolioContentComparisonError } from "./content";
+import type { FolioContentComparisonError, FolioContentComparisonEvent } from "./content";
 import type { CompareTableFormatDetails } from "./table-format-properties";
 import type {
   CompareVerification,
@@ -261,6 +261,12 @@ export const COMPARE_UNSUPPORTED_REASONS = Object.freeze([
   "effective-inline-formatting",
   /** A complete target table cannot be copied losslessly into the base package. */
   "nonportable-table-template",
+  /** An inserted paragraph, move, or table has no surviving destination boundary. */
+  "missing-insertion-anchor",
+  /** A moved paragraph has no source edge that can carry its removal. */
+  "missing-removal-boundary",
+  /** An inserted row has no surviving row in the same table. */
+  "table-row-anchor",
   /** A referenced numbering definition changed but has no tracked-change grammar. */
   "numbering-definition",
   /** A canonical event could not be resolved into a proved tracked-document instruction. */
@@ -280,8 +286,17 @@ type CompareUnsupportedStoryReason = Extract<
 
 type CompareUnsupportedContentReason = Exclude<
   CompareUnsupportedReason,
-  CompareUnsupportedStoryReason | "numbering-definition" | "transport-preflight"
+  | CompareUnsupportedStoryReason
+  | "missing-insertion-anchor"
+  | "missing-removal-boundary"
+  | "numbering-definition"
+  | "table-row-anchor"
+  | "transport-preflight"
 >;
+
+type CompareUnsupportedEventType =
+  | Exclude<FolioContentComparisonEvent["type"], "movedFrom" | "movedTo">
+  | "moved";
 
 /** Every bounded preflight disposition for a canonical DOCX instruction. */
 export const COMPARE_DOCX_PREFLIGHT_REASONS = Object.freeze([
@@ -311,21 +326,30 @@ export type CompareUnsupportedPart =
   | {
       readonly reason: CompareUnsupportedContentReason;
       readonly story: FolioDocumentStoryHandle;
-      readonly eventType:
-        | "unchanged"
-        | "modified"
-        | "formatting"
-        | "inserted"
-        | "deleted"
-        | "moved"
-        | "split"
-        | "merge"
-        | "tableReplacement"
-        | "structural";
+      readonly eventType: CompareUnsupportedEventType;
       readonly field?: string;
       readonly baseBlockId?: string;
       readonly targetBlockId?: string;
       readonly tableIndex?: number;
+    }
+  | {
+      readonly reason: "missing-insertion-anchor";
+      readonly story: FolioDocumentStoryHandle;
+      readonly eventType: "inserted";
+      readonly targetBlockId: string;
+    }
+  | {
+      readonly reason: "missing-insertion-anchor" | "missing-removal-boundary";
+      readonly story: FolioDocumentStoryHandle;
+      readonly eventType: "moved";
+      readonly baseBlockId: string;
+      readonly targetBlockId: string;
+    }
+  | {
+      readonly reason: "missing-insertion-anchor" | "table-row-anchor";
+      readonly story: FolioDocumentStoryHandle;
+      readonly eventType: "structural";
+      readonly tableIndex: number;
     }
   | {
       readonly reason: "numbering-definition";
@@ -421,28 +445,6 @@ export class CompareDocxUnsupportedError extends TaggedError("CompareDocxUnsuppo
   unsupported: readonly CompareUnsupportedPart[];
 }> {}
 
-export const COMPARE_DOCX_LOWERING_REASONS = Object.freeze([
-  "block-semantics",
-  "container-change",
-  "missing-insertion-anchor",
-  "missing-removal-boundary",
-  "nonportable-table-template",
-  "structural-boundary-change",
-  "table-row-anchor",
-] as const);
-
-export type CompareDocxLoweringReason = (typeof COMPARE_DOCX_LOWERING_REASONS)[number];
-
-/** A canonical content event has no lossless tracked-document encoding. */
-export class CompareDocxLoweringError extends TaggedError("CompareDocxLoweringError")<{
-  message: string;
-  reason: CompareDocxLoweringReason;
-  story: FolioDocumentStoryHandle;
-  baseBlockId?: string;
-  targetBlockId?: string;
-  tableIndex?: number;
-}> {}
-
 export class CompareDocxSerializeError extends TaggedError("CompareDocxSerializeError")<{
   message: string;
   cause: unknown;
@@ -471,7 +473,6 @@ export type CompareDocxError =
   | CompareDocxApplyError
   | CompareDocxContentComparisonError
   | CompareDocxFinalParagraphMarkError
-  | CompareDocxLoweringError
   | CompareDocxOperationLimitError
   | CompareDocxParseError
   | CompareDocxRoundTripError

@@ -68,7 +68,6 @@ import {
   CompareDocxApplyError,
   CompareDocxContentComparisonError,
   CompareDocxFinalParagraphMarkError,
-  CompareDocxLoweringError,
   CompareDocxOperationLimitError,
   CompareDocxParseError,
   CompareDocxRoundTripError,
@@ -336,7 +335,7 @@ export const planComparison = ({
   granularity,
 }: ParsedComparison): Result<
   readonly PlannedStoryComparison[],
-  CompareDocxContentComparisonError | CompareDocxLoweringError | CompareDocxOperationLimitError
+  CompareDocxContentComparisonError | CompareDocxOperationLimitError
 > => {
   const planned: PlannedStoryComparison[] = [];
   const workSession = createContentComparisonWorkSession({ granularity });

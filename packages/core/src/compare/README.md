@@ -257,6 +257,14 @@ if (result.isOk() && result.value.verification.status === "unverified") {
 }
 ```
 
+Expected representation gaps are data, not execution failures. When a
+canonical insertion, move, table, or row has no surviving boundary that can
+carry its tracked change, strict mode returns `CompareDocxUnsupportedError`
+with the exact semantic event and block or table identity. Best-effort mode
+omits the whole semantic operation, lists the same typed entry in
+`unsupported`, and verifies the remaining program in both directions. It
+never emits only one member of a composite terminal transition.
+
 `verification` is on every successful result, so a caller that never passes the
 option still sees `{ status: "verified" }` and can assert on it. Every `cause`
 is one of the values in `COMPARE_VERIFICATION_CAUSES`, so consumers can bind

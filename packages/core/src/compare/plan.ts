@@ -10,7 +10,6 @@
 
 import { panic, Result } from "better-result";
 
-import type { FolioDocumentStoryHandle } from "../ai-edits/headless";
 import { docxParagraphPropertyChangeIsLowerable } from "../internal/compare/docx-paragraph-transport";
 import {
   resolvedDocxDeletedEventOperand,
@@ -45,11 +44,7 @@ import {
   type FolioContentWholePairRelation,
 } from "./content";
 import type { FolioContentBlock } from "./content-types";
-import {
-  CompareDocxLoweringError,
-  CompareDocxOperationLimitError,
-  type CompareUnsupportedPart,
-} from "./types";
+import { CompareDocxOperationLimitError, type CompareUnsupportedPart } from "./types";
 
 export type CompareStoryPlan = {
   readonly unsupported: readonly CompareUnsupportedPart[];
@@ -64,41 +59,41 @@ export type PlanStoryCompareOptions = {
   maxOperations: number;
 };
 
-type PlanStoryCompareError = CompareDocxLoweringError | CompareDocxOperationLimitError;
+type PlanStoryCompareError = CompareDocxOperationLimitError;
 
 type CompareUnsupportedEventType = Extract<
   CompareUnsupportedPart,
   { readonly eventType: unknown }
 >["eventType"];
 
+type ComparePlanUnsupportedPart = Extract<CompareUnsupportedPart, { readonly eventType: unknown }>;
+
+type PlannedOperationDisposition =
+  | {
+      readonly type: "emitted";
+      readonly operation: DocxComparisonOperationInput;
+    }
+  | {
+      readonly type: "omitted";
+      readonly unsupported: readonly [ComparePlanUnsupportedPart, ...ComparePlanUnsupportedPart[]];
+    };
+
+const emittedOperation = (
+  operation: DocxComparisonOperationInput,
+): PlannedOperationDisposition => ({ type: "emitted", operation });
+
+const omittedOperation = (
+  first: ComparePlanUnsupportedPart,
+  ...rest: ComparePlanUnsupportedPart[]
+): PlannedOperationDisposition => ({
+  type: "omitted",
+  unsupported: Object.freeze([first, ...rest]),
+});
+
 const operationLimit = (maxOperations: number): CompareDocxOperationLimitError =>
   new CompareDocxOperationLimitError({
     message: "The comparison needs more operations than the engine generates.",
     limit: maxOperations,
-  });
-
-const loweringError = ({
-  story,
-  reason,
-  message,
-  baseBlockId,
-  targetBlockId,
-  tableIndex,
-}: {
-  story: FolioDocumentStoryHandle;
-  reason: ConstructorParameters<typeof CompareDocxLoweringError>[0]["reason"];
-  message: string;
-  baseBlockId?: string;
-  targetBlockId?: string;
-  tableIndex?: number;
-}): CompareDocxLoweringError =>
-  new CompareDocxLoweringError({
-    message,
-    reason,
-    story,
-    ...(baseBlockId !== undefined && { baseBlockId }),
-    ...(targetBlockId !== undefined && { targetBlockId }),
-    ...(tableIndex !== undefined && { tableIndex }),
   });
 
 const textChanged = (relation: FolioContentPairRelation): boolean =>
@@ -190,6 +185,21 @@ export const planStoryCompare = ({
   const unsupported: CompareUnsupportedPart[] = [];
   const operations: DocxComparisonOperationInput[] = [];
 
+  const appendOperationDisposition = (disposition: PlannedOperationDisposition): void => {
+    switch (disposition.type) {
+      case "emitted":
+        operations.push(disposition.operation);
+        break;
+      case "omitted":
+        unsupported.push(...disposition.unsupported);
+        break;
+      default: {
+        const unreachable: never = disposition;
+        return panic("Unhandled DOCX lowering disposition", { disposition: unreachable });
+      }
+    }
+  };
+
   const recordUnavailableRuns = (
     eventType: CompareUnsupportedEventType,
     blocks: readonly {
@@ -234,21 +244,63 @@ export const planStoryCompare = ({
   };
   const insertOperation = (
     event: Extract<FolioContentComparisonEvent, { readonly type: "inserted" }>,
-  ):
-    | Extract<DocxComparisonOperationInput, { readonly type: "insertParagraph" }>
-    | CompareDocxLoweringError => {
+  ): PlannedOperationDisposition => {
     if (event.boundary.type === "unanchoredContainer") {
-      return loweringError({
-        story,
+      return omittedOperation({
         reason: "missing-insertion-anchor",
-        message: "The target adds content to a container with no surviving paragraph boundary.",
+        story,
+        eventType: "inserted",
         targetBlockId: event.block.identity.id,
       });
     }
-    return {
+    return emittedOperation({
       type: "insertParagraph",
       event: resolvedDocxInsertedEventOperand(comparison, event),
-    };
+    });
+  };
+
+  const moveOperation = (
+    event: Extract<FolioContentComparisonEvent, { readonly type: "movedTo" }>,
+  ): PlannedOperationDisposition => {
+    const { relation, destinationBoundary, sourceRemovalBoundary } = event.move;
+    const boundaryUnsupported: ComparePlanUnsupportedPart[] = [];
+    if (destinationBoundary.type === "unanchoredContainer") {
+      boundaryUnsupported.push({
+        reason: "missing-insertion-anchor",
+        story,
+        eventType: "moved",
+        baseBlockId: relation.base.block.identity.id,
+        targetBlockId: relation.revised.block.identity.id,
+      });
+    }
+    switch (sourceRemovalBoundary.type) {
+      case "successorParagraph":
+      case "successorTable":
+        break;
+      case "terminalPredecessor":
+      case "unanchoredContainer":
+        boundaryUnsupported.push({
+          reason: "missing-removal-boundary",
+          story,
+          eventType: "moved",
+          baseBlockId: relation.base.block.identity.id,
+          targetBlockId: relation.revised.block.identity.id,
+        });
+        break;
+      default: {
+        const unreachable: never = sourceRemovalBoundary;
+        return panic("Unhandled neutral paragraph removal boundary", {
+          boundary: unreachable,
+        });
+      }
+    }
+    const [first, ...rest] = boundaryUnsupported;
+    return first
+      ? omittedOperation(first, ...rest)
+      : emittedOperation({
+          type: "moveParagraph",
+          event: resolvedDocxMoveEventOperand(comparison, event),
+        });
   };
 
   for (const event of events) {
@@ -260,6 +312,7 @@ export const planStoryCompare = ({
         comparison,
       );
       let unavailable = false;
+      const boundaryUnsupported: ComparePlanUnsupportedPart[] = [];
       if (transition.type === "paragraph") {
         if (transition.chainStartRewrite !== null) {
           const { event: rewrite } = transition.chainStartRewrite;
@@ -327,16 +380,13 @@ export const planStoryCompare = ({
             move.destinationBoundary.type === "unanchoredContainer" &&
             transition.targetCarrier !== move.relation.revised.block
           ) {
-            return Result.err(
-              loweringError({
-                story,
-                reason: "missing-insertion-anchor",
-                message:
-                  "The moved paragraph has no surviving destination boundary in its container.",
-                baseBlockId: move.relation.base.block.identity.id,
-                targetBlockId: move.relation.revised.block.identity.id,
-              }),
-            );
+            boundaryUnsupported.push({
+              reason: "missing-insertion-anchor",
+              story,
+              eventType: "moved",
+              baseBlockId: move.relation.base.block.identity.id,
+              targetBlockId: move.relation.revised.block.identity.id,
+            });
           }
           if (
             move.sourceRemovalBoundary.type === "unanchoredContainer" ||
@@ -345,16 +395,13 @@ export const planStoryCompare = ({
                 (member) => member.type === "movedFrom" && member.occurrence.event.move === move,
               ))
           ) {
-            return Result.err(
-              loweringError({
-                story,
-                reason: "missing-removal-boundary",
-                message:
-                  "The moved paragraph crosses a terminal source program without an owned boundary.",
-                baseBlockId: move.relation.base.block.identity.id,
-                targetBlockId: move.relation.revised.block.identity.id,
-              }),
-            );
+            boundaryUnsupported.push({
+              reason: "missing-removal-boundary",
+              story,
+              eventType: "moved",
+              baseBlockId: move.relation.base.block.identity.id,
+              targetBlockId: move.relation.revised.block.identity.id,
+            });
           }
         }
       } else if (transition.type === "tableAppend") {
@@ -438,15 +485,13 @@ export const planStoryCompare = ({
             move.sourceRemovalBoundary.type === "terminalPredecessor" ||
             move.sourceRemovalBoundary.type === "unanchoredContainer"
           ) {
-            return Result.err(
-              loweringError({
-                story,
-                reason: "missing-removal-boundary",
-                message: "A moved paragraph crosses the appended table's terminal program.",
-                baseBlockId: move.relation.base.block.identity.id,
-                targetBlockId: move.relation.revised.block.identity.id,
-              }),
-            );
+            boundaryUnsupported.push({
+              reason: "missing-removal-boundary",
+              story,
+              eventType: "moved",
+              baseBlockId: move.relation.base.block.identity.id,
+              targetBlockId: move.relation.revised.block.identity.id,
+            });
           }
         }
       } else {
@@ -484,20 +529,25 @@ export const planStoryCompare = ({
               { block: move.relation.revised.block, snapshot: targetSnapshot, side: "target" },
             ]) || unavailable;
           if (move.destinationBoundary.type === "unanchoredContainer") {
-            return Result.err(
-              loweringError({
-                story,
-                reason: "missing-insertion-anchor",
-                message: "The moved paragraph has no surviving destination boundary.",
-                baseBlockId: move.relation.base.block.identity.id,
-                targetBlockId: move.relation.revised.block.identity.id,
-              }),
-            );
+            boundaryUnsupported.push({
+              reason: "missing-insertion-anchor",
+              story,
+              eventType: "moved",
+              baseBlockId: move.relation.base.block.identity.id,
+              targetBlockId: move.relation.revised.block.identity.id,
+            });
           }
         }
       }
-      if (!unavailable) {
-        operations.push({ type: "terminalTransition", operation: terminal.operation });
+      const [firstBoundaryUnsupported, ...remainingBoundaryUnsupported] = boundaryUnsupported;
+      if (firstBoundaryUnsupported) {
+        appendOperationDisposition(
+          omittedOperation(firstBoundaryUnsupported, ...remainingBoundaryUnsupported),
+        );
+      } else if (!unavailable) {
+        appendOperationDisposition(
+          emittedOperation({ type: "terminalTransition", operation: terminal.operation }),
+        );
       }
       if (operations.length > maxOperations) return Result.err(operationLimit(maxOperations));
       continue;
@@ -561,10 +611,9 @@ export const planStoryCompare = ({
         const unavailableRuns = recordUnavailableRuns("inserted", [
           { block: event.block, snapshot: targetSnapshot, side: "target" },
         ]);
-        if (!unavailableRuns) {
-          const lowered = insertOperation(event);
-          if (lowered instanceof CompareDocxLoweringError) return Result.err(lowered);
-          operations.push(lowered);
+        const disposition = insertOperation(event);
+        if (disposition.type === "omitted" || !unavailableRuns) {
+          appendOperationDisposition(disposition);
         }
         break;
       }
@@ -576,55 +625,9 @@ export const planStoryCompare = ({
         const unavailableRuns = recordUnavailableRuns("moved", [
           { block: relation.revised.block, snapshot: targetSnapshot, side: "target" },
         ]);
-        if (unavailableRuns) break;
-        if (event.move.destinationBoundary.type === "unanchoredContainer") {
-          return Result.err(
-            loweringError({
-              story,
-              reason: "missing-insertion-anchor",
-              message:
-                "The moved paragraph has no surviving destination boundary in its container.",
-              baseBlockId: relation.base.block.identity.id,
-              targetBlockId: relation.revised.block.identity.id,
-            }),
-          );
-        }
-        const sourceRemovalBoundary = event.move.sourceRemovalBoundary;
-        switch (sourceRemovalBoundary.type) {
-          case "successorParagraph":
-          case "successorTable":
-            operations.push({
-              type: "moveParagraph",
-              event: resolvedDocxMoveEventOperand(comparison, event),
-            });
-            break;
-          case "terminalPredecessor":
-            return Result.err(
-              loweringError({
-                story,
-                reason: "missing-removal-boundary",
-                message: "The terminal move is not owned by a canonical terminal program.",
-                baseBlockId: relation.base.block.identity.id,
-                targetBlockId: relation.revised.block.identity.id,
-              }),
-            );
-          case "unanchoredContainer":
-            return Result.err(
-              loweringError({
-                story,
-                reason: "missing-removal-boundary",
-                message:
-                  "The source paragraph has no same-container boundary that can carry its removal.",
-                baseBlockId: relation.base.block.identity.id,
-                targetBlockId: relation.revised.block.identity.id,
-              }),
-            );
-          default: {
-            const unreachable: never = sourceRemovalBoundary;
-            return panic("Unhandled neutral paragraph removal boundary", {
-              boundary: unreachable,
-            });
-          }
+        const disposition = moveOperation(event);
+        if (disposition.type === "omitted" || !unavailableRuns) {
+          appendOperationDisposition(disposition);
         }
         break;
       }
@@ -728,71 +731,73 @@ export const planStoryCompare = ({
             });
             break;
           case "table-insert": {
-            if (
-              recordUnavailableRuns(
-                "structural",
-                structural.blocks.map((block) => ({
-                  block,
-                  snapshot: targetSnapshot,
-                  side: "target" as const,
-                })),
-              )
-            ) {
-              break;
-            }
+            const unavailableRuns = recordUnavailableRuns(
+              "structural",
+              structural.blocks.map((block) => ({
+                block,
+                snapshot: targetSnapshot,
+                side: "target" as const,
+              })),
+            );
             const anchor = resolvedDocxStructuralInsertionBoundary(comparison, structural);
             if (!anchor) {
-              return Result.err(
-                loweringError({
-                  story,
+              appendOperationDisposition(
+                omittedOperation({
                   reason: "missing-insertion-anchor",
-                  message: "The target adds a table to a story with no tracked insertion anchor.",
+                  story,
+                  eventType: "structural",
                   tableIndex: structural.tableIndex,
                 }),
               );
+              break;
             }
-            operations.push({
-              type: "tableStructure",
-              operation: resolvedDocxTableStructureOperand(comparison, {
-                type: "insertTable",
-                anchor,
-                change: structural,
-              }),
-            });
+            if (!unavailableRuns) {
+              appendOperationDisposition(
+                emittedOperation({
+                  type: "tableStructure",
+                  operation: resolvedDocxTableStructureOperand(comparison, {
+                    type: "insertTable",
+                    anchor,
+                    change: structural,
+                  }),
+                }),
+              );
+            }
             break;
           }
           case "table-row-insert": {
             const anchor = resolvedDocxStructuralInsertionBoundary(comparison, structural);
+            const unavailableRuns = recordUnavailableRuns(
+              "structural",
+              structural.blocks.map((block) => ({
+                block,
+                snapshot: targetSnapshot,
+                side: "target" as const,
+              })),
+            );
             if (!anchor) {
-              return Result.err(
-                loweringError({
-                  story,
+              appendOperationDisposition(
+                omittedOperation({
                   reason: "table-row-anchor",
-                  message: "The inserted table row has no surviving table anchor.",
+                  story,
+                  eventType: "structural",
                   tableIndex: structural.tableIndex,
                 }),
               );
-            }
-            if (
-              recordUnavailableRuns(
-                "structural",
-                structural.blocks.map((block) => ({
-                  block,
-                  snapshot: targetSnapshot,
-                  side: "target" as const,
-                })),
-              )
-            ) {
               break;
             }
-            operations.push({
-              type: "tableStructure",
-              operation: resolvedDocxTableStructureOperand(comparison, {
-                type: "insertTableRow",
-                anchor,
-                change: structural,
-              }),
-            });
+            if (!unavailableRuns) {
+              appendOperationDisposition(
+                emittedOperation({
+                  type: "tableStructure",
+                  operation: resolvedDocxTableStructureOperand(comparison, {
+                    type: "insertTableRow",
+                    anchor,
+                    change: structural,
+                  }),
+                }),
+              );
+            }
             break;
           }
           case "table-column-insert": {
