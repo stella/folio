@@ -11,7 +11,9 @@ import type { Paragraph, Table } from "../../types/document";
 import { createEmptyDocument } from "../../utils/createDocument";
 import {
   createResolvedDocxStorySnapshot,
+  resolvedDocxAuthoredRunsForBlock,
   resolvedDocxContentBlocks,
+  resolvedDocxHasExactAuthoredRuns,
   resolvedDocxOperationSnapshot,
   resolvedDocxSourceDocument,
   resolvedDocxTableNodes,
@@ -138,6 +140,31 @@ describe("owned live DOCX story projection", () => {
     if (!snapshot) throw new Error("main story projection missing");
 
     expect(resolvedDocxSourceDocument(snapshot)).toBe(sourceDocument);
+  });
+
+  test("rejects same-id blocks from another capture at authored-run boundaries", () => {
+    const capture = () => {
+      const { document } = styledDocument();
+      const snapshot = createResolvedDocxStorySnapshot({
+        document,
+        story: { type: "main" },
+        sourceDocument: toProseDoc(document),
+      });
+      if (!snapshot) throw new Error("main story projection missing");
+      const block = resolvedDocxContentBlocks(snapshot).at(0);
+      if (!block) throw new Error("projected paragraph missing");
+      return { snapshot, block };
+    };
+    const left = capture();
+    const right = capture();
+    expect(left.block).not.toBe(right.block);
+
+    expect(() => resolvedDocxAuthoredRunsForBlock(left.snapshot, right.block)).toThrow(
+      "must name its capsule's canonical block",
+    );
+    expect(() => resolvedDocxHasExactAuthoredRuns(left.snapshot, right.block)).toThrow(
+      "must name its capsule's canonical block",
+    );
   });
 
   test("projects container ownership by topology rather than package-local ids", () => {

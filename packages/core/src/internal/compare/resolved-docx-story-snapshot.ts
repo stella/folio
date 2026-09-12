@@ -1311,28 +1311,31 @@ export const resolvedDocxNumberingReferenceKeys = (
 export const resolvedDocxAuthoredRunsForBlock = (
   snapshot: ResolvedDocxStorySnapshot,
   block: FolioContentBlock,
-): readonly DocxAuthoredRun[] =>
-  (() => {
-    const projection = payloadOf(snapshot).authoredRunsByBlockId.get(block.identity.id);
-    if (!projection) {
-      return panic("A canonical DOCX block has no live authored-run projection", {
-        blockId: block.identity.id,
-      });
-    }
-    if (projection.status === "unsupported") {
-      return panic("A lossy DOCX authored-run projection reached transport lowering", {
-        blockId: block.identity.id,
-        reason: projection.reason,
-      });
-    }
-    return projection.runs;
-  })();
+): readonly DocxAuthoredRun[] => {
+  resolvedDocxSourceOperand(snapshot, block);
+  const projection = payloadOf(snapshot).authoredRunsByBlockId.get(block.identity.id);
+  if (!projection) {
+    return panic("A canonical DOCX block has no live authored-run projection", {
+      blockId: block.identity.id,
+    });
+  }
+  if (projection.status === "unsupported") {
+    return panic("A lossy DOCX authored-run projection reached transport lowering", {
+      blockId: block.identity.id,
+      reason: projection.reason,
+    });
+  }
+  return projection.runs;
+};
 
 /** @internal Whether transport has exact authored runs for this canonical block. */
 export const resolvedDocxHasExactAuthoredRuns = (
   snapshot: ResolvedDocxStorySnapshot,
   block: FolioContentBlock,
-): boolean => payloadOf(snapshot).authoredRunsByBlockId.get(block.identity.id)?.status === "exact";
+): boolean => {
+  resolvedDocxSourceOperand(snapshot, block);
+  return payloadOf(snapshot).authoredRunsByBlockId.get(block.identity.id)?.status === "exact";
+};
 
 /** @internal Explicit projection gaps that prevent a complete DOCX proof. */
 export const resolvedDocxUnsupportedProjectionFields = (
