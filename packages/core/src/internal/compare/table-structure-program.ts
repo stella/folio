@@ -697,11 +697,7 @@ const tableGrid = (table: PMNode): TableGrid | null => {
   return Object.freeze({ map, cellsByPhysicalCoordinate, cellsByOffset });
 };
 
-const gridCellAt = (
-  grid: TableGrid,
-  rowIndex: number,
-  columnIndex: number,
-): GridCell | null => {
+const gridCellAt = (grid: TableGrid, rowIndex: number, columnIndex: number): GridCell | null => {
   if (
     rowIndex < 0 ||
     rowIndex >= grid.map.height ||
@@ -715,10 +711,7 @@ const gridCellAt = (
   return grid.cellsByOffset.get(offset) ?? null;
 };
 
-const insertedColumnCells = (
-  grid: TableGrid,
-  columnIndex: number,
-): readonly PMNode[] | null => {
+const insertedColumnCells = (grid: TableGrid, columnIndex: number): readonly PMNode[] | null => {
   const cells: PMNode[] = [];
   for (let rowIndex = 0; rowIndex < grid.map.height; rowIndex++) {
     const cell = gridCellAt(grid, rowIndex, columnIndex);
