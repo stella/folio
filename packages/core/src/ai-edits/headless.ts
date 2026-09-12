@@ -87,7 +87,12 @@ import type {
 } from "../types/document";
 import { deterministicHexId } from "../utils/hexId";
 import {
+  PARAGRAPH_ID_STABILITY_ATTR,
+  POSITIONAL_PARAGRAPH_ID_STABILITY,
+} from "../prosemirror/paragraphProjectionAttrs";
+import {
   recreateProseNodeWithParagraphPropertySource,
+  transferSynthesizedParagraphIdentity,
   transferProseParagraphPropertySource,
 } from "../docx/paragraphPropertySource";
 import {
@@ -207,12 +212,19 @@ const ensureDeterministicParaIdsInDoc = (doc: PMNode): PMNode => {
           }
           seen.add(paraId);
           next = recreateProseNodeWithParagraphPropertySource(child, {
-            attrs: { ...child.attrs, paraId, idStability: "positional" },
+            attrs: {
+              ...child.attrs,
+              paraId,
+              [PARAGRAPH_ID_STABILITY_ATTR]: POSITIONAL_PARAGRAPH_ID_STABILITY,
+            },
           });
         }
         const paraId = next.attrs["paraId"];
         if (typeof paraId === "string") {
           transferProseParagraphPropertySource(next, child, paraId);
+          if (next.attrs[PARAGRAPH_ID_STABILITY_ATTR] === POSITIONAL_PARAGRAPH_ID_STABILITY) {
+            transferSynthesizedParagraphIdentity(next, child, paraId);
+          }
         }
       } else if (child.childCount > 0) {
         const content = rewrite(child);

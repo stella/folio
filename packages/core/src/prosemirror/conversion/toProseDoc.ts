@@ -15,10 +15,7 @@
 import type { Node as PMNode } from "prosemirror-model";
 import { panic, TaggedError } from "better-result";
 
-import {
-  createStyleEngine,
-  resolveEffectiveParagraphPresentation,
-} from "../../style-engine";
+import { createStyleEngine, resolveEffectiveParagraphPresentation } from "../../style-engine";
 import type { StyleEngine, TableParagraphPresentationProjection } from "../../style-engine";
 import {
   createTableCellPresentationResolver,
@@ -62,6 +59,7 @@ import { mergeParagraphFormatting } from "../../utils/paragraphFormattingMerge";
 import { resolveColorValueToHex } from "../../docx/drawingUtils";
 import {
   PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
+  applySynthesizedParagraphIdentity,
   createProseParagraphWithPropertySource,
   getDocumentParagraphPropertySourceContract,
   recreateProseNodeWithParagraphPropertySource,
@@ -87,9 +85,7 @@ import {
   type PageBreakRunParagraphProjectionReason,
 } from "../pageBreakRunProjection";
 import { lineSpacingProvenanceFromSpacing } from "../paragraphSpacing";
-import {
-  stripParagraphMarkOnlyFormatting,
-} from "../runStyleFormatting";
+import { stripParagraphMarkOnlyFormatting } from "../runStyleFormatting";
 import { schema } from "../schema";
 import {
   COMPLEX_SCRIPT_RUN_PROPERTY_KEYS,
@@ -452,6 +448,7 @@ function convertParagraph(
     styleResolver,
     tableParagraphPresentation,
   );
+  applySynthesizedParagraphIdentity(paragraph, attrs);
   assertParagraphPageBreakCanBeProjected({
     paragraph,
     attrs,
@@ -1501,9 +1498,7 @@ function convertTableRow(
     swCell?: TableConditionalStyle;
     seCell?: TableConditionalStyle;
   },
-  resolveTableCellPresentation?: ReturnType<
-    typeof createTableCellPresentationResolver
-  >,
+  resolveTableCellPresentation?: ReturnType<typeof createTableCellPresentationResolver>,
   rowBandStyle?: TableConditionalStyle,
   bandingEnabledV?: boolean,
   tableLook?: TableLook,
@@ -2807,10 +2802,8 @@ function buildRunMarks(
     };
   }
   const styleId = runFormatting?.styleId;
-  const {
-    effective: mergedFormatting,
-    inherited: runStyleFormatting,
-  } = resolveEffectiveRunPresentation(runFormatting, inherited, styleResolver ?? null);
+  const { effective: mergedFormatting, inherited: runStyleFormatting } =
+    resolveEffectiveRunPresentation(runFormatting, inherited, styleResolver ?? null);
   const authoredCarrier: AuthoredRunFormattingCarrier = canReconstructAuthoredRunFormatting({
     directFormatting: runFormatting,
     effectiveFormatting: mergedFormatting,

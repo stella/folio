@@ -34,6 +34,7 @@ import {
 } from "../../style-engine/runPresentation";
 import { createTableCellPresentationResolver } from "../../style-engine/tableParagraphPresentation";
 import { tableOfContentsStyleLevel } from "../../utils/tableOfContentsStyle";
+import { paragraphProjectionParaId } from "../../docx/paragraphPropertySource";
 import { projectTableCellRowSpans } from "../../utils/tableRowSpanProjection";
 import {
   footnoteToProseDoc,
@@ -920,7 +921,7 @@ const projectLiveParagraph = (
   context: WalkContext,
   builder: ProjectionBuilder,
 ): readonly Shape[] => {
-  const id = paragraph.paraId;
+  const id = paragraphProjectionParaId(paragraph);
   const styleId = paragraph.formatting?.styleId;
   const styleName = styleId ? builder.styleEngine.getStyle(styleId)?.name : undefined;
   const runFormatting = createParagraphRunFormattingResolver({

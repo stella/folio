@@ -24,6 +24,7 @@ import {
   ParagraphPropertySourceValidationError,
   type ParagraphPropertySourceValidationCode,
   type TableCellParagraphPropertySourceBinding,
+  captureSynthesizedParagraphIdentity,
   copyDocumentParagraphPropertySourceContract,
   copyDocumentParagraphPropertySources,
   copyParagraphPropertyCapture,
@@ -1530,6 +1531,7 @@ function convertPMParagraph(
     paragraph.pPrMark = attrs.pPrMark;
   }
 
+  captureSynthesizedParagraphIdentity(paragraph, node);
   linkParagraphPropertySourceCandidate(paragraph, node);
   return paragraph;
 }

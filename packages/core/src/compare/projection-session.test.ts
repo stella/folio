@@ -6,32 +6,40 @@ import { sourceDocumentOf } from "../ai-edits/snapshot";
 import { createDocx } from "../docx/rezip";
 import type { HeaderFooter, Paragraph } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
+import { compareDocxVersions } from "../version-comparison";
 import { applyComparison, parseComparison, planComparison } from "./compare";
 
 const OPTIONS = { author: "compare", timestamp: "2026-09-11T00:00:00.000Z" } as const;
 const HEADER_RELATIONSHIP_ID = "rId_projection_header";
 const FOOTER_RELATIONSHIP_ID = "rId_projection_footer";
 
-const paragraph = (text: string, paraId: string): Paragraph => ({
+const paragraph = (text: string, paraId?: string): Paragraph => ({
   type: "paragraph",
-  paraId,
+  ...(paraId !== undefined && { paraId }),
   content: [{ type: "run", content: [{ type: "text", text }] }],
 });
 
-const headerFooter = (type: "header" | "footer", text: string, paraId: string): HeaderFooter => ({
+const headerFooter = (type: "header" | "footer", text: string, paraId?: string): HeaderFooter => ({
   type,
   hdrFtrType: "default",
   content: [paragraph(text, paraId)],
 });
 
-const storyMatrixDocx = (label: string): Promise<ArrayBuffer> => {
+type StoryIdentityFixture = "authored" | "synthesized";
+
+const storyMatrixDocx = (
+  label: string,
+  identity: StoryIdentityFixture = "authored",
+): Promise<ArrayBuffer> => {
+  const paraId = (authored: string): string | undefined =>
+    identity === "authored" ? authored : undefined;
   const document = createEmptyDocument();
-  document.package.document.content = [paragraph(`main ${label}`, "A1000001")];
+  document.package.document.content = [paragraph(`main ${label}`, paraId("A1000001"))];
   document.package.headers = new Map([
-    [HEADER_RELATIONSHIP_ID, headerFooter("header", `header ${label}`, "A1000002")],
+    [HEADER_RELATIONSHIP_ID, headerFooter("header", `header ${label}`, paraId("A1000002"))],
   ]);
   document.package.footers = new Map([
-    [FOOTER_RELATIONSHIP_ID, headerFooter("footer", `footer ${label}`, "A1000003")],
+    [FOOTER_RELATIONSHIP_ID, headerFooter("footer", `footer ${label}`, paraId("A1000003"))],
   ]);
   document.package.document.finalSectionProperties = {
     ...document.package.document.finalSectionProperties,
@@ -43,7 +51,7 @@ const storyMatrixDocx = (label: string): Promise<ArrayBuffer> => {
       type: "footnote",
       id: 2,
       noteType: "normal",
-      content: [paragraph(`footnote ${label}`, "A1000004")],
+      content: [paragraph(`footnote ${label}`, paraId("A1000004"))],
     },
   ];
   document.package.endnotes = [
@@ -51,7 +59,7 @@ const storyMatrixDocx = (label: string): Promise<ArrayBuffer> => {
       type: "endnote",
       id: 3,
       noteType: "normal",
-      content: [paragraph(`endnote ${label}`, "A1000005")],
+      content: [paragraph(`endnote ${label}`, paraId("A1000005"))],
     },
   ];
   return createDocx(document);
@@ -80,7 +88,9 @@ const instrumentStoryTraversals = (reviewer: FolioDocxReviewer): (() => number)[
 };
 
 test("comparison projection performs one live package projection plus the requested census", async () => {
-  const baseReviewer = await FolioDocxReviewer.fromBuffer(await storyMatrixDocx("before"));
+  const baseReviewer = await FolioDocxReviewer.fromBuffer(
+    await storyMatrixDocx("before", "synthesized"),
+  );
   const baseTraversals = instrumentStoryTraversals(baseReviewer);
   const baseProjection =
     getFolioDocxComparisonAccess(baseReviewer).projectStories("with-revision-census");
@@ -90,7 +100,9 @@ test("comparison projection performs one live package projection plus the reques
   expect(baseProjection.revisions).toEqual({ highestId: 0, present: false });
   expect(baseTraversals.map((read) => read())).toEqual([4, 2, 2, 2, 2]);
 
-  const targetReviewer = await FolioDocxReviewer.fromBuffer(await storyMatrixDocx("after"));
+  const targetReviewer = await FolioDocxReviewer.fromBuffer(
+    await storyMatrixDocx("after", "synthesized"),
+  );
   const targetTraversals = instrumentStoryTraversals(targetReviewer);
   const targetProjection =
     getFolioDocxComparisonAccess(targetReviewer).projectStories("without-revision-census");
@@ -99,6 +111,24 @@ test("comparison projection performs one live package projection plus the reques
   expect(targetProjection.stories.every(({ snapshot }) => snapshot !== null)).toBe(true);
   expect(targetProjection.revisions).toEqual({ highestId: 0, present: false });
   expect(targetTraversals.map((read) => read())).toEqual([3, 1, 1, 1, 1]);
+});
+
+test("no-op version comparison retains synthesized identity in every story", async () => {
+  const source = await storyMatrixDocx("same", "synthesized");
+  const diff = await compareDocxVersions(source, source.slice(0));
+
+  expect(diff.changes).toEqual([]);
+  expect(diff.stories).toHaveLength(5);
+  expect(diff.stories.every(({ changes }) => changes.length === 0)).toBe(true);
+  expect(diff.summaryCounts).toEqual({
+    added: 0,
+    deleted: 0,
+    modified: 0,
+    formatChanged: 0,
+    moved: 0,
+    metadataChanged: 0,
+    unchanged: 5,
+  });
 });
 
 test("comparison consumes the retained story projections through apply verification", async () => {
