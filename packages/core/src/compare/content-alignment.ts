@@ -927,11 +927,23 @@ const scopedAlignmentSteps = (
     readonly block: FolioContentBlock;
     readonly alignment: FolioContentBaseContainerAlignment;
   };
+  type PairedBaseBoundary = {
+    readonly block: FolioContentBlock;
+    readonly alignment: FolioContentPairedContainerAlignment;
+  };
   const nextBaseByIndex: (BaseBoundary | null)[] = Array.from(
     { length: aligned.length },
     () => null,
   );
+  const nextPairedBaseByIndex: (PairedBaseBoundary | null)[] = Array.from(
+    { length: aligned.length },
+    () => null,
+  );
   const nextBaseByAlignment = new Map<FolioContentContainerAlignment, BaseBoundary>();
+  const nextPairedBaseByAlignment = new Map<
+    FolioContentPairedContainerAlignment,
+    PairedBaseBoundary
+  >();
   const terminalRevisedByAlignment = new Map<
     FolioContentContainerAlignment,
     { readonly block: FolioContentBlock; readonly pairedBase: FolioContentBlock | null }
@@ -940,11 +952,17 @@ const scopedAlignmentSteps = (
     const entry = aligned[index];
     if (!entry) continue;
     nextBaseByIndex[index] = nextBaseByAlignment.get(entry.containerAlignment) ?? null;
+    nextPairedBaseByIndex[index] =
+      entry.containerAlignment.type === "paired"
+        ? (nextPairedBaseByAlignment.get(entry.containerAlignment) ?? null)
+        : null;
     if (entry.type === "pair") {
-      nextBaseByAlignment.set(entry.containerAlignment, {
+      const boundary = {
         block: entry.baseBlock,
         alignment: entry.containerAlignment,
-      });
+      };
+      nextBaseByAlignment.set(entry.containerAlignment, boundary);
+      nextPairedBaseByAlignment.set(entry.containerAlignment, boundary);
       if (context.revisedParagraphTopology.terminalBlockIds.has(entry.revisedBlock.identity.id)) {
         terminalRevisedByAlignment.set(entry.containerAlignment, {
           block: entry.revisedBlock,
@@ -966,15 +984,21 @@ const scopedAlignmentSteps = (
 
   const steps: FolioContentAlignmentStep[] = [];
   const previousBaseByAlignment = new Map<FolioContentContainerAlignment, BaseBoundary>();
+  const previousPairedBaseByAlignment = new Map<
+    FolioContentPairedContainerAlignment,
+    PairedBaseBoundary
+  >();
   let gap = context.nextGap++;
   for (const [index, entry] of aligned.entries()) {
     if (entry.type === "pair") {
       const { containerAlignment } = entry;
       steps.push(entry);
-      previousBaseByAlignment.set(containerAlignment, {
+      const boundary = {
         block: entry.baseBlock,
         alignment: containerAlignment,
-      });
+      };
+      previousBaseByAlignment.set(containerAlignment, boundary);
+      previousPairedBaseByAlignment.set(containerAlignment, boundary);
       gap = context.nextGap++;
       continue;
     }
@@ -1025,20 +1049,38 @@ const scopedAlignmentSteps = (
       continue;
     }
     const { containerAlignment } = entry;
-    const nextBase = nextBaseByIndex[index] ?? null;
-    const previousBase = previousBaseByAlignment.get(containerAlignment) ?? null;
+    const nextPairedBase =
+      containerAlignment.type === "paired" ? (nextPairedBaseByIndex[index] ?? null) : null;
+    const previousPairedBase =
+      containerAlignment.type === "paired"
+        ? (previousPairedBaseByAlignment.get(containerAlignment) ?? null)
+        : null;
+    const fallbackNextBase = nextBaseByIndex[index] ?? null;
+    const fallbackPreviousBase = previousBaseByAlignment.get(containerAlignment) ?? null;
     let insertionBoundary: FolioContentParagraphInsertionBoundary;
-    if (nextBase?.alignment.type === "paired") {
+    if (nextPairedBase) {
       insertionBoundary = Object.freeze({
         type: "beforeParagraph",
-        paragraph: nextBase.block,
-        containerAlignment: nextBase.alignment,
+        paragraph: nextPairedBase.block,
+        containerAlignment: nextPairedBase.alignment,
       });
-    } else if (previousBase?.alignment.type === "paired") {
+    } else if (previousPairedBase) {
       insertionBoundary = Object.freeze({
         type: "afterParagraph",
-        paragraph: previousBase.block,
-        containerAlignment: previousBase.alignment,
+        paragraph: previousPairedBase.block,
+        containerAlignment: previousPairedBase.alignment,
+      });
+    } else if (fallbackNextBase?.alignment.type === "paired") {
+      insertionBoundary = Object.freeze({
+        type: "beforeParagraph",
+        paragraph: fallbackNextBase.block,
+        containerAlignment: fallbackNextBase.alignment,
+      });
+    } else if (fallbackPreviousBase?.alignment.type === "paired") {
+      insertionBoundary = Object.freeze({
+        type: "afterParagraph",
+        paragraph: fallbackPreviousBase.block,
+        containerAlignment: fallbackPreviousBase.alignment,
       });
     } else {
       insertionBoundary = Object.freeze({ type: "unanchoredContainer", containerAlignment });

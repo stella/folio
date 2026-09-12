@@ -767,6 +767,34 @@ describe("compareDocx", () => {
     });
   });
 
+  test("a moved source cannot mask the surviving anchor of a peer insertion", async () => {
+    const base = SYNTHETIC_BASE;
+    const baseBlocks = await blocksOf(base);
+    const movedIndex = baseBlocks.length - 1;
+    const insertionAnchorIndex = baseBlocks.length - 2;
+    const script: EditScript = [
+      { type: "moveParagraph", blockIndex: movedIndex, beforeBlockIndex: 0 },
+      {
+        type: "insertParagraphAfter",
+        blockIndex: insertionAnchorIndex,
+        text: "Inserted after the final surviving anchor.",
+      },
+    ];
+    const scripted = await applyEditScript(base, script);
+    if (scripted.isErr()) throw scripted.error;
+    expect(scripted.value.unresolved).toEqual([]);
+
+    const { buffer } = await compareOrThrow(base, scripted.value.buffer);
+    const [accepted, rejected, target, original] = await Promise.all([
+      projectView(buffer, "final"),
+      projectView(buffer, "original"),
+      projectView(scripted.value.buffer, "final"),
+      projectView(base, "final"),
+    ]);
+    expect(accepted).toEqual(target);
+    expect(rejected).toEqual(original);
+  });
+
   test("a paragraph inserted on a cell anchor lands beside the table it grew", async () => {
     // The second counterexample the change-count property found. An insertion
     // anchored in a cell writes its paragraph beside the table, so a script that

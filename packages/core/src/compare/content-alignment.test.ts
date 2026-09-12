@@ -652,6 +652,62 @@ describe("container-safe structural alignment", () => {
     expect(step.insertionBoundary.paragraph.table?.cellIndex).toBe(0);
   });
 
+  test("skips a deleted neighbour for a surviving insertion boundary", () => {
+    const base = [block("anchor", "Stable anchor"), block("removed", "Removed clause")];
+    const revised = [
+      block("anchor", "Stable anchor"),
+      block("inserted", "Inserted clause after the stable anchor"),
+    ];
+
+    const insertionBoundary = () => {
+      const insertion = alignFolioContentStructure({
+        baseBlocks: base,
+        revisedBlocks: revised,
+      }).find((step) => step.type === "revisedOnly");
+      if (insertion?.type !== "revisedOnly") throw new Error("Expected one inserted paragraph.");
+      return insertion.insertionBoundary;
+    };
+
+    const boundary = insertionBoundary();
+    expect(boundary.type).toBe("afterParagraph");
+    if (boundary.type === "unanchoredContainer") {
+      throw new Error("Expected the surviving paragraph to own the insertion boundary.");
+    }
+    expect(boundary.paragraph.identity.id).toBe("anchor");
+    expect(insertionBoundary()).toEqual(boundary);
+  });
+
+  test("skips a moved source occurrence for a trailing insertion boundary", () => {
+    const relocated = block("relocated", "Relocated clause with stable identifying words");
+    const anchor = block("anchor", "First surviving anchor clause");
+    const neighbour = block("neighbour", "Second surviving anchor clause");
+    const inserted = block("inserted", "New trailing clause after the surviving content");
+    const steps = alignFolioContentStructure({
+      baseBlocks: [anchor, neighbour, relocated],
+      revisedBlocks: [relocated, anchor, neighbour, inserted],
+    });
+
+    expect(steps.map(({ type }) => type)).toEqual([
+      "revisedOnly",
+      "pair",
+      "pair",
+      "baseOnly",
+      "revisedOnly",
+    ]);
+    const destination = steps.at(0);
+    const insertion = steps.at(-1);
+    if (destination?.type !== "revisedOnly" || insertion?.type !== "revisedOnly") {
+      throw new Error("Expected one move destination and one trailing insertion.");
+    }
+    expect(destination.block).toBe(relocated);
+    expect(insertion.block).toBe(inserted);
+    expect(insertion.insertionBoundary).toEqual({
+      type: "afterParagraph",
+      paragraph: neighbour,
+      containerAlignment: insertion.moveScope.containerAlignment,
+    });
+  });
+
   test("uses a deleted paragraph as the typed boundary for total cell replacement", () => {
     const base = [
       cell(
