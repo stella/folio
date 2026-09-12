@@ -4,13 +4,29 @@ import { EditorState } from "prosemirror-state";
 
 import { folioStoryTables } from "../../ai-edits/snapshot";
 import { resolveAllChangesInHeadlessState } from "../../prosemirror/commands/comments";
+import {
+  tableCellRejectAttrPatch,
+  tableRejectAttrPatch,
+  tableRowRejectAttrPatch,
+} from "../../prosemirror/commands/propertyChangeScope";
 import { schema } from "../../prosemirror/schema";
+import type {
+  TableCellFormatting,
+  TableFormatting,
+  TableRowFormatting,
+} from "../../types/document";
+import type {
+  CompareTableCellFormattingPropertyName,
+  CompareTableFormattingPropertyName,
+  CompareTableRowFormattingPropertyName,
+} from "../../compare/table-format-properties";
 import {
   DEFAULT_TABLE_GEOMETRY_PREFLIGHT_LIMITS,
   executeTableGeometryProgram,
   preflightTableGeometry,
   preflightTableGeometryComponents,
   projectTableGeometry,
+  tableGeometryProgramSemanticChangeOccurrences,
   type TableCellCoordinate,
   type TableGeometryPairing,
 } from "./table-geometry-program";
@@ -99,6 +115,116 @@ const changedDocuments = () => {
   return { base, target };
 };
 
+const BASE_TABLE_PROPERTIES = {
+  width: { value: 4_800, type: "dxa" },
+  justification: "left",
+  cellSpacing: { value: 20, type: "dxa" },
+  indent: { value: 120, type: "dxa" },
+  borders: { top: { style: "dashed", size: 4 } },
+  cellMargins: { top: { value: 40, type: "dxa" } },
+  layout: "autofit",
+  styleId: "BaseTable",
+  look: { lastRow: true },
+  shading: { fill: { rgb: "FFFFFF" } },
+  overlap: "overlap",
+  floating: { horzAnchor: "margin", vertAnchor: "text", tblpX: 100 },
+  bidi: false,
+} as const satisfies Required<Pick<TableFormatting, CompareTableFormattingPropertyName>>;
+
+const TARGET_TABLE_PROPERTIES = {
+  width: { value: 6_000, type: "dxa" },
+  justification: "center",
+  cellSpacing: { value: 40, type: "dxa" },
+  indent: { value: 240, type: "dxa" },
+  borders: { top: { style: "single", size: 8 } },
+  cellMargins: { top: { value: 80, type: "dxa" } },
+  layout: "fixed",
+  styleId: "TargetTable",
+  look: { firstRow: true },
+  shading: { fill: { rgb: "FFF2CC" } },
+  overlap: "never",
+  floating: { horzAnchor: "page", vertAnchor: "margin", tblpX: 200 },
+  bidi: true,
+} as const satisfies Required<Pick<TableFormatting, CompareTableFormattingPropertyName>>;
+
+const BASE_ROW_PROPERTIES = {
+  gridBefore: 0,
+  widthBefore: { value: 100, type: "dxa" },
+  gridAfter: 0,
+  widthAfter: { value: 100, type: "dxa" },
+  height: { value: 240, type: "dxa" },
+  heightRule: "exact",
+  header: false,
+  cantSplit: false,
+  justification: "left",
+  hidden: false,
+  conditionalFormat: { lastRow: true },
+} as const satisfies Required<Pick<TableRowFormatting, CompareTableRowFormattingPropertyName>>;
+
+const TARGET_ROW_PROPERTIES = {
+  gridBefore: 1,
+  widthBefore: { value: 200, type: "dxa" },
+  gridAfter: 1,
+  widthAfter: { value: 200, type: "dxa" },
+  height: { value: 480, type: "dxa" },
+  heightRule: "atLeast",
+  header: true,
+  cantSplit: true,
+  justification: "center",
+  hidden: true,
+  conditionalFormat: { firstRow: true },
+} as const satisfies Required<Pick<TableRowFormatting, CompareTableRowFormattingPropertyName>>;
+
+const BASE_CELL_PROPERTIES = {
+  width: { value: 2_400, type: "dxa" },
+  borders: { top: { style: "dashed", size: 4 } },
+  margins: { top: { value: 40, type: "dxa" } },
+  shading: { fill: { rgb: "FFFFFF" } },
+  verticalAlign: "top",
+  textDirection: "lr",
+  fitText: false,
+  noWrap: false,
+  hideMark: false,
+  conditionalFormat: { lastColumn: true },
+} as const satisfies Required<Pick<TableCellFormatting, CompareTableCellFormattingPropertyName>>;
+
+const TARGET_CELL_PROPERTIES = {
+  width: { value: 3_000, type: "dxa" },
+  borders: { top: { style: "single", size: 8 } },
+  margins: { top: { value: 80, type: "dxa" } },
+  shading: { fill: { rgb: "C6E0B4" } },
+  verticalAlign: "center",
+  textDirection: "tbRl",
+  fitText: true,
+  noWrap: true,
+  hideMark: true,
+  conditionalFormat: { firstColumn: true },
+} as const satisfies Required<Pick<TableCellFormatting, CompareTableCellFormattingPropertyName>>;
+
+const documentWithFormatting = ({
+  tableFormatting,
+  rowFormatting,
+  cellFormatting,
+}: {
+  readonly tableFormatting: TableFormatting;
+  readonly rowFormatting: TableRowFormatting;
+  readonly cellFormatting: TableCellFormatting;
+}): PMNode =>
+  documentWith(
+    table(
+      [
+        row(
+          [cell("Terms", tableCellRejectAttrPatch(cellFormatting, cellFormatting))],
+          tableRowRejectAttrPatch(rowFormatting),
+        ),
+      ],
+      {
+        ...tableRejectAttrPatch(tableFormatting),
+        columnWidths: [4_800],
+      },
+    ),
+  );
+
 const applyProgram = (
   base: PMNode,
   program: Extract<ReturnType<typeof preflight>, { status: "ready" }>["program"],
@@ -110,6 +236,12 @@ const applyProgram = (
     throw new Error(`unexpected execution refusal: ${execution.issue.reason}`);
   }
   return { state: state.apply(transaction), transaction, receipt: execution.receipt };
+};
+
+const expectRecursivelyFrozen = (value: unknown): void => {
+  if (typeof value !== "object" || value === null) return;
+  expect(Object.isFrozen(value)).toBe(true);
+  for (const child of Object.values(value)) expectRecursivelyFrozen(child);
 };
 
 describe("atomic table geometry programs", () => {
@@ -158,6 +290,101 @@ describe("atomic table geometry programs", () => {
     );
     expect(projectTableGeometry(folioStoryTables(rejected.doc))).toEqual(
       projectTableGeometry(folioStoryTables(base)),
+    );
+  });
+
+  test("reports every modeled property through its scope-specific semantic owner", () => {
+    const base = documentWithFormatting({
+      tableFormatting: {
+        ...BASE_TABLE_PROPERTIES,
+        gridSourceXml: "<w:tblGrid data-side='base'/>",
+        sourceXml: "<w:tblPr data-side='base'/>",
+      },
+      rowFormatting: { ...BASE_ROW_PROPERTIES, sourceXml: "<w:trPr data-side='base'/>" },
+      cellFormatting: { ...BASE_CELL_PROPERTIES, sourceXml: "<w:tcPr data-side='base'/>" },
+    });
+    const target = documentWithFormatting({
+      tableFormatting: {
+        ...TARGET_TABLE_PROPERTIES,
+        gridSourceXml: "<w:tblGrid data-side='target'/>",
+        sourceXml: "<w:tblPr data-side='target'/>",
+      },
+      rowFormatting: { ...TARGET_ROW_PROPERTIES, sourceXml: "<w:trPr data-side='target'/>" },
+      cellFormatting: { ...TARGET_CELL_PROPERTIES, sourceXml: "<w:tcPr data-side='target'/>" },
+    });
+    const result = preflight(base, target);
+
+    expect(result.status).toBe("ready");
+    if (result.status === "unsupported") return;
+    const occurrences = tableGeometryProgramSemanticChangeOccurrences(result.program);
+    expect(occurrences).toHaveLength(3);
+    expect(occurrences.map(({ change }) => change.scope)).toEqual(["table", "row", "cell"]);
+
+    const tableChange = occurrences.at(0)?.change;
+    const rowChange = occurrences.at(1)?.change;
+    const cellChange = occurrences.at(2)?.change;
+    expect(tableChange?.scope).toBe("table");
+    expect(rowChange?.scope).toBe("row");
+    expect(cellChange?.scope).toBe("cell");
+    if (
+      tableChange?.scope !== "table" ||
+      rowChange?.scope !== "row" ||
+      cellChange?.scope !== "cell"
+    ) {
+      return;
+    }
+
+    expect(tableChange.base).toEqual({ tableIndex: 0 });
+    expect(tableChange.target).toEqual({ tableIndex: 0 });
+    expect(rowChange.base).toEqual({ tableIndex: 0, rowIndex: 0 });
+    expect(rowChange.target).toEqual({ tableIndex: 0, rowIndex: 0 });
+    expect(cellChange.base).toEqual({ tableIndex: 0, rowIndex: 0, cellIndex: 0 });
+    expect(cellChange.target).toEqual({ tableIndex: 0, rowIndex: 0, cellIndex: 0 });
+    expect(tableChange.properties.map(({ key }) => key)).toEqual(
+      Object.keys(TARGET_TABLE_PROPERTIES).toSorted(),
+    );
+    expect(rowChange.properties.map(({ key }) => key)).toEqual(
+      Object.keys(TARGET_ROW_PROPERTIES).toSorted(),
+    );
+    expect(cellChange.properties.map(({ key }) => key)).toEqual(
+      Object.keys(TARGET_CELL_PROPERTIES).toSorted(),
+    );
+
+    for (const occurrence of occurrences) {
+      expect(Object.hasOwn(occurrence.change, "owner")).toBe(false);
+      expectRecursivelyFrozen(occurrence.change);
+      expectRecursivelyFrozen(occurrence.owner);
+    }
+
+    const { state } = applyProgram(base, result.program);
+    expect(
+      projectTableGeometry(folioStoryTables(resolveAllChangesInHeadlessState(state, "accept").doc)),
+    ).toEqual(projectTableGeometry(folioStoryTables(target)));
+    expect(
+      projectTableGeometry(folioStoryTables(resolveAllChangesInHeadlessState(state, "reject").doc)),
+    ).toEqual(projectTableGeometry(folioStoryTables(base)));
+  });
+
+  test("normalizes absent and false presence properties before planning or reporting", () => {
+    const base = documentWithFormatting({
+      tableFormatting: {},
+      rowFormatting: {},
+      cellFormatting: {},
+    });
+    const target = documentWithFormatting({
+      tableFormatting: { bidi: false },
+      rowFormatting: { header: false, cantSplit: false, hidden: false },
+      cellFormatting: { fitText: false, noWrap: false, hideMark: false },
+    });
+
+    const result = preflight(base, target);
+
+    expect(result.status).toBe("ready");
+    if (result.status === "unsupported") return;
+    expect(result.program.type).toBe("unchanged");
+    expect(tableGeometryProgramSemanticChangeOccurrences(result.program)).toEqual([]);
+    expect(projectTableGeometry(folioStoryTables(base))).toEqual(
+      projectTableGeometry(folioStoryTables(target)),
     );
   });
 
@@ -311,7 +538,7 @@ describe("table geometry refusal boundaries", () => {
     });
   });
 
-  test("reports a property change whose rejected view cannot be reconstructed", () => {
+  test("reconstructs a directly authored no-wrap removal", () => {
     const base = documentWith(
       table([
         row([
@@ -328,13 +555,27 @@ describe("table geometry refusal boundaries", () => {
     expect(projectTableGeometry(folioStoryTables(base))).not.toEqual(
       projectTableGeometry(folioStoryTables(target)),
     );
-    expect(result.status).toBe("unsupported");
-    if (result.status === "ready") return;
-    expect(result.issue).toMatchObject({
-      reason: "non-reconstructable-property-change",
-      reconstruction: "rejected",
+    expect(result.status).toBe("ready");
+    if (result.status === "unsupported") return;
+    expect(tableGeometryProgramSemanticChangeOccurrences(result.program).at(0)?.change).toEqual({
       scope: "cell",
+      base: { tableIndex: 0, rowIndex: 0, cellIndex: 0 },
+      target: { tableIndex: 0, rowIndex: 0, cellIndex: 0 },
+      properties: [
+        {
+          key: "noWrap",
+          base: { type: "present", value: true },
+          revised: { type: "absent" },
+        },
+      ],
     });
+    const { state } = applyProgram(base, result.program);
+    expect(
+      projectTableGeometry(folioStoryTables(resolveAllChangesInHeadlessState(state, "accept").doc)),
+    ).toEqual(projectTableGeometry(folioStoryTables(target)));
+    expect(
+      projectTableGeometry(folioStoryTables(resolveAllChangesInHeadlessState(state, "reject").doc)),
+    ).toEqual(projectTableGeometry(folioStoryTables(base)));
   });
 
   test("reports a paired table grid change that has no tracked-change representation", () => {

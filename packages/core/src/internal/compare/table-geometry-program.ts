@@ -45,6 +45,29 @@ import type {
 } from "../../types/document";
 import { canonicalJson } from "../../utils/canonicalJson";
 import type { FolioStoryTable } from "../../ai-edits/snapshot";
+import {
+  changedFolioContentProperties,
+  sameFolioContentPropertySet,
+} from "../../compare/content-properties";
+import type {
+  CompareTableCellCoordinate,
+  CompareTableCellFormattingPropertyChange,
+  CompareTableCellFormattingPropertyName,
+  CompareTableFormatDetails,
+  CompareTableFormattingPropertyChange,
+  CompareTableFormattingPropertyName,
+  CompareTableRowFormattingPropertyChange,
+  CompareTableRowFormattingPropertyName,
+} from "../../compare/table-format-properties";
+import type { FolioContentPropertySet } from "../../compare/content-types";
+import {
+  docxTableCellFormattingProperties,
+  docxTableCellFormattingSemanticValue,
+  docxTableFormattingProperties,
+  docxTableFormattingSemanticValue,
+  docxTableRowFormattingProperties,
+  docxTableRowFormattingSemanticValue,
+} from "./docx-model-properties";
 
 const ORIGINAL_FORMATTING = "_originalFormatting";
 
@@ -94,11 +117,7 @@ const TABLE_ROW_NODE_ROLE = "row";
 const TABLE_CELL_NODE_ROLES = new Set(["cell", "header_cell"]);
 
 /** Where a cell sits: which table, which row of it, which cell of that row. */
-export type TableCellCoordinate = {
-  readonly tableIndex: number;
-  readonly rowIndex: number;
-  readonly cellIndex: number;
-};
+export type TableCellCoordinate = CompareTableCellCoordinate;
 
 /** One base cell and the target cell it was aligned with. */
 export type TableGeometryPairing = {
@@ -238,6 +257,18 @@ type TableGeometryFormattingByScope = {
   readonly cell: TableCellFormatting;
 };
 
+type TableGeometryPropertyChangesByScope = {
+  readonly table: readonly CompareTableFormattingPropertyChange[];
+  readonly row: readonly CompareTableRowFormattingPropertyChange[];
+  readonly cell: readonly CompareTableCellFormattingPropertyChange[];
+};
+
+type TableGeometryPropertySetsByScope = {
+  readonly table: FolioContentPropertySet<CompareTableFormattingPropertyName>;
+  readonly row: FolioContentPropertySet<CompareTableRowFormattingPropertyName>;
+  readonly cell: FolioContentPropertySet<CompareTableCellFormattingPropertyName>;
+};
+
 type PropertyChangePayloadByScope = {
   readonly table: {
     readonly changeAttr: "tblPrChange";
@@ -271,6 +302,7 @@ type TableGeometryInstructionFor<Scope extends TableGeometryScopeName> =
         readonly carrier: TableGeometryCarrierAssertion<Scope>;
         readonly targetAttrs: Readonly<Record<string, unknown>>;
         readonly change: PropertyChangePayloadByScope[Scope];
+        readonly semantic: Extract<CompareTableFormatDetails, { readonly scope: Scope }>;
       }
     : never;
 
@@ -286,10 +318,12 @@ export type TableGeometryProgram = {
   readonly maxLivePayloadUnits: number;
 };
 
-export type TableGeometrySemanticChange = {
-  readonly scope: TableGeometryScopeName;
-  readonly base: Readonly<TableCellCoordinate>;
-  readonly target: Readonly<TableCellCoordinate>;
+export type TableGeometrySemanticChange = CompareTableFormatDetails;
+
+export type TableGeometrySemanticChangeOccurrence = {
+  /** Exact paired-cell event that owns this report's stream position. */
+  readonly owner: Readonly<TableGeometryPairing>;
+  readonly change: TableGeometrySemanticChange;
 };
 
 export type TableGeometryPreflightResult =
@@ -326,6 +360,14 @@ type PropertyScope<Scope extends TableGeometryScopeName> = {
   readonly semanticFormattingOf: (
     formatting: TableGeometryFormattingByScope[Scope] | undefined,
   ) => unknown;
+  /** Canonical directly-authored properties reported for this scope. */
+  readonly propertiesOf: (
+    formatting: TableGeometryFormattingByScope[Scope] | undefined,
+  ) => TableGeometryPropertySetsByScope[Scope];
+  readonly changesBetween: (
+    base: TableGeometryFormattingByScope[Scope] | undefined,
+    target: TableGeometryFormattingByScope[Scope] | undefined,
+  ) => TableGeometryPropertyChangesByScope[Scope];
   /** What rejecting a change element restores from its stored property set. */
   readonly rejectPatch: (
     previousFormatting: TableGeometryFormattingByScope[Scope] | undefined,
@@ -337,6 +379,7 @@ type PropertyScope<Scope extends TableGeometryScopeName> = {
     carrier: TableGeometryCarrierAssertion<Scope>,
     targetAttrs: Readonly<Record<string, unknown>>,
     previousFormatting: TableGeometryFormattingByScope[Scope] | undefined,
+    properties: TableGeometryPropertyChangesByScope[Scope],
   ) => TableGeometryInstructionFor<Scope>;
 };
 
@@ -370,38 +413,26 @@ const effectiveAttrs = (node: PMNode): Record<string, unknown> => ({
   _resolvedCellMargins: null,
 });
 
-const tableSemanticFormatting = (formatting: TableFormatting | undefined): unknown => {
-  if (!formatting) return null;
-  const { sourceXml: _sourceXml, gridSourceXml: _gridSourceXml, ...semantic } = formatting;
-  return semantic;
-};
+const tableCoordinate = ({ tableIndex }: TableCellCoordinate) => Object.freeze({ tableIndex });
 
-const rowSemanticFormatting = (formatting: TableRowFormatting | undefined): unknown => {
-  if (!formatting) return null;
-  const { sourceXml: _sourceXml, ...semantic } = formatting;
-  return semantic;
-};
-
-const cellSemanticFormatting = (formatting: TableCellFormatting | undefined): unknown => {
-  if (!formatting) return null;
-  const {
-    sourceXml: _sourceXml,
-    gridSpan: _gridSpan,
-    vMerge: _verticalMerge,
-    ...semantic
-  } = formatting;
-  return semantic;
-};
+const rowCoordinate = ({ tableIndex, rowIndex }: TableCellCoordinate) =>
+  Object.freeze({ tableIndex, rowIndex });
 
 const TABLE_SCOPE = {
   name: "table",
   keys: TABLE_SCOPED_ATTRS,
   formattingOf: (node) => tableAttrsToFormatting(effectiveAttrs(node)),
-  semanticFormattingOf: tableSemanticFormatting,
+  semanticFormattingOf: docxTableFormattingSemanticValue,
+  propertiesOf: docxTableFormattingProperties,
+  changesBetween: (base, target) =>
+    changedFolioContentProperties(
+      docxTableFormattingProperties(base),
+      docxTableFormattingProperties(target),
+    ),
   rejectPatch: (previousFormatting) => tableRejectAttrPatch(previousFormatting),
   changeAttr: "tblPrChange",
   changeType: "tablePropertyChange",
-  createInstruction: (carrier, targetAttrs, previousFormatting) =>
+  createInstruction: (carrier, targetAttrs, previousFormatting, properties) =>
     Object.freeze({
       carrier,
       targetAttrs,
@@ -410,6 +441,12 @@ const TABLE_SCOPE = {
         changeType: "tablePropertyChange",
         previousFormatting,
       }),
+      semantic: Object.freeze({
+        scope: "table",
+        base: tableCoordinate(carrier.base),
+        target: tableCoordinate(carrier.target),
+        properties,
+      }),
     }),
 } as const satisfies PropertyScope<"table">;
 
@@ -417,11 +454,17 @@ const ROW_SCOPE = {
   name: "row",
   keys: ROW_SCOPED_ATTRS,
   formattingOf: (node) => tableRowAttrsToFormatting(node.attrs),
-  semanticFormattingOf: rowSemanticFormatting,
+  semanticFormattingOf: docxTableRowFormattingSemanticValue,
+  propertiesOf: docxTableRowFormattingProperties,
+  changesBetween: (base, target) =>
+    changedFolioContentProperties(
+      docxTableRowFormattingProperties(base),
+      docxTableRowFormattingProperties(target),
+    ),
   rejectPatch: (previousFormatting) => tableRowRejectAttrPatch(previousFormatting),
   changeAttr: "trPrChange",
   changeType: "tableRowPropertyChange",
-  createInstruction: (carrier, targetAttrs, previousFormatting) =>
+  createInstruction: (carrier, targetAttrs, previousFormatting, properties) =>
     Object.freeze({
       carrier,
       targetAttrs,
@@ -430,6 +473,12 @@ const ROW_SCOPE = {
         changeType: "tableRowPropertyChange",
         previousFormatting,
       }),
+      semantic: Object.freeze({
+        scope: "row",
+        base: rowCoordinate(carrier.base),
+        target: rowCoordinate(carrier.target),
+        properties,
+      }),
     }),
 } as const satisfies PropertyScope<"row">;
 
@@ -437,12 +486,18 @@ const CELL_SCOPE = {
   name: "cell",
   keys: CELL_SCOPED_ATTRS,
   formattingOf: (node) => tableCellAttrsToFormatting(cellAttrsOf(node)),
-  semanticFormattingOf: cellSemanticFormatting,
+  semanticFormattingOf: docxTableCellFormattingSemanticValue,
+  propertiesOf: docxTableCellFormattingProperties,
+  changesBetween: (base, target) =>
+    changedFolioContentProperties(
+      docxTableCellFormattingProperties(base),
+      docxTableCellFormattingProperties(target),
+    ),
   rejectPatch: (previousFormatting, liveFormatting) =>
     tableCellRejectAttrPatch(previousFormatting, liveFormatting),
   changeAttr: "tcPrChange",
   changeType: "tableCellPropertyChange",
-  createInstruction: (carrier, targetAttrs, previousFormatting) =>
+  createInstruction: (carrier, targetAttrs, previousFormatting, properties) =>
     Object.freeze({
       carrier,
       targetAttrs,
@@ -450,6 +505,12 @@ const CELL_SCOPE = {
         changeAttr: "tcPrChange",
         changeType: "tableCellPropertyChange",
         previousFormatting,
+      }),
+      semantic: Object.freeze({
+        scope: "cell",
+        base: carrier.base,
+        target: carrier.target,
+        properties,
       }),
     }),
 } as const satisfies PropertyScope<"cell">;
@@ -712,12 +773,12 @@ const propertyChangeFor = <Scope extends TableGeometryScopeName>({
   const { base, target } = carrier;
   const baseFormatting = scope.formattingOf(baseNode);
   const targetFormatting = scope.formattingOf(targetNode);
-  const baseState = capturedState(propertyStateValue(baseNode, scope), payloadContext);
-  if (baseState.isErr()) {
+  const previousFormatting = captureImmutablePayload(baseFormatting, payloadContext);
+  if (previousFormatting.isErr()) {
     return {
       status: "unsupported",
       issue: payloadFailureIssue({
-        failure: baseState.error,
+        failure: previousFormatting.error,
         scope: scope.name,
         base,
         target,
@@ -725,12 +786,12 @@ const propertyChangeFor = <Scope extends TableGeometryScopeName>({
       }),
     };
   }
-  const targetState = capturedState(propertyStateValue(targetNode, scope), payloadContext);
-  if (targetState.isErr()) {
+  const nextFormatting = captureImmutablePayload(targetFormatting, payloadContext);
+  if (nextFormatting.isErr()) {
     return {
       status: "unsupported",
       issue: payloadFailureIssue({
-        failure: targetState.error,
+        failure: nextFormatting.error,
         scope: scope.name,
         base,
         target,
@@ -738,7 +799,8 @@ const propertyChangeFor = <Scope extends TableGeometryScopeName>({
       }),
     };
   }
-  if (baseState.value === targetState.value) return { status: "unchanged" };
+  const properties = scope.changesBetween(previousFormatting.value, nextFormatting.value);
+  if (properties.length === 0) return { status: "unchanged" };
 
   const targetAttrs = captureImmutablePayload(
     {
@@ -752,19 +814,6 @@ const propertyChangeFor = <Scope extends TableGeometryScopeName>({
       status: "unsupported",
       issue: payloadFailureIssue({
         failure: targetAttrs.error,
-        scope: scope.name,
-        base,
-        target,
-        maximum: payloadContext.maximum,
-      }),
-    };
-  }
-  const previousFormatting = captureImmutablePayload(baseFormatting, payloadContext);
-  if (previousFormatting.isErr()) {
-    return {
-      status: "unsupported",
-      issue: payloadFailureIssue({
-        failure: previousFormatting.error,
         scope: scope.name,
         base,
         target,
@@ -786,23 +835,12 @@ const propertyChangeFor = <Scope extends TableGeometryScopeName>({
       }),
     };
   }
-  const acceptedState = capturedState(
-    propertyStateValue(acceptedNode.value, scope),
-    payloadContext,
-  );
-  if (acceptedState.isErr()) {
-    return {
-      status: "unsupported",
-      issue: payloadFailureIssue({
-        failure: acceptedState.error,
-        scope: scope.name,
-        base,
-        target,
-        maximum: payloadContext.maximum,
-      }),
-    };
-  }
-  if (acceptedState.value !== targetState.value) {
+  if (
+    !sameFolioContentPropertySet(
+      scope.propertiesOf(scope.formattingOf(acceptedNode.value)),
+      scope.propertiesOf(nextFormatting.value),
+    )
+  ) {
     return {
       status: "unsupported",
       issue: Object.freeze({
@@ -816,7 +854,7 @@ const propertyChangeFor = <Scope extends TableGeometryScopeName>({
   }
   const rejectedNode = nodeWithAttrs(
     acceptedNode.value,
-    scope.rejectPatch(baseFormatting, targetFormatting),
+    scope.rejectPatch(previousFormatting.value, nextFormatting.value),
   );
   if (rejectedNode.isErr()) {
     return {
@@ -830,23 +868,12 @@ const propertyChangeFor = <Scope extends TableGeometryScopeName>({
       }),
     };
   }
-  const rejectedState = capturedState(
-    propertyStateValue(rejectedNode.value, scope),
-    payloadContext,
-  );
-  if (rejectedState.isErr()) {
-    return {
-      status: "unsupported",
-      issue: payloadFailureIssue({
-        failure: rejectedState.error,
-        scope: scope.name,
-        base,
-        target,
-        maximum: payloadContext.maximum,
-      }),
-    };
-  }
-  if (rejectedState.value !== baseState.value) {
+  if (
+    !sameFolioContentPropertySet(
+      scope.propertiesOf(scope.formattingOf(rejectedNode.value)),
+      scope.propertiesOf(previousFormatting.value),
+    )
+  ) {
     return {
       status: "unsupported",
       issue: Object.freeze({
@@ -859,7 +886,12 @@ const propertyChangeFor = <Scope extends TableGeometryScopeName>({
     };
   }
 
-  const instruction = scope.createInstruction(carrier, targetAttrs.value, previousFormatting.value);
+  const instruction = scope.createInstruction(
+    carrier,
+    targetAttrs.value,
+    previousFormatting.value,
+    properties,
+  );
   return { status: "ready", instruction };
 };
 
@@ -1607,19 +1639,18 @@ export const preflightTableGeometryComponents = <Component extends object>({
   return Object.freeze({ status: "ready", components: Object.freeze(results) });
 };
 
-/** Exact property changes owned by one preflighted geometry program. */
-export const tableGeometryProgramSemanticChanges = (
+/** Exact property changes and their canonical stream owners from one preflighted program. */
+export const tableGeometryProgramSemanticChangeOccurrences = (
   program: TableGeometryProgram,
-): readonly TableGeometrySemanticChange[] => {
+): readonly TableGeometrySemanticChangeOccurrence[] => {
   if (!PROGRAMS.has(program)) {
     return panic("A table geometry semantic projection requires a preflighted program");
   }
   return Object.freeze(
-    program.instructions.map(({ carrier }) =>
+    program.instructions.map(({ carrier, semantic }) =>
       Object.freeze({
-        scope: carrier.scope,
-        base: carrier.base,
-        target: carrier.target,
+        owner: Object.freeze({ base: carrier.base, target: carrier.target }),
+        change: semantic,
       }),
     ),
   );

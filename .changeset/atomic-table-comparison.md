@@ -2,4 +2,4 @@
 "@stll/folio-core": minor
 ---
 
-Report tracked table-property changes and apply structural table edits as atomic, reversible comparison operations.
+Report exact, scope-specific table-property deltas and apply structural table edits as atomic, reversible comparison operations.

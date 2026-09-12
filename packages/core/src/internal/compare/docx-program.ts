@@ -1779,21 +1779,61 @@ const compileTableFormatOperation = (
   const reports: DocxComparisonReportInput[] = [];
   if (payload.status === "ready") {
     const withinEvent = new Map<number, number>();
-    for (const change of payload.changes) {
-      const offset = withinEvent.get(change.sequence) ?? 8;
-      withinEvent.set(change.sequence, offset + 1);
-      reports.push(
-        ownSemanticReport({
-          sequence: reportSequence(change.sequence, offset),
-          change: {
-            kind: "table-format",
-            location: { story },
-            scope: change.scope,
-            base: change.base,
-            target: change.target,
-          },
-        }),
-      );
+    for (const { change, sequence: eventSequence } of payload.changes) {
+      const offset = withinEvent.get(eventSequence) ?? 8;
+      withinEvent.set(eventSequence, offset + 1);
+      const sequence = reportSequence(eventSequence, offset);
+      switch (change.scope) {
+        case "table":
+          reports.push(
+            ownSemanticReport({
+              sequence,
+              change: {
+                kind: "table-format",
+                location: { story },
+                scope: "table",
+                base: change.base,
+                target: change.target,
+                properties: change.properties,
+              },
+            }),
+          );
+          break;
+        case "row":
+          reports.push(
+            ownSemanticReport({
+              sequence,
+              change: {
+                kind: "table-format",
+                location: { story },
+                scope: "row",
+                base: change.base,
+                target: change.target,
+                properties: change.properties,
+              },
+            }),
+          );
+          break;
+        case "cell":
+          reports.push(
+            ownSemanticReport({
+              sequence,
+              change: {
+                kind: "table-format",
+                location: { story },
+                scope: "cell",
+                base: change.base,
+                target: change.target,
+                properties: change.properties,
+              },
+            }),
+          );
+          break;
+        default: {
+          const unreachable: never = change;
+          return panic("Unhandled table-format report scope", { scope: unreachable });
+        }
+      }
     }
   }
   return compiledSemanticOperation({

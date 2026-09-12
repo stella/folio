@@ -5059,6 +5059,11 @@ export function tableCellAttrsToFormatting(attrs: TableCellAttrs): TableCellForm
         delete result.textDirection;
       }
     }
+    if (attrs.noWrap) {
+      result.noWrap = true;
+    } else {
+      delete result.noWrap;
+    }
 
     return result;
   }
@@ -5073,7 +5078,8 @@ export function tableCellAttrsToFormatting(attrs: TableCellAttrs): TableCellForm
     backgroundChanged ||
     authoredBorders ||
     authoredMargins ||
-    attrs.textDirection;
+    attrs.textDirection ||
+    attrs.noWrap;
 
   if (!hasFormatting) {
     return undefined;
@@ -5097,6 +5103,9 @@ export function tableCellAttrsToFormatting(attrs: TableCellAttrs): TableCellForm
   }
   if (attrs.textDirection) {
     f.textDirection = attrs.textDirection;
+  }
+  if (attrs.noWrap) {
+    f.noWrap = true;
   }
   if (backgroundChanged) {
     f.shading = cellShadingFromAttrs(attrs);

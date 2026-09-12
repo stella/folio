@@ -58,11 +58,11 @@ const presentProperty = (value: FolioContentPropertyValue): FolioContentProperty
   Object.freeze({ type: "present", value });
 
 /** One exhaustive, ordered delta over two canonical property sets. @internal */
-export const changedFolioContentProperties = (
-  base: FolioContentPropertySet,
-  revised: FolioContentPropertySet,
-): readonly FolioContentPropertyChange[] => {
-  const changes: FolioContentPropertyChange[] = [];
+export const changedFolioContentProperties = <Key extends string>(
+  base: FolioContentPropertySet<Key>,
+  revised: FolioContentPropertySet<Key>,
+): readonly FolioContentPropertyChange<Key>[] => {
+  const changes: FolioContentPropertyChange<Key>[] = [];
   let baseIndex = 0;
   let revisedIndex = 0;
   while (baseIndex < base.length || revisedIndex < revised.length) {

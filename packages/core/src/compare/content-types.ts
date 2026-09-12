@@ -85,20 +85,21 @@ export type FolioContentPropertyValue =
     };
 
 /** One canonical object entry; sets are sorted by UTF-16 key order. */
-export type FolioContentProperty = {
-  readonly key: string;
+export type FolioContentProperty<Key extends string = string> = {
+  readonly key: Key;
   readonly value: FolioContentPropertyValue;
 };
 
-export type FolioContentPropertySet = readonly FolioContentProperty[];
+export type FolioContentPropertySet<Key extends string = string> =
+  readonly FolioContentProperty<Key>[];
 
 export type FolioContentPropertyPresence =
   | { readonly type: "absent" }
   | { readonly type: "present"; readonly value: FolioContentPropertyValue };
 
 /** Exact two-sided delta for one canonical property key. */
-export type FolioContentPropertyChange = {
-  readonly key: string;
+export type FolioContentPropertyChange<Key extends string = string> = {
+  readonly key: Key;
   readonly base: FolioContentPropertyPresence;
   readonly revised: FolioContentPropertyPresence;
 };

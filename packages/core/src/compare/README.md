@@ -20,8 +20,9 @@ discriminated union on `kind` (`insert`, `delete`, `replace`, `move`, `format`,
 `table-column-insert`, `table-column-delete`, `table-format`, `split`, `merge`,
 `paragraph-format`, `numbering`), for an agent that wants the summary rather
 than the document. A `table-format` entry identifies the table, row, or cell
-whose directly authored properties changed and reports its base and target
-coordinates. Every change carries the story it belongs to, so a caller can
+whose directly authored properties changed, reports only the coordinates that
+scope owns, and carries the exact two-sided property deltas. Every change
+carries the story it belongs to, so a caller can
 tell a body edit from a footnote edit — except `numbering`, which belongs to
 the package.
 

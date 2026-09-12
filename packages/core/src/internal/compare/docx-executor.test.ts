@@ -844,8 +844,45 @@ describe("the dedicated DOCX comparison executor", () => {
     const { executed, tracked } = executePlannedComparison(baseState, targetState);
 
     expect(executed.receipt.changes).toEqual([
-      expect.objectContaining({ kind: "table-format", scope: "table" }),
+      {
+        kind: "table-format",
+        location: { story: { type: "main" } },
+        scope: "table",
+        base: { tableIndex: 0 },
+        target: { tableIndex: 0 },
+        properties: [
+          {
+            key: "justification",
+            base: { type: "present", value: "left" },
+            revised: { type: "present", value: "center" },
+          },
+          {
+            key: "width",
+            base: {
+              type: "present",
+              value: {
+                type: "object",
+                entries: [
+                  { key: "type", value: "dxa" },
+                  { key: "value", value: 6_000 },
+                ],
+              },
+            },
+            revised: {
+              type: "present",
+              value: {
+                type: "object",
+                entries: [
+                  { key: "type", value: "dxa" },
+                  { key: "value", value: 7_200 },
+                ],
+              },
+            },
+          },
+        ],
+      },
     ]);
+    expect(Object.hasOwn(executed.receipt.changes[0] ?? {}, "owner")).toBe(false);
     expect(executed.receipt.instructions.map(({ instructionType }) => instructionType)).toEqual([
       "matchTableFormatting",
     ]);

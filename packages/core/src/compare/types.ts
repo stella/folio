@@ -10,6 +10,7 @@ import type { WordDiffGranularity } from "./text-diff";
 import type { FolioAIBlockParagraphProperties, FolioAIBlockTableLocation } from "../ai-edits/types";
 import type { FolioContentInlineFormattingChange } from "./content-types";
 import type { FolioContentComparisonError } from "./content";
+import type { CompareTableFormatDetails } from "./table-format-properties";
 import type {
   CompareVerification,
   CompareVerificationCause,
@@ -59,11 +60,22 @@ export type CompareFormatRange = {
   formatting: FolioContentInlineFormattingChange;
 };
 
-/** One canonical table-cell coordinate used to locate a property change. */
-export type CompareTableFormatCoordinate = {
-  tableIndex: number;
-  rowIndex: number;
-  cellIndex: number;
+export type {
+  CompareTableCellCoordinate,
+  CompareTableCellFormattingPropertyChange,
+  CompareTableCellFormattingPropertyName,
+  CompareTableCoordinate,
+  CompareTableFormatDetails,
+  CompareTableFormattingPropertyChange,
+  CompareTableFormattingPropertyName,
+  CompareTableRowCoordinate,
+  CompareTableRowFormattingPropertyChange,
+  CompareTableRowFormattingPropertyName,
+} from "./table-format-properties";
+
+export type CompareTableFormatChange = CompareTableFormatDetails & {
+  readonly kind: "table-format";
+  readonly location: CompareChangeLocation;
 };
 
 /**
@@ -227,13 +239,7 @@ export type CompareChange =
       baseBlockIds: readonly string[];
     }
   /** A tracked table, row, or cell property change. */
-  | {
-      kind: "table-format";
-      location: CompareChangeLocation;
-      scope: "table" | "row" | "cell";
-      base: CompareTableFormatCoordinate;
-      target: CompareTableFormatCoordinate;
-    };
+  | CompareTableFormatChange;
 
 /** Why a part of the package is absent from `changes`. */
 export const COMPARE_UNSUPPORTED_REASONS = Object.freeze([

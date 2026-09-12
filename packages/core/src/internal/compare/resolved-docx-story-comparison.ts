@@ -27,7 +27,7 @@ import type {
 import { canonicalJson } from "../../utils/canonicalJson";
 import {
   preflightTableGeometryComponents,
-  tableGeometryProgramSemanticChanges,
+  tableGeometryProgramSemanticChangeOccurrences,
   type TableGeometryPairing,
   type TableGeometryProgram,
   type TableGeometrySemanticChange,
@@ -337,9 +337,10 @@ export type ResolvedDocxTableFormatOperandPayload =
           };
     };
 
-export type ResolvedDocxTableFormatChange = TableGeometrySemanticChange & {
+export type ResolvedDocxTableFormatChange = {
   /** Canonical event whose paired cell owns this table property scope. */
   readonly sequence: number;
+  readonly change: TableGeometrySemanticChange;
 };
 
 export type ResolvedDocxTableStructureOperandInput =
@@ -2487,14 +2488,7 @@ const ownedTableFormatPayload = (
         status: "ready",
         program: payload.program,
         changes: Object.freeze(
-          payload.changes.map((change) =>
-            Object.freeze({
-              scope: change.scope,
-              base: ownedTableCoordinate(change.base),
-              target: ownedTableCoordinate(change.target),
-              sequence: change.sequence,
-            }),
-          ),
+          payload.changes.map(({ change, sequence }) => Object.freeze({ change, sequence })),
         ),
       });
     case "unsupported":
@@ -2657,7 +2651,6 @@ export const resolvedDocxTableFormatOperands = (
       ),
     );
   }
-
   const operands: ResolvedDocxTableFormatOperand[] = [];
   for (const { component, result } of preflight.components) {
     if (component.issue) {
@@ -2683,19 +2676,14 @@ export const resolvedDocxTableFormatOperands = (
       );
       continue;
     }
-    const semanticChanges = tableGeometryProgramSemanticChanges(result.program);
-    if (semanticChanges.length === 0) continue;
-    const changes = semanticChanges.map((change) => {
-      const sequence = index.tableGeometrySequenceByPairing.get(tableGeometryPairingKey(change));
+    const semanticOccurrences = tableGeometryProgramSemanticChangeOccurrences(result.program);
+    if (semanticOccurrences.length === 0) continue;
+    const changes = semanticOccurrences.map(({ change, owner }) => {
+      const sequence = index.tableGeometrySequenceByPairing.get(tableGeometryPairingKey(owner));
       if (sequence === undefined) {
         return panic("A table-format change lost its canonical paired-cell event");
       }
-      return Object.freeze({
-        scope: change.scope,
-        base: change.base,
-        target: change.target,
-        sequence,
-      });
+      return Object.freeze({ change, sequence });
     });
     operands.push(
       issueTableFormatOperand(
