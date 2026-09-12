@@ -28,7 +28,11 @@ const propertySet = (formatting: TestInlineFormatting): FolioContentPropertySet 
     Object.entries(formatting)
       .filter((entry): entry is [string, FolioContentPropertyInputValue] => entry[1] !== undefined)
       .map(([key, value]) => Object.freeze({ key, value }))
-      .toSorted((left, right) => (left.key < right.key ? -1 : left.key > right.key ? 1 : 0)),
+      .toSorted((left, right) => {
+        if (left.key < right.key) return -1;
+        if (left.key > right.key) return 1;
+        return 0;
+      }),
   );
 
 const block = (runs: readonly TestRun[]): FolioContentBlock =>
@@ -51,6 +55,18 @@ const DIRECT_BOOLEAN_STATES = [
   { label: "off", value: false },
 ] as const;
 
+type DirectBooleanState = (typeof DIRECT_BOOLEAN_STATES)[number];
+
+const directBooleanPresence = (state: DirectBooleanState) => {
+  if ("value" in state) return { type: "present", value: state.value } as const;
+  return { type: "absent" } as const;
+};
+
+const effectiveBooleanPresence = (value: boolean) => {
+  if (value) return { type: "present", value: true } as const;
+  return { type: "absent" } as const;
+};
+
 const INLINE_BOOLEAN_PROPERTIES = [
   "bold",
   "italic",
@@ -64,7 +80,7 @@ const INLINE_BOOLEAN_PROPERTIES = [
 const blockWithBooleanState = (
   property: (typeof INLINE_BOOLEAN_PROPERTIES)[number],
   inherited: boolean,
-  direct: (typeof DIRECT_BOOLEAN_STATES)[number],
+  direct: DirectBooleanState,
 ): FolioContentBlock => {
   const effective = "value" in direct ? direct.value : inherited;
   return block([
@@ -295,14 +311,8 @@ describe("inlineFormattingSegments", () => {
                       authored: [
                         {
                           key: property,
-                          base:
-                            "value" in baseDirect
-                              ? { type: "present", value: baseDirect.value }
-                              : { type: "absent" },
-                          revised:
-                            "value" in targetDirect
-                              ? { type: "present", value: targetDirect.value }
-                              : { type: "absent" },
+                          base: directBooleanPresence(baseDirect),
+                          revised: directBooleanPresence(targetDirect),
                         },
                       ],
                       effective:
@@ -311,12 +321,8 @@ describe("inlineFormattingSegments", () => {
                           : [
                               {
                                 key: property,
-                                base: baseEffective
-                                  ? { type: "present", value: true }
-                                  : { type: "absent" },
-                                revised: targetEffective
-                                  ? { type: "present", value: true }
-                                  : { type: "absent" },
+                                base: effectiveBooleanPresence(baseEffective),
+                                revised: effectiveBooleanPresence(targetEffective),
                               },
                             ],
                     },
