@@ -36,7 +36,7 @@ import {
 } from "./__fixtures__/numbered-list";
 import { compareDocx } from "./compare";
 import { applyEditScript, type EditScript } from "./scenario";
-import type { CompareChange } from "./types";
+import type { CompareChange, CompareResult } from "./types";
 
 const FIXTURES_DIR = path.join(import.meta.dir, "../docx/__tests__/__fixtures__/corpus");
 
@@ -46,6 +46,27 @@ const readFixture = (filename: string): ArrayBuffer => {
 };
 
 const OPTIONS = { author: "compare", timestamp: "2024-03-01T00:00:00.000Z" } as const;
+
+const expectOnlyUnloweredNumberingDefinitions = (
+  result: CompareResult,
+  levels: readonly number[],
+): void => {
+  expect(result.unsupported).toHaveLength(levels.length);
+  expect(
+    result.unsupported
+      .filter(({ reason }) => reason === "numbering-definition")
+      .map(({ level }) => level),
+  ).toEqual(levels);
+  expect(result.verification).toEqual({
+    status: "unverified",
+    failures: levels.map(() => ({
+      invariant: "accept-reproduces-target",
+      cause: "unsupported",
+      scope: { type: "package" },
+      detail: "the numbering-definition difference has no proved tracked-document instruction",
+    })),
+  });
+};
 
 const PROSE_BASE = readFixture("upstream-styled-content.docx");
 const TABLE_BASE = readFixture("upstream-with-tables.docx");
@@ -327,18 +348,7 @@ type ProbeOutcome = {
   kinds: readonly string[];
 };
 
-/**
- * Apply one mutation, compare, and assert the round trip. Every probe shares
- * this much; what differs is what each one then says about the change list.
- */
-const probe = async (base: ArrayBuffer, script: EditScript): Promise<ProbeOutcome> => {
-  const scripted = await applyEditScript(base, script);
-  if (scripted.isErr()) {
-    throw scripted.error;
-  }
-  expect(scripted.value.unresolved).toEqual([]);
-  const target = scripted.value.buffer;
-
+const compareTarget = async (base: ArrayBuffer, target: ArrayBuffer): Promise<ProbeOutcome> => {
   const result = await compareDocx(base, target, OPTIONS);
   if (result.isErr()) {
     throw result.error;
@@ -356,6 +366,43 @@ const probe = async (base: ArrayBuffer, script: EditScript): Promise<ProbeOutcom
     changes: result.value.changes,
     kinds: result.value.changes.map(({ kind }) => kind),
   };
+};
+
+/**
+ * Apply one mutation, compare, and assert the round trip. Every probe shares
+ * this much; what differs is what each one then says about the change list.
+ */
+const probe = async (base: ArrayBuffer, script: EditScript): Promise<ProbeOutcome> => {
+  const scripted = await applyEditScript(base, script);
+  if (scripted.isErr()) {
+    throw scripted.error;
+  }
+  expect(scripted.value.unresolved).toEqual([]);
+  return await compareTarget(base, scripted.value.buffer);
+};
+
+/** Reorder one complete model block so a move-only probe retains all formatting. */
+const moveTopLevelBlockBefore = async (
+  source: ArrayBuffer,
+  blockIndex: number,
+  beforeBlockIndex: number,
+): Promise<ArrayBuffer> => {
+  const reviewer = await FolioDocxReviewer.fromBuffer(source);
+  const document = reviewer.toDocument();
+  const content = [...document.package.document.content];
+  const moved = content.at(blockIndex);
+  const destination = content.at(beforeBlockIndex);
+  if (!moved || !destination || moved === destination) {
+    throw new Error("The move-only probe requires two distinct top-level blocks.");
+  }
+  content.splice(blockIndex, 1);
+  const destinationIndex = content.indexOf(destination);
+  if (destinationIndex === -1) {
+    throw new Error("The move-only probe lost its destination block.");
+  }
+  content.splice(destinationIndex, 0, moved);
+  document.package.document.content = content;
+  return await createDocx(document);
 };
 
 /** A block with enough words to split, edit inside, or bold part of. */
@@ -447,46 +494,29 @@ describe("single-mutation probes", () => {
   test("move_clause: a relocated paragraph is reported as a move", async () => {
     const blockIndex = wordyBlockIndex(PROSE_BLOCKS, 4);
     const beforeBlockIndex = PROSE_BLOCKS.length - 1;
-    const { kinds } = await probe(PROSE_BASE, [
-      { type: "moveParagraph", blockIndex, beforeBlockIndex },
-    ]);
-    // The alignment may absorb a relocation it can still walk forward past;
-    // what it must not do is report it as unrelated churn.
-    expect(kinds.every((kind) => kind === "move")).toBe(true);
+    const target = await moveTopLevelBlockBefore(PROSE_BASE, blockIndex, beforeBlockIndex);
+    const { kinds } = await compareTarget(PROSE_BASE, target);
+    expect(kinds).toEqual(["move"]);
   });
 
   test("move_clause: the package carries a linked w:moveFrom / w:moveTo pair", async () => {
     // A move reported only in the change list is a move the document does not
     // know about: every OOXML consumer sees an unrelated deletion and
-    // insertion, and a reviewer reading the redline in Word cannot tell the
-    // text was relocated rather than rewritten.
+    // insertion, so a reviewer cannot tell the text was relocated rather than
+    // rewritten.
     const blockIndex = wordyBlockIndex(PROSE_BLOCKS, 4);
-    const scripted = await applyEditScript(PROSE_BASE, [
-      { type: "moveParagraph", blockIndex, beforeBlockIndex: PROSE_BLOCKS.length - 1 },
-    ]);
-    if (scripted.isErr()) {
-      throw scripted.error;
-    }
-    const result = await compareDocx(PROSE_BASE, scripted.value.buffer, OPTIONS);
-    if (result.isErr()) {
-      throw result.error;
-    }
-    expect(result.value.changes.map(({ kind }) => kind)).toEqual(["move"]);
+    const target = await moveTopLevelBlockBefore(PROSE_BASE, blockIndex, PROSE_BLOCKS.length - 1);
+    const { buffer, kinds } = await compareTarget(PROSE_BASE, target);
+    expect(kinds).toEqual(["move"]);
 
-    const documentXml = await documentPartOf(result.value.buffer);
+    const documentXml = await documentPartOf(buffer);
     expect(documentXml).toContain("<w:moveFrom ");
     expect(documentXml).toContain("<w:moveTo ");
     // The relocated text is not also written as a plain insertion or deletion.
     expect(documentXml).not.toContain("<w:ins ");
     expect(documentXml).not.toContain("<w:del ");
 
-    // A move pair resolves like any other revision.
-    expect(await projectView(result.value.buffer, "final")).toEqual(
-      await projectView(scripted.value.buffer, "final"),
-    );
-    expect(await projectView(result.value.buffer, "original")).toEqual(
-      await projectView(PROSE_BASE, "final"),
-    );
+    // compareTarget proves both resolved views as part of the same contract.
   });
 
   test("add_list_item: an added item is one insert", async () => {
@@ -945,19 +975,7 @@ describe("single-mutation probes", () => {
     const [change] = result.value.changes;
     expect(change?.kind === "numbering" && change.before?.format).toBe("decimal");
     expect(change?.kind === "numbering" && change.after?.format).toBe("lowerRoman");
-    expect(result.value.verification.status).toBe("unverified");
-    if (result.value.verification.status === "unverified") {
-      expect(
-        result.value.verification.failures.filter(({ scope }) => scope.type === "package"),
-      ).toEqual([
-        {
-          invariant: "accept-reproduces-target",
-          cause: "unsupported",
-          scope: { type: "package" },
-          detail: "the numbering-definition difference has no proved tracked-document instruction",
-        },
-      ]);
-    }
+    expectOnlyUnloweredNumberingDefinitions(result.value, [0]);
   });
 
   test("numbering definitions: only changed levels referenced by either document are reported", async () => {
@@ -966,13 +984,14 @@ describe("single-mutation probes", () => {
       { level: 1, format: "upperLetter" },
       { level: 2, format: "ordinal" },
     ]);
-    const result = await compareDocx(LIST_BASE, changed, OPTIONS);
+    const result = await compareDocx(LIST_BASE, changed, { ...OPTIONS, mode: "bestEffort" });
     if (result.isErr()) {
       throw result.error;
     }
 
     const numberingChanges = result.value.changes.filter(({ kind }) => kind === "numbering");
     expect(numberingChanges.map(({ level }) => level)).toEqual([0, 1]);
+    expectOnlyUnloweredNumberingDefinitions(result.value, [0, 1]);
   });
 
   test("numbering definitions: a changed level newly referenced by the target is reported", async () => {
@@ -980,26 +999,28 @@ describe("single-mutation probes", () => {
     const changed = await withNumberingFormats(await buildNumberedListDocx(items), [
       { level: 2, format: "upperRoman" },
     ]);
-    const result = await compareDocx(LIST_BASE, changed, OPTIONS);
+    const result = await compareDocx(LIST_BASE, changed, { ...OPTIONS, mode: "bestEffort" });
     if (result.isErr()) {
       throw result.error;
     }
 
     const numberingChanges = result.value.changes.filter(({ kind }) => kind === "numbering");
     expect(numberingChanges.map(({ level }) => level)).toEqual([2]);
+    expectOnlyUnloweredNumberingDefinitions(result.value, [2]);
   });
 
   test("numbering definitions: a changed level referenced only by the base is reported", async () => {
     const baseItems = withItemDemoted(NUMBERED_LIST_ITEMS, 1);
     const base = await buildNumberedListDocx(baseItems);
     const changed = await withNumberingFormats(LIST_BASE, [{ level: 2, format: "upperRoman" }]);
-    const result = await compareDocx(base, changed, OPTIONS);
+    const result = await compareDocx(base, changed, { ...OPTIONS, mode: "bestEffort" });
     if (result.isErr()) {
       throw result.error;
     }
 
     const numberingChanges = result.value.changes.filter(({ kind }) => kind === "numbering");
     expect(numberingChanges.map(({ level }) => level)).toEqual([2]);
+    expectOnlyUnloweredNumberingDefinitions(result.value, [2]);
   });
 
   test("change_list_level: a demoted list item is one paragraph-format change", async () => {

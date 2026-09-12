@@ -842,15 +842,6 @@ const paragraphHeadingLevel = (
   return level === undefined ? undefined : Number.parseInt(level, 10);
 };
 
-const paragraphKind = (
-  paragraph: Paragraph,
-  effective: ReturnType<typeof resolveEffectiveParagraphPresentation>["effective"],
-  headingLevel: number | undefined,
-): FolioAIBlock["kind"] => {
-  if (paragraph.listRendering?.marker || effective.numPr !== undefined) return "listItem";
-  return headingLevel === undefined ? "paragraph" : "heading";
-};
-
 const unsupportedPresentationProperty = (
   unsupported: readonly ParagraphPresentationUnsupportedProperty[],
 ): FolioContentPropertySet[number] | null =>
@@ -999,7 +990,10 @@ const projectLiveParagraph = (
       type: folioAIBlockIdStability(operationBlock) === "stable" ? "persistent-hint" : "positional",
       id,
     },
-    kind: paragraphKind(paragraph, presentation.effective, headingLevel),
+    // Every DOCX text block is structurally a paragraph. Heading and list
+    // presentation live in their canonical property projections, so a
+    // property edit cannot also manufacture a contradictory kind change.
+    kind: "paragraph",
     text: operationBlock.text,
     blockProperties: blockProperties.toSorted((left, right) => {
       if (left.key < right.key) return -1;
