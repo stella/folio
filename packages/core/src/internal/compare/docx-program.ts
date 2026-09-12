@@ -8,6 +8,7 @@ import type {
 import type { TableGeometryPairing } from "./table-geometry-program";
 import type { TextFormatting } from "../../types/document";
 import type {
+  FolioContentFormattingChange,
   FolioContentRangePairRelation,
   FolioContentTextSegment,
   FolioContentWholePairRelation,
@@ -15,6 +16,7 @@ import type {
 import type { FolioContentBlock, FolioContentTableLocation } from "../../compare/content-types";
 import type { CompareChange } from "../../compare/types";
 import {
+  docxParagraphChangedProperties,
   docxParagraphPropertiesEqual,
   docxParagraphPropertiesFromBlock,
   docxTableLocationFromContent,
@@ -30,25 +32,46 @@ import {
   type ResolvedDocxStorySnapshot,
 } from "./resolved-docx-story-snapshot";
 import {
+  resolvedDocxDeletedEventOperandPayload,
+  resolvedDocxFormattingRangeOperand,
   resolvedDocxFormattingRangeOperandPayload,
+  resolvedDocxInsertedEventOperandPayload,
+  resolvedDocxMergeEventOperandPayload,
+  resolvedDocxMoveEventOperandPayload,
+  resolvedDocxPairedEventOperandPayload,
+  resolvedDocxPairRangeOperand,
   resolvedDocxPairRangeOperandRelation,
   resolvedDocxPairedBaseTableIndexes,
   resolvedDocxReplacementRangeOperandPayload,
   resolvedDocxSeparatorOperandRelation,
+  resolvedDocxSeparatorOperand,
+  resolvedDocxSplitEventOperandPayload,
   resolvedDocxStoryComparisonPayload,
+  resolvedDocxTerminalReplacementOperandPayload,
   resolvedDocxTableGeometryPairings,
+  resolvedDocxTargetBlockOperand,
   resolvedDocxTargetBlockOperandBlock,
   resolvedDocxTargetColumnOperandChange,
   resolvedDocxTargetRowOperandChange,
   resolvedDocxTargetTableOperandOwner,
+  resolvedDocxTrailingDeletionOperandPayload,
+  resolvedDocxWholeBlockReplacementOperand,
+  type ResolvedDocxDeletedEventOperand,
   type ResolvedDocxFormattingRangeOperand,
+  type ResolvedDocxInsertedEventOperand,
+  type ResolvedDocxMergeEventOperand,
+  type ResolvedDocxMoveEventOperand,
+  type ResolvedDocxPairedEventOperand,
   type ResolvedDocxPairRangeOperand,
   type ResolvedDocxSeparatorOperand,
   type ResolvedDocxStoryComparison,
+  type ResolvedDocxSplitEventOperand,
+  type ResolvedDocxTerminalReplacementOperand,
   type ResolvedDocxTargetBlockOperand,
   type ResolvedDocxTargetColumnOperand,
   type ResolvedDocxTargetRowOperand,
   type ResolvedDocxTargetTableOperand,
+  type ResolvedDocxTrailingDeletionOperand,
   type ResolvedDocxWholeBlockReplacementOperand,
 } from "./resolved-docx-story-comparison";
 
@@ -198,22 +221,75 @@ export type DocxComparisonInstructionInput =
       readonly type: "matchTableGeometry";
     };
 
+type DocxComparisonTableInstructionInput = Extract<
+  DocxComparisonInstructionInput,
+  {
+    readonly type:
+      | "insertTable"
+      | "deleteTable"
+      | "replaceTable"
+      | "insertTableRow"
+      | "deleteTableRow"
+      | "insertTableColumn"
+      | "deleteTableColumn"
+      | "matchTableGeometry";
+  }
+>;
+
 export type DocxComparisonReportInput = {
   /** Canonical comparison-stream order, independent of execution scheduling. */
   readonly sequence: number;
   readonly change: CompareChange;
 };
 
-/** One semantic difference and every instruction required to represent it. */
-export type DocxComparisonSemanticGroupInput = {
-  readonly reports: readonly DocxComparisonReportInput[];
-};
+type NonEmptyReadonlyArray<Value> = readonly [Value, ...Value[]];
 
-/** A required instruction bound to its semantic owner. */
-export type DocxComparisonGroupedInstructionInput = {
-  readonly group: DocxComparisonSemanticGroupInput;
-  readonly instruction: DocxComparisonInstructionInput;
-};
+/**
+ * Closed semantic inputs for one DOCX comparison. Non-table branches own an
+ * exact canonical comparison event; callers cannot supply reports or rebuild
+ * an operation from independently selected blocks and ranges.
+ */
+export type DocxComparisonOperationInput =
+  | {
+      readonly type: "pairedBlock";
+      readonly event: ResolvedDocxPairedEventOperand;
+    }
+  | {
+      readonly type: "insertParagraph";
+      readonly event: ResolvedDocxInsertedEventOperand;
+      readonly boundary: DocxComparisonParagraphInsertionBoundary;
+    }
+  | {
+      readonly type: "deleteParagraph";
+      readonly event: ResolvedDocxDeletedEventOperand;
+    }
+  | {
+      readonly type: "moveParagraph";
+      readonly event: ResolvedDocxMoveEventOperand;
+      readonly boundary: DocxComparisonParagraphInsertionBoundary;
+    }
+  | {
+      readonly type: "splitParagraph";
+      readonly event: ResolvedDocxSplitEventOperand;
+    }
+  | {
+      readonly type: "mergeParagraphs";
+      readonly event: ResolvedDocxMergeEventOperand;
+    }
+  | {
+      readonly type: "deleteTrailingParagraphs";
+      readonly operation: ResolvedDocxTrailingDeletionOperand;
+    }
+  | {
+      readonly type: "replaceTerminalParagraph";
+      readonly operation: ResolvedDocxTerminalReplacementOperand;
+    }
+  /** Temporary boundary for the independently owned atomic table compiler. */
+  | {
+      readonly type: "tableCompatibility";
+      readonly reports: readonly DocxComparisonReportInput[];
+      readonly instructions: NonEmptyReadonlyArray<DocxComparisonTableInstructionInput>;
+    };
 
 export type DocxComparisonEqualFragment = {
   readonly type: "equal";
@@ -1714,6 +1790,510 @@ const compileInstruction = (
   }
 };
 
+const REPORTS_PER_EVENT = 16;
+
+const reportSequence = (eventSequence: number, withinEvent: number): number => {
+  if (withinEvent < 0 || withinEvent >= REPORTS_PER_EVENT) {
+    return panic("A DOCX semantic operation exceeded its per-event report budget", {
+      eventSequence,
+      withinEvent,
+    });
+  }
+  return eventSequence * REPORTS_PER_EVENT + withinEvent;
+};
+
+const reportLocation = (
+  story: ReturnType<typeof resolvedDocxStoryComparisonPayload>["baseStory"],
+  block: FolioContentBlock,
+) =>
+  block.table
+    ? { story, cell: docxTableLocationFromContent(block.table) }
+    : { story };
+
+const representedFormattingChange = (
+  formatting: FolioContentFormattingChange["ranges"][number]["formatting"],
+) => {
+  const authoredKeys = new Set(formatting.authored.map(({ key }) => key));
+  return Object.freeze({
+    authored: formatting.authored,
+    effective: Object.freeze(
+      formatting.effective.filter(({ key }) => authoredKeys.has(key)),
+    ),
+  });
+};
+
+const formatReport = ({
+  relation,
+  story,
+  sequence,
+}: {
+  readonly relation: FolioContentWholePairRelation | FolioContentRangePairRelation;
+  readonly story: ReturnType<typeof resolvedDocxStoryComparisonPayload>["baseStory"];
+  readonly sequence: number;
+}): DocxComparisonReportInput | null => {
+  const ranges =
+    relation.formatting?.ranges
+      .filter(({ formatting }) => formatting.authored.length > 0)
+      .map(({ baseStart, baseEnd, formatting }) =>
+        Object.freeze({
+          startOffset: baseStart,
+          endOffset: baseEnd,
+          formatting: representedFormattingChange(formatting),
+        }),
+      ) ?? [];
+  if (ranges.length === 0) return null;
+  return Object.freeze({
+    sequence,
+    change: Object.freeze({
+      kind: "format" as const,
+      location: reportLocation(story, relation.base.block),
+      baseBlockId: relation.base.block.identity.id,
+      targetBlockId: relation.revised.block.identity.id,
+      text: relation.base.block.text,
+      ranges: Object.freeze(ranges),
+    }),
+  });
+};
+
+const paragraphFormatReport = ({
+  relation,
+  story,
+  sequence,
+}: {
+  readonly relation: FolioContentWholePairRelation | FolioContentRangePairRelation;
+  readonly story: ReturnType<typeof resolvedDocxStoryComparisonPayload>["baseStory"];
+  readonly sequence: number;
+}): DocxComparisonReportInput | null => {
+  const authored = relation.formatting?.paragraph.authored ?? [];
+  const properties = docxParagraphChangedProperties({
+    changes: authored,
+    target: relation.revised.block,
+  });
+  if (Object.keys(properties).length === 0) return null;
+  return Object.freeze({
+    sequence,
+    change: Object.freeze({
+      kind: "paragraph-format" as const,
+      location: reportLocation(story, relation.base.block),
+      baseBlockId: relation.base.block.identity.id,
+      targetBlockId: relation.revised.block.identity.id,
+      properties: ownParagraphProperties(properties),
+    }),
+  });
+};
+
+type CompiledSemanticOperationInput = {
+  readonly reports: readonly DocxComparisonReportInput[];
+  readonly instructions: NonEmptyReadonlyArray<DocxComparisonInstructionInput>;
+};
+
+const ownSemanticReport = ({
+  sequence,
+  change,
+}: DocxComparisonReportInput): DocxComparisonReportInput => {
+  if (!Number.isSafeInteger(sequence) || sequence < 0) {
+    return panic("A DOCX comparison report has an invalid canonical sequence", { sequence });
+  }
+  const ownedChange = structuredClone(change);
+  freezeRecursively(ownedChange);
+  return Object.freeze({ sequence, change: ownedChange });
+};
+
+const compileSemanticOperationInput = (
+  input: DocxComparisonOperationInput,
+  comparison: ResolvedDocxStoryComparison,
+  sourceSnapshot: ResolvedDocxStorySnapshot,
+  targetSnapshot: ResolvedDocxStorySnapshot,
+): CompiledSemanticOperationInput => {
+  const { baseStory: story } = resolvedDocxStoryComparisonPayload(comparison);
+  switch (input.type) {
+    case "pairedBlock": {
+      const { event, sequence } = resolvedDocxPairedEventOperandPayload(input.event, comparison);
+      const { relation } = event;
+      const reports: DocxComparisonReportInput[] = [];
+      const instructions: DocxComparisonInstructionInput[] = [];
+      const changesText = relation.segments.some(({ type }) => type !== "equal");
+      if (changesText) {
+        reports.push({
+          sequence: reportSequence(sequence, 0),
+          change: {
+            kind: "replace",
+            location: reportLocation(story, relation.base.block),
+            baseBlockId: relation.base.block.identity.id,
+            targetBlockId: relation.revised.block.identity.id,
+            before: relation.base.block.text,
+            after: relation.revised.block.text,
+          },
+        });
+        instructions.push({
+          type: "replaceText",
+          range: resolvedDocxPairRangeOperand(comparison, relation),
+        });
+      }
+      const inlineReport = formatReport({
+        relation,
+        story,
+        sequence: reportSequence(sequence, 1),
+      });
+      if (inlineReport) {
+        reports.push(inlineReport);
+        if (!changesText) {
+          for (const range of relation.formatting?.ranges ?? []) {
+            if (range.formatting.authored.length === 0) continue;
+            instructions.push({
+              type: "formatText",
+              range: resolvedDocxFormattingRangeOperand(comparison, relation, range),
+            });
+          }
+        }
+      }
+      const paragraphReport = paragraphFormatReport({
+        relation,
+        story,
+        sequence: reportSequence(sequence, 2),
+      });
+      if (paragraphReport) {
+        reports.push(paragraphReport);
+        instructions.push({
+          type: "setParagraphProperties",
+          source: resolvedDocxSourceOperand(sourceSnapshot, relation.base.block),
+          target: resolvedDocxTargetBlockOperand(comparison, relation.revised.block),
+        });
+      }
+      const firstInstruction = instructions.at(0);
+      if (!firstInstruction) {
+        return panic("A paired DOCX semantic operation contains no representable change");
+      }
+      return Object.freeze({
+        reports: Object.freeze(reports.map(ownSemanticReport)),
+        instructions: Object.freeze([firstInstruction, ...instructions.slice(1)]),
+      });
+    }
+    case "insertParagraph": {
+      const { event, sequence } = resolvedDocxInsertedEventOperandPayload(
+        input.event,
+        comparison,
+      );
+      return Object.freeze({
+        reports: Object.freeze([
+          ownSemanticReport({
+            sequence: reportSequence(sequence, 0),
+            change: {
+              kind: "insert",
+              location: reportLocation(story, event.block),
+              targetBlockId: event.block.identity.id,
+              after: event.block.text,
+            },
+          }),
+        ]),
+        instructions: Object.freeze([
+          {
+            type: "insertParagraph",
+            boundary: input.boundary,
+            target: resolvedDocxTargetBlockOperand(comparison, event.block),
+          },
+        ]),
+      });
+    }
+    case "deleteParagraph": {
+      const { event, sequence } = resolvedDocxDeletedEventOperandPayload(input.event, comparison);
+      return Object.freeze({
+        reports: Object.freeze([
+          ownSemanticReport({
+            sequence: reportSequence(sequence, 0),
+            change: {
+              kind: "delete",
+              location: reportLocation(story, event.block),
+              baseBlockId: event.block.identity.id,
+              before: event.block.text,
+            },
+          }),
+        ]),
+        instructions: Object.freeze([
+          {
+            type: "deleteParagraph",
+            source: resolvedDocxSourceOperand(sourceSnapshot, event.block),
+          },
+        ]),
+      });
+    }
+    case "moveParagraph": {
+      const { event, sequence } = resolvedDocxMoveEventOperandPayload(input.event, comparison);
+      const { relation, sourceRemovalBoundary } = event.move;
+      const reports: DocxComparisonReportInput[] = [
+        ownSemanticReport({
+          sequence: reportSequence(sequence, 0),
+          change: {
+            kind: "move",
+            location: reportLocation(story, relation.revised.block),
+            baseBlockId: relation.base.block.identity.id,
+            targetBlockId: relation.revised.block.identity.id,
+            text: relation.revised.block.text,
+          },
+        }),
+      ];
+      const inlineReport = formatReport({
+        relation,
+        story,
+        sequence: reportSequence(sequence, 1),
+      });
+      if (inlineReport) reports.push(ownSemanticReport(inlineReport));
+      const paragraphReport = paragraphFormatReport({
+        relation,
+        story,
+        sequence: reportSequence(sequence, 2),
+      });
+      if (paragraphReport) reports.push(ownSemanticReport(paragraphReport));
+      switch (sourceRemovalBoundary.type) {
+        case "successorParagraph":
+          return Object.freeze({
+            reports: Object.freeze(reports),
+            instructions: Object.freeze([
+              {
+                type: "moveParagraph",
+                source: resolvedDocxSourceOperand(sourceSnapshot, relation.base.block),
+                successor: resolvedDocxSourceOperand(
+                  sourceSnapshot,
+                  sourceRemovalBoundary.successor,
+                ),
+                boundary: input.boundary,
+                target: resolvedDocxTargetBlockOperand(comparison, relation.revised.block),
+              },
+            ]),
+          });
+        case "terminalPredecessor":
+          return Object.freeze({
+            reports: Object.freeze(reports),
+            instructions: Object.freeze([
+              {
+                type: "moveTerminalParagraph",
+                predecessor: resolvedDocxSourceOperand(
+                  sourceSnapshot,
+                  sourceRemovalBoundary.predecessor,
+                ),
+                source: resolvedDocxSourceOperand(sourceSnapshot, relation.base.block),
+                carrierTarget: resolvedDocxTargetBlockOperand(
+                  comparison,
+                  sourceRemovalBoundary.targetCarrier,
+                ),
+                boundary: input.boundary,
+                target: resolvedDocxTargetBlockOperand(comparison, relation.revised.block),
+              },
+            ]),
+          });
+        case "unanchoredContainer":
+          return panic("An unanchored move reached the DOCX semantic compiler");
+        default: {
+          const unreachable: never = sourceRemovalBoundary;
+          return panic("Unhandled DOCX move removal boundary", { boundary: unreachable });
+        }
+      }
+    }
+    case "splitParagraph": {
+      const { event, sequence } = resolvedDocxSplitEventOperandPayload(input.event, comparison);
+      const [first, second] = event.relations;
+      const reports: DocxComparisonReportInput[] = [
+        ownSemanticReport({
+          sequence: reportSequence(sequence, 0),
+          change: {
+            kind: "split",
+            location: reportLocation(story, first.base.block),
+            baseBlockId: first.base.block.identity.id,
+            targetBlockIds: [
+              first.revised.block.identity.id,
+              second.revised.block.identity.id,
+            ],
+            text: first.base.block.text,
+          },
+        }),
+      ];
+      const companions = [
+        formatReport({ relation: first, story, sequence: reportSequence(sequence, 1) }),
+        formatReport({ relation: second, story, sequence: reportSequence(sequence, 2) }),
+        paragraphFormatReport({ relation: first, story, sequence: reportSequence(sequence, 3) }),
+        paragraphFormatReport({ relation: second, story, sequence: reportSequence(sequence, 4) }),
+      ];
+      for (const companion of companions) {
+        if (companion) reports.push(ownSemanticReport(companion));
+      }
+      return Object.freeze({
+        reports: Object.freeze(reports),
+        instructions: Object.freeze([
+          {
+            type: "splitParagraph",
+            first: resolvedDocxPairRangeOperand(comparison, first),
+            second: resolvedDocxPairRangeOperand(comparison, second),
+            separator: resolvedDocxSeparatorOperand(comparison, event.separator),
+          },
+        ]),
+      });
+    }
+    case "mergeParagraphs": {
+      const { event, sequence } = resolvedDocxMergeEventOperandPayload(input.event, comparison);
+      const [first, second] = event.relations;
+      const reports: DocxComparisonReportInput[] = [
+        ownSemanticReport({
+          sequence: reportSequence(sequence, 0),
+          change: {
+            kind: "merge",
+            location: reportLocation(story, first.base.block),
+            baseBlockIds: [first.base.block.identity.id, second.base.block.identity.id],
+            targetBlockId: first.revised.block.identity.id,
+            text: first.revised.block.text,
+          },
+        }),
+      ];
+      const companions = [
+        formatReport({ relation: first, story, sequence: reportSequence(sequence, 1) }),
+        formatReport({ relation: second, story, sequence: reportSequence(sequence, 2) }),
+        paragraphFormatReport({ relation: first, story, sequence: reportSequence(sequence, 3) }),
+      ];
+      for (const companion of companions) {
+        if (companion) reports.push(ownSemanticReport(companion));
+      }
+      return Object.freeze({
+        reports: Object.freeze(reports),
+        instructions: Object.freeze([
+          {
+            type: "mergeParagraphs",
+            first: resolvedDocxPairRangeOperand(comparison, first),
+            second: resolvedDocxPairRangeOperand(comparison, second),
+            separator: resolvedDocxSeparatorOperand(comparison, event.separator),
+          },
+        ]),
+      });
+    }
+    case "deleteTrailingParagraphs": {
+      const operation = resolvedDocxTrailingDeletionOperandPayload(
+        input.operation,
+        comparison,
+      );
+      const deleted = operation.events;
+      const firstDeleted = deleted.at(0);
+      if (!firstDeleted) return panic("A trailing deletion operation has no deleted event");
+      const reports = deleted.map(({ event, sequence }) =>
+        ownSemanticReport({
+          sequence: reportSequence(sequence, 0),
+          change: {
+            kind: "delete",
+            location: reportLocation(story, event.block),
+            baseBlockId: event.block.identity.id,
+            before: event.block.text,
+          },
+        }),
+      );
+      const instructions: DocxComparisonInstructionInput[] = [
+        {
+          type: "deleteTrailingParagraphs",
+          chainStart: operation.chainStart,
+          deleted: [
+            resolvedDocxSourceOperand(sourceSnapshot, firstDeleted.event.block),
+            ...deleted
+              .slice(1)
+              .map(({ event }) => resolvedDocxSourceOperand(sourceSnapshot, event.block)),
+          ],
+        },
+      ];
+      if (operation.targetCarrier) {
+        const carrier = deleted.at(-1)?.event.block;
+        if (!carrier) return panic("A trailing deletion operation lost its carrier");
+        const target = operation.targetCarrier;
+        if (
+          !docxParagraphPropertiesEqual(
+            docxParagraphPropertiesFromBlock(carrier),
+            docxParagraphPropertiesFromBlock(target),
+          )
+        ) {
+          instructions.push({
+            type: "setParagraphProperties",
+            source: resolvedDocxSourceOperand(sourceSnapshot, carrier),
+            target: resolvedDocxTargetBlockOperand(comparison, target),
+          });
+        }
+      }
+      return Object.freeze({
+        reports: Object.freeze(reports),
+        instructions: Object.freeze([
+          instructions[0] ?? panic("A trailing deletion operation lost its instruction"),
+          ...instructions.slice(1),
+        ]),
+      });
+    }
+    case "replaceTerminalParagraph": {
+      const { deleted, inserted } = resolvedDocxTerminalReplacementOperandPayload(
+        input.operation,
+        comparison,
+      );
+      const baseBlock = deleted.event.block;
+      const targetBlock = inserted.event.block;
+      const reports = Object.freeze([
+        ownSemanticReport({
+          sequence: reportSequence(deleted.sequence, 0),
+          change: {
+            kind: "delete",
+            location: reportLocation(story, baseBlock),
+            baseBlockId: baseBlock.identity.id,
+            before: baseBlock.text,
+          },
+        }),
+        ownSemanticReport({
+          sequence: reportSequence(inserted.sequence, 0),
+          change: {
+            kind: "insert",
+            location: reportLocation(story, targetBlock),
+            targetBlockId: targetBlock.identity.id,
+            after: targetBlock.text,
+          },
+        }),
+      ]);
+      const instructions: DocxComparisonInstructionInput[] = [];
+      const baseRuns = resolvedDocxAuthoredRunsForBlock(sourceSnapshot, baseBlock);
+      const targetRuns = resolvedDocxAuthoredRunsForBlock(targetSnapshot, targetBlock);
+      if (
+        baseBlock.text !== targetBlock.text ||
+        !sameProjection(
+          projectionFromRuns(baseBlock.text, baseRuns),
+          projectionFromRuns(targetBlock.text, targetRuns),
+        )
+      ) {
+        instructions.push({
+          type: "replaceText",
+          range: resolvedDocxWholeBlockReplacementOperand(comparison, baseBlock, targetBlock),
+        });
+      }
+      if (
+        !docxParagraphPropertiesEqual(
+          docxParagraphPropertiesFromBlock(baseBlock),
+          docxParagraphPropertiesFromBlock(targetBlock),
+        )
+      ) {
+        instructions.push({
+          type: "setParagraphProperties",
+          source: resolvedDocxSourceOperand(sourceSnapshot, baseBlock),
+          target: resolvedDocxTargetBlockOperand(comparison, targetBlock),
+        });
+      }
+      const firstInstruction = instructions.at(0);
+      if (!firstInstruction) {
+        return panic("A terminal replacement operation contains no semantic change");
+      }
+      return Object.freeze({
+        reports,
+        instructions: Object.freeze([firstInstruction, ...instructions.slice(1)]),
+      });
+    }
+    case "tableCompatibility":
+      return Object.freeze({
+        reports: Object.freeze(input.reports.map(ownSemanticReport)),
+        instructions: Object.freeze([...input.instructions]),
+      });
+    default: {
+      const unreachable: never = input;
+      return panic("Unhandled DOCX semantic operation", { operation: unreachable });
+    }
+  }
+};
+
 /**
  * An owned one-shot transport plan. Construction validates the complete
  * instruction graph; consumption transfers its immutable semantics to the
@@ -1729,52 +2309,54 @@ export class DocxComparisonProgram {
 
   private constructor(
     comparison: ResolvedDocxStoryComparison,
-    inputs: readonly DocxComparisonGroupedInstructionInput[],
+    inputs: readonly DocxComparisonOperationInput[],
   ) {
-    if (inputs.length > MAX_DOCX_COMPARISON_INSTRUCTIONS) {
-      panic("A DOCX comparison program exceeds its instruction limit", {
-        limit: MAX_DOCX_COMPARISON_INSTRUCTIONS,
-        actual: inputs.length,
-      });
-    }
     const { baseSnapshot, targetSnapshot } = resolvedDocxStoryComparisonPayload(comparison);
     this.#comparison = comparison;
     this.#sourceSnapshot = baseSnapshot;
     this.#targetSnapshot = targetSnapshot;
-    const groupIndexByInput = new Map<DocxComparisonSemanticGroupInput, number>();
     const semanticGroups: DocxComparisonSemanticGroup[] = [];
+    const instructions: DocxComparisonInstruction[] = [];
     const reportSequences = new Set<number>();
-    this.#instructions = Object.freeze(
-      inputs.map(({ group, instruction }) => {
-        let semanticGroupIndex = groupIndexByInput.get(group);
-        if (semanticGroupIndex === undefined) {
-          semanticGroupIndex = semanticGroups.length;
-          const reports = group.reports.map(({ sequence, change }) => {
-            if (!Number.isSafeInteger(sequence) || sequence < 0 || reportSequences.has(sequence)) {
-              return panic("A DOCX comparison report has an invalid canonical sequence", {
-                sequence,
-              });
-            }
-            reportSequences.add(sequence);
-            const ownedChange = structuredClone(change);
-            freezeRecursively(ownedChange);
-            return Object.freeze({ sequence, change: ownedChange });
+    for (const input of inputs) {
+      const compiled = compileSemanticOperationInput(
+        input,
+        comparison,
+        baseSnapshot,
+        targetSnapshot,
+      );
+      for (const { sequence } of compiled.reports) {
+        if (reportSequences.has(sequence)) {
+          return panic("A DOCX comparison report has an invalid canonical sequence", {
+            sequence,
           });
-          semanticGroups.push(Object.freeze({ reports: Object.freeze(reports) }));
-          groupIndexByInput.set(group, semanticGroupIndex);
         }
-        return Object.freeze({
-          ...compileInstruction(instruction, comparison, baseSnapshot, targetSnapshot),
-          semanticGroupIndex,
+        reportSequences.add(sequence);
+      }
+      const semanticGroupIndex = semanticGroups.length;
+      semanticGroups.push(Object.freeze({ reports: compiled.reports }));
+      for (const instruction of compiled.instructions) {
+        instructions.push(
+          Object.freeze({
+            ...compileInstruction(instruction, comparison, baseSnapshot, targetSnapshot),
+            semanticGroupIndex,
+          }),
+        );
+      }
+      if (instructions.length > MAX_DOCX_COMPARISON_INSTRUCTIONS) {
+        return panic("A DOCX comparison program exceeds its instruction limit", {
+          limit: MAX_DOCX_COMPARISON_INSTRUCTIONS,
+          actual: instructions.length,
         });
-      }),
-    );
+      }
+    }
+    this.#instructions = Object.freeze(instructions);
     this.#semanticGroups = Object.freeze(semanticGroups);
   }
 
   static create(
     comparison: ResolvedDocxStoryComparison,
-    inputs: readonly DocxComparisonGroupedInstructionInput[],
+    inputs: readonly DocxComparisonOperationInput[],
   ): DocxComparisonProgram {
     return new DocxComparisonProgram(comparison, inputs);
   }

@@ -217,50 +217,33 @@ export const docxParagraphPropertyChangeIsLowerable = (
   return revised.numId === null || before.numId === revised.numId;
 };
 
-const targetValue = (change: FolioContentPropertyChange): FolioContentPropertyValue | null =>
-  change.revised.type === "present" ? change.revised.value : null;
-
-/** Lower only changes proven representable by the paragraph operation vocabulary. */
-export const docxParagraphPropertiesFromChanges = (
-  changes: readonly FolioContentPropertyChange[],
-): FolioAIBlockParagraphProperties => {
-  const lowerable = changes.filter(docxParagraphPropertyChangeIsLowerable);
+/**
+ * Consumer-facing changed-property projection for one canonical target block.
+ *
+ * The authored delta chooses which transport fields changed. The value for
+ * each chosen field comes from the same complete target projection that the
+ * transport instruction writes. In particular, spacing is one OOXML property
+ * cluster: changing any member reports the complete target cluster rather
+ * than a partial value assembled independently from the delta.
+ */
+export const docxParagraphChangedProperties = ({
+  changes,
+  target,
+}: {
+  readonly changes: readonly FolioContentPropertyChange[];
+  readonly target: FolioContentBlock;
+}): FolioAIBlockParagraphProperties => {
+  const targetProperties = docxParagraphPropertiesFromBlock(target);
   const properties: FolioAIBlockParagraphProperties = {};
-  const spacingChanges: FolioContentPropertySet[number][] = [];
-  for (const change of lowerable) {
-    const disposition = Reflect.get(DOCX_PARAGRAPH_TRANSPORT_DISPOSITIONS, change.key);
-    switch (disposition) {
-      case "style":
-        properties.styleId = stringValue(targetValue(change), change.key);
-        break;
-      case "alignment":
-        properties.alignment = alignmentValue(targetValue(change));
-        break;
-      case "spacing":
-        if (change.revised.type === "present") {
-          spacingChanges.push({ key: change.key, value: change.revised.value });
-        }
-        break;
-      case "list-level":
-        properties.listLevel = numberingValue(targetValue(change)).level;
-        break;
-      case "unsupported":
-        return panic("An unsupported paragraph property passed its lowering filter", {
-          property: change.key,
-        });
-      default:
-        return panic("A canonical paragraph change has no transport disposition", {
-          property: change.key,
-        });
-    }
-  }
-  if (
-    lowerable.some(
-      ({ key }) => Reflect.get(DOCX_PARAGRAPH_TRANSPORT_DISPOSITIONS, key) === "spacing",
-    )
-  ) {
-    properties.spacing = spacingChanges.length === 0 ? null : spacingFromProperties(spacingChanges);
-  }
+  const dispositions = new Set(
+    changes
+      .filter(docxParagraphPropertyChangeIsLowerable)
+      .map(({ key }) => Reflect.get(DOCX_PARAGRAPH_TRANSPORT_DISPOSITIONS, key)),
+  );
+  if (dispositions.has("style")) properties.styleId = targetProperties.styleId;
+  if (dispositions.has("alignment")) properties.alignment = targetProperties.alignment;
+  if (dispositions.has("spacing")) properties.spacing = targetProperties.spacing;
+  if (dispositions.has("list-level")) properties.listLevel = targetProperties.listLevel;
   return properties;
 };
 

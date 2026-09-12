@@ -10,6 +10,8 @@ import { createEmptyDocument } from "../../utils/createDocument";
 import {
   compareResolvedDocxStoryPair,
   createResolvedDocxStoryPair,
+  resolvedDocxDeletedEventOperand,
+  resolvedDocxPairedEventOperand,
   resolvedDocxStoryComparisonPayload,
 } from "./resolved-docx-story-comparison";
 import {
@@ -125,5 +127,24 @@ describe("resolved DOCX story comparison provenance", () => {
     expect(() =>
       Reflect.apply(planStoryCompare, undefined, [{ comparison: counterfeit, maxOperations: 100 }]),
     ).toThrow("was not created by Folio");
+  });
+
+  test("event operands require the exact canonical event and its matching branch", () => {
+    const comparison = comparisonOf(
+      snapshotOf("base", { type: "main" }),
+      snapshotOf("target", { type: "main" }),
+    );
+    const event = resolvedDocxStoryComparisonPayload(comparison).comparison.events.at(0);
+    if (event?.type !== "modified") throw new Error("fixture comparison was not modified");
+
+    expect(() =>
+      Reflect.apply(resolvedDocxPairedEventOperand, undefined, [
+        comparison,
+        Object.freeze({ ...event }),
+      ]),
+    ).toThrow("exact canonical event");
+    expect(() =>
+      Reflect.apply(resolvedDocxDeletedEventOperand, undefined, [comparison, event]),
+    ).toThrow("must name a deleted event");
   });
 });

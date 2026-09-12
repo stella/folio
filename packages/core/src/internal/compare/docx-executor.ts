@@ -1072,7 +1072,9 @@ export const preflightDocxComparisonProgram = ({
   return ownPreparedDocxComparison({
     state,
     instructions: groupedPrepared,
-    issues: groupedIssues,
+    issues: groupedIssues.toSorted(
+      (left, right) => left.instructionIndex - right.instructionIndex,
+    ),
     semanticGroups,
     totalInstructionCount: instructions.length,
   });

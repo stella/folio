@@ -14,18 +14,13 @@ import { acceptAllChanges, rejectAllChanges } from "../../prosemirror/commands/c
 import { createContentComparisonWorkSession } from "../../compare/content";
 import { planStoryCompare } from "../../compare/plan";
 import { executePreflightedDocxComparison, preflightDocxComparisonProgram } from "./docx-executor";
-import { DocxComparisonProgram } from "./docx-program";
 import {
   createResolvedDocxStorySnapshot,
-  resolvedDocxContentBlocks,
-  resolvedDocxSourceOperand,
   type ResolvedDocxStorySnapshot,
 } from "./resolved-docx-story-snapshot";
 import {
   compareResolvedDocxStoryPair,
   createResolvedDocxStoryPair,
-  resolvedDocxStoryComparisonPayload,
-  resolvedDocxTargetBlockOperand,
   type ResolvedDocxStoryComparison,
 } from "./resolved-docx-story-comparison";
 
@@ -100,12 +95,6 @@ const resolvedSnapshotOf = (
   });
   if (!snapshot) throw new Error("main story projection missing");
   return snapshot;
-};
-
-const sourceBlockOf = (snapshot: ResolvedDocxStorySnapshot, blockIndex = 0) => {
-  const block = resolvedDocxContentBlocks(snapshot).at(blockIndex);
-  if (!block) throw new Error("fixture source block missing");
-  return block;
 };
 
 const comparisonOf = (
@@ -193,41 +182,6 @@ const resolvedState = (state: EditorState, action: "accept" | "reject"): EditorS
     throw new Error(`Expected ${action} to resolve tracked changes.`);
   }
   return view.state;
-};
-
-const terminalMovedParagraph = ({
-  comparison,
-  snapshot,
-  predecessor,
-  source,
-  anchor,
-}: {
-  readonly comparison: ResolvedDocxStoryComparison;
-  readonly snapshot: ResolvedDocxStorySnapshot;
-  readonly predecessor: number;
-  readonly source: number;
-  readonly anchor: number;
-}) => {
-  const predecessorBlock = sourceBlockOf(snapshot, predecessor);
-  const sourceBlock = sourceBlockOf(snapshot, source);
-  const anchorBlock = sourceBlockOf(snapshot, anchor);
-  const targetBlocks = resolvedDocxContentBlocks(
-    resolvedDocxStoryComparisonPayload(comparison).targetSnapshot,
-  );
-  const carrierTarget = targetBlocks.at(predecessor);
-  const target = targetBlocks.at(source);
-  if (!carrierTarget || !target) throw new Error("fixture target block missing");
-  return {
-    type: "moveTerminalParagraph" as const,
-    predecessor: resolvedDocxSourceOperand(snapshot, predecessorBlock),
-    source: resolvedDocxSourceOperand(snapshot, sourceBlock),
-    carrierTarget: resolvedDocxTargetBlockOperand(comparison, carrierTarget),
-    boundary: {
-      type: "beforeParagraph" as const,
-      paragraph: resolvedDocxSourceOperand(snapshot, anchorBlock),
-    },
-    target: resolvedDocxTargetBlockOperand(comparison, target),
-  };
 };
 
 type SameBoundaryCase = {
@@ -492,25 +446,6 @@ describe("the dedicated DOCX comparison executor", () => {
     }
   }
 
-  test("rejects a source operand copied outside its issuing capsule", () => {
-    const state = stateWithParagraphs("old");
-    const snapshot = resolvedSnapshotOf(state);
-    const source = resolvedDocxSourceOperand(snapshot, sourceBlockOf(snapshot));
-    const copied = Object.freeze({ ...source });
-    expect(() =>
-      Reflect.apply(DocxComparisonProgram.create, DocxComparisonProgram, [
-        comparisonOf(snapshot),
-        [
-          {
-            group: { reports: [] },
-            instruction: { type: "deleteParagraph", source: copied },
-          },
-        ],
-      ]),
-    ).toThrow("was not created by Folio");
-    expect(visibleTexts(state)).toEqual(["old"]);
-  });
-
   test("treats duplicate live paragraph identities as ambiguous", () => {
     const snapshotState = stateWithParagraphs("old");
     const targetState = stateWithParagraphs("new");
@@ -637,98 +572,54 @@ describe("the dedicated DOCX comparison executor", () => {
     expect(createFolioAIEditSnapshot(rejected.doc).blocks.at(-1)?.directAlignment).toBe("center");
   });
 
-  test("preflight rejects a terminal-move branch whose source is not final", () => {
-    const state = stateWithIdentifiedParagraphs(
-      { id: "A1000000", text: "Alpha" },
-      { id: "B1000000", text: "Beta" },
-      { id: "C1000000", text: "Gamma" },
-    );
-    const snapshot = resolvedSnapshotOf(state);
-    const comparison = comparisonOf(snapshot);
-    const prepared = preflightDocxComparisonProgram({
-      state,
-      program: DocxComparisonProgram.create(comparison, [
-        {
-          group: { reports: [] },
-          instruction: terminalMovedParagraph({
-            comparison,
-            snapshot,
-            predecessor: 0,
-            source: 1,
-            anchor: 0,
-          }),
-        },
-      ]),
-    });
-
-    expect(prepared.supportedInstructionCount).toBe(0);
-    expect(prepared.issues).toEqual([
-      {
-        instructionIndex: 0,
-        instructionType: "moveTerminalParagraph",
-        reason: "unrepresentable-paragraph-boundary",
-        blockId: "B1000000",
-      },
-    ]);
-    expect(visibleTexts(state)).toEqual(["Alpha", "Beta", "Gamma"]);
-  });
-
   test("preflight rejects every required instruction in an incomplete semantic group", () => {
-    const state = stateWithIdentifiedParagraphs(
-      { id: "A1000000", text: "Alpha" },
-      { id: "B1000000", text: "Beta" },
-      { id: "C1000000", text: "Gamma" },
-    );
-    const snapshot = resolvedSnapshotOf(state);
-    const comparison = comparisonOf(snapshot);
-    const group = {
-      reports: [
-        {
-          sequence: 0,
-          change: {
-            kind: "delete",
-            location: { story: { type: "main" } },
-            baseBlockId: "A1000000",
-            before: "Alpha",
+    const state = stateFromCanonicalDocument(
+      schema.node("doc", null, [
+        schema.node(
+          "paragraph",
+          {
+            paraId: "A1000000",
+            alignment: "left",
+            _propertyChanges: [
+              {
+                type: "paragraphPropertyChange",
+                info: {
+                  id: 4,
+                  author: "Existing",
+                  date: "2026-09-01T00:00:00.000Z",
+                },
+                previousFormatting: { alignment: "right" },
+              },
+            ],
           },
-        },
-      ],
-    } as const;
+          [schema.text("Alpha")],
+        ),
+      ]),
+    );
+    const targetState = stateWithIdentifiedParagraphs({
+      id: "A1000000",
+      text: "Revised",
+      alignment: "center",
+    });
+    const { program } = plannedComparisonOf({ baseState: state, targetState });
     const prepared = preflightDocxComparisonProgram({
       state,
-      program: DocxComparisonProgram.create(comparison, [
-        {
-          group,
-          instruction: {
-            type: "deleteParagraph",
-            source: resolvedDocxSourceOperand(snapshot, sourceBlockOf(snapshot, 0)),
-          },
-        },
-        {
-          group,
-          instruction: terminalMovedParagraph({
-            comparison,
-            snapshot,
-            predecessor: 0,
-            source: 1,
-            anchor: 0,
-          }),
-        },
-      ]),
+      program,
     });
 
     expect(prepared.supportedInstructionCount).toBe(0);
     expect(prepared.supportedChangeCount).toBe(0);
+    expect(prepared.issues.map(({ instructionIndex }) => instructionIndex)).toEqual([0, 1]);
     expect(prepared.issues).toContainEqual({
       instructionIndex: 0,
-      instructionType: "deleteParagraph",
+      instructionType: "replaceText",
       reason: "semantic-group-incomplete",
     });
     expect(prepared.issues).toContainEqual({
       instructionIndex: 1,
-      instructionType: "moveTerminalParagraph",
-      reason: "unrepresentable-paragraph-boundary",
-      blockId: "B1000000",
+      instructionType: "setParagraphProperties",
+      reason: "pending-paragraph-change",
+      blockId: "A1000000",
     });
     const executed = executePreflightedDocxComparison({
       state,
@@ -740,46 +631,7 @@ describe("the dedicated DOCX comparison executor", () => {
     expect(executed.receipt.instructions).toEqual([]);
     expect(executed.receipt.changes).toEqual([]);
     expect(executed.receipt.transaction.steps).toEqual([]);
-    expect(visibleTexts(state.apply(executed.receipt.transaction))).toEqual([
-      "Alpha",
-      "Beta",
-      "Gamma",
-    ]);
-  });
-
-  test("preflight rejects a terminal-move predecessor from another cell", () => {
-    const state = stateWithTableCells(
-      [
-        { id: "A1000000", text: "Alpha" },
-        { id: "B1000000", text: "Beta" },
-      ],
-      [{ id: "C1000000", text: "Gamma" }],
-    );
-    const snapshot = resolvedSnapshotOf(state);
-    const comparison = comparisonOf(snapshot);
-    const prepared = preflightDocxComparisonProgram({
-      state,
-      program: DocxComparisonProgram.create(comparison, [
-        {
-          group: { reports: [] },
-          instruction: terminalMovedParagraph({
-            comparison,
-            snapshot,
-            predecessor: 1,
-            source: 2,
-            anchor: 0,
-          }),
-        },
-      ]),
-    });
-
-    expect(prepared.supportedInstructionCount).toBe(0);
-    expect(prepared.issues.at(0)).toMatchObject({
-      instructionType: "moveTerminalParagraph",
-      reason: "unrepresentable-paragraph-boundary",
-      blockId: "C1000000",
-    });
-    expect(tableCellTexts(state)).toEqual([["Alpha", "Beta"], ["Gamma"]]);
+    expect(visibleTexts(state.apply(executed.receipt.transaction))).toEqual(["Alpha"]);
   });
 
   test("keeps inserted paragraphs and final-mark repairs inside their own table cells", () => {
