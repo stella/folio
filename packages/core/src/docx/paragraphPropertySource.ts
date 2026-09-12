@@ -200,7 +200,7 @@ export const assignDocumentParagraphPropertySourceContract = (
       contract,
       sourceOwners: new Set(sources.values()),
       sources,
-    }),
+    } satisfies DocumentParagraphPropertySourceBinding),
   );
 };
 
