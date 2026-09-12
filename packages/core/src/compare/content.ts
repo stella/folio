@@ -26,7 +26,6 @@ import {
 import type {
   FolioContentBlock,
   FolioContentBaseContainerAlignment,
-  FolioContentContainerAlignment,
   FolioContentIdentity,
   FolioContentInlineFormattingChange,
   FolioContentParagraphFormatting,
@@ -35,16 +34,12 @@ import type {
   FolioContentPairedContainerAlignment,
   FolioContentRevisedContainerAlignment,
   FolioContentPropertyChange,
-  FolioContentPropertyInput,
   FolioContentPropertySet,
   FolioContentPropertyValue,
   FolioContentRun,
   FolioContentSnapshot,
 } from "./content-types";
-import {
-  ownedContentSnapshotBlocks,
-  type OwnedContentSnapshot,
-} from "./owned-content-snapshot";
+import { ownedContentSnapshotBlocks, type OwnedContentSnapshot } from "./owned-content-snapshot";
 import {
   FOLIO_CONTENT_BLOCK_FIELD_DESCRIPTORS,
   FOLIO_CONTENT_CONTAINER_FIELD_DESCRIPTORS,
@@ -433,9 +428,13 @@ const emptySnapshotResourceUsage = (): SnapshotResourceUsage => ({
   attributeCodeUnits: 0,
 });
 
+type CapturedContentSnapshot = {
+  readonly blocks: readonly FolioContentBlock[];
+};
+
 type CapturedContentComparison = {
-  readonly base: FolioContentSnapshot;
-  readonly revised: FolioContentSnapshot;
+  readonly base: CapturedContentSnapshot;
+  readonly revised: CapturedContentSnapshot;
 };
 
 type ContentComparisonExecution = {
@@ -790,10 +789,14 @@ const limitExceeded = ({
 const isFiniteInteger = (value: unknown): value is number =>
   typeof value === "number" && Number.isSafeInteger(value);
 
-const isFiniteNumber = (value: unknown): value is number =>
-  typeof value === "number" && Number.isFinite(value);
+const isContentIdentityType = (value: unknown): value is FolioContentIdentity["type"] =>
+  FOLIO_CONTENT_IDENTITY_SEMANTICS.some((candidate) => candidate === value);
 
-const IDENTITY_SEMANTICS = new Set(FOLIO_CONTENT_IDENTITY_SEMANTICS);
+const compareCodeUnits = (left: string, right: string): number => {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+};
 
 type CapturedDataRecord<Field extends string> = ReadonlyMap<Field, unknown>;
 type CapturedOwnProperty = Readonly<PropertyDescriptor> | null;
@@ -818,13 +821,15 @@ type CaptureLocation = {
   readonly authority?: "owned" | "public";
 };
 
-type CaptureContext = {
+type CaptureResourceContext = {
   side: "base" | "revised";
   blockIndex?: number;
   usage: SnapshotResourceUsage;
   registry: CaptureRegistry;
   authority: "owned" | "public";
 };
+
+type CaptureContext = CaptureResourceContext & { blockIndex: number };
 
 const retainCapturedOrOwned = <Value>(
   input: unknown,
@@ -946,7 +951,7 @@ const captureKnownDataRecord = <const Field extends string>(
 const captureBoundedDenseArray = (
   input: unknown,
   path: string,
-  location: CaptureContext,
+  location: CaptureResourceContext,
   limit: DenseArrayCaptureLimit,
 ): Result<
   readonly unknown[],
@@ -1035,7 +1040,7 @@ const captureBoundedDenseArray = (
       }),
     );
   }
-  const values = new Array<unknown>(length);
+  const values: unknown[] = [];
   for (let index = 0; index < length; index++) {
     const key = String(index);
     const captured = captureOwnProperty(input, key, `${path}[${key}]`, location);
@@ -1051,7 +1056,7 @@ const captureBoundedDenseArray = (
         ),
       );
     }
-    values[index] = descriptor.value;
+    values.push(descriptor.value);
   }
   const captured = Object.freeze(values);
   registry.denseArrays.set(input, captured);
@@ -1387,7 +1392,7 @@ const capturePropertySet = (
     }
   }
   if (context.authority === "public") {
-    captured.sort(({ key: left }, { key: right }) => (left < right ? -1 : left > right ? 1 : 0));
+    captured.sort(({ key: left }, { key: right }) => compareCodeUnits(left, right));
   }
   return Result.ok(retainCapturedOrOwned(input, () => Object.freeze(captured), context));
 };
@@ -1404,8 +1409,8 @@ const captureParagraphFormatting = (
   );
   const record = captureKnownDataRecord(input, fields, path, context);
   if (record.isErr()) return Result.err(record.error);
-  let effective = EMPTY_PROPERTY_SET;
-  let authored = EMPTY_PROPERTY_SET;
+  let effective: FolioContentPropertySet = EMPTY_PROPERTY_SET;
+  let authored: FolioContentPropertySet = EMPTY_PROPERTY_SET;
   for (const descriptor of Object.values(FOLIO_CONTENT_PARAGRAPH_FORMATTING_FIELD_DESCRIPTORS)) {
     const value = record.value.get(descriptor.field);
     if (value === undefined) continue;
@@ -1802,7 +1807,7 @@ const captureContentIdentity = (
   if (record.isErr()) return Result.err(record.error);
   const type = record.value.get("type");
   const id = record.value.get("id");
-  if (!IDENTITY_SEMANTICS.has(type) || typeof id !== "string" || id.length === 0) {
+  if (!isContentIdentityType(type) || typeof id !== "string" || id.length === 0) {
     return Result.err(
       invalidInput(
         context.side,
@@ -2024,7 +2029,7 @@ const captureValidatedSnapshotInto = (
   registry: CaptureRegistry,
   authority: "owned" | "public",
 ): FolioContentComparisonError | null => {
-  const snapshotContext = { side, usage, registry, authority } satisfies CaptureContext;
+  const snapshotContext = { side, usage, registry, authority } satisfies CaptureResourceContext;
   const record = captureKnownDataRecord(
     snapshot,
     Object.values(FOLIO_CONTENT_SNAPSHOT_FIELD_DESCRIPTORS).map(({ field }) => field),
@@ -2268,7 +2273,7 @@ const captureValidatedSnapshotInto = (
 };
 
 type CapturedSnapshot = {
-  snapshot: FolioContentSnapshot;
+  snapshot: CapturedContentSnapshot;
   usage: SnapshotResourceUsage;
 };
 
@@ -2877,7 +2882,7 @@ const detectFolioContentMoves = <Block extends FolioContentBlock>({
   return moves;
 };
 
-type Relation = {
+type ComparisonRelationRecord = {
   id: number;
   baseBlocks: readonly FolioContentBlock[];
   revisedBlocks: readonly FolioContentBlock[];
@@ -3029,8 +3034,8 @@ const relationFormattingChange = ({
     : null;
 };
 
-type PairRelationResult<Relation extends FolioContentPairRelation = FolioContentPairRelation> = {
-  relation: Relation;
+type PairRelationResult<Pair extends FolioContentPairRelation = FolioContentPairRelation> = {
+  relation: Pair;
   formattingRanges: number;
 };
 
@@ -3183,9 +3188,9 @@ const compareAlignedFolioContent = ({
   });
   const diffText = (baseText: string, revisedText: string): WordDiffSegment[] =>
     engine.diffText(baseText, revisedText);
-  const relations: Relation[] = [];
-  const baseRelation = new Map<string, Relation>();
-  const revisedRelation = new Map<string, Relation>();
+  const relations: ComparisonRelationRecord[] = [];
+  const baseRelation = new Map<string, ComparisonRelationRecord>();
+  const revisedRelation = new Map<string, ComparisonRelationRecord>();
   let nextRelationId = 0;
   let remainingFormattingRanges = maximumFormattingRanges;
   let formattingRangeCount = 0;
@@ -3282,9 +3287,9 @@ const compareAlignedFolioContent = ({
   const relationLimitExceeded = (): Result<never, FolioContentComparisonLimitError> =>
     eventCount > maximumEvents ? eventLimitExceeded() : changeLimitExceeded();
 
-  const claimPairRelation = <Relation extends FolioContentPairRelation>(
-    result: PairRelationResult<Relation> | "limit",
-  ): Relation | "limit" => {
+  const claimPairRelation = <Pair extends FolioContentPairRelation>(
+    result: PairRelationResult<Pair> | "limit",
+  ): Pair | "limit" => {
     if (result === "limit") return "limit";
     remainingFormattingRanges -= result.formattingRanges;
     formattingRangeCount += result.formattingRanges;
@@ -3458,18 +3463,18 @@ const compareAlignedFolioContent = ({
     }
 
     if (step.type === "pair") {
-      const base = step.baseBlock;
-      const revised = step.revisedBlock;
+      const baseBlock = step.baseBlock;
+      const revisedBlock = step.revisedBlock;
       const relation = claimPairRelation(
         createPairRelation({
-          baseBlock: base,
-          revisedBlock: revised,
+          baseBlock,
+          revisedBlock,
           baseContainerAlignment: step.containerAlignment,
           revisedContainerAlignment: step.containerAlignment,
           baseStart: 0,
-          baseEnd: base.text.length,
+          baseEnd: baseBlock.text.length,
           revisedStart: 0,
-          revisedEnd: revised.text.length,
+          revisedEnd: revisedBlock.text.length,
           relationType: "whole",
           diffText,
           maxFormattingRanges: remainingFormattingRanges,
@@ -3492,7 +3497,7 @@ const compareAlignedFolioContent = ({
       } else {
         event = { type: "unchanged", relation };
       }
-      if (!addRelation(event, [base], [revised])) {
+      if (!addRelation(event, [baseBlock], [revisedBlock])) {
         return relationLimitExceeded();
       }
       continue;
@@ -3619,10 +3624,12 @@ const compareAlignedFolioContent = ({
   let baseIndex = 0;
   let revisedIndex = 0;
   while (baseIndex < baseBlocks.length || revisedIndex < revisedBlocks.length) {
-    const base = baseBlocks[baseIndex];
-    const revised = revisedBlocks[revisedIndex];
-    const fromBase = base ? baseRelation.get(base.identity.id) : undefined;
-    const fromRevised = revised ? revisedRelation.get(revised.identity.id) : undefined;
+    const currentBase = baseBlocks[baseIndex];
+    const currentRevised = revisedBlocks[revisedIndex];
+    const fromBase = currentBase ? baseRelation.get(currentBase.identity.id) : undefined;
+    const fromRevised = currentRevised
+      ? revisedRelation.get(currentRevised.identity.id)
+      : undefined;
     if (fromBase && emitted.has(fromBase.id)) {
       baseIndex++;
       continue;
@@ -3631,7 +3638,7 @@ const compareAlignedFolioContent = ({
       revisedIndex++;
       continue;
     }
-    let relation: Relation | undefined;
+    let relation: ComparisonRelationRecord | undefined;
     if (fromBase && fromRevised && fromBase.id === fromRevised.id) {
       relation = fromBase;
     } else if (fromRevised?.baseBlocks.length === 0) {
@@ -3641,8 +3648,8 @@ const compareAlignedFolioContent = ({
     }
     if (!relation) {
       return panic("Content alignment did not produce one monotone projection", {
-        baseBlockId: base?.identity.id,
-        revisedBlockId: revised?.identity.id,
+        baseBlockId: currentBase?.identity.id,
+        revisedBlockId: currentRevised?.identity.id,
       });
     }
     emitted.add(relation.id);
@@ -3788,7 +3795,10 @@ export const compareContent = (
       invalidInput("options", "granularity", "Comparison granularity must be word or character."),
     );
   }
-  const workSession = createContentComparisonWorkSession({ ...(granularity && { granularity }) });
+  const workSession =
+    granularity === undefined
+      ? createContentComparisonWorkSession()
+      : createContentComparisonWorkSession({ granularity });
   const operation = workSession.captureComparison({ base, revised });
   if (operation.isErr()) {
     return operation.error instanceof FolioContentComparisonSessionError
@@ -3798,10 +3808,13 @@ export const compareContent = (
       : Result.err(operation.error);
   }
   const compared = operation.value.compare();
-  if (compared.isErr() && compared.error instanceof FolioContentComparisonSessionError) {
-    return panic("A fresh content comparison operation failed its first consumption", {
-      cause: compared.error,
-    });
+  if (compared.isErr()) {
+    if (compared.error instanceof FolioContentComparisonSessionError) {
+      return panic("A fresh content comparison operation failed its first consumption", {
+        cause: compared.error,
+      });
+    }
+    return Result.err(compared.error);
   }
-  return compared;
+  return Result.ok(compared.value);
 };
