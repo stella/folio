@@ -1553,7 +1553,13 @@ function assignBooleanToggle(
   }
 }
 
-function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting | undefined {
+/**
+ * Project paragraph attrs onto the formatting the DOCX model actually owns.
+ *
+ * Kept public only within the source tree so identity checks can compare the
+ * serializer's canonical meaning instead of raw editor presentation caches.
+ */
+export function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting | undefined {
   const directAlignment = directParagraphAlignment(attrs);
   const directSpacing = directParagraphSpacing(attrs);
   // If we have the original inline formatting from the DOCX, use it as a base

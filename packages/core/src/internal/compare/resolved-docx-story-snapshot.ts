@@ -762,6 +762,29 @@ const projectParagraphInline = (
   return projection;
 };
 
+/**
+ * A paragraph-wide bookmark is anchored to the block edges, not to the current
+ * UTF-16 length. Preserve that semantic affinity so editing the enclosed text
+ * does not invent a bookmark movement that the tracked-text lowering cannot
+ * and need not emit.
+ */
+const canonicalInlineStructureForComparison = (
+  structure: readonly unknown[],
+  textLength: number,
+): readonly unknown[] =>
+  structure.map((entry) => {
+    if (typeof entry !== "object" || entry === null) return entry;
+    const type: unknown = Reflect.get(entry, "type");
+    const offset: unknown = Reflect.get(entry, "offset");
+    if (type === "bookmarkStart" && offset === 0) {
+      return { ...entry, offset: "block-start" };
+    }
+    if (type === "bookmarkEnd" && offset === textLength) {
+      return { ...entry, offset: "block-end" };
+    }
+    return entry;
+  });
+
 const sameStructuralBoundaries = (
   left: readonly FolioContentStructuralBoundary[],
   right: readonly FolioContentStructuralBoundary[],
@@ -964,7 +987,9 @@ const projectLiveParagraph = (
   if (inline.structure.length > 0) {
     blockProperties.push({
       key: "docx.inlineStructure",
-      value: JSON.stringify(inline.structure),
+      value: JSON.stringify(
+        canonicalInlineStructureForComparison(inline.structure, inline.textLength),
+      ),
     });
   }
   if (inline.runs.map(({ text }) => text).join("") !== operationBlock.text) {
