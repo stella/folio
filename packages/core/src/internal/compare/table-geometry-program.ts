@@ -15,10 +15,10 @@
  * reversible program; its executor writes that program to a caller-owned
  * transaction without consulting the target document.
  *
- * The scope of each is not a hand-kept list. It is exactly the attrs a reject
- * of the matching change element restores, read off the reject patches
- * themselves — so a property that reject can restore is a property the
- * comparison carries and checks, and the three can never drift apart.
+ * The scope of each is not a hand-kept list. It is derived from the attrs a
+ * reject of the matching change element restores. Save-only `_resolved*`
+ * companions travel with that patch but stay outside the semantic projection;
+ * both sides are derived from node attrs so neither can drift independently.
  */
 
 import type { Node as PMNode } from "prosemirror-model";
@@ -79,8 +79,8 @@ const ORIGINAL_FORMATTING = "_originalFormatting";
  * stored would report a difference no redline can or should represent. What is
  * compared is the effective set the properties resolve to.
  */
-const withoutOriginalFormatting = (keys: readonly string[]): string[] =>
-  keys.filter((key) => key !== ORIGINAL_FORMATTING);
+const semanticRejectAttrs = (keys: readonly string[]): string[] =>
+  keys.filter((key) => key !== ORIGINAL_FORMATTING && !key.startsWith("_resolved"));
 
 /**
  * Attrs a `w:tblPrChange` reject restores, and therefore the attrs a match
@@ -88,9 +88,9 @@ const withoutOriginalFormatting = (keys: readonly string[]): string[] =>
  * them: the grid is `w:tblGrid`, not `w:tblPr`, and the editable model has no
  * `w:tblGridChange` to record a change of it against.
  */
-const TABLE_SCOPED_ATTRS = withoutOriginalFormatting(Object.keys(tableRejectAttrPatch(undefined)));
-const ROW_SCOPED_ATTRS = withoutOriginalFormatting(Object.keys(tableRowRejectAttrPatch(undefined)));
-const CELL_SCOPED_ATTRS = withoutOriginalFormatting(
+const TABLE_SCOPED_ATTRS = semanticRejectAttrs(Object.keys(tableRejectAttrPatch(undefined)));
+const ROW_SCOPED_ATTRS = semanticRejectAttrs(Object.keys(tableRowRejectAttrPatch(undefined)));
+const CELL_SCOPED_ATTRS = semanticRejectAttrs(
   Object.keys(tableCellRejectAttrPatch(undefined, undefined)),
 );
 
@@ -357,6 +357,10 @@ type PropertyScope<Scope extends TableGeometryScopeName> = {
   readonly keys: readonly string[];
   /** The complete property set that the node serializes. */
   readonly formattingOf: (node: PMNode) => TableGeometryFormattingByScope[Scope] | undefined;
+  /** The property set the save path derives without comparison-only resolution overrides. */
+  readonly serializedFormattingOf: (
+    node: PMNode,
+  ) => TableGeometryFormattingByScope[Scope] | undefined;
   /** The semantic portion of that property set; transport source is excluded. */
   readonly semanticFormattingOf: (
     formatting: TableGeometryFormattingByScope[Scope] | undefined,
@@ -389,8 +393,8 @@ type PropertyScope<Scope extends TableGeometryScopeName> = {
  * type's own shape. The two span counts are the only members the schema always
  * carries a value for, so naming them is what turns the record into one.
  */
-const cellAttrsOf = (node: PMNode): TableCellAttrs => ({
-  ...effectiveAttrs(node),
+const cellAttrsOf = (node: PMNode, attrs: Record<string, unknown>): TableCellAttrs => ({
+  ...attrs,
   colspan: typeof node.attrs["colspan"] === "number" ? node.attrs["colspan"] : 1,
   rowspan: typeof node.attrs["rowspan"] === "number" ? node.attrs["rowspan"] : 1,
 });
@@ -414,6 +418,14 @@ const effectiveAttrs = (node: PMNode): Record<string, unknown> => ({
   _resolvedCellMargins: null,
 });
 
+const resolvedCompanionAttrs = (node: PMNode): Record<string, unknown> => {
+  const companions: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(node.attrs)) {
+    if (key.startsWith("_resolved")) companions[key] = value ?? null;
+  }
+  return companions;
+};
+
 const tableCoordinate = ({ tableIndex }: TableCellCoordinate) => Object.freeze({ tableIndex });
 
 const rowCoordinate = ({ tableIndex, rowIndex }: TableCellCoordinate) =>
@@ -423,6 +435,7 @@ const TABLE_SCOPE = {
   name: "table",
   keys: TABLE_SCOPED_ATTRS,
   formattingOf: (node) => tableAttrsToFormatting(effectiveAttrs(node)),
+  serializedFormattingOf: (node) => tableAttrsToFormatting(node.attrs),
   semanticFormattingOf: docxTableFormattingSemanticValue,
   propertiesOf: docxTableFormattingProperties,
   changesBetween: (base, target) =>
@@ -455,6 +468,7 @@ const ROW_SCOPE = {
   name: "row",
   keys: ROW_SCOPED_ATTRS,
   formattingOf: (node) => tableRowAttrsToFormatting(node.attrs),
+  serializedFormattingOf: (node) => tableRowAttrsToFormatting(node.attrs),
   semanticFormattingOf: docxTableRowFormattingSemanticValue,
   propertiesOf: docxTableRowFormattingProperties,
   changesBetween: (base, target) =>
@@ -486,7 +500,8 @@ const ROW_SCOPE = {
 const CELL_SCOPE = {
   name: "cell",
   keys: CELL_SCOPED_ATTRS,
-  formattingOf: (node) => tableCellAttrsToFormatting(cellAttrsOf(node)),
+  formattingOf: (node) => tableCellAttrsToFormatting(cellAttrsOf(node, effectiveAttrs(node))),
+  serializedFormattingOf: (node) => tableCellAttrsToFormatting(cellAttrsOf(node, node.attrs)),
   semanticFormattingOf: docxTableCellFormattingSemanticValue,
   propertiesOf: docxTableCellFormattingProperties,
   changesBetween: (base, target) =>
@@ -806,6 +821,7 @@ const propertyChangeFor = <Scope extends TableGeometryScopeName>({
   const targetAttrs = captureImmutablePayload(
     {
       ...scopedAttrs(targetNode.attrs, scope.keys),
+      ...resolvedCompanionAttrs(targetNode),
       [ORIGINAL_FORMATTING]: targetFormatting ?? null,
     },
     payloadContext,
@@ -840,6 +856,10 @@ const propertyChangeFor = <Scope extends TableGeometryScopeName>({
     !sameFolioContentPropertySet(
       scope.propertiesOf(scope.formattingOf(acceptedNode.value)),
       scope.propertiesOf(nextFormatting.value),
+    ) ||
+    !sameFolioContentPropertySet(
+      scope.propertiesOf(scope.serializedFormattingOf(acceptedNode.value)),
+      scope.propertiesOf(nextFormatting.value),
     )
   ) {
     return {
@@ -872,6 +892,10 @@ const propertyChangeFor = <Scope extends TableGeometryScopeName>({
   if (
     !sameFolioContentPropertySet(
       scope.propertiesOf(scope.formattingOf(rejectedNode.value)),
+      scope.propertiesOf(previousFormatting.value),
+    ) ||
+    !sameFolioContentPropertySet(
+      scope.propertiesOf(scope.serializedFormattingOf(rejectedNode.value)),
       scope.propertiesOf(previousFormatting.value),
     )
   ) {

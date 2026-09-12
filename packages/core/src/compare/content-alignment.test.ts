@@ -19,12 +19,21 @@ type CellOptions = {
   cellIndex: number;
   gridColumnIndex: number;
   paragraphIndex?: number;
+  tableIdentityType?: FolioContentIdentitySemantics;
+  rowId?: string;
 };
 
 const cell = (
   id: string,
   text: string,
-  { rowIndex, cellIndex, gridColumnIndex, paragraphIndex = 0 }: CellOptions,
+  {
+    rowIndex,
+    cellIndex,
+    gridColumnIndex,
+    paragraphIndex = 0,
+    tableIdentityType,
+    rowId,
+  }: CellOptions,
   options: ContentBlockFixtureOptions = {},
 ): FolioContentBlock =>
   block(id, text, {
@@ -39,6 +48,8 @@ const cell = (
       columnSpan: 1,
       rowSpan: 1,
       paragraphIndex,
+      ...(tableIdentityType === undefined ? {} : { identityType: tableIdentityType }),
+      ...(rowId === undefined ? {} : { rowId }),
     }),
   });
 
@@ -1081,6 +1092,72 @@ describe("container-safe structural alignment", () => {
 });
 
 describe("table row and column structural alignment", () => {
+  test("pairs a duplicate positional row at the same position before deleting the surplus", () => {
+    const positionalRow = (id: string, rowIndex: number) =>
+      cell(
+        id,
+        "Repeated schedule entry",
+        {
+          rowIndex,
+          cellIndex: 0,
+          gridColumnIndex: 0,
+          tableIdentityType: "positional",
+        },
+        { identityType: "positional" },
+      );
+    const base = [positionalRow("base-first", 0), positionalRow("base-second", 1)];
+    const revised = [positionalRow("revised-first", 0)];
+
+    const steps = alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised });
+
+    expect(
+      steps.flatMap((step) =>
+        step.type === "pair" ? [[step.baseBlock.identity.id, step.revisedBlock.identity.id]] : [],
+      ),
+    ).toEqual([["base-first", "revised-first"]]);
+    expect(
+      steps.flatMap((step) =>
+        step.type === "baseRow" || step.type === "revisedRow"
+          ? [[step.type, step.blocks.map(({ identity }) => identity.id)]]
+          : [],
+      ),
+    ).toEqual([["baseRow", ["base-second"]]]);
+  });
+
+  test("does not pair duplicate rows whose authoritative identities disagree", () => {
+    const authoritativeRow = (side: "base" | "revised", rowIndex: number) =>
+      cell(
+        `${side}-${String(rowIndex)}`,
+        "Repeated schedule entry",
+        {
+          rowIndex,
+          cellIndex: 0,
+          gridColumnIndex: 0,
+          tableIdentityType: "authoritative",
+          rowId: `${side}-row-${String(rowIndex)}`,
+        },
+        { identityType: "positional" },
+      );
+    const base = [authoritativeRow("base", 0), authoritativeRow("base", 1)];
+    const revised = [authoritativeRow("revised", 0), authoritativeRow("revised", 1)];
+
+    const steps = alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised });
+
+    expect(steps.filter(({ type }) => type === "pair")).toEqual([]);
+    expect(steps.map(({ type }) => type)).toEqual(["tableReplacement"]);
+    const replacement = steps.at(0);
+    if (replacement?.type !== "tableReplacement") {
+      throw new Error("Authoritative row disagreement did not retain atomic table ownership");
+    }
+    expect(
+      replacement.refinementSteps
+        .flatMap((step) =>
+          step.type === "baseRow" || step.type === "revisedRow" ? [step.type] : [],
+        )
+        .toSorted(),
+    ).toEqual(["baseRow", "baseRow", "revisedRow", "revisedRow"]);
+  });
+
   test("keeps several shifted persisted rows paired without textual anchors", () => {
     const base = [
       cell(

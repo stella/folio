@@ -379,15 +379,25 @@ export function tableCellRejectAttrPatch(
   if (liveOriginalFormatting?.vMerge !== undefined) {
     restoredOriginal.vMerge = liveOriginalFormatting.vMerge;
   }
+  const backgroundColor = previousFormatting?.shading?.fill?.rgb ?? null;
+  const borders = previousFormatting?.borders
+    ? cellBordersToAttr(previousFormatting.borders)
+    : null;
+  const margins = previousFormatting?.margins
+    ? cellMarginsToAttr(previousFormatting.margins)
+    : null;
   return {
     width: previousFormatting?.width?.value ?? null,
     widthType: previousFormatting?.width?.type ?? null,
     verticalAlign: previousFormatting?.verticalAlign ?? null,
-    backgroundColor: previousFormatting?.shading?.fill?.rgb ?? null,
+    backgroundColor,
+    _resolvedBackgroundColor: backgroundColor,
     textDirection: previousFormatting?.textDirection ?? null,
     noWrap: previousFormatting?.noWrap ?? null,
-    borders: previousFormatting?.borders ? cellBordersToAttr(previousFormatting.borders) : null,
-    margins: previousFormatting?.margins ? cellMarginsToAttr(previousFormatting.margins) : null,
+    borders,
+    _resolvedBorders: borders,
+    margins,
+    _resolvedMargins: margins,
     _originalFormatting: Object.keys(restoredOriginal).length > 0 ? restoredOriginal : null,
   };
 }

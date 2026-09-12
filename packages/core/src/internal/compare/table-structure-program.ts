@@ -397,20 +397,34 @@ const structuralState = (table: PMNode): string => {
   });
 };
 
-const simpleRectangularWidth = (table: PMNode): number | null => {
+const rowEditableGridWidth = (table: PMNode): number | null => {
   const map = TableMap.get(table);
   if (map.problems !== null || map.width < 1 || map.height !== table.childCount) return null;
   for (let rowIndex = 0; rowIndex < table.childCount; rowIndex++) {
     const row = table.child(rowIndex);
-    if (!isRow(row) || row.childCount !== map.width) return null;
+    if (!isRow(row)) return null;
     for (let cellIndex = 0; cellIndex < row.childCount; cellIndex++) {
       const cell = row.child(cellIndex);
-      if (!isCell(cell) || cell.attrs["colspan"] !== 1 || cell.attrs["rowspan"] !== 1) {
+      if (!isCell(cell) || cell.attrs["rowspan"] !== 1) {
         return null;
       }
     }
   }
   return map.width;
+};
+
+const rowCellStructure = (row: PMNode): string => {
+  if (!isRow(row)) return panic("A table row mapping reached a non-row node");
+  const cells: unknown[] = [];
+  row.forEach((cell) => {
+    if (!isCell(cell)) return panic("A table row mapping reached a non-cell node");
+    cells.push({
+      role: String(cell.type.spec["tableRole"]),
+      colspan: cell.attrs["colspan"] ?? 1,
+      rowspan: cell.attrs["rowspan"] ?? 1,
+    });
+  });
+  return canonicalJson(cells);
 };
 
 const sourceTableIndexOf = (
@@ -778,12 +792,15 @@ const validateRowEdits = (
   edits: readonly RowEdit[],
   pairings: readonly TableGeometryPairing[],
 ): TableStructureUnsupportedIssue | null => {
-  if (simpleRectangularWidth(source) === null) {
+  const sourceWidth = rowEditableGridWidth(source);
+  if (sourceWidth === null) {
     return { reason: "unrepresentable-span", side: "source" };
   }
-  if (simpleRectangularWidth(target) === null) {
+  const targetWidth = rowEditableGridWidth(target);
+  if (targetWidth === null) {
     return { reason: "unrepresentable-span", side: "target" };
   }
+  if (sourceWidth !== targetWidth) return { reason: "non-reconstructable-structure" };
   const deleted = new Set<number>();
   const inserted = new Set<number>();
   const insertionsByBoundary = new Map<number, Extract<RowEdit, { readonly type: "insert" }>[]>();
@@ -835,6 +852,9 @@ const validateRowEdits = (
       continue;
     }
     if (mapping.get(entry.index) !== targetIndex) {
+      return { reason: "non-reconstructable-structure" };
+    }
+    if (rowCellStructure(source.child(entry.index)) !== rowCellStructure(target.child(targetIndex))) {
       return { reason: "non-reconstructable-structure" };
     }
   }

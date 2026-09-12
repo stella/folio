@@ -1704,6 +1704,14 @@ type ContentSequenceAlignment<Item> =
   | { type: "baseOnly"; item: Item }
   | { type: "revisedOnly"; item: Item };
 
+type DuplicateSignaturePairingPolicy =
+  | "reject-ambiguous"
+  | "same-position-positional";
+
+type SoleShiftedPairingPolicy =
+  | "reject-between-unpaired-ranges"
+  | "retain-identity-provenance";
+
 const unpairedContentSequence = <Item>(
   baseItems: readonly Item[],
   revisedItems: readonly Item[],
@@ -1947,8 +1955,10 @@ type AlignProfiledContentSequenceOptions<Item> = {
     base: ProfiledContentSequenceItem<Item>,
     revised: ProfiledContentSequenceItem<Item>,
   ) => boolean;
+  duplicateSignaturePairing?: DuplicateSignaturePairingPolicy;
   pairSoleStructuralSlot?: boolean;
   primaryEvidence?: "stable" | "exact";
+  soleShiftedPairing?: SoleShiftedPairingPolicy;
   similarityFactor?:
     | ((
         base: ProfiledContentSequenceItem<Item>,
@@ -1968,8 +1978,10 @@ const alignProfiledContentSequence = <Item>({
   revised,
   workSession,
   canPair = () => true,
+  duplicateSignaturePairing = "reject-ambiguous",
   pairSoleStructuralSlot = false,
   primaryEvidence = "stable",
+  soleShiftedPairing = "reject-between-unpaired-ranges",
   similarityFactor = () => 1,
 }: AlignProfiledContentSequenceOptions<Item>): ContentSequenceAlignment<Item>[] => {
   if (base.length === 0 || revised.length === 0) {
@@ -2109,11 +2121,17 @@ const alignProfiledContentSequence = <Item>({
         baseExactSignatureKeys[baseIndex] !== -1 &&
         baseExactSignatureKeys[baseIndex] === revisedExactSignatureKeys[revisedIndex];
       const exactKey = baseExactSignatureKeys[baseIndex] ?? -1;
+      const samePosition = baseIndex === revisedIndex;
+      const positionalAtSamePosition =
+        duplicateSignaturePairing === "same-position-positional" &&
+        samePosition &&
+        scopeDisposition === "position";
       if (
         (scopeDisposition === "candidate" || scopeDisposition === "position") &&
         exactKey !== -1 &&
         ((baseExactSignatureCounts.get(exactKey) ?? 0) > 1 ||
-          (revisedExactSignatureCounts.get(exactKey) ?? 0) > 1)
+          (revisedExactSignatureCounts.get(exactKey) ?? 0) > 1) &&
+        !positionalAtSamePosition
       ) {
         continue;
       }
@@ -2125,10 +2143,10 @@ const alignProfiledContentSequence = <Item>({
         0,
         Math.min(1, profileSimilarity * similarityFactor(baseItem, revisedItem)),
       );
-      const stableAtSamePosition = stable && baseIndex === revisedIndex;
+      const stableAtSamePosition = stable && samePosition;
       const persistedAtSamePosition =
-        baseIndex === revisedIndex && provenanceTransitionAtSamePosition[baseIndex] === 1;
-      const shiftedPersisted = baseIndex !== revisedIndex && persistedPairs.has(pairIndex);
+        samePosition && provenanceTransitionAtSamePosition[baseIndex] === 1;
+      const shiftedPersisted = !samePosition && persistedPairs.has(pairIndex);
       const persisted = persistedAtSamePosition || shiftedPersisted;
       const soleStructuralSlot =
         pairSoleStructuralSlot && base.length === 1 && revised.length === 1;
@@ -2197,20 +2215,36 @@ const alignProfiledContentSequence = <Item>({
   let baseIndex = 0;
   let revisedIndex = 0;
   let pairCount = 0;
+  let solePairHasIdentityProvenance = false;
   let solePairIsShifted = false;
   let hasBaseOnly = false;
   let hasRevisedOnly = false;
   while (baseIndex < base.length && revisedIndex < revised.length) {
-    const direction = directions[baseIndex * revised.length + revisedIndex];
-    const baseItem = base[baseIndex]?.item;
-    const revisedItem = revised[revisedIndex]?.item;
+    const pairIndex = baseIndex * revised.length + revisedIndex;
+    const direction = directions[pairIndex];
+    const baseProfiledItem = base[baseIndex];
+    const revisedProfiledItem = revised[revisedIndex];
+    const baseItem = baseProfiledItem?.item;
+    const revisedItem = revisedProfiledItem?.item;
     if (
       direction === ALIGNMENT_DIRECTION.pair &&
-      baseItem !== undefined &&
-      revisedItem !== undefined
+      baseProfiledItem !== undefined &&
+      revisedProfiledItem !== undefined
     ) {
-      aligned.push({ type: "pair", base: baseItem, revised: revisedItem });
+      aligned.push({
+        type: "pair",
+        base: baseProfiledItem.item,
+        revised: revisedProfiledItem.item,
+      });
       pairCount += 1;
+      const baseScopeIdentity = baseProfiledItem.profile.scopeIdentity;
+      const revisedScopeIdentity = revisedProfiledItem.profile.scopeIdentity;
+      solePairHasIdentityProvenance =
+        stablePairs.has(pairIndex) ||
+        persistedPairs.has(pairIndex) ||
+        (baseScopeIdentity !== null &&
+          revisedScopeIdentity !== null &&
+          folioContentIdentityPairDisposition(baseScopeIdentity, revisedScopeIdentity) === "anchor");
       solePairIsShifted = baseIndex !== revisedIndex;
       baseIndex += 1;
       revisedIndex += 1;
@@ -2232,7 +2266,15 @@ const alignProfiledContentSequence = <Item>({
     aligned.push({ type: "revisedOnly", item });
     hasRevisedOnly = true;
   }
-  if (pairCount === 1 && solePairIsShifted && hasBaseOnly && hasRevisedOnly) {
+  if (
+    pairCount === 1 &&
+    solePairIsShifted &&
+    hasBaseOnly &&
+    hasRevisedOnly &&
+    !(
+      soleShiftedPairing === "retain-identity-provenance" && solePairHasIdentityProvenance
+    )
+  ) {
     // One content match cannot establish a shifted container mapping when doing so
     // also strands containers on both sides; that shape is equally consistent with
     // content moving between a deletion and an insertion.
@@ -2389,10 +2431,18 @@ const pairTableRows = ({
     base: baseRows.map(profile),
     revised: revisedRows.map(profile),
     workSession,
+    // A positional row id disambiguates repeated content only at the same
+    // index. Unique exact or stable evidence can still shift a row around an
+    // insertion; duplicates cannot turn one surplus row into an unrelated
+    // deletion plus insertion.
+    duplicateSignaturePairing: "same-position-positional",
     // Once the table itself is paired, its sole row on each side is the same
     // structural slot even when every word in that row changed.
     pairSoleStructuralSlot: true,
     primaryEvidence: "exact",
+    // A shifted row between unmatched ranges is retained only when its row or
+    // paragraph identity survived; exact text alone remains ambiguous.
+    soleShiftedPairing: "retain-identity-provenance",
     similarityFactor: (base, revised) =>
       base.profile.physicalCellCount === revised.profile.physicalCellCount ? 1 : 0.5,
   }).map((alignment): TableRowAlignment => {
@@ -2524,12 +2574,16 @@ const buildTablePlan = ({
     revisedRows: groupFolioContentTableRows(columns?.revisedBlocks ?? revisedBlocks),
     workSession,
   });
-  const representable = rows.every((row) => {
-    if (row.type === "pair") {
-      return columns !== null || rowCellSpansEqual(row.baseRow, row.revisedRow);
-    }
-    return !rowHasVerticalSpan(row.row);
-  });
+  // Row revision markup needs one surviving row to anchor the table on both
+  // sides. With no correspondence, replacement is the only atomic lowering.
+  const representable =
+    rows.some(({ type }) => type === "pair") &&
+    rows.every((row) => {
+      if (row.type === "pair") {
+        return columns !== null || rowCellSpansEqual(row.baseRow, row.revisedRow);
+      }
+      return !rowHasVerticalSpan(row.row);
+    });
   return {
     type: representable ? "representable" : "requires-table-replacement",
     steps: [

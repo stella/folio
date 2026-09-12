@@ -736,12 +736,14 @@ describe("bounded table row sequence alignment", () => {
         text: "Relocated substantive clause",
         outerTableIndex: 0,
         rowIndex: 0,
+        identityType: "positional",
       }),
       tableBlock({
         id: "base-only",
         text: "Base-only row",
         outerTableIndex: 0,
         rowIndex: 1,
+        identityType: "positional",
       }),
     ];
     const revised = [
@@ -750,12 +752,14 @@ describe("bounded table row sequence alignment", () => {
         text: "Revised-only row",
         outerTableIndex: 0,
         rowIndex: 0,
+        identityType: "positional",
       }),
       tableBlock({
         id: "relocated",
         text: "Relocated substantive clause",
         outerTableIndex: 0,
         rowIndex: 1,
+        identityType: "positional",
       }),
     ];
 
@@ -763,4 +767,46 @@ describe("bounded table row sequence alignment", () => {
 
     expect(pairIds(steps)).toEqual([]);
   });
+
+  test.each(["authoritative", "persistent-hint"] as const)(
+    "one shifted %s row identity survives unmatched ranges",
+    (identityType) => {
+      const base = [
+        tableBlock({
+          id: "survivor",
+          text: "Surviving substantive clause",
+          outerTableIndex: 0,
+          rowIndex: 0,
+          identityType,
+        }),
+        tableBlock({
+          id: "base-only",
+          text: "Base-only row",
+          outerTableIndex: 0,
+          rowIndex: 1,
+          identityType: "positional",
+        }),
+      ];
+      const revised = [
+        tableBlock({
+          id: "revised-only",
+          text: "Revised-only row",
+          outerTableIndex: 0,
+          rowIndex: 0,
+          identityType: "positional",
+        }),
+        tableBlock({
+          id: "survivor",
+          text: "Surviving substantive clause",
+          outerTableIndex: 0,
+          rowIndex: 1,
+          identityType,
+        }),
+      ];
+
+      const steps = alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised });
+
+      expect(pairIds(steps)).toEqual([["survivor", "survivor"]]);
+    },
+  );
 });

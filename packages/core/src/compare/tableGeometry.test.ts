@@ -278,6 +278,33 @@ describe("a row the comparison adds or removes mid-table", () => {
 });
 
 describe("a table whose properties changed and whose words did not", () => {
+  test("adding cell shading keeps the rejected save path unshaded", async () => {
+    const baseTable = {
+      kind: "table",
+      columnWidths: [2400],
+      rows: [[{ content: "Clause", width: 2400 }]],
+    } as const satisfies BodyItem;
+    const targetTable = {
+      ...baseTable,
+      rows: [[{ content: "Clause", width: 2400, shadingFill: "C6E0B4" }]],
+    } as const satisfies BodyItem;
+    const base = await buildBodySequenceDocx([INTRO, baseTable, OUTRO]);
+    const target = await buildBodySequenceDocx([INTRO, targetTable, OUTRO]);
+
+    const {
+      xml,
+      accepted,
+      target: expected,
+      rejected,
+      base: expectedBase,
+    } = await roundTrip(base, target);
+
+    expect(xml).toContain('w:fill="C6E0B4"');
+    expect(xml).not.toContain('<w:shd w:val="nil"/>');
+    expect(accepted).toEqual(expected);
+    expect(rejected).toEqual(expectedBase);
+  });
+
   test("a changed cell property is written as w:tcPrChange", async () => {
     const shaded = {
       ...TWO_ROW_TABLE,
@@ -304,6 +331,36 @@ describe("a table whose properties changed and whose words did not", () => {
 
     expect(xml).toContain("<w:tcPrChange ");
     expect(xml).toContain('w:fill="C6E0B4"');
+    expect(accepted).toEqual(expected);
+    expect(rejected).toEqual(expectedBase);
+  });
+
+  test("removing cell shading does not materialize an explicit nil property", async () => {
+    const unshaded = {
+      ...TWO_ROW_TABLE,
+      rows: [
+        {
+          ...TWO_ROW_TABLE.rows[0],
+          cells: [
+            { content: "Clause", width: 2400 },
+            { content: "Owner", width: 2400 },
+          ],
+        },
+        TWO_ROW_TABLE.rows[1],
+      ],
+    } as const satisfies BodyItem;
+    const base = await buildBodySequenceDocx([INTRO, TWO_ROW_TABLE, OUTRO]);
+    const target = await buildBodySequenceDocx([INTRO, unshaded, OUTRO]);
+
+    const {
+      xml,
+      accepted,
+      target: expected,
+      rejected,
+      base: expectedBase,
+    } = await roundTrip(base, target);
+
+    expect(xml).not.toContain('<w:shd w:val="nil"/>');
     expect(accepted).toEqual(expected);
     expect(rejected).toEqual(expectedBase);
   });
@@ -427,6 +484,78 @@ const tableArbitrary = (): fc.Arbitrary<BodyItem> =>
   }));
 
 describe("table geometry round trip", () => {
+  test("pairs a repeated positional row while tracking its header change and surplus deletion", async () => {
+    const repeatedCells = [
+      buildCell({ column: 0, gridSpan: 1, content: "Alpha", shaded: false }),
+      buildCell({ column: 1, gridSpan: 1, content: "Beta", shaded: false }),
+      buildCell({ column: 2, gridSpan: 1, content: "Gamma", shaded: false }),
+    ];
+    const baseTable = {
+      kind: "table",
+      columnWidths: [...COLUMN_WIDTHS],
+      rows: [{ cells: repeatedCells, header: true }, { cells: repeatedCells }],
+    } as const satisfies BodyItem;
+    const targetTable = {
+      ...baseTable,
+      rows: [{ cells: repeatedCells }],
+    } as const satisfies BodyItem;
+    const base = await buildBodySequenceDocx([INTRO, baseTable, OUTRO]);
+    const target = await buildBodySequenceDocx([INTRO, targetTable, OUTRO]);
+
+    const result = await compareDocx(base, target, OPTIONS);
+    if (result.isErr()) throw result.error;
+    expect(result.value.verification.status).toBe("verified");
+    expect(result.value.changes.map(({ kind }) => kind).toSorted()).toEqual([
+      "table-format",
+      "table-row-delete",
+    ]);
+    const compared = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+    expect(projectTableGeometry(compared.storyTables({ view: "final" }))).toEqual(
+      projectTableGeometry((await FolioDocxReviewer.fromBuffer(target)).storyTables()),
+    );
+    expect(projectTableGeometry(compared.storyTables({ view: "original" }))).toEqual(
+      projectTableGeometry((await FolioDocxReviewer.fromBuffer(base)).storyTables()),
+    );
+  });
+
+  test("pairs a reformatted first row before inserting a differently spanned row", async () => {
+    const ordinaryCells = [
+      buildCell({ column: 0, gridSpan: 1, content: "Alpha", shaded: false }),
+      buildCell({ column: 1, gridSpan: 1, content: "Beta", shaded: false }),
+      buildCell({ column: 2, gridSpan: 1, content: "Gamma", shaded: false }),
+    ];
+    const spannedCells = [
+      buildCell({ column: 0, gridSpan: 2, content: "Delta", shaded: false }),
+      buildCell({ column: 2, gridSpan: 1, content: "Alpha", shaded: false }),
+    ];
+    const baseTable = {
+      kind: "table",
+      columnWidths: [...COLUMN_WIDTHS],
+      rows: [{ cells: ordinaryCells, header: true }],
+    } as const satisfies BodyItem;
+    const targetTable = {
+      ...baseTable,
+      rows: [{ cells: ordinaryCells }, { cells: spannedCells }],
+    } as const satisfies BodyItem;
+    const base = await buildBodySequenceDocx([INTRO, baseTable, OUTRO]);
+    const target = await buildBodySequenceDocx([INTRO, targetTable, OUTRO]);
+
+    const result = await compareDocx(base, target, OPTIONS);
+    if (result.isErr()) throw result.error;
+    expect(result.value.verification.status).toBe("verified");
+    expect(result.value.changes.map(({ kind }) => kind).toSorted()).toEqual([
+      "table-format",
+      "table-row-insert",
+    ]);
+    const compared = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+    expect(projectTableGeometry(compared.storyTables({ view: "final" }))).toEqual(
+      projectTableGeometry((await FolioDocxReviewer.fromBuffer(target)).storyTables()),
+    );
+    expect(projectTableGeometry(compared.storyTables({ view: "original" }))).toEqual(
+      projectTableGeometry((await FolioDocxReviewer.fromBuffer(base)).storyTables()),
+    );
+  });
+
   test("replaces a table whose paired cell spans cannot be revised in place", async () => {
     const baseTable = {
       kind: "table",
@@ -460,6 +589,48 @@ describe("table geometry round trip", () => {
     if (result.isErr()) {
       throw result.error;
     }
+    expect(result.value.verification.status).toBe("verified");
+    expect(result.value.changes.map(({ kind }) => kind)).toEqual(["table-delete", "table-insert"]);
+
+    const compared = await FolioDocxReviewer.fromBuffer(result.value.buffer);
+    expect(projectTableGeometry(compared.storyTables({ view: "final" }))).toEqual(
+      projectTableGeometry((await FolioDocxReviewer.fromBuffer(target)).storyTables()),
+    );
+    expect(projectTableGeometry(compared.storyTables({ view: "original" }))).toEqual(
+      projectTableGeometry((await FolioDocxReviewer.fromBuffer(base)).storyTables()),
+    );
+  });
+
+  test("replaces a table when no row survives to anchor its structural edits", async () => {
+    const ordinaryRow = (content: readonly [string, string, string]) => ({
+      cells: content.map((text, column) =>
+        buildCell({ column, gridSpan: 1, content: text, shaded: false }),
+      ),
+    });
+    const baseTable = {
+      kind: "table",
+      columnWidths: [...COLUMN_WIDTHS],
+      rows: [
+        ordinaryRow(["Beta", "Beta", "Gamma"]),
+        ordinaryRow(["Alpha", "Alpha", "Alpha"]),
+      ],
+    } as const satisfies BodyItem;
+    const targetTable = {
+      ...baseTable,
+      rows: [
+        {
+          cells: [
+            buildCell({ column: 0, gridSpan: 2, content: "Alpha", shaded: false }),
+            buildCell({ column: 2, gridSpan: 1, content: "Alpha", shaded: false }),
+          ],
+        },
+      ],
+    } as const satisfies BodyItem;
+    const base = await buildBodySequenceDocx([INTRO, baseTable, OUTRO]);
+    const target = await buildBodySequenceDocx([INTRO, targetTable, OUTRO]);
+
+    const result = await compareDocx(base, target, OPTIONS);
+    if (result.isErr()) throw result.error;
     expect(result.value.verification.status).toBe("verified");
     expect(result.value.changes.map(({ kind }) => kind)).toEqual(["table-delete", "table-insert"]);
 

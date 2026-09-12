@@ -898,6 +898,30 @@ describe("compareDocx", () => {
     ]);
   });
 
+  test("one persistent paragraph anchors shifted row insertions and deletions", async () => {
+    const script: EditScript = [
+      {
+        type: "insertTableRow",
+        blockIndex: 1,
+        cellTexts: ["Inserted A", "Inserted B", "Inserted C"],
+      },
+      { type: "deleteTableRow", blockIndex: 6 },
+      { type: "deleteTableRow", blockIndex: 2 },
+    ];
+
+    const result = await compareScriptAndExpectRoundTrip(
+      readFixture("upstream-with-tables.docx"),
+      script,
+    );
+
+    expect(kindsOf(result.changes).toSorted()).toEqual([
+      "table-row-delete",
+      "table-row-delete",
+      "table-row-insert",
+    ]);
+    expect(result.changes).toHaveLength(script.length);
+  });
+
   test("a move, rewrite, and deletion retain their independent structural owners", async () => {
     await compareScriptAndExpectRoundTrip(readFixture("upstream-complex-styles.docx"), [
       { type: "moveParagraph", blockIndex: 3, beforeBlockIndex: 5 },
