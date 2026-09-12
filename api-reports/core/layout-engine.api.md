@@ -101,7 +101,7 @@ export function createInitialSectionState(margins: PageMargins, pageSize: {
 
 // @public
 export function createPaginator(options: PaginatorOptions): {
-    pages: Page[];
+    readonly pages: Page[];
     states: PageState[];
     readonly columnWidth: number;
     readonly columns: {
