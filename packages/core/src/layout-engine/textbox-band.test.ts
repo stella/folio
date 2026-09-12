@@ -201,6 +201,27 @@ describe("topAndBottom band text box layout", () => {
     expect(paragraph?.y).toBe(MARGINS.top);
   });
 
+  test("positions column-relative text boxes in their active column", () => {
+    const first = withHorizontal(verticalBanner({ relativeTo: "paragraph" }), {
+      relativeTo: "column",
+      posOffset: 0,
+    });
+    first.id = "first-column-box";
+    first.width = 120;
+    const second = { ...first, id: "second-column-box" };
+    const columnMeasure = { ...boxMeasure, width: 120 };
+    const layout = layoutDocument(
+      [first, { kind: "columnBreak", id: "next-column" }, second],
+      [columnMeasure, { kind: "columnBreak" }, columnMeasure],
+      { ...OPTIONS, columns: { count: 2, gap: 24 } },
+    );
+    const boxes = layout.pages[0]?.fragments.filter(
+      (fragment): fragment is TextBoxFragment => fragment.kind === "textBox",
+    );
+
+    expect(boxes?.map(({ x }) => x)).toEqual([96, 420]);
+  });
+
   test("paragraph-owned text box positions from its host paragraph", () => {
     const host = para("host");
     const anchored = verticalBanner({ relativeTo: "paragraph", posOffset: EMU_PER_INCH });

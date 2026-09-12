@@ -1645,6 +1645,8 @@ function layoutTextBox(
           pageWidth: state.page.size.w,
           marginLeft: state.page.margins.left,
           marginRight: state.page.margins.right,
+          activeColumnLeft: paginator.getColumnX(state.columnIndex),
+          activeColumnWidth: paginator.columnWidth,
           boxWidth: measure.width,
         })
       : paginator.getColumnX(state.columnIndex);
@@ -1678,6 +1680,8 @@ function layoutTextBox(
           pageWidth: state.page.size.w,
           marginLeft: state.page.margins.left,
           marginRight: state.page.margins.right,
+          activeColumnLeft: paginator.getColumnX(state.columnIndex),
+          activeColumnWidth: paginator.columnWidth,
           boxWidth: measure.width,
         })
       : paginator.getColumnX(state.columnIndex);

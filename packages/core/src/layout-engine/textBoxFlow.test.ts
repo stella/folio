@@ -76,6 +76,8 @@ describe("bandFragmentX (eigenpal #694)", () => {
     pageWidth: 816,
     marginLeft: 96,
     marginRight: 96,
+    activeColumnLeft: 96,
+    activeColumnWidth: 624,
     boxWidth: 600,
   };
   const EMU_PER_INCH = 914_400; // 1in = 96px at 96 DPI = marginLeft.
@@ -116,6 +118,20 @@ describe("bandFragmentX (eigenpal #694)", () => {
     ).toBe(96);
     // margin frame: 96 + 96
     expect(bandFragmentX({ relativeTo: "margin", posOffset: EMU_PER_INCH }, geometry)).toBe(192);
+  });
+
+  test("resolves column-relative placement from the active column frame", () => {
+    const secondColumn = {
+      ...geometry,
+      activeColumnLeft: 420,
+      activeColumnWidth: 300,
+      boxWidth: 120,
+    };
+
+    expect(bandFragmentX({ relativeTo: "column", posOffset: EMU_PER_INCH }, secondColumn)).toBe(
+      516,
+    );
+    expect(bandFragmentX({ relativeTo: "column", align: "right" }, secondColumn)).toBe(600);
   });
 
   test("resolves left/right margin-strip frames", () => {
