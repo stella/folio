@@ -5,7 +5,7 @@ import type {
   FolioAIBlockParagraphProperties,
   FolioAIBlockTableLocation,
 } from "../../ai-edits/types";
-import type { TableGeometryPairing } from "../../ai-edits/table-geometry";
+import type { TableGeometryPairing } from "./table-geometry-program";
 import type { TextFormatting } from "../../types/document";
 import type { FolioContentTextSegment } from "../../compare/content";
 import {
@@ -18,6 +18,10 @@ import {
   type ResolvedDocxSourceOperand,
   type ResolvedDocxStorySnapshot,
 } from "./resolved-docx-story-snapshot";
+import {
+  resolvedDocxStoryComparisonPayload,
+  type ResolvedDocxStoryComparison,
+} from "./resolved-docx-story-comparison";
 
 const MAX_DOCX_COMPARISON_INSTRUCTIONS = 10_000;
 const MAX_DOCX_COMPARISON_GEOMETRY_PAIRINGS = 10_000;
@@ -323,6 +327,14 @@ export type DocxComparisonInstruction =
           | "matchTableGeometry";
       }
     >;
+
+/** Exact operands and immutable instructions transferred to preflight once. */
+export type ConsumedDocxComparisonProgram = {
+  readonly comparison: ResolvedDocxStoryComparison;
+  readonly sourceSnapshot: ResolvedDocxStorySnapshot;
+  readonly targetSnapshot: ResolvedDocxStorySnapshot;
+  readonly instructions: readonly DocxComparisonInstruction[];
+};
 
 const freezeRecursively = (value: unknown): void => {
   if (typeof value !== "object" || value === null || Object.isFrozen(value)) return;
@@ -1125,12 +1137,14 @@ const compileInstruction = (
  * dedicated comparison executor exactly once.
  */
 export class DocxComparisonProgram {
+  readonly #comparison: ResolvedDocxStoryComparison;
   readonly #instructions: readonly DocxComparisonInstruction[];
   readonly #sourceSnapshot: ResolvedDocxStorySnapshot;
+  readonly #targetSnapshot: ResolvedDocxStorySnapshot;
   #state: "ready" | "consumed" = "ready";
 
   private constructor(
-    sourceSnapshot: ResolvedDocxStorySnapshot,
+    comparison: ResolvedDocxStoryComparison,
     inputs: readonly DocxComparisonInstructionInput[],
   ) {
     if (inputs.length > MAX_DOCX_COMPARISON_INSTRUCTIONS) {
@@ -1139,31 +1153,36 @@ export class DocxComparisonProgram {
         actual: inputs.length,
       });
     }
-    this.#sourceSnapshot = sourceSnapshot;
+    const { baseSnapshot, targetSnapshot } = resolvedDocxStoryComparisonPayload(comparison);
+    this.#comparison = comparison;
+    this.#sourceSnapshot = baseSnapshot;
+    this.#targetSnapshot = targetSnapshot;
     this.#instructions = Object.freeze(
-      inputs.map((input) => compileInstruction(input, sourceSnapshot)),
+      inputs.map((input) => compileInstruction(input, baseSnapshot)),
     );
   }
 
   static create(
-    sourceSnapshot: ResolvedDocxStorySnapshot,
+    comparison: ResolvedDocxStoryComparison,
     inputs: readonly DocxComparisonInstructionInput[],
   ): DocxComparisonProgram {
-    return new DocxComparisonProgram(sourceSnapshot, inputs);
+    return new DocxComparisonProgram(comparison, inputs);
   }
 
   get size(): number {
     return this.#instructions.length;
   }
 
-  consume(sourceSnapshot: ResolvedDocxStorySnapshot): readonly DocxComparisonInstruction[] {
+  consume(): ConsumedDocxComparisonProgram {
     if (this.#state !== "ready") {
       return panic("A DOCX comparison program was consumed more than once");
     }
-    if (sourceSnapshot !== this.#sourceSnapshot) {
-      return panic("A DOCX comparison program belongs to another story snapshot");
-    }
     this.#state = "consumed";
-    return this.#instructions;
+    return Object.freeze({
+      comparison: this.#comparison,
+      sourceSnapshot: this.#sourceSnapshot,
+      targetSnapshot: this.#targetSnapshot,
+      instructions: this.#instructions,
+    });
   }
 }

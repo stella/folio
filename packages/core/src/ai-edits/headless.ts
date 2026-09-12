@@ -47,7 +47,6 @@ import {
 import type { DocxComparisonProgram } from "../internal/compare/docx-program";
 import {
   createResolvedDocxStorySnapshot,
-  resolvedDocxTableNodes,
   type ResolvedDocxStorySnapshot,
 } from "../internal/compare/resolved-docx-story-snapshot";
 import {
@@ -464,8 +463,6 @@ type FolioDocxReviewedProjection = {
 
 type FolioPrepareDocxComparisonOptions = {
   readonly story: FolioEditableDocumentStoryHandle;
-  readonly snapshot: ResolvedDocxStorySnapshot;
-  readonly target: ResolvedDocxStorySnapshot;
   readonly program: DocxComparisonProgram;
 };
 
@@ -859,7 +856,9 @@ export class FolioDocxReviewer {
     const document = this.documentFromStateSnapshot(projectedState);
     const stateByStoryKey = new Map<string, EditorState>([
       ["main", mainState],
-      ...secondaryStoryStates.map(({ handle, state }) => [editableStoryKey(handle), state] as const),
+      ...secondaryStoryStates.map(
+        ({ handle, state }) => [editableStoryKey(handle), state] as const,
+      ),
     ]);
     return {
       stories: this.listStoryHandlesInternal().map((handle) => {
@@ -928,17 +927,10 @@ export class FolioDocxReviewer {
 
   private prepareComparisonStoryInternal({
     story,
-    snapshot,
-    target,
     program,
   }: FolioPrepareDocxComparisonOptions): PreparedDocxComparison {
     const state = this.requireEditableStoryState(story);
-    return preflightDocxComparisonProgram({
-      state,
-      snapshot,
-      targetTables: resolvedDocxTableNodes(target),
-      program,
-    });
+    return preflightDocxComparisonProgram({ state, program });
   }
 
   private commitComparisonStoryInternal({

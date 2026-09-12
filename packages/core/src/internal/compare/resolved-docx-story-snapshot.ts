@@ -70,12 +70,8 @@ import {
   type OwnedContentSnapshot,
 } from "./owned-content-snapshot";
 
-const RESOLVED_DOCX_STORY_SNAPSHOT_BRAND: unique symbol = Symbol(
-  "resolved-docx-story-snapshot",
-);
-const RESOLVED_DOCX_SOURCE_OPERAND_BRAND: unique symbol = Symbol(
-  "resolved-docx-source-operand",
-);
+const RESOLVED_DOCX_STORY_SNAPSHOT_BRAND: unique symbol = Symbol("resolved-docx-story-snapshot");
+const RESOLVED_DOCX_SOURCE_OPERAND_BRAND: unique symbol = Symbol("resolved-docx-source-operand");
 
 /**
  * A private point-in-time projection owned by Folio's DOCX adapter.
@@ -114,10 +110,7 @@ type ResolvedDocxAuthoredRunProjection =
   | { readonly status: "exact"; readonly runs: readonly DocxAuthoredRun[] }
   | { readonly status: "unsupported"; readonly reason: "live-text-mismatch" };
 
-const payloadBySnapshot = new WeakMap<
-  ResolvedDocxStorySnapshot,
-  ResolvedDocxStoryPayload
->();
+const payloadBySnapshot = new WeakMap<ResolvedDocxStorySnapshot, ResolvedDocxStoryPayload>();
 const payloadBySourceOperand = new WeakMap<
   ResolvedDocxSourceOperand,
   ResolvedDocxSourceOperandPayload
@@ -217,12 +210,7 @@ type InlineProjection = {
   textLength: number;
 };
 
-type InlineFieldDisposition =
-  | "nested"
-  | "resource"
-  | "semantic"
-  | "transport"
-  | "unsupported";
+type InlineFieldDisposition = "nested" | "resource" | "semantic" | "transport" | "unsupported";
 type InlineFieldDescriptor<Field extends string> = {
   readonly field: Field;
   readonly disposition: InlineFieldDisposition;
@@ -321,8 +309,14 @@ const SDT_PROPERTY_FIELD_DESCRIPTORS = Object.freeze({
   checked: Object.freeze({ field: "checked", disposition: "semantic" }),
   rawPropertiesXml: Object.freeze({ field: "rawPropertiesXml", disposition: "unsupported" }),
   rawEndPropertiesXml: Object.freeze({ field: "rawEndPropertiesXml", disposition: "unsupported" }),
-  rawSdtChildrenBeforeContent: Object.freeze({ field: "rawSdtChildrenBeforeContent", disposition: "unsupported" }),
-  rawSdtChildrenAfterContent: Object.freeze({ field: "rawSdtChildrenAfterContent", disposition: "unsupported" }),
+  rawSdtChildrenBeforeContent: Object.freeze({
+    field: "rawSdtChildrenBeforeContent",
+    disposition: "unsupported",
+  }),
+  rawSdtChildrenAfterContent: Object.freeze({
+    field: "rawSdtChildrenAfterContent",
+    disposition: "unsupported",
+  }),
 } as const satisfies TotalInlineFieldDescriptors<SdtProperties>);
 
 const MATH_FIELD_DESCRIPTORS = Object.freeze({
@@ -353,10 +347,8 @@ const descriptorSemanticProjection = (
   return projected;
 };
 
-const samePropertySet = (
-  left: FolioContentPropertySet,
-  right: FolioContentPropertySet,
-): boolean => JSON.stringify(left) === JSON.stringify(right);
+const samePropertySet = (left: FolioContentPropertySet, right: FolioContentPropertySet): boolean =>
+  JSON.stringify(left) === JSON.stringify(right);
 
 const appendRunText = (
   projection: InlineProjection,
@@ -389,16 +381,12 @@ const formattingSignature = (formatting: TextFormatting | undefined): unknown =>
   docxTextFormattingProperties(formatting);
 
 const runHasPageBreak = (run: Run): boolean =>
-  run.content.some(
-    (content) => content.type === "break" && content.breakType === "page",
-  );
+  run.content.some((content) => content.type === "break" && content.breakType === "page");
 
 const fieldHasStructuredProjection = (field: SimpleField | ComplexField): boolean =>
   field.type === "simpleField"
     ? field.content.some((content) =>
-        content.type === "hyperlink"
-          ? true
-          : runHasPageBreak(content),
+        content.type === "hyperlink" ? true : runHasPageBreak(content),
       )
     : field.fieldResult.some(runHasPageBreak);
 
@@ -459,10 +447,7 @@ const visitRunContent = (
       projection.unsupportedFields.add("inline.drawing");
       projection.structure.push({
         type: "drawing",
-        presentation: descriptorSemanticProjection(
-          content.image,
-          IMAGE_FIELD_DESCRIPTORS,
-        ),
+        presentation: descriptorSemanticProjection(content.image, IMAGE_FIELD_DESCRIPTORS),
         offset: projection.textLength,
       });
       return;
@@ -472,20 +457,14 @@ const visitRunContent = (
         projection.textBoxes.push(content.shape);
         projection.structure.push({
           type: "textBoxAnchor",
-          presentation: descriptorSemanticProjection(
-            content.shape,
-            SHAPE_FIELD_DESCRIPTORS,
-          ),
+          presentation: descriptorSemanticProjection(content.shape, SHAPE_FIELD_DESCRIPTORS),
           offset: projection.textLength,
         });
         return;
       }
       projection.structure.push({
         type: "shape",
-        presentation: descriptorSemanticProjection(
-          content.shape,
-          SHAPE_FIELD_DESCRIPTORS,
-        ),
+        presentation: descriptorSemanticProjection(content.shape, SHAPE_FIELD_DESCRIPTORS),
         offset: projection.textLength,
       });
       return;
@@ -544,10 +523,7 @@ const visitHyperlink = (
 ): void => {
   projection.structure.push({
     type: "hyperlink",
-    presentation: descriptorSemanticProjection(
-      hyperlink,
-      HYPERLINK_FIELD_DESCRIPTORS,
-    ),
+    presentation: descriptorSemanticProjection(hyperlink, HYPERLINK_FIELD_DESCRIPTORS),
     offset: projection.textLength,
   });
   if (hyperlink.rId !== undefined && hyperlink.href === undefined) {
@@ -578,9 +554,7 @@ const visitField = (
     type: field.type,
     presentation: descriptorSemanticProjection(
       field,
-      field.type === "simpleField"
-        ? SIMPLE_FIELD_DESCRIPTORS
-        : COMPLEX_FIELD_DESCRIPTORS,
+      field.type === "simpleField" ? SIMPLE_FIELD_DESCRIPTORS : COMPLEX_FIELD_DESCRIPTORS,
     ),
     structured,
     offset: projection.textLength,
@@ -696,10 +670,7 @@ const visitInlineSdt = (
         projection.unsupportedFields.add("inline.math");
         projection.structure.push({
           type: "math",
-          presentation: descriptorSemanticProjection(
-            content,
-            MATH_FIELD_DESCRIPTORS,
-          ),
+          presentation: descriptorSemanticProjection(content, MATH_FIELD_DESCRIPTORS),
           offset: projection.textLength,
         });
         break;
@@ -764,7 +735,9 @@ const projectParagraphInline = (
         projection.unsupportedFields.add(`inline.${content.type}`);
         projection.structure.push({
           type: content.type,
-          ...(content.type === "bookmarkStart" || content.type === "moveFromRangeStart" || content.type === "moveToRangeStart"
+          ...(content.type === "bookmarkStart" ||
+          content.type === "moveFromRangeStart" ||
+          content.type === "moveToRangeStart"
             ? { name: content.name }
             : {}),
           offset: projection.textLength,
@@ -774,10 +747,7 @@ const projectParagraphInline = (
         projection.unsupportedFields.add("inline.math");
         projection.structure.push({
           type: "math",
-          presentation: descriptorSemanticProjection(
-            content,
-            MATH_FIELD_DESCRIPTORS,
-          ),
+          presentation: descriptorSemanticProjection(content, MATH_FIELD_DESCRIPTORS),
           offset: projection.textLength,
         });
         break;
@@ -805,11 +775,13 @@ const contentRuns = (
   const authoredIsExact = authored.map(({ text: runText }) => runText).join("") === text;
   const authoredRuns = authoredIsExact
     ? authored
-    : [{
-        text,
-        formatting: ownFormatting(undefined),
-        effectiveFormatting: ownFormatting(undefined),
-      }];
+    : [
+        {
+          text,
+          formatting: ownFormatting(undefined),
+          effectiveFormatting: ownFormatting(undefined),
+        },
+      ];
   const boundaries = new Set<number>([0, text.length]);
   let offset = 0;
   for (const run of authoredRuns) {
@@ -828,8 +800,7 @@ const contentRuns = (
       authoredIndex++;
       authoredEnd += authoredRuns[authoredIndex]?.text.length ?? 0;
     }
-    const authoredFormatting =
-      authoredRuns[authoredIndex]?.formatting ?? ownFormatting(undefined);
+    const authoredFormatting = authoredRuns[authoredIndex]?.formatting ?? ownFormatting(undefined);
     const effectiveFormatting = authoredRuns[authoredIndex]?.effectiveFormatting;
     content.push({
       text: text.slice(start, end),
@@ -959,8 +930,7 @@ const projectLiveParagraph = (
       extraRunFormatting: context.tableRunFormatting,
     }),
     isTocParagraph:
-      tableOfContentsStyleLevel({ styleId, ...(styleName ? { styleName } : {}) }) !==
-      undefined,
+      tableOfContentsStyleLevel({ styleId, ...(styleName ? { styleName } : {}) }) !== undefined,
   });
   const inline = projectParagraphInline(paragraph, (formatting, fieldType) =>
     ownFormatting(
@@ -984,7 +954,12 @@ const projectLiveParagraph = (
       { blockId: id },
     );
   }
-  if (!sameStructuralBoundaries(inline.structuralBoundaries, operationBlock.structuralBoundaries ?? [])) {
+  if (
+    !sameStructuralBoundaries(
+      inline.structuralBoundaries,
+      operationBlock.structuralBoundaries ?? [],
+    )
+  ) {
     return panic("The live DOCX inline structure disagrees with its exact PM projection", {
       blockId: id,
     });
@@ -1033,10 +1008,7 @@ const projectLiveParagraph = (
   }
   builder.projected.push({
     identity: {
-      type:
-        folioAIBlockIdStability(operationBlock) === "stable"
-          ? "persistent-hint"
-          : "positional",
+      type: folioAIBlockIdStability(operationBlock) === "stable" ? "persistent-hint" : "positional",
       id,
     },
     kind: paragraphKind(paragraph, presentation.effective, headingLevel),
@@ -1074,10 +1046,7 @@ const projectLiveParagraph = (
     containerPath: context.containerPath,
   });
   builder.authoredRunsByBlockId.set(id, runs.authored);
-  builder.unsupportedFieldsByBlockId.set(
-    id,
-    Object.freeze([...unsupportedFields].toSorted()),
-  );
+  builder.unsupportedFieldsByBlockId.set(id, Object.freeze([...unsupportedFields].toSorted()));
   builder.consumedBlockIds.add(id);
   return inline.textBoxes;
 };
@@ -1144,11 +1113,7 @@ const visitBlocks = (
   }
 };
 
-const visitTable = (
-  table: Table,
-  context: WalkContext,
-  builder: ProjectionBuilder,
-): void => {
+const visitTable = (table: Table, context: WalkContext, builder: ProjectionBuilder): void => {
   const tableIndex = builder.nextTableIndex++;
   const outerTableIndex = context.table?.outerTableIndex ?? tableIndex;
   const resolveTableCellPresentation = createTableCellPresentationResolver({
@@ -1229,11 +1194,7 @@ export const createResolvedDocxStorySnapshot = ({
     styleEngine: createStyleEngine(document.package.styles),
     nextTableIndex: 0,
   };
-  visitBlocks(
-    content,
-    { containerPath: [], containerTopology: [] },
-    builder,
-  );
+  visitBlocks(content, { containerPath: [], containerTopology: [] }, builder);
   if (
     builder.projected.length !== operationSnapshot.blocks.length ||
     operationSnapshot.blocks.some(
@@ -1280,6 +1241,11 @@ export const resolvedDocxContentSnapshot = (
   snapshot: ResolvedDocxStorySnapshot,
 ): OwnedContentSnapshot => payloadOf(snapshot).contentSnapshot;
 
+/** @internal Exact story handle captured with this canonical projection. */
+export const resolvedDocxStoryHandle = (
+  snapshot: ResolvedDocxStorySnapshot,
+): FolioDocumentStoryHandle => payloadOf(snapshot).story;
+
 /** @internal Canonical owned blocks, without repeating public descriptor capture. */
 export const resolvedDocxContentBlocks = (
   snapshot: ResolvedDocxStorySnapshot,
@@ -1308,8 +1274,7 @@ export const resolvedDocxSourceOperandBlock = (
   snapshot: ResolvedDocxStorySnapshot,
 ): FolioContentBlock => {
   const payload =
-    payloadBySourceOperand.get(source) ??
-    panic("A DOCX source operand was not created by Folio");
+    payloadBySourceOperand.get(source) ?? panic("A DOCX source operand was not created by Folio");
   if (payload.snapshot !== snapshot) {
     return panic("A DOCX source operand belongs to another story snapshot");
   }
@@ -1320,10 +1285,8 @@ export const resolvedDocxSourceOperandBlock = (
 export const resolvedDocxSourceOperandSnapshot = (
   source: ResolvedDocxSourceOperand,
 ): ResolvedDocxStorySnapshot =>
-  (
-    payloadBySourceOperand.get(source) ??
-    panic("A DOCX source operand was not created by Folio")
-  ).snapshot;
+  (payloadBySourceOperand.get(source) ?? panic("A DOCX source operand was not created by Folio"))
+    .snapshot;
 
 /** @internal Operation anchors bound to the same live projection. */
 export const resolvedDocxOperationSnapshot = (
@@ -1331,9 +1294,8 @@ export const resolvedDocxOperationSnapshot = (
 ): FolioAIEditSnapshot => payloadOf(snapshot).operationSnapshot;
 
 /** @internal Exact immutable PM source identity for stale-state refusal. */
-export const resolvedDocxSourceDocument = (
-  snapshot: ResolvedDocxStorySnapshot,
-): PMNode => payloadOf(snapshot).sourceDocument;
+export const resolvedDocxSourceDocument = (snapshot: ResolvedDocxStorySnapshot): PMNode =>
+  payloadOf(snapshot).sourceDocument;
 
 /** @internal Target table templates captured with the canonical projection. */
 export const resolvedDocxTableNodes = (
@@ -1370,8 +1332,7 @@ export const resolvedDocxAuthoredRunsForBlock = (
 export const resolvedDocxHasExactAuthoredRuns = (
   snapshot: ResolvedDocxStorySnapshot,
   block: FolioContentBlock,
-): boolean =>
-  payloadOf(snapshot).authoredRunsByBlockId.get(block.identity.id)?.status === "exact";
+): boolean => payloadOf(snapshot).authoredRunsByBlockId.get(block.identity.id)?.status === "exact";
 
 /** @internal Explicit projection gaps that prevent a complete DOCX proof. */
 export const resolvedDocxUnsupportedProjectionFields = (
@@ -1379,10 +1340,12 @@ export const resolvedDocxUnsupportedProjectionFields = (
   block: FolioContentBlock,
 ): readonly string[] => {
   resolvedDocxSourceOperand(snapshot, block);
-  return payloadOf(snapshot).unsupportedFieldsByBlockId.get(block.identity.id) ??
+  return (
+    payloadOf(snapshot).unsupportedFieldsByBlockId.get(block.identity.id) ??
     panic("A canonical DOCX block has no projection-support disposition", {
       blockId: block.identity.id,
-    });
+    })
+  );
 };
 
 /** @internal Authored run projection rebased onto one canonical UTF-16 range. */

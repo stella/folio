@@ -47,19 +47,21 @@ import { projectTableGeometry } from "../internal/compare/table-geometry-program
 import { storyTablesOf } from "../ai-edits/snapshot";
 import {
   resolvedDocxContentBlocks,
-  resolvedDocxContentSnapshot,
   resolvedDocxNumberingReferenceKeys,
   resolvedDocxOperationSnapshot,
   type ResolvedDocxStorySnapshot,
 } from "../internal/compare/resolved-docx-story-snapshot";
+import {
+  compareResolvedDocxStoryPair,
+  createResolvedDocxStoryPair,
+  resolvedDocxStoryComparisonPayload,
+  resolvedDocxStoryPairPayload,
+  type ResolvedDocxStoryComparison,
+  type ResolvedDocxStoryPair,
+} from "../internal/compare/resolved-docx-story-comparison";
 import type { WordDiffGranularity } from "./text-diff";
 import { pairFolioDocumentStories } from "../document-stories";
-import {
-  compareContentStories,
-  createContentComparisonWorkSession,
-  type FolioContentComparison,
-  FolioContentComparisonSessionError,
-} from "./content";
+import { createContentComparisonWorkSession, FolioContentComparisonSessionError } from "./content";
 import { planStoryCompare, type CompareStoryPlan } from "./plan";
 import { withFixedPackageDates } from "./reproducible-package";
 import {
@@ -180,12 +182,7 @@ const compareNumbering = (
 };
 
 /** Two stories the comparison will align against one another. */
-export type ComparedStoryPair = {
-  baseStory: FolioDocumentStoryHandle;
-  targetStory: FolioDocumentStoryHandle;
-  baseSnapshot: ResolvedDocxStorySnapshot;
-  targetSnapshot: ResolvedDocxStorySnapshot;
-};
+export type ComparedStoryPair = ResolvedDocxStoryPair;
 
 /** Everything the later stages need, and nothing they have to re-derive. */
 export type ParsedComparison = {
@@ -302,7 +299,7 @@ export const parseComparison = async (
       unsupported.push({ reason: "story-not-editable", baseStory, targetStory });
       continue;
     }
-    pairs.push({ baseStory, targetStory, baseSnapshot, targetSnapshot });
+    pairs.push(createResolvedDocxStoryPair({ baseSnapshot, targetSnapshot }));
   }
 
   return Result.ok({
@@ -323,8 +320,7 @@ export const parseComparison = async (
 
 /** One story's canonical comparison and its transport lowering. */
 export type PlannedStoryComparison = {
-  pair: ComparedStoryPair;
-  comparison: FolioContentComparison;
+  comparison: ResolvedDocxStoryComparison;
   plan: CompareStoryPlan;
 };
 
@@ -341,46 +337,29 @@ export const planComparison = ({
 > => {
   const planned: PlannedStoryComparison[] = [];
   const workSession = createContentComparisonWorkSession({ granularity });
-  const compared = compareContentStories({
-    workSession,
-    stories: pairs.map((pair) => ({
-      key: pair,
-      base: resolvedDocxContentSnapshot(pair.baseSnapshot),
-      revised: resolvedDocxContentSnapshot(pair.targetSnapshot),
-    })),
-  });
-  if (compared.isErr()) {
-    if (compared.error.cause instanceof FolioContentComparisonSessionError) {
-      return panic("The DOCX comparison misused its private content work session", {
-        cause: compared.error.cause,
-      });
-    }
-    const pair = pairs[compared.error.storyIndex];
-    if (!pair) {
-      return panic("A content comparison failure named a missing story pair", {
-        storyIndex: compared.error.storyIndex,
-      });
-    }
-    return Result.err(
-      new CompareDocxContentComparisonError({
-        message: "A DOCX story did not satisfy the bounded content comparison contract.",
-        story: pair.baseStory,
-        cause: compared.error.cause,
-      }),
-    );
-  }
   let remainingOperations = MAX_COMPARE_OPERATIONS;
-  for (const { key: pair, comparison } of compared.value) {
-    const result = planStoryCompare({
-      story: pair.baseStory,
-      baseSnapshot: pair.baseSnapshot,
-      targetSnapshot: pair.targetSnapshot,
-      comparison,
-      maxOperations: remainingOperations,
-    });
+  for (const pair of pairs) {
+    const compared = compareResolvedDocxStoryPair({ pair, workSession });
+    if (compared.isErr()) {
+      if (compared.error instanceof FolioContentComparisonSessionError) {
+        return panic("The DOCX comparison misused its private content work session", {
+          cause: compared.error,
+        });
+      }
+      const { baseStory } = resolvedDocxStoryPairPayload(pair);
+      return Result.err(
+        new CompareDocxContentComparisonError({
+          message: "A DOCX story did not satisfy the bounded content comparison contract.",
+          story: baseStory,
+          cause: compared.error,
+        }),
+      );
+    }
+    const comparison = compared.value;
+    const result = planStoryCompare({ comparison, maxOperations: remainingOperations });
     if (result.isErr()) return Result.err(result.error);
     const plan = result.value;
-    planned.push({ pair, comparison, plan });
+    planned.push({ comparison, plan });
     remainingOperations -= plan.program.size;
   }
   return Result.ok(planned);
@@ -427,17 +406,17 @@ export const applyComparison = (
   const comparisonAccess = getFolioDocxComparisonAccess(reviewer);
   const changes: CompareChange[] = [...numberingChanges];
   const failures: CompareVerificationFailure[] = [];
-  const preparedStories = planned.map(({ pair, comparison, plan }) => ({
-    pair,
-    comparison,
-    plan,
-    prepared: comparisonAccess.prepareStoryProgram({
-      story: pair.baseStory,
-      snapshot: pair.baseSnapshot,
-      target: pair.targetSnapshot,
-      program: plan.program,
-    }),
-  }));
+  const preparedStories = planned.map(({ comparison, plan }) => {
+    const pair = resolvedDocxStoryComparisonPayload(comparison);
+    return {
+      pair,
+      plan,
+      prepared: comparisonAccess.prepareStoryProgram({
+        story: pair.baseStory,
+        program: plan.program,
+      }),
+    };
+  });
   const transportUnsupported: CompareUnsupportedPart[] = preparedStories.flatMap(
     ({ pair, prepared }) =>
       prepared.issues.map(({ instructionIndex, reason, blockId }) => ({

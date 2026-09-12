@@ -44,7 +44,7 @@ import {
   resolvedDocxOperationSnapshot,
   resolvedDocxSourceDocument,
   resolvedDocxSourceOperandBlock,
-  type ResolvedDocxStorySnapshot,
+  resolvedDocxTableNodes,
 } from "./resolved-docx-story-snapshot";
 
 export const DOCX_COMPARISON_PREFLIGHT_REASONS = COMPARE_DOCX_PREFLIGHT_REASONS;
@@ -460,17 +460,14 @@ const ownPreparedDocxComparison = ({
 /** Resolve every instruction against one immutable story before any transaction exists. */
 export const preflightDocxComparisonProgram = ({
   state,
-  snapshot,
-  targetTables,
   program,
 }: {
   readonly state: EditorState;
-  readonly snapshot: ResolvedDocxStorySnapshot;
-  readonly targetTables: ReadonlyMap<number, PMNode>;
   readonly program: DocxComparisonProgram;
 }): PreparedDocxComparison => {
+  const { sourceSnapshot: snapshot, targetSnapshot, instructions } = program.consume();
   const operationSnapshot = resolvedDocxOperationSnapshot(snapshot);
-  const instructions = program.consume(snapshot);
+  const targetTables = resolvedDocxTableNodes(targetSnapshot);
   if (state.doc !== resolvedDocxSourceDocument(snapshot)) {
     return ownPreparedDocxComparison({
       state,
@@ -1126,7 +1123,8 @@ const markParagraphDeletion = ({
     date,
     kind,
   });
-  const node = text.transaction.doc.nodeAt(source.from) ??
+  const node =
+    text.transaction.doc.nodeAt(source.from) ??
     panic("A preflighted paragraph deletion lost its source");
   let nextRevisionId = text.nextRevisionId;
   const revisionIds = [...text.revisionIds];
@@ -1549,7 +1547,8 @@ export const executePreflightedDocxComparison = ({
           info: { id: paragraphRevisionId, author, date: revisionStamp.date },
         });
         instructionRevisionIds.push(paragraphRevisionId);
-        const carrier = tr.doc.nodeAt(instruction.source.from) ??
+        const carrier =
+          tr.doc.nodeAt(instruction.source.from) ??
           panic("A preflighted terminal move lost its paragraph-mark carrier");
         const propertyRevisionIds: number[] = [];
         tr = applyBlockParagraphProperties({

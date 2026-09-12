@@ -14,12 +14,15 @@ import type { FolioAIBlock } from "../ai-edits/types";
 import {
   createResolvedDocxStorySnapshot,
   resolvedDocxContentBlocks,
-  resolvedDocxContentSnapshot,
   resolvedDocxSourceOperand,
   resolvedDocxSourceOperandBlock,
   type ResolvedDocxSourceOperand,
   type ResolvedDocxStorySnapshot,
 } from "../internal/compare/resolved-docx-story-snapshot";
+import {
+  compareResolvedDocxStoryPair,
+  createResolvedDocxStoryPair,
+} from "../internal/compare/resolved-docx-story-comparison";
 import { headerFooterToProseDoc, toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { BlockContent, Document, Paragraph, Table, TableCell } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
@@ -102,10 +105,7 @@ const paragraphOf = ({
 }: FolioAIBlock): Paragraph => ({
   type: "paragraph",
   paraId: id,
-  content:
-    text.length === 0
-      ? []
-      : [{ type: "run", content: [{ type: "text", text }] }],
+  content: text.length === 0 ? [] : [{ type: "run", content: [{ type: "text", text }] }],
   ...((kind === "heading" ||
     styleId !== undefined ||
     directAlignment !== undefined ||
@@ -167,7 +167,7 @@ const tableOf = (blocks: readonly FolioAIBlock[]): Table => {
 const documentOf = (blocks: readonly FolioAIBlock[]): Document => {
   const template = createEmptyDocument();
   const content: BlockContent[] = [];
-  for (let index = 0; index < blocks.length; ) {
+  for (let index = 0; index < blocks.length;) {
     const current = blocks[index];
     if (!current) break;
     if (!current.table) {
@@ -192,10 +192,7 @@ const documentOf = (blocks: readonly FolioAIBlock[]): Document => {
   };
 };
 
-const resolvedDocumentSnapshotOf = (
-  projectedDocument: Document,
-  story = MAIN_STORY,
-) => {
+const resolvedDocumentSnapshotOf = (projectedDocument: Document, story = MAIN_STORY) => {
   const document =
     story.type === "main"
       ? projectedDocument
@@ -219,10 +216,7 @@ const resolvedDocumentSnapshotOf = (
   const sourceDocument =
     story.type === "main"
       ? toProseDoc(document, conversionOptions)
-      : headerFooterToProseDoc(
-          projectedDocument.package.document.content,
-          conversionOptions,
-        );
+      : headerFooterToProseDoc(projectedDocument.package.document.content, conversionOptions);
   const snapshot = createResolvedDocxStorySnapshot({
     document,
     story,
@@ -232,26 +226,26 @@ const resolvedDocumentSnapshotOf = (
   return snapshot;
 };
 
-const resolvedSnapshotOf = (
-  blocks: readonly FolioAIBlock[],
-  story = MAIN_STORY,
-) => resolvedDocumentSnapshotOf(documentOf(blocks), story);
+const resolvedSnapshotOf = (blocks: readonly FolioAIBlock[], story = MAIN_STORY) =>
+  resolvedDocumentSnapshotOf(documentOf(blocks), story);
+
+const comparisonOf = (
+  baseSnapshot: ResolvedDocxStorySnapshot,
+  targetSnapshot: ResolvedDocxStorySnapshot,
+) => {
+  const compared = compareResolvedDocxStoryPair({
+    pair: createResolvedDocxStoryPair({ baseSnapshot, targetSnapshot }),
+    workSession: createContentComparisonWorkSession(),
+  });
+  if (compared.isErr()) throw compared.error;
+  return compared.value;
+};
 
 const planOf = (base: readonly FolioAIBlock[], target: readonly FolioAIBlock[]) => {
   const baseSnapshot = resolvedSnapshotOf(base);
   const targetSnapshot = resolvedSnapshotOf(target);
-  const captured = createContentComparisonWorkSession().captureComparison({
-    base: resolvedDocxContentSnapshot(baseSnapshot),
-    revised: resolvedDocxContentSnapshot(targetSnapshot),
-  });
-  if (captured.isErr()) throw captured.error;
-  const comparison = captured.value.compare();
-  if (comparison.isErr()) throw comparison.error;
   const plan = planStoryCompare({
-    story: MAIN_STORY,
-    baseSnapshot,
-    targetSnapshot,
-    comparison: comparison.value,
+    comparison: comparisonOf(baseSnapshot, targetSnapshot),
     maxOperations: 1000,
   });
   if (plan.isErr()) throw plan.error;
@@ -267,7 +261,7 @@ type TestCompareStoryPlan = CompareStoryPlan & {
 
 /** Content transport only; table-property pairing has its own focused suite. */
 const contentInstructionsOf = (plan: TestCompareStoryPlan) =>
-  plan.program.consume(plan.baseSnapshot).filter(({ type }) => type !== "matchTableGeometry");
+  plan.program.consume().instructions.filter(({ type }) => type !== "matchTableGeometry");
 
 const sourceOperandOf = (
   plan: TestCompareStoryPlan,
@@ -280,10 +274,8 @@ const sourceOperandOf = (
   return resolvedDocxSourceOperand(plan.baseSnapshot, block);
 };
 
-const sourceBlockIdOf = (
-  plan: TestCompareStoryPlan,
-  source: ResolvedDocxSourceOperand,
-): string => resolvedDocxSourceOperandBlock(source, plan.baseSnapshot).identity.id;
+const sourceBlockIdOf = (plan: TestCompareStoryPlan, source: ResolvedDocxSourceOperand): string =>
+  resolvedDocxSourceOperandBlock(source, plan.baseSnapshot).identity.id;
 
 const RELOCATED =
   "The Supplier shall deliver the Goods to the named place within thirty days of the order.";
@@ -308,18 +300,8 @@ test("unsupported live paragraph properties reach the typed lowering refusal", (
   targetParagraph.formatting = { suppressLineNumbers: true };
   const baseSnapshot = resolvedDocumentSnapshotOf(baseDocument);
   const targetSnapshot = resolvedDocumentSnapshotOf(targetDocument);
-  const captured = createContentComparisonWorkSession().captureComparison({
-    base: resolvedDocxContentSnapshot(baseSnapshot),
-    revised: resolvedDocxContentSnapshot(targetSnapshot),
-  });
-  if (captured.isErr()) throw captured.error;
-  const comparison = captured.value.compare();
-  if (comparison.isErr()) throw comparison.error;
   const planned = planStoryCompare({
-    story: MAIN_STORY,
-    baseSnapshot,
-    targetSnapshot,
-    comparison: comparison.value,
+    comparison: comparisonOf(baseSnapshot, targetSnapshot),
     maxOperations: 1000,
   });
   if (planned.isErr()) throw planned.error;
@@ -692,18 +674,8 @@ describe("document-terminal paragraph carrier", () => {
     const story = { type: "header", relationshipId: "rId1" } as const;
     const baseSnapshot = resolvedSnapshotOf(base, story);
     const targetSnapshot = resolvedSnapshotOf(target, story);
-    const captured = createContentComparisonWorkSession().captureComparison({
-      base: resolvedDocxContentSnapshot(baseSnapshot),
-      revised: resolvedDocxContentSnapshot(targetSnapshot),
-    });
-    if (captured.isErr()) throw captured.error;
-    const comparison = captured.value.compare();
-    if (comparison.isErr()) throw comparison.error;
     const plan = planStoryCompare({
-      story,
-      baseSnapshot,
-      targetSnapshot,
-      comparison: comparison.value,
+      comparison: comparisonOf(baseSnapshot, targetSnapshot),
       maxOperations: 1000,
     });
     if (plan.isErr()) throw plan.error;

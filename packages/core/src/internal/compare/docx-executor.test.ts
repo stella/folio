@@ -18,11 +18,14 @@ import { DocxComparisonProgram, type DocxComparisonInstructionInput } from "./do
 import {
   createResolvedDocxStorySnapshot,
   resolvedDocxContentBlocks,
-  resolvedDocxContentSnapshot,
   resolvedDocxSourceOperand,
-  resolvedDocxTableNodes,
   type ResolvedDocxStorySnapshot,
 } from "./resolved-docx-story-snapshot";
+import {
+  compareResolvedDocxStoryPair,
+  createResolvedDocxStoryPair,
+  type ResolvedDocxStoryComparison,
+} from "./resolved-docx-story-comparison";
 
 const paragraphProperties = Object.freeze({
   styleId: null,
@@ -37,10 +40,7 @@ type IdentifiedParagraph = {
   readonly alignment?: "center" | "left" | "right";
 };
 
-type TestStoryHandle = Extract<
-  FolioDocumentStoryHandle,
-  { readonly type: "main" | "header" }
->;
+type TestStoryHandle = Extract<FolioDocumentStoryHandle, { readonly type: "main" | "header" }>;
 
 const stateFromCanonicalDocument = (doc: PMNode): EditorState => {
   const document = updateDocumentContent(createEmptyDocument(), doc);
@@ -106,6 +106,18 @@ const sourceBlockOf = (snapshot: ResolvedDocxStorySnapshot, blockIndex = 0) => {
   return block;
 };
 
+const comparisonOf = (
+  baseSnapshot: ResolvedDocxStorySnapshot,
+  targetSnapshot: ResolvedDocxStorySnapshot = baseSnapshot,
+): ResolvedDocxStoryComparison => {
+  const compared = compareResolvedDocxStoryPair({
+    pair: createResolvedDocxStoryPair({ baseSnapshot, targetSnapshot }),
+    workSession: createContentComparisonWorkSession(),
+  });
+  if (compared.isErr()) throw compared.error;
+  return compared.value;
+};
+
 const plannedComparisonOf = ({
   baseState,
   targetState,
@@ -117,18 +129,8 @@ const plannedComparisonOf = ({
 }) => {
   const baseSnapshot = resolvedSnapshotOf(baseState, story);
   const targetSnapshot = resolvedSnapshotOf(targetState, story);
-  const captured = createContentComparisonWorkSession().captureComparison({
-    base: resolvedDocxContentSnapshot(baseSnapshot),
-    revised: resolvedDocxContentSnapshot(targetSnapshot),
-  });
-  if (captured.isErr()) throw captured.error;
-  const comparison = captured.value.compare();
-  if (comparison.isErr()) throw comparison.error;
   const planned = planStoryCompare({
-    story,
-    baseSnapshot,
-    targetSnapshot,
-    comparison: comparison.value,
+    comparison: comparisonOf(baseSnapshot, targetSnapshot),
     maxOperations: 100,
   });
   if (planned.isErr()) throw planned.error;
@@ -418,15 +420,13 @@ describe("the dedicated DOCX comparison executor", () => {
     const state = stateWithParagraphs("old", "elsewhere");
     const snapshot = resolvedSnapshotOf(state);
     const changedState = stateWithParagraphs("old", "changed elsewhere");
-    const program = DocxComparisonProgram.create(snapshot, [
+    const program = DocxComparisonProgram.create(comparisonOf(snapshot), [
       replacement({ snapshot, targetText: "new" }),
       replacement({ snapshot, blockIndex: 1, targetText: "changed" }),
     ]);
 
     const prepared = preflightDocxComparisonProgram({
       state: changedState,
-      snapshot,
-      targetTables: new Map(),
       program,
     });
 
@@ -439,17 +439,40 @@ describe("the dedicated DOCX comparison executor", () => {
     expect(visibleTexts(changedState)).toEqual(["old", "changed elsewhere"]);
   });
 
+  test("refuses a structurally equal PM state that is not the captured source", () => {
+    const capturedState = stateWithParagraphs("old");
+    const snapshot = resolvedSnapshotOf(capturedState);
+    const structurallyEqualState = stateWithParagraphs("old");
+    expect(structurallyEqualState.doc.eq(capturedState.doc)).toBe(true);
+    expect(structurallyEqualState.doc).not.toBe(capturedState.doc);
+
+    const prepared = preflightDocxComparisonProgram({
+      state: structurallyEqualState,
+      program: DocxComparisonProgram.create(comparisonOf(snapshot), [
+        replacement({ snapshot, targetText: "new" }),
+      ]),
+    });
+
+    expect(prepared.supportedInstructionCount).toBe(0);
+    expect(prepared.issues).toEqual([
+      {
+        instructionIndex: 0,
+        instructionType: "replaceText",
+        reason: "source-expectation-mismatch",
+      },
+    ]);
+    expect(visibleTexts(structurallyEqualState)).toEqual(["old"]);
+  });
+
   test("executes once and returns receipts in canonical instruction order", () => {
     const state = stateWithParagraphs("left", "right");
     const snapshot = resolvedSnapshotOf(state);
-    const program = DocxComparisonProgram.create(snapshot, [
+    const program = DocxComparisonProgram.create(comparisonOf(snapshot), [
       replacement({ snapshot, targetText: "LEFT" }),
       replacement({ snapshot, blockIndex: 1, targetText: "RIGHT" }),
     ]);
     const prepared = preflightDocxComparisonProgram({
       state,
-      snapshot,
-      targetTables: new Map(),
       program,
     });
 
@@ -498,10 +521,8 @@ describe("the dedicated DOCX comparison executor", () => {
       });
       const prepared = preflightDocxComparisonProgram({
         state,
-        snapshot,
-        targetTables: new Map(),
         program: DocxComparisonProgram.create(
-          snapshot,
+          comparisonOf(snapshot),
           reverse ? [second, first] : [first, second],
         ),
       });
@@ -524,9 +545,7 @@ describe("the dedicated DOCX comparison executor", () => {
       const snapshot = resolvedSnapshotOf(state);
       const prepared = preflightDocxComparisonProgram({
         state,
-        snapshot,
-        targetTables: new Map(),
-        program: DocxComparisonProgram.create(snapshot, [
+        program: DocxComparisonProgram.create(comparisonOf(snapshot), [
           insertedParagraph(snapshot, position, "A"),
           insertedParagraph(snapshot, position, "B"),
           insertedParagraph(snapshot, position, "C"),
@@ -558,9 +577,7 @@ describe("the dedicated DOCX comparison executor", () => {
     );
     const prepared = preflightDocxComparisonProgram({
       state,
-      snapshot,
-      targetTables: new Map(),
-      program: DocxComparisonProgram.create(snapshot, instructions),
+      program: DocxComparisonProgram.create(comparisonOf(snapshot), instructions),
     });
     const executed = executePreflightedDocxComparison({
       state,
@@ -595,9 +612,7 @@ describe("the dedicated DOCX comparison executor", () => {
           instructions.splice(sourceSlot, 0, source);
           const prepared = preflightDocxComparisonProgram({
             state,
-            snapshot,
-            targetTables: new Map(),
-            program: DocxComparisonProgram.create(snapshot, instructions),
+            program: DocxComparisonProgram.create(comparisonOf(snapshot), instructions),
           });
           const executed = executePreflightedDocxComparison({
             state,
@@ -638,12 +653,10 @@ describe("the dedicated DOCX comparison executor", () => {
     const snapshot = resolvedSnapshotOf(state);
     const instruction = replacement({ snapshot, targetText: "new" });
     Reflect.set(instruction.range.sourceRuns[0]!.formatting, "bold", false);
-    const program = DocxComparisonProgram.create(snapshot, [instruction]);
+    const program = DocxComparisonProgram.create(comparisonOf(snapshot), [instruction]);
 
     const prepared = preflightDocxComparisonProgram({
       state,
-      snapshot,
-      targetTables: new Map(),
       program,
     });
     expect(prepared.supportedInstructionCount).toBe(0);
@@ -656,7 +669,7 @@ describe("the dedicated DOCX comparison executor", () => {
     const snapshot = resolvedSnapshotOf(state);
     const instruction = replacement({ snapshot, targetText: "new" });
     Reflect.set(instruction, "source", Object.freeze({ ...instruction.source }));
-    expect(() => DocxComparisonProgram.create(snapshot, [instruction])).toThrow(
+    expect(() => DocxComparisonProgram.create(comparisonOf(snapshot), [instruction])).toThrow(
       "was not created by Folio",
     );
     expect(visibleTexts(state)).toEqual(["old"]);
@@ -674,9 +687,7 @@ describe("the dedicated DOCX comparison executor", () => {
     });
     const prepared = preflightDocxComparisonProgram({
       state: duplicateState,
-      snapshot,
-      targetTables: new Map(),
-      program: DocxComparisonProgram.create(snapshot, [
+      program: DocxComparisonProgram.create(comparisonOf(snapshot), [
         replacement({ snapshot, targetText: "new" }),
       ]),
     });
@@ -696,15 +707,13 @@ describe("the dedicated DOCX comparison executor", () => {
       const gamma = { id: "C1000000", text: "Gamma", alignment: "center" } as const;
       const baseState = stateWithIdentifiedParagraphs(alpha, beta, gamma);
       const targetState = stateWithIdentifiedParagraphs(gamma, alpha, beta);
-      const { baseSnapshot, targetSnapshot, program } = plannedComparisonOf({
+      const { program } = plannedComparisonOf({
         baseState,
         targetState,
         story,
       });
       const prepared = preflightDocxComparisonProgram({
         state: baseState,
-        snapshot: baseSnapshot,
-        targetTables: resolvedDocxTableNodes(targetSnapshot),
         program,
       });
       expect(prepared.issues).toEqual([]);
@@ -737,14 +746,12 @@ describe("the dedicated DOCX comparison executor", () => {
     const gamma = { id: "C1000000", text: "Gamma" } as const;
     const baseState = stateWithIdentifiedParagraphs(alpha, beta, gamma);
     const targetState = stateWithIdentifiedParagraphs(beta, alpha, gamma);
-    const { baseSnapshot, targetSnapshot, program } = plannedComparisonOf({
+    const { program } = plannedComparisonOf({
       baseState,
       targetState,
     });
     const prepared = preflightDocxComparisonProgram({
       state: baseState,
-      snapshot: baseSnapshot,
-      targetTables: resolvedDocxTableNodes(targetSnapshot),
       program,
     });
     expect(prepared.issues).toEqual([]);
@@ -770,14 +777,12 @@ describe("the dedicated DOCX comparison executor", () => {
     const gamma = { id: "C1000000", text: "Gamma", alignment: "center" } as const;
     const baseState = stateWithTableCells([alpha, beta, gamma]);
     const targetState = stateWithTableCells([gamma, alpha, beta]);
-    const { baseSnapshot, targetSnapshot, program } = plannedComparisonOf({
+    const { program } = plannedComparisonOf({
       baseState,
       targetState,
     });
     const prepared = preflightDocxComparisonProgram({
       state: baseState,
-      snapshot: baseSnapshot,
-      targetTables: resolvedDocxTableNodes(targetSnapshot),
       program,
     });
     expect(prepared.issues).toEqual([]);
@@ -807,9 +812,7 @@ describe("the dedicated DOCX comparison executor", () => {
     const snapshot = resolvedSnapshotOf(state);
     const prepared = preflightDocxComparisonProgram({
       state,
-      snapshot,
-      targetTables: new Map(),
-      program: DocxComparisonProgram.create(snapshot, [
+      program: DocxComparisonProgram.create(comparisonOf(snapshot), [
         terminalMovedParagraph({ snapshot, predecessor: 0, source: 1, anchor: 0 }),
       ]),
     });
@@ -837,9 +840,7 @@ describe("the dedicated DOCX comparison executor", () => {
     const snapshot = resolvedSnapshotOf(state);
     const prepared = preflightDocxComparisonProgram({
       state,
-      snapshot,
-      targetTables: new Map(),
-      program: DocxComparisonProgram.create(snapshot, [
+      program: DocxComparisonProgram.create(comparisonOf(snapshot), [
         terminalMovedParagraph({ snapshot, predecessor: 1, source: 2, anchor: 0 }),
       ]),
     });
@@ -871,25 +872,13 @@ describe("the dedicated DOCX comparison executor", () => {
     );
     const baseSnapshot = resolvedSnapshotOf(baseState);
     const targetSnapshot = resolvedSnapshotOf(targetState);
-    const captured = createContentComparisonWorkSession().captureComparison({
-      base: resolvedDocxContentSnapshot(baseSnapshot),
-      revised: resolvedDocxContentSnapshot(targetSnapshot),
-    });
-    if (captured.isErr()) throw captured.error;
-    const comparison = captured.value.compare();
-    if (comparison.isErr()) throw comparison.error;
     const planned = planStoryCompare({
-      story: { type: "main" },
-      baseSnapshot,
-      targetSnapshot,
-      comparison: comparison.value,
+      comparison: comparisonOf(baseSnapshot, targetSnapshot),
       maxOperations: 100,
     });
     if (planned.isErr()) throw planned.error;
     const prepared = preflightDocxComparisonProgram({
       state: baseState,
-      snapshot: baseSnapshot,
-      targetTables: resolvedDocxTableNodes(targetSnapshot),
       program: planned.value.program,
     });
     expect(prepared.issues).toEqual([]);

@@ -31,6 +31,10 @@ import {
   docxTableLocationFromContent,
 } from "../internal/compare/docx-paragraph-transport";
 import {
+  resolvedDocxStoryComparisonPayload,
+  type ResolvedDocxStoryComparison,
+} from "../internal/compare/resolved-docx-story-comparison";
+import {
   resolvedDocxAuthoredRunsForBlock,
   resolvedDocxAuthoredRunsForRange,
   resolvedDocxHasExactAuthoredRuns,
@@ -799,10 +803,8 @@ const tableGeometryPairingsOf = (comparison: FolioContentComparison): TableGeome
 };
 
 export type PlanStoryCompareOptions = {
-  story: FolioDocumentStoryHandle;
-  baseSnapshot: ResolvedDocxStorySnapshot;
-  targetSnapshot: ResolvedDocxStorySnapshot;
-  comparison: FolioContentComparison;
+  /** Canonical semantics already bound to the exact base and target capsules. */
+  comparison: ResolvedDocxStoryComparison;
   /** Cap on generated operations, separate from semantic comparison budgets. */
   maxOperations: number;
 };
@@ -1061,15 +1063,18 @@ const unsupportedRelationFields = (
 
 /** Exhaustively lower one completed semantic story comparison. */
 export const planStoryCompare = ({
-  story,
-  baseSnapshot,
-  targetSnapshot,
   comparison,
   maxOperations,
 }: PlanStoryCompareOptions): Result<CompareStoryPlan, PlanStoryCompareError> => {
+  const {
+    baseStory: story,
+    baseSnapshot,
+    targetSnapshot,
+    comparison: contentComparison,
+  } = resolvedDocxStoryComparisonPayload(comparison);
   const baseOperationSnapshot = resolvedDocxOperationSnapshot(baseSnapshot);
   const targetOperationSnapshot = resolvedDocxOperationSnapshot(targetSnapshot);
-  const events = comparison.events;
+  const events = contentComparison.events;
   const containerMembership = comparisonContainerMembership(events);
   const anchorIds = nextBaseBlockIdByEvent(events);
   const changes: CompareChange[] = [];
@@ -1349,10 +1354,7 @@ export const planStoryCompare = ({
             instructions.push({
               type: "moveParagraph",
               source: resolvedDocxSourceOperand(baseSnapshot, relation.base.block),
-              successor: resolvedDocxSourceOperand(
-                baseSnapshot,
-                sourceRemovalBoundary.successor,
-              ),
+              successor: resolvedDocxSourceOperand(baseSnapshot, sourceRemovalBoundary.successor),
               boundary,
               target: paragraphTarget(relation.revised.block, targetSnapshot),
             });
@@ -1735,7 +1737,7 @@ export const planStoryCompare = ({
     }
   }
 
-  const tableGeometryPairings = tableGeometryPairingsOf(comparison);
+  const tableGeometryPairings = tableGeometryPairingsOf(contentComparison);
   if (tableGeometryPairings.length > 0) {
     instructions.push({ type: "matchTableGeometry", pairings: tableGeometryPairings });
   }
@@ -1789,6 +1791,6 @@ export const planStoryCompare = ({
   return Result.ok({
     changes: Object.freeze(changes),
     unsupported: Object.freeze(unsupported),
-    program: DocxComparisonProgram.create(baseSnapshot, planned.instructions),
+    program: DocxComparisonProgram.create(comparison, planned.instructions),
   });
 };

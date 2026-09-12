@@ -1,15 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
 
+import { createContentComparisonWorkSession } from "../../compare/content";
 import { updateDocumentContent } from "../../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import { schema } from "../../prosemirror/schema";
 import { createEmptyDocument } from "../../utils/createDocument";
 
-import {
-  DocxComparisonProgram,
-  type DocxComparisonInstructionInput,
-} from "./docx-program";
+import { DocxComparisonProgram, type DocxComparisonInstructionInput } from "./docx-program";
 import {
   createResolvedDocxStorySnapshot,
   resolvedDocxContentBlocks,
@@ -17,10 +15,17 @@ import {
   type ResolvedDocxSourceOperand,
   type ResolvedDocxStorySnapshot,
 } from "./resolved-docx-story-snapshot";
+import {
+  compareResolvedDocxStoryPair,
+  createResolvedDocxStoryPair,
+  type ResolvedDocxStoryComparison,
+} from "./resolved-docx-story-comparison";
 
 const sourceFixture = (): {
   readonly snapshot: ResolvedDocxStorySnapshot;
+  readonly targetSnapshot: ResolvedDocxStorySnapshot;
   readonly source: ResolvedDocxSourceOperand;
+  readonly comparison: ResolvedDocxStoryComparison;
 } => {
   const bold = schema.marks["bold"];
   if (!bold) throw new Error("schema has no bold mark");
@@ -36,15 +41,36 @@ const sourceFixture = (): {
     sourceDocument: toProseDoc(document),
   });
   if (!snapshot) throw new Error("main story projection missing");
+  const targetState = EditorState.create({
+    doc: schema.node("doc", null, [
+      schema.node("paragraph", { paraId: "p-1" }, [schema.text("new")]),
+    ]),
+  });
+  const targetDocument = updateDocumentContent(createEmptyDocument(), targetState.doc);
+  const targetSnapshot = createResolvedDocxStorySnapshot({
+    document: targetDocument,
+    story: { type: "main" },
+    sourceDocument: toProseDoc(targetDocument),
+  });
+  if (!targetSnapshot) throw new Error("target story projection missing");
+  const compared = compareResolvedDocxStoryPair({
+    pair: createResolvedDocxStoryPair({ baseSnapshot: snapshot, targetSnapshot }),
+    workSession: createContentComparisonWorkSession(),
+  });
+  if (compared.isErr()) throw compared.error;
   const block = resolvedDocxContentBlocks(snapshot).at(0);
   if (!block) throw new Error("source block missing");
-  return { snapshot, source: resolvedDocxSourceOperand(snapshot, block) };
+  return {
+    snapshot,
+    targetSnapshot,
+    source: resolvedDocxSourceOperand(snapshot, block),
+    comparison: compared.value,
+  };
 };
 
-const replacement = (source: ResolvedDocxSourceOperand): Extract<
-  DocxComparisonInstructionInput,
-  { readonly type: "replaceText" }
-> => ({
+const replacement = (
+  source: ResolvedDocxSourceOperand,
+): Extract<DocxComparisonInstructionInput, { readonly type: "replaceText" }> => ({
   type: "replaceText",
   source,
   sourceStartOffset: 0,
@@ -77,14 +103,17 @@ const replacement = (source: ResolvedDocxSourceOperand): Extract<
 
 describe("DocxComparisonProgram", () => {
   test("captures and deeply freezes the sole instruction payload", () => {
-    const { snapshot, source } = sourceFixture();
+    const { comparison, snapshot, source, targetSnapshot } = sourceFixture();
     const input = replacement(source);
-    const program = DocxComparisonProgram.create(snapshot, [input]);
+    const program = DocxComparisonProgram.create(comparison, [input]);
 
     Reflect.set(input.range.segments[0]!, "text", "corrupted");
     Reflect.set(input.range.sourceRuns[0]!.formatting, "bold", false);
 
-    const [instruction] = program.consume(snapshot);
+    const consumed = program.consume();
+    const [instruction] = consumed.instructions;
+    expect(consumed.sourceSnapshot).toBe(snapshot);
+    expect(consumed.targetSnapshot).toBe(targetSnapshot);
     expect(instruction?.type).toBe("replaceText");
     if (instruction?.type !== "replaceText") throw new Error("expected replacement");
     expect(instruction.range.sourceText).toBe("old");
@@ -98,23 +127,23 @@ describe("DocxComparisonProgram", () => {
   });
 
   test("is consumable exactly once", () => {
-    const { snapshot, source } = sourceFixture();
-    const program = DocxComparisonProgram.create(snapshot, [replacement(source)]);
-    expect(program.consume(snapshot)).toHaveLength(1);
-    expect(() => program.consume(snapshot)).toThrow("consumed more than once");
+    const { comparison, source } = sourceFixture();
+    const program = DocxComparisonProgram.create(comparison, [replacement(source)]);
+    expect(program.consume().instructions).toHaveLength(1);
+    expect(() => program.consume()).toThrow("consumed more than once");
   });
 
   test("rejects a range whose canonical text does not name its source", () => {
-    const { snapshot, source } = sourceFixture();
+    const { comparison, source } = sourceFixture();
     const input = replacement(source);
     Reflect.set(input.range, "sourceText", "elsewhere");
-    expect(() => DocxComparisonProgram.create(snapshot, [input])).toThrow(
+    expect(() => DocxComparisonProgram.create(comparison, [input])).toThrow(
       "does not name its exact source and target text",
     );
   });
 
   test("rejects an authored formatting delta missing from canonical changes", () => {
-    const { snapshot, source } = sourceFixture();
+    const { comparison, source } = sourceFixture();
     const input = replacement(source);
     Reflect.set(input.range, "segments", [
       {
@@ -127,16 +156,16 @@ describe("DocxComparisonProgram", () => {
       },
     ]);
     Reflect.set(input.range, "targetText", "old");
-    expect(() => DocxComparisonProgram.create(snapshot, [input])).toThrow(
+    expect(() => DocxComparisonProgram.create(comparison, [input])).toThrow(
       "Canonical authored-formatting changes do not reconstruct the target run",
     );
   });
 
   test("rejects oversized instruction and geometry arrays before copying them", () => {
-    const { snapshot, source } = sourceFixture();
+    const { comparison, source } = sourceFixture();
     expect(() =>
       DocxComparisonProgram.create(
-        snapshot,
+        comparison,
         Array.from({ length: 10_001 }, () => replacement(source)),
       ),
     ).toThrow("exceeds its instruction limit");
@@ -146,7 +175,7 @@ describe("DocxComparisonProgram", () => {
       target: { tableIndex: 0, rowIndex: 0, cellIndex: 0 },
     };
     expect(() =>
-      DocxComparisonProgram.create(snapshot, [
+      DocxComparisonProgram.create(comparison, [
         {
           type: "matchTableGeometry",
           pairings: Array.from({ length: 10_001 }, () => pairing),
@@ -159,7 +188,7 @@ describe("DocxComparisonProgram", () => {
     const left = sourceFixture();
     const right = sourceFixture();
     expect(() =>
-      DocxComparisonProgram.create(right.snapshot, [replacement(left.source)]),
+      DocxComparisonProgram.create(right.comparison, [replacement(left.source)]),
     ).toThrow("cannot mix source story snapshots");
   });
 });
