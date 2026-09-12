@@ -140,6 +140,51 @@ const booleanTextFormatting = (
   }
 };
 
+const canonicalBooleanFormattingValue = (property: FolioAIInlineBooleanProperty, value: boolean) =>
+  property === "underline"
+    ? {
+        type: "object" as const,
+        entries: [{ key: "style", value: value ? "single" : "none" }],
+      }
+    : value;
+
+const directBooleanPresence = (
+  property: FolioAIInlineBooleanProperty,
+  state: DirectBooleanState,
+) =>
+  state === "absent"
+    ? ({ type: "absent" } as const)
+    : ({
+        type: "present",
+        value: canonicalBooleanFormattingValue(property, state === "on"),
+      } as const);
+
+const effectiveBooleanPresence = (property: FolioAIInlineBooleanProperty, value: boolean) =>
+  ({
+    type: "present",
+    value: canonicalBooleanFormattingValue(property, value),
+  }) as const;
+
+const effectiveBooleanValue = (state: DirectBooleanState, inherited: boolean): boolean => {
+  if (state === "absent") {
+    return inherited;
+  }
+  return state === "on";
+};
+
+const rgbPropertyValue = (rgb: string) => ({
+  type: "object" as const,
+  entries: [{ key: "rgb", value: rgb }],
+});
+
+const fontFamilyPropertyValue = (fontFamily: string) => ({
+  type: "object" as const,
+  entries: [
+    { key: "ascii", value: fontFamily },
+    { key: "hAnsi", value: fontFamily },
+  ],
+});
+
 const buildBooleanFormattingDocx = (
   property: FolioAIInlineBooleanProperty,
   inherited: boolean,
@@ -617,6 +662,8 @@ describe("single-mutation probes", () => {
             }
 
             expect(result.value.verification).toEqual({ status: "verified" });
+            const baseEffective = effectiveBooleanValue(baseDirect, inherited);
+            const revisedEffective = effectiveBooleanValue(targetDirect, inherited);
             expect(result.value.changes).toEqual([
               expect.objectContaining({
                 kind: "format",
@@ -625,7 +672,23 @@ describe("single-mutation probes", () => {
                     startOffset: 0,
                     endOffset: "Boolean formatting".length,
                     formatting: {
-                      [property]: targetDirect === "absent" ? null : targetDirect === "on",
+                      authored: [
+                        {
+                          key: property,
+                          base: directBooleanPresence(property, baseDirect),
+                          revised: directBooleanPresence(property, targetDirect),
+                        },
+                      ],
+                      effective:
+                        baseEffective === revisedEffective
+                          ? []
+                          : [
+                              {
+                                key: property,
+                                base: effectiveBooleanPresence(property, baseEffective),
+                                revised: effectiveBooleanPresence(property, revisedEffective),
+                              },
+                            ],
                     },
                   },
                 ],
@@ -705,7 +768,42 @@ describe("single-mutation probes", () => {
       {
         startOffset: 0,
         endOffset: 4,
-        formatting: { fontFamily: "Georgia", fontSizePt: 10.5, color: "C00000" },
+        formatting: {
+          authored: [
+            {
+              key: "color",
+              base: { type: "absent" },
+              revised: { type: "present", value: rgbPropertyValue("C00000") },
+            },
+            {
+              key: "fontFamily",
+              base: { type: "absent" },
+              revised: { type: "present", value: fontFamilyPropertyValue("Georgia") },
+            },
+            {
+              key: "fontSize",
+              base: { type: "absent" },
+              revised: { type: "present", value: 21 },
+            },
+          ],
+          effective: [
+            {
+              key: "color",
+              base: { type: "absent" },
+              revised: { type: "present", value: rgbPropertyValue("C00000") },
+            },
+            {
+              key: "fontFamily",
+              base: { type: "present", value: fontFamilyPropertyValue("Calibri") },
+              revised: { type: "present", value: fontFamilyPropertyValue("Georgia") },
+            },
+            {
+              key: "fontSize",
+              base: { type: "present", value: 22 },
+              revised: { type: "present", value: 21 },
+            },
+          ],
+        },
       },
     ]);
     const reviewed = await FolioDocxReviewer.fromBuffer(buffer);
@@ -756,7 +854,42 @@ describe("single-mutation probes", () => {
       {
         startOffset: 0,
         endOffset: 4,
-        formatting: { fontFamily: null, fontSizePt: null, color: null },
+        formatting: {
+          authored: [
+            {
+              key: "color",
+              base: { type: "present", value: rgbPropertyValue("C00000") },
+              revised: { type: "absent" },
+            },
+            {
+              key: "fontFamily",
+              base: { type: "present", value: fontFamilyPropertyValue("Georgia") },
+              revised: { type: "absent" },
+            },
+            {
+              key: "fontSize",
+              base: { type: "present", value: 21 },
+              revised: { type: "absent" },
+            },
+          ],
+          effective: [
+            {
+              key: "color",
+              base: { type: "present", value: rgbPropertyValue("C00000") },
+              revised: { type: "absent" },
+            },
+            {
+              key: "fontFamily",
+              base: { type: "present", value: fontFamilyPropertyValue("Georgia") },
+              revised: { type: "present", value: fontFamilyPropertyValue("Calibri") },
+            },
+            {
+              key: "fontSize",
+              base: { type: "present", value: 21 },
+              revised: { type: "present", value: 22 },
+            },
+          ],
+        },
       },
     ]);
     const reviewed = await FolioDocxReviewer.fromBuffer(buffer);
