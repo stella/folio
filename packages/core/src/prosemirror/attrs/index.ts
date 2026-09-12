@@ -38,6 +38,7 @@ import type { ParagraphFormatting } from "../../types/document";
 import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import { DRAWING_RAW_XML_MODES, isOoxmlSymbolCharacter } from "@stll/docx-core/model";
 import { isParagraphDirection } from "../paragraphDirection";
+import { TEXT_BOX_TEXT_BODY_CONTENT_STATE_TYPES } from "../schema/nodes";
 import type {
   BlockSdtAttrs,
   CharacterSpacingAttrs,
@@ -928,6 +929,7 @@ export const readTextBoxAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TextB
   );
   optionalString(attrs, "_docxGroupId", "textBox.attrs._docxGroupId", issues);
   optionalString(attrs, "_docxAnchorId", "textBox.attrs._docxAnchorId", issues);
+  requiredTextBoxBodyContentState(attrs, issues);
   optionalTextBoxTrackedChange(attrs, issues);
   optionalTextBoxInlineSdts(attrs, issues);
 
@@ -2074,6 +2076,27 @@ const optionalTextBoxTrackedChange = (
   requiredNumber(info, "id", "textBox.attrs._docxTrackedChange.info.id", issues);
   requiredString(info, "author", "textBox.attrs._docxTrackedChange.info.author", issues);
   optionalString(info, "date", "textBox.attrs._docxTrackedChange.info.date", issues);
+};
+
+const requiredTextBoxBodyContentState = (
+  attrs: Record<string, unknown>,
+  issues: ProseMirrorAttrIssue[],
+): void => {
+  const value = attrs["_docxTextBodyContentState"];
+  if (!isRecord(value)) {
+    issues.push({
+      path: "textBox.attrs._docxTextBodyContentState",
+      message: "Expected an object.",
+    });
+    return;
+  }
+  requiredOneOf(
+    value,
+    "type",
+    "textBox.attrs._docxTextBodyContentState.type",
+    issues,
+    TEXT_BOX_TEXT_BODY_CONTENT_STATE_TYPES,
+  );
 };
 
 const optionalTextBoxInlineSdts = (

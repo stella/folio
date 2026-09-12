@@ -605,6 +605,17 @@ export type ShapeAttrs = {
 /**
  * Text box node attributes
  */
+export const TEXT_BOX_TEXT_BODY_CONTENT_STATE_TYPES = Object.freeze([
+  "source-empty",
+  "authored",
+] as const);
+
+export type TextBoxTextBodyContentState = {
+  [Type in (typeof TEXT_BOX_TEXT_BODY_CONTENT_STATE_TYPES)[number]]: {
+    readonly type: Type;
+  };
+}[(typeof TEXT_BOX_TEXT_BODY_CONTENT_STATE_TYPES)[number]];
+
 export type TextBoxAttrs = {
   /** Width in pixels */
   width?: number;
@@ -660,6 +671,12 @@ export type TextBoxAttrs = {
   _docxGroupId?: string;
   /** Inline anchor linking this block node to its source run position. */
   _docxAnchorId?: string;
+  /**
+   * Ownership of the schema-required placeholder paragraph. A source text
+   * body with no children needs one paragraph while it is editable, but that
+   * paragraph is not authored document content.
+   */
+  _docxTextBodyContentState: TextBoxTextBodyContentState;
   /** Original run-level revision wrapper for save-path reconstruction. */
   _docxTrackedChange?:
     | { type: "insertion"; info: TrackedChangeInfo }

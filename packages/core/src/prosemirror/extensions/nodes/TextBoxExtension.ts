@@ -6,78 +6,17 @@
  * Supports inline and floating positioning.
  */
 
-import type { ImageWrap, ShapeTextBody } from "../../../types/document";
 import {
   IMAGE_WRAP_TYPE_VALUES,
   normalizeShapeTextAnchor,
-  type OutlineStyleAttr,
 } from "../../../types/documentEnumValues";
 import { expectTextBoxAttrs } from "../../attrs";
-import type { ImagePositionAttrs, TextBoxAttrs as SchemaTextBoxAttrs } from "../../schema/nodes";
+import type { TextBoxAttrs as SchemaTextBoxAttrs } from "../../schema/nodes";
 import { createNodeExtension } from "../create";
 
-export type TextBoxAttrs = {
-  /** Width in pixels */
-  width?: number;
-  /** Height in pixels */
-  height?: number;
-  /** Text fitting behavior */
-  autoFit?: ShapeTextBody["autoFit"];
-  /** Horizontal text wrapping inside the box */
-  textWrap?: ShapeTextBody["textWrap"];
-  /** Unique identifier */
-  textBoxId?: string;
-  /** Fill color as CSS color */
-  fillColor?: string;
-  /** Outline width in pixels */
-  outlineWidth?: number;
-  /** Outline color as CSS color */
-  outlineColor?: string;
-  /** Outline dash style, or `"none"` for an explicit no-outline. */
-  outlineStyle?: OutlineStyleAttr;
-  /** DrawingML rotation and/or flips, serialized as CSS transform functions. */
-  transform?: string;
-  /** Internal margin top in pixels */
-  marginTop?: number;
-  /** Internal margin bottom in pixels */
-  marginBottom?: number;
-  /** Internal margin left in pixels */
-  marginLeft?: number;
-  /** Internal margin right in pixels */
-  marginRight?: number;
-  /** Vertical text alignment */
-  verticalAlign?: string;
-  /** Display mode */
-  displayMode?: "inline" | "float" | "block";
-  /** CSS float direction */
-  cssFloat?: "left" | "right" | "none";
-  /** Wrap type */
-  wrapType?: ImageWrap["type"];
-  /** OOXML wrapText direction for anchored text boxes (eigenpal #474). */
-  wrapText?: "bothSides" | "left" | "right" | "largest";
-  /** Wrap distance from top edge, in pixels (OOXML distT, EMU-converted). */
-  distTop?: number;
-  /** Wrap distance from bottom edge, in pixels. */
-  distBottom?: number;
-  /** Wrap distance from left edge, in pixels. */
-  distLeft?: number;
-  /** Wrap distance from right edge, in pixels. */
-  distRight?: number;
-  /** Position for floating/anchored text boxes. */
-  position?: ImagePositionAttrs;
-  /** Original DOCX placement hint for save-path reconstruction. */
-  _docxPlacement?: "standalone" | "inlineWithPrevious";
-  /** Original DOCX paragraph group for standalone text-box reconstruction. */
-  _docxGroupId?: string;
-  /** Inline anchor linking this block node to its source run position. */
-  _docxAnchorId?: string;
-  /** Original run-level revision wrapper for save-path reconstruction. */
-  _docxTrackedChange?: SchemaTextBoxAttrs["_docxTrackedChange"];
-  /** Original inline content-control ancestry for save-path reconstruction. */
-  _docxInlineSdts?: SchemaTextBoxAttrs["_docxInlineSdts"];
-};
+export type TextBoxAttrs = SchemaTextBoxAttrs;
 
-function parseTextBoxPosition(raw: string | undefined): ImagePositionAttrs | undefined {
+function parseTextBoxPosition(raw: string | undefined): TextBoxAttrs["position"] {
   if (!raw) {
     return undefined;
   }
@@ -86,13 +25,13 @@ function parseTextBoxPosition(raw: string | undefined): ImagePositionAttrs | und
     if (typeof parsed !== "object" || parsed === null) {
       return undefined;
     }
-    return parsed as ImagePositionAttrs;
+    return parsed as NonNullable<TextBoxAttrs["position"]>;
   } catch {
     return undefined;
   }
 }
 
-function parseTextBoxWrapType(raw: string | undefined): ImageWrap["type"] | undefined {
+function parseTextBoxWrapType(raw: string | undefined): TextBoxAttrs["wrapType"] {
   for (const value of IMAGE_WRAP_TYPE_VALUES) {
     if (value === raw) {
       return value;
@@ -155,6 +94,7 @@ export const TextBoxExtension = createNodeExtension({
       _docxPlacement: { default: null },
       _docxGroupId: { default: null },
       _docxAnchorId: { default: null },
+      _docxTextBodyContentState: { default: { type: "authored" } },
       _docxTrackedChange: { default: null },
       _docxInlineSdts: { default: null },
     },
@@ -173,6 +113,7 @@ export const TextBoxExtension = createNodeExtension({
           const textWrap = parseTextBoxTextWrap(d["textWrap"]);
           const verticalAlign = parseTextBoxVerticalAlign(d["verticalAlign"]);
           return {
+            _docxTextBodyContentState: { type: "authored" },
             ...(d["width"] ? { width: Number(d["width"]) } : {}),
             ...(d["height"] ? { height: Number(d["height"]) } : {}),
             ...(autoFit ? { autoFit } : {}),

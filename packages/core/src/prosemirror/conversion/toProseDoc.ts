@@ -4700,6 +4700,8 @@ function convertTextBox(
       _docxPlacement: options.placement,
       _docxGroupId: options.groupId,
       _docxAnchorId: options.anchorId,
+      _docxTextBodyContentState:
+        textBox.content.length === 0 ? { type: "source-empty" } : { type: "authored" },
       _docxTrackedChange: options.trackedChange,
       _docxInlineSdts: options.inlineSdts.length > 0 ? options.inlineSdts : undefined,
     },

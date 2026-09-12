@@ -5154,6 +5154,39 @@ export function tableCellAttrsToFormatting(attrs: TableCellAttrs): TableCellForm
 // TEXT BOX CONVERSION
 // ============================================================================
 
+type TextBoxBodyContentProjection =
+  | { readonly type: "source-empty" }
+  | { readonly type: "authored"; readonly content: (Paragraph | Table)[] };
+
+const isUnchangedSourceEmptyPlaceholder = (blocks: readonly (Paragraph | Table)[]): boolean => {
+  const paragraph = blocks.at(0);
+  if (blocks.length !== 1 || paragraph?.type !== "paragraph" || paragraph.content.length !== 0) {
+    return false;
+  }
+
+  return Object.keys(paragraph).every(
+    (key) => key === "type" || key === "content" || key === "paraId" || key === "textId",
+  );
+};
+
+const projectTextBoxBodyContent = (
+  state: TextBoxAttrs["_docxTextBodyContentState"],
+  blocks: (Paragraph | Table)[],
+): TextBoxBodyContentProjection => {
+  switch (state.type) {
+    case "source-empty":
+      return isUnchangedSourceEmptyPlaceholder(blocks)
+        ? { type: "source-empty" }
+        : { type: "authored", content: blocks };
+    case "authored":
+      return { type: "authored", content: blocks };
+    default: {
+      const exhaustive: never = state;
+      return exhaustive;
+    }
+  }
+};
+
 /**
  * Convert a ProseMirror textBox node back to a Paragraph wrapping a ShapeContent run.
  * The text box content becomes a Shape with textBody.
@@ -5172,6 +5205,7 @@ function convertPMTextBox(node: PMNode, styleResolver: StyleEngine | null = null
       childBlocks.push(convertPMTable(child, undefined, styleResolver));
     }
   });
+  const textBodyContent = projectTextBoxBodyContent(attrs._docxTextBodyContentState, childBlocks);
 
   // Build shape with text body
   const shape: Shape = {
@@ -5182,7 +5216,7 @@ function convertPMTextBox(node: PMNode, styleResolver: StyleEngine | null = null
       height: attrs.height ? pixelsToEmu(attrs.height) : 0,
     },
     textBody: {
-      content: childBlocks.length > 0 ? childBlocks : [{ type: "paragraph", content: [] }],
+      content: textBodyContent.type === "source-empty" ? [] : textBodyContent.content,
       ...(attrs.autoFit !== undefined ? { autoFit: attrs.autoFit } : {}),
       ...(attrs.textWrap !== undefined ? { textWrap: attrs.textWrap } : {}),
       ...(verticalAlign !== undefined ? { anchor: verticalAlign } : {}),

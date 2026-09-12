@@ -557,7 +557,7 @@ export type TableRowAttrs = {
     trDel?: never;
 });
 
-// @public
+// @public (undocumented)
 export type TextBoxAttrs = {
     width?: number;
     height?: number;
@@ -586,6 +586,7 @@ export type TextBoxAttrs = {
     _docxPlacement?: "standalone" | "inlineWithPrevious";
     _docxGroupId?: string;
     _docxAnchorId?: string;
+    _docxTextBodyContentState: TextBoxTextBodyContentState;
     _docxTrackedChange?: {
         type: "insertion";
         info: import__stll_docx_core_model.TrackedChangeInfo;

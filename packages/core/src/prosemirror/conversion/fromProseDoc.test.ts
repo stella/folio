@@ -20,6 +20,7 @@ import { directParagraphSpacing } from "../paragraphSpacing";
 import { schema } from "../schema";
 import { fromProseDoc, proseDocToBlocks } from "./fromProseDoc";
 import { UnsupportedDocxToProseMirrorConversionError, toProseDoc } from "./toProseDoc";
+import { stableProjectionIdentity } from "./__tests__/stableProjectionIdentity";
 
 describe("fromProseDoc", () => {
   test("uses resolver-less run ownership when the base package has no styles", () => {
@@ -2093,9 +2094,17 @@ describe("fromProseDoc", () => {
         schema.node("paragraph", null, [schema.text("Inside")]),
       ]),
     ]);
+    const textBoxContentStateDoc = schema.node("doc", null, [
+      schema.node("textBox", { _docxTextBodyContentState: { type: "unknown" } }, [
+        schema.node("paragraph", null, [schema.text("Inside")]),
+      ]),
+    ]);
 
     expect(() => fromProseDoc(shapeDoc)).toThrow("shape.attrs.width");
     expect(() => fromProseDoc(textBoxDoc)).toThrow("textBox.attrs.width");
+    expect(() => fromProseDoc(textBoxContentStateDoc)).toThrow(
+      "textBox.attrs._docxTextBodyContentState.type",
+    );
   });
 
   test("accepts table header cell attrs at the table-cell boundary", () => {
@@ -3232,12 +3241,236 @@ describe("fromProseDoc", () => {
 
     expect(pmDoc.childCount).toBe(1);
     expect(pmDoc.firstChild?.type.name).toBe("textBox");
+    expect(pmDoc.firstChild?.attrs["_docxTextBodyContentState"]).toEqual({
+      type: "source-empty",
+    });
     expect(block?.type).toBe("paragraph");
     if (block?.type !== "paragraph") {
       return;
     }
     expect(firstShapeType(block)).toBe("textBox");
-    expect(firstShapeTextBody(block)?.content).toHaveLength(1);
+    expect(firstShapeTextBody(block)?.content).toEqual([]);
+    expectTextBoxProjectionFixedPoint(toProseDoc(roundTripped), pmDoc);
+  });
+
+  test("preserves an authored empty paragraph inside a text box", () => {
+    const document = documentWithTextBoxParagraph({ includeText: false });
+    const block = document.package.document.content.at(0);
+    if (block?.type !== "paragraph") {
+      throw new Error("Expected source paragraph");
+    }
+    const textBody = firstShapeTextBody(block);
+    if (!textBody) {
+      throw new Error("Expected source text body");
+    }
+    textBody.content = [{ type: "paragraph", content: [] }];
+
+    const pmDoc = toProseDoc(document);
+    const roundTripped = fromProseDoc(pmDoc, document);
+    const restoredBlock = roundTripped.package.document.content.at(0);
+    if (restoredBlock?.type !== "paragraph") {
+      throw new Error("Expected restored paragraph");
+    }
+
+    expect(pmDoc.firstChild?.attrs["_docxTextBodyContentState"]).toEqual({ type: "authored" });
+    expect(firstShapeTextBody(restoredBlock)?.content).toEqual([
+      { type: "paragraph", content: [] },
+    ]);
+    expectTextBoxProjectionFixedPoint(toProseDoc(roundTripped), pmDoc);
+  });
+
+  test("transitions an edited source-empty text box to authored content", () => {
+    const document = documentWithTextBoxParagraph({
+      includeText: false,
+      emptyTextBoxContent: true,
+    });
+    const imported = toProseDoc(document);
+    const importedTextBox = imported.firstChild;
+    if (importedTextBox?.type.name !== "textBox") {
+      throw new Error("Expected imported text box");
+    }
+    const editedTextBox = importedTextBox.type.create(importedTextBox.attrs, [
+      schema.node("paragraph", null, [schema.text("Authored after import")]),
+    ]);
+    const edited = schema.node("doc", imported.attrs, [editedTextBox]);
+
+    const roundTripped = fromProseDoc(edited, document);
+    const restoredBlock = roundTripped.package.document.content.at(0);
+    if (restoredBlock?.type !== "paragraph") {
+      throw new Error("Expected restored paragraph");
+    }
+    const restoredBody = firstShapeTextBody(restoredBlock);
+    const reprojected = toProseDoc(roundTripped);
+
+    expect(restoredBody?.content).toMatchObject([
+      {
+        type: "paragraph",
+        content: [{ type: "run", content: [{ type: "text", text: "Authored after import" }] }],
+      },
+    ]);
+    expect(reprojected.firstChild?.attrs["_docxTextBodyContentState"]).toEqual({
+      type: "authored",
+    });
+    expectTextBoxProjectionFixedPoint(
+      toProseDoc(fromProseDoc(reprojected, roundTripped)),
+      reprojected,
+    );
+  });
+
+  test("transitions direct formatting on a source-empty placeholder to authored content", () => {
+    const document = documentWithTextBoxParagraph({
+      includeText: false,
+      emptyTextBoxContent: true,
+    });
+    const imported = toProseDoc(document);
+    const importedTextBox = imported.firstChild;
+    const placeholder = importedTextBox?.firstChild;
+    if (importedTextBox?.type.name !== "textBox" || placeholder?.type.name !== "paragraph") {
+      throw new Error("Expected imported text-box placeholder");
+    }
+    const formattedPlaceholder = placeholder.type.create(
+      { ...placeholder.attrs, alignment: "center" },
+      placeholder.content,
+    );
+    const edited = schema.node("doc", imported.attrs, [
+      importedTextBox.type.create(importedTextBox.attrs, [formattedPlaceholder]),
+    ]);
+
+    const roundTripped = fromProseDoc(edited, document);
+    const restoredBlock = roundTripped.package.document.content.at(0);
+    if (restoredBlock?.type !== "paragraph") {
+      throw new Error("Expected restored paragraph");
+    }
+
+    expect(firstShapeTextBody(restoredBlock)?.content).toEqual([
+      { type: "paragraph", content: [], formatting: { alignment: "center" } },
+    ]);
+  });
+
+  test("does not treat allocated placeholder identity as authored text-box content", () => {
+    const document = documentWithTextBoxParagraph({
+      includeText: false,
+      emptyTextBoxContent: true,
+    });
+    const imported = toProseDoc(document);
+    const importedTextBox = imported.firstChild;
+    const placeholder = importedTextBox?.firstChild;
+    if (importedTextBox?.type.name !== "textBox" || placeholder?.type.name !== "paragraph") {
+      throw new Error("Expected imported text-box placeholder");
+    }
+    const identifiedPlaceholder = placeholder.type.create(
+      { ...placeholder.attrs, paraId: "10203040", textId: "50607080" },
+      placeholder.content,
+    );
+    const identified = schema.node("doc", imported.attrs, [
+      importedTextBox.type.create(importedTextBox.attrs, [identifiedPlaceholder]),
+    ]);
+
+    const roundTripped = fromProseDoc(identified, document);
+    const restoredBlock = roundTripped.package.document.content.at(0);
+    if (restoredBlock?.type !== "paragraph") {
+      throw new Error("Expected restored paragraph");
+    }
+
+    expect(firstShapeTextBody(restoredBlock)?.content).toEqual([]);
+  });
+
+  test("keeps a source-empty text box fixed under document-default presentation", () => {
+    const document = documentWithTextBoxParagraph({
+      includeText: false,
+      emptyTextBoxContent: true,
+    });
+    document.package.styles = {
+      docDefaults: {
+        pPr: {
+          alignment: "both",
+          indentLeft: 50,
+          indentRight: 50,
+          indentFirstLine: 200,
+          widowControl: false,
+        },
+        rPr: { fontSize: 22, fontFamily: { ascii: "Aptos", hAnsi: "Aptos" } },
+      },
+      styles: [],
+    };
+
+    const imported = toProseDoc(document);
+    const roundTripped = fromProseDoc(imported, document);
+    const restoredBlock = roundTripped.package.document.content.at(0);
+    if (restoredBlock?.type !== "paragraph") {
+      throw new Error("Expected restored paragraph");
+    }
+
+    expect(firstShapeTextBody(restoredBlock)?.content).toEqual([]);
+    expectTextBoxProjectionFixedPoint(toProseDoc(roundTripped), imported);
+  });
+
+  test("keeps a source-empty text box fixed when nested in another text box", () => {
+    const innerHost = documentWithTextBoxParagraph({
+      includeText: false,
+      emptyTextBoxContent: true,
+    }).package.document.content.at(0);
+    if (innerHost?.type !== "paragraph") {
+      throw new Error("Expected inner text-box host");
+    }
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "run",
+                  content: [
+                    {
+                      type: "shape",
+                      shape: {
+                        type: "shape",
+                        shapeType: "textBox",
+                        size: { width: 1_828_800, height: 914_400 },
+                        textBody: {
+                          content: [
+                            {
+                              type: "table",
+                              rows: [
+                                {
+                                  type: "tableRow",
+                                  cells: [{ type: "tableCell", content: [innerHost] }],
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const imported = toProseDoc(document);
+    const roundTripped = fromProseDoc(imported, document);
+    const restoredHost = roundTripped.package.document.content.at(0);
+    if (restoredHost?.type !== "paragraph") {
+      throw new Error("Expected restored outer text-box host");
+    }
+    const outerBody = firstShapeTextBody(restoredHost);
+    const nestedTable = outerBody?.content.at(0);
+    const restoredInnerHost =
+      nestedTable?.type === "table"
+        ? nestedTable.rows.at(0)?.cells.at(0)?.content.at(0)
+        : undefined;
+    if (restoredInnerHost?.type !== "paragraph") {
+      throw new Error("Expected restored inner text-box host");
+    }
+
+    expect(firstShapeTextBody(restoredInnerHost)?.content).toEqual([]);
+    expectTextBoxProjectionFixedPoint(toProseDoc(roundTripped), imported);
   });
 
   test("keeps page breaks before inline text boxes on the source paragraph", () => {
@@ -3791,6 +4024,10 @@ function findNodePosition(doc: PMNode, nodeType: string): number | undefined {
     return false;
   });
   return position;
+}
+
+function expectTextBoxProjectionFixedPoint(actual: PMNode, expected: PMNode): void {
+  expect(stableProjectionIdentity(actual)).toBe(stableProjectionIdentity(expected));
 }
 
 function documentWithTextBoxParagraph({
