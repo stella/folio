@@ -568,6 +568,7 @@ export type TextBoxAttrs = {
     outlineWidth?: number;
     outlineColor?: string;
     outlineStyle?: OutlineStyleAttr;
+    transform?: string;
     marginTop?: number;
     marginBottom?: number;
     marginLeft?: number;

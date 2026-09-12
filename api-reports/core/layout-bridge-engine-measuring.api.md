@@ -197,6 +197,7 @@ export type MeasureParagraphOptions = {
     floatingZones?: FloatingImageZone[];
     paragraphYOffset?: number;
     fieldValues?: ReadonlyMap<number, string>;
+    allowEndTabOverflow?: boolean;
 };
 
 // @public

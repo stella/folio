@@ -1280,6 +1280,7 @@ export type TextBox = {
     wrap?: ImageWrap;
     fill?: ShapeFill;
     outline?: ShapeOutline;
+    transform?: ImageTransform;
     content: (Paragraph | Table)[];
     autoFit?: ShapeTextBody["autoFit"];
     textWrap?: ShapeTextBody["textWrap"];

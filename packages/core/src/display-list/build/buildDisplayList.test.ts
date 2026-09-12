@@ -368,6 +368,31 @@ describe("buildDisplayList: paint order", () => {
       ).toBe(true);
     }, fakeMeasure);
   });
+
+  test("applies DrawingML rotation and flips about its authored text-box frame centre", () => {
+    withFakeTextMeasure(() => {
+      const textBox: TextBoxBlock = {
+        kind: "textBox",
+        id: "rotated-box",
+        width: 120,
+        height: 40,
+        transform: "rotate(270deg) scaleX(-1) scaleY(-1)",
+        content: [para("rotated-box-paragraph", "Likelihood")],
+      };
+
+      const primitive = pagePrimitives([textBox]).at(0);
+      expect(primitive?.kind).toBe("rotateGroup");
+      if (primitive?.kind !== "rotateGroup") {
+        return;
+      }
+      expect(primitive.degrees).toBe(270);
+      expect(primitive.originXPx).toBe(MARGINS.left + 60);
+      expect(primitive.originYPx).toBe(MARGINS.top + 20);
+      expect(primitive.scaleX).toBe(-1);
+      expect(primitive.scaleY).toBe(-1);
+      expect(primitive.children.some(({ kind }) => kind === "glyphRun")).toBe(true);
+    }, fakeMeasure);
+  });
 });
 
 describe("buildDisplayList: contract obligations", () => {

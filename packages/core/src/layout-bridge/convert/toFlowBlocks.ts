@@ -3137,6 +3137,9 @@ function convertTextBoxNode(
   if (attrs.outlineStyle !== undefined) {
     textBox.outlineStyle = attrs.outlineStyle;
   }
+  if (attrs.transform !== undefined) {
+    textBox.transform = attrs.transform;
+  }
   // Carry anchored-textbox wrap attributes through so the page renderer can
   // build exclusion rects (eigenpal #474).
   if (attrs.displayMode !== undefined) {

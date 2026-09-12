@@ -32,7 +32,7 @@ import {
 } from "./contentStream";
 import { needsShaping } from "../shaping/placeRun";
 import type { EmbeddedPdfFont, PreparedFont, ShapedRunRequest } from "./fonts";
-import { basePageMatrix, rotationMatrix } from "./pageSpace";
+import { basePageMatrix, transformMatrix } from "./pageSpace";
 
 export class PaintError extends TaggedError("PaintError")<{ message: string }> {}
 
@@ -494,9 +494,7 @@ const paintPrimitive = (context: PaintContext, primitive: DisplayPrimitive) => {
     }
     case "rotateGroup": {
       context.stream.save();
-      context.stream.concat(
-        rotationMatrix(primitive.degrees, primitive.originXPx, primitive.originYPx),
-      );
+      context.stream.concat(transformMatrix(primitive));
       for (const child of primitive.children) {
         paintPrimitive(context, child);
       }

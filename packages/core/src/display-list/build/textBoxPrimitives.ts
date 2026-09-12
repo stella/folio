@@ -8,10 +8,15 @@
 import { layoutTextBoxContent } from "../../layout-engine/measure/textBoxParagraphLayout";
 import { DEFAULT_TEXTBOX_MARGINS } from "../../layout-engine/types";
 import type { TextBoxBlock, TextBoxFragment, TextBoxMeasure } from "../../layout-engine/types";
+import {
+  hasHorizontalFlip,
+  hasVerticalFlip,
+  parseRotationDegrees,
+} from "../../utils/rotationBoundingBox";
 import type { DisplayPrimitive } from "../types";
 import { HIT_REGION_KINDS } from "../primitives";
 import type { BuildContext } from "./buildContext";
-import { blockRegion, type PageComposer } from "./regions";
+import { blockRegion, createPageComposer, type PageComposer } from "./regions";
 import { parseDisplayColor } from "./colors";
 import { paintParagraphFragment } from "./paragraphPrimitives";
 import { paintTableBlock } from "./tablePrimitives";
@@ -27,6 +32,36 @@ export type TextBoxPaintOptions = {
 };
 
 export const paintTextBoxFragment = ({
+  composer,
+  fragment,
+  block,
+  measure,
+  context,
+}: TextBoxPaintOptions): void => {
+  const rotation = parseRotationDegrees(block.transform);
+  const flipH = hasHorizontalFlip(block.transform);
+  const flipV = hasVerticalFlip(block.transform);
+  if (rotation === 0 && !flipH && !flipV) {
+    paintUnrotatedTextBoxFragment({ composer, fragment, block, measure, context });
+    return;
+  }
+
+  const inner = createPageComposer();
+  paintUnrotatedTextBoxFragment({ composer: inner, fragment, block, measure, context });
+  composer.push([
+    {
+      kind: "rotateGroup",
+      degrees: rotation,
+      originXPx: fragment.x + fragment.width / 2,
+      originYPx: fragment.y + fragment.height / 2,
+      ...(flipH ? { scaleX: -1 } : {}),
+      ...(flipV ? { scaleY: -1 } : {}),
+      children: inner.primitives(),
+    },
+  ]);
+};
+
+const paintUnrotatedTextBoxFragment = ({
   composer,
   fragment,
   block,

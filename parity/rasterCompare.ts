@@ -22,6 +22,10 @@ const MAX_TOTAL_RASTER_PIXELS = 250_000_000;
 const MAX_DIFF_PNG_BYTES = 64 * 1024 * 1024;
 const MAX_TOTAL_DIFF_BYTES = 256 * 1024 * 1024;
 const PIXELMATCH_THRESHOLD = 0.1;
+/** Browser element screenshots and PDF rasterizers can round the same physical
+ * page edge to adjacent pixels. Crop that non-semantic fringe before comparing
+ * pixels; larger deltas remain explicit page-size mismatches. */
+const PAGE_EDGE_ROUNDING_TOLERANCE_PX = 1;
 
 /** Signals invalid or resource-exceeding raster comparison input. */
 export class RasterComparisonError extends TaggedError("RasterComparisonError")<{
@@ -160,8 +164,17 @@ const comparePresentPage = async ({
   diffPath,
   remainingOutputBytes,
 }: ComparePresentPageOptions): Promise<ComparedPage> => {
-  const width = Math.max(reference.width, folio.width);
-  const height = Math.max(reference.height, folio.height);
+  const hasDimensionMismatch = reference.width !== folio.width || reference.height !== folio.height;
+  const hasOnlyPageEdgeRounding =
+    hasDimensionMismatch &&
+    Math.abs(reference.width - folio.width) <= PAGE_EDGE_ROUNDING_TOLERANCE_PX &&
+    Math.abs(reference.height - folio.height) <= PAGE_EDGE_ROUNDING_TOLERANCE_PX;
+  const width = hasOnlyPageEdgeRounding
+    ? Math.min(reference.width, folio.width)
+    : Math.max(reference.width, folio.width);
+  const height = hasOnlyPageEdgeRounding
+    ? Math.min(reference.height, folio.height)
+    : Math.max(reference.height, folio.height);
   const referenceData = fitToCanvas(reference, width, height);
   const folioData = fitToCanvas(folio, width, height);
   const diff = new PNG({ width, height });
@@ -182,7 +195,7 @@ const comparePresentPage = async ({
   );
 
   const totalPixels = width * height;
-  if (reference.width !== folio.width || reference.height !== folio.height) {
+  if (hasDimensionMismatch && !hasOnlyPageEdgeRounding) {
     const overlapWidth = Math.min(reference.width, folio.width);
     const overlapHeight = Math.min(reference.height, folio.height);
     const overlapPixels = overlapWidth * overlapHeight;

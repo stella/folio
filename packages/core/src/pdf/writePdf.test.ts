@@ -445,6 +445,23 @@ describe("primitive coverage", () => {
     expect(content).toContain("0 1 -1 0 30 10 cm");
   });
 
+  test("reflects around the same origin before rotating", async () => {
+    const content = contentStreamOf(
+      (
+        await write(
+          listWith([
+            {
+              ...SAMPLE_BY_KIND.rotateGroup,
+              degrees: 0,
+              scaleX: -1,
+            },
+          ]),
+        )
+      ).bytes,
+    );
+    expect(content).toContain("-1 0 0 1 20 0 cm");
+  });
+
   test("clips a cropped image and scales it past the destination box", async () => {
     const list: DisplayList = {
       ...listWith([SAMPLE_BY_KIND.image]),

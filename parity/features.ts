@@ -366,6 +366,7 @@ const PDF_FONT_STYLE_SUFFIXES = new Set([
   "italicmt",
   "bolditalicmt",
   "psboldmt",
+  "psboldital",
   "psitalicmt",
   "psit",
   "psital",
@@ -754,7 +755,7 @@ type Bucket = {
   examples: AttributedDivergence[];
 };
 
-const KEY_SEP = " ";
+const KEY_SEP = "\0";
 const bucketKey = (kind: DivergenceKind, feature: string): string => `${kind}${KEY_SEP}${feature}`;
 const splitBucketKey = (key: string): { kind: DivergenceKind; feature: string } => {
   const sepIndex = key.indexOf(KEY_SEP);

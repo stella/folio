@@ -859,6 +859,8 @@ export type TextBox = {
   fill?: ShapeFill;
   /** Outline */
   outline?: ShapeOutline;
+  /** DrawingML transform applied to the text-box frame and content. */
+  transform?: ImageTransform;
   /** Text and table content */
   content: (Paragraph | Table)[];
   /** Text fitting behavior */

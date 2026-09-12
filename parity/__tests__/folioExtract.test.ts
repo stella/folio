@@ -14,6 +14,7 @@ import {
   parseCssFontFamilies,
   parseFirstFontFamily,
   parseInsetClipPath,
+  retryDetachedPageCapture,
   screenshotViewportHeight,
   toPageGeom,
 } from "../folioExtract";
@@ -64,6 +65,33 @@ describe("screenshot viewport height", () => {
 
   test("ignores invalid page heights", () => {
     expect(screenshotViewportHeight([Number.NaN, Number.POSITIVE_INFINITY], 1000)).toBe(1000);
+  });
+});
+
+describe("detached page capture retry", () => {
+  test("retries virtualized page remounts and returns the fresh capture", async () => {
+    let attempts = 0;
+    const result = await retryDetachedPageCapture(async () => {
+      attempts += 1;
+      if (attempts < 3) {
+        throw new Error("screenshot: Element is not attached to the DOM");
+      }
+      return "captured";
+    });
+
+    expect(result).toBe("captured");
+    expect(attempts).toBe(3);
+  });
+
+  test("does not retry unrelated capture failures", async () => {
+    let attempts = 0;
+    await expect(
+      retryDetachedPageCapture(async () => {
+        attempts += 1;
+        throw new Error("page closed");
+      }),
+    ).rejects.toThrow("page closed");
+    expect(attempts).toBe(1);
   });
 });
 

@@ -268,6 +268,30 @@ describe("measureParagraph — right/center tab stops (eigenpal #576)", () => {
     });
   });
 
+  test("preserves a header/footer end tab authored beyond the body width", () => {
+    withFakeTextMeasure(() => {
+      const measure = measureParagraph(
+        {
+          kind: "paragraph",
+          id: "header-end-tab-in-page-margin",
+          runs: [
+            { kind: "text", text: "Title", fontSize: 11 },
+            { kind: "tab" },
+            { kind: "text", text: "7", fontSize: 11 },
+          ],
+          attrs: {
+            tabs: [{ val: "end", pos: 7500 }],
+          },
+        },
+        400,
+        { allowEndTabOverflow: true },
+      );
+
+      expect(measure.lines).toHaveLength(1);
+      expect(measure.lines.at(0)?.width).toBe(500);
+    });
+  });
+
   test("preserves the logical endpoint of an RTL TOC end tab", () => {
     withFakeTextMeasure(
       () => {

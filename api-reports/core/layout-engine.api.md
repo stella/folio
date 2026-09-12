@@ -1020,6 +1020,7 @@ export type TextBoxBlock = {
     outlineWidth?: number;
     outlineColor?: string;
     outlineStyle?: OutlineStyleAttr;
+    transform?: string;
     margins?: {
         top: number;
         bottom: number;

@@ -876,6 +876,8 @@ export type TextBoxBlock = {
   outlineColor?: string;
   /** Outline dash style, or `"none"` for an explicit no-outline. */
   outlineStyle?: OutlineStyleAttr;
+  /** DrawingML rotation and/or flips, serialized as CSS transform functions. */
+  transform?: string;
   /** Internal padding */
   margins?: { top: number; bottom: number; left: number; right: number };
   /** Flow blocks inside the text box */

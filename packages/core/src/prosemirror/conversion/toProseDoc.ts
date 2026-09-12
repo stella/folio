@@ -480,7 +480,14 @@ function convertParagraph(
   let paragraphStyleFontFamily: TextFormatting["fontFamily"] | undefined;
   if (styleResolver) {
     const resolved = styleResolver.resolveParagraphStyle(paragraph.formatting?.styleId);
-    styleRunFormatting = resolved.runFormatting;
+    // The enclosing table style supplies the body-run defaults for cell
+    // paragraphs. Do not let a font inherited from docDefaults displace that
+    // table contribution; paragraph-style font slots are restored below from
+    // the style chain without docDefaults.
+    styleRunFormatting =
+      extraRunFormatting === undefined
+        ? resolved.runFormatting
+        : withoutFontFamily(resolved.runFormatting);
     const paragraphStyle = paragraph.formatting?.styleId
       ? (styleResolver.getStyle(paragraph.formatting.styleId) ??
         styleResolver.getDefaultParagraphStyle())
@@ -519,9 +526,9 @@ function convertParagraph(
     },
   );
   let baseRunFormatting = orderedToggleFormatting.formatting;
-  // A table style can carry legacy theme/fallback fonts from the template
-  // that created it. Preserve the paragraph style's authored font slots over
-  // the table contribution; direct run formatting still wins later.
+  // Preserve paragraph-style font slots over the table contribution, but not
+  // docDefaults: Word lets a table style replace a document-default font.
+  // Direct run formatting still wins later.
   if (paragraphStyleFontFamily) {
     baseRunFormatting = mergeTextFormatting(baseRunFormatting, {
       fontFamily: paragraphStyleFontFamily,
@@ -730,20 +737,33 @@ function convertParagraph(
   return proseParagraph;
 }
 
+const withoutFontFamily = (formatting: TextFormatting | undefined): TextFormatting | undefined => {
+  if (!formatting?.fontFamily) {
+    return formatting;
+  }
+  const { fontFamily: _fontFamily, ...withoutFont } = formatting;
+  return Object.keys(withoutFont).length > 0 ? withoutFont : undefined;
+};
+
 const resolveParagraphStyleFontFamily = (
   styleId: string | undefined,
   styleResolver: StyleEngine,
 ): TextFormatting["fontFamily"] | undefined => {
   let style = styleId ? styleResolver.getStyle(styleId) : styleResolver.getDefaultParagraphStyle();
   const visited = new Set<string>();
+  const styleChain: TextFormatting[] = [];
   while (style?.type === "paragraph" && !visited.has(style.styleId)) {
     visited.add(style.styleId);
     if (style.rPr?.fontFamily) {
-      return style.rPr.fontFamily;
+      styleChain.push({ fontFamily: style.rPr.fontFamily });
     }
     style = style.basedOn ? styleResolver.getStyle(style.basedOn) : undefined;
   }
-  return undefined;
+  let formatting: TextFormatting | undefined;
+  for (const styleFormatting of styleChain.toReversed()) {
+    formatting = mergeTextFormatting(formatting, styleFormatting);
+  }
+  return formatting?.fontFamily;
 };
 
 /**
@@ -4373,6 +4393,9 @@ function textBoxFromShape(shape: Shape, textBody: ShapeTextBody): TextBox {
   if (shape.outline) {
     textBox.outline = shape.outline;
   }
+  if (shape.transform) {
+    textBox.transform = shape.transform;
+  }
   if (textBody.margins) {
     textBox.margins = textBody.margins;
   }
@@ -4430,6 +4453,23 @@ function convertTextBox(
       outlineColor = `#${textBox.outline.color.rgb}`;
     }
     outlineStyle = textBox.outline.style || "solid";
+  }
+
+  let transform: string | undefined;
+  if (textBox.transform) {
+    const transforms: string[] = [];
+    if (textBox.transform.rotation) {
+      transforms.push(`rotate(${textBox.transform.rotation}deg)`);
+    }
+    if (textBox.transform.flipH) {
+      transforms.push("scaleX(-1)");
+    }
+    if (textBox.transform.flipV) {
+      transforms.push("scaleY(-1)");
+    }
+    if (transforms.length > 0) {
+      transform = transforms.join(" ");
+    }
   }
 
   // Convert margins from EMU to pixels
@@ -4541,6 +4581,7 @@ function convertTextBox(
       outlineWidth,
       outlineColor,
       outlineStyle,
+      transform,
       marginTop,
       marginBottom,
       marginLeft,
