@@ -188,7 +188,7 @@ type AlignBoundaryWhitespaceOptions = {
 /**
  * Resolve the ownership of an unchanged separator beside an edit.
  *
- * Word tokens carry leading whitespace, so duplicate words can leave the
+ * Tokenized words carry leading whitespace, so duplicates can leave the
  * surviving separator paired with the correct word but the wrong run. There
  * is an equally short alignment which keeps that separator with the preceding
  * unchanged text. Choose it only when its authored and effective formatting
