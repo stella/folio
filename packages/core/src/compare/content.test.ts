@@ -1974,6 +1974,56 @@ describe("container-aware comparison", () => {
     });
   });
 
+  test("a surviving cell may gain paragraphs while its neighboring column is deleted", () => {
+    const keptBase = tableBlock({
+      id: "kept",
+      text: "Kept",
+      rowIndex: 0,
+      cellIndex: 0,
+    });
+    const deleted = tableBlock({
+      id: "deleted",
+      text: "Deleted",
+      rowIndex: 0,
+      cellIndex: 1,
+    });
+    const revised = [
+      tableBlock({
+        id: "inserted-first",
+        text: "Inserted first",
+        rowIndex: 0,
+        cellIndex: 0,
+        paragraphIndex: 0,
+      }),
+      tableBlock({
+        id: "kept",
+        text: "Kept",
+        rowIndex: 0,
+        cellIndex: 0,
+        paragraphIndex: 1,
+      }),
+      tableBlock({
+        id: "inserted-last",
+        text: "Inserted last",
+        rowIndex: 0,
+        cellIndex: 0,
+        paragraphIndex: 2,
+      }),
+    ];
+    const base = [keptBase, deleted];
+
+    const comparison = successfulComparison({ base, revised });
+
+    expect(baseProjection(comparison)).toEqual(base);
+    expect(revisedProjection(comparison)).toEqual(revised);
+    expect(comparison.events.some(({ type }) => type === "tableReplacement")).toBe(false);
+    expect(
+      comparison.events
+        .filter(({ type }) => type === "structural")
+        .map(({ change }) => change.type),
+    ).toEqual(["table-column-delete"]);
+  });
+
   test("stable identity does not turn a table insertion into a cross-structure move", () => {
     const base = contentBlock({ id: "shared", text: "Clause" });
     const revised = tableBlock({

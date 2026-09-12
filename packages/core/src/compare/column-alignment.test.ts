@@ -11,6 +11,7 @@ type TableBlockOptions = {
   cellIndex: number;
   gridColumnIndex: number;
   columnSpan?: number;
+  paragraphIndex?: number;
 };
 
 const countedTableBlock = ({
@@ -20,6 +21,7 @@ const countedTableBlock = ({
   cellIndex,
   gridColumnIndex,
   columnSpan = 1,
+  paragraphIndex = 0,
 }: TableBlockOptions): { block: FolioContentBlock; reads: () => number } => {
   let textReads = 0;
   const captured = contentBlockFixture(id, text, {
@@ -32,7 +34,7 @@ const countedTableBlock = ({
       gridColumnIndex,
       columnSpan,
       rowSpan: 1,
-      paragraphIndex: 0,
+      paragraphIndex,
     }),
   });
   const block = {
@@ -46,6 +48,69 @@ const countedTableBlock = ({
 };
 
 describe("bounded table-column alignment", () => {
+  test("retains a column whose cell gained paragraphs when one neighboring column was deleted", () => {
+    const block = (options: TableBlockOptions): FolioContentBlock =>
+      countedTableBlock(options).block;
+    const base = [
+      block({
+        id: "base-kept",
+        text: "Kept",
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      block({
+        id: "base-deleted",
+        text: "Deleted",
+        rowIndex: 0,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+      }),
+    ];
+    const revised = [
+      block({
+        id: "revised-inserted-first",
+        text: "Inserted first",
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+        paragraphIndex: 0,
+      }),
+      block({
+        id: "revised-kept",
+        text: "Kept",
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+        paragraphIndex: 1,
+      }),
+      block({
+        id: "revised-inserted-last",
+        text: "Inserted last",
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+        paragraphIndex: 2,
+      }),
+    ];
+
+    const alignment = alignTableColumns(base, revised);
+
+    expect(
+      alignment?.steps.map((step) => ({
+        type: step.type,
+        blockIds: step.blocks.map(({ identity }) => identity.id),
+        columnIndex: step.columnIndex,
+      })),
+    ).toEqual([{ type: "baseColumn", blockIds: ["base-deleted"], columnIndex: 1 }]);
+    expect(alignment?.baseBlocks.map(({ identity }) => identity.id)).toEqual(["base-kept"]);
+    expect(alignment?.revisedBlocks.map(({ identity }) => identity.id)).toEqual([
+      "revised-inserted-first",
+      "revised-kept",
+      "revised-inserted-last",
+    ]);
+  });
+
   test("a long cell spanning all 63 columns contributes its text once", () => {
     const longText = "long table cell ".repeat(16_384);
     const base = countedTableBlock({
