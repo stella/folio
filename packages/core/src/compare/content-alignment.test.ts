@@ -1099,7 +1099,7 @@ describe("table row and column structural alignment", () => {
     ]);
   });
 
-  test("keeps shifted columns paired by logical column before considering stable ids", () => {
+  test("does not cross stable identities to force a shifted column embedding", () => {
     const base = [
       cell("left-id", "Account owner", {
         rowIndex: 0,
@@ -1134,20 +1134,7 @@ describe("table row and column structural alignment", () => {
       baseBlocks: base,
       revisedBlocks: revised,
     });
-    const pairs = steps.filter((step) => step.type === "pair");
-
-    expect(steps.map(({ type }) => type)).toEqual(["revisedColumn", "pair", "pair"]);
-    expect(
-      pairs.map(({ baseBlock, revisedBlock }) => [
-        baseBlock.table?.gridColumnIndex,
-        revisedBlock.table?.gridColumnIndex,
-        baseBlock.text,
-        revisedBlock.text,
-      ]),
-    ).toEqual([
-      [0, 1, "Account owner", "Account owner"],
-      [1, 2, "Amount payable", "Amount payable"],
-    ]);
+    expect(steps.map(({ type }) => type)).toEqual(["tableReplacement"]);
   });
 
   test("keeps an inserted column's members in document row order", () => {
