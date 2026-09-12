@@ -458,29 +458,30 @@ export const applyComparison = (
     );
   }
   for (const omitted of allUnsupported) {
-    let story: FolioDocumentStoryHandle;
+    let scope: CompareVerificationFailure["scope"];
     switch (omitted.reason) {
       case "story-missing-in-base":
       case "story-missing-in-target":
       case "story-not-editable":
-        story =
-          omitted.baseStory ??
-          omitted.targetStory ??
-          panic("An unsupported story has neither a base nor a target handle");
+        scope = {
+          type: "story",
+          story:
+            omitted.baseStory ??
+            omitted.targetStory ??
+            panic("An unsupported story has neither a base nor a target handle"),
+        };
         break;
       case "numbering-definition":
-        story =
-          planned.at(0)?.pair.baseStory ??
-          panic("A referenced numbering change has no paired story");
+        scope = { type: "package" };
         break;
       default:
-        story = omitted.story;
+        scope = { type: "story", story: omitted.story };
         break;
     }
     failures.push({
       invariant: "accept-reproduces-target",
       cause: "unsupported",
-      story,
+      scope,
       detail: `the ${omitted.reason} difference has no proved tracked-document instruction`,
     });
   }
@@ -558,9 +559,7 @@ export const applyComparison = (
       invariant: "accept-reproduces-target",
       story: pair.baseStory,
       actual: projectTableGeometry(
-        acceptedSnapshot
-          ? storyTablesOf(resolvedDocxOperationSnapshot(acceptedSnapshot))
-          : [],
+        acceptedSnapshot ? storyTablesOf(resolvedDocxOperationSnapshot(acceptedSnapshot)) : [],
       ),
       expected: projectTableGeometry(
         storyTablesOf(resolvedDocxOperationSnapshot(pair.targetSnapshot)),
@@ -573,9 +572,7 @@ export const applyComparison = (
       invariant: "reject-reproduces-base",
       story: pair.baseStory,
       actual: projectTableGeometry(
-        rejectedSnapshot
-          ? storyTablesOf(resolvedDocxOperationSnapshot(rejectedSnapshot))
-          : [],
+        rejectedSnapshot ? storyTablesOf(resolvedDocxOperationSnapshot(rejectedSnapshot)) : [],
       ),
       expected: baseBeforeGeometry,
     });
@@ -702,7 +699,7 @@ export const compareDocx = async (
     return Result.err(
       new CompareDocxRoundTripError({
         message: `The generated tracked changes do not satisfy ${firstFailure.invariant}: ${firstFailure.detail}`,
-        story: firstFailure.story,
+        scope: firstFailure.scope,
         invariant: firstFailure.invariant,
         cause: firstFailure.cause,
         failures: verification.failures,

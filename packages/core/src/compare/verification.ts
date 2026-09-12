@@ -87,11 +87,16 @@ export const COMPARE_VERIFICATION_CAUSES = Object.freeze([
 
 export type CompareVerificationCause = (typeof COMPARE_VERIFICATION_CAUSES)[number];
 
-/** One invariant that did not hold, in one story. */
+/** The package or exact story whose round-trip invariant did not hold. */
+export type CompareVerificationScope =
+  | { readonly type: "package" }
+  | { readonly type: "story"; readonly story: FolioDocumentStoryHandle };
+
+/** One invariant that did not hold at its typed package or story scope. */
 export type CompareVerificationFailure = {
   invariant: CompareVerificationInvariant;
   cause: CompareVerificationCause;
-  story: FolioDocumentStoryHandle;
+  scope: CompareVerificationScope;
   /** Structural facts only: counts, offsets, container kinds. Safe to quote. */
   detail: string;
 };
@@ -353,7 +358,7 @@ export const classifyGeometryMismatch = ({
     actual.length === expected.length
       ? `table ${String(actual.findIndex((entry, index) => entry !== expected[index]))} of ${String(actual.length)} carries different properties`
       : `${String(actual.length)} tables against ${String(expected.length)}`;
-  return { invariant, cause: "table-geometry", story, detail };
+  return { invariant, cause: "table-geometry", scope: { type: "story", story }, detail };
 };
 
 /**
@@ -377,7 +382,7 @@ export const classifyProjectionMismatch = ({
   ): CompareVerificationFailure => ({
     invariant,
     cause,
-    story,
+    scope: { type: "story", story },
     detail,
   });
 
@@ -441,10 +446,7 @@ const sameCanonicalIdentity = (
   right: FolioContentBlock["identity"],
 ): boolean =>
   Object.values(FOLIO_CONTENT_IDENTITY_FIELD_DESCRIPTORS).every((descriptor) =>
-    sameCanonicalValue(
-      Reflect.get(left, descriptor.field),
-      Reflect.get(right, descriptor.field),
-    ),
+    sameCanonicalValue(Reflect.get(left, descriptor.field), Reflect.get(right, descriptor.field)),
   );
 
 const sameCanonicalTableLocation = (
@@ -457,7 +459,12 @@ const sameCanonicalTableLocation = (
       case "transport-identity":
         break;
       case "exact":
-        if (!sameCanonicalValue(Reflect.get(left, descriptor.field), Reflect.get(right, descriptor.field))) {
+        if (
+          !sameCanonicalValue(
+            Reflect.get(left, descriptor.field),
+            Reflect.get(right, descriptor.field),
+          )
+        ) {
           return false;
         }
         break;
@@ -498,10 +505,7 @@ const sameCanonicalRuns = (
     const other = right[index];
     if (!other) return false;
     return Object.values(FOLIO_CONTENT_RUN_FIELD_DESCRIPTORS).every((descriptor) =>
-      sameCanonicalValue(
-        Reflect.get(run, descriptor.field),
-        Reflect.get(other, descriptor.field),
-      ),
+      sameCanonicalValue(Reflect.get(run, descriptor.field), Reflect.get(other, descriptor.field)),
     );
   });
 
@@ -509,12 +513,8 @@ const sameCanonicalParagraphFormatting = (
   left: FolioContentBlock["paragraphFormatting"],
   right: FolioContentBlock["paragraphFormatting"],
 ): boolean =>
-  Object.values(FOLIO_CONTENT_PARAGRAPH_FORMATTING_FIELD_DESCRIPTORS).every(
-    (descriptor) =>
-      sameCanonicalValue(
-        Reflect.get(left, descriptor.field),
-        Reflect.get(right, descriptor.field),
-      ),
+  Object.values(FOLIO_CONTENT_PARAGRAPH_FORMATTING_FIELD_DESCRIPTORS).every((descriptor) =>
+    sameCanonicalValue(Reflect.get(left, descriptor.field), Reflect.get(right, descriptor.field)),
   );
 
 const sameCanonicalStructuralBoundaries = (
@@ -525,12 +525,11 @@ const sameCanonicalStructuralBoundaries = (
   left.every((boundary, index) => {
     const other = right[index];
     if (!other) return false;
-    return Object.values(FOLIO_CONTENT_STRUCTURAL_BOUNDARY_FIELD_DESCRIPTORS).every(
-      (descriptor) =>
-        sameCanonicalValue(
-          Reflect.get(boundary, descriptor.field),
-          Reflect.get(other, descriptor.field),
-        ),
+    return Object.values(FOLIO_CONTENT_STRUCTURAL_BOUNDARY_FIELD_DESCRIPTORS).every((descriptor) =>
+      sameCanonicalValue(
+        Reflect.get(boundary, descriptor.field),
+        Reflect.get(other, descriptor.field),
+      ),
     );
   });
 

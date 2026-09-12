@@ -789,7 +789,7 @@ describe("single-mutation probes", () => {
     // rendered from the definitions, so nothing in any block's text moves and
     // a text-only comparison sees two identical documents.
     const roman = await buildNumberedListDocx(NUMBERED_LIST_ITEMS, { format: "lowerRoman" });
-    const result = await compareDocx(LIST_BASE, roman, OPTIONS);
+    const result = await compareDocx(LIST_BASE, roman, { ...OPTIONS, mode: "bestEffort" });
     if (result.isErr()) {
       throw result.error;
     }
@@ -798,6 +798,19 @@ describe("single-mutation probes", () => {
     const [change] = result.value.changes;
     expect(change?.kind === "numbering" && change.before?.format).toBe("decimal");
     expect(change?.kind === "numbering" && change.after?.format).toBe("lowerRoman");
+    expect(result.value.verification.status).toBe("unverified");
+    if (result.value.verification.status === "unverified") {
+      expect(
+        result.value.verification.failures.filter(({ scope }) => scope.type === "package"),
+      ).toEqual([
+        {
+          invariant: "accept-reproduces-target",
+          cause: "unsupported",
+          scope: { type: "package" },
+          detail: "the numbering-definition difference has no proved tracked-document instruction",
+        },
+      ]);
+    }
   });
 
   test("numbering definitions: only changed levels referenced by either document are reported", async () => {

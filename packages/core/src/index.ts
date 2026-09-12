@@ -105,6 +105,7 @@ export {
   type CompareVerificationCause,
   type CompareVerificationFailure,
   type CompareVerificationInvariant,
+  type CompareVerificationScope,
   type FinalParagraphMarkRevision,
 } from "./compare/verification";
 export { createDocx } from "./docx/rezip";

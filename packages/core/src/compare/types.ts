@@ -15,6 +15,7 @@ import type {
   CompareVerificationCause,
   CompareVerificationFailure,
   CompareVerificationInvariant,
+  CompareVerificationScope,
   FinalParagraphMarkRevision,
 } from "./verification";
 
@@ -374,7 +375,7 @@ export class CompareDocxApplyError extends TaggedError("CompareDocxApplyError")<
  */
 export class CompareDocxRoundTripError extends TaggedError("CompareDocxRoundTripError")<{
   message: string;
-  story: FolioDocumentStoryHandle;
+  scope: CompareVerificationScope;
   /** The invariant that did not hold, and what diverged under it. */
   invariant: CompareVerificationInvariant;
   cause: CompareVerificationCause;

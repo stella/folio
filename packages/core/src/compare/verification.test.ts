@@ -170,25 +170,19 @@ describe("complete canonical projection verification", () => {
       name: "authored paragraph presentation",
       cause: "alignment",
       mutate: (block: FolioContentBlock) =>
-        Reflect.set(block.paragraphFormatting, "authored", [
-          { key: "alignment", value: "right" },
-        ]),
+        Reflect.set(block.paragraphFormatting, "authored", [{ key: "alignment", value: "right" }]),
     },
     {
       name: "effective paragraph presentation",
       cause: "unsupported",
       mutate: (block: FolioContentBlock) =>
-        Reflect.set(block.paragraphFormatting, "effective", [
-          { key: "alignment", value: "right" },
-        ]),
+        Reflect.set(block.paragraphFormatting, "effective", [{ key: "alignment", value: "right" }]),
     },
     {
       name: "authored run presentation",
       cause: "inline-formatting",
       mutate: (block: FolioContentBlock) =>
-        Reflect.set(block.runs[0]!, "authoredFormatting", [
-          { key: "bold", value: false },
-        ]),
+        Reflect.set(block.runs[0]!, "authoredFormatting", [{ key: "bold", value: false }]),
     },
     {
       name: "table location",
@@ -276,7 +270,7 @@ describe("classifyProjectionMismatch", () => {
     ).toEqual({
       invariant: "accept-reproduces-target",
       cause: "container",
-      story: { type: "main" },
+      scope: { type: "story", story: { type: "main" } },
       detail:
         "a block sits in a cell where it is expected in a body, at block 0/1 (1 blocks against 1)",
     });
@@ -315,7 +309,7 @@ describe("classifyProjectionMismatch", () => {
     ).toEqual({
       invariant: "accept-reproduces-target",
       cause: "invisible-structure",
-      story: { type: "main" },
+      scope: { type: "story", story: { type: "main" } },
       detail: "every block matches once table coordinates count visible blocks (2 blocks)",
     });
   });
@@ -344,7 +338,7 @@ describe("classifyProjectionMismatch", () => {
     ).toEqual({
       invariant: "accept-reproduces-target",
       cause: "container",
-      story: { type: "main" },
+      scope: { type: "story", story: { type: "main" } },
       detail:
         "a block sits in a cell where it is expected in a cell, at block 1/2 (2 blocks against 2)",
     });
@@ -391,7 +385,7 @@ describe("classifyProjectionMismatch", () => {
     ).toEqual({
       invariant: "accept-reproduces-target",
       cause: "inline-structure",
-      story: { type: "main" },
+      scope: { type: "story", story: { type: "main" } },
       detail:
         "a block's zero-width inline structure does not match at block 0/1 (1 blocks against 1)",
     });
@@ -438,7 +432,7 @@ describe("classifyProjectionMismatch", () => {
     ).toEqual({
       invariant: "accept-reproduces-target",
       cause: "alignment",
-      story: { type: "main" },
+      scope: { type: "story", story: { type: "main" } },
       detail: "the direct paragraph alignment did not move at block 0/1 (1 blocks against 1)",
     });
   });
@@ -456,7 +450,7 @@ describe("classifyProjectionMismatch", () => {
     ).toEqual({
       invariant: "accept-reproduces-target",
       cause: "spacing",
-      story: { type: "main" },
+      scope: { type: "story", story: { type: "main" } },
       detail: "the direct paragraph spacing did not move at block 0/1 (1 blocks against 1)",
     });
   });
