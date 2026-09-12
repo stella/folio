@@ -550,7 +550,16 @@ describe("table geometry round trip", () => {
     const strict = await compareDocx(base, target, OPTIONS);
     expect(strict.isErr()).toBe(true);
     if (strict.isErr()) {
-      expect(strict.error._tag).toBe("CompareDocxRoundTripError");
+      expect(strict.error).toMatchObject({
+        _tag: "CompareDocxUnsupportedError",
+        unsupported: [
+          {
+            reason: "transport-preflight",
+            instructionIndex: 0,
+            detail: "unrepresentable-table-structure",
+          },
+        ],
+      });
     }
 
     const emitted = await compareDocx(base, target, { ...OPTIONS, mode: "bestEffort" });
