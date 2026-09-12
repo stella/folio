@@ -10,7 +10,7 @@ import {
   hasSerializableParagraphPropertyChange,
   paragraphPropertiesSnapshot,
 } from "../prosemirror/commands/propertyChangeScope";
-import { CLEARED_LIST_RENDERING_ATTRS } from "../prosemirror/listMarker";
+import { LIST_RENDERING_ATTR_DEFAULTS } from "../prosemirror/schema/paragraphAttrDefaults";
 import { directParagraphAlignment } from "../prosemirror/paragraphAlignment";
 import {
   directParagraphSpacing,
@@ -507,7 +507,7 @@ const paragraphPropertiesPatch = ({
     const numPr: unknown = node.attrs["numPr"];
     if (properties.listLevel === null) {
       patch["numPr"] = null;
-      Object.assign(patch, CLEARED_LIST_RENDERING_ATTRS);
+      Object.assign(patch, LIST_RENDERING_ATTR_DEFAULTS);
     } else {
       const numId =
         typeof numPr === "object" && numPr !== null && "numId" in numPr ? numPr.numId : undefined;
@@ -518,7 +518,7 @@ const paragraphPropertiesPatch = ({
         );
       } else {
         patch["numPr"] = { ilvl: properties.listLevel };
-        Object.assign(patch, CLEARED_LIST_RENDERING_ATTRS);
+        Object.assign(patch, LIST_RENDERING_ATTR_DEFAULTS);
       }
     }
   }
@@ -1950,7 +1950,7 @@ const buildInsertedParagraphs = ({
     const listLevel = operation.listLevel;
     if (isFirstParagraph && listLevel === null) {
       attrs["numPr"] = null;
-      Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
+      Object.assign(attrs, LIST_RENDERING_ATTR_DEFAULTS);
     } else if (isFirstParagraph && typeof listLevel === "number") {
       const anchorNumPr: unknown = Reflect.get(baseAttrs, "numPr");
       const numId =
@@ -1968,13 +1968,13 @@ const buildInsertedParagraphs = ({
         );
       } else {
         attrs["numPr"] = { ilvl: listLevel };
-        Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
+        Object.assign(attrs, LIST_RENDERING_ATTR_DEFAULTS);
       }
     }
     if (isFirstParagraph && operation.styleId !== undefined) {
       attrs["styleId"] = operation.styleId;
       if (operation.inheritFormatting !== false && operation.styleId !== null) {
-        Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
+        Object.assign(attrs, LIST_RENDERING_ATTR_DEFAULTS);
       }
     }
     if (

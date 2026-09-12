@@ -16,7 +16,7 @@ import {
 } from "../../docx/numberingParser";
 import { tableOfContentsStyleLevel } from "../../utils/tableOfContentsStyle";
 import { setAutospacingBaseValue } from "../autospacingBase";
-import { CLEARED_LIST_RENDERING_ATTRS } from "../listMarker";
+import { LIST_RENDERING_ATTR_DEFAULTS } from "../schema/paragraphAttrDefaults";
 import type { ParagraphAttrs } from "../schema/nodes";
 import type { ResolvedParagraphStyle } from "./styleResolver";
 
@@ -148,7 +148,7 @@ export function listAttrsFromNumbering(
   const targetNumPr = { numId: numPr.numId, ilvl: numPr.ilvl };
   const rendering = numbering ? computeListRendering(targetNumPr, numbering) : null;
   return {
-    ...CLEARED_LIST_RENDERING_ATTRS,
+    ...LIST_RENDERING_ATTR_DEFAULTS,
     numPr: targetNumPr,
     listNumFmt: rendering?.numFmt ?? null,
     listIsBullet: rendering?.isBullet ?? null,

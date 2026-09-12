@@ -55,7 +55,6 @@ import type {
   ShapeTextBody,
   Theme,
 } from "../../types/document";
-import { mergeParagraphFormatting } from "../../utils/paragraphFormattingMerge";
 import { resolveColorValueToHex } from "../../docx/drawingUtils";
 import {
   PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
@@ -972,11 +971,15 @@ function paragraphFormattingToAttrs(
     }
     set(
       "defaultTextFormatting",
-      resolveParagraphDefaultTextFormatting(styleId, formatting, styleResolver, {
-        includeParagraphMarkRunProperties:
-          tableOfContentsLevel === undefined &&
-          (styleId === undefined || paragraph.content.length === 0),
-      }),
+      resolveParagraphDefaultTextFormatting(
+        {
+          styleId,
+          formatting,
+          tableOfContentsLevel,
+          hasContent: paragraph.content.length > 0,
+        },
+        styleResolver,
+      ),
     );
 
     // A direct numPr may carry only ilvl while the style supplies numId.
@@ -1157,12 +1160,22 @@ function resolveTextFormatting(
   return mergeTextFormatting(styleFormatting, formatting);
 }
 
+type ResolveParagraphDefaultTextFormattingOptions = {
+  readonly styleId: string | undefined;
+  readonly formatting: Paragraph["formatting"] | undefined;
+  readonly tableOfContentsLevel: number | undefined;
+  readonly hasContent: boolean;
+};
+
 /** @internal Recompute a paragraph's inherited run defaults from authored package state. */
 export function resolveParagraphDefaultTextFormatting(
-  styleId: string | undefined,
-  formatting: Paragraph["formatting"] | undefined,
+  {
+    styleId,
+    formatting,
+    tableOfContentsLevel,
+    hasContent,
+  }: ResolveParagraphDefaultTextFormattingOptions,
   styleResolver: ParagraphDefaultFormattingResolver,
-  options: { includeParagraphMarkRunProperties?: boolean } = {},
 ): TextFormatting | undefined {
   const style = styleId
     ? (styleResolver.getStyle(styleId) ?? styleResolver.getDefaultParagraphStyle())
@@ -1175,7 +1188,9 @@ export function resolveParagraphDefaultTextFormatting(
   // (e.g. FootnoteText's Times New Roman) with the docDefault Calibri when
   // merged into the cascade below.
   const rawParagraphMarkRpr =
-    options.includeParagraphMarkRunProperties === false ? undefined : formatting?.runProperties;
+    tableOfContentsLevel === undefined && (styleId === undefined || !hasContent)
+      ? formatting?.runProperties
+      : undefined;
   const paragraphRunProperties = rawParagraphMarkRpr
     ? stripParagraphMarkOnlyFormatting(
         resolveRunFormattingWithoutDefaults(rawParagraphMarkRpr, styleResolver) ?? {},

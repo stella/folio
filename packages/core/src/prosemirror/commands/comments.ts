@@ -233,10 +233,19 @@ function resolveChange(
                 );
                 nextAttrs["_originalFormatting"] = restoredFormatting;
                 if (styleResolver) {
+                  const previousStyleId = rejection.previousFormatting?.styleId;
+                  const tableOfContentsLevel = node.attrs["_tableOfContentsLevel"];
                   nextAttrs["defaultTextFormatting"] =
                     resolveParagraphDefaultTextFormatting(
-                      rejection.previousFormatting?.styleId,
-                      restoredFormatting ?? undefined,
+                      {
+                        styleId: previousStyleId,
+                        formatting: restoredFormatting ?? undefined,
+                        tableOfContentsLevel:
+                          typeof tableOfContentsLevel === "number"
+                            ? tableOfContentsLevel
+                            : undefined,
+                        hasContent: node.content.size > 0,
+                      },
                       styleResolver,
                     ) ?? null;
                 }

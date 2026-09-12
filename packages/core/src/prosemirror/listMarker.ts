@@ -52,44 +52,6 @@ export type ResolvedListTemplate = {
 
 export const MAX_LIST_LEVEL = 8;
 
-export const LIST_RENDERING_ATTR_KEYS = [
-  "listIsBullet",
-  "listIsLegal",
-  "listNumFmt",
-  "listMarker",
-  "listMarkerTemplate",
-  "listMarkerHidden",
-  "listMarkerFormatting",
-  "listMarkerAlignment",
-  "listMarkerSuffix",
-  "listMarkerAllCaps",
-  "listImplicitChildLevelAdvances",
-  "listMarkerSecondSlotOffsetTwips",
-  "listLevelNumFmts",
-  "listLevelStarts",
-  "listAbstractNumId",
-  "listStartOverride",
-] as const satisfies readonly (keyof ParagraphAttrs)[];
-
-export const CLEARED_LIST_RENDERING_ATTRS = Object.freeze({
-  listIsBullet: null,
-  listIsLegal: null,
-  listNumFmt: null,
-  listMarker: null,
-  listMarkerTemplate: null,
-  listMarkerHidden: null,
-  listMarkerFormatting: null,
-  listMarkerAlignment: null,
-  listMarkerSuffix: null,
-  listMarkerAllCaps: null,
-  listImplicitChildLevelAdvances: null,
-  listMarkerSecondSlotOffsetTwips: null,
-  listLevelNumFmts: null,
-  listLevelStarts: null,
-  listAbstractNumId: null,
-  listStartOverride: null,
-});
-
 export function createListCounterState(): ListCounterState {
   return {
     counters: new Map(),
