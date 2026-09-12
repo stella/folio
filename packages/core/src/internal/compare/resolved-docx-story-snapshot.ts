@@ -1113,9 +1113,22 @@ const visitBlocks = (
   }
 };
 
+const parentTableCellContainer = (
+  table: LiveTableOwnership,
+): FolioContentContainerPathEntry => ({
+  kind: "tableCell",
+  identity: {
+    type: "positional",
+    id: `table-${String(table.tableIndex)}-row-${String(table.rowIndex)}-cell-${String(table.cellIndex)}`,
+  },
+});
+
 const visitTable = (table: Table, context: WalkContext, builder: ProjectionBuilder): void => {
   const tableIndex = builder.nextTableIndex++;
   const outerTableIndex = context.table?.outerTableIndex ?? tableIndex;
+  const containerPath = context.table
+    ? [...context.containerPath, parentTableCellContainer(context.table)]
+    : context.containerPath;
   const resolveTableCellPresentation = createTableCellPresentationResolver({
     table,
     styleResolver: builder.styleEngine,
@@ -1142,6 +1155,7 @@ const visitTable = (table: Table, context: WalkContext, builder: ProjectionBuild
         cell.content,
         {
           ...context,
+          containerPath,
           table: {
             outerTableIndex,
             tableIndex,

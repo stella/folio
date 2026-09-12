@@ -7,7 +7,7 @@ import {
 } from "../../ai-edits/snapshot";
 import type { FolioContentPropertySet } from "../../compare/content-types";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
-import type { Paragraph, Table } from "../../types/document";
+import type { Paragraph, Table, TableCell } from "../../types/document";
 import { createEmptyDocument } from "../../utils/createDocument";
 import {
   createResolvedDocxStorySnapshot,
@@ -196,6 +196,76 @@ describe("owned live DOCX story projection", () => {
     ]);
     expect(first.containerPath).toEqual(second.containerPath);
     expect(first.blockProperties).toEqual(second.blockProperties);
+  });
+
+  test("projects a nested table through its exact parent cell", () => {
+    const paragraph = (paraId: string, text: string): Paragraph => ({
+      type: "paragraph",
+      paraId,
+      content: [{ type: "run", content: [{ type: "text", text }] }],
+    });
+    const projectNested = (parentCellIndex: 0 | 1) => {
+      const tableCell = (content: TableCell["content"]): TableCell => ({
+        type: "tableCell",
+        content,
+      });
+      const nested = {
+        type: "table",
+        rows: [
+          {
+            type: "tableRow",
+            cells: [
+              {
+                type: "tableCell",
+                content: [paragraph("A1000010", "Nested")],
+              },
+            ],
+          },
+        ],
+      } satisfies Table;
+      const outer = {
+        type: "table",
+        rows: [
+          {
+            type: "tableRow",
+            cells: [0, 1].map((cellIndex) =>
+              tableCell(
+                cellIndex === parentCellIndex
+                  ? [paragraph(`A100000${String(cellIndex + 1)}`, "Before"), nested]
+                  : [paragraph(`A100000${String(cellIndex + 1)}`, "Other")],
+              ),
+            ),
+          },
+        ],
+      } satisfies Table;
+      const document = createEmptyDocument();
+      document.package.document.content = [outer];
+      const snapshot = createResolvedDocxStorySnapshot({
+        document,
+        story: { type: "main" },
+        sourceDocument: toProseDoc(document),
+      });
+      if (!snapshot) throw new Error("main story projection missing");
+      return (
+        resolvedDocxContentBlocks(snapshot).find(({ text }) => text === "Nested") ??
+        (() => {
+          throw new Error("nested paragraph projection missing");
+        })()
+      );
+    };
+
+    expect(projectNested(0).containerPath).toEqual([
+      {
+        kind: "tableCell",
+        identity: { type: "positional", id: "table-0-row-0-cell-0" },
+      },
+    ]);
+    expect(projectNested(1).containerPath).toEqual([
+      {
+        kind: "tableCell",
+        identity: { type: "positional", id: "table-0-row-0-cell-1" },
+      },
+    ]);
   });
 
   test("derives merged-cell geometry and paragraph ordinals from the live table", () => {

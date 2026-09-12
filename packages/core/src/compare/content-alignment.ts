@@ -1033,10 +1033,15 @@ const contentBlocksShareContainerPath = (
   left.containerPath.length === right.containerPath.length &&
   left.containerPath.every((entry, index) => {
     const counterpart = right.containerPath[index];
+    const disposition =
+      counterpart === undefined
+        ? "forbid"
+        : folioContentIdentityPairDisposition(entry.identity, counterpart.identity);
     return (
       counterpart !== undefined &&
       entry.kind === counterpart.kind &&
-      folioContentIdentityPairDisposition(entry.identity, counterpart.identity) !== "forbid"
+      disposition !== "candidate" &&
+      disposition !== "forbid"
     );
   });
 

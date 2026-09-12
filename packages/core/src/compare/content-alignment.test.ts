@@ -651,6 +651,37 @@ describe("container-safe structural alignment", () => {
     ).toEqual([["shared"], ["shared"]]);
   });
 
+  test("does not treat distinct positional container hints as one table-cell occurrence", () => {
+    const base = [
+      cell(
+        "shared",
+        "Same text",
+        { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 },
+        {
+          containerPath: [
+            { kind: "tableCell", identity: contentIdentity("parent-cell-0", "positional") },
+          ],
+        },
+      ),
+    ];
+    const revised = [
+      cell(
+        "shared",
+        "Same text",
+        { rowIndex: 0, cellIndex: 0, gridColumnIndex: 0 },
+        {
+          containerPath: [
+            { kind: "tableCell", identity: contentIdentity("parent-cell-1", "positional") },
+          ],
+        },
+      ),
+    ];
+
+    const steps = alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised });
+
+    expect(steps.map(({ type }) => type)).toEqual(["baseOnly", "revisedOnly"]);
+  });
+
   test("multiple stable blocks cannot pair one body segment to two revised segments", () => {
     const baseTable = cell("separator", "Table separator", {
       rowIndex: 0,
