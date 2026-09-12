@@ -1639,15 +1639,14 @@ function layoutTextBox(
     // Honor the box's horizontal anchor (align center/right, page-relative
     // offset) instead of always pinning to the column's left edge. The band is
     // full-width regardless, so this only moves where the box paints.
-    const horizontal = block.position?.horizontal;
-    const x = horizontal
-      ? bandFragmentX(horizontal, {
-          pageWidth: state.page.size.w,
-          marginLeft: state.page.margins.left,
-          marginRight: state.page.margins.right,
-          boxWidth: measure.width,
-        })
-      : paginator.getColumnX(state.columnIndex);
+    const x = bandFragmentX(block.position?.horizontal, {
+      pageWidth: state.page.size.w,
+      marginLeft: state.page.margins.left,
+      marginRight: state.page.margins.right,
+      activeColumnLeft: paginator.getColumnX(state.columnIndex),
+      activeColumnWidth: paginator.columnWidth,
+      boxWidth: measure.width,
+    });
     const fragment: TextBoxFragment = {
       kind: "textBox",
       blockId: block.id,
@@ -1672,15 +1671,14 @@ function layoutTextBox(
   // shape-only paragraph stack vertically and push the body onto another page.
   if (block.position !== undefined) {
     const state = paginator.getCurrentState();
-    const horizontal = block.position.horizontal;
-    const x = horizontal
-      ? bandFragmentX(horizontal, {
-          pageWidth: state.page.size.w,
-          marginLeft: state.page.margins.left,
-          marginRight: state.page.margins.right,
-          boxWidth: measure.width,
-        })
-      : paginator.getColumnX(state.columnIndex);
+    const x = bandFragmentX(block.position.horizontal, {
+      pageWidth: state.page.size.w,
+      marginLeft: state.page.margins.left,
+      marginRight: state.page.margins.right,
+      activeColumnLeft: paginator.getColumnX(state.columnIndex),
+      activeColumnWidth: paginator.columnWidth,
+      boxWidth: measure.width,
+    });
     const vertical = block.position.vertical;
     const anchorBlockId = readTextBoxAnchorBlockId(block);
     const anchorParagraph =

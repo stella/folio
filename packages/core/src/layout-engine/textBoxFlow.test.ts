@@ -76,12 +76,20 @@ describe("bandFragmentX (eigenpal #694)", () => {
     pageWidth: 816,
     marginLeft: 96,
     marginRight: 96,
+    activeColumnLeft: 96,
+    activeColumnWidth: 624,
     boxWidth: 600,
   };
   const EMU_PER_INCH = 914_400; // 1in = 96px at 96 DPI = marginLeft.
 
-  test("no horizontal anchor → content left edge", () => {
-    expect(bandFragmentX(undefined, geometry)).toBe(96);
+  test("no horizontal anchor → active column left edge", () => {
+    expect(
+      bandFragmentX(undefined, {
+        ...geometry,
+        activeColumnLeft: 420,
+        activeColumnWidth: 300,
+      }),
+    ).toBe(420);
   });
 
   test("margin-relative align=center centers within the content box", () => {
@@ -116,6 +124,42 @@ describe("bandFragmentX (eigenpal #694)", () => {
     ).toBe(96);
     // margin frame: 96 + 96
     expect(bandFragmentX({ relativeTo: "margin", posOffset: EMU_PER_INCH }, geometry)).toBe(192);
+  });
+
+  test("resolves column-relative placement from the active column frame", () => {
+    const secondColumn = {
+      ...geometry,
+      activeColumnLeft: 420,
+      activeColumnWidth: 300,
+      boxWidth: 120,
+    };
+
+    expect(bandFragmentX({ relativeTo: "column", posOffset: EMU_PER_INCH }, secondColumn)).toBe(
+      516,
+    );
+    expect(bandFragmentX({ relativeTo: "column", align: "right" }, secondColumn)).toBe(600);
+  });
+
+  test("changing the active column cannot move anchors in any other frame", () => {
+    const shiftedColumn = {
+      ...geometry,
+      activeColumnLeft: 420,
+      activeColumnWidth: 300,
+    };
+    const nonColumnFrames = [
+      "page",
+      "margin",
+      "character",
+      "leftMargin",
+      "rightMargin",
+      "insideMargin",
+      "outsideMargin",
+    ] as const;
+
+    for (const relativeTo of nonColumnFrames) {
+      const horizontal = { relativeTo, align: "center" as const };
+      expect(bandFragmentX(horizontal, shiftedColumn)).toBe(bandFragmentX(horizontal, geometry));
+    }
   });
 
   test("resolves left/right margin-strip frames", () => {

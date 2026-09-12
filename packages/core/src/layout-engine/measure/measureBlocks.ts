@@ -777,6 +777,7 @@ function extractFloatingZones(
     const blockMarginRight = perBlockNumberValue(marginRightInput, blockIndex, defaultMarginRight);
     const blockPageWidth = perBlockNumberValue(pageWidthInput, blockIndex, defaultPageWidth);
     const blockContentWidth = perBlockNumberValue(contentWidth, blockIndex, defaultContentWidth);
+    const blockContentLeft = perBlockNumberValue(contentLeftInput, blockIndex, defaultContentLeft);
     const vertical = tb.position.vertical;
     const pageFrameRelative = isPageFrameRelativeAnchor(vertical?.relativeTo);
     const topY = pageFrameRelative
@@ -811,16 +812,15 @@ function extractFloatingZones(
       continue;
     }
 
-    const horizontal = tb.position.horizontal;
-    const pageX = horizontal
-      ? bandFragmentX(horizontal, {
-          pageWidth: blockPageWidth,
-          marginLeft: blockMarginLeft,
-          marginRight: blockMarginRight,
-          boxWidth: measure.width,
-        })
-      : blockMarginLeft;
-    const contentX = pageX - blockMarginLeft;
+    const pageX = bandFragmentX(tb.position.horizontal, {
+      pageWidth: blockPageWidth,
+      marginLeft: blockMarginLeft,
+      marginRight: blockMarginRight,
+      activeColumnLeft: blockContentLeft,
+      activeColumnWidth: blockContentWidth,
+      boxWidth: measure.width,
+    });
+    const contentX = pageX - blockContentLeft;
     const wrapSide = textBoxWrapSide({
       box: tb,
       contentX,
