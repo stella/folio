@@ -2399,6 +2399,52 @@ describe("toFlowBlocks hyperlink identity", () => {
 
 describe("toFlowBlocks table cell formatting", () => {
   test.each([
+    { name: "ordinary", rowAttrs: null },
+    { name: "cantSplit", rowAttrs: { _originalFormatting: { cantSplit: true } } },
+  ])("projects a leading page-break run as a $name row boundary", ({ rowAttrs }) => {
+    const doc = schema.node("doc", null, [
+      schema.node("table", null, [
+        schema.node("tableRow", rowAttrs, [
+          schema.node("tableCell", null, [
+            schema.node("paragraph", null, [schema.node("pageBreakRun"), schema.text("after")]),
+          ]),
+        ]),
+      ]),
+    ]);
+
+    const table = toFlowBlocks(doc).at(0);
+    if (table?.kind !== "table") {
+      throw new Error("Expected table block");
+    }
+
+    expect(table.rows.at(0)?.breakBefore).toBe("page");
+  });
+
+  test("ignores a zero-width bookmark before a leading row boundary", () => {
+    const doc = schema.node("doc", null, [
+      schema.node("table", null, [
+        schema.node("tableRow", null, [
+          schema.node("tableCell", null, [
+            schema.node("paragraph", null, [
+              schema.node("bookmarkBoundary", { type: "start", id: 7, name: "boundary" }),
+              schema.node("pageBreakRun"),
+              schema.text("after"),
+              schema.node("bookmarkBoundary", { type: "end", id: 7 }),
+            ]),
+          ]),
+        ]),
+      ]),
+    ]);
+
+    const table = toFlowBlocks(doc).at(0);
+    if (table?.kind !== "table") {
+      throw new Error("Expected table block");
+    }
+
+    expect(table.rows.at(0)?.breakBefore).toBe("page");
+  });
+
+  test.each([
     { name: "ordinary", rowAttrs: null, cellAttrs: null, nested: false },
     {
       name: "cantSplit",

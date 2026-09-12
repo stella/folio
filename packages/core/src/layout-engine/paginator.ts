@@ -107,6 +107,16 @@ type StartSectionOptions = {
   placement?: SectionStartPlacement;
 };
 
+type PagePaginationState = {
+  /** Updated at insertion so blank-page checks never rescan accumulated carriers. */
+  visibleFragmentCount: number;
+  /** Retargeted carriers take their final coordinates once, when the page is observed or closed. */
+  carrierGeometryNeedsMaterialization: boolean;
+};
+
+const isEmptyCarrier = (fragment: Fragment): boolean =>
+  fragment.kind === "paragraph" && fragment.paginationRole === "empty-carrier";
+
 /** Calculate active column widths, preferring authored unequal widths. */
 export function calculateColumnWidths(
   pageWidth: number,
@@ -201,6 +211,7 @@ export function createPaginator(options: PaginatorOptions) {
 
   const pages: Page[] = [];
   const states: PageState[] = [];
+  const paginationStateByPage = new WeakMap<Page, PagePaginationState>();
 
   function getContentBottom(): number {
     return pageSize.h - margins.bottom;
@@ -288,10 +299,41 @@ export function createPaginator(options: PaginatorOptions) {
     });
   }
 
+  function getPagePaginationState(page: Page): PagePaginationState {
+    const state = paginationStateByPage.get(page);
+    if (!state) {
+      panic("Paginator: page visibility state is missing");
+    }
+    return state;
+  }
+
+  function materializeCarrierGeometry(state: PageState | undefined): void {
+    if (!state) {
+      return;
+    }
+    const paginationState = getPagePaginationState(state.page);
+    if (!paginationState.carrierGeometryNeedsMaterialization) {
+      return;
+    }
+
+    const x = getColumnX(0);
+    const width = columnWidths[0] ?? getContentWidth();
+    for (const fragment of state.page.fragments) {
+      if (!isEmptyCarrier(fragment)) {
+        continue;
+      }
+      fragment.x = x;
+      fragment.y = state.topMargin;
+      fragment.width = width;
+    }
+    paginationState.carrierGeometryNeedsMaterialization = false;
+  }
+
   /**
    * Create a new page and add it to the list.
    */
   function createNewPage(): PageState {
+    materializeCarrierGeometry(states.at(-1));
     if (pendingPageSize || pendingMargins) {
       applyPendingLayout();
     }
@@ -345,6 +387,10 @@ export function createPaginator(options: PaginatorOptions) {
       footnoteDemandHeight: 0,
       trailingSpacing: 0,
     };
+    paginationStateByPage.set(page, {
+      visibleFragmentCount: 0,
+      carrierGeometryNeedsMaterialization: false,
+    });
 
     pages.push(page);
     states.push(state);
@@ -499,6 +545,11 @@ export function createPaginator(options: PaginatorOptions) {
   function commitFragment(state: PageState, fragment: Fragment): void {
     consumeSharedSectionPage(state);
 
+    const paginationState = getPagePaginationState(state.page);
+    if (!isEmptyCarrier(fragment)) {
+      materializeCarrierGeometry(state);
+      paginationState.visibleFragmentCount += 1;
+    }
     const fragments = state.page.fragments;
     fragments.push(fragment);
   }
@@ -566,7 +617,7 @@ export function createPaginator(options: PaginatorOptions) {
     if (
       breakOptions.coalesceBlankPage &&
       current &&
-      current.page.fragments.length === 0 &&
+      getPagePaginationState(current.page).visibleFragmentCount === 0 &&
       current.cursorY === current.topMargin
     ) {
       if (current.page.sectionIndex !== currentSectionIndex) {
@@ -603,9 +654,14 @@ export function createPaginator(options: PaginatorOptions) {
     const pageMargins = getPageMargins(state.page.number, logicalNumber);
     const xDelta = pageMargins.left - previousMargins.left;
     const yDelta = pageMargins.top - previousMargins.top;
-    for (const fragment of state.page.fragments) {
-      fragment.x += xDelta;
-      fragment.y += yDelta;
+    const paginationState = getPagePaginationState(state.page);
+    if (paginationState.visibleFragmentCount === 0) {
+      paginationState.carrierGeometryNeedsMaterialization = state.page.fragments.length > 0;
+    } else {
+      for (const fragment of state.page.fragments) {
+        fragment.x += xDelta;
+        fragment.y += yDelta;
+      }
     }
     state.page.margins = pageMargins;
     state.topMargin = pageMargins.top;
@@ -620,7 +676,11 @@ export function createPaginator(options: PaginatorOptions) {
 
   function retargetCurrentBlankPage(): boolean {
     const current = states.at(-1);
-    if (!current || current.page.fragments.length > 0 || current.cursorY !== current.topMargin) {
+    if (
+      !current ||
+      getPagePaginationState(current.page).visibleFragmentCount > 0 ||
+      current.cursorY !== current.topMargin
+    ) {
       return false;
     }
 
@@ -649,6 +709,8 @@ export function createPaginator(options: PaginatorOptions) {
 
     current.topMargin = topMargin;
     current.cursorY = topMargin;
+    getPagePaginationState(current.page).carrierGeometryNeedsMaterialization =
+      current.page.fragments.length > 0;
     current.columnIndex = 0;
     current.rawContentBottom = rawContentBottom;
     current.footnoteHeight = footnoteHeightFloor;
@@ -775,7 +837,10 @@ export function createPaginator(options: PaginatorOptions) {
 
   return {
     /** All pages created so far. */
-    pages,
+    get pages() {
+      materializeCarrierGeometry(states.at(-1));
+      return pages;
+    },
     /** All page states. */
     states,
     /** Column width in pixels (use getColumnWidth() for current value after updates). */

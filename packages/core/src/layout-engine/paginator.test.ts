@@ -276,6 +276,66 @@ describe("paginator forcePageBreak", () => {
     expect(state.contentBottom).toBe(nextSize.h - nextMargins.bottom);
   });
 
+  test("retargets carrier geometry to the incoming first column", () => {
+    const paginator = createPaginator({ pageSize: SIZE, margins: MARGINS });
+    const carrier = {
+      ...paragraphFragment("carrier"),
+      height: 0,
+      paginationRole: "empty-carrier" as const,
+    };
+    paginator.addFragment(carrier, 0);
+
+    const nextSize = { w: 600, h: 700 };
+    const nextMargins = { top: 30, right: 40, bottom: 50, left: 60 };
+    paginator.updatePageLayout(nextSize, nextMargins);
+    paginator.startSection({ sectionIndex: 1 });
+    expect(paginator.retargetCurrentBlankPage()).toBe(true);
+    paginator.updateColumns({ count: 2, gap: 20, widths: [180, 300] });
+
+    expect(paginator.pages.at(0)?.fragments.at(0)).toMatchObject({
+      x: nextMargins.left,
+      y: nextMargins.top,
+      width: 180,
+    });
+  });
+
+  test("materializes each accumulated carrier once after repeated blank-page retargeting", () => {
+    const paginator = createPaginator({ pageSize: SIZE, margins: MARGINS });
+    const carrierCount = 256;
+    const writes = { x: 0, y: 0, width: 0 };
+
+    for (let index = 0; index < carrierCount; index += 1) {
+      const carrier = new Proxy(
+        {
+          ...paragraphFragment(`carrier-${String(index)}`),
+          height: 0,
+          paginationRole: "empty-carrier" as const,
+        },
+        {
+          set: (target, property, value, receiver) => {
+            if (property === "x" || property === "y" || property === "width") {
+              writes[property] += 1;
+            }
+            return Reflect.set(target, property, value, receiver);
+          },
+        },
+      );
+      paginator.addFragment(carrier, 0);
+      const inset = index % 17;
+      paginator.updatePageLayout(SIZE, {
+        top: MARGINS.top + inset,
+        right: MARGINS.right,
+        bottom: MARGINS.bottom,
+        left: MARGINS.left + inset,
+      });
+      paginator.startSection({ sectionIndex: index + 1 });
+      expect(paginator.retargetCurrentBlankPage()).toBe(true);
+    }
+
+    expect(paginator.pages.at(0)?.fragments).toHaveLength(carrierCount);
+    expect(writes).toEqual({ x: carrierCount * 2, y: carrierCount * 2, width: carrierCount });
+  });
+
   test("retargetCurrentBlankPage leaves nonblank pages unchanged", () => {
     const paginator = createPaginator({ pageSize: SIZE, margins: MARGINS });
     const state = paginator.getCurrentState();

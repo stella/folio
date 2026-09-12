@@ -554,12 +554,12 @@ function layoutDocumentPass(
       block,
       pageNumberBefore: pageBeforeBlockLayout,
       pageNumberAfter: paginator.getCurrentState().page.number,
-      previousPage: paginator.pages[pageBeforeBlockLayout - 1],
+      previousPage: paginator.states[pageBeforeBlockLayout - 1]?.page,
     });
   }
 
   // Ensure at least one page exists
-  if (paginator.pages.length === 0) {
+  if (paginator.states.length === 0) {
     paginator.getCurrentState();
   }
 
@@ -651,6 +651,9 @@ function layoutParagraph({
     // Create minimal fragment
     const fragment: ParagraphFragment = {
       kind: "paragraph",
+      ...(block.attrs?.suppressEmptyParagraphHeight === true
+        ? { paginationRole: "empty-carrier" as const }
+        : {}),
       blockId: block.id,
       x: paginator.getColumnX(state.columnIndex),
       y: state.cursorY + spaceBefore,
@@ -823,6 +826,9 @@ function layoutParagraph({
 
     const fragment: ParagraphFragment = {
       kind: "paragraph",
+      ...(block.attrs?.suppressEmptyParagraphHeight === true
+        ? { paginationRole: "empty-carrier" as const }
+        : {}),
       blockId: block.id,
       x: paginator.getColumnX(state.columnIndex),
       y: 0, // Will be set by addFragment
@@ -1118,6 +1124,11 @@ function layoutTable(
     const rowStartsFreshPage =
       rowState.cursorY === rowState.topMargin && rowState.page.fragments.length === 0;
 
+    if (block.rows[currentRowIndex]?.breakBefore === "page" && !rowStartsFreshPage) {
+      paginator.forcePageBreak();
+      continue;
+    }
+
     // A leading w:lastRenderedPageBreak is Word's cached boundary for this
     // row. Keep the hint advisory while the row fits, but when Folio would
     // otherwise split it in the remaining page space, snap the row to the
@@ -1278,6 +1289,9 @@ function layoutTable(
     });
 
     for (let j = currentRowIndex; j < rows.length; j++) {
+      if (j > currentRowIndex && block.rows[j]?.breakBefore === "page") {
+        break;
+      }
       if (
         j > currentRowIndex &&
         computeTableX({ columnIndex: state.columnIndex, rowIndex: j }) !== fragmentX
@@ -1826,7 +1840,7 @@ function handleSectionBreak(
       // break before any content has no sheet to share, so it defers (the first
       // content then opens a page with the new geometry) rather than stranding
       // a blank leading page.
-      const currentPage = paginator.pages.at(-1);
+      const currentPage = paginator.states.at(-1)?.page;
       const nextSize = nextSectionConfig.pageSize;
       const pageSizeChanges =
         currentPage != null &&
