@@ -26,7 +26,7 @@ import type {
 } from "../../compare/content-types";
 import { canonicalJson } from "../../utils/canonicalJson";
 import {
-  preflightTableGeometry,
+  preflightTableGeometryComponents,
   tableGeometryProgramSemanticChanges,
   type TableGeometryPairing,
   type TableGeometryProgram,
@@ -70,6 +70,10 @@ const RESOLVED_DOCX_TABLE_STRUCTURE_OPERAND_BRAND: unique symbol = Symbol(
 const RESOLVED_DOCX_TABLE_FORMAT_OPERAND_BRAND: unique symbol = Symbol(
   "resolved-docx-table-format-operand",
 );
+const RESOLVED_DOCX_TABLE_COMPONENT_MEMBER_BRAND: unique symbol = Symbol(
+  "resolved-docx-table-component-member",
+);
+const RESOLVED_DOCX_TABLE_COMPONENT_BRAND: unique symbol = Symbol("resolved-docx-table-component");
 const RESOLVED_DOCX_PAIRED_EVENT_OPERAND_BRAND: unique symbol = Symbol(
   "resolved-docx-paired-event-operand",
 );
@@ -171,6 +175,16 @@ export type ResolvedDocxTableStructureOperand =
 export type ResolvedDocxTableFormatOperand = {
   readonly type: "matchTableFormatting";
   readonly [RESOLVED_DOCX_TABLE_FORMAT_OPERAND_BRAND]: true;
+};
+
+/** One comparison-owned table scope used only to derive atomic components. */
+type ResolvedDocxTableComponentMember = {
+  readonly [RESOLVED_DOCX_TABLE_COMPONENT_MEMBER_BRAND]: true;
+};
+
+/** One connected, comparison-owned table execution scope. */
+export type ResolvedDocxTableComponent = {
+  readonly [RESOLVED_DOCX_TABLE_COMPONENT_BRAND]: true;
 };
 
 export type ResolvedDocxStructuralInsertionBoundary = {
@@ -409,6 +423,18 @@ type ResolvedDocxStoryComparisonIndex = {
   readonly structurallyOwnedTablePlacementRelations: ReadonlySet<FolioContentPairRelation>;
   readonly tableGeometryPairings: readonly TableGeometryPairing[];
   readonly tableGeometrySequenceByPairing: ReadonlyMap<string, number>;
+  readonly baseTableComponentMemberByTableIndex: ReadonlyMap<
+    number,
+    ResolvedDocxTableComponentMember
+  >;
+  readonly targetTableComponentMemberByTableIndex: ReadonlyMap<
+    number,
+    ResolvedDocxTableComponentMember
+  >;
+  readonly terminalComponentMemberByBlock: ReadonlyMap<
+    FolioContentBlock,
+    ResolvedDocxTableComponentMember
+  >;
   readonly work: ResolvedDocxComparisonIndexWork;
 };
 
@@ -502,6 +528,16 @@ const payloadByTableStructureOperand = new WeakMap<
 const payloadByTableFormatOperand = new WeakMap<
   ResolvedDocxTableFormatOperand,
   ComparisonOwnedPayload<ResolvedDocxTableFormatOperandPayload>
+>();
+const componentMembersByTableOperand = new WeakMap<
+  ResolvedDocxTableStructureOperand | ResolvedDocxTableFormatOperand,
+  ComparisonOwnedPayload<readonly ResolvedDocxTableComponentMember[]>
+>();
+const operandsByTableComponent = new WeakMap<
+  ResolvedDocxTableComponent,
+  ComparisonOwnedPayload<
+    readonly (ResolvedDocxTableStructureOperand | ResolvedDocxTableFormatOperand)[]
+  >
 >();
 const payloadByPairedEventOperand = new WeakMap<
   ResolvedDocxPairedEventOperand,
@@ -673,6 +709,43 @@ const createComparisonIndex = (
   const basePositionByBlock = new Map<FolioContentBlock, number>();
   const targetPositionByBlock = new Map<FolioContentBlock, number>();
   const baseBlockById = new Map<string, FolioContentBlock>();
+  const baseTableComponentMemberByOuterIndex = new Map<number, ResolvedDocxTableComponentMember>();
+  const targetTableComponentMemberByOuterIndex = new Map<
+    number,
+    ResolvedDocxTableComponentMember
+  >();
+  const baseTableComponentMemberByTableIndex = new Map<number, ResolvedDocxTableComponentMember>();
+  const targetTableComponentMemberByTableIndex = new Map<
+    number,
+    ResolvedDocxTableComponentMember
+  >();
+  const componentMemberFor = (
+    members: Map<number, ResolvedDocxTableComponentMember>,
+    outerTableIndex: number,
+  ): ResolvedDocxTableComponentMember => {
+    const existing = members.get(outerTableIndex);
+    if (existing) return existing;
+    const member = Object.freeze({
+      [RESOLVED_DOCX_TABLE_COMPONENT_MEMBER_BRAND]: true as const,
+    });
+    members.set(outerTableIndex, member);
+    return member;
+  };
+  const registerTableComponentMember = (
+    block: FolioContentBlock,
+    membersByOuterIndex: Map<number, ResolvedDocxTableComponentMember>,
+    membersByTableIndex: Map<number, ResolvedDocxTableComponentMember>,
+  ): void => {
+    if (!block.table) return;
+    const member = componentMemberFor(membersByOuterIndex, block.table.outerTableIndex);
+    const existing = membersByTableIndex.get(block.table.tableIndex);
+    if (existing !== undefined && existing !== member) {
+      return panic("A canonical table belongs to two outer-table components", {
+        tableIndex: block.table.tableIndex,
+      });
+    }
+    membersByTableIndex.set(block.table.tableIndex, member);
+  };
   let trailingBodyBlock: FolioContentBlock | null = null;
   const baseBlocks = resolvedDocxContentBlocks(payload.baseSnapshot);
   const targetBlocks = resolvedDocxContentBlocks(payload.targetSnapshot);
@@ -680,11 +753,21 @@ const createComparisonIndex = (
     work.baseBlockVisits += 1;
     basePositionByBlock.set(block, position);
     baseBlockById.set(block.identity.id, block);
+    registerTableComponentMember(
+      block,
+      baseTableComponentMemberByOuterIndex,
+      baseTableComponentMemberByTableIndex,
+    );
     if (block.table === undefined) trailingBodyBlock = block;
   }
   for (const [position, block] of targetBlocks.entries()) {
     work.revisedBlockVisits += 1;
     targetPositionByBlock.set(block, position);
+    registerTableComponentMember(
+      block,
+      targetTableComponentMemberByOuterIndex,
+      targetTableComponentMemberByTableIndex,
+    );
   }
   const baseTerminalBlockByContainer = new Map<
     FolioContentBaseContainerAlignment,
@@ -1136,6 +1219,12 @@ const createComparisonIndex = (
           (basePositionByBlock.get(left.block) ?? 0) - (basePositionByBlock.get(right.block) ?? 0),
       ),
   );
+  const terminalComponentMemberByBlock = new Map(
+    baseTerminalBlocks.map(({ block }) => [
+      block,
+      Object.freeze({ [RESOLVED_DOCX_TABLE_COMPONENT_MEMBER_BRAND]: true as const }),
+    ]),
+  );
   const frozenWork = Object.freeze({
     ...work,
     total:
@@ -1171,6 +1260,9 @@ const createComparisonIndex = (
     structurallyOwnedTablePlacementRelations,
     tableGeometryPairings,
     tableGeometrySequenceByPairing,
+    baseTableComponentMemberByTableIndex,
+    targetTableComponentMemberByTableIndex,
+    terminalComponentMemberByBlock,
     work: frozenWork,
   });
 };
@@ -1931,10 +2023,101 @@ const ownedTableStructurePayload = (
   }
 };
 
+const tableComponentMember = ({
+  comparison,
+  side,
+  tableIndex,
+}: {
+  readonly comparison: ResolvedDocxStoryComparison;
+  readonly side: "base" | "target";
+  readonly tableIndex: number;
+}): ResolvedDocxTableComponentMember => {
+  const index = comparisonIndexOf(comparison);
+  const member =
+    side === "base"
+      ? index.baseTableComponentMemberByTableIndex.get(tableIndex)
+      : index.targetTableComponentMemberByTableIndex.get(tableIndex);
+  return (
+    member ??
+    panic("A DOCX table operand lost its canonical outer-table ownership", {
+      side,
+      tableIndex,
+    })
+  );
+};
+
+const tableComponentMemberForSource = (
+  comparison: ResolvedDocxStoryComparison,
+  source: ResolvedDocxSourceOperand,
+): ResolvedDocxTableComponentMember | null => {
+  const { baseSnapshot } = resolvedDocxStoryComparisonPayload(comparison);
+  const table = resolvedDocxSourceOperandBlock(source, baseSnapshot).table;
+  return table
+    ? tableComponentMember({ comparison, side: "base", tableIndex: table.tableIndex })
+    : null;
+};
+
+const tableComponentMembersForStructure = (
+  comparison: ResolvedDocxStoryComparison,
+  payload: ResolvedDocxTableStructureOperandPayload,
+): readonly ResolvedDocxTableComponentMember[] => {
+  const members: ResolvedDocxTableComponentMember[] = [];
+  const add = (member: ResolvedDocxTableComponentMember | null): void => {
+    if (member && !members.includes(member)) members.push(member);
+  };
+  const addTarget = (tableIndex: number): void =>
+    add(tableComponentMember({ comparison, side: "target", tableIndex }));
+  switch (payload.type) {
+    case "insertTable":
+      add(tableComponentMemberForSource(comparison, payload.anchor.source));
+      addTarget(payload.change.tableIndex);
+      break;
+    case "deleteTable":
+    case "deleteTableRow":
+    case "deleteTableColumn":
+      add(tableComponentMemberForSource(comparison, payload.source));
+      break;
+    case "replaceTable":
+      add(tableComponentMemberForSource(comparison, payload.source));
+      addTarget(
+        payload.owner.type === "canonical-replacement"
+          ? payload.owner.replacement.revisedTableIndex
+          : payload.owner.inserted.tableIndex,
+      );
+      break;
+    case "insertTableRow":
+    case "insertTableColumn":
+      add(tableComponentMemberForSource(comparison, payload.anchor.source));
+      addTarget(payload.change.tableIndex);
+      break;
+    default: {
+      const unreachable: never = payload;
+      return panic("Unhandled table operand while binding component ownership", {
+        payload: unreachable,
+      });
+    }
+  }
+  const carrier =
+    payload.type === "insertTable" || payload.type === "replaceTable"
+      ? payload.terminalCarrier
+      : undefined;
+  if (carrier) {
+    add(
+      comparisonIndexOf(comparison).terminalComponentMemberByBlock.get(carrier.event.block) ??
+        panic("A terminal table carrier lost its canonical component ownership"),
+    );
+  }
+  if (members.length === 0) {
+    return panic("A DOCX table operand has no canonical component ownership");
+  }
+  return Object.freeze(members);
+};
+
 const issueTableStructureOperand = (
   comparison: ResolvedDocxStoryComparison,
   input: ResolvedDocxTableStructureOperandPayload,
 ): ResolvedDocxTableStructureOperand => {
+  const payload = ownedTableStructurePayload(input);
   let operand: ResolvedDocxTableStructureOperand;
   switch (input.type) {
     case "insertTable":
@@ -1986,7 +2169,11 @@ const issueTableStructureOperand = (
   }
   payloadByTableStructureOperand.set(operand, {
     comparison,
-    value: ownedTableStructurePayload(input),
+    value: payload,
+  });
+  componentMembersByTableOperand.set(operand, {
+    comparison,
+    value: tableComponentMembersForStructure(comparison, payload),
   });
   return operand;
 };
@@ -2339,6 +2526,7 @@ const ownedTableFormatPayload = (
 const issueTableFormatOperand = (
   comparison: ResolvedDocxStoryComparison,
   payload: ResolvedDocxTableFormatOperandPayload,
+  members: readonly ResolvedDocxTableComponentMember[],
 ): ResolvedDocxTableFormatOperand => {
   const operand = Object.freeze({
     type: "matchTableFormatting" as const,
@@ -2348,6 +2536,10 @@ const issueTableFormatOperand = (
     comparison,
     value: ownedTableFormatPayload(payload),
   });
+  componentMembersByTableOperand.set(operand, {
+    comparison,
+    value: Object.freeze([...members]),
+  });
   return operand;
 };
 
@@ -2355,62 +2547,165 @@ const issueTableFormatOperand = (
  * Resolve paired table properties once. Unchanged tables produce no semantic
  * operation; changed and unsupported projections retain one exact owner.
  */
-export const resolvedDocxTableFormatOperand = (
+export const resolvedDocxTableFormatOperands = (
   comparison: ResolvedDocxStoryComparison,
-): ResolvedDocxTableFormatOperand | null => {
+): readonly ResolvedDocxTableFormatOperand[] => {
   const { baseSnapshot, targetSnapshot } = resolvedDocxStoryComparisonPayload(comparison);
   const pairings = resolvedDocxTableGeometryPairings(comparison);
-  if (pairings.length === 0) return null;
+  if (pairings.length === 0) return Object.freeze([]);
+  const index = comparisonIndexOf(comparison);
+  type FormatComponent = {
+    readonly members: ResolvedDocxTableComponentMember[];
+    readonly pairings: TableGeometryPairing[];
+    issue?: Extract<
+      ResolvedDocxTableFormatOperandPayload,
+      { readonly status: "unsupported" }
+    >["issue"];
+  };
+  const roots = pairings.map((_pairing, pairingIndex) => pairingIndex);
+  const rootOf = (pairingIndex: number): number => {
+    let root = pairingIndex;
+    while (roots[root] !== root) root = roots[root] ?? root;
+    let current = pairingIndex;
+    while (roots[current] !== root) {
+      const next = roots[current] ?? root;
+      roots[current] = root;
+      current = next;
+    }
+    return root;
+  };
+  const join = (left: number, right: number): void => {
+    const leftRoot = rootOf(left);
+    const rightRoot = rootOf(right);
+    if (leftRoot === rightRoot) return;
+    roots[Math.max(leftRoot, rightRoot)] = Math.min(leftRoot, rightRoot);
+  };
+  const firstPairingByMember = new Map<ResolvedDocxTableComponentMember, number>();
+  const membersByPairing: readonly (readonly ResolvedDocxTableComponentMember[])[] = pairings.map(
+    (pairing, pairingIndex) => {
+      const baseMember = tableComponentMember({
+        comparison,
+        side: "base",
+        tableIndex: pairing.base.tableIndex,
+      });
+      const targetMember = tableComponentMember({
+        comparison,
+        side: "target",
+        tableIndex: pairing.target.tableIndex,
+      });
+      const members = Object.freeze([baseMember, targetMember]);
+      for (const member of members) {
+        const firstPairing = firstPairingByMember.get(member);
+        if (firstPairing === undefined) firstPairingByMember.set(member, pairingIndex);
+        else join(firstPairing, pairingIndex);
+      }
+      return members;
+    },
+  );
+  const componentsByRoot = new Map<number, FormatComponent>();
+  for (const [pairingIndex, pairing] of pairings.entries()) {
+    const root = rootOf(pairingIndex);
+    const component = componentsByRoot.get(root) ?? { members: [], pairings: [] };
+    for (const member of membersByPairing[pairingIndex] ?? []) {
+      if (!component.members.includes(member)) component.members.push(member);
+    }
+    component.pairings.push(pairing);
+    componentsByRoot.set(root, component);
+  }
+  const components = [...componentsByRoot.values()];
   const baseTables = storyTablesOf(resolvedDocxOperationSnapshot(baseSnapshot));
   const baseByIndex = new Map(baseTables.map((table) => [table.index, table.node]));
   const targetTables = resolvedDocxTableNodes(targetSnapshot);
-  const inspectedPairs = new Set<string>();
-  for (const { base, target } of pairings) {
-    const pair = `${String(base.tableIndex)}:${String(target.tableIndex)}`;
-    if (inspectedPairs.has(pair)) continue;
-    inspectedPairs.add(pair);
-    const baseTable = baseByIndex.get(base.tableIndex);
-    const targetTable = targetTables.get(target.tableIndex);
-    if (baseTable && tableHasHiddenRows(baseTable)) {
-      return issueTableFormatOperand(comparison, {
-        status: "unsupported",
-        issue: { reason: "unprojected-table-structure", side: "source" },
-      });
-    }
-    if (targetTable && tableHasHiddenRows(targetTable)) {
-      return issueTableFormatOperand(comparison, {
-        status: "unsupported",
-        issue: { reason: "unprojected-table-structure", side: "target" },
-      });
+  for (const component of components) {
+    const inspectedPairs = new Set<string>();
+    for (const { base, target } of component.pairings) {
+      const pair = `${String(base.tableIndex)}:${String(target.tableIndex)}`;
+      if (inspectedPairs.has(pair)) continue;
+      inspectedPairs.add(pair);
+      const baseTable = baseByIndex.get(base.tableIndex);
+      const targetTable = targetTables.get(target.tableIndex);
+      if (baseTable && tableHasHiddenRows(baseTable)) {
+        component.issue = { reason: "unprojected-table-structure", side: "source" };
+        break;
+      }
+      if (targetTable && tableHasHiddenRows(targetTable)) {
+        component.issue = { reason: "unprojected-table-structure", side: "target" };
+        break;
+      }
     }
   }
-  const preflight = preflightTableGeometry({ baseTables, targetTables, pairings });
+
+  const preflight = preflightTableGeometryComponents({
+    baseTables,
+    targetTables,
+    components: components.map((component) => ({
+      component,
+      pairings: component.pairings,
+    })),
+  });
   if (preflight.status === "unsupported") {
-    return issueTableFormatOperand(comparison, {
-      status: "unsupported",
-      issue: { reason: "unrepresentable-table-geometry", issue: preflight.issue },
-    });
+    return Object.freeze(
+      components.map((component) =>
+        issueTableFormatOperand(
+          comparison,
+          {
+            status: "unsupported",
+            issue: { reason: "unrepresentable-table-geometry", issue: preflight.issue },
+          },
+          component.members,
+        ),
+      ),
+    );
   }
-  const semanticChanges = tableGeometryProgramSemanticChanges(preflight.program);
-  if (semanticChanges.length === 0) return null;
-  const index = comparisonIndexOf(comparison);
-  const changes = semanticChanges.map((change) => {
-    const sequence = index.tableGeometrySequenceByPairing.get(tableGeometryPairingKey(change));
-    if (sequence === undefined) {
-      return panic("A table-format change lost its canonical paired-cell event");
+
+  const operands: ResolvedDocxTableFormatOperand[] = [];
+  for (const { component, result } of preflight.components) {
+    if (component.issue) {
+      operands.push(
+        issueTableFormatOperand(
+          comparison,
+          { status: "unsupported", issue: component.issue },
+          component.members,
+        ),
+      );
+      continue;
     }
-    return Object.freeze({
-      scope: change.scope,
-      base: change.base,
-      target: change.target,
-      sequence,
+    if (result.status === "unsupported") {
+      operands.push(
+        issueTableFormatOperand(
+          comparison,
+          {
+            status: "unsupported",
+            issue: { reason: "unrepresentable-table-geometry", issue: result.issue },
+          },
+          component.members,
+        ),
+      );
+      continue;
+    }
+    const semanticChanges = tableGeometryProgramSemanticChanges(result.program);
+    if (semanticChanges.length === 0) continue;
+    const changes = semanticChanges.map((change) => {
+      const sequence = index.tableGeometrySequenceByPairing.get(tableGeometryPairingKey(change));
+      if (sequence === undefined) {
+        return panic("A table-format change lost its canonical paired-cell event");
+      }
+      return Object.freeze({
+        scope: change.scope,
+        base: change.base,
+        target: change.target,
+        sequence,
+      });
     });
-  });
-  return issueTableFormatOperand(comparison, {
-    status: "ready",
-    program: preflight.program,
-    changes,
-  });
+    operands.push(
+      issueTableFormatOperand(
+        comparison,
+        { status: "ready", program: result.program, changes },
+        component.members,
+      ),
+    );
+  }
+  return Object.freeze(operands);
 };
 
 /** Resolve an exact table-format operation inside its issuing comparison. */
@@ -2422,6 +2717,92 @@ export const resolvedDocxTableFormatOperandPayload = (
     payloadByTableFormatOperand.get(operand),
     comparison,
     "DOCX table-format operand",
+  );
+
+/** Resolve the comparison-owned scopes used to partition table execution. */
+const resolvedDocxTableOperandComponentMembers = (
+  operand: ResolvedDocxTableStructureOperand | ResolvedDocxTableFormatOperand,
+  comparison: ResolvedDocxStoryComparison,
+): readonly ResolvedDocxTableComponentMember[] =>
+  requireComparisonOwned(
+    componentMembersByTableOperand.get(operand),
+    comparison,
+    "DOCX table component membership",
+  );
+
+/** Derive the total connected-component partition from comparison-owned scopes. */
+export const resolvedDocxTableComponents = ({
+  comparison,
+  operands,
+}: {
+  readonly comparison: ResolvedDocxStoryComparison;
+  readonly operands: readonly (
+    | ResolvedDocxTableStructureOperand
+    | ResolvedDocxTableFormatOperand
+  )[];
+}): readonly ResolvedDocxTableComponent[] => {
+  if (new Set(operands).size !== operands.length) {
+    return panic("A DOCX table operand cannot occur twice in a component partition");
+  }
+  const parents = operands.map((_operand, operandIndex) => operandIndex);
+  const rootOf = (operandIndex: number): number => {
+    let root = operandIndex;
+    while (parents[root] !== root) root = parents[root] ?? root;
+    let current = operandIndex;
+    while (parents[current] !== root) {
+      const next = parents[current] ?? root;
+      parents[current] = root;
+      current = next;
+    }
+    return root;
+  };
+  const join = (left: number, right: number): void => {
+    const leftRoot = rootOf(left);
+    const rightRoot = rootOf(right);
+    if (leftRoot === rightRoot) return;
+    parents[Math.max(leftRoot, rightRoot)] = Math.min(leftRoot, rightRoot);
+  };
+  const firstOperandByMember = new Map<ResolvedDocxTableComponentMember, number>();
+  for (const [operandIndex, operand] of operands.entries()) {
+    for (const member of resolvedDocxTableOperandComponentMembers(operand, comparison)) {
+      const firstOperand = firstOperandByMember.get(member);
+      if (firstOperand === undefined) firstOperandByMember.set(member, operandIndex);
+      else join(firstOperand, operandIndex);
+    }
+  }
+  const operandsByRoot = new Map<
+    number,
+    (ResolvedDocxTableStructureOperand | ResolvedDocxTableFormatOperand)[]
+  >();
+  for (const [operandIndex, operand] of operands.entries()) {
+    const root = rootOf(operandIndex);
+    const owned = operandsByRoot.get(root) ?? [];
+    owned.push(operand);
+    operandsByRoot.set(root, owned);
+  }
+  return Object.freeze(
+    [...operandsByRoot.values()].map((ownedOperands) => {
+      const component = Object.freeze({
+        [RESOLVED_DOCX_TABLE_COMPONENT_BRAND]: true as const,
+      });
+      operandsByTableComponent.set(component, {
+        comparison,
+        value: Object.freeze(ownedOperands),
+      });
+      return component;
+    }),
+  );
+};
+
+/** Resolve only a canonical component issued for this exact comparison. */
+export const resolvedDocxTableComponentOperands = (
+  component: ResolvedDocxTableComponent,
+  comparison: ResolvedDocxStoryComparison,
+): readonly (ResolvedDocxTableStructureOperand | ResolvedDocxTableFormatOperand)[] =>
+  requireComparisonOwned(
+    operandsByTableComponent.get(component),
+    comparison,
+    "DOCX table component",
   );
 
 /** Bind the exact final empty carrier into its replacement obligation. */

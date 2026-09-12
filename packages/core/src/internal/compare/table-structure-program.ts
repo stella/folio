@@ -16,10 +16,12 @@ import { markStructuralChange } from "../../prosemirror/extensions/features/Para
 import { canonicalJson } from "../../utils/canonicalJson";
 import {
   resolvedDocxStoryComparisonPayload,
+  resolvedDocxTableComponentOperands,
   resolvedDocxTableFormatOperandPayload,
   resolvedDocxTableGeometryPairings,
   resolvedDocxTableStructureOperandPayload,
   type ResolvedDocxStoryComparison,
+  type ResolvedDocxTableComponent,
   type ResolvedDocxTableFormatOperand,
   type ResolvedDocxTableStructureOperand,
   type ResolvedDocxTableStructureOperandPayload,
@@ -166,6 +168,18 @@ export type TableStructurePreflightResult =
   | { readonly status: "ready"; readonly program: PreparedTableStructureProgram }
   | { readonly status: "unsupported"; readonly issue: TableStructureUnsupportedIssue };
 
+export type TableStructureComponentPreflightResult = {
+  readonly component: ResolvedDocxTableComponent;
+  readonly result: TableStructurePreflightResult;
+};
+
+export type TableStructureComponentsPreflightResult =
+  | {
+      readonly status: "ready";
+      readonly components: readonly TableStructureComponentPreflightResult[];
+    }
+  | { readonly status: "unsupported"; readonly issue: TableStructureUnsupportedIssue };
+
 type SourceTable = {
   readonly index: number;
   readonly position: number;
@@ -308,7 +322,9 @@ type OwnedProgram = {
 
 const ownedPrograms = new WeakMap<PreparedTableStructureProgram, OwnedProgram>();
 
-const unsupported = (issue: TableStructureUnsupportedIssue): TableStructurePreflightResult =>
+const unsupported = (
+  issue: TableStructureUnsupportedIssue,
+): Extract<TableStructurePreflightResult, { readonly status: "unsupported" }> =>
   Object.freeze({ status: "unsupported", issue: Object.freeze(issue) });
 
 const isTable = (node: PMNode): boolean => node.type.spec["tableRole"] === TABLE_ROLE;
@@ -780,7 +796,7 @@ const taskFor = (instruction: OwnedInstruction): PreparedTableStructureTask => {
 
 const validLimits = (
   limits: TableStructurePreflightLimits,
-): TableStructurePreflightResult | null => {
+): Extract<TableStructurePreflightResult, { readonly status: "unsupported" }> | null => {
   for (const limit of [
     "maxOperands",
     "maxStructuralEdits",
@@ -795,22 +811,36 @@ const validLimits = (
   return null;
 };
 
-/**
- * Resolve every table operation through its exact comparison capsule before a
- * caller-owned transaction exists. The resulting tasks retain only nominal
- * operands; raw coordinates and target nodes stay closure-owned here.
- */
-export const preflightTableStructureProgram = ({
+type TableStructurePreflightContext = {
+  readonly doc: PMNode;
+  readonly comparison: ResolvedDocxStoryComparison;
+  readonly limits: TableStructurePreflightLimits;
+  readonly baseSnapshot: ResolvedDocxStorySnapshot;
+  readonly targetSnapshot: ResolvedDocxStorySnapshot;
+  readonly baseTables: ReadonlyMap<number, { readonly start: number; readonly node: PMNode }>;
+  readonly resolver: FolioStableBlockResolver;
+  readonly pairings: readonly TableGeometryPairing[];
+  readonly countedTargets: Set<PMNode>;
+  readonly sourceCache: Map<number, SourceTable>;
+  structuralEdits: number;
+  targetTemplateUnits: number;
+};
+
+type TableStructurePreflightContextResult =
+  | { readonly status: "ready"; readonly context: TableStructurePreflightContext }
+  | { readonly status: "unsupported"; readonly issue: TableStructureUnsupportedIssue };
+
+const createTableStructurePreflightContext = ({
   doc,
   comparison,
   operands,
-  limits = DEFAULT_TABLE_STRUCTURE_PREFLIGHT_LIMITS,
+  limits,
 }: {
   readonly doc: PMNode;
   readonly comparison: ResolvedDocxStoryComparison;
   readonly operands: readonly ResolvedDocxTableOperand[];
-  readonly limits?: TableStructurePreflightLimits;
-}): TableStructurePreflightResult => {
+  readonly limits: TableStructurePreflightLimits;
+}): TableStructurePreflightContextResult => {
   const invalidLimits = validLimits(limits);
   if (invalidLimits) return invalidLimits;
   if (operands.length > limits.maxOperands) {
@@ -829,8 +859,18 @@ export const preflightTableStructureProgram = ({
       actual: doc.nodeSize,
     });
   }
-  if (new Set(operands).size !== operands.length)
+  if (new Set(operands).size !== operands.length) {
     return unsupported({ reason: "duplicate-operand" });
+  }
+  const structuralEdits = operands.filter(({ type }) => type !== "matchTableFormatting").length;
+  if (structuralEdits > limits.maxStructuralEdits) {
+    return unsupported({
+      reason: "limit-exceeded",
+      limit: "maxStructuralEdits",
+      maximum: limits.maxStructuralEdits,
+      actual: structuralEdits,
+    });
+  }
 
   const { baseSnapshot, targetSnapshot } = resolvedDocxStoryComparisonPayload(comparison);
   const operationSnapshot = resolvedDocxOperationSnapshot(baseSnapshot);
@@ -843,9 +883,39 @@ export const preflightTableStructureProgram = ({
       actual: storyTables.length,
     });
   }
-  const baseTables = new Map(storyTables.map(({ index, start, node }) => [index, { start, node }]));
-  const resolver = FolioStableBlockResolver.create(doc, operationSnapshot);
-  const pairings = resolvedDocxTableGeometryPairings(comparison);
+  return {
+    status: "ready",
+    context: {
+      doc,
+      comparison,
+      limits,
+      baseSnapshot,
+      targetSnapshot,
+      baseTables: new Map(storyTables.map(({ index, start, node }) => [index, { start, node }])),
+      resolver: FolioStableBlockResolver.create(doc, operationSnapshot),
+      pairings: resolvedDocxTableGeometryPairings(comparison),
+      countedTargets: new Set(),
+      sourceCache: new Map(),
+      structuralEdits: 0,
+      targetTemplateUnits: 0,
+    },
+  };
+};
+
+/**
+ * Resolve every table operation through its exact comparison capsule before a
+ * caller-owned transaction exists. The resulting tasks retain only nominal
+ * operands; raw coordinates and target nodes stay closure-owned here.
+ */
+const preflightTableStructureComponent = ({
+  context,
+  operands,
+}: {
+  readonly context: TableStructurePreflightContext;
+  readonly operands: readonly ResolvedDocxTableOperand[];
+}): TableStructurePreflightResult => {
+  const { doc, comparison, limits, baseSnapshot, targetSnapshot, baseTables, resolver, pairings } =
+    context;
   const formatOperands = operands.filter(
     (operand): operand is ResolvedDocxTableFormatOperand => operand.type === "matchTableFormatting",
   );
@@ -863,34 +933,30 @@ export const preflightTableStructureProgram = ({
     : null;
   if (geometryPayload?.status === "unsupported") return unsupported(geometryPayload.issue);
 
-  let structuralEdits = 0;
-  let targetTemplateUnits = 0;
-  const countedTargets = new Set<PMNode>();
   const countTarget = (target: PMNode): TableStructurePreflightResult | null => {
-    if (countedTargets.has(target)) return null;
-    countedTargets.add(target);
-    targetTemplateUnits += target.nodeSize;
+    if (context.countedTargets.has(target)) return null;
+    context.countedTargets.add(target);
+    context.targetTemplateUnits += target.nodeSize;
     if (
-      !Number.isSafeInteger(targetTemplateUnits) ||
-      targetTemplateUnits > limits.maxTargetTemplateUnits
+      !Number.isSafeInteger(context.targetTemplateUnits) ||
+      context.targetTemplateUnits > limits.maxTargetTemplateUnits
     ) {
       return unsupported({
         reason: "limit-exceeded",
         limit: "maxTargetTemplateUnits",
         maximum: limits.maxTargetTemplateUnits,
-        actual: targetTemplateUnits,
+        actual: context.targetTemplateUnits,
       });
     }
     return null;
   };
 
-  const sourceCache = new Map<number, SourceTable>();
   const sourceTable = (index: number): SourceTable | TableStructurePreflightResult => {
-    const cached = sourceCache.get(index);
+    const cached = context.sourceCache.get(index);
     if (cached) return cached;
     const owned = ownSourceTable(index, baseTables, doc);
     if ("status" in owned) return owned;
-    sourceCache.set(index, owned);
+    context.sourceCache.set(index, owned);
     return owned;
   };
 
@@ -912,13 +978,13 @@ export const preflightTableStructureProgram = ({
   };
 
   for (const operation of structuralOperations) {
-    structuralEdits++;
-    if (structuralEdits > limits.maxStructuralEdits) {
+    context.structuralEdits++;
+    if (context.structuralEdits > limits.maxStructuralEdits) {
       return unsupported({
         reason: "limit-exceeded",
         limit: "maxStructuralEdits",
         maximum: limits.maxStructuralEdits,
-        actual: structuralEdits,
+        actual: context.structuralEdits,
       });
     }
     if (operation.type === "insertTable") {
@@ -1173,6 +1239,107 @@ export const preflightTableStructureProgram = ({
     geometryExecuted: false,
   });
   return Object.freeze({ status: "ready", program });
+};
+
+export const preflightTableStructureProgram = ({
+  doc,
+  comparison,
+  operands,
+  limits = DEFAULT_TABLE_STRUCTURE_PREFLIGHT_LIMITS,
+}: {
+  readonly doc: PMNode;
+  readonly comparison: ResolvedDocxStoryComparison;
+  readonly operands: readonly ResolvedDocxTableOperand[];
+  readonly limits?: TableStructurePreflightLimits;
+}): TableStructurePreflightResult => {
+  const prepared = createTableStructurePreflightContext({
+    doc,
+    comparison,
+    operands,
+    limits,
+  });
+  return prepared.status === "unsupported"
+    ? prepared
+    : preflightTableStructureComponent({ context: prepared.context, operands });
+};
+
+/** Preflight each canonical table component while sharing all global limits and indexes. */
+export const preflightTableStructureComponents = ({
+  doc,
+  comparison,
+  components,
+  limits = DEFAULT_TABLE_STRUCTURE_PREFLIGHT_LIMITS,
+}: {
+  readonly doc: PMNode;
+  readonly comparison: ResolvedDocxStoryComparison;
+  readonly components: readonly ResolvedDocxTableComponent[];
+  readonly limits?: TableStructurePreflightLimits;
+}): TableStructureComponentsPreflightResult => {
+  if (new Set(components).size !== components.length) {
+    return panic("A table component was supplied more than once");
+  }
+  const componentOperands = components.map((component) => ({
+    component,
+    operands: resolvedDocxTableComponentOperands(component, comparison),
+  }));
+  if (componentOperands.some(({ operands }) => operands.length === 0)) {
+    return panic("A table component cannot be empty");
+  }
+  const operands = componentOperands.flatMap(({ operands: ownedOperands }) => ownedOperands);
+  const prepared = createTableStructurePreflightContext({
+    doc,
+    comparison,
+    operands,
+    limits,
+  });
+  if (prepared.status === "unsupported") return prepared;
+
+  const results: TableStructureComponentPreflightResult[] = [];
+  for (const { component, operands: ownedOperands } of componentOperands) {
+    const result = preflightTableStructureComponent({
+      context: prepared.context,
+      operands: ownedOperands,
+    });
+    if (result.status === "unsupported" && result.issue.reason === "limit-exceeded") {
+      return result;
+    }
+    results.push(Object.freeze({ component, result }));
+  }
+
+  const readyPrograms = results.flatMap(({ result }) =>
+    result.status === "ready" ? [result.program] : [],
+  );
+  const sourceTasks = readyPrograms
+    .flatMap(({ tasks }) => tasks)
+    .filter(
+      (
+        task,
+      ): task is PreparedTableStructureTask & {
+        readonly schedule: Extract<PreparedTableStructureTask["schedule"], { phase: "source" }>;
+      } => task.schedule.phase === "source",
+    )
+    .toSorted((left, right) => left.schedule.from - right.schedule.from);
+  for (let index = 1; index < sourceTasks.length; index++) {
+    const previous = sourceTasks[index - 1];
+    const current = sourceTasks[index];
+    if (previous && current && current.schedule.from < previous.schedule.to) {
+      return panic("Canonical table components contain overlapping source obligations");
+    }
+  }
+  const insertions = readyPrograms
+    .flatMap(({ tasks }) => tasks)
+    .filter(({ schedule }) => schedule.phase === "insertion");
+  for (const insertion of insertions) {
+    for (const source of sourceTasks) {
+      if (
+        insertion.schedule.position > source.schedule.from &&
+        insertion.schedule.position < source.schedule.to
+      ) {
+        return panic("A canonical table insertion crosses another component's source scope");
+      }
+    }
+  }
+  return Object.freeze({ status: "ready", components: Object.freeze(results) });
 };
 
 export type TableStructureRevisionStamp = {

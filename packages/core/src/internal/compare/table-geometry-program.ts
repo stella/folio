@@ -296,6 +296,23 @@ export type TableGeometryPreflightResult =
   | { readonly status: "ready"; readonly program: TableGeometryProgram }
   | { readonly status: "unsupported"; readonly issue: TableGeometryUnsupportedIssue };
 
+export type TableGeometryComponent<Component extends object> = {
+  readonly component: Component;
+  readonly pairings: readonly TableGeometryPairing[];
+};
+
+export type TableGeometryComponentPreflightResult<Component extends object> = {
+  readonly component: Component;
+  readonly result: TableGeometryPreflightResult;
+};
+
+export type TableGeometryComponentsPreflightResult<Component extends object> =
+  | {
+      readonly status: "ready";
+      readonly components: readonly TableGeometryComponentPreflightResult<Component>[];
+    }
+  | { readonly status: "unsupported"; readonly issue: TableGeometryUnsupportedIssue };
+
 export type TableGeometryExecutionResult =
   | { readonly status: "executed"; readonly receipt: TableGeometryExecutionReceipt }
   | { readonly status: "unsupported"; readonly issue: TableGeometryExecutionIssue };
@@ -446,6 +463,12 @@ type PayloadCaptureContext = {
   used: number;
   readonly active: WeakSet<object>;
   readonly captured: WeakMap<object, unknown>;
+};
+
+type TableGeometryPreflightBudget = {
+  readonly visited: { count: number };
+  readonly payload: PayloadCaptureContext;
+  changes: number;
 };
 
 const consumePayloadUnits = (
@@ -903,7 +926,9 @@ const compareCoordinates = (left: TableCellCoordinate, right: TableCellCoordinat
   left.rowIndex - right.rowIndex ||
   left.cellIndex - right.cellIndex;
 
-const unsupported = (issue: TableGeometryUnsupportedIssue): TableGeometryPreflightResult =>
+const unsupported = (
+  issue: TableGeometryUnsupportedIssue,
+): Extract<TableGeometryPreflightResult, { readonly status: "unsupported" }> =>
   Object.freeze({ status: "unsupported", issue: Object.freeze(issue) });
 
 const missing = ({
@@ -1058,16 +1083,21 @@ type PreflightTableGeometryOptions = {
   readonly limits?: TableGeometryPreflightLimits;
 };
 
+type PreflightTableGeometryProgramOptions = PreflightTableGeometryOptions & {
+  readonly budget?: TableGeometryPreflightBudget;
+};
+
 /**
  * Resolve every carrier and reversible property payload before touching a
  * transaction. The program owns its payload and never reads the target again.
  */
-export const preflightTableGeometry = ({
+const preflightTableGeometryProgram = ({
   baseTables,
   targetTables,
   pairings,
   limits = DEFAULT_TABLE_GEOMETRY_PREFLIGHT_LIMITS,
-}: PreflightTableGeometryOptions): TableGeometryPreflightResult => {
+  budget,
+}: PreflightTableGeometryProgramOptions): TableGeometryPreflightResult => {
   for (const name of LIMIT_NAMES) {
     if (!Number.isSafeInteger(limits[name]) || limits[name] < 0) {
       return unsupported({ reason: "invalid-limit", limit: name, actual: limits[name] });
@@ -1158,8 +1188,8 @@ export const preflightTableGeometry = ({
   const claimedPositions = new Map<number, TableGeometryScopeName>();
   const rowPositionsByTable = new Map<number, readonly number[]>();
   const cellPositionsByRow = new Map<string, readonly number[]>();
-  const visited = { count: 0 };
-  const payloadContext: PayloadCaptureContext = {
+  const visited = budget?.visited ?? { count: 0 };
+  const payloadContext: PayloadCaptureContext = budget?.payload ?? {
     maximum: limits.maxPayloadUnits,
     used: 0,
     active: new WeakSet(),
@@ -1245,12 +1275,14 @@ export const preflightTableGeometry = ({
     if (result.status === "unsupported") return unsupported(result.issue);
     if (result.status === "ready") {
       instructions.push(result.instruction);
-      if (instructions.length > limits.maxChanges) {
+      if (budget) budget.changes += 1;
+      const changeCount = budget?.changes ?? instructions.length;
+      if (changeCount > limits.maxChanges) {
         return unsupported({
           reason: "limit-exceeded",
           limit: "maxChanges",
           maximum: limits.maxChanges,
-          actual: instructions.length,
+          actual: changeCount,
         });
       }
     }
@@ -1432,6 +1464,147 @@ export const preflightTableGeometry = ({
   });
   PROGRAMS.add(program);
   return Object.freeze({ status: "ready", program });
+};
+
+export const preflightTableGeometry = (
+  options: PreflightTableGeometryOptions,
+): TableGeometryPreflightResult => preflightTableGeometryProgram(options);
+
+/**
+ * Preflight independent table components under one shared resource budget.
+ * Component ownership is supplied by the comparison capsule; this layer proves
+ * that no source or target table was split across two executable programs.
+ */
+export const preflightTableGeometryComponents = <Component extends object>({
+  baseTables,
+  targetTables,
+  components,
+  limits = DEFAULT_TABLE_GEOMETRY_PREFLIGHT_LIMITS,
+}: {
+  readonly baseTables: readonly FolioStoryTable[];
+  readonly targetTables: ReadonlyMap<number, PMNode>;
+  readonly components: readonly TableGeometryComponent<Component>[];
+  readonly limits?: TableGeometryPreflightLimits;
+}): TableGeometryComponentsPreflightResult<Component> => {
+  if (new Set(components.map(({ component }) => component)).size !== components.length) {
+    return panic("A table geometry component was supplied more than once");
+  }
+  if (components.some(({ pairings }) => pairings.length === 0)) {
+    return panic("A table geometry component cannot be empty");
+  }
+  const validatedTables = preflightTableGeometryProgram({
+    baseTables,
+    targetTables,
+    pairings: [],
+    limits,
+  });
+  if (validatedTables.status === "unsupported") return validatedTables;
+
+  const pairings = components.flatMap(({ pairings: componentPairings }) => componentPairings);
+  if (pairings.length > limits.maxPairings) {
+    return unsupported({
+      reason: "limit-exceeded",
+      limit: "maxPairings",
+      maximum: limits.maxPairings,
+      actual: pairings.length,
+    });
+  }
+  const captured = capturePairings(pairings);
+  if (captured.status === "unsupported") return unsupported(captured.issue);
+
+  const componentByPairing = new Map<string, Component>();
+  const componentByBaseTable = new Map<number, Component>();
+  const componentByTargetTable = new Map<number, Component>();
+  for (const { component, pairings: componentPairings } of components) {
+    for (const pairing of componentPairings) {
+      const key = `${coordinateKey(pairing.base)}>${coordinateKey(pairing.target)}`;
+      if (componentByPairing.has(key)) {
+        return unsupported({
+          reason: "duplicate-pairing",
+          side: "base",
+          coordinate: frozenCoordinate(pairing.base),
+        });
+      }
+      const baseOwner = componentByBaseTable.get(pairing.base.tableIndex);
+      if (baseOwner !== undefined && baseOwner !== component) {
+        return unsupported({
+          reason: "conflicting-table-pairing",
+          side: "base",
+          coordinate: frozenCoordinate(pairing.base),
+        });
+      }
+      const targetOwner = componentByTargetTable.get(pairing.target.tableIndex);
+      if (targetOwner !== undefined && targetOwner !== component) {
+        return unsupported({
+          reason: "conflicting-table-pairing",
+          side: "target",
+          coordinate: frozenCoordinate(pairing.target),
+        });
+      }
+      componentByPairing.set(key, component);
+      componentByBaseTable.set(pairing.base.tableIndex, component);
+      componentByTargetTable.set(pairing.target.tableIndex, component);
+    }
+  }
+
+  const canonicalPairingsByComponent = new Map<Component, CanonicalPairing[]>();
+  for (const pairing of captured.pairings) {
+    const component = componentByPairing.get(
+      `${coordinateKey(pairing.base)}>${coordinateKey(pairing.target)}`,
+    );
+    if (!component) return panic("A table geometry component lost a canonical pairing");
+    const owned = canonicalPairingsByComponent.get(component) ?? [];
+    owned.push(pairing);
+    canonicalPairingsByComponent.set(component, owned);
+  }
+
+  const baseByIndex = new Map(baseTables.map((table) => [table.index, table]));
+  const budget: TableGeometryPreflightBudget = {
+    visited: { count: 0 },
+    payload: {
+      maximum: limits.maxPayloadUnits,
+      used: 0,
+      active: new WeakSet(),
+      captured: new WeakMap(),
+    },
+    changes: 0,
+  };
+  const results: TableGeometryComponentPreflightResult<Component>[] = [];
+  for (const { component } of components) {
+    const componentPairings = canonicalPairingsByComponent.get(component) ?? [];
+    const baseIndexes = new Set(componentPairings.map(({ base }) => base.tableIndex));
+    const targetIndexes = new Set(componentPairings.map(({ target }) => target.tableIndex));
+    const componentBaseTables = [...baseIndexes].map(
+      (tableIndex) =>
+        baseByIndex.get(tableIndex) ??
+        panic("A canonical table geometry component lost its base table", { tableIndex }),
+    );
+    const componentTargetTables = new Map(
+      [...targetIndexes].map((tableIndex) => [
+        tableIndex,
+        targetTables.get(tableIndex) ??
+          panic("A canonical table geometry component lost its target table", { tableIndex }),
+      ]),
+    );
+    const result = preflightTableGeometryProgram({
+      baseTables: componentBaseTables,
+      targetTables: componentTargetTables,
+      pairings: componentPairings,
+      limits,
+      budget,
+    });
+    if (
+      result.status === "unsupported" &&
+      result.issue.reason === "limit-exceeded" &&
+      (result.issue.limit === "maxVisitedNodes" ||
+        result.issue.limit === "maxChanges" ||
+        result.issue.limit === "maxPayloadUnits")
+    ) {
+      return result;
+    }
+    results.push(Object.freeze({ component, result }));
+  }
+  return Object.freeze({ status: "ready", components: Object.freeze(results) });
 };
 
 /** Exact property changes owned by one preflighted geometry program. */

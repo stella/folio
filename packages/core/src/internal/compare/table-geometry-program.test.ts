@@ -9,6 +9,7 @@ import {
   DEFAULT_TABLE_GEOMETRY_PREFLIGHT_LIMITS,
   executeTableGeometryProgram,
   preflightTableGeometry,
+  preflightTableGeometryComponents,
   projectTableGeometry,
   type TableCellCoordinate,
   type TableGeometryPairing,
@@ -374,6 +375,39 @@ describe("table geometry refusal boundaries", () => {
         expect(result.issue.limit, candidate.limit).toBe(candidate.limit);
       }
     }
+  });
+
+  test("shares geometry limits across independent components", () => {
+    const base = documentWith(
+      table([row([cell("first")])], { width: 2_000, widthType: "dxa" }),
+      table([row([cell("second")])], { width: 3_000, widthType: "dxa" }),
+    );
+    const target = documentWith(
+      table([row([cell("first")])], { width: 2_400, widthType: "dxa" }),
+      table([row([cell("second")])], { width: 3_600, widthType: "dxa" }),
+    );
+    const first = Object.freeze({ table: "first" });
+    const second = Object.freeze({ table: "second" });
+
+    const result = preflightTableGeometryComponents({
+      baseTables: folioStoryTables(base),
+      targetTables: targetTablesOf(target),
+      components: [
+        { component: first, pairings: [pairing(coordinate(0), coordinate(0))] },
+        { component: second, pairings: [pairing(coordinate(1), coordinate(1))] },
+      ],
+      limits: { ...DEFAULT_TABLE_GEOMETRY_PREFLIGHT_LIMITS, maxChanges: 1 },
+    });
+
+    expect(result).toEqual({
+      status: "unsupported",
+      issue: {
+        reason: "limit-exceeded",
+        limit: "maxChanges",
+        maximum: 1,
+        actual: 2,
+      },
+    });
   });
 
   test("validates every live carrier before adding the first transaction step", () => {

@@ -41,7 +41,7 @@ import {
 import {
   executeTableStructureGeometry,
   executeTableStructureTask,
-  preflightTableStructureProgram,
+  preflightTableStructureComponents,
   type PreparedTableStructureProgram,
   type PreparedTableStructureTask,
   type TableStructureUnsupportedIssue,
@@ -52,9 +52,12 @@ import {
   resolvedDocxSourceOperandBlock,
   type ResolvedDocxStorySnapshot,
 } from "./resolved-docx-story-snapshot";
-import type {
-  ResolvedDocxTableFormatOperand,
-  ResolvedDocxTableStructureOperand,
+import {
+  resolvedDocxTableComponentOperands,
+  resolvedDocxTableComponents,
+  type ResolvedDocxTableComponent,
+  type ResolvedDocxTableFormatOperand,
+  type ResolvedDocxTableStructureOperand,
 } from "./resolved-docx-story-comparison";
 
 type ResolvedDocxTableOperand = ResolvedDocxTableStructureOperand | ResolvedDocxTableFormatOperand;
@@ -243,6 +246,7 @@ type PreparedTableTask = {
   readonly position: number;
   readonly from: number;
   readonly originalIndex: number;
+  readonly program: PreparedTableStructureProgram;
   readonly task: PreparedTableStructureTask;
 };
 
@@ -276,7 +280,7 @@ const executionTaskSortKey = (task: PreparedExecutionTask): ExecutionTaskSortKey
 
 const executionTasks = (
   instructions: readonly PreparedInstruction[],
-  tableProgram: PreparedTableStructureProgram | null,
+  tablePrograms: readonly PreparedTableStructureProgram[],
 ): readonly PreparedExecutionTask[] => {
   const sourceTasks: PreparedSourceTask[] = [];
   const insertionMembersByPosition = new Map<number, PreparedInsertionMember[]>();
@@ -333,25 +337,28 @@ const executionTasks = (
         : [],
     ),
   );
-  const tableTasks: PreparedTableTask[] = (tableProgram?.tasks ?? []).map((task) => {
-    let originalIndex = Number.MAX_SAFE_INTEGER;
-    for (const operand of task.operands) {
-      const operandIndex =
-        tableInstructionIndex.get(operand) ??
-        panic("A table-structure task lost its comparison instruction");
-      originalIndex = Math.min(originalIndex, operandIndex);
-    }
-    if (originalIndex === Number.MAX_SAFE_INTEGER) {
-      return panic("A table-structure task has no comparison instruction");
-    }
-    return {
-      type: "tableStructure",
-      position: task.schedule.position,
-      from: task.schedule.phase === "source" ? task.schedule.from : task.schedule.position,
-      originalIndex,
-      task,
-    };
-  });
+  const tableTasks: PreparedTableTask[] = tablePrograms.flatMap((program) =>
+    program.tasks.map((task) => {
+      let originalIndex = Number.MAX_SAFE_INTEGER;
+      for (const operand of task.operands) {
+        const operandIndex =
+          tableInstructionIndex.get(operand) ??
+          panic("A table-structure task lost its comparison instruction");
+        originalIndex = Math.min(originalIndex, operandIndex);
+      }
+      if (originalIndex === Number.MAX_SAFE_INTEGER) {
+        return panic("A table-structure task has no comparison instruction");
+      }
+      return {
+        type: "tableStructure" as const,
+        position: task.schedule.position,
+        from: task.schedule.phase === "source" ? task.schedule.from : task.schedule.position,
+        originalIndex,
+        program,
+        task,
+      };
+    }),
+  );
   return Object.freeze(
     [...sourceTasks, ...insertionRuns, ...tableTasks].toSorted((left, right) => {
       const byPosition = right.position - left.position;
@@ -516,7 +523,7 @@ type PreparedDocxComparisonState = {
   readonly instructions: readonly PreparedInstruction[];
   readonly semanticGroups: readonly DocxComparisonSemanticGroup[];
   readonly supportedSemanticGroupIndexes: readonly number[];
-  readonly tableProgram: PreparedTableStructureProgram | null;
+  readonly tablePrograms: readonly PreparedTableStructureProgram[];
   readonly totalInstructionCount: number;
   lifecycle: "ready" | "consumed";
 };
@@ -528,14 +535,14 @@ const ownPreparedDocxComparison = ({
   instructions,
   issues,
   semanticGroups,
-  tableProgram,
+  tablePrograms,
   totalInstructionCount,
 }: {
   readonly state: EditorState;
   readonly instructions: readonly PreparedInstruction[];
   readonly issues: readonly DocxComparisonPreflightIssue[];
   readonly semanticGroups: readonly DocxComparisonSemanticGroup[];
-  readonly tableProgram: PreparedTableStructureProgram | null;
+  readonly tablePrograms: readonly PreparedTableStructureProgram[];
   readonly totalInstructionCount: number;
 }): PreparedDocxComparison => {
   const ownedInstructions = Object.freeze([...instructions]);
@@ -581,7 +588,7 @@ const ownPreparedDocxComparison = ({
     instructions: ownedInstructions,
     semanticGroups,
     supportedSemanticGroupIndexes,
-    tableProgram,
+    tablePrograms: Object.freeze([...tablePrograms]),
     totalInstructionCount,
     lifecycle: "ready",
   });
@@ -606,7 +613,7 @@ export const preflightDocxComparisonProgram = ({
         issue(instruction, instructionIndex, "source-expectation-mismatch"),
       ),
       semanticGroups,
-      tableProgram: null,
+      tablePrograms: Object.freeze([]),
       totalInstructionCount: instructions.length,
     });
   }
@@ -1178,15 +1185,30 @@ export const preflightDocxComparisonProgram = ({
       ? [{ instruction, operand: instruction.operation, originalIndex }]
       : [],
   );
+  const tableEntryByOperand = new Map(tableEntries.map((entry) => [entry.operand, entry]));
+  const tableComponents = resolvedDocxTableComponents({
+    comparison,
+    operands: tableEntries.map(({ operand }) => operand),
+  });
+  const entriesByComponent = new Map(
+    tableComponents.map((component) => [
+      component,
+      resolvedDocxTableComponentOperands(component, comparison).map(
+        (operand) =>
+          tableEntryByOperand.get(operand) ??
+          panic("A canonical table component lost its comparison instruction"),
+      ),
+    ]),
+  );
+  const tablePrograms: PreparedTableStructureProgram[] = [];
   const tablePreflight =
-    tableEntries.length === 0
+    tableComponents.length === 0
       ? null
-      : preflightTableStructureProgram({
+      : preflightTableStructureComponents({
           doc: state.doc,
           comparison,
-          operands: tableEntries.map(({ operand }) => operand),
+          components: tableComponents,
         });
-  const tableProgram = tablePreflight?.status === "ready" ? tablePreflight.program : null;
   if (tablePreflight?.status === "unsupported") {
     for (const { instruction, originalIndex } of tableEntries) {
       issues.push(
@@ -1204,16 +1226,75 @@ export const preflightDocxComparisonProgram = ({
         ),
       );
     }
-  } else if (tablePreflight?.status === "ready") {
-    for (const { operand, originalIndex } of tableEntries) {
-      prepared.push(
-        Object.freeze({
-          type: "tableStructureOperand",
-          operand,
-          instructionType: operand.type,
-          originalIndex,
-        }),
-      );
+  } else {
+    const readyComponents = new Map<ResolvedDocxTableComponent, PreparedTableStructureProgram>();
+    for (const { component, result } of tablePreflight?.components ?? []) {
+      const entries =
+        entriesByComponent.get(component) ??
+        panic("A preflighted table component lost its comparison instructions");
+      if (result.status === "unsupported") {
+        for (const { instruction, originalIndex } of entries) {
+          issues.push(
+            issue(
+              instruction,
+              originalIndex,
+              result.issue.reason === "unrepresentable-table-geometry"
+                ? "unrepresentable-table-geometry"
+                : "unrepresentable-table-structure",
+              undefined,
+              result.issue.reason === "unrepresentable-table-geometry"
+                ? result.issue.issue
+                : undefined,
+              result.issue,
+            ),
+          );
+        }
+        continue;
+      }
+      readyComponents.set(component, result.program);
+    }
+    const failedGroups = new Set(
+      issues.map(({ instructionIndex }) => {
+        const instruction = instructions[instructionIndex];
+        return (
+          instruction ??
+          panic("A DOCX comparison preflight issue lost its instruction", { instructionIndex })
+        ).semanticGroupIndex;
+      }),
+    );
+    let removedComponent = true;
+    while (removedComponent) {
+      removedComponent = false;
+      for (const [component] of readyComponents) {
+        const entries =
+          entriesByComponent.get(component) ??
+          panic("A ready table component lost its comparison instructions");
+        if (!entries.some(({ instruction }) => failedGroups.has(instruction.semanticGroupIndex))) {
+          continue;
+        }
+        readyComponents.delete(component);
+        removedComponent = true;
+        for (const { instruction, originalIndex } of entries) {
+          issues.push(issue(instruction, originalIndex, "semantic-group-incomplete"));
+          failedGroups.add(instruction.semanticGroupIndex);
+        }
+      }
+    }
+    for (const [component, tableComponentProgram] of readyComponents) {
+      tablePrograms.push(tableComponentProgram);
+      const entries =
+        entriesByComponent.get(component) ??
+        panic("A ready table component lost its comparison instructions");
+      for (const { operand, originalIndex } of entries) {
+        prepared.push(
+          Object.freeze({
+            type: "tableStructureOperand",
+            operand,
+            instructionType: operand.type,
+            originalIndex,
+          }),
+        );
+      }
     }
   }
   const failedSemanticGroupIndexes = new Set(
@@ -1249,7 +1330,7 @@ export const preflightDocxComparisonProgram = ({
     instructions: groupedPrepared,
     issues: groupedIssues.toSorted((left, right) => left.instructionIndex - right.instructionIndex),
     semanticGroups,
-    tableProgram,
+    tablePrograms,
     totalInstructionCount: instructions.length,
   });
 };
@@ -1732,16 +1813,16 @@ export const executePreflightedDocxComparison = ({
         : [],
     ),
   );
-  if (owned.tableProgram) {
+  for (const tableProgram of owned.tablePrograms) {
     const result = executeTableStructureGeometry({
       tr,
-      program: owned.tableProgram,
+      program: tableProgram,
       revision: { author, date: revisionStamp.date },
       revisionId,
     });
     if ("issue" in result) {
       const geometryOperand =
-        owned.tableProgram.geometryOperand ??
+        tableProgram.geometryOperand ??
         panic("A table geometry execution issue lost its canonical operand");
       const instruction =
         tableInstructionByOperand.get(geometryOperand) ??
@@ -1767,7 +1848,7 @@ export const executePreflightedDocxComparison = ({
       });
     }
   }
-  const ordered = executionTasks(owned.instructions, owned.tableProgram);
+  const ordered = executionTasks(owned.instructions, owned.tablePrograms);
   let insertionRunCount = 0;
   let localPositionMappingSteps = 0;
   for (const task of ordered) {
@@ -1801,7 +1882,7 @@ export const executePreflightedDocxComparison = ({
     if (task.type === "tableStructure") {
       const result = executeTableStructureTask({
         tr,
-        program: owned.tableProgram ?? panic("A table task lost its preflighted story program"),
+        program: task.program,
         task: task.task,
         revision: { author, date: revisionStamp.date },
         revisionId,
@@ -2238,7 +2319,9 @@ export const executePreflightedDocxComparison = ({
       instructions: Object.freeze(receipts),
       changes: Object.freeze(changes),
       nextRevisionId: revisionId,
-      executionTaskCount: (owned.tableProgram?.geometryOperand ? 1 : 0) + ordered.length,
+      executionTaskCount:
+        owned.tablePrograms.filter(({ geometryOperand }) => geometryOperand !== undefined).length +
+        ordered.length,
       insertionRunCount,
       localPositionMappingSteps,
       transaction: tr,

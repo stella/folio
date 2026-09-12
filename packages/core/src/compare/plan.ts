@@ -37,7 +37,7 @@ import {
   resolvedDocxStructuralInsertionBoundary,
   resolvedDocxTablePlacementChangeIsOwned,
   resolvedDocxTerminalReplacementOperand,
-  resolvedDocxTableFormatOperand,
+  resolvedDocxTableFormatOperands,
   resolvedDocxTableStructureOperand,
   resolvedDocxTableStructureOperandPayload,
   resolvedDocxTerminalTableInsertionOperand,
@@ -1119,8 +1119,9 @@ export const planStoryCompare = ({
     }
   }
 
-  const tableFormat = resolvedDocxTableFormatOperand(comparison);
-  if (tableFormat) operations.push({ type: "tableFormat", operation: tableFormat });
+  for (const tableFormat of resolvedDocxTableFormatOperands(comparison)) {
+    operations.push({ type: "tableFormat", operation: tableFormat });
+  }
 
   const deletedBlockIds = new Set(
     operations.flatMap((operation) =>

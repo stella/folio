@@ -25,9 +25,14 @@ import {
   compareResolvedDocxStoryPair,
   createResolvedDocxStoryPair,
   resolvedDocxStoryComparisonPayload,
+  resolvedDocxTableComponents,
   resolvedDocxTableStructureOperand,
   type ResolvedDocxStoryComparison,
 } from "./resolved-docx-story-comparison";
+import {
+  DEFAULT_TABLE_STRUCTURE_PREFLIGHT_LIMITS,
+  preflightTableStructureComponents,
+} from "./table-structure-program";
 
 const boldMark =
   schema.marks["bold"] ??
@@ -847,6 +852,81 @@ describe("the dedicated DOCX comparison executor", () => {
     expectResolvedViews(baseState, targetState, tracked);
   });
 
+  test("executes independent table-format components in one deterministic schedule", () => {
+    const formattedTable = (id: string, text: string, width: number) => {
+      const content = tableWithCellGrid([[{ id, text }]]);
+      return content.type.create({ ...content.attrs, width, widthType: "dxa" }, content.content);
+    };
+    const baseState = stateWithBlocks(
+      formattedTable("F1000000", "First", 4_000),
+      paragraphNode("A1000000", "Between"),
+      formattedTable("E1000000", "Second", 5_000),
+    );
+    const targetState = stateWithBlocks(
+      formattedTable("F1000000", "First", 4_400),
+      paragraphNode("A1000000", "Between"),
+      formattedTable("E1000000", "Second", 5_500),
+    );
+    const { executed, tracked } = executePlannedComparison(baseState, targetState);
+
+    expect(executed.receipt.instructions.map(({ instructionType }) => instructionType)).toEqual([
+      "matchTableFormatting",
+      "matchTableFormatting",
+    ]);
+    expect(executed.receipt.executionTaskCount).toBe(2);
+    expectResolvedViews(baseState, targetState, tracked);
+    const rerun = executePlannedComparison(baseState, targetState);
+    expect(rerun.tracked.doc.eq(tracked.doc)).toBe(true);
+    expect(rerun.executed.receipt.instructions).toEqual(executed.receipt.instructions);
+  });
+
+  test("enforces one global structure-preflight budget across canonical components", () => {
+    const formattedTable = (id: string, text: string, width: number) => {
+      const content = tableWithCellGrid([[{ id, text }]]);
+      return content.type.create({ ...content.attrs, width, widthType: "dxa" }, content.content);
+    };
+    const baseState = stateWithBlocks(
+      formattedTable("F1000000", "First", 4_000),
+      paragraphNode("A1000000", "Between"),
+      formattedTable("E1000000", "Second", 5_000),
+    );
+    const targetState = stateWithBlocks(
+      formattedTable("F1000000", "First", 4_400),
+      paragraphNode("A1000000", "Between"),
+      formattedTable("E1000000", "Second", 5_500),
+    );
+    const planned = plannedComparisonOf({ baseState, targetState });
+    const operands = planned.program
+      .consume()
+      .instructions.flatMap((instruction) =>
+        instruction.type === "tableStructure" || instruction.type === "tableFormat"
+          ? [instruction.operation]
+          : [],
+      );
+    const components = resolvedDocxTableComponents({
+      comparison: planned.comparison,
+      operands,
+    });
+
+    expect(components).toHaveLength(2);
+    expect(
+      preflightTableStructureComponents({
+        doc: baseState.doc,
+        comparison: planned.comparison,
+        components,
+        limits: { ...DEFAULT_TABLE_STRUCTURE_PREFLIGHT_LIMITS, maxOperands: 1 },
+      }),
+    ).toEqual({
+      status: "unsupported",
+      issue: {
+        reason: "limit-exceeded",
+        limit: "maxOperands",
+        maximum: 1,
+        actual: 2,
+      },
+    });
+  });
+
   test("row and column structure edits reconstruct both views through the comparison pipeline", () => {
     const a = { id: "A1000000", text: "A" } as const;
     const b = { id: "B1000000", text: "B" } as const;
@@ -983,6 +1063,187 @@ describe("the dedicated DOCX comparison executor", () => {
     ]);
     expect(baseState.doc.childCount).toBe(1);
     expect(baseState.doc.firstChild?.childCount).toBe(2);
+  });
+
+  test("isolates an unsupported table from an independent table-format program", () => {
+    const changedBase = tableWithTextGrid([["Independent"]], {
+      width: 6_000,
+      widthType: "dxa",
+      justification: "left",
+    });
+    const changedTarget = tableWithTextGrid([["Independent"]], {
+      width: 7_200,
+      widthType: "dxa",
+      justification: "center",
+    });
+    const visible = schema.node("tableRow", null, [
+      schema.node("tableCell", null, [paragraphNode("A1000000", "Visible")]),
+    ]);
+    const hidden = schema.node("tableRow", { hidden: true }, [
+      schema.node("tableCell", null, [paragraphNode("H1000000", "Hidden")]),
+    ]);
+    const baseState = stateWithBlocks(
+      changedBase,
+      paragraphNode("B1000000", "Between"),
+      schema.node("table", null, [visible, hidden]),
+    );
+    const targetState = stateWithBlocks(
+      changedTarget,
+      paragraphNode("B1000000", "Between"),
+      schema.node("table", null, [visible]),
+    );
+    const prepared = preflightDocxComparisonProgram({
+      state: baseState,
+      program: plannedComparisonOf({ baseState, targetState }).program,
+    });
+
+    expect(prepared.supportedInstructionCount).toBe(1);
+    expect(prepared.issues).toHaveLength(1);
+    expect(prepared.issues[0]).toEqual(
+      expect.objectContaining({
+        instructionType: "matchTableFormatting",
+        reason: "unrepresentable-table-structure",
+        tableStructure: { reason: "unprojected-table-structure", side: "source" },
+      }),
+    );
+    const executed = executePreflightedDocxComparison({
+      state: baseState,
+      prepared,
+      revisionStamp: { idSeed: 950, date: "2026-09-12T00:00:00.000Z" },
+      author: "Comparison",
+    });
+    if (executed.status !== "executed") throw new Error("Expected partial table execution.");
+    const tracked = baseState.apply(executed.receipt.transaction);
+    const accepted = resolvedState(tracked, "accept");
+    const rejected = resolvedState(tracked, "reject");
+    const acceptedFirstTable = accepted.doc.firstChild;
+    const rejectedFirstTable = rejected.doc.firstChild;
+    expect(acceptedFirstTable?.attrs["width"]).toBe(7_200);
+    expect(acceptedFirstTable?.attrs["justification"]).toBe("center");
+    expect(rejectedFirstTable?.attrs["width"]).toBe(6_000);
+    expect(rejectedFirstTable?.attrs["justification"]).toBe("left");
+    expect(
+      withoutBlockIdentities(acceptedFirstTable ?? changedBase).eq(
+        withoutBlockIdentities(targetState.doc.child(0)),
+      ),
+    ).toBe(true);
+    expect(
+      withoutBlockIdentities(rejectedFirstTable ?? changedTarget).eq(
+        withoutBlockIdentities(baseState.doc.child(0)),
+      ),
+    ).toBe(true);
+    expect(accepted.doc.child(2).eq(baseState.doc.child(2))).toBe(true);
+    expect(rejected.doc.child(2).eq(baseState.doc.child(2))).toBe(true);
+    expect(executed.receipt.instructions.map(({ instructionType }) => instructionType)).toEqual([
+      "matchTableFormatting",
+    ]);
+  });
+
+  test("executes a valid table structure component beside an unsupported one", () => {
+    const validBase = tableWithCellGrid([
+      [{ id: "A1000000", text: "A" }],
+      [{ id: "B1000000", text: "B" }],
+    ]);
+    const validTarget = tableWithCellGrid([
+      [{ id: "A1000000", text: "A" }],
+      [{ id: "C1000000", text: "Inserted" }],
+      [{ id: "B1000000", text: "B" }],
+    ]);
+    const spanningRow = (id: string, text: string) =>
+      schema.node("tableRow", null, [
+        schema.node("tableCell", { colspan: 2 }, [paragraphNode(id, text)]),
+      ]);
+    const invalidBase = schema.node("table", null, [
+      spanningRow("D1000000", "D"),
+      spanningRow("E1000000", "E"),
+    ]);
+    const invalidTarget = schema.node("table", null, [
+      spanningRow("D1000000", "D"),
+      spanningRow("F1000000", "Unsupported"),
+      spanningRow("E1000000", "E"),
+    ]);
+    const baseState = stateWithBlocks(validBase, paragraphNode("A2000000", "Between"), invalidBase);
+    const targetState = stateWithBlocks(
+      validTarget,
+      paragraphNode("A2000000", "Between"),
+      invalidTarget,
+    );
+    const prepared = preflightDocxComparisonProgram({
+      state: baseState,
+      program: plannedComparisonOf({ baseState, targetState }).program,
+    });
+
+    expect(prepared.supportedInstructionCount).toBe(1);
+    expect(prepared.issues).toEqual([
+      expect.objectContaining({
+        instructionType: "insertTableRow",
+        reason: "unrepresentable-table-structure",
+        tableStructure: { reason: "unrepresentable-span", side: "source" },
+      }),
+    ]);
+    const executed = executePreflightedDocxComparison({
+      state: baseState,
+      prepared,
+      revisionStamp: { idSeed: 975, date: "2026-09-12T00:00:00.000Z" },
+      author: "Comparison",
+    });
+    if (executed.status !== "executed") throw new Error("Expected partial table execution.");
+    const tracked = baseState.apply(executed.receipt.transaction);
+    const accepted = resolvedState(tracked, "accept");
+    const rejected = resolvedState(tracked, "reject");
+    expect(
+      withoutBlockIdentities(accepted.doc.child(0)).eq(
+        withoutBlockIdentities(targetState.doc.child(0)),
+      ),
+    ).toBe(true);
+    expect(
+      withoutBlockIdentities(rejected.doc.child(0)).eq(
+        withoutBlockIdentities(baseState.doc.child(0)),
+      ),
+    ).toBe(true);
+    expect(accepted.doc.child(2).eq(baseState.doc.child(2))).toBe(true);
+    expect(rejected.doc.child(2).eq(baseState.doc.child(2))).toBe(true);
+    expect(executed.receipt.instructions.map(({ instructionType }) => instructionType)).toEqual([
+      "insertTableRow",
+    ]);
+  });
+
+  test("fails every obligation in one shared table component atomically", () => {
+    const spanningRow = (id: string, text: string) =>
+      schema.node("tableRow", null, [
+        schema.node("tableCell", { colspan: 2 }, [paragraphNode(id, text)]),
+      ]);
+    const baseState = stateWithBlocks(
+      schema.node("table", { width: 6_000, widthType: "dxa", justification: "left" }, [
+        spanningRow("A1000000", "A"),
+        spanningRow("B1000000", "B"),
+      ]),
+    );
+    const targetState = stateWithBlocks(
+      schema.node("table", { width: 7_200, widthType: "dxa", justification: "center" }, [
+        spanningRow("A1000000", "A"),
+        spanningRow("C1000000", "Inserted"),
+        spanningRow("B1000000", "B"),
+      ]),
+    );
+    const before = baseState.doc.toJSON();
+    const prepared = preflightDocxComparisonProgram({
+      state: baseState,
+      program: plannedComparisonOf({ baseState, targetState }).program,
+    });
+
+    expect(prepared.supportedInstructionCount).toBe(0);
+    expect(prepared.issues).toHaveLength(2);
+    expect(prepared.issues.map(({ instructionType }) => instructionType).toSorted()).toEqual([
+      "insertTableRow",
+      "matchTableFormatting",
+    ]);
+    expect(
+      prepared.issues.every(
+        ({ tableStructure }) => tableStructure?.reason === "unrepresentable-span",
+      ),
+    ).toBe(true);
+    expect(baseState.doc.toJSON()).toEqual(before);
   });
 
   test("generated rectangular table edits remain reversible without global mapping", () => {
