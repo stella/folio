@@ -48,6 +48,130 @@ const countedTableBlock = ({
 };
 
 describe("bounded table-column alignment", () => {
+  test("a copied value cannot steal a surviving edited column with stable identities", () => {
+    const block = (options: TableBlockOptions): FolioContentBlock =>
+      countedTableBlock(options).block;
+    const base = [
+      block({
+        id: "survivor",
+        text: "Original",
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      block({
+        id: "tail",
+        text: "Tail",
+        rowIndex: 0,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+      }),
+    ];
+    const revised = [
+      block({
+        id: "copy",
+        text: "Original",
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      block({
+        id: "survivor",
+        text: "Edited",
+        rowIndex: 0,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+      }),
+      block({
+        id: "tail",
+        text: "Tail",
+        rowIndex: 0,
+        cellIndex: 2,
+        gridColumnIndex: 2,
+      }),
+    ];
+
+    const alignment = alignTableColumns(base, revised);
+
+    expect(
+      alignment?.steps.map((step) => ({
+        type: step.type,
+        blockIds: step.blocks.map(({ identity }) => identity.id),
+        columnIndex: step.columnIndex,
+      })),
+    ).toEqual([{ type: "revisedColumn", blockIds: ["copy"], columnIndex: 0 }]);
+    expect(alignment?.baseBlocks.map(({ identity }) => identity.id)).toEqual([
+      "survivor",
+      "tail",
+    ]);
+    expect(alignment?.revisedBlocks.map(({ identity }) => identity.id)).toEqual([
+      "survivor",
+      "tail",
+    ]);
+  });
+
+  test("a deleted copied value cannot displace a surviving edited column", () => {
+    const block = (options: TableBlockOptions): FolioContentBlock =>
+      countedTableBlock(options).block;
+    const base = [
+      block({
+        id: "copy",
+        text: "Original",
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      block({
+        id: "survivor",
+        text: "Edited",
+        rowIndex: 0,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+      }),
+      block({
+        id: "tail",
+        text: "Tail",
+        rowIndex: 0,
+        cellIndex: 2,
+        gridColumnIndex: 2,
+      }),
+    ];
+    const revised = [
+      block({
+        id: "survivor",
+        text: "Original",
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      block({
+        id: "tail",
+        text: "Tail",
+        rowIndex: 0,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+      }),
+    ];
+
+    const alignment = alignTableColumns(base, revised);
+
+    expect(
+      alignment?.steps.map((step) => ({
+        type: step.type,
+        blockIds: step.blocks.map(({ identity }) => identity.id),
+        columnIndex: step.columnIndex,
+      })),
+    ).toEqual([{ type: "baseColumn", blockIds: ["copy"], columnIndex: 0 }]);
+    expect(alignment?.baseBlocks.map(({ identity }) => identity.id)).toEqual([
+      "survivor",
+      "tail",
+    ]);
+    expect(alignment?.revisedBlocks.map(({ identity }) => identity.id)).toEqual([
+      "survivor",
+      "tail",
+    ]);
+  });
+
   test("retains a column whose cell gained paragraphs when one neighboring column was deleted", () => {
     const block = (options: TableBlockOptions): FolioContentBlock =>
       countedTableBlock(options).block;

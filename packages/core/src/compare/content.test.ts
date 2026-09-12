@@ -1974,6 +1974,59 @@ describe("container-aware comparison", () => {
     });
   });
 
+  test("an inserted copy cannot replace the identity of an edited surviving column", () => {
+    const base = [
+      tableBlock({ id: "survivor", text: "Original", rowIndex: 0, cellIndex: 0 }),
+      tableBlock({ id: "tail", text: "Tail", rowIndex: 0, cellIndex: 1 }),
+    ];
+    const insertedCopy = tableBlock({
+      id: "copy",
+      text: "Original",
+      rowIndex: 0,
+      cellIndex: 0,
+    });
+    const revisedSurvivor = tableBlock({
+      id: "survivor",
+      text: "Edited",
+      rowIndex: 0,
+      cellIndex: 1,
+      gridColumnIndex: 1,
+    });
+    const revised = [
+      insertedCopy,
+      revisedSurvivor,
+      tableBlock({
+        id: "tail",
+        text: "Tail",
+        rowIndex: 0,
+        cellIndex: 2,
+        gridColumnIndex: 2,
+      }),
+    ];
+
+    const comparison = successfulComparison({ base, revised });
+
+    const structural = comparison.events.find(({ type }) => type === "structural");
+    expect(structural).toMatchObject({
+      type: "structural",
+      change: {
+        type: "table-column-insert",
+        columnIndex: 0,
+        blocks: [insertedCopy],
+      },
+    });
+    const modified = comparison.events.find(({ type }) => type === "modified");
+    expect(modified).toMatchObject({
+      type: "modified",
+      relation: {
+        base: { block: { identity: { id: "survivor" } } },
+        revised: { block: { identity: { id: "survivor" } } },
+      },
+    });
+    expect(baseProjection(comparison)).toEqual(base);
+    expect(revisedProjection(comparison)).toEqual(revised);
+  });
+
   test("a surviving cell may gain paragraphs while its neighboring column is deleted", () => {
     const keptBase = tableBlock({
       id: "kept",

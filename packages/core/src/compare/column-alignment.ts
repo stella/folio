@@ -17,6 +17,8 @@ type GridColumn<Block extends FolioContentBlock> = {
   index: number;
   structureSignature: string;
   cellTextCounts: readonly ReadonlyMap<number, number>[];
+  /** Shared references to per-cell identity sets; spanning cells are not copied per column. */
+  stableIdentityKeyGroups: readonly (readonly number[])[];
   ownedCells: readonly GridCell<Block>[];
 };
 
@@ -132,10 +134,12 @@ const extractTableGrid = <Block extends FolioContentBlock>(
 const tableGridColumns = <Block extends FolioContentBlock>(
   grid: TableGrid<Block>,
   internText: (text: string) => number,
+  internStableIdentity: (identity: string) => number,
 ): GridColumn<Block>[] => {
   const coveringCellsByColumn: GridCell<Block>[][] = Array.from({ length: grid.width }, () => []);
   const ownedCellsByColumn: GridCell<Block>[][] = Array.from({ length: grid.width }, () => []);
   const textCountsByCell = new Map<GridCell<Block>, ReadonlyMap<number, number>>();
+  const stableIdentityKeysByCell = new Map<GridCell<Block>, readonly number[]>();
   for (const cell of grid.cells) {
     const counts = new Map<number, number>();
     for (const { text } of cell.blocks) {
@@ -143,6 +147,14 @@ const tableGridColumns = <Block extends FolioContentBlock>(
       counts.set(key, (counts.get(key) ?? 0) + 1);
     }
     textCountsByCell.set(cell, counts);
+    stableIdentityKeysByCell.set(
+      cell,
+      cell.blocks.flatMap(({ identity }) =>
+        identity.type === "positional"
+          ? []
+          : [internStableIdentity(`${identity.type}\u0000${identity.id}`)],
+      ),
+    );
     ownedCellsByColumn[cell.gridColumnIndex]?.push(cell);
     for (
       let column = cell.gridColumnIndex;
@@ -170,6 +182,11 @@ const tableGridColumns = <Block extends FolioContentBlock>(
         (cell) =>
           textCountsByCell.get(cell) ?? panic("A table cell has no interned text signature"),
       ),
+      stableIdentityKeyGroups: coveringCells.map(
+        (cell) =>
+          stableIdentityKeysByCell.get(cell) ??
+          panic("A table cell has no interned identity signature"),
+      ),
       ownedCells: ownedCellsByColumn[columnIndex] ?? [],
     };
   });
@@ -193,11 +210,38 @@ const exactCellContentEvidence = <Block extends FolioContentBlock>(
   return evidence;
 };
 
-/** The sole highest-evidence ordered structural embedding, or null when ambiguous. */
+/**
+ * The sole highest-text-evidence structural embedding that preserves every
+ * stable identity visible on both sides, or `null` when the evidence ties.
+ */
 const uniqueColumnEmbedding = <Block extends FolioContentBlock>(
   shorter: readonly GridColumn<Block>[],
   wider: readonly GridColumn<Block>[],
+  sharedStableIdentityKeys: ReadonlySet<number>,
 ): number[] | null => {
+  const stableGroupKeyByGroup = new Map<readonly number[], number>();
+  const stableGroupKeys = new Map<string, number>();
+  let nextStableGroupKey = 0;
+  const stableGroupKey = (group: readonly number[]): number => {
+    const cached = stableGroupKeyByGroup.get(group);
+    if (cached !== undefined) return cached;
+    const signature = JSON.stringify(
+      group
+        .filter((key) => sharedStableIdentityKeys.has(key))
+        .toSorted((left, right) => left - right),
+    );
+    const existing = stableGroupKeys.get(signature);
+    const key = existing ?? nextStableGroupKey++;
+    if (existing === undefined) stableGroupKeys.set(signature, key);
+    stableGroupKeyByGroup.set(group, key);
+    return key;
+  };
+  const sharedIdentitySignatures = (columns: readonly GridColumn<Block>[]): string[] =>
+    columns.map(({ stableIdentityKeyGroups }) =>
+      JSON.stringify(stableIdentityKeyGroups.map(stableGroupKey)),
+    );
+  const shorterIdentitySignatures = sharedIdentitySignatures(shorter);
+  const widerIdentitySignatures = sharedIdentitySignatures(wider);
   const scores = Array.from({ length: shorter.length + 1 }, () =>
     Array.from({ length: wider.length + 1 }, () => -1),
   );
@@ -227,6 +271,7 @@ const uniqueColumnEmbedding = <Block extends FolioContentBlock>(
       const remainingCount = counts[shortIndex + 1]?.[wideIndex + 1] ?? 0;
       const canMatch =
         shortColumn.structureSignature === wideColumn.structureSignature &&
+        shorterIdentitySignatures[shortIndex] === widerIdentitySignatures[wideIndex] &&
         remainingScore >= 0 &&
         remainingCount > 0;
       const matchScore = canMatch
@@ -259,6 +304,7 @@ const uniqueColumnEmbedding = <Block extends FolioContentBlock>(
       shortColumn &&
       wideColumn &&
       shortColumn.structureSignature === wideColumn.structureSignature &&
+      shorterIdentitySignatures[shortIndex] === widerIdentitySignatures[wideIndex] &&
       remainingScore >= 0 &&
       remainingCount > 0
         ? remainingScore + exactCellContentEvidence(shortColumn, wideColumn)
@@ -305,12 +351,39 @@ export const alignTableColumns = <Block extends FolioContentBlock>(
     textKeys.set(text, key);
     return key;
   };
-  const baseColumns = tableGridColumns(baseGrid, internText);
-  const revisedColumns = tableGridColumns(revisedGrid, internText);
+  const stableIdentityKeys = new Map<string, number>();
+  let nextStableIdentityKey = 0;
+  const internStableIdentity = (identity: string): number => {
+    const existing = stableIdentityKeys.get(identity);
+    if (existing !== undefined) return existing;
+    const key = nextStableIdentityKey++;
+    stableIdentityKeys.set(identity, key);
+    return key;
+  };
+  const baseColumns = tableGridColumns(baseGrid, internText, internStableIdentity);
+  const revisedColumns = tableGridColumns(revisedGrid, internText, internStableIdentity);
+  const stableIdentityKeysOf = (columns: readonly GridColumn<Block>[]): Set<number> => {
+    const keys = new Set<number>();
+    const seenGroups = new Set<readonly number[]>();
+    for (const { stableIdentityKeyGroups } of columns) {
+      for (const group of stableIdentityKeyGroups) {
+        if (seenGroups.has(group)) continue;
+        seenGroups.add(group);
+        for (const key of group) keys.add(key);
+      }
+    }
+    return keys;
+  };
+  const baseStableIdentityKeys = stableIdentityKeysOf(baseColumns);
+  const revisedStableIdentityKeys = stableIdentityKeysOf(revisedColumns);
+  const sharedStableIdentityKeys = new Set(
+    [...baseStableIdentityKeys].filter((key) => revisedStableIdentityKeys.has(key)),
+  );
   const revisedIsWider = revisedColumns.length > baseColumns.length;
   const mapping = uniqueColumnEmbedding(
     revisedIsWider ? baseColumns : revisedColumns,
     revisedIsWider ? revisedColumns : baseColumns,
+    sharedStableIdentityKeys,
   );
   if (!mapping) {
     return null;
