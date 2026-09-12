@@ -117,7 +117,7 @@ const modelParagraphNumberingReference = (
 };
 
 /** Compare numbering references by their emitted id and effective level. */
-const paragraphNumberingReferencesEqual = (
+export const paragraphNumberingReferencesEqual = (
   left: ParagraphNumberingReference,
   right: ParagraphNumberingReference,
 ): boolean => {
@@ -132,7 +132,7 @@ const paragraphNumberingReferencesEqual = (
 };
 
 /** Whether resolved numbering still belongs to the paragraph's style tier. */
-const isStyleSourcedParagraphNumbering = (
+export const isStyleSourcedParagraphNumbering = (
   numPr: ParagraphNumberingReference,
   numPrFromStyle: ParagraphNumberingReference,
 ): boolean =>
@@ -141,7 +141,7 @@ const isStyleSourcedParagraphNumbering = (
   paragraphNumberingReferencesEqual(numPr, numPrFromStyle);
 
 /** Exact fallback-emission instructions for the modeled part of `w:pPr`. */
-type ModeledParagraphFormattingEmission = Readonly<{
+export type ModeledParagraphFormattingEmission = Readonly<{
   propertiesXml?: string;
   paragraphMarkPropertiesInnerXml?: string;
 }>;

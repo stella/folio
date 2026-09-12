@@ -793,10 +793,10 @@ describe("paragraph properties survive a no-edit full repack", () => {
     if (!propertySource) {
       panic("The parsed paragraph has no property source.");
     }
-    assignParagraphPropertySource(paragraph, {
-      ...propertySource,
-      xml: propertySource.xml.replace("<w:pPr", '<w:pPr xmlns:w16du="urn:foreign"'),
-    });
+    assignParagraphPropertySource(
+      paragraph,
+      propertySource.xml.replace("<w:pPr", '<w:pPr xmlns:w16du="urn:foreign"'),
+    );
     paragraph.pPrMark = {
       kind: "ins",
       info: {
@@ -824,10 +824,10 @@ describe("paragraph properties survive a no-edit full repack", () => {
     if (!propertySource) {
       panic("The parsed paragraph has no property source.");
     }
-    assignParagraphPropertySource(paragraph, {
-      ...propertySource,
-      xml: propertySource.xml.replace("<w:pPr", '<w:pPr xmlns:w16du="urn:foreign"'),
-    });
+    assignParagraphPropertySource(
+      paragraph,
+      propertySource.xml.replace("<w:pPr", '<w:pPr xmlns:w16du="urn:foreign"'),
+    );
     paragraph.propertyChanges = [
       {
         type: "paragraphPropertyChange",
@@ -857,10 +857,10 @@ describe("paragraph properties survive a no-edit full repack", () => {
     if (!propertySource) {
       panic("The parsed paragraph has no property source.");
     }
-    assignParagraphPropertySource(paragraph, {
-      ...propertySource,
-      xml: propertySource.xml.replace("<w:pPr", '<w:pPr xmlns:w16du="urn:foreign"'),
-    });
+    assignParagraphPropertySource(
+      paragraph,
+      propertySource.xml.replace("<w:pPr", '<w:pPr xmlns:w16du="urn:foreign"'),
+    );
 
     const saved = await repackDocx(parsed, { updateModifiedDate: false });
     const { documentXml } = await unzipDocx(saved);
@@ -904,10 +904,7 @@ describe("paragraph properties survive a no-edit full repack", () => {
     if (!propertySource) {
       panic("The parsed paragraph has no property source.");
     }
-    assignParagraphPropertySource(paragraph, {
-      ...propertySource,
-      xml: `${propertySource.xml}<w:r><w:t>injected</w:t></w:r>`,
-    });
+    assignParagraphPropertySource(paragraph, `${propertySource.xml}<w:r><w:t>injected</w:t></w:r>`);
 
     const saved = await repackDocx(parsed, { updateModifiedDate: false });
     const { documentXml } = await unzipDocx(saved);
@@ -939,10 +936,10 @@ describe("paragraph properties survive a no-edit full repack", () => {
       if (!propertySource) {
         panic("The parsed paragraph has no property source.");
       }
-      assignParagraphPropertySource(paragraph, {
-        ...propertySource,
-        xml: adversarialParagraphPropertiesXml(name, propertySource.xml, before, after),
-      });
+      assignParagraphPropertySource(
+        paragraph,
+        adversarialParagraphPropertiesXml(name, propertySource.xml, before, after),
+      );
       paragraph.pPrMark = { kind: "ins", info: { id: 96, author: "Reviewer" } };
       paragraph.sectionProperties = { pageWidth: 12_240, pageHeight: 15_840 };
       paragraph.propertyChanges = [
@@ -991,13 +988,12 @@ describe("paragraph properties survive a no-edit full repack", () => {
       if (!propertySource) {
         panic("The parsed paragraph has no property source.");
       }
-      assignParagraphPropertySource(paragraph, {
-        ...propertySource,
-        xml:
-          parent === "rPr"
-            ? propertySource.xml.replace("<w:rPr>", `<w:rPr>${injected}`)
-            : propertySource.xml.replace("</w:pPr>", `${injected}</w:pPr>`),
-      });
+      assignParagraphPropertySource(
+        paragraph,
+        parent === "rPr"
+          ? propertySource.xml.replace("<w:rPr>", `<w:rPr>${injected}`)
+          : propertySource.xml.replace("</w:pPr>", `${injected}</w:pPr>`),
+      );
 
       const properties = await firstParagraphProperties(
         await repackDocx(parsed, { updateModifiedDate: false }),
@@ -1024,10 +1020,10 @@ describe("paragraph properties survive a no-edit full repack", () => {
     if (!propertySource) {
       panic("The parsed paragraph has no property source.");
     }
-    assignParagraphPropertySource(paragraph, {
-      ...propertySource,
-      xml: '<x:pPr xmlns:x="urn:example:not-wordprocessingml"><x:injected/></x:pPr>',
-    });
+    assignParagraphPropertySource(
+      paragraph,
+      '<x:pPr xmlns:x="urn:example:not-wordprocessingml"><x:injected/></x:pPr>',
+    );
 
     const saved = await repackDocx(parsed, { updateModifiedDate: false });
     const { documentXml } = await unzipDocx(saved);
@@ -1042,10 +1038,10 @@ describe("paragraph properties survive a no-edit full repack", () => {
     if (!propertySource) {
       panic("The parsed paragraph has no property source.");
     }
-    assignParagraphPropertySource(paragraph, {
-      ...propertySource,
-      xml: '<x:pPr xmlns:x="http://purl.oclc.org/ooxml/wordprocessingml/main"><x:keepNext/></x:pPr>',
-    });
+    assignParagraphPropertySource(
+      paragraph,
+      '<x:pPr xmlns:x="http://purl.oclc.org/ooxml/wordprocessingml/main"><x:keepNext/></x:pPr>',
+    );
 
     const saved = await repackDocx(parsed, { updateModifiedDate: false });
     const { documentXml } = await unzipDocx(saved);
@@ -1063,13 +1059,13 @@ describe("paragraph properties survive a no-edit full repack", () => {
     if (!propertySource) {
       panic("The parsed paragraph has no property source.");
     }
-    assignParagraphPropertySource(paragraph, {
-      ...propertySource,
-      xml: propertySource.xml.replace(
+    assignParagraphPropertySource(
+      paragraph,
+      propertySource.xml.replace(
         "<w:rPr>",
         '<x:wrapper xmlns:x="urn:example:extension"><x:rPr/></x:wrapper><w:rPr>',
       ),
-    });
+    );
     paragraph.pPrMark = { kind: "ins", info: { id: 94, author: "Reviewer" } };
 
     const properties = await firstParagraphProperties(
@@ -1109,13 +1105,12 @@ describe("paragraph properties survive a no-edit full repack", () => {
     if (!propertySource) {
       panic("The parsed paragraph has no property source.");
     }
-    assignParagraphPropertySource(paragraph, {
-      ...propertySource,
-      xml:
-        tag === "ins"
-          ? propertySource.xml.replace("<w:rPr>", `<w:rPr>${injected}`)
-          : propertySource.xml.replace("</w:pPr>", `${injected}</w:pPr>`),
-    });
+    assignParagraphPropertySource(
+      paragraph,
+      tag === "ins"
+        ? propertySource.xml.replace("<w:rPr>", `<w:rPr>${injected}`)
+        : propertySource.xml.replace("</w:pPr>", `${injected}</w:pPr>`),
+    );
     paragraph.pPrMark = { kind: "ins", info: { id: 98, author: "Current" } };
 
     const properties = await firstParagraphProperties(
@@ -1151,14 +1146,14 @@ describe("paragraph properties survive a no-edit full repack", () => {
       if (!propertySource) {
         panic("The parsed paragraph has no property source.");
       }
-      assignParagraphPropertySource(paragraph, {
-        ...propertySource,
-        xml: propertySource.xml.replace(
+      assignParagraphPropertySource(
+        paragraph,
+        propertySource.xml.replace(
           '<w:ind w:left="720" w:leftChars="100"/>',
           `<w:ind w:left="720" w:leftChars="100"><w:${revisionName} ` +
             'w:author="Poison"/></w:ind>',
         ),
-      });
+      );
       paragraph.pPrMark = { kind: "moveTo", info: { id: 98, author: "Current" } };
       paragraph.sectionProperties = { pageWidth: 12_240, pageHeight: 15_840 };
       paragraph.propertyChanges = [
@@ -1189,13 +1184,13 @@ describe("paragraph properties survive a no-edit full repack", () => {
       if (!propertySource) {
         panic("The parsed paragraph has no property source.");
       }
-      assignParagraphPropertySource(paragraph, {
-        ...propertySource,
-        xml: propertySource.xml.replace(
+      assignParagraphPropertySource(
+        paragraph,
+        propertySource.xml.replace(
           '<w:ind w:left="720" w:leftChars="100"/>',
           `<w:ind w:left="720" w:leftChars="100"><w:${contentName}>POISON</w:${contentName}></w:ind>`,
         ),
-      });
+      );
 
       const saved = await repackDocx(parsed, { updateModifiedDate: false });
       const { documentXml } = await unzipDocx(saved);
@@ -1212,13 +1207,13 @@ describe("paragraph properties survive a no-edit full repack", () => {
     if (!propertySource) {
       panic("The parsed paragraph has no property source.");
     }
-    assignParagraphPropertySource(paragraph, {
-      ...propertySource,
-      xml: propertySource.xml.replace(
+    assignParagraphPropertySource(
+      paragraph,
+      propertySource.xml.replace(
         '<w:ind w:left="720" w:leftChars="100"/>',
         '<w:ind w:left="720" w:leftChars="100">POISON</w:ind>',
       ),
-    });
+    );
 
     const saved = await repackDocx(parsed, { updateModifiedDate: false });
     const { documentXml } = await unzipDocx(saved);
@@ -1239,14 +1234,14 @@ describe("paragraph properties survive a no-edit full repack", () => {
       if (!propertySource) {
         panic("The parsed paragraph has no property source.");
       }
-      assignParagraphPropertySource(paragraph, {
-        ...propertySource,
-        xml: propertySource.xml.replace(
+      assignParagraphPropertySource(
+        paragraph,
+        propertySource.xml.replace(
           "</w:pPr>",
           `<mc:AlternateContent><mc:Choice Requires="w14">${injected}</mc:Choice>` +
             `<mc:Fallback><w:ind w:left="8888"/></mc:Fallback></mc:AlternateContent></w:pPr>`,
         ),
-      });
+      );
       paragraph.pPrMark = { kind: "ins", info: { id: 101, author: "Current" } };
 
       const saved = await repackDocx(parsed, { updateModifiedDate: false });
@@ -1270,10 +1265,10 @@ describe("paragraph properties survive a no-edit full repack", () => {
     if (!propertySource) {
       panic("The parsed paragraph has no property source.");
     }
-    assignParagraphPropertySource(paragraph, {
-      ...propertySource,
-      xml: propertySource.xml.replace("</w:pPr>", `${extension}</w:pPr>`),
-    });
+    assignParagraphPropertySource(
+      paragraph,
+      propertySource.xml.replace("</w:pPr>", `${extension}</w:pPr>`),
+    );
 
     const first = await repackDocx(parsed, { updateModifiedDate: false });
     const reparsed = await parseDocx(first, { preloadFonts: false });
@@ -1292,13 +1287,10 @@ describe("paragraph properties survive a no-edit full repack", () => {
     if (!propertySource) {
       panic("The parsed paragraph has no property source.");
     }
-    assignParagraphPropertySource(paragraph, {
-      ...propertySource,
-      xml: propertySource.xml.replace(
-        "</w:pPr>",
-        "<w:p><w:r><w:t>POISON</w:t></w:r></w:p></w:pPr>",
-      ),
-    });
+    assignParagraphPropertySource(
+      paragraph,
+      propertySource.xml.replace("</w:pPr>", "<w:p><w:r><w:t>POISON</w:t></w:r></w:p></w:pPr>"),
+    );
 
     const saved = await repackDocx(parsed, { updateModifiedDate: false });
     const { documentXml } = await unzipDocx(saved);
@@ -1356,10 +1348,10 @@ describe("paragraph properties survive a no-edit full repack", () => {
     if (!propertySource) {
       panic("The parsed paragraph has no property source.");
     }
-    assignParagraphPropertySource(paragraph, {
-      ...propertySource,
-      xml: propertySource.xml.replace("<w:pPr>", `<w:pPr xmlns:${prefix}="urn:foreign">`),
-    });
+    assignParagraphPropertySource(
+      paragraph,
+      propertySource.xml.replace("<w:pPr>", `<w:pPr xmlns:${prefix}="urn:foreign">`),
+    );
     paragraph.sectionProperties = {
       headerReferences: [{ type: "default", rId: "rId1" }],
       footnoteColumns: 2,
@@ -1414,7 +1406,7 @@ describe("paragraph properties survive a no-edit full repack", () => {
     if (!propertySource) {
       panic("The parsed paragraph has no property source.");
     }
-    assignParagraphPropertySource(paragraph, { ...propertySource, xml });
+    assignParagraphPropertySource(paragraph, xml);
     paragraph.pPrMark = { kind: "ins", info: { id: 95, author: "Reviewer" } };
 
     const properties = await firstParagraphProperties(

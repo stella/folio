@@ -17,7 +17,6 @@ import {
   toProseDoc,
 } from "../prosemirror/conversion/toProseDoc";
 import type { Document, HeaderFooter, Paragraph } from "../types/document";
-import { canonicalJson } from "../utils/canonicalJson";
 
 type EditorViewOptions = {
   dispatchTransaction: (transaction: Transaction) => void;
@@ -74,12 +73,11 @@ const { createHeaderFooterEditorManager } = await import("./headerFooterEditorMa
 const { createNoteEditorManager } = await import("./noteEditorManager");
 
 const assignOwnerSource = (paragraph: Paragraph, owner: string): void => {
-  assignParagraphPropertySource(paragraph, {
-    formattingJson: canonicalJson(paragraph.formatting ?? {}),
-    xml:
-      `<w:pPr xmlns:w="${NAMESPACES.w}" xmlns:x="urn:folio:test">` +
+  assignParagraphPropertySource(
+    paragraph,
+    `<w:pPr xmlns:w="${NAMESPACES.w}" xmlns:x="urn:folio:test">` +
       `<x:property x:owner="${owner}"/></w:pPr>`,
-  });
+  );
 };
 
 const paragraphWithSource = (text: string, owner: string, paraId?: string): Paragraph => {

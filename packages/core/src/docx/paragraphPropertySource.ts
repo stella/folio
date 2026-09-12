@@ -10,14 +10,42 @@ import type {
   RunContent,
   TableCell,
 } from "../types/document";
+import {
+  modelParagraphFormattingEmission,
+  type ModeledParagraphFormattingEmission,
+} from "../internal/paragraphFormattingSerialization";
+import { canonicalJson } from "../utils/canonicalJson";
 import { visitDocxParagraphs } from "./paragraphTraversal";
 
-type ParagraphPropertySource = {
+// The private symbol makes a source factory-only at the type boundary. Keep it
+// enumerable so sanctioned immutable object copies retain the exact fingerprint.
+const paragraphPropertySourceEmissionFingerprint = Symbol(
+  "paragraphPropertySourceEmissionFingerprint",
+);
+
+type ParagraphPropertySource = Readonly<{
   xml: string;
-  formattingJson: string;
-};
+  [paragraphPropertySourceEmissionFingerprint]: string;
+}>;
 
 const paragraphPropertySources = new WeakMap<Paragraph, ParagraphPropertySource>();
+
+const paragraphFormattingEmissionFingerprint = (
+  emission: ModeledParagraphFormattingEmission,
+): string => canonicalJson(emission);
+
+const ownedParagraphPropertySource = (
+  paragraph: Paragraph,
+  xml: string,
+): ParagraphPropertySource => {
+  return Object.freeze({
+    xml,
+    [paragraphPropertySourceEmissionFingerprint]: paragraphFormattingEmissionFingerprint(
+      modelParagraphFormattingEmission(paragraph.formatting),
+    ),
+  } satisfies ParagraphPropertySource);
+};
+
 const paragraphPropertySourceOwners = new WeakMap<Paragraph, Paragraph>();
 const proseParagraphSourceOwners = new WeakMap<PMNode, Paragraph>();
 const paragraphPropertySourceCandidates = new WeakMap<Paragraph, Paragraph>();
@@ -174,11 +202,8 @@ export const visitDocumentStoryParagraphs = (
   visitDocxParagraphs({ documentBody: { content } }, visit);
 };
 
-export const assignParagraphPropertySource = (
-  paragraph: Paragraph,
-  source: ParagraphPropertySource,
-): void => {
-  paragraphPropertySources.set(paragraph, source);
+export const assignParagraphPropertySource = (paragraph: Paragraph, xml: string): void => {
+  paragraphPropertySources.set(paragraph, ownedParagraphPropertySource(paragraph, xml));
   paragraphPropertySourceOwners.set(paragraph, paragraph);
 };
 
@@ -186,11 +211,19 @@ export const getParagraphPropertySource = (
   paragraph: Paragraph,
 ): ParagraphPropertySource | undefined => paragraphPropertySources.get(paragraph);
 
+export const paragraphPropertySourceMatchesEmission = (
+  source: ParagraphPropertySource,
+  emission: ModeledParagraphFormattingEmission,
+): boolean =>
+  source[paragraphPropertySourceEmissionFingerprint] ===
+  paragraphFormattingEmissionFingerprint(emission);
+
 /** Copy the captured `w:pPr` without claiming the source paragraph's durable identity. */
 export const copyParagraphPropertyCapture = (target: Paragraph, source: Paragraph): void => {
   const propertySource = paragraphPropertySources.get(source);
   if (propertySource) {
-    paragraphPropertySources.set(target, { ...propertySource });
+    const copiedSource = Object.freeze({ ...propertySource });
+    paragraphPropertySources.set(target, copiedSource);
     paragraphPropertySourceOwners.set(target, paragraphPropertySourceOwners.get(source) ?? source);
   }
 };

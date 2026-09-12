@@ -6,7 +6,6 @@ import {
   assignParagraphPropertySource,
   getParagraphPropertySource,
 } from "../../docx/paragraphPropertySource";
-import { canonicalJson } from "../../utils/canonicalJson";
 import { fromProseDoc } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
 
@@ -43,12 +42,11 @@ describe('toProseDoc — hard page break (`<w:br w:type="page"/>`)', () => {
       type: "paragraph",
       content: [{ type: "run", content: [...content] }],
     };
-    assignParagraphPropertySource(paragraph, {
-      formattingJson: canonicalJson({}),
-      xml:
-        '<w:pPr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ' +
+    assignParagraphPropertySource(
+      paragraph,
+      '<w:pPr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ' +
         'xmlns:x="urn:folio:test"><x:property/></w:pPr>',
-    });
+    );
     const document: Document = { package: { document: { content: [paragraph] } } };
 
     const restored = fromProseDoc(toProseDoc(document), document);

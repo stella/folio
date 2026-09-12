@@ -40,7 +40,6 @@ import type {
 import { PARAGRAPH_MARK_CHANGE_KINDS } from "@stll/docx-core/model";
 import { panic } from "better-result";
 import { isValidHexId } from "../utils/hexId";
-import { canonicalJson } from "../utils/canonicalJson";
 import { paraIdInRange } from "./paraIdRangeNormalization";
 import { assignParagraphPropertySource } from "./paragraphPropertySource";
 import {
@@ -2270,10 +2269,7 @@ export function parseParagraph(
   }
 
   if (pPr) {
-    assignParagraphPropertySource(paragraph, {
-      xml: captureParagraphPropertySource(pPr),
-      formattingJson: canonicalJson(paragraph.formatting ?? {}),
-    });
+    assignParagraphPropertySource(paragraph, captureParagraphPropertySource(pPr));
   }
 
   return paragraph;

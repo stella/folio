@@ -15,7 +15,11 @@ import { DRAWING_RAW_XML_MODES } from "@stll/docx-core/model";
 import type { Node as PMNode, Mark } from "prosemirror-model";
 import { Fragment } from "prosemirror-model";
 
-import { numPrEqual } from "../../docx/numberingParser";
+import {
+  isStyleSourcedParagraphNumbering,
+  modelParagraphFormattingEmission,
+  paragraphNumberingReferencesEqual,
+} from "../../internal/paragraphFormattingSerialization";
 import { visitDocxParagraphs } from "../../docx/paragraphTraversal";
 import { DATE_UTC_ATTRIBUTE } from "../../docx/trackedChangeInfo";
 import { createStyleEngine, type StyleEngine } from "../../style-engine";
@@ -323,15 +327,17 @@ const restoreParagraphPropertySource = (paragraph: Paragraph, baseParagraph: Par
   copyParagraphPropertySource(paragraph, baseParagraph);
 
   const baseFormatting = baseParagraph.formatting;
-  if (
-    !baseFormatting?.numPr ||
-    !baseFormatting.numPrFromStyle ||
-    !numPrEqual(baseFormatting.numPr, baseFormatting.numPrFromStyle)
-  ) {
+  if (!baseFormatting) {
     return;
   }
-  const { numPr, numPrFromStyle, ...authoredFormatting } = baseFormatting;
-  if (canonicalJson(paragraph.formatting ?? {}) !== canonicalJson(authoredFormatting)) {
+  const { numPr, numPrFromStyle } = baseFormatting;
+  if (!numPr || !numPrFromStyle || !isStyleSourcedParagraphNumbering(numPr, numPrFromStyle)) {
+    return;
+  }
+  if (
+    canonicalJson(modelParagraphFormattingEmission(paragraph.formatting)) !==
+    canonicalJson(modelParagraphFormattingEmission(baseFormatting))
+  ) {
     return;
   }
   paragraph.formatting = { ...paragraph.formatting, numPr, numPrFromStyle };
@@ -1557,20 +1563,6 @@ const propertyChangeFromAttrs = (change: ParagraphPropertyChangeAttrs): Paragrap
   };
 };
 
-/**
- * Whether the paragraph's numbering still comes verbatim from its style —
- * serialize no direct `<w:numPr>` then. The moment a list command changes
- * `numPr` the values diverge and the numbering serializes as direct
- * formatting, so a stale provenance value can never swallow a user edit.
- */
-function isStyleSourcedNumPr(attrs: ParagraphAttrs): boolean {
-  return (
-    attrs.numPrFromStyle != null &&
-    attrs.numPr != null &&
-    numPrEqual(attrs.numPr, attrs.numPrFromStyle)
-  );
-}
-
 // OOXML boolean paragraph toggles are tri-state: `true` (on), `false` (explicit
 // off, serialized as `w:val="0"`), and `null`/`undefined` (inherit). A
 // truthiness check (`if (attrs.key)`) silently collapses explicit `false` into
@@ -1713,12 +1705,15 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
     } else {
       result.alignment = directAlignment;
     }
-    if (isStyleSourcedNumPr(attrs)) {
+    if (isStyleSourcedParagraphNumbering(attrs.numPr, attrs.numPrFromStyle)) {
       // The numbering still comes verbatim from the paragraph style — don't
       // materialize it as direct formatting (see ParagraphAttrs.numPrFromStyle).
       delete result.numPr;
       delete result.numPrFromStyle;
-    } else if (attrs.numPr !== orig.numPr && !numPrEqual(attrs.numPr, orig.numPr)) {
+    } else if (
+      attrs.numPr !== orig.numPr &&
+      !paragraphNumberingReferencesEqual(attrs.numPr, orig.numPr)
+    ) {
       if (attrs.numPr) {
         result.numPr = attrs.numPr;
       } else {
@@ -1840,7 +1835,7 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
   if (attrs.hangingIndent) {
     f.hangingIndent = attrs.hangingIndent;
   }
-  if (attrs.numPr && !isStyleSourcedNumPr(attrs)) {
+  if (attrs.numPr && !isStyleSourcedParagraphNumbering(attrs.numPr, attrs.numPrFromStyle)) {
     f.numPr = attrs.numPr;
   }
   if (attrs.styleId) {

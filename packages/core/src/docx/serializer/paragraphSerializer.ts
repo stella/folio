@@ -35,9 +35,14 @@ import type {
 } from "../../types/document";
 import { PARAGRAPH_MARK_CHANGE_KINDS } from "@stll/docx-core/model";
 import { panic } from "better-result";
-import { modelParagraphFormattingEmission } from "../../internal/paragraphFormattingSerialization";
-import { canonicalJson } from "../../utils/canonicalJson";
-import { getParagraphPropertySource } from "../paragraphPropertySource";
+import {
+  modelParagraphFormattingEmission,
+  type ModeledParagraphFormattingEmission,
+} from "../../internal/paragraphFormattingSerialization";
+import {
+  getParagraphPropertySource,
+  paragraphPropertySourceMatchesEmission,
+} from "../paragraphPropertySource";
 import { reconcileRawSdtPr } from "../sdtPropertiesPatch";
 import { DATE_UTC_ATTRIBUTE, DATE_UTC_NAMESPACE_URI } from "../trackedChangeInfo";
 import { toTransitionalNamespaceUri } from "../transitionalSpelling";
@@ -376,7 +381,7 @@ const replayableParagraphPropertySourceXml = (sourceXml: string): string | null 
 };
 
 const verifiedParagraphPropertySource = (
-  formatting: ParagraphFormatting | undefined,
+  formatting: ModeledParagraphFormattingEmission,
   source: ParagraphPropertySource | undefined,
 ): string | null => {
   if (!source) {
@@ -386,7 +391,7 @@ const verifiedParagraphPropertySource = (
   if (replayableSource === null) {
     return null;
   }
-  return canonicalJson(formatting ?? {}) === source.formattingJson ? replayableSource : null;
+  return paragraphPropertySourceMatchesEmission(source, formatting) ? replayableSource : null;
 };
 
 const withTrailingParagraphPropertyChildren = (
@@ -476,7 +481,7 @@ const serializeParagraphFormattingWithOptions = (
     sectionPropertiesXml,
     ...propertyChangesXml,
   ].some((xml) => xml.includes(`${DATE_UTC_ATTRIBUTE}=`));
-  const verifiedSource = verifiedParagraphPropertySource(formatting, propertySource);
+  const verifiedSource = verifiedParagraphPropertySource(modeledFormatting, propertySource);
   if (
     verifiedSource !== null &&
     (!composedChildrenUseDateUtc || !sourceShadowsDateUtcPrefix(verifiedSource))

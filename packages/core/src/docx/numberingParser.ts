@@ -906,21 +906,6 @@ export function computeListRendering(
 }
 
 /**
- * Compare two `numPr` references by value — `numId` plus `ilvl` (a missing
- * `ilvl` is level 0). Used for the style-sourced-numbering provenance check;
- * avoids JSON.stringify equality, which is sensitive to key order.
- */
-export function numPrEqual(
-  a: { numId?: number; ilvl?: number } | null | undefined,
-  b: { numId?: number; ilvl?: number } | null | undefined,
-): boolean {
-  if (a == null || b == null) {
-    return a == null && b == null;
-  }
-  return a.numId === b.numId && (a.ilvl ?? 0) === (b.ilvl ?? 0);
-}
-
-/**
  * Render list marker text by replacing placeholders with formatted numbers
  *
  * @param lvlText - The level text pattern (e.g., "%1.", "%1.%2")
