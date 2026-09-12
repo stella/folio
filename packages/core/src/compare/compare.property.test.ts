@@ -750,7 +750,7 @@ describe("compareDocx", () => {
     }
   }
 
-  test("a relocation past one neighbour reports the intended moved block", async () => {
+  test("a relocation that sheds formatting reports the move and exact formatting changes", async () => {
     // Stable identity resolves the otherwise symmetric one-neighbour swap, so
     // the change list reports the scripted deletion and relocation rather than
     // describing both ends of the surviving neighbour as unrelated edits.
@@ -776,13 +776,52 @@ describe("compareDocx", () => {
     expect(scripted.value.unresolved).toEqual([]);
 
     const { changes } = await compareOrThrow(base, scripted.value.buffer);
-    expect(kindsOf(changes).toSorted()).toEqual(["delete", "move"]);
+    expect(kindsOf(changes).toSorted()).toEqual(["delete", "format", "move", "paragraph-format"]);
     expect(changes.find(({ kind }) => kind === "delete")).toMatchObject({
       baseBlockId: baseBlocks[2]?.id,
     });
-    expect(changes.find(({ kind }) => kind === "move")).toMatchObject({
+    const moveChange = changes.find(({ kind }) => kind === "move");
+    expect(moveChange).toMatchObject({
       baseBlockId: baseBlocks[1]?.id,
       text: baseBlocks[1]?.text,
+    });
+    if (moveChange?.kind !== "move") throw new Error("expected move change");
+    const removed = (key: string) => ({
+      key,
+      base: { type: "present", value: true },
+      revised: { type: "absent" },
+    });
+    expect(changes.find(({ kind }) => kind === "format")).toEqual({
+      kind: "format",
+      location: expect.any(Object),
+      baseBlockId: baseBlocks[1]?.id,
+      targetBlockId: moveChange.targetBlockId,
+      text: baseBlocks[1]?.text,
+      ranges: [
+        {
+          startOffset: 0,
+          endOffset: 22,
+          formatting: {
+            authored: [removed("bold"), removed("italic")],
+            effective: [removed("bold"), removed("italic")],
+          },
+        },
+        {
+          startOffset: 22,
+          endOffset: 41,
+          formatting: {
+            authored: [removed("strike")],
+            effective: [removed("strike")],
+          },
+        },
+      ],
+    });
+    expect(changes.find(({ kind }) => kind === "paragraph-format")).toEqual({
+      kind: "paragraph-format",
+      location: expect.any(Object),
+      baseBlockId: baseBlocks[1]?.id,
+      targetBlockId: moveChange.targetBlockId,
+      properties: { alignment: "right" },
     });
   });
 
