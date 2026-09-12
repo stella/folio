@@ -1225,6 +1225,71 @@ describe("toProseDoc", () => {
     expect(text?.marks.find((mark) => mark.type.name === "textColor")?.attrs.rgb).toBe("365F91");
   });
 
+  test("table style fonts replace doc defaults while retaining paragraph-style slots", () => {
+    const document: Document = {
+      package: {
+        styles: {
+          docDefaults: {
+            rPr: {
+              fontFamily: { ascii: "Calibri", hAnsi: "Calibri", cs: "Calibri" },
+            },
+          },
+          styles: [
+            {
+              styleId: "Normal",
+              type: "paragraph",
+              default: true,
+              rPr: { fontFamily: { cs: "Times New Roman" } },
+            },
+            {
+              styleId: "Header",
+              type: "paragraph",
+              basedOn: "Normal",
+              rPr: { fontFamily: { cs: "Times New Roman" } },
+            },
+            {
+              styleId: "TableGrid",
+              type: "table",
+              rPr: { fontFamily: { ascii: "Arial", hAnsi: "Arial", cs: "Times New Roman" } },
+            },
+          ],
+        },
+        document: {
+          content: [
+            {
+              type: "table",
+              formatting: { styleId: "TableGrid" },
+              rows: [
+                {
+                  cells: [
+                    {
+                      content: [
+                        {
+                          type: "paragraph",
+                          formatting: { styleId: "Header" },
+                          content: [
+                            { type: "run", content: [{ type: "text", text: "Styled cell" }] },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    const text = toProseDoc(document).firstChild?.firstChild?.firstChild?.firstChild?.firstChild;
+    const fontFamily = text?.marks.find((mark) => mark.type.name === "fontFamily")?.attrs;
+
+    expect(fontFamily?.ascii).toBe("Arial");
+    expect(fontFamily?.hAnsi).toBe("Arial");
+    expect(fontFamily?.cs).toBe("Times New Roman");
+  });
+
   test("resolves themed table-cell fills while preserving their OOXML metadata", () => {
     const shading = {
       pattern: "clear",
