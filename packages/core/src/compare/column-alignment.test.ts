@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { alignTableColumns } from "./column-alignment";
-import { contentBlockFixture, tableLocationFixture } from "./content-test-fixtures";
+import { contentBlockFixture, tableLocationFixture } from "./__tests__/content-test-fixtures";
 import type { FolioContentBlock } from "./content-types";
 
 type TableBlockOptions = {

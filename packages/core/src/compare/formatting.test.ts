@@ -5,7 +5,7 @@ import type {
   FolioContentPropertyInputValue,
   FolioContentPropertySet,
 } from "./content-types";
-import { contentBlockFixture } from "./content-test-fixtures";
+import { contentBlockFixture } from "./__tests__/content-test-fixtures";
 import { inlineFormattingSegments } from "./formatting";
 
 type TestInlineFormatting = {

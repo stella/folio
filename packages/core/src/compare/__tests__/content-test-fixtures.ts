@@ -4,7 +4,7 @@ import type {
   FolioContentIdentity,
   FolioContentIdentitySemantics,
   FolioContentTableLocation,
-} from "./content-types";
+} from "../content-types";
 
 const EMPTY_PROPERTIES = Object.freeze([]);
 const EMPTY_RUNS = Object.freeze([]);

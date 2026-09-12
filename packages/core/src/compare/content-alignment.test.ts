@@ -11,7 +11,7 @@ import {
   contentIdentity,
   tableLocationFixture,
   type ContentBlockFixtureOptions,
-} from "./content-test-fixtures";
+} from "./__tests__/content-test-fixtures";
 import type { FolioContentBlock, FolioContentIdentitySemantics } from "./content-types";
 
 type CellOptions = {
