@@ -45,6 +45,17 @@ describe("PDF reference page cache", () => {
               region: "body",
               direction: "rtl",
             },
+            {
+              text: "¨ Apply",
+              normText: "stale",
+              xPt: 0,
+              yPt: 30,
+              widthPt: 10,
+              heightPt: 10,
+              fontName: "Wingdings-Regular",
+              region: "body",
+              direction: "rtl",
+            },
           ],
         },
       ],
@@ -57,8 +68,13 @@ describe("PDF reference page cache", () => {
       "rtl",
       "ltr",
       "unknown",
+      "ltr",
     ]);
     expect(refreshed.pages[0]?.lines[0]?.normText).toBe("عنوان عربي");
+    expect(refreshed.pages[0]?.lines[3]).toMatchObject({
+      text: "\uf0a8 Apply",
+      normText: "☐ Apply",
+    });
   });
 
   test("does not treat a bounded render as a complete unbounded cache", () => {

@@ -36,6 +36,10 @@ describe("normalizeLineText", () => {
     expect(normalizeLineText("\uf0b7 First item")).toBe("• First item");
   });
 
+  test("normalizes legacy Wingdings checkboxes", () => {
+    expect(normalizeLineText("\uf0a8 Apply")).toBe("☐ Apply");
+  });
+
   test("folds Persian code points a PDF font map returns for Arabic letters", () => {
     expect(
       normalizeLineText(

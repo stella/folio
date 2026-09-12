@@ -160,6 +160,34 @@ describe("parseStextXml", () => {
     expect(pages[0]?.lines[1]?.text).toBe("§ 12");
   });
 
+  test("normalizes the Wingdings F0A8 checkbox alias", () => {
+    const xml = documentEl(
+      pageEl(
+        1,
+        "612",
+        "792",
+        [
+          lineEl({
+            bbox: "0 0 100 10",
+            chars: "¨ Apply",
+            font: { name: "Wingdings-Regular", size: "12" },
+          }),
+          lineEl({
+            bbox: "0 20 100 30",
+            chars: "¨ Apply",
+            font: { name: "ArialMT", size: "12" },
+          }),
+        ].join(""),
+      ),
+    );
+
+    const lines = parseStextXml(xml)[0]?.lines;
+
+    expect(lines?.[0]?.text).toBe("\uf0a8 Apply");
+    expect(lines?.[0]?.normText).toBe("☐ Apply");
+    expect(lines?.[1]?.text).toBe("¨ Apply");
+  });
+
   test("reconstructs text from <char> elements when the line has no text attribute", () => {
     const xml = documentEl(
       pageEl(1, "612", "792", lineEl({ bbox: "0 0 60 10", chars: "NoTextAttr" })),

@@ -10,7 +10,7 @@ import { readdir } from "node:fs/promises";
 import path from "node:path";
 
 import { CACHE_DIR } from "./config";
-import { parseStextXml } from "./stextParse";
+import { normalizeFontEncodedText, parseStextXml } from "./stextParse";
 import { normalizeLineText } from "./textNorm";
 import { firstStrongTextDirection } from "./textDirection";
 import type { DocGeom, PageGeom } from "./types";
@@ -48,12 +48,14 @@ export const refreshCachedReferenceGeom = (geom: DocGeom, absDocxPath: string): 
     file: absDocxPath,
     pages: geom.pages.map((page) =>
       Object.assign({}, page, {
-        lines: page.lines.map((line) =>
-          Object.assign({}, line, {
-            normText: normalizeLineText(line.text),
-            direction: firstStrongTextDirection(line.text),
-          }),
-        ),
+        lines: page.lines.map((line) => {
+          const text = normalizeFontEncodedText(line.text, line.fontName);
+          return Object.assign({}, line, {
+            text,
+            normText: normalizeLineText(text),
+            direction: firstStrongTextDirection(text),
+          });
+        }),
       }),
     ),
   });

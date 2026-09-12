@@ -353,8 +353,10 @@ const PDF_FONT_STYLE_SUFFIXES = new Set([
   "roman",
   "bold",
   "italic",
+  "ital",
   "oblique",
   "bolditalic",
+  "boldital",
   "boldoblique",
   "light",
   "medium",
@@ -365,7 +367,9 @@ const PDF_FONT_STYLE_SUFFIXES = new Set([
   "bolditalicmt",
   "psboldmt",
   "psitalicmt",
+  "psital",
   "psbolditalicmt",
+  "psboldital",
 ]);
 
 const normalizeFontName = (name: string): string =>
@@ -609,6 +613,8 @@ const MIN_MATCH_LEN = 4;
 const SIMILARITY_THRESHOLD = 0.9;
 const MIN_LENGTH_RATIO = 0.8;
 const MIN_SIMILARITY_MARGIN = 0.05;
+const TOC_LEADER_PAGE_PATTERN = /^(?<title>.+?)\s+(?:…|\.{3})\s+\p{Decimal_Number}+$/u;
+const TRAILING_PAGE_NUMBER_PATTERN = /\p{Decimal_Number}+$/u;
 
 /** Canonicalization used only to identify a divergence's source paragraph.
  * It must not hide text differences from the comparator. */
@@ -645,6 +651,26 @@ const shareFeatureSet = (candidates: ParagraphCandidate[]): boolean => {
   );
 };
 
+/** A Word export can refresh a TOC's PAGEREF result while Folio still paints
+ * the cached source value. Attribute that real mismatch to the field-bearing
+ * TOC paragraph, not to a later heading with the same title. XML paragraph
+ * scanning sees the tab and page field as adjacent text (`Title2`), whereas
+ * rendered geometry exposes a dot leader (`Title … 2`). */
+const findTocFieldParagraph = (
+  normalizedSearchText: string,
+  candidates: ParagraphCandidate[],
+): ParagraphFeatures | undefined => {
+  const title = TOC_LEADER_PAGE_PATTERN.exec(normalizedSearchText)?.groups?.["title"];
+  if (!title) return undefined;
+
+  const matches = candidates.filter(({ paragraph, normText }) => {
+    if (!paragraph.features.includes("field")) return false;
+    return normText.replace(TRAILING_PAGE_NUMBER_PATTERN, "").trimEnd() === title;
+  });
+  if (matches.length === 1) return matches[0]?.paragraph;
+  return shareFeatureSet(matches) ? matches[0]?.paragraph : undefined;
+};
+
 /** Prefer unambiguous substring matches. Fuzzy attribution is limited to
  * similarly sized, high-confidence candidates with a clear winner. */
 const findMatchingParagraph = (
@@ -652,6 +678,8 @@ const findMatchingParagraph = (
   candidates: ParagraphCandidate[],
 ): ParagraphFeatures | undefined => {
   const normalizedSearchText = normalizeAttributionText(searchText);
+  const tocFieldParagraph = findTocFieldParagraph(normalizedSearchText, candidates);
+  if (tocFieldParagraph) return tocFieldParagraph;
 
   const substringMatches = candidates.filter(({ normText }) => {
     const shorterLen = Math.min(normText.length, normalizedSearchText.length);

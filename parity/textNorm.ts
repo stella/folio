@@ -58,6 +58,7 @@ export const normalizeLineText = (text: string): string => {
     .replace(/[⺀-⿕]/gu, (character) => character.normalize("NFKC"))
     .replace(/[­​-‍﻿]/gu, "")
     .replace(/\uf0b7/gu, "•")
+    .replace(/\uf0a8/gu, "☐")
     .replace(/\uf0e3/gu, "ã")
     // A PDF's ToUnicode map answers shaped Arabic glyphs with the Persian code
     // points (Farsi Yeh, Heh Doachashmee) even for documents that authored the
