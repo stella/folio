@@ -17,6 +17,7 @@ import {
   createResolvedDocxStoryPair,
   resolvedDocxPairedEventOperand,
   resolvedDocxStoryComparisonPayload,
+  resolvedDocxTerminalTransitionForEvent,
   type ResolvedDocxStoryComparison,
 } from "./resolved-docx-story-comparison";
 
@@ -74,6 +75,57 @@ const replacement = (
   })(),
 });
 
+const terminalTransitionFixture = (): {
+  readonly comparison: ResolvedDocxStoryComparison;
+  readonly operation: Extract<
+    DocxComparisonOperationInput,
+    { readonly type: "terminalTransition" }
+  >;
+} => {
+  const snapshot = (paragraphs: readonly [string, string][]) => {
+    const state = EditorState.create({
+      doc: schema.node(
+        "doc",
+        null,
+        paragraphs.map(([id, text]) =>
+          schema.node("paragraph", { paraId: id }, text.length === 0 ? null : [schema.text(text)]),
+        ),
+      ),
+    });
+    const document = updateDocumentContent(createEmptyDocument(), state.doc);
+    const resolved = createResolvedDocxStorySnapshot({
+      document,
+      story: { type: "main" },
+      sourceDocument: toProseDoc(document),
+    });
+    if (!resolved) throw new Error("terminal fixture projection missing");
+    return resolved;
+  };
+  const compared = compareResolvedDocxStoryPair({
+    pair: createResolvedDocxStoryPair({
+      baseSnapshot: snapshot([
+        ["A1000000", "Retained"],
+        ["B1000000", "First removed"],
+        ["C1000000", "Second removed"],
+      ]),
+      targetSnapshot: snapshot([["A2000000", "Retained"]]),
+    }),
+    workSession: createContentComparisonWorkSession(),
+  });
+  if (compared.isErr()) throw compared.error;
+  const comparison = compared.value;
+  for (const event of resolvedDocxStoryComparisonPayload(comparison).comparison.events) {
+    const transition = resolvedDocxTerminalTransitionForEvent(comparison, event);
+    if (transition?.isOwner) {
+      return {
+        comparison,
+        operation: { type: "terminalTransition", operation: transition.operation },
+      };
+    }
+  }
+  throw new Error("terminal fixture produced no canonical transition");
+};
+
 describe("DocxComparisonProgram", () => {
   test("derives and deeply freezes the sole instruction payload", () => {
     const { comparison, snapshot, targetSnapshot } = sourceFixture();
@@ -113,6 +165,22 @@ describe("DocxComparisonProgram", () => {
     expect(() =>
       DocxComparisonProgram.create(comparison, [replacement(comparison), replacement(comparison)]),
     ).toThrow("invalid canonical sequence");
+  });
+
+  test("rejects duplicate source-edge ownership before execution", () => {
+    const { comparison, operation } = terminalTransitionFixture();
+
+    expect(() => DocxComparisonProgram.create(comparison, [operation, operation])).toThrow(
+      "source paragraph edge has more than one comparison instruction owner",
+    );
+  });
+
+  test("rejects a missing terminal source-edge owner before execution", () => {
+    const { comparison } = terminalTransitionFixture();
+
+    expect(() => DocxComparisonProgram.create(comparison, [])).toThrow(
+      "no matching transition owner",
+    );
   });
 
   test("rejects copied and cross-comparison event operands", () => {

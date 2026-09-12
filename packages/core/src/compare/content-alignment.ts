@@ -1184,7 +1184,6 @@ const withCanonicalParagraphBoundaries = (
         removalBoundary = Object.freeze({
           type: "terminalPredecessor",
           predecessor: previousPaired.block,
-          targetCarrier: targetCarrier.block,
           containerAlignment,
         });
       } else {

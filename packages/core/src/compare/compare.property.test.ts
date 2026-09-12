@@ -848,6 +848,32 @@ describe("compareDocx", () => {
     ]);
   });
 
+  test("a terminal deletion composes with the preceding moved paragraph", async () => {
+    const base = readFixture("upstream-complex-styles.docx");
+    const script: EditScript = [
+      { type: "deleteParagraph", blockIndex: 5 },
+      { type: "moveParagraph", blockIndex: 4, beforeBlockIndex: 0 },
+    ];
+    const scripted = await applyEditScript(base, script);
+    if (scripted.isErr()) throw scripted.error;
+    expect(scripted.value.unresolved).toEqual([]);
+    const first = await compareOrThrow(base, scripted.value.buffer);
+    const second = await compareOrThrow(base, scripted.value.buffer);
+    const [accepted, rejected, target, original] = await Promise.all([
+      projectView(first.buffer, "final"),
+      projectView(first.buffer, "original"),
+      projectView(scripted.value.buffer, "final"),
+      projectView(base, "final"),
+    ]);
+    expect(accepted).toEqual(target);
+    expect(rejected).toEqual(original);
+    expect(first.verification).toEqual({ status: "verified" });
+    const written = await FolioDocxReviewer.fromBuffer(first.buffer);
+    expect(revisedFinalParagraphMarks(written.toDocument())).toEqual([]);
+    expect(Buffer.from(first.buffer).equals(Buffer.from(second.buffer))).toBe(true);
+    expect(first.changes).toEqual(second.changes);
+  });
+
   test("a body insertion remains anchored when a peer moves across a table", async () => {
     await compareScriptAndExpectRoundTrip(readFixture("upstream-with-tables.docx"), [
       { type: "insertParagraphAfter", blockIndex: 1, text: "Inserted beside the table." },

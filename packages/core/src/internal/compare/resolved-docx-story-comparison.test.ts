@@ -11,11 +11,11 @@ import {
   compareResolvedDocxStoryPair,
   createResolvedDocxStoryPair,
   resolvedDocxDeletedEventOperand,
-  resolvedDocxInsertedEventOperand,
+  resolvedDocxParagraphMarkDispositions,
   resolvedDocxPairedEventOperand,
   resolvedDocxStoryComparisonPayload,
-  resolvedDocxTerminalReplacementOperand,
-  resolvedDocxTrailingDeletionOperand,
+  resolvedDocxTerminalTransitionForEvent,
+  resolvedDocxTerminalTransitionOperandPayload,
 } from "./resolved-docx-story-comparison";
 import {
   createResolvedDocxStorySnapshot,
@@ -178,7 +178,7 @@ describe("resolved DOCX story comparison provenance", () => {
     ).toThrow("must name a deleted event");
   });
 
-  test("trailing deletion operands prove base order, contiguity, and terminality", () => {
+  test("terminal transitions are issued once from canonical base order", () => {
     const comparison = comparisonOf(
       snapshotWithParagraphs([
         { id: "A1000000", text: "Retained opening." },
@@ -195,21 +195,67 @@ describe("resolved DOCX story comparison provenance", () => {
     if (!firstEvent || !secondEvent || deleted.length !== 2) {
       throw new Error("fixture did not produce two deletions");
     }
-    const first = resolvedDocxDeletedEventOperand(comparison, firstEvent);
-    const second = resolvedDocxDeletedEventOperand(comparison, secondEvent);
-
+    const first = resolvedDocxTerminalTransitionForEvent(comparison, firstEvent);
+    const second = resolvedDocxTerminalTransitionForEvent(comparison, secondEvent);
+    if (!first || !second) throw new Error("terminal deletions lost their transition");
+    expect(first.operation).toBe(second.operation);
+    expect(Number(first.isOwner) + Number(second.isOwner)).toBe(1);
+    const payload = resolvedDocxTerminalTransitionOperandPayload(first.operation, comparison);
+    if (payload.type !== "paragraph") throw new Error("expected a paragraph transition");
+    expect(
+      payload.sourceMembers.map((member) =>
+        member.type === "deleted"
+          ? member.occurrence.event.block.identity.id
+          : member.occurrence.event.move.relation.base.block.identity.id,
+      ),
+    ).toEqual(["B1000000", "C1000000"]);
+    expect(Object.isFrozen(payload.sourceMembers)).toBe(true);
+    const dispositions = resolvedDocxParagraphMarkDispositions(comparison);
+    expect(
+      dispositions.map((disposition) =>
+        disposition.type === "terminal-member"
+          ? {
+              blockId: disposition.blockId,
+              type: disposition.type,
+              operation: disposition.operation,
+              terminalRole: disposition.terminalRole,
+              effect: disposition.effect,
+            }
+          : disposition,
+      ),
+    ).toEqual([
+      {
+        blockId: "A1000000",
+        type: "terminal-member",
+        operation: first.operation,
+        terminalRole: "chain-start",
+        effect: { type: "revision", sourceMemberIndex: 0, kind: "del" },
+      },
+      {
+        blockId: "B1000000",
+        type: "terminal-member",
+        operation: first.operation,
+        terminalRole: "source-member",
+        effect: { type: "revision", sourceMemberIndex: 1, kind: "del" },
+      },
+      {
+        blockId: "C1000000",
+        type: "terminal-member",
+        operation: first.operation,
+        terminalRole: "terminal-carrier",
+        effect: { type: "preserved-final" },
+      },
+    ]);
+    const counterfeit = Object.freeze({ ...first.operation });
     expect(() =>
-      resolvedDocxTrailingDeletionOperand(comparison, { events: [second, first] }),
-    ).toThrow("canonical base order");
-    expect(() => resolvedDocxTrailingDeletionOperand(comparison, { events: [first] })).toThrow(
-      "contiguous and terminal",
-    );
-    expect(() =>
-      resolvedDocxTrailingDeletionOperand(comparison, { events: [first, second] }),
-    ).not.toThrow();
+      Reflect.apply(resolvedDocxTerminalTransitionOperandPayload, undefined, [
+        counterfeit,
+        comparison,
+      ]),
+    ).toThrow("was not created by Folio");
   });
 
-  test("terminal replacement operands reject a lookalike nonterminal deletion", () => {
+  test("nonterminal lookalikes cannot be enrolled into a terminal program", () => {
     const comparison = comparisonOf(
       snapshotWithParagraphs([
         {
@@ -234,13 +280,14 @@ describe("resolved DOCX story comparison provenance", () => {
         `fixture did not produce the terminal delete/insert events: ${events.map(({ type }) => type).join(",")}`,
       );
     }
-    const insertion = resolvedDocxInsertedEventOperand(comparison, inserted);
-
-    expect(() =>
-      resolvedDocxTerminalReplacementOperand(comparison, {
-        deleted: resolvedDocxDeletedEventOperand(comparison, deleted),
-        inserted: insertion,
-      }),
-    ).toThrow("exact terminal event pair");
+    expect(resolvedDocxTerminalTransitionForEvent(comparison, deleted)).toBeNull();
+    expect(resolvedDocxTerminalTransitionForEvent(comparison, inserted)).toBeNull();
+    const dispositions = resolvedDocxParagraphMarkDispositions(comparison);
+    expect(dispositions.map(({ blockId }) => blockId).toSorted()).toEqual(["A1000000", "B1000000"]);
+    expect(new Set(dispositions.map(({ blockId }) => blockId)).size).toBe(dispositions.length);
+    expect(Object.isFrozen(dispositions)).toBe(true);
+    expect(Reflect.set(dispositions, "0", { blockId: "forged", type: "terminal-member" })).toBe(
+      false,
+    );
   });
 });

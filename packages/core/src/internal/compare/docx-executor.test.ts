@@ -209,19 +209,15 @@ const tableWithCellGrid = (rows: readonly (readonly GridCellSpec[])[]): PMNode =
         "tableRow",
         null,
         cells.map(({ id, text, colspan, alignment, bold }) =>
-          schema.node(
-            "tableCell",
-            colspan === undefined ? null : { colspan },
-            [
-              schema.node(
-                "paragraph",
-                { paraId: id, ...(alignment === undefined ? {} : { alignment }) },
-                text.length === 0
-                  ? null
-                  : [schema.text(text, bold === true ? [boldMark.create()] : [])],
-              ),
-            ],
-          ),
+          schema.node("tableCell", colspan === undefined ? null : { colspan }, [
+            schema.node(
+              "paragraph",
+              { paraId: id, ...(alignment === undefined ? {} : { alignment }) },
+              text.length === 0
+                ? null
+                : [schema.text(text, bold === true ? [boldMark.create()] : [])],
+            ),
+          ]),
         ),
       ),
     ),
@@ -615,7 +611,7 @@ describe("the dedicated DOCX comparison executor", () => {
       });
       if (executed.status !== "executed") throw new Error("Expected execution.");
       expect(executed.receipt.instructions.map(({ instructionType }) => instructionType)).toContain(
-        "moveTerminalParagraph",
+        "transitionTerminalParagraphs",
       );
       const tracked = baseState.apply(executed.receipt.transaction);
       expect(tracked.doc.lastChild?.attrs["pPrMark"]).toBeNull();
@@ -691,6 +687,118 @@ describe("the dedicated DOCX comparison executor", () => {
     expect(tableCellTexts(rejected)).toEqual([["Alpha", "Beta", "Gamma"]]);
     expect(createFolioAIEditSnapshot(accepted.doc).blocks.at(-1)?.directAlignment).toBe("right");
     expect(createFolioAIEditSnapshot(rejected.doc).blocks.at(-1)?.directAlignment).toBe("center");
+  });
+
+  test("reconstructs bounded delete-and-insert terminal suffixes", () => {
+    for (let deletedCount = 1; deletedCount <= 4; deletedCount++) {
+      const baseState = stateWithIdentifiedParagraphs(
+        { id: "F1000000", text: "Relocated boilerplate with a stable distinctive identity." },
+        { id: "A1000000", text: "Retained opening clause." },
+        ...Array.from({ length: deletedCount }, (_, index) => ({
+          id: `D${String(index).padStart(7, "0")}`,
+          text: `Removed schedule ${String(index)} with obsolete commercial language.`,
+        })),
+      );
+      const targetState = stateWithIdentifiedParagraphs(
+        { id: "E2000000", text: "Inserted opening remedy with unrelated operative language." },
+        { id: "A1000000", text: "Retained opening clause." },
+        { id: "F1000000", text: "Relocated boilerplate with a stable distinctive identity." },
+      );
+      const { executed, tracked } = executePlannedComparison(baseState, targetState);
+
+      expect(
+        executed.receipt.instructions.filter(
+          ({ instructionType }) => instructionType === "transitionTerminalParagraphs",
+        ),
+      ).toHaveLength(1);
+      expect(tracked.doc.lastChild?.attrs["pPrMark"]).toBeNull();
+      expectResolvedViews(baseState, targetState, tracked);
+    }
+  });
+
+  test("withholds a whole terminal transition when one member cannot execute", () => {
+    const baseState = stateFromCanonicalDocument(
+      schema.node("doc", null, [
+        paragraphNode("A1000000", "Retained opening clause."),
+        paragraphNode("B1000000", "Retained middle clause."),
+        schema.node(
+          "paragraph",
+          {
+            paraId: "C1000000",
+            _propertyChanges: [
+              {
+                type: "paragraphPropertyChange",
+                info: {
+                  id: 4,
+                  author: "Existing",
+                  date: "2026-09-01T00:00:00.000Z",
+                },
+                previousFormatting: { alignment: "right" },
+              },
+            ],
+          },
+          [schema.text("Relocated terminal clause with distinct language.")],
+        ),
+      ]),
+    );
+    const targetState = stateWithIdentifiedParagraphs(
+      { id: "C2000000", text: "Relocated terminal clause with distinct language." },
+      { id: "A2000000", text: "Retained opening clause." },
+      { id: "B2000000", text: "Retained middle clause." },
+    );
+    const prepared = preflightDocxComparisonProgram({
+      state: baseState,
+      program: plannedComparisonOf({ baseState, targetState }).program,
+    });
+
+    expect(prepared.supportedInstructionCount).toBe(0);
+    expect(prepared.supportedChangeCount).toBe(0);
+    expect(prepared.issues).toContainEqual(
+      expect.objectContaining({
+        instructionType: "transitionTerminalParagraphs",
+        reason: "pending-paragraph-change",
+      }),
+    );
+    expect(prepared.issues).toContainEqual(
+      expect.objectContaining({
+        instructionType: "insertMovedParagraph",
+        reason: "semantic-group-incomplete",
+      }),
+    );
+  });
+
+  test("keeps independent terminal programs inside their owning table cells", () => {
+    const baseState = stateWithTableCells(
+      [
+        { id: "A1000000", text: "Cell one retained." },
+        { id: "B1000000", text: "Cell one removed terminal clause." },
+      ],
+      [
+        { id: "C1000000", text: "Cell two retained." },
+        { id: "D1000000", text: "Cell two removed terminal clause." },
+      ],
+    );
+    const targetState = stateWithTableCells(
+      [
+        { id: "B2000000", text: "Cell one inserted opening remedy." },
+        { id: "A2000000", text: "Cell one retained." },
+      ],
+      [
+        { id: "D2000000", text: "Cell two inserted opening remedy." },
+        { id: "C2000000", text: "Cell two retained." },
+      ],
+    );
+    const { executed, tracked } = executePlannedComparison(baseState, targetState);
+
+    expect(
+      executed.receipt.instructions.filter(
+        ({ instructionType }) => instructionType === "transitionTerminalParagraphs",
+      ),
+    ).toHaveLength(2);
+    const table = tracked.doc.firstChild;
+    const row = table?.firstChild;
+    row?.forEach((cell) => expect(cell.lastChild?.attrs["pPrMark"]).toBeNull());
+    expectResolvedViews(baseState, targetState, tracked);
   });
 
   test("preflight rejects every required instruction in an incomplete semantic group", () => {
@@ -810,6 +918,7 @@ describe("the dedicated DOCX comparison executor", () => {
     ]);
     const baseState = stateWithBlocks(
       tableWithTextGrid([["Old", "Other"]]),
+      paragraphNode("B1000000", "Removed suffix"),
       paragraphNode("C1000000", ""),
     );
     const targetState = stateWithBlocks(mergedTarget);
@@ -817,9 +926,178 @@ describe("the dedicated DOCX comparison executor", () => {
 
     expect(executed.receipt.instructions.map(({ instructionType }) => instructionType)).toEqual([
       "replaceTable",
+      "deleteParagraph",
     ]);
     expect(executed.receipt.instructions.at(0)?.revisionIds).toHaveLength(3);
     expectResolvedViews(baseState, targetState, tracked);
+  });
+
+  test("executes a terminal table insertion with its deleted blank carrier", () => {
+    const baseState = stateWithBlocks(
+      paragraphNode("B1000000", "Removed prefix"),
+      paragraphNode("C1000000", ""),
+    );
+    const targetState = stateWithBlocks(tableWithTextGrid([["New terminal table"]]));
+    const { executed, tracked } = executePlannedComparison(baseState, targetState);
+
+    expect(executed.receipt.instructions.map(({ instructionType }) => instructionType)).toEqual([
+      "insertTable",
+      "deleteParagraph",
+    ]);
+    expectResolvedViews(baseState, targetState, tracked);
+  });
+
+  test("appends paragraphs and a table before one untracked terminal carrier", () => {
+    const baseState = stateWithBlocks(
+      paragraphNode("A1000000", "Retained opening"),
+      paragraphNode("B1000000", "Retained ending"),
+    );
+    const targetState = stateWithBlocks(
+      paragraphNode("A1000000", "Retained opening"),
+      paragraphNode("B1000000", "Retained ending"),
+      paragraphNode("C1000000", "Added schedule introduction"),
+      tableWithTextGrid([["Added table"]]),
+      paragraphNode("D1000000", ""),
+    );
+    const first = executePlannedComparison(baseState, targetState);
+    const second = executePlannedComparison(baseState, targetState);
+
+    expect(
+      first.executed.receipt.instructions.map(({ instructionType }) => instructionType),
+    ).toEqual(["insertParagraph", "insertTable", "insertTerminalCarrier"]);
+    expect(first.tracked.doc.lastChild?.textContent).toBe("");
+    expect(first.tracked.doc.lastChild?.attrs["pPrMark"]).toBeNull();
+    expect(first.tracked.doc.eq(second.tracked.doc)).toBe(true);
+    expect(first.executed.receipt.changes).toEqual(second.executed.receipt.changes);
+    expectResolvedViews(baseState, targetState, first.tracked);
+  });
+
+  test("rewrites a closing paragraph through the carrier after its owned table deletion", () => {
+    const baseState = stateWithBlocks(
+      paragraphNode("A1000000", "Retained opening"),
+      paragraphNode("B1000000", "Old closing words"),
+      tableWithTextGrid([["Removed table"]]),
+      paragraphNode("C1000000", ""),
+    );
+    const targetState = stateWithBlocks(
+      paragraphNode("A1000000", "Retained opening"),
+      paragraphNode("B1000000", "New closing words"),
+    );
+    const { executed, tracked } = executePlannedComparison(baseState, targetState);
+
+    expect(executed.receipt.instructions.map(({ instructionType }) => instructionType)).toEqual([
+      "transitionTerminalParagraphs",
+      "deleteTable",
+    ]);
+    expect(tracked.doc.lastChild?.textContent).toBe("New closing words");
+    expect(tracked.doc.lastChild?.attrs["pPrMark"]).toBeNull();
+    expectResolvedViews(baseState, targetState, tracked);
+  });
+
+  test("withholds an appended-table transition when its break owner cannot execute", () => {
+    const baseState = stateFromCanonicalDocument(
+      schema.node("doc", null, [
+        paragraphNode("A1000000", "Retained opening"),
+        schema.node(
+          "paragraph",
+          {
+            paraId: "B1000000",
+            _propertyChanges: [
+              {
+                type: "paragraphPropertyChange",
+                info: {
+                  id: 7,
+                  author: "Existing",
+                  date: "2026-09-01T00:00:00.000Z",
+                },
+                previousFormatting: { alignment: "right" },
+              },
+            ],
+          },
+          [schema.text("Retained ending")],
+        ),
+      ]),
+    );
+    const targetState = stateWithBlocks(
+      paragraphNode("A1000000", "Retained opening"),
+      paragraphNode("B1000000", "Retained ending"),
+      paragraphNode("C1000000", "Added schedule introduction"),
+      tableWithTextGrid([["Added table"]]),
+      paragraphNode("D1000000", ""),
+    );
+    const prepared = preflightDocxComparisonProgram({
+      state: baseState,
+      program: plannedComparisonOf({ baseState, targetState }).program,
+    });
+
+    expect(prepared.supportedInstructionCount).toBe(0);
+    expect(prepared.supportedChangeCount).toBe(0);
+    expect(prepared.issues).toContainEqual(
+      expect.objectContaining({
+        instructionType: "insertTerminalCarrier",
+        reason: "pending-paragraph-change",
+        blockId: "B1000000",
+      }),
+    );
+    expect(prepared.issues).toContainEqual(
+      expect.objectContaining({
+        instructionType: "insertTable",
+        reason: "semantic-group-incomplete",
+      }),
+    );
+    expect(prepared.issues).toContainEqual(
+      expect.objectContaining({
+        instructionType: "insertParagraph",
+        reason: "semantic-group-incomplete",
+      }),
+    );
+  });
+
+  test("withholds a terminal table bundle when one prefix member has a pending change", () => {
+    const baseState = stateFromCanonicalDocument(
+      schema.node("doc", null, [
+        schema.node(
+          "paragraph",
+          {
+            paraId: "B1000000",
+            _propertyChanges: [
+              {
+                type: "paragraphPropertyChange",
+                info: {
+                  id: 7,
+                  author: "Existing",
+                  date: "2026-09-01T00:00:00.000Z",
+                },
+                previousFormatting: { alignment: "right" },
+              },
+            ],
+          },
+          [schema.text("Removed prefix")],
+        ),
+        paragraphNode("C1000000", ""),
+      ]),
+    );
+    const targetState = stateWithBlocks(tableWithTextGrid([["New terminal table"]]));
+    const prepared = preflightDocxComparisonProgram({
+      state: baseState,
+      program: plannedComparisonOf({ baseState, targetState }).program,
+    });
+
+    expect(prepared.supportedInstructionCount).toBe(0);
+    expect(prepared.supportedChangeCount).toBe(0);
+    expect(prepared.issues).toContainEqual(
+      expect.objectContaining({
+        instructionType: "insertTable",
+        reason: "unrepresentable-table-structure",
+        tableStructure: { reason: "pending-structural-revision", side: "source" },
+      }),
+    );
+    expect(prepared.issues).toContainEqual(
+      expect.objectContaining({
+        instructionType: "deleteParagraph",
+        reason: "semantic-group-incomplete",
+      }),
+    );
   });
 
   test("whole table insertion, deletion, and ordinary replacement reconstruct both views", () => {
@@ -1144,9 +1422,9 @@ describe("the dedicated DOCX comparison executor", () => {
     const first = executePlannedComparison(baseState, targetState);
     const second = executePlannedComparison(baseState, targetState);
 
-    expect(first.executed.receipt.instructions.map(({ instructionType }) => instructionType)).toEqual(
-      ["insertTableColumn", "insertTableColumn", "insertTableColumn"],
-    );
+    expect(
+      first.executed.receipt.instructions.map(({ instructionType }) => instructionType),
+    ).toEqual(["insertTableColumn", "insertTableColumn", "insertTableColumn"]);
     expect(first.executed.receipt.executionTaskCount).toBe(2);
     expect(first.executed.receipt.localPositionMappingSteps).toBe(0);
     expect(first.tracked.doc.eq(second.tracked.doc)).toBe(true);

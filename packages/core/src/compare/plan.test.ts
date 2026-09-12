@@ -370,6 +370,8 @@ describe("table row pairing", () => {
     expect(doubled.total).toBe(first.total * 2);
     expect(doubled.eventVisits).toBe(first.eventVisits * 2);
     expect(doubled.anchorEventVisits).toBe(first.anchorEventVisits * 2);
+    expect(doubled.terminalBoundaryVisits).toBe(first.terminalBoundaryVisits * 2);
+    expect(doubled.terminalMemberVisits).toBe(first.terminalMemberVisits * 2);
     expect(Object.isFrozen(first)).toBe(true);
     expect(Reflect.set(first, "total", 0)).toBe(false);
   });
@@ -772,9 +774,14 @@ describe("document-terminal paragraph carrier", () => {
     expect(changes).not.toContainEqual(expect.objectContaining({ baseBlockId: "bravo" }));
     expect(instructions).toContainEqual(
       expect.objectContaining({
-        type: "deleteTrailingParagraphs",
+        type: "transitionTerminalParagraphs",
         chainStart: sourceOperandOf(plan, "bravo"),
-        deleted: [sourceOperandOf(plan, "charlie")],
+        sourceMembers: [
+          {
+            source: sourceOperandOf(plan, "charlie"),
+            kind: "del",
+          },
+        ],
       }),
     );
   });

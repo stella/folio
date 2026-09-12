@@ -21,6 +21,7 @@ import type {
   FolioContentBaseContainerAlignment,
   FolioContentBlock,
   FolioContentContainerAlignment,
+  FolioContentParagraphInsertionBoundary,
   FolioContentPairedContainerAlignment,
   FolioContentRevisedContainerAlignment,
 } from "../../compare/content-types";
@@ -93,11 +94,8 @@ const RESOLVED_DOCX_SPLIT_EVENT_OPERAND_BRAND: unique symbol = Symbol(
 const RESOLVED_DOCX_MERGE_EVENT_OPERAND_BRAND: unique symbol = Symbol(
   "resolved-docx-merge-event-operand",
 );
-const RESOLVED_DOCX_TRAILING_DELETION_OPERAND_BRAND: unique symbol = Symbol(
-  "resolved-docx-trailing-deletion-operand",
-);
-const RESOLVED_DOCX_TERMINAL_REPLACEMENT_OPERAND_BRAND: unique symbol = Symbol(
-  "resolved-docx-terminal-replacement-operand",
+const RESOLVED_DOCX_TERMINAL_TRANSITION_OPERAND_BRAND: unique symbol = Symbol(
+  "resolved-docx-terminal-transition-operand",
 );
 
 /** Two exact DOCX story projections bound before semantic comparison begins. */
@@ -195,6 +193,8 @@ export type ResolvedDocxStructuralInsertionBoundary = {
 
 type ResolvedDocxTerminalTableCarrier = {
   readonly source: ResolvedDocxSourceOperand;
+  /** Exact body paragraphs between the source table and its final carrier. */
+  readonly precedingSources: readonly ResolvedDocxSourceOperand[];
   readonly event: Extract<FolioContentComparisonEvent, { readonly type: "deleted" }>;
 };
 
@@ -228,14 +228,9 @@ export type ResolvedDocxMergeEventOperand = {
   readonly [RESOLVED_DOCX_MERGE_EVENT_OPERAND_BRAND]: true;
 };
 
-/** One validated same-container trailing deletion rewrite. */
-export type ResolvedDocxTrailingDeletionOperand = {
-  readonly [RESOLVED_DOCX_TRAILING_DELETION_OPERAND_BRAND]: true;
-};
-
-/** One validated same-container terminal delete/insert replacement. */
-export type ResolvedDocxTerminalReplacementOperand = {
-  readonly [RESOLVED_DOCX_TERMINAL_REPLACEMENT_OPERAND_BRAND]: true;
+/** One index-owned, container-scoped terminal paragraph transition. */
+export type ResolvedDocxTerminalTransitionOperand = {
+  readonly [RESOLVED_DOCX_TERMINAL_TRANSITION_OPERAND_BRAND]: true;
 };
 
 type PairedEvent =
@@ -244,6 +239,7 @@ type PairedEvent =
 type InsertedEvent = Extract<FolioContentComparisonEvent, { readonly type: "inserted" }>;
 type DeletedEvent = Extract<FolioContentComparisonEvent, { readonly type: "deleted" }>;
 type MoveEvent = Extract<FolioContentComparisonEvent, { readonly type: "movedTo" }>;
+type MovedFromEvent = Extract<FolioContentComparisonEvent, { readonly type: "movedFrom" }>;
 type SplitEvent = Extract<FolioContentComparisonEvent, { readonly type: "split" }>;
 type MergeEvent = Extract<FolioContentComparisonEvent, { readonly type: "merge" }>;
 
@@ -255,16 +251,74 @@ export type ResolvedDocxEventOperandPayload<Event extends FolioContentComparison
 
 type NonEmptyReadonlyArray<Value> = readonly [Value, ...Value[]];
 
-export type ResolvedDocxTrailingDeletionOperandPayload = {
-  readonly events: NonEmptyReadonlyArray<ResolvedDocxEventOperandPayload<DeletedEvent>>;
-  readonly chainStart: ResolvedDocxSourceOperand;
-  readonly targetCarrier?: FolioContentBlock;
+export type ResolvedDocxTerminalSourceMember =
+  | {
+      readonly type: "deleted";
+      readonly occurrence: ResolvedDocxEventOperandPayload<DeletedEvent>;
+    }
+  | {
+      readonly type: "movedFrom";
+      readonly occurrence: ResolvedDocxEventOperandPayload<MovedFromEvent>;
+      readonly destination: ResolvedDocxEventOperandPayload<MoveEvent>;
+    };
+
+export type ResolvedDocxTerminalTargetMember =
+  | {
+      readonly type: "inserted";
+      readonly occurrence: ResolvedDocxEventOperandPayload<InsertedEvent>;
+    }
+  | {
+      readonly type: "movedTo";
+      readonly occurrence: ResolvedDocxEventOperandPayload<MoveEvent>;
+      readonly source: ResolvedDocxEventOperandPayload<MovedFromEvent>;
+    };
+
+/** One whole body table whose removal is part of the same terminal edge program. */
+export type ResolvedDocxTerminalDeletedTable = {
+  readonly operation: Extract<ResolvedDocxTableStructureOperand, { readonly type: "deleteTable" }>;
 };
 
-export type ResolvedDocxTerminalReplacementOperandPayload = {
-  readonly deleted: ResolvedDocxEventOperandPayload<DeletedEvent>;
-  readonly inserted: ResolvedDocxEventOperandPayload<InsertedEvent>;
+export type ResolvedDocxParagraphTerminalTransitionPayload = {
+  readonly type: "paragraph";
+  readonly sequence: number;
+  readonly alignment: FolioContentPairedContainerAlignment;
+  readonly chainStart: ResolvedDocxSourceOperand | null;
+  readonly sourceMembers: NonEmptyReadonlyArray<ResolvedDocxTerminalSourceMember>;
+  readonly sourceTables: readonly ResolvedDocxTerminalDeletedTable[];
+  readonly targetMembers: readonly ResolvedDocxTerminalTargetMember[];
+  readonly targetCarrier: FolioContentBlock;
+  /**
+   * A paired block whose revised content must travel to the physical terminal
+   * carrier because an owned table deletion separates the pair from it.
+   */
+  readonly chainStartRewrite: ResolvedDocxEventOperandPayload<PairedEvent> | null;
 };
+
+export type ResolvedDocxTableTerminalTransitionPayload = {
+  readonly type: "table";
+  readonly sequence: number;
+  readonly alignment: FolioContentBaseContainerAlignment;
+  readonly sourceMembers: NonEmptyReadonlyArray<ResolvedDocxTerminalSourceMember>;
+  readonly operation: Extract<
+    ResolvedDocxTableStructureOperand,
+    { readonly type: "insertTable" | "replaceTable" }
+  >;
+};
+
+export type ResolvedDocxTableAppendTerminalTransitionPayload = {
+  readonly type: "tableAppend";
+  readonly sequence: number;
+  readonly alignment: FolioContentPairedContainerAlignment;
+  readonly chainStart: ResolvedDocxSourceOperand;
+  readonly targetMembers: readonly ResolvedDocxTerminalTargetMember[];
+  readonly operation: Extract<ResolvedDocxTableStructureOperand, { readonly type: "insertTable" }>;
+  readonly carrier: ResolvedDocxEventOperandPayload<InsertedEvent>;
+};
+
+export type ResolvedDocxTerminalTransitionOperandPayload =
+  | ResolvedDocxParagraphTerminalTransitionPayload
+  | ResolvedDocxTableTerminalTransitionPayload
+  | ResolvedDocxTableAppendTerminalTransitionPayload;
 
 export type ResolvedDocxTableReplacementOwner =
   | {
@@ -390,10 +444,6 @@ type ResolvedDocxStoryComparisonIndex = {
     FolioContentStructuralChange,
     readonly [number, ...number[]]
   >;
-  readonly deletedEventByBlock: ReadonlyMap<
-    FolioContentBlock,
-    Extract<FolioContentComparisonEvent, { readonly type: "deleted" }>
-  >;
   readonly eventSequenceByDeletedEvent: ReadonlyMap<
     Extract<FolioContentComparisonEvent, { readonly type: "deleted" }>,
     number
@@ -407,6 +457,7 @@ type ResolvedDocxStoryComparisonIndex = {
   readonly baseContainerByBlockId: ReadonlyMap<string, FolioContentBaseContainerAlignment>;
   readonly baseBlockById: ReadonlyMap<string, FolioContentBlock>;
   readonly basePositionByBlock: ReadonlyMap<FolioContentBlock, number>;
+  readonly targetPositionByBlock: ReadonlyMap<FolioContentBlock, number>;
   readonly baseTerminalBlockByContainer: ReadonlyMap<
     FolioContentBaseContainerAlignment,
     FolioContentBlock
@@ -416,7 +467,6 @@ type ResolvedDocxStoryComparisonIndex = {
     FolioContentBlock
   >;
   readonly baseTerminalBlocks: readonly ResolvedDocxBaseTerminalBlock[];
-  readonly targetTerminalOuterTableIndex: number | undefined;
   readonly baseTableIndexByTargetTableIndex: ReadonlyMap<number, number>;
   readonly structuralInsertionBoundaryByChange: ReadonlyMap<
     ResolvedDocxInsertionStructuralChange,
@@ -437,6 +487,12 @@ type ResolvedDocxStoryComparisonIndex = {
     FolioContentBlock,
     ResolvedDocxTableComponentMember
   >;
+  readonly terminalTransitionByEvent: ReadonlyMap<
+    FolioContentComparisonEvent,
+    ResolvedDocxTerminalTransitionOperand
+  >;
+  readonly terminalTransitionOwnerEvents: ReadonlySet<FolioContentComparisonEvent>;
+  readonly paragraphMarkDispositions: readonly ResolvedDocxParagraphMarkDisposition[];
   readonly work: ResolvedDocxComparisonIndexWork;
 };
 
@@ -461,8 +517,32 @@ export type ResolvedDocxComparisonIndexWork = {
   readonly revisedBlockVisits: number;
   readonly anchorEventVisits: number;
   readonly structuralChangeVisits: number;
+  readonly terminalBoundaryVisits: number;
+  readonly terminalMemberVisits: number;
   readonly total: number;
 };
+
+export type ResolvedDocxParagraphMarkDisposition =
+  | {
+      readonly blockId: string;
+      readonly source: ResolvedDocxSourceOperand;
+      readonly type: "terminal-member";
+      readonly operation: ResolvedDocxTerminalTransitionOperand;
+      readonly terminalRole: "chain-start" | "source-member" | "terminal-carrier";
+      readonly effect:
+        | {
+            readonly type: "revision";
+            readonly sourceMemberIndex: number;
+            readonly kind: "del" | "moveFrom";
+          }
+        | { readonly type: "appended-carrier"; readonly kind: "ins" }
+        | { readonly type: "preserved-final" };
+    }
+  | {
+      readonly blockId: string;
+      readonly source: ResolvedDocxSourceOperand;
+      readonly type: "intrinsic" | "standalone" | "structural" | "unchanged";
+    };
 
 type ComparisonOwnedPayload<Payload> = {
   readonly comparison: ResolvedDocxStoryComparison;
@@ -565,14 +645,21 @@ const payloadByMergeEventOperand = new WeakMap<
   ResolvedDocxMergeEventOperand,
   ComparisonOwnedPayload<ResolvedDocxEventOperandPayload<MergeEvent>>
 >();
-const payloadByTrailingDeletionOperand = new WeakMap<
-  ResolvedDocxTrailingDeletionOperand,
-  ComparisonOwnedPayload<ResolvedDocxTrailingDeletionOperandPayload>
+const payloadByTerminalTransitionOperand = new WeakMap<
+  ResolvedDocxTerminalTransitionOperand,
+  ComparisonOwnedPayload<ResolvedDocxTerminalTransitionOperandPayload>
 >();
-const payloadByTerminalReplacementOperand = new WeakMap<
-  ResolvedDocxTerminalReplacementOperand,
-  ComparisonOwnedPayload<ResolvedDocxTerminalReplacementOperandPayload>
->();
+
+const issueTerminalTransitionOperand = (
+  comparison: ResolvedDocxStoryComparison,
+  payload: ResolvedDocxTerminalTransitionOperandPayload,
+): ResolvedDocxTerminalTransitionOperand => {
+  const operand = Object.freeze({
+    [RESOLVED_DOCX_TERMINAL_TRANSITION_OPERAND_BRAND]: true as const,
+  });
+  payloadByTerminalTransitionOperand.set(operand, { comparison, value: Object.freeze(payload) });
+  return operand;
+};
 
 const comparisonIndexOf = (
   comparison: ResolvedDocxStoryComparison,
@@ -676,6 +763,7 @@ const baseTableBlockOfEvent = (event: FolioContentComparisonEvent): FolioContent
 };
 
 const createComparisonIndex = (
+  owner: ResolvedDocxStoryComparison,
   payload: ResolvedDocxStoryComparisonPayload,
 ): ResolvedDocxStoryComparisonIndex => {
   const work = {
@@ -686,6 +774,8 @@ const createComparisonIndex = (
     revisedBlockVisits: 0,
     anchorEventVisits: 0,
     structuralChangeVisits: 0,
+    terminalBoundaryVisits: 0,
+    terminalMemberVisits: 0,
   };
   const relations = new Set<FolioContentPairRelation>();
   const eventSequence = new Map<FolioContentComparisonEvent, number>();
@@ -693,10 +783,6 @@ const createComparisonIndex = (
   const structuralChanges = new Set<FolioContentStructuralChange>();
   const tableReplacements = new Set<FolioContentTableReplacement>();
   const mutableStructuralEventIndexes = new Map<FolioContentStructuralChange, number[]>();
-  const deletedEventByBlock = new Map<
-    FolioContentBlock,
-    Extract<FolioContentComparisonEvent, { readonly type: "deleted" }>
-  >();
   const eventSequenceByDeletedEvent = new Map<
     Extract<FolioContentComparisonEvent, { readonly type: "deleted" }>,
     number
@@ -710,6 +796,16 @@ const createComparisonIndex = (
   const baseContainerByBlockId = new Map<string, FolioContentBaseContainerAlignment>();
   const basePositionByBlock = new Map<FolioContentBlock, number>();
   const targetPositionByBlock = new Map<FolioContentBlock, number>();
+  const baseEventByBlock = new Map<FolioContentBlock, FolioContentComparisonEvent>();
+  const targetEventByBlock = new Map<FolioContentBlock, FolioContentComparisonEvent>();
+  const movedFromByMove = new Map<
+    Extract<FolioContentComparisonEvent, { readonly type: "movedTo" }>["move"],
+    ResolvedDocxEventOperandPayload<MovedFromEvent>
+  >();
+  const movedToByMove = new Map<
+    Extract<FolioContentComparisonEvent, { readonly type: "movedTo" }>["move"],
+    ResolvedDocxEventOperandPayload<MoveEvent>
+  >();
   const baseBlockById = new Map<string, FolioContentBlock>();
   const baseTableComponentMemberByOuterIndex = new Map<number, ResolvedDocxTableComponentMember>();
   const targetTableComponentMemberByOuterIndex = new Map<
@@ -879,6 +975,20 @@ const createComparisonIndex = (
     registerBaseOccurrence(relation.base.block, relation.baseContainerAlignment, sequence);
     registerTargetOccurrence(relation.revised.block, relation.revisedContainerAlignment, sequence);
   };
+  const claimBlockEvent = (
+    side: "base" | "target",
+    block: FolioContentBlock,
+    event: FolioContentComparisonEvent,
+  ): void => {
+    const events = side === "base" ? baseEventByBlock : targetEventByBlock;
+    const existing = events.get(block);
+    if (existing !== undefined && existing !== event) {
+      return panic(`A canonical ${side} block belongs to two comparison events`, {
+        blockId: block.identity.id,
+      });
+    }
+    events.set(block, event);
+  };
   const baseTableIndexByTargetTableIndex = new Map<number, number>();
   const targetTableIndexByBaseTableIndex = new Map<number, number>();
   const structuralInsertionBoundaryByChange = new Map<
@@ -899,6 +1009,8 @@ const createComparisonIndex = (
       case "modified":
       case "formatting":
         registerTwoSidedRelation(event.relation, sequence);
+        claimBlockEvent("base", event.relation.base.block, event);
+        claimBlockEvent("target", event.relation.revised.block, event);
         break;
       case "movedFrom": {
         const { relation } = event.move;
@@ -906,6 +1018,8 @@ const createComparisonIndex = (
         alignmentsWithParagraphStructureChange.add(relation.baseContainerAlignment);
         registerRelationOwnership(relation);
         registerBaseOccurrence(relation.base.block, relation.baseContainerAlignment, sequence);
+        claimBlockEvent("base", relation.base.block, event);
+        movedFromByMove.set(event.move, Object.freeze({ event, sequence }));
         break;
       }
       case "movedTo": {
@@ -918,6 +1032,8 @@ const createComparisonIndex = (
           relation.revisedContainerAlignment,
           sequence,
         );
+        claimBlockEvent("target", relation.revised.block, event);
+        movedToByMove.set(event.move, Object.freeze({ event, sequence }));
         break;
       }
       case "split":
@@ -929,25 +1045,32 @@ const createComparisonIndex = (
         registerTwoSidedRelation(event.relations[0], sequence);
         registerTwoSidedRelation(event.relations[1], sequence);
         registerTwoSidedRelation(event.separator, sequence);
+        for (const relation of event.relations) {
+          claimBlockEvent("base", relation.base.block, event);
+          claimBlockEvent("target", relation.revised.block, event);
+        }
         break;
       case "inserted":
         alignmentsWithParagraphStructureChange.add(event.containerAlignment);
         registerTargetOccurrence(event.block, event.containerAlignment, sequence);
+        claimBlockEvent("target", event.block, event);
         break;
       case "deleted":
         alignmentsWithParagraphStructureChange.add(event.containerAlignment);
         registerBaseOccurrence(event.block, event.containerAlignment, sequence);
-        deletedEventByBlock.set(event.block, event);
         eventSequenceByDeletedEvent.set(event, eventIndex);
+        claimBlockEvent("base", event.block, event);
         break;
       case "tableReplacement":
         tableReplacements.add(event.replacement);
         eventSequenceByTableReplacement.set(event.replacement, eventIndex);
         for (const block of event.replacement.baseBlocks) {
           resolvedDocxSourceOperand(payload.baseSnapshot, block);
+          claimBlockEvent("base", block, event);
         }
         for (const block of event.replacement.revisedBlocks) {
           resolvedDocxSourceOperand(payload.targetSnapshot, block);
+          claimBlockEvent("target", block, event);
         }
         break;
       case "structural": {
@@ -982,6 +1105,15 @@ const createComparisonIndex = (
         const snapshot = structuralChangeSnapshot(event.change, payload);
         for (const block of event.change.blocks) {
           resolvedDocxSourceOperand(snapshot, block);
+          claimBlockEvent(
+            event.change.type === "table-delete" ||
+              event.change.type === "table-row-delete" ||
+              event.change.type === "table-column-delete"
+              ? "base"
+              : "target",
+            block,
+            event,
+          );
         }
         break;
       }
@@ -1227,6 +1359,751 @@ const createComparisonIndex = (
       Object.freeze({ [RESOLVED_DOCX_TABLE_COMPONENT_MEMBER_BRAND]: true as const }),
     ]),
   );
+  const terminalTableComponentMembers = (
+    baseTableIndex: number | null,
+    targetTableIndex: number,
+    carrier: FolioContentBlock,
+  ): readonly [ResolvedDocxTableComponentMember, ...ResolvedDocxTableComponentMember[]] => {
+    const members: ResolvedDocxTableComponentMember[] = [];
+    const add = (member: ResolvedDocxTableComponentMember | undefined, role: string): void => {
+      if (!member) return panic("A terminal table program lost its component owner", { role });
+      if (!members.includes(member)) members.push(member);
+    };
+    if (baseTableIndex !== null) {
+      add(baseTableComponentMemberByTableIndex.get(baseTableIndex), "source-table");
+    }
+    add(targetTableComponentMemberByTableIndex.get(targetTableIndex), "target-table");
+    add(terminalComponentMemberByBlock.get(carrier), "terminal-carrier");
+    const first = members.at(0) ?? panic("A terminal table program has no component owner");
+    return Object.freeze([first, ...members.slice(1)]);
+  };
+  type TerminalDeletedBodyTable = {
+    readonly change: Extract<FolioContentStructuralChange, { readonly type: "table-delete" }>;
+    readonly firstPosition: number;
+    readonly lastPosition: number;
+  };
+  const terminalDeletedBodyTableByLastPosition = new Map<number, TerminalDeletedBodyTable>();
+  for (const change of structuralChanges) {
+    if (change.type !== "table-delete") continue;
+    const positions = change.blocks.map(
+      (block) =>
+        basePositionByBlock.get(block) ??
+        panic("A deleted table member is absent from its canonical source order"),
+    );
+    const firstPosition = Math.min(...positions);
+    const lastPosition = Math.max(...positions);
+    const firstBlock = baseBlocks[firstPosition];
+    if (
+      !firstBlock?.table ||
+      firstBlock.table.tableIndex !== change.tableIndex ||
+      firstBlock.table.outerTableIndex !== change.tableIndex ||
+      lastPosition - firstPosition + 1 !== positions.length ||
+      baseBlocks.slice(firstPosition, lastPosition + 1).some((block) => {
+        const event = baseEventByBlock.get(block);
+        return event?.type !== "structural" || event.change !== change;
+      })
+    ) {
+      continue;
+    }
+    const existing = terminalDeletedBodyTableByLastPosition.get(lastPosition);
+    if (existing !== undefined && existing.change !== change) {
+      return panic("Two deleted body tables occupy one canonical terminal position");
+    }
+    terminalDeletedBodyTableByLastPosition.set(
+      lastPosition,
+      Object.freeze({ change, firstPosition, lastPosition }),
+    );
+  }
+  type TerminalInsertedBodyTable = {
+    readonly change: Extract<FolioContentStructuralChange, { readonly type: "table-insert" }>;
+    readonly firstPosition: number;
+    readonly lastPosition: number;
+  };
+  const terminalInsertedBodyTableByLastPosition = new Map<number, TerminalInsertedBodyTable>();
+  for (const change of structuralChanges) {
+    if (change.type !== "table-insert") continue;
+    const positions = change.blocks.map(
+      (block) =>
+        targetPositionByBlock.get(block) ??
+        panic("An inserted table member is absent from its canonical target order"),
+    );
+    const firstPosition = Math.min(...positions);
+    const lastPosition = Math.max(...positions);
+    const firstBlock = targetBlocks[firstPosition];
+    if (
+      !firstBlock?.table ||
+      firstBlock.table.tableIndex !== change.tableIndex ||
+      firstBlock.table.outerTableIndex !== change.tableIndex ||
+      lastPosition - firstPosition + 1 !== positions.length ||
+      targetBlocks.slice(firstPosition, lastPosition + 1).some((block) => {
+        const event = targetEventByBlock.get(block);
+        return event?.type !== "structural" || event.change !== change;
+      })
+    ) {
+      continue;
+    }
+    const existing = terminalInsertedBodyTableByLastPosition.get(lastPosition);
+    if (existing !== undefined && existing.change !== change) {
+      return panic("Two inserted body tables occupy one canonical terminal position");
+    }
+    terminalInsertedBodyTableByLastPosition.set(
+      lastPosition,
+      Object.freeze({ change, firstPosition, lastPosition }),
+    );
+  }
+  const terminalTransitionByEvent = new Map<
+    FolioContentComparisonEvent,
+    ResolvedDocxTerminalTransitionOperand
+  >();
+  const terminalTransitionOwnerEvents = new Set<FolioContentComparisonEvent>();
+  const terminalEdgeDispositionByBlock = new Map<
+    FolioContentBlock,
+    Pick<
+      Extract<ResolvedDocxParagraphMarkDisposition, { readonly type: "terminal-member" }>,
+      "effect" | "operation" | "terminalRole"
+    >
+  >();
+  const claimTerminalEdge = (
+    block: FolioContentBlock,
+    disposition: Pick<
+      Extract<ResolvedDocxParagraphMarkDisposition, { readonly type: "terminal-member" }>,
+      "effect" | "operation" | "terminalRole"
+    >,
+  ): void => {
+    if (terminalEdgeDispositionByBlock.has(block)) {
+      return panic("A source paragraph edge belongs to two terminal transition programs", {
+        blockId: block.identity.id,
+      });
+    }
+    terminalEdgeDispositionByBlock.set(block, Object.freeze(disposition));
+  };
+  const sourceMemberOf = (block: FolioContentBlock): ResolvedDocxTerminalSourceMember | null => {
+    const event = baseEventByBlock.get(block);
+    if (event?.type === "deleted") {
+      const sequence = eventSequence.get(event);
+      if (sequence === undefined) return panic("A terminal deletion lost its canonical sequence");
+      return Object.freeze({
+        type: "deleted",
+        occurrence: Object.freeze({ event, sequence }),
+      });
+    }
+    if (event?.type !== "movedFrom") return null;
+    const source = movedFromByMove.get(event.move);
+    const destination = movedToByMove.get(event.move);
+    if (!source || !destination) {
+      return panic("A terminal move lost one canonical stream occurrence", {
+        moveId: event.move.id,
+      });
+    }
+    return Object.freeze({ type: "movedFrom", occurrence: source, destination });
+  };
+  const targetMemberOf = (block: FolioContentBlock): ResolvedDocxTerminalTargetMember | null => {
+    const event = targetEventByBlock.get(block);
+    if (event?.type === "inserted") {
+      const sequence = eventSequence.get(event);
+      if (sequence === undefined) return panic("A terminal insertion lost its canonical sequence");
+      return Object.freeze({
+        type: "inserted",
+        occurrence: Object.freeze({ event, sequence }),
+      });
+    }
+    if (event?.type !== "movedTo") return null;
+    const source = movedFromByMove.get(event.move);
+    const destination = movedToByMove.get(event.move);
+    if (!source || !destination) {
+      return panic("A terminal move lost one canonical stream occurrence", {
+        moveId: event.move.id,
+      });
+    }
+    return Object.freeze({ type: "movedTo", occurrence: destination, source });
+  };
+  const targetCounterpartOf = (block: FolioContentBlock): FolioContentBlock | null => {
+    const event = baseEventByBlock.get(block);
+    switch (event?.type) {
+      case "unchanged":
+      case "modified":
+      case "formatting":
+        return event.relation.base.block === block ? event.relation.revised.block : null;
+      default:
+        return null;
+    }
+  };
+  const baseCounterpartOf = (block: FolioContentBlock): FolioContentBlock | null => {
+    const event = targetEventByBlock.get(block);
+    switch (event?.type) {
+      case "unchanged":
+      case "modified":
+      case "formatting":
+        return event.relation.revised.block === block ? event.relation.base.block : null;
+      default:
+        return null;
+    }
+  };
+  const claimTransitionEvent = (
+    event: FolioContentComparisonEvent,
+    operand: ResolvedDocxTerminalTransitionOperand,
+  ): void => {
+    const existing = terminalTransitionByEvent.get(event);
+    if (existing !== undefined && existing !== operand) {
+      return panic("A canonical event belongs to two terminal transition programs");
+    }
+    terminalTransitionByEvent.set(event, operand);
+  };
+  for (const { alignment, block: terminalBlock } of baseTerminalBlocks) {
+    work.terminalBoundaryVisits += 1;
+    if (
+      alignment.type !== "paired" ||
+      alignment.base.end !== "paragraph" ||
+      alignment.revised.end !== "paragraph" ||
+      sourceMemberOf(terminalBlock) === null
+    ) {
+      continue;
+    }
+    const terminalPosition =
+      basePositionByBlock.get(terminalBlock) ??
+      panic("A terminal transition lost its base position");
+    const reversedSourceMembers: ResolvedDocxTerminalSourceMember[] = [];
+    const reversedSourceTables: TerminalDeletedBodyTable[] = [];
+    let basePosition = terminalPosition;
+    for (; basePosition >= 0; basePosition--) {
+      work.terminalMemberVisits += 1;
+      const block = baseBlocks[basePosition];
+      if (block && baseContainerByBlock.get(block) === alignment) {
+        const member = sourceMemberOf(block);
+        if (!member) break;
+        reversedSourceMembers.push(member);
+        continue;
+      }
+      const deletedTable = terminalDeletedBodyTableByLastPosition.get(basePosition);
+      if (!deletedTable || alignment.base.type !== "body") break;
+      reversedSourceTables.push(deletedTable);
+      basePosition = deletedTable.firstPosition;
+    }
+    const sourceMembers = reversedSourceMembers.toReversed();
+    const sourceTableDescriptors = reversedSourceTables.toReversed();
+    const firstSourceMember = sourceMembers.at(0);
+    if (!firstSourceMember) continue;
+    const chainStartBlock = baseBlocks[basePosition];
+    const chainStart =
+      chainStartBlock !== undefined && baseContainerByBlock.get(chainStartBlock) === alignment
+        ? chainStartBlock
+        : null;
+    if (chainStart !== null && targetCounterpartOf(chainStart) === null) {
+      continue;
+    }
+    const targetTerminal = targetTerminalBlockByContainer.get(alignment);
+    if (!targetTerminal) continue;
+    const targetTerminalPosition =
+      targetPositionByBlock.get(targetTerminal) ??
+      panic("A terminal transition lost its revised position");
+    const reversedTargetMembers: ResolvedDocxTerminalTargetMember[] = [];
+    let targetPosition = targetTerminalPosition;
+    for (; targetPosition >= 0; targetPosition--) {
+      work.terminalMemberVisits += 1;
+      const block = targetBlocks[targetPosition];
+      if (!block || targetContainerByBlock.get(block) !== alignment) break;
+      const member = targetMemberOf(block);
+      if (!member) break;
+      reversedTargetMembers.push(member);
+    }
+    const targetMembers = reversedTargetMembers.toReversed();
+    const targetPrefix = targetBlocks[targetPosition];
+    const expectedPrefix = chainStart === null ? null : targetCounterpartOf(chainStart);
+    if (
+      (expectedPrefix === null &&
+        targetPrefix !== undefined &&
+        targetContainerByBlock.get(targetPrefix) === alignment) ||
+      (expectedPrefix !== null && targetPrefix !== expectedPrefix)
+    ) {
+      continue;
+    }
+    const targetCarrier = (() => {
+      const member = targetMembers.at(-1);
+      if (!member) return targetTerminal;
+      return member.type === "inserted"
+        ? member.occurrence.event.block
+        : member.occurrence.event.move.relation.revised.block;
+    })();
+    const chainStartEvent = chainStart === null ? undefined : baseEventByBlock.get(chainStart);
+    const chainStartRewrite =
+      sourceTableDescriptors.length > 0 &&
+      targetMembers.length === 0 &&
+      (chainStartEvent?.type === "modified" || chainStartEvent?.type === "formatting") &&
+      chainStartEvent.relation.base.block === chainStart &&
+      chainStartEvent.relation.revised.block === targetCarrier
+        ? Object.freeze({
+            event: chainStartEvent,
+            sequence:
+              eventSequence.get(chainStartEvent) ??
+              panic("A terminal chain-start rewrite lost its canonical sequence"),
+          })
+        : null;
+    const ownedEvents = new Set<FolioContentComparisonEvent>();
+    if (chainStartRewrite !== null) ownedEvents.add(chainStartRewrite.event);
+    for (const member of sourceMembers) {
+      ownedEvents.add(member.occurrence.event);
+      if (member.type === "movedFrom") ownedEvents.add(member.destination.event);
+    }
+    for (const member of targetMembers) {
+      ownedEvents.add(member.occurrence.event);
+      if (member.type === "movedTo") ownedEvents.add(member.source.event);
+    }
+    for (const { change } of sourceTableDescriptors) {
+      const indexes = structuralEventIndexes.get(change);
+      if (!indexes) return panic("A terminal table deletion lost its canonical occurrences");
+      for (const index of indexes) {
+        const event = payload.comparison.events[index];
+        if (event?.type !== "structural" || event.change !== change) {
+          return panic("A terminal table deletion occurrence lost its exact owner");
+        }
+        ownedEvents.add(event);
+      }
+    }
+    const ownedSequences = [...ownedEvents].map(
+      (event) =>
+        eventSequence.get(event) ?? panic("A terminal transition lost an owned event sequence"),
+    );
+    const sequence = Math.min(...ownedSequences);
+    const ownerEvent = payload.comparison.events[sequence];
+    if (!ownerEvent) return panic("A terminal transition lost its owner event");
+    const sourceTuple: NonEmptyReadonlyArray<ResolvedDocxTerminalSourceMember> = Object.freeze([
+      firstSourceMember,
+      ...sourceMembers.slice(1),
+    ]);
+    const sourceTables = Object.freeze(
+      sourceTableDescriptors.map(({ change }): ResolvedDocxTerminalDeletedTable => {
+        const component = baseTableComponentMemberByTableIndex.get(change.tableIndex);
+        if (!component) return panic("A terminal table deletion lost its component owner");
+        const operation = issueTableStructureOperandWithMembers(
+          owner,
+          {
+            type: "deleteTable",
+            source: resolvedDocxSourceOperand(payload.baseSnapshot, change.blocks[0]),
+            change,
+          },
+          [component],
+        );
+        if (operation.type !== "deleteTable") {
+          return panic("A terminal table deletion lost its operation discriminator");
+        }
+        return Object.freeze({ operation });
+      }),
+    );
+    const operand = issueTerminalTransitionOperand(owner, {
+      type: "paragraph",
+      sequence,
+      alignment,
+      chainStart:
+        chainStart === null ? null : resolvedDocxSourceOperand(payload.baseSnapshot, chainStart),
+      sourceMembers: sourceTuple,
+      sourceTables,
+      targetMembers: Object.freeze(targetMembers),
+      targetCarrier,
+      chainStartRewrite,
+    });
+    for (const event of ownedEvents) claimTransitionEvent(event, operand);
+    terminalTransitionOwnerEvents.add(ownerEvent);
+
+    const sourceBlocks = sourceMembers.map(({ occurrence }) => {
+      const block = firstBaseBlockOfEvent(occurrence.event);
+      if (!block) return panic("A terminal transition source member lost its block");
+      return block;
+    });
+    const revisionEffect = (sourceMemberIndex: number) => {
+      const member =
+        sourceMembers[sourceMemberIndex] ??
+        panic("A terminal paragraph edge lost its source member", { sourceMemberIndex });
+      return Object.freeze({
+        type: "revision" as const,
+        sourceMemberIndex,
+        kind: member.type === "deleted" ? ("del" as const) : ("moveFrom" as const),
+      });
+    };
+    if (targetMembers.length === 0) {
+      if (chainStart === null) {
+        return panic("A surviving terminal carrier lost its chain start");
+      }
+      claimTerminalEdge(chainStart, {
+        operation: operand,
+        terminalRole: "chain-start",
+        effect: revisionEffect(0),
+      });
+      for (let memberIndex = 0; memberIndex < sourceBlocks.length - 1; memberIndex++) {
+        const block = sourceBlocks[memberIndex];
+        if (!block) return panic("A terminal transition source block disappeared");
+        claimTerminalEdge(block, {
+          operation: operand,
+          terminalRole: "source-member",
+          effect: revisionEffect(memberIndex + 1),
+        });
+      }
+    } else {
+      for (let memberIndex = 0; memberIndex < sourceBlocks.length - 1; memberIndex++) {
+        const block = sourceBlocks[memberIndex];
+        if (!block) return panic("A terminal transition source block disappeared");
+        claimTerminalEdge(block, {
+          operation: operand,
+          terminalRole: "source-member",
+          effect: revisionEffect(memberIndex),
+        });
+      }
+    }
+    const terminalSourceBlock = sourceBlocks.at(-1);
+    if (!terminalSourceBlock) return panic("A terminal transition lost its physical carrier");
+    claimTerminalEdge(terminalSourceBlock, {
+      operation: operand,
+      terminalRole: "terminal-carrier",
+      effect: Object.freeze({ type: "preserved-final" }),
+    });
+  }
+  for (const alignment of pairedContainerAlignments) {
+    if (alignment.base.type !== "body" || alignment.revised.type !== "body") continue;
+    const carrier = targetTerminalBlockByContainer.get(alignment);
+    const carrierEvent = carrier === undefined ? undefined : targetEventByBlock.get(carrier);
+    if (
+      !carrier ||
+      carrier.kind !== "paragraph" ||
+      carrier.table !== undefined ||
+      carrier.text.length !== 0 ||
+      carrierEvent?.type !== "inserted" ||
+      terminalTransitionByEvent.has(carrierEvent)
+    ) {
+      continue;
+    }
+    work.terminalBoundaryVisits += 1;
+    const carrierPosition =
+      targetPositionByBlock.get(carrier) ?? panic("A target terminal carrier lost its position");
+    const insertedTable = terminalInsertedBodyTableByLastPosition.get(carrierPosition - 1);
+    if (!insertedTable) continue;
+    let targetPosition = insertedTable.firstPosition - 1;
+    const reversedTargetMembers: ResolvedDocxTerminalTargetMember[] = [];
+    for (; targetPosition >= 0; targetPosition--) {
+      work.terminalMemberVisits += 1;
+      const block = targetBlocks[targetPosition];
+      if (!block || targetContainerByBlock.get(block) !== alignment) break;
+      const member = targetMemberOf(block);
+      if (!member) break;
+      reversedTargetMembers.push(member);
+    }
+    const targetMembers = reversedTargetMembers.toReversed();
+    const targetPrefix = targetBlocks[targetPosition];
+    const chainStart = targetPrefix === undefined ? null : baseCounterpartOf(targetPrefix);
+    if (
+      !targetPrefix ||
+      !chainStart ||
+      targetContainerByBlock.get(targetPrefix) !== alignment ||
+      baseContainerByBlock.get(chainStart) !== alignment
+    ) {
+      continue;
+    }
+    const sharesAppendBoundary = (boundary: FolioContentParagraphInsertionBoundary): boolean =>
+      boundary.type === "afterParagraph" &&
+      boundary.paragraph === chainStart &&
+      boundary.containerAlignment === alignment;
+    if (
+      targetMembers.some(
+        (member) =>
+          !sharesAppendBoundary(
+            member.type === "inserted"
+              ? member.occurrence.event.boundary
+              : member.occurrence.event.move.destinationBoundary,
+          ),
+      )
+    ) {
+      continue;
+    }
+    const anchor = structuralInsertionBoundaryByChange.get(insertedTable.change);
+    if (
+      !anchor ||
+      anchor.position !== "after" ||
+      resolvedDocxSourceOperandBlock(anchor.source, payload.baseSnapshot) !== chainStart
+    ) {
+      continue;
+    }
+    const component = targetTableComponentMemberByTableIndex.get(insertedTable.change.tableIndex);
+    if (!component) return panic("A terminal appended table lost its component owner");
+    const issued = issueTableStructureOperandWithMembers(
+      owner,
+      { type: "insertTable", anchor, change: insertedTable.change },
+      [component],
+    );
+    if (issued.type !== "insertTable") {
+      return panic("A terminal appended table lost its insertion discriminator");
+    }
+    const ownedEvents = new Set<FolioContentComparisonEvent>([carrierEvent]);
+    for (const member of targetMembers) {
+      ownedEvents.add(member.occurrence.event);
+      if (member.type === "movedTo") ownedEvents.add(member.source.event);
+    }
+    const structuralIndexes = structuralEventIndexes.get(insertedTable.change);
+    if (!structuralIndexes) return panic("A terminal appended table lost its occurrences");
+    for (const index of structuralIndexes) {
+      const event = payload.comparison.events[index];
+      if (event?.type !== "structural" || event.change !== insertedTable.change) {
+        return panic("A terminal appended table occurrence lost its exact owner");
+      }
+      ownedEvents.add(event);
+    }
+    const sequence = Math.min(
+      ...[...ownedEvents].map(
+        (event) =>
+          eventSequence.get(event) ?? panic("A terminal appended table lost an event sequence"),
+      ),
+    );
+    const ownerEvent = payload.comparison.events[sequence];
+    if (!ownerEvent) return panic("A terminal appended table lost its owner event");
+    const carrierSequence = eventSequence.get(carrierEvent);
+    if (carrierSequence === undefined) {
+      return panic("A terminal appended table carrier lost its canonical sequence");
+    }
+    const operand = issueTerminalTransitionOperand(owner, {
+      type: "tableAppend",
+      sequence,
+      alignment,
+      chainStart: resolvedDocxSourceOperand(payload.baseSnapshot, chainStart),
+      targetMembers: Object.freeze(targetMembers),
+      operation: issued,
+      carrier: Object.freeze({ event: carrierEvent, sequence: carrierSequence }),
+    });
+    for (const event of ownedEvents) claimTransitionEvent(event, operand);
+    terminalTransitionOwnerEvents.add(ownerEvent);
+    claimTerminalEdge(chainStart, {
+      operation: operand,
+      terminalRole: "chain-start",
+      effect: Object.freeze({ type: "appended-carrier", kind: "ins" }),
+    });
+  }
+  const terminalTargetTableIndex = targetBlocks.at(-1)?.table?.outerTableIndex;
+  if (terminalTargetTableIndex !== undefined) {
+    for (const { alignment, block: carrier } of baseTerminalBlocks) {
+      work.terminalBoundaryVisits += 1;
+      const carrierEvent = baseEventByBlock.get(carrier);
+      if (
+        alignment.base.type !== "body" ||
+        alignment.base.end !== "paragraph" ||
+        carrierEvent?.type !== "deleted" ||
+        carrier.kind !== "paragraph" ||
+        carrier.table !== undefined ||
+        carrier.text.length !== 0 ||
+        terminalTransitionByEvent.has(carrierEvent)
+      ) {
+        continue;
+      }
+      const carrierPosition =
+        basePositionByBlock.get(carrier) ?? panic("A terminal table carrier lost its position");
+      const reversedSourceMembers: ResolvedDocxTerminalSourceMember[] = [];
+      let suffixStart = carrierPosition;
+      for (; suffixStart >= 0; suffixStart--) {
+        work.terminalMemberVisits += 1;
+        const block = baseBlocks[suffixStart];
+        if (!block || baseContainerByBlock.get(block) !== alignment) break;
+        const member = sourceMemberOf(block);
+        if (!member) break;
+        reversedSourceMembers.push(member);
+      }
+      const sourceMembers = reversedSourceMembers.toReversed();
+      const firstSourceMember = sourceMembers.at(0);
+      if (!firstSourceMember) continue;
+      const precedingTableIndex = baseBlocks[suffixStart]?.table?.outerTableIndex;
+      const canonicalReplacement = [...tableReplacements].filter(
+        (replacement) =>
+          replacement.revisedTableIndex === terminalTargetTableIndex &&
+          replacement.baseTableIndex === precedingTableIndex,
+      );
+      const insertedTables = [...structuralChanges].filter(
+        (
+          change,
+        ): change is Extract<FolioContentStructuralChange, { readonly type: "table-insert" }> =>
+          change.type === "table-insert" && change.tableIndex === terminalTargetTableIndex,
+      );
+      const deletedTables = [...structuralChanges].filter(
+        (
+          change,
+        ): change is Extract<FolioContentStructuralChange, { readonly type: "table-delete" }> =>
+          change.type === "table-delete" && change.tableIndex === precedingTableIndex,
+      );
+      let operation: Extract<
+        ResolvedDocxTableStructureOperand,
+        { readonly type: "insertTable" | "replaceTable" }
+      > | null = null;
+      const ownedEvents = new Set<FolioContentComparisonEvent>();
+      for (const member of sourceMembers) {
+        ownedEvents.add(member.occurrence.event);
+        if (member.type === "movedFrom") ownedEvents.add(member.destination.event);
+      }
+      const carrierSource = resolvedDocxSourceOperand(payload.baseSnapshot, carrier);
+      const precedingSources = Object.freeze(
+        sourceMembers.slice(0, -1).map((member) => {
+          const block = firstBaseBlockOfEvent(member.occurrence.event);
+          if (!block) return panic("A terminal table prefix member lost its source block");
+          return resolvedDocxSourceOperand(payload.baseSnapshot, block);
+        }),
+      );
+      if (canonicalReplacement.length === 1) {
+        const replacement = canonicalReplacement[0];
+        if (!replacement) return panic("A terminal table replacement lost its owner");
+        const replacementEvent = payload.comparison.events.find(
+          (event) => event.type === "tableReplacement" && event.replacement === replacement,
+        );
+        if (!replacementEvent) return panic("A terminal table replacement lost its event");
+        ownedEvents.add(replacementEvent);
+        const issued = issueTableStructureOperandWithMembers(
+          owner,
+          {
+            type: "replaceTable",
+            source: resolvedDocxSourceOperand(payload.baseSnapshot, replacement.baseBlocks[0]),
+            owner: { type: "canonical-replacement", replacement },
+            terminalCarrier: { source: carrierSource, precedingSources, event: carrierEvent },
+          },
+          terminalTableComponentMembers(
+            replacement.baseTableIndex,
+            replacement.revisedTableIndex,
+            carrier,
+          ),
+        );
+        if (issued.type !== "replaceTable") {
+          return panic("A terminal table replacement lost its discriminator");
+        }
+        operation = issued;
+      } else if (insertedTables.length === 1 && deletedTables.length === 1) {
+        const inserted = insertedTables[0];
+        const deleted = deletedTables[0];
+        if (!inserted || !deleted) return panic("A terminal structural table pair disappeared");
+        for (const event of payload.comparison.events) {
+          if (
+            event.type === "structural" &&
+            (event.change === inserted || event.change === deleted)
+          ) {
+            ownedEvents.add(event);
+          }
+        }
+        const issued = issueTableStructureOperandWithMembers(
+          owner,
+          {
+            type: "replaceTable",
+            source: resolvedDocxSourceOperand(payload.baseSnapshot, deleted.blocks[0]),
+            owner: { type: "structural-pair", deleted, inserted },
+            terminalCarrier: { source: carrierSource, precedingSources, event: carrierEvent },
+          },
+          terminalTableComponentMembers(deleted.tableIndex, inserted.tableIndex, carrier),
+        );
+        if (issued.type !== "replaceTable") {
+          return panic("A terminal structural table pair lost its discriminator");
+        }
+        operation = issued;
+      } else if (insertedTables.length === 1 && deletedTables.length === 0) {
+        const inserted = insertedTables[0];
+        if (!inserted) return panic("A terminal table insertion disappeared");
+        for (const event of payload.comparison.events) {
+          if (event.type === "structural" && event.change === inserted) ownedEvents.add(event);
+        }
+        const issued = issueTableStructureOperandWithMembers(
+          owner,
+          {
+            type: "insertTable",
+            anchor: { source: carrierSource, position: "after" },
+            change: inserted,
+            terminalCarrier: { source: carrierSource, precedingSources, event: carrierEvent },
+          },
+          terminalTableComponentMembers(null, inserted.tableIndex, carrier),
+        );
+        if (issued.type !== "insertTable") {
+          return panic("A terminal table insertion lost its discriminator");
+        }
+        operation = issued;
+      }
+      if (!operation) continue;
+      const sequence = Math.min(
+        ...[...ownedEvents].map(
+          (event) =>
+            eventSequence.get(event) ?? panic("A terminal table program lost an event sequence"),
+        ),
+      );
+      const ownerEvent = payload.comparison.events[sequence];
+      if (!ownerEvent) return panic("A terminal table program lost its owner event");
+      const terminalMember = sourceMembers.at(-1);
+      if (terminalMember?.type !== "deleted" || terminalMember.occurrence.event !== carrierEvent) {
+        return panic("A terminal table carrier lost its canonical deletion");
+      }
+      const sourceTuple: NonEmptyReadonlyArray<ResolvedDocxTerminalSourceMember> = Object.freeze([
+        firstSourceMember,
+        ...sourceMembers.slice(1),
+      ]);
+      const operand = issueTerminalTransitionOperand(owner, {
+        type: "table",
+        sequence,
+        alignment,
+        sourceMembers: sourceTuple,
+        operation,
+      });
+      for (const event of ownedEvents) claimTransitionEvent(event, operand);
+      terminalTransitionOwnerEvents.add(ownerEvent);
+      for (const [memberIndex, member] of sourceMembers.entries()) {
+        const block = firstBaseBlockOfEvent(member.occurrence.event);
+        if (!block) return panic("A terminal table source member lost its block");
+        claimTerminalEdge(block, {
+          operation: operand,
+          terminalRole:
+            memberIndex === sourceMembers.length - 1 ? "terminal-carrier" : "source-member",
+          effect: Object.freeze({
+            type: "revision",
+            sourceMemberIndex: memberIndex,
+            kind: member.type === "deleted" ? ("del" as const) : ("moveFrom" as const),
+          }),
+        });
+      }
+    }
+  }
+  const paragraphMarkDispositions = Object.freeze(
+    baseBlocks.map((block): ResolvedDocxParagraphMarkDisposition => {
+      work.terminalMemberVisits += 1;
+      const terminal = terminalEdgeDispositionByBlock.get(block);
+      const source = resolvedDocxSourceOperand(payload.baseSnapshot, block);
+      if (terminal) {
+        return Object.freeze({
+          blockId: block.identity.id,
+          source,
+          type: "terminal-member",
+          operation: terminal.operation,
+          terminalRole: terminal.terminalRole,
+          effect: terminal.effect,
+        });
+      }
+      const event = baseEventByBlock.get(block);
+      let type: Exclude<ResolvedDocxParagraphMarkDisposition["type"], "terminal-member">;
+      switch (event?.type) {
+        case "deleted":
+        case "movedFrom":
+          type = "standalone";
+          break;
+        case "split":
+        case "merge":
+          type = "intrinsic";
+          break;
+        case "structural":
+        case "tableReplacement":
+          type = "structural";
+          break;
+        case "unchanged":
+        case "modified":
+        case "formatting":
+        case undefined:
+          type = "unchanged";
+          break;
+        case "inserted":
+        case "movedTo":
+          return panic("A target-only event owns a source paragraph mark", {
+            blockId: block.identity.id,
+            eventType: event.type,
+          });
+        default: {
+          const unreachable: never = event;
+          return panic("Unhandled source paragraph-mark disposition", { event: unreachable });
+        }
+      }
+      return Object.freeze({ blockId: block.identity.id, source, type });
+    }),
+  );
   const frozenWork = Object.freeze({
     ...work,
     total:
@@ -1236,7 +2113,9 @@ const createComparisonIndex = (
       work.baseBlockVisits +
       work.revisedBlockVisits +
       work.anchorEventVisits +
-      work.structuralChangeVisits,
+      work.structuralChangeVisits +
+      work.terminalBoundaryVisits +
+      work.terminalMemberVisits,
   });
   return Object.freeze({
     eventSequence,
@@ -1245,7 +2124,6 @@ const createComparisonIndex = (
     structuralChanges,
     tableReplacements,
     structuralEventIndexes,
-    deletedEventByBlock,
     eventSequenceByDeletedEvent,
     eventSequenceByTableReplacement,
     baseContainerByBlock,
@@ -1253,10 +2131,10 @@ const createComparisonIndex = (
     baseContainerByBlockId,
     baseBlockById,
     basePositionByBlock,
+    targetPositionByBlock,
     baseTerminalBlockByContainer,
     targetTerminalBlockByContainer,
     baseTerminalBlocks,
-    targetTerminalOuterTableIndex: targetBlocks.at(-1)?.table?.outerTableIndex,
     baseTableIndexByTargetTableIndex,
     structuralInsertionBoundaryByChange,
     structurallyOwnedTablePlacementRelations,
@@ -1265,6 +2143,9 @@ const createComparisonIndex = (
     baseTableComponentMemberByTableIndex,
     targetTableComponentMemberByTableIndex,
     terminalComponentMemberByBlock,
+    terminalTransitionByEvent,
+    terminalTransitionOwnerEvents,
+    paragraphMarkDispositions,
     work: frozenWork,
   });
 };
@@ -1336,6 +2217,7 @@ export const compareResolvedDocxStoryPair = ({
   indexByComparison.set(
     comparison,
     createComparisonIndex(
+      comparison,
       payloadByComparison.get(comparison) ??
         panic("A resolved DOCX story comparison lost its canonical payload"),
     ),
@@ -1546,141 +2428,32 @@ export const resolvedDocxTargetBlockOperandBlock = (
     "DOCX target-block operand",
   );
 
-/** Bind a non-empty trailing deletion run and its retained mark carrier. */
-export const resolvedDocxTrailingDeletionOperand = (
+/** Return the one index-owned terminal transition that disposes this event. */
+export const resolvedDocxTerminalTransitionForEvent = (
   comparison: ResolvedDocxStoryComparison,
-  {
-    events,
-  }: {
-    readonly events: NonEmptyReadonlyArray<ResolvedDocxDeletedEventOperand>;
-  },
-): ResolvedDocxTrailingDeletionOperand => {
-  const { baseSnapshot } = resolvedDocxStoryComparisonPayload(comparison);
+  event: FolioContentComparisonEvent,
+): {
+  readonly operation: ResolvedDocxTerminalTransitionOperand;
+  readonly isOwner: boolean;
+} | null => {
   const index = comparisonIndexOf(comparison);
-  const firstEvent = resolvedDocxDeletedEventOperandPayload(events[0], comparison);
-  const remainingEvents = events
-    .slice(1)
-    .map((event) => resolvedDocxDeletedEventOperandPayload(event, comparison));
-  const ownedEvents: NonEmptyReadonlyArray<ResolvedDocxEventOperandPayload<DeletedEvent>> = [
-    firstEvent,
-    ...remainingEvents,
-  ];
-  const container = index.baseContainerByBlock.get(firstEvent.event.block);
-  if (!container || container.base.end !== "paragraph") {
-    return panic("A trailing DOCX deletion operand must remain in one canonical container");
-  }
-  const baseBlocks = resolvedDocxContentBlocks(baseSnapshot);
-  const eventPositions = ownedEvents.map(({ event }) => index.basePositionByBlock.get(event.block));
-  const firstPosition = eventPositions.at(0);
-  if (
-    firstPosition === undefined ||
-    ownedEvents.some(({ event }) => index.baseContainerByBlock.get(event.block) !== container) ||
-    eventPositions.some((position, offset) => position !== firstPosition + offset) ||
-    ownedEvents.some(({ sequence }, offset) => {
-      if (offset === 0) return false;
-      const previous = ownedEvents.at(offset - 1);
-      return previous === undefined || sequence <= previous.sequence;
-    })
-  ) {
-    return panic("A trailing DOCX deletion operand must follow canonical base order");
-  }
-  const chainStartBlock = baseBlocks[firstPosition - 1];
-  const terminalBlock = index.baseTerminalBlockByContainer.get(container);
-  if (
-    !chainStartBlock ||
-    index.baseContainerByBlock.get(chainStartBlock) !== container ||
-    terminalBlock !== ownedEvents.at(-1)?.event.block
-  ) {
-    return panic("A trailing DOCX deletion operand must be contiguous and terminal");
-  }
-  const chainStart = resolvedDocxSourceOperand(baseSnapshot, chainStartBlock);
-  const targetBlock =
-    container.type === "paired" ? index.targetTerminalBlockByContainer.get(container) : undefined;
-  const operand = Object.freeze({
-    [RESOLVED_DOCX_TRAILING_DELETION_OPERAND_BRAND]: true as const,
+  const operation = index.terminalTransitionByEvent.get(event);
+  if (!operation) return null;
+  return Object.freeze({
+    operation,
+    isOwner: index.terminalTransitionOwnerEvents.has(event),
   });
-  payloadByTrailingDeletionOperand.set(operand, {
-    comparison,
-    value: Object.freeze({
-      events: Object.freeze(ownedEvents),
-      chainStart,
-      ...(targetBlock !== undefined && { targetCarrier: targetBlock }),
-    }),
-  });
-  return operand;
 };
 
-/** Resolve a trailing deletion only inside the comparison that issued it. */
-export const resolvedDocxTrailingDeletionOperandPayload = (
-  operand: ResolvedDocxTrailingDeletionOperand,
+/** Resolve a terminal transition only inside the comparison that issued it. */
+export const resolvedDocxTerminalTransitionOperandPayload = (
+  operand: ResolvedDocxTerminalTransitionOperand,
   comparison: ResolvedDocxStoryComparison,
-): ResolvedDocxTrailingDeletionOperandPayload =>
+): ResolvedDocxTerminalTransitionOperandPayload =>
   requireComparisonOwned(
-    payloadByTrailingDeletionOperand.get(operand),
+    payloadByTerminalTransitionOperand.get(operand),
     comparison,
-    "DOCX trailing-deletion operand",
-  );
-
-/** Bind the exact delete/insert pair rewritten onto one terminal paragraph. */
-export const resolvedDocxTerminalReplacementOperand = (
-  comparison: ResolvedDocxStoryComparison,
-  {
-    deleted,
-    inserted,
-  }: {
-    readonly deleted: ResolvedDocxDeletedEventOperand;
-    readonly inserted: ResolvedDocxInsertedEventOperand;
-  },
-): ResolvedDocxTerminalReplacementOperand => {
-  const deletedPayload = resolvedDocxDeletedEventOperandPayload(deleted, comparison);
-  const insertedPayload = resolvedDocxInsertedEventOperandPayload(inserted, comparison);
-  const index = comparisonIndexOf(comparison);
-  const baseContainer = index.baseContainerByBlock.get(deletedPayload.event.block);
-  const targetContainer = index.targetContainerByBlock.get(insertedPayload.event.block);
-  const deletedBoundary = deletedPayload.event.removalBoundary;
-  const insertedBoundary = insertedPayload.event.boundary;
-  if (!baseContainer || baseContainer !== targetContainer || baseContainer.type !== "paired") {
-    return panic("A terminal DOCX replacement must remain in one canonical container");
-  }
-  if (
-    baseContainer.base.end !== "paragraph" ||
-    baseContainer.revised.end !== "paragraph" ||
-    deletedBoundary.type !== "terminalPredecessor" ||
-    insertedBoundary.type === "unanchoredContainer" ||
-    deletedBoundary.containerAlignment !== baseContainer ||
-    insertedBoundary.containerAlignment !== baseContainer ||
-    deletedBoundary.targetCarrier !== insertedPayload.event.block ||
-    insertedBoundary.paragraph !== deletedBoundary.predecessor
-  ) {
-    return panic("A terminal DOCX replacement must own the exact terminal event pair");
-  }
-  const baseTerminal = index.baseTerminalBlockByContainer.get(baseContainer);
-  const targetTerminal = index.targetTerminalBlockByContainer.get(baseContainer);
-  if (
-    baseTerminal !== deletedPayload.event.block ||
-    targetTerminal !== insertedPayload.event.block
-  ) {
-    return panic("A terminal DOCX replacement must own the exact terminal event pair");
-  }
-  const operand = Object.freeze({
-    [RESOLVED_DOCX_TERMINAL_REPLACEMENT_OPERAND_BRAND]: true as const,
-  });
-  payloadByTerminalReplacementOperand.set(operand, {
-    comparison,
-    value: Object.freeze({ deleted: deletedPayload, inserted: insertedPayload }),
-  });
-  return operand;
-};
-
-/** Resolve a terminal replacement only inside the comparison that issued it. */
-export const resolvedDocxTerminalReplacementOperandPayload = (
-  operand: ResolvedDocxTerminalReplacementOperand,
-  comparison: ResolvedDocxStoryComparison,
-): ResolvedDocxTerminalReplacementOperandPayload =>
-  requireComparisonOwned(
-    payloadByTerminalReplacementOperand.get(operand),
-    comparison,
-    "DOCX terminal-replacement operand",
+    "DOCX terminal-transition operand",
   );
 
 /** Issue one opaque operand for an exact whole or split/merge range relation. */
@@ -1876,13 +2649,6 @@ const tableReplacementBaseBlocks = (
 ): FolioContentBlockGroup =>
   owner.type === "canonical-replacement" ? owner.replacement.baseBlocks : owner.deleted.blocks;
 
-const tableReplacementIndexes = (
-  owner: ResolvedDocxTableReplacementOwner,
-): { readonly base: number; readonly target: number } =>
-  owner.type === "canonical-replacement"
-    ? { base: owner.replacement.baseTableIndex, target: owner.replacement.revisedTableIndex }
-    : { base: owner.deleted.tableIndex, target: owner.inserted.tableIndex };
-
 const requireExactTableReplacementOwner = (
   owner: ResolvedDocxTableReplacementOwner,
   comparison: ResolvedDocxStoryComparison,
@@ -1945,7 +2711,11 @@ const requireExactStructuralAnchor = (
 const ownedTerminalTableCarrier = (
   carrier: ResolvedDocxTerminalTableCarrier,
 ): ResolvedDocxTerminalTableCarrier =>
-  Object.freeze({ source: carrier.source, event: carrier.event });
+  Object.freeze({
+    source: carrier.source,
+    precedingSources: Object.freeze([...carrier.precedingSources]),
+    event: carrier.event,
+  });
 
 const ownedTableReplacementOwner = (
   owner: ResolvedDocxTableReplacementOwner,
@@ -2113,9 +2883,10 @@ const tableComponentMembersForStructure = (
   return Object.freeze(members);
 };
 
-const issueTableStructureOperand = (
+const issueTableStructureOperandWithMembers = (
   comparison: ResolvedDocxStoryComparison,
   input: ResolvedDocxTableStructureOperandPayload,
+  members: readonly [ResolvedDocxTableComponentMember, ...ResolvedDocxTableComponentMember[]],
 ): ResolvedDocxTableStructureOperand => {
   const payload = ownedTableStructurePayload(input);
   let operand: ResolvedDocxTableStructureOperand;
@@ -2173,9 +2944,18 @@ const issueTableStructureOperand = (
   });
   componentMembersByTableOperand.set(operand, {
     comparison,
-    value: tableComponentMembersForStructure(comparison, payload),
+    value: Object.freeze([...members]),
   });
   return operand;
+};
+
+const issueTableStructureOperand = (
+  comparison: ResolvedDocxStoryComparison,
+  input: ResolvedDocxTableStructureOperandPayload,
+): ResolvedDocxTableStructureOperand => {
+  const members = tableComponentMembersForStructure(comparison, input);
+  const first = members.at(0) ?? panic("A DOCX table operand has no canonical component owner");
+  return issueTableStructureOperandWithMembers(comparison, input, [first, ...members.slice(1)]);
 };
 
 /** Issue one opaque structural obligation from exact comparison-owned semantics. */
@@ -2369,6 +3149,19 @@ export const resolvedDocxTableStructureReportOwners = (
     owners.push(Object.freeze({ type: "deletedCarrier", sequence, event: carrier.event }));
   }
   return Object.freeze(owners.toSorted((left, right) => left.sequence - right.sequence));
+};
+
+/** Source paragraph marks owned intrinsically by one table operation. */
+export const resolvedDocxTableStructureParagraphMarkOwners = (
+  operand: ResolvedDocxTableStructureOperand,
+  comparison: ResolvedDocxStoryComparison,
+): readonly ResolvedDocxSourceOperand[] => {
+  const payload = resolvedDocxTableStructureOperandPayload(operand, comparison);
+  const carrier =
+    payload.type === "insertTable" || payload.type === "replaceTable"
+      ? payload.terminalCarrier
+      : undefined;
+  return carrier ? Object.freeze([carrier.source]) : Object.freeze([]);
 };
 
 const tableHasHiddenRows = (table: PMNode): boolean => {
@@ -2798,77 +3591,6 @@ export const resolvedDocxTableComponentOperands = (
     "DOCX table component",
   );
 
-/** Bind the exact final empty carrier into its replacement obligation. */
-export const resolvedDocxTerminalTableReplacementOperand = (
-  comparison: ResolvedDocxStoryComparison,
-  operand: Extract<ResolvedDocxTableStructureOperand, { readonly type: "replaceTable" }>,
-  terminalCarrier: ResolvedDocxSourceOperand,
-): Extract<ResolvedDocxTableStructureOperand, { readonly type: "replaceTable" }> => {
-  const payload = resolvedDocxTableStructureOperandPayload(operand, comparison);
-  if (payload.type !== "replaceTable") {
-    return panic("A terminal table carrier can only belong to a replacement");
-  }
-  const comparisonPayload = resolvedDocxStoryComparisonPayload(comparison);
-  const carrier = resolvedDocxSourceOperandBlock(terminalCarrier, comparisonPayload.baseSnapshot);
-  const event = comparisonIndexOf(comparison).deletedEventByBlock.get(carrier);
-  if (!event) {
-    return panic("A terminal table replacement carrier must be an exact canonical deletion");
-  }
-  if (
-    carrier.kind !== "paragraph" ||
-    carrier.text.length !== 0 ||
-    comparisonIndexOf(comparison).targetTerminalOuterTableIndex !==
-      tableReplacementIndexes(payload.owner).target
-  ) {
-    return panic("A terminal table replacement must own an empty final carrier and target table");
-  }
-  const resolved = issueTableStructureOperand(comparison, {
-    type: "replaceTable",
-    source: payload.source,
-    owner: payload.owner,
-    terminalCarrier: { source: terminalCarrier, event },
-  });
-  if (resolved.type !== "replaceTable") {
-    return panic("A terminal table replacement lost its structural discriminator");
-  }
-  return resolved;
-};
-
-/** Bind the exact final empty carrier into its terminal table insertion. */
-export const resolvedDocxTerminalTableInsertionOperand = (
-  comparison: ResolvedDocxStoryComparison,
-  operand: Extract<ResolvedDocxTableStructureOperand, { readonly type: "insertTable" }>,
-  terminalCarrier: ResolvedDocxSourceOperand,
-): Extract<ResolvedDocxTableStructureOperand, { readonly type: "insertTable" }> => {
-  const payload = resolvedDocxTableStructureOperandPayload(operand, comparison);
-  if (payload.type !== "insertTable") {
-    return panic("A terminal table carrier can only belong to an insertion");
-  }
-  const comparisonPayload = resolvedDocxStoryComparisonPayload(comparison);
-  const carrier = resolvedDocxSourceOperandBlock(terminalCarrier, comparisonPayload.baseSnapshot);
-  const event = comparisonIndexOf(comparison).deletedEventByBlock.get(carrier);
-  if (!event) {
-    return panic("A terminal table insertion carrier must be an exact canonical deletion");
-  }
-  if (
-    carrier.kind !== "paragraph" ||
-    carrier.text.length !== 0 ||
-    comparisonIndexOf(comparison).targetTerminalOuterTableIndex !== payload.change.tableIndex
-  ) {
-    return panic("A terminal table insertion must own an empty final carrier and target table");
-  }
-  const resolved = issueTableStructureOperand(comparison, {
-    type: "insertTable",
-    anchor: { source: terminalCarrier, position: "after" },
-    change: payload.change,
-    terminalCarrier: { source: terminalCarrier, event },
-  });
-  if (resolved.type !== "insertTable") {
-    return panic("A terminal table insertion lost its structural discriminator");
-  }
-  return resolved;
-};
-
 /** Exact compiler-owned boundary for one canonical structural insertion. */
 export const resolvedDocxStructuralInsertionBoundary = (
   comparison: ResolvedDocxStoryComparison,
@@ -2915,6 +3637,12 @@ export const resolvedDocxBaseTerminalBlocks = (
 export const resolvedDocxComparisonIndexWork = (
   comparison: ResolvedDocxStoryComparison,
 ): ResolvedDocxComparisonIndexWork => comparisonIndexOf(comparison).work;
+
+/** Total immutable source paragraph-mark ownership decisions. @internal */
+export const resolvedDocxParagraphMarkDispositions = (
+  comparison: ResolvedDocxStoryComparison,
+): readonly ResolvedDocxParagraphMarkDisposition[] =>
+  comparisonIndexOf(comparison).paragraphMarkDispositions;
 
 /** Exact cell pairings derived once from this comparison's canonical relation graph. */
 export const resolvedDocxTableGeometryPairings = (

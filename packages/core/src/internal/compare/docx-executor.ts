@@ -55,6 +55,7 @@ import {
 import {
   resolvedDocxTableComponentOperands,
   resolvedDocxTableComponents,
+  resolvedDocxTableStructureOperandPayload,
   type ResolvedDocxTableComponent,
   type ResolvedDocxTableFormatOperand,
   type ResolvedDocxTableStructureOperand,
@@ -78,7 +79,6 @@ export type DocxComparisonPreflightIssue = {
   readonly tableGeometry?: TableGeometryUnsupportedIssue;
   readonly tableStructure?: TableStructureUnsupportedIssue;
 };
-
 type ResolvedBlock = {
   readonly node: PMNode;
   readonly from: number;
@@ -115,8 +115,16 @@ type PreparedInstructionPayload =
       readonly schedule: PreparedSourceSchedule;
     }
   | {
-      readonly type: "insertParagraph";
+      readonly type: "insertParagraph" | "insertMovedParagraph";
       readonly boundary: ResolvedParagraphBoundary;
+      readonly target: DocxComparisonParagraphTarget;
+      readonly originalIndex: number;
+      readonly schedule: PreparedInsertionSchedule;
+    }
+  | {
+      readonly type: "insertTerminalCarrier";
+      readonly boundary: ResolvedParagraphBoundary;
+      readonly breakOwner: ResolvedBlock;
       readonly target: DocxComparisonParagraphTarget;
       readonly originalIndex: number;
       readonly schedule: PreparedInsertionSchedule;
@@ -129,12 +137,25 @@ type PreparedInstructionPayload =
       readonly schedule: PreparedSourceSchedule;
     }
   | {
-      readonly type: "deleteTrailingParagraphs";
-      readonly chainStart: ResolvedBlock;
-      readonly deleted: readonly [ResolvedBlock, ...ResolvedBlock[]];
+      readonly type: "removeMovedParagraph";
+      readonly source: ResolvedBlock;
       readonly semantic: Extract<
         DocxComparisonInstruction,
-        { readonly type: "deleteTrailingParagraphs" }
+        { readonly type: "removeMovedParagraph" }
+      >;
+      readonly originalIndex: number;
+      readonly schedule: PreparedSourceSchedule;
+    }
+  | {
+      readonly type: "transitionTerminalParagraphs";
+      readonly chainStart: ResolvedBlock | null;
+      readonly sourceMembers: readonly [
+        { readonly source: ResolvedBlock; readonly kind: "del" | "moveFrom" },
+        ...{ readonly source: ResolvedBlock; readonly kind: "del" | "moveFrom" }[],
+      ];
+      readonly semantic: Extract<
+        DocxComparisonInstruction,
+        { readonly type: "transitionTerminalParagraphs" }
       >;
       readonly originalIndex: number;
       readonly schedule: PreparedSourceSchedule;
@@ -144,20 +165,6 @@ type PreparedInstructionPayload =
       readonly source: ResolvedBlock;
       readonly boundary: ResolvedParagraphBoundary;
       readonly target: DocxComparisonParagraphTarget;
-      readonly originalIndex: number;
-      readonly sourceSchedule: PreparedSourceSchedule;
-      readonly destinationSchedule: PreparedInsertionSchedule;
-    }
-  | {
-      readonly type: "moveTerminalParagraph";
-      readonly predecessor: ResolvedBlock;
-      readonly source: ResolvedBlock;
-      readonly boundary: ResolvedParagraphBoundary;
-      readonly target: DocxComparisonParagraphTarget;
-      readonly semantic: Extract<
-        DocxComparisonInstruction,
-        { readonly type: "moveTerminalParagraph" }
-      >;
       readonly originalIndex: number;
       readonly sourceSchedule: PreparedSourceSchedule;
       readonly destinationSchedule: PreparedInsertionSchedule;
@@ -211,12 +218,9 @@ type PreparedSourceInstruction = Extract<
 >;
 type PreparedInsertionInstruction = Extract<
   PreparedInstruction,
-  { readonly type: "insertParagraph" }
+  { readonly type: "insertParagraph" | "insertMovedParagraph" | "insertTerminalCarrier" }
 >;
-type PreparedMoveInstruction = Extract<
-  PreparedInstruction,
-  { readonly type: "moveParagraph" | "moveTerminalParagraph" }
->;
+type PreparedMoveInstruction = Extract<PreparedInstruction, { readonly type: "moveParagraph" }>;
 type PreparedInsertionMember = {
   readonly instruction: PreparedInsertionInstruction | PreparedMoveInstruction;
 };
@@ -286,14 +290,15 @@ const executionTasks = (
   const insertionMembersByPosition = new Map<number, PreparedInsertionMember[]>();
   for (const instruction of instructions) {
     switch (instruction.type) {
-      case "insertParagraph": {
+      case "insertParagraph":
+      case "insertMovedParagraph":
+      case "insertTerminalCarrier": {
         const members = insertionMembersByPosition.get(instruction.schedule.position) ?? [];
         members.push({ instruction });
         insertionMembersByPosition.set(instruction.schedule.position, members);
         break;
       }
-      case "moveParagraph":
-      case "moveTerminalParagraph": {
+      case "moveParagraph": {
         sourceTasks.push({
           type: "moveSource",
           position: instruction.sourceSchedule.to,
@@ -317,18 +322,6 @@ const executionTasks = (
         });
         break;
     }
-  }
-  const insertionRuns: PreparedInsertionRun[] = [];
-  for (const [position, members] of insertionMembersByPosition) {
-    const ordered = members.toSorted(
-      (left, right) => left.instruction.originalIndex - right.instruction.originalIndex,
-    );
-    const first = ordered.at(0) ?? panic("A prepared insertion run has no member");
-    insertionRuns.push({
-      type: "insertionRun",
-      position,
-      members: Object.freeze([first, ...ordered.slice(1)]),
-    });
   }
   const tableInstructionIndex = new Map(
     instructions.flatMap((instruction) =>
@@ -359,6 +352,42 @@ const executionTasks = (
       };
     }),
   );
+  const tableInsertionIndexesByPosition = new Map<number, number[]>();
+  for (const task of tableTasks) {
+    if (task.task.schedule.phase !== "insertion") continue;
+    const indexes = tableInsertionIndexesByPosition.get(task.position) ?? [];
+    indexes.push(task.originalIndex);
+    tableInsertionIndexesByPosition.set(task.position, indexes);
+  }
+  const insertionRuns: PreparedInsertionRun[] = [];
+  for (const [position, members] of insertionMembersByPosition) {
+    const tableIndexes = (tableInsertionIndexesByPosition.get(position) ?? []).toSorted(
+      (left, right) => left - right,
+    );
+    const membersBySegment = new Map<number, PreparedInsertionMember[]>();
+    let tableIndexCursor = 0;
+    for (const member of members.toSorted(
+      (left, right) => left.instruction.originalIndex - right.instruction.originalIndex,
+    )) {
+      while (
+        (tableIndexes[tableIndexCursor] ?? Number.POSITIVE_INFINITY) <
+        member.instruction.originalIndex
+      ) {
+        tableIndexCursor++;
+      }
+      const segmentMembers = membersBySegment.get(tableIndexCursor) ?? [];
+      segmentMembers.push(member);
+      membersBySegment.set(tableIndexCursor, segmentMembers);
+    }
+    for (const segmentMembers of membersBySegment.values()) {
+      const first = segmentMembers.at(0) ?? panic("A prepared insertion run has no member");
+      insertionRuns.push({
+        type: "insertionRun",
+        position,
+        members: Object.freeze([first, ...segmentMembers.slice(1)]),
+      });
+    }
+  }
   return Object.freeze(
     [...sourceTasks, ...insertionRuns, ...tableTasks].toSorted((left, right) => {
       const byPosition = right.position - left.position;
@@ -667,7 +696,9 @@ export const preflightDocxComparisonProgram = ({
         );
         break;
       }
-      case "insertParagraph": {
+      case "insertParagraph":
+      case "insertMovedParagraph":
+      case "insertTerminalCarrier": {
         const boundary = resolveParagraphBoundary(snapshot, resolver, instruction.boundary);
         if (!boundary) {
           issues.push(
@@ -680,9 +711,63 @@ export const preflightDocxComparisonProgram = ({
           );
           break;
         }
+        if (instruction.type === "insertTerminalCarrier") {
+          const breakOwner = resolveSource(instruction.breakOwner);
+          if (breakOwner.type === "unsupported") {
+            issues.push(
+              issue(
+                instruction,
+                instructionIndex,
+                breakOwner.reason,
+                sourceBlockId(instruction.breakOwner),
+              ),
+            );
+            break;
+          }
+          const breakOwnerAttrs = expectParagraphAttrs(breakOwner.block.node);
+          if (
+            breakOwnerAttrs.pPrMark != null ||
+            hasSerializableParagraphPropertyChange(breakOwnerAttrs._propertyChanges)
+          ) {
+            issues.push(
+              issue(
+                instruction,
+                instructionIndex,
+                "pending-paragraph-change",
+                sourceBlockId(instruction.breakOwner),
+              ),
+            );
+            break;
+          }
+          if (breakOwner.block.from !== boundary.from) {
+            issues.push(
+              issue(
+                instruction,
+                instructionIndex,
+                "unrepresentable-paragraph-boundary",
+                sourceBlockId(instruction.breakOwner),
+              ),
+            );
+            break;
+          }
+          prepared.push(
+            Object.freeze({
+              type: instruction.type,
+              boundary,
+              breakOwner: breakOwner.block,
+              target: instruction.target,
+              originalIndex: instructionIndex,
+              schedule: Object.freeze({
+                phase: "insertion",
+                position: boundary.insertionPosition,
+              }),
+            }),
+          );
+          break;
+        }
         prepared.push(
           Object.freeze({
-            type: "insertParagraph",
+            type: instruction.type,
             boundary,
             target: instruction.target,
             originalIndex: instructionIndex,
@@ -726,88 +811,299 @@ export const preflightDocxComparisonProgram = ({
         );
         break;
       }
-      case "deleteTrailingParagraphs": {
-        const chainStart = resolveSource(instruction.chainStart);
-        const deleted = instruction.deleted.map(resolveSource);
-        let rejected:
-          | {
-              readonly result: Extract<ReturnType<typeof resolveSource>, { type: "unsupported" }>;
-              readonly blockId: string;
-            }
-          | undefined;
-        if (chainStart.type === "unsupported") {
-          rejected = { result: chainStart, blockId: sourceBlockId(instruction.chainStart) };
-        } else {
-          for (const [index, result] of deleted.entries()) {
-            if (result.type !== "unsupported") continue;
-            const deletedOperand = instruction.deleted[index];
-            rejected = {
-              result,
-              blockId: sourceBlockId(
-                deletedOperand ?? panic("A trailing deletion result lost its source operand"),
-              ),
-            };
-            break;
-          }
-        }
-        if (rejected !== undefined) {
+      case "removeMovedParagraph": {
+        const source = resolveSource(instruction.source);
+        if (source.type === "unsupported") {
           issues.push(
-            issue(instruction, instructionIndex, rejected.result.reason, rejected.blockId),
+            issue(instruction, instructionIndex, source.reason, sourceBlockId(instruction.source)),
           );
           break;
         }
-        if (chainStart.type !== "ready") {
-          return panic("A trailing deletion chain lost its resolved start");
-        }
-        const resolvedDeleted = deleted.map((result) => {
-          if (result.type !== "ready") {
-            return panic("A trailing deletion chain retained an unresolved member");
+        const sourcePosition = state.doc.resolve(source.block.from);
+        let ownsRemovalBoundary = false;
+        switch (instruction.removalBoundary.type) {
+          case "successorParagraph": {
+            const successor = resolveSource(instruction.removalBoundary.successor);
+            if (successor.type === "unsupported") {
+              issues.push(
+                issue(
+                  instruction,
+                  instructionIndex,
+                  successor.reason,
+                  sourceBlockId(instruction.removalBoundary.successor),
+                ),
+              );
+              break;
+            }
+            ownsRemovalBoundary = source.block.to === successor.block.from;
+            break;
           }
-          return result.block;
-        });
-        const last = resolvedDeleted.at(-1) ?? panic("A trailing deletion chain has no carrier");
-        const sequence = [chainStart.block, ...resolvedDeleted];
-        const isContiguous = sequence.every(
-          (block, index) => index === 0 || sequence[index - 1]?.to === block.from,
-        );
+          case "successorTable": {
+            const firstTableBlock = resolveSource(instruction.removalBoundary.firstBlock);
+            if (firstTableBlock.type === "unsupported") {
+              issues.push(
+                issue(
+                  instruction,
+                  instructionIndex,
+                  firstTableBlock.reason,
+                  sourceBlockId(instruction.removalBoundary.firstBlock),
+                ),
+              );
+              break;
+            }
+            const tablePosition = state.doc.resolve(firstTableBlock.block.from);
+            for (let depth = 1; depth <= tablePosition.depth; depth++) {
+              if (
+                tablePosition.node(depth - 1) === sourcePosition.parent &&
+                tablePosition.node(depth).type.spec["tableRole"] === "table"
+              ) {
+                ownsRemovalBoundary = tablePosition.before(depth) === source.block.to;
+                break;
+              }
+            }
+            break;
+          }
+          default: {
+            const unreachable: never = instruction.removalBoundary;
+            return panic("Unhandled moved-source removal boundary", { boundary: unreachable });
+          }
+        }
         if (
-          !isContiguous ||
-          !paragraphEndsItsContainer(state.doc.resolve(last.from), last.node.type.name) ||
-          resolvedDeleted
-            .slice(0, -1)
-            .some((block) =>
-              paragraphEndsItsContainer(state.doc.resolve(block.from), block.node.type.name),
-            )
+          !ownsRemovalBoundary ||
+          paragraphEndsItsContainer(sourcePosition, source.block.node.type.name)
         ) {
           issues.push(
             issue(
               instruction,
               instructionIndex,
               "unrepresentable-paragraph-boundary",
-              instruction.deleted.at(0) === undefined
-                ? undefined
-                : sourceBlockId(instruction.deleted[0]),
+              sourceBlockId(instruction.source),
             ),
           );
           break;
         }
-        const firstDeleted =
-          resolvedDeleted.at(0) ?? panic("A trailing deletion chain lost its first member");
-        const ownedDeleted: readonly [ResolvedBlock, ...ResolvedBlock[]] = Object.freeze([
-          firstDeleted,
-          ...resolvedDeleted.slice(1),
-        ]);
         prepared.push(
           Object.freeze({
-            type: "deleteTrailingParagraphs",
-            chainStart: chainStart.block,
-            deleted: ownedDeleted,
+            type: "removeMovedParagraph",
+            source: source.block,
+            semantic: instruction,
+            originalIndex: instructionIndex,
+            schedule: sourceSchedule(source.block),
+          }),
+        );
+        break;
+      }
+      case "transitionTerminalParagraphs": {
+        const chainStart =
+          instruction.chainStart === null ? null : resolveSource(instruction.chainStart);
+        const members = instruction.sourceMembers.map(({ source, kind }) => ({
+          source: resolveSource(source),
+          operand: source,
+          kind,
+        }));
+        if (chainStart?.type === "unsupported") {
+          issues.push(
+            issue(
+              instruction,
+              instructionIndex,
+              chainStart.reason,
+              instruction.chainStart === null ? undefined : sourceBlockId(instruction.chainStart),
+            ),
+          );
+          break;
+        }
+        const rejectedMember = members.find(({ source }) => source.type === "unsupported");
+        if (rejectedMember?.source.type === "unsupported") {
+          issues.push(
+            issue(
+              instruction,
+              instructionIndex,
+              rejectedMember.source.reason,
+              sourceBlockId(rejectedMember.operand),
+            ),
+          );
+          break;
+        }
+        const resolvedMembers = members.map(({ source, kind }) => {
+          if (source.type !== "ready") {
+            return panic("A terminal transition retained an unresolved source member");
+          }
+          return Object.freeze({ source: source.block, kind });
+        });
+        const first = resolvedMembers.at(0);
+        const last = resolvedMembers.at(-1);
+        if (!first || !last) return panic("A terminal transition has no source member");
+        const resolvedChainStart = chainStart?.type === "ready" ? chainStart.block : null;
+        const sourceTables = instruction.sourceTables.map(({ operation }) => {
+          const payload = resolvedDocxTableStructureOperandPayload(operation, comparison);
+          if (payload.type !== "deleteTable") {
+            return panic("A terminal transition source table lost its deletion role");
+          }
+          const source = resolveSource(payload.source);
+          if (source.type === "unsupported") {
+            return Object.freeze({
+              type: "unsupported" as const,
+              operand: payload.source,
+              reason: source.reason,
+            });
+          }
+          const position = state.doc.resolve(source.block.from);
+          for (let depth = 1; depth <= position.depth; depth++) {
+            const node = position.node(depth);
+            if (position.node(depth - 1) === state.doc && node.type.spec["tableRole"] === "table") {
+              const from = position.before(depth);
+              return Object.freeze({
+                type: "ready" as const,
+                operation,
+                range: Object.freeze({ from, to: from + node.nodeSize }),
+              });
+            }
+          }
+          return Object.freeze({
+            type: "invalid" as const,
+            operand: payload.source,
+          });
+        });
+        const rejectedTable = sourceTables.find(({ type }) => type !== "ready");
+        if (rejectedTable) {
+          issues.push(
+            issue(
+              instruction,
+              instructionIndex,
+              rejectedTable.type === "unsupported"
+                ? rejectedTable.reason
+                : "unrepresentable-paragraph-boundary",
+              sourceBlockId(rejectedTable.operand),
+            ),
+          );
+          break;
+        }
+        const expectedParagraphs = [
+          ...(resolvedChainStart === null ? [] : [resolvedChainStart]),
+          ...resolvedMembers.map(({ source }) => source),
+        ];
+        const readySourceTables = sourceTables.map((table) => {
+          if (table.type !== "ready") {
+            return panic("A terminal transition retained an unresolved source table");
+          }
+          return table;
+        });
+        type PhysicalTerminalMember =
+          | { readonly type: "paragraph"; readonly range: ResolvedBlock }
+          | {
+              readonly type: "table";
+              readonly range: { readonly from: number; readonly to: number };
+              readonly operation: ResolvedDocxTableStructureOperand;
+            };
+        const physicalSequence: PhysicalTerminalMember[] = [];
+        let paragraphIndex = 0;
+        let tableIndex = 0;
+        while (
+          paragraphIndex < expectedParagraphs.length ||
+          tableIndex < readySourceTables.length
+        ) {
+          const paragraph = expectedParagraphs[paragraphIndex];
+          const table = readySourceTables[tableIndex];
+          if (paragraph && (!table || paragraph.from < table.range.from)) {
+            physicalSequence.push({ type: "paragraph", range: paragraph });
+            paragraphIndex++;
+            continue;
+          }
+          if (!table) return panic("A terminal transition lost its physical source member");
+          physicalSequence.push({ type: "table", range: table.range, operation: table.operation });
+          tableIndex++;
+        }
+        const isContiguous = physicalSequence.every(
+          ({ range }, index) => index === 0 || physicalSequence[index - 1]?.range.to === range.from,
+        );
+        const retainsCanonicalOrder =
+          expectedParagraphs.every(
+            ({ from }, index) =>
+              index === 0 || (expectedParagraphs[index - 1]?.from ?? from) < from,
+          ) &&
+          readySourceTables.every(
+            ({ range }, index) =>
+              index === 0 || (readySourceTables[index - 1]?.range.from ?? range.from) < range.from,
+          );
+        const successorByParagraphFrom = new Map<number, PhysicalTerminalMember | undefined>();
+        for (const [index, member] of physicalSequence.entries()) {
+          if (member.type === "paragraph") {
+            successorByParagraphFrom.set(member.range.from, physicalSequence[index + 1]);
+          }
+        }
+        const chainStartOwnsFirstEdge =
+          instruction.targetCarrierKind === "surviving" ||
+          instruction.targetCarrierKind === "pairedRewrite";
+        const edgeOwners = chainStartOwnsFirstEdge
+          ? [
+              ...(resolvedChainStart === null ? [] : [resolvedChainStart]),
+              ...resolvedMembers.slice(0, -1).map(({ source }) => source),
+            ]
+          : resolvedMembers.slice(0, -1).map(({ source }) => source);
+        const pendingParagraphChange = [...edgeOwners, last.source].find((block) => {
+          const attrs = expectParagraphAttrs(block.node);
+          return (
+            attrs.pPrMark != null || hasSerializableParagraphPropertyChange(attrs._propertyChanges)
+          );
+        });
+        const allJoinable = edgeOwners.every((block) => {
+          const successor = successorByParagraphFrom.get(block.from);
+          return successor?.type === "table" || canJoin(state.doc, block.to);
+        });
+        if (
+          !isContiguous ||
+          !retainsCanonicalOrder ||
+          (chainStartOwnsFirstEdge && resolvedChainStart === null) ||
+          !paragraphEndsItsContainer(
+            state.doc.resolve(last.source.from),
+            last.source.node.type.name,
+          ) ||
+          resolvedMembers
+            .slice(0, -1)
+            .some(({ source }) =>
+              paragraphEndsItsContainer(state.doc.resolve(source.from), source.node.type.name),
+            ) ||
+          !allJoinable
+        ) {
+          issues.push(
+            issue(
+              instruction,
+              instructionIndex,
+              "unrepresentable-paragraph-boundary",
+              sourceBlockId(instruction.sourceMembers[0].source),
+            ),
+          );
+          break;
+        }
+        if (pendingParagraphChange) {
+          const member = [...edgeOwners, last.source].find(
+            (block) => block.from === pendingParagraphChange.from,
+          );
+          const operand = instruction.sourceMembers.find(({ source }) => {
+            const resolved = resolveSource(source);
+            return resolved.type === "ready" && resolved.block.from === member?.from;
+          });
+          issues.push(
+            issue(
+              instruction,
+              instructionIndex,
+              "pending-paragraph-change",
+              operand === undefined ? undefined : sourceBlockId(operand.source),
+            ),
+          );
+          break;
+        }
+        prepared.push(
+          Object.freeze({
+            type: "transitionTerminalParagraphs",
+            chainStart: resolvedChainStart,
+            sourceMembers: Object.freeze([first, ...resolvedMembers.slice(1)]),
             semantic: instruction,
             originalIndex: instructionIndex,
             schedule: Object.freeze({
               phase: "source",
-              from: chainStart.block.from,
-              to: last.to,
+              from: resolvedChainStart?.from ?? first.source.from,
+              to: last.source.to,
             }),
           }),
         );
@@ -910,96 +1206,6 @@ export const preflightDocxComparisonProgram = ({
             target: instruction.target,
             originalIndex: instructionIndex,
             sourceSchedule: sourceSchedule(source.block),
-            destinationSchedule: Object.freeze({
-              phase: "insertion",
-              position: boundary.insertionPosition,
-            }),
-          }),
-        );
-        break;
-      }
-      case "moveTerminalParagraph": {
-        const predecessor = resolveSource(instruction.predecessor);
-        const source = resolveSource(instruction.source);
-        const boundary = resolveParagraphBoundary(snapshot, resolver, instruction.boundary);
-        if (predecessor.type === "unsupported") {
-          issues.push(
-            issue(
-              instruction,
-              instructionIndex,
-              predecessor.reason,
-              sourceBlockId(instruction.predecessor),
-            ),
-          );
-          break;
-        }
-        if (source.type === "unsupported") {
-          issues.push(
-            issue(instruction, instructionIndex, source.reason, sourceBlockId(instruction.source)),
-          );
-          break;
-        }
-        if (!boundary) {
-          issues.push(
-            issue(
-              instruction,
-              instructionIndex,
-              "missing-anchor",
-              sourceBlockId(instruction.boundary.paragraph),
-            ),
-          );
-          break;
-        }
-        const predecessorPosition = state.doc.resolve(predecessor.block.from);
-        const sourcePosition = state.doc.resolve(source.block.from);
-        if (
-          predecessor.block.from >= source.block.from ||
-          predecessorPosition.parent !== sourcePosition.parent ||
-          !canJoin(state.doc, predecessor.block.to) ||
-          paragraphEndsItsContainer(predecessorPosition, predecessor.block.node.type.name) ||
-          !paragraphEndsItsContainer(sourcePosition, source.block.node.type.name)
-        ) {
-          issues.push(
-            issue(
-              instruction,
-              instructionIndex,
-              "unrepresentable-paragraph-boundary",
-              sourceBlockId(instruction.source),
-            ),
-          );
-          break;
-        }
-        const predecessorAttrs = expectParagraphAttrs(predecessor.block.node);
-        const sourceAttrs = expectParagraphAttrs(source.block.node);
-        if (
-          predecessorAttrs.pPrMark != null ||
-          sourceAttrs.pPrMark != null ||
-          hasSerializableParagraphPropertyChange(sourceAttrs._propertyChanges)
-        ) {
-          issues.push(
-            issue(
-              instruction,
-              instructionIndex,
-              "pending-paragraph-change",
-              sourceBlockId(instruction.source),
-            ),
-          );
-          break;
-        }
-        prepared.push(
-          Object.freeze({
-            type: "moveTerminalParagraph",
-            predecessor: predecessor.block,
-            source: source.block,
-            boundary,
-            target: instruction.target,
-            semantic: instruction,
-            originalIndex: instructionIndex,
-            sourceSchedule: Object.freeze({
-              phase: "source",
-              from: predecessor.block.from,
-              to: source.block.to,
-            }),
             destinationSchedule: Object.freeze({
               phase: "insertion",
               position: boundary.insertionPosition,
@@ -1605,6 +1811,19 @@ const applyInsertionRun = ({
     readonly revisionIds: readonly number[];
   }[] = [];
   for (const { instruction } of run.members) {
+    if (instruction.type === "insertTerminalCarrier") {
+      const breakRevisionId = nextRevisionId++;
+      prepared.push({
+        instruction,
+        paragraph: instruction.boundary.node.type.create({
+          ...stripBlockIdentityAttrs(instruction.boundary.node.attrs),
+          pPrMark: null,
+          _propertyChanges: null,
+        }),
+        revisionIds: Object.freeze([breakRevisionId]),
+      });
+      continue;
+    }
     const textRevisionId = instruction.target.text.length > 0 ? nextRevisionId++ : null;
     const paragraphRevisionId = nextRevisionId++;
     const revisionIds = [...(textRevisionId === null ? [] : [textRevisionId]), paragraphRevisionId];
@@ -1627,6 +1846,14 @@ const applyInsertionRun = ({
     run.position,
     prepared.map(({ paragraph }) => paragraph),
   );
+  for (const member of prepared) {
+    if (member.instruction.type !== "insertTerminalCarrier") continue;
+    const breakRevisionId = member.revisionIds[0] ?? panic("A terminal carrier lost its break id");
+    tr.setNodeAttribute(member.instruction.breakOwner.from, "pPrMark", {
+      kind: "ins",
+      info: { id: breakRevisionId, author, date },
+    });
+  }
   let position = run.position;
   const applied: AppliedInsertionMember[] = [];
   for (const member of prepared) {
@@ -1909,59 +2136,17 @@ export const executePreflightedDocxComparison = ({
     const instructionRevisionIds: number[] = [];
     if (task.type === "moveSource") {
       const { instruction } = task;
-      if (instruction.type === "moveParagraph") {
-        const deleted = markParagraphDeletion({
-          tr,
-          source: instruction.source,
-          revisionId,
-          author,
-          date: revisionStamp.date,
-          kind: "moveFrom",
-        });
-        tr = deleted.transaction;
-        revisionId = deleted.nextRevisionId;
-        instructionRevisionIds.push(...deleted.revisionIds);
-      } else {
-        const deletedText = markParagraphTextDeletion({
-          tr,
-          source: instruction.source,
-          revisionId,
-          author,
-          date: revisionStamp.date,
-          kind: "moveFrom",
-        });
-        tr = deletedText.transaction;
-        revisionId = deletedText.nextRevisionId;
-        instructionRevisionIds.push(...deletedText.revisionIds);
-        const paragraphRevisionId = revisionId++;
-        tr.setNodeAttribute(instruction.predecessor.from, "pPrMark", {
-          kind: "moveFrom",
-          info: { id: paragraphRevisionId, author, date: revisionStamp.date },
-        });
-        instructionRevisionIds.push(paragraphRevisionId);
-        const carrier =
-          tr.doc.nodeAt(instruction.source.from) ??
-          panic("A preflighted terminal move lost its paragraph-mark carrier");
-        const propertyRevisions: PropertyRevisionAllocation = {
-          nextRevisionId: revisionId,
-          revisionIds: [],
-        };
-        tr = applyBlockParagraphProperties({
-          tr,
-          position: instruction.source.from,
-          node: carrier,
-          properties: instruction.semantic.carrierTargetProperties,
-          styleResolver,
-          numbering,
-          revisionInfo: allocatePropertyRevision({
-            allocation: propertyRevisions,
-            author,
-            date: revisionStamp.date,
-          }),
-        }).tr;
-        revisionId = propertyRevisions.nextRevisionId;
-        instructionRevisionIds.push(...propertyRevisions.revisionIds);
-      }
+      const deleted = markParagraphDeletion({
+        tr,
+        source: instruction.source,
+        revisionId,
+        author,
+        date: revisionStamp.date,
+        kind: "moveFrom",
+      });
+      tr = deleted.transaction;
+      revisionId = deleted.nextRevisionId;
+      instructionRevisionIds.push(...deleted.revisionIds);
       if (tr.steps.length === stepsBefore) {
         return panic("A preflighted DOCX move source produced no transaction step");
       }
@@ -1999,6 +2184,20 @@ export const executePreflightedDocxComparison = ({
           revisionId,
           author,
           date: revisionStamp.date,
+        });
+        tr = deleted.transaction;
+        revisionId = deleted.nextRevisionId;
+        instructionRevisionIds.push(...deleted.revisionIds);
+        break;
+      }
+      case "removeMovedParagraph": {
+        const deleted = markParagraphDeletion({
+          tr,
+          source: instruction.source,
+          revisionId,
+          author,
+          date: revisionStamp.date,
+          kind: "moveFrom",
         });
         tr = deleted.transaction;
         revisionId = deleted.nextRevisionId;
@@ -2184,25 +2383,116 @@ export const executePreflightedDocxComparison = ({
         instructionRevisionIds.push(...properties.revisionIds);
         break;
       }
-      case "deleteTrailingParagraphs": {
-        for (const source of instruction.deleted.toReversed()) {
-          const deleted = markParagraphDeletion({
+      case "transitionTerminalParagraphs": {
+        if (instruction.semantic.targetCarrierKind === "pairedRewrite") {
+          const source =
+            instruction.chainStart ??
+            panic("A terminal chain-start rewrite lost its source operand");
+          const deleted = markParagraphTextDeletion({
             tr,
             source,
             revisionId,
             author,
             date: revisionStamp.date,
+            kind: "del",
           });
           tr = deleted.transaction;
           revisionId = deleted.nextRevisionId;
           instructionRevisionIds.push(...deleted.revisionIds);
         }
-        const paragraphRevisionId = revisionId++;
-        tr.setNodeAttribute(instruction.chainStart.from, "pPrMark", {
-          kind: "del",
-          info: { id: paragraphRevisionId, author, date: revisionStamp.date },
-        });
-        instructionRevisionIds.push(paragraphRevisionId);
+        for (const member of instruction.sourceMembers) {
+          const deleted = markParagraphTextDeletion({
+            tr,
+            source: member.source,
+            revisionId,
+            author,
+            date: revisionStamp.date,
+            kind: member.kind,
+          });
+          tr = deleted.transaction;
+          revisionId = deleted.nextRevisionId;
+          instructionRevisionIds.push(...deleted.revisionIds);
+        }
+        const chainStartOwnsFirstEdge =
+          instruction.semantic.targetCarrierKind === "surviving" ||
+          instruction.semantic.targetCarrierKind === "pairedRewrite";
+        const edgeOwners = chainStartOwnsFirstEdge
+          ? [
+              ...(instruction.chainStart === null ? [] : [instruction.chainStart]),
+              ...instruction.sourceMembers.slice(0, -1).map(({ source }) => source),
+            ]
+          : instruction.sourceMembers.slice(0, -1).map(({ source }) => source);
+        const edgeKinds = chainStartOwnsFirstEdge
+          ? instruction.sourceMembers.map(({ kind }) => kind)
+          : instruction.sourceMembers.slice(0, -1).map(({ kind }) => kind);
+        for (const [index, owner] of edgeOwners.entries()) {
+          const kind =
+            edgeKinds[index] ?? panic("A terminal transition edge lost its revision kind");
+          const paragraphRevisionId = revisionId++;
+          tr.setNodeAttribute(owner.from, "pPrMark", {
+            kind,
+            info: { id: paragraphRevisionId, author, date: revisionStamp.date },
+          });
+          instructionRevisionIds.push(paragraphRevisionId);
+        }
+        const carrier = instruction.sourceMembers.at(-1)?.source;
+        if (!carrier) return panic("A terminal transition lost its physical carrier");
+        if (
+          instruction.semantic.targetCarrierKind !== "surviving" &&
+          instruction.semantic.targetCarrier.text.length > 0
+        ) {
+          const insertionType =
+            tr.doc.type.schema.marks["insertion"] ??
+            panic("A terminal transition lost tracked-text schema support");
+          const textRevisionId = revisionId++;
+          const from = carrier.from + 1;
+          tr.insertText(instruction.semantic.targetCarrier.text, from);
+          tr.addMark(
+            from,
+            from + instruction.semantic.targetCarrier.text.length,
+            insertionType.create({
+              revisionId: textRevisionId,
+              author,
+              date: revisionStamp.date,
+              ...(instruction.semantic.targetCarrierKind === "moveTo" && {
+                moveKind: "moveTo",
+              }),
+            }),
+          );
+          for (const run of instruction.semantic.targetCarrier.runs) {
+            applyExactDirectFormatting({
+              tr,
+              from: from + run.startOffset,
+              to: from + run.endOffset,
+              formatting: run.formatting,
+              styleResolver,
+            });
+          }
+          instructionRevisionIds.push(textRevisionId);
+        }
+        if (instruction.semantic.targetCarrierProperties !== null) {
+          const liveCarrier =
+            tr.doc.nodeAt(carrier.from) ?? panic("A terminal transition lost its live carrier");
+          const propertyRevisions: PropertyRevisionAllocation = {
+            nextRevisionId: revisionId,
+            revisionIds: [],
+          };
+          tr = applyBlockParagraphProperties({
+            tr,
+            position: carrier.from,
+            node: liveCarrier,
+            properties: instruction.semantic.targetCarrierProperties,
+            styleResolver,
+            numbering,
+            revisionInfo: allocatePropertyRevision({
+              allocation: propertyRevisions,
+              author,
+              date: revisionStamp.date,
+            }),
+          }).tr;
+          revisionId = propertyRevisions.nextRevisionId;
+          instructionRevisionIds.push(...propertyRevisions.revisionIds);
+        }
         break;
       }
       default: {
@@ -2268,10 +2558,7 @@ export const executePreflightedDocxComparison = ({
         panic("A DOCX comparison instruction completed without an execution receipt", {
           instructionIndex: instruction.originalIndex,
         });
-      const expectedPartCount =
-        instruction.type === "moveParagraph" || instruction.type === "moveTerminalParagraph"
-          ? 2
-          : 1;
+      const expectedPartCount = instruction.type === "moveParagraph" ? 2 : 1;
       if (
         recorded.parts.size !== expectedPartCount ||
         Array.from({ length: expectedPartCount }, (_, part) => part).some(

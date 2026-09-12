@@ -573,7 +573,7 @@ describe("container-safe structural alignment", () => {
     expect(steps.map(({ type }) => type)).toContain("baseTable");
   });
 
-  test("owns the predecessor and revised carrier for a terminal paragraph removal", () => {
+  test("owns the predecessor for a terminal paragraph removal", () => {
     const alpha = block("alpha", "Alpha");
     const beta = block("beta", "Beta");
     const gamma = block("gamma", "Gamma");
@@ -593,7 +593,6 @@ describe("container-safe structural alignment", () => {
     expect(source.removalBoundary).toEqual({
       type: "terminalPredecessor",
       predecessor: beta,
-      targetCarrier: revisedBeta,
       containerAlignment: source.moveScope.containerAlignment,
     });
   });
@@ -618,7 +617,6 @@ describe("container-safe structural alignment", () => {
     expect(source.removalBoundary).toEqual({
       type: "terminalPredecessor",
       predecessor: alpha,
-      targetCarrier: revisedAlpha,
       containerAlignment: source.moveScope.containerAlignment,
     });
     const sourceEdgeOwners = steps.flatMap((step) => {

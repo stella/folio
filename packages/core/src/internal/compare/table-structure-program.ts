@@ -200,6 +200,13 @@ type TerminalCarrier = {
   readonly expected: PMNode;
 };
 
+type ResolvedTerminalCarrier = NonNullable<
+  Extract<
+    ResolvedDocxTableStructureOperandPayload,
+    { readonly type: "insertTable" }
+  >["terminalCarrier"]
+>;
+
 type RowEdit =
   | {
       readonly type: "insert";
@@ -562,14 +569,14 @@ const insertionBoundary = (
 };
 
 const terminalCarrier = (
-  source: ResolvedDocxSourceOperand | undefined,
+  carrier: ResolvedTerminalCarrier | undefined,
   sourceTable: SourceTable | null,
   sourceSnapshot: ResolvedDocxStorySnapshot,
   resolver: FolioStableBlockResolver,
   doc: PMNode,
 ): TerminalCarrier | TableStructurePreflightResult | undefined => {
-  if (!source) return undefined;
-  const block = resolvedDocxSourceOperandBlock(source, sourceSnapshot);
+  if (!carrier) return undefined;
+  const block = resolvedDocxSourceOperandBlock(carrier.source, sourceSnapshot);
   const resolved = resolver.resolve(block.identity.id);
   if (resolved.type === "unsupported" || resolved.blockNode.type.name !== "paragraph") {
     return unsupported({ reason: "terminal-carrier-missing" });
@@ -583,7 +590,27 @@ const terminalCarrier = (
   if (doc.resolve(resolved.blockFrom).depth !== 0) {
     return unsupported({ reason: "terminal-source-not-body-peer" });
   }
-  if (sourceTable && sourceTable.position + sourceTable.expected.nodeSize !== resolved.blockFrom) {
+  let precedingEnd =
+    sourceTable === null ? undefined : sourceTable.position + sourceTable.expected.nodeSize;
+  for (const source of carrier.precedingSources) {
+    const precedingBlock = resolvedDocxSourceOperandBlock(source, sourceSnapshot);
+    const preceding = resolver.resolve(precedingBlock.identity.id);
+    if (
+      preceding.type === "unsupported" ||
+      preceding.blockNode.type.name !== "paragraph" ||
+      doc.resolve(preceding.blockFrom).depth !== 0
+    ) {
+      return unsupported({ reason: "terminal-source-not-body-peer" });
+    }
+    if (hasPendingRevision(preceding.blockNode)) {
+      return unsupported({ reason: "pending-structural-revision", side: "source" });
+    }
+    if (precedingEnd !== undefined && preceding.blockFrom !== precedingEnd) {
+      return unsupported({ reason: "terminal-carrier-missing" });
+    }
+    precedingEnd = preceding.blockTo;
+  }
+  if (precedingEnd !== undefined && precedingEnd !== resolved.blockFrom) {
     return unsupported({ reason: "terminal-carrier-missing" });
   }
   return Object.freeze({ position: resolved.blockFrom, expected: resolved.blockNode });
@@ -1270,13 +1297,7 @@ const preflightTableStructureComponent = ({
         doc,
       );
       if ("status" in boundary) return boundary;
-      const carrier = terminalCarrier(
-        payload.terminalCarrier?.source,
-        null,
-        baseSnapshot,
-        resolver,
-        doc,
-      );
+      const carrier = terminalCarrier(payload.terminalCarrier, null, baseSnapshot, resolver, doc);
       if (carrier && "status" in carrier) return carrier;
       if (carrier && boundary.position !== carrier.position + carrier.expected.nodeSize) {
         return unsupported({ reason: "terminal-carrier-missing" });
@@ -1318,13 +1339,7 @@ const preflightTableStructureComponent = ({
       if ("status" in target) return target;
       const counted = countTarget(target);
       if (counted) return counted;
-      const carrier = terminalCarrier(
-        payload.terminalCarrier?.source,
-        source,
-        baseSnapshot,
-        resolver,
-        doc,
-      );
+      const carrier = terminalCarrier(payload.terminalCarrier, source, baseSnapshot, resolver, doc);
       if (carrier && "status" in carrier) return carrier;
       group.whole = {
         type: "replaceTable",

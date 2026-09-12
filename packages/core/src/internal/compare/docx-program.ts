@@ -16,6 +16,7 @@ import type {
 import type {
   FolioContentBlock,
   FolioContentParagraphInsertionBoundary,
+  FolioContentParagraphRemovalBoundary,
 } from "../../compare/content-types";
 import type { CompareChange } from "../../compare/types";
 import { groupFolioContentTableRows } from "../../compare/content-alignment";
@@ -41,6 +42,7 @@ import {
   resolvedDocxInsertedEventOperandPayload,
   resolvedDocxMergeEventOperandPayload,
   resolvedDocxMoveEventOperandPayload,
+  resolvedDocxParagraphMarkDispositions,
   resolvedDocxPairedEventOperandPayload,
   resolvedDocxPairRangeOperand,
   resolvedDocxPairRangeOperandRelation,
@@ -49,15 +51,15 @@ import {
   resolvedDocxSeparatorOperand,
   resolvedDocxSplitEventOperandPayload,
   resolvedDocxStoryComparisonPayload,
-  resolvedDocxTerminalReplacementOperandPayload,
+  resolvedDocxTerminalTransitionOperandPayload,
   resolvedDocxTableFormatOperandPayload,
   resolvedDocxTableStructureOperandPayload,
+  resolvedDocxTableStructureParagraphMarkOwners,
   resolvedDocxTableStructureReportOwners,
   resolvedDocxTargetBlockOperand,
   resolvedDocxTargetBlockOperandBlock,
-  resolvedDocxTrailingDeletionOperandPayload,
-  resolvedDocxWholeBlockReplacementOperand,
   type ResolvedDocxDeletedEventOperand,
+  type ResolvedDocxEventOperandPayload,
   type ResolvedDocxFormattingRangeOperand,
   type ResolvedDocxInsertedEventOperand,
   type ResolvedDocxMergeEventOperand,
@@ -67,11 +69,12 @@ import {
   type ResolvedDocxSeparatorOperand,
   type ResolvedDocxStoryComparison,
   type ResolvedDocxSplitEventOperand,
-  type ResolvedDocxTerminalReplacementOperand,
+  type ResolvedDocxTerminalTransitionOperand,
+  type ResolvedDocxTerminalDeletedTable,
+  type ResolvedDocxTerminalSourceMember,
   type ResolvedDocxTableFormatOperand,
   type ResolvedDocxTableStructureOperand,
   type ResolvedDocxTargetBlockOperand,
-  type ResolvedDocxTrailingDeletionOperand,
   type ResolvedDocxWholeBlockReplacementOperand,
 } from "./resolved-docx-story-comparison";
 
@@ -103,11 +106,6 @@ type DocxComparisonRangePlanInput = {
 
 export type DocxComparisonSourceOperand = ResolvedDocxSourceOperand;
 
-export type DocxComparisonSourceOperandGroup = readonly [
-  DocxComparisonSourceOperand,
-  ...DocxComparisonSourceOperand[],
-];
-
 export type DocxComparisonParagraphInsertionBoundary = {
   readonly type: "afterParagraph" | "beforeParagraph";
   readonly paragraph: DocxComparisonSourceOperand;
@@ -122,6 +120,18 @@ export type DocxComparisonParagraphRemovalBoundary =
       readonly type: "successorTable";
       readonly firstBlock: DocxComparisonSourceOperand;
     };
+
+export type DocxComparisonTerminalSourceMember = {
+  readonly source: DocxComparisonSourceOperand;
+  readonly kind: "del" | "moveFrom";
+};
+
+export type DocxComparisonTerminalSourceMemberGroup = readonly [
+  DocxComparisonTerminalSourceMember,
+  ...DocxComparisonTerminalSourceMember[],
+];
+
+export type DocxComparisonTerminalDeletedTable = ResolvedDocxTerminalDeletedTable;
 
 /**
  * Closed transport vocabulary for one DOCX story. These are not generic edit
@@ -143,6 +153,12 @@ export type DocxComparisonInstructionInput =
       readonly target: ResolvedDocxTargetBlockOperand;
     }
   | {
+      readonly type: "insertTerminalCarrier";
+      readonly boundary: DocxComparisonParagraphInsertionBoundary;
+      readonly breakOwner: DocxComparisonSourceOperand;
+      readonly target: ResolvedDocxTargetBlockOperand;
+    }
+  | {
       readonly type: "deleteParagraph";
       readonly source: DocxComparisonSourceOperand;
     }
@@ -154,12 +170,14 @@ export type DocxComparisonInstructionInput =
       readonly target: ResolvedDocxTargetBlockOperand;
     }
   | {
-      readonly type: "moveTerminalParagraph";
-      readonly predecessor: DocxComparisonSourceOperand;
-      readonly source: DocxComparisonSourceOperand;
-      readonly carrierTarget: ResolvedDocxTargetBlockOperand;
+      readonly type: "insertMovedParagraph";
       readonly boundary: DocxComparisonParagraphInsertionBoundary;
       readonly target: ResolvedDocxTargetBlockOperand;
+    }
+  | {
+      readonly type: "removeMovedParagraph";
+      readonly source: DocxComparisonSourceOperand;
+      readonly removalBoundary: DocxComparisonParagraphRemovalBoundary;
     }
   | {
       readonly type: "splitParagraph";
@@ -174,10 +192,12 @@ export type DocxComparisonInstructionInput =
       readonly separator: ResolvedDocxSeparatorOperand;
     }
   | {
-      readonly type: "deleteTrailingParagraphs";
-      readonly chainStart: DocxComparisonSourceOperand;
-      /** Paragraphs removed after the chain start, in base document order. */
-      readonly deleted: DocxComparisonSourceOperandGroup;
+      readonly type: "transitionTerminalParagraphs";
+      readonly chainStart: DocxComparisonSourceOperand | null;
+      readonly sourceMembers: DocxComparisonTerminalSourceMemberGroup;
+      readonly sourceTables: readonly DocxComparisonTerminalDeletedTable[];
+      readonly targetCarrier: ResolvedDocxTargetBlockOperand;
+      readonly targetCarrierKind: "surviving" | "ins" | "moveTo" | "pairedRewrite";
     }
   | {
       readonly type: "setParagraphProperties";
@@ -232,12 +252,8 @@ export type DocxComparisonOperationInput =
       readonly event: ResolvedDocxMergeEventOperand;
     }
   | {
-      readonly type: "deleteTrailingParagraphs";
-      readonly operation: ResolvedDocxTrailingDeletionOperand;
-    }
-  | {
-      readonly type: "replaceTerminalParagraph";
-      readonly operation: ResolvedDocxTerminalReplacementOperand;
+      readonly type: "terminalTransition";
+      readonly operation: ResolvedDocxTerminalTransitionOperand;
     }
   | {
       readonly type: "tableStructure";
@@ -318,6 +334,12 @@ type DocxComparisonInstructionPayload =
       readonly target: DocxComparisonParagraphTarget;
     }
   | {
+      readonly type: "insertTerminalCarrier";
+      readonly boundary: DocxComparisonParagraphInsertionBoundary;
+      readonly breakOwner: DocxComparisonSourceOperand;
+      readonly target: DocxComparisonParagraphTarget;
+    }
+  | {
       readonly type: "deleteParagraph";
       readonly source: DocxComparisonSourceOperand;
     }
@@ -329,12 +351,14 @@ type DocxComparisonInstructionPayload =
       readonly target: DocxComparisonParagraphTarget;
     }
   | {
-      readonly type: "moveTerminalParagraph";
-      readonly predecessor: DocxComparisonSourceOperand;
-      readonly source: DocxComparisonSourceOperand;
-      readonly carrierTargetProperties: Readonly<FolioAIBlockParagraphProperties>;
+      readonly type: "insertMovedParagraph";
       readonly boundary: DocxComparisonParagraphInsertionBoundary;
       readonly target: DocxComparisonParagraphTarget;
+    }
+  | {
+      readonly type: "removeMovedParagraph";
+      readonly source: DocxComparisonSourceOperand;
+      readonly removalBoundary: DocxComparisonParagraphRemovalBoundary;
     }
   | {
       readonly type: "splitParagraph";
@@ -358,9 +382,13 @@ type DocxComparisonInstructionPayload =
       readonly target: DocxComparisonParagraphTarget;
     }
   | {
-      readonly type: "deleteTrailingParagraphs";
-      readonly chainStart: DocxComparisonSourceOperand;
-      readonly deleted: DocxComparisonSourceOperandGroup;
+      readonly type: "transitionTerminalParagraphs";
+      readonly chainStart: DocxComparisonSourceOperand | null;
+      readonly sourceMembers: DocxComparisonTerminalSourceMemberGroup;
+      readonly sourceTables: readonly DocxComparisonTerminalDeletedTable[];
+      readonly targetCarrier: DocxComparisonParagraphTarget;
+      readonly targetCarrierKind: "surviving" | "ins" | "moveTo" | "pairedRewrite";
+      readonly targetCarrierProperties: Readonly<FolioAIBlockParagraphProperties> | null;
     }
   | {
       readonly type: "setParagraphProperties";
@@ -864,25 +892,29 @@ const canonicalParagraphInsertionBoundary = (
   }
 };
 
-const ownSourceOperandGroup = (
-  sources: DocxComparisonSourceOperandGroup,
+const canonicalParagraphRemovalBoundary = (
+  boundary: Extract<
+    FolioContentParagraphRemovalBoundary,
+    { readonly type: "successorParagraph" | "successorTable" }
+  >,
   snapshot: ResolvedDocxStorySnapshot,
-): DocxComparisonSourceOperandGroup => {
-  if (sources.length === 0 || sources.length > MAX_DOCX_COMPARISON_INSTRUCTIONS) {
-    return panic("A trailing paragraph run has an invalid member count", {
-      maximum: MAX_DOCX_COMPARISON_INSTRUCTIONS,
-      actual: sources.length,
-    });
+): DocxComparisonParagraphRemovalBoundary => {
+  switch (boundary.type) {
+    case "successorParagraph":
+      return Object.freeze({
+        type: "successorParagraph",
+        successor: resolvedDocxSourceOperand(snapshot, boundary.successor),
+      });
+    case "successorTable":
+      return Object.freeze({
+        type: "successorTable",
+        firstBlock: resolvedDocxSourceOperand(snapshot, boundary.firstBlock),
+      });
+    default: {
+      const unreachable: never = boundary;
+      return panic("Unhandled canonical paragraph removal boundary", { boundary: unreachable });
+    }
   }
-  const owned = sources.map((source) => ownSourceOperand(source, snapshot));
-  const first = owned.at(0) ?? panic("A trailing paragraph run lost its first member");
-  const identities = new Set(
-    owned.map((source) => resolvedDocxSourceOperandBlock(source, snapshot).identity.id),
-  );
-  if (identities.size !== owned.length) {
-    return panic("A trailing paragraph run repeats a source identity");
-  }
-  return Object.freeze([first, ...owned.slice(1)]);
 };
 
 const ownParagraphTargetBlock = (
@@ -1240,6 +1272,18 @@ const compileInstruction = (
         boundary: ownParagraphInsertionBoundary(input.boundary, sourceSnapshot),
         target: ownParagraphTarget(input.target, comparison, targetSnapshot),
       });
+    case "insertTerminalCarrier": {
+      const boundary = ownParagraphInsertionBoundary(input.boundary, sourceSnapshot);
+      const breakOwner = ownSourceOperand(input.breakOwner, sourceSnapshot);
+      const target = ownParagraphTarget(input.target, comparison, targetSnapshot);
+      if (boundary.paragraph !== breakOwner || boundary.type !== "afterParagraph") {
+        return panic("A terminal carrier must extend its exact source paragraph");
+      }
+      if (target.text.length > 0) {
+        return panic("A terminal table carrier must be an empty paragraph");
+      }
+      return Object.freeze({ type: "insertTerminalCarrier", boundary, breakOwner, target });
+    }
     case "deleteParagraph":
       return Object.freeze({
         type: "deleteParagraph",
@@ -1253,18 +1297,17 @@ const compileInstruction = (
         boundary: ownParagraphInsertionBoundary(input.boundary, sourceSnapshot),
         target: ownParagraphTarget(input.target, comparison, targetSnapshot),
       });
-    case "moveTerminalParagraph":
+    case "insertMovedParagraph":
       return Object.freeze({
-        type: "moveTerminalParagraph",
-        predecessor: ownSourceOperand(input.predecessor, sourceSnapshot),
-        source: ownSourceOperand(input.source, sourceSnapshot),
-        carrierTargetProperties: ownParagraphProperties(
-          docxParagraphPropertiesFromBlock(
-            resolvedDocxTargetBlockOperandBlock(input.carrierTarget, comparison),
-          ),
-        ),
+        type: "insertMovedParagraph",
         boundary: ownParagraphInsertionBoundary(input.boundary, sourceSnapshot),
         target: ownParagraphTarget(input.target, comparison, targetSnapshot),
+      });
+    case "removeMovedParagraph":
+      return Object.freeze({
+        type: "removeMovedParagraph",
+        source: ownSourceOperand(input.source, sourceSnapshot),
+        removalBoundary: ownParagraphRemovalBoundary(input.removalBoundary, sourceSnapshot),
       });
     case "splitParagraph": {
       const firstCompiled = compilePairRangeOperand(
@@ -1437,19 +1480,43 @@ const compileInstruction = (
         target,
       });
     }
-    case "deleteTrailingParagraphs": {
-      const chainStart = ownSourceOperand(input.chainStart, sourceSnapshot);
-      const deleted = ownSourceOperandGroup(input.deleted, sourceSnapshot);
-      const chainStartId = resolvedDocxSourceOperandBlock(chainStart, sourceSnapshot).identity.id;
-      if (
-        deleted.some(
-          (source) =>
-            resolvedDocxSourceOperandBlock(source, sourceSnapshot).identity.id === chainStartId,
-        )
-      ) {
-        return panic("A trailing paragraph run includes its surviving chain start");
+    case "transitionTerminalParagraphs": {
+      const chainStart =
+        input.chainStart === null ? null : ownSourceOperand(input.chainStart, sourceSnapshot);
+      const sourceMembers = input.sourceMembers.map((member) =>
+        Object.freeze({
+          source: ownSourceOperand(member.source, sourceSnapshot),
+          kind: member.kind,
+        }),
+      );
+      const first = sourceMembers.at(0);
+      const last = sourceMembers.at(-1);
+      if (!first) return panic("A terminal transition has no source member");
+      if (!last) return panic("A terminal transition lost its physical carrier");
+      for (const { operation } of input.sourceTables) {
+        const table = resolvedDocxTableStructureOperandPayload(operation, comparison);
+        if (table.type !== "deleteTable") {
+          return panic("A terminal transition source table lost its deletion role");
+        }
       }
-      return Object.freeze({ type: "deleteTrailingParagraphs", chainStart, deleted });
+      const targetBlock = resolvedDocxTargetBlockOperandBlock(input.targetCarrier, comparison);
+      const targetCarrierProperties = docxParagraphPropertiesFromBlock(targetBlock);
+      return Object.freeze({
+        type: "transitionTerminalParagraphs",
+        chainStart,
+        sourceMembers: Object.freeze([first, ...sourceMembers.slice(1)]),
+        sourceTables: Object.freeze([...input.sourceTables]),
+        targetCarrier: ownParagraphTarget(input.targetCarrier, comparison, targetSnapshot),
+        targetCarrierKind: input.targetCarrierKind,
+        targetCarrierProperties: docxParagraphPropertiesEqual(
+          docxParagraphPropertiesFromBlock(
+            resolvedDocxSourceOperandBlock(last.source, sourceSnapshot),
+          ),
+          targetCarrierProperties,
+        )
+          ? null
+          : ownParagraphProperties(targetCarrierProperties),
+      });
     }
     case "setParagraphProperties": {
       const targetProperties = docxParagraphPropertiesFromBlock(
@@ -1842,11 +1909,17 @@ const compileTableFormatOperation = (
   });
 };
 
+const firstBaseBlockOfTerminalMember = (
+  member: ResolvedDocxTerminalSourceMember,
+): FolioContentBlock =>
+  member.type === "deleted"
+    ? member.occurrence.event.block
+    : member.occurrence.event.move.relation.base.block;
+
 const compileSemanticOperationInput = (
   input: DocxComparisonOperationInput,
   comparison: ResolvedDocxStoryComparison,
   sourceSnapshot: ResolvedDocxStorySnapshot,
-  targetSnapshot: ResolvedDocxStorySnapshot,
 ): CompiledSemanticOperationInput => {
   const { baseStory: story } = resolvedDocxStoryComparisonPayload(comparison);
   switch (input.type) {
@@ -2029,25 +2102,7 @@ const compileSemanticOperationInput = (
             ]),
           });
         case "terminalPredecessor":
-          return compiledSemanticOperation({
-            reports: Object.freeze(reports),
-            instructions: Object.freeze([
-              {
-                type: "moveTerminalParagraph",
-                predecessor: resolvedDocxSourceOperand(
-                  sourceSnapshot,
-                  sourceRemovalBoundary.predecessor,
-                ),
-                source: resolvedDocxSourceOperand(sourceSnapshot, relation.base.block),
-                carrierTarget: resolvedDocxTargetBlockOperand(
-                  comparison,
-                  sourceRemovalBoundary.targetCarrier,
-                ),
-                boundary,
-                target: resolvedDocxTargetBlockOperand(comparison, relation.revised.block),
-              },
-            ]),
-          });
+          return panic("A terminal move reached standalone DOCX compilation");
         case "unanchoredContainer":
           return panic("An unanchored move reached the DOCX semantic compiler");
         default: {
@@ -2127,120 +2182,381 @@ const compileSemanticOperationInput = (
         ]),
       });
     }
-    case "deleteTrailingParagraphs": {
-      const operation = resolvedDocxTrailingDeletionOperandPayload(input.operation, comparison);
-      const deleted = operation.events;
-      const firstDeleted = deleted.at(0);
-      if (!firstDeleted) return panic("A trailing deletion operation has no deleted event");
-      const reports = deleted.map(({ event, sequence }) =>
-        ownSemanticReport({
-          sequence: reportSequence(sequence, 0),
-          change: {
-            kind: "delete",
-            location: reportLocation(story, event.block),
-            baseBlockId: event.block.identity.id,
-            before: event.block.text,
-          },
-        }),
-      );
-      const instructions: DocxComparisonInstructionInput[] = [
-        {
-          type: "deleteTrailingParagraphs",
-          chainStart: operation.chainStart,
-          deleted: [
-            resolvedDocxSourceOperand(sourceSnapshot, firstDeleted.event.block),
-            ...deleted
-              .slice(1)
-              .map(({ event }) => resolvedDocxSourceOperand(sourceSnapshot, event.block)),
-          ],
-        },
-      ];
-      if (operation.targetCarrier) {
-        const carrier = deleted.at(-1)?.event.block;
-        if (!carrier) return panic("A trailing deletion operation lost its carrier");
-        const target = operation.targetCarrier;
-        if (
-          !docxParagraphPropertiesEqual(
-            docxParagraphPropertiesFromBlock(carrier),
-            docxParagraphPropertiesFromBlock(target),
-          )
-        ) {
+    case "terminalTransition": {
+      const operation = resolvedDocxTerminalTransitionOperandPayload(input.operation, comparison);
+      if (operation.type === "tableAppend") {
+        const payload = resolvedDocxTableStructureOperandPayload(operation.operation, comparison);
+        if (payload.type !== "insertTable") {
+          return panic("A terminal appended table lost its insertion role");
+        }
+        const chainStart = resolvedDocxSourceOperandBlock(operation.chainStart, sourceSnapshot);
+        const anchor = resolvedDocxSourceOperandBlock(payload.anchor.source, sourceSnapshot);
+        if (chainStart !== anchor || payload.anchor.position !== "after") {
+          return panic("A terminal appended table lost its canonical source boundary");
+        }
+        const boundary: DocxComparisonParagraphInsertionBoundary = Object.freeze({
+          type: "afterParagraph",
+          paragraph: payload.anchor.source,
+        });
+        const sharesBoundary = (candidate: FolioContentParagraphInsertionBoundary): boolean =>
+          candidate.type === "afterParagraph" &&
+          candidate.paragraph === chainStart &&
+          candidate.containerAlignment === operation.alignment;
+        const reports: DocxComparisonReportInput[] = [];
+        const instructions: DocxComparisonInstructionInput[] = [];
+        for (const member of operation.targetMembers) {
+          if (member.type === "inserted") {
+            const { event, sequence } = member.occurrence;
+            if (!sharesBoundary(event.boundary)) {
+              return panic("A terminal appended paragraph lost its canonical boundary");
+            }
+            reports.push(
+              ownSemanticReport({
+                sequence: reportSequence(sequence, 0),
+                change: {
+                  kind: "insert",
+                  location: reportLocation(story, event.block),
+                  targetBlockId: event.block.identity.id,
+                  after: event.block.text,
+                },
+              }),
+            );
+            instructions.push({
+              type: "insertParagraph",
+              boundary,
+              target: resolvedDocxTargetBlockOperand(comparison, event.block),
+            });
+            continue;
+          }
+          const { event, sequence } = member.occurrence;
+          const { relation, sourceRemovalBoundary, destinationBoundary } = event.move;
+          if (!sharesBoundary(destinationBoundary)) {
+            return panic("A terminal appended-table move lost its canonical destination");
+          }
+          if (
+            sourceRemovalBoundary.type === "terminalPredecessor" ||
+            sourceRemovalBoundary.type === "unanchoredContainer"
+          ) {
+            return panic("A terminal appended-table move lost its source boundary");
+          }
+          reports.push(
+            ownSemanticReport({
+              sequence: reportSequence(sequence, 0),
+              change: {
+                kind: "move",
+                location: reportLocation(story, relation.revised.block),
+                baseBlockId: relation.base.block.identity.id,
+                targetBlockId: relation.revised.block.identity.id,
+                text: relation.revised.block.text,
+              },
+            }),
+          );
+          const inlineReport = formatReport({
+            relation,
+            story,
+            sequence: reportSequence(sequence, 1),
+          });
+          if (inlineReport) reports.push(ownSemanticReport(inlineReport));
+          const paragraphReport = paragraphFormatReport({
+            relation,
+            story,
+            sequence: reportSequence(sequence, 2),
+          });
+          if (paragraphReport) reports.push(ownSemanticReport(paragraphReport));
           instructions.push({
-            type: "setParagraphProperties",
-            source: resolvedDocxSourceOperand(sourceSnapshot, carrier),
-            target: resolvedDocxTargetBlockOperand(comparison, target),
+            type: "moveParagraph",
+            source: resolvedDocxSourceOperand(sourceSnapshot, relation.base.block),
+            removalBoundary: canonicalParagraphRemovalBoundary(
+              sourceRemovalBoundary,
+              sourceSnapshot,
+            ),
+            boundary,
+            target: resolvedDocxTargetBlockOperand(comparison, relation.revised.block),
           });
         }
+        const table = compileTableStructureOperation(operation.operation, comparison, story);
+        reports.push(...table.reports);
+        instructions.push(...table.instructions);
+        instructions.push({
+          type: "insertTerminalCarrier",
+          boundary,
+          breakOwner: operation.chainStart,
+          target: resolvedDocxTargetBlockOperand(comparison, operation.carrier.event.block),
+        });
+        const firstInstruction = instructions.at(0);
+        if (!firstInstruction) return panic("A terminal appended table has no instruction");
+        return compiledSemanticOperation({
+          reports: Object.freeze(reports),
+          instructions: Object.freeze([firstInstruction, ...instructions.slice(1)]),
+        });
+      }
+      if (operation.type === "table") {
+        const table = compileTableStructureOperation(operation.operation, comparison, story);
+        const reports = [...table.reports];
+        const instructions = [...table.instructions];
+        for (const member of operation.sourceMembers.slice(0, -1)) {
+          if (member.type === "deleted") {
+            const { event, sequence } = member.occurrence;
+            reports.push(
+              ownSemanticReport({
+                sequence: reportSequence(sequence, 0),
+                change: {
+                  kind: "delete",
+                  location: reportLocation(story, event.block),
+                  baseBlockId: event.block.identity.id,
+                  before: event.block.text,
+                },
+              }),
+            );
+            instructions.push({
+              type: "deleteParagraph",
+              source: resolvedDocxSourceOperand(sourceSnapshot, event.block),
+            });
+            continue;
+          }
+          const { event, sequence } = member.destination;
+          const { relation, sourceRemovalBoundary, destinationBoundary } = event.move;
+          if (
+            sourceRemovalBoundary.type === "terminalPredecessor" ||
+            sourceRemovalBoundary.type === "unanchoredContainer"
+          ) {
+            return panic("A terminal table prefix move lost its nonterminal source boundary");
+          }
+          reports.push(
+            ownSemanticReport({
+              sequence: reportSequence(sequence, 0),
+              change: {
+                kind: "move",
+                location: reportLocation(story, relation.revised.block),
+                baseBlockId: relation.base.block.identity.id,
+                targetBlockId: relation.revised.block.identity.id,
+                text: relation.revised.block.text,
+              },
+            }),
+          );
+          const inlineReport = formatReport({
+            relation,
+            story,
+            sequence: reportSequence(sequence, 1),
+          });
+          if (inlineReport) reports.push(ownSemanticReport(inlineReport));
+          const paragraphReport = paragraphFormatReport({
+            relation,
+            story,
+            sequence: reportSequence(sequence, 2),
+          });
+          if (paragraphReport) reports.push(ownSemanticReport(paragraphReport));
+          instructions.push({
+            type: "moveParagraph",
+            source: resolvedDocxSourceOperand(sourceSnapshot, relation.base.block),
+            removalBoundary: canonicalParagraphRemovalBoundary(
+              sourceRemovalBoundary,
+              sourceSnapshot,
+            ),
+            boundary: canonicalParagraphInsertionBoundary(destinationBoundary, sourceSnapshot),
+            target: resolvedDocxTargetBlockOperand(comparison, relation.revised.block),
+          });
+        }
+        return compiledSemanticOperation({
+          reports: Object.freeze(reports),
+          instructions: Object.freeze([
+            instructions[0] ?? panic("A terminal table transition lost its instruction"),
+            ...instructions.slice(1),
+          ]),
+        });
+      }
+      const reports: DocxComparisonReportInput[] = [];
+      const instructions: DocxComparisonInstructionInput[] = [];
+      const localSourceMoves = new Set(
+        operation.sourceMembers.flatMap((member) =>
+          member.type === "movedFrom" ? [member.occurrence.event.move] : [],
+        ),
+      );
+      const carrierMember = operation.targetMembers.at(-1);
+      const carrierMove =
+        carrierMember?.type === "movedTo" ? carrierMember.occurrence.event.move : null;
+      let targetCarrierKind: "ins" | "moveTo" | "surviving" | "pairedRewrite";
+      if (operation.chainStartRewrite !== null) {
+        const { event } = operation.chainStartRewrite;
+        if (
+          carrierMember !== undefined ||
+          operation.chainStart === null ||
+          operation.sourceTables.length === 0 ||
+          resolvedDocxSourceOperandBlock(operation.chainStart, sourceSnapshot) !==
+            event.relation.base.block ||
+          operation.targetCarrier !== event.relation.revised.block
+        ) {
+          return panic("A terminal chain-start rewrite lost its canonical topology");
+        }
+        targetCarrierKind = "pairedRewrite";
+      } else if (carrierMember === undefined) {
+        targetCarrierKind = "surviving";
+      } else if (carrierMember.type === "inserted") {
+        targetCarrierKind = "ins";
+      } else {
+        targetCarrierKind = "moveTo";
+      }
+      const firstSource = operation.sourceMembers.at(0);
+      if (!firstSource) return panic("A terminal transition lost its source suffix");
+      instructions.push({
+        type: "transitionTerminalParagraphs",
+        chainStart: operation.chainStart,
+        sourceMembers: [
+          {
+            source: resolvedDocxSourceOperand(
+              sourceSnapshot,
+              firstBaseBlockOfTerminalMember(firstSource),
+            ),
+            kind: firstSource.type === "deleted" ? "del" : "moveFrom",
+          },
+          ...operation.sourceMembers.slice(1).map((member) => ({
+            source: resolvedDocxSourceOperand(
+              sourceSnapshot,
+              firstBaseBlockOfTerminalMember(member),
+            ),
+            kind: member.type === "deleted" ? ("del" as const) : ("moveFrom" as const),
+          })),
+        ],
+        sourceTables: operation.sourceTables,
+        targetCarrier: resolvedDocxTargetBlockOperand(comparison, operation.targetCarrier),
+        targetCarrierKind,
+      });
+      for (const { operation: tableOperation } of operation.sourceTables) {
+        const table = compileTableStructureOperation(tableOperation, comparison, story);
+        reports.push(...table.reports);
+        instructions.push(...table.instructions);
+      }
+      if (operation.chainStartRewrite !== null) {
+        const { event, sequence } = operation.chainStartRewrite;
+        const { relation } = event;
+        if (relation.segments.some(({ type }) => type !== "equal")) {
+          reports.push(
+            ownSemanticReport({
+              sequence: reportSequence(sequence, 0),
+              change: {
+                kind: "replace",
+                location: reportLocation(story, relation.base.block),
+                baseBlockId: relation.base.block.identity.id,
+                targetBlockId: relation.revised.block.identity.id,
+                before: relation.base.block.text,
+                after: relation.revised.block.text,
+              },
+            }),
+          );
+        }
+        const inlineReport = formatReport({
+          relation,
+          story,
+          sequence: reportSequence(sequence, 1),
+        });
+        if (inlineReport) reports.push(ownSemanticReport(inlineReport));
+        const paragraphReport = paragraphFormatReport({
+          relation,
+          story,
+          sequence: reportSequence(sequence, 2),
+        });
+        if (paragraphReport) reports.push(ownSemanticReport(paragraphReport));
+      }
+      for (const member of operation.sourceMembers) {
+        if (member.type !== "deleted") continue;
+        const { event, sequence } = member.occurrence;
+        reports.push(
+          ownSemanticReport({
+            sequence: reportSequence(sequence, 0),
+            change: {
+              kind: "delete",
+              location: reportLocation(story, event.block),
+              baseBlockId: event.block.identity.id,
+              before: event.block.text,
+            },
+          }),
+        );
+      }
+      const moves = new Map<
+        Extract<FolioContentComparisonEvent, { readonly type: "movedTo" }>["move"],
+        ResolvedDocxEventOperandPayload<
+          Extract<FolioContentComparisonEvent, { readonly type: "movedTo" }>
+        >
+      >();
+      for (const member of operation.sourceMembers) {
+        if (member.type === "movedFrom")
+          moves.set(member.occurrence.event.move, member.destination);
+      }
+      for (const member of operation.targetMembers) {
+        if (member.type === "movedTo") moves.set(member.occurrence.event.move, member.occurrence);
+      }
+      for (const [move, destination] of moves) {
+        const relation = move.relation;
+        reports.push(
+          ownSemanticReport({
+            sequence: reportSequence(destination.sequence, 0),
+            change: {
+              kind: "move",
+              location: reportLocation(story, relation.revised.block),
+              baseBlockId: relation.base.block.identity.id,
+              targetBlockId: relation.revised.block.identity.id,
+              text: relation.revised.block.text,
+            },
+          }),
+        );
+        const inlineReport = formatReport({
+          relation,
+          story,
+          sequence: reportSequence(destination.sequence, 1),
+        });
+        if (inlineReport) reports.push(ownSemanticReport(inlineReport));
+        const paragraphReport = paragraphFormatReport({
+          relation,
+          story,
+          sequence: reportSequence(destination.sequence, 2),
+        });
+        if (paragraphReport) reports.push(ownSemanticReport(paragraphReport));
+        if (!localSourceMoves.has(move)) {
+          const removal = move.sourceRemovalBoundary;
+          if (removal.type === "terminalPredecessor" || removal.type === "unanchoredContainer") {
+            return panic("A terminal transition crosses another terminal source program");
+          }
+          instructions.push({
+            type: "removeMovedParagraph",
+            source: resolvedDocxSourceOperand(sourceSnapshot, relation.base.block),
+            removalBoundary: canonicalParagraphRemovalBoundary(removal, sourceSnapshot),
+          });
+        }
+        if (move !== carrierMove) {
+          instructions.push({
+            type: "insertMovedParagraph",
+            boundary: canonicalParagraphInsertionBoundary(move.destinationBoundary, sourceSnapshot),
+            target: resolvedDocxTargetBlockOperand(comparison, relation.revised.block),
+          });
+        }
+      }
+      for (const member of operation.targetMembers) {
+        if (member.type !== "inserted") continue;
+        const { event, sequence } = member.occurrence;
+        reports.push(
+          ownSemanticReport({
+            sequence: reportSequence(sequence, 0),
+            change: {
+              kind: "insert",
+              location: reportLocation(story, event.block),
+              targetBlockId: event.block.identity.id,
+              after: event.block.text,
+            },
+          }),
+        );
+        if (member === carrierMember) continue;
+        instructions.push({
+          type: "insertParagraph",
+          boundary: canonicalParagraphInsertionBoundary(event.boundary, sourceSnapshot),
+          target: resolvedDocxTargetBlockOperand(comparison, event.block),
+        });
       }
       return compiledSemanticOperation({
         reports: Object.freeze(reports),
         instructions: Object.freeze([
-          instructions[0] ?? panic("A trailing deletion operation lost its instruction"),
+          instructions[0] ?? panic("A terminal transition has no transport instruction"),
           ...instructions.slice(1),
         ]),
-      });
-    }
-    case "replaceTerminalParagraph": {
-      const { deleted, inserted } = resolvedDocxTerminalReplacementOperandPayload(
-        input.operation,
-        comparison,
-      );
-      const baseBlock = deleted.event.block;
-      const targetBlock = inserted.event.block;
-      const reports = Object.freeze([
-        ownSemanticReport({
-          sequence: reportSequence(deleted.sequence, 0),
-          change: {
-            kind: "delete",
-            location: reportLocation(story, baseBlock),
-            baseBlockId: baseBlock.identity.id,
-            before: baseBlock.text,
-          },
-        }),
-        ownSemanticReport({
-          sequence: reportSequence(inserted.sequence, 0),
-          change: {
-            kind: "insert",
-            location: reportLocation(story, targetBlock),
-            targetBlockId: targetBlock.identity.id,
-            after: targetBlock.text,
-          },
-        }),
-      ]);
-      const instructions: DocxComparisonInstructionInput[] = [];
-      const baseRuns = resolvedDocxAuthoredRunsForBlock(sourceSnapshot, baseBlock);
-      const targetRuns = resolvedDocxAuthoredRunsForBlock(targetSnapshot, targetBlock);
-      if (
-        baseBlock.text !== targetBlock.text ||
-        !sameProjection(
-          projectionFromRuns(baseBlock.text, baseRuns),
-          projectionFromRuns(targetBlock.text, targetRuns),
-        )
-      ) {
-        instructions.push({
-          type: "replaceText",
-          range: resolvedDocxWholeBlockReplacementOperand(comparison, baseBlock, targetBlock),
-        });
-      }
-      if (
-        !docxParagraphPropertiesEqual(
-          docxParagraphPropertiesFromBlock(baseBlock),
-          docxParagraphPropertiesFromBlock(targetBlock),
-        )
-      ) {
-        instructions.push({
-          type: "setParagraphProperties",
-          source: resolvedDocxSourceOperand(sourceSnapshot, baseBlock),
-          target: resolvedDocxTargetBlockOperand(comparison, targetBlock),
-        });
-      }
-      const firstInstruction = instructions.at(0);
-      if (!firstInstruction) {
-        return panic("A terminal replacement operation contains no semantic change");
-      }
-      return compiledSemanticOperation({
-        reports,
-        instructions: Object.freeze([firstInstruction, ...instructions.slice(1)]),
       });
     }
     case "tableStructure":
@@ -2269,6 +2585,7 @@ type CompileDocxComparisonProgramOptions = {
 /** Every source paragraph mark is one edge and has exactly one instruction owner. */
 const assertUniqueParagraphMarkOwnership = (
   instructions: readonly DocxComparisonInstruction[],
+  comparison: ResolvedDocxStoryComparison,
   sourceSnapshot: ResolvedDocxStorySnapshot,
 ): void => {
   const ownerByBlock = new Map<
@@ -2283,22 +2600,35 @@ const assertUniqueParagraphMarkOwnership = (
       case "splitParagraph":
         owners = [instruction.source];
         break;
-      case "moveTerminalParagraph":
-        owners = [instruction.predecessor];
+      case "removeMovedParagraph":
+        owners = [instruction.source];
         break;
       case "mergeParagraphs":
         owners = [instruction.firstSource];
         break;
-      case "deleteTrailingParagraphs":
-        owners = [instruction.chainStart, ...instruction.deleted.slice(0, -1)];
+      case "insertTerminalCarrier":
+        owners = [instruction.breakOwner];
         break;
+      case "transitionTerminalParagraphs": {
+        const sourceOwners = instruction.sourceMembers.slice(0, -1).map(({ source }) => source);
+        owners =
+          (instruction.targetCarrierKind === "surviving" ||
+            instruction.targetCarrierKind === "pairedRewrite") &&
+          instruction.chainStart !== null
+            ? [instruction.chainStart, ...sourceOwners]
+            : sourceOwners;
+        break;
+      }
       case "replaceText":
       case "formatText":
       case "insertParagraph":
+      case "insertMovedParagraph":
       case "setParagraphProperties":
-      case "tableStructure":
       case "tableFormat":
         owners = [];
+        break;
+      case "tableStructure":
+        owners = resolvedDocxTableStructureParagraphMarkOwners(instruction.operation, comparison);
         break;
       default: {
         const unreachable: never = instruction;
@@ -2322,6 +2652,63 @@ const assertUniqueParagraphMarkOwnership = (
       ownerByBlock.set(block, { instructionIndex, instructionType: instruction.type });
     }
   }
+  for (const disposition of resolvedDocxParagraphMarkDispositions(comparison)) {
+    if (disposition.type !== "terminal-member") continue;
+    const block = resolvedDocxSourceOperandBlock(disposition.source, sourceSnapshot);
+    const actualOwner = ownerByBlock.get(block);
+    const terminalPayload = resolvedDocxTerminalTransitionOperandPayload(
+      disposition.operation,
+      comparison,
+    );
+    switch (disposition.effect.type) {
+      case "revision": {
+        const expectedInstructionType = (() => {
+          if (terminalPayload.type === "paragraph") return "transitionTerminalParagraphs";
+          if (terminalPayload.type === "tableAppend") {
+            return panic("An appended-table program cannot own a source revision edge");
+          }
+          if (disposition.effect.sourceMemberIndex === terminalPayload.sourceMembers.length - 1) {
+            return "tableStructure";
+          }
+          const member = terminalPayload.sourceMembers[disposition.effect.sourceMemberIndex];
+          if (!member) return panic("A terminal table edge lost its canonical source member");
+          return member.type === "deleted" ? "deleteParagraph" : "moveParagraph";
+        })();
+        if (actualOwner?.instructionType !== expectedInstructionType) {
+          return panic("A terminal source paragraph edge has no matching transition owner", {
+            blockId: disposition.blockId,
+            sourceMemberIndex: disposition.effect.sourceMemberIndex,
+            revisionKind: disposition.effect.kind,
+            expectedInstructionType,
+            actualInstructionType: actualOwner?.instructionType,
+          });
+        }
+        break;
+      }
+      case "appended-carrier":
+        if (actualOwner?.instructionType !== "insertTerminalCarrier") {
+          return panic("An appended terminal edge has no matching carrier instruction owner", {
+            blockId: disposition.blockId,
+            revisionKind: disposition.effect.kind,
+            actualInstructionType: actualOwner?.instructionType,
+          });
+        }
+        break;
+      case "preserved-final":
+        if (actualOwner !== undefined) {
+          return panic("A preserved final paragraph edge has a comparison instruction owner", {
+            blockId: disposition.blockId,
+            instructionIndex: actualOwner.instructionIndex,
+            instructionType: actualOwner.instructionType,
+          });
+        }
+        break;
+      default: {
+        const unreachable: never = disposition.effect;
+        return panic("Unhandled terminal paragraph edge disposition", { effect: unreachable });
+      }
+    }
+  }
 };
 
 const compileDocxComparisonProgram = ({
@@ -2334,20 +2721,7 @@ const compileDocxComparisonProgram = ({
   const instructions: DocxComparisonInstruction[] = [];
   const reportSequences = new Set<number>();
   for (const input of inputs) {
-    const compiled = compileSemanticOperationInput(
-      input,
-      comparison,
-      sourceSnapshot,
-      targetSnapshot,
-    );
-    for (const { sequence } of compiled.reports) {
-      if (reportSequences.has(sequence)) {
-        return panic("A DOCX comparison report has an invalid canonical sequence", {
-          sequence,
-        });
-      }
-      reportSequences.add(sequence);
-    }
+    const compiled = compileSemanticOperationInput(input, comparison, sourceSnapshot);
     const semanticGroupIndex = semanticGroups.length;
     semanticGroups.push(Object.freeze({ reports: compiled.reports }));
     for (const instruction of compiled.instructions) {
@@ -2365,7 +2739,17 @@ const compileDocxComparisonProgram = ({
       });
     }
   }
-  assertUniqueParagraphMarkOwnership(instructions, sourceSnapshot);
+  assertUniqueParagraphMarkOwnership(instructions, comparison, sourceSnapshot);
+  for (const group of semanticGroups) {
+    for (const { sequence } of group.reports) {
+      if (reportSequences.has(sequence)) {
+        return panic("A DOCX comparison report has an invalid canonical sequence", {
+          sequence,
+        });
+      }
+      reportSequences.add(sequence);
+    }
+  }
   return Object.freeze({
     instructions: Object.freeze(instructions),
     semanticGroups: Object.freeze(semanticGroups),

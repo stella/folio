@@ -275,8 +275,8 @@ export type FolioContentParagraphInsertionBoundary =
 
 /**
  * A source-side paragraph removal boundary proved inside one alignment-owned
- * container. Terminal removal owns the predecessor whose mark is removed and
- * the revised paragraph whose properties the retained carrier must acquire.
+ * container. Terminal removal proves only the predecessor whose mark is
+ * removed; representation-specific lowering owns the retained carrier.
  */
 export type FolioContentParagraphRemovalBoundary =
   | {
@@ -293,7 +293,6 @@ export type FolioContentParagraphRemovalBoundary =
   | {
       readonly type: "terminalPredecessor";
       readonly predecessor: FolioContentBlock;
-      readonly targetCarrier: FolioContentBlock;
       readonly containerAlignment: FolioContentPairedContainerAlignment;
     }
   | {
