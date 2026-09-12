@@ -8,6 +8,11 @@ import type {
   FolioContentPropertyValue,
 } from "../../compare/content-types";
 
+const comparePropertyKeys = (left: { key: string }, right: { key: string }): number => {
+  if (left.key === right.key) return 0;
+  return left.key < right.key ? -1 : 1;
+};
+
 export const docxCanonicalPropertyValue = (value: unknown): FolioContentPropertyValue => {
   if (value === null || typeof value === "string" || typeof value === "boolean") return value;
   if (typeof value === "number") return Object.is(value, -0) ? 0 : value;
@@ -22,9 +27,7 @@ export const docxCanonicalPropertyValue = (value: unknown): FolioContentProperty
     entries: Object.entries(value)
       .filter(([, child]) => child !== undefined)
       .map(([key, child]) => ({ key, value: docxCanonicalPropertyValue(child) }))
-      .toSorted((left, right) =>
-        left.key < right.key ? -1 : left.key > right.key ? 1 : 0,
-      ),
+      .toSorted(comparePropertyKeys),
   };
 };
 
@@ -40,9 +43,7 @@ const modelPropertySet = <Value extends object, Field extends keyof Value>(
       properties.push({ key: String(field), value: docxCanonicalPropertyValue(property) });
     }
   }
-  return properties.toSorted((left, right) =>
-    left.key < right.key ? -1 : left.key > right.key ? 1 : 0,
-  );
+  return properties.toSorted(comparePropertyKeys);
 };
 
 const PARAGRAPH_FORMATTING_FIELDS = Object.freeze(
@@ -56,8 +57,7 @@ const TEXT_FORMATTING_FIELDS = Object.freeze(
 /** @internal Canonical neutral projection of a modeled paragraph-property record. */
 export const docxParagraphFormattingProperties = (
   formatting: ParagraphFormatting | undefined,
-): FolioContentPropertySet =>
-  modelPropertySet(formatting, PARAGRAPH_FORMATTING_FIELDS);
+): FolioContentPropertySet => modelPropertySet(formatting, PARAGRAPH_FORMATTING_FIELDS);
 
 /** @internal Canonical neutral projection of a modeled run-property record. */
 export const docxTextFormattingProperties = (

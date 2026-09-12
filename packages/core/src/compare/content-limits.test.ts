@@ -128,9 +128,7 @@ const richComparisonInput = () => {
       paragraphIndex: 0,
     },
   });
-  Reflect.set(richBlock, "structuralBoundaries", [
-    { type: "pageBreak", offset: 0, clear: "all" },
-  ]);
+  Reflect.set(richBlock, "structuralBoundaries", [{ type: "pageBreak", offset: 0, clear: "all" }]);
   Reflect.set(richBlock, "blockProperties", [
     {
       key: "arrayProperty",
@@ -639,9 +637,8 @@ describe("neutral comparison resource boundaries", () => {
   });
 
   test("rejects oversized arrays before traversing their elements", () => {
-    const oversizedBlocks = new Array<FolioContentBlock>(
-      FOLIO_CONTENT_COMPARISON_LIMITS.blocksPerSnapshot + 1,
-    );
+    const oversizedBlocks: FolioContentBlock[] = [];
+    oversizedBlocks.length = FOLIO_CONTENT_COMPARISON_LIMITS.blocksPerSnapshot + 1;
     Object.defineProperty(oversizedBlocks, 0, {
       get: () => {
         throw new Error("oversized blocks must not be traversed");
@@ -666,9 +663,8 @@ describe("neutral comparison resource boundaries", () => {
     expect(oversizedOwnKeys).toBe(0);
     expect(oversizedIndexDescriptors).toBe(0);
 
-    const oversizedRuns = new Array<FolioContentInputRun>(
-      FOLIO_CONTENT_COMPARISON_LIMITS.runsPerBlock + 1,
-    );
+    const oversizedRuns: FolioContentInputRun[] = [];
+    oversizedRuns.length = FOLIO_CONTENT_COMPARISON_LIMITS.runsPerBlock + 1;
     Object.defineProperty(oversizedRuns, 0, {
       get: () => {
         throw new Error("oversized runs must not be traversed");
@@ -682,9 +678,8 @@ describe("neutral comparison resource boundaries", () => {
       { input: "base", limit: "runsPerBlock", blockIndex: 0 },
     );
 
-    const oversizedPath = new Array<NonNullable<FolioContentInputBlock["containerPath"]>[number]>(
-      FOLIO_CONTENT_COMPARISON_LIMITS.containerDepth + 1,
-    );
+    const oversizedPath: NonNullable<FolioContentInputBlock["containerPath"]>[number][] = [];
+    oversizedPath.length = FOLIO_CONTENT_COMPARISON_LIMITS.containerDepth + 1;
     Object.defineProperty(oversizedPath, 0, {
       get: () => {
         throw new Error("oversized container paths must not be traversed");
