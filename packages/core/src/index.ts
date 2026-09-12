@@ -86,6 +86,7 @@ export type {
   FolioContentRevisedContainerAlignment,
   FolioContentSnapshot,
   FolioContentStructuralBoundary,
+  FolioContentTableBlock,
   FolioContentTableLocation,
 } from "./compare/content-types";
 export {

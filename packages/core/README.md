@@ -114,7 +114,9 @@ for (const event of result.value.events) renderComparisonEvent(event);
 
 Events contain an owned canonical projection of the declared input fields and
 are already in full-document render order. Additional caller metadata is not
-enumerated; use the returned stable identity to look it up in the source model.
+enumerated; use the returned identity to look it up in the source model.
+Unequal `authoritative` IDs never pair. `persistent` IDs are matching hints and
+may pair by content or position; `positional` IDs provide ordinal evidence only.
 Modified and edited-move segments use UTF-16 offsets compatible with JavaScript
 string slicing; move halves share one `move` object, and every table row or
 column event references its shared `change`. `FOLIO_CONTENT_COMPARISON_LIMITS`
