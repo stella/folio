@@ -201,10 +201,10 @@ describe("topAndBottom band text box layout", () => {
     expect(paragraph?.y).toBe(MARGINS.top);
   });
 
-  test("positions column-relative text boxes in their active column", () => {
+  test("uses each unequal column's origin and width for column-relative text boxes", () => {
     const first = withHorizontal(verticalBanner({ relativeTo: "paragraph" }), {
       relativeTo: "column",
-      posOffset: 0,
+      align: "right",
     });
     first.id = "first-column-box";
     first.width = 120;
@@ -213,13 +213,16 @@ describe("topAndBottom band text box layout", () => {
     const layout = layoutDocument(
       [first, { kind: "columnBreak", id: "next-column" }, second],
       [columnMeasure, { kind: "columnBreak" }, columnMeasure],
-      { ...OPTIONS, columns: { count: 2, gap: 24 } },
+      {
+        ...OPTIONS,
+        columns: { count: 2, gap: 24, equalWidth: false, widths: [200, 400], gaps: [24] },
+      },
     );
     const boxes = layout.pages[0]?.fragments.filter(
       (fragment): fragment is TextBoxFragment => fragment.kind === "textBox",
     );
 
-    expect(boxes?.map(({ x }) => x)).toEqual([96, 420]);
+    expect(boxes?.map(({ x }) => x)).toEqual([176, 600]);
   });
 
   test("paragraph-owned text box positions from its host paragraph", () => {

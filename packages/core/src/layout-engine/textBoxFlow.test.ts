@@ -134,6 +134,29 @@ describe("bandFragmentX (eigenpal #694)", () => {
     expect(bandFragmentX({ relativeTo: "column", align: "right" }, secondColumn)).toBe(600);
   });
 
+  test("changing the active column cannot move anchors in any other frame", () => {
+    const shiftedColumn = {
+      ...geometry,
+      activeColumnLeft: 420,
+      activeColumnWidth: 300,
+    };
+    const nonColumnFrames = [
+      undefined,
+      "page",
+      "margin",
+      "character",
+      "leftMargin",
+      "rightMargin",
+      "insideMargin",
+      "outsideMargin",
+    ] as const;
+
+    for (const relativeTo of nonColumnFrames) {
+      const horizontal = { relativeTo, align: "center" as const };
+      expect(bandFragmentX(horizontal, shiftedColumn)).toBe(bandFragmentX(horizontal, geometry));
+    }
+  });
+
   test("resolves left/right margin-strip frames", () => {
     // leftMargin/insideMargin → left strip [0, 96]; rightMargin/outsideMargin →
     // right strip [720, 816]. The box's left edge sits at the strip's left.
