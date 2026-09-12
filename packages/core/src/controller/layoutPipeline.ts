@@ -539,6 +539,7 @@ export function runLayoutPipeline<THfPMs>(
           undefined,
           undefined,
           buildHeaderFooterFieldValues(hfBlocks, pageCount, hfClock, fieldInputs),
+          { allowEndTabOverflow: true },
         );
       return {
         ...(flowOpts.styles ? { styles: flowOpts.styles } : {}),

@@ -126,6 +126,8 @@ export type MeasureParagraphOptions = {
   /** Field run `pmStart` -> resolved display text, so a field measures at its
    *  painted width instead of the cached fallback. */
   fieldValues?: ReadonlyMap<number, string>;
+  /** Header/footer tabs may be authored in the page margin, beyond body width. */
+  allowEndTabOverflow?: boolean;
 };
 
 /**
@@ -1772,7 +1774,8 @@ export function measureParagraph(
       const activeContentRightEdge = maxWidth - currentLine.rightOffset;
       const preservesAuthoredEndStop =
         tabResult.alignment === "end" &&
-        authoredEndpoint <= activeContentRightEdge + WIDTH_TOLERANCE;
+        (options?.allowEndTabOverflow === true ||
+          authoredEndpoint <= activeContentRightEdge + WIDTH_TOLERANCE);
       const landsOnLeftIndent =
         tabResult.alignment === "start" &&
         indentLeft > 0 &&

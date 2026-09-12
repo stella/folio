@@ -84,8 +84,51 @@ describe("page raster comparison", () => {
     expect(comparison.diffPixels).toBe(4);
   });
 
-  test("makes page dimensions part of the result", async () => {
-    const reference = await writeSolidPng("size-reference.png", 2, 2, [255, 255, 255, 255]);
+  test("normalizes a one-pixel page-edge rounding difference on either raster", async () => {
+    const cases = [
+      { name: "folio-width", reference: [4, 4], folio: [5, 4] },
+      { name: "reference-width", reference: [5, 4], folio: [4, 4] },
+      { name: "folio-height", reference: [4, 4], folio: [4, 5] },
+      { name: "reference-height", reference: [4, 5], folio: [4, 4] },
+      { name: "both-edges", reference: [4, 4], folio: [5, 5] },
+    ] as const;
+
+    await Promise.all(
+      cases.map(async ({ name, reference: [referenceWidth, referenceHeight], folio }) => {
+        const reference = await writeSolidPng(
+          `${name}-reference.png`,
+          referenceWidth,
+          referenceHeight,
+          [255, 255, 255, 255],
+        );
+        const folioPath = await writeSolidPng(
+          `${name}-folio.png`,
+          folio[0],
+          folio[1],
+          [255, 255, 255, 255],
+        );
+
+        const { comparison } = await comparePageRasters({
+          referencePagePngs: [reference],
+          folioPagePngs: [folioPath],
+          outputDir: path.join(tmpDir, `${name}-diffs`),
+        });
+
+        expect(comparison.status).toBe("compared");
+        if (comparison.status !== "compared") return;
+        expect(comparison.pages[0]).toMatchObject({
+          status: "match",
+          widthPx: 4,
+          heightPx: 4,
+          similarity: 1,
+        });
+        expect(comparison.score).toBe(1);
+      }),
+    );
+  });
+
+  test("makes larger page dimension differences part of the result", async () => {
+    const reference = await writeSolidPng("size-reference.png", 3, 2, [255, 255, 255, 255]);
     const folio = await writeSolidPng("size-folio.png", 1, 2, [255, 255, 255, 255]);
 
     const { comparison } = await comparePageRasters({
@@ -98,13 +141,13 @@ describe("page raster comparison", () => {
     if (comparison.status !== "compared") return;
     expect(comparison.pages[0]).toMatchObject({
       status: "dimension-mismatch",
-      referenceWidthPx: 2,
+      referenceWidthPx: 3,
       referenceHeightPx: 2,
       folioWidthPx: 1,
       folioHeightPx: 2,
-      similarity: 0.5,
     });
-    expect(comparison.score).toBe(0.5);
+    expect(comparison.pages[0]?.similarity).toBeCloseTo(1 / 3);
+    expect(comparison.score).toBeCloseTo(1 / 3);
   });
 
   test("treats a missing page as fully different", async () => {

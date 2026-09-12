@@ -57,6 +57,11 @@ const NO_WRAP_MEASURE_WIDTH = 1_000_000;
  */
 const MAX_TABLE_COLUMNS = 63;
 
+export type MeasureBlocksOptions = {
+  /** Header/footer tabs may be authored in the page margin, beyond body width. */
+  allowEndTabOverflow?: boolean;
+};
+
 /**
  * Check if an image run is a *text-wrapping* floating image — it
  * occupies an exclusion zone the body text should flow around.
@@ -963,6 +968,7 @@ export function measureBlock(
   floatingZones?: FloatingImageZone[],
   cumulativeY?: number,
   fieldValues?: ReadonlyMap<number, string>,
+  options?: MeasureBlocksOptions,
 ): Measure {
   switch (block.kind) {
     case "paragraph": {
@@ -978,7 +984,9 @@ export function measureBlock(
       // the stabilization pass; field-free paragraphs stay cacheable.
       const hasFieldRuns = pBlock.runs.some((run) => run.kind === "field");
       const cacheable =
-        (!floatingZones || floatingZones.length === 0) && (!fieldValues || !hasFieldRuns);
+        (!floatingZones || floatingZones.length === 0) &&
+        (!fieldValues || !hasFieldRuns) &&
+        options?.allowEndTabOverflow !== true;
       if (cacheable) {
         const cached = getCachedParagraphMeasure(pBlock, contentWidth);
         if (cached) {
@@ -994,6 +1002,9 @@ export function measureBlock(
       }
       if (fieldValues) {
         measureOpts.fieldValues = fieldValues;
+      }
+      if (options?.allowEndTabOverflow === true) {
+        measureOpts.allowEndTabOverflow = true;
       }
       const result = measureParagraph(pBlock, contentWidth, measureOpts);
 
@@ -1111,6 +1122,7 @@ export function measureBlocks(
   marginTop: number | number[] = 0,
   pageGeometry?: BandPageGeometry,
   fieldValues?: ReadonlyMap<number, string>,
+  options?: MeasureBlocksOptions,
 ): Measure[] {
   const defaultWidth = Array.isArray(contentWidth) ? (contentWidth[0] ?? 0) : contentWidth;
   // Pre-extract floating image exclusion zones with anchor block indices
@@ -1284,7 +1296,7 @@ export function measureBlocks(
         : undefined;
 
     try {
-      const measure = measureBlock(block, blockWidth, zones, cumulativeY, fieldValues);
+      const measure = measureBlock(block, blockWidth, zones, cumulativeY, fieldValues, options);
 
       // Paragraphs clear floating exclusions internally (findClearLineY inside
       // measureParagraph). An in-flow table cannot reflow its cells around a

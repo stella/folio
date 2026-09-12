@@ -2542,7 +2542,9 @@ export function renderLine(
       const preservesAuthoredEndStop =
         activeContentRightEdge !== undefined &&
         tabResult.alignment === "end" &&
-        authoredEndpoint <= activeContentRightEdge + RIGHT_EDGE_EPSILON_PX;
+        (options?.context?.section === "header" ||
+          options?.context?.section === "footer" ||
+          authoredEndpoint <= activeContentRightEdge + RIGHT_EDGE_EPSILON_PX);
       const preservesAuthoredEndStopPastIndent =
         lineRightEdgeX !== undefined &&
         preservesAuthoredEndStop &&

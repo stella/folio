@@ -310,6 +310,7 @@ const convertStories = ({
           undefined,
           undefined,
           buildHeaderFooterFieldValues(blocks, pageCount, now),
+          { allowEndTabOverflow: true },
         ),
       rId,
     });

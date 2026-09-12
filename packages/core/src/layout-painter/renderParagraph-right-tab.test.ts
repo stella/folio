@@ -373,6 +373,39 @@ describe("renderLine right-tab flex anchor", () => {
     expect(lineEl.dataset["flexLine"]).toBe("true");
   });
 
+  test("keeps a header end tab authored in the page margin", () => {
+    const block: ParagraphBlock = {
+      kind: "paragraph",
+      id: "header-end-tab-in-page-margin",
+      runs: [{ kind: "text", text: "Title" }, { kind: "tab" }, { kind: "text", text: "7" }],
+    };
+    const line: MeasuredLine = {
+      fromRun: 0,
+      fromChar: 0,
+      toRun: 2,
+      toChar: 1,
+      width: 500,
+      ascent: 12,
+      descent: 3,
+      lineHeight: 15,
+    };
+
+    const lineEl = renderLine(block, line, undefined, fakeDocument, {
+      availableWidth: 400,
+      isLastLine: true,
+      isFirstLine: true,
+      paragraphEndsWithLineBreak: false,
+      tabStops: [{ val: "end", pos: 7500 }],
+      leftIndentPx: 0,
+      contentWidthPx: 400,
+      lineRightEdgePx: 400,
+      context: { pageNumber: 1, totalPages: 1, section: "header" },
+    }) as unknown as FakeElement;
+
+    expect(lineEl.dataset["flexLine"]).toBeUndefined();
+    expect(findTabEl(lineEl)?.style["width"]).toBe("458px");
+  });
+
   test("keeps an RTL TOC end tab logical instead of flex-anchoring it physically", () => {
     const block: ParagraphBlock = {
       kind: "paragraph",
