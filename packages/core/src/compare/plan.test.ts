@@ -344,6 +344,29 @@ describe("table row pairing", () => {
     expect(planOf(rows, rows).changes).toEqual([]);
   });
 
+  test("deleting a whole table preserves both neighboring body paragraphs", () => {
+    const base = [
+      block("before-base", "Before the table."),
+      cell("removed", "Removed schedule", 0),
+      block("after-base", "After the table."),
+    ];
+    const target = [
+      block("before-target", "Before the table."),
+      block("after-target", "After the table."),
+    ];
+
+    const plan = planOf(base, target);
+
+    expect(plan.changes.map(({ kind }) => kind)).toEqual(["table-delete"]);
+    expect(contentInstructionsOf(plan)).toEqual([
+      {
+        type: "deleteTable",
+        source: sourceOperandOf(plan, "removed"),
+        baseTableIndex: 0,
+      },
+    ]);
+  });
+
   test("a span change that cannot align by column replaces the whole table", () => {
     const base = [
       block("before", "Before the table."),

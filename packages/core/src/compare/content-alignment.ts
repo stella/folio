@@ -698,7 +698,8 @@ const paragraphTopology = <Block extends FolioContentBlock>(
     }
     if (
       lastIndexByOccurrence.get(key) === index &&
-      (block.table !== undefined || bodyContainerEnds.get(containerPathKeyOf(block)) === "paragraph")
+      (block.table !== undefined ||
+        bodyContainerEnds.get(containerPathKeyOf(block)) === "paragraph")
     ) {
       terminalBlockIds.add(block.identity.id);
     }
@@ -897,9 +898,7 @@ const scopedAlignmentSteps = <Block extends FolioContentBlock>(
         alignment: entry.containerAlignment,
       });
       if (
-        context.revisedParagraphTopology.terminalBlockIds.has(
-          entry.event.revisedBlock.identity.id,
-        )
+        context.revisedParagraphTopology.terminalBlockIds.has(entry.event.revisedBlock.identity.id)
       ) {
         terminalRevisedByAlignment.set(entry.containerAlignment, {
           block: entry.event.revisedBlock,
@@ -2801,6 +2800,297 @@ const segmentsCanPair = <Block extends FolioContentBlock>(
   return contentContainerPathsCanPair(base.containerPath, revised.containerPath);
 };
 
+type BodyBlockOccurrence<Block extends FolioContentBlock> = {
+  readonly segment: BodyDocumentSegment<Block>;
+  readonly block: Block;
+  readonly offset: number;
+};
+
+type TrustedBodyBlockCorrespondences<Block extends FolioContentBlock> = {
+  readonly baseToRevised: ReadonlyMap<BodyBlockOccurrence<Block>, BodyBlockOccurrence<Block>>;
+  readonly revisedToBase: ReadonlyMap<BodyBlockOccurrence<Block>, BodyBlockOccurrence<Block>>;
+  readonly baseBySegment: ReadonlyMap<
+    BodyDocumentSegment<Block>,
+    readonly BodyBlockOccurrence<Block>[]
+  >;
+  readonly revisedBySegment: ReadonlyMap<
+    BodyDocumentSegment<Block>,
+    readonly BodyBlockOccurrence<Block>[]
+  >;
+};
+
+const bodyBlockOccurrences = <Block extends FolioContentBlock>(
+  segments: readonly DocumentSegment<Block>[],
+): {
+  readonly occurrences: readonly BodyBlockOccurrence<Block>[];
+  readonly bySegment: ReadonlyMap<
+    BodyDocumentSegment<Block>,
+    readonly BodyBlockOccurrence<Block>[]
+  >;
+} => {
+  const occurrences: BodyBlockOccurrence<Block>[] = [];
+  const bySegment = new Map<BodyDocumentSegment<Block>, BodyBlockOccurrence<Block>[]>();
+  for (const segment of segments) {
+    if (!isBodyDocumentSegment(segment)) {
+      continue;
+    }
+    const segmentOccurrences: BodyBlockOccurrence<Block>[] = [];
+    for (const [offset, block] of segment.blocks.entries()) {
+      const occurrence = { segment, block, offset };
+      occurrences.push(occurrence);
+      segmentOccurrences.push(occurrence);
+    }
+    bySegment.set(segment, segmentOccurrences);
+  }
+  return { occurrences, bySegment };
+};
+
+const trustedBodyBlockCorrespondences = <Block extends FolioContentBlock>(
+  baseSegments: readonly DocumentSegment<Block>[],
+  revisedSegments: readonly DocumentSegment<Block>[],
+): TrustedBodyBlockCorrespondences<Block> => {
+  const base = bodyBlockOccurrences(baseSegments);
+  const revised = bodyBlockOccurrences(revisedSegments);
+  const baseToRevised = new Map<BodyBlockOccurrence<Block>, BodyBlockOccurrence<Block>>();
+  const revisedToBase = new Map<BodyBlockOccurrence<Block>, BodyBlockOccurrence<Block>>();
+
+  const uniqueByKey = (
+    occurrences: readonly BodyBlockOccurrence<Block>[],
+    keyOf: (occurrence: BodyBlockOccurrence<Block>) => string | null,
+  ): ReadonlyMap<string, BodyBlockOccurrence<Block> | null> => {
+    const unique = new Map<string, BodyBlockOccurrence<Block> | null>();
+    for (const occurrence of occurrences) {
+      const key = keyOf(occurrence);
+      if (key === null) {
+        continue;
+      }
+      unique.set(key, unique.has(key) ? null : occurrence);
+    }
+    return unique;
+  };
+  const register = (
+    baseOccurrence: BodyBlockOccurrence<Block>,
+    revisedOccurrence: BodyBlockOccurrence<Block>,
+  ): void => {
+    if (
+      baseToRevised.has(baseOccurrence) ||
+      revisedToBase.has(revisedOccurrence) ||
+      !segmentsCanPair(baseOccurrence.segment, revisedOccurrence.segment)
+    ) {
+      return;
+    }
+    baseToRevised.set(baseOccurrence, revisedOccurrence);
+    revisedToBase.set(revisedOccurrence, baseOccurrence);
+  };
+
+  const baseByIdentity = uniqueByKey(base.occurrences, ({ block }) =>
+    identityAnchorKey(block.identity),
+  );
+  const revisedByIdentity = uniqueByKey(revised.occurrences, ({ block }) =>
+    identityAnchorKey(block.identity),
+  );
+  for (const [key, baseOccurrence] of baseByIdentity) {
+    const revisedOccurrence = revisedByIdentity.get(key);
+    if (
+      baseOccurrence === null ||
+      revisedOccurrence === undefined ||
+      revisedOccurrence === null ||
+      folioContentIdentityPairDisposition(
+        baseOccurrence.block.identity,
+        revisedOccurrence.block.identity,
+      ) !== "anchor"
+    ) {
+      continue;
+    }
+    register(baseOccurrence, revisedOccurrence);
+  }
+
+  const exactTextKey = ({ block }: BodyBlockOccurrence<Block>): string | null =>
+    block.kind.length > MAX_CONTENT_STRUCTURE_PROFILE_KIND_CODE_UNITS ||
+    block.text.length > MAX_CONTENT_STRUCTURE_PROFILE_TEXT_CODE_UNITS
+      ? null
+      : block.text;
+  const baseByExactContent = uniqueByKey(base.occurrences, (occurrence) =>
+    baseToRevised.has(occurrence) ? null : exactTextKey(occurrence),
+  );
+  const revisedByExactContent = uniqueByKey(revised.occurrences, (occurrence) =>
+    revisedToBase.has(occurrence) ? null : exactTextKey(occurrence),
+  );
+  for (const [key, baseOccurrence] of baseByExactContent) {
+    const revisedOccurrence = revisedByExactContent.get(key);
+    if (
+      baseOccurrence === null ||
+      revisedOccurrence === undefined ||
+      revisedOccurrence === null ||
+      baseOccurrence.block.kind !== revisedOccurrence.block.kind ||
+      folioContentIdentityPairDisposition(
+        baseOccurrence.block.identity,
+        revisedOccurrence.block.identity,
+      ) === "forbid"
+    ) {
+      continue;
+    }
+    register(baseOccurrence, revisedOccurrence);
+  }
+
+  return {
+    baseToRevised,
+    revisedToBase,
+    baseBySegment: base.bySegment,
+    revisedBySegment: revised.bySegment,
+  };
+};
+
+type ProjectTableSeparatedBodyCutsOptions<Block extends FolioContentBlock> = {
+  readonly sourceSegments: readonly DocumentSegment<Block>[];
+  readonly sourceBySegment: ReadonlyMap<
+    BodyDocumentSegment<Block>,
+    readonly BodyBlockOccurrence<Block>[]
+  >;
+  readonly sourceToTarget: ReadonlyMap<BodyBlockOccurrence<Block>, BodyBlockOccurrence<Block>>;
+  readonly targetCuts: Map<BodyDocumentSegment<Block>, Set<number>>;
+};
+
+/**
+ * A table present on only one side divides one body run into two alignment scopes.
+ * Project that boundary through the nearest unique anchors; crossing anchors and
+ * repeated content remain deliberately ambiguous, so ordinary move detection owns them.
+ */
+const projectTableSeparatedBodyCuts = <Block extends FolioContentBlock>({
+  sourceSegments,
+  sourceBySegment,
+  sourceToTarget,
+  targetCuts,
+}: ProjectTableSeparatedBodyCutsOptions<Block>): void => {
+  for (let leftIndex = 0; leftIndex < sourceSegments.length; leftIndex++) {
+    const left = sourceSegments[leftIndex];
+    if (!left || !isBodyDocumentSegment(left)) {
+      continue;
+    }
+    let rightIndex = leftIndex + 1;
+    if (sourceSegments[rightIndex]?.kind !== "table") {
+      continue;
+    }
+    while (sourceSegments[rightIndex]?.kind === "table") {
+      rightIndex += 1;
+    }
+    const right = sourceSegments[rightIndex];
+    if (!right || !isBodyDocumentSegment(right)) {
+      continue;
+    }
+
+    const leftOccurrences = sourceBySegment.get(left) ?? [];
+    let leftTarget: BodyBlockOccurrence<Block> | undefined;
+    for (let index = leftOccurrences.length - 1; index >= 0; index--) {
+      leftTarget = sourceToTarget.get(
+        leftOccurrences[index] ?? panic("A body occurrence index is out of range"),
+      );
+      if (leftTarget) {
+        break;
+      }
+    }
+    let rightTarget: BodyBlockOccurrence<Block> | undefined;
+    for (const sourceOccurrence of sourceBySegment.get(right) ?? []) {
+      rightTarget = sourceToTarget.get(sourceOccurrence);
+      if (rightTarget) {
+        break;
+      }
+    }
+    if (
+      !leftTarget ||
+      !rightTarget ||
+      leftTarget.segment !== rightTarget.segment ||
+      leftTarget.offset >= rightTarget.offset
+    ) {
+      continue;
+    }
+    const cuts = targetCuts.get(rightTarget.segment);
+    if (cuts) {
+      cuts.add(rightTarget.offset);
+    } else {
+      targetCuts.set(rightTarget.segment, new Set([rightTarget.offset]));
+    }
+  }
+};
+
+const splitBodySegmentsAtCuts = <Block extends FolioContentBlock>(
+  segments: readonly DocumentSegment<Block>[],
+  cutsBySegment: ReadonlyMap<BodyDocumentSegment<Block>, ReadonlySet<number>>,
+): DocumentSegment<Block>[] => {
+  const refined: DocumentSegment<Block>[] = [];
+  for (const segment of segments) {
+    if (!isBodyDocumentSegment(segment)) {
+      refined.push(segment);
+      continue;
+    }
+    const cuts = [...(cutsBySegment.get(segment) ?? [])]
+      .filter((offset) => offset > 0 && offset < segment.blocks.length)
+      .toSorted((left, right) => left - right);
+    if (cuts.length === 0) {
+      refined.push(segment);
+      continue;
+    }
+    let from = 0;
+    for (const to of [...cuts, segment.blocks.length]) {
+      refined.push({
+        kind: "body",
+        blocks: segment.blocks.slice(from, to),
+        containerPath: segment.containerPath,
+        containerPathKey: segment.containerPathKey,
+        structuralKey: segment.structuralKey,
+      });
+      from = to;
+    }
+  }
+  return refined;
+};
+
+const reconcileTableSeparatedBodySegments = <Block extends FolioContentBlock>(
+  baseSegments: readonly DocumentSegment<Block>[],
+  revisedSegments: readonly DocumentSegment<Block>[],
+): {
+  readonly base: readonly DocumentSegment<Block>[];
+  readonly revised: readonly DocumentSegment<Block>[];
+} => {
+  const hasInteriorTableBoundary = (segments: readonly DocumentSegment<Block>[]): boolean => {
+    let bodySeen = false;
+    let tableAfterBodySeen = false;
+    for (const segment of segments) {
+      if (segment.kind === "body") {
+        if (tableAfterBodySeen) {
+          return true;
+        }
+        bodySeen = true;
+      } else if (bodySeen) {
+        tableAfterBodySeen = true;
+      }
+    }
+    return false;
+  };
+  if (!hasInteriorTableBoundary(baseSegments) && !hasInteriorTableBoundary(revisedSegments)) {
+    return { base: baseSegments, revised: revisedSegments };
+  }
+  const correspondences = trustedBodyBlockCorrespondences(baseSegments, revisedSegments);
+  const baseCuts = new Map<BodyDocumentSegment<Block>, Set<number>>();
+  const revisedCuts = new Map<BodyDocumentSegment<Block>, Set<number>>();
+  projectTableSeparatedBodyCuts({
+    sourceSegments: baseSegments,
+    sourceBySegment: correspondences.baseBySegment,
+    sourceToTarget: correspondences.baseToRevised,
+    targetCuts: revisedCuts,
+  });
+  projectTableSeparatedBodyCuts({
+    sourceSegments: revisedSegments,
+    sourceBySegment: correspondences.revisedBySegment,
+    sourceToTarget: correspondences.revisedToBase,
+    targetCuts: baseCuts,
+  });
+  return {
+    base: splitBodySegmentsAtCuts(baseSegments, baseCuts),
+    revised: splitBodySegmentsAtCuts(revisedSegments, revisedCuts),
+  };
+};
+
 type AlignSegmentsOptions<Block extends FolioContentBlock> = {
   baseSegments: readonly DocumentSegment<Block>[];
   revisedSegments: readonly DocumentSegment<Block>[];
@@ -2996,8 +3286,12 @@ export const alignFolioContentStructure = <Block extends FolioContentBlock>({
   revisedBlocks,
   workSession = createFolioContentAlignmentWorkSession(),
 }: AlignFolioContentStructureOptions<Block>): FolioContentAlignmentStep<Block>[] => {
-  const baseSegments = splitSegments(baseBlocks);
-  const revisedSegments = splitSegments(revisedBlocks);
+  const segments = reconcileTableSeparatedBodySegments(
+    splitSegments(baseBlocks),
+    splitSegments(revisedBlocks),
+  );
+  const baseSegments = segments.base;
+  const revisedSegments = segments.revised;
   const alignedSegments = alignSegments({
     baseSegments,
     revisedSegments,

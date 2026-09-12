@@ -42,6 +42,21 @@ const cell = (
     }),
   });
 
+const outerTableCell = (id: string, outerTableIndex: number): FolioContentBlock =>
+  block(id, `Table ${String(outerTableIndex)}`, {
+    identityType: "persistent-hint",
+    table: tableLocationFixture({
+      outerTableIndex,
+      tableIndex: outerTableIndex,
+      rowIndex: 0,
+      cellIndex: 0,
+      gridColumnIndex: 0,
+      columnSpan: 1,
+      rowSpan: 1,
+      paragraphIndex: 0,
+    }),
+  });
+
 describe("longestIncreasingFolioContentPairs", () => {
   test("resolves crossing equal-length candidates with the historical earliest predecessor", () => {
     const pairs = [
@@ -339,6 +354,115 @@ describe("residual identity continuity", () => {
 });
 
 describe("container-safe structural alignment", () => {
+  test.each([
+    { tableSide: "base", oneSidedType: "baseTable" },
+    { tableSide: "revised", oneSidedType: "revisedTable" },
+  ] as const)(
+    "keeps both body anchors paired when a table exists only on the $tableSide side",
+    ({ tableSide, oneSidedType }) => {
+      const before = block("before", "Stable paragraph before the table");
+      const after = block("after", "Stable paragraph after the table");
+      const table = outerTableCell("table", 0);
+      const uninterrupted = [before, after];
+      const separated = [before, table, after];
+      const workSession = createFolioContentAlignmentWorkSession({ lcsCells: 0 });
+      const steps = alignFolioContentStructure({
+        baseBlocks: tableSide === "base" ? separated : uninterrupted,
+        revisedBlocks: tableSide === "revised" ? separated : uninterrupted,
+        workSession,
+      });
+
+      expect(
+        steps.map((step) =>
+          step.type === "pair"
+            ? [step.type, step.baseBlock.identity.id, step.revisedBlock.identity.id]
+            : [step.type],
+        ),
+      ).toEqual([["pair", "before", "before"], [oneSidedType], ["pair", "after", "after"]]);
+      expect(workSession.remainingLcsCells).toBe(0);
+    },
+  );
+
+  test.each([
+    { tableSide: "base", oneSidedType: "baseTable" },
+    { tableSide: "revised", oneSidedType: "revisedTable" },
+  ] as const)(
+    "projects every $tableSide table boundary into one uninterrupted body run",
+    ({ tableSide, oneSidedType }) => {
+      const alpha = block("alpha", "Stable alpha paragraph");
+      const beta = block("beta", "Stable beta paragraph");
+      const gamma = block("gamma", "Stable gamma paragraph");
+      const firstTable = outerTableCell("first-table", 0);
+      const secondTable = outerTableCell("second-table", 1);
+      const uninterrupted = [alpha, beta, gamma];
+      const separated = [alpha, firstTable, beta, secondTable, gamma];
+      const steps = alignFolioContentStructure({
+        baseBlocks: tableSide === "base" ? separated : uninterrupted,
+        revisedBlocks: tableSide === "revised" ? separated : uninterrupted,
+      });
+
+      expect(
+        steps.map((step) =>
+          step.type === "pair"
+            ? [step.type, step.baseBlock.identity.id, step.revisedBlock.identity.id]
+            : step.type === "baseTable" || step.type === "revisedTable"
+              ? [step.type, step.blocks.at(0)?.identity.id]
+              : [step.type],
+        ),
+      ).toEqual([
+        ["pair", "alpha", "alpha"],
+        [oneSidedType, "first-table"],
+        ["pair", "beta", "beta"],
+        [oneSidedType, "second-table"],
+        ["pair", "gamma", "gamma"],
+      ]);
+    },
+  );
+
+  test("uses unique exact content when positional ids shift across a removed table", () => {
+    const base = [
+      block("base-before", "Exact paragraph before", { identityType: "positional" }),
+      outerTableCell("removed-table", 0),
+      block("base-after", "Exact paragraph after", { identityType: "positional" }),
+    ];
+    const revised = [
+      block("revised-before", "Exact paragraph before", { identityType: "positional" }),
+      block("revised-after", "Exact paragraph after", { identityType: "positional" }),
+    ];
+
+    const steps = alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised });
+
+    expect(
+      steps.map((step) =>
+        step.type === "pair"
+          ? [step.type, step.baseBlock.identity.id, step.revisedBlock.identity.id]
+          : [step.type],
+      ),
+    ).toEqual([
+      ["pair", "base-before", "revised-before"],
+      ["baseTable"],
+      ["pair", "base-after", "revised-after"],
+    ]);
+  });
+
+  test("does not use repeated boilerplate to project a table boundary", () => {
+    const repeated = "Standard terms apply";
+    const base = [
+      block("base-copy-before", repeated, { identityType: "positional" }),
+      outerTableCell("removed-table", 0),
+      block("base-copy-after", repeated, { identityType: "positional" }),
+    ];
+    const revised = [
+      block("revised-copy-before", repeated, { identityType: "positional" }),
+      block("revised-copy-after", repeated, { identityType: "positional" }),
+    ];
+
+    const steps = alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised });
+
+    expect(steps.filter((step) => step.type === "pair")).toHaveLength(1);
+    expect(steps.map(({ type }) => type)).toContain("baseTable");
+  });
+
   test("owns the predecessor and revised carrier for a terminal paragraph removal", () => {
     const alpha = block("alpha", "Alpha");
     const beta = block("beta", "Beta");
