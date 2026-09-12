@@ -54,6 +54,7 @@ import {
   PPR_CHANGE_SCOPED_ATTR_DEFAULTS,
   PPR_CHANGE_SCOPED_ATTR_KEYS,
   PPR_CHANGE_SCOPED_FORMATTING_KEYS,
+  PPR_ORIGINAL_ONLY_FORMATTING_KEYS,
   PPR_PARSER_ONLY_FORMATTING_KEYS,
   PPR_PRESERVED_LIVE_FORMATTING_KEYS,
 } from "../schema/paragraphAttrDefaults";
@@ -192,6 +193,12 @@ export const paragraphPropertiesSnapshot = (node: PMNode): ParagraphPropertySnap
     snapshot["alignment"] = directAlignment;
   }
   Object.assign(snapshot, directParagraphSpacing(attrs));
+  for (const key of PPR_ORIGINAL_ONLY_FORMATTING_KEYS) {
+    const value = attrs._originalFormatting?.[key];
+    if (value !== undefined) {
+      snapshot[key] = value;
+    }
+  }
   return snapshot;
 };
 

@@ -12,12 +12,17 @@ import {
   PPR_CHANGE_SCOPED_ATTR_KEYS,
   PPR_CHANGE_SCOPED_FORMATTING_KEYS,
   PPR_FORMATTING_FIELD_DISPOSITIONS,
+  PPR_ORIGINAL_ONLY_FORMATTING_KEYS,
 } from "../schema/paragraphAttrDefaults";
 import type { ParagraphAttrs } from "../schema/nodes";
 import { schema } from "../schema";
 import type { ParagraphFormatting } from "../../types/document";
 import { createEmptyDocument } from "../../utils/createDocument";
-import { paragraphRejectAttrPatch, paragraphRejectOriginalFormatting } from "./propertyChangeScope";
+import {
+  paragraphPropertiesSnapshot,
+  paragraphRejectAttrPatch,
+  paragraphRejectOriginalFormatting,
+} from "./propertyChangeScope";
 
 const NON_DEFAULT_LIST_RENDERING_ATTRS = {
   listIsBullet: true,
@@ -136,6 +141,19 @@ describe("canonical paragraph attr restoration", () => {
       ...previous,
       ...(spacingExplicit === undefined ? {} : { spacingExplicit }),
     });
+  });
+
+  test("editor-created changes retain every original-only paragraph property", () => {
+    const paragraph = schema.node(
+      "paragraph",
+      { _originalFormatting: PARAGRAPH_FORMATTING_SAMPLES },
+      [schema.text("Clause")],
+    );
+    const snapshot = paragraphPropertiesSnapshot(paragraph);
+
+    for (const key of PPR_ORIGINAL_ONLY_FORMATTING_KEYS) {
+      expect(snapshot[key]).toEqual(PARAGRAPH_FORMATTING_SAMPLES[key]);
+    }
   });
 
   test("list-property views reconstruct both sides across every rendering attr", () => {

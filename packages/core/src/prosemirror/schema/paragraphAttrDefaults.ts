@@ -70,8 +70,11 @@ export const LIST_RENDERING_ATTR_DEFAULTS = Object.freeze({
 export const LIST_RENDERING_ATTR_KEYS = Object.freeze(ownKeys(LIST_RENDERING_ATTR_DEFAULTS));
 
 type ParagraphFormattingFieldDisposition =
-  | { readonly type: "attr"; readonly attr: keyof ParagraphAttrs }
-  | { readonly type: "mapped"; readonly attrs: readonly (keyof ParagraphAttrs)[] }
+  | { readonly type: "attr"; readonly attr: keyof typeof PPR_CHANGE_SCOPED_ATTR_DEFAULTS }
+  | {
+      readonly type: "mapped";
+      readonly attrs: readonly (keyof typeof PPR_CHANGE_SCOPED_ATTR_DEFAULTS)[];
+    }
   | { readonly type: "original-only" }
   | { readonly type: "preserved-live-original" }
   | { readonly type: "outside-change-scope" };
@@ -127,6 +130,12 @@ export const PPR_CHANGE_SCOPED_FORMATTING_KEYS = Object.freeze(
 export const PPR_PARSER_ONLY_FORMATTING_KEYS = Object.freeze(
   ownKeys(PPR_FORMATTING_FIELD_DISPOSITIONS).filter(
     (key) => PPR_FORMATTING_FIELD_DISPOSITIONS[key].type !== "attr",
+  ),
+);
+
+export const PPR_ORIGINAL_ONLY_FORMATTING_KEYS = Object.freeze(
+  ownKeys(PPR_FORMATTING_FIELD_DISPOSITIONS).filter(
+    (key) => PPR_FORMATTING_FIELD_DISPOSITIONS[key].type === "original-only",
   ),
 );
 
