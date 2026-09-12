@@ -134,7 +134,8 @@ export const projectFolioAIBlockStructuralBoundaries = ({
   return projected ?? EMPTY_FOLIO_AI_BLOCK_STRUCTURAL_BOUNDARIES;
 };
 
-const hashFolioAIBlockStructuralBoundaryProjection = (
+/** @internal Stable prefilter for an already-projected boundary sequence. */
+export const hashFolioAIBlockStructuralBoundaryProjection = (
   structuralBoundaries: readonly FolioAIBlockStructuralBoundary[],
 ): string =>
   structuralBoundaries.length === 0
