@@ -164,13 +164,15 @@ const stateWithTableCells = (...cells: readonly (readonly TableParagraph[])[]): 
     ]),
   );
 
+type TestTableAttrs = {
+  readonly width?: number;
+  readonly widthType?: "dxa";
+  readonly justification?: "left" | "center" | "right";
+};
+
 const tableWithTextGrid = (
   rows: readonly (readonly string[])[],
-  attrs?: {
-    readonly width?: number;
-    readonly widthType?: "dxa";
-    readonly justification?: "left" | "center" | "right";
-  },
+  attrs?: TestTableAttrs,
 ): PMNode =>
   schema.node(
     "table",
@@ -196,20 +198,31 @@ type GridCellSpec = {
   readonly id: string;
   readonly text: string;
   readonly colspan?: number;
+  readonly rowspan?: number;
   readonly alignment?: "center" | "left" | "right";
   readonly bold?: boolean;
 };
 
-const tableWithCellGrid = (rows: readonly (readonly GridCellSpec[])[]): PMNode =>
+const tableWithCellGrid = (
+  rows: readonly (readonly GridCellSpec[])[],
+  attrs?: TestTableAttrs,
+): PMNode =>
   schema.node(
     "table",
-    null,
+    attrs ?? null,
     rows.map((cells) =>
       schema.node(
         "tableRow",
         null,
-        cells.map(({ id, text, colspan, alignment, bold }) =>
-          schema.node("tableCell", colspan === undefined ? null : { colspan }, [
+        cells.map(({ id, text, colspan, rowspan, alignment, bold }) => {
+          const spanAttrs =
+            colspan === undefined && rowspan === undefined
+              ? null
+              : {
+                  ...(colspan === undefined ? {} : { colspan }),
+                  ...(rowspan === undefined ? {} : { rowspan }),
+                };
+          return schema.node("tableCell", spanAttrs, [
             schema.node(
               "paragraph",
               { paraId: id, ...(alignment === undefined ? {} : { alignment }) },
@@ -217,8 +230,8 @@ const tableWithCellGrid = (rows: readonly (readonly GridCellSpec[])[]): PMNode =
                 ? null
                 : [schema.text(text, bold === true ? [boldMark.create()] : [])],
             ),
-          ]),
-        ),
+          ]);
+        }),
       ),
     ),
   );
@@ -1812,18 +1825,20 @@ describe("the dedicated DOCX comparison executor", () => {
       [{ id: "C1000000", text: "Inserted" }],
       [{ id: "B1000000", text: "B" }],
     ]);
-    const spanningRow = (id: string, text: string) =>
-      schema.node("tableRow", null, [
-        schema.node("tableCell", { colspan: 2 }, [paragraphNode(id, text)]),
-      ]);
-    const invalidBase = schema.node("table", null, [
-      spanningRow("D1000000", "D"),
-      spanningRow("E1000000", "E"),
+    const invalidBase = tableWithCellGrid([
+      [
+        { id: "D1000000", text: "D", rowspan: 2 },
+        { id: "E1000000", text: "E" },
+      ],
+      [{ id: "G1000000", text: "G" }],
     ]);
-    const invalidTarget = schema.node("table", null, [
-      spanningRow("D1000000", "D"),
-      spanningRow("F1000000", "Unsupported"),
-      spanningRow("E1000000", "E"),
+    const invalidTarget = tableWithCellGrid([
+      [
+        { id: "D1000000", text: "D", rowspan: 2 },
+        { id: "E1000000", text: "E" },
+      ],
+      [{ id: "G1000000", text: "G" }],
+      [{ id: "F1000000", text: "Unsupported", colspan: 2 }],
     ]);
     const baseState = stateWithBlocks(validBase, paragraphNode("A2000000", "Between"), invalidBase);
     const targetState = stateWithBlocks(
@@ -1872,22 +1887,30 @@ describe("the dedicated DOCX comparison executor", () => {
   });
 
   test("fails every obligation in one shared table component atomically", () => {
-    const spanningRow = (id: string, text: string) =>
-      schema.node("tableRow", null, [
-        schema.node("tableCell", { colspan: 2 }, [paragraphNode(id, text)]),
-      ]);
     const baseState = stateWithBlocks(
-      schema.node("table", { width: 6_000, widthType: "dxa", justification: "left" }, [
-        spanningRow("A1000000", "A"),
-        spanningRow("B1000000", "B"),
-      ]),
+      tableWithCellGrid(
+        [
+          [
+            { id: "A1000000", text: "A", rowspan: 2 },
+            { id: "B1000000", text: "B" },
+          ],
+          [{ id: "D1000000", text: "D" }],
+        ],
+        { width: 6_000, widthType: "dxa", justification: "left" },
+      ),
     );
     const targetState = stateWithBlocks(
-      schema.node("table", { width: 7_200, widthType: "dxa", justification: "center" }, [
-        spanningRow("A1000000", "A"),
-        spanningRow("C1000000", "Inserted"),
-        spanningRow("B1000000", "B"),
-      ]),
+      tableWithCellGrid(
+        [
+          [
+            { id: "A1000000", text: "A", rowspan: 2 },
+            { id: "B1000000", text: "B" },
+          ],
+          [{ id: "D1000000", text: "D" }],
+          [{ id: "C1000000", text: "Inserted", colspan: 2 }],
+        ],
+        { width: 7_200, widthType: "dxa", justification: "center" },
+      ),
     );
     const before = baseState.doc.toJSON();
     const prepared = preflightDocxComparisonProgram({

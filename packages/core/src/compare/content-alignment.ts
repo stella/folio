@@ -1710,7 +1710,7 @@ type DuplicateSignaturePairingPolicy =
 
 type SoleShiftedPairingPolicy =
   | "reject-between-unpaired-ranges"
-  | "retain-identity-provenance";
+  | "retain-order-consistent-identity";
 
 const unpairedContentSequence = <Item>(
   baseItems: readonly Item[],
@@ -1889,12 +1889,17 @@ type PersistedContentSequencePairsOptions<Item> = {
   ) => boolean;
 };
 
+type PersistedContentSequencePairing = {
+  readonly candidates: readonly FolioContentBlockPair[];
+  readonly pairs: ReadonlySet<number>;
+};
+
 const persistedContentSequencePairs = <Item>({
   base,
   revised,
   anchors,
   canPair,
-}: PersistedContentSequencePairsOptions<Item>): ReadonlySet<number> => {
+}: PersistedContentSequencePairsOptions<Item>): PersistedContentSequencePairing => {
   // A complete positional-to-stable identity transition is evidence in its own right.
   // Text and stable-id anchors constrain it when present; requiring an anchor first
   // loses every surviving row when each one also contains an edit.
@@ -1934,17 +1939,56 @@ const persistedContentSequencePairs = <Item>({
       contentContainerIdentityTransition(
         baseItem.profile.containerIdentity,
         revisedItem.profile.containerIdentity,
-      ) &&
-      pairIsCompatibleWithAnchors(pair, anchors)
+      )
     ) {
       candidates.push(pair);
     }
   }
-  return new Set(
-    monotoneContentSequencePairs(candidates).map(
-      ({ baseIndex, revisedIndex }) => baseIndex * revised.length + revisedIndex,
-    ),
+  const compatibleCandidates = candidates.filter((pair) =>
+    pairIsCompatibleWithAnchors(pair, anchors),
   );
+  return {
+    candidates,
+    pairs: new Set(
+      monotoneContentSequencePairs(compatibleCandidates).map(
+        ({ baseIndex, revisedIndex }) => baseIndex * revised.length + revisedIndex,
+      ),
+    ),
+  };
+};
+
+type IdentityProvenanceRelation =
+  | { readonly status: "order-consistent" }
+  | { readonly status: "conflicting" };
+
+/**
+ * Whether the raw identity relation itself is a strict monotone partial
+ * bijection. LIS can choose one arm of a reorder deterministically, but that
+ * choice cannot turn crossed provenance into evidence for a sole survivor.
+ */
+const identityProvenanceRelation = (
+  pairIndexes: ReadonlySet<number>,
+  revisedLength: number,
+): IdentityProvenanceRelation => {
+  const pairs = [...pairIndexes]
+    .map((pairIndex) => ({
+      baseIndex: Math.floor(pairIndex / revisedLength),
+      revisedIndex: pairIndex % revisedLength,
+    }))
+    .toSorted(
+      (left, right) => left.baseIndex - right.baseIndex || left.revisedIndex - right.revisedIndex,
+    );
+  let previous: FolioContentBlockPair | undefined;
+  for (const pair of pairs) {
+    if (
+      previous !== undefined &&
+      (pair.baseIndex <= previous.baseIndex || pair.revisedIndex <= previous.revisedIndex)
+    ) {
+      return { status: "conflicting" };
+    }
+    previous = pair;
+  }
+  return { status: "order-consistent" };
 };
 
 type AlignProfiledContentSequenceOptions<Item> = {
@@ -2055,7 +2099,7 @@ const alignProfiledContentSequence = <Item>({
   };
   const baseExactSignatureCounts = signatureCounts(baseExactSignatureKeys);
   const revisedExactSignatureCounts = signatureCounts(revisedExactSignatureKeys);
-  let persistedPairs: ReadonlySet<number> = new Set();
+  let persistedPairing: PersistedContentSequencePairing = { candidates: [], pairs: new Set() };
   const usesContainerIdentity =
     base.some(({ profile }) => profile.containerIdentity !== null) ||
     revised.some(({ profile }) => profile.containerIdentity !== null);
@@ -2076,13 +2120,18 @@ const alignProfiledContentSequence = <Item>({
       primaryEvidence,
       canPairIndexes,
     });
-    persistedPairs = persistedContentSequencePairs({
+    persistedPairing = persistedContentSequencePairs({
       base,
       revised,
       anchors: trustedPairs,
       canPair,
     });
   }
+  const identityProvenancePairs = new Set<number>(
+    persistedPairing.candidates.map(
+      ({ baseIndex, revisedIndex }) => baseIndex * revised.length + revisedIndex,
+    ),
+  );
   const maxPairs = Math.min(base.length, revised.length);
   const continuityBonus = 1;
   const secondaryWeight = maxPairs * (CONTENT_STRUCTURE_SIMILARITY_SCALE + continuityBonus) + 1;
@@ -2117,6 +2166,7 @@ const alignProfiledContentSequence = <Item>({
         continue;
       }
       const pairIndex = baseIndex * revised.length + revisedIndex;
+      if (scopeDisposition === "anchor") identityProvenancePairs.add(pairIndex);
       const exact =
         baseExactSignatureKeys[baseIndex] !== -1 &&
         baseExactSignatureKeys[baseIndex] === revisedExactSignatureKeys[revisedIndex];
@@ -2136,6 +2186,7 @@ const alignProfiledContentSequence = <Item>({
         continue;
       }
       const stable = stablePairs.has(pairIndex);
+      if (stable) identityProvenancePairs.add(pairIndex);
       const profileSimilarity = exact
         ? 1
         : contentStructureProfileSimilarity(baseItem.profile, revisedItem.profile, workSession);
@@ -2146,7 +2197,7 @@ const alignProfiledContentSequence = <Item>({
       const stableAtSamePosition = stable && samePosition;
       const persistedAtSamePosition =
         samePosition && provenanceTransitionAtSamePosition[baseIndex] === 1;
-      const shiftedPersisted = !samePosition && persistedPairs.has(pairIndex);
+      const shiftedPersisted = !samePosition && persistedPairing.pairs.has(pairIndex);
       const persisted = persistedAtSamePosition || shiftedPersisted;
       const soleStructuralSlot =
         pairSoleStructuralSlot && base.length === 1 && revised.length === 1;
@@ -2212,6 +2263,10 @@ const alignProfiledContentSequence = <Item>({
   }
 
   const aligned: ContentSequenceAlignment<Item>[] = [];
+  const provenanceRelation = identityProvenanceRelation(
+    identityProvenancePairs,
+    revised.length,
+  );
   let baseIndex = 0;
   let revisedIndex = 0;
   let pairCount = 0;
@@ -2237,14 +2292,7 @@ const alignProfiledContentSequence = <Item>({
         revised: revisedProfiledItem.item,
       });
       pairCount += 1;
-      const baseScopeIdentity = baseProfiledItem.profile.scopeIdentity;
-      const revisedScopeIdentity = revisedProfiledItem.profile.scopeIdentity;
-      solePairHasIdentityProvenance =
-        stablePairs.has(pairIndex) ||
-        persistedPairs.has(pairIndex) ||
-        (baseScopeIdentity !== null &&
-          revisedScopeIdentity !== null &&
-          folioContentIdentityPairDisposition(baseScopeIdentity, revisedScopeIdentity) === "anchor");
+      solePairHasIdentityProvenance = identityProvenancePairs.has(pairIndex);
       solePairIsShifted = baseIndex !== revisedIndex;
       baseIndex += 1;
       revisedIndex += 1;
@@ -2272,7 +2320,9 @@ const alignProfiledContentSequence = <Item>({
     hasBaseOnly &&
     hasRevisedOnly &&
     !(
-      soleShiftedPairing === "retain-identity-provenance" && solePairHasIdentityProvenance
+      soleShiftedPairing === "retain-order-consistent-identity" &&
+      solePairHasIdentityProvenance &&
+      provenanceRelation.status === "order-consistent"
     )
   ) {
     // One content match cannot establish a shifted container mapping when doing so
@@ -2440,9 +2490,10 @@ const pairTableRows = ({
     // structural slot even when every word in that row changed.
     pairSoleStructuralSlot: true,
     primaryEvidence: "exact",
-    // A shifted row between unmatched ranges is retained only when its row or
-    // paragraph identity survived; exact text alone remains ambiguous.
-    soleShiftedPairing: "retain-identity-provenance",
+    // A shifted row between unmatched ranges is retained only when the raw
+    // row/paragraph identity relation is order-consistent. Exact text alone,
+    // or one arm selected from crossed identities, remains ambiguous.
+    soleShiftedPairing: "retain-order-consistent-identity",
     similarityFactor: (base, revised) =>
       base.profile.physicalCellCount === revised.profile.physicalCellCount ? 1 : 0.5,
   }).map((alignment): TableRowAlignment => {

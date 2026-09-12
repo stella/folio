@@ -1310,9 +1310,13 @@ describe("table row and column structural alignment", () => {
         revisedBlocks: revised,
       });
 
-      expect(steps.filter(({ type }) => type === "pair")).toEqual([]);
+      expect(steps.map(({ type }) => type)).toEqual(["tableReplacement"]);
+      const replacement = steps.at(0);
+      if (replacement?.type !== "tableReplacement") {
+        throw new Error("Reordered row identities did not retain atomic table ownership");
+      }
       expect(
-        steps
+        replacement.refinementSteps
           .flatMap((step) =>
             step.type === "baseRow" || step.type === "revisedRow" ? [step.type] : [],
           )
@@ -1320,6 +1324,38 @@ describe("table row and column structural alignment", () => {
       ).toEqual(["baseRow", "baseRow", "revisedRow", "revisedRow"]);
     },
   );
+
+  test("does not cross-pair reordered exact rows with stable paragraph identities", () => {
+    const stableCell = (id: string, text: string, rowIndex: number, cellIndex: number) =>
+      cell(id, text, { rowIndex, cellIndex, gridColumnIndex: cellIndex });
+    const base = [
+      stableCell("first-a", "First A", 0, 0),
+      stableCell("first-b", "First B", 0, 1),
+      stableCell("second-a", "Second A", 1, 0),
+      stableCell("second-b", "Second B", 1, 1),
+    ];
+    const revised = [
+      stableCell("second-a", "Second A", 0, 0),
+      stableCell("second-b", "Second B", 0, 1),
+      stableCell("first-a", "First A", 1, 0),
+      stableCell("first-b", "First B", 1, 1),
+    ];
+
+    const steps = alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised });
+
+    expect(steps.map(({ type }) => type)).toEqual(["tableReplacement"]);
+    const replacement = steps.at(0);
+    if (replacement?.type !== "tableReplacement") {
+      throw new Error("Crossed stable row identities did not retain atomic table ownership");
+    }
+    expect(
+      replacement.refinementSteps
+        .flatMap((step) =>
+          step.type === "baseRow" || step.type === "revisedRow" ? [step.type] : [],
+        )
+        .toSorted(),
+    ).toEqual(["baseRow", "baseRow", "revisedRow", "revisedRow"]);
+  });
 
   test("keeps an edited persisted row paired after an inserted row", () => {
     const base = [
