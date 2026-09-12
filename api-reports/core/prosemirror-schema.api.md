@@ -210,7 +210,6 @@ export type PageBreakRunOwnerMarkAttrs = {
 export type ParagraphAttrs = {
     paraId?: string;
     textId?: string;
-    _docxParagraphSourceToken?: string;
     alignment?: import__stll_docx_core_model.ParagraphAlignment;
     alignmentFromStyle?: import__stll_docx_core_model.ParagraphAlignment;
     kinsoku?: boolean;

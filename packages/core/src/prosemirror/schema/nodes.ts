@@ -87,8 +87,6 @@ export type ParagraphAttrs = {
   // Identity
   paraId?: string;
   textId?: string;
-  /** Private token used to rebind preserved paragraph properties after collaboration. */
-  _docxParagraphSourceToken?: string;
 
   // Alignment
   alignment?: ParagraphAlignment;

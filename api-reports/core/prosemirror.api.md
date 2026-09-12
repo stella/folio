@@ -291,7 +291,6 @@ export const PAINTABLE_MARK_NAMES: ReadonlySet<string>;
 export type ParagraphAttrs = {
     paraId?: string;
     textId?: string;
-    _docxParagraphSourceToken?: string;
     alignment?: import__stll_docx_core_model.ParagraphAlignment;
     alignmentFromStyle?: import__stll_docx_core_model.ParagraphAlignment;
     kinsoku?: boolean;
