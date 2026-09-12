@@ -27,6 +27,7 @@ import {
   preflightTableGeometryComponents,
   projectTableGeometry,
   tableGeometryProgramSemanticChangeOccurrences,
+  tableGeometryProgramTableGridTransitions,
   type TableCellCoordinate,
   type TableGeometryPairing,
 } from "./table-geometry-program";
@@ -591,6 +592,28 @@ describe("table geometry refusal boundaries", () => {
       scope: "table",
       property: "column-widths",
     });
+  });
+
+  test("defers a paired grid change as an explicit structural obligation", () => {
+    const base = documentWith(table([row([cell("same")])], { columnWidths: [2400] }));
+    const target = documentWith(table([row([cell("same")])], { columnWidths: [3600] }));
+    const owner = pairing();
+
+    const component = {};
+    const components = preflightTableGeometryComponents({
+      baseTables: folioStoryTables(base),
+      targetTables: targetTablesOf(target),
+      components: [{ component, pairings: [owner] }],
+      tableGridChanges: "defer-to-table-structure",
+    });
+
+    expect(components.status).toBe("ready");
+    if (components.status === "unsupported") return;
+    const result = components.components.at(0)?.result;
+    expect(result?.status).toBe("ready");
+    if (!result || result.status === "unsupported") return;
+    expect(tableGeometryProgramSemanticChangeOccurrences(result.program)).toEqual([]);
+    expect(tableGeometryProgramTableGridTransitions(result.program)).toEqual([owner]);
   });
 
   test("bounds pairings, visited nodes, changes, and captured payload", () => {

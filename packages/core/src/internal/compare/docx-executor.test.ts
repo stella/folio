@@ -192,9 +192,15 @@ const tableWithTextGrid = (
     ),
   );
 
-const tableWithCellGrid = (
-  rows: readonly (readonly { readonly id: string; readonly text: string }[])[],
-): PMNode =>
+type GridCellSpec = {
+  readonly id: string;
+  readonly text: string;
+  readonly colspan?: number;
+  readonly alignment?: "center" | "left" | "right";
+  readonly bold?: boolean;
+};
+
+const tableWithCellGrid = (rows: readonly (readonly GridCellSpec[])[]): PMNode =>
   schema.node(
     "table",
     null,
@@ -202,7 +208,21 @@ const tableWithCellGrid = (
       schema.node(
         "tableRow",
         null,
-        cells.map(({ id, text }) => schema.node("tableCell", null, [paragraphNode(id, text)])),
+        cells.map(({ id, text, colspan, alignment, bold }) =>
+          schema.node(
+            "tableCell",
+            colspan === undefined ? null : { colspan },
+            [
+              schema.node(
+                "paragraph",
+                { paraId: id, ...(alignment === undefined ? {} : { alignment }) },
+                text.length === 0
+                  ? null
+                  : [schema.text(text, bold === true ? [boldMark.create()] : [])],
+              ),
+            ],
+          ),
+        ),
       ),
     ),
   );
@@ -1028,6 +1048,110 @@ describe("the dedicated DOCX comparison executor", () => {
       const { tracked } = executePlannedComparison(base, target);
       expectResolvedViews(base, target, tracked);
     }
+  });
+
+  test("grid-boundary insertions beside merged cells retain every target cell", () => {
+    for (let mergedWidth = 2; mergedWidth <= 4; mergedWidth++) {
+      for (let insertedCount = 1; insertedCount <= 2; insertedCount++) {
+        const stableBottom = Array.from({ length: mergedWidth }, (_unused, columnIndex) => ({
+          id: `B${String(mergedWidth)}${String(columnIndex)}00000`,
+          text: `Kept ${String(columnIndex)}`,
+        }));
+        const insertedTop = Array.from({ length: insertedCount }, (_unused, columnIndex) => ({
+          id: `D${String(mergedWidth)}${String(insertedCount)}${String(columnIndex)}0000`,
+          text: `Top ${String(columnIndex)}`,
+          alignment: "center" as const,
+          bold: true,
+        }));
+        const insertedBottom = Array.from({ length: insertedCount }, (_unused, columnIndex) => ({
+          id: `E${String(mergedWidth)}${String(insertedCount)}${String(columnIndex)}0000`,
+          text: `Bottom ${String(columnIndex)}`,
+          alignment: "right" as const,
+        }));
+        const merged = {
+          id: `A${String(mergedWidth)}000000`,
+          text: "Merged account details",
+          colspan: mergedWidth,
+        };
+        const topTail = { id: `C${String(mergedWidth)}000000`, text: "Status" };
+        const bottomTail = { id: `F${String(mergedWidth)}000000`, text: "Open" };
+        const baseState = stateWithBlocks(
+          tableWithCellGrid([
+            [merged, topTail],
+            [...stableBottom, bottomTail],
+          ]),
+        );
+        const targetState = stateWithBlocks(
+          tableWithCellGrid([
+            [merged, ...insertedTop, topTail],
+            [...stableBottom, ...insertedBottom, bottomTail],
+          ]),
+        );
+        const { executed, tracked } = executePlannedComparison(baseState, targetState);
+
+        expect(executed.receipt.instructions.map(({ instructionType }) => instructionType)).toEqual(
+          Array.from({ length: insertedCount }, () => "insertTableColumn"),
+        );
+        expect(executed.receipt.executionTaskCount).toBe(1);
+        expect(executed.receipt.localPositionMappingSteps).toBe(0);
+        expectResolvedViews(baseState, targetState, tracked);
+      }
+    }
+  });
+
+  test("column programs remain deterministic across independent table components", () => {
+    const separator = paragraphNode("A9000000", "Between");
+    const firstBase = tableWithCellGrid([
+      [
+        { id: "A1000000", text: "Merged", colspan: 2 },
+        { id: "A1000001", text: "Tail" },
+      ],
+      [
+        { id: "A1000002", text: "One" },
+        { id: "A1000003", text: "Two" },
+        { id: "A1000004", text: "Three" },
+      ],
+    ]);
+    const firstTarget = tableWithCellGrid([
+      [
+        { id: "A1000000", text: "Merged", colspan: 2 },
+        { id: "B1000000", text: "Inserted" },
+        { id: "A1000001", text: "Tail" },
+      ],
+      [
+        { id: "A1000002", text: "One" },
+        { id: "A1000003", text: "Two" },
+        { id: "B1000001", text: "Inserted" },
+        { id: "A1000004", text: "Three" },
+      ],
+    ]);
+    const secondBase = tableWithCellGrid([
+      [
+        { id: "C1000000", text: "Left" },
+        { id: "C1000001", text: "Right" },
+      ],
+    ]);
+    const secondTarget = tableWithCellGrid([
+      [
+        { id: "C1000000", text: "Left" },
+        { id: "D1000000", text: "First" },
+        { id: "D1000001", text: "Second" },
+        { id: "C1000001", text: "Right" },
+      ],
+    ]);
+    const baseState = stateWithBlocks(firstBase, separator, secondBase);
+    const targetState = stateWithBlocks(firstTarget, separator, secondTarget);
+    const first = executePlannedComparison(baseState, targetState);
+    const second = executePlannedComparison(baseState, targetState);
+
+    expect(first.executed.receipt.instructions.map(({ instructionType }) => instructionType)).toEqual(
+      ["insertTableColumn", "insertTableColumn", "insertTableColumn"],
+    );
+    expect(first.executed.receipt.executionTaskCount).toBe(2);
+    expect(first.executed.receipt.localPositionMappingSteps).toBe(0);
+    expect(first.tracked.doc.eq(second.tracked.doc)).toBe(true);
+    expect(first.executed.receipt.instructions).toEqual(second.executed.receipt.instructions);
+    expectResolvedViews(baseState, targetState, first.tracked);
   });
 
   test("rejects copied and cross-comparison table operands before preflight", () => {

@@ -28,6 +28,7 @@ import { canonicalJson } from "../../utils/canonicalJson";
 import {
   preflightTableGeometryComponents,
   tableGeometryProgramSemanticChangeOccurrences,
+  tableGeometryProgramTableGridTransitions,
   type TableGeometryPairing,
   type TableGeometryProgram,
   type TableGeometrySemanticChange,
@@ -2634,6 +2635,7 @@ export const resolvedDocxTableFormatOperands = (
       component,
       pairings: component.pairings,
     })),
+    tableGridChanges: "defer-to-table-structure",
   });
   if (preflight.status === "unsupported") {
     return Object.freeze(
@@ -2675,7 +2677,12 @@ export const resolvedDocxTableFormatOperands = (
       continue;
     }
     const semanticOccurrences = tableGeometryProgramSemanticChangeOccurrences(result.program);
-    if (semanticOccurrences.length === 0) continue;
+    if (
+      semanticOccurrences.length === 0 &&
+      tableGeometryProgramTableGridTransitions(result.program).length === 0
+    ) {
+      continue;
+    }
     const changes = semanticOccurrences.map(({ change, owner }) => {
       const sequence = index.tableGeometrySequenceByPairing.get(tableGeometryPairingKey(owner));
       if (sequence === undefined) {

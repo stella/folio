@@ -315,6 +315,7 @@ export type TableGeometryProgram = {
   readonly type: "unchanged" | "changes";
   readonly carriers: readonly TableGeometryCarrierAssertion[];
   readonly instructions: readonly TableGeometryInstruction[];
+  readonly tableGridTransitions: readonly TableGeometryPairing[];
   readonly maxLivePayloadUnits: number;
 };
 
@@ -1117,6 +1118,7 @@ type PreflightTableGeometryOptions = {
 
 type PreflightTableGeometryProgramOptions = PreflightTableGeometryOptions & {
   readonly budget?: TableGeometryPreflightBudget;
+  readonly tableGridChanges?: "reject" | "defer-to-table-structure";
 };
 
 /**
@@ -1128,6 +1130,7 @@ const preflightTableGeometryProgram = ({
   targetTables,
   pairings,
   limits = DEFAULT_TABLE_GEOMETRY_PREFLIGHT_LIMITS,
+  tableGridChanges = "reject",
   budget,
 }: PreflightTableGeometryProgramOptions): TableGeometryPreflightResult => {
   for (const name of LIMIT_NAMES) {
@@ -1217,6 +1220,7 @@ const preflightTableGeometryProgram = ({
 
   const carriers: TableGeometryCarrierAssertion[] = [];
   const instructions: TableGeometryInstruction[] = [];
+  const tableGridTransitions: TableGeometryPairing[] = [];
   const claimedPositions = new Map<number, TableGeometryScopeName>();
   const rowPositionsByTable = new Map<number, readonly number[]>();
   const cellPositionsByRow = new Map<string, readonly number[]>();
@@ -1268,13 +1272,21 @@ const preflightTableGeometryProgram = ({
         );
       }
       if (baseStructure.value !== targetStructure.value) {
-        return unsupported({
-          reason: "non-reconstructable-structure-change",
-          scope: "table",
-          property: "column-widths",
-          base: pairing.base,
-          target: pairing.target,
-        });
+        if (tableGridChanges === "reject") {
+          return unsupported({
+            reason: "non-reconstructable-structure-change",
+            scope: "table",
+            property: "column-widths",
+            base: pairing.base,
+            target: pairing.target,
+          });
+        }
+        tableGridTransitions.push(
+          Object.freeze({
+            base: frozenCoordinate(pairing.base),
+            target: frozenCoordinate(pairing.target),
+          }),
+        );
       }
     }
     const expectedLiveState = capturedLiveState(baseNode, scope, payloadContext);
@@ -1487,11 +1499,16 @@ const preflightTableGeometryProgram = ({
   instructions.sort((left, right) => compareCarriers(left.carrier, right.carrier));
   const frozenCarriers = Object.freeze(carriers);
   const frozenInstructions = Object.freeze(instructions);
+  const frozenTableGridTransitions = Object.freeze(tableGridTransitions);
   const program = Object.freeze({
     [TABLE_GEOMETRY_PROGRAM_BRAND]: true as const,
-    type: frozenInstructions.length === 0 ? ("unchanged" as const) : ("changes" as const),
+    type:
+      frozenInstructions.length === 0 && frozenTableGridTransitions.length === 0
+        ? ("unchanged" as const)
+        : ("changes" as const),
     carriers: frozenCarriers,
     instructions: frozenInstructions,
+    tableGridTransitions: frozenTableGridTransitions,
     maxLivePayloadUnits: limits.maxPayloadUnits,
   });
   PROGRAMS.add(program);
@@ -1512,11 +1529,13 @@ export const preflightTableGeometryComponents = <Component extends object>({
   targetTables,
   components,
   limits = DEFAULT_TABLE_GEOMETRY_PREFLIGHT_LIMITS,
+  tableGridChanges = "reject",
 }: {
   readonly baseTables: readonly FolioStoryTable[];
   readonly targetTables: ReadonlyMap<number, PMNode>;
   readonly components: readonly TableGeometryComponent<Component>[];
   readonly limits?: TableGeometryPreflightLimits;
+  readonly tableGridChanges?: "reject" | "defer-to-table-structure";
 }): TableGeometryComponentsPreflightResult<Component> => {
   if (new Set(components.map(({ component }) => component)).size !== components.length) {
     return panic("A table geometry component was supplied more than once");
@@ -1623,6 +1642,7 @@ export const preflightTableGeometryComponents = <Component extends object>({
       targetTables: componentTargetTables,
       pairings: componentPairings,
       limits,
+      tableGridChanges,
       budget,
     });
     if (
@@ -1654,6 +1674,16 @@ export const tableGeometryProgramSemanticChangeOccurrences = (
       }),
     ),
   );
+};
+
+/** Grid changes that the atomic table-structure component must prove and execute. */
+export const tableGeometryProgramTableGridTransitions = (
+  program: TableGeometryProgram,
+): readonly TableGeometryPairing[] => {
+  if (!PROGRAMS.has(program)) {
+    return panic("A table-grid transition projection requires a preflighted geometry program");
+  }
+  return program.tableGridTransitions;
 };
 
 const capturedLiveStateForScope = (

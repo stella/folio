@@ -1068,12 +1068,6 @@ export const planStoryCompare = ({
             break;
           }
           case "table-column-insert": {
-            unsupported.push({
-              reason: "table-column-content",
-              story,
-              eventType: "structural",
-              tableIndex: structural.tableIndex,
-            });
             if (
               recordUnavailableRuns(
                 "structural",

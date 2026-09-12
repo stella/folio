@@ -73,13 +73,23 @@ const TABLE_BASE = readFixture("upstream-with-tables.docx");
 /** Authored here: no corpus fixture carries numbering. */
 const LIST_BASE = await buildNumberedListDocx();
 
-type ColumnCell = { text: string; gridSpan?: number };
+type ColumnCell = { text: string; gridSpan?: number; width?: number };
 
-const buildColumnTableDocx = (rows: readonly (readonly ColumnCell[])[]): Promise<ArrayBuffer> => {
+const buildColumnTableDocx = (
+  rows: readonly (readonly ColumnCell[])[],
+  columnWidths?: readonly number[],
+): Promise<ArrayBuffer> => {
   const template = createEmptyDocument();
-  const cell = ({ text, gridSpan }: ColumnCell): TableCell => ({
+  const cell = ({ text, gridSpan, width }: ColumnCell): TableCell => ({
     type: "tableCell",
-    ...(gridSpan !== undefined && { formatting: { gridSpan } }),
+    ...(gridSpan === undefined && width === undefined
+      ? {}
+      : {
+          formatting: {
+            ...(gridSpan === undefined ? {} : { gridSpan }),
+            ...(width === undefined ? {} : { width: { value: width, type: "dxa" } }),
+          },
+        }),
     content: [
       {
         type: "paragraph",
@@ -90,6 +100,7 @@ const buildColumnTableDocx = (rows: readonly (readonly ColumnCell[])[]): Promise
   const table: Table = {
     type: "table",
     rows: rows.map((cells) => ({ type: "tableRow", cells: cells.map(cell) })),
+    ...(columnWidths === undefined ? {} : { columnWidths: [...columnWidths] }),
   };
   return createDocx({
     ...template,
@@ -534,14 +545,36 @@ describe("single-mutation probes", () => {
   });
 
   test("insert_table_column: a grid-aligned column is inserted beside merged neighbours", async () => {
-    const base = await buildColumnTableDocx([
-      [{ text: "Account details", gridSpan: 2 }, { text: "Status" }],
-      [{ text: "Fees" }, { text: "Annual" }, { text: "Open" }],
-    ]);
-    const target = await buildColumnTableDocx([
-      [{ text: "Account details", gridSpan: 2 }, { text: "Currency" }, { text: "Status" }],
-      [{ text: "Fees" }, { text: "Annual" }, { text: "EUR" }, { text: "Open" }],
-    ]);
+    const base = await buildColumnTableDocx(
+      [
+        [
+          { text: "Account details", gridSpan: 2, width: 4_000 },
+          { text: "Status", width: 2_000 },
+        ],
+        [
+          { text: "Fees", width: 2_000 },
+          { text: "Annual", width: 2_000 },
+          { text: "Open", width: 2_000 },
+        ],
+      ],
+      [2_000, 2_000, 2_000],
+    );
+    const target = await buildColumnTableDocx(
+      [
+        [
+          { text: "Account details", gridSpan: 2, width: 4_000 },
+          { text: "Currency", width: 1_500 },
+          { text: "Status", width: 2_000 },
+        ],
+        [
+          { text: "Fees", width: 2_000 },
+          { text: "Annual", width: 2_000 },
+          { text: "EUR", width: 1_500 },
+          { text: "Open", width: 2_000 },
+        ],
+      ],
+      [2_000, 2_000, 1_500, 2_000],
+    );
 
     const result = await compareDocx(base, target, OPTIONS);
     if (result.isErr()) {
@@ -558,14 +591,34 @@ describe("single-mutation probes", () => {
   });
 
   test("delete_table_column: physical-cell anchors resolve the matching grid column", async () => {
-    const base = await buildColumnTableDocx([
-      [{ text: "Account" }, { text: "Currency" }, { text: "Status" }],
-      [{ text: "Fees" }, { text: "EUR" }, { text: "Open" }],
-    ]);
-    const target = await buildColumnTableDocx([
-      [{ text: "Account" }, { text: "Status" }],
-      [{ text: "Fees" }, { text: "Open" }],
-    ]);
+    const base = await buildColumnTableDocx(
+      [
+        [
+          { text: "Account", width: 2_400 },
+          { text: "Currency", width: 1_200 },
+          { text: "Status", width: 3_600 },
+        ],
+        [
+          { text: "Fees", width: 2_400 },
+          { text: "EUR", width: 1_200 },
+          { text: "Open", width: 3_600 },
+        ],
+      ],
+      [2_400, 1_200, 3_600],
+    );
+    const target = await buildColumnTableDocx(
+      [
+        [
+          { text: "Account", width: 2_400 },
+          { text: "Status", width: 3_600 },
+        ],
+        [
+          { text: "Fees", width: 2_400 },
+          { text: "Open", width: 3_600 },
+        ],
+      ],
+      [2_400, 3_600],
+    );
 
     const result = await compareDocx(base, target, OPTIONS);
     if (result.isErr()) {
@@ -606,6 +659,119 @@ describe("single-mutation probes", () => {
     expect(await projectView(result.value.buffer, "original")).toEqual(
       await projectView(base, "final"),
     );
+  });
+
+  test("insert_table_column: authored grid widths round-trip with the column", async () => {
+    const base = await buildColumnTableDocx(
+      [
+        [
+          { text: "Account", width: 2_400 },
+          { text: "Status", width: 3_600 },
+        ],
+        [
+          { text: "Fees", width: 2_400 },
+          { text: "Open", width: 3_600 },
+        ],
+      ],
+      [2_400, 3_600],
+    );
+    const target = await buildColumnTableDocx(
+      [
+        [
+          { text: "Account", width: 2_400 },
+          { text: "Currency", width: 1_200 },
+          { text: "Region", width: 1_600 },
+          { text: "Status", width: 3_600 },
+        ],
+        [
+          { text: "Fees", width: 2_400 },
+          { text: "EUR", width: 1_200 },
+          { text: "EMEA", width: 1_600 },
+          { text: "Open", width: 3_600 },
+        ],
+      ],
+      [2_400, 1_200, 1_600, 3_600],
+    );
+
+    const result = await compareDocx(base, target, OPTIONS);
+    if (result.isErr()) {
+      throw result.error;
+    }
+    expect(result.value.verification).toEqual({ status: "verified" });
+    expect(result.value.changes.map(({ kind }) => kind)).toEqual([
+      "table-column-insert",
+      "table-column-insert",
+    ]);
+    expect(await projectView(result.value.buffer, "final")).toEqual(
+      await projectView(target, "final"),
+    );
+    expect(await projectView(result.value.buffer, "original")).toEqual(
+      await projectView(base, "final"),
+    );
+  });
+
+  test("insert_table_column: does not absorb an unrelated surviving grid-width edit", async () => {
+    const base = await buildColumnTableDocx(
+      [
+        [
+          { text: "Account", width: 2_400 },
+          { text: "Status", width: 3_600 },
+        ],
+      ],
+      [2_400, 3_600],
+    );
+    const target = await buildColumnTableDocx(
+      [
+        [
+          { text: "Account", width: 2_400 },
+          { text: "Currency", width: 1_200 },
+          { text: "Status", width: 3_600 },
+        ],
+      ],
+      [2_400, 1_200, 3_500],
+    );
+
+    const result = await compareDocx(base, target, OPTIONS);
+
+    expect(result.isErr()).toBe(true);
+    if (result.isOk()) return;
+    expect(result.error._tag).toBe("CompareDocxUnsupportedError");
+    if (result.error._tag !== "CompareDocxUnsupportedError") return;
+    expect(result.error.unsupported).toEqual([
+      {
+        reason: "transport-preflight",
+        story: { type: "main" },
+        instructionIndex: 0,
+        detail: "unrepresentable-table-geometry",
+      },
+      {
+        reason: "transport-preflight",
+        story: { type: "main" },
+        instructionIndex: 1,
+        detail: "unrepresentable-table-geometry",
+      },
+    ]);
+  });
+
+  test("table grid width changes still require a tracked representation", async () => {
+    const rows = [[{ text: "Account", width: 2_400 }]];
+    const base = await buildColumnTableDocx(rows, [2_400]);
+    const target = await buildColumnTableDocx(rows, [3_600]);
+
+    const result = await compareDocx(base, target, OPTIONS);
+
+    expect(result.isErr()).toBe(true);
+    if (result.isOk()) return;
+    expect(result.error._tag).toBe("CompareDocxUnsupportedError");
+    if (result.error._tag !== "CompareDocxUnsupportedError") return;
+    expect(result.error.unsupported).toEqual([
+      {
+        reason: "transport-preflight",
+        story: { type: "main" },
+        instructionIndex: 0,
+        detail: "unrepresentable-table-geometry",
+      },
+    ]);
   });
 
   /**
@@ -1497,14 +1663,20 @@ describe("single-mutation probes", () => {
     // Every column is empty, so there is no evidence for which of the three
     // target columns is new. Guessing would produce a plausible but misleading
     // column edit; replacing the table preserves both reviewed views exactly.
+    const emptyCell = (paraId: string) => ({
+      content: [{ kind: "paragraph" as const, text: "", paraId }],
+    });
     const base = await buildBodySequenceDocx([
       { kind: "paragraph", text: "The schedule below records the agreed fees." },
-      { kind: "table", rows: [["", ""]] },
+      { kind: "table", rows: [[emptyCell("11000001"), emptyCell("11000002")]] },
       { kind: "paragraph", text: "This agreement is governed by the stated law." },
     ]);
     const target = await buildBodySequenceDocx([
       { kind: "paragraph", text: "The schedule below records the agreed fees." },
-      { kind: "table", rows: [["", "", ""]] },
+      {
+        kind: "table",
+        rows: [[emptyCell("22000001"), emptyCell("22000002"), emptyCell("22000003")]],
+      },
       { kind: "paragraph", text: "This agreement is governed by the stated law." },
     ]);
 

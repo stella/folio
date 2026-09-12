@@ -12,6 +12,7 @@ import {
   tableTemplateCanCrossPackageLosslessly,
 } from "../../ai-edits/table-template";
 import { storyTablesOf } from "../../ai-edits/snapshot";
+import { expectTableAttrs, mergeTableAttrs } from "../../prosemirror/attrs";
 import { markStructuralChange } from "../../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { canonicalJson } from "../../utils/canonicalJson";
 import {
@@ -36,6 +37,7 @@ import {
 import { FolioStableBlockResolver } from "./stable-block-resolution";
 import {
   executeTableGeometryProgram,
+  tableGeometryProgramTableGridTransitions,
   type TableGeometryExecutionIssue,
   type TableGeometryExecutionReceipt,
   type TableGeometryPairing,
@@ -278,6 +280,7 @@ type OwnedInstruction =
       readonly source: SourceTable;
       readonly target: PMNode;
       readonly edits: readonly ColumnEdit[];
+      readonly trackedColumnWidths?: readonly number[];
     };
 
 type OwnedTableInsertion = Extract<OwnedInstruction, { readonly type: "insertTable" }>;
@@ -598,14 +601,153 @@ const rowMapping = (
   return mapping;
 };
 
+type GridCell = {
+  readonly node: PMNode;
+  readonly left: number;
+  readonly right: number;
+  readonly top: number;
+  readonly bottom: number;
+};
+
+type TableGrid = {
+  readonly map: TableMap;
+  readonly cellsByPhysicalCoordinate: ReadonlyMap<string, GridCell>;
+  readonly cellsByOffset: ReadonlyMap<number, GridCell>;
+};
+
+const tableGrid = (table: PMNode): TableGrid | null => {
+  if (!isTable(table)) return null;
+  const map = TableMap.get(table);
+  if (map.problems !== null || map.width < 1 || map.height !== table.childCount) return null;
+  const rectanglesByOffset = new Map<
+    number,
+    { left: number; right: number; top: number; bottom: number }
+  >();
+  for (const [index, offset] of map.map.entries()) {
+    const column = index % map.width;
+    const row = Math.floor(index / map.width);
+    const rectangle = rectanglesByOffset.get(offset);
+    if (rectangle) {
+      rectangle.left = Math.min(rectangle.left, column);
+      rectangle.right = Math.max(rectangle.right, column + 1);
+      rectangle.top = Math.min(rectangle.top, row);
+      rectangle.bottom = Math.max(rectangle.bottom, row + 1);
+      continue;
+    }
+    rectanglesByOffset.set(offset, {
+      left: column,
+      right: column + 1,
+      top: row,
+      bottom: row + 1,
+    });
+  }
+  const cellsByPhysicalCoordinate = new Map<string, GridCell>();
+  const cellsByOffset = new Map<number, GridCell>();
+  let rowOffset = 0;
+  for (let rowIndex = 0; rowIndex < table.childCount; rowIndex++) {
+    const row = table.child(rowIndex);
+    if (!isRow(row)) return null;
+    let cellOffset = rowOffset + 1;
+    for (let cellIndex = 0; cellIndex < row.childCount; cellIndex++) {
+      const node = row.child(cellIndex);
+      if (!isCell(node)) return null;
+      const rectangle = rectanglesByOffset.get(cellOffset);
+      if (!rectangle) return null;
+      const cell = Object.freeze({
+        node,
+        left: rectangle.left,
+        right: rectangle.right,
+        top: rectangle.top,
+        bottom: rectangle.bottom,
+      });
+      cellsByPhysicalCoordinate.set(`${String(rowIndex)}:${String(cellIndex)}`, cell);
+      cellsByOffset.set(cellOffset, cell);
+      cellOffset += node.nodeSize;
+    }
+    rowOffset += row.nodeSize;
+  }
+  if (cellsByOffset.size !== rectanglesByOffset.size) return null;
+  return Object.freeze({ map, cellsByPhysicalCoordinate, cellsByOffset });
+};
+
+const gridCellAt = (
+  grid: TableGrid,
+  rowIndex: number,
+  columnIndex: number,
+): GridCell | null => {
+  if (
+    rowIndex < 0 ||
+    rowIndex >= grid.map.height ||
+    columnIndex < 0 ||
+    columnIndex >= grid.map.width
+  ) {
+    return null;
+  }
+  const offset = grid.map.map[rowIndex * grid.map.width + columnIndex];
+  if (offset === undefined) return null;
+  return grid.cellsByOffset.get(offset) ?? null;
+};
+
+const insertedColumnCells = (
+  grid: TableGrid,
+  columnIndex: number,
+): readonly PMNode[] | null => {
+  const cells: PMNode[] = [];
+  for (let rowIndex = 0; rowIndex < grid.map.height; rowIndex++) {
+    const cell = gridCellAt(grid, rowIndex, columnIndex);
+    if (
+      !cell ||
+      cell.left !== columnIndex ||
+      cell.right !== columnIndex + 1 ||
+      cell.top !== rowIndex ||
+      cell.bottom !== rowIndex + 1
+    ) {
+      return null;
+    }
+    cells.push(cell.node);
+  }
+  return Object.freeze(cells);
+};
+
+const boundaryCutsCell = (grid: TableGrid, boundary: number): boolean => {
+  if (boundary <= 0 || boundary >= grid.map.width) return false;
+  for (let rowIndex = 0; rowIndex < grid.map.height; rowIndex++) {
+    const left = grid.map.map[rowIndex * grid.map.width + boundary - 1];
+    const right = grid.map.map[rowIndex * grid.map.width + boundary];
+    if (left === right) return true;
+  }
+  return false;
+};
+
 const columnMapping = (
   pairings: readonly TableGeometryPairing[],
+  sourceGrid: TableGrid,
+  targetGrid: TableGrid,
 ): ReadonlyMap<number, number> | null => {
   const mapping = new Map<number, number>();
   for (const { base, target } of pairings) {
-    const existing = mapping.get(base.cellIndex);
-    if (existing !== undefined && existing !== target.cellIndex) return null;
-    mapping.set(base.cellIndex, target.cellIndex);
+    const baseCell = sourceGrid.cellsByPhysicalCoordinate.get(
+      `${String(base.rowIndex)}:${String(base.cellIndex)}`,
+    );
+    const targetCell = targetGrid.cellsByPhysicalCoordinate.get(
+      `${String(target.rowIndex)}:${String(target.cellIndex)}`,
+    );
+    if (
+      !baseCell ||
+      !targetCell ||
+      baseCell.top !== targetCell.top ||
+      baseCell.bottom !== targetCell.bottom ||
+      baseCell.right - baseCell.left !== targetCell.right - targetCell.left
+    ) {
+      return null;
+    }
+    for (let offset = 0; offset < baseCell.right - baseCell.left; offset++) {
+      const sourceColumn = baseCell.left + offset;
+      const targetColumn = targetCell.left + offset;
+      const existing = mapping.get(sourceColumn);
+      if (existing !== undefined && existing !== targetColumn) return null;
+      mapping.set(sourceColumn, targetColumn);
+    }
   }
   return mapping;
 };
@@ -679,17 +821,42 @@ const validateRowEdits = (
   return null;
 };
 
-const validateColumnEdits = (
-  source: PMNode,
-  target: PMNode,
-  edits: readonly ColumnEdit[],
-  pairings: readonly TableGeometryPairing[],
-): TableStructureUnsupportedIssue | null => {
-  const sourceWidth = simpleRectangularWidth(source);
-  const targetWidth = simpleRectangularWidth(target);
-  if (sourceWidth === null) return { reason: "unrepresentable-span", side: "source" };
-  if (targetWidth === null) return { reason: "unrepresentable-span", side: "target" };
-  if (source.childCount !== target.childCount) return { reason: "non-reconstructable-structure" };
+type ValidateColumnEditsOptions = {
+  readonly source: PMNode;
+  readonly target: PMNode;
+  readonly sourceGrid: TableGrid;
+  readonly targetGrid: TableGrid;
+  readonly edits: readonly ColumnEdit[];
+  readonly pairings: readonly TableGeometryPairing[];
+  readonly tableGridTransition?: TableGeometryPairing;
+};
+
+type ValidatedColumnEdits =
+  | {
+      readonly status: "ready";
+      readonly trackedColumnWidths?: readonly number[];
+    }
+  | { readonly status: "unsupported"; readonly issue: TableStructureUnsupportedIssue };
+
+const invalidColumnEdits = (issue: TableStructureUnsupportedIssue): ValidatedColumnEdits => ({
+  status: "unsupported",
+  issue,
+});
+
+const validateColumnEdits = ({
+  source,
+  target,
+  sourceGrid,
+  targetGrid,
+  edits,
+  pairings,
+  tableGridTransition,
+}: ValidateColumnEditsOptions): ValidatedColumnEdits => {
+  const sourceWidth = sourceGrid.map.width;
+  const targetWidth = targetGrid.map.width;
+  if (source.childCount !== target.childCount) {
+    return invalidColumnEdits({ reason: "non-reconstructable-structure" });
+  }
   const deleted = new Set<number>();
   const inserted = new Set<number>();
   const insertionsByBoundary = new Map<
@@ -699,9 +866,21 @@ const validateColumnEdits = (
   for (const edit of edits) {
     if (edit.type === "delete") {
       if (edit.baseColumnIndex < 0 || edit.baseColumnIndex >= sourceWidth) {
-        return { reason: "invalid-structural-coordinate" };
+        return invalidColumnEdits({ reason: "invalid-structural-coordinate" });
       }
-      if (deleted.has(edit.baseColumnIndex)) return { reason: "duplicate-structural-coordinate" };
+      for (let rowIndex = 0; rowIndex < sourceGrid.map.height; rowIndex++) {
+        const cell = gridCellAt(sourceGrid, rowIndex, edit.baseColumnIndex);
+        if (
+          !cell ||
+          cell.left !== edit.baseColumnIndex ||
+          cell.right !== edit.baseColumnIndex + 1
+        ) {
+          return invalidColumnEdits({ reason: "unrepresentable-span", side: "source" });
+        }
+      }
+      if (deleted.has(edit.baseColumnIndex)) {
+        return invalidColumnEdits({ reason: "duplicate-structural-coordinate" });
+      }
       deleted.add(edit.baseColumnIndex);
       continue;
     }
@@ -711,16 +890,21 @@ const validateColumnEdits = (
       edit.targetColumnIndex < 0 ||
       edit.targetColumnIndex >= targetWidth
     ) {
-      return { reason: "invalid-structural-coordinate" };
+      return invalidColumnEdits({ reason: "invalid-structural-coordinate" });
     }
-    if (inserted.has(edit.targetColumnIndex)) return { reason: "duplicate-structural-coordinate" };
+    if (boundaryCutsCell(sourceGrid, edit.baseBoundaryIndex)) {
+      return invalidColumnEdits({ reason: "unrepresentable-span", side: "source" });
+    }
+    if (inserted.has(edit.targetColumnIndex)) {
+      return invalidColumnEdits({ reason: "duplicate-structural-coordinate" });
+    }
     inserted.add(edit.targetColumnIndex);
     const at = insertionsByBoundary.get(edit.baseBoundaryIndex) ?? [];
     at.push(edit);
     insertionsByBoundary.set(edit.baseBoundaryIndex, at);
   }
-  const mapping = columnMapping(pairings);
-  if (!mapping) return { reason: "non-reconstructable-structure" };
+  const mapping = columnMapping(pairings, sourceGrid, targetGrid);
+  if (!mapping) return invalidColumnEdits({ reason: "non-reconstructable-structure" });
   const projected: (
     | { readonly type: "base"; readonly index: number }
     | { readonly type: "target"; readonly index: number }
@@ -735,16 +919,79 @@ const validateColumnEdits = (
       projected.push({ type: "base", index: boundary });
     }
   }
-  if (projected.length !== targetWidth) return { reason: "non-reconstructable-structure" };
+  if (projected.length !== targetWidth) {
+    return invalidColumnEdits({ reason: "non-reconstructable-structure" });
+  }
   for (const [targetIndex, entry] of projected.entries()) {
     if (
       (entry.type === "target" && entry.index !== targetIndex) ||
       (entry.type === "base" && mapping.get(entry.index) !== targetIndex)
     ) {
-      return { reason: "non-reconstructable-structure" };
+      return invalidColumnEdits({ reason: "non-reconstructable-structure" });
     }
   }
-  return null;
+
+  const sourceColumnWidths = expectTableAttrs(source).columnWidths ?? null;
+  const targetColumnWidths = expectTableAttrs(target).columnWidths ?? null;
+  if (sourceColumnWidths === null && targetColumnWidths === null) {
+    if (tableGridTransition) {
+      return panic("A delegated table-grid transition no longer names a grid difference");
+    }
+    return { status: "ready" };
+  }
+  const invalidGridTransition = (): ValidatedColumnEdits =>
+    invalidColumnEdits(
+      tableGridTransition
+        ? {
+            reason: "unrepresentable-table-geometry",
+            issue: {
+              reason: "non-reconstructable-structure-change",
+              scope: "table",
+              property: "column-widths",
+              base: tableGridTransition.base,
+              target: tableGridTransition.target,
+            },
+          }
+        : { reason: "non-reconstructable-structure" },
+    );
+  if (
+    sourceColumnWidths === null ||
+    targetColumnWidths === null ||
+    sourceColumnWidths.length !== sourceWidth ||
+    targetColumnWidths.length !== targetWidth
+  ) {
+    return invalidGridTransition();
+  }
+  for (const [targetIndex, entry] of projected.entries()) {
+    if (
+      entry.type === "base" &&
+      sourceColumnWidths[entry.index] !== targetColumnWidths[targetIndex]
+    ) {
+      return invalidGridTransition();
+    }
+  }
+  if (inserted.size === 0) return { status: "ready" };
+
+  const trackedColumnWidths: number[] = [];
+  for (let boundary = 0; boundary <= sourceWidth; boundary++) {
+    for (const edit of (insertionsByBoundary.get(boundary) ?? []).toSorted(
+      (left, right) => left.targetColumnIndex - right.targetColumnIndex,
+    )) {
+      const width = targetColumnWidths[edit.targetColumnIndex];
+      if (width === undefined) {
+        return invalidGridTransition();
+      }
+      trackedColumnWidths.push(width);
+    }
+    if (boundary < sourceWidth) {
+      const width = sourceColumnWidths[boundary];
+      if (width === undefined) {
+        return invalidGridTransition();
+      }
+      trackedColumnWidths.push(width);
+    }
+  }
+  return { status: "ready", trackedColumnWidths: Object.freeze(trackedColumnWidths) };
 };
 
 type MutableTableGroup = {
@@ -822,6 +1069,7 @@ type TableStructurePreflightContext = {
   readonly pairings: readonly TableGeometryPairing[];
   readonly countedTargets: Set<PMNode>;
   readonly sourceCache: Map<number, SourceTable>;
+  readonly tableGridCache: Map<PMNode, TableGrid | null>;
   structuralEdits: number;
   targetTemplateUnits: number;
 };
@@ -896,6 +1144,7 @@ const createTableStructurePreflightContext = ({
       pairings: resolvedDocxTableGeometryPairings(comparison),
       countedTargets: new Set(),
       sourceCache: new Map(),
+      tableGridCache: new Map(),
       structuralEdits: 0,
       targetTemplateUnits: 0,
     },
@@ -932,6 +1181,16 @@ const preflightTableStructureComponent = ({
     ? resolvedDocxTableFormatOperandPayload(geometryOperand, comparison)
     : null;
   if (geometryPayload?.status === "unsupported") return unsupported(geometryPayload.issue);
+  const pendingTableGridTransitions = new Map<string, TableGeometryPairing>();
+  if (geometryPayload?.status === "ready") {
+    for (const transition of tableGeometryProgramTableGridTransitions(geometryPayload.program)) {
+      const key = `${String(transition.base.tableIndex)}:${String(transition.target.tableIndex)}`;
+      if (pendingTableGridTransitions.has(key)) {
+        return panic("A table geometry program delegated the same grid transition twice");
+      }
+      pendingTableGridTransitions.set(key, transition);
+    }
+  }
 
   const countTarget = (target: PMNode): TableStructurePreflightResult | null => {
     if (context.countedTargets.has(target)) return null;
@@ -958,6 +1217,13 @@ const preflightTableStructureComponent = ({
     if ("status" in owned) return owned;
     context.sourceCache.set(index, owned);
     return owned;
+  };
+
+  const gridFor = (table: PMNode): TableGrid | null => {
+    if (context.tableGridCache.has(table)) return context.tableGridCache.get(table) ?? null;
+    const grid = tableGrid(table);
+    context.tableGridCache.set(table, grid);
+    return grid;
   };
 
   const groups = new Map<number, MutableTableGroup>();
@@ -1117,13 +1383,10 @@ const preflightTableStructureComponent = ({
       const { operand, payload } = operation;
       const anchor = resolvedDocxSourceOperandBlock(payload.anchor.source, baseSnapshot).table;
       if (!anchor) return unsupported({ reason: "missing-source-table" });
-      const targetCells: PMNode[] = [];
-      target.forEach((row) => {
-        const cell = row.child(payload.change.columnIndex);
-        if (!isCell(cell)) return;
-        targetCells.push(cell);
-      });
-      if (targetCells.length !== target.childCount) {
+      const targetGrid = gridFor(target);
+      if (!targetGrid) return unsupported({ reason: "unrepresentable-span", side: "target" });
+      const targetCells = insertedColumnCells(targetGrid, payload.change.columnIndex);
+      if (!targetCells) {
         return unsupported({ reason: "invalid-structural-coordinate" });
       }
       if (targetCells.some((cell) => !tableTemplateCanCrossPackageLosslessly(cell))) {
@@ -1134,7 +1397,7 @@ const preflightTableStructureComponent = ({
         operand,
         baseBoundaryIndex: anchor.gridColumnIndex + (payload.anchor.position === "after" ? 1 : 0),
         targetColumnIndex: payload.change.columnIndex,
-        targetCells: Object.freeze(targetCells),
+        targetCells,
       });
     } else {
       group.columnEdits.push({
@@ -1173,20 +1436,47 @@ const preflightTableStructureComponent = ({
       continue;
     }
     if (group.axis === "column") {
-      const problem = validateColumnEdits(
-        group.source.expected,
+      const sourceGrid = gridFor(group.source.expected);
+      if (!sourceGrid) return unsupported({ reason: "unrepresentable-span", side: "source" });
+      const targetGrid = gridFor(target);
+      if (!targetGrid) return unsupported({ reason: "unrepresentable-span", side: "target" });
+      const tableGridTransitionKey = `${String(group.source.index)}:${String(targetIndex)}`;
+      const tableGridTransition = pendingTableGridTransitions.get(tableGridTransitionKey);
+      const validated = validateColumnEdits({
+        source: group.source.expected,
         target,
-        group.columnEdits,
-        ownedPairings,
-      );
-      if (problem) return unsupported(problem);
+        sourceGrid,
+        targetGrid,
+        edits: group.columnEdits,
+        pairings: ownedPairings,
+        ...(tableGridTransition === undefined ? {} : { tableGridTransition }),
+      });
+      if (validated.status === "unsupported") return unsupported(validated.issue);
+      pendingTableGridTransitions.delete(tableGridTransitionKey);
       instructions.push({
         type: "editTableColumns",
         source: group.source,
         target,
         edits: Object.freeze(group.columnEdits),
+        ...(validated.trackedColumnWidths === undefined
+          ? {}
+          : { trackedColumnWidths: validated.trackedColumnWidths }),
       });
     }
+  }
+
+  const unclaimedGridTransition = pendingTableGridTransitions.values().next().value;
+  if (unclaimedGridTransition) {
+    return unsupported({
+      reason: "unrepresentable-table-geometry",
+      issue: {
+        reason: "non-reconstructable-structure-change",
+        scope: "table",
+        property: "column-widths",
+        base: unclaimedGridTransition.base,
+        target: unclaimedGridTransition.target,
+      },
+    });
   }
 
   const sourceInstructions = instructions
@@ -1448,6 +1738,28 @@ const liveSourceTable = (tr: Transaction, source: SourceTable): PMNode => {
   return live;
 };
 
+const setTrackedTableGrid = (
+  tr: Transaction,
+  tablePosition: number,
+  columnWidths: readonly number[],
+): void => {
+  const table = tr.doc.nodeAt(tablePosition);
+  if (!table || !isTable(table) || TableMap.get(table).width !== columnWidths.length) {
+    return panic("A preflighted column edit produced an inconsistent tracked table grid");
+  }
+  const formatting = expectTableAttrs(table)._originalFormatting;
+  const originalFormatting = formatting ? { ...formatting } : undefined;
+  if (originalFormatting) delete originalFormatting.gridSourceXml;
+  tr.setNodeMarkup(
+    tablePosition,
+    undefined,
+    mergeTableAttrs(table, {
+      columnWidths: [...columnWidths],
+      _originalFormatting: originalFormatting,
+    }),
+  );
+};
+
 /** Execute one closure-owned structural task in the caller's global schedule. */
 export const executeTableStructureTask = ({
   tr,
@@ -1653,6 +1965,9 @@ export const executeTableStructureTask = ({
             ids.get(edit) ?? panic("A column insertion lost its revision allocation"),
           ]),
         });
+      }
+      if (instruction.trackedColumnWidths) {
+        setTrackedTableGrid(tr, instruction.source.position, instruction.trackedColumnWidths);
       }
       markStructuralChange(tr);
       break;

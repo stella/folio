@@ -261,8 +261,6 @@ export const COMPARE_UNSUPPORTED_REASONS = Object.freeze([
   "effective-inline-formatting",
   /** A complete target table cannot be copied losslessly into the base package. */
   "nonportable-table-template",
-  /** A table-column insertion carries content the column operation cannot preserve. */
-  "table-column-content",
   /** A referenced numbering definition changed but has no tracked-change grammar. */
   "numbering-definition",
   /** A canonical event could not be resolved into a proved tracked-document instruction. */
