@@ -38,7 +38,11 @@ import {
   tableRowAttrsToFormatting,
 } from "../../prosemirror/conversion/fromProseDoc";
 import type { TableCellAttrs } from "../../prosemirror/schema/nodes";
-import type { TableCellFormatting, TableFormatting, TableRowFormatting } from "../../types/document";
+import type {
+  TableCellFormatting,
+  TableFormatting,
+  TableRowFormatting,
+} from "../../types/document";
 import { canonicalJson } from "../../utils/canonicalJson";
 import type { FolioStoryTable } from "../../ai-edits/snapshot";
 
@@ -160,11 +164,7 @@ export type TableGeometryUnsupportedIssue =
       readonly coordinate: Readonly<TableCellCoordinate>;
     }
   | {
-      readonly reason:
-        | "missing-table"
-        | "missing-row"
-        | "missing-cell"
-        | "unexpected-node-role";
+      readonly reason: "missing-table" | "missing-row" | "missing-cell" | "unexpected-node-role";
       readonly side: TableGeometrySide;
       readonly scope: TableGeometryScopeName;
       readonly coordinate: Readonly<TableCellCoordinate>;
@@ -256,25 +256,25 @@ type PropertyChangePayloadByScope = {
   };
 };
 
-type TableGeometryCarrierAssertion<
-  Scope extends TableGeometryScopeName = TableGeometryScopeName,
-> = {
-  readonly scope: Scope;
-  readonly position: number;
-  readonly expectedLiveState: string;
-  readonly base: Readonly<TableCellCoordinate>;
-  readonly target: Readonly<TableCellCoordinate>;
-};
+type TableGeometryCarrierAssertion<Scope extends TableGeometryScopeName = TableGeometryScopeName> =
+  {
+    readonly scope: Scope;
+    readonly position: number;
+    readonly expectedLiveState: string;
+    readonly base: Readonly<TableCellCoordinate>;
+    readonly target: Readonly<TableCellCoordinate>;
+  };
 
-type TableGeometryInstructionFor<Scope extends TableGeometryScopeName> = {
-  readonly carrier: TableGeometryCarrierAssertion<Scope>;
-  readonly targetAttrs: Readonly<Record<string, unknown>>;
-  readonly change: PropertyChangePayloadByScope[Scope];
-};
+type TableGeometryInstructionFor<Scope extends TableGeometryScopeName> =
+  Scope extends TableGeometryScopeName
+    ? {
+        readonly carrier: TableGeometryCarrierAssertion<Scope>;
+        readonly targetAttrs: Readonly<Record<string, unknown>>;
+        readonly change: PropertyChangePayloadByScope[Scope];
+      }
+    : never;
 
-type TableGeometryInstruction = {
-  readonly [Scope in TableGeometryScopeName]: TableGeometryInstructionFor<Scope>;
-}[TableGeometryScopeName];
+type TableGeometryInstruction = TableGeometryInstructionFor<TableGeometryScopeName>;
 
 const TABLE_GEOMETRY_PROGRAM_BRAND: unique symbol = Symbol("table-geometry-program");
 
@@ -310,6 +310,11 @@ type PropertyScope<Scope extends TableGeometryScopeName> = {
   ) => Record<string, unknown>;
   readonly changeAttr: PropertyChangePayloadByScope[Scope]["changeAttr"];
   readonly changeType: PropertyChangePayloadByScope[Scope]["changeType"];
+  readonly createInstruction: (
+    carrier: TableGeometryCarrierAssertion<Scope>,
+    targetAttrs: Readonly<Record<string, unknown>>,
+    previousFormatting: TableGeometryFormattingByScope[Scope] | undefined,
+  ) => TableGeometryInstructionFor<Scope>;
 };
 
 /**
@@ -373,6 +378,16 @@ const TABLE_SCOPE = {
   rejectPatch: (previousFormatting) => tableRejectAttrPatch(previousFormatting),
   changeAttr: "tblPrChange",
   changeType: "tablePropertyChange",
+  createInstruction: (carrier, targetAttrs, previousFormatting) =>
+    Object.freeze({
+      carrier,
+      targetAttrs,
+      change: Object.freeze({
+        changeAttr: "tblPrChange",
+        changeType: "tablePropertyChange",
+        previousFormatting,
+      }),
+    }),
 } as const satisfies PropertyScope<"table">;
 
 const ROW_SCOPE = {
@@ -383,6 +398,16 @@ const ROW_SCOPE = {
   rejectPatch: (previousFormatting) => tableRowRejectAttrPatch(previousFormatting),
   changeAttr: "trPrChange",
   changeType: "tableRowPropertyChange",
+  createInstruction: (carrier, targetAttrs, previousFormatting) =>
+    Object.freeze({
+      carrier,
+      targetAttrs,
+      change: Object.freeze({
+        changeAttr: "trPrChange",
+        changeType: "tableRowPropertyChange",
+        previousFormatting,
+      }),
+    }),
 } as const satisfies PropertyScope<"row">;
 
 const CELL_SCOPE = {
@@ -394,6 +419,16 @@ const CELL_SCOPE = {
     tableCellRejectAttrPatch(previousFormatting, liveFormatting),
   changeAttr: "tcPrChange",
   changeType: "tableCellPropertyChange",
+  createInstruction: (carrier, targetAttrs, previousFormatting) =>
+    Object.freeze({
+      carrier,
+      targetAttrs,
+      change: Object.freeze({
+        changeAttr: "tcPrChange",
+        changeType: "tableCellPropertyChange",
+        previousFormatting,
+      }),
+    }),
 } as const satisfies PropertyScope<"cell">;
 
 type PayloadCaptureFailure =
@@ -437,63 +472,64 @@ const captureImmutablePayload = <Value>(
     return consumed.isErr() ? Result.err(consumed.error) : Result.ok(value);
   }
   if (typeof value !== "object") return Result.err({ type: "invalid" });
+  const objectValue: object = value;
 
-  const retained = context.captured.get(value);
+  const retained = context.captured.get(objectValue);
   if (retained !== undefined) {
     // SAFETY: retained was captured from this exact object in this generic invocation graph.
     return Result.ok(retained as Value);
   }
-  if (context.active.has(value)) return Result.err({ type: "invalid" });
-  context.active.add(value);
+  if (context.active.has(objectValue)) return Result.err({ type: "invalid" });
+  context.active.add(objectValue);
 
   const descriptors = Result.try({
-    try: () => Object.getOwnPropertyDescriptors(value),
+    try: () => Object.getOwnPropertyDescriptors(objectValue),
     catch: () => ({ type: "invalid" }) as const,
   });
   if (descriptors.isErr()) {
-    context.active.delete(value);
+    context.active.delete(objectValue);
     return Result.err(descriptors.error);
   }
 
   if (Array.isArray(value)) {
-    const lengthDescriptor = descriptors.value.length;
+    const lengthDescriptor = descriptors.value["length"];
     if (
       !lengthDescriptor ||
       !("value" in lengthDescriptor) ||
       !Number.isSafeInteger(lengthDescriptor.value) ||
       lengthDescriptor.value < 0
     ) {
-      context.active.delete(value);
+      context.active.delete(objectValue);
       return Result.err({ type: "invalid" });
     }
     const length: number = lengthDescriptor.value;
     const consumed = consumePayloadUnits(context, length + 1);
     if (consumed.isErr()) {
-      context.active.delete(value);
+      context.active.delete(objectValue);
       return Result.err(consumed.error);
     }
     const clone: unknown[] = [];
     for (let index = 0; index < length; index++) {
       const descriptor = descriptors.value[String(index)];
       if (!descriptor || !("value" in descriptor)) {
-        context.active.delete(value);
+        context.active.delete(objectValue);
         return Result.err({ type: "invalid" });
       }
       const entry = captureImmutablePayload(descriptor.value, context, depth + 1);
       if (entry.isErr()) {
-        context.active.delete(value);
+        context.active.delete(objectValue);
         return Result.err(entry.error);
       }
       clone.push(entry.value);
     }
     const allowedKeys = new Set(["length", ...clone.map((_entry, index) => String(index))]);
     if (Reflect.ownKeys(descriptors.value).some((key) => !allowedKeys.has(String(key)))) {
-      context.active.delete(value);
+      context.active.delete(objectValue);
       return Result.err({ type: "invalid" });
     }
     const frozen = Object.freeze(clone);
-    context.active.delete(value);
-    context.captured.set(value, frozen);
+    context.active.delete(objectValue);
+    context.captured.set(objectValue, frozen);
     // SAFETY: the dense array was recursively cloned without changing its value shape.
     return Result.ok(frozen as Value);
   }
@@ -502,21 +538,18 @@ const captureImmutablePayload = <Value>(
     try: () => Object.getPrototypeOf(value),
     catch: () => ({ type: "invalid" }) as const,
   });
-  if (
-    prototype.isErr() ||
-    (prototype.value !== Object.prototype && prototype.value !== null)
-  ) {
-    context.active.delete(value);
+  if (prototype.isErr() || (prototype.value !== Object.prototype && prototype.value !== null)) {
+    context.active.delete(objectValue);
     return Result.err(prototype.isErr() ? prototype.error : { type: "invalid" });
   }
   const keys = Reflect.ownKeys(descriptors.value);
   if (keys.some((key) => typeof key !== "string")) {
-    context.active.delete(value);
+    context.active.delete(objectValue);
     return Result.err({ type: "invalid" });
   }
   const consumed = consumePayloadUnits(context, keys.length + 1);
   if (consumed.isErr()) {
-    context.active.delete(value);
+    context.active.delete(objectValue);
     return Result.err(consumed.error);
   }
   const clone: Record<string, unknown> = {};
@@ -524,19 +557,19 @@ const captureImmutablePayload = <Value>(
     if (typeof key !== "string") return panic("A symbol passed the table payload key guard");
     const descriptor = descriptors.value[key];
     if (!descriptor || !("value" in descriptor) || descriptor.enumerable !== true) {
-      context.active.delete(value);
+      context.active.delete(objectValue);
       return Result.err({ type: "invalid" });
     }
     const entry = captureImmutablePayload(descriptor.value, context, depth + 1);
     if (entry.isErr()) {
-      context.active.delete(value);
+      context.active.delete(objectValue);
       return Result.err(entry.error);
     }
     clone[key] = entry.value;
   }
   const frozen = Object.freeze(clone);
-  context.active.delete(value);
-  context.captured.set(value, frozen);
+  context.active.delete(objectValue);
+  context.captured.set(objectValue, frozen);
   // SAFETY: the plain record was recursively cloned without changing its value shape.
   return Result.ok(frozen as Value);
 };
@@ -559,9 +592,7 @@ const capturedState = (
   context: PayloadCaptureContext,
 ): Result<string, PayloadCaptureFailure> => {
   const captured = captureImmutablePayload(value, context);
-  return captured.isErr()
-    ? Result.err(captured.error)
-    : Result.ok(canonicalJson(captured.value));
+  return captured.isErr() ? Result.err(captured.error) : Result.ok(canonicalJson(captured.value));
 };
 
 const liveStructure = (node: PMNode, scope: TableGeometryScopeName): unknown => {
@@ -799,16 +830,7 @@ const propertyChangeFor = <Scope extends TableGeometryScopeName>({
     };
   }
 
-  const change = Object.freeze({
-    changeAttr: scope.changeAttr,
-    changeType: scope.changeType,
-    previousFormatting: previousFormatting.value,
-  });
-  const instruction: TableGeometryInstructionFor<Scope> = Object.freeze({
-    carrier,
-    targetAttrs: targetAttrs.value,
-    change,
-  });
+  const instruction = scope.createInstruction(carrier, targetAttrs.value, previousFormatting.value);
   return { status: "ready", instruction };
 };
 
@@ -856,11 +878,7 @@ const frozenCoordinate = ({
 }: TableCellCoordinate): Readonly<TableCellCoordinate> =>
   Object.freeze({ tableIndex, rowIndex, cellIndex });
 
-const validCoordinate = ({
-  tableIndex,
-  rowIndex,
-  cellIndex,
-}: TableCellCoordinate): boolean =>
+const validCoordinate = ({ tableIndex, rowIndex, cellIndex }: TableCellCoordinate): boolean =>
   Number.isSafeInteger(tableIndex) &&
   tableIndex >= 0 &&
   Number.isSafeInteger(rowIndex) &&
@@ -941,9 +959,7 @@ type CapturedPairingsResult =
   | { readonly status: "ready"; readonly pairings: readonly CanonicalPairing[] }
   | { readonly status: "unsupported"; readonly issue: TableGeometryUnsupportedIssue };
 
-const capturePairings = (
-  pairings: readonly TableGeometryPairing[],
-): CapturedPairingsResult => {
+const capturePairings = (pairings: readonly TableGeometryPairing[]): CapturedPairingsResult => {
   const baseCoordinates = new Set<string>();
   const targetCoordinates = new Set<string>();
   const baseTableTargets = new Map<number, number>();
@@ -1398,9 +1414,7 @@ export const preflightTableGeometry = ({
     scopeOrder[left.scope] - scopeOrder[right.scope] ||
     compareCoordinates(left.base, right.base);
   carriers.sort(compareCarriers);
-  instructions.sort(
-    (left, right) => compareCarriers(left.carrier, right.carrier),
-  );
+  instructions.sort((left, right) => compareCarriers(left.carrier, right.carrier));
   const frozenCarriers = Object.freeze(carriers);
   const frozenInstructions = Object.freeze(instructions);
   const program = Object.freeze({
