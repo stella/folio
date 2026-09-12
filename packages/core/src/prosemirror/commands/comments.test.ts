@@ -861,6 +861,7 @@ describe("table cell structural revision resolution", () => {
       },
       content: [
         {
+          _docxParagraphSourceBinding: { type: "authored" as const },
           type: "paragraph" as const,
           content: [
             {
@@ -879,7 +880,13 @@ describe("table cell structural revision resolution", () => {
         info: { id: 80, author: "Reviewer" },
         verticalMerge: "continue" as const,
       },
-      content: [{ type: "paragraph" as const, content: [] }],
+      content: [
+        {
+          _docxParagraphSourceBinding: { type: "authored" as const },
+          type: "paragraph" as const,
+          content: [],
+        },
+      ],
     };
     const view = dispatcher(
       EditorState.create({
@@ -934,7 +941,13 @@ describe("table cell structural revision resolution", () => {
         info: { id: 81, author: "Reviewer" },
         verticalMerge: "continue" as const,
       },
-      content: [{ type: "paragraph" as const, content: [] }],
+      content: [
+        {
+          _docxParagraphSourceBinding: { type: "authored" as const },
+          type: "paragraph" as const,
+          content: [],
+        },
+      ],
     };
     const view = dispatcher(
       EditorState.create({
@@ -964,7 +977,13 @@ describe("table cell structural revision resolution", () => {
       {
         type: "tableCell",
         formatting: { vMerge: "continue" },
-        content: [{ type: "paragraph", content: [] }],
+        content: [
+          {
+            _docxParagraphSourceBinding: { type: "authored" },
+            type: "paragraph",
+            content: [],
+          },
+        ],
       },
     ]);
   });
@@ -1056,6 +1075,7 @@ describe("table cell structural revision resolution", () => {
         formatting: { vMerge: "continue" },
         content: [
           {
+            _docxParagraphSourceBinding: { type: "authored" },
             type: "paragraph",
             content: [
               {

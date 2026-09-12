@@ -8,6 +8,8 @@ import type { Mark, MarkType, Node as PMNode } from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 import { removeRow, TableMap } from "prosemirror-tables";
 
+import { joinProseParagraphsWithRightPropertySource } from "../../docx/paragraphPropertySource";
+
 import {
   appendHeadlessInlineResolution,
   type HeadlessInlineChangeTracking,
@@ -493,8 +495,16 @@ function resolveChange(
           _sectionProperties: nextNode.attrs["_sectionProperties"],
         };
         try {
-          tr.join(joinPos);
-          tr.setNodeMarkup(mappedPos, undefined, joinedAttrs);
+          if (emptyFirstParagraph) {
+            joinProseParagraphsWithRightPropertySource({
+              attrs: joinedAttrs,
+              pos: joinPos,
+              transaction: tr,
+            });
+          } else {
+            tr.join(joinPos);
+            tr.setNodeMarkup(mappedPos, undefined, joinedAttrs);
+          }
           if (ownsSectionEndpoint(paragraph)) {
             removedSectionEndpointCount++;
             removedSectionReferences.push(...sectionReferencesOf(paragraph));

@@ -8,6 +8,7 @@ import { FolioDocxReviewer } from "../../ai-edits/headless";
 import { getTrackedChangesFromDoc } from "../../ai-edits/read";
 import { createDocx } from "../../docx/rezip";
 import { revisedFinalParagraphMarks } from "../../compare/verification";
+import type { Document } from "../../types/document";
 import { expectParagraphAttrs } from "../attrs";
 import { fromProseDoc } from "../conversion/fromProseDoc";
 import { toProseDoc } from "../conversion/toProseDoc";
@@ -43,6 +44,8 @@ const EMPTY_CARRIER_FORMATTING = {
   numPr: { numId: 1, ilvl: 1 },
   alignment: "both",
 } as const;
+
+const sourceDocuments = new WeakMap<PMNode, Document>();
 
 type ContainerKind = "body" | "table cell";
 type SuggestionAcceptance = "targeted" | "all";
@@ -187,7 +190,11 @@ const dispatcher = (state: EditorState) => {
   const view = {
     state,
     dispatch(transaction: Transaction) {
+      const sourceDocument = sourceDocuments.get(view.state.doc);
       view.state = view.state.apply(transaction);
+      if (sourceDocument) {
+        sourceDocuments.set(view.state.doc, sourceDocument);
+      }
     },
   };
   return view;
@@ -217,8 +224,11 @@ const paragraphsInChangedContainer = (
   return Array.from({ length: cell.childCount }, (_, index) => cell.child(index));
 };
 
+const documentModel = (state: EditorState): Document =>
+  fromProseDoc(state.doc, sourceDocuments.get(state.doc));
+
 const documentBuffer = async (state: EditorState): Promise<Uint8Array> =>
-  await createDocx(fromProseDoc(state.doc));
+  await createDocx(documentModel(state));
 
 const documentXml = async (state: EditorState): Promise<string> => {
   const buffer = await documentBuffer(state);
@@ -231,7 +241,10 @@ const documentXml = async (state: EditorState): Promise<string> => {
 
 const reopenedState = async (state: EditorState): Promise<EditorState> => {
   const reviewer = await FolioDocxReviewer.fromBuffer(await documentBuffer(state));
-  return EditorState.create({ schema, doc: toProseDoc(reviewer.toDocument()) });
+  const sourceDocument = reviewer.toDocument();
+  const doc = toProseDoc(sourceDocument);
+  sourceDocuments.set(doc, sourceDocument);
+  return EditorState.create({ schema, doc });
 };
 
 const paragraphXmlContaining = (xml: string, text: string): string => {
@@ -434,7 +447,7 @@ const resolveAdjacentSuggestions = (
     expect(applySuggestionDecision(view, suggestionId, decision)).toBe(true);
   }
   expect(getSuggestions(view.state)).toEqual([]);
-  expect(revisedFinalParagraphMarks(fromProseDoc(view.state.doc))).toEqual([]);
+  expect(revisedFinalParagraphMarks(documentModel(view.state))).toEqual([]);
   return view;
 };
 
@@ -456,7 +469,7 @@ describe("accepted suggested container-final paragraphs", () => {
             ).toBe(true);
           }
           expect(getSuggestions(view.state)).toEqual([]);
-          expect(revisedFinalParagraphMarks(fromProseDoc(view.state.doc))).toEqual([]);
+          expect(revisedFinalParagraphMarks(documentModel(view.state))).toEqual([]);
           expect(terminalChainState(view.state, containerKind)).toEqual(
             expectedTerminalChainState(decisions),
           );
@@ -517,7 +530,7 @@ describe("accepted suggested container-final paragraphs", () => {
             expectParagraphAttrs(paragraphs.at(-1) ?? panic("expected a final paragraph"))
               .pPrMark ?? null,
           ).toBeNull();
-          expect(revisedFinalParagraphMarks(fromProseDoc(view.state.doc))).toEqual([]);
+          expect(revisedFinalParagraphMarks(documentModel(view.state))).toEqual([]);
 
           if (canonical === undefined) {
             canonical = view.state.doc.toJSON();
@@ -572,7 +585,7 @@ describe("accepted suggested container-final paragraphs", () => {
         }
 
         expect(getTrackedChangesFromDoc(view.state.doc)).toEqual([]);
-        expect(revisedFinalParagraphMarks(fromProseDoc(view.state.doc))).toEqual([]);
+        expect(revisedFinalParagraphMarks(documentModel(view.state))).toEqual([]);
         expect(terminalChainState(view.state, containerKind)).toEqual([
           {
             text: CARRIER_TEXT,
@@ -620,7 +633,7 @@ describe("accepted suggested container-final paragraphs", () => {
       const reopenedChanges = getTrackedChangesFromDoc(reopenedTracked.doc);
       expect(reopenedChanges).toHaveLength(9);
       expect(new Set(reopenedChanges.map(({ id }) => id)).size).toBe(9);
-      expect(revisedFinalParagraphMarks(fromProseDoc(reopenedTracked.doc))).toEqual([]);
+      expect(revisedFinalParagraphMarks(documentModel(reopenedTracked))).toEqual([]);
 
       const accepting = dispatcher(EditorState.create({ schema, doc: reopenedTracked.doc }));
       expect(acceptAllChanges()(accepting.state, accepting.dispatch)).toBe(true);
@@ -640,10 +653,10 @@ describe("accepted suggested container-final paragraphs", () => {
       expect(suggestions.state.doc.textContent).toBe(CARRIER_TEXT);
 
       for (const resolved of [accepting, rejecting, suggestions]) {
-        expect(revisedFinalParagraphMarks(fromProseDoc(resolved.state.doc))).toEqual([]);
+        expect(revisedFinalParagraphMarks(documentModel(resolved.state))).toEqual([]);
         const reopened = await reopenedState(resolved.state);
         expect(reopened.doc.textContent).toBe(resolved.state.doc.textContent);
-        expect(revisedFinalParagraphMarks(fromProseDoc(reopened.doc))).toEqual([]);
+        expect(revisedFinalParagraphMarks(documentModel(reopened))).toEqual([]);
       }
     },
   );
@@ -683,7 +696,7 @@ describe("accepted suggested container-final paragraphs", () => {
       });
       expect(inserted.attrs["pPrMark"]).toBeNull();
 
-      const model = fromProseDoc(view.state.doc);
+      const model = documentModel(view.state);
       expect(revisedFinalParagraphMarks(model)).toEqual([]);
       const xml = await documentXml(view.state);
       expectAtMostOneParagraphPropertyChange(xml);
@@ -701,7 +714,7 @@ describe("accepted suggested container-final paragraphs", () => {
       expect(paragraphProperties(insertedXml)).not.toContain("<w:rPr>");
 
       const reopened = await reopenedState(view.state);
-      expect(revisedFinalParagraphMarks(fromProseDoc(reopened.doc))).toEqual([]);
+      expect(revisedFinalParagraphMarks(documentModel(reopened))).toEqual([]);
       expect(
         paragraphsInChangedContainer(reopened, containerKind).map((node) => ({
           alignment: expectParagraphAttrs(node).alignment,
@@ -806,7 +819,7 @@ describe("accepted suggested container-final paragraphs", () => {
               ],
         );
 
-        const model = fromProseDoc(view.state.doc);
+        const model = documentModel(view.state);
         expect(revisedFinalParagraphMarks(model)).toEqual([]);
         const xml = await documentXml(view.state);
         expect(xml).not.toMatch(/<w:(?:ins|del|pPrChange)\b/u);
@@ -825,7 +838,7 @@ describe("accepted suggested container-final paragraphs", () => {
         expect(reopened.doc.textContent).toBe(
           rejectsInsertion ? CARRIER_TEXT : `${CARRIER_TEXT}${INSERTED_TEXT}`,
         );
-        expect(revisedFinalParagraphMarks(fromProseDoc(reopened.doc))).toEqual([]);
+        expect(revisedFinalParagraphMarks(documentModel(reopened))).toEqual([]);
       }
     },
   );
@@ -880,7 +893,7 @@ describe("accepted suggested container-final paragraphs", () => {
           previousFormatting: { alignment: "center" },
         },
       ]);
-      expect(revisedFinalParagraphMarks(fromProseDoc(mixed.state.doc))).toEqual([]);
+      expect(revisedFinalParagraphMarks(documentModel(mixed.state))).toEqual([]);
 
       const rejected = dispatcher(makeAdjacentSuggestedTailState(containerKind));
       expect(rejectAllSuggestions()(rejected.state, rejected.dispatch)).toBe(true);
@@ -929,11 +942,11 @@ describe("accepted suggested container-final paragraphs", () => {
         expect(rejecting.state.doc.textContent).toBe(CARRIER_TEXT);
         for (const resolved of [accepting, rejecting]) {
           expect(getSuggestions(resolved.state)).toEqual([]);
-          expect(revisedFinalParagraphMarks(fromProseDoc(resolved.state.doc))).toEqual([]);
+          expect(revisedFinalParagraphMarks(documentModel(resolved.state))).toEqual([]);
           expect(await documentXml(resolved.state)).not.toMatch(/<w:(?:ins|del|pPrChange)\b/u);
           const reopened = await reopenedState(resolved.state);
           expect(getSuggestions(reopened)).toEqual([]);
-          expect(revisedFinalParagraphMarks(fromProseDoc(reopened.doc))).toEqual([]);
+          expect(revisedFinalParagraphMarks(documentModel(reopened))).toEqual([]);
           expect(reopened.doc.textContent).toBe(resolved.state.doc.textContent);
         }
       }

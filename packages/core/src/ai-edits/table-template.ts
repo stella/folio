@@ -22,6 +22,12 @@
 
 import { Fragment, type Mark, type Node as PMNode, type Schema } from "prosemirror-model";
 
+import {
+  cloneTableCellsWithParagraphPropertyCaptures,
+  decodeTableCellParagraphSourcePayload,
+  recreateProseNodeWithDetachedParagraphPropertySource,
+} from "../docx/paragraphPropertySource";
+import { expectTableCellAttrs } from "../prosemirror/attrs";
 import type { TrackedChangeProvenance } from "../prosemirror/schema/marks";
 import { stripBlockIdentityAttrs } from "./block-identity";
 
@@ -203,8 +209,24 @@ const copiedAttrs = (node: PMNode, context: TemplateContext): Record<string, unk
     case "row":
       return context.revision ? { ...attrs, trIns: context.revision } : attrs;
     case "cell":
-    case "header_cell":
-      return context.clampRowSpan ? { ...attrs, rowspan: 1 } : attrs;
+    case "header_cell": {
+      if (context.clampRowSpan) {
+        return {
+          ...attrs,
+          rowspan: 1,
+          _docxVMergeContinuationCells: null,
+        };
+      }
+      const continuationCells = expectTableCellAttrs(node)._docxVMergeContinuationCells;
+      return continuationCells !== undefined && continuationCells !== null
+        ? {
+            ...attrs,
+            _docxVMergeContinuationCells: cloneTableCellsWithParagraphPropertyCaptures(
+              decodeTableCellParagraphSourcePayload(continuationCells),
+            ),
+          }
+        : attrs;
+    }
     default:
       return attrs;
   }
@@ -237,7 +259,11 @@ const copyNode = (node: PMNode, context: TemplateContext): PMNode | null => {
       content.push(copied);
     }
   });
-  return node.type.create(copiedAttrs(node, context), Fragment.fromArray(content), marks);
+  return recreateProseNodeWithDetachedParagraphPropertySource(node, {
+    attrs: copiedAttrs(node, context),
+    content: Fragment.fromArray(content),
+    marks,
+  });
 };
 
 type TableFromTemplateOptions = {

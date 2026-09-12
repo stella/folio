@@ -3,6 +3,11 @@ import { Fragment, type Node as PMNode } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 
+import {
+  decodeTableCellParagraphSourcePayload,
+  restoreTableCellsWithParagraphPropertySources,
+  transportTableCellsWithParagraphPropertySources,
+} from "../docx/paragraphPropertySource";
 import { expectTableCellAttrs } from "../prosemirror/attrs";
 import { standaloneTableCellFromProseMirror } from "../prosemirror/conversion/fromProseDoc";
 import { standaloneTableCellToProseMirror } from "../prosemirror/conversion/toProseDoc";
@@ -211,7 +216,8 @@ export const mergeTrackedVerticalTableCells = ({
       attrs.colspan !== 1 ||
       attrs.rowspan !== 1 ||
       attrs.cellMarker !== undefined ||
-      attrs._docxVMergeContinuationCells !== undefined ||
+      (attrs._docxVMergeContinuationCells !== undefined &&
+        attrs._docxVMergeContinuationCells !== null) ||
       attrs._preserveVMergeRestart === true ||
       attrs._originalFormatting?.vMerge !== undefined
     ) {
@@ -253,7 +259,7 @@ export const mergeTrackedVerticalTableCells = ({
   nextTr.setNodeAttribute(
     tablePosition + 1 + origin.position,
     "_docxVMergeContinuationCells",
-    continuationCells,
+    transportTableCellsWithParagraphPropertySources(continuationCells),
   );
   markStructuralChange(nextTr);
   return nextTr;
@@ -390,13 +396,20 @@ export const splitTrackedVerticalTableCell = ({
   ) {
     return null;
   }
-  const continuationCells = attrs._docxVMergeContinuationCells;
+  const continuationPayload =
+    attrs._docxVMergeContinuationCells === undefined || attrs._docxVMergeContinuationCells === null
+      ? null
+      : decodeTableCellParagraphSourcePayload(attrs._docxVMergeContinuationCells);
+  const continuationCells = continuationPayload?.cells;
   if (
     continuationCells !== undefined &&
     continuationCells.length !== rectangle.bottom - rectangle.top - 1
   ) {
     return null;
   }
+  const restoredContinuationCells = continuationPayload
+    ? restoreTableCellsWithParagraphPropertySources(continuationPayload)
+    : undefined;
 
   const marker = {
     kind: "merge" as const,
@@ -409,8 +422,12 @@ export const splitTrackedVerticalTableCell = ({
     if (source?.structuralChange !== undefined) {
       return null;
     }
-    const insertedCell = source
-      ? trackedSplitCellFromStoredSource({ origin: cell, source, marker })
+    const restoredSource = restoredContinuationCells?.[index];
+    if (source && !restoredSource) {
+      return null;
+    }
+    const insertedCell = restoredSource
+      ? trackedSplitCellFromStoredSource({ origin: cell, source: restoredSource, marker })
       : cell.type.createAndFill({
           ...cell.attrs,
           rowspan: 1,

@@ -31,7 +31,6 @@ import type {
   TablePropertyChange,
   TableRowFormatting,
   TableRowPropertyChange,
-  TableCell,
   TableCellFormatting,
   TableCellPropertyChange,
   TableWidthType,
@@ -878,5 +877,5 @@ export type TableCellAttrs = {
   /** Preserve a DOCX vMerge restart even when PM cannot model it as a rowspan. */
   _preserveVMergeRestart?: boolean;
   /** Original DOCX vMerge continuation cells skipped into this PM rowspan. */
-  _docxVMergeContinuationCells?: TableCell[];
+  _docxVMergeContinuationCells?: unknown;
 };

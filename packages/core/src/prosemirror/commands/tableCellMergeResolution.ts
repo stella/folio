@@ -3,23 +3,38 @@ import type { Node as PMNode } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 
+import {
+  type DecodedTableCellParagraphSourcePayload,
+  decodeTableCellParagraphSourcePayload,
+  restoreTableCellsWithParagraphPropertySources,
+  transportTableCellsWithParagraphPropertySources,
+} from "../../docx/paragraphPropertySource";
 import type { TableCell, TableCellFormatting } from "../../types/document";
 import { standaloneTableCellFromProseMirror } from "../conversion/fromProseDoc";
 import { standaloneTableCellToProseMirror } from "../conversion/toProseDoc";
 import { getTableCellMergeChange } from "../tableCellMergeRevision";
 
+const tableCellContinuationPayload = (
+  node: PMNode,
+): DecodedTableCellParagraphSourcePayload | null => {
+  const value = node.attrs["_docxVMergeContinuationCells"];
+  return value === undefined || value === null
+    ? null
+    : decodeTableCellParagraphSourcePayload(value);
+};
+
 export const hasMatchingCollapsedTableCellMerge = (
   node: PMNode,
   revisionSet: Set<number> | null,
 ): boolean => {
-  const continuationCells = node.attrs["_docxVMergeContinuationCells"];
-  if (!Array.isArray(continuationCells)) {
-    return false;
-  }
-  return continuationCells.some((cell) => {
-    const change = getTableCellMergeChange(cell);
-    return change !== null && (revisionSet === null || revisionSet.has(change.info.id));
-  });
+  const payload = tableCellContinuationPayload(node);
+  return (
+    payload !== null &&
+    payload.cells.some((cell) => {
+      const change = getTableCellMergeChange(cell);
+      return change !== null && (revisionSet === null || revisionSet.has(change.info.id));
+    })
+  );
 };
 
 type TableCellRevisionAttr = {
@@ -146,23 +161,24 @@ const mergeTableCellWithCellAbove = (tr: Transaction, cellPos: number): boolean 
 
   const continuationCells = tableCellContinuationCells(aboveCell, aboveRowspan);
   continuationCells.push(tableCellContinuationFromNode(cell));
-  const nestedContinuations = cell.attrs["_docxVMergeContinuationCells"];
-  if (Array.isArray(nestedContinuations)) {
-    continuationCells.push(...nestedContinuations);
+  const nestedPayload = tableCellContinuationPayload(cell);
+  if (nestedPayload) {
+    continuationCells.push(...nestedPayload.cells);
   }
 
   tr.delete(cellPos, cellPos + cell.nodeSize);
   tr.setNodeMarkup(abovePos, undefined, {
     ...aboveCell.attrs,
     rowspan: aboveRowspan + cellRowspan,
-    _docxVMergeContinuationCells: continuationCells,
+    _docxVMergeContinuationCells:
+      transportTableCellsWithParagraphPropertySources(continuationCells),
   });
   return true;
 };
 
 const tableCellContinuationCells = (cell: PMNode, rowspan: number): TableCell[] => {
-  const stored = cell.attrs["_docxVMergeContinuationCells"];
-  const cells: TableCell[] = Array.isArray(stored) ? [...stored] : [];
+  const payload = tableCellContinuationPayload(cell);
+  const cells = payload ? [...payload.cells] : [];
   while (cells.length < rowspan - 1) {
     cells.push(emptyVerticalMergeContinuation());
   }
@@ -197,10 +213,14 @@ export const resolveCollapsedTableCellMerge = (
   revisionSet: Set<number> | null,
 ): boolean => {
   const cell = tr.doc.nodeAt(cellPos);
-  const stored = cell?.attrs["_docxVMergeContinuationCells"];
-  if (!cell || !Array.isArray(stored)) {
+  if (!cell) {
     return false;
   }
+  const payload = tableCellContinuationPayload(cell);
+  if (!payload) {
+    return false;
+  }
+  const stored = payload.cells;
 
   const matchingIndices: number[] = [];
   const nextCells = stored.map((continuationCell, index) => {
@@ -256,8 +276,9 @@ export const resolveCollapsedTableCellMerge = (
   }
 
   const restorations: { index: number; cell: PMNode }[] = [];
+  const restoredCells = restoreTableCellsWithParagraphPropertySources(payload);
   for (const index of splitIndices) {
-    const source = nextCells[index];
+    const source = restoredCells[index];
     if (!source) {
       return false;
     }

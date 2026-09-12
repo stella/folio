@@ -36,6 +36,12 @@ import {
 import { createDocumentStylesPlugin } from "../prosemirror/plugins/documentStyles";
 import { createDocumentNumberingPlugin } from "../prosemirror/plugins/documentNumbering";
 import { schema } from "../prosemirror/schema";
+import {
+  proseDocumentParagraphSourceContract,
+  readYjsParagraphSourceContract,
+  withParagraphSourceContract,
+  writeYjsParagraphSourceContract,
+} from "../prosemirror/yjsParagraphSourceContract";
 import type { Document, StyleDefinitions } from "../types/document";
 import type { RemoteSelection } from "../types/remote-selection";
 import { createHiddenEditorApi, type HiddenEditorApi } from "./hiddenEditorApi";
@@ -286,6 +292,13 @@ export function createHiddenEditorState(options: CreateHiddenEditorStateOptions)
         seedState.doc,
         collaboration.yXmlFragment,
       );
+      const collaborationDocument = collaboration.yXmlFragment.doc;
+      if (!collaborationDocument) {
+        panic("A collaboration fragment must belong to a Yjs document before seeding.");
+      }
+      if (proseDocumentParagraphSourceContract(seedState.doc)) {
+        writeYjsParagraphSourceContract(collaborationDocument, seedState.doc);
+      }
       collaboration.onSeeded?.();
     }
 
@@ -293,6 +306,18 @@ export function createHiddenEditorState(options: CreateHiddenEditorStateOptions)
       collaboration.yXmlFragment,
       activeSchema,
     );
+    const collaborationDocument = collaboration.yXmlFragment.doc;
+    if (!collaborationDocument) {
+      panic("A collaboration fragment must belong to a Yjs document before loading.");
+    }
+    const collaborationContract = readYjsParagraphSourceContract(collaborationDocument);
+    const localContract = proseDocumentParagraphSourceContract(localDoc);
+    if (localContract && collaborationContract !== localContract) {
+      panic("The collaboration state belongs to a different paragraph-property source.");
+    }
+    if (collaborationContract) {
+      doc = withParagraphSourceContract(doc, collaborationContract);
+    }
 
     const initializedState = normalizeSeedState(
       PMEditorState.create({
@@ -310,6 +335,9 @@ export function createHiddenEditorState(options: CreateHiddenEditorStateOptions)
         collaboration.yXmlFragment,
         activeSchema,
       ));
+      if (collaborationContract) {
+        doc = withParagraphSourceContract(doc, collaborationContract);
+      }
     }
 
     const startedAt = performance.now();

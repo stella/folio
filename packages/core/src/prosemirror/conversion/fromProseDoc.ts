@@ -20,12 +20,30 @@ import { visitDocxParagraphs } from "../../docx/paragraphTraversal";
 import { DATE_UTC_ATTRIBUTE } from "../../docx/trackedChangeInfo";
 import { createStyleEngine, type StyleEngine } from "../../style-engine";
 import {
+  PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
+  ParagraphPropertySourceValidationError,
+  type ParagraphPropertySourceValidationCode,
+  type TableCellParagraphPropertySourceBinding,
+  copyDocumentParagraphPropertySourceContract,
+  copyDocumentParagraphPropertySources,
+  copyParagraphPropertyCapture,
   copyParagraphPropertySource,
+  decodeTableCellParagraphSourcePayload,
+  getDocumentParagraphPropertySourceContract,
   getParagraphPropertySource,
   getParagraphPropertySourceCandidate,
+  getParagraphPropertySourceToken,
   getParagraphPropertySourceTransferId,
+  getProseDocumentParagraphPropertySourceContract,
+  getProseParagraphPropertySourceToken,
+  isParagraphPropertySourceToken,
   linkParagraphPropertySourceCandidate,
+  paragraphPropertySourceTokenMatchesContract,
+  paragraphPropertySourceBelongsToDocument,
   recreateProseNodeWithParagraphPropertySource,
+  restoreTableCellsWithParagraphPropertySources,
+  visitDocumentStoryParagraphs,
+  visitTableCellParagraphPropertySourceBindings,
 } from "../../docx/paragraphPropertySource";
 import { canonicalJson } from "../../utils/canonicalJson";
 import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
@@ -301,6 +319,24 @@ const uniqueParagraphsById = (
   return paragraphs;
 };
 
+const restoreParagraphPropertySource = (paragraph: Paragraph, baseParagraph: Paragraph): void => {
+  copyParagraphPropertySource(paragraph, baseParagraph);
+
+  const baseFormatting = baseParagraph.formatting;
+  if (
+    !baseFormatting?.numPr ||
+    !baseFormatting.numPrFromStyle ||
+    !numPrEqual(baseFormatting.numPr, baseFormatting.numPrFromStyle)
+  ) {
+    return;
+  }
+  const { numPr, numPrFromStyle, ...authoredFormatting } = baseFormatting;
+  if (canonicalJson(paragraph.formatting ?? {}) !== canonicalJson(authoredFormatting)) {
+    return;
+  }
+  paragraph.formatting = { ...paragraph.formatting, numPr, numPrFromStyle };
+};
+
 const restoreParagraphPropertySources = (
   content: BlockContent[],
   baseContent: BlockContent[],
@@ -319,22 +355,140 @@ const restoreParagraphPropertySources = (
     ) {
       continue;
     }
-    copyParagraphPropertySource(paragraph, baseParagraph);
-
-    const baseFormatting = baseParagraph.formatting;
-    if (
-      !baseFormatting?.numPr ||
-      !baseFormatting.numPrFromStyle ||
-      !numPrEqual(baseFormatting.numPr, baseFormatting.numPrFromStyle)
-    ) {
-      continue;
-    }
-    const { numPr, numPrFromStyle, ...authoredFormatting } = baseFormatting;
-    if (canonicalJson(paragraph.formatting ?? {}) !== canonicalJson(authoredFormatting)) {
-      continue;
-    }
-    paragraph.formatting = { ...paragraph.formatting, numPr, numPrFromStyle };
+    restoreParagraphPropertySource(paragraph, baseParagraph);
   }
+};
+
+const sourceValidationError = (
+  code: ParagraphPropertySourceValidationCode,
+  message: string,
+): ParagraphPropertySourceValidationError =>
+  new ParagraphPropertySourceValidationError({
+    code,
+    message,
+  });
+
+const validateParagraphPropertySourceTokens = (
+  pmDoc: PMNode,
+  baseDocument: Document,
+  contract: string,
+): Map<string, Paragraph> => {
+  const sourceParagraphs = copyDocumentParagraphPropertySources(baseDocument);
+  if (!sourceParagraphs) {
+    panic("A paragraph-property source contract lost its source registry");
+  }
+  const currentTokens = new Set<string>();
+  visitDocumentStoryParagraphs(baseDocument.package.document.content, (paragraph) => {
+    const token = getParagraphPropertySourceToken(paragraph);
+    if (!token) {
+      if (paragraphPropertySourceBelongsToDocument(paragraph, baseDocument)) {
+        throw sourceValidationError(
+          "invalid_token",
+          "A source-bound paragraph is missing its paragraph-property token.",
+        );
+      }
+      return;
+    }
+    if (!paragraphPropertySourceTokenMatchesContract(token, contract)) {
+      throw sourceValidationError(
+        "invalid_token",
+        "The source document contains an invalid paragraph-property token.",
+      );
+    }
+    if (!sourceParagraphs.has(token)) {
+      throw sourceValidationError(
+        "unknown_token",
+        "The source document contains an unknown paragraph-property token.",
+      );
+    }
+    if (currentTokens.has(token)) {
+      throw sourceValidationError(
+        "duplicate_token",
+        "The source document contains a duplicate paragraph-property token.",
+      );
+    }
+    currentTokens.add(token);
+  });
+
+  const seen = new Set<string>();
+  const validateToken = (token: unknown): void => {
+    if (token === null || token === undefined) {
+      return;
+    }
+    if (!isParagraphPropertySourceToken(token)) {
+      throw sourceValidationError(
+        "invalid_token",
+        "A paragraph contains a malformed paragraph-property token.",
+      );
+    }
+    if (!paragraphPropertySourceTokenMatchesContract(token, contract)) {
+      throw sourceValidationError(
+        "unknown_token",
+        "A paragraph-property token belongs to a different source document.",
+      );
+    }
+    if (seen.has(token)) {
+      throw sourceValidationError(
+        "duplicate_token",
+        "A paragraph-property token is attached to more than one paragraph.",
+      );
+    }
+    if (!sourceParagraphs.has(token)) {
+      throw sourceValidationError(
+        "unknown_token",
+        "A paragraph-property token is not present in the source document.",
+      );
+    }
+    seen.add(token);
+  };
+  const validateTableCellBinding = (binding: TableCellParagraphPropertySourceBinding): void => {
+    switch (binding.type) {
+      case "authored":
+        return;
+      case "source":
+        validateToken(binding.token);
+        return;
+      default: {
+        const exhaustiveBinding: never = binding;
+        return exhaustiveBinding;
+      }
+    }
+  };
+  pmDoc.descendants((node) => {
+    if (node.type.name === "tableCell" || node.type.name === "tableHeader") {
+      const continuationCells = expectTableCellAttrs(node)._docxVMergeContinuationCells;
+      if (continuationCells !== undefined && continuationCells !== null) {
+        visitTableCellParagraphPropertySourceBindings(
+          decodeTableCellParagraphSourcePayload(continuationCells),
+          (binding) => validateTableCellBinding(binding),
+        );
+      }
+      return true;
+    }
+    if (node.type.name !== "paragraph") {
+      return true;
+    }
+    validateToken(getProseParagraphPropertySourceToken(node));
+    return false;
+  });
+  return sourceParagraphs;
+};
+
+const restoreParagraphPropertySourcesByToken = (
+  content: BlockContent[],
+  baseParagraphs: ReadonlyMap<string, Paragraph>,
+): void => {
+  visitDocumentStoryParagraphs(content, (paragraph) => {
+    const token = getParagraphPropertySourceToken(paragraph);
+    if (!token) {
+      return;
+    }
+    const baseParagraph = baseParagraphs.get(token);
+    if (!baseParagraph) {
+      panic("Validated paragraph-property token lost its source owner");
+    }
+    restoreParagraphPropertySource(paragraph, baseParagraph);
+  });
 };
 
 type LinkedParagraphPropertySources = {
@@ -364,7 +518,7 @@ const restoreLinkedParagraphPropertySources = (
     if (targets.length === 1) {
       const target = targets.at(0);
       if (target) {
-        copyParagraphPropertySource(target, source);
+        copyParagraphPropertyCapture(target, source);
       }
     }
   }
@@ -378,13 +532,35 @@ export function fromProseDoc(pmDoc: PMNode, baseDocument?: Document): Document {
     "Cannot convert invalid ProseMirror document to DOCX model",
   );
 
+  const baseContract = baseDocument
+    ? getDocumentParagraphPropertySourceContract(baseDocument)
+    : undefined;
+  const proseContractAttribute = pmDoc.attrs[PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR];
+  const proseContract = getProseDocumentParagraphPropertySourceContract(pmDoc);
+  const proseCarriesInvalidContract =
+    proseContractAttribute !== null &&
+    proseContractAttribute !== undefined &&
+    proseContract === null;
+  if (proseCarriesInvalidContract || (baseContract ?? null) !== proseContract) {
+    throw sourceValidationError(
+      "contract_mismatch",
+      "The ProseMirror document does not match its paragraph-property source document.",
+    );
+  }
+  const tokenSources =
+    baseContract && proseContract && baseDocument
+      ? validateParagraphPropertySourceTokens(pmDoc, baseDocument, baseContract)
+      : null;
+
   const blocks = extractBlocks(
     pmDoc,
     "resolve",
     baseDocument?.package.styles ? createStyleEngine(baseDocument.package.styles) : null,
   );
   const linkedSources = restoreLinkedParagraphPropertySources(blocks);
-  if (baseDocument) {
+  if (tokenSources) {
+    restoreParagraphPropertySourcesByToken(blocks, tokenSources);
+  } else if (baseDocument) {
     restoreParagraphPropertySources(
       blocks,
       baseDocument.package.document.content,
@@ -407,13 +583,15 @@ export function fromProseDoc(pmDoc: PMNode, baseDocument?: Document): Document {
 
   // If we have a base document, preserve its package structure
   if (baseDocument) {
-    return {
+    const updatedDocument: Document = {
       ...baseDocument,
       package: {
         ...baseDocument.package,
         document: documentBody,
       },
     };
+    copyDocumentParagraphPropertySourceContract(updatedDocument, baseDocument);
+    return updatedDocument;
   }
 
   // Create a minimal document structure
@@ -4637,7 +4815,13 @@ function convertPMTableRow(
       const colspan = Math.max(cellAttrs.colspan, 1);
       cells.push(convertPMTableCell(cellNode, documentCounts, styleResolver));
       if (cellAttrs.rowspan > 1) {
-        const continuationCells = cellAttrs._docxVMergeContinuationCells;
+        const continuationCells =
+          cellAttrs._docxVMergeContinuationCells !== undefined &&
+          cellAttrs._docxVMergeContinuationCells !== null
+            ? restoreTableCellsWithParagraphPropertySources(
+                decodeTableCellParagraphSourcePayload(cellAttrs._docxVMergeContinuationCells),
+              )
+            : undefined;
         activeVerticalMerges?.set(gridColumn, {
           remainingRows: cellAttrs.rowspan - 1,
           colspan,

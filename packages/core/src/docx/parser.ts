@@ -63,6 +63,7 @@ import { renderEmfSvg } from "./metafileSvg";
 import { enforcePackageVmlPreviewBudget } from "./vmlPreview";
 import { parseNumbering } from "./numberingParser";
 import { parseFontTable } from "./fontTableParser";
+import { assignDocumentParagraphPropertySourceContract } from "./paragraphPropertySource";
 import type { NumberingMap } from "./numberingParser";
 import { normalizeNumberingReferences } from "./numberingReferenceNormalization";
 import { parseRelationships, RELATIONSHIP_TYPES, resolveRelativePath } from "./relsParser";
@@ -79,6 +80,15 @@ import type { DocxUnzipOptions, RawDocxContent } from "./unzip";
 const EMF_MIME_TYPE = "image/x-emf";
 const SVG_MIME_TYPE = "image/svg+xml";
 const MAX_PACKAGE_EMF_PREVIEW_BYTES = 8 * 1024 * 1024;
+
+const sha256Hex = async (buffer: ArrayBuffer): Promise<string> => {
+  const bytes = new Uint8Array(await crypto.subtle.digest("SHA-256", buffer));
+  let digest = "";
+  for (const byte of bytes) {
+    digest += byte.toString(16).padStart(2, "0");
+  }
+  return digest;
+};
 
 // ============================================================================
 // PROGRESS CALLBACK
@@ -154,6 +164,8 @@ export async function parseDocx(input: DocxInput, options: ParseOptions = {}): P
     const timeStage = <T>(_name: string, fn: () => T): T => fn();
 
     const timeStageAsync = async <T>(_name: string, fn: () => Promise<T>): Promise<T> => await fn();
+
+    const paragraphPropertySourceDigest = sha256Hex(buffer);
 
     // ========================================================================
     // STAGE 1: Unzip DOCX package (0-10%)
@@ -439,6 +451,7 @@ export async function parseDocx(input: DocxInput, options: ParseOptions = {}): P
       ...(templateVariables !== undefined ? { templateVariables } : {}),
       ...(requiredFonts.length > 0 ? { requiredFonts } : {}),
     };
+    assignDocumentParagraphPropertySourceContract(document, await paragraphPropertySourceDigest);
     enforcePackageVmlPreviewBudget(document.package);
 
     const validation = validateFolioDocumentModel(document);
