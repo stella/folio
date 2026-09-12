@@ -130,7 +130,7 @@ describe("DocxComparisonProgram", () => {
   test("derives and deeply freezes the sole instruction payload", () => {
     const { comparison, snapshot, targetSnapshot } = sourceFixture();
     const input = replacement(comparison);
-    const program = DocxComparisonProgram.create(comparison, [input]);
+    const program = DocxComparisonProgram.create(comparison, { operations: [input] });
 
     Reflect.set(input, "event", Object.freeze({ ...input.event }));
 
@@ -155,7 +155,9 @@ describe("DocxComparisonProgram", () => {
 
   test("is consumable exactly once", () => {
     const { comparison } = sourceFixture();
-    const program = DocxComparisonProgram.create(comparison, [replacement(comparison)]);
+    const program = DocxComparisonProgram.create(comparison, {
+      operations: [replacement(comparison)],
+    });
     expect(program.consume().instructions).toHaveLength(1);
     expect(() => program.consume()).toThrow("consumed more than once");
   });
@@ -163,24 +165,38 @@ describe("DocxComparisonProgram", () => {
   test("rejects duplicate canonical report sequence ownership", () => {
     const { comparison } = sourceFixture();
     expect(() =>
-      DocxComparisonProgram.create(comparison, [replacement(comparison), replacement(comparison)]),
+      DocxComparisonProgram.create(comparison, {
+        operations: [replacement(comparison), replacement(comparison)],
+      }),
     ).toThrow("invalid canonical sequence");
   });
 
   test("rejects duplicate source-edge ownership before execution", () => {
     const { comparison, operation } = terminalTransitionFixture();
 
-    expect(() => DocxComparisonProgram.create(comparison, [operation, operation])).toThrow(
-      "source paragraph edge has more than one comparison instruction owner",
-    );
+    expect(() =>
+      DocxComparisonProgram.create(comparison, { operations: [operation, operation] }),
+    ).toThrow("source paragraph edge has more than one comparison instruction owner");
   });
 
   test("rejects a missing terminal source-edge owner before execution", () => {
     const { comparison } = terminalTransitionFixture();
 
-    expect(() => DocxComparisonProgram.create(comparison, [])).toThrow(
+    expect(() => DocxComparisonProgram.create(comparison, { operations: [] })).toThrow(
       "no matching transition owner",
     );
+  });
+
+  test("accepts an explicitly omitted terminal transition without source-edge owners", () => {
+    const { comparison, operation } = terminalTransitionFixture();
+
+    const program = DocxComparisonProgram.create(comparison, {
+      operations: [],
+      omittedTerminalTransitions: [operation.operation],
+    });
+
+    expect(program.size).toBe(0);
+    expect(program.consume().instructions).toEqual([]);
   });
 
   test("rejects copied and cross-comparison event operands", () => {
@@ -190,21 +206,22 @@ describe("DocxComparisonProgram", () => {
     expect(() =>
       Reflect.apply(DocxComparisonProgram.create, DocxComparisonProgram, [
         left.comparison,
-        [{ type: "pairedBlock", event: copied }],
+        { operations: [{ type: "pairedBlock", event: copied }] },
       ]),
     ).toThrow("was not created by Folio");
     expect(() =>
-      DocxComparisonProgram.create(right.comparison, [replacement(left.comparison)]),
+      DocxComparisonProgram.create(right.comparison, {
+        operations: [replacement(left.comparison)],
+      }),
     ).toThrow("belongs to another story comparison");
   });
 
   test("rejects an oversized instruction graph before compiling it", () => {
     const { comparison } = sourceFixture();
     expect(() =>
-      DocxComparisonProgram.create(
-        comparison,
-        Array.from({ length: 10_001 }, () => replacement(comparison)),
-      ),
+      DocxComparisonProgram.create(comparison, {
+        operations: Array.from({ length: 10_001 }, () => replacement(comparison)),
+      }),
     ).toThrow("exceeds its instruction limit");
   });
 
@@ -212,15 +229,17 @@ describe("DocxComparisonProgram", () => {
     const left = sourceFixture();
     const right = sourceFixture();
     expect(() =>
-      DocxComparisonProgram.create(right.comparison, [replacement(left.comparison)]),
+      DocxComparisonProgram.create(right.comparison, {
+        operations: [replacement(left.comparison)],
+      }),
     ).toThrow("belongs to another story comparison");
   });
 
   test("compiled fragments reconstruct both canonical text views", () => {
     const { comparison } = sourceFixture();
-    const [instruction] = DocxComparisonProgram.create(comparison, [
-      replacement(comparison),
-    ]).consume().instructions;
+    const [instruction] = DocxComparisonProgram.create(comparison, {
+      operations: [replacement(comparison)],
+    }).consume().instructions;
     if (instruction?.type !== "replaceText") throw new Error("expected replacement");
     expect(
       instruction.range.fragments

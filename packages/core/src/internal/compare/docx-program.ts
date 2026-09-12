@@ -2798,6 +2798,7 @@ type CompiledDocxComparisonProgram = {
 type CompileDocxComparisonProgramOptions = {
   readonly comparison: ResolvedDocxStoryComparison;
   readonly inputs: readonly DocxComparisonOperationInput[];
+  readonly omittedTerminalTransitions: readonly ResolvedDocxTerminalTransitionOperand[];
   readonly sourceSnapshot: ResolvedDocxStorySnapshot;
   readonly targetSnapshot: ResolvedDocxStorySnapshot;
 };
@@ -2807,6 +2808,8 @@ const assertUniqueParagraphMarkOwnership = (
   instructions: readonly DocxComparisonInstruction[],
   comparison: ResolvedDocxStoryComparison,
   sourceSnapshot: ResolvedDocxStorySnapshot,
+  emittedTerminalTransitions: ReadonlySet<ResolvedDocxTerminalTransitionOperand>,
+  omittedTerminalTransitions: ReadonlySet<ResolvedDocxTerminalTransitionOperand>,
 ): void => {
   const ownerByBlock = new Map<
     FolioContentBlock,
@@ -2876,6 +2879,24 @@ const assertUniqueParagraphMarkOwnership = (
     if (disposition.type !== "terminal-member") continue;
     const block = resolvedDocxSourceOperandBlock(disposition.source, sourceSnapshot);
     const actualOwner = ownerByBlock.get(block);
+    if (omittedTerminalTransitions.has(disposition.operation)) {
+      if (actualOwner !== undefined) {
+        return panic("An omitted terminal paragraph edge has a comparison instruction owner", {
+          blockId: disposition.blockId,
+          instructionIndex: actualOwner.instructionIndex,
+          instructionType: actualOwner.instructionType,
+        });
+      }
+      continue;
+    }
+    if (!emittedTerminalTransitions.has(disposition.operation)) {
+      return panic(
+        "A terminal source paragraph edge has no matching transition owner or omission",
+        {
+          blockId: disposition.blockId,
+        },
+      );
+    }
     const terminalPayload = resolvedDocxTerminalTransitionOperandPayload(
       disposition.operation,
       comparison,
@@ -2934,6 +2955,7 @@ const assertUniqueParagraphMarkOwnership = (
 const compileDocxComparisonProgram = ({
   comparison,
   inputs,
+  omittedTerminalTransitions,
   sourceSnapshot,
   targetSnapshot,
 }: CompileDocxComparisonProgramOptions): CompiledDocxComparisonProgram => {
@@ -2959,7 +2981,26 @@ const compileDocxComparisonProgram = ({
       });
     }
   }
-  assertUniqueParagraphMarkOwnership(instructions, comparison, sourceSnapshot);
+  const emittedTerminalTransitions = new Set(
+    inputs.flatMap((input) => (input.type === "terminalTransition" ? [input.operation] : [])),
+  );
+  const omittedTerminalTransitionSet = new Set(omittedTerminalTransitions);
+  if (
+    omittedTerminalTransitionSet.size !== omittedTerminalTransitions.length ||
+    [...omittedTerminalTransitionSet].some((operation) => emittedTerminalTransitions.has(operation))
+  ) {
+    return panic("A terminal transition has more than one lowering disposition");
+  }
+  for (const operation of omittedTerminalTransitionSet) {
+    resolvedDocxTerminalTransitionOperandPayload(operation, comparison);
+  }
+  assertUniqueParagraphMarkOwnership(
+    instructions,
+    comparison,
+    sourceSnapshot,
+    emittedTerminalTransitions,
+    omittedTerminalTransitionSet,
+  );
   for (const group of semanticGroups) {
     for (const { sequence } of group.reports) {
       if (reportSequences.has(sequence)) {
@@ -2981,6 +3022,11 @@ const compileDocxComparisonProgram = ({
  * instruction graph; consumption transfers its immutable semantics to the
  * dedicated comparison executor exactly once.
  */
+type CreateDocxComparisonProgramOptions = {
+  readonly operations: readonly DocxComparisonOperationInput[];
+  readonly omittedTerminalTransitions?: readonly ResolvedDocxTerminalTransitionOperand[];
+};
+
 export class DocxComparisonProgram {
   readonly #comparison: ResolvedDocxStoryComparison;
   readonly #instructions: readonly DocxComparisonInstruction[];
@@ -2992,11 +3038,13 @@ export class DocxComparisonProgram {
   private constructor(
     comparison: ResolvedDocxStoryComparison,
     inputs: readonly DocxComparisonOperationInput[],
+    omittedTerminalTransitions: readonly ResolvedDocxTerminalTransitionOperand[],
   ) {
     const { baseSnapshot, targetSnapshot } = resolvedDocxStoryComparisonPayload(comparison);
     const compiled = compileDocxComparisonProgram({
       comparison,
       inputs,
+      omittedTerminalTransitions,
       sourceSnapshot: baseSnapshot,
       targetSnapshot,
     });
@@ -3009,15 +3057,15 @@ export class DocxComparisonProgram {
 
   static create(
     comparison: ResolvedDocxStoryComparison,
-    inputs: readonly DocxComparisonOperationInput[],
+    { operations, omittedTerminalTransitions = [] }: CreateDocxComparisonProgramOptions,
   ): DocxComparisonProgram {
-    if (inputs.length > MAX_DOCX_COMPARISON_INSTRUCTIONS) {
+    if (operations.length > MAX_DOCX_COMPARISON_INSTRUCTIONS) {
       return panic("A DOCX comparison program exceeds its instruction limit", {
         limit: MAX_DOCX_COMPARISON_INSTRUCTIONS,
-        actual: inputs.length,
+        actual: operations.length,
       });
     }
-    return new DocxComparisonProgram(comparison, inputs);
+    return new DocxComparisonProgram(comparison, operations, omittedTerminalTransitions);
   }
 
   get size(): number {

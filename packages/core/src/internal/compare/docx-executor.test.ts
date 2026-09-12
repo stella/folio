@@ -1078,6 +1078,61 @@ describe("the dedicated DOCX comparison executor", () => {
     );
   });
 
+  test("keeps an interleaved terminal suffix ending in a second moved paragraph typed", () => {
+    const first = paragraphNode("M1000001", "First retained paragraph");
+    const second = paragraphNode("M1000003", "Second retained paragraph");
+    const anchor = paragraphNode("A1000000", "Moved anchor");
+    const baseSnapshot = resolvedSnapshotOf(stateWithBlocks(first, second, anchor));
+    const targetSnapshot = resolvedSnapshotOf(
+      stateWithBlocks(
+        anchor,
+        tableWithCellGrid([[{ id: "T1000000", text: "First table" }]]),
+        first,
+        tableWithCellGrid([[{ id: "T1000002", text: "Second table" }]]),
+        second,
+      ),
+    );
+    const planned = planStoryCompare({
+      comparison: comparisonOf(baseSnapshot, targetSnapshot),
+      maxOperations: 1_000,
+    });
+
+    if (planned.isErr()) throw planned.error;
+    expect(planned.value.program.size).toBe(2);
+    expect(planned.value.unsupported).toContainEqual(
+      expect.objectContaining({
+        reason: "missing-insertion-anchor",
+        targetBlockId: "A1000000",
+      }),
+    );
+  });
+
+  test("returns typed unsupported for every bounded moved-ending table suffix", () => {
+    for (let retainedCount = 1; retainedCount <= 5; retainedCount++) {
+      const retained = Array.from({ length: retainedCount }, (_unused, index) =>
+        paragraphNode(`M100000${String(index)}`, `Retained ${String(index)}`),
+      );
+      const anchor = paragraphNode("A1000000", "Moved anchor");
+      const targetSuffix = retained.flatMap((paragraph, index) => [
+        tableWithCellGrid([[{ id: `T100000${String(index)}`, text: `Table ${String(index)}` }]]),
+        paragraph,
+      ]);
+      const planned = planStoryCompare({
+        comparison: comparisonOf(
+          resolvedSnapshotOf(stateWithBlocks(...retained, anchor)),
+          resolvedSnapshotOf(stateWithBlocks(anchor, ...targetSuffix)),
+        ),
+        maxOperations: 1_000,
+      });
+
+      if (planned.isErr()) throw planned.error;
+      expect(planned.value.program.size).toBe(retainedCount);
+      expect(planned.value.unsupported).toEqual([
+        expect.objectContaining({ reason: "missing-insertion-anchor" }),
+      ]);
+    }
+  });
+
   test("withholds every interleaved terminal suffix obligation when its carrier cannot execute", () => {
     const baseState = stateFromCanonicalDocument(
       schema.node("doc", null, [
@@ -1640,9 +1695,9 @@ describe("the dedicated DOCX comparison executor", () => {
     );
     const second = plannedComparisonOf({ baseState: secondBase, targetState: secondTarget });
     expect(() =>
-      DocxComparisonProgram.create(second.comparison, [
-        { type: "tableStructure", operation: operand },
-      ]),
+      DocxComparisonProgram.create(second.comparison, {
+        operations: [{ type: "tableStructure", operation: operand }],
+      }),
     ).toThrow("belongs to another story comparison");
   });
 

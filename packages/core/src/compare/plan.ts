@@ -27,6 +27,7 @@ import {
   resolvedDocxTableStructureOperand,
   resolvedDocxTableStructureOperandPayload,
   type ResolvedDocxStoryComparison,
+  type ResolvedDocxTerminalTransitionOperand,
 } from "../internal/compare/resolved-docx-story-comparison";
 import {
   resolvedDocxHasExactAuthoredRuns,
@@ -185,6 +186,7 @@ export const planStoryCompare = ({
   const events = contentComparison.events;
   const unsupported: CompareUnsupportedPart[] = [];
   const operations: DocxComparisonOperationInput[] = [];
+  const omittedTerminalTransitions: ResolvedDocxTerminalTransitionOperand[] = [];
 
   const appendOperationDisposition = (disposition: PlannedOperationDisposition): void => {
     switch (disposition.type) {
@@ -563,10 +565,13 @@ export const planStoryCompare = ({
         appendOperationDisposition(
           omittedOperation(firstBoundaryUnsupported, ...remainingBoundaryUnsupported),
         );
+        omittedTerminalTransitions.push(terminal.operation);
       } else if (!unavailable) {
         appendOperationDisposition(
           emittedOperation({ type: "terminalTransition", operation: terminal.operation }),
         );
+      } else {
+        omittedTerminalTransitions.push(terminal.operation);
       }
       if (operations.length > maxOperations) return Result.err(operationLimit(maxOperations));
       continue;
@@ -869,7 +874,10 @@ export const planStoryCompare = ({
     operations.push({ type: "tableFormat", operation: tableFormat });
   }
   if (operations.length > maxOperations) return Result.err(operationLimit(maxOperations));
-  const program = DocxComparisonProgram.create(comparison, operations);
+  const program = DocxComparisonProgram.create(comparison, {
+    operations,
+    omittedTerminalTransitions,
+  });
   if (program.size > maxOperations) return Result.err(operationLimit(maxOperations));
   return Result.ok({
     unsupported: Object.freeze(unsupported),
