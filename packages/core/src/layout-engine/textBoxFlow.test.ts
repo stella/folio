@@ -82,8 +82,14 @@ describe("bandFragmentX (eigenpal #694)", () => {
   };
   const EMU_PER_INCH = 914_400; // 1in = 96px at 96 DPI = marginLeft.
 
-  test("no horizontal anchor → content left edge", () => {
-    expect(bandFragmentX(undefined, geometry)).toBe(96);
+  test("no horizontal anchor → active column left edge", () => {
+    expect(
+      bandFragmentX(undefined, {
+        ...geometry,
+        activeColumnLeft: 420,
+        activeColumnWidth: 300,
+      }),
+    ).toBe(420);
   });
 
   test("margin-relative align=center centers within the content box", () => {
@@ -141,7 +147,6 @@ describe("bandFragmentX (eigenpal #694)", () => {
       activeColumnWidth: 300,
     };
     const nonColumnFrames = [
-      undefined,
       "page",
       "margin",
       "character",

@@ -141,9 +141,9 @@ type HorizontalAlign = NonNullable<ImageRunPosition["horizontal"]>["align"];
 /**
  * Page-absolute `[left, right]` (px) of the frame a horizontal anchor positions
  * within. `inside`/`outsideMargin` map to the left/right margin strips (page
- * parity is not modelled); `column` uses the active flow-column frame, while
- * `character` falls back to the content box because character X is unavailable.
- * eigenpal #694.
+ * parity is not modelled); `column` and an omitted horizontal anchor use the
+ * active flow-column frame, while `character` falls back to the content box
+ * because character X is unavailable. eigenpal #694.
  */
 function bandHorizontalFrame(
   relativeTo: HorizontalRelativeTo,
@@ -160,10 +160,10 @@ function bandHorizontalFrame(
     case "outsideMargin":
       return { left: pageWidth - marginRight, right: pageWidth };
     case "column":
+    case undefined:
       return { left: activeColumnLeft, right: activeColumnLeft + activeColumnWidth };
     case "margin":
     case "character":
-    case undefined:
       return { left: marginLeft, right: pageWidth - marginRight };
     default:
       relativeTo satisfies never;

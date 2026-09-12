@@ -812,17 +812,14 @@ function extractFloatingZones(
       continue;
     }
 
-    const horizontal = tb.position.horizontal;
-    const pageX = horizontal
-      ? bandFragmentX(horizontal, {
-          pageWidth: blockPageWidth,
-          marginLeft: blockMarginLeft,
-          marginRight: blockMarginRight,
-          activeColumnLeft: blockContentLeft,
-          activeColumnWidth: blockContentWidth,
-          boxWidth: measure.width,
-        })
-      : blockContentLeft;
+    const pageX = bandFragmentX(tb.position.horizontal, {
+      pageWidth: blockPageWidth,
+      marginLeft: blockMarginLeft,
+      marginRight: blockMarginRight,
+      activeColumnLeft: blockContentLeft,
+      activeColumnWidth: blockContentWidth,
+      boxWidth: measure.width,
+    });
     const contentX = pageX - blockContentLeft;
     const wrapSide = textBoxWrapSide({
       box: tb,
