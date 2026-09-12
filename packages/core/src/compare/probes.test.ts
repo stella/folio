@@ -1370,7 +1370,7 @@ describe("single-mutation probes", () => {
       throw result.error;
     }
 
-    expect(result.value.changes.map(({ kind }) => kind)).toEqual(["delete", "table-delete"]);
+    expect(result.value.changes.map(({ kind }) => kind)).toEqual(["table-delete", "delete"]);
     const terminalParagraph = paragraphsOf(await documentPartOf(result.value.buffer)).at(-1);
     expect(terminalParagraph).toBeDefined();
     expect(terminalParagraph).not.toMatch(/<w:pPr>[\s\S]*<w:rPr>[\s\S]*<w:del\b/u);
