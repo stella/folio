@@ -78,6 +78,13 @@ const DOCX_PARAGRAPH_SPACING_FIELDS = Object.freeze({
   [Field in keyof FolioAIParagraphSpacing]-?: { readonly field: Field };
 });
 
+type CompleteDocxParagraphProperties = {
+  readonly styleId: string | null;
+  readonly listLevel: number | null;
+  readonly alignment: ParagraphAlignment | null;
+  readonly spacing: FolioAIParagraphSpacing | null;
+};
+
 /** Exact equality over the complete paragraph-operation property vocabulary. */
 export const docxParagraphPropertiesEqual = (
   left: Readonly<FolioAIBlockParagraphProperties>,
@@ -96,8 +103,7 @@ export const docxParagraphPropertiesEqual = (
       return leftSpacing === rightSpacing;
     }
     return Object.values(DOCX_PARAGRAPH_SPACING_FIELDS).every(
-      ({ field: spacingField }) =>
-        leftSpacing[spacingField] === rightSpacing[spacingField],
+      ({ field: spacingField }) => leftSpacing[spacingField] === rightSpacing[spacingField],
     );
   });
 
@@ -122,9 +128,7 @@ const booleanValue = (value: FolioContentPropertyValue | null, field: string): b
   return panic("A canonical DOCX paragraph property is not a boolean", { field });
 };
 
-const alignmentValue = (
-  value: FolioContentPropertyValue | null,
-): ParagraphAlignment | null => {
+const alignmentValue = (value: FolioContentPropertyValue | null): ParagraphAlignment | null => {
   const alignment = stringValue(value, "alignment");
   switch (alignment) {
     case null:
@@ -206,12 +210,8 @@ export const docxParagraphPropertyChangeIsLowerable = (
   if (!Object.hasOwn(DOCX_PARAGRAPH_TRANSPORT_DISPOSITIONS, change.key)) return false;
   const disposition = Reflect.get(DOCX_PARAGRAPH_TRANSPORT_DISPOSITIONS, change.key);
   if (disposition !== "list-level") return disposition !== "unsupported";
-  const before = numberingValue(
-    change.base.type === "present" ? change.base.value : null,
-  );
-  const revised = numberingValue(
-    change.revised.type === "present" ? change.revised.value : null,
-  );
+  const before = numberingValue(change.base.type === "present" ? change.base.value : null);
+  const revised = numberingValue(change.revised.type === "present" ? change.revised.value : null);
   // The operation can move a paragraph within its current numbering
   // definition, or remove numbering. It cannot switch definitions.
   return revised.numId === null || before.numId === revised.numId;
@@ -250,7 +250,7 @@ export const docxParagraphChangedProperties = ({
 /** Complete representable target paragraph state for one transport instruction. */
 export const docxParagraphPropertiesFromBlock = (
   block: FolioContentBlock,
-): FolioAIBlockParagraphProperties => {
+): CompleteDocxParagraphProperties => {
   const authored = block.paragraphFormatting.authored;
   const styleId = stringValue(propertyValue(authored, "styleId"), "styleId");
   const alignment = alignmentValue(propertyValue(authored, "alignment"));

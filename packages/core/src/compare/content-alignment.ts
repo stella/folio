@@ -16,6 +16,7 @@ import type {
   FolioContentContainerOccurrence,
   FolioContentIdentity,
   FolioContentIdentitySemantics,
+  FolioContentPairedContainerAlignment,
   FolioContentParagraphInsertionBoundary,
   FolioContentParagraphRemovalBoundary,
   FolioContentRevisedContainerAlignment,
