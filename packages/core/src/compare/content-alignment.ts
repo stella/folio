@@ -956,8 +956,8 @@ const scopedAlignmentSteps = <Block extends FolioContentBlock>(
   const previousBaseByAlignment = new Map<FolioContentContainerAlignment, BaseBoundary>();
   let gap = context.nextGap++;
   for (const [index, entry] of aligned.entries()) {
-    const { containerAlignment } = entry;
     if (entry.type === "pair") {
+      const { containerAlignment } = entry;
       steps.push(entry);
       previousBaseByAlignment.set(containerAlignment, {
         block: entry.baseBlock,
@@ -967,6 +967,7 @@ const scopedAlignmentSteps = <Block extends FolioContentBlock>(
       continue;
     }
     if (entry.type === "baseOnly") {
+      const { containerAlignment } = entry;
       const nextBase = nextBaseByIndex[index] ?? null;
       const previousBase = previousBaseByAlignment.get(containerAlignment) ?? null;
       const successorId = context.baseParagraphTopology.successorByBlockId.get(
@@ -1011,6 +1012,7 @@ const scopedAlignmentSteps = <Block extends FolioContentBlock>(
       });
       continue;
     }
+    const { containerAlignment } = entry;
     const nextBase = nextBaseByIndex[index] ?? null;
     const previousBase = previousBaseByAlignment.get(containerAlignment) ?? null;
     let insertionBoundary: FolioContentParagraphInsertionBoundary<Block>;
