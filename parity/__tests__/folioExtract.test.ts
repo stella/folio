@@ -14,6 +14,7 @@ import {
   parseCssFontFamilies,
   parseFirstFontFamily,
   parseInsetClipPath,
+  parseUnsupportedProjectionConsoleError,
   retryDetachedPageCapture,
   screenshotViewportHeight,
   toPageGeom,
@@ -92,6 +93,24 @@ describe("detached page capture retry", () => {
       }),
     ).rejects.toThrow("page closed");
     expect(attempts).toBe(1);
+  });
+});
+
+describe("editor error capture", () => {
+  test("extracts an unsupported projection without its React stack", () => {
+    expect(
+      parseUnsupportedProjectionConsoleError(
+        "error",
+        "React caught UnsupportedDocxToProseMirrorConversionError: A nested break cannot be projected\n    at Editor",
+      ),
+    ).toBe("UnsupportedDocxToProseMirrorConversionError: A nested break cannot be projected");
+  });
+
+  test("ignores unrelated console output", () => {
+    expect(parseUnsupportedProjectionConsoleError("warning", "deprecated API")).toBeUndefined();
+    expect(
+      parseUnsupportedProjectionConsoleError("error", "failed to load favicon"),
+    ).toBeUndefined();
   });
 });
 
