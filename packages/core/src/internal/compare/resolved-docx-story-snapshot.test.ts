@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { numberingReferenceKeysOf, sourceDocumentOf, storyTablesOf } from "../../ai-edits/snapshot";
 import type { FolioContentPropertySet } from "../../compare/content-types";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
-import type { Paragraph, Table, TableCell } from "../../types/document";
+import type { Paragraph, ParagraphContent, Table, TableCell } from "../../types/document";
 import { createEmptyDocument } from "../../utils/createDocument";
 import {
   createResolvedDocxStorySnapshot,
@@ -47,7 +47,131 @@ const styledDocument = () => {
   return { document, paragraph };
 };
 
+const bookmarkStoryProjection = (paragraphs: ParagraphContent[][]) => {
+  const document = createEmptyDocument();
+  document.package.document.content = paragraphs.map((content, index) => ({
+    type: "paragraph" as const,
+    paraId: `A100000${String(index + 1)}`,
+    content,
+  }));
+  const snapshot = createResolvedDocxStorySnapshot({
+    document,
+    story: { type: "main" },
+    sourceDocument: toProseDoc(document),
+  });
+  if (!snapshot) throw new Error("main story projection missing");
+  return resolvedDocxContentBlocks(snapshot).map((block) => ({
+    inlineStructure: property(block.blockProperties, "docx.inlineStructure"),
+    text: block.text,
+  }));
+};
+
+const bookmarkProjection = (content: ParagraphContent[]) => {
+  const block = bookmarkStoryProjection([content]).at(0);
+  if (!block) throw new Error("projected paragraph missing");
+  return block;
+};
+
+const paragraphTextRun = (text: string): ParagraphContent => ({
+  type: "run",
+  content: [{ type: "text", text }],
+});
+
 describe("owned live DOCX story projection", () => {
+  test("alpha-compares bookmark ids while preserving paragraph-edge affinity", () => {
+    const base = bookmarkProjection([
+      { type: "bookmarkStart", id: 7, name: "Clause" },
+      paragraphTextRun("Clause"),
+      { type: "bookmarkEnd", id: 7 },
+    ]);
+    const reloaded = bookmarkProjection([
+      { type: "bookmarkStart", id: 9001, name: "Clause" },
+      paragraphTextRun("Clause expanded"),
+      { type: "bookmarkEnd", id: 9001 },
+    ]);
+
+    expect(base.text).not.toBe(reloaded.text);
+    expect(base.inlineStructure).toBe(reloaded.inlineStructure);
+  });
+
+  test("keeps bookmark start/end pairing topology in the canonical projection", () => {
+    const nested = bookmarkProjection([
+      { type: "bookmarkStart", id: 7, name: "Outer" },
+      paragraphTextRun("A"),
+      { type: "bookmarkStart", id: 8, name: "Inner" },
+      paragraphTextRun("B"),
+      { type: "bookmarkEnd", id: 8 },
+      paragraphTextRun("C"),
+      { type: "bookmarkEnd", id: 7 },
+    ]);
+    const crossed = bookmarkProjection([
+      { type: "bookmarkStart", id: 70, name: "Outer" },
+      paragraphTextRun("A"),
+      { type: "bookmarkStart", id: 80, name: "Inner" },
+      paragraphTextRun("B"),
+      { type: "bookmarkEnd", id: 70 },
+      paragraphTextRun("C"),
+      { type: "bookmarkEnd", id: 80 },
+    ]);
+    const reloadedNested = bookmarkProjection([
+      { type: "bookmarkStart", id: 700, name: "Outer" },
+      paragraphTextRun("A"),
+      { type: "bookmarkStart", id: 800, name: "Inner" },
+      paragraphTextRun("B"),
+      { type: "bookmarkEnd", id: 800 },
+      paragraphTextRun("C"),
+      { type: "bookmarkEnd", id: 700 },
+    ]);
+
+    expect(nested.text).toBe(crossed.text);
+    expect(nested.inlineStructure).toBe(reloadedNested.inlineStructure);
+    expect(nested.inlineStructure).not.toBe(crossed.inlineStructure);
+  });
+
+  test("keeps bookmark pairing topology across paragraph boundaries", () => {
+    const nested = bookmarkStoryProjection([
+      [
+        { type: "bookmarkStart", id: 7, name: "Outer" },
+        { type: "bookmarkStart", id: 8, name: "Inner" },
+        paragraphTextRun("First"),
+      ],
+      [paragraphTextRun("Second"), { type: "bookmarkEnd", id: 8 }, { type: "bookmarkEnd", id: 7 }],
+    ]);
+    const crossed = bookmarkStoryProjection([
+      [
+        { type: "bookmarkStart", id: 70, name: "Outer" },
+        { type: "bookmarkStart", id: 80, name: "Inner" },
+        paragraphTextRun("First"),
+      ],
+      [
+        paragraphTextRun("Second"),
+        { type: "bookmarkEnd", id: 70 },
+        { type: "bookmarkEnd", id: 80 },
+      ],
+    ]);
+
+    expect(nested.map(({ text }) => text)).toEqual(crossed.map(({ text }) => text));
+    expect(nested.map(({ inlineStructure }) => inlineStructure)).not.toEqual(
+      crossed.map(({ inlineStructure }) => inlineStructure),
+    );
+  });
+
+  test("keeps table-column bookmark scope in the canonical projection", () => {
+    const firstColumn = bookmarkProjection([
+      { type: "bookmarkStart", id: 7, name: "Column", colFirst: 0, colLast: 0 },
+      paragraphTextRun("Clause"),
+      { type: "bookmarkEnd", id: 7 },
+    ]);
+    const secondColumn = bookmarkProjection([
+      { type: "bookmarkStart", id: 70, name: "Column", colFirst: 1, colLast: 1 },
+      paragraphTextRun("Clause"),
+      { type: "bookmarkEnd", id: 70 },
+    ]);
+
+    expect(firstColumn.text).toBe(secondColumn.text);
+    expect(firstColumn.inlineStructure).not.toBe(secondColumn.inlineStructure);
+  });
+
   test("uses the live style cascade once and owns nested paragraph and run state", () => {
     const { document, paragraph } = styledDocument();
     const source = toProseDoc(document);

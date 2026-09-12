@@ -43,6 +43,8 @@ import {
 } from "../../prosemirror/conversion/toProseDoc";
 import type {
   BlockContent,
+  BookmarkEnd,
+  BookmarkStart,
   ComplexField,
   Document,
   Hyperlink,
@@ -392,6 +394,20 @@ const fieldHasStructuredProjection = (field: SimpleField | ComplexField): boolea
       )
     : field.fieldResult.some(runHasPageBreak);
 
+const bookmarkStructureEntry = (
+  bookmark: BookmarkStart | BookmarkEnd,
+  offset: number,
+): Readonly<Record<string, unknown>> => ({
+  type: bookmark.type,
+  id: bookmark.id,
+  ...(bookmark.type === "bookmarkStart" && {
+    name: bookmark.name,
+    ...(bookmark.colFirst !== undefined && { colFirst: bookmark.colFirst }),
+    ...(bookmark.colLast !== undefined && { colLast: bookmark.colLast }),
+  }),
+  offset,
+});
+
 const visitRunContent = (
   content: RunContent,
   formatting: TextFormatting | undefined,
@@ -536,11 +552,7 @@ const visitHyperlink = (
       visitRun(child, projection, resolveEffective, fieldType);
     } else {
       projection.unsupportedFields.add("inline.bookmark");
-      projection.structure.push({
-        type: child.type,
-        ...(child.type === "bookmarkStart" && { name: child.name }),
-        offset: projection.textLength,
-      });
+      projection.structure.push(bookmarkStructureEntry(child, projection.textLength));
     }
   }
 };
@@ -599,12 +611,7 @@ const visitTrackedContent = (
       return;
     case "bookmarkStart":
     case "bookmarkEnd":
-      projection.structure.push({
-        type: content.type,
-        id: content.id,
-        ...(content.type === "bookmarkStart" && { name: content.name }),
-        offset: projection.textLength,
-      });
+      projection.structure.push(bookmarkStructureEntry(content, projection.textLength));
       return;
     case "insertion":
     case "moveTo":
@@ -727,6 +734,9 @@ const projectParagraphInline = (
         break;
       case "bookmarkStart":
       case "bookmarkEnd":
+        projection.unsupportedFields.add(`inline.${content.type}`);
+        projection.structure.push(bookmarkStructureEntry(content, projection.textLength));
+        break;
       case "commentRangeStart":
       case "commentRangeEnd":
       case "commentReference":
@@ -737,9 +747,7 @@ const projectParagraphInline = (
         projection.unsupportedFields.add(`inline.${content.type}`);
         projection.structure.push({
           type: content.type,
-          ...(content.type === "bookmarkStart" ||
-          content.type === "moveFromRangeStart" ||
-          content.type === "moveToRangeStart"
+          ...(content.type === "moveFromRangeStart" || content.type === "moveToRangeStart"
             ? { name: content.name }
             : {}),
           offset: projection.textLength,
@@ -771,18 +779,29 @@ const projectParagraphInline = (
 const canonicalInlineStructureForComparison = (
   structure: readonly unknown[],
   textLength: number,
+  bookmarkIdentities: Map<number, number>,
 ): readonly unknown[] =>
   structure.map((entry) => {
     if (typeof entry !== "object" || entry === null) return entry;
     const type: unknown = Reflect.get(entry, "type");
+    if (type !== "bookmarkStart" && type !== "bookmarkEnd") return entry;
+    const id: unknown = Reflect.get(entry, "id");
+    if (typeof id !== "number") {
+      return panic("A canonical bookmark boundary has no numeric identity", { type, id });
+    }
+    let canonicalId = bookmarkIdentities.get(id);
+    if (canonicalId === undefined) {
+      canonicalId = bookmarkIdentities.size;
+      bookmarkIdentities.set(id, canonicalId);
+    }
     const offset: unknown = Reflect.get(entry, "offset");
     if (type === "bookmarkStart" && offset === 0) {
-      return { ...entry, offset: "block-start" };
+      return { ...entry, id: canonicalId, offset: "block-start" };
     }
     if (type === "bookmarkEnd" && offset === textLength) {
-      return { ...entry, offset: "block-end" };
+      return { ...entry, id: canonicalId, offset: "block-end" };
     }
-    return entry;
+    return { ...entry, id: canonicalId };
   });
 
 const sameStructuralBoundaries = (
@@ -899,6 +918,7 @@ type WalkContext = {
 
 type ProjectionBuilder = {
   readonly blockById: ReadonlyMap<string, FolioAIBlock>;
+  readonly bookmarkIdentities: Map<number, number>;
   readonly projected: FolioContentBlock[];
   readonly authoredRunsByBlockId: Map<string, ResolvedDocxAuthoredRunProjection>;
   readonly unsupportedFieldsByBlockId: Map<string, readonly string[]>;
@@ -988,7 +1008,11 @@ const projectLiveParagraph = (
     blockProperties.push({
       key: "docx.inlineStructure",
       value: JSON.stringify(
-        canonicalInlineStructureForComparison(inline.structure, inline.textLength),
+        canonicalInlineStructureForComparison(
+          inline.structure,
+          inline.textLength,
+          builder.bookmarkIdentities,
+        ),
       ),
     });
   }
@@ -1220,6 +1244,7 @@ export const createResolvedDocxStorySnapshot = ({
   const blockById = new Map(operationSnapshot.blocks.map((block) => [block.id, block]));
   const builder: ProjectionBuilder = {
     blockById,
+    bookmarkIdentities: new Map(),
     projected: [],
     authoredRunsByBlockId: new Map(),
     unsupportedFieldsByBlockId: new Map(),
