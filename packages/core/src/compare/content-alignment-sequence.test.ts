@@ -402,6 +402,42 @@ describe("bounded table sequence alignment", () => {
     },
   );
 
+  test("pairs an exact terminal body block after deleting an intervening table", () => {
+    const keptBase = tableBlock({
+      id: "kept-table",
+      text: "Kept schedule",
+      outerTableIndex: 0,
+    });
+    const keptRevised = tableBlock({
+      id: "kept-table",
+      text: "Kept schedule",
+      outerTableIndex: 0,
+    });
+    const between = contentBlockFixture("between", "", { identityType: "positional" });
+    const removed = tableBlock({
+      id: "removed-table",
+      text: "Removed schedule",
+      outerTableIndex: 1,
+    });
+    const terminalBase = contentBlockFixture("terminal-base", "", {
+      identityType: "positional",
+    });
+    const terminalRevised = contentBlockFixture("terminal-revised", "", {
+      identityType: "positional",
+    });
+
+    const steps = alignFolioContentStructure({
+      baseBlocks: [keptBase, between, removed, terminalBase],
+      revisedBlocks: [keptRevised, terminalRevised],
+    });
+
+    expect(steps.map(({ type }) => type)).toEqual(["pair", "baseOnly", "baseTable", "pair"]);
+    expect(pairIds(steps)).toEqual([
+      ["kept-table", "kept-table"],
+      ["terminal-base", "terminal-revised"],
+    ]);
+  });
+
   test("reserves a later table identity before aligning an earlier singleton run", () => {
     const body = (id: string): FolioContentBlock =>
       contentBlockFixture(id, "Preserved body anchor", {

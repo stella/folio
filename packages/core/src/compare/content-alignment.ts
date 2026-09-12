@@ -2088,6 +2088,32 @@ const exactBodyPairsInRange = <Block extends FolioContentBlock>(
   revisedStart: number,
   revisedEnd: number,
 ): FolioContentBlockPair[] => {
+  const terminalPairs: FolioContentBlockPair[] = [];
+  let unpairedBaseEnd = baseEnd;
+  let unpairedRevisedEnd = revisedEnd;
+  if (baseEnd === base.length && revisedEnd === revised.length) {
+    while (unpairedBaseEnd > baseStart && unpairedRevisedEnd > revisedStart) {
+      const baseIndex = unpairedBaseEnd - 1;
+      const revisedIndex = unpairedRevisedEnd - 1;
+      const baseItem = base[baseIndex];
+      const revisedItem = revised[revisedIndex];
+      const baseKey = baseItem ? exactKeyByProfile.get(baseItem.profile) : undefined;
+      const revisedKey = revisedItem ? exactKeyByProfile.get(revisedItem.profile) : undefined;
+      if (
+        baseItem === undefined ||
+        revisedItem === undefined ||
+        baseKey === undefined ||
+        baseKey !== revisedKey ||
+        !segmentsCanPair(baseItem.item, revisedItem.item)
+      ) {
+        break;
+      }
+      terminalPairs.push({ baseIndex, revisedIndex });
+      unpairedBaseEnd = baseIndex;
+      unpairedRevisedEnd = revisedIndex;
+    }
+  }
+
   const uniqueIndexes = (
     items: readonly ProfiledContentSequenceItem<BodyDocumentSegment<Block>>[],
     start: number,
@@ -2104,9 +2130,9 @@ const exactBodyPairsInRange = <Block extends FolioContentBlock>(
     }
     return indexes;
   };
-  const baseIndexes = uniqueIndexes(base, baseStart, baseEnd);
-  const revisedIndexes = uniqueIndexes(revised, revisedStart, revisedEnd);
-  const candidates: FolioContentBlockPair[] = [];
+  const baseIndexes = uniqueIndexes(base, baseStart, unpairedBaseEnd);
+  const revisedIndexes = uniqueIndexes(revised, revisedStart, unpairedRevisedEnd);
+  const candidates: FolioContentBlockPair[] = [...terminalPairs];
   for (const [key, baseIndex] of baseIndexes) {
     const revisedIndex = revisedIndexes.get(key);
     if (
