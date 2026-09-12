@@ -340,7 +340,7 @@ export type UseDocxEditorOptions = {
   /** Author name attached to tracked changes minted in suggesting mode. */
   author?: MaybeRefOrGetter<string>;
   /** External ProseMirror plugins supplied by the host app. */
-  externalPlugins?: Plugin[];
+  externalPlugins?: readonly Plugin[];
   /** Reactive Yjs collaboration owner and the ProseMirror binding plugins. */
   collaboration?: MaybeRefOrGetter<UseDocxEditorCollaboration | undefined>;
   /**

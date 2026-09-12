@@ -505,6 +505,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     comments: commentsProp,
     onCommentsChange,
     collaboration,
+    plugins,
     featureFlags,
     onSelectiveSaveTripwire,
   }: DocxEditorProps,
@@ -753,9 +754,11 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   );
   // Inert until a host pushes preview values (template fill preview).
   const templatePreviewPlugin = useMemo(() => createTemplatePreviewValuesPlugin(), []);
+  const [hostPlugins] = useState(() => plugins ?? []);
   const editorPlugins = useMemo(
     () => [
       autocompletePlugin,
+      ...hostPlugins,
       ...(collaboration?.plugins ?? []),
       suggestionPlugin,
       aiSuggestionPlugin,
@@ -766,6 +769,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     ],
     [
       autocompletePlugin,
+      hostPlugins,
       collaboration?.plugins,
       suggestionPlugin,
       aiSuggestionPlugin,

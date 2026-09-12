@@ -268,6 +268,13 @@ export type DocxEditorProps = {
    * (decoration meta, apply, scroll-to) from outside the editor.
    */
   onEditorViewReady?: (view: EditorView | null) => void;
+  /**
+   * Host ProseMirror plugins for the body editor, retained across document
+   * replacements. Keep the array and plugin instances stable for a mounted
+   * editor; remount to change the plugin set. Plugin keys must be unique across
+   * host, collaboration, and built-in plugins.
+   */
+  plugins?: readonly Plugin[] | undefined;
   /** Yjs-backed collaboration owner. Experimental and opt-in. */
   collaboration?: DocxEditorCollaboration | undefined;
   /**

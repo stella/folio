@@ -421,6 +421,7 @@ export type DocxEditorProps = {
     onCommentsChange?: (comments: Comment_2[]) => void;
     onCompatibilityChange?: (compatibility: DocxCompatibility) => void;
     onEditorViewReady?: (view: EditorView | null) => void;
+    plugins?: readonly Plugin_2[] | undefined;
     collaboration?: DocxEditorCollaboration | undefined;
     onAnonymizationMatchesChange?: (matches: readonly AnonymizationMatch[]) => void;
     onAnonymizationTermClick?: ((canonical: string, label: string) => void) | undefined;

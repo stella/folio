@@ -109,6 +109,13 @@ export type DocxEditorProps = {
   onSave?: (buffer: ArrayBuffer) => void;
   /** Author name used for comments and track changes */
   author?: string;
+  /**
+   * Host ProseMirror plugins for the body editor, retained across document
+   * replacements. Keep the array and plugin instances stable for a mounted
+   * editor; remount to change the plugin set. Plugin keys must be unique across
+   * host, collaboration, and built-in plugins.
+   */
+  plugins?: readonly Plugin[] | undefined;
   /** Callback when document changes */
   onChange?: (document: Document) => void;
   /** Callback when selection changes */

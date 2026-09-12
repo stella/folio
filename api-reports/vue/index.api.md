@@ -370,6 +370,7 @@ export type DocxEditorProps = {
     document?: Document_2 | null;
     onSave?: (buffer: ArrayBuffer) => void;
     author?: string;
+    plugins?: readonly Plugin_2[] | undefined;
     onChange?: (document: Document_2) => void;
     onSelectionChange?: (state: SelectionState | null) => void;
     onSelectionTextChange?: (selection: {

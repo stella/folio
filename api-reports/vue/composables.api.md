@@ -133,7 +133,7 @@ export type UseDocxEditorOptions = {
     password?: MaybeRefOrGetter<string | undefined>;
     editorMode?: MaybeRefOrGetter<"editing" | "suggesting" | "viewing">;
     author?: MaybeRefOrGetter<string>;
-    externalPlugins?: Plugin_2[];
+    externalPlugins?: readonly Plugin_2[];
     collaboration?: MaybeRefOrGetter<UseDocxEditorCollaboration | undefined>;
     onAnonymizationMatchesChange?: (matches: readonly AnonymizationMatch[]) => void;
     showTemplateDirectives?: MaybeRefOrGetter<boolean | undefined>;

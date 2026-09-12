@@ -22,10 +22,6 @@
   (`useContextMenus`), hyperlink management (`useHyperlinkManagement`), the
   comment/tracked-change sidebar (`useTrackedChanges` + `useCommentSidebarItems`
   inside `UnifiedSidebar`), and the table context toolbar (`TableToolbar`).
-
-  Remaining adapter-specific surface:
-   - externalPlugins are not on `DocxEditorProps`; shared feature plugins are
-     assembled by useDocxEditor and host plugins are not accepted yet.
 -->
 <template>
   <div
@@ -535,6 +531,9 @@ const props = withDefaults(defineProps<DocxEditorProps>(), {
   showHeaderFooterEditing: true,
 });
 
+// Keep the mount-time host plugins stable across document replacements.
+const externalPlugins = props.plugins ?? [];
+
 const emit = defineEmits<{
   (e: "change", doc: Document): void;
   (e: "update:document", doc: Document | null): void;
@@ -742,7 +741,7 @@ const {
   pageRenderer: () => props.pageRenderer,
   showMarginGuides: () => props.showMarginGuides,
   marginGuideColor: () => props.marginGuideColor,
-  externalPlugins: [],
+  externalPlugins,
   collaboration: () => props.collaboration,
   // Anonymization highlights + template directives are driven by the overlay
   // components below; these thread the plugin callbacks and the directive gate.
