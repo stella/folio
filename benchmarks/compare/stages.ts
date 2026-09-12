@@ -11,12 +11,8 @@ import {
   parseComparison,
   planComparison,
   serializeComparison,
-} from "@stll/folio-core/compare/compare";
-import type {
-  CompareChange,
-  CompareDocxOptions,
-  CompareUnsupportedPart,
-} from "@stll/folio-core/compare/types";
+} from "../../packages/core/src/compare/compare";
+import type { CompareChange, CompareDocxOptions, CompareUnsupportedPart } from "@stll/folio-core";
 
 export const COMPARE_STAGES = Object.freeze(["parse", "align", "apply", "serialize"] as const);
 

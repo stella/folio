@@ -1,4 +1,4 @@
-import type { CompareDocxOptions } from "@stll/folio-core/compare/types";
+import type { CompareDocxOptions } from "@stll/folio-core";
 
 type ComparePair<Comparison> = (
   base: ArrayBuffer,

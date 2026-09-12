@@ -20,7 +20,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { loadavg } from "node:os";
 import path from "node:path";
 
-import { compareDocx } from "@stll/folio-core/compare/compare";
+import { compareDocx } from "@stll/folio-core";
 
 import { loadCorpus, readDocument, type CorpusPair } from "./corpus";
 import {

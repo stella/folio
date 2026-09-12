@@ -14,12 +14,13 @@
  * one that ships.
  */
 
-import type { CompareDocxError, CompareUnsupportedPart } from "@stll/folio-core/compare/types";
 import type {
+  CompareDocxError,
+  CompareUnsupportedPart,
   CompareVerification,
   CompareVerificationCause,
   CompareVerificationFailure,
-} from "@stll/folio-core/compare/verification";
+} from "@stll/folio-core";
 
 /**
  * A bucket per verification cause, so a cause the engine gains cannot land in

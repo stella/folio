@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import type { CompareDocxOptions } from "@stll/folio-core/compare/types";
+import type { CompareDocxOptions } from "@stll/folio-core";
 
 import { compareDocx } from "../../packages/core/src/compare/compare";
 import { buildDocumentPackage } from "./documents";
