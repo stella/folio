@@ -17,10 +17,13 @@ if (result.isOk()) {
 The buffer opens as ordinary revisions in any OOXML consumer. `changes` is a
 discriminated union on `kind` (`insert`, `delete`, `replace`, `move`, `format`,
 `table-insert`, `table-delete`, `table-row-insert`, `table-row-delete`,
-`split`, `merge`, `paragraph-format`, `numbering`), for an agent that wants
-the summary rather than the document. Every change carries the story it
-belongs to, so a caller can tell a body edit from a footnote edit — except
-`numbering`, which belongs to the package.
+`table-column-insert`, `table-column-delete`, `table-format`, `split`, `merge`,
+`paragraph-format`, `numbering`), for an agent that wants the summary rather
+than the document. A `table-format` entry identifies the table, row, or cell
+whose directly authored properties changed and reports its base and target
+coordinates. Every change carries the story it belongs to, so a caller can
+tell a body edit from a footnote edit — except `numbering`, which belongs to
+the package.
 
 ## Determinism contract
 

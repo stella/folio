@@ -386,12 +386,27 @@ export type CompareChange = {
     columnIndex: number;
     cells: readonly string[];
     baseBlockIds: readonly string[];
+} |
+/** A tracked table, row, or cell property change. */
+    {
+    kind: "table-format";
+    location: CompareChangeLocation;
+    scope: "table" | "row" | "cell";
+    base: CompareTableFormatCoordinate;
+    target: CompareTableFormatCoordinate;
 };
 
 // @public
 export type CompareChangeLocation = {
     story: FolioDocumentStoryHandle;
     cell?: FolioAIBlockTableLocation;
+};
+
+// @public
+export type CompareTableFormatCoordinate = {
+    tableIndex: number;
+    rowIndex: number;
+    cellIndex: number;
 };
 
 // @public

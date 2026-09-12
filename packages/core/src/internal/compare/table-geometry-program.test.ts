@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Node as PMNode } from "prosemirror-model";
-import { EditorState, type Transaction } from "prosemirror-state";
+import { EditorState } from "prosemirror-state";
 
 import { folioStoryTables } from "../../ai-edits/snapshot";
 import { resolveAllChangesInHeadlessState } from "../../prosemirror/commands/comments";
@@ -26,23 +26,19 @@ const paragraph = (text: string): PMNode =>
 const cell = (text: string, attrs: Record<string, unknown> = {}): PMNode =>
   schema.node("tableCell", attrs, [paragraph(text)]);
 
-const row = (
-  cells: readonly PMNode[],
-  attrs: Record<string, unknown> = {},
-): PMNode => schema.node("tableRow", attrs, cells);
+const row = (cells: readonly PMNode[], attrs: Record<string, unknown> = {}): PMNode =>
+  schema.node("tableRow", attrs, cells);
 
-const table = (
-  rows: readonly PMNode[],
-  attrs: Record<string, unknown> = {},
-): PMNode => schema.node("table", attrs, rows);
+const table = (rows: readonly PMNode[], attrs: Record<string, unknown> = {}): PMNode =>
+  schema.node("table", attrs, rows);
 
 const documentWith = (...blocks: readonly PMNode[]): PMNode => schema.node("doc", null, blocks);
 
-const coordinate = (
-  tableIndex: number,
-  rowIndex = 0,
-  cellIndex = 0,
-): TableCellCoordinate => ({ tableIndex, rowIndex, cellIndex });
+const coordinate = (tableIndex: number, rowIndex = 0, cellIndex = 0): TableCellCoordinate => ({
+  tableIndex,
+  rowIndex,
+  cellIndex,
+});
 
 const pairing = (
   base: TableCellCoordinate = coordinate(0),
@@ -193,14 +189,10 @@ describe("atomic table geometry programs", () => {
     expect(result.program.instructions.map(({ carrier }) => carrier.scope)).toEqual(["table"]);
     const { state } = applyProgram(base, result.program);
     expect(
-      projectTableGeometry(
-        folioStoryTables(resolveAllChangesInHeadlessState(state, "accept").doc),
-      ),
+      projectTableGeometry(folioStoryTables(resolveAllChangesInHeadlessState(state, "accept").doc)),
     ).toEqual(projectTableGeometry(folioStoryTables(target)));
     expect(
-      projectTableGeometry(
-        folioStoryTables(resolveAllChangesInHeadlessState(state, "reject").doc),
-      ),
+      projectTableGeometry(folioStoryTables(resolveAllChangesInHeadlessState(state, "reject").doc)),
     ).toEqual(projectTableGeometry(folioStoryTables(base)));
   });
 
@@ -261,14 +253,8 @@ describe("table geometry refusal boundaries", () => {
   });
 
   test("rejects duplicate and cross-paired coordinates deterministically", () => {
-    const base = documentWith(
-      table([row([cell("a"), cell("b")])]),
-      table([row([cell("c")])]),
-    );
-    const target = documentWith(
-      table([row([cell("a"), cell("b")])]),
-      table([row([cell("c")])]),
-    );
+    const base = documentWith(table([row([cell("a"), cell("b")])]), table([row([cell("c")])]));
+    const target = documentWith(table([row([cell("a"), cell("b")])]), table([row([cell("c")])]));
     const duplicateBase = preflight(base, target, [
       pairing(coordinate(0, 0, 0), coordinate(0, 0, 0)),
       pairing(coordinate(0, 0, 0), coordinate(0, 0, 1)),
@@ -334,13 +320,7 @@ describe("table geometry refusal boundaries", () => {
         ]),
       ]),
     );
-    const target = documentWith(
-      table([
-        row([
-          cell("same"),
-        ]),
-      ]),
-    );
+    const target = documentWith(table([row([cell("same")])]));
 
     const result = preflight(base, target);
 
@@ -408,10 +388,12 @@ describe("table geometry refusal boundaries", () => {
       backgroundColor: "000000",
     });
     const stale = documentWith(
-      table(
-        [row([staleCell], { height: 320, heightRule: "exact" })],
-        { width: 4800, widthType: "dxa", justification: "left", columnWidths: [4800] },
-      ),
+      table([row([staleCell], { height: 320, heightRule: "exact" })], {
+        width: 4800,
+        widthType: "dxa",
+        justification: "left",
+        columnWidths: [4800],
+      }),
     );
     const transaction = EditorState.create({ schema, doc: stale }).tr;
 
@@ -443,7 +425,10 @@ describe("table geometry refusal boundaries", () => {
       revision: REVISION,
     });
 
-    expect(execution).toMatchObject({ status: "unsupported", issue: { reason: "missing-live-node" } });
+    expect(execution).toMatchObject({
+      status: "unsupported",
+      issue: { reason: "missing-live-node" },
+    });
     expect(transaction.steps).toHaveLength(0);
   });
 
@@ -500,10 +485,7 @@ describe("table geometry ordering", () => {
       table([row([cell("B", { width: 2200, widthType: "dxa" })])]),
       table([row([cell("A", { width: 1200, widthType: "dxa" })])]),
     );
-    const reversed = [
-      pairing(coordinate(0), coordinate(1)),
-      pairing(coordinate(1), coordinate(0)),
-    ];
+    const reversed = [pairing(coordinate(0), coordinate(1)), pairing(coordinate(1), coordinate(0))];
     const forward = [...reversed].reverse();
     const first = preflight(base, target, reversed);
     const second = preflight(base, target, forward);
@@ -514,10 +496,12 @@ describe("table geometry ordering", () => {
     const firstReceipt = applyProgram(base, first.program).receipt;
     const secondReceipt = applyProgram(base, second.program).receipt;
     expect(firstReceipt).toEqual(secondReceipt);
-    expect(firstReceipt.revisions.map(({ base: source, target: destination }) => ({
-      base: source.tableIndex,
-      target: destination.tableIndex,
-    }))).toEqual([
+    expect(
+      firstReceipt.revisions.map(({ base: source, target: destination }) => ({
+        base: source.tableIndex,
+        target: destination.tableIndex,
+      })),
+    ).toEqual([
       { base: 1, target: 0 },
       { base: 0, target: 1 },
     ]);

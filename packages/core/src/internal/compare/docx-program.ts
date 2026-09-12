@@ -5,16 +5,20 @@ import type {
   FolioAIBlockParagraphProperties,
   FolioAIBlockTableLocation,
 } from "../../ai-edits/types";
-import type { TableGeometryPairing } from "./table-geometry-program";
 import type { TextFormatting } from "../../types/document";
 import type {
   FolioContentFormattingChange,
   FolioContentRangePairRelation,
+  FolioContentStructuralChange,
   FolioContentTextSegment,
   FolioContentWholePairRelation,
 } from "../../compare/content";
-import type { FolioContentBlock, FolioContentTableLocation } from "../../compare/content-types";
+import type {
+  FolioContentBlock,
+  FolioContentParagraphInsertionBoundary,
+} from "../../compare/content-types";
 import type { CompareChange } from "../../compare/types";
+import { groupFolioContentTableRows } from "../../compare/content-alignment";
 import {
   docxParagraphChangedProperties,
   docxParagraphPropertiesEqual,
@@ -27,7 +31,6 @@ import {
   resolvedDocxSourceOperand,
   resolvedDocxSourceOperandBlock,
   resolvedDocxSourceOperandSnapshot,
-  resolvedDocxTableNodes,
   type ResolvedDocxSourceOperand,
   type ResolvedDocxStorySnapshot,
 } from "./resolved-docx-story-snapshot";
@@ -41,19 +44,17 @@ import {
   resolvedDocxPairedEventOperandPayload,
   resolvedDocxPairRangeOperand,
   resolvedDocxPairRangeOperandRelation,
-  resolvedDocxPairedBaseTableIndexes,
   resolvedDocxReplacementRangeOperandPayload,
   resolvedDocxSeparatorOperandRelation,
   resolvedDocxSeparatorOperand,
   resolvedDocxSplitEventOperandPayload,
   resolvedDocxStoryComparisonPayload,
   resolvedDocxTerminalReplacementOperandPayload,
-  resolvedDocxTableGeometryPairings,
+  resolvedDocxTableFormatOperandPayload,
+  resolvedDocxTableStructureOperandPayload,
+  resolvedDocxTableStructureReportOwners,
   resolvedDocxTargetBlockOperand,
   resolvedDocxTargetBlockOperandBlock,
-  resolvedDocxTargetColumnOperandChange,
-  resolvedDocxTargetRowOperandChange,
-  resolvedDocxTargetTableOperandOwner,
   resolvedDocxTrailingDeletionOperandPayload,
   resolvedDocxWholeBlockReplacementOperand,
   type ResolvedDocxDeletedEventOperand,
@@ -67,16 +68,14 @@ import {
   type ResolvedDocxStoryComparison,
   type ResolvedDocxSplitEventOperand,
   type ResolvedDocxTerminalReplacementOperand,
+  type ResolvedDocxTableFormatOperand,
+  type ResolvedDocxTableStructureOperand,
   type ResolvedDocxTargetBlockOperand,
-  type ResolvedDocxTargetColumnOperand,
-  type ResolvedDocxTargetRowOperand,
-  type ResolvedDocxTargetTableOperand,
   type ResolvedDocxTrailingDeletionOperand,
   type ResolvedDocxWholeBlockReplacementOperand,
 } from "./resolved-docx-story-comparison";
 
 const MAX_DOCX_COMPARISON_INSTRUCTIONS = 10_000;
-const MAX_DOCX_COMPARISON_GEOMETRY_PAIRINGS = 10_000;
 
 export type DocxAuthoredRun = {
   readonly startOffset: number;
@@ -108,16 +107,6 @@ export type DocxComparisonSourceOperandGroup = readonly [
   DocxComparisonSourceOperand,
   ...DocxComparisonSourceOperand[],
 ];
-
-type DocxComparisonStructuralInsertionOperand = {
-  readonly source: DocxComparisonSourceOperand;
-  readonly position: "after" | "before";
-};
-
-export type DocxComparisonStructuralInsertionAnchor = {
-  readonly blockId: string;
-  readonly position: "after" | "before";
-};
 
 export type DocxComparisonParagraphInsertionBoundary = {
   readonly type: "afterParagraph" | "beforeParagraph";
@@ -186,55 +175,13 @@ export type DocxComparisonInstructionInput =
       readonly target: ResolvedDocxTargetBlockOperand;
     }
   | {
-      readonly type: "insertTable";
-      readonly anchor: DocxComparisonStructuralInsertionOperand;
-      readonly target: ResolvedDocxTargetTableOperand;
+      readonly type: "tableStructure";
+      readonly operation: ResolvedDocxTableStructureOperand;
     }
   | {
-      readonly type: "deleteTable";
-      readonly source: DocxComparisonSourceOperand;
-    }
-  | {
-      readonly type: "replaceTable";
-      readonly source: DocxComparisonSourceOperand;
-      readonly target: ResolvedDocxTargetTableOperand;
-    }
-  | {
-      readonly type: "insertTableRow";
-      readonly anchor: DocxComparisonStructuralInsertionOperand;
-      readonly target: ResolvedDocxTargetRowOperand;
-    }
-  | {
-      readonly type: "deleteTableRow";
-      readonly source: DocxComparisonSourceOperand;
-    }
-  | {
-      readonly type: "insertTableColumn";
-      readonly anchor: DocxComparisonStructuralInsertionOperand;
-      readonly target: ResolvedDocxTargetColumnOperand;
-    }
-  | {
-      readonly type: "deleteTableColumn";
-      readonly source: DocxComparisonSourceOperand;
-    }
-  | {
-      readonly type: "matchTableGeometry";
+      readonly type: "tableFormat";
+      readonly operation: ResolvedDocxTableFormatOperand;
     };
-
-type DocxComparisonTableInstructionInput = Extract<
-  DocxComparisonInstructionInput,
-  {
-    readonly type:
-      | "insertTable"
-      | "deleteTable"
-      | "replaceTable"
-      | "insertTableRow"
-      | "deleteTableRow"
-      | "insertTableColumn"
-      | "deleteTableColumn"
-      | "matchTableGeometry";
-  }
->;
 
 export type DocxComparisonReportInput = {
   /** Canonical comparison-stream order, independent of execution scheduling. */
@@ -257,7 +204,6 @@ export type DocxComparisonOperationInput =
   | {
       readonly type: "insertParagraph";
       readonly event: ResolvedDocxInsertedEventOperand;
-      readonly boundary: DocxComparisonParagraphInsertionBoundary;
     }
   | {
       readonly type: "deleteParagraph";
@@ -266,7 +212,6 @@ export type DocxComparisonOperationInput =
   | {
       readonly type: "moveParagraph";
       readonly event: ResolvedDocxMoveEventOperand;
-      readonly boundary: DocxComparisonParagraphInsertionBoundary;
     }
   | {
       readonly type: "splitParagraph";
@@ -284,11 +229,13 @@ export type DocxComparisonOperationInput =
       readonly type: "replaceTerminalParagraph";
       readonly operation: ResolvedDocxTerminalReplacementOperand;
     }
-  /** Temporary boundary for the independently owned atomic table compiler. */
   | {
-      readonly type: "tableCompatibility";
-      readonly reports: readonly DocxComparisonReportInput[];
-      readonly instructions: NonEmptyReadonlyArray<DocxComparisonTableInstructionInput>;
+      readonly type: "tableStructure";
+      readonly operation: ResolvedDocxTableStructureOperand;
+    }
+  | {
+      readonly type: "tableFormat";
+      readonly operation: ResolvedDocxTableFormatOperand;
     };
 
 export type DocxComparisonEqualFragment = {
@@ -411,49 +358,12 @@ type DocxComparisonInstructionPayload =
       readonly targetProperties: Readonly<FolioAIBlockParagraphProperties>;
     }
   | {
-      readonly type: "insertTable";
-      readonly anchor: DocxComparisonStructuralInsertionAnchor;
-      readonly targetTableIndex: number;
+      readonly type: "tableStructure";
+      readonly operation: ResolvedDocxTableStructureOperand;
     }
   | {
-      readonly type: "deleteTable";
-      readonly source: DocxComparisonSourceOperand;
-      readonly baseTableIndex: number;
-    }
-  | {
-      readonly type: "replaceTable";
-      readonly source: DocxComparisonSourceOperand;
-      readonly baseTableIndex: number;
-      readonly targetTableIndex: number;
-    }
-  | {
-      readonly type: "insertTableRow";
-      readonly anchor: DocxComparisonStructuralInsertionAnchor;
-      readonly targetTableIndex: number;
-      readonly targetRowIndex: number;
-    }
-  | {
-      readonly type: "deleteTableRow";
-      readonly source: DocxComparisonSourceOperand;
-      readonly baseTableIndex: number;
-      readonly baseRowIndex: number;
-    }
-  | {
-      readonly type: "insertTableColumn";
-      readonly anchor: DocxComparisonStructuralInsertionAnchor;
-      readonly targetTableIndex: number;
-      readonly targetColumnIndex: number;
-      readonly cellTexts: readonly string[];
-    }
-  | {
-      readonly type: "deleteTableColumn";
-      readonly source: DocxComparisonSourceOperand;
-      readonly baseTableIndex: number;
-      readonly baseColumnIndex: number;
-    }
-  | {
-      readonly type: "matchTableGeometry";
-      readonly pairings: readonly TableGeometryPairing[];
+      readonly type: "tableFormat";
+      readonly operation: ResolvedDocxTableFormatOperand;
     };
 
 type WithSemanticGroup<Instruction> = Instruction extends unknown
@@ -882,27 +792,6 @@ const ownSourceOperand = (
   return source;
 };
 
-const ownStructuralInsertionAnchor = (
-  anchor: DocxComparisonStructuralInsertionOperand,
-  snapshot: ResolvedDocxStorySnapshot,
-): DocxComparisonStructuralInsertionAnchor => {
-  switch (anchor.position) {
-    case "after":
-    case "before":
-      return Object.freeze({
-        blockId: resolvedDocxSourceOperandBlock(ownSourceOperand(anchor.source, snapshot), snapshot)
-          .identity.id,
-        position: anchor.position,
-      });
-    default: {
-      const unreachable: never = anchor.position;
-      return panic("A DOCX comparison insertion anchor has an invalid position", {
-        position: unreachable,
-      });
-    }
-  }
-};
-
 const ownParagraphInsertionBoundary = (
   boundary: DocxComparisonParagraphInsertionBoundary,
   snapshot: ResolvedDocxStorySnapshot,
@@ -917,6 +806,26 @@ const ownParagraphInsertionBoundary = (
     default: {
       const unreachable: never = boundary.type;
       return panic("A DOCX paragraph boundary has an invalid type", { type: unreachable });
+    }
+  }
+};
+
+const canonicalParagraphInsertionBoundary = (
+  boundary: FolioContentParagraphInsertionBoundary,
+  snapshot: ResolvedDocxStorySnapshot,
+): DocxComparisonParagraphInsertionBoundary => {
+  switch (boundary.type) {
+    case "afterParagraph":
+    case "beforeParagraph":
+      return Object.freeze({
+        type: boundary.type,
+        paragraph: resolvedDocxSourceOperand(snapshot, boundary.paragraph),
+      });
+    case "unanchoredContainer":
+      return panic("An unanchored insertion reached the DOCX semantic compiler");
+    default: {
+      const unreachable: never = boundary;
+      return panic("Unhandled canonical paragraph insertion boundary", { boundary: unreachable });
     }
   }
 };
@@ -961,27 +870,6 @@ const ownParagraphTarget = (
   targetSnapshot: ResolvedDocxStorySnapshot,
 ): DocxComparisonParagraphTarget =>
   ownParagraphTargetBlock(resolvedDocxTargetBlockOperandBlock(target, comparison), targetSnapshot);
-
-const ownIndex = (name: string, value: number): number => {
-  if (!Number.isSafeInteger(value) || value < 0) {
-    return panic("A DOCX comparison structural index is invalid", { name, value });
-  }
-  return value;
-};
-
-const ownTableGeometryPairings = (
-  pairings: readonly TableGeometryPairing[],
-): readonly TableGeometryPairing[] => {
-  if (pairings.length > MAX_DOCX_COMPARISON_GEOMETRY_PAIRINGS) {
-    return panic("A DOCX comparison geometry instruction exceeds its pairing limit", {
-      limit: MAX_DOCX_COMPARISON_GEOMETRY_PAIRINGS,
-      actual: pairings.length,
-    });
-  }
-  const owned = structuredClone(pairings);
-  freezeRecursively(owned);
-  return owned;
-};
 
 const authoredChangesForRelation = (
   relation: FolioContentWholePairRelation | FolioContentRangePairRelation,
@@ -1206,140 +1094,6 @@ const compileReplacementRangeOperand = (
     }
   }
 };
-
-const tableLocationOf = (block: FolioContentBlock, side: "base" | "target") =>
-  block.table ?? panic(`A DOCX ${side} table operand has no canonical table location`);
-
-const targetTableNode = (targetSnapshot: ResolvedDocxStorySnapshot, tableIndex: number) =>
-  resolvedDocxTableNodes(targetSnapshot).get(tableIndex) ??
-  panic("A DOCX target table operand has no exact target table node", { tableIndex });
-
-const targetTableFromOperand = (
-  operand: ResolvedDocxTargetTableOperand,
-  expected: "inserted" | "replacement",
-  comparison: ResolvedDocxStoryComparison,
-  targetSnapshot: ResolvedDocxStorySnapshot,
-): number => {
-  const owner = resolvedDocxTargetTableOperandOwner(operand, comparison);
-  const inserted = "type" in owner;
-  if ((expected === "inserted") !== inserted) {
-    return panic("A DOCX target table operand belongs to another instruction kind", {
-      expected,
-    });
-  }
-  const tableIndex = ownIndex(
-    "targetTableIndex",
-    inserted ? owner.tableIndex : owner.revisedTableIndex,
-  );
-  const blocks = inserted ? owner.blocks : owner.revisedBlocks;
-  if (!blocks.some((block) => block.table?.tableIndex === tableIndex)) {
-    return panic("A DOCX target table operand does not own its canonical table coordinates", {
-      tableIndex,
-    });
-  }
-  targetTableNode(targetSnapshot, tableIndex);
-  return tableIndex;
-};
-
-const targetRowFromOperand = (
-  operand: ResolvedDocxTargetRowOperand,
-  comparison: ResolvedDocxStoryComparison,
-  targetSnapshot: ResolvedDocxStorySnapshot,
-): { readonly tableIndex: number; readonly rowIndex: number } => {
-  const change = resolvedDocxTargetRowOperandChange(operand, comparison);
-  const tableIndex = ownIndex("targetTableIndex", change.tableIndex);
-  const rowIndex = ownIndex("targetRowIndex", change.rowIndex);
-  if (
-    !change.blocks.some(
-      (block) => block.table?.tableIndex === tableIndex && block.table.rowIndex === rowIndex,
-    )
-  ) {
-    return panic("A DOCX target row operand does not own its canonical row coordinates", {
-      tableIndex,
-      rowIndex,
-    });
-  }
-  const node = targetTableNode(targetSnapshot, tableIndex);
-  if (rowIndex >= node.childCount) {
-    return panic("A DOCX target row operand has no exact target row node", {
-      tableIndex,
-      rowIndex,
-    });
-  }
-  node.child(rowIndex);
-  return Object.freeze({ tableIndex, rowIndex });
-};
-
-const columnCellTexts = (blocks: readonly FolioContentBlock[]): readonly string[] => {
-  const byCell = new Map<string, string>();
-  for (const block of blocks) {
-    const table = block.table;
-    if (!table) return panic("A DOCX target column contains a block outside its table");
-    const key = `${String(table.rowIndex)}:${String(table.cellIndex)}`;
-    const existing = byCell.get(key);
-    byCell.set(key, existing === undefined ? block.text : `${existing}\n${block.text}`);
-  }
-  return Object.freeze([...byCell.values()]);
-};
-
-const targetColumnFromOperand = (
-  operand: ResolvedDocxTargetColumnOperand,
-  comparison: ResolvedDocxStoryComparison,
-  targetSnapshot: ResolvedDocxStorySnapshot,
-): {
-  readonly tableIndex: number;
-  readonly columnIndex: number;
-  readonly cellTexts: readonly string[];
-} => {
-  const change = resolvedDocxTargetColumnOperandChange(operand, comparison);
-  const tableIndex = ownIndex("targetTableIndex", change.tableIndex);
-  const columnIndex = ownIndex("targetColumnIndex", change.columnIndex);
-  if (
-    !change.blocks.every(
-      (block) =>
-        block.table?.tableIndex === tableIndex && block.table.gridColumnIndex === columnIndex,
-    )
-  ) {
-    return panic("A DOCX target column operand does not own its canonical column coordinates", {
-      tableIndex,
-      columnIndex,
-    });
-  }
-  targetTableNode(targetSnapshot, tableIndex);
-  return Object.freeze({
-    tableIndex,
-    columnIndex,
-    cellTexts: columnCellTexts(change.blocks),
-  });
-};
-
-const sourceTableLocation = (
-  source: DocxComparisonSourceOperand,
-  sourceSnapshot: ResolvedDocxStorySnapshot,
-): FolioContentTableLocation =>
-  tableLocationOf(resolvedDocxSourceOperandBlock(source, sourceSnapshot), "base");
-
-const assertStructuralAnchorPairsWithTargetTable = (
-  anchor: DocxComparisonStructuralInsertionOperand,
-  targetTableIndex: number,
-  comparison: ResolvedDocxStoryComparison,
-  sourceSnapshot: ResolvedDocxStorySnapshot,
-): void => {
-  const sourceLocation = sourceTableLocation(anchor.source, sourceSnapshot);
-  if (
-    !resolvedDocxPairedBaseTableIndexes(comparison, targetTableIndex).has(sourceLocation.tableIndex)
-  ) {
-    return panic("A DOCX structural insertion anchor belongs to another canonical table", {
-      baseTableIndex: sourceLocation.tableIndex,
-      targetTableIndex,
-    });
-  }
-};
-
-const tableGeometryPairings = (
-  comparison: ResolvedDocxStoryComparison,
-): readonly TableGeometryPairing[] =>
-  ownTableGeometryPairings(resolvedDocxTableGeometryPairings(comparison));
 
 const assertRangeMatchesSource = (
   source: DocxComparisonSourceOperand,
@@ -1683,106 +1437,12 @@ const compileInstruction = (
         targetProperties: ownParagraphProperties(targetProperties),
       });
     }
-    case "insertTable": {
-      const target = targetTableFromOperand(input.target, "inserted", comparison, targetSnapshot);
-      return Object.freeze({
-        type: "insertTable",
-        anchor: ownStructuralInsertionAnchor(input.anchor, sourceSnapshot),
-        targetTableIndex: target,
-      });
-    }
-    case "deleteTable": {
-      const source = ownSourceOperand(input.source, sourceSnapshot);
-      return Object.freeze({
-        type: "deleteTable",
-        source,
-        baseTableIndex: ownIndex(
-          "baseTableIndex",
-          sourceTableLocation(source, sourceSnapshot).tableIndex,
-        ),
-      });
-    }
-    case "replaceTable": {
-      const source = ownSourceOperand(input.source, sourceSnapshot);
-      const owner = resolvedDocxTargetTableOperandOwner(input.target, comparison);
-      if (
-        "type" in owner ||
-        owner.baseBlocks.at(0) !== resolvedDocxSourceOperandBlock(source, sourceSnapshot)
-      ) {
-        return panic("A DOCX replacement table operand does not own its exact base table");
-      }
-      const target = targetTableFromOperand(
-        input.target,
-        "replacement",
-        comparison,
-        targetSnapshot,
-      );
-      return Object.freeze({
-        type: "replaceTable",
-        source,
-        baseTableIndex: ownIndex(
-          "baseTableIndex",
-          sourceTableLocation(source, sourceSnapshot).tableIndex,
-        ),
-        targetTableIndex: target,
-      });
-    }
-    case "insertTableRow": {
-      const target = targetRowFromOperand(input.target, comparison, targetSnapshot);
-      assertStructuralAnchorPairsWithTargetTable(
-        input.anchor,
-        target.tableIndex,
-        comparison,
-        sourceSnapshot,
-      );
-      return Object.freeze({
-        type: "insertTableRow",
-        anchor: ownStructuralInsertionAnchor(input.anchor, sourceSnapshot),
-        targetTableIndex: target.tableIndex,
-        targetRowIndex: target.rowIndex,
-      });
-    }
-    case "deleteTableRow": {
-      const source = ownSourceOperand(input.source, sourceSnapshot);
-      const location = sourceTableLocation(source, sourceSnapshot);
-      return Object.freeze({
-        type: "deleteTableRow",
-        source,
-        baseTableIndex: ownIndex("baseTableIndex", location.tableIndex),
-        baseRowIndex: ownIndex("baseRowIndex", location.rowIndex),
-      });
-    }
-    case "insertTableColumn": {
-      const target = targetColumnFromOperand(input.target, comparison, targetSnapshot);
-      assertStructuralAnchorPairsWithTargetTable(
-        input.anchor,
-        target.tableIndex,
-        comparison,
-        sourceSnapshot,
-      );
-      return Object.freeze({
-        type: "insertTableColumn",
-        anchor: ownStructuralInsertionAnchor(input.anchor, sourceSnapshot),
-        targetTableIndex: target.tableIndex,
-        targetColumnIndex: target.columnIndex,
-        cellTexts: target.cellTexts,
-      });
-    }
-    case "deleteTableColumn": {
-      const source = ownSourceOperand(input.source, sourceSnapshot);
-      const location = sourceTableLocation(source, sourceSnapshot);
-      return Object.freeze({
-        type: "deleteTableColumn",
-        source,
-        baseTableIndex: ownIndex("baseTableIndex", location.tableIndex),
-        baseColumnIndex: ownIndex("baseColumnIndex", location.gridColumnIndex),
-      });
-    }
-    case "matchTableGeometry":
-      return Object.freeze({
-        type: "matchTableGeometry",
-        pairings: tableGeometryPairings(comparison),
-      });
+    case "tableStructure":
+      resolvedDocxTableStructureOperandPayload(input.operation, comparison);
+      return input;
+    case "tableFormat":
+      resolvedDocxTableFormatOperandPayload(input.operation, comparison);
+      return input;
     default: {
       const unreachable: never = input;
       return panic("Unhandled DOCX comparison instruction", { instruction: unreachable });
@@ -1805,10 +1465,7 @@ const reportSequence = (eventSequence: number, withinEvent: number): number => {
 const reportLocation = (
   story: ReturnType<typeof resolvedDocxStoryComparisonPayload>["baseStory"],
   block: FolioContentBlock,
-) =>
-  block.table
-    ? { story, cell: docxTableLocationFromContent(block.table) }
-    : { story };
+) => (block.table ? { story, cell: docxTableLocationFromContent(block.table) } : { story });
 
 const representedFormattingChange = (
   formatting: FolioContentFormattingChange["ranges"][number]["formatting"],
@@ -1816,9 +1473,7 @@ const representedFormattingChange = (
   const authoredKeys = new Set(formatting.authored.map(({ key }) => key));
   return Object.freeze({
     authored: formatting.authored,
-    effective: Object.freeze(
-      formatting.effective.filter(({ key }) => authoredKeys.has(key)),
-    ),
+    effective: Object.freeze(formatting.effective.filter(({ key }) => authoredKeys.has(key))),
   });
 };
 
@@ -1887,6 +1542,14 @@ type CompiledSemanticOperationInput = {
   readonly instructions: NonEmptyReadonlyArray<DocxComparisonInstructionInput>;
 };
 
+const compiledSemanticOperation = (
+  input: CompiledSemanticOperationInput,
+): CompiledSemanticOperationInput =>
+  Object.freeze({
+    reports: Object.freeze([...input.reports]),
+    instructions: Object.freeze(input.instructions),
+  });
+
 const ownSemanticReport = ({
   sequence,
   change,
@@ -1897,6 +1560,212 @@ const ownSemanticReport = ({
   const ownedChange = structuredClone(change);
   freezeRecursively(ownedChange);
   return Object.freeze({ sequence, change: ownedChange });
+};
+
+const tableRowCellTexts = (blocks: readonly FolioContentBlock[]): string[] => {
+  const byCell: (string | undefined)[] = [];
+  for (const block of blocks) {
+    const cellIndex = block.table?.cellIndex ?? 0;
+    const existing = byCell[cellIndex];
+    byCell[cellIndex] = existing === undefined ? block.text : `${existing}\n${block.text}`;
+  }
+  return Array.from(byCell, (text) => text ?? "");
+};
+
+const tableColumnCellTexts = (blocks: readonly FolioContentBlock[]): string[] => {
+  const byCell = new Map<string, string>();
+  for (const block of blocks) {
+    const table = block.table;
+    if (!table) continue;
+    const key = `${String(table.rowIndex)}:${String(table.cellIndex)}`;
+    const existing = byCell.get(key);
+    byCell.set(key, existing === undefined ? block.text : `${existing}\n${block.text}`);
+  }
+  return [...byCell.values()];
+};
+
+const tableCellTexts = (blocks: readonly FolioContentBlock[]): string[][] => {
+  const rows = groupFolioContentTableRows(blocks).map((row) => tableRowCellTexts(row));
+  let width = 0;
+  for (const row of rows) width = Math.max(width, row.length);
+  for (const row of rows) {
+    while (row.length < width) row.push("");
+  }
+  return rows;
+};
+
+const tableStructuralChangeReport = ({
+  change,
+  story,
+}: {
+  readonly change: FolioContentStructuralChange;
+  readonly story: ReturnType<typeof resolvedDocxStoryComparisonPayload>["baseStory"];
+}): CompareChange => {
+  const firstBlock = change.blocks[0];
+  const table = firstBlock.table;
+  if (!table) return panic("A canonical table change has no table location");
+  const location = { story, cell: docxTableLocationFromContent(table) };
+  switch (change.type) {
+    case "table-delete":
+      return {
+        kind: "table-delete",
+        location,
+        tableIndex: change.tableIndex,
+        rows: tableCellTexts(change.blocks),
+        baseBlockIds: change.blocks.map(({ identity }) => identity.id),
+      };
+    case "table-insert":
+      return {
+        kind: "table-insert",
+        location,
+        tableIndex: change.tableIndex,
+        rows: tableCellTexts(change.blocks),
+        targetBlockIds: change.blocks.map(({ identity }) => identity.id),
+      };
+    case "table-row-delete":
+      return {
+        kind: "table-row-delete",
+        location,
+        tableIndex: change.tableIndex,
+        rowIndex: change.rowIndex,
+        cells: tableRowCellTexts(change.blocks),
+        baseBlockIds: change.blocks.map(({ identity }) => identity.id),
+      };
+    case "table-row-insert":
+      return {
+        kind: "table-row-insert",
+        location,
+        tableIndex: change.tableIndex,
+        rowIndex: change.rowIndex,
+        cells: tableRowCellTexts(change.blocks),
+        targetBlockIds: change.blocks.map(({ identity }) => identity.id),
+      };
+    case "table-column-delete":
+      return {
+        kind: "table-column-delete",
+        location,
+        tableIndex: change.tableIndex,
+        columnIndex: change.columnIndex,
+        cells: tableColumnCellTexts(change.blocks),
+        baseBlockIds: change.blocks.map(({ identity }) => identity.id),
+      };
+    case "table-column-insert":
+      return {
+        kind: "table-column-insert",
+        location,
+        tableIndex: change.tableIndex,
+        columnIndex: change.columnIndex,
+        cells: tableColumnCellTexts(change.blocks),
+        targetBlockIds: change.blocks.map(({ identity }) => identity.id),
+      };
+    default: {
+      const unreachable: never = change;
+      return panic("Unhandled table structural report", { change: unreachable });
+    }
+  }
+};
+
+const compileTableStructureOperation = (
+  operation: ResolvedDocxTableStructureOperand,
+  comparison: ResolvedDocxStoryComparison,
+  story: ReturnType<typeof resolvedDocxStoryComparisonPayload>["baseStory"],
+): CompiledSemanticOperationInput => {
+  const reports: DocxComparisonReportInput[] = [];
+  for (const owner of resolvedDocxTableStructureReportOwners(operation, comparison)) {
+    switch (owner.type) {
+      case "structural":
+        reports.push(
+          ownSemanticReport({
+            sequence: reportSequence(owner.sequence, 0),
+            change: tableStructuralChangeReport({ change: owner.change, story }),
+          }),
+        );
+        break;
+      case "replacement": {
+        const base = owner.replacement.baseBlocks[0];
+        const target = owner.replacement.revisedBlocks[0];
+        if (!base.table || !target.table) {
+          return panic("A canonical table replacement has no table location");
+        }
+        reports.push(
+          ownSemanticReport({
+            sequence: reportSequence(owner.sequence, 0),
+            change: {
+              kind: "table-delete",
+              location: { story, cell: docxTableLocationFromContent(base.table) },
+              tableIndex: owner.replacement.baseTableIndex,
+              rows: tableCellTexts(owner.replacement.baseBlocks),
+              baseBlockIds: owner.replacement.baseBlocks.map(({ identity }) => identity.id),
+            },
+          }),
+          ownSemanticReport({
+            sequence: reportSequence(owner.sequence, 1),
+            change: {
+              kind: "table-insert",
+              location: { story, cell: docxTableLocationFromContent(target.table) },
+              tableIndex: owner.replacement.revisedTableIndex,
+              rows: tableCellTexts(owner.replacement.revisedBlocks),
+              targetBlockIds: owner.replacement.revisedBlocks.map(({ identity }) => identity.id),
+            },
+          }),
+        );
+        break;
+      }
+      case "deletedCarrier":
+        reports.push(
+          ownSemanticReport({
+            sequence: reportSequence(owner.sequence, 0),
+            change: {
+              kind: "delete",
+              location: reportLocation(story, owner.event.block),
+              baseBlockId: owner.event.block.identity.id,
+              before: owner.event.block.text,
+            },
+          }),
+        );
+        break;
+      default: {
+        const unreachable: never = owner;
+        return panic("Unhandled table report owner", { owner: unreachable });
+      }
+    }
+  }
+  return compiledSemanticOperation({
+    reports: Object.freeze(reports),
+    instructions: Object.freeze([{ type: "tableStructure", operation }]),
+  });
+};
+
+const compileTableFormatOperation = (
+  operation: ResolvedDocxTableFormatOperand,
+  comparison: ResolvedDocxStoryComparison,
+  story: ReturnType<typeof resolvedDocxStoryComparisonPayload>["baseStory"],
+): CompiledSemanticOperationInput => {
+  const payload = resolvedDocxTableFormatOperandPayload(operation, comparison);
+  const reports: DocxComparisonReportInput[] = [];
+  if (payload.status === "ready") {
+    const withinEvent = new Map<number, number>();
+    for (const change of payload.changes) {
+      const offset = withinEvent.get(change.sequence) ?? 8;
+      withinEvent.set(change.sequence, offset + 1);
+      reports.push(
+        ownSemanticReport({
+          sequence: reportSequence(change.sequence, offset),
+          change: {
+            kind: "table-format",
+            location: { story },
+            scope: change.scope,
+            base: change.base,
+            target: change.target,
+          },
+        }),
+      );
+    }
+  }
+  return compiledSemanticOperation({
+    reports: Object.freeze(reports),
+    instructions: Object.freeze([{ type: "tableFormat", operation }]),
+  });
 };
 
 const compileSemanticOperationInput = (
@@ -1964,17 +1833,15 @@ const compileSemanticOperationInput = (
       if (!firstInstruction) {
         return panic("A paired DOCX semantic operation contains no representable change");
       }
-      return Object.freeze({
+      return compiledSemanticOperation({
         reports: Object.freeze(reports.map(ownSemanticReport)),
         instructions: Object.freeze([firstInstruction, ...instructions.slice(1)]),
       });
     }
     case "insertParagraph": {
-      const { event, sequence } = resolvedDocxInsertedEventOperandPayload(
-        input.event,
-        comparison,
-      );
-      return Object.freeze({
+      const { event, sequence } = resolvedDocxInsertedEventOperandPayload(input.event, comparison);
+      const boundary = canonicalParagraphInsertionBoundary(event.boundary, sourceSnapshot);
+      return compiledSemanticOperation({
         reports: Object.freeze([
           ownSemanticReport({
             sequence: reportSequence(sequence, 0),
@@ -1989,7 +1856,7 @@ const compileSemanticOperationInput = (
         instructions: Object.freeze([
           {
             type: "insertParagraph",
-            boundary: input.boundary,
+            boundary,
             target: resolvedDocxTargetBlockOperand(comparison, event.block),
           },
         ]),
@@ -1997,7 +1864,7 @@ const compileSemanticOperationInput = (
     }
     case "deleteParagraph": {
       const { event, sequence } = resolvedDocxDeletedEventOperandPayload(input.event, comparison);
-      return Object.freeze({
+      return compiledSemanticOperation({
         reports: Object.freeze([
           ownSemanticReport({
             sequence: reportSequence(sequence, 0),
@@ -2020,6 +1887,10 @@ const compileSemanticOperationInput = (
     case "moveParagraph": {
       const { event, sequence } = resolvedDocxMoveEventOperandPayload(input.event, comparison);
       const { relation, sourceRemovalBoundary } = event.move;
+      const boundary = canonicalParagraphInsertionBoundary(
+        event.move.destinationBoundary,
+        sourceSnapshot,
+      );
       const reports: DocxComparisonReportInput[] = [
         ownSemanticReport({
           sequence: reportSequence(sequence, 0),
@@ -2046,7 +1917,7 @@ const compileSemanticOperationInput = (
       if (paragraphReport) reports.push(ownSemanticReport(paragraphReport));
       switch (sourceRemovalBoundary.type) {
         case "successorParagraph":
-          return Object.freeze({
+          return compiledSemanticOperation({
             reports: Object.freeze(reports),
             instructions: Object.freeze([
               {
@@ -2056,13 +1927,13 @@ const compileSemanticOperationInput = (
                   sourceSnapshot,
                   sourceRemovalBoundary.successor,
                 ),
-                boundary: input.boundary,
+                boundary,
                 target: resolvedDocxTargetBlockOperand(comparison, relation.revised.block),
               },
             ]),
           });
         case "terminalPredecessor":
-          return Object.freeze({
+          return compiledSemanticOperation({
             reports: Object.freeze(reports),
             instructions: Object.freeze([
               {
@@ -2076,7 +1947,7 @@ const compileSemanticOperationInput = (
                   comparison,
                   sourceRemovalBoundary.targetCarrier,
                 ),
-                boundary: input.boundary,
+                boundary,
                 target: resolvedDocxTargetBlockOperand(comparison, relation.revised.block),
               },
             ]),
@@ -2099,10 +1970,7 @@ const compileSemanticOperationInput = (
             kind: "split",
             location: reportLocation(story, first.base.block),
             baseBlockId: first.base.block.identity.id,
-            targetBlockIds: [
-              first.revised.block.identity.id,
-              second.revised.block.identity.id,
-            ],
+            targetBlockIds: [first.revised.block.identity.id, second.revised.block.identity.id],
             text: first.base.block.text,
           },
         }),
@@ -2116,7 +1984,7 @@ const compileSemanticOperationInput = (
       for (const companion of companions) {
         if (companion) reports.push(ownSemanticReport(companion));
       }
-      return Object.freeze({
+      return compiledSemanticOperation({
         reports: Object.freeze(reports),
         instructions: Object.freeze([
           {
@@ -2151,7 +2019,7 @@ const compileSemanticOperationInput = (
       for (const companion of companions) {
         if (companion) reports.push(ownSemanticReport(companion));
       }
-      return Object.freeze({
+      return compiledSemanticOperation({
         reports: Object.freeze(reports),
         instructions: Object.freeze([
           {
@@ -2164,10 +2032,7 @@ const compileSemanticOperationInput = (
       });
     }
     case "deleteTrailingParagraphs": {
-      const operation = resolvedDocxTrailingDeletionOperandPayload(
-        input.operation,
-        comparison,
-      );
+      const operation = resolvedDocxTrailingDeletionOperandPayload(input.operation, comparison);
       const deleted = operation.events;
       const firstDeleted = deleted.at(0);
       if (!firstDeleted) return panic("A trailing deletion operation has no deleted event");
@@ -2211,7 +2076,7 @@ const compileSemanticOperationInput = (
           });
         }
       }
-      return Object.freeze({
+      return compiledSemanticOperation({
         reports: Object.freeze(reports),
         instructions: Object.freeze([
           instructions[0] ?? panic("A trailing deletion operation lost its instruction"),
@@ -2277,16 +2142,15 @@ const compileSemanticOperationInput = (
       if (!firstInstruction) {
         return panic("A terminal replacement operation contains no semantic change");
       }
-      return Object.freeze({
+      return compiledSemanticOperation({
         reports,
         instructions: Object.freeze([firstInstruction, ...instructions.slice(1)]),
       });
     }
-    case "tableCompatibility":
-      return Object.freeze({
-        reports: Object.freeze(input.reports.map(ownSemanticReport)),
-        instructions: Object.freeze([...input.instructions]),
-      });
+    case "tableStructure":
+      return compileTableStructureOperation(input.operation, comparison, story);
+    case "tableFormat":
+      return compileTableFormatOperation(input.operation, comparison, story);
     default: {
       const unreachable: never = input;
       return panic("Unhandled DOCX semantic operation", { operation: unreachable });
@@ -2358,6 +2222,12 @@ export class DocxComparisonProgram {
     comparison: ResolvedDocxStoryComparison,
     inputs: readonly DocxComparisonOperationInput[],
   ): DocxComparisonProgram {
+    if (inputs.length > MAX_DOCX_COMPARISON_INSTRUCTIONS) {
+      return panic("A DOCX comparison program exceeds its instruction limit", {
+        limit: MAX_DOCX_COMPARISON_INSTRUCTIONS,
+        actual: inputs.length,
+      });
+    }
     return new DocxComparisonProgram(comparison, inputs);
   }
 

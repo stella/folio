@@ -110,6 +110,7 @@ export {
   type CompareDocxOptions,
   type CompareFormatRange,
   type CompareResult,
+  type CompareTableFormatCoordinate,
   type CompareUnsupportedPart,
   type CompareUnsupportedReason,
 } from "./compare/types";

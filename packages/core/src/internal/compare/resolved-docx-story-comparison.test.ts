@@ -11,8 +11,11 @@ import {
   compareResolvedDocxStoryPair,
   createResolvedDocxStoryPair,
   resolvedDocxDeletedEventOperand,
+  resolvedDocxInsertedEventOperand,
   resolvedDocxPairedEventOperand,
   resolvedDocxStoryComparisonPayload,
+  resolvedDocxTerminalReplacementOperand,
+  resolvedDocxTrailingDeletionOperand,
 } from "./resolved-docx-story-comparison";
 import {
   createResolvedDocxStorySnapshot,
@@ -29,6 +32,19 @@ const stateOf = (text: string): EditorState =>
     doc: schema.node("doc", null, [
       schema.node("paragraph", { paraId: "A1000000" }, [schema.text(text)]),
     ]),
+  });
+
+const stateWithParagraphs = (
+  paragraphs: readonly { readonly id: string; readonly text: string }[],
+): EditorState =>
+  EditorState.create({
+    doc: schema.node(
+      "doc",
+      null,
+      paragraphs.map(({ id, text }) =>
+        schema.node("paragraph", { paraId: id }, text.length === 0 ? null : [schema.text(text)]),
+      ),
+    ),
   });
 
 const snapshotOf = (
@@ -60,6 +76,20 @@ const snapshotOf = (
       story.type === "main"
         ? toProseDoc(document, conversionOptions)
         : headerFooterToProseDoc(mainDocument.package.document.content, conversionOptions),
+  });
+  if (!snapshot) throw new Error("fixture story projection missing");
+  return snapshot;
+};
+
+const snapshotWithParagraphs = (
+  paragraphs: readonly { readonly id: string; readonly text: string }[],
+): ResolvedDocxStorySnapshot => {
+  const state = stateWithParagraphs(paragraphs);
+  const document = updateDocumentContent(createEmptyDocument(), state.doc);
+  const snapshot = createResolvedDocxStorySnapshot({
+    document,
+    story: { type: "main" },
+    sourceDocument: toProseDoc(document),
   });
   if (!snapshot) throw new Error("fixture story projection missing");
   return snapshot;
@@ -146,5 +176,71 @@ describe("resolved DOCX story comparison provenance", () => {
     expect(() =>
       Reflect.apply(resolvedDocxDeletedEventOperand, undefined, [comparison, event]),
     ).toThrow("must name a deleted event");
+  });
+
+  test("trailing deletion operands prove base order, contiguity, and terminality", () => {
+    const comparison = comparisonOf(
+      snapshotWithParagraphs([
+        { id: "A1000000", text: "Retained opening." },
+        { id: "B1000000", text: "First removed clause." },
+        { id: "C1000000", text: "Second removed clause." },
+      ]),
+      snapshotWithParagraphs([{ id: "D1000000", text: "Retained opening." }]),
+    );
+    const deleted = resolvedDocxStoryComparisonPayload(comparison).comparison.events.filter(
+      (event) => event.type === "deleted",
+    );
+    const firstEvent = deleted.at(0);
+    const secondEvent = deleted.at(1);
+    if (!firstEvent || !secondEvent || deleted.length !== 2) {
+      throw new Error("fixture did not produce two deletions");
+    }
+    const first = resolvedDocxDeletedEventOperand(comparison, firstEvent);
+    const second = resolvedDocxDeletedEventOperand(comparison, secondEvent);
+
+    expect(() =>
+      resolvedDocxTrailingDeletionOperand(comparison, { events: [second, first] }),
+    ).toThrow("canonical base order");
+    expect(() => resolvedDocxTrailingDeletionOperand(comparison, { events: [first] })).toThrow(
+      "contiguous and terminal",
+    );
+    expect(() =>
+      resolvedDocxTrailingDeletionOperand(comparison, { events: [first, second] }),
+    ).not.toThrow();
+  });
+
+  test("terminal replacement operands reject a lookalike nonterminal deletion", () => {
+    const comparison = comparisonOf(
+      snapshotWithParagraphs([
+        {
+          id: "A1000000",
+          text: "The Supplier shall deliver the Goods within thirty days of the order.",
+        },
+        { id: "B1000000", text: "An unrelated closing paragraph." },
+      ]),
+      snapshotWithParagraphs([
+        { id: "C1000000", text: "An unrelated closing paragraph." },
+        {
+          id: "D1000000",
+          text: "The Supplier shall not be liable for any indirect loss however it arises.",
+        },
+      ]),
+    );
+    const events = resolvedDocxStoryComparisonPayload(comparison).comparison.events;
+    const deleted = events.find((event) => event.type === "deleted");
+    const inserted = events.find((event) => event.type === "inserted");
+    if (!deleted || !inserted) {
+      throw new Error(
+        `fixture did not produce the terminal delete/insert events: ${events.map(({ type }) => type).join(",")}`,
+      );
+    }
+    const insertion = resolvedDocxInsertedEventOperand(comparison, inserted);
+
+    expect(() =>
+      resolvedDocxTerminalReplacementOperand(comparison, {
+        deleted: resolvedDocxDeletedEventOperand(comparison, deleted),
+        inserted: insertion,
+      }),
+    ).toThrow("exact terminal event pair");
   });
 });

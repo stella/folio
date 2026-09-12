@@ -14,12 +14,10 @@ import type { FolioDocumentStoryHandle } from "../ai-edits/headless";
 import { trailingBodyBlockId } from "../ai-edits/snapshot";
 import { canonicalJson } from "../utils/canonicalJson";
 import type { FolioAIBlock, FolioAIEditSnapshot } from "../ai-edits/types";
-import { groupFolioContentTableRows as groupRows } from "./content-alignment";
 import {
   docxParagraphPropertiesEqual,
   docxParagraphPropertiesFromBlock,
   docxParagraphPropertyChangeIsLowerable,
-  docxTableLocationFromContent,
 } from "../internal/compare/docx-paragraph-transport";
 import {
   resolvedDocxDeletedEventOperand,
@@ -36,12 +34,11 @@ import {
   resolvedDocxSplitEventOperandPayload,
   resolvedDocxStoryComparisonPayload,
   resolvedDocxTerminalReplacementOperand,
-  resolvedDocxTargetBlockOperand,
-  resolvedDocxTargetColumnOperand,
-  resolvedDocxTargetRowOperand,
-  resolvedDocxTargetTableOperand,
-  resolvedDocxTargetTableOperandOwner,
-  resolvedDocxTableGeometryPairings,
+  resolvedDocxTableFormatOperand,
+  resolvedDocxTableStructureOperand,
+  resolvedDocxTableStructureOperandPayload,
+  resolvedDocxTerminalTableInsertionOperand,
+  resolvedDocxTerminalTableReplacementOperand,
   resolvedDocxTrailingDeletionOperand,
   type ResolvedDocxStoryComparison,
 } from "../internal/compare/resolved-docx-story-comparison";
@@ -56,31 +53,22 @@ import {
 } from "../internal/compare/resolved-docx-story-snapshot";
 import {
   DocxComparisonProgram,
-  type DocxComparisonInstructionInput,
   type DocxComparisonOperationInput,
-  type DocxComparisonParagraphInsertionBoundary,
 } from "../internal/compare/docx-program";
 import {
-  type FolioContentBlockChange,
-  type FolioContentComparison,
   type FolioContentComparisonEvent,
   type FolioContentPairRelation,
   type FolioContentRangePairRelation,
-  type FolioContentStructuralChange,
   type FolioContentWholePairRelation,
 } from "./content";
 import type {
   FolioContentBaseContainerAlignment,
   FolioContentBlock,
   FolioContentContainerAlignment,
-  FolioContentParagraphInsertionBoundary,
-  FolioContentRevisedContainerAlignment,
-  FolioContentTableLocation,
 } from "./content-types";
 import {
   CompareDocxLoweringError,
   CompareDocxOperationLimitError,
-  type CompareChange,
   type CompareUnsupportedPart,
 } from "./types";
 
@@ -125,65 +113,10 @@ const baseBlocksOfEvent = (event: FolioContentComparisonEvent): readonly FolioCo
   }
 };
 
-const revisedBlocksOfEvent = (event: FolioContentComparisonEvent): readonly FolioContentBlock[] => {
-  switch (event.type) {
-    case "unchanged":
-    case "modified":
-    case "formatting":
-      return [event.relation.revised.block];
-    case "inserted":
-      return [event.block];
-    case "deleted":
-    case "movedFrom":
-      return [];
-    case "movedTo":
-      return [event.move.relation.revised.block];
-    case "split":
-      return [event.relations[0].revised.block, event.relations[1].revised.block];
-    case "merge":
-      return [event.relations[0].revised.block];
-    case "tableReplacement":
-      return event.replacement.revisedBlocks;
-    case "structural":
-      return event.change.type === "table-insert" ||
-        event.change.type === "table-row-insert" ||
-        event.change.type === "table-column-insert"
-        ? [event.change.blocks[event.memberIndex] ?? panic("Missing structural revised member")]
-        : [];
-    default: {
-      const unreachable: never = event;
-      return panic("Unhandled comparison event while projecting revised blocks", {
-        event: unreachable,
-      });
-    }
-  }
-};
-
-const unsupportedEventType = (
-  event: FolioContentComparisonEvent,
-): Extract<CompareUnsupportedPart, { story: FolioDocumentStoryHandle }>["eventType"] => {
-  switch (event.type) {
-    case "movedFrom":
-    case "movedTo":
-      return "moved";
-    case "unchanged":
-    case "modified":
-    case "formatting":
-    case "inserted":
-    case "deleted":
-    case "split":
-    case "merge":
-    case "tableReplacement":
-    case "structural":
-      return event.type;
-    default: {
-      const unreachable: never = event;
-      return panic("Unhandled comparison event support disposition", {
-        event: unreachable,
-      });
-    }
-  }
-};
+type CompareUnsupportedEventType = Extract<
+  CompareUnsupportedPart,
+  { readonly eventType: unknown }
+>["eventType"];
 
 type ComparisonContainerMembership = {
   readonly baseByBlockId: ReadonlyMap<string, FolioContentBaseContainerAlignment>;
@@ -267,7 +200,8 @@ const nextBaseBlockIdByEvent = (
   let next: string | null = null;
   for (let index = events.length - 1; index >= 0; index--) {
     anchors[index] = next;
-    const block = events[index] ? baseBlocksOfEvent(events[index]).at(0) : undefined;
+    const event = events.at(index);
+    const block = event ? baseBlocksOfEvent(event).at(0) : undefined;
     next = block?.identity.id ?? next;
   }
   return anchors;
@@ -306,65 +240,12 @@ const findRowAnchor = (
   return null;
 };
 
-/**
- * A row's text per physical cell, indexed BY cell so an empty cell keeps its
- * slot. An empty cell carries no block at all, so packing only the cells that
- * have text would shift every later cell one column left.
- */
-/** One table's cell texts, row by row, for a whole-table change. */
-/**
- * One table's cell texts, row by row, padded to the widest row.
- *
- * A row's own width is its highest occupied cell index, so a table with
- * merged cells or a short last row produces a ragged grid — and a ragged grid
- * is not a table any consumer can lay out. Padding states the grid the table
- * actually occupies; the empty strings are the cells a `w:gridSpan` covers.
- */
-const tableCellTexts = (blocks: readonly FolioContentBlock[]): string[][] => {
-  const rows = groupRows(blocks).map((row) => rowCellTexts(row));
-  let width = 0;
-  for (const row of rows) {
-    width = Math.max(width, row.length);
-  }
-  for (const row of rows) {
-    while (row.length < width) {
-      row.push("");
-    }
-  }
-  return rows;
-};
-
-const rowCellTexts = (blocks: readonly FolioContentBlock[]): string[] => {
-  const byCell: (string | undefined)[] = [];
-  for (const block of blocks) {
-    const cellIndex = block.table?.cellIndex ?? 0;
-    const existing = byCell[cellIndex];
-    byCell[cellIndex] = existing === undefined ? block.text : `${existing}\n${block.text}`;
-  }
-  return Array.from(byCell, (text) => text ?? "");
-};
-
-const columnCellTexts = (blocks: readonly FolioContentBlock[]): string[] => {
-  const byCell = new Map<string, string>();
-  for (const block of blocks) {
-    const table = block.table;
-    if (!table) {
-      continue;
-    }
-    const key = `${String(table.rowIndex)}:${String(table.cellIndex)}`;
-    const existing = byCell.get(key);
-    byCell.set(key, existing === undefined ? block.text : `${existing}\n${block.text}`);
-  }
-  return [...byCell.values()];
-};
-
 type TrailingDeletionOptions = {
   comparison: ResolvedDocxStoryComparison;
   baseResolvedSnapshot: ResolvedDocxStorySnapshot;
   baseSnapshot: FolioAIEditSnapshot;
   targetSnapshot: FolioAIEditSnapshot;
   baseContentBlocks: readonly FolioContentBlock[];
-  targetContentBlocks: readonly FolioContentBlock[];
   unavailableTerminalCarrierIds: ReadonlySet<string>;
   containerMembership: ComparisonContainerMembership;
   /** The plan so far, rewritten around each container it empties. */
@@ -429,7 +310,6 @@ const withTrailingDeletionRules = ({
   baseSnapshot,
   targetSnapshot,
   baseContentBlocks,
-  targetContentBlocks,
   unavailableTerminalCarrierIds,
   containerMembership,
   operations,
@@ -440,9 +320,18 @@ const withTrailingDeletionRules = ({
   const deletionIndexByBlockId = new Map<string, number>();
   const insertionsByAlignment = new Map<
     FolioContentContainerAlignment,
-    { readonly index: number; readonly boundary: DocxComparisonParagraphInsertionBoundary }[]
+    {
+      readonly index: number;
+      readonly boundary: Extract<
+        FolioContentComparisonEvent,
+        { readonly type: "inserted" }
+      >["boundary"];
+    }[]
   >();
   const tableInsertIndexesByAnchor = new Map<string, number[]>();
+  const tableInsertIndexes: number[] = [];
+  const tableDeleteIndexes: number[] = [];
+  const tableReplacementIndexes: number[] = [];
   // A block whose own mark the plan already moves is not a chain start: a
   // split has put a second paragraph after it, and a merge has spent its mark.
   const markedBlockIds = new Set<string>();
@@ -454,17 +343,56 @@ const withTrailingDeletionRules = ({
         break;
       }
       case "insertParagraph": {
+        const { event } = resolvedDocxInsertedEventOperandPayload(operation.event, comparison);
+        if (event.boundary.type === "unanchoredContainer") {
+          return panic("An unanchored insertion reached terminal-deletion rewriting");
+        }
         const alignment = containerMembership.baseByBlockId.get(
-          sourceBlockId(operation.boundary.paragraph),
+          event.boundary.paragraph.identity.id,
         );
         if (!alignment) {
           return panic("A paragraph insertion boundary has no canonical base container", {
-            blockId: sourceBlockId(operation.boundary.paragraph),
+            blockId: event.boundary.paragraph.identity.id,
           });
         }
         const placed = insertionsByAlignment.get(alignment) ?? [];
-        placed.push({ index, boundary: operation.boundary });
+        placed.push({ index, boundary: event.boundary });
         insertionsByAlignment.set(alignment, placed);
+        break;
+      }
+      case "tableStructure": {
+        const instruction = operation.operation;
+        const payload = resolvedDocxTableStructureOperandPayload(instruction, comparison);
+        switch (instruction.type) {
+          case "insertTable": {
+            if (payload.type !== "insertTable") {
+              return panic("A table insertion operand lost its canonical payload");
+            }
+            const anchorId = sourceBlockId(payload.anchor.source);
+            const placed = tableInsertIndexesByAnchor.get(anchorId) ?? [];
+            placed.push(index);
+            tableInsertIndexesByAnchor.set(anchorId, placed);
+            tableInsertIndexes.push(index);
+            break;
+          }
+          case "deleteTable":
+            tableDeleteIndexes.push(index);
+            break;
+          case "replaceTable":
+            tableReplacementIndexes.push(index);
+            break;
+          case "insertTableRow":
+          case "deleteTableRow":
+          case "insertTableColumn":
+          case "deleteTableColumn":
+            break;
+          default: {
+            const unreachable: never = instruction;
+            return panic("Unhandled table operation in terminal-deletion rewriting", {
+              instruction: unreachable,
+            });
+          }
+        }
         break;
       }
       case "splitParagraph": {
@@ -485,18 +413,16 @@ const withTrailingDeletionRules = ({
         }
         break;
       }
-      case "tableCompatibility": {
-        for (const instruction of operation.instructions) {
-          if (instruction.type !== "insertTable") continue;
-          const anchorId = sourceBlockId(instruction.anchor.source);
-          const placed = tableInsertIndexesByAnchor.get(anchorId) ?? [];
-          placed.push(index);
-          tableInsertIndexesByAnchor.set(anchorId, placed);
-        }
+      case "pairedBlock":
+      case "deleteTrailingParagraphs":
+      case "replaceTerminalParagraph":
+      case "tableFormat":
         break;
-      }
       default: {
-        break;
+        const unreachable: never = operation;
+        return panic("Unhandled operation in terminal-deletion rewriting", {
+          operation: unreachable,
+        });
       }
     }
   }
@@ -521,7 +447,7 @@ const withTrailingDeletionRules = ({
   ): TrailingRun => {
     const blockIds: string[] = [];
     const insertIndexes: number[] = [];
-    const tableInsertIndexes: number[] = [];
+    const runTableInsertIndexes: number[] = [];
     let chainStart: FolioAIBlock | null = null;
     let index =
       indexById.get(carrier.id) ??
@@ -538,11 +464,14 @@ const withTrailingDeletionRules = ({
         break;
       }
       blockIds.push(block.id);
-      tableInsertIndexes.push(...(tableInsertIndexesByAnchor.get(block.id) ?? []));
+      runTableInsertIndexes.push(...(tableInsertIndexesByAnchor.get(block.id) ?? []));
     }
     const trailingIds = new Set(blockIds);
     for (const insertion of insertionsByAlignment.get(alignment) ?? []) {
-      const boundaryId = sourceBlockId(insertion.boundary.paragraph);
+      if (insertion.boundary.type === "unanchoredContainer") {
+        return panic("An unanchored insertion reached a trailing paragraph run");
+      }
+      const boundaryId = insertion.boundary.paragraph.identity.id;
       if (
         trailingIds.has(boundaryId) ||
         (insertion.boundary.type === "afterParagraph" && boundaryId === chainStart?.id)
@@ -558,7 +487,7 @@ const withTrailingDeletionRules = ({
       blockIds,
       chainStart,
       insertIndexes: insertIndexes.toSorted((left, right) => left - right),
-      tableInsertIndexes: tableInsertIndexes.toSorted((left, right) => left - right),
+      tableInsertIndexes: runTableInsertIndexes.toSorted((left, right) => left - right),
     };
   };
 
@@ -566,11 +495,6 @@ const withTrailingDeletionRules = ({
   for (const block of blocks) {
     const alignment = containerMembership.baseByBlockId.get(block.id);
     if (alignment) baseLastByAlignment.set(alignment, block);
-  }
-  const targetLastByAlignment = new Map<FolioContentRevisedContainerAlignment, FolioContentBlock>();
-  for (const block of targetContentBlocks) {
-    const alignment = containerMembership.revisedByBlockId.get(block.identity.id);
-    if (alignment) targetLastByAlignment.set(alignment, block);
   }
   const terminalTargetTableIndex = targetSnapshot.blocks.at(-1)?.table?.outerTableIndex;
   const dropped = new Set<number>();
@@ -590,21 +514,23 @@ const withTrailingDeletionRules = ({
         run.tableInsertIndexes.length === 1 ? run.tableInsertIndexes.at(0) : undefined;
       const tableInsertPlan = tableInsertIndex === undefined ? undefined : plan[tableInsertIndex];
       const tableInsert =
-        tableInsertPlan?.type === "tableCompatibility"
-          ? tableInsertPlan.instructions.find(({ type }) => type === "insertTable")
+        tableInsertPlan?.type === "tableStructure" &&
+        tableInsertPlan.operation.type === "insertTable"
+          ? tableInsertPlan.operation
           : undefined;
-      const insertedTargetTableIndex =
-        tableInsert?.type === "insertTable"
-          ? (() => {
-              const owner = resolvedDocxTargetTableOperandOwner(tableInsert.target, comparison);
-              return "type" in owner ? owner.tableIndex : null;
-            })()
-          : null;
+      let insertedTargetTableIndex: number | null = null;
+      if (tableInsert?.type === "insertTable") {
+        const payload = resolvedDocxTableStructureOperandPayload(tableInsert, comparison);
+        if (payload.type !== "insertTable") {
+          return panic("A terminal table insertion lost its canonical payload");
+        }
+        insertedTargetTableIndex = payload.change.tableIndex;
+      }
       if (
         alignment.base.type !== "body" ||
         !isEmptyParagraphNode(carrier, baseSnapshot) ||
         tableInsertIndex === undefined ||
-        tableInsertPlan?.type !== "tableCompatibility" ||
+        tableInsertPlan?.type !== "tableStructure" ||
         terminalTargetTableIndex === undefined ||
         tableInsert?.type !== "insertTable" ||
         insertedTargetTableIndex !== terminalTargetTableIndex
@@ -618,35 +544,120 @@ const withTrailingDeletionRules = ({
       // directly. Put the base's otherwise-final carrier immediately before
       // that table: its deleted mark can then remove the empty paragraph,
       // while rejecting the table insertion restores the original ending.
-      const rewrittenTableInstructions = tableInsertPlan.instructions.map((instruction) =>
-        instruction === tableInsert
-          ? {
-              ...tableInsert,
-              anchor: {
-                source: resolvedDocxSourceOperandForBlockId(baseResolvedSnapshot, carrier.id),
-                position: "after" as const,
-              },
-            }
-          : instruction,
-      );
-      const firstRewrittenTableInstruction =
-        rewrittenTableInstructions.at(0) ??
-        panic("A table compatibility operation lost its instruction");
+      const payload = resolvedDocxTableStructureOperandPayload(tableInsert, comparison);
+      if (payload.type !== "insertTable") {
+        return panic("A terminal table insertion lost its canonical payload");
+      }
+      const carrierSource = resolvedDocxSourceOperandForBlockId(baseResolvedSnapshot, carrier.id);
+      const retargeted = resolvedDocxTableStructureOperand(comparison, {
+        type: "insertTable",
+        anchor: { source: carrierSource, position: "after" },
+        change: payload.change,
+      });
       plan[tableInsertIndex] = {
-        type: "tableCompatibility",
-        reports: tableInsertPlan.reports,
-        instructions: [
-          firstRewrittenTableInstruction,
-          ...rewrittenTableInstructions.slice(1),
-        ],
+        type: "tableStructure",
+        operation: resolvedDocxTerminalTableInsertionOperand(comparison, retargeted, carrierSource),
       };
+      dropped.add(carrierDeletionIndex);
       continue;
     }
-    const targetCarrier =
-      alignment.type === "paired" ? targetLastByAlignment.get(alignment) : undefined;
-    const targetCarrierOperand = targetCarrier
-      ? resolvedDocxTargetBlockOperand(comparison, targetCarrier)
-      : undefined;
+    if (
+      alignment.base.type === "body" &&
+      run.blockIds.length === 1 &&
+      run.blockIds.at(0) === carrier.id &&
+      isEmptyParagraphNode(carrier, baseSnapshot) &&
+      terminalTargetTableIndex !== undefined
+    ) {
+      const beforeCarrier = blocks.at((indexById.get(carrier.id) ?? 0) - 1);
+      const baseTerminalTableIndex = beforeCarrier?.table?.outerTableIndex;
+      const replacements = tableReplacementIndexes.flatMap((index) => {
+        const candidate = plan[index];
+        if (candidate?.type !== "tableStructure" || candidate.operation.type !== "replaceTable") {
+          return [];
+        }
+        const instruction = candidate.operation;
+        const payload = resolvedDocxTableStructureOperandPayload(instruction, comparison);
+        if (payload.type !== "replaceTable") {
+          return panic("A table replacement lost its canonical payload");
+        }
+        const indexes =
+          payload.owner.type === "canonical-replacement"
+            ? {
+                base: payload.owner.replacement.baseTableIndex,
+                target: payload.owner.replacement.revisedTableIndex,
+              }
+            : {
+                base: payload.owner.deleted.tableIndex,
+                target: payload.owner.inserted.tableIndex,
+              };
+        return indexes?.base === baseTerminalTableIndex &&
+          indexes.target === terminalTargetTableIndex
+          ? [{ index, instruction }]
+          : [];
+      });
+      const replacement = replacements.length === 1 ? replacements.at(0) : undefined;
+      if (replacement) {
+        plan[replacement.index] = {
+          type: "tableStructure",
+          operation: resolvedDocxTerminalTableReplacementOperand(
+            comparison,
+            replacement.instruction,
+            resolvedDocxSourceOperandForBlockId(baseResolvedSnapshot, carrier.id),
+          ),
+        };
+        dropped.add(carrierDeletionIndex);
+        continue;
+      }
+      const terminalInsertions = tableInsertIndexes.flatMap((index) => {
+        const candidate = plan[index];
+        if (candidate?.type !== "tableStructure" || candidate.operation.type !== "insertTable") {
+          return [];
+        }
+        const instruction = candidate.operation;
+        const payload = resolvedDocxTableStructureOperandPayload(instruction, comparison);
+        return payload.type === "insertTable" &&
+          payload.change.tableIndex === terminalTargetTableIndex
+          ? [{ index, payload }]
+          : [];
+      });
+      const terminalDeletions = tableDeleteIndexes.flatMap((index) => {
+        const candidate = plan[index];
+        if (candidate?.type !== "tableStructure" || candidate.operation.type !== "deleteTable") {
+          return [];
+        }
+        const instruction = candidate.operation;
+        const payload = resolvedDocxTableStructureOperandPayload(instruction, comparison);
+        return payload.type === "deleteTable" &&
+          payload.change.tableIndex === baseTerminalTableIndex
+          ? [{ index, payload }]
+          : [];
+      });
+      const inserted = terminalInsertions.length === 1 ? terminalInsertions.at(0) : undefined;
+      const deleted = terminalDeletions.length === 1 ? terminalDeletions.at(0) : undefined;
+      if (inserted && deleted) {
+        const carrierSource = resolvedDocxSourceOperandForBlockId(baseResolvedSnapshot, carrier.id);
+        const composed = resolvedDocxTableStructureOperand(comparison, {
+          type: "replaceTable",
+          source: deleted.payload.source,
+          owner: {
+            type: "structural-pair",
+            deleted: deleted.payload.change,
+            inserted: inserted.payload.change,
+          },
+        });
+        plan[inserted.index] = {
+          type: "tableStructure",
+          operation: resolvedDocxTerminalTableReplacementOperand(
+            comparison,
+            composed,
+            carrierSource,
+          ),
+        };
+        dropped.add(deleted.index);
+        dropped.add(carrierDeletionIndex);
+        continue;
+      }
+    }
     const lastInsertIndex = run.insertIndexes.at(-1);
     if (lastInsertIndex === undefined) {
       if (run.chainStart) {
@@ -674,8 +685,6 @@ const withTrailingDeletionRules = ({
           type: "deleteTrailingParagraphs",
           operation: resolvedDocxTrailingDeletionOperand(comparison, {
             events: [firstDeleted, ...deletedEvents.slice(1)],
-            chainStart: resolvedDocxSourceOperand(baseResolvedSnapshot, chainStart),
-            ...(targetCarrierOperand && { targetCarrier: targetCarrierOperand }),
           }),
         });
         for (const blockId of run.blockIds) {
@@ -730,26 +739,6 @@ const withTrailingDeletionRules = ({
           }),
         };
       }
-      for (const index of run.insertIndexes.slice(0, -1)) {
-        const insertPlan = plan[index];
-        if (insertPlan?.type !== "insertParagraph") {
-          continue;
-        }
-        plan[index] = {
-          type: "insertParagraph",
-          event: insertPlan.event,
-          boundary: {
-            type: "beforeParagraph",
-            paragraph: resolvedDocxSourceOperand(
-              baseResolvedSnapshot,
-              baseContentById.get(carrier.id) ??
-                panic("A terminal carrier lost its canonical base block", {
-                  blockId: carrier.id,
-                }),
-            ),
-          },
-        };
-      }
     }
   }
   return {
@@ -802,32 +791,6 @@ const loweringError = ({
     ...(tableIndex !== undefined && { tableIndex }),
   });
 
-const docxParagraphInsertionBoundary = (
-  boundary: FolioContentParagraphInsertionBoundary,
-  baseSnapshot: ResolvedDocxStorySnapshot,
-  story: FolioDocumentStoryHandle,
-  targetBlockId: string,
-): DocxComparisonParagraphInsertionBoundary | CompareDocxLoweringError => {
-  switch (boundary.type) {
-    case "beforeParagraph":
-    case "afterParagraph":
-      return Object.freeze({
-        type: boundary.type,
-        paragraph: resolvedDocxSourceOperand(baseSnapshot, boundary.paragraph),
-      });
-    case "unanchoredContainer":
-      return loweringError({
-        story,
-        reason: "missing-insertion-anchor",
-        message: "The target adds content to a container with no surviving paragraph boundary.",
-        targetBlockId,
-      });
-    default: {
-      const unreachable: never = boundary;
-      return panic("Unhandled neutral paragraph insertion boundary", { boundary: unreachable });
-    }
-  }
-};
 const textChanged = (relation: FolioContentPairRelation): boolean =>
   relation.segments.some(({ type }) => type !== "equal");
 
@@ -915,53 +878,9 @@ export const planStoryCompare = ({
   const anchorIds = nextBaseBlockIdByEvent(events);
   const unsupported: CompareUnsupportedPart[] = [];
   const operations: DocxComparisonOperationInput[] = [];
-  const pushTableCompatibility = (
-    eventIndex: number,
-    changes: readonly CompareChange[],
-    instructions: readonly [DocxComparisonInstructionInput, ...DocxComparisonInstructionInput[]],
-  ): void => {
-    const tableInstructions = instructions.filter(
-      (
-        instruction,
-      ): instruction is Extract<
-        DocxComparisonInstructionInput,
-        {
-          readonly type:
-            | "insertTable"
-            | "deleteTable"
-            | "replaceTable"
-            | "insertTableRow"
-            | "deleteTableRow"
-            | "insertTableColumn"
-            | "deleteTableColumn"
-            | "matchTableGeometry";
-        }
-      > =>
-        instruction.type === "insertTable" ||
-        instruction.type === "deleteTable" ||
-        instruction.type === "replaceTable" ||
-        instruction.type === "insertTableRow" ||
-        instruction.type === "deleteTableRow" ||
-        instruction.type === "insertTableColumn" ||
-        instruction.type === "deleteTableColumn" ||
-        instruction.type === "matchTableGeometry",
-    );
-    const firstInstruction = tableInstructions.at(0);
-    if (!firstInstruction || tableInstructions.length !== instructions.length) {
-      return panic("A table compatibility operation contains a non-table instruction");
-    }
-    operations.push({
-      type: "tableCompatibility",
-      reports: changes.map((change, withinEvent) => ({
-        sequence: eventIndex * 16 + withinEvent,
-        change,
-      })),
-      instructions: [firstInstruction, ...tableInstructions.slice(1)],
-    });
-  };
 
   const recordUnavailableRuns = (
-    eventType: Extract<CompareUnsupportedPart, { story: FolioDocumentStoryHandle }>["eventType"],
+    eventType: CompareUnsupportedEventType,
     blocks: readonly {
       readonly block: FolioContentBlock;
       readonly snapshot: ResolvedDocxStorySnapshot;
@@ -986,7 +905,7 @@ export const planStoryCompare = ({
   };
 
   const recordUnsupportedRelation = (
-    eventType: Extract<CompareUnsupportedPart, { story: FolioDocumentStoryHandle }>["eventType"],
+    eventType: CompareUnsupportedEventType,
     relation: FolioContentWholePairRelation | FolioContentRangePairRelation,
   ): boolean => {
     const fields = unsupportedRelationFields(relation);
@@ -1019,22 +938,20 @@ export const planStoryCompare = ({
 
   const insertOperation = (
     event: Extract<FolioContentComparisonEvent, { readonly type: "inserted" }>,
-    block: FolioContentBlock,
-    boundary: FolioContentParagraphInsertionBoundary,
   ):
     | Extract<DocxComparisonOperationInput, { readonly type: "insertParagraph" }>
     | CompareDocxLoweringError => {
-    const lowered = docxParagraphInsertionBoundary(
-      boundary,
-      baseSnapshot,
-      story,
-      block.identity.id,
-    );
-    if (lowered instanceof CompareDocxLoweringError) return lowered;
+    if (event.boundary.type === "unanchoredContainer") {
+      return loweringError({
+        story,
+        reason: "missing-insertion-anchor",
+        message: "The target adds content to a container with no surviving paragraph boundary.",
+        targetBlockId: event.block.identity.id,
+      });
+    }
     return {
       type: "insertParagraph",
       event: resolvedDocxInsertedEventOperand(comparison, event),
-      boundary: lowered,
     };
   };
 
@@ -1057,9 +974,8 @@ export const planStoryCompare = ({
             { block: relation.revised.block, snapshot: targetSnapshot, side: "target" },
           ]);
         const hasLowerableParagraphChanges =
-          relation.formatting?.paragraph.authored.some(
-            docxParagraphPropertyChangeIsLowerable,
-          ) ?? false;
+          relation.formatting?.paragraph.authored.some(docxParagraphPropertyChangeIsLowerable) ??
+          false;
         if (
           !unavailableRuns &&
           (changesText || hasAuthoredRunChanges || hasLowerableParagraphChanges)
@@ -1100,7 +1016,7 @@ export const planStoryCompare = ({
           { block: event.block, snapshot: targetSnapshot, side: "target" },
         ]);
         if (!unavailableRuns) {
-          const lowered = insertOperation(event, event.block, event.boundary);
+          const lowered = insertOperation(event);
           if (lowered instanceof CompareDocxLoweringError) return Result.err(lowered);
           operations.push(lowered);
         }
@@ -1115,13 +1031,18 @@ export const planStoryCompare = ({
           { block: relation.revised.block, snapshot: targetSnapshot, side: "target" },
         ]);
         if (unavailableRuns) break;
-        const boundary = docxParagraphInsertionBoundary(
-          event.move.destinationBoundary,
-          baseSnapshot,
-          story,
-          relation.revised.block.identity.id,
-        );
-        if (boundary instanceof CompareDocxLoweringError) return Result.err(boundary);
+        if (event.move.destinationBoundary.type === "unanchoredContainer") {
+          return Result.err(
+            loweringError({
+              story,
+              reason: "missing-insertion-anchor",
+              message:
+                "The moved paragraph has no surviving destination boundary in its container.",
+              baseBlockId: relation.base.block.identity.id,
+              targetBlockId: relation.revised.block.identity.id,
+            }),
+          );
+        }
         const sourceRemovalBoundary = event.move.sourceRemovalBoundary;
         switch (sourceRemovalBoundary.type) {
           case "successorParagraph":
@@ -1129,7 +1050,6 @@ export const planStoryCompare = ({
             operations.push({
               type: "moveParagraph",
               event: resolvedDocxMoveEventOperand(comparison, event),
-              boundary,
             });
             break;
           case "unanchoredContainer":
@@ -1193,26 +1113,6 @@ export const planStoryCompare = ({
       case "tableReplacement": {
         const { replacement } = event;
         const baseBlock = replacement.baseBlocks[0];
-        const targetBlock = replacement.revisedBlocks[0];
-        const baseTable = baseBlock.table;
-        const targetTable = targetBlock.table;
-        if (!baseTable || !targetTable) {
-          return panic("A canonical table replacement has no table location");
-        }
-        const deleteReport: CompareChange = {
-          kind: "table-delete",
-          location: { story, cell: docxTableLocationFromContent(baseTable) },
-          tableIndex: replacement.baseTableIndex,
-          rows: tableCellTexts(replacement.baseBlocks),
-          baseBlockIds: replacement.baseBlocks.map(({ identity }) => identity.id),
-        };
-        const insertReport: CompareChange = {
-          kind: "table-insert",
-          location: { story, cell: docxTableLocationFromContent(targetTable) },
-          tableIndex: replacement.revisedTableIndex,
-          rows: tableCellTexts(replacement.revisedBlocks),
-          targetBlockIds: replacement.revisedBlocks.map(({ identity }) => identity.id),
-        };
         const unavailableRuns = recordUnavailableRuns("tableReplacement", [
           ...replacement.baseBlocks.map((block) => ({
             block,
@@ -1226,98 +1126,52 @@ export const planStoryCompare = ({
           })),
         ]);
         if (unavailableRuns) break;
-        pushTableCompatibility(
-          eventIndex,
-          [deleteReport, insertReport],
-          [
-            {
-              type: "replaceTable",
-              source: resolvedDocxSourceOperand(baseSnapshot, baseBlock),
-              target: resolvedDocxTargetTableOperand(comparison, replacement),
-            },
-          ],
-        );
+        operations.push({
+          type: "tableStructure",
+          operation: resolvedDocxTableStructureOperand(comparison, {
+            type: "replaceTable",
+            source: resolvedDocxSourceOperand(baseSnapshot, baseBlock),
+            owner: { type: "canonical-replacement", replacement },
+          }),
+        });
         break;
       }
       case "structural": {
         if (event.memberIndex !== 0) break;
         const structural = event.change;
         const firstBlock = structural.blocks[0];
-        const location = firstBlock.table;
-        if (!location) return panic("A canonical table change has no table location");
-        const cell = docxTableLocationFromContent(location);
         switch (structural.type) {
           case "table-row-delete":
-            pushTableCompatibility(
-              eventIndex,
-              [
-                {
-                  kind: "table-row-delete",
-                  location: { story, cell },
-                  tableIndex: structural.tableIndex,
-                  rowIndex: structural.rowIndex,
-                  cells: rowCellTexts(structural.blocks),
-                  baseBlockIds: structural.blocks.map(({ identity }) => identity.id),
-                },
-              ],
-              [
-                {
-                  type: "deleteTableRow",
-                  source: resolvedDocxSourceOperand(baseSnapshot, firstBlock),
-                },
-              ],
-            );
+            operations.push({
+              type: "tableStructure",
+              operation: resolvedDocxTableStructureOperand(comparison, {
+                type: "deleteTableRow",
+                source: resolvedDocxSourceOperand(baseSnapshot, firstBlock),
+                change: structural,
+              }),
+            });
             break;
           case "table-column-delete":
-            pushTableCompatibility(
-              eventIndex,
-              [
-                {
-                  kind: "table-column-delete",
-                  location: { story, cell },
-                  tableIndex: structural.tableIndex,
-                  columnIndex: structural.columnIndex,
-                  cells: columnCellTexts(structural.blocks),
-                  baseBlockIds: structural.blocks.map(({ identity }) => identity.id),
-                },
-              ],
-              [
-                {
-                  type: "deleteTableColumn",
-                  source: resolvedDocxSourceOperand(baseSnapshot, firstBlock),
-                },
-              ],
-            );
+            operations.push({
+              type: "tableStructure",
+              operation: resolvedDocxTableStructureOperand(comparison, {
+                type: "deleteTableColumn",
+                source: resolvedDocxSourceOperand(baseSnapshot, firstBlock),
+                change: structural,
+              }),
+            });
             break;
           case "table-delete":
-            pushTableCompatibility(
-              eventIndex,
-              [
-                {
-                  kind: "table-delete",
-                  location: { story, cell },
-                  tableIndex: structural.tableIndex,
-                  rows: tableCellTexts(structural.blocks),
-                  baseBlockIds: structural.blocks.map(({ identity }) => identity.id),
-                },
-              ],
-              [
-                {
-                  type: "deleteTable",
-                  source: resolvedDocxSourceOperand(baseSnapshot, firstBlock),
-                },
-              ],
-            );
+            operations.push({
+              type: "tableStructure",
+              operation: resolvedDocxTableStructureOperand(comparison, {
+                type: "deleteTable",
+                source: resolvedDocxSourceOperand(baseSnapshot, firstBlock),
+                change: structural,
+              }),
+            });
             break;
           case "table-insert": {
-            const rows = tableCellTexts(structural.blocks);
-            const report: CompareChange = {
-              kind: "table-insert",
-              location: { story, cell },
-              tableIndex: structural.tableIndex,
-              rows,
-              targetBlockIds: structural.blocks.map(({ identity }) => identity.id),
-            };
             if (
               recordUnavailableRuns(
                 "structural",
@@ -1342,20 +1196,17 @@ export const planStoryCompare = ({
                 }),
               );
             }
-            pushTableCompatibility(
-              eventIndex,
-              [report],
-              [
-                {
-                  type: "insertTable",
-                  anchor: {
-                    source: resolvedDocxSourceOperandForBlockId(baseSnapshot, anchorBlockId),
-                    position: before === null ? "after" : "before",
-                  },
-                  target: resolvedDocxTargetTableOperand(comparison, structural),
+            operations.push({
+              type: "tableStructure",
+              operation: resolvedDocxTableStructureOperand(comparison, {
+                type: "insertTable",
+                anchor: {
+                  source: resolvedDocxSourceOperandForBlockId(baseSnapshot, anchorBlockId),
+                  position: before === null ? "after" : "before",
                 },
-              ],
-            );
+                change: structural,
+              }),
+            });
             break;
           }
           case "table-row-insert": {
@@ -1374,15 +1225,6 @@ export const planStoryCompare = ({
                 }),
               );
             }
-            const cells = rowCellTexts(structural.blocks);
-            const report: CompareChange = {
-              kind: "table-row-insert",
-              location: { story, cell },
-              tableIndex: structural.tableIndex,
-              rowIndex: structural.rowIndex,
-              cells,
-              targetBlockIds: structural.blocks.map(({ identity }) => identity.id),
-            };
             if (
               recordUnavailableRuns(
                 "structural",
@@ -1395,20 +1237,17 @@ export const planStoryCompare = ({
             ) {
               break;
             }
-            pushTableCompatibility(
-              eventIndex,
-              [report],
-              [
-                {
-                  type: "insertTableRow",
-                  anchor: {
-                    source: resolvedDocxSourceOperand(baseSnapshot, anchor.block),
-                    position: anchor.position,
-                  },
-                  target: resolvedDocxTargetRowOperand(comparison, structural),
+            operations.push({
+              type: "tableStructure",
+              operation: resolvedDocxTableStructureOperand(comparison, {
+                type: "insertTableRow",
+                anchor: {
+                  source: resolvedDocxSourceOperand(baseSnapshot, anchor.block),
+                  position: anchor.position,
                 },
-              ],
-            );
+                change: structural,
+              }),
+            });
             break;
           }
           case "table-column-insert": {
@@ -1418,14 +1257,6 @@ export const planStoryCompare = ({
               eventType: "structural",
               tableIndex: structural.tableIndex,
             });
-            const report: CompareChange = {
-              kind: "table-column-insert",
-              location: { story, cell },
-              tableIndex: structural.tableIndex,
-              columnIndex: structural.columnIndex,
-              cells: columnCellTexts(structural.blocks),
-              targetBlockIds: structural.blocks.map(({ identity }) => identity.id),
-            };
             if (
               recordUnavailableRuns(
                 "structural",
@@ -1438,23 +1269,20 @@ export const planStoryCompare = ({
             ) {
               break;
             }
-            pushTableCompatibility(
-              eventIndex,
-              [report],
-              [
-                {
-                  type: "insertTableColumn",
-                  anchor: {
-                    source: resolvedDocxSourceOperandForBlockId(
-                      baseSnapshot,
-                      structural.anchor.blockId,
-                    ),
-                    position: structural.anchor.position,
-                  },
-                  target: resolvedDocxTargetColumnOperand(comparison, structural),
+            operations.push({
+              type: "tableStructure",
+              operation: resolvedDocxTableStructureOperand(comparison, {
+                type: "insertTableColumn",
+                anchor: {
+                  source: resolvedDocxSourceOperandForBlockId(
+                    baseSnapshot,
+                    structural.anchor.blockId,
+                  ),
+                  position: structural.anchor.position,
                 },
-              ],
-            );
+                change: structural,
+              }),
+            });
             break;
           }
           default: {
@@ -1474,19 +1302,20 @@ export const planStoryCompare = ({
     }
   }
 
-  if (resolvedDocxTableGeometryPairings(comparison).length > 0) {
-    pushTableCompatibility(events.length, [], [{ type: "matchTableGeometry" }]);
-  }
+  const tableFormat = resolvedDocxTableFormatOperand(comparison);
+  if (tableFormat) operations.push({ type: "tableFormat", operation: tableFormat });
 
   const baseContentBlocks = events.flatMap(baseBlocksOfEvent);
-  const targetContentBlocks = events.flatMap(revisedBlocksOfEvent);
   const baseContentById = new Map(
     baseContentBlocks.map((block) => [block.identity.id, block] as const),
   );
   const deletedBlockIds = new Set(
     operations.flatMap((operation) =>
       operation.type === "deleteParagraph"
-        ? [resolvedDocxDeletedEventOperandPayload(operation.event, comparison).event.block.identity.id]
+        ? [
+            resolvedDocxDeletedEventOperandPayload(operation.event, comparison).event.block.identity
+              .id,
+          ]
         : [],
     ),
   );
@@ -1516,7 +1345,6 @@ export const planStoryCompare = ({
     baseSnapshot: baseOperationSnapshot,
     targetSnapshot: targetOperationSnapshot,
     baseContentBlocks,
-    targetContentBlocks,
     unavailableTerminalCarrierIds,
     containerMembership,
     operations,

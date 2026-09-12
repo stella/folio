@@ -59,6 +59,13 @@ export type CompareFormatRange = {
   formatting: FolioContentInlineFormattingChange;
 };
 
+/** One canonical table-cell coordinate used to locate a property change. */
+export type CompareTableFormatCoordinate = {
+  tableIndex: number;
+  rowIndex: number;
+  cellIndex: number;
+};
+
 /**
  * One difference between the two documents, in target-document order with
  * base-only entries slotted where they sat. Every variant is plain JSON, so a
@@ -218,6 +225,14 @@ export type CompareChange =
       columnIndex: number;
       cells: readonly string[];
       baseBlockIds: readonly string[];
+    }
+  /** A tracked table, row, or cell property change. */
+  | {
+      kind: "table-format";
+      location: CompareChangeLocation;
+      scope: "table" | "row" | "cell";
+      base: CompareTableFormatCoordinate;
+      target: CompareTableFormatCoordinate;
     };
 
 /** Why a part of the package is absent from `changes`. */
@@ -276,7 +291,7 @@ export const COMPARE_DOCX_PREFLIGHT_REASONS = Object.freeze([
   "unrepresentable-text-range",
   "unrepresentable-paragraph-boundary",
   "unrepresentable-table-geometry",
-  "unresolved-table-instruction",
+  "unrepresentable-table-structure",
   /** A sibling required by the same semantic change failed preflight. */
   "semantic-group-incomplete",
 ] as const);

@@ -1014,9 +1014,11 @@ const projectLiveParagraph = (
     },
     kind: paragraphKind(paragraph, presentation.effective, headingLevel),
     text: operationBlock.text,
-    blockProperties: blockProperties.toSorted((left, right) =>
-      left.key < right.key ? -1 : left.key > right.key ? 1 : 0,
-    ),
+    blockProperties: blockProperties.toSorted((left, right) => {
+      if (left.key < right.key) return -1;
+      if (left.key > right.key) return 1;
+      return 0;
+    }),
     paragraphFormatting: {
       authored: docxParagraphFormattingProperties(authored),
       effective: docxParagraphFormattingProperties(presentation.effective),
@@ -1102,11 +1104,9 @@ const visitBlocks = (
       visitBlocks(
         textBody.content,
         {
-          ...context,
           containerPath: [...context.containerPath, entry],
           containerTopology: topology,
-          tableParagraphPresentation: undefined,
-          tableRunFormatting: undefined,
+          ...(context.table !== undefined && { table: context.table }),
         },
         builder,
       );
@@ -1153,8 +1153,8 @@ const visitTable = (table: Table, context: WalkContext, builder: ProjectionBuild
       visitBlocks(
         cell.content,
         {
-          ...context,
           containerPath,
+          containerTopology: context.containerTopology,
           table: {
             outerTableIndex,
             tableIndex,
@@ -1165,8 +1165,12 @@ const visitTable = (table: Table, context: WalkContext, builder: ProjectionBuild
             rowSpan: rowSpan?.rowSpan ?? 1,
             paragraphIndex: 0,
           },
-          tableParagraphPresentation: tablePresentation?.paragraph,
-          tableRunFormatting: tablePresentation?.runFormatting,
+          ...(tablePresentation?.paragraph !== undefined && {
+            tableParagraphPresentation: tablePresentation.paragraph,
+          }),
+          ...(tablePresentation?.runFormatting !== undefined && {
+            tableRunFormatting: tablePresentation.runFormatting,
+          }),
         },
         builder,
       );
@@ -1322,6 +1326,20 @@ export const resolvedDocxSourceDocument = (snapshot: ResolvedDocxStorySnapshot):
 export const resolvedDocxTableNodes = (
   snapshot: ResolvedDocxStorySnapshot,
 ): ReadonlyMap<number, PMNode> => new Map(payloadOf(snapshot).tableNodes);
+
+/** @internal Resolve one exact table without exposing the capsule's ownership map. */
+export const resolvedDocxTableNode = (
+  snapshot: ResolvedDocxStorySnapshot,
+  tableIndex: number,
+): PMNode =>
+  payloadOf(snapshot).tableNodes.get(tableIndex) ??
+  panic("A DOCX story capsule has no table at its canonical index", { tableIndex });
+
+/** @internal Optional table lookup for typed transport preflight. */
+export const findResolvedDocxTableNode = (
+  snapshot: ResolvedDocxStorySnapshot,
+  tableIndex: number,
+): PMNode | null => payloadOf(snapshot).tableNodes.get(tableIndex) ?? null;
 
 /** @internal Numbering references captured during the exact source walk. */
 export const resolvedDocxNumberingReferenceKeys = (

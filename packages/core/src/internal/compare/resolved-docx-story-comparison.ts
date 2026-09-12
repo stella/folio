@@ -1,8 +1,11 @@
 import { panic, Result } from "better-result";
+import type { Node as PMNode } from "prosemirror-model";
 
 import type { FolioDocumentStoryHandle } from "../../ai-edits/headless";
+import { storyTablesOf } from "../../ai-edits/snapshot";
 import {
   type FolioContentComparison,
+  type FolioContentBlockGroup,
   type FolioContentComparisonEvent,
   type FolioContentComparisonError,
   type FolioContentPairRelation,
@@ -14,13 +17,28 @@ import {
   type FolioContentTableReplacement,
   type FolioContentWholePairRelation,
 } from "../../compare/content";
-import type { FolioContentBlock } from "../../compare/content-types";
-import type { TableGeometryPairing } from "./table-geometry-program";
+import type {
+  FolioContentBaseContainerAlignment,
+  FolioContentBlock,
+  FolioContentRevisedContainerAlignment,
+} from "../../compare/content-types";
+import { canonicalJson } from "../../utils/canonicalJson";
+import {
+  preflightTableGeometry,
+  tableGeometryProgramSemanticChanges,
+  type TableGeometryPairing,
+  type TableGeometryProgram,
+  type TableGeometrySemanticChange,
+  type TableGeometryUnsupportedIssue,
+} from "./table-geometry-program";
 import {
   resolvedDocxContentSnapshot,
+  resolvedDocxContentBlocks,
+  resolvedDocxOperationSnapshot,
   resolvedDocxSourceOperand,
   resolvedDocxSourceOperandBlock,
   resolvedDocxStoryHandle,
+  resolvedDocxTableNodes,
   type ResolvedDocxSourceOperand,
   type ResolvedDocxStorySnapshot,
 } from "./resolved-docx-story-snapshot";
@@ -44,14 +62,11 @@ const RESOLVED_DOCX_SEPARATOR_OPERAND_BRAND: unique symbol = Symbol(
 const RESOLVED_DOCX_WHOLE_BLOCK_REPLACEMENT_OPERAND_BRAND: unique symbol = Symbol(
   "resolved-docx-whole-block-replacement-operand",
 );
-const RESOLVED_DOCX_TARGET_TABLE_OPERAND_BRAND: unique symbol = Symbol(
-  "resolved-docx-target-table-operand",
+const RESOLVED_DOCX_TABLE_STRUCTURE_OPERAND_BRAND: unique symbol = Symbol(
+  "resolved-docx-table-structure-operand",
 );
-const RESOLVED_DOCX_TARGET_ROW_OPERAND_BRAND: unique symbol = Symbol(
-  "resolved-docx-target-row-operand",
-);
-const RESOLVED_DOCX_TARGET_COLUMN_OPERAND_BRAND: unique symbol = Symbol(
-  "resolved-docx-target-column-operand",
+const RESOLVED_DOCX_TABLE_FORMAT_OPERAND_BRAND: unique symbol = Symbol(
+  "resolved-docx-table-format-operand",
 );
 const RESOLVED_DOCX_PAIRED_EVENT_OPERAND_BRAND: unique symbol = Symbol(
   "resolved-docx-paired-event-operand",
@@ -115,19 +130,55 @@ export type ResolvedDocxWholeBlockReplacementOperand = {
   readonly [RESOLVED_DOCX_WHOLE_BLOCK_REPLACEMENT_OPERAND_BRAND]: true;
 };
 
-/** One exact inserted or replacement table from the target story. */
-export type ResolvedDocxTargetTableOperand = {
-  readonly [RESOLVED_DOCX_TARGET_TABLE_OPERAND_BRAND]: true;
+/**
+ * One exact structural obligation issued by a completed comparison. Its
+ * semantic owner stays private, so compilation cannot split coordinates from
+ * the relation that proved them.
+ */
+export type ResolvedDocxTableStructureOperand =
+  | {
+      readonly type: "insertTable";
+      readonly [RESOLVED_DOCX_TABLE_STRUCTURE_OPERAND_BRAND]: true;
+    }
+  | {
+      readonly type: "deleteTable";
+      readonly [RESOLVED_DOCX_TABLE_STRUCTURE_OPERAND_BRAND]: true;
+    }
+  | {
+      readonly type: "replaceTable";
+      readonly [RESOLVED_DOCX_TABLE_STRUCTURE_OPERAND_BRAND]: true;
+    }
+  | {
+      readonly type: "insertTableRow";
+      readonly [RESOLVED_DOCX_TABLE_STRUCTURE_OPERAND_BRAND]: true;
+    }
+  | {
+      readonly type: "deleteTableRow";
+      readonly [RESOLVED_DOCX_TABLE_STRUCTURE_OPERAND_BRAND]: true;
+    }
+  | {
+      readonly type: "insertTableColumn";
+      readonly [RESOLVED_DOCX_TABLE_STRUCTURE_OPERAND_BRAND]: true;
+    }
+  | {
+      readonly type: "deleteTableColumn";
+      readonly [RESOLVED_DOCX_TABLE_STRUCTURE_OPERAND_BRAND]: true;
+    };
+
+/** One exact set of changed table properties issued by a completed comparison. */
+export type ResolvedDocxTableFormatOperand = {
+  readonly type: "matchTableFormatting";
+  readonly [RESOLVED_DOCX_TABLE_FORMAT_OPERAND_BRAND]: true;
 };
 
-/** One exact inserted row from the target story. */
-export type ResolvedDocxTargetRowOperand = {
-  readonly [RESOLVED_DOCX_TARGET_ROW_OPERAND_BRAND]: true;
+type StructuralInsertionBoundary = {
+  readonly source: ResolvedDocxSourceOperand;
+  readonly position: "after" | "before";
 };
 
-/** One exact inserted grid column from the target story. */
-export type ResolvedDocxTargetColumnOperand = {
-  readonly [RESOLVED_DOCX_TARGET_COLUMN_OPERAND_BRAND]: true;
+type ResolvedDocxTerminalTableCarrier = {
+  readonly source: ResolvedDocxSourceOperand;
+  readonly event: Extract<FolioContentComparisonEvent, { readonly type: "deleted" }>;
 };
 
 /** One exact modified or formatting-only event from the canonical stream. */
@@ -198,6 +249,85 @@ export type ResolvedDocxTerminalReplacementOperandPayload = {
   readonly inserted: ResolvedDocxEventOperandPayload<InsertedEvent>;
 };
 
+export type ResolvedDocxTableReplacementOwner =
+  | {
+      readonly type: "canonical-replacement";
+      readonly replacement: FolioContentTableReplacement;
+    }
+  | {
+      readonly type: "structural-pair";
+      readonly deleted: Extract<FolioContentStructuralChange, { readonly type: "table-delete" }>;
+      readonly inserted: Extract<FolioContentStructuralChange, { readonly type: "table-insert" }>;
+    };
+
+export type ResolvedDocxTableStructureOperandPayload =
+  | {
+      readonly type: "insertTable";
+      readonly anchor: StructuralInsertionBoundary;
+      readonly change: Extract<FolioContentStructuralChange, { readonly type: "table-insert" }>;
+      readonly terminalCarrier?: ResolvedDocxTerminalTableCarrier;
+    }
+  | {
+      readonly type: "deleteTable";
+      readonly source: ResolvedDocxSourceOperand;
+      readonly change: Extract<FolioContentStructuralChange, { readonly type: "table-delete" }>;
+    }
+  | {
+      readonly type: "replaceTable";
+      readonly source: ResolvedDocxSourceOperand;
+      readonly owner: ResolvedDocxTableReplacementOwner;
+      readonly terminalCarrier?: ResolvedDocxTerminalTableCarrier;
+    }
+  | {
+      readonly type: "insertTableRow";
+      readonly anchor: StructuralInsertionBoundary;
+      readonly change: Extract<FolioContentStructuralChange, { readonly type: "table-row-insert" }>;
+    }
+  | {
+      readonly type: "deleteTableRow";
+      readonly source: ResolvedDocxSourceOperand;
+      readonly change: Extract<FolioContentStructuralChange, { readonly type: "table-row-delete" }>;
+    }
+  | {
+      readonly type: "insertTableColumn";
+      readonly anchor: StructuralInsertionBoundary;
+      readonly change: Extract<
+        FolioContentStructuralChange,
+        { readonly type: "table-column-insert" }
+      >;
+    }
+  | {
+      readonly type: "deleteTableColumn";
+      readonly source: ResolvedDocxSourceOperand;
+      readonly change: Extract<
+        FolioContentStructuralChange,
+        { readonly type: "table-column-delete" }
+      >;
+    };
+
+export type ResolvedDocxTableFormatOperandPayload =
+  | {
+      readonly status: "ready";
+      readonly program: TableGeometryProgram;
+      readonly changes: readonly ResolvedDocxTableFormatChange[];
+    }
+  | {
+      readonly status: "unsupported";
+      readonly issue:
+        | { readonly reason: "unprojected-table-structure"; readonly side: "source" | "target" }
+        | {
+            readonly reason: "unrepresentable-table-geometry";
+            readonly issue: TableGeometryUnsupportedIssue;
+          };
+    };
+
+export type ResolvedDocxTableFormatChange = TableGeometrySemanticChange & {
+  /** Canonical event whose paired cell owns this table property scope. */
+  readonly sequence: number;
+};
+
+export type ResolvedDocxTableStructureOperandInput = ResolvedDocxTableStructureOperandPayload;
+
 export type ResolvedDocxStoryPairPayload = {
   readonly baseStory: FolioDocumentStoryHandle;
   readonly targetStory: FolioDocumentStoryHandle;
@@ -226,10 +356,27 @@ type ResolvedDocxStoryComparisonIndex = {
   readonly separators: ReadonlySet<FolioContentSeparatorRelation>;
   readonly structuralChanges: ReadonlySet<FolioContentStructuralChange>;
   readonly tableReplacements: ReadonlySet<FolioContentTableReplacement>;
-  readonly baseContainerByBlock: ReadonlyMap<FolioContentBlock, object>;
-  readonly targetContainerByBlock: ReadonlyMap<FolioContentBlock, object>;
+  readonly structuralEventIndexes: ReadonlyMap<
+    FolioContentStructuralChange,
+    readonly [number, ...number[]]
+  >;
+  readonly deletedEventByBlock: ReadonlyMap<
+    FolioContentBlock,
+    Extract<FolioContentComparisonEvent, { readonly type: "deleted" }>
+  >;
+  readonly eventSequenceByDeletedEvent: ReadonlyMap<
+    Extract<FolioContentComparisonEvent, { readonly type: "deleted" }>,
+    number
+  >;
+  readonly eventSequenceByTableReplacement: ReadonlyMap<FolioContentTableReplacement, number>;
+  readonly baseContainerByBlock: ReadonlyMap<FolioContentBlock, FolioContentBaseContainerAlignment>;
+  readonly targetContainerByBlock: ReadonlyMap<
+    FolioContentBlock,
+    FolioContentRevisedContainerAlignment
+  >;
   readonly baseTableIndexesByTargetTableIndex: ReadonlyMap<number, ReadonlySet<number>>;
   readonly tableGeometryPairings: readonly TableGeometryPairing[];
+  readonly tableGeometrySequenceByPairing: ReadonlyMap<string, number>;
 };
 
 type ComparisonOwnedPayload<Payload> = {
@@ -241,10 +388,6 @@ type WholeBlockReplacementPayload = {
   readonly baseBlock: FolioContentBlock;
   readonly targetBlock: FolioContentBlock;
 };
-
-type TargetTableOwner =
-  | Extract<FolioContentStructuralChange, { readonly type: "table-insert" }>
-  | FolioContentTableReplacement;
 
 const structuralChangeSnapshot = (
   change: FolioContentStructuralChange,
@@ -295,21 +438,13 @@ const payloadByWholeBlockReplacementOperand = new WeakMap<
   ResolvedDocxWholeBlockReplacementOperand,
   ComparisonOwnedPayload<WholeBlockReplacementPayload>
 >();
-const payloadByTargetTableOperand = new WeakMap<
-  ResolvedDocxTargetTableOperand,
-  ComparisonOwnedPayload<TargetTableOwner>
+const payloadByTableStructureOperand = new WeakMap<
+  ResolvedDocxTableStructureOperand,
+  ComparisonOwnedPayload<ResolvedDocxTableStructureOperandPayload>
 >();
-const payloadByTargetRowOperand = new WeakMap<
-  ResolvedDocxTargetRowOperand,
-  ComparisonOwnedPayload<
-    Extract<FolioContentStructuralChange, { readonly type: "table-row-insert" }>
-  >
->();
-const payloadByTargetColumnOperand = new WeakMap<
-  ResolvedDocxTargetColumnOperand,
-  ComparisonOwnedPayload<
-    Extract<FolioContentStructuralChange, { readonly type: "table-column-insert" }>
-  >
+const payloadByTableFormatOperand = new WeakMap<
+  ResolvedDocxTableFormatOperand,
+  ComparisonOwnedPayload<ResolvedDocxTableFormatOperandPayload>
 >();
 const payloadByPairedEventOperand = new WeakMap<
   ResolvedDocxPairedEventOperand,
@@ -362,6 +497,10 @@ const requireComparisonOwned = <Payload>(
   return payload.value;
 };
 
+const tableGeometryPairingKey = ({ base, target }: TableGeometryPairing): string =>
+  `${String(base.tableIndex)}:${String(base.rowIndex)}:${String(base.cellIndex)}>` +
+  `${String(target.tableIndex)}:${String(target.rowIndex)}:${String(target.cellIndex)}`;
+
 const createComparisonIndex = (
   payload: ResolvedDocxStoryComparisonPayload,
 ): ResolvedDocxStoryComparisonIndex => {
@@ -370,12 +509,26 @@ const createComparisonIndex = (
   const separators = new Set<FolioContentSeparatorRelation>();
   const structuralChanges = new Set<FolioContentStructuralChange>();
   const tableReplacements = new Set<FolioContentTableReplacement>();
-  const baseContainerByBlock = new Map<FolioContentBlock, object>();
-  const targetContainerByBlock = new Map<FolioContentBlock, object>();
+  const mutableStructuralEventIndexes = new Map<FolioContentStructuralChange, number[]>();
+  const deletedEventByBlock = new Map<
+    FolioContentBlock,
+    Extract<FolioContentComparisonEvent, { readonly type: "deleted" }>
+  >();
+  const eventSequenceByDeletedEvent = new Map<
+    Extract<FolioContentComparisonEvent, { readonly type: "deleted" }>,
+    number
+  >();
+  const eventSequenceByTableReplacement = new Map<FolioContentTableReplacement, number>();
+  const baseContainerByBlock = new Map<FolioContentBlock, FolioContentBaseContainerAlignment>();
+  const targetContainerByBlock = new Map<
+    FolioContentBlock,
+    FolioContentRevisedContainerAlignment
+  >();
   const baseTableIndexesByTargetTableIndex = new Map<number, Set<number>>();
   const tableGeometryPairings: TableGeometryPairing[] = [];
+  const tableGeometrySequenceByPairing = new Map<string, number>();
   const pairedBaseCells = new Set<string>();
-  const registerRelation = (relation: FolioContentPairRelation): void => {
+  const registerRelation = (relation: FolioContentPairRelation, sequence: number): void => {
     if (relations.has(relation)) return;
     resolvedDocxSourceOperand(payload.baseSnapshot, relation.base.block);
     resolvedDocxSourceOperand(payload.targetSnapshot, relation.revised.block);
@@ -392,38 +545,39 @@ const createComparisonIndex = (
     baseTableIndexesByTargetTableIndex.set(targetTable.tableIndex, baseTableIndexes);
     if (pairedBaseCells.has(baseTable.cellIdentity.id)) return;
     pairedBaseCells.add(baseTable.cellIdentity.id);
-    tableGeometryPairings.push(
-      Object.freeze({
-        base: Object.freeze({
-          tableIndex: baseTable.tableIndex,
-          rowIndex: baseTable.rowIndex,
-          cellIndex: baseTable.cellIndex,
-        }),
-        target: Object.freeze({
-          tableIndex: targetTable.tableIndex,
-          rowIndex: targetTable.rowIndex,
-          cellIndex: targetTable.cellIndex,
-        }),
+    const pairing = Object.freeze({
+      base: Object.freeze({
+        tableIndex: baseTable.tableIndex,
+        rowIndex: baseTable.rowIndex,
+        cellIndex: baseTable.cellIndex,
       }),
-    );
+      target: Object.freeze({
+        tableIndex: targetTable.tableIndex,
+        rowIndex: targetTable.rowIndex,
+        cellIndex: targetTable.cellIndex,
+      }),
+    });
+    tableGeometryPairings.push(pairing);
+    tableGeometrySequenceByPairing.set(tableGeometryPairingKey(pairing), sequence);
   };
   for (const [sequence, event] of payload.comparison.events.entries()) {
     eventSequence.set(event, sequence);
+    const eventIndex = sequence;
     switch (event.type) {
       case "unchanged":
       case "modified":
       case "formatting":
-        registerRelation(event.relation);
+        registerRelation(event.relation, sequence);
         break;
       case "movedFrom":
       case "movedTo":
-        registerRelation(event.move.relation);
+        registerRelation(event.move.relation, sequence);
         break;
       case "split":
       case "merge":
-        registerRelation(event.relations[0]);
-        registerRelation(event.relations[1]);
-        registerRelation(event.separator);
+        registerRelation(event.relations[0], sequence);
+        registerRelation(event.relations[1], sequence);
+        registerRelation(event.separator, sequence);
         break;
       case "inserted":
         resolvedDocxSourceOperand(payload.targetSnapshot, event.block);
@@ -432,9 +586,12 @@ const createComparisonIndex = (
       case "deleted":
         resolvedDocxSourceOperand(payload.baseSnapshot, event.block);
         baseContainerByBlock.set(event.block, event.containerAlignment);
+        deletedEventByBlock.set(event.block, event);
+        eventSequenceByDeletedEvent.set(event, eventIndex);
         break;
       case "tableReplacement":
         tableReplacements.add(event.replacement);
+        eventSequenceByTableReplacement.set(event.replacement, eventIndex);
         for (const block of event.replacement.baseBlocks) {
           resolvedDocxSourceOperand(payload.baseSnapshot, block);
         }
@@ -443,6 +600,9 @@ const createComparisonIndex = (
         }
         break;
       case "structural": {
+        const eventIndexes = mutableStructuralEventIndexes.get(event.change) ?? [];
+        eventIndexes.push(eventIndex);
+        mutableStructuralEventIndexes.set(event.change, eventIndexes);
         if (structuralChanges.has(event.change)) break;
         structuralChanges.add(event.change);
         const snapshot = structuralChangeSnapshot(event.change, payload);
@@ -459,16 +619,29 @@ const createComparisonIndex = (
       }
     }
   }
+  const structuralEventIndexes = new Map<
+    FolioContentStructuralChange,
+    readonly [number, ...number[]]
+  >();
+  for (const [change, indexes] of mutableStructuralEventIndexes) {
+    const first = indexes.at(0) ?? panic("A structural change has no canonical event occurrence");
+    structuralEventIndexes.set(change, Object.freeze([first, ...indexes.slice(1)]));
+  }
   return Object.freeze({
     eventSequence,
     relations,
     separators,
     structuralChanges,
     tableReplacements,
+    structuralEventIndexes,
+    deletedEventByBlock,
+    eventSequenceByDeletedEvent,
+    eventSequenceByTableReplacement,
     baseContainerByBlock,
     targetContainerByBlock,
     baseTableIndexesByTargetTableIndex,
     tableGeometryPairings: Object.freeze(tableGeometryPairings),
+    tableGeometrySequenceByPairing,
   });
 };
 
@@ -754,15 +927,11 @@ export const resolvedDocxTrailingDeletionOperand = (
   comparison: ResolvedDocxStoryComparison,
   {
     events,
-    chainStart,
-    targetCarrier,
   }: {
     readonly events: NonEmptyReadonlyArray<ResolvedDocxDeletedEventOperand>;
-    readonly chainStart: ResolvedDocxSourceOperand;
-    readonly targetCarrier?: ResolvedDocxTargetBlockOperand;
   },
 ): ResolvedDocxTrailingDeletionOperand => {
-  const { baseSnapshot } = resolvedDocxStoryComparisonPayload(comparison);
+  const { baseSnapshot, targetSnapshot } = resolvedDocxStoryComparisonPayload(comparison);
   const index = comparisonIndexOf(comparison);
   const firstEvent = resolvedDocxDeletedEventOperandPayload(events[0], comparison);
   const remainingEvents = events
@@ -773,20 +942,42 @@ export const resolvedDocxTrailingDeletionOperand = (
     ...remainingEvents,
   ];
   const container = index.baseContainerByBlock.get(firstEvent.event.block);
-  const chainStartBlock = resolvedDocxSourceOperandBlock(chainStart, baseSnapshot);
-  if (
-    !container ||
-    index.baseContainerByBlock.get(chainStartBlock) !== container ||
-    ownedEvents.some(({ event }) => index.baseContainerByBlock.get(event.block) !== container) ||
-    ownedEvents.some(({ event }) => event.block === chainStartBlock)
-  ) {
+  if (!container || container.base.end !== "paragraph") {
     return panic("A trailing DOCX deletion operand must remain in one canonical container");
   }
-  const targetBlock = targetCarrier
-    ? resolvedDocxTargetBlockOperandBlock(targetCarrier, comparison)
-    : undefined;
-  if (targetBlock && index.targetContainerByBlock.get(targetBlock) !== container) {
-    return panic("A trailing DOCX deletion target carrier belongs to another container");
+  const baseBlocks = resolvedDocxContentBlocks(baseSnapshot);
+  const basePositionByBlock = new Map(baseBlocks.map((block, position) => [block, position]));
+  const eventPositions = ownedEvents.map(({ event }) => basePositionByBlock.get(event.block));
+  const firstPosition = eventPositions.at(0);
+  if (
+    firstPosition === undefined ||
+    ownedEvents.some(({ event }) => index.baseContainerByBlock.get(event.block) !== container) ||
+    eventPositions.some((position, offset) => position !== firstPosition + offset) ||
+    ownedEvents.some(({ sequence }, offset) => {
+      if (offset === 0) return false;
+      const previous = ownedEvents.at(offset - 1);
+      return previous === undefined || sequence <= previous.sequence;
+    })
+  ) {
+    return panic("A trailing DOCX deletion operand must follow canonical base order");
+  }
+  const chainStartBlock = baseBlocks[firstPosition - 1];
+  const terminalBlock = baseBlocks.findLast(
+    (block) => index.baseContainerByBlock.get(block) === container,
+  );
+  if (
+    !chainStartBlock ||
+    index.baseContainerByBlock.get(chainStartBlock) !== container ||
+    terminalBlock !== ownedEvents.at(-1)?.event.block
+  ) {
+    return panic("A trailing DOCX deletion operand must be contiguous and terminal");
+  }
+  const chainStart = resolvedDocxSourceOperand(baseSnapshot, chainStartBlock);
+  const targetBlock = resolvedDocxContentBlocks(targetSnapshot).findLast(
+    (block) => index.targetContainerByBlock.get(block) === container,
+  );
+  if (targetBlock && container.type !== "paired") {
+    return panic("A trailing DOCX deletion target carrier belongs to an unpaired container");
   }
   const operand = Object.freeze({
     [RESOLVED_DOCX_TRAILING_DELETION_OPERAND_BRAND]: true as const,
@@ -796,7 +987,7 @@ export const resolvedDocxTrailingDeletionOperand = (
     value: Object.freeze({
       events: Object.freeze(ownedEvents),
       chainStart,
-      ...(targetBlock && { targetCarrier: targetBlock }),
+      ...(targetBlock !== undefined && { targetCarrier: targetBlock }),
     }),
   });
   return operand;
@@ -829,8 +1020,35 @@ export const resolvedDocxTerminalReplacementOperand = (
   const index = comparisonIndexOf(comparison);
   const baseContainer = index.baseContainerByBlock.get(deletedPayload.event.block);
   const targetContainer = index.targetContainerByBlock.get(insertedPayload.event.block);
-  if (!baseContainer || baseContainer !== targetContainer) {
+  const deletedBoundary = deletedPayload.event.removalBoundary;
+  const insertedBoundary = insertedPayload.event.boundary;
+  if (!baseContainer || baseContainer !== targetContainer || baseContainer.type !== "paired") {
     return panic("A terminal DOCX replacement must remain in one canonical container");
+  }
+  if (
+    baseContainer.base.end !== "paragraph" ||
+    baseContainer.revised.end !== "paragraph" ||
+    deletedBoundary.type !== "terminalPredecessor" ||
+    insertedBoundary.type === "unanchoredContainer" ||
+    deletedBoundary.containerAlignment !== baseContainer ||
+    insertedBoundary.containerAlignment !== baseContainer ||
+    deletedBoundary.targetCarrier !== insertedPayload.event.block ||
+    insertedBoundary.paragraph !== deletedBoundary.predecessor
+  ) {
+    return panic("A terminal DOCX replacement must own the exact terminal event pair");
+  }
+  const baseTerminal = resolvedDocxContentBlocks(
+    resolvedDocxStoryComparisonPayload(comparison).baseSnapshot,
+  ).findLast((block) => index.baseContainerByBlock.get(block) === baseContainer);
+  const targetTerminal = resolvedDocxContentBlocks(
+    resolvedDocxStoryComparisonPayload(comparison).targetSnapshot,
+  ).findLast((block) => index.targetContainerByBlock.get(block) === baseContainer);
+  if (
+    baseTerminal !== deletedPayload.event.block ||
+    targetTerminal !== insertedPayload.event.block ||
+    deletedPayload.sequence >= insertedPayload.sequence
+  ) {
+    return panic("A terminal DOCX replacement must own the exact terminal event pair");
   }
   const operand = Object.freeze({
     [RESOLVED_DOCX_TERMINAL_REPLACEMENT_OPERAND_BRAND]: true as const,
@@ -1004,82 +1222,480 @@ export const resolvedDocxReplacementRangeOperandPayload = (
   }
 };
 
-/** Issue one exact inserted or replacement table from the target story. */
-export const resolvedDocxTargetTableOperand = (
+const structuralChangeOf = (
+  input: Exclude<ResolvedDocxTableStructureOperandInput, { readonly type: "replaceTable" }>,
+): FolioContentStructuralChange => input.change;
+
+const structuralSourceOf = (
+  input: ResolvedDocxTableStructureOperandInput,
+): ResolvedDocxSourceOperand | null => {
+  switch (input.type) {
+    case "insertTable":
+    case "insertTableRow":
+    case "insertTableColumn":
+      return input.anchor.source;
+    case "deleteTable":
+    case "deleteTableRow":
+    case "deleteTableColumn":
+    case "replaceTable":
+      return input.source;
+    default: {
+      const unreachable: never = input;
+      return panic("Unhandled DOCX table-structure operand input", { input: unreachable });
+    }
+  }
+};
+
+const requireExactStructuralSource = (
+  input: Extract<
+    ResolvedDocxTableStructureOperandInput,
+    { readonly type: "deleteTable" | "deleteTableRow" | "deleteTableColumn" }
+  >,
+  payload: ResolvedDocxStoryComparisonPayload,
+): void => {
+  const sourceBlock = resolvedDocxSourceOperandBlock(input.source, payload.baseSnapshot);
+  if (input.change.blocks.at(0) !== sourceBlock) {
+    return panic("A DOCX table-structure source must own the canonical change's first block");
+  }
+};
+
+const tableReplacementBaseBlocks = (
+  owner: ResolvedDocxTableReplacementOwner,
+): FolioContentBlockGroup =>
+  owner.type === "canonical-replacement" ? owner.replacement.baseBlocks : owner.deleted.blocks;
+
+const tableReplacementIndexes = (
+  owner: ResolvedDocxTableReplacementOwner,
+): { readonly base: number; readonly target: number } =>
+  owner.type === "canonical-replacement"
+    ? { base: owner.replacement.baseTableIndex, target: owner.replacement.revisedTableIndex }
+    : { base: owner.deleted.tableIndex, target: owner.inserted.tableIndex };
+
+const requireExactTableReplacementOwner = (
+  owner: ResolvedDocxTableReplacementOwner,
   comparison: ResolvedDocxStoryComparison,
-  owner: TargetTableOwner,
-): ResolvedDocxTargetTableOperand => {
+): void => {
   const index = comparisonIndexOf(comparison);
-  const exact =
-    "type" in owner
-      ? index.structuralChanges.has(owner) && owner.type === "table-insert"
-      : index.tableReplacements.has(owner);
-  if (!exact) {
-    return panic("A DOCX target-table operand must name an exact canonical table change");
+  if (owner.type === "canonical-replacement") {
+    if (!index.tableReplacements.has(owner.replacement)) {
+      return panic("A DOCX table replacement must name an exact canonical replacement");
+    }
+    return;
   }
-  const operand = Object.freeze({ [RESOLVED_DOCX_TARGET_TABLE_OPERAND_BRAND]: true as const });
-  payloadByTargetTableOperand.set(operand, { comparison, value: owner });
+  if (!index.structuralChanges.has(owner.deleted) || !index.structuralChanges.has(owner.inserted)) {
+    return panic("A DOCX table replacement pair must name exact canonical structural changes");
+  }
+  const deletedIndexes = index.structuralEventIndexes.get(owner.deleted);
+  const insertedIndexes = index.structuralEventIndexes.get(owner.inserted);
+  if (!deletedIndexes || !insertedIndexes) {
+    return panic("A DOCX table replacement pair lost its canonical event sequence");
+  }
+  const spanStart = Math.min(deletedIndexes.at(0) ?? 0, insertedIndexes.at(0) ?? 0);
+  const spanEnd = Math.max(deletedIndexes.at(-1) ?? 0, insertedIndexes.at(-1) ?? 0);
+  const events = resolvedDocxStoryComparisonPayload(comparison).comparison.events;
+  for (let eventIndex = spanStart; eventIndex <= spanEnd; eventIndex++) {
+    const event = events[eventIndex];
+    if (
+      event?.type !== "structural" ||
+      (event.change !== owner.deleted && event.change !== owner.inserted)
+    ) {
+      return panic("A DOCX table replacement pair is not one contiguous canonical event sequence");
+    }
+  }
+  const basePath = canonicalJson(owner.deleted.blocks.at(0)?.containerPath ?? []);
+  const targetPath = canonicalJson(owner.inserted.blocks.at(0)?.containerPath ?? []);
+  if (basePath !== targetPath) {
+    return panic("A DOCX table replacement pair crosses canonical container ownership");
+  }
+};
+
+const requirePairedStructuralAnchor = (
+  input: Extract<
+    ResolvedDocxTableStructureOperandInput,
+    { readonly type: "insertTableRow" | "insertTableColumn" }
+  >,
+  comparison: ResolvedDocxStoryComparison,
+  payload: ResolvedDocxStoryComparisonPayload,
+): void => {
+  const anchor = resolvedDocxSourceOperandBlock(input.anchor.source, payload.baseSnapshot);
+  const anchorTableIndex = anchor.table?.tableIndex;
+  if (
+    anchorTableIndex === undefined ||
+    !resolvedDocxPairedBaseTableIndexes(comparison, input.change.tableIndex).has(anchorTableIndex)
+  ) {
+    return panic("A DOCX table-structure anchor must belong to the canonically paired table");
+  }
+};
+
+const requireExactTerminalCarrier = (
+  carrier: ResolvedDocxTerminalTableCarrier,
+  comparison: ResolvedDocxStoryComparison,
+  payload: ResolvedDocxStoryComparisonPayload,
+): void => {
+  const block = resolvedDocxSourceOperandBlock(carrier.source, payload.baseSnapshot);
+  if (
+    carrier.event.block !== block ||
+    comparisonIndexOf(comparison).deletedEventByBlock.get(block) !== carrier.event
+  ) {
+    return panic("A terminal table carrier must own its exact canonical deletion event");
+  }
+};
+
+/** Issue one opaque structural obligation from exact comparison-owned semantics. */
+export const resolvedDocxTableStructureOperand = (
+  comparison: ResolvedDocxStoryComparison,
+  input: ResolvedDocxTableStructureOperandInput,
+): ResolvedDocxTableStructureOperand => {
+  const payload = resolvedDocxStoryComparisonPayload(comparison);
+  const index = comparisonIndexOf(comparison);
+  const source = structuralSourceOf(input);
+  if (source) resolvedDocxSourceOperandBlock(source, payload.baseSnapshot);
+  switch (input.type) {
+    case "replaceTable": {
+      requireExactTableReplacementOwner(input.owner, comparison);
+      if (
+        tableReplacementBaseBlocks(input.owner).at(0) !==
+        resolvedDocxSourceOperandBlock(input.source, payload.baseSnapshot)
+      ) {
+        return panic("A DOCX table replacement must own its exact base table");
+      }
+      if (input.terminalCarrier) {
+        requireExactTerminalCarrier(input.terminalCarrier, comparison, payload);
+      }
+      break;
+    }
+    case "insertTableRow":
+    case "insertTableColumn": {
+      if (!index.structuralChanges.has(structuralChangeOf(input))) {
+        return panic("A DOCX table-structure operand must name an exact canonical change");
+      }
+      requirePairedStructuralAnchor(input, comparison, payload);
+      break;
+    }
+    case "deleteTable":
+    case "deleteTableRow":
+    case "deleteTableColumn": {
+      if (!index.structuralChanges.has(structuralChangeOf(input))) {
+        return panic("A DOCX table-structure operand must name an exact canonical change");
+      }
+      requireExactStructuralSource(input, payload);
+      break;
+    }
+    case "insertTable": {
+      if (!index.structuralChanges.has(structuralChangeOf(input))) {
+        return panic("A DOCX table-structure operand must name an exact canonical change");
+      }
+      if (input.terminalCarrier) {
+        requireExactTerminalCarrier(input.terminalCarrier, comparison, payload);
+      }
+      break;
+    }
+    default: {
+      const unreachable: never = input;
+      return panic("Unhandled DOCX table-structure operand input", { input: unreachable });
+    }
+  }
+  let operand: ResolvedDocxTableStructureOperand;
+  switch (input.type) {
+    case "insertTable":
+      operand = Object.freeze({
+        type: "insertTable",
+        [RESOLVED_DOCX_TABLE_STRUCTURE_OPERAND_BRAND]: true as const,
+      });
+      break;
+    case "deleteTable":
+      operand = Object.freeze({
+        type: "deleteTable",
+        [RESOLVED_DOCX_TABLE_STRUCTURE_OPERAND_BRAND]: true as const,
+      });
+      break;
+    case "replaceTable":
+      operand = Object.freeze({
+        type: "replaceTable",
+        [RESOLVED_DOCX_TABLE_STRUCTURE_OPERAND_BRAND]: true as const,
+      });
+      break;
+    case "insertTableRow":
+      operand = Object.freeze({
+        type: "insertTableRow",
+        [RESOLVED_DOCX_TABLE_STRUCTURE_OPERAND_BRAND]: true as const,
+      });
+      break;
+    case "deleteTableRow":
+      operand = Object.freeze({
+        type: "deleteTableRow",
+        [RESOLVED_DOCX_TABLE_STRUCTURE_OPERAND_BRAND]: true as const,
+      });
+      break;
+    case "insertTableColumn":
+      operand = Object.freeze({
+        type: "insertTableColumn",
+        [RESOLVED_DOCX_TABLE_STRUCTURE_OPERAND_BRAND]: true as const,
+      });
+      break;
+    case "deleteTableColumn":
+      operand = Object.freeze({
+        type: "deleteTableColumn",
+        [RESOLVED_DOCX_TABLE_STRUCTURE_OPERAND_BRAND]: true as const,
+      });
+      break;
+    default: {
+      const unreachable: never = input;
+      return panic("Unhandled DOCX table-structure operand input", { input: unreachable });
+    }
+  }
+  payloadByTableStructureOperand.set(operand, {
+    comparison,
+    value: Object.freeze({ ...input }),
+  });
   return operand;
 };
 
-/** Resolve a target table only inside its issuing comparison. */
-export const resolvedDocxTargetTableOperandOwner = (
-  operand: ResolvedDocxTargetTableOperand,
+/** Resolve a structural obligation only inside its issuing comparison. */
+export const resolvedDocxTableStructureOperandPayload = (
+  operand: ResolvedDocxTableStructureOperand,
   comparison: ResolvedDocxStoryComparison,
-): TargetTableOwner =>
-  requireComparisonOwned(
-    payloadByTargetTableOperand.get(operand),
+): ResolvedDocxTableStructureOperandPayload => {
+  const payload = requireComparisonOwned(
+    payloadByTableStructureOperand.get(operand),
     comparison,
-    "DOCX target-table operand",
+    "DOCX table-structure operand",
   );
-
-/** Issue one exact inserted target row. */
-export const resolvedDocxTargetRowOperand = (
-  comparison: ResolvedDocxStoryComparison,
-  change: Extract<FolioContentStructuralChange, { readonly type: "table-row-insert" }>,
-): ResolvedDocxTargetRowOperand => {
-  if (!comparisonIndexOf(comparison).structuralChanges.has(change)) {
-    return panic("A DOCX target-row operand must name an exact canonical row change");
+  if (payload.type !== operand.type) {
+    return panic("A DOCX table-structure operand lost its semantic discriminator");
   }
-  const operand = Object.freeze({ [RESOLVED_DOCX_TARGET_ROW_OPERAND_BRAND]: true as const });
-  payloadByTargetRowOperand.set(operand, { comparison, value: change });
+  return payload;
+};
+
+export type ResolvedDocxTableStructureReportOwner =
+  | {
+      readonly type: "structural";
+      readonly sequence: number;
+      readonly change: FolioContentStructuralChange;
+    }
+  | {
+      readonly type: "replacement";
+      readonly sequence: number;
+      readonly replacement: FolioContentTableReplacement;
+    }
+  | {
+      readonly type: "deletedCarrier";
+      readonly sequence: number;
+      readonly event: Extract<FolioContentComparisonEvent, { readonly type: "deleted" }>;
+    };
+
+/** Exact canonical report owners retained by one atomic table operation. */
+export const resolvedDocxTableStructureReportOwners = (
+  operand: ResolvedDocxTableStructureOperand,
+  comparison: ResolvedDocxStoryComparison,
+): readonly ResolvedDocxTableStructureReportOwner[] => {
+  const payload = resolvedDocxTableStructureOperandPayload(operand, comparison);
+  const index = comparisonIndexOf(comparison);
+  const owners: ResolvedDocxTableStructureReportOwner[] = [];
+  const pushStructural = (change: FolioContentStructuralChange): void => {
+    const sequence = index.structuralEventIndexes.get(change)?.at(0);
+    if (sequence === undefined) {
+      return panic("A table operation lost its canonical structural event sequence");
+    }
+    owners.push(Object.freeze({ type: "structural", sequence, change }));
+  };
+  switch (payload.type) {
+    case "insertTable":
+    case "deleteTable":
+    case "insertTableRow":
+    case "deleteTableRow":
+    case "insertTableColumn":
+    case "deleteTableColumn":
+      pushStructural(payload.change);
+      break;
+    case "replaceTable":
+      if (payload.owner.type === "canonical-replacement") {
+        const sequence = index.eventSequenceByTableReplacement.get(payload.owner.replacement);
+        if (sequence === undefined) {
+          return panic("A table operation lost its canonical replacement event sequence");
+        }
+        owners.push(
+          Object.freeze({
+            type: "replacement",
+            sequence,
+            replacement: payload.owner.replacement,
+          }),
+        );
+      } else {
+        pushStructural(payload.owner.deleted);
+        pushStructural(payload.owner.inserted);
+      }
+      break;
+    default: {
+      const unreachable: never = payload;
+      return panic("Unhandled table report owner", { payload: unreachable });
+    }
+  }
+  const carrier =
+    payload.type === "insertTable" || payload.type === "replaceTable"
+      ? payload.terminalCarrier
+      : undefined;
+  if (carrier) {
+    const sequence = index.eventSequenceByDeletedEvent.get(carrier.event);
+    if (sequence === undefined) {
+      return panic("A table operation lost its canonical terminal-carrier event sequence");
+    }
+    owners.push(Object.freeze({ type: "deletedCarrier", sequence, event: carrier.event }));
+  }
+  return Object.freeze(owners.toSorted((left, right) => left.sequence - right.sequence));
+};
+
+const tableHasHiddenRows = (table: PMNode): boolean => {
+  for (let rowIndex = 0; rowIndex < table.childCount; rowIndex++) {
+    if (table.child(rowIndex).attrs["hidden"] === true) return true;
+  }
+  return false;
+};
+
+const issueTableFormatOperand = (
+  comparison: ResolvedDocxStoryComparison,
+  payload: ResolvedDocxTableFormatOperandPayload,
+): ResolvedDocxTableFormatOperand => {
+  const operand = Object.freeze({
+    type: "matchTableFormatting" as const,
+    [RESOLVED_DOCX_TABLE_FORMAT_OPERAND_BRAND]: true as const,
+  });
+  payloadByTableFormatOperand.set(operand, { comparison, value: Object.freeze(payload) });
   return operand;
 };
 
-/** Resolve a target row only inside its issuing comparison. */
-export const resolvedDocxTargetRowOperandChange = (
-  operand: ResolvedDocxTargetRowOperand,
+/**
+ * Resolve paired table properties once. Unchanged tables produce no semantic
+ * operation; changed and unsupported projections retain one exact owner.
+ */
+export const resolvedDocxTableFormatOperand = (
   comparison: ResolvedDocxStoryComparison,
-): Extract<FolioContentStructuralChange, { readonly type: "table-row-insert" }> =>
-  requireComparisonOwned(
-    payloadByTargetRowOperand.get(operand),
-    comparison,
-    "DOCX target-row operand",
-  );
-
-/** Issue one exact inserted target column. */
-export const resolvedDocxTargetColumnOperand = (
-  comparison: ResolvedDocxStoryComparison,
-  change: Extract<FolioContentStructuralChange, { readonly type: "table-column-insert" }>,
-): ResolvedDocxTargetColumnOperand => {
-  if (!comparisonIndexOf(comparison).structuralChanges.has(change)) {
-    return panic("A DOCX target-column operand must name an exact canonical column change");
+): ResolvedDocxTableFormatOperand | null => {
+  const { baseSnapshot, targetSnapshot } = resolvedDocxStoryComparisonPayload(comparison);
+  const pairings = resolvedDocxTableGeometryPairings(comparison);
+  if (pairings.length === 0) return null;
+  const baseTables = storyTablesOf(resolvedDocxOperationSnapshot(baseSnapshot));
+  const baseByIndex = new Map(baseTables.map((table) => [table.index, table.node]));
+  const targetTables = resolvedDocxTableNodes(targetSnapshot);
+  const inspectedPairs = new Set<string>();
+  for (const { base, target } of pairings) {
+    const pair = `${String(base.tableIndex)}:${String(target.tableIndex)}`;
+    if (inspectedPairs.has(pair)) continue;
+    inspectedPairs.add(pair);
+    const baseTable = baseByIndex.get(base.tableIndex);
+    const targetTable = targetTables.get(target.tableIndex);
+    if (baseTable && tableHasHiddenRows(baseTable)) {
+      return issueTableFormatOperand(comparison, {
+        status: "unsupported",
+        issue: { reason: "unprojected-table-structure", side: "source" },
+      });
+    }
+    if (targetTable && tableHasHiddenRows(targetTable)) {
+      return issueTableFormatOperand(comparison, {
+        status: "unsupported",
+        issue: { reason: "unprojected-table-structure", side: "target" },
+      });
+    }
   }
-  const operand = Object.freeze({ [RESOLVED_DOCX_TARGET_COLUMN_OPERAND_BRAND]: true as const });
-  payloadByTargetColumnOperand.set(operand, { comparison, value: change });
-  return operand;
+  const preflight = preflightTableGeometry({ baseTables, targetTables, pairings });
+  if (preflight.status === "unsupported") {
+    return issueTableFormatOperand(comparison, {
+      status: "unsupported",
+      issue: { reason: "unrepresentable-table-geometry", issue: preflight.issue },
+    });
+  }
+  const semanticChanges = tableGeometryProgramSemanticChanges(preflight.program);
+  if (semanticChanges.length === 0) return null;
+  const index = comparisonIndexOf(comparison);
+  const changes = semanticChanges.map((change) => {
+    const sequence = index.tableGeometrySequenceByPairing.get(tableGeometryPairingKey(change));
+    if (sequence === undefined) {
+      return panic("A table-format change lost its canonical paired-cell event");
+    }
+    return Object.freeze({
+      scope: change.scope,
+      base: change.base,
+      target: change.target,
+      sequence,
+    });
+  });
+  return issueTableFormatOperand(comparison, {
+    status: "ready",
+    program: preflight.program,
+    changes,
+  });
 };
 
-/** Resolve a target column only inside its issuing comparison. */
-export const resolvedDocxTargetColumnOperandChange = (
-  operand: ResolvedDocxTargetColumnOperand,
+/** Resolve an exact table-format operation inside its issuing comparison. */
+export const resolvedDocxTableFormatOperandPayload = (
+  operand: ResolvedDocxTableFormatOperand,
   comparison: ResolvedDocxStoryComparison,
-): Extract<FolioContentStructuralChange, { readonly type: "table-column-insert" }> =>
+): ResolvedDocxTableFormatOperandPayload =>
   requireComparisonOwned(
-    payloadByTargetColumnOperand.get(operand),
+    payloadByTableFormatOperand.get(operand),
     comparison,
-    "DOCX target-column operand",
+    "DOCX table-format operand",
   );
+
+/** Bind the exact final empty carrier into its replacement obligation. */
+export const resolvedDocxTerminalTableReplacementOperand = (
+  comparison: ResolvedDocxStoryComparison,
+  operand: Extract<ResolvedDocxTableStructureOperand, { readonly type: "replaceTable" }>,
+  terminalCarrier: ResolvedDocxSourceOperand,
+): Extract<ResolvedDocxTableStructureOperand, { readonly type: "replaceTable" }> => {
+  const payload = resolvedDocxTableStructureOperandPayload(operand, comparison);
+  if (payload.type !== "replaceTable") {
+    return panic("A terminal table carrier can only belong to a replacement");
+  }
+  const comparisonPayload = resolvedDocxStoryComparisonPayload(comparison);
+  const carrier = resolvedDocxSourceOperandBlock(terminalCarrier, comparisonPayload.baseSnapshot);
+  const event = comparisonIndexOf(comparison).deletedEventByBlock.get(carrier);
+  if (!event) {
+    return panic("A terminal table replacement carrier must be an exact canonical deletion");
+  }
+  const targetBlocks = resolvedDocxContentBlocks(comparisonPayload.targetSnapshot);
+  if (
+    carrier.kind !== "paragraph" ||
+    carrier.text.length !== 0 ||
+    targetBlocks.at(-1)?.table?.outerTableIndex !== tableReplacementIndexes(payload.owner).target
+  ) {
+    return panic("A terminal table replacement must own an empty final carrier and target table");
+  }
+  return resolvedDocxTableStructureOperand(comparison, {
+    ...payload,
+    terminalCarrier: Object.freeze({ source: terminalCarrier, event }),
+  });
+};
+
+/** Bind the exact final empty carrier into its terminal table insertion. */
+export const resolvedDocxTerminalTableInsertionOperand = (
+  comparison: ResolvedDocxStoryComparison,
+  operand: Extract<ResolvedDocxTableStructureOperand, { readonly type: "insertTable" }>,
+  terminalCarrier: ResolvedDocxSourceOperand,
+): Extract<ResolvedDocxTableStructureOperand, { readonly type: "insertTable" }> => {
+  const payload = resolvedDocxTableStructureOperandPayload(operand, comparison);
+  if (payload.type !== "insertTable") {
+    return panic("A terminal table carrier can only belong to an insertion");
+  }
+  const comparisonPayload = resolvedDocxStoryComparisonPayload(comparison);
+  const carrier = resolvedDocxSourceOperandBlock(terminalCarrier, comparisonPayload.baseSnapshot);
+  const event = comparisonIndexOf(comparison).deletedEventByBlock.get(carrier);
+  if (!event) {
+    return panic("A terminal table insertion carrier must be an exact canonical deletion");
+  }
+  const targetBlocks = resolvedDocxContentBlocks(comparisonPayload.targetSnapshot);
+  if (
+    carrier.kind !== "paragraph" ||
+    carrier.text.length !== 0 ||
+    targetBlocks.at(-1)?.table?.outerTableIndex !== payload.change.tableIndex
+  ) {
+    return panic("A terminal table insertion must own an empty final carrier and target table");
+  }
+  return resolvedDocxTableStructureOperand(comparison, {
+    ...payload,
+    terminalCarrier: Object.freeze({ source: terminalCarrier, event }),
+  });
+};
 
 const EMPTY_TABLE_INDEX_SET: ReadonlySet<number> = new Set<number>();
 

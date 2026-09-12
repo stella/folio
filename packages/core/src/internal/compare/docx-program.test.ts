@@ -86,8 +86,9 @@ describe("DocxComparisonProgram", () => {
     const [instruction] = consumed.instructions;
     expect(consumed.sourceSnapshot).toBe(snapshot);
     expect(consumed.targetSnapshot).toBe(targetSnapshot);
-    expect(consumed.semanticGroups.flatMap(({ reports }) => reports.map(({ change }) => change.kind)))
-      .toEqual(["replace", "format"]);
+    expect(
+      consumed.semanticGroups.flatMap(({ reports }) => reports.map(({ change }) => change.kind)),
+    ).toEqual(["replace", "format"]);
     expect(instruction?.type).toBe("replaceText");
     if (instruction?.type !== "replaceText") throw new Error("expected replacement");
     expect(instruction.range.sourceText).toBe("old shared");
@@ -110,10 +111,7 @@ describe("DocxComparisonProgram", () => {
   test("rejects duplicate canonical report sequence ownership", () => {
     const { comparison } = sourceFixture();
     expect(() =>
-      DocxComparisonProgram.create(comparison, [
-        replacement(comparison),
-        replacement(comparison),
-      ]),
+      DocxComparisonProgram.create(comparison, [replacement(comparison), replacement(comparison)]),
     ).toThrow("invalid canonical sequence");
   });
 
@@ -137,11 +135,7 @@ describe("DocxComparisonProgram", () => {
     expect(() =>
       DocxComparisonProgram.create(
         comparison,
-        Array.from({ length: 10_001 }, () => ({
-          type: "tableCompatibility" as const,
-          reports: [],
-          instructions: [{ type: "matchTableGeometry" as const }],
-        })),
+        Array.from({ length: 10_001 }, () => replacement(comparison)),
       ),
     ).toThrow("exceeds its instruction limit");
   });
@@ -156,10 +150,9 @@ describe("DocxComparisonProgram", () => {
 
   test("compiled fragments reconstruct both canonical text views", () => {
     const { comparison } = sourceFixture();
-    const [instruction] = DocxComparisonProgram.create(
-      comparison,
-      [replacement(comparison)],
-    ).consume().instructions;
+    const [instruction] = DocxComparisonProgram.create(comparison, [
+      replacement(comparison),
+    ]).consume().instructions;
     if (instruction?.type !== "replaceText") throw new Error("expected replacement");
     expect(
       instruction.range.fragments

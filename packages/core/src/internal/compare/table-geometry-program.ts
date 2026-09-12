@@ -125,7 +125,7 @@ export const DEFAULT_TABLE_GEOMETRY_PREFLIGHT_LIMITS = Object.freeze({
 
 type TableGeometryLimit = keyof TableGeometryPreflightLimits;
 type TableGeometrySide = "base" | "target";
-type TableGeometryScopeName = "table" | "row" | "cell";
+export type TableGeometryScopeName = "table" | "row" | "cell";
 
 export type TableGeometryUnsupportedIssue =
   | {
@@ -278,12 +278,18 @@ type TableGeometryInstruction = TableGeometryInstructionFor<TableGeometryScopeNa
 
 const TABLE_GEOMETRY_PROGRAM_BRAND: unique symbol = Symbol("table-geometry-program");
 
-type TableGeometryProgram = {
+export type TableGeometryProgram = {
   readonly [TABLE_GEOMETRY_PROGRAM_BRAND]: true;
   readonly type: "unchanged" | "changes";
   readonly carriers: readonly TableGeometryCarrierAssertion[];
   readonly instructions: readonly TableGeometryInstruction[];
   readonly maxLivePayloadUnits: number;
+};
+
+export type TableGeometrySemanticChange = {
+  readonly scope: TableGeometryScopeName;
+  readonly base: Readonly<TableCellCoordinate>;
+  readonly target: Readonly<TableCellCoordinate>;
 };
 
 export type TableGeometryPreflightResult =
@@ -1426,6 +1432,24 @@ export const preflightTableGeometry = ({
   });
   PROGRAMS.add(program);
   return Object.freeze({ status: "ready", program });
+};
+
+/** Exact property changes owned by one preflighted geometry program. */
+export const tableGeometryProgramSemanticChanges = (
+  program: TableGeometryProgram,
+): readonly TableGeometrySemanticChange[] => {
+  if (!PROGRAMS.has(program)) {
+    return panic("A table geometry semantic projection requires a preflighted program");
+  }
+  return Object.freeze(
+    program.instructions.map(({ carrier }) =>
+      Object.freeze({
+        scope: carrier.scope,
+        base: carrier.base,
+        target: carrier.target,
+      }),
+    ),
+  );
 };
 
 const capturedLiveStateForScope = (

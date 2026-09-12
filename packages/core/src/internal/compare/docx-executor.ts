@@ -6,7 +6,6 @@ import { canJoin, canSplit } from "prosemirror-transform";
 import { applyBlockParagraphProperties, withRotatedAddedFinalBreaks } from "../../ai-edits/apply";
 import { buildCleanBlockText } from "../../ai-edits/clean-text";
 import { FolioStableBlockResolver } from "./stable-block-resolution";
-import { storyTablesOf } from "../../ai-edits/snapshot";
 import { expectParagraphAttrs } from "../../prosemirror/attrs";
 import { hasSerializableParagraphPropertyChange } from "../../prosemirror/commands/propertyChangeScope";
 import { paragraphEndsItsContainer } from "../../prosemirror/containerFinalParagraph";
@@ -35,19 +34,34 @@ import {
   type DocxTextRangePreflight,
 } from "./docx-text-executor";
 import {
-  executeTableGeometryProgram,
-  preflightTableGeometry,
   type TableGeometryExecutionIssue,
   type TableGeometryExecutionReceipt,
-  type TableGeometryPreflightResult,
   type TableGeometryUnsupportedIssue,
 } from "./table-geometry-program";
+import {
+  executeTableStructureGeometry,
+  executeTableStructureTask,
+  preflightTableStructureProgram,
+  type PreparedTableStructureProgram,
+  type PreparedTableStructureTask,
+  type TableStructureUnsupportedIssue,
+} from "./table-structure-program";
 import {
   resolvedDocxOperationSnapshot,
   resolvedDocxSourceDocument,
   resolvedDocxSourceOperandBlock,
-  resolvedDocxTableNodes,
+  type ResolvedDocxStorySnapshot,
 } from "./resolved-docx-story-snapshot";
+import type {
+  ResolvedDocxTableFormatOperand,
+  ResolvedDocxTableStructureOperand,
+} from "./resolved-docx-story-comparison";
+
+type ResolvedDocxTableOperand = ResolvedDocxTableStructureOperand | ResolvedDocxTableFormatOperand;
+
+type DocxComparisonInstructionType =
+  | Exclude<DocxComparisonInstruction["type"], "tableStructure" | "tableFormat">
+  | ResolvedDocxTableOperand["type"];
 
 export const DOCX_COMPARISON_PREFLIGHT_REASONS = COMPARE_DOCX_PREFLIGHT_REASONS;
 
@@ -55,10 +69,11 @@ export type DocxComparisonPreflightReason = CompareDocxPreflightReason;
 
 export type DocxComparisonPreflightIssue = {
   readonly instructionIndex: number;
-  readonly instructionType: DocxComparisonInstruction["type"];
+  readonly instructionType: DocxComparisonInstructionType;
   readonly reason: DocxComparisonPreflightReason;
   readonly blockId?: string;
   readonly tableGeometry?: TableGeometryUnsupportedIssue;
+  readonly tableStructure?: TableStructureUnsupportedIssue;
 };
 
 type ResolvedBlock = {
@@ -72,11 +87,6 @@ type ResolvedParagraphBoundary = ResolvedBlock & {
 };
 
 type ReadyTextRange = Extract<DocxTextRangePreflight, { readonly type: "ready" }>;
-type ReadyTableGeometryProgram = Extract<
-  TableGeometryPreflightResult,
-  { readonly status: "ready" }
->["program"];
-
 type PreparedSourceSchedule = {
   readonly phase: "source";
   readonly from: number;
@@ -181,15 +191,17 @@ type PreparedInstructionPayload =
       readonly schedule: PreparedSourceSchedule;
     }
   | {
-      readonly type: "matchTableGeometry";
-      readonly program: ReadyTableGeometryProgram;
+      readonly type: "tableStructureOperand";
+      readonly operand: ResolvedDocxTableOperand;
+      readonly instructionType: ResolvedDocxTableOperand["type"];
       readonly originalIndex: number;
-      readonly schedule: { readonly phase: "geometry" };
     };
 
-type PreparedInstruction = PreparedInstructionPayload & {
-  readonly semanticGroupIndex: number;
-};
+type WithSemanticGroup<Instruction> = Instruction extends unknown
+  ? Instruction & { readonly semanticGroupIndex: number }
+  : never;
+
+type PreparedInstruction = WithSemanticGroup<PreparedInstructionPayload>;
 
 type PreparedSourceInstruction = Extract<
   PreparedInstruction,
@@ -203,11 +215,6 @@ type PreparedMoveInstruction = Extract<
   PreparedInstruction,
   { readonly type: "moveParagraph" | "moveTerminalParagraph" }
 >;
-type PreparedGeometryInstruction = Extract<
-  PreparedInstruction,
-  { readonly schedule: { readonly phase: "geometry" } }
->;
-
 type PreparedInsertionMember = {
   readonly instruction: PreparedInsertionInstruction | PreparedMoveInstruction;
 };
@@ -232,10 +239,19 @@ type PreparedSourceTask =
       readonly instruction: PreparedMoveInstruction;
     };
 
-type PreparedExecutionTask = PreparedInsertionRun | PreparedSourceTask;
+type PreparedTableTask = {
+  readonly type: "tableStructure";
+  readonly position: number;
+  readonly from: number;
+  readonly originalIndex: number;
+  readonly task: PreparedTableStructureTask;
+};
+
+type PreparedExecutionTask = PreparedInsertionRun | PreparedSourceTask | PreparedTableTask;
 
 const executionTasks = (
   instructions: readonly PreparedInstruction[],
+  tableProgram: PreparedTableStructureProgram | null,
 ): readonly PreparedExecutionTask[] => {
   const sourceTasks: PreparedSourceTask[] = [];
   const insertionMembersByPosition = new Map<number, PreparedInsertionMember[]>();
@@ -261,7 +277,7 @@ const executionTasks = (
         insertionMembersByPosition.set(instruction.destinationSchedule.position, members);
         break;
       }
-      case "matchTableGeometry":
+      case "tableStructureOperand":
         break;
       default:
         sourceTasks.push({
@@ -285,18 +301,54 @@ const executionTasks = (
       members: Object.freeze([first, ...ordered.slice(1)]),
     });
   }
+  const tableInstructionIndex = new Map(
+    instructions.flatMap((instruction) =>
+      instruction.type === "tableStructureOperand"
+        ? [[instruction.operand, instruction.originalIndex] as const]
+        : [],
+    ),
+  );
+  const tableTasks: PreparedTableTask[] = (tableProgram?.tasks ?? []).map((task) => {
+    let originalIndex = Number.MAX_SAFE_INTEGER;
+    for (const operand of task.operands) {
+      const operandIndex =
+        tableInstructionIndex.get(operand) ??
+        panic("A table-structure task lost its comparison instruction");
+      originalIndex = Math.min(originalIndex, operandIndex);
+    }
+    if (originalIndex === Number.MAX_SAFE_INTEGER) {
+      return panic("A table-structure task has no comparison instruction");
+    }
+    return {
+      type: "tableStructure",
+      position: task.schedule.position,
+      from: task.schedule.phase === "source" ? task.schedule.from : task.schedule.position,
+      originalIndex,
+      task,
+    };
+  });
   return Object.freeze(
-    [...sourceTasks, ...insertionRuns].toSorted((left, right) => {
+    [...sourceTasks, ...insertionRuns, ...tableTasks].toSorted((left, right) => {
       const byPosition = right.position - left.position;
       if (byPosition !== 0) return byPosition;
       // A boundary insertion at the exact end of a source range runs first:
       // right-to-left execution then leaves every source coordinate original.
-      if (left.type === "insertionRun" || right.type === "insertionRun") {
-        return left.type === "insertionRun" ? -1 : 1;
+      const leftInsertion =
+        left.type === "insertionRun" ||
+        (left.type === "tableStructure" && left.task.schedule.phase === "insertion");
+      const rightInsertion =
+        right.type === "insertionRun" ||
+        (right.type === "tableStructure" && right.task.schedule.phase === "insertion");
+      if (leftInsertion !== rightInsertion) {
+        return leftInsertion ? -1 : 1;
       }
       const byStart = right.from - left.from;
       if (byStart !== 0) return byStart;
-      return right.instruction.originalIndex - left.instruction.originalIndex;
+      const leftIndex =
+        left.type === "tableStructure" ? left.originalIndex : left.instruction.originalIndex;
+      const rightIndex =
+        right.type === "tableStructure" ? right.originalIndex : right.instruction.originalIndex;
+      return rightIndex - leftIndex;
     }),
   );
 };
@@ -352,13 +404,18 @@ const issue = (
   reason: DocxComparisonPreflightReason,
   blockId?: string,
   tableGeometry?: TableGeometryUnsupportedIssue,
+  tableStructure?: TableStructureUnsupportedIssue,
 ): DocxComparisonPreflightIssue =>
   Object.freeze({
     instructionIndex,
-    instructionType: instruction.type,
+    instructionType:
+      instruction.type === "tableStructure" || instruction.type === "tableFormat"
+        ? instruction.operation.type
+        : instruction.type,
     reason,
     ...(blockId !== undefined && { blockId }),
     ...(tableGeometry !== undefined && { tableGeometry }),
+    ...(tableStructure !== undefined && { tableStructure }),
   });
 
 const structuralRangeIssueReason = (
@@ -417,6 +474,7 @@ type PreparedDocxComparisonState = {
   readonly instructions: readonly PreparedInstruction[];
   readonly semanticGroups: readonly DocxComparisonSemanticGroup[];
   readonly supportedSemanticGroupIndexes: readonly number[];
+  readonly tableProgram: PreparedTableStructureProgram | null;
   readonly totalInstructionCount: number;
   lifecycle: "ready" | "consumed";
 };
@@ -428,12 +486,14 @@ const ownPreparedDocxComparison = ({
   instructions,
   issues,
   semanticGroups,
+  tableProgram,
   totalInstructionCount,
 }: {
   readonly state: EditorState;
   readonly instructions: readonly PreparedInstruction[];
   readonly issues: readonly DocxComparisonPreflightIssue[];
   readonly semanticGroups: readonly DocxComparisonSemanticGroup[];
+  readonly tableProgram: PreparedTableStructureProgram | null;
   readonly totalInstructionCount: number;
 }): PreparedDocxComparison => {
   const ownedInstructions = Object.freeze([...instructions]);
@@ -479,6 +539,7 @@ const ownPreparedDocxComparison = ({
     instructions: ownedInstructions,
     semanticGroups,
     supportedSemanticGroupIndexes,
+    tableProgram,
     totalInstructionCount,
     lifecycle: "ready",
   });
@@ -494,13 +555,12 @@ export const preflightDocxComparisonProgram = ({
   readonly program: DocxComparisonProgram;
 }): PreparedDocxComparison => {
   const {
+    comparison,
     sourceSnapshot: snapshot,
-    targetSnapshot,
     semanticGroups,
     instructions,
   } = program.consume();
   const operationSnapshot = resolvedDocxOperationSnapshot(snapshot);
-  const targetTables = resolvedDocxTableNodes(targetSnapshot);
   if (state.doc !== resolvedDocxSourceDocument(snapshot)) {
     return ownPreparedDocxComparison({
       state,
@@ -509,6 +569,7 @@ export const preflightDocxComparisonProgram = ({
         issue(instruction, instructionIndex, "source-expectation-mismatch"),
       ),
       semanticGroups,
+      tableProgram: null,
       totalInstructionCount: instructions.length,
     });
   }
@@ -516,11 +577,11 @@ export const preflightDocxComparisonProgram = ({
   const styleResolver = getDocumentStyleResolver(state);
   const prepared: PreparedInstructionPayload[] = [];
   const issues: DocxComparisonPreflightIssue[] = [];
+  const resolveSource = (source: DocxComparisonSourceOperand) =>
+    resolveExpectedBlock({ snapshot, resolver, source });
+  const sourceBlockId = (source: DocxComparisonSourceOperand): string =>
+    resolvedDocxSourceOperandBlock(source, snapshot).identity.id;
   for (const [instructionIndex, instruction] of instructions.entries()) {
-    const resolveSource = (source: DocxComparisonSourceOperand) =>
-      resolveExpectedBlock({ snapshot, resolver, source });
-    const sourceBlockId = (source: DocxComparisonSourceOperand): string =>
-      resolvedDocxSourceOperandBlock(source, snapshot).identity.id;
     switch (instruction.type) {
       case "replaceText":
       case "formatText": {
@@ -539,17 +600,13 @@ export const preflightDocxComparisonProgram = ({
           styleResolver,
         });
         if (range.type === "unsupported") {
+          let reason: DocxComparisonPreflightReason = "unrepresentable-text-range";
+          if (range.reason === "pending-run-change") reason = "pending-run-change";
+          if (range.reason === "source-formatting-mismatch") {
+            reason = "source-formatting-mismatch";
+          }
           issues.push(
-            issue(
-              instruction,
-              instructionIndex,
-              range.reason === "pending-run-change"
-                ? "pending-run-change"
-                : range.reason === "source-formatting-mismatch"
-                  ? "source-formatting-mismatch"
-                  : "unrepresentable-text-range",
-              sourceBlockId(instruction.source),
-            ),
+            issue(instruction, instructionIndex, reason, sourceBlockId(instruction.source)),
           );
           break;
         }
@@ -628,24 +685,27 @@ export const preflightDocxComparisonProgram = ({
       case "deleteTrailingParagraphs": {
         const chainStart = resolveSource(instruction.chainStart);
         const deleted = instruction.deleted.map(resolveSource);
-        const rejected =
-          chainStart.type === "unsupported"
-            ? { result: chainStart, blockId: sourceBlockId(instruction.chainStart) }
-            : deleted
-                .flatMap((result, index) =>
-                  result.type === "unsupported"
-                    ? [
-                        {
-                          result,
-                          blockId:
-                            instruction.deleted[index] === undefined
-                              ? ""
-                              : sourceBlockId(instruction.deleted[index]),
-                        },
-                      ]
-                    : [],
-                )
-                .at(0);
+        let rejected:
+          | {
+              readonly result: Extract<ReturnType<typeof resolveSource>, { type: "unsupported" }>;
+              readonly blockId: string;
+            }
+          | undefined;
+        if (chainStart.type === "unsupported") {
+          rejected = { result: chainStart, blockId: sourceBlockId(instruction.chainStart) };
+        } else {
+          for (const [index, result] of deleted.entries()) {
+            if (result.type !== "unsupported") continue;
+            const deletedOperand = instruction.deleted[index];
+            rejected = {
+              result,
+              blockId: sourceBlockId(
+                deletedOperand ?? panic("A trailing deletion result lost its source operand"),
+              ),
+            };
+            break;
+          }
+        }
         if (rejected !== undefined) {
           issues.push(
             issue(instruction, instructionIndex, rejected.result.reason, rejected.blockId),
@@ -689,11 +749,15 @@ export const preflightDocxComparisonProgram = ({
         }
         const firstDeleted =
           resolvedDeleted.at(0) ?? panic("A trailing deletion chain lost its first member");
+        const ownedDeleted: readonly [ResolvedBlock, ...ResolvedBlock[]] = Object.freeze([
+          firstDeleted,
+          ...resolvedDeleted.slice(1),
+        ]);
         prepared.push(
           Object.freeze({
             type: "deleteTrailingParagraphs",
             chainStart: chainStart.block,
-            deleted: Object.freeze([firstDeleted, ...resolvedDeleted.slice(1)]),
+            deleted: ownedDeleted,
             semantic: instruction,
             originalIndex: instructionIndex,
             schedule: Object.freeze({
@@ -709,25 +773,33 @@ export const preflightDocxComparisonProgram = ({
         const source = resolveSource(instruction.source);
         const successor = resolveSource(instruction.successor);
         const boundary = resolveParagraphBoundary(snapshot, resolver, instruction.boundary);
-        const rejected =
-          source.type === "unsupported"
-            ? { result: source, blockId: sourceBlockId(instruction.source) }
-            : successor.type === "unsupported"
-              ? { result: successor, blockId: sourceBlockId(instruction.successor) }
-              : null;
-        if (rejected || !boundary) {
+        if (source.type === "unsupported") {
+          issues.push(
+            issue(instruction, instructionIndex, source.reason, sourceBlockId(instruction.source)),
+          );
+          break;
+        }
+        if (successor.type === "unsupported") {
           issues.push(
             issue(
               instruction,
               instructionIndex,
-              rejected?.result.reason ?? "missing-anchor",
-              rejected?.blockId ?? sourceBlockId(instruction.boundary.paragraph),
+              successor.reason,
+              sourceBlockId(instruction.successor),
             ),
           );
           break;
         }
-        if (source.type !== "ready" || successor.type !== "ready") {
-          return panic("A paragraph move retained an unresolved source boundary");
+        if (!boundary) {
+          issues.push(
+            issue(
+              instruction,
+              instructionIndex,
+              "missing-anchor",
+              sourceBlockId(instruction.boundary.paragraph),
+            ),
+          );
+          break;
         }
         if (
           source.block.to !== successor.block.from ||
@@ -767,25 +839,33 @@ export const preflightDocxComparisonProgram = ({
         const predecessor = resolveSource(instruction.predecessor);
         const source = resolveSource(instruction.source);
         const boundary = resolveParagraphBoundary(snapshot, resolver, instruction.boundary);
-        const rejected =
-          predecessor.type === "unsupported"
-            ? { result: predecessor, blockId: sourceBlockId(instruction.predecessor) }
-            : source.type === "unsupported"
-              ? { result: source, blockId: sourceBlockId(instruction.source) }
-              : null;
-        if (rejected || !boundary) {
+        if (predecessor.type === "unsupported") {
           issues.push(
             issue(
               instruction,
               instructionIndex,
-              rejected?.result.reason ?? "missing-anchor",
-              rejected?.blockId ?? sourceBlockId(instruction.boundary.paragraph),
+              predecessor.reason,
+              sourceBlockId(instruction.predecessor),
             ),
           );
           break;
         }
-        if (predecessor.type !== "ready" || source.type !== "ready") {
-          return panic("A terminal paragraph move retained an unresolved source boundary");
+        if (source.type === "unsupported") {
+          issues.push(
+            issue(instruction, instructionIndex, source.reason, sourceBlockId(instruction.source)),
+          );
+          break;
+        }
+        if (!boundary) {
+          issues.push(
+            issue(
+              instruction,
+              instructionIndex,
+              "missing-anchor",
+              sourceBlockId(instruction.boundary.paragraph),
+            ),
+          );
+          break;
         }
         if (
           predecessor.block.to !== source.block.from ||
@@ -996,49 +1076,58 @@ export const preflightDocxComparisonProgram = ({
         );
         break;
       }
-      case "insertTable":
-      case "deleteTable":
-      case "replaceTable":
-      case "insertTableRow":
-      case "deleteTableRow":
-      case "insertTableColumn":
-      case "deleteTableColumn":
-        issues.push(issue(instruction, instructionIndex, "unresolved-table-instruction"));
+      case "tableStructure":
+      case "tableFormat":
         break;
-      case "matchTableGeometry": {
-        const geometry = preflightTableGeometry({
-          baseTables: storyTablesOf(operationSnapshot),
-          targetTables,
-          pairings: instruction.pairings,
-        });
-        if (geometry.status === "unsupported") {
-          issues.push(
-            issue(
-              instruction,
-              instructionIndex,
-              "unrepresentable-table-geometry",
-              undefined,
-              geometry.issue,
-            ),
-          );
-          break;
-        }
-        prepared.push(
-          Object.freeze({
-            type: "matchTableGeometry",
-            program: geometry.program,
-            originalIndex: instructionIndex,
-            schedule: Object.freeze({ phase: "geometry" }),
-          }),
-        );
-        break;
-      }
       default: {
         const unreachable: never = instruction;
         return panic("Unhandled DOCX comparison instruction during preflight", {
           instruction: unreachable,
         });
       }
+    }
+  }
+  const tableEntries = instructions.flatMap((instruction, originalIndex) =>
+    instruction.type === "tableStructure" || instruction.type === "tableFormat"
+      ? [{ instruction, operand: instruction.operation, originalIndex }]
+      : [],
+  );
+  const tablePreflight =
+    tableEntries.length === 0
+      ? null
+      : preflightTableStructureProgram({
+          doc: state.doc,
+          comparison,
+          operands: tableEntries.map(({ operand }) => operand),
+        });
+  const tableProgram = tablePreflight?.status === "ready" ? tablePreflight.program : null;
+  if (tablePreflight?.status === "unsupported") {
+    for (const { instruction, originalIndex } of tableEntries) {
+      issues.push(
+        issue(
+          instruction,
+          originalIndex,
+          tablePreflight.issue.reason === "unrepresentable-table-geometry"
+            ? "unrepresentable-table-geometry"
+            : "unrepresentable-table-structure",
+          undefined,
+          tablePreflight.issue.reason === "unrepresentable-table-geometry"
+            ? tablePreflight.issue.issue
+            : undefined,
+          tablePreflight.issue,
+        ),
+      );
+    }
+  } else if (tablePreflight?.status === "ready") {
+    for (const { operand, originalIndex } of tableEntries) {
+      prepared.push(
+        Object.freeze({
+          type: "tableStructureOperand",
+          operand,
+          instructionType: operand.type,
+          originalIndex,
+        }),
+      );
     }
   }
   const failedSemanticGroupIndexes = new Set(
@@ -1072,10 +1161,9 @@ export const preflightDocxComparisonProgram = ({
   return ownPreparedDocxComparison({
     state,
     instructions: groupedPrepared,
-    issues: groupedIssues.toSorted(
-      (left, right) => left.instructionIndex - right.instructionIndex,
-    ),
+    issues: groupedIssues.toSorted((left, right) => left.instructionIndex - right.instructionIndex),
     semanticGroups,
+    tableProgram,
     totalInstructionCount: instructions.length,
   });
 };
@@ -1412,7 +1500,7 @@ const applyInsertionRun = ({
 
 export type DocxComparisonInstructionReceipt = {
   readonly instructionIndex: number;
-  readonly instructionType: DocxComparisonInstruction["type"];
+  readonly instructionType: DocxComparisonInstructionType;
   readonly revisionIds: readonly number[];
   readonly tableGeometry?: TableGeometryExecutionReceipt;
 };
@@ -1444,8 +1532,35 @@ export type DocxComparisonExecutionResult =
   | { readonly status: "executed"; readonly receipt: DocxComparisonExecutionReceipt }
   | { readonly status: "unsupported"; readonly issue: DocxComparisonExecutionIssue };
 
-const unsupportedExecution = (issue: DocxComparisonExecutionIssue): DocxComparisonExecutionResult =>
-  Object.freeze({ status: "unsupported", issue: Object.freeze(issue) });
+const unsupportedExecution = (
+  executionIssue: DocxComparisonExecutionIssue,
+): DocxComparisonExecutionResult =>
+  Object.freeze({ status: "unsupported", issue: Object.freeze(executionIssue) });
+
+type PropertyRevisionAllocation = {
+  nextRevisionId: number;
+  readonly revisionIds: number[];
+};
+
+type AllocatePropertyRevisionOptions = {
+  readonly allocation: PropertyRevisionAllocation;
+  readonly author: string;
+  readonly date: string;
+};
+
+const allocatePropertyRevision = ({
+  allocation,
+  author,
+  date,
+}: AllocatePropertyRevisionOptions): (() => {
+  readonly id: number;
+  readonly author: string;
+  readonly date: string;
+}) => () => {
+  const id = allocation.nextRevisionId++;
+  allocation.revisionIds.push(id);
+  return { id, author, date };
+};
 
 const consumePreparedDocxComparison = (
   prepared: PreparedDocxComparison,
@@ -1489,7 +1604,7 @@ export const executePreflightedDocxComparison = ({
   const styleResolver = getDocumentStyleResolver(state);
   const numbering = getDocumentNumbering(state);
   type ReceiptParts = {
-    readonly instructionType: DocxComparisonInstruction["type"];
+    readonly instructionType: DocxComparisonInstructionType;
     readonly parts: Map<number, readonly number[]>;
     tableGeometry?: TableGeometryExecutionReceipt;
   };
@@ -1502,7 +1617,7 @@ export const executePreflightedDocxComparison = ({
     tableGeometry,
   }: {
     readonly instructionIndex: number;
-    readonly instructionType: DocxComparisonInstruction["type"];
+    readonly instructionType: DocxComparisonInstructionType;
     readonly part: number;
     readonly revisionIds: readonly number[];
     readonly tableGeometry?: TableGeometryExecutionReceipt;
@@ -1522,35 +1637,49 @@ export const executePreflightedDocxComparison = ({
     if (tableGeometry !== undefined) receipt.tableGeometry = tableGeometry;
     receiptPartsByIndex.set(instructionIndex, receipt);
   };
-  const geometry = owned.instructions.filter(
-    (instruction): instruction is PreparedGeometryInstruction =>
-      instruction.type === "matchTableGeometry",
+  const tableInstructionByOperand = new Map(
+    owned.instructions.flatMap((instruction) =>
+      instruction.type === "tableStructureOperand"
+        ? [[instruction.operand, instruction] as const]
+        : [],
+    ),
   );
-  for (const instruction of geometry) {
-    const result = executeTableGeometryProgram({
+  if (owned.tableProgram) {
+    const result = executeTableStructureGeometry({
       tr,
-      program: instruction.program,
-      revision: { author, date: revisionStamp.date, idSeed: revisionId },
+      program: owned.tableProgram,
+      revision: { author, date: revisionStamp.date },
+      revisionId,
     });
-    if (result.status === "unsupported") {
+    if ("issue" in result) {
+      const geometryOperand =
+        owned.tableProgram.geometryOperand ??
+        panic("A table geometry execution issue lost its canonical operand");
+      const instruction =
+        tableInstructionByOperand.get(geometryOperand) ??
+        panic("A table geometry operand lost its comparison instruction");
       return unsupportedExecution({
         reason: "table-geometry-execution",
         instructionIndex: instruction.originalIndex,
         issue: result.issue,
       });
     }
-    revisionId = result.receipt.nextRevisionId;
-    recordPart({
-      instructionIndex: instruction.originalIndex,
-      instructionType: instruction.type,
-      part: 0,
-      revisionIds: result.receipt.revisions.map(
-        ({ revisionId: appliedRevisionId }) => appliedRevisionId,
-      ),
-      tableGeometry: result.receipt,
-    });
+    tr = result.transaction;
+    revisionId = result.nextRevisionId;
+    for (const applied of result.applied) {
+      const instruction =
+        tableInstructionByOperand.get(applied.operand) ??
+        panic("A table geometry result lost its comparison instruction");
+      recordPart({
+        instructionIndex: instruction.originalIndex,
+        instructionType: instruction.instructionType,
+        part: 0,
+        revisionIds: applied.revisionIds,
+        tableGeometry: applied.tableGeometry,
+      });
+    }
   }
-  const ordered = executionTasks(owned.instructions);
+  const ordered = executionTasks(owned.instructions, owned.tableProgram);
   let insertionRunCount = 0;
   let localPositionMappingSteps = 0;
   for (const task of ordered) {
@@ -1578,6 +1707,33 @@ export const executePreflightedDocxComparison = ({
       }
       if (tr.steps.length === stepsBefore) {
         return panic("A preflighted DOCX insertion run produced no transaction step");
+      }
+      continue;
+    }
+    if (task.type === "tableStructure") {
+      const result = executeTableStructureTask({
+        tr,
+        program: owned.tableProgram ?? panic("A table task lost its preflighted story program"),
+        task: task.task,
+        revision: { author, date: revisionStamp.date },
+        revisionId,
+      });
+      tr = result.transaction;
+      revisionId = result.nextRevisionId;
+      localPositionMappingSteps += result.localPositionMappingSteps;
+      for (const applied of result.applied) {
+        const instruction =
+          tableInstructionByOperand.get(applied.operand) ??
+          panic("A table structure result lost its comparison instruction");
+        recordPart({
+          instructionIndex: instruction.originalIndex,
+          instructionType: instruction.instructionType,
+          part: 0,
+          revisionIds: applied.revisionIds,
+        });
+      }
+      if (tr.steps.length === stepsBefore) {
+        return panic("A preflighted table-structure task produced no transaction step");
       }
       continue;
     }
@@ -1617,7 +1773,10 @@ export const executePreflightedDocxComparison = ({
         const carrier =
           tr.doc.nodeAt(instruction.source.from) ??
           panic("A preflighted terminal move lost its paragraph-mark carrier");
-        const propertyRevisionIds: number[] = [];
+        const propertyRevisions: PropertyRevisionAllocation = {
+          nextRevisionId: revisionId,
+          revisionIds: [],
+        };
         tr = applyBlockParagraphProperties({
           tr,
           position: instruction.source.from,
@@ -1625,13 +1784,14 @@ export const executePreflightedDocxComparison = ({
           properties: instruction.semantic.carrierTargetProperties,
           styleResolver,
           numbering,
-          revisionInfo: () => {
-            const id = revisionId++;
-            propertyRevisionIds.push(id);
-            return { id, author, date: revisionStamp.date };
-          },
+          revisionInfo: allocatePropertyRevision({
+            allocation: propertyRevisions,
+            author,
+            date: revisionStamp.date,
+          }),
         }).tr;
-        instructionRevisionIds.push(...propertyRevisionIds);
+        revisionId = propertyRevisions.nextRevisionId;
+        instructionRevisionIds.push(...propertyRevisions.revisionIds);
       }
       if (tr.steps.length === stepsBefore) {
         return panic("A preflighted DOCX move source produced no transaction step");
@@ -1678,7 +1838,10 @@ export const executePreflightedDocxComparison = ({
       case "setParagraphProperties": {
         const at = instruction.source.from;
         const node = tr.doc.nodeAt(at) ?? panic("A preflighted paragraph change lost its source");
-        const appliedRevisionIds: number[] = [];
+        const propertyRevisions: PropertyRevisionAllocation = {
+          nextRevisionId: revisionId,
+          revisionIds: [],
+        };
         const appliedProperties = applyBlockParagraphProperties({
           tr,
           position: at,
@@ -1686,14 +1849,15 @@ export const executePreflightedDocxComparison = ({
           properties: instruction.semantic.targetProperties,
           styleResolver,
           numbering,
-          revisionInfo: () => {
-            const id = revisionId++;
-            appliedRevisionIds.push(id);
-            return { id, author, date: revisionStamp.date };
-          },
+          revisionInfo: allocatePropertyRevision({
+            allocation: propertyRevisions,
+            author,
+            date: revisionStamp.date,
+          }),
         });
         tr = appliedProperties.tr;
-        instructionRevisionIds.push(...appliedRevisionIds);
+        revisionId = propertyRevisions.nextRevisionId;
+        instructionRevisionIds.push(...propertyRevisions.revisionIds);
         break;
       }
       case "splitParagraph": {
@@ -1985,7 +2149,7 @@ export const executePreflightedDocxComparison = ({
       instructions: Object.freeze(receipts),
       changes: Object.freeze(changes),
       nextRevisionId: revisionId,
-      executionTaskCount: geometry.length + ordered.length,
+      executionTaskCount: (owned.tableProgram?.geometryOperand ? 1 : 0) + ordered.length,
       insertionRunCount,
       localPositionMappingSteps,
       transaction: tr,

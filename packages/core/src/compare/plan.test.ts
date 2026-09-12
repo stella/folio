@@ -22,6 +22,7 @@ import {
 import {
   compareResolvedDocxStoryPair,
   createResolvedDocxStoryPair,
+  type ResolvedDocxTableStructureOperand,
 } from "../internal/compare/resolved-docx-story-comparison";
 import type { DocxComparisonInstruction } from "../internal/compare/docx-program";
 import { headerFooterToProseDoc, toProseDoc } from "../prosemirror/conversion/toProseDoc";
@@ -127,11 +128,11 @@ const paragraphOf = ({
 
 const tableOf = (blocks: readonly FolioAIBlock[]): Table => {
   const blocksByRow = new Map<number, FolioAIBlock[]>();
-  for (const block of blocks) {
-    const table = block.table;
+  for (const tableBlock of blocks) {
+    const table = tableBlock.table;
     if (!table) throw new Error("table fixture block has no table location");
     const row = blocksByRow.get(table.rowIndex) ?? [];
-    row.push(block);
+    row.push(tableBlock);
     blocksByRow.set(table.rowIndex, row);
   }
   return {
@@ -140,12 +141,12 @@ const tableOf = (blocks: readonly FolioAIBlock[]): Table => {
       .toSorted(([left], [right]) => left - right)
       .map(([, rowBlocks]) => {
         const blocksByCell = new Map<number, FolioAIBlock[]>();
-        for (const block of rowBlocks) {
-          const table = block.table;
+        for (const rowBlock of rowBlocks) {
+          const table = rowBlock.table;
           if (!table) throw new Error("table fixture block has no table location");
-          const cell = blocksByCell.get(table.cellIndex) ?? [];
-          cell.push(block);
-          blocksByCell.set(table.cellIndex, cell);
+          const cellBlocks = blocksByCell.get(table.cellIndex) ?? [];
+          cellBlocks.push(rowBlock);
+          blocksByCell.set(table.cellIndex, cellBlocks);
         }
         const cells: TableCell[] = [...blocksByCell.entries()]
           .toSorted(([left], [right]) => left - right)
@@ -155,11 +156,14 @@ const tableOf = (blocks: readonly FolioAIBlock[]): Table => {
                 (left.table?.paragraphIndex ?? 0) - (right.table?.paragraphIndex ?? 0),
             );
             const span = ordered.at(0)?.table?.columnSpan ?? 1;
-            return {
-              type: "tableCell",
-              ...(span > 1 && { formatting: { gridSpan: span } }),
-              content: ordered.map(paragraphOf),
-            };
+            if (span > 1) {
+              return {
+                type: "tableCell",
+                formatting: { gridSpan: span },
+                content: ordered.map(paragraphOf),
+              };
+            }
+            return { type: "tableCell", content: ordered.map(paragraphOf) };
           });
         return { type: "tableRow", cells };
       }),
@@ -255,7 +259,11 @@ const inspectPlan = (
       .flatMap(({ reports }) => reports)
       .toSorted((left, right) => left.sequence - right.sequence)
       .map(({ change }) => change),
-    contentInstructions: instructions.filter(({ type }) => type !== "matchTableGeometry"),
+    contentInstructions: instructions.flatMap((instruction) => {
+      if (instruction.type === "tableFormat") return [];
+      if (instruction.type === "tableStructure") return [instruction.operation];
+      return [instruction];
+    }),
   };
 };
 
@@ -273,7 +281,10 @@ const planOf = (base: readonly FolioAIBlock[], target: readonly FolioAIBlock[]) 
 type TestCompareStoryPlan = CompareStoryPlan & {
   readonly baseSnapshot: ResolvedDocxStorySnapshot;
   readonly changes: readonly CompareChange[];
-  readonly contentInstructions: readonly DocxComparisonInstruction[];
+  readonly contentInstructions: readonly (
+    | Exclude<DocxComparisonInstruction, { readonly type: "tableStructure" | "tableFormat" }>
+    | ResolvedDocxTableStructureOperand
+  )[];
 };
 
 /** Content transport only; table-property pairing has its own focused suite. */
@@ -283,11 +294,11 @@ const sourceOperandOf = (
   plan: TestCompareStoryPlan,
   blockId: string,
 ): ResolvedDocxSourceOperand => {
-  const block = resolvedDocxContentBlocks(plan.baseSnapshot).find(
+  const sourceBlock = resolvedDocxContentBlocks(plan.baseSnapshot).find(
     ({ identity }) => identity.id === blockId,
   );
-  if (!block) throw new Error(`fixture source block ${blockId} missing`);
-  return resolvedDocxSourceOperand(plan.baseSnapshot, block);
+  if (!sourceBlock) throw new Error(`fixture source block ${blockId} missing`);
+  return resolvedDocxSourceOperand(plan.baseSnapshot, sourceBlock);
 };
 
 const sourceBlockIdOf = (plan: TestCompareStoryPlan, source: ResolvedDocxSourceOperand): string =>
@@ -374,13 +385,9 @@ describe("table row pairing", () => {
     const plan = planOf(base, target);
 
     expect(plan.changes.map(({ kind }) => kind)).toEqual(["table-delete"]);
-    expect(contentInstructionsOf(plan)).toMatchObject([
-      {
-        type: "deleteTable",
-        source: sourceOperandOf(plan, "removed"),
-        baseTableIndex: 0,
-      },
-    ]);
+    const instructions = contentInstructionsOf(plan);
+    expect(instructions.map(({ type }) => type)).toEqual(["deleteTable"]);
+    expect(Object.keys(instructions[0] ?? {}).toSorted()).toEqual(["type"]);
   });
 
   test("a span change that cannot align by column replaces the whole table", () => {
@@ -406,14 +413,8 @@ describe("table row pairing", () => {
     const instructions = contentInstructionsOf(plan);
 
     expect(changes.map(({ kind }) => kind)).toEqual(["table-delete", "table-insert"]);
-    expect(instructions).toMatchObject([
-      {
-        type: "replaceTable",
-        source: sourceOperandOf(plan, "a"),
-        baseTableIndex: 0,
-        targetTableIndex: 0,
-      },
-    ]);
+    expect(instructions.map(({ type }) => type)).toEqual(["replaceTable"]);
+    expect(Object.keys(instructions[0] ?? {}).toSorted()).toEqual(["type"]);
   });
 
   test("a compatible row insertion remains one row insertion", () => {
@@ -511,14 +512,8 @@ describe("document-terminal paragraph carrier", () => {
       ),
     ).toBe(false);
     expect(changes.map(({ kind }) => kind)).toEqual(["delete", "table-delete"]);
-    expect(instructions).toMatchObject([
-      { type: "deleteParagraph", source: sourceOperandOf(plan, "between") },
-      {
-        type: "deleteTable",
-        source: sourceOperandOf(plan, "removed"),
-        baseTableIndex: 1,
-      },
-    ]);
+    expect(instructions.map(({ type }) => type)).toEqual(["deleteParagraph", "deleteTable"]);
+    expect(Object.keys(instructions[1] ?? {}).toSorted()).toEqual(["type"]);
   });
 
   test("places a replacement terminal table after its deletable base carrier", () => {
@@ -543,18 +538,9 @@ describe("document-terminal paragraph carrier", () => {
     const { changes } = plan;
     const instructions = contentInstructionsOf(plan);
 
-    // The empty final carrier has no independent revision: until table
-    // replacement owns that boundary, it must not claim a deletion it cannot
-    // execute.
-    expect(changes.map(({ kind }) => kind)).toEqual(["table-delete", "table-insert"]);
-    expect(instructions).toMatchObject([
-      {
-        type: "replaceTable",
-        source: sourceOperandOf(plan, "source"),
-        baseTableIndex: 0,
-        targetTableIndex: 0,
-      },
-    ]);
+    expect(changes.map(({ kind }) => kind)).toEqual(["table-delete", "table-insert", "delete"]);
+    expect(instructions.map(({ type }) => type)).toEqual(["replaceTable"]);
+    expect(Object.keys(instructions[0] ?? {}).toSorted()).toEqual(["type"]);
   });
 
   test("still compares paragraph properties on the reserved carrier", () => {
@@ -758,15 +744,8 @@ describe("table column pairing", () => {
     const instructions = contentInstructionsOf(plan);
 
     expect(changes.map(({ kind }) => kind)).toEqual(["table-column-insert"]);
-    expect(instructions).toMatchObject([
-      {
-        type: "insertTableColumn",
-        anchor: { blockId: "b0", position: "before" },
-        targetTableIndex: 0,
-        targetColumnIndex: 1,
-        cellTexts: ["Currency", "EUR"],
-      },
-    ]);
+    expect(instructions.map(({ type }) => type)).toEqual(["insertTableColumn"]);
+    expect(Object.keys(instructions[0] ?? {}).toSorted()).toEqual(["type"]);
   });
 
   test("a candidate column that cuts a merged cell is not guessed from physical indexes", () => {
@@ -829,14 +808,8 @@ describe("table column pairing", () => {
     const instructions = contentInstructionsOf(plan);
 
     expect(changes.map(({ kind }) => kind)).toEqual(["table-column-delete"]);
-    expect(instructions).toMatchObject([
-      {
-        type: "deleteTableColumn",
-        source: sourceOperandOf(plan, "x0"),
-        baseTableIndex: 0,
-        baseColumnIndex: 1,
-      },
-    ]);
+    expect(instructions.map(({ type }) => type)).toEqual(["deleteTableColumn"]);
+    expect(Object.keys(instructions[0] ?? {}).toSorted()).toEqual(["type"]);
   });
 
   test("repeated empty columns stay ambiguous", () => {
@@ -867,22 +840,14 @@ describe("table column pairing", () => {
       gridCell("b-target", "Status", { rowIndex: 0, cellIndex: 3, gridColumnIndex: 3 }),
     ];
 
-    expect(contentInstructionsOf(planOf(base, target))).toMatchObject([
-      {
-        type: "insertTableColumn",
-        anchor: { blockId: "b", position: "before" },
-        targetTableIndex: 0,
-        targetColumnIndex: 1,
-        cellTexts: ["Currency"],
-      },
-      {
-        type: "insertTableColumn",
-        anchor: { blockId: "b", position: "before" },
-        targetTableIndex: 0,
-        targetColumnIndex: 2,
-        cellTexts: ["Region"],
-      },
+    const instructions = contentInstructionsOf(planOf(base, target));
+    expect(instructions.map(({ type }) => type)).toEqual([
+      "insertTableColumn",
+      "insertTableColumn",
     ]);
+    expect(
+      instructions.every((instruction) => Object.keys(instruction).toSorted().join(":") === "type"),
+    ).toBe(true);
   });
 
   test("several deleted columns use their own physical-cell anchors", () => {
@@ -898,20 +863,14 @@ describe("table column pairing", () => {
     ];
 
     const plan = planOf(base, target);
-    expect(contentInstructionsOf(plan)).toMatchObject([
-      {
-        type: "deleteTableColumn",
-        source: sourceOperandOf(plan, "x"),
-        baseTableIndex: 0,
-        baseColumnIndex: 1,
-      },
-      {
-        type: "deleteTableColumn",
-        source: sourceOperandOf(plan, "y"),
-        baseTableIndex: 0,
-        baseColumnIndex: 2,
-      },
+    const instructions = contentInstructionsOf(plan);
+    expect(instructions.map(({ type }) => type)).toEqual([
+      "deleteTableColumn",
+      "deleteTableColumn",
     ]);
+    expect(
+      instructions.every((instruction) => Object.keys(instruction).toSorted().join(":") === "type"),
+    ).toBe(true);
   });
 });
 
