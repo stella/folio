@@ -609,12 +609,19 @@ const paintClipGroup = ({ rect, children, regions }: DisplayClipGroup, context: 
 };
 
 const paintRotateGroup = (
-  { degrees, originXPx, originYPx, children }: DisplayRotateGroup,
+  { degrees, originXPx, originYPx, scaleX, scaleY, children }: DisplayRotateGroup,
   context: PaintContext,
 ) => {
   const element = createTransparentGroupDiv(context);
   element.style.transformOrigin = `${px(originXPx - context.originXPx)} ${px(originYPx - context.originYPx)}`;
-  element.style.transform = `rotate(${degrees}deg)`;
+  const transforms = [`rotate(${degrees}deg)`];
+  if (scaleX === -1) {
+    transforms.push("scaleX(-1)");
+  }
+  if (scaleY === -1) {
+    transforms.push("scaleY(-1)");
+  }
+  element.style.transform = transforms.join(" ");
   context.parent.append(element);
 
   const inner = { ...context, parent: element };

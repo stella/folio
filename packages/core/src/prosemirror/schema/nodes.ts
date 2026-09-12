@@ -625,6 +625,8 @@ export type TextBoxAttrs = {
   outlineColor?: string;
   /** Outline dash style, or `"none"` for an explicit no-outline. */
   outlineStyle?: OutlineStyleAttr;
+  /** DrawingML rotation and/or flips, serialized as CSS transform functions. */
+  transform?: string;
   /** Internal margin top in pixels */
   marginTop?: number;
   /** Internal margin bottom in pixels */

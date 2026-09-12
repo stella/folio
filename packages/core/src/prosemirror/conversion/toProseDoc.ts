@@ -4393,6 +4393,9 @@ function textBoxFromShape(shape: Shape, textBody: ShapeTextBody): TextBox {
   if (shape.outline) {
     textBox.outline = shape.outline;
   }
+  if (shape.transform) {
+    textBox.transform = shape.transform;
+  }
   if (textBody.margins) {
     textBox.margins = textBody.margins;
   }
@@ -4450,6 +4453,23 @@ function convertTextBox(
       outlineColor = `#${textBox.outline.color.rgb}`;
     }
     outlineStyle = textBox.outline.style || "solid";
+  }
+
+  let transform: string | undefined;
+  if (textBox.transform) {
+    const transforms: string[] = [];
+    if (textBox.transform.rotation) {
+      transforms.push(`rotate(${textBox.transform.rotation}deg)`);
+    }
+    if (textBox.transform.flipH) {
+      transforms.push("scaleX(-1)");
+    }
+    if (textBox.transform.flipV) {
+      transforms.push("scaleY(-1)");
+    }
+    if (transforms.length > 0) {
+      transform = transforms.join(" ");
+    }
   }
 
   // Convert margins from EMU to pixels
@@ -4561,6 +4581,7 @@ function convertTextBox(
       outlineWidth,
       outlineColor,
       outlineStyle,
+      transform,
       marginTop,
       marginBottom,
       marginLeft,

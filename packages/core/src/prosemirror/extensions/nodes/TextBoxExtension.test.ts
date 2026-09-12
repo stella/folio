@@ -33,6 +33,22 @@ describe("TextBoxExtension toDOM border", () => {
     expect(styleOf({ verticalAlign: "bottom" })).toContain("justify-content: flex-end");
   });
 
+  test("applies a DrawingML transform about the text-box centre", () => {
+    const style = styleOf({ transform: "rotate(270deg) scaleX(-1) scaleY(-1)" });
+
+    expect(style).toContain("transform: rotate(270deg) scaleX(-1) scaleY(-1)");
+    expect(style).toContain("transform-origin: center center");
+  });
+
+  test("rejects transforms outside the carried DrawingML subset", () => {
+    expect(() => styleOf({ transform: "skewX(10deg)" })).toThrow(
+      "Expected DrawingML rotation and/or horizontal or vertical flips.",
+    );
+    expect(() => styleOf({ transform: "" })).toThrow(
+      "Expected DrawingML rotation and/or horizontal or vertical flips.",
+    );
+  });
+
   test.each(["distributed", "justified"])(
     "does not approximate %s line alignment with block flex spacing",
     (verticalAlign) => {

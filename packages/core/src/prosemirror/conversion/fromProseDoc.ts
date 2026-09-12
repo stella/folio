@@ -5030,6 +5030,11 @@ function convertPMTextBox(node: PMNode, styleResolver: StyleEngine | null = null
     shape.id = attrs.textBoxId;
   }
 
+  const transform = parseTransformAttr(attrs.transform);
+  if (transform) {
+    shape.transform = transform;
+  }
+
   // Convert fill color back
   if (attrs.fillColor) {
     shape.fill = {

@@ -35,6 +35,8 @@ export type TextBoxAttrs = {
   outlineColor?: string;
   /** Outline dash style, or `"none"` for an explicit no-outline. */
   outlineStyle?: OutlineStyleAttr;
+  /** DrawingML rotation and/or flips, serialized as CSS transform functions. */
+  transform?: string;
   /** Internal margin top in pixels */
   marginTop?: number;
   /** Internal margin bottom in pixels */
@@ -135,6 +137,7 @@ export const TextBoxExtension = createNodeExtension({
       outlineWidth: { default: null },
       outlineColor: { default: null },
       outlineStyle: { default: null },
+      transform: { default: null },
       marginTop: { default: 4 },
       marginBottom: { default: 4 },
       marginLeft: { default: 7 },
@@ -183,6 +186,7 @@ export const TextBoxExtension = createNodeExtension({
                   outlineStyle: d["outlineStyle"] as NonNullable<TextBoxAttrs["outlineStyle"]>,
                 }
               : {}),
+            ...(d["transform"] ? { transform: d["transform"] } : {}),
             ...(d["marginTop"] ? { marginTop: Number(d["marginTop"]) } : {}),
             ...(d["marginBottom"] ? { marginBottom: Number(d["marginBottom"]) } : {}),
             ...(d["marginLeft"] ? { marginLeft: Number(d["marginLeft"]) } : {}),
@@ -246,6 +250,9 @@ export const TextBoxExtension = createNodeExtension({
       }
       if (attrs.outlineStyle) {
         domAttrs["data-outline-style"] = attrs.outlineStyle;
+      }
+      if (attrs.transform) {
+        domAttrs["data-transform"] = attrs.transform;
       }
       if (typeof attrs.marginTop === "number") {
         domAttrs["data-margin-top"] = String(attrs.marginTop);
@@ -350,6 +357,10 @@ export const TextBoxExtension = createNodeExtension({
       styles.push("box-sizing: border-box");
       styles.push("overflow: hidden");
       styles.push("position: relative");
+      if (attrs.transform) {
+        styles.push(`transform: ${attrs.transform}`);
+        styles.push("transform-origin: center center");
+      }
 
       domAttrs["style"] = styles.join("; ");
 

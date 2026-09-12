@@ -496,18 +496,20 @@ describe("renderDisplayListToDom", () => {
     expect(child?.style.top).toBe("40px");
   });
 
-  test("keeps child coordinates through rotate and opacity groups", () => {
+  test("keeps child coordinates through transformed and opacity groups", () => {
     const rotate = renderPrimitives([
       {
         kind: "rotateGroup",
         degrees: 90,
         originXPx: 40,
         originYPx: 50,
+        scaleX: -1,
+        scaleY: -1,
         children: [PRIMITIVE_SAMPLES.rect],
       },
     ]).children.at(0);
 
-    expect(rotate?.style.transform).toBe("rotate(90deg)");
+    expect(rotate?.style.transform).toBe("rotate(90deg) scaleX(-1) scaleY(-1)");
     expect(rotate?.style.transformOrigin).toBe("40px 50px");
     expect(rotate?.children.at(0)?.style.left).toBe("10px");
 

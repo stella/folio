@@ -2885,6 +2885,37 @@ describe("fromProseDoc", () => {
     expect(firstShapeType(block)).toBe("textBox");
   });
 
+  test("round-trips a DrawingML text-box transform", () => {
+    const document = documentWithTextBoxParagraph({ includeText: false });
+    const sourceParagraph = document.package.document.content.at(0);
+    const sourceRun =
+      sourceParagraph?.type === "paragraph" ? sourceParagraph.content.at(0) : undefined;
+    const sourceShape = sourceRun?.type === "run" ? sourceRun.content.at(0) : undefined;
+    if (sourceShape?.type !== "shape") {
+      throw new Error("Expected source text-box shape");
+    }
+    sourceShape.shape.position = {
+      horizontal: { relativeTo: "column", posOffset: 0 },
+      vertical: { relativeTo: "paragraph", posOffset: 0 },
+    };
+    sourceShape.shape.transform = { rotation: 270, flipH: true, flipV: true };
+
+    const pmDoc = toProseDoc(document);
+    const restored = fromProseDoc(pmDoc, document);
+    const restoredParagraph = restored.package.document.content.at(0);
+
+    expect(pmDoc.childCount).toBe(1);
+    expect(pmDoc.lastChild?.attrs["transform"]).toBe("rotate(270deg) scaleX(-1) scaleY(-1)");
+    if (restoredParagraph?.type !== "paragraph") {
+      throw new Error("Expected restored text-box paragraph");
+    }
+    expect(firstShapeContent(restoredParagraph)?.shape.transform).toEqual({
+      rotation: 270,
+      flipH: true,
+      flipV: true,
+    });
+  });
+
   test.each(["insertion", "deletion", "moveFrom", "moveTo"] as const)(
     "round-trips a text box inside the %s wrapper",
     (type) => {

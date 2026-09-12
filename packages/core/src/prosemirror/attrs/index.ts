@@ -115,6 +115,10 @@ const TEXT_BOX_TEXT_WRAP_VALUES = ["square", "none"] as const satisfies readonly
   TextBoxAttrs["textWrap"]
 >[];
 
+/** The complete DrawingML transform subset carried by text boxes. */
+const TEXT_BOX_TRANSFORM_PATTERN =
+  /^(?=rotate|scaleX|scaleY)(?:rotate\(-?\d+(?:\.\d+)?deg\)(?: )?)?(?:scaleX\(-1\)(?: )?)?(?:scaleY\(-1\))?$/u;
+
 const FIELD_KINDS = ["simple", "complex"] as const satisfies readonly FieldAttrs["fieldKind"][];
 
 const MATH_DISPLAYS = ["inline", "block"] as const satisfies readonly NonNullable<
@@ -901,6 +905,7 @@ export const readTextBoxAttrs = (node: PMNode): ReadProseMirrorAttrsResult<TextB
     issues,
     OUTLINE_STYLE_ATTR_VALUES,
   );
+  optionalTextBoxTransform(attrs, "transform", "textBox.attrs.transform", issues);
   optionalNumber(attrs, "marginTop", "textBox.attrs.marginTop", issues);
   optionalNumber(attrs, "marginBottom", "textBox.attrs.marginBottom", issues);
   optionalNumber(attrs, "marginLeft", "textBox.attrs.marginLeft", issues);
@@ -1650,6 +1655,28 @@ const optionalString = (
   const value = attrs[key];
   if (value !== undefined && value !== null && typeof value !== "string") {
     issues.push({ path, message: "Expected a string." });
+  }
+};
+
+const optionalTextBoxTransform = (
+  attrs: Record<string, unknown>,
+  key: string,
+  path: string,
+  issues: ProseMirrorAttrIssue[],
+): void => {
+  const value = attrs[key];
+  if (value === undefined || value === null) {
+    return;
+  }
+  if (typeof value !== "string") {
+    issues.push({ path, message: "Expected a string." });
+    return;
+  }
+  if (!TEXT_BOX_TRANSFORM_PATTERN.test(value)) {
+    issues.push({
+      path,
+      message: "Expected DrawingML rotation and/or horizontal or vertical flips.",
+    });
   }
 };
 

@@ -319,16 +319,20 @@ export type DisplayClipGroup = {
 };
 
 /**
- * Rotates its children about `originXPx`/`originYPx`. Rotated images,
- * watermark text and vertical (`w:textDirection`) table text are all this.
- * Rotation is the only transform folio paints; scale is resolved into
- * geometry by the producer.
+ * Rotates and optionally reflects its children about `originXPx`/`originYPx`.
+ * Rotated images, text boxes, watermark text and vertical (`w:textDirection`)
+ * table text are all this. A scale of `-1` is a DrawingML flip; the scale is
+ * applied before the rotation, matching CSS and OOXML transform order.
  */
 export type DisplayRotateGroup = {
   readonly kind: "rotateGroup";
   readonly degrees: number;
   readonly originXPx: number;
   readonly originYPx: number;
+  /** Optional horizontal reflection about the transform origin. */
+  readonly scaleX?: -1;
+  /** Optional vertical reflection about the transform origin. */
+  readonly scaleY?: -1;
   readonly children: readonly DisplayPrimitive[];
 };
 

@@ -74,3 +74,39 @@ export const rotationMatrix = (
     originYPx - originXPx * sin - originYPx * cos,
   ];
 };
+
+/**
+ * A DrawingML flip and rotation about one display-list point. CSS applies the
+ * rightmost scale first, then the rotation; this matrix does the same.
+ */
+export const transformMatrix = ({
+  degrees,
+  originXPx,
+  originYPx,
+  scaleX,
+  scaleY,
+}: {
+  readonly degrees: number;
+  readonly originXPx: number;
+  readonly originYPx: number;
+  readonly scaleX?: -1;
+  readonly scaleY?: -1;
+}): PdfMatrix => {
+  const radians = (degrees * Math.PI) / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  const horizontalScale = scaleX ?? 1;
+  const verticalScale = scaleY ?? 1;
+  const a = cos * horizontalScale;
+  const b = sin * horizontalScale;
+  const c = -sin * verticalScale;
+  const d = cos * verticalScale;
+  return [
+    a,
+    b,
+    c,
+    d,
+    originXPx - originXPx * a - originYPx * c,
+    originYPx - originXPx * b - originYPx * d,
+  ];
+};

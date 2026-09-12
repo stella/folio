@@ -31,6 +31,16 @@ export function parseRotationDegrees(transform: string | undefined): number {
   return ((raw % 360) + 360) % 360;
 }
 
+/** Whether a DrawingML/CSS transform reflects around the vertical centre line. */
+export function hasHorizontalFlip(transform: string | undefined): boolean {
+  return /scaleX\(\s*-1\s*\)/iu.test(transform ?? "");
+}
+
+/** Whether a DrawingML/CSS transform reflects around the horizontal centre line. */
+export function hasVerticalFlip(transform: string | undefined): boolean {
+  return /scaleY\(\s*-1\s*\)/iu.test(transform ?? "");
+}
+
 // Axis-aligned bounding box of a `w × h` rectangle rotated by `deg` degrees.
 // 90°/270° swap the dims exactly (no FP drift); 0°/180° keep them; arbitrary
 // angles use the standard |cos θ|·w + |sin θ|·h formula.
