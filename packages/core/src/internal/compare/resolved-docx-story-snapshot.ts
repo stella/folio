@@ -842,15 +842,6 @@ const paragraphHeadingLevel = (
   return level === undefined ? undefined : Number.parseInt(level, 10);
 };
 
-const paragraphDisplayLabel = (
-  paragraph: Paragraph,
-  headingLevel: number | undefined,
-): string | undefined => {
-  const marker = paragraph.listRendering?.marker?.trim();
-  if (marker) return marker;
-  return headingLevel === undefined ? undefined : paragraph.formatting?.styleId;
-};
-
 const paragraphKind = (
   paragraph: Paragraph,
   effective: ReturnType<typeof resolveEffectiveParagraphPresentation>["effective"],
@@ -974,13 +965,9 @@ const projectLiveParagraph = (
     }),
   });
   const headingLevel = paragraphHeadingLevel(paragraph, presentation.effective);
-  const displayLabel = paragraphDisplayLabel(paragraph, headingLevel);
   const blockProperties: FolioContentPropertySet[number][] = [];
   if (headingLevel !== undefined) {
     blockProperties.push({ key: "headingLevel", value: headingLevel });
-  }
-  if (displayLabel !== undefined) {
-    blockProperties.push({ key: "displayLabel", value: displayLabel });
   }
   if (inline.structure.length > 0) {
     blockProperties.push({

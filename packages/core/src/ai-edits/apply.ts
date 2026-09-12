@@ -11,6 +11,7 @@ import {
   paragraphPropertiesSnapshot,
 } from "../prosemirror/commands/propertyChangeScope";
 import { LIST_RENDERING_ATTR_DEFAULTS } from "../prosemirror/schema/paragraphAttrDefaults";
+import { withDirectListNumbering } from "../prosemirror/listRenderingProjection";
 import { directParagraphAlignment } from "../prosemirror/paragraphAlignment";
 import {
   directParagraphSpacing,
@@ -504,13 +505,18 @@ const paragraphPropertiesPatch = ({
     originalFormattingChanged = true;
   }
   if (properties.listLevel !== undefined) {
-    const numPr: unknown = node.attrs["numPr"];
+    const nextNumPr =
+      properties.listLevel === null
+        ? null
+        : {
+            ...(attrs.numPr?.numId !== undefined && { numId: attrs.numPr.numId }),
+            ilvl: properties.listLevel,
+          };
     if (properties.listLevel === null) {
       patch["numPr"] = null;
       Object.assign(patch, LIST_RENDERING_ATTR_DEFAULTS);
     } else {
-      const numId =
-        typeof numPr === "object" && numPr !== null && "numId" in numPr ? numPr.numId : undefined;
+      const numId = attrs.numPr?.numId;
       if (typeof numId === "number") {
         Object.assign(
           patch,
@@ -521,6 +527,8 @@ const paragraphPropertiesPatch = ({
         Object.assign(patch, LIST_RENDERING_ATTR_DEFAULTS);
       }
     }
+    originalFormatting = withDirectListNumbering(originalFormatting, nextNumPr);
+    originalFormattingChanged = true;
   }
   if (
     properties.alignment !== undefined &&
@@ -1916,6 +1924,10 @@ const buildInsertedParagraphs = ({
           pPrMark: null,
           _suggestedInsert: null,
         };
+  const inheritedParagraphAttrs =
+    operation.inheritFormatting !== false && item.blockNode.type.name === "paragraph"
+      ? expectParagraphAttrs(item.blockNode)
+      : undefined;
   const insertTexts = item.insertTexts ?? [""];
   const revisionIds: number[] = [];
   const nodes: PMNode[] = [];
@@ -1943,27 +1955,25 @@ const buildInsertedParagraphs = ({
     }
     const content = text.length > 0 ? buildEmphasisInlineContent(schema, text, marks) : null;
     const attrs: Record<string, unknown> = isFirstParagraph ? { ...baseAttrs } : {};
+    let directListNumbering: ParagraphFormatting["numPr"] | null | undefined;
     if (isFirstParagraph && operation.pageBreakBefore === true) {
       attrs["pageBreakBefore"] = true;
     }
     const listLevel = operation.listLevel;
     if (isFirstParagraph && listLevel === null) {
+      directListNumbering = null;
       attrs["numPr"] = null;
       Object.assign(attrs, LIST_RENDERING_ATTR_DEFAULTS);
     } else if (isFirstParagraph && typeof listLevel === "number") {
-      const anchorNumPr: unknown = Reflect.get(baseAttrs, "numPr");
-      const numId =
-        typeof anchorNumPr === "object" && anchorNumPr !== null && "numId" in anchorNumPr
-          ? anchorNumPr.numId
-          : undefined;
+      const numId = inheritedParagraphAttrs?.numPr?.numId;
+      directListNumbering = {
+        ...(numId !== undefined && { numId }),
+        ilvl: listLevel,
+      };
       if (typeof numId === "number") {
         Object.assign(
           attrs,
-          listLevelAttrPatch(
-            operation.inheritFormatting === false ? {} : expectParagraphAttrs(item.blockNode),
-            { numId, ilvl: listLevel },
-            numbering,
-          ),
+          listLevelAttrPatch(inheritedParagraphAttrs ?? {}, { numId, ilvl: listLevel }, numbering),
         );
       } else {
         attrs["numPr"] = { ilvl: listLevel };
@@ -1979,6 +1989,7 @@ const buildInsertedParagraphs = ({
     if (
       isFirstParagraph &&
       (operation.styleId !== undefined ||
+        operation.listLevel !== undefined ||
         operation.alignment !== undefined ||
         operation.spacing !== undefined)
     ) {
@@ -2010,6 +2021,9 @@ const buildInsertedParagraphs = ({
         } else {
           originalFormatting.styleId = operation.styleId;
         }
+      }
+      if (operation.listLevel !== undefined) {
+        originalFormatting = withDirectListNumbering(originalFormatting, directListNumbering);
       }
       if (operation.alignment !== undefined || inheritedDirectAlignment !== undefined) {
         originalFormatting ??= {};

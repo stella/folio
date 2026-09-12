@@ -1,4 +1,4 @@
-import type { ListRendering } from "../types/document";
+import type { ListRendering, ParagraphFormatting } from "../types/document";
 import type { ParagraphAttrs } from "./schema/nodes";
 
 type ListRenderingNumPrField = "level" | "numId";
@@ -63,12 +63,12 @@ const LIST_RENDERING_FIELD_DISPOSITIONS = {
   },
 } as const satisfies ListRenderingFieldDisposition;
 
-/** Project every modeled list-presentation field into its canonical PM attr. */
-export const applyListRenderingAttrs = (
-  attrs: ParagraphAttrs,
+/** Derive the canonical PM attr patch from the total list-rendering ownership map. */
+export const listRenderingAttrPatch = (
   rendering: ListRendering | undefined,
-): void => {
-  if (!rendering) return;
+): Partial<ParagraphAttrs> => {
+  const attrs: Partial<ParagraphAttrs> = {};
+  if (!rendering) return attrs;
 
   for (const [field, disposition] of Object.entries(LIST_RENDERING_FIELD_DISPOSITIONS)) {
     if (disposition.type === "numPr") continue;
@@ -76,6 +76,29 @@ export const applyListRenderingAttrs = (
     if (disposition.presence === "truthy" ? !value : value === undefined) continue;
     Reflect.set(attrs, disposition.attr, value);
   }
+  return attrs;
+};
+
+/** Replace the direct `w:numPr` owned by the paragraph serializer. */
+export const withDirectListNumbering = (
+  formatting: ParagraphFormatting | null | undefined,
+  numPr: ParagraphFormatting["numPr"] | null | undefined,
+): ParagraphFormatting | undefined => {
+  const result = { ...formatting };
+  if (numPr === null || numPr === undefined) {
+    Reflect.deleteProperty(result, "numPr");
+  } else {
+    result.numPr = { ...numPr };
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+};
+
+/** Project every modeled list-presentation field into its canonical PM attr. */
+export const applyListRenderingAttrs = (
+  attrs: ParagraphAttrs,
+  rendering: ListRendering | undefined,
+): void => {
+  Object.assign(attrs, listRenderingAttrPatch(rendering));
 };
 
 /** Restore every modeled list-presentation field from its canonical PM attr. */
