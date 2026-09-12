@@ -92,8 +92,7 @@ test("comparison projection performs one live package projection plus the reques
     await storyMatrixDocx("before", "synthesized"),
   );
   const baseTraversals = instrumentStoryTraversals(baseReviewer);
-  const baseProjection =
-    getFolioDocxComparisonAccess(baseReviewer).projectStories("with-revision-census");
+  const baseProjection = getFolioDocxComparisonAccess(baseReviewer).normalizeSourceStories();
 
   expect(baseProjection.stories).toHaveLength(5);
   expect(baseProjection.stories.every(({ snapshot }) => snapshot !== null)).toBe(true);
@@ -104,12 +103,10 @@ test("comparison projection performs one live package projection plus the reques
     await storyMatrixDocx("after", "synthesized"),
   );
   const targetTraversals = instrumentStoryTraversals(targetReviewer);
-  const targetProjection =
-    getFolioDocxComparisonAccess(targetReviewer).projectStories("without-revision-census");
+  const targetProjection = getFolioDocxComparisonAccess(targetReviewer).projectResolvedStories();
 
   expect(targetProjection.stories).toHaveLength(5);
   expect(targetProjection.stories.every(({ snapshot }) => snapshot !== null)).toBe(true);
-  expect(targetProjection.revisions).toEqual({ highestId: 0, present: false });
   expect(targetTraversals.map((read) => read())).toEqual([4, 1, 1, 1, 1]);
 });
 

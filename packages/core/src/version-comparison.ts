@@ -774,10 +774,8 @@ export const compareDocxVersions = async (
   const changes: FolioBlockDiff[] = [];
   const stories: FolioStoryDiff[] = [];
   const counts = createSummaryCounts();
-  const baseProjection =
-    getFolioDocxComparisonAccess(baseReviewer).projectStories("without-revision-census");
-  const revisedProjection =
-    getFolioDocxComparisonAccess(revisedReviewer).projectStories("without-revision-census");
+  const baseProjection = getFolioDocxComparisonAccess(baseReviewer).projectResolvedStories();
+  const revisedProjection = getFolioDocxComparisonAccess(revisedReviewer).projectResolvedStories();
   const baseStories = baseProjection.stories.map(({ handle }) => handle);
   const revisedStories = revisedProjection.stories.map(({ handle }) => handle);
   const baseSnapshots = new Map(

@@ -246,10 +246,8 @@ export const parseComparison = async (
   // still ships in the result, so it ships accepted like the rest -- and an
   // unresolvable mark it carried, on the paragraph a note ends with, would
   // otherwise fail the structural guard on bytes this comparison never wrote.
-  const baseProjection =
-    getFolioDocxComparisonAccess(reviewer).projectStories("with-revision-census");
-  const targetProjection =
-    getFolioDocxComparisonAccess(targetReviewer).projectStories("without-revision-census");
+  const baseProjection = getFolioDocxComparisonAccess(reviewer).normalizeSourceStories();
+  const targetProjection = getFolioDocxComparisonAccess(targetReviewer).projectResolvedStories();
   const baseStories: FolioDocumentStoryHandle[] = [];
   const targetStories: FolioDocumentStoryHandle[] = [];
   const baseSnapshots = new Map<FolioDocumentStoryHandle, ResolvedDocxStorySnapshot | null>();

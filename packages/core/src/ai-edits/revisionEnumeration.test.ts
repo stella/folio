@@ -675,7 +675,7 @@ describe("resolved story serialization structural matrix", () => {
       arrivingByStory.set(storyKey(story), { snapshot: arriving, changes: arrivingChanges });
     }
 
-    const projection = comparisonAccess.projectStories("with-revision-census");
+    const projection = comparisonAccess.normalizeSourceStories();
     expect(projection.stories.map(({ handle }) => handle)).toEqual(REVIEW_STORIES);
     expect(projection.revisions).toEqual({
       highestId: Math.max(...expectedChanges.map(({ id }) => id)),
@@ -688,6 +688,16 @@ describe("resolved story serialization structural matrix", () => {
       }
       const resolvedOperationSnapshot = resolvedDocxOperationSnapshot(resolved);
       expect(getTrackedChangesFromSnapshot(resolvedOperationSnapshot)).toEqual([]);
+      const normalized = comparisonAccess.snapshotReviewedStory({
+        story,
+        view: "current-markup",
+      });
+      if (!normalized) {
+        throw new Error(
+          `revision matrix lost ${storyKey(story)} while normalizing comparison input`,
+        );
+      }
+      expect(getTrackedChangesFromSnapshot(normalized)).toEqual([]);
       const resolvedContent = resolvedDocxContentBlocks(resolved);
       expect(resolvedContent.map(({ identity, text }) => ({ id: identity.id, text }))).toEqual(
         resolvedOperationSnapshot.blocks.map(({ id, text }) => ({ id, text })),
@@ -723,6 +733,7 @@ describe("resolved story serialization structural matrix", () => {
       if (!mutated) {
         throw new Error(`revision matrix lost ${storyKey(story)} after mutation`);
       }
+      expect(getTrackedChangesFromSnapshot(mutated)).toEqual([]);
       expect(storyTablesOf(resolvedOperationSnapshot).at(0)?.node.textContent).toContain("Cell");
       expect(storyTablesOf(resolvedOperationSnapshot).at(0)?.node.textContent).not.toContain(
         mutationText,

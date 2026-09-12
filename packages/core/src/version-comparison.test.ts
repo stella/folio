@@ -80,7 +80,7 @@ const buildDocxBuffer = (paragraphs: readonly ParagraphSpec[]): Promise<ArrayBuf
 
 const projectMainContent = (reviewer: FolioDocxReviewer) => {
   const story = getFolioDocxComparisonAccess(reviewer)
-    .projectStories("without-revision-census")
+    .projectResolvedStories()
     .stories.find(({ handle }) => handle.type === "main")?.snapshot;
   if (!story) throw new Error("main story projection missing");
   return {

@@ -1154,8 +1154,15 @@ describe("compareDocx", () => {
 
     test("comparing it with itself still reports nothing", async () => {
       const revisedBase = await withPriorRevisions(SYNTHETIC_BASE);
-      const { changes } = await compareOrThrow(revisedBase, revisedBase);
-      expect(changes).toEqual([]);
+      const first = await compareOrThrow(revisedBase, revisedBase);
+      const second = await compareOrThrow(revisedBase, revisedBase);
+      const acceptedBase = await projectView(revisedBase, "final");
+
+      expect(first.changes).toEqual([]);
+      expect(await authorsOfChanges(first.buffer)).toEqual([]);
+      expect(await projectView(first.buffer, "original")).toEqual(acceptedBase);
+      expect(await projectView(first.buffer, "final")).toEqual(acceptedBase);
+      expect(new Uint8Array(first.buffer)).toEqual(new Uint8Array(second.buffer));
     });
   });
 
