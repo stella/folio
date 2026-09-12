@@ -1114,9 +1114,7 @@ const visitBlocks = (
   }
 };
 
-const parentTableCellContainer = (
-  table: LiveTableOwnership,
-): FolioContentContainerPathEntry => ({
+const parentTableCellContainer = (table: LiveTableOwnership): FolioContentContainerPathEntry => ({
   kind: "tableCell",
   identity: {
     type: "positional",
@@ -1282,6 +1280,14 @@ export const resolvedDocxSourceOperand = (
   }
   return source;
 };
+
+/** @internal Nominal source operand resolved by this capsule's exact block identity. */
+export const resolvedDocxSourceOperandForBlockId = (
+  snapshot: ResolvedDocxStorySnapshot,
+  blockId: string,
+): ResolvedDocxSourceOperand =>
+  payloadOf(snapshot).sourceOperandsByBlockId.get(blockId) ??
+  panic("A DOCX source operand identity is absent from its story capsule", { blockId });
 
 /** @internal Resolve a nominal source operand only for its issuing story capsule. */
 export const resolvedDocxSourceOperandBlock = (

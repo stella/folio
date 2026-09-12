@@ -7,20 +7,48 @@ import type {
 } from "../../ai-edits/types";
 import type { TableGeometryPairing } from "./table-geometry-program";
 import type { TextFormatting } from "../../types/document";
-import type { FolioContentTextSegment } from "../../compare/content";
+import type {
+  FolioContentRangePairRelation,
+  FolioContentTextSegment,
+  FolioContentWholePairRelation,
+} from "../../compare/content";
+import type { FolioContentBlock, FolioContentTableLocation } from "../../compare/content-types";
 import {
   docxParagraphPropertiesEqual,
   docxParagraphPropertiesFromBlock,
+  docxTableLocationFromContent,
 } from "./docx-paragraph-transport";
 import {
+  resolvedDocxAuthoredRunsForBlock,
+  resolvedDocxAuthoredRunsForRange,
+  resolvedDocxSourceOperand,
   resolvedDocxSourceOperandBlock,
   resolvedDocxSourceOperandSnapshot,
+  resolvedDocxTableNodes,
   type ResolvedDocxSourceOperand,
   type ResolvedDocxStorySnapshot,
 } from "./resolved-docx-story-snapshot";
 import {
+  resolvedDocxFormattingRangeOperandPayload,
+  resolvedDocxPairRangeOperandRelation,
+  resolvedDocxPairedBaseTableIndexes,
+  resolvedDocxReplacementRangeOperandPayload,
+  resolvedDocxSeparatorOperandRelation,
   resolvedDocxStoryComparisonPayload,
+  resolvedDocxTableGeometryPairings,
+  resolvedDocxTargetBlockOperandBlock,
+  resolvedDocxTargetColumnOperandChange,
+  resolvedDocxTargetRowOperandChange,
+  resolvedDocxTargetTableOperandOwner,
+  type ResolvedDocxFormattingRangeOperand,
+  type ResolvedDocxPairRangeOperand,
+  type ResolvedDocxSeparatorOperand,
   type ResolvedDocxStoryComparison,
+  type ResolvedDocxTargetBlockOperand,
+  type ResolvedDocxTargetColumnOperand,
+  type ResolvedDocxTargetRowOperand,
+  type ResolvedDocxTargetTableOperand,
+  type ResolvedDocxWholeBlockReplacementOperand,
 } from "./resolved-docx-story-comparison";
 
 const MAX_DOCX_COMPARISON_INSTRUCTIONS = 10_000;
@@ -41,7 +69,7 @@ export type DocxAuthoredChangeRange = {
   readonly properties: readonly string[];
 };
 
-export type DocxComparisonRangePlanInput = {
+type DocxComparisonRangePlanInput = {
   readonly sourceText: string;
   readonly targetText: string;
   readonly segments: readonly FolioContentTextSegment[];
@@ -57,6 +85,11 @@ export type DocxComparisonSourceOperandGroup = readonly [
   ...DocxComparisonSourceOperand[],
 ];
 
+type DocxComparisonStructuralInsertionOperand = {
+  readonly source: DocxComparisonSourceOperand;
+  readonly position: "after" | "before";
+};
+
 export type DocxComparisonStructuralInsertionAnchor = {
   readonly blockId: string;
   readonly position: "after" | "before";
@@ -67,13 +100,6 @@ export type DocxComparisonParagraphInsertionBoundary = {
   readonly paragraph: DocxComparisonSourceOperand;
 };
 
-export type DocxComparisonParagraphTargetInput = {
-  readonly text: string;
-  readonly runs: readonly DocxAuthoredRun[];
-  readonly properties: Readonly<FolioAIBlockParagraphProperties>;
-  readonly table?: Readonly<FolioAIBlockTableLocation>;
-};
-
 /**
  * Closed transport vocabulary for one DOCX story. These are not generic edit
  * requests: each branch owns its source expectation and complete accepted
@@ -82,20 +108,16 @@ export type DocxComparisonParagraphTargetInput = {
 export type DocxComparisonInstructionInput =
   | {
       readonly type: "replaceText";
-      readonly source: DocxComparisonSourceOperand;
-      readonly sourceStartOffset: number;
-      readonly range: DocxComparisonRangePlanInput;
+      readonly range: ResolvedDocxPairRangeOperand | ResolvedDocxWholeBlockReplacementOperand;
     }
   | {
       readonly type: "formatText";
-      readonly source: DocxComparisonSourceOperand;
-      readonly sourceStartOffset: number;
-      readonly range: DocxComparisonRangePlanInput;
+      readonly range: ResolvedDocxFormattingRangeOperand;
     }
   | {
       readonly type: "insertParagraph";
       readonly boundary: DocxComparisonParagraphInsertionBoundary;
-      readonly target: DocxComparisonParagraphTargetInput;
+      readonly target: ResolvedDocxTargetBlockOperand;
     }
   | {
       readonly type: "deleteParagraph";
@@ -106,36 +128,27 @@ export type DocxComparisonInstructionInput =
       readonly source: DocxComparisonSourceOperand;
       readonly successor: DocxComparisonSourceOperand;
       readonly boundary: DocxComparisonParagraphInsertionBoundary;
-      readonly target: DocxComparisonParagraphTargetInput;
+      readonly target: ResolvedDocxTargetBlockOperand;
     }
   | {
       readonly type: "moveTerminalParagraph";
       readonly predecessor: DocxComparisonSourceOperand;
       readonly source: DocxComparisonSourceOperand;
-      readonly carrierTargetProperties: Readonly<FolioAIBlockParagraphProperties>;
+      readonly carrierTarget: ResolvedDocxTargetBlockOperand;
       readonly boundary: DocxComparisonParagraphInsertionBoundary;
-      readonly target: DocxComparisonParagraphTargetInput;
+      readonly target: ResolvedDocxTargetBlockOperand;
     }
   | {
       readonly type: "splitParagraph";
-      readonly source: DocxComparisonSourceOperand;
-      readonly offset: number;
-      readonly first: DocxComparisonRangePlanInput;
-      readonly second: DocxComparisonRangePlanInput;
-      readonly separatorText: string;
-      readonly separatorRuns: readonly DocxAuthoredRun[];
-      readonly firstTarget: DocxComparisonParagraphTargetInput;
-      readonly secondTarget: DocxComparisonParagraphTargetInput;
+      readonly first: ResolvedDocxPairRangeOperand;
+      readonly second: ResolvedDocxPairRangeOperand;
+      readonly separator: ResolvedDocxSeparatorOperand;
     }
   | {
       readonly type: "mergeParagraphs";
-      readonly firstSource: DocxComparisonSourceOperand;
-      readonly secondSource: DocxComparisonSourceOperand;
-      readonly first: DocxComparisonRangePlanInput;
-      readonly second: DocxComparisonRangePlanInput;
-      readonly separatorText: string;
-      readonly separatorRuns: readonly DocxAuthoredRun[];
-      readonly target: DocxComparisonParagraphTargetInput;
+      readonly first: ResolvedDocxPairRangeOperand;
+      readonly second: ResolvedDocxPairRangeOperand;
+      readonly separator: ResolvedDocxSeparatorOperand;
     }
   | {
       readonly type: "deleteTrailingParagraphs";
@@ -146,52 +159,42 @@ export type DocxComparisonInstructionInput =
   | {
       readonly type: "setParagraphProperties";
       readonly source: DocxComparisonSourceOperand;
-      readonly targetProperties: Readonly<FolioAIBlockParagraphProperties>;
+      readonly target: ResolvedDocxTargetBlockOperand;
     }
   | {
       readonly type: "insertTable";
-      readonly anchor: DocxComparisonStructuralInsertionAnchor;
-      readonly targetTableIndex: number;
+      readonly anchor: DocxComparisonStructuralInsertionOperand;
+      readonly target: ResolvedDocxTargetTableOperand;
     }
   | {
       readonly type: "deleteTable";
       readonly source: DocxComparisonSourceOperand;
-      readonly baseTableIndex: number;
     }
   | {
       readonly type: "replaceTable";
       readonly source: DocxComparisonSourceOperand;
-      readonly baseTableIndex: number;
-      readonly targetTableIndex: number;
+      readonly target: ResolvedDocxTargetTableOperand;
     }
   | {
       readonly type: "insertTableRow";
-      readonly anchor: DocxComparisonStructuralInsertionAnchor;
-      readonly targetTableIndex: number;
-      readonly targetRowIndex: number;
+      readonly anchor: DocxComparisonStructuralInsertionOperand;
+      readonly target: ResolvedDocxTargetRowOperand;
     }
   | {
       readonly type: "deleteTableRow";
       readonly source: DocxComparisonSourceOperand;
-      readonly baseTableIndex: number;
-      readonly baseRowIndex: number;
     }
   | {
       readonly type: "insertTableColumn";
-      readonly anchor: DocxComparisonStructuralInsertionAnchor;
-      readonly targetTableIndex: number;
-      readonly targetColumnIndex: number;
-      readonly cellTexts: readonly string[];
+      readonly anchor: DocxComparisonStructuralInsertionOperand;
+      readonly target: ResolvedDocxTargetColumnOperand;
     }
   | {
       readonly type: "deleteTableColumn";
       readonly source: DocxComparisonSourceOperand;
-      readonly baseTableIndex: number;
-      readonly baseColumnIndex: number;
     }
   | {
       readonly type: "matchTableGeometry";
-      readonly pairings: readonly TableGeometryPairing[];
     };
 
 export type DocxComparisonEqualFragment = {
@@ -313,20 +316,51 @@ export type DocxComparisonInstruction =
       readonly source: DocxComparisonSourceOperand;
       readonly targetProperties: Readonly<FolioAIBlockParagraphProperties>;
     }
-  | Extract<
-      DocxComparisonInstructionInput,
-      {
-        readonly type:
-          | "insertTable"
-          | "deleteTable"
-          | "replaceTable"
-          | "insertTableRow"
-          | "deleteTableRow"
-          | "insertTableColumn"
-          | "deleteTableColumn"
-          | "matchTableGeometry";
-      }
-    >;
+  | {
+      readonly type: "insertTable";
+      readonly anchor: DocxComparisonStructuralInsertionAnchor;
+      readonly targetTableIndex: number;
+    }
+  | {
+      readonly type: "deleteTable";
+      readonly source: DocxComparisonSourceOperand;
+      readonly baseTableIndex: number;
+    }
+  | {
+      readonly type: "replaceTable";
+      readonly source: DocxComparisonSourceOperand;
+      readonly baseTableIndex: number;
+      readonly targetTableIndex: number;
+    }
+  | {
+      readonly type: "insertTableRow";
+      readonly anchor: DocxComparisonStructuralInsertionAnchor;
+      readonly targetTableIndex: number;
+      readonly targetRowIndex: number;
+    }
+  | {
+      readonly type: "deleteTableRow";
+      readonly source: DocxComparisonSourceOperand;
+      readonly baseTableIndex: number;
+      readonly baseRowIndex: number;
+    }
+  | {
+      readonly type: "insertTableColumn";
+      readonly anchor: DocxComparisonStructuralInsertionAnchor;
+      readonly targetTableIndex: number;
+      readonly targetColumnIndex: number;
+      readonly cellTexts: readonly string[];
+    }
+  | {
+      readonly type: "deleteTableColumn";
+      readonly source: DocxComparisonSourceOperand;
+      readonly baseTableIndex: number;
+      readonly baseColumnIndex: number;
+    }
+  | {
+      readonly type: "matchTableGeometry";
+      readonly pairings: readonly TableGeometryPairing[];
+    };
 
 /** Exact operands and immutable instructions transferred to preflight once. */
 export type ConsumedDocxComparisonProgram = {
@@ -725,9 +759,8 @@ const ownParagraphProperties = (
 };
 
 const ownTableLocation = (
-  table: Readonly<FolioAIBlockTableLocation> | undefined,
-): Readonly<FolioAIBlockTableLocation> | undefined => {
-  if (table === undefined) return undefined;
+  table: Readonly<FolioAIBlockTableLocation>,
+): Readonly<FolioAIBlockTableLocation> => {
   const owned = structuredClone(table);
   freezeRecursively(owned);
   return owned;
@@ -745,15 +778,17 @@ const ownSourceOperand = (
 };
 
 const ownStructuralInsertionAnchor = (
-  anchor: DocxComparisonStructuralInsertionAnchor,
+  anchor: DocxComparisonStructuralInsertionOperand,
+  snapshot: ResolvedDocxStorySnapshot,
 ): DocxComparisonStructuralInsertionAnchor => {
-  if (anchor.blockId.length === 0) {
-    return panic("A DOCX comparison insertion anchor has no block identity");
-  }
   switch (anchor.position) {
     case "after":
     case "before":
-      return Object.freeze({ blockId: anchor.blockId, position: anchor.position });
+      return Object.freeze({
+        blockId: resolvedDocxSourceOperandBlock(ownSourceOperand(anchor.source, snapshot), snapshot)
+          .identity.id,
+        position: anchor.position,
+      });
     default: {
       const unreachable: never = anchor.position;
       return panic("A DOCX comparison insertion anchor has an invalid position", {
@@ -802,32 +837,31 @@ const ownSourceOperandGroup = (
   return Object.freeze([first, ...owned.slice(1)]);
 };
 
-const ownParagraphTarget = (
-  target: DocxComparisonParagraphTargetInput,
+const ownParagraphTargetBlock = (
+  block: FolioContentBlock,
+  targetSnapshot: ResolvedDocxStorySnapshot,
 ): DocxComparisonParagraphTarget =>
   Object.freeze({
-    text: target.text,
-    runs: ownRuns(target.text, target.runs),
-    properties: ownParagraphProperties(target.properties),
-    ...(target.table !== undefined && { table: ownTableLocation(target.table) }),
+    text: block.text,
+    runs: ownRuns(block.text, resolvedDocxAuthoredRunsForBlock(targetSnapshot, block)),
+    properties: ownParagraphProperties(docxParagraphPropertiesFromBlock(block)),
+    ...(block.table !== undefined && {
+      table: ownTableLocation(docxTableLocationFromContent(block.table)),
+    }),
   });
+
+const ownParagraphTarget = (
+  target: ResolvedDocxTargetBlockOperand,
+  comparison: ResolvedDocxStoryComparison,
+  targetSnapshot: ResolvedDocxStorySnapshot,
+): DocxComparisonParagraphTarget =>
+  ownParagraphTargetBlock(resolvedDocxTargetBlockOperandBlock(target, comparison), targetSnapshot);
 
 const ownIndex = (name: string, value: number): number => {
   if (!Number.isSafeInteger(value) || value < 0) {
     return panic("A DOCX comparison structural index is invalid", { name, value });
   }
   return value;
-};
-
-const ownCellTexts = (cellTexts: readonly string[]): readonly string[] => {
-  const owned: string[] = [];
-  for (const text of cellTexts) {
-    if (typeof text !== "string") {
-      return panic("A DOCX comparison table column contains non-text content");
-    }
-    owned.push(text);
-  }
-  return Object.freeze(owned);
 };
 
 const ownTableGeometryPairings = (
@@ -843,6 +877,364 @@ const ownTableGeometryPairings = (
   freezeRecursively(owned);
   return owned;
 };
+
+const authoredChangesForRelation = (
+  relation: FolioContentWholePairRelation | FolioContentRangePairRelation,
+  baseStart: number,
+  revisedStart: number,
+): readonly DocxAuthoredChangeRange[] =>
+  Object.freeze(
+    relation.formatting?.ranges
+      .filter(({ formatting }) => formatting.authored.length > 0)
+      .map(
+        ({
+          baseStart: rangeBaseStart,
+          baseEnd,
+          revisedStart: rangeRevisedStart,
+          revisedEnd,
+          formatting,
+        }) =>
+          Object.freeze({
+            baseStart: rangeBaseStart - baseStart,
+            baseEnd: baseEnd - baseStart,
+            revisedStart: rangeRevisedStart - revisedStart,
+            revisedEnd: revisedEnd - revisedStart,
+            properties: Object.freeze(formatting.authored.map(({ key }) => key)),
+          }),
+      ) ?? [],
+  );
+
+const rangeInputForRelation = (
+  relation: FolioContentWholePairRelation | FolioContentRangePairRelation,
+  sourceSnapshot: ResolvedDocxStorySnapshot,
+  targetSnapshot: ResolvedDocxStorySnapshot,
+): DocxComparisonRangePlanInput => {
+  const baseStart = relation.base.startOffset;
+  const revisedStart = relation.revised.startOffset;
+  const baseBlock = relation.base.block;
+  const targetBlock = relation.revised.block;
+  return {
+    sourceText: baseBlock.text.slice(baseStart, relation.base.endOffset),
+    targetText: targetBlock.text.slice(revisedStart, relation.revised.endOffset),
+    segments: relation.segments.map((segment) =>
+      Object.freeze({
+        ...segment,
+        baseStart: segment.baseStart - baseStart,
+        baseEnd: segment.baseEnd - baseStart,
+        revisedStart: segment.revisedStart - revisedStart,
+        revisedEnd: segment.revisedEnd - revisedStart,
+      }),
+    ),
+    sourceRuns: resolvedDocxAuthoredRunsForRange(
+      sourceSnapshot,
+      baseBlock,
+      relation.base.startOffset,
+      relation.base.endOffset,
+    ),
+    targetRuns: resolvedDocxAuthoredRunsForRange(
+      targetSnapshot,
+      targetBlock,
+      relation.revised.startOffset,
+      relation.revised.endOffset,
+    ),
+    authoredChanges: authoredChangesForRelation(relation, baseStart, revisedStart),
+  };
+};
+
+type CompiledOperandRange = {
+  readonly source: DocxComparisonSourceOperand;
+  readonly sourceStartOffset: number;
+  readonly range: DocxComparisonRangePlan;
+};
+
+const compilePairRelation = (
+  relation: FolioContentWholePairRelation | FolioContentRangePairRelation,
+  sourceSnapshot: ResolvedDocxStorySnapshot,
+  targetSnapshot: ResolvedDocxStorySnapshot,
+): CompiledOperandRange => {
+  const source = resolvedDocxSourceOperand(sourceSnapshot, relation.base.block);
+  const range = compileRange(rangeInputForRelation(relation, sourceSnapshot, targetSnapshot));
+  assertRangeMatchesSource(source, sourceSnapshot, relation.base.startOffset, range);
+  return Object.freeze({ source, sourceStartOffset: relation.base.startOffset, range });
+};
+
+const compilePairRangeOperand = (
+  operand: ResolvedDocxPairRangeOperand,
+  comparison: ResolvedDocxStoryComparison,
+  sourceSnapshot: ResolvedDocxStorySnapshot,
+  targetSnapshot: ResolvedDocxStorySnapshot,
+): CompiledOperandRange =>
+  compilePairRelation(
+    resolvedDocxPairRangeOperandRelation(operand, comparison),
+    sourceSnapshot,
+    targetSnapshot,
+  );
+
+const compileFormattingRangeOperand = (
+  operand: ResolvedDocxFormattingRangeOperand,
+  comparison: ResolvedDocxStoryComparison,
+  sourceSnapshot: ResolvedDocxStorySnapshot,
+  targetSnapshot: ResolvedDocxStorySnapshot,
+): CompiledOperandRange => {
+  const { relation, range: formattingRange } = resolvedDocxFormattingRangeOperandPayload(
+    operand,
+    comparison,
+  );
+  const sourceText = relation.base.block.text.slice(
+    formattingRange.baseStart,
+    formattingRange.baseEnd,
+  );
+  const targetText = relation.revised.block.text.slice(
+    formattingRange.revisedStart,
+    formattingRange.revisedEnd,
+  );
+  const source = resolvedDocxSourceOperand(sourceSnapshot, relation.base.block);
+  const range = compileRange({
+    sourceText,
+    targetText,
+    segments: Object.freeze([
+      Object.freeze({
+        type: "equal",
+        text: sourceText,
+        baseStart: 0,
+        baseEnd: sourceText.length,
+        revisedStart: 0,
+        revisedEnd: targetText.length,
+      }),
+    ]),
+    sourceRuns: resolvedDocxAuthoredRunsForRange(
+      sourceSnapshot,
+      relation.base.block,
+      formattingRange.baseStart,
+      formattingRange.baseEnd,
+    ),
+    targetRuns: resolvedDocxAuthoredRunsForRange(
+      targetSnapshot,
+      relation.revised.block,
+      formattingRange.revisedStart,
+      formattingRange.revisedEnd,
+    ),
+    authoredChanges: Object.freeze([
+      Object.freeze({
+        baseStart: 0,
+        baseEnd: sourceText.length,
+        revisedStart: 0,
+        revisedEnd: targetText.length,
+        properties: Object.freeze(formattingRange.formatting.authored.map(({ key }) => key)),
+      }),
+    ]),
+  });
+  assertRangeMatchesSource(source, sourceSnapshot, formattingRange.baseStart, range);
+  return Object.freeze({ source, sourceStartOffset: formattingRange.baseStart, range });
+};
+
+const wholeReplacementSegments = (
+  sourceText: string,
+  targetText: string,
+): readonly FolioContentTextSegment[] =>
+  Object.freeze([
+    ...(sourceText.length > 0
+      ? [
+          Object.freeze({
+            type: "del" as const,
+            text: sourceText,
+            baseStart: 0,
+            baseEnd: sourceText.length,
+            revisedStart: 0,
+            revisedEnd: 0,
+          }),
+        ]
+      : []),
+    ...(targetText.length > 0
+      ? [
+          Object.freeze({
+            type: "ins" as const,
+            text: targetText,
+            baseStart: sourceText.length,
+            baseEnd: sourceText.length,
+            revisedStart: 0,
+            revisedEnd: targetText.length,
+          }),
+        ]
+      : []),
+  ]);
+
+const compileWholeBlockReplacement = (
+  {
+    baseBlock,
+    targetBlock,
+  }: {
+    readonly baseBlock: FolioContentBlock;
+    readonly targetBlock: FolioContentBlock;
+  },
+  sourceSnapshot: ResolvedDocxStorySnapshot,
+  targetSnapshot: ResolvedDocxStorySnapshot,
+): CompiledOperandRange => {
+  const source = resolvedDocxSourceOperand(sourceSnapshot, baseBlock);
+  const range = compileRange({
+    sourceText: baseBlock.text,
+    targetText: targetBlock.text,
+    segments: wholeReplacementSegments(baseBlock.text, targetBlock.text),
+    sourceRuns: resolvedDocxAuthoredRunsForBlock(sourceSnapshot, baseBlock),
+    targetRuns: resolvedDocxAuthoredRunsForBlock(targetSnapshot, targetBlock),
+    authoredChanges: Object.freeze([]),
+  });
+  assertRangeMatchesSource(source, sourceSnapshot, 0, range);
+  return Object.freeze({ source, sourceStartOffset: 0, range });
+};
+
+const compileReplacementRangeOperand = (
+  operand: ResolvedDocxPairRangeOperand | ResolvedDocxWholeBlockReplacementOperand,
+  comparison: ResolvedDocxStoryComparison,
+  sourceSnapshot: ResolvedDocxStorySnapshot,
+  targetSnapshot: ResolvedDocxStorySnapshot,
+): CompiledOperandRange => {
+  const payload = resolvedDocxReplacementRangeOperandPayload(operand, comparison);
+  switch (payload.type) {
+    case "pair":
+      return compilePairRelation(payload.relation, sourceSnapshot, targetSnapshot);
+    case "whole-block":
+      return compileWholeBlockReplacement(payload, sourceSnapshot, targetSnapshot);
+    default: {
+      const unreachable: never = payload;
+      return panic("Unhandled DOCX replacement-range operand", { payload: unreachable });
+    }
+  }
+};
+
+const tableLocationOf = (block: FolioContentBlock, side: "base" | "target") =>
+  block.table ?? panic(`A DOCX ${side} table operand has no canonical table location`);
+
+const targetTableNode = (targetSnapshot: ResolvedDocxStorySnapshot, tableIndex: number) =>
+  resolvedDocxTableNodes(targetSnapshot).get(tableIndex) ??
+  panic("A DOCX target table operand has no exact target table node", { tableIndex });
+
+const targetTableFromOperand = (
+  operand: ResolvedDocxTargetTableOperand,
+  expected: "inserted" | "replacement",
+  comparison: ResolvedDocxStoryComparison,
+  targetSnapshot: ResolvedDocxStorySnapshot,
+): number => {
+  const owner = resolvedDocxTargetTableOperandOwner(operand, comparison);
+  const inserted = "type" in owner;
+  if ((expected === "inserted") !== inserted) {
+    return panic("A DOCX target table operand belongs to another instruction kind", {
+      expected,
+    });
+  }
+  const tableIndex = ownIndex(
+    "targetTableIndex",
+    inserted ? owner.tableIndex : owner.revisedTableIndex,
+  );
+  const blocks = inserted ? owner.blocks : owner.revisedBlocks;
+  if (!blocks.some((block) => block.table?.tableIndex === tableIndex)) {
+    return panic("A DOCX target table operand does not own its canonical table coordinates", {
+      tableIndex,
+    });
+  }
+  targetTableNode(targetSnapshot, tableIndex);
+  return tableIndex;
+};
+
+const targetRowFromOperand = (
+  operand: ResolvedDocxTargetRowOperand,
+  comparison: ResolvedDocxStoryComparison,
+  targetSnapshot: ResolvedDocxStorySnapshot,
+): { readonly tableIndex: number; readonly rowIndex: number } => {
+  const change = resolvedDocxTargetRowOperandChange(operand, comparison);
+  const tableIndex = ownIndex("targetTableIndex", change.tableIndex);
+  const rowIndex = ownIndex("targetRowIndex", change.rowIndex);
+  if (
+    !change.blocks.some(
+      (block) => block.table?.tableIndex === tableIndex && block.table.rowIndex === rowIndex,
+    )
+  ) {
+    return panic("A DOCX target row operand does not own its canonical row coordinates", {
+      tableIndex,
+      rowIndex,
+    });
+  }
+  const node = targetTableNode(targetSnapshot, tableIndex);
+  if (rowIndex >= node.childCount) {
+    return panic("A DOCX target row operand has no exact target row node", {
+      tableIndex,
+      rowIndex,
+    });
+  }
+  node.child(rowIndex);
+  return Object.freeze({ tableIndex, rowIndex });
+};
+
+const columnCellTexts = (blocks: readonly FolioContentBlock[]): readonly string[] => {
+  const byCell = new Map<string, string>();
+  for (const block of blocks) {
+    const table = block.table;
+    if (!table) return panic("A DOCX target column contains a block outside its table");
+    const key = `${String(table.rowIndex)}:${String(table.cellIndex)}`;
+    const existing = byCell.get(key);
+    byCell.set(key, existing === undefined ? block.text : `${existing}\n${block.text}`);
+  }
+  return Object.freeze([...byCell.values()]);
+};
+
+const targetColumnFromOperand = (
+  operand: ResolvedDocxTargetColumnOperand,
+  comparison: ResolvedDocxStoryComparison,
+  targetSnapshot: ResolvedDocxStorySnapshot,
+): {
+  readonly tableIndex: number;
+  readonly columnIndex: number;
+  readonly cellTexts: readonly string[];
+} => {
+  const change = resolvedDocxTargetColumnOperandChange(operand, comparison);
+  const tableIndex = ownIndex("targetTableIndex", change.tableIndex);
+  const columnIndex = ownIndex("targetColumnIndex", change.columnIndex);
+  if (
+    !change.blocks.every(
+      (block) =>
+        block.table?.tableIndex === tableIndex && block.table.gridColumnIndex === columnIndex,
+    )
+  ) {
+    return panic("A DOCX target column operand does not own its canonical column coordinates", {
+      tableIndex,
+      columnIndex,
+    });
+  }
+  targetTableNode(targetSnapshot, tableIndex);
+  return Object.freeze({
+    tableIndex,
+    columnIndex,
+    cellTexts: columnCellTexts(change.blocks),
+  });
+};
+
+const sourceTableLocation = (
+  source: DocxComparisonSourceOperand,
+  sourceSnapshot: ResolvedDocxStorySnapshot,
+): FolioContentTableLocation =>
+  tableLocationOf(resolvedDocxSourceOperandBlock(source, sourceSnapshot), "base");
+
+const assertStructuralAnchorPairsWithTargetTable = (
+  anchor: DocxComparisonStructuralInsertionOperand,
+  targetTableIndex: number,
+  comparison: ResolvedDocxStoryComparison,
+  sourceSnapshot: ResolvedDocxStorySnapshot,
+): void => {
+  const sourceLocation = sourceTableLocation(anchor.source, sourceSnapshot);
+  if (
+    !resolvedDocxPairedBaseTableIndexes(comparison, targetTableIndex).has(sourceLocation.tableIndex)
+  ) {
+    return panic("A DOCX structural insertion anchor belongs to another canonical table", {
+      baseTableIndex: sourceLocation.tableIndex,
+      targetTableIndex,
+    });
+  }
+};
+
+const tableGeometryPairings = (
+  comparison: ResolvedDocxStoryComparison,
+): readonly TableGeometryPairing[] =>
+  ownTableGeometryPairings(resolvedDocxTableGeometryPairings(comparison));
 
 const assertRangeMatchesSource = (
   source: DocxComparisonSourceOperand,
@@ -896,13 +1288,19 @@ const concatenateRuns = (
 
 const compileInstruction = (
   input: DocxComparisonInstructionInput,
+  comparison: ResolvedDocxStoryComparison,
   sourceSnapshot: ResolvedDocxStorySnapshot,
+  targetSnapshot: ResolvedDocxStorySnapshot,
 ): DocxComparisonInstruction => {
   switch (input.type) {
     case "replaceText": {
-      const source = ownSourceOperand(input.source, sourceSnapshot);
-      const range = compileRange(input.range);
-      assertRangeMatchesSource(source, sourceSnapshot, input.sourceStartOffset, range);
+      const owned = compileReplacementRangeOperand(
+        input.range,
+        comparison,
+        sourceSnapshot,
+        targetSnapshot,
+      );
+      const { source, sourceStartOffset, range } = owned;
       if (
         range.sourceText === range.targetText &&
         range.fragments.every(
@@ -914,18 +1312,23 @@ const compileInstruction = (
       return Object.freeze({
         type: "replaceText",
         source,
-        sourceStartOffset: input.sourceStartOffset,
+        sourceStartOffset,
         range,
       });
     }
     case "formatText": {
-      const source = ownSourceOperand(input.source, sourceSnapshot);
-      const range = compileRange(input.range);
-      assertRangeMatchesSource(source, sourceSnapshot, input.sourceStartOffset, range);
+      const { source, sourceStartOffset, range } = compileFormattingRangeOperand(
+        input.range,
+        comparison,
+        sourceSnapshot,
+        targetSnapshot,
+      );
       if (
         range.sourceText !== range.targetText ||
         range.fragments.some((fragment) => fragment.type !== "equal") ||
-        range.fragments.every(({ changedProperties }) => changedProperties.length === 0)
+        !range.fragments.some(
+          (fragment) => fragment.type === "equal" && fragment.changedProperties.length > 0,
+        )
       ) {
         return panic(
           "A DOCX comparison formatting instruction must contain only formatting changes",
@@ -934,7 +1337,7 @@ const compileInstruction = (
       return Object.freeze({
         type: "formatText",
         source,
-        sourceStartOffset: input.sourceStartOffset,
+        sourceStartOffset,
         range,
       });
     }
@@ -942,7 +1345,7 @@ const compileInstruction = (
       return Object.freeze({
         type: "insertParagraph",
         boundary: ownParagraphInsertionBoundary(input.boundary, sourceSnapshot),
-        target: ownParagraphTarget(input.target),
+        target: ownParagraphTarget(input.target, comparison, targetSnapshot),
       });
     case "deleteParagraph":
       return Object.freeze({
@@ -955,28 +1358,69 @@ const compileInstruction = (
         source: ownSourceOperand(input.source, sourceSnapshot),
         successor: ownSourceOperand(input.successor, sourceSnapshot),
         boundary: ownParagraphInsertionBoundary(input.boundary, sourceSnapshot),
-        target: ownParagraphTarget(input.target),
+        target: ownParagraphTarget(input.target, comparison, targetSnapshot),
       });
     case "moveTerminalParagraph":
       return Object.freeze({
         type: "moveTerminalParagraph",
         predecessor: ownSourceOperand(input.predecessor, sourceSnapshot),
         source: ownSourceOperand(input.source, sourceSnapshot),
-        carrierTargetProperties: ownParagraphProperties(input.carrierTargetProperties),
+        carrierTargetProperties: ownParagraphProperties(
+          docxParagraphPropertiesFromBlock(
+            resolvedDocxTargetBlockOperandBlock(input.carrierTarget, comparison),
+          ),
+        ),
         boundary: ownParagraphInsertionBoundary(input.boundary, sourceSnapshot),
-        target: ownParagraphTarget(input.target),
+        target: ownParagraphTarget(input.target, comparison, targetSnapshot),
       });
     case "splitParagraph": {
-      const source = ownSourceOperand(input.source, sourceSnapshot);
+      const firstCompiled = compilePairRangeOperand(
+        input.first,
+        comparison,
+        sourceSnapshot,
+        targetSnapshot,
+      );
+      const secondCompiled = compilePairRangeOperand(
+        input.second,
+        comparison,
+        sourceSnapshot,
+        targetSnapshot,
+      );
+      const firstRelation = resolvedDocxPairRangeOperandRelation(input.first, comparison);
+      const secondRelation = resolvedDocxPairRangeOperandRelation(input.second, comparison);
+      const separatorRelation = resolvedDocxSeparatorOperandRelation(input.separator, comparison);
+      const source = firstCompiled.source;
       const sourceBlock = resolvedDocxSourceOperandBlock(source, sourceSnapshot);
-      const first = compileRange(input.first);
-      const second = compileRange(input.second);
-      const separatorRuns = ownRuns(input.separatorText, input.separatorRuns);
-      const firstTarget = ownParagraphTarget(input.firstTarget);
-      const secondTarget = ownParagraphTarget(input.secondTarget);
+      const first = firstCompiled.range;
+      const second = secondCompiled.range;
+      const separatorText = separatorRelation.base.block.text.slice(
+        separatorRelation.base.startOffset,
+        separatorRelation.base.endOffset,
+      );
+      const separatorRuns = ownRuns(
+        separatorText,
+        resolvedDocxAuthoredRunsForRange(
+          sourceSnapshot,
+          separatorRelation.base.block,
+          separatorRelation.base.startOffset,
+          separatorRelation.base.endOffset,
+        ),
+      );
+      const firstTarget = ownParagraphTargetBlock(firstRelation.revised.block, targetSnapshot);
+      const secondTarget = ownParagraphTargetBlock(secondRelation.revised.block, targetSnapshot);
       if (
-        input.offset !== first.sourceText.length ||
-        sourceBlock.text !== `${first.sourceText}${input.separatorText}${second.sourceText}` ||
+        secondCompiled.source !== source ||
+        separatorRelation.base.block !== sourceBlock ||
+        firstCompiled.sourceStartOffset !== 0 ||
+        firstRelation.base.endOffset !== separatorRelation.base.startOffset ||
+        separatorRelation.base.endOffset !== secondRelation.base.startOffset ||
+        secondRelation.base.endOffset !== sourceBlock.text.length ||
+        firstRelation.revised.startOffset !== 0 ||
+        firstRelation.revised.endOffset !== firstRelation.revised.block.text.length ||
+        secondRelation.revised.startOffset !== 0 ||
+        secondRelation.revised.endOffset !== secondRelation.revised.block.text.length ||
+        firstRelation.revised.block === secondRelation.revised.block ||
+        sourceBlock.text !== `${first.sourceText}${separatorText}${second.sourceText}` ||
         first.targetText !== firstTarget.text ||
         second.targetText !== secondTarget.text
       ) {
@@ -985,36 +1429,79 @@ const compileInstruction = (
       assertRunsEqual(
         first.targetText,
         firstTarget.runs,
-        ownRuns(first.targetText, input.first.targetRuns),
+        resolvedDocxAuthoredRunsForRange(
+          targetSnapshot,
+          firstRelation.revised.block,
+          firstRelation.revised.startOffset,
+          firstRelation.revised.endOffset,
+        ),
       );
       assertRunsEqual(
         second.targetText,
         secondTarget.runs,
-        ownRuns(second.targetText, input.second.targetRuns),
+        resolvedDocxAuthoredRunsForRange(
+          targetSnapshot,
+          secondRelation.revised.block,
+          secondRelation.revised.startOffset,
+          secondRelation.revised.endOffset,
+        ),
       );
       return Object.freeze({
         type: "splitParagraph",
         source,
-        offset: input.offset,
+        offset: first.sourceText.length,
         first,
         second,
-        separatorText: input.separatorText,
+        separatorText,
         separatorRuns,
         firstTarget,
         secondTarget,
       });
     }
     case "mergeParagraphs": {
-      const firstSource = ownSourceOperand(input.firstSource, sourceSnapshot);
-      const secondSource = ownSourceOperand(input.secondSource, sourceSnapshot);
+      const firstCompiled = compilePairRangeOperand(
+        input.first,
+        comparison,
+        sourceSnapshot,
+        targetSnapshot,
+      );
+      const secondCompiled = compilePairRangeOperand(
+        input.second,
+        comparison,
+        sourceSnapshot,
+        targetSnapshot,
+      );
+      const firstRelation = resolvedDocxPairRangeOperandRelation(input.first, comparison);
+      const secondRelation = resolvedDocxPairRangeOperandRelation(input.second, comparison);
+      const separatorRelation = resolvedDocxSeparatorOperandRelation(input.separator, comparison);
+      const firstSource = firstCompiled.source;
+      const secondSource = secondCompiled.source;
       const firstSourceBlock = resolvedDocxSourceOperandBlock(firstSource, sourceSnapshot);
       const secondSourceBlock = resolvedDocxSourceOperandBlock(secondSource, sourceSnapshot);
-      const first = compileRange(input.first);
-      const second = compileRange(input.second);
-      const separatorRuns = ownRuns(input.separatorText, input.separatorRuns);
-      const target = ownParagraphTarget(input.target);
-      const targetText = `${first.targetText}${input.separatorText}${second.targetText}`;
+      const first = firstCompiled.range;
+      const second = secondCompiled.range;
+      const separatorText = separatorRelation.revised.block.text.slice(
+        separatorRelation.revised.startOffset,
+        separatorRelation.revised.endOffset,
+      );
+      const separatorRuns = ownRuns(
+        separatorText,
+        resolvedDocxAuthoredRunsForRange(
+          targetSnapshot,
+          separatorRelation.revised.block,
+          separatorRelation.revised.startOffset,
+          separatorRelation.revised.endOffset,
+        ),
+      );
+      const target = ownParagraphTargetBlock(firstRelation.revised.block, targetSnapshot);
+      const targetText = `${first.targetText}${separatorText}${second.targetText}`;
       if (
+        firstRelation.revised.block !== secondRelation.revised.block ||
+        separatorRelation.revised.block !== firstRelation.revised.block ||
+        firstRelation.revised.startOffset !== 0 ||
+        firstRelation.revised.endOffset !== separatorRelation.revised.startOffset ||
+        separatorRelation.revised.endOffset !== secondRelation.revised.startOffset ||
+        secondRelation.revised.endOffset !== target.text.length ||
         firstSourceBlock.text !== first.sourceText ||
         secondSourceBlock.text !== second.sourceText ||
         target.text !== targetText
@@ -1025,9 +1512,25 @@ const compileInstruction = (
         targetText,
         target.runs,
         concatenateRuns([
-          { text: first.targetText, runs: ownRuns(first.targetText, input.first.targetRuns) },
-          { text: input.separatorText, runs: separatorRuns },
-          { text: second.targetText, runs: ownRuns(second.targetText, input.second.targetRuns) },
+          {
+            text: first.targetText,
+            runs: resolvedDocxAuthoredRunsForRange(
+              targetSnapshot,
+              firstRelation.revised.block,
+              firstRelation.revised.startOffset,
+              firstRelation.revised.endOffset,
+            ),
+          },
+          { text: separatorText, runs: separatorRuns },
+          {
+            text: second.targetText,
+            runs: resolvedDocxAuthoredRunsForRange(
+              targetSnapshot,
+              secondRelation.revised.block,
+              secondRelation.revised.startOffset,
+              secondRelation.revised.endOffset,
+            ),
+          },
         ]),
       );
       return Object.freeze({
@@ -1036,7 +1539,7 @@ const compileInstruction = (
         secondSource,
         first,
         second,
-        separatorText: input.separatorText,
+        separatorText,
         separatorRuns,
         target,
       });
@@ -1055,13 +1558,16 @@ const compileInstruction = (
       }
       return Object.freeze({ type: "deleteTrailingParagraphs", chainStart, deleted });
     }
-    case "setParagraphProperties":
+    case "setParagraphProperties": {
+      const targetProperties = docxParagraphPropertiesFromBlock(
+        resolvedDocxTargetBlockOperandBlock(input.target, comparison),
+      );
       if (
         docxParagraphPropertiesEqual(
           docxParagraphPropertiesFromBlock(
             resolvedDocxSourceOperandBlock(input.source, sourceSnapshot),
           ),
-          input.targetProperties,
+          targetProperties,
         )
       ) {
         return panic("A DOCX comparison paragraph-property instruction contains no change");
@@ -1069,60 +1575,108 @@ const compileInstruction = (
       return Object.freeze({
         type: "setParagraphProperties",
         source: ownSourceOperand(input.source, sourceSnapshot),
-        targetProperties: ownParagraphProperties(input.targetProperties),
+        targetProperties: ownParagraphProperties(targetProperties),
       });
-    case "insertTable":
+    }
+    case "insertTable": {
+      const target = targetTableFromOperand(input.target, "inserted", comparison, targetSnapshot);
       return Object.freeze({
         type: "insertTable",
-        anchor: ownStructuralInsertionAnchor(input.anchor),
-        targetTableIndex: ownIndex("targetTableIndex", input.targetTableIndex),
+        anchor: ownStructuralInsertionAnchor(input.anchor, sourceSnapshot),
+        targetTableIndex: target,
       });
-    case "deleteTable":
+    }
+    case "deleteTable": {
+      const source = ownSourceOperand(input.source, sourceSnapshot);
       return Object.freeze({
         type: "deleteTable",
-        source: ownSourceOperand(input.source, sourceSnapshot),
-        baseTableIndex: ownIndex("baseTableIndex", input.baseTableIndex),
+        source,
+        baseTableIndex: ownIndex(
+          "baseTableIndex",
+          sourceTableLocation(source, sourceSnapshot).tableIndex,
+        ),
       });
-    case "replaceTable":
+    }
+    case "replaceTable": {
+      const source = ownSourceOperand(input.source, sourceSnapshot);
+      const owner = resolvedDocxTargetTableOperandOwner(input.target, comparison);
+      if (
+        "type" in owner ||
+        owner.baseBlocks.at(0) !== resolvedDocxSourceOperandBlock(source, sourceSnapshot)
+      ) {
+        return panic("A DOCX replacement table operand does not own its exact base table");
+      }
+      const target = targetTableFromOperand(
+        input.target,
+        "replacement",
+        comparison,
+        targetSnapshot,
+      );
       return Object.freeze({
         type: "replaceTable",
-        source: ownSourceOperand(input.source, sourceSnapshot),
-        baseTableIndex: ownIndex("baseTableIndex", input.baseTableIndex),
-        targetTableIndex: ownIndex("targetTableIndex", input.targetTableIndex),
+        source,
+        baseTableIndex: ownIndex(
+          "baseTableIndex",
+          sourceTableLocation(source, sourceSnapshot).tableIndex,
+        ),
+        targetTableIndex: target,
       });
-    case "insertTableRow":
+    }
+    case "insertTableRow": {
+      const target = targetRowFromOperand(input.target, comparison, targetSnapshot);
+      assertStructuralAnchorPairsWithTargetTable(
+        input.anchor,
+        target.tableIndex,
+        comparison,
+        sourceSnapshot,
+      );
       return Object.freeze({
         type: "insertTableRow",
-        anchor: ownStructuralInsertionAnchor(input.anchor),
-        targetTableIndex: ownIndex("targetTableIndex", input.targetTableIndex),
-        targetRowIndex: ownIndex("targetRowIndex", input.targetRowIndex),
+        anchor: ownStructuralInsertionAnchor(input.anchor, sourceSnapshot),
+        targetTableIndex: target.tableIndex,
+        targetRowIndex: target.rowIndex,
       });
-    case "deleteTableRow":
+    }
+    case "deleteTableRow": {
+      const source = ownSourceOperand(input.source, sourceSnapshot);
+      const location = sourceTableLocation(source, sourceSnapshot);
       return Object.freeze({
         type: "deleteTableRow",
-        source: ownSourceOperand(input.source, sourceSnapshot),
-        baseTableIndex: ownIndex("baseTableIndex", input.baseTableIndex),
-        baseRowIndex: ownIndex("baseRowIndex", input.baseRowIndex),
+        source,
+        baseTableIndex: ownIndex("baseTableIndex", location.tableIndex),
+        baseRowIndex: ownIndex("baseRowIndex", location.rowIndex),
       });
-    case "insertTableColumn":
+    }
+    case "insertTableColumn": {
+      const target = targetColumnFromOperand(input.target, comparison, targetSnapshot);
+      assertStructuralAnchorPairsWithTargetTable(
+        input.anchor,
+        target.tableIndex,
+        comparison,
+        sourceSnapshot,
+      );
       return Object.freeze({
         type: "insertTableColumn",
-        anchor: ownStructuralInsertionAnchor(input.anchor),
-        targetTableIndex: ownIndex("targetTableIndex", input.targetTableIndex),
-        targetColumnIndex: ownIndex("targetColumnIndex", input.targetColumnIndex),
-        cellTexts: ownCellTexts(input.cellTexts),
+        anchor: ownStructuralInsertionAnchor(input.anchor, sourceSnapshot),
+        targetTableIndex: target.tableIndex,
+        targetColumnIndex: target.columnIndex,
+        cellTexts: target.cellTexts,
       });
-    case "deleteTableColumn":
+    }
+    case "deleteTableColumn": {
+      const source = ownSourceOperand(input.source, sourceSnapshot);
+      const location = sourceTableLocation(source, sourceSnapshot);
       return Object.freeze({
         type: "deleteTableColumn",
-        source: ownSourceOperand(input.source, sourceSnapshot),
-        baseTableIndex: ownIndex("baseTableIndex", input.baseTableIndex),
-        baseColumnIndex: ownIndex("baseColumnIndex", input.baseColumnIndex),
+        source,
+        baseTableIndex: ownIndex("baseTableIndex", location.tableIndex),
+        baseColumnIndex: ownIndex("baseColumnIndex", location.gridColumnIndex),
       });
+    }
     case "matchTableGeometry":
       return Object.freeze({
         type: "matchTableGeometry",
-        pairings: ownTableGeometryPairings(input.pairings),
+        pairings: tableGeometryPairings(comparison),
       });
     default: {
       const unreachable: never = input;
@@ -1148,7 +1702,7 @@ export class DocxComparisonProgram {
     inputs: readonly DocxComparisonInstructionInput[],
   ) {
     if (inputs.length > MAX_DOCX_COMPARISON_INSTRUCTIONS) {
-      return panic("A DOCX comparison program exceeds its instruction limit", {
+      panic("A DOCX comparison program exceeds its instruction limit", {
         limit: MAX_DOCX_COMPARISON_INSTRUCTIONS,
         actual: inputs.length,
       });
@@ -1158,7 +1712,7 @@ export class DocxComparisonProgram {
     this.#sourceSnapshot = baseSnapshot;
     this.#targetSnapshot = targetSnapshot;
     this.#instructions = Object.freeze(
-      inputs.map((input) => compileInstruction(input, baseSnapshot)),
+      inputs.map((input) => compileInstruction(input, comparison, baseSnapshot, targetSnapshot)),
     );
   }
 

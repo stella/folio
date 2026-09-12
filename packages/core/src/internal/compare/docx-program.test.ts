@@ -18,6 +18,9 @@ import {
 import {
   compareResolvedDocxStoryPair,
   createResolvedDocxStoryPair,
+  resolvedDocxPairRangeOperand,
+  resolvedDocxStoryComparisonPayload,
+  resolvedDocxTargetBlockOperand,
   type ResolvedDocxStoryComparison,
 } from "./resolved-docx-story-comparison";
 
@@ -43,7 +46,7 @@ const sourceFixture = (): {
   if (!snapshot) throw new Error("main story projection missing");
   const targetState = EditorState.create({
     doc: schema.node("doc", null, [
-      schema.node("paragraph", { paraId: "p-1" }, [schema.text("new")]),
+      schema.node("paragraph", { paraId: "p-1" }, [schema.text("new", [bold.create()])]),
     ]),
   });
   const targetDocument = updateDocumentContent(createEmptyDocument(), targetState.doc);
@@ -69,46 +72,23 @@ const sourceFixture = (): {
 };
 
 const replacement = (
-  source: ResolvedDocxSourceOperand,
+  comparison: ResolvedDocxStoryComparison,
 ): Extract<DocxComparisonInstructionInput, { readonly type: "replaceText" }> => ({
   type: "replaceText",
-  source,
-  sourceStartOffset: 0,
-  range: {
-    sourceText: "old",
-    targetText: "new",
-    segments: [
-      {
-        type: "del",
-        text: "old",
-        baseStart: 0,
-        baseEnd: 3,
-        revisedStart: 0,
-        revisedEnd: 0,
-      },
-      {
-        type: "ins",
-        text: "new",
-        baseStart: 3,
-        baseEnd: 3,
-        revisedStart: 0,
-        revisedEnd: 3,
-      },
-    ],
-    sourceRuns: [{ startOffset: 0, endOffset: 3, formatting: { bold: true } }],
-    targetRuns: [{ startOffset: 0, endOffset: 3, formatting: { italic: true } }],
-    authoredChanges: [],
-  },
+  range: (() => {
+    const event = resolvedDocxStoryComparisonPayload(comparison).comparison.events.at(0);
+    if (event?.type !== "modified") throw new Error("replacement fixture was not modified");
+    return resolvedDocxPairRangeOperand(comparison, event.relation);
+  })(),
 });
 
 describe("DocxComparisonProgram", () => {
-  test("captures and deeply freezes the sole instruction payload", () => {
-    const { comparison, snapshot, source, targetSnapshot } = sourceFixture();
-    const input = replacement(source);
+  test("derives and deeply freezes the sole instruction payload", () => {
+    const { comparison, snapshot, targetSnapshot } = sourceFixture();
+    const input = replacement(comparison);
     const program = DocxComparisonProgram.create(comparison, [input]);
 
-    Reflect.set(input.range.segments[0]!, "text", "corrupted");
-    Reflect.set(input.range.sourceRuns[0]!.formatting, "bold", false);
+    Reflect.set(input, "range", Object.freeze({ ...input.range }));
 
     const consumed = program.consume();
     const [instruction] = consumed.instructions;
@@ -127,68 +107,79 @@ describe("DocxComparisonProgram", () => {
   });
 
   test("is consumable exactly once", () => {
-    const { comparison, source } = sourceFixture();
-    const program = DocxComparisonProgram.create(comparison, [replacement(source)]);
+    const { comparison } = sourceFixture();
+    const program = DocxComparisonProgram.create(comparison, [replacement(comparison)]);
     expect(program.consume().instructions).toHaveLength(1);
     expect(() => program.consume()).toThrow("consumed more than once");
   });
 
-  test("rejects a range whose canonical text does not name its source", () => {
-    const { comparison, source } = sourceFixture();
-    const input = replacement(source);
-    Reflect.set(input.range, "sourceText", "elsewhere");
-    expect(() => DocxComparisonProgram.create(comparison, [input])).toThrow(
-      "does not name its exact source and target text",
-    );
+  test("rejects copied and cross-comparison range operands", () => {
+    const left = sourceFixture();
+    const right = sourceFixture();
+    const copied = Object.freeze({ ...replacement(left.comparison).range });
+    expect(() =>
+      Reflect.apply(DocxComparisonProgram.create, DocxComparisonProgram, [
+        left.comparison,
+        [{ type: "replaceText", range: copied }],
+      ]),
+    ).toThrow("was not created by Folio");
+    expect(() =>
+      DocxComparisonProgram.create(right.comparison, [replacement(left.comparison)]),
+    ).toThrow("belongs to another story comparison");
   });
 
-  test("rejects an authored formatting delta missing from canonical changes", () => {
-    const { comparison, source } = sourceFixture();
-    const input = replacement(source);
-    Reflect.set(input.range, "segments", [
-      {
-        type: "equal",
-        text: "old",
-        baseStart: 0,
-        baseEnd: 3,
-        revisedStart: 0,
-        revisedEnd: 3,
-      },
-    ]);
-    Reflect.set(input.range, "targetText", "old");
-    expect(() => DocxComparisonProgram.create(comparison, [input])).toThrow(
-      "Canonical authored-formatting changes do not reconstruct the target run",
-    );
-  });
-
-  test("rejects oversized instruction and geometry arrays before copying them", () => {
-    const { comparison, source } = sourceFixture();
+  test("rejects an oversized instruction graph before compiling it", () => {
+    const { comparison } = sourceFixture();
     expect(() =>
       DocxComparisonProgram.create(
         comparison,
-        Array.from({ length: 10_001 }, () => replacement(source)),
+        Array.from({ length: 10_001 }, () => replacement(comparison)),
       ),
     ).toThrow("exceeds its instruction limit");
-
-    const pairing = {
-      base: { tableIndex: 0, rowIndex: 0, cellIndex: 0 },
-      target: { tableIndex: 0, rowIndex: 0, cellIndex: 0 },
-    };
-    expect(() =>
-      DocxComparisonProgram.create(comparison, [
-        {
-          type: "matchTableGeometry",
-          pairings: Array.from({ length: 10_001 }, () => pairing),
-        },
-      ]),
-    ).toThrow("exceeds its pairing limit");
   });
 
-  test("cannot mix a source operand with another story snapshot", () => {
+  test("cannot mix a source or target operand with another story comparison", () => {
     const left = sourceFixture();
     const right = sourceFixture();
     expect(() =>
-      DocxComparisonProgram.create(right.comparison, [replacement(left.source)]),
+      DocxComparisonProgram.create(right.comparison, [
+        { type: "deleteParagraph", source: left.source },
+      ]),
     ).toThrow("cannot mix source story snapshots");
+    const targetBlock = resolvedDocxStoryComparisonPayload(left.comparison)
+      .comparison.events.flatMap((event) =>
+        event.type === "modified" ? [event.relation.revised.block] : [],
+      )
+      .at(0);
+    if (!targetBlock) throw new Error("target block missing");
+    expect(() =>
+      DocxComparisonProgram.create(right.comparison, [
+        {
+          type: "insertParagraph",
+          boundary: { type: "afterParagraph", paragraph: right.source },
+          target: resolvedDocxTargetBlockOperand(left.comparison, targetBlock),
+        },
+      ]),
+    ).toThrow("belongs to another story comparison");
+  });
+
+  test("compiled fragments reconstruct both canonical text views", () => {
+    const { comparison } = sourceFixture();
+    const [instruction] = DocxComparisonProgram.create(comparison, [
+      replacement(comparison),
+    ]).consume().instructions;
+    if (instruction?.type !== "replaceText") throw new Error("expected replacement");
+    expect(
+      instruction.range.fragments
+        .filter(({ type }) => type !== "ins")
+        .map(({ text }) => text)
+        .join(""),
+    ).toBe("old");
+    expect(
+      instruction.range.fragments
+        .filter(({ type }) => type !== "del")
+        .map(({ text }) => text)
+        .join(""),
+    ).toBe("new");
   });
 });

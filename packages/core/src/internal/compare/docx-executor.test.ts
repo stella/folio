@@ -14,7 +14,7 @@ import { acceptAllChanges, rejectAllChanges } from "../../prosemirror/commands/c
 import { createContentComparisonWorkSession } from "../../compare/content";
 import { planStoryCompare } from "../../compare/plan";
 import { executePreflightedDocxComparison, preflightDocxComparisonProgram } from "./docx-executor";
-import { DocxComparisonProgram, type DocxComparisonInstructionInput } from "./docx-program";
+import { DocxComparisonProgram } from "./docx-program";
 import {
   createResolvedDocxStorySnapshot,
   resolvedDocxContentBlocks,
@@ -24,20 +24,22 @@ import {
 import {
   compareResolvedDocxStoryPair,
   createResolvedDocxStoryPair,
+  resolvedDocxStoryComparisonPayload,
+  resolvedDocxTargetBlockOperand,
   type ResolvedDocxStoryComparison,
 } from "./resolved-docx-story-comparison";
 
-const paragraphProperties = Object.freeze({
-  styleId: null,
-  listLevel: null,
-  alignment: null,
-  spacing: null,
-});
+const boldMark =
+  schema.marks["bold"] ??
+  (() => {
+    throw new Error("schema has no bold mark");
+  })();
 
 type IdentifiedParagraph = {
   readonly id: string;
   readonly text: string;
   readonly alignment?: "center" | "left" | "right";
+  readonly bold?: boolean;
 };
 
 type TestStoryHandle = Extract<FolioDocumentStoryHandle, { readonly type: "main" | "header" }>;
@@ -54,11 +56,11 @@ const stateWithIdentifiedParagraphs = (
     schema.node(
       "doc",
       null,
-      paragraphs.map(({ id, text, alignment }) =>
+      paragraphs.map(({ id, text, alignment, bold }) =>
         schema.node(
           "paragraph",
           { paraId: id, ...(alignment === undefined ? {} : { alignment }) },
-          text.length === 0 ? null : [schema.text(text)],
+          text.length === 0 ? null : [schema.text(text, bold === true ? [boldMark.create()] : [])],
         ),
       ),
     ),
@@ -129,12 +131,13 @@ const plannedComparisonOf = ({
 }) => {
   const baseSnapshot = resolvedSnapshotOf(baseState, story);
   const targetSnapshot = resolvedSnapshotOf(targetState, story);
+  const comparison = comparisonOf(baseSnapshot, targetSnapshot);
   const planned = planStoryCompare({
-    comparison: comparisonOf(baseSnapshot, targetSnapshot),
-    maxOperations: 100,
+    comparison,
+    maxOperations: 1_000,
   });
   if (planned.isErr()) throw planned.error;
-  return { baseSnapshot, targetSnapshot, program: planned.value.program };
+  return { baseSnapshot, comparison, targetSnapshot, program: planned.value.program };
 };
 
 type TableParagraph = IdentifiedParagraph;
@@ -192,208 +195,75 @@ const resolvedState = (state: EditorState, action: "accept" | "reject"): EditorS
   return view.state;
 };
 
-const rangeReplacement = ({
-  snapshot,
-  blockIndex = 0,
-  sourceStartOffset,
-  sourceText,
-  targetText,
-}: {
-  readonly snapshot: ResolvedDocxStorySnapshot;
-  readonly blockIndex?: number;
-  readonly sourceStartOffset: number;
-  readonly sourceText: string;
-  readonly targetText: string;
-}): Extract<DocxComparisonInstructionInput, { readonly type: "replaceText" }> => {
-  const block = sourceBlockOf(snapshot, blockIndex);
-  if (block.text.slice(sourceStartOffset, sourceStartOffset + sourceText.length) !== sourceText) {
-    throw new Error("fixture range does not name its source text");
-  }
-  return {
-    type: "replaceText",
-    source: resolvedDocxSourceOperand(snapshot, block),
-    sourceStartOffset,
-    range: {
-      sourceText,
-      targetText,
-      segments: [
-        {
-          type: "del",
-          text: sourceText,
-          baseStart: 0,
-          baseEnd: sourceText.length,
-          revisedStart: 0,
-          revisedEnd: 0,
-        },
-        {
-          type: "ins",
-          text: targetText,
-          baseStart: sourceText.length,
-          baseEnd: sourceText.length,
-          revisedStart: 0,
-          revisedEnd: targetText.length,
-        },
-      ],
-      sourceRuns: [{ startOffset: 0, endOffset: sourceText.length, formatting: {} }],
-      targetRuns: [{ startOffset: 0, endOffset: targetText.length, formatting: {} }],
-      authoredChanges: [],
-    },
-  };
-};
-
-const replacement = ({
-  snapshot,
-  blockIndex = 0,
-  targetText,
-}: {
-  readonly snapshot: ResolvedDocxStorySnapshot;
-  readonly blockIndex?: number;
-  readonly targetText: string;
-}): Extract<DocxComparisonInstructionInput, { readonly type: "replaceText" }> => {
-  const sourceText = sourceBlockOf(snapshot, blockIndex).text;
-  return rangeReplacement({
-    snapshot,
-    blockIndex,
-    sourceStartOffset: 0,
-    sourceText,
-    targetText,
-  });
-};
-
-const paragraphTarget = (text: string) => ({
-  text,
-  runs: text.length === 0 ? [] : [{ startOffset: 0, endOffset: text.length, formatting: {} }],
-  properties: paragraphProperties,
-});
-
-const insertedParagraph = (
-  snapshot: ResolvedDocxStorySnapshot,
-  position: "after" | "before",
-  text: string,
-): Extract<DocxComparisonInstructionInput, { readonly type: "insertParagraph" }> => ({
-  type: "insertParagraph",
-  boundary: {
-    type: position === "after" ? "afterParagraph" : "beforeParagraph",
-    paragraph: resolvedDocxSourceOperand(snapshot, sourceBlockOf(snapshot)),
-  },
-  target: paragraphTarget(text),
-});
-
 const terminalMovedParagraph = ({
+  comparison,
   snapshot,
   predecessor,
   source,
   anchor,
 }: {
+  readonly comparison: ResolvedDocxStoryComparison;
   readonly snapshot: ResolvedDocxStorySnapshot;
   readonly predecessor: number;
   readonly source: number;
   readonly anchor: number;
-}): Extract<DocxComparisonInstructionInput, { readonly type: "moveTerminalParagraph" }> => {
+}) => {
   const predecessorBlock = sourceBlockOf(snapshot, predecessor);
   const sourceBlock = sourceBlockOf(snapshot, source);
   const anchorBlock = sourceBlockOf(snapshot, anchor);
+  const targetBlocks = resolvedDocxContentBlocks(
+    resolvedDocxStoryComparisonPayload(comparison).targetSnapshot,
+  );
+  const carrierTarget = targetBlocks.at(predecessor);
+  const target = targetBlocks.at(source);
+  if (!carrierTarget || !target) throw new Error("fixture target block missing");
   return {
-    type: "moveTerminalParagraph",
+    type: "moveTerminalParagraph" as const,
     predecessor: resolvedDocxSourceOperand(snapshot, predecessorBlock),
     source: resolvedDocxSourceOperand(snapshot, sourceBlock),
-    carrierTargetProperties: paragraphProperties,
+    carrierTarget: resolvedDocxTargetBlockOperand(comparison, carrierTarget),
     boundary: {
-      type: "beforeParagraph",
+      type: "beforeParagraph" as const,
       paragraph: resolvedDocxSourceOperand(snapshot, anchorBlock),
     },
-    target: paragraphTarget(sourceBlock.text),
+    target: resolvedDocxTargetBlockOperand(comparison, target),
   };
 };
 
-const unchangedRange = (text: string) => ({
-  sourceText: text,
-  targetText: text,
-  segments: [
-    {
-      type: "equal" as const,
-      text,
-      baseStart: 0,
-      baseEnd: text.length,
-      revisedStart: 0,
-      revisedEnd: text.length,
-    },
-  ],
-  sourceRuns: [{ startOffset: 0, endOffset: text.length, formatting: {} }],
-  targetRuns: [{ startOffset: 0, endOffset: text.length, formatting: {} }],
-  authoredChanges: [],
-});
-
-type SameBoundarySourceCase = {
+type SameBoundaryCase = {
   readonly name: string;
-  readonly initialTexts: readonly string[];
-  readonly sourceInstruction: (
-    snapshot: ResolvedDocxStorySnapshot,
-  ) => DocxComparisonInstructionInput;
-  readonly expectedSource: readonly string[];
-  readonly afterSourceIndex: number;
+  readonly base: readonly IdentifiedParagraph[];
+  readonly revised: readonly IdentifiedParagraph[];
   readonly expectedRunPropertyChanges?: number;
 };
 
-const sameBoundarySourceCases: readonly SameBoundarySourceCase[] = [
+const sameBoundaryCases: readonly SameBoundaryCase[] = [
   {
     name: "replacement",
-    initialTexts: ["old"],
-    sourceInstruction: (snapshot) => replacement({ snapshot, targetText: "NEW" }),
-    expectedSource: ["NEW"],
-    afterSourceIndex: 1,
+    base: [{ id: "A1000000", text: "old" }],
+    revised: [{ id: "A1000000", text: "NEW" }],
   },
   {
     name: "deletion",
-    initialTexts: ["old", "tail"],
-    sourceInstruction: (snapshot) => ({
-      type: "deleteParagraph",
-      source: resolvedDocxSourceOperand(snapshot, sourceBlockOf(snapshot)),
-    }),
-    expectedSource: ["", "tail"],
-    afterSourceIndex: 1,
+    base: [
+      { id: "A1000000", text: "old" },
+      { id: "A1000001", text: "tail" },
+    ],
+    revised: [{ id: "A1000001", text: "tail" }],
   },
   {
     name: "formatting",
-    initialTexts: ["old"],
-    sourceInstruction: (snapshot) => ({
-      type: "formatText",
-      source: resolvedDocxSourceOperand(snapshot, sourceBlockOf(snapshot)),
-      sourceStartOffset: 0,
-      range: {
-        ...unchangedRange("old"),
-        targetRuns: [{ startOffset: 0, endOffset: 3, formatting: { bold: true } }],
-        authoredChanges: [
-          {
-            baseStart: 0,
-            baseEnd: 3,
-            revisedStart: 0,
-            revisedEnd: 3,
-            properties: ["bold"],
-          },
-        ],
-      },
-    }),
-    expectedSource: ["old"],
-    afterSourceIndex: 1,
+    base: [{ id: "A1000000", text: "old" }],
+    revised: [{ id: "A1000000", text: "old", bold: true }],
     expectedRunPropertyChanges: 1,
   },
   {
     name: "split",
-    initialTexts: ["left right"],
-    sourceInstruction: (snapshot) => ({
-      type: "splitParagraph",
-      source: resolvedDocxSourceOperand(snapshot, sourceBlockOf(snapshot)),
-      offset: 4,
-      first: unchangedRange("left"),
-      second: unchangedRange("right"),
-      separatorText: " ",
-      separatorRuns: [{ startOffset: 0, endOffset: 1, formatting: {} }],
-      firstTarget: paragraphTarget("left"),
-      secondTarget: paragraphTarget("right"),
-    }),
-    expectedSource: ["left", "right"],
-    afterSourceIndex: 2,
+    base: [{ id: "A1000000", text: "left right" }],
+    revised: [
+      { id: "A1000000", text: "left" },
+      { id: "A1000001", text: "right" },
+    ],
   },
 ];
 
@@ -418,12 +288,9 @@ const runPropertyChangeCount = (state: EditorState): number => {
 describe("the dedicated DOCX comparison executor", () => {
   test("refuses every instruction when the live PM source is not the bound source", () => {
     const state = stateWithParagraphs("old", "elsewhere");
-    const snapshot = resolvedSnapshotOf(state);
+    const targetState = stateWithParagraphs("new", "changed");
     const changedState = stateWithParagraphs("old", "changed elsewhere");
-    const program = DocxComparisonProgram.create(comparisonOf(snapshot), [
-      replacement({ snapshot, targetText: "new" }),
-      replacement({ snapshot, blockIndex: 1, targetText: "changed" }),
-    ]);
+    const { program } = plannedComparisonOf({ baseState: state, targetState });
 
     const prepared = preflightDocxComparisonProgram({
       state: changedState,
@@ -441,16 +308,14 @@ describe("the dedicated DOCX comparison executor", () => {
 
   test("refuses a structurally equal PM state that is not the captured source", () => {
     const capturedState = stateWithParagraphs("old");
-    const snapshot = resolvedSnapshotOf(capturedState);
+    const targetState = stateWithParagraphs("new");
     const structurallyEqualState = stateWithParagraphs("old");
     expect(structurallyEqualState.doc.eq(capturedState.doc)).toBe(true);
     expect(structurallyEqualState.doc).not.toBe(capturedState.doc);
 
     const prepared = preflightDocxComparisonProgram({
       state: structurallyEqualState,
-      program: DocxComparisonProgram.create(comparisonOf(snapshot), [
-        replacement({ snapshot, targetText: "new" }),
-      ]),
+      program: plannedComparisonOf({ baseState: capturedState, targetState }).program,
     });
 
     expect(prepared.supportedInstructionCount).toBe(0);
@@ -466,11 +331,8 @@ describe("the dedicated DOCX comparison executor", () => {
 
   test("executes once and returns receipts in canonical instruction order", () => {
     const state = stateWithParagraphs("left", "right");
-    const snapshot = resolvedSnapshotOf(state);
-    const program = DocxComparisonProgram.create(comparisonOf(snapshot), [
-      replacement({ snapshot, targetText: "LEFT" }),
-      replacement({ snapshot, blockIndex: 1, targetText: "RIGHT" }),
-    ]);
+    const targetState = stateWithParagraphs("LEFT", "RIGHT");
+    const { program } = plannedComparisonOf({ baseState: state, targetState });
     const prepared = preflightDocxComparisonProgram({
       state,
       program,
@@ -503,53 +365,41 @@ describe("the dedicated DOCX comparison executor", () => {
     ).toThrow("consumed more than once");
   });
 
-  for (const reverse of [false, true] as const) {
-    test(`maps disjoint source ranges after a prior replacement when reverse=${String(reverse)}`, () => {
-      const state = stateWithParagraphs("abcd");
-      const snapshot = resolvedSnapshotOf(state);
-      const first = rangeReplacement({
-        snapshot,
-        sourceStartOffset: 0,
-        sourceText: "ab",
-        targetText: "X",
-      });
-      const second = rangeReplacement({
-        snapshot,
-        sourceStartOffset: 2,
-        sourceText: "cd",
-        targetText: "LONG",
-      });
-      const prepared = preflightDocxComparisonProgram({
-        state,
-        program: DocxComparisonProgram.create(
-          comparisonOf(snapshot),
-          reverse ? [second, first] : [first, second],
-        ),
-      });
-      const executed = executePreflightedDocxComparison({
-        state,
-        prepared,
-        revisionStamp: { idSeed: 700, date: "2026-09-11T00:00:00.000Z" },
-        author: "Comparison",
-      });
-
-      expect(executed.status).toBe("executed");
-      if (executed.status !== "executed") throw new Error("expected execution");
-      expect(visibleTexts(state.apply(executed.receipt.transaction))).toEqual(["XLONG"]);
+  test("executes disjoint text edits from one canonical pair relation", () => {
+    const state = stateWithParagraphs("abcd");
+    const targetState = stateWithParagraphs("XcLONG");
+    const prepared = preflightDocxComparisonProgram({
+      state,
+      program: plannedComparisonOf({ baseState: state, targetState }).program,
     });
-  }
+    expect(prepared.totalInstructionCount).toBe(1);
+    const executed = executePreflightedDocxComparison({
+      state,
+      prepared,
+      revisionStamp: { idSeed: 700, date: "2026-09-11T00:00:00.000Z" },
+      author: "Comparison",
+    });
+
+    expect(executed.status).toBe("executed");
+    if (executed.status !== "executed") throw new Error("expected execution");
+    expect(visibleTexts(state.apply(executed.receipt.transaction))).toEqual(["XcLONG"]);
+  });
 
   for (const position of ["before", "after"] as const) {
     test(`preserves canonical order for peer ${position} insertions`, () => {
-      const state = stateWithParagraphs("anchor");
-      const snapshot = resolvedSnapshotOf(state);
+      const anchor = { id: "A1000000", text: "anchor" } as const;
+      const inserted = [
+        { id: "A1000001", text: "A" },
+        { id: "A1000002", text: "B" },
+        { id: "A1000003", text: "C" },
+      ] as const;
+      const state = stateWithIdentifiedParagraphs(anchor);
+      const targetState = stateWithIdentifiedParagraphs(
+        ...(position === "before" ? [...inserted, anchor] : [anchor, ...inserted]),
+      );
       const prepared = preflightDocxComparisonProgram({
         state,
-        program: DocxComparisonProgram.create(comparisonOf(snapshot), [
-          insertedParagraph(snapshot, position, "A"),
-          insertedParagraph(snapshot, position, "B"),
-          insertedParagraph(snapshot, position, "C"),
-        ]),
+        program: plannedComparisonOf({ baseState: state, targetState }).program,
       });
       const executed = executePreflightedDocxComparison({
         state,
@@ -570,14 +420,16 @@ describe("the dedicated DOCX comparison executor", () => {
   }
 
   test("coalesces a large same-boundary run without accumulated position mapping", () => {
-    const state = stateWithParagraphs("anchor");
-    const snapshot = resolvedSnapshotOf(state);
-    const instructions = Array.from({ length: 256 }, (_, index) =>
-      insertedParagraph(snapshot, "after", `inserted-${String(index)}`),
-    );
+    const anchor = { id: "A1000000", text: "anchor" } as const;
+    const inserted = Array.from({ length: 256 }, (_, index) => ({
+      id: `inserted-${String(index)}`,
+      text: `inserted-${String(index)}`,
+    }));
+    const state = stateWithIdentifiedParagraphs(anchor);
+    const targetState = stateWithIdentifiedParagraphs(anchor, ...inserted);
     const prepared = preflightDocxComparisonProgram({
       state,
-      program: DocxComparisonProgram.create(comparisonOf(snapshot), instructions),
+      program: plannedComparisonOf({ baseState: state, targetState }).program,
     });
     const executed = executePreflightedDocxComparison({
       state,
@@ -593,91 +445,68 @@ describe("the dedicated DOCX comparison executor", () => {
     expect(executed.receipt.localPositionMappingSteps).toBe(0);
     expect(visibleTexts(state.apply(executed.receipt.transaction))).toEqual([
       "anchor",
-      ...instructions.map(({ target }) => target.text),
+      ...inserted.map(({ text }) => text),
     ]);
   });
 
-  for (const sourceCase of sameBoundarySourceCases) {
+  for (const sourceCase of sameBoundaryCases) {
     for (const position of ["before", "after"] as const) {
-      for (const sourceSlot of [0, 1, 2] as const) {
-        const caseName = `orders peer ${position} insertions with ${sourceCase.name} in source slot ${String(sourceSlot)}`;
-        test(caseName, () => {
-          const state = stateWithParagraphs(...sourceCase.initialTexts);
-          const snapshot = resolvedSnapshotOf(state);
-          const source = sourceCase.sourceInstruction(snapshot);
-          const instructions: DocxComparisonInstructionInput[] = [
-            insertedParagraph(snapshot, position, "A"),
-            insertedParagraph(snapshot, position, "B"),
-          ];
-          instructions.splice(sourceSlot, 0, source);
-          const prepared = preflightDocxComparisonProgram({
-            state,
-            program: DocxComparisonProgram.create(comparisonOf(snapshot), instructions),
-          });
-          const executed = executePreflightedDocxComparison({
-            state,
-            prepared,
-            revisionStamp: { idSeed: 700, date: "2026-09-11T00:00:00.000Z" },
-            author: "Comparison",
-          });
-
-          expect(executed.status).toBe("executed");
-          if (executed.status !== "executed") throw new Error("expected execution");
-          const revised = state.apply(executed.receipt.transaction);
-          const insertionIndex = position === "before" ? 0 : sourceCase.afterSourceIndex;
-          const expected = [...sourceCase.expectedSource];
-          expected.splice(insertionIndex, 0, "A", "B");
-          expect(visibleTexts(revised)).toEqual(expected);
-          expect(
-            executed.receipt.instructions.map(({ instructionIndex }) => instructionIndex),
-          ).toEqual([0, 1, 2]);
-          if (sourceCase.expectedRunPropertyChanges !== undefined) {
-            expect(runPropertyChangeCount(revised)).toBe(sourceCase.expectedRunPropertyChanges);
-          }
+      test(`resolves ${sourceCase.name} with peer ${position} insertions`, () => {
+        const inserted = [
+          { id: "B1000000", text: "A" },
+          { id: "B1000001", text: "B" },
+        ] as const;
+        const revised =
+          position === "before"
+            ? [...inserted, ...sourceCase.revised]
+            : [...sourceCase.revised, ...inserted];
+        const state = stateWithIdentifiedParagraphs(...sourceCase.base);
+        const targetState = stateWithIdentifiedParagraphs(...revised);
+        const prepared = preflightDocxComparisonProgram({
+          state,
+          program: plannedComparisonOf({ baseState: state, targetState }).program,
         });
-      }
+        expect(prepared.issues).toEqual([]);
+        const executed = executePreflightedDocxComparison({
+          state,
+          prepared,
+          revisionStamp: { idSeed: 700, date: "2026-09-11T00:00:00.000Z" },
+          author: "Comparison",
+        });
+
+        expect(executed.status).toBe("executed");
+        if (executed.status !== "executed") throw new Error("expected execution");
+        const tracked = state.apply(executed.receipt.transaction);
+        expect(visibleTexts(resolvedState(tracked, "accept"))).toEqual(
+          revised.map(({ text }) => text),
+        );
+        expect(visibleTexts(resolvedState(tracked, "reject"))).toEqual(
+          sourceCase.base.map(({ text }) => text),
+        );
+        if (sourceCase.expectedRunPropertyChanges !== undefined) {
+          expect(runPropertyChangeCount(tracked)).toBe(sourceCase.expectedRunPropertyChanges);
+        }
+      });
     }
   }
-
-  test("rejects live authored formatting that differs from the captured source", () => {
-    const bold =
-      schema.marks["bold"] ??
-      (() => {
-        throw new Error("schema has no bold mark");
-      })();
-    const state = stateFromCanonicalDocument(
-      schema.node("doc", null, [
-        schema.node("paragraph", { paraId: "A1000000" }, [schema.text("old", [bold.create()])]),
-      ]),
-    );
-    const snapshot = resolvedSnapshotOf(state);
-    const instruction = replacement({ snapshot, targetText: "new" });
-    Reflect.set(instruction.range.sourceRuns[0]!.formatting, "bold", false);
-    const program = DocxComparisonProgram.create(comparisonOf(snapshot), [instruction]);
-
-    const prepared = preflightDocxComparisonProgram({
-      state,
-      program,
-    });
-    expect(prepared.supportedInstructionCount).toBe(0);
-    expect(prepared.issues[0]).toMatchObject({ reason: "source-formatting-mismatch" });
-    expect(visibleTexts(state)).toEqual(["old"]);
-  });
 
   test("rejects a source operand copied outside its issuing capsule", () => {
     const state = stateWithParagraphs("old");
     const snapshot = resolvedSnapshotOf(state);
-    const instruction = replacement({ snapshot, targetText: "new" });
-    Reflect.set(instruction, "source", Object.freeze({ ...instruction.source }));
-    expect(() => DocxComparisonProgram.create(comparisonOf(snapshot), [instruction])).toThrow(
-      "was not created by Folio",
-    );
+    const source = resolvedDocxSourceOperand(snapshot, sourceBlockOf(snapshot));
+    const copied = Object.freeze({ ...source });
+    expect(() =>
+      Reflect.apply(DocxComparisonProgram.create, DocxComparisonProgram, [
+        comparisonOf(snapshot),
+        [{ type: "deleteParagraph", source: copied }],
+      ]),
+    ).toThrow("was not created by Folio");
     expect(visibleTexts(state)).toEqual(["old"]);
   });
 
   test("treats duplicate live paragraph identities as ambiguous", () => {
     const snapshotState = stateWithParagraphs("old");
-    const snapshot = resolvedSnapshotOf(snapshotState);
+    const targetState = stateWithParagraphs("new");
     const paraId = snapshotState.doc.firstChild?.attrs["paraId"];
     const duplicateState = EditorState.create({
       doc: schema.node("doc", null, [
@@ -687,9 +516,7 @@ describe("the dedicated DOCX comparison executor", () => {
     });
     const prepared = preflightDocxComparisonProgram({
       state: duplicateState,
-      program: DocxComparisonProgram.create(comparisonOf(snapshot), [
-        replacement({ snapshot, targetText: "new" }),
-      ]),
+      program: plannedComparisonOf({ baseState: snapshotState, targetState }).program,
     });
 
     expect(prepared.supportedInstructionCount).toBe(0);
@@ -810,10 +637,17 @@ describe("the dedicated DOCX comparison executor", () => {
       { id: "C1000000", text: "Gamma" },
     );
     const snapshot = resolvedSnapshotOf(state);
+    const comparison = comparisonOf(snapshot);
     const prepared = preflightDocxComparisonProgram({
       state,
-      program: DocxComparisonProgram.create(comparisonOf(snapshot), [
-        terminalMovedParagraph({ snapshot, predecessor: 0, source: 1, anchor: 0 }),
+      program: DocxComparisonProgram.create(comparison, [
+        terminalMovedParagraph({
+          comparison,
+          snapshot,
+          predecessor: 0,
+          source: 1,
+          anchor: 0,
+        }),
       ]),
     });
 
@@ -838,10 +672,17 @@ describe("the dedicated DOCX comparison executor", () => {
       [{ id: "C1000000", text: "Gamma" }],
     );
     const snapshot = resolvedSnapshotOf(state);
+    const comparison = comparisonOf(snapshot);
     const prepared = preflightDocxComparisonProgram({
       state,
-      program: DocxComparisonProgram.create(comparisonOf(snapshot), [
-        terminalMovedParagraph({ snapshot, predecessor: 1, source: 2, anchor: 0 }),
+      program: DocxComparisonProgram.create(comparison, [
+        terminalMovedParagraph({
+          comparison,
+          snapshot,
+          predecessor: 1,
+          source: 2,
+          anchor: 0,
+        }),
       ]),
     });
 
