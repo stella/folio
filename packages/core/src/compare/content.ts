@@ -8,7 +8,7 @@
 
 import { panic, Result, TaggedError } from "better-result";
 import { createWordDiffSession, type WordDiffGranularity, type WordDiffSegment } from "./text-diff";
-import { pairedInlineFormattingSegments } from "./formatting";
+import { alignBoundaryWhitespaceToFormatting, pairedInlineFormattingSegments } from "./formatting";
 import { changedFolioContentProperties } from "./content-properties";
 import {
   alignFolioContentStructure,
@@ -3072,8 +3072,15 @@ function createPairRelation({
   const revised = contentBlockRange(revisedBlock, revisedStart, revisedEnd);
   const baseText = base.block.text.slice(base.startOffset, base.endOffset);
   const revisedText = revised.block.text.slice(revised.startOffset, revised.endOffset);
+  const textSegments = alignBoundaryWhitespaceToFormatting({
+    baseBlock: base.block,
+    revisedBlock: revised.block,
+    baseStart: base.startOffset,
+    revisedStart: revised.startOffset,
+    segments: diffText(baseText, revisedText),
+  });
   const segments = Object.freeze(
-    withTextOffsets(diffText(baseText, revisedText), base.startOffset, revised.startOffset),
+    withTextOffsets(textSegments, base.startOffset, revised.startOffset),
   );
   let baseOffset = base.startOffset;
   let revisedOffset = revised.startOffset;

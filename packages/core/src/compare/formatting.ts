@@ -13,8 +13,10 @@ import type {
 } from "./content-types";
 import {
   changedFolioContentProperties,
+  sameFolioContentPropertySet,
   sameFolioContentPropertyChanges,
 } from "./content-properties";
+import type { WordDiffSegment } from "./text-diff";
 import { panic } from "better-result";
 
 /** One run of characters whose supported inline formatting differs. */
@@ -69,17 +71,6 @@ const runsForBlock = (block: FolioContentBlock): readonly FolioContentRun[] | nu
   return offset === block.text.length ? runs : null;
 };
 
-export type InlineFormattingPairedRange = {
-  baseStart: number;
-  baseEnd: number;
-  revisedStart: number;
-  revisedEnd: number;
-};
-
-export type PairedInlineFormattingSegment = InlineFormattingPairedRange & {
-  formatting: FolioContentInlineFormattingChange;
-};
-
 type RunCursor = {
   runs: readonly FolioContentRun[];
   index: number;
@@ -96,6 +87,274 @@ const runAtOffset = (cursor: RunCursor, offset: number): FolioContentRun | null 
     cursor.runStart = runEnd;
   }
   return null;
+};
+
+type SameFormattingRangeOptions = {
+  base: RunCursor;
+  revised: RunCursor;
+  baseStart: number;
+  revisedStart: number;
+  length: number;
+};
+
+/** Exact authored and effective formatting equality over two text-equal ranges. */
+const sameFormattingRange = ({
+  base,
+  revised,
+  baseStart,
+  revisedStart,
+  length,
+}: SameFormattingRangeOptions): boolean => {
+  let baseOffset = baseStart;
+  let revisedOffset = revisedStart;
+  let remaining = length;
+  while (remaining > 0) {
+    const baseRun = runAtOffset(base, baseOffset);
+    const revisedRun = runAtOffset(revised, revisedOffset);
+    if (!baseRun || !revisedRun) return false;
+    if (
+      !sameFolioContentPropertySet(baseRun.authoredFormatting, revisedRun.authoredFormatting) ||
+      !sameFolioContentPropertySet(baseRun.effectiveFormatting, revisedRun.effectiveFormatting)
+    ) {
+      return false;
+    }
+    const compared = Math.min(
+      remaining,
+      base.runStart + baseRun.text.length - baseOffset,
+      revised.runStart + revisedRun.text.length - revisedOffset,
+    );
+    if (compared <= 0) return false;
+    remaining -= compared;
+    baseOffset += compared;
+    revisedOffset += compared;
+  }
+  return true;
+};
+
+type PositionedSegment = {
+  baseStart: number;
+  revisedStart: number;
+};
+
+const positionSegments = (
+  segments: readonly WordDiffSegment[],
+  baseStart: number,
+  revisedStart: number,
+): readonly PositionedSegment[] => {
+  const positioned: PositionedSegment[] = [];
+  let baseOffset = baseStart;
+  let revisedOffset = revisedStart;
+  for (const segment of segments) {
+    positioned.push({ baseStart: baseOffset, revisedStart: revisedOffset });
+    if (segment.type !== "ins") baseOffset += segment.text.length;
+    if (segment.type !== "del") revisedOffset += segment.text.length;
+  }
+  return positioned;
+};
+
+const leadingWhitespace = (text: string): string => /^\s+/u.exec(text)?.[0] ?? "";
+
+type BoundaryRotation = {
+  changeStart: number;
+  equalIndex: number;
+  whitespace: string;
+};
+
+type BoundaryCandidate = BoundaryRotation & {
+  currentBaseStart: number;
+  currentRevisedStart: number;
+  alternativeBaseStart: number;
+  alternativeRevisedStart: number;
+};
+
+const pushWordSegment = (segments: WordDiffSegment[], segment: WordDiffSegment): void => {
+  if (segment.text.length === 0) return;
+  const previous = segments.at(-1);
+  if (previous?.type === segment.type) {
+    previous.text += segment.text;
+    return;
+  }
+  segments.push(segment);
+};
+
+type AlignBoundaryWhitespaceOptions = {
+  baseBlock: FolioContentBlock;
+  revisedBlock: FolioContentBlock;
+  baseStart: number;
+  revisedStart: number;
+  segments: readonly WordDiffSegment[];
+};
+
+/**
+ * Resolve the ownership of an unchanged separator beside an edit.
+ *
+ * Word tokens carry leading whitespace, so duplicate words can leave the
+ * surviving separator paired with the correct word but the wrong run. There
+ * is an equally short alignment which keeps that separator with the preceding
+ * unchanged text. Choose it only when its authored and effective formatting
+ * are exactly equal and the current pairing is not; text-only ties retain the
+ * established deterministic LCS result.
+ *
+ * This is a linear post-pass over already bounded segments and run spans. It
+ * never moves non-whitespace text or creates an opposite-direction change.
+ *
+ * @internal
+ */
+export const alignBoundaryWhitespaceToFormatting = ({
+  baseBlock,
+  revisedBlock,
+  baseStart,
+  revisedStart,
+  segments,
+}: AlignBoundaryWhitespaceOptions): WordDiffSegment[] => {
+  if (segments.length < 2) return [...segments];
+  const singleBaseRun = baseBlock.runs.length === 1 ? baseBlock.runs[0] : undefined;
+  const singleRevisedRun = revisedBlock.runs.length === 1 ? revisedBlock.runs[0] : undefined;
+  if (
+    (baseBlock.runs.length === 0 && revisedBlock.runs.length === 0) ||
+    (singleBaseRun &&
+      singleRevisedRun &&
+      sameFolioContentPropertySet(
+        singleBaseRun.authoredFormatting,
+        singleRevisedRun.authoredFormatting,
+      ) &&
+      sameFolioContentPropertySet(
+        singleBaseRun.effectiveFormatting,
+        singleRevisedRun.effectiveFormatting,
+      ))
+  ) {
+    return [...segments];
+  }
+
+  const positioned = positionSegments(segments, baseStart, revisedStart);
+  const candidates: BoundaryCandidate[] = [];
+  for (let equalIndex = 1; equalIndex < segments.length; equalIndex++) {
+    const equal = segments[equalIndex];
+    if (equal?.type !== "equal") continue;
+    const whitespace = leadingWhitespace(equal.text);
+    if (whitespace.length === 0) continue;
+
+    let changeStart = equalIndex - 1;
+    while (changeStart > 0 && segments[changeStart - 1]?.type !== "equal") changeStart--;
+    const changed = segments.slice(changeStart, equalIndex);
+    let deletionIndex = -1;
+    let insertionIndex = -1;
+    let ambiguous = false;
+    for (const [index, segment] of changed.entries()) {
+      if (segment.type === "del") {
+        if (deletionIndex !== -1) ambiguous = true;
+        deletionIndex = index;
+      } else if (segment.type === "ins") {
+        if (insertionIndex !== -1) ambiguous = true;
+        insertionIndex = index;
+      }
+    }
+    if (ambiguous) continue;
+    if (deletionIndex === -1 && insertionIndex === -1) continue;
+    if (insertionIndex !== -1 && deletionIndex > insertionIndex) continue;
+    const deletion = deletionIndex === -1 ? undefined : changed[deletionIndex];
+    const insertion = insertionIndex === -1 ? undefined : changed[insertionIndex];
+    if (
+      (deletion && leadingWhitespace(deletion.text) !== whitespace) ||
+      (insertion && leadingWhitespace(insertion.text) !== whitespace)
+    ) {
+      continue;
+    }
+    if (
+      ![deletion, insertion].some(
+        (segment) => segment !== undefined && /\S/u.test(segment.text.slice(whitespace.length)),
+      )
+    ) {
+      continue;
+    }
+
+    const current = positioned[equalIndex];
+    const deletionPosition =
+      deletionIndex === -1 ? undefined : positioned[changeStart + deletionIndex];
+    const insertionPosition =
+      insertionIndex === -1 ? undefined : positioned[changeStart + insertionIndex];
+    if (!current) continue;
+    candidates.push({
+      changeStart,
+      equalIndex,
+      whitespace,
+      currentBaseStart: current.baseStart,
+      currentRevisedStart: current.revisedStart,
+      alternativeBaseStart: deletionPosition?.baseStart ?? current.baseStart,
+      alternativeRevisedStart: insertionPosition?.revisedStart ?? current.revisedStart,
+    });
+  }
+
+  if (candidates.length === 0) return [...segments];
+  const baseRuns = runsForBlock(baseBlock);
+  const revisedRuns = runsForBlock(revisedBlock);
+  if (!baseRuns || !revisedRuns) return [...segments];
+  const cursor = (runs: readonly FolioContentRun[]): RunCursor => ({
+    runs,
+    index: 0,
+    runStart: 0,
+  });
+  const currentBase = cursor(baseRuns);
+  const currentRevised = cursor(revisedRuns);
+  const alternativeBase = cursor(baseRuns);
+  const alternativeRevised = cursor(revisedRuns);
+  const rotations: BoundaryRotation[] = [];
+  for (const candidate of candidates) {
+    const currentIsExact = sameFormattingRange({
+      base: currentBase,
+      revised: currentRevised,
+      baseStart: candidate.currentBaseStart,
+      revisedStart: candidate.currentRevisedStart,
+      length: candidate.whitespace.length,
+    });
+    if (currentIsExact) continue;
+    const alternativeIsExact = sameFormattingRange({
+      base: alternativeBase,
+      revised: alternativeRevised,
+      baseStart: candidate.alternativeBaseStart,
+      revisedStart: candidate.alternativeRevisedStart,
+      length: candidate.whitespace.length,
+    });
+    if (alternativeIsExact) rotations.push(candidate);
+  }
+  if (rotations.length === 0) return [...segments];
+
+  const aligned = segments.map((segment) => ({ ...segment }));
+  for (let index = rotations.length - 1; index >= 0; index--) {
+    const rotation = rotations[index];
+    if (!rotation) continue;
+    const changed = aligned.slice(rotation.changeStart, rotation.equalIndex);
+    const equal = aligned[rotation.equalIndex];
+    if (equal?.type !== "equal") return panic("A whitespace rotation lost its equal boundary");
+    const replacement: WordDiffSegment[] = [{ type: "equal", text: rotation.whitespace }];
+    for (const segment of changed) {
+      replacement.push({
+        type: segment.type,
+        text: `${segment.text.slice(rotation.whitespace.length)}${rotation.whitespace}`,
+      });
+    }
+    replacement.push({ type: "equal", text: equal.text.slice(rotation.whitespace.length) });
+    aligned.splice(
+      rotation.changeStart,
+      rotation.equalIndex - rotation.changeStart + 1,
+      ...replacement,
+    );
+  }
+
+  const coalesced: WordDiffSegment[] = [];
+  for (const segment of aligned) pushWordSegment(coalesced, segment);
+  return coalesced;
+};
+
+export type InlineFormattingPairedRange = {
+  baseStart: number;
+  baseEnd: number;
+  revisedStart: number;
+  revisedEnd: number;
+};
+
+export type PairedInlineFormattingSegment = InlineFormattingPairedRange & {
+  formatting: FolioContentInlineFormattingChange;
 };
 
 type PairedInlineFormattingSegmentsOptions = {

@@ -1525,6 +1525,129 @@ describe("representation-neutral comparison stream", () => {
     });
   });
 
+  test("word alignment keeps a surviving separator with its formatting lineage", () => {
+    for (const separator of [" ", "\t", "\n"]) {
+      const base = contentBlock({
+        id: "clause",
+        text: `Lead${separator}echo${separator}removed${separator}echo${separator}Tail`,
+        runs: [
+          { text: `Lead${separator}echo${separator}` },
+          {
+            text: `removed${separator}echo${separator}`,
+            bold: true,
+            directFormatting: { bold: true },
+          },
+          { text: "Tail", italic: true, directFormatting: { italic: true } },
+        ],
+      });
+      const revised = contentBlock({
+        id: "clause",
+        text: `Lead${separator}echo${separator}Tail`,
+        runs: [
+          { text: `Lead${separator}` },
+          { text: `echo${separator}`, bold: true, directFormatting: { bold: true } },
+          { text: "Tail", italic: true, directFormatting: { italic: true } },
+        ],
+      });
+
+      const deletion = successfulComparison({ base: [base], revised: [revised] });
+      const deletionEvent = deletion.events.at(0);
+      expect(deletionEvent?.type).toBe("modified");
+      if (deletionEvent?.type !== "modified") throw new Error("expected modified deletion");
+      expect(deletionEvent.relation.segments.map(({ type, text }) => ({ type, text }))).toEqual([
+        { type: "equal", text: `Lead${separator}` },
+        { type: "del", text: `echo${separator}removed${separator}` },
+        { type: "equal", text: `echo${separator}Tail` },
+      ]);
+      expect(deletionEvent.relation.formatting?.ranges ?? []).toEqual([]);
+      expectRelationReconstructs(deletionEvent.relation);
+
+      const insertion = successfulComparison({ base: [revised], revised: [base] });
+      const insertionEvent = insertion.events.at(0);
+      expect(insertionEvent?.type).toBe("modified");
+      if (insertionEvent?.type !== "modified") throw new Error("expected modified insertion");
+      expect(insertionEvent.relation.segments.map(({ type, text }) => ({ type, text }))).toEqual([
+        { type: "equal", text: `Lead${separator}` },
+        { type: "ins", text: `echo${separator}removed${separator}` },
+        { type: "equal", text: `echo${separator}Tail` },
+      ]);
+      expect(insertionEvent.relation.formatting?.ranges ?? []).toEqual([]);
+      expectRelationReconstructs(insertionEvent.relation);
+    }
+  });
+
+  test("word alignment retains a genuine separator formatting change", () => {
+    const base = contentBlock({
+      id: "clause",
+      text: "Lead echo removed echo Tail",
+      runs: [
+        { text: "Lead echo " },
+        { text: "removed echo ", bold: true, directFormatting: { bold: true } },
+        { text: "Tail", italic: true, directFormatting: { italic: true } },
+      ],
+    });
+    const revised = contentBlock({
+      id: "clause",
+      text: "Lead echo Tail",
+      runs: [
+        { text: "Lead" },
+        {
+          text: " ",
+          color: "red",
+          directFormatting: { color: "red" },
+        },
+        { text: "echo ", bold: true, directFormatting: { bold: true } },
+        { text: "Tail", italic: true, directFormatting: { italic: true } },
+      ],
+    });
+
+    const comparison = successfulComparison({ base: [base], revised: [revised] });
+    const event = comparison.events.at(0);
+    expect(event?.type).toBe("modified");
+    if (event?.type !== "modified") throw new Error("expected modified");
+    expect(event.relation.segments.map(({ type, text }) => ({ type, text }))).toEqual([
+      { type: "equal", text: "Lead" },
+      { type: "del", text: " echo removed" },
+      { type: "equal", text: " echo Tail" },
+    ]);
+    expect(event.relation.formatting?.ranges).toHaveLength(1);
+    expectRelationReconstructs(event.relation);
+  });
+
+  test("word alignment treats replacement boundaries symmetrically", () => {
+    const base = contentBlock({
+      id: "clause",
+      text: "Lead echo removed echo Tail",
+      runs: [
+        { text: "Lead echo " },
+        { text: "removed echo ", bold: true, directFormatting: { bold: true } },
+        { text: "Tail", italic: true, directFormatting: { italic: true } },
+      ],
+    });
+    const revised = contentBlock({
+      id: "clause",
+      text: "Lead echo added echo Tail",
+      runs: [
+        { text: "Lead echo added " },
+        { text: "echo ", bold: true, directFormatting: { bold: true } },
+        { text: "Tail", italic: true, directFormatting: { italic: true } },
+      ],
+    });
+
+    const comparison = successfulComparison({ base: [base], revised: [revised] });
+    const event = comparison.events.at(0);
+    expect(event?.type).toBe("modified");
+    if (event?.type !== "modified") throw new Error("expected modified");
+    expect(event.relation.segments.map(({ type, text }) => ({ type, text }))).toEqual([
+      { type: "equal", text: "Lead echo " },
+      { type: "del", text: "removed " },
+      { type: "ins", text: "added " },
+      { type: "equal", text: "echo Tail" },
+    ]);
+    expect(event.relation.formatting?.ranges ?? []).toEqual([]);
+    expectRelationReconstructs(event.relation);
+  });
+
   test("non-hex color tokens remain representation-neutral formatting values", () => {
     const base = contentBlock({
       id: "clause",
