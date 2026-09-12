@@ -2158,6 +2158,65 @@ const compileSemanticOperationInput = (
   }
 };
 
+type CompiledDocxComparisonProgram = {
+  readonly instructions: readonly DocxComparisonInstruction[];
+  readonly semanticGroups: readonly DocxComparisonSemanticGroup[];
+};
+
+type CompileDocxComparisonProgramOptions = {
+  readonly comparison: ResolvedDocxStoryComparison;
+  readonly inputs: readonly DocxComparisonOperationInput[];
+  readonly sourceSnapshot: ResolvedDocxStorySnapshot;
+  readonly targetSnapshot: ResolvedDocxStorySnapshot;
+};
+
+const compileDocxComparisonProgram = ({
+  comparison,
+  inputs,
+  sourceSnapshot,
+  targetSnapshot,
+}: CompileDocxComparisonProgramOptions): CompiledDocxComparisonProgram => {
+  const semanticGroups: DocxComparisonSemanticGroup[] = [];
+  const instructions: DocxComparisonInstruction[] = [];
+  const reportSequences = new Set<number>();
+  for (const input of inputs) {
+    const compiled = compileSemanticOperationInput(
+      input,
+      comparison,
+      sourceSnapshot,
+      targetSnapshot,
+    );
+    for (const { sequence } of compiled.reports) {
+      if (reportSequences.has(sequence)) {
+        return panic("A DOCX comparison report has an invalid canonical sequence", {
+          sequence,
+        });
+      }
+      reportSequences.add(sequence);
+    }
+    const semanticGroupIndex = semanticGroups.length;
+    semanticGroups.push(Object.freeze({ reports: compiled.reports }));
+    for (const instruction of compiled.instructions) {
+      instructions.push(
+        Object.freeze({
+          ...compileInstruction(instruction, comparison, sourceSnapshot, targetSnapshot),
+          semanticGroupIndex,
+        }),
+      );
+    }
+    if (instructions.length > MAX_DOCX_COMPARISON_INSTRUCTIONS) {
+      return panic("A DOCX comparison program exceeds its instruction limit", {
+        limit: MAX_DOCX_COMPARISON_INSTRUCTIONS,
+        actual: instructions.length,
+      });
+    }
+  }
+  return Object.freeze({
+    instructions: Object.freeze(instructions),
+    semanticGroups: Object.freeze(semanticGroups),
+  });
+};
+
 /**
  * An owned one-shot transport plan. Construction validates the complete
  * instruction graph; consumption transfers its immutable semantics to the
@@ -2176,46 +2235,17 @@ export class DocxComparisonProgram {
     inputs: readonly DocxComparisonOperationInput[],
   ) {
     const { baseSnapshot, targetSnapshot } = resolvedDocxStoryComparisonPayload(comparison);
+    const compiled = compileDocxComparisonProgram({
+      comparison,
+      inputs,
+      sourceSnapshot: baseSnapshot,
+      targetSnapshot,
+    });
     this.#comparison = comparison;
     this.#sourceSnapshot = baseSnapshot;
     this.#targetSnapshot = targetSnapshot;
-    const semanticGroups: DocxComparisonSemanticGroup[] = [];
-    const instructions: DocxComparisonInstruction[] = [];
-    const reportSequences = new Set<number>();
-    for (const input of inputs) {
-      const compiled = compileSemanticOperationInput(
-        input,
-        comparison,
-        baseSnapshot,
-        targetSnapshot,
-      );
-      for (const { sequence } of compiled.reports) {
-        if (reportSequences.has(sequence)) {
-          return panic("A DOCX comparison report has an invalid canonical sequence", {
-            sequence,
-          });
-        }
-        reportSequences.add(sequence);
-      }
-      const semanticGroupIndex = semanticGroups.length;
-      semanticGroups.push(Object.freeze({ reports: compiled.reports }));
-      for (const instruction of compiled.instructions) {
-        instructions.push(
-          Object.freeze({
-            ...compileInstruction(instruction, comparison, baseSnapshot, targetSnapshot),
-            semanticGroupIndex,
-          }),
-        );
-      }
-      if (instructions.length > MAX_DOCX_COMPARISON_INSTRUCTIONS) {
-        return panic("A DOCX comparison program exceeds its instruction limit", {
-          limit: MAX_DOCX_COMPARISON_INSTRUCTIONS,
-          actual: instructions.length,
-        });
-      }
-    }
-    this.#instructions = Object.freeze(instructions);
-    this.#semanticGroups = Object.freeze(semanticGroups);
+    this.#instructions = compiled.instructions;
+    this.#semanticGroups = compiled.semanticGroups;
   }
 
   static create(

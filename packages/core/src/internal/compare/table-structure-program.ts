@@ -43,6 +43,62 @@ import {
 
 type ResolvedDocxTableOperand = ResolvedDocxTableStructureOperand | ResolvedDocxTableFormatOperand;
 
+type ResolvedDocxTableStructureOperation = {
+  [Type in ResolvedDocxTableStructureOperand["type"]]: {
+    readonly type: Type;
+    readonly operand: Extract<ResolvedDocxTableStructureOperand, { readonly type: Type }>;
+    readonly payload: Extract<ResolvedDocxTableStructureOperandPayload, { readonly type: Type }>;
+  };
+}[ResolvedDocxTableStructureOperand["type"]];
+
+const resolveTableStructureOperation = (
+  operand: ResolvedDocxTableStructureOperand,
+  comparison: ResolvedDocxStoryComparison,
+): ResolvedDocxTableStructureOperation => {
+  const payload = resolvedDocxTableStructureOperandPayload(operand, comparison);
+  switch (operand.type) {
+    case "insertTable":
+      if (payload.type !== "insertTable") {
+        return panic("A table insertion lost its canonical payload");
+      }
+      return Object.freeze({ type: "insertTable", operand, payload });
+    case "deleteTable":
+      if (payload.type !== "deleteTable") {
+        return panic("A table deletion lost its canonical payload");
+      }
+      return Object.freeze({ type: "deleteTable", operand, payload });
+    case "replaceTable":
+      if (payload.type !== "replaceTable") {
+        return panic("A table replacement lost its canonical payload");
+      }
+      return Object.freeze({ type: "replaceTable", operand, payload });
+    case "insertTableRow":
+      if (payload.type !== "insertTableRow") {
+        return panic("A table-row insertion lost its canonical payload");
+      }
+      return Object.freeze({ type: "insertTableRow", operand, payload });
+    case "deleteTableRow":
+      if (payload.type !== "deleteTableRow") {
+        return panic("A table-row deletion lost its canonical payload");
+      }
+      return Object.freeze({ type: "deleteTableRow", operand, payload });
+    case "insertTableColumn":
+      if (payload.type !== "insertTableColumn") {
+        return panic("A table-column insertion lost its canonical payload");
+      }
+      return Object.freeze({ type: "insertTableColumn", operand, payload });
+    case "deleteTableColumn":
+      if (payload.type !== "deleteTableColumn") {
+        return panic("A table-column deletion lost its canonical payload");
+      }
+      return Object.freeze({ type: "deleteTableColumn", operand, payload });
+    default: {
+      const unreachable: never = operand;
+      return panic("Unhandled table-structure operand", { operand: unreachable });
+    }
+  }
+};
+
 const TABLE_ROLE = "table";
 const ROW_ROLE = "row";
 const CELL_ROLES = new Set(["cell", "header_cell"]);
@@ -209,6 +265,12 @@ type OwnedInstruction =
       readonly target: PMNode;
       readonly edits: readonly ColumnEdit[];
     };
+
+type OwnedTableInsertion = Extract<OwnedInstruction, { readonly type: "insertTable" }>;
+type OwnedWholeTableInstruction = Extract<
+  OwnedInstruction,
+  { readonly type: "deleteTable" | "replaceTable" }
+>;
 
 const PREPARED_TABLE_STRUCTURE_PROGRAM: unique symbol = Symbol("prepared-table-structure-program");
 const PREPARED_TABLE_STRUCTURE_TASK: unique symbol = Symbol("prepared-table-structure-task");
@@ -673,7 +735,7 @@ type MutableTableGroup = {
   readonly source: SourceTable;
   targetTableIndex: number | null;
   axis: "row" | "column" | null;
-  whole: OwnedInstruction | null;
+  whole: OwnedWholeTableInstruction | null;
   readonly rowEdits: RowEdit[];
   readonly columnEdits: ColumnEdit[];
 };
@@ -792,10 +854,9 @@ export const preflightTableStructureProgram = ({
     (operand): operand is ResolvedDocxTableStructureOperand =>
       operand.type !== "matchTableFormatting",
   );
-  const payloads = structuralOperands.map((operand) => ({
-    operand,
-    payload: resolvedDocxTableStructureOperandPayload(operand, comparison),
-  }));
+  const structuralOperations = structuralOperands.map((operand) =>
+    resolveTableStructureOperation(operand, comparison),
+  );
   const geometryOperand = formatOperands.at(0);
   const geometryPayload = geometryOperand
     ? resolvedDocxTableFormatOperandPayload(geometryOperand, comparison)
@@ -834,7 +895,7 @@ export const preflightTableStructureProgram = ({
   };
 
   const groups = new Map<number, MutableTableGroup>();
-  const insertions: OwnedInstruction[] = [];
+  const insertions: OwnedTableInsertion[] = [];
   const groupFor = (source: SourceTable): MutableTableGroup => {
     const existing = groups.get(source.index);
     if (existing) return existing;
@@ -850,7 +911,7 @@ export const preflightTableStructureProgram = ({
     return created;
   };
 
-  for (const { operand, payload } of payloads) {
+  for (const operation of structuralOperations) {
     structuralEdits++;
     if (structuralEdits > limits.maxStructuralEdits) {
       return unsupported({
@@ -860,7 +921,8 @@ export const preflightTableStructureProgram = ({
         actual: structuralEdits,
       });
     }
-    if (payload.type === "insertTable") {
+    if (operation.type === "insertTable") {
+      const { operand, payload } = operation;
       const targetResult = ownTargetTable(targetSnapshot, payload.change.tableIndex);
       if ("status" in targetResult) return targetResult;
       const target = portableTarget(targetResult);
@@ -897,19 +959,20 @@ export const preflightTableStructureProgram = ({
       continue;
     }
 
-    const baseIndex = sourceTableIndexOf(payload, baseSnapshot);
+    const baseIndex = sourceTableIndexOf(operation.payload, baseSnapshot);
     if (baseIndex === null) return unsupported({ reason: "missing-source-table" });
     const source = sourceTable(baseIndex);
     if ("status" in source) return source;
     const group = groupFor(source);
-    if (payload.type === "deleteTable") {
+    if (operation.type === "deleteTable") {
       if (group.whole || group.rowEdits.length > 0 || group.columnEdits.length > 0) {
         return unsupported({ reason: "duplicate-source-table" });
       }
-      group.whole = { type: "deleteTable", operand, source };
+      group.whole = { type: "deleteTable", operand: operation.operand, source };
       continue;
     }
-    if (payload.type === "replaceTable") {
+    if (operation.type === "replaceTable") {
+      const { operand, payload } = operation;
       if (group.whole || group.rowEdits.length > 0 || group.columnEdits.length > 0) {
         return unsupported({ reason: "duplicate-source-table" });
       }
@@ -942,7 +1005,7 @@ export const preflightTableStructureProgram = ({
     }
 
     const targetIndex =
-      targetTableIndexOf(payload) ?? targetTableIndexForBase(pairings, source.index);
+      targetTableIndexOf(operation.payload) ?? targetTableIndexForBase(pairings, source.index);
     if (targetIndex === null) return unsupported({ reason: "non-reconstructable-structure" });
     if (group.targetTableIndex !== null && group.targetTableIndex !== targetIndex) {
       return unsupported({ reason: "non-reconstructable-structure" });
@@ -952,10 +1015,11 @@ export const preflightTableStructureProgram = ({
     if ("status" in target) return target;
     const counted = countTarget(target);
     if (counted) return counted;
-    if (payload.type === "insertTableRow" || payload.type === "deleteTableRow") {
+    if (operation.type === "insertTableRow" || operation.type === "deleteTableRow") {
       if (group.axis === "column") return unsupported({ reason: "mixed-table-structure-axes" });
       group.axis = "row";
-      if (payload.type === "insertTableRow") {
+      if (operation.type === "insertTableRow") {
+        const { operand, payload } = operation;
         const anchor = resolvedDocxSourceOperandBlock(payload.anchor.source, baseSnapshot).table;
         if (!anchor) return unsupported({ reason: "missing-source-table" });
         const targetRow = target.child(payload.change.rowIndex);
@@ -975,15 +1039,16 @@ export const preflightTableStructureProgram = ({
       } else {
         group.rowEdits.push({
           type: "delete",
-          operand,
-          baseRowIndex: payload.change.rowIndex,
+          operand: operation.operand,
+          baseRowIndex: operation.payload.change.rowIndex,
         });
       }
       continue;
     }
     if (group.axis === "row") return unsupported({ reason: "mixed-table-structure-axes" });
     group.axis = "column";
-    if (payload.type === "insertTableColumn") {
+    if (operation.type === "insertTableColumn") {
+      const { operand, payload } = operation;
       const anchor = resolvedDocxSourceOperandBlock(payload.anchor.source, baseSnapshot).table;
       if (!anchor) return unsupported({ reason: "missing-source-table" });
       const targetCells: PMNode[] = [];
@@ -1008,8 +1073,8 @@ export const preflightTableStructureProgram = ({
     } else {
       group.columnEdits.push({
         type: "delete",
-        operand,
-        baseColumnIndex: payload.change.columnIndex,
+        operand: operation.operand,
+        baseColumnIndex: operation.payload.change.columnIndex,
       });
     }
   }

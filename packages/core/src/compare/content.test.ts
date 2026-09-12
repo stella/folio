@@ -2,10 +2,7 @@ import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
 import { propertyConfig } from "../../../../test/property-testing";
-import {
-  ownContentSnapshot,
-  requireOwnedContentSnapshotBlocks,
-} from "./owned-content-snapshot";
+import { ownContentSnapshot, requireOwnedContentSnapshotBlocks } from "./owned-content-snapshot";
 import {
   compareContent,
   createContentComparisonWorkSession,
@@ -65,7 +62,11 @@ const propertySet = (
   Object.entries(properties)
     .filter((entry): entry is [string, FolioContentPropertyInputValue] => entry[1] !== undefined)
     .map(([key, value]) => ({ key, value }))
-    .toSorted((left, right) => (left.key < right.key ? -1 : left.key > right.key ? 1 : 0));
+    .toSorted((left, right) => {
+      if (left.key < right.key) return -1;
+      if (left.key > right.key) return 1;
+      return 0;
+    });
 
 const objectProperty = (
   properties: Readonly<Record<string, FolioContentPropertyInputValue | undefined>>,
@@ -459,14 +460,14 @@ const expectComparisonReconstructs = (
   expect(baseProjection(comparison)).toEqual(base);
   expect(revisedProjection(comparison)).toEqual(revised);
   for (const event of comparison.events) {
-    const cardinality =
-      event.type === "tableReplacement"
-        ? [event.replacement.baseBlocks.length, event.replacement.revisedBlocks.length]
-        : event.type === "structural"
-          ? event.change.type.endsWith("-insert")
-            ? ([0, 1] as const)
-            : ([1, 0] as const)
-          : EXPECTED_EVENT_CARDINALITY[event.type];
+    let cardinality: readonly [number, number];
+    if (event.type === "tableReplacement") {
+      cardinality = [event.replacement.baseBlocks.length, event.replacement.revisedBlocks.length];
+    } else if (event.type === "structural") {
+      cardinality = event.change.type.endsWith("-insert") ? [0, 1] : [1, 0];
+    } else {
+      cardinality = EXPECTED_EVENT_CARDINALITY[event.type];
+    }
     expect([eventBaseBlocks(event).length, eventRevisedBlocks(event).length]).toEqual(cardinality);
     expectEventRelationsReconstruct(event);
     if (event.type === "tableReplacement") {
@@ -900,8 +901,8 @@ describe("representation-neutral comparison stream", () => {
       ["kind", "displayLabel", "headingLevel"],
     ]);
     expect(
-      split.relations.map(({ formatting }) =>
-        formatting?.paragraph.authored.map(({ key, revised }) => ({ key, revised })),
+      split.relations.map(({ formatting: relationFormatting }) =>
+        relationFormatting?.paragraph.authored.map(({ key, revised }) => ({ key, revised })),
       ),
     ).toEqual([
       [
@@ -924,14 +925,16 @@ describe("representation-neutral comparison stream", () => {
       ],
     ]);
     expect(
-      split.relations.map(({ formatting }) =>
-        formatting?.ranges.map(({ baseStart, baseEnd, revisedStart, revisedEnd, formatting }) => ({
-          baseStart,
-          baseEnd,
-          revisedStart,
-          revisedEnd,
-          effective: formatting.effective.map(({ key }) => key),
-        })),
+      split.relations.map(({ formatting: relationFormatting }) =>
+        relationFormatting?.ranges.map(
+          ({ baseStart, baseEnd, revisedStart, revisedEnd, formatting: rangeFormatting }) => ({
+            baseStart,
+            baseEnd,
+            revisedStart,
+            revisedEnd,
+            effective: rangeFormatting.effective.map(({ key }) => key),
+          }),
+        ),
       ),
     ).toEqual([
       [{ baseStart: 0, baseEnd: 5, revisedStart: 0, revisedEnd: 5, effective: ["bold", "italic"] }],
@@ -982,8 +985,8 @@ describe("representation-neutral comparison stream", () => {
       ["kind", "displayLabel", "headingLevel"],
     ]);
     expect(
-      merge.relations.map(({ formatting }) =>
-        formatting?.paragraph.authored.map(({ key, revised }) => ({ key, revised })),
+      merge.relations.map(({ formatting: relationFormatting }) =>
+        relationFormatting?.paragraph.authored.map(({ key, revised }) => ({ key, revised })),
       ),
     ).toEqual([
       [
@@ -995,14 +998,16 @@ describe("representation-neutral comparison stream", () => {
       [{ key: "styleId", revised: { type: "absent" } }],
     ]);
     expect(
-      merge.relations.map(({ formatting }) =>
-        formatting?.ranges.map(({ baseStart, baseEnd, revisedStart, revisedEnd, formatting }) => ({
-          baseStart,
-          baseEnd,
-          revisedStart,
-          revisedEnd,
-          effective: formatting.effective.map(({ key }) => key),
-        })),
+      merge.relations.map(({ formatting: relationFormatting }) =>
+        relationFormatting?.ranges.map(
+          ({ baseStart, baseEnd, revisedStart, revisedEnd, formatting: rangeFormatting }) => ({
+            baseStart,
+            baseEnd,
+            revisedStart,
+            revisedEnd,
+            effective: rangeFormatting.effective.map(({ key }) => key),
+          }),
+        ),
       ),
     ).toEqual([
       [{ baseStart: 0, baseEnd: 5, revisedStart: 0, revisedEnd: 5, effective: ["bold", "italic"] }],
@@ -1429,7 +1434,10 @@ describe("representation-neutral comparison stream", () => {
     expect(event?.type).toBe("formatting");
     if (event?.type !== "formatting") throw new Error("expected formatting");
     expect(
-      event.relation.formatting?.paragraph.authored.map(({ key, revised }) => ({ key, revised })),
+      event.relation.formatting?.paragraph.authored.map(({ key, revised: revisedValue }) => ({
+        key,
+        revised: revisedValue,
+      })),
     ).toEqual([
       { key: "directAlignment", revised: { type: "present", value: "center" } },
       {
@@ -2867,63 +2875,56 @@ describe("comparison projection invariants", () => {
         const revised = mutations
           .map((entry, index) => {
             const revisedText = entry.mutation === "text" ? `${entry.text} Δ` : entry.text;
-            const revisedKind =
-              entry.mutation === "block"
-                ? entry.kind === "heading"
-                  ? "paragraph"
-                  : "heading"
-                : entry.kind;
-            const survivor =
-              entry.mutation === "delete"
-                ? []
-                : [
-                    contentBlock({
-                      id: `stable-${String(index)}`,
-                      identitySemantics: "authoritative",
-                      text: revisedText,
-                      kind: revisedKind,
-                      headingLevel: revisedKind === "heading" ? 1 : undefined,
-                      styleId:
-                        entry.mutation === "authored-paragraph"
-                          ? `${entry.styleId}-revised`
-                          : entry.styleId,
-                      effectiveParagraphFormatting: {
-                        alignment:
-                          entry.mutation === "effective-paragraph"
-                            ? `${entry.alignment}-revised`
-                            : entry.alignment,
-                      },
-                      runs:
-                        revisedText.length === 0
-                          ? []
-                          : [
-                              {
-                                text: revisedText,
-                                bold: entry.mutation === "inline" ? !entry.bold : entry.bold,
-                                directFormatting: {
-                                  color:
-                                    entry.mutation === "inline"
-                                      ? `${entry.color}-revised`
-                                      : entry.color,
-                                },
-                              },
-                            ],
-                      structuralBoundaries: boundaryAt(
-                        entry.mutation === "structure"
-                          ? entry.boundary === "none"
-                            ? "start"
-                            : "none"
-                          : entry.boundary,
-                        revisedText,
-                      ),
-                      containerPath:
-                        entry.mutation === "container"
-                          ? [{ kind: "section", id: `${entry.container ?? "body"}-revised` }]
-                          : entry.container === undefined
-                            ? []
-                            : [{ kind: "section", id: entry.container }],
-                    }),
-                  ];
+            let revisedKind = entry.kind;
+            if (entry.mutation === "block") {
+              revisedKind = entry.kind === "heading" ? "paragraph" : "heading";
+            }
+            let revisedRuns: readonly LegacyTestRun[] = [];
+            if (revisedText.length > 0) {
+              revisedRuns = [
+                {
+                  text: revisedText,
+                  bold: entry.mutation === "inline" ? !entry.bold : entry.bold,
+                  directFormatting: {
+                    color: entry.mutation === "inline" ? `${entry.color}-revised` : entry.color,
+                  },
+                },
+              ];
+            }
+            let revisedBoundary = entry.boundary;
+            if (entry.mutation === "structure") {
+              revisedBoundary = entry.boundary === "none" ? "start" : "none";
+            }
+            let revisedContainerPath: TestBlockOptions["containerPath"] =
+              entry.container === undefined ? [] : [{ kind: "section", id: entry.container }];
+            if (entry.mutation === "container") {
+              revisedContainerPath = [
+                { kind: "section", id: `${entry.container ?? "body"}-revised` },
+              ];
+            }
+            const revisedStyleId =
+              entry.mutation === "authored-paragraph" ? `${entry.styleId}-revised` : entry.styleId;
+            const revisedAlignment =
+              entry.mutation === "effective-paragraph"
+                ? `${entry.alignment}-revised`
+                : entry.alignment;
+            const survivor: TestBlock[] = [];
+            if (entry.mutation !== "delete") {
+              survivor.push(
+                contentBlock({
+                  id: `stable-${String(index)}`,
+                  identitySemantics: "authoritative",
+                  text: revisedText,
+                  kind: revisedKind,
+                  headingLevel: revisedKind === "heading" ? 1 : undefined,
+                  styleId: revisedStyleId,
+                  effectiveParagraphFormatting: { alignment: revisedAlignment },
+                  runs: revisedRuns,
+                  structuralBoundaries: boundaryAt(revisedBoundary, revisedText),
+                  containerPath: revisedContainerPath,
+                }),
+              );
+            }
             const inserted = entry.insertAfter
               ? [
                   contentBlock({

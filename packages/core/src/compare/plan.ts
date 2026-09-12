@@ -65,6 +65,7 @@ import type {
   FolioContentBaseContainerAlignment,
   FolioContentBlock,
   FolioContentContainerAlignment,
+  FolioContentRevisedContainerAlignment,
 } from "./content-types";
 import {
   CompareDocxLoweringError,
@@ -554,6 +555,9 @@ const withTrailingDeletionRules = ({
         anchor: { source: carrierSource, position: "after" },
         change: payload.change,
       });
+      if (retargeted.type !== "insertTable") {
+        return panic("A retargeted table insertion lost its structural discriminator");
+      }
       plan[tableInsertIndex] = {
         type: "tableStructure",
         operation: resolvedDocxTerminalTableInsertionOperand(comparison, retargeted, carrierSource),
@@ -645,6 +649,9 @@ const withTrailingDeletionRules = ({
             inserted: inserted.payload.change,
           },
         });
+        if (composed.type !== "replaceTable") {
+          return panic("A composed table replacement lost its structural discriminator");
+        }
         plan[inserted.index] = {
           type: "tableStructure",
           operation: resolvedDocxTerminalTableReplacementOperand(

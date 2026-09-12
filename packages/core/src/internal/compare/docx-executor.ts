@@ -249,6 +249,32 @@ type PreparedTableTask = {
 
 type PreparedExecutionTask = PreparedInsertionRun | PreparedSourceTask | PreparedTableTask;
 
+type ExecutionTaskSortKey = {
+  readonly from: number;
+  readonly originalIndex: number;
+};
+
+const executionTaskSortKey = (task: PreparedExecutionTask): ExecutionTaskSortKey => {
+  switch (task.type) {
+    case "insertionRun":
+      return {
+        from: task.position,
+        originalIndex: task.members[0].instruction.originalIndex,
+      };
+    case "sourceInstruction":
+    case "moveSource":
+      return { from: task.from, originalIndex: task.instruction.originalIndex };
+    case "tableStructure":
+      return { from: task.from, originalIndex: task.originalIndex };
+    default: {
+      const unreachable: never = task;
+      return panic("Unhandled execution task while deriving its sort key", {
+        task: unreachable,
+      });
+    }
+  }
+};
+
 const executionTasks = (
   instructions: readonly PreparedInstruction[],
   tableProgram: PreparedTableStructureProgram | null,
@@ -342,13 +368,11 @@ const executionTasks = (
       if (leftInsertion !== rightInsertion) {
         return leftInsertion ? -1 : 1;
       }
-      const byStart = right.from - left.from;
+      const leftKey = executionTaskSortKey(left);
+      const rightKey = executionTaskSortKey(right);
+      const byStart = rightKey.from - leftKey.from;
       if (byStart !== 0) return byStart;
-      const leftIndex =
-        left.type === "tableStructure" ? left.originalIndex : left.instruction.originalIndex;
-      const rightIndex =
-        right.type === "tableStructure" ? right.originalIndex : right.instruction.originalIndex;
-      return rightIndex - leftIndex;
+      return rightKey.originalIndex - leftKey.originalIndex;
     }),
   );
 };
@@ -554,12 +578,7 @@ export const preflightDocxComparisonProgram = ({
   readonly state: EditorState;
   readonly program: DocxComparisonProgram;
 }): PreparedDocxComparison => {
-  const {
-    comparison,
-    sourceSnapshot: snapshot,
-    semanticGroups,
-    instructions,
-  } = program.consume();
+  const { comparison, sourceSnapshot: snapshot, semanticGroups, instructions } = program.consume();
   const operationSnapshot = resolvedDocxOperationSnapshot(snapshot);
   if (state.doc !== resolvedDocxSourceDocument(snapshot)) {
     return ownPreparedDocxComparison({
@@ -985,13 +1004,26 @@ export const preflightDocxComparisonProgram = ({
       case "mergeParagraphs": {
         const firstSource = resolveSource(instruction.firstSource);
         const secondSource = resolveSource(instruction.secondSource);
-        if (firstSource.type === "unsupported" || secondSource.type === "unsupported") {
-          const rejected = firstSource.type === "unsupported" ? firstSource : secondSource;
-          const blockId =
-            firstSource.type === "unsupported"
-              ? sourceBlockId(instruction.firstSource)
-              : sourceBlockId(instruction.secondSource);
-          issues.push(issue(instruction, instructionIndex, rejected.reason, blockId));
+        if (firstSource.type === "unsupported") {
+          issues.push(
+            issue(
+              instruction,
+              instructionIndex,
+              firstSource.reason,
+              sourceBlockId(instruction.firstSource),
+            ),
+          );
+          break;
+        }
+        if (secondSource.type === "unsupported") {
+          issues.push(
+            issue(
+              instruction,
+              instructionIndex,
+              secondSource.reason,
+              sourceBlockId(instruction.secondSource),
+            ),
+          );
           break;
         }
         const first = preflightDocxTextRange(state.doc, {
@@ -1548,19 +1580,21 @@ type AllocatePropertyRevisionOptions = {
   readonly date: string;
 };
 
-const allocatePropertyRevision = ({
-  allocation,
-  author,
-  date,
-}: AllocatePropertyRevisionOptions): (() => {
-  readonly id: number;
-  readonly author: string;
-  readonly date: string;
-}) => () => {
-  const id = allocation.nextRevisionId++;
-  allocation.revisionIds.push(id);
-  return { id, author, date };
-};
+const allocatePropertyRevision =
+  ({
+    allocation,
+    author,
+    date,
+  }: AllocatePropertyRevisionOptions): (() => {
+    readonly id: number;
+    readonly author: string;
+    readonly date: string;
+  }) =>
+  () => {
+    const id = allocation.nextRevisionId++;
+    allocation.revisionIds.push(id);
+    return { id, author, date };
+  };
 
 const consumePreparedDocxComparison = (
   prepared: PreparedDocxComparison,
@@ -1675,7 +1709,7 @@ export const executePreflightedDocxComparison = ({
         instructionType: instruction.instructionType,
         part: 0,
         revisionIds: applied.revisionIds,
-        tableGeometry: applied.tableGeometry,
+        ...(applied.tableGeometry === undefined ? {} : { tableGeometry: applied.tableGeometry }),
       });
     }
   }
@@ -1737,9 +1771,9 @@ export const executePreflightedDocxComparison = ({
       }
       continue;
     }
-    const instruction = task.instruction;
     const instructionRevisionIds: number[] = [];
     if (task.type === "moveSource") {
+      const { instruction } = task;
       if (instruction.type === "moveParagraph") {
         const deleted = markParagraphDeletion({
           tr,
@@ -1804,6 +1838,7 @@ export const executePreflightedDocxComparison = ({
       });
       continue;
     }
+    const { instruction } = task;
     const localMappingStart = tr.mapping.maps.length;
     switch (instruction.type) {
       case "replaceText":

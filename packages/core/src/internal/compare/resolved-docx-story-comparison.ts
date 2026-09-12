@@ -1661,10 +1661,14 @@ export const resolvedDocxTerminalTableReplacementOperand = (
   ) {
     return panic("A terminal table replacement must own an empty final carrier and target table");
   }
-  return resolvedDocxTableStructureOperand(comparison, {
+  const resolved = resolvedDocxTableStructureOperand(comparison, {
     ...payload,
     terminalCarrier: Object.freeze({ source: terminalCarrier, event }),
   });
+  if (resolved.type !== "replaceTable") {
+    return panic("A terminal table replacement lost its structural discriminator");
+  }
+  return resolved;
 };
 
 /** Bind the exact final empty carrier into its terminal table insertion. */
@@ -1691,10 +1695,14 @@ export const resolvedDocxTerminalTableInsertionOperand = (
   ) {
     return panic("A terminal table insertion must own an empty final carrier and target table");
   }
-  return resolvedDocxTableStructureOperand(comparison, {
+  const resolved = resolvedDocxTableStructureOperand(comparison, {
     ...payload,
     terminalCarrier: Object.freeze({ source: terminalCarrier, event }),
   });
+  if (resolved.type !== "insertTable") {
+    return panic("A terminal table insertion lost its structural discriminator");
+  }
+  return resolved;
 };
 
 const EMPTY_TABLE_INDEX_SET: ReadonlySet<number> = new Set<number>();
