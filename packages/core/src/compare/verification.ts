@@ -17,7 +17,6 @@ import { PARAGRAPH_MARK_CHANGE_KINDS, type ParagraphMarkChangeKind } from "@stll
 import { panic } from "better-result";
 
 import type { FolioDocumentStoryHandle } from "../ai-edits/headless";
-import type { FolioAIBlock, FolioAIBlockPreviewRun } from "../ai-edits/types";
 import type {
   FolioContentBlock,
   FolioContentPropertySet,
@@ -33,11 +32,6 @@ import {
   FOLIO_CONTENT_STRUCTURAL_BOUNDARY_FIELD_DESCRIPTORS,
   FOLIO_CONTENT_TABLE_FIELD_DESCRIPTORS,
 } from "./content-types";
-import { paragraphSpacingEqual } from "../prosemirror/paragraphSpacing";
-import { resolveColorToHex } from "../utils/colorResolver";
-
-const normalizeInlineFormattingColor = (color: string | undefined): string | undefined =>
-  resolveColorToHex(color === undefined ? undefined : { rgb: color }, null);
 
 /** The two directions of the round trip, each an invariant of its own. */
 export const COMPARE_VERIFICATION_INVARIANTS = Object.freeze([
@@ -112,223 +106,14 @@ export type CompareVerification =
   | { status: "verified" }
   | { status: "unverified"; failures: readonly CompareVerificationFailure[] };
 
-const supportedInlineStyle = ({
-  bold,
-  italic,
-  underline,
-  strike,
-  fontFamily,
-  fontSizePt,
-  color,
-  directFormatting,
-}: FolioAIBlockPreviewRun): string =>
-  JSON.stringify([
-    bold === true,
-    italic === true,
-    underline === true,
-    strike === true,
-    fontFamily ?? null,
-    fontSizePt ?? null,
-    normalizeInlineFormattingColor(color) ?? null,
-    directFormatting?.bold ?? null,
-    directFormatting?.italic ?? null,
-    directFormatting?.underline ?? null,
-    directFormatting?.strike ?? null,
-    directFormatting?.fontFamily ?? null,
-    directFormatting?.fontSizePt ?? null,
-    normalizeInlineFormattingColor(directFormatting?.color ?? undefined) ?? null,
-  ]);
-
-/** Effective supported formatting with equivalent adjacent runs normalized. */
-export const projectSupportedInlineFormatting = ({ text, previewRuns }: FolioAIBlock): string => {
-  const projected: { length: number; style: string }[] = [];
-  for (const run of previewRuns ?? [{ text }]) {
-    if (run.text.length === 0) {
-      continue;
-    }
-    const style = supportedInlineStyle(run);
-    const previous = projected.at(-1);
-    if (previous?.style === style) {
-      previous.length += run.text.length;
-      continue;
-    }
-    projected.push({ length: run.text.length, style });
-  }
-  return projected.map(({ length, style }) => `${String(length)}:${style}`).join(",");
-};
-
-type ProjectedBlock = Pick<
-  FolioAIBlock,
-  | "text"
-  | "table"
-  | "styleId"
-  | "listLevel"
-  | "directAlignment"
-  | "directSpacing"
-  | "structuralBoundaries"
->;
-
-type ProjectedTableContainer = NonNullable<ProjectedBlock["table"]>;
-
-const sameContainer = (
-  left: ProjectedTableContainer | undefined,
-  right: ProjectedTableContainer | undefined,
-): boolean => {
-  if (!left || !right) {
-    return left === right;
-  }
-  return (
-    left.outerTableIndex === right.outerTableIndex &&
-    left.tableIndex === right.tableIndex &&
-    left.rowIndex === right.rowIndex &&
-    left.cellIndex === right.cellIndex &&
-    left.gridColumnIndex === right.gridColumnIndex &&
-    left.columnSpan === right.columnSpan &&
-    left.rowSpan === right.rowSpan &&
-    left.paragraphIndex === right.paragraphIndex
-  );
-};
-
-const sameStructuralBoundaries = (
-  left: FolioAIBlock["structuralBoundaries"],
-  right: FolioAIBlock["structuralBoundaries"],
-): boolean => {
-  const leftLength = left?.length ?? 0;
-  if (leftLength !== (right?.length ?? 0)) {
-    return false;
-  }
-  if (leftLength === 0) {
-    return true;
-  }
-  if (left === undefined || right === undefined) {
-    return false;
-  }
-
-  for (let index = 0; index < leftLength; index++) {
-    const boundary = left[index];
-    const other = right[index];
-    if (
-      boundary === undefined ||
-      other === undefined ||
-      boundary.type !== other.type ||
-      boundary.offset !== other.offset ||
-      boundary.clear !== other.clear
-    ) {
-      return false;
-    }
-  }
-  return true;
-};
-
-const sameProjectedBlock = (left: ProjectedBlock, right: ProjectedBlock): boolean =>
-  sameContainer(left.table, right.table) &&
-  sameStructuralBoundaries(left.structuralBoundaries, right.structuralBoundaries) &&
-  left.styleId === right.styleId &&
-  left.listLevel === right.listLevel &&
-  left.directAlignment === right.directAlignment &&
-  paragraphSpacingEqual(left.directSpacing, right.directSpacing) &&
-  left.text === right.text;
-
-const containerKind = (container: ProjectedTableContainer | undefined): "body" | "cell" =>
-  container ? "cell" : "body";
-
 const collapseWhitespace = (text: string): string => text.replace(/\s+/gu, " ").trim();
 
-const sameBlockProjection = (
-  left: readonly ProjectedBlock[],
-  right: readonly ProjectedBlock[],
-): boolean =>
-  left.length === right.length &&
-  left.every((entry, index) => {
-    const other = right[index];
-    return other !== undefined && sameProjectedBlock(entry, other);
-  });
+const containerKind = (
+  container: FolioContentTableLocation | undefined,
+): "body" | "cell" => (container ? "cell" : "body");
 
 const sameStringProjection = (left: readonly string[], right: readonly string[]): boolean =>
   left.length === right.length && left.every((entry, index) => entry === right[index]);
-
-/**
- * The same projection with every table coordinate renumbered by first
- * appearance, so it counts the blocks the model holds rather than the
- * paragraphs the package contains.
- *
- * The snapshot skips a hidden row's whole subtree, so a table that hides a row
- * on one side only reports every later row one position along. No operation
- * can put a block at those coordinates, because none can create or remove the
- * hidden row that produces them. When two projections agree here and disagree
- * on the raw coordinates, the redline holds every block the other side does,
- * in order, and the difference is one the block model cannot see.
- */
-const byVisibleOrdinal = (entries: readonly ProjectedBlock[]): ProjectedBlock[] => {
-  const ordinals = new Map<string, number>();
-  const counts = new Map<string, number>();
-  const ordinalWithin = (scope: string, index: string): number => {
-    const key = `${scope}:${index}`;
-    const existing = ordinals.get(key);
-    if (existing !== undefined) {
-      return existing;
-    }
-    const next = counts.get(scope) ?? 0;
-    counts.set(scope, next + 1);
-    ordinals.set(key, next);
-    return next;
-  };
-
-  const paragraphCounts = new Map<string, number>();
-  return entries.map((entry) => {
-    const container = entry.table;
-    if (!container) {
-      return entry;
-    }
-    const outerTableOrdinal = ordinalWithin("t", String(container.outerTableIndex));
-    const tableOrdinal = ordinalWithin("t", String(container.tableIndex));
-    const rowScope = `r${String(tableOrdinal)}`;
-    const rowOrdinal = ordinalWithin(rowScope, String(container.rowIndex));
-    const cellScope = `c${String(tableOrdinal)}.${String(rowOrdinal)}`;
-    const cellOrdinal = ordinalWithin(cellScope, String(container.cellIndex));
-    const cellKey = `${cellScope}:${String(container.cellIndex)}`;
-    const paragraphOrdinal = paragraphCounts.get(cellKey) ?? 0;
-    paragraphCounts.set(cellKey, paragraphOrdinal + 1);
-    return {
-      ...entry,
-      table: {
-        ...container,
-        outerTableIndex: outerTableOrdinal,
-        tableIndex: tableOrdinal,
-        rowIndex: rowOrdinal,
-        cellIndex: cellOrdinal,
-        paragraphIndex: paragraphOrdinal,
-      },
-    };
-  });
-};
-
-/**
- * Where two projections first diverge, and what diverged there. A pair that
- * matches everywhere but in length diverges at the shorter one's end.
- */
-const firstDivergence = (
-  actual: readonly ProjectedBlock[],
-  expected: readonly ProjectedBlock[],
-): { index: number; actual: ProjectedBlock | null; expected: ProjectedBlock | null } => {
-  const shared = Math.min(actual.length, expected.length);
-  for (let index = 0; index < shared; index++) {
-    const left = actual[index];
-    const right = expected[index];
-    if (left !== undefined && right !== undefined && !sameProjectedBlock(left, right)) {
-      return {
-        index,
-        actual: left,
-        expected: right,
-      };
-    }
-  }
-  return {
-    index: shared,
-    actual: actual.at(shared) ?? null,
-    expected: expected.at(shared) ?? null,
-  };
-};
 
 type ClassifyOptions<T> = {
   invariant: CompareVerificationInvariant;
@@ -359,83 +144,6 @@ export const classifyGeometryMismatch = ({
       ? `table ${String(actual.findIndex((entry, index) => entry !== expected[index]))} of ${String(actual.length)} carries different properties`
       : `${String(actual.length)} tables against ${String(expected.length)}`;
   return { invariant, cause: "table-geometry", scope: { type: "story", story }, detail };
-};
-
-/**
- * The failure two projections describe, or `null` when they agree.
- *
- * Total over the causes by construction: the last branch is unconditional, so
- * a divergence always produces a failure rather than being dropped.
- */
-export const classifyProjectionMismatch = ({
-  invariant,
-  story,
-  actual,
-  expected,
-}: ClassifyOptions<ProjectedBlock>): CompareVerificationFailure | null => {
-  if (sameBlockProjection(actual, expected)) {
-    return null;
-  }
-  const failure = (
-    cause: CompareVerificationCause,
-    detail: string,
-  ): CompareVerificationFailure => ({
-    invariant,
-    cause,
-    scope: { type: "story", story },
-    detail,
-  });
-
-  if (sameBlockProjection(byVisibleOrdinal(actual), byVisibleOrdinal(expected))) {
-    return failure(
-      "invisible-structure",
-      `every block matches once table coordinates count visible blocks (${String(expected.length)} blocks)`,
-    );
-  }
-
-  const divergence = firstDivergence(actual, expected);
-  const at = `at block ${String(divergence.index)}/${String(expected.length)}`;
-  const counts = `${String(actual.length)} blocks against ${String(expected.length)}`;
-  if (divergence.actual === null || divergence.expected === null) {
-    const side = actual.length > expected.length ? "more" : "fewer";
-    return failure("block-count", `${side} blocks than expected (${counts}), diverging ${at}`);
-  }
-  const { actual: left, expected: right } = divergence;
-  if (!sameContainer(left.table, right.table)) {
-    return failure(
-      "container",
-      `a block sits in a ${containerKind(left.table)} where it is expected in a ${containerKind(right.table)}, ${at} (${counts})`,
-    );
-  }
-  if (!sameStructuralBoundaries(left.structuralBoundaries, right.structuralBoundaries)) {
-    return failure(
-      "inline-structure",
-      `a block's zero-width inline structure does not match ${at} (${counts})`,
-    );
-  }
-  if (left.text === right.text && left.styleId !== right.styleId) {
-    return failure("style", `the paragraph style did not move ${at} (${counts})`);
-  }
-  if (left.text === right.text && left.listLevel !== right.listLevel) {
-    return failure("list-level", `the list level did not move ${at} (${counts})`);
-  }
-  if (left.text === right.text && left.directAlignment !== right.directAlignment) {
-    return failure("alignment", `the direct paragraph alignment did not move ${at} (${counts})`);
-  }
-  if (left.text === right.text && !paragraphSpacingEqual(left.directSpacing, right.directSpacing)) {
-    return failure("spacing", `the direct paragraph spacing did not move ${at} (${counts})`);
-  }
-  if (collapseWhitespace(left.text) === collapseWhitespace(right.text)) {
-    return failure("whitespace", `a block's text differs only in whitespace ${at} (${counts})`);
-  }
-  if (actual.length !== expected.length) {
-    return failure("block-count", `${counts}, first differing ${at}`);
-  }
-  return failure(
-    "text",
-    `a ${containerKind(left.table)} block's text does not match ${at}, ` +
-      `length ${String(left.text.length)} against ${String(right.text.length)} (${counts})`,
-  );
 };
 
 const sameCanonicalValue = (left: unknown, right: unknown): boolean =>
