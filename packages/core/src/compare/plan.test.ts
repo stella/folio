@@ -22,6 +22,10 @@ import {
 import {
   compareResolvedDocxStoryPair,
   createResolvedDocxStoryPair,
+  resolvedDocxComparisonIndexWork,
+  resolvedDocxStoryComparisonPayload,
+  resolvedDocxTableGeometryPairings,
+  resolvedDocxTableStructureOperandPayload,
   type ResolvedDocxTableStructureOperand,
 } from "../internal/compare/resolved-docx-story-comparison";
 import type { DocxComparisonInstruction } from "../internal/compare/docx-program";
@@ -344,6 +348,132 @@ test("unsupported live paragraph properties reach the typed lowering refusal", (
 });
 
 describe("table row pairing", () => {
+  test("builds its canonical index with deterministic linear work", () => {
+    const workForRows = (count: number) => {
+      const rows = Array.from({ length: count }, (_value, rowIndex) =>
+        cell(
+          `R${rowIndex.toString(16).padStart(7, "0")}`,
+          `Stable schedule row ${String(rowIndex)}`,
+          rowIndex,
+        ),
+      );
+      return resolvedDocxComparisonIndexWork(
+        comparisonOf(resolvedSnapshotOf(rows), resolvedSnapshotOf(rows)),
+      );
+    };
+
+    const first = workForRows(16);
+    const repeated = workForRows(16);
+    const doubled = workForRows(32);
+
+    expect(first).toEqual(repeated);
+    expect(doubled.total).toBe(first.total * 2);
+    expect(doubled.eventVisits).toBe(first.eventVisits * 2);
+    expect(doubled.anchorEventVisits).toBe(first.anchorEventVisits * 2);
+    expect(Object.isFrozen(first)).toBe(true);
+    expect(Reflect.set(first, "total", 0)).toBe(false);
+  });
+
+  test("pairs table geometry from its container alignment when cell text is unrelated", () => {
+    const baseSnapshot = resolvedSnapshotOf([
+      gridCell("source", "Payment is due within thirty days after receipt.", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      gridCell("stable", "Schedule heading", {
+        rowIndex: 0,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+      }),
+    ]);
+    const targetSnapshot = resolvedSnapshotOf([
+      gridCell("target", "Confidential schedules remain with the appointed custodian.", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      gridCell("stable", "Schedule heading", {
+        rowIndex: 0,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+      }),
+    ]);
+    const comparison = comparisonOf(baseSnapshot, targetSnapshot);
+
+    const rewritten = resolvedDocxStoryComparisonPayload(comparison).comparison.events.find(
+      ({ type }) => type === "modified",
+    );
+    if (rewritten?.type !== "modified") throw new Error("unrelated cell text was not compared");
+    expect(rewritten.relation.segments.map(({ type }) => type)).toContain("del");
+    expect(rewritten.relation.segments.map(({ type }) => type)).toContain("ins");
+    expect(resolvedDocxTableGeometryPairings(comparison)).toEqual([
+      {
+        base: { tableIndex: 0, rowIndex: 0, cellIndex: 0 },
+        target: { tableIndex: 0, rowIndex: 0, cellIndex: 0 },
+      },
+      {
+        base: { tableIndex: 0, rowIndex: 0, cellIndex: 1 },
+        target: { tableIndex: 0, rowIndex: 0, cellIndex: 1 },
+      },
+    ]);
+  });
+
+  test("does not turn a cross-cell move relation into a geometry pairing", () => {
+    const relocated = "The Supplier shall deliver the Goods within thirty days of the order.";
+    const baseSnapshot = resolvedSnapshotOf([
+      gridCell("relocated", relocated, {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      gridCell("left-anchor", "Left cell durable anchor", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+        paragraphIndex: 1,
+      }),
+      gridCell("right-anchor", "Right cell durable anchor", {
+        rowIndex: 0,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+      }),
+    ]);
+    const targetSnapshot = resolvedSnapshotOf([
+      gridCell("left-anchor", "Left cell durable anchor", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      gridCell("right-anchor", "Right cell durable anchor", {
+        rowIndex: 0,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+      }),
+      gridCell("relocated", relocated, {
+        rowIndex: 0,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+        paragraphIndex: 1,
+      }),
+    ]);
+    const comparison = comparisonOf(baseSnapshot, targetSnapshot);
+
+    expect(
+      resolvedDocxStoryComparisonPayload(comparison).comparison.events.map(({ type }) => type),
+    ).toContain("movedTo");
+    expect(resolvedDocxTableGeometryPairings(comparison)).toEqual([
+      {
+        base: { tableIndex: 0, rowIndex: 0, cellIndex: 0 },
+        target: { tableIndex: 0, rowIndex: 0, cellIndex: 0 },
+      },
+      {
+        base: { tableIndex: 0, rowIndex: 0, cellIndex: 1 },
+        target: { tableIndex: 0, rowIndex: 0, cellIndex: 1 },
+      },
+    ]);
+  });
+
   test("a deleted row plus edits in the rows below is one deleted row", () => {
     // Pairing rows by position instead reads every row as changed: row 0 is
     // put opposite row 1, row 1 opposite row 2, and the last row of the base
@@ -430,9 +560,38 @@ describe("table row pairing", () => {
       block("after-target", "After the table."),
     ];
 
-    const { changes } = planOf(base, target);
+    const plan = planOf(base, target);
+    const { changes } = plan;
 
     expect(changes.map(({ kind }) => kind)).toEqual(["table-row-insert"]);
+    const insertion = contentInstructionsOf(plan).find(
+      (instruction) => instruction.type === "insertTableRow",
+    );
+    if (!insertion || insertion.type !== "insertTableRow") {
+      throw new Error("fixture did not produce a row insertion");
+    }
+    const comparison = comparisonOf(resolvedSnapshotOf(base), resolvedSnapshotOf(target));
+    const comparablePlan = planStoryCompare({ comparison, maxOperations: 1000 });
+    if (comparablePlan.isErr()) throw comparablePlan.error;
+    const comparableInsertion = comparablePlan.value.program
+      .consume()
+      .instructions.find(
+        (instruction) =>
+          instruction.type === "tableStructure" && instruction.operation.type === "insertTableRow",
+      );
+    if (
+      comparableInsertion?.type !== "tableStructure" ||
+      comparableInsertion.operation.type !== "insertTableRow"
+    ) {
+      throw new Error("fixture did not produce a comparison-owned row insertion");
+    }
+    const payload = resolvedDocxTableStructureOperandPayload(
+      comparableInsertion.operation,
+      comparison,
+    );
+    if (payload.type !== "insertTableRow") throw new Error("row insertion payload missing");
+    expect(Object.isFrozen(payload.anchor)).toBe(true);
+    expect(Reflect.set(payload.anchor, "position", "before")).toBe(false);
   });
 
   test("text-only rewrites in the same table shape stay cell-level", () => {

@@ -20,6 +20,8 @@ import {
 import type {
   FolioContentBaseContainerAlignment,
   FolioContentBlock,
+  FolioContentContainerAlignment,
+  FolioContentPairedContainerAlignment,
   FolioContentRevisedContainerAlignment,
 } from "../../compare/content-types";
 import { canonicalJson } from "../../utils/canonicalJson";
@@ -171,7 +173,7 @@ export type ResolvedDocxTableFormatOperand = {
   readonly [RESOLVED_DOCX_TABLE_FORMAT_OPERAND_BRAND]: true;
 };
 
-type StructuralInsertionBoundary = {
+export type ResolvedDocxStructuralInsertionBoundary = {
   readonly source: ResolvedDocxSourceOperand;
   readonly position: "after" | "before";
 };
@@ -263,7 +265,7 @@ export type ResolvedDocxTableReplacementOwner =
 export type ResolvedDocxTableStructureOperandPayload =
   | {
       readonly type: "insertTable";
-      readonly anchor: StructuralInsertionBoundary;
+      readonly anchor: ResolvedDocxStructuralInsertionBoundary;
       readonly change: Extract<FolioContentStructuralChange, { readonly type: "table-insert" }>;
       readonly terminalCarrier?: ResolvedDocxTerminalTableCarrier;
     }
@@ -280,7 +282,7 @@ export type ResolvedDocxTableStructureOperandPayload =
     }
   | {
       readonly type: "insertTableRow";
-      readonly anchor: StructuralInsertionBoundary;
+      readonly anchor: ResolvedDocxStructuralInsertionBoundary;
       readonly change: Extract<FolioContentStructuralChange, { readonly type: "table-row-insert" }>;
     }
   | {
@@ -290,7 +292,7 @@ export type ResolvedDocxTableStructureOperandPayload =
     }
   | {
       readonly type: "insertTableColumn";
-      readonly anchor: StructuralInsertionBoundary;
+      readonly anchor: ResolvedDocxStructuralInsertionBoundary;
       readonly change: Extract<
         FolioContentStructuralChange,
         { readonly type: "table-column-insert" }
@@ -326,7 +328,19 @@ export type ResolvedDocxTableFormatChange = TableGeometrySemanticChange & {
   readonly sequence: number;
 };
 
-export type ResolvedDocxTableStructureOperandInput = ResolvedDocxTableStructureOperandPayload;
+export type ResolvedDocxTableStructureOperandInput =
+  | Exclude<
+      ResolvedDocxTableStructureOperandPayload,
+      { readonly type: "insertTable" | "replaceTable" }
+    >
+  | Omit<
+      Extract<ResolvedDocxTableStructureOperandPayload, { readonly type: "insertTable" }>,
+      "terminalCarrier"
+    >
+  | Omit<
+      Extract<ResolvedDocxTableStructureOperandPayload, { readonly type: "replaceTable" }>,
+      "terminalCarrier"
+    >;
 
 export type ResolvedDocxStoryPairPayload = {
   readonly baseStory: FolioDocumentStoryHandle;
@@ -374,9 +388,52 @@ type ResolvedDocxStoryComparisonIndex = {
     FolioContentBlock,
     FolioContentRevisedContainerAlignment
   >;
-  readonly baseTableIndexesByTargetTableIndex: ReadonlyMap<number, ReadonlySet<number>>;
+  readonly baseContainerByBlockId: ReadonlyMap<string, FolioContentBaseContainerAlignment>;
+  readonly baseBlockById: ReadonlyMap<string, FolioContentBlock>;
+  readonly basePositionByBlock: ReadonlyMap<FolioContentBlock, number>;
+  readonly baseTerminalBlockByContainer: ReadonlyMap<
+    FolioContentBaseContainerAlignment,
+    FolioContentBlock
+  >;
+  readonly targetTerminalBlockByContainer: ReadonlyMap<
+    FolioContentRevisedContainerAlignment,
+    FolioContentBlock
+  >;
+  readonly baseTerminalBlocks: readonly ResolvedDocxBaseTerminalBlock[];
+  readonly targetTerminalOuterTableIndex: number | undefined;
+  readonly baseTableIndexByTargetTableIndex: ReadonlyMap<number, number>;
+  readonly structuralInsertionBoundaryByChange: ReadonlyMap<
+    ResolvedDocxInsertionStructuralChange,
+    ResolvedDocxStructuralInsertionBoundary
+  >;
+  readonly structurallyOwnedTablePlacementRelations: ReadonlySet<FolioContentPairRelation>;
   readonly tableGeometryPairings: readonly TableGeometryPairing[];
   readonly tableGeometrySequenceByPairing: ReadonlyMap<string, number>;
+  readonly work: ResolvedDocxComparisonIndexWork;
+};
+
+export type ResolvedDocxInsertionStructuralChange = Extract<
+  FolioContentStructuralChange,
+  {
+    readonly type: "table-insert" | "table-row-insert" | "table-column-insert";
+  }
+>;
+
+export type ResolvedDocxBaseTerminalBlock = {
+  readonly alignment: FolioContentBaseContainerAlignment;
+  readonly block: FolioContentBlock;
+};
+
+/** Deterministic construction work retained for focused linearity invariants. @internal */
+export type ResolvedDocxComparisonIndexWork = {
+  readonly eventVisits: number;
+  readonly alignmentVisits: number;
+  readonly relationVisits: number;
+  readonly baseBlockVisits: number;
+  readonly revisedBlockVisits: number;
+  readonly anchorEventVisits: number;
+  readonly structuralChangeVisits: number;
+  readonly total: number;
 };
 
 type ComparisonOwnedPayload<Payload> = {
@@ -501,9 +558,97 @@ const tableGeometryPairingKey = ({ base, target }: TableGeometryPairing): string
   `${String(base.tableIndex)}:${String(base.rowIndex)}:${String(base.cellIndex)}>` +
   `${String(target.tableIndex)}:${String(target.rowIndex)}:${String(target.cellIndex)}`;
 
+const tableCellCoordinateKey = ({
+  tableIndex,
+  rowIndex,
+  cellIndex,
+}: TableGeometryPairing["base"]): string =>
+  `${String(tableIndex)}:${String(rowIndex)}:${String(cellIndex)}`;
+
+const compareTableCellCoordinates = (
+  left: TableGeometryPairing["base"],
+  right: TableGeometryPairing["base"],
+): number =>
+  left.tableIndex - right.tableIndex ||
+  left.rowIndex - right.rowIndex ||
+  left.cellIndex - right.cellIndex;
+
+type PairedTableCellOccurrence = Extract<
+  FolioContentPairedContainerAlignment["base"],
+  { readonly type: "tableCell" }
+>;
+
+const tableLocationMatchesOccurrence = (
+  location: NonNullable<FolioContentBlock["table"]>,
+  occurrence: PairedTableCellOccurrence,
+): boolean =>
+  location.outerTableIdentity.type === occurrence.table.outerTableIdentity.type &&
+  location.outerTableIdentity.id === occurrence.table.outerTableIdentity.id &&
+  location.tableIdentity.type === occurrence.table.tableIdentity.type &&
+  location.tableIdentity.id === occurrence.table.tableIdentity.id &&
+  location.rowIdentity.type === occurrence.table.rowIdentity.type &&
+  location.rowIdentity.id === occurrence.table.rowIdentity.id &&
+  location.cellIdentity.type === occurrence.table.cellIdentity.type &&
+  location.cellIdentity.id === occurrence.table.cellIdentity.id &&
+  location.outerTableIndex === occurrence.table.outerTableIndex &&
+  location.tableIndex === occurrence.table.tableIndex &&
+  location.rowIndex === occurrence.table.rowIndex &&
+  location.cellIndex === occurrence.table.cellIndex &&
+  location.gridColumnIndex === occurrence.table.gridColumnIndex &&
+  location.columnSpan === occurrence.table.columnSpan &&
+  location.rowSpan === occurrence.table.rowSpan;
+
+const firstBaseBlockOfEvent = (event: FolioContentComparisonEvent): FolioContentBlock | null => {
+  switch (event.type) {
+    case "unchanged":
+    case "modified":
+    case "formatting":
+      return event.relation.base.block;
+    case "deleted":
+      return event.block;
+    case "inserted":
+    case "movedTo":
+      return null;
+    case "movedFrom":
+      return event.move.relation.base.block;
+    case "split":
+    case "merge":
+      return event.relations[0].base.block;
+    case "tableReplacement":
+      return event.replacement.baseBlocks[0];
+    case "structural":
+      return event.change.type === "table-delete" ||
+        event.change.type === "table-row-delete" ||
+        event.change.type === "table-column-delete"
+        ? (event.change.blocks[event.memberIndex] ??
+            panic("A structural deletion lost its canonical base member"))
+        : null;
+    default: {
+      const unreachable: never = event;
+      return panic("Unhandled comparison event while indexing base occurrences", {
+        event: unreachable,
+      });
+    }
+  }
+};
+
+const baseTableBlockOfEvent = (event: FolioContentComparisonEvent): FolioContentBlock | null => {
+  const block = firstBaseBlockOfEvent(event);
+  return block?.table === undefined ? null : block;
+};
+
 const createComparisonIndex = (
   payload: ResolvedDocxStoryComparisonPayload,
 ): ResolvedDocxStoryComparisonIndex => {
+  const work = {
+    eventVisits: 0,
+    alignmentVisits: 0,
+    relationVisits: 0,
+    baseBlockVisits: 0,
+    revisedBlockVisits: 0,
+    anchorEventVisits: 0,
+    structuralChangeVisits: 0,
+  };
   const relations = new Set<FolioContentPairRelation>();
   const eventSequence = new Map<FolioContentComparisonEvent, number>();
   const separators = new Set<FolioContentSeparatorRelation>();
@@ -524,68 +669,189 @@ const createComparisonIndex = (
     FolioContentBlock,
     FolioContentRevisedContainerAlignment
   >();
-  const baseTableIndexesByTargetTableIndex = new Map<number, Set<number>>();
-  const tableGeometryPairings: TableGeometryPairing[] = [];
-  const tableGeometrySequenceByPairing = new Map<string, number>();
-  const pairedBaseCells = new Set<string>();
-  const registerRelation = (relation: FolioContentPairRelation, sequence: number): void => {
-    if (relations.has(relation)) return;
-    resolvedDocxSourceOperand(payload.baseSnapshot, relation.base.block);
-    resolvedDocxSourceOperand(payload.targetSnapshot, relation.revised.block);
-    relations.add(relation);
-    baseContainerByBlock.set(relation.base.block, relation.baseContainerAlignment);
-    targetContainerByBlock.set(relation.revised.block, relation.revisedContainerAlignment);
-    if (relation.relationType === "separator") separators.add(relation);
-    const baseTable = relation.base.block.table;
-    const targetTable = relation.revised.block.table;
-    if (!baseTable || !targetTable) return;
-    const baseTableIndexes =
-      baseTableIndexesByTargetTableIndex.get(targetTable.tableIndex) ?? new Set<number>();
-    baseTableIndexes.add(baseTable.tableIndex);
-    baseTableIndexesByTargetTableIndex.set(targetTable.tableIndex, baseTableIndexes);
-    if (pairedBaseCells.has(baseTable.cellIdentity.id)) return;
-    pairedBaseCells.add(baseTable.cellIdentity.id);
-    const pairing = Object.freeze({
-      base: Object.freeze({
-        tableIndex: baseTable.tableIndex,
-        rowIndex: baseTable.rowIndex,
-        cellIndex: baseTable.cellIndex,
-      }),
-      target: Object.freeze({
-        tableIndex: targetTable.tableIndex,
-        rowIndex: targetTable.rowIndex,
-        cellIndex: targetTable.cellIndex,
-      }),
-    });
-    tableGeometryPairings.push(pairing);
-    tableGeometrySequenceByPairing.set(tableGeometryPairingKey(pairing), sequence);
+  const baseContainerByBlockId = new Map<string, FolioContentBaseContainerAlignment>();
+  const basePositionByBlock = new Map<FolioContentBlock, number>();
+  const targetPositionByBlock = new Map<FolioContentBlock, number>();
+  const baseBlockById = new Map<string, FolioContentBlock>();
+  let trailingBodyBlock: FolioContentBlock | null = null;
+  const baseBlocks = resolvedDocxContentBlocks(payload.baseSnapshot);
+  const targetBlocks = resolvedDocxContentBlocks(payload.targetSnapshot);
+  for (const [position, block] of baseBlocks.entries()) {
+    work.baseBlockVisits += 1;
+    basePositionByBlock.set(block, position);
+    baseBlockById.set(block.identity.id, block);
+    if (block.table === undefined) trailingBodyBlock = block;
+  }
+  for (const [position, block] of targetBlocks.entries()) {
+    work.revisedBlockVisits += 1;
+    targetPositionByBlock.set(block, position);
+  }
+  const baseTerminalBlockByContainer = new Map<
+    FolioContentBaseContainerAlignment,
+    FolioContentBlock
+  >();
+  const targetTerminalBlockByContainer = new Map<
+    FolioContentRevisedContainerAlignment,
+    FolioContentBlock
+  >();
+  const baseTerminalPositionByContainer = new Map<FolioContentBaseContainerAlignment, number>();
+  const targetTerminalPositionByContainer = new Map<
+    FolioContentRevisedContainerAlignment,
+    number
+  >();
+  const pairedContainerAlignments = new Set<FolioContentPairedContainerAlignment>();
+  const alignmentsWithParagraphStructureChange = new Set<FolioContentContainerAlignment>();
+  const moveRelations = new Set<FolioContentPairRelation>();
+  const baseTablesWithRowStructureChange = new Set<number>();
+  const targetTablesWithRowStructureChange = new Set<number>();
+  const baseTablesWithColumnStructureChange = new Set<number>();
+  const targetTablesWithColumnStructureChange = new Set<number>();
+  const baseSequenceByAlignment = new Map<FolioContentPairedContainerAlignment, number>();
+  const revisedSequenceByAlignment = new Map<FolioContentPairedContainerAlignment, number>();
+  const registerBaseBlock = (
+    block: FolioContentBlock,
+    alignment: FolioContentBaseContainerAlignment,
+  ): void => {
+    resolvedDocxSourceOperand(payload.baseSnapshot, block);
+    const existing = baseContainerByBlock.get(block);
+    const existingById = baseContainerByBlockId.get(block.identity.id);
+    if (
+      (existing !== undefined && existing !== alignment) ||
+      (existingById !== undefined && existingById !== alignment)
+    ) {
+      return panic("A base block belongs to two canonical container alignments", {
+        blockId: block.identity.id,
+      });
+    }
+    baseContainerByBlock.set(block, alignment);
+    baseContainerByBlockId.set(block.identity.id, alignment);
+    const position =
+      basePositionByBlock.get(block) ??
+      panic("A comparison base block is absent from its canonical snapshot", {
+        blockId: block.identity.id,
+      });
+    if ((baseTerminalPositionByContainer.get(alignment) ?? -1) < position) {
+      baseTerminalPositionByContainer.set(alignment, position);
+      baseTerminalBlockByContainer.set(alignment, block);
+    }
   };
+  const registerTargetBlock = (
+    block: FolioContentBlock,
+    alignment: FolioContentRevisedContainerAlignment,
+  ): void => {
+    resolvedDocxSourceOperand(payload.targetSnapshot, block);
+    const existing = targetContainerByBlock.get(block);
+    if (existing !== undefined && existing !== alignment) {
+      return panic("A revised block belongs to two canonical container alignments", {
+        blockId: block.identity.id,
+      });
+    }
+    targetContainerByBlock.set(block, alignment);
+    const position =
+      targetPositionByBlock.get(block) ??
+      panic("A comparison revised block is absent from its canonical snapshot", {
+        blockId: block.identity.id,
+      });
+    if ((targetTerminalPositionByContainer.get(alignment) ?? -1) < position) {
+      targetTerminalPositionByContainer.set(alignment, position);
+      targetTerminalBlockByContainer.set(alignment, block);
+    }
+  };
+  const registerBaseOccurrence = (
+    block: FolioContentBlock,
+    alignment: FolioContentBaseContainerAlignment,
+    sequence: number,
+  ): void => {
+    registerBaseBlock(block, alignment);
+    if (alignment.type !== "paired") return;
+    pairedContainerAlignments.add(alignment);
+    const current = baseSequenceByAlignment.get(alignment);
+    if (current === undefined || sequence < current)
+      baseSequenceByAlignment.set(alignment, sequence);
+  };
+  const registerTargetOccurrence = (
+    block: FolioContentBlock,
+    alignment: FolioContentRevisedContainerAlignment,
+    sequence: number,
+  ): void => {
+    registerTargetBlock(block, alignment);
+    if (alignment.type !== "paired") return;
+    pairedContainerAlignments.add(alignment);
+    const current = revisedSequenceByAlignment.get(alignment);
+    if (current === undefined || sequence < current) {
+      revisedSequenceByAlignment.set(alignment, sequence);
+    }
+  };
+  const registerRelationOwnership = (relation: FolioContentPairRelation): void => {
+    if (relations.has(relation)) return;
+    relations.add(relation);
+    registerBaseBlock(relation.base.block, relation.baseContainerAlignment);
+    registerTargetBlock(relation.revised.block, relation.revisedContainerAlignment);
+    if (relation.relationType === "separator") separators.add(relation);
+  };
+  const registerTwoSidedRelation = (relation: FolioContentPairRelation, sequence: number): void => {
+    registerRelationOwnership(relation);
+    registerBaseOccurrence(relation.base.block, relation.baseContainerAlignment, sequence);
+    registerTargetOccurrence(relation.revised.block, relation.revisedContainerAlignment, sequence);
+  };
+  const baseTableIndexByTargetTableIndex = new Map<number, number>();
+  const targetTableIndexByBaseTableIndex = new Map<number, number>();
+  const structuralInsertionBoundaryByChange = new Map<
+    ResolvedDocxInsertionStructuralChange,
+    ResolvedDocxStructuralInsertionBoundary
+  >();
+  const tableGeometryPairingRecords: {
+    readonly pairing: TableGeometryPairing;
+    readonly sequence: number;
+  }[] = [];
+  const tableGeometrySequenceByPairing = new Map<string, number>();
   for (const [sequence, event] of payload.comparison.events.entries()) {
+    work.eventVisits += 1;
     eventSequence.set(event, sequence);
     const eventIndex = sequence;
     switch (event.type) {
       case "unchanged":
       case "modified":
       case "formatting":
-        registerRelation(event.relation, sequence);
+        registerTwoSidedRelation(event.relation, sequence);
         break;
-      case "movedFrom":
-      case "movedTo":
-        registerRelation(event.move.relation, sequence);
+      case "movedFrom": {
+        const { relation } = event.move;
+        moveRelations.add(relation);
+        alignmentsWithParagraphStructureChange.add(relation.baseContainerAlignment);
+        registerRelationOwnership(relation);
+        registerBaseOccurrence(relation.base.block, relation.baseContainerAlignment, sequence);
         break;
+      }
+      case "movedTo": {
+        const { relation } = event.move;
+        moveRelations.add(relation);
+        alignmentsWithParagraphStructureChange.add(relation.revisedContainerAlignment);
+        registerRelationOwnership(relation);
+        registerTargetOccurrence(
+          relation.revised.block,
+          relation.revisedContainerAlignment,
+          sequence,
+        );
+        break;
+      }
       case "split":
       case "merge":
-        registerRelation(event.relations[0], sequence);
-        registerRelation(event.relations[1], sequence);
-        registerRelation(event.separator, sequence);
+        for (const relation of event.relations) {
+          alignmentsWithParagraphStructureChange.add(relation.baseContainerAlignment);
+          alignmentsWithParagraphStructureChange.add(relation.revisedContainerAlignment);
+        }
+        registerTwoSidedRelation(event.relations[0], sequence);
+        registerTwoSidedRelation(event.relations[1], sequence);
+        registerTwoSidedRelation(event.separator, sequence);
         break;
       case "inserted":
-        resolvedDocxSourceOperand(payload.targetSnapshot, event.block);
-        targetContainerByBlock.set(event.block, event.containerAlignment);
+        alignmentsWithParagraphStructureChange.add(event.containerAlignment);
+        registerTargetOccurrence(event.block, event.containerAlignment, sequence);
         break;
       case "deleted":
-        resolvedDocxSourceOperand(payload.baseSnapshot, event.block);
-        baseContainerByBlock.set(event.block, event.containerAlignment);
+        alignmentsWithParagraphStructureChange.add(event.containerAlignment);
+        registerBaseOccurrence(event.block, event.containerAlignment, sequence);
         deletedEventByBlock.set(event.block, event);
         eventSequenceByDeletedEvent.set(event, eventIndex);
         break;
@@ -605,6 +871,29 @@ const createComparisonIndex = (
         mutableStructuralEventIndexes.set(event.change, eventIndexes);
         if (structuralChanges.has(event.change)) break;
         structuralChanges.add(event.change);
+        switch (event.change.type) {
+          case "table-row-delete":
+            baseTablesWithRowStructureChange.add(event.change.tableIndex);
+            break;
+          case "table-row-insert":
+            targetTablesWithRowStructureChange.add(event.change.tableIndex);
+            break;
+          case "table-column-delete":
+            baseTablesWithColumnStructureChange.add(event.change.tableIndex);
+            break;
+          case "table-column-insert":
+            targetTablesWithColumnStructureChange.add(event.change.tableIndex);
+            break;
+          case "table-delete":
+          case "table-insert":
+            break;
+          default: {
+            const unreachable: never = event.change;
+            return panic("Unhandled structural change while indexing ownership", {
+              change: unreachable,
+            });
+          }
+        }
         const snapshot = structuralChangeSnapshot(event.change, payload);
         for (const block of event.change.blocks) {
           resolvedDocxSourceOperand(snapshot, block);
@@ -619,14 +908,245 @@ const createComparisonIndex = (
       }
     }
   }
+
+  const baseCoordinateTargets = new Map<string, string>();
+  const targetCoordinateBases = new Map<string, string>();
+  for (const alignment of pairedContainerAlignments) {
+    work.alignmentVisits += 1;
+    if (alignment.base.type === "body") {
+      if (alignment.revised.type !== "body") {
+        return panic("A paired container alignment crosses body and table-cell ownership");
+      }
+      continue;
+    }
+    if (alignment.revised.type !== "tableCell") {
+      return panic("A paired container alignment crosses table-cell and body ownership");
+    }
+    const base = Object.freeze({
+      tableIndex: alignment.base.table.tableIndex,
+      rowIndex: alignment.base.table.rowIndex,
+      cellIndex: alignment.base.table.cellIndex,
+    });
+    const target = Object.freeze({
+      tableIndex: alignment.revised.table.tableIndex,
+      rowIndex: alignment.revised.table.rowIndex,
+      cellIndex: alignment.revised.table.cellIndex,
+    });
+    const baseKey = tableCellCoordinateKey(base);
+    const targetKey = tableCellCoordinateKey(target);
+    if (baseCoordinateTargets.has(baseKey) || targetCoordinateBases.has(targetKey)) {
+      return panic("A table-cell occurrence belongs to two canonical container alignments", {
+        base,
+        target,
+      });
+    }
+    baseCoordinateTargets.set(baseKey, targetKey);
+    targetCoordinateBases.set(targetKey, baseKey);
+    const priorTargetTable = targetTableIndexByBaseTableIndex.get(base.tableIndex);
+    const priorBaseTable = baseTableIndexByTargetTableIndex.get(target.tableIndex);
+    if (
+      (priorTargetTable !== undefined && priorTargetTable !== target.tableIndex) ||
+      (priorBaseTable !== undefined && priorBaseTable !== base.tableIndex)
+    ) {
+      return panic("A table occurrence belongs to two canonical table alignments", {
+        baseTableIndex: base.tableIndex,
+        targetTableIndex: target.tableIndex,
+      });
+    }
+    targetTableIndexByBaseTableIndex.set(base.tableIndex, target.tableIndex);
+    baseTableIndexByTargetTableIndex.set(target.tableIndex, base.tableIndex);
+    const sequence =
+      revisedSequenceByAlignment.get(alignment) ?? baseSequenceByAlignment.get(alignment);
+    if (sequence === undefined) {
+      return panic("A paired table-cell alignment has no canonical stream occurrence", {
+        alignmentId: alignment.id,
+      });
+    }
+    tableGeometryPairingRecords.push({
+      pairing: Object.freeze({ base, target }),
+      sequence,
+    });
+  }
+  tableGeometryPairingRecords.sort(
+    (left, right) =>
+      left.sequence - right.sequence ||
+      compareTableCellCoordinates(left.pairing.target, right.pairing.target) ||
+      compareTableCellCoordinates(left.pairing.base, right.pairing.base),
+  );
+  const tableGeometryPairings = Object.freeze(
+    tableGeometryPairingRecords.map(({ pairing, sequence }) => {
+      tableGeometrySequenceByPairing.set(tableGeometryPairingKey(pairing), sequence);
+      return pairing;
+    }),
+  );
+
+  const structurallyOwnedTablePlacementRelations = new Set<FolioContentPairRelation>();
+  for (const relation of relations) {
+    work.relationVisits += 1;
+    if (!relation.blockChanges.some(({ field }) => field === "table")) continue;
+    if (moveRelations.has(relation)) {
+      structurallyOwnedTablePlacementRelations.add(relation);
+      continue;
+    }
+    const alignment = relation.baseContainerAlignment;
+    if (
+      alignment !== relation.revisedContainerAlignment ||
+      alignment.type !== "paired" ||
+      alignment.base.type !== "tableCell" ||
+      alignment.revised.type !== "tableCell"
+    ) {
+      continue;
+    }
+    const base = relation.base.block.table;
+    const target = relation.revised.block.table;
+    if (
+      !base ||
+      !target ||
+      !tableLocationMatchesOccurrence(base, alignment.base) ||
+      !tableLocationMatchesOccurrence(target, alignment.revised) ||
+      baseTableIndexByTargetTableIndex.get(target.tableIndex) !== base.tableIndex ||
+      base.columnSpan !== target.columnSpan ||
+      base.rowSpan !== target.rowSpan
+    ) {
+      continue;
+    }
+    const rowPlacementOwned =
+      base.rowIndex === target.rowIndex ||
+      baseTablesWithRowStructureChange.has(base.tableIndex) ||
+      targetTablesWithRowStructureChange.has(target.tableIndex);
+    const columnPlacementOwned =
+      (base.cellIndex === target.cellIndex && base.gridColumnIndex === target.gridColumnIndex) ||
+      baseTablesWithColumnStructureChange.has(base.tableIndex) ||
+      targetTablesWithColumnStructureChange.has(target.tableIndex);
+    const paragraphPlacementOwned =
+      base.paragraphIndex === target.paragraphIndex ||
+      alignmentsWithParagraphStructureChange.has(alignment);
+    if (rowPlacementOwned && columnPlacementOwned && paragraphPlacementOwned) {
+      structurallyOwnedTablePlacementRelations.add(relation);
+    }
+  }
+
   const structuralEventIndexes = new Map<
     FolioContentStructuralChange,
     readonly [number, ...number[]]
   >();
+  const firstStructuralChangeByEventIndex = new Map<number, FolioContentStructuralChange>();
   for (const [change, indexes] of mutableStructuralEventIndexes) {
+    work.structuralChangeVisits += 1;
     const first = indexes.at(0) ?? panic("A structural change has no canonical event occurrence");
     structuralEventIndexes.set(change, Object.freeze([first, ...indexes.slice(1)]));
+    firstStructuralChangeByEventIndex.set(first, change);
+    if (change.type !== "table-column-insert") continue;
+    const anchorBlock =
+      baseBlockById.get(change.anchor.blockId) ??
+      panic("A table-column insertion lost its canonical base anchor", {
+        blockId: change.anchor.blockId,
+      });
+    const pairedBaseTableIndex = baseTableIndexByTargetTableIndex.get(change.tableIndex);
+    if (
+      anchorBlock.table === undefined ||
+      pairedBaseTableIndex === undefined ||
+      anchorBlock.table.tableIndex !== pairedBaseTableIndex
+    ) {
+      return panic("A table-column insertion crosses canonical table ownership", {
+        blockId: change.anchor.blockId,
+        targetTableIndex: change.tableIndex,
+      });
+    }
+    structuralInsertionBoundaryByChange.set(
+      change,
+      Object.freeze({
+        source: resolvedDocxSourceOperand(payload.baseSnapshot, anchorBlock),
+        position: change.anchor.position,
+      }),
+    );
   }
+
+  let nextBaseBlock: FolioContentBlock | null = null;
+  const nextBaseTableBlockByTableIndex = new Map<number, FolioContentBlock>();
+  for (let eventIndex = payload.comparison.events.length - 1; eventIndex >= 0; eventIndex--) {
+    work.anchorEventVisits += 1;
+    const change = firstStructuralChangeByEventIndex.get(eventIndex);
+    if (change?.type === "table-insert") {
+      const anchor = nextBaseBlock ?? trailingBodyBlock;
+      if (anchor) {
+        structuralInsertionBoundaryByChange.set(
+          change,
+          Object.freeze({
+            source: resolvedDocxSourceOperand(payload.baseSnapshot, anchor),
+            position: nextBaseBlock === null ? "after" : "before",
+          }),
+        );
+      }
+    } else if (change?.type === "table-row-insert") {
+      const pairedBaseTableIndex = baseTableIndexByTargetTableIndex.get(change.tableIndex);
+      const anchor =
+        pairedBaseTableIndex === undefined
+          ? undefined
+          : nextBaseTableBlockByTableIndex.get(pairedBaseTableIndex);
+      if (anchor) {
+        structuralInsertionBoundaryByChange.set(
+          change,
+          Object.freeze({
+            source: resolvedDocxSourceOperand(payload.baseSnapshot, anchor),
+            position: "before",
+          }),
+        );
+      }
+    }
+    const event = payload.comparison.events[eventIndex];
+    if (!event) continue;
+    const baseBlock = firstBaseBlockOfEvent(event);
+    if (baseBlock) nextBaseBlock = baseBlock;
+    const tableBlock = baseTableBlockOfEvent(event);
+    if (tableBlock?.table) {
+      nextBaseTableBlockByTableIndex.set(tableBlock.table.tableIndex, tableBlock);
+    }
+  }
+  const previousBaseTableBlockByTableIndex = new Map<number, FolioContentBlock>();
+  for (const [eventIndex, event] of payload.comparison.events.entries()) {
+    work.anchorEventVisits += 1;
+    const change = firstStructuralChangeByEventIndex.get(eventIndex);
+    if (change?.type === "table-row-insert") {
+      const pairedBaseTableIndex = baseTableIndexByTargetTableIndex.get(change.tableIndex);
+      const anchor =
+        pairedBaseTableIndex === undefined
+          ? undefined
+          : previousBaseTableBlockByTableIndex.get(pairedBaseTableIndex);
+      if (anchor) {
+        structuralInsertionBoundaryByChange.set(
+          change,
+          Object.freeze({
+            source: resolvedDocxSourceOperand(payload.baseSnapshot, anchor),
+            position: "after",
+          }),
+        );
+      }
+    }
+    const tableBlock = baseTableBlockOfEvent(event);
+    if (tableBlock?.table) {
+      previousBaseTableBlockByTableIndex.set(tableBlock.table.tableIndex, tableBlock);
+    }
+  }
+  const baseTerminalBlocks = Object.freeze(
+    [...baseTerminalBlockByContainer]
+      .map(([alignment, block]) => Object.freeze({ alignment, block }))
+      .toSorted(
+        (left, right) =>
+          (basePositionByBlock.get(left.block) ?? 0) - (basePositionByBlock.get(right.block) ?? 0),
+      ),
+  );
+  const frozenWork = Object.freeze({
+    ...work,
+    total:
+      work.eventVisits +
+      work.alignmentVisits +
+      work.relationVisits +
+      work.baseBlockVisits +
+      work.revisedBlockVisits +
+      work.anchorEventVisits +
+      work.structuralChangeVisits,
+  });
   return Object.freeze({
     eventSequence,
     relations,
@@ -639,9 +1159,19 @@ const createComparisonIndex = (
     eventSequenceByTableReplacement,
     baseContainerByBlock,
     targetContainerByBlock,
-    baseTableIndexesByTargetTableIndex,
-    tableGeometryPairings: Object.freeze(tableGeometryPairings),
+    baseContainerByBlockId,
+    baseBlockById,
+    basePositionByBlock,
+    baseTerminalBlockByContainer,
+    targetTerminalBlockByContainer,
+    baseTerminalBlocks,
+    targetTerminalOuterTableIndex: targetBlocks.at(-1)?.table?.outerTableIndex,
+    baseTableIndexByTargetTableIndex,
+    structuralInsertionBoundaryByChange,
+    structurallyOwnedTablePlacementRelations,
+    tableGeometryPairings,
     tableGeometrySequenceByPairing,
+    work: frozenWork,
   });
 };
 
@@ -931,7 +1461,7 @@ export const resolvedDocxTrailingDeletionOperand = (
     readonly events: NonEmptyReadonlyArray<ResolvedDocxDeletedEventOperand>;
   },
 ): ResolvedDocxTrailingDeletionOperand => {
-  const { baseSnapshot, targetSnapshot } = resolvedDocxStoryComparisonPayload(comparison);
+  const { baseSnapshot } = resolvedDocxStoryComparisonPayload(comparison);
   const index = comparisonIndexOf(comparison);
   const firstEvent = resolvedDocxDeletedEventOperandPayload(events[0], comparison);
   const remainingEvents = events
@@ -946,8 +1476,7 @@ export const resolvedDocxTrailingDeletionOperand = (
     return panic("A trailing DOCX deletion operand must remain in one canonical container");
   }
   const baseBlocks = resolvedDocxContentBlocks(baseSnapshot);
-  const basePositionByBlock = new Map(baseBlocks.map((block, position) => [block, position]));
-  const eventPositions = ownedEvents.map(({ event }) => basePositionByBlock.get(event.block));
+  const eventPositions = ownedEvents.map(({ event }) => index.basePositionByBlock.get(event.block));
   const firstPosition = eventPositions.at(0);
   if (
     firstPosition === undefined ||
@@ -962,9 +1491,7 @@ export const resolvedDocxTrailingDeletionOperand = (
     return panic("A trailing DOCX deletion operand must follow canonical base order");
   }
   const chainStartBlock = baseBlocks[firstPosition - 1];
-  const terminalBlock = baseBlocks.findLast(
-    (block) => index.baseContainerByBlock.get(block) === container,
-  );
+  const terminalBlock = index.baseTerminalBlockByContainer.get(container);
   if (
     !chainStartBlock ||
     index.baseContainerByBlock.get(chainStartBlock) !== container ||
@@ -973,9 +1500,7 @@ export const resolvedDocxTrailingDeletionOperand = (
     return panic("A trailing DOCX deletion operand must be contiguous and terminal");
   }
   const chainStart = resolvedDocxSourceOperand(baseSnapshot, chainStartBlock);
-  const targetBlock = resolvedDocxContentBlocks(targetSnapshot).findLast(
-    (block) => index.targetContainerByBlock.get(block) === container,
-  );
+  const targetBlock = index.targetTerminalBlockByContainer.get(container);
   if (targetBlock && container.type !== "paired") {
     return panic("A trailing DOCX deletion target carrier belongs to an unpaired container");
   }
@@ -1037,12 +1562,8 @@ export const resolvedDocxTerminalReplacementOperand = (
   ) {
     return panic("A terminal DOCX replacement must own the exact terminal event pair");
   }
-  const baseTerminal = resolvedDocxContentBlocks(
-    resolvedDocxStoryComparisonPayload(comparison).baseSnapshot,
-  ).findLast((block) => index.baseContainerByBlock.get(block) === baseContainer);
-  const targetTerminal = resolvedDocxContentBlocks(
-    resolvedDocxStoryComparisonPayload(comparison).targetSnapshot,
-  ).findLast((block) => index.targetContainerByBlock.get(block) === baseContainer);
+  const baseTerminal = index.baseTerminalBlockByContainer.get(baseContainer);
+  const targetTerminal = index.targetTerminalBlockByContainer.get(baseContainer);
   if (
     baseTerminal !== deletedPayload.event.block ||
     targetTerminal !== insertedPayload.event.block ||
@@ -1309,92 +1830,112 @@ const requireExactTableReplacementOwner = (
   }
 };
 
-const requirePairedStructuralAnchor = (
+const requireExactStructuralAnchor = (
   input: Extract<
     ResolvedDocxTableStructureOperandInput,
-    { readonly type: "insertTableRow" | "insertTableColumn" }
+    { readonly type: "insertTable" | "insertTableRow" | "insertTableColumn" }
   >,
   comparison: ResolvedDocxStoryComparison,
   payload: ResolvedDocxStoryComparisonPayload,
 ): void => {
-  const anchor = resolvedDocxSourceOperandBlock(input.anchor.source, payload.baseSnapshot);
-  const anchorTableIndex = anchor.table?.tableIndex;
+  resolvedDocxSourceOperandBlock(input.anchor.source, payload.baseSnapshot);
+  const expected = comparisonIndexOf(comparison).structuralInsertionBoundaryByChange.get(
+    input.change,
+  );
   if (
-    anchorTableIndex === undefined ||
-    !resolvedDocxPairedBaseTableIndexes(comparison, input.change.tableIndex).has(anchorTableIndex)
+    expected === undefined ||
+    expected.source !== input.anchor.source ||
+    expected.position !== input.anchor.position
   ) {
-    return panic("A DOCX table-structure anchor must belong to the canonically paired table");
+    return panic("A DOCX table-structure anchor must equal its canonical insertion boundary");
   }
 };
 
-const requireExactTerminalCarrier = (
+const ownedTerminalTableCarrier = (
   carrier: ResolvedDocxTerminalTableCarrier,
-  comparison: ResolvedDocxStoryComparison,
-  payload: ResolvedDocxStoryComparisonPayload,
-): void => {
-  const block = resolvedDocxSourceOperandBlock(carrier.source, payload.baseSnapshot);
-  if (
-    carrier.event.block !== block ||
-    comparisonIndexOf(comparison).deletedEventByBlock.get(block) !== carrier.event
-  ) {
-    return panic("A terminal table carrier must own its exact canonical deletion event");
+): ResolvedDocxTerminalTableCarrier =>
+  Object.freeze({ source: carrier.source, event: carrier.event });
+
+const ownedTableReplacementOwner = (
+  owner: ResolvedDocxTableReplacementOwner,
+): ResolvedDocxTableReplacementOwner => {
+  switch (owner.type) {
+    case "canonical-replacement":
+      return Object.freeze({ type: "canonical-replacement", replacement: owner.replacement });
+    case "structural-pair":
+      return Object.freeze({
+        type: "structural-pair",
+        deleted: owner.deleted,
+        inserted: owner.inserted,
+      });
+    default: {
+      const unreachable: never = owner;
+      return panic("Unhandled DOCX table replacement owner", { owner: unreachable });
+    }
   }
 };
 
-/** Issue one opaque structural obligation from exact comparison-owned semantics. */
-export const resolvedDocxTableStructureOperand = (
-  comparison: ResolvedDocxStoryComparison,
-  input: ResolvedDocxTableStructureOperandInput,
-): ResolvedDocxTableStructureOperand => {
-  const payload = resolvedDocxStoryComparisonPayload(comparison);
-  const index = comparisonIndexOf(comparison);
-  const source = structuralSourceOf(input);
-  if (source) resolvedDocxSourceOperandBlock(source, payload.baseSnapshot);
+const ownedStructuralInsertionBoundary = ({
+  source,
+  position,
+}: ResolvedDocxStructuralInsertionBoundary): ResolvedDocxStructuralInsertionBoundary =>
+  Object.freeze({ source, position });
+
+const ownedTableStructurePayload = (
+  input: ResolvedDocxTableStructureOperandPayload,
+): ResolvedDocxTableStructureOperandPayload => {
   switch (input.type) {
-    case "replaceTable": {
-      requireExactTableReplacementOwner(input.owner, comparison);
-      if (
-        tableReplacementBaseBlocks(input.owner).at(0) !==
-        resolvedDocxSourceOperandBlock(input.source, payload.baseSnapshot)
-      ) {
-        return panic("A DOCX table replacement must own its exact base table");
-      }
-      if (input.terminalCarrier) {
-        requireExactTerminalCarrier(input.terminalCarrier, comparison, payload);
-      }
-      break;
-    }
-    case "insertTableRow":
-    case "insertTableColumn": {
-      if (!index.structuralChanges.has(structuralChangeOf(input))) {
-        return panic("A DOCX table-structure operand must name an exact canonical change");
-      }
-      requirePairedStructuralAnchor(input, comparison, payload);
-      break;
-    }
+    case "insertTable":
+      return Object.freeze({
+        type: "insertTable",
+        anchor: ownedStructuralInsertionBoundary(input.anchor),
+        change: input.change,
+        ...(input.terminalCarrier !== undefined && {
+          terminalCarrier: ownedTerminalTableCarrier(input.terminalCarrier),
+        }),
+      });
     case "deleteTable":
+      return Object.freeze({ type: "deleteTable", source: input.source, change: input.change });
+    case "replaceTable":
+      return Object.freeze({
+        type: "replaceTable",
+        source: input.source,
+        owner: ownedTableReplacementOwner(input.owner),
+        ...(input.terminalCarrier !== undefined && {
+          terminalCarrier: ownedTerminalTableCarrier(input.terminalCarrier),
+        }),
+      });
+    case "insertTableRow":
+      return Object.freeze({
+        type: "insertTableRow",
+        anchor: ownedStructuralInsertionBoundary(input.anchor),
+        change: input.change,
+      });
     case "deleteTableRow":
-    case "deleteTableColumn": {
-      if (!index.structuralChanges.has(structuralChangeOf(input))) {
-        return panic("A DOCX table-structure operand must name an exact canonical change");
-      }
-      requireExactStructuralSource(input, payload);
-      break;
-    }
-    case "insertTable": {
-      if (!index.structuralChanges.has(structuralChangeOf(input))) {
-        return panic("A DOCX table-structure operand must name an exact canonical change");
-      }
-      if (input.terminalCarrier) {
-        requireExactTerminalCarrier(input.terminalCarrier, comparison, payload);
-      }
-      break;
-    }
+      return Object.freeze({ type: "deleteTableRow", source: input.source, change: input.change });
+    case "insertTableColumn":
+      return Object.freeze({
+        type: "insertTableColumn",
+        anchor: ownedStructuralInsertionBoundary(input.anchor),
+        change: input.change,
+      });
+    case "deleteTableColumn":
+      return Object.freeze({
+        type: "deleteTableColumn",
+        source: input.source,
+        change: input.change,
+      });
     default: {
       const unreachable: never = input;
-      return panic("Unhandled DOCX table-structure operand input", { input: unreachable });
+      return panic("Unhandled DOCX table-structure payload", { input: unreachable });
     }
   }
+};
+
+const issueTableStructureOperand = (
+  comparison: ResolvedDocxStoryComparison,
+  input: ResolvedDocxTableStructureOperandPayload,
+): ResolvedDocxTableStructureOperand => {
   let operand: ResolvedDocxTableStructureOperand;
   switch (input.type) {
     case "insertTable":
@@ -1446,9 +1987,108 @@ export const resolvedDocxTableStructureOperand = (
   }
   payloadByTableStructureOperand.set(operand, {
     comparison,
-    value: Object.freeze({ ...input }),
+    value: ownedTableStructurePayload(input),
   });
   return operand;
+};
+
+/** Issue one opaque structural obligation from exact comparison-owned semantics. */
+export const resolvedDocxTableStructureOperand = (
+  comparison: ResolvedDocxStoryComparison,
+  input: ResolvedDocxTableStructureOperandInput,
+): ResolvedDocxTableStructureOperand => {
+  const payload = resolvedDocxStoryComparisonPayload(comparison);
+  const index = comparisonIndexOf(comparison);
+  const source = structuralSourceOf(input);
+  if (source) resolvedDocxSourceOperandBlock(source, payload.baseSnapshot);
+  switch (input.type) {
+    case "replaceTable": {
+      requireExactTableReplacementOwner(input.owner, comparison);
+      if (
+        tableReplacementBaseBlocks(input.owner).at(0) !==
+        resolvedDocxSourceOperandBlock(input.source, payload.baseSnapshot)
+      ) {
+        return panic("A DOCX table replacement must own its exact base table");
+      }
+      break;
+    }
+    case "insertTableRow":
+    case "insertTableColumn": {
+      if (!index.structuralChanges.has(structuralChangeOf(input))) {
+        return panic("A DOCX table-structure operand must name an exact canonical change");
+      }
+      requireExactStructuralAnchor(input, comparison, payload);
+      break;
+    }
+    case "deleteTable":
+    case "deleteTableRow":
+    case "deleteTableColumn": {
+      if (!index.structuralChanges.has(structuralChangeOf(input))) {
+        return panic("A DOCX table-structure operand must name an exact canonical change");
+      }
+      requireExactStructuralSource(input, payload);
+      break;
+    }
+    case "insertTable": {
+      if (!index.structuralChanges.has(structuralChangeOf(input))) {
+        return panic("A DOCX table-structure operand must name an exact canonical change");
+      }
+      requireExactStructuralAnchor(input, comparison, payload);
+      break;
+    }
+    default: {
+      const unreachable: never = input;
+      return panic("Unhandled DOCX table-structure operand input", { input: unreachable });
+    }
+  }
+  switch (input.type) {
+    case "insertTable":
+      return issueTableStructureOperand(comparison, {
+        type: "insertTable",
+        anchor: input.anchor,
+        change: input.change,
+      });
+    case "deleteTable":
+      return issueTableStructureOperand(comparison, {
+        type: "deleteTable",
+        source: input.source,
+        change: input.change,
+      });
+    case "replaceTable":
+      return issueTableStructureOperand(comparison, {
+        type: "replaceTable",
+        source: input.source,
+        owner: input.owner,
+      });
+    case "insertTableRow":
+      return issueTableStructureOperand(comparison, {
+        type: "insertTableRow",
+        anchor: input.anchor,
+        change: input.change,
+      });
+    case "deleteTableRow":
+      return issueTableStructureOperand(comparison, {
+        type: "deleteTableRow",
+        source: input.source,
+        change: input.change,
+      });
+    case "insertTableColumn":
+      return issueTableStructureOperand(comparison, {
+        type: "insertTableColumn",
+        anchor: input.anchor,
+        change: input.change,
+      });
+    case "deleteTableColumn":
+      return issueTableStructureOperand(comparison, {
+        type: "deleteTableColumn",
+        source: input.source,
+        change: input.change,
+      });
+    default: {
+      const unreachable: never = input;
+      return panic("Unhandled validated DOCX table-structure operand", { input: unreachable });
+    }
+  }
 };
 
 /** Resolve a structural obligation only inside its issuing comparison. */
@@ -1552,6 +2192,151 @@ const tableHasHiddenRows = (table: PMNode): boolean => {
   return false;
 };
 
+const ownedTableCoordinate = (
+  coordinate: TableGeometryPairing["base"],
+): Readonly<TableGeometryPairing["base"]> =>
+  Object.freeze({
+    tableIndex: coordinate.tableIndex,
+    rowIndex: coordinate.rowIndex,
+    cellIndex: coordinate.cellIndex,
+  });
+
+const ownedTableGeometryUnsupportedIssue = (
+  issue: TableGeometryUnsupportedIssue,
+): TableGeometryUnsupportedIssue => {
+  switch (issue.reason) {
+    case "invalid-limit":
+      return Object.freeze({ reason: "invalid-limit", limit: issue.limit, actual: issue.actual });
+    case "limit-exceeded":
+      return Object.freeze({
+        reason: "limit-exceeded",
+        limit: issue.limit,
+        maximum: issue.maximum,
+        actual: issue.actual,
+      });
+    case "invalid-coordinate":
+      return Object.freeze({
+        reason: "invalid-coordinate",
+        side: issue.side,
+        coordinate: ownedTableCoordinate(issue.coordinate),
+      });
+    case "invalid-table-index":
+    case "duplicate-table-index":
+      return Object.freeze({
+        reason: issue.reason,
+        side: issue.side,
+        tableIndex: issue.tableIndex,
+      });
+    case "invalid-table-position":
+    case "duplicate-table-position":
+      return Object.freeze({ reason: issue.reason, position: issue.position });
+    case "duplicate-pairing":
+      return Object.freeze({
+        reason: "duplicate-pairing",
+        side: issue.side,
+        coordinate: ownedTableCoordinate(issue.coordinate),
+      });
+    case "conflicting-table-pairing":
+    case "conflicting-row-pairing":
+      return Object.freeze({
+        reason: issue.reason,
+        side: issue.side,
+        coordinate: ownedTableCoordinate(issue.coordinate),
+      });
+    case "missing-table":
+    case "missing-row":
+    case "missing-cell":
+    case "unexpected-node-role":
+      return Object.freeze({
+        reason: issue.reason,
+        side: issue.side,
+        scope: issue.scope,
+        coordinate: ownedTableCoordinate(issue.coordinate),
+      });
+    case "structural-cell-mismatch":
+      return Object.freeze({
+        reason: "structural-cell-mismatch",
+        property: issue.property,
+        base: ownedTableCoordinate(issue.base),
+        target: ownedTableCoordinate(issue.target),
+      });
+    case "non-reconstructable-structure-change":
+      return Object.freeze({
+        reason: "non-reconstructable-structure-change",
+        scope: issue.scope,
+        property: issue.property,
+        base: ownedTableCoordinate(issue.base),
+        target: ownedTableCoordinate(issue.target),
+      });
+    case "non-reconstructable-property-change":
+      return Object.freeze({
+        reason: "non-reconstructable-property-change",
+        reconstruction: issue.reconstruction,
+        scope: issue.scope,
+        base: ownedTableCoordinate(issue.base),
+        target: ownedTableCoordinate(issue.target),
+      });
+    case "invalid-property-payload":
+      return Object.freeze({
+        reason: "invalid-property-payload",
+        scope: issue.scope,
+        base: ownedTableCoordinate(issue.base),
+        target: ownedTableCoordinate(issue.target),
+      });
+    default: {
+      const unreachable: never = issue;
+      return panic("Unhandled table geometry issue while capturing comparison ownership", {
+        issue: unreachable,
+      });
+    }
+  }
+};
+
+const ownedTableFormatPayload = (
+  payload: ResolvedDocxTableFormatOperandPayload,
+): ResolvedDocxTableFormatOperandPayload => {
+  switch (payload.status) {
+    case "ready":
+      return Object.freeze({
+        status: "ready",
+        program: payload.program,
+        changes: Object.freeze(
+          payload.changes.map((change) =>
+            Object.freeze({
+              scope: change.scope,
+              base: ownedTableCoordinate(change.base),
+              target: ownedTableCoordinate(change.target),
+              sequence: change.sequence,
+            }),
+          ),
+        ),
+      });
+    case "unsupported":
+      if (payload.issue.reason === "unprojected-table-structure") {
+        return Object.freeze({
+          status: "unsupported",
+          issue: Object.freeze({
+            reason: "unprojected-table-structure",
+            side: payload.issue.side,
+          }),
+        });
+      }
+      return Object.freeze({
+        status: "unsupported",
+        issue: Object.freeze({
+          reason: "unrepresentable-table-geometry",
+          issue: ownedTableGeometryUnsupportedIssue(payload.issue.issue),
+        }),
+      });
+    default: {
+      const unreachable: never = payload;
+      return panic("Unhandled table-format payload while capturing ownership", {
+        payload: unreachable,
+      });
+    }
+  }
+};
+
 const issueTableFormatOperand = (
   comparison: ResolvedDocxStoryComparison,
   payload: ResolvedDocxTableFormatOperandPayload,
@@ -1560,7 +2345,10 @@ const issueTableFormatOperand = (
     type: "matchTableFormatting" as const,
     [RESOLVED_DOCX_TABLE_FORMAT_OPERAND_BRAND]: true as const,
   });
-  payloadByTableFormatOperand.set(operand, { comparison, value: Object.freeze(payload) });
+  payloadByTableFormatOperand.set(operand, {
+    comparison,
+    value: ownedTableFormatPayload(payload),
+  });
   return operand;
 };
 
@@ -1653,17 +2441,19 @@ export const resolvedDocxTerminalTableReplacementOperand = (
   if (!event) {
     return panic("A terminal table replacement carrier must be an exact canonical deletion");
   }
-  const targetBlocks = resolvedDocxContentBlocks(comparisonPayload.targetSnapshot);
   if (
     carrier.kind !== "paragraph" ||
     carrier.text.length !== 0 ||
-    targetBlocks.at(-1)?.table?.outerTableIndex !== tableReplacementIndexes(payload.owner).target
+    comparisonIndexOf(comparison).targetTerminalOuterTableIndex !==
+      tableReplacementIndexes(payload.owner).target
   ) {
     return panic("A terminal table replacement must own an empty final carrier and target table");
   }
-  const resolved = resolvedDocxTableStructureOperand(comparison, {
-    ...payload,
-    terminalCarrier: Object.freeze({ source: terminalCarrier, event }),
+  const resolved = issueTableStructureOperand(comparison, {
+    type: "replaceTable",
+    source: payload.source,
+    owner: payload.owner,
+    terminalCarrier: { source: terminalCarrier, event },
   });
   if (resolved.type !== "replaceTable") {
     return panic("A terminal table replacement lost its structural discriminator");
@@ -1687,17 +2477,18 @@ export const resolvedDocxTerminalTableInsertionOperand = (
   if (!event) {
     return panic("A terminal table insertion carrier must be an exact canonical deletion");
   }
-  const targetBlocks = resolvedDocxContentBlocks(comparisonPayload.targetSnapshot);
   if (
     carrier.kind !== "paragraph" ||
     carrier.text.length !== 0 ||
-    targetBlocks.at(-1)?.table?.outerTableIndex !== payload.change.tableIndex
+    comparisonIndexOf(comparison).targetTerminalOuterTableIndex !== payload.change.tableIndex
   ) {
     return panic("A terminal table insertion must own an empty final carrier and target table");
   }
-  const resolved = resolvedDocxTableStructureOperand(comparison, {
-    ...payload,
-    terminalCarrier: Object.freeze({ source: terminalCarrier, event }),
+  const resolved = issueTableStructureOperand(comparison, {
+    type: "insertTable",
+    anchor: { source: terminalCarrier, position: "after" },
+    change: payload.change,
+    terminalCarrier: { source: terminalCarrier, event },
   });
   if (resolved.type !== "insertTable") {
     return panic("A terminal table insertion lost its structural discriminator");
@@ -1705,15 +2496,52 @@ export const resolvedDocxTerminalTableInsertionOperand = (
   return resolved;
 };
 
-const EMPTY_TABLE_INDEX_SET: ReadonlySet<number> = new Set<number>();
-
-/** Base table indices canonically paired with one target table in this comparison. */
-export const resolvedDocxPairedBaseTableIndexes = (
+/** Exact compiler-owned boundary for one canonical structural insertion. */
+export const resolvedDocxStructuralInsertionBoundary = (
   comparison: ResolvedDocxStoryComparison,
-  targetTableIndex: number,
-): ReadonlySet<number> =>
-  comparisonIndexOf(comparison).baseTableIndexesByTargetTableIndex.get(targetTableIndex) ??
-  EMPTY_TABLE_INDEX_SET;
+  change: ResolvedDocxInsertionStructuralChange,
+): ResolvedDocxStructuralInsertionBoundary | null => {
+  const index = comparisonIndexOf(comparison);
+  if (!index.structuralChanges.has(change)) {
+    return panic("A structural insertion boundary must name an exact canonical change");
+  }
+  return index.structuralInsertionBoundaryByChange.get(change) ?? null;
+};
+
+/** Whether canonical structure or relocation owns this relation's table placement delta. */
+export const resolvedDocxTablePlacementChangeIsOwned = (
+  comparison: ResolvedDocxStoryComparison,
+  relation: FolioContentPairRelation,
+): boolean => {
+  const index = comparisonIndexOf(comparison);
+  if (!index.relations.has(relation)) {
+    return panic("A table-placement ownership query must name an exact canonical relation");
+  }
+  return index.structurallyOwnedTablePlacementRelations.has(relation);
+};
+
+/** Canonical base-container ownership without exposing the mutable index map. */
+export const resolvedDocxBaseContainerAlignmentForBlockId = (
+  comparison: ResolvedDocxStoryComparison,
+  blockId: string,
+): FolioContentBaseContainerAlignment | null =>
+  comparisonIndexOf(comparison).baseContainerByBlockId.get(blockId) ?? null;
+
+/** Canonical base block lookup without exposing the mutable index map. */
+export const resolvedDocxBaseBlockForId = (
+  comparison: ResolvedDocxStoryComparison,
+  blockId: string,
+): FolioContentBlock | null => comparisonIndexOf(comparison).baseBlockById.get(blockId) ?? null;
+
+/** Last canonical base block of every indexed container, in document order. */
+export const resolvedDocxBaseTerminalBlocks = (
+  comparison: ResolvedDocxStoryComparison,
+): readonly ResolvedDocxBaseTerminalBlock[] => comparisonIndexOf(comparison).baseTerminalBlocks;
+
+/** Deterministic work accounting for the one-time comparison-index build. @internal */
+export const resolvedDocxComparisonIndexWork = (
+  comparison: ResolvedDocxStoryComparison,
+): ResolvedDocxComparisonIndexWork => comparisonIndexOf(comparison).work;
 
 /** Exact cell pairings derived once from this comparison's canonical relation graph. */
 export const resolvedDocxTableGeometryPairings = (

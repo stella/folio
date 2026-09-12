@@ -11,7 +11,6 @@
 import { panic, Result } from "better-result";
 
 import type { FolioDocumentStoryHandle } from "../ai-edits/headless";
-import { trailingBodyBlockId } from "../ai-edits/snapshot";
 import { canonicalJson } from "../utils/canonicalJson";
 import type { FolioAIBlock, FolioAIEditSnapshot } from "../ai-edits/types";
 import {
@@ -20,6 +19,9 @@ import {
   docxParagraphPropertyChangeIsLowerable,
 } from "../internal/compare/docx-paragraph-transport";
 import {
+  resolvedDocxBaseBlockForId,
+  resolvedDocxBaseContainerAlignmentForBlockId,
+  resolvedDocxBaseTerminalBlocks,
   resolvedDocxDeletedEventOperand,
   resolvedDocxDeletedEventOperandPayload,
   resolvedDocxInsertedEventOperand,
@@ -29,10 +31,11 @@ import {
   resolvedDocxMoveEventOperand,
   resolvedDocxMoveEventOperandPayload,
   resolvedDocxPairedEventOperand,
-  resolvedDocxPairedBaseTableIndexes,
   resolvedDocxSplitEventOperand,
   resolvedDocxSplitEventOperandPayload,
   resolvedDocxStoryComparisonPayload,
+  resolvedDocxStructuralInsertionBoundary,
+  resolvedDocxTablePlacementChangeIsOwned,
   resolvedDocxTerminalReplacementOperand,
   resolvedDocxTableFormatOperand,
   resolvedDocxTableStructureOperand,
@@ -65,7 +68,6 @@ import type {
   FolioContentBaseContainerAlignment,
   FolioContentBlock,
   FolioContentContainerAlignment,
-  FolioContentRevisedContainerAlignment,
 } from "./content-types";
 import {
   CompareDocxLoweringError,
@@ -80,175 +82,17 @@ const isEmptyParagraphNode = (block: FolioAIBlock, snapshot: FolioAIEditSnapshot
   return block.text === "" && block.table === undefined && anchor.to - anchor.from === 2;
 };
 
-const baseBlocksOfEvent = (event: FolioContentComparisonEvent): readonly FolioContentBlock[] => {
-  switch (event.type) {
-    case "unchanged":
-    case "modified":
-    case "formatting":
-      return [event.relation.base.block];
-    case "deleted":
-      return [event.block];
-    case "inserted":
-    case "movedTo":
-      return [];
-    case "movedFrom":
-      return [event.move.relation.base.block];
-    case "split":
-      return [event.relations[0].base.block];
-    case "merge":
-      return [event.relations[0].base.block, event.relations[1].base.block];
-    case "tableReplacement":
-      return event.replacement.baseBlocks;
-    case "structural":
-      return event.change.type === "table-delete" ||
-        event.change.type === "table-row-delete" ||
-        event.change.type === "table-column-delete"
-        ? [event.change.blocks[event.memberIndex] ?? panic("Missing structural base member")]
-        : [];
-    default: {
-      const unreachable: never = event;
-      return panic("Unhandled comparison event while projecting base blocks", {
-        event: unreachable,
-      });
-    }
-  }
-};
-
 type CompareUnsupportedEventType = Extract<
   CompareUnsupportedPart,
   { readonly eventType: unknown }
 >["eventType"];
-
-type ComparisonContainerMembership = {
-  readonly baseByBlockId: ReadonlyMap<string, FolioContentBaseContainerAlignment>;
-  readonly revisedByBlockId: ReadonlyMap<string, FolioContentRevisedContainerAlignment>;
-};
-
-const comparisonContainerMembership = (
-  events: readonly FolioContentComparisonEvent[],
-): ComparisonContainerMembership => {
-  const baseByBlockId = new Map<string, FolioContentBaseContainerAlignment>();
-  const revisedByBlockId = new Map<string, FolioContentRevisedContainerAlignment>();
-  const registerBase = (
-    block: FolioContentBlock,
-    alignment: FolioContentBaseContainerAlignment,
-  ): void => {
-    const existing = baseByBlockId.get(block.identity.id);
-    if (existing && existing !== alignment) {
-      return panic("A base block belongs to two canonical container alignments", {
-        blockId: block.identity.id,
-      });
-    }
-    baseByBlockId.set(block.identity.id, alignment);
-  };
-  const registerRevised = (
-    block: FolioContentBlock,
-    alignment: FolioContentRevisedContainerAlignment,
-  ): void => {
-    const existing = revisedByBlockId.get(block.identity.id);
-    if (existing && existing !== alignment) {
-      return panic("A revised block belongs to two canonical container alignments", {
-        blockId: block.identity.id,
-      });
-    }
-    revisedByBlockId.set(block.identity.id, alignment);
-  };
-  const registerRelation = (relation: FolioContentPairRelation): void => {
-    registerBase(relation.base.block, relation.baseContainerAlignment);
-    registerRevised(relation.revised.block, relation.revisedContainerAlignment);
-  };
-  for (const event of events) {
-    switch (event.type) {
-      case "unchanged":
-      case "modified":
-      case "formatting":
-        registerRelation(event.relation);
-        break;
-      case "inserted":
-        registerRevised(event.block, event.containerAlignment);
-        break;
-      case "deleted":
-        registerBase(event.block, event.containerAlignment);
-        break;
-      case "movedFrom":
-      case "movedTo":
-        registerRelation(event.move.relation);
-        break;
-      case "split":
-      case "merge":
-        for (const relation of event.relations) registerRelation(relation);
-        registerRelation(event.separator);
-        break;
-      case "tableReplacement":
-      case "structural":
-        break;
-      default: {
-        const unreachable: never = event;
-        return panic("Unhandled comparison event while indexing container membership", {
-          event: unreachable,
-        });
-      }
-    }
-  }
-  return { baseByBlockId, revisedByBlockId };
-};
-
-/** The next surviving base block at each canonical stream position. */
-const nextBaseBlockIdByEvent = (
-  events: readonly FolioContentComparisonEvent[],
-): (string | null)[] => {
-  const anchors = Array.from<string | null>({ length: events.length });
-  let next: string | null = null;
-  for (let index = events.length - 1; index >= 0; index--) {
-    anchors[index] = next;
-    const event = events.at(index);
-    const block = event ? baseBlocksOfEvent(event).at(0) : undefined;
-    next = block?.identity.id ?? next;
-  }
-  return anchors;
-};
-
-/** A canonical base block inside the paired table, and its insertion side. */
-type RowAnchor = { block: FolioContentBlock; position: "after" | "before" };
-
-const baseTableBlockOf = (event: FolioContentComparisonEvent): FolioContentBlock | null =>
-  baseBlocksOfEvent(event).find(({ table }) => table !== undefined) ?? null;
-
-/**
- * The base-document row a new row is inserted next to: the nearest base block
- * inside a table, preferring the one before the insertion so a run of new rows
- * keeps its order.
- */
-const findRowAnchor = (
-  events: readonly FolioContentComparisonEvent[],
-  eventIndex: number,
-  baseTableIndexes: ReadonlySet<number>,
-): RowAnchor | null => {
-  for (let index = eventIndex - 1; index >= 0; index--) {
-    const event = events[index];
-    const block = event ? baseTableBlockOf(event) : null;
-    if (block?.table && baseTableIndexes.has(block.table.tableIndex)) {
-      return { block, position: "after" };
-    }
-  }
-  for (let index = eventIndex + 1; index < events.length; index++) {
-    const event = events[index];
-    const block = event ? baseTableBlockOf(event) : null;
-    if (block?.table && baseTableIndexes.has(block.table.tableIndex)) {
-      return { block, position: "before" };
-    }
-  }
-  return null;
-};
 
 type TrailingDeletionOptions = {
   comparison: ResolvedDocxStoryComparison;
   baseResolvedSnapshot: ResolvedDocxStorySnapshot;
   baseSnapshot: FolioAIEditSnapshot;
   targetSnapshot: FolioAIEditSnapshot;
-  baseContentBlocks: readonly FolioContentBlock[];
   unavailableTerminalCarrierIds: ReadonlySet<string>;
-  containerMembership: ComparisonContainerMembership;
   /** The plan so far, rewritten around each container it empties. */
   operations: readonly DocxComparisonOperationInput[];
 };
@@ -310,9 +154,7 @@ const withTrailingDeletionRules = ({
   baseResolvedSnapshot,
   baseSnapshot,
   targetSnapshot,
-  baseContentBlocks,
   unavailableTerminalCarrierIds,
-  containerMembership,
   operations,
 }: TrailingDeletionOptions): TrailingDeletionPlan => {
   const plan = [...operations];
@@ -348,14 +190,7 @@ const withTrailingDeletionRules = ({
         if (event.boundary.type === "unanchoredContainer") {
           return panic("An unanchored insertion reached terminal-deletion rewriting");
         }
-        const alignment = containerMembership.baseByBlockId.get(
-          event.boundary.paragraph.identity.id,
-        );
-        if (!alignment) {
-          return panic("A paragraph insertion boundary has no canonical base container", {
-            blockId: event.boundary.paragraph.identity.id,
-          });
-        }
+        const alignment = event.boundary.containerAlignment;
         const placed = insertionsByAlignment.get(alignment) ?? [];
         placed.push({ index, boundary: event.boundary });
         insertionsByAlignment.set(alignment, placed);
@@ -432,9 +267,6 @@ const withTrailingDeletionRules = ({
   }
 
   const blocks = baseSnapshot.blocks;
-  const baseContentById = new Map(
-    baseContentBlocks.map((block) => [block.identity.id, block] as const),
-  );
   const indexById = new Map(blocks.map((block, index) => [block.id, index]));
   /**
    * Walk back from a container's last block over the run of deleted
@@ -457,7 +289,10 @@ const withTrailingDeletionRules = ({
       });
     for (; index >= 0; index--) {
       const block = blocks[index];
-      if (block === undefined || containerMembership.baseByBlockId.get(block.id) !== alignment) {
+      if (
+        block === undefined ||
+        resolvedDocxBaseContainerAlignmentForBlockId(comparison, block.id) !== alignment
+      ) {
         break;
       }
       if (!deletionIndexByBlockId.has(block.id)) {
@@ -492,15 +327,20 @@ const withTrailingDeletionRules = ({
     };
   };
 
-  const baseLastByAlignment = new Map<FolioContentBaseContainerAlignment, FolioAIBlock>();
-  for (const block of blocks) {
-    const alignment = containerMembership.baseByBlockId.get(block.id);
-    if (alignment) baseLastByAlignment.set(alignment, block);
-  }
   const terminalTargetTableIndex = targetSnapshot.blocks.at(-1)?.table?.outerTableIndex;
   const dropped = new Set<number>();
   const appended: DocxComparisonOperationInput[] = [];
-  for (const [alignment, carrier] of baseLastByAlignment) {
+  for (const { alignment, block: canonicalCarrier } of resolvedDocxBaseTerminalBlocks(comparison)) {
+    const carrierIndex =
+      indexById.get(canonicalCarrier.identity.id) ??
+      panic("A canonical terminal block is absent from its operation snapshot", {
+        blockId: canonicalCarrier.identity.id,
+      });
+    const carrier =
+      blocks[carrierIndex] ??
+      panic("A canonical terminal block lost its operation-snapshot position", {
+        blockId: canonicalCarrier.identity.id,
+      });
     if (alignment.base.end !== "paragraph") continue;
     const carrierDeletionIndex = deletionIndexByBlockId.get(carrier.id);
     if (carrierDeletionIndex === undefined) {
@@ -545,22 +385,14 @@ const withTrailingDeletionRules = ({
       // directly. Put the base's otherwise-final carrier immediately before
       // that table: its deleted mark can then remove the empty paragraph,
       // while rejecting the table insertion restores the original ending.
-      const payload = resolvedDocxTableStructureOperandPayload(tableInsert, comparison);
-      if (payload.type !== "insertTable") {
-        return panic("A terminal table insertion lost its canonical payload");
-      }
       const carrierSource = resolvedDocxSourceOperandForBlockId(baseResolvedSnapshot, carrier.id);
-      const retargeted = resolvedDocxTableStructureOperand(comparison, {
-        type: "insertTable",
-        anchor: { source: carrierSource, position: "after" },
-        change: payload.change,
-      });
-      if (retargeted.type !== "insertTable") {
-        return panic("A retargeted table insertion lost its structural discriminator");
-      }
       plan[tableInsertIndex] = {
         type: "tableStructure",
-        operation: resolvedDocxTerminalTableInsertionOperand(comparison, retargeted, carrierSource),
+        operation: resolvedDocxTerminalTableInsertionOperand(
+          comparison,
+          tableInsert,
+          carrierSource,
+        ),
       };
       dropped.add(carrierDeletionIndex);
       continue;
@@ -668,7 +500,7 @@ const withTrailingDeletionRules = ({
     const lastInsertIndex = run.insertIndexes.at(-1);
     if (lastInsertIndex === undefined) {
       if (run.chainStart) {
-        const chainStart = baseContentById.get(run.chainStart.id);
+        const chainStart = resolvedDocxBaseBlockForId(comparison, run.chainStart.id);
         if (!chainStart) {
           return panic("A terminal merge carrier lost its canonical base block", {
             blockId: run.chainStart.id,
@@ -715,7 +547,7 @@ const withTrailingDeletionRules = ({
         continue;
       }
       dropped.add(lastInsertIndex);
-      const baseContent = baseContentById.get(carrier.id);
+      const baseContent = resolvedDocxBaseBlockForId(comparison, carrier.id);
       if (!baseContent) {
         return panic("A terminal carrier lost its canonical base block", {
           blockId: carrier.id,
@@ -812,6 +644,7 @@ type UnsupportedRelationField = {
 };
 
 const unsupportedRelationFields = (
+  comparison: ResolvedDocxStoryComparison,
   relation: FolioContentWholePairRelation | FolioContentRangePairRelation,
 ): readonly UnsupportedRelationField[] => {
   const unsupported: UnsupportedRelationField[] = [];
@@ -819,8 +652,12 @@ const unsupportedRelationFields = (
     switch (change.field) {
       case "kind":
       case "blockProperties":
-      case "table":
         unsupported.push({ reason: "block-semantics", field: change.field });
+        break;
+      case "table":
+        if (!resolvedDocxTablePlacementChangeIsOwned(comparison, relation)) {
+          unsupported.push({ reason: "block-semantics", field: change.field });
+        }
         break;
       case "containerPath":
         unsupported.push({ reason: "container-change", field: change.field });
@@ -881,8 +718,6 @@ export const planStoryCompare = ({
   const baseOperationSnapshot = resolvedDocxOperationSnapshot(baseSnapshot);
   const targetOperationSnapshot = resolvedDocxOperationSnapshot(targetSnapshot);
   const events = contentComparison.events;
-  const containerMembership = comparisonContainerMembership(events);
-  const anchorIds = nextBaseBlockIdByEvent(events);
   const unsupported: CompareUnsupportedPart[] = [];
   const operations: DocxComparisonOperationInput[] = [];
 
@@ -915,7 +750,7 @@ export const planStoryCompare = ({
     eventType: CompareUnsupportedEventType,
     relation: FolioContentWholePairRelation | FolioContentRangePairRelation,
   ): boolean => {
-    const fields = unsupportedRelationFields(relation);
+    const fields = unsupportedRelationFields(comparison, relation);
     for (const field of fields) {
       unsupported.push({
         reason: field.reason,
@@ -928,21 +763,6 @@ export const planStoryCompare = ({
     }
     return fields.length > 0;
   };
-  /**
-   * The anchor everything past the base document's content hangs from: its
-   * last BODY-LEVEL paragraph, when it has one. Anchoring to the last block
-   * instead puts the anchor inside a terminal table, and a paragraph insertion
-   * then escapes to the table's boundary where no paragraph mark can express
-   * the break it added.
-   *
-   * The applier orders insertions that resolve to one position by their order
-   * in this array, so the tail is emitted where its step sits rather than
-   * collected and appended — a table and a paragraph both added after the last
-   * base block otherwise come out in operation order, which is not target
-   * order.
-   */
-  const tailAnchorId = trailingBodyBlockId(baseOperationSnapshot);
-
   const insertOperation = (
     event: Extract<FolioContentComparisonEvent, { readonly type: "inserted" }>,
   ):
@@ -962,7 +782,7 @@ export const planStoryCompare = ({
     };
   };
 
-  for (const [eventIndex, event] of events.entries()) {
+  for (const event of events) {
     switch (event.type) {
       case "unchanged":
         break;
@@ -1191,9 +1011,8 @@ export const planStoryCompare = ({
             ) {
               break;
             }
-            const before = anchorIds[eventIndex] ?? null;
-            const anchorBlockId = before ?? tailAnchorId;
-            if (anchorBlockId === null) {
+            const anchor = resolvedDocxStructuralInsertionBoundary(comparison, structural);
+            if (!anchor) {
               return Result.err(
                 loweringError({
                   story,
@@ -1207,21 +1026,14 @@ export const planStoryCompare = ({
               type: "tableStructure",
               operation: resolvedDocxTableStructureOperand(comparison, {
                 type: "insertTable",
-                anchor: {
-                  source: resolvedDocxSourceOperandForBlockId(baseSnapshot, anchorBlockId),
-                  position: before === null ? "after" : "before",
-                },
+                anchor,
                 change: structural,
               }),
             });
             break;
           }
           case "table-row-insert": {
-            const anchor = findRowAnchor(
-              events,
-              eventIndex,
-              resolvedDocxPairedBaseTableIndexes(comparison, structural.tableIndex),
-            );
+            const anchor = resolvedDocxStructuralInsertionBoundary(comparison, structural);
             if (!anchor) {
               return Result.err(
                 loweringError({
@@ -1248,10 +1060,7 @@ export const planStoryCompare = ({
               type: "tableStructure",
               operation: resolvedDocxTableStructureOperand(comparison, {
                 type: "insertTableRow",
-                anchor: {
-                  source: resolvedDocxSourceOperand(baseSnapshot, anchor.block),
-                  position: anchor.position,
-                },
+                anchor,
                 change: structural,
               }),
             });
@@ -1276,17 +1085,17 @@ export const planStoryCompare = ({
             ) {
               break;
             }
+            const anchor = resolvedDocxStructuralInsertionBoundary(comparison, structural);
+            if (!anchor) {
+              return panic("A canonical table-column insertion lost its structural anchor", {
+                tableIndex: structural.tableIndex,
+              });
+            }
             operations.push({
               type: "tableStructure",
               operation: resolvedDocxTableStructureOperand(comparison, {
                 type: "insertTableColumn",
-                anchor: {
-                  source: resolvedDocxSourceOperandForBlockId(
-                    baseSnapshot,
-                    structural.anchor.blockId,
-                  ),
-                  position: structural.anchor.position,
-                },
+                anchor,
                 change: structural,
               }),
             });
@@ -1312,10 +1121,6 @@ export const planStoryCompare = ({
   const tableFormat = resolvedDocxTableFormatOperand(comparison);
   if (tableFormat) operations.push({ type: "tableFormat", operation: tableFormat });
 
-  const baseContentBlocks = events.flatMap(baseBlocksOfEvent);
-  const baseContentById = new Map(
-    baseContentBlocks.map((block) => [block.identity.id, block] as const),
-  );
   const deletedBlockIds = new Set(
     operations.flatMap((operation) =>
       operation.type === "deleteParagraph"
@@ -1327,15 +1132,9 @@ export const planStoryCompare = ({
     ),
   );
   const unavailableTerminalCarrierIds = new Set<string>();
-  const lastBaseBlockByAlignment = new Map<FolioContentBaseContainerAlignment, FolioAIBlock>();
-  for (const block of baseOperationSnapshot.blocks) {
-    const alignment = containerMembership.baseByBlockId.get(block.id);
-    if (alignment) lastBaseBlockByAlignment.set(alignment, block);
-  }
-  for (const carrier of lastBaseBlockByAlignment.values()) {
+  for (const { block: carrier } of resolvedDocxBaseTerminalBlocks(comparison)) {
     if (!deletedBlockIds.has(carrier.id)) continue;
-    const canonical = baseContentById.get(carrier.id);
-    if (!canonical || resolvedDocxHasExactAuthoredRuns(baseSnapshot, canonical)) continue;
+    if (resolvedDocxHasExactAuthoredRuns(baseSnapshot, carrier)) continue;
     unavailableTerminalCarrierIds.add(carrier.id);
     unsupported.push({
       reason: "block-semantics",
@@ -1351,9 +1150,7 @@ export const planStoryCompare = ({
     baseResolvedSnapshot: baseSnapshot,
     baseSnapshot: baseOperationSnapshot,
     targetSnapshot: targetOperationSnapshot,
-    baseContentBlocks,
     unavailableTerminalCarrierIds,
-    containerMembership,
     operations,
   });
 
