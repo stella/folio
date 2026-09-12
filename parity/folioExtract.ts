@@ -19,6 +19,8 @@ import path from "node:path";
 
 import { chromium, type Browser, type BrowserContext, type Page } from "@playwright/test";
 
+import { PLAYGROUND_ERROR_STATUS_SELECTOR } from "../packages/playground/src/playgroundStatus";
+
 import {
   CACHE_DIR,
   FIXTURES_DIR,
@@ -29,6 +31,10 @@ import {
   REPO_ROOT,
   TMP_FIXTURE_PREFIX,
 } from "./config";
+import {
+  parseUnsupportedProjectionConsoleError,
+  readEditorReadinessState,
+} from "./editorReadiness";
 import { normalizeLineText } from "./textNorm";
 import { firstStrongTextDirection } from "./textDirection";
 import type { DocGeom, LineBox, PageGeom, Region } from "./types";
@@ -153,7 +159,6 @@ const STABILITY_POLL_INTERVAL_MS = 250;
 const STABILITY_MAX_MS = 15_000;
 const STABILITY_SETTLE_MS = 250;
 const PAGE_CAPTURE_MAX_ATTEMPTS = 3;
-
 const CHROMIUM_MISSING_MARKER = "Executable doesn't exist";
 const CHROMIUM_MISSING_MESSAGE =
   "Playwright chromium missing; run: bunx playwright install chromium";
@@ -631,22 +636,73 @@ const waitForLayoutStability = async (page: Page): Promise<void> => {
   }
 };
 
-const waitForEditorLayout = async (page: Page): Promise<void> => {
-  try {
-    await page.waitForSelector(EDITOR_SELECTOR, { timeout: EDITOR_RENDER_TIMEOUT_MS });
-  } catch {
-    throw new FolioExtractError(
-      `folio editor root (${EDITOR_SELECTOR}) never rendered within ${EDITOR_RENDER_TIMEOUT_MS}ms`,
-    );
-  }
+type EditorErrorMonitor = {
+  capture: (message: string) => void;
+  reset: () => void;
+  wait: () => Promise<string>;
+};
 
+const createEditorErrorMonitor = (): EditorErrorMonitor => {
+  let resolveError: ((message: string) => void) | undefined;
+  let error = new Promise<string>((resolve) => {
+    resolveError = resolve;
+  });
+  return {
+    capture: (message) => resolveError?.(message),
+    reset: () => {
+      error = new Promise<string>((resolve) => {
+        resolveError = resolve;
+      });
+    },
+    wait: () => error,
+  };
+};
+
+const waitForSelectorOrEditorError = async (
+  page: Page,
+  selector: string,
+  timeoutMessage: string,
+  errorMonitor: EditorErrorMonitor,
+): Promise<void> => {
   try {
-    await page.waitForSelector(PAGE_SELECTOR, { timeout: EDITOR_RENDER_TIMEOUT_MS });
-  } catch {
-    throw new FolioExtractError(
-      `folio never painted a ${PAGE_SELECTOR} element within ${EDITOR_RENDER_TIMEOUT_MS}ms`,
-    );
+    const browserState = page
+      .waitForFunction(
+        readEditorReadinessState,
+        {
+          playgroundErrorSelector: PLAYGROUND_ERROR_STATUS_SELECTOR,
+          readySelector: selector,
+        },
+        { timeout: EDITOR_RENDER_TIMEOUT_MS },
+      )
+      .then((handle) => handle.jsonValue());
+    const state = await Promise.race([
+      browserState,
+      errorMonitor.wait().then((message) => ({ type: "error" as const, message })),
+    ]);
+    if (state?.type === "error") {
+      throw new FolioExtractError(`folio editor failed: ${state.message}`);
+    }
+  } catch (error) {
+    if (error instanceof FolioExtractError) {
+      throw error;
+    }
+    throw new FolioExtractError(timeoutMessage);
   }
+};
+
+const waitForEditorLayout = async (page: Page, errorMonitor: EditorErrorMonitor): Promise<void> => {
+  await waitForSelectorOrEditorError(
+    page,
+    EDITOR_SELECTOR,
+    `folio editor root (${EDITOR_SELECTOR}) never rendered within ${EDITOR_RENDER_TIMEOUT_MS}ms`,
+    errorMonitor,
+  );
+  await waitForSelectorOrEditorError(
+    page,
+    PAGE_SELECTOR,
+    `folio never painted a ${PAGE_SELECTOR} element within ${EDITOR_RENDER_TIMEOUT_MS}ms`,
+    errorMonitor,
+  );
 
   await page.evaluate(() => document.fonts.ready);
   await waitForLayoutStability(page);
@@ -1359,6 +1415,16 @@ export const createFolioExtractor = async (
     colorScheme: "light",
   });
   const page = await context.newPage();
+  const editorErrorMonitor = createEditorErrorMonitor();
+  page.on("pageerror", (error) => {
+    editorErrorMonitor.capture(`${error.name}: ${error.message}`);
+  });
+  page.on("console", (message) => {
+    const error = parseUnsupportedProjectionConsoleError(message.type(), message.text());
+    if (error !== undefined) {
+      editorErrorMonitor.capture(error);
+    }
+  });
   const routedFonts = await loadBrowserFonts(opts.localFonts);
   if (routedFonts.length > 0) {
     for (const { definition, body, contentType } of routedFonts) {
@@ -1376,6 +1442,7 @@ export const createFolioExtractor = async (
   }
 
   const navigateToDocument = async (stagedName: string): Promise<void> => {
+    editorErrorMonitor.reset();
     const documentUrl = `${PLAYGROUND_URL}/?file=${encodeURIComponent(stagedName)}`;
     try {
       await page.goto(documentUrl, {
@@ -1403,7 +1470,7 @@ export const createFolioExtractor = async (
     await fs.copyFile(absoluteDocxPath, stagedPath);
     try {
       await navigateToDocument(stagedName);
-      await waitForEditorLayout(page);
+      await waitForEditorLayout(page, editorErrorMonitor);
 
       const pageMeta = await listPageMeta(page);
       if (pageMeta.length === 0) {
@@ -1479,7 +1546,7 @@ export const createFolioExtractor = async (
     await fs.copyFile(absoluteDocxPath, stagedPath);
     try {
       await navigateToDocument(stagedName);
-      await waitForEditorLayout(page);
+      await waitForEditorLayout(page, editorErrorMonitor);
 
       const pageMeta = await listPageMeta(page);
       const target = pageMeta.find((meta) => meta.pageNumber === pageNumber);

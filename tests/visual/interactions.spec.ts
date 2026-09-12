@@ -15,7 +15,9 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 
+import { PLAYGROUND_ERROR_STATUS_SELECTOR } from "../../packages/playground/src/playgroundStatus";
 import type { DocxEditorRef } from "../../packages/react/src/components/DocxEditor.props";
+import { readEditorReadinessState } from "../../parity/editorReadiness";
 
 declare global {
   var __folioPlayground: { getEditorRef: () => DocxEditorRef | null } | undefined;
@@ -97,6 +99,22 @@ test("showcase document loads from the recording URL and playground control", as
   await page.getByRole("button", { name: "Showcase", exact: true }).click();
   await expect(page.locator(".pg-filename")).toHaveText("folio-showcase.docx");
   await expect(page.getByRole("status")).toHaveText("1 of 5");
+});
+
+test("fixture load failures expose a machine-readable error state", async ({ page }) => {
+  await page.goto("/?file=missing-parity-fixture.docx");
+
+  await expect(page.locator(PLAYGROUND_ERROR_STATUS_SELECTOR)).toHaveText(
+    "Fixture not found: missing-parity-fixture.docx",
+  );
+  const readiness = await page.evaluate(readEditorReadinessState, {
+    playgroundErrorSelector: PLAYGROUND_ERROR_STATUS_SELECTOR,
+    readySelector: ".layout-page",
+  });
+  expect(readiness).toEqual({
+    type: "error",
+    message: "Fixture not found: missing-parity-fixture.docx",
+  });
 });
 
 /** Place the caret inside the first painted table cell and open its menu. */

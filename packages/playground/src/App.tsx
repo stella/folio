@@ -31,6 +31,12 @@ import type {
 import { FOLIO_LOCALES, getFolioMessages } from "@stll/folio-react/messages";
 
 import { CollaborationApp } from "./CollaborationApp";
+import {
+  IDLE_PLAYGROUND_STATUS,
+  PLAYGROUND_STATUS_CLASS_NAME,
+  PLAYGROUND_STATUS_TYPE,
+  type PlaygroundStatus,
+} from "./playgroundStatus";
 
 const ZOOM_INITIAL = 1;
 const DEFAULT_LOCALE = "en";
@@ -590,7 +596,7 @@ export function App() {
   const [currentDocument, setCurrentDocument] = useState<FolioDocument | null>(null);
   const [documentBuffer, setDocumentBuffer] = useState<ArrayBuffer | null>(null);
   const [fileName, setFileName] = useState("Untitled.docx");
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState<PlaygroundStatus>(IDLE_PLAYGROUND_STATUS);
   const [editorMode, setEditorMode] = useState<EditorMode>("editing");
   const [locale, setLocale] = useState<string>(DEFAULT_LOCALE);
   const query = new URLSearchParams(window.location.search);
@@ -606,19 +612,22 @@ export function App() {
   const loadDocument = useCallback(
     async ({ fileName: nextFileName, loadingStatus, missingStatus, url }: LoadDocumentOptions) => {
       try {
-        setStatus(loadingStatus);
+        setStatus({ type: PLAYGROUND_STATUS_TYPE.LOADING, message: loadingStatus });
         const response = await fetch(url);
         if (!response.ok) {
-          setStatus(missingStatus);
+          setStatus({ type: PLAYGROUND_STATUS_TYPE.ERROR, message: missingStatus });
           return;
         }
         const buffer = await response.arrayBuffer();
         setCurrentDocument(null);
         setDocumentBuffer(buffer);
         setFileName(nextFileName);
-        setStatus("");
+        setStatus(IDLE_PLAYGROUND_STATUS);
       } catch {
-        setStatus(`Error loading ${nextFileName}`);
+        setStatus({
+          type: PLAYGROUND_STATUS_TYPE.ERROR,
+          message: `Error loading ${nextFileName}`,
+        });
       }
     },
     [],
@@ -662,7 +671,7 @@ export function App() {
     setCurrentDocument(createStellaStyleDocument());
     setDocumentBuffer(null);
     setFileName("Untitled.docx");
-    setStatus("");
+    setStatus(IDLE_PLAYGROUND_STATUS);
   }, []);
 
   const handleFileSelect = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
@@ -672,14 +681,14 @@ export function App() {
       return;
     }
     try {
-      setStatus("Loading...");
+      setStatus({ type: PLAYGROUND_STATUS_TYPE.LOADING, message: "Loading..." });
       const buffer = await file.arrayBuffer();
       setCurrentDocument(null);
       setDocumentBuffer(buffer);
       setFileName(file.name);
-      setStatus(`Loaded ${file.name}`);
+      setStatus({ type: PLAYGROUND_STATUS_TYPE.SUCCESS, message: `Loaded ${file.name}` });
     } catch {
-      setStatus("Error loading file");
+      setStatus({ type: PLAYGROUND_STATUS_TYPE.ERROR, message: "Error loading file" });
     } finally {
       input.value = "";
     }
@@ -688,7 +697,7 @@ export function App() {
   const handleOpenDocument = useCallback(() => {
     const input = fileInputRef.current;
     if (!input) {
-      setStatus("File picker unavailable");
+      setStatus({ type: PLAYGROUND_STATUS_TYPE.ERROR, message: "File picker unavailable" });
       return;
     }
     input.value = "";
@@ -709,7 +718,7 @@ export function App() {
       return;
     }
     try {
-      setStatus("Saving...");
+      setStatus({ type: PLAYGROUND_STATUS_TYPE.LOADING, message: "Saving..." });
       const buffer = await editorRef.current.save();
       if (buffer) {
         const blob = new Blob([buffer], {
@@ -723,16 +732,16 @@ export function App() {
         a.click();
         a.remove();
         URL.revokeObjectURL(url);
-        setStatus("Saved!");
-        setTimeout(() => setStatus(""), 2000);
+        setStatus({ type: PLAYGROUND_STATUS_TYPE.SUCCESS, message: "Saved!" });
+        setTimeout(() => setStatus(IDLE_PLAYGROUND_STATUS), 2000);
       }
     } catch {
-      setStatus("Save failed");
+      setStatus({ type: PLAYGROUND_STATUS_TYPE.ERROR, message: "Save failed" });
     }
   }, [fileName]);
 
   const handleError = useCallback((error: Error) => {
-    setStatus(`Error: ${error.message}`);
+    setStatus({ type: PLAYGROUND_STATUS_TYPE.ERROR, message: error.message });
   }, []);
 
   const handleInsertImage = useCallback(() => {
@@ -897,7 +906,11 @@ export function App() {
             ))}
           </select>
 
-          {status && <span className="pg-status">{status}</span>}
+          {status.type !== PLAYGROUND_STATUS_TYPE.IDLE && (
+            <span className={PLAYGROUND_STATUS_CLASS_NAME} data-status={status.type}>
+              {status.message}
+            </span>
+          )}
           <span className="pg-filename">{fileName}</span>
         </div>
       </div>
