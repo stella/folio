@@ -1680,7 +1680,7 @@ describe("the dedicated DOCX comparison executor", () => {
     expect(() =>
       Reflect.apply(DocxComparisonProgram.create, DocxComparisonProgram, [
         first.comparison,
-        [{ type: "tableStructure", operation: copied }],
+        { operations: [{ type: "tableStructure", operation: copied }] },
       ]),
     ).toThrow("was not created by Folio");
 
