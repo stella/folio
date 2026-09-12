@@ -3,9 +3,9 @@ import type { Node as PMNode } from "prosemirror-model";
 
 import { folioAIBlockIdStability } from "../../ai-edits/block-identity";
 import {
+  createFolioAIEditSnapshot,
   hashFolioAIBlockText,
   numberingReferenceKeysOf,
-  sourceDocumentOf,
   storyTablesOf,
 } from "../../ai-edits/snapshot";
 import type {
@@ -35,6 +35,11 @@ import {
 import { createTableCellPresentationResolver } from "../../style-engine/tableParagraphPresentation";
 import { tableOfContentsStyleLevel } from "../../utils/tableOfContentsStyle";
 import { projectTableCellRowSpans } from "../../utils/tableRowSpanProjection";
+import {
+  footnoteToProseDoc,
+  headerFooterToProseDoc,
+  toProseDoc,
+} from "../../prosemirror/conversion/toProseDoc";
 import type {
   BlockContent,
   ComplexField,
@@ -154,6 +159,42 @@ const storyContent = (
       return exhaustive;
     }
   }
+};
+
+const projectStoryDocument = (
+  document: Document,
+  story: FolioDocumentStoryHandle,
+  content: readonly BlockContent[],
+): PMNode => {
+  const conversionOptions = {
+    ...(document.package.styles !== undefined && { styles: document.package.styles }),
+    ...(document.package.theme !== undefined && { theme: document.package.theme }),
+  };
+  switch (story.type) {
+    case "main":
+      return toProseDoc(document, conversionOptions);
+    case "header":
+    case "footer":
+      return headerFooterToProseDoc([...content], conversionOptions);
+    case "footnote":
+    case "endnote":
+      return footnoteToProseDoc([...content], conversionOptions);
+    default: {
+      const exhaustive: never = story;
+      return exhaustive;
+    }
+  }
+};
+
+const ownOperationSnapshot = (sourceDocument: PMNode): FolioAIEditSnapshot => {
+  const snapshot = createFolioAIEditSnapshot(sourceDocument);
+  freezeRecursively(snapshot);
+  const numberingReferenceKeys = numberingReferenceKeysOf(snapshot);
+  Object.freeze(numberingReferenceKeys);
+  const storyTables = storyTablesOf(snapshot);
+  for (const table of storyTables) Object.freeze(table);
+  Object.freeze(storyTables);
+  return snapshot;
 };
 
 type LiveAuthoredTextRun = {
@@ -1160,17 +1201,24 @@ const visitTable = (
 type CreateResolvedDocxStorySnapshotOptions = {
   readonly document: Document;
   readonly story: FolioDocumentStoryHandle;
-  readonly operationSnapshot: FolioAIEditSnapshot;
+  readonly sourceDocument: PMNode;
 };
 
 /** @internal Capture one live reviewed story exactly once for all compare stages. */
 export const createResolvedDocxStorySnapshot = ({
   document,
   story,
-  operationSnapshot,
+  sourceDocument,
 }: CreateResolvedDocxStorySnapshotOptions): ResolvedDocxStorySnapshot | null => {
   const content = storyContent(document, story);
   if (content === null) return null;
+  const projectedDocument = projectStoryDocument(document, story, content);
+  if (!projectedDocument.eq(sourceDocument)) {
+    return panic("The live DOCX story and its package projection disagree on source identity", {
+      story,
+    });
+  }
+  const operationSnapshot = ownOperationSnapshot(projectedDocument);
   const blockById = new Map(operationSnapshot.blocks.map((block) => [block.id, block]));
   const builder: ProjectionBuilder = {
     blockById,
@@ -1199,7 +1247,6 @@ export const createResolvedDocxStorySnapshot = ({
     });
   }
   const contentSnapshot = ownContentSnapshot(builder.projected);
-  const sourceDocument = sourceDocumentOf(operationSnapshot);
   const tableNodes = new Map(
     storyTablesOf(operationSnapshot).map(({ index, node }) => [index, node] as const),
   );
@@ -1215,7 +1262,7 @@ export const createResolvedDocxStorySnapshot = ({
     sourceOperandsByBlockId.set(block.identity.id, source);
   }
   payloadBySnapshot.set(snapshot, {
-    story,
+    story: Object.freeze({ ...story }),
     sourceDocument,
     operationSnapshot,
     contentSnapshot,
@@ -1291,7 +1338,7 @@ export const resolvedDocxSourceDocument = (
 /** @internal Target table templates captured with the canonical projection. */
 export const resolvedDocxTableNodes = (
   snapshot: ResolvedDocxStorySnapshot,
-): ReadonlyMap<number, PMNode> => payloadOf(snapshot).tableNodes;
+): ReadonlyMap<number, PMNode> => new Map(payloadOf(snapshot).tableNodes);
 
 /** @internal Numbering references captured during the exact source walk. */
 export const resolvedDocxNumberingReferenceKeys = (

@@ -872,7 +872,7 @@ export class FolioDocxReviewer {
               : createResolvedDocxStorySnapshot({
                   document,
                   story: handle,
-                  operationSnapshot: createStateSnapshot(state),
+                  sourceDocument: state.doc,
                 }),
         };
       }),
@@ -902,12 +902,12 @@ export class FolioDocxReviewer {
 
     const resolved: {
       handle: FolioDocumentStoryHandle;
-      operationSnapshot: FolioAIEditSnapshot | null;
+      sourceDocument: PMNode | null;
     }[] = [];
     for (const handle of handles) {
       resolved.push({
         handle,
-        operationSnapshot: this.resolveReviewedStorySnapshotInternal({
+        sourceDocument: this.resolveReviewedStoryInternal({
           story: handle,
           view: "final",
         }),
@@ -915,12 +915,12 @@ export class FolioDocxReviewer {
     }
     const document = this.toDocument();
     const stories: FolioDocxComparisonStoryProjection[] = resolved.map(
-      ({ handle, operationSnapshot }) => ({
+      ({ handle, sourceDocument }) => ({
         handle,
         snapshot:
-          operationSnapshot === null
+          sourceDocument === null
             ? null
-            : createResolvedDocxStorySnapshot({ document, story: handle, operationSnapshot }),
+            : createResolvedDocxStorySnapshot({ document, story: handle, sourceDocument }),
       }),
     );
     return { stories, revisions: { highestId, present } };
@@ -1002,13 +1002,13 @@ export class FolioDocxReviewer {
 
   /** Resolve one editable story to its original or final state. */
   resolveReviewedStory({ story = MAIN_STORY, view }: FolioResolveReviewedStoryOptions): boolean {
-    return this.resolveReviewedStorySnapshotInternal({ story, view }) !== null;
+    return this.resolveReviewedStoryInternal({ story, view }) !== null;
   }
 
-  private resolveReviewedStorySnapshotInternal({
+  private resolveReviewedStoryInternal({
     story = MAIN_STORY,
     view,
-  }: FolioResolveReviewedStoryOptions): FolioAIEditSnapshot | null {
+  }: FolioResolveReviewedStoryOptions): PMNode | null {
     if (!isFolioResolvedReviewedView(view)) {
       throw new UnsupportedFolioReviewedViewError({
         message: "Only original and final views can replace editable story state.",
@@ -1027,7 +1027,7 @@ export class FolioDocxReviewer {
       text: formatStorySnapshotForLLM(snapshot, false),
       blocks: snapshot.blocks.map(resolvedStoryBlockProjection),
     });
-    return snapshot;
+    return resolvedState.doc;
   }
 
   /**

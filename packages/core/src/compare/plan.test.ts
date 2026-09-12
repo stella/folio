@@ -10,7 +10,6 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
 import type { FolioAIBlock } from "../ai-edits/types";
 import {
   createResolvedDocxStorySnapshot,
@@ -21,7 +20,7 @@ import {
   type ResolvedDocxSourceOperand,
   type ResolvedDocxStorySnapshot,
 } from "../internal/compare/resolved-docx-story-snapshot";
-import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import { headerFooterToProseDoc, toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { BlockContent, Document, Paragraph, Table, TableCell } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { createContentComparisonWorkSession } from "./content";
@@ -197,22 +196,37 @@ const resolvedDocumentSnapshotOf = (
   projectedDocument: Document,
   story = MAIN_STORY,
 ) => {
-  const source = toProseDoc(projectedDocument);
-  const snapshot = createResolvedDocxStorySnapshot({
-    document:
-      story.type === "main"
-        ? projectedDocument
-        : {
-            ...projectedDocument,
-            package: {
-              ...projectedDocument.package,
-              headers: new Map([
-                [story.relationshipId, { content: projectedDocument.package.document.content }],
-              ]),
-            },
+  const document =
+    story.type === "main"
+      ? projectedDocument
+      : {
+          ...projectedDocument,
+          package: {
+            ...projectedDocument.package,
+            headers: new Map([
+              [story.relationshipId, { content: projectedDocument.package.document.content }],
+            ]),
           },
+        };
+  const conversionOptions = {
+    ...(projectedDocument.package.styles !== undefined && {
+      styles: projectedDocument.package.styles,
+    }),
+    ...(projectedDocument.package.theme !== undefined && {
+      theme: projectedDocument.package.theme,
+    }),
+  };
+  const sourceDocument =
+    story.type === "main"
+      ? toProseDoc(document, conversionOptions)
+      : headerFooterToProseDoc(
+          projectedDocument.package.document.content,
+          conversionOptions,
+        );
+  const snapshot = createResolvedDocxStorySnapshot({
+    document,
     story,
-    operationSnapshot: createFolioAIEditSnapshot(source),
+    sourceDocument,
   });
   if (!snapshot) throw new Error("fixture story projection missing");
   return snapshot;
@@ -318,43 +332,6 @@ test("unsupported live paragraph properties reach the typed lowering refusal", (
     baseBlockId: "clause",
     targetBlockId: "clause",
   });
-});
-
-test("a lossy live authored-run projection cannot lower through fallback formatting", () => {
-  const baseSnapshot = resolvedSnapshotOf([block("clause", "Alpha")]);
-  const targetDocument = documentOf([block("clause", "Alpha")]);
-  const targetOperationSnapshot = createFolioAIEditSnapshot(toProseDoc(targetDocument));
-  Reflect.set(targetOperationSnapshot.blocks.at(0)!, "text", "Bravo");
-  const targetSnapshot = createResolvedDocxStorySnapshot({
-    document: targetDocument,
-    story: MAIN_STORY,
-    operationSnapshot: targetOperationSnapshot,
-  });
-  if (!targetSnapshot) throw new Error("target story projection missing");
-  const captured = createContentComparisonWorkSession().captureComparison({
-    base: resolvedDocxContentSnapshot(baseSnapshot),
-    revised: resolvedDocxContentSnapshot(targetSnapshot),
-  });
-  if (captured.isErr()) throw captured.error;
-  const comparison = captured.value.compare();
-  if (comparison.isErr()) throw comparison.error;
-  const planned = planStoryCompare({
-    story: MAIN_STORY,
-    baseSnapshot,
-    targetSnapshot,
-    comparison: comparison.value,
-    maxOperations: 1000,
-  });
-  if (planned.isErr()) throw planned.error;
-
-  expect(planned.value.unsupported).toContainEqual({
-    reason: "block-semantics",
-    story: MAIN_STORY,
-    eventType: "modified",
-    field: "runs.authoredProjection",
-    targetBlockId: "clause",
-  });
-  expect(planned.value.program.size).toBe(0);
 });
 
 describe("table row pairing", () => {

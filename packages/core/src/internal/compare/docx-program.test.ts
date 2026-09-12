@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { EditorState } from "prosemirror-state";
 
-import { createFolioAIEditSnapshot } from "../../ai-edits/snapshot";
 import { updateDocumentContent } from "../../prosemirror/conversion/fromProseDoc";
+import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import { schema } from "../../prosemirror/schema";
 import { createEmptyDocument } from "../../utils/createDocument";
 
@@ -29,10 +29,11 @@ const sourceFixture = (): {
       schema.node("paragraph", { paraId: "p-1" }, [schema.text("old", [bold.create()])]),
     ]),
   });
+  const document = updateDocumentContent(createEmptyDocument(), state.doc);
   const snapshot = createResolvedDocxStorySnapshot({
-    document: updateDocumentContent(createEmptyDocument(), state.doc),
+    document,
     story: { type: "main" },
-    operationSnapshot: createFolioAIEditSnapshot(state.doc),
+    sourceDocument: toProseDoc(document),
   });
   if (!snapshot) throw new Error("main story projection missing");
   const block = resolvedDocxContentBlocks(snapshot).at(0);

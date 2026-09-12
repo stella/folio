@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 
@@ -6,6 +7,7 @@ import { buildCleanBlockText } from "../../ai-edits/clean-text";
 import type { FolioDocumentStoryHandle } from "../../ai-edits/headless";
 import { createFolioAIEditSnapshot } from "../../ai-edits/snapshot";
 import { updateDocumentContent } from "../../prosemirror/conversion/fromProseDoc";
+import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import { schema } from "../../prosemirror/schema";
 import { createEmptyDocument } from "../../utils/createDocument";
 import { acceptAllChanges, rejectAllChanges } from "../../prosemirror/commands/comments";
@@ -40,11 +42,16 @@ type TestStoryHandle = Extract<
   { readonly type: "main" | "header" }
 >;
 
+const stateFromCanonicalDocument = (doc: PMNode): EditorState => {
+  const document = updateDocumentContent(createEmptyDocument(), doc);
+  return EditorState.create({ doc: toProseDoc(document) });
+};
+
 const stateWithIdentifiedParagraphs = (
   ...paragraphs: readonly IdentifiedParagraph[]
 ): EditorState =>
-  EditorState.create({
-    doc: schema.node(
+  stateFromCanonicalDocument(
+    schema.node(
       "doc",
       null,
       paragraphs.map(({ id, text, alignment }) =>
@@ -55,7 +62,7 @@ const stateWithIdentifiedParagraphs = (
         ),
       ),
     ),
-  });
+  );
 
 const stateWithParagraphs = (...texts: readonly string[]): EditorState =>
   stateWithIdentifiedParagraphs(
@@ -87,7 +94,7 @@ const resolvedSnapshotOf = (
   const snapshot = createResolvedDocxStorySnapshot({
     document,
     story,
-    operationSnapshot: createFolioAIEditSnapshot(state.doc),
+    sourceDocument: state.doc,
   });
   if (!snapshot) throw new Error("main story projection missing");
   return snapshot;
@@ -131,8 +138,8 @@ const plannedComparisonOf = ({
 type TableParagraph = IdentifiedParagraph;
 
 const stateWithTableCells = (...cells: readonly (readonly TableParagraph[])[]): EditorState =>
-  EditorState.create({
-    doc: schema.node("doc", null, [
+  stateFromCanonicalDocument(
+    schema.node("doc", null, [
       schema.node("table", null, [
         schema.node(
           "tableRow",
@@ -153,7 +160,7 @@ const stateWithTableCells = (...cells: readonly (readonly TableParagraph[])[]): 
         ),
       ]),
     ]),
-  });
+  );
 
 const tableCellTexts = (state: EditorState): string[][] => {
   const table = state.doc.firstChild;
@@ -623,11 +630,11 @@ describe("the dedicated DOCX comparison executor", () => {
       (() => {
         throw new Error("schema has no bold mark");
       })();
-    const state = EditorState.create({
-      doc: schema.node("doc", null, [
+    const state = stateFromCanonicalDocument(
+      schema.node("doc", null, [
         schema.node("paragraph", { paraId: "A1000000" }, [schema.text("old", [bold.create()])]),
       ]),
-    });
+    );
     const snapshot = resolvedSnapshotOf(state);
     const instruction = replacement({ snapshot, targetText: "new" });
     Reflect.set(instruction.range.sourceRuns[0]!.formatting, "bold", false);
