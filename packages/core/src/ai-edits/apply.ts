@@ -1284,8 +1284,7 @@ const snapshotStableBlockSemantics = (
   const normalizedText = normalizeFolioAIBlockText(block.text);
   const structuralBoundaries = block.structuralBoundaries ?? [];
   const textHash = hashFolioAIBlockText(normalizedText);
-  const structuralBoundaryHash =
-    hashFolioAIBlockStructuralBoundaryProjection(structuralBoundaries);
+  const structuralBoundaryHash = hashFolioAIBlockStructuralBoundaryProjection(structuralBoundaries);
   if (
     anchor.id !== block.id ||
     normalizeFolioAIBlockText(anchor.text) !== normalizedText ||

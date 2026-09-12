@@ -30,14 +30,8 @@ const changedSupportedFormatting = (
   target: FolioContentRun,
 ): FolioContentInlineFormattingChange =>
   Object.freeze({
-    authored: changedFolioContentProperties(
-      base.authoredFormatting,
-      target.authoredFormatting,
-    ),
-    effective: changedFolioContentProperties(
-      base.effectiveFormatting,
-      target.effectiveFormatting,
-    ),
+    authored: changedFolioContentProperties(base.authoredFormatting, target.authoredFormatting),
+    effective: changedFolioContentProperties(base.effectiveFormatting, target.effectiveFormatting),
   });
 
 const sameInlineFormatting = (
@@ -228,9 +222,11 @@ export const inlineFormattingSegments = ({
     ],
     maxSegments,
   });
-  return paired?.map(({ revisedStart, revisedEnd, formatting }) => ({
-    startOffset: revisedStart,
-    endOffset: revisedEnd,
-    formatting,
-  })) ?? null;
+  return (
+    paired?.map(({ revisedStart, revisedEnd, formatting }) => ({
+      startOffset: revisedStart,
+      endOffset: revisedEnd,
+      formatting,
+    })) ?? null
+  );
 };

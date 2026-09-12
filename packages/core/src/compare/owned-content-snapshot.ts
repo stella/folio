@@ -31,9 +31,7 @@ const freezeRecursively = (value: unknown): void => {
  * nominal DOCX operands bind to; cloning here would add a second full-story
  * allocation before the shared comparison budget has measured the projection.
  */
-export const ownContentSnapshot = (
-  blocks: readonly FolioContentBlock[],
-): OwnedContentSnapshot => {
+export const ownContentSnapshot = (blocks: readonly FolioContentBlock[]): OwnedContentSnapshot => {
   freezeRecursively(blocks);
   const snapshot = Object.freeze({
     [OWNED_CONTENT_SNAPSHOT_BRAND]: true as const,

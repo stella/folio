@@ -281,8 +281,7 @@ const uniqueColumnEmbedding = <Block extends FolioContentBlock>(
       scoreRow[wideIndex] = bestScore;
       countRow[wideIndex] = Math.min(
         2,
-        (skipScore === bestScore ? skipCount : 0) +
-          (matchScore === bestScore ? remainingCount : 0),
+        (skipScore === bestScore ? skipCount : 0) + (matchScore === bestScore ? remainingCount : 0),
       );
     }
   }

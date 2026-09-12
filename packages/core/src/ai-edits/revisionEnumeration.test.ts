@@ -689,15 +689,11 @@ describe("resolved story serialization structural matrix", () => {
       const resolvedOperationSnapshot = resolvedDocxOperationSnapshot(resolved);
       expect(getTrackedChangesFromSnapshot(resolvedOperationSnapshot)).toEqual([]);
       const resolvedContent = resolvedDocxContentBlocks(resolved);
-      expect(
-        resolvedContent.map(({ identity, text }) => ({ id: identity.id, text })),
-      ).toEqual(
+      expect(resolvedContent.map(({ identity, text }) => ({ id: identity.id, text }))).toEqual(
         resolvedOperationSnapshot.blocks.map(({ id, text }) => ({ id, text })),
       );
       expect(
-        resolvedContent.every((block) =>
-          resolvedDocxHasExactAuthoredRuns(resolved, block),
-        ),
+        resolvedContent.every((block) => resolvedDocxHasExactAuthoredRuns(resolved, block)),
       ).toBe(true);
       const target = resolvedOperationSnapshot.blocks.find(({ text }) => text === "Cell");
       if (!target) {
@@ -728,7 +724,9 @@ describe("resolved story serialization structural matrix", () => {
         throw new Error(`revision matrix lost ${storyKey(story)} after mutation`);
       }
       expect(storyTablesOf(resolvedOperationSnapshot).at(0)?.node.textContent).toContain("Cell");
-      expect(storyTablesOf(resolvedOperationSnapshot).at(0)?.node.textContent).not.toContain(mutationText);
+      expect(storyTablesOf(resolvedOperationSnapshot).at(0)?.node.textContent).not.toContain(
+        mutationText,
+      );
       expect(storyTablesOf(mutated).at(0)?.node.textContent).toContain(mutationText);
       const arriving = arrivingByStory.get(storyKey(story));
       expect(arriving).toBeDefined();

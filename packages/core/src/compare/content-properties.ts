@@ -13,7 +13,12 @@ export const sameFolioContentPropertyValue = (
   revised: FolioContentPropertyValue,
 ): boolean => {
   if (base === revised) return true;
-  if (typeof base !== "object" || base === null || typeof revised !== "object" || revised === null) {
+  if (
+    typeof base !== "object" ||
+    base === null ||
+    typeof revised !== "object" ||
+    revised === null
+  ) {
     return false;
   }
   if (base.type !== revised.type) return false;
@@ -49,9 +54,8 @@ export const sameFolioContentPropertySet = (
 
 const ABSENT_PROPERTY = Object.freeze({ type: "absent" } as const);
 
-const presentProperty = (
-  value: FolioContentPropertyValue,
-): FolioContentPropertyPresence => Object.freeze({ type: "present", value });
+const presentProperty = (value: FolioContentPropertyValue): FolioContentPropertyPresence =>
+  Object.freeze({ type: "present", value });
 
 /** One exhaustive, ordered delta over two canonical property sets. @internal */
 export const changedFolioContentProperties = (

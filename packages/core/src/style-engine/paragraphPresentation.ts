@@ -104,8 +104,7 @@ export type TableParagraphPresentationProjection = {
 
 const ownsEffectivePresentation = (
   disposition: ParagraphFormattingProjectionDisposition | undefined,
-): boolean =>
-  disposition === "effective-presentation" || disposition === "effective-table-overlay";
+): boolean => disposition === "effective-presentation" || disposition === "effective-table-overlay";
 
 const projectFormatting = (
   formatting: ParagraphFormatting | undefined,

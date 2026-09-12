@@ -78,13 +78,9 @@ export const tableLocationFixture = ({
       tableId ?? `table:${String(coordinates.tableIndex)}`,
       identityType,
     ),
-    rowIdentity: contentIdentity(
-      rowId ?? `row:${String(coordinates.rowIndex)}`,
-      identityType,
-    ),
+    rowIdentity: contentIdentity(rowId ?? `row:${String(coordinates.rowIndex)}`, identityType),
     cellIdentity: contentIdentity(
-      cellId ??
-        `cell:${String(coordinates.rowIndex)}:${String(coordinates.cellIndex)}`,
+      cellId ?? `cell:${String(coordinates.rowIndex)}:${String(coordinates.cellIndex)}`,
       identityType,
     ),
     ...coordinates,

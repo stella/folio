@@ -1,10 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { compareContent } from "./content";
-import type {
-  FolioContentIdentitySemantics,
-  FolioContentInputBlock,
-} from "./content-types";
+import type { FolioContentIdentitySemantics, FolioContentInputBlock } from "./content-types";
 
 type BlockOptions = {
   readonly containerId?: string;
@@ -20,9 +17,7 @@ const block = (
   kind: "paragraph",
   text,
   ...(containerId !== undefined && {
-    containerPath: [
-      { kind: "schedule", identity: { type: "authoritative", id: containerId } },
-    ],
+    containerPath: [{ kind: "schedule", identity: { type: "authoritative", id: containerId } }],
   }),
 });
 
@@ -44,9 +39,7 @@ const tableBlock = ({
   identity: { type: "authoritative", id },
   kind: "paragraph",
   text,
-  containerPath: [
-    { kind: "cell", identity: { type: "authoritative", id: containerId } },
-  ],
+  containerPath: [{ kind: "cell", identity: { type: "authoritative", id: containerId } }],
   table: {
     outerTableIdentity: { type: "positional", id: "outer-table-0" },
     tableIdentity: { type: "positional", id: "table-0" },
@@ -272,12 +265,16 @@ describe("neutral move scope", () => {
     const movedFrom = comparison.events.find(({ type }) => type === "movedFrom");
     const movedTo = comparison.events.find(({ type }) => type === "movedTo");
 
-    expect(movedFrom?.type === "movedFrom" ? movedFrom.move.relation.base.block : null).toMatchObject(
-      { identity: baseCandidate.identity, containerPath: baseCandidate.containerPath },
-    );
-    expect(movedTo?.type === "movedTo" ? movedTo.move.relation.revised.block : null).toMatchObject(
-      { identity: revisedCandidate.identity, containerPath: revisedCandidate.containerPath },
-    );
+    expect(
+      movedFrom?.type === "movedFrom" ? movedFrom.move.relation.base.block : null,
+    ).toMatchObject({
+      identity: baseCandidate.identity,
+      containerPath: baseCandidate.containerPath,
+    });
+    expect(movedTo?.type === "movedTo" ? movedTo.move.relation.revised.block : null).toMatchObject({
+      identity: revisedCandidate.identity,
+      containerPath: revisedCandidate.containerPath,
+    });
     expect(movedTo?.type === "movedTo" ? movedTo.move : null).toBe(
       movedFrom?.type === "movedFrom" ? movedFrom.move : null,
     );

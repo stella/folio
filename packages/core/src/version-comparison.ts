@@ -787,21 +787,19 @@ export const compareDocxVersions = async (
     revisedProjection.stories.map(({ handle, snapshot }) => [handle, snapshot] as const),
   );
   let nextMoveGroupId = 1;
-  const pairedStories = pairFolioDocumentStories(baseStories, revisedStories).map(
-    (pair) => {
+  const pairedStories = pairFolioDocumentStories(baseStories, revisedStories).map((pair) => {
     const baseSnapshot = pair.baseStory ? baseSnapshots.get(pair.baseStory) : null;
-    const revisedSnapshot = pair.revisedStory
-      ? revisedSnapshots.get(pair.revisedStory)
-      : null;
-      return Object.freeze({
-        key: Object.freeze({ ...pair }),
-        base: baseSnapshot ? resolvedDocxContentSnapshot(baseSnapshot) : Object.freeze({ blocks: [] }),
-        revised: revisedSnapshot
-          ? resolvedDocxContentSnapshot(revisedSnapshot)
-          : Object.freeze({ blocks: [] }),
-      });
-    },
-  );
+    const revisedSnapshot = pair.revisedStory ? revisedSnapshots.get(pair.revisedStory) : null;
+    return Object.freeze({
+      key: Object.freeze({ ...pair }),
+      base: baseSnapshot
+        ? resolvedDocxContentSnapshot(baseSnapshot)
+        : Object.freeze({ blocks: [] }),
+      revised: revisedSnapshot
+        ? resolvedDocxContentSnapshot(revisedSnapshot)
+        : Object.freeze({ blocks: [] }),
+    });
+  });
   const comparedStories = compareContentStories({
     stories: pairedStories,
     workSession: createContentComparisonWorkSession(),

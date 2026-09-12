@@ -17,10 +17,7 @@
  * one at a time.
  */
 
-import type {
-  ResolvedParagraphStyle,
-  StyleResolver,
-} from "../prosemirror/styles/styleResolver";
+import type { ResolvedParagraphStyle, StyleResolver } from "../prosemirror/styles/styleResolver";
 import { createStyleResolver } from "../prosemirror/styles/styleResolver";
 import type { DocDefaults, Style, StyleDefinitions, TextFormatting } from "../types/document";
 import type { TableParagraphPresentationOverlay } from "./paragraphPresentation";

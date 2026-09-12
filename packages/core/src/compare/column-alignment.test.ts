@@ -100,10 +100,7 @@ describe("bounded table-column alignment", () => {
         columnIndex: step.columnIndex,
       })),
     ).toEqual([{ type: "revisedColumn", blockIds: ["copy"], columnIndex: 0 }]);
-    expect(alignment?.baseBlocks.map(({ identity }) => identity.id)).toEqual([
-      "survivor",
-      "tail",
-    ]);
+    expect(alignment?.baseBlocks.map(({ identity }) => identity.id)).toEqual(["survivor", "tail"]);
     expect(alignment?.revisedBlocks.map(({ identity }) => identity.id)).toEqual([
       "survivor",
       "tail",
@@ -162,10 +159,7 @@ describe("bounded table-column alignment", () => {
         columnIndex: step.columnIndex,
       })),
     ).toEqual([{ type: "baseColumn", blockIds: ["copy"], columnIndex: 0 }]);
-    expect(alignment?.baseBlocks.map(({ identity }) => identity.id)).toEqual([
-      "survivor",
-      "tail",
-    ]);
+    expect(alignment?.baseBlocks.map(({ identity }) => identity.id)).toEqual(["survivor", "tail"]);
     expect(alignment?.revisedBlocks.map(({ identity }) => identity.id)).toEqual([
       "survivor",
       "tail",

@@ -135,10 +135,7 @@ const analyzeSource = (fileName: string, source: string): AnalyzedSource => {
     ) {
       staticSpecifiers.push(node.moduleSpecifier.text);
     }
-    if (
-      ts.isImportEqualsDeclaration(node) &&
-      ts.isExternalModuleReference(node.moduleReference)
-    ) {
+    if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference)) {
       violations.push(violation(sourceFile, node, "CommonJS import assignment is not allowed"));
     }
     if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
@@ -299,7 +296,7 @@ describe("neutral comparison dependency boundary", () => {
       resolve(COMPARE_DIRECTORY, "synthetic.ts"),
       [
         "type Document = { readonly performance: string };",
-        "const record = { document: \"Math.random()\" };",
+        'const record = { document: "Math.random()" };',
         "const read = (value: Document): string => value.performance;",
         "void record;",
         "void read;",

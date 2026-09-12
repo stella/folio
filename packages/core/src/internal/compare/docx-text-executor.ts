@@ -100,9 +100,7 @@ const hasPendingRunPropertyChange = (
   propertyChangeType !== undefined &&
   selectRunFormattingCarrierRepresentations({ doc, from, to }).some(({ node }) => {
     const existing = node.marks.find((mark) => mark.type === propertyChangeType);
-    return existing
-      ? expectRunPropertyChangeMarkAttrs(existing).changes.length > 0
-      : false;
+    return existing ? expectRunPropertyChangeMarkAttrs(existing).changes.length > 0 : false;
   });
 
 const exactReplacementSteps = ({

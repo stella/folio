@@ -50,9 +50,7 @@ const resolveParagraphStyleFontFamily = (
   styleId: string | undefined,
   styleResolver: ParagraphDefaultFormattingResolver,
 ): TextFormatting["fontFamily"] | undefined => {
-  let style = styleId
-    ? styleResolver.getStyle(styleId)
-    : styleResolver.getDefaultParagraphStyle();
+  let style = styleId ? styleResolver.getStyle(styleId) : styleResolver.getDefaultParagraphStyle();
   const visited = new Set<string>();
   const styleChain: TextFormatting[] = [];
   while (style?.type === "paragraph" && !visited.has(style.styleId)) {
@@ -239,9 +237,7 @@ export const resolveEffectiveRunPresentation = (
     }
     return undefined;
   })();
-  let ordinaryRunStyleFormatting = inherited.formatting
-    ? { ...inherited.formatting }
-    : {};
+  let ordinaryRunStyleFormatting = inherited.formatting ? { ...inherited.formatting } : {};
   if (styleId) {
     ordinaryRunStyleFormatting =
       mergeTextFormatting(inherited.formatting, characterStyleFormatting) ?? {};

@@ -1305,7 +1305,9 @@ describe("compareDocxVersions: neutral split and merge projection", () => {
           text: controlledFirstRelation.segments.at(0)?.text,
         }),
       );
-      expect(diffCalls.filter((call) => call === `${baseText}\u0000${revisedText}`)).toHaveLength(1);
+      expect(diffCalls.filter((call) => call === `${baseText}\u0000${revisedText}`)).toHaveLength(
+        1,
+      );
       expect(diffCalls).toEqual(diffCallsAfterComparison);
 
       const version = await compareDocxVersions(base, revised);

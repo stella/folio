@@ -17,9 +17,7 @@ const blockHasMeaningfulContent = (block: Paragraph | Table): boolean => {
   return block.content.some(paragraphContentHasMeaningfulContent);
 };
 
-const paragraphContentHasMeaningfulContent = (
-  content: Paragraph["content"][number],
-): boolean => {
+const paragraphContentHasMeaningfulContent = (content: Paragraph["content"][number]): boolean => {
   if (content.type === "run") return content.content.length > 0;
   if (content.type === "hyperlink") {
     return content.children.some(paragraphContentHasMeaningfulContent);
@@ -86,27 +84,16 @@ export const projectTableCellRowSpans = (
         continue;
       }
       if (cell.vMerge === "continue") {
-        if (
-          cell.startRow === undefined ||
-          rowWouldBeEmpty ||
-          cell.hasMeaningfulContent
-        ) {
+        if (cell.startRow === undefined || rowWouldBeEmpty || cell.hasMeaningfulContent) {
           result.set(key, { rowSpan: 1, skip: false });
-          if (
-            (rowWouldBeEmpty || cell.hasMeaningfulContent) &&
-            cell.startRow !== undefined
-          ) {
-            const restartCell = result.get(
-              `${String(cell.startRow)}-${String(cell.colIndex)}`,
-            );
+          if ((rowWouldBeEmpty || cell.hasMeaningfulContent) && cell.startRow !== undefined) {
+            const restartCell = result.get(`${String(cell.startRow)}-${String(cell.colIndex)}`);
             if (restartCell) restartCell.preserveVMergeRestart = true;
             activeMerges.delete(cell.colIndex);
           }
           continue;
         }
-        const startCell = result.get(
-          `${String(cell.startRow)}-${String(cell.colIndex)}`,
-        );
+        const startCell = result.get(`${String(cell.startRow)}-${String(cell.colIndex)}`);
         if (startCell) {
           startCell.rowSpan++;
           startCell.continuationCells ??= [];

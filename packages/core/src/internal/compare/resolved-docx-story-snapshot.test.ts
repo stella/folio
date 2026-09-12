@@ -1,10 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import {
-  numberingReferenceKeysOf,
-  sourceDocumentOf,
-  storyTablesOf,
-} from "../../ai-edits/snapshot";
+import { numberingReferenceKeysOf, sourceDocumentOf, storyTablesOf } from "../../ai-edits/snapshot";
 import type { FolioContentPropertySet } from "../../compare/content-types";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import type { Paragraph, Table, TableCell } from "../../types/document";

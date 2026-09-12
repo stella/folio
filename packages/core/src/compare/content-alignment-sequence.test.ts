@@ -75,9 +75,7 @@ const tableSequence = (
 
 const pairIds = (steps: ReturnType<typeof alignFolioContentStructure>): [string, string][] =>
   steps.flatMap((step) =>
-    step.type === "pair"
-      ? [[step.baseBlock.identity.id, step.revisedBlock.identity.id]]
-      : [],
+    step.type === "pair" ? [[step.baseBlock.identity.id, step.revisedBlock.identity.id]] : [],
   );
 
 describe("bounded table sequence alignment", () => {
@@ -467,12 +465,7 @@ describe("bounded table sequence alignment", () => {
       revisedBlocks: [keptRevised, between, inserted, terminalRevised],
     });
 
-    expect(steps.map(({ type }) => type)).toEqual([
-      "pair",
-      "revisedOnly",
-      "revisedTable",
-      "pair",
-    ]);
+    expect(steps.map(({ type }) => type)).toEqual(["pair", "revisedOnly", "revisedTable", "pair"]);
     expect(pairIds(steps)).toEqual([
       ["kept-table", "kept-table"],
       ["terminal-base", "terminal-revised"],
