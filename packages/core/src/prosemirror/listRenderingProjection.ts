@@ -16,13 +16,13 @@ type CompatibleParagraphAttr<Field extends ListRenderingPresentationField> = {
 }[keyof ParagraphAttrs];
 
 type ListRenderingFieldDisposition = {
-  [Field in keyof ListRendering]: Field extends ListRenderingNumPrField
-    ? { readonly type: "numPr" }
-    : {
-        readonly type: "attr";
-        readonly attr: CompatibleParagraphAttr<Field>;
-        readonly presence: "defined" | "truthy";
-      };
+  [Field in ListRenderingNumPrField]: { readonly type: "numPr" };
+} & {
+  [Field in ListRenderingPresentationField]: {
+    readonly type: "attr";
+    readonly attr: CompatibleParagraphAttr<Field>;
+    readonly presence: "defined" | "truthy";
+  };
 };
 
 /**

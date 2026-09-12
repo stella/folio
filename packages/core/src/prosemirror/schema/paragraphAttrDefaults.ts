@@ -2,7 +2,7 @@ import type { ParagraphFormatting } from "../../types/document";
 import type { ParagraphAttrs } from "./nodes";
 
 type ParagraphAttrDefaults = Partial<{
-  readonly [Key in keyof ParagraphAttrs]: ParagraphAttrs[Key] | null;
+  readonly [Key in keyof ParagraphAttrs]: ParagraphAttrs[Key] | null | undefined;
 }>;
 
 const ownKeys = <const Value extends Readonly<Record<string, unknown>>>(
