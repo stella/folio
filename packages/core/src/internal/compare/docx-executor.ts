@@ -896,11 +896,15 @@ export const preflightDocxComparisonProgram = ({
       case "transitionTerminalParagraphs": {
         const chainStart =
           instruction.chainStart === null ? null : resolveSource(instruction.chainStart);
-        const members = instruction.sourceMembers.map(({ source, kind }) => ({
+        const resolveMember = ({ source, kind }: (typeof instruction.sourceMembers)[number]) => ({
           source: resolveSource(source),
           operand: source,
           kind,
-        }));
+        });
+        const members = Object.freeze([
+          resolveMember(instruction.sourceMembers[0]),
+          ...instruction.sourceMembers.slice(1).map(resolveMember),
+        ] as const);
         if (chainStart?.type === "unsupported") {
           issues.push(
             issue(
@@ -924,15 +928,19 @@ export const preflightDocxComparisonProgram = ({
           );
           break;
         }
-        const resolvedMembers = members.map(({ source, kind }) => {
+        const requireResolvedMember = ({ source, kind }: (typeof members)[number]) => {
           if (source.type !== "ready") {
             return panic("A terminal transition retained an unresolved source member");
           }
           return Object.freeze({ source: source.block, kind });
-        });
-        const first = resolvedMembers.at(0);
+        };
+        const resolvedMembers = Object.freeze([
+          requireResolvedMember(members[0]),
+          ...members.slice(1).map(requireResolvedMember),
+        ] as const);
+        const first = resolvedMembers[0];
         const last = resolvedMembers.at(-1);
-        if (!first || !last) return panic("A terminal transition has no source member");
+        if (!last) return panic("A terminal transition has no source member");
         const resolvedChainStart = chainStart?.type === "ready" ? chainStart.block : null;
         const sourceTables = instruction.sourceTables.map(({ operation }) => {
           const payload = resolvedDocxTableStructureOperandPayload(operation, comparison);
@@ -964,20 +972,23 @@ export const preflightDocxComparisonProgram = ({
             operand: payload.source,
           });
         });
-        const rejectedTable = sourceTables.find(({ type }) => type !== "ready");
-        if (rejectedTable) {
+        let rejectedSourceTable = false;
+        for (const sourceTable of sourceTables) {
+          if (sourceTable.type === "ready") continue;
           issues.push(
             issue(
               instruction,
               instructionIndex,
-              rejectedTable.type === "unsupported"
-                ? rejectedTable.reason
+              sourceTable.type === "unsupported"
+                ? sourceTable.reason
                 : "unrepresentable-paragraph-boundary",
-              sourceBlockId(rejectedTable.operand),
+              sourceBlockId(sourceTable.operand),
             ),
           );
+          rejectedSourceTable = true;
           break;
         }
+        if (rejectedSourceTable) break;
         const expectedParagraphs = [
           ...(resolvedChainStart === null ? [] : [resolvedChainStart]),
           ...resolvedMembers.map(({ source }) => source),
@@ -1097,7 +1108,7 @@ export const preflightDocxComparisonProgram = ({
           Object.freeze({
             type: "transitionTerminalParagraphs",
             chainStart: resolvedChainStart,
-            sourceMembers: Object.freeze([first, ...resolvedMembers.slice(1)]),
+            sourceMembers: resolvedMembers,
             semantic: instruction,
             originalIndex: instructionIndex,
             schedule: Object.freeze({

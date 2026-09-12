@@ -7,6 +7,7 @@ import type {
 } from "../../ai-edits/types";
 import type { TextFormatting } from "../../types/document";
 import type {
+  FolioContentComparisonEvent,
   FolioContentFormattingChange,
   FolioContentRangePairRelation,
   FolioContentStructuralChange,
@@ -1483,15 +1484,16 @@ const compileInstruction = (
     case "transitionTerminalParagraphs": {
       const chainStart =
         input.chainStart === null ? null : ownSourceOperand(input.chainStart, sourceSnapshot);
-      const sourceMembers = input.sourceMembers.map((member) =>
+      const ownSourceMember = (member: (typeof input.sourceMembers)[number]) =>
         Object.freeze({
           source: ownSourceOperand(member.source, sourceSnapshot),
           kind: member.kind,
-        }),
-      );
-      const first = sourceMembers.at(0);
+        });
+      const sourceMembers = Object.freeze([
+        ownSourceMember(input.sourceMembers[0]),
+        ...input.sourceMembers.slice(1).map(ownSourceMember),
+      ] as const satisfies DocxComparisonTerminalSourceMemberGroup);
       const last = sourceMembers.at(-1);
-      if (!first) return panic("A terminal transition has no source member");
       if (!last) return panic("A terminal transition lost its physical carrier");
       for (const { operation } of input.sourceTables) {
         const table = resolvedDocxTableStructureOperandPayload(operation, comparison);
@@ -1504,7 +1506,7 @@ const compileInstruction = (
       return Object.freeze({
         type: "transitionTerminalParagraphs",
         chainStart,
-        sourceMembers: Object.freeze([first, ...sourceMembers.slice(1)]),
+        sourceMembers,
         sourceTables: Object.freeze([...input.sourceTables]),
         targetCarrier: ownParagraphTarget(input.targetCarrier, comparison, targetSnapshot),
         targetCarrierKind: input.targetCarrierKind,
