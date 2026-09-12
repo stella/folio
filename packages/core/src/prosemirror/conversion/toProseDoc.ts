@@ -2784,7 +2784,7 @@ function assertSourceContainerHasNoPageBreakRun(
   });
 }
 
-/** A leading page-break run in a cell advances the whole row in Word. This
+/** A leading page-break run in a cell advances the whole row during pagination. This
  * narrow shape has a lossless PM representation and a row-wide layout
  * projection; interior breaks still require table-fragment ownership. */
 function hasSingleLeadingTableCellPageBreak(content: BlockContent[]): boolean {

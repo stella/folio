@@ -2382,6 +2382,41 @@ type SplitParagraphAtPageBreaksOptions = {
   splitPageBreakAndParagraphMark: boolean;
 };
 
+const runIsZeroWidthBoundaryMarker = (run: Run): boolean => {
+  switch (run.kind) {
+    case "text":
+      return run.text.length === 0;
+    case "field":
+      return (run.fallback ?? "").length === 0;
+    case "renderedPageBreak":
+      return true;
+    case "image":
+    case "lineBreak":
+    case "math":
+    case "tab":
+      return false;
+    default: {
+      const unsupported: never = run;
+      return unsupported;
+    }
+  }
+};
+
+/** Decide leading-break eligibility from the exact projected runs consumed by layout. */
+const hasSingleLeadingProjectedPageBreak = (
+  runs: readonly Run[],
+  pageBreaks: readonly PageBreakRunProjection[],
+): boolean => {
+  if (pageBreaks.length !== 1) {
+    return false;
+  }
+  const partitioned = partitionRunsAtPageBreaks(runs, pageBreaks);
+  if (partitioned.type === "overlap") {
+    return false;
+  }
+  return partitioned.partitions[0]?.before.every(runIsZeroWidthBoundaryMarker) === true;
+};
+
 function splitParagraphAtPageBreaks({
   pageBreaks,
   paragraph,
@@ -2664,6 +2699,11 @@ function extractCellBorders(
 /**
  * Convert a table cell node.
  */
+type ConvertedTableCell = {
+  cell: TableCell;
+  breakBefore?: "page";
+};
+
 function convertTableCell(
   node: PMNode,
   startPos: number,
@@ -2674,14 +2714,30 @@ function convertTableCell(
     left?: number;
     right?: number;
   },
-): TableCell {
+): ConvertedTableCell {
   const blocks: FlowBlock[] = [];
   let offset = startPos + 1; // +1 for opening tag
+  const authoredPageBreakPosition = options.firstPageBreakRunPosition(node);
+  const singleParagraph =
+    node.childCount === 1 && node.firstChild?.type.name === "paragraph"
+      ? node.firstChild
+      : undefined;
+  if (authoredPageBreakPosition !== undefined && singleParagraph === undefined) {
+    panic(
+      `An explicit page-break run at ${String(authoredPageBreakPosition)} cannot be projected inside a table cell`,
+    );
+  }
+  const pageBreaks: PageBreakRunProjection[] = [];
 
   // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
   node.forEach((child) => {
     if (child.type.name === "paragraph") {
-      const block = convertParagraph(child, offset, options);
+      const block = convertParagraph(
+        child,
+        offset,
+        options,
+        child === singleParagraph ? pageBreaks : undefined,
+      );
       blocks.push(block);
     } else if (child.type.name === "table") {
       blocks.push(convertTable(child, offset, options));
@@ -2763,7 +2819,19 @@ function convertTableCell(
   if (attrs.noWrap) {
     cell.noWrap = true;
   }
-  return cell;
+  if (authoredPageBreakPosition === undefined || pageBreaks.length === 0) {
+    return { cell };
+  }
+  const paragraph = blocks.at(0);
+  if (
+    paragraph?.kind !== "paragraph" ||
+    !hasSingleLeadingProjectedPageBreak(paragraph.runs, pageBreaks)
+  ) {
+    panic(
+      `An explicit page-break run at ${String(authoredPageBreakPosition)} cannot be projected inside a table cell`,
+    );
+  }
+  return { cell, breakBefore: "page" };
 }
 
 /**
@@ -2787,16 +2855,11 @@ function convertTableRow(
   // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
   node.forEach((child) => {
     if (child.type.name === "tableCell" || child.type.name === "tableHeader") {
-      const pageBreakPosition = options.firstPageBreakRunPosition(child);
-      if (pageBreakPosition !== undefined) {
-        if (!hasSingleLeadingTableCellPageBreak(child)) {
-          panic(
-            `An explicit page-break run at ${String(pageBreakPosition)} cannot be projected inside a table cell`,
-          );
-        }
-        breakBefore = "page";
+      const converted = convertTableCell(child, offset, options, tableCellMargins);
+      if (converted.breakBefore !== undefined) {
+        breakBefore = converted.breakBefore;
       }
-      cells.push(convertTableCell(child, offset, options, tableCellMargins));
+      cells.push(converted.cell);
     }
     offset += child.nodeSize;
   });
@@ -2837,33 +2900,6 @@ function convertTableRow(
   }
   return row;
 }
-
-const hasSingleLeadingParagraphPageBreak = (paragraph: PMNode): boolean => {
-  let pageBreaks = 0;
-  let contentBeforeBreak = false;
-  paragraph.descendants((child) => {
-    if (child.type.name === "renderedPageBreak" || child.type.name === "bookmarkBoundary") {
-      return false;
-    }
-    if (child.type.name === "pageBreakRun") {
-      pageBreaks += 1;
-      return false;
-    }
-    if (child.childCount > 0) {
-      return true;
-    }
-    if (pageBreaks === 0) {
-      contentBeforeBreak = true;
-    }
-    return false;
-  });
-  return !contentBeforeBreak && pageBreaks === 1;
-};
-
-const hasSingleLeadingTableCellPageBreak = (cell: PMNode): boolean => {
-  const paragraph = cell.childCount === 1 ? cell.firstChild : undefined;
-  return paragraph?.type.name === "paragraph" && hasSingleLeadingParagraphPageBreak(paragraph);
-};
 
 /**
  * Convert a table node to a TableBlock.
@@ -3430,18 +3466,19 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
     pos: number,
     stripLeadingLineBreak = false,
   ): void => {
-    if (opts.firstPageBreakRunPosition(node) !== undefined) {
+    const pageBreaks: PageBreakRunProjection[] = [];
+    const paragraph = convertParagraph(node, pos, opts, pageBreaks);
+    if (pageBreaks.length > 0) {
       const disposition = pageBreakRunParagraphProjectionDisposition(node);
       if (
         disposition.status === "unsupported" &&
-        (disposition.reason === "textBoxAnchor" || !hasSingleLeadingParagraphPageBreak(node))
+        (disposition.reason === "textBoxAnchor" ||
+          !hasSingleLeadingProjectedPageBreak(paragraph.runs, pageBreaks))
       ) {
         panic(disposition.message);
       }
     }
 
-    const pageBreaks: PageBreakRunProjection[] = [];
-    const paragraph = convertParagraph(node, pos, opts, pageBreaks);
     if (stripLeadingLineBreak && paragraph.runs.at(0)?.kind === "lineBreak") {
       paragraph.runs.shift();
     }

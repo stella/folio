@@ -554,12 +554,12 @@ function layoutDocumentPass(
       block,
       pageNumberBefore: pageBeforeBlockLayout,
       pageNumberAfter: paginator.getCurrentState().page.number,
-      previousPage: paginator.pages[pageBeforeBlockLayout - 1],
+      previousPage: paginator.states[pageBeforeBlockLayout - 1]?.page,
     });
   }
 
   // Ensure at least one page exists
-  if (paginator.pages.length === 0) {
+  if (paginator.states.length === 0) {
     paginator.getCurrentState();
   }
 
@@ -1842,7 +1842,7 @@ function handleSectionBreak(
       // break before any content has no sheet to share, so it defers (the first
       // content then opens a page with the new geometry) rather than stranding
       // a blank leading page.
-      const currentPage = paginator.pages.at(-1);
+      const currentPage = paginator.states.at(-1)?.page;
       const nextSize = nextSectionConfig.pageSize;
       const pageSizeChanges =
         currentPage != null &&
