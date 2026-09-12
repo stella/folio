@@ -114,7 +114,7 @@ function serializeColorElement(color: ExhaustiveColorValue | undefined): string 
 /**
  * Serialize shading properties (w:shd)
  */
-function serializeShading(shading: ExhaustiveShadingProperties | undefined): string {
+export function serializeShading(shading: ExhaustiveShadingProperties | undefined): string {
   if (!shading) {
     return "";
   }

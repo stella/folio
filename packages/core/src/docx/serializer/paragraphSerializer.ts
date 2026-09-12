@@ -31,15 +31,12 @@ import type {
   ParagraphPropertyChange,
   SectionProperties,
   SdtProperties,
-  TabStop,
-  ShadingProperties,
   TextFormatting,
 } from "../../types/document";
 import { PARAGRAPH_MARK_CHANGE_KINDS } from "@stll/docx-core/model";
 import { panic } from "better-result";
-import { isValidHexColor } from "../../utils/colorResolver";
+import { modelParagraphFormattingEmission } from "../../internal/paragraphFormattingSerialization";
 import { canonicalJson } from "../../utils/canonicalJson";
-import { numPrEqual } from "../numberingParser";
 import { getParagraphPropertySource } from "../paragraphPropertySource";
 import { reconcileRawSdtPr } from "../sdtPropertiesPatch";
 import { DATE_UTC_ATTRIBUTE, DATE_UTC_NAMESPACE_URI } from "../trackedChangeInfo";
@@ -55,7 +52,6 @@ import {
   type XmlElement,
   type XmlNamespaceScope,
 } from "../xmlParser";
-import { serializeBorder } from "./borderSerializer";
 // oxlint-disable-next-line import/no-cycle -- OOXML model is mutually recursive: paragraphs hold runs, shape-textbox runs hold paragraphs
 import { serializeRun } from "./runSerializer";
 import { serializeSectionProperties } from "./sectionPropertiesSerializer";
@@ -64,327 +60,7 @@ import {
   serializeTrackedChangeAttributes,
   trackedChangeAttributeRecord,
 } from "./trackedChangeAttributes";
-import { escapeXml, intAttr, isSingleWellFormedElement } from "./xmlUtils";
-
-// ============================================================================
-// BORDER SERIALIZATION
-// ============================================================================
-
-/**
- * Serialize paragraph borders (w:pBdr)
- */
-function serializeParagraphBorders(borders: ParagraphFormatting["borders"]): string {
-  if (!borders) {
-    return "";
-  }
-
-  const parts: string[] = [];
-
-  if (borders.top) {
-    const topXml = serializeBorder(borders.top, "top");
-    if (topXml) {
-      parts.push(topXml);
-    }
-  }
-
-  if (borders.left) {
-    const leftXml = serializeBorder(borders.left, "left");
-    if (leftXml) {
-      parts.push(leftXml);
-    }
-  }
-
-  if (borders.bottom) {
-    const bottomXml = serializeBorder(borders.bottom, "bottom");
-    if (bottomXml) {
-      parts.push(bottomXml);
-    }
-  }
-
-  if (borders.right) {
-    const rightXml = serializeBorder(borders.right, "right");
-    if (rightXml) {
-      parts.push(rightXml);
-    }
-  }
-
-  if (borders.between) {
-    const betweenXml = serializeBorder(borders.between, "between");
-    if (betweenXml) {
-      parts.push(betweenXml);
-    }
-  }
-
-  if (borders.bar) {
-    const barXml = serializeBorder(borders.bar, "bar");
-    if (barXml) {
-      parts.push(barXml);
-    }
-  }
-
-  if (parts.length === 0) {
-    return "";
-  }
-
-  return `<w:pBdr>${parts.join("")}</w:pBdr>`;
-}
-
-// ============================================================================
-// SHADING SERIALIZATION
-// ============================================================================
-
-/**
- * Serialize shading properties (w:shd)
- */
-function serializeShading(shading: ShadingProperties | undefined): string {
-  if (!shading) {
-    return "";
-  }
-
-  const attrs: string[] = [];
-
-  // Pattern/val
-  if (shading.pattern) {
-    attrs.push(`w:val="${escapeXml(shading.pattern)}"`);
-  } else {
-    attrs.push('w:val="clear"');
-  }
-
-  // Color (pattern color)
-  if (shading.color?.rgb && isValidHexColor(shading.color.rgb)) {
-    attrs.push(`w:color="${escapeXml(shading.color.rgb)}"`);
-  } else if (shading.color?.auto) {
-    attrs.push('w:color="auto"');
-  }
-
-  // Fill (background color)
-  if (shading.fill?.rgb && isValidHexColor(shading.fill.rgb)) {
-    attrs.push(`w:fill="${escapeXml(shading.fill.rgb)}"`);
-  } else if (shading.fill?.auto) {
-    attrs.push('w:fill="auto"');
-  }
-
-  // Theme fill
-  if (shading.fill?.themeColor) {
-    attrs.push(`w:themeFill="${escapeXml(shading.fill.themeColor)}"`);
-  }
-
-  if (shading.fill?.themeTint) {
-    attrs.push(`w:themeFillTint="${escapeXml(shading.fill.themeTint)}"`);
-  }
-
-  if (shading.fill?.themeShade) {
-    attrs.push(`w:themeFillShade="${escapeXml(shading.fill.themeShade)}"`);
-  }
-
-  if (attrs.length === 0) {
-    return "";
-  }
-
-  return `<w:shd ${attrs.join(" ")}/>`;
-}
-
-// ============================================================================
-// TAB STOPS SERIALIZATION
-// ============================================================================
-
-/**
- * Serialize tab stops (w:tabs)
- */
-function serializeTabStops(tabs: TabStop[] | undefined): string {
-  if (!tabs || tabs.length === 0) {
-    return "";
-  }
-
-  const tabElements = tabs.map((tab) => {
-    const attrs: string[] = [`w:val="${tab.alignment}"`, `w:pos="${intAttr(tab.position)}"`];
-
-    if (tab.leader && tab.leader !== "none") {
-      attrs.push(`w:leader="${tab.leader}"`);
-    }
-
-    return `<w:tab ${attrs.join(" ")}/>`;
-  });
-
-  return `<w:tabs>${tabElements.join("")}</w:tabs>`;
-}
-
-// ============================================================================
-// SPACING SERIALIZATION
-// ============================================================================
-
-/**
- * Serialize spacing properties (w:spacing)
- */
-function serializeSpacing(formatting: ParagraphFormatting): string {
-  const attrs: string[] = [];
-
-  if (formatting.spaceBefore !== undefined) {
-    attrs.push(`w:before="${intAttr(formatting.spaceBefore)}"`);
-  }
-
-  if (formatting.spaceAfter !== undefined) {
-    attrs.push(`w:after="${intAttr(formatting.spaceAfter)}"`);
-  }
-
-  if (formatting.lineSpacing !== undefined) {
-    attrs.push(`w:line="${intAttr(formatting.lineSpacing)}"`);
-  }
-
-  if (formatting.lineSpacingRule) {
-    attrs.push(`w:lineRule="${formatting.lineSpacingRule}"`);
-  }
-
-  if (formatting.beforeAutospacing !== undefined) {
-    attrs.push(`w:beforeAutospacing="${formatting.beforeAutospacing ? "1" : "0"}"`);
-  }
-
-  if (formatting.afterAutospacing !== undefined) {
-    attrs.push(`w:afterAutospacing="${formatting.afterAutospacing ? "1" : "0"}"`);
-  }
-
-  if (attrs.length === 0) {
-    return "";
-  }
-
-  return `<w:spacing ${attrs.join(" ")}/>`;
-}
-
-// ============================================================================
-// INDENTATION SERIALIZATION
-// ============================================================================
-
-/**
- * Serialize indentation properties (w:ind)
- */
-function serializeIndentation(formatting: ParagraphFormatting): string {
-  const attrs: string[] = [];
-
-  if (formatting.indentLeft !== undefined) {
-    attrs.push(`w:left="${intAttr(formatting.indentLeft)}"`);
-  }
-
-  if (formatting.indentRight !== undefined) {
-    attrs.push(`w:right="${intAttr(formatting.indentRight)}"`);
-  }
-
-  if (formatting.indentFirstLine !== undefined) {
-    if (formatting.hangingIndent) {
-      // Hanging indent is stored as positive value but uses w:hanging attribute
-      attrs.push(`w:hanging="${intAttr(Math.abs(formatting.indentFirstLine))}"`);
-    } else {
-      attrs.push(`w:firstLine="${intAttr(formatting.indentFirstLine)}"`);
-    }
-  }
-
-  if (attrs.length === 0) {
-    return "";
-  }
-
-  return `<w:ind ${attrs.join(" ")}/>`;
-}
-
-// ============================================================================
-// NUMBERING SERIALIZATION
-// ============================================================================
-
-/**
- * Serialize numbering properties (w:numPr)
- */
-function serializeNumbering(numPr: ParagraphFormatting["numPr"]): string {
-  if (!numPr) {
-    return "";
-  }
-
-  const parts: string[] = [];
-
-  if (numPr.ilvl !== undefined) {
-    parts.push(`<w:ilvl w:val="${intAttr(numPr.ilvl)}"/>`);
-  }
-
-  if (numPr.numId !== undefined) {
-    parts.push(`<w:numId w:val="${intAttr(numPr.numId)}"/>`);
-  }
-
-  if (parts.length === 0) {
-    return "";
-  }
-
-  return `<w:numPr>${parts.join("")}</w:numPr>`;
-}
-
-// ============================================================================
-// FRAME PROPERTIES SERIALIZATION
-// ============================================================================
-
-/**
- * Serialize frame properties (w:framePr)
- */
-function serializeFrameProperties(frame: ParagraphFormatting["frame"]): string {
-  if (!frame) {
-    return "";
-  }
-
-  const attrs: string[] = [];
-
-  if (frame.dropCap) {
-    attrs.push(`w:dropCap="${frame.dropCap}"`);
-  }
-
-  if (frame.lines !== undefined) {
-    attrs.push(`w:lines="${intAttr(frame.lines)}"`);
-  }
-
-  if (frame.width !== undefined) {
-    attrs.push(`w:w="${intAttr(frame.width)}"`);
-  }
-
-  if (frame.height !== undefined) {
-    attrs.push(`w:h="${intAttr(frame.height)}"`);
-  }
-
-  if (frame.hSpace !== undefined) {
-    attrs.push(`w:hSpace="${intAttr(frame.hSpace)}"`);
-  }
-
-  if (frame.vSpace !== undefined) {
-    attrs.push(`w:vSpace="${intAttr(frame.vSpace)}"`);
-  }
-
-  if (frame.hAnchor) {
-    attrs.push(`w:hAnchor="${frame.hAnchor}"`);
-  }
-
-  if (frame.vAnchor) {
-    attrs.push(`w:vAnchor="${frame.vAnchor}"`);
-  }
-
-  if (frame.x !== undefined) {
-    attrs.push(`w:x="${frame.x}"`);
-  }
-
-  if (frame.y !== undefined) {
-    attrs.push(`w:y="${frame.y}"`);
-  }
-
-  if (frame.xAlign) {
-    attrs.push(`w:xAlign="${frame.xAlign}"`);
-  }
-
-  if (frame.yAlign) {
-    attrs.push(`w:yAlign="${frame.yAlign}"`);
-  }
-
-  if (frame.wrap) {
-    attrs.push(`w:wrap="${frame.wrap}"`);
-  }
-
-  if (attrs.length === 0) {
-    return "";
-  }
-
-  return `<w:framePr ${attrs.join(" ")}/>`;
-}
+import { escapeXml, isSingleWellFormedElement } from "./xmlUtils";
 
 // ============================================================================
 // PARAGRAPH PROPERTIES SERIALIZATION
@@ -779,6 +455,7 @@ const serializeParagraphFormattingWithOptions = (
     sectionProperties,
   }: SerializeParagraphFormattingOptions = {},
 ): string => {
+  const modeledFormatting = modelParagraphFormattingEmission(formatting);
   // Suggested editor-only history is stripped before it reaches the document
   // model, so every entry here would serialize as a sibling w:pPrChange.
   const serializablePropertyChangeCount = propertyChanges?.length ?? 0;
@@ -814,136 +491,16 @@ const serializeParagraphFormattingWithOptions = (
   }
 
   const parts: string[] = [];
-
-  // Emit a boolean toggle: a bare element for true, `w:val="0"` for an explicit
-  // false (which disables a value inherited from a style, so the override
-  // survives round-trip), and nothing when absent ("inherit").
-  const pushToggle = (name: string, value: boolean | undefined): void => {
-    if (value === true) {
-      parts.push(`<w:${name}/>`);
-    } else if (value === false) {
-      parts.push(`<w:${name} w:val="0"/>`);
-    }
-  };
-
-  if (formatting) {
-    // Style reference (must be first)
-    if (formatting.styleId) {
-      parts.push(`<w:pStyle w:val="${escapeXml(formatting.styleId)}"/>`);
-    }
-
-    // `CT_PPrBase` is a SEQUENCE, so every child below is written where that
-    // sequence puts it, not where it reads best: a validating consumer that
-    // meets one out of order reports the NEXT element as unexpected and
-    // refuses the part. `contextualSpacing` and `snapToGrid` sit after the
-    // indentation and the spacing, several elements past `numPr`, which is
-    // what an early one made unexpected.
-    pushToggle("keepNext", formatting.keepNext);
-    pushToggle("keepLines", formatting.keepLines);
-    pushToggle("pageBreakBefore", formatting.pageBreakBefore);
-
-    // Frame properties
-    const frameXml = serializeFrameProperties(formatting.frame);
-    if (frameXml) {
-      parts.push(frameXml);
-    }
-
-    // Widow control
-    pushToggle("widowControl", formatting.widowControl);
-
-    // Numbering. Skip numPr that still equals its style-sourced value (see
-    // ParagraphFormatting.numPrFromStyle) — the parser materialized it from
-    // the style and writing it back as direct formatting would flip Word's
-    // level-indent precedence on the saved file. Guards the direct
-    // serialize-a-parsed-Document path; the PM save path already drops it
-    // in fromProseDoc.
-    const styleSourcedNumPr =
-      formatting.numPrFromStyle != null && numPrEqual(formatting.numPr, formatting.numPrFromStyle);
-    const numPrXml = styleSourcedNumPr ? "" : serializeNumbering(formatting.numPr);
-    if (numPrXml) {
-      parts.push(numPrXml);
-    }
-
-    // Suppress line numbers precedes borders in CT_PPrBase.
-    pushToggle("suppressLineNumbers", formatting.suppressLineNumbers);
-
-    // Paragraph borders
-    const bordersXml = serializeParagraphBorders(formatting.borders);
-    if (bordersXml) {
-      parts.push(bordersXml);
-    }
-
-    // Shading
-    const shadingXml = serializeShading(formatting.shading);
-    if (shadingXml) {
-      parts.push(shadingXml);
-    }
-
-    // Tabs
-    const tabsXml = serializeTabStops(formatting.tabs);
-    if (tabsXml) {
-      parts.push(tabsXml);
-    }
-
-    // Auto hyphens
-    pushToggle("suppressAutoHyphens", formatting.suppressAutoHyphens);
-    pushToggle("kinsoku", formatting.kinsoku);
-    pushToggle("overflowPunct", formatting.overflowPunctuation);
-
-    // Text direction (bidi)
-    pushToggle("bidi", formatting.bidi);
-
-    pushToggle("snapToGrid", formatting.snapToGrid);
-
-    // Spacing
-    const spacingXml = serializeSpacing(formatting);
-    if (spacingXml) {
-      parts.push(spacingXml);
-    }
-
-    // Indentation
-    const indXml = serializeIndentation(formatting);
-    if (indXml) {
-      parts.push(indXml);
-    }
-
-    pushToggle("contextualSpacing", formatting.contextualSpacing);
-
-    // Justification
-    if (formatting.alignment) {
-      parts.push(`<w:jc w:val="${formatting.alignment}"/>`);
-    }
-
-    // Outline level
-    if (formatting.outlineLevel !== undefined) {
-      parts.push(`<w:outlineLvl w:val="${formatting.outlineLevel}"/>`);
-    }
-
-    // Run properties (default run formatting for paragraph)
-    // Round-trip `<w:specVanish/>` (run-in heading marker, ECMA-376
-    // §17.3.1.32) by injecting it into the paragraph mark's rPr.
-    // The parser populates `formatting.runInWithNext` from this
-    // element; the layout engine consumes it via toFlowBlocks'
-    // run-in merge. Without serializing it back, saving a doc
-    // through Folio loses the soft paragraph break and the heading
-    // becomes a normal separate paragraph in Word.
-    //
-    // EG_ParaRPrTrackChanges (ECMA-376 §17.13.5 / wml.xsd:1837) puts
-    // <w:ins>/<w:del> FIRST inside the paragraph mark's rPr; strict
-    // readers reject other orderings.
-    if (paragraphMarkChange || formatting.runProperties || formatting.runInWithNext) {
-      const pPrMarkXml = paragraphMarkChange ? paragraphMarkXml : "";
-      const innerRPr = formatting.runProperties
-        ? extractRPrInner(serializeTextFormatting(formatting.runProperties))
-        : "";
-      const specVanishXml = formatting.runInWithNext ? "<w:specVanish/>" : "";
-      const fullInner = `${pPrMarkXml}${innerRPr}${specVanishXml}`;
-      if (fullInner.length > 0) {
-        parts.push(`<w:rPr>${fullInner}</w:rPr>`);
-      }
-    }
-  } else if (paragraphMarkChange) {
-    parts.push(`<w:rPr>${paragraphMarkXml}</w:rPr>`);
+  if (modeledFormatting.propertiesXml) {
+    parts.push(modeledFormatting.propertiesXml);
+  }
+  // EG_ParaRPrTrackChanges puts revision markup first inside the paragraph
+  // mark's rPr; modeled run properties and specVanish follow it.
+  const paragraphMarkPropertiesInnerXml = `${paragraphMarkXml}${
+    modeledFormatting.paragraphMarkPropertiesInnerXml ?? ""
+  }`;
+  if (paragraphMarkPropertiesInnerXml) {
+    parts.push(`<w:rPr>${paragraphMarkPropertiesInnerXml}</w:rPr>`);
   }
 
   // `CT_PPr` closes with `rPr`, `sectPr`, `pPrChange` in that order: a section
@@ -979,18 +536,6 @@ function extractPPrInner(pPrXml: string): string {
     return "";
   }
   return pPrXml.slice("<w:pPr>".length, -"</w:pPr>".length);
-}
-
-/**
- * Strip the outer `<w:rPr>...</w:rPr>` wrapper so callers can splice
- * additional rPr children (e.g. `<w:specVanish/>`) and re-emit a
- * single rPr element.
- */
-function extractRPrInner(rPrXml: string): string {
-  if (!rPrXml.startsWith("<w:rPr>") || !rPrXml.endsWith("</w:rPr>")) {
-    return "";
-  }
-  return rPrXml.slice("<w:rPr>".length, -"</w:rPr>".length);
 }
 
 function serializeParagraphPropertyChange(change: ParagraphPropertyChange): string {

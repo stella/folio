@@ -10,6 +10,27 @@
 import type { BorderSpec } from "../../types/document";
 import { escapeXml, intAttr } from "./xmlUtils";
 
+type ExhaustiveFields<Source, Classified extends keyof Source> =
+  Exclude<keyof Source, Classified> extends never ? Source : never;
+
+type ClassifiedBorderField =
+  | "style"
+  | "color"
+  | "size"
+  | "space"
+  | "shadow"
+  | "frame"
+  | "artRelationshipId"
+  | "topLeftArtRelationshipId"
+  | "topRightArtRelationshipId"
+  | "bottomLeftArtRelationshipId"
+  | "bottomRightArtRelationshipId";
+type ExhaustiveBorder = ExhaustiveFields<BorderSpec, ClassifiedBorderField>;
+
+type BorderColor = NonNullable<BorderSpec["color"]>;
+type ClassifiedBorderColorField = "auto" | "rgb" | "themeColor" | "themeTint" | "themeShade";
+type ExhaustiveBorderColor = ExhaustiveFields<BorderColor, ClassifiedBorderColorField>;
+
 /**
  * Serialize a single border element (`<w:top .../>`, `<w:left .../>`, ...).
  *
@@ -29,69 +50,87 @@ import { escapeXml, intAttr } from "./xmlUtils";
  * untrusted and are `escapeXml`'d before re-entering XML attributes; for valid
  * documents these are enum/hex values, so escaping is a no-op.
  */
-export function serializeBorder(border: BorderSpec | undefined, elementName: string): string {
-  if (!border) {
+export function serializeBorder(input: ExhaustiveBorder | undefined, elementName: string): string {
+  if (!input) {
     return "";
   }
 
-  const attrs: string[] = [`w:val="${escapeXml(border.style)}"`];
+  const border: ExhaustiveBorder = input;
 
-  if (border.size !== undefined) {
-    attrs.push(`w:sz="${intAttr(border.size)}"`);
+  const {
+    style,
+    color,
+    size,
+    space,
+    shadow,
+    frame,
+    artRelationshipId,
+    topLeftArtRelationshipId,
+    topRightArtRelationshipId,
+    bottomLeftArtRelationshipId,
+    bottomRightArtRelationshipId,
+  } = border;
+
+  const attrs: string[] = [`w:val="${escapeXml(style)}"`];
+
+  if (size !== undefined) {
+    attrs.push(`w:sz="${intAttr(size)}"`);
   }
 
-  if (border.space !== undefined) {
-    attrs.push(`w:space="${intAttr(border.space)}"`);
+  if (space !== undefined) {
+    attrs.push(`w:space="${intAttr(space)}"`);
   }
 
-  if (border.color) {
-    if (border.color.auto) {
+  if (color) {
+    const exhaustiveColor: ExhaustiveBorderColor = color;
+    const { auto, rgb, themeColor, themeTint, themeShade } = exhaustiveColor;
+    if (auto) {
       attrs.push('w:color="auto"');
-    } else if (border.color.rgb) {
-      attrs.push(`w:color="${escapeXml(border.color.rgb)}"`);
+    } else if (rgb) {
+      attrs.push(`w:color="${escapeXml(rgb)}"`);
     }
 
-    if (border.color.themeColor) {
-      attrs.push(`w:themeColor="${escapeXml(border.color.themeColor)}"`);
+    if (themeColor) {
+      attrs.push(`w:themeColor="${escapeXml(themeColor)}"`);
     }
 
-    if (border.color.themeTint) {
-      attrs.push(`w:themeTint="${escapeXml(border.color.themeTint)}"`);
+    if (themeTint) {
+      attrs.push(`w:themeTint="${escapeXml(themeTint)}"`);
     }
 
-    if (border.color.themeShade) {
-      attrs.push(`w:themeShade="${escapeXml(border.color.themeShade)}"`);
+    if (themeShade) {
+      attrs.push(`w:themeShade="${escapeXml(themeShade)}"`);
     }
   }
 
-  if (border.shadow) {
+  if (shadow) {
     attrs.push('w:shadow="true"');
   }
 
-  if (border.frame) {
+  if (frame) {
     attrs.push('w:frame="true"');
   }
 
   // Custom page-border art relationship ids (only present on `w:pgBorders`
   // sides; undefined for table/paragraph borders, so skipped there).
-  if (border.artRelationshipId) {
-    attrs.push(`w:id="${escapeXml(border.artRelationshipId)}"`);
+  if (artRelationshipId) {
+    attrs.push(`w:id="${escapeXml(artRelationshipId)}"`);
   }
 
-  if (border.topLeftArtRelationshipId) {
-    attrs.push(`w:topLeft="${escapeXml(border.topLeftArtRelationshipId)}"`);
+  if (topLeftArtRelationshipId) {
+    attrs.push(`w:topLeft="${escapeXml(topLeftArtRelationshipId)}"`);
   }
 
-  if (border.topRightArtRelationshipId) {
-    attrs.push(`w:topRight="${escapeXml(border.topRightArtRelationshipId)}"`);
+  if (topRightArtRelationshipId) {
+    attrs.push(`w:topRight="${escapeXml(topRightArtRelationshipId)}"`);
   }
 
-  if (border.bottomLeftArtRelationshipId) {
-    attrs.push(`w:bottomLeft="${escapeXml(border.bottomLeftArtRelationshipId)}"`);
+  if (bottomLeftArtRelationshipId) {
+    attrs.push(`w:bottomLeft="${escapeXml(bottomLeftArtRelationshipId)}"`);
   }
 
-  if (border.bottomRightArtRelationshipId) {
-    attrs.push(`w:bottomRight="${escapeXml(border.bottomRightArtRelationshipId)}"`);
+  if (bottomRightArtRelationshipId) {
+    attrs.push(`w:bottomRight="${escapeXml(bottomRightArtRelationshipId)}"`);
   }
 
   return `<w:${elementName} ${attrs.join(" ")}/>`;
