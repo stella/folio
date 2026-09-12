@@ -34,6 +34,8 @@ type DocumentParagraphPropertySourceBinding = Readonly<{
 
 export const PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR = "_docxParagraphSourceToken";
 export const PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR = "_docxParagraphSourceContract";
+/** Durable identity nested inside opaque collapsed-cell ProseMirror attrs; stripped on restore. */
+export const TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR = "_docxParagraphSourceBinding";
 
 const PARAGRAPH_SOURCE_TOKEN_VERSION = "folio-ppr-v1";
 const PARAGRAPH_SOURCE_TOKEN_PREFIX = "p1d";
@@ -329,6 +331,187 @@ const paragraphsInTableCells = (cells: TableCell[]): Paragraph[] => {
   return paragraphs;
 };
 
+type TableCellParagraphPropertySourceBinding =
+  | Readonly<{ type: "authored" }>
+  | Readonly<{ token: string; type: "source" }>;
+
+export type TableCellParagraphPropertySourceBindingInspection =
+  | { status: "absent" }
+  | { binding: Readonly<{ type: "authored" }>; status: "authored" }
+  | { binding: Readonly<{ token: string; type: "source" }>; status: "source" }
+  | { status: "invalid"; value: unknown };
+
+const isPropertySourceBindingRecord = (
+  value: unknown,
+): value is Record<PropertyKey, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const inspectTableCellParagraphPropertySourceBinding = (
+  paragraph: Paragraph,
+): TableCellParagraphPropertySourceBindingInspection => {
+  if (!Object.hasOwn(paragraph, TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR)) {
+    return { status: "absent" };
+  }
+  const value: unknown = Reflect.get(paragraph, TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR);
+  if (!isPropertySourceBindingRecord(value)) {
+    return { status: "invalid", value };
+  }
+  const keys = Reflect.ownKeys(value);
+  if (
+    keys.length === 1 &&
+    keys[0] === "type" &&
+    Object.hasOwn(value, "type") &&
+    value.type === "authored"
+  ) {
+    return { binding: { type: "authored" }, status: "authored" };
+  }
+  if (
+    keys.length === 2 &&
+    keys.includes("type") &&
+    keys.includes("token") &&
+    Object.hasOwn(value, "type") &&
+    value.type === "source" &&
+    Object.hasOwn(value, "token") &&
+    typeof value.token === "string"
+  ) {
+    return { binding: { token: value.token, type: "source" }, status: "source" };
+  }
+  return { status: "invalid", value };
+};
+
+const setTableCellParagraphPropertySourceBinding = (
+  paragraph: Paragraph,
+  binding: TableCellParagraphPropertySourceBinding,
+): void => {
+  if (
+    !Reflect.set(
+      paragraph,
+      TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR,
+      Object.freeze(binding),
+    )
+  ) {
+    panic("Cannot attach paragraph-property transport identity to a table cell.");
+  }
+};
+
+const tableCellParagraphPropertySourceBindingForTransport = (
+  paragraph: Paragraph,
+  inspection: TableCellParagraphPropertySourceBindingInspection,
+): TableCellParagraphPropertySourceBinding => {
+  const directToken = paragraphPropertySourceTokens.get(paragraph);
+  if (directToken !== undefined) {
+    if (!isParagraphPropertySourceToken(directToken)) {
+      panic("Cannot transport a malformed private paragraph-property source token.");
+    }
+    switch (inspection.status) {
+      case "absent":
+        return { token: directToken, type: "source" };
+      case "authored":
+        panic("A hidden paragraph-property source binding conflicts with its private owner.");
+      case "source":
+        if (inspection.binding.token !== directToken) {
+          panic("A hidden paragraph-property source binding conflicts with its private owner.");
+        }
+        return inspection.binding;
+      case "invalid":
+        panic("Cannot transport a malformed hidden paragraph-property source binding.");
+      default: {
+        const exhaustiveInspection: never = inspection;
+        return exhaustiveInspection;
+      }
+    }
+  }
+  switch (inspection.status) {
+    case "absent":
+      // Transport is the construction boundary where an unbound paragraph is
+      // explicitly classified as newly authored.
+      return { type: "authored" };
+    case "authored":
+      return inspection.binding;
+    case "source":
+      if (!isParagraphPropertySourceToken(inspection.binding.token)) {
+        panic("Cannot transport a malformed hidden paragraph-property source token.");
+      }
+      return inspection.binding;
+    case "invalid":
+      panic("Cannot transport a malformed hidden paragraph-property source binding.");
+    default: {
+      const exhaustiveInspection: never = inspection;
+      return exhaustiveInspection;
+    }
+  }
+};
+
+type CloneTableCellParagraphPropertySourcesMode = "restore" | "transport";
+
+const cloneTableCellsWithParagraphPropertySources = (
+  cells: TableCell[],
+  mode: CloneTableCellParagraphPropertySourcesMode,
+): TableCell[] => {
+  const cloned = structuredClone(cells);
+  const sources = paragraphsInTableCells(cells);
+  const targets = paragraphsInTableCells(cloned);
+  if (sources.length !== targets.length) {
+    panic("The cloned table cells changed paragraph graph ownership.");
+  }
+  for (const [index, source] of sources.entries()) {
+    const target = targets.at(index);
+    if (!target) {
+      panic("The cloned table cells lost a paragraph owner.");
+    }
+    copyParagraphPropertyCapture(target, source);
+    const inspection = inspectTableCellParagraphPropertySourceBinding(source);
+    if (mode === "transport") {
+      setTableCellParagraphPropertySourceBinding(
+        target,
+        tableCellParagraphPropertySourceBindingForTransport(source, inspection),
+      );
+      continue;
+    }
+    if (!Reflect.deleteProperty(target, TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR)) {
+      panic("Cannot detach paragraph-property transport identity from a table cell.");
+    }
+    switch (inspection.status) {
+      case "authored":
+        break;
+      case "source":
+        if (!isParagraphPropertySourceToken(inspection.binding.token)) {
+          panic("Cannot restore a malformed hidden paragraph-property source token.");
+        }
+        paragraphPropertySourceTokens.set(target, inspection.binding.token);
+        break;
+      case "absent":
+      case "invalid":
+        panic("Cannot restore a hidden paragraph without a valid source binding.");
+      default: {
+        const exhaustiveInspection: never = inspection;
+        return exhaustiveInspection;
+      }
+    }
+  }
+  return cloned;
+};
+
+/** Prepare opaque continuation cells for ProseMirror and Yjs transport. */
+export const transportTableCellsWithParagraphPropertySources = (
+  cells: TableCell[],
+): TableCell[] => cloneTableCellsWithParagraphPropertySources(cells, "transport");
+
+/** Restore transported identities privately and remove them from the document model. */
+export const restoreTableCellsWithParagraphPropertySources = (
+  cells: TableCell[],
+): TableCell[] => cloneTableCellsWithParagraphPropertySources(cells, "restore");
+
+/** Visit every transported hidden paragraph in canonical cell-story order. */
+export const visitTableCellParagraphPropertySourceBindings = (
+  cells: TableCell[],
+  visit: (inspection: TableCellParagraphPropertySourceBindingInspection) => void,
+): void => {
+  for (const paragraph of paragraphsInTableCells(cells)) {
+    visit(inspectTableCellParagraphPropertySourceBinding(paragraph));
+  }
+};
+
 /**
  * Clone package-crossing vertical-merge payloads with their captured `w:pPr`,
  * but without the durable paragraph tokens owned by the source package.
@@ -346,6 +529,7 @@ export const cloneTableCellsWithParagraphPropertyCaptures = (cells: TableCell[])
       panic("The cloned table cells lost a paragraph owner.");
     }
     copyParagraphPropertyCapture(target, source);
+    setTableCellParagraphPropertySourceBinding(target, { type: "authored" });
   }
   return cloned;
 };

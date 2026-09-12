@@ -14,6 +14,8 @@ import { withoutOrphanCommentRanges } from "./commentRangeIntegrity";
 import { parseDocx } from "./parser";
 import { DATE_UTC_NAMESPACE_URI } from "./trackedChangeInfo";
 import {
+  PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR,
+  TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR,
   ParagraphPropertySourceValidationError,
   assignParagraphPropertySource,
   copyParagraphPropertyCapture,
@@ -334,7 +336,9 @@ describe("paragraph properties survive a no-edit full repack", () => {
     expect(getParagraphPropertySource(paragraph)).toEqual(
       getParagraphPropertySource(sourceParagraph),
     );
+    expect(paragraph).not.toBe(sourceParagraph);
     expect(getParagraphPropertySourceToken(paragraph)).toBeUndefined();
+    expect(Reflect.get(paragraph, PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR)).toBeUndefined();
   });
 
   test("a foreign table paragraph stays unbound across repeated saves into a source-bound document", async () => {
@@ -404,7 +408,12 @@ describe("paragraph properties survive a no-edit full repack", () => {
     expect(getParagraphPropertySource(paragraph)).toEqual(
       getParagraphPropertySource(sourceParagraph),
     );
+    expect(continuation).not.toBe(hiddenCell);
+    expect(paragraph).not.toBe(sourceParagraph);
     expect(getParagraphPropertySourceToken(paragraph)).toBeUndefined();
+    expect(Reflect.get(paragraph, TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR)).toEqual({
+      type: "authored",
+    });
   });
 
   test("durable source tokens survive regenerated duplicate paragraph ids", async () => {
@@ -482,7 +491,7 @@ describe("paragraph properties survive a no-edit full repack", () => {
     }
   });
 
-  test("a deleted source paragraph can return after an intervening save", async () => {
+  test("a deleted source paragraph can return from serialized state after an intervening save", async () => {
     const parsed = await parseDocx(await documentWithDuplicateParagraphIds(), {
       preloadFonts: false,
     });
@@ -490,7 +499,10 @@ describe("paragraph properties survive a no-edit full repack", () => {
     const withoutFirst = original.type.create(original.attrs, [original.child(1)]);
 
     const afterDeletion = fromProseDoc(withoutFirst, parsed);
-    const restored = fromProseDoc(original, afterDeletion);
+    const reconstructedOriginal = original.type.schema.nodeFromJSON(
+      JSON.parse(JSON.stringify(original.toJSON())),
+    );
+    const restored = fromProseDoc(reconstructedOriginal, afterDeletion);
     const paragraphs = restored.package.document.content.filter(
       (block): block is Paragraph => block.type === "paragraph",
     );

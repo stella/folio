@@ -3,6 +3,10 @@ import { Fragment, type Node as PMNode } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 
+import {
+  restoreTableCellsWithParagraphPropertySources,
+  transportTableCellsWithParagraphPropertySources,
+} from "../docx/paragraphPropertySource";
 import { expectTableCellAttrs } from "../prosemirror/attrs";
 import { standaloneTableCellFromProseMirror } from "../prosemirror/conversion/fromProseDoc";
 import { standaloneTableCellToProseMirror } from "../prosemirror/conversion/toProseDoc";
@@ -253,7 +257,7 @@ export const mergeTrackedVerticalTableCells = ({
   nextTr.setNodeAttribute(
     tablePosition + 1 + origin.position,
     "_docxVMergeContinuationCells",
-    continuationCells,
+    transportTableCellsWithParagraphPropertySources(continuationCells),
   );
   markStructuralChange(nextTr);
   return nextTr;
@@ -476,15 +480,24 @@ const trackedSplitCellFromStoredSource = ({
   // prior (possibly attacker-supplied) parse; trusting its `gridSpan`
   // wholesale would let a crafted document restore a cell spanning many
   // columns here. Reject rather than silently widening the cell.
-  if (source.formatting?.gridSpan !== undefined && source.formatting.gridSpan > 1) {
+  const restoredSourceCell = restoreTableCellsWithParagraphPropertySources([source]).at(0);
+  if (!restoredSourceCell) {
     return null;
   }
-  const formatting = formattingWithoutVerticalMerge(source.formatting);
+  if (
+    restoredSourceCell.formatting?.gridSpan !== undefined &&
+    restoredSourceCell.formatting.gridSpan > 1
+  ) {
+    return null;
+  }
+  const formatting = formattingWithoutVerticalMerge(restoredSourceCell.formatting);
   const restoredSource: TableCell = {
     type: "tableCell",
     ...(formatting ? { formatting } : {}),
-    ...(source.propertyChanges ? { propertyChanges: source.propertyChanges } : {}),
-    content: source.content,
+    ...(restoredSourceCell.propertyChanges
+      ? { propertyChanges: restoredSourceCell.propertyChanges }
+      : {}),
+    content: restoredSourceCell.content,
   };
   const converted = standaloneTableCellToProseMirror(
     restoredSource,

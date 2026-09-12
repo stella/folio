@@ -61,6 +61,7 @@ import {
   createProseParagraphWithPropertySource,
   getDocumentParagraphPropertySourceContract,
   recreateProseNodeWithParagraphPropertySource,
+  transportTableCellsWithParagraphPropertySources,
 } from "../../docx/paragraphPropertySource";
 import {
   buildPageBreakRunSourceDescendantIndex,
@@ -2350,7 +2351,8 @@ function convertTableCell({
     attrs._preserveVMergeRestart = true;
   }
   if (vMergeContinuationCells && vMergeContinuationCells.length > 0) {
-    attrs._docxVMergeContinuationCells = vMergeContinuationCells;
+    attrs._docxVMergeContinuationCells =
+      transportTableCellsWithParagraphPropertySources(vMergeContinuationCells);
   }
 
   // Convert cell content (paragraphs and nested tables)

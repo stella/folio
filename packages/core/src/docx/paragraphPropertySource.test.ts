@@ -4,11 +4,15 @@ import { readFile } from "node:fs/promises";
 import type { BlockContent, Paragraph } from "../types/document";
 import { parseDocx } from "./parser";
 import {
+  TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR,
   cloneDocumentWithParagraphPropertySources,
   copyDocumentParagraphPropertySources,
+  copyParagraphPropertySource,
   getDocumentParagraphPropertySourceContract,
   getParagraphPropertySource,
   getParagraphPropertySourceToken,
+  restoreTableCellsWithParagraphPropertySources,
+  transportTableCellsWithParagraphPropertySources,
   visitDocumentStoryParagraphs,
 } from "./paragraphPropertySource";
 
@@ -153,5 +157,72 @@ describe("paragraph-property source identity", () => {
     expect(paragraph && getParagraphPropertySourceToken(paragraph)).toBe(
       token(BLOCK_SDT_DIGEST, 0),
     );
+  });
+
+  test("hidden table paragraphs retain one source identity across transport clones", async () => {
+    const document = await parseDocx(await readFile(LAYOUT_FIXTURE), { preloadFonts: false });
+    const paragraph = firstParagraphIn(document.package.document.content);
+    if (!paragraph) {
+      throw new Error("Layout fixture must contain a paragraph");
+    }
+    const sourceToken = getParagraphPropertySourceToken(paragraph);
+    const firstTransport = transportTableCellsWithParagraphPropertySources([
+      { type: "tableCell", content: [paragraph] },
+    ]);
+    const secondTransport = transportTableCellsWithParagraphPropertySources(firstTransport);
+    const restored = restoreTableCellsWithParagraphPropertySources(secondTransport);
+    const restoredParagraph = restored.at(0)?.content.at(0);
+    if (typeof sourceToken !== "string" || restoredParagraph?.type !== "paragraph") {
+      throw new Error("Transport fixture lost its paragraph source");
+    }
+
+    expect(getParagraphPropertySourceToken(restoredParagraph)).toBe(sourceToken);
+    expect(Object.hasOwn(restoredParagraph, TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR)).toBe(false);
+  });
+
+  test("transport explicitly marks a newly authored hidden paragraph", () => {
+    const paragraph: Paragraph = { type: "paragraph", content: [] };
+    const transported = transportTableCellsWithParagraphPropertySources([
+      { type: "tableCell", content: [paragraph] },
+    ]);
+    const transportedParagraph = transported.at(0)?.content.at(0);
+    if (transportedParagraph?.type !== "paragraph") {
+      throw new Error("Transport fixture lost its authored paragraph");
+    }
+
+    expect(Reflect.get(transportedParagraph, TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR)).toEqual({
+      type: "authored",
+    });
+    const restored = restoreTableCellsWithParagraphPropertySources(transported);
+    const restoredParagraph = restored.at(0)?.content.at(0);
+    expect(restoredParagraph?.type).toBe("paragraph");
+    expect(
+      restoredParagraph?.type === "paragraph"
+        ? Object.hasOwn(restoredParagraph, TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR)
+        : true,
+    ).toBe(false);
+  });
+
+  test.each([
+    { type: "source" },
+    { token: "p1d:00000000000000000000000000000000:0", type: "source" },
+    { type: "authored" },
+  ] as const)("rejects conflicting hidden transport binding %#", async (binding) => {
+    const document = await parseDocx(await readFile(LAYOUT_FIXTURE), { preloadFonts: false });
+    const paragraph = firstParagraphIn(document.package.document.content);
+    if (!paragraph) {
+      throw new Error("Layout fixture must contain a paragraph");
+    }
+    const tampered = { ...paragraph };
+    copyParagraphPropertySource(tampered, paragraph);
+    if (!Reflect.set(tampered, TABLE_CELL_PARAGRAPH_SOURCE_BINDING_ATTR, binding)) {
+      throw new Error("Transport fixture could not attach its invalid binding");
+    }
+
+    expect(() =>
+      transportTableCellsWithParagraphPropertySources([
+        { type: "tableCell", content: [tampered] },
+      ]),
+    ).toThrow();
   });
 });

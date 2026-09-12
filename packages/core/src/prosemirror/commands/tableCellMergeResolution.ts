@@ -3,6 +3,10 @@ import type { Node as PMNode } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 
+import {
+  restoreTableCellsWithParagraphPropertySources,
+  transportTableCellsWithParagraphPropertySources,
+} from "../../docx/paragraphPropertySource";
 import type { TableCell, TableCellFormatting } from "../../types/document";
 import { standaloneTableCellFromProseMirror } from "../conversion/fromProseDoc";
 import { standaloneTableCellToProseMirror } from "../conversion/toProseDoc";
@@ -155,7 +159,8 @@ const mergeTableCellWithCellAbove = (tr: Transaction, cellPos: number): boolean 
   tr.setNodeMarkup(abovePos, undefined, {
     ...aboveCell.attrs,
     rowspan: aboveRowspan + cellRowspan,
-    _docxVMergeContinuationCells: continuationCells,
+    _docxVMergeContinuationCells:
+      transportTableCellsWithParagraphPropertySources(continuationCells),
   });
   return true;
 };
@@ -285,15 +290,23 @@ export const resolveCollapsedTableCellMerge = (
 };
 
 const createRestoredTableCell = (origin: PMNode, source: TableCell): PMNode | null => {
-  const formatting = source.formatting ? { ...source.formatting } : undefined;
+  const restoredSourceCell = restoreTableCellsWithParagraphPropertySources([source]).at(0);
+  if (!restoredSourceCell) {
+    return null;
+  }
+  const formatting = restoredSourceCell.formatting
+    ? { ...restoredSourceCell.formatting }
+    : undefined;
   if (formatting) {
     delete formatting.vMerge;
   }
   const restoredSource: TableCell = {
     type: "tableCell",
     ...(formatting ? { formatting } : {}),
-    ...(source.propertyChanges ? { propertyChanges: source.propertyChanges } : {}),
-    content: source.content,
+    ...(restoredSourceCell.propertyChanges
+      ? { propertyChanges: restoredSourceCell.propertyChanges }
+      : {}),
+    content: restoredSourceCell.content,
   };
   const restored = standaloneTableCellToProseMirror(
     restoredSource,

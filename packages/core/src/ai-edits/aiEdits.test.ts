@@ -4750,6 +4750,7 @@ describe("Folio AI edit operations", () => {
         },
         content: [
           {
+            _docxParagraphSourceBinding: { type: "authored" as const },
             type: "paragraph" as const,
             content: [
               {
@@ -4768,6 +4769,7 @@ describe("Folio AI edit operations", () => {
         },
         content: [
           {
+            _docxParagraphSourceBinding: { type: "authored" as const },
             type: "paragraph" as const,
             content: [
               {
@@ -4884,6 +4886,7 @@ describe("Folio AI edit operations", () => {
         },
         content: [
           {
+            _docxParagraphSourceBinding: { type: "authored" as const },
             type: "paragraph" as const,
             content: [{ type: "run" as const, content: [{ type: "text" as const, text: "Wide" }] }],
           },

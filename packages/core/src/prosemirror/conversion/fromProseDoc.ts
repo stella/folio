@@ -23,6 +23,7 @@ import {
   PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
   ParagraphPropertySourceValidationError,
   type ParagraphPropertySourceValidationCode,
+  type TableCellParagraphPropertySourceBindingInspection,
   copyDocumentParagraphPropertySourceContract,
   copyDocumentParagraphPropertySources,
   copyParagraphPropertyCapture,
@@ -39,7 +40,9 @@ import {
   paragraphPropertySourceTokenMatchesContract,
   paragraphPropertySourceBelongsToDocument,
   recreateProseNodeWithParagraphPropertySource,
+  restoreTableCellsWithParagraphPropertySources,
   visitDocumentStoryParagraphs,
+  visitTableCellParagraphPropertySourceBindings,
 } from "../../docx/paragraphPropertySource";
 import { canonicalJson } from "../../utils/canonicalJson";
 import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
@@ -412,13 +415,9 @@ const validateParagraphPropertySourceTokens = (
   });
 
   const seen = new Set<string>();
-  pmDoc.descendants((node) => {
-    if (node.type.name !== "paragraph") {
-      return true;
-    }
-    const token = getProseParagraphPropertySourceToken(node);
+  const validateToken = (token: unknown): void => {
     if (token === null || token === undefined) {
-      return false;
+      return;
     }
     if (!isParagraphPropertySourceToken(token)) {
       throw sourceValidationError(
@@ -449,6 +448,43 @@ const validateParagraphPropertySourceTokens = (
       );
     }
     seen.add(token);
+  };
+  const validateTableCellBinding = (
+    inspection: TableCellParagraphPropertySourceBindingInspection,
+  ): void => {
+    switch (inspection.status) {
+      case "absent":
+      case "invalid":
+        throw sourceValidationError(
+          "invalid_token",
+          "A hidden table-cell paragraph has an invalid paragraph-property source binding.",
+          inspection.status === "invalid" ? inspection.value : undefined,
+        );
+      case "authored":
+        return;
+      case "source":
+        validateToken(inspection.binding.token);
+        return;
+      default: {
+        const exhaustiveInspection: never = inspection;
+        return exhaustiveInspection;
+      }
+    }
+  };
+  pmDoc.descendants((node) => {
+    if (node.type.name === "tableCell" || node.type.name === "tableHeader") {
+      const continuationCells = expectTableCellAttrs(node)._docxVMergeContinuationCells;
+      if (continuationCells) {
+        visitTableCellParagraphPropertySourceBindings(continuationCells, (inspection) =>
+          validateTableCellBinding(inspection),
+        );
+      }
+      return true;
+    }
+    if (node.type.name !== "paragraph") {
+      return true;
+    }
+    validateToken(getProseParagraphPropertySourceToken(node));
     return false;
   });
   return sourceParagraphs;
@@ -4795,7 +4831,11 @@ function convertPMTableRow(
       const colspan = Math.max(cellAttrs.colspan, 1);
       cells.push(convertPMTableCell(cellNode, documentCounts, styleResolver));
       if (cellAttrs.rowspan > 1) {
-        const continuationCells = cellAttrs._docxVMergeContinuationCells;
+        const continuationCells = cellAttrs._docxVMergeContinuationCells
+          ? restoreTableCellsWithParagraphPropertySources(
+              cellAttrs._docxVMergeContinuationCells,
+            )
+          : undefined;
         activeVerticalMerges?.set(gridColumn, {
           remainingRows: cellAttrs.rowspan - 1,
           colspan,
