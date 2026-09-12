@@ -18,7 +18,7 @@ import JSZip from "jszip";
 import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
-import { projectTableGeometry } from "../ai-edits/table-geometry";
+import { projectTableGeometry } from "../internal/compare/table-geometry-program";
 import { buildBodySequenceDocx, type BodyItem, type TableRow } from "./__fixtures__/body-sequence";
 import { compareDocx } from "./compare";
 
@@ -50,7 +50,7 @@ type RoundTrip = {
  * caught here rather than passing.
  */
 const roundTrip = async (base: ArrayBuffer, target: ArrayBuffer): Promise<RoundTrip> => {
-  const result = await compareDocx(base, target, { ...OPTIONS, onUnverified: "emit" });
+  const result = await compareDocx(base, target, { ...OPTIONS, mode: "bestEffort" });
   if (result.isErr()) {
     throw result.error;
   }
@@ -550,10 +550,19 @@ describe("table geometry round trip", () => {
     const strict = await compareDocx(base, target, OPTIONS);
     expect(strict.isErr()).toBe(true);
     if (strict.isErr()) {
-      expect(strict.error._tag).toBe("CompareDocxRoundTripError");
+      expect(strict.error).toMatchObject({
+        _tag: "CompareDocxUnsupportedError",
+        unsupported: [
+          {
+            reason: "transport-preflight",
+            instructionIndex: 0,
+            detail: "unrepresentable-table-structure",
+          },
+        ],
+      });
     }
 
-    const emitted = await compareDocx(base, target, { ...OPTIONS, onUnverified: "emit" });
+    const emitted = await compareDocx(base, target, { ...OPTIONS, mode: "bestEffort" });
     if (emitted.isErr()) {
       throw emitted.error;
     }
@@ -587,7 +596,7 @@ describe("table geometry round trip", () => {
       expect(strict.error._tag).toBe("CompareDocxRoundTripError");
     }
 
-    const emitted = await compareDocx(base, target, { ...OPTIONS, onUnverified: "emit" });
+    const emitted = await compareDocx(base, target, { ...OPTIONS, mode: "bestEffort" });
     if (emitted.isErr()) {
       throw emitted.error;
     }

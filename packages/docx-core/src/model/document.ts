@@ -17,6 +17,12 @@ import type { NumberingDefinitions } from "./lists";
 import type { StyleDefinitions, Theme, FontTable, RelationshipMap, MediaFile } from "./styles";
 
 // Color & Styling Primitives
+export {
+  COLOR_VALUE_PROPERTY_DESCRIPTORS,
+  SHADING_PATTERNS,
+  SHADING_PROPERTY_DESCRIPTORS,
+  THEME_COLOR_SLOTS,
+} from "./colors";
 export type {
   ThemeColorSlot,
   ColorValue,
@@ -26,6 +32,22 @@ export type {
 } from "./colors";
 
 // Text & Paragraph Formatting
+export {
+  ASCII_THEME_FONTS,
+  EMPHASIS_MARKS,
+  FONT_HINTS,
+  HIGHLIGHT_COLORS,
+  sameTextFormatting,
+  sameTextFormattingValue,
+  TEXT_EFFECTS,
+  TEXT_FORMATTING_FONT_FAMILY_FIELD_DESCRIPTORS,
+  TEXT_FORMATTING_LANGUAGE_FIELD_DESCRIPTORS,
+  TEXT_FORMATTING_PROPERTY_DESCRIPTORS,
+  TEXT_FORMATTING_VISUAL_GROUPS,
+  TEXT_FORMATTING_UNDERLINE_FIELD_DESCRIPTORS,
+  UNDERLINE_STYLES,
+  VERTICAL_ALIGNMENTS,
+} from "./formatting";
 export type {
   UnderlineStyle,
   TextEffect,

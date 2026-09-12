@@ -176,21 +176,16 @@ const planStep = ({ step, blocks, nextOperationId }: PlanStepOptions): StepPlan 
       if (step.wordIndex <= 0 || step.wordIndex >= words.length) {
         return { status: "unresolved", reason: "no-paragraph-boundary" };
       }
+      const firstText = words.slice(0, step.wordIndex).join(" ");
       return {
         status: "planned",
         operations: [
           {
             id: nextOperationId(),
-            type: "replaceBlock",
+            type: "splitBlock",
             blockId: block.id,
-            text: words.slice(0, step.wordIndex).join(" "),
-          },
-          {
-            id: nextOperationId(),
-            type: "insertAfterBlock",
-            blockId: block.id,
-            text: words.slice(step.wordIndex).join(" "),
-            ...(block.styleId !== undefined && { styleId: block.styleId }),
+            offset: firstText.length,
+            separator: " ",
           },
         ],
       };
@@ -205,11 +200,10 @@ const planStep = ({ step, blocks, nextOperationId }: PlanStepOptions): StepPlan 
         operations: [
           {
             id: nextOperationId(),
-            type: "replaceBlock",
+            type: "mergeBlockWithNext",
             blockId: block.id,
-            text: `${block.text} ${next.text}`,
+            separator: " ",
           },
-          { id: nextOperationId(), type: "deleteBlock", blockId: next.id },
         ],
       };
     }

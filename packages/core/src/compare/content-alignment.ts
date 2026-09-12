@@ -11,10 +11,20 @@ import { panic } from "better-result";
 
 import type {
   FolioContentBlock,
-  FolioContentIdStability,
+  FolioContentContainerAlignment,
+  FolioContentBaseContainerAlignment,
+  FolioContentContainerOccurrence,
+  FolioContentIdentity,
+  FolioContentIdentitySemantics,
+  FolioContentPairedContainerAlignment,
+  FolioContentParagraphInsertionBoundary,
+  FolioContentParagraphRemovalBoundary,
+  FolioContentRevisedContainerAlignment,
+  FolioContentTableBlock,
   FolioContentTableLocation,
 } from "./content-types";
 import { alignTableColumns, type TableColumnAlignmentStep } from "./column-alignment";
+import { sameFolioContentPropertySet } from "./content-properties";
 
 const MAX_CONTENT_ALIGNMENT_LCS_CELLS = 4_000_000;
 const MAX_CONTENT_STRUCTURE_TOKEN_LOOKUPS = 4_000_000;
@@ -85,11 +95,67 @@ const claimFolioContentAlignmentCells = (
 };
 
 export type FolioContentBlockPair = { baseIndex: number; revisedIndex: number };
-type IndexedBlock<Block extends FolioContentBlock> = { block: Block; index: number };
+type IndexedBlock = { block: FolioContentBlock; index: number };
 
-const folioContentIdStability = <Block extends FolioContentBlock>(
-  block: Block,
-): FolioContentIdStability => block.idStability ?? "stable";
+export type FolioContentIdentityPairDisposition =
+  | "anchor"
+  | "continuity"
+  | "position"
+  | "candidate"
+  | "forbid";
+
+type FolioContentIdentityPairRule =
+  | "same-anchor-else-candidate"
+  | "same-anchor-else-forbid"
+  | "same-continuity-else-candidate"
+  | "same-position-else-candidate"
+  | "candidate"
+  | "forbid";
+
+const FOLIO_CONTENT_IDENTITY_PAIR_RULES = {
+  authoritative: {
+    authoritative: "same-anchor-else-forbid",
+    "persistent-hint": "forbid",
+    positional: "forbid",
+  },
+  "persistent-hint": {
+    authoritative: "forbid",
+    "persistent-hint": "same-anchor-else-candidate",
+    positional: "same-continuity-else-candidate",
+  },
+  positional: {
+    authoritative: "forbid",
+    "persistent-hint": "same-continuity-else-candidate",
+    positional: "same-position-else-candidate",
+  },
+} as const satisfies Record<
+  FolioContentIdentitySemantics,
+  Record<FolioContentIdentitySemantics, FolioContentIdentityPairRule>
+>;
+
+/** The sole pairing policy for captured neutral block identities. @internal */
+export const folioContentIdentityPairDisposition = (
+  base: FolioContentIdentity,
+  revised: FolioContentIdentity,
+): FolioContentIdentityPairDisposition => {
+  const rule = FOLIO_CONTENT_IDENTITY_PAIR_RULES[base.type][revised.type];
+  switch (rule) {
+    case "same-anchor-else-forbid":
+      return base.id === revised.id ? "anchor" : "forbid";
+    case "same-anchor-else-candidate":
+      return base.id === revised.id ? "anchor" : "candidate";
+    case "same-continuity-else-candidate":
+      return base.id === revised.id ? "continuity" : "candidate";
+    case "same-position-else-candidate":
+      return base.id === revised.id ? "position" : "candidate";
+    case "forbid":
+      return rule;
+    default: {
+      const unreachable: never = rule;
+      return panic("Unhandled content identity pairing rule", { rule: unreachable });
+    }
+  }
+};
 
 /**
  * Longest strictly increasing subsequence by revised index.
@@ -187,39 +253,42 @@ export const longestIncreasingFolioContentPairs = (
   return ordered.toReversed();
 };
 
-const pairByStableId = <Block extends FolioContentBlock>(
-  base: readonly Block[],
-  revised: readonly Block[],
-  idStability: (block: Block) => FolioContentIdStability,
+const pairByStableId = (
+  base: readonly FolioContentBlock[],
+  revised: readonly FolioContentBlock[],
 ): FolioContentBlockPair[] => {
   const revisedIndexById = new Map<string, number>();
   revised.forEach((block, revisedIndex) => {
-    if (idStability(block) === "stable") {
-      revisedIndexById.set(block.id, revisedIndex);
+    if (folioContentIdentityPairDisposition(block.identity, block.identity) === "anchor") {
+      revisedIndexById.set(block.identity.id, revisedIndex);
     }
   });
 
   const candidates: FolioContentBlockPair[] = [];
   base.forEach((block, baseIndex) => {
-    if (idStability(block) !== "stable") {
+    if (folioContentIdentityPairDisposition(block.identity, block.identity) !== "anchor") {
       return;
     }
-    const revisedIndex = revisedIndexById.get(block.id);
-    if (revisedIndex !== undefined) {
+    const revisedIndex = revisedIndexById.get(block.identity.id);
+    const revisedBlock = revisedIndex === undefined ? undefined : revised[revisedIndex];
+    if (
+      revisedIndex !== undefined &&
+      revisedBlock !== undefined &&
+      folioContentIdentityPairDisposition(block.identity, revisedBlock.identity) === "anchor"
+    ) {
       candidates.push({ baseIndex, revisedIndex });
     }
   });
   return longestIncreasingFolioContentPairs(candidates);
 };
 
-type PairByResidualIdContinuityOptions<Block extends FolioContentBlock> = {
-  baseBlocks: readonly Block[];
-  revisedBlocks: readonly Block[];
+type PairByResidualIdContinuityOptions = {
+  baseBlocks: readonly FolioContentBlock[];
+  revisedBlocks: readonly FolioContentBlock[];
   baseFrom: number;
   baseTo: number;
   revisedFrom: number;
   revisedTo: number;
-  idStability: (block: Block) => FolioContentIdStability;
 };
 
 /**
@@ -231,27 +300,26 @@ type PairByResidualIdContinuityOptions<Block extends FolioContentBlock> = {
  * already bounded by stable/exact anchors, so it cannot turn a positional id
  * into a move or pull a block across an established correspondence.
  */
-const pairByResidualIdContinuity = <Block extends FolioContentBlock>({
+const pairByResidualIdContinuity = ({
   baseBlocks,
   revisedBlocks,
   baseFrom,
   baseTo,
   revisedFrom,
   revisedTo,
-  idStability,
-}: PairByResidualIdContinuityOptions<Block>): FolioContentBlockPair[] => {
+}: PairByResidualIdContinuityOptions): FolioContentBlockPair[] => {
   const uniqueIndexesById = ({
     blocks,
     from,
     to,
   }: {
-    blocks: readonly Block[];
+    blocks: readonly FolioContentBlock[];
     from: number;
     to: number;
   }): ReadonlyMap<string, number | null> => {
     const indexes = new Map<string, number | null>();
     for (let index = from; index < to; index++) {
-      const id = blocks[index]?.id;
+      const id = blocks[index]?.identity.id;
       if (id === undefined) {
         continue;
       }
@@ -277,9 +345,10 @@ const pairByResidualIdContinuity = <Block extends FolioContentBlock>({
     if (!baseBlock || !revisedBlock) {
       continue;
     }
-    const baseStability = idStability(baseBlock);
-    const revisedStability = idStability(revisedBlock);
-    if (baseStability === revisedStability) {
+    if (
+      folioContentIdentityPairDisposition(baseBlock.identity, revisedBlock.identity) !==
+      "continuity"
+    ) {
       continue;
     }
     candidates.push({ baseIndex, revisedIndex });
@@ -287,12 +356,10 @@ const pairByResidualIdContinuity = <Block extends FolioContentBlock>({
   return longestIncreasingFolioContentPairs(candidates);
 };
 
-const pairByExactText = <Block extends FolioContentBlock>(
-  base: readonly IndexedBlock<Block>[],
-  revised: readonly IndexedBlock<Block>[],
+const pairByExactText = (
+  base: readonly IndexedBlock[],
+  revised: readonly IndexedBlock[],
   workSession: FolioContentAlignmentWorkSession,
-  idStability: (block: Block) => FolioContentIdStability,
-  stableIdMismatch: "pair" | "separate",
 ): FolioContentBlockPair[] => {
   const baseCount = base.length;
   const revisedCount = revised.length;
@@ -323,12 +390,7 @@ const pairByExactText = <Block extends FolioContentBlock>(
       return false;
     }
     return (
-      stableIdMismatch === "pair" ||
-      !(
-        idStability(baseBlock) === "stable" &&
-        idStability(revisedBlock) === "stable" &&
-        baseBlock.id !== revisedBlock.id
-      )
+      folioContentIdentityPairDisposition(baseBlock.identity, revisedBlock.identity) !== "forbid"
     );
   };
   const stride = revisedCount + 1;
@@ -372,28 +434,22 @@ const pairByExactText = <Block extends FolioContentBlock>(
   return pairs;
 };
 
-export type FolioContentAlignedBlockEvent<Block extends FolioContentBlock = FolioContentBlock> =
-  | { type: "pair"; baseBlock: Block; revisedBlock: Block }
-  | { type: "baseOnly"; block: Block }
-  | { type: "revisedOnly"; block: Block };
+export type FolioContentAlignedBlockEvent =
+  | { type: "pair"; baseBlock: FolioContentBlock; revisedBlock: FolioContentBlock }
+  | { type: "baseOnly"; block: FolioContentBlock }
+  | { type: "revisedOnly"; block: FolioContentBlock };
 
-export type AlignFolioContentBlocksOptions<Block extends FolioContentBlock> = {
+export type AlignFolioContentBlocksOptions = {
   workSession?: FolioContentAlignmentWorkSession;
-  /** Let an already-aligned structural slot outrank differing authored IDs. */
-  stableIdMismatch?: "pair" | "separate";
-  /** @internal Compatibility hook for adapters whose source model predates `idStability`. */
-  idStability?: ((block: Block) => FolioContentIdStability) | undefined;
 };
 
-export const alignFolioContentBlocks = <Block extends FolioContentBlock>(
-  baseBlocks: readonly Block[],
-  revisedBlocks: readonly Block[],
-  options: AlignFolioContentBlocksOptions<Block> = {},
-): FolioContentAlignedBlockEvent<Block>[] => {
+export const alignFolioContentBlocks = (
+  baseBlocks: readonly FolioContentBlock[],
+  revisedBlocks: readonly FolioContentBlock[],
+  options: AlignFolioContentBlocksOptions = {},
+): FolioContentAlignedBlockEvent[] => {
   const workSession = options.workSession ?? createFolioContentAlignmentWorkSession();
-  const stableIdMismatch = options.stableIdMismatch ?? "separate";
-  const idStability = options.idStability ?? folioContentIdStability;
-  const stableIdAnchors = pairByStableId(baseBlocks, revisedBlocks, idStability);
+  const stableIdAnchors = pairByStableId(baseBlocks, revisedBlocks);
   const usedBaseIndexes = new Set(stableIdAnchors.map(({ baseIndex }) => baseIndex));
   const usedRevisedIndexes = new Set(stableIdAnchors.map(({ revisedIndex }) => revisedIndex));
   const baseRemaining = baseBlocks.flatMap((block, index) =>
@@ -402,19 +458,13 @@ export const alignFolioContentBlocks = <Block extends FolioContentBlock>(
   const revisedRemaining = revisedBlocks.flatMap((block, index) =>
     usedRevisedIndexes.has(index) ? [] : [{ block, index }],
   );
-  const exactTextAnchors = pairByExactText(
-    baseRemaining,
-    revisedRemaining,
-    workSession,
-    idStability,
-    stableIdMismatch,
-  );
+  const exactTextAnchors = pairByExactText(baseRemaining, revisedRemaining, workSession);
   const anchors = longestIncreasingFolioContentPairs(
     [...stableIdAnchors, ...exactTextAnchors].toSorted(
       (left, right) => left.baseIndex - right.baseIndex,
     ),
   );
-  const events: FolioContentAlignedBlockEvent<Block>[] = [];
+  const events: FolioContentAlignedBlockEvent[] = [];
 
   const emitPositionalGap = (
     baseFrom: number,
@@ -427,11 +477,19 @@ export const alignFolioContentBlocks = <Block extends FolioContentBlock>(
       const baseBlock = baseBlocks[baseFrom + offset];
       const revisedBlock = revisedBlocks[revisedFrom + offset];
       if (baseBlock && revisedBlock) {
-        const differentStableIdentities =
-          idStability(baseBlock) === "stable" &&
-          idStability(revisedBlock) === "stable" &&
-          baseBlock.id !== revisedBlock.id;
-        if (differentStableIdentities && stableIdMismatch === "separate") {
+        const identityDisposition = folioContentIdentityPairDisposition(
+          baseBlock.identity,
+          revisedBlock.identity,
+        );
+        if (
+          identityDisposition === "forbid" ||
+          ((identityDisposition === "candidate" || identityDisposition === "position") &&
+            (baseBlock.kind !== revisedBlock.kind ||
+              !sameFolioContentPropertySet(
+                baseBlock.blockProperties,
+                revisedBlock.blockProperties,
+              )))
+        ) {
           events.push({ type: "baseOnly", block: baseBlock });
           events.push({ type: "revisedOnly", block: revisedBlock });
         } else {
@@ -470,7 +528,6 @@ export const alignFolioContentBlocks = <Block extends FolioContentBlock>(
       baseTo,
       revisedFrom,
       revisedTo,
-      idStability,
     });
     let baseCursor = baseFrom;
     let revisedCursor = revisedFrom;
@@ -503,99 +560,830 @@ export const alignFolioContentBlocks = <Block extends FolioContentBlock>(
   return events;
 };
 
-export type FolioContentAlignmentStep<Block extends FolioContentBlock = FolioContentBlock> =
-  | { type: "pair"; baseBlock: Block; revisedBlock: Block }
-  | { type: "baseOnly"; block: Block; moveScope: FolioContentMoveScope }
-  | { type: "revisedOnly"; block: Block; moveScope: FolioContentMoveScope }
-  | { type: "baseRow"; blocks: readonly Block[]; location: FolioContentTableLocation }
-  | { type: "revisedRow"; blocks: readonly Block[]; location: FolioContentTableLocation }
-  | { type: "baseTable"; blocks: readonly Block[]; location: FolioContentTableLocation }
-  | { type: "revisedTable"; blocks: readonly Block[]; location: FolioContentTableLocation }
-  | TableColumnAlignmentStep<Block>;
+export type FolioContentAlignmentStep =
+  | {
+      type: "pair";
+      baseBlock: FolioContentBlock;
+      revisedBlock: FolioContentBlock;
+      containerAlignment: FolioContentPairedContainerAlignment;
+      boundaryScope: number;
+    }
+  | {
+      type: "baseOnly";
+      block: FolioContentBlock;
+      moveScope: FolioContentBaseMoveScope;
+      removalBoundary: FolioContentParagraphRemovalBoundary;
+    }
+  | {
+      type: "revisedOnly";
+      block: FolioContentBlock;
+      moveScope: FolioContentRevisedMoveScope;
+      insertionBoundary: FolioContentParagraphInsertionBoundary;
+    }
+  | { type: "baseRow"; blocks: readonly FolioContentBlock[]; location: FolioContentTableLocation }
+  | {
+      type: "revisedRow";
+      blocks: readonly FolioContentBlock[];
+      location: FolioContentTableLocation;
+    }
+  | {
+      type: "baseTable";
+      blocks: readonly FolioContentBlock[];
+      location: FolioContentTableLocation;
+    }
+  | {
+      type: "revisedTable";
+      blocks: readonly FolioContentBlock[];
+      location: FolioContentTableLocation;
+    }
+  | {
+      type: "tableReplacement";
+      baseBlocks: readonly FolioContentBlock[];
+      revisedBlocks: readonly FolioContentBlock[];
+      baseLocation: FolioContentTableLocation;
+      revisedLocation: FolioContentTableLocation;
+      /** One already-budgeted member alignment; consumers must never compare again. */
+      refinementSteps: readonly FolioContentAlignmentStep[];
+    }
+  | TableColumnAlignmentStep;
 
 /** @internal Legal move bucket and alignment gap for one unpaired block. */
 export type FolioContentMoveScope = {
   readonly bucket: number;
   readonly gap: number;
+  readonly boundaryScope: number;
+  readonly containerAlignment: FolioContentContainerAlignment;
+};
+
+export type FolioContentBaseMoveScope = Omit<FolioContentMoveScope, "containerAlignment"> & {
+  readonly containerAlignment: FolioContentBaseContainerAlignment;
+};
+
+export type FolioContentRevisedMoveScope = Omit<FolioContentMoveScope, "containerAlignment"> & {
+  readonly containerAlignment: FolioContentRevisedContainerAlignment;
 };
 
 type MoveScopeContext = {
   nextTableCellBucket: number;
+  nextContainerAlignmentId: number;
   nextGap: number;
+  nextBoundaryScope: number;
+  baseContainerAlignments: Map<string, FolioContentBaseContainerAlignment>;
+  revisedContainerAlignments: Map<string, FolioContentRevisedContainerAlignment>;
+  baseBodyContainerEnds: ReadonlyMap<string | null, "paragraph" | "structuralSibling">;
+  revisedBodyContainerEnds: ReadonlyMap<string | null, "paragraph" | "structuralSibling">;
+  baseParagraphTopology: ParagraphTopology;
+  revisedParagraphTopology: ParagraphTopology;
+  baseStructuralFollowerByBlockId: ReadonlyMap<string, FolioContentTableBlock>;
+};
+
+type ParagraphTopology = {
+  readonly predecessorByBlockId: ReadonlyMap<string, string>;
+  readonly successorByBlockId: ReadonlyMap<string, string>;
+  readonly terminalBlockIds: ReadonlySet<string>;
 };
 
 const BODY_MOVE_BUCKET = 0;
 
-const scopedAlignmentSteps = <Block extends FolioContentBlock>(
-  events: readonly FolioContentAlignedBlockEvent<Block>[],
+const containerOccurrenceOf = (
+  block: FolioContentBlock,
   context: MoveScopeContext,
-  bucketForBlock: (block: Block) => number,
-): FolioContentAlignmentStep<Block>[] => {
-  const steps: FolioContentAlignmentStep<Block>[] = [];
-  let gap = context.nextGap++;
+  side: "base" | "revised",
+): FolioContentContainerOccurrence => {
+  if (!block.table) {
+    const end =
+      (side === "base" ? context.baseBodyContainerEnds : context.revisedBodyContainerEnds).get(
+        containerPathKeyOf(block),
+      ) ?? "structuralSibling";
+    return Object.freeze({ type: "body", containerPath: block.containerPath, end });
+  }
+  const { paragraphIndex: _paragraphIndex, ...table } = block.table;
+  return Object.freeze({
+    type: "tableCell",
+    containerPath: block.containerPath,
+    end: "paragraph",
+    table: Object.freeze(table),
+  });
+};
+
+const containerOccurrenceKey = (occurrence: FolioContentContainerOccurrence): string =>
+  occurrence.type === "body"
+    ? JSON.stringify([
+        occurrence.type,
+        occurrence.containerPath.map(({ kind, identity }) => [kind, identity.type, identity.id]),
+      ])
+    : JSON.stringify([
+        occurrence.type,
+        occurrence.containerPath.map(({ kind, identity }) => [kind, identity.type, identity.id]),
+        occurrence.table.outerTableIdentity,
+        occurrence.table.tableIdentity,
+        occurrence.table.rowIdentity,
+        occurrence.table.cellIdentity,
+        occurrence.table.outerTableIndex,
+        occurrence.table.tableIndex,
+        occurrence.table.rowIndex,
+        occurrence.table.cellIndex,
+        occurrence.table.gridColumnIndex,
+        occurrence.table.columnSpan,
+        occurrence.table.rowSpan,
+      ]);
+
+const paragraphTopology = (
+  blocks: readonly FolioContentBlock[],
+  bodyContainerEnds: ReadonlyMap<string | null, "paragraph" | "structuralSibling">,
+): ParagraphTopology => {
+  const occurrenceKeys = blocks.map((block) => {
+    if (!block.table) {
+      return containerOccurrenceKey({
+        type: "body",
+        containerPath: block.containerPath,
+        end: bodyContainerEnds.get(containerPathKeyOf(block)) ?? "structuralSibling",
+      });
+    }
+    const { paragraphIndex: _paragraphIndex, ...table } = block.table;
+    return containerOccurrenceKey({
+      type: "tableCell",
+      containerPath: block.containerPath,
+      end: "paragraph",
+      table,
+    });
+  });
+  const lastIndexByOccurrence = new Map<string, number>();
+  for (const [index, key] of occurrenceKeys.entries()) lastIndexByOccurrence.set(key, index);
+  const predecessorByBlockId = new Map<string, string>();
+  const successorByBlockId = new Map<string, string>();
+  const terminalBlockIds = new Set<string>();
+  for (const [index, block] of blocks.entries()) {
+    const key = occurrenceKeys[index] ?? panic("A paragraph topology lost its occurrence");
+    const previous = blocks[index - 1];
+    if (previous && occurrenceKeys[index - 1] === key) {
+      predecessorByBlockId.set(block.identity.id, previous.identity.id);
+    }
+    const next = blocks[index + 1];
+    if (next && occurrenceKeys[index + 1] === key) {
+      successorByBlockId.set(block.identity.id, next.identity.id);
+    }
+    if (
+      lastIndexByOccurrence.get(key) === index &&
+      (block.table !== undefined ||
+        bodyContainerEnds.get(containerPathKeyOf(block)) === "paragraph")
+    ) {
+      terminalBlockIds.add(block.identity.id);
+    }
+  }
+  return Object.freeze({ predecessorByBlockId, successorByBlockId, terminalBlockIds });
+};
+
+const createContainerAlignment = (
+  context: MoveScopeContext,
+  baseBlock: FolioContentBlock | null,
+  revisedBlock: FolioContentBlock | null,
+): FolioContentContainerAlignment => {
+  const id = context.nextContainerAlignmentId++;
+  if (baseBlock && revisedBlock) {
+    return Object.freeze({
+      type: "paired",
+      id,
+      base: containerOccurrenceOf(baseBlock, context, "base"),
+      revised: containerOccurrenceOf(revisedBlock, context, "revised"),
+    });
+  }
+  if (baseBlock) {
+    return Object.freeze({
+      type: "baseOnly",
+      id,
+      base: containerOccurrenceOf(baseBlock, context, "base"),
+      revised: null,
+    });
+  }
+  if (revisedBlock) {
+    return Object.freeze({
+      type: "revisedOnly",
+      id,
+      base: null,
+      revised: containerOccurrenceOf(revisedBlock, context, "revised"),
+    });
+  }
+  return panic("A container alignment must own at least one occurrence");
+};
+
+const registeredContainerAlignment = (
+  context: MoveScopeContext,
+  baseBlock: FolioContentBlock | null,
+  revisedBlock: FolioContentBlock | null,
+): FolioContentContainerAlignment => {
+  const baseKey = baseBlock
+    ? containerOccurrenceKey(containerOccurrenceOf(baseBlock, context, "base"))
+    : null;
+  const revisedKey = revisedBlock
+    ? containerOccurrenceKey(containerOccurrenceOf(revisedBlock, context, "revised"))
+    : null;
+  const fromBase = baseKey === null ? undefined : context.baseContainerAlignments.get(baseKey);
+  const fromRevised =
+    revisedKey === null ? undefined : context.revisedContainerAlignments.get(revisedKey);
+  if (fromBase && fromRevised && fromBase !== fromRevised) {
+    return panic("One container occurrence was aligned to two counterparts");
+  }
+  const existing = fromBase ?? fromRevised;
+  if (existing) {
+    if (baseKey !== null) {
+      if (existing.type === "revisedOnly") {
+        return panic("A base occurrence collides with a revised-only container alignment");
+      }
+      context.baseContainerAlignments.set(baseKey, existing);
+    }
+    if (revisedKey !== null) {
+      if (existing.type === "baseOnly") {
+        return panic("A revised occurrence collides with a base-only container alignment");
+      }
+      context.revisedContainerAlignments.set(revisedKey, existing);
+    }
+    return existing;
+  }
+  const alignment = createContainerAlignment(context, baseBlock, revisedBlock);
+  if (baseKey !== null) {
+    if (alignment.type === "revisedOnly") {
+      return panic("A base occurrence produced a revised-only container alignment");
+    }
+    context.baseContainerAlignments.set(baseKey, alignment);
+  }
+  if (revisedKey !== null) {
+    if (alignment.type === "baseOnly") {
+      return panic("A revised occurrence produced a base-only container alignment");
+    }
+    context.revisedContainerAlignments.set(revisedKey, alignment);
+  }
+  return alignment;
+};
+
+/**
+ * Attach one alignment-owned container correspondence to every block step.
+ * Pair events establish side-to-side scope; one-sided events reuse that exact
+ * scope by occurrence key or remain explicitly one-sided.
+ */
+const scopedAlignmentSteps = (
+  events: readonly FolioContentAlignedBlockEvent[],
+  context: MoveScopeContext,
+  bucketForBlock: (block: FolioContentBlock) => number,
+  defaultAlignment?: FolioContentContainerAlignment,
+  ownedBoundaryScope?: number,
+): FolioContentAlignmentStep[] => {
+  const baseAlignmentByOccurrence = context.baseContainerAlignments;
+  const revisedAlignmentByOccurrence = context.revisedContainerAlignments;
+  if (defaultAlignment) {
+    switch (defaultAlignment.type) {
+      case "paired":
+        baseAlignmentByOccurrence.set(
+          containerOccurrenceKey(defaultAlignment.base),
+          defaultAlignment,
+        );
+        revisedAlignmentByOccurrence.set(
+          containerOccurrenceKey(defaultAlignment.revised),
+          defaultAlignment,
+        );
+        break;
+      case "baseOnly":
+        baseAlignmentByOccurrence.set(
+          containerOccurrenceKey(defaultAlignment.base),
+          defaultAlignment,
+        );
+        break;
+      case "revisedOnly":
+        revisedAlignmentByOccurrence.set(
+          containerOccurrenceKey(defaultAlignment.revised),
+          defaultAlignment,
+        );
+        break;
+      default: {
+        const unreachable: never = defaultAlignment;
+        return panic("Unhandled default container alignment", { alignment: unreachable });
+      }
+    }
+  }
+  for (const event of events) {
+    if (event.type !== "pair") continue;
+    const baseKey = containerOccurrenceKey(containerOccurrenceOf(event.baseBlock, context, "base"));
+    const revisedKey = containerOccurrenceKey(
+      containerOccurrenceOf(event.revisedBlock, context, "revised"),
+    );
+    const fromBase = baseAlignmentByOccurrence.get(baseKey);
+    const fromRevised = revisedAlignmentByOccurrence.get(revisedKey);
+    if (fromBase && fromRevised && fromBase !== fromRevised) {
+      return panic("One container occurrence was aligned to two counterparts");
+    }
+    const alignment =
+      fromBase ??
+      fromRevised ??
+      registeredContainerAlignment(context, event.baseBlock, event.revisedBlock);
+    if (alignment.type !== "paired") {
+      return panic("A paired block event resolved to a one-sided container alignment");
+    }
+    baseAlignmentByOccurrence.set(baseKey, alignment);
+    revisedAlignmentByOccurrence.set(revisedKey, alignment);
+  }
+  type ScopedBlockAlignment =
+    | {
+        readonly type: "pair";
+        readonly baseBlock: FolioContentBlock;
+        readonly revisedBlock: FolioContentBlock;
+        readonly containerAlignment: FolioContentPairedContainerAlignment;
+      }
+    | {
+        readonly type: "baseOnly";
+        readonly block: FolioContentBlock;
+        readonly containerAlignment: FolioContentBaseContainerAlignment;
+      }
+    | {
+        readonly type: "revisedOnly";
+        readonly block: FolioContentBlock;
+        readonly containerAlignment: FolioContentRevisedContainerAlignment;
+      };
+  const aligned: ScopedBlockAlignment[] = [];
   for (const event of events) {
     if (event.type === "pair") {
-      steps.push(event);
+      const alignment = baseAlignmentByOccurrence.get(
+        containerOccurrenceKey(containerOccurrenceOf(event.baseBlock, context, "base")),
+      );
+      if (!alignment || alignment.type !== "paired") {
+        return panic("A paired block event has no paired container alignment");
+      }
+      aligned.push({
+        type: "pair",
+        baseBlock: event.baseBlock,
+        revisedBlock: event.revisedBlock,
+        containerAlignment: alignment,
+      });
+      continue;
+    }
+    const occurrenceKey = containerOccurrenceKey(
+      containerOccurrenceOf(event.block, context, event.type === "baseOnly" ? "base" : "revised"),
+    );
+    if (event.type === "baseOnly") {
+      const containerAlignment =
+        baseAlignmentByOccurrence.get(occurrenceKey) ??
+        registeredContainerAlignment(context, event.block, null);
+      if (containerAlignment.type === "revisedOnly") {
+        return panic("A base-only block resolved to a revised-only container alignment");
+      }
+      baseAlignmentByOccurrence.set(occurrenceKey, containerAlignment);
+      aligned.push({ type: "baseOnly", block: event.block, containerAlignment });
+    } else {
+      const containerAlignment =
+        revisedAlignmentByOccurrence.get(occurrenceKey) ??
+        registeredContainerAlignment(context, null, event.block);
+      if (containerAlignment.type === "baseOnly") {
+        return panic("A revised-only block resolved to a base-only container alignment");
+      }
+      revisedAlignmentByOccurrence.set(occurrenceKey, containerAlignment);
+      aligned.push({ type: "revisedOnly", block: event.block, containerAlignment });
+    }
+  }
+
+  const steps: FolioContentAlignmentStep[] = [];
+  const boundaryScope = ownedBoundaryScope ?? context.nextBoundaryScope++;
+  let gap = context.nextGap++;
+  for (const entry of aligned) {
+    if (entry.type === "pair") {
+      steps.push({ ...entry, boundaryScope });
       gap = context.nextGap++;
       continue;
     }
+    if (entry.type === "baseOnly") {
+      const { containerAlignment } = entry;
+      steps.push({
+        type: "baseOnly",
+        block: entry.block,
+        moveScope: {
+          bucket: bucketForBlock(entry.block),
+          gap,
+          boundaryScope,
+          containerAlignment,
+        },
+        removalBoundary: Object.freeze({ type: "unanchoredContainer", containerAlignment }),
+      });
+      continue;
+    }
+    const { containerAlignment } = entry;
     steps.push({
-      ...event,
-      moveScope: { bucket: bucketForBlock(event.block), gap },
+      type: "revisedOnly",
+      block: entry.block,
+      moveScope: {
+        bucket: bucketForBlock(entry.block),
+        gap,
+        boundaryScope,
+        containerAlignment,
+      },
+      insertionBoundary: Object.freeze({ type: "unanchoredContainer", containerAlignment }),
     });
   }
   return steps;
 };
 
-type DocumentSegment<Block extends FolioContentBlock> =
+type BaseParagraphBoundary = {
+  readonly block: FolioContentBlock;
+  readonly alignment: FolioContentBaseContainerAlignment;
+};
+
+type PairedBaseParagraphBoundary = {
+  readonly block: FolioContentBlock;
+  readonly alignment: FolioContentPairedContainerAlignment;
+};
+
+type TerminalRevisedParagraph = {
+  readonly block: FolioContentBlock;
+  readonly pairedBase: FolioContentBlock | null;
+};
+
+/**
+ * Resolve boundaries only after every structural segment is aligned. Removal
+ * follows story-wide source topology; insertion scans every one-sided event in
+ * its structural scope without crossing a table boundary.
+ */
+const withCanonicalParagraphBoundaries = (
+  unresolved: readonly FolioContentAlignmentStep[],
+  context: MoveScopeContext,
+): FolioContentAlignmentStep[] => {
+  const baseBoundaryByBlockId = new Map<string, BaseParagraphBoundary>();
+  const terminalRevisedByAlignment = new Map<
+    FolioContentContainerAlignment,
+    TerminalRevisedParagraph
+  >();
+  const registerBaseBoundary = (boundary: BaseParagraphBoundary): void => {
+    const blockId = boundary.block.identity.id;
+    const existing = baseBoundaryByBlockId.get(blockId);
+    if (
+      existing !== undefined &&
+      (existing.block !== boundary.block || existing.alignment !== boundary.alignment)
+    ) {
+      return panic("A base paragraph has two canonical alignment boundaries", { blockId });
+    }
+    baseBoundaryByBlockId.set(blockId, boundary);
+  };
+  const registerTerminalRevised = (
+    alignment: FolioContentRevisedContainerAlignment,
+    terminal: TerminalRevisedParagraph,
+  ): void => {
+    if (!context.revisedParagraphTopology.terminalBlockIds.has(terminal.block.identity.id)) return;
+    const existing = terminalRevisedByAlignment.get(alignment);
+    if (existing !== undefined && existing.block !== terminal.block) {
+      return panic("A container alignment has two canonical revised terminal paragraphs", {
+        firstBlockId: existing.block.identity.id,
+        secondBlockId: terminal.block.identity.id,
+      });
+    }
+    terminalRevisedByAlignment.set(alignment, terminal);
+  };
+
+  for (const step of unresolved) {
+    switch (step.type) {
+      case "pair":
+        registerBaseBoundary({ block: step.baseBlock, alignment: step.containerAlignment });
+        registerTerminalRevised(step.containerAlignment, {
+          block: step.revisedBlock,
+          pairedBase: step.baseBlock,
+        });
+        break;
+      case "baseOnly":
+        registerBaseBoundary({ block: step.block, alignment: step.moveScope.containerAlignment });
+        break;
+      case "revisedOnly":
+        registerTerminalRevised(step.moveScope.containerAlignment, {
+          block: step.block,
+          pairedBase: null,
+        });
+        break;
+      case "baseRow":
+      case "revisedRow":
+      case "baseTable":
+      case "revisedTable":
+      case "baseColumn":
+      case "revisedColumn":
+      case "tableReplacement":
+        break;
+      default: {
+        const unreachable: never = step;
+        return panic("Unhandled alignment step while indexing paragraph boundaries", {
+          step: unreachable,
+        });
+      }
+    }
+  }
+
+  const nextBaseByIndex: (BaseParagraphBoundary | null)[] = Array.from(
+    { length: unresolved.length },
+    () => null,
+  );
+  const nextPairedBaseByIndex: (PairedBaseParagraphBoundary | null)[] = Array.from(
+    { length: unresolved.length },
+    () => null,
+  );
+  const nextBaseByScope = new Map<number, BaseParagraphBoundary>();
+  const nextPairedBaseByScope = new Map<number, PairedBaseParagraphBoundary>();
+  for (let index = unresolved.length - 1; index >= 0; index--) {
+    const step = unresolved[index];
+    if (!step || step.type === "tableReplacement") continue;
+    if (step.type === "pair") {
+      nextBaseByIndex[index] = nextBaseByScope.get(step.boundaryScope) ?? null;
+      nextPairedBaseByIndex[index] = nextPairedBaseByScope.get(step.boundaryScope) ?? null;
+      const boundary = { block: step.baseBlock, alignment: step.containerAlignment };
+      nextBaseByScope.set(step.boundaryScope, boundary);
+      nextPairedBaseByScope.set(step.boundaryScope, boundary);
+      continue;
+    }
+    if (step.type === "baseOnly") {
+      const { containerAlignment } = step.moveScope;
+      nextBaseByIndex[index] = nextBaseByScope.get(step.moveScope.boundaryScope) ?? null;
+      nextPairedBaseByIndex[index] =
+        containerAlignment.type === "paired"
+          ? (nextPairedBaseByScope.get(step.moveScope.boundaryScope) ?? null)
+          : null;
+      nextBaseByScope.set(step.moveScope.boundaryScope, {
+        block: step.block,
+        alignment: containerAlignment,
+      });
+      continue;
+    }
+    if (step.type === "revisedOnly") {
+      const { containerAlignment } = step.moveScope;
+      nextBaseByIndex[index] = nextBaseByScope.get(step.moveScope.boundaryScope) ?? null;
+      nextPairedBaseByIndex[index] =
+        containerAlignment.type === "paired"
+          ? (nextPairedBaseByScope.get(step.moveScope.boundaryScope) ?? null)
+          : null;
+    }
+  }
+
+  const previousBaseByScope = new Map<number, BaseParagraphBoundary>();
+  const previousPairedBaseByScope = new Map<number, PairedBaseParagraphBoundary>();
+  const previousPairedBaseByAlignment = new Map<
+    FolioContentPairedContainerAlignment,
+    PairedBaseParagraphBoundary
+  >();
+  const resolved: FolioContentAlignmentStep[] = [];
+  for (const [index, step] of unresolved.entries()) {
+    if (step.type === "pair") {
+      resolved.push(step);
+      const boundary = { block: step.baseBlock, alignment: step.containerAlignment };
+      previousBaseByScope.set(step.boundaryScope, boundary);
+      previousPairedBaseByScope.set(step.boundaryScope, boundary);
+      previousPairedBaseByAlignment.set(step.containerAlignment, boundary);
+      continue;
+    }
+    if (step.type === "baseOnly") {
+      const { containerAlignment } = step.moveScope;
+      const successorId = context.baseParagraphTopology.successorByBlockId.get(
+        step.block.identity.id,
+      );
+      const successor =
+        successorId === undefined ? undefined : baseBoundaryByBlockId.get(successorId);
+      if (successor !== undefined && successor.alignment !== containerAlignment) {
+        return panic("A base paragraph successor crossed its canonical container alignment", {
+          blockId: step.block.identity.id,
+          successorId,
+        });
+      }
+      const predecessorId = context.baseParagraphTopology.predecessorByBlockId.get(
+        step.block.identity.id,
+      );
+      const predecessor =
+        predecessorId === undefined ? undefined : baseBoundaryByBlockId.get(predecessorId);
+      if (predecessor !== undefined && predecessor.alignment !== containerAlignment) {
+        return panic("A base paragraph predecessor crossed its canonical container alignment", {
+          blockId: step.block.identity.id,
+          predecessorId,
+        });
+      }
+      const targetCarrier = terminalRevisedByAlignment.get(containerAlignment);
+      const structuralFollower = context.baseStructuralFollowerByBlockId.get(
+        step.block.identity.id,
+      );
+      const previousPaired =
+        containerAlignment.type === "paired"
+          ? previousPairedBaseByAlignment.get(containerAlignment)
+          : undefined;
+      let removalBoundary: FolioContentParagraphRemovalBoundary;
+      if (successor) {
+        removalBoundary = Object.freeze({
+          type: "successorParagraph",
+          successor: successor.block,
+          containerAlignment,
+        });
+      } else if (structuralFollower !== undefined) {
+        removalBoundary = Object.freeze({
+          type: "successorTable",
+          firstBlock: structuralFollower,
+          containerAlignment,
+        });
+      } else if (
+        context.baseParagraphTopology.terminalBlockIds.has(step.block.identity.id) &&
+        containerAlignment.type === "paired" &&
+        previousPaired !== undefined &&
+        targetCarrier !== undefined &&
+        (targetCarrier.pairedBase === previousPaired.block || targetCarrier.pairedBase === null)
+      ) {
+        removalBoundary = Object.freeze({
+          type: "terminalPredecessor",
+          predecessor: previousPaired.block,
+          targetCarrier: targetCarrier.block,
+          containerAlignment,
+        });
+      } else {
+        removalBoundary = Object.freeze({ type: "unanchoredContainer", containerAlignment });
+      }
+      resolved.push(Object.freeze({ ...step, removalBoundary }));
+      previousBaseByScope.set(step.moveScope.boundaryScope, {
+        block: step.block,
+        alignment: containerAlignment,
+      });
+      continue;
+    }
+    if (step.type === "revisedOnly") {
+      const { containerAlignment } = step.moveScope;
+      const nextPaired =
+        containerAlignment.type === "paired" ? (nextPairedBaseByIndex[index] ?? null) : null;
+      const previousPaired =
+        containerAlignment.type === "paired"
+          ? (previousPairedBaseByScope.get(step.moveScope.boundaryScope) ?? null)
+          : null;
+      const fallbackNext = nextBaseByIndex[index] ?? null;
+      const fallbackPrevious = previousBaseByScope.get(step.moveScope.boundaryScope) ?? null;
+      let insertionBoundary: FolioContentParagraphInsertionBoundary;
+      if (nextPaired) {
+        insertionBoundary = Object.freeze({
+          type: "beforeParagraph",
+          paragraph: nextPaired.block,
+          containerAlignment: nextPaired.alignment,
+        });
+      } else if (previousPaired) {
+        insertionBoundary = Object.freeze({
+          type: "afterParagraph",
+          paragraph: previousPaired.block,
+          containerAlignment: previousPaired.alignment,
+        });
+      } else if (fallbackNext?.alignment.type === "paired") {
+        insertionBoundary = Object.freeze({
+          type: "beforeParagraph",
+          paragraph: fallbackNext.block,
+          containerAlignment: fallbackNext.alignment,
+        });
+      } else if (fallbackPrevious?.alignment.type === "paired") {
+        insertionBoundary = Object.freeze({
+          type: "afterParagraph",
+          paragraph: fallbackPrevious.block,
+          containerAlignment: fallbackPrevious.alignment,
+        });
+      } else {
+        insertionBoundary = Object.freeze({ type: "unanchoredContainer", containerAlignment });
+      }
+      resolved.push(Object.freeze({ ...step, insertionBoundary }));
+      continue;
+    }
+    if (step.type === "tableReplacement") {
+      resolved.push({
+        ...step,
+        refinementSteps: withCanonicalParagraphBoundaries(step.refinementSteps, context),
+      });
+      continue;
+    }
+    resolved.push(step);
+  }
+  return resolved;
+};
+
+type DocumentSegment =
   | {
       kind: "body";
-      blocks: Block[];
+      blocks: FolioContentBlock[];
+      containerPath: FolioContentBlock["containerPath"];
       containerPathKey: string | null;
       structuralKey: string;
     }
-  | { kind: "table"; blocks: Block[]; containerPathKey: null; structuralKey: string };
+  | {
+      kind: "table";
+      blocks: FolioContentTableBlock[];
+      containerPath: FolioContentBlock["containerPath"];
+      containerPathKey: string | null;
+      structuralKey: string;
+    };
+
+const isFolioContentTableBlock = (block: FolioContentBlock): block is FolioContentTableBlock =>
+  block.table !== undefined;
 
 const containerPathKeyOf = (block: FolioContentBlock): string | null =>
-  block.containerPath === undefined || block.containerPath.length === 0
+  block.containerPath.length === 0
     ? null
-    : JSON.stringify(block.containerPath.map(({ kind, id }) => [kind, id]));
+    : JSON.stringify(
+        block.containerPath.map(({ kind, identity }) => [kind, identity.type, identity.id]),
+      );
 
 const contentBlocksShareContainerPath = (
   left: FolioContentBlock,
   right: FolioContentBlock,
-): boolean => containerPathKeyOf(left) === containerPathKeyOf(right);
+): boolean =>
+  left.containerPath.length === right.containerPath.length &&
+  left.containerPath.every((entry, index) => {
+    const counterpart = right.containerPath[index];
+    const disposition =
+      counterpart === undefined
+        ? "forbid"
+        : folioContentIdentityPairDisposition(entry.identity, counterpart.identity);
+    return (
+      counterpart !== undefined &&
+      entry.kind === counterpart.kind &&
+      disposition !== "candidate" &&
+      disposition !== "forbid"
+    );
+  });
 
-const splitSegments = <Block extends FolioContentBlock>(
-  blocks: readonly Block[],
-): DocumentSegment<Block>[] => {
-  const segments: DocumentSegment<Block>[] = [];
+const contentContainerPathsCanPair = (
+  base: FolioContentBlock["containerPath"],
+  revised: FolioContentBlock["containerPath"],
+): boolean =>
+  base.length === revised.length &&
+  base.every((entry, index) => {
+    const counterpart = revised[index];
+    return (
+      counterpart !== undefined &&
+      entry.kind === counterpart.kind &&
+      folioContentIdentityPairDisposition(entry.identity, counterpart.identity) !== "forbid"
+    );
+  });
+
+const commonContainerPath = (
+  left: FolioContentBlock["containerPath"],
+  right: FolioContentBlock["containerPath"],
+): FolioContentBlock["containerPath"] => {
+  const prefix: FolioContentBlock["containerPath"][number][] = [];
+  const length = Math.min(left.length, right.length);
+  for (let index = 0; index < length; index++) {
+    const leftEntry = left[index];
+    const rightEntry = right[index];
+    if (
+      !leftEntry ||
+      !rightEntry ||
+      leftEntry.kind !== rightEntry.kind ||
+      leftEntry.identity.type !== rightEntry.identity.type ||
+      leftEntry.identity.id !== rightEntry.identity.id
+    ) {
+      break;
+    }
+    prefix.push(leftEntry);
+  }
+  return prefix;
+};
+
+const structuralSegmentKey = (
+  kind: DocumentSegment["kind"],
+  containerPath: FolioContentBlock["containerPath"],
+): string => JSON.stringify([kind, containerPath.map(({ kind: containerKind }) => containerKind)]);
+
+const splitSegments = (blocks: readonly FolioContentBlock[]): DocumentSegment[] => {
+  const segments: DocumentSegment[] = [];
   let currentTableIndex: number | null = null;
   for (const block of blocks) {
-    const tableIndex = block.table?.outerTableIndex ?? null;
-    const containerPathKey = block.table ? null : containerPathKeyOf(block);
+    const tableBlock = isFolioContentTableBlock(block) ? block : null;
+    const tableIndex = tableBlock?.table.outerTableIndex ?? null;
+    const containerPathKey = containerPathKeyOf(block);
+    const kind = tableBlock ? "table" : "body";
+    const structuralKey = structuralSegmentKey(kind, block.containerPath);
     const current = segments.at(-1);
-    if (
-      current !== undefined &&
-      currentTableIndex === tableIndex &&
-      current.containerPathKey === containerPathKey
-    ) {
-      current.blocks.push(block);
-      continue;
+    if (current !== undefined && currentTableIndex === tableIndex) {
+      if (tableBlock && current.kind === "table") {
+        current.blocks.push(tableBlock);
+        current.containerPath = commonContainerPath(current.containerPath, block.containerPath);
+        current.containerPathKey =
+          current.containerPath.length === 0
+            ? null
+            : JSON.stringify(
+                current.containerPath.map(({ kind: containerKind, identity }) => [
+                  containerKind,
+                  identity.type,
+                  identity.id,
+                ]),
+              );
+        current.structuralKey = structuralSegmentKey("table", current.containerPath);
+        continue;
+      }
+      if (!tableBlock && current.kind === "body" && current.containerPathKey === containerPathKey) {
+        current.blocks.push(block);
+        continue;
+      }
     }
     segments.push(
-      block.table
+      tableBlock
         ? {
             kind: "table",
-            blocks: [block],
-            containerPathKey: null,
-            structuralKey: JSON.stringify(["table", null]),
+            blocks: [tableBlock],
+            containerPath: block.containerPath,
+            containerPathKey,
+            structuralKey,
           }
         : {
             kind: "body",
             blocks: [block],
+            containerPath: block.containerPath,
             containerPathKey,
-            structuralKey: JSON.stringify(["body", containerPathKey]),
+            structuralKey,
           },
     );
     currentTableIndex = tableIndex;
@@ -603,10 +1391,45 @@ const splitSegments = <Block extends FolioContentBlock>(
   return segments;
 };
 
-export const groupFolioContentTableRows = <Block extends FolioContentBlock>(
-  blocks: readonly Block[],
-): Block[][] => {
-  const rows = new Map<string, Block[]>();
+/** Exact table occurrence following the last paragraph of each body run. */
+const structuralTableFollowers = (
+  segments: readonly DocumentSegment[],
+): ReadonlyMap<string, FolioContentTableBlock> => {
+  const followers = new Map<string, FolioContentTableBlock>();
+  for (let index = 0; index < segments.length - 1; index++) {
+    const segment = segments[index];
+    const next = segments[index + 1];
+    if (
+      segment?.kind !== "body" ||
+      next?.kind !== "table" ||
+      segment.containerPathKey !== next.containerPathKey
+    ) {
+      continue;
+    }
+    const paragraph = segment.blocks.at(-1);
+    const firstTableBlock = next.blocks.at(0);
+    if (!paragraph || !firstTableBlock) {
+      return panic("A structural table segment has no canonical first member");
+    }
+    followers.set(paragraph.identity.id, firstTableBlock);
+  }
+  return followers;
+};
+
+const bodyContainerEnds = (
+  segments: readonly DocumentSegment[],
+): ReadonlyMap<string | null, "paragraph" | "structuralSibling"> => {
+  const ends = new Map<string | null, "paragraph" | "structuralSibling">();
+  for (const segment of segments) {
+    ends.set(segment.containerPathKey, segment.kind === "body" ? "paragraph" : "structuralSibling");
+  }
+  return ends;
+};
+
+export const groupFolioContentTableRows = (
+  blocks: readonly FolioContentBlock[],
+): FolioContentBlock[][] => {
+  const rows = new Map<string, FolioContentBlock[]>();
   for (const block of blocks) {
     if (!block.table) {
       continue;
@@ -622,8 +1445,8 @@ export const groupFolioContentTableRows = <Block extends FolioContentBlock>(
   return [...rows.values()];
 };
 
-const groupTables = <Block extends FolioContentBlock>(blocks: readonly Block[]): Block[][] => {
-  const tables = new Map<number, Block[]>();
+const groupTables = (blocks: readonly FolioContentBlock[]): FolioContentBlock[][] => {
+  const tables = new Map<number, FolioContentBlock[]>();
   for (const block of blocks) {
     const tableIndex = block.table?.tableIndex;
     if (tableIndex === undefined) {
@@ -649,75 +1472,83 @@ const CONTENT_STRUCTURE_ANCHOR_MINIMUM_WORD_COUNT = 3;
 
 type ContentStructureAtom = string | number | null;
 
+type ContentIdentityProfile = Readonly<FolioContentIdentity>;
+
+const contentIdentityProfile = ({ identity }: FolioContentBlock): ContentIdentityProfile =>
+  identity;
+
+const identityAnchorKey = (identity: ContentIdentityProfile): string | null =>
+  folioContentIdentityPairDisposition(identity, identity) === "anchor"
+    ? JSON.stringify([identity.type, identity.id])
+    : null;
+
 /** Complete row identity, or an explicit refusal when retaining it would exceed the profile cap. */
 type ContentContainerIdentityProfile =
   | {
       status: "available";
-      blockIds: readonly string[];
-      idStabilities: readonly FolioContentIdStability[];
+      identities: readonly ContentIdentityProfile[];
     }
   | { status: "unavailable" };
 
 type ContentStructureProfile = {
+  scopeIdentity: ContentIdentityProfile | null;
   anchorTexts: readonly string[];
-  blockIds: readonly string[];
+  identities: readonly ContentIdentityProfile[];
   containerIdentity: ContentContainerIdentityProfile | null;
   exactSignature: string | null;
   physicalCellCount: number | null;
-  stableIds: readonly string[];
+  anchorIdentityKeys: readonly string[];
   tokenCounts: ReadonlyMap<string, number> | null;
   tokenCount: number;
 };
 
-type CreateContentStructureProfileOptions<Block extends FolioContentBlock> = {
-  blocks: readonly Block[];
-  blockStructure: (block: Block) => readonly ContentStructureAtom[];
-  idStability: (block: Block) => FolioContentIdStability;
+type CreateContentStructureProfileOptions = {
+  blocks: readonly FolioContentBlock[];
+  blockStructure: (block: FolioContentBlock) => readonly ContentStructureAtom[];
+  scopeIdentity?: ContentIdentityProfile;
   physicalCellCount?: number;
   retainContainerIdentity?: boolean;
 };
 
-const createContentStructureProfile = <Block extends FolioContentBlock>({
+const createContentStructureProfile = ({
   blocks,
   blockStructure,
-  idStability,
+  scopeIdentity,
   physicalCellCount,
   retainContainerIdentity = false,
-}: CreateContentStructureProfileOptions<Block>): ContentStructureProfile => {
+}: CreateContentStructureProfileOptions): ContentStructureProfile => {
   let containerIdentity: ContentContainerIdentityProfile | null = null;
   if (retainContainerIdentity) {
     if (blocks.length > MAX_CONTENT_STRUCTURE_PROFILE_BLOCKS) {
       containerIdentity = { status: "unavailable" };
     } else {
-      const blockIds: string[] = [];
-      const idStabilities: FolioContentIdStability[] = [];
-      for (const block of blocks) {
-        blockIds.push(block.id);
-        idStabilities.push(idStability(block));
-      }
-      containerIdentity = { status: "available", blockIds, idStabilities };
+      containerIdentity = {
+        status: "available",
+        identities: blocks.map(contentIdentityProfile),
+      };
     }
   }
   const profiledBlockCount = Math.min(blocks.length, MAX_CONTENT_STRUCTURE_PROFILE_BLOCKS);
-  const blockIds: string[] = [];
-  const stableIds: string[] = [];
+  const identities: ContentIdentityProfile[] = [];
+  const anchorIdentityKeys: string[] = [];
   for (let index = 0; index < profiledBlockCount; index++) {
     const block = blocks[index];
     if (block) {
-      blockIds.push(block.id);
-      if (idStability(block) === "stable") {
-        stableIds.push(block.id);
-      }
+      const identity = contentIdentityProfile(block);
+      identities.push(identity);
+      const anchorKey = identityAnchorKey(identity);
+      if (anchorKey !== null) anchorIdentityKeys.push(anchorKey);
     }
   }
   if (blocks.length > MAX_CONTENT_STRUCTURE_PROFILE_BLOCKS) {
     return {
+      scopeIdentity: scopeIdentity ?? null,
       anchorTexts: [],
-      blockIds,
+      identities,
       containerIdentity,
       exactSignature: null,
       physicalCellCount: physicalCellCount ?? null,
-      stableIds,
+      anchorIdentityKeys,
       tokenCounts: null,
       tokenCount: 0,
     };
@@ -730,12 +1561,13 @@ const createContentStructureProfile = <Block extends FolioContentBlock>({
       block.text.length > MAX_CONTENT_STRUCTURE_PROFILE_TEXT_CODE_UNITS - textCodeUnits
     ) {
       return {
+        scopeIdentity: scopeIdentity ?? null,
         anchorTexts: [],
-        blockIds,
+        identities,
         containerIdentity,
         exactSignature: null,
         physicalCellCount: physicalCellCount ?? null,
-        stableIds,
+        anchorIdentityKeys,
         tokenCounts: null,
         tokenCount: 0,
       };
@@ -768,12 +1600,13 @@ const createContentStructureProfile = <Block extends FolioContentBlock>({
     }
   }
   return {
+    scopeIdentity: scopeIdentity ?? null,
     anchorTexts: [...anchorTexts],
-    blockIds,
+    identities,
     containerIdentity,
     exactSignature: JSON.stringify(signature),
     physicalCellCount: physicalCellCount ?? null,
-    stableIds,
+    anchorIdentityKeys,
     tokenCounts: tokensComplete ? tokenCounts : null,
     tokenCount: tokensComplete ? tokenCount : 0,
   };
@@ -807,45 +1640,46 @@ const contentStructureProfileSimilarity = (
   return (2 * shared) / (base.tokenCount + revised.tokenCount);
 };
 
-const tableStructureProfile = <Block extends FolioContentBlock>(
-  blocks: readonly Block[],
-  idStability: (block: Block) => FolioContentIdStability,
+const tableStructureProfile = (
+  blocks: readonly FolioContentBlock[],
+  identityLevel: "outer" | "table" = "table",
 ): ContentStructureProfile => {
   const tableOrdinalByIndex = new Map<number, number>();
+  const firstTable = blocks.at(0)?.table;
+  const tableIdentity =
+    identityLevel === "outer" ? firstTable?.outerTableIdentity : firstTable?.tableIdentity;
   return createContentStructureProfile({
     blocks,
-    idStability,
+    ...(tableIdentity !== undefined && { scopeIdentity: tableIdentity }),
     blockStructure: (block) => {
-      const table = block.table ?? panic("A table profile contains a body block");
-      let tableOrdinal = tableOrdinalByIndex.get(table.tableIndex);
+      const blockTable = block.table ?? panic("A table profile contains a body block");
+      let tableOrdinal = tableOrdinalByIndex.get(blockTable.tableIndex);
       if (tableOrdinal === undefined) {
         tableOrdinal = tableOrdinalByIndex.size;
-        tableOrdinalByIndex.set(table.tableIndex, tableOrdinal);
+        tableOrdinalByIndex.set(blockTable.tableIndex, tableOrdinal);
       }
       return [
         tableOrdinal,
-        table.rowIndex,
-        table.cellIndex,
-        table.gridColumnIndex,
-        table.columnSpan,
-        table.rowSpan,
-        table.paragraphIndex,
+        blockTable.rowIndex,
+        blockTable.cellIndex,
+        blockTable.gridColumnIndex,
+        blockTable.columnSpan,
+        blockTable.rowSpan,
+        blockTable.paragraphIndex,
       ];
     },
   });
 };
 
-const rowStructureProfile = <Block extends FolioContentBlock>(
-  blocks: readonly Block[],
-  idStability: (block: Block) => FolioContentIdStability,
-): ContentStructureProfile => {
+const rowStructureProfile = (blocks: readonly FolioContentBlock[]): ContentStructureProfile => {
   let physicalCellCount = 0;
+  const rowIdentity = blocks.at(0)?.table?.rowIdentity;
   for (const block of blocks) {
     physicalCellCount = Math.max(physicalCellCount, (block.table?.cellIndex ?? -1) + 1);
   }
   return createContentStructureProfile({
     blocks,
-    idStability,
+    ...(rowIdentity !== undefined && { scopeIdentity: rowIdentity }),
     physicalCellCount,
     retainContainerIdentity: true,
     blockStructure: (block) => {
@@ -883,28 +1717,28 @@ const stableContentSequencePairs = <Item>(
   base: readonly ProfiledContentSequenceItem<Item>[],
   revised: readonly ProfiledContentSequenceItem<Item>[],
 ): ReadonlySet<number> => {
-  const uniqueIndexesById = (
+  const uniqueIndexesByIdentity = (
     items: readonly ProfiledContentSequenceItem<Item>[],
   ): ReadonlyMap<string, number | null> => {
     const indexes = new Map<string, number | null>();
     items.forEach(({ profile }, itemIndex) => {
-      for (const id of profile.stableIds) {
-        const existing = indexes.get(id);
+      for (const key of profile.anchorIdentityKeys) {
+        const existing = indexes.get(key);
         if (existing === undefined) {
-          indexes.set(id, itemIndex);
+          indexes.set(key, itemIndex);
         } else if (existing !== itemIndex) {
-          indexes.set(id, null);
+          indexes.set(key, null);
         }
       }
     });
     return indexes;
   };
 
-  const baseIndexes = uniqueIndexesById(base);
-  const revisedIndexes = uniqueIndexesById(revised);
+  const baseIndexes = uniqueIndexesByIdentity(base);
+  const revisedIndexes = uniqueIndexesByIdentity(revised);
   const pairs = new Set<number>();
-  for (const [id, baseIndex] of baseIndexes) {
-    const revisedIndex = revisedIndexes.get(id);
+  for (const [key, baseIndex] of baseIndexes) {
+    const revisedIndex = revisedIndexes.get(key);
     if (baseIndex !== null && revisedIndex !== undefined && revisedIndex !== null) {
       pairs.add(baseIndex * revised.length + revisedIndex);
     }
@@ -921,19 +1755,23 @@ const contentContainerIdentityTransition = (
     revised === null ||
     base.status !== "available" ||
     revised.status !== "available" ||
-    base.blockIds.length === 0 ||
-    base.blockIds.length !== revised.blockIds.length
+    base.identities.length === 0 ||
+    base.identities.length !== revised.identities.length
   ) {
     return false;
   }
-  let hasStabilityTransition = false;
-  for (let index = 0; index < base.blockIds.length; index++) {
-    if (base.blockIds[index] !== revised.blockIds[index]) {
+  let hasSemanticsTransition = false;
+  for (let index = 0; index < base.identities.length; index++) {
+    const baseIdentity = base.identities[index];
+    const revisedIdentity = revised.identities[index];
+    if (!baseIdentity || !revisedIdentity) {
       return false;
     }
-    hasStabilityTransition ||= base.idStabilities[index] !== revised.idStabilities[index];
+    const disposition = folioContentIdentityPairDisposition(baseIdentity, revisedIdentity);
+    if (disposition === "candidate" || disposition === "forbid") return false;
+    hasSemanticsTransition ||= disposition === "continuity";
   }
-  return hasStabilityTransition;
+  return hasSemanticsTransition;
 };
 
 type UniqueExactContentSequencePairsOptions = {
@@ -1059,7 +1897,7 @@ const persistedContentSequencePairs = <Item>({
     const indexes = new Map<string, number | null>();
     items.forEach(({ profile }, itemIndex) => {
       const identity = profile.containerIdentity;
-      const firstId = identity?.status === "available" ? identity.blockIds.at(0) : undefined;
+      const firstId = identity?.status === "available" ? identity.identities.at(0)?.id : undefined;
       if (firstId !== undefined) {
         indexes.set(firstId, indexes.has(firstId) ? null : itemIndex);
       }
@@ -1166,13 +2004,11 @@ const alignProfiledContentSequence = <Item>({
       revisedProfile.containerIdentity,
     );
     if (!hasContainerIdentity) {
-      const revisedIds = new Set(revisedProfile.blockIds);
-      const baseStableIds = new Set(baseProfile.stableIds);
-      const revisedStableIds = new Set(revisedProfile.stableIds);
-      // The profile itself is representation-neutral; stableIds records only
-      // the stable half of the observed positional-to-stable transition.
-      hasProvenanceTransition = baseProfile.blockIds.some(
-        (id) => revisedIds.has(id) && baseStableIds.has(id) !== revisedStableIds.has(id),
+      hasProvenanceTransition = baseProfile.identities.some((baseIdentity) =>
+        revisedProfile.identities.some(
+          (revisedIdentity) =>
+            folioContentIdentityPairDisposition(baseIdentity, revisedIdentity) === "continuity",
+        ),
       );
     }
     if (hasProvenanceTransition) {
@@ -1199,6 +2035,15 @@ const alignProfiledContentSequence = <Item>({
   const revisedExactSignatureKeys = revised.map(({ profile }) =>
     internExactSignature(profile.exactSignature),
   );
+  const signatureCounts = (keys: readonly number[]): ReadonlyMap<number, number> => {
+    const counts = new Map<number, number>();
+    for (const key of keys) {
+      if (key !== -1) counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return counts;
+  };
+  const baseExactSignatureCounts = signatureCounts(baseExactSignatureKeys);
+  const revisedExactSignatureCounts = signatureCounts(revisedExactSignatureKeys);
   let persistedPairs: ReadonlySet<number> = new Set();
   const usesContainerIdentity =
     base.some(({ profile }) => profile.containerIdentity !== null) ||
@@ -1248,10 +2093,31 @@ const alignProfiledContentSequence = <Item>({
       if (!canPair(baseItem, revisedItem)) {
         continue;
       }
+      const baseScopeIdentity = baseItem.profile.scopeIdentity;
+      const revisedScopeIdentity = revisedItem.profile.scopeIdentity;
+      if ((baseScopeIdentity === null) !== (revisedScopeIdentity === null)) {
+        continue;
+      }
+      const scopeDisposition =
+        baseScopeIdentity === null || revisedScopeIdentity === null
+          ? null
+          : folioContentIdentityPairDisposition(baseScopeIdentity, revisedScopeIdentity);
+      if (scopeDisposition === "forbid") {
+        continue;
+      }
       const pairIndex = baseIndex * revised.length + revisedIndex;
       const exact =
         baseExactSignatureKeys[baseIndex] !== -1 &&
         baseExactSignatureKeys[baseIndex] === revisedExactSignatureKeys[revisedIndex];
+      const exactKey = baseExactSignatureKeys[baseIndex] ?? -1;
+      if (
+        (scopeDisposition === "candidate" || scopeDisposition === "position") &&
+        exactKey !== -1 &&
+        ((baseExactSignatureCounts.get(exactKey) ?? 0) > 1 ||
+          (revisedExactSignatureCounts.get(exactKey) ?? 0) > 1)
+      ) {
+        continue;
+      }
       const stable = stablePairs.has(pairIndex);
       const profileSimilarity = exact
         ? 1
@@ -1383,36 +2249,31 @@ const alignProfiledContentSequence = <Item>({
   return aligned;
 };
 
-const rowLocation = <Block extends FolioContentBlock>(
-  row: readonly Block[],
-): FolioContentTableLocation | null => row.at(0)?.table ?? null;
+const rowLocation = (row: readonly FolioContentBlock[]): FolioContentTableLocation | null =>
+  row.at(0)?.table ?? null;
 
-type AlignRowCellsOptions<Block extends FolioContentBlock> = {
-  baseRow: readonly Block[];
-  revisedRow: readonly Block[];
+type AlignRowCellsOptions = {
+  baseRow: readonly FolioContentBlock[];
+  revisedRow: readonly FolioContentBlock[];
   workSession: FolioContentAlignmentWorkSession;
   moveScopeContext: MoveScopeContext;
-  stableIdMismatch: "pair" | "separate";
-  idStability?: ((block: Block) => FolioContentIdStability) | undefined;
   baseColumnKeys?: ReadonlyMap<number, number> | undefined;
   revisedColumnKeys?: ReadonlyMap<number, number> | undefined;
 };
 
-const alignRowCells = <Block extends FolioContentBlock>({
+const alignRowCells = ({
   baseRow,
   revisedRow,
   workSession,
   moveScopeContext,
-  stableIdMismatch,
-  idStability,
   baseColumnKeys,
   revisedColumnKeys,
-}: AlignRowCellsOptions<Block>): FolioContentAlignmentStep<Block>[] => {
+}: AlignRowCellsOptions): FolioContentAlignmentStep[] => {
   const byCell = (
-    row: readonly Block[],
+    row: readonly FolioContentBlock[],
     columnKeys: ReadonlyMap<number, number> | undefined,
-  ): Map<number, Block[]> => {
-    const cells = new Map<number, Block[]>();
+  ): Map<number, FolioContentBlock[]> => {
+    const cells = new Map<number, FolioContentBlock[]>();
     for (const block of row) {
       const table = block.table;
       let cellIndex = table?.cellIndex ?? 0;
@@ -1440,15 +2301,27 @@ const alignRowCells = <Block extends FolioContentBlock>({
   const cellIndexes = [...new Set([...baseCells.keys(), ...revisedCells.keys()])].toSorted(
     (left, right) => left - right,
   );
-  const steps: FolioContentAlignmentStep<Block>[] = [];
+  const steps: FolioContentAlignmentStep[] = [];
   for (const cellIndex of cellIndexes) {
     const baseBlocks = baseCells.get(cellIndex) ?? [];
     const revisedBlocks = revisedCells.get(cellIndex) ?? [];
-    const aligned = alignFolioContentBlocks(baseBlocks, revisedBlocks, {
-      workSession,
-      idStability,
-      stableIdMismatch,
-    }).flatMap((event): FolioContentAlignedBlockEvent<Block>[] => {
+    const baseCellIdentity = baseBlocks.at(0)?.table?.cellIdentity;
+    const revisedCellIdentity = revisedBlocks.at(0)?.table?.cellIdentity;
+    const cellIdentityForbidsPairing =
+      baseCellIdentity !== undefined &&
+      revisedCellIdentity !== undefined &&
+      folioContentIdentityPairDisposition(baseCellIdentity, revisedCellIdentity) === "forbid";
+    const initialAlignment: FolioContentAlignedBlockEvent[] = cellIdentityForbidsPairing
+      ? [
+          ...baseBlocks.map(
+            (block): FolioContentAlignedBlockEvent => ({ type: "baseOnly", block }),
+          ),
+          ...revisedBlocks.map(
+            (block): FolioContentAlignedBlockEvent => ({ type: "revisedOnly", block }),
+          ),
+        ]
+      : alignFolioContentBlocks(baseBlocks, revisedBlocks, { workSession });
+    const aligned = initialAlignment.flatMap((event): FolioContentAlignedBlockEvent[] => {
       if (
         event.type === "pair" &&
         !contentBlocksShareContainerPath(event.baseBlock, event.revisedBlock)
@@ -1461,7 +2334,7 @@ const alignRowCells = <Block extends FolioContentBlock>({
       return [event];
     });
     const bucketByContainerPath = new Map<string | null, number>();
-    const bucketForBlock = (block: Block): number => {
+    const bucketForBlock = (block: FolioContentBlock): number => {
       const path = containerPathKeyOf(block);
       const existing = bucketByContainerPath.get(path);
       if (existing !== undefined) {
@@ -1471,32 +2344,47 @@ const alignRowCells = <Block extends FolioContentBlock>({
       bucketByContainerPath.set(path, bucket);
       return bucket;
     };
-    steps.push(...scopedAlignmentSteps(aligned, moveScopeContext, bucketForBlock));
+    const firstBase = baseBlocks.at(0) ?? null;
+    const firstRevised = revisedBlocks.at(0) ?? null;
+    const defaultAlignment =
+      cellIdentityForbidsPairing ||
+      (firstBase !== null &&
+        firstRevised !== null &&
+        !contentBlocksShareContainerPath(firstBase, firstRevised))
+        ? undefined
+        : registeredContainerAlignment(moveScopeContext, firstBase, firstRevised);
+    steps.push(
+      ...scopedAlignmentSteps(aligned, moveScopeContext, bucketForBlock, defaultAlignment),
+    );
   }
   return steps;
 };
 
-type TableRowAlignment<Block extends FolioContentBlock> =
-  | { type: "pair"; baseRow: readonly Block[]; revisedRow: readonly Block[] }
-  | { type: "baseOnly"; row: readonly Block[] }
-  | { type: "revisedOnly"; row: readonly Block[] };
+type TableRowAlignment =
+  | {
+      type: "pair";
+      baseRow: readonly FolioContentBlock[];
+      revisedRow: readonly FolioContentBlock[];
+    }
+  | { type: "baseOnly"; row: readonly FolioContentBlock[] }
+  | { type: "revisedOnly"; row: readonly FolioContentBlock[] };
 
-type PairTableRowsOptions<Block extends FolioContentBlock> = {
-  baseRows: readonly Block[][];
-  revisedRows: readonly Block[][];
+type PairTableRowsOptions = {
+  baseRows: readonly FolioContentBlock[][];
+  revisedRows: readonly FolioContentBlock[][];
   workSession: FolioContentAlignmentWorkSession;
-  idStability: (block: Block) => FolioContentIdStability;
 };
 
-const pairTableRows = <Block extends FolioContentBlock>({
+const pairTableRows = ({
   baseRows,
   revisedRows,
   workSession,
-  idStability,
-}: PairTableRowsOptions<Block>): TableRowAlignment<Block>[] => {
-  const profile = (row: readonly Block[]): ProfiledContentSequenceItem<readonly Block[]> => ({
+}: PairTableRowsOptions): TableRowAlignment[] => {
+  const profile = (
+    row: readonly FolioContentBlock[],
+  ): ProfiledContentSequenceItem<readonly FolioContentBlock[]> => ({
     item: row,
-    profile: rowStructureProfile(row, idStability),
+    profile: rowStructureProfile(row),
   });
   return alignProfiledContentSequence({
     base: baseRows.map(profile),
@@ -1508,7 +2396,7 @@ const pairTableRows = <Block extends FolioContentBlock>({
     primaryEvidence: "exact",
     similarityFactor: (base, revised) =>
       base.profile.physicalCellCount === revised.profile.physicalCellCount ? 1 : 0.5,
-  }).map((alignment): TableRowAlignment<Block> => {
+  }).map((alignment): TableRowAlignment => {
     switch (alignment.type) {
       case "pair":
         return { type: "pair", baseRow: alignment.base, revisedRow: alignment.revised };
@@ -1524,27 +2412,23 @@ const pairTableRows = <Block extends FolioContentBlock>({
   });
 };
 
-type AlignTableRowsOptions<Block extends FolioContentBlock> = {
-  rows: readonly TableRowAlignment<Block>[];
+type AlignTableRowsOptions = {
+  rows: readonly TableRowAlignment[];
   workSession: FolioContentAlignmentWorkSession;
   moveScopeContext: MoveScopeContext;
-  stableIdMismatch: "pair" | "separate";
-  idStability?: ((block: Block) => FolioContentIdStability) | undefined;
   baseColumnKeys?: ReadonlyMap<number, number> | undefined;
   revisedColumnKeys?: ReadonlyMap<number, number> | undefined;
 };
 
-const alignTableRows = <Block extends FolioContentBlock>({
+const alignTableRows = ({
   rows,
   workSession,
   moveScopeContext,
-  stableIdMismatch,
-  idStability,
   baseColumnKeys,
   revisedColumnKeys,
-}: AlignTableRowsOptions<Block>): FolioContentAlignmentStep<Block>[] => {
-  const steps: FolioContentAlignmentStep<Block>[] = [];
-  const pushRow = (row: readonly Block[], side: "base" | "revised"): void => {
+}: AlignTableRowsOptions): FolioContentAlignmentStep[] => {
+  const steps: FolioContentAlignmentStep[] = [];
+  const pushRow = (row: readonly FolioContentBlock[], side: "base" | "revised"): void => {
     const location = rowLocation(row);
     if (location) {
       steps.push({ type: side === "base" ? "baseRow" : "revisedRow", blocks: row, location });
@@ -1565,8 +2449,6 @@ const alignTableRows = <Block extends FolioContentBlock>({
             revisedRow: alignment.revisedRow,
             workSession,
             moveScopeContext,
-            stableIdMismatch,
-            idStability,
             baseColumnKeys,
             revisedColumnKeys,
           }),
@@ -1581,11 +2463,11 @@ const alignTableRows = <Block extends FolioContentBlock>({
   return steps;
 };
 
-const rowCellSpansEqual = <Block extends FolioContentBlock>(
-  baseRow: readonly Block[],
-  revisedRow: readonly Block[],
+const rowCellSpansEqual = (
+  baseRow: readonly FolioContentBlock[],
+  revisedRow: readonly FolioContentBlock[],
 ): boolean => {
-  const cells = (row: readonly Block[]): FolioContentTableLocation[] => {
+  const cells = (row: readonly FolioContentBlock[]): FolioContentTableLocation[] => {
     const byPhysicalIndex = new Map<number, FolioContentTableLocation>();
     for (const block of row) {
       const table = block.table ?? panic("A table row contains a body block");
@@ -1611,38 +2493,37 @@ const rowCellSpansEqual = <Block extends FolioContentBlock>(
   });
 };
 
-const rowHasVerticalSpan = <Block extends FolioContentBlock>(row: readonly Block[]): boolean =>
+const rowHasVerticalSpan = (row: readonly FolioContentBlock[]): boolean =>
   row.some(({ table }) => table !== undefined && table.rowSpan > 1);
 
-type TableStructurePlan<Block extends FolioContentBlock> = {
-  steps: FolioContentAlignmentStep<Block>[];
-  representable: boolean;
-};
+type TableStructurePlan =
+  | {
+      type: "representable";
+      steps: FolioContentAlignmentStep[];
+    }
+  | {
+      type: "requires-table-replacement";
+      steps: FolioContentAlignmentStep[];
+    };
 
-type BuildTablePlanOptions<Block extends FolioContentBlock> = {
-  baseBlocks: readonly Block[];
-  revisedBlocks: readonly Block[];
+type BuildTablePlanOptions = {
+  baseBlocks: readonly FolioContentBlock[];
+  revisedBlocks: readonly FolioContentBlock[];
   workSession: FolioContentAlignmentWorkSession;
   moveScopeContext: MoveScopeContext;
-  stableIdMismatch: "pair" | "separate";
-  idStability?: ((block: Block) => FolioContentIdStability) | undefined;
 };
 
-const buildTablePlan = <Block extends FolioContentBlock>({
+const buildTablePlan = ({
   baseBlocks,
   revisedBlocks,
   workSession,
   moveScopeContext,
-  stableIdMismatch,
-  idStability,
-}: BuildTablePlanOptions<Block>): TableStructurePlan<Block> => {
-  const resolveIdStability = idStability ?? folioContentIdStability;
+}: BuildTablePlanOptions): TableStructurePlan => {
   const columns = alignTableColumns(baseBlocks, revisedBlocks);
   const rows = pairTableRows({
     baseRows: groupFolioContentTableRows(columns?.baseBlocks ?? baseBlocks),
     revisedRows: groupFolioContentTableRows(columns?.revisedBlocks ?? revisedBlocks),
     workSession,
-    idStability: resolveIdStability,
   });
   const representable = rows.every((row) => {
     if (row.type === "pair") {
@@ -1651,15 +2532,13 @@ const buildTablePlan = <Block extends FolioContentBlock>({
     return !rowHasVerticalSpan(row.row);
   });
   return {
-    representable,
+    type: representable ? "representable" : "requires-table-replacement",
     steps: [
       ...(columns?.steps ?? []),
       ...alignTableRows({
         rows,
         workSession,
         moveScopeContext,
-        stableIdMismatch,
-        idStability: resolveIdStability,
         baseColumnKeys: columns?.baseColumnKeys,
         revisedColumnKeys: columns?.revisedColumnKeys,
       }),
@@ -1667,29 +2546,26 @@ const buildTablePlan = <Block extends FolioContentBlock>({
   };
 };
 
-type BuildTableSegmentPlanOptions<Block extends FolioContentBlock> = {
-  baseBlocks: readonly Block[];
-  revisedBlocks: readonly Block[];
+type BuildTableSegmentPlanOptions = {
+  baseBlocks: readonly FolioContentBlock[];
+  revisedBlocks: readonly FolioContentBlock[];
   workSession: FolioContentAlignmentWorkSession;
   moveScopeContext: MoveScopeContext;
-  stableIdMismatch: "pair" | "separate";
-  idStability?: ((block: Block) => FolioContentIdStability) | undefined;
 };
 
-const buildTableSegmentPlan = <Block extends FolioContentBlock>({
+const buildTableSegmentPlan = ({
   baseBlocks,
   revisedBlocks,
   workSession,
   moveScopeContext,
-  stableIdMismatch,
-  idStability,
-}: BuildTableSegmentPlanOptions<Block>): TableStructurePlan<Block> => {
+}: BuildTableSegmentPlanOptions): TableStructurePlan => {
   const baseTables = groupTables(baseBlocks);
   const revisedTables = groupTables(revisedBlocks);
-  const resolveIdStability = idStability ?? folioContentIdStability;
-  const profile = (blocks: Block[]): ProfiledContentSequenceItem<Block[]> => ({
+  const profile = (
+    blocks: FolioContentBlock[],
+  ): ProfiledContentSequenceItem<FolioContentBlock[]> => ({
     item: blocks,
-    profile: tableStructureProfile(blocks, resolveIdStability),
+    profile: tableStructureProfile(blocks),
   });
   const alignedTables = alignProfiledContentSequence({
     base: baseTables.map(profile),
@@ -1698,7 +2574,7 @@ const buildTableSegmentPlan = <Block extends FolioContentBlock>({
     // The enclosing outer-table segment already established this container pair.
     pairSoleStructuralSlot: true,
   });
-  const steps: FolioContentAlignmentStep<Block>[] = [];
+  const steps: FolioContentAlignmentStep[] = [];
   let representable = true;
   for (const alignment of alignedTables) {
     switch (alignment.type) {
@@ -1708,11 +2584,9 @@ const buildTableSegmentPlan = <Block extends FolioContentBlock>({
           revisedBlocks: alignment.revised,
           workSession,
           moveScopeContext,
-          stableIdMismatch,
-          idStability: resolveIdStability,
         });
         steps.push(...table.steps);
-        representable &&= table.representable;
+        representable &&= table.type === "representable";
         break;
       }
       case "baseOnly":
@@ -1734,34 +2608,30 @@ const buildTableSegmentPlan = <Block extends FolioContentBlock>({
       }
     }
   }
-  return { steps, representable };
+  return {
+    type: representable ? "representable" : "requires-table-replacement",
+    steps,
+  };
 };
 
-type TableDocumentSegment<Block extends FolioContentBlock> = Extract<
-  DocumentSegment<Block>,
-  { kind: "table" }
->;
+type TableDocumentSegment = Extract<DocumentSegment, { kind: "table" }>;
 
-const isTableDocumentSegment = <Block extends FolioContentBlock>(
-  segment: DocumentSegment<Block>,
-): segment is TableDocumentSegment<Block> => segment.kind === "table";
+const isTableDocumentSegment = (segment: DocumentSegment): segment is TableDocumentSegment =>
+  segment.kind === "table";
 
-type TableSegmentProfiles<Block extends FolioContentBlock> = {
-  items: readonly ProfiledContentSequenceItem<TableDocumentSegment<Block>>[];
-  ordinalBySegment: ReadonlyMap<TableDocumentSegment<Block>, number>;
+type TableSegmentProfiles = {
+  items: readonly ProfiledContentSequenceItem<TableDocumentSegment>[];
+  ordinalBySegment: ReadonlyMap<TableDocumentSegment, number>;
 };
 
-const profileTableSegments = <Block extends FolioContentBlock>(
-  segments: readonly DocumentSegment<Block>[],
-  idStability: (block: Block) => FolioContentIdStability,
-): TableSegmentProfiles<Block> => {
-  const items: ProfiledContentSequenceItem<TableDocumentSegment<Block>>[] = [];
-  const ordinalBySegment = new Map<TableDocumentSegment<Block>, number>();
+const profileTableSegments = (segments: readonly DocumentSegment[]): TableSegmentProfiles => {
+  const items: ProfiledContentSequenceItem<TableDocumentSegment>[] = [];
+  const ordinalBySegment = new Map<TableDocumentSegment, number>();
   for (const segment of segments) {
     if (!isTableDocumentSegment(segment)) {
       continue;
     }
-    const profile = tableStructureProfile(segment.blocks, idStability);
+    const profile = tableStructureProfile(segment.blocks, "outer");
     ordinalBySegment.set(segment, items.length);
     items.push({ item: segment, profile });
   }
@@ -1770,9 +2640,9 @@ const profileTableSegments = <Block extends FolioContentBlock>(
 
 type ContentStructureEvidenceIndex = {
   anchorTextIndexes: ReadonlyMap<string, readonly number[]>;
+  anchorIdentityIndexes: ReadonlyMap<string, readonly number[]>;
   exactIndexes: ReadonlyMap<number, readonly number[]>;
   exactKeyByProfile: ReadonlyMap<ContentStructureProfile, number>;
-  stableIndexes: ReadonlyMap<string, readonly number[]>;
 };
 
 const contentStructureEvidenceIndexes = <Item>(
@@ -1802,8 +2672,8 @@ const contentStructureEvidenceIndexes = <Item>(
     items: readonly ProfiledContentSequenceItem<Item>[],
   ): ContentStructureEvidenceIndex => {
     const anchorTextIndexes = new Map<string, number[]>();
+    const anchorIdentityIndexes = new Map<string, number[]>();
     const exactIndexes = new Map<number, number[]>();
-    const stableIndexes = new Map<string, number[]>();
     items.forEach(({ profile }, itemIndex) => {
       const exactKey = exactKeyByProfile.get(profile);
       if (exactKey !== undefined) {
@@ -1814,14 +2684,14 @@ const contentStructureEvidenceIndexes = <Item>(
           exactIndexes.set(exactKey, [itemIndex]);
         }
       }
-      for (const id of profile.stableIds) {
-        const indexes = stableIndexes.get(id);
+      for (const key of profile.anchorIdentityKeys) {
+        const indexes = anchorIdentityIndexes.get(key);
         if (indexes) {
           if (indexes.at(-1) !== itemIndex) {
             indexes.push(itemIndex);
           }
         } else {
-          stableIndexes.set(id, [itemIndex]);
+          anchorIdentityIndexes.set(key, [itemIndex]);
         }
       }
       for (const text of profile.anchorTexts) {
@@ -1835,7 +2705,7 @@ const contentStructureEvidenceIndexes = <Item>(
         }
       }
     });
-    return { anchorTextIndexes, exactIndexes, exactKeyByProfile, stableIndexes };
+    return { anchorTextIndexes, anchorIdentityIndexes, exactIndexes, exactKeyByProfile };
   };
 
   return { base: index(base), revised: index(revised) };
@@ -1868,8 +2738,8 @@ const profileHasEvidenceOutsideRange = (
   ) {
     return true;
   }
-  return profile.stableIds.some((id) =>
-    sortedIndexesLeaveRange(opposite.stableIndexes.get(id), start, end),
+  return profile.anchorIdentityKeys.some((key) =>
+    sortedIndexesLeaveRange(opposite.anchorIdentityIndexes.get(key), start, end),
   );
 };
 
@@ -1881,50 +2751,71 @@ const profilesShareContentAnchor = (
   return revised.anchorTexts.some((text) => baseTexts.has(text));
 };
 
-type BodyDocumentSegment<Block extends FolioContentBlock> = Extract<
-  DocumentSegment<Block>,
-  { kind: "body" }
->;
+type BodyDocumentSegment = Extract<DocumentSegment, { kind: "body" }>;
 
-const isBodyDocumentSegment = <Block extends FolioContentBlock>(
-  segment: DocumentSegment<Block>,
-): segment is BodyDocumentSegment<Block> => segment.kind === "body";
+const isBodyDocumentSegment = (segment: DocumentSegment): segment is BodyDocumentSegment =>
+  segment.kind === "body";
 
-const profileBodySegments = <Block extends FolioContentBlock>(
-  segments: readonly DocumentSegment<Block>[],
-  idStability: (block: Block) => FolioContentIdStability,
-): readonly ProfiledContentSequenceItem<BodyDocumentSegment<Block>>[] =>
-  segments.flatMap((segment) =>
-    isBodyDocumentSegment(segment)
-      ? [
-          {
-            item: segment,
-            profile: createContentStructureProfile({
-              blocks: segment.blocks,
-              idStability,
-              blockStructure: () => [segment.containerPathKey],
-            }),
-          },
-        ]
-      : [],
-  );
+const profileBodySegments = (
+  segments: readonly DocumentSegment[],
+): readonly ProfiledContentSequenceItem<BodyDocumentSegment>[] =>
+  segments.flatMap((segment) => {
+    if (!isBodyDocumentSegment(segment)) return [];
+    const scopeIdentity = segment.containerPath.at(-1)?.identity;
+    return [
+      {
+        item: segment,
+        profile: createContentStructureProfile({
+          blocks: segment.blocks,
+          ...(scopeIdentity !== undefined && { scopeIdentity }),
+          blockStructure: () => [segment.structuralKey],
+        }),
+      },
+    ];
+  });
 
-type TrustedBodyPair<Block extends FolioContentBlock> = {
-  base: BodyDocumentSegment<Block>;
-  revised: BodyDocumentSegment<Block>;
+type TrustedBodyPair = {
+  base: BodyDocumentSegment;
+  revised: BodyDocumentSegment;
 };
 
-const exactBodyPairsInRange = <Block extends FolioContentBlock>(
-  base: readonly ProfiledContentSequenceItem<BodyDocumentSegment<Block>>[],
-  revised: readonly ProfiledContentSequenceItem<BodyDocumentSegment<Block>>[],
+const exactBodyPairsInRange = (
+  base: readonly ProfiledContentSequenceItem<BodyDocumentSegment>[],
+  revised: readonly ProfiledContentSequenceItem<BodyDocumentSegment>[],
   exactKeyByProfile: ReadonlyMap<ContentStructureProfile, number>,
   baseStart: number,
   baseEnd: number,
   revisedStart: number,
   revisedEnd: number,
 ): FolioContentBlockPair[] => {
+  const terminalPairs: FolioContentBlockPair[] = [];
+  let unpairedBaseEnd = baseEnd;
+  let unpairedRevisedEnd = revisedEnd;
+  if (baseEnd === base.length && revisedEnd === revised.length) {
+    while (unpairedBaseEnd > baseStart && unpairedRevisedEnd > revisedStart) {
+      const baseIndex = unpairedBaseEnd - 1;
+      const revisedIndex = unpairedRevisedEnd - 1;
+      const baseItem = base[baseIndex];
+      const revisedItem = revised[revisedIndex];
+      const baseKey = baseItem ? exactKeyByProfile.get(baseItem.profile) : undefined;
+      const revisedKey = revisedItem ? exactKeyByProfile.get(revisedItem.profile) : undefined;
+      if (
+        baseItem === undefined ||
+        revisedItem === undefined ||
+        baseKey === undefined ||
+        baseKey !== revisedKey ||
+        !segmentsCanPair(baseItem.item, revisedItem.item)
+      ) {
+        break;
+      }
+      terminalPairs.push({ baseIndex, revisedIndex });
+      unpairedBaseEnd = baseIndex;
+      unpairedRevisedEnd = revisedIndex;
+    }
+  }
+
   const uniqueIndexes = (
-    items: readonly ProfiledContentSequenceItem<BodyDocumentSegment<Block>>[],
+    items: readonly ProfiledContentSequenceItem<BodyDocumentSegment>[],
     start: number,
     end: number,
   ): ReadonlyMap<number, number | null> => {
@@ -1939,12 +2830,19 @@ const exactBodyPairsInRange = <Block extends FolioContentBlock>(
     }
     return indexes;
   };
-  const baseIndexes = uniqueIndexes(base, baseStart, baseEnd);
-  const revisedIndexes = uniqueIndexes(revised, revisedStart, revisedEnd);
-  const candidates: FolioContentBlockPair[] = [];
+  const baseIndexes = uniqueIndexes(base, baseStart, unpairedBaseEnd);
+  const revisedIndexes = uniqueIndexes(revised, revisedStart, unpairedRevisedEnd);
+  const candidates: FolioContentBlockPair[] = [...terminalPairs];
   for (const [key, baseIndex] of baseIndexes) {
     const revisedIndex = revisedIndexes.get(key);
-    if (baseIndex !== null && revisedIndex !== undefined && revisedIndex !== null) {
+    if (
+      baseIndex !== null &&
+      revisedIndex !== undefined &&
+      revisedIndex !== null &&
+      base[baseIndex] !== undefined &&
+      revised[revisedIndex] !== undefined &&
+      segmentsCanPair(base[baseIndex].item, revised[revisedIndex].item)
+    ) {
       candidates.push({ baseIndex, revisedIndex });
     }
   }
@@ -1955,10 +2853,10 @@ const exactBodyPairsInRange = <Block extends FolioContentBlock>(
   );
 };
 
-const trustedBodyPairs = <Block extends FolioContentBlock>(
-  base: readonly ProfiledContentSequenceItem<BodyDocumentSegment<Block>>[],
-  revised: readonly ProfiledContentSequenceItem<BodyDocumentSegment<Block>>[],
-): TrustedBodyPair<Block>[] => {
+const trustedBodyPairs = (
+  base: readonly ProfiledContentSequenceItem<BodyDocumentSegment>[],
+  revised: readonly ProfiledContentSequenceItem<BodyDocumentSegment>[],
+): TrustedBodyPair[] => {
   const evidence = contentStructureEvidenceIndexes(base, revised);
   const stableCandidates = [...stableContentSequencePairs(base, revised)]
     .map(
@@ -1969,7 +2867,9 @@ const trustedBodyPairs = <Block extends FolioContentBlock>(
     )
     .filter(
       ({ baseIndex, revisedIndex }) =>
-        base[baseIndex]?.item.containerPathKey === revised[revisedIndex]?.item.containerPathKey,
+        base[baseIndex] !== undefined &&
+        revised[revisedIndex] !== undefined &&
+        segmentsCanPair(base[baseIndex].item, revised[revisedIndex].item),
     )
     .toSorted(
       (left, right) => left.baseIndex - right.baseIndex || left.revisedIndex - right.revisedIndex,
@@ -2003,14 +2903,14 @@ const trustedBodyPairs = <Block extends FolioContentBlock>(
     }));
 };
 
-const segmentGaps = <Block extends FolioContentBlock>(
-  segments: readonly DocumentSegment<Block>[],
-  anchors: readonly BodyDocumentSegment<Block>[],
-): ReadonlyMap<DocumentSegment<Block>, number> => {
-  const anchorIndexes = new Map<DocumentSegment<Block>, number>(
+const segmentGaps = (
+  segments: readonly DocumentSegment[],
+  anchors: readonly BodyDocumentSegment[],
+): ReadonlyMap<DocumentSegment, number> => {
+  const anchorIndexes = new Map<DocumentSegment, number>(
     anchors.map((anchor, index) => [anchor, index] as const),
   );
-  const gaps = new Map<DocumentSegment<Block>, number>();
+  const gaps = new Map<DocumentSegment, number>();
   let gap = 0;
   for (const segment of segments) {
     gaps.set(segment, gap);
@@ -2021,33 +2921,33 @@ const segmentGaps = <Block extends FolioContentBlock>(
   return gaps;
 };
 
-type PairedTableSegments<Block extends FolioContentBlock> = {
-  baseToRevised: ReadonlyMap<TableDocumentSegment<Block>, TableDocumentSegment<Block>>;
-  revisedToBase: ReadonlyMap<TableDocumentSegment<Block>, TableDocumentSegment<Block>>;
+type PairedTableSegments = {
+  baseToRevised: ReadonlyMap<TableDocumentSegment, TableDocumentSegment>;
+  revisedToBase: ReadonlyMap<TableDocumentSegment, TableDocumentSegment>;
 };
 
-type PairTableSegmentsInGapsOptions<Block extends FolioContentBlock> = {
-  base: TableSegmentProfiles<Block>;
-  revised: TableSegmentProfiles<Block>;
-  baseGaps: ReadonlyMap<DocumentSegment<Block>, number>;
-  revisedGaps: ReadonlyMap<DocumentSegment<Block>, number>;
+type PairTableSegmentsInGapsOptions = {
+  base: TableSegmentProfiles;
+  revised: TableSegmentProfiles;
+  baseGaps: ReadonlyMap<DocumentSegment, number>;
+  revisedGaps: ReadonlyMap<DocumentSegment, number>;
   trustedBodyPairCount: number;
   workSession: FolioContentAlignmentWorkSession;
 };
 
-const pairTableSegmentsInGaps = <Block extends FolioContentBlock>({
+const pairTableSegmentsInGaps = ({
   base,
   revised,
   baseGaps,
   revisedGaps,
   trustedBodyPairCount,
   workSession,
-}: PairTableSegmentsInGapsOptions<Block>): PairedTableSegments<Block> => {
+}: PairTableSegmentsInGapsOptions): PairedTableSegments => {
   const groupByGap = (
-    items: readonly ProfiledContentSequenceItem<TableDocumentSegment<Block>>[],
-    gaps: ReadonlyMap<DocumentSegment<Block>, number>,
-  ): ReadonlyMap<number, readonly ProfiledContentSequenceItem<TableDocumentSegment<Block>>[]> => {
-    const grouped = new Map<number, ProfiledContentSequenceItem<TableDocumentSegment<Block>>[]>();
+    items: readonly ProfiledContentSequenceItem<TableDocumentSegment>[],
+    gaps: ReadonlyMap<DocumentSegment, number>,
+  ): ReadonlyMap<number, readonly ProfiledContentSequenceItem<TableDocumentSegment>[]> => {
+    const grouped = new Map<number, ProfiledContentSequenceItem<TableDocumentSegment>[]>();
     for (const item of items) {
       const gap = gaps.get(item.item) ?? panic("A table segment has no structural gap");
       const entries = grouped.get(gap);
@@ -2062,8 +2962,8 @@ const pairTableSegmentsInGaps = <Block extends FolioContentBlock>({
   const baseByGap = groupByGap(base.items, baseGaps);
   const revisedByGap = groupByGap(revised.items, revisedGaps);
   const evidence = contentStructureEvidenceIndexes(base.items, revised.items);
-  const baseToRevised = new Map<TableDocumentSegment<Block>, TableDocumentSegment<Block>>();
-  const revisedToBase = new Map<TableDocumentSegment<Block>, TableDocumentSegment<Block>>();
+  const baseToRevised = new Map<TableDocumentSegment, TableDocumentSegment>();
+  const revisedToBase = new Map<TableDocumentSegment, TableDocumentSegment>();
   for (let gap = 0; gap <= trustedBodyPairCount; gap++) {
     const baseItems = baseByGap.get(gap) ?? [];
     const revisedItems = revisedByGap.get(gap) ?? [];
@@ -2106,6 +3006,7 @@ const pairTableSegmentsInGaps = <Block extends FolioContentBlock>({
       revised: revisedItems,
       workSession,
       canPair: (baseItem, revisedItem) =>
+        segmentsCanPair(baseItem.item, revisedItem.item) &&
         !baseHasExternalEvidence.has(baseItem.item) &&
         !revisedHasExternalEvidence.has(revisedItem.item),
       pairSoleStructuralSlot: trustedBodyPairCount > 0 || solePairHasContentAnchor,
@@ -2121,8 +3022,8 @@ const pairTableSegmentsInGaps = <Block extends FolioContentBlock>({
   return { baseToRevised, revisedToBase };
 };
 
-const segmentIndexesByKey = <Block extends FolioContentBlock>(
-  segments: readonly DocumentSegment<Block>[],
+const segmentIndexesByKey = (
+  segments: readonly DocumentSegment[],
 ): ReadonlyMap<string, readonly number[]> => {
   const indexes = new Map<string, number[]>();
   segments.forEach((segment, index) => {
@@ -2154,37 +3055,308 @@ const firstIndexAfter = (indexes: readonly number[] | undefined, cursor: number)
   return indexes[low] ?? null;
 };
 
-const segmentsCanPair = <Block extends FolioContentBlock>(
-  base: DocumentSegment<Block>,
-  revised: DocumentSegment<Block>,
-): boolean => {
+const segmentsCanPair = (base: DocumentSegment, revised: DocumentSegment): boolean => {
   if (base.kind !== revised.kind) {
     return false;
   }
   if (base.blocks.length === 0 || revised.blocks.length === 0) {
     return true;
   }
-  if (base.containerPathKey === null && revised.containerPathKey === null) {
-    return true;
+  return contentContainerPathsCanPair(base.containerPath, revised.containerPath);
+};
+
+type BodyBlockOccurrence = {
+  readonly segment: BodyDocumentSegment;
+  readonly block: FolioContentBlock;
+  readonly offset: number;
+};
+
+type TrustedBodyBlockCorrespondences = {
+  readonly baseToRevised: ReadonlyMap<BodyBlockOccurrence, BodyBlockOccurrence>;
+  readonly revisedToBase: ReadonlyMap<BodyBlockOccurrence, BodyBlockOccurrence>;
+  readonly baseBySegment: ReadonlyMap<BodyDocumentSegment, readonly BodyBlockOccurrence[]>;
+  readonly revisedBySegment: ReadonlyMap<BodyDocumentSegment, readonly BodyBlockOccurrence[]>;
+};
+
+const bodyBlockOccurrences = (
+  segments: readonly DocumentSegment[],
+): {
+  readonly occurrences: readonly BodyBlockOccurrence[];
+  readonly bySegment: ReadonlyMap<BodyDocumentSegment, readonly BodyBlockOccurrence[]>;
+} => {
+  const occurrences: BodyBlockOccurrence[] = [];
+  const bySegment = new Map<BodyDocumentSegment, BodyBlockOccurrence[]>();
+  for (const segment of segments) {
+    if (!isBodyDocumentSegment(segment)) {
+      continue;
+    }
+    const segmentOccurrences: BodyBlockOccurrence[] = [];
+    for (const [offset, block] of segment.blocks.entries()) {
+      const occurrence = { segment, block, offset };
+      occurrences.push(occurrence);
+      segmentOccurrences.push(occurrence);
+    }
+    bySegment.set(segment, segmentOccurrences);
   }
-  return base.containerPathKey === revised.containerPathKey;
+  return { occurrences, bySegment };
 };
 
-type AlignSegmentsOptions<Block extends FolioContentBlock> = {
-  baseSegments: readonly DocumentSegment<Block>[];
-  revisedSegments: readonly DocumentSegment<Block>[];
+const trustedBodyBlockCorrespondences = (
+  baseSegments: readonly DocumentSegment[],
+  revisedSegments: readonly DocumentSegment[],
+): TrustedBodyBlockCorrespondences => {
+  const base = bodyBlockOccurrences(baseSegments);
+  const revised = bodyBlockOccurrences(revisedSegments);
+  const baseToRevised = new Map<BodyBlockOccurrence, BodyBlockOccurrence>();
+  const revisedToBase = new Map<BodyBlockOccurrence, BodyBlockOccurrence>();
+
+  const uniqueByKey = (
+    occurrences: readonly BodyBlockOccurrence[],
+    keyOf: (occurrence: BodyBlockOccurrence) => string | null,
+  ): ReadonlyMap<string, BodyBlockOccurrence | null> => {
+    const unique = new Map<string, BodyBlockOccurrence | null>();
+    for (const occurrence of occurrences) {
+      const key = keyOf(occurrence);
+      if (key === null) {
+        continue;
+      }
+      unique.set(key, unique.has(key) ? null : occurrence);
+    }
+    return unique;
+  };
+  const register = (
+    baseOccurrence: BodyBlockOccurrence,
+    revisedOccurrence: BodyBlockOccurrence,
+  ): void => {
+    if (
+      baseToRevised.has(baseOccurrence) ||
+      revisedToBase.has(revisedOccurrence) ||
+      !segmentsCanPair(baseOccurrence.segment, revisedOccurrence.segment)
+    ) {
+      return;
+    }
+    baseToRevised.set(baseOccurrence, revisedOccurrence);
+    revisedToBase.set(revisedOccurrence, baseOccurrence);
+  };
+
+  const baseByIdentity = uniqueByKey(base.occurrences, ({ block }) =>
+    identityAnchorKey(block.identity),
+  );
+  const revisedByIdentity = uniqueByKey(revised.occurrences, ({ block }) =>
+    identityAnchorKey(block.identity),
+  );
+  for (const [key, baseOccurrence] of baseByIdentity) {
+    const revisedOccurrence = revisedByIdentity.get(key);
+    if (
+      baseOccurrence === null ||
+      revisedOccurrence === undefined ||
+      revisedOccurrence === null ||
+      folioContentIdentityPairDisposition(
+        baseOccurrence.block.identity,
+        revisedOccurrence.block.identity,
+      ) !== "anchor"
+    ) {
+      continue;
+    }
+    register(baseOccurrence, revisedOccurrence);
+  }
+
+  const exactTextKey = ({ block }: BodyBlockOccurrence): string | null =>
+    block.kind.length > MAX_CONTENT_STRUCTURE_PROFILE_KIND_CODE_UNITS ||
+    block.text.length > MAX_CONTENT_STRUCTURE_PROFILE_TEXT_CODE_UNITS
+      ? null
+      : block.text;
+  const baseByExactContent = uniqueByKey(base.occurrences, (occurrence) =>
+    baseToRevised.has(occurrence) ? null : exactTextKey(occurrence),
+  );
+  const revisedByExactContent = uniqueByKey(revised.occurrences, (occurrence) =>
+    revisedToBase.has(occurrence) ? null : exactTextKey(occurrence),
+  );
+  for (const [key, baseOccurrence] of baseByExactContent) {
+    const revisedOccurrence = revisedByExactContent.get(key);
+    if (
+      baseOccurrence === null ||
+      revisedOccurrence === undefined ||
+      revisedOccurrence === null ||
+      baseOccurrence.block.kind !== revisedOccurrence.block.kind ||
+      folioContentIdentityPairDisposition(
+        baseOccurrence.block.identity,
+        revisedOccurrence.block.identity,
+      ) === "forbid"
+    ) {
+      continue;
+    }
+    register(baseOccurrence, revisedOccurrence);
+  }
+
+  return {
+    baseToRevised,
+    revisedToBase,
+    baseBySegment: base.bySegment,
+    revisedBySegment: revised.bySegment,
+  };
+};
+
+type ProjectTableSeparatedBodyCutsOptions = {
+  readonly sourceSegments: readonly DocumentSegment[];
+  readonly sourceBySegment: ReadonlyMap<BodyDocumentSegment, readonly BodyBlockOccurrence[]>;
+  readonly sourceToTarget: ReadonlyMap<BodyBlockOccurrence, BodyBlockOccurrence>;
+  readonly targetCuts: Map<BodyDocumentSegment, Set<number>>;
+};
+
+/**
+ * A table present on only one side divides one body run into two alignment scopes.
+ * Project that boundary through the nearest unique anchors; crossing anchors and
+ * repeated content remain deliberately ambiguous, so ordinary move detection owns them.
+ */
+const projectTableSeparatedBodyCuts = ({
+  sourceSegments,
+  sourceBySegment,
+  sourceToTarget,
+  targetCuts,
+}: ProjectTableSeparatedBodyCutsOptions): void => {
+  for (let leftIndex = 0; leftIndex < sourceSegments.length; leftIndex++) {
+    const left = sourceSegments[leftIndex];
+    if (!left || !isBodyDocumentSegment(left)) {
+      continue;
+    }
+    let rightIndex = leftIndex + 1;
+    if (sourceSegments[rightIndex]?.kind !== "table") {
+      continue;
+    }
+    while (sourceSegments[rightIndex]?.kind === "table") {
+      rightIndex += 1;
+    }
+    const right = sourceSegments[rightIndex];
+    if (!right || !isBodyDocumentSegment(right)) {
+      continue;
+    }
+
+    const leftOccurrences = sourceBySegment.get(left) ?? [];
+    let leftTarget: BodyBlockOccurrence | undefined;
+    for (let index = leftOccurrences.length - 1; index >= 0; index--) {
+      leftTarget = sourceToTarget.get(
+        leftOccurrences[index] ?? panic("A body occurrence index is out of range"),
+      );
+      if (leftTarget) {
+        break;
+      }
+    }
+    let rightTarget: BodyBlockOccurrence | undefined;
+    for (const sourceOccurrence of sourceBySegment.get(right) ?? []) {
+      rightTarget = sourceToTarget.get(sourceOccurrence);
+      if (rightTarget) {
+        break;
+      }
+    }
+    if (
+      !leftTarget ||
+      !rightTarget ||
+      leftTarget.segment !== rightTarget.segment ||
+      leftTarget.offset >= rightTarget.offset
+    ) {
+      continue;
+    }
+    const cuts = targetCuts.get(rightTarget.segment);
+    if (cuts) {
+      cuts.add(rightTarget.offset);
+    } else {
+      targetCuts.set(rightTarget.segment, new Set([rightTarget.offset]));
+    }
+  }
+};
+
+const splitBodySegmentsAtCuts = (
+  segments: readonly DocumentSegment[],
+  cutsBySegment: ReadonlyMap<BodyDocumentSegment, ReadonlySet<number>>,
+): DocumentSegment[] => {
+  const refined: DocumentSegment[] = [];
+  for (const segment of segments) {
+    if (!isBodyDocumentSegment(segment)) {
+      refined.push(segment);
+      continue;
+    }
+    const cuts = [...(cutsBySegment.get(segment) ?? [])]
+      .filter((offset) => offset > 0 && offset < segment.blocks.length)
+      .toSorted((left, right) => left - right);
+    if (cuts.length === 0) {
+      refined.push(segment);
+      continue;
+    }
+    let from = 0;
+    for (const to of [...cuts, segment.blocks.length]) {
+      refined.push({
+        kind: "body",
+        blocks: segment.blocks.slice(from, to),
+        containerPath: segment.containerPath,
+        containerPathKey: segment.containerPathKey,
+        structuralKey: segment.structuralKey,
+      });
+      from = to;
+    }
+  }
+  return refined;
+};
+
+const reconcileTableSeparatedBodySegments = (
+  baseSegments: readonly DocumentSegment[],
+  revisedSegments: readonly DocumentSegment[],
+): {
+  readonly base: readonly DocumentSegment[];
+  readonly revised: readonly DocumentSegment[];
+} => {
+  const hasInteriorTableBoundary = (segments: readonly DocumentSegment[]): boolean => {
+    let bodySeen = false;
+    let tableAfterBodySeen = false;
+    for (const segment of segments) {
+      if (segment.kind === "body") {
+        if (tableAfterBodySeen) {
+          return true;
+        }
+        bodySeen = true;
+      } else if (bodySeen) {
+        tableAfterBodySeen = true;
+      }
+    }
+    return false;
+  };
+  if (!hasInteriorTableBoundary(baseSegments) && !hasInteriorTableBoundary(revisedSegments)) {
+    return { base: baseSegments, revised: revisedSegments };
+  }
+  const correspondences = trustedBodyBlockCorrespondences(baseSegments, revisedSegments);
+  const baseCuts = new Map<BodyDocumentSegment, Set<number>>();
+  const revisedCuts = new Map<BodyDocumentSegment, Set<number>>();
+  projectTableSeparatedBodyCuts({
+    sourceSegments: baseSegments,
+    sourceBySegment: correspondences.baseBySegment,
+    sourceToTarget: correspondences.baseToRevised,
+    targetCuts: revisedCuts,
+  });
+  projectTableSeparatedBodyCuts({
+    sourceSegments: revisedSegments,
+    sourceBySegment: correspondences.revisedBySegment,
+    sourceToTarget: correspondences.revisedToBase,
+    targetCuts: baseCuts,
+  });
+  return {
+    base: splitBodySegmentsAtCuts(baseSegments, baseCuts),
+    revised: splitBodySegmentsAtCuts(revisedSegments, revisedCuts),
+  };
+};
+
+type AlignSegmentsOptions = {
+  baseSegments: readonly DocumentSegment[];
+  revisedSegments: readonly DocumentSegment[];
   workSession: FolioContentAlignmentWorkSession;
-  idStability: (block: Block) => FolioContentIdStability;
 };
 
-const alignSegments = <Block extends FolioContentBlock>({
+const alignSegments = ({
   baseSegments,
   revisedSegments,
   workSession,
-  idStability,
-}: AlignSegmentsOptions<Block>): {
-  baseSegment: DocumentSegment<Block> | null;
-  revisedSegment: DocumentSegment<Block> | null;
+}: AlignSegmentsOptions): {
+  baseSegment: DocumentSegment | null;
+  revisedSegment: DocumentSegment | null;
 }[] => {
   const baseIndexesByKey = segmentIndexesByKey(baseSegments);
   const revisedIndexesByKey = segmentIndexesByKey(revisedSegments);
@@ -2195,8 +3367,8 @@ const alignSegments = <Block extends FolioContentBlock>({
     revisedSegments.map((segment, index) => [segment, index] as const),
   );
   const bodyPairs = trustedBodyPairs(
-    profileBodySegments(baseSegments, idStability),
-    profileBodySegments(revisedSegments, idStability),
+    profileBodySegments(baseSegments),
+    profileBodySegments(revisedSegments),
   );
   const baseGaps = segmentGaps(
     baseSegments,
@@ -2206,8 +3378,8 @@ const alignSegments = <Block extends FolioContentBlock>({
     revisedSegments,
     bodyPairs.map(({ revised }) => revised),
   );
-  const baseTableProfiles = profileTableSegments(baseSegments, idStability);
-  const revisedTableProfiles = profileTableSegments(revisedSegments, idStability);
+  const baseTableProfiles = profileTableSegments(baseSegments);
+  const revisedTableProfiles = profileTableSegments(revisedSegments);
   const tablePairs = pairTableSegmentsInGaps({
     base: baseTableProfiles,
     revised: revisedTableProfiles,
@@ -2216,8 +3388,8 @@ const alignSegments = <Block extends FolioContentBlock>({
     trustedBodyPairCount: bodyPairs.length,
     workSession,
   });
-  const baseToRevised = new Map<DocumentSegment<Block>, DocumentSegment<Block>>();
-  const revisedToBase = new Map<DocumentSegment<Block>, DocumentSegment<Block>>();
+  const baseToRevised = new Map<DocumentSegment, DocumentSegment>();
+  const revisedToBase = new Map<DocumentSegment, DocumentSegment>();
   for (const { base, revised } of bodyPairs) {
     baseToRevised.set(base, revised);
     revisedToBase.set(revised, base);
@@ -2227,8 +3399,8 @@ const alignSegments = <Block extends FolioContentBlock>({
     revisedToBase.set(revised, base);
   }
   const paired: {
-    baseSegment: DocumentSegment<Block> | null;
-    revisedSegment: DocumentSegment<Block> | null;
+    baseSegment: DocumentSegment | null;
+    revisedSegment: DocumentSegment | null;
   }[] = [];
   let baseCursor = 0;
   let revisedCursor = 0;
@@ -2320,17 +3492,30 @@ const alignSegments = <Block extends FolioContentBlock>({
   return paired;
 };
 
-const unpairedSegmentSteps = <Block extends FolioContentBlock>(
-  segment: DocumentSegment<Block>,
+const unpairedSegmentSteps = (
+  segment: DocumentSegment,
   side: "base" | "revised",
   moveScopeContext: MoveScopeContext,
-): FolioContentAlignmentStep<Block>[] => {
+  boundaryScope?: number,
+): FolioContentAlignmentStep[] => {
   if (segment.kind !== "table") {
-    const gap = moveScopeContext.nextGap++;
-    return segment.blocks.map((block) =>
-      side === "base"
-        ? { type: "baseOnly", block, moveScope: { bucket: BODY_MOVE_BUCKET, gap } }
-        : { type: "revisedOnly", block, moveScope: { bucket: BODY_MOVE_BUCKET, gap } },
+    const ownedBoundaryScope =
+      boundaryScope ?? panic("A body segment has no original physical boundary scope");
+    const first = segment.blocks.at(0) ?? panic("A body segment has no blocks");
+    const containerAlignment = registeredContainerAlignment(
+      moveScopeContext,
+      side === "base" ? first : null,
+      side === "revised" ? first : null,
+    );
+    return scopedAlignmentSteps(
+      segment.blocks.map(
+        (block): FolioContentAlignedBlockEvent =>
+          side === "base" ? { type: "baseOnly", block } : { type: "revisedOnly", block },
+      ),
+      moveScopeContext,
+      () => BODY_MOVE_BUCKET,
+      containerAlignment,
+      ownedBoundaryScope,
     );
   }
   const location = segment.blocks.at(0)?.table;
@@ -2347,82 +3532,162 @@ const unpairedSegmentSteps = <Block extends FolioContentBlock>(
   ];
 };
 
-export type AlignFolioContentStructureOptions<Block extends FolioContentBlock> = {
-  baseBlocks: readonly Block[];
-  revisedBlocks: readonly Block[];
+export type AlignFolioContentStructureOptions = {
+  baseBlocks: readonly FolioContentBlock[];
+  revisedBlocks: readonly FolioContentBlock[];
   workSession?: FolioContentAlignmentWorkSession;
-  wholeTableReplacement?: "allow" | "avoid";
-  /** Let a structurally aligned slot outrank different stable identifiers. */
-  stableIdMismatch?: "pair" | "separate";
-  /** @internal Compatibility hook for adapters whose source model predates `idStability`. */
-  idStability?: ((block: Block) => FolioContentIdStability) | undefined;
 };
 
-export const alignFolioContentStructure = <Block extends FolioContentBlock>({
+export const alignFolioContentStructure = ({
   baseBlocks,
   revisedBlocks,
   workSession = createFolioContentAlignmentWorkSession(),
-  wholeTableReplacement = "allow",
-  stableIdMismatch = "separate",
-  idStability,
-}: AlignFolioContentStructureOptions<Block>): FolioContentAlignmentStep<Block>[] => {
-  const canReplaceWholeTable = wholeTableReplacement === "allow";
-  const resolveIdStability = idStability ?? folioContentIdStability;
+}: AlignFolioContentStructureOptions): FolioContentAlignmentStep[] => {
+  const originalBaseSegments = splitSegments(baseBlocks);
+  const originalRevisedSegments = splitSegments(revisedBlocks);
+  const segments = reconcileTableSeparatedBodySegments(
+    originalBaseSegments,
+    originalRevisedSegments,
+  );
+  const baseSegments = segments.base;
+  const revisedSegments = segments.revised;
+  const alignedSegments = alignSegments({
+    baseSegments,
+    revisedSegments,
+    workSession,
+  });
+  const baseBodyContainerEnds = bodyContainerEnds(originalBaseSegments);
+  const revisedBodyContainerEnds = bodyContainerEnds(originalRevisedSegments);
+  const originalBaseBodyRunByBlock = new Map<FolioContentBlock, number>();
+  const originalRevisedBodyRunByBlock = new Map<FolioContentBlock, number>();
+  let nextOriginalBodyRun = 0;
+  for (const segment of originalBaseSegments) {
+    if (segment.kind !== "body") continue;
+    const bodyRun = nextOriginalBodyRun++;
+    for (const block of segment.blocks) originalBaseBodyRunByBlock.set(block, bodyRun);
+  }
+  for (const segment of originalRevisedSegments) {
+    if (segment.kind !== "body") continue;
+    const bodyRun = nextOriginalBodyRun++;
+    for (const block of segment.blocks) originalRevisedBodyRunByBlock.set(block, bodyRun);
+  }
   const moveScopeContext: MoveScopeContext = {
     nextTableCellBucket: BODY_MOVE_BUCKET + 1,
+    nextContainerAlignmentId: 1,
     nextGap: 0,
+    nextBoundaryScope: nextOriginalBodyRun,
+    baseContainerAlignments: new Map(),
+    revisedContainerAlignments: new Map(),
+    baseBodyContainerEnds,
+    revisedBodyContainerEnds,
+    baseParagraphTopology: paragraphTopology(baseBlocks, baseBodyContainerEnds),
+    revisedParagraphTopology: paragraphTopology(revisedBlocks, revisedBodyContainerEnds),
+    baseStructuralFollowerByBlockId: structuralTableFollowers(originalBaseSegments),
   };
-  const steps: FolioContentAlignmentStep<Block>[] = [];
-  for (const { baseSegment, revisedSegment } of alignSegments({
-    baseSegments: splitSegments(baseBlocks),
-    revisedSegments: splitSegments(revisedBlocks),
-    workSession,
-    idStability: resolveIdStability,
-  })) {
+  const boundaryScopeFor = (
+    baseSegment: DocumentSegment | null,
+    revisedSegment: DocumentSegment | null,
+  ): number => {
+    const baseFirst = baseSegment?.kind === "body" ? baseSegment.blocks.at(0) : undefined;
+    const revisedFirst = revisedSegment?.kind === "body" ? revisedSegment.blocks.at(0) : undefined;
+    const baseRun = baseFirst ? originalBaseBodyRunByBlock.get(baseFirst) : undefined;
+    const revisedRun = revisedFirst ? originalRevisedBodyRunByBlock.get(revisedFirst) : undefined;
+    if (baseFirst && baseRun === undefined) {
+      return panic("A reconciled base body segment lost its physical run");
+    }
+    if (revisedFirst && revisedRun === undefined) {
+      return panic("A reconciled revised body segment lost its physical run");
+    }
+    return (
+      revisedRun ?? baseRun ?? panic("A body boundary scope must own one original physical run")
+    );
+  };
+  // Container correspondence belongs to the complete structural alignment,
+  // not whichever table-separated body run happens to be visited first. Seed
+  // every paired body occurrence before emitting one-sided runs so an earlier
+  // deletion cannot freeze the same parent as permanently base-only.
+  for (const { baseSegment, revisedSegment } of alignedSegments) {
+    if (baseSegment?.kind !== "body" || revisedSegment?.kind !== "body") continue;
+    registeredContainerAlignment(
+      moveScopeContext,
+      baseSegment.blocks.at(0) ?? panic("A paired body segment has no base block"),
+      revisedSegment.blocks.at(0) ?? panic("A paired body segment has no revised block"),
+    );
+  }
+  const steps: FolioContentAlignmentStep[] = [];
+  for (const { baseSegment, revisedSegment } of alignedSegments) {
     if (baseSegment && revisedSegment) {
       if (baseSegment.kind !== "table") {
+        const baseFirst =
+          baseSegment.blocks.at(0) ?? panic("A paired body segment has no base block");
+        const revisedFirst =
+          revisedSegment.blocks.at(0) ?? panic("A paired body segment has no revised block");
+        const containerAlignment = registeredContainerAlignment(
+          moveScopeContext,
+          baseFirst,
+          revisedFirst,
+        );
         steps.push(
           ...scopedAlignmentSteps(
             alignFolioContentBlocks(baseSegment.blocks, revisedSegment.blocks, {
               workSession,
-              stableIdMismatch,
-              idStability: resolveIdStability,
             }),
             moveScopeContext,
             () => BODY_MOVE_BUCKET,
+            containerAlignment,
+            boundaryScopeFor(baseSegment, revisedSegment),
           ),
         );
         continue;
       }
-      const remainingLcsCells = workSession.remainingLcsCells;
-      const remainingStructuralTokenLookups = workSession.remainingStructuralTokenLookups;
       const table = buildTableSegmentPlan({
         baseBlocks: baseSegment.blocks,
         revisedBlocks: revisedSegment.blocks,
         workSession,
         moveScopeContext,
-        stableIdMismatch,
-        idStability: resolveIdStability,
       });
-      if (canReplaceWholeTable && !table.representable) {
-        workSession.remainingLcsCells = remainingLcsCells;
-        workSession.remainingStructuralTokenLookups = remainingStructuralTokenLookups;
-        steps.push(...unpairedSegmentSteps(baseSegment, "base", moveScopeContext));
-        steps.push(...unpairedSegmentSteps(revisedSegment, "revised", moveScopeContext));
+      if (table.type === "representable") {
+        steps.push(...table.steps);
         continue;
       }
-      steps.push(...table.steps);
+      const baseLocation = baseSegment.blocks.at(0)?.table;
+      const revisedLocation = revisedSegment.blocks.at(0)?.table;
+      if (!baseLocation || !revisedLocation) {
+        return panic("A paired table segment has no table location");
+      }
+      steps.push({
+        type: "tableReplacement",
+        baseBlocks: baseSegment.blocks,
+        revisedBlocks: revisedSegment.blocks,
+        baseLocation,
+        revisedLocation,
+        refinementSteps: table.steps,
+      });
       continue;
     }
     if (baseSegment) {
-      steps.push(...unpairedSegmentSteps(baseSegment, "base", moveScopeContext));
+      steps.push(
+        ...unpairedSegmentSteps(
+          baseSegment,
+          "base",
+          moveScopeContext,
+          baseSegment.kind === "body" ? boundaryScopeFor(baseSegment, null) : undefined,
+        ),
+      );
       continue;
     }
     if (revisedSegment) {
-      steps.push(...unpairedSegmentSteps(revisedSegment, "revised", moveScopeContext));
+      steps.push(
+        ...unpairedSegmentSteps(
+          revisedSegment,
+          "revised",
+          moveScopeContext,
+          revisedSegment.kind === "body" ? boundaryScopeFor(null, revisedSegment) : undefined,
+        ),
+      );
     }
   }
-  return steps;
+  return withCanonicalParagraphBoundaries(steps, moveScopeContext);
 };
 
 export const contentBlocksShareContainer = (

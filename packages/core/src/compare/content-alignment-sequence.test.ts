@@ -4,7 +4,12 @@ import {
   alignFolioContentStructure,
   createFolioContentAlignmentWorkSession,
 } from "./content-alignment";
-import type { FolioContentBlock, FolioContentIdStability } from "./content-types";
+import {
+  contentBlockFixture,
+  contentIdentity,
+  tableLocationFixture,
+} from "./__tests__/content-test-fixtures";
+import type { FolioContentBlock, FolioContentIdentitySemantics } from "./content-types";
 
 type TableBlockOptions = {
   id: string;
@@ -13,7 +18,8 @@ type TableBlockOptions = {
   tableIndex?: number;
   rowIndex?: number;
   paragraphIndex?: number;
-  idStability?: FolioContentIdStability;
+  identityType?: FolioContentIdentitySemantics;
+  tableIdentityId?: string;
 };
 
 const tableBlock = ({
@@ -23,28 +29,38 @@ const tableBlock = ({
   tableIndex = outerTableIndex,
   rowIndex = 0,
   paragraphIndex = 0,
-  idStability,
-}: TableBlockOptions): FolioContentBlock => ({
-  id,
-  kind: "paragraph",
-  text,
-  idStability,
-  table: {
-    outerTableIndex,
-    tableIndex,
-    rowIndex,
-    cellIndex: 0,
-    gridColumnIndex: 0,
-    columnSpan: 1,
-    rowSpan: 1,
-    paragraphIndex,
-  },
-});
+  identityType = "authoritative",
+  tableIdentityId,
+}: TableBlockOptions): FolioContentBlock =>
+  contentBlockFixture(id, text, {
+    identityType,
+    table: Object.freeze({
+      ...tableLocationFixture({
+        identityType: "persistent-hint",
+        outerTableIndex,
+        tableIndex,
+        rowIndex,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+        columnSpan: 1,
+        rowSpan: 1,
+        paragraphIndex,
+      }),
+      ...(tableIdentityId === undefined
+        ? {}
+        : {
+            outerTableIdentity: contentIdentity(tableIdentityId, identityType),
+            tableIdentity: contentIdentity(tableIdentityId, identityType),
+          }),
+      rowIdentity: contentIdentity(id, identityType),
+      cellIdentity: contentIdentity(`${id}:cell`, identityType),
+    }),
+  });
 
 const tableSequence = (
   entries: readonly Omit<TableBlockOptions, "outerTableIndex">[],
 ): FolioContentBlock[] =>
-  entries.map(({ id, text, tableIndex, rowIndex, paragraphIndex, idStability }, outerTableIndex) =>
+  entries.map(({ id, text, tableIndex, rowIndex, paragraphIndex, identityType }, outerTableIndex) =>
     tableBlock({
       id,
       text,
@@ -52,13 +68,14 @@ const tableSequence = (
       tableIndex,
       rowIndex,
       paragraphIndex,
-      idStability,
+      identityType,
+      tableIdentityId: id,
     }),
   );
 
 const pairIds = (steps: ReturnType<typeof alignFolioContentStructure>): [string, string][] =>
   steps.flatMap((step) =>
-    step.type === "pair" ? [[step.baseBlock.id, step.revisedBlock.id]] : [],
+    step.type === "pair" ? [[step.baseBlock.identity.id, step.revisedBlock.identity.id]] : [],
   );
 
 describe("bounded table sequence alignment", () => {
@@ -109,29 +126,29 @@ describe("bounded table sequence alignment", () => {
       {
         id: "base-a",
         text: "Payment is due within thirty calendar days",
-        idStability: "positional",
+        identityType: "positional",
       },
       {
         id: "base-b",
         text: "Confidentiality obligations survive termination",
-        idStability: "positional",
+        identityType: "positional",
       },
     ]);
     const revised = tableSequence([
       {
         id: "inserted-similar",
         text: "Payment is due within forty calendar days",
-        idStability: "positional",
+        identityType: "positional",
       },
       {
         id: "revised-a",
         text: "Payment is due within thirty calendar days",
-        idStability: "positional",
+        identityType: "positional",
       },
       {
         id: "revised-b",
         text: "Confidentiality obligations survive termination",
-        idStability: "positional",
+        identityType: "positional",
       },
     ]);
 
@@ -149,12 +166,16 @@ describe("bounded table sequence alignment", () => {
       {
         id: "persisted",
         text: "Exact substantive table wording",
-        idStability: "positional",
+        identityType: "positional",
       },
     ]);
     const revised = tableSequence([
-      { id: "persisted", text: "Unrelated replacement wording" },
-      { id: "exact", text: "Exact substantive table wording" },
+      {
+        id: "persisted",
+        text: "Unrelated replacement wording",
+        identityType: "positional",
+      },
+      { id: "exact", text: "Exact substantive table wording", identityType: "positional" },
     ]);
 
     const steps = alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised });
@@ -168,14 +189,14 @@ describe("bounded table sequence alignment", () => {
       {
         id: "base",
         text: "Payment is due within thirty calendar days",
-        idStability: "positional",
+        identityType: "positional",
       },
     ]);
     const revised = tableSequence([
       {
         id: "revised",
         text: "Payment is due within forty calendar days",
-        idStability: "positional",
+        identityType: "positional",
       },
     ]);
 
@@ -193,21 +214,21 @@ describe("bounded table sequence alignment", () => {
       {
         id: "positional-base",
         text: "Payment is due within thirty calendar days",
-        idStability: "positional",
+        identityType: "positional",
       },
     ]);
     const similarRevised = tableSequence([
       {
         id: "similar-revised",
         text: "Payment is due within forty calendar days",
-        idStability: "positional",
+        identityType: "positional",
       },
     ]);
     const exactRevised = tableSequence([
       {
         id: "exact-revised",
         text: "Payment is due within thirty calendar days",
-        idStability: "positional",
+        identityType: "positional",
       },
     ]);
     const stableBase = tableSequence([{ id: "stable", text: "Original schedule" }]);
@@ -254,14 +275,14 @@ describe("bounded table sequence alignment", () => {
         text: "Standard",
         outerTableIndex: 0,
         paragraphIndex: 0,
-        idStability: "positional",
+        identityType: "positional",
       }),
       tableBlock({
         id: "base-content",
         text: "Payment schedule imposes several separate obligations",
         outerTableIndex: 0,
         paragraphIndex: 1,
-        idStability: "positional",
+        identityType: "positional",
       }),
     ];
     const revised = [
@@ -270,14 +291,14 @@ describe("bounded table sequence alignment", () => {
         text: "Standard",
         outerTableIndex: 0,
         paragraphIndex: 0,
-        idStability: "positional",
+        identityType: "positional",
       }),
       tableBlock({
         id: "revised-content",
         text: "Witness addresses identify wholly unrelated factual matters",
         outerTableIndex: 0,
         paragraphIndex: 1,
-        idStability: "positional",
+        identityType: "positional",
       }),
     ];
 
@@ -287,16 +308,19 @@ describe("bounded table sequence alignment", () => {
   });
 
   test("pairs a sole rewritten table in a gap bounded by preserved body anchors", () => {
-    const body = (id: string, text: string): FolioContentBlock => ({
-      id,
-      kind: "paragraph",
-      text,
+    const body = (id: string, text: string): FolioContentBlock =>
+      contentBlockFixture(id, text, { identityType: "persistent-hint" });
+    const baseTable = tableBlock({
+      id: "base",
+      text: "Payment schedule",
+      outerTableIndex: 0,
+      identityType: "persistent-hint",
     });
-    const baseTable = tableBlock({ id: "base", text: "Payment schedule", outerTableIndex: 0 });
     const revisedTable = tableBlock({
       id: "revised",
       text: "Witness addresses",
       outerTableIndex: 0,
+      identityType: "persistent-hint",
     });
     const base = [body("before-base", "Before"), baseTable, body("after-base", "After")];
     const revised = [
@@ -308,7 +332,6 @@ describe("bounded table sequence alignment", () => {
     const steps = alignFolioContentStructure({
       baseBlocks: base,
       revisedBlocks: revised,
-      stableIdMismatch: "pair",
     });
 
     expect(steps.map(({ type }) => type)).toEqual(["pair", "pair", "pair"]);
@@ -320,11 +343,10 @@ describe("bounded table sequence alignment", () => {
   });
 
   test("does not pair a singleton table across a preserved body anchor", () => {
-    const body = (id: string): FolioContentBlock => ({
-      id,
-      kind: "paragraph",
-      text: "Preserved body anchor",
-    });
+    const body = (id: string): FolioContentBlock =>
+      contentBlockFixture(id, "Preserved body anchor", {
+        identityType: "persistent-hint",
+      });
     const table = tableBlock({
       id: "relocated-table",
       text: "Relocated schedule",
@@ -334,7 +356,6 @@ describe("bounded table sequence alignment", () => {
     const steps = alignFolioContentStructure({
       baseBlocks: [body("body"), table],
       revisedBlocks: [table, body("body")],
-      stableIdMismatch: "pair",
     });
 
     expect(steps.map(({ type }) => type)).toEqual(["revisedTable", "pair", "baseTable"]);
@@ -358,9 +379,9 @@ describe("bounded table sequence alignment", () => {
     "keeps a table paired across $label",
     ({ baseOrder, revisedOrder, unmatchedType }) => {
       const blocks = {
-        leading: { id: "leading", kind: "paragraph", text: "Leading body paragraph" },
+        leading: contentBlockFixture("leading", "Leading body paragraph"),
         table: tableBlock({ id: "table", text: "Preserved schedule", outerTableIndex: 0 }),
-        trailing: { id: "trailing", kind: "paragraph", text: "Trailing body paragraph" },
+        trailing: contentBlockFixture("trailing", "Trailing body paragraph"),
       } satisfies Record<string, FolioContentBlock>;
       const materialize = (
         order: readonly ("leading" | "table" | "trailing")[],
@@ -379,12 +400,83 @@ describe("bounded table sequence alignment", () => {
     },
   );
 
-  test("reserves a later table identity before aligning an earlier singleton run", () => {
-    const body = (id: string): FolioContentBlock => ({
-      id,
-      kind: "paragraph",
-      text: "Preserved body anchor",
+  test("pairs an exact terminal body block after deleting an intervening table", () => {
+    const keptBase = tableBlock({
+      id: "kept-table",
+      text: "Kept schedule",
+      outerTableIndex: 0,
     });
+    const keptRevised = tableBlock({
+      id: "kept-table",
+      text: "Kept schedule",
+      outerTableIndex: 0,
+    });
+    const between = contentBlockFixture("between", "", { identityType: "positional" });
+    const removed = tableBlock({
+      id: "removed-table",
+      text: "Removed schedule",
+      outerTableIndex: 1,
+    });
+    const terminalBase = contentBlockFixture("terminal-base", "", {
+      identityType: "positional",
+    });
+    const terminalRevised = contentBlockFixture("terminal-revised", "", {
+      identityType: "positional",
+    });
+
+    const steps = alignFolioContentStructure({
+      baseBlocks: [keptBase, between, removed, terminalBase],
+      revisedBlocks: [keptRevised, terminalRevised],
+    });
+
+    expect(steps.map(({ type }) => type)).toEqual(["pair", "baseOnly", "baseTable", "pair"]);
+    expect(pairIds(steps)).toEqual([
+      ["kept-table", "kept-table"],
+      ["terminal-base", "terminal-revised"],
+    ]);
+  });
+
+  test("pairs an exact terminal body block after inserting an intervening table", () => {
+    const keptBase = tableBlock({
+      id: "kept-table",
+      text: "Kept schedule",
+      outerTableIndex: 0,
+    });
+    const keptRevised = tableBlock({
+      id: "kept-table",
+      text: "Kept schedule",
+      outerTableIndex: 0,
+    });
+    const between = contentBlockFixture("between", "", { identityType: "positional" });
+    const inserted = tableBlock({
+      id: "inserted-table",
+      text: "Inserted schedule",
+      outerTableIndex: 1,
+    });
+    const terminalBase = contentBlockFixture("terminal-base", "", {
+      identityType: "positional",
+    });
+    const terminalRevised = contentBlockFixture("terminal-revised", "", {
+      identityType: "positional",
+    });
+
+    const steps = alignFolioContentStructure({
+      baseBlocks: [keptBase, terminalBase],
+      revisedBlocks: [keptRevised, between, inserted, terminalRevised],
+    });
+
+    expect(steps.map(({ type }) => type)).toEqual(["pair", "revisedOnly", "revisedTable", "pair"]);
+    expect(pairIds(steps)).toEqual([
+      ["kept-table", "kept-table"],
+      ["terminal-base", "terminal-revised"],
+    ]);
+  });
+
+  test("reserves a later table identity before aligning an earlier singleton run", () => {
+    const body = (id: string): FolioContentBlock =>
+      contentBlockFixture(id, "Preserved body anchor", {
+        identityType: "persistent-hint",
+      });
     const first = tableBlock({ id: "table-one", text: "First schedule", outerTableIndex: 0 });
     const second = tableBlock({ id: "table-two", text: "Second schedule", outerTableIndex: 1 });
     const revisedSecond = tableBlock({
@@ -396,7 +488,6 @@ describe("bounded table sequence alignment", () => {
     const steps = alignFolioContentStructure({
       baseBlocks: [first, body("body"), second],
       revisedBlocks: [revisedSecond, body("body")],
-      stableIdMismatch: "pair",
     });
 
     expect(pairIds(steps)).toEqual([["body", "body"]]);
@@ -456,8 +547,8 @@ describe("bounded table sequence alignment", () => {
 
     expect(
       pairs.map(({ baseBlock, revisedBlock }) => [
-        baseBlock.id,
-        revisedBlock.id,
+        baseBlock.identity.id,
+        revisedBlock.identity.id,
         baseBlock.table?.outerTableIndex,
         revisedBlock.table?.outerTableIndex,
       ]),
@@ -515,10 +606,10 @@ describe("bounded table sequence alignment", () => {
   test("does not infer a table match from a truncated similarity profile", () => {
     const sharedPrefix = "standard boilerplate ".repeat(1_000);
     const base = tableSequence([
-      { id: "base", text: `${sharedPrefix}base ending`, idStability: "positional" },
+      { id: "base", text: `${sharedPrefix}base ending`, identityType: "positional" },
     ]);
     const revised = tableSequence([
-      { id: "revised", text: `${sharedPrefix}revised ending`, idStability: "positional" },
+      { id: "revised", text: `${sharedPrefix}revised ending`, identityType: "positional" },
     ]);
 
     const steps = alignFolioContentStructure({ baseBlocks: base, revisedBlocks: revised });
@@ -627,8 +718,8 @@ describe("bounded table row sequence alignment", () => {
 
     expect(
       pairs.map(({ baseBlock, revisedBlock }) => [
-        baseBlock.id,
-        revisedBlock.id,
+        baseBlock.identity.id,
+        revisedBlock.identity.id,
         baseBlock.table?.rowIndex,
         revisedBlock.table?.rowIndex,
       ]),

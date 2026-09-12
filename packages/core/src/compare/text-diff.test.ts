@@ -13,7 +13,7 @@ import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
 import { propertyConfig } from "../../../../test/property-testing";
-import { createWordDiffSession, diffWordSegments, type WordDiffSegment } from "./word-diff";
+import { createWordDiffSession, diffWordSegments, type WordDiffSegment } from "./text-diff";
 
 const rebuildBefore = (segments: readonly WordDiffSegment[]): string =>
   segments

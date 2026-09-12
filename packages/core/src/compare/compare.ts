@@ -18,7 +18,7 @@
  * `verification`. Anything the comparison does not cover is reported in
  * `unsupported`, or fails the call, rather than being silently dropped.
  *
- * An unproven redline is refused by default. `onUnverified: "emit"` returns it
+ * An unproven redline is refused by default. `mode: "bestEffort"` returns it
  * anyway, with every invariant that did not hold named: a caller that would
  * rather show its best attempt and say what is missing can, and one that wants
  * a redline it can stand behind still gets nothing else.
@@ -35,7 +35,6 @@
  */
 
 import { panic, Result } from "better-result";
-import type { Node as PMNode } from "prosemirror-model";
 
 import {
   FolioDocxReviewer,
@@ -44,26 +43,37 @@ import {
   type FolioNumberingLevel,
   type FolioRevisionStamp,
 } from "../ai-edits/headless";
-import { projectTableGeometry } from "../ai-edits/table-geometry";
+import { projectTableGeometry } from "../internal/compare/table-geometry-program";
+import { storyTablesOf } from "../ai-edits/snapshot";
 import {
-  tableTemplateCanCrossPackageLosslessly,
-  type FolioTableTemplates,
-} from "../ai-edits/table-template";
-import { numberingReferenceKeysOf, storyTablesOf } from "../ai-edits/snapshot";
-import type { FolioAIBlock, FolioAIEditSkipReason, FolioAIEditSnapshot } from "../ai-edits/types";
-import { createScopedWordDiffOptions, type WordDiffGranularity } from "../ai-edits/word-diff";
-import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
+  resolvedDocxContentBlocks,
+  resolvedDocxNumberingReferenceKeys,
+  resolvedDocxOperationSnapshot,
+  type ResolvedDocxStorySnapshot,
+} from "../internal/compare/resolved-docx-story-snapshot";
+import {
+  compareResolvedDocxStoryPair,
+  createResolvedDocxStoryPair,
+  resolvedDocxStoryComparisonPayload,
+  resolvedDocxStoryPairPayload,
+  type ResolvedDocxStoryComparison,
+  type ResolvedDocxStoryPair,
+} from "../internal/compare/resolved-docx-story-comparison";
+import type { WordDiffGranularity } from "./text-diff";
 import { pairFolioDocumentStories } from "../document-stories";
-import { createContentComparisonWorkSession } from "./content";
-import { planStoryCompare, type CompareStoryPlan, type CompareTableTemplateRequest } from "./plan";
+import { createContentComparisonWorkSession, FolioContentComparisonSessionError } from "./content";
+import { planStoryCompare, type CompareStoryPlan } from "./plan";
 import { withFixedPackageDates } from "./reproducible-package";
 import {
   CompareDocxApplyError,
+  CompareDocxContentComparisonError,
   CompareDocxFinalParagraphMarkError,
+  CompareDocxLoweringError,
   CompareDocxOperationLimitError,
   CompareDocxParseError,
   CompareDocxRoundTripError,
   CompareDocxSerializeError,
+  CompareDocxUnsupportedError,
   InvalidCompareDocxOptionsError,
   type CompareChange,
   type CompareDocxError,
@@ -72,10 +82,9 @@ import {
   type CompareUnsupportedPart,
 } from "./types";
 import {
+  classifyContentProjectionMismatch,
   classifyGeometryMismatch,
-  classifyProjectionMismatch,
   revisedFinalParagraphMarks,
-  projectSupportedInlineFormatting,
   type CompareVerification,
   type CompareVerificationFailure,
 } from "./verification";
@@ -101,56 +110,21 @@ const parseSide = async (
       }),
   });
 
-type FormattingRoundTripFailureOptions = {
-  invariant: CompareVerificationFailure["invariant"];
-  story: FolioDocumentStoryHandle;
-  changes: readonly CompareChange[];
-  actualBlocks: readonly FolioAIBlock[];
-  expectedBlocks: readonly FolioAIBlock[];
-  expectedBlockId: (change: Extract<CompareChange, { kind: "format" }>) => string;
-};
-
-/** Verify formatting only where the plan claims a text-equal formatting change. */
-const formattingRoundTripFailure = ({
-  invariant,
-  story,
-  changes,
-  actualBlocks,
-  expectedBlocks,
-  expectedBlockId,
-}: FormattingRoundTripFailureOptions): CompareVerificationFailure | null => {
-  const expectedIndexById = new Map(expectedBlocks.map(({ id }, index) => [id, index]));
-  const checkedExpectedIds = new Set<string>();
-  for (const change of changes) {
-    if (change.kind !== "format") {
-      continue;
-    }
-    const expectedId = expectedBlockId(change);
-    if (checkedExpectedIds.has(expectedId)) {
-      continue;
-    }
-    checkedExpectedIds.add(expectedId);
-    const expectedIndex = expectedIndexById.get(expectedId) ?? -1;
-    const expected = expectedBlocks.at(expectedIndex);
-    const actual = actualBlocks.at(expectedIndex);
-    if (expectedIndex === -1 || !actual || !expected) {
-      return {
-        invariant,
-        cause: "inline-formatting",
-        story,
-        detail: "a text-equal aligned block could not be projected for formatting verification",
-      };
-    }
-    if (projectSupportedInlineFormatting(actual) !== projectSupportedInlineFormatting(expected)) {
-      return {
-        invariant,
-        cause: "inline-formatting",
-        story,
-        detail: "supported inline formatting differs in a text-equal aligned block",
-      };
+const storyKey = (story: FolioDocumentStoryHandle): string => {
+  switch (story.type) {
+    case "main":
+      return "main";
+    case "header":
+    case "footer":
+      return `${story.type}:${story.relationshipId}`;
+    case "footnote":
+    case "endnote":
+      return `${story.type}:${String(story.noteId)}`;
+    default: {
+      const exhaustive: never = story;
+      return exhaustive;
     }
   }
-  return null;
 };
 
 const numberingKey = ({ numId, level }: Pick<FolioNumberingLevel, "numId" | "level">): string =>
@@ -208,12 +182,7 @@ const compareNumbering = (
 };
 
 /** Two stories the comparison will align against one another. */
-export type ComparedStoryPair = {
-  baseStory: FolioDocumentStoryHandle;
-  targetStory: FolioDocumentStoryHandle;
-  baseSnapshot: FolioAIEditSnapshot;
-  targetSnapshot: FolioAIEditSnapshot;
-};
+export type ComparedStoryPair = ResolvedDocxStoryPair;
 
 /** Everything the later stages need, and nothing they have to re-derive. */
 export type ParsedComparison = {
@@ -230,8 +199,10 @@ export type ParsedComparison = {
   revisionStamp: FolioRevisionStamp;
   packageDate: Date;
   pairs: readonly ComparedStoryPair[];
+  /** Editable base-story blocks retained for stage-level performance reporting. */
+  baseBlockCount: number;
   /** Package-level numbering differences, which belong to no story. */
-  numberingChanges: readonly CompareChange[];
+  numberingChanges: readonly NumberingChange[];
   unsupported: readonly CompareUnsupportedPart[];
 };
 
@@ -275,14 +246,12 @@ export const parseComparison = async (
   // still ships in the result, so it ships accepted like the rest -- and an
   // unresolvable mark it carried, on the paragraph a note ends with, would
   // otherwise fail the structural guard on bytes this comparison never wrote.
-  const baseProjection =
-    getFolioDocxComparisonAccess(reviewer).projectStories("with-revision-census");
-  const targetProjection =
-    getFolioDocxComparisonAccess(targetReviewer).projectStories("without-revision-census");
+  const baseProjection = getFolioDocxComparisonAccess(reviewer).normalizeSourceStories();
+  const targetProjection = getFolioDocxComparisonAccess(targetReviewer).projectResolvedStories();
   const baseStories: FolioDocumentStoryHandle[] = [];
   const targetStories: FolioDocumentStoryHandle[] = [];
-  const baseSnapshots = new Map<FolioDocumentStoryHandle, FolioAIEditSnapshot | null>();
-  const targetSnapshots = new Map<FolioDocumentStoryHandle, FolioAIEditSnapshot | null>();
+  const baseSnapshots = new Map<FolioDocumentStoryHandle, ResolvedDocxStorySnapshot | null>();
+  const targetSnapshots = new Map<FolioDocumentStoryHandle, ResolvedDocxStorySnapshot | null>();
   for (const { handle, snapshot } of baseProjection.stories) {
     baseStories.push(handle);
     baseSnapshots.set(handle, snapshot);
@@ -292,13 +261,16 @@ export const parseComparison = async (
     targetSnapshots.set(handle, snapshot);
   }
   const pairs: ComparedStoryPair[] = [];
+  let baseBlockCount = 0;
   const unsupported: CompareUnsupportedPart[] = [];
   const referencedNumberingLevels = new Set<string>();
-  const collectNumberingReferences = (snapshot: FolioAIEditSnapshot | null | undefined): void => {
+  const collectNumberingReferences = (
+    snapshot: ResolvedDocxStorySnapshot | null | undefined,
+  ): void => {
     if (!snapshot) {
       return;
     }
-    for (const referenceKey of numberingReferenceKeysOf(snapshot)) {
+    for (const referenceKey of resolvedDocxNumberingReferenceKeys(snapshot)) {
       referencedNumberingLevels.add(referenceKey);
     }
   };
@@ -328,7 +300,8 @@ export const parseComparison = async (
       unsupported.push({ reason: "story-not-editable", baseStory, targetStory });
       continue;
     }
-    pairs.push({ baseStory, targetStory, baseSnapshot, targetSnapshot });
+    pairs.push(createResolvedDocxStoryPair({ baseSnapshot, targetSnapshot }));
+    baseBlockCount += resolvedDocxContentBlocks(baseSnapshot).length;
   }
 
   return Result.ok({
@@ -342,28 +315,16 @@ export const parseComparison = async (
     },
     packageDate,
     pairs,
+    baseBlockCount,
     numberingChanges: compareNumbering(reviewer, targetReviewer, referencedNumberingLevels),
     unsupported,
   });
 };
 
-/** One story's plan, kept with the pair it belongs to. */
-export type PlannedStoryComparison = { pair: ComparedStoryPair; plan: CompareStoryPlan };
-
-const planCopiesNonPortableWholeTable = (
-  pair: ComparedStoryPair,
-  plan: CompareStoryPlan,
-): boolean => {
-  const targetTables = new Map(
-    storyTablesOf(pair.targetSnapshot).map(({ index, node }) => [index, node] as const),
-  );
-  return plan.tableTemplates.some(({ targetRowIndex, targetTableIndex }) => {
-    if (targetRowIndex !== undefined) {
-      return false;
-    }
-    const table = targetTables.get(targetTableIndex);
-    return table === undefined || !tableTemplateCanCrossPackageLosslessly(table);
-  });
+/** One story's canonical comparison and its transport lowering. */
+export type PlannedStoryComparison = {
+  comparison: ResolvedDocxStoryComparison;
+  plan: CompareStoryPlan;
 };
 
 /**
@@ -372,131 +333,52 @@ const planCopiesNonPortableWholeTable = (
  */
 export const planComparison = ({
   pairs,
-}: ParsedComparison): Result<readonly PlannedStoryComparison[], CompareDocxOperationLimitError> => {
+  granularity,
+}: ParsedComparison): Result<
+  readonly PlannedStoryComparison[],
+  CompareDocxContentComparisonError | CompareDocxLoweringError | CompareDocxOperationLimitError
+> => {
   const planned: PlannedStoryComparison[] = [];
-  const workSession = createContentComparisonWorkSession();
+  const workSession = createContentComparisonWorkSession({ granularity });
   let remainingOperations = MAX_COMPARE_OPERATIONS;
   for (const pair of pairs) {
-    const remainingLcsCells = workSession.alignment.remainingLcsCells;
-    const remainingStructuralTokenLookups = workSession.alignment.remainingStructuralTokenLookups;
-    const remainingMoveComparisons = workSession.remainingMoveComparisons;
-    const remainingMoveTokenLookups = workSession.remainingMoveTokenLookups;
-    let plan = planStoryCompare({
-      story: pair.baseStory,
-      baseSnapshot: pair.baseSnapshot,
-      targetSnapshot: pair.targetSnapshot,
-      maxOperations: remainingOperations,
-      wholeTableReplacement: "allow",
-      workSession,
-    });
-    if (plan && planCopiesNonPortableWholeTable(pair, plan)) {
-      // The first plan was speculative. Re-run the chosen fallback against
-      // the same package-wide comparison allowance rather than charging both.
-      workSession.alignment.remainingLcsCells = remainingLcsCells;
-      workSession.alignment.remainingStructuralTokenLookups = remainingStructuralTokenLookups;
-      workSession.remainingMoveComparisons = remainingMoveComparisons;
-      workSession.remainingMoveTokenLookups = remainingMoveTokenLookups;
-      plan = planStoryCompare({
-        story: pair.baseStory,
-        baseSnapshot: pair.baseSnapshot,
-        targetSnapshot: pair.targetSnapshot,
-        maxOperations: remainingOperations,
-        wholeTableReplacement: "avoid",
-        workSession,
-      });
-    }
-    if (plan === null) {
+    const compared = compareResolvedDocxStoryPair({ pair, workSession });
+    if (compared.isErr()) {
+      if (compared.error instanceof FolioContentComparisonSessionError) {
+        return panic("The DOCX comparison misused its private content work session", {
+          cause: compared.error,
+        });
+      }
+      const { baseStory } = resolvedDocxStoryPairPayload(pair);
       return Result.err(
-        new CompareDocxOperationLimitError({
-          message: "The comparison needs more operations than the engine generates.",
-          limit: MAX_COMPARE_OPERATIONS,
+        new CompareDocxContentComparisonError({
+          message: "A DOCX story did not satisfy the bounded content comparison contract.",
+          story: baseStory,
+          cause: compared.error,
         }),
       );
     }
-    planned.push({ pair, plan });
-    remainingOperations -= plan.operations.length;
+    const comparison = compared.value;
+    const result = planStoryCompare({ comparison, maxOperations: remainingOperations });
+    if (result.isErr()) return Result.err(result.error);
+    const plan = result.value;
+    planned.push({ comparison, plan });
+    remainingOperations -= plan.program.size;
   }
   return Result.ok(planned);
 };
-
-/**
- * What a skipped operation says about the plan that derived it.
- *
- * Two different things go wrong at apply time, and only one of them leaves the
- * result unusable. A reason that says the plan did not match the document it
- * was planned against is an engine defect — the operations came from this very
- * snapshot moments earlier, so nothing should have moved under them, and a
- * redline built on the rest is built on a document the plan no longer
- * describes. A reason that says the applier had nothing to write, or could not
- * write that shape THERE, leaves the redline standing and turns the question
- * into "was anything lost", which is what the round-trip check answers a few
- * lines below. Refusing on those instead trades a partial answer for none, and
- * refuses a whole document because one paragraph sits inside a structure the
- * block snapshot does not model — a text box, a content control — where a
- * paragraph mark has nowhere to go.
- */
-const COMPARE_SKIP_DISPOSITION = {
-  missingBlock: "fatal",
-  changedBlock: "fatal",
-  ambiguousFind: "fatal",
-  missingFind: "fatal",
-  unsupportedBlock: "unwritable",
-  unsupportedMode: "fatal",
-  atomicBatchRejected: "fatal",
-  preconditionFailed: "fatal",
-  staleRange: "fatal",
-  emptyOperation: "unwritable",
-  pendingParagraphPropertyChange: "unwritable",
-  pendingRunPropertyChange: "unwritable",
-  noopOperation: "unwritable",
-  documentVersionMismatch: "fatal",
-  documentNotEditable: "fatal",
-} as const satisfies Record<FolioAIEditSkipReason, "fatal" | "unwritable">;
-
-export const getCompareSkipDisposition = (reason: FolioAIEditSkipReason): "fatal" | "unwritable" =>
-  COMPARE_SKIP_DISPOSITION[reason];
 
 /** What stage 3 produced: the change list, whether it was proven, and whether it wrote anything. */
 export type AppliedComparison = {
   changes: readonly CompareChange[];
   verification: CompareVerification;
+  unsupported: readonly CompareUnsupportedPart[];
   /**
    * Whether the stage wrote into the base document at all. A comparison that
    * found nothing writes nothing, and the serialize stage then hands the
    * arriving bytes back rather than reproducing them.
    */
   documentChanged: boolean;
-};
-
-/**
- * The table each `insertTable` / `insertTableRow` in the plan should place,
- * resolved against the target document the plan named it in.
- *
- * The plan is pure and names a table by index; the node lives in the other
- * package, which only this stage holds. A request naming a table the target
- * does not have resolves to nothing and the operation falls back to its cell
- * texts, which is the same redline the comparison produced before.
- */
-const resolveTableTemplates = (
-  targetTables: ReadonlyMap<number, PMNode>,
-  requests: readonly CompareTableTemplateRequest[],
-): FolioTableTemplates => {
-  const templates = new Map<string, PMNode>();
-  for (const { operationId, targetTableIndex, targetRowIndex } of requests) {
-    const table = targetTables.get(targetTableIndex);
-    if (!table) {
-      continue;
-    }
-    if (targetRowIndex === undefined) {
-      templates.set(operationId, table);
-      continue;
-    }
-    const row = table.maybeChild(targetRowIndex);
-    if (row) {
-      templates.set(operationId, row);
-    }
-  }
-  return templates;
 };
 
 /**
@@ -514,134 +396,143 @@ const resolveTableTemplates = (
  * are both legitimate asks and only the caller knows which one it is making.
  */
 export const applyComparison = (
-  { reviewer, revisionStamp, granularity, numberingChanges }: ParsedComparison,
+  { reviewer, revisionStamp, numberingChanges, unsupported: parsedUnsupported }: ParsedComparison,
   planned: readonly PlannedStoryComparison[],
-): Result<AppliedComparison, CompareDocxApplyError> => {
+  { mode }: { mode: "strict" | "bestEffort" },
+): Result<AppliedComparison, CompareDocxApplyError | CompareDocxUnsupportedError> => {
   const comparisonAccess = getFolioDocxComparisonAccess(reviewer);
   const changes: CompareChange[] = [...numberingChanges];
   const failures: CompareVerificationFailure[] = [];
+  const preparedStories = planned.map(({ comparison, plan }) => {
+    const pair = resolvedDocxStoryComparisonPayload(comparison);
+    return {
+      pair,
+      plan,
+      prepared: comparisonAccess.prepareStoryProgram({
+        story: pair.baseStory,
+        program: plan.program,
+      }),
+    };
+  });
+  const transportUnsupported: CompareUnsupportedPart[] = preparedStories.flatMap(
+    ({ pair, prepared }) =>
+      prepared.issues.map(({ instructionIndex, reason, blockId }) => ({
+        reason: "transport-preflight" as const,
+        story: pair.baseStory,
+        instructionIndex,
+        detail: reason,
+        ...(blockId !== undefined && { blockId }),
+      })),
+  );
+  const allUnsupported = Object.freeze([
+    ...parsedUnsupported,
+    ...planned.flatMap(({ plan }) => plan.unsupported),
+    ...numberingChanges.map(({ numId, level }) => ({
+      reason: "numbering-definition" as const,
+      numId,
+      level,
+    })),
+    ...transportUnsupported,
+  ]);
+  if (mode === "strict" && allUnsupported.length > 0) {
+    return Result.err(
+      new CompareDocxUnsupportedError({
+        message: "The comparison contains differences with no proved tracked-document lowering.",
+        unsupported: allUnsupported,
+      }),
+    );
+  }
+  for (const omitted of allUnsupported) {
+    let scope: CompareVerificationFailure["scope"];
+    switch (omitted.reason) {
+      case "story-missing-in-base":
+      case "story-missing-in-target":
+      case "story-not-editable":
+        scope = {
+          type: "story",
+          story:
+            omitted.baseStory ??
+            omitted.targetStory ??
+            panic("An unsupported story has neither a base nor a target handle"),
+        };
+        break;
+      case "numbering-definition":
+        scope = { type: "package" };
+        break;
+      default:
+        scope = { type: "story", story: omitted.story };
+        break;
+    }
+    failures.push({
+      invariant: "accept-reproduces-target",
+      cause: "unsupported",
+      scope,
+      detail: `the ${omitted.reason} difference has no proved tracked-document instruction`,
+    });
+  }
   // Each story gets the range that starts where the previous story's ended.
   // A revision `w:id` is scoped to the package, not the part, so two stories
   // seeded alike would let a reader resolving a header revision resolve a
   // body revision with it.
   let idSeed = revisionStamp.idSeed;
   let documentChanged = false;
-  const wordDiff = createScopedWordDiffOptions({ granularity });
-  for (const { pair, plan } of planned) {
-    changes.push(...plan.changes);
-    if (plan.operations.length === 0 && plan.tableGeometryPairings.length === 0) {
-      continue;
-    }
-
-    // Retained before anything lands: this is the document the redline is
-    // written against, and rejecting every revision has to return to it.
-    const baseBefore = pair.baseSnapshot.blocks;
-    const baseBeforeGeometry = projectTableGeometry(storyTablesOf(pair.baseSnapshot));
-    const targetTables = new Map(
-      storyTablesOf(pair.targetSnapshot).map(({ index, node }) => [index, node] as const),
-    );
-
-    // Table properties first, while the base's table indices still describe
-    // the document the plan was written against: the operations below add and
-    // remove tables, and every index past the first one would then name a
-    // different table.
-    const afterGeometry = reviewer.matchStoryTableGeometry({
+  for (const { pair, prepared } of preparedStories) {
+    const executed = comparisonAccess.commitStoryProgram({
       story: pair.baseStory,
-      targetTables,
-      pairings: plan.tableGeometryPairings,
       revisionStamp: { date: revisionStamp.date, idSeed },
+      prepared,
     });
-    const geometryChanged = afterGeometry > idSeed;
-    documentChanged ||= geometryChanged;
-    idSeed = afterGeometry;
-
-    if (plan.operations.length === 0 && !geometryChanged) {
-      continue;
-    }
-
-    if (plan.operations.length > 0) {
-      const { skipped, nextRevisionId } = reviewer.applyDocumentOperationsToStory({
-        story: pair.baseStory,
-        snapshot: pair.baseSnapshot,
-        revisionStamp: { date: revisionStamp.date, idSeed },
-        wordDiff,
-        batch: {
-          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-          mode: "tracked-changes",
-          operations: plan.operations,
-        },
-        tableTemplates: resolveTableTemplates(targetTables, plan.tableTemplates),
-      });
-      if (nextRevisionId === undefined) {
-        // Only a host bridge that does not allocate ids itself omits this, and
-        // the comparison drives the in-process applier.
-        panic("The applier did not report where it left the revision-id counter", {
+    if (executed.status === "unsupported") {
+      return Result.err(
+        new CompareDocxApplyError({
+          message: "A preflighted story could not complete its atomic comparison transaction.",
           story: pair.baseStory,
-        });
-      }
-      idSeed = nextRevisionId;
-      documentChanged = true;
-      const refused = skipped.filter(({ reason }) => getCompareSkipDisposition(reason) === "fatal");
-      if (refused.length > 0) {
-        return Result.err(
-          new CompareDocxApplyError({
-            message:
-              "Some derived operations were refused, so the result would not match the target.",
-            skipped: refused,
-          }),
-        );
-      }
+          reason: executed.issue.reason,
+        }),
+      );
     }
+    changes.push(...executed.receipt.changes);
+    idSeed = executed.receipt.nextRevisionId;
+    documentChanged ||= executed.receipt.transaction.docChanged;
+  }
 
-    const acceptedSnapshot = comparisonAccess.snapshotReviewedStory({
-      story: pair.baseStory,
-      view: "final",
-    });
-    const acceptFailure = classifyProjectionMismatch({
+  // Verification is two package projections, independent of story count.
+  // Projecting inside the loop above would rebuild the whole live Document
+  // twice per story and turn multi-part comparisons quadratic in practice.
+  const acceptedByStory = new Map(
+    comparisonAccess
+      .projectReviewedStories("final")
+      .stories.map(({ handle, snapshot }) => [storyKey(handle), snapshot] as const),
+  );
+  const rejectedByStory = new Map(
+    comparisonAccess
+      .projectReviewedStories("original")
+      .stories.map(({ handle, snapshot }) => [storyKey(handle), snapshot] as const),
+  );
+  for (const { pair } of preparedStories) {
+    const baseBefore = resolvedDocxContentBlocks(pair.baseSnapshot);
+    const baseBeforeGeometry = projectTableGeometry(
+      storyTablesOf(resolvedDocxOperationSnapshot(pair.baseSnapshot)),
+    );
+    const acceptedSnapshot = acceptedByStory.get(storyKey(pair.baseStory)) ?? null;
+    const acceptFailure = classifyContentProjectionMismatch({
       invariant: "accept-reproduces-target",
       story: pair.baseStory,
-      actual: acceptedSnapshot?.blocks ?? [],
-      expected: pair.targetSnapshot.blocks,
+      actual: acceptedSnapshot ? resolvedDocxContentBlocks(acceptedSnapshot) : [],
+      expected: resolvedDocxContentBlocks(pair.targetSnapshot),
     });
     if (acceptFailure) {
       failures.push(acceptFailure);
-    } else {
-      const formattingFailure = formattingRoundTripFailure({
-        invariant: "accept-reproduces-target",
-        story: pair.baseStory,
-        changes: plan.changes,
-        actualBlocks: acceptedSnapshot?.blocks ?? [],
-        expectedBlocks: pair.targetSnapshot.blocks,
-        expectedBlockId: ({ targetBlockId }) => targetBlockId,
-      });
-      if (formattingFailure) {
-        failures.push(formattingFailure);
-      }
     }
-    const rejectedSnapshot = comparisonAccess.snapshotReviewedStory({
-      story: pair.baseStory,
-      view: "original",
-    });
-    const rejectFailure = classifyProjectionMismatch({
+    const rejectedSnapshot = rejectedByStory.get(storyKey(pair.baseStory)) ?? null;
+    const rejectFailure = classifyContentProjectionMismatch({
       invariant: "reject-reproduces-base",
       story: pair.baseStory,
-      actual: rejectedSnapshot?.blocks ?? [],
+      actual: rejectedSnapshot ? resolvedDocxContentBlocks(rejectedSnapshot) : [],
       expected: baseBefore,
     });
     if (rejectFailure) {
       failures.push(rejectFailure);
-    } else {
-      const formattingFailure = formattingRoundTripFailure({
-        invariant: "reject-reproduces-base",
-        story: pair.baseStory,
-        changes: plan.changes,
-        actualBlocks: rejectedSnapshot?.blocks ?? [],
-        expectedBlocks: pair.baseSnapshot.blocks,
-        expectedBlockId: ({ baseBlockId }) => baseBlockId,
-      });
-      if (formattingFailure) {
-        failures.push(formattingFailure);
-      }
     }
     // The block projection says which cell every paragraph landed in and
     // nothing about the cell. A table's own properties need their own
@@ -652,8 +543,12 @@ export const applyComparison = (
     const geometryAcceptFailure = classifyGeometryMismatch({
       invariant: "accept-reproduces-target",
       story: pair.baseStory,
-      actual: projectTableGeometry(acceptedSnapshot ? storyTablesOf(acceptedSnapshot) : []),
-      expected: projectTableGeometry(storyTablesOf(pair.targetSnapshot)),
+      actual: projectTableGeometry(
+        acceptedSnapshot ? storyTablesOf(resolvedDocxOperationSnapshot(acceptedSnapshot)) : [],
+      ),
+      expected: projectTableGeometry(
+        storyTablesOf(resolvedDocxOperationSnapshot(pair.targetSnapshot)),
+      ),
     });
     if (geometryAcceptFailure) {
       failures.push(geometryAcceptFailure);
@@ -661,7 +556,9 @@ export const applyComparison = (
     const geometryRejectFailure = classifyGeometryMismatch({
       invariant: "reject-reproduces-base",
       story: pair.baseStory,
-      actual: projectTableGeometry(rejectedSnapshot ? storyTablesOf(rejectedSnapshot) : []),
+      actual: projectTableGeometry(
+        rejectedSnapshot ? storyTablesOf(resolvedDocxOperationSnapshot(rejectedSnapshot)) : [],
+      ),
       expected: baseBeforeGeometry,
     });
     if (geometryRejectFailure) {
@@ -670,6 +567,7 @@ export const applyComparison = (
   }
   return Result.ok({
     changes,
+    unsupported: allUnsupported,
     verification:
       failures.length === 0 ? { status: "verified" } : { status: "unverified", failures },
     documentChanged,
@@ -706,7 +604,7 @@ export const serializeComparison = async (
   // A revision on the paragraph that ends a container asks a consumer to merge
   // it with a paragraph that is not there, or to close a break back over one,
   // and neither is an edit that can be carried out. Nothing downstream can
-  // recover from that, so it is fatal under either `onUnverified` setting:
+  // recover from that, so it is fatal in either comparison mode:
   // unlike an unproven redline there is no partial result worth handing back.
   //
   // Scoped to the revisions this comparison minted. A base can arrive carrying
@@ -743,7 +641,7 @@ export const serializeComparison = async (
  *
  * The result is verified by default: a redline whose round trip cannot be
  * proven is refused rather than returned, because one that reads plausibly and
- * is wrong is worse than none. `onUnverified: "emit"` asks for the opposite
+ * is wrong is worse than none. `mode: "bestEffort"` asks for the opposite
  * trade — the best redline available, plus the typed list of what could not be
  * represented — for a caller that would rather show something and say what is
  * missing.
@@ -761,12 +659,14 @@ export const compareDocx = async (
   if (planned.isErr()) {
     return Result.err(planned.error);
   }
-  const applied = applyComparison(parsed.value, planned.value);
+  const applied = applyComparison(parsed.value, planned.value, {
+    mode: options.mode ?? "strict",
+  });
   if (applied.isErr()) {
     return Result.err(applied.error);
   }
   const { changes, verification } = applied.value;
-  if (verification.status === "unverified" && (options.onUnverified ?? "refuse") === "refuse") {
+  if (verification.status === "unverified" && (options.mode ?? "strict") === "strict") {
     const [firstFailure] = verification.failures;
     if (firstFailure === undefined) {
       panic("An unverified comparison reported no failing invariant");
@@ -774,7 +674,7 @@ export const compareDocx = async (
     return Result.err(
       new CompareDocxRoundTripError({
         message: `The generated tracked changes do not satisfy ${firstFailure.invariant}: ${firstFailure.detail}`,
-        story: firstFailure.story,
+        scope: firstFailure.scope,
         invariant: firstFailure.invariant,
         cause: firstFailure.cause,
         failures: verification.failures,
@@ -789,6 +689,6 @@ export const compareDocx = async (
     buffer: serialized.value,
     changes,
     verification,
-    unsupported: parsed.value.unsupported,
+    unsupported: applied.value.unsupported,
   });
 };

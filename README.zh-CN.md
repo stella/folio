@@ -105,21 +105,23 @@ export function Editor() {
 
 使用 `bun add @stll/folio-vue vue` 安装 Vue 编辑器，使用 `bun add @stll/folio-nuxt` 安装 Nuxt 模块，或使用 `bun add @stll/folio-core` 安装框架无关引擎。
 
-## 无需编辑器即可创建 Word 修订
+## 无需编辑器即可创建 DOCX 修订
 
-比较两个 DOCX 文件，并将差异写入原生修订：
+比较两个 DOCX 文件，并将差异写入修订：
 
 ```ts
-import { generateRedlineDocx } from "@stll/folio-core/redline";
+import { compareDocx } from "@stll/folio-core";
 
-const result = await generateRedlineDocx(originalDocx, revisedDocx, {
+const result = await compareDocx(originalDocx, revisedDocx, {
   author: "Reviewer",
+  timestamp: "2024-03-01T00:00:00.000Z",
 });
+if (result.isErr()) throw result.error;
 
-await store(result.buffer);
+await store(result.value.buffer);
 ```
 
-如需对单个文档执行确定性修改，请使用 `FolioDocxReviewer`。参阅 [`folio-core` 审阅 API](./packages/core/README.md#native-word-redlines)。
+如需对单个文档执行确定性修改，请使用 `FolioDocxReviewer`。参阅 [`folio-core` 审阅 API](./packages/core/README.md#native-docx-redlines)。
 
 ## 集成说明
 

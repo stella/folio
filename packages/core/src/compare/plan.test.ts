@@ -10,8 +10,31 @@
 
 import { describe, expect, test } from "bun:test";
 
-import type { FolioAIBlock, FolioAIEditSnapshot } from "../ai-edits/types";
-import { planStoryCompare } from "./plan";
+import type { FolioAIBlock } from "../ai-edits/types";
+import {
+  createResolvedDocxStorySnapshot,
+  resolvedDocxContentBlocks,
+  resolvedDocxSourceOperand,
+  resolvedDocxSourceOperandBlock,
+  type ResolvedDocxSourceOperand,
+  type ResolvedDocxStorySnapshot,
+} from "../internal/compare/resolved-docx-story-snapshot";
+import {
+  compareResolvedDocxStoryPair,
+  createResolvedDocxStoryPair,
+  resolvedDocxComparisonIndexWork,
+  resolvedDocxStoryComparisonPayload,
+  resolvedDocxTableGeometryPairings,
+  resolvedDocxTableStructureOperandPayload,
+  type ResolvedDocxTableStructureOperand,
+} from "../internal/compare/resolved-docx-story-comparison";
+import type { DocxComparisonInstruction } from "../internal/compare/docx-program";
+import { headerFooterToProseDoc, toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import type { BlockContent, Document, Paragraph, Table, TableCell } from "../types/document";
+import { createEmptyDocument } from "../utils/createDocument";
+import { createContentComparisonWorkSession } from "./content";
+import type { CompareChange } from "./types";
+import { planStoryCompare, type CompareStoryPlan } from "./plan";
 
 const MAIN_STORY = { type: "main" } as const;
 
@@ -77,36 +100,213 @@ const gridCell = (
   },
 });
 
-const snapshotOf = (blocks: readonly FolioAIBlock[]): FolioAIEditSnapshot => ({
-  blocks: [...blocks],
-  anchors: Object.fromEntries(
-    blocks.map((entry, index) => [
-      entry.id,
-      {
-        id: entry.id,
-        from: index * 2,
-        to: index * 2 + 2,
-        text: entry.text,
-        normalizedText: entry.text,
-        textHash: entry.text,
-        hashOccurrenceCount: 1,
-      },
-    ]),
-  ),
+const paragraphOf = ({
+  id,
+  kind,
+  text,
+  headingLevel,
+  styleId,
+  directAlignment,
+  directSpacing,
+  listLevel,
+}: FolioAIBlock): Paragraph => ({
+  type: "paragraph",
+  paraId: id,
+  content: text.length === 0 ? [] : [{ type: "run", content: [{ type: "text", text }] }],
+  ...((kind === "heading" ||
+    styleId !== undefined ||
+    directAlignment !== undefined ||
+    directSpacing !== undefined ||
+    listLevel !== undefined) && {
+    formatting: {
+      ...(kind === "heading" && {
+        outlineLevel: Math.max(0, Math.min(8, (headingLevel ?? 1) - 1)),
+      }),
+      ...(styleId !== undefined && { styleId }),
+      ...(directAlignment !== undefined && { alignment: directAlignment }),
+      ...(directSpacing !== undefined && directSpacing),
+      ...(listLevel !== undefined && { numPr: { numId: 1, ilvl: listLevel } }),
+    },
+  }),
 });
 
+const tableOf = (blocks: readonly FolioAIBlock[]): Table => {
+  const blocksByRow = new Map<number, FolioAIBlock[]>();
+  for (const tableBlock of blocks) {
+    const table = tableBlock.table;
+    if (!table) throw new Error("table fixture block has no table location");
+    const row = blocksByRow.get(table.rowIndex) ?? [];
+    row.push(tableBlock);
+    blocksByRow.set(table.rowIndex, row);
+  }
+  return {
+    type: "table",
+    rows: [...blocksByRow.entries()]
+      .toSorted(([left], [right]) => left - right)
+      .map(([, rowBlocks]) => {
+        const blocksByCell = new Map<number, FolioAIBlock[]>();
+        for (const rowBlock of rowBlocks) {
+          const table = rowBlock.table;
+          if (!table) throw new Error("table fixture block has no table location");
+          const cellBlocks = blocksByCell.get(table.cellIndex) ?? [];
+          cellBlocks.push(rowBlock);
+          blocksByCell.set(table.cellIndex, cellBlocks);
+        }
+        const cells: TableCell[] = [...blocksByCell.entries()]
+          .toSorted(([left], [right]) => left - right)
+          .map(([, cellBlocks]) => {
+            const ordered = cellBlocks.toSorted(
+              (left, right) =>
+                (left.table?.paragraphIndex ?? 0) - (right.table?.paragraphIndex ?? 0),
+            );
+            const span = ordered.at(0)?.table?.columnSpan ?? 1;
+            if (span > 1) {
+              return {
+                type: "tableCell",
+                formatting: { gridSpan: span },
+                content: ordered.map(paragraphOf),
+              };
+            }
+            return { type: "tableCell", content: ordered.map(paragraphOf) };
+          });
+        return { type: "tableRow", cells };
+      }),
+  };
+};
+
+const documentOf = (blocks: readonly FolioAIBlock[]): Document => {
+  const template = createEmptyDocument();
+  const content: BlockContent[] = [];
+  for (let index = 0; index < blocks.length;) {
+    const current = blocks[index];
+    if (!current) break;
+    if (!current.table) {
+      content.push(paragraphOf(current));
+      index += 1;
+      continue;
+    }
+    const tableIndex = current.table.tableIndex;
+    const tableBlocks: FolioAIBlock[] = [];
+    while (blocks[index]?.table?.tableIndex === tableIndex) {
+      tableBlocks.push(blocks[index] as FolioAIBlock);
+      index += 1;
+    }
+    content.push(tableOf(tableBlocks));
+  }
+  return {
+    ...template,
+    package: {
+      ...template.package,
+      document: { ...template.package.document, content },
+    },
+  };
+};
+
+const resolvedDocumentSnapshotOf = (projectedDocument: Document, story = MAIN_STORY) => {
+  const document =
+    story.type === "main"
+      ? projectedDocument
+      : {
+          ...projectedDocument,
+          package: {
+            ...projectedDocument.package,
+            headers: new Map([
+              [story.relationshipId, { content: projectedDocument.package.document.content }],
+            ]),
+          },
+        };
+  const conversionOptions = {
+    ...(projectedDocument.package.styles !== undefined && {
+      styles: projectedDocument.package.styles,
+    }),
+    ...(projectedDocument.package.theme !== undefined && {
+      theme: projectedDocument.package.theme,
+    }),
+  };
+  const sourceDocument =
+    story.type === "main"
+      ? toProseDoc(document, conversionOptions)
+      : headerFooterToProseDoc(projectedDocument.package.document.content, conversionOptions);
+  const snapshot = createResolvedDocxStorySnapshot({
+    document,
+    story,
+    sourceDocument,
+  });
+  if (!snapshot) throw new Error("fixture story projection missing");
+  return snapshot;
+};
+
+const resolvedSnapshotOf = (blocks: readonly FolioAIBlock[], story = MAIN_STORY) =>
+  resolvedDocumentSnapshotOf(documentOf(blocks), story);
+
+const comparisonOf = (
+  baseSnapshot: ResolvedDocxStorySnapshot,
+  targetSnapshot: ResolvedDocxStorySnapshot,
+) => {
+  const compared = compareResolvedDocxStoryPair({
+    pair: createResolvedDocxStoryPair({ baseSnapshot, targetSnapshot }),
+    workSession: createContentComparisonWorkSession(),
+  });
+  if (compared.isErr()) throw compared.error;
+  return compared.value;
+};
+
+const inspectPlan = (
+  plan: CompareStoryPlan,
+  baseSnapshot: ResolvedDocxStorySnapshot,
+): TestCompareStoryPlan => {
+  const { instructions, semanticGroups } = plan.program.consume();
+  return {
+    ...plan,
+    baseSnapshot,
+    changes: semanticGroups
+      .flatMap(({ reports }) => reports)
+      .toSorted((left, right) => left.sequence - right.sequence)
+      .map(({ change }) => change),
+    contentInstructions: instructions.flatMap((instruction) => {
+      if (instruction.type === "tableFormat") return [];
+      if (instruction.type === "tableStructure") return [instruction.operation];
+      return [instruction];
+    }),
+  };
+};
+
 const planOf = (base: readonly FolioAIBlock[], target: readonly FolioAIBlock[]) => {
+  const baseSnapshot = resolvedSnapshotOf(base);
+  const targetSnapshot = resolvedSnapshotOf(target);
   const plan = planStoryCompare({
-    story: MAIN_STORY,
-    baseSnapshot: snapshotOf(base),
-    targetSnapshot: snapshotOf(target),
+    comparison: comparisonOf(baseSnapshot, targetSnapshot),
     maxOperations: 1000,
   });
-  if (plan === null) {
-    throw new Error("The plan exceeded its operation budget.");
-  }
-  return plan;
+  if (plan.isErr()) throw plan.error;
+  return inspectPlan(plan.value, baseSnapshot);
 };
+
+type TestCompareStoryPlan = CompareStoryPlan & {
+  readonly baseSnapshot: ResolvedDocxStorySnapshot;
+  readonly changes: readonly CompareChange[];
+  readonly contentInstructions: readonly (
+    | Exclude<DocxComparisonInstruction, { readonly type: "tableStructure" | "tableFormat" }>
+    | ResolvedDocxTableStructureOperand
+  )[];
+};
+
+/** Content transport only; table-property pairing has its own focused suite. */
+const contentInstructionsOf = (plan: TestCompareStoryPlan) => plan.contentInstructions;
+
+const sourceOperandOf = (
+  plan: TestCompareStoryPlan,
+  blockId: string,
+): ResolvedDocxSourceOperand => {
+  const sourceBlock = resolvedDocxContentBlocks(plan.baseSnapshot).find(
+    ({ identity }) => identity.id === blockId,
+  );
+  if (!sourceBlock) throw new Error(`fixture source block ${blockId} missing`);
+  return resolvedDocxSourceOperand(plan.baseSnapshot, sourceBlock);
+};
+
+const sourceBlockIdOf = (plan: TestCompareStoryPlan, source: ResolvedDocxSourceOperand): string =>
+  resolvedDocxSourceOperandBlock(source, plan.baseSnapshot).identity.id;
 
 const RELOCATED =
   "The Supplier shall deliver the Goods to the named place within thirty days of the order.";
@@ -119,7 +319,161 @@ const RELOCATED_EDITED =
 const UNRELATED =
   "The Supplier shall not be liable for any indirect loss however it arises in contract.";
 
+test("unsupported live paragraph properties reach the typed lowering refusal", () => {
+  const baseDocument = documentOf([block("clause", "Stable clause")]);
+  const targetDocument = documentOf([block("clause", "Stable clause")]);
+  const baseParagraph = baseDocument.package.document.content.at(0);
+  const targetParagraph = targetDocument.package.document.content.at(0);
+  if (baseParagraph?.type !== "paragraph" || targetParagraph?.type !== "paragraph") {
+    throw new Error("paragraph fixture missing");
+  }
+  baseParagraph.formatting = { suppressLineNumbers: false };
+  targetParagraph.formatting = { suppressLineNumbers: true };
+  const baseSnapshot = resolvedDocumentSnapshotOf(baseDocument);
+  const targetSnapshot = resolvedDocumentSnapshotOf(targetDocument);
+  const planned = planStoryCompare({
+    comparison: comparisonOf(baseSnapshot, targetSnapshot),
+    maxOperations: 1000,
+  });
+  if (planned.isErr()) throw planned.error;
+
+  expect(planned.value.unsupported).toContainEqual({
+    reason: "block-semantics",
+    story: MAIN_STORY,
+    eventType: "modified",
+    field: "blockProperties",
+    baseBlockId: "clause",
+    targetBlockId: "clause",
+  });
+});
+
 describe("table row pairing", () => {
+  test("builds its canonical index with deterministic linear work", () => {
+    const workForRows = (count: number) => {
+      const rows = Array.from({ length: count }, (_value, rowIndex) =>
+        cell(
+          `R${rowIndex.toString(16).padStart(7, "0")}`,
+          `Stable schedule row ${String(rowIndex)}`,
+          rowIndex,
+        ),
+      );
+      return resolvedDocxComparisonIndexWork(
+        comparisonOf(resolvedSnapshotOf(rows), resolvedSnapshotOf(rows)),
+      );
+    };
+
+    const first = workForRows(16);
+    const repeated = workForRows(16);
+    const doubled = workForRows(32);
+
+    expect(first).toEqual(repeated);
+    expect(doubled.total).toBe(first.total * 2);
+    expect(doubled.eventVisits).toBe(first.eventVisits * 2);
+    expect(doubled.anchorEventVisits).toBe(first.anchorEventVisits * 2);
+    expect(Object.isFrozen(first)).toBe(true);
+    expect(Reflect.set(first, "total", 0)).toBe(false);
+  });
+
+  test("pairs table geometry from its container alignment when cell text is unrelated", () => {
+    const baseSnapshot = resolvedSnapshotOf([
+      gridCell("source", "Payment is due within thirty days after receipt.", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      gridCell("stable", "Schedule heading", {
+        rowIndex: 0,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+      }),
+    ]);
+    const targetSnapshot = resolvedSnapshotOf([
+      gridCell("target", "Confidential schedules remain with the appointed custodian.", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      gridCell("stable", "Schedule heading", {
+        rowIndex: 0,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+      }),
+    ]);
+    const comparison = comparisonOf(baseSnapshot, targetSnapshot);
+
+    const rewritten = resolvedDocxStoryComparisonPayload(comparison).comparison.events.find(
+      ({ type }) => type === "modified",
+    );
+    if (rewritten?.type !== "modified") throw new Error("unrelated cell text was not compared");
+    expect(rewritten.relation.segments.map(({ type }) => type)).toContain("del");
+    expect(rewritten.relation.segments.map(({ type }) => type)).toContain("ins");
+    expect(resolvedDocxTableGeometryPairings(comparison)).toEqual([
+      {
+        base: { tableIndex: 0, rowIndex: 0, cellIndex: 0 },
+        target: { tableIndex: 0, rowIndex: 0, cellIndex: 0 },
+      },
+      {
+        base: { tableIndex: 0, rowIndex: 0, cellIndex: 1 },
+        target: { tableIndex: 0, rowIndex: 0, cellIndex: 1 },
+      },
+    ]);
+  });
+
+  test("does not turn a cross-cell move relation into a geometry pairing", () => {
+    const relocated = "The Supplier shall deliver the Goods within thirty days of the order.";
+    const baseSnapshot = resolvedSnapshotOf([
+      gridCell("relocated", relocated, {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      gridCell("left-anchor", "Left cell durable anchor", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+        paragraphIndex: 1,
+      }),
+      gridCell("right-anchor", "Right cell durable anchor", {
+        rowIndex: 0,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+      }),
+    ]);
+    const targetSnapshot = resolvedSnapshotOf([
+      gridCell("left-anchor", "Left cell durable anchor", {
+        rowIndex: 0,
+        cellIndex: 0,
+        gridColumnIndex: 0,
+      }),
+      gridCell("right-anchor", "Right cell durable anchor", {
+        rowIndex: 0,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+      }),
+      gridCell("relocated", relocated, {
+        rowIndex: 0,
+        cellIndex: 1,
+        gridColumnIndex: 1,
+        paragraphIndex: 1,
+      }),
+    ]);
+    const comparison = comparisonOf(baseSnapshot, targetSnapshot);
+
+    expect(
+      resolvedDocxStoryComparisonPayload(comparison).comparison.events.map(({ type }) => type),
+    ).toContain("movedTo");
+    expect(resolvedDocxTableGeometryPairings(comparison)).toEqual([
+      {
+        base: { tableIndex: 0, rowIndex: 0, cellIndex: 0 },
+        target: { tableIndex: 0, rowIndex: 0, cellIndex: 0 },
+      },
+      {
+        base: { tableIndex: 0, rowIndex: 0, cellIndex: 1 },
+        target: { tableIndex: 0, rowIndex: 0, cellIndex: 1 },
+      },
+    ]);
+  });
+
   test("a deleted row plus edits in the rows below is one deleted row", () => {
     // Pairing rows by position instead reads every row as changed: row 0 is
     // put opposite row 1, row 1 opposite row 2, and the last row of the base
@@ -147,6 +501,25 @@ describe("table row pairing", () => {
     expect(planOf(rows, rows).changes).toEqual([]);
   });
 
+  test("deleting a whole table preserves both neighboring body paragraphs", () => {
+    const base = [
+      block("before-base", "Before the table."),
+      cell("removed", "Removed schedule", 0),
+      block("after-base", "After the table."),
+    ];
+    const target = [
+      block("before-target", "Before the table."),
+      block("after-target", "After the table."),
+    ];
+
+    const plan = planOf(base, target);
+
+    expect(plan.changes.map(({ kind }) => kind)).toEqual(["table-delete"]);
+    const instructions = contentInstructionsOf(plan);
+    expect(instructions.map(({ type }) => type)).toEqual(["deleteTable"]);
+    expect(Object.keys(instructions[0] ?? {}).toSorted()).toEqual(["type"]);
+  });
+
   test("a span change that cannot align by column replaces the whole table", () => {
     const base = [
       block("before", "Before the table."),
@@ -165,19 +538,13 @@ describe("table row pairing", () => {
       block("after-target", "After the table."),
     ];
 
-    const { changes, operations } = planOf(base, target);
+    const plan = planOf(base, target);
+    const { changes } = plan;
+    const instructions = contentInstructionsOf(plan);
 
     expect(changes.map(({ kind }) => kind)).toEqual(["table-delete", "table-insert"]);
-    expect(operations).toEqual([
-      { id: "compare-1", type: "deleteTable", blockId: "a" },
-      {
-        id: "compare-2",
-        type: "insertTable",
-        blockId: "after",
-        position: "before",
-        rows: [["Shared"]],
-      },
-    ]);
+    expect(instructions.map(({ type }) => type)).toEqual(["replaceTable"]);
+    expect(Object.keys(instructions[0] ?? {}).toSorted()).toEqual(["type"]);
   });
 
   test("a compatible row insertion remains one row insertion", () => {
@@ -193,9 +560,38 @@ describe("table row pairing", () => {
       block("after-target", "After the table."),
     ];
 
-    const { changes } = planOf(base, target);
+    const plan = planOf(base, target);
+    const { changes } = plan;
 
     expect(changes.map(({ kind }) => kind)).toEqual(["table-row-insert"]);
+    const insertion = contentInstructionsOf(plan).find(
+      (instruction) => instruction.type === "insertTableRow",
+    );
+    if (!insertion || insertion.type !== "insertTableRow") {
+      throw new Error("fixture did not produce a row insertion");
+    }
+    const comparison = comparisonOf(resolvedSnapshotOf(base), resolvedSnapshotOf(target));
+    const comparablePlan = planStoryCompare({ comparison, maxOperations: 1000 });
+    if (comparablePlan.isErr()) throw comparablePlan.error;
+    const comparableInsertion = comparablePlan.value.program
+      .consume()
+      .instructions.find(
+        (instruction) =>
+          instruction.type === "tableStructure" && instruction.operation.type === "insertTableRow",
+      );
+    if (
+      comparableInsertion?.type !== "tableStructure" ||
+      comparableInsertion.operation.type !== "insertTableRow"
+    ) {
+      throw new Error("fixture did not produce a comparison-owned row insertion");
+    }
+    const payload = resolvedDocxTableStructureOperandPayload(
+      comparableInsertion.operation,
+      comparison,
+    );
+    if (payload.type !== "insertTableRow") throw new Error("row insertion payload missing");
+    expect(Object.isFrozen(payload.anchor)).toBe(true);
+    expect(Reflect.set(payload.anchor, "position", "before")).toBe(false);
   });
 
   test("text-only rewrites in the same table shape stay cell-level", () => {
@@ -263,16 +659,20 @@ describe("document-terminal paragraph carrier", () => {
     ];
     const target = [cell("kept-target", "Kept row", 0), block("target-carrier", "")];
 
-    const { changes, operations } = planOf(base, target);
+    const plan = planOf(base, target);
+    const { changes } = plan;
+    const instructions = contentInstructionsOf(plan);
 
-    expect(operations).not.toContainEqual(
-      expect.objectContaining({ type: "deleteBlock", blockId: "base-carrier" }),
-    );
+    expect(
+      instructions.some(
+        (instruction) =>
+          instruction.type === "deleteParagraph" &&
+          sourceBlockIdOf(plan, instruction.source) === "base-carrier",
+      ),
+    ).toBe(false);
     expect(changes.map(({ kind }) => kind)).toEqual(["delete", "table-delete"]);
-    expect(operations).toEqual([
-      { id: "compare-1", type: "deleteBlock", blockId: "between" },
-      { id: "compare-2", type: "deleteTable", blockId: "removed" },
-    ]);
+    expect(instructions.map(({ type }) => type)).toEqual(["deleteParagraph", "deleteTable"]);
+    expect(Object.keys(instructions[1] ?? {}).toSorted()).toEqual(["type"]);
   });
 
   test("places a replacement terminal table after its deletable base carrier", () => {
@@ -293,35 +693,29 @@ describe("document-terminal paragraph carrier", () => {
       }),
     ];
 
-    const { changes, operations } = planOf(base, target);
+    const plan = planOf(base, target);
+    const { changes } = plan;
+    const instructions = contentInstructionsOf(plan);
 
     expect(changes.map(({ kind }) => kind)).toEqual(["table-delete", "table-insert", "delete"]);
-    expect(operations).toEqual([
-      { id: "compare-1", type: "deleteTable", blockId: "source" },
-      {
-        id: "compare-2",
-        type: "insertTable",
-        blockId: "base-carrier",
-        position: "after",
-        rows: [["Target terminal table"]],
-      },
-      { id: "compare-3", type: "deleteBlock", blockId: "base-carrier" },
-    ]);
+    expect(instructions.map(({ type }) => type)).toEqual(["replaceTable"]);
+    expect(Object.keys(instructions[0] ?? {}).toSorted()).toEqual(["type"]);
   });
 
   test("still compares paragraph properties on the reserved carrier", () => {
     const baseCarrier = block("base-carrier", "");
     const targetCarrier = { ...block("target-carrier", ""), styleId: "CustomStyle" };
 
-    const { changes, operations } = planOf([baseCarrier], [targetCarrier]);
+    const plan = planOf([baseCarrier], [targetCarrier]);
+    const { changes } = plan;
+    const instructions = contentInstructionsOf(plan);
 
     expect(changes.map(({ kind }) => kind)).toEqual(["paragraph-format"]);
-    expect(operations).toEqual([
+    expect(instructions).toMatchObject([
       {
-        id: "compare-1",
-        type: "setBlockParagraphProperties",
-        blockId: "base-carrier",
-        properties: { styleId: "CustomStyle" },
+        type: "setParagraphProperties",
+        source: sourceOperandOf(plan, "base-carrier"),
+        targetProperties: expect.objectContaining({ styleId: "CustomStyle" }),
       },
     ]);
   });
@@ -341,14 +735,15 @@ describe("document-terminal paragraph carrier", () => {
     ];
 
     for (const { base, target, properties } of cases) {
-      const { changes, operations } = planOf([base], [target]);
+      const plan = planOf([base], [target]);
+      const { changes } = plan;
+      const instructions = contentInstructionsOf(plan);
       expect(changes.map(({ kind }) => kind)).toEqual(["paragraph-format"]);
-      expect(operations).toEqual([
+      expect(instructions).toMatchObject([
         {
-          id: "compare-1",
-          type: "setBlockParagraphProperties",
-          blockId: base.id,
-          properties,
+          type: "setParagraphProperties",
+          source: sourceOperandOf(plan, base.id),
+          targetProperties: expect.objectContaining(properties),
         },
       ]);
     }
@@ -367,23 +762,27 @@ describe("document-terminal paragraph carrier", () => {
     ];
     const target = [block("alpha-target", RELOCATED), block("bravo-target", UNRELATED)];
 
-    const { changes, operations } = planOf(base, target);
+    const plan = planOf(base, target);
+    const { changes } = plan;
+    const instructions = contentInstructionsOf(plan);
 
     expect(changes).toContainEqual(
       expect.objectContaining({ kind: "delete", baseBlockId: "charlie" }),
     );
     expect(changes).not.toContainEqual(expect.objectContaining({ baseBlockId: "bravo" }));
-    expect(operations).toContainEqual(
-      expect.objectContaining({ type: "mergeBlockWithNext", blockId: "bravo" }),
+    expect(instructions).toContainEqual(
+      expect.objectContaining({
+        type: "deleteTrailingParagraphs",
+        chainStart: sourceOperandOf(plan, "bravo"),
+        deleted: [sourceOperandOf(plan, "charlie")],
+      }),
     );
   });
 
   test("insertions placed in a cell's removed run land in the cell's carrier", () => {
-    // The target's first cell grew two paragraphs and its second cell is gone,
-    // so the additions anchor on the paragraph the removed cell ends with —
-    // the one whose mark cannot say it went. The last of them is written INTO
-    // that carrier and the rest go in front of it, which is what makes the
-    // mark count work out without deleting a mark the format keeps.
+    // The target's first cell grew two paragraphs and its second cell is gone.
+    // The additions stay after the surviving paragraph in their own cell;
+    // structural deletion owns the neighboring column independently.
     const base = [
       gridCell("a0", "Alpha clause states the agreed position.", {
         rowIndex: 0,
@@ -406,32 +805,44 @@ describe("document-terminal paragraph carrier", () => {
         rowIndex: 0,
         cellIndex: 0,
         gridColumnIndex: 0,
+        paragraphIndex: 1,
       }),
       gridCell("tc", "Governing law is that of the named place.", {
         rowIndex: 0,
         cellIndex: 0,
         gridColumnIndex: 0,
+        paragraphIndex: 2,
       }),
     ];
 
-    const { operations } = planOf(base, target);
+    const plan = planOf(base, target);
+    const instructions = contentInstructionsOf(plan);
 
-    expect(operations).toContainEqual(
+    expect(instructions).toContainEqual(
       expect.objectContaining({
-        type: "insertBeforeBlock",
-        blockId: "b0",
-        text: "Notices travel to the address named above.",
+        type: "insertParagraph",
+        boundary: expect.objectContaining({
+          type: "afterParagraph",
+          paragraph: sourceOperandOf(plan, "a0"),
+        }),
+        target: expect.objectContaining({ text: "Notices travel to the address named above." }),
       }),
     );
-    expect(operations).toContainEqual(
+    expect(instructions).toContainEqual(
       expect.objectContaining({
-        type: "replaceBlock",
-        blockId: "b0",
-        text: "Governing law is that of the named place.",
+        type: "insertParagraph",
+        boundary: expect.objectContaining({
+          type: "afterParagraph",
+          paragraph: sourceOperandOf(plan, "a0"),
+        }),
+        target: expect.objectContaining({ text: "Governing law is that of the named place." }),
       }),
     );
-    expect(operations).not.toContainEqual(
-      expect.objectContaining({ type: "deleteBlock", blockId: "b0" }),
+    expect(instructions).not.toContainEqual(
+      expect.objectContaining({
+        type: "deleteParagraph",
+        source: sourceOperandOf(plan, "b0"),
+      }),
     );
   });
 
@@ -447,22 +858,26 @@ describe("document-terminal paragraph carrier", () => {
       block("base-carrier", ""),
     ];
     const target = [cell("kept-target", "Kept row", 0), block("target-carrier", "")];
+    const story = { type: "header", relationshipId: "rId1" } as const;
+    const baseSnapshot = resolvedSnapshotOf(base, story);
+    const targetSnapshot = resolvedSnapshotOf(target, story);
     const plan = planStoryCompare({
-      story: { type: "header", relationshipId: "rId1" },
-      baseSnapshot: snapshotOf(base),
-      targetSnapshot: snapshotOf(target),
+      comparison: comparisonOf(baseSnapshot, targetSnapshot),
       maxOperations: 1000,
     });
-    if (plan === null) {
-      throw new Error("The plan exceeded its operation budget.");
-    }
+    if (plan.isErr()) throw plan.error;
 
-    expect(plan.changes).not.toContainEqual(
+    const testPlan = inspectPlan(plan.value, baseSnapshot);
+    expect(testPlan.changes).not.toContainEqual(
       expect.objectContaining({ kind: "delete", baseBlockId: "base-carrier" }),
     );
-    expect(plan.operations).not.toContainEqual(
-      expect.objectContaining({ type: "deleteBlock", blockId: "base-carrier" }),
-    );
+    expect(
+      contentInstructionsOf(testPlan).some(
+        (instruction) =>
+          instruction.type === "deleteParagraph" &&
+          sourceBlockIdOf(testPlan, instruction.source) === "base-carrier",
+      ),
+    ).toBe(false);
   });
 });
 
@@ -483,18 +898,13 @@ describe("table column pairing", () => {
       gridCell("b1-target", "100", { rowIndex: 1, cellIndex: 2, gridColumnIndex: 2 }),
     ];
 
-    const { changes, operations } = planOf(base, target);
+    const plan = planOf(base, target);
+    const { changes } = plan;
+    const instructions = contentInstructionsOf(plan);
 
     expect(changes.map(({ kind }) => kind)).toEqual(["table-column-insert"]);
-    expect(operations).toEqual([
-      {
-        id: "compare-1",
-        type: "insertTableColumn",
-        blockId: "b0",
-        position: "before",
-        cellTexts: ["Currency", "EUR"],
-      },
-    ]);
+    expect(instructions.map(({ type }) => type)).toEqual(["insertTableColumn"]);
+    expect(Object.keys(instructions[0] ?? {}).toSorted()).toEqual(["type"]);
   });
 
   test("a candidate column that cuts a merged cell is not guessed from physical indexes", () => {
@@ -552,10 +962,13 @@ describe("table column pairing", () => {
       gridCell("b1-target", "Open", { rowIndex: 1, cellIndex: 1, gridColumnIndex: 1 }),
     ];
 
-    const { changes, operations } = planOf(base, target);
+    const plan = planOf(base, target);
+    const { changes } = plan;
+    const instructions = contentInstructionsOf(plan);
 
     expect(changes.map(({ kind }) => kind)).toEqual(["table-column-delete"]);
-    expect(operations).toEqual([{ id: "compare-1", type: "deleteTableColumn", blockId: "x0" }]);
+    expect(instructions.map(({ type }) => type)).toEqual(["deleteTableColumn"]);
+    expect(Object.keys(instructions[0] ?? {}).toSorted()).toEqual(["type"]);
   });
 
   test("repeated empty columns stay ambiguous", () => {
@@ -586,22 +999,14 @@ describe("table column pairing", () => {
       gridCell("b-target", "Status", { rowIndex: 0, cellIndex: 3, gridColumnIndex: 3 }),
     ];
 
-    expect(planOf(base, target).operations).toEqual([
-      {
-        id: "compare-1",
-        type: "insertTableColumn",
-        blockId: "b",
-        position: "before",
-        cellTexts: ["Currency"],
-      },
-      {
-        id: "compare-2",
-        type: "insertTableColumn",
-        blockId: "b",
-        position: "before",
-        cellTexts: ["Region"],
-      },
+    const instructions = contentInstructionsOf(planOf(base, target));
+    expect(instructions.map(({ type }) => type)).toEqual([
+      "insertTableColumn",
+      "insertTableColumn",
     ]);
+    expect(
+      instructions.every((instruction) => Object.keys(instruction).toSorted().join(":") === "type"),
+    ).toBe(true);
   });
 
   test("several deleted columns use their own physical-cell anchors", () => {
@@ -616,38 +1021,48 @@ describe("table column pairing", () => {
       gridCell("b-target", "Status", { rowIndex: 0, cellIndex: 1, gridColumnIndex: 1 }),
     ];
 
-    expect(planOf(base, target).operations).toEqual([
-      { id: "compare-1", type: "deleteTableColumn", blockId: "x" },
-      { id: "compare-2", type: "deleteTableColumn", blockId: "y" },
+    const plan = planOf(base, target);
+    const instructions = contentInstructionsOf(plan);
+    expect(instructions.map(({ type }) => type)).toEqual([
+      "deleteTableColumn",
+      "deleteTableColumn",
     ]);
+    expect(
+      instructions.every((instruction) => Object.keys(instruction).toSorted().join(":") === "type"),
+    ).toBe(true);
   });
 });
 
 describe("move detection", () => {
   test("a relocated paragraph is a move even when a word changed on the way", () => {
-    const { changes, operations } = planOf(
+    const plan = planOf(
       [block("a", RELOCATED), block("b", "An unrelated closing paragraph.")],
       [block("b2", "An unrelated closing paragraph."), block("a2", RELOCATED_EDITED)],
     );
+    const { changes } = plan;
+    const instructions = contentInstructionsOf(plan);
 
     expect(changes.map(({ kind }) => kind)).toEqual(["move"]);
-    // Both halves of the pair carry the same link, so the applier writes
-    // `w:moveFrom` and `w:moveTo` rather than two unrelated revisions.
-    const moveIds = operations.flatMap((operation) =>
-      "moveId" in operation && operation.moveId !== undefined ? [operation.moveId] : [],
+    expect(instructions).toContainEqual(
+      expect.objectContaining({
+        type: "moveParagraph",
+        source: sourceOperandOf(plan, "a"),
+        target: expect.objectContaining({ text: RELOCATED_EDITED }),
+      }),
     );
-    expect(moveIds).toHaveLength(2);
-    expect(new Set(moveIds).size).toBe(1);
+    expect(instructions.filter(({ type }) => type === "moveParagraph")).toHaveLength(1);
   });
 
   test("a paragraph that only shares its opening is a deletion and an insertion", () => {
-    const { changes, operations } = planOf(
+    const plan = planOf(
       [block("a", RELOCATED), block("b", "An unrelated closing paragraph.")],
       [block("b2", "An unrelated closing paragraph."), block("a2", UNRELATED)],
     );
+    const { changes } = plan;
+    const instructions = contentInstructionsOf(plan);
 
     expect(changes.map(({ kind }) => kind).toSorted()).toEqual(["delete", "insert"]);
-    expect(operations.some((operation) => "moveId" in operation)).toBe(false);
+    expect(instructions.some(({ type }) => type === "moveParagraph")).toBe(false);
   });
 
   test("a short relocated line does not pair, so boilerplate does not read as a move", () => {

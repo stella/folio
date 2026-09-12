@@ -7,23 +7,26 @@
 /**
  * Theme color slots from theme1.xml
  */
-export type ThemeColorSlot =
-  | "dk1"
-  | "lt1"
-  | "dk2"
-  | "lt2"
-  | "accent1"
-  | "accent2"
-  | "accent3"
-  | "accent4"
-  | "accent5"
-  | "accent6"
-  | "hlink"
-  | "folHlink"
-  | "background1"
-  | "text1"
-  | "background2"
-  | "text2";
+export const THEME_COLOR_SLOTS = Object.freeze([
+  "dk1",
+  "lt1",
+  "dk2",
+  "lt2",
+  "accent1",
+  "accent2",
+  "accent3",
+  "accent4",
+  "accent5",
+  "accent6",
+  "hlink",
+  "folHlink",
+  "background1",
+  "text1",
+  "background2",
+  "text2",
+] as const);
+
+export type ThemeColorSlot = (typeof THEME_COLOR_SLOTS)[number];
 
 /**
  * Color value - can be direct RGB, theme reference, or auto
@@ -40,6 +43,21 @@ export type ColorValue = {
   /** Auto color - context-dependent (usually black for text) */
   auto?: boolean;
 };
+
+type SelfDescribingFieldMap<Value, Descriptor> = {
+  [Field in keyof Value]-?: Descriptor & { field: Field };
+};
+
+export const COLOR_VALUE_PROPERTY_DESCRIPTORS = {
+  rgb: { field: "rgb", validation: "rgb-hex" },
+  themeColor: { field: "themeColor", validation: "theme-color" },
+  themeTint: { field: "themeTint", validation: "byte-hex" },
+  themeShade: { field: "themeShade", validation: "byte-hex" },
+  auto: { field: "auto", validation: "boolean" },
+} as const satisfies SelfDescribingFieldMap<
+  ColorValue,
+  { validation: "boolean" | "byte-hex" | "rgb-hex" | "theme-color" }
+>;
 
 export type KnownBorderStyle =
   | "none"
@@ -99,49 +117,58 @@ export type BorderSpec = {
 /**
  * Shading/background properties
  */
+export const SHADING_PATTERNS = Object.freeze([
+  "clear",
+  "solid",
+  "horzStripe",
+  "vertStripe",
+  "reverseDiagStripe",
+  "diagStripe",
+  "horzCross",
+  "diagCross",
+  "thinHorzStripe",
+  "thinVertStripe",
+  "thinReverseDiagStripe",
+  "thinDiagStripe",
+  "thinHorzCross",
+  "thinDiagCross",
+  "pct5",
+  "pct10",
+  "pct12",
+  "pct15",
+  "pct20",
+  "pct25",
+  "pct30",
+  "pct35",
+  "pct37",
+  "pct40",
+  "pct45",
+  "pct50",
+  "pct55",
+  "pct60",
+  "pct62",
+  "pct65",
+  "pct70",
+  "pct75",
+  "pct80",
+  "pct85",
+  "pct87",
+  "pct90",
+  "pct95",
+  "nil",
+] as const);
+
 export type ShadingProperties = {
   /** Pattern fill color */
   color?: ColorValue;
   /** Background fill color */
   fill?: ColorValue;
   /** Shading pattern type */
-  pattern?:
-    | "clear"
-    | "solid"
-    | "horzStripe"
-    | "vertStripe"
-    | "reverseDiagStripe"
-    | "diagStripe"
-    | "horzCross"
-    | "diagCross"
-    | "thinHorzStripe"
-    | "thinVertStripe"
-    | "thinReverseDiagStripe"
-    | "thinDiagStripe"
-    | "thinHorzCross"
-    | "thinDiagCross"
-    | "pct5"
-    | "pct10"
-    | "pct12"
-    | "pct15"
-    | "pct20"
-    | "pct25"
-    | "pct30"
-    | "pct35"
-    | "pct37"
-    | "pct40"
-    | "pct45"
-    | "pct50"
-    | "pct55"
-    | "pct60"
-    | "pct62"
-    | "pct65"
-    | "pct70"
-    | "pct75"
-    | "pct80"
-    | "pct85"
-    | "pct87"
-    | "pct90"
-    | "pct95"
-    | "nil";
+  pattern?: (typeof SHADING_PATTERNS)[number];
 };
+
+export const SHADING_PROPERTY_DESCRIPTORS = {
+  color: { field: "color", validation: "color" },
+  fill: { field: "fill", validation: "color" },
+  pattern: { field: "pattern", validation: "pattern" },
+} as const satisfies SelfDescribingFieldMap<ShadingProperties, { validation: "color" | "pattern" }>;

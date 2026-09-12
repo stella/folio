@@ -1170,12 +1170,16 @@ export type FolioContentComparisonEvent<Block extends FolioContentBlock = FolioC
     type: "split";
     baseBlocks: readonly [Block];
     revisedBlocks: readonly [Block, Block];
+    segments: readonly FolioContentTextSegment[];
+    paragraphFormatting: readonly [FolioContentParagraphFormattingPatch | null, FolioContentParagraphFormattingPatch | null];
     offset: number;
     separator: string;
 } | {
     type: "merge";
     baseBlocks: readonly [Block, Block];
     revisedBlocks: readonly [Block];
+    segments: readonly FolioContentTextSegment[];
+    paragraphFormatting: FolioContentParagraphFormattingPatch | null;
     separator: string;
 };
 

@@ -24,18 +24,18 @@ type ComparedDocumentOptions = {
    * these assertions read is still the markup the engine emits, and the round
    * trip itself belongs to the property tests.
    */
-  onUnverified?: "emit";
+  mode?: "bestEffort";
 };
 
 const comparedPackage = async (
   base: readonly BodyItem[],
   target: readonly BodyItem[],
-  { onUnverified }: ComparedDocumentOptions = {},
+  options: ComparedDocumentOptions = {},
 ): Promise<JSZip> => {
   const result = await compareDocx(
     await buildBodySequenceDocx(base),
     await buildBodySequenceDocx(target),
-    { ...OPTIONS, ...(onUnverified === undefined ? {} : { onUnverified }) },
+    { ...OPTIONS, ...options },
   );
   if (result.isErr()) {
     throw result.error;
@@ -178,7 +178,7 @@ describe("table placement", () => {
       // Removing a whole table leaves one blank paragraph behind, so the
       // comparison cannot prove the round trip; what it emits for the table
       // it keeps is still what this asserts.
-      onUnverified: { onUnverified: "emit" } as const,
+      comparisonOptions: { mode: "bestEffort" } as const,
     },
     {
       name: "a row added at the top",
@@ -214,8 +214,8 @@ describe("table placement", () => {
     },
   ])(
     "$name keeps every row after the table's properties and grid",
-    async ({ base, target, onUnverified }) => {
-      const xml = await comparedDocumentXml(base, target, { ...onUnverified });
+    async ({ base, target, comparisonOptions }) => {
+      const xml = await comparedDocumentXml(base, target, { ...comparisonOptions });
       const tables = tableChildNames(xml);
       expect(tables.length).toBeGreaterThan(0);
       for (const children of tables) {

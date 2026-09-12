@@ -329,6 +329,20 @@ export type ExtractedDocxText = {
     view: "accepted";
 };
 
+// @public
+export const FOLIO_CONTENT_COMPARISON_LIMITS: Readonly<{
+    readonly blocksPerSnapshot: 100000;
+    readonly changes: 10000;
+    readonly blockCodeUnits: 1048576;
+    readonly textCodeUnitsPerSnapshot: 8000000;
+    readonly previewRunsPerBlock: 65536;
+    readonly previewRunsPerSnapshot: 1000000;
+    readonly containerDepth: 64;
+    readonly containerEntriesPerSnapshot: 1000000;
+    readonly attributeCodeUnits: 16384;
+    readonly attributeCodeUnitsPerSnapshot: 8000000;
+}>;
+
 // @public (undocumented)
 export const FOLIO_DOCUMENT_METADATA_PROPERTIES: readonly ["title", "subject", "creator", "keywords", "description", "lastModifiedBy", "revision", "created", "modified"];
 
@@ -844,6 +858,9 @@ export type FolioCompareDocxVersionsOptions = {
     include?: readonly FolioVersionComparisonScope[];
     privacy?: FolioVersionDiffPrivacyOptions;
 };
+
+// @public (undocumented)
+export type FolioContentComparisonLimit = keyof typeof FOLIO_CONTENT_COMPARISON_LIMITS;
 
 // @public (undocumented)
 export type FolioDocumentMetadataProperty = (typeof FOLIO_DOCUMENT_METADATA_PROPERTIES)[number];
@@ -1476,6 +1493,18 @@ export type FolioVersionBlockHandle = {
 // @public
 export type FolioVersionChangeProperty = FolioBlockProperty | FolioFormatProperty;
 
+// @public
+export class FolioVersionComparisonLimitError extends FolioVersionComparisonLimitError_base<{
+    message: string;
+    input: "base" | "revised" | "result";
+    limit: FolioContentComparisonLimit;
+    maximum: number;
+    actual: number;
+    storyIndex: number;
+    blockIndex?: number;
+    field?: string;
+}> {}
+
 // @public (undocumented)
 export type FolioVersionComparisonPrivacyTransform = FolioDocumentPrivacyTransform;
 
@@ -1520,33 +1549,6 @@ export class FolioYjsDocxMaterializationError extends FolioYjsDocxMaterializatio
 
 // @public
 export type FolioYjsDocxMaterializationErrorCode = (typeof FOLIO_YJS_DOCX_MATERIALIZATION_ERROR_CODES)[number];
-
-// @public
-export const generateRedlineDocx: (base: ArrayBuffer, revised: ArrayBuffer, options?: GenerateRedlineDocxOptions) => Promise<GenerateRedlineDocxResult>;
-
-// @public
-export type GenerateRedlineDocxOptions = {
-    author?: string;
-    baseView?: FolioResolvedReviewedView;
-    revisedView?: FolioResolvedReviewedView;
-    privacy?: FolioDocumentPrivacyOptions;
-};
-
-// @public
-export type GenerateRedlineDocxResult = {
-    buffer: ArrayBuffer;
-    applied: FolioAIEditAppliedOperation[];
-    skipped: FolioAIEditSkippedOperation[];
-    unprocessedStories: GenerateRedlineUnprocessedStory[];
-    privacyReport: FolioDocumentPrivacyReport;
-};
-
-// @public
-export type GenerateRedlineUnprocessedStory = {
-    baseStory: FolioDocumentStoryHandle | null;
-    revisedStory: FolioDocumentStoryHandle | null;
-    reason: "missing-base-story" | "missing-revised-story";
-};
 
 // @public (undocumented)
 export const getFolioDocumentOperationCapabilities: () => FolioDocumentOperationCapabilities;
@@ -1636,13 +1638,6 @@ export class InvalidFolioReportBuilderOptionsError extends InvalidFolioReportBui
 export class InvalidFolioVersionComparisonOptionsError extends InvalidFolioVersionComparisonOptionsError_base<{
     message: string;
     option: "include" | "privacy.transforms";
-    receivedValue: unknown;
-}> {}
-
-// @public
-export class InvalidGenerateRedlineDocxOptionsError extends InvalidGenerateRedlineDocxOptionsError_base<{
-    message: string;
-    option: "baseView" | "revisedView";
     receivedValue: unknown;
 }> {}
 

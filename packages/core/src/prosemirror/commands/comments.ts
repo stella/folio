@@ -40,7 +40,7 @@ import {
 } from "../extensions/features/ParagraphChangeTrackerExtension";
 import { getDocumentStyleResolver } from "../plugins/documentStyles";
 import { paragraphRunStyleContextAt } from "../runStyleFormatting";
-import { reconstructRejectedRunFormattingMarks } from "../runPropertyChangeResolution";
+import { reconstructResolvedRunFormattingMarks } from "../runPropertyChangeResolution";
 import { holdsNoContent } from "../zeroWidthAnchors";
 import { getFolioNodeRevisionCarriers } from "../revisionCarriers";
 import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
@@ -233,10 +233,19 @@ function resolveChange(
                 );
                 nextAttrs["_originalFormatting"] = restoredFormatting;
                 if (styleResolver) {
+                  const previousStyleId = rejection.previousFormatting?.styleId;
+                  const tableOfContentsLevel = node.attrs["_tableOfContentsLevel"];
                   nextAttrs["defaultTextFormatting"] =
                     resolveParagraphDefaultTextFormatting(
-                      rejection.previousFormatting?.styleId,
-                      restoredFormatting ?? undefined,
+                      {
+                        styleId: previousStyleId,
+                        formatting: restoredFormatting ?? undefined,
+                        tableOfContentsLevel:
+                          typeof tableOfContentsLevel === "number"
+                            ? tableOfContentsLevel
+                            : undefined,
+                        hasContent: node.content.size > 0,
+                      },
                       styleResolver,
                     ) ?? null;
                 }
@@ -637,10 +646,6 @@ const resolveRunPropertyChange = ({
   if (remaining.length > 0) {
     tr.addMark(from, to, mark.type.create({ changes: remaining }));
   }
-  if (mode === "accept") {
-    return;
-  }
-
   const previousFormatting: RunPropertyChange["previousFormatting"] =
     matches.at(0)?.previousFormatting;
   const styleContext = paragraphRunStyleContextAt({ doc: tr.doc, pos: from, styleResolver });
@@ -649,13 +654,14 @@ const resolveRunPropertyChange = ({
       tr.removeMark(from, to, currentMark.type);
     }
   }
-  for (const previousMark of reconstructRejectedRunFormattingMarks({
+  for (const resolvedMark of reconstructResolvedRunFormattingMarks({
     node,
     paragraphContext: styleContext,
     previousFormatting,
+    mode,
     styleResolver,
   })) {
-    tr.addMark(from, to, previousMark);
+    tr.addMark(from, to, resolvedMark);
   }
 };
 

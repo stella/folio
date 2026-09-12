@@ -9,9 +9,8 @@
 
 import { describe, expect, test } from "bun:test";
 
-import type { FolioAIBlock, FolioAIBlockTableLocation } from "../ai-edits/types";
-import { getCompareSkipDisposition } from "./compare";
-import { classifyProjectionMismatch, revisedFinalParagraphMarks } from "./verification";
+import type { FolioContentBlock } from "./content-types";
+import { classifyContentProjectionMismatch, revisedFinalParagraphMarks } from "./verification";
 
 const revision = { id: 1, author: "compare", date: "2024-03-01T00:00:00.000Z" };
 
@@ -26,10 +25,6 @@ const cell = (content: unknown[]) => ({ type: "tableCell", content });
 const table = (cells: unknown[][]) => ({
   type: "table",
   rows: [{ type: "tableRow", cells: cells.map((content) => cell(content)) }],
-});
-
-test("a singular run-formatting ownership conflict is an unwritable comparison slice", () => {
-  expect(getCompareSkipDisposition("pendingRunPropertyChange")).toBe("unwritable");
 });
 
 describe("revisedFinalParagraphMarks", () => {
@@ -116,220 +111,126 @@ describe("revisedFinalParagraphMarks", () => {
   });
 });
 
-describe("classifyProjectionMismatch", () => {
-  const projectedBlock = (
-    tableLocation: FolioAIBlockTableLocation | undefined,
-    text: string,
-  ): FolioAIBlock => ({
-    id: "projected-block",
+describe("complete canonical projection verification", () => {
+  const canonicalBlock = (): FolioContentBlock => ({
+    identity: { type: "positional", id: "paragraph-1" },
     kind: "paragraph",
-    text,
-    ...(tableLocation ? { table: tableLocation } : {}),
-  });
-
-  test("names table-cell containers from the complete projected coordinate", () => {
-    const tableContainer = {
+    text: "Alpha",
+    blockProperties: [{ key: "docx.anchor", value: "anchor-1" }],
+    paragraphFormatting: {
+      authored: [{ key: "alignment", value: "left" }],
+      effective: [{ key: "alignment", value: "left" }],
+    },
+    runs: [
+      {
+        text: "Alpha",
+        authoredFormatting: [{ key: "bold", value: true }],
+        effectiveFormatting: [{ key: "bold", value: true }],
+      },
+    ],
+    structuralBoundaries: [{ type: "pageBreak", offset: 2 }],
+    table: {
+      outerTableIdentity: { type: "positional", id: "outer-table-0" },
+      tableIdentity: { type: "positional", id: "table-1" },
+      rowIdentity: { type: "positional", id: "row-0" },
+      cellIdentity: { type: "positional", id: "cell-0" },
       outerTableIndex: 0,
-      tableIndex: 0,
+      tableIndex: 1,
       rowIndex: 0,
       cellIndex: 0,
       gridColumnIndex: 0,
       columnSpan: 1,
       rowSpan: 1,
       paragraphIndex: 0,
-    } satisfies FolioAIBlockTableLocation;
-    expect(
-      classifyProjectionMismatch({
-        invariant: "accept-reproduces-target",
-        story: { type: "main" },
-        actual: [projectedBlock(tableContainer, "same text")],
-        expected: [projectedBlock(undefined, "same text")],
-      }),
-    ).toEqual({
-      invariant: "accept-reproduces-target",
-      cause: "container",
-      story: { type: "main" },
-      detail:
-        "a block sits in a cell where it is expected in a body, at block 0/1 (1 blocks against 1)",
-    });
-  });
-
-  test("normalizes hidden-row coordinate gaps while retaining cell geometry", () => {
-    const container = (
-      outerTableIndex: number,
-      tableIndex: number,
-      rowIndex: number,
-      cellIndex: number,
-      paragraphIndex: number,
-    ): FolioAIBlockTableLocation => ({
-      outerTableIndex,
-      tableIndex,
-      rowIndex,
-      cellIndex,
-      gridColumnIndex: 0,
-      columnSpan: 1,
-      rowSpan: 1,
-      paragraphIndex,
-    });
-    expect(
-      classifyProjectionMismatch({
-        invariant: "accept-reproduces-target",
-        story: { type: "main" },
-        actual: [
-          projectedBlock(container(0, 1, 0, 0, 0), "first"),
-          projectedBlock(container(0, 1, 2, 0, 0), "second"),
-        ],
-        expected: [
-          projectedBlock(container(4, 9, 5, 7, 3), "first"),
-          projectedBlock(container(4, 9, 9, 7, 8), "second"),
-        ],
-      }),
-    ).toEqual({
-      invariant: "accept-reproduces-target",
-      cause: "invisible-structure",
-      story: { type: "main" },
-      detail: "every block matches once table coordinates count visible blocks (2 blocks)",
-    });
-  });
-
-  test("distinguishes a nested table moved to another outer table", () => {
-    const location = (outerTableIndex: number, tableIndex: number): FolioAIBlockTableLocation => ({
-      outerTableIndex,
-      tableIndex,
-      rowIndex: 0,
-      cellIndex: 0,
-      gridColumnIndex: 0,
-      columnSpan: 1,
-      rowSpan: 1,
-      paragraphIndex: 0,
-    });
-    expect(
-      classifyProjectionMismatch({
-        invariant: "accept-reproduces-target",
-        story: { type: "main" },
-        actual: [projectedBlock(location(0, 0), "outer"), projectedBlock(location(0, 2), "nested")],
-        expected: [
-          projectedBlock(location(0, 0), "outer"),
-          projectedBlock(location(1, 2), "nested"),
-        ],
-      }),
-    ).toEqual({
-      invariant: "accept-reproduces-target",
-      cause: "container",
-      story: { type: "main" },
-      detail:
-        "a block sits in a cell where it is expected in a cell, at block 1/2 (2 blocks against 2)",
-    });
+    },
+    containerPath: [
+      { kind: "blockSdt", identity: { type: "positional", id: "0" } },
+      { kind: "textBox", identity: { type: "positional", id: "0.0" } },
+    ],
   });
 
   test.each([
     {
-      label: "count",
-      actual: [{ type: "pageBreak" as const, offset: 4 }],
-      expected: [
-        { type: "pageBreak" as const, offset: 4 },
-        { type: "pageBreak" as const, offset: 4 },
-      ],
+      name: "kind",
+      cause: "unsupported",
+      mutate: (block: FolioContentBlock) => Reflect.set(block, "kind", "heading"),
     },
     {
-      label: "offset",
-      actual: [{ type: "pageBreak" as const, offset: 3 }],
-      expected: [{ type: "pageBreak" as const, offset: 4 }],
+      name: "anchor property",
+      cause: "unsupported",
+      mutate: (block: FolioContentBlock) =>
+        Reflect.set(block, "blockProperties", [{ key: "docx.anchor", value: "anchor-2" }]),
     },
     {
-      label: "order",
-      actual: [
-        { type: "pageBreak" as const, offset: 4, clear: "left" as const },
-        { type: "pageBreak" as const, offset: 4, clear: "right" as const },
-      ],
-      expected: [
-        { type: "pageBreak" as const, offset: 4, clear: "right" as const },
-        { type: "pageBreak" as const, offset: 4, clear: "left" as const },
-      ],
-    },
-    {
-      label: "preserved clear",
-      actual: [{ type: "pageBreak" as const, offset: 4, clear: "left" as const }],
-      expected: [{ type: "pageBreak" as const, offset: 4, clear: "right" as const }],
-    },
-  ])("reports an inline page-break $label mismatch", ({ actual, expected }) => {
-    expect(
-      classifyProjectionMismatch({
-        invariant: "accept-reproduces-target",
-        story: { type: "main" },
-        actual: [{ ...projectedBlock(undefined, "same text"), structuralBoundaries: actual }],
-        expected: [{ ...projectedBlock(undefined, "same text"), structuralBoundaries: expected }],
-      }),
-    ).toEqual({
-      invariant: "accept-reproduces-target",
-      cause: "inline-structure",
-      story: { type: "main" },
-      detail:
-        "a block's zero-width inline structure does not match at block 0/1 (1 blocks against 1)",
-    });
-  });
-
-  test("treats absent, empty, and equal inline-structure projections as equivalent", () => {
-    const leftBoundary = { type: "pageBreak" as const, offset: 4, clear: "left" as const };
-    const equivalentPairs = [
-      [undefined, undefined],
-      [undefined, []],
-      [[], undefined],
-      [[], []],
-      [[leftBoundary], [{ ...leftBoundary }]],
-    ] as const;
-
-    for (const [actual, expected] of equivalentPairs) {
-      expect(
-        classifyProjectionMismatch({
-          invariant: "accept-reproduces-target",
-          story: { type: "main" },
-          actual: [{ ...projectedBlock(undefined, "same text"), structuralBoundaries: actual }],
-          expected: [{ ...projectedBlock(undefined, "same text"), structuralBoundaries: expected }],
-        }),
-      ).toBeNull();
-    }
-  });
-
-  test("reports a direct alignment mismatch separately from text and style", () => {
-    expect(
-      classifyProjectionMismatch({
-        invariant: "accept-reproduces-target",
-        story: { type: "main" },
-        actual: [
-          { ...projectedBlock(undefined, "same text"), styleId: "Body", directAlignment: "left" },
-        ],
-        expected: [
-          {
-            ...projectedBlock(undefined, "same text"),
-            styleId: "Body",
-            directAlignment: "right",
-          },
-        ],
-      }),
-    ).toEqual({
-      invariant: "accept-reproduces-target",
+      name: "authored paragraph presentation",
       cause: "alignment",
-      story: { type: "main" },
-      detail: "the direct paragraph alignment did not move at block 0/1 (1 blocks against 1)",
+      mutate: (block: FolioContentBlock) =>
+        Reflect.set(block.paragraphFormatting, "authored", [{ key: "alignment", value: "right" }]),
+    },
+    {
+      name: "effective paragraph presentation",
+      cause: "unsupported",
+      mutate: (block: FolioContentBlock) =>
+        Reflect.set(block.paragraphFormatting, "effective", [{ key: "alignment", value: "right" }]),
+    },
+    {
+      name: "authored run presentation",
+      cause: "inline-formatting",
+      mutate: (block: FolioContentBlock) =>
+        Reflect.set(block.runs[0]!, "authoredFormatting", [{ key: "bold", value: false }]),
+    },
+    {
+      name: "table location",
+      cause: "container",
+      mutate: (block: FolioContentBlock) => Reflect.set(block.table!, "cellIndex", 1),
+    },
+    {
+      name: "nested table ownership",
+      cause: "container",
+      mutate: (block: FolioContentBlock) => Reflect.set(block.table!, "outerTableIndex", 2),
+    },
+    {
+      name: "same-kind sibling container topology",
+      cause: "container",
+      mutate: (block: FolioContentBlock) =>
+        Reflect.set(block.containerPath[1]!.identity, "id", "0.1"),
+    },
+    {
+      name: "structural boundary",
+      cause: "inline-structure",
+      mutate: (block: FolioContentBlock) =>
+        Reflect.set(block.structuralBoundaries[0]!, "offset", 3),
+    },
+  ])("rejects a same-id/text $name mutation at the exact story scope", ({ cause, mutate }) => {
+    const expected = canonicalBlock();
+    const actual = structuredClone(expected);
+    const story = { type: "header", relationshipId: "rId7" } as const;
+    mutate(actual);
+    expect(actual.identity).toEqual(expected.identity);
+    expect(actual.text).toBe(expected.text);
+    const failure = classifyContentProjectionMismatch({
+      invariant: "accept-reproduces-target",
+      story,
+      actual: [actual],
+      expected: [expected],
     });
+    expect(failure).toMatchObject({ cause });
+    expect(failure?.scope).toEqual({ type: "story", story });
+    expect(failure).not.toHaveProperty("story");
   });
 
-  test("reports a direct spacing mismatch separately from text and style", () => {
+  test("treats package-local block and table ids as transport identity", () => {
+    const expected = canonicalBlock();
+    const actual = structuredClone(expected);
+    Reflect.set(actual.identity, "id", "other-paragraph-id");
+    Reflect.set(actual.table?.cellIdentity ?? {}, "id", "other-cell-id");
     expect(
-      classifyProjectionMismatch({
+      classifyContentProjectionMismatch({
         invariant: "accept-reproduces-target",
         story: { type: "main" },
-        actual: [{ ...projectedBlock(undefined, "same text"), directSpacing: { spaceAfter: 0 } }],
-        expected: [
-          { ...projectedBlock(undefined, "same text"), directSpacing: { spaceAfter: 240 } },
-        ],
+        actual: [actual],
+        expected: [expected],
       }),
-    ).toEqual({
-      invariant: "accept-reproduces-target",
-      cause: "spacing",
-      story: { type: "main" },
-      detail: "the direct paragraph spacing did not move at block 0/1 (1 blocks against 1)",
-    });
+    ).toBeNull();
   });
 });

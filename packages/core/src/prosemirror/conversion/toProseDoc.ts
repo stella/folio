@@ -15,8 +15,12 @@
 import type { Node as PMNode } from "prosemirror-model";
 import { panic, TaggedError } from "better-result";
 
-import { createStyleEngine } from "../../style-engine";
-import type { StyleEngine, TableCellParagraphSpacingOverlay } from "../../style-engine";
+import { createStyleEngine, resolveEffectiveParagraphPresentation } from "../../style-engine";
+import type { StyleEngine, TableParagraphPresentationProjection } from "../../style-engine";
+import {
+  createTableCellPresentationResolver,
+  type TableCellPresentationProjection,
+} from "../../style-engine/tableParagraphPresentation";
 import type {
   BlockContent,
   BlockSdt,
@@ -51,13 +55,10 @@ import type {
   ShapeTextBody,
   Theme,
 } from "../../types/document";
-import {
-  mergeParagraphFormatting,
-  mergeParagraphTabStops,
-} from "../../utils/paragraphFormattingMerge";
 import { resolveColorValueToHex } from "../../docx/drawingUtils";
 import {
   PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
+  applySynthesizedParagraphIdentity,
   createProseParagraphWithPropertySource,
   getDocumentParagraphPropertySourceContract,
   recreateProseNodeWithParagraphPropertySource,
@@ -69,9 +70,14 @@ import {
 } from "../../internal/pageBreakRunSourceDescendantIndex";
 import { mergeTextFormatting } from "../../utils/textFormattingMerge";
 import { tableOfContentsStyleLevel } from "../../utils/tableOfContentsStyle";
+import {
+  projectTableCellRowSpans,
+  type TableCellRowSpanProjection,
+} from "../../utils/tableRowSpanProjection";
 import { emuToPixels } from "../../utils/units";
 import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import { setAutospacingBaseValue } from "../autospacingBase";
+import { applyListRenderingAttrs } from "../listRenderingProjection";
 import { buildRunFormattingOverrideAttrs } from "../extensions/marks/RunFormattingOverrideExtension";
 import { directionFromBidi } from "../paragraphDirection";
 import {
@@ -79,13 +85,7 @@ import {
   type PageBreakRunParagraphProjectionReason,
 } from "../pageBreakRunProjection";
 import { lineSpacingProvenanceFromSpacing } from "../paragraphSpacing";
-import {
-  getParagraphMarkSuppressionOverrides,
-  hasDirectRunFormatting,
-  stripParagraphMarkFormattingForBodyRuns,
-  stripParagraphMarkOnlyFormatting,
-  suppressParagraphMarkFormatting,
-} from "../runStyleFormatting";
+import { stripParagraphMarkOnlyFormatting } from "../runStyleFormatting";
 import { schema } from "../schema";
 import {
   COMPLEX_SCRIPT_RUN_PROPERTY_KEYS,
@@ -93,6 +93,13 @@ import {
   type ComplexScriptRunPropertyKey,
 } from "../schema/marks";
 import { cascadeStyleTextFormatting } from "../styles/styleToggleCascade";
+import {
+  createParagraphRunFormattingResolver,
+  resolveEffectiveRunPresentation,
+  resolveRunFormattingWithoutDefaults,
+  type ParagraphDefaultFormattingResolver,
+  type ResolvedRunFormatting,
+} from "../../style-engine/runPresentation";
 import type {
   ImagePositionAttrs,
   ParagraphAttrs,
@@ -142,13 +149,6 @@ export type ToProseDocOptions = {
   styles?: StyleDefinitions;
   /** Theme used when converting themed table/cell values in nested content. */
   theme?: Theme | null;
-};
-
-type ResolvedRunFormatting = {
-  formatting: TextFormatting | undefined;
-  implicitCharacterStyleApplied?: true;
-  paragraphMarkOverrides?: TextFormatting;
-  toggleCascade: ReturnType<typeof cascadeStyleTextFormatting>;
 };
 
 type RunFormattingResolver = (
@@ -305,7 +305,10 @@ const collectPairedBookmarkIds = (blocks: readonly BlockContent[]): ReadonlySet<
  * @param options - Conversion options including style definitions
  */
 export function toProseDoc(document: Document, options?: ToProseDocOptions): PMNode {
-  const paragraphs = document.package.document.content;
+  const sourceBlocks: BlockContent[] =
+    document.package.document.content.length === 0
+      ? [{ type: "paragraph", content: [] }]
+      : document.package.document.content;
   const nodes: PMNode[] = [];
 
   // Default to the document's own styles (symmetric with `theme` below) so a
@@ -317,13 +320,13 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
   const theme = options?.theme ?? document.package.theme ?? null;
   const nextTextBoxGroupId = createTextBoxGroupIdFactory();
   const nextHyperlinkInstanceIndex = createHyperlinkInstanceIndexAllocator();
-  const pairedBookmarkIds = collectPairedBookmarkIds(paragraphs);
+  const pairedBookmarkIds = collectPairedBookmarkIds(sourceBlocks);
   const conversionContext = {
     theme,
     nextTextBoxGroupId,
     nextHyperlinkInstanceIndex,
     pairedBookmarkIds,
-    pageBreakRunSourceDescendants: buildPageBreakRunSourceDescendantIndex(paragraphs),
+    pageBreakRunSourceDescendants: buildPageBreakRunSourceDescendantIndex(sourceBlocks),
   };
 
   const convertBodyBlocks = (blocks: BlockContent[]): PMNode[] => {
@@ -345,7 +348,7 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
     return out;
   };
 
-  nodes.push(...convertBodyBlocks(paragraphs));
+  nodes.push(...convertBodyBlocks(sourceBlocks));
 
   // Caret-after-final-SDT affordance is provided by `prosemirror-gapcursor`
   // at runtime; we previously injected a trailing empty paragraph here so
@@ -353,11 +356,6 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
   // synthetic paragraph survived `fromProseDoc` on save and silently
   // appended a `<w:p/>` to the DOCX on every round trip (which adds blank
   // space and shifts pagination in legal templates).
-
-  // Ensure we have at least one paragraph
-  if (nodes.length === 0) {
-    nodes.push(schema.node("paragraph", {}, []));
-  }
 
   const finalSectionStart =
     document.package.document.sections?.at(-1)?.properties.sectionStart ?? null;
@@ -437,7 +435,7 @@ function convertParagraph(
   context: TableConversionContext,
   activeCommentIds?: Set<number>,
   extraRunFormatting?: TextFormatting,
-  tableParagraphOverlay?: TableCellParagraphSpacingOverlay,
+  tableParagraphPresentation?: TableParagraphPresentationProjection,
   textBoxAnchors?: ReadonlyMap<Shape, string>,
 ): PMNode {
   const { nextHyperlinkInstanceIndex, pairedBookmarkIds, pageBreakRunSourceDescendants } = context;
@@ -446,8 +444,9 @@ function convertParagraph(
   const { attrs, effectiveFrame } = paragraphFormattingToAttrs(
     paragraph,
     styleResolver,
-    tableParagraphOverlay,
+    tableParagraphPresentation,
   );
+  applySynthesizedParagraphIdentity(paragraph, attrs);
   assertParagraphPageBreakCanBeProjected({
     paragraph,
     attrs,
@@ -479,151 +478,20 @@ function convertParagraph(
     emitInlineNodes([node]);
   };
 
-  // Get style-based text formatting (font size, bold, color, etc.)
-  let styleRunFormatting: TextFormatting | undefined;
-  let paragraphStyleRunFormatting: TextFormatting | undefined;
-  let paragraphStyleFontFamily: TextFormatting["fontFamily"] | undefined;
-  if (styleResolver) {
-    const resolved = styleResolver.resolveParagraphStyle(paragraph.formatting?.styleId);
-    // The enclosing table style supplies the body-run defaults for cell
-    // paragraphs. Do not let a font inherited from docDefaults displace that
-    // table contribution; paragraph-style font slots are restored below from
-    // the style chain without docDefaults.
-    styleRunFormatting =
-      extraRunFormatting === undefined
-        ? resolved.runFormatting
-        : withoutFontFamily(resolved.runFormatting);
-    const paragraphStyle = paragraph.formatting?.styleId
-      ? (styleResolver.getStyle(paragraph.formatting.styleId) ??
-        styleResolver.getDefaultParagraphStyle())
-      : styleResolver.getDefaultParagraphStyle();
-    paragraphStyleRunFormatting =
-      paragraphStyle?.type === "paragraph" ? paragraphStyle.rPr : undefined;
-    paragraphStyleFontFamily = resolveParagraphStyleFontFamily(
-      paragraph.formatting?.styleId,
-      styleResolver,
-    );
-  }
-
-  const paragraphRunFormatting = resolveRunFormattingWithoutDefaults(
-    paragraph.formatting?.runProperties,
+  const runFormatting = createParagraphRunFormattingResolver({
+    paragraph,
     styleResolver,
-  );
-  // Paragraph-mark-only visual decorations (highlight, shading) paint the
-  // paragraph glyph alone. Strip them from the body-run inheritance path.
-  let inheritableParagraphRunFormatting: TextFormatting | undefined;
-  if (paragraphRunFormatting && !isTocParagraph && paragraph.formatting?.styleId === undefined) {
-    inheritableParagraphRunFormatting =
-      stripParagraphMarkFormattingForBodyRuns(paragraphRunFormatting);
-  }
-  const ordinaryStyleFormatting =
-    paragraph.formatting?.styleId === undefined
-      ? mergeTextFormatting(styleRunFormatting, extraRunFormatting)
-      : mergeTextFormatting(extraRunFormatting, styleRunFormatting);
-  const orderedToggleFormatting = cascadeStyleTextFormatting(
-    [
-      { formatting: styleResolver?.getDocDefaults()?.rPr, type: "defaults" },
-      { formatting: extraRunFormatting, type: "style" },
-      { formatting: paragraphStyleRunFormatting, type: "style" },
-    ],
-    {
-      ordinaryFormatting: ordinaryStyleFormatting,
-    },
-  );
-  let baseRunFormatting = orderedToggleFormatting.formatting;
-  // Preserve paragraph-style font slots over the table contribution, but not
-  // docDefaults: Word lets a table style replace a document-default font.
-  // Direct run formatting still wins later.
-  if (paragraphStyleFontFamily) {
-    baseRunFormatting = mergeTextFormatting(baseRunFormatting, {
-      fontFamily: paragraphStyleFontFamily,
-    });
-  }
-  // w:pPr/w:rPr formats the paragraph mark, not the visible runs of a named
-  // paragraph style. Style-less generated documents historically use it as
-  // their highest-precedence run default.
-  const defaultCharacterFormatting = styleResolver?.getDefaultCharacterStyle()?.rPr;
-  const ordinaryBaseWithDefaultCharacter = mergeTextFormatting(
-    defaultCharacterFormatting,
-    baseRunFormatting,
-  );
-  const defaultCharacterStyleCascade = cascadeStyleTextFormatting(
-    [
-      { cascade: orderedToggleFormatting, type: "carried" },
-      { formatting: defaultCharacterFormatting, type: "style" },
-    ],
-    { ordinaryFormatting: ordinaryBaseWithDefaultCharacter },
-  );
-  const ordinaryDefaultRunFormatting = mergeTextFormatting(
-    ordinaryBaseWithDefaultCharacter,
-    inheritableParagraphRunFormatting,
-  );
-  const defaultToggleCascade = cascadeStyleTextFormatting(
-    [
-      { cascade: defaultCharacterStyleCascade, type: "carried" },
-      { formatting: inheritableParagraphRunFormatting, type: "direct" },
-    ],
-    { ordinaryFormatting: ordinaryDefaultRunFormatting },
-  );
-  const defaultRunFormatting = defaultToggleCascade.formatting;
+    ...(extraRunFormatting !== undefined && { extraRunFormatting }),
+    isTocParagraph,
+  });
   if (extraRunFormatting !== undefined) {
-    if (defaultRunFormatting) {
-      attrs.defaultTextFormatting = defaultRunFormatting;
+    if (runFormatting.defaultFormatting) {
+      attrs.defaultTextFormatting = runFormatting.defaultFormatting;
     } else {
       delete attrs.defaultTextFormatting;
     }
   }
-  const getInheritedRunFormatting = (
-    formatting: TextFormatting | undefined,
-    fieldType?: string,
-  ): ResolvedRunFormatting => {
-    const hasCharacterStyle = formatting?.styleId !== undefined;
-    const inheritedBaseFormatting = hasCharacterStyle
-      ? baseRunFormatting
-      : ordinaryBaseWithDefaultCharacter;
-    const inheritedToggleCascade = hasCharacterStyle
-      ? orderedToggleFormatting
-      : defaultCharacterStyleCascade;
-    if (fieldType === "TOC") {
-      return {
-        formatting: hasDirectRunFormatting(formatting)
-          ? suppressParagraphMarkFormatting({
-              baseFormatting: inheritedBaseFormatting,
-              directFormatting: formatting,
-              paragraphMarkFormatting: undefined,
-            })
-          : inheritedBaseFormatting,
-        ...(!hasCharacterStyle ? { implicitCharacterStyleApplied: true } : {}),
-        toggleCascade: inheritedToggleCascade,
-      };
-    }
-    const hasExplicitRunFormatting =
-      hasDirectRunFormatting(formatting) || formatting?.styleId !== undefined;
-    if (!hasExplicitRunFormatting) {
-      return {
-        formatting: defaultRunFormatting,
-        implicitCharacterStyleApplied: true,
-        toggleCascade: defaultToggleCascade,
-      };
-    }
-    const suppressedFormatting = suppressParagraphMarkFormatting({
-      baseFormatting: inheritedBaseFormatting,
-      directFormatting: formatting,
-      paragraphMarkFormatting: inheritableParagraphRunFormatting,
-    });
-    const paragraphMarkOverrides =
-      getParagraphMarkSuppressionOverrides({
-        directFormatting: formatting,
-        paragraphMarkFormatting: inheritableParagraphRunFormatting,
-        suppressedFormatting,
-      }) ?? (inheritableParagraphRunFormatting ? {} : undefined);
-    return {
-      formatting: suppressedFormatting,
-      ...(!hasCharacterStyle ? { implicitCharacterStyleApplied: true } : {}),
-      ...(paragraphMarkOverrides ? { paragraphMarkOverrides } : {}),
-      toggleCascade: inheritedToggleCascade,
-    };
-  };
+  const getInheritedRunFormatting = runFormatting.resolve;
   const emitTrackedChange = (
     change: Insertion | Deletion | MoveFrom | MoveTo,
     markType: "insertion" | "deletion",
@@ -742,35 +610,6 @@ function convertParagraph(
     content: inlineNodes,
   });
 }
-
-const withoutFontFamily = (formatting: TextFormatting | undefined): TextFormatting | undefined => {
-  if (!formatting?.fontFamily) {
-    return formatting;
-  }
-  const { fontFamily: _fontFamily, ...withoutFont } = formatting;
-  return Object.keys(withoutFont).length > 0 ? withoutFont : undefined;
-};
-
-const resolveParagraphStyleFontFamily = (
-  styleId: string | undefined,
-  styleResolver: StyleEngine,
-): TextFormatting["fontFamily"] | undefined => {
-  let style = styleId ? styleResolver.getStyle(styleId) : styleResolver.getDefaultParagraphStyle();
-  const visited = new Set<string>();
-  const styleChain: TextFormatting[] = [];
-  while (style?.type === "paragraph" && !visited.has(style.styleId)) {
-    visited.add(style.styleId);
-    if (style.rPr?.fontFamily) {
-      styleChain.push({ fontFamily: style.rPr.fontFamily });
-    }
-    style = style.basedOn ? styleResolver.getStyle(style.basedOn) : undefined;
-  }
-  let formatting: TextFormatting | undefined;
-  for (const styleFormatting of styleChain.toReversed()) {
-    formatting = mergeTextFormatting(formatting, styleFormatting);
-  }
-  return formatting?.fontFamily;
-};
 
 /**
  * Apply comment marks to PM nodes within a comment range.
@@ -943,7 +782,7 @@ type ParagraphFormattingProjection = {
 function paragraphFormattingToAttrs(
   paragraph: Paragraph,
   styleResolver: StyleEngine | null,
-  tableParagraphOverlay?: TableCellParagraphSpacingOverlay,
+  tableParagraphPresentation?: TableParagraphPresentationProjection,
 ): ParagraphFormattingProjection {
   const formatting = paragraph.formatting;
   const styleId = formatting?.styleId;
@@ -952,6 +791,13 @@ function paragraphFormattingToAttrs(
     styleId,
     ...(styleName ? { styleName } : {}),
   });
+  const paragraphPresentation = resolveEffectiveParagraphPresentation({
+    authored: formatting,
+    styleResolver,
+    ...(tableParagraphPresentation !== undefined && { tableParagraphPresentation }),
+  });
+  const stylePpr = paragraphPresentation.inherited;
+  const effectiveFormatting = paragraphPresentation.effective;
 
   // Start with base attrs — only include defined values
   const attrs: ParagraphAttrs = {};
@@ -968,64 +814,13 @@ function paragraphFormattingToAttrs(
   if (tableOfContentsLevel !== undefined) {
     attrs._tableOfContentsLevel = tableOfContentsLevel;
   }
-  if (formatting?.numPr) {
-    attrs.numPr = formatting.numPr;
+  if (effectiveFormatting.numPr) {
+    attrs.numPr = effectiveFormatting.numPr;
   }
   if (formatting?.numPrFromStyle) {
     attrs.numPrFromStyle = formatting.numPrFromStyle;
   }
-  // List rendering info from parsed numbering definitions
-  if (paragraph.listRendering?.numFmt) {
-    attrs.listNumFmt = paragraph.listRendering.numFmt;
-  }
-  if (paragraph.listRendering?.isBullet) {
-    attrs.listIsBullet = paragraph.listRendering.isBullet;
-  }
-  if (paragraph.listRendering?.isLegal) {
-    attrs.listIsLegal = paragraph.listRendering.isLegal;
-  }
-  if (paragraph.listRendering?.marker) {
-    attrs.listMarker = paragraph.listRendering.marker;
-  }
-  if (paragraph.listRendering?.markerTemplate) {
-    attrs.listMarkerTemplate = paragraph.listRendering.markerTemplate;
-  }
-  if (paragraph.listRendering?.markerHidden) {
-    attrs.listMarkerHidden = paragraph.listRendering.markerHidden;
-  }
-  if (paragraph.listRendering?.markerFormatting) {
-    attrs.listMarkerFormatting = paragraph.listRendering.markerFormatting;
-  }
-  if (paragraph.listRendering?.markerAlignment) {
-    attrs.listMarkerAlignment = paragraph.listRendering.markerAlignment;
-  }
-  if (paragraph.listRendering?.markerSuffix) {
-    attrs.listMarkerSuffix = paragraph.listRendering.markerSuffix;
-  }
-  if (paragraph.listRendering?.markerAllCaps) {
-    attrs.listMarkerAllCaps = paragraph.listRendering.markerAllCaps;
-  }
-  if (paragraph.listRendering?.implicitChildLevelAdvances !== undefined) {
-    attrs.listImplicitChildLevelAdvances = paragraph.listRendering.implicitChildLevelAdvances;
-  }
-  if (paragraph.listRendering?.markerSecondSlotOffsetTwips !== undefined) {
-    attrs.listMarkerSecondSlotOffsetTwips = paragraph.listRendering.markerSecondSlotOffsetTwips;
-  }
-  if (paragraph.listRendering?.levelNumFmts) {
-    attrs.listLevelNumFmts = paragraph.listRendering.levelNumFmts;
-  }
-  if (paragraph.listRendering && "levelStarts" in paragraph.listRendering) {
-    const { levelStarts } = paragraph.listRendering;
-    if (Array.isArray(levelStarts) && levelStarts.every((value) => typeof value === "number")) {
-      attrs.listLevelStarts = levelStarts;
-    }
-  }
-  if (paragraph.listRendering?.abstractNumId !== undefined) {
-    attrs.listAbstractNumId = paragraph.listRendering.abstractNumId;
-  }
-  if (paragraph.listRendering?.startOverride !== undefined) {
-    attrs.listStartOverride = paragraph.listRendering.startOverride;
-  }
+  applyListRenderingAttrs(attrs, paragraph.listRendering);
   // Store original inline formatting for lossless serialization round-trip
   if (formatting) {
     attrs._originalFormatting = formatting;
@@ -1053,25 +848,38 @@ function paragraphFormattingToAttrs(
     }
   };
 
-  // If we have a style resolver, resolve the style and get base properties.
-  // Cell paragraphs (`tableParagraphOverlay` set) layer the enclosing table
-  // style's modeled paragraph fields in between docDefaults and this
-  // paragraph's own style chain — see resolveParagraphStyleInTable.
-  let stylePpr: Paragraph["formatting"] | undefined;
-  if (styleResolver) {
-    const resolved = styleResolver.resolveParagraphStyleInTable(styleId, tableParagraphOverlay);
-    stylePpr = resolved.paragraphFormatting;
+  // Paragraph presentation has one PM-independent cascade owner. This adapter
+  // only projects its resolved values into editor attrs; authored provenance
+  // remains separate for lossless serialization.
+  set("alignment", effectiveFormatting.alignment);
+  set("alignmentFromStyle", stylePpr.alignment);
+  set("spaceBefore", effectiveFormatting.spaceBefore);
+  set("spaceAfter", effectiveFormatting.spaceAfter);
+  set("lineSpacing", effectiveFormatting.lineSpacing);
+  set("lineSpacingRule", effectiveFormatting.lineSpacingRule);
+  set("lineSpacingExplicit", lineSpacingProvenanceFromSpacing(formatting));
+  set("snapToGrid", effectiveFormatting.snapToGrid);
+  set("spacingExplicit", formatting?.spacingExplicit);
+  set("indentLeft", effectiveFormatting.indentLeft);
+  set("indentRight", effectiveFormatting.indentRight);
+  set("indentFirstLine", effectiveFormatting.indentFirstLine);
+  set("hangingIndent", effectiveFormatting.hangingIndent);
+  set("borders", effectiveFormatting.borders);
+  set("shading", effectiveFormatting.shading);
+  set("tabs", effectiveFormatting.tabs);
+  set("kinsoku", effectiveFormatting.kinsoku);
+  set("overflowPunctuation", effectiveFormatting.overflowPunctuation);
+  set("suppressAutoHyphens", effectiveFormatting.suppressAutoHyphens);
+  set("pageBreakBefore", effectiveFormatting.pageBreakBefore);
+  set("keepNext", effectiveFormatting.keepNext);
+  set("keepLines", effectiveFormatting.keepLines);
+  set("widowControl", effectiveFormatting.widowControl);
+  set("contextualSpacing", effectiveFormatting.contextualSpacing);
+  set("runInWithNext", effectiveFormatting.runInWithNext);
+  set("outlineLevel", effectiveFormatting.outlineLevel);
+  set("direction", directionFromBidi(effectiveFormatting.bidi));
 
-    // Apply style-based values as defaults (inline overrides)
-    set("alignment", formatting?.alignment ?? stylePpr?.alignment);
-    set("alignmentFromStyle", stylePpr?.alignment);
-    set("spaceBefore", formatting?.spaceBefore ?? stylePpr?.spaceBefore);
-    set("spaceAfter", formatting?.spaceAfter ?? stylePpr?.spaceAfter);
-    set("lineSpacing", formatting?.lineSpacing ?? stylePpr?.lineSpacing);
-    set("lineSpacingRule", formatting?.lineSpacingRule ?? stylePpr?.lineSpacingRule);
-    set("lineSpacingExplicit", lineSpacingProvenanceFromSpacing(formatting));
-    set("snapToGrid", formatting?.snapToGrid ?? stylePpr?.snapToGrid);
-    set("spacingExplicit", formatting?.spacingExplicit);
+  if (styleResolver) {
     const paragraphStyle = styleId
       ? (styleResolver.getStyle(styleId) ?? styleResolver.getDefaultParagraphStyle())
       : styleResolver.getDefaultParagraphStyle();
@@ -1080,10 +888,10 @@ function paragraphFormattingToAttrs(
     // default, named paragraph, and enclosing table styles. The direct
     // `formatting` object still wins per field.
     const spacingFromStyle: NonNullable<ParagraphAttrs["spacingFromImplicitDefaultStyle"]> = {};
-    if (formatting?.spaceBefore === undefined && stylePpr?.spaceBefore !== undefined) {
+    if (formatting?.spaceBefore === undefined && stylePpr.spaceBefore !== undefined) {
       spacingFromStyle.before = true;
     }
-    if (formatting?.spaceAfter === undefined && stylePpr?.spaceAfter !== undefined) {
+    if (formatting?.spaceAfter === undefined && stylePpr.spaceAfter !== undefined) {
       spacingFromStyle.after = true;
     }
     if (spacingFromStyle.before || spacingFromStyle.after) {
@@ -1092,7 +900,7 @@ function paragraphFormattingToAttrs(
     const spacingFromDocDefaults: NonNullable<ParagraphAttrs["spacingFromDocDefaults"]> = {};
     if (
       formatting?.spaceBefore === undefined &&
-      tableParagraphOverlay?.spaceBefore === undefined &&
+      tableParagraphPresentation?.overlay?.spaceBefore === undefined &&
       paragraphStyle?.pPr?.spaceBefore === undefined &&
       docDefaultSpacing?.spaceBefore !== undefined
     ) {
@@ -1100,7 +908,7 @@ function paragraphFormattingToAttrs(
     }
     if (
       formatting?.spaceAfter === undefined &&
-      tableParagraphOverlay?.spaceAfter === undefined &&
+      tableParagraphPresentation?.overlay?.spaceAfter === undefined &&
       paragraphStyle?.pPr?.spaceAfter === undefined &&
       docDefaultSpacing?.spaceAfter !== undefined
     ) {
@@ -1109,95 +917,26 @@ function paragraphFormattingToAttrs(
     if (spacingFromDocDefaults.before || spacingFromDocDefaults.after) {
       attrs.spacingFromDocDefaults = spacingFromDocDefaults;
     }
-    // When the paragraph explicitly removes the style's numbering (direct
-    // numId=0 under a numbered style), the reference layout also drops the
-    // style's marker-positioning indents. The paragraph keeps only the indents
-    // it states itself (#765: a direct left=357 renders indented instead of
-    // hanging the first line back to the margin). Outside that case w:ind
-    // merges per attribute: a direct left-only indent keeps the style's
-    // firstLine.
-    const numberingRemoved =
-      formatting?.numPr?.numId === 0 && stylePpr?.numPr !== undefined && stylePpr.numPr.numId !== 0;
-    const numberingStyleIndent = numberingRemoved ? undefined : stylePpr;
-    const effectiveIndent = mergeParagraphFormatting(numberingStyleIndent, formatting);
-    set("indentLeft", effectiveIndent?.indentLeft);
-    set("indentRight", formatting?.indentRight ?? stylePpr?.indentRight);
-    set("indentFirstLine", effectiveIndent?.indentFirstLine);
-    set("hangingIndent", effectiveIndent?.hangingIndent);
-    set("borders", formatting?.borders ?? stylePpr?.borders);
-    set("shading", formatting?.shading ?? stylePpr?.shading);
-    set("tabs", mergeParagraphTabStops(stylePpr?.tabs, formatting?.tabs));
-    set("kinsoku", formatting?.kinsoku ?? stylePpr?.kinsoku);
-    set("overflowPunctuation", formatting?.overflowPunctuation ?? stylePpr?.overflowPunctuation);
-    set("suppressAutoHyphens", formatting?.suppressAutoHyphens ?? stylePpr?.suppressAutoHyphens);
-
-    // Page break control
-    set("pageBreakBefore", formatting?.pageBreakBefore ?? stylePpr?.pageBreakBefore);
-    set("keepNext", formatting?.keepNext ?? stylePpr?.keepNext);
-    set("keepLines", formatting?.keepLines ?? stylePpr?.keepLines);
-    set("widowControl", formatting?.widowControl ?? stylePpr?.widowControl);
-    set("contextualSpacing", formatting?.contextualSpacing ?? stylePpr?.contextualSpacing);
-    // Run-in heading (`<w:specVanish/>` on the paragraph mark) — see
-    // ParagraphAttrs.runInWithNext.
-    set("runInWithNext", formatting?.runInWithNext ?? stylePpr?.runInWithNext);
-
-    // Outline level (for TOC)
-    set("outlineLevel", formatting?.outlineLevel ?? stylePpr?.outlineLevel);
-
-    // Text direction — a direct or style-sourced `w:bidi` is an authoritative
-    // manual decision (auto-detection must not override it).
-    set("direction", directionFromBidi(formatting?.bidi ?? stylePpr?.bidi));
-
     set(
       "defaultTextFormatting",
-      resolveParagraphDefaultTextFormatting(styleId, formatting, styleResolver, {
-        includeParagraphMarkRunProperties:
-          tableOfContentsLevel === undefined &&
-          (styleId === undefined || paragraph.content.length === 0),
-      }),
+      resolveParagraphDefaultTextFormatting(
+        {
+          styleId,
+          formatting,
+          tableOfContentsLevel,
+          hasContent: paragraph.content.length > 0,
+        },
+        styleResolver,
+      ),
     );
 
     // A direct numPr may carry only ilvl while the style supplies numId.
     // Merge the two fields so the effective list keeps the style's numbering
     // identity. A direct numId (including 0) is authoritative.
-    if (stylePpr?.numPr && formatting?.numPr?.numId === undefined && stylePpr.numPr.numId !== 0) {
-      attrs.numPr = { ...stylePpr.numPr, ...formatting?.numPr };
+    if (stylePpr.numPr && formatting?.numPr?.numId === undefined && stylePpr.numPr.numId !== 0) {
       attrs.numPrFromStyle = stylePpr.numPr;
     }
   } else {
-    // No style resolver - use inline formatting only
-    set("alignment", formatting?.alignment);
-    set("spaceBefore", formatting?.spaceBefore);
-    set("spaceAfter", formatting?.spaceAfter);
-    set("lineSpacing", formatting?.lineSpacing);
-    set("lineSpacingRule", formatting?.lineSpacingRule);
-    set("lineSpacingExplicit", lineSpacingProvenanceFromSpacing(formatting));
-    set("snapToGrid", formatting?.snapToGrid);
-    set("spacingExplicit", formatting?.spacingExplicit);
-    set("indentLeft", formatting?.indentLeft);
-    set("indentRight", formatting?.indentRight);
-    set("indentFirstLine", formatting?.indentFirstLine);
-    set("hangingIndent", formatting?.hangingIndent);
-    set("borders", formatting?.borders);
-    set("shading", formatting?.shading);
-    set("tabs", formatting?.tabs);
-    set("kinsoku", formatting?.kinsoku);
-    set("overflowPunctuation", formatting?.overflowPunctuation);
-    set("suppressAutoHyphens", formatting?.suppressAutoHyphens);
-
-    // Page break control
-    set("pageBreakBefore", formatting?.pageBreakBefore);
-    set("keepNext", formatting?.keepNext);
-    set("keepLines", formatting?.keepLines);
-    set("widowControl", formatting?.widowControl);
-    set("runInWithNext", formatting?.runInWithNext);
-
-    // Outline level
-    set("outlineLevel", formatting?.outlineLevel);
-
-    // Text direction — an imported `w:bidi` is an authoritative manual decision.
-    set("direction", directionFromBidi(formatting?.bidi));
-
     // Default run properties (pPr/rPr)
     set(
       "defaultTextFormatting",
@@ -1219,8 +958,8 @@ function paragraphFormattingToAttrs(
     attrs.renderedPageBreakBefore = true;
   }
 
-  const beforeAutospacing = formatting?.beforeAutospacing ?? stylePpr?.beforeAutospacing;
-  const afterAutospacing = formatting?.afterAutospacing ?? stylePpr?.afterAutospacing;
+  const beforeAutospacing = effectiveFormatting.beforeAutospacing;
+  const afterAutospacing = effectiveFormatting.afterAutospacing;
   if (beforeAutospacing || afterAutospacing) {
     const base: NonNullable<ParagraphAttrs["_autospacingBase"]> = {};
     if (beforeAutospacing) {
@@ -1234,10 +973,7 @@ function paragraphFormattingToAttrs(
 
   return {
     attrs,
-    effectiveFrame:
-      formatting?.frame === undefined
-        ? stylePpr?.frame
-        : { ...stylePpr?.frame, ...formatting.frame },
+    effectiveFrame: effectiveFormatting.frame,
   };
 }
 
@@ -1247,46 +983,12 @@ function paragraphFormattingToAttrs(
 
 /**
  * A table style's (or one of its `w:tblStylePr` conditional regions')
- * contribution to cell formatting: cell properties, run defaults, and the
- * modeled paragraph overlay described on {@link TableCellParagraphSpacingOverlay}.
+ * contribution to cell formatting. Paragraph and run presentation are owned
+ * by the shared live-model table presentation resolver.
  */
 type TableConditionalStyle = {
   tcPr?: TableCellFormatting;
-  rPr?: TextFormatting;
-  pPr?: TableCellParagraphSpacingOverlay;
 };
-
-/**
- * Pick the modeled paragraph fields out of a table style's (or conditional
- * region's) `w:pPr` for use as the cell-paragraph cascade overlay.
- */
-function extractTableParagraphOverlay(
-  pPr: ParagraphFormatting | undefined,
-): TableCellParagraphSpacingOverlay | undefined {
-  if (!pPr) {
-    return undefined;
-  }
-  const overlay: TableCellParagraphSpacingOverlay = {};
-  if (pPr.spaceBefore !== undefined) {
-    overlay.spaceBefore = pPr.spaceBefore;
-  }
-  if (pPr.spaceAfter !== undefined) {
-    overlay.spaceAfter = pPr.spaceAfter;
-  }
-  if (pPr.lineSpacing !== undefined) {
-    overlay.lineSpacing = pPr.lineSpacing;
-  }
-  if (pPr.lineSpacingRule !== undefined) {
-    overlay.lineSpacingRule = pPr.lineSpacingRule;
-  }
-  if (pPr.contextualSpacing !== undefined) {
-    overlay.contextualSpacing = pPr.contextualSpacing;
-  }
-  if (pPr.frame !== undefined) {
-    overlay.frame = pPr.frame;
-  }
-  return Object.keys(overlay).length > 0 ? overlay : undefined;
-}
 
 /**
  * Resolve table style conditional formatting
@@ -1310,24 +1012,9 @@ function resolveTableStyleConditional(
     return undefined;
   }
 
-  const runPropsFromPpr = conditional.pPr?.runProperties
-    ? resolveRunFormattingWithoutDefaults(conditional.pPr.runProperties, styleResolver)
-    : undefined;
-  const resolvedRpr = conditional.rPr
-    ? resolveRunFormattingWithoutDefaults(conditional.rPr, styleResolver)
-    : undefined;
-  const mergedRunProps = mergeTextFormatting(runPropsFromPpr, resolvedRpr);
-  const paragraphOverlay = extractTableParagraphOverlay(conditional.pPr);
-
   const result: TableConditionalStyle = {};
   if (conditional.tcPr) {
     result.tcPr = conditional.tcPr;
-  }
-  if (mergedRunProps) {
-    result.rPr = mergedRunProps;
-  }
-  if (paragraphOverlay) {
-    result.pPr = paragraphOverlay;
   }
   return result;
 }
@@ -1345,26 +1032,11 @@ function resolveTableBaseStyle(
     return undefined;
   }
 
-  const runPropsFromPpr = style.pPr?.runProperties
-    ? resolveRunFormattingWithoutDefaults(style.pPr.runProperties, styleResolver)
-    : undefined;
-  const resolvedRpr = style.rPr
-    ? resolveRunFormattingWithoutDefaults(style.rPr, styleResolver)
-    : undefined;
-  const mergedRunProps = mergeTextFormatting(runPropsFromPpr, resolvedRpr);
-  const paragraphOverlay = extractTableParagraphOverlay(style.pPr);
-
   const result: TableConditionalStyle = {};
   if (style.tcPr) {
     result.tcPr = style.tcPr;
   }
-  if (mergedRunProps) {
-    result.rPr = mergedRunProps;
-  }
-  if (paragraphOverlay) {
-    result.pPr = paragraphOverlay;
-  }
-  return result.tcPr || result.rPr || result.pPr ? result : undefined;
+  return result.tcPr ? result : undefined;
 }
 
 function mergeConditionalStyles(
@@ -1415,19 +1087,9 @@ function mergeConditionalStyles(
     merged.tcPr = tcPr;
   }
 
-  const mergedRPr = mergeTextFormatting(base.rPr, override.rPr);
-  if (mergedRPr) {
-    merged.rPr = mergedRPr;
-  }
-
   // `override` (a more specific conditional region, e.g. firstRow) wins per
   // field over `base` (e.g. the table's wholeTable region or base style),
-  // matching the tcPr/rPr merges above — see extractTableParagraphOverlay.
-  const mergedPPr = mergeParagraphFormatting(base.pPr, override.pPr);
-  if (mergedPPr) {
-    merged.pPr = mergedPPr;
-  }
-
+  // matching the tcPr merge above.
   return merged;
 }
 
@@ -1446,43 +1108,22 @@ function resolveTextFormatting(
   return mergeTextFormatting(styleFormatting, formatting);
 }
 
-/**
- * Resolve an embedded character-style reference without importing
- * `docDefaults`. The caller already has the paragraph cascade, including
- * document defaults, and will layer these own properties over it.
- */
-type ParagraphDefaultFormattingResolver = Pick<
-  StyleEngine,
-  | "getStyle"
-  | "getDocDefaults"
-  | "getDefaultParagraphStyle"
-  | "getDefaultCharacterStyle"
-  | "getRunStyleOwnProperties"
->;
-
-function resolveRunFormattingWithoutDefaults(
-  formatting: TextFormatting | undefined,
-  styleResolver: ParagraphDefaultFormattingResolver | null,
-): TextFormatting | undefined {
-  if (!formatting || !styleResolver) {
-    return formatting;
-  }
-
-  const characterStyleFormatting = formatting.styleId
-    ? styleResolver.getRunStyleOwnProperties(formatting.styleId)
-    : undefined;
-  return cascadeStyleTextFormatting([
-    { formatting: characterStyleFormatting, type: "style" },
-    { formatting, type: "direct" },
-  ]).formatting;
-}
+type ResolveParagraphDefaultTextFormattingOptions = {
+  readonly styleId: string | undefined;
+  readonly formatting: Paragraph["formatting"] | undefined;
+  readonly tableOfContentsLevel: number | undefined;
+  readonly hasContent: boolean;
+};
 
 /** @internal Recompute a paragraph's inherited run defaults from authored package state. */
 export function resolveParagraphDefaultTextFormatting(
-  styleId: string | undefined,
-  formatting: Paragraph["formatting"] | undefined,
+  {
+    styleId,
+    formatting,
+    tableOfContentsLevel,
+    hasContent,
+  }: ResolveParagraphDefaultTextFormattingOptions,
   styleResolver: ParagraphDefaultFormattingResolver,
-  options: { includeParagraphMarkRunProperties?: boolean } = {},
 ): TextFormatting | undefined {
   const style = styleId
     ? (styleResolver.getStyle(styleId) ?? styleResolver.getDefaultParagraphStyle())
@@ -1495,7 +1136,9 @@ export function resolveParagraphDefaultTextFormatting(
   // (e.g. FootnoteText's Times New Roman) with the docDefault Calibri when
   // merged into the cascade below.
   const rawParagraphMarkRpr =
-    options.includeParagraphMarkRunProperties === false ? undefined : formatting?.runProperties;
+    tableOfContentsLevel === undefined && (styleId === undefined || !hasContent)
+      ? formatting?.runProperties
+      : undefined;
   const paragraphRunProperties = rawParagraphMarkRpr
     ? stripParagraphMarkOnlyFormatting(
         resolveRunFormattingWithoutDefaults(rawParagraphMarkRpr, styleResolver) ?? {},
@@ -1542,136 +1185,6 @@ export function resolveParagraphDefaultTextFormatting(
  * OOXML uses vMerge="restart" to start a vertical merge and vMerge="continue" for cells that should be merged.
  * This function converts that to rowSpan values and marks which cells should be skipped.
  */
-type RowSpanInfo = {
-  rowSpan: number;
-  skip: boolean;
-  preserveVMergeRestart?: boolean;
-  continuationCells?: TableCell[];
-};
-
-function calculateRowSpans(table: Table): Map<string, RowSpanInfo> {
-  const result = new Map<string, RowSpanInfo>();
-  const numRows = table.rows.length;
-
-  // Track active vertical merges per column (stores the row index where merge started)
-  const activeMerges = new Map<number, number>();
-
-  // Process each row
-  for (let rowIndex = 0; rowIndex < numRows; rowIndex++) {
-    // SAFETY: rowIndex < numRows <= table.rows.length
-    const row = table.rows[rowIndex]!;
-    if (row.cells.length === 0) {
-      clearActiveVerticalMerges(activeMerges, result);
-      continue;
-    }
-    let colIndex = row.formatting?.gridBefore ?? 0;
-    const rowCells = row.cells.map((cell) => {
-      const colspan = cell.formatting?.gridSpan ?? 1;
-      const vMerge = cell.formatting?.vMerge;
-      const startRow = vMerge === "continue" ? activeMerges.get(colIndex) : undefined;
-      const info = {
-        cell,
-        colIndex,
-        colspan,
-        vMerge,
-        startRow,
-        hasMeaningfulContent: tableCellHasMeaningfulContent(cell),
-        shouldSkip: vMerge === "continue" && startRow !== undefined,
-      };
-      colIndex += colspan;
-      return info;
-    });
-    const rowWouldBeEmpty = rowCells.length > 0 && rowCells.every((cell) => cell.shouldSkip);
-
-    for (const cellInfo of rowCells) {
-      const { colIndex: cellColIndex, vMerge, startRow, hasMeaningfulContent } = cellInfo;
-      const key = `${rowIndex}-${cellColIndex}`;
-
-      if (vMerge === "restart") {
-        // Start of a new vertical merge
-        activeMerges.set(cellColIndex, rowIndex);
-        result.set(key, { rowSpan: 1, skip: false });
-      } else if (vMerge === "continue") {
-        // Continuation of a merge - only skip it when the parsed grid has a
-        // matching restart in this exact column and the continuation is only a
-        // structural placeholder. Real DOCX tables can be ragged, and some
-        // continuation cells contain drawings or other payload that must not be
-        // merged away.
-        if (startRow === undefined || rowWouldBeEmpty || hasMeaningfulContent) {
-          result.set(key, { rowSpan: 1, skip: false });
-          if ((rowWouldBeEmpty || hasMeaningfulContent) && startRow !== undefined) {
-            const restartCell = result.get(`${startRow}-${cellColIndex}`);
-            if (restartCell) {
-              restartCell.preserveVMergeRestart = true;
-            }
-            activeMerges.delete(cellColIndex);
-          }
-          continue;
-        }
-
-        // Increment rowSpan of the starting cell
-        const startKey = `${startRow}-${cellColIndex}`;
-        const startCell = result.get(startKey);
-        if (startCell) {
-          startCell.rowSpan++;
-          startCell.continuationCells ??= [];
-          startCell.continuationCells.push(cellInfo.cell);
-        }
-        result.set(key, { rowSpan: 1, skip: true });
-      } else {
-        // No vMerge - clear any active merge for this column
-        activeMerges.delete(cellColIndex);
-        result.set(key, { rowSpan: 1, skip: false });
-      }
-    }
-  }
-
-  return result;
-}
-
-function clearActiveVerticalMerges(
-  activeMerges: Map<number, number>,
-  result: Map<string, RowSpanInfo>,
-): void {
-  for (const [colIndex, startRow] of activeMerges) {
-    const restartCell = result.get(`${startRow}-${colIndex}`);
-    if (restartCell) {
-      restartCell.preserveVMergeRestart = true;
-    }
-  }
-  activeMerges.clear();
-}
-
-function tableCellHasMeaningfulContent(cell: TableCell): boolean {
-  return cell.content.some(blockHasMeaningfulContent);
-}
-
-function blockHasMeaningfulContent(block: Paragraph | Table): boolean {
-  if (block.type === "table") {
-    return block.rows.some((row) => row.cells.some((cell) => tableCellHasMeaningfulContent(cell)));
-  }
-
-  return block.content.some(paragraphContentHasMeaningfulContent);
-}
-
-function paragraphContentHasMeaningfulContent(content: Paragraph["content"][number]): boolean {
-  if (content.type === "run") {
-    return content.content.length > 0;
-  }
-  if (content.type === "hyperlink") {
-    return content.children.some(paragraphContentHasMeaningfulContent);
-  }
-  if (
-    content.type === "insertion" ||
-    content.type === "deletion" ||
-    content.type === "moveFrom" ||
-    content.type === "moveTo"
-  ) {
-    return content.content.some(paragraphContentHasMeaningfulContent);
-  }
-  return true;
-}
-
 type TableConversionContext = {
   theme: Theme | null | undefined;
   nextTextBoxGroupId: () => string;
@@ -1706,7 +1219,7 @@ function convertTable(
   }
 
   // Calculate rowSpan values from vMerge
-  const rowSpanMap = calculateRowSpans(table);
+  const rowSpanMap = projectTableCellRowSpans(table);
 
   // Get column widths from table grid
   const columnWidths = table.columnWidths;
@@ -1717,6 +1230,10 @@ function convertTable(
   // Get the table style's conditional formatting
   const tableStyleId = table.formatting?.styleId;
   const look = table.formatting?.look;
+  const resolveTableCellPresentation = createTableCellPresentationResolver({
+    table,
+    styleResolver,
+  });
 
   // Resolve table borders through inline style, table style, then default table style.
   const tableStyle = tableStyleId ? styleResolver?.getStyle(tableStyleId) : undefined;
@@ -1889,6 +1406,7 @@ function convertTable(
       columnWidths,
       totalWidth,
       conditionalStyles,
+      resolveTableCellPresentation,
       rowBandStyle,
       bandingEnabledV,
       look,
@@ -1943,6 +1461,7 @@ function convertTableRow(
     swCell?: TableConditionalStyle;
     seCell?: TableConditionalStyle;
   },
+  resolveTableCellPresentation?: ReturnType<typeof createTableCellPresentationResolver>,
   rowBandStyle?: TableConditionalStyle,
   bandingEnabledV?: boolean,
   tableLook?: TableLook,
@@ -1950,7 +1469,7 @@ function convertTableRow(
   rowIndex?: number,
   totalRows?: number,
   totalColumns?: number,
-  rowSpanMap?: Map<string, RowSpanInfo>,
+  rowSpanMap?: ReadonlyMap<string, TableCellRowSpanProjection>,
   defaultCellMargins?: TableCellMarginsAttrs,
   resolvedJustification?: NonNullable<TableRowFormatting["justification"]>,
 ): PMNode {
@@ -2042,8 +1561,7 @@ function convertTableRow(
   let colIndex = row.formatting?.gridBefore ?? 0;
   const cells: PMNode[] = [];
 
-  for (const cellIndex_item of effectiveCells) {
-    const cell = cellIndex_item;
+  for (const [cellIndex, cell] of effectiveCells.entries()) {
     const colspan = cell.formatting?.gridSpan ?? 1;
 
     // Check if this cell should be skipped (it's a vMerge continue cell)
@@ -2194,6 +1712,12 @@ function convertTableRow(
         isHeader: isHeaderRow,
         gridWidthPercent: gridWidth,
         conditionalStyle: cellConditionalStyle,
+        tablePresentation: resolveTableCellPresentation?.({
+          row,
+          rowIndex: rowIndex ?? 0,
+          cell,
+          cellIndex,
+        }),
         tableBorders,
         position: { isFirstRow, isLastRow, isFirstColumn: isFirstCol, isLastColumn: isLastCol },
         calculatedRowSpan,
@@ -2214,6 +1738,7 @@ type ConvertTableCellOptions = {
   isHeader: boolean;
   gridWidthPercent: number | undefined;
   conditionalStyle: TableConditionalStyle | undefined;
+  tablePresentation: TableCellPresentationProjection | undefined;
   tableBorders: TableBorders | undefined;
   position: TableCellPosition;
   calculatedRowSpan: number | undefined;
@@ -2232,6 +1757,7 @@ function convertTableCell({
   isHeader,
   gridWidthPercent,
   conditionalStyle,
+  tablePresentation,
   tableBorders,
   position,
   calculatedRowSpan,
@@ -2363,11 +1889,11 @@ function convertTableCell({
         ...convertParagraphWithTextBoxes(content, styleResolver, {
           textBoxGroupId: context.nextTextBoxGroupId(),
           context,
-          ...(conditionalStyle?.rPr !== undefined
-            ? { extraRunFormatting: conditionalStyle.rPr }
+          ...(tablePresentation?.runFormatting !== undefined
+            ? { extraRunFormatting: tablePresentation.runFormatting }
             : {}),
-          ...(conditionalStyle?.pPr !== undefined
-            ? { tableParagraphOverlay: conditionalStyle.pPr }
+          ...(tablePresentation?.paragraph !== undefined
+            ? { tableParagraphPresentation: tablePresentation.paragraph }
             : {}),
         }),
       );
@@ -2408,6 +1934,7 @@ export function standaloneTableCellToProseMirror(
     isHeader: nodeType === "tableHeader",
     gridWidthPercent: undefined,
     conditionalStyle: undefined,
+    tablePresentation: undefined,
     tableBorders: undefined,
     position: {},
     calculatedRowSpan: 1,
@@ -3218,6 +2745,52 @@ const canReconstructAuthoredRunFormatting = ({
   return true;
 };
 
+type CreateRunFormattingMarkPlanOptions = {
+  directFormatting: TextFormatting | undefined;
+  effectiveFormatting: TextFormatting | undefined;
+  inheritedFormatting: TextFormatting | undefined;
+  hasCharacterStyle: boolean;
+  paragraphMarkOverrides: TextFormatting | undefined;
+};
+
+type RunFormattingMarkPlan = {
+  authoredCarrier: AuthoredRunFormattingCarrier;
+  overrideFormatting: TextFormatting | undefined;
+};
+
+/** @internal One canonical authored-provenance plan for parse and revision resolution. */
+export const createRunFormattingMarkPlan = ({
+  directFormatting,
+  effectiveFormatting,
+  inheritedFormatting,
+  hasCharacterStyle,
+  paragraphMarkOverrides,
+}: CreateRunFormattingMarkPlanOptions): RunFormattingMarkPlan => {
+  const authoredCarrier: AuthoredRunFormattingCarrier = canReconstructAuthoredRunFormatting({
+    directFormatting,
+    effectiveFormatting,
+    inheritedFormatting,
+    paragraphMarkOverrides,
+  })
+    ? "reconstruct"
+    : "preserve";
+  const overrideFormatting = getRunFormattingOverrides({
+    directFormatting,
+    effectiveStyleFormatting: inheritedFormatting,
+    hasCharacterStyle,
+    paragraphMarkOverrides,
+  });
+  if (authoredCarrier === "reconstruct") {
+    if (overrideFormatting?.bold === true) {
+      delete overrideFormatting.bold;
+    }
+    if (overrideFormatting?.italic === true) {
+      delete overrideFormatting.italic;
+    }
+  }
+  return { authoredCarrier, overrideFormatting };
+};
+
 function buildRunMarks(
   runFormatting: TextFormatting | undefined,
   inherited: ResolvedRunFormatting,
@@ -3238,55 +2811,15 @@ function buildRunMarks(
     };
   }
   const styleId = runFormatting?.styleId;
-  let characterStyleFormatting: TextFormatting | undefined;
-  if (styleId) {
-    characterStyleFormatting = styleResolver?.getRunStyleOwnProperties(styleId);
-  } else if (!inherited.implicitCharacterStyleApplied) {
-    characterStyleFormatting = styleResolver?.getDefaultCharacterStyle()?.rPr;
-  }
-  let ordinaryRunStyleFormatting = inherited.formatting ? { ...inherited.formatting } : {};
-  if (styleId) {
-    ordinaryRunStyleFormatting =
-      mergeTextFormatting(inherited.formatting, characterStyleFormatting) ?? {};
-  }
-  const cascadedStyleFormatting = cascadeStyleTextFormatting(
-    [
-      { cascade: inherited.toggleCascade, type: "carried" },
-      { formatting: characterStyleFormatting, type: "style" },
-    ],
-    { ordinaryFormatting: ordinaryRunStyleFormatting },
-  );
-  const runStyleFormatting = cascadedStyleFormatting.formatting;
-  const finalToggleFormatting = cascadeStyleTextFormatting(
-    [
-      { cascade: cascadedStyleFormatting, type: "carried" },
-      { formatting: runFormatting, type: "direct" },
-    ],
-    { ordinaryFormatting: mergeTextFormatting(runStyleFormatting, runFormatting) },
-  );
-  const mergedFormatting = finalToggleFormatting.formatting;
-  const authoredCarrier: AuthoredRunFormattingCarrier = canReconstructAuthoredRunFormatting({
+  const { effective: mergedFormatting, inherited: runStyleFormatting } =
+    resolveEffectiveRunPresentation(runFormatting, inherited, styleResolver ?? null);
+  const { authoredCarrier, overrideFormatting } = createRunFormattingMarkPlan({
     directFormatting: runFormatting,
     effectiveFormatting: mergedFormatting,
     inheritedFormatting: runStyleFormatting,
-    paragraphMarkOverrides: inherited.paragraphMarkOverrides,
-  })
-    ? "reconstruct"
-    : "preserve";
-  const overrideFormatting = getRunFormattingOverrides({
-    directFormatting: runFormatting,
-    effectiveStyleFormatting: runStyleFormatting,
     hasCharacterStyle: styleId !== undefined,
     paragraphMarkOverrides: inherited.paragraphMarkOverrides,
   });
-  if (authoredCarrier === "reconstruct") {
-    if (overrideFormatting?.bold === true) {
-      delete overrideFormatting.bold;
-    }
-    if (overrideFormatting?.italic === true) {
-      delete overrideFormatting.italic;
-    }
-  }
   const marks = textFormattingToMarks(mergedFormatting, {
     overrideFormatting,
     directFormatting: runFormatting,
@@ -4231,7 +3764,7 @@ type ConvertParagraphWithTextBoxesOptions = {
   context: TableConversionContext;
   extraRunFormatting?: TextFormatting;
   preserveEmptyWrapper?: boolean;
-  tableParagraphOverlay?: TableCellParagraphSpacingOverlay;
+  tableParagraphPresentation?: TableParagraphPresentationProjection;
 };
 
 function convertParagraphWithTextBoxes(
@@ -4242,7 +3775,7 @@ function convertParagraphWithTextBoxes(
     context,
     extraRunFormatting,
     preserveEmptyWrapper,
-    tableParagraphOverlay,
+    tableParagraphPresentation,
   }: ConvertParagraphWithTextBoxesOptions,
 ): PMNode[] {
   const { textBoxes, textBoxAnchors } = extractTextBoxesFromParagraph(block, textBoxGroupId);
@@ -4252,7 +3785,7 @@ function convertParagraphWithTextBoxes(
     context,
     undefined,
     extraRunFormatting,
-    tableParagraphOverlay,
+    tableParagraphPresentation,
     textBoxAnchors,
   );
   const nodes: PMNode[] = [];
@@ -4719,18 +4252,20 @@ export function headerFooterToProseDoc(
   content: BlockContent[],
   options?: ToProseDocOptions,
 ): PMNode {
+  const sourceBlocks: BlockContent[] =
+    content.length === 0 ? [{ type: "paragraph", content: [] }] : content;
   const nodes: PMNode[] = [];
   const styleResolver = options?.styles ? createStyleEngine(options.styles) : null;
   const theme = options?.theme ?? null;
   const nextTextBoxGroupId = createTextBoxGroupIdFactory();
   const nextHyperlinkInstanceIndex = createHyperlinkInstanceIndexAllocator();
-  const pairedBookmarkIds = collectPairedBookmarkIds(content);
+  const pairedBookmarkIds = collectPairedBookmarkIds(sourceBlocks);
   const conversionContext = {
     theme,
     nextTextBoxGroupId,
     nextHyperlinkInstanceIndex,
     pairedBookmarkIds,
-    pageBreakRunSourceDescendants: buildPageBreakRunSourceDescendantIndex(content),
+    pageBreakRunSourceDescendants: buildPageBreakRunSourceDescendantIndex(sourceBlocks),
   };
 
   const convertBlocks = (blocks: BlockContent[]): PMNode[] => {
@@ -4765,17 +4300,13 @@ export function headerFooterToProseDoc(
     return out;
   };
 
-  nodes.push(...convertBlocks(content));
+  nodes.push(...convertBlocks(sourceBlocks));
   // Caret affordance after a final isolating blockSdt is handled by
   // prosemirror-gapcursor at runtime; we no longer pad the converted doc
   // with a synthetic trailing paragraph because that paragraph survives
   // the reverse pass and pollutes both round-trip saves and
   // `setContentControlContent(filter, blocks)` callers that pass blocks
   // ending in a nested blockSdt.
-
-  if (nodes.length === 0) {
-    nodes.push(schema.node("paragraph", {}, []));
-  }
 
   const pmDoc = stampNumberedRefFieldBaselines(schema.node("doc", null, nodes));
   assertValidProseMirrorDocument(

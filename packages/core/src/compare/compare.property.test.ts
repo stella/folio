@@ -201,6 +201,25 @@ const compareOrThrow = async (base: ArrayBuffer, target: ArrayBuffer): Promise<C
   return result.value;
 };
 
+const compareScriptAndExpectRoundTrip = async (
+  base: ArrayBuffer,
+  script: EditScript,
+): Promise<CompareResult> => {
+  const scripted = await applyEditScript(base, script);
+  if (scripted.isErr()) throw scripted.error;
+  expect(scripted.value.unresolved).toEqual([]);
+  const result = await compareOrThrow(base, scripted.value.buffer);
+  const [accepted, rejected, target, original] = await Promise.all([
+    projectView(result.buffer, "final"),
+    projectView(result.buffer, "original"),
+    projectView(scripted.value.buffer, "final"),
+    projectView(base, "final"),
+  ]);
+  expect(accepted).toEqual(target);
+  expect(rejected).toEqual(original);
+  return result;
+};
+
 /** Every block index of `blocks`, so a generated step always addresses a real block. */
 const blockIndexArb = (blocks: readonly FolioAIBlock[]) => fc.nat({ max: blocks.length - 1 });
 
@@ -481,15 +500,7 @@ const inlineFormattingSignature = (block: FolioAIBlock): string =>
   JSON.stringify([
     block.text,
     (block.previewRuns ?? [{ text: block.text }]).flatMap((run) => {
-      const formatting = [
-        run.bold,
-        run.italic,
-        run.underline,
-        run.strike,
-        run.fontFamily,
-        run.fontSizePt,
-        run.color,
-      ];
+      const formatting = run.effectiveFormatting ?? {};
       return Array.from(run.text, () => formatting);
     }),
   ]);
@@ -739,7 +750,7 @@ describe("compareDocx", () => {
     }
   }
 
-  test("a relocation past one neighbour reports the intended moved block", async () => {
+  test("a relocation that sheds formatting reports the move and exact formatting changes", async () => {
     // Stable identity resolves the otherwise symmetric one-neighbour swap, so
     // the change list reports the scripted deletion and relocation rather than
     // describing both ends of the surviving neighbour as unrelated edits.
@@ -765,14 +776,129 @@ describe("compareDocx", () => {
     expect(scripted.value.unresolved).toEqual([]);
 
     const { changes } = await compareOrThrow(base, scripted.value.buffer);
-    expect(kindsOf(changes).toSorted()).toEqual(["delete", "move"]);
+    expect(kindsOf(changes).toSorted()).toEqual(["delete", "format", "move", "paragraph-format"]);
     expect(changes.find(({ kind }) => kind === "delete")).toMatchObject({
       baseBlockId: baseBlocks[2]?.id,
     });
-    expect(changes.find(({ kind }) => kind === "move")).toMatchObject({
+    const moveChange = changes.find(({ kind }) => kind === "move");
+    expect(moveChange).toMatchObject({
       baseBlockId: baseBlocks[1]?.id,
       text: baseBlocks[1]?.text,
     });
+    if (moveChange?.kind !== "move") throw new Error("expected move change");
+    const removed = (key: string) => ({
+      key,
+      base: { type: "present", value: true },
+      revised: { type: "absent" },
+    });
+    expect(changes.find(({ kind }) => kind === "format")).toEqual({
+      kind: "format",
+      location: expect.any(Object),
+      baseBlockId: baseBlocks[1]?.id,
+      targetBlockId: moveChange.targetBlockId,
+      text: baseBlocks[1]?.text,
+      ranges: [
+        {
+          startOffset: 0,
+          endOffset: 22,
+          formatting: {
+            authored: [removed("bold"), removed("italic")],
+            effective: [removed("bold"), removed("italic")],
+          },
+        },
+        {
+          startOffset: 22,
+          endOffset: 41,
+          formatting: {
+            authored: [removed("strike")],
+            effective: [removed("strike")],
+          },
+        },
+      ],
+    });
+    expect(changes.find(({ kind }) => kind === "paragraph-format")).toEqual({
+      kind: "paragraph-format",
+      location: expect.any(Object),
+      baseBlockId: baseBlocks[1]?.id,
+      targetBlockId: moveChange.targetBlockId,
+      properties: { alignment: "right" },
+    });
+  });
+
+  test("a moved source cannot mask the surviving anchor of a peer insertion", async () => {
+    const base = SYNTHETIC_BASE;
+    const baseBlocks = await blocksOf(base);
+    const movedIndex = baseBlocks.length - 1;
+    const insertionAnchorIndex = baseBlocks.length - 2;
+    const script: EditScript = [
+      { type: "moveParagraph", blockIndex: movedIndex, beforeBlockIndex: 0 },
+      {
+        type: "insertParagraphAfter",
+        blockIndex: insertionAnchorIndex,
+        text: "Inserted after the final surviving anchor.",
+      },
+    ];
+    await compareScriptAndExpectRoundTrip(base, script);
+  });
+
+  test("interacting moves retain exact source and destination boundaries", async () => {
+    await compareScriptAndExpectRoundTrip(SYNTHETIC_BASE, [
+      { type: "moveParagraph", blockIndex: 6, beforeBlockIndex: 0 },
+      { type: "moveParagraph", blockIndex: 5, beforeBlockIndex: 4 },
+    ]);
+  });
+
+  test("a body insertion remains anchored when a peer moves across a table", async () => {
+    await compareScriptAndExpectRoundTrip(readFixture("upstream-with-tables.docx"), [
+      { type: "insertParagraphAfter", blockIndex: 1, text: "Inserted beside the table." },
+      { type: "moveParagraph", blockIndex: 0, beforeBlockIndex: 10 },
+    ]);
+  });
+
+  test("a paragraph inserted before a table stays on that structural side", async () => {
+    await compareScriptAndExpectRoundTrip(readFixture("upstream-with-tables.docx"), [
+      { type: "insertParagraphAfter", blockIndex: 0, text: "Inserted before the table." },
+    ]);
+  });
+
+  test("a paragraph and row insertion preserve their distinct structural scopes", async () => {
+    await compareScriptAndExpectRoundTrip(readFixture("upstream-with-tables.docx"), [
+      { type: "insertParagraphAfter", blockIndex: 0, text: "Inserted before the table." },
+      {
+        type: "insertTableRow",
+        blockIndex: 1,
+        cellTexts: ["First cell", "Second cell", "Third cell"],
+      },
+    ]);
+  });
+
+  test("a move, rewrite, and deletion retain their independent structural owners", async () => {
+    await compareScriptAndExpectRoundTrip(readFixture("upstream-complex-styles.docx"), [
+      { type: "moveParagraph", blockIndex: 3, beforeBlockIndex: 5 },
+      { type: "replaceWords", blockIndex: 4, find: "Red", replace: "aaa" },
+      { type: "deleteParagraph", blockIndex: 2 },
+    ]);
+  });
+
+  test("several insertions and a deletion run retain one canonical order", async () => {
+    await compareScriptAndExpectRoundTrip(readFixture("upstream-complex-styles.docx"), [
+      { type: "insertParagraphAfter", blockIndex: 2, text: "First inserted paragraph." },
+      { type: "insertParagraphAfter", blockIndex: 2, text: "Second inserted paragraph." },
+      { type: "deleteParagraph", blockIndex: 2 },
+      { type: "deleteParagraph", blockIndex: 3 },
+      { type: "deleteParagraph", blockIndex: 4 },
+      { type: "deleteParagraph", blockIndex: 5 },
+    ]);
+  });
+
+  test("a trailing insertion survives an adjacent deletion run", async () => {
+    await compareScriptAndExpectRoundTrip(readFixture("upstream-complex-styles.docx"), [
+      { type: "insertParagraphAfter", blockIndex: 5, text: "Trailing inserted paragraph." },
+      { type: "deleteParagraph", blockIndex: 2 },
+      { type: "deleteParagraph", blockIndex: 3 },
+      { type: "deleteParagraph", blockIndex: 4 },
+      { type: "deleteParagraph", blockIndex: 5 },
+    ]);
   });
 
   test("a paragraph inserted on a cell anchor lands beside the table it grew", async () => {
@@ -1028,8 +1154,15 @@ describe("compareDocx", () => {
 
     test("comparing it with itself still reports nothing", async () => {
       const revisedBase = await withPriorRevisions(SYNTHETIC_BASE);
-      const { changes } = await compareOrThrow(revisedBase, revisedBase);
-      expect(changes).toEqual([]);
+      const first = await compareOrThrow(revisedBase, revisedBase);
+      const second = await compareOrThrow(revisedBase, revisedBase);
+      const acceptedBase = await projectView(revisedBase, "final");
+
+      expect(first.changes).toEqual([]);
+      expect(await authorsOfChanges(first.buffer)).toEqual([]);
+      expect(await projectView(first.buffer, "original")).toEqual(acceptedBase);
+      expect(await projectView(first.buffer, "final")).toEqual(acceptedBase);
+      expect(new Uint8Array(first.buffer)).toEqual(new Uint8Array(second.buffer));
     });
   });
 
@@ -1051,7 +1184,7 @@ describe("compareDocx", () => {
             }
             const result = await compareDocx(base, scripted.value.buffer, {
               ...OPTIONS,
-              onUnverified: "emit",
+              mode: "bestEffort",
             });
             if (result.isErr()) {
               throw result.error;

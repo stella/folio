@@ -23,6 +23,7 @@ import type {
   ParagraphFormatting,
   TextFormatting,
 } from "../../types/document";
+import type { TableParagraphPresentationOverlay } from "../../style-engine/paragraphPresentation";
 import { mergeParagraphFormatting } from "../../utils/paragraphFormattingMerge";
 import { cascadeStyleTextFormatting } from "./styleToggleCascade";
 
@@ -35,23 +36,6 @@ export type ResolvedParagraphStyle = {
   /** Default run formatting from the style */
   runFormatting?: TextFormatting;
 };
-
-/**
- * Paragraph fields sourced from the table style enclosing a cell paragraph:
- * the table style's own `w:pPr`, then the applicable
- * `w:tblStylePr` conditional region's `w:pPr` layered on top (already merged
- * by the caller — see `resolveTableBaseStyle`/`resolveTableStyleConditional`
- * in toProseDoc.ts).
- *
- * Deliberately narrower than the full {@link ParagraphFormatting}: spacing
- * affects table-row height, while `frame` participates in lossless page-break
- * ownership checks. Other fields remain out of scope until their table-style
- * projection is modeled end to end.
- */
-export type TableCellParagraphSpacingOverlay = Pick<
-  ParagraphFormatting,
-  "spaceBefore" | "spaceAfter" | "lineSpacing" | "lineSpacingRule" | "contextualSpacing" | "frame"
->;
 
 /**
  * Word's default-template Normal style, used as a last-resort fallback for a
@@ -157,10 +141,10 @@ export class StyleResolver {
    *   3. the paragraph's own style chain (`w:pStyle` + `basedOn` ancestors)
    *   4. direct formatting on the paragraph (`w:pPr`)
    *
-   * Layer 4 is applied by the caller (`paragraphFormattingToAttrs`), which
-   * already prefers the paragraph's direct formatting over this method's
-   * result. Layer 3 is applied below, after the overlay, so an explicit
-   * paragraph style still wins over the table for any field it sets.
+   * Layer 4 is applied by `resolveEffectiveParagraphPresentation`, the single
+   * PM-independent owner of the complete cascade. Layer 3 is applied below,
+   * after the overlay, so an explicit paragraph style still wins over the
+   * table for any field it sets.
    *
    * @param styleId - The paragraph's style ID (e.g., 'Heading1', 'Normal')
    * @param tableParagraphOverlay - Modeled paragraph fields from the
@@ -171,14 +155,14 @@ export class StyleResolver {
    */
   resolveParagraphStyleInTable(
     styleId: string | undefined | null,
-    tableParagraphOverlay: TableCellParagraphSpacingOverlay | undefined,
+    tableParagraphOverlay: TableParagraphPresentationOverlay | undefined,
   ): ResolvedParagraphStyle {
     return this.resolveParagraphStyleCascade(styleId, tableParagraphOverlay);
   }
 
   private resolveParagraphStyleCascade(
     styleId: string | undefined | null,
-    tableParagraphOverlay: TableCellParagraphSpacingOverlay | undefined,
+    tableParagraphOverlay: TableParagraphPresentationOverlay | undefined,
   ): ResolvedParagraphStyle {
     const result: ResolvedParagraphStyle = {};
 

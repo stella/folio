@@ -32,8 +32,16 @@ import { autospacingMatchesBase } from "../../autospacingBase";
 import { directParagraphAlignment } from "../../paragraphAlignment";
 import { directionIsRtl } from "../../paragraphDirection";
 import { withDirectParagraphSpacing } from "../../paragraphSpacing";
+import {
+  PARAGRAPH_PROJECTION_ONLY_ATTRS,
+  type ParagraphProjectionOnlyAttrName,
+} from "../../paragraphProjectionAttrs";
 import type { ParagraphDirection } from "../../paragraphDirection";
 import type { ParagraphAttrs } from "../../schema/nodes";
+import {
+  LIST_RENDERING_ATTR_DEFAULTS,
+  PPR_CHANGE_SCOPED_ATTR_DEFAULTS,
+} from "../../schema/paragraphAttrDefaults";
 import {
   paragraphAttrsFromResolvedStyle,
   listAttrsFromResolvedStyle,
@@ -323,84 +331,117 @@ function extractParagraphAttrsFromStyle(element: HTMLElement): Partial<Paragraph
 // PARAGRAPH NODE SPEC
 // ============================================================================
 
+/**
+ * Document fields and deterministic projections belong to the typed paragraph
+ * adapter. Attrs outside this map must declare a private owner below.
+ */
+const paragraphDocumentProjectionNodeAttrs = {
+  paraId: { default: null },
+  textId: { default: null },
+  alignment: { default: PPR_CHANGE_SCOPED_ATTR_DEFAULTS.alignment },
+  alignmentFromStyle: { default: undefined },
+  kinsoku: { default: PPR_CHANGE_SCOPED_ATTR_DEFAULTS.kinsoku },
+  overflowPunctuation: { default: PPR_CHANGE_SCOPED_ATTR_DEFAULTS.overflowPunctuation },
+  suppressAutoHyphens: { default: PPR_CHANGE_SCOPED_ATTR_DEFAULTS.suppressAutoHyphens },
+  spaceBefore: { default: PPR_CHANGE_SCOPED_ATTR_DEFAULTS.spaceBefore },
+  spaceAfter: { default: PPR_CHANGE_SCOPED_ATTR_DEFAULTS.spaceAfter },
+  lineSpacing: { default: PPR_CHANGE_SCOPED_ATTR_DEFAULTS.lineSpacing },
+  lineSpacingRule: { default: PPR_CHANGE_SCOPED_ATTR_DEFAULTS.lineSpacingRule },
+  lineSpacingExplicit: { default: PPR_CHANGE_SCOPED_ATTR_DEFAULTS.lineSpacingExplicit },
+  snapToGrid: { default: PPR_CHANGE_SCOPED_ATTR_DEFAULTS.snapToGrid },
+  spacingExplicit: { default: PPR_CHANGE_SCOPED_ATTR_DEFAULTS.spacingExplicit },
+  spacingFromDocDefaults: { default: null },
+  spacingFromImplicitDefaultStyle: { default: null },
+  indentLeft: { default: PPR_CHANGE_SCOPED_ATTR_DEFAULTS.indentLeft },
+  indentRight: { default: PPR_CHANGE_SCOPED_ATTR_DEFAULTS.indentRight },
+  indentFirstLine: { default: PPR_CHANGE_SCOPED_ATTR_DEFAULTS.indentFirstLine },
+  hangingIndent: { default: PPR_CHANGE_SCOPED_ATTR_DEFAULTS.hangingIndent },
+  numPr: { default: PPR_CHANGE_SCOPED_ATTR_DEFAULTS.numPr },
+  numPrFromStyle: { default: null },
+  listNumFmt: { default: LIST_RENDERING_ATTR_DEFAULTS.listNumFmt },
+  listIsBullet: { default: LIST_RENDERING_ATTR_DEFAULTS.listIsBullet },
+  listIsLegal: { default: LIST_RENDERING_ATTR_DEFAULTS.listIsLegal },
+  listMarker: { default: LIST_RENDERING_ATTR_DEFAULTS.listMarker },
+  listMarkerTemplate: { default: LIST_RENDERING_ATTR_DEFAULTS.listMarkerTemplate },
+  listMarkerHidden: { default: LIST_RENDERING_ATTR_DEFAULTS.listMarkerHidden },
+  listMarkerFormatting: { default: LIST_RENDERING_ATTR_DEFAULTS.listMarkerFormatting },
+  listMarkerAlignment: { default: LIST_RENDERING_ATTR_DEFAULTS.listMarkerAlignment },
+  listMarkerSuffix: { default: LIST_RENDERING_ATTR_DEFAULTS.listMarkerSuffix },
+  listMarkerAllCaps: { default: LIST_RENDERING_ATTR_DEFAULTS.listMarkerAllCaps },
+  listImplicitChildLevelAdvances: {
+    default: LIST_RENDERING_ATTR_DEFAULTS.listImplicitChildLevelAdvances,
+  },
+  listMarkerSecondSlotOffsetTwips: {
+    default: LIST_RENDERING_ATTR_DEFAULTS.listMarkerSecondSlotOffsetTwips,
+  },
+  listLevelNumFmts: { default: LIST_RENDERING_ATTR_DEFAULTS.listLevelNumFmts },
+  listLevelStarts: { default: LIST_RENDERING_ATTR_DEFAULTS.listLevelStarts },
+  listAbstractNumId: { default: LIST_RENDERING_ATTR_DEFAULTS.listAbstractNumId },
+  listStartOverride: { default: LIST_RENDERING_ATTR_DEFAULTS.listStartOverride },
+  styleId: { default: PPR_CHANGE_SCOPED_ATTR_DEFAULTS.styleId },
+  _tableOfContentsLevel: { default: null },
+  borders: { default: PPR_CHANGE_SCOPED_ATTR_DEFAULTS.borders },
+  shading: { default: PPR_CHANGE_SCOPED_ATTR_DEFAULTS.shading },
+  tabs: { default: PPR_CHANGE_SCOPED_ATTR_DEFAULTS.tabs },
+  pageBreakBefore: { default: PPR_CHANGE_SCOPED_ATTR_DEFAULTS.pageBreakBefore },
+  renderedPageBreakBefore: { default: null },
+  _pageBreakCarrier: { default: null },
+  _trailingPageBreak: { default: null },
+  keepNext: { default: PPR_CHANGE_SCOPED_ATTR_DEFAULTS.keepNext },
+  keepLines: { default: PPR_CHANGE_SCOPED_ATTR_DEFAULTS.keepLines },
+  widowControl: { default: PPR_CHANGE_SCOPED_ATTR_DEFAULTS.widowControl },
+  contextualSpacing: { default: PPR_CHANGE_SCOPED_ATTR_DEFAULTS.contextualSpacing },
+  runInWithNext: { default: null },
+  defaultTextFormatting: { default: null },
+  sectionBreakType: { default: null },
+  // Base text direction (discriminated union; see paragraphDirection.ts). The
+  // `source` distinguishes an authoritative manual/import decision from a
+  // re-evaluable auto-detected one; only the resolved RTL-ness serializes
+  // (`w:bidi`) or reaches the DOM (`dir`).
+  direction: { default: PPR_CHANGE_SCOPED_ATTR_DEFAULTS.direction },
+  outlineLevel: { default: PPR_CHANGE_SCOPED_ATTR_DEFAULTS.outlineLevel },
+  bookmarks: { default: null },
+  _emptyHyperlinks: { default: null },
+  _originalFormatting: { default: null },
+  _autospacingBase: { default: PPR_CHANGE_SCOPED_ATTR_DEFAULTS._autospacingBase },
+  _sectionProperties: { default: null },
+  _propertyChanges: { default: null },
+  pPrMark: { default: null },
+  _suggestedInsert: { default: null },
+} as const satisfies {
+  [Key in keyof ParagraphAttrs]-?: { readonly default: unknown };
+};
+
+const paragraphProjectionOnlyNodeAttrs = {
+  idStability: { default: PARAGRAPH_PROJECTION_ONLY_ATTRS.idStability.default },
+  _detachedWatermarkHost: {
+    default: PARAGRAPH_PROJECTION_ONLY_ATTRS._detachedWatermarkHost.default,
+  },
+} as const satisfies {
+  [Key in ParagraphProjectionOnlyAttrName]-?: { readonly default: unknown };
+};
+
+const paragraphPropertySourceNodeAttrs = {
+  [PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR]: { default: null },
+} as const;
+
+type ParagraphNodeAttrName =
+  | keyof ParagraphAttrs
+  | ParagraphProjectionOnlyAttrName
+  | keyof typeof paragraphPropertySourceNodeAttrs;
+
+const paragraphNodeAttrs = {
+  ...paragraphDocumentProjectionNodeAttrs,
+  ...paragraphProjectionOnlyNodeAttrs,
+  ...paragraphPropertySourceNodeAttrs,
+} as const satisfies {
+  [Key in ParagraphNodeAttrName]-?: { readonly default: unknown };
+};
+
 const paragraphNodeSpec: NodeSpec = {
   content: "inline*",
   group: "block",
-  attrs: {
-    paraId: { default: null },
-    [PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR]: { default: null },
-    // Internal provenance for comparison alignment. It is intentionally not
-    // parsed from or rendered to HTML/OOXML.
-    idStability: { default: undefined },
-    textId: { default: null },
-    alignment: { default: null },
-    alignmentFromStyle: { default: undefined },
-    kinsoku: { default: null },
-    overflowPunctuation: { default: null },
-    suppressAutoHyphens: { default: null },
-    spaceBefore: { default: null },
-    spaceAfter: { default: null },
-    lineSpacing: { default: null },
-    lineSpacingRule: { default: null },
-    lineSpacingExplicit: { default: null },
-    snapToGrid: { default: null },
-    spacingExplicit: { default: null },
-    spacingFromDocDefaults: { default: null },
-    spacingFromImplicitDefaultStyle: { default: null },
-    indentLeft: { default: null },
-    indentRight: { default: null },
-    indentFirstLine: { default: null },
-    hangingIndent: { default: false },
-    numPr: { default: null },
-    numPrFromStyle: { default: null },
-    listNumFmt: { default: null },
-    listIsBullet: { default: null },
-    listIsLegal: { default: null },
-    listMarker: { default: null },
-    listMarkerTemplate: { default: undefined },
-    listMarkerHidden: { default: null },
-    listMarkerFormatting: { default: null },
-    listMarkerAlignment: { default: null },
-    listMarkerSuffix: { default: null },
-    listMarkerAllCaps: { default: null },
-    listImplicitChildLevelAdvances: { default: null },
-    listMarkerSecondSlotOffsetTwips: { default: null },
-    listLevelNumFmts: { default: null },
-    listLevelStarts: { default: null },
-    listAbstractNumId: { default: null },
-    listStartOverride: { default: null },
-    styleId: { default: null },
-    _tableOfContentsLevel: { default: null },
-    borders: { default: null },
-    shading: { default: null },
-    tabs: { default: null },
-    pageBreakBefore: { default: null },
-    renderedPageBreakBefore: { default: null },
-    _pageBreakCarrier: { default: null },
-    _detachedWatermarkHost: { default: null },
-    _trailingPageBreak: { default: null },
-    keepNext: { default: null },
-    keepLines: { default: null },
-    widowControl: { default: null },
-    contextualSpacing: { default: null },
-    runInWithNext: { default: null },
-    defaultTextFormatting: { default: null },
-    sectionBreakType: { default: null },
-    // Base text direction (discriminated union; see paragraphDirection.ts). The
-    // `source` distinguishes an authoritative manual/import decision from a
-    // re-evaluable auto-detected one; only the resolved RTL-ness serializes
-    // (`w:bidi`) or reaches the DOM (`dir`).
-    direction: { default: null },
-    outlineLevel: { default: null },
-    bookmarks: { default: null },
-    _emptyHyperlinks: { default: null },
-    _originalFormatting: { default: null },
-    _autospacingBase: { default: null },
-    _sectionProperties: { default: null },
-    _propertyChanges: { default: null },
-    pPrMark: { default: null },
-    _suggestedInsert: { default: null },
-  },
+  attrs: paragraphNodeAttrs,
   parseDOM: [
     {
       tag: "p",

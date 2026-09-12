@@ -39,6 +39,18 @@ import { parseDocx } from "../docx/parser";
 import { repackDocx } from "../docx/rezip";
 import { pluginsForHeadlessRevisionResolution } from "../internal/headlessRevisionResolutionGuard";
 import {
+  executePreflightedDocxComparison,
+  preflightDocxComparisonProgram,
+  type DocxComparisonExecutionResult,
+  type PreparedDocxComparison,
+} from "../internal/compare/docx-executor";
+import type { DocxComparisonProgram } from "../internal/compare/docx-program";
+import {
+  createResolvedDocxStorySnapshot,
+  resolvedDocxOperationSnapshot,
+  type ResolvedDocxStorySnapshot,
+} from "../internal/compare/resolved-docx-story-snapshot";
+import {
   type TrackedSectionEndpointRemoval,
   withTrackedSectionEndpointRemoval,
 } from "../internal/sectionEndpointResolution";
@@ -76,7 +88,12 @@ import type {
 } from "../types/document";
 import { deterministicHexId } from "../utils/hexId";
 import {
+  PARAGRAPH_ID_STABILITY_ATTR,
+  POSITIONAL_PARAGRAPH_ID_STABILITY,
+} from "../prosemirror/paragraphProjectionAttrs";
+import {
   recreateProseNodeWithParagraphPropertySource,
+  transferSynthesizedParagraphIdentity,
   transferProseParagraphPropertySource,
 } from "../docx/paragraphPropertySource";
 import {
@@ -105,7 +122,6 @@ import {
   sourceDocumentOf,
   type FolioStoryTable,
 } from "./snapshot";
-import { matchTableGeometry, type TableGeometryPairing } from "./table-geometry";
 import type { FolioTableTemplates } from "./table-template";
 import type {
   FolioAIBlock,
@@ -197,12 +213,19 @@ const ensureDeterministicParaIdsInDoc = (doc: PMNode): PMNode => {
           }
           seen.add(paraId);
           next = recreateProseNodeWithParagraphPropertySource(child, {
-            attrs: { ...child.attrs, paraId, idStability: "positional" },
+            attrs: {
+              ...child.attrs,
+              paraId,
+              [PARAGRAPH_ID_STABILITY_ATTR]: POSITIONAL_PARAGRAPH_ID_STABILITY,
+            },
           });
         }
         const paraId = next.attrs["paraId"];
         if (typeof paraId === "string") {
           transferProseParagraphPropertySource(next, child, paraId);
+          if (next.attrs[PARAGRAPH_ID_STABILITY_ATTR] === POSITIONAL_PARAGRAPH_ID_STABILITY) {
+            transferSynthesizedParagraphIdentity(next, child, paraId);
+          }
         }
       } else if (child.childCount > 0) {
         const content = rewrite(child);
@@ -299,16 +322,6 @@ export type FolioDocumentStory = {
 export type FolioReadReviewedStoryOptions = {
   story?: FolioEditableDocumentStoryHandle;
   view?: FolioReviewedView;
-};
-
-/** What {@link FolioDocxReviewer.matchStoryTableGeometry} needs to move a table's properties. */
-export type FolioMatchStoryTableGeometryOptions = {
-  story?: FolioEditableDocumentStoryHandle;
-  /** The other document's tables, by the index its snapshot numbers them with. */
-  targetTables: ReadonlyMap<number, PMNode>;
-  /** Base cells and the target cells they were aligned with. */
-  pairings: readonly TableGeometryPairing[];
-  revisionStamp: FolioRevisionStamp;
 };
 
 export type FolioResolveReviewedStoryOptions = {
@@ -420,6 +433,12 @@ type FolioReviewerStateSnapshot = {
   resolvedStoryExpectations: readonly FolioResolvedStoryExpectation[];
 };
 
+type FolioResolvedReviewerStateSnapshot<
+  View extends FolioResolvedReviewedView = FolioResolvedReviewedView,
+> = FolioReviewerStateSnapshot & {
+  readonly view: View;
+};
+
 type FolioSavePath =
   | { type: "full-repack" }
   | { type: "selective-first"; changedParaIds: Set<string> };
@@ -442,24 +461,44 @@ type ApplyDocumentOperationsInternalOptions = {
   createUndoEntry: boolean;
 };
 
-type FolioDocxComparisonProjectionMode = "with-revision-census" | "without-revision-census";
-
 type FolioDocxComparisonStoryProjection = {
   handle: FolioDocumentStoryHandle;
-  snapshot: FolioAIEditSnapshot | null;
+  snapshot: ResolvedDocxStorySnapshot | null;
 };
 
 type FolioDocxComparisonProjection = {
   stories: readonly FolioDocxComparisonStoryProjection[];
+};
+
+type FolioDocxComparisonSourceProjection = FolioDocxComparisonProjection & {
   revisions: {
     highestId: number;
     present: boolean;
   };
 };
 
+type FolioDocxReviewedProjection = {
+  stories: readonly FolioDocxComparisonStoryProjection[];
+};
+
+type FolioPrepareDocxComparisonOptions = {
+  readonly story: FolioEditableDocumentStoryHandle;
+  readonly program: DocxComparisonProgram;
+};
+
+type FolioCommitDocxComparisonOptions = {
+  readonly story: FolioEditableDocumentStoryHandle;
+  readonly prepared: PreparedDocxComparison;
+  readonly revisionStamp: FolioRevisionStamp;
+};
+
 type FolioDocxComparisonAccess = {
-  projectStories: (mode: FolioDocxComparisonProjectionMode) => FolioDocxComparisonProjection;
+  normalizeSourceStories: () => FolioDocxComparisonSourceProjection;
+  projectResolvedStories: () => FolioDocxComparisonProjection;
   snapshotReviewedStory: (options?: FolioReadReviewedStoryOptions) => FolioAIEditSnapshot | null;
+  projectReviewedStories: (view: FolioResolvedReviewedView) => FolioDocxReviewedProjection;
+  prepareStoryProgram: (options: FolioPrepareDocxComparisonOptions) => PreparedDocxComparison;
+  commitStoryProgram: (options: FolioCommitDocxComparisonOptions) => DocxComparisonExecutionResult;
 };
 
 const comparisonAccessByReviewer = new WeakMap<FolioDocxReviewer, FolioDocxComparisonAccess>();
@@ -685,8 +724,12 @@ export class FolioDocxReviewer {
     comparisonAccessByReviewer.set(
       this,
       Object.freeze({
-        projectStories: (mode) => this.projectComparisonStoriesInternal(mode),
+        normalizeSourceStories: () => this.normalizeComparisonSourceStoriesInternal(),
+        projectResolvedStories: () => this.projectResolvedComparisonStoriesInternal(),
         snapshotReviewedStory: (options) => this.snapshotReviewedStoryInternal(options),
+        projectReviewedStories: (view) => this.projectReviewedStoriesInternal(view),
+        prepareStoryProgram: (options) => this.prepareComparisonStoryInternal(options),
+        commitStoryProgram: (options) => this.commitComparisonStoryInternal(options),
       }),
     );
   }
@@ -822,35 +865,141 @@ export class FolioDocxReviewer {
     return sourceState ? createStateSnapshot(resolveReviewedState(sourceState, view)) : null;
   }
 
-  private projectComparisonStoriesInternal(
-    mode: FolioDocxComparisonProjectionMode,
-  ): FolioDocxComparisonProjection {
-    const handles = this.listStoryHandlesInternal();
-    let highestId = 0;
-    let present = false;
-    if (mode === "with-revision-census") {
-      // Census every arriving story before resolution mutates any reviewer
-      // state. The shared interpreter omits block ids, so this costs one
-      // carrier walk per story without constructing a throwaway snapshot.
-      for (const handle of handles) {
-        const state = this.getEditableStoryState(handle);
-        if (!state) {
-          continue;
-        }
-        const stats = getTrackedChangeStatsFromDoc(state.doc);
-        highestId = Math.max(highestId, stats.highestId);
-        present ||= stats.present;
-      }
-    }
+  private projectReviewedStoriesInternal(
+    view: FolioResolvedReviewedView,
+  ): FolioDocxReviewedProjection {
+    const reviewerSnapshot = this.resolveReviewerStateSnapshot(
+      this.captureCompleteReviewerState(),
+      view,
+    );
+    return { stories: this.projectResolvedStoriesFromSnapshot(reviewerSnapshot) };
+  }
 
-    const stories: FolioDocxComparisonStoryProjection[] = [];
-    for (const handle of handles) {
-      stories.push({
+  /**
+   * Resolve every story exactly once from one immutable reviewer-state capture.
+   * A resolved snapshot is the only value the comparison projection accepts,
+   * so its model document and PM sources cannot come from different views.
+   */
+  private resolveReviewerStateSnapshot<View extends FolioResolvedReviewedView>(
+    reviewerSnapshot: FolioReviewerStateSnapshot,
+    view: View,
+  ): FolioResolvedReviewerStateSnapshot<View> {
+    return {
+      ...reviewerSnapshot,
+      view,
+      mainState: resolveReviewedState(reviewerSnapshot.mainState, view),
+      secondaryStoryStates: reviewerSnapshot.secondaryStoryStates.map((entry) => ({
+        ...entry,
+        state: resolveReviewedState(entry.state, view),
+      })),
+    };
+  }
+
+  private projectResolvedStoriesFromSnapshot(
+    reviewerSnapshot: FolioResolvedReviewerStateSnapshot,
+  ): readonly FolioDocxComparisonStoryProjection[] {
+    const document = this.documentFromStateSnapshot(reviewerSnapshot);
+    const stateByStoryKey = new Map<string, EditorState>([
+      ["main", reviewerSnapshot.mainState],
+      ...reviewerSnapshot.secondaryStoryStates.map(
+        ({ handle, state }) => [editableStoryKey(handle), state] as const,
+      ),
+    ]);
+    return this.listStoryHandlesInternal().map((handle) => {
+      const state = stateByStoryKey.get(editableStoryKey(handle));
+      return {
         handle,
-        snapshot: this.resolveReviewedStorySnapshotInternal({ story: handle, view: "final" }),
+        snapshot:
+          state === undefined
+            ? null
+            : createResolvedDocxStorySnapshot({
+                document,
+                story: handle,
+                sourceDocument: state.doc,
+              }),
+      };
+    });
+  }
+
+  private projectResolvedComparisonStoriesInternal(): FolioDocxComparisonProjection {
+    const resolved = this.resolveReviewerStateSnapshot(
+      this.captureCompleteReviewerState(),
+      "final",
+    );
+    return { stories: this.projectResolvedStoriesFromSnapshot(resolved) };
+  }
+
+  /**
+   * Adopt the exact accepted states that issued the source operands. Planning,
+   * preflight, execution, and reject verification then all address one state;
+   * prior revisions cannot remain hidden beneath a clean projection.
+   */
+  private adoptResolvedComparisonSource(
+    reviewerSnapshot: FolioResolvedReviewerStateSnapshot<"final">,
+    stories: readonly FolioDocxComparisonStoryProjection[],
+  ): void {
+    this.setEditableStoryState(MAIN_STORY, reviewerSnapshot.mainState);
+    for (const { handle, state } of reviewerSnapshot.secondaryStoryStates) {
+      this.setEditableStoryState(handle, state);
+    }
+    this.resolvedStoryExpectations.clear();
+    for (const { handle: story, snapshot } of stories) {
+      if (!snapshot) continue;
+      const operationSnapshot = resolvedDocxOperationSnapshot(snapshot);
+      this.resolvedStoryExpectations.set(editableStoryKey(story), {
+        story,
+        text: formatStorySnapshotForLLM(operationSnapshot, false),
+        blocks: operationSnapshot.blocks.map(resolvedStoryBlockProjection),
       });
     }
+  }
+
+  private normalizeComparisonSourceStoriesInternal(): FolioDocxComparisonSourceProjection {
+    const reviewerSnapshot = this.captureCompleteReviewerState();
+    let highestId = 0;
+    let present = false;
+    // Census every arriving story before its accepted state replaces the live
+    // source. The shared interpreter omits block ids, so this costs one carrier
+    // walk per story without constructing a throwaway snapshot.
+    const states = [
+      reviewerSnapshot.mainState,
+      ...reviewerSnapshot.secondaryStoryStates.map(({ state }) => state),
+    ];
+    for (const state of states) {
+      const stats = getTrackedChangeStatsFromDoc(state.doc);
+      highestId = Math.max(highestId, stats.highestId);
+      present ||= stats.present;
+    }
+    const resolved = this.resolveReviewerStateSnapshot(reviewerSnapshot, "final");
+    const stories = this.projectResolvedStoriesFromSnapshot(resolved);
+    this.adoptResolvedComparisonSource(resolved, stories);
     return { stories, revisions: { highestId, present } };
+  }
+
+  private prepareComparisonStoryInternal({
+    story,
+    program,
+  }: FolioPrepareDocxComparisonOptions): PreparedDocxComparison {
+    const state = this.requireEditableStoryState(story);
+    return preflightDocxComparisonProgram({ state, program });
+  }
+
+  private commitComparisonStoryInternal({
+    story,
+    prepared,
+    revisionStamp,
+  }: FolioCommitDocxComparisonOptions): DocxComparisonExecutionResult {
+    const state = this.requireEditableStoryState(story);
+    const result = executePreflightedDocxComparison({
+      state,
+      prepared,
+      revisionStamp,
+      author: this.author,
+    });
+    if (result.status === "executed" && result.receipt.transaction.docChanged) {
+      this.setEditableStoryState(story, state.apply(result.receipt.transaction));
+    }
+    return result;
   }
 
   /**
@@ -877,45 +1026,6 @@ export class FolioDocxReviewer {
     return sourceState ? folioStoryTables(resolveReviewedState(sourceState, view).doc) : [];
   }
 
-  /**
-   * Move the paired tables' own properties onto this story's tables, as
-   * tracked property changes.
-   *
-   * `w:tblPr`, `w:trPr` and `w:tcPr` belong to no block, so no block operation
-   * can carry them: a table that stayed in place while its widths, shading,
-   * borders or header row changed reads as unedited. Each difference is
-   * written as the target's property set plus a `w:tblPrChange` /
-   * `w:trPrChange` / `w:tcPrChange` holding the previous one, which is what a
-   * reject restores. A set that already agrees produces no revision.
-   */
-  matchStoryTableGeometry({
-    story = MAIN_STORY,
-    targetTables,
-    pairings,
-    revisionStamp,
-  }: FolioMatchStoryTableGeometryOptions): number {
-    const state = this.getEditableStoryState(story);
-    if (!state || pairings.length === 0) {
-      return revisionStamp.idSeed;
-    }
-    const transaction = state.tr;
-    const { nextRevisionId } = matchTableGeometry({
-      tr: transaction,
-      baseTables: folioStoryTables(state.doc),
-      targetTables,
-      pairings,
-      revision: {
-        author: this.author,
-        date: revisionStamp.date,
-        idSeed: revisionStamp.idSeed,
-      },
-    });
-    if (transaction.docChanged) {
-      this.setEditableStoryState(story, state.apply(transaction));
-    }
-    return nextRevisionId;
-  }
-
   /** Read one story through an immutable reviewed-view projection. */
   readReviewedStory(options: FolioReadReviewedStoryOptions = {}): FolioReviewedStory | null {
     const story = options.story ?? MAIN_STORY;
@@ -935,13 +1045,13 @@ export class FolioDocxReviewer {
 
   /** Resolve one editable story to its original or final state. */
   resolveReviewedStory({ story = MAIN_STORY, view }: FolioResolveReviewedStoryOptions): boolean {
-    return this.resolveReviewedStorySnapshotInternal({ story, view }) !== null;
+    return this.resolveReviewedStoryInternal({ story, view }) !== null;
   }
 
-  private resolveReviewedStorySnapshotInternal({
+  private resolveReviewedStoryInternal({
     story = MAIN_STORY,
     view,
-  }: FolioResolveReviewedStoryOptions): FolioAIEditSnapshot | null {
+  }: FolioResolveReviewedStoryOptions): PMNode | null {
     if (!isFolioResolvedReviewedView(view)) {
       throw new UnsupportedFolioReviewedViewError({
         message: "Only original and final views can replace editable story state.",
@@ -960,7 +1070,7 @@ export class FolioDocxReviewer {
       text: formatStorySnapshotForLLM(snapshot, false),
       blocks: snapshot.blocks.map(resolvedStoryBlockProjection),
     });
-    return snapshot;
+    return resolvedState.doc;
   }
 
   /**
@@ -1440,6 +1550,16 @@ export class FolioDocxReviewer {
       resolvedOverrides: new Map(this.resolvedOverrides),
       resolvedStoryExpectations: [...this.resolvedStoryExpectations.values()],
     };
+  }
+
+  /** Materialize every lazy story before taking the comparison's one state capture. */
+  private captureCompleteReviewerState(): FolioReviewerStateSnapshot {
+    for (const handle of this.listStoryHandlesInternal()) {
+      if (this.getEditableStoryState(handle) === null) {
+        return panic("A listed document story could not be materialized", { handle });
+      }
+    }
+    return this.captureReviewerState();
   }
 
   private documentFromStateSnapshot(snapshot: FolioReviewerStateSnapshot): Document {

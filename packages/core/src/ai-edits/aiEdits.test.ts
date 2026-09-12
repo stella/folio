@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import fc from "fast-check";
 import { Schema } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
@@ -15,9 +16,15 @@ import {
 import { applyFolioAIEditOperations, type FolioWordDiffOptions } from "./apply";
 import { resolveFolioAITextRange } from "./blockRange";
 import { getTrackedChangesFromDoc } from "./read";
-import { createFolioAIEditSnapshot, createFolioAITextRangeHandle } from "./snapshot";
+import { propertyConfig } from "../../../../test/property-testing";
+import {
+  createFolioAIEditSnapshot,
+  createFolioAITextRangeHandle,
+  hashFolioAIBlockText,
+  normalizeFolioAIBlockText,
+} from "./snapshot";
 import type { FolioAIEditOperation } from "./types";
-import { createScopedWordDiffOptions } from "./word-diff";
+import { createScopedWordDiffOptions } from "../compare/text-diff";
 
 const schema = new Schema({
   nodes: {
@@ -441,15 +448,11 @@ describe("Folio AI edit operations", () => {
 
     expect(result.applied.map(({ id }) => id).toSorted()).toEqual(["comment", "format"]);
     const target = view.state.doc.nodeAt(8);
-    expect(target?.marks.map((mark) => mark.type.name).toSorted()).toEqual([
-      "bold",
-      "comment",
-      "runFormattingOverride",
-    ]);
+    expect(target?.marks.map((mark) => mark.type.name).toSorted()).toEqual(["bold", "comment"]);
     expect(
       createFolioAIEditSnapshot(view.state.doc)
         .blocks.at(0)
-        ?.previewRuns?.find(({ text }) => text === "target")?.directFormatting,
+        ?.previewRuns?.find(({ text }) => text === "target")?.authoredFormatting,
     ).toEqual({ bold: true });
   });
 
@@ -484,7 +487,7 @@ describe("Folio AI edit operations", () => {
 
     const accepting = applyFormatting();
     expect(collectMarksByText(accepting.view.state)).toEqual({
-      target: ["italic", "runPropertyChange", "runFormattingOverride"],
+      target: ["italic", "runPropertyChange"],
     });
     expect(getTrackedChangesFromDoc(accepting.view.state.doc)).toEqual([
       expect.objectContaining({
@@ -496,11 +499,11 @@ describe("Folio AI edit operations", () => {
     ]);
     acceptAIEditRevision(accepting.revisionId)(accepting.view.state, accepting.view.dispatch);
     expect(collectMarksByText(accepting.view.state)).toEqual({
-      target: ["italic", "runFormattingOverride"],
+      target: ["italic"],
     });
     expect(
       createFolioAIEditSnapshot(accepting.view.state.doc).blocks.at(0)?.previewRuns?.at(0)
-        ?.directFormatting,
+        ?.authoredFormatting,
     ).toEqual({ italic: true });
 
     const rejecting = applyFormatting();
@@ -569,8 +572,12 @@ describe("Folio AI edit operations", () => {
     const accepting = applyFormatting();
     acceptAllChanges()(accepting.state, accepting.dispatch);
     expect(collectMarksByText(accepting.state)).toEqual({
-      target: ["italic", "runFormattingOverride"],
+      target: ["italic"],
     });
+    expect(
+      createFolioAIEditSnapshot(accepting.state.doc).blocks.at(0)?.previewRuns?.at(0)
+        ?.authoredFormatting,
+    ).toEqual({ italic: true });
 
     const rejecting = applyFormatting();
     rejectAllChanges()(rejecting.state, rejecting.dispatch);
@@ -688,6 +695,50 @@ describe("Folio AI edit operations", () => {
     expect(result.applied).toEqual([]);
     expect(result.skipped).toEqual([{ id: "replace", reason: "changedBlock" }]);
     expect(view.state.doc.textContent).toBe("AB");
+  });
+
+  test("different zero-width structure cannot inherit a colliding stable anchor", () => {
+    const text = "x".repeat(4_096);
+    const stateWithBoundary = (offset: number, clear?: "all") =>
+      EditorState.create({
+        schema,
+        doc: schema.node("doc", null, [
+          schema.node("paragraph", { paraId: "AAAA0001" }, [
+            schema.text(text.slice(0, offset)),
+            schema.node("pageBreakRun", clear === undefined ? null : { clear }),
+            schema.text(text.slice(offset)),
+          ]),
+        ]),
+      });
+    const snapshot = createFolioAIEditSnapshot(stateWithBoundary(322, "all").doc);
+    const liveState = stateWithBoundary(4_047);
+    const liveSnapshot = createFolioAIEditSnapshot(liveState.doc);
+
+    expect(snapshot.blocks.at(0)?.structuralBoundaries).not.toEqual(
+      liveSnapshot.blocks.at(0)?.structuralBoundaries,
+    );
+    expect(snapshot.anchors["AAAA0001"]?.structuralBoundaryHash).toBe(
+      liveSnapshot.anchors["AAAA0001"]?.structuralBoundaryHash,
+    );
+
+    const view = makeView(liveState);
+    const result = applyFolioAIEditOperations({
+      view,
+      snapshot,
+      operations: [
+        {
+          id: "insert",
+          type: "insertAfterBlock",
+          blockId: "AAAA0001",
+          text: "Must not be inserted.",
+        },
+      ],
+      mode: "direct",
+    });
+
+    expect(result.applied).toEqual([]);
+    expect(result.skipped).toEqual([{ id: "insert", reason: "changedBlock" }]);
+    expect(view.state.doc.childCount).toBe(1);
   });
 
   test("an entirely empty document is one blank block", () => {
@@ -871,17 +922,19 @@ describe("Folio AI edit operations", () => {
       { text: "Plain " },
       {
         text: "Styled",
-        bold: true,
-        italic: true,
-        underline: true,
-        fontFamily: "Aptos",
-        fontSizePt: 14,
-        directFormatting: {
+        effectiveFormatting: {
           bold: true,
+          fontFamily: { ascii: "Aptos", hAnsi: "Aptos" },
+          fontSize: 28,
           italic: true,
-          underline: true,
-          fontFamily: "Aptos",
-          fontSizePt: 14,
+          underline: { style: "single" },
+        },
+        authoredFormatting: {
+          bold: true,
+          fontFamily: { ascii: "Aptos", hAnsi: "Aptos" },
+          fontSize: 28,
+          italic: true,
+          underline: { style: "single" },
         },
       },
       { text: " No underline" },
@@ -917,17 +970,28 @@ describe("Folio AI edit operations", () => {
     });
 
     expect(createFolioAIEditSnapshot(state.doc).blocks.at(0)?.previewRuns).toEqual([
-      { text: "Inherited ", fontFamily: "Arial", fontSizePt: 11 },
+      {
+        text: "Inherited ",
+        effectiveFormatting: {
+          fontFamily: { ascii: "Arial", hAnsi: "Arial" },
+          fontSize: 22,
+        },
+      },
       {
         text: "Direct",
-        fontFamily: "Georgia",
-        fontSizePt: 12,
-        directFormatting: { fontFamily: "Georgia", fontSizePt: 12 },
+        effectiveFormatting: {
+          fontFamily: { ascii: "Georgia", hAnsi: "Georgia" },
+          fontSize: 24,
+        },
+        authoredFormatting: {
+          fontFamily: { ascii: "Georgia", hAnsi: "Georgia" },
+          fontSize: 24,
+        },
       },
     ]);
   });
 
-  test("does not render explicit underline none as a formatted preview run", () => {
+  test("preserves resolved underline none without reporting run authorship", () => {
     const state = EditorState.create({
       schema,
       doc: schema.node("doc", null, [
@@ -939,7 +1003,12 @@ describe("Folio AI edit operations", () => {
 
     const snapshot = createFolioAIEditSnapshot(state.doc);
 
-    expect(snapshot.blocks[0]?.previewRuns).toBeUndefined();
+    expect(snapshot.blocks[0]?.previewRuns).toEqual([
+      {
+        text: "Cleared underline",
+        effectiveFormatting: { underline: { style: "none" } },
+      },
+    ]);
   });
 
   test("applies safe replacements as tracked changes with an attached comment", () => {
@@ -1095,6 +1164,66 @@ describe("Folio AI edit operations", () => {
     expect(result.applied).toHaveLength(1);
     expect(result.skipped).toEqual([]);
     expect(view.state.doc.child(2).textContent).toBe("Renamed paragraph.");
+  });
+
+  test("different canonical text cannot inherit a colliding positional anchor", () => {
+    fc.assert(
+      fc.property(fc.stringMatching(/^[A-Za-z0-9]{0,12}$/u), (prefix) => {
+        const snapshotText = `${prefix}resource-1r`;
+        const liveText = `${prefix}resource-30`;
+        const normalizedSnapshotText = normalizeFolioAIBlockText(snapshotText);
+        const normalizedLiveText = normalizeFolioAIBlockText(liveText);
+
+        // The generated pair must reach the collision boundary or the guard is vacuous.
+        expect(normalizedLiveText).not.toBe(normalizedSnapshotText);
+        expect(hashFolioAIBlockText(normalizedLiveText)).toBe(
+          hashFolioAIBlockText(normalizedSnapshotText),
+        );
+
+        const snapshot = createFolioAIEditSnapshot(makeState([snapshotText]).doc);
+        const view = makeView(makeState([liveText]));
+        const result = applyFolioAIEditOperations({
+          view,
+          snapshot,
+          operations: [
+            {
+              id: "insert",
+              type: "insertAfterBlock",
+              blockId: "seq-0001",
+              text: "Must not be inserted.",
+            },
+          ],
+          mode: "direct",
+        });
+
+        expect(result.applied).toEqual([]);
+        expect(result.skipped).toEqual([{ id: "insert", reason: "changedBlock" }]);
+        expect(view.state.doc.childCount).toBe(1);
+        expect(view.state.doc.firstChild?.textContent).toBe(liveText);
+
+        const viewWithOriginalTarget = makeView(makeState([liveText, snapshotText]));
+        const resolved = applyFolioAIEditOperations({
+          view: viewWithOriginalTarget,
+          snapshot,
+          operations: [
+            {
+              id: "insert",
+              type: "insertAfterBlock",
+              blockId: "seq-0001",
+              text: "Expected insertion.",
+            },
+          ],
+          mode: "direct",
+        });
+
+        expect(resolved.skipped).toEqual([]);
+        expect(resolved.applied.map(({ id }) => id)).toEqual(["insert"]);
+        expect(viewWithOriginalTarget.state.doc.child(0).textContent).toBe(liveText);
+        expect(viewWithOriginalTarget.state.doc.child(1).textContent).toBe(snapshotText);
+        expect(viewWithOriginalTarget.state.doc.child(2).textContent).toBe("Expected insertion.");
+      }),
+      propertyConfig({ numRuns: 50 }),
+    );
   });
 
   test("paraId-anchored op resolves the right block when a same-text duplicate appears before it", () => {

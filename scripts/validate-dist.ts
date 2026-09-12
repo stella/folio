@@ -18,9 +18,10 @@
 //
 //   docx-core — runtime, types, externals, packaged assets, and attribution.
 //
-//   core  — 4 checks:
-//     1. Runtime  — ESM `import` of `.`, `/markdown`, `/server`, `/redline`, and a `./*`
-//                   wildcard subpath loads with the expected exports.
+//   core  — 3 checks:
+//     1. Runtime  — ESM `import` of `.`, `/markdown`, `/server`, and a `./*`
+//                   wildcard subpath loads with the expected exports; the
+//                   representation-neutral comparison executes successfully.
 //     2. Types    — a `.ts` consumer importing every surface typechecks under
 //                   both `moduleResolution: node16` and `bundler`.
 //     3. External — React is never bundled; prosemirror/jszip stay external.
@@ -271,7 +272,13 @@ const runtimeExpect: Record<string, Record<string, string[]>> = {
     ],
   },
   core: {
-    "@stll/folio-core": ["createEmptyDocument", "createDocx", "deriveBlockId"],
+    "@stll/folio-core": [
+      "compareContent",
+      "compareDocx",
+      "createEmptyDocument",
+      "createDocx",
+      "deriveBlockId",
+    ],
     "@stll/folio-core/markdown": ["toMarkdown", "fromMarkdown", "toMarkdownResult"],
     "@stll/folio-core/server": [
       "deriveBlockId",
@@ -282,7 +289,6 @@ const runtimeExpect: Record<string, Record<string, string[]>> = {
       "FolioDocxReviewer",
       "applyFolioAIEditsToBuffer",
     ],
-    "@stll/folio-core/redline": ["generateRedlineDocx"],
     "@stll/folio-core/types/block-id": ["deriveBlockId", "isFolioBlockId"],
   },
   react: {
@@ -358,6 +364,34 @@ try {
 `
     : "";
 
+const coreComparisonRuntimeCheck =
+  target === "core"
+    ? `
+try {
+  const { compareContent } = await import("@stll/folio-core");
+  const comparison = compareContent({
+    base: {
+      blocks: [{ identity: { type: "authoritative", id: "clause-1" }, kind: "clause", text: "Same" }],
+    },
+    revised: {
+      blocks: [{ identity: { type: "authoritative", id: "clause-1" }, kind: "clause", text: "Same" }],
+    },
+  });
+  const event = comparison.isErr() ? undefined : comparison.value.events[0];
+  if (
+    comparison.isErr() ||
+    comparison.value.events.length !== 1 ||
+    event?.type !== "unchanged" ||
+    event.relation.base.block.identity.id !== "clause-1" ||
+    event.relation.revised.block.identity.id !== "clause-1"
+  ) {
+    failed = true;
+    console.error("compareContent did not preserve an unchanged block's identities");
+  }
+} catch (err) { failed = true; console.error("compareContent threw: " + (err?.message ?? err)); }
+`
+    : "";
+
 // --- Check 1: runtime ESM import -------------------------------------------
 const runtimeScript = `
 const expect = ${JSON.stringify(runtimeExpect[target])};
@@ -371,6 +405,7 @@ for (const [spec, names] of Object.entries(expect)) {
 }
 ${messagesRuntimeCheck}
 ${nuxtRuntimeCheck}
+${coreComparisonRuntimeCheck}
 process.exit(failed ? 1 : 0);
 `;
 const runtimeFile = path.join(consumerDir, "runtime-check.mjs");
@@ -414,14 +449,37 @@ export const used = [
 export type Surface = [Document, Paragraph, Run, DocxProjectionWire, DocxPackageProjectionWire];
 `,
   core: `
-import { createEmptyDocument, createDocx, type Document } from "@stll/folio-core";
+import {
+  compareContent,
+  compareDocx,
+  createEmptyDocument,
+  createDocx,
+  type CompareContentOptions,
+  type CompareResult,
+  type Document,
+  type FolioContentComparison,
+  type FolioContentInputBlock,
+} from "@stll/folio-core";
 import { fromMarkdown, toMarkdown, type MarkdownOptions } from "@stll/folio-core/markdown";
-import { generateRedlineDocx, type GenerateRedlineDocxResult } from "@stll/folio-core/redline";
 import { deriveBlockId, type FolioBlockId } from "@stll/folio-core/server";
 import { isFolioBlockId } from "@stll/folio-core/types/block-id";
 
-export const used = [createEmptyDocument, createDocx, fromMarkdown, toMarkdown, generateRedlineDocx, deriveBlockId, isFolioBlockId];
-export type Surface = [Document, MarkdownOptions, GenerateRedlineDocxResult, FolioBlockId];
+const baseBlock = {
+  identity: { type: "authoritative", id: "clause-1" },
+  kind: "clause",
+  text: "Before",
+} as const satisfies FolioContentInputBlock;
+const revisedBlock = { ...baseBlock, text: "After" } satisfies FolioContentInputBlock;
+const comparisonOptions = {
+  base: { blocks: [baseBlock] },
+  revised: { blocks: [revisedBlock] },
+} satisfies CompareContentOptions;
+const comparison = compareContent(comparisonOptions);
+if (comparison.isErr()) throw comparison.error;
+const comparisonResult = comparison.value satisfies FolioContentComparison;
+
+export const used = [compareContent, compareDocx, createEmptyDocument, createDocx, fromMarkdown, toMarkdown, deriveBlockId, isFolioBlockId, comparisonResult.events];
+export type Surface = [CompareContentOptions, CompareResult, Document, FolioContentComparison, FolioContentInputBlock, MarkdownOptions, FolioBlockId];
 `,
   react: `
 import { DocxEditor, FolioUIProvider, createDocx, type DocxEditorProps } from "@stll/folio-react";

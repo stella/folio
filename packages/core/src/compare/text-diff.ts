@@ -1,5 +1,5 @@
 /**
- * Diff between two strings, as the segments a redline is drawn from.
+ * Pure bounded text comparison for representation-neutral content.
  *
  * Tokenises (by default on whitespace boundaries, preserving the whitespace as
  * part of each token), runs an LCS, and returns a left-to-right ordered list of

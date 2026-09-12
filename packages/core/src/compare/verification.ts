@@ -14,14 +14,24 @@
  */
 
 import { PARAGRAPH_MARK_CHANGE_KINDS, type ParagraphMarkChangeKind } from "@stll/docx-core/model";
+import { panic } from "better-result";
 
 import type { FolioDocumentStoryHandle } from "../ai-edits/headless";
-import type { FolioAIBlock, FolioAIBlockPreviewRun } from "../ai-edits/types";
-import { paragraphSpacingEqual } from "../prosemirror/paragraphSpacing";
-import { resolveColorToHex } from "../utils/colorResolver";
-
-const normalizeInlineFormattingColor = (color: string | undefined): string | undefined =>
-  resolveColorToHex(color === undefined ? undefined : { rgb: color }, null);
+import type {
+  FolioContentBlock,
+  FolioContentPropertySet,
+  FolioContentRun,
+  FolioContentTableLocation,
+} from "./content-types";
+import {
+  FOLIO_CONTENT_BLOCK_FIELD_DESCRIPTORS,
+  FOLIO_CONTENT_CONTAINER_FIELD_DESCRIPTORS,
+  FOLIO_CONTENT_IDENTITY_FIELD_DESCRIPTORS,
+  FOLIO_CONTENT_PARAGRAPH_FORMATTING_FIELD_DESCRIPTORS,
+  FOLIO_CONTENT_RUN_FIELD_DESCRIPTORS,
+  FOLIO_CONTENT_STRUCTURAL_BOUNDARY_FIELD_DESCRIPTORS,
+  FOLIO_CONTENT_TABLE_FIELD_DESCRIPTORS,
+} from "./content-types";
 
 /** The two directions of the round trip, each an invariant of its own. */
 export const COMPARE_VERIFICATION_INVARIANTS = Object.freeze([
@@ -63,17 +73,24 @@ export const COMPARE_VERIFICATION_CAUSES = Object.freeze([
   "alignment",
   "spacing",
   "inline-formatting",
+  /** A known semantic difference has no supported transport instruction. */
+  "unsupported",
   "whitespace",
   "text",
 ] as const);
 
 export type CompareVerificationCause = (typeof COMPARE_VERIFICATION_CAUSES)[number];
 
-/** One invariant that did not hold, in one story. */
+/** The package or exact story whose round-trip invariant did not hold. */
+export type CompareVerificationScope =
+  | { readonly type: "package" }
+  | { readonly type: "story"; readonly story: FolioDocumentStoryHandle };
+
+/** One invariant that did not hold at its typed package or story scope. */
 export type CompareVerificationFailure = {
   invariant: CompareVerificationInvariant;
   cause: CompareVerificationCause;
-  story: FolioDocumentStoryHandle;
+  scope: CompareVerificationScope;
   /** Structural facts only: counts, offsets, container kinds. Safe to quote. */
   detail: string;
 };
@@ -82,230 +99,17 @@ export type CompareVerificationFailure = {
  * Whether the redline was proven to round-trip.
  *
  * `unverified` is only ever returned when the caller asked for it with
- * `onUnverified: "emit"`; the default refuses instead, because a redline that
+ * `mode: "bestEffort"`; the default refuses instead, because a redline that
  * reads plausibly and is wrong is worse than no redline.
  */
 export type CompareVerification =
   | { status: "verified" }
   | { status: "unverified"; failures: readonly CompareVerificationFailure[] };
 
-const supportedInlineStyle = ({
-  bold,
-  italic,
-  underline,
-  strike,
-  fontFamily,
-  fontSizePt,
-  color,
-  directFormatting,
-}: FolioAIBlockPreviewRun): string =>
-  JSON.stringify([
-    bold === true,
-    italic === true,
-    underline === true,
-    strike === true,
-    fontFamily ?? null,
-    fontSizePt ?? null,
-    normalizeInlineFormattingColor(color) ?? null,
-    directFormatting?.bold ?? null,
-    directFormatting?.italic ?? null,
-    directFormatting?.underline ?? null,
-    directFormatting?.strike ?? null,
-    directFormatting?.fontFamily ?? null,
-    directFormatting?.fontSizePt ?? null,
-    normalizeInlineFormattingColor(directFormatting?.color ?? undefined) ?? null,
-  ]);
-
-/** Effective supported formatting with equivalent adjacent runs normalized. */
-export const projectSupportedInlineFormatting = ({ text, previewRuns }: FolioAIBlock): string => {
-  const projected: { length: number; style: string }[] = [];
-  for (const run of previewRuns ?? [{ text }]) {
-    if (run.text.length === 0) {
-      continue;
-    }
-    const style = supportedInlineStyle(run);
-    const previous = projected.at(-1);
-    if (previous?.style === style) {
-      previous.length += run.text.length;
-      continue;
-    }
-    projected.push({ length: run.text.length, style });
-  }
-  return projected.map(({ length, style }) => `${String(length)}:${style}`).join(",");
-};
-
-type ProjectedBlock = Pick<
-  FolioAIBlock,
-  | "text"
-  | "table"
-  | "styleId"
-  | "listLevel"
-  | "directAlignment"
-  | "directSpacing"
-  | "structuralBoundaries"
->;
-
-type ProjectedTableContainer = NonNullable<ProjectedBlock["table"]>;
-
-const sameContainer = (
-  left: ProjectedTableContainer | undefined,
-  right: ProjectedTableContainer | undefined,
-): boolean => {
-  if (!left || !right) {
-    return left === right;
-  }
-  return (
-    left.outerTableIndex === right.outerTableIndex &&
-    left.tableIndex === right.tableIndex &&
-    left.rowIndex === right.rowIndex &&
-    left.cellIndex === right.cellIndex &&
-    left.gridColumnIndex === right.gridColumnIndex &&
-    left.columnSpan === right.columnSpan &&
-    left.rowSpan === right.rowSpan &&
-    left.paragraphIndex === right.paragraphIndex
-  );
-};
-
-const sameStructuralBoundaries = (
-  left: FolioAIBlock["structuralBoundaries"],
-  right: FolioAIBlock["structuralBoundaries"],
-): boolean => {
-  const leftLength = left?.length ?? 0;
-  if (leftLength !== (right?.length ?? 0)) {
-    return false;
-  }
-  if (leftLength === 0) {
-    return true;
-  }
-  if (left === undefined || right === undefined) {
-    return false;
-  }
-
-  for (let index = 0; index < leftLength; index++) {
-    const boundary = left[index];
-    const other = right[index];
-    if (
-      boundary === undefined ||
-      other === undefined ||
-      boundary.type !== other.type ||
-      boundary.offset !== other.offset ||
-      boundary.clear !== other.clear
-    ) {
-      return false;
-    }
-  }
-  return true;
-};
-
-const sameProjectedBlock = (left: ProjectedBlock, right: ProjectedBlock): boolean =>
-  sameContainer(left.table, right.table) &&
-  sameStructuralBoundaries(left.structuralBoundaries, right.structuralBoundaries) &&
-  left.styleId === right.styleId &&
-  left.listLevel === right.listLevel &&
-  left.directAlignment === right.directAlignment &&
-  paragraphSpacingEqual(left.directSpacing, right.directSpacing) &&
-  left.text === right.text;
-
-const containerKind = (container: ProjectedTableContainer | undefined): "body" | "cell" =>
-  container ? "cell" : "body";
-
 const collapseWhitespace = (text: string): string => text.replace(/\s+/gu, " ").trim();
-
-const sameBlockProjection = (
-  left: readonly ProjectedBlock[],
-  right: readonly ProjectedBlock[],
-): boolean =>
-  left.length === right.length &&
-  left.every((entry, index) => {
-    const other = right[index];
-    return other !== undefined && sameProjectedBlock(entry, other);
-  });
 
 const sameStringProjection = (left: readonly string[], right: readonly string[]): boolean =>
   left.length === right.length && left.every((entry, index) => entry === right[index]);
-
-/**
- * The same projection with every table coordinate renumbered by first
- * appearance, so it counts the blocks the model holds rather than the
- * paragraphs the package contains.
- *
- * The snapshot skips a hidden row's whole subtree, so a table that hides a row
- * on one side only reports every later row one position along. No operation
- * can put a block at those coordinates, because none can create or remove the
- * hidden row that produces them. When two projections agree here and disagree
- * on the raw coordinates, the redline holds every block the other side does,
- * in order, and the difference is one the block model cannot see.
- */
-const byVisibleOrdinal = (entries: readonly ProjectedBlock[]): ProjectedBlock[] => {
-  const ordinals = new Map<string, number>();
-  const counts = new Map<string, number>();
-  const ordinalWithin = (scope: string, index: string): number => {
-    const key = `${scope}:${index}`;
-    const existing = ordinals.get(key);
-    if (existing !== undefined) {
-      return existing;
-    }
-    const next = counts.get(scope) ?? 0;
-    counts.set(scope, next + 1);
-    ordinals.set(key, next);
-    return next;
-  };
-
-  const paragraphCounts = new Map<string, number>();
-  return entries.map((entry) => {
-    const container = entry.table;
-    if (!container) {
-      return entry;
-    }
-    const outerTableOrdinal = ordinalWithin("t", String(container.outerTableIndex));
-    const tableOrdinal = ordinalWithin("t", String(container.tableIndex));
-    const rowScope = `r${String(tableOrdinal)}`;
-    const rowOrdinal = ordinalWithin(rowScope, String(container.rowIndex));
-    const cellScope = `c${String(tableOrdinal)}.${String(rowOrdinal)}`;
-    const cellOrdinal = ordinalWithin(cellScope, String(container.cellIndex));
-    const cellKey = `${cellScope}:${String(container.cellIndex)}`;
-    const paragraphOrdinal = paragraphCounts.get(cellKey) ?? 0;
-    paragraphCounts.set(cellKey, paragraphOrdinal + 1);
-    return {
-      ...entry,
-      table: {
-        ...container,
-        outerTableIndex: outerTableOrdinal,
-        tableIndex: tableOrdinal,
-        rowIndex: rowOrdinal,
-        cellIndex: cellOrdinal,
-        paragraphIndex: paragraphOrdinal,
-      },
-    };
-  });
-};
-
-/**
- * Where two projections first diverge, and what diverged there. A pair that
- * matches everywhere but in length diverges at the shorter one's end.
- */
-const firstDivergence = (
-  actual: readonly ProjectedBlock[],
-  expected: readonly ProjectedBlock[],
-): { index: number; actual: ProjectedBlock | null; expected: ProjectedBlock | null } => {
-  const shared = Math.min(actual.length, expected.length);
-  for (let index = 0; index < shared; index++) {
-    const left = actual[index];
-    const right = expected[index];
-    if (left !== undefined && right !== undefined && !sameProjectedBlock(left, right)) {
-      return {
-        index,
-        actual: left,
-        expected: right,
-      };
-    }
-  }
-  return {
-    index: shared,
-    actual: actual.at(shared) ?? null,
-    expected: expected.at(shared) ?? null,
-  };
-};
 
 type ClassifyOptions<T> = {
   invariant: CompareVerificationInvariant;
@@ -335,84 +139,286 @@ export const classifyGeometryMismatch = ({
     actual.length === expected.length
       ? `table ${String(actual.findIndex((entry, index) => entry !== expected[index]))} of ${String(actual.length)} carries different properties`
       : `${String(actual.length)} tables against ${String(expected.length)}`;
-  return { invariant, cause: "table-geometry", story, detail };
+  return { invariant, cause: "table-geometry", scope: { type: "story", story }, detail };
+};
+
+const sameCanonicalValue = (left: unknown, right: unknown): boolean =>
+  JSON.stringify(left) === JSON.stringify(right);
+
+const sameCanonicalIdentity = (
+  left: FolioContentBlock["identity"],
+  right: FolioContentBlock["identity"],
+): boolean =>
+  Object.values(FOLIO_CONTENT_IDENTITY_FIELD_DESCRIPTORS).every((descriptor) =>
+    sameCanonicalValue(Reflect.get(left, descriptor.field), Reflect.get(right, descriptor.field)),
+  );
+
+const sameCanonicalTableLocation = (
+  left: FolioContentTableLocation | undefined,
+  right: FolioContentTableLocation | undefined,
+): boolean => {
+  if (!left || !right) return left === right;
+  for (const descriptor of Object.values(FOLIO_CONTENT_TABLE_FIELD_DESCRIPTORS)) {
+    switch (descriptor.verification) {
+      case "transport-identity":
+        break;
+      case "exact":
+        if (
+          !sameCanonicalValue(
+            Reflect.get(left, descriptor.field),
+            Reflect.get(right, descriptor.field),
+          )
+        ) {
+          return false;
+        }
+        break;
+      default: {
+        const exhaustive: never = descriptor;
+        return exhaustive;
+      }
+    }
+  }
+  return true;
+};
+
+const sameCanonicalContainerPath = (
+  left: FolioContentBlock["containerPath"],
+  right: FolioContentBlock["containerPath"],
+): boolean =>
+  left.length === right.length &&
+  left.every((entry, index) => {
+    const other = right[index];
+    if (!other) return false;
+    return Object.values(FOLIO_CONTENT_CONTAINER_FIELD_DESCRIPTORS).every((descriptor) => {
+      if (descriptor.field === "identity") {
+        return sameCanonicalIdentity(entry.identity, other.identity);
+      }
+      return sameCanonicalValue(
+        Reflect.get(entry, descriptor.field),
+        Reflect.get(other, descriptor.field),
+      );
+    });
+  });
+
+const sameCanonicalRuns = (
+  left: readonly FolioContentRun[],
+  right: readonly FolioContentRun[],
+): boolean =>
+  left.length === right.length &&
+  left.every((run, index) => {
+    const other = right[index];
+    if (!other) return false;
+    return Object.values(FOLIO_CONTENT_RUN_FIELD_DESCRIPTORS).every((descriptor) =>
+      sameCanonicalValue(Reflect.get(run, descriptor.field), Reflect.get(other, descriptor.field)),
+    );
+  });
+
+const sameCanonicalParagraphFormatting = (
+  left: FolioContentBlock["paragraphFormatting"],
+  right: FolioContentBlock["paragraphFormatting"],
+): boolean =>
+  Object.values(FOLIO_CONTENT_PARAGRAPH_FORMATTING_FIELD_DESCRIPTORS).every((descriptor) =>
+    sameCanonicalValue(Reflect.get(left, descriptor.field), Reflect.get(right, descriptor.field)),
+  );
+
+const sameCanonicalStructuralBoundaries = (
+  left: FolioContentBlock["structuralBoundaries"],
+  right: FolioContentBlock["structuralBoundaries"],
+): boolean =>
+  left.length === right.length &&
+  left.every((boundary, index) => {
+    const other = right[index];
+    if (!other) return false;
+    return Object.values(FOLIO_CONTENT_STRUCTURAL_BOUNDARY_FIELD_DESCRIPTORS).every((descriptor) =>
+      sameCanonicalValue(
+        Reflect.get(boundary, descriptor.field),
+        Reflect.get(other, descriptor.field),
+      ),
+    );
+  });
+
+const sameCanonicalProperties = (
+  left: FolioContentPropertySet,
+  right: FolioContentPropertySet,
+): boolean => sameCanonicalValue(left, right);
+
+const paragraphPropertyChanged = (
+  left: FolioContentPropertySet,
+  right: FolioContentPropertySet,
+  keys: ReadonlySet<string>,
+): boolean => {
+  const selected = (properties: FolioContentPropertySet): FolioContentPropertySet =>
+    properties.filter(({ key }) => keys.has(key));
+  return !sameCanonicalProperties(selected(left), selected(right));
+};
+
+const SPACING_PROPERTY_KEYS = new Set([
+  "spaceBefore",
+  "spaceAfter",
+  "lineSpacing",
+  "lineSpacingRule",
+  "beforeAutospacing",
+  "afterAutospacing",
+]);
+
+type CanonicalClassifyOptions = Omit<ClassifyOptions<FolioContentBlock>, "actual" | "expected"> & {
+  actual: readonly FolioContentBlock[];
+  expected: readonly FolioContentBlock[];
 };
 
 /**
- * The failure two projections describe, or `null` when they agree.
- *
- * Total over the causes by construction: the last branch is unconditional, so
- * a divergence always produces a failure rather than being dropped.
+ * Compare the complete owned neutral projection produced from a live DOCX
+ * model. Stable transport ids are deliberately excluded: accepting a change
+ * preserves the base package's ids while the semantic target may carry other
+ * ones. Every modeled content, presentation, and ownership field is checked.
  */
-export const classifyProjectionMismatch = ({
+export const classifyContentProjectionMismatch = ({
   invariant,
   story,
   actual,
   expected,
-}: ClassifyOptions<ProjectedBlock>): CompareVerificationFailure | null => {
-  if (sameBlockProjection(actual, expected)) {
-    return null;
-  }
+}: CanonicalClassifyOptions): CompareVerificationFailure | null => {
   const failure = (
     cause: CompareVerificationCause,
     detail: string,
   ): CompareVerificationFailure => ({
     invariant,
     cause,
-    story,
+    scope: { type: "story", story },
     detail,
   });
-
-  if (sameBlockProjection(byVisibleOrdinal(actual), byVisibleOrdinal(expected))) {
-    return failure(
-      "invisible-structure",
-      `every block matches once table coordinates count visible blocks (${String(expected.length)} blocks)`,
-    );
-  }
-
-  const divergence = firstDivergence(actual, expected);
-  const at = `at block ${String(divergence.index)}/${String(expected.length)}`;
-  const counts = `${String(actual.length)} blocks against ${String(expected.length)}`;
-  if (divergence.actual === null || divergence.expected === null) {
-    const side = actual.length > expected.length ? "more" : "fewer";
-    return failure("block-count", `${side} blocks than expected (${counts}), diverging ${at}`);
-  }
-  const { actual: left, expected: right } = divergence;
-  if (!sameContainer(left.table, right.table)) {
-    return failure(
-      "container",
-      `a block sits in a ${containerKind(left.table)} where it is expected in a ${containerKind(right.table)}, ${at} (${counts})`,
-    );
-  }
-  if (!sameStructuralBoundaries(left.structuralBoundaries, right.structuralBoundaries)) {
-    return failure(
-      "inline-structure",
-      `a block's zero-width inline structure does not match ${at} (${counts})`,
-    );
-  }
-  if (left.text === right.text && left.styleId !== right.styleId) {
-    return failure("style", `the paragraph style did not move ${at} (${counts})`);
-  }
-  if (left.text === right.text && left.listLevel !== right.listLevel) {
-    return failure("list-level", `the list level did not move ${at} (${counts})`);
-  }
-  if (left.text === right.text && left.directAlignment !== right.directAlignment) {
-    return failure("alignment", `the direct paragraph alignment did not move ${at} (${counts})`);
-  }
-  if (left.text === right.text && !paragraphSpacingEqual(left.directSpacing, right.directSpacing)) {
-    return failure("spacing", `the direct paragraph spacing did not move ${at} (${counts})`);
-  }
-  if (collapseWhitespace(left.text) === collapseWhitespace(right.text)) {
-    return failure("whitespace", `a block's text differs only in whitespace ${at} (${counts})`);
-  }
   if (actual.length !== expected.length) {
-    return failure("block-count", `${counts}, first differing ${at}`);
+    return failure(
+      "block-count",
+      `${String(actual.length)} blocks against ${String(expected.length)}`,
+    );
   }
-  return failure(
-    "text",
-    `a ${containerKind(left.table)} block's text does not match ${at}, ` +
-      `length ${String(left.text.length)} against ${String(right.text.length)} (${counts})`,
-  );
+  for (const [index, right] of expected.entries()) {
+    const left = actual[index];
+    if (!left) {
+      return failure("block-count", `a block is missing at index ${String(index)}`);
+    }
+    const at = `at block ${String(index)}/${String(expected.length)}`;
+    const mismatches = new Set<keyof FolioContentBlock>();
+    for (const descriptor of Object.values(FOLIO_CONTENT_BLOCK_FIELD_DESCRIPTORS)) {
+      switch (descriptor.verification) {
+        case "transport-identity":
+          break;
+        case "exact":
+          if (
+            !sameCanonicalValue(
+              Reflect.get(left, descriptor.field),
+              Reflect.get(right, descriptor.field),
+            )
+          ) {
+            mismatches.add(descriptor.field);
+          }
+          break;
+        case "container":
+          if (!sameCanonicalContainerPath(left.containerPath, right.containerPath)) {
+            mismatches.add(descriptor.field);
+          }
+          break;
+        case "nested": {
+          const same = (() => {
+            switch (descriptor.field) {
+              case "paragraphFormatting":
+                return sameCanonicalParagraphFormatting(
+                  left.paragraphFormatting,
+                  right.paragraphFormatting,
+                );
+              case "runs":
+                return sameCanonicalRuns(left.runs, right.runs);
+              case "structuralBoundaries":
+                return sameCanonicalStructuralBoundaries(
+                  left.structuralBoundaries,
+                  right.structuralBoundaries,
+                );
+              case "table":
+                return sameCanonicalTableLocation(left.table, right.table);
+              default: {
+                const exhaustive: never = descriptor;
+                return panic("A nested content-verification field has no verifier", {
+                  descriptor: exhaustive,
+                });
+              }
+            }
+          })();
+          if (!same) mismatches.add(descriptor.field);
+          break;
+        }
+        default: {
+          const exhaustive: never = descriptor;
+          return exhaustive;
+        }
+      }
+    }
+    if (mismatches.size === 0) continue;
+    if (mismatches.has("table") || mismatches.has("containerPath")) {
+      return failure("container", `a block's canonical ownership differs ${at}`);
+    }
+    if (mismatches.has("structuralBoundaries")) {
+      return failure("inline-structure", `a block's inline structure differs ${at}`);
+    }
+    if (mismatches.has("kind") || mismatches.has("blockProperties")) {
+      return failure("unsupported", `a block's modeled semantics differ ${at}`);
+    }
+    const leftParagraph = left.paragraphFormatting;
+    const rightParagraph = right.paragraphFormatting;
+    if (mismatches.has("paragraphFormatting")) {
+      if (
+        paragraphPropertyChanged(
+          leftParagraph.authored,
+          rightParagraph.authored,
+          new Set(["styleId"]),
+        )
+      ) {
+        return failure("style", `the paragraph style differs ${at}`);
+      }
+      if (
+        paragraphPropertyChanged(
+          leftParagraph.authored,
+          rightParagraph.authored,
+          new Set(["numPr"]),
+        )
+      ) {
+        return failure("list-level", `the paragraph numbering differs ${at}`);
+      }
+      if (
+        paragraphPropertyChanged(
+          leftParagraph.authored,
+          rightParagraph.authored,
+          new Set(["alignment"]),
+        )
+      ) {
+        return failure("alignment", `the paragraph alignment differs ${at}`);
+      }
+      if (
+        paragraphPropertyChanged(
+          leftParagraph.authored,
+          rightParagraph.authored,
+          SPACING_PROPERTY_KEYS,
+        )
+      ) {
+        return failure("spacing", `the paragraph spacing differs ${at}`);
+      }
+      return failure("unsupported", `the paragraph presentation differs ${at}`);
+    }
+    if (mismatches.has("runs")) {
+      return failure("inline-formatting", `the inline presentation differs ${at}`);
+    }
+    if (mismatches.has("text")) {
+      if (collapseWhitespace(left.text) === collapseWhitespace(right.text)) {
+        return failure("whitespace", `a block's text differs only in whitespace ${at}`);
+      }
+      return failure(
+        "text",
+        `a block's text length ${String(left.text.length)} differs from ${String(right.text.length)} ${at}`,
+      );
+    }
+    return failure("unsupported", `an unclassified modeled block field differs ${at}`);
+  }
+  return null;
 };
 
 /**

@@ -250,19 +250,19 @@ The natural shape is a host-side tool keyed by version identifiers instead
 (e.g. a server tool the model calls with two stored version ids, which your
 backend resolves to buffers, diffs, and returns the formatted text for).
 
-To produce a reviewable package from the same pair of buffers, use
-`generateRedlineDocx`. Optional package-metadata privacy transforms are applied
-to the generated output and returned as a structured report:
+To produce a reviewable package from the same pair of buffers, use the canonical
+`compareDocx` API from `@stll/folio-core`:
 
 ```ts
-import { generateRedlineDocx } from "@stll/folio-agents";
+import { compareDocx } from "@stll/folio-core";
 
-const result = await generateRedlineDocx(previousVersionBuffer, currentVersionBuffer, {
-  privacy: { transforms: ["remove-attribution", "remove-timestamps"] },
+const result = await compareDocx(previousVersionBuffer, currentVersionBuffer, {
+  author: "Reviewer",
+  timestamp: "2024-03-01T00:00:00.000Z",
 });
+if (result.isErr()) throw result.error;
 
-await storeGeneratedPackage(result.buffer);
-console.log(result.privacyReport);
+await storeGeneratedPackage(result.value.buffer);
 ```
 
 ## TanStack AI

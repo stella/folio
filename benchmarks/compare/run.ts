@@ -20,7 +20,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { loadavg } from "node:os";
 import path from "node:path";
 
-import { compareDocx } from "@stll/folio-core/compare/compare";
+import { compareDocx } from "@stll/folio-core";
 
 import { loadCorpus, readDocument, type CorpusPair } from "./corpus";
 import {
@@ -42,6 +42,7 @@ import {
   type PairOutcome,
   type RefusalBucket,
 } from "./refusals";
+import { compareCorpusPairInBothModes } from "./refusal-modes";
 import { COMPARE_STAGES, runStagedCompare, type CompareStage } from "./stages";
 import { applyVariant, EDIT_VARIANTS, type EditVariant } from "./variants";
 import { PACKAGE_VALIDATOR_HINT, resolvePackageValidator } from "./validator";
@@ -199,7 +200,7 @@ const corpusPairBytes = (pair: CorpusPair): PairBytes => ({
   target: readDocument(pair.targetPath),
 });
 
-/** One pair's best-effort side: what `onUnverified: "emit"` gave back. */
+/** One pair's best-effort result and its explicit verification verdict. */
 const bestEffortOutcome = (
   result: Awaited<ReturnType<typeof compareDocx>>,
 ): PairOutcome["bestEffort"] => {
@@ -233,8 +234,8 @@ const printBucketTable = (
 
 /**
  * Compare every pair of an external corpus in both modes: the strict default,
- * which refuses what it cannot prove, and `onUnverified: "emit"`, which
- * returns its best attempt and says which invariants did not hold.
+ * which refuses what it cannot prove, and `mode: "bestEffort"`, which returns
+ * its best attempt and says which invariants did not hold.
  *
  * Both numbers matter and they answer different questions. The refusal rate is
  * what a caller who demands a proven redline gets; the verified share is what
@@ -264,14 +265,19 @@ const runRefusals = async (options: CliOptions): Promise<number> => {
       continue;
     }
     const { base, target } = corpusPairBytes(pair);
-    const strictResult = await compareDocx(base, target, OPTIONS);
-    const emitted = await compareDocx(base, target, { ...OPTIONS, onUnverified: "emit" });
+    const { strict: strictResult, bestEffort: bestEffortResult } =
+      await compareCorpusPairInBothModes({
+        compare: compareDocx,
+        base,
+        target,
+        options: OPTIONS,
+      });
     outcomes.push({
       id: pair.id,
       strict: strictResult.isOk()
         ? { status: "produced" }
         : { status: "refused", ...classifyRefusal(strictResult.error) },
-      bestEffort: bestEffortOutcome(emitted),
+      bestEffort: bestEffortOutcome(bestEffortResult),
     });
   }
 

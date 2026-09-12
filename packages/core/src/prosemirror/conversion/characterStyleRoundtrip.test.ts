@@ -250,9 +250,13 @@ describe("resolver-less snapshots", () => {
     expect(block?.previewRuns).toEqual([
       {
         text: "Styled",
-        bold: true,
-        fontSizePt: 15,
-        color: "#FF0000",
+        effectiveFormatting: {
+          bold: true,
+          color: { rgb: "FF0000" },
+          fontSize: 30,
+          styleId: "SnapshotCharacter",
+        },
+        authoredFormatting: { styleId: "SnapshotCharacter" },
       },
     ]);
   });

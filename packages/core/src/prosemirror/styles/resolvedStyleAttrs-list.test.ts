@@ -112,6 +112,7 @@ describe("listAttrsFromResolvedStyle (#765 applyStyle)", () => {
 
     expect(attrs["indentLeft"]).toBe(700);
     expect(attrs["indentFirstLine"]).toBeNull();
-    expect(attrs["hangingIndent"]).toBeNull();
+    expect(attrs["hangingIndent"]).toBe(false);
+    expect(attrs["listIsBullet"]).toBeNull();
   });
 });

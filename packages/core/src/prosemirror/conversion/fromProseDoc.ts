@@ -24,6 +24,7 @@ import {
   ParagraphPropertySourceValidationError,
   type ParagraphPropertySourceValidationCode,
   type TableCellParagraphPropertySourceBinding,
+  captureSynthesizedParagraphIdentity,
   copyDocumentParagraphPropertySourceContract,
   copyDocumentParagraphPropertySources,
   copyParagraphPropertyCapture,
@@ -140,6 +141,7 @@ import {
 } from "../attrs";
 import { autospacingMatchesBase, hasAutospacingBaseSide } from "../autospacingBase";
 import { directionToBidi } from "../paragraphDirection";
+import { listRenderingFromAttrs } from "../listRenderingProjection";
 import { directParagraphAlignment } from "../paragraphAlignment";
 import { directParagraphSpacing } from "../paragraphSpacing";
 import {
@@ -1358,63 +1360,6 @@ function removeTextBoxAnchorFromBlocks(blocks: BlockContent[], marker: Run): boo
 }
 
 /**
- * Inverse of toProseDoc's listRendering → list* attrs flattening. Markdown
- * export (`toMarkdown`) and re-layout of the rebuilt Document key off
- * `paragraph.listRendering`; without this, every edited document loses its
- * list markers on the way out of the editor.
- */
-function listRenderingFromAttrs(attrs: ParagraphAttrs): Paragraph["listRendering"] {
-  const numId = attrs.numPr?.numId;
-  if (numId === undefined || numId === 0) {
-    return undefined;
-  }
-  const hasRenderingInfo =
-    attrs.listMarker != null || attrs.listIsBullet || attrs.listNumFmt != null;
-  if (!hasRenderingInfo) {
-    return undefined;
-  }
-  return {
-    marker: attrs.listMarker ?? "",
-    ...(attrs.listMarkerTemplate != null && { markerTemplate: attrs.listMarkerTemplate }),
-    level: attrs.numPr?.ilvl ?? 0,
-    numId,
-    isBullet: attrs.listIsBullet ?? false,
-    ...(attrs.listIsLegal != null && { isLegal: attrs.listIsLegal }),
-    ...(attrs.listNumFmt != null && { numFmt: attrs.listNumFmt }),
-    ...(attrs.listMarkerHidden != null && {
-      markerHidden: attrs.listMarkerHidden,
-    }),
-    ...(attrs.listMarkerFormatting != null && {
-      markerFormatting: attrs.listMarkerFormatting,
-    }),
-    ...(attrs.listMarkerAlignment != null && {
-      markerAlignment: attrs.listMarkerAlignment,
-    }),
-    ...(attrs.listMarkerSuffix != null && {
-      markerSuffix: attrs.listMarkerSuffix,
-    }),
-    ...(attrs.listMarkerAllCaps != null && {
-      markerAllCaps: attrs.listMarkerAllCaps,
-    }),
-    ...(attrs.listImplicitChildLevelAdvances != null && {
-      implicitChildLevelAdvances: attrs.listImplicitChildLevelAdvances,
-    }),
-    ...(attrs.listMarkerSecondSlotOffsetTwips != null && {
-      markerSecondSlotOffsetTwips: attrs.listMarkerSecondSlotOffsetTwips,
-    }),
-    ...(attrs.listLevelNumFmts != null && {
-      levelNumFmts: attrs.listLevelNumFmts,
-    }),
-    ...(attrs.listAbstractNumId != null && {
-      abstractNumId: attrs.listAbstractNumId,
-    }),
-    ...(attrs.listStartOverride != null && {
-      startOverride: attrs.listStartOverride,
-    }),
-  };
-}
-
-/**
  * Create a paragraph containing only a page break run (for DOCX serialization)
  */
 function createPageBreakParagraph(): Paragraph {
@@ -1530,6 +1475,7 @@ function convertPMParagraph(
     paragraph.pPrMark = attrs.pPrMark;
   }
 
+  captureSynthesizedParagraphIdentity(paragraph, node);
   linkParagraphPropertySourceCandidate(paragraph, node);
   return paragraph;
 }
@@ -4725,13 +4671,17 @@ export function tableAttrsToFormatting(attrs: TableAttrs): TableFormatting | und
   // newly created tables that don't have _originalFormatting)
   const tableWidth = attrs.width;
   const tableWidthType = attrs.widthType;
+  const authoredCellMargins =
+    attrs.cellMargins && !sameResolvedValue(attrs.cellMargins, attrs._resolvedCellMargins)
+      ? attrs.cellMargins
+      : undefined;
   const hasFormatting =
     attrs.styleId ||
     tableWidth !== undefined ||
     tableWidthType !== undefined ||
     attrs.justification ||
     attrs.floating ||
-    attrs.cellMargins ||
+    authoredCellMargins ||
     attrs.look ||
     attrs.borders;
 
@@ -4740,7 +4690,9 @@ export function tableAttrsToFormatting(attrs: TableAttrs): TableFormatting | und
   }
 
   // Convert cellMargins back to CellMargins format (twips → TableMeasurement)
-  const cellMargins = attrs.cellMargins ? buildCellMarginsFromAttrs(attrs.cellMargins) : undefined;
+  const cellMargins = authoredCellMargins
+    ? buildCellMarginsFromAttrs(authoredCellMargins)
+    : undefined;
 
   // Restore width — handle width=0 with type="auto" (common OOXML pattern)
   let width: TableFormatting["width"];
@@ -5043,6 +4995,14 @@ const cellShadingFromAttrs = (attrs: TableCellAttrs): CellShading =>
 
 export function tableCellAttrsToFormatting(attrs: TableCellAttrs): TableCellFormatting | undefined {
   const backgroundChanged = attrs.backgroundColor !== attrs._resolvedBackgroundColor;
+  const authoredBorders =
+    attrs.borders && !sameResolvedValue(attrs.borders, attrs._resolvedBorders)
+      ? attrs.borders
+      : undefined;
+  const authoredMargins =
+    attrs.margins && !sameResolvedValue(attrs.margins, attrs._resolvedMargins)
+      ? attrs.margins
+      : undefined;
 
   // If we have the original formatting from the DOCX, use it as a base
   // for lossless round-trip. This preserves properties like vMerge, fitText,
@@ -5086,11 +5046,11 @@ export function tableCellAttrsToFormatting(attrs: TableCellAttrs): TableCellForm
     // Only what the cell states: both attrs also carry what the table and the
     // table style resolved to, and writing those into `w:tcPr` would turn an
     // inherited value into the cell's own override.
-    if (attrs.borders && !sameResolvedValue(attrs.borders, attrs._resolvedBorders)) {
-      result.borders = attrs.borders;
+    if (authoredBorders) {
+      result.borders = authoredBorders;
     }
-    if (attrs.margins && !sameResolvedValue(attrs.margins, attrs._resolvedMargins)) {
-      result.margins = buildCellMarginsFromAttrs(attrs.margins);
+    if (authoredMargins) {
+      result.margins = buildCellMarginsFromAttrs(authoredMargins);
     }
     if (attrs.textDirection !== (orig.textDirection ?? undefined)) {
       if (attrs.textDirection) {
@@ -5098,6 +5058,11 @@ export function tableCellAttrsToFormatting(attrs: TableCellAttrs): TableCellForm
       } else {
         delete result.textDirection;
       }
+    }
+    if (attrs.noWrap) {
+      result.noWrap = true;
+    } else {
+      delete result.noWrap;
     }
 
     return result;
@@ -5111,9 +5076,10 @@ export function tableCellAttrsToFormatting(attrs: TableCellAttrs): TableCellForm
     typeof cellWidth === "number" ||
     attrs.verticalAlign ||
     backgroundChanged ||
-    attrs.borders ||
-    attrs.margins ||
-    attrs.textDirection;
+    authoredBorders ||
+    authoredMargins ||
+    attrs.textDirection ||
+    attrs.noWrap;
 
   if (!hasFormatting) {
     return undefined;
@@ -5138,14 +5104,17 @@ export function tableCellAttrsToFormatting(attrs: TableCellAttrs): TableCellForm
   if (attrs.textDirection) {
     f.textDirection = attrs.textDirection;
   }
+  if (attrs.noWrap) {
+    f.noWrap = true;
+  }
   if (backgroundChanged) {
     f.shading = cellShadingFromAttrs(attrs);
   }
-  if (attrs.borders) {
-    f.borders = attrs.borders;
+  if (authoredBorders) {
+    f.borders = authoredBorders;
   }
-  if (attrs.margins) {
-    f.margins = buildCellMarginsFromAttrs(attrs.margins);
+  if (authoredMargins) {
+    f.margins = buildCellMarginsFromAttrs(authoredMargins);
   }
   return f;
 }

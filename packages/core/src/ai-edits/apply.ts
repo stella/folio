@@ -10,7 +10,8 @@ import {
   hasSerializableParagraphPropertyChange,
   paragraphPropertiesSnapshot,
 } from "../prosemirror/commands/propertyChangeScope";
-import { CLEARED_LIST_RENDERING_ATTRS } from "../prosemirror/listMarker";
+import { LIST_RENDERING_ATTR_DEFAULTS } from "../prosemirror/schema/paragraphAttrDefaults";
+import { withDirectListNumbering } from "../prosemirror/listRenderingProjection";
 import { directParagraphAlignment } from "../prosemirror/paragraphAlignment";
 import {
   directParagraphSpacing,
@@ -43,7 +44,7 @@ import { isZeroWidthAnchor } from "../prosemirror/zeroWidthAnchors";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
 import type { ParagraphFormatting, RunPropertyChange, TextFormatting } from "../types/document";
 import { stripBlockIdentityAttrs } from "./block-identity";
-import { buildCleanBlockText, resolveCleanTextRange } from "./clean-text";
+import { buildCleanBlockText, type CleanBlockText, resolveCleanTextRange } from "./clean-text";
 import {
   hasInlineEmphasis,
   parseInlineEmphasisRuns,
@@ -51,9 +52,11 @@ import {
 } from "./inline-emphasis";
 import {
   hashFolioAIBlockStructuralBoundaries,
+  hashFolioAIBlockStructuralBoundaryProjection,
   hashFolioAIBlockText,
   isHiddenTableRow,
   normalizeFolioAIBlockText,
+  projectFolioAIBlockStructuralBoundaries,
 } from "./snapshot";
 import {
   mergeTableRectangle,
@@ -93,6 +96,9 @@ import {
   tableRectangleCutsMergedCell,
 } from "./table-targets";
 import type {
+  FolioAIBlock,
+  FolioAIBlockAnchor,
+  FolioAIBlockStructuralBoundary,
   FolioAIBlockParagraphProperties,
   FolioAIEditAppliedOperation,
   FolioAIEditApplyMode,
@@ -109,7 +115,7 @@ import {
   createWordDiffSession,
   type WordDiffGranularity,
   wordDiffSessionFromOptions,
-} from "./word-diff";
+} from "../compare/text-diff";
 
 /**
  * The only editor surface the apply logic touches: a current `state`
@@ -499,13 +505,18 @@ const paragraphPropertiesPatch = ({
     originalFormattingChanged = true;
   }
   if (properties.listLevel !== undefined) {
-    const numPr: unknown = node.attrs["numPr"];
+    const nextNumPr =
+      properties.listLevel === null
+        ? null
+        : {
+            ...(attrs.numPr?.numId !== undefined && { numId: attrs.numPr.numId }),
+            ilvl: properties.listLevel,
+          };
     if (properties.listLevel === null) {
       patch["numPr"] = null;
-      Object.assign(patch, CLEARED_LIST_RENDERING_ATTRS);
+      Object.assign(patch, LIST_RENDERING_ATTR_DEFAULTS);
     } else {
-      const numId =
-        typeof numPr === "object" && numPr !== null && "numId" in numPr ? numPr.numId : undefined;
+      const numId = attrs.numPr?.numId;
       if (typeof numId === "number") {
         Object.assign(
           patch,
@@ -513,9 +524,11 @@ const paragraphPropertiesPatch = ({
         );
       } else {
         patch["numPr"] = { ilvl: properties.listLevel };
-        Object.assign(patch, CLEARED_LIST_RENDERING_ATTRS);
+        Object.assign(patch, LIST_RENDERING_ATTR_DEFAULTS);
       }
     }
+    originalFormatting = withDirectListNumbering(originalFormatting, nextNumPr);
+    originalFormattingChanged = true;
   }
   if (
     properties.alignment !== undefined &&
@@ -684,7 +697,7 @@ type ApplyBlockParagraphPropertiesResult = {
  * the complete previous pPr: a partial snapshot cannot distinguish a property
  * the change left alone from one it explicitly cleared when rejecting it.
  */
-const applyBlockParagraphProperties = ({
+export const applyBlockParagraphProperties = ({
   tr,
   position,
   node,
@@ -1239,7 +1252,63 @@ const applyTrackedInlineFormatting = ({
   };
 };
 
-type LiveBlockEntry = { from: number; to: number; node: PMNode };
+type StableBlockSemantics = {
+  normalizedText: string;
+  structuralBoundaryHash: string;
+  structuralBoundaryKey: string;
+  textHash: string;
+};
+
+type LiveBlockEntry = {
+  from: number;
+  to: number;
+  node: PMNode;
+  cleanBlock: CleanBlockText;
+  semantics: StableBlockSemantics;
+};
+
+type SnapshotStableBlockEntry = StableBlockSemantics & {
+  ordinal: number;
+};
+
+type StableBlockSemanticBuckets<T> = Map<string, Map<string, Map<string, T>>>;
+
+type LiveBlockIndexes = {
+  byParaId: Map<string, LiveBlockEntry>;
+  bySemantics: StableBlockSemanticBuckets<LiveBlockEntry[]>;
+};
+
+const structuralBoundaryIdentityKey = (
+  structuralBoundaries: readonly FolioAIBlockStructuralBoundary[],
+): string =>
+  JSON.stringify(
+    structuralBoundaries.map(({ type, offset, clear }) => [type, offset, clear ?? null]),
+  );
+
+const snapshotStableBlockSemantics = (
+  block: FolioAIBlock,
+  anchor: FolioAIBlockAnchor,
+): StableBlockSemantics | null => {
+  const normalizedText = normalizeFolioAIBlockText(block.text);
+  const structuralBoundaries = block.structuralBoundaries ?? [];
+  const textHash = hashFolioAIBlockText(normalizedText);
+  const structuralBoundaryHash = hashFolioAIBlockStructuralBoundaryProjection(structuralBoundaries);
+  if (
+    anchor.id !== block.id ||
+    normalizeFolioAIBlockText(anchor.text) !== normalizedText ||
+    anchor.normalizedText !== normalizedText ||
+    anchor.textHash !== textHash ||
+    anchor.structuralBoundaryHash !== structuralBoundaryHash
+  ) {
+    return null;
+  }
+  return {
+    normalizedText,
+    structuralBoundaryHash,
+    structuralBoundaryKey: structuralBoundaryIdentityKey(structuralBoundaries),
+    textHash,
+  };
+};
 
 /**
  * Module-scoped monotonic counter for tracked-change revision ids.
@@ -1293,76 +1362,97 @@ const estimateRevisionIdReservation = (item: ResolvedOperation): number => {
 };
 
 /**
- * Walk the live doc once and bucket every textblock by its
- * normalised text hash. Resolution then maps each snapshot anchor
- * to the live block at the same ordinal among same-hash siblings —
- * unrelated edits that shift absolute positions no longer break
- * the lookup, and a sibling sharing text content with the target
- * doesn't trigger a false "changed" skip either.
+ * Build both live lookup paths in one walk. The text hash narrows candidates,
+ * but exact normalized text and exact zero-width structure own identity inside
+ * that bucket. This keeps collision handling O(1) per operation instead of
+ * scanning an adversarial same-hash bucket.
  */
-const collectLiveBlocksByHash = (doc: PMNode) => {
-  const byHash = new Map<string, LiveBlockEntry[]>();
-  doc.descendants((node, pos) => {
-    // The snapshot skips a hidden row's whole subtree, and resolution pairs a
-    // snapshot anchor with the live block at the same ordinal among the blocks
-    // sharing its hash. Counting hidden blocks here and not there shifts every
-    // later ordinal, which resolves an operation onto the wrong paragraph
-    // rather than skipping it. The two walks have to agree.
-    if (isHiddenTableRow(node)) {
-      return false;
-    }
-    if (!node.isTextblock) {
-      return true;
-    }
-    // Hash from the post-tracked-changes view so the snapshot
-    // (taken with the same view) and live doc bucket the same
-    // block under the same key. Otherwise a block mid-edit gets a
-    // different hash than the snapshot recorded and the resolver
-    // skips it as "changed".
-    const cleanText = buildCleanBlockText(node, pos).text;
-    const hash = hashFolioAIBlockText(normalizeFolioAIBlockText(cleanText));
-    const bucket = byHash.get(hash) ?? [];
-    bucket.push({ from: pos, to: pos + node.nodeSize, node });
-    byHash.set(hash, bucket);
-    return false;
-  });
-  return byHash;
-};
-
-/**
- * Index live textblocks by their `w14:paraId`. Used by the resolver
- * to prefer a paraId-anchored lookup when the snapshot id encodes
- * one. Direct lookup avoids
- * the hash+ordinal failure mode where an earlier-in-document
- * duplicate of the same text gets picked instead of the actual
- * referenced paragraph.
- */
-const collectLiveBlocksByParaId = (doc: PMNode) => {
+const collectLiveBlockIndexes = (doc: PMNode): LiveBlockIndexes => {
   const byParaId = new Map<string, LiveBlockEntry>();
+  const bySemantics: StableBlockSemanticBuckets<LiveBlockEntry[]> = new Map();
   doc.descendants((node, pos) => {
-    // The same rule as the hash index and the snapshot: a hidden row's whole
-    // subtree is not walked. A paraId is only unique because Word keeps it so,
-    // and a package that reuses one across a hidden and a visible paragraph
-    // would otherwise resolve the visible block onto content no reader can
-    // see, and edit it there. All three walks have to agree on what exists.
+    // The snapshot skips a hidden row's whole subtree. Counting hidden blocks
+    // here and not there shifts later positional ordinals, so both walks must
+    // agree on visibility.
     if (isHiddenTableRow(node)) {
       return false;
     }
     if (!node.isTextblock) {
       return true;
     }
-    const paraId: unknown = node.attrs["paraId"];
-    if (typeof paraId !== "string" || paraId.length === 0) {
-      return false;
+    const cleanBlock = buildCleanBlockText(node, pos);
+    const normalizedText = normalizeFolioAIBlockText(cleanBlock.text);
+    const structuralBoundaries = projectFolioAIBlockStructuralBoundaries(cleanBlock);
+    const semantics = {
+      normalizedText,
+      structuralBoundaryHash: hashFolioAIBlockStructuralBoundaries(cleanBlock),
+      structuralBoundaryKey: structuralBoundaryIdentityKey(structuralBoundaries),
+      textHash: hashFolioAIBlockText(normalizedText),
+    } satisfies StableBlockSemantics;
+    const entry = {
+      from: pos,
+      to: pos + node.nodeSize,
+      node,
+      cleanBlock,
+      semantics,
+    } satisfies LiveBlockEntry;
+
+    let byNormalizedText = bySemantics.get(semantics.textHash);
+    if (byNormalizedText === undefined) {
+      byNormalizedText = new Map();
+      bySemantics.set(semantics.textHash, byNormalizedText);
     }
+    let byStructure = byNormalizedText.get(semantics.normalizedText);
+    if (byStructure === undefined) {
+      byStructure = new Map();
+      byNormalizedText.set(semantics.normalizedText, byStructure);
+    }
+    const bucket = byStructure.get(semantics.structuralBoundaryKey) ?? [];
+    bucket.push(entry);
+    byStructure.set(semantics.structuralBoundaryKey, bucket);
+
+    const paraId: unknown = node.attrs["paraId"];
     // First-write-wins so an Enter-split duplicate (briefly co-existing
     // before the allocator re-issues) doesn't override the original.
-    if (!byParaId.has(paraId)) {
-      byParaId.set(paraId, { from: pos, to: pos + node.nodeSize, node });
+    if (typeof paraId === "string" && paraId.length > 0 && !byParaId.has(paraId)) {
+      byParaId.set(paraId, entry);
     }
     return false;
   });
-  return byParaId;
+  return { byParaId, bySemantics };
+};
+
+/** Exact semantic ordinals for positional snapshot ids, built once per batch. */
+const collectSnapshotStableBlocks = (
+  snapshot: FolioAIEditSnapshot,
+): Map<string, SnapshotStableBlockEntry> => {
+  const blocks = new Map<string, SnapshotStableBlockEntry>();
+  const counts: StableBlockSemanticBuckets<number> = new Map();
+  for (const block of snapshot.blocks) {
+    const anchor = snapshot.anchors[block.id];
+    if (anchor === undefined) {
+      continue;
+    }
+    const semantics = snapshotStableBlockSemantics(block, anchor);
+    if (semantics === null) {
+      continue;
+    }
+
+    let byNormalizedText = counts.get(semantics.textHash);
+    if (byNormalizedText === undefined) {
+      byNormalizedText = new Map();
+      counts.set(semantics.textHash, byNormalizedText);
+    }
+    let byStructure = byNormalizedText.get(semantics.normalizedText);
+    if (byStructure === undefined) {
+      byStructure = new Map();
+      byNormalizedText.set(semantics.normalizedText, byStructure);
+    }
+    const ordinal = byStructure.get(semantics.structuralBoundaryKey) ?? 0;
+    byStructure.set(semantics.structuralBoundaryKey, ordinal + 1);
+    blocks.set(block.id, { ...semantics, ordinal });
+  }
+  return blocks;
 };
 
 type TableCellMerge = {
@@ -1390,30 +1480,6 @@ const getTableMutationPlanTarget = (item: ResolvedOperation): TableMutationPlanT
     return { type: "tableStructure", tablePosition };
   }
   return { type: "none" };
-};
-
-/**
- * The snapshot recorded an `hashOccurrenceCount` per anchor but
- * not which ordinal within that bucket the block was — recompute
- * on demand from the snapshot's anchor map. Stable iteration
- * (object insertion order) means anchors with the same hash come
- * out in document order, which is what we want.
- */
-const ordinalAmongSameHash = (snapshot: FolioAIEditSnapshot, blockId: string): number => {
-  const target = snapshot.anchors[blockId];
-  if (!target) {
-    return -1;
-  }
-  let ordinal = 0;
-  for (const anchor of Object.values(snapshot.anchors)) {
-    if (anchor.id === blockId) {
-      return ordinal;
-    }
-    if (anchor.textHash === target.textHash) {
-      ordinal += 1;
-    }
-  }
-  return -1;
 };
 
 /**
@@ -1702,7 +1768,8 @@ const addedBreakRevisionId = (value: unknown): number | null => {
  * insertion that looked final was undone by the next operation writing a table
  * after it.
  */
-const withRotatedAddedFinalBreaks = ({
+/** @internal Shared final-mark normalization for tracked operation programs. */
+export const withRotatedAddedFinalBreaks = ({
   tr,
   batchRevisionIds,
   revisionSeed,
@@ -1857,6 +1924,10 @@ const buildInsertedParagraphs = ({
           pPrMark: null,
           _suggestedInsert: null,
         };
+  const inheritedParagraphAttrs =
+    operation.inheritFormatting !== false && item.blockNode.type.name === "paragraph"
+      ? expectParagraphAttrs(item.blockNode)
+      : undefined;
   const insertTexts = item.insertTexts ?? [""];
   const revisionIds: number[] = [];
   const nodes: PMNode[] = [];
@@ -1884,42 +1955,41 @@ const buildInsertedParagraphs = ({
     }
     const content = text.length > 0 ? buildEmphasisInlineContent(schema, text, marks) : null;
     const attrs: Record<string, unknown> = isFirstParagraph ? { ...baseAttrs } : {};
+    let directListNumbering: ParagraphFormatting["numPr"] | null | undefined;
     if (isFirstParagraph && operation.pageBreakBefore === true) {
       attrs["pageBreakBefore"] = true;
     }
     const listLevel = operation.listLevel;
     if (isFirstParagraph && listLevel === null) {
+      directListNumbering = null;
       attrs["numPr"] = null;
-      Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
+      Object.assign(attrs, LIST_RENDERING_ATTR_DEFAULTS);
     } else if (isFirstParagraph && typeof listLevel === "number") {
-      const anchorNumPr: unknown = Reflect.get(baseAttrs, "numPr");
-      const numId =
-        typeof anchorNumPr === "object" && anchorNumPr !== null && "numId" in anchorNumPr
-          ? anchorNumPr.numId
-          : undefined;
+      const numId = inheritedParagraphAttrs?.numPr?.numId;
+      directListNumbering = {
+        ...(numId !== undefined && { numId }),
+        ilvl: listLevel,
+      };
       if (typeof numId === "number") {
         Object.assign(
           attrs,
-          listLevelAttrPatch(
-            operation.inheritFormatting === false ? {} : expectParagraphAttrs(item.blockNode),
-            { numId, ilvl: listLevel },
-            numbering,
-          ),
+          listLevelAttrPatch(inheritedParagraphAttrs ?? {}, { numId, ilvl: listLevel }, numbering),
         );
       } else {
         attrs["numPr"] = { ilvl: listLevel };
-        Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
+        Object.assign(attrs, LIST_RENDERING_ATTR_DEFAULTS);
       }
     }
     if (isFirstParagraph && operation.styleId !== undefined) {
       attrs["styleId"] = operation.styleId;
       if (operation.inheritFormatting !== false && operation.styleId !== null) {
-        Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
+        Object.assign(attrs, LIST_RENDERING_ATTR_DEFAULTS);
       }
     }
     if (
       isFirstParagraph &&
       (operation.styleId !== undefined ||
+        operation.listLevel !== undefined ||
         operation.alignment !== undefined ||
         operation.spacing !== undefined)
     ) {
@@ -1951,6 +2021,9 @@ const buildInsertedParagraphs = ({
         } else {
           originalFormatting.styleId = operation.styleId;
         }
+      }
+      if (operation.listLevel !== undefined) {
+        originalFormatting = withDirectListNumbering(originalFormatting, directListNumbering);
       }
       if (operation.alignment !== undefined || inheritedDirectAlignment !== undefined) {
         originalFormatting ??= {};
@@ -2102,12 +2175,10 @@ const applyFolioAIEditOperationsInternal = ({
     };
   }
 
-  // Build the live-block indexes once per batch so individual op
-  // resolutions don't each re-walk the doc. ParaId-anchored ids are
-  // resolved against `liveBlocksByParaId`; the hash bucket is only
-  // the fallback for ordinal-encoded snapshot ids.
-  const liveBlocks = collectLiveBlocksByHash(view.state.doc);
-  const liveBlocksByParaId = collectLiveBlocksByParaId(view.state.doc);
+  // Build the live and snapshot indexes once per batch so every operation is
+  // an exact bounded lookup rather than another document or anchor walk.
+  const liveBlocks = collectLiveBlockIndexes(view.state.doc);
+  const snapshotBlocks = collectSnapshotStableBlocks(snapshot);
 
   for (const [index, operation] of operations.entries()) {
     const commentText = getOperationCommentText(operation);
@@ -2120,7 +2191,7 @@ const applyFolioAIEditOperationsInternal = ({
       snapshot,
       operation,
       liveBlocks,
-      liveBlocksByParaId,
+      snapshotBlocks,
       doc: view.state.doc,
     });
     if (resolution.type === "skip") {
@@ -3649,8 +3720,8 @@ const applyTextReplacement = ({
 type ResolveOperationArgs = {
   snapshot: FolioAIEditSnapshot;
   operation: FolioAIEditOperation;
-  liveBlocks: Map<string, LiveBlockEntry[]>;
-  liveBlocksByParaId: Map<string, LiveBlockEntry>;
+  liveBlocks: LiveBlockIndexes;
+  snapshotBlocks: Map<string, SnapshotStableBlockEntry>;
   doc: PMNode;
 };
 
@@ -3672,38 +3743,42 @@ const resolveStableBlock = ({
   snapshot,
   blockId,
   liveBlocks,
-  liveBlocksByParaId,
+  snapshotBlocks,
 }: ResolveStableBlockArgs): StableBlockResolution | OperationResolutionSkip => {
   const anchor = snapshot.anchors[blockId];
   if (!anchor) {
     return { type: "skip", reason: "missingBlock" };
   }
+  const snapshotBlock = snapshotBlocks.get(blockId);
+  if (snapshotBlock === undefined) {
+    return { type: "skip", reason: "changedBlock" };
+  }
 
   const encodedParaId = getFolioParaIdFromBlockId(blockId);
   let live: LiveBlockEntry | undefined;
   if (encodedParaId !== null) {
-    live = liveBlocksByParaId.get(encodedParaId);
+    live = liveBlocks.byParaId.get(encodedParaId);
     if (!live) {
       return { type: "skip", reason: "missingBlock" };
     }
   } else {
-    const ordinal = ordinalAmongSameHash(snapshot, blockId);
-    if (ordinal < 0) {
-      return { type: "skip", reason: "missingBlock" };
-    }
-    live = liveBlocks.get(anchor.textHash)?.[ordinal];
+    live = liveBlocks.bySemantics
+      .get(snapshotBlock.textHash)
+      ?.get(snapshotBlock.normalizedText)
+      ?.get(snapshotBlock.structuralBoundaryKey)?.[snapshotBlock.ordinal];
   }
   if (!live || !live.node.isTextblock) {
     return { type: "skip", reason: "changedBlock" };
   }
 
-  const cleanBlock = buildCleanBlockText(live.node, live.from);
+  const { cleanBlock, semantics } = live;
   const currentText = cleanBlock.text;
-  const currentTextHash = hashFolioAIBlockText(normalizeFolioAIBlockText(currentText));
-  const structuralBoundaryHash = hashFolioAIBlockStructuralBoundaries(cleanBlock);
+  const currentTextHash = semantics.textHash;
   if (
-    currentTextHash !== anchor.textHash ||
-    structuralBoundaryHash !== anchor.structuralBoundaryHash
+    currentTextHash !== snapshotBlock.textHash ||
+    semantics.normalizedText !== snapshotBlock.normalizedText ||
+    semantics.structuralBoundaryHash !== snapshotBlock.structuralBoundaryHash ||
+    semantics.structuralBoundaryKey !== snapshotBlock.structuralBoundaryKey
   ) {
     return { type: "skip", reason: "changedBlock" };
   }
@@ -3722,7 +3797,7 @@ const resolveOperation = ({
   snapshot,
   operation,
   liveBlocks,
-  liveBlocksByParaId,
+  snapshotBlocks,
   doc,
 }: ResolveOperationArgs):
   | { type: "resolved"; operation: ResolvedBase }
@@ -3737,7 +3812,7 @@ const resolveOperation = ({
     snapshot,
     blockId,
     liveBlocks,
-    liveBlocksByParaId,
+    snapshotBlocks,
   });
   if (primaryBlock.type === "skip") {
     return primaryBlock;
@@ -3977,7 +4052,7 @@ const resolveOperation = ({
         snapshot,
         blockId: operation.endBlockId,
         liveBlocks,
-        liveBlocksByParaId,
+        snapshotBlocks,
       });
       if (endTarget.type === "skip") {
         return endTarget;
