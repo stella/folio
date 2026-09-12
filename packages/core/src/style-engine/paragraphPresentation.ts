@@ -111,7 +111,7 @@ const projectFormatting = (
   formatting: ParagraphFormatting | undefined,
   includes: (disposition: ParagraphFormattingProjectionDisposition | undefined) => boolean,
 ): ParagraphFormatting => {
-  const projected = { ...(formatting ?? {}) };
+  const projected = formatting ? { ...formatting } : {};
   for (const field of Object.keys(projected)) {
     const disposition = paragraphFormattingDispositionByField.get(field);
     if (!includes(disposition) || Reflect.get(projected, field) === undefined) {

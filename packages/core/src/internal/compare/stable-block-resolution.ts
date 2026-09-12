@@ -80,12 +80,10 @@ export class FolioStableBlockResolver {
       return { type: "unsupported", reason: "changed-block" };
     }
     const ordinal = this.#ordinalByBlockId.get(blockId);
-    const live =
-      encodedParaId === null
-        ? ordinal === undefined
-          ? undefined
-          : this.#byHash.get(anchor.textHash)?.[ordinal]
-        : this.#byParaId.get(encodedParaId);
+    let live = encodedParaId === null ? undefined : this.#byParaId.get(encodedParaId);
+    if (encodedParaId === null && ordinal !== undefined) {
+      live = this.#byHash.get(anchor.textHash)?.[ordinal];
+    }
     if (!live?.node.isTextblock) {
       return {
         type: "unsupported",

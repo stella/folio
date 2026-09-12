@@ -232,11 +232,13 @@ export const resolveEffectiveRunPresentation = (
   styleResolver: ParagraphDefaultFormattingResolver | null,
 ): ResolvedRunPresentation => {
   const styleId = runFormatting?.styleId;
-  const characterStyleFormatting = styleId
-    ? styleResolver?.getRunStyleOwnProperties(styleId)
-    : !inherited.implicitCharacterStyleApplied
-      ? styleResolver?.getDefaultCharacterStyle()?.rPr
-      : undefined;
+  const characterStyleFormatting = (() => {
+    if (styleId) return styleResolver?.getRunStyleOwnProperties(styleId);
+    if (!inherited.implicitCharacterStyleApplied) {
+      return styleResolver?.getDefaultCharacterStyle()?.rPr;
+    }
+    return undefined;
+  })();
   let ordinaryRunStyleFormatting = inherited.formatting
     ? { ...inherited.formatting }
     : {};

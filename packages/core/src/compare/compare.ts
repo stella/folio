@@ -470,7 +470,7 @@ export const applyComparison = (
   // body revision with it.
   let idSeed = revisionStamp.idSeed;
   let documentChanged = false;
-  for (const { pair, plan, prepared } of preparedStories) {
+  for (const { pair, prepared } of preparedStories) {
     const executed = comparisonAccess.commitStoryProgram({
       story: pair.baseStory,
       revisionStamp: { date: revisionStamp.date, idSeed },

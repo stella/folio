@@ -437,14 +437,14 @@ export type FolioContentAlignedBlockEvent<Block extends FolioContentBlock = Foli
   | { type: "baseOnly"; block: Block }
   | { type: "revisedOnly"; block: Block };
 
-export type AlignFolioContentBlocksOptions<Block extends FolioContentBlock> = {
+export type AlignFolioContentBlocksOptions = {
   workSession?: FolioContentAlignmentWorkSession;
 };
 
 export const alignFolioContentBlocks = <Block extends FolioContentBlock>(
   baseBlocks: readonly Block[],
   revisedBlocks: readonly Block[],
-  options: AlignFolioContentBlocksOptions<Block> = {},
+  options: AlignFolioContentBlocksOptions = {},
 ): FolioContentAlignedBlockEvent<Block>[] => {
   const workSession = options.workSession ?? createFolioContentAlignmentWorkSession();
   const stableIdAnchors = pairByStableId(baseBlocks, revisedBlocks);
@@ -944,25 +944,29 @@ const scopedAlignmentSteps = <Block extends FolioContentBlock>(
         event.block.identity.id,
       );
       const targetCarrier = terminalRevisedByAlignment.get(containerAlignment) ?? null;
-      const removalBoundary: FolioContentParagraphRemovalBoundary<Block> =
-        successorId !== undefined && nextBase?.block.identity.id === successorId
-          ? Object.freeze({
-              type: "successorParagraph",
-              successor: nextBase.block,
-              containerAlignment,
-            })
-          : context.baseParagraphTopology.terminalBlockIds.has(event.block.identity.id) &&
-              containerAlignment.type === "paired" &&
-              predecessorId !== undefined &&
-              previousBase?.block.identity.id === predecessorId &&
-              targetCarrier?.pairedBase === previousBase.block
-            ? Object.freeze({
-                type: "terminalPredecessor",
-                predecessor: previousBase.block,
-                targetCarrier: targetCarrier.block,
-                containerAlignment,
-              })
-            : Object.freeze({ type: "unanchoredContainer", containerAlignment });
+      let removalBoundary: FolioContentParagraphRemovalBoundary<Block>;
+      if (successorId !== undefined && nextBase?.block.identity.id === successorId) {
+        removalBoundary = Object.freeze({
+          type: "successorParagraph",
+          successor: nextBase.block,
+          containerAlignment,
+        });
+      } else if (
+        context.baseParagraphTopology.terminalBlockIds.has(event.block.identity.id) &&
+        containerAlignment.type === "paired" &&
+        predecessorId !== undefined &&
+        previousBase?.block.identity.id === predecessorId &&
+        targetCarrier?.pairedBase === previousBase.block
+      ) {
+        removalBoundary = Object.freeze({
+          type: "terminalPredecessor",
+          predecessor: previousBase.block,
+          targetCarrier: targetCarrier.block,
+          containerAlignment,
+        });
+      } else {
+        removalBoundary = Object.freeze({ type: "unanchoredContainer", containerAlignment });
+      }
       steps.push({
         ...event,
         moveScope: { bucket: bucketForBlock(event.block), gap, containerAlignment },
@@ -1370,27 +1374,27 @@ const tableStructureProfile = <Block extends FolioContentBlock>(
   identityLevel: "outer" | "table" = "table",
 ): ContentStructureProfile => {
   const tableOrdinalByIndex = new Map<number, number>();
-  const table = blocks.at(0)?.table;
+  const firstTable = blocks.at(0)?.table;
   const tableIdentity =
-    identityLevel === "outer" ? table?.outerTableIdentity : table?.tableIdentity;
+    identityLevel === "outer" ? firstTable?.outerTableIdentity : firstTable?.tableIdentity;
   return createContentStructureProfile({
     blocks,
     ...(tableIdentity !== undefined && { scopeIdentity: tableIdentity }),
     blockStructure: (block) => {
-      const table = block.table ?? panic("A table profile contains a body block");
-      let tableOrdinal = tableOrdinalByIndex.get(table.tableIndex);
+      const blockTable = block.table ?? panic("A table profile contains a body block");
+      let tableOrdinal = tableOrdinalByIndex.get(blockTable.tableIndex);
       if (tableOrdinal === undefined) {
         tableOrdinal = tableOrdinalByIndex.size;
-        tableOrdinalByIndex.set(table.tableIndex, tableOrdinal);
+        tableOrdinalByIndex.set(blockTable.tableIndex, tableOrdinal);
       }
       return [
         tableOrdinal,
-        table.rowIndex,
-        table.cellIndex,
-        table.gridColumnIndex,
-        table.columnSpan,
-        table.rowSpan,
-        table.paragraphIndex,
+        blockTable.rowIndex,
+        blockTable.cellIndex,
+        blockTable.gridColumnIndex,
+        blockTable.columnSpan,
+        blockTable.rowSpan,
+        blockTable.paragraphIndex,
       ];
     },
   });

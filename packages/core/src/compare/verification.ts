@@ -108,10 +108,6 @@ export type CompareVerification =
 
 const collapseWhitespace = (text: string): string => text.replace(/\s+/gu, " ").trim();
 
-const containerKind = (
-  container: FolioContentTableLocation | undefined,
-): "body" | "cell" => (container ? "cell" : "body");
-
 const sameStringProjection = (left: readonly string[], right: readonly string[]): boolean =>
   left.length === right.length && left.every((entry, index) => entry === right[index]);
 
